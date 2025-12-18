@@ -1,0 +1,21 @@
+[0;1;32m●[0m web_app.service - 公寓物业收费管理系统 Flask应用
+     Loaded: loaded (]8;;file://localhost.localdomain/etc/systemd/system/web_app.service/etc/systemd/system/web_app.service]8;;; [0;1;32menabled[0m; preset: [0;1;38;5;185mdisabled[0m)
+     Active: [0;1;32mactive (running)[0m since Tue 2025-12-09 05:52:19 CST; 4s ago
+   Main PID: 2509002 (python3)
+      Tasks: 3 (limit: 4001)
+     Memory: 84.0M (peak: 86.0M)
+        CPU: 750ms
+     CGroup: /system.slice/web_app.service
+             ├─[0;38;5;245m2509002 /var/www/web_app/venv/bin/python3 app.py[0m
+             └─[0;38;5;245m2509035 /var/www/web_app/venv/bin/python3 /var/www/web_app/app.py[0m
+
+Dec 09 05:52:20 localhost.localdomain web_app[2509002]:  * Serving Flask app 'app'
+Dec 09 05:52:20 localhost.localdomain web_app[2509002]:  * Debug mode: on
+Dec 09 05:52:20 localhost.localdomain web_app[2509002]: WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+Dec 09 05:52:20 localhost.localdomain web_app[2509002]:  * Running on all addresses (0.0.0.0)
+Dec 09 05:52:20 localhost.localdomain web_app[2509002]:  * Running on http://127.0.0.1:5000
+Dec 09 05:52:20 localhost.localdomain web_app[2509002]:  * Running on http://192.168.1.251:5000
+Dec 09 05:52:20 localhost.localdomain web_app[2509002]: Press CTRL+C to quit
+Dec 09 05:52:20 localhost.localdomain web_app[2509002]:  * Restarting with stat
+Dec 09 05:52:20 localhost.localdomain web_app[2509035]:  * Debugger is active!
+Dec 09 05:52:20 localhost.localdomain web_app[2509035]:  * Debugger PIN: 279-917-272

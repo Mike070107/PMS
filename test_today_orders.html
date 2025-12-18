@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>测试今日收费记录</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <h1>测试今日收费记录</h1>
+    <button onclick="testLogin()">登录</button>
+    <button onclick="testRecentOrders()">获取今日收费记录</button>
+    <div id="result"></div>
+    
+    <script>
+        let token = '';
+        
+        async function testLogin() {
+            try {
+                const response = await axios.post('http://localhost:5000/api/login', {
+                    username: 'admin',
+                    password: 'admin'
+                });
+                
+                console.log('登录响应:', response.data);
+                token = response.data.token;
+                document.getElementById('result').innerHTML = '登录成功，Token: ' + token;
+            } catch (error) {
+                console.error('登录失败:', error);
+                document.getElementById('result').innerHTML = '登录失败: ' + error.message;
+            }
+        }
+        
+        async function testRecentOrders() {
+            try {
+                const response = await axios.get('http://localhost:5000/api/recent-orders', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                console.log('今日收费记录响应:', response.data);
+                const orders = response.data.data.orders;
+                const total = response.data.data.todayTotal;
+                
+                let html = `<h2>今日收费记录 (共${orders.length}条，合计：${total}元)</h2>`;
+                html += '<table border="1">';
+                html += '<tr><th>收费日期</th><th>楼栋</th><th>房号</th><th>收费项目</th><th>收费金额</th></tr>';
+                
+                orders.forEach(order => {
+                    html += `<tr>
+                        <td>${order.entryTime}</td>
+                        <td>${order.building}</td>
+                        <td>${order.room}</td>
+                        <td>${order.feeItems}</td>
+                        <td>${order.totalAmount}</td>
+                    </tr>`;
+                });
+                
+                html += '</table>';
+                document.getElementById('result').innerHTML = html;
+            } catch (error) {
+                console.error('获取今日收费记录失败:', error);
+                document.getElementById('result').innerHTML = '获取今日收费记录失败: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

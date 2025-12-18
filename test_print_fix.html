@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>打印测试页面</title>
+    <style>
+        /* 打印样式 */
+        @media print {
+            /* 隐藏所有内容 */
+            body * {
+                visibility: hidden;
+            }
+            /* 只显示打印区域 */
+            #print-receipt, #print-receipt * {
+                visibility: visible;
+            }
+            /* 打印区域样式 */
+            #print-receipt {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 80mm !important;
+                min-height: auto !important;
+                max-height: 100vh !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                font-family: '宋体', 'SimSun', sans-serif !important;
+                font-size: 12px !important;
+                overflow: visible !important;
+                page-break-inside: avoid !important;
+                page-break-after: avoid !important;
+                page-break-before: avoid !important;
+                z-index: 9999 !important;
+                transform-origin: top left !important;
+            }
+            
+            /* 确保小票内容也是80mm宽度 */
+            #print-receipt .receipt-content {
+                width: 80mm !important;
+                min-width: 80mm !important;
+                max-width: 80mm !important;
+                margin: 0 !important;
+                padding: 2mm !important;
+                box-sizing: border-box !important;
+                page-break-inside: avoid !important;
+                page-break-after: avoid !important;
+                page-break-before: avoid !important;
+                overflow: visible !important;
+            }
+            
+            /* 强制设置页面尺寸和边距 */
+            @page {
+                size: auto !important;
+                margin: 0mm !important;
+                padding: 0 !important;
+                marks: none !important;
+                bleed: 0 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                /* 强制内容适应纸张 */
+                overflow: hidden !important;
+                /* 确保不会根据纸张大小自动缩放 */
+                transform-origin: top left !important;
+                /* 防止浏览器自动调整内容大小 */
+                zoom: 1 !important;
+            }
+            
+            /* 防止任何元素分页 */
+            #print-receipt,
+            #print-receipt *,
+            #print-receipt .receipt-content,
+            #print-receipt .receipt-content * {
+                page-break-inside: avoid !important;
+                page-break-after: avoid !important;
+                page-break-before: avoid !important;
+                orphans: 1 !important;
+                widows: 1 !important;
+            }
+            
+            /* 确保HTML和BODY不会影响打印 */
+            html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                visibility: hidden !important;
+                background: transparent !important;
+                overflow: visible !important;
+            }
+            
+            /* 防止任何滚动条 */
+            html {
+                overflow: hidden !important;
+            }
+            
+            /* 确保打印内容不会被裁剪 */
+            #print-receipt {
+                overflow: visible !important;
+                height: auto !important;
+            }
+        }
+
+        .receipt-content {
+            max-width: 80mm;
+            font-family: '宋体', 'SimSun', sans-serif;
+            font-size: 12px;
+            padding: 5mm;
+            margin: 0;
+            border: 1px dashed #ddd;
+            background-color: white;
+            box-sizing: border-box;
+            page-break-inside: avoid;
+        }
+
+        .receipt-header {
+            text-align: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #000;
+        }
+
+        .receipt-header h2 {
+            font-size: 16px;
+            margin: 5px 0;
+            font-weight: bold;
+        }
+
+        .receipt-info {
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+
+        .receipt-info .label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .receipt-items {
+            margin: 15px 0;
+            border-top: 1px dashed #000;
+            border-bottom: 1px dashed #000;
+            padding: 10px 0;
+        }
+
+        .receipt-total {
+            text-align: right;
+            font-weight: bold;
+            font-size: 14px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 2px solid #000;
+        }
+
+        .receipt-footer {
+            text-align: center;
+            margin-top: 10px;
+            padding-top: 5px;
+            border-top: 1px dashed #000;
+            font-size: 11px;
+            color: #666;
+            page-break-after: avoid;
+            page-break-inside: avoid;
+        }
+    </style>
+</head>
+<body>
+    <div style="padding: 20px;">
+        <h1>打印测试页面</h1>
+        <p>这是一个用于测试打印功能的页面。</p>
+        <p>请点击下面的按钮测试打印：</p>
+        
+        <button onclick="testPrint()" style="padding: 10px 20px; font-size: 16px; background: #409eff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            测试打印
+        </button>
+        
+        <p style="margin-top: 20px; color: #666;">
+            测试说明：<br>
+            1. 点击"测试打印"按钮<br>
+            2. 在打印预览中选择不同的纸张尺寸（A1、A4等）<br>
+            3. 确认无论选择什么纸张尺寸，都应该只打印一页内容<br>
+            4. 不应该出现空白页
+        </p>
+    </div>
+
+    <!-- 打印区域（默认隐藏） -->
+    <div id="print-receipt" style="display: none;">
+        <div class="receipt-content">
+            <div class="receipt-header">
+                <h2>物业收费收据</h2>
+                <div>测试小区</div>
+            </div>
+            
+            <div class="receipt-info">
+                <div><span class="label">收费时间：</span>2025-12-18 14:30:00</div>
+                <div><span class="label">楼栋房号：</span>A栋-101</div>
+                <div><span class="label">住户姓名：</span>测试用户</div>
+                <div><span class="label">联系电话：</span>13800138000</div>
+                <div><span class="label">收款方式：</span>微信</div>
+            </div>
+            
+            <div class="receipt-items">
+                <div>电费 | 100.0度 | ¥85.00</div>
+                <div>冷水费 | 20.0吨 | ¥60.00</div>
+                <div>热水费 | 10.0吨 | ¥80.00</div>
+                <div>网费 | 1.0月 | ¥50.00</div>
+                <div>停车费 | 1.0月 | ¥130.00 | 2025/12/1-2025/12/31 | 皖A12345</div>
+            </div>
+            
+            <div class="receipt-total">
+                合计金额：¥405.00
+            </div>
+            
+            <div class="receipt-footer">
+                <div>账单号：TEST202512180001</div>
+                <div>打印时间：2025-12-18 14:30:00</div>
+                <div>谢谢惠顾！</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function testPrint() {
+            // 显示打印区域
+            const printDiv = document.getElementById('print-receipt');
+            printDiv.style.display = 'block';
+            
+            // 添加打印后处理事件
+            const afterPrint = () => {
+                printDiv.style.display = 'none';
+                window.removeEventListener('afterprint', afterPrint);
+            };
+            
+            // 监听打印后事件
+            window.addEventListener('afterprint', afterPrint);
+            
+            // 调用打印
+            window.print();
+            
+            // 备用方案：如果afterprint事件未触发，使用setTimeout
+            setTimeout(() => {
+                if (printDiv.style.display === 'block') {
+                    printDiv.style.display = 'none';
+                }
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
