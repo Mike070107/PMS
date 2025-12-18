@@ -4902,7 +4902,7 @@ const app = createApp({
                     
                     if (result.status === 'success') {
                         ElMessage.success('红冲记录创建成功');
-                        // 重新加载最近记录
+                        // 重新加载今日收费记录
                         await loadRecentOrders();
                     } else {
                         throw new Error(result.message || '创建红冲记录失败');
