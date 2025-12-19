@@ -742,7 +742,6 @@
         .fee-table .el-select,
         .parking-detail-cell .el-input,
         .parking-detail-cell .el-input-number,
-        .parking-detail-cell .el-date-picker,
         .parking-detail-cell .el-select,
         .fee-table td .el-input,
         .fee-table td .el-input-number,
@@ -750,7 +749,6 @@
         .fee-table td .el-select,
         .parking-detail-cell .el-input,
         .parking-detail-cell .el-input-number,
-        .parking-detail-cell .el-date-picker,
         .parking-detail-cell .el-select {
             transition: none !important;
             transform: none !important;
@@ -1191,7 +1189,6 @@
         .fee-table .el-select .el-select__wrapper,
         .parking-detail-cell .el-input .el-input__wrapper,
         .parking-detail-cell .el-input-number .el-input-number__wrapper,
-        .parking-detail-cell .el-date-picker .el-input__wrapper,
         .parking-detail-cell .el-select .el-select__wrapper,
         .fee-table td .el-input .el-input__wrapper,
         .fee-table td .el-input-number .el-input-number__wrapper,
@@ -1199,7 +1196,6 @@
         .fee-table td .el-select .el-select__wrapper,
         .parking-detail-cell .el-input .el-input__wrapper,
         .parking-detail-cell .el-input-number .el-input-number__wrapper,
-        .parking-detail-cell .el-date-picker .el-input__wrapper,
         .parking-detail-cell .el-select .el-select__wrapper {
             transition: none !important;
             transform: none !important;
@@ -1214,7 +1210,6 @@
         .fee-table .el-select:hover .el-select__wrapper,
         .parking-detail-cell .el-input:hover .el-input__wrapper,
         .parking-detail-cell .el-input-number:hover .el-input-number__wrapper,
-        .parking-detail-cell .el-date-picker:hover .el-input__wrapper,
         .parking-detail-cell .el-select:hover .el-select__wrapper,
         .fee-table td .el-input:hover .el-input__wrapper,
         .fee-table td .el-input-number:hover .el-input-number__wrapper,
@@ -1222,7 +1217,6 @@
         .fee-table td .el-select:hover .el-select__wrapper,
         .parking-detail-cell .el-input:hover .el-input__wrapper,
         .parking-detail-cell .el-input-number:hover .el-input-number__wrapper,
-        .parking-detail-cell .el-date-picker:hover .el-input__wrapper,
         .parking-detail-cell .el-select:hover .el-select__wrapper {
             transition: none !important;
             transform: none !important;
@@ -1237,7 +1231,6 @@
         .fee-table .el-select.is-focus .el-select__wrapper,
         .parking-detail-cell .el-input.is-focus .el-input__wrapper,
         .parking-detail-cell .el-input-number.is-focus .el-input-number__wrapper,
-        .parking-detail-cell .el-date-picker.is-focus .el-input__wrapper,
         .parking-detail-cell .el-select.is-focus .el-select__wrapper,
         .fee-table td .el-input.is-focus .el-input__wrapper,
         .fee-table td .el-input-number.is-focus .el-input-number__wrapper,
@@ -1245,7 +1238,6 @@
         .fee-table td .el-select.is-focus .el-select__wrapper,
         .parking-detail-cell .el-input.is-focus .el-input__wrapper,
         .parking-detail-cell .el-input-number.is-focus .el-input-number__wrapper,
-        .parking-detail-cell .el-date-picker.is-focus .el-input__wrapper,
         .parking-detail-cell .el-select.is-focus .el-select__wrapper {
             transition: none !important;
             transform: none !important;
@@ -1261,7 +1253,6 @@
         .fee-table .el-select .el-select__inner,
         .parking-detail-cell .el-input .el-input__inner,
         .parking-detail-cell .el-input-number .el-input__inner,
-        .parking-detail-cell .el-date-picker .el-input__inner,
         .parking-detail-cell .el-select .el-select__inner,
         .fee-table td .el-input .el-input__inner,
         .fee-table td .el-input-number .el-input__inner,
@@ -1269,7 +1260,6 @@
         .fee-table td .el-select .el-select__inner,
         .parking-detail-cell .el-input .el-input__inner,
         .parking-detail-cell .el-input-number .el-input__inner,
-        .parking-detail-cell .el-date-picker .el-input__inner,
         .parking-detail-cell .el-select .el-select__inner {
             transition: none !important;
             transform: none !important;
@@ -1284,7 +1274,6 @@
         .fee-table .el-select:hover .el-select__inner,
         .parking-detail-cell .el-input:hover .el-input__inner,
         .parking-detail-cell .el-input-number:hover .el-input__inner,
-        .parking-detail-cell .el-date-picker:hover .el-input__inner,
         .parking-detail-cell .el-select:hover .el-select__inner,
         .fee-table td .el-input:hover .el-input__inner,
         .fee-table td .el-input-number:hover .el-input__inner,
@@ -1292,7 +1281,6 @@
         .fee-table td .el-select:hover .el-select__inner,
         .parking-detail-cell .el-input:hover .el-input__inner,
         .parking-detail-cell .el-input-number:hover .el-input__inner,
-        .parking-detail-cell .el-date-picker:hover .el-input__inner,
         .parking-detail-cell .el-select:hover .el-select__inner {
             transition: none !important;
             transform: none !important;
@@ -1800,7 +1788,7 @@
             overflow: visible;
             animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             z-index: 999999 !important;
-            position: fixed !important;
+            position: absolute !important;
             margin-top: 5px !important;
             width: 300px !important;
         }
@@ -3508,8 +3496,8 @@
                                             <el-input-number
                                                 v-model="item.quantity"
                                                 :min="0"
-                                                :step="item.type === 'network' || item.type === 'parking' ? 1 : 0.1"
-                                                @change="updateItemAmount(index)"
+                                                :step="item.type === 'network' || item.type === 'parking' || item.type === 'rent' || item.type === 'management' ? 1 : 0.1"
+                                                @change="(value) => handleQuantityChange(index, value)"
                                                 size="small"
                                                 style="width: 100%; max-width: 120px;">
                                             </el-input-number>
@@ -3557,7 +3545,7 @@
                                     <div class="parking-field">
                                         <span class="parking-label">车牌号：</span>
                                         <el-input 
-                                            v-model="getParkingItem().carPlate" 
+                                            v-model="getParkingItem() ? getParkingItem().carPlate : ''" 
                                             placeholder="请输入车牌号" 
                                             size="small"
                                             style="width: 150px;"
@@ -4030,7 +4018,7 @@ const app = createApp({
         // 加载房间列表
         const loadRooms = async (building) => {
             try {
-                const token = localStorage.getItem('token');
+                const token = sessionStorage.getItem('token');
                 const response = await fetch(`/api/addresses?step=rooms&building=${encodeURIComponent(building)}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
@@ -4111,7 +4099,7 @@ const app = createApp({
             historyLoading.value = true;
             
             try {
-                const token = localStorage.getItem('token');
+                const token = sessionStorage.getItem('token');
                 const response = await fetch(`/api/user-payment-history?phone=${room.phone}&limit=10`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
@@ -4147,7 +4135,7 @@ const app = createApp({
         // 获取当前小区的收费标准
         const loadFeePrices = async () => {
             try {
-                const token = localStorage.getItem('token');
+                const token = sessionStorage.getItem('token');
                 const response = await fetch('/api/fee_prices', {
                     headers: {
                         'Authorization': `Bearer ${token}`
@@ -4173,7 +4161,7 @@ const app = createApp({
             }
         };
 
-        // 计算结束日期
+        // 计算结束日期 - 精确计算：开始日期-1天 + 月数
         const calculateEndDate = (startDate, months) => {
             if (!startDate || !months) return '';
             
@@ -4189,9 +4177,23 @@ const app = createApp({
             
             const monthCount = parseInt(months) || 1;
             
-            // 计算结束日期（月份相加）
+            // 第一步：开始日期减去1天
             const endDate = new Date(start);
-            endDate.setMonth(endDate.getMonth() + monthCount);
+            endDate.setDate(endDate.getDate() - 1);
+            
+            // 第二步：加上月数，处理月份边界
+            const targetMonth = endDate.getMonth() + monthCount;
+            const targetYear = endDate.getFullYear() + Math.floor(targetMonth / 12);
+            const finalMonth = targetMonth % 12;
+            
+            endDate.setFullYear(targetYear);
+            endDate.setMonth(finalMonth);
+            
+            // 处理日期边界：如果目标日期不存在（如2月30日），则调整为该月最后一天
+            const daysInMonth = new Date(targetYear, finalMonth + 1, 0).getDate();
+            if (endDate.getDate() > daysInMonth) {
+                endDate.setDate(daysInMonth);
+            }
             
             // 格式化为 yyyy/MM/dd
             const year = endDate.getFullYear();
@@ -4203,7 +4205,7 @@ const app = createApp({
 
         // 获取停车费项目
         const getParkingItem = () => {
-            return feeItems.value.find(item => item.type === 'parking') || {};
+            return feeItems.value.find(item => item.type === 'parking') || null;
         };
 
         // 保存停车费详情
@@ -4289,16 +4291,94 @@ const app = createApp({
         // 更新项目金额（通过数量计算金额）
         const updateItemAmount = (index) => {
             const item = feeItems.value[index];
+            if (!item) return;
+            
             const quantity = parseFloat(item.quantity) || 0;
             const unitPrice = parseFloat(item.unitPrice) || 0;
-            item.amount = (quantity * unitPrice).toFixed(2);
+            const newAmount = (quantity * unitPrice).toFixed(2);
+            
+            // 使用Object.assign确保响应式更新
+            Object.assign(item, {
+                amount: newAmount
+            });
             
             // 如果是停车费，更新结束日期
             if (item.type === 'parking') {
                 if (item.startDate && item.quantity) {
-                    item.endDate = calculateEndDate(item.startDate, item.quantity);
+                    const newEndDate = calculateEndDate(item.startDate, item.quantity);
+                    Object.assign(item, {
+                        endDate: newEndDate
+                    });
                 }
             }
+            
+            console.log('金额更新:', index, item.type, '数量:', quantity, '单价:', unitPrice, '金额:', newAmount);
+        };
+        
+        // 专门处理停车费数量变化
+        const handleParkingQuantityChange = (index) => {
+            const item = feeItems.value[index];
+            if (!item || item.type !== 'parking') return;
+            
+            console.log('停车费数量变化:', index, '数量:', item.quantity);
+            
+            // 更新金额
+            updateItemAmount(index);
+            
+            // 强制重新计算结束日期（updateItemAmount中已经处理，这里确保双重保险）
+            if (item.startDate && item.quantity) {
+                const newEndDate = calculateEndDate(item.startDate, item.quantity);
+                Object.assign(item, {
+                    endDate: newEndDate
+                });
+                console.log('停车费结束日期更新:', index, '开始日期:', item.startDate, '月数:', item.quantity, '结束日期:', newEndDate);
+            }
+        };
+        
+        // 处理所有类型项目的数量变化
+        const handleQuantityChange = (index, value) => {
+            const item = feeItems.value[index];
+            if (!item) return;
+            
+            console.log('数量变化处理:', item.type, index, '新值:', value, '当前数量:', item.quantity);
+            
+            // 确保数量值正确更新
+            if (value !== undefined) {
+                item.quantity = value;
+            }
+            
+            if (item.type === 'parking') {
+                handleParkingQuantityChange(index);
+            } else {
+                updateItemAmount(index);
+            }
+        };
+        
+        // 测试停车费日期计算逻辑
+        const testParkingDateCalculation = () => {
+            console.log('=== 停车费日期计算测试 ===');
+            
+            // 测试用例1：正常情况 - 2025/12/19 + 2个月 = 2026/2/18
+            const test1 = calculateEndDate('2025/12/19', 2);
+            console.log('测试1 - 2025/12/19 + 2个月:', test1, '预期: 2026/02/18', test1 === '2026/02/18' ? '✓ 通过' : '✗ 失败');
+            
+            // 测试用例2：月末边界 - 2025/1/31 + 1个月 = 2025/2/28
+            const test2 = calculateEndDate('2025/1/31', 1);
+            console.log('测试2 - 2025/1/31 + 1个月:', test2, '预期: 2025/02/28', test2 === '2025/02/28' ? '✓ 通过' : '✗ 失败');
+            
+            // 测试用例3：闰年处理 - 2024/2/29 + 12个月 = 2025/2/28
+            const test3 = calculateEndDate('2024/2/29', 12);
+            console.log('测试3 - 2024/2/29 + 12个月:', test3, '预期: 2025/02/28', test3 === '2025/02/28' ? '✓ 通过' : '✗ 失败');
+            
+            // 测试用例4：非闰年 - 2025/2/28 + 1个月 = 2025/3/27
+            const test4 = calculateEndDate('2025/2/28', 1);
+            console.log('测试4 - 2025/2/28 + 1个月:', test4, '预期: 2025/03/27', test4 === '2025/03/27' ? '✓ 通过' : '✗ 失败');
+            
+            // 测试用例5：年末边界 - 2025/12/31 + 1个月 = 2026/1/30
+            const test5 = calculateEndDate('2025/12/31', 1);
+            console.log('测试5 - 2025/12/31 + 1个月:', test5, '预期: 2026/01/30', test5 === '2026/01/30' ? '✓ 通过' : '✗ 失败');
+            
+            console.log('=== 测试完成 ===');
         };
         
         // 通过金额反推数量
@@ -4487,7 +4567,7 @@ const app = createApp({
                 };
                 
                 // 调用后端API
-                const token = localStorage.getItem('token');
+                const token = sessionStorage.getItem('token');
                 const response = await fetch('/api/orders', {
                     method: 'POST',
                     headers: {
@@ -4534,6 +4614,20 @@ const app = createApp({
                             paymentMethod.value = '';
                             remark.value = '';
                             
+                            // 清空住户信息
+                            residentName.value = '';
+                            residentPhone.value = '';
+                            phoneError.value = '';
+                            
+                            // 清空地址选择
+                            selectedBuilding.value = '';
+                            selectedRoomId.value = '';
+                            rooms.value = [];
+                            
+                            // 清空用户历史缴费记录并置为折叠状态
+                            userHistoryOrders.value = [];
+                            historyExpanded.value = false;
+                            
                             // 重新加载最近记录
                             loadRecentOrders();
                             
@@ -4549,6 +4643,20 @@ const app = createApp({
                             // 重置支付方式和备注
                             paymentMethod.value = '';
                             remark.value = '';
+                            
+                            // 清空住户信息
+                            residentName.value = '';
+                            residentPhone.value = '';
+                            phoneError.value = '';
+                            
+                            // 清空地址选择
+                            selectedBuilding.value = '';
+                            selectedRoomId.value = '';
+                            rooms.value = [];
+                            
+                            // 清空用户历史缴费记录并置为折叠状态
+                            userHistoryOrders.value = [];
+                            historyExpanded.value = false;
                             
                             // 重新加载最近记录
                             loadRecentOrders();
@@ -4597,6 +4705,10 @@ const app = createApp({
                 selectedRoomId.value = '';
                 rooms.value = [];
                 
+                // 清空用户历史缴费记录并置为折叠状态
+                userHistoryOrders.value = [];
+                historyExpanded.value = false;
+                
                 // 注意：收费日期时间不清空，保留当前时间
                 
                 ElMessage.success('表单已清空');
@@ -4607,10 +4719,10 @@ const app = createApp({
         
         // 收费标准管理页面跳转
         const goToFeePricesAdmin = async () => {
-            const token = localStorage.getItem('token');
+            const token = sessionStorage.getItem('token');
             if (!token) {
                 ElMessage.error('请先登录');
-                window.location.href = '/';
+                window.location.href = '/login';
                 return;
             }
             
@@ -4635,9 +4747,9 @@ const app = createApp({
                     }
                 } else if (response.status === 401) {
                     ElMessage.error('令牌无效或已过期，请重新登录');
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('user');
-                    window.location.href = '/';
+                    sessionStorage.removeItem('token');
+                    sessionStorage.removeItem('user');
+                    window.location.href = '/login';
                 } else if (response.status === 403) {
                     ElMessage.error('权限不足，需要管理员身份');
                 } else {
@@ -4656,9 +4768,9 @@ const app = createApp({
                 cancelButtonText: '取消',
                 type: 'warning'
             }).then(() => {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                window.location.href = '/templates/login.html';
+                sessionStorage.removeItem('token');
+                sessionStorage.removeItem('user');
+                window.location.href = '/login';
             }).catch(() => {
                 // 用户取消
             });
@@ -4667,7 +4779,7 @@ const app = createApp({
         // 加载楼栋列表
         const loadBuildings = async () => {
             try {
-                const token = localStorage.getItem('token');
+                const token = sessionStorage.getItem('token');
                 const response = await fetch('/api/addresses?step=buildings', {
                     headers: {
                         'Authorization': `Bearer ${token}`
@@ -4690,7 +4802,7 @@ const app = createApp({
         const loadRecentOrders = async () => {
             console.log('开始加载今日收费记录...');
             try {
-                const token = localStorage.getItem('token');
+                const token = sessionStorage.getItem('token');
                 console.log('发送请求到 /api/recent-orders');
                 const response = await fetch('/api/recent-orders', {
                     headers: {
@@ -4729,7 +4841,7 @@ const app = createApp({
                     type: 'error'
                 });
                 
-                const token = localStorage.getItem('token');
+                const token = sessionStorage.getItem('token');
                 if (!token) {
                     ElMessage.error('请先登录');
                     return;
@@ -4815,7 +4927,7 @@ const app = createApp({
                     type: 'error'
                 });
                 
-                const token = localStorage.getItem('token');
+                const token = sessionStorage.getItem('token');
                 if (!token) {
                     ElMessage.error('请先登录');
                     return;
@@ -4930,7 +5042,7 @@ const app = createApp({
                     type: 'warning'
                 });
                 
-                const token = localStorage.getItem('token');
+                const token = sessionStorage.getItem('token');
                 if (!token) {
                     ElMessage.error('请先登录');
                     return;
@@ -5054,9 +5166,70 @@ const app = createApp({
         // 页面加载时初始化
         onMounted(() => {
             // 检查登录状态
-            const token = localStorage.getItem('token');
+            const token = sessionStorage.getItem('token');
             if (!token) {
-                window.location.href = 'http://localhost:8000/templates/login.html';
+                window.location.href = '/login';
+                return;
+            }
+            
+            // 检查token是否过期
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const exp = payload.exp * 1000; // 转换为毫秒
+                
+                // 检查token是否过期
+                if (Date.now() >= exp) {
+                    sessionStorage.removeItem('token');
+                    sessionStorage.removeItem('user');
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                // 检查是否跨日期（比较当前日期和token创建日期）
+                const tokenDate = new Date(exp).toDateString();
+                const currentDate = new Date().toDateString();
+                if (tokenDate !== currentDate) {
+                    sessionStorage.removeItem('token');
+                    sessionStorage.removeItem('user');
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                // 设置定时器，每5分钟检查一次token状态
+                setInterval(() => {
+                    const currentToken = sessionStorage.getItem('token');
+                    if (!currentToken) return;
+                    
+                    try {
+                        const currentPayload = JSON.parse(atob(currentToken.split('.')[1]));
+                        const currentExp = currentPayload.exp * 1000;
+                        
+                        // 检查token是否过期
+                        if (Date.now() >= currentExp) {
+                            sessionStorage.removeItem('token');
+                            sessionStorage.removeItem('user');
+                            window.location.href = '/login';
+                            return;
+                        }
+                        
+                        // 检查是否跨日期
+                        const currentTokenDate = new Date(currentExp).toDateString();
+                        const nowDate = new Date().toDateString();
+                        if (currentTokenDate !== nowDate) {
+                            sessionStorage.removeItem('token');
+                            sessionStorage.removeItem('user');
+                            window.location.href = '/login';
+                        }
+                    } catch (e) {
+                        console.error('Token检查失败:', e);
+                    }
+                }, 5 * 60 * 1000); // 5分钟检查一次
+                
+            } catch (e) {
+                console.error('Token解析失败:', e);
+                sessionStorage.removeItem('token');
+                sessionStorage.removeItem('user');
+                window.location.href = '/login';
                 return;
             }
             
@@ -5448,61 +5621,95 @@ const debugPrices = () => {
         const initParkingDatePickers = () => {
             // 等待DOM更新后初始化
             nextTick(() => {
-                // 确保layui已加载
-                if (typeof layui === 'undefined') {
-                    console.error('layui未加载');
+                console.log('开始初始化停车费日期选择器...');
+                
+                // 确保flatpickr已加载
+                if (typeof flatpickr === 'undefined') {
+                    console.error('flatpickr未加载');
                     return;
                 }
                 
-                layui.use('laydate', function(){
-                    const laydate = layui.laydate;
+                console.log('flatpickr已加载:', typeof flatpickr);
+                
+                // 检查DOM元素是否存在
+                const startInput = document.getElementById('parkingStartDatePicker');
+                const endInput = document.getElementById('parkingEndDatePicker');
+                
+                console.log('开始日期输入框:', startInput);
+                console.log('结束日期输入框:', endInput);
+                
+                if (!startInput || !endInput) {
+                    console.error('停车费日期输入框未找到');
+                    return;
+                }
+                
+                // 检查是否已经初始化过
+                if (startInput._flatpickr || endInput._flatpickr) {
+                    console.log('停车费日期选择器已初始化，跳过重新初始化');
+                    console.log('开始日期flatpickr实例:', startInput._flatpickr);
+                    console.log('结束日期flatpickr实例:', endInput._flatpickr);
                     
-                    // 初始化开始日期选择器
-                    laydate.render({
-                        elem: '#parkingStartDatePicker',
-                        type: 'date',
-                        format: 'yyyy/MM/dd',
-                        value: () => {
-                            const parkingItem = getParkingItem();
-                            if (parkingItem && parkingItem.startDate) {
-                                // 确保日期格式为 yyyy/MM/dd
-                                return parkingItem.startDate.replace(/-/g, '/');
-                            }
-                            // 返回当前日期作为默认值
-                            const today = new Date();
-                            const year = today.getFullYear();
-                            const month = String(today.getMonth() + 1).padStart(2, '0');
-                            const day = String(today.getDate()).padStart(2, '0');
-                            return `${year}/${month}/${day}`;
-                        },
-                        done: (value) => {
-                            // 使用专门的处理函数
-                            handleParkingStartDateChange(value);
+                    // 测试手动点击事件
+                    startInput.addEventListener('click', function() {
+                        console.log('开始日期输入框被点击');
+                        if (startInput._flatpickr) {
+                            console.log('尝试打开flatpickr日历');
+                            startInput._flatpickr.open();
                         }
                     });
                     
-                    // 初始化结束日期选择器
-                    laydate.render({
-                        elem: '#parkingEndDatePicker',
-                        type: 'date',
-                        format: 'yyyy/MM/dd',
-                        value: () => {
-                            const parkingItem = getParkingItem();
-                            if (parkingItem && parkingItem.endDate) {
-                                // 确保日期格式为 yyyy/MM/dd
-                                return parkingItem.endDate.replace(/-/g, '/');
-                            }
-                            return '';
-                        },
-                        done: (value) => {
-                            const parkingItem = getParkingItem();
-                            if (parkingItem) {
-                                // 确保存储的日期格式为 yyyy/MM/dd
-                                parkingItem.endDate = value.replace(/-/g, '/');
-                            }
+                    endInput.addEventListener('click', function() {
+                        console.log('结束日期输入框被点击');
+                        if (endInput._flatpickr) {
+                            console.log('尝试打开flatpickr日历');
+                            endInput._flatpickr.open();
                         }
                     });
+                    
+                    return;
+                }
+                
+                console.log('开始初始化flatpickr实例...');
+                
+                // 添加手动点击事件测试
+                startInput.addEventListener('click', function() {
+                    console.log('开始日期输入框被点击（初始化前）');
                 });
+                
+                endInput.addEventListener('click', function() {
+                    console.log('结束日期输入框被点击（初始化前）');
+                });
+                
+                // 初始化开始日期选择器 - 使用相对位置跟随输入框
+                const startPicker = flatpickr('#parkingStartDatePicker', {
+                    dateFormat: 'Y/m/d',
+                    locale: 'zh',
+                    position: 'below', // 显示在输入框下方
+                    appendTo: startInput.parentNode, // 附加到输入框的父元素
+                    onChange: function(selectedDates, dateStr, instance) {
+                        // 使用专门的处理函数
+                        handleParkingStartDateChange(dateStr);
+                    }
+                });
+                
+                console.log('开始日期选择器初始化完成:', startPicker);
+                
+                // 初始化结束日期选择器 - 使用相对位置跟随输入框
+                const endPicker = flatpickr('#parkingEndDatePicker', {
+                    dateFormat: 'Y/m/d',
+                    locale: 'zh',
+                    position: 'below', // 显示在输入框下方
+                    appendTo: endInput.parentNode, // 附加到输入框的父元素
+                    onChange: function(selectedDates, dateStr, instance) {
+                        const parkingItem = getParkingItem();
+                        if (parkingItem) {
+                            // 确保存储的日期格式为 yyyy/MM/dd
+                            parkingItem.endDate = dateStr;
+                        }
+                    }
+                });
+                
+                console.log('结束日期选择器初始化完成:', endPicker);
             });
         };
         
@@ -5556,7 +5763,7 @@ const debugPrices = () => {
         // 初始化订单查询的楼栋列表
         const loadQueryBuildings = async () => {
             try {
-                const token = localStorage.getItem('token');
+                const token = sessionStorage.getItem('token');
                 const response = await fetch('/api/addresses?step=buildings', {
                     headers: {
                         'Authorization': `Bearer ${token}`
@@ -5583,7 +5790,7 @@ const debugPrices = () => {
             
             if (building) {
                 try {
-                    const token = localStorage.getItem('token');
+                    const token = sessionStorage.getItem('token');
                     const response = await fetch(`/api/addresses?step=rooms&building=${encodeURIComponent(building)}`, {
                         headers: {
                             'Authorization': `Bearer ${token}`
@@ -5637,7 +5844,7 @@ const debugPrices = () => {
             hasQueried.value = true;
             
             try {
-                const token = localStorage.getItem('token');
+                const token = sessionStorage.getItem('token');
                 const params = new URLSearchParams();
                 
                 // 添加查询参数 - 修正参数名称以匹配后端API
@@ -5927,6 +6134,8 @@ const debugPrices = () => {
             updateItemAmount,
             updateItemQuantityFromAmount,
             removeFeeItem,
+            handleQuantityChange,
+            handleParkingQuantityChange,
             selectPaymentMethod,
             generateBill,
             clearForm,
