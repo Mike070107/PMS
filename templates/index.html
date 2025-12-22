@@ -353,21 +353,42 @@
             justify-content: center;
         }
         
-        /* 地址选择器样式 */
+        /* 地址选择器样式 - 移除多余边框 */
+        .address-selector .el-input .el-input__wrapper,
+        .address-selector .el-select .el-select__wrapper {
+            border: none !important;
+            box-shadow: none !important;
+            background-color: transparent !important;
+        }
+        
+        /* 地址选择器中的form-control样式 */
+        .address-selector .form-control {
+            border: 1px solid #dcdfe6;
+            border-radius: 4px;
+            background-color: #ffffff;
+            padding: 0;
+        }
+        
+        /* 确保地址选择器中的输入框和下拉框不显示内部边框 */
+        .address-selector .el-input .el-input__inner,
+        .address-selector .el-select .el-select__inner {
+            border: none !important;
+            box-shadow: none !important;
+        }
+        
+        /* 地址选择器样式 - 横向排列 */
         .address-row {
             display: flex;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;  /* 禁止换行 */
             gap: 20px;
             align-items: flex-start;
             justify-content: flex-start;
-            /*margin-top: 20px;*/
-            /*margin-bottom: 20px;*/
-            overflow: visible;
-            width: 1000px;
+            overflow-x: auto;   /* 允许横向滚动 */
+            width: 100%;
             min-height: auto;
             height: auto;
         }
-
+        
         .address-field {
             display: flex;
             flex-direction: column;
@@ -614,9 +635,7 @@
         /* 修复输入框边框显示问题 */
         .fee-table .el-input .el-input__wrapper,
         .fee-table .el-input-number .el-input-number__wrapper,
-        .parking-detail-cell .el-input .el-input__wrapper,
         .parking-detail-cell .el-input-number .el-input-number__wrapper,
-        .parking-field .el-input .el-input__wrapper,
         .parking-field .el-input-number .el-input-number__wrapper,
         .parking-field .el-date-editor .el-input__wrapper {
             border: 1px solid #dcdfe6 !important;
@@ -627,14 +646,27 @@
         /* 确保输入框内部元素也有正确的边框 */
         .fee-table .el-input .el-input__inner,
         .fee-table .el-input-number .el-input__inner,
-        .parking-detail-cell .el-input .el-input__inner,
         .parking-detail-cell .el-input-number .el-input__inner,
-        .parking-field .el-input .el-input__inner,
         .parking-field .el-input-number .el-input__inner,
         .parking-field .el-date-editor .el-input__inner {
             border: none !important;
             box-shadow: none !important;
             background-color: transparent !important;
+        }
+        
+        /* 车牌号输入框专用样式 - 确保正常交互 */
+        .parking-detail-cell .parking-field .el-input .el-input__wrapper {
+            border: 1px solid #dcdfe6 !important;
+            box-shadow: none !important;
+            background-color: #ffffff !important;
+            pointer-events: auto !important;
+            cursor: text !important;
+        }
+        
+        .parking-detail-cell .parking-field .el-input .el-input__inner {
+            background-color: #ffffff !important;
+            pointer-events: auto !important;
+            cursor: text !important;
         }
         
         /* 强制显示所有输入框的边框 - 最高优先级 */
@@ -2102,6 +2134,7 @@
             word-break: break-all;
             min-width: 150px;
             max-width: 200px;
+            text-align: left;  /* 添加左对齐 */
         }
 
         /* 收费项目栏位允许换行 */
@@ -3544,13 +3577,20 @@
                                 <div class="parking-fields">
                                     <div class="parking-field">
                                         <span class="parking-label">车牌号：</span>
-                                        <el-input 
-                                            v-model="getParkingItem() ? getParkingItem().carPlate : ''" 
+                                        <input 
+                                            type="text" 
+                                            :value="getParkingItem() ? getParkingItem().carPlate : ''" 
                                             placeholder="请输入车牌号" 
-                                            size="small"
-                                            style="width: 150px;"
-                                            @change="saveParkingDetails">
-                                        </el-input>
+                                            style="width: 150px; height: 32px; padding: 0 8px; border: 1px solid #dcdfe6; border-radius: 4px; background-color: #ffffff;"
+                                            @input="(event) => { 
+                                                console.log('车牌号输入:', event.target.value); 
+                                                const parkingItem = getParkingItem();
+                                                if (parkingItem) {
+                                                    parkingItem.carPlate = event.target.value;
+                                                    console.log('更新车牌号:', parkingItem.carPlate);
+                                                }
+                                            }">
+                                        </input>
                                     </div>
                                     
                                     <div class="parking-field">
@@ -3559,8 +3599,16 @@
                                             type="text" 
                                             id="parkingStartDatePicker" 
                                             class="parking-date-input"
+                                            :value="getParkingItem() ? getParkingItem().startDate : ''"
                                             placeholder="请选择开始日期"
-                                            readonly>
+                                            @input="(event) => { 
+                                                console.log('开始日期输入:', event.target.value); 
+                                                const parkingItem = getParkingItem();
+                                                if (parkingItem) {
+                                                    parkingItem.startDate = event.target.value;
+                                                    console.log('更新开始日期:', parkingItem.startDate);
+                                                }
+                                            }">
                                     </div>
                                     
                                     <div class="parking-field">
@@ -3569,8 +3617,16 @@
                                             type="text" 
                                             id="parkingEndDatePicker" 
                                             class="parking-date-input"
+                                            :value="getParkingItem() ? getParkingItem().endDate : ''"
                                             placeholder="请选择结束日期"
-                                            readonly>
+                                            @input="(event) => { 
+                                                console.log('结束日期输入:', event.target.value); 
+                                                const parkingItem = getParkingItem();
+                                                if (parkingItem) {
+                                                    parkingItem.endDate = event.target.value;
+                                                    console.log('更新结束日期:', parkingItem.endDate);
+                                                }
+                                            }">
                                     </div>
                             </div>
 
@@ -3795,7 +3851,7 @@ const app = createApp({
     },
     setup() {
         // 用户信息
-        const user = ref(JSON.parse(localStorage.getItem('user')) || {});
+        const user = ref(JSON.parse(sessionStorage.getItem('user')) || {});
         const currentPage = ref('workbench');
         
         // 工作台数据
@@ -4090,9 +4146,9 @@ const app = createApp({
                 return;
             }
             
-            // 根据选中的房间获取手机号
+            // 根据选中的房间获取地址ID
             const room = rooms.value.find(r => r.id === selectedRoomId.value);
-            if (!room || !room.phone) {
+            if (!room || !room.id) {
                 return;
             }
             
@@ -4100,7 +4156,7 @@ const app = createApp({
             
             try {
                 const token = sessionStorage.getItem('token');
-                const response = await fetch(`/api/user-payment-history?phone=${room.phone}&limit=10`, {
+                const response = await fetch(`/api/user-payment-history?address_id=${room.id}&limit=10`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
@@ -4206,6 +4262,19 @@ const app = createApp({
         // 获取停车费项目
         const getParkingItem = () => {
             return feeItems.value.find(item => item.type === 'parking') || null;
+        };
+
+        // 处理车牌号输入
+        const handleCarPlateInput = (value) => {
+            console.log('车牌号输入事件触发:', value);
+            const parkingItem = getParkingItem();
+            console.log('停车费项目:', parkingItem);
+            if (parkingItem) {
+                parkingItem.carPlate = value;
+                console.log('更新后的车牌号:', parkingItem.carPlate);
+            } else {
+                console.log('未找到停车费项目');
+            }
         };
 
         // 保存停车费详情
@@ -4549,8 +4618,9 @@ const app = createApp({
                         // 如果是停车费，添加车牌号、开始日期、结束日期
                         if (item.type === 'parking') {
                             itemData.carPlate = item.carPlate || '';
-                            itemData.startDate = item.startDate;
-                            itemData.endDate = item.endDate;
+                            // 确保日期格式为 yyyy-MM-dd（后端期望格式）
+                            itemData.startDate = item.startDate ? item.startDate.replace(/\//g, '-') : '';
+                            itemData.endDate = item.endDate ? item.endDate.replace(/\//g, '-') : '';
                         }
                         
                         return itemData;
@@ -5701,11 +5771,8 @@ const debugPrices = () => {
                     position: 'below', // 显示在输入框下方
                     appendTo: endInput.parentNode, // 附加到输入框的父元素
                     onChange: function(selectedDates, dateStr, instance) {
-                        const parkingItem = getParkingItem();
-                        if (parkingItem) {
-                            // 确保存储的日期格式为 yyyy/MM/dd
-                            parkingItem.endDate = dateStr;
-                        }
+                        // 使用专门的处理函数
+                        handleParkingEndDateChange(dateStr);
                     }
                 });
                 

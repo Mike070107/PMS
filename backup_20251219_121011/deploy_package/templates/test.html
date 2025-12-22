@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>静态文件测试</title>
+</head>
+<body>
+    <h1>静态文件可访问性测试</h1>
+    
+    <h2>直接链接测试：</h2>
+    <ul>
+        <li><a href="/static/lib/vue.global.js" target="_blank">Vue.js</a></li>
+        <li><a href="/static/lib/index.css" target="_blank">Element Plus CSS</a></li>
+        <li><a href="/static/lib/index.full.js" target="_blank">Element Plus JS</a></li>
+    </ul>
+    
+    <h2>JavaScript加载测试：</h2>
+    <div id="status"></div>
+    
+    <script>
+        const files = [
+            {name: 'Vue.js', url: '/static/lib/vue.global.js'},
+            {name: 'Element Plus CSS', url: '/static/lib/index.css'},
+            {name: 'Element Plus JS', url: '/static/lib/index.full.js'}
+        ];
+        
+        const statusDiv = document.getElementById('status');
+        
+        files.forEach(file => {
+            fetch(file.url)
+                .then(response => {
+                    if(response.ok) {
+                        statusDiv.innerHTML += `<p style="color:green">✅ ${file.name} 可访问 (状态码: ${response.status})</p>`;
+                    } else {
+                        statusDiv.innerHTML += `<p style="color:red">❌ ${file.name} 不可访问 (状态码: ${response.status})</p>`;
+                    }
+                })
+                .catch(error => {
+                    statusDiv.innerHTML += `<p style="color:red">❌ ${file.name} 加载失败: ${error}</p>`;
+                });
+        });
+    </script>
+</body>
+</html>

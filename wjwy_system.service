@@ -1,0 +1,36 @@
+[Unit]
+Description=WJWY Property Management System
+After=network.target
+After=mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/var/www/web_app
+Environment=PATH=/var/www/web_app/venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/var/www/web_app/venv/bin/python3 /var/www/web_app/app.py
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+Restart=on-failure
+RestartSec=5
+
+# 环境变量
+Environment=FLASK_APP=app.py
+Environment=FLASK_ENV=production
+
+# 标准输出和错误输出
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wjwy_system
+
+# 安全设置
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/www/web_app/logs
+
+[Install]
+WantedBy=multi-user.target

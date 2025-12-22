@@ -15,7 +15,7 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime, timedelta
 
-from flask import Flask, request, jsonify, g, send_from_directory, render_template
+from flask import Flask, request, jsonify, g, send_from_directory, render_template, redirect
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from sqlalchemy.exc import SQLAlchemyError
@@ -327,7 +327,7 @@ def serve_template(filename):
 # ========== 前端页面路由 ==========
 @app.route('/')
 def index():
-    """主工作台页面 - 直接返回HTML，由前端控制认证"""
+    """主工作台页面 - 由前端JavaScript控制登录状态检查"""
     return render_template('index.html')
 
 @app.route('/login')
@@ -414,14 +414,21 @@ def login():
         
         # 注意：我们初始化数据用的是明文密码，这里直接对比
         if user and user.PWD == data['password']:
-            # 生成JWT令牌
+            # 生成JWT令牌 - 设置为当天有效，跨日期后自动失效
+            from datetime import datetime, timedelta
+            
+            # 计算当天23:59:59的UTC时间戳
+            today_end = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+            # JWT exp字段需要UTC时间戳（整数）
+            exp_timestamp = int(today_end.timestamp())
+            
             token = jwt.encode({
                 'user_id': user.ID,
                 'username': user.USERNAME,
                 'real_name': user.用户姓名 or user.USERNAME,  # 新增真实姓名
                 'community_num': user.小区编号,
                 'role': user.Role,
-                'exp': datetime.utcnow() + timedelta(hours=8)
+                'exp': exp_timestamp
             }, app.config['SECRET_KEY'], algorithm='HS256')
             
             # 记录登录日志
@@ -1735,9 +1742,9 @@ def get_recent_orders():
                 start_date = ""
                 end_date = ""
                 if order.停车开始日期:
-                    start_date = order.停车开始日期.strftime('%Y/%-m/%-d')
+                    start_date = order.停车开始日期.strftime('%Y/%m/%d')
                 if order.停车结束日期:
-                    end_date = order.停车结束日期.strftime('%Y/%-m/%-d')
+                    end_date = order.停车结束日期.strftime('%Y/%m/%d')
                 date_range = f"{start_date}-{end_date}" if start_date and end_date else ""
                 
                 # 按照用户要求的格式：停车费 | 1个月 | ¥130.00 | 2025/12/1-2025/12/31| 皖CMV152
@@ -1775,7 +1782,7 @@ def get_recent_orders():
                 'room': address.房间号 if address else '',
                 'residentName': address.姓名 if address else '',
                 'residentPhone': address.手机号 if address else '',
-                'feeItems': '，'.join(fee_items),  # 使用中文逗号分隔
+                'feeItems': '\n'.join(fee_items),  # 使用换行符分隔
                 'totalAmount': float(order.收款金额) if order.收款金额 else 0,
                 'paymentMethod': order.收款方式,
                 'remark': order.备注,
@@ -1811,18 +1818,18 @@ def get_user_payment_history():
     
     try:
         # 获取请求参数
-        phone = request.args.get('phone')
+        address_id = request.args.get('address_id')
         limit = int(request.args.get('limit', 10))  # 默认获取最近10条记录
         
-        if not phone:
-            return jsonify({'status': 'error', 'message': '手机号不能为空'}), 400
+        if not address_id:
+            return jsonify({'status': 'error', 'message': '地址ID不能为空'}), 400
         
-        # 构建查询
-        query = Order.query.join(Address).filter(Address.手机号 == phone)
+        # 构建查询：根据地址ID查询订单
+        query = Order.query.filter(Order.地址ID == address_id)
         
         # 权限过滤：管理员看所有，操作员只看自己小区的订单
         if current_user.Role != '系统管理员':
-            query = query.filter(Address.小区编号 == current_user.小区编号)
+            query = query.join(Address).filter(Address.小区编号 == current_user.小区编号)
         
         # 获取最近N条记录，按录入时间倒序
         orders = query.order_by(Order.录入时间.desc()).limit(limit).all()

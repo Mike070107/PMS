@@ -944,7 +944,7 @@
                 // 加载楼栋列表
                 const loadQueryBuildings = async () => {
                     try {
-                        const token = localStorage.getItem('token');
+                        const token = sessionStorage.getItem('token');
                         const response = await axios.get('/api/addresses?step=buildings', {
                     headers: {
                         'Authorization': `Bearer ${token}`
@@ -968,7 +968,7 @@
                     if (!building) return;
                     
                     try {
-                        const token = localStorage.getItem('token');
+                        const token = sessionStorage.getItem('token');
                         const response = await axios.get(`/api/addresses?step=rooms&building=${encodeURIComponent(building)}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
@@ -1001,7 +1001,7 @@
                     hasQueried.value = true;
                     
                     try {
-                        const token = localStorage.getItem('token');
+                        const token = sessionStorage.getItem('token');
                         const params = {
                             page: queryPagination.value.page,
                             per_page: queryPagination.value.per_page,
@@ -1193,7 +1193,7 @@
                     }).then(() => {
                         localStorage.removeItem('token');
                         localStorage.removeItem('user');
-                        window.location.href = 'login.html';
+                        window.location.href = '/login';
                     }).catch(() => {});
                 };
 

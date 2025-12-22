@@ -117,9 +117,9 @@
                         .then(data => {
                             if (data.status === 'success') {
                                 ElMessage.success(data.message);
-                                // 存储token和用户信息
-                                localStorage.setItem('token', data.token);
-                                localStorage.setItem('user', JSON.stringify(data.user));
+                                // 存储token和用户信息到sessionStorage（关闭浏览器自动清除）
+                                sessionStorage.setItem('token', data.token);
+                                sessionStorage.setItem('user', JSON.stringify(data.user));
                                 // 跳转到主工作台
                                 window.location.href = '/';
                             } else {

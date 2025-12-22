@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公寓物业收费系统 - 工作台</title>
+    <!-- 引入 Element Plus 样式 -->
+    
+    <link rel="stylesheet" href="/static/lib/element-plus.css">
+    <!-- 引入 Vue 3 和 Element Plus -->
+    
+    <script src="/static/lib/vue.global.js"></script>
+    
+    <script src="/static/lib/element-plus.full.js"></script>
+    <script src="/static/lib/element-plus-icons.umd.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f0f2f5;
+        }
+        
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        .sidebar {
+            width: 220px;
+            background-color: #001529;
+            color: white;
+            padding: 20px 0;
+        }
+        
+        .sidebar-header {
+            padding: 0 20px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+        }
+        
+        .sidebar-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 5px;
+        }
+        
+        .user-info {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .nav-menu {
+            list-style: none;
+        }
+        
+        .nav-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .nav-item:hover,
+        .nav-item.active {
+            background-color: #1890ff;
+        }
+        
+        .nav-item i {
+            margin-right: 10px;
+        }
+        
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .workbench-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .address-selector {
+            margin-bottom: 30px;
+        }
+        
+        .fee-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .fee-table {
+            width: 100%;
+            margin-bottom: 30px;
+            border-collapse: collapse;
+        }
+        
+        .fee-table th,
+        .fee-table td {
+            border: 1px solid #e8e8e8;
+            padding: 12px;
+            text-align: center;
+        }
+        
+        .fee-table th {
+            background-color: #fafafa;
+            font-weight: bold;
+        }
+        
+        .fee-table .el-input {
+            width: 120px;
+        }
+        
+        .summary-section {
+            background: #fafafa;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 30px;
+        }
+        
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .total-amount {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1890ff;
+            text-align: right;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 2px solid #e8e8e8;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+        
+        .empty-table {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+        }
+        
+        .fee-item-actions {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="app-container">
+            <!-- 侧边栏 -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <div class="sidebar-title">物业收费系统</div>
+                    <div class="user-info">
+                        [[ user.username ]]<br> <!-- 分隔符已修改 -->
+                        [[ user.community ]] <!-- 分隔符已修改 -->
+                    </div>
+                </div>
+                <ul class="nav-menu">
+                    <li class="nav-item active" @click="currentPage = 'workbench'">
+                        <i class="el-icon-s-home"></i> 收费工作台
+                    </li>
+                    <li class="nav-item" @click="currentPage = 'query'">
+                        <i class="el-icon-search"></i> 订单查询
+                    </li>
+                    <li class="nav-item" @click="logout">
+                        <i class="el-icon-switch-button"></i> 退出登录
+                    </li>
+                </ul>
+            </div>
+            
+            <!-- 主内容区 -->
+            <div class="main-content">
+                <!-- 收费工作台页面 -->
+                <div v-if="currentPage === 'workbench'">
+                    <div class="header">
+                        <div class="header-title">收费工作台</div>
+                    </div>
+                    
+                    <div class="workbench-container">
+                        <!-- 地址选择 -->
+                        <div class="address-selector">
+                            <div class="section-title">1. 选择地址</div>
+                            <el-select v-model="selectedAddressId" placeholder="请选择楼栋房间" style="width: 300px;" @change="onAddressChange">
+                                <el-option
+                                    v-for="addr in addresses"
+                                    :key="addr.id"
+                                    :label="`${addr.building} ${addr.room}`"
+                                    :value="addr.id">
+                                </el-option>
+                            </el-select>
+                        </div>
+                        
+                        <!-- 费用项目 -->
+                        <div class="fee-section">
+                            <div class="section-title">2. 添加收费项目</div>
+                            <div class="fee-buttons">
+                                <el-button @click="addFeeItem('electricity')" :disabled="!selectedAddressId">
+                                    <i class="el-icon-lightning"></i> 添加电费
+                                </el-button>
+                                <el-button @click="addFeeItem('coldWater')" :disabled="!selectedAddressId">
+                                    <i class="el-icon-water-drop"></i> 添加冷水费
+                                </el-button>
+                                <el-button @click="addFeeItem('hotWater')" :disabled="!selectedAddressId">
+                                    <i class="el-icon-hot-water"></i> 添加热水费
+                                </el-button>
+                                <el-button @click="addFeeItem('network')" :disabled="!selectedAddressId">
+                                    <i class="el-icon-monitor"></i> 添加网费
+                                </el-button>
+                                <el-button @click="addFeeItem('parking')" :disabled="!selectedAddressId">
+                                    <i class="el-icon-truck"></i> 添加停车费
+                                </el-button>
+                            </div>
+                            
+                            <!-- 费用表格 -->
+                            <table class="fee-table" v-if="feeItems.length > 0">
+                                <thead>
+                                    <tr>
+                                        <th width="150">项目名称</th>
+                                        <th width="100">单位</th>
+                                        <th width="120">数量</th>
+                                        <th width="120">单价（元）</th>
+                                        <th width="120">金额（元）</th>
+                                        <th width="80">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(item, index) in feeItems" :key="index">
+                                        <td>[[ getFeeTypeName(item.type) ]]</td> <!-- 分隔符已修改 -->
+                                        <td>[[ getFeeUnit(item.type) ]]</td> <!-- 分隔符已修改 -->
+                                        <td>
+                                            <el-input-number
+                                                v-model="item.quantity"
+                                                :min="0"
+                                                :step="item.type === 'network' || item.type === 'parking' ? 1 : 0.1"
+                                                @change="updateItemAmount(index)"
+                                                size="small">
+                                            </el-input-number>
+                                        </td>
+                                        <td>
+                                            <el-input-number
+                                                v-model="item.unitPrice"
+                                                :min="0"
+                                                :step="0.1"
+                                                @change="updateItemAmount(index)"
+                                                size="small">
+                                            </el-input-number>
+                                        </td>
+                                        <td>
+                                            <el-input v-model="item.amount" readonly>
+                                                <template #append>元</template>
+                                            </el-input>
+                                        </td>
+                                        <td>
+                                            <div class="fee-item-actions">
+                                                <el-button type="danger" size="small" @click="removeFeeItem(index)" circle>
+                                                    <i class="el-icon-delete"></i>
+                                                </el-button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            
+                            <div v-else class="empty-table">
+                                <i class="el-icon-document" style="font-size: 48px; color: #ccc; margin-bottom: 10px;"></i>
+                                <p>暂无收费项目，请点击上方按钮添加</p>
+                            </div>
+                        </div>
+                        
+                        <!-- 汇总信息 -->
+                        <div class="summary-section">
+                            <div class="section-title">3. 汇总信息</div>
+                            <div class="summary-row">
+                                <span>收款方式：</span>
+                                <el-select v-model="paymentMethod" placeholder="请选择收款方式" style="width: 200px;">
+                                    <el-option label="微信" value="微信"></el-option>
+                                    <el-option label="支付宝" value="支付宝"></el-option>
+                                    <el-option label="现金" value="现金"></el-option>
+                                    <el-option label="银行卡" value="银行卡"></el-option>
+                                </el-select>
+                            </div>
+                            <div class="summary-row">
+                                <span>备注：</span>
+                                <el-input v-model="remark" placeholder="可填写备注信息" style="width: 300px;"></el-input>
+                            </div>
+                            <div class="total-amount">
+                                总计金额：[[ totalAmount.toFixed(2) ]] 元 <!-- 分隔符已修改 -->
+                            </div>
+                        </div>
+                        
+                        <!-- 操作按钮 -->
+                        <div class="action-buttons">
+                            <el-button type="primary" size="large" @click="generateBill" :disabled="!canGenerate" :loading="generating">
+                                <i class="el-icon-printer"></i> 收费并打印
+                            </el-button>
+                            <el-button type="info" size="large" @click="clearForm">
+                                清空重填
+                            </el-button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 订单查询页面（暂未实现） -->
+                <div v-if="currentPage === 'query'">
+                    <div class="header">
+                        <div class="header-title">订单查询</div>
+                    </div>
+                    <div class="workbench-container">
+                        <div style="text-align: center; padding: 50px; color: #999;">
+                            <i class="el-icon-search" style="font-size: 48px; margin-bottom: 20px;"></i>
+                            <p>订单查询功能正在开发中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    {% raw %}  <!-- 新增此行：告诉 Jinja2 停止解析 -->
+        const { createApp, ref, computed, onMounted } = Vue;
+        const { ElSelect, ElOption, ElButton, ElInput, ElInputNumber, ElMessage, ElMessageBox } = ElementPlus;
+        
+        // 创建Vue应用实例，并设置自定义分隔符[citation:4]
+        const app = createApp({
+            // 设置组件选项，将插值表达式分隔符修改为 [[ ]] [citation:4][citation:7]
+            compilerOptions: {
+                delimiters: ['[[', ']]'] // 将默认的 {{ }} 改为 [[ ]]
+            },
+            setup() {
+                // 用户信息
+                const user = ref(JSON.parse(localStorage.getItem('user')) || {});
+                
+                // 当前页面
+                const currentPage = ref('workbench');
+                
+                // 工作台数据
+                const addresses = ref([]);
+                const selectedAddressId = ref('');
+                const feeItems = ref([]);
+                const paymentMethod = ref('');
+                const remark = ref('');
+                const generating = ref(false);
+                
+                // 费用类型配置
+                const feeConfig = {
+                    electricity: { name: '电费', unit: '度', defaultUnitPrice: 0.8 },
+                    coldWater: { name: '冷水费', unit: '吨', defaultUnitPrice: 3.5 },
+                    hotWater: { name: '热水费', unit: '吨', defaultUnitPrice: 25 },
+                    network: { name: '网费', unit: '月', defaultUnitPrice: 60 },
+                    parking: { name: '停车费', unit: '月', defaultUnitPrice: 200 }
+                };
+                
+                // 计算总金额
+                const totalAmount = computed(() => {
+                    return feeItems.value.reduce((sum, item) => {
+                        return sum + (parseFloat(item.amount) || 0);
+                    }, 0);
+                });
+                
+                // 是否可以生成账单
+                const canGenerate = computed(() => {
+                    return selectedAddressId.value && 
+                           feeItems.value.length > 0 && 
+                           paymentMethod.value && 
+                           totalAmount.value > 0;
+                });
+                
+                // 获取费用类型名称
+                const getFeeTypeName = (type) => {
+                    return feeConfig[type]?.name || type;
+                };
+                
+                // 获取费用单位
+                const getFeeUnit = (type) => {
+                    return feeConfig[type]?.unit || '';
+                };
+                
+                // 添加费用项目
+                const addFeeItem = (type) => {
+                    const config = feeConfig[type];
+                    if (!config) return;
+                    
+                    feeItems.value.push({
+                        type: type,
+                        quantity: 1,
+                        unitPrice: config.defaultUnitPrice,
+                        amount: config.defaultUnitPrice
+                    });
+                };
+                
+                // 更新项目金额
+                const updateItemAmount = (index) => {
+                    const item = feeItems.value[index];
+                    item.amount = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
+                };
+                
+                // 移除费用项目
+                const removeFeeItem = (index) => {
+                    feeItems.value.splice(index, 1);
+                };
+                
+                // 地址改变事件
+                const onAddressChange = () => {
+                    // 可以在这里加载该地址的历史数据或默认费用设置
+                    console.log('地址已选择:', selectedAddressId.value);
+                };
+                
+                // 生成账单
+                const generateBill = async () => {
+                    if (!canGenerate.value) return;
+                    
+                    try {
+                        generating.value = true;
+                        
+                        // 准备数据
+                        const orderData = {
+                            addressId: selectedAddressId.value,
+                            paymentMethod: paymentMethod.value,
+                            totalAmount: totalAmount.value,
+                            remark: remark.value,
+                            items: feeItems.value
+                        };
+                        
+                        // 调用后端API
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('/api/orders', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify(orderData)
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.status === 'success') {
+                            ElMessage.success('账单生成成功！');
+                            
+                            // 弹出打印窗口
+                            window.print();
+                            
+                            // 清空表单（可选）
+                            setTimeout(() => {
+                                clearForm();
+                                ElMessage.info('数据已保存，可以继续开单');
+                            }, 1000);
+                            
+                        } else {
+                            ElMessage.error(result.message || '账单生成失败');
+                        }
+                    } catch (error) {
+                        console.error('生成账单失败:', error);
+                        ElMessage.error('网络请求失败');
+                    } finally {
+                        generating.value = false;
+                    }
+                };
+                
+                // 清空表单
+                const clearForm = () => {
+                    ElMessageBox.confirm('确定要清空当前表单吗？', '提示', {
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消',
+                        type: 'warning'
+                    }).then(() => {
+                        feeItems.value = [];
+                        paymentMethod.value = '';
+                        remark.value = '';
+                        selectedAddressId.value = '';
+                    }).catch(() => {
+                        // 用户取消
+                    });
+                };
+                
+                // 退出登录
+                const logout = () => {
+                    ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消',
+                        type: 'warning'
+                    }).then(() => {
+                        localStorage.removeItem('token');
+                        localStorage.removeItem('user');
+                        window.location.href = '/login';
+                    }).catch(() => {
+                        // 用户取消
+                    });
+                };
+                
+                // 加载地址列表
+                const loadAddresses = async () => {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('/api/addresses', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        
+                        const result = await response.json();
+                        if (result.status === 'success') {
+                            addresses.value = result.data;
+                        } else {
+                            ElMessage.error('加载地址失败');
+                        }
+                    } catch (error) {
+                        console.error('加载地址失败:', error);
+                        ElMessage.error('网络请求失败');
+                    }
+                };
+                
+                // 页面加载时初始化
+                onMounted(() => {
+                    // 检查登录状态
+                    const token = localStorage.getItem('token');
+                    if (!token) {
+                        window.location.href = '/login';
+                        return;
+                    }
+                    
+                    // 加载地址数据
+                    loadAddresses();
+                });
+                
+                return {
+                    user,
+                    currentPage,
+                    addresses,
+                    selectedAddressId,
+                    feeItems,
+                    paymentMethod,
+                    remark,
+                    generating,
+                    totalAmount,
+                    canGenerate,
+                    getFeeTypeName,
+                    getFeeUnit,
+                    addFeeItem,
+                    updateItemAmount,
+                    removeFeeItem,
+                    onAddressChange,
+                    generateBill,
+                    clearForm,
+                    logout
+                };
+            }
+        });
+
+        // 使用ElementPlus并挂载应用
+        app.use(ElementPlus).mount('#app');
+    {% endraw %} <!-- 新增此行：告诉 Jinja2 可以恢复解析了 -->
+    </script>
+    
+</body>
+</html>

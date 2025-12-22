@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>日历控件模板</title>
+  <!-- 引入laydate资源 -->
+  <link rel="stylesheet" href="https://cdn.staticfile.org/layui/2.8.18/css/layui.css">
+  <script src="https://cdn.staticfile.org/layui/2.8.18/layui.js"></script>
+  <style>
+    .datetime-picker-container {
+      position: relative;
+      display: inline-block;
+      width: 100%;
+    }
+    
+    .datetime-picker-input {
+      width: 100%;
+      height: 40px;
+      padding: 0 10px;
+      border: 1px solid #e6e6e6;
+      border-radius: 4px;
+      background-color: #fff;
+      cursor: pointer;
+      box-sizing: border-box;
+    }
+    
+    .datetime-picker-input:focus {
+      border-color: #409eff;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+    }
+    
+    .datetime-picker-icon {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #c0c4cc;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- 日历控件模板 -->
+  <div id="datetime-picker-template" style="display: none;">
+    <div class="datetime-picker-container">
+      <input 
+        type="text" 
+        class="datetime-picker-input" 
+        placeholder="请选择日期时间"
+        readonly>
+      <i class="el-icon-date datetime-picker-icon"></i>
+    </div>
+  </div>
+
+  <script>
+    // 日历控件组件
+    window.DateTimePicker = function(options) {
+      this.options = Object.assign({
+        elem: null,           // 绑定的元素ID或DOM对象
+        format: 'yyyy-MM-dd HH:mm:ss',  // 显示格式
+        type: 'datetime',      // 类型：datetime（日期+时间），可选date/time/year/month等
+        min: '2020-01-01 00:00:00',  // 最小可选时间
+        max: '2030-12-31 23:59:59',   // 最大可选时间
+        value: '',             // 默认值
+        done: null,            // 选择完成回调
+        onChange: null         // 值变化回调
+      }, options);
+      
+      this.init();
+    };
+    
+    DateTimePicker.prototype.init = function() {
+      const self = this;
+      
+      // 如果没有指定元素，则创建一个
+      if (!this.options.elem) {
+        console.error('DateTimePicker: 必须指定elem参数');
+        return;
+      }
+      
+      // 如果elem是字符串，则作为ID查找元素
+      if (typeof this.options.elem === 'string') {
+        this.container = document.getElementById(this.options.elem);
+      } else {
+        this.container = this.options.elem;
+      }
+      
+      if (!this.container) {
+        console.error('DateTimePicker: 找不到指定元素', this.options.elem);
+        return;
+      }
+      
+      // 克隆模板内容
+      const template = document.getElementById('datetime-picker-template');
+      if (template) {
+        this.container.innerHTML = template.querySelector('.datetime-picker-container').outerHTML;
+        this.input = this.container.querySelector('.datetime-picker-input');
+      } else {
+        // 如果模板不存在，直接创建元素
+        this.container.innerHTML = `
+          <div class="datetime-picker-container">
+            <input type="text" class="datetime-picker-input" placeholder="请选择日期时间" readonly>
+            <i class="el-icon-date datetime-picker-icon"></i>
+          </div>
+        `;
+        this.input = this.container.querySelector('.datetime-picker-input');
+      }
+      
+      // 设置默认值
+      if (this.options.value) {
+        this.input.value = this.options.value;
+      }
+      
+      // 初始化laydate
+      layui.use('laydate', function(){
+        const laydate = layui.laydate;
+        
+        // 渲染日期时间选择器
+        self.laydateInstance = laydate.render({
+          elem: self.input, // 绑定输入框
+          type: self.options.type, // 类型
+          format: self.options.format, // 显示格式
+          min: self.options.min, // 最小可选时间
+          max: self.options.max, // 最大可选时间
+          done: function(value, date){
+            self.input.value = value;
+            // 调用回调函数
+            if (self.options.done) {
+              self.options.done(value, date);
+            }
+            // 触发change事件
+            const event = new Event('change', { bubbles: true });
+            self.input.dispatchEvent(event);
+          },
+          change: function(value, date){
+            // 调用变化回调函数
+            if (self.options.onChange) {
+              self.options.onChange(value, date);
+            }
+          }
+        });
+      });
+      
+      // 添加点击事件
+      this.input.addEventListener('click', function() {
+        // 点击输入框时打开日历
+        if (self.laydateInstance) {
+          // 这里可以添加额外的点击处理逻辑
+        }
+      });
+    };
+    
+    // 获取当前值
+    DateTimePicker.prototype.getValue = function() {
+      return this.input ? this.input.value : '';
+    };
+    
+    // 设置值
+    DateTimePicker.prototype.setValue = function(value) {
+      if (this.input) {
+        this.input.value = value;
+      }
+    };
+    
+    // 销毁组件
+    DateTimePicker.prototype.destroy = function() {
+      if (this.laydateInstance) {
+        // laydate没有提供直接的销毁方法，这里只是清空引用
+        this.laydateInstance = null;
+      }
+      if (this.container) {
+        this.container.innerHTML = '';
+      }
+    };
+  </script>
+</body>
+</html>
