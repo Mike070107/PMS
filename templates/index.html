@@ -3298,6 +3298,9 @@
                     <li class="nav-item" :class="{active: currentPage === 'detailedQuery'}" @click="currentPage = 'detailedQuery'">
                         <i class="el-icon-document"></i> 详细查询
                     </li>
+                    <li class="nav-item" :class="{active: currentPage === 'reports'}" @click="currentPage = 'reports'">
+                        <i class="el-icon-data-analysis"></i> 数据报表
+                    </li>
 
                     <!-- 在侧边栏的导航菜单中添加 -->
                     <li class="nav-item" :class="{active: currentPage === 'feePrices'}" @click="currentPage = 'feePrices'">
@@ -3859,6 +3862,15 @@
         <div v-if="currentPage === 'detailedQuery'" style="position: fixed; top: 0; left: 240px; right: 0; bottom: 0; z-index: 999;">
             <iframe 
                 src="/query_detailed?embed=1" 
+                style="width: 100%; height: 100%; border: none; display: block;"
+                frameborder="0">
+            </iframe>
+        </div>
+        
+        <!-- 数据报表页面 -->
+        <div v-if="currentPage === 'reports'" style="position: fixed; top: 0; left: 240px; right: 0; bottom: 0; z-index: 999;">
+            <iframe 
+                src="/reports" 
                 style="width: 100%; height: 100%; border: none; display: block;"
                 frameborder="0">
             </iframe>

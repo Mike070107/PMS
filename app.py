@@ -347,6 +347,11 @@ def fee_prices_manager_page():
     """收费标准管理页面"""
     return render_template('fee_prices_manager.html')
 
+@app.route('/reports')
+def reports_page():
+    """数据报表页面"""
+    return render_template('reports.html')
+
 @app.route('/test')
 def test_page():
     """系统测试页面"""
@@ -2526,6 +2531,289 @@ def export_orders_detailed():
     except Exception as e:
         app.logger.error(f"导出详细订单异常: {str(e)}\n{traceback.format_exc()}")
         return jsonify({'status': 'error', 'message': '导出失败'}), 500
+
+
+# ========== 报表统计API ==========
+
+@app.route('/api/reports/overview-stats', methods=['GET'])
+@token_required
+def get_overview_stats():
+    """获取概览统计数据（总笔数、总金额、平均金额、最高单笔）"""
+    try:
+        current_user = g.current_user
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if not start_date or not end_date:
+            return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
+        
+        # 根据权限构建查询
+        if current_user.Role == '系统管理员':
+            query = Order.query
+        else:
+            query = Order.query.filter_by(小区ID=current_user.小区编号)
+        
+        # 过滤日期范围
+        query = query.filter(
+            Order.录入时间 >= datetime.strptime(start_date, '%Y-%m-%d'),
+            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+        )
+        
+        # 过滤红冲订单（不统计红冲记录）
+        query = query.filter(Order.红冲 == 0)
+        
+        orders = query.all()
+        
+        # 计算统计数据
+        total_count = len(orders)
+        total_amount = sum(float(order.收款金额) for order in orders)
+        avg_amount = total_amount / total_count if total_count > 0 else 0
+        max_amount = max((float(order.收款金额) for order in orders), default=0)
+        
+        # 计算环比增长（与上个相同时间段对比）
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        days_diff = (end_dt - start_dt).days + 1
+        
+        prev_start = start_dt - timedelta(days=days_diff)
+        prev_end = start_dt - timedelta(days=1)
+        
+        # 查询上期数据
+        if current_user.Role == '系统管理员':
+            prev_query = Order.query
+        else:
+            prev_query = Order.query.filter_by(小区ID=current_user.小区编号)
+        
+        prev_query = prev_query.filter(
+            Order.录入时间 >= prev_start,
+            Order.录入时间 < prev_end + timedelta(days=1),
+            Order.红冲 == 0
+        )
+        
+        prev_orders = prev_query.all()
+        prev_count = len(prev_orders)
+        prev_amount = sum(float(order.收款金额) for order in prev_orders)
+        
+        # 计算增长率
+        count_change = round(((total_count - prev_count) / prev_count * 100) if prev_count > 0 else 0, 1)
+        amount_change = round(((total_amount - prev_amount) / prev_amount * 100) if prev_amount > 0 else 0, 1)
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'totalCount': total_count,
+                'totalAmount': round(total_amount, 2),
+                'avgAmount': round(avg_amount, 2),
+                'maxAmount': round(max_amount, 2),
+                'countChange': count_change,
+                'amountChange': amount_change
+            }
+        })
+    
+    except Exception as e:
+        app.logger.error(f"获取概览统计失败: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'status': 'error', 'message': '获取数据失败'}), 500
+
+
+@app.route('/api/reports/time-stats', methods=['GET'])
+@token_required
+def get_time_statistics():
+    """获取时间维度统计数据（按天/周/月）"""
+    try:
+        current_user = g.current_user
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        dimension = request.args.get('dimension', 'day')  # day/week/month
+        
+        if not start_date or not end_date:
+            return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
+        
+        # 根据权限构建查询
+        if current_user.Role == '系统管理员':
+            query = Order.query
+        else:
+            query = Order.query.filter_by(小区ID=current_user.小区编号)
+        
+        # 过滤日期范围和红冲
+        query = query.filter(
+            Order.录入时间 >= datetime.strptime(start_date, '%Y-%m-%d'),
+            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1),
+            Order.红冲 == 0
+        )
+        
+        orders = query.all()
+        
+        # 按维度聚合数据
+        stats_dict = {}
+        
+        for order in orders:
+            if dimension == 'day':
+                key = order.录入时间.strftime('%Y-%m-%d')
+            elif dimension == 'week':
+                # 计算周（周一开始）
+                week_start = order.录入时间 - timedelta(days=order.录入时间.weekday())
+                key = f"{week_start.strftime('%Y-%m-%d')}周"
+            else:  # month
+                key = order.录入时间.strftime('%Y-%m')
+            
+            if key not in stats_dict:
+                stats_dict[key] = {'count': 0, 'amount': 0}
+            
+            stats_dict[key]['count'] += 1
+            stats_dict[key]['amount'] += float(order.收款金额)
+        
+        # 排序并转换为列表
+        sorted_keys = sorted(stats_dict.keys())
+        labels = sorted_keys
+        counts = [stats_dict[k]['count'] for k in sorted_keys]
+        amounts = [round(stats_dict[k]['amount'], 2) for k in sorted_keys]
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'labels': labels,
+                'counts': counts,
+                'amounts': amounts
+            }
+        })
+    
+    except Exception as e:
+        app.logger.error(f"获取时间统计失败: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'status': 'error', 'message': '获取数据失败'}), 500
+
+
+@app.route('/api/reports/payment-stats', methods=['GET'])
+@token_required
+def get_payment_statistics():
+    """获取收款方式统计数据"""
+    try:
+        current_user = g.current_user
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if not start_date or not end_date:
+            return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
+        
+        # 根据权限构建查询
+        if current_user.Role == '系统管理员':
+            query = Order.query
+        else:
+            query = Order.query.filter_by(小区ID=current_user.小区编号)
+        
+        # 过滤日期范围和红冲
+        query = query.filter(
+            Order.录入时间 >= datetime.strptime(start_date, '%Y-%m-%d'),
+            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1),
+            Order.红冲 == 0
+        )
+        
+        orders = query.all()
+        
+        # 按收款方式统计
+        payment_stats = {}
+        for order in orders:
+            payment_method = order.收款方式 or '未知'
+            if payment_method not in payment_stats:
+                payment_stats[payment_method] = {'count': 0, 'amount': 0}
+            
+            payment_stats[payment_method]['count'] += 1
+            payment_stats[payment_method]['amount'] += float(order.收款金额)
+        
+        # 转换为列表
+        result = [
+            {
+                'name': name,
+                'count': stats['count'],
+                'amount': round(stats['amount'], 2)
+            }
+            for name, stats in payment_stats.items()
+        ]
+        
+        # 按金额降序排列
+        result.sort(key=lambda x: x['amount'], reverse=True)
+        
+        return jsonify({
+            'status': 'success',
+            'data': result
+        })
+    
+    except Exception as e:
+        app.logger.error(f"获取收款方式统计失败: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'status': 'error', 'message': '获取数据失败'}), 500
+
+
+@app.route('/api/reports/fee-type-stats', methods=['GET'])
+@token_required
+def get_fee_type_statistics():
+    """获取收费项目统计数据"""
+    try:
+        current_user = g.current_user
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if not start_date or not end_date:
+            return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
+        
+        # 根据权限构建查询
+        if current_user.Role == '系统管理员':
+            query = Order.query
+        else:
+            query = Order.query.filter_by(小区ID=current_user.小区编号)
+        
+        # 过滤日期范围和红冲
+        query = query.filter(
+            Order.录入时间 >= datetime.strptime(start_date, '%Y-%m-%d'),
+            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1),
+            Order.红冲 == 0
+        )
+        
+        orders = query.all()
+        
+        # 收费项目映射
+        fee_types = {
+            '电费': ('电费金额',),
+            '冷水费': ('冷水金额',),
+            '热水费': ('热水金额',),
+            '网费': ('网费金额',),
+            '停车费': ('停车费金额',),
+            '房租': ('房租金额',),
+            '管理费': ('管理费金额',)
+        }
+        
+        # 统计每个项目
+        fee_stats = {}
+        for fee_name, (amount_field,) in fee_types.items():
+            fee_stats[fee_name] = {'count': 0, 'amount': 0}
+        
+        for order in orders:
+            for fee_name, (amount_field,) in fee_types.items():
+                amount = getattr(order, amount_field, 0)
+                if amount and float(amount) > 0:
+                    fee_stats[fee_name]['count'] += 1
+                    fee_stats[fee_name]['amount'] += float(amount)
+        
+        # 转换为列表（只返回有数据的项目）
+        result = [
+            {
+                'name': name,
+                'count': stats['count'],
+                'amount': round(stats['amount'], 2)
+            }
+            for name, stats in fee_stats.items()
+            if stats['count'] > 0
+        ]
+        
+        # 按金额降序排列
+        result.sort(key=lambda x: x['amount'], reverse=True)
+        
+        return jsonify({
+            'status': 'success',
+            'data': result
+        })
+    
+    except Exception as e:
+        app.logger.error(f"获取收费项目统计失败: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'status': 'error', 'message': '获取数据失败'}), 500
 
 
 # ========== 错误处理 ==========

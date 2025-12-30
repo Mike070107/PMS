@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据报表 - 物业收费管理系统</title>
+    
+    <script src="/static/lib/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus@2.3.14/dist/index.full.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.3.14/dist/index.css">
+    <script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <link rel="stylesheet" href="/static/lib/flatpickr/airbnb.css">
+    <script src="/static/lib/flatpickr/zh.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f7fa;
+            padding: 20px;
+        }
+
+        .page-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+            margin-bottom: 20px;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        /* 筛选区域 */
+        .filter-section {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .filter-label {
+            font-weight: 500;
+            color: #495057;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .date-input-wrapper {
+            position: relative;
+            width: 250px;
+        }
+
+        .datetime-input {
+            width: 250px;
+            height: 40px;
+            padding: 0 35px 0 15px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .datetime-input:hover {
+            border-color: #409eff;
+        }
+
+        .datetime-input:focus {
+            border-color: #409eff;
+            box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+            outline: none;
+        }
+
+        /* 数据概览卡片 */
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+        }
+
+        .stat-card.primary::before {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .stat-card.success::before {
+            background: linear-gradient(135deg, #67C23A 0%, #85CE61 100%);
+        }
+
+        .stat-card.warning::before {
+            background: linear-gradient(135deg, #E6A23C 0%, #EEBE77 100%);
+        }
+
+        .stat-card.danger::before {
+            background: linear-gradient(135deg, #F56C6C 0%, #F78989 100%);
+        }
+
+        .stat-icon {
+            font-size: 40px;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #6c757d;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+
+        .stat-change {
+            font-size: 12px;
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .stat-change.up {
+            background: #f0f9ff;
+            color: #409eff;
+        }
+
+        .stat-change.down {
+            background: #fef0f0;
+            color: #f56c6c;
+        }
+
+        /* 图表容器 */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .chart-card.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 400px;
+        }
+
+        /* 按钮样式 */
+        .el-button {
+            border-radius: 6px;
+            font-weight: 500;
+            height: 40px;
+            padding: 0 20px;
+        }
+
+        .el-button--primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+        }
+
+        .el-button--primary:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        }
+
+        /* 单选按钮组 */
+        .dimension-tabs {
+            display: flex;
+            gap: 10px;
+            margin-left: 20px;
+        }
+
+        .dimension-tab {
+            padding: 8px 16px;
+            border: 1px solid #dcdfe6;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .dimension-tab:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .dimension-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+        }
+
+        /* 加载动画 */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 400px;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 打印样式 */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .filter-section,
+            .el-button {
+                display: none !important;
+            }
+
+            .page-header {
+                background: none !important;
+                color: #2c3e50 !important;
+                box-shadow: none !important;
+                border-bottom: 2px solid #2c3e50;
+            }
+
+            .stat-card,
+            .chart-card {
+                box-shadow: none !important;
+                border: 1px solid #ddd;
+                page-break-inside: avoid;
+            }
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1200px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .stats-cards {
+                grid-template-columns: 1fr;
+            }
+
+            .filter-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-item {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+{% raw %}
+    <div id="app">
+        <div class="page-header">
+            <h1 class="page-title">📊 收费数据报表</h1>
+            <p class="page-subtitle">可视化展示收费统计数据，支持多维度分析</p>
+        </div>
+
+        <!-- 筛选区域 -->
+        <div class="filter-section">
+            <div class="filter-row">
+                <div class="filter-item">
+                    <span class="filter-label">日期范围：</span>
+                    <div class="date-input-wrapper">
+                        <input 
+                            type="text" 
+                            id="startDate" 
+                            class="datetime-input"
+                            placeholder="开始日期"
+                            readonly>
+                    </div>
+                    <span style="margin: 0 5px;">至</span>
+                    <div class="date-input-wrapper">
+                        <input 
+                            type="text" 
+                            id="endDate" 
+                            class="datetime-input"
+                            placeholder="结束日期"
+                            readonly>
+                    </div>
+                </div>
+
+                <div class="filter-item">
+                    <span class="filter-label">统计维度：</span>
+                    <div class="dimension-tabs">
+                        <div 
+                            class="dimension-tab" 
+                            :class="{active: dimension === 'day'}"
+                            @click="dimension = 'day'">
+                            按天
+                        </div>
+                        <div 
+                            class="dimension-tab" 
+                            :class="{active: dimension === 'week'}"
+                            @click="dimension = 'week'">
+                            按周
+                        </div>
+                        <div 
+                            class="dimension-tab" 
+                            :class="{active: dimension === 'month'}"
+                            @click="dimension = 'month'">
+                            按月
+                        </div>
+                    </div>
+                </div>
+
+                <el-button 
+                    type="primary" 
+                    @click="loadReportData"
+                    :loading="loading">
+                    查询报表
+                </el-button>
+
+                <el-button 
+                    @click="printReport"
+                    :disabled="!hasData">
+                    打印报表
+                </el-button>
+            </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div v-if="loading" class="loading">
+            <div class="loading-spinner"></div>
+        </div>
+
+        <!-- 数据展示 -->
+        <template v-else-if="hasData">
+            <!-- 数据概览卡片 -->
+            <div class="stats-cards">
+                <div class="stat-card primary">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-label">总笔数</div>
+                    <div class="stat-value">[[ statsData.totalCount ]]</div>
+                    <span class="stat-change up" v-if="statsData.countChange > 0">↑ [[ statsData.countChange ]]%</span>
+                    <span class="stat-change down" v-else-if="statsData.countChange < 0">↓ [[ Math.abs(statsData.countChange) ]]%</span>
+                </div>
+
+                <div class="stat-card success">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-label">总金额</div>
+                    <div class="stat-value">¥[[ formatNumber(statsData.totalAmount) ]]</div>
+                    <span class="stat-change up" v-if="statsData.amountChange > 0">↑ [[ statsData.amountChange ]]%</span>
+                    <span class="stat-change down" v-else-if="statsData.amountChange < 0">↓ [[ Math.abs(statsData.amountChange) ]]%</span>
+                </div>
+
+                <div class="stat-card warning">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-label">平均金额</div>
+                    <div class="stat-value">¥[[ formatNumber(statsData.avgAmount) ]]</div>
+                </div>
+
+                <div class="stat-card danger">
+                    <div class="stat-icon">🏆</div>
+                    <div class="stat-label">最高单笔</div>
+                    <div class="stat-value">¥[[ formatNumber(statsData.maxAmount) ]]</div>
+                </div>
+            </div>
+
+            <!-- 图表区域 -->
+            <div class="charts-grid">
+                <!-- 时间趋势图 -->
+                <div class="chart-card full-width">
+                    <h3 class="chart-title">收费趋势分析</h3>
+                    <div id="trendChart" class="chart-container"></div>
+                </div>
+
+                <!-- 收款方式分布 -->
+                <div class="chart-card">
+                    <h3 class="chart-title">收款方式分布</h3>
+                    <div id="paymentChart" class="chart-container"></div>
+                </div>
+
+                <!-- 收费项目统计 -->
+                <div class="chart-card">
+                    <h3 class="chart-title">收费项目统计</h3>
+                    <div id="feeTypeChart" class="chart-container"></div>
+                </div>
+            </div>
+        </template>
+
+        <!-- 空数据提示 -->
+        <div v-else style="text-align: center; padding: 60px; background: white; border-radius: 12px;">
+            <div style="font-size: 48px; margin-bottom: 20px;">📭</div>
+            <div style="font-size: 16px; color: #6c757d;">请选择日期范围后点击"查询报表"按钮</div>
+        </div>
+    </div>
+{% endraw %}
+
+    <script>
+        const { createApp, ref, computed, onMounted, nextTick } = Vue;
+        const { ElButton, ElMessage } = ElementPlus;
+
+        const app = createApp({
+            compilerOptions: {
+                delimiters: ['[[', ']]']
+            },
+            setup() {
+                const loading = ref(false);
+                const dimension = ref('day');
+                const hasData = ref(false);
+                
+                // 统计数据
+                const statsData = ref({
+                    totalCount: 0,
+                    totalAmount: 0,
+                    avgAmount: 0,
+                    maxAmount: 0,
+                    countChange: 0,
+                    amountChange: 0
+                });
+
+                // 图表数据
+                const trendData = ref({ labels: [], counts: [], amounts: [] });
+                const paymentData = ref([]);
+                const feeTypeData = ref([]);
+
+                // 日期选择器
+                let startDatePicker = null;
+                let endDatePicker = null;
+
+                // 获取Token
+                const getToken = () => {
+                    return sessionStorage.getItem('token');
+                };
+
+                // 初始化日期选择器
+                const initDatePickers = () => {
+                    nextTick(() => {
+                        startDatePicker = flatpickr("#startDate", {
+                            locale: "zh",
+                            dateFormat: "Y-m-d",
+                            defaultDate: new Date(new Date().setDate(new Date().getDate() - 30)),
+                            onChange: function(selectedDates, dateStr) {
+                                if (endDatePicker && selectedDates.length > 0) {
+                                    endDatePicker.set('minDate', selectedDates[0]);
+                                }
+                            }
+                        });
+
+                        endDatePicker = flatpickr("#endDate", {
+                            locale: "zh",
+                            dateFormat: "Y-m-d",
+                            defaultDate: new Date(),
+                            onChange: function(selectedDates, dateStr) {
+                                if (startDatePicker && selectedDates.length > 0) {
+                                    startDatePicker.set('maxDate', selectedDates[0]);
+                                }
+                            }
+                        });
+                    });
+                };
+
+                // 加载报表数据
+                const loadReportData = async () => {
+                    const startDate = document.getElementById('startDate').value;
+                    const endDate = document.getElementById('endDate').value;
+
+                    if (!startDate || !endDate) {
+                        ElMessage.warning('请选择日期范围');
+                        return;
+                    }
+
+                    loading.value = true;
+                    
+                    try {
+                        const token = getToken();
+                        
+                        // 并行请求所有数据
+                        const [timeStats, paymentStats, feeTypeStats, overviewStats] = await Promise.all([
+                            axios.get('/api/reports/time-stats', {
+                                headers: { 'Authorization': `Bearer ${token}` },
+                                params: { start_date: startDate, end_date: endDate, dimension: dimension.value }
+                            }),
+                            axios.get('/api/reports/payment-stats', {
+                                headers: { 'Authorization': `Bearer ${token}` },
+                                params: { start_date: startDate, end_date: endDate }
+                            }),
+                            axios.get('/api/reports/fee-type-stats', {
+                                headers: { 'Authorization': `Bearer ${token}` },
+                                params: { start_date: startDate, end_date: endDate }
+                            }),
+                            axios.get('/api/reports/overview-stats', {
+                                headers: { 'Authorization': `Bearer ${token}` },
+                                params: { start_date: startDate, end_date: endDate }
+                            })
+                        ]);
+
+                        // 更新数据
+                        trendData.value = timeStats.data.data;
+                        paymentData.value = paymentStats.data.data;
+                        feeTypeData.value = feeTypeStats.data.data;
+                        statsData.value = overviewStats.data.data;
+
+                        hasData.value = true;
+
+                        // 等待DOM更新后绘制图表
+                        nextTick(() => {
+                            drawTrendChart();
+                            drawPaymentChart();
+                            drawFeeTypeChart();
+                        });
+
+                        ElMessage.success('报表数据加载成功');
+                    } catch (error) {
+                        console.error('加载报表数据失败:', error);
+                        if (error.response?.status === 401) {
+                            ElMessage.error('登录已过期，请重新登录');
+                            setTimeout(() => {
+                                window.location.href = '/login';
+                            }, 1500);
+                        } else {
+                            ElMessage.error('加载报表数据失败');
+                        }
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                // 绘制时间趋势图
+                const drawTrendChart = () => {
+                    const chart = echarts.init(document.getElementById('trendChart'));
+                    const option = {
+                        tooltip: {
+                            trigger: 'axis',
+                            axisPointer: { type: 'cross' }
+                        },
+                        legend: {
+                            data: ['笔数', '金额'],
+                            top: 0
+                        },
+                        grid: {
+                            left: '3%',
+                            right: '4%',
+                            bottom: '3%',
+                            containLabel: true
+                        },
+                        xAxis: {
+                            type: 'category',
+                            data: trendData.value.labels,
+                            axisLabel: { rotate: 45 }
+                        },
+                        yAxis: [
+                            {
+                                type: 'value',
+                                name: '笔数',
+                                position: 'left'
+                            },
+                            {
+                                type: 'value',
+                                name: '金额(元)',
+                                position: 'right'
+                            }
+                        ],
+                        series: [
+                            {
+                                name: '笔数',
+                                type: 'bar',
+                                data: trendData.value.counts,
+                                itemStyle: {
+                                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: '#667eea' },
+                                        { offset: 1, color: '#764ba2' }
+                                    ])
+                                }
+                            },
+                            {
+                                name: '金额',
+                                type: 'line',
+                                yAxisIndex: 1,
+                                data: trendData.value.amounts,
+                                smooth: true,
+                                itemStyle: { color: '#67C23A' },
+                                areaStyle: {
+                                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: 'rgba(103, 194, 58, 0.3)' },
+                                        { offset: 1, color: 'rgba(103, 194, 58, 0.05)' }
+                                    ])
+                                }
+                            }
+                        ]
+                    };
+                    chart.setOption(option);
+                    
+                    // 响应式
+                    window.addEventListener('resize', () => chart.resize());
+                };
+
+                // 绘制收款方式图
+                const drawPaymentChart = () => {
+                    const chart = echarts.init(document.getElementById('paymentChart'));
+                    const option = {
+                        tooltip: {
+                            trigger: 'item',
+                            formatter: '{b}: {c}笔 ({d}%)'
+                        },
+                        legend: {
+                            orient: 'vertical',
+                            left: 'left'
+                        },
+                        series: [
+                            {
+                                type: 'pie',
+                                radius: ['40%', '70%'],
+                                avoidLabelOverlap: false,
+                                itemStyle: {
+                                    borderRadius: 10,
+                                    borderColor: '#fff',
+                                    borderWidth: 2
+                                },
+                                label: {
+                                    show: true,
+                                    formatter: '{b}\n{c}笔\n¥{d}%'
+                                },
+                                data: paymentData.value.map(item => ({
+                                    name: item.name,
+                                    value: item.count
+                                })),
+                                color: ['#667eea', '#67C23A', '#E6A23C', '#F56C6C']
+                            }
+                        ]
+                    };
+                    chart.setOption(option);
+                    window.addEventListener('resize', () => chart.resize());
+                };
+
+                // 绘制收费项目图
+                const drawFeeTypeChart = () => {
+                    const chart = echarts.init(document.getElementById('feeTypeChart'));
+                    const option = {
+                        tooltip: {
+                            trigger: 'axis',
+                            axisPointer: { type: 'shadow' }
+                        },
+                        legend: {
+                            data: ['笔数', '金额'],
+                            top: 0
+                        },
+                        grid: {
+                            left: '3%',
+                            right: '4%',
+                            bottom: '3%',
+                            containLabel: true
+                        },
+                        xAxis: {
+                            type: 'category',
+                            data: feeTypeData.value.map(item => item.name)
+                        },
+                        yAxis: [
+                            {
+                                type: 'value',
+                                name: '笔数'
+                            },
+                            {
+                                type: 'value',
+                                name: '金额(元)',
+                                position: 'right'
+                            }
+                        ],
+                        series: [
+                            {
+                                name: '笔数',
+                                type: 'bar',
+                                data: feeTypeData.value.map(item => item.count),
+                                itemStyle: { color: '#409EFF' }
+                            },
+                            {
+                                name: '金额',
+                                type: 'bar',
+                                yAxisIndex: 1,
+                                data: feeTypeData.value.map(item => item.amount),
+                                itemStyle: { color: '#67C23A' }
+                            }
+                        ]
+                    };
+                    chart.setOption(option);
+                    window.addEventListener('resize', () => chart.resize());
+                };
+
+                // 打印报表
+                const printReport = () => {
+                    window.print();
+                };
+
+                // 格式化数字
+                const formatNumber = (num) => {
+                    if (!num) return '0';
+                    return parseFloat(num).toLocaleString('zh-CN', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+                };
+
+                onMounted(() => {
+                    initDatePickers();
+                });
+
+                return {
+                    loading,
+                    dimension,
+                    hasData,
+                    statsData,
+                    loadReportData,
+                    printReport,
+                    formatNumber
+                };
+            }
+        });
+
+        app.use(ElementPlus);
+        app.mount('#app');
+    </script>
+</body>
+</html>
