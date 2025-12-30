@@ -12,10 +12,12 @@ import jwt
 import re
 import random
 import logging
+import io
+import pandas as pd
 from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime, timedelta
 
-from flask import Flask, request, jsonify, g, send_from_directory, render_template, redirect
+from flask import Flask, request, jsonify, g, send_from_directory, render_template, redirect, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from sqlalchemy.exc import SQLAlchemyError
@@ -583,6 +585,34 @@ def get_fee_prices():
     except Exception as e:
         app.logger.error(f"获取单价时发生错误: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# 新增：获取小区列表（用于查询筛选）
+@app.route('/api/communities', methods=['GET'])
+@token_required
+def get_communities():
+    """获取所有小区列表（去重），用于查询筛选"""
+    try:
+        current_user = g.current_user
+        
+        # 系统管理员看所有小区，普通用户只看自己的小区
+        if current_user.Role == '系统管理员':
+            communities = db.session.query(User.COMMUNITY).distinct().all()
+            community_list = [c[0] for c in communities if c[0]]  # 过滤空值
+        else:
+            # 普通用户只返回自己的小区
+            community_list = [current_user.COMMUNITY] if current_user.COMMUNITY else []
+        
+        # 排序
+        community_list.sort()
+        
+        return jsonify({
+            'status': 'success',
+            'data': community_list
+        })
+    
+    except Exception as e:
+        app.logger.error(f"获取小区列表异常: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'status': 'error', 'message': '获取小区列表失败'}), 500
 
 # 4. 创建订单
 @app.route('/api/orders', methods=['POST'])
@@ -2167,6 +2197,256 @@ def query_orders():
 
 
 
+
+
+# ========== 详细订单查询API ==========
+@app.route('/api/orders/detailed', methods=['GET'])
+@token_required
+def get_orders_detailed():
+    """详细订单查询 - 支持多条件筛选"""
+    current_user = g.current_user
+    
+    if not current_user.Read:
+        return jsonify({'status': 'error', 'message': '当前用户没有读取权限'}), 403
+    
+    try:
+        # 获取筛选参数
+        community = request.args.get('community', '').strip()  # 改为小区名称
+        order_id = request.args.get('orderId', '').strip()
+        building = request.args.get('building', '').strip()
+        room = request.args.get('room', '').strip()
+        fee_type = request.args.get('feeType', '').strip()
+        payment_method = request.args.get('paymentMethod', '').strip()
+        start_date = request.args.get('startDate', '').strip()
+        end_date = request.args.get('endDate', '').strip()
+        
+        # 构建基础查询 - 联表查询
+        query = db.session.query(Order, Address, User).join(
+            Address, Order.地址ID == Address.ID
+        ).join(
+            User, Order.操作员ID == User.ID
+        )
+        
+        # 权限过滤：管理员看所有，操作员只看自己小区的订单
+        if current_user.Role != '系统管理员':
+            query = query.filter(Order.小区ID == current_user.小区编号)
+        
+        # 应用筛选条件
+        if community:  # 通过小区名称筛选
+            query = query.filter(User.COMMUNITY == community)
+        
+        if order_id:
+            query = query.filter(Order.账单号.like(f'%{order_id}%'))
+        
+        if building:
+            query = query.filter(Address.楼栋号.like(f'%{building}%'))
+        
+        if room:
+            query = query.filter(Address.房间号.like(f'%{room}%'))
+        
+        if payment_method:
+            query = query.filter(Order.收款方式 == payment_method)
+        
+        # 收费项目筛选 - 根据费用金额是否大于0判断
+        if fee_type:
+            fee_field_map = {
+                'electricity': Order.电费金额,
+                'coldWater': Order.冷水金额,
+                'hotWater': Order.热水金额,
+                'network': Order.网费金额,
+                'parking': Order.停车费金额,
+                'rent': Order.房租金额,
+                'management': Order.管理费金额
+            }
+            if fee_type in fee_field_map:
+                query = query.filter(fee_field_map[fee_type] != None)
+                query = query.filter(fee_field_map[fee_type] != 0)
+        
+        # 日期范围筛选 - 转换为datetime对象进行比较
+        if start_date:
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
+            query = query.filter(Order.录入时间 >= start_date_obj)
+        if end_date:
+            # 结束日期加一天，包含当天的所有记录
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+            end_date_obj = end_date_obj + timedelta(days=1)
+            query = query.filter(Order.录入时间 < end_date_obj)
+        
+        # 执行查询，按时间倒序
+        results = query.order_by(Order.录入时间.desc()).all()
+        
+        # 构建返回数据
+        data = []
+        for order, address, user in results:
+            data.append({
+                'orderId': order.账单号,
+                'community': user.COMMUNITY or '',  # 添加小区字段
+                'chargeDate': order.录入时间.strftime('%Y-%m-%d %H:%M:%S') if order.录入时间 else '',
+                'building': address.楼栋号,
+                'room': address.房间号,
+                'residentName': address.姓名 or '',
+                'phone': address.手机号 or '',
+                'totalAmount': float(order.收款金额) if order.收款金额 else 0,
+                'paymentMethod': order.收款方式 or '',
+                'electricityUsage': float(order.电费度数) if order.电费度数 else None,
+                'electricityAmount': float(order.电费金额) if order.电费金额 else 0,
+                'hotWaterUsage': float(order.热水吨数) if order.热水吨数 else None,
+                'hotWaterAmount': float(order.热水金额) if order.热水金额 else 0,
+                'coldWaterUsage': float(order.冷水吨数) if order.冷水吨数 else None,
+                'coldWaterAmount': float(order.冷水金额) if order.冷水金额 else 0,
+                'internetMonths': int(order.网费月数) if order.网费月数 else None,
+                'internetAmount': float(order.网费金额) if order.网费金额 else 0,
+                'rentMonths': int(order.房租月数) if order.房租月数 else None,
+                'rentAmount': float(order.房租金额) if order.房租金额 else 0,
+                'managementMonths': int(order.管理费月数) if order.管理费月数 else None,
+                'managementAmount': float(order.管理费金额) if order.管理费金额 else 0,
+                'parkingMonths': int(order.停车费月数) if order.停车费月数 else None,
+                'parkingAmount': float(order.停车费金额) if order.停车费金额 else 0,
+                'licensePlate': order.车牌号 or '',
+                'parkingStartDate': order.停车开始日期.strftime('%Y-%m-%d') if order.停车开始日期 else '',
+                'parkingEndDate': order.停车结束日期.strftime('%Y-%m-%d') if order.停车结束日期 else '',
+                'remark': order.备注 or ''
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'data': data
+        })
+    
+    except Exception as e:
+        app.logger.error(f"详细订单查询异常: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'status': 'error', 'message': '查询订单失败'}), 500
+
+
+# ========== 详细订单导出Excel API ==========
+@app.route('/api/orders/detailed/export', methods=['GET'])
+@token_required
+def export_orders_detailed():
+    """导出详细订单查询结果为Excel"""
+    current_user = g.current_user
+    
+    if not current_user.Read:
+        return jsonify({'status': 'error', 'message': '当前用户没有读取权限'}), 403
+    
+    try:
+        # 获取筛选参数（与查询接口相同）
+        community = request.args.get('community', '').strip()  # 改为小区名称
+        order_id = request.args.get('orderId', '').strip()
+        building = request.args.get('building', '').strip()
+        room = request.args.get('room', '').strip()
+        fee_type = request.args.get('feeType', '').strip()
+        payment_method = request.args.get('paymentMethod', '').strip()
+        start_date = request.args.get('startDate', '').strip()
+        end_date = request.args.get('endDate', '').strip()
+        
+        # 构建基础查询 - 联表查询
+        query = db.session.query(Order, Address, User).join(
+            Address, Order.地址ID == Address.ID
+        ).join(
+            User, Order.操作员ID == User.ID
+        )
+        
+        # 权限过滤
+        if current_user.Role != '系统管理员':
+            query = query.filter(Order.小区ID == current_user.小区编号)
+        
+        # 应用筛选条件
+        if community:  # 通过小区名称筛选
+            query = query.filter(User.COMMUNITY == community)
+        if order_id:
+            query = query.filter(Order.账单号.like(f'%{order_id}%'))
+        if building:
+            query = query.filter(Address.楼栋号.like(f'%{building}%'))
+        if room:
+            query = query.filter(Address.房间号.like(f'%{room}%'))
+        if payment_method:
+            query = query.filter(Order.收款方式 == payment_method)
+        if fee_type:
+            fee_field_map = {
+                'electricity': Order.电费金额,
+                'coldWater': Order.冷水金额,
+                'hotWater': Order.热水金额,
+                'network': Order.网费金额,
+                'parking': Order.停车费金额,
+                'rent': Order.房租金额,
+                'management': Order.管理费金额
+            }
+            if fee_type in fee_field_map:
+                query = query.filter(fee_field_map[fee_type] != None)
+                query = query.filter(fee_field_map[fee_type] != 0)
+        # 日期范围筛选 - 转换为datetime对象进行比较
+        if start_date:
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
+            query = query.filter(Order.录入时间 >= start_date_obj)
+        if end_date:
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+            query = query.filter(Order.录入时间 < end_date_obj)
+        
+        # 执行查询
+        results = query.order_by(Order.录入时间.desc()).all()
+        
+        # 准备Excel数据
+        data = []
+        for idx, (order, address, user) in enumerate(results, start=1):
+            data.append({
+                '序号': idx,
+                '小区': user.COMMUNITY or '',  # 改为小区
+                '订单号': order.账单号,
+                '收费日期': order.录入时间.strftime('%Y-%m-%d %H:%M:%S') if order.录入时间 else '',
+                '楼栋号': address.楼栋号,
+                '房号': address.房间号,
+                '姓名': address.姓名 or '',
+                '电话': address.手机号 or '',
+                '收费金额': float(order.收款金额) if order.收款金额 else 0,
+                '收款方式': order.收款方式 or '',
+                '电费度数': float(order.电费度数) if order.电费度数 else '',
+                '电费金额': float(order.电费金额) if order.电费金额 else 0,
+                '热水吨数': float(order.热水吨数) if order.热水吨数 else '',
+                '热水金额': float(order.热水金额) if order.热水金额 else 0,
+                '冷水吨数': float(order.冷水吨数) if order.冷水吨数 else '',
+                '冷水金额': float(order.冷水金额) if order.冷水金额 else 0,
+                '网费月数': int(order.网费月数) if order.网费月数 else '',
+                '网费金额': float(order.网费金额) if order.网费金额 else 0,
+                '房租月数': int(order.房租月数) if order.房租月数 else '',
+                '房租金额': float(order.房租金额) if order.房租金额 else 0,
+                '管理费月数': int(order.管理费月数) if order.管理费月数 else '',
+                '管理费金额': float(order.管理费金额) if order.管理费金额 else 0,
+                '停车费月数': int(order.停车费月数) if order.停车费月数 else '',
+                '停车费金额': float(order.停车费金额) if order.停车费金额 else 0,
+                '车牌号': order.车牌号 or '',
+                '停车开始日期': order.停车开始日期.strftime('%Y-%m-%d') if order.停车开始日期 else '',
+                '停车结束日期': order.停车结束日期.strftime('%Y-%m-%d') if order.停车结束日期 else '',
+                '备注': order.备注 or ''
+            })
+        
+        df = pd.DataFrame(data)
+        
+        # 写入到BytesIO
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='详细订单查询')
+        
+        output.seek(0)
+        
+        # 记录操作日志
+        log_operation(
+            user_account=current_user.USERNAME,
+            operation_type='导出详细订单',
+            details=f'导出了{len(data)}条详细订单数据',
+            community_num=current_user.小区编号
+        )
+        
+        # 返回文件
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'详细订单查询_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+    
+    except Exception as e:
+        app.logger.error(f"导出详细订单异常: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'status': 'error', 'message': '导出失败'}), 500
 
 
 # ========== 错误处理 ==========

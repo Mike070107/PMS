@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>详细订单查询 - 物业收费管理系统</title>
+    
+    <!-- 使用本地静态资源 -->
+    <link rel="stylesheet" href="/static/lib/layui/layui.min.css">
+    <link rel="stylesheet" href="/static/lib/flatpickr/airbnb.css">
+    <script src="/static/lib/vue.global.js"></script>
+    <script src="/static/lib/layui/layui.min.js"></script>
+    <script src="https://unpkg.com/element-plus@2.3.14/dist/index.full.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.3.14/dist/index.css">
+    <script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="/static/lib/flatpickr/zh.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+
+        .app-container {
+            min-height: 100vh;
+            display: flex;
+        }
+
+        /* 左侧导航栏 */
+        .sidebar {
+            width: 200px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 0;
+            box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 1000;
+        }
+
+        .sidebar-header {
+            padding: 0 20px 30px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .sidebar-title {
+            font-size: 20px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .sidebar-user {
+            text-align: center;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .nav-menu {
+            list-style: none;
+        }
+
+        .nav-item {
+            margin-bottom: 5px;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        .nav-link.active {
+            background-color: rgba(255, 255, 255, 0.15);
+            color: white;
+            border-left-color: #ffd700;
+        }
+
+        .nav-icon {
+            margin-right: 10px;
+            font-size: 16px;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            flex: 1;
+            margin-left: 200px;
+            padding: 20px;
+        }
+
+        .page-header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+        }
+
+        .page-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            font-size: 14px;
+            color: #6c757d;
+        }
+
+        .query-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+        }
+
+        /* 查询条件区域 */
+        .filter-section {
+            padding: 30px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .filter-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 0 0 auto;
+            min-width: 280px;
+        }
+
+        .filter-label {
+            min-width: 100px;
+            font-weight: 500;
+            color: #495057;
+            font-size: 14px;
+            text-align: right;
+        }
+
+        .filter-control {
+            flex: 1;
+        }
+
+        .date-range-picker {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .date-input-wrapper {
+            position: relative;
+            width: 280px;
+        }
+
+        .datetime-input {
+            width: 280px;
+            height: 40px;
+            padding: 0 35px 0 15px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .date-clear-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            line-height: 14px;
+            text-align: center;
+            cursor: pointer;
+            color: #999;
+            font-size: 14px;
+            display: none;
+            background: #f5f5f5;
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+
+        .date-clear-btn:hover {
+            color: #666;
+            background: #e5e5e5;
+        }
+
+        .date-input-wrapper:hover .date-clear-btn {
+            display: block;
+        }
+
+        .datetime-input:hover {
+            border-color: #409eff;
+        }
+
+        .datetime-input:focus {
+            border-color: #409eff;
+            box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+            outline: none;
+        }
+
+        .date-separator {
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        /* 分页样式 */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            padding: 20px 0;
+            margin-top: 15px;
+        }
+
+        .pagination-info {
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+        .el-pagination {
+            justify-content: center;
+        }
+
+        /* 按钮区域 */
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            padding-top: 15px;
+        }
+
+        /* 表格区域 */
+        .table-section {
+            padding: 0 30px 30px 30px;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            background: white;
+            margin-top: 20px;
+        }
+
+        .orders-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            min-width: 1800px;
+        }
+
+        .orders-table th {
+            background: #f8f9fa;
+            padding: 12px 8px;
+            text-align: center;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .orders-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: middle;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .odd-row {
+            background-color: #ffffff;
+        }
+
+        .even-row {
+            background-color: #fafbfc;
+        }
+
+        .orders-table tbody tr:hover {
+            background-color: #f0f8ff;
+            transition: background-color 0.3s ease;
+        }
+
+        .amount {
+            font-weight: 600;
+            color: #28a745;
+        }
+
+        .negative-amount {
+            font-weight: 600;
+            color: #dc3545;
+        }
+
+        .date {
+            color: #6c757d;
+        }
+
+        /* 备注栏位左对齐 */
+        .remark-cell {
+            text-align: left !important;
+            padding-left: 12px !important;
+            white-space: normal !important;
+            max-width: 200px;
+            word-wrap: break-word;
+        }
+
+        /* 备注表头也左对齐 */
+        .remark-header {
+            text-align: left !important;
+            padding-left: 12px !important;
+        }
+
+        /* 空数据状态 */
+        .empty-data {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+            background: #fafbfc;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            color: #6c757d;
+            margin-top: 20px;
+        }
+
+        .empty-data p {
+            margin-top: 15px;
+            font-size: 16px;
+        }
+
+        /* 统计信息 */
+        .statistics {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .highlight {
+            font-weight: bold;
+            color: #ffd700;
+            font-size: 16px;
+        }
+
+        /* 加载动画 */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+            background: #fafbfc;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            margin-top: 20px;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #409eff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Element Plus 样式覆盖 */
+        .el-select {
+            width: 100%;
+        }
+
+        .el-input {
+            width: 100%;
+        }
+
+        .el-button {
+            border-radius: 6px;
+            font-weight: 500;
+            min-width: 100px;
+            height: 40px;
+        }
+
+        .el-button--primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+        }
+
+        .el-button--primary:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1200px) {
+            .filter-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .orders-table {
+                font-size: 11px;
+            }
+            
+            .orders-table th,
+            .orders-table td {
+                padding: 8px 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+{% raw %}
+    <div id="app">
+        <div class="app-container">
+            <!-- 左侧导航栏 -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <div class="sidebar-title">物业收费系统</div>
+                    <div class="sidebar-user">{{ userInfo.real_name }}</div>
+                </div>
+                <ul class="nav-menu">
+                    <li class="nav-item">
+                        <a href="/" class="nav-link">
+                            <span class="nav-icon">📊</span>
+                            <span>工作台</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/query" class="nav-link">
+                            <span class="nav-icon">🔍</span>
+                            <span>订单查询</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/query_detailed" class="nav-link active">
+                            <span class="nav-icon">📋</span>
+                            <span>详细查询</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" @click.prevent="logout">
+                            <span class="nav-icon">🚪</span>
+                            <span>退出登录</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- 主内容区域 -->
+            <div class="main-content">
+                <div class="page-header">
+                    <h1 class="page-title">详细订单查询</h1>
+                    <p class="page-subtitle">多条件筛选查询订单数据，支持导出Excel</p>
+                </div>
+
+                <div class="query-container">
+                    <!-- 查询条件区域 -->
+                    <div class="filter-section">
+                        <div class="filter-grid">
+                            <!-- 小区选择 -->
+                            <div class="filter-item">
+                                <div class="filter-label">选择地区</div>
+                                <div class="filter-control">
+                                    <el-select 
+                                        v-model="queryParams.community" 
+                                        placeholder="请选择"
+                                        clearable>
+                                        <el-option
+                                            v-for="community in communities"
+                                            :key="community"
+                                            :label="community"
+                                            :value="community">
+                                        </el-option>
+                                    </el-select>
+                                </div>
+                            </div>
+
+                            <!-- 订单号 -->
+                            <div class="filter-item">
+                                <div class="filter-label">订单号</div>
+                                <div class="filter-control">
+                                    <el-input 
+                                        v-model="queryParams.orderId" 
+                                        placeholder="请输入订单号"
+                                        clearable>
+                                    </el-input>
+                                </div>
+                            </div>
+
+                            <!-- 楼栋号 -->
+                            <div class="filter-item">
+                                <div class="filter-label">楼栋号</div>
+                                <div class="filter-control">
+                                    <el-select 
+                                        v-model="queryParams.building" 
+                                        placeholder="请选择"
+                                        @change="onBuildingChange"
+                                        clearable>
+                                        <el-option
+                                            v-for="building in buildings"
+                                            :key="building"
+                                            :label="building"
+                                            :value="building">
+                                        </el-option>
+                                    </el-select>
+                                </div>
+                            </div>
+
+                            <!-- 房号 -->
+                            <div class="filter-item">
+                                <div class="filter-label">房号</div>
+                                <div class="filter-control">
+                                    <el-select 
+                                        v-model="queryParams.room" 
+                                        :placeholder="queryParams.building ? '请选择' : '先选楼栋'"
+                                        :disabled="!queryParams.building"
+                                        clearable>
+                                        <el-option
+                                            v-for="room in rooms"
+                                            :key="room.room"
+                                            :label="room.room"
+                                            :value="room.room">
+                                        </el-option>
+                                    </el-select>
+                                </div>
+                            </div>
+
+                            <!-- 收费项目 -->
+                            <div class="filter-item">
+                                <div class="filter-label">收费项目</div>
+                                <div class="filter-control">
+                                    <el-select 
+                                        v-model="queryParams.feeType" 
+                                        placeholder="请选择收费项目"
+                                        clearable>
+                                        <el-option label="电费" value="electricity"></el-option>
+                                        <el-option label="冷水费" value="coldWater"></el-option>
+                                        <el-option label="热水费" value="hotWater"></el-option>
+                                        <el-option label="网费" value="network"></el-option>
+                                        <el-option label="停车费" value="parking"></el-option>
+                                        <el-option label="房租" value="rent"></el-option>
+                                        <el-option label="管理费" value="management"></el-option>
+                                    </el-select>
+                                </div>
+                            </div>
+
+                            <!-- 收费方式 -->
+                            <div class="filter-item">
+                                <div class="filter-label">收费方式</div>
+                                <div class="filter-control">
+                                    <el-select 
+                                        v-model="queryParams.paymentMethod" 
+                                        placeholder="请选择收费方式"
+                                        clearable>
+                                        <el-option label="微信" value="微信"></el-option>
+                                        <el-option label="支付宝" value="支付宝"></el-option>
+                                        <el-option label="现金" value="现金"></el-option>
+                                    </el-select>
+                                </div>
+                            </div>
+
+                            <!-- 收费日期范围 -->
+                            <div class="filter-item">
+                                <div class="filter-label">收费日期</div>
+                                <div class="date-range-picker">
+                                    <div class="date-input-wrapper">
+                                        <input 
+                                            type="text" 
+                                            id="startDate" 
+                                            class="datetime-input"
+                                            placeholder="开始日期"
+                                            readonly>
+                                        <span class="date-clear-btn" @click="clearStartDate">×</span>
+                                    </div>
+                                    <span class="date-separator">至</span>
+                                    <div class="date-input-wrapper">
+                                        <input 
+                                            type="text" 
+                                            id="endDate" 
+                                            class="datetime-input"
+                                            placeholder="结束日期"
+                                            readonly>
+                                        <span class="date-clear-btn" @click="clearEndDate">×</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 按钮区域 -->
+                        <div class="button-group">
+                            <el-button 
+                                type="primary" 
+                                @click="queryData"
+                                :loading="loading">
+                                查询
+                            </el-button>
+                            <el-button 
+                                @click="resetQuery">
+                                重置
+                            </el-button>
+                            <el-button 
+                                type="success" 
+                                @click="exportData"
+                                :disabled="tableData.length === 0">
+                                导出Excel
+                            </el-button>
+                        </div>
+                    </div>
+
+                    <!-- 表格区域 -->
+                    <div class="table-section">
+                        <!-- 统计信息 -->
+                        <div v-if="tableData.length > 0" class="statistics">
+                            查询结果：共 <span class="highlight">{{ tableData.length }}</span> 条记录，
+                            合计金额：<span class="highlight">¥{{ formatPrice(totalAmount) }}</span>
+                        </div>
+
+                        <!-- 加载状态 -->
+                        <div v-if="loading" class="loading">
+                            <div class="loading-spinner"></div>
+                        </div>
+
+                        <!-- 数据表格 -->
+                        <div v-else-if="tableData.length > 0" class="table-container">
+                            <table class="orders-table">
+                                <thead>
+                                    <tr>
+                                        <th>序号</th>
+                                        <th>小区</th>
+                                        <th>订单号</th>
+                                        <th>收费日期</th>
+                                        <th>楼栋号</th>
+                                        <th>房号</th>
+                                        <th>姓名</th>
+                                        <th>电话</th>
+                                        <th>收费金额</th>
+                                        <th>收款方式</th>
+                                        <th>电费度数</th>
+                                        <th>电费金额</th>
+                                        <th>热水吨数</th>
+                                        <th>热水金额</th>
+                                        <th>冷水吨数</th>
+                                        <th>冷水金额</th>
+                                        <th>网费月数</th>
+                                        <th>网费金额</th>
+                                        <th>房租月数</th>
+                                        <th>房租金额</th>
+                                        <th>管理费月数</th>
+                                        <th>管理费金额</th>
+                                        <th>停车费月数</th>
+                                        <th>停车费金额</th>
+                                        <th>车牌号</th>
+                                        <th>停车开始日期</th>
+                                        <th>停车结束日期</th>
+                                        <th class="remark-header">备注</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(item, index) in paginatedData" :key="item.orderId" :class="{'odd-row': index % 2 === 0, 'even-row': index % 2 === 1}">
+                                        <td>{{ (currentPage - 1) * pageSize + index + 1 }}</td>
+                                        <td>{{ item.community || '-' }}</td>
+                                        <td>{{ item.orderId || '-' }}</td>
+                                        <td class="date">{{ item.chargeDate || '-' }}</td>
+                                        <td>{{ item.building || '-' }}</td>
+                                        <td>{{ item.room || '-' }}</td>
+                                        <td>{{ item.residentName || '-' }}</td>
+                                        <td>{{ item.phone || '-' }}</td>
+                                        <td :class="item.totalAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.totalAmount) }}</td>
+                                        <td>{{ item.paymentMethod || '-' }}</td>
+                                        <td>{{ item.electricityUsage || '-' }}</td>
+                                        <td :class="item.electricityAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.electricityAmount) }}</td>
+                                        <td>{{ item.hotWaterUsage || '-' }}</td>
+                                        <td :class="item.hotWaterAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.hotWaterAmount) }}</td>
+                                        <td>{{ item.coldWaterUsage || '-' }}</td>
+                                        <td :class="item.coldWaterAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.coldWaterAmount) }}</td>
+                                        <td>{{ item.internetMonths || '-' }}</td>
+                                        <td :class="item.internetAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.internetAmount) }}</td>
+                                        <td>{{ item.rentMonths || '-' }}</td>
+                                        <td :class="item.rentAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.rentAmount) }}</td>
+                                        <td>{{ item.managementMonths || '-' }}</td>
+                                        <td :class="item.managementAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.managementAmount) }}</td>
+                                        <td>{{ item.parkingMonths || '-' }}</td>
+                                        <td :class="item.parkingAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.parkingAmount) }}</td>
+                                        <td>{{ item.licensePlate || '-' }}</td>
+                                        <td class="date">{{ formatDate(item.parkingStartDate) }}</td>
+                                        <td class="date">{{ formatDate(item.parkingEndDate) }}</td>
+                                        <td class="remark-cell">{{ item.remark || '-' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <!-- 分页组件 -->
+                            <div class="pagination" v-if="tableData.length > 0">
+                                <el-pagination
+                                    v-model:current-page="currentPage"
+                                    v-model:page-size="pageSize"
+                                    :page-sizes="[50, 100, 500, 1000]"
+                                    :total="tableData.length"
+                                    layout="total, sizes, prev, pager, next, jumper"
+                                    @size-change="handleSizeChange"
+                                    @current-change="handleCurrentChange">
+                                </el-pagination>
+                            </div>
+                        </div>
+
+                        <!-- 空数据状态 -->
+                        <div v-else-if="!loading" class="empty-data">
+                            <p>{{ hasQueried ? '暂无符合条件的订单数据' : '请设置筛选条件后点击查询' }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endraw %}
+
+    <script>
+        const { createApp, ref, computed, onMounted, nextTick } = Vue;
+        const { ElSelect, ElOption, ElButton, ElInput, ElMessage, ElPagination } = ElementPlus;
+
+        const app = createApp({
+            setup() {
+                // 用户信息
+                const userInfo = ref({
+                    real_name: '用户',
+                    role: ''
+                });
+
+                // 查询参数
+                const queryParams = ref({
+                    community: '',       // 改为小区
+                    orderId: '',
+                    building: '',
+                    room: '',
+                    feeType: '',
+                    paymentMethod: '',
+                    startDate: '',
+                    endDate: ''
+                });
+
+                // 表格数据
+                const tableData = ref([]);
+                const loading = ref(false);
+                const hasQueried = ref(false);
+
+                // 楼栋和房间数据
+                const buildings = ref([]);  // 楼栋列表
+                const rooms = ref([]);      // 房间列表
+                const communities = ref([]); // 小区列表
+
+                // 分页参数
+                const currentPage = ref(1);
+                const pageSize = ref(50);
+
+                // 日期选择器实例
+                let startDatePicker = null;
+                let endDatePicker = null;
+
+                // 计算分页数据
+                const paginatedData = computed(() => {
+                    const start = (currentPage.value - 1) * pageSize.value;
+                    const end = start + pageSize.value;
+                    return tableData.value.slice(start, end);
+                });
+
+                // 计算总金额
+                const totalAmount = computed(() => {
+                    return tableData.value.reduce((sum, item) => {
+                        return sum + (parseFloat(item.totalAmount) || 0);
+                    }, 0);
+                });
+
+                // 获取Token
+                const getToken = () => {
+                    return localStorage.getItem('token');
+                };
+
+                // 检查登录状态
+                const checkLogin = () => {
+                    const token = getToken();
+                    if (!token) {
+                        window.location.href = '/login';
+                        return false;
+                    }
+                    return true;
+                };
+
+                // 获取用户信息
+                const loadUserInfo = () => {
+                    const userData = localStorage.getItem('user');
+                    if (userData) {
+                        const user = JSON.parse(userData);
+                        userInfo.value = {
+                            real_name: user.real_name || user.username,
+                            role: user.role
+                        };
+                    }
+                };
+
+                // 初始化日期选择器
+                const initDatePickers = () => {
+                    nextTick(() => {
+                        startDatePicker = flatpickr("#startDate", {
+                            locale: "zh",
+                            dateFormat: "Y-m-d",
+                            onChange: function(selectedDates, dateStr) {
+                                queryParams.value.startDate = dateStr;
+                                if (endDatePicker && selectedDates.length > 0) {
+                                    endDatePicker.set('minDate', selectedDates[0]);
+                                }
+                            }
+                        });
+
+                        endDatePicker = flatpickr("#endDate", {
+                            locale: "zh",
+                            dateFormat: "Y-m-d",
+                            onChange: function(selectedDates, dateStr) {
+                                queryParams.value.endDate = dateStr;
+                                if (startDatePicker && selectedDates.length > 0) {
+                                    startDatePicker.set('maxDate', selectedDates[0]);
+                                }
+                            }
+                        });
+                    });
+                };
+
+                // 查询数据
+                const queryData = async () => {
+                    if (!checkLogin()) return;
+
+                    loading.value = true;
+                    hasQueried.value = true;
+
+                    try {
+                        const token = getToken();
+                        const response = await axios.get('/api/orders/detailed', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            },
+                            params: queryParams.value
+                        });
+
+                        if (response.data.status === 'success') {
+                            tableData.value = response.data.data;
+                            currentPage.value = 1; // 重置到第一页
+                            if (tableData.value.length === 0) {
+                                ElMessage.info('未查询到符合条件的订单');
+                            }
+                        } else {
+                            ElMessage.error(response.data.message || '查询失败');
+                        }
+                    } catch (error) {
+                        console.error('查询失败:', error);
+                        if (error.response?.status === 401) {
+                            ElMessage.error('登录已过期，请重新登录');
+                            setTimeout(() => {
+                                window.location.href = '/login';
+                            }, 1500);
+                        } else {
+                            ElMessage.error('查询订单失败');
+                        }
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                // 加载小区列表
+                const loadCommunities = async () => {
+                    try {
+                        const token = getToken();
+                        const response = await axios.get('/api/communities', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        
+                        if (response.data.status === 'success') {
+                            communities.value = response.data.data;
+                        } else {
+                            ElMessage.error('加载小区列表失败');
+                        }
+                    } catch (error) {
+                        console.error('加载小区列表失败:', error);
+                    }
+                };
+
+                // 楼栋改变事件
+                const onBuildingChange = async (building) => {
+                    queryParams.value.room = '';  // 清空房间选择
+                    rooms.value = [];  // 清空房间列表
+                    
+                    if (building) {
+                        await loadRooms(building);
+                    }
+                };
+
+                // 加载楼栋列表
+                const loadBuildings = async () => {
+                    try {
+                        const token = getToken();
+                        const response = await axios.get('/api/addresses?step=buildings', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        
+                        if (response.data.status === 'success') {
+                            buildings.value = response.data.data;
+                        } else {
+                            ElMessage.error('加载楼栋列表失败');
+                        }
+                    } catch (error) {
+                        console.error('加载楼栋列表失败:', error);
+                    }
+                };
+
+                // 加载房间列表
+                const loadRooms = async (building) => {
+                    try {
+                        const token = getToken();
+                        const response = await axios.get(`/api/addresses?step=rooms&building=${encodeURIComponent(building)}`, {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        
+                        if (response.data.status === 'success') {
+                            rooms.value = response.data.data;
+                        } else {
+                            ElMessage.error('加载房间列表失败');
+                        }
+                    } catch (error) {
+                        console.error('加载房间列表失败:', error);
+                    }
+                };
+                const resetQuery = () => {
+                    queryParams.value = {
+                        community: '',       // 改为小区
+                        orderId: '',
+                        building: '',
+                        room: '',
+                        feeType: '',
+                        paymentMethod: '',
+                        startDate: '',
+                        endDate: ''
+                    };
+                    
+                    tableData.value = [];
+                    hasQueried.value = false;
+                    currentPage.value = 1;
+                    rooms.value = [];  // 清空房间列表
+                    
+                    // 清空日期选择器
+                    if (startDatePicker) {
+                        startDatePicker.clear();
+                    }
+                    if (endDatePicker) {
+                        endDatePicker.clear();
+                    }
+                };
+
+                // 清空开始日期
+                const clearStartDate = () => {
+                    if (startDatePicker) {
+                        startDatePicker.clear();
+                        queryParams.value.startDate = '';
+                    }
+                };
+
+                // 清空结束日期
+                const clearEndDate = () => {
+                    if (endDatePicker) {
+                        endDatePicker.clear();
+                        queryParams.value.endDate = '';
+                    }
+                };
+
+                // 分页大小变化
+                const handleSizeChange = (val) => {
+                    pageSize.value = val;
+                    currentPage.value = 1;
+                };
+
+                // 当前页变化
+                const handleCurrentChange = (val) => {
+                    currentPage.value = val;
+                };
+
+                // 导出Excel
+                const exportData = async () => {
+                    if (!checkLogin()) return;
+
+                    try {
+                        const token = getToken();
+                        ElMessage.info('正在导出数据，请稍候...');
+                        
+                        const response = await axios.get('/api/orders/detailed/export', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            },
+                            params: queryParams.value,
+                            responseType: 'blob'
+                        });
+
+                        // 创建下载链接
+                        const url = window.URL.createObjectURL(new Blob([response.data]));
+                        const link = document.createElement('a');
+                        link.href = url;
+                        const fileName = `详细订单查询_${new Date().toLocaleDateString().replace(/\//g, '')}.xlsx`;
+                        link.setAttribute('download', fileName);
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(url);
+
+                        // 显示成功提示和文件位置
+                        ElMessage.success({
+                            message: `导出成功！文件已保存到浏览器默认下载目录：${fileName}`,
+                            duration: 5000,
+                            showClose: true
+                        });
+                    } catch (error) {
+                        console.error('导出失败:', error);
+                        ElMessage.error('导出失败，请检查网络连接或联系管理员');
+                    }
+                };
+
+                // 格式化价格
+                const formatPrice = (price) => {
+                    const num = parseFloat(price) || 0;
+                    return num.toFixed(2);
+                };
+
+                // 格式化日期 - 保留时间
+                const formatDate = (dateStr) => {
+                    if (!dateStr) return '-';
+                    return dateStr;
+                };
+
+                // 退出登录
+                const logout = () => {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    window.location.href = '/login';
+                };
+
+                // 组件挂载
+                onMounted(() => {
+                    if (!checkLogin()) return;
+                    loadUserInfo();
+                    initDatePickers();
+                    loadCommunities();  // 加载小区列表
+                    loadBuildings();  // 加载楼栋列表
+                });
+
+                return {
+                    userInfo,
+                    queryParams,
+                    tableData,
+                    loading,
+                    hasQueried,
+                    communities,
+                    buildings,
+                    rooms,
+                    currentPage,
+                    pageSize,
+                    paginatedData,
+                    totalAmount,
+                    queryData,
+                    resetQuery,
+                    onBuildingChange,
+                    clearStartDate,
+                    clearEndDate,
+                    handleSizeChange,
+                    handleCurrentChange,
+                    exportData,
+                    formatPrice,
+                    formatDate,
+                    logout
+                };
+            }
+        });
+
+        app.use(ElementPlus);
+        app.mount('#app');
+    </script>
+</body>
+</html>
