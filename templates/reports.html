@@ -795,10 +795,18 @@
                         feeTypeData.value = feeTypeStats.data.data;
                         statsData.value = overviewStats.data.data;
 
+                        console.log('报表数据加载成功:', {
+                            dimension: dimension.value,
+                            labels: trendData.value.labels,
+                            counts: trendData.value.counts,
+                            amounts: trendData.value.amounts
+                        });
+
                         hasData.value = true;
 
                         // 等待DOM更新后绘制图表
                         nextTick(() => {
+                            console.log('开始绘制图表...');
                             drawTrendChart();
                             drawPaymentChart();
                             drawFeeTypeChart();
@@ -822,7 +830,20 @@
 
                 // 绘制时间趋势图
                 const drawTrendChart = () => {
-                    const chart = echarts.init(document.getElementById('trendChart'));
+                    console.log('绘制时间趋势图, 数据点数量:', trendData.value.labels.length);
+                    const chartDom = document.getElementById('trendChart');
+                    if (!chartDom) {
+                        console.error('图表容器不存在');
+                        return;
+                    }
+                    
+                    // 如果图表实例已存在，先销毁
+                    const existingChart = echarts.getInstanceByDom(chartDom);
+                    if (existingChart) {
+                        existingChart.dispose();
+                    }
+                    
+                    const chart = echarts.init(chartDom);
                     const option = {
                         tooltip: {
                             trigger: 'axis',
@@ -1008,7 +1029,19 @@
 
                 // 绘制收款方式图
                 const drawPaymentChart = () => {
-                    const chart = echarts.init(document.getElementById('paymentChart'));
+                    const chartDom = document.getElementById('paymentChart');
+                    if (!chartDom) {
+                        console.error('收款方式图表容器不存在');
+                        return;
+                    }
+                    
+                    // 如果图表实例已存在，先销毁
+                    const existingChart = echarts.getInstanceByDom(chartDom);
+                    if (existingChart) {
+                        existingChart.dispose();
+                    }
+                    
+                    const chart = echarts.init(chartDom);
                     const option = {
                         tooltip: {
                             trigger: 'item',
@@ -1116,7 +1149,19 @@
 
                 // 绘制收费项目图
                 const drawFeeTypeChart = () => {
-                    const chart = echarts.init(document.getElementById('feeTypeChart'));
+                    const chartDom = document.getElementById('feeTypeChart');
+                    if (!chartDom) {
+                        console.error('收费项目图表容器不存在');
+                        return;
+                    }
+                    
+                    // 如果图表实例已存在，先销毁
+                    const existingChart = echarts.getInstanceByDom(chartDom);
+                    if (existingChart) {
+                        existingChart.dispose();
+                    }
+                    
+                    const chart = echarts.init(chartDom);
                     const option = {
                         tooltip: {
                             trigger: 'axis',
@@ -1310,8 +1355,12 @@
 
                 // 监听统计维度变化，自动重新加载数据
                 watch(dimension, (newVal, oldVal) => {
+                    console.log('统计维度变化:', oldVal, '->', newVal);
                     if (hasData.value && newVal !== oldVal) {
-                        loadReportData();
+                        // 添加短暂延迟，确保UI已更新
+                        setTimeout(() => {
+                            loadReportData();
+                        }, 100);
                     }
                 });
 
