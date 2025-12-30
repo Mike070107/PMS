@@ -64,7 +64,7 @@ def log_operation(
         user: 用户对象（可选，用于登录时直接传入）
     """
     try:
-        from app import db, OperationLog
+        # 延迟导入避免循环依赖
         from flask import request, has_request_context
         
         # 获取当前用户信息
@@ -75,6 +75,9 @@ def log_operation(
                 return
         else:
             current_user = user
+        
+        # 在函数内部导入避免循环依赖
+        from app import db, OperationLog
         
         # 构建日志对象
         log = OperationLog()
