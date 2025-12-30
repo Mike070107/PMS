@@ -65,6 +65,7 @@ def log_operation(
     """
     try:
         from app import db, OperationLog
+        from flask import request, has_request_context
         
         # 获取当前用户信息
         if user is None:
@@ -87,10 +88,36 @@ def log_operation(
         log.所属小区 = current_user.COMMUNITY or ''
         log.小区编号 = current_user.小区编号
         
-        # 网络信息
-        log.电脑IP = get_client_ip()
-        log.MAC地址 = get_mac_address_from_request()
-        log.用户代理 = get_user_agent()
+        # 网络信息（只在有请求上下文时获取）
+        if has_request_context():
+            log.电脑IP = get_client_ip()
+            log.MAC地址 = get_mac_address_from_request()
+            log.用户代理 = get_user_agent()
+            log.请求方法 = request.method
+            log.请求URL = request.url
+            
+            # 获取请求参数（安全处理，避免记录敏感信息）
+            params = {}
+            if request.method == 'GET':
+                params = dict(request.args)
+            elif request.method in ['POST', 'PUT', 'DELETE']:
+                if request.is_json:
+                    params = request.get_json() or {}
+                else:
+                    params = dict(request.form)
+            
+            # 过滤敏感字段
+            sensitive_fields = ['password', 'passwd', 'pwd', 'token', 'secret', 'key']
+            filtered_params = {k: '***' if any(s in k.lower() for s in sensitive_fields) else v 
+                              for k, v in params.items()}
+            log.请求参数 = json.dumps(filtered_params, ensure_ascii=False)
+        else:
+            log.电脑IP = 'unknown'
+            log.MAC地址 = ''
+            log.用户代理 = ''
+            log.请求方法 = ''
+            log.请求URL = ''
+            log.请求参数 = ''
         
         # 操作信息
         log.操作类型 = operation_type
@@ -104,26 +131,6 @@ def log_operation(
         # 结果信息
         log.操作结果 = operation_result
         log.错误信息 = error_message
-        
-        # 请求信息
-        log.请求方法 = request.method
-        log.请求URL = request.url
-        
-        # 获取请求参数（安全处理，避免记录敏感信息）
-        params = {}
-        if request.method == 'GET':
-            params = dict(request.args)
-        elif request.method in ['POST', 'PUT', 'DELETE']:
-            if request.is_json:
-                params = request.get_json() or {}
-            else:
-                params = dict(request.form)
-        
-        # 过滤敏感字段
-        sensitive_fields = ['password', 'passwd', 'pwd', 'token', 'secret', 'key']
-        filtered_params = {k: '***' if any(s in k.lower() for s in sensitive_fields) else v 
-                          for k, v in params.items()}
-        log.请求参数 = json.dumps(filtered_params, ensure_ascii=False)
         
         # 响应信息
         log.响应时间 = response_time

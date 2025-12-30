@@ -1354,10 +1354,11 @@ def update_user_name(user_id):
         
         # 记录操作日志
         log_operation(
-            user_account=current_user.USERNAME,
-            operation_type='更新用户信息',
-            details=f'更新用户 [{user.USERNAME}] 的姓名为 [{real_name}]',
-            community_num=current_user.小区编号
+            operation_type='更新',
+            operation_module='用户管理',
+            operation_detail=f'更新用户 [{user.USERNAME}] 的姓名为 [{real_name}]',
+            target_id=str(user_id),
+            target_type='用户'
         )
         
         return jsonify({
@@ -1411,10 +1412,11 @@ def update_address(address_id):
         
         # 记录操作日志
         log_operation(
-            user_account=current_user.USERNAME,
-            operation_type='更新住户信息',
-            details=f'更新地址 {address.楼栋号}{address.房间号} 的住户信息',
-            community_num=current_user.小区编号
+            operation_type='更新',
+            operation_module='住户管理',
+            operation_detail=f'更新地址 {address.楼栋号}{address.房间号} 的住户信息',
+            target_id=str(address_id),
+            target_type='地址'
         )
         
         return jsonify({
@@ -1531,10 +1533,11 @@ def create_fee_price():
         
         # 记录操作日志
         log_operation(
-            user_account=current_user.USERNAME,
-            operation_type='创建收费标准',
-            details=f'创建小区 [{data["community"]}] 的收费标准',
-            community_num=current_user.小区编号
+            operation_type='新增',
+            operation_module='收费标准管理',
+            operation_detail=f'创建小区 [{data["community"]}] 的收费标准',
+            target_id=str(new_fee_price.id),
+            target_type='收费标准'
         )
         
         return jsonify({
@@ -1585,10 +1588,11 @@ def update_fee_price(id):
         
         # 记录操作日志
         log_operation(
-            user_account=current_user.USERNAME,
-            operation_type='更新收费标准',
-            details=f'更新小区 [{fee_price.community}] 的收费标准',
-            community_num=current_user.小区编号
+            operation_type='更新',
+            operation_module='收费标准管理',
+            operation_detail=f'更新小区 [{fee_price.community}] 的收费标准',
+            target_id=str(id),
+            target_type='收费标准'
         )
         
         return jsonify({
@@ -1626,10 +1630,11 @@ def delete_fee_price(id):
         
         # 记录操作日志
         log_operation(
-            user_account=current_user.USERNAME,
-            operation_type='删除收费标准',
-            details=f'删除小区 [{community_name}] 的收费标准',
-            community_num=current_user.小区编号
+            operation_type='删除',
+            operation_module='收费标准管理',
+            operation_detail=f'删除小区 [{community_name}] 的收费标准',
+            target_id=str(id),
+            target_type='收费标准'
         )
         
         return jsonify({
@@ -1685,10 +1690,9 @@ def export_fee_prices():
         
         # 记录操作日志
         log_operation(
-            user_account=current_user.USERNAME,
-            operation_type='导出收费标准',
-            details='导出了所有收费标准',
-            community_num=current_user.小区编号
+            operation_type='导出',
+            operation_module='收费标准管理',
+            operation_detail='导出了所有收费标准'
         )
         
         # 返回文件
@@ -1851,10 +1855,9 @@ def import_fee_prices():
         
         # 记录操作日志
         log_operation(
-            user_account=current_user.USERNAME,
-            operation_type='导入收费标准',
-            details=f'导入收费标准，成功{success_count}条，失败{error_count}条',
-            community_num=current_user.小区编号
+            operation_type='导入',
+            operation_module='收费标准管理',
+            operation_detail=f'导入收费标准，成功{success_count}条，失败{error_count}条'
         )
         
         result = {
@@ -2618,10 +2621,9 @@ def export_orders_detailed():
         
         # 记录操作日志
         log_operation(
-            user_account=current_user.USERNAME,
-            operation_type='导出详细订单',
-            details=f'导出了{len(data)}条详细订单数据',
-            community_num=current_user.小区编号
+            operation_type='导出',
+            operation_module='订单管理',
+            operation_detail=f'导出了{len(data)}条详细订单数据'
         )
         
         # 返回文件
