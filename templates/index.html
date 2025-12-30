@@ -3942,6 +3942,15 @@
         </div>
     </div>
 <script>
+// 等待Vue和Element Plus加载完成
+function initApp() {
+    // 检查Vue和Element Plus是否已加载
+    if (typeof Vue === 'undefined' || typeof ElementPlus === 'undefined') {
+        console.warn('等待Vue和Element Plus加载...');
+        setTimeout(initApp, 50);
+        return;
+    }
+    
 const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
 const { ElSelect, ElOption, ElButton, ElInput, ElInputNumber, ElMessage, ElMessageBox, ElDatePicker, ElLoading } = ElementPlus;
 
@@ -6446,6 +6455,10 @@ setTimeout(() => {
         setTimeout(() => loader.remove(), 300);
     }
 }, 0);
+}
+
+// 开始初始化
+initApp();
 </script>
 
 </body>
