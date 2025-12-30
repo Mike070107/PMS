@@ -2559,9 +2559,6 @@ def get_overview_stats():
             Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
         )
         
-        # 过滤红冲订单（不统计红冲记录）
-        query = query.filter(Order.红冲 == 0)
-        
         orders = query.all()
         
         # 计算统计数据
@@ -2586,8 +2583,7 @@ def get_overview_stats():
         
         prev_query = prev_query.filter(
             Order.录入时间 >= prev_start,
-            Order.录入时间 < prev_end + timedelta(days=1),
-            Order.红冲 == 0
+            Order.录入时间 < prev_end + timedelta(days=1)
         )
         
         prev_orders = prev_query.all()
@@ -2634,11 +2630,10 @@ def get_time_statistics():
         else:
             query = Order.query.filter_by(小区ID=current_user.小区编号)
         
-        # 过滤日期范围和红冲
+        # 过滤日期范围
         query = query.filter(
             Order.录入时间 >= datetime.strptime(start_date, '%Y-%m-%d'),
-            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1),
-            Order.红冲 == 0
+            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
         )
         
         orders = query.all()
@@ -2709,11 +2704,10 @@ def get_payment_statistics():
         else:
             query = Order.query.filter_by(小区ID=current_user.小区编号)
         
-        # 过滤日期范围和红冲
+        # 过滤日期范围
         query = query.filter(
             Order.录入时间 >= datetime.strptime(start_date, '%Y-%m-%d'),
-            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1),
-            Order.红冲 == 0
+            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
         )
         
         orders = query.all()
@@ -2769,11 +2763,10 @@ def get_fee_type_statistics():
         else:
             query = Order.query.filter_by(小区ID=current_user.小区编号)
         
-        # 过滤日期范围和红冲
+        # 过滤日期范围
         query = query.filter(
             Order.录入时间 >= datetime.strptime(start_date, '%Y-%m-%d'),
-            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1),
-            Order.红冲 == 0
+            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
         )
         
         orders = query.all()
