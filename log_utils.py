@@ -65,7 +65,7 @@ def log_operation(
     """
     try:
         # 延迟导入避免循环依赖
-        from flask import request, has_request_context
+        from flask import request, has_request_context, current_app
         
         # 获取当前用户信息
         if user is None:
@@ -76,8 +76,9 @@ def log_operation(
         else:
             current_user = user
         
-        # 在函数内部导入避免循环依赖
-        from app import db, OperationLog
+        # 通过current_app获取db和OperationLog（避免循环导入）
+        db = current_app.extensions['sqlalchemy']
+        from app import OperationLog
         
         # 构建日志对象
         log = OperationLog()
