@@ -1,0 +1,76 @@
+/* 简化的layui样式，仅包含日期选择器必需的样式 */
+.layui-laydate {
+    position: absolute;
+    z-index: 99999999;
+    background-color: #fff;
+    border-radius: 2px;
+    box-shadow: 0 2px 4px rgba(0,0,0,.12);
+    border: 1px solid #d2d2d2;
+    font-size: 14px;
+}
+
+.layui-laydate-header {
+    position: relative;
+    line-height: 30px;
+    padding: 0 10px;
+    border-bottom: 1px solid #e6e6e6;
+}
+
+.layui-laydate-content {
+    position: relative;
+    padding: 10px;
+}
+
+.layui-laydate-content table {
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+.layui-laydate-content td, .layui-laydate-content th {
+    width: 36px;
+    height: 30px;
+    line-height: 30px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 12px;
+    color: #666;
+}
+
+.layui-laydate-content td.laydate-day-hover {
+    background-color: #f2f2f2;
+}
+
+.layui-laydate-content td.laydate-this {
+    background-color: #009688;
+    color: #fff;
+}
+
+.layui-laydate-footer {
+    position: relative;
+    line-height: 30px;
+    padding: 0 10px;
+    border-top: 1px solid #e6e6e6;
+}
+
+.layui-laydate-footer span {
+    display: inline-block;
+    padding: 0 8px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.layui-laydate-footer span:hover {
+    color: #009688;
+}
+
+.layui-laydate-shortcut {
+    display: inline-block;
+    padding: 0 8px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #666;
+}
+
+.layui-laydate-shortcut:hover {
+    color: #009688;
+}

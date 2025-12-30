@@ -1,0 +1,57 @@
+/* 简化的Font Awesome替代样式，仅包含页面使用的图标 */
+.fa, .fas, .far, .fab {
+    display: inline-block;
+    font-style: normal;
+    font-variant: normal;
+    text-rendering: auto;
+    line-height: 1;
+}
+
+/* 图标映射 */
+.fa-home:before { content: "🏠"; }
+.fa-user:before { content: "👤"; }
+.fa-search:before { content: "🔍"; }
+.fa-plus:before { content: "➕"; }
+.fa-minus:before { content: "➖"; }
+.fa-trash:before { content: "🗑️"; }
+.fa-edit:before { content: "✏️"; }
+.fa-save:before { content: "💾"; }
+.fa-print:before { content: "🖨️"; }
+.fa-download:before { content: "⬇️"; }
+.fa-upload:before { content: "⬆️"; }
+.fa-check:before { content: "✅"; }
+.fa-times:before { content: "❌"; }
+.fa-arrow-left:before { content: "⬅️"; }
+.fa-arrow-right:before { content: "➡️"; }
+.fa-arrow-up:before { content: "⬆️"; }
+.fa-arrow-down:before { content: "⬇️"; }
+.fa-calendar:before { content: "📅"; }
+.fa-clock:before { content: "🕒"; }
+.fa-money-bill-wave:before { content: "💵"; }
+.fa-credit-card:before { content: "💳"; }
+.fa-alipay:before { content: "💰"; }
+.fa-wechat:before { content: "💬"; }
+.fa-info-circle:before { content: "ℹ️"; }
+.fa-exclamation-triangle:before { content: "⚠️"; }
+.fa-question-circle:before { content: "❓"; }
+.fa-cog:before { content: "⚙️"; }
+.fa-sign-out-alt:before { content: "🚪"; }
+.fa-building:before { content: "🏢"; }
+.fa-car:before { content: "🚗"; }
+.fa-bolt:before { content: "⚡"; }
+.fa-tint:before { content: "💧"; }
+.fa-wifi:before { content: "📶"; }
+.fa-file-alt:before { content: "📄"; }
+.fa-history:before { content: "📜"; }
+
+/* Element Plus 图标替代 */
+.el-icon-date:before { content: "📅"; }
+.el-icon-check:before { content: "✅"; }
+.el-icon-info:before { content: "ℹ️"; }
+.el-icon-plus:before { content: "➕"; }
+.el-icon-minus:before { content: "➖"; }
+.el-icon-close:before { content: "❌"; }
+.el-icon-search:before { content: "🔍"; }
+.el-icon-edit:before { content: "✏️"; }
+.el-icon-delete:before { content: "🗑️"; }
+.el-icon-print:before { content: "🖨️"; }
