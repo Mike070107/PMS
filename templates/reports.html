@@ -602,14 +602,16 @@
                 border: 2px solid #ddd !important;
                 border-radius: 8px !important;
                 page-break-inside: avoid;
-                margin-bottom: 15px !important;
+                margin-bottom: 20px !important;  /* 增加卡片间距 */
                 padding: 20px 15px !important;  /* 增加上下内边距 */
                 background: white !important;
                 overflow: visible !important;  /* 改为visible */
+                min-height: 380px !important;  /* 设置最小高度，确保内容不溢出 */
             }
 
             .chart-card.full-width {
                 grid-column: auto !important;
+                min-height: 420px !important;  /* 全宽图表需要更高 */
             }
 
             .chart-title {
@@ -630,7 +632,7 @@
             }
 
             .chart-container {
-                height: 300px !important;
+                height: 320px !important;  /* 增加高度从300到32 */
                 width: 100% !important;
                 max-width: 100% !important;
                 overflow: visible !important;  /* 改为visible以便观察 */
@@ -911,6 +913,8 @@
                     const startDate = document.getElementById('startDate').value;
                     const endDate = document.getElementById('endDate').value;
 
+                    console.log('查询报表数据 - 日期范围:', { startDate, endDate });
+
                     if (!startDate || !endDate) {
                         ElMessage.warning('请选择日期范围');
                         return;
@@ -920,6 +924,12 @@
                     
                     try {
                         const token = getToken();
+                        
+                        console.log('发送API请求参数:', {
+                            start_date: startDate,
+                            end_date: endDate,
+                            dimension: dimension.value
+                        });
                         
                         // 并行请求所有数据
                         const [timeStats, paymentStats, feeTypeStats, overviewStats] = await Promise.all([
@@ -1031,8 +1041,8 @@
                         grid: {
                             left: '5%',
                             right: '6%',
-                            bottom: '10%',
-                            top: '18%',
+                            bottom: '12%',  /* 增加底部边距 */
+                            top: '20%',     /* 增加顶部边距 */
                             containLabel: true
                         },
                         xAxis: {
@@ -1344,8 +1354,8 @@
                         grid: {
                             left: '5%',
                             right: '6%',
-                            bottom: '5%',
-                            top: '18%',
+                            bottom: '8%',   /* 增加底部边距 */
+                            top: '20%',     /* 增加顶部边距 */
                             containLabel: true
                         },
                         xAxis: {
