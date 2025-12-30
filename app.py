@@ -411,6 +411,11 @@ def operation_logs_page():
     """操作日志查询页面"""
     return render_template('operation_logs.html')
 
+@app.route('/favicon.ico')
+def favicon():
+    """网站图标"""
+    return send_from_directory(app.static_folder, 'favicon.ico', mimetype='image/svg+xml')
+
 @app.route('/test')
 def test_page():
     """系统测试页面"""
