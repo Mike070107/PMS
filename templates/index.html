@@ -3943,10 +3943,14 @@
     </div>
 <script>
 // 等待Vue和Element Plus加载完成
+let vueLoadWarned = false;
 function initApp() {
     // 检查Vue和Element Plus是否已加载
     if (typeof Vue === 'undefined' || typeof ElementPlus === 'undefined') {
-        console.warn('等待Vue和Element Plus加载...');
+        if (!vueLoadWarned) {
+            console.warn('等待Vue和Element Plus加载...');
+            vueLoadWarned = true;
+        }
         setTimeout(initApp, 50);
         return;
     }
