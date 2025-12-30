@@ -577,8 +577,8 @@ def get_fee_prices():
                 "hotWater": float(fee_price.hotWater),
                 "network": float(fee_price.network),
                 "parking": float(fee_price.parking),
-                "rent": float(fee_price.rent_fee),
-                "management": float(fee_price.manage_fee)
+                "rent_fee": float(fee_price.rent_fee),  # 修正为rent_fee
+                "manage_fee": float(fee_price.manage_fee)  # 修正为manage_fee
             }
         })
         
@@ -634,6 +634,9 @@ def update_fee_prices():
             fee_price.rent_fee = float(data['rent_fee'])
         if 'manage_fee' in data:
             fee_price.manage_fee = float(data['manage_fee'])
+        
+        # 手动更新updated_at字段
+        fee_price.updated_at = datetime.now()
         
         # 提交数据库修改
         db.session.commit()
