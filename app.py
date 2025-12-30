@@ -1214,68 +1214,90 @@ def delete_order(order_id):
 
 
         
-# 7. 操作日志查询（仅管理员）
+# 7. 操作日志查询
 @app.route('/api/operation-logs', methods=['GET'])
 @token_required
 def get_operation_logs():
-    """查询操作日志（管理员权限）"""
+    """查询操作日志"""
     current_user = g.current_user
-    
-    # 仅管理员可查看操作日志
-    if current_user.Role != '系统管理员':
-        return jsonify({'status': 'error', 'message': '需要管理员权限'}), 403
     
     try:
         # 获取筛选参数
         page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 50))
+        page_size = int(request.args.get('page_size', 20))
+        per_page = int(request.args.get('per_page', page_size))  # 兼容旧参数
+        
+        start_date = request.args.get('start_date') or request.args.get('startDate')
+        end_date = request.args.get('end_date') or request.args.get('endDate')
         username = request.args.get('username', '').strip()
-        operation_type = request.args.get('operationType', '').strip()
-        start_date = request.args.get('startDate')
-        end_date = request.args.get('endDate')
+        operation_type = request.args.get('operation_type') or request.args.get('operationType', '')
+        operation_type = operation_type.strip()
+        operation_module = request.args.get('operation_module', '').strip()
+        community = request.args.get('community', '').strip()
+        operation_result = request.args.get('operation_result', '').strip()
         
         # 构建查询
         query = OperationLog.query
         
+        # 权限过滤：管理员看所有，操作员只看自己小区
+        if current_user.Role != '系统管理员':
+            query = query.filter(OperationLog.小区编号 == current_user.小区编号)
+        
+        # 地区过滤
+        if community:
+            query = query.filter(OperationLog.所属小区 == community)
+        
+        # 用户过滤
         if username:
             query = query.filter(OperationLog.用户账号.like(f'%{username}%'))
+        
+        # 操作类型过滤
         if operation_type:
-            query = query.filter(OperationLog.操作类型.like(f'%{operation_type}%'))
+            query = query.filter(OperationLog.操作类型 == operation_type)
+        
+        # 操作模块过滤
+        if operation_module:
+            query = query.filter(OperationLog.操作模块 == operation_module)
+        
+        # 操作结果过滤
+        if operation_result:
+            query = query.filter(OperationLog.操作结果 == operation_result)
+        
+        # 日期过滤
         if start_date:
-            query = query.filter(OperationLog.操作时间 >= start_date)
+            from datetime import datetime
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            query = query.filter(OperationLog.操作时间 >= start_dt)
         if end_date:
-            query = query.filter(OperationLog.操作时间 <= end_date)
+            from datetime import datetime, timedelta
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+            query = query.filter(OperationLog.操作时间 < end_dt)
         
-        # 执行分页查询
-        pagination = query.order_by(OperationLog.操作时间.desc()).paginate(
-            page=page,
-            per_page=per_page,
-            error_out=False
-        )
+        # 按时间降序排列
+        query = query.order_by(OperationLog.操作时间.desc())
         
-        logs = pagination.items
-        result = [
-            {
-                'id': log.ID,
-                'username': log.用户账号,
-                'operationTime': log.操作时间.strftime('%Y-%m-%d %H:%M:%S'),
-                'ip': log.电脑IP or '',
-                'computerName': log.电脑名称 or '',
-                'operationType': log.操作类型,
-                'details': log.操作详情 or '',
-                'communityNum': log.小区编号 or 0
-            }
-            for log in logs
-        ]
+        # 获取总数
+        total = query.count()
+        
+        # 分页
+        offset = (page - 1) * page_size
+        logs = query.offset(offset).limit(page_size).all()
+        
+        # 转换为字典
+        result = [log.to_dict() for log in logs]
         
         return jsonify({
             'status': 'success',
             'data': result,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            # 兼容旧版本返回格式
             'pagination': {
-                'page': pagination.page,
-                'per_page': pagination.per_page,
-                'total': pagination.total,
-                'pages': pagination.pages
+                'page': page,
+                'per_page': page_size,
+                'total': total,
+                'pages': (total + page_size - 1) // page_size
             }
         })
     
@@ -2904,225 +2926,6 @@ def get_fee_type_statistics():
     except Exception as e:
         app.logger.error(f"获取收费项目统计失败: {str(e)}\n{traceback.format_exc()}")
         return jsonify({'status': 'error', 'message': '获取数据失败'}), 500
-
-
-# ========== 操作日志 API ==========
-
-@app.route('/api/operation-logs', methods=['GET'])
-@token_required
-def get_operation_logs():
-    """获取操作日志列表"""
-    try:
-        current_user = g.current_user
-        
-        # 获取筛选参数
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        community = request.args.get('community', '').strip()
-        operation_type = request.args.get('operation_type', '').strip()
-        operation_module = request.args.get('operation_module', '').strip()
-        username = request.args.get('username', '').strip()
-        operation_result = request.args.get('operation_result', '').strip()
-        
-        # 分页参数
-        page = int(request.args.get('page', 1))
-        page_size = int(request.args.get('page_size', 20))
-        
-        if not start_date or not end_date:
-            return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
-        
-        # 构建查询
-        query = OperationLog.query
-        
-        # 权限过滤：管理员看所有，操作员只看自己小区
-        if current_user.Role != '系统管理员':
-            query = query.filter(OperationLog.小区编号 == current_user.小区编号)
-        
-        # 地区过滤
-        if community:
-            query = query.filter(OperationLog.所属小区 == community)
-        
-        # 日期范围
-        from datetime import datetime, timedelta
-        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
-        query = query.filter(
-            OperationLog.操作时间 >= start_dt,
-            OperationLog.操作时间 < end_dt
-        )
-        
-        # 操作类型
-        if operation_type:
-            query = query.filter(OperationLog.操作类型 == operation_type)
-        
-        # 操作模块
-        if operation_module:
-            query = query.filter(OperationLog.操作模块 == operation_module)
-        
-        # 用户账号
-        if username:
-            query = query.filter(OperationLog.用户账号.like(f'%{username}%'))
-        
-        # 操作结果
-        if operation_result:
-            query = query.filter(OperationLog.操作结果 == operation_result)
-        
-        # 按时间降序排列
-        query = query.order_by(OperationLog.操作时间.desc())
-        
-        # 获取总数
-        total = query.count()
-        
-        # 分页
-        offset = (page - 1) * page_size
-        logs = query.offset(offset).limit(page_size).all()
-        
-        # 转换为字典
-        result = [log.to_dict() for log in logs]
-        
-        return jsonify({
-            'status': 'success',
-            'data': result,
-            'total': total,
-            'page': page,
-            'page_size': page_size
-        })
-    
-    except Exception as e:
-        app.logger.error(f"获取操作日志失败: {str(e)}\n{traceback.format_exc()}")
-        return jsonify({'status': 'error', 'message': '获取日志失败'}), 500
-
-
-@app.route('/api/operation-logs/export', methods=['GET'])
-@token_required
-def export_operation_logs():
-    """导出操作日志到Excel"""
-    try:
-        current_user = g.current_user
-        
-        # 获取筛选参数（与查询接口相同）
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        community = request.args.get('community', '').strip()
-        operation_type = request.args.get('operation_type', '').strip()
-        operation_module = request.args.get('operation_module', '').strip()
-        username = request.args.get('username', '').strip()
-        operation_result = request.args.get('operation_result', '').strip()
-        
-        if not start_date or not end_date:
-            return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
-        
-        # 构建查询（与上面相同的逻辑）
-        query = OperationLog.query
-        
-        if current_user.Role != '系统管理员':
-            query = query.filter(OperationLog.小区编号 == current_user.小区编号)
-        
-        if community:
-            query = query.filter(OperationLog.所属小区 == community)
-        
-        from datetime import datetime, timedelta
-        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
-        query = query.filter(
-            OperationLog.操作时间 >= start_dt,
-            OperationLog.操作时间 < end_dt
-        )
-        
-        if operation_type:
-            query = query.filter(OperationLog.操作类型 == operation_type)
-        if operation_module:
-            query = query.filter(OperationLog.操作模块 == operation_module)
-        if username:
-            query = query.filter(OperationLog.用户账号.like(f'%{username}%'))
-        if operation_result:
-            query = query.filter(OperationLog.操作结果 == operation_result)
-        
-        query = query.order_by(OperationLog.操作时间.desc())
-        
-        # 获取所有日志（注意：如果数据量太大可能需要限制）
-        logs = query.limit(10000).all()  # 限制最多1万条
-        
-        if not logs:
-            return jsonify({'status': 'error', 'message': '没有找到符合条件的日志'}), 404
-        
-        # 使用openpyxl创建Excel
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment, PatternFill
-        import io
-        
-        wb = Workbook()
-        ws = wb.active
-        ws.title = '操作日志'
-        
-        # 设置表头
-        headers = [
-            'ID', '操作时间', '用户账号', '用户姓名', '用户角色',
-            '所属小区', 'IP地址', 'MAC地址', '操作类型', '操作模块',
-            '目标类型', '目标ID', '操作结果', '错误信息',
-            '请求方法', '响应时间(ms)'
-        ]
-        
-        # 写入表头
-        for col_num, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col_num, value=header)
-            cell.font = Font(bold=True, size=11)
-            cell.fill = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type="solid")
-            cell.alignment = Alignment(horizontal='center', vertical='center')
-        
-        # 写入数据
-        for row_num, log in enumerate(logs, 2):
-            ws.cell(row=row_num, column=1, value=log.ID)
-            ws.cell(row=row_num, column=2, value=log.操作时间.strftime('%Y-%m-%d %H:%M:%S') if log.操作时间 else '')
-            ws.cell(row=row_num, column=3, value=log.用户账号)
-            ws.cell(row=row_num, column=4, value=log.用户姓名)
-            ws.cell(row=row_num, column=5, value=log.用户角色)
-            ws.cell(row=row_num, column=6, value=log.所属小区 or '')
-            ws.cell(row=row_num, column=7, value=log.电脑IP or '')
-            ws.cell(row=row_num, column=8, value=log.MAC地址 or '')
-            ws.cell(row=row_num, column=9, value=log.操作类型)
-            ws.cell(row=row_num, column=10, value=log.操作模块)
-            ws.cell(row=row_num, column=11, value=log.目标类型 or '')
-            ws.cell(row=row_num, column=12, value=log.目标ID or '')
-            ws.cell(row=row_num, column=13, value=log.操作结果)
-            ws.cell(row=row_num, column=14, value=log.错误信息 or '')
-            ws.cell(row=row_num, column=15, value=log.请求方法 or '')
-            ws.cell(row=row_num, column=16, value=log.响应时间 or 0)
-        
-        # 调整列宽
-        ws.column_dimensions['A'].width = 8
-        ws.column_dimensions['B'].width = 20
-        ws.column_dimensions['C'].width = 12
-        ws.column_dimensions['D'].width = 12
-        ws.column_dimensions['E'].width = 12
-        ws.column_dimensions['F'].width = 20
-        ws.column_dimensions['G'].width = 15
-        ws.column_dimensions['H'].width = 18
-        ws.column_dimensions['I'].width = 10
-        ws.column_dimensions['J'].width = 15
-        ws.column_dimensions['K'].width = 12
-        ws.column_dimensions['L'].width = 15
-        ws.column_dimensions['M'].width = 10
-        ws.column_dimensions['N'].width = 30
-        ws.column_dimensions['O'].width = 10
-        ws.column_dimensions['P'].width = 12
-        
-        # 生成Excel文件
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        
-        # 返回文件
-        from flask import make_response
-        response = make_response(output.read())
-        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        response.headers['Content-Disposition'] = f'attachment; filename="operation_logs_{start_date}_{end_date}.xlsx"'
-        
-        return response
-    
-    except Exception as e:
-        app.logger.error(f"导出操作日志失败: {str(e)}\n{traceback.format_exc()}")
-        return jsonify({'status': 'error', 'message': '导出失败'}), 500
 
 
 # ========== 错误处理 ==========
