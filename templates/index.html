@@ -3772,6 +3772,7 @@
                                         <th>电话</th>
                                         <th>收费项目</th>
                                         <th>收费金额</th>
+                                        <th>支付方式</th>
                                         <th>备注</th>
                                         <th>操作</th>
                                     </tr>
@@ -3789,6 +3790,7 @@
                                             </div>
                                         </td>
                                         <td style="color: #f56c6c; font-weight: bold;">[[ formatPrice(order.totalAmount) ]]</td>
+                                        <td>[[ order.paymentMethod || '-' ]]</td>
                                         <td>[[ order.remark ]]</td>
                                         <td>
                                             <div class="action-buttons-cell">
