@@ -9,6 +9,12 @@ class Config:
     DB_NAME = 'wjwy'
     SQLALCHEMY_DATABASE_URI = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    
+    # === 数据库连接池优化 ===
+    SQLALCHEMY_POOL_SIZE = 10          # 连接池大小
+    SQLALCHEMY_POOL_TIMEOUT = 20       # 连接超时时间(秒)
+    SQLALCHEMY_POOL_RECYCLE = 1800     # 连接回收时间(30分钟)
+    SQLALCHEMY_MAX_OVERFLOW = 5        # 超出连接池大小的额外连接数
 
     # === 应用秘钥 ===
     SECRET_KEY = 'your-super-secret-jwt-key-change-this-in-production'

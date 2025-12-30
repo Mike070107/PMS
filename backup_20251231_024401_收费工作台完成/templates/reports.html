@@ -1,0 +1,1694 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据报表 - 物业收费管理系统</title>
+    
+    <script src="/static/lib/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus@2.3.14/dist/index.full.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.3.14/dist/index.css">
+    <script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <link rel="stylesheet" href="/static/lib/flatpickr/airbnb.css">
+    <script src="/static/lib/flatpickr/zh.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .page-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.4);
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+            animation: fadeInDown 0.6s ease-out;
+        }
+
+        .page-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 300px;
+            height: 300px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .page-title {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .page-subtitle {
+            font-size: 15px;
+            opacity: 0.95;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* 筛选区域 */
+        .filter-section {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            animation: fadeInUp 0.6s ease-out 0.1s both;
+            border: 1px solid rgba(102, 126, 234, 0.1);
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .filter-label {
+            font-weight: 500;
+            color: #495057;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .date-input-wrapper {
+            position: relative;
+            width: 250px;
+        }
+
+        .datetime-input {
+            width: 250px;
+            height: 40px;
+            padding: 0 35px 0 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            background: #fafafa;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .datetime-input:hover {
+            border-color: #667eea;
+            background: white;
+            transform: translateY(-1px);
+        }
+
+        .datetime-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            outline: none;
+            background: white;
+        }
+
+        /* 数据概览卡片 */
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .stat-card:nth-child(1) { animation: fadeInUp 0.6s ease-out 0.2s both; }
+        .stat-card:nth-child(2) { animation: fadeInUp 0.6s ease-out 0.3s both; }
+        .stat-card:nth-child(3) { animation: fadeInUp 0.6s ease-out 0.4s both; }
+        .stat-card:nth-child(4) { animation: fadeInUp 0.6s ease-out 0.5s both; }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            border-radius: 16px 16px 0 0;
+        }
+
+        .stat-card::after {
+            content: '';
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            opacity: 0.05;
+            transition: all 0.4s ease;
+        }
+
+        .stat-card:hover::after {
+            transform: scale(1.5);
+            opacity: 0.1;
+        }
+
+        .stat-card.primary::before {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .stat-card.primary::after {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .stat-card.success::before {
+            background: linear-gradient(135deg, #67C23A 0%, #85CE61 100%);
+        }
+
+        .stat-card.success::after {
+            background: linear-gradient(135deg, #67C23A 0%, #85CE61 100%);
+        }
+
+        .stat-card.warning::before {
+            background: linear-gradient(135deg, #E6A23C 0%, #EEBE77 100%);
+        }
+
+        .stat-card.warning::after {
+            background: linear-gradient(135deg, #E6A23C 0%, #EEBE77 100%);
+        }
+
+        .stat-card.danger::before {
+            background: linear-gradient(135deg, #F56C6C 0%, #F78989 100%);
+        }
+
+        .stat-card.danger::after {
+            background: linear-gradient(135deg, #F56C6C 0%, #F78989 100%);
+        }
+
+        .stat-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            display: inline-block;
+            animation: bounce 2s ease-in-out infinite;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #6c757d;
+            margin-bottom: 10px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stat-change {
+            font-size: 12px;
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stat-change.up {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            color: #2e7d32;
+            border: 1px solid #a5d6a7;
+        }
+
+        .stat-change.down {
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+            color: #c62828;
+            border: 1px solid #ef9a9a;
+        }
+
+        /* 图表容器 */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .chart-card:hover {
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+            transform: translateY(-4px);
+        }
+
+        .chart-card:nth-child(1) { animation: fadeInUp 0.6s ease-out 0.6s both; }
+        .chart-card:nth-child(2) { animation: fadeInUp 0.6s ease-out 0.7s both; }
+        .chart-card:nth-child(3) { animation: fadeInUp 0.6s ease-out 0.8s both; }
+
+        .chart-card.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .chart-title {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid transparent;
+            border-image: linear-gradient(90deg, #667eea 0%, #764ba2 50%, transparent 100%);
+            border-image-slice: 1;
+            position: relative;
+        }
+
+        .chart-title::before {
+            content: '📊';
+            margin-right: 8px;
+            font-size: 20px;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 400px;
+        }
+
+        /* 按钮样式 */
+        .el-button {
+            border-radius: 8px;
+            font-weight: 600;
+            height: 42px;
+            padding: 0 24px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .el-button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .el-button:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .el-button--primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .el-button--primary:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .el-button:not(.el-button--primary) {
+            background: white;
+            border: 2px solid #e5e7eb;
+        }
+
+        .el-button:not(.el-button--primary):hover {
+            border-color: #667eea;
+            color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 单选按钮组 */
+        .dimension-tabs {
+            display: flex;
+            gap: 12px;
+            margin-left: 20px;
+            background: #f5f7fa;
+            padding: 6px;
+            border-radius: 10px;
+        }
+
+        .dimension-tab {
+            padding: 10px 20px;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 14px;
+            font-weight: 500;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .dimension-tab::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s;
+        }
+
+        .dimension-tab:hover::before {
+            left: 100%;
+        }
+
+        .dimension-tab:hover {
+            border-color: #667eea;
+            color: #667eea;
+            background: white;
+            transform: translateY(-2px);
+        }
+
+        .dimension-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transform: translateY(-2px);
+        }
+
+        /* 加载动画 */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 400px;
+            gap: 20px;
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 5px solid rgba(102, 126, 234, 0.1);
+            border-top: 5px solid #667eea;
+            border-right: 5px solid #764ba2;
+            border-radius: 50%;
+            animation: spin 1s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #667eea;
+            font-size: 16px;
+            font-weight: 600;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        /* 打印样式 */
+        @media print {
+            body {
+                background: white !important;
+                padding: 10px;
+            }
+
+            /* 隐藏筛选区域和按钮 */
+            .filter-section,
+            .el-button,
+            .loading {
+                display: none !important;
+            }
+
+            /* 页面标题优化 */
+            /* 页面头部 - 自适应高度 */
+            .page-header {
+                background: none !important;
+                color: #2c3e50 !important;
+                box-shadow: none !important;
+                border-bottom: 3px solid #2c3e50;
+                padding: 30px 20px !important;  /* 增加内边距 */
+                margin-bottom: 20px !important;
+                height: auto !important;  /* 自适应高度 */
+                min-height: auto !important;
+            }
+
+            .page-header::before {
+                display: none !important;
+            }
+
+            .page-title {
+                font-size: 28px !important;  /* 增大标题 */
+                text-shadow: none !important;
+                margin-bottom: 10px !important;
+            }
+
+            .page-subtitle {
+                font-size: 14px !important;  /* 增大副标题 */
+            }
+
+            /* 数据概览卡片打印优化 */
+            .stats-cards {
+                display: grid !important;
+                grid-template-columns: repeat(4, 1fr) !important;
+                gap: 10px !important;
+                margin-bottom: 15px !important;
+            }
+
+            .stat-card {
+                box-shadow: none !important;
+                border: 2px solid #ddd !important;
+                border-radius: 8px !important;
+                page-break-inside: avoid;
+                padding: 15px !important;
+                background: white !important;
+            }
+
+            .stat-card::before {
+                height: 3px !important;
+            }
+
+            .stat-card::after {
+                display: none !important;
+            }
+
+            /* 修复数据值显示问题 */
+            .stat-value {
+                color: #2c3e50 !important;
+                -webkit-text-fill-color: #2c3e50 !important;
+                background: none !important;
+                -webkit-background-clip: initial !important;
+                background-clip: initial !important;
+                font-size: 28px !important;
+                font-weight: 700 !important;
+            }
+
+            .stat-icon {
+                font-size: 36px !important;
+                margin-bottom: 8px !important;
+                animation: none !important;
+                filter: none !important;
+            }
+
+            .stat-label {
+                font-size: 12px !important;
+                color: #666 !important;
+                margin-bottom: 8px !important;
+            }
+
+            .stat-change {
+                font-size: 11px !important;
+                padding: 2px 6px !important;
+            }
+
+            /* 图表区域优化 - 自适应高度 */
+            .charts-grid {
+                display: block !important;
+                margin-bottom: 0 !important;
+            }
+
+            .chart-card {
+                box-shadow: none !important;
+                border: 2px solid #ddd !important;
+                border-radius: 8px !important;
+                page-break-inside: avoid;
+                margin-bottom: 25px !important;  /* 增加卡片间距 */
+                padding: 25px 20px !important;  /* 增加内边距 */
+                background: white !important;
+                overflow: visible !important;
+                height: auto !important;  /* 自适应高度 */
+                min-height: 450px !important;  /* 增加最小高度 */
+            }
+
+            .chart-card.full-width {
+                grid-column: auto !important;
+                min-height: 500px !important;  /* 全宽图表需要更高 */
+            }
+
+            .chart-title {
+                font-size: 16px !important;
+                color: #2c3e50 !important;
+                -webkit-text-fill-color: #2c3e50 !important;
+                background: none !important;
+                -webkit-background-clip: initial !important;
+                background-clip: initial !important;
+                margin-bottom: 15px !important;
+                padding-bottom: 10px !important;
+                border-bottom: 2px solid #e5e7eb !important;
+                border-image: none !important;
+            }
+
+            .chart-title::before {
+                font-size: 16px !important;
+            }
+
+            .chart-container {
+                height: 360px !important;  /* 增加高度 */
+                width: 100% !important;
+                max-width: 100% !important;
+                overflow: visible !important;
+                position: relative !important;
+            }
+
+            /* 确保ECharts canvas不溢出 */
+            .chart-container canvas {
+                max-width: 100% !important;
+                max-height: 100% !important;
+                width: auto !important;
+                height: auto !important;
+            }
+
+            /* 打印时调整ECharts图表内边距，防止内容被裁切 */
+            .chart-container > div {
+                padding: 5px !important;
+            }
+
+            /* 打印时缩小图表字体，让内容更紧凑 */
+            .chart-container text {
+                font-size: 10px !important;
+            }
+
+            /* 打印时优化图例样式 */
+            .chart-container .echarts-legend-item {
+                font-size: 11px !important;
+            }
+
+            /* 确保空数据提示不打印 */
+            .loading,
+            div[v-show="!hasData && !loading"] {
+                display: none !important;
+            }
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1200px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .stats-cards {
+                grid-template-columns: 1fr;
+            }
+
+            .filter-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-item {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+{% raw %}
+    <div id="app">
+        <div class="page-header">
+            <h1 class="page-title">📊 收费数据报表</h1>
+            <p class="page-subtitle">可视化展示收费统计数据，支持多维度分析</p>
+        </div>
+
+        <!-- 筛选区域 -->
+        <div class="filter-section">
+            <div class="filter-row">
+                <!-- 地区选择 -->
+                <div class="filter-item">
+                    <span class="filter-label">选择地区：</span>
+                    <el-select 
+                        v-model="selectedCommunity" 
+                        placeholder="请选择"
+                        :disabled="isCommunityDisabled"
+                        :clearable="!isCommunityDisabled"
+                        style="width: 250px;">
+                        <el-option
+                            v-for="community in communities"
+                            :key="community"
+                            :label="community"
+                            :value="community">
+                        </el-option>
+                    </el-select>
+                </div>
+                
+                <div class="filter-item">
+                    <span class="filter-label">日期范围：</span>
+                    <div class="date-input-wrapper">
+                        <input 
+                            type="text" 
+                            id="startDate" 
+                            class="datetime-input"
+                            placeholder="开始日期"
+                            readonly>
+                    </div>
+                    <span style="margin: 0 5px;">至</span>
+                    <div class="date-input-wrapper">
+                        <input 
+                            type="text" 
+                            id="endDate" 
+                            class="datetime-input"
+                            placeholder="结束日期"
+                            readonly>
+                    </div>
+                </div>
+
+                <div class="filter-item">
+                    <span class="filter-label">统计维度：</span>
+                    <div class="dimension-tabs">
+                        <div 
+                            class="dimension-tab" 
+                            :class="{active: dimension === 'day'}"
+                            @click="dimension = 'day'">
+                            按天
+                        </div>
+                        <div 
+                            class="dimension-tab" 
+                            :class="{active: dimension === 'week'}"
+                            @click="dimension = 'week'">
+                            按周
+                        </div>
+                        <div 
+                            class="dimension-tab" 
+                            :class="{active: dimension === 'month'}"
+                            @click="dimension = 'month'">
+                            按月
+                        </div>
+                    </div>
+                </div>
+
+                <el-button 
+                    type="primary" 
+                    @click="loadReportData"
+                    :loading="loading">
+                    查询报表
+                </el-button>
+
+                <el-button 
+                    @click="printReport"
+                    :disabled="!hasData">
+                    打印报表
+                </el-button>
+            </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div v-if="loading" class="loading">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">正在加载报表数据...</div>
+        </div>
+
+        <!-- 数据展示 -->
+        <div v-show="hasData && !loading">
+            <!-- 数据概览卡片 -->
+            <div class="stats-cards">
+                <div class="stat-card primary">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-label">总笔数</div>
+                    <div class="stat-value">[[ statsData.totalCount ]]</div>
+                    <span class="stat-change up" v-if="statsData.countChange > 0">↑ [[ statsData.countChange ]]%</span>
+                    <span class="stat-change down" v-else-if="statsData.countChange < 0">↓ [[ Math.abs(statsData.countChange) ]]%</span>
+                </div>
+
+                <div class="stat-card success">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-label">总金额</div>
+                    <div class="stat-value">¥[[ formatNumber(statsData.totalAmount) ]]</div>
+                    <span class="stat-change up" v-if="statsData.amountChange > 0">↑ [[ statsData.amountChange ]]%</span>
+                    <span class="stat-change down" v-else-if="statsData.amountChange < 0">↓ [[ Math.abs(statsData.amountChange) ]]%</span>
+                </div>
+
+                <div class="stat-card warning">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-label">平均金额</div>
+                    <div class="stat-value">¥[[ formatNumber(statsData.avgAmount) ]]</div>
+                </div>
+
+                <div class="stat-card danger">
+                    <div class="stat-icon">🏆</div>
+                    <div class="stat-label">最高单笔</div>
+                    <div class="stat-value">¥[[ formatNumber(statsData.maxAmount) ]]</div>
+                </div>
+            </div>
+
+            <!-- 图表区域 -->
+            <div class="charts-grid">
+                <!-- 时间趋势图 -->
+                <div class="chart-card full-width">
+                    <h3 class="chart-title">收费趋势分析</h3>
+                    <div id="trendChart" class="chart-container"></div>
+                </div>
+
+                <!-- 收款方式分布 -->
+                <div class="chart-card">
+                    <h3 class="chart-title">收款方式分布</h3>
+                    <div id="paymentChart" class="chart-container"></div>
+                </div>
+
+                <!-- 收费项目统计 -->
+                <div class="chart-card">
+                    <h3 class="chart-title">收费项目统计</h3>
+                    <div id="feeTypeChart" class="chart-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 空数据提示 -->
+        <div v-show="!hasData && !loading" style="text-align: center; padding: 60px; background: white; border-radius: 12px;">
+            <div style="font-size: 48px; margin-bottom: 20px;">📭</div>
+            <div style="font-size: 16px; color: #6c757d;">请选择日期范围后点击"查询报表"按钮</div>
+        </div>
+    </div>
+{% endraw %}
+
+    <script>
+        const { createApp, ref, computed, onMounted, nextTick, watch } = Vue;
+        const { ElButton, ElMessage } = ElementPlus;
+
+        const app = createApp({
+            compilerOptions: {
+                delimiters: ['[[', ']]']
+            },
+            setup() {
+                const loading = ref(false);
+                const dimension = ref('day');
+                const hasData = ref(false);
+                
+                // 地区选择相关
+                const communities = ref([]);  // 小区列表
+                const selectedCommunity = ref('');  // 选中的小区
+                const userInfo = ref({  // 用户信息
+                    real_name: '',
+                    role: '',
+                    community: ''
+                });
+                
+                // 小区选择是否禁用：小区操作员不能选择其他小区
+                const isCommunityDisabled = computed(() => {
+                    return userInfo.value.role === '小区操作员';
+                });
+                
+                // 统计数据
+                const statsData = ref({
+                    totalCount: 0,
+                    totalAmount: 0,
+                    avgAmount: 0,
+                    maxAmount: 0,
+                    countChange: 0,
+                    amountChange: 0
+                });
+
+                // 图表数据
+                const trendData = ref({ labels: [], counts: [], amounts: [] });
+                const paymentData = ref([]);
+                const feeTypeData = ref([]);
+
+                // 日期选择器
+                let startDatePicker = null;
+                let endDatePicker = null;
+
+                // 获取Token
+                const getToken = () => {
+                    return sessionStorage.getItem('token');
+                };
+
+                // 获取用户信息
+                const loadUserInfo = () => {
+                    const userData = sessionStorage.getItem('user');
+                    if (userData) {
+                        const user = JSON.parse(userData);
+                        userInfo.value = {
+                            real_name: user.real_name || user.username,
+                            role: user.role,
+                            community: user.community || ''
+                        };
+                        
+                        // 如果是小区操作员，默认设置小区且不可更改
+                        if (user.role === '小区操作员' && user.community) {
+                            selectedCommunity.value = user.community;
+                        }
+                    }
+                };
+
+                // 加载小区列表
+                const loadCommunities = async () => {
+                    try {
+                        const token = getToken();
+                        const response = await axios.get('/api/communities', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        
+                        if (response.data.status === 'success') {
+                            communities.value = response.data.data;
+                        } else {
+                            ElMessage.error('加载小区列表失败');
+                        }
+                    } catch (error) {
+                        console.error('加载小区列表失败:', error);
+                    }
+                };
+
+                // 获取适用于打印的grid配置
+                const getPrintSafeGrid = () => {
+                    // 为打印留出更多边距空间
+                    return {
+                        left: '8%',
+                        right: '8%',
+                        bottom: '12%',
+                        top: '18%',
+                        containLabel: true
+                    };
+                };
+
+                // 初始化日期选择器
+                const initDatePickers = () => {
+                    nextTick(() => {
+                        startDatePicker = flatpickr("#startDate", {
+                            locale: "zh",
+                            dateFormat: "Y-m-d",
+                            defaultDate: new Date(new Date().setDate(new Date().getDate() - 30)),
+                            onChange: function(selectedDates, dateStr) {
+                                if (endDatePicker && selectedDates.length > 0) {
+                                    endDatePicker.set('minDate', selectedDates[0]);
+                                }
+                            }
+                        });
+
+                        endDatePicker = flatpickr("#endDate", {
+                            locale: "zh",
+                            dateFormat: "Y-m-d",
+                            defaultDate: new Date(),
+                            onChange: function(selectedDates, dateStr) {
+                                if (startDatePicker && selectedDates.length > 0) {
+                                    startDatePicker.set('maxDate', selectedDates[0]);
+                                }
+                            }
+                        });
+                    });
+                };
+
+                // 加载报表数据
+                const loadReportData = async () => {
+                    const startDate = document.getElementById('startDate').value;
+                    const endDate = document.getElementById('endDate').value;
+
+                    console.log('查询报表数据 - 日期范围:', { startDate, endDate });
+
+                    if (!startDate || !endDate) {
+                        ElMessage.warning('请选择日期范围');
+                        return;
+                    }
+
+                    loading.value = true;
+                    
+                    try {
+                        const token = getToken();
+                        
+                        console.log('发送API请求参数:', {
+                            start_date: startDate,
+                            end_date: endDate,
+                            dimension: dimension.value,
+                            community: selectedCommunity.value
+                        });
+                        
+                        // 构建请求参数
+                        const baseParams = {
+                            start_date: startDate,
+                            end_date: endDate
+                        };
+                        
+                        // 如果选择了小区，添加community参数
+                        if (selectedCommunity.value) {
+                            baseParams.community = selectedCommunity.value;
+                        }
+                        
+                        // 并行请求所有数据
+                        const [timeStats, paymentStats, feeTypeStats, overviewStats] = await Promise.all([
+                            axios.get('/api/reports/time-stats', {
+                                headers: { 'Authorization': `Bearer ${token}` },
+                                params: { ...baseParams, dimension: dimension.value }
+                            }),
+                            axios.get('/api/reports/payment-stats', {
+                                headers: { 'Authorization': `Bearer ${token}` },
+                                params: baseParams
+                            }),
+                            axios.get('/api/reports/fee-type-stats', {
+                                headers: { 'Authorization': `Bearer ${token}` },
+                                params: baseParams
+                            }),
+                            axios.get('/api/reports/overview-stats', {
+                                headers: { 'Authorization': `Bearer ${token}` },
+                                params: baseParams
+                            })
+                        ]);
+
+                        // 更新数据
+                        trendData.value = timeStats.data.data;
+                        paymentData.value = paymentStats.data.data;
+                        feeTypeData.value = feeTypeStats.data.data;
+                        statsData.value = overviewStats.data.data;
+
+                        console.log('报表数据加载成功:', {
+                            dimension: dimension.value,
+                            labels: trendData.value.labels,
+                            counts: trendData.value.counts,
+                            amounts: trendData.value.amounts
+                        });
+
+                        hasData.value = true;
+
+                        // 等待DOM更新后绘制图表
+                        nextTick(() => {
+                            console.log('开始绘制图表...');
+                            drawTrendChart();
+                            drawPaymentChart();
+                            drawFeeTypeChart();
+                        });
+
+                        ElMessage.success('报表数据加载成功');
+                    } catch (error) {
+                        console.error('加载报表数据失败:', error);
+                        if (error.response?.status === 401) {
+                            ElMessage.error('登录已过期，请重新登录');
+                            setTimeout(() => {
+                                window.location.href = '/login';
+                            }, 1500);
+                        } else {
+                            ElMessage.error('加载报表数据失败');
+                        }
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                // 绘制时间趋势图
+                const drawTrendChart = () => {
+                    console.log('绘制时间趋势图, 数据点数量:', trendData.value.labels.length);
+                    const chartDom = document.getElementById('trendChart');
+                    if (!chartDom) {
+                        console.error('图表容器不存在');
+                        return;
+                    }
+                    
+                    // 如果图表实例已存在，先销毁
+                    const existingChart = echarts.getInstanceByDom(chartDom);
+                    if (existingChart) {
+                        existingChart.dispose();
+                    }
+                    
+                    const chart = echarts.init(chartDom);
+                    const option = {
+                        tooltip: {
+                            trigger: 'axis',
+                            axisPointer: { 
+                                type: 'cross',
+                                crossStyle: {
+                                    color: '#999'
+                                }
+                            },
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                            borderColor: '#667eea',
+                            borderWidth: 2,
+                            textStyle: {
+                                color: '#333',
+                                fontSize: 14
+                            },
+                            padding: 15,
+                            extraCssText: 'box-shadow: 0 4px 20px rgba(0,0,0,0.15); border-radius: 8px;'
+                        },
+                        legend: {
+                            data: ['笔数', '金额'],
+                            top: 5,
+                            right: 20,
+                            textStyle: {
+                                fontSize: 14,
+                                fontWeight: 600
+                            },
+                            icon: 'roundRect',
+                            itemWidth: 30,
+                            itemHeight: 16,
+                            itemGap: 20
+                        },
+                        grid: {
+                            left: '5%',
+                            right: '6%',
+                            bottom: '12%',  /* 增加底部边距 */
+                            top: '20%',     /* 增加顶部边距 */
+                            containLabel: true
+                        },
+                        xAxis: {
+                            type: 'category',
+                            data: trendData.value.labels,
+                            axisLabel: { 
+                                rotate: 45,
+                                color: '#666',
+                                fontSize: 12,
+                                fontWeight: 500
+                            },
+                            axisLine: {
+                                lineStyle: {
+                                    color: '#e5e7eb',
+                                    width: 2
+                                }
+                            },
+                            axisTick: {
+                                show: false
+                            }
+                        },
+                        yAxis: [
+                            {
+                                type: 'value',
+                                name: '笔数',
+                                position: 'left',
+                                nameTextStyle: {
+                                    color: '#667eea',
+                                    fontSize: 14,
+                                    fontWeight: 600,
+                                    padding: [0, 0, 0, 20]
+                                },
+                                axisLabel: {
+                                    color: '#666',
+                                    fontSize: 12
+                                },
+                                axisLine: {
+                                    show: true,
+                                    lineStyle: {
+                                        color: '#667eea',
+                                        width: 2
+                                    }
+                                },
+                                splitLine: {
+                                    lineStyle: {
+                                        color: '#f0f0f0',
+                                        type: 'dashed'
+                                    }
+                                }
+                            },
+                            {
+                                type: 'value',
+                                name: '金额(元)',
+                                position: 'right',
+                                nameTextStyle: {
+                                    color: '#67C23A',
+                                    fontSize: 14,
+                                    fontWeight: 600,
+                                    padding: [0, 20, 0, 0]
+                                },
+                                axisLabel: {
+                                    color: '#666',
+                                    fontSize: 12,
+                                    formatter: '{value}'
+                                },
+                                axisLine: {
+                                    show: true,
+                                    lineStyle: {
+                                        color: '#67C23A',
+                                        width: 2
+                                    }
+                                },
+                                splitLine: {
+                                    show: false
+                                }
+                            }
+                        ],
+                        series: [
+                            {
+                                name: '笔数',
+                                type: 'bar',
+                                data: trendData.value.counts,
+                                barWidth: '40%',
+                                itemStyle: {
+                                    borderRadius: [8, 8, 0, 0],
+                                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: '#667eea' },
+                                        { offset: 1, color: '#764ba2' }
+                                    ])
+                                },
+                                emphasis: {
+                                    itemStyle: {
+                                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                            { offset: 0, color: '#5a6fd8' },
+                                            { offset: 1, color: '#6a4190' }
+                                        ])
+                                    }
+                                },
+                                label: {
+                                    show: true,
+                                    position: 'top',
+                                    color: '#667eea',
+                                    fontSize: 11,
+                                    fontWeight: 600
+                                }
+                            },
+                            {
+                                name: '金额',
+                                type: 'line',
+                                yAxisIndex: 1,
+                                data: trendData.value.amounts,
+                                smooth: true,
+                                symbol: 'circle',
+                                symbolSize: 8,
+                                lineStyle: {
+                                    width: 3,
+                                    color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                                        { offset: 0, color: '#67C23A' },
+                                        { offset: 1, color: '#85CE61' }
+                                    ])
+                                },
+                                itemStyle: { 
+                                    color: '#67C23A',
+                                    borderWidth: 2,
+                                    borderColor: '#fff'
+                                },
+                                areaStyle: {
+                                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: 'rgba(103, 194, 58, 0.4)' },
+                                        { offset: 1, color: 'rgba(103, 194, 58, 0.05)' }
+                                    ])
+                                },
+                                emphasis: {
+                                    focus: 'series'
+                                }
+                            }
+                        ],
+                        animationDuration: 1500,
+                        animationEasing: 'cubicOut'
+                    };
+                    chart.setOption(option);
+                    
+                    // 响应式
+                    window.addEventListener('resize', () => chart.resize());
+                };
+
+                // 绘制收款方式图
+                const drawPaymentChart = () => {
+                    const chartDom = document.getElementById('paymentChart');
+                    if (!chartDom) {
+                        console.error('收款方式图表容器不存在');
+                        return;
+                    }
+                    
+                    // 如果图表实例已存在，先销毁
+                    const existingChart = echarts.getInstanceByDom(chartDom);
+                    if (existingChart) {
+                        existingChart.dispose();
+                    }
+                    
+                    const chart = echarts.init(chartDom);
+                    const option = {
+                        tooltip: {
+                            trigger: 'item',
+                            formatter: '{b}<br/>笔数: {c} ({d}%)',
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                            borderColor: '#667eea',
+                            borderWidth: 2,
+                            textStyle: {
+                                color: '#333',
+                                fontSize: 14
+                            },
+                            padding: 15,
+                            extraCssText: 'box-shadow: 0 4px 20px rgba(0,0,0,0.15); border-radius: 8px;'
+                        },
+                        legend: {
+                            orient: 'vertical',
+                            left: 'left',
+                            top: 'middle',
+                            textStyle: {
+                                fontSize: 13,
+                                fontWeight: 500
+                            },
+                            icon: 'circle',
+                            itemWidth: 12,
+                            itemHeight: 12,
+                            itemGap: 15,
+                            formatter: function(name) {
+                                const item = paymentData.value.find(d => d.name === name);
+                                return `${name}  ${item ? item.count : 0}笔`;
+                            }
+                        },
+                        series: [
+                            {
+                                type: 'pie',
+                                radius: ['45%', '75%'],
+                                center: ['60%', '50%'],
+                                avoidLabelOverlap: false,
+                                itemStyle: {
+                                    borderRadius: 12,
+                                    borderColor: '#fff',
+                                    borderWidth: 3,
+                                    shadowBlur: 10,
+                                    shadowColor: 'rgba(0, 0, 0, 0.1)'
+                                },
+                                label: {
+                                    show: true,
+                                    position: 'outside',
+                                    formatter: '{d}%',
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    color: '#333'
+                                },
+                                labelLine: {
+                                    show: true,
+                                    length: 15,
+                                    length2: 10,
+                                    smooth: true,
+                                    lineStyle: {
+                                        width: 2
+                                    }
+                                },
+                                emphasis: {
+                                    itemStyle: {
+                                        shadowBlur: 20,
+                                        shadowOffsetX: 0,
+                                        shadowColor: 'rgba(0, 0, 0, 0.3)'
+                                    },
+                                    label: {
+                                        show: true,
+                                        fontSize: 16,
+                                        fontWeight: 700
+                                    },
+                                    scaleSize: 10
+                                },
+                                data: paymentData.value.map((item, index) => ({
+                                    name: item.name,
+                                    value: item.count
+                                })),
+                                color: [
+                                    new echarts.graphic.LinearGradient(0, 0, 1, 1, [
+                                        { offset: 0, color: '#667eea' },
+                                        { offset: 1, color: '#764ba2' }
+                                    ]),
+                                    new echarts.graphic.LinearGradient(0, 0, 1, 1, [
+                                        { offset: 0, color: '#67C23A' },
+                                        { offset: 1, color: '#85CE61' }
+                                    ]),
+                                    new echarts.graphic.LinearGradient(0, 0, 1, 1, [
+                                        { offset: 0, color: '#E6A23C' },
+                                        { offset: 1, color: '#EEBE77' }
+                                    ]),
+                                    new echarts.graphic.LinearGradient(0, 0, 1, 1, [
+                                        { offset: 0, color: '#F56C6C' },
+                                        { offset: 1, color: '#F78989' }
+                                    ])
+                                ]
+                            }
+                        ],
+                        animationDuration: 1500,
+                        animationEasing: 'elasticOut'
+                    };
+                    chart.setOption(option);
+                    window.addEventListener('resize', () => chart.resize());
+                };
+
+                // 绘制收费项目图
+                const drawFeeTypeChart = () => {
+                    const chartDom = document.getElementById('feeTypeChart');
+                    if (!chartDom) {
+                        console.error('收费项目图表容器不存在');
+                        return;
+                    }
+                    
+                    // 如果图表实例已存在，先销毁
+                    const existingChart = echarts.getInstanceByDom(chartDom);
+                    if (existingChart) {
+                        existingChart.dispose();
+                    }
+                    
+                    const chart = echarts.init(chartDom);
+                    const option = {
+                        tooltip: {
+                            trigger: 'axis',
+                            axisPointer: { type: 'shadow' },
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                            borderColor: '#667eea',
+                            borderWidth: 2,
+                            textStyle: {
+                                color: '#333',
+                                fontSize: 14
+                            },
+                            padding: 15,
+                            extraCssText: 'box-shadow: 0 4px 20px rgba(0,0,0,0.15); border-radius: 8px;'
+                        },
+                        legend: {
+                            data: ['笔数', '金额'],
+                            top: 5,
+                            right: 20,
+                            textStyle: {
+                                fontSize: 14,
+                                fontWeight: 600
+                            },
+                            icon: 'roundRect',
+                            itemWidth: 30,
+                            itemHeight: 16,
+                            itemGap: 20
+                        },
+                        grid: {
+                            left: '5%',
+                            right: '6%',
+                            bottom: '8%',   /* 增加底部边距 */
+                            top: '20%',     /* 增加顶部边距 */
+                            containLabel: true
+                        },
+                        xAxis: {
+                            type: 'category',
+                            data: feeTypeData.value.map(item => item.name),
+                            axisLabel: {
+                                color: '#666',
+                                fontSize: 12,
+                                fontWeight: 500,
+                                interval: 0
+                            },
+                            axisLine: {
+                                lineStyle: {
+                                    color: '#e5e7eb',
+                                    width: 2
+                                }
+                            },
+                            axisTick: {
+                                show: false
+                            }
+                        },
+                        yAxis: [
+                            {
+                                type: 'value',
+                                name: '笔数',
+                                nameTextStyle: {
+                                    color: '#409EFF',
+                                    fontSize: 14,
+                                    fontWeight: 600,
+                                    padding: [0, 0, 0, 20]
+                                },
+                                axisLabel: {
+                                    color: '#666',
+                                    fontSize: 12
+                                },
+                                axisLine: {
+                                    show: true,
+                                    lineStyle: {
+                                        color: '#409EFF',
+                                        width: 2
+                                    }
+                                },
+                                splitLine: {
+                                    lineStyle: {
+                                        color: '#f0f0f0',
+                                        type: 'dashed'
+                                    }
+                                }
+                            },
+                            {
+                                type: 'value',
+                                name: '金额(元)',
+                                position: 'right',
+                                nameTextStyle: {
+                                    color: '#67C23A',
+                                    fontSize: 14,
+                                    fontWeight: 600,
+                                    padding: [0, 20, 0, 0]
+                                },
+                                axisLabel: {
+                                    color: '#666',
+                                    fontSize: 12
+                                },
+                                axisLine: {
+                                    show: true,
+                                    lineStyle: {
+                                        color: '#67C23A',
+                                        width: 2
+                                    }
+                                },
+                                splitLine: {
+                                    show: false
+                                }
+                            }
+                        ],
+                        series: [
+                            {
+                                name: '笔数',
+                                type: 'bar',
+                                data: feeTypeData.value.map(item => item.count),
+                                barWidth: '35%',
+                                itemStyle: { 
+                                    borderRadius: [8, 8, 0, 0],
+                                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: '#409EFF' },
+                                        { offset: 1, color: '#66b1ff' }
+                                    ])
+                                },
+                                emphasis: {
+                                    itemStyle: {
+                                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                            { offset: 0, color: '#1890ff' },
+                                            { offset: 1, color: '#409EFF' }
+                                        ])
+                                    }
+                                },
+                                label: {
+                                    show: true,
+                                    position: 'top',
+                                    color: '#409EFF',
+                                    fontSize: 11,
+                                    fontWeight: 600
+                                }
+                            },
+                            {
+                                name: '金额',
+                                type: 'bar',
+                                yAxisIndex: 1,
+                                data: feeTypeData.value.map(item => item.amount),
+                                barWidth: '35%',
+                                itemStyle: { 
+                                    borderRadius: [8, 8, 0, 0],
+                                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: '#67C23A' },
+                                        { offset: 1, color: '#85CE61' }
+                                    ])
+                                },
+                                emphasis: {
+                                    itemStyle: {
+                                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                            { offset: 0, color: '#529b2e' },
+                                            { offset: 1, color: '#67C23A' }
+                                        ])
+                                    }
+                                },
+                                label: {
+                                    show: true,
+                                    position: 'top',
+                                    color: '#67C23A',
+                                    fontSize: 11,
+                                    fontWeight: 600
+                                }
+                            }
+                        ],
+                        animationDuration: 1500,
+                        animationEasing: 'elasticOut'
+                    };
+                    chart.setOption(option);
+                    window.addEventListener('resize', () => chart.resize());
+                };
+
+                // 打印报表
+                const printReport = () => {
+                    // 打印前调整所有图表尺寸
+                    setTimeout(() => {
+                        // 获取所有ECharts实例并调整尺寸
+                        const chartDoms = [
+                            document.getElementById('trendChart'),
+                            document.getElementById('paymentChart'),
+                            document.getElementById('feeTypeChart')
+                        ];
+                        
+                        chartDoms.forEach(dom => {
+                            if (dom) {
+                                const chartInstance = echarts.getInstanceByDom(dom);
+                                if (chartInstance) {
+                                    chartInstance.resize();
+                                }
+                            }
+                        });
+                        
+                        // 稍微延迟后打印，确保图表调整完成
+                        setTimeout(() => {
+                            window.print();
+                        }, 300);
+                    }, 100);
+                };
+
+                // 格式化数字
+                const formatNumber = (num) => {
+                    if (!num) return '0';
+                    return parseFloat(num).toLocaleString('zh-CN', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+                };
+
+                onMounted(() => {
+                    loadUserInfo();  // 加载用户信息
+                    loadCommunities();  // 加载小区列表
+                    initDatePickers();
+                    
+                    // 监听打印事件，在打印前后调整图表
+                    window.addEventListener('beforeprint', () => {
+                        console.log('准备打印，调整图表尺寸...');
+                        const chartDoms = [
+                            document.getElementById('trendChart'),
+                            document.getElementById('paymentChart'),
+                            document.getElementById('feeTypeChart')
+                        ];
+                        
+                        chartDoms.forEach(dom => {
+                            if (dom) {
+                                const chartInstance = echarts.getInstanceByDom(dom);
+                                if (chartInstance) {
+                                    chartInstance.resize();
+                                }
+                            }
+                        });
+                    });
+                    
+                    window.addEventListener('afterprint', () => {
+                        console.log('打印完成，恢复图表尺寸...');
+                        const chartDoms = [
+                            document.getElementById('trendChart'),
+                            document.getElementById('paymentChart'),
+                            document.getElementById('feeTypeChart')
+                        ];
+                        
+                        chartDoms.forEach(dom => {
+                            if (dom) {
+                                const chartInstance = echarts.getInstanceByDom(dom);
+                                if (chartInstance) {
+                                    chartInstance.resize();
+                                }
+                            }
+                        });
+                    });
+                });
+
+                // 监听统计维度变化，自动重新加载数据
+                watch(dimension, (newVal, oldVal) => {
+                    console.log('统计维度变化:', oldVal, '->', newVal);
+                    if (hasData.value && newVal !== oldVal) {
+                        loadReportData();
+                    }
+                });
+
+                return {
+                    loading,
+                    dimension,
+                    hasData,
+                    statsData,
+                    loadReportData,
+                    printReport,
+                    formatNumber,
+                    // 地区选择相关
+                    communities,
+                    selectedCommunity,
+                    isCommunityDisabled
+                };
+            }
+        });
+
+        app.use(ElementPlus);
+        app.mount('#app');
+    </script>
+</body>
+</html>

@@ -1,6 +1,10 @@
 公寓物业收费系统 - 快速重启指南
 ========================================
 
+本地启动
+cd c:\Users\Administrator\Documents\trae_projects\wjwy2; python start_local.py
+
+
 由于SSH密钥认证可能未正确配置，请按以下步骤手动重启Flask应用：
 
 步骤1: 连接到服务器
@@ -18,7 +22,7 @@ pkill -f "python3 app.py"
 步骤3: 启动应用
 ---------------
 执行以下命令启动应用：
-source venv/bin/activate
+c
 python3 app.py
 
 步骤4: 验证应用状态

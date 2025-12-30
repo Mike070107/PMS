@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -12,7 +12,7 @@
     <link rel="preload" href="/static/lib/font-awesome.min.css?v=5" as="style">
     
     <!-- 引入 Element Plus 样式 -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏢</text></svg>?v=2">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="/static/lib/element-plus.css">
     <link rel="stylesheet" href="/static/lib/font-awesome.min.css?v=5">
     <!-- Flatpickr CSS -->
@@ -20,18 +20,18 @@
     <link rel="stylesheet" href="/static/lib/flatpickr/airbnb.css">
     <!-- Laydate CSS -->
     <link rel="stylesheet" href="/static/lib/layui/layui.min.css">
-    <!-- 引入 Vue 3 和 Element Plus - 使用defer异步加载 -->
-    <script defer src="/static/lib/vue.global.js"></script>
-    <script defer src="/static/lib/element-plus.full.js"></script>
-    <script defer src="/static/lib/element-plus-icons.umd.js"></script>
-    <!-- 设备指纹和API拦截器 - 异步加载 -->
-    <script defer src="/static/device_fingerprint.js"></script>
-    <script defer src="/static/api_interceptor.js"></script>
-    <!-- Flatpickr JS - 异步加载 -->
-    <script defer src="/static/lib/flatpickr/flatpickr.min.js"></script>
-    <script defer src="/static/lib/flatpickr/zh.js"></script>
-    <!-- Laydate JS - 异步加载 -->
-    <script defer src="/static/lib/layui/layui.min.js?v=7"></script>
+    <!-- 引入 Vue 3 和 Element Plus -->
+    <script src="/static/lib/vue.global.js"></script>
+    <script src="/static/lib/element-plus.full.js"></script>
+    <script src="/static/lib/element-plus-icons.umd.js"></script>
+    <!-- 设备指纹和API拦截器 -->
+    <script src="/static/device_fingerprint.js"></script>
+    <script src="/static/api_interceptor.js"></script>
+    <!-- Flatpickr JS -->
+    <script src="/static/lib/flatpickr/flatpickr.min.js"></script>
+    <script src="/static/lib/flatpickr/zh.js"></script>
+    <!-- Laydate JS -->
+    <script src="/static/lib/layui/layui.min.js?v=7"></script>
     <!-- 内联日历控件样式 -->
     <style>
         .datetime-picker-container {
@@ -76,11 +76,6 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             background-color: #f0f2f5;
-        }
-        
-        /* 骨架屏加载优化 - 减少LCP时间 */
-        [v-cloak] {
-            display: none !important;
         }
         
         /* 全局输入框边框修复 */
@@ -156,6 +151,7 @@
         
         .nav-item:hover {
             background-color: rgba(24, 144, 255, 0.8);
+            transform: translateX(3px);
         }
   /*      
         .nav-item.active {
@@ -3909,19 +3905,6 @@
         </div>
     </div>
 <script>
-// 等待Vue和Element Plus加载完成
-let vueLoadWarned = false;
-function initApp() {
-    // 检查Vue和Element Plus是否已加载
-    if (typeof Vue === 'undefined' || typeof ElementPlus === 'undefined') {
-        if (!vueLoadWarned) {
-            console.warn('等待Vue和Element Plus加载...');
-            vueLoadWarned = true;
-        }
-        setTimeout(initApp, 50);
-        return;
-    }
-    
 const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
 const { ElSelect, ElOption, ElButton, ElInput, ElInputNumber, ElMessage, ElMessageBox, ElDatePicker, ElLoading } = ElementPlus;
 
@@ -5456,53 +5439,37 @@ const app = createApp({
                 return;
             }
             
-            // 初始化日历控件（带layui加载检测）
-            let layuiLoadWarned = false;
-            function initLaydate() {
-                // 检查 layui 是否已加载
-                if (typeof layui === 'undefined') {
-                    if (!layuiLoadWarned) {
-                        console.warn('layui 未加载，等待加载...');
-                        layuiLoadWarned = true;
-                    }
-                    setTimeout(initLaydate, 100);
-                    return;
-                }
+            // 初始化日历控件
+            layui.use('laydate', function(){
+                const laydate = layui.laydate;
                 
-                layui.use('laydate', function(){
-                    const laydate = layui.laydate;
-                    
-                    // 日期时间选择器已移除，不再需要初始化
-                    
-                    // 初始化订单查询页面的日期选择器
-                    // 开始时间选择器
-                    laydate.render({
-                        elem: '#startTime',
-                        type: 'datetime',
-                        format: 'yyyy-MM-dd HH:mm',
-                        max: 0, // 最大可选时间为当前时间
-                        done: function(value, date){
-                            // 验证日期范围
-                            validateDateRange();
-                        }
-                    });
-                    
-                    // 结束时间选择器
-                    laydate.render({
-                        elem: '#endTime',
-                        type: 'datetime',
-                        format: 'yyyy-MM-dd HH:mm',
-                        max: 0, // 最大可选时间为当前时间
-                        done: function(value, date){
-                            // 验证日期范围
-                            validateDateRange();
-                        }
-                    });
+                // 日期时间选择器已移除，不再需要初始化
+                
+                // 初始化订单查询页面的日期选择器
+                // 开始时间选择器
+                laydate.render({
+                    elem: '#startTime',
+                    type: 'datetime',
+                    format: 'yyyy-MM-dd HH:mm',
+                    max: 0, // 最大可选时间为当前时间
+                    done: function(value, date){
+                        // 验证日期范围
+                        validateDateRange();
+                    }
                 });
-            }
-            
-            // 调用初始化
-            initLaydate();
+                
+                // 结束时间选择器
+                laydate.render({
+                    elem: '#endTime',
+                    type: 'datetime',
+                    format: 'yyyy-MM-dd HH:mm',
+                    max: 0, // 最大可选时间为当前时间
+                    done: function(value, date){
+                        // 验证日期范围
+                        validateDateRange();
+                    }
+                });
+            });
             
             // 自定义月份年份控制器的函数
             function customizeMonthYearControls(instance) {
@@ -6430,12 +6397,8 @@ const debugPrices = () => {
     }
 });
 
-// 使用ElementPlus并挂载Vue应用
-const mountedApp = app.use(ElementPlus).mount('#app');
-}
-
-// 开始初始化
-initApp();
+// 使用ElementPlus并挂载应用
+app.use(ElementPlus).mount('#app');
 </script>
 
 </body>

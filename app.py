@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, g, send_from_directory, render_template, redirect, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from flask_compress import Compress
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func
 
@@ -42,6 +43,23 @@ app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'jwt-dev-secret-
 
 # 允许跨域请求，支持凭证（用于开发环境）
 CORS(app, resources={r"/api/*": {"origins": "*", "supports_credentials": True}})
+
+# ========== 性能优化配置 ==========
+# 启用 Gzip 压缩（可将文件体积减少 60-80%）
+Compress(app)
+
+# 配置压缩参数
+app.config['COMPRESS_MIMETYPES'] = [
+    'text/html',
+    'text/css',
+    'text/javascript',
+    'application/javascript',
+    'application/json',
+    'application/xml',
+    'image/svg+xml'
+]
+app.config['COMPRESS_LEVEL'] = 6  # 压缩级别 1-9，6 是最佳平衡
+app.config['COMPRESS_MIN_SIZE'] = 500  # 小于 500 字节的不压缩
 
 # 数据库初始化
 db = SQLAlchemy(app)
@@ -124,8 +142,8 @@ class Address(db.Model):
     __tablename__ = 'addresses'
     
     ID = db.Column(db.Integer, primary_key=True, comment='地址唯一标识')
-    小区编号 = db.Column(db.Integer, nullable=False, comment='关联users表中的小区编号')
-    楼栋号 = db.Column(db.String(50), nullable=False, comment='如：一号楼')
+    小区编号 = db.Column(db.Integer, nullable=False, index=True, comment='关联users表中的小区编号')  # 添加索引
+    楼栋号 = db.Column(db.String(50), nullable=False, index=True, comment='如：一号楼')  # 添加索引
     房间号 = db.Column(db.String(50), nullable=False, comment='如：101')
     姓名 = db.Column(db.String(50), nullable=True, comment='住户姓名')  # 新增字段
     手机号 = db.Column(db.String(20), nullable=True, comment='住户手机号')  # 新增字段
@@ -401,8 +419,16 @@ def get_default_prices():
 # ========== 静态文件路由 ==========
 @app.route('/static/<path:filename>')
 def serve_static(filename):
-    """服务静态文件"""
-    return send_from_directory(app.static_folder, filename)
+    """服务静态文件（带缓存优化）"""
+    from flask import make_response
+    response = make_response(send_from_directory(app.static_folder, filename))
+    
+    # 静态资源缓存 30 天（CSS/JS/图片等）
+    if filename.endswith(('.css', '.js', '.jpg', '.jpeg', '.png', '.gif', '.ico', '.svg', '.woff', '.woff2', '.ttf', '.eot')):
+        response.cache_control.max_age = 2592000  # 30 天
+        response.cache_control.public = True
+    
+    return response
 
 @app.route('/templates/<path:filename>')
 def serve_template(filename):

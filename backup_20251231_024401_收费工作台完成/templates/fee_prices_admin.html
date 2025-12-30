@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>收费标准查询 - 公寓物业收费系统</title>
+    <!-- 引入 Element Plus 样式 -->
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/static/lib/element-plus.css">
+    <link rel="stylesheet" href="/static/lib/font-awesome.min.css">
+    <!-- 引入 Vue 3 和 Element Plus -->
+    <script src="/static/lib/vue.global.js"></script>
+    <script src="/static/lib/element-plus.full.js"></script>
+    <script src="/static/lib/element-plus-icons.umd.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f0f2f5;
+            padding: 20px;
+        }
+        
+        .admin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+        
+        .header-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .search-bar {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .search-bar .el-input {
+            width: 200px;
+        }
+        
+        .table-container {
+            margin-bottom: 20px;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        
+        /* 表单对话框样式 */
+        .form-dialog .el-dialog__body {
+            padding: 20px;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .form-field {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .form-label {
+            font-size: 14px;
+            color: #606266;
+            font-weight: 500;
+        }
+        
+        .form-hint {
+            font-size: 12px;
+            color: #909399;
+            margin-top: 5px;
+        }
+        
+        .error-message {
+            color: #f56c6c;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        
+        /* 状态标签样式 */
+        .status-active {
+            color: #67c23a;
+            font-weight: 500;
+        }
+        
+        .status-inactive {
+            color: #909399;
+        }
+        
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .form-row {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .action-buttons {
+                flex-wrap: wrap;
+            }
+        }
+        
+        /* 返回按钮样式 */
+        .back-button {
+            margin-bottom: 20px;
+        }
+        
+        /* 按钮修复：确保按钮可点击 */
+        .el-button {
+            cursor: pointer !important;
+        }
+        
+        .el-button:not(.is-disabled) {
+            pointer-events: auto !important;
+        }
+        
+        /* 表格操作按钮样式 */
+        .action-cell {
+            display: flex;
+            gap: 8px;
+        }
+        
+        /* 用户信息显示 */
+        .user-info-display {
+            background-color: #f5f7fa;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid #e4e7ed;
+        }
+        
+        .user-info-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .user-info-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .user-info-label {
+            font-weight: 500;
+            color: #606266;
+            font-size: 14px;
+        }
+        
+        .user-info-value {
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 返回按钮 -->
+        <div class="back-button">
+            <el-button type="primary" @click="goBack">
+                <i class="el-icon-back"></i> 返回工作台
+            </el-button>
+        </div>
+        
+        <div class="admin-container">
+            <div class="header">
+                <div class="header-title">
+                    <i class="el-icon-setting"></i> 收费标准查询
+                </div>
+                <div class="action-buttons" v-if="userRole === '系统管理员'">
+                    <!-- 只保留管理员的编辑按钮 -->
+                    <el-button type="primary" @click="showEditDialog(currentFeePrice)" v-if="currentFeePrice && userRole === '系统管理员'">
+                        <i class="el-icon-edit"></i> 编辑标准
+                    </el-button>
+                </div>
+            </div>
+            
+            <!-- 用户信息显示 -->
+            <div class="user-info-display">
+                <div class="user-info-row">
+                    <div class="user-info-item">
+                        <span class="user-info-label">当前用户：</span>
+                        <span class="user-info-value">[[ userRealName ]]</span>
+                    </div>
+                    <div class="user-info-item">
+                        <span class="user-info-label">所属小区：</span>
+                        <span class="user-info-value">[[ userCommunity ]]</span>
+                    </div>
+                    <div class="user-info-item">
+                        <span class="user-info-label">用户角色：</span>
+                        <span class="user-info-value">[[ userRole ]]</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 数据表格 - 简化版本，只显示当前小区 -->
+            <div class="table-container">
+                <el-table 
+                    :data="feePrices" 
+                    border 
+                    stripe
+                    v-loading="loading"
+                    empty-text="暂无收费标准数据">
+                    <el-table-column 
+                        prop="community" 
+                        label="小区名称" 
+                        min-width="150">
+                    </el-table-column>
+                    <el-table-column 
+                        label="电费单价" 
+                        width="120">
+                        <template #default="scope">
+                            [[ formatPrice(scope.row.electricity) ]] 元/度
+                        </template>
+                    </el-table-column>
+                    <el-table-column 
+                        label="冷水费单价" 
+                        width="120">
+                        <template #default="scope">
+                            [[ formatPrice(scope.row.coldWater) ]] 元/吨
+                        </template>
+                    </el-table-column>
+                    <el-table-column 
+                        label="热水费单价" 
+                        width="120">
+                        <template #default="scope">
+                            [[ formatPrice(scope.row.hotWater) ]] 元/吨
+                        </template>
+                    </el-table-column>
+                    <el-table-column 
+                        label="网费单价" 
+                        width="120">
+                        <template #default="scope">
+                            [[ formatPrice(scope.row.network) ]] 元/月
+                        </template>
+                    </el-table-column>
+                    <el-table-column 
+                        label="停车费单价" 
+                        width="120">
+                        <template #default="scope">
+                            [[ formatPrice(scope.row.parking) ]] 元/月
+                        </template>
+                    </el-table-column>
+                    <el-table-column 
+                        prop="updated_at" 
+                        label="更新时间" 
+                        width="160">
+                    </el-table-column>
+                </el-table>
+            </div>
+            
+            <!-- 如果没有数据，显示提示 -->
+            <div v-if="!loading && feePrices.length === 0" style="text-align: center; padding: 40px; color: #909399;">
+                <i class="el-icon-data-line" style="font-size: 48px; margin-bottom: 16px;"></i>
+                <p style="font-size: 16px; margin-bottom: 10px;">暂无收费标准数据</p>
+                <p style="font-size: 14px; color: #c0c4cc;">请联系管理员设置收费标准</p>
+            </div>
+            
+            <!-- 数据加载提示 -->
+            <div v-if="loading" style="text-align: center; padding: 20px;">
+                <el-icon class="is-loading" style="font-size: 24px; color: #409eff;">
+                    <i class="el-icon-loading"></i>
+                </el-icon>
+                <p style="margin-top: 10px; color: #909399;">正在加载数据...</p>
+            </div>
+        </div>
+        
+        <!-- 编辑对话框（仅管理员可用） -->
+        <el-dialog 
+            title="编辑收费标准" 
+            v-model="dialogVisible" 
+            width="600px"
+            class="form-dialog"
+            @close="resetForm"
+            v-if="userRole === '系统管理员'">
+            <el-form 
+                ref="feeForm" 
+                :model="formData" 
+                :rules="formRules" 
+                label-width="120px">
+                <div class="form-row">
+                    <div class="form-field">
+                        <label class="form-label">小区名称</label>
+                        <el-form-item>
+                            <el-input 
+                                v-model="formData.community" 
+                                readonly
+                                disabled>
+                            </el-input>
+                        </el-form-item>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-field">
+                        <label class="form-label">电费单价（元/度）</label>
+                        <el-form-item prop="electricity">
+                            <el-input-number 
+                                v-model="formData.electricity" 
+                                :min="0" 
+                                :step="0.01"
+                                :precision="2"
+                                controls-position="right"
+                                style="width: 100%;">
+                            </el-input-number>
+                        </el-form-item>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">冷水费单价（元/吨）</label>
+                        <el-form-item prop="coldWater">
+                            <el-input-number 
+                                v-model="formData.coldWater" 
+                                :min="0" 
+                                :step="0.01"
+                                :precision="2"
+                                controls-position="right"
+                                style="width: 100%;">
+                            </el-input-number>
+                        </el-form-item>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-field">
+                        <label class="form-label">热水费单价（元/吨）</label>
+                        <el-form-item prop="hotWater">
+                            <el-input-number 
+                                v-model="formData.hotWater" 
+                                :min="0" 
+                                :step="0.01"
+                                :precision="2}
+                                controls-position="right"
+                                style="width: 100%;">
+                            </el-input-number>
+                        </el-form-item>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">网费单价（元/月）</label>
+                        <el-form-item prop="network">
+                            <el-input-number 
+                                v-model="formData.network" 
+                                :min="0" 
+                                :step="0.01"
+                                :precision="2"
+                                controls-position="right"
+                                style="width: 100%;">
+                            </el-input-number>
+                        </el-form-item>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-field">
+                        <label class="form-label">停车费单价（元/月）</label>
+                        <el-form-item prop="parking">
+                            <el-input-number 
+                                v-model="formData.parking" 
+                                :min="0" 
+                                :step="0.01"
+                                :precision="2"
+                                controls-position="right"
+                                style="width: 100%;">
+                            </el-input-number>
+                        </el-form-item>
+                    </div>
+                </div>
+            </el-form>
+            
+            <template #footer>
+                <span class="dialog-footer">
+                    <el-button @click="dialogVisible = false">取消</el-button>
+                    <el-button type="primary" @click="submitForm" :loading="submitting">
+                        更新
+                    </el-button>
+                </span>
+            </template>
+        </el-dialog>
+    </div>
+
+    <script>
+    const { createApp, ref, computed, onMounted } = Vue;
+    const { ElMessage, ElMessageBox, ElTable, ElTableColumn, ElButton, ElInput, 
+           ElPagination, ElDialog, ElForm, ElFormItem, ElInputNumber } = ElementPlus;
+
+    const app = createApp({
+        compilerOptions: {
+            delimiters: ['[[', ']]']
+        },
+        setup() {
+            // 用户信息
+            const user = ref(JSON.parse(localStorage.getItem('user')) || {});
+            const userRole = computed(() => user.value.role || '');
+            const userRealName = computed(() => user.value.real_name || user.value.用户姓名 || '');
+            const userCommunity = computed(() => user.value.community || '');
+            
+            // 数据
+            const feePrices = ref([]);
+            const currentFeePrice = ref(null);
+            const loading = ref(false);
+            
+            // 对话框控制
+            const dialogVisible = ref(false);
+            const submitting = ref(false);
+            
+            // 表单数据
+            const formData = ref({
+                id: null,
+                community: '',
+                electricity: 0.00,
+                coldWater: 0.00,
+                hotWater: 0.00,
+                network: 0.00,
+                parking: 0.00
+            });
+            
+            // 表单验证规则
+            const formRules = {
+                electricity: [
+                    { type: 'number', min: 0, message: '电费单价不能为负数', trigger: 'blur' }
+                ],
+                coldWater: [
+                    { type: 'number', min: 0, message: '冷水费单价不能为负数', trigger: 'blur' }
+                ],
+                hotWater: [
+                    { type: 'number', min: 0, message: '热水费单价不能为负数', trigger: 'blur' }
+                ],
+                network: [
+                    { type: 'number', min: 0, message: '网费单价不能为负数', trigger: 'blur' }
+                ],
+                parking: [
+                    { type: 'number', min: 0, message: '停车费单价不能为负数', trigger: 'blur' }
+                ]
+            };
+            
+            // 表单引用
+            const feeForm = ref(null);
+            
+            // 获取Token
+            const getToken = () => {
+                return sessionStorage.getItem('token');
+            };
+            
+            // 格式化价格
+            const formatPrice = (price) => {
+                const num = parseFloat(price);
+                if (isNaN(num)) return '0.00';
+                return num.toFixed(2);
+            };
+            
+            // 加载数据 - 只加载当前用户的收费标准
+            const loadData = async () => {
+                loading.value = true;
+                try {
+                    const token = getToken();
+                    const response = await fetch('/api/fee_prices', {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        // 获取当前用户的收费标准
+                        const userCommunity = user.value.community;
+                        
+                        // 如果是管理员，需要加载所有数据然后筛选当前用户的
+                        if (userRole.value === '系统管理员') {
+                            // 管理员可以查看所有，但为了简化，我们只显示当前用户小区的
+                            const allResponse = await fetch('/api/admin/fee_prices', {
+                                headers: {
+                                    'Authorization': `Bearer ${token}`
+                                }
+                            });
+                            
+                            const allResult = await allResponse.json();
+                            
+                            if (allResult.status === 'success') {
+                                // 筛选当前用户小区的收费标准
+                                const filtered = allResult.data.filter(item => item.community === userCommunity);
+                                feePrices.value = filtered;
+                                currentFeePrice.value = filtered.length > 0 ? filtered[0] : null;
+                            }
+                        } else {
+                            // 普通用户直接使用获取到的收费标准
+                            feePrices.value = [result.data];
+                            currentFeePrice.value = result.data;
+                        }
+                    } else {
+                        ElMessage.error(result.message || '加载收费标准失败');
+                        feePrices.value = [];
+                        currentFeePrice.value = null;
+                    }
+                } catch (error) {
+                    console.error('加载数据失败:', error);
+                    ElMessage.error('网络请求失败，请检查API接口');
+                    feePrices.value = [];
+                    currentFeePrice.value = null;
+                } finally {
+                    loading.value = false;
+                }
+            };
+            
+            // 显示编辑对话框
+            const showEditDialog = (row) => {
+                formData.value = {
+                    id: row.id,
+                    community: row.community,
+                    electricity: parseFloat(row.electricity) || 0.00,
+                    coldWater: parseFloat(row.coldWater) || 0.00,
+                    hotWater: parseFloat(row.hotWater) || 0.00,
+                    network: parseFloat(row.network) || 0.00,
+                    parking: parseFloat(row.parking) || 0.00
+                };
+                dialogVisible.value = true;
+            };
+            
+            // 重置表单
+            const resetForm = () => {
+                if (feeForm.value) {
+                    feeForm.value.resetFields();
+                }
+                formData.value = {
+                    id: null,
+                    community: '',
+                    electricity: 0.00,
+                    coldWater: 0.00,
+                    hotWater: 0.00,
+                    network: 0.00,
+                    parking: 0.00
+                };
+            };
+            
+            // 提交表单
+            const submitForm = async () => {
+                if (!feeForm.value) return;
+                
+                try {
+                    const valid = await feeForm.value.validate();
+                    if (!valid) {
+                        ElMessage.warning('请检查表单填写是否正确');
+                        return;
+                    }
+                    
+                    submitting.value = true;
+                    
+                    const token = getToken();
+                    
+                    const response = await fetch(`/api/admin/fee_prices/${formData.value.id}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(formData.value)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        ElMessage.success('更新成功');
+                        dialogVisible.value = false;
+                        await loadData(); // 重新加载数据
+                    } else {
+                        ElMessage.error(result.message || '更新失败');
+                    }
+                } catch (error) {
+                    console.error('提交失败:', error);
+                    ElMessage.error('网络请求失败');
+                } finally {
+                    submitting.value = false;
+                }
+            };
+            
+            // 返回工作台
+            const goBack = () => {
+                window.location.href = '/';
+            };
+            
+            // 初始化
+            onMounted(async () => {
+                // 检查登录状态
+                const token = getToken();
+                if (!token) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                // 加载数据
+                await loadData();
+            });
+            
+            return {
+                // 用户信息
+                userRole,
+                userRealName,
+                userCommunity,
+                
+                // 数据
+                feePrices,
+                currentFeePrice,
+                loading,
+                
+                // 对话框
+                dialogVisible,
+                submitting,
+                
+                // 表单
+                formData,
+                formRules,
+                feeForm,
+                
+                // 方法
+                loadData,
+                showEditDialog,
+                resetForm,
+                submitForm,
+                goBack,
+                formatPrice
+            };
+        }
+    });
+
+    app.use(ElementPlus).mount('#app');
+    </script>
+</body>
+</html>

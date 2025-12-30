@@ -4,19 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>详细订单查询 - 物业收费管理系统</title>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
     
     <!-- 使用本地静态资源 -->
     <link rel="stylesheet" href="/static/lib/layui/layui.min.css">
     <link rel="stylesheet" href="/static/lib/flatpickr/airbnb.css">
     <link rel="stylesheet" href="/static/lib/element-plus.css">
     
-    <!-- 使用defer异步加载脚本，不阻塞页面渲染 -->
+    <!-- 基础库（同步加载，确保顺序） -->
+    <script src="/static/lib/flatpickr/flatpickr.min.js"></script>
+    <script src="/static/lib/flatpickr/zh.js"></script>
+    
+    <!-- 核心框架（defer异步加载） -->
     <script defer src="/static/lib/vue.global.js"></script>
-    <script defer src="/static/lib/layui/layui.min.js"></script>
     <script defer src="/static/lib/element-plus.full.js"></script>
+    <script defer src="/static/lib/layui/layui.min.js"></script>
     <script defer src="/static/lib/axios.min.js"></script>
-    <script defer src="/static/lib/flatpickr/flatpickr.min.js"></script>
-    <script defer src="/static/lib/flatpickr/zh.js"></script>
     
     <style>
         * {

@@ -60,6 +60,10 @@ echo "   安装依赖..."
 source venv/bin/activate
 pip install -r requirements.txt
 
+# 确保安装 flask-compress
+echo "   确保安装 flask-compress..."
+pip install flask-compress==1.15
+
 # 设置权限
 echo "   设置权限..."
 chmod +x start_app.sh restart_app.sh
