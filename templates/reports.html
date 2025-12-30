@@ -628,7 +628,7 @@
         </div>
 
         <!-- 数据展示 -->
-        <template v-else-if="hasData">
+        <div v-show="hasData && !loading">
             <!-- 数据概览卡片 -->
             <div class="stats-cards">
                 <div class="stat-card primary">
@@ -680,10 +680,10 @@
                     <div id="feeTypeChart" class="chart-container"></div>
                 </div>
             </div>
-        </template>
+        </div>
 
         <!-- 空数据提示 -->
-        <div v-else style="text-align: center; padding: 60px; background: white; border-radius: 12px;">
+        <div v-show="!hasData && !loading" style="text-align: center; padding: 60px; background: white; border-radius: 12px;">
             <div style="font-size: 48px; margin-bottom: 20px;">📭</div>
             <div style="font-size: 16px; color: #6c757d;">请选择日期范围后点击"查询报表"按钮</div>
         </div>
@@ -1357,10 +1357,7 @@
                 watch(dimension, (newVal, oldVal) => {
                     console.log('统计维度变化:', oldVal, '->', newVal);
                     if (hasData.value && newVal !== oldVal) {
-                        // 添加短暂延迟，确保UI已更新
-                        setTimeout(() => {
-                            loadReportData();
-                        }, 100);
+                        loadReportData();
                     }
                 });
 
