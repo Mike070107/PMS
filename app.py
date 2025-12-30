@@ -342,6 +342,11 @@ def query_detailed_page():
     """详细订单查询页面"""
     return render_template('query_detailed.html')
 
+@app.route('/fee_prices_manager')
+def fee_prices_manager_page():
+    """收费标准管理页面"""
+    return render_template('fee_prices_manager.html')
+
 @app.route('/test')
 def test_page():
     """系统测试页面"""
@@ -580,6 +585,82 @@ def get_fee_prices():
     except Exception as e:
         app.logger.error(f"获取单价时发生错误: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# 更新收费标准
+@app.route('/api/fee_prices', methods=['PUT'])
+@token_required
+def update_fee_prices():
+    """
+    更新当前用户所属小区的收费标准
+    只能更新自己小区的收费标准
+    """
+    try:
+        current_user = g.current_user
+        data = request.get_json()
+        
+        app.logger.info(f"用户 {current_user.USERNAME} 请求更新收费标准")
+        app.logger.info(f"接收到的数据: {data}")
+        
+        # 获取用户的小区编号
+        community_num = getattr(current_user, '小区编号', None)
+        
+        if not community_num:
+            return jsonify({
+                "status": "error",
+                "message": "用户未设置小区编号"
+            }), 400
+        
+        # 查询该小区的收费标准
+        fee_price = FeePrice.query.filter_by(id=community_num).first()
+        
+        if not fee_price:
+            return jsonify({
+                "status": "error",
+                "message": f"未找到ID为 {community_num} 的收费标准配置"
+            }), 404
+        
+        # 更新数据
+        if 'electricity' in data:
+            fee_price.electricity = float(data['electricity'])
+        if 'coldWater' in data:
+            fee_price.coldWater = float(data['coldWater'])
+        if 'hotWater' in data:
+            fee_price.hotWater = float(data['hotWater'])
+        if 'network' in data:
+            fee_price.network = float(data['network'])
+        if 'parking' in data:
+            fee_price.parking = float(data['parking'])
+        if 'rent_fee' in data:
+            fee_price.rent_fee = float(data['rent_fee'])
+        if 'manage_fee' in data:
+            fee_price.manage_fee = float(data['manage_fee'])
+        
+        # 提交数据库修改
+        db.session.commit()
+        
+        app.logger.info(f"收费标准更新成功: 小区={fee_price.community}, ID={community_num}")
+        
+        # 记录操作日志
+        log_operation(
+            user_account=current_user.USERNAME,
+            operation_type='更新收费标准',
+            details=f'更新小区 [{fee_price.community}] 的收费标准',
+            community_num=community_num
+        )
+        
+        return jsonify({
+            "status": "success",
+            "message": "收费标准更新成功",
+            "data": fee_price.to_dict()
+        })
+        
+    except ValueError as e:
+        app.logger.error(f"数据格式错误: {str(e)}")
+        return jsonify({"status": "error", "message": "数据格式错误"}), 400
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"更新收费标准失败: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({"status": "error", "message": "更新失败"}), 500
 
 # 新增：获取小区列表（用于查询筛选）
 @app.route('/api/communities', methods=['GET'])

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>收费标准管理</title>
+    
+    <script src="/static/lib/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus@2.3.14/dist/index.full.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.3.14/dist/index.css">
+    <script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f7fa;
+            padding: 20px;
+        }
+
+        .page-header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+        }
+
+        .page-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            font-size: 14px;
+            color: #6c757d;
+        }
+
+        .price-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            padding: 30px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .form-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .form-label {
+            min-width: 100px;
+            font-weight: 500;
+            color: #495057;
+            font-size: 14px;
+            text-align: right;
+        }
+
+        .form-control {
+            flex: 1;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .el-button {
+            border-radius: 6px;
+            font-weight: 500;
+            min-width: 120px;
+            height: 40px;
+        }
+
+        .el-button--primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+        }
+
+        .el-button--primary:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        }
+
+        .el-input-number {
+            width: 100%;
+        }
+
+        .community-info {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            text-align: center;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 400px;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #409eff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+{% raw %}
+    <div id="app">
+        <div class="page-header">
+            <h1 class="page-title">收费标准管理</h1>
+            <p class="page-subtitle">管理当前小区的各项收费标准价格</p>
+        </div>
+
+        <div v-if="loading" class="loading">
+            <div class="loading-spinner"></div>
+        </div>
+
+        <div v-else class="price-container">
+            <div class="community-info">
+                当前小区：[[ userCommunity ]]
+            </div>
+
+            <div class="form-grid">
+                <div class="form-item">
+                    <div class="form-label">电费单价</div>
+                    <div class="form-control">
+                        <el-input-number 
+                            v-model="prices.electricity" 
+                            :precision="2" 
+                            :step="0.01" 
+                            :min="0"
+                            :max="999.99"
+                            placeholder="元/度">
+                        </el-input-number>
+                    </div>
+                    <span style="color: #6c757d;">元/度</span>
+                </div>
+
+                <div class="form-item">
+                    <div class="form-label">冷水费单价</div>
+                    <div class="form-control">
+                        <el-input-number 
+                            v-model="prices.coldWater" 
+                            :precision="2" 
+                            :step="0.01" 
+                            :min="0"
+                            :max="999.99"
+                            placeholder="元/吨">
+                        </el-input-number>
+                    </div>
+                    <span style="color: #6c757d;">元/吨</span>
+                </div>
+
+                <div class="form-item">
+                    <div class="form-label">热水费单价</div>
+                    <div class="form-control">
+                        <el-input-number 
+                            v-model="prices.hotWater" 
+                            :precision="2" 
+                            :step="0.01" 
+                            :min="0"
+                            :max="999.99"
+                            placeholder="元/吨">
+                        </el-input-number>
+                    </div>
+                    <span style="color: #6c757d;">元/吨</span>
+                </div>
+
+                <div class="form-item">
+                    <div class="form-label">网费单价</div>
+                    <div class="form-control">
+                        <el-input-number 
+                            v-model="prices.network" 
+                            :precision="2" 
+                            :step="0.01" 
+                            :min="0"
+                            :max="999.99"
+                            placeholder="元/月">
+                        </el-input-number>
+                    </div>
+                    <span style="color: #6c757d;">元/月</span>
+                </div>
+
+                <div class="form-item">
+                    <div class="form-label">停车费单价</div>
+                    <div class="form-control">
+                        <el-input-number 
+                            v-model="prices.parking" 
+                            :precision="2" 
+                            :step="0.01" 
+                            :min="0"
+                            :max="999.99"
+                            placeholder="元/月">
+                        </el-input-number>
+                    </div>
+                    <span style="color: #6c757d;">元/月</span>
+                </div>
+
+                <div class="form-item">
+                    <div class="form-label">房租单价</div>
+                    <div class="form-control">
+                        <el-input-number 
+                            v-model="prices.rent_fee" 
+                            :precision="2" 
+                            :step="0.01" 
+                            :min="0"
+                            :max="9999.99"
+                            placeholder="元/月">
+                        </el-input-number>
+                    </div>
+                    <span style="color: #6c757d;">元/月</span>
+                </div>
+
+                <div class="form-item">
+                    <div class="form-label">管理费单价</div>
+                    <div class="form-control">
+                        <el-input-number 
+                            v-model="prices.manage_fee" 
+                            :precision="2" 
+                            :step="0.01" 
+                            :min="0"
+                            :max="999.99"
+                            placeholder="元/月">
+                        </el-input-number>
+                    </div>
+                    <span style="color: #6c757d;">元/月</span>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <el-button 
+                    type="primary" 
+                    @click="savePrice"
+                    :loading="saving">
+                    保存修改
+                </el-button>
+                <el-button 
+                    @click="resetPrices">
+                    重置
+                </el-button>
+            </div>
+        </div>
+    </div>
+{% endraw %}
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+        const { ElInputNumber, ElButton, ElMessage } = ElementPlus;
+
+        const app = createApp({
+            compilerOptions: {
+                delimiters: ['[[', ']]']
+            },
+            setup() {
+                const loading = ref(true);
+                const saving = ref(false);
+                const userCommunity = ref('');
+                const originalPrices = ref({});
+                
+                const prices = ref({
+                    electricity: 0.00,
+                    coldWater: 0.00,
+                    hotWater: 0.00,
+                    network: 0.00,
+                    parking: 0.00,
+                    rent_fee: 0.00,
+                    manage_fee: 0.00
+                });
+
+                // 获取Token
+                const getToken = () => {
+                    return sessionStorage.getItem('token');
+                };
+
+                // 获取用户信息
+                const getUserInfo = () => {
+                    const userData = sessionStorage.getItem('user');
+                    if (userData) {
+                        const user = JSON.parse(userData);
+                        return user;
+                    }
+                    return null;
+                };
+
+                // 加载收费标准
+                const loadPrices = async () => {
+                    const user = getUserInfo();
+                    if (!user) {
+                        ElMessage.error('未找到用户信息');
+                        window.location.href = '/login';
+                        return;
+                    }
+
+                    userCommunity.value = user.community || '未知小区';
+                    console.log('当前用户小区:', userCommunity.value);
+
+                    try {
+                        const token = getToken();
+                        const response = await axios.get('/api/fee_prices', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+
+                        console.log('收费标准响应:', response.data);
+
+                        if (response.data.status === 'success') {
+                            const data = response.data.data;
+                            prices.value = {
+                                electricity: parseFloat(data.electricity) || 0.00,
+                                coldWater: parseFloat(data.coldWater) || 0.00,
+                                hotWater: parseFloat(data.hotWater) || 0.00,
+                                network: parseFloat(data.network) || 0.00,
+                                parking: parseFloat(data.parking) || 0.00,
+                                rent_fee: parseFloat(data.rent_fee) || 0.00,
+                                manage_fee: parseFloat(data.manage_fee) || 0.00
+                            };
+                            // 保存原始数据用于重置
+                            originalPrices.value = JSON.parse(JSON.stringify(prices.value));
+                        } else {
+                            ElMessage.error(response.data.message || '加载收费标准失败');
+                        }
+                    } catch (error) {
+                        console.error('加载收费标准失败:', error);
+                        if (error.response?.status === 401) {
+                            ElMessage.error('登录已过期，请重新登录');
+                            setTimeout(() => {
+                                window.location.href = '/login';
+                            }, 1500);
+                        } else {
+                            ElMessage.error('加载收费标准失败');
+                        }
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                // 保存收费标准
+                const savePrice = async () => {
+                    saving.value = true;
+                    try {
+                        const token = getToken();
+                        const response = await axios.put('/api/fee_prices', prices.value, {
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+
+                        if (response.data.status === 'success') {
+                            ElMessage.success('收费标准保存成功');
+                            // 更新原始数据
+                            originalPrices.value = JSON.parse(JSON.stringify(prices.value));
+                        } else {
+                            ElMessage.error(response.data.message || '保存失败');
+                        }
+                    } catch (error) {
+                        console.error('保存收费标准失败:', error);
+                        if (error.response?.status === 401) {
+                            ElMessage.error('登录已过期，请重新登录');
+                            setTimeout(() => {
+                                window.location.href = '/login';
+                            }, 1500);
+                        } else {
+                            ElMessage.error('保存失败');
+                        }
+                    } finally {
+                        saving.value = false;
+                    }
+                };
+
+                // 重置到原始值
+                const resetPrices = () => {
+                    prices.value = JSON.parse(JSON.stringify(originalPrices.value));
+                    ElMessage.info('已重置为上次保存的值');
+                };
+
+                onMounted(() => {
+                    loadPrices();
+                });
+
+                return {
+                    loading,
+                    saving,
+                    userCommunity,
+                    prices,
+                    savePrice,
+                    resetPrices
+                };
+            }
+        });
+
+        app.use(ElementPlus);
+        app.mount('#app');
+    </script>
+</body>
+</html>
