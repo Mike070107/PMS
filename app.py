@@ -31,7 +31,7 @@ app = Flask(__name__,
            static_url_path='/static',
            template_folder=os.path.join(basedir, 'templates'))
 
-# 加载配置
+# 加载配置 - 使用远程数据库配置
 app.config.from_object(Config)
 
 # 安全密钥配置（覆盖Config中的设置）
@@ -339,6 +339,11 @@ def login_page():
 def query_page():
     """订单查询页面"""
     return render_template('query.html')
+
+@app.route('/query_detailed')
+def query_detailed_page():
+    """详细订单查询页面"""
+    return render_template('query_detailed.html')
 
 @app.route('/test')
 def test_page():

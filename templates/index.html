@@ -3461,7 +3461,12 @@
                         
                         <!-- 费用项目 -->
                         <div class="fee-section">
-                            <div class="section-title">2. 添加收费项目</div>
+                            <div class="section-title">
+                                2. 添加收费项目
+                                <div class="refund-checkbox" style="display: inline-block; margin-left: 20px;">
+                                    <el-checkbox v-model="isRefundMode" @change="onRefundModeChange"><strong style="font-weight: bold; font-size: 18px;">退费</strong></el-checkbox>
+                                </div>
+                            </div>
                             <div class="fee-buttons">
                                 <el-button 
                                     type="primary" 
@@ -3875,6 +3880,9 @@ const app = createApp({
         const paymentMethod = ref('');
         const remark = ref('');
         const generating = ref(false);
+        
+        // 退费模式
+        const isRefundMode = ref(false);
 
         // 格式化日期时间为日期选择器格式
         const formatDateTimeForPicker = (date) => {
@@ -4006,11 +4014,20 @@ const app = createApp({
         
         // 是否可以生成账单
         const canGenerate = computed(() => {
+            // 退费模式下：金额必须为负数才允许提交
+            if (isRefundMode.value) {
+                return selectedRoomId.value && 
+                       feeItems.value.length > 0 && 
+                       paymentMethod.value && 
+                       totalAmount.value < 0 &&  // 退费模式要求金额为负数
+                       !phoneError.value;
+            }
+            // 正常收费模式下：金额必须为正数才允许提交
             return selectedRoomId.value && 
                    feeItems.value.length > 0 && 
                    paymentMethod.value && 
                    totalAmount.value > 0 &&
-                   !phoneError.value;  // 手机号格式正确才允许提交
+                   !phoneError.value;
         });
         
         // 按钮禁用状态
@@ -4336,6 +4353,10 @@ const app = createApp({
             // 获取当前单价
             const unitPrice = communityPrices.value[type] || 0.00;
             
+            // 退费模式：金额始终为负数
+            const baseAmount = unitPrice * 1;  // 默认数量为1
+            const finalAmount = isRefundMode.value ? -Math.abs(baseAmount) : Math.abs(baseAmount);
+            
             // 获取今日日期 - 格式化为 yyyy/MM/dd
             const today = new Date().toLocaleDateString('zh-CN', { 
                 year: 'numeric', 
@@ -4348,7 +4369,7 @@ const app = createApp({
                 type: type,
                 quantity: 1,
                 unitPrice: unitPrice,
-                amount: unitPrice * 1,  // 默认数量为1
+                amount: finalAmount,  // 退费模式下为负数
                 carPlate: '',
                 startDate: type === 'parking' ? today : '',  // 停车费默认开始日期为今日
                 endDate: type === 'parking' ? calculateEndDate(today, 1) : ''  // 停车费默认结束日期
@@ -4360,13 +4381,16 @@ const app = createApp({
             console.log(`添加${getFeeTypeName(type)}:`, { 
                 type, 
                 unitPrice, 
+                amount: finalAmount,
+                isRefund: isRefundMode.value,
                 source: 'API',
                 apiPrice: communityPrices.value[type],
                 startDate: newItem.startDate,
                 endDate: newItem.endDate
             });
             
-            ElMessage.success(`已添加${getFeeTypeName(type)}，单价：${unitPrice}元`);
+            const modeText = isRefundMode.value ? '退费' : '收费';
+            ElMessage.success(`已添加${getFeeTypeName(type)}${modeText}，单价：${unitPrice}元`);
         };
         
         // 更新项目金额（通过数量计算金额）
@@ -4376,11 +4400,14 @@ const app = createApp({
             
             const quantity = parseFloat(item.quantity) || 0;
             const unitPrice = parseFloat(item.unitPrice) || 0;
-            const newAmount = (quantity * unitPrice).toFixed(2);
+            const baseAmount = (quantity * unitPrice).toFixed(2);
+            
+            // 退费模式：金额始终为负数
+            const finalAmount = isRefundMode.value ? -Math.abs(baseAmount) : Math.abs(baseAmount);
             
             // 使用Object.assign确保响应式更新
             Object.assign(item, {
-                amount: newAmount
+                amount: finalAmount
             });
             
             // 如果是停车费，更新结束日期
@@ -4393,7 +4420,27 @@ const app = createApp({
                 }
             }
             
-            console.log('金额更新:', index, item.type, '数量:', quantity, '单价:', unitPrice, '金额:', newAmount);
+            console.log('金额更新:', index, item.type, '数量:', quantity, '单价:', unitPrice, '金额:', finalAmount, '退费模式:', isRefundMode.value);
+        };
+        
+        // 退费模式切换处理
+        const onRefundModeChange = () => {
+            // 当退费模式切换时，重新计算所有费用项的金额
+            feeItems.value.forEach((item, index) => {
+                const quantity = parseFloat(item.quantity) || 0;
+                const unitPrice = parseFloat(item.unitPrice) || 0;
+                const baseAmount = (quantity * unitPrice).toFixed(2);
+                
+                // 退费模式：金额始终为负数
+                const finalAmount = isRefundMode.value ? -Math.abs(baseAmount) : Math.abs(baseAmount);
+                
+                Object.assign(item, {
+                    amount: finalAmount
+                });
+            });
+            
+            const modeText = isRefundMode.value ? '退费' : '收费';
+            ElMessage.info(`已切换到${modeText}模式`);
         };
         
         // 专门处理停车费数量变化
@@ -4465,8 +4512,17 @@ const app = createApp({
         // 通过金额反推数量
         const updateItemQuantityFromAmount = (index) => {
             const item = feeItems.value[index];
-            const amount = parseFloat(item.amount) || 0;
+            let amount = parseFloat(item.amount) || 0;
             const unitPrice = parseFloat(item.unitPrice) || 0;
+            
+            // 退费模式下：确保金额始终为负数
+            if (isRefundMode.value && amount > 0) {
+                amount = -amount;
+                // 更新金额为负数
+                Object.assign(item, {
+                    amount: amount
+                });
+            }
             
             if (unitPrice > 0) {
                 // 计算数量 = 金额 / 单价
@@ -4615,7 +4671,10 @@ const app = createApp({
                     addressId: selectedRoomId.value,
                     paymentMethod: paymentMethod.value,
                     totalAmount: totalAmount.value,
-                    remark: remark.value,
+                    // 退费模式下在备注中添加【退费】标识（放在前面）
+                    remark: isRefundMode.value ? 
+                            (remark.value ? `【退费】${remark.value}` : '【退费】') : 
+                            remark.value,
                     residentName: residentName.value,
                     residentPhone: residentPhone.value,
                     entryTime: entryTime,  // 添加收费日期时间
@@ -4710,6 +4769,9 @@ const app = createApp({
                             userHistoryOrders.value = [];
                             historyExpanded.value = false;
                             
+                            // 重置退费模式为未勾选状态
+                            isRefundMode.value = false;
+                            
                             // 重新加载最近记录
                             loadRecentOrders();
                             
@@ -4739,6 +4801,9 @@ const app = createApp({
                             // 清空用户历史缴费记录并置为折叠状态
                             userHistoryOrders.value = [];
                             historyExpanded.value = false;
+                            
+                            // 重置退费模式为未勾选状态
+                            isRefundMode.value = false;
                             
                             // 重新加载最近记录
                             loadRecentOrders();
@@ -4790,6 +4855,9 @@ const app = createApp({
                 // 清空用户历史缴费记录并置为折叠状态
                 userHistoryOrders.value = [];
                 historyExpanded.value = false;
+                
+                // 重置退费模式为未勾选状态
+                isRefundMode.value = false;
                 
                 // 注意：收费日期时间不清空，保留当前时间
                 
@@ -6206,6 +6274,9 @@ const debugPrices = () => {
             recentOrders,
             todayTotalAmount,
             receiptData,
+            // 退费模式相关
+            isRefundMode,
+            onRefundModeChange,
             validatePhone,
             onBuildingChange,
             onRoomChange,
