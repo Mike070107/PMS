@@ -1308,6 +1308,13 @@
                     initDatePickers();
                 });
 
+                // 监听统计维度变化，自动重新加载数据
+                watch(dimension, (newVal, oldVal) => {
+                    if (hasData.value && newVal !== oldVal) {
+                        loadReportData();
+                    }
+                });
+
                 return {
                     loading,
                     dimension,

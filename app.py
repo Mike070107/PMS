@@ -2649,22 +2649,31 @@ def get_time_statistics():
         for order in orders:
             if dimension == 'day':
                 key = order.录入时间.strftime('%Y-%m-%d')
+                display_key = order.录入时间.strftime('%m月%d日')  # 显示用
             elif dimension == 'week':
                 # 计算周（周一开始）
                 week_start = order.录入时间 - timedelta(days=order.录入时间.weekday())
-                key = f"{week_start.strftime('%Y-%m-%d')}周"
+                week_end = week_start + timedelta(days=6)
+                # 使用周一日期作为排序key
+                key = week_start.strftime('%Y-%m-%d')
+                # 显示格式：12月23日-12月29日
+                if week_start.month == week_end.month:
+                    display_key = f"{week_start.strftime('%m月%d日')}-{week_end.strftime('%d日')}"
+                else:
+                    display_key = f"{week_start.strftime('%m月%d日')}-{week_end.strftime('%m月%d日')}"
             else:  # month
                 key = order.录入时间.strftime('%Y-%m')
+                display_key = order.录入时间.strftime('%Y年%m月')  # 显示用
             
             if key not in stats_dict:
-                stats_dict[key] = {'count': 0, 'amount': 0}
+                stats_dict[key] = {'count': 0, 'amount': 0, 'display': display_key}
             
             stats_dict[key]['count'] += 1
             stats_dict[key]['amount'] += float(order.收款金额)
         
         # 排序并转换为列表
         sorted_keys = sorted(stats_dict.keys())
-        labels = sorted_keys
+        labels = [stats_dict[k]['display'] for k in sorted_keys]  # 使用友好的显示格式
         counts = [stats_dict[k]['count'] for k in sorted_keys]
         amounts = [round(stats_dict[k]['amount'], 2) for k in sorted_keys]
         
