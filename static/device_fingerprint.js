@@ -79,24 +79,32 @@
          * @returns {string} 32位16进制哈希值
          */
         simpleHash: function(str) {
-            let hash = 0;
-            if (str.length === 0) return '00000000000000000000000000000000';
+            if (!str || str.length === 0) {
+                return '00000000000000000000000000000000';
+            }
+            
+            // 使用多个哈希值组合生成32位16进制
+            let hash1 = 0;
+            let hash2 = 0;
             
             for (let i = 0; i < str.length; i++) {
                 const char = str.charCodeAt(i);
-                hash = ((hash << 5) - hash) + char;
-                hash = hash & hash; // Convert to 32bit integer
+                hash1 = ((hash1 << 5) - hash1) + char;
+                hash1 = hash1 & hash1; // Convert to 32bit integer
+                
+                hash2 = ((hash2 << 7) - hash2) + char;
+                hash2 = hash2 & hash2;
             }
             
-            // 转换为16进制，确保32位长度
-            let hex = Math.abs(hash).toString(16);
-            while (hex.length < 32) {
-                // 使用字符串的不同部分继续生成
-                const extraHash = this.simpleHash(str.substring(hex.length % str.length));
-                hex += extraHash.substring(0, 32 - hex.length);
-            }
+            // 转换为16进制并组合
+            let hex1 = Math.abs(hash1).toString(16).padStart(16, '0');
+            let hex2 = Math.abs(hash2).toString(16).padStart(16, '0');
             
-            return hex.substring(0, 32);
+            // 组合并截取前32位
+            let result = (hex1 + hex2).substring(0, 32);
+            
+            // 确保长度为32
+            return result.padEnd(32, '0');
         },
         
         /**
