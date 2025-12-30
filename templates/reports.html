@@ -9,8 +9,9 @@
     <script src="https://unpkg.com/element-plus@2.3.14/dist/index.full.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/element-plus@2.3.14/dist/index.css">
     <script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- 使用国内 CDN 加载 ECharts，本地 Flatpickr -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+    <script src="/static/lib/flatpickr/flatpickr.min.js"></script>
     <link rel="stylesheet" href="/static/lib/flatpickr/airbnb.css">
     <script src="/static/lib/flatpickr/zh.js"></script>
     
@@ -957,10 +958,14 @@
                 };
 
                 // 初始化日期选择器（带库加载检测）
+                let flatpickrLoadWarned = false;
                 const initDatePickers = () => {
                     // 检查 flatpickr 是否已加载
                     if (typeof flatpickr === 'undefined') {
-                        console.warn('flatpickr 未加载，等待加载...');
+                        if (!flatpickrLoadWarned) {
+                            console.warn('flatpickr 未加载，等待加载...');
+                            flatpickrLoadWarned = true;
+                        }
                         setTimeout(initDatePickers, 100);
                         return;
                     }
@@ -1085,10 +1090,14 @@
                 };
 
                 // 绘制时间趋势图（带echarts加载检测）
+                let echartsLoadWarned = false;
                 const drawTrendChart = () => {
                     // 检查 echarts 是否已加载
                     if (typeof echarts === 'undefined') {
-                        console.warn('echarts 未加载，等待加载...');
+                        if (!echartsLoadWarned) {
+                            console.warn('echarts 未加载，等待加载...');
+                            echartsLoadWarned = true;
+                        }
                         setTimeout(drawTrendChart, 100);
                         return;
                     }
@@ -1294,7 +1303,10 @@
                 const drawPaymentChart = () => {
                     // 检查 echarts 是否已加载
                     if (typeof echarts === 'undefined') {
-                        console.warn('echarts 未加载，等待加载...');
+                        if (!echartsLoadWarned) {
+                            console.warn('echarts 未加载，等待加载...');
+                            echartsLoadWarned = true;
+                        }
                         setTimeout(drawPaymentChart, 100);
                         return;
                     }
@@ -1421,7 +1433,10 @@
                 const drawFeeTypeChart = () => {
                     // 检查 echarts 是否已加载
                     if (typeof echarts === 'undefined') {
-                        console.warn('echarts 未加载，等待加载...');
+                        if (!echartsLoadWarned) {
+                            console.warn('echarts 未加载，等待加载...');
+                            echartsLoadWarned = true;
+                        }
                         setTimeout(drawFeeTypeChart, 100);
                         return;
                     }
