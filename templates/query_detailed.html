@@ -8,14 +8,15 @@
     <!-- 使用本地静态资源 -->
     <link rel="stylesheet" href="/static/lib/layui/layui.min.css">
     <link rel="stylesheet" href="/static/lib/flatpickr/airbnb.css">
-    <script src="/static/lib/vue.global.js"></script>
-    <script src="/static/lib/layui/layui.min.js"></script>
-    <script src="/static/lib/element-plus.full.js"></script>
     <link rel="stylesheet" href="/static/lib/element-plus.css">
-    <script src="/static/lib/axios.min.js"></script>
-    <!-- 使用本地 Flatpickr -->
-    <script src="/static/lib/flatpickr/flatpickr.min.js"></script>
-    <script src="/static/lib/flatpickr/zh.js"></script>
+    
+    <!-- 使用defer异步加载脚本，不阻塞页面渲染 -->
+    <script defer src="/static/lib/vue.global.js"></script>
+    <script defer src="/static/lib/layui/layui.min.js"></script>
+    <script defer src="/static/lib/element-plus.full.js"></script>
+    <script defer src="/static/lib/axios.min.js"></script>
+    <script defer src="/static/lib/flatpickr/flatpickr.min.js"></script>
+    <script defer src="/static/lib/flatpickr/zh.js"></script>
     
     <style>
         * {
@@ -28,6 +29,36 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background-color: #f5f7fa;
             color: #333;
+        }
+        
+        /* 防止Vue未编译闪烁 */
+        [v-cloak] {
+            display: none;
+        }
+        
+        /* 加载动画 */
+        .initial-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #f5f7fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e0e0e0;
+            border-top-color: #409eff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         .app-container {
@@ -458,8 +489,13 @@
     </style>
 </head>
 <body>
+    <!-- 首屏加载动画 -->
+    <div id="initialLoader" class="initial-loader">
+        <div class="loading-spinner"></div>
+    </div>
+    
 {% raw %}
-    <div id="app">
+    <div id="app" v-cloak>
         <div class="app-container" :class="{'no-sidebar': isEmbedded}">
             <!-- 左侧导航栏 -->
             <div class="sidebar" v-if="!isEmbedded">
@@ -765,10 +801,25 @@
 {% endraw %}
 
     <script>
-        const { createApp, ref, computed, onMounted, nextTick } = Vue;
-        const { ElSelect, ElOption, ElButton, ElInput, ElMessage, ElPagination } = ElementPlus;
+        // 等待Vue、Element Plus和axios加载完成
+        let vueLoadWarned = false;
+        function initApp() {
+            // 检查库是否已加载
+            if (typeof Vue === 'undefined' || 
+                typeof ElementPlus === 'undefined' || 
+                typeof axios === 'undefined') {
+                if (!vueLoadWarned) {
+                    console.warn('等待页面资源加载...');
+                    vueLoadWarned = true;
+                }
+                setTimeout(initApp, 50);
+                return;
+            }
+            
+            const { createApp, ref, computed, onMounted, nextTick } = Vue;
+            const { ElSelect, ElOption, ElButton, ElInput, ElMessage, ElPagination } = ElementPlus;
 
-        const app = createApp({
+            const app = createApp({
             setup() {
                 // 检测是否在iframe中嵌入，或者URL参数中有embed=1
                 const urlParams = new URLSearchParams(window.location.search);
@@ -1173,6 +1224,20 @@
 
         app.use(ElementPlus);
         app.mount('#app');
+        
+        // Vue挂载完成后立即隐藏加载屏
+        setTimeout(() => {
+            const loader = document.getElementById('initialLoader');
+            if (loader) {
+                loader.style.opacity = '0';
+                loader.style.transition = 'opacity 0.3s';
+                setTimeout(() => loader.remove(), 300);
+            }
+        }, 0);
+    }
+    
+    // 开始初始化
+    initApp();
     </script>
 </body>
 </html>
