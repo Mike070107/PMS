@@ -46,7 +46,8 @@ def log_operation(
     target_type='',
     operation_result='success',
     error_message='',
-    response_time=0
+    response_time=0,
+    user=None  # 新增：允许直接传入user对象（用于登录场景）
 ):
     """
     记录操作日志
@@ -60,15 +61,19 @@ def log_operation(
         operation_result: 操作结果（success/fail/error）
         error_message: 错误信息
         response_time: 响应时间（毫秒）
+        user: 用户对象（可选，用于登录时直接传入）
     """
     try:
         from app import db, OperationLog
         
         # 获取当前用户信息
-        current_user = getattr(g, 'current_user', None)
-        if not current_user:
-            print("Warning: log_operation called without current_user in context")
-            return
+        if user is None:
+            current_user = getattr(g, 'current_user', None)
+            if not current_user:
+                print("Warning: log_operation called without current_user in context")
+                return
+        else:
+            current_user = user
         
         # 构建日志对象
         log = OperationLog()

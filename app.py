@@ -24,7 +24,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func
 
 from config import Config
-from utils import log_operation
+from log_utils import log_operation
 
 # ========== 初始化Flask应用 ==========
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -509,10 +509,10 @@ def login():
             
             # 记录登录日志
             log_operation(
-                user_account=user.USERNAME,
-                operation_type='用户登录',
-                details=f'用户 [{user.USERNAME}] 登录系统',
-                community_num=user.小区编号
+                operation_type='登录',
+                operation_module='系统登录',
+                operation_detail=f'用户 [{user.USERNAME}] 登录系统',
+                user=user  # 直接传入user对象
             )
             
             return jsonify({
