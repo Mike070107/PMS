@@ -64,6 +64,7 @@ def log_operation(user_account, operation_type, details, community_num=None, com
             log.用户姓名 = user.用户姓名 or user_account
             log.用户角色 = user.Role
             log.所属小区 = user.COMMUNITY or ''
+            log.小区编号 = community_num or user.小区编号
             log.电脑IP = ip_address
             log.MAC地址 = mac_address
             log.用户代理 = user_agent
