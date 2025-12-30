@@ -4,16 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>公寓物业收费系统 - 登录</title>
-    <!-- 引入 Element Plus 样式和 Vue 3 -->
-
-<link rel="stylesheet" href="/static/lib/element-plus.css">
-<script src="/static/lib/vue.global.js"></script>
-<script src="/static/lib/element-plus.full.js"></script>
-<script src="/static/lib/element-plus-icons.umd.js"></script>
-<!-- 设备指纹和API拦截器 -->
-<script src="/static/device_fingerprint.js"></script>
-<script src="/static/api_interceptor.js"></script>
-
+    
+    <!-- 内联关键CSS，减少LCP时间 -->
     <style>
         body {
             margin: 0;
@@ -23,6 +15,7 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
         }
         .login-container {
             width: 380px;
@@ -35,6 +28,8 @@
             text-align: center;
             margin-bottom: 30px;
             color: #303133;
+            font-size: 24px;
+            font-weight: 600;
         }
         .login-footer {
             margin-top: 20px;
@@ -42,10 +37,53 @@
             color: #909399;
             font-size: 12px;
         }
+        /* 防止Vue未编译闪烁 */
+        [v-cloak] {
+            display: none;
+        }
+        /* 加载动画 */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #f5f7fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e0e0e0;
+            border-top-color: #409eff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
+    
+    <!-- 引入 Element Plus 样式 -->
+    <link rel="stylesheet" href="/static/lib/element-plus.css">
+    
+    <!-- 使用defer异步加载脚本，不阻塞页面渲染 -->
+    <script defer src="/static/lib/vue.global.js"></script>
+    <script defer src="/static/lib/element-plus.full.js"></script>
+    <script defer src="/static/lib/element-plus-icons.umd.js"></script>
+    <script defer src="/static/device_fingerprint.js"></script>
+    <script defer src="/static/api_interceptor.js"></script>
 </head>
 <body>
-    <div id="app">
+    <!-- 首屏加载动画 -->
+    <div id="initialLoader" class="loading-screen">
+        <div class="loading-spinner"></div>
+    </div>
+    
+    <div id="app" v-cloak>
         <div class="login-container">
             <h2 class="login-title">公寓物业收费管理系统</h2>
             <el-form :model="loginForm" :rules="loginRules" ref="loginFormRef" @submit.prevent="handleLogin">
@@ -76,78 +114,102 @@
     </div>
 
     <script>
-        const { createApp, ref, reactive } = Vue;
-        const { ElForm, ElFormItem, ElInput, ElButton, ElIcon, ElMessage } = ElementPlus;
-        const { User, Lock } = ElementPlusIconsVue;
-
-        createApp({
-            components: {
-                ElForm, ElFormItem, ElInput, ElButton, ElIcon,
-                User, Lock
-            },
-            setup() {
-                const loginFormRef = ref();
-                const loading = ref(false);
-                
-                const loginForm = reactive({
-                    username: '',
-                    password: ''
-                });
-                
-                const loginRules = {
-                    username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-                    password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
-                };
-                
-                const handleLogin = () => {
-                    loginFormRef.value.validate((valid) => {
-                        if (!valid) return;
-                        
-                        loading.value = true;
-                        
-                        // 调用我们已测试成功的登录API
-                        fetch('/api/login', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                username: loginForm.username,
-                                password: loginForm.password
-                            })
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.status === 'success') {
-                                ElMessage.success(data.message);
-                                // 存储token和用户信息到sessionStorage（关闭浏览器自动清除）
-                                sessionStorage.setItem('token', data.token);
-                                sessionStorage.setItem('user', JSON.stringify(data.user));
-                                // 跳转到主工作台
-                                window.location.href = '/';
-                            } else {
-                                ElMessage.error(data.message || '登录失败');
-                            }
-                        })
-                        .catch(error => {
-                            console.error('登录请求失败:', error);
-                            ElMessage.error('网络请求失败，请检查服务');
-                        })
-                        .finally(() => {
-                            loading.value = false;
-                        });
-                    });
-                };
-                
-                return {
-                    loginFormRef,
-                    loginForm,
-                    loginRules,
-                    loading,
-                    handleLogin
-                };
+        // 等待Vue、Element Plus和Icons加载完成
+        function initApp() {
+            // 检查库是否已加载
+            if (typeof Vue === 'undefined' || 
+                typeof ElementPlus === 'undefined' || 
+                typeof ElementPlusIconsVue === 'undefined') {
+                setTimeout(initApp, 50);
+                return;
             }
-        }).use(ElementPlus).mount('#app');
+            
+            const { createApp, ref, reactive } = Vue;
+            const { ElForm, ElFormItem, ElInput, ElButton, ElIcon, ElMessage } = ElementPlus;
+            const { User, Lock } = ElementPlusIconsVue;
+
+            createApp({
+                components: {
+                    ElForm, ElFormItem, ElInput, ElButton, ElIcon,
+                    User, Lock
+                },
+                setup() {
+                    const loginFormRef = ref();
+                    const loading = ref(false);
+                    
+                    const loginForm = reactive({
+                        username: '',
+                        password: ''
+                    });
+                    
+                    const loginRules = {
+                        username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+                        password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+                    };
+                    
+                    const handleLogin = () => {
+                        loginFormRef.value.validate((valid) => {
+                            if (!valid) return;
+                            
+                            loading.value = true;
+                            
+                            // 调用我们已测试成功的登录API
+                            fetch('/api/login', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    username: loginForm.username,
+                                    password: loginForm.password
+                                })
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.status === 'success') {
+                                    ElMessage.success(data.message);
+                                    // 存储token和用户信息到sessionStorage（关闭浏览器自动清除）
+                                    sessionStorage.setItem('token', data.token);
+                                    sessionStorage.setItem('user', JSON.stringify(data.user));
+                                    // 跳转到主工作台
+                                    window.location.href = '/';
+                                } else {
+                                    ElMessage.error(data.message || '登录失败');
+                                }
+                            })
+                            .catch(error => {
+                                console.error('登录请求失败:', error);
+                                ElMessage.error('网络请求失败，请检查服务');
+                            })
+                            .finally(() => {
+                                loading.value = false;
+                            });
+                        });
+                    };
+                    
+                    return {
+                        loginFormRef,
+                        loginForm,
+                        loginRules,
+                        loading,
+                        handleLogin
+                    };
+                }
+            }).use(ElementPlus).mount('#app');
+            
+            // Vue挂载完成后立即隐藏加载屏
+            setTimeout(() => {
+                const loader = document.getElementById('initialLoader');
+                if (loader) {
+                    loader.style.opacity = '0';
+                    loader.style.transition = 'opacity 0.3s';
+                    setTimeout(() => loader.remove(), 300);
+                }
+            }, 0);
+        }
+        
+        // 开始初始化
+        initApp();
     </script>
 </body>
 </html>
