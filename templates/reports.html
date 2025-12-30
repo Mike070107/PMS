@@ -503,27 +503,139 @@
         /* 打印样式 */
         @media print {
             body {
-                background: white;
-                padding: 0;
+                background: white !important;
+                padding: 10px;
             }
 
+            /* 隐藏筛选区域和按钮 */
             .filter-section,
-            .el-button {
+            .el-button,
+            .loading {
                 display: none !important;
             }
 
+            /* 页面标题优化 */
             .page-header {
                 background: none !important;
                 color: #2c3e50 !important;
                 box-shadow: none !important;
-                border-bottom: 2px solid #2c3e50;
+                border-bottom: 3px solid #2c3e50;
+                padding: 15px 0 !important;
+                margin-bottom: 20px !important;
             }
 
-            .stat-card,
+            .page-header::before {
+                display: none !important;
+            }
+
+            .page-title {
+                font-size: 24px !important;
+                text-shadow: none !important;
+            }
+
+            .page-subtitle {
+                font-size: 12px !important;
+            }
+
+            /* 数据概览卡片打印优化 */
+            .stats-cards {
+                display: grid !important;
+                grid-template-columns: repeat(4, 1fr) !important;
+                gap: 10px !important;
+                margin-bottom: 15px !important;
+            }
+
+            .stat-card {
+                box-shadow: none !important;
+                border: 2px solid #ddd !important;
+                border-radius: 8px !important;
+                page-break-inside: avoid;
+                padding: 15px !important;
+                background: white !important;
+            }
+
+            .stat-card::before {
+                height: 3px !important;
+            }
+
+            .stat-card::after {
+                display: none !important;
+            }
+
+            /* 修复数据值显示问题 */
+            .stat-value {
+                color: #2c3e50 !important;
+                -webkit-text-fill-color: #2c3e50 !important;
+                background: none !important;
+                -webkit-background-clip: initial !important;
+                background-clip: initial !important;
+                font-size: 28px !important;
+                font-weight: 700 !important;
+            }
+
+            .stat-icon {
+                font-size: 36px !important;
+                margin-bottom: 8px !important;
+                animation: none !important;
+                filter: none !important;
+            }
+
+            .stat-label {
+                font-size: 12px !important;
+                color: #666 !important;
+                margin-bottom: 8px !important;
+            }
+
+            .stat-change {
+                font-size: 11px !important;
+                padding: 2px 6px !important;
+            }
+
+            /* 图表区域优化 */
+            .charts-grid {
+                display: block !important;
+                margin-bottom: 0 !important;
+            }
+
             .chart-card {
                 box-shadow: none !important;
-                border: 1px solid #ddd;
+                border: 2px solid #ddd !important;
+                border-radius: 8px !important;
                 page-break-inside: avoid;
+                margin-bottom: 15px !important;
+                padding: 15px !important;
+                background: white !important;
+            }
+
+            .chart-card.full-width {
+                grid-column: auto !important;
+            }
+
+            .chart-title {
+                font-size: 16px !important;
+                color: #2c3e50 !important;
+                -webkit-text-fill-color: #2c3e50 !important;
+                background: none !important;
+                -webkit-background-clip: initial !important;
+                background-clip: initial !important;
+                margin-bottom: 15px !important;
+                padding-bottom: 10px !important;
+                border-bottom: 2px solid #e5e7eb !important;
+                border-image: none !important;
+            }
+
+            .chart-title::before {
+                font-size: 16px !important;
+            }
+
+            .chart-container {
+                height: 300px !important;
+            }
+
+            /* 确保空数据提示不打印 */
+            .loading,
+            div[v-show="!hasData && !loading"] {
+                display: none !important;
             }
         }
 
