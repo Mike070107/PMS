@@ -3295,10 +3295,10 @@
                     <li class="nav-item active">
                         <i class="el-icon-s-home"></i> 收费工作台
                     </li>
-                    <li class="nav-item" @click="window.location.href='/query'">
+                    <li class="nav-item" @click="goToQuery">
                         <i class="el-icon-search"></i> 订单查询
                     </li>
-                    <li class="nav-item" @click="window.location.href='/query_detailed'">
+                    <li class="nav-item" @click="goToDetailedQuery">
                         <i class="el-icon-document"></i> 详细查询
                     </li>
 
@@ -4912,6 +4912,15 @@ const app = createApp({
             }
         };
         
+        // 页面跳转方法
+        const goToQuery = () => {
+            window.location.href = '/query';
+        };
+        
+        const goToDetailedQuery = () => {
+            window.location.href = '/query_detailed';
+        };
+        
         // 退出登录
         const logout = () => {
             ElMessageBox.confirm('确定要退出登录吗？', '提示', {
@@ -6291,6 +6300,8 @@ const debugPrices = () => {
             generateBill,
             clearForm,
             logout,
+            goToQuery,
+            goToDetailedQuery,
             debugPrices,
             loadFeePrices,
             formatPrice,
