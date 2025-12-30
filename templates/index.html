@@ -5485,37 +5485,49 @@ const app = createApp({
                 return;
             }
             
-            // 初始化日历控件
-            layui.use('laydate', function(){
-                const laydate = layui.laydate;
+            // 初始化日历控件（带layui加载检测）
+            function initLaydate() {
+                // 检查 layui 是否已加载
+                if (typeof layui === 'undefined') {
+                    console.warn('layui 未加载，等待加载...');
+                    setTimeout(initLaydate, 100);
+                    return;
+                }
                 
-                // 日期时间选择器已移除，不再需要初始化
-                
-                // 初始化订单查询页面的日期选择器
-                // 开始时间选择器
-                laydate.render({
-                    elem: '#startTime',
-                    type: 'datetime',
-                    format: 'yyyy-MM-dd HH:mm',
-                    max: 0, // 最大可选时间为当前时间
-                    done: function(value, date){
-                        // 验证日期范围
-                        validateDateRange();
-                    }
+                layui.use('laydate', function(){
+                    const laydate = layui.laydate;
+                    
+                    // 日期时间选择器已移除，不再需要初始化
+                    
+                    // 初始化订单查询页面的日期选择器
+                    // 开始时间选择器
+                    laydate.render({
+                        elem: '#startTime',
+                        type: 'datetime',
+                        format: 'yyyy-MM-dd HH:mm',
+                        max: 0, // 最大可选时间为当前时间
+                        done: function(value, date){
+                            // 验证日期范围
+                            validateDateRange();
+                        }
+                    });
+                    
+                    // 结束时间选择器
+                    laydate.render({
+                        elem: '#endTime',
+                        type: 'datetime',
+                        format: 'yyyy-MM-dd HH:mm',
+                        max: 0, // 最大可选时间为当前时间
+                        done: function(value, date){
+                            // 验证日期范围
+                            validateDateRange();
+                        }
+                    });
                 });
-                
-                // 结束时间选择器
-                laydate.render({
-                    elem: '#endTime',
-                    type: 'datetime',
-                    format: 'yyyy-MM-dd HH:mm',
-                    max: 0, // 最大可选时间为当前时间
-                    done: function(value, date){
-                        // 验证日期范围
-                        validateDateRange();
-                    }
-                });
-            });
+            }
+            
+            // 调用初始化
+            initLaydate();
             
             // 自定义月份年份控制器的函数
             function customizeMonthYearControls(instance) {
