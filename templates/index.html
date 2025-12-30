@@ -369,8 +369,6 @@
             padding: 0;
         }
         
-        }
-        
         /* 确保地址选择器中的输入框和下拉框不显示内部边框 */
         .address-selector .el-input .el-input__inner,
         .address-selector .el-select .el-select__inner {
@@ -3294,11 +3292,14 @@
                     </div>
                 </div>
                 <ul class="nav-menu">
-                    <li class="nav-item active" @click="currentPage = 'workbench'">
+                    <li class="nav-item active">
                         <i class="el-icon-s-home"></i> 收费工作台
                     </li>
-                    <li class="nav-item" @click="currentPage = 'query'">
+                    <li class="nav-item" @click="window.location.href='/query'">
                         <i class="el-icon-search"></i> 订单查询
+                    </li>
+                    <li class="nav-item" @click="window.location.href='/query_detailed'">
+                        <i class="el-icon-document"></i> 详细查询
                     </li>
 
                     <!-- 在侧边栏的导航菜单中添加 -->
