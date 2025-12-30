@@ -708,6 +708,24 @@
         <!-- 筛选区域 -->
         <div class="filter-section">
             <div class="filter-row">
+                <!-- 地区选择 -->
+                <div class="filter-item">
+                    <span class="filter-label">选择地区：</span>
+                    <el-select 
+                        v-model="selectedCommunity" 
+                        placeholder="请选择"
+                        :disabled="isCommunityDisabled"
+                        :clearable="!isCommunityDisabled"
+                        style="width: 250px;">
+                        <el-option
+                            v-for="community in communities"
+                            :key="community"
+                            :label="community"
+                            :value="community">
+                        </el-option>
+                    </el-select>
+                </div>
+                
                 <div class="filter-item">
                     <span class="filter-label">日期范围：</span>
                     <div class="date-input-wrapper">
@@ -850,6 +868,20 @@
                 const dimension = ref('day');
                 const hasData = ref(false);
                 
+                // 地区选择相关
+                const communities = ref([]);  // 小区列表
+                const selectedCommunity = ref('');  // 选中的小区
+                const userInfo = ref({  // 用户信息
+                    real_name: '',
+                    role: '',
+                    community: ''
+                });
+                
+                // 小区选择是否禁用：小区操作员不能选择其他小区
+                const isCommunityDisabled = computed(() => {
+                    return userInfo.value.role === '小区操作员';
+                });
+                
                 // 统计数据
                 const statsData = ref({
                     totalCount: 0,
@@ -872,6 +904,44 @@
                 // 获取Token
                 const getToken = () => {
                     return sessionStorage.getItem('token');
+                };
+
+                // 获取用户信息
+                const loadUserInfo = () => {
+                    const userData = sessionStorage.getItem('user');
+                    if (userData) {
+                        const user = JSON.parse(userData);
+                        userInfo.value = {
+                            real_name: user.real_name || user.username,
+                            role: user.role,
+                            community: user.community || ''
+                        };
+                        
+                        // 如果是小区操作员，默认设置小区且不可更改
+                        if (user.role === '小区操作员' && user.community) {
+                            selectedCommunity.value = user.community;
+                        }
+                    }
+                };
+
+                // 加载小区列表
+                const loadCommunities = async () => {
+                    try {
+                        const token = getToken();
+                        const response = await axios.get('/api/communities', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        
+                        if (response.data.status === 'success') {
+                            communities.value = response.data.data;
+                        } else {
+                            ElMessage.error('加载小区列表失败');
+                        }
+                    } catch (error) {
+                        console.error('加载小区列表失败:', error);
+                    }
                 };
 
                 // 获取适用于打印的grid配置
@@ -933,26 +1003,38 @@
                         console.log('发送API请求参数:', {
                             start_date: startDate,
                             end_date: endDate,
-                            dimension: dimension.value
+                            dimension: dimension.value,
+                            community: selectedCommunity.value
                         });
+                        
+                        // 构建请求参数
+                        const baseParams = {
+                            start_date: startDate,
+                            end_date: endDate
+                        };
+                        
+                        // 如果选择了小区，添加community参数
+                        if (selectedCommunity.value) {
+                            baseParams.community = selectedCommunity.value;
+                        }
                         
                         // 并行请求所有数据
                         const [timeStats, paymentStats, feeTypeStats, overviewStats] = await Promise.all([
                             axios.get('/api/reports/time-stats', {
                                 headers: { 'Authorization': `Bearer ${token}` },
-                                params: { start_date: startDate, end_date: endDate, dimension: dimension.value }
+                                params: { ...baseParams, dimension: dimension.value }
                             }),
                             axios.get('/api/reports/payment-stats', {
                                 headers: { 'Authorization': `Bearer ${token}` },
-                                params: { start_date: startDate, end_date: endDate }
+                                params: baseParams
                             }),
                             axios.get('/api/reports/fee-type-stats', {
                                 headers: { 'Authorization': `Bearer ${token}` },
-                                params: { start_date: startDate, end_date: endDate }
+                                params: baseParams
                             }),
                             axios.get('/api/reports/overview-stats', {
                                 headers: { 'Authorization': `Bearer ${token}` },
-                                params: { start_date: startDate, end_date: endDate }
+                                params: baseParams
                             })
                         ]);
 
@@ -1539,6 +1621,8 @@
                 };
 
                 onMounted(() => {
+                    loadUserInfo();  // 加载用户信息
+                    loadCommunities();  // 加载小区列表
                     initDatePickers();
                     
                     // 监听打印事件，在打印前后调整图表
@@ -1594,7 +1678,11 @@
                     statsData,
                     loadReportData,
                     printReport,
-                    formatNumber
+                    formatNumber,
+                    // 地区选择相关
+                    communities,
+                    selectedCommunity,
+                    isCommunityDisabled
                 };
             }
         });

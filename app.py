@@ -2543,15 +2543,20 @@ def get_overview_stats():
         current_user = g.current_user
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        community = request.args.get('community', '').strip()  # 获取小区参数
         
         if not start_date or not end_date:
             return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
         
-        # 根据权限构建查询
+        # 根据权限构建查询 - 联表查询以获取小区信息
         if current_user.Role == '系统管理员':
-            query = Order.query
+            query = db.session.query(Order, User).join(User, Order.操作员ID == User.ID)
         else:
-            query = Order.query.filter_by(小区ID=current_user.小区编号)
+            query = db.session.query(Order, User).join(User, Order.操作员ID == User.ID).filter(Order.小区ID == current_user.小区编号)
+        
+        # 如果指定了小区，过滤小区
+        if community:
+            query = query.filter(User.COMMUNITY == community)
         
         # 过滤日期范围
         query = query.filter(
@@ -2559,7 +2564,8 @@ def get_overview_stats():
             Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
         )
         
-        orders = query.all()
+        results = query.all()
+        orders = [order for order, user in results]  # 提取Order对象
         
         # 计算统计数据
         total_count = len(orders)
@@ -2577,16 +2583,21 @@ def get_overview_stats():
         
         # 查询上期数据
         if current_user.Role == '系统管理员':
-            prev_query = Order.query
+            prev_query = db.session.query(Order, User).join(User, Order.操作员ID == User.ID)
         else:
-            prev_query = Order.query.filter_by(小区ID=current_user.小区编号)
+            prev_query = db.session.query(Order, User).join(User, Order.操作员ID == User.ID).filter(Order.小区ID == current_user.小区编号)
+        
+        # 如果指定了小区，过滤小区
+        if community:
+            prev_query = prev_query.filter(User.COMMUNITY == community)
         
         prev_query = prev_query.filter(
             Order.录入时间 >= prev_start,
             Order.录入时间 < prev_end + timedelta(days=1)
         )
         
-        prev_orders = prev_query.all()
+        prev_results = prev_query.all()
+        prev_orders = [order for order, user in prev_results]
         prev_count = len(prev_orders)
         prev_amount = sum(float(order.收款金额) for order in prev_orders)
         
@@ -2620,15 +2631,20 @@ def get_time_statistics():
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
         dimension = request.args.get('dimension', 'day')  # day/week/month
+        community = request.args.get('community', '').strip()  # 获取小区参数
         
         if not start_date or not end_date:
             return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
         
-        # 根据权限构建查询
+        # 根据权限构建查询 - 联表查询
         if current_user.Role == '系统管理员':
-            query = Order.query
+            query = db.session.query(Order, User).join(User, Order.操作员ID == User.ID)
         else:
-            query = Order.query.filter_by(小区ID=current_user.小区编号)
+            query = db.session.query(Order, User).join(User, Order.操作员ID == User.ID).filter(Order.小区ID == current_user.小区编号)
+        
+        # 如果指定了小区，过滤小区
+        if community:
+            query = query.filter(User.COMMUNITY == community)
         
         # 过滤日期范围
         query = query.filter(
@@ -2636,7 +2652,8 @@ def get_time_statistics():
             Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
         )
         
-        orders = query.all()
+        results = query.all()
+        orders = [order for order, user in results]
         
         # 按维度聚合数据
         stats_dict = {}
@@ -2694,15 +2711,20 @@ def get_payment_statistics():
         current_user = g.current_user
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        community = request.args.get('community', '').strip()  # 获取小区参数
         
         if not start_date or not end_date:
             return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
         
-        # 根据权限构建查询
+        # 根据权限构建查询 - 联表查询
         if current_user.Role == '系统管理员':
-            query = Order.query
+            query = db.session.query(Order, User).join(User, Order.操作员ID == User.ID)
         else:
-            query = Order.query.filter_by(小区ID=current_user.小区编号)
+            query = db.session.query(Order, User).join(User, Order.操作员ID == User.ID).filter(Order.小区ID == current_user.小区编号)
+        
+        # 如果指定了小区，过滤小区
+        if community:
+            query = query.filter(User.COMMUNITY == community)
         
         # 过滤日期范围
         query = query.filter(
@@ -2710,7 +2732,8 @@ def get_payment_statistics():
             Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
         )
         
-        orders = query.all()
+        results = query.all()
+        orders = [order for order, user in results]
         
         # 按收款方式统计
         payment_stats = {}
@@ -2753,15 +2776,20 @@ def get_fee_type_statistics():
         current_user = g.current_user
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        community = request.args.get('community', '').strip()  # 获取小区参数
         
         if not start_date or not end_date:
             return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
         
-        # 根据权限构建查询
+        # 根据权限构建查询 - 联表查询
         if current_user.Role == '系统管理员':
-            query = Order.query
+            query = db.session.query(Order, User).join(User, Order.操作员ID == User.ID)
         else:
-            query = Order.query.filter_by(小区ID=current_user.小区编号)
+            query = db.session.query(Order, User).join(User, Order.操作员ID == User.ID).filter(Order.小区ID == current_user.小区编号)
+        
+        # 如果指定了小区，过滤小区
+        if community:
+            query = query.filter(User.COMMUNITY == community)
         
         # 过滤日期范围
         query = query.filter(
@@ -2769,7 +2797,8 @@ def get_fee_type_statistics():
             Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
         )
         
-        orders = query.all()
+        results = query.all()
+        orders = [order for order, user in results]
         
         # 收费项目映射
         fee_types = {
