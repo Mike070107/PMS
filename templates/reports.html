@@ -603,9 +603,9 @@
                 border-radius: 8px !important;
                 page-break-inside: avoid;
                 margin-bottom: 15px !important;
-                padding: 15px !important;
+                padding: 20px 15px !important;  /* 增加上下内边距 */
                 background: white !important;
-                overflow: hidden !important;  /* 防止内容溢出 */
+                overflow: visible !important;  /* 改为visible */
             }
 
             .chart-card.full-width {
@@ -630,10 +630,10 @@
             }
 
             .chart-container {
-                height: 280px !important;
+                height: 300px !important;
                 width: 100% !important;
                 max-width: 100% !important;
-                overflow: hidden !important;  /* 防止溢出 */
+                overflow: visible !important;  /* 改为visible以便观察 */
                 position: relative !important;
             }
 
@@ -643,6 +643,21 @@
                 max-height: 100% !important;
                 width: auto !important;
                 height: auto !important;
+            }
+
+            /* 打印时调整ECharts图表内边距，防止内容被裁切 */
+            .chart-container > div {
+                padding: 5px !important;
+            }
+
+            /* 打印时缩小图表字体，让内容更紧凑 */
+            .chart-container text {
+                font-size: 10px !important;
+            }
+
+            /* 打印时优化图例样式 */
+            .chart-container .echarts-legend-item {
+                font-size: 11px !important;
             }
 
             /* 确保空数据提示不打印 */
@@ -852,6 +867,18 @@
                     return sessionStorage.getItem('token');
                 };
 
+                // 获取适用于打印的grid配置
+                const getPrintSafeGrid = () => {
+                    // 为打印留出更多边距空间
+                    return {
+                        left: '8%',
+                        right: '8%',
+                        bottom: '12%',
+                        top: '18%',
+                        containLabel: true
+                    };
+                };
+
                 // 初始化日期选择器
                 const initDatePickers = () => {
                     nextTick(() => {
@@ -1002,10 +1029,10 @@
                             itemGap: 20
                         },
                         grid: {
-                            left: '3%',
-                            right: '4%',
-                            bottom: '8%',
-                            top: '15%',
+                            left: '5%',
+                            right: '6%',
+                            bottom: '10%',
+                            top: '18%',
                             containLabel: true
                         },
                         xAxis: {
@@ -1315,10 +1342,10 @@
                             itemGap: 20
                         },
                         grid: {
-                            left: '3%',
-                            right: '4%',
-                            bottom: '3%',
-                            top: '15%',
+                            left: '5%',
+                            right: '6%',
+                            bottom: '5%',
+                            top: '18%',
                             containLabel: true
                         },
                         xAxis: {
