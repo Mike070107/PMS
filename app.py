@@ -936,12 +936,32 @@ def create_order():
                 # 不影响红冲订单的创建，只记录错误
         
         # 8. 记录操作日志
+        # 构建收费项目清单
+        fee_items = []
+        if new_order.电费金额 and float(new_order.电费金额) > 0:
+            fee_items.append(f"电费 {new_order.电费度数}度 ￥{float(new_order.电费金额):.2f}")
+        if new_order.冷水金额 and float(new_order.冷水金额) > 0:
+            fee_items.append(f"冷水费 {new_order.冷水吨数}吨 ￥{float(new_order.冷水金额):.2f}")
+        if new_order.热水金额 and float(new_order.热水金额) > 0:
+            fee_items.append(f"热水费 {new_order.热水吨数}吨 ￥{float(new_order.热水金额):.2f}")
+        if new_order.网费金额 and float(new_order.网费金额) > 0:
+            fee_items.append(f"网费 {new_order.网费月数}月 ￥{float(new_order.网费金额):.2f}")
+        if new_order.停车费金额 and float(new_order.停车费金额) > 0:
+            car_info = f" ({new_order.车牌号})" if new_order.车牌号 else ""
+            fee_items.append(f"停车费 {new_order.停车费月数}月 ￥{float(new_order.停车费金额):.2f}{car_info}")
+        if new_order.房租金额 and float(new_order.房租金额) > 0:
+            fee_items.append(f"房租 {new_order.房租月数}月 ￥{float(new_order.房租金额):.2f}")
+        if new_order.管理费金额 and float(new_order.管理费金额) > 0:
+            fee_items.append(f"管理费 {new_order.管理费月数}月 ￥{float(new_order.管理费金额):.2f}")
+        
         operation_detail = {
-            'bill_number': bill_number,
-            'amount': float(data['totalAmount']),
-            'payment_method': data['paymentMethod'],
-            'address_id': data['addressId'],
-            'is_red_reverse': is_red_reverse
+            '账单号': bill_number,
+            '楼号': address.楼栋号,
+            '房号': address.房间号,
+            '收费金额': float(data['totalAmount']),
+            '收费项目': ', '.join(fee_items) if fee_items else '无',
+            '支付方式': data['paymentMethod'],
+            '备注': data.get('remark', '')
         }
         
         from log_utils import log_operation as log_op_new
@@ -1199,6 +1219,25 @@ def delete_order(order_id):
         # 记录订单信息用于日志
         bill_number = order.账单号
         amount = order.收款金额
+        address = order.地址 if hasattr(order, '地址') and order.地址 else None
+        
+        # 构建收费项目清单
+        fee_items = []
+        if order.电费金额 and float(order.电费金额) > 0:
+            fee_items.append(f"电费 {order.电费度数}度 ￥{float(order.电费金额):.2f}")
+        if order.冷水金额 and float(order.冷水金额) > 0:
+            fee_items.append(f"冷水费 {order.冷水吨数}吨 ￥{float(order.冷水金额):.2f}")
+        if order.热水金额 and float(order.热水金额) > 0:
+            fee_items.append(f"热水费 {order.热水吨数}吨 ￥{float(order.热水金额):.2f}")
+        if order.网费金额 and float(order.网费金额) > 0:
+            fee_items.append(f"网费 {order.网费月数}月 ￥{float(order.网费金额):.2f}")
+        if order.停车费金额 and float(order.停车费金额) > 0:
+            car_info = f" ({order.车牌号})" if order.车牌号 else ""
+            fee_items.append(f"停车费 {order.停车费月数}月 ￥{float(order.停车费金额):.2f}{car_info}")
+        if order.房租金额 and float(order.房租金额) > 0:
+            fee_items.append(f"房租 {order.房租月数}月 ￥{float(order.房租金额):.2f}")
+        if order.管理费金额 and float(order.管理费金额) > 0:
+            fee_items.append(f"管理费 {order.管理费月数}月 ￥{float(order.管理费金额):.2f}")
         
         # 删除订单
         db.session.delete(order)
@@ -1210,9 +1249,13 @@ def delete_order(order_id):
             operation_type='删除',
             operation_module='订单管理',
             operation_detail={
-                'bill_number': bill_number,
-                'amount': float(amount),
-                'order_id': order_id
+                '账单号': bill_number,
+                '楼号': address.楼栋号 if address else '未知',
+                '房号': address.房间号 if address else '未知',
+                '收费金额': float(amount),
+                '收费项目': ', '.join(fee_items) if fee_items else '无',
+                '支付方式': order.收款方式 or '未知',
+                '备注': order.备注 or ''
             },
             target_id=str(order_id),
             target_type='订单',
