@@ -714,10 +714,11 @@ def update_fee_prices():
         
         # 记录操作日志
         log_operation(
-            user_account=current_user.USERNAME,
-            operation_type='更新收费标准',
-            details=f'更新小区 [{fee_price.community}] 的收费标准',
-            community_num=community_num
+            operation_type='更新',
+            operation_module='收费标准管理',
+            operation_detail=f'更新小区 [{fee_price.community}] 的收费标准',
+            target_id=str(community_num),
+            target_type='收费标准'
         )
         
         return jsonify({
