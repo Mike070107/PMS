@@ -27,25 +27,33 @@ def log_operation(user_account, operation_type, details, community_num=None, com
     记录操作日志（写入数据库）
     """
     try:
-        from app import db, OperationLog
-        from flask import request
+        from app import db, OperationLog, User
+        from flask import request, has_request_context
         from datetime import datetime
         
         # 获取IP地址
-        ip_address = request.remote_addr if request else 'unknown'
-        if request and request.environ.get('HTTP_X_FORWARDED_FOR'):
-            ip_address = request.environ['HTTP_X_FORWARDED_FOR'].split(',')[0].strip()
-        
-        # 获取MAC地址（从请求头获取，需要前端上报）
+        ip_address = 'unknown'
         mac_address = ''
-        if request:
-            mac_address = request.headers.get('X-Client-MAC', '')
+        user_agent = ''
+        request_method = ''
+        request_url = ''
         
-        # 获取UserAgent
-        user_agent = request.headers.get('User-Agent', '') if request else ''
+        if has_request_context():
+            ip_address = request.remote_addr or 'unknown'
+            if request.environ.get('HTTP_X_FORWARDED_FOR'):
+                ip_address = request.environ['HTTP_X_FORWARDED_FOR'].split(',')[0].strip()
+            
+            # 获取MAC地址（从请求头获取，需要前端上报）
+            mac_address = request.headers.get('X-Client-MAC', '')
+            
+            # 获取UserAgent
+            user_agent = request.headers.get('User-Agent', '')
+            
+            # 获取请求信息
+            request_method = request.method
+            request_url = request.url
         
         # 查询用户信息
-        from app import User
         user = User.query.filter_by(USERNAME=user_account).first()
         
         if user:
@@ -64,8 +72,8 @@ def log_operation(user_account, operation_type, details, community_num=None, com
             log.操作模块 = '系统登录' if operation_type in ['用户登录', '用户登出'] else '系统操作'
             log.操作详情 = details
             log.操作结果 = 'success'
-            log.请求方法 = request.method if request else ''
-            log.请求URL = request.url if request else ''
+            log.请求方法 = request_method
+            log.请求URL = request_url
             
             db.session.add(log)
             if commit_to_db:
