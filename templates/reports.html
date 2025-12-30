@@ -515,13 +515,16 @@
             }
 
             /* 页面标题优化 */
+            /* 页面头部 - 自适应高度 */
             .page-header {
                 background: none !important;
                 color: #2c3e50 !important;
                 box-shadow: none !important;
                 border-bottom: 3px solid #2c3e50;
-                padding: 15px 0 !important;
+                padding: 30px 20px !important;  /* 增加内边距 */
                 margin-bottom: 20px !important;
+                height: auto !important;  /* 自适应高度 */
+                min-height: auto !important;
             }
 
             .page-header::before {
@@ -529,12 +532,13 @@
             }
 
             .page-title {
-                font-size: 24px !important;
+                font-size: 28px !important;  /* 增大标题 */
                 text-shadow: none !important;
+                margin-bottom: 10px !important;
             }
 
             .page-subtitle {
-                font-size: 12px !important;
+                font-size: 14px !important;  /* 增大副标题 */
             }
 
             /* 数据概览卡片打印优化 */
@@ -591,7 +595,7 @@
                 padding: 2px 6px !important;
             }
 
-            /* 图表区域优化 */
+            /* 图表区域优化 - 自适应高度 */
             .charts-grid {
                 display: block !important;
                 margin-bottom: 0 !important;
@@ -602,16 +606,17 @@
                 border: 2px solid #ddd !important;
                 border-radius: 8px !important;
                 page-break-inside: avoid;
-                margin-bottom: 20px !important;  /* 增加卡片间距 */
-                padding: 20px 15px !important;  /* 增加上下内边距 */
+                margin-bottom: 25px !important;  /* 增加卡片间距 */
+                padding: 25px 20px !important;  /* 增加内边距 */
                 background: white !important;
-                overflow: visible !important;  /* 改为visible */
-                min-height: 380px !important;  /* 设置最小高度，确保内容不溢出 */
+                overflow: visible !important;
+                height: auto !important;  /* 自适应高度 */
+                min-height: 450px !important;  /* 增加最小高度 */
             }
 
             .chart-card.full-width {
                 grid-column: auto !important;
-                min-height: 420px !important;  /* 全宽图表需要更高 */
+                min-height: 500px !important;  /* 全宽图表需要更高 */
             }
 
             .chart-title {
@@ -632,10 +637,10 @@
             }
 
             .chart-container {
-                height: 320px !important;  /* 增加高度从300到32 */
+                height: 360px !important;  /* 增加高度 */
                 width: 100% !important;
                 max-width: 100% !important;
-                overflow: visible !important;  /* 改为visible以便观察 */
+                overflow: visible !important;
                 position: relative !important;
             }
 
