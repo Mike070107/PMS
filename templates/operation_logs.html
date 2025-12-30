@@ -303,6 +303,7 @@
                 <el-table-column prop="real_name" label="姓名" width="90"></el-table-column>
                 <el-table-column prop="community" label="所属小区" width="140"></el-table-column>
                 <el-table-column prop="ip_address" label="IP地址" width="130"></el-table-column>
+                <el-table-column prop="browser" label="浏览器" width="130"></el-table-column>
                 <el-table-column prop="operation_type" label="操作类型" width="90"></el-table-column>
                 <el-table-column prop="operation_module" label="操作模块" width="130"></el-table-column>
                 
@@ -379,6 +380,10 @@
                 <div class="detail-row">
                     <div class="detail-label">MAC地址:</div>
                     <div class="detail-value">[[ currentLog.mac_address || '未获取' ]]</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">浏览器:</div>
+                    <div class="detail-value">[[ currentLog.browser || '未知' ]]</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">操作类型:</div>

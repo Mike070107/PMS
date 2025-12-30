@@ -289,6 +289,9 @@ class OperationLog(db.Model):
     
     def to_dict(self):
         """转换为字典格式"""
+        # 解析浏览器信息
+        browser_name = self._parse_browser(self.用户代理 or '')
+        
         return {
             'id': self.ID,
             'operation_time': self.操作时间.strftime('%Y-%m-%d %H:%M:%S') if self.操作时间 else '',
@@ -299,6 +302,8 @@ class OperationLog(db.Model):
             'community': self.所属小区 or '',
             'ip_address': self.电脑IP or '',
             'mac_address': self.MAC地址 or '',
+            'browser': browser_name,
+            'user_agent': self.用户代理 or '',
             'operation_type': self.操作类型,
             'operation_module': self.操作模块,
             'operation_detail': self.操作详情 or '',
@@ -310,6 +315,30 @@ class OperationLog(db.Model):
             'request_url': self.请求URL or '',
             'response_time': self.响应时间 or 0
         }
+    
+    @staticmethod
+    def _parse_browser(user_agent):
+        """解析UserAgent提取浏览器名称"""
+        if not user_agent:
+            return '未知'
+        
+        ua_lower = user_agent.lower()
+        
+        # 常见浏览器检测（按优先级顺序）
+        if 'edg' in ua_lower:
+            return 'Microsoft Edge'
+        elif 'opr' in ua_lower or 'opera' in ua_lower:
+            return 'Opera'
+        elif 'chrome' in ua_lower and 'safari' in ua_lower:
+            return 'Google Chrome'
+        elif 'firefox' in ua_lower:
+            return 'Mozilla Firefox'
+        elif 'safari' in ua_lower and 'chrome' not in ua_lower:
+            return 'Safari'
+        elif 'msie' in ua_lower or 'trident' in ua_lower:
+            return 'Internet Explorer'
+        else:
+            return '其他浏览器'
 
 # ========== 身份验证装饰器 ==========
 def token_required(f):
