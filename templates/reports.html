@@ -605,6 +605,7 @@
                 margin-bottom: 15px !important;
                 padding: 15px !important;
                 background: white !important;
+                overflow: hidden !important;  /* 防止内容溢出 */
             }
 
             .chart-card.full-width {
@@ -629,7 +630,19 @@
             }
 
             .chart-container {
-                height: 300px !important;
+                height: 280px !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                overflow: hidden !important;  /* 防止溢出 */
+                position: relative !important;
+            }
+
+            /* 确保ECharts canvas不溢出 */
+            .chart-container canvas {
+                max-width: 100% !important;
+                max-height: 100% !important;
+                width: auto !important;
+                height: auto !important;
             }
 
             /* 确保空数据提示不打印 */
@@ -1449,7 +1462,29 @@
 
                 // 打印报表
                 const printReport = () => {
-                    window.print();
+                    // 打印前调整所有图表尺寸
+                    setTimeout(() => {
+                        // 获取所有ECharts实例并调整尺寸
+                        const chartDoms = [
+                            document.getElementById('trendChart'),
+                            document.getElementById('paymentChart'),
+                            document.getElementById('feeTypeChart')
+                        ];
+                        
+                        chartDoms.forEach(dom => {
+                            if (dom) {
+                                const chartInstance = echarts.getInstanceByDom(dom);
+                                if (chartInstance) {
+                                    chartInstance.resize();
+                                }
+                            }
+                        });
+                        
+                        // 稍微延迟后打印，确保图表调整完成
+                        setTimeout(() => {
+                            window.print();
+                        }, 300);
+                    }, 100);
                 };
 
                 // 格式化数字
@@ -1463,6 +1498,43 @@
 
                 onMounted(() => {
                     initDatePickers();
+                    
+                    // 监听打印事件，在打印前后调整图表
+                    window.addEventListener('beforeprint', () => {
+                        console.log('准备打印，调整图表尺寸...');
+                        const chartDoms = [
+                            document.getElementById('trendChart'),
+                            document.getElementById('paymentChart'),
+                            document.getElementById('feeTypeChart')
+                        ];
+                        
+                        chartDoms.forEach(dom => {
+                            if (dom) {
+                                const chartInstance = echarts.getInstanceByDom(dom);
+                                if (chartInstance) {
+                                    chartInstance.resize();
+                                }
+                            }
+                        });
+                    });
+                    
+                    window.addEventListener('afterprint', () => {
+                        console.log('打印完成，恢复图表尺寸...');
+                        const chartDoms = [
+                            document.getElementById('trendChart'),
+                            document.getElementById('paymentChart'),
+                            document.getElementById('feeTypeChart')
+                        ];
+                        
+                        chartDoms.forEach(dom => {
+                            if (dom) {
+                                const chartInstance = echarts.getInstanceByDom(dom);
+                                if (chartInstance) {
+                                    chartInstance.resize();
+                                }
+                            }
+                        });
+                    });
                 });
 
                 // 监听统计维度变化，自动重新加载数据
