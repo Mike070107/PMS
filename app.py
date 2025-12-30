@@ -337,11 +337,6 @@ def login_page():
     """登录页面"""
     return render_template('login.html')
 
-@app.route('/query')
-def query_page():
-    """订单查询页面"""
-    return render_template('query.html')
-
 @app.route('/query_detailed')
 def query_detailed_page():
     """详细订单查询页面"""
@@ -358,7 +353,7 @@ def test_page():
         <h1>公寓物业收费系统 - 测试页</h1>
         <p><a href="/">主工作台</a></p>
         <p><a href="/login">登录页面</a></p>
-        <p><a href="/query">订单查询</a></p>
+        <p><a href="/query_detailed">详细查询</a></p>
         <p><a href="/test-static">静态文件测试</a></p>
         <p><a href="/api/test">API状态测试</a></p>
     </body>
