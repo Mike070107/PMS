@@ -2315,6 +2315,9 @@ def get_orders_detailed():
         if current_user.Role != '系统管理员':
             query = query.filter(Order.小区ID == current_user.小区编号)
         
+        # 过滤红冲订单（不统计红冲记录）
+        query = query.filter(Order.红冲 == 0)
+        
         # 应用筛选条件
         if community:  # 通过小区名称筛选
             query = query.filter(User.COMMUNITY == community)
@@ -2433,6 +2436,9 @@ def export_orders_detailed():
         # 权限过滤
         if current_user.Role != '系统管理员':
             query = query.filter(Order.小区ID == current_user.小区编号)
+        
+        # 过滤红冲订单（不统计红冲记录）
+        query = query.filter(Order.红冲 == 0)
         
         # 应用筛选条件
         if community:  # 通过小区名称筛选
