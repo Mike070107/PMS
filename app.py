@@ -930,11 +930,22 @@ def create_order():
                 # 不影响红冲订单的创建，只记录错误
         
         # 8. 记录操作日志
-        log_operation(
-            user_account=current_user.USERNAME,
-            operation_type='生成账单',
-            details=f'生成了账单号为 {bill_number} 的订单，金额 {data["totalAmount"]} 元',
-            community_num=current_user.小区编号
+        operation_detail = {
+            'bill_number': bill_number,
+            'amount': float(data['totalAmount']),
+            'payment_method': data['paymentMethod'],
+            'address_id': data['addressId'],
+            'is_red_reverse': is_red_reverse
+        }
+        
+        from log_utils import log_operation as log_op_new
+        log_op_new(
+            operation_type='红冲' if is_red_reverse else '新增',
+            operation_module='订单管理',
+            operation_detail=operation_detail,
+            target_id=str(new_order.订单ID),
+            target_type='订单',
+            operation_result='success'
         )
         
         return jsonify({
@@ -1188,11 +1199,18 @@ def delete_order(order_id):
         db.session.commit()
         
         # 记录操作日志
-        log_operation(
-            user_account=current_user.USERNAME,
-            operation_type='删除订单',
-            details=f'删除了账单号为 {bill_number} 的订单，金额 {amount} 元',
-            community_num=current_user.小区编号
+        from log_utils import log_operation as log_op_new
+        log_op_new(
+            operation_type='删除',
+            operation_module='订单管理',
+            operation_detail={
+                'bill_number': bill_number,
+                'amount': float(amount),
+                'order_id': order_id
+            },
+            target_id=str(order_id),
+            target_type='订单',
+            operation_result='success'
         )
         
         return jsonify({

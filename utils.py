@@ -24,22 +24,61 @@ def generate_bill_number():
 
 def log_operation(user_account, operation_type, details, community_num=None, commit_to_db=True):
     """
-    记录操作日志（简化版：仅打印到控制台，避免数据库上下文问题）
+    记录操作日志（写入数据库）
     """
-    # 暂时不操作数据库，仅打印日志
-    log_msg = f"[操作日志] 用户: {user_account}, 操作: {operation_type}, 详情: {details}"
-    print(log_msg)
-    
-    # 可选：未来恢复数据库记录时，再启用下面的代码
-    # try:
-    #     from app import db, OperationLog
-    #     with current_app.app_context():
-    #         log = OperationLog(...)
-    #         db.session.add(log)
-    #         if commit_to_db:
-    #             db.session.commit()
-    # except Exception as e:
-    #     print(f"[日志记录失败] {e}")
+    try:
+        from app import db, OperationLog
+        from flask import request
+        from datetime import datetime
+        
+        # 获取IP地址
+        ip_address = request.remote_addr if request else 'unknown'
+        if request and request.environ.get('HTTP_X_FORWARDED_FOR'):
+            ip_address = request.environ['HTTP_X_FORWARDED_FOR'].split(',')[0].strip()
+        
+        # 获取MAC地址（从请求头获取，需要前端上报）
+        mac_address = ''
+        if request:
+            mac_address = request.headers.get('X-Client-MAC', '')
+        
+        # 获取UserAgent
+        user_agent = request.headers.get('User-Agent', '') if request else ''
+        
+        # 查询用户信息
+        from app import User
+        user = User.query.filter_by(USERNAME=user_account).first()
+        
+        if user:
+            log = OperationLog()
+            log.操作时间 = datetime.now()
+            log.用户ID = user.ID
+            log.用户账号 = user_account
+            log.用户姓名 = user.用户姓名 or user_account
+            log.用户角色 = user.Role
+            log.所属小区 = user.COMMUNITY or ''
+            log.小区编号 = community_num or user.小区编号
+            log.电脑IP = ip_address
+            log.MAC地址 = mac_address
+            log.用户代理 = user_agent
+            log.操作类型 = operation_type
+            log.操作模块 = '系统登录' if operation_type in ['用户登录', '用户登出'] else '系统操作'
+            log.操作详情 = details
+            log.操作结果 = 'success'
+            log.请求方法 = request.method if request else ''
+            log.请求URL = request.url if request else ''
+            
+            db.session.add(log)
+            if commit_to_db:
+                db.session.commit()
+                
+            print(f"[操作日志] 用户: {user_account}, 操作: {operation_type}, 详情: {details}")
+        else:
+            print(f"[日志记录失败] 用户不存在: {user_account}")
+            
+    except Exception as e:
+        print(f"[日志记录失败] {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def verify_password(stored_hashed_password, provided_password):
