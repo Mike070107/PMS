@@ -34,6 +34,16 @@
             display: flex;
         }
 
+        /* 无侧边栏模式 */
+        .app-container.no-sidebar {
+            display: block;
+        }
+
+        .app-container.no-sidebar .main-content {
+            margin-left: 0;
+            width: 100%;
+        }
+
         /* 左侧导航栏 */
         .sidebar {
             width: 200px;
@@ -449,9 +459,9 @@
 <body>
 {% raw %}
     <div id="app">
-        <div class="app-container">
+        <div class="app-container" :class="{'no-sidebar': isEmbedded}">
             <!-- 左侧导航栏 -->
-            <div class="sidebar">
+            <div class="sidebar" v-if="!isEmbedded">
                 <div class="sidebar-header">
                     <div class="sidebar-title">物业收费系统</div>
                     <div class="sidebar-user">{{ userInfo.real_name }}</div>
@@ -758,6 +768,10 @@
 
         const app = createApp({
             setup() {
+                // 检测是否在iframe中嵌入，或者URL参数中有embed=1
+                const urlParams = new URLSearchParams(window.location.search);
+                const isEmbedded = ref(urlParams.get('embed') === '1' || window.self !== window.top);
+
                 // 用户信息
                 const userInfo = ref({
                     real_name: '用户',
@@ -1092,6 +1106,7 @@
                 });
 
                 return {
+                    isEmbedded,
                     userInfo,
                     queryParams,
                     tableData,
