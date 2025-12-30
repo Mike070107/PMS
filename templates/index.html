@@ -3302,6 +3302,11 @@
                         <i class="el-icon-data-analysis"></i> 数据报表
                     </li>
 
+                    <!-- 操作日志 -->
+                    <li class="nav-item" :class="{active: currentPage === 'operationLogs'}" @click="currentPage = 'operationLogs'">
+                        <i class="el-icon-document-copy"></i> 操作日志
+                    </li>
+
                     <!-- 在侧边栏的导航菜单中添加 -->
                     <li class="nav-item" :class="{active: currentPage === 'feePrices'}" @click="currentPage = 'feePrices'">
                         <i class="el-icon-info"></i> 收费标准管理
@@ -3871,6 +3876,15 @@
         <div v-if="currentPage === 'reports'" style="position: fixed; top: 0; left: 240px; right: 0; bottom: 0; z-index: 999;">
             <iframe 
                 src="/reports" 
+                style="width: 100%; height: 100%; border: none; display: block;"
+                frameborder="0">
+            </iframe>
+        </div>
+        
+        <!-- 操作日志页面 -->
+        <div v-if="currentPage === 'operationLogs'" style="position: fixed; top: 0; left: 240px; right: 0; bottom: 0; z-index: 999;">
+            <iframe 
+                src="/operation_logs" 
                 style="width: 100%; height: 100%; border: none; display: block;"
                 frameborder="0">
             </iframe>

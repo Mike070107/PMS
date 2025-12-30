@@ -245,17 +245,71 @@ class FeePrice(db.Model):
         }
 
 class OperationLog(db.Model):
-    """操作日志表模型"""
+    """操作日志表模型 - 详细版"""
     __tablename__ = 'operation_logs'
     
-    ID = db.Column(db.Integer, primary_key=True, comment='日志唯一标识')
-    用户账号 = db.Column(db.String(50), nullable=False, comment='操作用户的USERNAME')
-    操作时间 = db.Column(db.DateTime, default=datetime.now, nullable=False, comment='日志记录时间')
-    电脑IP = db.Column(db.String(50), comment='用户操作时的IP地址')
-    电脑名称 = db.Column(db.String(100), comment='用户操作时的计算机名')
-    操作类型 = db.Column(db.String(100), nullable=False, comment='例如：用户登录')
-    操作详情 = db.Column(db.Text, comment='更详细的信息')
-    小区编号 = db.Column(db.Integer, comment='操作用户所属的小区编号')
+    ID = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='日志唯一标识')
+    
+    # 时间信息
+    操作时间 = db.Column(db.DateTime, default=datetime.now, nullable=False, index=True, comment='操作时间')
+    
+    # 用户信息
+    用户ID = db.Column(db.Integer, nullable=False, index=True, comment='操作用户ID')
+    用户账号 = db.Column(db.String(50), nullable=False, index=True, comment='操作用户的USERNAME')
+    用户姓名 = db.Column(db.String(50), comment='用户真实姓名')
+    用户角色 = db.Column(db.String(20), nullable=False, comment='用户角色')
+    所属小区 = db.Column(db.String(100), index=True, comment='所属小区')
+    小区编号 = db.Column(db.Integer, index=True, comment='小区编号')
+    
+    # 网络信息
+    电脑IP = db.Column(db.String(50), comment='IP地址')
+    MAC地址 = db.Column(db.String(50), comment='MAC地址')
+    用户代理 = db.Column(db.Text, comment='浏览器UserAgent')
+    
+    # 操作信息
+    操作类型 = db.Column(db.String(50), nullable=False, index=True, comment='操作类型')
+    操作模块 = db.Column(db.String(50), nullable=False, index=True, comment='操作模块')
+    操作详情 = db.Column(db.Text, comment='操作详情（JSON格式）')
+    
+    # 业务相关
+    目标ID = db.Column(db.String(100), index=True, comment='操作对象ID')
+    目标类型 = db.Column(db.String(50), comment='操作对象类型')
+    
+    # 结果信息
+    操作结果 = db.Column(db.String(20), nullable=False, default='success', comment='操作结果')
+    错误信息 = db.Column(db.Text, comment='错误信息')
+    
+    # 请求信息
+    请求方法 = db.Column(db.String(10), comment='请求方法')
+    请求URL = db.Column(db.Text, comment='请求URL')
+    请求参数 = db.Column(db.Text, comment='请求参数')
+    
+    # 响应信息
+    响应时间 = db.Column(db.Integer, comment='响应时间（毫秒）')
+    
+    def to_dict(self):
+        """转换为字典格式"""
+        return {
+            'id': self.ID,
+            'operation_time': self.操作时间.strftime('%Y-%m-%d %H:%M:%S') if self.操作时间 else '',
+            'user_id': self.用户ID,
+            'username': self.用户账号,
+            'real_name': self.用户姓名 or '',
+            'user_role': self.用户角色,
+            'community': self.所属小区 or '',
+            'ip_address': self.电脑IP or '',
+            'mac_address': self.MAC地址 or '',
+            'operation_type': self.操作类型,
+            'operation_module': self.操作模块,
+            'operation_detail': self.操作详情 or '',
+            'target_id': self.目标ID or '',
+            'target_type': self.目标类型 or '',
+            'operation_result': self.操作结果,
+            'error_message': self.错误信息 or '',
+            'request_method': self.请求方法 or '',
+            'request_url': self.请求URL or '',
+            'response_time': self.响应时间 or 0
+        }
 
 # ========== 身份验证装饰器 ==========
 def token_required(f):
@@ -351,6 +405,11 @@ def fee_prices_manager_page():
 def reports_page():
     """数据报表页面"""
     return render_template('reports.html')
+
+@app.route('/operation_logs')
+def operation_logs_page():
+    """操作日志查询页面"""
+    return render_template('operation_logs.html')
 
 @app.route('/test')
 def test_page():
@@ -2845,6 +2904,225 @@ def get_fee_type_statistics():
     except Exception as e:
         app.logger.error(f"获取收费项目统计失败: {str(e)}\n{traceback.format_exc()}")
         return jsonify({'status': 'error', 'message': '获取数据失败'}), 500
+
+
+# ========== 操作日志 API ==========
+
+@app.route('/api/operation-logs', methods=['GET'])
+@token_required
+def get_operation_logs():
+    """获取操作日志列表"""
+    try:
+        current_user = g.current_user
+        
+        # 获取筛选参数
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        community = request.args.get('community', '').strip()
+        operation_type = request.args.get('operation_type', '').strip()
+        operation_module = request.args.get('operation_module', '').strip()
+        username = request.args.get('username', '').strip()
+        operation_result = request.args.get('operation_result', '').strip()
+        
+        # 分页参数
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 20))
+        
+        if not start_date or not end_date:
+            return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
+        
+        # 构建查询
+        query = OperationLog.query
+        
+        # 权限过滤：管理员看所有，操作员只看自己小区
+        if current_user.Role != '系统管理员':
+            query = query.filter(OperationLog.小区编号 == current_user.小区编号)
+        
+        # 地区过滤
+        if community:
+            query = query.filter(OperationLog.所属小区 == community)
+        
+        # 日期范围
+        from datetime import datetime, timedelta
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+        query = query.filter(
+            OperationLog.操作时间 >= start_dt,
+            OperationLog.操作时间 < end_dt
+        )
+        
+        # 操作类型
+        if operation_type:
+            query = query.filter(OperationLog.操作类型 == operation_type)
+        
+        # 操作模块
+        if operation_module:
+            query = query.filter(OperationLog.操作模块 == operation_module)
+        
+        # 用户账号
+        if username:
+            query = query.filter(OperationLog.用户账号.like(f'%{username}%'))
+        
+        # 操作结果
+        if operation_result:
+            query = query.filter(OperationLog.操作结果 == operation_result)
+        
+        # 按时间降序排列
+        query = query.order_by(OperationLog.操作时间.desc())
+        
+        # 获取总数
+        total = query.count()
+        
+        # 分页
+        offset = (page - 1) * page_size
+        logs = query.offset(offset).limit(page_size).all()
+        
+        # 转换为字典
+        result = [log.to_dict() for log in logs]
+        
+        return jsonify({
+            'status': 'success',
+            'data': result,
+            'total': total,
+            'page': page,
+            'page_size': page_size
+        })
+    
+    except Exception as e:
+        app.logger.error(f"获取操作日志失败: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'status': 'error', 'message': '获取日志失败'}), 500
+
+
+@app.route('/api/operation-logs/export', methods=['GET'])
+@token_required
+def export_operation_logs():
+    """导出操作日志到Excel"""
+    try:
+        current_user = g.current_user
+        
+        # 获取筛选参数（与查询接口相同）
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        community = request.args.get('community', '').strip()
+        operation_type = request.args.get('operation_type', '').strip()
+        operation_module = request.args.get('operation_module', '').strip()
+        username = request.args.get('username', '').strip()
+        operation_result = request.args.get('operation_result', '').strip()
+        
+        if not start_date or not end_date:
+            return jsonify({'status': 'error', 'message': '请提供日期范围'}), 400
+        
+        # 构建查询（与上面相同的逻辑）
+        query = OperationLog.query
+        
+        if current_user.Role != '系统管理员':
+            query = query.filter(OperationLog.小区编号 == current_user.小区编号)
+        
+        if community:
+            query = query.filter(OperationLog.所属小区 == community)
+        
+        from datetime import datetime, timedelta
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+        query = query.filter(
+            OperationLog.操作时间 >= start_dt,
+            OperationLog.操作时间 < end_dt
+        )
+        
+        if operation_type:
+            query = query.filter(OperationLog.操作类型 == operation_type)
+        if operation_module:
+            query = query.filter(OperationLog.操作模块 == operation_module)
+        if username:
+            query = query.filter(OperationLog.用户账号.like(f'%{username}%'))
+        if operation_result:
+            query = query.filter(OperationLog.操作结果 == operation_result)
+        
+        query = query.order_by(OperationLog.操作时间.desc())
+        
+        # 获取所有日志（注意：如果数据量太大可能需要限制）
+        logs = query.limit(10000).all()  # 限制最多1万条
+        
+        if not logs:
+            return jsonify({'status': 'error', 'message': '没有找到符合条件的日志'}), 404
+        
+        # 使用openpyxl创建Excel
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill
+        import io
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = '操作日志'
+        
+        # 设置表头
+        headers = [
+            'ID', '操作时间', '用户账号', '用户姓名', '用户角色',
+            '所属小区', 'IP地址', 'MAC地址', '操作类型', '操作模块',
+            '目标类型', '目标ID', '操作结果', '错误信息',
+            '请求方法', '响应时间(ms)'
+        ]
+        
+        # 写入表头
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.font = Font(bold=True, size=11)
+            cell.fill = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type="solid")
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        # 写入数据
+        for row_num, log in enumerate(logs, 2):
+            ws.cell(row=row_num, column=1, value=log.ID)
+            ws.cell(row=row_num, column=2, value=log.操作时间.strftime('%Y-%m-%d %H:%M:%S') if log.操作时间 else '')
+            ws.cell(row=row_num, column=3, value=log.用户账号)
+            ws.cell(row=row_num, column=4, value=log.用户姓名)
+            ws.cell(row=row_num, column=5, value=log.用户角色)
+            ws.cell(row=row_num, column=6, value=log.所属小区 or '')
+            ws.cell(row=row_num, column=7, value=log.电脑IP or '')
+            ws.cell(row=row_num, column=8, value=log.MAC地址 or '')
+            ws.cell(row=row_num, column=9, value=log.操作类型)
+            ws.cell(row=row_num, column=10, value=log.操作模块)
+            ws.cell(row=row_num, column=11, value=log.目标类型 or '')
+            ws.cell(row=row_num, column=12, value=log.目标ID or '')
+            ws.cell(row=row_num, column=13, value=log.操作结果)
+            ws.cell(row=row_num, column=14, value=log.错误信息 or '')
+            ws.cell(row=row_num, column=15, value=log.请求方法 or '')
+            ws.cell(row=row_num, column=16, value=log.响应时间 or 0)
+        
+        # 调整列宽
+        ws.column_dimensions['A'].width = 8
+        ws.column_dimensions['B'].width = 20
+        ws.column_dimensions['C'].width = 12
+        ws.column_dimensions['D'].width = 12
+        ws.column_dimensions['E'].width = 12
+        ws.column_dimensions['F'].width = 20
+        ws.column_dimensions['G'].width = 15
+        ws.column_dimensions['H'].width = 18
+        ws.column_dimensions['I'].width = 10
+        ws.column_dimensions['J'].width = 15
+        ws.column_dimensions['K'].width = 12
+        ws.column_dimensions['L'].width = 15
+        ws.column_dimensions['M'].width = 10
+        ws.column_dimensions['N'].width = 30
+        ws.column_dimensions['O'].width = 10
+        ws.column_dimensions['P'].width = 12
+        
+        # 生成Excel文件
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # 返回文件
+        from flask import make_response
+        response = make_response(output.read())
+        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        response.headers['Content-Disposition'] = f'attachment; filename="operation_logs_{start_date}_{end_date}.xlsx"'
+        
+        return response
+    
+    except Exception as e:
+        app.logger.error(f"导出操作日志失败: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'status': 'error', 'message': '导出失败'}), 500
 
 
 # ========== 错误处理 ==========
