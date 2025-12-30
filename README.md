@@ -6,7 +6,7 @@
 ## 技术栈
 - **后端**: Flask 3.1.2 + SQLAlchemy 2.0.35 + PyMySQL 1.1.2
 - **前端**: Vue 3 + Element Plus + Flatpickr
-- **数据库**: MySQL 5.7+
+- **数据库**: MySQL 8.0+
 
 ## 功能特性
 - ✅ 用户登录认证（JWT Token）
@@ -21,7 +21,7 @@
 
 ### 1. 环境要求
 - Python 3.8+
-- MySQL 5.7+
+- MySQL 8.0+
 - 推荐使用虚拟环境
 
 ### 2. 安装依赖
