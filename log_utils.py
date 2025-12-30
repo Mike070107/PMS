@@ -77,7 +77,7 @@ def log_operation(
         # 用户信息
         log.用户ID = current_user.ID
         log.用户账号 = current_user.USERNAME
-        log.用户姓名 = current_user.REAL_NAME or current_user.USERNAME
+        log.用户姓名 = current_user.用户姓名 or current_user.USERNAME
         log.用户角色 = current_user.Role
         log.所属小区 = current_user.COMMUNITY or ''
         log.小区编号 = current_user.小区编号
