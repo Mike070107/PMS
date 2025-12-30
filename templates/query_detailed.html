@@ -13,7 +13,8 @@
     <script src="https://unpkg.com/element-plus@2.3.14/dist/index.full.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/element-plus@2.3.14/dist/index.css">
     <script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js"></script>
-    <!-- Flatpickr CDN 已移除，使用laydate代替 -->
+    <!-- 使用本地 Flatpickr -->
+    <script src="/static/lib/flatpickr/flatpickr.min.js"></script>
     <script src="/static/lib/flatpickr/zh.js"></script>
     
     <style>
@@ -874,8 +875,15 @@
                     }
                 };
 
-                // 初始化日期选择器
+                // 初始化日期选择器（带flatpickr加载检测）
                 const initDatePickers = () => {
+                    // 检查 flatpickr 是否已加载
+                    if (typeof flatpickr === 'undefined') {
+                        console.warn('flatpickr 未加载，等待加载...');
+                        setTimeout(initDatePickers, 100);
+                        return;
+                    }
+                    
                     nextTick(() => {
                         startDatePicker = flatpickr("#startDate", {
                             locale: "zh",
