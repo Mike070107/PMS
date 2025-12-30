@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>详细订单查询预览 - 物业收费管理系统</title>
+    
+    <!-- Element Plus CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.3.14/dist/index.css">
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3.3.4/dist/vue.global.js"></script>
+    <!-- Element Plus -->
+    <script src="https://unpkg.com/element-plus@2.3.14/dist/index.full.js"></script>
+    <!-- Flatpickr CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <!-- Flatpickr JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- Flatpickr Chinese locale -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/zh.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            padding: 20px;
+        }
+
+        .query-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+        }
+
+        .page-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px 30px;
+            text-align: center;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        /* 查询条件区域 */
+        .filter-section {
+            padding: 30px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .filter-label {
+            min-width: 100px;
+            font-weight: 500;
+            color: #495057;
+            font-size: 14px;
+            text-align: right;
+        }
+
+        .filter-control {
+            flex: 1;
+        }
+
+        .date-range-picker {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 1;
+        }
+
+        .date-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .date-input-group label {
+            font-size: 13px;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .datetime-input {
+            width: 100%;
+            height: 40px;
+            padding: 0 15px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 180px;
+        }
+
+        .datetime-input:hover {
+            border-color: #409eff;
+        }
+
+        .datetime-input:focus {
+            border-color: #409eff;
+            box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+            outline: none;
+        }
+
+        .date-separator {
+            color: #6c757d;
+            font-weight: 500;
+            padding-top: 20px;
+        }
+
+        /* 按钮区域 */
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            padding-top: 15px;
+        }
+
+        /* 表格区域 */
+        .table-section {
+            padding: 0 30px 30px 30px;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            background: white;
+            margin-top: 20px;
+        }
+
+        .orders-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            min-width: 1800px;
+        }
+
+        .orders-table th {
+            background: #f8f9fa;
+            padding: 12px 8px;
+            text-align: center;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .orders-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: middle;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .odd-row {
+            background-color: #ffffff;
+        }
+
+        .even-row {
+            background-color: #fafbfc;
+        }
+
+        .orders-table tbody tr:hover {
+            background-color: #f0f8ff;
+            transition: background-color 0.3s ease;
+        }
+
+        .amount {
+            font-weight: 600;
+            color: #28a745;
+        }
+
+        .date {
+            color: #6c757d;
+        }
+
+        /* 空数据状态 */
+        .empty-data {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+            background: #fafbfc;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            color: #6c757d;
+            margin-top: 20px;
+        }
+
+        .empty-data p {
+            margin-top: 15px;
+            font-size: 16px;
+        }
+
+        /* 统计信息 */
+        .statistics {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .highlight {
+            font-weight: bold;
+            color: #ffd700;
+            font-size: 16px;
+        }
+
+        /* Element Plus 样式覆盖 */
+        .el-select {
+            width: 100%;
+        }
+
+        .el-input {
+            width: 100%;
+        }
+
+        .el-button {
+            border-radius: 6px;
+            font-weight: 500;
+            min-width: 100px;
+            height: 40px;
+        }
+
+        .el-button--primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+        }
+
+        .el-button--primary:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        }
+
+        /* 分页样式 */
+        .pagination-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+
+        .pagination-info {
+            font-size: 14px;
+            color: #495057;
+        }
+
+        .pagination-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .page-size-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .page-size-label {
+            font-size: 14px;
+            color: #495057;
+            white-space: nowrap;
+        }
+
+        .pagination-stats {
+            font-size: 14px;
+            color: #495057;
+            white-space: nowrap;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1200px) {
+            .filter-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .orders-table {
+                font-size: 11px;
+            }
+            
+            .orders-table th,
+            .orders-table td {
+                padding: 8px 6px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            .filter-section {
+                padding: 20px;
+            }
+            
+            .table-section {
+                padding: 0 20px 20px 20px;
+            }
+            
+            .filter-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+            
+            .filter-label {
+                min-width: auto;
+                text-align: left;
+            }
+            
+            .date-range-picker {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="query-container">
+            <!-- 页面头部 -->
+            <div class="page-header">
+                <h1 class="page-title">详细订单查询</h1>
+                <p class="page-subtitle">全面查询和分析收费订单数据</p>
+            </div>
+
+            <!-- 查询条件区域 -->
+            <div class="filter-section">
+                <div class="filter-grid">
+                    <!-- 收费员账号 -->
+                    <div class="filter-item">
+                        <div class="filter-label">收费员账号</div>
+                        <div class="filter-control">
+                            <el-input 
+                                v-model="queryParams.collectorAccount" 
+                                placeholder="请输入收费员账号"
+                                clearable>
+                            </el-input>
+                        </div>
+                    </div>
+
+                    <!-- 订单号 -->
+                    <div class="filter-item">
+                        <div class="filter-label">订单号</div>
+                        <div class="filter-control">
+                            <el-input 
+                                v-model="queryParams.orderId" 
+                                placeholder="请输入订单号"
+                                clearable>
+                            </el-input>
+                        </div>
+                    </div>
+
+                    <!-- 楼栋号 -->
+                    <div class="filter-item">
+                        <div class="filter-label">楼栋号</div>
+                        <div class="filter-control">
+                            <el-input 
+                                v-model="queryParams.building" 
+                                placeholder="请输入楼栋号"
+                                clearable>
+                            </el-input>
+                        </div>
+                    </div>
+
+                    <!-- 房号 -->
+                    <div class="filter-item">
+                        <div class="filter-label">房号</div>
+                        <div class="filter-control">
+                            <el-input 
+                                v-model="queryParams.room" 
+                                placeholder="请输入房号"
+                                clearable>
+                            </el-input>
+                        </div>
+                    </div>
+
+                    <!-- 收费项目 -->
+                    <div class="filter-item">
+                        <div class="filter-label">收费项目</div>
+                        <div class="filter-control">
+                            <el-select 
+                                v-model="queryParams.feeType" 
+                                placeholder="请选择收费项目"
+                                clearable>
+                                <el-option label="电费" value="electricity"></el-option>
+                                <el-option label="水费" value="water"></el-option>
+                                <el-option label="热水费" value="hot_water"></el-option>
+                                <el-option label="冷水费" value="cold_water"></el-option>
+                                <el-option label="网费" value="internet"></el-option>
+                                <el-option label="房租" value="rent"></el-option>
+                                <el-option label="管理费" value="management"></el-option>
+                                <el-option label="停车费" value="parking"></el-option>
+                            </el-select>
+                        </div>
+                    </div>
+
+                    <!-- 收费方式 -->
+                    <div class="filter-item">
+                        <div class="filter-label">收费方式</div>
+                        <div class="filter-control">
+                            <el-select 
+                                v-model="queryParams.paymentMethod" 
+                                placeholder="请选择收费方式"
+                                clearable>
+                                <el-option label="现金" value="cash"></el-option>
+                                <el-option label="微信" value="wechat"></el-option>
+                                <el-option label="支付宝" value="alipay"></el-option>
+                                <el-option label="银行卡" value="bank"></el-option>
+                                <el-option label="其他" value="other"></el-option>
+                            </el-select>
+                        </div>
+                    </div>
+
+                    <!-- 收费日期范围 -->
+                    <div class="filter-item">
+                        <div class="filter-label">收费日期</div>
+                        <div class="date-range-picker">
+                            <div class="date-input-group">
+                                <label>开始日期</label>
+                                <input 
+                                    type="text" 
+                                    id="startDate" 
+                                    class="datetime-input"
+                                    placeholder="请选择开始日期"
+                                    readonly>
+                            </div>
+                            <span class="date-separator">至</span>
+                            <div class="date-input-group">
+                                <label>结束日期</label>
+                                <input 
+                                    type="text" 
+                                    id="endDate" 
+                                    class="datetime-input"
+                                    placeholder="请选择结束日期"
+                                    readonly>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 按钮区域 -->
+                <div class="button-group">
+                    <el-button 
+                        type="primary" 
+                        @click="queryData"
+                        :loading="loading">
+                        查询
+                    </el-button>
+                    <el-button 
+                        @click="resetQuery">
+                        重置
+                    </el-button>
+                    <el-button 
+                        type="success" 
+                        @click="exportData"
+                        :disabled="tableData.length === 0">
+                        导出数据
+                    </el-button>
+                </div>
+            </div>
+
+            <!-- 表格区域 -->
+            <div class="table-section">
+                <!-- 统计信息 -->
+                <div v-if="tableData.length > 0" class="statistics">
+                    查询结果：共 <span class="highlight">{{ tableData.length }}</span> 条记录，
+                    合计金额：<span class="highlight">¥{{ formatPrice(totalAmount) }}</span>
+                </div>
+
+                <!-- 数据表格 -->
+                <div v-if="tableData.length > 0" class="table-container">
+                    <table class="orders-table">
+                        <thead>
+                            <tr>
+                                <th>收费员账号</th>
+                                <th>订单号</th>
+                                <th>收费日期</th>
+                                <th>楼栋号</th>
+                                <th>房号</th>
+                                <th>姓名</th>
+                                <th>电话</th>
+                                <th>收费金额</th>
+                                <th>收款方式</th>
+                                <th>电费度数</th>
+                                <th>电费金额</th>
+                                <th>热水吨数</th>
+                                <th>热水金额</th>
+                                <th>冷水吨数</th>
+                                <th>冷水金额</th>
+                                <th>网费月数</th>
+                                <th>网费金额</th>
+                                <th>房租月数</th>
+                                <th>房租金额</th>
+                                <th>管理费月数</th>
+                                <th>管理费金额</th>
+                                <th>停车费月数</th>
+                                <th>停车费金额</th>
+                                <th>车牌号</th>
+                                <th>停车开始日期</th>
+                                <th>停车结束日期</th>
+                                <th>备注</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(item, index) in tableData" :key="item.orderId" :class="{'odd-row': index % 2 === 0, 'even-row': index % 2 === 1}">
+                                <td>{{ item.collectorAccount || '-' }}</td>
+                                <td>{{ item.orderId || '-' }}</td>
+                                <td class="date">{{ formatDate(item.chargeDate) }}</td>
+                                <td>{{ item.building || '-' }}</td>
+                                <td>{{ item.room || '-' }}</td>
+                                <td>{{ item.residentName || '-' }}</td>
+                                <td>{{ item.phone || '-' }}</td>
+                                <td class="amount">¥{{ formatPrice(item.totalAmount) }}</td>
+                                <td>{{ formatPaymentMethod(item.paymentMethod) }}</td>
+                                <td>{{ item.electricityUsage || '-' }}</td>
+                                <td class="amount">¥{{ formatPrice(item.electricityAmount) }}</td>
+                                <td>{{ item.hotWaterUsage || '-' }}</td>
+                                <td class="amount">¥{{ formatPrice(item.hotWaterAmount) }}</td>
+                                <td>{{ item.coldWaterUsage || '-' }}</td>
+                                <td class="amount">¥{{ formatPrice(item.coldWaterAmount) }}</td>
+                                <td>{{ item.internetMonths || '-' }}</td>
+                                <td class="amount">¥{{ formatPrice(item.internetAmount) }}</td>
+                                <td>{{ item.rentMonths || '-' }}</td>
+                                <td class="amount">¥{{ formatPrice(item.rentAmount) }}</td>
+                                <td>{{ item.managementMonths || '-' }}</td>
+                                <td class="amount">¥{{ formatPrice(item.managementAmount) }}</td>
+                                <td>{{ item.parkingMonths || '-' }}</td>
+                                <td class="amount">¥{{ formatPrice(item.parkingAmount) }}</td>
+                                <td>{{ item.licensePlate || '-' }}</td>
+                                <td class="date">{{ formatDate(item.parkingStartDate) }}</td>
+                                <td class="date">{{ formatDate(item.parkingEndDate) }}</td>
+                                <td>{{ item.remark || '-' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 空数据状态 -->
+                <div v-else-if="!loading" class="empty-data">
+                    <i class="el-icon-document" style="font-size: 48px; color: #ccc; margin-bottom: 10px;"></i>
+                    <p>{{ hasQueried ? '暂无符合条件的订单数据' : '请设置筛选条件后点击查询' }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, nextTick } = Vue;
+        const { ElSelect, ElOption, ElButton, ElInput, ElMessage } = ElementPlus;
+
+        const app = createApp({
+            compilerOptions: {
+                delimiters: ['{{', '}}']
+            },
+            setup() {
+                // 查询参数
+                const queryParams = ref({
+                    collectorAccount: '',
+                    orderId: '',
+                    building: '',
+                    room: '',
+                    feeType: '',
+                    paymentMethod: '',
+                    startDate: '',
+                    endDate: ''
+                });
+
+                // 表格数据
+                const tableData = ref([]);
+                const loading = ref(false);
+                const hasQueried = ref(false);
+
+                // 日期选择器实例
+                let startDatePicker = null;
+                let endDatePicker = null;
+
+                // 计算总金额
+                const totalAmount = computed(() => {
+                    return tableData.value.reduce((sum, item) => {
+                        return sum + (parseFloat(item.totalAmount) || 0);
+                    }, 0);
+                });
+
+                // 初始化日期选择器
+                const initDatePickers = () => {
+                    nextTick(() => {
+                        startDatePicker = flatpickr("#startDate", {
+                            locale: "zh",
+                            dateFormat: "Y-m-d",
+                            defaultDate: new Date(new Date().setDate(new Date().getDate() - 30)),
+                            onChange: function(selectedDates, dateStr) {
+                                queryParams.value.startDate = dateStr;
+                                if (endDatePicker && selectedDates.length > 0) {
+                                    endDatePicker.set('minDate', selectedDates[0]);
+                                }
+                            }
+                        });
+
+                        endDatePicker = flatpickr("#endDate", {
+                            locale: "zh",
+                            dateFormat: "Y-m-d",
+                            defaultDate: new Date(),
+                            onChange: function(selectedDates, dateStr) {
+                                queryParams.value.endDate = dateStr;
+                                if (startDatePicker && selectedDates.length > 0) {
+                                    startDatePicker.set('maxDate', selectedDates[0]);
+                                }
+                            }
+                        });
+
+                        // 设置初始值
+                        queryParams.value.startDate = startDatePicker.selectedDates.length > 0 ? 
+                            startDatePicker.selectedDates[0].toISOString().split('T')[0] : '';
+                        queryParams.value.endDate = endDatePicker.selectedDates.length > 0 ? 
+                            endDatePicker.selectedDates[0].toISOString().split('T')[0] : '';
+                    });
+                };
+
+                // 查询数据（模拟数据）
+                const queryData = async () => {
+                    loading.value = true;
+                    hasQueried.value = true;
+
+                    // 模拟API调用延迟
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+
+                    // 生成模拟数据
+                    const mockData = generateMockData();
+                    tableData.value = mockData;
+                    
+                    loading.value = false;
+                };
+
+                // 生成模拟数据
+                const generateMockData = () => {
+                    const data = [];
+                    const feeTypes = ['electricity', 'water', 'hot_water', 'cold_water', 'internet', 'rent', 'management', 'parking'];
+                    const paymentMethods = ['cash', 'wechat', 'alipay', 'bank', 'other'];
+                    
+                    for (let i = 0; i < 15; i++) {
+                        const randomFeeType = feeTypes[Math.floor(Math.random() * feeTypes.length)];
+                        const randomPaymentMethod = paymentMethods[Math.floor(Math.random() * paymentMethods.length)];
+                        
+                        data.push({
+                            collectorAccount: `collector${Math.floor(Math.random() * 10) + 1}`,
+                            orderId: `ORD${Date.now()}${i}`,
+                            chargeDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+                            building: `${Math.floor(Math.random() * 10) + 1}栋`,
+                            room: `${Math.floor(Math.random() * 20) + 1}${String.fromCharCode(65 + Math.floor(Math.random() * 4))}`,
+                            residentName: `住户${i + 1}`,
+                            phone: `138${String(Math.floor(Math.random() * 100000000)).padStart(8, '0')}`,
+                            totalAmount: (Math.random() * 1000 + 100).toFixed(2),
+                            paymentMethod: randomPaymentMethod,
+                            electricityUsage: randomFeeType === 'electricity' ? (Math.random() * 100 + 50).toFixed(1) : null,
+                            electricityAmount: randomFeeType === 'electricity' ? (Math.random() * 200 + 50).toFixed(2) : '0.00',
+                            hotWaterUsage: randomFeeType === 'hot_water' ? (Math.random() * 10 + 2).toFixed(1) : null,
+                            hotWaterAmount: randomFeeType === 'hot_water' ? (Math.random() * 50 + 20).toFixed(2) : '0.00',
+                            coldWaterUsage: randomFeeType === 'cold_water' ? (Math.random() * 15 + 5).toFixed(1) : null,
+                            coldWaterAmount: randomFeeType === 'cold_water' ? (Math.random() * 30 + 10).toFixed(2) : '0.00',
+                            internetMonths: randomFeeType === 'internet' ? Math.floor(Math.random() * 6) + 1 : null,
+                            internetAmount: randomFeeType === 'internet' ? (Math.random() * 200 + 50).toFixed(2) : '0.00',
+                            rentMonths: randomFeeType === 'rent' ? Math.floor(Math.random() * 12) + 1 : null,
+                            rentAmount: randomFeeType === 'rent' ? (Math.random() * 5000 + 1000).toFixed(2) : '0.00',
+                            managementMonths: randomFeeType === 'management' ? Math.floor(Math.random() * 6) + 1 : null,
+                            managementAmount: randomFeeType === 'management' ? (Math.random() * 300 + 100).toFixed(2) : '0.00',
+                            parkingMonths: randomFeeType === 'parking' ? Math.floor(Math.random() * 6) + 1 : null,
+                            parkingAmount: randomFeeType === 'parking' ? (Math.random() * 300 + 100).toFixed(2) : '0.00',
+                            licensePlate: randomFeeType === 'parking' ? `京A${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}` : null,
+                            parkingStartDate: randomFeeType === 'parking' ? new Date(Date.now() - Math.random() * 90 * 24 * 60 * 60 * 1000).toISOString() : null,
+                            parkingEndDate: randomFeeType === 'parking' ? new Date(Date.now() + Math.random() * 90 * 24 * 60 * 60 * 1000).toISOString() : null,
+                            remark: i % 3 === 0 ? '正常收费' : i % 3 === 1 ? '优惠减免' : '特殊处理'
+                        });
+                    }
+                    
+                    return data;
+                };
+
+                // 重置查询
+                const resetQuery = () => {
+                    queryParams.value = {
+                        collectorAccount: '',
+                        orderId: '',
+                        building: '',
+                        room: '',
+                        feeType: '',
+                        paymentMethod: '',
+                        startDate: '',
+                        endDate: ''
+                    };
+                    
+                    tableData.value = [];
+                    hasQueried.value = false;
+                    
+                    // 重置日期选择器
+                    if (startDatePicker) {
+                        startDatePicker.setDate(new Date(new Date().setDate(new Date().getDate() - 30)));
+                    }
+                    if (endDatePicker) {
+                        endDatePicker.setDate(new Date());
+                    }
+                };
+
+                // 导出数据
+                const exportData = () => {
+                    ElMessage.success('导出功能将在后端实现中完成');
+                };
+
+                // 格式化价格
+                const formatPrice = (price) => {
+                    const num = parseFloat(price) || 0;
+                    return num.toFixed(2);
+                };
+
+                // 格式化日期
+                const formatDate = (dateStr) => {
+                    if (!dateStr) return '-';
+                    const date = new Date(dateStr);
+                    return date.toLocaleDateString('zh-CN');
+                };
+
+                // 格式化收款方式
+                const formatPaymentMethod = (method) => {
+                    const methods = {
+                        'cash': '现金',
+                        'wechat': '微信',
+                        'alipay': '支付宝',
+                        'bank': '银行卡',
+                        'other': '其他'
+                    };
+                    return methods[method] || method;
+                };
+
+                // 组件挂载
+                onMounted(() => {
+                    initDatePickers();
+                });
+
+                return {
+                    queryParams,
+                    tableData,
+                    loading,
+                    hasQueried,
+                    totalAmount,
+                    queryData,
+                    resetQuery,
+                    exportData,
+                    formatPrice,
+                    formatDate,
+                    formatPaymentMethod
+                };
+            }
+        });
+
+        app.use(ElementPlus);
+        app.mount('#app');
+    </script>
+</body>
+</html>
