@@ -831,7 +831,7 @@
 
                 // 获取Token
                 const getToken = () => {
-                    return localStorage.getItem('token');
+                    return sessionStorage.getItem('token');  // 改为sessionStorage
                 };
 
                 // 检查登录状态
@@ -846,19 +846,31 @@
 
                 // 获取用户信息
                 const loadUserInfo = () => {
-                    const userData = localStorage.getItem('user');
+                    const userData = sessionStorage.getItem('user');  // 改为sessionStorage
+                    console.log('=== 详细查询页面 - 加载用户信息 ===');
+                    console.log('userData:', userData);
+                    
                     if (userData) {
                         const user = JSON.parse(userData);
+                        console.log('user对象:', user);
+                        console.log('user.role:', user.role);
+                        console.log('user.community:', user.community);
+                        
                         userInfo.value = {
                             real_name: user.real_name || user.username,
                             role: user.role,
                             community: user.community || ''  // 保存用户小区
                         };
                         
+                        console.log('userInfo.value:', userInfo.value);
+                        
                         // 如果是小区操作员，默认设置小区且不可更改
                         if (user.role === '小区操作员' && user.community) {
+                            console.log('检测到小区操作员，设置默认小区:', user.community);
                             queryParams.value.community = user.community;
                         }
+                    } else {
+                        console.log('未sessionStorage中找到用户信息');
                     }
                 };
 
@@ -999,8 +1011,11 @@
                     }
                 };
                 const resetQuery = () => {
+                    // 如果是小区操作员，保持小区选择
+                    const keepCommunity = userInfo.value.role === '小区操作员' ? queryParams.value.community : '';
+                    
                     queryParams.value = {
-                        community: '',       // 改为小区
+                        community: keepCommunity,  // 小区操作员保持小区选择
                         orderId: '',
                         building: '',
                         room: '',
@@ -1104,8 +1119,8 @@
 
                 // 退出登录
                 const logout = () => {
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('user');
+                    sessionStorage.removeItem('token');  // 改为sessionStorage
+                    sessionStorage.removeItem('user');   // 改为sessionStorage
                     window.location.href = '/login';
                 };
 
