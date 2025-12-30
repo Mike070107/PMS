@@ -512,7 +512,8 @@
                                     <el-select 
                                         v-model="queryParams.community" 
                                         placeholder="请选择"
-                                        clearable>
+                                        :disabled="isCommunityDisabled"
+                                        :clearable="!isCommunityDisabled">
                                         <el-option
                                             v-for="community in communities"
                                             :key="community"
@@ -775,7 +776,8 @@
                 // 用户信息
                 const userInfo = ref({
                     real_name: '用户',
-                    role: ''
+                    role: '',
+                    community: ''  // 添加用户所属小区
                 });
 
                 // 查询参数
@@ -822,6 +824,11 @@
                     }, 0);
                 });
 
+                // 小区选择是否禁用：小区操作员不能选择其他小区
+                const isCommunityDisabled = computed(() => {
+                    return userInfo.value.role === '小区操作员';
+                });
+
                 // 获取Token
                 const getToken = () => {
                     return localStorage.getItem('token');
@@ -844,8 +851,14 @@
                         const user = JSON.parse(userData);
                         userInfo.value = {
                             real_name: user.real_name || user.username,
-                            role: user.role
+                            role: user.role,
+                            community: user.community || ''  // 保存用户小区
                         };
+                        
+                        // 如果是小区操作员，默认设置小区且不可更改
+                        if (user.role === '小区操作员' && user.community) {
+                            queryParams.value.community = user.community;
+                        }
                     }
                 };
 
@@ -1119,6 +1132,7 @@
                     pageSize,
                     paginatedData,
                     totalAmount,
+                    isCommunityDisabled,  // 添加计算属性
                     queryData,
                     resetQuery,
                     onBuildingChange,
