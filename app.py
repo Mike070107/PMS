@@ -246,7 +246,7 @@ class FeePrice(db.Model):
 
 class OperationLog(db.Model):
     """操作日志表模型 - 详细版"""
-    __tablename__ = 'operation_logs'
+    __tablename__ = 'operation_log'
     
     ID = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='日志唯一标识')
     
