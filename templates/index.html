@@ -369,6 +369,8 @@
             padding: 0;
         }
         
+        }
+        
         /* 确保地址选择器中的输入框和下拉框不显示内部边框 */
         .address-selector .el-input .el-input__inner,
         .address-selector .el-select .el-select__inner {
@@ -387,6 +389,10 @@
             width: 100%;
             min-height: auto;
             height: auto;
+        }
+        
+        .address-row > .address-field:first-child {
+            margin-left: 10px;
         }
         
         .address-field {
@@ -476,14 +482,18 @@
         .user-history-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 13px;
+            font-size: 14px;
         }
-
+        
         .user-history-table th,
         .user-history-table td {
             padding: 8px 12px;
             text-align: left;
             border-bottom: 1px solid #ebeef5;
+        }
+        
+        .user-history-table td:last-child {
+            text-align: left;
         }
 
         .user-history-table th {
@@ -3327,6 +3337,7 @@
                                             placeholder="请选择" 
                                             style="width: 100%;"
                                             @change="onBuildingChange"
+                                            popper-append-to-body="true"
                                             clearable>
                                             <el-option
                                                 v-for="building in buildings"
@@ -3348,6 +3359,7 @@
                                             style="width: 100%;"
                                             @change="onRoomChange"
                                             :disabled="!selectedBuilding"
+                                            popper-append-to-body="true"
                                             clearable>
                                             <el-option
                                                 v-for="room in rooms"
@@ -3437,7 +3449,7 @@
                                                         </td>
                                                         <td style="color: #f56c6c; font-weight: bold;">[[ formatPrice(order.totalAmount) ]]</td>
                                                         <td>[[ order.paymentMethod || '-' ]]</td>
-                                                        <td>[[ order.remark || '-' ]]</td>
+                                                        <td>[[ order.remark ]]</td>
                                                     </tr>
                                                 </tbody>
                                             </table>
@@ -3763,7 +3775,7 @@
                                             </div>
                                         </td>
                                         <td style="color: #f56c6c; font-weight: bold;">[[ formatPrice(order.totalAmount) ]]</td>
-                                        <td>[[ order.remark || '-' ]]</td>
+                                        <td>[[ order.remark ]]</td>
                                         <td>
                                             <div class="action-buttons-cell">
                                                 <el-button 
