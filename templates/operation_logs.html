@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -286,7 +286,7 @@
                 <div class="table-title">
                     操作日志列表
                     <span v-if="total > 0" style="color: #909399; font-size: 14px; margin-left: 10px;">
-                        共 {{ total }} 条记录
+                        共 [[ total ]] 条记录
                     </span>
                 </div>
             </div>
@@ -309,14 +309,14 @@
                 <el-table-column prop="operation_result" label="结果" width="70">
                     <template #default="scope">
                         <span :class="getResultClass(scope.row.operation_result)" class="result-badge">
-                            {{ getResultText(scope.row.operation_result) }}
+                            [[ getResultText(scope.row.operation_result) ]]
                         </span>
                     </template>
                 </el-table-column>
 
                 <el-table-column prop="response_time" label="响应(ms)" width="90">
                     <template #default="scope">
-                        {{ scope.row.response_time }}
+                        [[ scope.row.response_time ]]
                     </template>
                 </el-table-column>
 
@@ -332,7 +332,7 @@
             <!-- 分页 -->
             <div class="pagination-container" v-if="total > 0">
                 <div class="page-info">
-                    显示 {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, total) }} 条
+                    显示 [[ (currentPage - 1) * pageSize + 1 ]] - [[ Math.min(currentPage * pageSize, total) ]] 条
                 </div>
                 <el-pagination
                     v-model:current-page="currentPage"
@@ -356,82 +356,82 @@
             <div v-if="currentLog" style="max-height: 500px; overflow-y: auto;">
                 <div class="detail-row">
                     <div class="detail-label">日志ID:</div>
-                    <div class="detail-value">{{ currentLog.id }}</div>
+                    <div class="detail-value">[[ currentLog.id ]]</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">操作时间:</div>
-                    <div class="detail-value">{{ currentLog.operation_time }}</div>
+                    <div class="detail-value">[[ currentLog.operation_time ]]</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">用户信息:</div>
                     <div class="detail-value">
-                        {{ currentLog.real_name }} ({{ currentLog.username }}) - {{ currentLog.user_role }}
+                        [[ currentLog.real_name ]] ([[ currentLog.username ]]) - [[ currentLog.user_role ]]
                     </div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">所属小区:</div>
-                    <div class="detail-value">{{ currentLog.community || '-' }}</div>
+                    <div class="detail-value">[[ currentLog.community or '-' ]]</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">IP地址:</div>
-                    <div class="detail-value">{{ currentLog.ip_address }}</div>
+                    <div class="detail-value">[[ currentLog.ip_address ]]</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">MAC地址:</div>
-                    <div class="detail-value">{{ currentLog.mac_address || '未获取' }}</div>
+                    <div class="detail-value">[[ currentLog.mac_address or '未获取' ]]</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">操作类型:</div>
-                    <div class="detail-value">{{ currentLog.operation_type }}</div>
+                    <div class="detail-value">[[ currentLog.operation_type ]]</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">操作模块:</div>
-                    <div class="detail-value">{{ currentLog.operation_module }}</div>
+                    <div class="detail-value">[[ currentLog.operation_module ]]</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">操作结果:</div>
                     <div class="detail-value">
                         <span :class="getResultClass(currentLog.operation_result)" class="result-badge">
-                            {{ getResultText(currentLog.operation_result) }}
+                            [[ getResultText(currentLog.operation_result) ]]
                         </span>
                     </div>
                 </div>
                 <div class="detail-row" v-if="currentLog.target_id">
                     <div class="detail-label">目标对象:</div>
                     <div class="detail-value">
-                        {{ currentLog.target_type }} (ID: {{ currentLog.target_id }})
+                        [[ currentLog.target_type ]] (ID: [[ currentLog.target_id ]])
                     </div>
                 </div>
                 <div class="detail-row" v-if="currentLog.operation_detail">
                     <div class="detail-label">操作详情:</div>
                     <div class="detail-value">
-                        <div class="json-viewer">{{ formatJson(currentLog.operation_detail) }}</div>
+                        <div class="json-viewer">[[ formatJson(currentLog.operation_detail) ]]</div>
                     </div>
                 </div>
                 <div class="detail-row" v-if="currentLog.error_message">
                     <div class="detail-label">错误信息:</div>
                     <div class="detail-value" style="color: #f56c6c;">
-                        {{ currentLog.error_message }}
+                        [[ currentLog.error_message ]]
                     </div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">请求方法:</div>
-                    <div class="detail-value">{{ currentLog.request_method }}</div>
+                    <div class="detail-value">[[ currentLog.request_method ]]</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">请求URL:</div>
                     <div class="detail-value" style="word-break: break-all; font-size: 12px;">
-                        {{ currentLog.request_url }}
+                        [[ currentLog.request_url ]]
                     </div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">响应时间:</div>
-                    <div class="detail-value">{{ currentLog.response_time }}ms</div>
+                    <div class="detail-value">[[ currentLog.response_time ]]ms</div>
                 </div>
                 <div class="detail-row" v-if="currentLog.user_agent">
                     <div class="detail-label">浏览器信息:</div>
                     <div class="detail-value" style="font-size: 12px; word-break: break-all;">
-                        {{ currentLog.user_agent }}
+                        [[ currentLog.user_agent ]]
                     </div>
                 </div>
             </div>
@@ -447,6 +447,9 @@
         const { ElMessage } = ElementPlus;
 
         createApp({
+            compilerOptions: {
+                delimiters: ['[[', ']]']
+            },
             setup() {
                 const loading = ref(false);
                 const exporting = ref(false);
