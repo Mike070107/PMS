@@ -248,44 +248,43 @@ class OperationLog(db.Model):
     """操作日志表模型 - 详细版"""
     __tablename__ = 'operation_log'
     
-    ID = db.Column(db.BigInteger, primary_key=True, autoincrement=True, comment='日志唯一标识')
+    ID = db.Column('id', db.BigInteger, primary_key=True, autoincrement=True, comment='日志唯一标识')
     
     # 时间信息
-    操作时间 = db.Column(db.DateTime, default=datetime.now, nullable=False, index=True, comment='操作时间')
+    操作时间 = db.Column('operation_time', db.DateTime, default=datetime.now, nullable=False, index=True, comment='操作时间')
     
     # 用户信息
-    用户ID = db.Column(db.Integer, nullable=False, index=True, comment='操作用户ID')
-    用户账号 = db.Column(db.String(50), nullable=False, index=True, comment='操作用户的USERNAME')
-    用户姓名 = db.Column(db.String(50), comment='用户真实姓名')
-    用户角色 = db.Column(db.String(20), nullable=False, comment='用户角色')
-    所属小区 = db.Column(db.String(100), index=True, comment='所属小区')
-    小区编号 = db.Column(db.Integer, index=True, comment='小区编号')
+    用户ID = db.Column('user_id', db.Integer, nullable=False, index=True, comment='操作用户ID')
+    用户账号 = db.Column('username', db.String(50), nullable=False, index=True, comment='操作用户的USERNAME')
+    用户姓名 = db.Column('real_name', db.String(50), comment='用户真实姓名')
+    用户角色 = db.Column('user_role', db.String(20), nullable=False, comment='用户角色')
+    所属小区 = db.Column('community', db.String(100), index=True, comment='所属小区')
     
     # 网络信息
-    电脑IP = db.Column(db.String(50), comment='IP地址')
-    MAC地址 = db.Column(db.String(50), comment='MAC地址')
-    用户代理 = db.Column(db.Text, comment='浏览器UserAgent')
+    电脑IP = db.Column('ip_address', db.String(50), comment='IP地址')
+    MAC地址 = db.Column('mac_address', db.String(50), comment='MAC地址')
+    用户代理 = db.Column('user_agent', db.Text, comment='浏览器UserAgent')
     
     # 操作信息
-    操作类型 = db.Column(db.String(50), nullable=False, index=True, comment='操作类型')
-    操作模块 = db.Column(db.String(50), nullable=False, index=True, comment='操作模块')
-    操作详情 = db.Column(db.Text, comment='操作详情（JSON格式）')
+    操作类型 = db.Column('operation_type', db.String(50), nullable=False, index=True, comment='操作类型')
+    操作模块 = db.Column('operation_module', db.String(50), nullable=False, index=True, comment='操作模块')
+    操作详情 = db.Column('operation_detail', db.Text, comment='操作详情（JSON格式）')
     
     # 业务相关
-    目标ID = db.Column(db.String(100), index=True, comment='操作对象ID')
-    目标类型 = db.Column(db.String(50), comment='操作对象类型')
+    目标ID = db.Column('target_id', db.String(100), index=True, comment='操作对象ID')
+    目标类型 = db.Column('target_type', db.String(50), comment='操作对象类型')
     
     # 结果信息
-    操作结果 = db.Column(db.String(20), nullable=False, default='success', comment='操作结果')
-    错误信息 = db.Column(db.Text, comment='错误信息')
+    操作结果 = db.Column('operation_result', db.String(20), nullable=False, default='success', comment='操作结果')
+    错误信息 = db.Column('error_message', db.Text, comment='错误信息')
     
     # 请求信息
-    请求方法 = db.Column(db.String(10), comment='请求方法')
-    请求URL = db.Column(db.Text, comment='请求URL')
-    请求参数 = db.Column(db.Text, comment='请求参数')
+    请求方法 = db.Column('request_method', db.String(10), comment='请求方法')
+    请求URL = db.Column('request_url', db.Text, comment='请求URL')
+    请求参数 = db.Column('request_params', db.Text, comment='请求参数')
     
     # 响应信息
-    响应时间 = db.Column(db.Integer, comment='响应时间（毫秒）')
+    响应时间 = db.Column('response_time', db.Integer, comment='响应时间（毫秒）')
     
     def to_dict(self):
         """转换为字典格式"""
@@ -1264,7 +1263,9 @@ def get_operation_logs():
         
         # 权限过滤：管理员看所有，操作员只看自己小区
         if current_user.Role != '系统管理员':
-            query = query.filter(OperationLog.小区编号 == current_user.小区编号)
+            # 通过所属小区过滤（因为表中没有小区编号字段）
+            if current_user.COMMUNITY:
+                query = query.filter(OperationLog.所属小区 == current_user.COMMUNITY)
         
         # 地区过滤
         if community:
