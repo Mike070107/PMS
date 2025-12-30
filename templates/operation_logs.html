@@ -370,7 +370,7 @@
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">所属小区:</div>
-                    <div class="detail-value">[[ currentLog.community or '-' ]]</div>
+                    <div class="detail-value">[[ currentLog.community || '-' ]]</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">IP地址:</div>
@@ -378,7 +378,7 @@
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">MAC地址:</div>
-                    <div class="detail-value">[[ currentLog.mac_address or '未获取' ]]</div>
+                    <div class="detail-value">[[ currentLog.mac_address || '未获取' ]]</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">操作类型:</div>
