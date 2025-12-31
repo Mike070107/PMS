@@ -2222,12 +2222,12 @@
             /* 小票内容容器 - 居中显示且自适应 */
             #print-receipt .receipt-content {
                 width: auto !important;
-                max-width: 80mm !important;
+                max-width: 72mm !important;
                 min-width: 60mm !important;
                 height: auto !important;
                 max-height: calc(100vh - 20mm) !important;
                 margin: 0 auto !important;
-                padding: 5mm !important;
+                padding: 3mm !important;
                 box-sizing: border-box !important;
                 page-break-inside: avoid !important;
                 page-break-after: avoid !important;
@@ -2235,8 +2235,9 @@
                 overflow: hidden !important;
                 background: white !important;
                 border: 1px solid #ddd !important;
-                font-size: 12px !important;
-                line-height: 1.4 !important;
+                font-size: 18px !important;
+                font-weight: bold !important;
+                line-height: 1.6 !important;
             }
             
             /* 强制设置页面尺寸为单页 */
@@ -2287,15 +2288,29 @@
             }
             
             #print-receipt .receipt-header h2 {
-                font-size: 14px !important;
+                font-size: 26px !important;
                 margin: 3px 0 !important;
                 font-weight: bold !important;
             }
             
             #print-receipt .receipt-info {
                 margin-bottom: 8px !important;
-                line-height: 1.3 !important;
-                font-size: 11px !important;
+                line-height: 1.5 !important;
+                font-size: 18px !important;
+                font-weight: bold !important;
+            }
+            
+            /* 日期时间不换行 */
+            #print-receipt .receipt-info .date-time,
+            #print-receipt .receipt-footer .date-time {
+                white-space: nowrap !important;
+            }
+            
+            /* 谢谢光临居中不换行 */
+            #print-receipt .receipt-footer .thank-you {
+                white-space: nowrap !important;
+                text-align: center !important;
+                font-size: 18px !important;
             }
             
             #print-receipt .receipt-items {
@@ -2303,13 +2318,17 @@
                 border-top: 1px dashed #000 !important;
                 border-bottom: 1px dashed #000 !important;
                 padding: 8px 0 !important;
-                font-size: 11px !important;
+                font-size: 18px !important;
+                font-weight: bold !important;
+                white-space: normal !important;
+                word-wrap: break-word !important;
+                word-break: break-all !important;
             }
             
             #print-receipt .receipt-total {
                 text-align: right !important;
                 font-weight: bold !important;
-                font-size: 12px !important;
+                font-size: 22px !important;
                 margin-top: 8px !important;
                 padding-top: 8px !important;
                 border-top: 1px solid #000 !important;
@@ -2320,35 +2339,55 @@
                 margin-top: 8px !important;
                 padding-top: 5px !important;
                 border-top: 1px dashed #000 !important;
-                font-size: 10px !important;
-                color: #666 !important;
+                font-size: 16px !important;
+                font-weight: bold !important;
+                color: #333 !important;
+                white-space: normal !important;
+                word-wrap: break-word !important;
             }
             
-            /* 确保所有文本不会换行除非必要 */
+            /* 文本换行但保持可读性 */
             #print-receipt .receipt-content > div {
-                white-space: nowrap !important;
-                overflow: hidden !important;
-                text-overflow: ellipsis !important;
+                white-space: normal !important;
+                overflow: visible !important;
+                text-overflow: clip !important;
+                word-wrap: break-word !important;
             }
             
             /* 允许收费项目换行 */
             #print-receipt .receipt-items div {
                 white-space: normal !important;
                 word-wrap: break-word !important;
-                line-height: 1.2 !important;
+                word-break: break-all !important;
+                line-height: 1.4 !important;
             }
         }
 
         .receipt-content {
-            max-width: 80mm;
+            max-width: 72mm;
             font-family: '宋体', 'SimSun', sans-serif;
-            font-size: 12px;
-            padding: 5mm;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 3mm;
             margin: 0;
             border: 1px dashed #ddd;
             background-color: white;
             box-sizing: border-box;
             page-break-inside: avoid;
+            word-wrap: break-word;
+        }
+        
+        /* 日期时间不换行 */
+        .receipt-info .date-time,
+        .receipt-footer .date-time {
+            white-space: nowrap;
+        }
+        
+        /* 谢谢光临居中不换行 */
+        .receipt-footer .thank-you {
+            white-space: nowrap;
+            text-align: center;
+            font-size: 18px;
         }
 
         .receipt-header {
@@ -2359,14 +2398,16 @@
         }
 
         .receipt-header h2 {
-            font-size: 16px;
+            font-size: 26px;
             margin: 5px 0;
             font-weight: bold;
         }
 
         .receipt-info {
             margin-bottom: 10px;
-            line-height: 1.5;
+            line-height: 1.6;
+            font-weight: bold;
+            word-wrap: break-word;
         }
 
         .receipt-info .label {
@@ -2379,12 +2420,15 @@
             border-top: 1px dashed #000;
             border-bottom: 1px dashed #000;
             padding: 10px 0;
+            font-weight: bold;
+            word-wrap: break-word;
+            word-break: break-all;
         }
 
         .receipt-total {
             text-align: right;
             font-weight: bold;
-            font-size: 14px;
+            font-size: 22px;
             margin-top: 10px;
             padding-top: 10px;
             border-top: 2px solid #000;
@@ -2395,10 +2439,12 @@
             margin-top: 10px;
             padding-top: 5px;
             border-top: 1px dashed #000;
-            font-size: 11px;
-            color: #666;
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
             page-break-after: avoid;
             page-break-inside: avoid;
+            word-wrap: break-word;
         }
 
         /* 响应式调整 */
@@ -3199,13 +3245,14 @@
                 position: absolute !important;
                 left: 0 !important;
                 top: 0 !important;
-                width: 80mm !important;
+                width: 72mm !important;
                 min-height: auto !important;
                 max-height: 100vh !important;
                 padding: 0 !important;
                 margin: 0 !important;
                 font-family: '宋体', 'SimSun', sans-serif !important;
-                font-size: 12px !important;
+                font-size: 18px !important;
+                font-weight: bold !important;
                 overflow: visible !important;
                 page-break-inside: avoid !important;
                 page-break-after: avoid !important;
@@ -3214,11 +3261,11 @@
                 transform-origin: top left !important;
             }
             
-            /* 确保小票内容也是80mm宽度 */
+            /* 确保小票内容也是72mm宽度 */
             #print-receipt .receipt-content {
-                width: 80mm !important;
-                min-width: 80mm !important;
-                max-width: 80mm !important;
+                width: 72mm !important;
+                min-width: 72mm !important;
+                max-width: 72mm !important;
                 margin: 0 !important;
                 padding: 2mm !important;
                 box-sizing: border-box !important;
@@ -3226,6 +3273,10 @@
                 page-break-after: avoid !important;
                 page-break-before: avoid !important;
                 overflow: visible !important;
+                font-size: 18px !important;
+                font-weight: bold !important;
+                word-wrap: break-word !important;
+                word-break: break-all !important;
             }
             
             /* 强制设置页面尺寸和边距 */
@@ -3303,6 +3354,9 @@
                     </li>
                     <li class="nav-item" :class="{active: currentPage === 'reports'}" @click="currentPage = 'reports'">
                         <i class="el-icon-data-analysis"></i> 数据报表
+                    </li>
+                    <li class="nav-item" :class="{active: currentPage === 'financialReconciliation'}" @click="currentPage = 'financialReconciliation'">
+                        <i class="el-icon-money"></i> 财务对账报表
                     </li>
 
                     <!-- 操作日志 -->
@@ -3856,7 +3910,7 @@
                 </div>
                 
                 <div class="receipt-info">
-                    <div><span class="label">收费时间：</span>[[ receiptData.time ]]</div>
+                    <div><span class="label">收费时间：</span><span class="date-time">[[ receiptData.time ]]</span></div>
                     <div><span class="label">地址：</span>[[ receiptData.building ]]-[[ receiptData.room ]]</div>
                     <div><span class="label">姓名：</span>[[ receiptData.residentName ]]</div>
                     <div><span class="label">收款方式：</span>[[ receiptData.paymentMethod ]]</div>
@@ -3874,8 +3928,8 @@
                 <div class="receipt-footer">
                     <div>账单号：[[ receiptData.billNumber ]]</div>
                     <div>操作员：[[ user.real_name ]]</div>
-                    <div>打印时间：[[ receiptData.printTime ]]</div>
-                    <div style="margin-top: 10px;">------------------- 谢谢光临 -------------------</div>
+                    <div>打印时间：<span class="date-time">[[ receiptData.printTime ]]</span></div>
+                    <div class="thank-you" style="margin-top: 10px;">- 谢谢光临 -</div>
                 </div>
             </div>
         </div>
@@ -3893,6 +3947,15 @@
         <div v-if="currentPage === 'reports'" style="position: fixed; top: 0; left: 240px; right: 0; bottom: 0; z-index: 999;">
             <iframe 
                 src="/reports" 
+                style="width: 100%; height: 100%; border: none; display: block;"
+                frameborder="0">
+            </iframe>
+        </div>
+        
+        <!-- 财务对账报表页面 -->
+        <div v-if="currentPage === 'financialReconciliation'" style="position: fixed; top: 0; left: 240px; right: 0; bottom: 0; z-index: 999;">
+            <iframe 
+                src="/financial_reconciliation" 
                 style="width: 100%; height: 100%; border: none; display: block;"
                 frameborder="0">
             </iframe>
