@@ -278,12 +278,17 @@
                         </div>
                     </div>
 
-                    <!-- 按钮 -->
+                    <!-- 按钮组 -->
                     <div class="filter-item">
                         <div class="filter-label">&nbsp;</div>
-                        <el-button type="primary" @click="queryData" :loading="loading">
-                            查询
-                        </el-button>
+                        <div style="display: flex; gap: 10px;">
+                            <el-button type="primary" @click="queryData" :loading="loading">
+                                查询
+                            </el-button>
+                            <el-button @click="exportExcel" :disabled="tableData.length === 0">
+                                导出Excel
+                            </el-button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -446,19 +451,38 @@ document.addEventListener('DOMContentLoaded', function() {
             };
 
             // 导出Excel
-            const exportExcel = () => {
+            const exportExcel = async () => {
                 if (tableData.value.length === 0) {
                     ElMessage.warning('没有可导出的数据');
                     return;
                 }
 
-                const params = new URLSearchParams({
-                    community: queryParams.value.community,
-                    start_date: queryParams.value.startDate,
-                    end_date: queryParams.value.endDate
-                });
+                try {
+                    const response = await axios.get('/api/reports/financial-reconciliation/export', {
+                        params: {
+                            community: queryParams.value.community,
+                            start_date: queryParams.value.startDate,
+                            end_date: queryParams.value.endDate
+                        },
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        responseType: 'blob'
+                    });
 
-                window.open(`/api/reports/financial-reconciliation/export?${params.toString()}`, '_blank');
+                    // 创建下载链接
+                    const url = window.URL.createObjectURL(new Blob([response.data]));
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', `财务对账报表_${queryParams.value.community}_${queryParams.value.startDate}_${queryParams.value.endDate}.xlsx`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+                    
+                    ElMessage.success('导出成功');
+                } catch (error) {
+                    console.error('导出失败:', error);
+                    ElMessage.error('导出失败，请重试');
+                }
             };
 
             // 初始化日期选择器
