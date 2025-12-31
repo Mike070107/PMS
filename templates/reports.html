@@ -1303,7 +1303,10 @@
                             itemGap: 15,
                             formatter: function(name) {
                                 const item = paymentData.value.find(d => d.name === name);
-                                return `${name}  ${item ? item.count : 0}笔`;
+                                if (item) {
+                                    return `${name}  ${item.count}笔  ¥${formatNumber(item.amount)}`;
+                                }
+                                return `${name}  0笔  ¥0`;
                             }
                         },
                         series: [

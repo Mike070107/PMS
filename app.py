@@ -1336,6 +1336,50 @@ def delete_order(order_id):
 
 
         
+# 6.6 记录重打小票日志
+@app.route('/api/log-reprint', methods=['POST'])
+@token_required
+def log_reprint_receipt():
+    """记录重打小票操作日志"""
+    current_user = g.current_user
+    
+    try:
+        data = request.get_json()
+        order_id = data.get('orderId')
+        bill_number = data.get('billNumber', '')
+        building = data.get('building', '')
+        room = data.get('room', '')
+        total_amount = data.get('totalAmount', 0)
+        
+        if not order_id:
+            return jsonify({'status': 'error', 'message': '订单ID不能为空'}), 400
+        
+        # 记录操作日志
+        from log_utils import log_operation as log_op_new
+        log_op_new(
+            operation_type='重打小票',
+            operation_module='订单管理',
+            operation_detail={
+                '账单号': bill_number,
+                '楼号': building,
+                '房号': room,
+                '收费金额': float(total_amount) if total_amount else 0
+            },
+            target_id=str(order_id),
+            target_type='订单',
+            operation_result='success'
+        )
+        
+        return jsonify({
+            'status': 'success',
+            'message': '日志记录成功'
+        })
+    
+    except Exception as e:
+        app.logger.error(f"记录重打小票日志失败: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'status': 'error', 'message': '记录日志失败'}), 500
+
+
 # 7. 操作日志查询
 @app.route('/api/operation-logs', methods=['GET'])
 @token_required

@@ -3444,6 +3444,7 @@
                                                         <th>金额</th>
                                                         <th>支付方式</th>
                                                         <th>备注</th>
+                                                        <th>操作</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -3459,6 +3460,17 @@
                                                         <td style="color: #f56c6c; font-weight: bold;">[[ formatPrice(order.totalAmount) ]]</td>
                                                         <td>[[ order.paymentMethod || '-' ]]</td>
                                                         <td>[[ order.remark ]]</td>
+                                                        <td>
+                                                            <div class="action-buttons-cell">
+                                                                <el-button 
+                                                                    type="primary" 
+                                                                    size="small" 
+                                                                    @click="reprintReceipt(order.orderId)"
+                                                                    class="reprint-button">
+                                                                    重打小票
+                                                                </el-button>
+                                                            </div>
+                                                        </td>
                                                     </tr>
                                                 </tbody>
                                             </table>
@@ -5351,6 +5363,27 @@ const app = createApp({
                         setTimeout(() => {
                             printReceipt();
                         }, 100);
+                        
+                        // 记录重打小票操作日志
+                        try {
+                            await fetch('/api/log-reprint', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`
+                                },
+                                body: JSON.stringify({
+                                    orderId: orderId,
+                                    billNumber: order.billNumber,
+                                    building: order.address?.building || '',
+                                    room: order.address?.room || '',
+                                    totalAmount: order.totalAmount
+                                })
+                            });
+                        } catch (logError) {
+                            console.error('记录重打小票日志失败:', logError);
+                            // 日志记录失败不影响主流程
+                        }
                         
                         ElMessage.success('小票重打成功');
                     } else {
