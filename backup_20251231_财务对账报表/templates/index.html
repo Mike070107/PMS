@@ -2167,7 +2167,6 @@
 
         .recent-records-table .fee-items-cell div {
             margin-bottom: 3px;
-            white-space: nowrap;
         }
 
         .recent-records-table tr:hover {
@@ -2620,7 +2619,6 @@
         
         .user-history-table .fee-items-cell div {
             margin-bottom: 3px;
-            white-space: nowrap;
         }
         
         .user-history-table tr:hover {
@@ -3439,12 +3437,12 @@
                                 <!-- 姓名输入 -->
                                 <div class="address-field">
                                     <div class="field-label">姓名</div>
-                                    <div class="form-control" style="width: 260px;">
+                                    <div class="form-control" style="width: 160px;">
                                         <el-input 
                                             v-model="residentName" 
                                             placeholder="请输入" 
                                             style="width: 100%;"
-                                            :maxlength="30"
+                                            :maxlength="10"
                                             show-word-limit>
                                         </el-input>
                                     </div>
@@ -3515,7 +3513,7 @@
                                                         </td>
                                                         <td style="color: #f56c6c; font-weight: bold;">[[ formatPrice(order.totalAmount) ]]</td>
                                                         <td>[[ order.paymentMethod || '-' ]]</td>
-                                                        <td style="text-align: left;">[[ order.remark ]]</td>
+                                                        <td>[[ order.remark ]]</td>
                                                         <td>
                                                             <div class="action-buttons-cell">
                                                                 <el-button 
@@ -3543,10 +3541,6 @@
                                 <div class="refund-checkbox" style="display: inline-block; margin-left: 20px;">
                                     <el-checkbox v-model="isRefundMode" @change="onRefundModeChange"><strong style="font-weight: bold; font-size: 18px;">退费</strong></el-checkbox>
                                 </div>
-                                <span style="margin-left: 20px; color: #999; font-size: 12px;">
-                                    <i class="el-icon-info"></i> 
-                                    提示：单价由系统根据小区自动加载，可在金额栏直接输入实缴金额，系统自动计算数量
-                                </span>
                             </div>
                             <div class="fee-buttons">
                                 <el-button 
@@ -3667,12 +3661,6 @@
                                 </tbody>
                             </table>
 
-                            <!-- 空表格提示 -->
-                            <div v-if="feeItems.length === 0" class="empty-table">
-                                <i class="el-icon-document" style="font-size: 48px; color: #ccc; margin-bottom: 10px;"></i>
-                                <p>暂无收费项目，请点击上方按钮添加</p>
-                            </div>
-
                             <!-- 停车费详情行（如果是停车费，显示额外信息） -->
                             <div v-if="feeItems.some(item => item.type === 'parking')" class="parking-detail-cell" style="margin-top: 10px; padding: 15px; background-color: #f9f9f9; border-radius: 6px; border: 1px solid #e8e8e8;">
                                 <div style="margin-bottom: 10px; font-size: 14px; font-weight: 500; color: #333;">
@@ -3687,9 +3675,11 @@
                                             placeholder="请输入车牌号" 
                                             style="width: 150px; height: 32px; padding: 0 8px; border: 1px solid #dcdfe6; border-radius: 4px; background-color: #ffffff;"
                                             @input="(event) => { 
+                                                console.log('车牌号输入:', event.target.value); 
                                                 const parkingItem = getParkingItem();
                                                 if (parkingItem) {
                                                     parkingItem.carPlate = event.target.value;
+                                                    console.log('更新车牌号:', parkingItem.carPlate);
                                                 }
                                             }">
                                         </input>
@@ -3704,9 +3694,11 @@
                                             :value="getParkingItem() ? getParkingItem().startDate : ''"
                                             placeholder="请选择开始日期"
                                             @input="(event) => { 
+                                                console.log('开始日期输入:', event.target.value); 
                                                 const parkingItem = getParkingItem();
                                                 if (parkingItem) {
                                                     parkingItem.startDate = event.target.value;
+                                                    console.log('更新开始日期:', parkingItem.startDate);
                                                 }
                                             }">
                                     </div>
@@ -3720,53 +3712,25 @@
                                             :value="getParkingItem() ? getParkingItem().endDate : ''"
                                             placeholder="请选择结束日期"
                                             @input="(event) => { 
+                                                console.log('结束日期输入:', event.target.value); 
                                                 const parkingItem = getParkingItem();
                                                 if (parkingItem) {
                                                     parkingItem.endDate = event.target.value;
+                                                    console.log('更新结束日期:', parkingItem.endDate);
                                                 }
                                             }">
                                     </div>
-                                </div>
                             </div>
 
-                            <!-- 网费详情行（如果是网费，显示额外信息） -->
-                            <div v-if="feeItems.some(item => item.type === 'network')" class="network-detail-cell" style="margin-top: 10px; padding: 15px; background-color: #f9f9f9; border-radius: 6px; border: 1px solid #e8e8e8;">
-                                <div style="margin-bottom: 10px; font-size: 14px; font-weight: 500; color: #333;">
-                                    <i class="el-icon-monitor"></i> 网费详细信息
-                                </div>
-                                <div class="parking-fields">
-                                    <div class="parking-field">
-                                        <span class="parking-label">开始日期：</span>
-                                        <input 
-                                            type="text" 
-                                            id="networkStartDatePicker" 
-                                            class="parking-date-input"
-                                            :value="getNetworkItem() ? getNetworkItem().startDate : ''"
-                                            placeholder="请选择开始日期"
-                                            @input="(event) => { 
-                                                const networkItem = getNetworkItem();
-                                                if (networkItem) {
-                                                    networkItem.startDate = event.target.value;
-                                                }
-                                            }">
-                                    </div>
-                                    
-                                    <div class="parking-field">
-                                        <span class="parking-label">结束日期：</span>
-                                        <input 
-                                            type="text" 
-                                            id="networkEndDatePicker" 
-                                            class="parking-date-input"
-                                            :value="getNetworkItem() ? getNetworkItem().endDate : ''"
-                                            placeholder="请选择结束日期"
-                                            @input="(event) => { 
-                                                const networkItem = getNetworkItem();
-                                                if (networkItem) {
-                                                    networkItem.endDate = event.target.value;
-                                                }
-                                            }">
-                                    </div>
-                                </div>
+                            <!-- 操作提示 -->
+                            <div v-if="feeItems.length > 0" style="margin-top: 10px; color: #999; font-size: 12px;">
+                                <i class="el-icon-info"></i> 
+                                提示：单价由系统根据小区自动加载，可在金额栏直接输入实缴金额，系统自动计算数量
+                            </div>
+                            
+                            <div v-else class="empty-table">
+                                <i class="el-icon-document" style="font-size: 48px; color: #ccc; margin-bottom: 10px;"></i>
+                                <p>暂无收费项目，请点击上方按钮添加</p>
                             </div>
                         </div>
                         
@@ -3924,11 +3888,11 @@
                                     </tr>
                                 </tbody>
                             </table>
-                            
-                            <div v-else class="empty-table">
-                                <i class="el-icon-document" style="font-size: 48px; color: #ccc; margin-bottom: 10px;"></i>
-                                <p>暂无收费记录</p>
-                            </div>
+                        </div>
+                        
+                        <div v-else class="empty-table">
+                            <i class="el-icon-document" style="font-size: 48px; color: #ccc; margin-bottom: 10px;"></i>
+                            <p>暂无收费记录</p>
                         </div>
                     </div>
                 </div>
@@ -4451,11 +4415,6 @@ const app = createApp({
             return feeItems.value.find(item => item.type === 'parking') || null;
         };
 
-        // 获取网费项目
-        const getNetworkItem = () => {
-            return feeItems.value.find(item => item.type === 'network') || null;
-        };
-
         // 处理车牌号输入
         const handleCarPlateInput = (value) => {
             console.log('车牌号输入事件触发:', value);
@@ -4501,25 +4460,6 @@ const app = createApp({
                 parkingItem.endDate = calculateEndDate(parkingItem.startDate, parkingItem.quantity);
             }
         };
-
-        // 处理网费开始日期变化
-        const handleNetworkStartDateChange = (startDate) => {
-            const networkItem = getNetworkItem();
-            if (networkItem) {
-                networkItem.startDate = startDate.replace(/-/g, '/');
-                if (networkItem.quantity) {
-                    networkItem.endDate = calculateEndDate(startDate, networkItem.quantity);
-                }
-            }
-        };
-
-        // 处理网费结束日期变化
-        const handleNetworkEndDateChange = (endDate) => {
-            const networkItem = getNetworkItem();
-            if (networkItem) {
-                networkItem.endDate = endDate.replace(/-/g, '/');
-            }
-        };
         
         // 添加费用项目
         const addFeeItem = (type) => {
@@ -4530,10 +4470,7 @@ const app = createApp({
             }
             
             const config = feeConfig[type];
-            if (!config) {
-                console.error('未找到费用配置:', type);
-                return;
-            }
+            if (!config) return;
             
             // 获取当前单价
             const unitPrice = communityPrices.value[type] || 0.00;
@@ -4556,8 +4493,8 @@ const app = createApp({
                 unitPrice: unitPrice,
                 amount: finalAmount,  // 退费模式下为负数
                 carPlate: '',
-                startDate: (type === 'parking' || type === 'network') ? today : '',  // 停车费和网费默认开始日期为今日
-                endDate: (type === 'parking' || type === 'network') ? calculateEndDate(today, 1) : ''  // 停车费和网费默认结束日期
+                startDate: type === 'parking' ? today : '',  // 停车费默认开始日期为今日
+                endDate: type === 'parking' ? calculateEndDate(today, 1) : ''  // 停车费默认结束日期
             };
             
             feeItems.value.push(newItem);
@@ -4595,8 +4532,8 @@ const app = createApp({
                 amount: finalAmount
             });
             
-            // 如果是停车费或网费，更新结束日期
-            if (item.type === 'parking' || item.type === 'network') {
+            // 如果是停车费，更新结束日期
+            if (item.type === 'parking') {
                 if (item.startDate && item.quantity) {
                     const newEndDate = calculateEndDate(item.startDate, item.quantity);
                     Object.assign(item, {
@@ -4628,12 +4565,12 @@ const app = createApp({
             ElMessage.info(`已切换到${modeText}模式`);
         };
         
-        // 专门处理停车费和网费数量变化
+        // 专门处理停车费数量变化
         const handleParkingQuantityChange = (index) => {
             const item = feeItems.value[index];
-            if (!item || (item.type !== 'parking' && item.type !== 'network')) return;
+            if (!item || item.type !== 'parking') return;
             
-            console.log('停车费/网费数量变化:', index, '数量:', item.quantity);
+            console.log('停车费数量变化:', index, '数量:', item.quantity);
             
             // 更新金额
             updateItemAmount(index);
@@ -4644,7 +4581,7 @@ const app = createApp({
                 Object.assign(item, {
                     endDate: newEndDate
                 });
-                console.log('结束日期更新:', index, '开始日期:', item.startDate, '月数:', item.quantity, '结束日期:', newEndDate);
+                console.log('停车费结束日期更新:', index, '开始日期:', item.startDate, '月数:', item.quantity, '结束日期:', newEndDate);
             }
         };
         
@@ -4660,7 +4597,7 @@ const app = createApp({
                 item.quantity = value;
             }
             
-            if (item.type === 'parking' || item.type === 'network') {
+            if (item.type === 'parking') {
                 handleParkingQuantityChange(index);
             } else {
                 updateItemAmount(index);
@@ -4727,8 +4664,8 @@ const app = createApp({
                 
                 item.quantity = quantity;
                 
-                // 如果是停车费或网费，更新结束日期
-                if (item.type === 'parking' || item.type === 'network') {
+                // 如果是停车费，更新结束日期
+                if (item.type === 'parking') {
                     if (item.startDate && item.quantity) {
                         item.endDate = calculateEndDate(item.startDate, item.quantity);
                     }
@@ -4874,13 +4811,6 @@ const app = createApp({
                         // 如果是停车费，添加车牌号、开始日期、结束日期
                         if (item.type === 'parking') {
                             itemData.carPlate = item.carPlate || '';
-                            // 确保日期格式为 yyyy-MM-dd（后端期望格式）
-                            itemData.startDate = item.startDate ? item.startDate.replace(/\//g, '-') : '';
-                            itemData.endDate = item.endDate ? item.endDate.replace(/\//g, '-') : '';
-                        }
-                        
-                        // 如果是网费，添加开始日期、结束日期
-                        if (item.type === 'network') {
                             // 确保日期格式为 yyyy-MM-dd（后端期望格式）
                             itemData.startDate = item.startDate ? item.startDate.replace(/\//g, '-') : '';
                             itemData.endDate = item.endDate ? item.endDate.replace(/\//g, '-') : '';
@@ -5441,13 +5371,6 @@ const app = createApp({
                                     const carPlate = fee.carPlate || '';
                                     
                                     feeText = `${fee.name} | ${fee.quantity}${fee.unit} | ¥${formatPrice(fee.amount)} | ${dateRange} | ${carPlate}`;
-                                } else if (fee.name === '网费') {
-                                    // 网费格式：网费 | 1个月 | ¥50.00 | 2025/12/1-2025/12/31
-                                    const startDate = fee.startDate ? formatDate(fee.startDate).split(' ')[0] : '';
-                                    const endDate = fee.endDate ? formatDate(fee.endDate).split(' ')[0] : '';
-                                    const dateRange = startDate && endDate ? `${startDate}-${endDate}` : '';
-                                    
-                                    feeText = `${fee.name} | ${fee.quantity}${fee.unit} | ¥${formatPrice(fee.amount)} | ${dateRange}`;
                                 } else {
                                     // 其他项目格式：电费 | 200.0度 | ¥170.00
                                     feeText = `${fee.name} | ${fee.quantity}${fee.unit} | ¥${formatPrice(fee.amount)}`;
@@ -5467,11 +5390,7 @@ const app = createApp({
                                 feeItemsArr.push(`热水费 | ${order.hotWater.ton}吨 | ¥${formatPrice(order.hotWater.amount)}`);
                             }
                             if (order.network && parseFloat(order.network.amount) > 0) {
-                                const startDate = order.network.startDate ? formatDate(order.network.startDate).split(' ')[0] : '';
-                                const endDate = order.network.endDate ? formatDate(order.network.endDate).split(' ')[0] : '';
-                                const dateRange = startDate && endDate ? `${startDate}-${endDate}` : '';
-                                
-                                feeItemsArr.push(`网费 | ${order.network.month}月 | ¥${formatPrice(order.network.amount)} | ${dateRange}`);
+                                feeItemsArr.push(`网费 | ${order.network.month}月 | ¥${formatPrice(order.network.amount)}`);
                             }
                             if (order.parking && parseFloat(order.parking.amount) > 0) {
                                 const startDate = order.parking.startDate ? formatDate(order.parking.startDate).split(' ')[0] : '';
@@ -6102,64 +6021,6 @@ const debugPrices = () => {
             }
         });
         
-        // 初始化网费日期选择器
-        const initNetworkDatePickers = () => {
-            nextTick(() => {
-                console.log('开始初始化网费日期选择器...');
-                
-                if (typeof flatpickr === 'undefined') {
-                    console.error('flatpickr未加载');
-                    return;
-                }
-                
-                const startInput = document.getElementById('networkStartDatePicker');
-                const endInput = document.getElementById('networkEndDatePicker');
-                
-                if (!startInput || !endInput) {
-                    console.error('网费日期输入框未找到');
-                    return;
-                }
-                
-                if (startInput._flatpickr || endInput._flatpickr) {
-                    console.log('网费日期选择器已初始化，跳过重新初始化');
-                    return;
-                }
-                
-                // 初始化开始日期选择器
-                const startPicker = flatpickr('#networkStartDatePicker', {
-                    dateFormat: 'Y/m/d',
-                    locale: 'zh',
-                    position: 'below',
-                    appendTo: startInput.parentNode,
-                    onChange: function(selectedDates, dateStr, instance) {
-                        handleNetworkStartDateChange(dateStr);
-                    }
-                });
-                
-                // 初始化结束日期选择器
-                const endPicker = flatpickr('#networkEndDatePicker', {
-                    dateFormat: 'Y/m/d',
-                    locale: 'zh',
-                    position: 'below',
-                    appendTo: endInput.parentNode,
-                    onChange: function(selectedDates, dateStr, instance) {
-                        handleNetworkEndDateChange(dateStr);
-                    }
-                });
-                
-                console.log('网费日期选择器初始化完成');
-            });
-        };
-        
-        // 监听网费项目的添加
-        watch(() => feeItems.value.some(item => item.type === 'network'), (hasNetwork) => {
-            if (hasNetwork) {
-                nextTick(() => {
-                    initNetworkDatePickers();
-                });
-            }
-        });
-        
         // 监听停车费项目的数据变化，更新日期选择器值
         watch(() => getParkingItem(), (parkingItem) => {
             if (parkingItem) {
@@ -6174,22 +6035,6 @@ const debugPrices = () => {
                     if (endInput) {
                         // 确保显示格式为 yyyy/MM/dd
                         endInput.value = parkingItem.endDate ? parkingItem.endDate.replace(/-/g, '/') : '';
-                    }
-                });
-            }
-        }, { deep: true });
-
-        // 监听网费项目的数据变化，更新日期选择器值
-        watch(() => getNetworkItem(), (networkItem) => {
-            if (networkItem) {
-                nextTick(() => {
-                    const startInput = document.getElementById('networkStartDatePicker');
-                    const endInput = document.getElementById('networkEndDatePicker');
-                    if (startInput) {
-                        startInput.value = networkItem.startDate ? networkItem.startDate.replace(/-/g, '/') : '';
-                    }
-                    if (endInput) {
-                        endInput.value = networkItem.endDate ? networkItem.endDate.replace(/-/g, '/') : '';
                     }
                 });
             }
@@ -6352,11 +6197,7 @@ const debugPrices = () => {
                         if (order.网费金额 && parseFloat(order.网费金额) > 0) {
                             const month = parseInt(order.网费月数) || 0;
                             const amount = parseFloat(order.网费金额) || 0;
-                            const startDate = order.网费开始日期 ? new Date(order.网费开始日期).toLocaleDateString('zh-CN') : '';
-                            const endDate = order.网费结束日期 ? new Date(order.网费结束日期).toLocaleDateString('zh-CN') : '';
-                            const dateRange = startDate && endDate ? `${startDate}-${endDate}` : '';
-                            
-                            feeItems.push(`网费 | ${month}月 | ¥${amount.toFixed(2)} | ${dateRange}`);
+                            feeItems.push(`网费 | ${month}月 | ¥${amount.toFixed(2)}`);
                         }
                         
                         if (order.停车费金额 && parseFloat(order.停车费金额) > 0) {
@@ -6608,12 +6449,9 @@ const debugPrices = () => {
             formatPrice,
             formatDate,
             getParkingItem,
-            getNetworkItem,
             saveParkingDetails,
             updateParkingEndDate,
             handleParkingStartDateChange,
-            handleNetworkStartDateChange,
-            handleNetworkEndDateChange,
             getFeeTypeName,
             getFeeUnit,
             goToFeePricesAdmin,
@@ -6656,14 +6494,6 @@ const debugPrices = () => {
 });
 
 // 使用ElementPlus并挂载应用
-app.config.warnHandler = (msg, instance, trace) => {
-    // 忽略 script 和 style 标签警告
-    if (msg.includes('Tags with side effect')) {
-        return;
-    }
-    // 其他警告正常输出
-    console.warn('[Vue warn]: ' + msg, trace);
-};
 app.use(ElementPlus).mount('#app');
 </script>
 

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公寓物业收费系统 - 登录</title>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <!-- 引入 Element Plus 样式和 Vue 3 -->
+
+<link rel="stylesheet" href="/static/lib/element-plus.css">
+<script src="/static/lib/vue.global.js"></script>
+<script src="/static/lib/element-plus.full.js"></script>
+<script src="/static/lib/element-plus-icons.umd.js"></script>
+<!-- 设备指纹和API拦截器 -->
+<script src="/static/device_fingerprint.js"></script>
+<script src="/static/api_interceptor.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f5f7fa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .login-container {
+            width: 380px;
+            padding: 30px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+        }
+        .login-title {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #303133;
+        }
+        .login-footer {
+            margin-top: 20px;
+            text-align: center;
+            color: #909399;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="login-container">
+            <h2 class="login-title">公寓物业收费管理系统</h2>
+            <el-form :model="loginForm" :rules="loginRules" ref="loginFormRef" @submit.prevent="handleLogin">
+                <el-form-item prop="username">
+                    <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large">
+                        <template #prefix>
+                            <el-icon><user /></el-icon>
+                        </template>
+                    </el-input>
+                </el-form-item>
+                <el-form-item prop="password">
+                    <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" show-password size="large" @keyup.enter="handleLogin">
+                        <template #prefix>
+                            <el-icon><lock /></el-icon>
+                        </template>
+                    </el-input>
+                </el-form-item>
+                <el-form-item>
+                    <el-button type="primary" @click="handleLogin" :loading="loading" size="large" style="width: 100%;">
+                       登录
+                    </el-button>
+                </el-form-item>
+            </el-form>
+            <div class="login-footer">
+                © 2025 物业管理系统 | 仅限内部使用
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive } = Vue;
+        const { ElForm, ElFormItem, ElInput, ElButton, ElIcon, ElMessage } = ElementPlus;
+        const { User, Lock } = ElementPlusIconsVue;
+
+        createApp({
+            components: {
+                ElForm, ElFormItem, ElInput, ElButton, ElIcon,
+                User, Lock
+            },
+            setup() {
+                const loginFormRef = ref();
+                const loading = ref(false);
+                
+                const loginForm = reactive({
+                    username: '',
+                    password: ''
+                });
+                
+                const loginRules = {
+                    username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+                    password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+                };
+                
+                const handleLogin = () => {
+                    loginFormRef.value.validate((valid) => {
+                        if (!valid) return;
+                        
+                        loading.value = true;
+                        
+                        // 调用我们已测试成功的登录API
+                        fetch('/api/login', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                username: loginForm.username,
+                                password: loginForm.password
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                ElMessage.success(data.message);
+                                // 存储token和用户信息到sessionStorage（关闭浏览器自动清除）
+                                sessionStorage.setItem('token', data.token);
+                                sessionStorage.setItem('user', JSON.stringify(data.user));
+                                // 跳转到主工作台
+                                window.location.href = '/';
+                            } else {
+                                ElMessage.error(data.message || '登录失败');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('登录请求失败:', error);
+                            ElMessage.error('网络请求失败，请检查服务');
+                        })
+                        .finally(() => {
+                            loading.value = false;
+                        });
+                    });
+                };
+                
+                return {
+                    loginFormRef,
+                    loginForm,
+                    loginRules,
+                    loading,
+                    handleLogin
+                };
+            }
+        }).use(ElementPlus).mount('#app');
+    </script>
+</body>
+</html>

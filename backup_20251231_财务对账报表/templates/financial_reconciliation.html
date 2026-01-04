@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>财务对账报表 - 物业收费管理系统</title>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    
+    <script src="/static/lib/vue.global.js"></script>
+    <script src="/static/lib/element-plus.full.js"></script>
+    <link rel="stylesheet" href="/static/lib/element-plus.css">
+    <script src="/static/lib/axios.min.js"></script>
+    <script src="/static/lib/flatpickr/flatpickr.min.js"></script>
+    <link rel="stylesheet" href="/static/lib/flatpickr/airbnb.css">
+    <script src="/static/lib/flatpickr/zh.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            font-size: 14px;
+            color: #333;
+            background: #f5f7fa;
+            padding: 20px;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        [v-cloak] {
+            display: none;
+        }
+
+        .page-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .page-header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+        }
+
+        .page-title {
+            font-size: 22px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 6px;
+            letter-spacing: -0.5px;
+        }
+
+        .page-subtitle {
+            font-size: 13px;
+            color: #888;
+        }
+
+        .filter-card {
+            background: white;
+            padding: 20px 25px;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+        }
+
+        .filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: flex-end;
+        }
+
+        .filter-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #666;
+        }
+
+        .filter-control {
+            min-width: 180px;
+        }
+
+        .date-range {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .date-input {
+            width: 140px;
+            height: 34px;
+            padding: 0 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .date-input:focus {
+            border-color: #409eff;
+        }
+
+        .date-separator {
+            color: #999;
+            font-size: 13px;
+        }
+
+        .result-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+        }
+
+        .result-header {
+            padding: 14px 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .result-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .result-summary {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .result-summary .highlight {
+            color: #e74c3c;
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .table-container {
+            padding: 16px 20px;
+            overflow-x: auto;
+        }
+
+        .data-table {
+            width: auto;
+            min-width: 650px;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 14px 24px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+            white-space: nowrap;
+        }
+
+        .data-table th {
+            background: #fafafa;
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+        }
+
+        .data-table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .data-table .amount {
+            text-align: right;
+            font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .data-table .total-row {
+            background: #f5f5f5;
+            font-weight: 600;
+        }
+
+        .data-table .total-row td {
+            border-top: 1px solid #ddd;
+            color: #1a1a1a;
+            font-size: 13px;
+        }
+
+        .data-table .total-amount {
+            color: #e74c3c;
+        }
+
+        .empty-data {
+            padding: 60px 20px;
+            text-align: center;
+            color: #909399;
+        }
+
+        .empty-data i {
+            font-size: 48px;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .loading-container {
+            padding: 60px 20px;
+            text-align: center;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* Element Plus 样式覆盖 */
+        .el-button--primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+        }
+
+        .el-button--primary:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        }
+    </style>
+</head>
+<body>
+{% raw %}
+    <div id="app" v-cloak>
+        <div class="page-container">
+            <div class="page-header">
+                <h1 class="page-title">财务对账报表</h1>
+                <p class="page-subtitle">按地区和日期查询每日收款汇总，支持按收款方式分类统计</p>
+            </div>
+
+            <!-- 查询条件 -->
+            <div class="filter-card">
+                <div class="filter-row">
+                    <!-- 地区选择 -->
+                    <div class="filter-item">
+                        <div class="filter-label">选择地区</div>
+                        <div class="filter-control">
+                            <el-select 
+                                v-model="queryParams.community" 
+                                placeholder="请选择地区"
+                                :disabled="isCommunityDisabled"
+                                :clearable="!isCommunityDisabled"
+                                style="width: 180px;">
+                                <el-option
+                                    v-for="community in communities"
+                                    :key="community"
+                                    :label="community"
+                                    :value="community">
+                                </el-option>
+                            </el-select>
+                        </div>
+                    </div>
+
+                    <!-- 日期范围 -->
+                    <div class="filter-item">
+                        <div class="filter-label">日期范围</div>
+                        <div class="date-range">
+                            <input type="text" class="date-input" id="startDate" placeholder="开始日期" v-model="queryParams.startDate">
+                            <span class="date-separator">至</span>
+                            <input type="text" class="date-input" id="endDate" placeholder="结束日期" v-model="queryParams.endDate">
+                        </div>
+                    </div>
+
+                    <!-- 按钮组 -->
+                    <div class="filter-item">
+                        <div class="filter-label">&nbsp;</div>
+                        <div style="display: flex; gap: 10px;">
+                            <el-button type="primary" @click="queryData" :loading="loading">
+                                查询
+                            </el-button>
+                            <el-button @click="exportExcel" :disabled="tableData.length === 0">
+                                导出Excel
+                            </el-button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 查询结果 -->
+            <div class="result-card">
+                <div class="result-header">
+                    <span class="result-title">查询结果</span>
+                    <span class="result-summary" v-if="tableData.length > 0">
+                        共 <span class="highlight">{{ tableData.length }}</span> 条记录，
+                        合计收款 <span class="highlight">¥{{ formatNumber(totalAmount) }}</span>
+                    </span>
+                </div>
+
+                <!-- 加载中 -->
+                <div class="loading-container" v-if="loading">
+                    <el-icon class="is-loading" :size="32" color="#409eff">
+                        <i class="el-icon-loading"></i>
+                    </el-icon>
+                    <p style="margin-top: 10px; color: #909399;">加载中...</p>
+                </div>
+
+                <!-- 数据表格 -->
+                <div class="table-container" v-else-if="tableData.length > 0">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>小区名称</th>
+                                <th>日期</th>
+                                <th class="amount">微信收款</th>
+                                <th class="amount">支付宝收款</th>
+                                <th class="amount">现金收款</th>
+                                <th class="amount">合计金额</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(row, index) in tableData" :key="index">
+                                <td>{{ row.community }}</td>
+                                <td>{{ row.date }}</td>
+                                <td class="amount">¥{{ formatNumber(row.wechatAmount) }}</td>
+                                <td class="amount">¥{{ formatNumber(row.alipayAmount) }}</td>
+                                <td class="amount">¥{{ formatNumber(row.cashAmount) }}</td>
+                                <td class="amount">¥{{ formatNumber(row.totalAmount) }}</td>
+                            </tr>
+                            <!-- 合计行 -->
+                            <tr class="total-row">
+                                <td colspan="2" style="text-align: right;">合计</td>
+                                <td class="amount">¥{{ formatNumber(sumWechat) }}</td>
+                                <td class="amount">¥{{ formatNumber(sumAlipay) }}</td>
+                                <td class="amount">¥{{ formatNumber(sumCash) }}</td>
+                                <td class="amount total-amount">¥{{ formatNumber(totalAmount) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 空数据 -->
+                <div class="empty-data" v-else>
+                    <i>📊</i>
+                    <p>请选择查询条件后点击查询</p>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endraw %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const { createApp, ref, computed, onMounted } = Vue;
+    const { ElMessage } = ElementPlus;
+
+    const app = createApp({
+        setup() {
+            // 用户信息
+            const userInfo = ref(JSON.parse(sessionStorage.getItem('user') || '{}'));
+            const token = sessionStorage.getItem('token');
+
+            // 查询参数
+            const queryParams = ref({
+                community: '',
+                startDate: '',
+                endDate: ''
+            });
+
+            // 数据
+            const communities = ref([]);
+            const tableData = ref([]);
+            const loading = ref(false);
+
+            // 是否禁用地区选择（非管理员只能看自己小区）
+            const isCommunityDisabled = computed(() => {
+                return userInfo.value.role !== '系统管理员';
+            });
+
+            // 计算合计
+            const sumWechat = computed(() => tableData.value.reduce((sum, row) => sum + row.wechatAmount, 0));
+            const sumAlipay = computed(() => tableData.value.reduce((sum, row) => sum + row.alipayAmount, 0));
+            const sumCash = computed(() => tableData.value.reduce((sum, row) => sum + row.cashAmount, 0));
+            const totalAmount = computed(() => tableData.value.reduce((sum, row) => sum + row.totalAmount, 0));
+
+            // 格式化数字
+            const formatNumber = (num) => {
+                return (num || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            };
+
+            // 加载小区列表
+            const loadCommunities = async () => {
+                try {
+                    const response = await axios.get('/api/communities', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (response.data.status === 'success') {
+                        communities.value = response.data.data;
+                        // 非管理员默认选中自己的小区
+                        if (isCommunityDisabled.value && communities.value.length > 0) {
+                            queryParams.value.community = userInfo.value.community || communities.value[0];
+                        }
+                    }
+                } catch (error) {
+                    console.error('加载小区列表失败:', error);
+                }
+            };
+
+            // 查询数据
+            const queryData = async () => {
+                if (!queryParams.value.community) {
+                    ElMessage.warning('请选择地区');
+                    return;
+                }
+                if (!queryParams.value.startDate || !queryParams.value.endDate) {
+                    ElMessage.warning('请选择日期范围');
+                    return;
+                }
+
+                loading.value = true;
+                try {
+                    const response = await axios.get('/api/reports/financial-reconciliation', {
+                        params: {
+                            community: queryParams.value.community,
+                            start_date: queryParams.value.startDate,
+                            end_date: queryParams.value.endDate
+                        },
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+
+                    if (response.data.status === 'success') {
+                        tableData.value = response.data.data;
+                        if (tableData.value.length === 0) {
+                            ElMessage.info('未查询到数据');
+                        }
+                    } else {
+                        ElMessage.error(response.data.message || '查询失败');
+                    }
+                } catch (error) {
+                    console.error('查询失败:', error);
+                    ElMessage.error('查询失败，请重试');
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            // 导出Excel
+            const exportExcel = async () => {
+                if (tableData.value.length === 0) {
+                    ElMessage.warning('没有可导出的数据');
+                    return;
+                }
+
+                try {
+                    const response = await axios.get('/api/reports/financial-reconciliation/export', {
+                        params: {
+                            community: queryParams.value.community,
+                            start_date: queryParams.value.startDate,
+                            end_date: queryParams.value.endDate
+                        },
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        responseType: 'blob'
+                    });
+
+                    // 创建下载链接
+                    const url = window.URL.createObjectURL(new Blob([response.data]));
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', `财务对账报表_${queryParams.value.community}_${queryParams.value.startDate}_${queryParams.value.endDate}.xlsx`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+                    
+                    ElMessage.success('导出成功');
+                } catch (error) {
+                    console.error('导出失败:', error);
+                    ElMessage.error('导出失败，请重试');
+                }
+            };
+
+            // 初始化日期选择器
+            const initDatePickers = () => {
+                const config = {
+                    locale: 'zh',
+                    dateFormat: 'Y-m-d',
+                    allowInput: true
+                };
+
+                flatpickr('#startDate', {
+                    ...config,
+                    onChange: (dates, dateStr) => {
+                        queryParams.value.startDate = dateStr;
+                    }
+                });
+
+                flatpickr('#endDate', {
+                    ...config,
+                    onChange: (dates, dateStr) => {
+                        queryParams.value.endDate = dateStr;
+                    }
+                });
+            };
+
+            onMounted(() => {
+                loadCommunities();
+                initDatePickers();
+
+                // 默认日期：本月1号到今天
+                const now = new Date();
+                const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+                queryParams.value.startDate = firstDay.toISOString().split('T')[0];
+                queryParams.value.endDate = now.toISOString().split('T')[0];
+
+                // 更新日期选择器显示
+                setTimeout(() => {
+                    document.getElementById('startDate').value = queryParams.value.startDate;
+                    document.getElementById('endDate').value = queryParams.value.endDate;
+                }, 100);
+            });
+
+            return {
+                userInfo,
+                queryParams,
+                communities,
+                tableData,
+                loading,
+                isCommunityDisabled,
+                sumWechat,
+                sumAlipay,
+                sumCash,
+                totalAmount,
+                formatNumber,
+                queryData,
+                exportExcel
+            };
+        }
+    });
+
+    app.use(ElementPlus);
+    app.mount('#app');
+});
+</script>
+</body>
+</html>

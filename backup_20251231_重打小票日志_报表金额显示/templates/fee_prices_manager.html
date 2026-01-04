@@ -333,6 +333,7 @@
                     }
 
                     userCommunity.value = user.community || '未知小区';
+                    console.log('当前用户小区:', userCommunity.value);
 
                     try {
                         const token = getToken();
@@ -341,6 +342,8 @@
                                 'Authorization': `Bearer ${token}`
                             }
                         });
+
+                        console.log('收费标准响应:', response.data);
 
                         if (response.data.status === 'success') {
                             const data = response.data.data;

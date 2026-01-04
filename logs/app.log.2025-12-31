@@ -1,0 +1,1815 @@
+2025-12-31 00:14:38,945 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:14:40,163 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:15:52,940 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:16:08,689 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:16:08,689 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:16:10,199 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1883]
+2025-12-31 00:16:10,199 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1883]
+2025-12-31 00:16:10,199 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1897]
+2025-12-31 00:16:10,199 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1897]
+2025-12-31 00:16:10,200 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1910]
+2025-12-31 00:16:10,200 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1910]
+2025-12-31 00:16:10,210 INFO: 查询到 0 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1916]
+2025-12-31 00:16:10,210 INFO: 查询到 0 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1916]
+2025-12-31 00:16:10,210 INFO: 返回今日收费记录: 0 条, 今日合计: 0 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2012]
+2025-12-31 00:16:10,210 INFO: 返回今日收费记录: 0 条, 今日合计: 0 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2012]
+2025-12-31 00:16:32,162 INFO: 接收到前端entryTime: 2025-12-31 00:16:32 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:831]
+2025-12-31 00:16:32,162 INFO: 接收到前端entryTime: 2025-12-31 00:16:32 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:831]
+2025-12-31 00:16:32,163 INFO: 解析后的entryTime: 2025-12-31 00:16:32 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:833]
+2025-12-31 00:16:32,163 INFO: 解析后的entryTime: 2025-12-31 00:16:32 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:833]
+2025-12-31 00:16:32,163 INFO: 最终使用的entryTime: 2025-12-31 00:16:32 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:839]
+2025-12-31 00:16:32,163 INFO: 最终使用的entryTime: 2025-12-31 00:16:32 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:839]
+2025-12-31 00:16:33,474 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1883]
+2025-12-31 00:16:33,474 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1883]
+2025-12-31 00:16:33,474 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1897]
+2025-12-31 00:16:33,474 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1897]
+2025-12-31 00:16:33,475 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1910]
+2025-12-31 00:16:33,475 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1910]
+2025-12-31 00:16:33,477 INFO: 查询到 1 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1916]
+2025-12-31 00:16:33,477 INFO: 查询到 1 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1916]
+2025-12-31 00:16:33,477 INFO: 返回今日收费记录: 1 条, 今日合计: 50.85 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2012]
+2025-12-31 00:16:33,477 INFO: 返回今日收费记录: 1 条, 今日合计: 50.85 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2012]
+2025-12-31 00:19:47,964 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:20:03,858 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:20:16,767 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:20:20,491 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:20:39,480 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:20:40,583 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:22:53,083 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:23:13,829 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:23:14,870 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:24:46,169 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:25:23,814 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:25:24,931 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:31:24,323 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:31:24,323 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:31:25,656 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:31:25,656 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:31:25,657 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:31:25,657 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:31:25,658 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:31:25,658 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:31:25,666 INFO: 查询到 1 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:31:25,666 INFO: 查询到 1 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:31:25,667 INFO: 返回今日收费记录: 1 条, 今日合计: 50.85 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:31:25,667 INFO: 返回今日收费记录: 1 条, 今日合计: 50.85 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:31:41,941 ERROR: 查询操作日志异常: (pymysql.err.OperationalError) (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+[SQL: SELECT count(*) AS count_1 
+FROM (SELECT operation_log.`ID` AS `operation_log_ID`, operation_log.`操作时间` AS `operation_log_操作时间`, operation_log.`用户ID` AS `operation_log_用户ID`, operation_log.`用户账号` AS `operation_log_用户账号`, operation_log.`用户姓名` AS `operation_log_用户姓名`, operation_log.`用户角色` AS `operation_log_用户角色`, operation_log.`所属小区` AS `operation_log_所属小区`, operation_log.`小区编号` AS `operation_log_小区编号`, operation_log.`电脑IP` AS `operation_log_电脑IP`, operation_log.`MAC地址` AS `operation_log_MAC地址`, operation_log.`用户代理` AS `operation_log_用户代理`, operation_log.`操作类型` AS `operation_log_操作类型`, operation_log.`操作模块` AS `operation_log_操作模块`, operation_log.`操作详情` AS `operation_log_操作详情`, operation_log.`目标ID` AS `operation_log_目标ID`, operation_log.`目标类型` AS `operation_log_目标类型`, operation_log.`操作结果` AS `operation_log_操作结果`, operation_log.`错误信息` AS `operation_log_错误信息`, operation_log.`请求方法` AS `operation_log_请求方法`, operation_log.`请求URL` AS `operation_log_请求URL`, operation_log.`请求参数` AS `operation_log_请求参数`, operation_log.`响应时间` AS `operation_log_响应时间` 
+FROM operation_log 
+WHERE operation_log.`小区编号` = %(小区编号_1)s AND operation_log.`所属小区` = %(所属小区_1)s AND operation_log.`操作时间` >= %(操作时间_1)s AND operation_log.`操作时间` < %(操作时间_2)s ORDER BY operation_log.`操作时间` DESC) AS anon_1]
+[parameters: {'小区编号_1': 2, '所属小区_1': '馨香臣寓颛桥店', '操作时间_1': datetime.datetime(2025, 12, 1, 0, 0), '操作时间_2': datetime.datetime(2026, 1, 1, 0, 0)}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+    ~~~~~~~~~~^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+    ~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.OperationalError: (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 1303, in get_operation_logs
+    total = query.count()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 3113, in count
+    self._legacy_from_self(col).enable_eagerloads(False).scalar()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2805, in scalar
+    ret = self.one()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2778, in one
+    return self._iter().one()  # type: ignore
+           ~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2827, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+        params,
+        ^^^^^^^
+        execution_options={"_sa_orm_load_options": self.load_options},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\session.py", line 2362, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\session.py", line 2247, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\context.py", line 305, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1418, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\sql\elements.py", line 515, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1640, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+    ~~~~~~~~~~^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+    ~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+[SQL: SELECT count(*) AS count_1 
+FROM (SELECT operation_log.`ID` AS `operation_log_ID`, operation_log.`操作时间` AS `operation_log_操作时间`, operation_log.`用户ID` AS `operation_log_用户ID`, operation_log.`用户账号` AS `operation_log_用户账号`, operation_log.`用户姓名` AS `operation_log_用户姓名`, operation_log.`用户角色` AS `operation_log_用户角色`, operation_log.`所属小区` AS `operation_log_所属小区`, operation_log.`小区编号` AS `operation_log_小区编号`, operation_log.`电脑IP` AS `operation_log_电脑IP`, operation_log.`MAC地址` AS `operation_log_MAC地址`, operation_log.`用户代理` AS `operation_log_用户代理`, operation_log.`操作类型` AS `operation_log_操作类型`, operation_log.`操作模块` AS `operation_log_操作模块`, operation_log.`操作详情` AS `operation_log_操作详情`, operation_log.`目标ID` AS `operation_log_目标ID`, operation_log.`目标类型` AS `operation_log_目标类型`, operation_log.`操作结果` AS `operation_log_操作结果`, operation_log.`错误信息` AS `operation_log_错误信息`, operation_log.`请求方法` AS `operation_log_请求方法`, operation_log.`请求URL` AS `operation_log_请求URL`, operation_log.`请求参数` AS `operation_log_请求参数`, operation_log.`响应时间` AS `operation_log_响应时间` 
+FROM operation_log 
+WHERE operation_log.`小区编号` = %(小区编号_1)s AND operation_log.`所属小区` = %(所属小区_1)s AND operation_log.`操作时间` >= %(操作时间_1)s AND operation_log.`操作时间` < %(操作时间_2)s ORDER BY operation_log.`操作时间` DESC) AS anon_1]
+[parameters: {'小区编号_1': 2, '所属小区_1': '馨香臣寓颛桥店', '操作时间_1': datetime.datetime(2025, 12, 1, 0, 0), '操作时间_2': datetime.datetime(2026, 1, 1, 0, 0)}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1328]
+2025-12-31 00:31:41,941 ERROR: 查询操作日志异常: (pymysql.err.OperationalError) (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+[SQL: SELECT count(*) AS count_1 
+FROM (SELECT operation_log.`ID` AS `operation_log_ID`, operation_log.`操作时间` AS `operation_log_操作时间`, operation_log.`用户ID` AS `operation_log_用户ID`, operation_log.`用户账号` AS `operation_log_用户账号`, operation_log.`用户姓名` AS `operation_log_用户姓名`, operation_log.`用户角色` AS `operation_log_用户角色`, operation_log.`所属小区` AS `operation_log_所属小区`, operation_log.`小区编号` AS `operation_log_小区编号`, operation_log.`电脑IP` AS `operation_log_电脑IP`, operation_log.`MAC地址` AS `operation_log_MAC地址`, operation_log.`用户代理` AS `operation_log_用户代理`, operation_log.`操作类型` AS `operation_log_操作类型`, operation_log.`操作模块` AS `operation_log_操作模块`, operation_log.`操作详情` AS `operation_log_操作详情`, operation_log.`目标ID` AS `operation_log_目标ID`, operation_log.`目标类型` AS `operation_log_目标类型`, operation_log.`操作结果` AS `operation_log_操作结果`, operation_log.`错误信息` AS `operation_log_错误信息`, operation_log.`请求方法` AS `operation_log_请求方法`, operation_log.`请求URL` AS `operation_log_请求URL`, operation_log.`请求参数` AS `operation_log_请求参数`, operation_log.`响应时间` AS `operation_log_响应时间` 
+FROM operation_log 
+WHERE operation_log.`小区编号` = %(小区编号_1)s AND operation_log.`所属小区` = %(所属小区_1)s AND operation_log.`操作时间` >= %(操作时间_1)s AND operation_log.`操作时间` < %(操作时间_2)s ORDER BY operation_log.`操作时间` DESC) AS anon_1]
+[parameters: {'小区编号_1': 2, '所属小区_1': '馨香臣寓颛桥店', '操作时间_1': datetime.datetime(2025, 12, 1, 0, 0), '操作时间_2': datetime.datetime(2026, 1, 1, 0, 0)}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+    ~~~~~~~~~~^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+    ~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.OperationalError: (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 1303, in get_operation_logs
+    total = query.count()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 3113, in count
+    self._legacy_from_self(col).enable_eagerloads(False).scalar()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2805, in scalar
+    ret = self.one()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2778, in one
+    return self._iter().one()  # type: ignore
+           ~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2827, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+        params,
+        ^^^^^^^
+        execution_options={"_sa_orm_load_options": self.load_options},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\session.py", line 2362, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\session.py", line 2247, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\context.py", line 305, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1418, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\sql\elements.py", line 515, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1640, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+    ~~~~~~~~~~^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+    ~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+[SQL: SELECT count(*) AS count_1 
+FROM (SELECT operation_log.`ID` AS `operation_log_ID`, operation_log.`操作时间` AS `operation_log_操作时间`, operation_log.`用户ID` AS `operation_log_用户ID`, operation_log.`用户账号` AS `operation_log_用户账号`, operation_log.`用户姓名` AS `operation_log_用户姓名`, operation_log.`用户角色` AS `operation_log_用户角色`, operation_log.`所属小区` AS `operation_log_所属小区`, operation_log.`小区编号` AS `operation_log_小区编号`, operation_log.`电脑IP` AS `operation_log_电脑IP`, operation_log.`MAC地址` AS `operation_log_MAC地址`, operation_log.`用户代理` AS `operation_log_用户代理`, operation_log.`操作类型` AS `operation_log_操作类型`, operation_log.`操作模块` AS `operation_log_操作模块`, operation_log.`操作详情` AS `operation_log_操作详情`, operation_log.`目标ID` AS `operation_log_目标ID`, operation_log.`目标类型` AS `operation_log_目标类型`, operation_log.`操作结果` AS `operation_log_操作结果`, operation_log.`错误信息` AS `operation_log_错误信息`, operation_log.`请求方法` AS `operation_log_请求方法`, operation_log.`请求URL` AS `operation_log_请求URL`, operation_log.`请求参数` AS `operation_log_请求参数`, operation_log.`响应时间` AS `operation_log_响应时间` 
+FROM operation_log 
+WHERE operation_log.`小区编号` = %(小区编号_1)s AND operation_log.`所属小区` = %(所属小区_1)s AND operation_log.`操作时间` >= %(操作时间_1)s AND operation_log.`操作时间` < %(操作时间_2)s ORDER BY operation_log.`操作时间` DESC) AS anon_1]
+[parameters: {'小区编号_1': 2, '所属小区_1': '馨香臣寓颛桥店', '操作时间_1': datetime.datetime(2025, 12, 1, 0, 0), '操作时间_2': datetime.datetime(2026, 1, 1, 0, 0)}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1328]
+2025-12-31 00:31:43,789 ERROR: 查询操作日志异常: (pymysql.err.OperationalError) (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+[SQL: SELECT count(*) AS count_1 
+FROM (SELECT operation_log.`ID` AS `operation_log_ID`, operation_log.`操作时间` AS `operation_log_操作时间`, operation_log.`用户ID` AS `operation_log_用户ID`, operation_log.`用户账号` AS `operation_log_用户账号`, operation_log.`用户姓名` AS `operation_log_用户姓名`, operation_log.`用户角色` AS `operation_log_用户角色`, operation_log.`所属小区` AS `operation_log_所属小区`, operation_log.`小区编号` AS `operation_log_小区编号`, operation_log.`电脑IP` AS `operation_log_电脑IP`, operation_log.`MAC地址` AS `operation_log_MAC地址`, operation_log.`用户代理` AS `operation_log_用户代理`, operation_log.`操作类型` AS `operation_log_操作类型`, operation_log.`操作模块` AS `operation_log_操作模块`, operation_log.`操作详情` AS `operation_log_操作详情`, operation_log.`目标ID` AS `operation_log_目标ID`, operation_log.`目标类型` AS `operation_log_目标类型`, operation_log.`操作结果` AS `operation_log_操作结果`, operation_log.`错误信息` AS `operation_log_错误信息`, operation_log.`请求方法` AS `operation_log_请求方法`, operation_log.`请求URL` AS `operation_log_请求URL`, operation_log.`请求参数` AS `operation_log_请求参数`, operation_log.`响应时间` AS `operation_log_响应时间` 
+FROM operation_log 
+WHERE operation_log.`小区编号` = %(小区编号_1)s AND operation_log.`所属小区` = %(所属小区_1)s AND operation_log.`操作时间` >= %(操作时间_1)s AND operation_log.`操作时间` < %(操作时间_2)s ORDER BY operation_log.`操作时间` DESC) AS anon_1]
+[parameters: {'小区编号_1': 2, '所属小区_1': '馨香臣寓颛桥店', '操作时间_1': datetime.datetime(2025, 12, 1, 0, 0), '操作时间_2': datetime.datetime(2026, 1, 1, 0, 0)}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+    ~~~~~~~~~~^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+    ~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.OperationalError: (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 1303, in get_operation_logs
+    total = query.count()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 3113, in count
+    self._legacy_from_self(col).enable_eagerloads(False).scalar()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2805, in scalar
+    ret = self.one()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2778, in one
+    return self._iter().one()  # type: ignore
+           ~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2827, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+        params,
+        ^^^^^^^
+        execution_options={"_sa_orm_load_options": self.load_options},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\session.py", line 2362, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\session.py", line 2247, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\context.py", line 305, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1418, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\sql\elements.py", line 515, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1640, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+    ~~~~~~~~~~^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+    ~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+[SQL: SELECT count(*) AS count_1 
+FROM (SELECT operation_log.`ID` AS `operation_log_ID`, operation_log.`操作时间` AS `operation_log_操作时间`, operation_log.`用户ID` AS `operation_log_用户ID`, operation_log.`用户账号` AS `operation_log_用户账号`, operation_log.`用户姓名` AS `operation_log_用户姓名`, operation_log.`用户角色` AS `operation_log_用户角色`, operation_log.`所属小区` AS `operation_log_所属小区`, operation_log.`小区编号` AS `operation_log_小区编号`, operation_log.`电脑IP` AS `operation_log_电脑IP`, operation_log.`MAC地址` AS `operation_log_MAC地址`, operation_log.`用户代理` AS `operation_log_用户代理`, operation_log.`操作类型` AS `operation_log_操作类型`, operation_log.`操作模块` AS `operation_log_操作模块`, operation_log.`操作详情` AS `operation_log_操作详情`, operation_log.`目标ID` AS `operation_log_目标ID`, operation_log.`目标类型` AS `operation_log_目标类型`, operation_log.`操作结果` AS `operation_log_操作结果`, operation_log.`错误信息` AS `operation_log_错误信息`, operation_log.`请求方法` AS `operation_log_请求方法`, operation_log.`请求URL` AS `operation_log_请求URL`, operation_log.`请求参数` AS `operation_log_请求参数`, operation_log.`响应时间` AS `operation_log_响应时间` 
+FROM operation_log 
+WHERE operation_log.`小区编号` = %(小区编号_1)s AND operation_log.`所属小区` = %(所属小区_1)s AND operation_log.`操作时间` >= %(操作时间_1)s AND operation_log.`操作时间` < %(操作时间_2)s ORDER BY operation_log.`操作时间` DESC) AS anon_1]
+[parameters: {'小区编号_1': 2, '所属小区_1': '馨香臣寓颛桥店', '操作时间_1': datetime.datetime(2025, 12, 1, 0, 0), '操作时间_2': datetime.datetime(2026, 1, 1, 0, 0)}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1328]
+2025-12-31 00:31:43,789 ERROR: 查询操作日志异常: (pymysql.err.OperationalError) (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+[SQL: SELECT count(*) AS count_1 
+FROM (SELECT operation_log.`ID` AS `operation_log_ID`, operation_log.`操作时间` AS `operation_log_操作时间`, operation_log.`用户ID` AS `operation_log_用户ID`, operation_log.`用户账号` AS `operation_log_用户账号`, operation_log.`用户姓名` AS `operation_log_用户姓名`, operation_log.`用户角色` AS `operation_log_用户角色`, operation_log.`所属小区` AS `operation_log_所属小区`, operation_log.`小区编号` AS `operation_log_小区编号`, operation_log.`电脑IP` AS `operation_log_电脑IP`, operation_log.`MAC地址` AS `operation_log_MAC地址`, operation_log.`用户代理` AS `operation_log_用户代理`, operation_log.`操作类型` AS `operation_log_操作类型`, operation_log.`操作模块` AS `operation_log_操作模块`, operation_log.`操作详情` AS `operation_log_操作详情`, operation_log.`目标ID` AS `operation_log_目标ID`, operation_log.`目标类型` AS `operation_log_目标类型`, operation_log.`操作结果` AS `operation_log_操作结果`, operation_log.`错误信息` AS `operation_log_错误信息`, operation_log.`请求方法` AS `operation_log_请求方法`, operation_log.`请求URL` AS `operation_log_请求URL`, operation_log.`请求参数` AS `operation_log_请求参数`, operation_log.`响应时间` AS `operation_log_响应时间` 
+FROM operation_log 
+WHERE operation_log.`小区编号` = %(小区编号_1)s AND operation_log.`所属小区` = %(所属小区_1)s AND operation_log.`操作时间` >= %(操作时间_1)s AND operation_log.`操作时间` < %(操作时间_2)s ORDER BY operation_log.`操作时间` DESC) AS anon_1]
+[parameters: {'小区编号_1': 2, '所属小区_1': '馨香臣寓颛桥店', '操作时间_1': datetime.datetime(2025, 12, 1, 0, 0), '操作时间_2': datetime.datetime(2026, 1, 1, 0, 0)}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+    ~~~~~~~~~~^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+    ~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.OperationalError: (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 1303, in get_operation_logs
+    total = query.count()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 3113, in count
+    self._legacy_from_self(col).enable_eagerloads(False).scalar()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2805, in scalar
+    ret = self.one()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2778, in one
+    return self._iter().one()  # type: ignore
+           ~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\query.py", line 2827, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+        params,
+        ^^^^^^^
+        execution_options={"_sa_orm_load_options": self.load_options},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\session.py", line 2362, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\session.py", line 2247, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\orm\context.py", line 305, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1418, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\sql\elements.py", line 515, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1640, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+    ~~~~~~~~~~^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+    ~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\.venv-1\Lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (1054, "Unknown column 'operation_log.操作时间' in 'field list'")
+[SQL: SELECT count(*) AS count_1 
+FROM (SELECT operation_log.`ID` AS `operation_log_ID`, operation_log.`操作时间` AS `operation_log_操作时间`, operation_log.`用户ID` AS `operation_log_用户ID`, operation_log.`用户账号` AS `operation_log_用户账号`, operation_log.`用户姓名` AS `operation_log_用户姓名`, operation_log.`用户角色` AS `operation_log_用户角色`, operation_log.`所属小区` AS `operation_log_所属小区`, operation_log.`小区编号` AS `operation_log_小区编号`, operation_log.`电脑IP` AS `operation_log_电脑IP`, operation_log.`MAC地址` AS `operation_log_MAC地址`, operation_log.`用户代理` AS `operation_log_用户代理`, operation_log.`操作类型` AS `operation_log_操作类型`, operation_log.`操作模块` AS `operation_log_操作模块`, operation_log.`操作详情` AS `operation_log_操作详情`, operation_log.`目标ID` AS `operation_log_目标ID`, operation_log.`目标类型` AS `operation_log_目标类型`, operation_log.`操作结果` AS `operation_log_操作结果`, operation_log.`错误信息` AS `operation_log_错误信息`, operation_log.`请求方法` AS `operation_log_请求方法`, operation_log.`请求URL` AS `operation_log_请求URL`, operation_log.`请求参数` AS `operation_log_请求参数`, operation_log.`响应时间` AS `operation_log_响应时间` 
+FROM operation_log 
+WHERE operation_log.`小区编号` = %(小区编号_1)s AND operation_log.`所属小区` = %(所属小区_1)s AND operation_log.`操作时间` >= %(操作时间_1)s AND operation_log.`操作时间` < %(操作时间_2)s ORDER BY operation_log.`操作时间` DESC) AS anon_1]
+[parameters: {'小区编号_1': 2, '所属小区_1': '馨香臣寓颛桥店', '操作时间_1': datetime.datetime(2025, 12, 1, 0, 0), '操作时间_2': datetime.datetime(2026, 1, 1, 0, 0)}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1328]
+2025-12-31 00:32:34,261 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:33:19,624 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:33:28,113 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:33:33,368 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:34:09,123 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:34:22,993 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:34:52,017 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:35:19,559 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:35:32,197 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:35:36,953 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:35:38,051 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:36:28,695 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:36:44,780 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:37:13,589 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:37:41,010 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:38:15,332 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:38:16,494 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:43:53,932 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:43:53,933 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:43:53,933 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:43:53,942 INFO: 查询到 1 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:43:53,942 INFO: 返回今日收费记录: 1 条, 今日合计: 50.85 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:44:08,400 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:44:12,557 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:44:12,557 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:44:12,558 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:44:12,565 INFO: 查询到 1 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:44:12,565 INFO: 返回今日收费记录: 1 条, 今日合计: 50.85 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:44:39,354 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:44:39,354 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:44:40,777 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:44:40,777 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:44:40,779 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:44:40,779 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:44:40,780 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:44:40,780 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:44:40,787 INFO: 查询到 1 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:44:40,787 INFO: 查询到 1 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:44:40,788 INFO: 返回今日收费记录: 1 条, 今日合计: 50.85 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:44:40,788 INFO: 返回今日收费记录: 1 条, 今日合计: 50.85 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:44:57,470 INFO: 接收到前端entryTime: 2025-12-31 00:44:57 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 00:44:57,470 INFO: 接收到前端entryTime: 2025-12-31 00:44:57 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 00:44:57,470 INFO: 解析后的entryTime: 2025-12-31 00:44:57 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 00:44:57,470 INFO: 解析后的entryTime: 2025-12-31 00:44:57 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 00:44:57,471 INFO: 最终使用的entryTime: 2025-12-31 00:44:57 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 00:44:57,471 INFO: 最终使用的entryTime: 2025-12-31 00:44:57 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 00:44:58,429 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:44:58,429 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:44:58,429 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:44:58,429 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:44:58,430 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:44:58,430 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:44:58,433 INFO: 查询到 2 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:44:58,433 INFO: 查询到 2 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:44:58,433 INFO: 返回今日收费记录: 2 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:44:58,433 INFO: 返回今日收费记录: 2 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:46:08,840 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:46:08,840 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:46:08,841 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:46:08,841 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:46:08,841 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:46:08,841 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:46:08,844 INFO: 查询到 2 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:46:08,844 INFO: 查询到 2 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:46:08,845 INFO: 返回今日收费记录: 2 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:46:08,845 INFO: 返回今日收费记录: 2 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:47:44,248 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:49:16,020 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:49:17,149 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:55:50,043 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:55:53,427 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:55:53,427 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:55:53,428 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:55:53,435 INFO: 查询到 2 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:55:53,435 INFO: 返回今日收费记录: 2 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:56:03,046 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:56:03,046 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 00:56:04,588 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:56:04,588 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:56:04,588 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:56:04,588 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:56:04,589 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:56:04,589 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:56:04,591 INFO: 查询到 2 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:56:04,591 INFO: 查询到 2 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:56:04,592 INFO: 返回今日收费记录: 2 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:56:04,592 INFO: 返回今日收费记录: 2 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:56:30,066 INFO: 接收到前端entryTime: 2025-12-31 00:56:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 00:56:30,066 INFO: 接收到前端entryTime: 2025-12-31 00:56:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 00:56:30,067 INFO: 解析后的entryTime: 2025-12-31 00:56:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 00:56:30,067 INFO: 解析后的entryTime: 2025-12-31 00:56:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 00:56:30,067 INFO: 最终使用的entryTime: 2025-12-31 00:56:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 00:56:30,067 INFO: 最终使用的entryTime: 2025-12-31 00:56:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 00:56:33,734 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:56:33,734 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:56:33,736 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:56:33,736 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:56:33,738 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:56:33,738 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:56:33,746 INFO: 查询到 3 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:56:33,746 INFO: 查询到 3 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:56:33,753 INFO: 返回今日收费记录: 3 条, 今日合计: 52.550000000000004 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:56:33,753 INFO: 返回今日收费记录: 3 条, 今日合计: 52.550000000000004 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:56:47,168 INFO: 红冲操作：允许对原订单ID 322 进行红冲 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:798]
+2025-12-31 00:56:47,168 INFO: 红冲操作：允许对原订单ID 322 进行红冲 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:798]
+2025-12-31 00:56:47,169 INFO: 接收到前端entryTime: 2025-12-31 00:56:46 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 00:56:47,169 INFO: 接收到前端entryTime: 2025-12-31 00:56:46 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 00:56:47,169 INFO: 解析后的entryTime: 2025-12-31 00:56:46 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 00:56:47,169 INFO: 解析后的entryTime: 2025-12-31 00:56:46 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 00:56:47,170 INFO: 最终使用的entryTime: 2025-12-31 00:56:46 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 00:56:47,170 INFO: 最终使用的entryTime: 2025-12-31 00:56:46 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 00:56:47,197 INFO: 红冲操作完成：原订单ID 322，新订单ID 323 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:928]
+2025-12-31 00:56:47,197 INFO: 红冲操作完成：原订单ID 322，新订单ID 323 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:928]
+2025-12-31 00:56:47,256 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:56:47,256 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 00:56:47,257 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:56:47,257 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 00:56:47,257 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:56:47,257 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 00:56:47,263 INFO: 查询到 4 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:56:47,263 INFO: 查询到 4 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 00:56:47,263 INFO: 返回今日收费记录: 4 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:56:47,263 INFO: 返回今日收费记录: 4 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 00:57:22,269 INFO: 用户 xxgyzqd001 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:670]
+2025-12-31 00:57:22,269 INFO: 用户 xxgyzqd001 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:670]
+2025-12-31 00:57:22,269 INFO: 接收到的数据: {'electricity': 0.85, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 200} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:671]
+2025-12-31 00:57:22,269 INFO: 接收到的数据: {'electricity': 0.85, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 200} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:671]
+2025-12-31 00:57:22,274 INFO: 收费标准更新成功: 小区=馨香臣寓颛桥店, ID=2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:713]
+2025-12-31 00:57:22,274 INFO: 收费标准更新成功: 小区=馨香臣寓颛桥店, ID=2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:713]
+2025-12-31 00:57:25,244 INFO: 用户 xxgyzqd001 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:670]
+2025-12-31 00:57:25,244 INFO: 用户 xxgyzqd001 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:670]
+2025-12-31 00:57:25,245 INFO: 接收到的数据: {'electricity': 0.85, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 100} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:671]
+2025-12-31 00:57:25,245 INFO: 接收到的数据: {'electricity': 0.85, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 100} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:671]
+2025-12-31 00:57:25,251 INFO: 收费标准更新成功: 小区=馨香臣寓颛桥店, ID=2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:713]
+2025-12-31 00:57:25,251 INFO: 收费标准更新成功: 小区=馨香臣寓颛桥店, ID=2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:713]
+2025-12-31 00:59:25,450 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:00:21,829 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:00:48,100 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:00:57,360 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:01:02,698 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:01:08,625 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:01:33,441 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:01:34,540 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:10:07,277 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 01:10:07,277 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 01:10:07,278 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 01:10:07,286 INFO: 查询到 4 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 01:10:07,287 INFO: 返回今日收费记录: 4 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 01:10:14,836 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:10:14,836 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:10:16,408 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 01:10:16,408 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 01:10:16,409 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 01:10:16,409 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 01:10:16,409 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 01:10:16,409 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 01:10:16,413 INFO: 查询到 4 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 01:10:16,413 INFO: 查询到 4 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 01:10:16,413 INFO: 返回今日收费记录: 4 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 01:10:16,413 INFO: 返回今日收费记录: 4 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 01:10:29,355 INFO: 接收到前端entryTime: 2025-12-31 01:10:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:10:29,355 INFO: 接收到前端entryTime: 2025-12-31 01:10:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:10:29,355 INFO: 解析后的entryTime: 2025-12-31 01:10:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:10:29,355 INFO: 解析后的entryTime: 2025-12-31 01:10:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:10:29,356 INFO: 最终使用的entryTime: 2025-12-31 01:10:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:10:29,356 INFO: 最终使用的entryTime: 2025-12-31 01:10:29 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:10:30,401 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 01:10:30,401 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1888]
+2025-12-31 01:10:30,401 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 01:10:30,401 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1902]
+2025-12-31 01:10:30,402 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 01:10:30,402 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1915]
+2025-12-31 01:10:30,407 INFO: 查询到 5 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 01:10:30,407 INFO: 查询到 5 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 01:10:30,408 INFO: 返回今日收费记录: 5 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 01:10:30,408 INFO: 返回今日收费记录: 5 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 01:12:13,291 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:12:44,956 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:12:54,302 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:13:01,631 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:13:42,520 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:14:04,243 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:14:23,285 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:14:39,509 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:14:52,913 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:14:54,140 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:16:22,443 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:16:35,723 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:16:35,723 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:16:35,724 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:16:35,731 INFO: 查询到 5 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:16:35,732 INFO: 返回今日收费记录: 5 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:16:43,955 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:16:43,955 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:16:45,485 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:16:45,485 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:16:45,485 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:16:45,485 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:16:45,486 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:16:45,486 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:16:45,491 INFO: 查询到 5 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:16:45,491 INFO: 查询到 5 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:16:45,493 INFO: 返回今日收费记录: 5 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:16:45,493 INFO: 返回今日收费记录: 5 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:17:10,505 INFO: 接收到前端entryTime: 2025-12-31 01:17:10 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:17:10,505 INFO: 接收到前端entryTime: 2025-12-31 01:17:10 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:17:10,506 INFO: 解析后的entryTime: 2025-12-31 01:17:10 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:17:10,506 INFO: 解析后的entryTime: 2025-12-31 01:17:10 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:17:10,506 INFO: 最终使用的entryTime: 2025-12-31 01:17:10 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:17:10,506 INFO: 最终使用的entryTime: 2025-12-31 01:17:10 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:17:11,422 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:17:11,422 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:17:11,423 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:17:11,423 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:17:11,423 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:17:11,423 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:17:11,427 INFO: 查询到 6 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:17:11,427 INFO: 查询到 6 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:17:11,428 INFO: 返回今日收费记录: 6 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:17:11,428 INFO: 返回今日收费记录: 6 条, 今日合计: 51.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:17:31,227 INFO: 红冲操作：允许对原订单ID 325 进行红冲 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:798]
+2025-12-31 01:17:31,227 INFO: 红冲操作：允许对原订单ID 325 进行红冲 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:798]
+2025-12-31 01:17:31,227 INFO: 接收到前端entryTime: 2025-12-31 01:17:30 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:17:31,227 INFO: 接收到前端entryTime: 2025-12-31 01:17:30 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:17:31,227 INFO: 解析后的entryTime: 2025-12-31 01:17:30 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:17:31,227 INFO: 解析后的entryTime: 2025-12-31 01:17:30 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:17:31,228 INFO: 最终使用的entryTime: 2025-12-31 01:17:30 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:17:31,228 INFO: 最终使用的entryTime: 2025-12-31 01:17:30 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:17:31,247 INFO: 红冲操作完成：原订单ID 325，新订单ID 326 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:928]
+2025-12-31 01:17:31,247 INFO: 红冲操作完成：原订单ID 325，新订单ID 326 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:928]
+2025-12-31 01:17:31,479 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:17:31,479 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:17:31,480 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:17:31,480 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:17:31,481 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:17:31,481 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:17:31,485 INFO: 查询到 7 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:17:31,485 INFO: 查询到 7 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:17:31,486 INFO: 返回今日收费记录: 7 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:17:31,486 INFO: 返回今日收费记录: 7 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:19:31,736 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:19:47,920 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:19:58,304 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:19:59,553 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:21:02,676 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:22:41,584 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:22:43,663 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:25:14,043 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:25:21,570 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:25:21,570 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:25:21,571 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:25:21,581 INFO: 查询到 7 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:25:21,582 INFO: 返回今日收费记录: 7 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:25:31,365 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:25:31,365 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:25:32,746 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:25:32,746 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:25:32,747 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:25:32,747 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:25:32,750 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:25:32,750 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:25:32,754 INFO: 查询到 7 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:25:32,754 INFO: 查询到 7 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:25:32,755 INFO: 返回今日收费记录: 7 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:25:32,755 INFO: 返回今日收费记录: 7 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:25:41,746 INFO: 接收到前端entryTime: 2025-12-31 01:25:41 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:25:41,746 INFO: 接收到前端entryTime: 2025-12-31 01:25:41 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:25:41,746 INFO: 解析后的entryTime: 2025-12-31 01:25:41 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:25:41,746 INFO: 解析后的entryTime: 2025-12-31 01:25:41 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:25:41,747 INFO: 最终使用的entryTime: 2025-12-31 01:25:41 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:25:41,747 INFO: 最终使用的entryTime: 2025-12-31 01:25:41 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:25:42,674 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:25:42,674 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:25:42,675 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:25:42,675 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:25:42,676 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:25:42,676 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:25:42,686 INFO: 查询到 8 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:25:42,686 INFO: 查询到 8 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:25:42,686 INFO: 返回今日收费记录: 8 条, 今日合计: 46.55 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:25:42,686 INFO: 返回今日收费记录: 8 条, 今日合计: 46.55 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:25:54,185 INFO: 红冲操作：允许对原订单ID 327 进行红冲 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:798]
+2025-12-31 01:25:54,185 INFO: 红冲操作：允许对原订单ID 327 进行红冲 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:798]
+2025-12-31 01:25:54,185 INFO: 接收到前端entryTime: 2025-12-31 01:25:53 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:25:54,185 INFO: 接收到前端entryTime: 2025-12-31 01:25:53 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:25:54,186 INFO: 解析后的entryTime: 2025-12-31 01:25:53 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:25:54,186 INFO: 解析后的entryTime: 2025-12-31 01:25:53 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:25:54,186 INFO: 最终使用的entryTime: 2025-12-31 01:25:53 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:25:54,186 INFO: 最终使用的entryTime: 2025-12-31 01:25:53 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:25:54,205 INFO: 红冲操作完成：原订单ID 327，新订单ID 328 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:928]
+2025-12-31 01:25:54,205 INFO: 红冲操作完成：原订单ID 327，新订单ID 328 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:928]
+2025-12-31 01:25:54,258 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:25:54,258 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:25:54,259 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:25:54,259 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:25:54,259 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:25:54,259 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:25:54,262 INFO: 查询到 9 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:25:54,262 INFO: 查询到 9 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:25:54,263 INFO: 返回今日收费记录: 9 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:25:54,263 INFO: 返回今日收费记录: 9 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:26:36,729 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:26:36,729 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:26:36,730 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:26:36,730 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:26:36,731 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:26:36,731 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:26:36,737 INFO: 查询到 9 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:26:36,737 INFO: 查询到 9 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:26:36,738 INFO: 返回今日收费记录: 9 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:26:36,738 INFO: 返回今日收费记录: 9 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:28:27,912 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:28:38,298 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:28:39,382 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:28:50,131 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:29:08,886 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:29:10,234 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:30:57,964 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:31:29,697 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:31:30,851 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:35:49,747 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:35:49,747 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:35:51,193 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:35:51,193 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:35:51,193 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:35:51,193 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:35:51,194 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:35:51,194 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:35:51,202 INFO: 查询到 9 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:35:51,202 INFO: 查询到 9 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:35:51,203 INFO: 返回今日收费记录: 9 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:35:51,203 INFO: 返回今日收费记录: 9 条, 今日合计: 45.7 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:36:27,422 INFO: 接收到前端entryTime: 2025-12-31 01:36:27 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:36:27,422 INFO: 接收到前端entryTime: 2025-12-31 01:36:27 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:36:27,423 INFO: 解析后的entryTime: 2025-12-31 01:36:27 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:36:27,423 INFO: 解析后的entryTime: 2025-12-31 01:36:27 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:36:27,423 INFO: 最终使用的entryTime: 2025-12-31 01:36:27 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:36:27,423 INFO: 最终使用的entryTime: 2025-12-31 01:36:27 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:36:28,413 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:36:28,413 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:36:28,413 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:36:28,413 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:36:28,414 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:36:28,414 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:36:28,418 INFO: 查询到 10 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:36:28,418 INFO: 查询到 10 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:36:28,418 INFO: 返回今日收费记录: 10 条, 今日合计: 46.55 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:36:28,418 INFO: 返回今日收费记录: 10 条, 今日合计: 46.55 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:37:19,018 INFO: 接收到前端entryTime: 2025-12-31 01:37:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:37:19,018 INFO: 接收到前端entryTime: 2025-12-31 01:37:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:37:19,018 INFO: 解析后的entryTime: 2025-12-31 01:37:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:37:19,018 INFO: 解析后的entryTime: 2025-12-31 01:37:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:37:19,019 INFO: 最终使用的entryTime: 2025-12-31 01:37:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:37:19,019 INFO: 最终使用的entryTime: 2025-12-31 01:37:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:37:19,963 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:37:19,963 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:37:19,964 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:37:19,964 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:37:19,964 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:37:19,964 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:37:19,970 INFO: 查询到 11 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:37:19,970 INFO: 查询到 11 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:37:19,971 INFO: 返回今日收费记录: 11 条, 今日合计: -126.95000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:37:19,971 INFO: 返回今日收费记录: 11 条, 今日合计: -126.95000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:39:09,142 INFO: 用户 xxgyzqd001 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:670]
+2025-12-31 01:39:09,142 INFO: 用户 xxgyzqd001 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:670]
+2025-12-31 01:39:09,142 INFO: 接收到的数据: {'electricity': 0.85, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 100} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:671]
+2025-12-31 01:39:09,142 INFO: 接收到的数据: {'electricity': 0.85, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 100} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:671]
+2025-12-31 01:39:09,148 INFO: 收费标准更新成功: 小区=馨香臣寓颛桥店, ID=2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:713]
+2025-12-31 01:39:09,148 INFO: 收费标准更新成功: 小区=馨香臣寓颛桥店, ID=2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:713]
+2025-12-31 01:39:09,151 ERROR: 更新收费标准失败: log_operation() got an unexpected keyword argument 'user_account'
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 716, in update_fee_prices
+    log_operation(
+    ~~~~~~~~~~~~~^
+        user_account=current_user.USERNAME,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        community_num=community_num
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+TypeError: log_operation() got an unexpected keyword argument 'user_account'
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:734]
+2025-12-31 01:39:09,151 ERROR: 更新收费标准失败: log_operation() got an unexpected keyword argument 'user_account'
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 716, in update_fee_prices
+    log_operation(
+    ~~~~~~~~~~~~~^
+        user_account=current_user.USERNAME,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        community_num=community_num
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+TypeError: log_operation() got an unexpected keyword argument 'user_account'
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:734]
+2025-12-31 01:39:56,215 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:39:56,215 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:39:56,215 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:39:56,215 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:39:56,216 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:39:56,216 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:39:56,221 INFO: 查询到 11 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:39:56,221 INFO: 查询到 11 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:39:56,221 INFO: 返回今日收费记录: 11 条, 今日合计: -126.95000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:39:56,221 INFO: 返回今日收费记录: 11 条, 今日合计: -126.95000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:40:08,683 INFO: 接收到前端entryTime: 2025-12-31 01:40:08 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:40:08,683 INFO: 接收到前端entryTime: 2025-12-31 01:40:08 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:836]
+2025-12-31 01:40:08,684 INFO: 解析后的entryTime: 2025-12-31 01:40:08 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:40:08,684 INFO: 解析后的entryTime: 2025-12-31 01:40:08 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:838]
+2025-12-31 01:40:08,684 INFO: 最终使用的entryTime: 2025-12-31 01:40:08 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:40:08,684 INFO: 最终使用的entryTime: 2025-12-31 01:40:08 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:844]
+2025-12-31 01:40:09,631 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:40:09,631 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1891]
+2025-12-31 01:40:09,632 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:40:09,632 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1905]
+2025-12-31 01:40:09,632 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:40:09,632 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1918]
+2025-12-31 01:40:09,637 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:40:09,637 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1924]
+2025-12-31 01:40:09,638 INFO: 返回今日收费记录: 12 条, 今日合计: -83.45000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:40:09,638 INFO: 返回今日收费记录: 12 条, 今日合计: -83.45000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2020]
+2025-12-31 01:40:46,565 INFO: 用户 xxgyzqd001 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:670]
+2025-12-31 01:40:46,565 INFO: 用户 xxgyzqd001 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:670]
+2025-12-31 01:40:46,566 INFO: 接收到的数据: {'electricity': 0.85, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 100} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:671]
+2025-12-31 01:40:46,566 INFO: 接收到的数据: {'electricity': 0.85, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 100} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:671]
+2025-12-31 01:40:46,573 INFO: 收费标准更新成功: 小区=馨香臣寓颛桥店, ID=2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:713]
+2025-12-31 01:40:46,573 INFO: 收费标准更新成功: 小区=馨香臣寓颛桥店, ID=2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:713]
+2025-12-31 01:40:46,576 ERROR: 更新收费标准失败: log_operation() got an unexpected keyword argument 'user_account'
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 716, in update_fee_prices
+    log_operation(
+    ~~~~~~~~~~~~~^
+        user_account=current_user.USERNAME,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        community_num=community_num
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+TypeError: log_operation() got an unexpected keyword argument 'user_account'
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:734]
+2025-12-31 01:40:46,576 ERROR: 更新收费标准失败: log_operation() got an unexpected keyword argument 'user_account'
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 716, in update_fee_prices
+    log_operation(
+    ~~~~~~~~~~~~~^
+        user_account=current_user.USERNAME,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        community_num=community_num
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+TypeError: log_operation() got an unexpected keyword argument 'user_account'
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:734]
+2025-12-31 01:40:52,275 INFO: 用户 xxgyzqd001 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:670]
+2025-12-31 01:40:52,275 INFO: 用户 xxgyzqd001 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:670]
+2025-12-31 01:40:52,275 INFO: 接收到的数据: {'electricity': 0.85, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 200} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:671]
+2025-12-31 01:40:52,275 INFO: 接收到的数据: {'electricity': 0.85, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 200} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:671]
+2025-12-31 01:40:52,280 INFO: 收费标准更新成功: 小区=馨香臣寓颛桥店, ID=2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:713]
+2025-12-31 01:40:52,280 INFO: 收费标准更新成功: 小区=馨香臣寓颛桥店, ID=2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:713]
+2025-12-31 01:40:52,282 ERROR: 更新收费标准失败: log_operation() got an unexpected keyword argument 'user_account'
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 716, in update_fee_prices
+    log_operation(
+    ~~~~~~~~~~~~~^
+        user_account=current_user.USERNAME,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        community_num=community_num
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+TypeError: log_operation() got an unexpected keyword argument 'user_account'
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:734]
+2025-12-31 01:40:52,282 ERROR: 更新收费标准失败: log_operation() got an unexpected keyword argument 'user_account'
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 716, in update_fee_prices
+    log_operation(
+    ~~~~~~~~~~~~~^
+        user_account=current_user.USERNAME,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        community_num=community_num
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+TypeError: log_operation() got an unexpected keyword argument 'user_account'
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:734]
+2025-12-31 01:42:58,759 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:43:17,330 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:43:18,483 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:45:37,420 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:59:12,342 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1892]
+2025-12-31 01:59:12,343 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1906]
+2025-12-31 01:59:12,343 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1919]
+2025-12-31 01:59:12,357 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1925]
+2025-12-31 01:59:12,357 INFO: 返回今日收费记录: 12 条, 今日合计: -83.45000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2021]
+2025-12-31 01:59:19,499 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:59:19,499 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 01:59:20,907 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1892]
+2025-12-31 01:59:20,907 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1892]
+2025-12-31 01:59:20,908 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1906]
+2025-12-31 01:59:20,908 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1906]
+2025-12-31 01:59:20,908 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 01:59:20,908 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 01:59:20,915 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1925]
+2025-12-31 01:59:20,915 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1925]
+2025-12-31 01:59:20,916 INFO: 返回今日收费记录: 12 条, 今日合计: -83.45000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2021]
+2025-12-31 01:59:20,916 INFO: 返回今日收费记录: 12 条, 今日合计: -83.45000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2021]
+2025-12-31 01:59:51,061 INFO: 接收到前端entryTime: 2025-12-31 01:59:51 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:837]
+2025-12-31 01:59:51,061 INFO: 接收到前端entryTime: 2025-12-31 01:59:51 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:837]
+2025-12-31 01:59:51,062 INFO: 解析后的entryTime: 2025-12-31 01:59:51 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:839]
+2025-12-31 01:59:51,062 INFO: 解析后的entryTime: 2025-12-31 01:59:51 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:839]
+2025-12-31 01:59:51,063 INFO: 最终使用的entryTime: 2025-12-31 01:59:51 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:845]
+2025-12-31 01:59:51,063 INFO: 最终使用的entryTime: 2025-12-31 01:59:51 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:845]
+2025-12-31 01:59:52,363 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1892]
+2025-12-31 01:59:52,363 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1892]
+2025-12-31 01:59:52,364 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1906]
+2025-12-31 01:59:52,364 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1906]
+2025-12-31 01:59:52,365 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 01:59:52,365 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 01:59:52,369 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1925]
+2025-12-31 01:59:52,369 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1925]
+2025-12-31 01:59:52,370 INFO: 返回今日收费记录: 13 条, 今日合计: -77.45000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2021]
+2025-12-31 01:59:52,370 INFO: 返回今日收费记录: 13 条, 今日合计: -77.45000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2021]
+2025-12-31 01:59:57,218 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1892]
+2025-12-31 01:59:57,218 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1892]
+2025-12-31 01:59:57,218 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1906]
+2025-12-31 01:59:57,218 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1906]
+2025-12-31 01:59:57,219 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 01:59:57,219 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1921]
+2025-12-31 01:59:57,221 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1925]
+2025-12-31 01:59:57,221 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1925]
+2025-12-31 01:59:57,221 INFO: 返回今日收费记录: 12 条, 今日合计: -120.95000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2021]
+2025-12-31 01:59:57,221 INFO: 返回今日收费记录: 12 条, 今日合计: -120.95000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2021]
+2025-12-31 02:07:16,062 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:07:44,688 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:07:59,854 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:08:18,754 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:08:19,812 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:08:21,687 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:08:21,687 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:08:23,144 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1935]
+2025-12-31 02:08:23,144 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1935]
+2025-12-31 02:08:23,145 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1949]
+2025-12-31 02:08:23,145 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1949]
+2025-12-31 02:08:23,147 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1962]
+2025-12-31 02:08:23,147 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1962]
+2025-12-31 02:08:23,156 INFO: 查询到 11 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1968]
+2025-12-31 02:08:23,156 INFO: 查询到 11 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1968]
+2025-12-31 02:08:23,157 INFO: 返回今日收费记录: 11 条, 今日合计: -126.95000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2064]
+2025-12-31 02:08:23,157 INFO: 返回今日收费记录: 11 条, 今日合计: -126.95000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2064]
+2025-12-31 02:08:35,399 INFO: 接收到前端entryTime: 2025-12-31 02:08:35 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:837]
+2025-12-31 02:08:35,399 INFO: 接收到前端entryTime: 2025-12-31 02:08:35 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:837]
+2025-12-31 02:08:35,400 INFO: 解析后的entryTime: 2025-12-31 02:08:35 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:839]
+2025-12-31 02:08:35,400 INFO: 解析后的entryTime: 2025-12-31 02:08:35 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:839]
+2025-12-31 02:08:35,400 INFO: 最终使用的entryTime: 2025-12-31 02:08:35 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:845]
+2025-12-31 02:08:35,400 INFO: 最终使用的entryTime: 2025-12-31 02:08:35 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:845]
+2025-12-31 02:08:36,648 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1935]
+2025-12-31 02:08:36,648 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1935]
+2025-12-31 02:08:36,648 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1949]
+2025-12-31 02:08:36,648 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1949]
+2025-12-31 02:08:36,649 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1962]
+2025-12-31 02:08:36,649 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1962]
+2025-12-31 02:08:36,654 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1968]
+2025-12-31 02:08:36,654 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1968]
+2025-12-31 02:08:36,654 INFO: 返回今日收费记录: 12 条, 今日合计: -127.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2064]
+2025-12-31 02:08:36,654 INFO: 返回今日收费记录: 12 条, 今日合计: -127.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2064]
+2025-12-31 02:11:41,868 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:12:03,510 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:12:27,856 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:12:29,020 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:13:54,640 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:13:54,640 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:13:56,091 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:13:56,091 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:13:56,091 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:13:56,091 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:13:56,091 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 02:13:56,091 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 02:13:56,098 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:13:56,098 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:13:56,098 INFO: 返回今日收费记录: 12 条, 今日合计: -127.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:13:56,098 INFO: 返回今日收费记录: 12 条, 今日合计: -127.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:14:15,843 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:14:15,843 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:14:15,844 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:14:15,844 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:14:15,844 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:14:15,844 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:14:15,849 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:14:15,849 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:14:15,850 INFO: 返回今日收费记录: 13 条, 今日合计: -121.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:14:15,850 INFO: 返回今日收费记录: 13 条, 今日合计: -121.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:16:23,733 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:16:24,838 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:16:33,207 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:16:33,207 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:16:33,208 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:16:33,218 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:16:33,219 INFO: 返回今日收费记录: 13 条, 今日合计: -121.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:16:35,805 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:16:35,807 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:16:35,808 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:16:35,813 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:16:35,813 INFO: 返回今日收费记录: 13 条, 今日合计: -121.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:20:02,263 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:20:02,267 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:20:02,270 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:20:02,285 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:20:02,288 INFO: 返回今日收费记录: 13 条, 今日合计: -121.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:20:18,401 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:20:19,528 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:21:13,835 INFO: 接收到前端entryTime: 2025-12-31 02:21:13 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:866]
+2025-12-31 02:21:13,837 INFO: 解析后的entryTime: 2025-12-31 02:21:13 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:868]
+2025-12-31 02:21:13,838 INFO: 最终使用的entryTime: 2025-12-31 02:21:13 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:874]
+2025-12-31 02:21:13,898 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:21:13,898 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:21:14,871 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:21:14,871 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:21:14,871 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:21:14,871 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:21:14,871 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:21:14,871 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:21:14,878 INFO: 查询到 14 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:21:14,878 INFO: 查询到 14 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:21:14,878 INFO: 返回今日收费记录: 14 条, 今日合计: 139.39999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:21:14,878 INFO: 返回今日收费记录: 14 条, 今日合计: 139.39999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:21:31,998 INFO: 接收到前端entryTime: 2025-12-31 02:21:31 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:866]
+2025-12-31 02:21:31,998 INFO: 接收到前端entryTime: 2025-12-31 02:21:31 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:866]
+2025-12-31 02:21:31,998 INFO: 解析后的entryTime: 2025-12-31 02:21:31 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:868]
+2025-12-31 02:21:31,998 INFO: 解析后的entryTime: 2025-12-31 02:21:31 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:868]
+2025-12-31 02:21:31,998 INFO: 最终使用的entryTime: 2025-12-31 02:21:31 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:874]
+2025-12-31 02:21:31,998 INFO: 最终使用的entryTime: 2025-12-31 02:21:31 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:874]
+2025-12-31 02:21:33,051 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:21:33,051 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:21:33,051 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:21:33,051 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:21:33,051 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:21:33,051 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:21:33,054 INFO: 查询到 15 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:21:33,054 INFO: 查询到 15 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:21:33,055 INFO: 返回今日收费记录: 15 条, 今日合计: 3.3999999999999986 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:21:33,055 INFO: 返回今日收费记录: 15 条, 今日合计: 3.3999999999999986 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:24:31,840 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:24:31,840 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:24:31,841 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:24:31,841 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:24:31,841 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:24:31,841 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:24:31,849 INFO: 查询到 15 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:24:31,849 INFO: 查询到 15 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:24:31,850 INFO: 返回今日收费记录: 15 条, 今日合计: 3.3999999999999986 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:24:31,850 INFO: 返回今日收费记录: 15 条, 今日合计: 3.3999999999999986 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:24:46,214 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:24:47,421 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:26:44,877 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:26:46,589 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:26:49,123 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:26:49,123 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:26:49,124 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:26:49,135 INFO: 查询到 15 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:26:49,136 INFO: 返回今日收费记录: 15 条, 今日合计: 3.3999999999999986 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:28:38,569 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:28:39,694 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:39:13,889 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:39:13,890 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:39:13,892 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:39:13,903 INFO: 查询到 15 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:39:13,904 INFO: 返回今日收费记录: 15 条, 今日合计: 3.3999999999999986 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 02:41:23,990 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:41:26,038 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 02:42:39,813 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 02:42:39,814 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 02:42:39,815 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 02:42:39,824 INFO: 查询到 15 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 02:42:39,825 INFO: 返回今日收费记录: 15 条, 今日合计: 3.3999999999999986 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 03:23:07,940 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 03:23:07,940 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 03:23:44,476 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 03:23:46,489 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:83]
+2025-12-31 03:24:46,772 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 03:24:46,772 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 03:24:46,775 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 03:24:46,775 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 03:24:46,776 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 03:24:46,776 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 03:24:46,791 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 03:24:46,791 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 03:24:46,792 INFO: 返回今日收费记录: 12 条, 今日合计: -127.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 03:24:46,792 INFO: 返回今日收费记录: 12 条, 今日合计: -127.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 03:28:01,941 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 03:28:01,941 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 03:28:01,942 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 03:28:01,942 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 03:28:01,943 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 03:28:01,943 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 03:28:01,951 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 03:28:01,951 INFO: 查询到 12 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 03:28:01,953 INFO: 返回今日收费记录: 12 条, 今日合计: -127.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 03:28:01,953 INFO: 返回今日收费记录: 12 条, 今日合计: -127.80000000000001 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 03:28:13,995 INFO: 接收到前端entryTime: 2025-12-31 03:28:13 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:866]
+2025-12-31 03:28:13,995 INFO: 接收到前端entryTime: 2025-12-31 03:28:13 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:866]
+2025-12-31 03:28:13,995 INFO: 解析后的entryTime: 2025-12-31 03:28:13 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:868]
+2025-12-31 03:28:13,995 INFO: 解析后的entryTime: 2025-12-31 03:28:13 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:868]
+2025-12-31 03:28:13,996 INFO: 最终使用的entryTime: 2025-12-31 03:28:13 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:874]
+2025-12-31 03:28:13,996 INFO: 最终使用的entryTime: 2025-12-31 03:28:13 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:874]
+2025-12-31 03:28:15,129 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 03:28:15,129 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 03:28:15,129 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 03:28:15,129 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 03:28:15,130 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 03:28:15,130 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 03:28:15,133 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 03:28:15,133 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 03:28:15,134 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 03:28:15,134 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 03:36:14,936 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 03:36:14,936 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 03:36:14,937 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 03:36:14,937 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 03:36:14,937 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 03:36:14,937 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 03:36:14,940 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 03:36:14,940 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 03:36:14,941 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 03:36:14,941 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:00:10,687 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:00:10,687 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:00:10,687 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:00:10,687 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:00:10,688 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:00:10,688 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:00:10,692 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:00:10,692 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:00:10,693 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:00:10,693 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:02:11,453 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:02:11,453 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:02:11,454 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:02:11,454 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:02:11,455 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:02:11,455 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:02:11,459 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:02:11,459 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:02:11,460 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:02:11,460 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:02:17,052 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:02:17,052 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:02:17,053 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:02:17,053 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:02:17,053 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:02:17,053 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:02:17,056 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:02:17,056 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:02:17,057 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:02:17,057 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:02:27,816 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:02:27,816 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:02:27,819 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:02:27,819 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:02:27,820 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 04:02:27,820 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 04:02:27,837 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:02:27,837 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:02:27,838 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:02:27,838 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:04:20,500 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:04:20,500 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:04:20,500 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:04:20,500 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:04:20,501 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 04:04:20,501 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 04:04:20,508 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:04:20,508 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:04:20,508 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:04:20,508 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:07:07,758 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:07:07,758 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:07:07,759 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:07:07,759 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:07:07,760 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 04:07:07,760 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1991]
+2025-12-31 04:07:07,768 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:07:07,768 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:07:07,771 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:07:07,771 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:07:45,373 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:07:45,373 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:07:45,375 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:07:45,375 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:07:45,375 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:07:45,375 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:07:45,388 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:07:45,388 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:07:45,391 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:07:45,391 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:11:20,008 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:11:20,008 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:11:20,010 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:11:20,010 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:11:20,014 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:11:20,014 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:11:20,034 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:11:20,034 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:11:20,036 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:11:20,036 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:13:09,354 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:13:09,354 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:13:09,354 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:13:09,354 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:13:09,355 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:13:09,355 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:13:09,365 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:13:09,365 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:13:09,366 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:13:09,366 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:20:17,067 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:20:17,067 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:20:17,067 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:20:17,067 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:20:17,068 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:20:17,068 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:20:17,073 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:20:17,073 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:20:17,074 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:20:17,074 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:20:31,749 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:20:31,749 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:20:31,751 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:20:31,751 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:20:31,752 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:20:31,752 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:20:31,756 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:20:31,756 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:20:31,756 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:20:31,756 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:23:20,668 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:23:20,668 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1964]
+2025-12-31 04:23:20,671 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:23:20,671 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1978]
+2025-12-31 04:23:20,672 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:23:20,672 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1993]
+2025-12-31 04:23:20,675 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:23:20,675 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1997]
+2025-12-31 04:23:20,676 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:23:20,676 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2093]
+2025-12-31 04:51:31,126 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 04:51:33,060 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 04:54:00,798 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 04:54:00,799 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 04:54:00,799 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 04:54:00,807 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 04:54:00,807 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 04:55:51,729 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 04:55:51,729 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 04:55:51,729 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 04:55:51,734 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 04:55:51,735 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 05:02:59,024 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 05:02:59,025 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 05:02:59,025 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 05:02:59,029 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 05:02:59,031 INFO: 返回今日收费记录: 16 条, 今日合计: -176.10000000000002 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 05:03:06,874 INFO: 接收到前端entryTime: 2025-12-31 05:03:06 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:892]
+2025-12-31 05:03:06,875 INFO: 解析后的entryTime: 2025-12-31 05:03:06 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:894]
+2025-12-31 05:03:06,875 INFO: 最终使用的entryTime: 2025-12-31 05:03:06 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:900]
+2025-12-31 05:03:06,976 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 05:03:06,976 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 05:03:08,994 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 05:03:08,994 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 05:03:08,995 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 05:03:08,995 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 05:03:08,995 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 05:03:08,995 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 05:03:08,999 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 05:03:08,999 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 05:03:09,000 INFO: 返回今日收费记录: 17 条, 今日合计: -174.90000000000003 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 05:03:09,000 INFO: 返回今日收费记录: 17 条, 今日合计: -174.90000000000003 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 05:03:14,360 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 05:03:14,360 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 05:03:14,360 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 05:03:14,360 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 05:03:14,361 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 05:03:14,361 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 05:03:14,363 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 05:03:14,363 INFO: 查询到 16 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 05:03:14,364 INFO: 返回今日收费记录: 16 条, 今日合计: -436.09999999999997 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 05:03:14,364 INFO: 返回今日收费记录: 16 条, 今日合计: -436.09999999999997 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 05:03:19,135 INFO: 红冲操作：允许对原订单ID 333 进行红冲 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:854]
+2025-12-31 05:03:19,135 INFO: 红冲操作：允许对原订单ID 333 进行红冲 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:854]
+2025-12-31 05:03:19,137 INFO: 接收到前端entryTime: 2025-12-31 05:03:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:892]
+2025-12-31 05:03:19,137 INFO: 接收到前端entryTime: 2025-12-31 05:03:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:892]
+2025-12-31 05:03:19,137 INFO: 解析后的entryTime: 2025-12-31 05:03:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:894]
+2025-12-31 05:03:19,137 INFO: 解析后的entryTime: 2025-12-31 05:03:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:894]
+2025-12-31 05:03:19,138 INFO: 最终使用的entryTime: 2025-12-31 05:03:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:900]
+2025-12-31 05:03:19,138 INFO: 最终使用的entryTime: 2025-12-31 05:03:18 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:900]
+2025-12-31 05:03:19,154 INFO: 红冲操作完成：原订单ID 333，新订单ID 338 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:984]
+2025-12-31 05:03:19,154 INFO: 红冲操作完成：原订单ID 333，新订单ID 338 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:984]
+2025-12-31 05:03:19,395 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 05:03:19,395 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 05:03:19,395 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 05:03:19,395 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 05:03:19,396 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 05:03:19,396 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 05:03:19,400 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 05:03:19,400 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 05:03:19,401 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 05:03:19,401 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 05:03:48,404 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 05:03:48,404 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 05:03:48,410 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 05:03:48,410 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 05:03:48,411 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 05:03:48,411 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 05:03:48,429 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 05:03:48,429 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 05:03:48,431 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 05:03:48,431 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 05:04:15,183 INFO: 用户 admin 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:725]
+2025-12-31 05:04:15,183 INFO: 用户 admin 请求更新收费标准 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:725]
+2025-12-31 05:04:15,183 INFO: 接收到的数据: {'electricity': 1.2, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 100} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:726]
+2025-12-31 05:04:15,183 INFO: 接收到的数据: {'electricity': 1.2, 'coldWater': 6, 'hotWater': 43.5, 'network': 50, 'parking': 130, 'rent_fee': 800, 'manage_fee': 100} [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:726]
+2025-12-31 05:04:15,193 INFO: 收费标准更新成功: 小区=馨香臣寓吴泾店, ID=1 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:768]
+2025-12-31 05:04:15,193 INFO: 收费标准更新成功: 小区=馨香臣寓吴泾店, ID=1 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:768]
+2025-12-31 05:51:14,305 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 05:51:15,419 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 05:52:22,988 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 05:52:22,988 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 05:52:22,989 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 05:52:23,005 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 05:52:23,006 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 05:58:28,839 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 05:58:53,202 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 06:03:54,937 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 09:29:04,071 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 09:29:22,358 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 09:31:15,366 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 09:31:17,259 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 09:31:32,402 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 09:31:32,403 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 09:31:32,403 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 09:31:32,417 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 09:31:32,417 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 09:31:39,905 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 09:31:39,906 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 09:31:39,907 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 09:31:39,914 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 09:31:39,917 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 09:32:32,045 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 09:32:32,045 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 09:32:32,046 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 09:32:32,051 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 09:32:32,051 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 09:39:14,553 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 09:39:14,554 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 09:39:14,554 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2017]
+2025-12-31 09:39:14,557 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 09:39:14,558 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 09:41:04,534 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:1990]
+2025-12-31 09:41:04,534 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2004]
+2025-12-31 09:41:04,534 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2019]
+2025-12-31 09:41:04,540 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2023]
+2025-12-31 09:41:04,540 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2119]
+2025-12-31 09:44:31,615 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 09:48:02,178 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 09:48:41,973 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2034]
+2025-12-31 09:48:41,974 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2048]
+2025-12-31 09:48:41,979 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2063]
+2025-12-31 09:48:42,008 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2067]
+2025-12-31 09:48:42,009 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2163]
+2025-12-31 11:54:01,349 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 11:54:02,483 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 11:54:15,520 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2034]
+2025-12-31 11:54:15,520 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2048]
+2025-12-31 11:54:15,524 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2063]
+2025-12-31 11:54:15,534 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2067]
+2025-12-31 11:54:15,535 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2163]
+2025-12-31 11:58:17,030 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2034]
+2025-12-31 11:58:17,031 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2048]
+2025-12-31 11:58:17,031 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2063]
+2025-12-31 11:58:17,035 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2067]
+2025-12-31 11:58:17,036 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2163]
+2025-12-31 12:01:27,004 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2034]
+2025-12-31 12:01:27,004 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2048]
+2025-12-31 12:01:27,005 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2063]
+2025-12-31 12:01:27,012 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2067]
+2025-12-31 12:01:27,014 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2163]
+2025-12-31 12:05:57,904 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2034]
+2025-12-31 12:05:57,904 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2048]
+2025-12-31 12:05:57,905 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2063]
+2025-12-31 12:05:57,908 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2067]
+2025-12-31 12:05:57,909 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2163]
+2025-12-31 12:09:31,744 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2034]
+2025-12-31 12:09:31,749 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2048]
+2025-12-31 12:09:31,750 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2063]
+2025-12-31 12:09:31,768 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2067]
+2025-12-31 12:09:31,769 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2163]
+2025-12-31 12:11:14,759 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2034]
+2025-12-31 12:11:14,760 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2048]
+2025-12-31 12:11:14,760 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2063]
+2025-12-31 12:11:14,765 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2067]
+2025-12-31 12:11:14,769 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2163]
+2025-12-31 12:22:17,365 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 12:23:30,089 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 12:28:01,611 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:28:01,617 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:28:01,618 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2068]
+2025-12-31 12:28:01,635 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:28:01,636 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 12:28:24,095 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 12:28:46,871 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:28:46,872 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:28:46,872 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2068]
+2025-12-31 12:28:46,883 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:28:46,883 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 12:29:19,916 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:29:19,917 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:29:19,917 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2068]
+2025-12-31 12:29:19,922 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:29:19,923 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 12:29:25,246 ERROR: 财务对账报表查询失败: type object 'Order' has no attribute 'CREATETIME'
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 3120, in financial_reconciliation_report
+    Order.CREATETIME >= start_date,
+    ^^^^^^^^^^^^^^^^
+AttributeError: type object 'Order' has no attribute 'CREATETIME'
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:3183]
+2025-12-31 12:30:18,633 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:30:18,633 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:30:18,633 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2068]
+2025-12-31 12:30:18,636 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:30:18,636 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 12:30:34,870 ERROR: 财务对账报表查询失败: type object 'Order' has no attribute 'CREATETIME'
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 3120, in financial_reconciliation_report
+    Order.CREATETIME >= start_date,
+    ^^^^^^^^^^^^^^^^
+AttributeError: type object 'Order' has no attribute 'CREATETIME'
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:3183]
+2025-12-31 12:31:10,473 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 12:31:23,293 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 12:33:49,320 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 12:33:58,821 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:33:58,824 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:33:58,832 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2068]
+2025-12-31 12:33:58,875 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:33:58,877 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 12:34:05,683 ERROR: 财务对账报表查询失败: type object 'Order' has no attribute 'CREATETIME'
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py", line 3120, in financial_reconciliation_report
+    Order.CREATETIME >= start_date,
+    ^^^^^^^^^^^^^^^^
+AttributeError: type object 'Order' has no attribute 'CREATETIME'
+ [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:3189]
+2025-12-31 12:34:31,771 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 12:35:09,128 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 12:35:44,555 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 12:38:56,724 INFO: 公寓物业收费系统启动 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:101]
+2025-12-31 12:38:59,833 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:38:59,833 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:38:59,833 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2068]
+2025-12-31 12:38:59,841 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:38:59,842 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 12:42:47,243 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:42:47,243 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:42:47,244 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2068]
+2025-12-31 12:42:47,253 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:42:47,254 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 12:47:09,362 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:47:09,363 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:47:09,363 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2068]
+2025-12-31 12:47:09,368 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:47:09,369 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 12:50:38,577 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:50:38,577 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:50:38,578 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2068]
+2025-12-31 12:50:38,580 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:50:38,581 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 12:52:01,934 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:52:01,935 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:52:01,935 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2068]
+2025-12-31 12:52:01,943 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:52:01,944 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 12:52:55,910 INFO: 获取今日收费记录，用户: admin, 角色: 系统管理员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:52:55,910 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:52:55,911 INFO: 管理员用户，查看所有小区订单 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2068]
+2025-12-31 12:52:55,920 INFO: 查询到 17 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:52:55,922 INFO: 返回今日收费记录: 17 条, 今日合计: -435.24999999999994 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 12:53:55,708 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 12:53:55,709 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 12:53:55,712 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2066]
+2025-12-31 12:53:55,725 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 12:53:55,726 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 13:01:42,738 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 13:01:42,738 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 13:01:42,740 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2066]
+2025-12-31 13:01:42,750 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 13:01:42,751 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]
+2025-12-31 13:05:09,880 INFO: 获取今日收费记录，用户: xxgyzqd001, 角色: 小区操作员 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2039]
+2025-12-31 13:05:09,881 INFO: 查询日期范围: 2025-12-31 00:00:00 到 2025-12-31 23:59:59 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2053]
+2025-12-31 13:05:09,881 INFO: 非管理员用户，限制查询小区ID: 2 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2066]
+2025-12-31 13:05:09,887 INFO: 查询到 13 条今日订单记录 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2072]
+2025-12-31 13:05:09,888 INFO: 返回今日收费记录: 13 条, 今日合计: -307.29999999999995 [in C:\Users\Administrator\Documents\trae_projects\wjwy2\app.py:2168]

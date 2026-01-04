@@ -189,8 +189,6 @@ class Order(db.Model):
     管理费月数 = db.Column(db.Integer)
     管理费金额 = db.Column(db.Numeric(10, 2))
     车牌号 = db.Column(db.String(30), nullable=True, comment='车牌号')  # 新增字段
-    网费开始日期 = db.Column(db.Date, nullable=True, comment='网费开始日期')
-    网费结束日期 = db.Column(db.Date, nullable=True, comment='网费结束日期')
     停车开始日期 = db.Column(db.Date, nullable=True, comment='停车开始日期')
     停车结束日期 = db.Column(db.Date, nullable=True, comment='停车结束日期')
     备注 = db.Column(db.Text, comment='订单备注')
@@ -227,8 +225,6 @@ class Order(db.Model):
             '管理费月数': self.管理费月数,
             '管理费金额': self.管理费金额,
             '车牌号': self.车牌号,
-            '网费开始日期': self.网费开始日期,
-            '网费结束日期': self.网费结束日期,
             '停车开始日期': self.停车开始日期,
             '停车结束日期': self.停车结束日期,
             '红冲': self.红冲
@@ -954,21 +950,6 @@ def create_order():
                             new_order.停车结束日期 = datetime.strptime(item.get('endDate'), '%Y-%m-%d').date()
                         except ValueError:
                             app.logger.warning(f"无效的结束日期格式: {item.get('endDate')}")
-                
-                # 如果是网费，保存开始日期、结束日期
-                if fee_type == 'network':
-                    # 保存开始日期和结束日期
-                    if item.get('startDate'):
-                        try:
-                            new_order.网费开始日期 = datetime.strptime(item.get('startDate'), '%Y-%m-%d').date()
-                        except ValueError:
-                            app.logger.warning(f"无效的网费开始日期格式: {item.get('startDate')}")
-                    
-                    if item.get('endDate'):
-                        try:
-                            new_order.网费结束日期 = datetime.strptime(item.get('endDate'), '%Y-%m-%d').date()
-                        except ValueError:
-                            app.logger.warning(f"无效的网费结束日期格式: {item.get('endDate')}")
         
         # 处理房租和管理费数据（从单独的字段获取）
         if 'rentMonths' in data:
@@ -1205,9 +1186,7 @@ def get_order(order_id):
                 'quantity': int(order.网费月数) if order.网费月数 else 0,
                 'unit': '月',
                 'price': float(order.网费金额) / int(order.网费月数) if order.网费月数 and int(order.网费月数) > 0 else 0,
-                'amount': float(order.网费金额),
-                'startDate': order.网费开始日期.strftime('%Y-%m-%d') if order.网费开始日期 else '',
-                'endDate': order.网费结束日期.strftime('%Y-%m-%d') if order.网费结束日期 else ''
+                'amount': float(order.网费金额)
             })
         
         # 停车费
@@ -2125,21 +2104,7 @@ def get_recent_orders():
             if order.网费金额 and float(order.网费金额) > 0:
                 month = order.网费月数 if order.网费月数 else 0
                 amount = float(order.网费金额) if order.网费金额 else 0
-                
-                # 格式化日期范围
-                start_date = ""
-                end_date = ""
-                if order.网费开始日期:
-                    start_date = order.网费开始日期.strftime('%Y/%m/%d')
-                if order.网费结束日期:
-                    end_date = order.网费结束日期.strftime('%Y/%m/%d')
-                date_range = f"{start_date}-{end_date}" if start_date and end_date else ""
-                
-                # 格式：网费 | 1个月 | ¥50.00 | 2025/12/1-2025/12/31
-                if date_range:
-                    fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f} | {date_range}")
-                else:
-                    fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f}")
+                fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f}")
             
             # 停车费
             if order.停车费金额 and float(order.停车费金额) > 0:
@@ -2273,21 +2238,7 @@ def get_user_payment_history():
             if order.网费金额 and float(order.网费金额) > 0:
                 month = order.网费月数 if order.网费月数 else 0
                 amount = float(order.网费金额) if order.网费金额 else 0
-                
-                # 格式化日期范围
-                start_date = ""
-                end_date = ""
-                if order.网费开始日期:
-                    start_date = order.网费开始日期.strftime('%Y/%m/%d')
-                if order.网费结束日期:
-                    end_date = order.网费结束日期.strftime('%Y/%m/%d')
-                date_range = f"{start_date}-{end_date}" if start_date and end_date else ""
-                
-                # 格式：网费 | 1个月 | ¥50.00 | 2025/12/1-2025/12/31
-                if date_range:
-                    fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f} | {date_range}")
-                else:
-                    fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f}")
+                fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f}")
             
             # 停车费
             if order.停车费金额 and float(order.停车费金额) > 0:
@@ -2693,8 +2644,6 @@ def get_orders_detailed():
                 'licensePlate': order.车牌号 or '',
                 'parkingStartDate': order.停车开始日期.strftime('%Y-%m-%d') if order.停车开始日期 else '',
                 'parkingEndDate': order.停车结束日期.strftime('%Y-%m-%d') if order.停车结束日期 else '',
-                'networkStartDate': order.网费开始日期.strftime('%Y-%m-%d') if order.网费开始日期 else '',
-                'networkEndDate': order.网费结束日期.strftime('%Y-%m-%d') if order.网费结束日期 else '',
                 'remark': order.备注 or ''
             })
         
@@ -2806,8 +2755,6 @@ def export_orders_detailed():
                 '车牌号': order.车牌号 or '',
                 '停车开始日期': order.停车开始日期.strftime('%Y-%m-%d') if order.停车开始日期 else '',
                 '停车结束日期': order.停车结束日期.strftime('%Y-%m-%d') if order.停车结束日期 else '',
-                '网费开始日期': order.网费开始日期.strftime('%Y-%m-%d') if order.网费开始日期 else '',
-                '网费结束日期': order.网费结束日期.strftime('%Y-%m-%d') if order.网费结束日期 else '',
                 '备注': order.备注 or ''
             })
         

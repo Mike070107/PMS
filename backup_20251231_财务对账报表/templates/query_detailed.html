@@ -741,8 +741,6 @@
                                         <th>车牌号</th>
                                         <th>停车开始日期</th>
                                         <th>停车结束日期</th>
-                                        <th>网费开始日期</th>
-                                        <th>网费结束日期</th>
                                         <th class="remark-header">备注</th>
                                     </tr>
                                 </thead>
@@ -775,8 +773,6 @@
                                         <td>{{ item.licensePlate || '-' }}</td>
                                         <td class="date">{{ formatDate(item.parkingStartDate) }}</td>
                                         <td class="date">{{ formatDate(item.parkingEndDate) }}</td>
-                                        <td class="date">{{ formatDate(item.networkStartDate) }}</td>
-                                        <td class="date">{{ formatDate(item.networkEndDate) }}</td>
                                         <td class="remark-cell">{{ item.remark || '-' }}</td>
                                     </tr>
                                 </tbody>
@@ -815,6 +811,10 @@
             if (typeof Vue === 'undefined' || 
                 typeof ElementPlus === 'undefined' || 
                 typeof axios === 'undefined') {
+                if (!vueLoadWarned) {
+                    console.warn('等待页面资源加载...');
+                    vueLoadWarned = true;
+                }
                 setTimeout(initApp, 50);
                 return;
             }
@@ -902,9 +902,14 @@
                 // 获取用户信息
                 const loadUserInfo = () => {
                     const userData = sessionStorage.getItem('user');  // 改为sessionStorage
+                    console.log('=== 详细查询页面 - 加载用户信息 ===');
+                    console.log('userData:', userData);
                     
                     if (userData) {
                         const user = JSON.parse(userData);
+                        console.log('user对象:', user);
+                        console.log('user.role:', user.role);
+                        console.log('user.community:', user.community);
                         
                         userInfo.value = {
                             real_name: user.real_name || user.username,
@@ -912,10 +917,15 @@
                             community: user.community || ''  // 保存用户小区
                         };
                         
+                        console.log('userInfo.value:', userInfo.value);
+                        
                         // 如果是小区操作员，默认设置小区且不可更改
                         if (user.role === '小区操作员' && user.community) {
+                            console.log('检测到小区操作员，设置默认小区:', user.community);
                             queryParams.value.community = user.community;
                         }
+                    } else {
+                        console.log('未sessionStorage中找到用户信息');
                     }
                 };
 
@@ -923,6 +933,7 @@
                 const initDatePickers = () => {
                     // 检查 flatpickr 是否已加载
                     if (typeof flatpickr === 'undefined') {
+                        console.warn('flatpickr 未加载，等待加载...');
                         setTimeout(initDatePickers, 100);
                         return;
                     }

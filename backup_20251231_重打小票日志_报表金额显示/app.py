@@ -189,8 +189,6 @@ class Order(db.Model):
     管理费月数 = db.Column(db.Integer)
     管理费金额 = db.Column(db.Numeric(10, 2))
     车牌号 = db.Column(db.String(30), nullable=True, comment='车牌号')  # 新增字段
-    网费开始日期 = db.Column(db.Date, nullable=True, comment='网费开始日期')
-    网费结束日期 = db.Column(db.Date, nullable=True, comment='网费结束日期')
     停车开始日期 = db.Column(db.Date, nullable=True, comment='停车开始日期')
     停车结束日期 = db.Column(db.Date, nullable=True, comment='停车结束日期')
     备注 = db.Column(db.Text, comment='订单备注')
@@ -227,8 +225,6 @@ class Order(db.Model):
             '管理费月数': self.管理费月数,
             '管理费金额': self.管理费金额,
             '车牌号': self.车牌号,
-            '网费开始日期': self.网费开始日期,
-            '网费结束日期': self.网费结束日期,
             '停车开始日期': self.停车开始日期,
             '停车结束日期': self.停车结束日期,
             '红冲': self.红冲
@@ -469,11 +465,6 @@ def reports_page():
 def operation_logs_page():
     """操作日志查询页面"""
     return render_template('operation_logs.html')
-
-@app.route('/financial_reconciliation')
-def financial_reconciliation_page():
-    """财务对账报表页面"""
-    return render_template('financial_reconciliation.html')
 
 @app.route('/favicon.ico')
 def favicon():
@@ -954,21 +945,6 @@ def create_order():
                             new_order.停车结束日期 = datetime.strptime(item.get('endDate'), '%Y-%m-%d').date()
                         except ValueError:
                             app.logger.warning(f"无效的结束日期格式: {item.get('endDate')}")
-                
-                # 如果是网费，保存开始日期、结束日期
-                if fee_type == 'network':
-                    # 保存开始日期和结束日期
-                    if item.get('startDate'):
-                        try:
-                            new_order.网费开始日期 = datetime.strptime(item.get('startDate'), '%Y-%m-%d').date()
-                        except ValueError:
-                            app.logger.warning(f"无效的网费开始日期格式: {item.get('startDate')}")
-                    
-                    if item.get('endDate'):
-                        try:
-                            new_order.网费结束日期 = datetime.strptime(item.get('endDate'), '%Y-%m-%d').date()
-                        except ValueError:
-                            app.logger.warning(f"无效的网费结束日期格式: {item.get('endDate')}")
         
         # 处理房租和管理费数据（从单独的字段获取）
         if 'rentMonths' in data:
@@ -1205,9 +1181,7 @@ def get_order(order_id):
                 'quantity': int(order.网费月数) if order.网费月数 else 0,
                 'unit': '月',
                 'price': float(order.网费金额) / int(order.网费月数) if order.网费月数 and int(order.网费月数) > 0 else 0,
-                'amount': float(order.网费金额),
-                'startDate': order.网费开始日期.strftime('%Y-%m-%d') if order.网费开始日期 else '',
-                'endDate': order.网费结束日期.strftime('%Y-%m-%d') if order.网费结束日期 else ''
+                'amount': float(order.网费金额)
             })
         
         # 停车费
@@ -2125,21 +2099,7 @@ def get_recent_orders():
             if order.网费金额 and float(order.网费金额) > 0:
                 month = order.网费月数 if order.网费月数 else 0
                 amount = float(order.网费金额) if order.网费金额 else 0
-                
-                # 格式化日期范围
-                start_date = ""
-                end_date = ""
-                if order.网费开始日期:
-                    start_date = order.网费开始日期.strftime('%Y/%m/%d')
-                if order.网费结束日期:
-                    end_date = order.网费结束日期.strftime('%Y/%m/%d')
-                date_range = f"{start_date}-{end_date}" if start_date and end_date else ""
-                
-                # 格式：网费 | 1个月 | ¥50.00 | 2025/12/1-2025/12/31
-                if date_range:
-                    fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f} | {date_range}")
-                else:
-                    fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f}")
+                fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f}")
             
             # 停车费
             if order.停车费金额 and float(order.停车费金额) > 0:
@@ -2273,21 +2233,7 @@ def get_user_payment_history():
             if order.网费金额 and float(order.网费金额) > 0:
                 month = order.网费月数 if order.网费月数 else 0
                 amount = float(order.网费金额) if order.网费金额 else 0
-                
-                # 格式化日期范围
-                start_date = ""
-                end_date = ""
-                if order.网费开始日期:
-                    start_date = order.网费开始日期.strftime('%Y/%m/%d')
-                if order.网费结束日期:
-                    end_date = order.网费结束日期.strftime('%Y/%m/%d')
-                date_range = f"{start_date}-{end_date}" if start_date and end_date else ""
-                
-                # 格式：网费 | 1个月 | ¥50.00 | 2025/12/1-2025/12/31
-                if date_range:
-                    fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f} | {date_range}")
-                else:
-                    fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f}")
+                fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f}")
             
             # 停车费
             if order.停车费金额 and float(order.停车费金额) > 0:
@@ -2693,8 +2639,6 @@ def get_orders_detailed():
                 'licensePlate': order.车牌号 or '',
                 'parkingStartDate': order.停车开始日期.strftime('%Y-%m-%d') if order.停车开始日期 else '',
                 'parkingEndDate': order.停车结束日期.strftime('%Y-%m-%d') if order.停车结束日期 else '',
-                'networkStartDate': order.网费开始日期.strftime('%Y-%m-%d') if order.网费开始日期 else '',
-                'networkEndDate': order.网费结束日期.strftime('%Y-%m-%d') if order.网费结束日期 else '',
                 'remark': order.备注 or ''
             })
         
@@ -2806,8 +2750,6 @@ def export_orders_detailed():
                 '车牌号': order.车牌号 or '',
                 '停车开始日期': order.停车开始日期.strftime('%Y-%m-%d') if order.停车开始日期 else '',
                 '停车结束日期': order.停车结束日期.strftime('%Y-%m-%d') if order.停车结束日期 else '',
-                '网费开始日期': order.网费开始日期.strftime('%Y-%m-%d') if order.网费开始日期 else '',
-                '网费结束日期': order.网费结束日期.strftime('%Y-%m-%d') if order.网费结束日期 else '',
                 '备注': order.备注 or ''
             })
         
@@ -3152,230 +3094,6 @@ def get_fee_type_statistics():
     except Exception as e:
         app.logger.error(f"获取收费项目统计失败: {str(e)}\n{traceback.format_exc()}")
         return jsonify({'status': 'error', 'message': '获取数据失败'}), 500
-
-
-# 5. 财务对账报表查询
-@app.route('/api/reports/financial-reconciliation', methods=['GET'])
-@token_required
-def financial_reconciliation_report():
-    """财务对账报表 - 按地区和日期统计每日收款"""
-    try:
-        current_user = g.current_user
-        community = request.args.get('community', '')
-        start_date = request.args.get('start_date', '')
-        end_date = request.args.get('end_date', '')
-        
-        if not community or not start_date or not end_date:
-            return jsonify({'status': 'error', 'message': '请提供地区和日期范围'}), 400
-        
-        # 构建查询
-        query = Order.query.filter(
-            Order.录入时间 >= start_date,
-            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
-        )
-        
-        # 根据权限过滤
-        if current_user.Role != '系统管理员':
-            # 非管理员只能查看自己小区
-            query = query.filter(Order.小区ID == current_user.小区编号)
-        
-        # 根据选择的地区过滤
-        # 通过User表查找小区名称对应的小区编号
-        user_with_community = User.query.filter_by(COMMUNITY=community).first()
-        if user_with_community:
-            query = query.filter(Order.小区ID == user_with_community.小区编号)
-        else:
-            # 找不到对应小区，返回空结果
-            return jsonify({
-                'status': 'success',
-                'data': []
-            })
-        
-        orders = query.all()
-        
-        # 按日期分组统计
-        daily_stats = {}
-        for order in orders:
-            # 获取日期字符串
-            if isinstance(order.录入时间, str):
-                date_str = order.录入时间[:10]
-            else:
-                date_str = order.录入时间.strftime('%Y-%m-%d')
-            
-            if date_str not in daily_stats:
-                daily_stats[date_str] = {
-                    'community': community,
-                    'date': date_str,
-                    'wechatAmount': 0,
-                    'alipayAmount': 0,
-                    'cashAmount': 0,
-                    'totalAmount': 0
-                }
-            
-            # 获取金额，负数表示红冲
-            amount = float(order.收款金额 or 0)
-            payment_method = order.收款方式 or ''
-            
-            # 根据收款方式分类
-            if '微信' in payment_method:
-                daily_stats[date_str]['wechatAmount'] += amount
-            elif '支付宝' in payment_method:
-                daily_stats[date_str]['alipayAmount'] += amount
-            elif '现金' in payment_method:
-                daily_stats[date_str]['cashAmount'] += amount
-            else:
-                # 其他收款方式计入现金
-                daily_stats[date_str]['cashAmount'] += amount
-            
-            daily_stats[date_str]['totalAmount'] += amount
-        
-        # 转换为列表并按日期排序
-        result = list(daily_stats.values())
-        result.sort(key=lambda x: x['date'])
-        
-        return jsonify({
-            'status': 'success',
-            'data': result
-        })
-    
-    except Exception as e:
-        app.logger.error(f"财务对账报表查询失败: {str(e)}\n{traceback.format_exc()}")
-        return jsonify({'status': 'error', 'message': '查询失败'}), 500
-
-
-@app.route('/api/reports/financial-reconciliation/export', methods=['GET'])
-@token_required
-def export_financial_reconciliation():
-    """导出财务对账报表Excel"""
-    try:
-        current_user = g.current_user
-        community = request.args.get('community', '')
-        start_date = request.args.get('start_date', '')
-        end_date = request.args.get('end_date', '')
-        
-        if not community or not start_date or not end_date:
-            return jsonify({'status': 'error', 'message': '请提供地区和日期范围'}), 400
-        
-        # 构建查询
-        query = Order.query.filter(
-            Order.录入时间 >= start_date,
-            Order.录入时间 < datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
-        )
-        
-        # 根据权限过滤
-        if current_user.Role != '系统管理员':
-            query = query.filter(Order.小区ID == current_user.小区编号)
-        
-        # 根据选择的地区过滤
-        user_with_community = User.query.filter_by(COMMUNITY=community).first()
-        if user_with_community:
-            query = query.filter(Order.小区ID == user_with_community.小区编号)
-        else:
-            return jsonify({'status': 'error', 'message': '找不到对应小区'}), 400
-        
-        orders = query.all()
-        
-        # 按日期分组统计
-        daily_stats = {}
-        for order in orders:
-            if isinstance(order.录入时间, str):
-                date_str = order.录入时间[:10]
-            else:
-                date_str = order.录入时间.strftime('%Y-%m-%d')
-            
-            if date_str not in daily_stats:
-                daily_stats[date_str] = {
-                    'wechat': 0,
-                    'alipay': 0,
-                    'cash': 0,
-                    'total': 0
-                }
-            
-            amount = float(order.收款金额 or 0)
-            payment_method = order.收款方式 or ''
-            
-            if '微信' in payment_method:
-                daily_stats[date_str]['wechat'] += amount
-            elif '支付宝' in payment_method:
-                daily_stats[date_str]['alipay'] += amount
-            else:
-                daily_stats[date_str]['cash'] += amount
-            
-            daily_stats[date_str]['total'] += amount
-        
-        # 创建Excel
-        import io
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-        
-        wb = Workbook()
-        ws = wb.active
-        ws.title = '财务对账报表'
-        
-        # 标题行
-        headers = ['小区名称', '日期', '微信收款', '支付宝收款', '现金收款', '合计金额']
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.alignment = Alignment(horizontal='center')
-            cell.fill = PatternFill(start_color='E0E0E0', end_color='E0E0E0', fill_type='solid')
-        
-        # 数据行
-        row = 2
-        sorted_dates = sorted(daily_stats.keys())
-        sum_wechat = sum_alipay = sum_cash = sum_total = 0
-        
-        for date_str in sorted_dates:
-            stats = daily_stats[date_str]
-            ws.cell(row=row, column=1, value=community)
-            ws.cell(row=row, column=2, value=date_str)
-            ws.cell(row=row, column=3, value=round(stats['wechat'], 2))
-            ws.cell(row=row, column=4, value=round(stats['alipay'], 2))
-            ws.cell(row=row, column=5, value=round(stats['cash'], 2))
-            ws.cell(row=row, column=6, value=round(stats['total'], 2))
-            
-            sum_wechat += stats['wechat']
-            sum_alipay += stats['alipay']
-            sum_cash += stats['cash']
-            sum_total += stats['total']
-            row += 1
-        
-        # 合计行
-        ws.cell(row=row, column=1, value='合计')
-        ws.cell(row=row, column=2, value='')
-        ws.cell(row=row, column=3, value=round(sum_wechat, 2))
-        ws.cell(row=row, column=4, value=round(sum_alipay, 2))
-        ws.cell(row=row, column=5, value=round(sum_cash, 2))
-        ws.cell(row=row, column=6, value=round(sum_total, 2))
-        
-        for col in range(1, 7):
-            ws.cell(row=row, column=col).font = Font(bold=True)
-        
-        # 调整列宽
-        ws.column_dimensions['A'].width = 15
-        ws.column_dimensions['B'].width = 12
-        ws.column_dimensions['C'].width = 14
-        ws.column_dimensions['D'].width = 14
-        ws.column_dimensions['E'].width = 14
-        ws.column_dimensions['F'].width = 14
-        
-        # 保存到内存
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        
-        filename = f"财务对账报表_{community}_{start_date}_{end_date}.xlsx"
-        
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=filename
-        )
-    
-    except Exception as e:
-        app.logger.error(f"导出财务对账报表失败: {str(e)}\n{traceback.format_exc()}")
-        return jsonify({'status': 'error', 'message': '导出失败'}), 500
 
 
 # ========== 错误处理 ==========
