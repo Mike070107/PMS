@@ -188,6 +188,8 @@ class Order(db.Model):
     房租金额 = db.Column(db.Numeric(10, 2))
     管理费月数 = db.Column(db.Integer)
     管理费金额 = db.Column(db.Numeric(10, 2))
+    押金次数 = db.Column(db.Integer)
+    押金金额 = db.Column(db.Numeric(10, 2))
     车牌号 = db.Column(db.String(30), nullable=True, comment='车牌号')  # 新增字段
     网费开始日期 = db.Column(db.Date, nullable=True, comment='网费开始日期')
     网费结束日期 = db.Column(db.Date, nullable=True, comment='网费结束日期')
@@ -226,6 +228,8 @@ class Order(db.Model):
             '房租金额': self.房租金额,
             '管理费月数': self.管理费月数,
             '管理费金额': self.管理费金额,
+            '押金次数': self.押金次数,
+            '押金金额': self.押金金额,
             '车牌号': self.车牌号,
             '网费开始日期': self.网费开始日期,
             '网费结束日期': self.网费结束日期,
@@ -247,6 +251,7 @@ class FeePrice(db.Model):
     parking = db.Column(db.Numeric(10, 2), default=0.00, comment='停车费单价')
     rent_fee = db.Column(db.Numeric(10, 2), default=0.00, comment='房租单价')
     manage_fee = db.Column(db.Numeric(10, 2), default=0.00, comment='管理费单价')
+    deposit_fee = db.Column(db.Numeric(10, 2), default=30.00, comment='押金单价')
     created_at = db.Column(db.TIMESTAMP, server_default=db.func.current_timestamp())
     updated_at = db.Column(db.TIMESTAMP, server_default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
     
@@ -262,6 +267,7 @@ class FeePrice(db.Model):
             'parking': float(self.parking),
             'rent_fee': float(self.rent_fee),
             'manage_fee': float(self.manage_fee),
+            'deposit_fee': float(self.deposit_fee),
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None,
             'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S') if self.updated_at else None
         }
@@ -711,7 +717,8 @@ def get_fee_prices():
                 "network": float(fee_price.network),
                 "parking": float(fee_price.parking),
                 "rent_fee": float(fee_price.rent_fee),  # 修正为rent_fee
-                "manage_fee": float(fee_price.manage_fee)  # 修正为manage_fee
+                "manage_fee": float(fee_price.manage_fee),  # 修正为manage_fee
+                "deposit_fee": float(fee_price.deposit_fee if hasattr(fee_price, 'deposit_fee') else 30.00)  # 押金单价
             }
         })
         
@@ -767,6 +774,8 @@ def update_fee_prices():
             fee_price.rent_fee = float(data['rent_fee'])
         if 'manage_fee' in data:
             fee_price.manage_fee = float(data['manage_fee'])
+        if 'deposit_fee' in data:
+            fee_price.deposit_fee = float(data['deposit_fee'])
         
         # 手动更新updated_at字段
         fee_price.updated_at = datetime.now()
@@ -927,7 +936,8 @@ def create_order():
             'network': ('网费月数', '网费金额'),
             'parking': ('停车费月数', '停车费金额'),
             'rent': ('房租月数', '房租金额'),
-            'management': ('管理费月数', '管理费金额')
+            'management': ('管理费月数', '管理费金额'),
+            'deposit': ('押金次数', '押金金额')
         }
         
         # 处理费用项目
@@ -935,8 +945,13 @@ def create_order():
             fee_type = item.get('type')
             if fee_type in fee_mapping:
                 quantity_field, amount_field = fee_mapping[fee_type]
-                setattr(new_order, quantity_field, float(item.get('quantity', 0)))
-                setattr(new_order, amount_field, float(item.get('amount', 0)))
+                quantity_value = float(item.get('quantity', 0))
+                amount_value = float(item.get('amount', 0))
+                setattr(new_order, quantity_field, quantity_value)
+                setattr(new_order, amount_field, amount_value)
+                # 调试日志：记录押金数据
+                if fee_type == 'deposit':
+                    app.logger.info(f"押金数据 - 次数: {quantity_value}, 金额: {amount_value}")
                 
                 # 如果是停车费，保存车牌号、开始日期、结束日期
                 if fee_type == 'parking':
@@ -1017,21 +1032,23 @@ def create_order():
         # 8. 记录操作日志
         # 构建收费项目清单
         fee_items = []
-        if new_order.电费金额 and float(new_order.电费金额) > 0:
+        if new_order.电费金额 and float(new_order.电费金额) != 0:
             fee_items.append(f"电费 {new_order.电费度数}度 ￥{float(new_order.电费金额):.2f}")
-        if new_order.冷水金额 and float(new_order.冷水金额) > 0:
+        if new_order.冷水金额 and float(new_order.冷水金额) != 0:
             fee_items.append(f"冷水费 {new_order.冷水吨数}吨 ￥{float(new_order.冷水金额):.2f}")
-        if new_order.热水金额 and float(new_order.热水金额) > 0:
+        if new_order.热水金额 and float(new_order.热水金额) != 0:
             fee_items.append(f"热水费 {new_order.热水吨数}吨 ￥{float(new_order.热水金额):.2f}")
-        if new_order.网费金额 and float(new_order.网费金额) > 0:
+        if new_order.网费金额 and float(new_order.网费金额) != 0:
             fee_items.append(f"网费 {new_order.网费月数}月 ￥{float(new_order.网费金额):.2f}")
-        if new_order.停车费金额 and float(new_order.停车费金额) > 0:
+        if new_order.停车费金额 and float(new_order.停车费金额) != 0:
             car_info = f" ({new_order.车牌号})" if new_order.车牌号 else ""
             fee_items.append(f"停车费 {new_order.停车费月数}月 ￥{float(new_order.停车费金额):.2f}{car_info}")
-        if new_order.房租金额 and float(new_order.房租金额) > 0:
+        if new_order.房租金额 and float(new_order.房租金额) != 0:
             fee_items.append(f"房租 {new_order.房租月数}月 ￥{float(new_order.房租金额):.2f}")
-        if new_order.管理费金额 and float(new_order.管理费金额) > 0:
+        if new_order.管理费金额 and float(new_order.管理费金额) != 0:
             fee_items.append(f"管理费 {new_order.管理费月数}月 ￥{float(new_order.管理费金额):.2f}")
+        if new_order.押金金额 and float(new_order.押金金额) != 0:
+            fee_items.append(f"押金 {new_order.押金次数}次 ￥{float(new_order.押金金额):.2f}")
         
         operation_detail = {
             '账单号': bill_number,
@@ -1169,7 +1186,7 @@ def get_order(order_id):
         fee_details = []
         
         # 电费
-        if order.电费金额 and float(order.电费金额) > 0:
+        if order.电费金额 and float(order.电费金额) != 0:
             fee_details.append({
                 'name': '电费',
                 'quantity': float(order.电费度数) if order.电费度数 else 0,
@@ -1179,7 +1196,7 @@ def get_order(order_id):
             })
         
         # 冷水费
-        if order.冷水金额 and float(order.冷水金额) > 0:
+        if order.冷水金额 and float(order.冷水金额) != 0:
             fee_details.append({
                 'name': '冷水费',
                 'quantity': float(order.冷水吨数) if order.冷水吨数 else 0,
@@ -1189,7 +1206,7 @@ def get_order(order_id):
             })
         
         # 热水费
-        if order.热水金额 and float(order.热水金额) > 0:
+        if order.热水金额 and float(order.热水金额) != 0:
             fee_details.append({
                 'name': '热水费',
                 'quantity': float(order.热水吨数) if order.热水吨数 else 0,
@@ -1199,7 +1216,7 @@ def get_order(order_id):
             })
         
         # 网费
-        if order.网费金额 and float(order.网费金额) > 0:
+        if order.网费金额 and float(order.网费金额) != 0:
             fee_details.append({
                 'name': '网费',
                 'quantity': int(order.网费月数) if order.网费月数 else 0,
@@ -1211,7 +1228,7 @@ def get_order(order_id):
             })
         
         # 停车费
-        if order.停车费金额 and float(order.停车费金额) > 0:
+        if order.停车费金额 and float(order.停车费金额) != 0:
             fee_details.append({
                 'name': '停车费',
                 'quantity': int(order.停车费月数) if order.停车费月数 else 0,
@@ -1224,7 +1241,7 @@ def get_order(order_id):
             })
         
         # 房租
-        if order.房租金额 and float(order.房租金额) > 0:
+        if order.房租金额 and float(order.房租金额) != 0:
             fee_details.append({
                 'name': '房租',
                 'quantity': int(order.房租月数) if order.房租月数 else 0,
@@ -1234,13 +1251,23 @@ def get_order(order_id):
             })
         
         # 管理费
-        if order.管理费金额 and float(order.管理费金额) > 0:
+        if order.管理费金额 and float(order.管理费金额) != 0:
             fee_details.append({
                 'name': '管理费',
                 'quantity': int(order.管理费月数) if order.管理费月数 else 0,
                 'unit': '月',
                 'price': float(order.管理费金额) / int(order.管理费月数) if order.管理费月数 and int(order.管理费月数) > 0 else 0,
                 'amount': float(order.管理费金额)
+            })
+        
+        # 押金
+        if order.押金金额 and float(order.押金金额) != 0:
+            fee_details.append({
+                'name': '押金',
+                'quantity': int(order.押金次数) if order.押金次数 else 0,
+                'unit': '次',
+                'price': float(order.押金金额) / int(order.押金次数) if order.押金次数 and int(order.押金次数) > 0 else 0,
+                'amount': float(order.押金金额)
             })
         
         # 构建返回数据 - 注意：这里使用 录入时间 而不是 录入_time
@@ -1304,21 +1331,23 @@ def delete_order(order_id):
         
         # 构建收费项目清单
         fee_items = []
-        if order.电费金额 and float(order.电费金额) > 0:
+        if order.电费金额 and float(order.电费金额) != 0:
             fee_items.append(f"电费 {order.电费度数}度 ￥{float(order.电费金额):.2f}")
-        if order.冷水金额 and float(order.冷水金额) > 0:
+        if order.冷水金额 and float(order.冷水金额) != 0:
             fee_items.append(f"冷水费 {order.冷水吨数}吨 ￥{float(order.冷水金额):.2f}")
-        if order.热水金额 and float(order.热水金额) > 0:
+        if order.热水金额 and float(order.热水金额) != 0:
             fee_items.append(f"热水费 {order.热水吨数}吨 ￥{float(order.热水金额):.2f}")
-        if order.网费金额 and float(order.网费金额) > 0:
+        if order.网费金额 and float(order.网费金额) != 0:
             fee_items.append(f"网费 {order.网费月数}月 ￥{float(order.网费金额):.2f}")
-        if order.停车费金额 and float(order.停车费金额) > 0:
+        if order.停车费金额 and float(order.停车费金额) != 0:
             car_info = f" ({order.车牌号})" if order.车牌号 else ""
             fee_items.append(f"停车费 {order.停车费月数}月 ￥{float(order.停车费金额):.2f}{car_info}")
-        if order.房租金额 and float(order.房租金额) > 0:
+        if order.房租金额 and float(order.房租金额) != 0:
             fee_items.append(f"房租 {order.房租月数}月 ￥{float(order.房租金额):.2f}")
-        if order.管理费金额 and float(order.管理费金额) > 0:
+        if order.管理费金额 and float(order.管理费金额) != 0:
             fee_items.append(f"管理费 {order.管理费月数}月 ￥{float(order.管理费金额):.2f}")
+        if order.押金金额 and float(order.押金金额) != 0:
+            fee_items.append(f"押金 {order.押金次数}次 ￥{float(order.押金金额):.2f}")
         
         # 删除订单
         db.session.delete(order)
@@ -2104,25 +2133,25 @@ def get_recent_orders():
             fee_items = []
             
             # 电费
-            if order.电费金额 and float(order.电费金额) > 0:
+            if order.电费金额 and float(order.电费金额) != 0:
                 degree = float(order.电费度数) if order.电费度数 else 0
                 amount = float(order.电费金额) if order.电费金额 else 0
                 fee_items.append(f"电费 | {degree}度 | ¥{amount:.2f}")
             
             # 冷水费
-            if order.冷水金额 and float(order.冷水金额) > 0:
+            if order.冷水金额 and float(order.冷水金额) != 0:
                 ton = float(order.冷水吨数) if order.冷水吨数 else 0
                 amount = float(order.冷水金额) if order.冷水金额 else 0
                 fee_items.append(f"冷水费 | {ton}吨 | ¥{amount:.2f}")
             
             # 热水费
-            if order.热水金额 and float(order.热水金额) > 0:
+            if order.热水金额 and float(order.热水金额) != 0:
                 ton = float(order.热水吨数) if order.热水吨数 else 0
                 amount = float(order.热水金额) if order.热水金额 else 0
                 fee_items.append(f"热水费 | {ton}吨 | ¥{amount:.2f}")
             
             # 网费
-            if order.网费金额 and float(order.网费金额) > 0:
+            if order.网费金额 and float(order.网费金额) != 0:
                 month = order.网费月数 if order.网费月数 else 0
                 amount = float(order.网费金额) if order.网费金额 else 0
                 
@@ -2142,7 +2171,7 @@ def get_recent_orders():
                     fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f}")
             
             # 停车费
-            if order.停车费金额 and float(order.停车费金额) > 0:
+            if order.停车费金额 and float(order.停车费金额) != 0:
                 month = order.停车费月数 if order.停车费月数 else 0
                 amount = float(order.停车费金额) if order.停车费金额 else 0
                 car_plate = order.车牌号 if order.车牌号 else ""
@@ -2167,25 +2196,39 @@ def get_recent_orders():
                     fee_items.append(f"停车费 | {month}个月 | ¥{amount:.2f} | | ")
             
             # 房租
-            if order.房租金额 and float(order.房租金额) > 0:
+            if order.房租金额 and float(order.房租金额) != 0:
                 months = int(order.房租月数) if order.房租月数 else 0
                 amount = float(order.房租金额) if order.房租金额 else 0
                 fee_items.append(f"房租 | {months}个月 | ¥{amount:.2f}")
             
             # 管理费
-            if order.管理费金额 and float(order.管理费金额) > 0:
+            if order.管理费金额 and float(order.管理费金额) != 0:
                 months = int(order.管理费月数) if order.管理费月数 else 0
                 amount = float(order.管理费金额) if order.管理费金额 else 0
                 fee_items.append(f"管理费 | {months}个月 | ¥{amount:.2f}")
+            
+            # 押金
+            if order.押金金额 and float(order.押金金额) != 0:
+                times = int(order.押金次数) if order.押金次数 else 0
+                amount = float(order.押金金额) if order.押金金额 else 0
+                fee_items.append(f"押金 | {times}次 | ¥{amount:.2f}")
             
             # 计算今日合计 - 所有订单都是今日订单
             today_total += float(order.收款金额) if order.收款金额 else 0
             
             # 创建订单详情对象
+            # 查询小区信息：通过 orders.小区ID 关联 users.小区编号 返回 users.COMMUNITY
+            community_name = ''
+            if order.小区ID:
+                community_user = User.query.filter_by(小区编号=order.小区ID).first()
+                if community_user:
+                    community_name = community_user.COMMUNITY or ''
+            
             order_detail = {
                 'orderId': order.订单ID,
                 'billNumber': order.账单号,
                 'addressId': order.地址ID,  # 添加地址ID字段
+                'community': community_name,  # 添加小区字段
                 'entryTime': order.录入时间.strftime('%Y-%m-%d %H:%M:%S') if order.录入时间 else '',
                 'building': address.楼栋号 if address else '',
                 'room': address.房间号 if address else '',
@@ -2252,25 +2295,25 @@ def get_user_payment_history():
             fee_items = []
             
             # 电费
-            if order.电费金额 and float(order.电费金额) > 0:
+            if order.电费金额 and float(order.电费金额) != 0:
                 degree = float(order.电费度数) if order.电费度数 else 0
                 amount = float(order.电费金额) if order.电费金额 else 0
                 fee_items.append(f"电费 | {degree}度 | ¥{amount:.2f}")
             
             # 冷水费
-            if order.冷水金额 and float(order.冷水金额) > 0:
+            if order.冷水金额 and float(order.冷水金额) != 0:
                 ton = float(order.冷水吨数) if order.冷水吨数 else 0
                 amount = float(order.冷水金额) if order.冷水金额 else 0
                 fee_items.append(f"冷水费 | {ton}吨 | ¥{amount:.2f}")
             
             # 热水费
-            if order.热水金额 and float(order.热水金额) > 0:
+            if order.热水金额 and float(order.热水金额) != 0:
                 ton = float(order.热水吨数) if order.热水吨数 else 0
                 amount = float(order.热水金额) if order.热水金额 else 0
                 fee_items.append(f"热水费 | {ton}吨 | ¥{amount:.2f}")
             
             # 网费
-            if order.网费金额 and float(order.网费金额) > 0:
+            if order.网费金额 and float(order.网费金额) != 0:
                 month = order.网费月数 if order.网费月数 else 0
                 amount = float(order.网费金额) if order.网费金额 else 0
                 
@@ -2290,7 +2333,7 @@ def get_user_payment_history():
                     fee_items.append(f"网费 | {month}个月 | ¥{amount:.2f}")
             
             # 停车费
-            if order.停车费金额 and float(order.停车费金额) > 0:
+            if order.停车费金额 and float(order.停车费金额) != 0:
                 month = order.停车费月数 if order.停车费月数 else 0
                 amount = float(order.停车费金额) if order.停车费金额 else 0
                 car_plate = order.车牌号 if order.车牌号 else ""
@@ -2314,16 +2357,22 @@ def get_user_payment_history():
                     fee_items.append(f"停车费 | {month}个月 | ¥{amount:.2f} | | ")
             
             # 房租
-            if order.房租金额 and float(order.房租金额) > 0:
+            if order.房租金额 and float(order.房租金额) != 0:
                 months = int(order.房租月数) if order.房租月数 else 0
                 amount = float(order.房租金额) if order.房租金额 else 0
                 fee_items.append(f"房租 | {months}个月 | ¥{amount:.2f}")
             
             # 管理费
-            if order.管理费金额 and float(order.管理费金额) > 0:
+            if order.管理费金额 and float(order.管理费金额) != 0:
                 months = int(order.管理费月数) if order.管理费月数 else 0
                 amount = float(order.管理费金额) if order.管理费金额 else 0
                 fee_items.append(f"管理费 | {months}个月 | ¥{amount:.2f}")
+            
+            # 押金
+            if order.押金金额 and float(order.押金金额) != 0:
+                times = int(order.押金次数) if order.押金次数 else 0
+                amount = float(order.押金金额) if order.押金金额 else 0
+                fee_items.append(f"押金 | {times}次 | ¥{amount:.2f}")
             
             # 创建订单详情对象
             order_detail = {
@@ -2688,6 +2737,8 @@ def get_orders_detailed():
                 'rentAmount': float(order.房租金额) if order.房租金额 else 0,
                 'managementMonths': int(order.管理费月数) if order.管理费月数 else None,
                 'managementAmount': float(order.管理费金额) if order.管理费金额 else 0,
+                'depositTimes': int(order.押金次数) if order.押金次数 else None,
+                'depositAmount': float(order.押金金额) if order.押金金额 else 0,
                 'parkingMonths': int(order.停车费月数) if order.停车费月数 else None,
                 'parkingAmount': float(order.停车费金额) if order.停车费金额 else 0,
                 'licensePlate': order.车牌号 or '',
@@ -2801,6 +2852,8 @@ def export_orders_detailed():
                 '房租金额': float(order.房租金额) if order.房租金额 else 0,
                 '管理费月数': int(order.管理费月数) if order.管理费月数 else '',
                 '管理费金额': float(order.管理费金额) if order.管理费金额 else 0,
+                '押金次数': int(order.押金次数) if order.押金次数 else '',
+                '押金金额': float(order.押金金额) if order.押金金额 else 0,
                 '停车费月数': int(order.停车费月数) if order.停车费月数 else '',
                 '停车费金额': float(order.停车费金额) if order.停车费金额 else 0,
                 '车牌号': order.车牌号 or '',

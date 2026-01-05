@@ -266,6 +266,22 @@
                     </div>
                     <span style="color: #6c757d;">元/月</span>
                 </div>
+
+                <div class="form-item">
+                    <div class="form-label">押金单价</div>
+                    <div class="form-control">
+                        <el-input-number 
+                            v-model="prices.deposit_fee" 
+                            :precision="2" 
+                            :step="0.01" 
+                            :min="0"
+                            :max="9999.99"
+                            :controls="false"
+                            placeholder="元/次">
+                        </el-input-number>
+                    </div>
+                    <span style="color: #6c757d;">元/次</span>
+                </div>
             </div>
 
             <div class="button-group">
@@ -305,7 +321,8 @@
                     network: 0.00,
                     parking: 0.00,
                     rent_fee: 0.00,
-                    manage_fee: 0.00
+                    manage_fee: 0.00,
+                    deposit_fee: 30.00
                 });
 
                 // 获取Token
@@ -351,7 +368,8 @@
                                 network: parseFloat(data.network) || 0.00,
                                 parking: parseFloat(data.parking) || 0.00,
                                 rent_fee: parseFloat(data.rent_fee) || 0.00,
-                                manage_fee: parseFloat(data.manage_fee) || 0.00
+                                manage_fee: parseFloat(data.manage_fee) || 0.00,
+                                deposit_fee: parseFloat(data.deposit_fee) || 30.00
                             };
                             // 保存原始数据用于重置
                             originalPrices.value = JSON.parse(JSON.stringify(prices.value));

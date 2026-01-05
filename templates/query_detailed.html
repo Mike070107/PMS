@@ -736,6 +736,8 @@
                                         <th>房租金额</th>
                                         <th>管理费月数</th>
                                         <th>管理费金额</th>
+                                        <th>押金次数</th>
+                                        <th>押金金额</th>
                                         <th>停车费月数</th>
                                         <th>停车费金额</th>
                                         <th>车牌号</th>
@@ -770,6 +772,8 @@
                                         <td :class="item.rentAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.rentAmount) }}</td>
                                         <td>{{ item.managementMonths || '-' }}</td>
                                         <td :class="item.managementAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.managementAmount) }}</td>
+                                        <td>{{ item.depositTimes || '-' }}</td>
+                                        <td :class="item.depositAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.depositAmount) }}</td>
                                         <td>{{ item.parkingMonths || '-' }}</td>
                                         <td :class="item.parkingAmount >= 0 ? 'amount' : 'negative-amount'">¥{{ formatPrice(item.parkingAmount) }}</td>
                                         <td>{{ item.licensePlate || '-' }}</td>

@@ -3605,6 +3605,14 @@
                                     :title="buttonDisabled.management ? '管理费已添加或未选择地址' : '添加管理费'">
                                     <i class="el-icon-office-building"></i> 添加管理费
                                 </el-button>
+                                <el-button 
+                                    type="primary" 
+                                    size="default" 
+                                    @click="addFeeItem('deposit')" 
+                                    :disabled="!selectedRoomId || buttonDisabled.deposit"
+                                    :title="buttonDisabled.deposit ? '押金已添加或未选择地址' : '添加押金'">
+                                    <i class="el-icon-coin"></i> 添加押金
+                                </el-button>
                             </div>
                             
                             <!-- 费用表格 -->
@@ -3627,7 +3635,7 @@
                                             <el-input-number
                                                 v-model="item.quantity"
                                                 :min="0"
-                                                :step="item.type === 'network' || item.type === 'parking' || item.type === 'rent' || item.type === 'management' ? 1 : 0.1"
+                                                :step="item.type === 'network' || item.type === 'parking' || item.type === 'rent' || item.type === 'management' || item.type === 'deposit' ? 1 : 0.1"
                                                 @change="(value) => handleQuantityChange(index, value)"
                                                 size="small"
                                                 style="width: 100%; max-width: 120px;">
@@ -3768,6 +3776,42 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- 押金详情行（如果是押金，显示额外信息） -->
+                            <div v-if="feeItems.some(item => item.type === 'deposit')" class="deposit-detail-cell" style="margin-top: 10px; padding: 15px; background-color: #f9f9f9; border-radius: 6px; border: 1px solid #e8e8e8;">
+                                <div style="margin-bottom: 10px; font-size: 14px; font-weight: 500; color: #333;">
+                                    <i class="el-icon-coin"></i> 押金详细信息
+                                </div>
+                                <div class="parking-fields" style="display: flex; gap: 20px; align-items: center;">
+                                    <div class="parking-field" style="display: flex; align-items: center;">
+                                        <input 
+                                            type="checkbox" 
+                                            :checked="getDepositItem() ? getDepositItem().isOpticalModem : false"
+                                            @change="(event) => { 
+                                                const depositItem = getDepositItem();
+                                                if (depositItem) {
+                                                    depositItem.isOpticalModem = event.target.checked;
+                                                }
+                                            }"
+                                            style="width: 18px; height: 18px; cursor: pointer; margin-right: 8px;">
+                                        <span style="font-size: 14px; color: #606266;">光猫盒押金</span>
+                                    </div>
+                                    
+                                    <div class="parking-field" style="display: flex; align-items: center;">
+                                        <input 
+                                            type="checkbox" 
+                                            :checked="getDepositItem() ? getDepositItem().isRentDeposit : false"
+                                            @change="(event) => { 
+                                                const depositItem = getDepositItem();
+                                                if (depositItem) {
+                                                    depositItem.isRentDeposit = event.target.checked;
+                                                }
+                                            }"
+                                            style="width: 18px; height: 18px; cursor: pointer; margin-right: 8px;">
+                                        <span style="font-size: 14px; color: #606266;">房租押金</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         
                         <!-- 汇总信息 -->
@@ -3867,6 +3911,7 @@
                             <table class="recent-records-table" v-if="todayUserOrders.length > 0">
                                 <thead>
                                     <tr>
+                                        <th>小区</th>
                                         <th>收费日期</th>
                                         <th>楼栋</th>
                                         <th>房号</th>
@@ -3881,6 +3926,7 @@
                                 </thead>
                                 <tbody>
                                     <tr v-for="order in todayUserOrders" :key="order.orderId">
+                                        <td>[[ order.community || '-' ]]</td>
                                         <td>[[ formatDate(order.entryTime) ]]</td>
                                         <td>[[ order.building || '-' ]]</td>
                                         <td>[[ order.room || '-' ]]</td>
@@ -3959,6 +4005,12 @@
                 
                 <div class="receipt-total">
                     总计金额：[[ receiptData.totalAmount ]] 元
+                </div>
+                
+                <!-- 备注栏位 -->
+                <div v-if="receiptData.remark" class="receipt-remark" style="text-align: left; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #000; font-size: 16px; word-wrap: break-word;">
+                    <div style="font-weight: bold; margin-bottom: 3px;">备注：</div>
+                    <div style="font-weight: normal;">[[ receiptData.remark ]]</div>
                 </div>
                 
                 <div class="receipt-footer">
@@ -4070,7 +4122,8 @@ const app = createApp({
             network: 0.00,
             parking: 0.00,
             rent: 0.00,
-            management: 0.00
+            management: 0.00,
+            deposit: 30.00
         });
 
         // 费用类型配置
@@ -4109,6 +4162,11 @@ const app = createApp({
                 name: '管理费', 
                 unit: '月', 
                 hasCarPlate: false 
+            },
+            deposit: { 
+                name: '押金', 
+                unit: '次', 
+                hasCarPlate: false 
             }
         };
         
@@ -4145,7 +4203,8 @@ const app = createApp({
             totalAmount: '',
             billNumber: '',
             printTime: '',
-            community: ''
+            community: '',
+            remark: ''  // 添加备注字段
         });
         
         // 检查费用类型是否已添加
@@ -4197,7 +4256,8 @@ const app = createApp({
                 network: isFeeTypeAdded('network'),
                 parking: isFeeTypeAdded('parking'),
                 rent: isFeeTypeAdded('rent'),
-                management: isFeeTypeAdded('management')
+                management: isFeeTypeAdded('management'),
+                deposit: isFeeTypeAdded('deposit')
             };
         });
         
@@ -4389,8 +4449,18 @@ const app = createApp({
                 console.log('获取收费标准结果:', result); // 调试用
                 
                 if (result.status === 'success') {
-                    // 更新社区单价
-                    communityPrices.value = result.data;
+                    // 更新社区单价，将deposit_fee映射为deposit
+                    const apiData = result.data;
+                    communityPrices.value = {
+                        electricity: apiData.electricity || 0.00,
+                        coldWater: apiData.coldWater || 0.00,
+                        hotWater: apiData.hotWater || 0.00,
+                        network: apiData.network || 0.00,
+                        parking: apiData.parking || 0.00,
+                        rent: apiData.rent_fee || 0.00,
+                        management: apiData.manage_fee || 0.00,
+                        deposit: apiData.deposit_fee || 30.00
+                    };
                     
                     console.log('更新后的费用配置:', feeConfig);
                     ElMessage.success('收费标准已加载');
@@ -4454,6 +4524,11 @@ const app = createApp({
         // 获取网费项目
         const getNetworkItem = () => {
             return feeItems.value.find(item => item.type === 'network') || null;
+        };
+
+        // 获取押金项目
+        const getDepositItem = () => {
+            return feeItems.value.find(item => item.type === 'deposit') || null;
         };
 
         // 处理车牌号输入
@@ -4557,7 +4632,10 @@ const app = createApp({
                 amount: finalAmount,  // 退费模式下为负数
                 carPlate: '',
                 startDate: (type === 'parking' || type === 'network') ? today : '',  // 停车费和网费默认开始日期为今日
-                endDate: (type === 'parking' || type === 'network') ? calculateEndDate(today, 1) : ''  // 停车费和网费默认结束日期
+                endDate: (type === 'parking' || type === 'network') ? calculateEndDate(today, 1) : '',  // 停车费和网费默认结束日期
+                // 押金特有字段
+                isOpticalModem: false,  // 光猫盒押金
+                isRentDeposit: false    // 房租押金
             };
             
             feeItems.value.push(newItem);
@@ -4772,13 +4850,29 @@ const app = createApp({
                 let feeText = '';
                 
                 if (item.type === 'parking') {
-                    // 停车费格式：停车费 | 1个月 | ¥130.00 | 2025/12/1-2025/12/31| 皖CMV152
+                    // 停车费格式：停车费 | 1个月 | ¥130.00<br>2025/12/1-2025/12/31<br>皖CMV152
                     const startDate = item.startDate ? formatDate(item.startDate).split(' ')[0] : '';
                     const endDate = item.endDate ? formatDate(item.endDate).split(' ')[0] : '';
                     const dateRange = startDate && endDate ? `${startDate}-${endDate}` : '';
                     const carPlate = item.carPlate || '';
                     
-                    feeText = `${name} | ${quantity}${unit} | ¥${formatPrice(amount)} | ${dateRange} | ${carPlate}`;
+                    feeText = `${name} | ${quantity}${unit} | ¥${formatPrice(amount)}`;
+                    if (dateRange) {
+                        feeText += `<br>${dateRange}`;
+                    }
+                    if (carPlate) {
+                        feeText += `<br>${carPlate}`;
+                    }
+                } else if (item.type === 'network') {
+                    // 网费格式：网费 | 1个月 | ¥50.00<br>2025/12/1-2025/12/31
+                    const startDate = item.startDate ? formatDate(item.startDate).split(' ')[0] : '';
+                    const endDate = item.endDate ? formatDate(item.endDate).split(' ')[0] : '';
+                    const dateRange = startDate && endDate ? `${startDate}-${endDate}` : '';
+                    
+                    feeText = `${name} | ${quantity}${unit} | ¥${formatPrice(amount)}`;
+                    if (dateRange) {
+                        feeText += `<br>${dateRange}`;
+                    }
                 } else {
                     // 其他项目格式：电费 | 200.0度 | ¥170.00
                     feeText = `${name} | ${quantity}${unit} | ¥${formatPrice(amount)}`;
@@ -4804,7 +4898,8 @@ const app = createApp({
                 totalAmount: formatPrice(totalAmount.value),
                 billNumber: result.data.billNumber,
                 printTime: timeStr,
-                community: user.value.community || ''
+                community: user.value.community || '',
+                remark: remark.value || ''  // 添加备注字段
             };
         };
         
@@ -4852,14 +4947,31 @@ const app = createApp({
                 const seconds = String(now.getSeconds()).padStart(2, '0');
                 const entryTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
                 
+                // 构建备注：检查押金项目的复选框状态
+                let finalRemark = remark.value || '';
+                const depositItem = getDepositItem();
+                if (depositItem) {
+                    const depositRemarks = [];
+                    if (depositItem.isOpticalModem) {
+                        depositRemarks.push('【光猫盒押金】');
+                    }
+                    if (depositItem.isRentDeposit) {
+                        depositRemarks.push('【房租押金】');
+                    }
+                    if (depositRemarks.length > 0) {
+                        // 将押金备注添加到现有备注之后
+                        finalRemark = finalRemark ? `${finalRemark} ${depositRemarks.join(' ')}` : depositRemarks.join(' ');
+                    }
+                }
+                
                 const orderData = {
                     addressId: selectedRoomId.value,
                     paymentMethod: paymentMethod.value,
                     totalAmount: totalAmount.value,
                     // 退费模式下在备注中添加【退费】标识（放在前面）
                     remark: isRefundMode.value ? 
-                            (remark.value ? `【退费】${remark.value}` : '【退费】') : 
-                            remark.value,
+                            (finalRemark ? `【退费】${finalRemark}` : '【退费】') : 
+                            finalRemark,
                     residentName: residentName.value,
                     residentPhone: residentPhone.value,
                     entryTime: entryTime,  // 添加收费日期时间
@@ -5434,20 +5546,29 @@ const app = createApp({
                                 let feeText = '';
                                 
                                 if (fee.name === '停车费') {
-                                    // 停车费格式：停车费 | 1个月 | ¥130.00 | 2025/12/1-2025/12/31| 皖CMV152
+                                    // 停车费格式：停车费 | 1个月 | ¥130.00<br>2025/12/1-2025/12/31<br>皖CMV152
                                     const startDate = fee.startDate ? formatDate(fee.startDate).split(' ')[0] : '';
                                     const endDate = fee.endDate ? formatDate(fee.endDate).split(' ')[0] : '';
                                     const dateRange = startDate && endDate ? `${startDate}-${endDate}` : '';
                                     const carPlate = fee.carPlate || '';
                                     
-                                    feeText = `${fee.name} | ${fee.quantity}${fee.unit} | ¥${formatPrice(fee.amount)} | ${dateRange} | ${carPlate}`;
+                                    feeText = `${fee.name} | ${fee.quantity}${fee.unit} | ¥${formatPrice(fee.amount)}`;
+                                    if (dateRange) {
+                                        feeText += `<br>${dateRange}`;
+                                    }
+                                    if (carPlate) {
+                                        feeText += `<br>${carPlate}`;
+                                    }
                                 } else if (fee.name === '网费') {
-                                    // 网费格式：网费 | 1个月 | ¥50.00 | 2025/12/1-2025/12/31
+                                    // 网费格式：网费 | 1个月 | ¥50.00<br>2025/12/1-2025/12/31
                                     const startDate = fee.startDate ? formatDate(fee.startDate).split(' ')[0] : '';
                                     const endDate = fee.endDate ? formatDate(fee.endDate).split(' ')[0] : '';
                                     const dateRange = startDate && endDate ? `${startDate}-${endDate}` : '';
                                     
-                                    feeText = `${fee.name} | ${fee.quantity}${fee.unit} | ¥${formatPrice(fee.amount)} | ${dateRange}`;
+                                    feeText = `${fee.name} | ${fee.quantity}${fee.unit} | ¥${formatPrice(fee.amount)}`;
+                                    if (dateRange) {
+                                        feeText += `<br>${dateRange}`;
+                                    }
                                 } else {
                                     // 其他项目格式：电费 | 200.0度 | ¥170.00
                                     feeText = `${fee.name} | ${fee.quantity}${fee.unit} | ¥${formatPrice(fee.amount)}`;
@@ -5500,7 +5621,8 @@ const app = createApp({
                             totalAmount: formatPrice(order.totalAmount),
                             billNumber: order.billNumber,
                             printTime: new Date().toLocaleString('zh-CN'),
-                            community: user.value.community || ''
+                            community: user.value.community || '',
+                            remark: order.remark || ''  // 添加备注字段
                         };
                         
                         // 打印凭据
@@ -6609,6 +6731,7 @@ const debugPrices = () => {
             formatDate,
             getParkingItem,
             getNetworkItem,
+            getDepositItem,
             saveParkingDetails,
             updateParkingEndDate,
             handleParkingStartDateChange,
