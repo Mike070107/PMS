@@ -174,3 +174,8 @@ Thumbs.db
 # Project backup archives
 *_project_archive.zip
 backup_*.zip
+
+# Local configuration (not used in production)
+config_local.py
+*.db
+wjwy_local.db

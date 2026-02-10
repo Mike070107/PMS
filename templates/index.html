@@ -21,7 +21,7 @@
     <!-- Laydate CSS -->
     <link rel="stylesheet" href="/static/lib/layui/layui.min.css">
     <!-- 引入 Vue 3 和 Element Plus -->
-    <script src="/static/lib/vue.global.js"></script>
+    <script src="./static/lib/vue.global.prod.js"></script>
     <script src="/static/lib/element-plus.full.js"></script>
     <script src="/static/lib/element-plus-icons.umd.js"></script>
     <!-- 设备指纹和API拦截器 -->
@@ -1524,10 +1524,41 @@
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
             border: 1px solid #e4e7ed;
             overflow: hidden;
+            max-height: 400px !important;
         }
         
         .el-picker-panel__body-wrapper {
             background: #ffffff;
+            max-height: 350px !important;
+            overflow: auto;
+        }
+        
+        /* 收费日期输入框样式 */
+        .date-input-wrapper {
+            position: relative;
+            width: 250px;
+        }
+        
+        .datetime-input {
+            width: 250px;
+            height: 40px;
+            padding: 0 15px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .datetime-input:hover {
+            border-color: #409eff;
+        }
+        
+        .datetime-input:focus {
+            border-color: #409eff;
+            box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+            outline: none;
         }
         
         .el-picker-panel__header {
@@ -3393,6 +3424,19 @@
                             
                             <div class="address-row">
                                 
+                                <!-- 收费日期选择 -->
+                                <div class="address-field">
+                                    <div class="field-label">收费日期</div>
+                                    <div class="date-input-wrapper" style="width: 250px;">
+                                        <input 
+                                            type="text" 
+                                            id="chargeDate" 
+                                            class="datetime-input"
+                                            placeholder="请选择日期"
+                                            readonly>
+                                    </div>
+                                </div>
+                                
                                 <!-- 楼栋选择 -->
                                 <div class="address-field">
                                     <div class="field-label">楼栋</div>
@@ -3444,7 +3488,7 @@
                                             v-model="residentName" 
                                             placeholder="请输入" 
                                             style="width: 100%;"
-                                            :maxlength="30"
+                                            :maxlength="50"
                                             show-word-limit>
                                         </el-input>
                                     </div>
@@ -3782,7 +3826,7 @@
                                 <div style="margin-bottom: 10px; font-size: 14px; font-weight: 500; color: #333;">
                                     <i class="el-icon-coin"></i> 押金详细信息
                                 </div>
-                                <div class="parking-fields" style="display: flex; gap: 20px; align-items: center;">
+                                <div class="parking-fields" style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
                                     <div class="parking-field" style="display: flex; align-items: center;">
                                         <input 
                                             type="checkbox" 
@@ -3809,6 +3853,20 @@
                                             }"
                                             style="width: 18px; height: 18px; cursor: pointer; margin-right: 8px;">
                                         <span style="font-size: 14px; color: #606266;">房租押金</span>
+                                    </div>
+                                    
+                                    <div class="parking-field" style="display: flex; align-items: center;">
+                                        <input 
+                                            type="checkbox" 
+                                            :checked="getDepositItem() ? getDepositItem().isAccessCardDeposit : false"
+                                            @change="(event) => { 
+                                                const depositItem = getDepositItem();
+                                                if (depositItem) {
+                                                    depositItem.isAccessCardDeposit = event.target.checked;
+                                                }
+                                            }"
+                                            style="width: 18px; height: 18px; cursor: pointer; margin-right: 8px;">
+                                        <span style="font-size: 14px; color: #606266;">门禁卡押金</span>
                                     </div>
                                 </div>
                             </div>
@@ -4090,6 +4148,17 @@ const app = createApp({
         const paymentMethod = ref('');
         const remark = ref('');
         const generating = ref(false);
+        
+        // 收费日期（默认为当前日期）
+        const getTodayDate = () => {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const day = String(today.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+        const chargeDate = ref(getTodayDate());
+        let chargeDatePickerInstance = null;  // 存储flatpickr实例
         
         // 退费模式
         const isRefundMode = ref(false);
@@ -4635,7 +4704,8 @@ const app = createApp({
                 endDate: (type === 'parking' || type === 'network') ? calculateEndDate(today, 1) : '',  // 停车费和网费默认结束日期
                 // 押金特有字段
                 isOpticalModem: false,  // 光猫盒押金
-                isRentDeposit: false    // 房租押金
+                isRentDeposit: false,   // 房租押金
+                isAccessCardDeposit: false  // 门禁卡押金
             };
             
             feeItems.value.push(newItem);
@@ -4937,15 +5007,20 @@ const app = createApp({
                 generating.value = true;
                 
                 // 准备数据
-                // 使用当前日期时间作为收费日期
+                // 使用收费日期控件的日期 + 当前时间
                 const now = new Date();
-                const year = now.getFullYear();
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                const day = String(now.getDate()).padStart(2, '0');
                 const hours = String(now.getHours()).padStart(2, '0');
                 const minutes = String(now.getMinutes()).padStart(2, '0');
                 const seconds = String(now.getSeconds()).padStart(2, '0');
-                const entryTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                // 使用选择的收费日期，如果没有选择则使用当前日期
+                let selectedDate = chargeDate.value;
+                if (!selectedDate) {
+                    const year = now.getFullYear();
+                    const month = String(now.getMonth() + 1).padStart(2, '0');
+                    const day = String(now.getDate()).padStart(2, '0');
+                    selectedDate = `${year}-${month}-${day}`;
+                }
+                const entryTime = `${selectedDate} ${hours}:${minutes}:${seconds}`;
                 
                 // 构建备注：检查押金项目的复选框状态
                 let finalRemark = remark.value || '';
@@ -4957,6 +5032,9 @@ const app = createApp({
                     }
                     if (depositItem.isRentDeposit) {
                         depositRemarks.push('【房租押金】');
+                    }
+                    if (depositItem.isAccessCardDeposit) {
+                        depositRemarks.push('【门禁卡押金】');
                     }
                     if (depositRemarks.length > 0) {
                         // 将押金备注添加到现有备注之后
@@ -5022,6 +5100,12 @@ const app = createApp({
                     body: JSON.stringify(orderData)
                 });
                 
+                // 检查响应状态
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.message || '数据保存失败');
+                }
+                
                 const result = await response.json();
                 
                 if (result.status === 'success') {
@@ -5076,6 +5160,13 @@ const app = createApp({
                             // 重置退费模式为未勾选状态
                             isRefundMode.value = false;
                             
+                            // 重置收费日期为当前日期
+                            const todayDate = getTodayDate();
+                            chargeDate.value = todayDate;
+                            if (chargeDatePickerInstance) {
+                                chargeDatePickerInstance.setDate(todayDate);
+                            }
+                            
                             // 重新加载最近记录
                             loadRecentOrders();
                             
@@ -5109,6 +5200,13 @@ const app = createApp({
                             // 重置退费模式为未勾选状态
                             isRefundMode.value = false;
                             
+                            // 重置收费日期为当前日期
+                            const todayDate = getTodayDate();
+                            chargeDate.value = todayDate;
+                            if (chargeDatePickerInstance) {
+                                chargeDatePickerInstance.setDate(todayDate);
+                            }
+                            
                             // 重新加载最近记录
                             loadRecentOrders();
                             
@@ -5125,7 +5223,9 @@ const app = createApp({
                 }
             } catch (error) {
                 console.error('生成账单失败:', error);
-                ElMessage.error('网络请求失败');
+                // 显示具体错误信息
+                const errorMessage = error.message || '网络请求失败';
+                ElMessage.error(errorMessage);
             } finally {
                 generating.value = false;
             }
@@ -5163,7 +5263,12 @@ const app = createApp({
                 // 重置退费模式为未勾选状态
                 isRefundMode.value = false;
                 
-                // 注意：收费日期时间不清空，保留当前时间
+                // 重置收费日期为当前日期
+                const todayDate = getTodayDate();
+                chargeDate.value = todayDate;
+                if (chargeDatePickerInstance) {
+                    chargeDatePickerInstance.setDate(todayDate);
+                }
                 
                 ElMessage.success('表单已清空');
             }).catch(() => {
@@ -5742,7 +5847,17 @@ const app = createApp({
             layui.use('laydate', function(){
                 const laydate = layui.laydate;
                 
-                // 日期时间选择器已移除，不再需要初始化
+                // 初始化收费日期选择器（使用flatpickr）
+                if (typeof flatpickr !== 'undefined') {
+                    chargeDatePickerInstance = flatpickr("#chargeDate", {
+                        locale: "zh",
+                        dateFormat: "Y-m-d",
+                        defaultDate: getTodayDate(),
+                        onChange: function(selectedDates, dateStr) {
+                            chargeDate.value = dateStr;
+                        }
+                    });
+                }
                 
                 // 初始化订单查询页面的日期选择器
                 // 开始时间选择器
@@ -6692,6 +6807,7 @@ const debugPrices = () => {
             rooms,
             selectedBuilding,
             selectedRoomId,
+            chargeDate,
             feeItems,
             paymentMethod,
             remark,

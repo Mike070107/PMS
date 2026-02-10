@@ -14,6 +14,7 @@ import random
 import logging
 import io
 import pandas as pd
+import gc
 from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime, timedelta
 
@@ -24,6 +25,7 @@ from flask_compress import Compress
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func
 
+# 加载配置
 from config import Config
 from log_utils import log_operation
 
@@ -61,12 +63,39 @@ app.config['COMPRESS_MIMETYPES'] = [
 app.config['COMPRESS_LEVEL'] = 6  # 压缩级别 1-9，6 是最佳平衡
 app.config['COMPRESS_MIN_SIZE'] = 500  # 小于 500 字节的不压缩
 
-# 数据库初始化
-db = SQLAlchemy(app)
+# 数据库初始化 - 优化资源配置
+db = SQLAlchemy(app, engine_options={
+    'pool_pre_ping': True,          # 连接前检测
+    'pool_recycle': 1800,           # 30分钟回收连接
+    'pool_timeout': 10,             # 连接超时时间缩短
+    'max_overflow': 2,              # 减少溢出连接，避免资源耗尽
+    'pool_size': 5,                 # 减少连接池大小
+    'pool_reset_on_return': 'rollback',  # 返回时重置连接
+    'pool_use_lifo': True           # 使用LIFO队列，重用最近使用的连接
+})
+
+# 全局请求钩子 - 自动管理数据库连接
+@app.teardown_appcontext
+def close_db(error):
+    """请求结束后自动关闭数据库连接"""
+    try:
+        db.session.remove()
+    except Exception as e:
+        app.logger.error(f"关闭数据库会话时出错: {str(e)}")
+
+@app.teardown_request
+def teardown_request(exception=None):
+    """每次请求结束后清理资源"""
+    try:
+        if exception:
+            db.session.rollback()
+        db.session.remove()
+    except Exception as e:
+        app.logger.error(f"请求清理时出错: {str(e)}")
 
 # ========== 日志配置 ==========
 def setup_logging():
-    """配置日志轮转：每天一个日志文件，保留7天"""
+    """配置日志轮转 - 优化文件句柄管理"""
     # 创建日志目录
     log_dir = os.path.join(basedir, 'logs')
     if not os.path.exists(log_dir):
@@ -75,13 +104,15 @@ def setup_logging():
     # 配置日志文件路径
     log_file = os.path.join(log_dir, 'app.log')
     
-    # 创建时间轮转处理器：每天午夜轮转，保留7天备份
+    # 创建优化的时间轮转处理器：减少备份文件，及时关闭文件句柄
     file_handler = TimedRotatingFileHandler(
         log_file,
         when='midnight',  # 每天午夜轮转
         interval=1,       # 每天一次
-        backupCount=7,    # 保留7天备份
-        encoding='utf-8'
+        backupCount=3,    # 减少备份文件数量
+        encoding='utf-8',
+        delay=True,       # 延迟打开文件，减少文件句柄占用
+        utc=False         # 使用本地时间
     )
     
     # 设置日志格式
@@ -97,6 +128,10 @@ def setup_logging():
     
     # 减少第三方库的日志级别
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
+    
+    # 注册应用退出时的日志处理器清理
+    import atexit
+    atexit.register(lambda: file_handler.close() if file_handler else None)
     
     app.logger.info('公寓物业收费系统启动')
     return file_handler
@@ -276,7 +311,7 @@ class OperationLog(db.Model):
     """操作日志表模型 - 详细版"""
     __tablename__ = 'operation_logs'
     
-    ID = db.Column('ID', db.BigInteger, primary_key=True, autoincrement=True, comment='日志唯一标识')
+    ID = db.Column('ID', db.Integer, primary_key=True, autoincrement=True, comment='日志唯一标识')
     
     # 时间信息
     操作时间 = db.Column('操作时间', db.DateTime, default=datetime.now, nullable=False, index=True, comment='操作时间')
@@ -504,6 +539,11 @@ def test_page():
     </html>
     '''
 
+@app.route('/test_simple')
+def test_simple_page():
+    """简单测试页面"""
+    return render_template('test_simple.html')
+
 @app.route('/test-static')
 def test_static():
     """测试静态文件是否可访问"""
@@ -548,55 +588,187 @@ def api_test():
 # 1. 用户认证
 @app.route('/api/login', methods=['POST'])
 def login():
-    """用户登录"""
-    data = request.get_json()
-    
-    if not data or not data.get('username') or not data.get('password'):
-        return jsonify({'status': 'error', 'message': '请输入用户名和密码'}), 400
+    """用户登录 - 增强错误处理和调试"""
+    try:
+        # 记录请求开始
+        app.logger.info("=== 登录请求开始 ===")
+        app.logger.info(f"请求来源: {request.remote_addr}")
+        app.logger.info(f"请求方法: {request.method}")
+        app.logger.info(f"请求头: {dict(request.headers)}")
+        
+        # 获取请求数据
+        data = request.get_json()
+        app.logger.info(f"接收到的请求数据: {data}")
+        
+        if not data:
+            app.logger.warning("请求数据为空")
+            return jsonify({'status': 'error', 'message': '请求数据格式错误'}), 400
+        
+        if not data.get('username'):
+            app.logger.warning("缺少用户名")
+            return jsonify({'status': 'error', 'message': '请输入用户名'}), 400
+        
+        if not data.get('password'):
+            app.logger.warning("缺少密码")
+            return jsonify({'status': 'error', 'message': '请输入密码'}), 400
+        
+        # 记录用户名（不记录密码）
+        app.logger.info(f"尝试登录用户名: {data['username'][:3]}***")
+        
+        # 查询用户
+        app.logger.info("开始查询用户...")
+        user = User.query.filter_by(USERNAME=data['username']).first()
+        app.logger.info(f"用户查询结果: {'找到' if user else '未找到'}")
+        
+        if user:
+            app.logger.info(f"用户信息: ID={user.ID}, USERNAME={user.USERNAME}, COMMUNITY={user.COMMUNITY}")
+            app.logger.info(f"用户密码长度: {len(user.PWD)}")
+            
+            # 验证密码
+            stored_password = user.PWD
+            input_password = data['password']
+            app.logger.info(f"密码验证: 存储密码长度={len(stored_password)}, 输入密码长度={len(input_password)}")
+            
+            # 兼容明文密码和加密密码
+            if stored_password.startswith(('pbkdf2:', 'scrypt:', 'bcrypt:')):
+                # 加密密码，使用 werkzeug 验证
+                from utils import verify_password
+                password_valid = verify_password(stored_password, input_password)
+                app.logger.info(f"密码验证方式: 加密验证, 结果: {password_valid}")
+            else:
+                # 明文密码，直接比对
+                password_valid = (stored_password == input_password)
+                app.logger.info(f"密码验证方式: 明文比对, 结果: {password_valid}")
+            
+            if password_valid:
+                app.logger.info("密码验证通过，开始生成令牌...")
+                # 生成JWT令牌
+                from datetime import datetime, timedelta
+                
+                # 计算当天23:59:59的UTC时间戳
+                today_end = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+                exp_timestamp = int(today_end.timestamp())
+                
+                app.logger.info(f"令牌过期时间: {today_end}")
+                
+                token = jwt.encode({
+                    'user_id': user.ID,
+                    'username': user.USERNAME,
+                    'real_name': user.用户姓名 or user.USERNAME,
+                    'community_num': user.小区编号,
+                    'role': user.Role,
+                    'exp': exp_timestamp
+                }, app.config['SECRET_KEY'], algorithm='HS256')
+                
+                app.logger.info("JWT令牌生成成功")
+                
+                # 在session关闭前预先获取用户数据
+                user_data = {
+                    'id': user.ID,
+                    'username': user.USERNAME,
+                    'real_name': user.用户姓名 or user.USERNAME,
+                    'community': user.COMMUNITY,
+                    'community_num': user.小区编号,
+                    'role': user.Role,
+                    'permissions': {
+                        'edit': bool(user.Edit),
+                        'read': bool(user.Read),
+                        'report': bool(user.Report)
+                    }
+                }
+                
+                # 记录登录日志
+                try:
+                    app.logger.info("开始记录登录日志...")
+                    log_operation(
+                        operation_type='登录',
+                        operation_module='系统登录',
+                        operation_detail=f'用户 [{user.USERNAME}] 登录系统',
+                        user=user
+                    )
+                    app.logger.info("登录日志记录成功")
+                except Exception as log_error:
+                    app.logger.error(f"记录登录日志失败: {str(log_error)}")
+                    app.logger.error(f"日志错误详情: {traceback.format_exc()}")
+                    # 登录日志失败不应该阻止用户登录
+                
+                # 成功响应
+                app.logger.info("登录成功，返回响应")
+                return jsonify({
+                    'status': 'success',
+                    'message': '登录成功',
+                    'token': token,
+                    'user': user_data
+                })
+            else:
+                app.logger.warning("密码验证失败")
+                return jsonify({'status': 'error', 'message': '用户名或密码错误'}), 401
+        else:
+            app.logger.warning("用户不存在")
+            return jsonify({'status': 'error', 'message': '用户名或密码错误'}), 401
+            
+    except Exception as e:
+        # 详细错误记录
+        error_msg = f"登录异常: {str(e)}"
+        app.logger.error(error_msg)
+        app.logger.error(f"错误详情: {traceback.format_exc()}")
+        
+        # 返回详细错误信息给前端（仅在开发环境）
+        return jsonify({
+            'status': 'error', 
+            'message': '服务器内部错误',
+            'debug_info': str(e) if app.config.get('DEBUG', False) else '请联系系统管理员'
+        }), 500
+    finally:
+        app.logger.info("=== 登录请求结束 ===\n")
+
+@app.route('/api/test_db_connection', methods=['GET'])
+def test_db_connection():
+    """测试数据库连接，用于诊断连接问题"""
+    try:
+        # 尝试执行简单查询
+        result = db.session.execute(db.text('SELECT 1')).fetchone()
+        if result:
+            return jsonify({'status': 'success', 'message': '数据库连接正常'})
+        else:
+            return jsonify({'status': 'error', 'message': '数据库连接测试失败'})
+    except Exception as e:
+        app.logger.error(f"数据库连接测试失败: {str(e)}")
+        return jsonify({'status': 'error', 'message': f'数据库连接失败: {str(e)}'}), 500
+
+@app.route('/api/debug-info', methods=['GET'])
+def debug_info():
+    """调试信息接口，用于诊断各种系统信息"""
+    import psutil
+    import os
     
     try:
-        # 查询用户
-        user = User.query.filter_by(USERNAME=data['username']).first()
+        # 获取系统资源信息
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory_info = psutil.virtual_memory()
+        disk_info = psutil.disk_usage('/')
         
-        # 注意：我们初始化数据用的是明文密码，这里直接对比
-        if user and user.PWD == data['password']:
-            # 生成JWT令牌 - 设置为当天有效，跨日期后自动失效
-            from datetime import datetime, timedelta
-            
-            # 计算当天23:59:59的UTC时间戳
-            today_end = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
-            # JWT exp字段需要UTC时间戳（整数）
-            exp_timestamp = int(today_end.timestamp())
-            
-            token = jwt.encode({
-                'user_id': user.ID,
-                'username': user.USERNAME,
-                'real_name': user.用户姓名 or user.USERNAME,  # 新增真实姓名
-                'community_num': user.小区编号,
-                'role': user.Role,
-                'exp': exp_timestamp
-            }, app.config['SECRET_KEY'], algorithm='HS256')
-            
-            # 记录登录日志
-            log_operation(
-                operation_type='登录',
-                operation_module='系统登录',
-                operation_detail=f'用户 [{user.USERNAME}] 登录系统',
-                user=user  # 直接传入user对象
-            )
-            
-            return jsonify({
-                'status': 'success',
-                'message': '登录成功',
-                'token': token,
-                'user': user.to_dict()  # 这里会包含 real_name
-            })
-        else:
-            return jsonify({'status': 'error', 'message': '用户名或密码错误'}), 401
-    
+        # 获取进程信息
+        current_process = psutil.Process(os.getpid())
+        open_files = len(current_process.open_files()) if current_process.open_files() else 0
+        connections = len(current_process.connections())
+        
+        return jsonify({
+            'status': 'success',
+            'debug_info': {
+                'cpu_percent': cpu_percent,
+                'memory_percent': memory_info.percent,
+                'disk_percent': (disk_info.used / disk_info.total) * 100,
+                'open_files_count': open_files,
+                'connections_count': connections,
+                'database_uri': app.config.get('SQLALCHEMY_DATABASE_URI', 'Not configured'),
+                'server_host': request.host,
+                'remote_addr': request.remote_addr
+            }
+        })
     except Exception as e:
-        app.logger.error(f"登录异常: {str(e)}\n{traceback.format_exc()}")
-        return jsonify({'status': 'error', 'message': '服务器内部错误'}), 500
+        app.logger.error(f"获取调试信息失败: {str(e)}")
+        return jsonify({'status': 'error', 'message': f'获取调试信息失败: {str(e)}'}), 500
 
 # 2. 获取地址
 @app.route('/api/addresses', methods=['GET'])
@@ -780,16 +952,20 @@ def update_fee_prices():
         # 手动更新updated_at字段
         fee_price.updated_at = datetime.now()
         
+        # 在commit前保存需要的数据
+        fee_price_dict = fee_price.to_dict()
+        community_name = fee_price.community
+        
         # 提交数据库修改
         db.session.commit()
         
-        app.logger.info(f"收费标准更新成功: 小区={fee_price.community}, ID={community_num}")
+        app.logger.info(f"收费标准更新成功: 小区={community_name}, ID={community_num}")
         
         # 记录操作日志
         log_operation(
             operation_type='更新',
             operation_module='收费标准管理',
-            operation_detail=f'更新小区 [{fee_price.community}] 的收费标准',
+            operation_detail=f'更新小区 [{community_name}] 的收费标准',
             target_id=str(community_num),
             target_type='收费标准'
         )
@@ -797,7 +973,7 @@ def update_fee_prices():
         return jsonify({
             "status": "success",
             "message": "收费标准更新成功",
-            "data": fee_price.to_dict()
+            "data": fee_price_dict
         })
         
     except ValueError as e:
@@ -879,11 +1055,11 @@ def create_order():
         if 'residentName' in data or 'residentPhone' in data:
             resident_name = (data.get('residentName') or '').strip()
             resident_phone = (data.get('residentPhone') or '').strip()
-            
-            # 验证姓名
+                        
+            # 验证姓名（仅验证长度，支持公司名称）
             if resident_name:
-                if not re.match(r'^[\u4e00-\u9fa5A-Za-z]{2,10}$', resident_name):
-                    return jsonify({'status': 'error', 'message': '姓名格式不正确（2-10个中英文字符）'}), 400
+                if len(resident_name) > 50:
+                    return jsonify({'status': 'error', 'message': '姓名或公司名称过长（最多50个字符）'}), 400
             
             # 验证手机号
             if resident_phone:
@@ -997,7 +1173,10 @@ def create_order():
         
         # 6. 保存到数据库
         db.session.add(new_order)
-        db.session.commit()
+        db.session.flush()  # 刷新以获取订单ID，但不提交事务
+        
+        # 在commit前保存订单ID和其他需要的值
+        order_id = new_order.订单ID
         
         # 7. 检查是否是红冲操作，如果是，则更新原订单
         if 'originalOrderId' in data:
@@ -1017,10 +1196,7 @@ def create_order():
                     # 设置新创建的红冲订单的红冲字段为1
                     new_order.红冲 = 1
                     
-                    # 提交更改
-                    db.session.commit()
-                    
-                    app.logger.info(f"红冲操作完成：原订单ID {original_order_id}，新订单ID {new_order.订单ID}")
+                    app.logger.info(f"红冲操作完成：原订单ID {original_order_id}，新订单ID {order_id}")
                 else:
                     app.logger.warning(f"未找到原订单ID {original_order_id}")
                     
@@ -1029,26 +1205,49 @@ def create_order():
                 db.session.rollback()
                 # 不影响红冲订单的创建，只记录错误
         
+        # 现在提交事务
+        db.session.commit()
+        
         # 8. 记录操作日志
-        # 构建收费项目清单
+        # 构建收费项目清单（使用数据字典而不是对象属性）
         fee_items = []
-        if new_order.电费金额 and float(new_order.电费金额) != 0:
-            fee_items.append(f"电费 {new_order.电费度数}度 ￥{float(new_order.电费金额):.2f}")
-        if new_order.冷水金额 and float(new_order.冷水金额) != 0:
-            fee_items.append(f"冷水费 {new_order.冷水吨数}吨 ￥{float(new_order.冷水金额):.2f}")
-        if new_order.热水金额 and float(new_order.热水金额) != 0:
-            fee_items.append(f"热水费 {new_order.热水吨数}吨 ￥{float(new_order.热水金额):.2f}")
-        if new_order.网费金额 and float(new_order.网费金额) != 0:
-            fee_items.append(f"网费 {new_order.网费月数}月 ￥{float(new_order.网费金额):.2f}")
-        if new_order.停车费金额 and float(new_order.停车费金额) != 0:
-            car_info = f" ({new_order.车牌号})" if new_order.车牌号 else ""
-            fee_items.append(f"停车费 {new_order.停车费月数}月 ￥{float(new_order.停车费金额):.2f}{car_info}")
-        if new_order.房租金额 and float(new_order.房租金额) != 0:
-            fee_items.append(f"房租 {new_order.房租月数}月 ￥{float(new_order.房租金额):.2f}")
-        if new_order.管理费金额 and float(new_order.管理费金额) != 0:
-            fee_items.append(f"管理费 {new_order.管理费月数}月 ￥{float(new_order.管理费金额):.2f}")
-        if new_order.押金金额 and float(new_order.押金金额) != 0:
-            fee_items.append(f"押金 {new_order.押金次数}次 ￥{float(new_order.押金金额):.2f}")
+        
+        # 从前端传入的items数据构建收费项目清单
+        for item in data.get('items', []):
+            fee_type = item.get('type')
+            quantity = item.get('quantity', 0)
+            amount = item.get('amount', 0)
+            
+            if float(amount) != 0:
+                type_name_map = {
+                    'electric': '电费',
+                    'coldWater': '冷水费',
+                    'hotWater': '热水费',
+                    'network': '网费',
+                    'parking': '停车费',
+                    'rent': '房租',
+                    'management': '管理费',
+                    'deposit': '押金'
+                }
+                
+                unit_map = {
+                    'electric': '度',
+                    'coldWater': '吨',
+                    'hotWater': '吨',
+                    'network': '月',
+                    'parking': '月',
+                    'rent': '月',
+                    'management': '月',
+                    'deposit': '次'
+                }
+                
+                type_name = type_name_map.get(fee_type, fee_type)
+                unit = unit_map.get(fee_type, '')
+                
+                if fee_type == 'parking' and item.get('carNumber'):
+                    fee_items.append(f"{type_name} {quantity}{unit} ￥{float(amount):.2f} ({item.get('carNumber')})")
+                else:
+                    fee_items.append(f"{type_name} {quantity}{unit} ￥{float(amount):.2f}")
         
         operation_detail = {
             '账单号': bill_number,
@@ -1065,7 +1264,7 @@ def create_order():
             operation_type='红冲' if is_red_reverse else '新增',
             operation_module='订单管理',
             operation_detail=operation_detail,
-            target_id=str(new_order.订单ID),
+            target_id=str(order_id),
             target_type='订单',
             operation_result='success'
         )
@@ -1074,7 +1273,7 @@ def create_order():
             'status': 'success',
             'message': '订单创建成功',
             'data': {
-                'orderId': new_order.订单ID,
+                'orderId': order_id,
                 'billNumber': bill_number,
                 'totalAmount': float(data['totalAmount'])
             }
@@ -1548,13 +1747,17 @@ def update_user_name(user_id):
             return jsonify({'status': 'error', 'message': '用户不存在'}), 404
         
         user.用户姓名 = real_name
+        
+        # 在commit前保存用户名
+        username = user.USERNAME
+        
         db.session.commit()
         
         # 记录操作日志
         log_operation(
             operation_type='更新',
             operation_module='用户管理',
-            operation_detail=f'更新用户 [{user.USERNAME}] 的姓名为 [{real_name}]',
+            operation_detail=f'更新用户 [{username}] 的姓名为 [{real_name}]',
             target_id=str(user_id),
             target_type='用户'
         )
@@ -1589,11 +1792,11 @@ def update_address(address_id):
         data = request.get_json()
         name = data.get('name', '').strip()
         phone = data.get('phone', '').strip()
-        
-        # 验证姓名（2-10个字符，支持中文和英文）
+                
+        # 验证姓名（仅验证长度，支持公司名称）
         if name:
-            if not re.match(r'^[\u4e00-\u9fa5A-Za-z]{2,10}$', name):
-                return jsonify({'status': 'error', 'message': '姓名格式不正确（2-10个中英文字符）'}), 400
+            if len(name) > 50:
+                return jsonify({'status': 'error', 'message': '姓名或公司名称过长（最多50个字符）'}), 400
         
         # 验证手机号（11位数字，1开头）
         if phone:
@@ -1606,13 +1809,18 @@ def update_address(address_id):
         if 'phone' in data:
             address.手机号 = phone if phone else None
         
+        # 在commit前保存需要的数据
+        address_dict = address.to_dict()
+        building = address.楼栋号
+        room = address.房间号
+        
         db.session.commit()
         
         # 记录操作日志
         log_operation(
             operation_type='更新',
             operation_module='住户管理',
-            operation_detail=f'更新地址 {address.楼栋号}{address.房间号} 的住户信息',
+            operation_detail=f'更新地址 {building}{room} 的住户信息',
             target_id=str(address_id),
             target_type='地址'
         )
@@ -1620,7 +1828,7 @@ def update_address(address_id):
         return jsonify({
             'status': 'success',
             'message': '住户信息更新成功',
-            'data': address.to_dict()
+            'data': address_dict
         })
     
     except Exception as e:
@@ -1727,14 +1935,20 @@ def create_fee_price():
         )
         
         db.session.add(new_fee_price)
+        db.session.flush()  # 刷新以获取ID
+        
+        # 在commit前保存ID
+        fee_price_id = new_fee_price.id
+        community_name = data["community"]
+        
         db.session.commit()
         
         # 记录操作日志
         log_operation(
             operation_type='新增',
             operation_module='收费标准管理',
-            operation_detail=f'创建小区 [{data["community"]}] 的收费标准',
-            target_id=str(new_fee_price.id),
+            operation_detail=f'创建小区 [{community_name}] 的收费标准',
+            target_id=str(fee_price_id),
             target_type='收费标准'
         )
         
@@ -1782,13 +1996,17 @@ def update_fee_price(id):
         if 'management' in data:
             fee_price.manage_fee = data['management']
         
+        # 在commit前保存需要的数据
+        fee_price_dict = fee_price.to_dict()
+        community_name = fee_price.community
+        
         db.session.commit()
         
         # 记录操作日志
         log_operation(
             operation_type='更新',
             operation_module='收费标准管理',
-            operation_detail=f'更新小区 [{fee_price.community}] 的收费标准',
+            operation_detail=f'更新小区 [{community_name}] 的收费标准',
             target_id=str(id),
             target_type='收费标准'
         )
@@ -1796,7 +2014,7 @@ def update_fee_price(id):
         return jsonify({
             'status': 'success',
             'message': '收费标准更新成功',
-            'data': fee_price.to_dict()
+            'data': fee_price_dict
         })
     
     except Exception as e:
@@ -2866,10 +3084,52 @@ def export_orders_detailed():
         
         df = pd.DataFrame(data)
         
+        # 计算各类金额统计
+        summary_stats = {
+            '序号': '统计汇总',
+            '小区': '',
+            '订单号': '',
+            '收费日期': '',
+            '楼栋号': '',
+            '房号': '',
+            '姓名': '',
+            '电话': '',
+            '收费金额': df['收费金额'].sum() if '收费金额' in df.columns else 0,
+            '收款方式': '',
+            '电费度数': '',
+            '电费金额': df['电费金额'].sum() if '电费金额' in df.columns else 0,
+            '热水吨数': '',
+            '热水金额': df['热水金额'].sum() if '热水金额' in df.columns else 0,
+            '冷水吨数': '',
+            '冷水金额': df['冷水金额'].sum() if '冷水金额' in df.columns else 0,
+            '网费月数': '',
+            '网费金额': df['网费金额'].sum() if '网费金额' in df.columns else 0,
+            '房租月数': '',
+            '房租金额': df['房租金额'].sum() if '房租金额' in df.columns else 0,
+            '管理费月数': '',
+            '管理费金额': df['管理费金额'].sum() if '管理费金额' in df.columns else 0,
+            '押金次数': '',
+            '押金金额': df['押金金额'].sum() if '押金金额' in df.columns else 0,
+            '停车费月数': '',
+            '停车费金额': df['停车费金额'].sum() if '停车费金额' in df.columns else 0,
+            '车牌号': '',
+            '停车开始日期': '',
+            '停车结束日期': '',
+            '网费开始日期': '',
+            '网费结束日期': '',
+            '备注': ''
+        }
+        
+        # 创建统计汇总行的DataFrame
+        summary_df = pd.DataFrame([summary_stats])
+        
+        # 将统计汇总行添加到数据末尾
+        df_with_summary = pd.concat([df, summary_df], ignore_index=True)
+        
         # 写入到BytesIO
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='详细订单查询')
+            df_with_summary.to_excel(writer, index=False, sheet_name='详细订单查询')
         
         output.seek(0)
         
@@ -3431,14 +3691,62 @@ def export_financial_reconciliation():
         return jsonify({'status': 'error', 'message': '导出失败'}), 500
 
 
+# ========== 请求后处理钩子 ==========
+@app.teardown_appcontext
+def cleanup_db_session(exception):
+    """请求后清理数据库会话和资源"""
+    try:
+        # 清理数据库会话
+        db.session.remove()
+        
+        # 定期清理数据库连接池
+        if not hasattr(app, '_request_count'):
+            app._request_count = 0
+        app._request_count += 1
+        
+        # 每50个请求强制清理一次连接池
+        if app._request_count % 50 == 0:
+            try:
+                db.engine.dispose()
+                app.logger.info(f"第{app._request_count}次请求后执行连接池清理")
+            except Exception as e:
+                app.logger.error(f"清理连接池时出错: {e}")
+                
+    except Exception as e:
+        app.logger.error(f"请求后清理资源时出错: {e}")
+
 # ========== 错误处理 ==========
 @app.errorhandler(404)
 def not_found(error):
+    """404错误处理"""
     return jsonify({'status': 'error', 'message': '请求的资源不存在'}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
+    """500错误处理 - 增强资源清理"""
     app.logger.error(f"服务器内部错误: {str(error)}")
+    
+    # 异常时强制清理资源
+    try:
+        db.session.rollback()
+        db.session.remove()
+    except:
+        pass
+        
+    return jsonify({'status': 'error', 'message': '服务器内部错误'}), 500
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    """全局异常处理 - 增强资源清理"""
+    app.logger.error(f"未处理的异常: {str(e)}", exc_info=True)
+    
+    # 强制清理资源
+    try:
+        db.session.rollback()
+        db.session.remove()
+    except:
+        pass
+        
     return jsonify({'status': 'error', 'message': '服务器内部错误'}), 500
 
 # ========== 应用启动 ==========

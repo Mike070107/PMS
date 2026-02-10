@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>测试页面</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/element-plus"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus/dist/index.css">
+</head>
+<body>
+    <div id="app">
+        <h1>{{ message }}</h1>
+        <el-date-picker
+            v-model="testDate"
+            type="date"
+            placeholder="请选择日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD">
+        </el-date-picker>
+        <p>选择的日期: {{ testDate }}</p>
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue;
+        const { ElDatePicker } = ElementPlus;
+
+        const app = createApp({
+            setup() {
+                const message = ref('Vue 3 正常工作！');
+                const getTodayDate = () => {
+                    const today = new Date();
+                    const year = today.getFullYear();
+                    const month = String(today.getMonth() + 1).padStart(2, '0');
+                    const day = String(today.getDate()).padStart(2, '0');
+                    return `${year}-${month}-${day}`;
+                };
+                const testDate = ref(getTodayDate());
+
+                return {
+                    message,
+                    testDate
+                };
+            }
+        });
+
+        app.use(ElementPlus);
+        app.mount('#app');
+    </script>
+</body>
+</html>

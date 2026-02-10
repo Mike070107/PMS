@@ -387,6 +387,31 @@
             padding-left: 12px !important;
         }
 
+        /* 统计汇总行 */
+        .statistics-summary {
+            margin-top: 0;
+        }
+
+        .summary-table {
+            margin-top: 0px;
+        }
+
+        .summary-row {
+            background: #f8f9fa !important;
+            font-weight: bold;
+        }
+
+        .summary-label {
+            background: #f8f9fa !important;
+            font-weight: bold;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .summary-amount {
+            color: #28a745;
+            font-weight: bold;
+        }
+
         /* 空数据状态 */
         .empty-data {
             display: flex;
@@ -786,6 +811,27 @@
                                 </tbody>
                             </table>
 
+                            <!-- 统计汇总行 -->
+                            <div v-if="tableData.length > 0" class="statistics-summary">
+                                <table class="orders-table summary-table">
+                                    <tbody>
+                                        <tr class="summary-row">
+                                            <td colspan="32" class="summary-label" style="text-align: left; padding-left: 20px;">
+                                                统计汇总：收费金额 ¥{{ formatPrice(summaryStats.totalAmount) }} | 
+                                                电费金额 ¥{{ formatPrice(summaryStats.electricityAmount) }} | 
+                                                热水金额 ¥{{ formatPrice(summaryStats.hotWaterAmount) }} | 
+                                                冷水金额 ¥{{ formatPrice(summaryStats.coldWaterAmount) }} | 
+                                                网费金额 ¥{{ formatPrice(summaryStats.internetAmount) }} | 
+                                                房租金额 ¥{{ formatPrice(summaryStats.rentAmount) }} | 
+                                                管理费金额 ¥{{ formatPrice(summaryStats.managementAmount) }} | 
+                                                押金金额 ¥{{ formatPrice(summaryStats.depositAmount) }} | 
+                                                停车费金额 ¥{{ formatPrice(summaryStats.parkingAmount) }}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
                             <!-- 分页组件 -->
                             <div class="pagination" v-if="tableData.length > 0">
                                 <el-pagination
@@ -881,6 +927,35 @@
                     return tableData.value.reduce((sum, item) => {
                         return sum + (parseFloat(item.totalAmount) || 0);
                     }, 0);
+                });
+
+                // 计算各类金额统计
+                const summaryStats = computed(() => {
+                    const stats = {
+                        totalAmount: 0,
+                        electricityAmount: 0,
+                        hotWaterAmount: 0,
+                        coldWaterAmount: 0,
+                        internetAmount: 0,
+                        rentAmount: 0,
+                        managementAmount: 0,
+                        depositAmount: 0,
+                        parkingAmount: 0
+                    };
+
+                    tableData.value.forEach(item => {
+                        stats.totalAmount += parseFloat(item.totalAmount) || 0;
+                        stats.electricityAmount += parseFloat(item.electricityAmount) || 0;
+                        stats.hotWaterAmount += parseFloat(item.hotWaterAmount) || 0;
+                        stats.coldWaterAmount += parseFloat(item.coldWaterAmount) || 0;
+                        stats.internetAmount += parseFloat(item.internetAmount) || 0;
+                        stats.rentAmount += parseFloat(item.rentAmount) || 0;
+                        stats.managementAmount += parseFloat(item.managementAmount) || 0;
+                        stats.depositAmount += parseFloat(item.depositAmount) || 0;
+                        stats.parkingAmount += parseFloat(item.parkingAmount) || 0;
+                    });
+
+                    return stats;
                 });
 
                 // 小区选择是否禁用：小区操作员不能选择其他小区
@@ -1202,6 +1277,7 @@
                     pageSize,
                     paginatedData,
                     totalAmount,
+                    summaryStats,  // 添加统计计算属性
                     isCommunityDisabled,  // 添加计算属性
                     queryData,
                     resetQuery,

@@ -1,14 +1,17 @@
 """
-操作日志工具模块
-提供日志记录、装饰器等功能
+操作日志工具模块 - 优化版本
+提供日志记录、装饰器等功能，优化文件句柄管理
 """
 
 import json
 import time
+import logging
 from datetime import datetime
 from flask import request, g
 from functools import wraps
 
+# 配置日志
+logger = logging.getLogger(__name__)
 
 def get_client_ip():
     """获取客户端真实IP地址"""
@@ -19,7 +22,6 @@ def get_client_ip():
     else:
         ip = request.remote_addr or 'unknown'
     return ip
-
 
 def get_mac_address_from_request():
     """
@@ -32,12 +34,30 @@ def get_mac_address_from_request():
         mac = request.args.get('client_mac') or request.form.get('client_mac')
     return mac or ''
 
-
 def get_user_agent():
     """获取浏览器UserAgent"""
     return request.headers.get('User-Agent', '')
 
+def safe_db_operation(func):
+    """安全的数据库操作装饰器"""
+    def wrapper(*args, **kwargs):
+        try:
+            result = func(*args, **kwargs)
+            return result
+        except Exception as e:
+            logger.error(f"数据库操作失败: {str(e)}")
+            # 尝试回滚事务
+            try:
+                from flask import current_app
+                if 'sqlalchemy' in current_app.extensions:
+                    db = current_app.extensions['sqlalchemy']
+                    db.session.rollback()
+            except Exception as rollback_error:
+                logger.error(f"回滚事务失败: {str(rollback_error)}")
+            raise
+    return wrapper
 
+@safe_db_operation
 def log_operation(
     operation_type,
     operation_module,
@@ -47,21 +67,10 @@ def log_operation(
     operation_result='success',
     error_message='',
     response_time=0,
-    user=None  # 新增：允许直接传入user对象（用于登录场景）
+    user=None
 ):
     """
-    记录操作日志
-    
-    参数说明:
-        operation_type: 操作类型（登录/登出/新增/修改/删除/查询/导出/打印等）
-        operation_module: 操作模块（用户管理/订单管理/收费标准管理/数据报表等）
-        operation_detail: 操作详情（建议使用JSON字符串）
-        target_id: 目标ID（如订单ID、用户ID等）
-        target_type: 目标类型（订单/用户/收费标准等）
-        operation_result: 操作结果（success/fail/error）
-        error_message: 错误信息
-        response_time: 响应时间（毫秒）
-        user: 用户对象（可选，用于登录时直接传入）
+    记录操作日志 - 优化版本
     """
     try:
         # 延迟导入避免循环依赖
@@ -71,12 +80,16 @@ def log_operation(
         if user is None:
             current_user = getattr(g, 'current_user', None)
             if not current_user:
-                print("Warning: log_operation called without current_user in context")
+                logger.warning("log_operation called without current_user in context")
                 return
         else:
             current_user = user
         
         # 通过current_app获取db和OperationLog（避免循环导入）
+        from flask import current_app
+        if 'sqlalchemy' not in current_app.extensions:
+            logger.error("SQLAlchemy extension not initialized")
+            return
         db = current_app.extensions['sqlalchemy']
         from app import OperationLog
         
@@ -143,9 +156,21 @@ def log_operation(
         db.session.add(log)
         db.session.commit()
         
+        # 及时清理会话
+        db.session.remove()
+        
     except Exception as e:
-        print(f"记录操作日志失败: {str(e)}")
-        # 日志记录失败不应影响主业务，仅打印错误
+        logger.error(f"记录操作日志失败: {str(e)}")
+        # 日志记录失败不应影响主业务，仅记录错误
+        # 确保会话清理
+        try:
+            from flask import current_app
+            if 'sqlalchemy' in current_app.extensions:
+                db = current_app.extensions['sqlalchemy']
+                db.session.rollback()
+                db.session.remove()
+        except:
+            pass
 
 
 def log_decorator(operation_type, operation_module, target_type=''):
