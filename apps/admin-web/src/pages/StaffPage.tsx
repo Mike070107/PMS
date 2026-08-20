@@ -62,12 +62,14 @@ interface CommunityOption {
   isGroup?: boolean;
 }
 
+// admin 的显示名必须叫全称：之前写成「物业管理员」，导致给管理处建负责人时
+// 误选了它 —— 而业务身份 admin 按设计直通全公司、无视数据范围角色。
 const roleLabel: Record<string, string> = {
   technician: '维修工',
   office: '物业办公室',
   manager: '物业经理',
   purchaser: '采购经理',
-  admin: '物业管理员',
+  admin: '企业超级管理员（全公司）',
   guard: '保安',
   neighborhood: '居委会',
   owner_committee: '业委会',
@@ -407,7 +409,14 @@ function StaffFormModal({
             </Form.Item>
           </Col>
         </Row>
-        <Form.Item name="role" label="角色" rules={[{ required: true }]}>
+        <Form.Item
+          name="role"
+          label="业务身份"
+          rules={[{ required: true }]}
+          extra={role === UserRole.ADMIN
+            ? '企业超级管理员直通全公司所有页面和数据，后台角色与数据范围对其不生效。管理处负责人请选「物业经理」或「物业办公室」，再绑定对应管理处的后台角色。'
+            : undefined}
+        >
           <Select
             options={Object.entries(roleLabel).map(([value, label]) => ({ value, label }))}
             onChange={(v) => setRole(v as UserRole)}
@@ -438,7 +447,9 @@ function StaffFormModal({
           <Form.Item
             name="roleIds"
             label="后台角色（网站权限）"
-            extra="决定登录网站后能看到哪些页面、能否编辑/删除；不绑角色则无法登录网站。角色在「角色管理」里配置。"
+            extra={role === UserRole.ADMIN
+              ? '企业超级管理员天然拥有全部页面与全公司数据，这里绑定的角色（含数据范围）对其不生效。'
+              : '决定登录网站后能看到哪些页面、能否编辑/删除；不绑角色则无法登录网站。角色在「角色管理」里配置。'}
           >
             <Select
               mode="multiple"
