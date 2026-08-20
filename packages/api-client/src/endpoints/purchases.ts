@@ -1,0 +1,26 @@
+import type { PurchaseRequestStatus, PurchaseRequestView } from '@pms/shared-types';
+import { request } from '../request';
+
+export const listRequests = (query: { status?: PurchaseRequestStatus } = {}) =>
+  request<PurchaseRequestView[]>({ url: '/purchase-requests', query: query as any });
+
+/** 物业经理审批通过 → 流转到采购经理 */
+export const managerApprove = (id: number | string) =>
+  request<PurchaseRequestView>({
+    method: 'POST',
+    url: `/purchase-requests/${id}/manager-approve`,
+  });
+
+/** 采购经理审批通过 → 可下单 */
+export const purchaserApprove = (id: number | string) =>
+  request<PurchaseRequestView>({
+    method: 'POST',
+    url: `/purchase-requests/${id}/purchaser-approve`,
+  });
+
+export const reject = (id: number | string, data: { reason: string }) =>
+  request<PurchaseRequestView>({
+    method: 'POST',
+    url: `/purchase-requests/${id}/reject`,
+    data,
+  });

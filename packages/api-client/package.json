@@ -1,0 +1,12 @@
+{
+  "name": "@pms/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "miniprogram": "miniprogram_dist",
+  "dependencies": {
+    "@pms/shared-types": "workspace:*"
+  }
+}

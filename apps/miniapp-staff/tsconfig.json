@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@pms/*": ["../../packages/*"]
+    },
+    "types": ["miniprogram-api-typings"]
+  },
+  "include": ["miniprogram/**/*.ts", "typings/**/*.d.ts"]
+}

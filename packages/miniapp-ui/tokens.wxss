@@ -1,0 +1,53 @@
+/* 设计令牌（CSS 变量）— 由各小程序在 app.wxss 中 @import 使用。 */
+page {
+  --color-brand: #31558a;
+  --color-brand-dark: #243f69;
+  --color-success: #52c41a;
+  --color-warning: #faad14;
+  --color-danger: #ff4d4f;
+  --color-text: #1f1f1f;
+  --color-text-secondary: #595959;
+  --color-text-tertiary: #8c8c8c;
+  --color-border: #e5e7eb;
+  --color-bg: #f5f6f8;
+  --color-card-bg: #ffffff;
+
+  --radius-sm: 8rpx;
+  --radius-md: 16rpx;
+  --radius-lg: 24rpx;
+
+  /* ---------- 间距：严格 8rpx 节奏 ----------
+     只用这几档，页面里不要再写 10rpx / 12rpx / 22rpx 这种随手值 ——
+     间距一乱，再大的字号也救不回「页面很挤」的观感。
+     层级对应：xs 元素内 / sm 相邻元素 / md 字段内 / lg 字段间 / xl 分组间 */
+  --space-xs: 8rpx;
+  --space-sm: 16rpx;
+  --space-md: 24rpx;
+  --space-lg: 32rpx;
+  --space-xl: 48rpx;
+  --space-2xl: 64rpx;
+
+  /* 触控下限 88rpx = 44pt，老人手指粗、手抖，低于这个数点不准 */
+  --tap-min: 88rpx;
+  /* 交互过渡统一 200ms：低于 150ms 像闪，高于 300ms 像卡 */
+  --dur: 200ms;
+
+  /* ---------- 字号阶梯（两个小程序共用） ----------
+     业主端老人多，员工端是站在楼道里单手拿手机看 —— 两边都按「比常规大一档」来：
+     正文 32rpx、输入框 34rpx、按钮 36rpx、行高 ≥ 1.6、点击目标 ≥ 88rpx。
+     整体缩放只改这几个变量，页面里不要再写死 rpx，否则总有页面漏掉、值还会打架。 */
+  --font-xs: 26rpx; /* 角标、缩略图上的小字，能不用就不用 */
+  --font-sm: 28rpx; /* 单号、时间、地址这类次要信息 */
+  --font-md: 30rpx; /* 表单标签、辅助说明 */
+  --font-lg: 32rpx; /* 正文，page 默认 */
+  --font-xl: 34rpx; /* 输入框、列表主标题 */
+  --font-2xl: 36rpx; /* 卡片标题、按钮 */
+  --font-3xl: 38rpx; /* 页面主标题 */
+
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--font-lg);
+  line-height: 1.6;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC",
+    "Helvetica Neue", Arial, sans-serif;
+}

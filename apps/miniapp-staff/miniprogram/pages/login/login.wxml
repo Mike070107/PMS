@@ -1,0 +1,73 @@
+<view class="page">
+  <view class="hero">
+    <view class="brand">
+      <image class="brand__logo" src="/assets/brand-icon.png" mode="aspectFill" />
+      <view class="brand__copy">
+        <view class="title">邻修工作台</view>
+        <view class="sub">仅限物业团队员工登录</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="body" wx:if="{{!checking}}">
+    <button
+      class="btn btn--primary"
+      open-type="getPhoneNumber"
+      bindgetphonenumber="onGetPhone"
+      loading="{{loading}}"
+      disabled="{{loading}}"
+    >微信手机号一键登录</button>
+    <view class="hint">需与管理员登记的手机号一致，首次登录后自动绑定本微信</view>
+
+    <view class="error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
+
+    <view class="divider">
+      <view class="line"></view>
+      <text class="divider-text">或</text>
+      <view class="line"></view>
+    </view>
+
+    <view class="link" bindtap="onTapAccountMode">
+      {{accountMode ? '收起账号密码登录' : '使用账号密码登录'}}
+    </view>
+
+    <view class="form card" wx:if="{{accountMode}}">
+      <view class="field">
+        <text class="label">登录账号</text>
+        <input
+          class="input {{accountErr ? 'input-error' : ''}}"
+          value="{{account}}"
+          placeholder="管理员分配的账号"
+          bindinput="onInputAccount"
+        />
+        <view class="field-error" wx:if="{{accountErr}}">{{accountErr}}</view>
+      </view>
+
+      <view class="field">
+        <text class="label">密码</text>
+        <input
+          class="input {{passwordErr ? 'input-error' : ''}}"
+          value="{{password}}"
+          password="{{true}}"
+          placeholder="至少 6 位"
+          bindinput="onInputPassword"
+        />
+        <view class="field-error" wx:if="{{passwordErr}}">{{passwordErr}}</view>
+      </view>
+
+      <button
+        class="btn btn--outline"
+        loading="{{loading}}"
+        disabled="{{loading}}"
+        bindtap="onTapAccountLogin"
+      >登录并绑定微信</button>
+      <view class="hint">维修工默认无账号密码，请用微信手机号登录</view>
+    </view>
+
+    <view class="tip">未开通账号？请联系物业管理员</view>
+  </view>
+
+  <view class="body loading-state" wx:else>
+    <text class="tip">正在登录…</text>
+  </view>
+</view>

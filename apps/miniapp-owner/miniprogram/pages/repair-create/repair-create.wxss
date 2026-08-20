@@ -1,0 +1,168 @@
+/* 一键报修：间距一律走令牌里的 8rpx 节奏，页面里不再出现 10/12/14/22rpx 这种随手值 */
+
+/* ---------- 位置 ---------- */
+.place-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.place-info { flex: 1; }
+.place { font-size: var(--font-xl); font-weight: 500; line-height: 1.5; }
+
+/* 范围切换：三选一，选中态品牌色实底，未选中保持素净 */
+.scopes { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: var(--space-md); }
+.scope {
+  padding: 0 var(--space-md);
+  min-height: var(--tap-min);
+  display: flex;
+  align-items: center;
+  border: 2rpx solid var(--color-border);
+  border-radius: 999rpx;
+  background: var(--color-card-bg);
+  color: var(--color-text-secondary);
+  font-size: var(--font-lg);
+  line-height: 1.4;
+  transition: background-color var(--dur) ease, border-color var(--dur) ease,
+    color var(--dur) ease;
+}
+.scope--on {
+  border-color: var(--color-brand);
+  background: var(--color-brand);
+  color: #fff;
+  font-weight: 500;
+}
+.scope:active { opacity: 0.7; }
+
+/* ---------- 字段 ---------- */
+.label__opt {
+  margin-left: var(--space-xs);
+  font-size: var(--font-sm);
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+.mt-lg { margin-top: var(--space-lg); }
+
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 220rpx;
+  padding: var(--space-md);
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xl);
+  line-height: 1.6;
+}
+
+/* ---------- 猜你想输 ----------
+   去掉了「猜你想输：」这个前缀标题 —— 一排可点的短语本身就说明了用途，
+   多一行说明反而把字段撑散。 */
+.tags { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: var(--space-md); }
+.tag {
+  padding: 0 var(--space-md);
+  min-height: 72rpx;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999rpx;
+  background: rgba(49, 85, 138, 0.10);
+  color: var(--color-brand);
+  font-size: var(--font-md);
+  line-height: 1.4;
+  transition: opacity var(--dur) ease;
+}
+.tag:active { opacity: 0.6; }
+
+/* ---------- 语音 ---------- */
+.listening {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  background: rgba(49, 85, 138, 0.08);
+  color: var(--color-brand);
+  font-size: var(--font-md);
+  line-height: 1.6;
+}
+.speech {
+  height: 104rpx;
+  gap: var(--space-sm);
+}
+.speech__text { font-size: var(--font-2xl); }
+.speech--on {
+  background: var(--color-brand);
+  color: #fff;
+  border-color: var(--color-brand);
+}
+
+/* ---------- 照片 ---------- */
+.thumbs { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: var(--space-sm); }
+.thumb-wrap { position: relative; }
+.thumb {
+  width: 176rpx;
+  height: 176rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  display: block;
+}
+/* 图标本身 28rpx 太小，用容器把可点区域撑到 56rpx，靠近 44pt 下限 */
+.thumb-remove {
+  position: absolute;
+  top: -16rpx;
+  right: -16rpx;
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+}
+.thumb-remove .icon { width: 28rpx; height: 28rpx; }
+.thumb-add {
+  width: 176rpx;
+  height: 176rpx;
+  border: 2rpx dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  color: var(--color-brand);
+  background: var(--color-bg);
+}
+.thumb-add:active { opacity: 0.7; }
+.add-text { font-size: var(--font-xs); }
+
+/* ---------- 扫码直达时的过渡遮罩 ---------- */
+.boot-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  background: var(--color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.boot-text { font-size: var(--font-lg); color: var(--color-text-tertiary); }
+
+/* ---------- 未认证提示：建议而非拦截 ---------- */
+.onboard-tip {
+  padding: var(--space-md);
+  border-radius: var(--radius-sm);
+  background: rgba(49, 85, 138, 0.08);
+  color: var(--color-text-secondary);
+  font-size: var(--font-md);
+  line-height: 1.7;
+}
+.onboard-tip + .onboard-tip { margin-top: var(--space-sm); }
+.onboard-tip__link { color: var(--color-brand); margin-left: var(--space-xs); }
+.onboard-tip--ok { background: rgba(82, 196, 26, 0.10); color: var(--color-text); }
+.onboard-tip__msg {
+  margin-top: var(--space-sm);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-sm);
+  line-height: 1.6;
+}

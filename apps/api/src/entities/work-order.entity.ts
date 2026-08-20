@@ -1,0 +1,78 @@
+import { Entity, Column, Index } from 'typeorm';
+import { TenantEntity } from '../common/base.entity';
+import { WorkOrderStatus } from '../common/enums';
+
+/** 工单本体 */
+@Entity('work_orders')
+@Index(['tenantId', 'status'])
+@Index(['tenantId', 'assigneeId'])
+@Index(['orderNo'], { unique: true })
+export class WorkOrder extends TenantEntity {
+  // 人类可读单号，如 RX-20260809-K7QM（尾号随机，字符集见 RepairsService.ORDER_NO_ALPHABET）
+  @Column({ name: 'order_no', type: 'varchar', length: 40 })
+  orderNo: string;
+
+  @Column({ name: 'request_id', type: 'int' })
+  requestId: number;
+
+  @Column({ name: 'community_id', type: 'int' })
+  communityId: number;
+
+  // 当前负责维修工 user id，待派单池时为 null
+  @Column({ name: 'assignee_id', type: 'int', nullable: true })
+  assigneeId: number | null;
+
+  // 该工单需要的工种编码（派单匹配用）
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  skill: string | null;
+
+  @Column({ type: 'varchar', length: 24, default: WorkOrderStatus.CREATED })
+  status: WorkOrderStatus;
+
+  // ===== SLA 计时点 =====
+  @Column({ name: 'dispatched_at', type: 'timestamptz', nullable: true })
+  dispatchedAt: Date | null;
+
+  @Column({ name: 'accepted_at', type: 'timestamptz', nullable: true })
+  acceptedAt: Date | null;
+
+  @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
+  completedAt: Date | null;
+
+  // SLA 截止时刻（派单时按租户配置算出），超时触发告警
+  @Column({ name: 'sla_due_at', type: 'timestamptz', nullable: true })
+  slaDueAt: Date | null;
+
+  // ===== 维修执行结果 =====
+  // 维修动作标签编码数组
+  @Column({ name: 'action_tags', type: 'jsonb', default: () => "'[]'" })
+  actionTags: string[];
+
+  @Column({ name: 'action_note', type: 'text', nullable: true })
+  actionNote: string | null;
+
+  @Column({ name: 'fault_location', type: 'varchar', length: 255, nullable: true })
+  faultLocation: string | null;
+
+  @Column({ name: 'fault_symptom', type: 'text', nullable: true })
+  faultSymptom: string | null;
+
+  @Column({ name: 'repair_content', type: 'text', nullable: true })
+  repairContent: string | null;
+
+  @Column({ name: 'used_materials', type: 'jsonb', default: () => "'[]'" })
+  usedMaterials: Array<{ name: string; qty: number; unit?: string }>;
+
+  // 维修现场附件
+  @Column({ name: 'result_attachments', type: 'jsonb', default: () => "'[]'" })
+  resultAttachments: string[];
+
+  // 收费金额（分），一期仅记账
+  @Column({ name: 'fee_cents', type: 'int', default: 0 })
+  feeCents: number;
+
+  // 缺料清单快照（材料名称/数量/单位），等待材料时填。
+  // materialId 有值 = 从材料库 SKU 选的；只有 name = 现场手填，办公室建完 SKU 后可回来补关联
+  @Column({ name: 'missing_materials', type: 'jsonb', default: () => "'[]'" })
+  missingMaterials: Array<{ name: string; qty: number; materialId?: number; unit?: string }>;
+}

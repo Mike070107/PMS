@@ -1,0 +1,34 @@
+import { Entity, Column, Index } from 'typeorm';
+import { TenantEntity } from '../common/base.entity';
+import { StockMovementType } from '../common/enums';
+
+/** 出入库流水（审计用，永不修改） */
+@Entity('stock_movements')
+@Index(['tenantId', 'warehouseId', 'materialId'])
+export class StockMovement extends TenantEntity {
+  @Column({ name: 'warehouse_id', type: 'int' })
+  warehouseId: number;
+
+  @Column({ name: 'material_id', type: 'int' })
+  materialId: number;
+
+  @Column({ type: 'varchar', length: 20 })
+  type: StockMovementType;
+
+  // 正数入库 / 负数出库
+  @Column({ type: 'numeric', precision: 12, scale: 2 })
+  qty: number;
+
+  @Column({ name: 'unit_cost_cents', type: 'int', default: 0 })
+  unitCostCents: number;
+
+  // 来源单据类型与 id，如 work_order / goods_receipt / transfer_order
+  @Column({ name: 'ref_type', type: 'varchar', length: 40, nullable: true })
+  refType: string | null;
+
+  @Column({ name: 'ref_id', type: 'int', nullable: true })
+  refId: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  note: string | null;
+}

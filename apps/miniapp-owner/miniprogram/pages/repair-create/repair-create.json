@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "一键报修",
+  "usingComponents": {
+    "place-picker": "/components/place-picker/index"
+  }
+}

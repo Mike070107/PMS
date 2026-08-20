@@ -1,0 +1,103 @@
+.page { min-height: 100vh; background: var(--color-bg); }
+
+/* ---------- 头部：与首页 hero 同一套品牌色 ---------- */
+.hero {
+  background: var(--color-brand);
+  color: #fff;
+  padding: var(--space-2xl) var(--space-lg) var(--space-2xl);
+}
+.hero__row { display: flex; align-items: center; gap: var(--space-md); }
+.hero__body { flex: 1; min-width: 0; }
+.hero__name { font-size: var(--font-3xl); font-weight: 600; line-height: 1.4; }
+.hero__phone {
+  margin-top: var(--space-xs);
+  font-size: var(--font-md);
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 没有微信头像授权，用姓名首字做占位 —— 比一个灰色人形图标更有归属感 */
+.avatar {
+  flex-shrink: 0;
+  width: 112rpx;
+  height: 112rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 44rpx;
+  font-weight: 600;
+}
+
+/* 卡片压在渐变上一点，两块之间不至于断成两截 */
+.container { margin-top: -32rpx; }
+
+/* ---------- 我的房屋 ---------- */
+.place { font-size: var(--font-xl); line-height: 1.6; }
+.reject {
+  margin-top: var(--space-sm);
+  color: var(--color-danger);
+  font-size: var(--font-md);
+  line-height: 1.6;
+}
+
+.badge {
+  padding: 6rpx var(--space-sm);
+  border-radius: 999rpx;
+  color: #fff;
+  font-size: var(--font-xs);
+  font-weight: 500;
+}
+.badge--ok { background: var(--color-success); }
+.badge--warn { background: var(--color-warning); }
+
+/* ---------- 功能列表 ---------- */
+.list { padding-top: var(--space-xs); padding-bottom: var(--space-xs); }
+.list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-height: 120rpx;
+  padding: var(--space-sm) 0;
+  border-bottom: 2rpx solid var(--color-border);
+  transition: opacity var(--dur) ease;
+}
+.list__row:last-child { border-bottom: none; }
+.list__row:active { opacity: 0.6; }
+.list__row--plain { justify-content: center; min-height: var(--tap-min); }
+
+.list__icon { width: 48rpx; height: 48rpx; }
+.list__body { flex: 1; min-width: 0; }
+.list__title { font-size: var(--font-xl); font-weight: 500; line-height: 1.4; }
+.list__title--muted { color: var(--color-text-secondary); font-weight: 400; }
+.list__desc {
+  margin-top: var(--space-xs);
+  font-size: var(--font-sm);
+  color: var(--color-text-tertiary);
+  line-height: 1.6;
+}
+
+.build-info {
+  margin-top: var(--space-lg);
+  padding-bottom: var(--space-lg);
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-xs);
+  line-height: 1.6;
+}
+
+/* 未读数：小圆胶囊，紧挨箭头 */
+.dot {
+  min-width: 40rpx;
+  height: 40rpx;
+  padding: 0 12rpx;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: var(--color-danger);
+  color: #fff;
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,148 @@
+<view class="container">
+  <!-- 名下没有认证房屋、但能选任意地址：随手拍无从下手，直接送去一键报修 -->
+  <view wx:if="{{pickPlaceFirst}}" class="card">
+    <view class="card__title">先选报修位置</view>
+    <view class="card__desc">随手拍只报自己家。要报其它楼栋或房号，去一键报修里选。</view>
+    <view class="btn-group mt">
+      <button class="btn btn--primary" bindtap="onGoFullForm">去一键报修</button>
+    </view>
+  </view>
+
+  <!-- 一次都没提交过认证：这时才引导去认证 -->
+  <view wx:elif="{{needOnboard}}" class="card">
+    <view class="card__title">还不知道你住哪</view>
+    <view class="card__desc">认证房屋后随手拍就能直接提交，也可以扫楼道里的码报修</view>
+    <view class="btn-group mt">
+      <button class="btn btn--primary" bindtap="onGoOnboard">去认证房屋</button>
+      <button class="btn btn--outline" bindtap="onGoFullForm">扫码 / 一键报修</button>
+    </view>
+  </view>
+
+  <!-- 加载失败：是网络或服务的问题，别把人往认证页赶 -->
+  <view wx:elif="{{errorMsg}}" class="card">
+    <view class="card__title">没加载出来</view>
+    <view class="card__desc">{{errorMsg}}</view>
+    <view class="btn-group mt">
+      <button class="btn btn--primary" bindtap="onRetry">重试</button>
+      <button class="btn btn--outline" bindtap="onGoFullForm">一键报修</button>
+    </view>
+  </view>
+
+  <block wx:else>
+    <view class="place">
+      <view class="place__label">报修位置</view>
+      <view class="place__scopes">
+        <view
+          wx:for="{{scopes}}"
+          wx:key="key"
+          class="place__scope {{scope === item.key ? 'place__scope--on' : ''}}"
+          data-scope="{{item.key}}"
+          bindtap="onPickScope"
+        >{{item.label}}</view>
+      </view>
+
+      <view wx:if="{{scope !== 'home'}}" class="place__detail">
+        <text class="place__detail-label">具体位置（选填）</text>
+        <input
+          class="place__detail-input"
+          placeholder="{{scopeHint}}"
+          maxlength="40"
+          value="{{placeDetail}}"
+          bindinput="onPlaceDetail"
+        />
+      </view>
+
+      <view class="place__text">{{placeText || '加载中…'}}</view>
+      <view wx:if="{{pendingHint && scope === 'home'}}" class="place__pending">{{pendingHint}}</view>
+    </view>
+
+    <!-- 拍照 / 录像 -->
+    <view class="card">
+      <view class="card__title">拍下来</view>
+      <view class="card__desc">拍张照片或一段短视频，师傅一眼就懂</view>
+
+      <view class="media">
+        <view class="media__item" wx:for="{{media}}" wx:key="url">
+          <image
+            wx:if="{{item.type === 'image'}}"
+            class="media__thumb"
+            src="{{item.url}}"
+            mode="aspectFill"
+            data-index="{{index}}"
+            bindtap="onPreviewMedia"
+          />
+          <view
+            wx:else
+            class="media__thumb media__thumb--video"
+            data-index="{{index}}"
+            bindtap="onPreviewMedia"
+          >视频</view>
+          <view class="media__remove" data-index="{{index}}" catchtap="onRemoveMedia">
+            <view class="icon icon--close"></view>
+          </view>
+        </view>
+
+        <view wx:if="{{media.length < 3}}" class="media__add" data-type="image" bindtap="onCapture">
+          <view class="icon icon--camera media__icon"></view>
+          <text class="media__hint">{{uploading ? '上传中' : '拍照'}}</text>
+        </view>
+        <view wx:if="{{media.length < 3}}" class="media__add" data-type="video" bindtap="onCapture">
+          <view class="icon icon--play media__icon"></view>
+          <text class="media__hint">录视频</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 描述 -->
+    <view class="card">
+      <view class="card__title">说一句</view>
+      <view class="card__desc">打字或按住说话都行，不说也能提交</view>
+
+      <textarea
+        class="desc"
+        placeholder="比如：厨房水管漏水了"
+        maxlength="200"
+        value="{{content}}"
+        bindinput="onContent"
+      />
+
+      <view wx:if="{{recording}}" class="listening">
+        正在听…{{partial ? ' ' + partial : ''}}
+      </view>
+
+      <button
+        wx:if="{{hasSpeech}}"
+        class="btn btn--outline mt speech {{recording ? 'speech--on' : ''}}"
+        bindtouchstart="onSpeechStart"
+        bindtouchend="onSpeechEnd"
+        bindtouchcancel="onSpeechEnd"
+      >
+        <view class="icon {{recording ? 'icon--mic-on' : 'icon--mic'}}"></view>
+        <text class="speech__text">{{recording ? '松开结束' : '按住说话'}}</text>
+      </button>
+
+      <!-- 自动判定出的类型，允许改 -->
+      <view wx:if="{{guessLabel}}" class="guess">
+        <view class="guess__row">
+          <text class="guess__label">报修类型</text>
+          <picker mode="selector" range="{{typeLabels}}" value="{{typeIndex}}" bindchange="onPickType">
+            <view class="guess__value">{{guessLabel}} <text class="guess__change">改</text></view>
+          </picker>
+        </view>
+        <view wx:if="{{guessReason}}" class="guess__reason">{{guessReason}}，提交后物业会再核对</view>
+      </view>
+    </view>
+
+    <button
+      class="btn btn--primary"
+      loading="{{submitting}}"
+      disabled="{{!canSubmit || submitting || uploading}}"
+      bindtap="onSubmit"
+    >提交报修</button>
+
+    <view wx:if="{{canPickAnyPlace}}" class="foot" bindtap="onGoFullForm">
+      要报其它楼栋或房号？去一键报修选位置 ›
+    </view>
+    <view wx:else class="foot" bindtap="onGoFullForm">要填详细信息？去一键报修 ›</view>
+  </block>
+</view>

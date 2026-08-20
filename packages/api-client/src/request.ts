@@ -1,0 +1,237 @@
+export interface RequestConfig {
+  baseURL: string;
+  getToken: () => string | undefined;
+  onUnauthorized?: () => void;
+  /** 每次请求附加的头（平台超管租户切换的 x-acting-tenant-id 走这里） */
+  getExtraHeaders?: () => Record<string, string>;
+}
+
+let config: RequestConfig | null = null;
+
+export function configure(c: RequestConfig) {
+  config = c;
+}
+
+export interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  url: string;
+  data?: any;
+  query?: Record<string, string | number | boolean | undefined>;
+  anonymous?: boolean;
+  timeout?: number;
+}
+
+export class ApiError extends Error {
+  constructor(
+    public code: number,
+    message: string,
+    public httpStatus?: number,
+  ) {
+    super(message);
+  }
+}
+
+function buildUrl(
+  base: string,
+  path: string,
+  query?: Record<string, string | number | boolean | undefined>,
+) {
+  let url = base.replace(/\/$/, '') + (path.startsWith('/') ? path : '/' + path);
+  if (query) {
+    const qs = Object.entries(query)
+      .filter(([, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+      .join('&');
+    if (qs) url += (url.includes('?') ? '&' : '?') + qs;
+  }
+  return url;
+}
+
+/** 判断响应是否是 `{ code, data, message }` 包装 */
+function unwrap(raw: any) {
+  if (raw && typeof raw === 'object' && 'code' in raw) {
+    const r = raw as { code: number; data?: any; message?: string };
+    if (r.code === 0) return r.data;
+    throw new ApiError(r.code, r.message || '请求失败');
+  }
+  return raw;
+}
+
+/** 从后端错误响应里取真实提示（Nest 的 message 可能是字符串或字符串数组） */
+function serverMessage(body: any): string | undefined {
+  if (!body) return undefined;
+  const raw = typeof body === 'string' ? tryParseJson(body) : body;
+  const msg = raw?.message ?? raw?.error;
+  if (Array.isArray(msg)) return msg.filter(Boolean).join('；');
+  return typeof msg === 'string' && msg ? msg : undefined;
+}
+
+function tryParseJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function hasWxRequest(): boolean {
+  // @ts-ignore — 小程序运行时注入
+  return typeof wx !== 'undefined' && typeof wx.request === 'function';
+}
+
+function requestViaWx<T>(
+  url: string,
+  opts: RequestOptions,
+  header: Record<string, string>,
+): Promise<T> {
+  // wx.request 不支持 PATCH（仅 OPTIONS/GET/HEAD/POST/PUT/DELETE/TRACE/CONNECT），
+  // 小程序端如需部分更新，后端要另提供 POST/PUT 接口。
+  if (opts.method === 'PATCH') {
+    return Promise.reject(new ApiError(-1, '小程序不支持 PATCH 请求，请使用 POST/PUT 接口'));
+  }
+  const wxMethod = opts.method ?? 'GET';
+  return new Promise<T>((resolve, reject) => {
+    // @ts-ignore
+    wx.request({
+      url,
+      method: wxMethod,
+      data: opts.data,
+      header,
+      timeout: opts.timeout ?? 15000,
+      success: (res: any) => {
+        const { statusCode, data } = res;
+        if (statusCode === 401) {
+          // 匿名请求（登录类）的 401 是凭据不对，不是登录态过期，不能踢回登录页
+          if (!opts.anonymous) config?.onUnauthorized?.();
+          return reject(
+            new ApiError(401, serverMessage(data) || '未登录或登录已过期', statusCode),
+          );
+        }
+        if (statusCode < 200 || statusCode >= 300) {
+          return reject(
+            new ApiError(statusCode, serverMessage(data) || `HTTP ${statusCode}`, statusCode),
+          );
+        }
+        try {
+          resolve(unwrap(data));
+        } catch (e) {
+          reject(e);
+        }
+      },
+      fail: (err: any) => reject(new ApiError(-1, err.errMsg || '网络异常')),
+    });
+  });
+}
+
+async function requestViaFetch<T>(
+  url: string,
+  opts: RequestOptions,
+  header: Record<string, string>,
+): Promise<T> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), opts.timeout ?? 15000);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: opts.method ?? 'GET',
+      headers: header,
+      body:
+        opts.data !== undefined && opts.method && opts.method !== 'GET'
+          ? JSON.stringify(opts.data)
+          : undefined,
+      signal: controller.signal,
+    });
+  } catch (e: any) {
+    clearTimeout(t);
+    throw new ApiError(-1, e?.message || '网络异常');
+  }
+  clearTimeout(t);
+
+  if (res.status === 401) {
+    if (!opts.anonymous) config?.onUnauthorized?.();
+    const body = await res.json().catch(() => null);
+    throw new ApiError(401, serverMessage(body) || '未登录或登录已过期', 401);
+  }
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      msg = j?.message || j?.error || msg;
+    } catch {}
+    throw new ApiError(res.status, msg, res.status);
+  }
+  const body = await res.json().catch(() => null);
+  return unwrap(body);
+}
+
+export interface UploadFileResp {
+  bucket: string;
+  objectKey: string;
+  /** 可直接展示、也可写入 attachments 的地址（经后端代理读私有桶） */
+  publicUrl: string;
+  /** 同 publicUrl，保留旧字段名兼容 */
+  displayUrl: string;
+  /** COS 规范地址，私有桶直连会 403，只作排障参考 */
+  cosUrl?: string;
+}
+
+/**
+ * 小程序上传本地临时文件（wx.uploadFile → POST /upload，multipart）。
+ * 只在小程序环境可用；Web 端请直接用 FormData + fetch。
+ */
+export function uploadFile(tempFilePath: string, timeout = 60000): Promise<UploadFileResp> {
+  if (!config) throw new Error('[api-client] configure() must be called before uploadFile()');
+  if (!hasWxRequest()) {
+    return Promise.reject(new ApiError(-1, 'uploadFile 仅在小程序环境可用'));
+  }
+  const url = buildUrl(config.baseURL, '/upload');
+  const header: Record<string, string> = {};
+  const token = config.getToken();
+  if (token) header['Authorization'] = `Bearer ${token}`;
+  return new Promise<UploadFileResp>((resolve, reject) => {
+    // @ts-ignore — 小程序运行时注入
+    wx.uploadFile({
+      url,
+      filePath: tempFilePath,
+      name: 'file',
+      header,
+      timeout,
+      success: (res: any) => {
+        const { statusCode, data } = res;
+        if (statusCode === 401) {
+          config?.onUnauthorized?.();
+          return reject(
+            new ApiError(401, serverMessage(data) || '未登录或登录已过期', statusCode),
+          );
+        }
+        if (statusCode < 200 || statusCode >= 300) {
+          return reject(
+            new ApiError(statusCode, serverMessage(data) || `上传失败 HTTP ${statusCode}`, statusCode),
+          );
+        }
+        const parsed = tryParseJson(data);
+        if (!parsed) return reject(new ApiError(-1, '上传返回格式异常'));
+        try {
+          resolve(unwrap(parsed));
+        } catch (e) {
+          reject(e);
+        }
+      },
+      fail: (err: any) => reject(new ApiError(-1, err.errMsg || '上传失败')),
+    });
+  });
+}
+
+export function request<T = unknown>(opts: RequestOptions): Promise<T> {
+  if (!config) throw new Error('[api-client] configure() must be called before request()');
+  const url = buildUrl(config.baseURL, opts.url, opts.query);
+  const header: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (!opts.anonymous) {
+    const token = config.getToken();
+    if (token) header['Authorization'] = `Bearer ${token}`;
+    Object.assign(header, config.getExtraHeaders?.() ?? {});
+  }
+  return hasWxRequest()
+    ? requestViaWx<T>(url, opts, header)
+    : requestViaFetch<T>(url, opts, header);
+}

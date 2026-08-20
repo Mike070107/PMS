@@ -1,0 +1,282 @@
+/* 字号一律引 tokens.wxss 的 --font-* 阶梯；卡片/图标/停留徽标在 app.wxss 里统一定义 */
+
+/* 底部有固定操作条，内容要留出它的高度，否则最后一张卡被压住 */
+.container--with-bar { padding-bottom: 200rpx; }
+
+/* ---------- 现在到哪一步 ---------- */
+.status-card { background: #f2f5f9; border: 2rpx solid #dbe2ec; }
+.status-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+.status-card__now {
+  font-size: 44rpx;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-brand);
+}
+.status-card__head .stay { margin-top: 0; }
+.status-card__next {
+  margin-top: 16rpx;
+  font-size: var(--font-lg);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+/* 业主原话：引号块，和系统文案区分开 */
+.quote {
+  margin-top: 20rpx;
+  padding: 20rpx 24rpx;
+  border-left: 6rpx solid var(--color-border);
+  background: var(--color-bg);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: var(--font-lg);
+  line-height: 1.7;
+}
+
+/* 联系业主：图标 + 文字，48rpx 高的点击区靠 padding 撑够 */
+.call {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 16rpx 8rpx 16rpx 16rpx;
+  color: var(--color-brand);
+  font-size: var(--font-lg);
+}
+.call .icon { margin-top: 0; }
+
+.section-title { font-size: var(--font-2xl); font-weight: 600; }
+.meta { color: var(--color-text-tertiary); font-size: var(--font-sm); margin-top: 14rpx; line-height: 1.6; }
+.label { font-size: var(--font-md); color: var(--color-text-secondary); margin-bottom: 14rpx; }
+.label.mt { margin-top: 32rpx; }
+.mt { margin-top: 32rpx; }
+
+.fold--inline { min-height: auto; padding: 0 0 16rpx; margin-bottom: 0; }
+
+/* ---------- 底部固定操作条 ---------- */
+.action-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  display: flex;
+  gap: 20rpx;
+  padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom));
+  background: var(--color-card-bg);
+  border-top: 2rpx solid var(--color-border);
+  box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.04);
+}
+.action-bar .btn { width: auto !important; flex: 1 1 0; }
+
+.thumbs { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 20rpx; }
+.thumb-wrap { position: relative; }
+.thumb { width: 176rpx; height: 176rpx; border-radius: var(--radius-sm); background: var(--color-bg); display: block; }
+.thumb-remove {
+  position: absolute;
+  top: -12rpx;
+  right: -12rpx;
+  width: 52rpx;
+  height: 52rpx;
+  line-height: 48rpx;
+  text-align: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: var(--font-lg);
+}
+.thumb-add {
+  width: 176rpx;
+  height: 176rpx;
+  border: 2rpx dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-tertiary);
+}
+.plus { font-size: 48rpx; line-height: 1; }
+.add-text { font-size: var(--font-xs); margin-top: 8rpx; }
+
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 180rpx;
+  padding: 22rpx 24rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xl);
+  line-height: 1.6;
+}
+
+/* 常用话术：现场打字慢，能点就别让人打 */
+.phrase-tip {
+  margin-top: 20rpx;
+  font-size: var(--font-md);
+  color: var(--color-text-tertiary);
+}
+.phrases { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 16rpx; }
+.phrase {
+  min-height: 76rpx;
+  display: inline-flex;
+  align-items: center;
+  padding: 16rpx 28rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid var(--color-border);
+  background: var(--color-card-bg);
+  color: var(--color-text-secondary);
+  font-size: var(--font-lg);
+  line-height: 1.4;
+  transition: background 200ms ease, border-color 200ms ease, color 200ms ease;
+}
+.phrase--on {
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  background: rgba(49, 85, 138, 0.08);
+}
+
+.error {
+  margin-top: 24rpx;
+  padding: 22rpx 24rpx;
+  background: #fff2f0;
+  border: 2rpx solid #ffccc7;
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  font-size: var(--font-md);
+  line-height: 1.6;
+}
+
+.timeline-item { display: flex; gap: 16rpx; margin-bottom: 28rpx; }
+.timeline-item:last-child { margin-bottom: 0; }
+.dot { width: 16rpx; height: 16rpx; border-radius: 50%; background: var(--color-brand); margin-top: 14rpx; flex-shrink: 0; }
+.timeline-body { flex: 1; }
+.timeline-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; }
+.timeline-label { font-size: var(--font-xl); font-weight: 500; }
+.timeline-at { flex-shrink: 0; font-size: var(--font-sm); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.timeline-note { margin-top: 10rpx; font-size: var(--font-md); color: var(--color-text-secondary); line-height: 1.6; }
+/* 每个节点停了多久：卡在哪一步、卡了多久，比绝对时间更好用 */
+.timeline-stay {
+  margin-top: 10rpx;
+  font-size: var(--font-md);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 添加用料 ---------- */
+.mat-empty {
+  padding: 40rpx 0;
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-md);
+}
+/* 够不够：够用是灰的（不打扰），不够/没有是橙的（提示要走缺料） */
+.mat-hint {
+  margin-top: 14rpx;
+  font-size: var(--font-md);
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}
+.mat-hint--short { color: #ad6800; }
+
+/* 完工面板里回显已记的用料 */
+.used-list { display: flex; flex-direction: column; gap: 12rpx; }
+.used-item {
+  padding: 16rpx 20rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-lg);
+  line-height: 1.5;
+}
+.used-item__tag {
+  margin-left: 12rpx;
+  font-size: var(--font-xs);
+  color: #ad6800;
+}
+
+.mat-item {
+  margin-top: 24rpx;
+  padding: 22rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+}
+.mat-item .mat-name { background: var(--color-card-bg); }
+.mat-pick { flex-shrink: 0; }
+.mat-unit {
+  flex: 1;
+  font-size: var(--font-md);
+  color: var(--color-text-secondary);
+}
+.mat-sku { display: flex; align-items: center; gap: 12rpx; margin-top: 16rpx; }
+.mat-sku__photo { width: 88rpx; height: 88rpx; border-radius: var(--radius-sm); flex-shrink: 0; }
+.mat-sku__text { font-size: var(--font-sm); color: var(--color-text-tertiary); }
+
+.mat-row { display: flex; align-items: center; gap: 12rpx; margin-top: 16rpx; }
+.mat-row:first-child { margin-top: 0; }
+.mat-name {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  height: 92rpx;
+  padding: 0 22rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xl);
+}
+/* 数量步进器：两边 ±、中间可直接改。按钮 92rpx 见方，戴手套也点得中 */
+.stepper {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  border: 2rpx solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-card-bg);
+  overflow: hidden;
+}
+.stepper__btn {
+  width: 92rpx;
+  height: 92rpx;
+  line-height: 92rpx;
+  text-align: center;
+  font-size: 40rpx;
+  color: var(--color-brand);
+  background: var(--color-card-bg);
+  transition: background 200ms ease;
+}
+.stepper__btn:active { background: rgba(49, 85, 138, 0.1); }
+/* 已经到下限：变灰但仍占位，别让按钮忽然消失导致误触旁边的输入框 */
+.stepper__btn--off { color: var(--color-text-tertiary); }
+.stepper__input {
+  box-sizing: border-box;
+  width: 120rpx;
+  height: 92rpx;
+  padding: 0 8rpx;
+  border-left: 2rpx solid var(--color-border);
+  border-right: 2rpx solid var(--color-border);
+  background: var(--color-card-bg);
+  font-size: var(--font-xl);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.mat-del {
+  width: 72rpx;
+  height: 92rpx;
+  line-height: 92rpx;
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: 40rpx;
+  flex-shrink: 0;
+}
+
+/* 等待材料的缺料清单 */
+.wait-mat {
+  padding: 18rpx 22rpx;
+  border-radius: var(--radius-sm);
+  background: rgba(250, 173, 20, 0.1);
+  color: #ad6800;
+  font-size: var(--font-lg);
+  line-height: 1.6;
+}

@@ -1,0 +1,45 @@
+.place-row { display: flex; justify-content: space-between; align-items: center; gap: 16rpx; }
+.place-info { flex: 1; }
+.place { font-size: 34rpx; font-weight: 500; margin-top: 8rpx; line-height: 1.6; }
+
+.phone-input { margin-top: 16rpx; }
+.ok { color: var(--color-success); font-size: 30rpx; padding: 20rpx 0; }
+
+.tip { text-align: center; color: var(--color-text-tertiary); font-size: 28rpx; margin-top: 24rpx; line-height: 1.6; }
+
+/* 地址快选 */
+.suggest { margin-top: 16rpx; border: 2rpx solid var(--color-border); border-radius: 16rpx; overflow: hidden; }
+.suggest-item {
+  min-height: 88rpx;
+  display: flex;
+  align-items: center;
+  padding: 20rpx 24rpx;
+  font-size: 32rpx;
+  color: var(--color-text);
+  border-bottom: 2rpx solid var(--color-border);
+}
+.suggest-item:last-child { border-bottom: none; }
+.suggest-item:active { background: var(--color-bg); }
+.picked { margin-top: 16rpx; font-size: 30rpx; color: var(--color-success); line-height: 1.6; }
+.hint { margin-top: 16rpx; font-size: 30rpx; color: var(--color-text-tertiary); line-height: 1.6; }
+
+/* 弄 / 号 输入（扫码带出，可手改） */
+.lane-row { display: flex; gap: 20rpx; margin-top: 12rpx; }
+.lane-cell { flex: 1; display: flex; align-items: center; gap: 12rpx; }
+.lane-cell .input { flex: 1; }
+.lane-cell .unit { font-size: 32rpx; color: var(--color-text-secondary); }
+
+/* 只填号：单格输入 + 后缀单位 */
+.no-row { display: flex; align-items: center; gap: 12rpx; }
+.no-input { flex: 1; min-width: 0; }
+
+/* 预填来源提示：让用户知道这些字是哪来的 */
+.prefill-hint {
+  margin-top: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: var(--radius-sm);
+  background: rgba(49, 85, 138, 0.08);
+  color: var(--color-text-secondary);
+  font-size: 28rpx;
+  line-height: 1.6;
+}

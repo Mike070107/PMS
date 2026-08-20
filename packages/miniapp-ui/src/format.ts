@@ -1,0 +1,119 @@
+/** 小程序端通用格式化工具（两个小程序共用，避免各页面各写一份） */
+import {
+  formatDateTimeCn,
+  formatDuration,
+  REPAIR_TYPE_LABELS,
+  stayDays,
+  stayTone,
+} from '@pms/shared-types';
+
+/**
+ * 时间只有一种写法：`2026/8/9 20:43 周日`（见 shared-types 的 formatDateTimeCn）。
+ *
+ * 以前这里另有一个 `formatDateTime` 输出「08-09 20:43」、今年以前才带年份 ——
+ * 结果同一个页面上，列表是「08-09 20:43」、进度是「2026/8/9 20:43 周日」，
+ * 而且不带年份的那种在跨年后完全分不清是哪一年的单。整站统一到带年份带星期的这一种，
+ * 别再各页面各写各的。
+ */
+export { formatDateTimeCn, formatDateTimeCn as formatDateTime } from '@pms/shared-types';
+
+/** 缺料清单 → 「PVC 管 DN50 ×2 米、生料带 ×1 卷」 */
+export function missingMaterialsText(
+  rows?: Array<{ name: string; qty: number; unit?: string }> | null,
+): string {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return rows.map((item) => `${item.name} ×${item.qty}${item.unit || ''}`).join('、');
+}
+
+/**
+ * 列表项补上可直接渲染的中文标签（wxml 不能调函数）。
+ * 停留天数一并算好：从业主提交那一刻起，按自然日跨天数，当天算 0 天。
+ * 已完结的单算到完成时刻，否则一直涨到今天，看着像还堆在那儿没人管。
+ */
+export function withOrderLabels<
+  T extends {
+    repairType?: string | null;
+    repairTypeLabel?: string | null;
+    createdAt: string;
+    completedAt?: string | null;
+    missingMaterials?: Array<{ name: string; qty: number; unit?: string }> | null;
+  },
+>(
+  list: T[],
+): Array<
+  T & {
+    typeLabel: string;
+    createdAtText: string;
+    stayDays: number;
+    stayText: string;
+    stayTone: string;
+    missingText: string;
+  }
+> {
+  return list.map((item) => {
+    const end = item.completedAt ? new Date(item.completedAt) : new Date();
+    const days = stayDays(item.createdAt, isNaN(end.getTime()) ? new Date() : end);
+    return {
+      ...item,
+      // 租户自建的类型只有后端知道中文名（端上的 REPAIR_TYPE_LABELS 只有内置那 8 个），
+      // 所以后端给了就用后端的，别再自己猜 —— 猜不到就会把 menjing 这种编码直接显示出来
+      typeLabel:
+        item.repairTypeLabel ||
+        REPAIR_TYPE_LABELS[item.repairType || ''] ||
+        item.repairType ||
+        '其它',
+      // 列表和进度用同一个格式：2026/8/9 17:07 周日
+      createdAtText: formatDateTimeCn(item.createdAt),
+      stayDays: days,
+      stayText: `已停留 ${days} 天`,
+      stayTone: stayTone(days),
+      missingText: missingMaterialsText(item.missingMaterials),
+    };
+  });
+}
+
+/** 手机号脱敏：138****8000 */
+export function maskPhone(phone?: string | null): string {
+  if (!phone) return '';
+  return phone.length >= 11 ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : phone;
+}
+
+export interface TimelineRow {
+  id: number;
+  label: string;
+  note: string;
+  at: string;
+  /** 这个节点停留了多久（到下一个节点；最后一个节点算到现在） */
+  stay: string;
+}
+
+/**
+ * 进度时间轴：两个小程序渲染的是同一份数据，别各写一套。
+ *
+ * 每个节点带上「停了多久」——办公室和维修工要的是「卡在哪一步、卡了多久」，
+ * 只给绝对时间还得自己心算。最后一个节点在工单没完结时算到此刻，
+ * 完结了就不显示（已经结束的单再说「已停留」是误导）。
+ */
+export function buildTimeline(
+  logs: Array<{ id: number; toStatus: string; note?: string | null; createdAt: string }>,
+  labels: Record<string, string>,
+  opts: { finished?: boolean } = {},
+): TimelineRow[] {
+  return logs.map((log, index) => {
+    const next = logs[index + 1];
+    const isLast = index === logs.length - 1;
+    const stay =
+      next != null
+        ? formatDuration(log.createdAt, next.createdAt)
+        : isLast && !opts.finished
+          ? formatDuration(log.createdAt, null)
+          : '';
+    return {
+      id: log.id,
+      label: labels[log.toStatus] || log.toStatus,
+      note: log.note || '',
+      at: formatDateTimeCn(log.createdAt),
+      stay: stay ? `停留 ${stay}` : '',
+    };
+  });
+}

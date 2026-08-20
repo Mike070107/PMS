@@ -1,0 +1,15 @@
+{
+  "name": "@pms/miniapp-owner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "邻修 · 业主端微信小程序",
+  "dependencies": {
+    "@pms/api-client": "workspace:*",
+    "@pms/miniapp-ui": "workspace:*",
+    "@pms/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "miniprogram-api-typings": "^3.12.0",
+    "typescript": "^5.6.2"
+  }
+}

@@ -1,0 +1,53 @@
+<view class="container">
+  <!-- 一句话说清这一屏是干什么的：新来的维修工不用猜「池」是什么意思 -->
+  <view class="page-lead">
+    <view class="page-lead__title">待接单 {{list.length}} 条</view>
+    <view class="page-lead__sub">谁先接谁修。红色是已经压了 7 天以上的单，优先处理。</view>
+  </view>
+
+  <view wx:if="{{loading && !loaded}}" class="center muted">加载中…</view>
+  <view wx:elif="{{!list.length && loaded}}">
+    <pms-empty text="工单池是空的，暂时没有待接的活"/>
+  </view>
+
+  <view
+    wx:for="{{list}}"
+    wx:key="id"
+    class="card wo-card wo-card--{{item.stayTone}}"
+    hover-class="wo-card--hover"
+    hover-stay-time="80"
+    bindtap="onTapItem"
+    data-id="{{item.id}}"
+  >
+    <view class="wo-card__head">
+      <view class="wo-card__type">{{item.typeLabel}}</view>
+      <pms-tag class="status-tag" status="{{item.status}}"/>
+    </view>
+
+    <!-- 停留天数从业主提交那刻算起，与有没有接单无关；3 天变黄、7 天变红 -->
+    <view class="stay stay--{{item.stayTone}}">{{item.stayText}}</view>
+
+    <view class="wo-card__addr">
+      <view class="icon icon--pin"></view>
+      <text>{{item.summaryAddress || '未填地址'}}</text>
+    </view>
+    <view class="wo-card__desc">{{item.summaryContent}}</view>
+
+    <!-- 缺料退回池子的单：缺什么、到货没到货，接之前就得看得见 -->
+    <view wx:if="{{item.missingText}}" class="wait-mat">等待材料：{{item.missingText}}</view>
+
+    <view class="wo-card__foot">
+      <view class="wo-card__meta">
+        <view class="wo-card__no">{{item.orderNo}}</view>
+        <view>报修 {{item.createdAtText}}</view>
+      </view>
+      <button
+        class="btn btn--primary btn--sm"
+        catchtap="onAccept"
+        data-id="{{item.id}}"
+        loading="{{acceptingId === item.id}}"
+        disabled="{{acceptingId !== 0}}"
+      >{{item.status === 'waiting_material' ? '接回' : '接单'}}</button>
+    </view>
+  </view>
+</view>

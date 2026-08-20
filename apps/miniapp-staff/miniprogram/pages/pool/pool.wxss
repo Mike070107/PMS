@@ -1,0 +1,12 @@
+/* 卡片结构（.wo-card / .stay / .icon）在 app.wxss 里统一定义，两个列表页共用 */
+
+/* 等待材料的单：缺什么料要在池子里就看得见，否则接了也干不了 */
+.wait-mat {
+  margin-top: 16rpx;
+  padding: 18rpx 22rpx;
+  border-radius: var(--radius-sm);
+  background: rgba(250, 173, 20, 0.1);
+  color: #ad6800;
+  font-size: var(--font-md);
+  line-height: 1.6;
+}

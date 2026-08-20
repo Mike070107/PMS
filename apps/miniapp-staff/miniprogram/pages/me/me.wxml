@@ -1,0 +1,37 @@
+<view class="container">
+  <!-- 身份先说清楚：不同角色能看到的功能不一样，别让人以为是「功能没了」 -->
+  <view wx:if="{{user}}" class="card profile">
+    <view class="profile__avatar">{{avatarText}}</view>
+    <view class="profile__body">
+      <view class="profile__name">{{user.name || '邻修员工'}}</view>
+      <view class="profile__meta">{{roleText}}<text wx:if="{{phoneText}}"> · {{phoneText}}</text></view>
+    </view>
+  </view>
+
+  <!-- 维修工没有材料/库存权限，这块整段不显示 -->
+  <view wx:if="{{canUseInventory}}" class="card entries">
+    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenMaterials">
+      <view class="entry__body">
+        <view class="entry__title">材料 SKU 库</view>
+        <view class="entry__desc">查材料、现场拍照建档</view>
+      </view>
+      <view class="entry__arrow"></view>
+    </view>
+    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenInventory">
+      <view class="entry__body">
+        <view class="entry__title">库存与采购</view>
+        <view class="entry__desc">看库存余量、低于安全库存、采购申请进度</view>
+      </view>
+      <view class="entry__arrow"></view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="card__title">账号说明</view>
+    <view class="card__desc">账号由物业管理员开通。换手机或换微信后无法登录时，请联系管理员在后台「解绑微信」。</view>
+  </view>
+
+  <button class="btn btn--ghost" bindtap="onLogout">退出登录</button>
+
+  <view class="build-info">{{buildText}}</view>
+</view>

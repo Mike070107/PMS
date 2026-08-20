@@ -1,0 +1,40 @@
+node_modules
+dist
+build
+.next
+out
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.idea
+.vscode
+.turbo
+pnpm-lock.yaml.bak
+
+# 小程序 npm 包产物（由 tools/build-miniapp-libs.mjs 生成）与开发者工具编译出的页面 JS
+packages/*/miniprogram_dist/
+apps/miniapp-*/miniprogram/miniprogram_npm/
+apps/miniapp-*/miniprogram/pages/**/*.js
+apps/miniapp-*/miniprogram/app.js
+
+# deploy 产物（保留 .conf / .ps1 / README.md / dist 内的脚手架，不入库 tar.gz 与构建临时目录）
+deploy/pms-api-*.tar.gz
+deploy/pms-web-*.tar.gz
+deploy/pms-api.tar.gz
+deploy/dist/
+
+# 本机工具与缓存
+.pnpm-store/
+.screenshots/
+.claude/
+.codex/
+.agents/
+
+# 旧版 Flask 收费系统的本地拷贝（历史在 GitHub main/master 分支上，不混入 monorepo）
+htdocs/
+htdocs.rar
+
+# 真实小区房产导入数据，含业主信息，绝不入库
+data-prep/

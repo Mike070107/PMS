@@ -1,0 +1,62 @@
+/* 头像用姓名首字，不用 emoji 也不用占位图：跨机型长得一样，也不用额外请求 */
+.profile { display: flex; align-items: center; gap: 24rpx; }
+.profile__avatar {
+  width: 112rpx;
+  height: 112rpx;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-brand);
+  color: #fff;
+  font-size: var(--font-3xl);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.profile__body { flex: 1; min-width: 0; }
+.profile__name { font-size: var(--font-3xl); font-weight: 600; line-height: 1.4; }
+.profile__meta {
+  margin-top: 8rpx;
+  font-size: var(--font-md);
+  color: var(--color-text-tertiary);
+  line-height: 1.6;
+}
+
+/* 功能入口：整行可点，右侧箭头是 SVG（不用 › 字符，各机型字体里粗细不一） */
+.entries { padding: 0 28rpx; }
+.entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  min-height: 128rpx;
+  padding: 28rpx 0;
+  border-bottom: 2rpx solid var(--color-border);
+}
+.entry:last-child { border-bottom: none; }
+.entry--hover { background: #f2f4f7; }
+.entry__body { flex: 1; min-width: 0; }
+.entry__title { font-size: var(--font-xl); font-weight: 500; line-height: 1.4; }
+.entry__desc {
+  margin-top: 8rpx;
+  font-size: var(--font-md);
+  color: var(--color-text-tertiary);
+  line-height: 1.6;
+}
+.entry__arrow {
+  flex-shrink: 0;
+  width: 32rpx;
+  height: 32rpx;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 32rpx 32rpx;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23bfbfbf' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
+}
+
+.build-info {
+  margin-top: 32rpx;
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-xs);
+  line-height: 1.6;
+}

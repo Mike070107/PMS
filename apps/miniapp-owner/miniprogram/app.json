@@ -1,0 +1,56 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/onboard/onboard",
+    "pages/quick-repair/quick-repair",
+    "pages/repair-create/repair-create",
+    "pages/messages/messages",
+    "pages/orders/orders",
+    "pages/order-detail/order-detail",
+    "pages/me/me"
+  ],
+  "window": {
+    "navigationBarTitleText": "邻修",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f6f8"
+  },
+  "tabBar": {
+    "color": "#8c8c8c",
+    "selectedColor": "#31558a",
+    "backgroundColor": "#ffffff",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/orders/orders",
+        "text": "我的报修"
+      },
+      {
+        "pagePath": "pages/me/me",
+        "text": "我的"
+      }
+    ]
+  },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于在报修时辅助定位到对应小区"
+    },
+    "scope.record": {
+      "desc": "用于语音描述报修问题，转成文字填进报修单"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getLocation"
+  ],
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "plugins": {
+    "WechatSI": {
+      "version": "0.3.5",
+      "provider": "wx069ba97219f66d99"
+    }
+  }
+}

@@ -1,0 +1,2125 @@
+import {
+  App as AntdApp,
+  Alert,
+  Button,
+  Card,
+  Col,
+  Divider,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  Image,
+  Modal,
+  Popconfirm,
+  Row,
+  Select,
+  Space,
+  Statistic,
+  Steps,
+  Table,
+  Tabs,
+  Tag,
+  Tooltip,
+  Typography,
+  Upload,
+} from 'antd';
+import type { UploadProps } from 'antd/es/upload/interface';
+import {
+  AppstoreOutlined,
+  AuditOutlined,
+  EditOutlined,
+  InboxOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  ShoppingCartOutlined,
+  SwapOutlined,
+  UploadOutlined,
+} from '@ant-design/icons';
+import { useEffect, useMemo, useState } from 'react';
+import UnitSelect from '../components/UnitSelect';
+import { formatDateTimeCn, MATERIAL_CATEGORIES } from '@pms/shared-types';
+import { request } from '../lib/api';
+import { auth, usePagePerm } from '../lib/auth';
+import { searchableExtraWideSelectProps, searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
+import { PurchaseOrderStatus, PurchaseRequestStatus, WarehouseType } from '@pms/shared-types';
+
+const { Title, Text } = Typography;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+
+function uploadFileUrl(objectKey: string) {
+  return `${API_BASE_URL}/upload/file?key=${encodeURIComponent(objectKey)}`;
+}
+
+function uploadObjectKey(url?: string | null) {
+  if (!url || url.startsWith('blob:') || url.startsWith('data:')) return '';
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const key = parsed.searchParams.get('key');
+    if (parsed.pathname.endsWith('/upload/file') && key) return key;
+    const pathKey = parsed.pathname.replace(/^\/+/, '');
+    if (pathKey.startsWith('uploads/')) return pathKey;
+  } catch {
+    if (url.startsWith('uploads/')) return url;
+  }
+  return '';
+}
+
+function normalizePhotoUrl(url?: string | null) {
+  const key = uploadObjectKey(url);
+  return key ? uploadFileUrl(key) : (url || '');
+}
+
+function imageSrc(url?: string | null) {
+  if (!url) return '';
+  if (url.startsWith('blob:') || url.startsWith('data:') || url.includes('/upload/file?key=')) return url;
+  return normalizePhotoUrl(url);
+}
+
+interface MaterialRow {
+  id: number;
+  code: string;
+  name: string;
+  spec?: string | null;
+  category?: string | null;
+  unit: string;
+  defaultCostCents: number;
+  photoUrl?: string | null;
+  enabled: boolean;
+  createdAt?: string;
+}
+
+interface UploadResponse {
+  publicUrl: string;
+  displayUrl?: string;
+  objectKey?: string;
+  bucket?: string;
+}
+
+interface WarehouseRow {
+  id: number;
+  name: string;
+  type: WarehouseType;
+  communityId?: number | null;
+  enabled: boolean;
+}
+
+interface SupplierRow {
+  id: number;
+  name: string;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  address?: string | null;
+  rating?: number | null;
+  note?: string | null;
+  enabled: boolean;
+}
+
+interface StockRow {
+  id: number;
+  warehouseId: number;
+  materialId: number;
+  qty: number | string;
+  safetyQty: number | string;
+}
+
+interface PurchaseRequestItem {
+  materialId?: number;
+  name: string;
+  qty: number;
+  estUnitCostCents?: number;
+}
+
+interface PurchaseRequestRow {
+  id: number;
+  requestNo: string;
+  workOrderId?: number | null;
+  applicantId: number;
+  items: PurchaseRequestItem[];
+  estTotalCents: number;
+  status: PurchaseRequestStatus;
+  managerId?: number | null;
+  managerAt?: string | null;
+  purchaserId?: number | null;
+  purchaserAt?: string | null;
+  rejectReason?: string | null;
+  createdAt?: string;
+}
+
+interface PurchaseOrderItem {
+  materialId: number;
+  qty: number;
+  unitCostCents: number;
+}
+
+interface PurchaseOrderRow {
+  id: number;
+  orderNo: string;
+  requestId?: number | null;
+  supplierId: number;
+  items: PurchaseOrderItem[];
+  totalCents: number;
+  status: PurchaseOrderStatus;
+  createdAt?: string;
+}
+
+interface TransferOrderItem {
+  materialId: number;
+  qty: number;
+  receivedQty?: number;
+}
+
+interface TransferOrderRow {
+  id: number;
+  transferNo: string;
+  fromWarehouseId: number;
+  toWarehouseId: number;
+  items: TransferOrderItem[];
+  status: 'pending_review' | 'approved' | 'received' | 'rejected' | string;
+  approvedAt?: string | null;
+  shippedAt?: string | null;
+  receivedAt?: string | null;
+  rejectReason?: string | null;
+  note?: string | null;
+  createdAt?: string;
+}
+
+interface WarehouseLocationRow {
+  id: number;
+  warehouseId: number;
+  zone?: string | null;
+  shelf?: string | null;
+  bin?: string | null;
+  label: string;
+  enabled: boolean;
+}
+
+type CatalogKind = 'material' | 'warehouse' | 'supplier';
+type RequestFilterKey = 'all' | PurchaseRequestStatus;
+
+const requestStatusMeta: Record<string, { label: string; color: string }> = {
+  draft: { label: '草稿', color: 'default' },
+  office_review: { label: '办公室汇总', color: 'purple' },
+  manager_review: { label: '物业经理审批', color: 'gold' },
+  purchaser_review: { label: '采购经理审批', color: 'blue' },
+  approved: { label: '待下单', color: 'green' },
+  rejected: { label: '已驳回', color: 'red' },
+  merged: { label: '已合并', color: 'default' },
+  done: { label: '已转采购单', color: 'default' },
+};
+
+const orderStatusMeta: Record<string, { label: string; color: string }> = {
+  placed: { label: '已下单', color: 'blue' },
+  partial: { label: '部分到货', color: 'orange' },
+  received: { label: '已收货', color: 'green' },
+  closed: { label: '已关闭', color: 'default' },
+};
+
+const transferStatusMeta: Record<string, { label: string; color: string }> = {
+  pending_review: { label: '待经理审批', color: 'gold' },
+  approved: { label: '待接收', color: 'blue' },
+  received: { label: '已完成', color: 'green' },
+  rejected: { label: '已驳回', color: 'red' },
+  // 兼容历史数据
+  created: { label: '待出库(旧)', color: 'default' },
+  shipped: { label: '运输中(旧)', color: 'blue' },
+};
+
+const materialCategoryOptions = MATERIAL_CATEGORIES.map((value) => ({ value, label: value }));
+
+const inventoryPageSizeOptions = ['30', '50', '100'];
+
+const requestFilterOrder: RequestFilterKey[] = [
+  'all',
+  PurchaseRequestStatus.OFFICE_REVIEW,
+  PurchaseRequestStatus.MANAGER_REVIEW,
+  PurchaseRequestStatus.PURCHASER_REVIEW,
+  PurchaseRequestStatus.APPROVED,
+  PurchaseRequestStatus.REJECTED,
+  PurchaseRequestStatus.DONE,
+];
+
+function money(cents?: number | null) {
+  return `¥${((cents || 0) / 100).toFixed(2)}`;
+}
+
+function numberQty(value: number | string | undefined | null) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function quantityPrecision(unit?: string | null) {
+  return ['米', '公斤', '升', '平方米', '立方米'].includes(unit || '') ? 2 : 0;
+}
+
+function materialDisplayName(material?: Pick<MaterialRow, 'name' | 'spec'> | null) {
+  if (!material) return '';
+  return material.spec ? `${material.name} ${material.spec}` : material.name;
+}
+
+/** 时间全站一种写法：2026/8/9 20:43 周日（见 shared-types 的 formatDateTimeCn） */
+function formatDateTime(value?: string | null) {
+  return formatDateTimeCn(value) || '-';
+}
+
+function requestStepCurrent(status: PurchaseRequestStatus) {
+  if (status === PurchaseRequestStatus.OFFICE_REVIEW) return 0;
+  if (status === PurchaseRequestStatus.MANAGER_REVIEW) return 1;
+  if (status === PurchaseRequestStatus.PURCHASER_REVIEW) return 2;
+  if (status === PurchaseRequestStatus.APPROVED) return 3;
+  if (status === PurchaseRequestStatus.DONE) return 4;
+  return 0;
+}
+
+function requestStepStatus(status: PurchaseRequestStatus): 'process' | 'error' {
+  return status === PurchaseRequestStatus.REJECTED ? 'error' : 'process';
+}
+
+export default function InventoryPage() {
+  const { message, modal } = AntdApp.useApp();
+  const { canEdit } = usePagePerm('inventory');
+  const [materials, setMaterials] = useState<MaterialRow[]>([]);
+  const [warehouses, setWarehouses] = useState<WarehouseRow[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
+  const [stocks, setStocks] = useState<StockRow[]>([]);
+  const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequestRow[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderRow[]>([]);
+  const [transferOrders, setTransferOrders] = useState<TransferOrderRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [keyword, setKeyword] = useState('');
+  const [catalogOpen, setCatalogOpen] = useState<CatalogKind | null>(null);
+  const [editingMaterial, setEditingMaterial] = useState<MaterialRow | null>(null);
+  const [editingWarehouse, setEditingWarehouse] = useState<WarehouseRow | null>(null);
+  const [editingSupplier, setEditingSupplier] = useState<SupplierRow | null>(null);
+  const [purchaseOrderOpen, setPurchaseOrderOpen] = useState(false);
+  const [receiptOrder, setReceiptOrder] = useState<PurchaseOrderRow | null>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [receiveTransferOpen, setReceiveTransferOpen] = useState(false);
+  const [receivingTransfer, setReceivingTransfer] = useState<TransferOrderRow | null>(null);
+  const [rejectTransferTarget, setRejectTransferTarget] = useState<TransferOrderRow | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<PurchaseRequestRow | null>(null);
+  const [requestDetail, setRequestDetail] = useState<PurchaseRequestRow | null>(null);
+  const [manualRequestOpen, setManualRequestOpen] = useState(false);
+  const [selectedRequestKeys, setSelectedRequestKeys] = useState<number[]>([]);
+  const [requestFilter, setRequestFilter] = useState<RequestFilterKey>('all');
+  const [editingStock, setEditingStock] = useState<StockRow | null>(null);
+  const [warehouseLocations, setWarehouseLocations] = useState<WarehouseLocationRow[]>([]);
+  const [locationConfigWarehouse, setLocationConfigWarehouse] = useState<WarehouseRow | null>(null);
+  const [generalReceiptOpen, setGeneralReceiptOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [catalogForm] = Form.useForm();
+  const [purchaseOrderForm] = Form.useForm();
+  const [receiptForm] = Form.useForm();
+  const [generalReceiptForm] = Form.useForm();
+  const [transferForm] = Form.useForm();
+  const [receiveTransferForm] = Form.useForm();
+  const [rejectTransferForm] = Form.useForm();
+  const [rejectForm] = Form.useForm();
+  const [manualRequestForm] = Form.useForm();
+  const [stockForm] = Form.useForm();
+
+  const materialById = useMemo(() => new Map(materials.map((item) => [item.id, item])), [materials]);
+  const warehouseById = useMemo(() => new Map(warehouses.map((item) => [item.id, item])), [warehouses]);
+  const supplierById = useMemo(() => new Map(suppliers.map((item) => [item.id, item])), [suppliers]);
+  const editingStockMaterial = editingStock ? materialById.get(editingStock.materialId) : undefined;
+  const stockQtyPrecision = quantityPrecision(editingStockMaterial?.unit);
+
+  const materialOptions = withOptionTitles(materials
+    .filter((item) => item.enabled)
+    .map((item) => ({
+      value: item.id,
+      label: `${item.code} · ${materialDisplayName(item)}`,
+    })));
+  const warehouseOptions = withOptionTitles(warehouses
+    .filter((item) => item.enabled)
+    .map((item) => ({
+      value: item.id,
+      label: `${item.name}${item.type === WarehouseType.CENTRAL ? ' · 总仓' : ' · 小区仓'}`,
+    })));
+  const supplierOptions = withOptionTitles(suppliers
+    .filter((item) => item.enabled)
+    .map((item) => ({ value: item.id, label: item.name })));
+  const locationOptionsByWarehouse = useMemo(() => {
+    const map = new Map<number, Array<{ value: number; label: string }>>();
+    warehouseLocations.filter((loc) => loc.enabled).forEach((loc) => {
+      const list = map.get(loc.warehouseId) || [];
+      list.push({ value: loc.id, label: loc.label });
+      map.set(loc.warehouseId, list);
+    });
+    return map;
+  }, [warehouseLocations]);
+
+  const loadAll = async () => {
+    setLoading(true);
+    try {
+      const [
+        materialRows,
+        warehouseRows,
+        supplierRows,
+        stockRows,
+        requestRows,
+        orderRows,
+        transferRows,
+        locationRows,
+      ] = await Promise.all([
+        request<MaterialRow[]>({ url: '/materials' }),
+        request<WarehouseRow[]>({ url: '/warehouses' }),
+        request<SupplierRow[]>({ url: '/suppliers' }),
+        request<StockRow[]>({ url: '/stocks' }),
+        request<PurchaseRequestRow[]>({ url: '/purchase-requests' }),
+        request<PurchaseOrderRow[]>({ url: '/purchase-orders' }),
+        request<TransferOrderRow[]>({ url: '/transfer-orders' }),
+        request<WarehouseLocationRow[]>({ url: '/warehouse-locations' }),
+      ]);
+      setMaterials(materialRows);
+      setWarehouses(warehouseRows);
+      setSuppliers(supplierRows);
+      setStocks(stockRows);
+      setPurchaseRequests(requestRows);
+      setPurchaseOrders(orderRows);
+      setTransferOrders(transferRows);
+      setWarehouseLocations(locationRows);
+    } catch (e: any) {
+      message.error(e?.message || '加载库存采购数据失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadAll(); }, []);
+
+  const stats = useMemo(() => {
+    const stockValue = stocks.reduce((sum, row) => {
+      const material = materialById.get(row.materialId);
+      return sum + numberQty(row.qty) * (material?.defaultCostCents || 0);
+    }, 0);
+    return {
+      materials: materials.length,
+      warehouses: warehouses.length,
+      lowStock: stocks.filter((row) => numberQty(row.qty) <= numberQty(row.safetyQty)).length,
+      pendingRequests: purchaseRequests.filter((row) =>
+        [PurchaseRequestStatus.MANAGER_REVIEW, PurchaseRequestStatus.PURCHASER_REVIEW].includes(row.status),
+      ).length,
+      approvedRequests: purchaseRequests.filter((row) => row.status === PurchaseRequestStatus.APPROVED).length,
+      placedOrders: purchaseOrders.filter((row) => row.status === PurchaseOrderStatus.PLACED).length,
+      stockValue,
+    };
+  }, [materialById, materials.length, purchaseOrders, purchaseRequests, stocks, warehouses.length]);
+
+  const filteredStocks = stocks.filter((row) => {
+    if (!keyword.trim()) return true;
+    const material = materialById.get(row.materialId);
+    const text = `${material?.code || ''} ${materialDisplayName(material)} ${warehouseById.get(row.warehouseId)?.name || ''}`;
+    return text.toLowerCase().includes(keyword.toLowerCase());
+  });
+
+  const requestCounts = useMemo(() => {
+    const counts = new Map<RequestFilterKey, number>([['all', purchaseRequests.length]]);
+    purchaseRequests.forEach((row) => {
+      counts.set(row.status, (counts.get(row.status) || 0) + 1);
+    });
+    return counts;
+  }, [purchaseRequests]);
+
+  const filteredPurchaseRequests = requestFilter === 'all'
+    ? purchaseRequests
+    : purchaseRequests.filter((row) => row.status === requestFilter);
+
+  const requestFilterItems = requestFilterOrder.map((key) => ({
+    key,
+    label: key === 'all'
+      ? `全部 ${requestCounts.get('all') || 0}`
+      : `${requestStatusMeta[key]?.label || key} ${requestCounts.get(key) || 0}`,
+  }));
+
+  const openCreateMaterial = () => {
+    setEditingMaterial(null);
+    catalogForm.resetFields();
+    catalogForm.setFieldsValue({ unit: '个', enabled: true, photoUploading: false });
+    setCatalogOpen('material');
+  };
+
+  const openEditMaterial = (row: MaterialRow) => {
+    setEditingMaterial(row);
+    catalogForm.resetFields();
+    catalogForm.setFieldsValue({
+      name: row.name,
+      spec: row.spec || undefined,
+      category: row.category,
+      unit: row.unit,
+      defaultCostYuan: row.defaultCostCents / 100,
+      photoUrl: row.photoUrl || undefined,
+      photoUploading: false,
+      enabled: row.enabled,
+    });
+    setCatalogOpen('material');
+  };
+
+  const openCreateWarehouse = () => {
+    setEditingWarehouse(null);
+    catalogForm.resetFields();
+    catalogForm.setFieldsValue({ type: WarehouseType.CENTRAL, enabled: true });
+    setCatalogOpen('warehouse');
+  };
+
+  const openEditWarehouse = (row: WarehouseRow) => {
+    setEditingWarehouse(row);
+    catalogForm.resetFields();
+    catalogForm.setFieldsValue({
+      name: row.name,
+      type: row.type,
+      communityId: row.communityId || undefined,
+      enabled: row.enabled,
+    });
+    setCatalogOpen('warehouse');
+  };
+
+  const openCreateSupplier = () => {
+    setEditingSupplier(null);
+    catalogForm.resetFields();
+    setCatalogOpen('supplier');
+  };
+
+  const openEditSupplier = (row: SupplierRow) => {
+    setEditingSupplier(row);
+    catalogForm.resetFields();
+    catalogForm.setFieldsValue({
+      name: row.name,
+      contactName: row.contactName || undefined,
+      contactPhone: row.contactPhone || undefined,
+      address: row.address || undefined,
+      rating: row.rating || undefined,
+      note: row.note || undefined,
+      enabled: row.enabled,
+    });
+    setCatalogOpen('supplier');
+  };
+
+  const closeCatalog = () => {
+    setCatalogOpen(null);
+    setEditingMaterial(null);
+    setEditingWarehouse(null);
+    setEditingSupplier(null);
+  };
+
+  const openEditStock = (row: StockRow) => {
+    setEditingStock(row);
+    stockForm.resetFields();
+    stockForm.setFieldsValue({
+      qty: numberQty(row.qty),
+      safetyQty: numberQty(row.safetyQty),
+    });
+  };
+
+  const submitCatalog = async (values: any) => {
+    if (!catalogOpen) return;
+    if (catalogOpen === 'material' && values.photoUploading) {
+      message.warning('照片还在上传，请稍后再保存');
+      return;
+    }
+    setSaving(true);
+    try {
+      const path = catalogOpen === 'material'
+        ? '/materials'
+        : catalogOpen === 'warehouse'
+          ? '/warehouses'
+          : '/suppliers';
+      const data = catalogOpen === 'material'
+        ? {
+            ...values,
+            defaultCostCents: values.defaultCostYuan != null ? Math.round(values.defaultCostYuan * 100) : 0,
+            photoUrl: normalizePhotoUrl(values.photoUrl),
+          }
+        : values;
+      delete data.defaultCostYuan;
+      delete data.photoUploading;
+      const editingId = catalogOpen === 'material'
+        ? editingMaterial?.id
+        : catalogOpen === 'warehouse'
+          ? editingWarehouse?.id
+          : editingSupplier?.id;
+      await request({
+        method: editingId ? 'PATCH' : 'POST',
+        url: editingId ? `${path}/${editingId}` : path,
+        data,
+      });
+      message.success('基础资料已保存');
+      catalogForm.resetFields();
+      closeCatalog();
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitStock = async () => {
+    if (!editingStock) return;
+    const values = await stockForm.validateFields();
+    setSaving(true);
+    try {
+      await request({
+        method: 'PATCH',
+        url: `/stocks/${editingStock.id}`,
+        data: {
+          qty: values.qty,
+          safetyQty: values.safetyQty,
+        },
+      });
+      message.success('库存已更新');
+      setEditingStock(null);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '库存更新失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const approveRequest = async (row: PurchaseRequestRow, step: 'manager' | 'purchaser') => {
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: `/purchase-requests/${row.id}/${step === 'manager' ? 'manager-approve' : 'purchaser-approve'}`,
+      });
+      message.success('审批已通过');
+      setRequestDetail(null);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '审批失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitRequestsToManager = async (ids: number[]) => {
+    if (!ids.length) return;
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: '/purchase-requests/submit-to-manager',
+        data: { requestIds: ids },
+      });
+      message.success(ids.length > 1 ? `已合并 ${ids.length} 条申请并提交经理` : '已提交物业经理审批');
+      setRequestDetail(null);
+      setSelectedRequestKeys([]);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '提交失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openManualRequest = () => {
+    manualRequestForm.resetFields();
+    manualRequestForm.setFieldsValue({ items: [{}] });
+    setManualRequestOpen(true);
+  };
+
+  const submitManualRequest = async () => {
+    const values = await manualRequestForm.validateFields();
+    const items = (values.items || []).filter((item: any) => item?.materialId && item?.qty);
+    if (!items.length) {
+      message.warning('请至少添加一种材料');
+      return;
+    }
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: '/purchase-requests',
+        data: {
+          items: items.map((item: any) => ({
+            materialId: item.materialId,
+            qty: item.qty,
+            estUnitCostCents: item.estUnitCostYuan != null ? Math.round(item.estUnitCostYuan * 100) : 0,
+          })),
+        },
+      });
+      message.success('采购申请已创建（进入办公室汇总）');
+      setManualRequestOpen(false);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '创建失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitReject = async () => {
+    if (!rejectTarget) return;
+    const values = await rejectForm.validateFields();
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: `/purchase-requests/${rejectTarget.id}/reject`,
+        data: { reason: values.reason },
+      });
+      message.success('已驳回采购申请');
+      rejectForm.resetFields();
+      setRejectTarget(null);
+      setRequestDetail(null);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '驳回失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openPurchaseOrder = (requestRow?: PurchaseRequestRow) => {
+    purchaseOrderForm.resetFields();
+    purchaseOrderForm.setFieldsValue({
+      requestId: requestRow?.id,
+      items: requestRow?.items?.length
+        ? requestRow.items.map((item) => ({
+            materialId: item.materialId,
+            qty: item.qty,
+            unitCostYuan: item.estUnitCostCents != null ? item.estUnitCostCents / 100 : undefined,
+          }))
+        : [{}],
+    });
+    setRequestDetail(null);
+    setPurchaseOrderOpen(true);
+  };
+
+  const submitPurchaseOrder = async () => {
+    const values = await purchaseOrderForm.validateFields();
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: '/purchase-orders',
+        data: {
+          requestId: values.requestId,
+          supplierId: values.supplierId,
+          items: (values.items || []).filter((item: any) => item?.materialId && item?.qty).map((item: any) => ({
+            materialId: item.materialId,
+            qty: item.qty,
+            unitCostCents: Math.round((item.unitCostYuan || 0) * 100),
+          })),
+        },
+      });
+      message.success('采购单已创建');
+      setPurchaseOrderOpen(false);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '创建采购单失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openReceipt = (order: PurchaseOrderRow) => {
+    receiptForm.resetFields();
+    receiptForm.setFieldsValue({
+      purchaseOrderId: order.id,
+      warehouseId: undefined,
+      items: order.items.map((item) => ({
+        materialId: item.materialId,
+        orderedQty: item.qty,
+        qty: item.qty,
+        unitCostYuan: item.unitCostCents / 100,
+        photoUrls: [],
+        locationId: undefined,
+      })),
+    });
+    setReceiptOrder(order);
+  };
+
+  const submitReceipt = async () => {
+    const values = await receiptForm.validateFields();
+    const items = (values.items || []);
+    const missingPhoto = items.find((item: any) => !item.photoUrls?.length);
+    if (missingPhoto) {
+      message.warning('每种材料至少上传 1 张实物照片');
+      return;
+    }
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: '/goods-receipts',
+        data: {
+          purchaseOrderId: values.purchaseOrderId,
+          warehouseId: values.warehouseId,
+          items: items.map((item: any) => ({
+            materialId: item.materialId,
+            qty: item.qty,
+            unitCostCents: Math.round((item.unitCostYuan || 0) * 100),
+            photoUrls: item.photoUrls || [],
+            locationId: item.locationId || undefined,
+          })),
+        },
+      });
+      message.success('采购入库已完成');
+      setReceiptOrder(null);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '入库失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openGeneralReceipt = () => {
+    generalReceiptForm.resetFields();
+    generalReceiptForm.setFieldsValue({ items: [{ photoUrls: [] }] });
+    setGeneralReceiptOpen(true);
+  };
+
+  const submitGeneralReceipt = async () => {
+    const values = await generalReceiptForm.validateFields();
+    const items = (values.items || []).filter((item: any) => item?.materialId && item?.qty);
+    if (!items.length) {
+      message.warning('请至少添加一种材料');
+      return;
+    }
+    const missingPhoto = items.find((item: any) => !item.photoUrls?.length);
+    if (missingPhoto) {
+      message.warning('每种材料至少上传 1 张实物照片');
+      return;
+    }
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: '/goods-receipts/general',
+        data: {
+          warehouseId: values.warehouseId,
+          sourceText: values.sourceText,
+          attachments: values.attachments || [],
+          items: items.map((item: any) => ({
+            materialId: item.materialId,
+            qty: item.qty,
+            unitCostCents: Math.round((item.unitCostYuan || 0) * 100),
+            photoUrls: item.photoUrls || [],
+            locationId: item.locationId || undefined,
+          })),
+        },
+      });
+      message.success('一般入库已完成');
+      setGeneralReceiptOpen(false);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '入库失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitTransfer = async () => {
+    const values = await transferForm.validateFields();
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: '/transfer-orders',
+        data: {
+          fromWarehouseId: values.fromWarehouseId,
+          toWarehouseId: values.toWarehouseId,
+          items: (values.items || []).filter((item: any) => item?.materialId && item?.qty),
+        },
+      });
+      message.success('调拨单已创建');
+      transferForm.resetFields();
+      setTransferOpen(false);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '创建调拨单失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const approveTransfer = async (row: TransferOrderRow) => {
+    setSaving(true);
+    try {
+      await request({ method: 'POST', url: `/transfer-orders/${row.id}/approve` });
+      message.success('已审批通过，发货仓已扣减，等待接收仓确认');
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '审批失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const rejectTransfer = async (row: TransferOrderRow, reason: string) => {
+    setSaving(true);
+    try {
+      await request({ method: 'POST', url: `/transfer-orders/${row.id}/reject`, data: { reason } });
+      message.success('已驳回');
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '驳回失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openReceiveTransfer = (row: TransferOrderRow) => {
+    setReceivingTransfer(row);
+    receiveTransferForm.setFieldsValue({
+      items: row.items.map((item) => ({
+        materialId: item.materialId,
+        qty: item.qty,
+        receivedQty: item.qty,
+      })),
+    });
+    setReceiveTransferOpen(true);
+  };
+
+  const submitReceiveTransfer = async () => {
+    if (!receivingTransfer) return;
+    const values = await receiveTransferForm.validateFields();
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: `/transfer-orders/${receivingTransfer.id}/receive`,
+        data: {
+          items: (values.items || []).map((item: any) => ({
+            materialId: item.materialId,
+            receivedQty: item.receivedQty,
+          })),
+        },
+      });
+      message.success('已接收入库');
+      setReceiveTransferOpen(false);
+      setReceivingTransfer(null);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '接收失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderItems = (items: Array<PurchaseRequestItem | PurchaseOrderItem | TransferOrderItem>) => (
+    <Space size={[6, 6]} wrap>
+      {items?.length ? items.map((item, index) => {
+        const material = 'materialId' in item && item.materialId ? materialById.get(item.materialId) : null;
+        const name = material ? materialDisplayName(material) : ('name' in item ? item.name : `#${item.materialId}`);
+        const unit = material?.unit || '';
+        return <Tag key={`${name}-${index}`}>{name} x {item.qty}{unit}</Tag>;
+      }) : <Text type="secondary">无明细</Text>}
+    </Space>
+  );
+
+  return (
+    <div>
+      <Space align="start" style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <Title level={3} style={{ margin: 0 }}>库存与采购</Title>
+          <Text type="secondary">按库存现状、缺料审批、采购下单、到货入库、仓库调拨与领料组织日常工作。</Text>
+        </div>
+        <Space>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={loadAll}>刷新</Button>
+          {canEdit && <Button icon={<InboxOutlined />} onClick={openGeneralReceipt}>一般入库</Button>}
+          {canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => openPurchaseOrder()}>新建采购单</Button>}
+        </Space>
+      </Space>
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={12} lg={4}><Metric title="材料 SKU" value={stats.materials} /></Col>
+        <Col xs={24} sm={12} lg={4}><Metric title="仓库数量" value={stats.warehouses} /></Col>
+        <Col xs={24} sm={12} lg={4}><Metric title="库存预警" value={stats.lowStock} alert /></Col>
+        <Col xs={24} sm={12} lg={4}><Metric title="采购待审" value={stats.pendingRequests} /></Col>
+        <Col xs={24} sm={12} lg={4}><Metric title="待下单申请" value={stats.approvedRequests} /></Col>
+        <Col xs={24} sm={12} lg={4}><Metric title="在途采购单" value={stats.placedOrders} suffix={`约 ${money(stats.stockValue)}`} /></Col>
+      </Row>
+
+      <Tabs
+        items={[
+          {
+            key: 'stock',
+            label: <span><InboxOutlined /> 库存现状</span>,
+            children: (
+              <Card
+                title="仓库库存"
+                extra={<Input.Search allowClear placeholder="搜索材料 / 仓库" onSearch={setKeyword} onChange={(event) => setKeyword(event.target.value)} style={{ width: 260 }} />}
+              >
+                <Table
+                  rowKey="id"
+                  loading={loading}
+                  dataSource={filteredStocks}
+                  tableLayout="fixed"
+                  scroll={{ x: 1440 }}
+                  pagination={{ defaultPageSize: 50, pageSizeOptions: inventoryPageSizeOptions, showSizeChanger: true }}
+                  columns={[
+                    { title: '库存 ID', dataIndex: 'id', width: 90 },
+                    { title: '仓库', dataIndex: 'warehouseId', width: 180, render: (id) => warehouseById.get(id)?.name || `#${id}` },
+                    { title: '仓库类型', dataIndex: 'warehouseId', width: 110, render: (id) => warehouseById.get(id)?.type === WarehouseType.CENTRAL ? <Tag color="blue">总仓</Tag> : <Tag>小区仓</Tag> },
+                    {
+                      title: '商品图片',
+                      dataIndex: 'materialId',
+                      width: 130,
+                      render: (id) => {
+                        const url = materialById.get(id)?.photoUrl;
+                        return url
+                          ? <Image src={imageSrc(url)} width={64} height={64} style={{ objectFit: 'cover', borderRadius: 6 }} />
+                          : <Text type="secondary">未上传</Text>;
+                      },
+                    },
+                    { title: '材料编码', dataIndex: 'materialId', width: 140, render: (id) => materialById.get(id)?.code || `#${id}` },
+                    { title: '材料名称', dataIndex: 'materialId', ellipsis: true, render: (id) => materialById.get(id)?.name || '-' },
+                    { title: '规格', dataIndex: 'materialId', width: 140, render: (id) => materialById.get(id)?.spec || '-' },
+                    { title: '分类', dataIndex: 'materialId', width: 120, render: (id) => materialById.get(id)?.category || '-' },
+                    { title: '当前库存', dataIndex: 'qty', width: 120, render: (v, row) => `${numberQty(v)} ${materialById.get(row.materialId)?.unit || ''}` },
+                    { title: '安全库存', dataIndex: 'safetyQty', width: 120, render: (v, row) => `${numberQty(v)} ${materialById.get(row.materialId)?.unit || ''}` },
+                    {
+                      title: '状态',
+                      key: 'status',
+                      width: 110,
+                      render: (_, row) => numberQty(row.qty) <= numberQty(row.safetyQty) ? <Tag color="red">低库存</Tag> : <Tag color="green">正常</Tag>,
+                    },
+                    {
+                      title: '操作',
+                      key: 'op',
+                      width: 90,
+                      fixed: 'right',
+                      render: (_, row) => canEdit ? <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEditStock(row)}>编辑</Button> : null,
+                    },
+                  ]}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: 'requests',
+            label: <span><AuditOutlined /> 采购申请</span>,
+            children: (
+              <Card
+                title="采购申请单"
+                extra={
+                  <Space>
+                    {canEdit && <Button icon={<PlusOutlined />} onClick={openManualRequest}>新建采购申请</Button>}
+                    <Button onClick={loadAll} icon={<ReloadOutlined />}>刷新</Button>
+                  </Space>
+                }
+              >
+                <Tabs
+                  size="small"
+                  activeKey={requestFilter}
+                  onChange={(key) => { setRequestFilter(key as RequestFilterKey); setSelectedRequestKeys([]); }}
+                  items={requestFilterItems}
+                  style={{ marginBottom: 12 }}
+                />
+                {requestFilter === PurchaseRequestStatus.OFFICE_REVIEW && (
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message="办公室汇总：勾选多条同类缺料申请可合并成一张提交给物业经理；单条也可直接提交。"
+                    action={
+                      <Popconfirm
+                        title={`将勾选的 ${selectedRequestKeys.length} 条合并提交经理？`}
+                        disabled={selectedRequestKeys.length === 0}
+                        onConfirm={() => submitRequestsToManager(selectedRequestKeys)}
+                      >
+                        <Button size="small" type="primary" disabled={selectedRequestKeys.length === 0} loading={saving}>
+                          合并提交经理（{selectedRequestKeys.length}）
+                        </Button>
+                      </Popconfirm>
+                    }
+                  />
+                )}
+                <Table
+                  rowKey="id"
+                  loading={loading}
+                  dataSource={filteredPurchaseRequests}
+                  tableLayout="fixed"
+                  scroll={{ x: 1320 }}
+                  rowSelection={requestFilter === PurchaseRequestStatus.OFFICE_REVIEW ? {
+                    selectedRowKeys: selectedRequestKeys,
+                    onChange: (keys) => setSelectedRequestKeys(keys as number[]),
+                  } : undefined}
+                  pagination={{ defaultPageSize: 50, pageSizeOptions: inventoryPageSizeOptions, showSizeChanger: true }}
+                  columns={[
+                    { title: '申请单号', dataIndex: 'requestNo', width: 180, ellipsis: true },
+                    { title: '当前环节', dataIndex: 'status', width: 140, render: (s: PurchaseRequestStatus) => <Tag color={requestStatusMeta[s]?.color}>{requestStatusMeta[s]?.label || s}</Tag> },
+                    { title: '来源', dataIndex: 'workOrderId', width: 110, render: (id) => id ? `工单 #${id}` : '手工申请' },
+                    { title: '材料摘要', dataIndex: 'items', width: 360, render: renderItems },
+                    { title: '预估金额', dataIndex: 'estTotalCents', width: 120, render: money },
+                    { title: '申请人', dataIndex: 'applicantId', width: 100, render: (id) => `#${id}` },
+                    {
+                      title: '审批进度',
+                      key: 'progress',
+                      width: 220,
+                      render: (_, row) => (
+                        <Space size={4} wrap>
+                          <Tag color={row.managerAt ? 'green' : 'default'}>经理{row.managerAt ? '已审' : '待审'}</Tag>
+                          <Tag color={row.purchaserAt ? 'green' : row.status === PurchaseRequestStatus.PURCHASER_REVIEW ? 'blue' : 'default'}>采购{row.purchaserAt ? '已审' : '待审'}</Tag>
+                        </Space>
+                      ),
+                    },
+                    { title: '申请时间', dataIndex: 'createdAt', width: 170, render: formatDateTime },
+                    {
+                      title: '操作',
+                      key: 'op',
+                      fixed: 'right',
+                      width: 170,
+                      render: (_, row) => (
+                        <Space size={4}>
+                          <Button size="small" type="link" onClick={() => setRequestDetail(row)}>
+                            {[
+                              PurchaseRequestStatus.MANAGER_REVIEW,
+                              PurchaseRequestStatus.PURCHASER_REVIEW,
+                            ].includes(row.status) ? '审批' : '查看'}
+                          </Button>
+                          {canEdit && row.status === PurchaseRequestStatus.APPROVED && (
+                            <Button size="small" type="link" onClick={() => openPurchaseOrder(row)}>下单</Button>
+                          )}
+                        </Space>
+                      ),
+                    },
+                  ]}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: 'orders',
+            label: <span><ShoppingCartOutlined /> 采购单与入库</span>,
+            children: (
+              <Card title="采购单" extra={canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => openPurchaseOrder()}>新建采购单</Button>}>
+                <Table
+                  rowKey="id"
+                  loading={loading}
+                  dataSource={purchaseOrders}
+                  tableLayout="fixed"
+                  scroll={{ x: 1120 }}
+                  pagination={{ pageSize: 10, showSizeChanger: false }}
+                  columns={[
+                    { title: '采购单号', dataIndex: 'orderNo', width: 180, ellipsis: true },
+                    { title: '关联申请', dataIndex: 'requestId', width: 100, render: (id) => id ? `#${id}` : '-' },
+                    { title: '供应商', dataIndex: 'supplierId', width: 180, render: (id) => supplierById.get(id)?.name || `#${id}` },
+                    { title: '采购明细', dataIndex: 'items', width: 340, render: renderItems },
+                    { title: '总金额', dataIndex: 'totalCents', width: 120, render: money },
+                    { title: '状态', dataIndex: 'status', width: 110, render: (s) => <Tag color={orderStatusMeta[s]?.color}>{orderStatusMeta[s]?.label || s}</Tag> },
+                    {
+                      title: '操作',
+                      key: 'op',
+                      fixed: 'right',
+                      width: 120,
+                      render: (_, row) => canEdit && [PurchaseOrderStatus.PLACED, PurchaseOrderStatus.PARTIAL].includes(row.status) ? (
+                        <Button size="small" type="link" onClick={() => openReceipt(row)}>到货入库</Button>
+                      ) : <Text type="secondary">-</Text>,
+                    },
+                  ]}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: 'transfers',
+            label: <span><SwapOutlined /> 仓库调拨与领料</span>,
+            children: (
+              <Card title="调拨单" extra={canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => { transferForm.resetFields(); transferForm.setFieldsValue({ items: [{}] }); setTransferOpen(true); }}>新建调拨</Button>}>
+                <Table
+                  rowKey="id"
+                  loading={loading}
+                  dataSource={transferOrders}
+                  tableLayout="fixed"
+                  scroll={{ x: 1120 }}
+                  pagination={{ pageSize: 10, showSizeChanger: false }}
+                  columns={[
+                    { title: '调拨单号', dataIndex: 'transferNo', width: 180, ellipsis: true },
+                    { title: '出库仓', dataIndex: 'fromWarehouseId', width: 180, render: (id) => warehouseById.get(id)?.name || `#${id}` },
+                    { title: '入库仓', dataIndex: 'toWarehouseId', width: 180, render: (id) => warehouseById.get(id)?.name || `#${id}` },
+                    { title: '调拨明细', dataIndex: 'items', width: 300, render: renderItems },
+                    { title: '状态', dataIndex: 'status', width: 120, render: (s) => <Tag color={transferStatusMeta[s]?.color}>{transferStatusMeta[s]?.label || s}</Tag> },
+                    { title: '审批时间', dataIndex: 'approvedAt', width: 160, render: formatDateTime },
+                    { title: '接收时间', dataIndex: 'receivedAt', width: 160, render: formatDateTime },
+                    {
+                      title: '操作',
+                      key: 'op',
+                      fixed: 'right',
+                      width: 170,
+                      render: (_, row) => canEdit && row.status === 'pending_review' ? (
+                        <Space size={4}>
+                          <Popconfirm title="审批通过？" description="发货仓将立即扣减库存并锁定在途。" onConfirm={() => approveTransfer(row)}>
+                            <Button size="small" type="link">审批</Button>
+                          </Popconfirm>
+                          <Button size="small" type="link" danger onClick={() => { setRejectTransferTarget(row); rejectTransferForm.resetFields(); }}>驳回</Button>
+                        </Space>
+                      ) : canEdit && row.status === 'approved' ? (
+                        <Button size="small" type="link" onClick={() => openReceiveTransfer(row)}>接收确认</Button>
+                      ) : row.status === 'rejected' && row.rejectReason ? (
+                        <Tooltip title={row.rejectReason}><Text type="secondary">驳回原因</Text></Tooltip>
+                      ) : <Text type="secondary">-</Text>,
+                    },
+                  ]}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: 'catalog',
+            label: '基础资料',
+            children: (
+              <Card>
+                <Tabs
+                  items={[
+                    {
+                      key: 'materials',
+                      label: '材料SKU',
+                      children: (
+                        <>
+                          <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 12 }}>
+                            {canEdit && <Button size="small" icon={<PlusOutlined />} onClick={openCreateMaterial}>新增材料</Button>}
+                          </Space>
+                          <Table
+                            rowKey="id"
+                            size="small"
+                            dataSource={materials}
+                            pagination={{ defaultPageSize: 50, pageSizeOptions: inventoryPageSizeOptions, showSizeChanger: true }}
+                            columns={[
+                              { title: '序号', key: 'index', width: 64, render: (_v, _row, index) => index + 1 },
+                              { title: '类别', dataIndex: 'category', width: 110, render: (v) => v || '-' },
+                              { title: '编码', dataIndex: 'code', width: 120, ellipsis: true },
+                              {
+                                title: '实物照片',
+                                dataIndex: 'photoUrl',
+                                width: 130,
+                                render: (url) => url
+                                  ? <Image src={imageSrc(url)} width={64} height={64} style={{ objectFit: 'cover', borderRadius: 6 }} />
+                                  : <Text type="secondary">未上传</Text>,
+                              },
+                              { title: '名称', dataIndex: 'name', ellipsis: true },
+                              { title: '规格', dataIndex: 'spec', width: 120, render: (v) => v || '-' },
+                              { title: '单位', dataIndex: 'unit', width: 80 },
+                              { title: '采购单价', dataIndex: 'defaultCostCents', width: 110, render: money },
+                              {
+                                title: '操作',
+                                key: 'op',
+                                width: 90,
+                                render: (_, row) => canEdit ? <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEditMaterial(row)}>编辑</Button> : null,
+                              },
+                            ]}
+                          />
+                        </>
+                      ),
+                    },
+                    {
+                      key: 'warehouses',
+                      label: '仓库档案',
+                      children: (
+                        <>
+                          <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 12 }}>
+                            {canEdit && <Button size="small" icon={<PlusOutlined />} onClick={openCreateWarehouse}>新增仓库</Button>}
+                          </Space>
+                          <Table
+                            rowKey="id"
+                            size="small"
+                            dataSource={warehouses}
+                            pagination={{ pageSize: 12, showSizeChanger: false }}
+                            columns={[
+                              { title: '名称', dataIndex: 'name', ellipsis: true },
+                              { title: '类型', dataIndex: 'type', width: 120, render: (v) => v === WarehouseType.CENTRAL ? '总仓' : '小区仓' },
+                              { title: '小区 ID', dataIndex: 'communityId', width: 100, render: (v) => v || '-' },
+                              {
+                                title: '库位数',
+                                key: 'locations',
+                                width: 90,
+                                render: (_, row) => warehouseLocations.filter((loc) => loc.warehouseId === row.id).length || <Text type="secondary">0</Text>,
+                              },
+                              {
+                                title: '操作',
+                                key: 'op',
+                                width: 190,
+                                render: (_, row) => canEdit ? (
+                                  <Space size={0}>
+                                    <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEditWarehouse(row)}>编辑</Button>
+                                    <Button size="small" type="link" icon={<AppstoreOutlined />} onClick={() => setLocationConfigWarehouse(row)}>库位</Button>
+                                  </Space>
+                                ) : null,
+                              },
+                            ]}
+                          />
+                        </>
+                      ),
+                    },
+                    {
+                      key: 'suppliers',
+                      label: '供应商档案',
+                      children: (
+                        <>
+                          <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 12 }}>
+                            {canEdit && <Button size="small" icon={<PlusOutlined />} onClick={openCreateSupplier}>新增供应商</Button>}
+                          </Space>
+                          <Table
+                            rowKey="id"
+                            size="small"
+                            dataSource={suppliers}
+                            pagination={{ pageSize: 12, showSizeChanger: false }}
+                            columns={[
+                              { title: '名称', dataIndex: 'name', ellipsis: true },
+                              { title: '联系人', dataIndex: 'contactName', width: 120, render: (v) => v || '-' },
+                              { title: '电话', dataIndex: 'contactPhone', width: 140, render: (v) => v || '-' },
+                              {
+                                title: '操作',
+                                key: 'op',
+                                width: 90,
+                                render: (_, row) => canEdit ? <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEditSupplier(row)}>编辑</Button> : null,
+                              },
+                            ]}
+                          />
+                        </>
+                      ),
+                    },
+                  ]}
+                />
+              </Card>
+            ),
+          },
+        ]}
+      />
+
+      <CatalogModal
+        kind={catalogOpen}
+        form={catalogForm}
+        editingMaterial={editingMaterial}
+        editingWarehouse={editingWarehouse}
+        editingSupplier={editingSupplier}
+        saving={saving}
+        onCancel={closeCatalog}
+        onOk={submitCatalog}
+      />
+      <PurchaseOrderModal
+        open={purchaseOrderOpen}
+        form={purchaseOrderForm}
+        saving={saving}
+        materialOptions={materialOptions}
+        supplierOptions={supplierOptions}
+        onCancel={() => setPurchaseOrderOpen(false)}
+        onOk={submitPurchaseOrder}
+      />
+      <ReceiptModal
+        order={receiptOrder}
+        form={receiptForm}
+        saving={saving}
+        materialById={materialById}
+        warehouseOptions={warehouseOptions}
+        locationOptionsByWarehouse={locationOptionsByWarehouse}
+        onCancel={() => setReceiptOrder(null)}
+        onOk={submitReceipt}
+      />
+      <GeneralReceiptModal
+        open={generalReceiptOpen}
+        form={generalReceiptForm}
+        saving={saving}
+        materialOptions={materialOptions}
+        warehouseOptions={warehouseOptions}
+        locationOptionsByWarehouse={locationOptionsByWarehouse}
+        onCancel={() => setGeneralReceiptOpen(false)}
+        onOk={submitGeneralReceipt}
+      />
+      <LocationConfigModal
+        warehouse={locationConfigWarehouse}
+        locations={warehouseLocations.filter((loc) => loc.warehouseId === locationConfigWarehouse?.id)}
+        onClose={() => setLocationConfigWarehouse(null)}
+        onChanged={loadAll}
+      />
+      <TransferModal
+        open={transferOpen}
+        form={transferForm}
+        saving={saving}
+        materialOptions={materialOptions}
+        warehouseOptions={warehouseOptions}
+        onCancel={() => setTransferOpen(false)}
+        onOk={submitTransfer}
+      />
+      <Modal
+        open={receiveTransferOpen}
+        title={receivingTransfer ? `接收确认 ${receivingTransfer.transferNo}` : '接收确认'}
+        okText="确认接收入库"
+        confirmLoading={saving}
+        onOk={submitReceiveTransfer}
+        onCancel={() => { setReceiveTransferOpen(false); setReceivingTransfer(null); }}
+        width={560}
+        destroyOnHidden
+      >
+        <Text type="secondary">核对每种材料实际收到数量，可修改（不得超过发出数量）。存在差异时会自动通知发货人核查。</Text>
+        <Form form={receiveTransferForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.List name="items">
+            {(fields) => (
+              <>
+                {fields.map((field) => {
+                  const item = receiveTransferForm.getFieldValue(['items', field.name]);
+                  const material = materialById.get(item?.materialId);
+                  return (
+                    <div key={field.key} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600 }}>{material ? materialDisplayName(material) : `#${item?.materialId}`}</div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>发出 {item?.qty} {material?.unit || ''}</Text>
+                      </div>
+                      <Form.Item name={[field.name, 'materialId']} hidden><Input /></Form.Item>
+                      <Form.Item name={[field.name, 'qty']} hidden><Input /></Form.Item>
+                      <Form.Item
+                        name={[field.name, 'receivedQty']}
+                        label="实收"
+                        style={{ marginBottom: 0, width: 140 }}
+                        rules={[
+                          { required: true, message: '请填写实收数量' },
+                          {
+                            validator: (_, v) =>
+                              v > item?.qty
+                                ? Promise.reject(new Error(`不得超过发出 ${item?.qty}`))
+                                : Promise.resolve(),
+                          },
+                        ]}
+                      >
+                        <InputNumber min={0} max={item?.qty} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </Form.List>
+        </Form>
+      </Modal>
+      <Modal
+        open={!!rejectTransferTarget}
+        title={rejectTransferTarget ? `驳回调拨 ${rejectTransferTarget.transferNo}` : '驳回调拨'}
+        okText="确认驳回"
+        okButtonProps={{ danger: true, loading: saving }}
+        onOk={async () => {
+          const v = await rejectTransferForm.validateFields();
+          await rejectTransfer(rejectTransferTarget!, v.reason);
+          setRejectTransferTarget(null);
+        }}
+        onCancel={() => setRejectTransferTarget(null)}
+        destroyOnHidden
+      >
+        <Form form={rejectTransferForm} layout="vertical">
+          <Form.Item name="reason" label="驳回原因" rules={[{ required: true, message: '请填写驳回原因' }]}>
+            <Input.TextArea rows={3} maxLength={200} placeholder="如：库存需要保留、调拨数量有误等" />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Drawer
+        title={requestDetail ? `采购申请单 ${requestDetail.requestNo}` : '采购申请单'}
+        open={!!requestDetail}
+        onClose={() => setRequestDetail(null)}
+        width={860}
+        extra={requestDetail ? (
+          <Space>
+            {requestDetail.status === PurchaseRequestStatus.OFFICE_REVIEW && (
+              <Popconfirm title="提交给物业经理审批？" description="如需合并多条申请，请在列表勾选后批量提交。" onConfirm={() => submitRequestsToManager([requestDetail.id])}>
+                <Button type="primary" loading={saving}>提交经理</Button>
+              </Popconfirm>
+            )}
+            {requestDetail.status === PurchaseRequestStatus.MANAGER_REVIEW && (
+              <Popconfirm title="确认物业经理审批通过？" onConfirm={() => approveRequest(requestDetail, 'manager')}>
+                <Button type="primary" loading={saving}>经理通过</Button>
+              </Popconfirm>
+            )}
+            {requestDetail.status === PurchaseRequestStatus.PURCHASER_REVIEW && (
+              <Popconfirm title="确认采购经理审批通过？" onConfirm={() => approveRequest(requestDetail, 'purchaser')}>
+                <Button type="primary" loading={saving}>采购通过</Button>
+              </Popconfirm>
+            )}
+            {canEdit && requestDetail.status === PurchaseRequestStatus.APPROVED && (
+              <Button type="primary" icon={<ShoppingCartOutlined />} onClick={() => openPurchaseOrder(requestDetail)}>转采购单</Button>
+            )}
+            {[PurchaseRequestStatus.OFFICE_REVIEW, PurchaseRequestStatus.MANAGER_REVIEW, PurchaseRequestStatus.PURCHASER_REVIEW, PurchaseRequestStatus.APPROVED].includes(requestDetail.status) && (
+              <Button danger onClick={() => setRejectTarget(requestDetail)}>驳回</Button>
+            )}
+          </Space>
+        ) : null}
+      >
+        {requestDetail && (
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Steps
+              size="small"
+              current={requestStepCurrent(requestDetail.status)}
+              status={requestStepStatus(requestDetail.status)}
+              items={[
+                {
+                  title: '办公室汇总',
+                  description: requestDetail.status === PurchaseRequestStatus.OFFICE_REVIEW ? '待汇总' : '已提交',
+                },
+                {
+                  title: '物业经理审批',
+                  description: requestDetail.managerAt ? formatDateTime(requestDetail.managerAt) : '待处理',
+                },
+                {
+                  title: '采购经理审批',
+                  description: requestDetail.purchaserAt ? formatDateTime(requestDetail.purchaserAt) : '待处理',
+                },
+                {
+                  title: '采购下单',
+                  description: requestDetail.status === PurchaseRequestStatus.APPROVED
+                    ? '待转采购单'
+                    : requestDetail.status === PurchaseRequestStatus.DONE ? '已转采购单' : '待审批完成',
+                },
+              ]}
+            />
+
+            {requestDetail.status === PurchaseRequestStatus.REJECTED && (
+              <Alert type="error" showIcon message="采购申请已驳回" description={requestDetail.rejectReason || '未填写驳回原因'} />
+            )}
+
+            <Card size="small" title="申请信息">
+              <Row gutter={[16, 12]}>
+                <Col span={8}><Text type="secondary">当前状态</Text><br /><Tag color={requestStatusMeta[requestDetail.status]?.color}>{requestStatusMeta[requestDetail.status]?.label || requestDetail.status}</Tag></Col>
+                <Col span={8}><Text type="secondary">来源工单</Text><br /><Text>{requestDetail.workOrderId ? `#${requestDetail.workOrderId}` : '-'}</Text></Col>
+                <Col span={8}><Text type="secondary">申请人</Text><br /><Text>#{requestDetail.applicantId}</Text></Col>
+                <Col span={8}><Text type="secondary">预估金额</Text><br /><Text strong>{money(requestDetail.estTotalCents)}</Text></Col>
+                <Col span={8}><Text type="secondary">创建时间</Text><br /><Text>{formatDateTime(requestDetail.createdAt)}</Text></Col>
+                <Col span={8}><Text type="secondary">申请 ID</Text><br /><Text>#{requestDetail.id}</Text></Col>
+              </Row>
+            </Card>
+
+            <Card size="small" title="材料明细">
+              <Table
+                rowKey="key"
+                size="small"
+                pagination={false}
+                dataSource={(requestDetail.items || []).map((item, index) => ({ ...item, key: index }))}
+                columns={[
+                  { title: '序号', dataIndex: 'key', width: 64, render: (v) => Number(v) + 1 },
+                  {
+                    title: '材料编码',
+                    dataIndex: 'materialId',
+                    width: 120,
+                    render: (id) => id ? materialById.get(id)?.code || `#${id}` : '-',
+                  },
+                  {
+                    title: '材料名称',
+                    key: 'name',
+                    ellipsis: true,
+                    render: (_, item) => {
+                      const material = item.materialId ? materialById.get(item.materialId) : null;
+                      return material ? material.name : item.name || '-';
+                    },
+                  },
+                  {
+                    title: '规格',
+                    key: 'spec',
+                    width: 120,
+                    render: (_, item) => item.materialId ? materialById.get(item.materialId)?.spec || '-' : '-',
+                  },
+                  {
+                    title: '数量',
+                    key: 'qty',
+                    width: 110,
+                    render: (_, item) => {
+                      const material = item.materialId ? materialById.get(item.materialId) : null;
+                      return `${item.qty}${material?.unit || ''}`;
+                    },
+                  },
+                  { title: '预估单价', dataIndex: 'estUnitCostCents', width: 110, render: (v) => v != null ? money(v) : '-' },
+                  {
+                    title: '小计',
+                    key: 'amount',
+                    width: 120,
+                    render: (_, item) => item.estUnitCostCents != null ? money(item.qty * item.estUnitCostCents) : '-',
+                  },
+                ]}
+              />
+            </Card>
+          </Space>
+        )}
+      </Drawer>
+      <Modal
+        title={`驳回采购申请 ${rejectTarget?.requestNo || ''}`}
+        open={!!rejectTarget}
+        onCancel={() => setRejectTarget(null)}
+        onOk={submitReject}
+        confirmLoading={saving}
+        destroyOnHidden
+      >
+        <Form form={rejectForm} layout="vertical">
+          <Form.Item name="reason" label="驳回原因" rules={[{ required: true, message: '请填写驳回原因' }]}>
+            <Input.TextArea rows={3} placeholder="说明缺料信息、金额或供应渠道问题" />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        title="新建采购申请"
+        open={manualRequestOpen}
+        onCancel={() => setManualRequestOpen(false)}
+        onOk={submitManualRequest}
+        confirmLoading={saving}
+        width={720}
+        destroyOnHidden
+      >
+        <Alert type="info" showIcon style={{ marginBottom: 12 }} message="办公室手工新建的采购申请进入「办公室汇总」环节，可与维修工缺料申请一起合并后提交经理。材料从 SKU 库选择。" />
+        <Form form={manualRequestForm} layout="vertical" initialValues={{ items: [{}] }}>
+          <Form.List name="items">
+            {(fields, { add, remove }) => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {fields.map((field) => (
+                  <Row key={field.key} gutter={8} align="middle">
+                    <Col span={13}><Form.Item name={[field.name, 'materialId']} rules={[{ required: true, message: '请选择材料' }]} noStyle><Select {...searchableExtraWideSelectProps} placeholder="材料" options={materialOptions} /></Form.Item></Col>
+                    <Col span={5}><Form.Item name={[field.name, 'qty']} rules={[{ required: true, message: '数量' }]} noStyle><InputNumber min={0.01} placeholder="数量" style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col span={5}><Form.Item name={[field.name, 'estUnitCostYuan']} noStyle><InputNumber min={0} precision={2} placeholder="预估单价" style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col span={1}><Button danger size="small" onClick={() => remove(field.name)}>删</Button></Col>
+                  </Row>
+                ))}
+                <Button type="dashed" block onClick={() => add({})}>+ 增加材料</Button>
+              </Space>
+            )}
+          </Form.List>
+        </Form>
+      </Modal>
+      <Modal
+        title={`编辑库存 #${editingStock?.id || ''}`}
+        open={!!editingStock}
+        onCancel={() => setEditingStock(null)}
+        onOk={submitStock}
+        confirmLoading={saving}
+        destroyOnHidden
+      >
+        <Form form={stockForm} layout="vertical">
+          <Form.Item label="材料">
+            <Input
+              value={editingStock ? materialDisplayName(editingStockMaterial) : ''}
+              disabled
+            />
+          </Form.Item>
+          <Form.Item label="仓库">
+            <Input
+              value={editingStock ? warehouseById.get(editingStock.warehouseId)?.name || `#${editingStock.warehouseId}` : ''}
+              disabled
+            />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="qty" label="当前库存" rules={[{ required: true, message: '请填写当前库存' }]}>
+                <InputNumber min={0} precision={stockQtyPrecision} step={stockQtyPrecision ? 0.01 : 1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="safetyQty" label="安全库存" rules={[{ required: true, message: '请填写安全库存' }]}>
+                <InputNumber min={0} precision={stockQtyPrecision} step={stockQtyPrecision ? 0.01 : 1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+    </div>
+  );
+}
+
+function Metric({ title, value, suffix, alert }: { title: string; value: number; suffix?: string; alert?: boolean }) {
+  return (
+    <Card styles={{ body: { padding: 16 } }}>
+      <Statistic title={title} value={value} valueStyle={alert && value > 0 ? { color: '#cf1322' } : undefined} />
+      {suffix && <Text type="secondary" style={{ fontSize: 12 }}>{suffix}</Text>}
+    </Card>
+  );
+}
+
+function CatalogModal({ kind, form, editingMaterial, editingWarehouse, editingSupplier, saving, onCancel, onOk }: {
+  kind: CatalogKind | null;
+  form: any;
+  editingMaterial: MaterialRow | null;
+  editingWarehouse: WarehouseRow | null;
+  editingSupplier: SupplierRow | null;
+  saving: boolean;
+  onCancel: () => void;
+  onOk: (values: any) => void;
+}) {
+  const photoUploading = Form.useWatch('photoUploading', form);
+  const title = kind === 'material'
+    ? editingMaterial ? `编辑材料SKU ${editingMaterial.code}` : '新增材料SKU'
+    : kind === 'warehouse'
+      ? editingWarehouse ? `编辑仓库 #${editingWarehouse.id}` : '新增仓库'
+      : editingSupplier ? `编辑供应商 #${editingSupplier.id}` : '新增供应商';
+  return (
+    <Modal
+      title={title}
+      open={!!kind}
+      onCancel={onCancel}
+      onOk={() => form.submit()}
+      okButtonProps={{ disabled: kind === 'material' && !!photoUploading }}
+      confirmLoading={saving}
+      destroyOnHidden
+    >
+      <Form form={form} layout="vertical" onFinish={onOk}>
+        {kind === 'material' && (
+          <>
+            <Row gutter={12}>
+              <Col span={12}><Form.Item name="name" label="材料名称" rules={[{ required: true }]}><Input placeholder="如：门禁读卡器" /></Form.Item></Col>
+              <Col span={12}><Form.Item name="spec" label="规格"><Input placeholder="如：50*50 / 5W / DN60" /></Form.Item></Col>
+            </Row>
+            <Row gutter={12}>
+              <Col span={12}><Form.Item name="category" label="分类" rules={[{ required: true, message: '请选择材料类别' }]}><Select options={materialCategoryOptions} /></Form.Item></Col>
+              <Col span={12}><Form.Item name="unit" label="单位" initialValue="个" rules={[{ required: true, message: '请选择单位' }]}><UnitSelect /></Form.Item></Col>
+            </Row>
+            <Row gutter={12}>
+              <Col span={12}><Form.Item name="defaultCostYuan" label="采购单价（元）"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+            </Row>
+            <Form.Item name="photoUrl" hidden><Input /></Form.Item>
+            <Form.Item name="photoUploading" hidden><Input /></Form.Item>
+            <Form.Item label="实物照片">
+              <MaterialPhotoUpload form={form} />
+            </Form.Item>
+          </>
+        )}
+        {kind === 'warehouse' && (
+          <>
+            <Form.Item name="name" label="仓库名称" rules={[{ required: true }]}><Input placeholder="如：总仓 / 枫桦景苑小区仓" /></Form.Item>
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="type" label="仓库类型" initialValue={WarehouseType.CENTRAL} rules={[{ required: true }]}>
+                  <Select options={[
+                    { value: WarehouseType.CENTRAL, label: '总仓' },
+                    { value: WarehouseType.COMMUNITY, label: '小区仓' },
+                  ]} />
+                </Form.Item>
+              </Col>
+              <Col span={12}><Form.Item name="communityId" label="小区 ID（小区仓必填）"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Col>
+            </Row>
+          </>
+        )}
+        {kind === 'supplier' && (
+          <>
+            <Form.Item name="name" label="供应商名称" rules={[{ required: true }]}><Input /></Form.Item>
+            <Row gutter={12}>
+              <Col span={12}><Form.Item name="contactName" label="联系人"><Input /></Form.Item></Col>
+              <Col span={12}><Form.Item name="contactPhone" label="联系电话"><Input /></Form.Item></Col>
+            </Row>
+            <Form.Item name="address" label="地址"><Input /></Form.Item>
+            <Row gutter={12}>
+              <Col span={8}><Form.Item name="rating" label="评级"><InputNumber min={1} max={5} style={{ width: '100%' }} /></Form.Item></Col>
+              <Col span={16}><Form.Item name="note" label="备注"><Input /></Form.Item></Col>
+            </Row>
+          </>
+        )}
+      </Form>
+    </Modal>
+  );
+}
+
+function MaterialPhotoUpload({ form }: { form: any }) {
+  const { message } = AntdApp.useApp();
+  const photoUrl = Form.useWatch('photoUrl', form);
+  const [localPreview, setLocalPreview] = useState<string>();
+  const displayUrl = localPreview || imageSrc(photoUrl);
+
+  useEffect(() => {
+    return () => {
+      if (localPreview) URL.revokeObjectURL(localPreview);
+    };
+  }, [localPreview]);
+
+  const uploadProps: UploadProps<UploadResponse> = {
+    name: 'file',
+    action: `${API_BASE_URL}/upload`,
+    headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
+    accept: 'image/*',
+    multiple: false,
+    maxCount: 1,
+    showUploadList: false,
+    beforeUpload: (file) => {
+      if (!/^image\//i.test(file.type || '')) {
+        message.error('只能上传照片');
+        return Upload.LIST_IGNORE;
+      }
+      if (file.size / 1024 / 1024 > 10) {
+        message.error('照片不能超过 10MB');
+        return Upload.LIST_IGNORE;
+      }
+      setLocalPreview((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return URL.createObjectURL(file);
+      });
+      form.setFieldsValue({ photoUploading: true });
+      return true;
+    },
+    onChange: ({ file }) => {
+      if (file.status === 'uploading') {
+        form.setFieldsValue({ photoUploading: true });
+      } else if (file.status === 'done') {
+        const url = file.response?.displayUrl ||
+          (file.response?.objectKey ? uploadFileUrl(file.response.objectKey) : file.response?.publicUrl);
+        if (url) {
+          form.setFieldsValue({ photoUrl: normalizePhotoUrl(url) });
+          message.success('实物照片已上传');
+        }
+        form.setFieldsValue({ photoUploading: false });
+      } else if (file.status === 'error') {
+        form.setFieldsValue({ photoUploading: false });
+        message.error(`${file.name} 上传失败`);
+      }
+    },
+  };
+
+  return (
+    <Upload.Dragger {...uploadProps} style={{ padding: 12 }}>
+      {displayUrl ? (
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Image src={displayUrl} width={96} height={96} style={{ objectFit: 'cover', borderRadius: 6 }} preview={false} />
+          <Text type="secondary">拖拽或点击更换照片</Text>
+          <Button
+            size="small"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (localPreview) URL.revokeObjectURL(localPreview);
+              setLocalPreview(undefined);
+              form.setFieldsValue({ photoUrl: '', photoUploading: false });
+            }}
+          >
+            移除照片
+          </Button>
+        </Space>
+      ) : (
+        <Space direction="vertical">
+          <UploadOutlined style={{ fontSize: 28, color: '#1677ff' }} />
+          <Text>拖拽或点击上传实物照片</Text>
+        </Space>
+      )}
+    </Upload.Dragger>
+  );
+}
+
+function PurchaseOrderModal({ open, form, saving, materialOptions, supplierOptions, onCancel, onOk }: {
+  open: boolean;
+  form: any;
+  saving: boolean;
+  materialOptions: Array<{ value: number; label: string }>;
+  supplierOptions: Array<{ value: number; label: string }>;
+  onCancel: () => void;
+  onOk: () => void;
+}) {
+  return (
+    <Modal title="新建采购单" open={open} onCancel={onCancel} onOk={onOk} confirmLoading={saving} width={1120} destroyOnHidden>
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="从已审批采购申请下单时会自动带入明细；也可以手工录入采购明细。" />
+      <Form form={form} layout="vertical" initialValues={{ items: [{}] }}>
+        <Row gutter={12}>
+          <Col span={8}><Form.Item name="requestId" label="关联采购申请 ID"><InputNumber min={1} style={{ width: '100%' }} disabled /></Form.Item></Col>
+          <Col span={16}><Form.Item name="supplierId" label="供应商" rules={[{ required: true }]}><Select {...searchableExtraWideSelectProps} options={supplierOptions} /></Form.Item></Col>
+        </Row>
+        <Divider orientation="left">采购明细</Divider>
+        <Form.List name="items">
+          {(fields, { add, remove }) => (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {fields.map((field) => (
+                <Row key={field.key} gutter={8} align="middle">
+                  <Col span={17}><Form.Item name={[field.name, 'materialId']} rules={[{ required: true, message: '请选择材料' }]} noStyle><Select {...searchableExtraWideSelectProps} placeholder="材料" options={materialOptions} /></Form.Item></Col>
+                  <Col span={3}><Form.Item name={[field.name, 'qty']} rules={[{ required: true, message: '数量' }]} noStyle><InputNumber min={0.01} placeholder="数量" style={{ width: '100%' }} /></Form.Item></Col>
+                  <Col span={3}><Form.Item name={[field.name, 'unitCostYuan']} rules={[{ required: true, message: '单价' }]} noStyle><InputNumber min={0} precision={2} placeholder="单价" style={{ width: '100%' }} /></Form.Item></Col>
+                  <Col span={1}><Button danger size="small" onClick={() => remove(field.name)}>删</Button></Col>
+                </Row>
+              ))}
+              <Button type="dashed" block onClick={() => add({})}>+ 增加材料</Button>
+            </Space>
+          )}
+        </Form.List>
+      </Form>
+    </Modal>
+  );
+}
+
+function ReceiptModal({ order, form, saving, materialById, warehouseOptions, locationOptionsByWarehouse, onCancel, onOk }: {
+  order: PurchaseOrderRow | null;
+  form: any;
+  saving: boolean;
+  materialById: Map<number, MaterialRow>;
+  warehouseOptions: Array<{ value: number; label: string }>;
+  locationOptionsByWarehouse: Map<number, Array<{ value: number; label: string }>>;
+  onCancel: () => void;
+  onOk: () => void;
+}) {
+  const warehouseId = Form.useWatch('warehouseId', form);
+  const locationOptions = warehouseId ? (locationOptionsByWarehouse.get(warehouseId) || []) : [];
+  return (
+    <Modal title={`采购单入库 ${order?.orderNo || ''}`} open={!!order} onCancel={onCancel} onOk={onOk} confirmLoading={saving} width={860} destroyOnHidden>
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="核对实收数量（可与订购数量不同，差异会自动提醒采购经理与办公室）；每种材料至少 1 张实物照片，并选择存放库位。" />
+      <Form form={form} layout="vertical">
+        <Form.Item name="purchaseOrderId" hidden><InputNumber /></Form.Item>
+        <Form.Item name="warehouseId" label="入库仓库" rules={[{ required: true, message: '请选择入库仓库' }]}>
+          <Select {...searchableWideSelectProps} options={warehouseOptions} placeholder="常规入总仓；供应商直送小区的选对应小区仓" />
+        </Form.Item>
+        {warehouseId && !locationOptions.length && (
+          <Alert type="warning" showIcon style={{ marginBottom: 12 }} message="该仓库尚未配置库位，可先在「基础资料 → 仓库档案 → 库位」中添加。库位为选填。" />
+        )}
+        <Form.List name="items">
+          {(fields) => (
+            <Space direction="vertical" style={{ width: '100%' }} size={16}>
+              {fields.map((field) => {
+                const item = form.getFieldValue(['items', field.name]);
+                const material = materialById.get(item?.materialId);
+                return (
+                  <Card key={field.key} size="small" style={{ background: '#fafafa' }}>
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                      {material ? `${material.code} · ${materialDisplayName(material)}` : `#${item?.materialId}`}
+                      <Text type="secondary" style={{ fontWeight: 400, marginLeft: 8 }}>订购 {item?.orderedQty} {material?.unit || ''}</Text>
+                    </div>
+                    <Form.Item name={[field.name, 'materialId']} hidden><InputNumber /></Form.Item>
+                    <Form.Item name={[field.name, 'orderedQty']} hidden><InputNumber /></Form.Item>
+                    <Row gutter={8}>
+                      <Col span={8}><Form.Item name={[field.name, 'qty']} label="实收数量" rules={[{ required: true, message: '请填实收' }]}><InputNumber min={0.01} style={{ width: '100%' }} /></Form.Item></Col>
+                      <Col span={8}><Form.Item name={[field.name, 'unitCostYuan']} label="入库单价(元)" rules={[{ required: true, message: '请填单价' }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                      <Col span={8}><Form.Item name={[field.name, 'locationId']} label="存放库位"><Select allowClear options={locationOptions} placeholder="选择库位" /></Form.Item></Col>
+                    </Row>
+                    <Form.Item name={[field.name, 'photoUrls']} label="实物照片（至少 1 张）" style={{ marginBottom: 0 }}>
+                      <MultiPhotoUpload />
+                    </Form.Item>
+                  </Card>
+                );
+              })}
+            </Space>
+          )}
+        </Form.List>
+      </Form>
+    </Modal>
+  );
+}
+
+function GeneralReceiptModal({ open, form, saving, materialOptions, warehouseOptions, locationOptionsByWarehouse, onCancel, onOk }: {
+  open: boolean;
+  form: any;
+  saving: boolean;
+  materialOptions: Array<{ value: number; label: string }>;
+  warehouseOptions: Array<{ value: number; label: string }>;
+  locationOptionsByWarehouse: Map<number, Array<{ value: number; label: string }>>;
+  onCancel: () => void;
+  onOk: () => void;
+}) {
+  const warehouseId = Form.useWatch('warehouseId', form);
+  const locationOptions = warehouseId ? (locationOptionsByWarehouse.get(warehouseId) || []) : [];
+  return (
+    <Modal title="一般入库（无采购单）" open={open} onCancel={onCancel} onOk={onOk} confirmLoading={saving} width={860} destroyOnHidden>
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="零星采买（如五金店临时采购）走此入口：填写来源、上传凭证，逐项从材料库选择并拍照。材料只能从 SKU 库选择，没有请先到「材料 SKU 库」新增。" />
+      <Form form={form} layout="vertical">
+        <Row gutter={12}>
+          <Col span={12}><Form.Item name="warehouseId" label="入库仓库" rules={[{ required: true, message: '请选择入库仓库' }]}><Select {...searchableWideSelectProps} options={warehouseOptions} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="sourceText" label="材料来源" rules={[{ required: true, message: '请填写来源' }]}><Input placeholder="如：XX五金店临时采购" /></Form.Item></Col>
+        </Row>
+        <Form.Item name="attachments" label="相关附件（请上传小票照片或发票 PDF）">
+          <AttachmentsUpload />
+        </Form.Item>
+        <Divider orientation="left">入库材料</Divider>
+        <Form.List name="items">
+          {(fields, { add, remove }) => (
+            <Space direction="vertical" style={{ width: '100%' }} size={16}>
+              {fields.map((field) => (
+                <Card key={field.key} size="small" style={{ background: '#fafafa' }}
+                  extra={<Button danger size="small" onClick={() => remove(field.name)}>删除</Button>}>
+                  <Row gutter={8}>
+                    <Col span={24}><Form.Item name={[field.name, 'materialId']} label="材料" rules={[{ required: true, message: '请选择材料' }]}><Select {...searchableExtraWideSelectProps} options={materialOptions} placeholder="从材料库搜索选择" /></Form.Item></Col>
+                  </Row>
+                  <Row gutter={8}>
+                    <Col span={8}><Form.Item name={[field.name, 'qty']} label="数量" rules={[{ required: true, message: '请填数量' }]}><InputNumber min={0.01} style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col span={8}><Form.Item name={[field.name, 'unitCostYuan']} label="单价(元)" rules={[{ required: true, message: '请填单价' }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                    <Col span={8}><Form.Item name={[field.name, 'locationId']} label="存放库位"><Select allowClear options={locationOptions} placeholder="选择库位" /></Form.Item></Col>
+                  </Row>
+                  <Form.Item name={[field.name, 'photoUrls']} label="实物照片（至少 1 张）" style={{ marginBottom: 0 }}>
+                    <MultiPhotoUpload />
+                  </Form.Item>
+                </Card>
+              ))}
+              <Button type="dashed" block onClick={() => add({ photoUrls: [] })}>+ 增加材料</Button>
+            </Space>
+          )}
+        </Form.List>
+      </Form>
+    </Modal>
+  );
+}
+
+function LocationConfigModal({ warehouse, locations, onClose, onChanged }: {
+  warehouse: WarehouseRow | null;
+  locations: WarehouseLocationRow[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
+
+  const addLocation = async () => {
+    const v = await form.validateFields();
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: '/warehouse-locations',
+        data: { warehouseId: warehouse!.id, zone: v.zone, shelf: v.shelf, bin: v.bin },
+      });
+      message.success('库位已添加');
+      form.resetFields();
+      onChanged();
+    } catch (e: any) {
+      message.error(e?.message || '添加失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleLocation = async (loc: WarehouseLocationRow) => {
+    try {
+      await request({ method: 'PATCH', url: `/warehouse-locations/${loc.id}`, data: { enabled: !loc.enabled } });
+      onChanged();
+    } catch (e: any) {
+      message.error(e?.message || '操作失败');
+    }
+  };
+
+  return (
+    <Modal
+      title={warehouse ? `库位配置 · ${warehouse.name}` : '库位配置'}
+      open={!!warehouse}
+      onCancel={onClose}
+      footer={<Button onClick={onClose}>关闭</Button>}
+      width={620}
+      destroyOnHidden
+    >
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="预先建好库区-货架-货位，入库时可直接选择存放位置。三项可只填其一。" />
+      <Form form={form} layout="inline" style={{ marginBottom: 16 }}>
+        <Form.Item name="zone"><Input placeholder="库区（如 A区）" style={{ width: 130 }} /></Form.Item>
+        <Form.Item name="shelf"><Input placeholder="货架（如 03架）" style={{ width: 130 }} /></Form.Item>
+        <Form.Item name="bin"><Input placeholder="货位（如 2层）" style={{ width: 130 }} /></Form.Item>
+        <Button type="primary" loading={saving} onClick={addLocation}>添加</Button>
+      </Form>
+      <Table
+        rowKey="id"
+        size="small"
+        dataSource={locations}
+        pagination={false}
+        columns={[
+          { title: '库位', dataIndex: 'label' },
+          { title: '状态', dataIndex: 'enabled', width: 90, render: (v) => v ? <Tag color="green">启用</Tag> : <Tag>停用</Tag> },
+          {
+            title: '操作',
+            key: 'op',
+            width: 90,
+            render: (_, row) => <Button size="small" type="link" danger={row.enabled} onClick={() => toggleLocation(row)}>{row.enabled ? '停用' : '启用'}</Button>,
+          },
+        ]}
+      />
+    </Modal>
+  );
+}
+
+/** 多图上传（value/onChange 为 string[]，供 Form.Item 使用） */
+function MultiPhotoUpload({ value, onChange }: { value?: string[]; onChange?: (urls: string[]) => void }) {
+  const { message } = AntdApp.useApp();
+  const urls = value || [];
+  const uploadProps: UploadProps<UploadResponse> = {
+    name: 'file',
+    action: `${API_BASE_URL}/upload`,
+    headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
+    accept: 'image/*',
+    multiple: true,
+    showUploadList: false,
+    beforeUpload: (file) => {
+      if (!/^image\//i.test(file.type || '')) { message.error('只能上传照片'); return Upload.LIST_IGNORE; }
+      if (file.size / 1024 / 1024 > 10) { message.error('照片不能超过 10MB'); return Upload.LIST_IGNORE; }
+      return true;
+    },
+    onChange: ({ file }) => {
+      if (file.status === 'done') {
+        const url = file.response?.displayUrl || (file.response?.objectKey ? uploadFileUrl(file.response.objectKey) : file.response?.publicUrl);
+        if (url) onChange?.([...urls, normalizePhotoUrl(url)]);
+      } else if (file.status === 'error') {
+        message.error(`${file.name} 上传失败`);
+      }
+    },
+  };
+  return (
+    <Space wrap>
+      {urls.map((url, index) => (
+        <div key={url} style={{ position: 'relative' }}>
+          <Image src={imageSrc(url)} width={72} height={72} style={{ objectFit: 'cover', borderRadius: 6 }} />
+          <Button size="small" danger style={{ position: 'absolute', top: -8, right: -8, padding: '0 6px' }}
+            onClick={() => onChange?.(urls.filter((_, i) => i !== index))}>×</Button>
+        </div>
+      ))}
+      <Upload {...uploadProps}>
+        <div style={{ width: 72, height: 72, border: '1px dashed #bbb', borderRadius: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#888' }}>
+          <UploadOutlined />
+          <span style={{ fontSize: 12 }}>上传</span>
+        </div>
+      </Upload>
+    </Space>
+  );
+}
+
+/** 附件上传（图片或 PDF，value/onChange 为 string[]） */
+function AttachmentsUpload({ value, onChange }: { value?: string[]; onChange?: (urls: string[]) => void }) {
+  const { message } = AntdApp.useApp();
+  const urls = value || [];
+  const uploadProps: UploadProps<UploadResponse> = {
+    name: 'file',
+    action: `${API_BASE_URL}/upload`,
+    headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
+    accept: 'image/*,application/pdf',
+    multiple: true,
+    showUploadList: false,
+    beforeUpload: (file) => {
+      const ok = /^image\//i.test(file.type || '') || file.type === 'application/pdf';
+      if (!ok) { message.error('只能上传图片或 PDF'); return Upload.LIST_IGNORE; }
+      if (file.size / 1024 / 1024 > 20) { message.error('附件不能超过 20MB'); return Upload.LIST_IGNORE; }
+      return true;
+    },
+    onChange: ({ file }) => {
+      if (file.status === 'done') {
+        const url = file.response?.displayUrl || (file.response?.objectKey ? uploadFileUrl(file.response.objectKey) : file.response?.publicUrl);
+        if (url) onChange?.([...urls, normalizePhotoUrl(url)]);
+      } else if (file.status === 'error') {
+        message.error(`${file.name} 上传失败`);
+      }
+    },
+  };
+  return (
+    <Space direction="vertical" style={{ width: '100%' }}>
+      {urls.map((url, index) => (
+        <Space key={url}>
+          <Text style={{ maxWidth: 320 }} ellipsis>{url.toLowerCase().includes('.pdf') ? '📄 PDF 凭证' : '🖼 图片凭证'} #{index + 1}</Text>
+          <Button size="small" danger type="link" onClick={() => onChange?.(urls.filter((_, i) => i !== index))}>移除</Button>
+        </Space>
+      ))}
+      <Upload {...uploadProps}>
+        <Button icon={<UploadOutlined />}>上传附件</Button>
+      </Upload>
+    </Space>
+  );
+}
+
+function TransferModal({ open, form, saving, materialOptions, warehouseOptions, onCancel, onOk }: {
+  open: boolean;
+  form: any;
+  saving: boolean;
+  materialOptions: Array<{ value: number; label: string }>;
+  warehouseOptions: Array<{ value: number; label: string }>;
+  onCancel: () => void;
+  onOk: () => void;
+}) {
+  return (
+    <Modal title="新建仓库调拨" open={open} onCancel={onCancel} onOk={onOk} confirmLoading={saving} width={920} destroyOnHidden>
+      <Form form={form} layout="vertical" initialValues={{ items: [{}] }}>
+        <Row gutter={12}>
+          <Col span={12}><Form.Item name="fromWarehouseId" label="出库仓" rules={[{ required: true }]}><Select {...searchableWideSelectProps} options={warehouseOptions} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="toWarehouseId" label="入库仓" rules={[{ required: true }]}><Select {...searchableWideSelectProps} options={warehouseOptions} /></Form.Item></Col>
+        </Row>
+        <Form.List name="items">
+          {(fields, { add, remove }) => (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {fields.map((field) => (
+                <Row key={field.key} gutter={8}>
+                  <Col span={18}><Form.Item name={[field.name, 'materialId']} rules={[{ required: true }]} noStyle><Select {...searchableWideSelectProps} options={materialOptions} placeholder="材料" /></Form.Item></Col>
+                  <Col span={4}><Form.Item name={[field.name, 'qty']} rules={[{ required: true }]} noStyle><InputNumber min={0.01} placeholder="数量" style={{ width: '100%' }} /></Form.Item></Col>
+                  <Col span={2}><Button danger size="small" onClick={() => remove(field.name)}>删</Button></Col>
+                </Row>
+              ))}
+              <Button type="dashed" block onClick={() => add({})}>+ 增加材料</Button>
+            </Space>
+          )}
+        </Form.List>
+      </Form>
+    </Modal>
+  );
+}

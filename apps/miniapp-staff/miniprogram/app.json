@@ -1,0 +1,44 @@
+{
+  "pages": [
+    "pages/login/login",
+    "pages/pool/pool",
+    "pages/my-orders/my-orders",
+    "pages/order-detail/order-detail",
+    "pages/approvals/approvals",
+    "pages/materials/materials",
+    "pages/inventory/inventory",
+    "pages/me/me"
+  ],
+  "window": {
+    "navigationBarTitleText": "邻修工作台",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f6f8"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#8c8c8c",
+    "selectedColor": "#31558a",
+    "backgroundColor": "#ffffff",
+    "list": [
+      {
+        "pagePath": "pages/pool/pool",
+        "text": "工单池"
+      },
+      {
+        "pagePath": "pages/my-orders/my-orders",
+        "text": "在手工单"
+      },
+      {
+        "pagePath": "pages/approvals/approvals",
+        "text": "审批"
+      },
+      {
+        "pagePath": "pages/me/me",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

@@ -1,0 +1,24 @@
+{
+  "name": "pms-repair",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Property Management System — Repair Module (SaaS, multi-tenant)",
+  "scripts": {
+    "api:dev": "pnpm --filter @pms/api start:dev",
+    "api:build": "pnpm --filter @pms/api build",
+    "web:dev": "pnpm --filter @pms/admin-web dev",
+    "web:build": "pnpm --filter @pms/admin-web build",
+    "web:preview": "pnpm --filter @pms/admin-web preview",
+    "web:typecheck": "pnpm --filter @pms/admin-web typecheck",
+    "miniapp:libs:build": "node tools/build-miniapp-libs.mjs",
+    "mp": "node tools/miniapp-ship.mjs owner",
+    "mp:staff": "node tools/miniapp-ship.mjs staff",
+    "miniapp:owner:typecheck": "pnpm --filter @pms/miniapp-owner exec tsc --noEmit",
+    "miniapp:staff:typecheck": "pnpm --filter @pms/miniapp-staff exec tsc --noEmit",
+    "docker:up": "docker compose -f docker/docker-compose.dev.yml up -d",
+    "docker:down": "docker compose -f docker/docker-compose.dev.yml down"
+  },
+  "devDependencies": {
+    "miniprogram-automator": "^0.12.1"
+  }
+}

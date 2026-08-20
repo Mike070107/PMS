@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pms-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pms_repair
+      POSTGRES_USER: pms
+      POSTGRES_PASSWORD: pms@db123
+      TZ: Asia/Shanghai
+    # 宿主端口用 5433，避开 Osirislist 的 5432
+    ports:
+      - "5433:5432"
+    volumes:
+      - pms_pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: pms-redis
+    restart: unless-stopped
+    # 宿主端口用 6380，避开 Osirislist 的 6379
+    ports:
+      - "6380:6379"
+    volumes:
+      - pms_redis_data:/data
+
+  minio:
+    image: minio/minio
+    container_name: pms-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: pms
+      MINIO_ROOT_PASSWORD: pms@minio123
+    # 宿主端口用 9100/9101，避开 Osirislist 的 9000/9001
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    volumes:
+      - pms_minio_data:/data
+
+volumes:
+  pms_pg_data:
+  pms_redis_data:
+  pms_minio_data:

@@ -1,0 +1,75 @@
+<view class="container">
+  <view class="page-lead">
+    <view class="page-lead__title">在手 {{active.length}} 条</view>
+    <view class="page-lead__sub">点开工单看该做什么：接单、缺料登记、完工提交都在详情页底部。</view>
+  </view>
+
+  <view wx:if="{{!active.length && !done.length && loaded}}">
+    <pms-empty text="手上没有工单，去「工单池」接一单"/>
+  </view>
+
+  <view
+    wx:for="{{active}}"
+    wx:key="id"
+    class="card wo-card wo-card--{{item.stayTone}}"
+    hover-class="wo-card--hover"
+    hover-stay-time="80"
+    bindtap="onTapItem"
+    data-id="{{item.id}}"
+  >
+    <view class="wo-card__head">
+      <view class="wo-card__type">{{item.typeLabel}}</view>
+      <pms-tag class="status-tag" status="{{item.status}}"/>
+    </view>
+
+    <view class="stay stay--{{item.stayTone}}">{{item.stayText}}</view>
+
+    <view class="wo-card__addr">
+      <view class="icon icon--pin"></view>
+      <text>{{item.summaryAddress || '未填地址'}}</text>
+    </view>
+    <view class="wo-card__desc">{{item.summaryContent}}</view>
+
+    <view class="wo-card__foot">
+      <view class="wo-card__meta">
+        <view class="wo-card__no">{{item.orderNo}}</view>
+        <view>报修 {{item.createdAtText}}</view>
+      </view>
+      <view class="wo-card__more">{{item.actionText}} ›</view>
+    </view>
+  </view>
+
+  <!-- 已完结的默认收起：手上真正要干的活才该占屏幕 -->
+  <view wx:if="{{done.length}}" class="fold" bindtap="onToggleDone">
+    <text class="fold__title">已完结 {{done.length}} 条</text>
+    <text class="fold__action">{{doneOpen ? '收起' : '展开'}}</text>
+  </view>
+
+  <block wx:if="{{doneOpen}}">
+    <view
+      wx:for="{{done}}"
+      wx:key="id"
+      class="card wo-card wo-card--done"
+      hover-class="wo-card--hover"
+      hover-stay-time="80"
+      bindtap="onTapItem"
+      data-id="{{item.id}}"
+    >
+      <view class="wo-card__head">
+        <view class="wo-card__type">{{item.typeLabel}}</view>
+        <pms-tag class="status-tag" status="{{item.status}}"/>
+      </view>
+      <view class="wo-card__addr">
+        <view class="icon icon--pin"></view>
+        <text>{{item.summaryAddress || '未填地址'}}</text>
+      </view>
+      <view class="wo-card__foot">
+        <view class="wo-card__meta">
+          <view class="wo-card__no">{{item.orderNo}}</view>
+          <view>报修 {{item.createdAtText}}</view>
+        </view>
+        <view class="wo-card__more">查看详情 ›</view>
+      </view>
+    </view>
+  </block>
+</view>

@@ -1,0 +1,81 @@
+<view class="page">
+  <!-- 头部：和首页 hero 同一套品牌色，让两个 tab 看起来是一个 app -->
+  <view class="hero">
+    <block wx:if="{{user}}">
+      <view class="hero__row">
+        <view class="avatar">{{avatarText}}</view>
+        <view class="hero__body">
+          <view class="hero__name">{{user.name || '邻修业主'}}</view>
+          <view class="hero__phone">{{phoneText || '未绑定手机号'}}</view>
+        </view>
+      </view>
+    </block>
+    <block wx:else>
+      <view class="hero__name">还没有登录</view>
+      <view class="hero__phone">登录后可认证房屋、提交报修、查看进度</view>
+    </block>
+  </view>
+
+  <view class="container">
+    <view wx:if="{{!user}}" class="card">
+      <button class="btn btn--primary" bindtap="onTapLogin">微信一键登录</button>
+    </view>
+
+    <!-- 我的房屋：这一页最重要的信息，单独一张卡 -->
+    <view wx:if="{{user}}" class="card section">
+      <view class="section__head">
+        <text class="section__title">我的房屋</text>
+        <text wx:if="{{auditText}}" class="badge badge--{{needOnboard ? 'warn' : 'ok'}}">{{auditText}}</text>
+      </view>
+
+      <view class="place">{{placeText || '尚未认证房屋'}}</view>
+      <view wx:if="{{rejectReason}}" class="reject">未通过原因：{{rejectReason}}</view>
+
+      <button class="btn btn--outline mt" bindtap="onTapOnboard">
+        {{needOnboard ? (placeText ? '重新提交认证' : '认证我的房屋') : '搬家了，换绑房屋'}}
+      </button>
+      <view wx:if="{{!needOnboard}}" class="muted mt-sm">
+        换房后重新提交，物业审核通过即替换；审核期间旧房屋照常可以报修
+      </view>
+    </view>
+
+    <!-- 功能列表：一句话的东西不值得各占一张卡片，排成行更整齐也更好点 -->
+    <view class="card list">
+      <view wx:if="{{user}}" class="list__row" bindtap="onTapMessages">
+        <view class="icon icon--bell list__icon"></view>
+        <view class="list__body">
+          <view class="list__title">消息</view>
+          <view class="list__desc">派单、修好待验收都会在这里提醒</view>
+        </view>
+        <view wx:if="{{unread}}" class="dot">{{unread > 99 ? '99+' : unread}}</view>
+        <view class="icon icon--chevron"></view>
+      </view>
+
+      <view wx:if="{{user}}" class="list__row" bindtap="onTapOrders">
+        <view class="icon icon--doc list__icon"></view>
+        <view class="list__body">
+          <view class="list__title">我的报修</view>
+          <view class="list__desc">进度、验收、催办都在这里</view>
+        </view>
+        <view class="icon icon--chevron"></view>
+      </view>
+
+      <view class="list__row" bindtap="onTapContact">
+        <view class="icon icon--phone list__icon"></view>
+        <view class="list__body">
+          <view class="list__title">联系物业</view>
+          <view class="list__desc">工单有疑问可在详情页「催一下」</view>
+        </view>
+        <view class="icon icon--chevron"></view>
+      </view>
+    </view>
+
+    <view wx:if="{{user}}" class="card list">
+      <view class="list__row list__row--plain" bindtap="onLogout">
+        <view class="list__title list__title--muted">退出登录</view>
+      </view>
+    </view>
+
+    <view class="build-info">{{buildText}}</view>
+  </view>
+</view>

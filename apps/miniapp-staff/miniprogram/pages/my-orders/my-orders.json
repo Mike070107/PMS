@@ -1,0 +1,9 @@
+{
+  "navigationBarTitleText": "在手工单",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark",
+  "usingComponents": {
+    "pms-tag": "@pms/miniapp-ui/components/status-tag/index",
+    "pms-empty": "@pms/miniapp-ui/components/empty/index"
+  }
+}

@@ -1,0 +1,334 @@
+import { Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
+
+export type WxAppType = 'owner' | 'staff';
+
+export interface WxSession {
+  openid: string;
+  unionid?: string;
+  session_key?: string;
+  errcode?: number;
+  errmsg?: string;
+}
+
+interface WxTokenResp {
+  access_token?: string;
+  expires_in?: number;
+  errcode?: number;
+  errmsg?: string;
+}
+
+interface WxPhoneResp {
+  errcode?: number;
+  errmsg?: string;
+  phone_info?: {
+    phoneNumber: string;
+    purePhoneNumber: string;
+    countryCode: string;
+  };
+}
+
+/** 小程序码版本：正式版 / 体验版 / 开发版 */
+export type WxEnvVersion = 'release' | 'trial' | 'develop';
+
+export interface WxaCodeOptions {
+  /** 最长 32 个可见字符，允许 数字/英文/!#$&'()*+,/:;=?@-._~ */
+  scene: string;
+  /** 落地页路径，不带参数、不带前导斜杠，如 pages/repair-create/repair-create */
+  page: string;
+  /** 二维码边长（px），280–1280 */
+  width?: number;
+  envVersion?: WxEnvVersion;
+  /** true = 透明底，印刷时更好排版 */
+  isHyaline?: boolean;
+}
+
+const API_BASE = 'https://api.weixin.qq.com';
+
+/** 微信 errcode → 人话（原始 errmsg 仍会拼在后面，不做吞错） */
+const WXACODE_ERROR_HINTS: Record<number, string> = {
+  40001: 'access_token 无效，检查 WX_OWNER_APPID / WX_OWNER_SECRET 是否填对',
+  41030:
+    '落地页在该版本的小程序里不存在。正式版（release）要求小程序已发布上线；' +
+    '还没提审发布时，把 WX_OWNER_QR_ENV_VERSION 改成 trial（体验版）或 develop（开发版）先验证',
+  45009: '调用超出微信频率限制，稍后再试（getUnlimited 默认 10 万次/天）',
+  40097: '参数错误：scene 超长或含非法字符，page 不能带参数、不能有前导斜杠',
+  40169: 'scene 为空或不合法',
+  85079: '小程序未发布，正式版小程序码无法生成',
+};
+
+/**
+ * 微信开放接口封装（两套小程序凭据按 appType 区分）。
+ * - jscode2session：wx.login 的 code 换 openid
+ * - getPhoneNumber：wx.getPhoneNumber 的 code 换手机号
+ * access_token 走进程内缓存（单实例部署），过期或 40001 时自动重取。
+ */
+@Injectable()
+export class WechatService {
+  private readonly logger = new Logger(WechatService.name);
+  private readonly tokenCache = new Map<WxAppType, { token: string; expiresAt: number }>();
+
+  constructor(private readonly config: ConfigService) {}
+
+  /** 该端小程序凭据是否已配置 */
+  isConfigured(appType: WxAppType): boolean {
+    const { appid, secret } = this.rawCredentials(appType);
+    return !!appid && !!secret;
+  }
+
+  async jscode2session(code: string, appType: WxAppType): Promise<WxSession> {
+    const { appid, secret } = this.credentials(appType);
+    const data = await this.get<WxSession>('/sns/jscode2session', {
+      appid,
+      secret,
+      js_code: code,
+      grant_type: 'authorization_code',
+    });
+    if (data.errcode || !data.openid) {
+      throw new UnauthorizedException(
+        `微信登录失败：${data.errmsg || data.errcode || '未返回 openid'}`,
+      );
+    }
+    return data;
+  }
+
+  /** wx.getPhoneNumber 的 code 换纯手机号（不含区号） */
+  async getPhoneNumber(code: string, appType: WxAppType): Promise<string> {
+    let token = await this.accessToken(appType);
+    let data = await this.postPhone(token, code);
+    // 40001/42001：token 失效，清缓存重试一次
+    if (data.errcode === 40001 || data.errcode === 42001) {
+      this.tokenCache.delete(appType);
+      token = await this.accessToken(appType);
+      data = await this.postPhone(token, code);
+    }
+    const phone = data.phone_info?.purePhoneNumber;
+    if (data.errcode || !phone) {
+      throw new UnauthorizedException(
+        `获取微信手机号失败：${data.errmsg || data.errcode || '未返回手机号'}`,
+      );
+    }
+    return phone;
+  }
+
+  /**
+   * 生成永久有效的小程序码（wxacode.getUnlimited）。
+   * 微信成功时直接返回图片二进制，失败时返回 JSON —— 这里按 content-type 判别，
+   * 失败会把微信原始 errcode/errmsg 一起抛出来，后台要能看到真实原因。
+   */
+  async getUnlimitedWxaCode(
+    options: WxaCodeOptions,
+    appType: WxAppType = 'owner',
+  ): Promise<Buffer> {
+    const body = {
+      scene: options.scene,
+      page: options.page,
+      width: options.width ?? 430,
+      env_version: options.envVersion ?? 'release',
+      is_hyaline: options.isHyaline ?? false,
+      auto_color: false,
+      check_path: true,
+    };
+
+    let token = await this.accessToken(appType);
+    let resp = await this.postWxaCode(token, body);
+    // 40001/42001：token 失效，清缓存重试一次
+    const firstError = this.parseWxaCodeError(resp);
+    if (firstError?.errcode === 40001 || firstError?.errcode === 42001) {
+      this.tokenCache.delete(appType);
+      token = await this.accessToken(appType);
+      resp = await this.postWxaCode(token, body);
+    }
+
+    const error = this.parseWxaCodeError(resp);
+    if (error) {
+      const hint = WXACODE_ERROR_HINTS[error.errcode ?? -1];
+      const raw = `errcode ${error.errcode ?? '-'}: ${error.errmsg || '未知错误'}`;
+      throw new ServiceUnavailableException(
+        hint ? `生成小程序码失败（${raw}）——${hint}` : `生成小程序码失败（${raw}）`,
+      );
+    }
+    return Buffer.from(resp.data);
+  }
+
+  private async postWxaCode(
+    accessToken: string,
+    body: Record<string, unknown>,
+  ): Promise<{ data: ArrayBuffer; contentType: string }> {
+    const url = `${API_BASE}/wxa/getwxacodeunlimit?access_token=${encodeURIComponent(accessToken)}`;
+    try {
+      const resp = await axios.post<ArrayBuffer>(url, body, {
+        responseType: 'arraybuffer',
+        timeout: 15000,
+      });
+      return {
+        data: resp.data,
+        contentType: String(resp.headers['content-type'] || ''),
+      };
+    } catch (err) {
+      this.logger.error(`微信接口 getwxacodeunlimit 请求失败: ${(err as Error).message}`);
+      throw new ServiceUnavailableException('微信服务暂时不可用，请稍后重试');
+    }
+  }
+
+  /** 微信出错时返回的是 JSON 而不是图片，按 content-type + 内容双重判别 */
+  private parseWxaCodeError(resp: {
+    data: ArrayBuffer;
+    contentType: string;
+  }): { errcode?: number; errmsg?: string } | null {
+    const looksJson =
+      resp.contentType.includes('application/json') ||
+      resp.contentType.includes('text/plain') ||
+      resp.data.byteLength < 512;
+    if (!looksJson) return null;
+    const text = Buffer.from(resp.data).toString('utf8').trim();
+    if (!text.startsWith('{')) return null;
+    try {
+      const parsed = JSON.parse(text) as { errcode?: number; errmsg?: string };
+      if (parsed.errcode === 0) return null;
+      return parsed;
+    } catch {
+      return { errmsg: text.slice(0, 200) };
+    }
+  }
+
+  /**
+   * 发送订阅消息（subscribeMessage.send）。
+   *
+   * 订阅消息是「一次授权一条额度」：用户在小程序里点一次同意，微信只允许推一条，
+   * 推完额度就没了。所以调用方必须先扣 subscription_grants 的余量再调这里，
+   * 不能反过来 —— 否则失败重试会把额度多扣一次。
+   *
+   * 失败一律**不抛异常**：通知发不出去是次要的，绝不能因此把业务流程（派单、完工）
+   * 一起挂掉。返回 false 让调用方降级成站内信。
+   */
+  async sendSubscribeMessage(
+    input: {
+      openid: string;
+      templateId: string;
+      /** 落地页，如 pages/order-detail/order-detail?id=12 */
+      page?: string;
+      /** 模板字段，形如 { thing1: { value: '水管漏水' } } */
+      data: Record<string, { value: string }>;
+    },
+    appType: WxAppType = 'owner',
+  ): Promise<boolean> {
+    if (!this.isConfigured(appType)) return false;
+    const body = {
+      touser: input.openid,
+      template_id: input.templateId,
+      page: input.page,
+      data: input.data,
+      miniprogram_state: this.config.get<string>('WX_SUBSCRIBE_STATE', 'formal'),
+      lang: 'zh_CN',
+    };
+
+    try {
+      let token = await this.accessToken(appType);
+      let resp = await this.postSubscribe(token, body);
+      if (resp.errcode === 40001 || resp.errcode === 42001) {
+        this.tokenCache.delete(appType);
+        token = await this.accessToken(appType);
+        resp = await this.postSubscribe(token, body);
+      }
+      if (resp.errcode) {
+        // 43101 = 用户拒收 / 额度已用完，属于正常情况，用 warn 不用 error
+        const level = resp.errcode === 43101 ? 'warn' : 'error';
+        this.logger[level](
+          `订阅消息发送失败 errcode ${resp.errcode}: ${resp.errmsg || ''}` +
+            `（template ${input.templateId}）`,
+        );
+        return false;
+      }
+      return true;
+    } catch (err) {
+      this.logger.error(`订阅消息发送异常: ${(err as Error).message}`);
+      return false;
+    }
+  }
+
+  private postSubscribe(
+    accessToken: string,
+    body: Record<string, unknown>,
+  ): Promise<{ errcode?: number; errmsg?: string }> {
+    return this.post(
+      `/cgi-bin/message/subscribe/send?access_token=${encodeURIComponent(accessToken)}`,
+      body,
+    );
+  }
+
+  private postPhone(accessToken: string, code: string): Promise<WxPhoneResp> {
+    return this.post<WxPhoneResp>(
+      `/wxa/business/getuserphonenumber?access_token=${encodeURIComponent(accessToken)}`,
+      { code },
+    );
+  }
+
+  private async accessToken(appType: WxAppType): Promise<string> {
+    const cached = this.tokenCache.get(appType);
+    if (cached && cached.expiresAt > Date.now()) return cached.token;
+
+    const { appid, secret } = this.credentials(appType);
+    const data = await this.get<WxTokenResp>('/cgi-bin/token', {
+      grant_type: 'client_credential',
+      appid,
+      secret,
+    });
+    if (data.errcode || !data.access_token) {
+      throw new ServiceUnavailableException(
+        `获取微信 access_token 失败：${data.errmsg || data.errcode || '未返回 token'}`,
+      );
+    }
+    // 微信默认 7200s，提前 5 分钟过期
+    const ttlMs = Math.max((data.expires_in ?? 7200) - 300, 60) * 1000;
+    this.tokenCache.set(appType, {
+      token: data.access_token,
+      expiresAt: Date.now() + ttlMs,
+    });
+    return data.access_token;
+  }
+
+  private credentials(appType: WxAppType): { appid: string; secret: string } {
+    const { appid, secret } = this.rawCredentials(appType);
+    if (!appid || !secret) {
+      throw new ServiceUnavailableException(
+        `${appType === 'owner' ? '业主端' : '员工端'}小程序凭据未配置，请联系管理员`,
+      );
+    }
+    return { appid, secret };
+  }
+
+  private rawCredentials(appType: WxAppType) {
+    return {
+      appid: this.config.get<string>(
+        appType === 'owner' ? 'WX_OWNER_APPID' : 'WX_STAFF_APPID',
+        '',
+      ),
+      secret: this.config.get<string>(
+        appType === 'owner' ? 'WX_OWNER_SECRET' : 'WX_STAFF_SECRET',
+        '',
+      ),
+    };
+  }
+
+  private async get<T>(path: string, params: Record<string, string>): Promise<T> {
+    try {
+      const { data } = await axios.get<T>(`${API_BASE}${path}`, { params, timeout: 8000 });
+      return data;
+    } catch (err) {
+      this.logger.error(`微信接口 ${path} 请求失败: ${(err as Error).message}`);
+      throw new ServiceUnavailableException('微信服务暂时不可用，请稍后重试');
+    }
+  }
+
+  private async post<T>(path: string, body: unknown): Promise<T> {
+    try {
+      const { data } = await axios.post<T>(`${API_BASE}${path}`, body, { timeout: 8000 });
+      return data;
+    } catch (err) {
+      this.logger.error(`微信接口 ${path} 请求失败: ${(err as Error).message}`);
+      throw new ServiceUnavailableException('微信服务暂时不可用，请稍后重试');
+    }
+  }
+}

@@ -1,0 +1,4 @@
+<view class="pms-empty">
+  <view class="pms-empty__icon">∅</view>
+  <view class="pms-empty__text">{{text}}</view>
+</view>

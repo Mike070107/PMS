@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "wechat-devtools": {
+      "command": "cmd",
+      "args": ["/c", "tools\\wechatide.cmd", "mcp"]
+    }
+  }
+}

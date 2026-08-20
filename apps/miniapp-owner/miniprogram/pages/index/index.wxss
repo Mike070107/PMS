@@ -1,0 +1,105 @@
+.page { min-height: 100vh; background: var(--color-bg); }
+
+.hero {
+  background: var(--color-brand);
+  color: #fff;
+  padding: 64rpx 32rpx 72rpx;
+}
+.hero__brand { display: flex; align-items: center; gap: var(--space-md); }
+.hero__logo {
+  width: 104rpx;
+  height: 104rpx;
+  flex-shrink: 0;
+  border-radius: 24rpx;
+  box-shadow: 0 12rpx 28rpx rgba(18, 35, 59, 0.22);
+}
+.hero__copy { flex: 1; min-width: 0; }
+.hero__title { font-size: 42rpx; font-weight: 600; letter-spacing: 1rpx; }
+.hero__sub { font-size: 30rpx; opacity: 0.85; margin-top: 12rpx; }
+
+.hero__place {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 32rpx;
+  padding: 20rpx 24rpx;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-sm);
+}
+.hero__place-text { flex: 1; font-size: 32rpx; }
+.hero__badge {
+  font-size: 26rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.24);
+  white-space: nowrap;
+}
+.hero__badge--ok { background: rgba(82, 196, 26, 0.95); }
+.hero__badge--pending { background: rgba(250, 173, 20, 0.95); }
+.hero__badge--error { background: rgba(255, 77, 79, 0.95); }
+
+.container { margin-top: -32rpx; }
+
+/* 主操作：整行可点，图标 + 标题 + 说明 + 箭头，一眼知道点哪儿 */
+.action {
+  display: flex !important;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100% !important;
+  margin: 0 !important;
+  padding: var(--space-md);
+  min-height: 144rpx;
+  box-sizing: border-box;
+  background: rgba(49, 85, 138, 0.08);
+  border: 2rpx solid rgba(49, 85, 138, 0.24);
+  border-radius: var(--radius-md);
+  text-align: left;
+  line-height: 1.5;
+  transition: opacity var(--dur) ease;
+}
+.action::after { border: none; }
+.action:active { opacity: 0.75; }
+.action__icon { width: 56rpx; height: 56rpx; }
+.action__body { flex: 1; }
+.action__title { font-size: var(--font-2xl); font-weight: 600; color: var(--color-text); }
+.action__desc { margin-top: var(--space-xs); font-size: var(--font-md); color: var(--color-text-secondary); }
+
+.order { padding: var(--space-md) 0; border-bottom: 2rpx solid var(--color-border); }
+.order:last-child { border-bottom: none; padding-bottom: 0; }
+.order__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  /* 标题和状态之间留够一档：贴太近扫一眼容易连成一句话 */
+  gap: var(--space-lg);
+}
+.order__type {
+  /* 类型名不截断：宽度让出来给状态标签，放不下就换行。
+     「家里门锁/门窗相关」这种长名字截成「家里门锁/门窗…」反而看不出是什么。
+     head 用 flex-start 对齐，标题换成两行时标签仍稳在右上角。 */
+  flex: 1;
+  min-width: 0;
+  /* 封一个上限：不让类型名一路顶到状态标签跟前，宁可早一点换行 */
+  max-width: 58%;
+  font-size: var(--font-xl);
+  font-weight: 600;
+  line-height: 1.35;
+}
+.order__desc {
+  font-size: var(--font-md);
+  color: var(--color-text-secondary);
+  margin-top: var(--space-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.order__meta { font-size: var(--font-sm); color: var(--color-text-tertiary); margin-top: var(--space-xs); }
+
+.empty {
+  color: var(--color-text-tertiary);
+  font-size: 30rpx;
+  line-height: 1.6;
+  padding: 32rpx 0 8rpx;
+  text-align: center;
+}

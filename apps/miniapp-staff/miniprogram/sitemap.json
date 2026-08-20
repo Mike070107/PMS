@@ -1,0 +1,4 @@
+{
+  "desc": "员工端不在公开搜索中展示",
+  "rules": [{ "action": "disallow", "page": "*" }]
+}

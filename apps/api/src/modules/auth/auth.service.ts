@@ -1,0 +1,730 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import bcrypt from 'bcryptjs';
+import { In, IsNull, Repository } from 'typeorm';
+import { AuthUser } from '../../common/current-user.decorator';
+import {
+  AuditStatus,
+  OWNER_APP_ROLES,
+  REPORTER_ROLES,
+  USER_ROLE_LABELS,
+  UserRole,
+  UserStatus,
+} from '../../common/enums';
+import {
+  Building,
+  Community,
+  House,
+  Tenant,
+  User,
+  UserAudit,
+  UserReportCommunity,
+  UserRoleAssignment,
+} from '../../entities';
+import { AccessService } from '../access/access.service';
+import {
+  AdminLoginDto,
+  BootstrapAdminDto,
+  OwnerMatchPhoneDto,
+  OwnerOnboardDto,
+  RefreshTokenDto,
+  StaffLoginDto,
+  WxLoginDto,
+} from './dto';
+import { SettingsService } from '../settings/settings.service';
+import { WechatService } from './wechat.service';
+
+/** 可登录员工端小程序的角色 */
+const STAFF_ROLES: UserRole[] = [
+  UserRole.TECHNICIAN,
+  UserRole.OFFICE,
+  UserRole.MANAGER,
+  UserRole.PURCHASER,
+  UserRole.ADMIN,
+];
+
+@Injectable()
+export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @InjectRepository(Tenant)
+    private readonly tenantRepo: Repository<Tenant>,
+    @InjectRepository(Community)
+    private readonly communityRepo: Repository<Community>,
+    @InjectRepository(Building)
+    private readonly buildingRepo: Repository<Building>,
+    @InjectRepository(House)
+    private readonly houseRepo: Repository<House>,
+    @InjectRepository(UserAudit)
+    private readonly auditRepo: Repository<UserAudit>,
+    @InjectRepository(UserReportCommunity)
+    private readonly reportGrantRepo: Repository<UserReportCommunity>,
+    @InjectRepository(UserRoleAssignment)
+    private readonly userRoleRepo: Repository<UserRoleAssignment>,
+    private readonly jwt: JwtService,
+    private readonly config: ConfigService,
+    private readonly wechat: WechatService,
+    private readonly settings: SettingsService,
+    private readonly accessService: AccessService,
+  ) {}
+
+  /** 小程序登录：code 换 openid → 找/建用户 → 发双 token */
+  async wxLogin(dto: WxLoginDto) {
+    const session = await this.wechat.jscode2session(dto.code, dto.appType);
+    let user = await this.userRepo.findOne({ where: { wxOpenid: session.openid } });
+
+    if (!user && session.unionid) {
+      // openid 按小程序隔离，跨端只能靠 unionid 关联；且只认同端角色，
+      // 避免业主端登录把员工账号的 openid 覆盖掉（反之亦然）。
+      const expectRole = (r: UserRole) =>
+        dto.appType === 'staff' ? STAFF_ROLES.includes(r) : OWNER_APP_ROLES.includes(r);
+      const linked = await this.userRepo.findOne({
+        where: { wxUnionid: session.unionid },
+      });
+      if (linked && expectRole(linked.role)) {
+        user = linked;
+        if (!user.wxOpenid) user.wxOpenid = session.openid;
+      }
+    }
+
+    if (dto.appType === 'staff') {
+      // 员工账号需管理员预先开通，不自助创建；首次登录走 staffLogin 绑定微信
+      if (!user) {
+        throw new UnauthorizedException('该微信尚未绑定员工账号，请用手机号验证登录');
+      }
+      return this.issueStaffTokens(user);
+    }
+
+    if (!user) {
+      user = this.userRepo.create({
+        tenantId: null,
+        wxOpenid: session.openid,
+        wxUnionid: session.unionid ?? null,
+        name: null,
+        phone: null,
+        wxNickname: null,
+        passwordHash: null,
+        loginAccount: null,
+        role: UserRole.OWNER,
+        houseId: null,
+        status: UserStatus.ACTIVE,
+        createdBy: null,
+        updatedBy: null,
+      });
+    } else {
+      if (!user.wxUnionid && session.unionid) user.wxUnionid = session.unionid;
+      if (!user.wxOpenid) user.wxOpenid = session.openid;
+    }
+    user = await this.userRepo.save(user);
+
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException('账号已停用');
+    }
+    return this.issueWxTokens(user);
+  }
+
+  /**
+   * 员工端登录：账号由管理员预先开通，员工首次登录需验证身份并绑定微信。
+   * - 已绑定过本微信：只传 code 即可静默登录
+   * - 首次绑定：code + phoneCode（微信手机号）或 code + account/password
+   */
+  async staffLogin(dto: StaffLoginDto) {
+    const session = await this.wechat.jscode2session(dto.code, 'staff');
+    const bound = await this.userRepo.findOne({ where: { wxOpenid: session.openid } });
+
+    const byPhone = !!dto.phoneCode;
+    const byAccount = !!dto.account && !!dto.password;
+    if (!byPhone && !byAccount) {
+      if (!bound) {
+        throw new UnauthorizedException('该微信尚未绑定员工账号，请用手机号验证登录');
+      }
+      return this.issueStaffTokens(bound);
+    }
+
+    let target: User | null;
+    if (byPhone) {
+      const phone = await this.wechat.getPhoneNumber(dto.phoneCode as string, 'staff');
+      const matches = await this.userRepo.find({
+        where: { phone, role: In(STAFF_ROLES) },
+        order: { id: 'ASC' },
+      });
+      if (matches.length === 0) {
+        throw new UnauthorizedException(
+          `手机号 ${this.maskPhone(phone)} 未开通员工账号，请联系物业管理员`,
+        );
+      }
+      const usable = matches.filter((u) => u.status === UserStatus.ACTIVE);
+      if (usable.length === 0) {
+        throw new ForbiddenException('该员工账号已停用，请联系物业管理员');
+      }
+      if (usable.length > 1) {
+        throw new ConflictException('该手机号关联了多个员工账号，请改用账号密码登录');
+      }
+      target = usable[0];
+    } else {
+      target = await this.userRepo.findOne({ where: { loginAccount: dto.account } });
+      if (!target?.passwordHash) {
+        throw new UnauthorizedException('账号或密码错误');
+      }
+      const matched = await bcrypt.compare(dto.password as string, target.passwordHash);
+      if (!matched) {
+        throw new UnauthorizedException('账号或密码错误');
+      }
+      if (!STAFF_ROLES.includes(target.role)) {
+        throw new ForbiddenException('该账号不能登录员工端');
+      }
+      if (target.status !== UserStatus.ACTIVE) {
+        throw new ForbiddenException('该员工账号已停用，请联系物业管理员');
+      }
+    }
+
+    if (bound && bound.id !== target.id) {
+      throw new ConflictException('该微信已绑定其他员工账号，请联系管理员解绑后重试');
+    }
+    if (target.wxOpenid && target.wxOpenid !== session.openid) {
+      // 防止账号被他人用自己的微信接管；换微信必须管理员在后台解绑
+      throw new ConflictException('该员工账号已绑定其他微信，请联系管理员解绑后重试');
+    }
+
+    if (!target.wxOpenid) {
+      target.wxOpenid = session.openid;
+      if (session.unionid) target.wxUnionid = session.unionid;
+      target.updatedBy = target.id;
+      target = await this.userRepo.save(target);
+      this.logger.log(`员工 #${target.id}（${target.role}）已绑定员工端微信`);
+    } else if (session.unionid && !target.wxUnionid) {
+      target.wxUnionid = session.unionid;
+      target = await this.userRepo.save(target);
+    }
+
+    return this.issueStaffTokens(target);
+  }
+
+  async refresh(dto: RefreshTokenDto) {
+    let payload: { sub: number; typ?: string };
+    try {
+      payload = this.jwt.verify(dto.refreshToken, { secret: this.refreshSecret() });
+    } catch {
+      throw new UnauthorizedException('refresh token 无效或已过期');
+    }
+    if (payload.typ !== 'refresh') {
+      throw new UnauthorizedException('不是有效的 refresh token');
+    }
+    const user = await this.userRepo.findOne({ where: { id: payload.sub } });
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('用户不存在或已停用');
+    }
+    return this.issueWxTokens(user);
+  }
+
+  /** 业主入驻：认证态提交小区/房号，绑定租户并生成待审核记录 */
+  async ownerOnboard(dto: OwnerOnboardDto, current: AuthUser) {
+    const user = await this.userRepo.findOne({ where: { id: current.id } });
+    if (!user) throw new UnauthorizedException('user not found');
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException('仅业主可入驻');
+    }
+
+    const community = await this.communityRepo.findOne({
+      where: { id: dto.communityId, enabled: true },
+    });
+    if (!community) throw new NotFoundException('小区不存在');
+    const tenantId = community.tenantId;
+
+    // 楼栋定位：优先用业主手填/改过的弄+号，其次用扫码带出的 buildingId
+    let buildingId: number | null = null;
+    if (dto.buildingNo && dto.buildingNo.trim()) {
+      const lane = dto.lane?.trim() || '';
+      const buildingNo = dto.buildingNo.trim();
+
+      // 业主只填「几号」：在小区里按号找，不限弄。
+      // 商铺没有弄，住宅有弄，硬套小区主弄会把商铺全部匹配失败。
+      const candidates = await this.buildingRepo.find({
+        where: lane
+          ? { tenantId, communityId: community.id, lane, buildingNo }
+          : { tenantId, communityId: community.id, buildingNo },
+      });
+      if (!candidates.length) {
+        throw new BadRequestException(
+          `${community.name}没有「${lane ? lane + '弄' : ''}${buildingNo}号」，请核对后重填`,
+        );
+      }
+      if (candidates.length > 1) {
+        const options = candidates
+          .map((item) => `${item.lane ? item.lane + '弄' : ''}${item.buildingNo}号`)
+          .join('、');
+        throw new BadRequestException(`${buildingNo}号在${community.name}有多个（${options}），请扫码确认`);
+      }
+      buildingId = candidates[0].id;
+    } else if (dto.buildingId) {
+      const building = await this.buildingRepo.findOne({
+        where: { id: dto.buildingId, tenantId, communityId: community.id },
+      });
+      if (!building) throw new NotFoundException('楼栋不存在');
+      buildingId = building.id;
+    }
+
+    // 首次入驻绑定租户
+    if (!user.tenantId) {
+      user.tenantId = tenantId;
+    } else if (user.tenantId !== tenantId) {
+      throw new ForbiddenException('该账号已归属其他物业');
+    }
+    // 微信手机号快速填充：phoneCode 解出的号码优先于手填
+    let phone = dto.phone ?? null;
+    if (dto.phoneCode) {
+      try {
+        phone = await this.wechat.getPhoneNumber(dto.phoneCode, 'owner');
+      } catch (err) {
+        // 解码失败不阻塞入驻，退回手填号码
+        this.logger.warn(`业主 #${user.id} 微信手机号解码失败：${(err as Error).message}`);
+        if (!phone) throw err;
+      }
+    }
+
+    if (dto.realName) user.name = dto.realName;
+    if (phone) user.phone = phone;
+    await this.userRepo.save(user);
+
+    // 已有待审核记录就更新它，而不是原样丢弃这次提交 ——
+    // 审核期间业主发现房号填错了会再交一次，静默忽略等于让他一直等一条错的记录。
+    const pending = await this.auditRepo.findOne({
+      where: { tenantId, userId: user.id, status: AuditStatus.PENDING },
+      order: { id: 'DESC' },
+    });
+    if (pending) {
+      pending.communityId = community.id;
+      pending.buildingId = buildingId;
+      pending.rawAddress = dto.roomNo;
+      pending.applicantName = dto.realName ?? user.name ?? pending.applicantName;
+      pending.applicantPhone = phone ?? user.phone ?? pending.applicantPhone;
+      pending.updatedBy = user.id;
+      const saved = await this.auditRepo.save(pending);
+      return { auditStatus: saved.status };
+    }
+
+    const audit = await this.auditRepo.save(
+      this.auditRepo.create({
+        tenantId,
+        userId: user.id,
+        communityId: community.id,
+        buildingId,
+        houseId: null,
+        rawAddress: dto.roomNo,
+        applicantName: dto.realName ?? user.name,
+        applicantPhone: phone ?? user.phone,
+        status: AuditStatus.PENDING,
+        rejectReason: null,
+        reviewedBy: null,
+        reviewedAt: null,
+        createdBy: user.id,
+        updatedBy: user.id,
+      }),
+    );
+    return { auditStatus: audit.status };
+  }
+
+  /**
+   * 用微信手机号匹配业主名下房产。
+   *
+   * 只读不写：匹配到也**不建立绑定**，只把地址返回去给报修页预填 ——
+   * 房产表里的电话可能是上一任业主留的，自动绑定会把房子绑错人。
+   * 需要正式绑定的业主仍然走入驻 + 物业审核。
+   */
+  async ownerMatchPhone(dto: OwnerMatchPhoneDto, current: AuthUser) {
+    const user = await this.userRepo.findOne({ where: { id: current.id } });
+    if (!user) throw new UnauthorizedException("user not found");
+
+    // 匹配范围：已有租户归属就用自己的；否则用扫码带出的小区反查
+    let tenantId = user.tenantId ?? null;
+    if (!tenantId && dto.communityId) {
+      const community = await this.communityRepo.findOne({
+        where: { id: dto.communityId, enabled: true },
+      });
+      tenantId = community?.tenantId ?? null;
+    }
+    if (!tenantId) {
+      return { enabled: true, matched: false, reason: "还不知道你在哪个小区，先扫码或选小区" };
+    }
+
+    const settings = await this.settings.getSettingsByTenant(tenantId);
+    if (!settings.ownerPhoneAutoMatch.enabled) {
+      return { enabled: false, matched: false, reason: "物业未开启手机号快速识别" };
+    }
+
+    const phone = await this.wechat.getPhoneNumber(dto.phoneCode, "owner");
+
+    // 房产档案里同号可能挂多套房（一人多产），拿不准就不猜，让业主自己填
+    const candidates = await this.userRepo.find({
+      where: { tenantId, phone, role: UserRole.OWNER, status: UserStatus.ACTIVE },
+      order: { id: "ASC" },
+    });
+    const owned = candidates.filter((item) => item.houseId && item.id !== user.id);
+    if (!owned.length) {
+      return { enabled: true, matched: false, phone: this.maskPhone(phone) };
+    }
+    if (owned.length > 1) {
+      return {
+        enabled: true,
+        matched: false,
+        phone: this.maskPhone(phone),
+        reason: "这个号码下有多套房产，请自己选一下",
+      };
+    }
+
+    const place = await this.describeHouse(tenantId, owned[0].houseId as number);
+    if (!place) return { enabled: true, matched: false, phone: this.maskPhone(phone) };
+
+    // 顺手把租户和手机号落到当前微信账号上，之后他能看到自己的工单；
+    // 但 houseId 不动 —— 那才是「绑定」，必须走审核。
+    if (!user.tenantId) user.tenantId = tenantId;
+    if (!user.phone) user.phone = phone;
+    if (!user.name && owned[0].name) user.name = owned[0].name;
+    await this.userRepo.save(user);
+
+    return { enabled: true, matched: true, phone: this.maskPhone(phone), place };
+  }
+
+  /** houseId → 可直接展示的地址 */
+  private async describeHouse(tenantId: number, houseId: number) {
+    const house = await this.houseRepo.findOne({ where: { id: houseId, tenantId } });
+    if (!house) return null;
+    const building = await this.buildingRepo.findOne({
+      where: { id: house.buildingId, tenantId },
+    });
+    const community = building
+      ? await this.communityRepo.findOne({ where: { id: building.communityId, tenantId } })
+      : null;
+    const buildingText = building
+      ? `${building.lane ? building.lane + "弄" : ""}${building.buildingNo}号`
+      : "";
+    return {
+      communityId: community?.id ?? null,
+      communityName: community?.name ?? "",
+      buildingId: building?.id ?? null,
+      buildingText,
+      houseId: house.id,
+      roomNo: house.roomNo,
+      // 门牌各段连写不留空格：枫桦景苑二期 228弄26号101室
+      addressText: [
+        community?.name,
+        `${buildingText}${house.roomNo ? house.roomNo + "室" : ""}`,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    };
+  }
+  async adminLogin(dto: AdminLoginDto) {
+    const user = await this.userRepo.findOne({
+      where: { loginAccount: dto.account },
+    });
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException('invalid account or password');
+    }
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException('account is disabled');
+    }
+    if (user.role === UserRole.OWNER || user.role === UserRole.TECHNICIAN) {
+      // 双轨制下业务身份不再决定后台准入：绑了后台角色照样放行
+      const bindings = await this.userRoleRepo.count({ where: { userId: user.id } });
+      if (!bindings) {
+        throw new ForbiddenException('role cannot login to admin');
+      }
+    }
+
+    const matched = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!matched) {
+      throw new UnauthorizedException('invalid account or password');
+    }
+    await this.assertTenantActive(user);
+
+    return this.issueTokens(user);
+  }
+
+  /**
+   * SaaS 服务闸门（登录时的友好版）：公司停用/到期在这里给出明确文案，
+   * 逐请求的硬拦截在 jwt.strategy —— 两边判断口径保持一致。
+   */
+  private async assertTenantActive(user: User) {
+    if (user.role === UserRole.SUPERADMIN || !user.tenantId) return;
+    const tenant = await this.tenantRepo.findOne({
+      where: { id: user.tenantId },
+      select: ['id', 'enabled', 'expiresAt'],
+    });
+    if (!tenant || !tenant.enabled) {
+      throw new ForbiddenException('物业公司账号已停用，请联系平台');
+    }
+    if (tenant.expiresAt) {
+      const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+      if (String(tenant.expiresAt).slice(0, 10) < today) {
+        throw new ForbiddenException('物业公司服务已到期，请联系平台续期');
+      }
+    }
+  }
+
+  async me(current: AuthUser) {
+    const user = await this.userRepo.findOne({ where: { id: current.id } });
+    if (!user) throw new UnauthorizedException('user not found');
+    const base: Record<string, unknown> = {
+      id: user.id,
+      tenantId: user.tenantId,
+      role: user.role,
+      name: user.name,
+      phone: user.phone,
+      loginAccount: user.loginAccount,
+      status: user.status,
+    };
+    // 业主没有后台可言；其余身份把后台权限一并下发（管理后台登录后只调这一个接口）
+    if (user.role !== UserRole.OWNER) {
+      const authUser: AuthUser = {
+        id: user.id,
+        tenantId: current.tenantId ?? user.tenantId, // superadmin 公司视角下取切换后的租户
+        role: user.role,
+        actingOfficeId: current.actingOfficeId ?? null,
+      };
+      const [access, offices] = await Promise.all([
+        this.accessService.getAccess(authUser),
+        this.accessService.listVisibleOffices(authUser),
+      ]);
+      base.access = {
+        isPlatformAdmin: access.isPlatformAdmin,
+        isTenantAdmin: access.isTenantAdmin,
+        pages: access.pages,
+        scopeAll: access.scopeAll,
+        communityIds: access.communityIds,
+        enabledPages: access.enabledPages,
+        offices,
+        actingOfficeId: access.actingOfficeId,
+      };
+    }
+    if (!OWNER_APP_ROLES.includes(user.role)) return base;
+    // 业主端首页要显示「我的房屋 + 入驻审核状态」，并据此决定能否直接报修
+    const place = await this.resolveOwnerPlace(user);
+    // 订阅消息模板 id 不是密钥，本来就要发到小程序里调 requestSubscribeMessage；
+    // 跟着 me 一起下发，省掉一个只为读两个字符串的接口
+    const subscribeTemplates = await this.resolveSubscribeTemplates(user.tenantId);
+    if (user.role === UserRole.OWNER) return { ...base, place, subscribeTemplates };
+
+    // 保安/居委会/业委会：小程序据此多给一个「其它地址」的报修范围。
+    // 授权小区一条都没有时 canReportOthers=false，端上就不显示那个入口，
+    // 免得点进去选不到小区、以为系统坏了。
+    const grants = await this.reportGrantRepo.find({
+      where: { userId: user.id },
+      order: { communityId: 'ASC' },
+    });
+    const communities = grants.length
+      ? await this.communityRepo.find({
+          where: { id: In(grants.map((g) => g.communityId)) },
+        })
+      : [];
+    return {
+      ...base,
+      place,
+      subscribeTemplates,
+      reporter: {
+        role: user.role,
+        roleLabel: USER_ROLE_LABELS[user.role] ?? user.role,
+        canReportOthers: communities.length > 0,
+        communities: communities.map((c) => ({ id: c.id, name: c.name })),
+      },
+    };
+  }
+
+  /** 该租户配好的订阅消息模板 id（去掉没填的） */
+  private async resolveSubscribeTemplates(tenantId: number | null): Promise<string[]> {
+    if (!tenantId) return [];
+    try {
+      const settings = await this.settings.getSettingsByTenant(tenantId);
+      return Object.values(settings.wxSubscribeTemplates)
+        .map((id) => String(id || '').trim())
+        .filter(Boolean);
+    } catch {
+      // 设置读不到不该把「我的」页整个弄挂，退化成不弹订阅授权
+      return [];
+    }
+  }
+
+  /** 业主已绑定/申请中的房屋定位，供小程序首页与报修页带入 */
+  private async resolveOwnerPlace(user: User) {
+    const audit = await this.auditRepo.findOne({
+      where: { userId: user.id },
+      order: { id: 'DESC' },
+    });
+    if (!audit) return null;
+
+    const [community, building, house] = await Promise.all([
+      this.communityRepo.findOne({ where: { id: audit.communityId } }),
+      audit.buildingId
+        ? this.buildingRepo.findOne({ where: { id: audit.buildingId } })
+        : Promise.resolve(null),
+      user.houseId
+        ? this.houseRepo.findOne({ where: { id: user.houseId } })
+        : Promise.resolve(null),
+    ]);
+
+    // 「228弄26号」而不是「228 26」：空格拼出来的地址业主根本看不懂门牌在哪
+    const buildingText = building
+      ? `${building.lane ? building.lane + '弄' : ''}${building.buildingNo}号`
+      : '';
+    // 审核期间房还没绑，房号只存在申请里（rawAddress 写的就是业主填的房号）
+    const roomNo = house?.roomNo ?? audit.rawAddress ?? '';
+    const roomText = roomNo ? `${roomNo}室` : '';
+
+    return {
+      auditStatus: audit.status,
+      rejectReason: audit.rejectReason,
+      communityId: audit.communityId,
+      communityName: community?.name ?? '',
+      buildingId: audit.buildingId,
+      buildingText,
+      houseId: user.houseId,
+      roomNo,
+      // 门牌各段连写不留空格：枫桦景苑二期 228弄26号101室
+      addressText: [community?.name, `${buildingText}${roomText}`]
+        .filter(Boolean)
+        .join(' '),
+    };
+  }
+
+  async bootstrapAdmin(dto: BootstrapAdminDto) {
+    const configuredToken = this.config.get<string>('BOOTSTRAP_TOKEN', '');
+    if (!configuredToken) {
+      throw new ForbiddenException('bootstrap is disabled');
+    }
+    if (dto.token !== configuredToken) {
+      throw new ForbiddenException('invalid bootstrap token');
+    }
+
+    const existing = await this.userRepo.findOne({
+      where: { loginAccount: dto.account },
+    });
+    if (existing) {
+      throw new BadRequestException('account already exists');
+    }
+
+    const tenant = await this.tenantRepo.save(
+      this.tenantRepo.create({
+        name: dto.tenantName,
+        contactName: dto.name ?? null,
+        contactPhone: dto.phone ?? null,
+        ownerAppid: null,
+        staffAppid: null,
+        enabled: true,
+        createdBy: null,
+        updatedBy: null,
+      }),
+    );
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const user = await this.userRepo.save(
+      this.userRepo.create({
+        tenantId: tenant.id,
+        wxOpenid: null,
+        wxUnionid: null,
+        name: dto.name ?? 'Tenant Admin',
+        phone: dto.phone ?? null,
+        wxNickname: null,
+        passwordHash,
+        loginAccount: dto.account,
+        role: UserRole.ADMIN,
+        houseId: null,
+        status: UserStatus.ACTIVE,
+        createdBy: null,
+        updatedBy: null,
+      }),
+    );
+
+    return {
+      tenant,
+      user: {
+        id: user.id,
+        tenantId: user.tenantId,
+        role: user.role,
+        loginAccount: user.loginAccount,
+        name: user.name,
+      },
+    };
+  }
+
+  /** 员工端发 token 前统一校验角色与状态 */
+  private async issueStaffTokens(user: User) {
+    if (!STAFF_ROLES.includes(user.role)) {
+      throw new ForbiddenException('该微信绑定的不是员工账号');
+    }
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException('该员工账号已停用，请联系物业管理员');
+    }
+    if (!user.tenantId) {
+      throw new ForbiddenException('该员工账号未归属物业公司，请联系管理员');
+    }
+    await this.assertTenantActive(user);
+    return this.issueWxTokens(user);
+  }
+
+  private maskPhone(phone: string): string {
+    return phone.length >= 11 ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : phone;
+  }
+
+  private refreshSecret(): string {
+    return this.config.get<string>(
+      'JWT_REFRESH_SECRET',
+      this.config.get<string>('JWT_SECRET', 'change-me-in-prod') + ':refresh',
+    );
+  }
+
+  private issueWxTokens(user: User) {
+    const payload = { sub: user.id, tenantId: user.tenantId, role: user.role };
+    const accessTtlSec = Number(
+      this.config.get<string>('JWT_ACCESS_TTL_SEC', '7200'),
+    );
+    const accessToken = this.jwt.sign(payload, { expiresIn: accessTtlSec });
+    const refreshToken = this.jwt.sign(
+      { ...payload, typ: 'refresh' },
+      { secret: this.refreshSecret(), expiresIn: '30d' },
+    );
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn: accessTtlSec,
+      user: {
+        id: String(user.id),
+        role: user.role,
+        nickname: user.name ?? user.wxNickname ?? undefined,
+        phone: user.phone ?? undefined,
+        tenantId: user.tenantId != null ? String(user.tenantId) : undefined,
+      },
+      needBinding: user.role === UserRole.OWNER && !user.houseId,
+    };
+  }
+
+  private issueTokens(user: User) {
+    const payload = {
+      sub: user.id,
+      tenantId: user.tenantId,
+      role: user.role,
+    };
+    return {
+      accessToken: this.jwt.sign(payload),
+      tokenType: 'Bearer',
+      user: {
+        id: user.id,
+        tenantId: user.tenantId,
+        role: user.role,
+        name: user.name,
+        loginAccount: user.loginAccount,
+      },
+    };
+  }
+}

@@ -1,0 +1,77 @@
+<view class="page">
+  <view class="hero">
+    <view class="hero__brand">
+      <image class="hero__logo" src="/assets/brand-icon.png" mode="aspectFill" />
+      <view class="hero__copy">
+        <view class="hero__title">邻里的事，邻修来办</view>
+        <view class="hero__sub">报修、跟进、验收，一个小程序搞定</view>
+      </view>
+    </view>
+
+    <view wx:if="{{loggedIn && placeText}}" class="hero__place">
+      <view class="hero__place-text">{{placeText}}</view>
+      <view class="hero__badge hero__badge--{{auditTone}}">{{auditText}}</view>
+    </view>
+  </view>
+
+  <view class="container">
+    <!-- 未登录：先登录 -->
+    <view wx:if="{{!loggedIn}}" class="card">
+      <view class="card__title">登录后即可报修</view>
+      <view class="card__desc">使用微信登录，随时查看维修进度</view>
+      <view class="btn-group mt">
+        <button class="btn btn--primary" loading="{{loading}}" disabled="{{loading}}" bindtap="onTapLogin">微信一键登录</button>
+      </view>
+    </view>
+
+    <!-- 已登录但房屋未认证 -->
+    <view wx:elif="{{needOnboard}}" class="card">
+      <view class="card__title">先认证你的房屋</view>
+      <view class="card__desc">认证后可直接报修，不用每次找二维码</view>
+      <view class="btn-group mt">
+        <button class="btn btn--primary" bindtap="onTapOnboard">认证我的房屋</button>
+        <button class="btn btn--outline" bindtap="onTapScan">扫码认证 / 报修</button>
+      </view>
+    </view>
+
+    <!-- 已认证：主操作。三个按钮原来一样重，等于没有主次 ——
+         「随手拍」是给老人用的最短路径，做成大主按钮；
+         另外两个降为并排的次级入口，只在需要时才被注意到。 -->
+    <view wx:else class="card">
+      <button class="action" bindtap="onTapSnapRepair">
+        <view class="icon icon--camera action__icon"></view>
+        <view class="action__body">
+          <view class="action__title">随手拍报修</view>
+          <view class="action__desc">拍张照片、说一句话就行</view>
+        </view>
+        <view class="icon icon--chevron"></view>
+      </button>
+
+      <view class="btn-row mt">
+        <button class="btn btn--outline" bindtap="onTapQuickRepair">一键报修</button>
+        <button class="btn btn--outline" bindtap="onTapScan">扫码报修</button>
+      </view>
+    </view>
+
+    <!-- 我最近的报修 -->
+    <view wx:if="{{loggedIn}}" class="card">
+      <view class="row">
+        <view class="card__title">我最近的报修</view>
+        <text class="link" bindtap="onTapAllOrders">全部</text>
+      </view>
+
+      <view wx:if="{{recent.length}}">
+        <view wx:for="{{recent}}" wx:key="id" class="order" data-id="{{item.id}}" bindtap="onTapOrder">
+          <view class="order__head">
+            <view class="order__type">{{item.typeLabel}}</view>
+            <pms-tag class="status-tag" status="{{item.status}}"/>
+          </view>
+          <view class="order__desc">{{item.summaryContent}}</view>
+          <view class="order__meta">{{item.summaryAddress}} · {{item.createdAtText}}</view>
+        </view>
+      </view>
+
+      <view wx:elif="{{loadedRecent}}" class="empty">还没有报修记录，遇到问题随时提交，物业会跟进处理</view>
+    </view>
+  </view>
+</view>

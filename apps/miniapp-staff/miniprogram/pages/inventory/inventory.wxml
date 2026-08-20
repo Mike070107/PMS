@@ -1,0 +1,62 @@
+<view class="container">
+  <view wx:if="{{!canView}}" class="card">
+    <view class="card__title">库存与采购</view>
+    <view class="muted mt-sm">{{roleHint}}</view>
+  </view>
+
+  <block wx:else>
+    <view class="tabs">
+      <view class="tab {{tab === 'stock' ? 'tab--on' : ''}}" data-tab="stock" bindtap="onSwitchTab">库存</view>
+      <view class="tab {{tab === 'purchase' ? 'tab--on' : ''}}" data-tab="purchase" bindtap="onSwitchTab">采购申请</view>
+    </view>
+
+    <!-- 库存 -->
+    <block wx:if="{{tab === 'stock'}}">
+      <view class="toolbar">
+        <picker class="picker-wrap" mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onPickWarehouse">
+          <view class="picker">{{warehouseNames[warehouseIndex] || '全部仓库'}}</view>
+        </picker>
+        <view class="chip {{onlyLow ? 'chip--on' : ''}}" bindtap="onToggleLow">
+          低于安全库存{{lowCount ? ' ' + lowCount : ''}}
+        </view>
+      </view>
+      <input class="input mb" placeholder="搜索材料名称 / 型号 / 编码" value="{{keyword}}" bindinput="onKeyword" />
+
+      <view wx:if="{{loading}}" class="muted center">加载中…</view>
+      <view wx:elif="{{stockRows.length === 0}}" class="muted center">没有匹配的库存记录</view>
+
+      <view class="card row-card" wx:for="{{stockRows}}" wx:key="id">
+        <view class="row-card__body">
+          <view class="row-card__title">{{item.name}}</view>
+          <view class="muted mt-xs">{{item.code}}<text wx:if="{{item.safetyText}}"> · {{item.safetyText}}</text></view>
+        </view>
+        <view class="qty {{item.low ? 'qty--low' : ''}}">
+          {{item.qtyText}}<text class="qty__unit">{{item.unit}}</text>
+        </view>
+      </view>
+      <view wx:if="{{warehouseIndex === 0 && stockRows.length}}" class="muted center tip">
+        「全部仓库」按材料合并显示总量，选具体仓库可看分仓明细
+      </view>
+    </block>
+
+    <!-- 采购申请 -->
+    <block wx:else>
+      <view wx:if="{{loading}}" class="muted center">加载中…</view>
+      <view wx:elif="{{requests.length === 0}}" class="muted center">暂无采购申请</view>
+
+      <view class="card" wx:for="{{requests}}" wx:key="id">
+        <view class="row">
+          <text class="muted">{{item.requestNo}}</text>
+          <text class="status">{{item.statusLabel}}</text>
+        </view>
+        <view class="items">{{item.itemsText || '（无明细）'}}</view>
+        <view class="row mt-sm">
+          <text class="muted">{{item.createdAtText}}</text>
+          <text class="amount">{{item.amountText}}</text>
+        </view>
+        <view wx:if="{{item.rejectReason}}" class="reject">驳回原因：{{item.rejectReason}}</view>
+      </view>
+      <view class="muted center tip">审批操作在「审批」页；下单、入库请在管理后台完成</view>
+    </block>
+  </block>
+</view>

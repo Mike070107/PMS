@@ -1,0 +1,185 @@
+@import "/miniprogram_npm/@pms/miniapp-ui/tokens.wxss";
+
+/* ---------- 老年友好基准 ----------
+   业主里老人占多数。放大不是逐页加覆盖层（那样总有页面漏掉、值还会打架），
+   而是把这份基准本身调大：正文/输入 34rpx、标签 30rpx、按钮 36rpx、
+   点击目标 ≥ 88rpx、行高 ≥ 1.6。页面里如果还有更小的字号，一并跟着上浮。
+   字号阶梯（--font-*）定义在 tokens.wxss，员工端用的是同一套，整体缩放只改那一处。 */
+
+.container { padding: 28rpx 28rpx 56rpx; }
+
+.card {
+  background: var(--color-card-bg);
+  border-radius: var(--radius-md);
+  padding: 36rpx 28rpx;
+  margin-bottom: 28rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+/* ---------- 按钮体系 ----------
+   微信 <button> 自带 margin、::after 边框和 2.55 倍行高，各页面再各写各的高度，
+   就会出现「偏一点 / 文字不居中 / 大小不一」。统一用 flex 居中，尺寸只在这里定义。 */
+button { margin: 0; }
+button::after { border: none; }
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  /* 微信 button 组件基础样式对 width / margin 用了更高优先级（实测普通类选择器压不住：
+     margin-left 仍是 auto，width 仍按内容撑开），只能用 !important 覆盖。
+     不加的话按钮左右缩水、被 auto margin 居中，看起来就是「偏、大小不一」。 */
+  width: 100% !important;
+  margin: 0 !important;
+  flex-shrink: 0;
+  height: 104rpx;
+  padding: 0 32rpx;
+  font-size: var(--font-2xl);
+  font-weight: 500;
+  line-height: 1;
+  border-radius: var(--radius-md);
+  transition: opacity 200ms ease;
+}
+.btn::after { border: none; }
+.btn:active { opacity: 0.85; }
+.btn[disabled] { opacity: 0.5; }
+
+.btn--primary { background: var(--color-brand); color: #fff; }
+.btn--outline {
+  background: var(--color-card-bg);
+  color: var(--color-brand);
+  border: 2rpx solid var(--color-brand);
+}
+.btn--ghost { background: var(--color-card-bg); color: var(--color-text-secondary); }
+/* 小尺寸与并排按钮要把上面的 100% 覆盖回去，同样需要 !important */
+.btn--sm { width: auto !important; height: 76rpx; padding: 0 32rpx; font-size: var(--font-md); }
+
+/* 按钮组：间距交给容器，不再用全局 button { margin-top } */
+.btn-group { display: flex; flex-direction: column; align-items: stretch; gap: 20rpx; }
+.btn-row { display: flex; gap: 20rpx; }
+.btn-row .btn { width: auto !important; flex: 1 1 0; }
+
+/* ---------- 表单 ---------- */
+.field { margin-bottom: 32rpx; }
+.field:last-child { margin-bottom: 0; }
+.label { font-size: var(--font-md); color: var(--color-text-secondary); margin-bottom: 14rpx; }
+.input, .picker {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100rpx;
+  line-height: 100rpx;
+  padding: 0 24rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xl);
+}
+.field-error { color: var(--color-danger); font-size: var(--font-sm); margin-top: 10rpx; line-height: 1.6; }
+
+.row { display: flex; justify-content: space-between; align-items: center; }
+.muted { color: var(--color-text-tertiary); font-size: var(--font-sm); line-height: 1.7; }
+
+/* ---------- 卡片内文案与间距（全局，各页面别再各写一套） ---------- */
+.card__title { font-size: var(--font-3xl); font-weight: 600; line-height: 1.4; }
+.card__desc { font-size: var(--font-md); color: var(--color-text-secondary); margin-top: 12rpx; line-height: 1.7; }
+.link { color: var(--color-brand); font-size: var(--font-md); }
+.mt { margin-top: 32rpx; }
+.mt-sm { margin-top: 12rpx; line-height: 1.6; }
+
+/* ================= 表单分组 =================
+   页面「乱」的根因是一张大卡片里平铺八九个字段 —— 全都一样重，眼睛没有落点。
+   改成按「问一件事」分组：每组一张卡片 + 一个组标题，组间留 --space-lg，
+   组内字段留 --space-lg，字段内元素留 --space-sm。三档间距把层级撑出来。 */
+.section { margin-bottom: var(--space-lg); }
+.section__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+.section__title {
+  font-size: var(--font-2xl);
+  font-weight: 600;
+  line-height: 1.4;
+}
+/* 组标题左侧的品牌色竖条：不用图标也能让分组一眼可辨 */
+.section__title::before {
+  content: "";
+  display: inline-block;
+  width: 8rpx;
+  height: 32rpx;
+  margin-right: 16rpx;
+  vertical-align: -4rpx;
+  border-radius: 4rpx;
+  background: var(--color-brand);
+}
+.section__hint {
+  font-size: var(--font-md);
+  color: var(--color-text-tertiary);
+  line-height: 1.7;
+}
+
+/* ================= 底部固定提交条 =================
+   长表单最后那个按钮总要滚到底才够得着。固定在底部，
+   并预留 iPhone 底部手势条的安全区，避免按钮被系统条压住。 */
+.submit-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  padding: var(--space-md) var(--space-md)
+           calc(var(--space-md) + env(safe-area-inset-bottom));
+  background: var(--color-card-bg);
+  box-shadow: 0 -2rpx 16rpx rgba(0, 0, 0, 0.06);
+}
+/* 有固定条时给内容留出让位高度，否则最后一个字段永远被压住 */
+.has-submit-bar { padding-bottom: 200rpx; }
+
+/* ================= 图标 =================
+   一律 SVG（内联 data-uri），不用 ＋ × › ▶ 这些字符 ——
+   字符图标各机型字体不同，粗细大小对不齐，还没法跟着主题变色。 */
+.icon {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 40rpx;
+  height: 40rpx;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+.icon--plus {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2331558a' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E");
+}
+.icon--close {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");
+}
+.icon--chevron {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238c8c8c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E");
+}
+.icon--play {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2331558a'%3E%3Cpath d='M8 5v14l11-7z'/%3E%3C/svg%3E");
+}
+.icon--camera {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2331558a' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M3 8h3l2-3h8l2 3h3v11H3z'/%3E%3Ccircle cx='12' cy='13' r='3.5'/%3E%3C/svg%3E");
+}
+.icon--mic {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2331558a' stroke-width='2' stroke-linecap='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E");
+}
+.icon--mic-on {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E");
+}
+.icon--doc {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2331558a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/%3E%3Cpath d='M14 3v5h5M9 13h6M9 17h4'/%3E%3C/svg%3E");
+}
+.icon--phone {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2331558a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z'/%3E%3C/svg%3E");
+}
+.icon--bell {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2331558a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9'/%3E%3Cpath d='M13.7 21a2 2 0 0 1-3.4 0'/%3E%3C/svg%3E");
+}
+
+/* 状态标签：在 flex 行里永不被压缩。
+   优先保证「待派单/维修中」这些状态看得见 —— 旁边的报修类型再长也只能截断，
+   状态被挤没了业主就不知道单子走到哪一步了。 */
+.status-tag { flex-shrink: 0; }

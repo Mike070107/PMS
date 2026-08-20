@@ -1,0 +1,1 @@
+<view class="pms-tag" style="color:{{color}};border-color:{{color}};">{{label}}</view>

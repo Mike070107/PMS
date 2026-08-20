@@ -1,0 +1,8 @@
+{
+  "navigationBarTitleText": "我的报修",
+  "usingComponents": {
+    "pms-tag": "@pms/miniapp-ui/components/status-tag/index",
+    "pms-empty": "@pms/miniapp-ui/components/empty/index"
+  },
+  "enablePullDownRefresh": true
+}

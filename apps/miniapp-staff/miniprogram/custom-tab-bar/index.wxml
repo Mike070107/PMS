@@ -1,0 +1,16 @@
+<view class="tabbar">
+  <view
+    wx:for="{{tabs}}"
+    wx:key="key"
+    class="tabbar__item {{selectedKey === item.key ? 'tabbar__item--on' : ''}}"
+    data-index="{{index}}"
+    bindtap="onTap"
+    hover-class="tabbar__item--hover"
+    hover-stay-time="80"
+  >
+    <view class="tabbar__icon tabbar__icon--{{item.key}}">
+      <text wx:if="{{item.badge}}" class="tabbar__badge">{{item.badge}}</text>
+    </view>
+    <view class="tabbar__text">{{item.text}}</view>
+  </view>
+</view>

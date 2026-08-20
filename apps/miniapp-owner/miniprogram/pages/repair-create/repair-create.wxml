@@ -1,0 +1,200 @@
+<!-- 微信扫一扫进来时先盖一层，避免用户看到空表单闪一下又被跳去入驻页 -->
+<view class="boot-mask" wx:if="{{booting}}">
+  <view class="boot-text">正在识别二维码…</view>
+</view>
+
+<!--
+  表单按「一次问一件事」分成三组：在哪 → 什么问题 → 怎么联系。
+  以前八个字段平铺在一张卡片里，全都一样重，眼睛没有落点，看着就乱。
+-->
+<view class="container has-submit-bar">
+
+  <!-- 未认证/手机号识别这类一次性提示放最前，处理完就不再占地方 -->
+  <view wx:if="{{notOnboarded || phoneMatched}}" class="card">
+    <view wx:if="{{notOnboarded && phoneMatchEnabled && !phoneMatched}}" class="onboard-tip">
+      <view>授权微信手机号，直接带出你名下的房屋，不用填房号。</view>
+      <button
+        class="btn btn--outline mt-sm"
+        open-type="getPhoneNumber"
+        bindgetphonenumber="onMatchByPhone"
+        loading="{{matching}}"
+      >用微信手机号识别</button>
+      <view wx:if="{{phoneMatchMsg}}" class="onboard-tip__msg">{{phoneMatchMsg}}</view>
+    </view>
+
+    <view wx:if="{{phoneMatched}}" class="onboard-tip onboard-tip--ok">
+      已识别到你的房屋：{{placeText}}，不对可以直接改
+    </view>
+
+    <view wx:if="{{notOnboarded}}" class="onboard-tip">
+      还没认证房屋也能报修。认证后下次不用扫码，还能收到进度通知。
+      <text class="onboard-tip__link" bindtap="onGoOnboard">去认证 ›</text>
+    </view>
+  </view>
+
+  <!-- ① 在哪 ---------------------------------------------------- -->
+  <view class="card section">
+    <view class="section__head">
+      <text class="section__title">修哪里</text>
+    </view>
+
+    <!-- 后台标记过身份的人：和管理后台一样，能选到任意楼栋/房号 -->
+    <block wx:if="{{mode === 'full'}}">
+      <place-picker
+        valueText="{{placeText}}"
+        loading="{{bookLoading}}"
+        bind:picked="onPlacePicked"
+        id="placePicker"
+      />
+    </block>
+
+    <!-- 普通业主：位置只会是自己家或所在楼/小区的公共区域 -->
+    <block wx:else>
+      <view class="place-row">
+        <view class="place-info">
+          <view class="place">{{placeText || '尚未确认，请扫码或先认证房屋'}}</view>
+        </view>
+        <button class="btn btn--outline btn--sm" bindtap="onTapScan">{{placeText ? '重新扫码' : '扫码'}}</button>
+      </view>
+
+      <!-- 坏的东西不一定在自己家：楼道、电梯、小区大门也归物业修 -->
+      <view class="scopes">
+        <view
+          wx:for="{{scopes}}"
+          wx:key="key"
+          class="scope {{scope === item.key ? 'scope--on' : ''}}"
+          data-scope="{{item.key}}"
+          bindtap="onPickScope"
+        >{{item.label}}</view>
+      </view>
+      <view class="field-error" wx:if="{{errors.place}}">{{errors.place}}</view>
+
+      <!-- 公共区域用不上房号，整块收起来 -->
+      <view class="field mt-lg" wx:if="{{scope === 'home'}}">
+        <view class="label">门牌号</view>
+        <input class="input" placeholder="如 502；不想填可以留空" value="{{roomNo}}" bindinput="onRoom"/>
+        <view class="muted mt-sm">已填好你认证的房号，不对可以直接改。</view>
+      </view>
+    </block>
+
+    <!-- 具体位置：只有公共区域才需要补一句「在哪」。
+         报自己家时地址已经精确到房号，再问一遍是多余的一步。 -->
+    <view class="field mt-lg" wx:if="{{showSpot}}">
+      <view class="label">具体位置</view>
+      <input
+        class="input"
+        placeholder="例如：大门，4楼电梯口，3楼楼梯"
+        maxlength="40"
+        value="{{spotText}}"
+        bindinput="onSpotText"
+      />
+      <view class="tags">
+        <text
+          wx:for="{{spotSuggestions}}"
+          wx:key="*this"
+          class="tag"
+          data-text="{{item}}"
+          bindtap="onPickSpot"
+        >{{item}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ② 什么问题 ------------------------------------------------ -->
+  <view class="card section">
+    <view class="section__head">
+      <text class="section__title">什么问题</text>
+    </view>
+
+    <view class="field">
+      <view class="label">报修类型</view>
+      <picker mode="selector" range="{{typeLabels}}" value="{{typeIndex}}" bindchange="onPickType">
+        <view class="picker {{typeIndex < 0 ? 'placeholder' : ''}}">
+          {{typeIndex < 0 ? '请选择报修类型' : typeOptions[typeIndex].label}}
+        </view>
+      </picker>
+      <view class="field-error" wx:if="{{errors.type}}">{{errors.type}}</view>
+    </view>
+
+    <view class="field">
+      <view class="label">问题描述</view>
+      <textarea
+        placeholder="故障描述，越详细越好"
+        value="{{content}}"
+        bindinput="onContent"
+      />
+
+      <view wx:if="{{recording}}" class="listening">
+        正在听…{{partial ? ' ' + partial : ''}}
+      </view>
+
+      <button
+        wx:if="{{hasSpeech}}"
+        class="btn btn--outline mt-sm speech {{recording ? 'speech--on' : ''}}"
+        bindtouchstart="onSpeechStart"
+        bindtouchend="onSpeechEnd"
+        bindtouchcancel="onSpeechEnd"
+      >
+        <view class="icon {{recording ? 'icon--mic-on' : 'icon--mic'}}"></view>
+        <text class="speech__text">{{recording ? '松开结束' : '按住说话（普通话）'}}</text>
+      </button>
+
+      <view class="tags">
+        <text
+          wx:for="{{contentSuggestions}}"
+          wx:key="*this"
+          class="tag"
+          data-text="{{item}}"
+          bindtap="onPickContentTag"
+        >{{item}}</text>
+      </view>
+
+      <view class="field-error" wx:if="{{errors.content}}">{{errors.content}}</view>
+    </view>
+
+    <view class="field">
+      <view class="label">故障照片<text class="label__opt">选填，最多 6 张</text></view>
+      <view class="thumbs">
+        <view wx:for="{{attachments}}" wx:key="*this" class="thumb-wrap">
+          <image class="thumb" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="onPreviewMedia"/>
+          <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia">
+            <view class="icon icon--close"></view>
+          </view>
+        </view>
+        <view wx:if="{{attachments.length < 6}}" class="thumb-add" bindtap="onChooseMedia">
+          <view class="icon icon--camera"></view>
+          <text class="add-text">{{uploading ? '上传中' : '拍照/相册'}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ③ 怎么联系 ------------------------------------------------ -->
+  <view class="card section">
+    <view class="section__head">
+      <text class="section__title">怎么联系</text>
+      <text class="section__hint">留空就用账号手机号</text>
+    </view>
+
+    <view class="field">
+      <view class="label">联系人</view>
+      <input class="input" placeholder="住户姓名" maxlength="20" value="{{contactName}}" bindinput="onContactName"/>
+    </view>
+
+    <view class="field">
+      <view class="label">联系电话</view>
+      <input class="input" type="number" placeholder="维修工上门前会先打这个号" value="{{contactPhone}}" bindinput="onPhone"/>
+      <view class="field-error" wx:if="{{errors.phone}}">{{errors.phone}}</view>
+    </view>
+  </view>
+</view>
+
+<!-- 提交固定在底部：长表单不该逼人滚到底才够得着主操作 -->
+<view class="submit-bar">
+  <button
+    class="btn btn--primary"
+    loading="{{submitting}}"
+    disabled="{{submitting || uploading}}"
+    bindtap="onSubmit"
+  >提交报修</button>
+</view>

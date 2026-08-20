@@ -1,0 +1,327 @@
+<view wx:if="{{detail}}" class="container container--with-bar">
+  <!-- 1. 现在到哪一步、接下来该做什么。这一屏最该先回答的就是这个 -->
+  <view class="card status-card">
+    <view class="status-card__head">
+      <view class="status-card__now">{{statusText}}</view>
+      <view class="stay stay--{{stayTone}}">{{stayText}}</view>
+    </view>
+    <view wx:if="{{nextStep}}" class="status-card__next">{{nextStep}}</view>
+  </view>
+
+  <!-- 2. 修什么、在哪、谁报的 -->
+  <view class="card">
+    <view class="wo-card__head">
+      <view class="wo-card__type">{{typeLabel}}</view>
+      <pms-tag class="status-tag" status="{{detail.workOrder.status}}"/>
+    </view>
+
+    <view class="wo-card__addr">
+      <view class="icon icon--pin"></view>
+      <text>{{detail.request.addressText || '未填地址'}}</text>
+    </view>
+
+    <view class="quote">{{detail.request.content}}</view>
+
+    <view wx:if="{{detail.request.attachments.length}}" class="thumbs">
+      <image
+        wx:for="{{detail.request.attachments}}"
+        wx:key="*this"
+        class="thumb"
+        src="{{item}}"
+        mode="aspectFill"
+        data-url="{{item}}"
+        bindtap="onPreviewRequestImage"
+      />
+    </view>
+
+    <view class="wo-card__foot">
+      <view class="wo-card__meta">
+        <view class="wo-card__no">{{detail.workOrder.orderNo}}</view>
+        <view>报修 {{createdAtText}}</view>
+      </view>
+      <view class="call" bindtap="onCall">
+        <view class="icon icon--phone"></view>
+        <text>联系业主</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 3. 等待材料时把缺料清单摆出来，接单的人才知道能不能干 -->
+  <view wx:if="{{missingText}}" class="card">
+    <view class="section-title">等待材料</view>
+    <view class="wait-mat">{{missingText}}</view>
+    <view class="meta">办公室汇总采购中，到货后可由办公室重新派单，或在这里直接接回。</view>
+  </view>
+
+  <!-- 4. 进度默认只露最新一条，要追溯再展开 -->
+  <view class="card">
+    <view class="fold fold--inline" bindtap="onToggleTimeline">
+      <text class="section-title">进度</text>
+      <text class="fold__action" wx:if="{{timeline.length > 1}}">
+        {{timelineOpen ? '收起' : '展开全部 ' + timeline.length + ' 步'}}
+      </text>
+    </view>
+
+    <view
+      wx:for="{{timeline}}"
+      wx:key="id"
+      wx:if="{{timelineOpen || index === timeline.length - 1}}"
+      class="timeline-item"
+    >
+      <view class="dot"></view>
+      <view class="timeline-body">
+        <view class="timeline-row">
+          <text class="timeline-label">{{item.label}}</text>
+          <text class="timeline-at">{{item.at}}</text>
+        </view>
+        <view wx:if="{{item.stay}}" class="timeline-stay">{{item.stay}}</view>
+        <view wx:if="{{item.note}}" class="timeline-note">{{item.note}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="error card" wx:if="{{errorMsg && !panel}}">{{errorMsg}}</view>
+</view>
+
+<!-- 底部固定操作条：一屏里只有一个实心主按钮，不用再猜该点哪个 -->
+<view wx:if="{{detail && (canAccept || canComplete)}}" class="action-bar">
+  <button
+    wx:if="{{canNeedMaterial}}"
+    class="btn btn--outline"
+    data-panel="material"
+    bindtap="onOpenPanel"
+  >添加用料{{materialRows.length ? ' ' + materialRows.length : ''}}</button>
+  <button
+    wx:if="{{canAccept}}"
+    class="btn btn--primary"
+    loading="{{busy}}"
+    disabled="{{busy}}"
+    bindtap="onAccept"
+  >{{acceptText}}</button>
+  <button
+    wx:if="{{canComplete}}"
+    class="btn btn--primary"
+    data-panel="complete"
+    bindtap="onOpenPanel"
+  >完工提交</button>
+</view>
+
+<!-- ============ 添加用料面板 ============ -->
+<view wx:if="{{panel === 'material'}}" class="sheet-mask" bindtap="onClosePanel"/>
+<view wx:if="{{panel === 'material'}}" class="sheet">
+  <view class="sheet__head">
+    <text class="sheet__title">添加用料</text>
+    <text class="sheet__close" bindtap="onClosePanel">关闭</text>
+  </view>
+
+  <scroll-view class="sheet__body" scroll-y>
+    <view class="muted">
+      从{{warehouseName || '本小区仓'}}领料，完工提交时自动扣库存。库存不够或仓里没有的，在下面直接登记，一键提报缺料。
+    </view>
+
+    <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加用料</view>
+
+    <view class="mat-item" wx:for="{{materialRows}}" wx:key="index">
+      <view class="mat-row">
+        <input
+          class="mat-name"
+          placeholder="材料名称"
+          value="{{item.name}}"
+          data-index="{{index}}"
+          data-field="name"
+          bindinput="onMaterialInput"
+        />
+        <view class="mat-del" data-index="{{index}}" bindtap="onRemoveMaterialRow">×</view>
+      </view>
+
+      <view class="mat-row">
+        <button class="btn btn--outline btn--sm mat-pick" data-index="{{index}}" bindtap="onOpenSku">
+          {{item.materialId ? '换一个' : '从库存选'}}
+        </button>
+        <!-- 数量步进：默认 1，两边各一个 ±；数字大时直接改中间输入框 -->
+        <view class="stepper">
+          <view
+            class="stepper__btn {{item.qty <= 1 ? 'stepper__btn--off' : ''}}"
+            data-index="{{index}}"
+            data-step="-1"
+            bindtap="onStepQty"
+          >−</view>
+          <input
+            class="stepper__input"
+            type="digit"
+            value="{{item.qty}}"
+            data-index="{{index}}"
+            data-field="qty"
+            bindinput="onMaterialInput"
+          />
+          <view class="stepper__btn" data-index="{{index}}" data-step="1" bindtap="onStepQty">＋</view>
+        </view>
+        <text class="mat-unit">{{item.unit || ''}}</text>
+      </view>
+
+      <!-- 够不够，写在行里，不用自己去库存页查 -->
+      <view wx:if="{{item.hintText}}" class="mat-hint {{item.hintShort ? 'mat-hint--short' : ''}}">
+        {{item.hintText}}
+      </view>
+
+      <view wx:if="{{item.materialId && item.photoUrl}}" class="mat-sku">
+        <image
+          class="mat-sku__photo"
+          src="{{item.photoUrl}}"
+          mode="aspectFill"
+          data-url="{{item.photoUrl}}"
+          catchtap="onPreviewSkuPhoto"
+        />
+        <text class="mat-sku__text">{{item.code}}</text>
+      </view>
+    </view>
+
+    <view class="btn-row mt">
+      <button class="btn btn--outline" bindtap="onOpenSku">＋ 从库存选</button>
+      <button class="btn btn--ghost" bindtap="onAddMaterialRow">手填一项</button>
+    </view>
+    <view class="meta mt-sm">库存里没有的直接手填名称和数量，提报缺料后由办公室补进材料库并采购。</view>
+
+    <view class="label mt">补充说明（选填）</view>
+    <input class="input" placeholder="型号、品牌或用途" value="{{materialNote}}" bindinput="onMaterialNote"/>
+
+    <view class="error" wx:if="{{materialError}}">{{materialError}}</view>
+  </scroll-view>
+
+  <view class="sheet__foot sheet__foot--row">
+    <!-- 有缺料才给「提报缺料」这条出路；都够用时它没有意义 -->
+    <button
+      wx:if="{{hasShortage}}"
+      class="btn btn--outline"
+      loading="{{busy}}"
+      disabled="{{busy}}"
+      bindtap="onSubmitMaterial"
+    >提报缺料</button>
+    <button class="btn btn--primary" bindtap="onConfirmMaterial">记下用料</button>
+  </view>
+</view>
+
+<!-- ============ 完工提交面板 ============ -->
+<view wx:if="{{panel === 'complete'}}" class="sheet-mask" bindtap="onClosePanel"/>
+<view wx:if="{{panel === 'complete'}}" class="sheet">
+  <view class="sheet__head">
+    <text class="sheet__title">完工提交</text>
+    <text class="sheet__close" bindtap="onClosePanel">关闭</text>
+  </view>
+
+  <scroll-view class="sheet__body" scroll-y>
+    <view class="label">维修说明（业主可见）</view>
+    <textarea placeholder="更换了什么、处理了什么问题" bindinput="onNote" value="{{actionNote}}"/>
+    <!-- 常用话术：点一下填进上面的文本框，再点一下撤掉；顺序按本小区用得多不多来 -->
+    <block wx:if="{{phrases.length}}">
+      <view class="phrase-tip">常用话术，点一下填入，可继续修改</view>
+      <view class="phrases">
+        <view
+          wx:for="{{phrases}}"
+          wx:key="text"
+          class="phrase {{item.on ? 'phrase--on' : ''}}"
+          data-text="{{item.text}}"
+          bindtap="onTapPhrase"
+        >{{item.text}}</view>
+      </view>
+    </block>
+
+    <!-- 位置和现象业主报修时已经说过，这里预填出来给维修工核对/改，不强制 -->
+    <view class="label mt">实际故障位置（选填，已按报修信息带出）</view>
+    <input class="input" placeholder="如：厨房水槽下方" value="{{faultLocation}}" data-field="faultLocation" bindinput="onFaultInput"/>
+
+    <view class="label mt">故障现象（选填，已按报修信息带出）</view>
+    <input class="input" placeholder="如：接头老化渗水" value="{{faultSymptom}}" data-field="faultSymptom" bindinput="onFaultInput"/>
+
+    <view class="label mt">收费金额（元，选填）</view>
+    <input class="input" type="digit" placeholder="不收费就留空" value="{{feeYuan}}" bindinput="onFeeInput"/>
+
+    <!-- 用料在「添加用料」里维护，这里只做确认，避免两处都能改 -->
+    <view class="label mt">用料</view>
+    <view wx:if="{{materialRows.length}}" class="used-list">
+      <view wx:for="{{materialRows}}" wx:key="index" class="used-item">
+        {{item.name}} ×{{item.qty}}{{item.unit || ''}}
+        <text wx:if="{{!item.materialId}}" class="used-item__tag">手填</text>
+      </view>
+    </view>
+    <view wx:else class="muted">还没记用料。要记的话先关掉这里，点底部「添加用料」。</view>
+
+    <view class="label mt">完工照片（选填）</view>
+    <view class="thumbs">
+      <view wx:for="{{resultAttachments}}" wx:key="*this" class="thumb-wrap">
+        <image class="thumb" src="{{item}}" mode="aspectFill"/>
+        <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia">×</view>
+      </view>
+      <view wx:if="{{resultAttachments.length < 6}}" class="thumb-add" bindtap="onChooseMedia">
+        <text class="plus">＋</text>
+        <text class="add-text">{{uploading ? '上传中' : '拍照'}}</text>
+      </view>
+    </view>
+
+    <view class="error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
+  </scroll-view>
+
+  <view class="sheet__foot">
+    <button
+      class="btn btn--primary"
+      loading="{{busy}}"
+      disabled="{{busy || uploading}}"
+      bindtap="onComplete"
+    >提交完工</button>
+  </view>
+</view>
+
+<!-- ============ 小区库存选择器（叠在用料面板之上） ============ -->
+<view wx:if="{{skuOpen}}" class="sheet-mask sheet-mask--top" bindtap="onCloseSku"/>
+<view wx:if="{{skuOpen}}" class="sheet sheet--top">
+  <view class="sheet__head">
+    <text class="sheet__title">{{warehouseName || '本小区仓'}}库存</text>
+    <text class="sheet__close" bindtap="onCloseSku">关闭</text>
+  </view>
+
+  <input
+    class="input sheet__search"
+    placeholder="搜索名称 / 别名 / 型号 / 编码"
+    value="{{skuKeyword}}"
+    bindinput="onSkuKeyword"
+  />
+
+  <scroll-view class="sheet__body" scroll-y>
+    <view wx:if="{{skuLoading}}" class="center muted">加载中…</view>
+    <block wx:elif="{{skuError}}">
+      <view class="error">{{skuError}}</view>
+      <button class="btn btn--outline mt" bindtap="onRetrySku">重试</button>
+    </block>
+    <view wx:elif="{{!skuList.length}}" class="center muted">
+      没有匹配的材料。关掉这里点「手填一项」，提报缺料后由办公室补进材料库。
+    </view>
+
+    <view
+      wx:for="{{skuList}}"
+      wx:key="materialId"
+      class="sku"
+      hover-class="wo-card--hover"
+      hover-stay-time="80"
+      data-index="{{index}}"
+      bindtap="onPickSku"
+    >
+      <image
+        wx:if="{{item.photoUrl}}"
+        class="sku__photo"
+        src="{{item.photoUrl}}"
+        mode="aspectFill"
+        data-url="{{item.photoUrl}}"
+        catchtap="onPreviewSkuPhoto"
+      />
+      <view wx:else class="sku__photo sku__photo--empty">无图</view>
+      <view class="sku__body">
+        <view class="sku__title">{{item.name}}{{item.spec ? ' · ' + item.spec : ''}}</view>
+        <view class="meta">{{item.code}} · {{item.category || '未分类'}}</view>
+      </view>
+      <!-- 有多少货是选料时最该看见的一列 -->
+      <view class="sku__qty {{item.qty > 0 ? '' : 'sku__qty--none'}}">
+        {{item.qty > 0 ? item.qty + item.unit : '无货'}}
+      </view>
+    </view>
+  </scroll-view>
+</view>

@@ -1,0 +1,73 @@
+<view wx:if="{{detail}}" class="container">
+  <view class="card">
+    <view class="row">
+      <view class="order-no">{{detail.workOrder.orderNo}}</view>
+      <pms-tag class="status-tag" status="{{detail.workOrder.status}}"/>
+    </view>
+    <view class="title">{{typeLabel}}</view>
+    <view class="desc">{{detail.request.content}}</view>
+    <view class="meta">{{detail.request.addressText}} · {{createdAtText}}</view>
+
+    <view wx:if="{{detail.request.attachments.length}}" class="thumbs">
+      <image
+        wx:for="{{detail.request.attachments}}"
+        wx:key="*this"
+        class="thumb"
+        src="{{item}}"
+        mode="aspectFill"
+        data-url="{{item}}"
+        bindtap="onPreviewImage"
+      />
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">进度</view>
+    <view wx:for="{{timeline}}" wx:key="id" class="timeline-item">
+      <view class="dot"></view>
+      <view class="timeline-body">
+        <!-- 时间和节点名分两栏：业主最常问的就是「几号几点派的单」，别挤在备注里 -->
+        <view class="timeline-row">
+          <text class="timeline-label">{{item.label}}</text>
+          <text class="timeline-at">{{item.at}}</text>
+        </view>
+        <view wx:if="{{item.stay}}" class="timeline-stay">{{item.stay}}</view>
+        <view wx:if="{{item.note}}" class="timeline-note">{{item.note}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{detail.workOrder.actionNote || detail.workOrder.resultAttachments.length}}" class="card">
+    <view class="section-title">维修结果</view>
+    <view wx:if="{{detail.workOrder.actionNote}}" class="desc">{{detail.workOrder.actionNote}}</view>
+    <view wx:if="{{detail.workOrder.resultAttachments.length}}" class="thumbs">
+      <image
+        wx:for="{{detail.workOrder.resultAttachments}}"
+        wx:key="*this"
+        class="thumb"
+        src="{{item}}"
+        mode="aspectFill"
+      />
+    </view>
+  </view>
+
+  <view wx:if="{{canReview}}" class="card">
+    <view class="section-title">验收评价</view>
+    <view class="stars">
+      <text
+        wx:for="{{[1,2,3,4,5]}}"
+        wx:key="*this"
+        bindtap="setRating"
+        data-n="{{item}}"
+        class="{{rating >= item ? 'star on' : 'star'}}"
+      >★</text>
+    </view>
+    <textarea placeholder="留言（可选）" bindinput="onComment" value="{{comment}}"/>
+    <button class="btn btn--primary mt" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onReview">提交验收</button>
+  </view>
+
+  <view class="btn-group" wx:if="{{canUrge || canCancel}}">
+    <button wx:if="{{canUrge}}" class="btn btn--outline" bindtap="onUrge">催一下</button>
+    <button wx:if="{{canCancel}}" class="btn btn--ghost" bindtap="onCancel">撤销报修</button>
+  </view>
+</view>

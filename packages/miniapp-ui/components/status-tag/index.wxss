@@ -1,0 +1,13 @@
+/* 字号跟着 tokens.wxss 的阶梯走，别写死 —— 状态标签太小，一眼扫不到工单卡在哪一步 */
+.pms-tag {
+  display: inline-block;
+  padding: 6rpx 20rpx;
+  border: 2rpx solid;
+  border-radius: 24rpx;
+  font-size: var(--font-sm, 28rpx);
+  line-height: 1.4;
+  background: transparent;
+  /* 状态词永远不换行：它在 flex 行里是被压缩的一方，
+     旁边的报修类型一长（「家里门锁/门窗相关」），「待派单」就会被挤成两行 */
+  white-space: nowrap;
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@pms/shared-types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "miniprogram": "miniprogram_dist"
+}

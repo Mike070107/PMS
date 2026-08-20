@@ -1,0 +1,79 @@
+.toolbar { display: flex; align-items: center; gap: 16rpx; margin-bottom: 20rpx; }
+.search { flex: 1; }
+
+/* 类别横向筛选条 */
+.chips { white-space: nowrap; margin-bottom: 16rpx; }
+.chip {
+  display: inline-block;
+  padding: 16rpx 28rpx;
+  margin-right: 12rpx;
+  border-radius: 999rpx;
+  background: var(--color-card-bg);
+  border: 2rpx solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: var(--font-md);
+}
+.chip--on { border-color: var(--color-brand); color: var(--color-brand); }
+
+.count { margin-bottom: 16rpx; }
+
+/* .center / .sku* / .sheet* 在 app.wxss 里统一定义，工单里的材料选择器共用同一套 */
+.sku__cost {
+  font-size: var(--font-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.tag {
+  display: inline-block;
+  margin-left: 12rpx;
+  padding: 4rpx 14rpx;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  font-weight: 400;
+}
+.tag--off { background: var(--color-bg); color: var(--color-text-tertiary); }
+
+/* 悬浮新增 */
+.fab {
+  position: fixed;
+  right: 32rpx;
+  bottom: 48rpx;
+  width: auto !important;
+  height: 96rpx;
+  padding: 0 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-brand);
+  color: #fff;
+  font-size: var(--font-xl);
+  border-radius: 999rpx;
+  box-shadow: 0 8rpx 24rpx rgba(49, 85, 138, 0.28);
+}
+.fab::after { border: none; }
+
+.picker {
+  box-sizing: border-box;
+  height: 100rpx;
+  line-height: 100rpx;
+  padding: 0 24rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xl);
+}
+.picker.placeholder { color: var(--color-text-tertiary); }
+.textarea {
+  box-sizing: border-box;
+  width: 100%;
+  height: 180rpx;
+  padding: 22rpx 24rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xl);
+  line-height: 1.6;
+}
+.field--row { display: flex; align-items: center; justify-content: space-between; }
+.field--row .label { margin-bottom: 0; }
+.photo-row { display: flex; align-items: center; gap: 16rpx; }
+.photo { width: 132rpx; height: 132rpx; border-radius: var(--radius-sm); }

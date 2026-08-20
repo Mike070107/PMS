@@ -1,0 +1,55 @@
+<!-- 分组吸顶：翻到第几条都能直接切「待验收」，不用滚回顶部 -->
+<view wx:if="{{loggedIn}}" class="tabs">
+  <view
+    wx:for="{{tabs}}"
+    wx:key="key"
+    class="tab {{tabKey === item.key ? 'tab--on' : ''}}"
+    data-key="{{item.key}}"
+    bindtap="onPickTab"
+  >
+    <text>{{item.label}}</text>
+    <text wx:if="{{item.count}}" class="tab__count">{{item.count}}</text>
+  </view>
+</view>
+
+<view class="container {{loggedIn ? 'container--with-tabs' : ''}}">
+  <view wx:if="{{!loggedIn && loaded}}" class="card">
+    <view class="card__title">登录后查看报修进度</view>
+    <view class="card__desc">你的报修记录、维修进度和验收都在这里</view>
+    <view class="btn-group mt">
+      <button class="btn btn--primary" bindtap="onTapLogin">去登录</button>
+    </view>
+  </view>
+
+  <view wx:elif="{{!list.length && loaded}}" class="empty-wrap">
+    <pms-empty text="{{tabKey === 'all' ? '还没有报修记录' : '这个分组下没有单子'}}"/>
+    <button wx:if="{{tabKey === 'all'}}" class="btn btn--primary" bindtap="onTapCreate">去报修</button>
+  </view>
+
+  <view
+    wx:for="{{list}}"
+    wx:key="id"
+    class="card order"
+    bindtap="onTapItem"
+    data-id="{{item.id}}"
+  >
+    <!-- 第一行放业主真正关心的：什么问题 + 现在什么状态 -->
+    <view class="order__head">
+      <text class="order__type">{{item.typeLabel}}</text>
+      <pms-tag class="status-tag" status="{{item.status}}"/>
+    </view>
+
+    <view class="order__desc">{{item.summaryContent}}</view>
+
+    <view class="order__foot">
+      <view class="order__meta">
+        <view class="order__addr">{{item.summaryAddress}}</view>
+        <view class="order__time">{{item.createdAtText}}</view>
+      </view>
+      <view class="stay stay--{{item.stayTone}}">{{item.stayText}}</view>
+    </view>
+
+    <!-- 单号业主基本不看，压到最弱的一行 -->
+    <view class="order__no">{{item.orderNo}}</view>
+  </view>
+</view>
