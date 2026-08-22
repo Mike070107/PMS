@@ -33,6 +33,34 @@ export const actionSuggestions = () =>
     url: '/repair-action-suggestions',
   });
 
+/** 随手拍地址识别的结果；matched=false 表示描述里没有能对上库的地址 */
+export interface ParsedRepairAddress {
+  matched: boolean;
+  /** 识别到的最细粒度：house 到房号 / building 到楼栋 / community 到小区 */
+  level?: 'house' | 'building' | 'community';
+  communityId?: number;
+  communityName?: string;
+  buildingId?: number | null;
+  buildingText?: string;
+  houseId?: number | null;
+  roomNo?: string | null;
+  /** 可直接展示/提交的完整地址文案，如「枫桦景苑一期 198弄24号302室」 */
+  addressText?: string;
+  /** 描述里命中的片段（归一化），如「一期24号」，用于展示与「忽略」去重 */
+  matchedText?: string;
+}
+
+/**
+ * 从报修描述里识别地址（「一期24号302」→ 库里真实的楼栋/房号）。
+ * 服务端只认撞上真实楼栋/房号的候选，端上拿到 matched=true 才展示。
+ */
+export const parseAddress = (data: { text: string; communityId?: number }) =>
+  request<ParsedRepairAddress>({
+    method: 'POST',
+    url: '/repair-requests/parse-address',
+    data,
+  });
+
 /** 业主端提交报修（后端同时建 repair_request 与 work_order） */
 export const create = (data: RepairCreateReq) =>
   request<{ request: { id: number }; workOrder: { id: number; orderNo: string } }>({

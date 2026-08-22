@@ -1,5 +1,13 @@
 import { auth, qr, repairs, upload } from '@pms/api-client';
-import type { PublicRepairType } from '@pms/api-client/src/endpoints/repairs';
+import type {
+  ParsedRepairAddress,
+  PublicRepairType,
+} from '@pms/api-client/src/endpoints/repairs';
+import {
+  ADDRESS_HINT_RE,
+  composeDetectedAddress,
+  detectRepairAddress,
+} from '../../utils/address-detect';
 import {
   AuditStatus,
   DEFAULT_CONTENT_SUGGESTIONS,
@@ -109,6 +117,13 @@ interface PageData {
   contentSuggestions: string[];
   contentSuggestTitle: string;
 
+  /**
+   * 从描述里识别出来的报修地址（「一期24号302」→ 库里真实的楼栋/房号）。
+   * 识别到就替换上面选的位置展示，提交时关联 id 跟着它走；点 × 恢复 ——
+   * 默认值必须能改，改完提交的 id 也要跟着变，这是全局口径。
+   */
+  detected: ParsedRepairAddress | null;
+
   hasSpeech: boolean;
   recording: boolean;
   partial: string;
@@ -159,6 +174,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     content: '',
     contentSuggestions: DEFAULT_CONTENT_SUGGESTIONS,
     contentSuggestTitle: '猜你想输',
+    detected: null,
 
     hasSpeech: !!speechManager,
     recording: false,
@@ -174,6 +190,14 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   book: [] as AddressCommunity[],
   /** 后台配置的报修类型（带关键词，用于「猜你想输」） */
   types: [] as PublicRepairType[],
+  /** 地址识别的防抖定时器 */
+  detectTimer: 0 as number,
+  /** 用户点过 × 的识别片段：同一段文字不再弹出来烦人 */
+  dismissedMatch: '' as string,
+
+  onUnload() {
+    if (this.detectTimer) clearTimeout(this.detectTimer);
+  },
 
   onLoad(q: Record<string, string>) {
     this.bindSpeech();
@@ -474,6 +498,42 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   onContent(e: WechatMiniprogram.Input) {
     this.setData({ content: e.detail.value, 'errors.content': '' });
+    this.scheduleDetect(e.detail.value);
+  },
+
+  // ---------------- 描述里的地址识别 ----------------
+
+  /**
+   * 描述里出现「一期 / 198弄 / 24号」这类片段时，让服务端拿真实楼栋房号来对。
+   * 端上先用正则粗筛 + 400ms 防抖。判断口径见 utils/address-detect，
+   * 新增报修入口直接引那里（随手拍 quick-repair 也是这套）。
+   */
+  scheduleDetect(content: string) {
+    if (this.detectTimer) clearTimeout(this.detectTimer);
+    if (!ADDRESS_HINT_RE.test(content)) {
+      if (this.data.detected) this.setData({ detected: null });
+      return;
+    }
+    this.detectTimer = setTimeout(() => this.detectAddress(content), 400) as unknown as number;
+  },
+
+  async detectAddress(content: string) {
+    const res = await detectRepairAddress(content, this.data.communityId ?? undefined);
+    // 结果回来时文字可能已经变了，只认最新一次输入
+    if (content !== this.data.content) return;
+    if (!res) {
+      if (this.data.detected) this.setData({ detected: null });
+      return;
+    }
+    // 用户点过 × 的同一段地址不再弹出来
+    if (res.matchedText && res.matchedText === this.dismissedMatch) return;
+    this.setData({ detected: res });
+  },
+
+  /** 点 × 撤掉识别结果，回到上面手选的位置 */
+  onDismissDetected() {
+    this.dismissedMatch = this.data.detected?.matchedText || '';
+    this.setData({ detected: null });
   },
 
   onContactName(e: WechatMiniprogram.Input) {
@@ -502,6 +562,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       // 追加而不是覆盖，允许说好几段；识别不准也能在文本框里改
       const next = this.data.content ? `${this.data.content}${text}` : text;
       this.setData({ content: next, 'errors.content': '' });
+      this.scheduleDetect(next);
     };
     speechManager.onError = (err: { msg?: string }) => {
       this.setData({ recording: false, partial: '' });
@@ -558,12 +619,13 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   // ---------------- 提交 ----------------
 
   async onSubmit() {
-    const { mode, scope, communityId, typeIndex, roomNo, content, contactPhone } = this.data;
+    const { mode, scope, communityId, typeIndex, roomNo, content, contactPhone, detected } = this.data;
     // 家里的问题不给房号就必须留电话，否则维修工既不知道去哪、也联系不上人。
     // 公共区域本来就没有房号，再要求留电话就是无谓的拦路。
-    const anonymousRoom = mode === 'self' && scope === 'home' && !roomNo.trim();
+    // 描述里识别到了地址时按识别的走，房号那套校验就不适用了
+    const anonymousRoom = !detected && mode === 'self' && scope === 'home' && !roomNo.trim();
     const errors = {
-      place: communityId ? '' : '请先选择报修位置',
+      place: communityId || detected ? '' : '请先选择报修位置',
       type: typeIndex < 0 ? '请选择报修类型' : '',
       content: content.trim().length >= 5 ? '' : '请至少填写 5 个字描述问题',
       phone: !contactPhone
@@ -577,30 +639,37 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.setData({ errors });
     if (errors.place || errors.type || errors.content || errors.phone) return;
 
-    // full 模式的位置是从地址簿选出来的，选到哪一级就带哪一级的 id
-    const ids =
-      mode === 'full'
+    // 描述里识别到了地址就按识别结果提交（id 和文案一起换，不能只换显示）；
+    // 否则 full 模式带地址簿选的 id，self 模式按范围摘 id（公区不挂房号）
+    const ids = detected
+      ? {
+          buildingId: detected.buildingId ?? undefined,
+          houseId: detected.houseId ?? undefined,
+        }
+      : mode === 'full'
         ? {
             buildingId: this.data.buildingId ?? undefined,
             houseId: this.data.houseId ?? undefined,
           }
         : scopeIds(scope, this.data);
 
-    const addressText = [
-      this.data.placeText,
-      this.data.spotText.trim(),
-      // 家里的问题没填房号时明确标出来，办公室一眼知道要打电话问，而不是以为漏填了
-      mode === 'self' && scope === 'home' && !roomNo.trim() && !this.data.houseId
-        ? '（业主未提供房号）'
-        : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
+    const addressText = detected
+      ? composeDetectedAddress(detected, this.data.spotText)
+      : [
+          this.data.placeText,
+          this.data.spotText.trim(),
+          // 家里的问题没填房号时明确标出来，办公室一眼知道要打电话问，而不是以为漏填了
+          mode === 'self' && scope === 'home' && !roomNo.trim() && !this.data.houseId
+            ? '（业主未提供房号）'
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
 
     this.setData({ submitting: true });
     try {
       const resp = await repairs.create({
-        communityId: communityId as number,
+        communityId: detected ? detected.communityId! : (communityId as number),
         ...ids,
         addressText,
         contactName: this.data.contactName.trim() || undefined,

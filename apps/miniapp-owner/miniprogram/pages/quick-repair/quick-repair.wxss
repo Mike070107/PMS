@@ -25,6 +25,45 @@
   font-weight: 500;
 }
 
+/* 描述里识别到的地址：替换默认位置展示，突出但可一键撤掉 */
+.detected {
+  margin-top: 16rpx;
+  padding: 20rpx 24rpx;
+  border: 2rpx solid var(--color-brand);
+  border-radius: var(--radius-md);
+  background: rgba(49, 85, 138, 0.08);
+}
+.detected__row { display: flex; align-items: center; gap: 16rpx; }
+.detected__text {
+  flex: 1;
+  font-size: 36rpx;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-brand);
+}
+/* 点击目标撑到 88rpx，老人也点得中 */
+.detected__close {
+  flex-shrink: 0;
+  width: 88rpx;
+  height: 88rpx;
+  margin: -16rpx -20rpx -16rpx 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.detected__close .icon { width: 36rpx; height: 36rpx; }
+.detected__close--tap { opacity: 0.6; }
+/* app.wxss 的 icon--close 是白色描边（深色圆底专用），浅色卡片上要用品牌色的 */
+.icon--close-dark {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2331558a' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");
+}
+.detected__hint {
+  margin-top: 8rpx;
+  font-size: 28rpx;
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+}
+
 .place__detail { margin-top: 20rpx; }
 .place__detail-label { display: block; color: var(--color-text-tertiary); font-size: 30rpx; }
 .place__detail-input {

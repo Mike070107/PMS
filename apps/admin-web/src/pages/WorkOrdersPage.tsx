@@ -2,7 +2,9 @@ import {
   App as AntdApp,
   Button,
   Card,
+  Checkbox,
   Col,
+  DatePicker,
   Descriptions,
   Drawer,
   Empty,
@@ -27,6 +29,7 @@ import {
 } from 'antd';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 import {
+  ClockCircleOutlined,
   SettingOutlined,
   PhoneOutlined,
   PlusOutlined,
@@ -114,6 +117,8 @@ interface RepairRequestDetail {
   reporterRole: string | null;
   /** 中文身份：保安 / 居委会 / 业委会 */
   reporterRoleLabel: string | null;
+  /** 报修人认证的登记地址；账号没绑房（办公室录入、扫码未认证）时为 null */
+  reporterAddressText?: string | null;
   repairType: string | null;
   content: string;
   attachments: string[];
@@ -186,6 +191,30 @@ const statusMeta: Record<WorkOrderStatus, { label: string; color: string }> = {
   completed: { label: '已完成', color: 'success' },
   cancelled: { label: '已撤单', color: 'error' },
 };
+
+/** 距要求完成截止不足这个数就标红（含已超时） */
+const SLA_WARN_MS = 4 * 60 * 60 * 1000;
+
+/**
+ * 要不要把这单标红：设了截止时间、还没完结，且距截止不足 4 小时或已超时。
+ * 已完结的单不标 —— 完结了再喊「超时」只会把整个列表染红。
+ */
+function slaDanger(r: { slaDueAt?: string | null; status: WorkOrderStatus }): boolean {
+  if (!r.slaDueAt) return false;
+  if (r.status === WorkOrderStatus.COMPLETED || r.status === WorkOrderStatus.CANCELLED) return false;
+  const due = new Date(r.slaDueAt).getTime();
+  return !Number.isNaN(due) && due - Date.now() <= SLA_WARN_MS;
+}
+
+/** 「已超时 3 小时」/「距截止还有 2 小时」 */
+function slaCountdownText(slaDueAt: string): string {
+  const diff = new Date(slaDueAt).getTime() - Date.now();
+  const abs = Math.abs(diff);
+  const label = abs >= 3600000
+    ? `${Math.floor(abs / 3600000)} 小时`
+    : `${Math.max(1, Math.round(abs / 60000))} 分钟`;
+  return diff < 0 ? `已超时 ${label}` : `距截止还有 ${label}`;
+}
 
 const repairTypeOptions = [
   { value: 'water', label: '水相关' },
@@ -610,6 +639,8 @@ export default function WorkOrdersPage() {
               // 不设 scroll.x：列宽合计小于容器时 antd 也会挂一条横向滚动条出来，
               // 表格底下永远飘着一根没用的灰条，看着就是「乱」
               pagination={{ pageSize: 10, showSizeChanger: false }}
+              // 距要求完成截止不足 4 小时（含已超时）的未完结单整行标红，样式在 styles.css
+              rowClassName={(r) => (slaDanger(r) ? 'pms-row-sla-danger' : '')}
               onRow={(r) => ({ onClick: () => setDetailId(r.id), style: { cursor: 'pointer' } })}
               columns={[
                 {
@@ -633,6 +664,13 @@ export default function WorkOrdersPage() {
                         {r.summaryContent || '-'}
                       </Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>{r.orderNo}</Text>
+                      {/* 标红光有底色不够，得让人知道红在哪：把截止时间和倒计时写出来 */}
+                      {slaDanger(r) && r.slaDueAt && (
+                        <div style={{ color: '#cf1322', fontSize: 12, marginTop: 2 }}>
+                          <ClockCircleOutlined style={{ marginRight: 4 }} />
+                          要求 {formatDateTimeCn(r.slaDueAt)} 前完成 · {slaCountdownText(r.slaDueAt)}
+                        </div>
+                      )}
                     </div>
                   ),
                 },
@@ -837,6 +875,8 @@ function RepairSubmitCard({
           content: v.content,
           addressText: v.spotText,
           attachments,
+          // 勾了「要求完成截止日期」才带；没勾走类型规则里的默认时限
+          slaDueAt: v.slaEnabled && v.slaDueAt ? v.slaDueAt.toISOString() : undefined,
         },
       });
       message.success('报修已提交，工单已建档');
@@ -938,6 +978,33 @@ function RepairSubmitCard({
           }
         >
           <Select {...searchableWideSelectProps} placeholder="选择类型" options={withOptionTitles(repairTypeSelectOptions)} allowClear />
+        </Form.Item>
+        <Form.Item
+          label="要求完成截止日期"
+          extra="不勾按报修类型的默认时限；距截止不足 4 小时或已超时的工单会在工单池整行标红"
+        >
+          <Space align="center">
+            <Form.Item name="slaEnabled" valuePropName="checked" noStyle>
+              <Checkbox>设定</Checkbox>
+            </Form.Item>
+            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.slaEnabled !== cur.slaEnabled}>
+              {({ getFieldValue }) =>
+                getFieldValue('slaEnabled') ? (
+                  <Form.Item
+                    name="slaDueAt"
+                    noStyle
+                    rules={[{ required: true, message: '请选择截止时间' }]}
+                  >
+                    <DatePicker
+                      showTime={{ format: 'HH:mm' }}
+                      format="YYYY-MM-DD HH:mm"
+                      placeholder="选择日期时间"
+                    />
+                  </Form.Item>
+                ) : null
+              }
+            </Form.Item>
+          </Space>
         </Form.Item>
         <Form.Item
           name="content"
@@ -1472,6 +1539,7 @@ function WorkOrderDetailDrawer({
   const [editMissingOpen, setEditMissingOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [changeTypeOpen, setChangeTypeOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) { setDetail(null); return; }
@@ -1584,13 +1652,42 @@ function WorkOrderDetailDrawer({
                       : detail.request.contactName
                     : '-',
                 },
-                { key: 'type', label: '工单类型', children: getRepairTypeLabel(detail.request.repairType, repairTypeRules) },
+                {
+                  key: 'type',
+                  label: '工单类型',
+                  children: (
+                    <Space size={4}>
+                      {getRepairTypeLabel(detail.request.repairType, repairTypeRules)}
+                      {/* 判错了在这里更正，还能顺手把关键词学进新类型，下次自动判对 */}
+                      {canEdit && (
+                        <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setChangeTypeOpen(true)}>
+                          更正
+                        </Button>
+                      )}
+                    </Space>
+                  ),
+                },
                 { key: 'skill', label: '工种', children: getRepairTypeLabel(detail.workOrder.skill, repairTypeRules) },
                 { key: 'assignee', label: '当前维修工', children: detail.workOrder.assigneeId ? (staffList.find((s) => s.id === detail.workOrder.assigneeId)?.name || `#${detail.workOrder.assigneeId}`) : '未派单' },
-                { key: 'sla', label: '要求完成截止', children: formatDateTimeCn(detail.workOrder.slaDueAt) || '-' },
+                {
+                  key: 'sla',
+                  label: '要求完成截止日期',
+                  children: (
+                    <SlaDueEditor
+                      workOrderId={detail.workOrder.id}
+                      value={detail.workOrder.slaDueAt ?? null}
+                      status={detail.workOrder.status}
+                      canEdit={canEdit}
+                      onChanged={refresh}
+                    />
+                  ),
+                },
                 { key: 'fee', label: '费用', children: detail.workOrder.feeCents ? `¥ ${(detail.workOrder.feeCents / 100).toFixed(2)}` : '-' },
                 { key: 'content', label: '报修内容', children: detail.request.content, span: 2 },
-                { key: 'addr', label: '具体位置', children: detail.request.addressText || '-', span: 2 },
+                // 两个地址分开给：报修地址可能是公区或别人家，
+                // 办公室要一眼分清「他家在哪」和「要去修哪」
+                { key: 'regAddr', label: '报修人登记地址', children: detail.request.reporterAddressText || '-', span: 2 },
+                { key: 'addr', label: '报修地址', children: detail.request.addressText || '-', span: 2 },
                 {
                   key: 'attachments',
                   label: '照片 / 视频',
@@ -1691,6 +1788,15 @@ function WorkOrderDetailDrawer({
         onClose={() => setReviewOpen(false)}
         onDone={async () => { setReviewOpen(false); await refresh(); }}
       />
+      <ChangeTypeModal
+        open={changeTypeOpen}
+        workOrderId={id}
+        currentType={detail?.request.repairType ?? null}
+        content={detail?.request.content ?? ''}
+        rules={repairTypeRules}
+        onClose={() => setChangeTypeOpen(false)}
+        onDone={async () => { setChangeTypeOpen(false); await refresh(); }}
+      />
     </>
   );
 }
@@ -1705,11 +1811,211 @@ function actionLabel(a: string) {
     need_material: '标记缺料',
     review: '业主验收',
     auto_review_complete: '超时自动完成',
+    change_type: '类型更正',
+    set_sla: '设定完成截止',
     cancel: '撤单',
     urge_office: '业主催单（提醒办公室）',
     urge_manager: '业主催单（升级经理）',
   };
   return m[a] || a;
+}
+
+/**
+ * 要求完成截止日期：默认不勾 = 没有截止；勾上选时间即生效，取消勾选即清除。
+ * 距截止不足 4 小时或已超时的未完结单，工单池整行标红（见 slaDanger / styles.css）。
+ */
+function SlaDueEditor({
+  workOrderId, value, status, canEdit, onChanged,
+}: {
+  workOrderId: number;
+  value: string | null;
+  status: WorkOrderStatus;
+  canEdit: boolean;
+  onChanged: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [saving, setSaving] = useState(false);
+  /** 勾了但还没选时间的中间态 */
+  const [picking, setPicking] = useState(false);
+  const closed = status === WorkOrderStatus.COMPLETED || status === WorkOrderStatus.CANCELLED;
+  const danger = !!value && !closed && new Date(value).getTime() - Date.now() <= SLA_WARN_MS;
+
+  const save = async (next: string | null) => {
+    setSaving(true);
+    try {
+      await request({
+        method: 'PATCH',
+        url: `/work-orders/${workOrderId}/sla-due`,
+        data: next ? { slaDueAt: next } : {},
+      });
+      message.success(next ? '已设定截止时间' : '已取消截止时间');
+      setPicking(false);
+      onChanged();
+    } catch (e: any) {
+      message.error(e?.message || '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!canEdit || closed) {
+    return value ? (
+      <span style={danger ? { color: '#cf1322' } : undefined}>
+        {formatDateTimeCn(value)}
+        {danger ? `（${slaCountdownText(value)}）` : ''}
+      </span>
+    ) : (
+      <Text type="secondary">未设置</Text>
+    );
+  }
+
+  return (
+    <Space size={8} wrap>
+      <Checkbox
+        checked={!!value || picking}
+        disabled={saving}
+        onChange={(e) => {
+          if (e.target.checked) {
+            setPicking(true);
+          } else if (value) {
+            save(null);
+          } else {
+            setPicking(false);
+          }
+        }}
+      />
+      {value || picking ? (
+        <DatePicker
+          showTime={{ format: 'HH:mm' }}
+          format="YYYY-MM-DD HH:mm"
+          value={value ? dayjs(value) : null}
+          disabled={saving}
+          placeholder="选择日期时间"
+          onChange={(d) => { if (d) save(d.toISOString()); }}
+        />
+      ) : (
+        <Text type="secondary">未设置</Text>
+      )}
+      {danger && value && <Text style={{ color: '#cf1322' }}>{slaCountdownText(value)}</Text>}
+    </Space>
+  );
+}
+
+/**
+ * 更正工单类型 + 半自动学习。
+ *
+ * 自动判定判错时（「24号大门关不上」被判成家里门锁），管理员在这里改成对的类型，
+ * 并可勾选描述里的词（「大门」）学进新类型的判定关键词 —— 词会写进
+ * 「报修类型配置」的关键词列表（原类型里的同名词同时摘掉），下次同样的描述就判对了。
+ * 学了哪些词随时可以在类型配置页里删，不是黑盒。
+ */
+function ChangeTypeModal({
+  open, workOrderId, currentType, content, rules, onClose, onDone,
+}: {
+  open: boolean;
+  workOrderId: number | null;
+  currentType: string | null;
+  content: string;
+  rules: RepairTypeRule[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [repairType, setRepairType] = useState<string | undefined>(undefined);
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [candidates, setCandidates] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open || !workOrderId) return;
+    setRepairType(undefined);
+    setKeywords([]);
+    setCandidates([]);
+    // 候选词由服务端从这单描述里挑（和判定用同一套关键词逻辑），失败就只留手动输入
+    request<{ candidates: string[] }>({ url: `/work-orders/${workOrderId}/repair-type-hints` })
+      .then((r) => setCandidates(r.candidates || []))
+      .catch(() => setCandidates([]));
+  }, [open, workOrderId]);
+
+  const typeOptions = rules
+    .filter((rule) => rule.enabled)
+    .map((rule) => ({
+      value: rule.repairType,
+      label: rule.repairType === currentType ? `${rule.label}（当前）` : rule.label,
+      disabled: rule.repairType === currentType,
+    }));
+
+  const submit = async () => {
+    if (!repairType) {
+      message.warning('先选择更正后的类型');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await request({
+        method: 'PATCH',
+        url: `/work-orders/${workOrderId}/repair-type`,
+        data: { repairType, learnKeywords: keywords.length ? keywords : undefined },
+      });
+      const label = rules.find((rule) => rule.repairType === repairType)?.label || repairType;
+      message.success(
+        keywords.length
+          ? `已更正为「${label}」，并记住关键词：${keywords.join('、')}`
+          : `已更正为「${label}」`,
+      );
+      onDone();
+    } catch (e: any) {
+      message.error(e?.message || '更正失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title="更正工单类型"
+      okText="确认更正"
+      okButtonProps={{ loading: submitting }}
+      onOk={submit}
+      onCancel={onClose}
+      destroyOnClose
+    >
+      {content && (
+        <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(0,0,0,0.03)', borderRadius: 6 }}>
+          <Text type="secondary">报修描述：</Text>{content}
+        </div>
+      )}
+      <div style={{ marginBottom: 8 }}>更正为</div>
+      <Select
+        {...searchableWideSelectProps}
+        style={{ width: '100%' }}
+        placeholder="选择正确的类型"
+        options={withOptionTitles(typeOptions)}
+        value={repairType}
+        onChange={(v) => setRepairType(v)}
+      />
+      <div style={{ margin: '16px 0 8px' }}>
+        同时记住关键词
+        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+          选填。下次描述里出现这些词就自动判成新类型
+        </Text>
+      </div>
+      <Select
+        mode="tags"
+        style={{ width: '100%' }}
+        placeholder="从候选里选，或直接输入（如：大门）"
+        options={candidates.map((word) => ({ value: word, label: word }))}
+        value={keywords}
+        onChange={(v) => setKeywords((v as string[]).map((w) => w.trim()).filter((w) => w.length >= 2))}
+      />
+      <div style={{ marginTop: 8 }}>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          学到的词会写进「报修类型配置」的关键词列表（原类型里的同名词会摘掉），随时可以去那里删改。
+        </Text>
+      </div>
+    </Modal>
+  );
 }
 
 const CANCEL_REASON_OPTIONS = [

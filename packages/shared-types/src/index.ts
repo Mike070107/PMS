@@ -197,6 +197,12 @@ export interface OwnerPlace {
   houseId: number | null;
   roomNo: string;
   addressText: string;
+  /**
+   * true = 这不是他家，是物业地址：保安/居委会/业委会/物业工作人员没有
+   * 「自己家」概念，默认位置显示第一个授权小区的物业地址（小区档案里的「地址」）。
+   * 端上据此把「我家里」这类文案换成「物业地址」。
+   */
+  officePlace?: boolean;
 }
 
 /** GET /auth/me 的返回 */

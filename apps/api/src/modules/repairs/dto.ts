@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsDateString,
   IsIn,
   IsInt,
   IsOptional,
@@ -59,6 +60,46 @@ export class CreateRepairRequestDto {
   @IsOptional()
   @IsArray()
   attachments?: string[];
+
+  /**
+   * 要求完成截止时间（办公室录入时勾选才填）。
+   * 填了就用它，不填才落到报修类型规则里的默认时限。
+   */
+  @IsOptional()
+  @IsDateString()
+  slaDueAt?: string;
+}
+
+/** 随手拍：从描述文字里识别报修地址（「一期24号302」→ 库里真实的楼栋/房号） */
+export class ParseRepairAddressDto {
+  @IsString()
+  @MaxLength(500)
+  text: string;
+
+  /** 报修人当前所在小区，用来在同名楼栋间优先选「他家附近」的那栋 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  communityId?: number;
+}
+
+/** 设定/取消工单的要求完成截止时间；不传 slaDueAt = 取消 */
+export class UpdateWorkOrderSlaDto {
+  @IsOptional()
+  @IsDateString()
+  slaDueAt?: string;
+}
+
+/** 后台更正工单类型；learnKeywords 里的词同时写进新类型的判定关键词（自学习） */
+export class UpdateWorkOrderRepairTypeDto {
+  @IsString()
+  @MaxLength(60)
+  repairType: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  learnKeywords?: string[];
 }
 
 export class WorkOrdersQueryDto {

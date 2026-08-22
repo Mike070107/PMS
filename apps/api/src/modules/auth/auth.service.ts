@@ -297,6 +297,9 @@ export class AuthService {
     if (dto.realName) user.name = dto.realName;
     if (phone) user.phone = phone;
     await this.userRepo.save(user);
+    // 预登记的工作人员（保安/居委会/业委会/物业工作人员）在这里认领身份：
+    // 手机号刚被微信验证过，同号的预登记档案并进当前微信账号
+    if (dto.phoneCode && phone) await this.claimReporterProfile(user, phone);
 
     // 已有待审核记录就更新它，而不是原样丢弃这次提交 ——
     // 审核期间业主发现房号填错了会再交一次，静默忽略等于让他一直等一条错的记录。
@@ -365,6 +368,8 @@ export class AuthService {
     }
 
     const phone = await this.wechat.getPhoneNumber(dto.phoneCode, "owner");
+    // 预登记的工作人员在这里认领身份（手机号刚被微信验证过）
+    await this.claimReporterProfile(user, phone);
 
     // 房产档案里同号可能挂多套房（一人多产），拿不准就不猜，让业主自己填
     const candidates = await this.userRepo.find({
@@ -395,6 +400,47 @@ export class AuthService {
     await this.userRepo.save(user);
 
     return { enabled: true, matched: true, phone: this.maskPhone(phone), place };
+  }
+
+  /**
+   * 代报身份认领：物业在「用户管理」预登记的保安/居委会/业委会/物业工作人员
+   * 只有手机号、没绑微信。本人在小程序里验证出同一手机号时，把身份、租户、
+   * 代报授权和后台账号并到他真实在用的微信账号上，预登记那行停用 ——
+   * 一个人始终只有一条档案，不会在「用户管理」里冒出两条同名记录。
+   */
+  private async claimReporterProfile(user: User, phone: string | null): Promise<void> {
+    if (!phone || user.role !== UserRole.OWNER) return;
+    const pre = await this.userRepo.findOne({
+      where: {
+        phone,
+        role: In(REPORTER_ROLES),
+        status: UserStatus.ACTIVE,
+        wxOpenid: IsNull(),
+      },
+      order: { id: 'DESC' },
+    });
+    if (!pre || pre.id === user.id) return;
+    if (user.tenantId && pre.tenantId !== user.tenantId) return;
+
+    user.role = pre.role;
+    user.tenantId = user.tenantId ?? pre.tenantId;
+    if (!user.name && pre.name) user.name = pre.name;
+    if (!user.phone) user.phone = phone;
+    if (!user.loginAccount && pre.loginAccount) {
+      user.loginAccount = pre.loginAccount;
+      user.passwordHash = pre.passwordHash;
+      // loginAccount 全局唯一，先从预登记行腾出来再落到本人账号
+      pre.loginAccount = null;
+    }
+    pre.status = UserStatus.DISABLED;
+    pre.updatedBy = user.id;
+    await this.userRepo.save(pre);
+    await this.userRepo.save(user);
+    // 代报授权与后台角色跟人走；先清掉本人名下可能重复的授权，避免撞唯一键
+    await this.reportGrantRepo.delete({ userId: user.id });
+    await this.reportGrantRepo.update({ userId: pre.id }, { userId: user.id });
+    await this.userRoleRepo.update({ userId: pre.id }, { userId: user.id });
+    this.logger.log(`代报身份认领：预登记 #${pre.id} 并入用户 #${user.id}（${pre.role}）`);
   }
 
   /** houseId → 可直接展示的地址 */
@@ -436,8 +482,13 @@ export class AuthService {
     if (user.status !== UserStatus.ACTIVE) {
       throw new ForbiddenException('account is disabled');
     }
-    if (user.role === UserRole.OWNER || user.role === UserRole.TECHNICIAN) {
-      // 双轨制下业务身份不再决定后台准入：绑了后台角色照样放行
+    // 双轨制下业务身份不再决定后台准入：小程序端身份（业主/维修工/保安/
+    // 居委会/业委会/物业工作人员）绑了后台角色照样放行，没绑一律拦 ——
+    // 这就是「给工作人员授权网页登录」的口子：用户管理里绑角色即可。
+    if (
+      user.role === UserRole.TECHNICIAN ||
+      OWNER_APP_ROLES.includes(user.role as UserRole)
+    ) {
       const bindings = await this.userRoleRepo.count({ where: { userId: user.id } });
       if (!bindings) {
         throw new ForbiddenException('role cannot login to admin');
@@ -527,11 +578,34 @@ export class AuthService {
     const communities = grants.length
       ? await this.communityRepo.find({
           where: { id: In(grants.map((g) => g.communityId)) },
+          // 必须显式排序：无序时 Postgres 按堆序返回，「第一个授权小区」会随
+          // 数据行的物理位置漂移，工作人员的默认物业地址跟着乱跳
+          order: { id: 'ASC' },
         })
       : [];
+    // 工作人员（保安/居委会/业委会/物业工作人员）不按「自己家」定位：
+    // 默认地址显示第一个授权小区的物业地址（小区档案里的「地址」，
+    // 在房产页给小区填如「198弄1号物业服务中心」即可），报修时照样能选任意地址。
+    // officePlace 标记给端上换文案用（「我家里」→「物业地址」）。
+    const officePlace = communities.length
+      ? {
+          auditStatus: AuditStatus.APPROVED,
+          rejectReason: null,
+          communityId: communities[0].id,
+          communityName: communities[0].name,
+          buildingId: null,
+          buildingText: '',
+          houseId: null,
+          roomNo: '',
+          addressText: [communities[0].name, communities[0].address || '物业服务中心']
+            .filter(Boolean)
+            .join(' '),
+          officePlace: true,
+        }
+      : null;
     return {
       ...base,
-      place,
+      place: officePlace ?? place,
       subscribeTemplates,
       reporter: {
         role: user.role,

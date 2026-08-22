@@ -31,29 +31,45 @@
   <block wx:else>
     <view class="place">
       <view class="place__label">报修位置</view>
-      <view class="place__scopes">
-        <view
-          wx:for="{{scopes}}"
-          wx:key="key"
-          class="place__scope {{scope === item.key ? 'place__scope--on' : ''}}"
-          data-scope="{{item.key}}"
-          bindtap="onPickScope"
-        >{{item.label}}</view>
-      </view>
 
-      <view wx:if="{{scope !== 'home'}}" class="place__detail">
-        <text class="place__detail-label">具体位置（选填）</text>
-        <input
-          class="place__detail-input"
-          placeholder="{{scopeHint}}"
-          maxlength="40"
-          value="{{placeDetail}}"
-          bindinput="onPlaceDetail"
-        />
-      </view>
+      <!-- 描述里识别到了地址：替换默认位置展示，点 × 恢复 -->
+      <block wx:if="{{detected}}">
+        <view class="detected">
+          <view class="detected__row">
+            <view class="detected__text">{{detected.addressText}}</view>
+            <view class="detected__close" catchtap="onDismissDetected" hover-class="detected__close--tap">
+              <view class="icon icon--close-dark"></view>
+            </view>
+          </view>
+          <view class="detected__hint">按你说的「{{detected.matchedText}}」自动识别，点 × 用原来的位置</view>
+        </view>
+      </block>
 
-      <view class="place__text">{{placeText || '加载中…'}}</view>
-      <view wx:if="{{pendingHint && scope === 'home'}}" class="place__pending">{{pendingHint}}</view>
+      <block wx:else>
+        <view class="place__scopes">
+          <view
+            wx:for="{{scopes}}"
+            wx:key="key"
+            class="place__scope {{scope === item.key ? 'place__scope--on' : ''}}"
+            data-scope="{{item.key}}"
+            bindtap="onPickScope"
+          >{{item.label}}</view>
+        </view>
+
+        <view wx:if="{{scope !== 'home'}}" class="place__detail">
+          <text class="place__detail-label">具体位置（选填）</text>
+          <input
+            class="place__detail-input"
+            placeholder="{{scopeHint}}"
+            maxlength="40"
+            value="{{placeDetail}}"
+            bindinput="onPlaceDetail"
+          />
+        </view>
+
+        <view class="place__text">{{placeText || '加载中…'}}</view>
+        <view wx:if="{{pendingHint && scope === 'home'}}" class="place__pending">{{pendingHint}}</view>
+      </block>
     </view>
 
     <!-- 拍照 / 录像 -->

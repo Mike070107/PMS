@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
 import { Brackets, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { REPORTER_ROLES, UserRole, UserStatus } from '../../common/enums';
+import { OWNER_APP_ROLES, REPORTER_ROLES, UserRole, UserStatus } from '../../common/enums';
 import {
   Role,
   StaffProfile,
@@ -114,7 +114,8 @@ export class StaffService {
       await this.validateAssignableRoles(dto.roleIds, tenantId, access);
     }
 
-    // 维修工和代报角色都走微信登录，不发后台账号密码
+    // 维修工和代报角色都走微信登录，后台账号密码选填（填了即可授权网页登录，
+    // 还需在「后台角色」里绑一个角色，adminLogin 对无角色绑定的业务身份一律拦）
     const needsLogin = dto.role !== UserRole.TECHNICIAN && !isReporter(dto.role);
     if (needsLogin && (!dto.loginAccount || !dto.password)) {
       throw new BadRequestException(
@@ -128,6 +129,39 @@ export class StaffService {
       if (existing) throw new BadRequestException('loginAccount already exists');
     }
     const passwordHash = dto.password ? await bcrypt.hash(dto.password, 10) : null;
+
+    // 保安/居委会/业委会/物业工作人员大多已经在小程序注册过（业主身份）。
+    // 填同一手机号时把那条账号就地转成工作人员，而不是另建一行 ——
+    // 另建会出现「同一个人两条档案」，微信绑定和历史工单也会散在两行上
+    // （2026-08-21 实际踩过：用户管理里冒出两个同名的人）。
+    if (isReporter(dto.role) && dto.phone) {
+      const candidates = await this.userRepo.find({
+        where: { tenantId, phone: dto.phone, role: In(OWNER_APP_ROLES) },
+        order: { id: 'ASC' },
+      });
+      // 同号有多条时优先转绑了微信的那条：那才是本人天天在用的账号
+      const existing =
+        candidates.find((u) => !!u.wxOpenid) ?? candidates[0] ?? null;
+      if (existing) {
+        existing.role = dto.role;
+        if (dto.name) existing.name = dto.name;
+        if (dto.loginAccount) existing.loginAccount = dto.loginAccount;
+        if (passwordHash) existing.passwordHash = passwordHash;
+        existing.status = UserStatus.ACTIVE;
+        existing.updatedBy = user.id;
+        await this.userRepo.save(existing);
+        const communityIds = await this.replaceReportGrants(
+          tenantId,
+          existing.id,
+          dto.reportCommunityIds ?? [],
+          user.id,
+        );
+        const roles = dto.roleIds?.length
+          ? await this.replaceRoleBindings(tenantId, existing.id, dto.roleIds, user.id)
+          : [];
+        return this.toView(existing, null, communityIds, roles);
+      }
+    }
     const created = await this.userRepo.save(
       this.userRepo.create({
         tenantId,

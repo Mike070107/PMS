@@ -24,6 +24,7 @@ import { SettingsService } from '../settings/settings.service';
 import {
   NotifyChannel,
   NotifyStatus,
+  OWNER_APP_ROLES,
   RepairSource,
   REPAIR_SOURCE_LABELS,
   REPORTER_ROLES,
@@ -42,6 +43,7 @@ import {
   Notification,
   PurchaseRequest,
   RepairRequest,
+  RepairTypeCorrection,
   RepairTypeRule,
   Review,
   Material,
@@ -62,11 +64,19 @@ import {
   CompleteWorkOrderDto,
   CreateRepairRequestDto,
   NeedMaterialDto,
+  ParseRepairAddressDto,
   ReviewWorkOrderDto,
   UpdateMissingMaterialsDto,
+  UpdateWorkOrderRepairTypeDto,
+  UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
   WorkOrdersQueryDto,
 } from './dto';
+import {
+  extractAddressCandidate,
+  extractKeywordCandidates,
+  sameNo,
+} from './repair-address.util';
 import {
   COMMON_ACTION_SUGGESTIONS,
   MAX_ACTION_SUGGESTIONS,
@@ -409,8 +419,10 @@ export class RepairsService implements OnModuleInit {
       where.status = query.status as WorkOrderStatus;
     }
 
-    // 小程序角色按人收敛可见范围，后台角色维持全租户
-    if (user.role === UserRole.OWNER) {
+    // 小程序角色按人收敛可见范围，后台角色维持全租户。
+    // 业主端身份不止 OWNER：保安/居委/业委/物业工作人员也在业主端提单，
+    // 漏了他们要么 403、要么（更糟）落到无过滤分支看到全租户的单
+    if (OWNER_APP_ROLES.includes(user.role as UserRole)) {
       const myRequestIds = await this.repairRequestRepo.find({
         where: { tenantId, submittedBy: user.id },
         select: ['id'],
@@ -684,8 +696,8 @@ export class RepairsService implements OnModuleInit {
         order: { id: 'ASC' },
       }),
     ]);
-    // 业主只能看自己提交的报修
-    if (user.role === UserRole.OWNER && request?.submittedBy !== user.id) {
+    // 业主端身份（业主/保安/居委/业委/物业工作人员）只能看自己提交的报修
+    if (OWNER_APP_ROLES.includes(user.role as UserRole) && request?.submittedBy !== user.id) {
       throw new NotFoundException('work order not found');
     }
     // 存量工单的联系人/电话是空的（那会儿端上选填、服务端也不兜底），
@@ -697,6 +709,11 @@ export class RepairsService implements OnModuleInit {
         })
       : null;
     const typeLabels = await this.repairTypeLabels(tenantId);
+    // 报修人登记地址（认证的房屋）单独给一栏：报修地址可能是公区或别人家，
+    // 办公室要能一眼分清「他家在哪」和「要去修哪」
+    const reporterAddressText = request?.submittedBy
+      ? await this.registeredAddressText(request.submittedBy, tenantId)
+      : null;
 
     return {
       workOrder: {
@@ -714,11 +731,45 @@ export class RepairsService implements OnModuleInit {
             reporterRoleLabel: request.reporterRole
               ? USER_ROLE_LABELS[request.reporterRole] ?? request.reporterRole
               : null,
+            reporterAddressText,
             attachments: this.storage.toDisplayUrls(request.attachments),
           }
         : request,
       logs: logs.map((log) => ({ ...log, note: this.displayLogNote(log.note) })),
     };
+  }
+
+  /** 报修人（提交账号）认证的登记地址；没绑房时返回 null */
+  private async registeredAddressText(
+    userId: number,
+    tenantId: number,
+  ): Promise<string | null> {
+    const reporter = await this.userRepo.findOne({
+      where: { id: userId, tenantId },
+      select: ['id', 'houseId'],
+    });
+    if (!reporter?.houseId) return null;
+    const house = await this.houseRepo.findOne({
+      where: { id: reporter.houseId, tenantId },
+    });
+    if (!house) return null;
+    const building = await this.buildingRepo.findOne({
+      where: { id: house.buildingId, tenantId },
+    });
+    const community = building
+      ? await this.communityRepo.findOne({ where: { id: building.communityId, tenantId } })
+      : null;
+    // 门牌连写、段间空格，与 auth.me 同口径：枫桦景苑一期 198弄24号302室
+    const buildingText = building
+      ? `${building.lane ? building.lane + '弄' : ''}${building.buildingNo}号`
+      : '';
+    const text = [
+      community?.name,
+      `${buildingText}${house.roomNo ? house.roomNo + '室' : ''}`,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    return text || null;
   }
 
   /**
@@ -1144,8 +1195,11 @@ export class RepairsService implements OnModuleInit {
         where: { id: workOrder.requestId, tenantId },
       });
       if (!request) throw new NotFoundException('repair request not found');
-      if (user.role === UserRole.OWNER && request.submittedBy !== user.id) {
-        throw new ForbiddenException('owner cannot review this work order');
+      if (
+        OWNER_APP_ROLES.includes(user.role as UserRole) &&
+        request.submittedBy !== user.id
+      ) {
+        throw new ForbiddenException('只能验收自己提交的报修');
       }
 
       const review = await manager.save(
@@ -1188,7 +1242,7 @@ export class RepairsService implements OnModuleInit {
         'cancel',
         '当前状态不可撤单',
       );
-      if (user.role === UserRole.OWNER) {
+      if (OWNER_APP_ROLES.includes(user.role as UserRole)) {
         const request = await manager.findOne(RepairRequest, {
           where: { id: workOrder.requestId, tenantId },
         });
@@ -1222,7 +1276,7 @@ export class RepairsService implements OnModuleInit {
       ) {
         throw new BadRequestException('工单已在处理中，无需催单');
       }
-      if (user.role === UserRole.OWNER) {
+      if (OWNER_APP_ROLES.includes(user.role as UserRole)) {
         const request = await manager.findOne(RepairRequest, {
           where: { id: workOrder.requestId, tenantId },
         });
@@ -1463,9 +1517,14 @@ export class RepairsService implements OnModuleInit {
           dispatchedAt: assignRule ? new Date() : null,
           acceptedAt: null,
           completedAt: null,
-          slaDueAt: assignRule?.slaHours
-            ? new Date(Date.now() + assignRule.slaHours * 60 * 60 * 1000)
-            : null,
+          // 办公室录入时明确勾了截止时间就用它；没勾才落到类型规则里的默认时限。
+          // 截止时间是内部管理承诺，业主端提交的这个字段不认
+          slaDueAt:
+            dto.slaDueAt && source !== RepairSource.OWNER_MINIAPP
+              ? new Date(dto.slaDueAt)
+              : assignRule?.slaHours
+                ? new Date(Date.now() + assignRule.slaHours * 60 * 60 * 1000)
+                : null,
           actionTags: [],
           actionNote: null,
           faultLocation: null,
@@ -1647,6 +1706,317 @@ export class RepairsService implements OnModuleInit {
         '只能给自己认证的房屋报修；公共区域的问题请把报修位置改成楼栋或小区',
       );
     }
+  }
+
+  /**
+   * 随手拍：从描述文字里识别报修地址（「侯队报一期24号大门关不上」→ 198弄24号）。
+   * 正则抽出「期/弄/号/室」候选（repair-address.util），再撞本租户真实存在的
+   * 分期/楼栋/房号 —— 撞上才算识别到，撞不上宁可返回没识别，绝不猜。
+   * 识别结果在端上明示并可一键撤掉，提交时关联 id 跟着识别结果走。
+   */
+  async parseRepairAddress(dto: ParseRepairAddressDto, user: AuthUser) {
+    const tenantId = this.resolveTenantId(user);
+    const candidate = extractAddressCandidate(dto.text);
+    if (!candidate) return { matched: false as const };
+
+    const communities = await this.communityRepo.find({
+      where: { tenantId, enabled: true },
+    });
+    const parentIds = new Set(
+      communities.map((c) => c.parentId).filter((id): id is number => !!id),
+    );
+    // 分组节点（「枫桦景苑」）不挂楼栋，候选只在叶子（分期或独立小区）里找
+    const leaves = communities.filter((c) => !parentIds.has(c.id));
+    if (!leaves.length) return { matched: false as const };
+
+    const context = dto.communityId
+      ? communities.find((c) => c.id === dto.communityId) ?? null
+      : null;
+    const contextGroupId = context ? context.parentId ?? context.id : null;
+    const nameById = new Map(communities.map((c) => [c.id, c.name] as const));
+
+    // 「一期」优先解释成报修人所在分组里的分期；整个租户都没有这个分期时当没说
+    let phaseLeaves: Community[] = [];
+    if (candidate.phase) {
+      phaseLeaves = leaves.filter((c) => {
+        const groupName = c.parentId ? nameById.get(c.parentId) ?? '' : '';
+        const shortName =
+          groupName && c.name.startsWith(groupName)
+            ? c.name.slice(groupName.length)
+            : c.name;
+        return shortName === candidate.phase || c.name.endsWith(candidate.phase!);
+      });
+    }
+    const pool = phaseLeaves.length ? phaseLeaves : leaves;
+    const ranked = [...pool].sort((a, b) => {
+      const rank = (c: Community) =>
+        c.id === context?.id
+          ? 0
+          : contextGroupId !== null && c.parentId === contextGroupId
+            ? 1
+            : 2;
+      return rank(a) - rank(b) || a.id - b.id;
+    });
+
+    // 只说了分期没说楼栋：定位到小区级就够了（「二期大门坏了」）
+    if (!candidate.buildingNo) {
+      if (!phaseLeaves.length) return { matched: false as const };
+      const community = ranked[0];
+      return {
+        matched: true as const,
+        level: 'community' as const,
+        communityId: community.id,
+        communityName: community.name,
+        buildingId: null,
+        buildingText: '',
+        houseId: null,
+        roomNo: null,
+        // 没有室号就是公区单，文案里写明白，派单的人一眼看出不是入户维修
+        addressText: `${community.name} 公共区域`,
+        matchedText: candidate.matchedText,
+      };
+    }
+
+    const buildings = await this.buildingRepo.find({
+      where: { tenantId, communityId: In(ranked.map((c) => c.id)) },
+    });
+    let picked: Building | null = null;
+    let pickedCommunity: Community | null = null;
+    for (const community of ranked) {
+      let matches = buildings.filter(
+        (b) =>
+          b.communityId === community.id && sameNo(b.buildingNo, candidate.buildingNo),
+      );
+      if (candidate.lane) {
+        matches = matches.filter((b) => sameNo(b.lane, candidate.lane));
+      }
+      if (!matches.length) continue;
+      if (matches.length > 1) {
+        // 同号不同弄且描述里没说弄：取主弄（该小区楼栋最多的弄）；主弄里还不唯一就放弃。
+        // 挑错弄会让维修工白跑一栋楼，宁可不填让业主用默认位置。
+        const laneCount = new Map<string, number>();
+        for (const b of buildings) {
+          if (b.communityId !== community.id || !b.lane) continue;
+          laneCount.set(b.lane, (laneCount.get(b.lane) ?? 0) + 1);
+        }
+        const countOf = (b: Building) => laneCount.get(b.lane ?? '') ?? 0;
+        matches.sort((a, b) => countOf(b) - countOf(a));
+        if (matches.length > 1 && countOf(matches[1]) === countOf(matches[0])) {
+          return { matched: false as const };
+        }
+        matches = [matches[0]];
+      }
+      picked = matches[0];
+      pickedCommunity = community;
+      break;
+    }
+    if (!picked || !pickedCommunity) return { matched: false as const };
+
+    let house: House | null = null;
+    if (candidate.roomNo) {
+      const houses = await this.houseRepo.find({
+        where: { tenantId, buildingId: picked.id },
+      });
+      house = houses.find((h) => sameNo(h.roomNo, candidate.roomNo)) ?? null;
+    }
+
+    // 业主只能把单挂到自己认证的房号上（assertCanReportAt 的同一条口径）。
+    // 识别到别人家的室号时降级成楼栋级，但室号保留在地址文本里给师傅看。
+    let houseId = house?.id ?? null;
+    if (houseId && user.role === UserRole.OWNER) {
+      const self = await this.userRepo.findOne({
+        where: { id: user.id },
+        select: ['id', 'houseId'],
+      });
+      if (self?.houseId !== houseId) houseId = null;
+    }
+
+    const buildingText = `${picked.lane ? picked.lane + '弄' : ''}${picked.buildingNo}号`;
+    const roomText = house ? `${house.roomNo}室` : '';
+    return {
+      matched: true as const,
+      level: houseId ? ('house' as const) : ('building' as const),
+      communityId: pickedCommunity.id,
+      communityName: pickedCommunity.name,
+      buildingId: picked.id,
+      buildingText,
+      houseId,
+      roomNo: house?.roomNo ?? null,
+      // 门牌连写、段间空格，与 auth.me 的 addressText 同口径：枫桦景苑一期 198弄24号302室。
+      // 连楼里哪个位置都没说的按公区单写，派单的人一眼看出不是入户维修
+      addressText: [
+        pickedCommunity.name,
+        roomText ? `${buildingText}${roomText}` : `${buildingText} 公共区域`,
+      ]
+        .filter(Boolean)
+        .join(' '),
+      matchedText: candidate.matchedText,
+    };
+  }
+
+  /**
+   * 后台更正工单类型 + 半自动学习。
+   * learnKeywords 里的词写进新类型的判定关键词（并从原类型里摘掉，
+   * 否则下次两边照旧五五开），同时落一条 RepairTypeCorrection 供复盘和
+   * 后续全自动学习攒数据。状态机不动，只在轨迹里记一条。
+   */
+  async updateWorkOrderRepairType(
+    id: number,
+    dto: UpdateWorkOrderRepairTypeDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
+    if (!workOrder) throw new NotFoundException('work order not found');
+    const scope = this.scopeIds(access);
+    if (scope && !scope.includes(workOrder.communityId)) {
+      throw new NotFoundException('work order not found');
+    }
+    const request = await this.repairRequestRepo.findOne({
+      where: { id: workOrder.requestId, tenantId },
+    });
+
+    const rules = await this.repairTypeRuleRepo.find({ where: { tenantId } });
+    const target = rules.find((rule) => rule.repairType === dto.repairType && rule.enabled);
+    if (!target) throw new BadRequestException('报修类型不存在或已停用');
+    const fromType = request?.repairType ?? workOrder.skill ?? null;
+    const fromRule = rules.find((rule) => rule.repairType === fromType) ?? null;
+    const learned = normalizeSuggestionList(dto.learnKeywords ?? []).filter(
+      (word) => word.length >= 2,
+    );
+    if (fromType === dto.repairType && !learned.length) {
+      throw new BadRequestException('类型没有变化');
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      if (request && request.repairType !== dto.repairType) {
+        request.repairType = dto.repairType;
+        request.updatedBy = user.id;
+        await manager.save(RepairRequest, request);
+      }
+      if (workOrder.skill !== dto.repairType) {
+        workOrder.skill = dto.repairType;
+        workOrder.updatedBy = user.id;
+        await manager.save(WorkOrder, workOrder);
+      }
+      await this.writeLog(
+        manager,
+        workOrder,
+        null,
+        'change_type',
+        user.id,
+        `报修类型由「${fromRule?.label ?? fromType ?? '未判定'}」更正为「${target.label}」` +
+          (learned.length ? `；记住关键词：${learned.join('、')}` : ''),
+      );
+      if (learned.length) {
+        // 学到的词插到最前面：这就是刚被误判的场景，下次要立刻生效
+        target.contentSuggestions = normalizeSuggestionList([
+          ...learned,
+          ...(target.contentSuggestions ?? []),
+        ]);
+        target.updatedBy = user.id;
+        await manager.save(RepairTypeRule, target);
+        if (fromRule && fromRule.id !== target.id) {
+          const remaining = (fromRule.contentSuggestions ?? []).filter(
+            (word) => !learned.includes(word),
+          );
+          if (remaining.length !== (fromRule.contentSuggestions ?? []).length) {
+            fromRule.contentSuggestions = remaining;
+            fromRule.updatedBy = user.id;
+            await manager.save(RepairTypeRule, fromRule);
+          }
+        }
+      }
+      await manager.save(
+        RepairTypeCorrection,
+        manager.create(RepairTypeCorrection, {
+          tenantId,
+          workOrderId: workOrder.id,
+          requestId: workOrder.requestId,
+          fromType,
+          toType: dto.repairType,
+          content: request?.content ?? '',
+          learnedKeywords: learned,
+          createdBy: user.id,
+          updatedBy: user.id,
+        }),
+      );
+    });
+    return { ok: true, learned };
+  }
+
+  /**
+   * 设定/取消工单的要求完成截止时间（后台详情里勾选 + 选时间）。
+   * 不传 slaDueAt = 取消。已完结的单没有「要求完成」可言，不给改。
+   */
+  async updateWorkOrderSlaDue(
+    id: number,
+    dto: UpdateWorkOrderSlaDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
+    if (!workOrder) throw new NotFoundException('work order not found');
+    const scope = this.scopeIds(access);
+    if (scope && !scope.includes(workOrder.communityId)) {
+      throw new NotFoundException('work order not found');
+    }
+    if (
+      workOrder.status === WorkOrderStatus.COMPLETED ||
+      workOrder.status === WorkOrderStatus.CANCELLED
+    ) {
+      throw new BadRequestException('工单已完结，不能再改截止时间');
+    }
+    const next = dto.slaDueAt ? new Date(dto.slaDueAt) : null;
+    workOrder.slaDueAt = next;
+    workOrder.updatedBy = user.id;
+    await this.dataSource.transaction(async (manager) => {
+      await manager.save(WorkOrder, workOrder);
+      await this.writeLog(
+        manager,
+        workOrder,
+        null,
+        'set_sla',
+        user.id,
+        next ? `要求完成截止时间设为 ${this.formatWhen(next)}` : '取消要求完成截止时间',
+      );
+    });
+    return { ok: true, slaDueAt: workOrder.slaDueAt };
+  }
+
+  /** 更正类型弹窗的关键词候选：从这单的描述里挑出可以「学进新类型」的词 */
+  async repairTypeCorrectionHints(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const workOrder = await this.workOrderRepo.findOne({
+      where: { id, tenantId },
+      select: ['id', 'communityId', 'requestId', 'skill'],
+    });
+    if (!workOrder) throw new NotFoundException('work order not found');
+    const scope = this.scopeIds(access);
+    if (scope && !scope.includes(workOrder.communityId)) {
+      throw new NotFoundException('work order not found');
+    }
+    const request = await this.repairRequestRepo.findOne({
+      where: { id: workOrder.requestId, tenantId },
+    });
+    const content = request?.content ?? '';
+    const fromType = request?.repairType ?? workOrder.skill ?? null;
+    const fromRule = fromType
+      ? await this.repairTypeRuleRepo.findOne({ where: { tenantId, repairType: fromType } })
+      : null;
+    const text = content.toLowerCase();
+    const matchedOld = fromRule
+      ? buildTypeKeywords(fromRule).filter(
+          (word) => word.length >= 2 && text.includes(word.toLowerCase()),
+        )
+      : [];
+    return {
+      fromType,
+      matchedOld,
+      candidates: extractKeywordCandidates(content, matchedOld),
+    };
   }
 
   /** 按描述判类型。判不出返回 null，交给后台按「其它」核对，不硬塞一个 */

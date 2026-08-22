@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
-import { UserRole } from '../../common/enums';
+import { OWNER_APP_ROLES, UserRole } from '../../common/enums';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -24,19 +24,27 @@ import {
   CompleteWorkOrderDto,
   CreateRepairRequestDto,
   NeedMaterialDto,
+  ParseRepairAddressDto,
   ReorderRepairTypeRulesDto,
   ReviewWorkOrderDto,
   UpdateMissingMaterialsDto,
+  UpdateWorkOrderRepairTypeDto,
+  UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
   WorkOrdersQueryDto,
 } from './dto';
 import { RepairsService } from './repairs.service';
 
 /**
- * 双轨鉴权：@Roles 只保留小程序端业务身份（业主/维修工），
- * 管理后台一律走 @RequirePermission('work-orders', ...) 的角色权限矩阵。
+ * 双轨鉴权：@Roles 只保留小程序端业务身份，管理后台一律走
+ * @RequirePermission('work-orders', ...) 的角色权限矩阵。
  * 原先写在 @Roles 里的 office/manager/admin 由权限矩阵覆盖
  * （存量账号有自动种的兼容角色，见 docs/rbac-design.md）。
+ *
+ * 业主端的接口必须放行整个 OWNER_APP_ROLES（业主 + 保安/居委会/业委会/
+ * 物业工作人员）：代报身份用的就是业主端小程序，只写 OWNER 会把他们全部 403
+ * （2026-08-21 实际踩过：业主档案里标成保安后小程序直接「没有权限」）。
+ * 数据边界不靠这里：service 里按 submittedBy / 代报授权小区收敛。
  */
 @Controller()
 @UseGuards(JwtAuthGuard, RolesOrPermissionGuard)
@@ -92,7 +100,7 @@ export class RepairsController {
    * 只出启用中的类型，不下发派单规则（默认维修工 / 时限属于内部配置）。
    */
   @Get('repair-types')
-  @Roles(UserRole.OWNER, UserRole.TECHNICIAN)
+  @Roles(...OWNER_APP_ROLES, UserRole.TECHNICIAN)
   @RequirePermission('work-orders', 'view')
   listPublicRepairTypes(@CurrentUser() user: AuthUser) {
     return this.repairsService.listPublicRepairTypes(user);
@@ -125,8 +133,22 @@ export class RepairsController {
     return this.repairsService.listRepairHistory(query, user, access);
   }
 
+  /**
+   * 随手拍：从描述文字里识别报修地址（「一期24号302」→ 真实楼栋/房号）。
+   * 鉴权与提交报修完全同一套 —— 能提单的人才需要识别地址。
+   */
+  @Post('repair-requests/parse-address')
+  @Roles(...OWNER_APP_ROLES)
+  @RequirePermission('work-orders', 'edit')
+  parseRepairAddress(
+    @Body() dto: ParseRepairAddressDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.repairsService.parseRepairAddress(dto, user);
+  }
+
   @Post('repair-requests')
-  @Roles(UserRole.OWNER)
+  @Roles(...OWNER_APP_ROLES)
   @RequirePermission('work-orders', 'edit')
   submitOwnerRepair(
     @Body() dto: CreateRepairRequestDto,
@@ -146,7 +168,7 @@ export class RepairsController {
   }
 
   @Get('work-orders')
-  @Roles(UserRole.TECHNICIAN, UserRole.OWNER)
+  @Roles(...OWNER_APP_ROLES, UserRole.TECHNICIAN)
   @RequirePermission('work-orders', 'view')
   listWorkOrders(
     @Query() query: WorkOrdersQueryDto,
@@ -167,7 +189,7 @@ export class RepairsController {
   }
 
   @Get('work-orders/:id')
-  @Roles(UserRole.TECHNICIAN, UserRole.OWNER)
+  @Roles(...OWNER_APP_ROLES, UserRole.TECHNICIAN)
   @RequirePermission('work-orders', 'view')
   getWorkOrder(
     @Param('id', ParseIntPipe) id: number,
@@ -175,6 +197,41 @@ export class RepairsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.repairsService.getWorkOrder(id, user, access);
+  }
+
+  /** 更正类型弹窗用的关键词候选（从这单描述里挑「学进新类型」的词） */
+  @Get('work-orders/:id/repair-type-hints')
+  @RequirePermission('work-orders', 'edit')
+  repairTypeCorrectionHints(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.repairTypeCorrectionHints(id, user, access);
+  }
+
+  /** 设定/取消工单的要求完成截止时间（body 不带 slaDueAt = 取消） */
+  @Patch('work-orders/:id/sla-due')
+  @RequirePermission('work-orders', 'edit')
+  updateWorkOrderSlaDue(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateWorkOrderSlaDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.updateWorkOrderSlaDue(id, dto, user, access);
+  }
+
+  /** 后台更正工单类型；learnKeywords 同时写进新类型的判定关键词（自学习） */
+  @Patch('work-orders/:id/repair-type')
+  @RequirePermission('work-orders', 'edit')
+  updateWorkOrderRepairType(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateWorkOrderRepairTypeDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.updateWorkOrderRepairType(id, dto, user, access);
   }
 
   @Post('work-orders/:id/assign')
@@ -249,7 +306,7 @@ export class RepairsController {
   }
 
   @Post('work-orders/:id/review')
-  @Roles(UserRole.OWNER)
+  @Roles(...OWNER_APP_ROLES)
   @RequirePermission('work-orders', 'edit')
   reviewWorkOrder(
     @Param('id', ParseIntPipe) id: number,
@@ -260,7 +317,7 @@ export class RepairsController {
   }
 
   @Post('work-orders/:id/cancel')
-  @Roles(UserRole.OWNER)
+  @Roles(...OWNER_APP_ROLES)
   @RequirePermission('work-orders', 'edit')
   cancelWorkOrder(
     @Param('id', ParseIntPipe) id: number,
@@ -271,7 +328,7 @@ export class RepairsController {
   }
 
   @Post('work-orders/:id/urge')
-  @Roles(UserRole.OWNER)
+  @Roles(...OWNER_APP_ROLES)
   @RequirePermission('work-orders', 'edit')
   urgeWorkOrder(
     @Param('id', ParseIntPipe) id: number,

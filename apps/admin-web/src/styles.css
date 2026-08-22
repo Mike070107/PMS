@@ -993,3 +993,11 @@ a,
 }
 
 @page { size: A5 portrait; margin: 0; }
+
+/* 工单池：距要求完成截止不足 4 小时（含已超时）的未完结工单整行标红。
+   antd v5 的 td 背景由 :where() 包着、特异度为零，这里普通选择器即可压过（含 hover），
+   不需要 !important。类名由 WorkOrdersPage 的 rowClassName（slaDanger）挂上。 */
+.pms-workorder-pool-card .ant-table-tbody > tr.pms-row-sla-danger > td,
+.pms-workorder-pool-card .ant-table-tbody > tr.pms-row-sla-danger > td.ant-table-cell-row-hover {
+  background: #fff1f0;
+}

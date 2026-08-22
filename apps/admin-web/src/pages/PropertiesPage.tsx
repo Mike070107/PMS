@@ -81,22 +81,9 @@ interface OwnerRow {
   } | null;
 }
 
-/**
- * 身份标记。保安/居委会/业委会/物业工作人员在小程序里报修时，
- * 位置不受「自己家」限制，能选到授权小区里的任意楼栋/房号。
- * 标记完本人无需做任何操作，下次进小程序就是新的选法（前台不显示身份字样）。
- */
-const IDENTITY_OPTIONS = [
-  { value: 'owner', label: '业主' },
-  { value: 'guard', label: '保安' },
-  { value: 'neighborhood', label: '居委会' },
-  { value: 'owner_committee', label: '业委会' },
-  { value: 'property_staff', label: '物业工作人员' },
-];
-
-const IDENTITY_LABELS: Record<string, string> = Object.fromEntries(
-  IDENTITY_OPTIONS.map((item) => [item.value, item.label]),
-);
+// 业主档案只管普通小程序用户。保安/居委会/业委会/物业工作人员是「工作人员」，
+// 在「用户管理」里登记（填同一手机号即可把已注册的小程序账号就地转过去），
+// 那边配可代报小区与网页登录 —— 两页各管一类人，同一个人不会出现两条档案。
 
 function formatLocation(h: { communityName: string; lane: string | null; buildingNo: string; roomNo: string }) {
   return `${h.communityName} · ${h.lane ? h.lane + ' 弄 ' : ''}${h.buildingNo} 号 ${h.roomNo} 室`;
@@ -995,13 +982,6 @@ function OwnersTab() {
           { title: '姓名', dataIndex: 'name', width: 120, render: (v) => v || <Text type="secondary">-</Text> },
           { title: '电话', dataIndex: 'phone', width: 130 },
           {
-            title: '身份', dataIndex: 'reporterRole', width: 120,
-            // 只有被标记过的才上色，普通业主保持素净，一眼看出哪几个人有代报权限
-            render: (v: string, r) => v && v !== 'owner'
-              ? <Tag color="geekblue">{IDENTITY_LABELS[v] || v}{r.reportCommunityIds?.length ? ` · ${r.reportCommunityIds.length} 个小区` : ''}</Tag>
-              : <Text type="secondary">业主</Text>,
-          },
-          {
             title: '绑定房产', key: 'house',
             render: (_, r) => r.house
               ? formatLocation({
@@ -1061,29 +1041,14 @@ function OwnerFormModal({
   const [saving, setSaving] = useState(false);
   const [houseOptions, setHouseOptions] = useState<HouseRow[]>([]);
   const [searching, setSearching] = useState(false);
-  // 身份决定要不要显示「可代报的小区」，单独存一份跟着 Select 变
-  const [identity, setIdentity] = useState('owner');
-  const [communities, setCommunities] = useState<Community[]>([]);
-
-  useEffect(() => {
-    if (!open) return;
-    request<Community[]>({ url: '/communities' })
-      .then((list) => setCommunities(list.filter((c) => !c.isGroup)))
-      .catch(() => setCommunities([]));
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     if (target) {
-      setIdentity(target.reporterRole || 'owner');
       form.setFieldsValue({
         name: target.name,
         phone: target.phone,
         houseId: target.houseId,
-      });
-      form.setFieldsValue({
-        reporterRole: target.reporterRole || 'owner',
-        reportCommunityIds: target.reportCommunityIds || [],
       });
       if (target.house) {
         setHouseOptions([{
@@ -1106,7 +1071,6 @@ function OwnerFormModal({
     } else {
       form.resetFields();
       setHouseOptions([]);
-      setIdentity('owner');
     }
   }, [open, target, form]);
 
@@ -1146,12 +1110,6 @@ function OwnerFormModal({
         phone: v.phone,
         houseId: v.houseId ?? null,
       };
-      // 身份只在编辑已有档案时改：新建的账号还没人登录过，标记了也无处生效
-      if (target) {
-        payload.reporterRole = v.reporterRole || 'owner';
-        payload.reportCommunityIds =
-          v.reporterRole && v.reporterRole !== 'owner' ? v.reportCommunityIds || [] : [];
-      }
       if (target) {
         await request({ method: 'PATCH', url: `/owners-mgmt/${target.id}`, data: payload });
         message.success('已保存');
@@ -1215,29 +1173,10 @@ function OwnerFormModal({
           />
         </Form.Item>
         {target && (
-          <>
-            <Form.Item
-              name="reporterRole"
-              label="身份"
-              extra="保安/居委会/业委会/物业工作人员在小程序报修时，可以选到授权小区里的任意楼栋和房号；本人不用做任何操作。"
-            >
-              <Select options={IDENTITY_OPTIONS} onChange={(v) => setIdentity(v as string)} />
-            </Form.Item>
-            {identity !== 'owner' && (
-              <Form.Item
-                name="reportCommunityIds"
-                label="可代报的小区"
-                rules={[{ required: true, message: '至少选一个小区，否则他在小程序里还是只能报自己家' }]}
-              >
-                <Select
-                  mode="multiple"
-                  placeholder="可多选"
-                  options={withOptionTitles(communities.map((c) => ({ value: c.id, label: c.name })))}
-                  {...searchableWideSelectProps}
-                />
-              </Form.Item>
-            )}
-          </>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            要把这个人设为保安 / 居委会 / 业委会 / 物业工作人员？去「用户管理」新增员工并填同一手机号，
+            账号会就地转为工作人员（不会建重复档案），在那边配可代报的小区和网页登录。
+          </Typography.Text>
         )}
       </Form>
     </Modal>

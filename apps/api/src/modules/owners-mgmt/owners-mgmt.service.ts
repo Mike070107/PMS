@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { OWNER_APP_ROLES, REPORTER_ROLES, UserRole, UserStatus } from '../../common/enums';
+import { OWNER_APP_ROLES, UserRole, UserStatus } from '../../common/enums';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { Building, Community, House, User, UserReportCommunity } from '../../entities';
@@ -38,9 +38,10 @@ export class OwnersMgmtService {
         'c.id = b.community_id AND c.tenant_id = b.tenant_id',
       )
       .where('u.tenant_id = :tenantId', { tenantId })
-      // 标记成保安/居委会/业委会/物业工作人员后仍留在这张表里，
-      // 否则一标记人就从业主档案消失，想改回来都找不到
-      .andWhere('u.role IN (:...roles)', { roles: OWNER_APP_ROLES })
+      // 业主档案只管普通小程序用户；保安/居委会/业委会/物业工作人员是「工作人员」，
+      // 统一在「用户管理」里维护（那边填同一手机号即可把业主账号就地转成工作人员）。
+      // 两页各管一类人，同一个人才不会出现两条档案（2026-08-21 定）。
+      .andWhere('u.role = :ownerRole', { ownerRole: UserRole.OWNER })
       .select([
         'u.id AS id',
         'u.name AS name',
@@ -177,40 +178,12 @@ export class OwnersMgmtService {
         owner.houseId = dto.houseId;
       }
     }
-    if (dto.reporterRole !== undefined) owner.role = dto.reporterRole;
+    // 身份转换（业主 → 保安/居委会/业委会/物业工作人员）不在业主档案做：
+    // 去「用户管理」新增工作人员并填同一手机号，会就地转换、不建重复档案。
+    // 这里改身份曾直接把账号踢出所有业主端接口（当时接口只放行 OWNER），已废弃。
     owner.updatedBy = user.id;
     await this.userRepo.save(owner);
-
-    // 身份改回业主就把授权一并收掉，别留下一份看不见却仍然生效的权限
-    if (dto.reporterRole !== undefined && !REPORTER_ROLES.includes(owner.role)) {
-      await this.reportGrantRepo.delete({ tenantId, userId: id });
-    } else if (dto.reportCommunityIds !== undefined) {
-      await this.replaceReportGrants(tenantId, id, dto.reportCommunityIds, user.id);
-    }
     return this.fetchOne(id, tenantId);
-  }
-
-  /** 整份覆盖代报授权：先删后插，避免增量对比写错留下收不回的权限 */
-  private async replaceReportGrants(
-    tenantId: number,
-    userId: number,
-    communityIds: number[],
-    operatorId: number,
-  ) {
-    const unique = Array.from(new Set(communityIds.filter((v) => Number.isFinite(v))));
-    await this.reportGrantRepo.delete({ tenantId, userId });
-    if (!unique.length) return;
-    await this.reportGrantRepo.save(
-      unique.map((communityId) =>
-        this.reportGrantRepo.create({
-          tenantId,
-          userId,
-          communityId,
-          createdBy: operatorId,
-          updatedBy: operatorId,
-        }),
-      ),
-    );
   }
 
   async remove(id: number, user: AuthUser) {

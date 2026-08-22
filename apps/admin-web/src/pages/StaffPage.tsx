@@ -363,7 +363,7 @@ function StaffFormModal({
         });
         message.success(
           isReporterRole
-            ? '已登记，请本人在小程序「我的」里用微信手机号认领身份'
+            ? '已登记。他在小程序注册过就已直接转为该身份；还没注册的，等他验证微信手机号时自动认领'
             : '员工已创建',
         );
       }
@@ -427,7 +427,7 @@ function StaffFormModal({
             name="reportCommunityIds"
             label="可代报的小区"
             rules={[{ required: true, message: '至少选一个小区，否则他在小程序里看不到代报入口' }]}
-            extra="只能替这些小区里的住户报修。登记后由本人在小程序「我的」用微信手机号认领，不需要账号密码。"
+            extra="只能替这些小区里的住户报修。填他微信注册小程序用的手机号：已注册过的账号会直接转为该身份；还没注册的，等他在小程序里验证手机号时自动认领 —— 都不会产生重复档案。"
           >
             <Select
               mode="multiple"
@@ -443,34 +443,38 @@ function StaffFormModal({
             <Select mode="multiple" options={withOptionTitles(skillOptions)} placeholder="可多选" {...searchableWideSelectProps} />
           </Form.Item>
         )}
-        {!isReporterRole && (
-          <Form.Item
-            name="roleIds"
-            label="后台角色（网站权限）"
-            extra={role === UserRole.ADMIN
-              ? '企业超级管理员天然拥有全部页面与全公司数据，这里绑定的角色（含数据范围）对其不生效。'
+        <Form.Item
+          name="roleIds"
+          label="后台角色（网站权限）"
+          extra={role === UserRole.ADMIN
+            ? '企业超级管理员天然拥有全部页面与全公司数据，这里绑定的角色（含数据范围）对其不生效。'
+            : isReporterRole
+              ? '选填。要让他登录网页后台就绑一个角色并在下面设账号密码；留空则只能用小程序。'
               : '决定登录网站后能看到哪些页面、能否编辑/删除；不绑角色则无法登录网站。角色在「角色管理」里配置。'}
-          >
-            <Select
-              mode="multiple"
-              placeholder="可多选；留空 = 不开网站权限"
-              options={withOptionTitles(
-                assignableRoles.map((r) => ({
-                  value: r.id,
-                  label: r.builtIn ? `${r.name}（内置）` : r.name,
-                })),
-              )}
-              {...searchableWideSelectProps}
-            />
-          </Form.Item>
-        )}
-        <Row gutter={12} style={{ display: isReporterRole ? 'none' : undefined }}>
+        >
+          <Select
+            mode="multiple"
+            placeholder="可多选；留空 = 不开网站权限"
+            options={withOptionTitles(
+              assignableRoles.map((r) => ({
+                value: r.id,
+                label: r.builtIn ? `${r.name}（内置）` : r.name,
+              })),
+            )}
+            {...searchableWideSelectProps}
+          />
+        </Form.Item>
+        <Row gutter={12}>
           <Col span={12}>
             <Form.Item
               name="loginAccount"
               label={needsLogin ? '登录账号' : '登录账号（选填）'}
               rules={[{ required: needsLogin && !target, message: '该角色必须登录后台' }]}
-              extra={needsLogin ? undefined : '维修工填了账号密码后，员工端可用账号密码登录'}
+              extra={needsLogin
+                ? undefined
+                : isReporterRole
+                  ? '配合上面的后台角色使用：两样都有才能登录网页后台'
+                  : '维修工填了账号密码后，员工端可用账号密码登录'}
             >
               <Input placeholder="用于后台 / 员工端登录" />
             </Form.Item>

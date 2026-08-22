@@ -1,6 +1,10 @@
 import { auth, repairs, upload } from '@pms/api-client';
-import type { PublicRepairType } from '@pms/api-client/src/endpoints/repairs';
+import type {
+  ParsedRepairAddress,
+  PublicRepairType,
+} from '@pms/api-client/src/endpoints/repairs';
 import { AuditStatus, classifyRepairType } from '@pms/shared-types';
+import { ADDRESS_HINT_RE, detectRepairAddress } from '../../utils/address-detect';
 import {
   composePlaceText,
   scopeHint,
@@ -58,6 +62,12 @@ Page({
     /** 语音识别的实时中间结果，让用户知道在听 */
     partial: '',
     content: '',
+    /**
+     * 从描述里识别出来的报修地址（「一期24号302」→ 库里真实的楼栋/房号）。
+     * 识别到就替换默认位置展示，提交时关联 id 跟着它走；点 × 恢复默认 ——
+     * 默认值必须能改，改完提交的 id 也要跟着变，这是全局口径。
+     */
+    detected: null as ParsedRepairAddress | null,
     media: [] as Array<{ url: string; type: 'image' | 'video' }>,
     uploading: false,
     submitting: false,
@@ -79,9 +89,17 @@ Page({
   } | null,
   types: [] as PublicRepairType[],
   guessType: '' as string,
+  /** 地址识别的防抖定时器 */
+  detectTimer: 0 as number,
+  /** 用户点过 × 的识别片段：同一段文字不再弹出来烦人 */
+  dismissedMatch: '' as string,
 
   onLoad() {
     this.bindSpeech();
+  },
+
+  onUnload() {
+    if (this.detectTimer) clearTimeout(this.detectTimer);
   },
 
   onShow() {
@@ -120,7 +138,13 @@ Page({
         ready: true,
         needOnboard: false,
         hasBuilding,
-        scopes: scopeOptions(hasBuilding),
+        // 工作人员（保安/居委会等）的默认位置是物业地址，不是「我家里」——
+        // 文案跟着换，位置照样能切到公共区域或在描述里说地址
+        scopes: scopeOptions(hasBuilding).map((item) =>
+          (place as { officePlace?: boolean }).officePlace && item.key === 'home'
+            ? { ...item, label: '物业地址' }
+            : item,
+        ),
         // 审核中照样能报修：位置在申请里已经写清楚了，没道理再把人挡回认证页
         pendingHint: this.auditHint(place.auditStatus),
         errorMsg: '',
@@ -278,6 +302,7 @@ Page({
       const next = this.data.content ? `${this.data.content}${text}` : text;
       this.setData({ content: next });
       this.guess(next);
+      this.scheduleDetect(next);
       this.refreshSubmittable();
     };
     speechManager.onError = (err: { msg?: string }) => {
@@ -302,7 +327,43 @@ Page({
     const value = e.detail.value;
     this.setData({ content: value });
     this.guess(value);
+    this.scheduleDetect(value);
     this.refreshSubmittable();
+  },
+
+  // ---------------- 描述里的地址识别 ----------------
+
+  /**
+   * 描述里出现「一期 / 198弄 / 24号」这类片段时，让服务端拿真实楼栋房号来对。
+   * 端上先用正则粗筛 + 400ms 防抖，别每敲一个字就打一次接口。
+   * 判断口径见 utils/address-detect，新增报修入口直接引那里。
+   */
+  scheduleDetect(content: string) {
+    if (this.detectTimer) clearTimeout(this.detectTimer);
+    if (!ADDRESS_HINT_RE.test(content)) {
+      if (this.data.detected) this.setData({ detected: null });
+      return;
+    }
+    this.detectTimer = setTimeout(() => this.detectAddress(content), 400) as unknown as number;
+  },
+
+  async detectAddress(content: string) {
+    const res = await detectRepairAddress(content, this.place?.communityId);
+    // 结果回来时文字可能已经变了，只认最新一次输入
+    if (content !== this.data.content) return;
+    if (!res) {
+      if (this.data.detected) this.setData({ detected: null });
+      return;
+    }
+    // 用户点过 × 的同一段地址不再弹出来
+    if (res.matchedText && res.matchedText === this.dismissedMatch) return;
+    this.setData({ detected: res });
+  },
+
+  /** 点 × 撤掉识别结果，回到默认位置（我家 / 手选范围） */
+  onDismissDetected() {
+    this.dismissedMatch = this.data.detected?.matchedText || '';
+    this.setData({ detected: null });
   },
 
   /** 按描述自动判定报修类型；判不出就留空，由后台按「其它」处理 */
@@ -346,14 +407,21 @@ Page({
     }
 
     const scope = this.data.scope;
+    const detected = this.data.detected;
     this.setData({ submitting: true });
     try {
       const resp = await repairs.create({
-        communityId: this.place.communityId,
-        // 公共区域的单不能挂到业主房号上：挂了工单看着像入户维修，
+        // 描述里识别到了地址就按识别结果提交（id 和文案一起换，不能只换显示）；
+        // 否则维持默认：公共区域的单不能挂到业主房号上 —— 挂了工单看着像入户维修，
         // 维修工会去敲门，统计上也把公区故障算进了这户
-        ...scopeIds(scope, this.place),
-        addressText: this.data.placeText,
+        communityId: detected?.matched ? detected.communityId! : this.place.communityId,
+        ...(detected?.matched
+          ? {
+              buildingId: detected.buildingId ?? undefined,
+              houseId: detected.houseId ?? undefined,
+            }
+          : scopeIds(scope, this.place)),
+        addressText: detected?.matched ? detected.addressText : this.data.placeText,
         repairType: this.guessType || undefined,
         // 只拍照没打字时给一句占位，后端要求 content 非空
         content: content || '业主随手拍报修，详见照片',

@@ -36,6 +36,7 @@ import { AccessCard } from './access-card.entity';
 import { BusinessTransaction } from './business-transaction.entity';
 import { BusinessLog } from './business-log.entity';
 import { RepairTypeRule } from './repair-type-rule.entity';
+import { RepairTypeCorrection } from './repair-type-correction.entity';
 import { ManagementOffice } from './management-office.entity';
 import { Role } from './role.entity';
 import { RolePermission } from './role-permission.entity';
@@ -88,6 +89,7 @@ export const entities = [
   BusinessTransaction,
   BusinessLog,
   RepairTypeRule,
+  RepairTypeCorrection,
 ];
 
 export {
@@ -135,4 +137,5 @@ export {
   BusinessTransaction,
   BusinessLog,
   RepairTypeRule,
+  RepairTypeCorrection,
 };
