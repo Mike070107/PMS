@@ -3,3 +3,4 @@
 export { default as tokens } from './tokens';
 export * from './status';
 export * from './format';
+export * from './speech';

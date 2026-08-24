@@ -15,6 +15,7 @@ import {
   REPAIR_TYPE_OPTIONS,
   type AddressCommunity,
 } from '@pms/shared-types';
+import { speechErrorTip } from '@pms/miniapp-ui';
 import { loadAddressBook } from '../../utils/address-picker';
 import {
   composePlaceText,
@@ -564,9 +565,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       this.setData({ content: next, 'errors.content': '' });
       this.scheduleDetect(next);
     };
-    speechManager.onError = (err: { msg?: string }) => {
+    speechManager.onError = (err: { msg?: string; retcode?: number }) => {
       this.setData({ recording: false, partial: '' });
-      wx.showToast({ icon: 'none', title: err?.msg || '语音识别失败，可直接打字' });
+      // 云端识别，网差必失败：先探网络，网差就明说，别让人以为自己没说清
+      speechErrorTip(err).then((title) => wx.showToast({ icon: 'none', title, duration: 3000 }));
     };
   },
 

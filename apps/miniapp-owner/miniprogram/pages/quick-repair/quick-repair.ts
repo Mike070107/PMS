@@ -3,6 +3,7 @@ import type {
   ParsedRepairAddress,
   PublicRepairType,
 } from '@pms/api-client/src/endpoints/repairs';
+import { speechErrorTip } from '@pms/miniapp-ui';
 import { AuditStatus, classifyRepairType } from '@pms/shared-types';
 import { ADDRESS_HINT_RE, detectRepairAddress } from '../../utils/address-detect';
 import {
@@ -305,9 +306,10 @@ Page({
       this.scheduleDetect(next);
       this.refreshSubmittable();
     };
-    speechManager.onError = (err: { msg?: string }) => {
+    speechManager.onError = (err: { msg?: string; retcode?: number }) => {
       this.setData({ recording: false, partial: '' });
-      wx.showToast({ icon: 'none', title: err?.msg || '语音识别失败，可直接打字' });
+      // 云端识别，网差必失败：先探网络，网差就明说，别让人以为自己没说清
+      speechErrorTip(err).then((title) => wx.showToast({ icon: 'none', title, duration: 3000 }));
     };
   },
 
