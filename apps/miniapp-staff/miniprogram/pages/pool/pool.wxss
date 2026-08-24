@@ -10,3 +10,6 @@
   font-size: var(--font-md);
   line-height: 1.6;
 }
+
+/* 页头下的报修入口 */
+.report-entry { margin: 0 0 var(--space-md); }

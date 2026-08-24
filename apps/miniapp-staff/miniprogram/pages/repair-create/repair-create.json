@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "报修",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "place-picker": "/components/place-picker/index"
+  }
+}

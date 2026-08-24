@@ -67,12 +67,15 @@ export enum WorkOrderStatus {
 
 export enum RepairSource {
   OWNER_MINIAPP = 'owner_miniapp',
+  /** 员工小程序（邻修管理）：维修工/办公室巡查顺手报修 */
+  STAFF_MINIAPP = 'staff_miniapp',
   OFFICE_WEB = 'office_web',
 }
 
 /** 报修来源的中文说法：时间轴/详情直接展示给业主，不能露枚举值 */
 export const REPAIR_SOURCE_LABELS: Record<string, string> = {
   [RepairSource.OWNER_MINIAPP]: '业主小程序提交',
+  [RepairSource.STAFF_MINIAPP]: '员工小程序提交',
   [RepairSource.OFFICE_WEB]: '物业办公室登记',
 };
 

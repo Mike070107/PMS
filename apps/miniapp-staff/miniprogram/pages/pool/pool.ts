@@ -55,6 +55,10 @@ Page({
     }
   },
 
+  onGoRepair() {
+    wx.navigateTo({ url: '/pages/repair-create/repair-create' });
+  },
+
   onTapItem(e: WechatMiniprogram.BaseEvent) {
     wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${e.currentTarget.dataset.id}` });
   },

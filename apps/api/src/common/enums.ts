@@ -29,6 +29,18 @@ export const REPORTER_ROLES: UserRole[] = [
 /** 走业主端小程序登录的角色（业主 + 代报角色） */
 export const OWNER_APP_ROLES: UserRole[] = [UserRole.OWNER, ...REPORTER_ROLES];
 
+/**
+ * 走员工端小程序（邻修管理）登录的角色。
+ * 员工也能在员工端报修（发现楼道灯坏了顺手提单），位置不受「自己家」约束。
+ */
+export const STAFF_APP_ROLES: UserRole[] = [
+  UserRole.TECHNICIAN,
+  UserRole.OFFICE,
+  UserRole.MANAGER,
+  UserRole.PURCHASER,
+  UserRole.ADMIN,
+];
+
 /** 角色中文名。工单详情、账号管理都直接展示，不能露枚举值 */
 export const USER_ROLE_LABELS: Record<string, string> = {
   [UserRole.OWNER]: '业主',
@@ -82,13 +94,15 @@ export enum WorkOrderStatus {
 
 /** 报修来源 */
 export enum RepairSource {
-  OWNER_MINIAPP = 'owner_miniapp', // 业主小程序
+  OWNER_MINIAPP = 'owner_miniapp', // 业主小程序（邻修管家）
+  STAFF_MINIAPP = 'staff_miniapp', // 员工小程序（邻修管理），员工巡查顺手报修
   OFFICE_WEB = 'office_web', // 物业办公室录入
 }
 
 /** 报修来源的中文说法：进度时间轴、工单详情都直接展示给业主，不能露枚举值 */
 export const REPAIR_SOURCE_LABELS: Record<string, string> = {
   [RepairSource.OWNER_MINIAPP]: '业主小程序提交',
+  [RepairSource.STAFF_MINIAPP]: '员工小程序提交',
   [RepairSource.OFFICE_WEB]: '物业办公室登记',
 };
 

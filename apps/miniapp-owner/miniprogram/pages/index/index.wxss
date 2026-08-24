@@ -10,7 +10,8 @@
   width: 104rpx;
   height: 104rpx;
   flex-shrink: 0;
-  border-radius: 24rpx;
+  /* 品牌图就是微信里的小程序头像（圆形透明底），按圆形放，阴影跟着圆走 */
+  border-radius: 50%;
   box-shadow: 0 12rpx 28rpx rgba(18, 35, 59, 0.22);
 }
 .hero__copy { flex: 1; min-width: 0; }

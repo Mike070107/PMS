@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
-import { OWNER_APP_ROLES, UserRole } from '../../common/enums';
+import { OWNER_APP_ROLES, STAFF_APP_ROLES, UserRole } from '../../common/enums';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -100,7 +100,7 @@ export class RepairsController {
    * 只出启用中的类型，不下发派单规则（默认维修工 / 时限属于内部配置）。
    */
   @Get('repair-types')
-  @Roles(...OWNER_APP_ROLES, UserRole.TECHNICIAN)
+  @Roles(...OWNER_APP_ROLES, ...STAFF_APP_ROLES)
   @RequirePermission('work-orders', 'view')
   listPublicRepairTypes(@CurrentUser() user: AuthUser) {
     return this.repairsService.listPublicRepairTypes(user);
@@ -138,7 +138,7 @@ export class RepairsController {
    * 鉴权与提交报修完全同一套 —— 能提单的人才需要识别地址。
    */
   @Post('repair-requests/parse-address')
-  @Roles(...OWNER_APP_ROLES)
+  @Roles(...OWNER_APP_ROLES, ...STAFF_APP_ROLES)
   @RequirePermission('work-orders', 'edit')
   parseRepairAddress(
     @Body() dto: ParseRepairAddressDto,
@@ -147,8 +147,9 @@ export class RepairsController {
     return this.repairsService.parseRepairAddress(dto, user);
   }
 
+  /** 两个小程序共用：业主端各身份 + 员工端（维修工/办公室巡查顺手报修） */
   @Post('repair-requests')
-  @Roles(...OWNER_APP_ROLES)
+  @Roles(...OWNER_APP_ROLES, ...STAFF_APP_ROLES)
   @RequirePermission('work-orders', 'edit')
   submitOwnerRepair(
     @Body() dto: CreateRepairRequestDto,

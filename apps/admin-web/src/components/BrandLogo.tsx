@@ -22,7 +22,8 @@ export default function BrandLogo({ size = 'default', dark = false }: BrandLogoP
         style={{
           width: markSize,
           height: markSize,
-          borderRadius: isLarge ? 12 : 9,
+          // 与小程序头像同一张圆形图，按圆裁
+          borderRadius: '50%',
           display: 'block',
           objectFit: 'cover',
           boxShadow: isLarge ? '0 12px 28px rgba(49, 85, 138, 0.2)' : 'none',

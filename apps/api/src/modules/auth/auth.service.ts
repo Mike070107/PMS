@@ -16,6 +16,7 @@ import { AuthUser } from '../../common/current-user.decorator';
 import {
   AuditStatus,
   OWNER_APP_ROLES,
+  STAFF_APP_ROLES,
   REPORTER_ROLES,
   USER_ROLE_LABELS,
   UserRole,
@@ -44,14 +45,8 @@ import {
 import { SettingsService } from '../settings/settings.service';
 import { WechatService } from './wechat.service';
 
-/** 可登录员工端小程序的角色 */
-const STAFF_ROLES: UserRole[] = [
-  UserRole.TECHNICIAN,
-  UserRole.OFFICE,
-  UserRole.MANAGER,
-  UserRole.PURCHASER,
-  UserRole.ADMIN,
-];
+/** 可登录员工端小程序的角色（定义收口到 enums，与报修放行共用一份） */
+const STAFF_ROLES: UserRole[] = STAFF_APP_ROLES;
 
 @Injectable()
 export class AuthService {

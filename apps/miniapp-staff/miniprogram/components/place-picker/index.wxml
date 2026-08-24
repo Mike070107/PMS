@@ -1,0 +1,70 @@
+<view class="field" bindtap="onOpen">
+  <view class="label">报修位置</view>
+  <view class="picker {{valueText ? '' : 'placeholder'}}">
+    {{valueText || (loading ? '正在加载地址…' : '点这里选小区 / 楼栋 / 房号')}}
+  </view>
+  <view class="muted mt-sm">楼道、电梯、大门这类公共区域，选到那一级就行，不用选房号。</view>
+</view>
+
+<!-- 选择面板：手机上放不下级联面板，改成逐层钻取 -->
+<view wx:if="{{open}}" class="mask" catchtap="onClose"></view>
+<view wx:if="{{open}}" class="panel">
+  <view class="panel__head">
+    <view class="panel__back {{level === 'community' ? 'panel__back--off' : ''}}" catchtap="onBack">
+      {{level === 'community' ? '' : '返回上一级'}}
+    </view>
+    <view class="panel__title">选报修位置</view>
+    <view class="panel__close" catchtap="onClose">关闭</view>
+  </view>
+
+  <!-- 面包屑：当前钻到哪一层 -->
+  <view wx:if="{{communityName}}" class="crumb">
+    {{communityName}}{{buildingText ? ' · ' + buildingText : ''}}
+  </view>
+
+  <!-- 快速查询：输 228/4/201 直接出完整地址，和后台同一套匹配 -->
+  <view class="search">
+    <input
+      class="search__input"
+      placeholder="快速查询：输入 228/4/201"
+      value="{{keyword}}"
+      bindinput="onKeyword"
+    />
+  </view>
+  <view wx:if="{{suggestions.length}}" class="suggest">
+    <view
+      wx:for="{{suggestions}}"
+      wx:key="key"
+      class="suggest__item"
+      data-index="{{index}}"
+      catchtap="onPickSuggestion"
+    >{{item.text}}</view>
+  </view>
+
+  <block wx:if="{{!suggestions.length}}">
+    <!-- 停在当前这一级 = 公共区域单 -->
+    <view wx:if="{{stayLabel}}" class="stay-here" catchtap="onStayHere">
+      <text class="stay-here__main">{{stayLabel}}</text>
+      <text class="stay-here__sub">楼道、电梯、大门、路灯等公共设施选这个</text>
+    </view>
+
+    <view wx:if="{{level === 'house'}}" class="skip-room" catchtap="onSkipRoom">
+      不填房号（只报到这栋楼）
+    </view>
+
+    <scroll-view class="list" scroll-y>
+      <view
+        wx:for="{{rows}}"
+        wx:key="key"
+        class="list__item"
+        data-index="{{index}}"
+        catchtap="onPickRow"
+      >
+        <text class="list__label">{{item.label}}</text>
+        <text wx:if="{{item.note}}" class="list__note">{{item.note}}</text>
+        <view wx:if="{{level !== 'house'}}" class="icon icon--chevron"></view>
+      </view>
+      <view wx:if="{{!rows.length}}" class="list__empty">这一级还没有数据</view>
+    </scroll-view>
+  </block>
+</view>

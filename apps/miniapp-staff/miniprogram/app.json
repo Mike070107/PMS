@@ -4,6 +4,7 @@
     "pages/pool/pool",
     "pages/my-orders/my-orders",
     "pages/order-detail/order-detail",
+    "pages/repair-create/repair-create",
     "pages/approvals/approvals",
     "pages/materials/materials",
     "pages/inventory/inventory",

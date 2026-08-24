@@ -8,6 +8,16 @@
     </view>
   </view>
 
+  <view class="card entries">
+    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onGoRepair">
+      <view class="entry__body">
+        <view class="entry__title">我要报修</view>
+        <view class="entry__desc">巡查发现的问题直接提单，地址可选全公司任意楼栋房号</view>
+      </view>
+      <view class="entry__arrow"></view>
+    </view>
+  </view>
+
   <!-- 维修工没有材料/库存权限，这块整段不显示 -->
   <view wx:if="{{canUseInventory}}" class="card entries">
     <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenMaterials">

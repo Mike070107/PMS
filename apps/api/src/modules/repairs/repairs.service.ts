@@ -25,6 +25,7 @@ import {
   NotifyChannel,
   NotifyStatus,
   OWNER_APP_ROLES,
+  STAFF_APP_ROLES,
   RepairSource,
   REPAIR_SOURCE_LABELS,
   REPORTER_ROLES,
@@ -346,10 +347,11 @@ export class RepairsService implements OnModuleInit {
   }
 
   async submitOwnerRepair(dto: CreateRepairRequestDto, user: AuthUser) {
-    // 保安/居委会/业委会也用业主端小程序报修，只是位置不受「自己家」约束
-    const allowed: string[] = [UserRole.OWNER, UserRole.ADMIN, ...REPORTER_ROLES];
+    // 两个小程序都走这个入口：业主端（业主 + 保安/居委会/业委会/物业工作人员）
+    // 和员工端（维修工/办公室等，巡查发现问题顺手提单），位置都不受「自己家」约束
+    const allowed: string[] = [...OWNER_APP_ROLES, ...STAFF_APP_ROLES];
     if (!allowed.includes(user.role)) {
-      throw new ForbiddenException('only owner can submit owner repair');
+      throw new ForbiddenException('该角色不能提交报修');
     }
 
     // 没入驻的业主（tenantId 为空）也要能报修：扫了楼栋码就该能提，
@@ -370,12 +372,16 @@ export class RepairsService implements OnModuleInit {
 
     await this.assertCanReportAt(dto, tenantId, user);
 
+    // 非业主本人报的都把身份标出来（保安/维修工/办公室…），
+    // 办公室看到「张三（维修工代报）」才知道电话那头不是住户本人
     return this.createRepairAndWorkOrder(
       dto,
       tenantId,
-      RepairSource.OWNER_MINIAPP,
+      STAFF_APP_ROLES.includes(user.role as UserRole)
+        ? RepairSource.STAFF_MINIAPP
+        : RepairSource.OWNER_MINIAPP,
       user.id,
-      REPORTER_ROLES.includes(user.role as UserRole) ? user.role : null,
+      user.role !== UserRole.OWNER ? user.role : null,
     );
   }
 
@@ -704,7 +710,7 @@ export class RepairsService implements OnModuleInit {
     // 读取时补上，不改历史数据；新单在创建时就已经写进库里了
     const contact = request
       ? await this.resolveContact(request, tenantId, request.submittedBy, {
-          submitterIsContact: request.source === RepairSource.OWNER_MINIAPP,
+          submitterIsContact: request.source !== RepairSource.OFFICE_WEB,
           allowHouseOwnerFallback: !request.reporterRole,
         })
       : null;
@@ -1478,7 +1484,8 @@ export class RepairsService implements OnModuleInit {
     // 联系人/电话在端上都是选填（随手拍压根不问），不在服务端兜底的话
     // 后台工单详情就是两个「-」，办公室拿到单子找不到人
     const contact = await this.resolveContact(dto, tenantId, submittedBy, {
-      submitterIsContact: source === RepairSource.OWNER_MINIAPP,
+      // 两个小程序提交的联系人都默认是提交人本人；办公室录入才另填
+      submitterIsContact: source !== RepairSource.OFFICE_WEB,
       allowHouseOwnerFallback: !reporterRole,
     });
 

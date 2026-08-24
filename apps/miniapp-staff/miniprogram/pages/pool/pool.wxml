@@ -5,6 +5,9 @@
     <view class="page-lead__sub">谁先接谁修。红色是已经压了 7 天以上的单，优先处理。</view>
   </view>
 
+  <!-- 巡查发现问题顺手提单：不用回办公室找人录 -->
+  <button class="btn btn--outline report-entry" bindtap="onGoRepair">我要报修（巡查发现问题）</button>
+
   <view wx:if="{{loading && !loaded}}" class="center muted">加载中…</view>
   <view wx:elif="{{!list.length && loaded}}">
     <pms-empty text="工单池是空的，暂时没有待接的活"/>
