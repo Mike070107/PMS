@@ -22,8 +22,8 @@ export default function BrandLogo({ size = 'default', dark = false }: BrandLogoP
         style={{
           width: markSize,
           height: markSize,
-          // 与小程序头像同一张圆形图，按圆裁
-          borderRadius: '50%',
+          // 后台用物业工作平台的品牌图（蓝底扳手小屋），不是业主端「邻修管家」头像
+          borderRadius: isLarge ? 12 : 9,
           display: 'block',
           objectFit: 'cover',
           boxShadow: isLarge ? '0 12px 28px rgba(49, 85, 138, 0.2)' : 'none',
