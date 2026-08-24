@@ -1581,7 +1581,7 @@ export class RepairsService implements OnModuleInit {
       allowHouseOwnerFallback: !reporterRole,
     });
 
-    return this.dataSource.transaction(async (manager) => {
+    const created = await this.dataSource.transaction(async (manager) => {
       const request = await manager.save(
         RepairRequest,
         manager.create(RepairRequest, {
@@ -1656,30 +1656,38 @@ export class RepairsService implements OnModuleInit {
         }),
       );
 
-      // 端上判了一个类型、人当场改成了别的 —— 判错了的最直接证据。
-      // 只记录、不自动改关键词：报修的人只是顺手改个下拉框，没打算给系统当老师，
-      // 拿一次手滑去改配置容易把整个类型带偏。攒够次数后由 listPublicRepairTypes
-      // 给误判的词降权，后台「常被改判」里也能一键收编成正式关键词。
-      const predicted = dto.predictedRepairType?.trim();
-      if (predicted && repairType && predicted !== repairType) {
-        await manager.save(
-          RepairTypeCorrection,
-          manager.create(RepairTypeCorrection, {
-            tenantId,
-            workOrderId: workOrder.id,
-            requestId: request.id,
-            fromType: predicted,
-            toType: repairType,
-            content: dto.content,
-            learnedKeywords: [],
-            createdBy: submittedBy,
-            updatedBy: submittedBy,
-          }),
-        );
-      }
-
       return { request, workOrder };
     });
+
+    // 端上判了一个类型、人当场改成了别的 —— 判错了的最直接证据。
+    //
+    // 特意放在事务**外面**并吞掉异常：这只是给判定攒经验的信号，
+    // 记不上顶多是下次判得没那么准，绝不能因为它让业主的报修提交失败。
+    // 只记录、不自动改关键词：报修的人只是顺手改个下拉框，没打算给系统当老师，
+    // 拿一次手滑去改配置容易把整个类型带偏。攒够次数后由 listPublicRepairTypes
+    // 给误判的词降权，后台也能对着这张表把词收编成正式关键词。
+    const predicted = dto.predictedRepairType?.trim();
+    if (predicted && repairType && predicted !== repairType) {
+      try {
+        await this.dataSource.getRepository(RepairTypeCorrection).save({
+          tenantId,
+          workOrderId: created.workOrder.id,
+          requestId: created.request.id,
+          fromType: predicted,
+          toType: repairType,
+          content: dto.content,
+          learnedKeywords: [],
+          createdBy: submittedBy,
+          updatedBy: submittedBy,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `报修类型负样本记录失败（不影响报修）：${error instanceof Error ? error.message : error}`,
+        );
+      }
+    }
+
+    return created;
   }
 
   /** 供定时任务调用：全租户扫描超时待验收工单并自动完成，返回处理数量 */

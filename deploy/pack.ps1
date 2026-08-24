@@ -65,15 +65,25 @@ try {
         Copy-Item -Force -LiteralPath (Join-Path $RepoRoot "apps\api\ecosystem.config.cjs") `
                        -Destination   (Join-Path $ApiDist "ecosystem.config.cjs")
 
+        # 打包机的 .env 是本地开发配置（本地库密码、MinIO）。跟着进包 = 解包时顶掉线上 .env，
+        # 接口直接连不上生产库（2026-08-25 就这么把线上打挂过一次）。
+        # 这里删完必须复查：删不掉时（杀软锁文件、另一个 pack 同时在写这个目录）不能当没事发生。
         $envInPkg = Join-Path $ApiDist ".env"
-        if (Test-Path -LiteralPath $envInPkg) { Remove-Item -Force -LiteralPath $envInPkg }
+        if (Test-Path -LiteralPath $envInPkg) {
+            Remove-Item -Force -LiteralPath $envInPkg -ErrorAction SilentlyContinue
+        }
+        if (Test-Path -LiteralPath $envInPkg) { Die (".env still in package dir: " + $envInPkg) }
 
         $ApiTar = Join-Path $DeployDir ("pms-api-" + $Ts + ".tar.gz")
+        # --exclude 是第二道保险：上面删过一次，这里再确保它进不了包
         Run ("tar -> pms-api-" + $Ts + ".tar.gz") {
-            tar -czf $ApiTar -C (Join-Path $DeployDir "dist") api
+            tar -czf $ApiTar --exclude="api/.env" -C (Join-Path $DeployDir "dist") api
         }
         $size = (Get-Item -LiteralPath $ApiTar).Length
         if ($size -lt 5MB) { Die ("pms-api tarball too small: " + $size + " bytes") }
+        # 包已经生成了才发现带 .env 就晚了 —— 直接开包核对一次
+        $inTar = (tar -tzf $ApiTar 2>$null) | Where-Object { $_ -eq "api/.env" }
+        if ($inTar) { Die "packaged tarball contains api/.env" }
         Write-Host ("    api package: " + $ApiTar + "  (" + [math]::Round($size/1MB,2) + " MB)") -ForegroundColor Green
     }
 

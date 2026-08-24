@@ -20,7 +20,7 @@ import {
 /**
  * 「添加用料」的一行。
  *
- * materialId 有值 = 从本小区仓的库存里选的，完工时按它扣库存、记出库流水；
+ * materialId 有值 = 从某个仓的库存里选的（warehouseId 记着是哪个），完工时按它扣库存、记出库流水；
  * 只有 name = 现场手填（仓里根本没有这东西），这种只能走缺料登记让办公室去采购。
  * stockQty 是选中那一刻的可用量，用来判断「够不够」——不够的行也允许留着，
  * 提交时会被拦下并提示改走缺料登记。
@@ -83,16 +83,16 @@ function decorateRow(row: MaterialRow): MaterialRow {
       : { ...row, hintText: '', hintShort: false };
   }
   if (row.stockQty <= 0) {
-    return { ...row, hintText: '本小区仓无库存，需走缺料登记', hintShort: true };
+    return { ...row, hintText: '所选仓库无库存，需走缺料登记', hintShort: true };
   }
   if (need > row.stockQty) {
     return {
       ...row,
-      hintText: `本小区仓只剩 ${row.stockQty}${row.unit}，不够，需走缺料登记`,
+      hintText: `所选仓库只剩 ${row.stockQty}${row.unit}，不够，需走缺料登记`,
       hintShort: true,
     };
   }
-  return { ...row, hintText: `本小区仓可用 ${row.stockQty}${row.unit}`, hintShort: false };
+  return { ...row, hintText: `所选仓库可用 ${row.stockQty}${row.unit}`, hintShort: false };
 }
 
 /** 表单行 → 提交用的数组（去空行、数量转数字） */
@@ -212,9 +212,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     phrases: [],
   },
 
-  /** 本小区仓的库存清单放实例上，筛选在本地做，翻来翻去不用每次都请求 */
+  /** 当前仓库的库存清单放实例上，筛选在本地做，翻来翻去不用每次都请求 */
   allSkus: [] as WorkOrderStockOption[],
-  /** 领料仓库 id：完工时按它扣库存 */
+  /** 当前在看的仓库 id：从这里选中的行会把它记进 row.warehouseId */
   warehouseId: null as number | null,
 
   onLoad(q: Record<string, string>) {
@@ -493,7 +493,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   onOpenSku(e: WechatMiniprogram.BaseEvent) {
     const raw = e.currentTarget.dataset.index;
     const index = raw === undefined || raw === '' ? -1 : Number(raw);
-    this.setData({ skuOpen: true, skuTargetIndex: index, skuKeyword: '' });
+    this.setData({ skuOpen: true, skuTargetIndex: index, skuKeyword: '', skuCategoryIndex: -1 });
     this.loadSkus();
   },
 
@@ -501,16 +501,38 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.setData({ skuOpen: false });
   },
 
-  async loadSkus(force = false) {
+  async loadSkus(force = false, warehouseId?: number) {
     if (this.allSkus.length && !force) {
       return this.applySkuFilter();
     }
     this.setData({ skuLoading: true, skuError: '' });
     try {
-      const resp = await repairs.stockOptions(this.data.id);
+      const resp = await repairs.stockOptions(this.data.id, warehouseId);
       this.allSkus = resp.items;
       this.warehouseId = resp.warehouseId;
-      this.setData({ warehouseName: resp.warehouseName || '本小区仓' });
+      // 类别筛选只列这个仓真有的类别：列一堆点了没结果的类别等于噪音
+      const seen: string[] = [];
+      resp.items.forEach((item) => {
+        const name = (item.category || '').trim() || '未分类';
+        if (!seen.includes(name)) seen.push(name);
+      });
+      // 旧版接口没有 warehouses（灰度期间可能撞上），当成「不能切」处理，别在这里炸
+      const warehouses = resp.warehouses || [];
+      const stocked = warehouses.filter((item) => item.hasStock && item.id !== resp.warehouseId);
+      this.setData({
+        warehouseName: resp.warehouseName || '本小区仓',
+        warehouses,
+        skuCategories: seen,
+        skuCategoryIndex: -1,
+        // 整仓一件货都没有时要说清是「这个仓空的」，不是清单坏了
+        skuEmptyHint: !resp.warehouseId
+          ? '这个租户还没配仓库，先让办公室在后台建仓入库'
+          : resp.items.every((item) => item.qty <= 0)
+            ? stocked.length
+              ? `「${resp.warehouseName}」里现在一件货都没有，点上面「换仓库」看看「${stocked[0].name}」`
+              : `「${resp.warehouseName}」里现在一件货都没有，需要的料请走「手填一项」提报缺料`
+            : '',
+      });
       this.applySkuFilter();
     } catch (e: any) {
       this.setData({ skuError: e?.message || '库存加载失败' });
@@ -520,12 +542,48 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   onRetrySku() {
-    this.loadSkus(true);
+    this.loadSkus(true, this.warehouseId ?? undefined);
+  },
+
+  /**
+   * 换仓库领料。
+   * 本小区没配仓库、或本小区仓空了，维修工照样得能领到料——不给这个口子，
+   * 整页「无货」看着就像系统坏了（枫桦景苑二期就是这么撞上的：库存全在一期仓）。
+   */
+  onSwitchWarehouse() {
+    const list = this.data.warehouses;
+    if (list.length < 2) return;
+    const names = list.map(
+      (item) =>
+        `${item.name}${item.own ? '（本小区）' : ''}${item.hasStock ? '' : '（暂无库存）'}`,
+    );
+    wx.showActionSheet({
+      itemList: names,
+      success: (res) => {
+        const picked = list[res.tapIndex];
+        if (!picked || picked.id === this.warehouseId) return;
+        this.allSkus = [];
+        this.setData({ skuKeyword: '' });
+        this.loadSkus(true, picked.id);
+      },
+      fail: () => {},
+    });
+  },
+
+  onPickSkuCategory(e: WechatMiniprogram.BaseEvent) {
+    const index = Number(e.currentTarget.dataset.index);
+    this.setData({ skuCategoryIndex: this.data.skuCategoryIndex === index ? -1 : index }, () =>
+      this.applySkuFilter(),
+    );
   },
 
   applySkuFilter() {
     const kw = this.data.skuKeyword.trim().toLowerCase();
-    const all = this.allSkus as WorkOrderStockOption[];
+    const category =
+      this.data.skuCategoryIndex >= 0 ? this.data.skuCategories[this.data.skuCategoryIndex] : '';
+    const all = (this.allSkus as WorkOrderStockOption[]).filter(
+      (item) => !category || ((item.category || '').trim() || '未分类') === category,
+    );
     const matched = !kw
       ? all
       : all.filter((item: WorkOrderStockOption) =>
@@ -565,6 +623,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       photoUrl: sku.photoUrl || '',
       code: sku.code,
       stockQty: sku.qty,
+      warehouseId: this.warehouseId,
     };
     const index = this.data.skuTargetIndex;
     if (index < 0 || !rows[index]) {
@@ -592,7 +651,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     const shortage = rows.filter((row) => row.stockQty < 0 || row.qty > row.stockQty);
     if (!shortage.length) {
       return this.setData({
-        materialError: '这些料本小区仓都够用，直接完工提交即可，不用报缺料',
+        materialError: '这些料仓库里都够用，直接完工提交即可，不用报缺料',
       });
     }
 
@@ -644,12 +703,13 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       return this.setData({ errorMsg: '收费金额填写不正确' });
     }
     // 从库存领的料才带 warehouseId：后端按它扣库存、记出库流水；
+    // 用的是「这一行选中时所在的仓」——选料途中切过仓库，共用一个 id 会扣到别的仓去。
     // 手填的（仓里没有）不带，只留个名字在维修记录里
     const used = collectRows(this.data.materialRows)
       .filter((row) => Number.isFinite(row.qty) && row.qty > 0)
       .map((row) => ({
         materialId: row.materialId,
-        warehouseId: row.materialId ? this.warehouseId ?? undefined : undefined,
+        warehouseId: row.materialId ? row.warehouseId ?? undefined : undefined,
         name: row.name,
         qty: row.qty,
         unit: row.unit,

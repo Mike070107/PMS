@@ -28,6 +28,8 @@
   font-size: var(--font-lg);
 }
 .chip {
+  /* 这不是筛选条里的一枚类别，是工具栏里的一个开关，去掉共用样式的行间距 */
+  margin-right: 0;
   padding: 18rpx 28rpx;
   border-radius: 999rpx;
   background: var(--color-card-bg);

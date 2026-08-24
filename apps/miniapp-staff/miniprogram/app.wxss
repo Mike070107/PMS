@@ -107,8 +107,24 @@ button::after { border: none; }
   padding: 28rpx 24rpx;
   border-bottom: 2rpx solid var(--color-border);
 }
-.sheet__title { font-size: var(--font-2xl); font-weight: 600; }
+/* 标题占满剩余宽度并省略：仓库名进标题后会很长，不截断就把右边的「换仓库/关闭」顶出屏幕 */
+.sheet__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--font-2xl);
+  font-weight: 600;
+}
 .sheet__close { color: var(--color-text-secondary); font-size: var(--font-lg); padding: 16rpx 20rpx; }
+.sheet__head-right { display: flex; align-items: center; gap: 8rpx; flex-shrink: 0; }
+/* 面板标题栏上的次要动作（换仓库之类），做成品牌色文字按钮，别跟「关闭」撞成一样 */
+.sheet__link {
+  color: var(--color-brand);
+  font-size: var(--font-lg);
+  padding: 16rpx 20rpx;
+}
 /* scroll-view 必须自己算得出高度才能滚。只写 flex: 1 时它按内容撑开，
    于是内容被 sheet__foot 盖住、还划不动（常用话术就是这么被吃掉的）。
    height: 0 + flex-grow 让高度完全由剩余空间决定，min-height: 0 防止 flex 子项撑破容器。 */
@@ -132,30 +148,63 @@ button::after { border: none; }
 .sheet--top { z-index: 21; }
 
 /* 库存清单的常驻列头：三列宽度必须和下面 .sku 一行一一对齐，
-   否则「库存」两个字飘在名称上方，列头等于白加。
-   列头不放进 scroll-view，滚动时它不动。 */
+   否则「库存数量」几个字飘在名称上方，列头等于白加。
+   列头不放进 scroll-view，滚动时它不动。
+   样式按「表头」做——圆角灰底 pill + 浅灰小字会被当成搜索框的说明文字，
+   一整行没人认得出它在给下面的列命名。所以：正文级字号、深色、加粗、下方一条实线。 */
 .sku-head {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 20rpx;
   margin: 20rpx 24rpx 0;
-  padding: 16rpx 24rpx;
-  background: var(--color-bg);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-sm);
-  color: var(--color-text-tertiary);
+  padding: 0 24rpx 14rpx;
+  border-bottom: 3rpx solid var(--color-text-secondary);
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--color-text);
 }
-.sku-head__photo { width: 112rpx; flex-shrink: 0; text-align: center; }
+.sku-head__photo { width: 140rpx; flex-shrink: 0; text-align: center; }
 .sku-head__name { flex: 1; min-width: 0; }
-/* 和 .sku__qty 一样的右侧余量，数字才会正对着「库存」 */
+/* 和 .sku__qty 一样的右侧余量，数字才会正对着「库存数量」 */
 .sku-head__qty { flex-shrink: 0; padding-right: 8rpx; }
 /* 列头已经带了左右边距，列表就别再叠一层，否则两者对不齐 */
 .sheet__body--flush { padding-left: 24rpx; padding-right: 24rpx; }
 
+/* ---------- 横向类别筛选条（材料库页与工单库存选择器共用，新增入口直接引这里） ----------
+   放不下就左右滑，别换行堆成两三排把列表挤下去。
+   语义：--on = 当前选中，用品牌色描边+品牌色字，不填底（填底在老人机上反光看不清字）。 */
+.chips { white-space: nowrap; margin-bottom: 16rpx; }
+/* 面板里用时要和搜索框、列头对齐同样的左右边距。
+   flex-shrink: 0 不能省 —— .sheet 是定高的 flex 列，不写就会被下面的列表压扁成一条线。 */
+.chips--inset { flex-shrink: 0; margin: 16rpx 24rpx 0; }
+.chip {
+  display: inline-block;
+  padding: 16rpx 28rpx;
+  margin-right: 12rpx;
+  border-radius: 999rpx;
+  background: var(--color-card-bg);
+  border: 2rpx solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: var(--font-md);
+}
+.chip--on { border-color: var(--color-brand); color: var(--color-brand); }
+
+/* 整个仓一件货都没有时的出路提示：满屏「无货」不解释，用户会当成系统坏了 */
+.sku-empty {
+  margin: 24rpx 0 8rpx;
+  padding: 20rpx 24rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--font-md);
+  line-height: 1.6;
+}
+
 /* ---------- 材料 SKU 行（材料库页与工单缺料登记的选择器共用） ---------- */
 .sku { display: flex; align-items: center; gap: 20rpx; padding: 24rpx 24rpx; }
-.sku__photo { width: 112rpx; height: 112rpx; border-radius: var(--radius-sm); flex-shrink: 0; }
+/* 照片是分 DN50 和 DN75 的主要依据，缩略图太小等于没有：跟列头的图片列同宽 */
+.sku__photo { width: 140rpx; height: 140rpx; border-radius: var(--radius-sm); flex-shrink: 0; }
 .sku__photo--empty {
   display: flex;
   align-items: center;

@@ -1,19 +1,7 @@
 .toolbar { display: flex; align-items: center; gap: 16rpx; margin-bottom: 20rpx; }
 .search { flex: 1; }
 
-/* 类别横向筛选条 */
-.chips { white-space: nowrap; margin-bottom: 16rpx; }
-.chip {
-  display: inline-block;
-  padding: 16rpx 28rpx;
-  margin-right: 12rpx;
-  border-radius: 999rpx;
-  background: var(--color-card-bg);
-  border: 2rpx solid var(--color-border);
-  color: var(--color-text-secondary);
-  font-size: var(--font-md);
-}
-.chip--on { border-color: var(--color-brand); color: var(--color-brand); }
+/* 类别横向筛选条 .chips/.chip 已挪到 app.wxss，和工单里的库存选择器共用同一套 */
 
 .count { margin-bottom: 16rpx; }
 

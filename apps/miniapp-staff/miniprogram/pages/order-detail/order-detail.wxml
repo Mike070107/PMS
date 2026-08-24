@@ -276,7 +276,11 @@
 <view wx:if="{{skuOpen}}" class="sheet sheet--top" catchtouchmove="noop">
   <view class="sheet__head">
     <text class="sheet__title">{{warehouseName || '本小区仓'}}库存</text>
-    <text class="sheet__close" bindtap="onCloseSku">关闭</text>
+    <view class="sheet__head-right">
+      <!-- 本小区没配仓库时默认落在别的仓，得让人看得见、换得掉 -->
+      <text wx:if="{{warehouses.length > 1}}" class="sheet__link" bindtap="onSwitchWarehouse">换仓库</text>
+      <text class="sheet__close" bindtap="onCloseSku">关闭</text>
+    </view>
   </view>
 
   <input
@@ -286,11 +290,23 @@
     bindinput="onSkuKeyword"
   />
 
+  <!-- 类别筛选：材料几十上百条，先按类别缩一轮比一直翻快得多。放不下就左右滑 -->
+  <scroll-view wx:if="{{skuCategories.length > 1}}" class="chips chips--inset" scroll-x enable-flex>
+    <view class="chip {{skuCategoryIndex < 0 ? 'chip--on' : ''}}" data-index="-1" bindtap="onPickSkuCategory">全部</view>
+    <view
+      class="chip {{skuCategoryIndex === index ? 'chip--on' : ''}}"
+      wx:for="{{skuCategories}}"
+      wx:key="*this"
+      data-index="{{index}}"
+      bindtap="onPickSkuCategory"
+    >{{item}}</view>
+  </scroll-view>
+
   <!-- 列头常驻：列表一滚起来就不知道右边那个数字是什么了 -->
   <view class="sku-head">
     <text class="sku-head__photo">图片</text>
     <text class="sku-head__name">名称</text>
-    <text class="sku-head__qty">库存</text>
+    <text class="sku-head__qty">库存数量</text>
   </view>
 
   <scroll-view class="sheet__body sheet__body--flush" scroll-y>
@@ -302,6 +318,7 @@
     <view wx:elif="{{!skuList.length}}" class="center muted">
       没有匹配的材料。关掉这里点「手填一项」，提报缺料后由办公室补进材料库。
     </view>
+    <view wx:elif="{{skuEmptyHint}}" class="sku-empty">{{skuEmptyHint}}</view>
 
     <view
       wx:for="{{skuList}}"

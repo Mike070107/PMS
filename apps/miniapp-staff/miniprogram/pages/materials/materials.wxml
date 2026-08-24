@@ -15,7 +15,9 @@
       <button class="btn btn--outline btn--sm" bindtap="onOpenInventory">库存采购</button>
     </view>
 
+    <!-- 「全部」要显式给一枚：不给的话「怎么退回不筛选」全靠再点一次选中项，没人猜得到 -->
     <scroll-view class="chips" scroll-x enable-flex>
+      <view class="chip {{categoryIndex < 0 ? 'chip--on' : ''}}" data-index="-1" bindtap="onPickCategory">全部</view>
       <view
         class="chip {{categoryIndex === index ? 'chip--on' : ''}}"
         wx:for="{{categories}}"
