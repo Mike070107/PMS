@@ -1,4 +1,4 @@
-import { Button, Card, Space, Table, Tag, Typography, App as AntdApp, Modal, Input } from 'antd';
+import { Button, Card, Popconfirm, Space, Table, Tag, Typography, App as AntdApp, Modal, Input } from 'antd';
 import { useEffect, useState } from 'react';
 import { request } from '../lib/api';
 import { usePagePerm } from '../lib/auth';
@@ -122,6 +122,17 @@ export default function OwnerAuditPage() {
     });
   };
 
+  // 点错了「通过/驳回」能收回：退回待审核；通过的会把本次绑上的房屋解开
+  const revert = async (id: number) => {
+    try {
+      await request({ method: 'POST', url: `/audits/${id}/revert` });
+      message.success('已撤销，申请退回待审核');
+      load();
+    } catch (e: any) {
+      message.error(e?.message || '撤销失败');
+    }
+  };
+
   return (
     <div>
       <Title level={4} style={{ marginTop: 0 }}>业主入驻审核</Title>
@@ -167,12 +178,30 @@ export default function OwnerAuditPage() {
             },
             {
               title: '操作', key: 'op', width: 180,
-              render: (_: any, r: AuditRow) => r.status === AuditStatus.PENDING && canEdit ? (
-                <Space>
-                  <Button size="small" type="primary" onClick={() => approve(r)}>通过</Button>
-                  <Button size="small" danger onClick={() => reject(r.id)}>驳回</Button>
-                </Space>
-              ) : <span style={{ color: '#999' }}>-</span>,
+              render: (_: any, r: AuditRow) => {
+                if (!canEdit) return <span style={{ color: '#999' }}>-</span>;
+                if (r.status === AuditStatus.PENDING) {
+                  return (
+                    <Space>
+                      <Button size="small" type="primary" onClick={() => approve(r)}>通过</Button>
+                      <Button size="small" danger onClick={() => reject(r.id)}>驳回</Button>
+                    </Space>
+                  );
+                }
+                return (
+                  <Popconfirm
+                    title="撤销这条审核？"
+                    description={r.status === AuditStatus.APPROVED
+                      ? '申请退回待审核，并解除本次通过时绑定的房屋；业主小程序里会变回「审核中」。'
+                      : '申请退回待审核，驳回原因清除；业主小程序里会变回「审核中」。'}
+                    okText="撤销"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => revert(r.id)}
+                  >
+                    <Button size="small">撤销审核</Button>
+                  </Popconfirm>
+                );
+              },
             },
           ]}
         />

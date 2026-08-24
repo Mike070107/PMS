@@ -55,6 +55,18 @@ export class OwnersController {
     return this.ownersService.approve(id, dto, user, access);
   }
 
+  /** 撤销已通过/已驳回的审核，退回待审核（通过的会解开本次绑定的房屋） */
+  @Post('audits/:id/revert')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermission('owners', 'edit')
+  revert(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.ownersService.revert(id, user, access);
+  }
+
   @Post('audits/:id/reject')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermission('owners', 'edit')

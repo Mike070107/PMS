@@ -233,6 +233,49 @@ export class OwnersService {
     return this.auditRepo.save(audit);
   }
 
+  /**
+   * 撤销审核：把已通过/已驳回的申请退回「待审核」，让人重新审。
+   * 点错了「通过」会把房子绑到业主账号上、点错「驳回」会把原因推给业主看，
+   * 两种都得能收回。通过的还要把绑定解开 —— 但只解本次审核绑上的那套房
+   * （owner.houseId 仍等于 audit.houseId 时），别把之后另外绑上的房也一起摘掉。
+   */
+  async revert(auditId: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const audit = await this.auditRepo.findOne({
+      where: { id: auditId, tenantId },
+    });
+    if (!audit) throw new NotFoundException('audit not found');
+    this.assertAuditInScope(audit, access);
+    if (audit.status === AuditStatus.PENDING) {
+      throw new BadRequestException('该申请还在待审核，无需撤销');
+    }
+    // 业主已经另交了一份新申请：撤旧的会让两份同时待审，直接审新的即可
+    const newer = await this.auditRepo.findOne({
+      where: { tenantId, userId: audit.userId, status: AuditStatus.PENDING },
+    });
+    if (newer && newer.id !== audit.id) {
+      throw new BadRequestException('该业主已提交了新的申请，请直接审核新申请');
+    }
+
+    if (audit.status === AuditStatus.APPROVED && audit.houseId) {
+      const owner = await this.userRepo.findOne({
+        where: { id: audit.userId, tenantId },
+      });
+      if (owner && owner.houseId === audit.houseId) {
+        owner.houseId = null;
+        owner.updatedBy = user.id;
+        await this.userRepo.save(owner);
+      }
+    }
+
+    audit.status = AuditStatus.PENDING;
+    audit.rejectReason = null;
+    audit.reviewedBy = null;
+    audit.reviewedAt = null;
+    audit.updatedBy = user.id;
+    return this.auditRepo.save(audit);
+  }
+
   private async findOrCreateOwner(dto: RegisterOwnerDto): Promise<User> {
     const candidates: FindOptionsWhere<User>[] = [
       dto.wxUnionid ? { tenantId: dto.tenantId, wxUnionid: dto.wxUnionid } : null,
