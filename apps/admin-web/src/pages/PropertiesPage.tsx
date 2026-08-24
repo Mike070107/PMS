@@ -13,7 +13,6 @@ import {
   Select,
   Space,
   Table,
-  Tabs,
   Tag,
   Tree,
   Typography,
@@ -25,15 +24,15 @@ import {
   ReloadOutlined,
   SearchOutlined,
   UploadOutlined,
-  UserOutlined,
 } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { request } from '../lib/api';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import PropertiesImportModal from './PropertiesImportModal';
 
-const { Title, Text } = Typography;
+const { Title, Text, Paragraph } = Typography;
 
 interface Community {
   id: number;
@@ -59,26 +58,6 @@ interface HouseRow {
   buildingNo: string;
   communityName: string;
   owner: { id: number; name: string | null; phone: string | null } | null;
-}
-interface OwnerRow {
-  id: number;
-  name: string | null;
-  phone: string | null;
-  status: 'active' | 'disabled';
-  /** 身份标记：owner=普通业主；其余是能替住户报修的人 */
-  reporterRole: string;
-  /** 可代报的小区；空 = 只能报自己家 */
-  reportCommunityIds: number[];
-  houseId: number | null;
-  house: {
-    id: number;
-    roomNo: string;
-    areaSqm: string | null;
-    lane: string | null;
-    buildingNo: string;
-    communityId: number | null;
-    communityName: string | null;
-  } | null;
 }
 
 // 业主档案只管普通小程序用户。保安/居委会/业委会/物业工作人员是「工作人员」，
@@ -128,18 +107,14 @@ function buildFullAddress(values: {
 }
 
 export default function PropertiesPage() {
-  const [tab, setTab] = useState('houses');
   return (
     <div>
-      <Title level={4} style={{ marginTop: 0 }}>房产与业主</Title>
-      <Tabs
-        activeKey={tab}
-        onChange={setTab}
-        items={[
-          { key: 'houses', label: <span><ApartmentOutlined /> 房产</span>, children: <HousesTab /> },
-          { key: 'owners', label: <span><UserOutlined /> 业主</span>, children: <OwnersTab /> },
-        ]}
-      />
+      <Title level={4} style={{ marginTop: 0 }}>房产管理</Title>
+      <Paragraph type="secondary" style={{ marginTop: -8 }}>
+        业主档案已挪到 <Link to="/owners">「业主用户」</Link> 页 —— 业主端小程序的用户
+        （档案、入驻审核、启停）都在那里；保安/居委会/业委会等走员工端，在「用户管理」。
+      </Paragraph>
+      <HousesTab />
     </div>
   );
 }
@@ -860,325 +835,6 @@ function CommunityManagerModal({
         </Col>
         )}
       </Row>
-    </Modal>
-  );
-}
-
-// ====================================================================
-// 业主 Tab
-// ====================================================================
-function OwnersTab() {
-  const { message, modal } = AntdApp.useApp();
-  const { canEdit, canDelete } = usePagePerm('properties');
-  const [rows, setRows] = useState<OwnerRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [q, setQ] = useState('');
-  const [communityId, setCommunityId] = useState<number | undefined>();
-  const [statusFilter, setStatusFilter] = useState<'active' | 'disabled' | undefined>('active');
-  const [communities, setCommunities] = useState<Community[]>([]);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editing, setEditing] = useState<OwnerRow | null>(null);
-
-  const loadCommunities = useCallback(async () => {
-    try {
-      setCommunities(await request<Community[]>({ url: '/communities' }));
-    } catch (e: any) { message.error(e?.message || '加载小区失败'); }
-  }, [message]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await request<OwnerRow[]>({
-        url: '/owners-mgmt',
-        query: {
-          q: q || undefined,
-          communityId,
-          status: statusFilter,
-        },
-      });
-      setRows(list);
-    } catch (e: any) {
-      message.error(e?.message || '加载失败');
-    } finally { setLoading(false); }
-  }, [q, communityId, statusFilter, message]);
-
-  useEffect(() => { loadCommunities(); }, [loadCommunities]);
-  useEffect(() => { load(); }, [load]);
-
-  const onDisable = (r: OwnerRow) => {
-    modal.confirm({
-      title: `确认停用业主「${r.name || r.phone}」?`,
-      content: '停用后业主不再可见，但历史工单保留。',
-      okType: 'danger',
-      onOk: async () => {
-        try {
-          await request({ method: 'DELETE', url: `/owners-mgmt/${r.id}` });
-          message.success('已停用');
-          load();
-        } catch (e: any) { message.error(e?.message || '操作失败'); }
-      },
-    });
-  };
-
-  const onActivate = async (r: OwnerRow) => {
-    try {
-      await request({
-        method: 'PATCH',
-        url: `/owners-mgmt/${r.id}`,
-        data: { status: 'active' },
-      });
-      message.success('已恢复');
-      load();
-    } catch (e: any) { message.error(e?.message || '操作失败'); }
-  };
-
-  return (
-    <Card
-      title={<span>业主档案 <Text type="secondary" style={{ fontSize: 12 }}>共 {rows.length} 人</Text></span>}
-      extra={
-        <Space>
-          <Select
-            allowClear
-            placeholder="按小区筛选"
-            style={{ width: 160 }}
-            value={communityId}
-            onChange={(v) => setCommunityId(v)}
-            options={withOptionTitles(communities.map((c) => ({ value: c.id, label: c.name })))}
-            {...searchableWideSelectProps}
-          />
-          <Select
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v)}
-            style={{ width: 110 }}
-            options={[
-              { value: 'active', label: '在档' },
-              { value: 'disabled', label: '已停用' },
-              { value: undefined as any, label: '全部' },
-            ]}
-          />
-          <Input
-            placeholder="搜索 姓名/电话/房号"
-            prefix={<SearchOutlined />}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onPressEnter={load}
-            allowClear
-            style={{ width: 220 }}
-          />
-          <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>
-          {canEdit && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新增业主</Button>
-          )}
-        </Space>
-      }
-    >
-      <Table
-        rowKey="id"
-        size="middle"
-        loading={loading}
-        dataSource={rows}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
-        columns={[
-          { title: '姓名', dataIndex: 'name', width: 120, render: (v) => v || <Text type="secondary">-</Text> },
-          { title: '电话', dataIndex: 'phone', width: 130 },
-          {
-            title: '绑定房产', key: 'house',
-            render: (_, r) => r.house
-              ? formatLocation({
-                  communityName: r.house.communityName || '-',
-                  lane: r.house.lane,
-                  buildingNo: r.house.buildingNo,
-                  roomNo: r.house.roomNo,
-                })
-              : <Text type="secondary">未绑定</Text>,
-          },
-          {
-            title: '状态', dataIndex: 'status', width: 80,
-            render: (s) => s === 'active' ? <Tag color="green">在档</Tag> : <Tag>已停用</Tag>,
-          },
-          {
-            title: '操作', key: 'op', width: 150, fixed: 'right',
-            render: (_, r) => (
-              <Space size="small">
-                {canEdit && (
-                  <Button type="link" size="small" icon={<EditOutlined />} onClick={() => setEditing(r)}>编辑</Button>
-                )}
-                {r.status === 'active'
-                  ? canDelete && <Button type="link" size="small" danger onClick={() => onDisable(r)}>停用</Button>
-                  : canEdit && <Button type="link" size="small" onClick={() => onActivate(r)}>恢复</Button>}
-              </Space>
-            ),
-          },
-        ]}
-      />
-
-      <OwnerFormModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onDone={() => { setCreateOpen(false); load(); }}
-      />
-      <OwnerFormModal
-        open={!!editing}
-        target={editing || undefined}
-        onClose={() => setEditing(null)}
-        onDone={() => { setEditing(null); load(); }}
-      />
-    </Card>
-  );
-}
-
-// ============= 业主 新增/编辑 Modal =============
-function OwnerFormModal({
-  open, target, onClose, onDone,
-}: {
-  open: boolean;
-  target?: OwnerRow;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const { message } = AntdApp.useApp();
-  const [form] = Form.useForm();
-  const [saving, setSaving] = useState(false);
-  const [houseOptions, setHouseOptions] = useState<HouseRow[]>([]);
-  const [searching, setSearching] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    if (target) {
-      form.setFieldsValue({
-        name: target.name,
-        phone: target.phone,
-        houseId: target.houseId,
-      });
-      if (target.house) {
-        setHouseOptions([{
-          id: target.house.id,
-          communityId: target.house.communityId || 0,
-          buildingId: 0,
-          unitId: null,
-          roomNo: target.house.roomNo,
-          propertyType: '住宅',
-          roadName: null,
-          fullAddress: null,
-          shopName: null,
-          areaSqm: target.house.areaSqm,
-          lane: target.house.lane,
-          buildingNo: target.house.buildingNo,
-          communityName: target.house.communityName || '-',
-          owner: null,
-        }]);
-      }
-    } else {
-      form.resetFields();
-      setHouseOptions([]);
-    }
-  }, [open, target, form]);
-
-  const searchHouses = useMemo(() => {
-    let t: any = null;
-    return (kw: string) => {
-      if (t) clearTimeout(t);
-      t = setTimeout(async () => {
-        setSearching(true);
-        try {
-          const q = kw.trim();
-          const parts = q.split(/[\/\\\-\s]+/).map((p) => p.trim()).filter(Boolean);
-          const queries = [q];
-          if (parts.length === 3) {
-            queries.push(`${parts[0]} ${parts[1]} ${parts[2]}`);
-            queries.push(`${parts[0]}弄${parts[1]}号${parts[2]}室`);
-          }
-          const results = await Promise.all(
-            Array.from(new Set(queries.filter(Boolean))).map((item) =>
-              request<HouseRow[]>({ url: '/houses', query: { q: item } }).catch(() => []),
-            ),
-          );
-          const map = new Map<number, HouseRow>();
-          results.flat().forEach((item) => map.set(item.id, item));
-          setHouseOptions(Array.from(map.values()));
-        } catch { /* ignore */ } finally { setSearching(false); }
-      }, 250);
-    };
-  }, []);
-
-  const onOk = async () => {
-    const v = await form.validateFields();
-    setSaving(true);
-    try {
-      const payload: Record<string, unknown> = {
-        name: v.name,
-        phone: v.phone,
-        houseId: v.houseId ?? null,
-      };
-      if (target) {
-        await request({ method: 'PATCH', url: `/owners-mgmt/${target.id}`, data: payload });
-        message.success('已保存');
-      } else {
-        await request({ method: 'POST', url: '/owners-mgmt', data: payload });
-        message.success('业主已建档');
-      }
-      onDone();
-    } catch (e: any) {
-      message.error(e?.message || '保存失败');
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <Modal
-      title={target ? `编辑业主 #${target.id}` : '新增业主'}
-      open={open}
-      onCancel={onClose}
-      onOk={onOk}
-      confirmLoading={saving}
-      destroyOnHidden
-      width={520}
-    >
-      <Form form={form} layout="vertical">
-        <Row gutter={12}>
-          <Col span={12}>
-            <Form.Item name="name" label="姓名" rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item
-              name="phone"
-              label="手机号"
-              rules={[
-                { required: true, message: '请填写手机号' },
-                { pattern: /^1[3-9]\d{9}$/, message: '请填写正确的手机号' },
-              ]}
-            >
-              <Input />
-            </Form.Item>
-          </Col>
-        </Row>
-        <Form.Item
-          name="houseId"
-          label="绑定房产（可后续再绑）"
-          extra="可输入小区名、完整地址，或用 198/2/101 格式搜索 198弄2号101室"
-        >
-          <Select
-            {...searchableWideSelectProps}
-            allowClear
-            placeholder="如：198/2/101"
-            filterOption={false}
-            loading={searching}
-            onSearch={searchHouses}
-            options={withOptionTitles(houseOptions.map((h) => ({
-              value: h.id,
-              label: `${formatLocation(h)}${h.owner ? ' · 已被占用' : ''}`,
-              disabled: !!h.owner && h.owner.id !== target?.id,
-            })))}
-          />
-        </Form.Item>
-        {target && (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            要把这个人设为保安 / 居委会 / 业委会 / 物业工作人员？去「用户管理」新增员工并填同一手机号，
-            账号会就地转为工作人员（不会建重复档案），在那边配可代报的小区和网页登录。
-          </Typography.Text>
-        )}
-      </Form>
     </Modal>
   );
 }

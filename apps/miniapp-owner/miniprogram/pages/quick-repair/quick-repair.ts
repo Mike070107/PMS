@@ -111,15 +111,12 @@ Page({
     try {
       const me = await auth.me();
       const place = me.place;
-      if (me.reporter?.canReportOthers) {
-        this.setData({ canPickAnyPlace: true });
-      }
+      // 业主端只有业主。保安/居委会/业委会/物业工作人员 2026-08-24 起走员工端
+      // 小程序报修，这里不再有「不住这儿的人」需要特殊照顾的分支。
       if (!place?.communityId) {
         this.setData({
           ready: true,
-          // 这些账号本来就不一定住这儿，别把他们往「认证房屋」上赶
-          needOnboard: !me.reporter?.canReportOthers,
-          pickPlaceFirst: !!me.reporter?.canReportOthers,
+          needOnboard: true,
           errorMsg: '',
           canSubmit: false,
         });
@@ -139,13 +136,7 @@ Page({
         ready: true,
         needOnboard: false,
         hasBuilding,
-        // 工作人员（保安/居委会等）的默认位置是物业地址，不是「我家里」——
-        // 文案跟着换，位置照样能切到公共区域或在描述里说地址
-        scopes: scopeOptions(hasBuilding).map((item) =>
-          (place as { officePlace?: boolean }).officePlace && item.key === 'home'
-            ? { ...item, label: '物业地址' }
-            : item,
-        ),
+        scopes: scopeOptions(hasBuilding),
         // 审核中照样能报修：位置在申请里已经写清楚了，没道理再把人挡回认证页
         pendingHint: this.auditHint(place.auditStatus),
         errorMsg: '',

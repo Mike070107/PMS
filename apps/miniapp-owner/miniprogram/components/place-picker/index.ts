@@ -96,6 +96,13 @@ Component<
 
   methods: {
     /**
+     * 空实现，专门给遮罩和面板的 catchtouchmove 用：
+     * 把滑动手势吞掉，别让它传到底下的页面（否则「列表没动、背景动了」）。
+     * 面板里的 scroll-view 自己滚，不受这个影响。
+     */
+    onBlockMove() {},
+
+    /**
      * 地址簿由页面用 selectComponent 直接递进来，不走 properties ——
      * 一个小区上千条房号，进 properties 就是一次巨大的 setData，
      * 面板一打开明显卡顿。这里只存引用，渲染时按当前层切片。

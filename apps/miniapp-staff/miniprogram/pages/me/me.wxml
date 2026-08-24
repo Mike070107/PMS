@@ -12,7 +12,7 @@
     <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onGoRepair">
       <view class="entry__body">
         <view class="entry__title">我要报修</view>
-        <view class="entry__desc">巡查发现的问题直接提单，地址可选全公司任意楼栋房号</view>
+        <view class="entry__desc">{{repairDesc}}</view>
       </view>
       <view class="entry__arrow"></view>
     </view>

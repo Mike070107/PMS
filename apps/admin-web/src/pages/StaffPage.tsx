@@ -22,8 +22,9 @@ import { request } from '../lib/api';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import { UserRole } from '@pms/shared-types';
+import { Link } from 'react-router-dom';
 
-const { Title } = Typography;
+const { Title, Paragraph } = Typography;
 
 interface BoundRole {
   id: number;
@@ -41,7 +42,7 @@ interface Staff {
   wxBound?: boolean;
   skills?: string[];
   zones?: string[];
-  /** 保安/居委会/业委会：不进后台，用业主端小程序代报 */
+  /** 保安/居委会/业委会/物业工作人员：不进后台，用员工端小程序报修 */
   isReporter?: boolean;
   reportCommunityIds?: number[];
   /** 绑定的后台角色（决定网站权限） */
@@ -73,6 +74,7 @@ const roleLabel: Record<string, string> = {
   guard: '保安',
   neighborhood: '居委会',
   owner_committee: '业委会',
+  property_staff: '物业工作人员',
 };
 
 const roleColor: Record<string, string> = {
@@ -84,13 +86,19 @@ const roleColor: Record<string, string> = {
   guard: 'geekblue',
   neighborhood: 'green',
   owner_committee: 'purple',
+  property_staff: 'orange',
 };
 
-/** 代报角色：登记后由本人在小程序用微信手机号认领，不发后台账号 */
+/**
+ * 代报角色：登记后由本人在员工端小程序用微信手机号认领，不发后台账号。
+ * 四个角色要写全 —— 漏掉 PROPERTY_STAFF 时，物业工作人员那行的角色标签会露出
+ * 枚举原文，编辑时也不给「可代报的小区」，等于建了个报不了修的账号。
+ */
 const REPORTER_ROLE_SET = new Set<string>([
   UserRole.GUARD,
   UserRole.NEIGHBORHOOD,
   UserRole.OWNER_COMMITTEE,
+  UserRole.PROPERTY_STAFF,
 ]);
 
 const skillOptions = [
@@ -154,6 +162,11 @@ export default function StaffPage() {
   return (
     <div>
       <Title level={4} style={{ marginTop: 0 }}>用户管理</Title>
+      <Paragraph type="secondary" style={{ marginTop: -8 }}>
+        这里管<strong>员工端小程序</strong>和<strong>网站后台</strong>的用户：维修工、办公室、经理、
+        采购、管理员，以及保安/居委会/业委会/物业工作人员。业主是业主端小程序的用户，
+        在 <Link to="/owners">「业主用户」</Link> 页。
+      </Paragraph>
       <Card
         title="员工与后台账号：业务身份决定小程序端能力，后台角色决定网站权限"
         extra={

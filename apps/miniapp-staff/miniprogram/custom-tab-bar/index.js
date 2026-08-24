@@ -1,5 +1,3 @@
-const { auth } = require('@pms/api-client');
-
 /**
  * 自定义 tabBar。
  *
@@ -12,9 +10,19 @@ const { auth } = require('@pms/api-client');
  * 且没权限的 tab 直接不渲染。角标由各页面加载完数据后调 setBadge 更新，
  * tabBar 自己不发列表请求，避免每次切 tab 都多打一遍接口。
  */
+/** 干物业活的角色：能接单、看工单池。代报角色（保安等）不在内 */
+const WORKER_ROLES = ['technician', 'office', 'manager', 'purchaser', 'admin'];
+
+/**
+ * 代报角色 2026-08-24 从业主端搬进员工端，但他们只报修、不接单 ——
+ * 工单池对他们没有意义（点进去全是别人要修的活），「在手工单」也不是在手的活，
+ * 而是自己报上去的单，所以这里连文案一起换掉。
+ */
+const REPORTER_ROLES = ['guard', 'neighborhood', 'owner_committee', 'property_staff'];
+
 const ALL_TABS = [
-  { key: 'pool', pagePath: '/pages/pool/pool', text: '工单池' },
-  { key: 'mine', pagePath: '/pages/my-orders/my-orders', text: '在手工单' },
+  { key: 'pool', pagePath: '/pages/pool/pool', text: '工单池', roles: WORKER_ROLES },
+  { key: 'mine', pagePath: '/pages/my-orders/my-orders', text: '在手工单', reporterText: '我的报修' },
   // 维修工没有采购审批权限，这一项对他们不显示
   { key: 'approvals', pagePath: '/pages/approvals/approvals', text: '审批', roles: ['manager', 'purchaser', 'admin'] },
   { key: 'me', pagePath: '/pages/me/me', text: '我的' },
@@ -23,8 +31,11 @@ const ALL_TABS = [
 const ROLE_KEY = 'pms.staff.role';
 
 function visibleTabs(role) {
+  const isReporter = REPORTER_ROLES.indexOf(role) >= 0;
   // 角色还没拿到时先全显示：宁可多一个 tab，也别让有权限的人以为功能没了
-  return ALL_TABS.filter((tab) => !tab.roles || !role || tab.roles.indexOf(role) >= 0);
+  return ALL_TABS.filter((tab) => !tab.roles || !role || tab.roles.indexOf(role) >= 0).map((tab) =>
+    isReporter && tab.reporterText ? { ...tab, text: tab.reporterText } : tab,
+  );
 }
 
 Component({
@@ -34,20 +45,20 @@ Component({
   },
 
   lifetimes: {
+    /**
+     * 只读本地缓存的角色，**绝不在这里打任何要登录的接口**。
+     *
+     * 这里原来会在没缓存角色时调 auth.me() 补一次。auth.me() 是要登录的接口，
+     * 没登录时返回 401 → 请求层触发 onUnauthorized → wx.reLaunch 回登录页 →
+     * tabBar 重新 attached → 又调一次 auth.me() → 又 401 …… reLaunch 打转，
+     * 整个小程序卡在登录页白屏。清掉小程序缓存反而必然触发（角色缓存也被清了）。
+     *
+     * 角色由两处写入，足够了：登录成功时 login.ts 直接写，之后「我的」「审批」
+     * 页拿到 auth.me() 时顺手刷新（utils/tabbar.ts 的 rememberRole）。
+     * 拿不到角色就全显示 —— 多一个 tab 也比整个小程序打不开强。
+     */
     attached() {
       this.applyRole(wx.getStorageSync(ROLE_KEY) || '');
-      // 角色只在启动后取一次，之后各页面 auth.me() 的结果会顺手刷新缓存
-      if (!wx.getStorageSync(ROLE_KEY)) {
-        auth
-          .me()
-          .then((me) => {
-            wx.setStorageSync(ROLE_KEY, me.role);
-            this.applyRole(me.role);
-          })
-          .catch(() => {
-            // 没登录/网络不通就维持全显示，登录后再进来自然会刷新
-          });
-      }
     },
   },
 

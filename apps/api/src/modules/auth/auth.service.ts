@@ -11,13 +11,13 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
   AuditStatus,
   OWNER_APP_ROLES,
+  SELF_SCOPED_ROLES,
   STAFF_APP_ROLES,
-  REPORTER_ROLES,
   USER_ROLE_LABELS,
   UserRole,
   UserStatus,
@@ -102,6 +102,17 @@ export class AuthService {
       return this.issueStaffTokens(user);
     }
 
+    // 业主端只服务业主本人。保安/居委会/业委会/物业工作人员 2026-08-24 起改走
+    // 员工端小程序，但他们的老账号里还留着业主端的 openid —— 这里必须挡住并指路，
+    // 否则他们照样登进来，看到「我的房屋 / 入驻审核」那套跟自己无关的业主界面。
+    if (user && !OWNER_APP_ROLES.includes(user.role)) {
+      throw new ForbiddenException(
+        STAFF_APP_ROLES.includes(user.role)
+          ? '你的身份请改用「邻修管理」员工端小程序登录'
+          : '该账号不能登录业主端小程序',
+      );
+    }
+
     if (!user) {
       user = this.userRepo.create({
         tenantId: null,
@@ -165,7 +176,22 @@ export class AuthService {
         throw new ForbiddenException('该员工账号已停用，请联系物业管理员');
       }
       if (usable.length > 1) {
-        throw new ConflictException('该手机号关联了多个员工账号，请改用账号密码登录');
+        // 说清楚是撞在了谁身上。只说「请改用账号密码登录」等于把人挂起：
+        // 代报角色和维修工本来就没有账号密码，这条路对他们是死的
+        // （2026-08 叶双同时挂着维修工和保安两条档案，就是这么被锁在外面的）。
+        // 把重名的人和角色报出来，管理员照着去「用户管理」合并或改号即可。
+        const who = usable
+          .map((u) => `${u.name || '未填姓名'}（${USER_ROLE_LABELS[u.role] ?? u.role}）`)
+          .join('、');
+        this.logger.warn(
+          `手机号 ${this.maskPhone(phone)} 命中多个员工账号：${usable
+            .map((u) => `#${u.id}/${u.role}`)
+            .join(', ')}`,
+        );
+        throw new ConflictException(
+          `手机号 ${this.maskPhone(phone)} 同时登记在「${who}」名下，无法确定是哪一位。` +
+            '请联系物业管理员在「用户管理」里核对，一个人只保留一条档案。',
+        );
       }
       target = usable[0];
     } else {
@@ -189,11 +215,20 @@ export class AuthService {
       throw new ConflictException('该微信已绑定其他员工账号，请联系管理员解绑后重试');
     }
     if (target.wxOpenid && target.wxOpenid !== session.openid) {
-      // 防止账号被他人用自己的微信接管；换微信必须管理员在后台解绑
-      throw new ConflictException('该员工账号已绑定其他微信，请联系管理员解绑后重试');
-    }
-
-    if (!target.wxOpenid) {
+      // openid 按小程序隔离：保安/居委会等 2026-08-24 从业主端搬来时，账号里存的
+      // 还是业主端那个 openid，对不上员工端的。unionid 一致就说明还是同一个人
+      // （同一微信开放平台账号下），直接改绑，别逼着每个人先去找管理员解绑。
+      // unionid 对不上、或压根没配开放平台，才是真被别人的微信占了，必须人工解绑。
+      const sameHuman =
+        !!session.unionid && !!target.wxUnionid && session.unionid === target.wxUnionid;
+      if (!sameHuman) {
+        throw new ConflictException('该员工账号已绑定其他微信，请联系管理员解绑后重试');
+      }
+      target.wxOpenid = session.openid;
+      target.updatedBy = target.id;
+      target = await this.userRepo.save(target);
+      this.logger.log(`员工 #${target.id}（${target.role}）的微信按 unionid 改绑到员工端`);
+    } else if (!target.wxOpenid) {
       target.wxOpenid = session.openid;
       if (session.unionid) target.wxUnionid = session.unionid;
       target.updatedBy = target.id;
@@ -292,9 +327,6 @@ export class AuthService {
     if (dto.realName) user.name = dto.realName;
     if (phone) user.phone = phone;
     await this.userRepo.save(user);
-    // 预登记的工作人员（保安/居委会/业委会/物业工作人员）在这里认领身份：
-    // 手机号刚被微信验证过，同号的预登记档案并进当前微信账号
-    if (dto.phoneCode && phone) await this.claimReporterProfile(user, phone);
 
     // 已有待审核记录就更新它，而不是原样丢弃这次提交 ——
     // 审核期间业主发现房号填错了会再交一次，静默忽略等于让他一直等一条错的记录。
@@ -363,8 +395,6 @@ export class AuthService {
     }
 
     const phone = await this.wechat.getPhoneNumber(dto.phoneCode, "owner");
-    // 预登记的工作人员在这里认领身份（手机号刚被微信验证过）
-    await this.claimReporterProfile(user, phone);
 
     // 房产档案里同号可能挂多套房（一人多产），拿不准就不猜，让业主自己填
     const candidates = await this.userRepo.find({
@@ -397,46 +427,6 @@ export class AuthService {
     return { enabled: true, matched: true, phone: this.maskPhone(phone), place };
   }
 
-  /**
-   * 代报身份认领：物业在「用户管理」预登记的保安/居委会/业委会/物业工作人员
-   * 只有手机号、没绑微信。本人在小程序里验证出同一手机号时，把身份、租户、
-   * 代报授权和后台账号并到他真实在用的微信账号上，预登记那行停用 ——
-   * 一个人始终只有一条档案，不会在「用户管理」里冒出两条同名记录。
-   */
-  private async claimReporterProfile(user: User, phone: string | null): Promise<void> {
-    if (!phone || user.role !== UserRole.OWNER) return;
-    const pre = await this.userRepo.findOne({
-      where: {
-        phone,
-        role: In(REPORTER_ROLES),
-        status: UserStatus.ACTIVE,
-        wxOpenid: IsNull(),
-      },
-      order: { id: 'DESC' },
-    });
-    if (!pre || pre.id === user.id) return;
-    if (user.tenantId && pre.tenantId !== user.tenantId) return;
-
-    user.role = pre.role;
-    user.tenantId = user.tenantId ?? pre.tenantId;
-    if (!user.name && pre.name) user.name = pre.name;
-    if (!user.phone) user.phone = phone;
-    if (!user.loginAccount && pre.loginAccount) {
-      user.loginAccount = pre.loginAccount;
-      user.passwordHash = pre.passwordHash;
-      // loginAccount 全局唯一，先从预登记行腾出来再落到本人账号
-      pre.loginAccount = null;
-    }
-    pre.status = UserStatus.DISABLED;
-    pre.updatedBy = user.id;
-    await this.userRepo.save(pre);
-    await this.userRepo.save(user);
-    // 代报授权与后台角色跟人走；先清掉本人名下可能重复的授权，避免撞唯一键
-    await this.reportGrantRepo.delete({ userId: user.id });
-    await this.reportGrantRepo.update({ userId: pre.id }, { userId: user.id });
-    await this.userRoleRepo.update({ userId: pre.id }, { userId: user.id });
-    this.logger.log(`代报身份认领：预登记 #${pre.id} 并入用户 #${user.id}（${pre.role}）`);
-  }
 
   /** houseId → 可直接展示的地址 */
   private async describeHouse(tenantId: number, houseId: number) {
@@ -482,7 +472,7 @@ export class AuthService {
     // 这就是「给工作人员授权网页登录」的口子：用户管理里绑角色即可。
     if (
       user.role === UserRole.TECHNICIAN ||
-      OWNER_APP_ROLES.includes(user.role as UserRole)
+      SELF_SCOPED_ROLES.includes(user.role as UserRole)
     ) {
       const bindings = await this.userRoleRepo.count({ where: { userId: user.id } });
       if (!bindings) {
@@ -555,7 +545,7 @@ export class AuthService {
         actingOfficeId: access.actingOfficeId,
       };
     }
-    if (!OWNER_APP_ROLES.includes(user.role)) return base;
+    if (!SELF_SCOPED_ROLES.includes(user.role)) return base;
     // 业主端首页要显示「我的房屋 + 入驻审核状态」，并据此决定能否直接报修
     const place = await this.resolveOwnerPlace(user);
     // 订阅消息模板 id 不是密钥，本来就要发到小程序里调 requestSubscribeMessage；

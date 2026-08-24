@@ -4,7 +4,7 @@
       <image class="brand__logo" src="/assets/brand-icon.png" mode="aspectFill" />
       <view class="brand__copy">
         <view class="title">邻修工作台</view>
-        <view class="sub">仅限物业团队员工登录</view>
+        <view class="sub">物业员工、保安、居委会、业委会登录</view>
       </view>
     </view>
   </view>

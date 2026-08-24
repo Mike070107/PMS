@@ -8,6 +8,12 @@ export interface ClassifiableType {
   repairType: string;
   label: string;
   keywords: string[];
+  /**
+   * 「别再按这个词判我」清单，由负样本算出来（端上判成我、人当场改成别的类型 ≥2 次）。
+   * 命中就扣掉同等分数 —— 不是直接否决：万一这个词在别处是对的，
+   * 让它和其它命中的词去比大小，比一刀切稳。
+   */
+  negativeKeywords?: string[];
 }
 
 export interface ClassifyResult {
@@ -55,6 +61,17 @@ export function classifyRepairType(
       if (hit > 0) {
         score += hit;
         matched.push(keyword);
+      }
+    }
+
+    // 被人改判过的词：扣掉它带来的分。同一个词既在 keywords 又在 negativeKeywords 时，
+    // 净得分为 0，等于这个词不再参与判定 —— 正是我们要的效果。
+    for (const keyword of type.negativeKeywords || []) {
+      const hit = scoreKeyword(text, keyword.toLowerCase());
+      if (hit > 0) {
+        score -= hit;
+        const at = matched.indexOf(keyword);
+        if (at >= 0) matched.splice(at, 1);
       }
     }
 

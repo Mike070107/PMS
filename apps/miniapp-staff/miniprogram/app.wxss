@@ -13,7 +13,9 @@
   border-radius: var(--radius-md);
   padding: 36rpx 28rpx;
   margin-bottom: 28rpx;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  /* 发丝边 + 投影一起上：只靠投影在户外光线下看不出来，只靠边框又太生硬 */
+  border: 2rpx solid rgba(18, 35, 59, 0.06);
+  box-shadow: 0 4rpx 16rpx rgba(18, 35, 59, 0.07);
 }
 
 /* ---------- 按钮体系（与业主端同一套） ----------
@@ -129,8 +131,30 @@ button::after { border: none; }
 .sheet-mask--top { z-index: 20; }
 .sheet--top { z-index: 21; }
 
+/* 库存清单的常驻列头：三列宽度必须和下面 .sku 一行一一对齐，
+   否则「库存」两个字飘在名称上方，列头等于白加。
+   列头不放进 scroll-view，滚动时它不动。 */
+.sku-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin: 20rpx 24rpx 0;
+  padding: 16rpx 24rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  color: var(--color-text-tertiary);
+}
+.sku-head__photo { width: 112rpx; flex-shrink: 0; text-align: center; }
+.sku-head__name { flex: 1; min-width: 0; }
+/* 和 .sku__qty 一样的右侧余量，数字才会正对着「库存」 */
+.sku-head__qty { flex-shrink: 0; padding-right: 8rpx; }
+/* 列头已经带了左右边距，列表就别再叠一层，否则两者对不齐 */
+.sheet__body--flush { padding-left: 24rpx; padding-right: 24rpx; }
+
 /* ---------- 材料 SKU 行（材料库页与工单缺料登记的选择器共用） ---------- */
-.sku { display: flex; align-items: center; gap: 20rpx; padding: 24rpx; }
+.sku { display: flex; align-items: center; gap: 20rpx; padding: 24rpx 24rpx; }
 .sku__photo { width: 112rpx; height: 112rpx; border-radius: var(--radius-sm); flex-shrink: 0; }
 .sku__photo--empty {
   display: flex;

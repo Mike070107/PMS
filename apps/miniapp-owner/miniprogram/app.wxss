@@ -13,7 +13,9 @@
   border-radius: var(--radius-md);
   padding: 36rpx 28rpx;
   margin-bottom: 28rpx;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  /* 发丝边 + 投影一起上：只靠投影在户外光线下看不出来，只靠边框又太生硬 */
+  border: 2rpx solid rgba(18, 35, 59, 0.06);
+  box-shadow: 0 4rpx 16rpx rgba(18, 35, 59, 0.07);
 }
 
 /* ---------- 按钮体系 ----------

@@ -8,7 +8,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
 import { Brackets, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { OWNER_APP_ROLES, REPORTER_ROLES, UserRole, UserStatus } from '../../common/enums';
+import {
+  REPORTER_ROLES,
+  STAFF_APP_ROLES,
+  USER_ROLE_LABELS,
+  UserRole,
+  UserStatus,
+} from '../../common/enums';
 import {
   Role,
   StaffProfile,
@@ -31,6 +37,10 @@ const ASSIGNABLE_ROLES: UserRole[] = [
 ];
 
 const isReporter = (role: UserRole) => REPORTER_ROLES.includes(role);
+
+/** 报错文案里回显手机号，中间四位打码 */
+const maskPhone = (phone: string) =>
+  phone.length >= 7 ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : phone;
 
 @Injectable()
 export class StaffService {
@@ -130,36 +140,23 @@ export class StaffService {
     }
     const passwordHash = dto.password ? await bcrypt.hash(dto.password, 10) : null;
 
-    // 保安/居委会/业委会/物业工作人员大多已经在小程序注册过（业主身份）。
-    // 填同一手机号时把那条账号就地转成工作人员，而不是另建一行 ——
-    // 另建会出现「同一个人两条档案」，微信绑定和历史工单也会散在两行上
-    // （2026-08-21 实际踩过：用户管理里冒出两个同名的人）。
-    if (isReporter(dto.role) && dto.phone) {
-      const candidates = await this.userRepo.find({
-        where: { tenantId, phone: dto.phone, role: In(OWNER_APP_ROLES) },
+    // 一个人只留一条员工端档案。同手机号已经有员工端账号（含保安/居委会等代报
+    // 角色）时直接拦下并指名道姓，让管理员去改那一条 —— 不然「用户管理」里会并排
+    // 冒出两个同名的人（2026-08 实际发生过：叶双同时挂着维修工和保安两条档案，
+    // 微信绑定、接单记录和代报授权跟着劈成两半，谁也说不清哪条才是他）。
+    // 业主档案（role=owner，走业主端小程序）不在此列：那是同一个人在另一个端的
+    // 身份，两边各自独立，建员工账号时不去动它。
+    if (dto.phone) {
+      const dup = await this.userRepo.findOne({
+        where: { tenantId, phone: dto.phone, role: In(STAFF_APP_ROLES) },
         order: { id: 'ASC' },
       });
-      // 同号有多条时优先转绑了微信的那条：那才是本人天天在用的账号
-      const existing =
-        candidates.find((u) => !!u.wxOpenid) ?? candidates[0] ?? null;
-      if (existing) {
-        existing.role = dto.role;
-        if (dto.name) existing.name = dto.name;
-        if (dto.loginAccount) existing.loginAccount = dto.loginAccount;
-        if (passwordHash) existing.passwordHash = passwordHash;
-        existing.status = UserStatus.ACTIVE;
-        existing.updatedBy = user.id;
-        await this.userRepo.save(existing);
-        const communityIds = await this.replaceReportGrants(
-          tenantId,
-          existing.id,
-          dto.reportCommunityIds ?? [],
-          user.id,
+      if (dup) {
+        const label = USER_ROLE_LABELS[dup.role] ?? dup.role;
+        throw new BadRequestException(
+          `手机号 ${maskPhone(dto.phone)} 已开通员工账号「${dup.name || '未填姓名'}（${label}）」，` +
+            '请直接编辑那条记录调整身份，不要重复建档',
         );
-        const roles = dto.roleIds?.length
-          ? await this.replaceRoleBindings(tenantId, existing.id, dto.roleIds, user.id)
-          : [];
-        return this.toView(existing, null, communityIds, roles);
       }
     }
     const created = await this.userRepo.save(
@@ -235,7 +232,21 @@ export class StaffService {
       }
     }
     if (dto.name !== undefined) target.name = dto.name;
-    if (dto.phone !== undefined) target.phone = dto.phone;
+    if (dto.phone !== undefined && dto.phone !== target.phone) {
+      // 改手机号同样要防撞：建档时拦住了，编辑时放过去照样能造出两条同一个人
+      if (dto.phone) {
+        const dup = await this.userRepo.findOne({
+          where: { tenantId, phone: dto.phone, role: In(STAFF_APP_ROLES) },
+        });
+        if (dup && dup.id !== target.id) {
+          const label = USER_ROLE_LABELS[dup.role] ?? dup.role;
+          throw new BadRequestException(
+            `手机号 ${maskPhone(dto.phone)} 已被员工账号「${dup.name || '未填姓名'}（${label}）」占用`,
+          );
+        }
+      }
+      target.phone = dto.phone;
+    }
     if (dto.role !== undefined) target.role = dto.role;
     if (dto.status !== undefined) target.status = dto.status;
     if (dto.password) target.passwordHash = await bcrypt.hash(dto.password, 10);

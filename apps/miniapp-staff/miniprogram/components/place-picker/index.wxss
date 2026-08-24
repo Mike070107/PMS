@@ -22,20 +22,25 @@
   z-index: 90;
 }
 
-/* 面板占屏幕下 80%，列表长了也不会把页面顶出去 */
+/* 面板占屏幕下 80%。
+   高度必须写死 height，不能只给 max-height：
+   面板高度靠内容撑时，里面的 scroll-view 拿 flex: 1 分不到「剩余空间」（内容撑起来的
+   容器没有剩余空间），列表高度就等于内容高度 —— 于是列表自己根本不滚，手指的滑动
+   穿透到底下的页面，表现就是「滑楼号列表，列表没动、背景在动」。 */
 .panel {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   z-index: 91;
   display: flex;
   flex-direction: column;
-  max-height: 80vh;
+  height: 80vh;
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--color-card-bg);
   border-radius: 28rpx 28rpx 0 0;
 }
 
 .panel__head {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -62,7 +67,7 @@
   line-height: 1.6;
 }
 
-.search { padding: 20rpx 28rpx 0; }
+.search { flex-shrink: 0; padding: 20rpx 28rpx 0; }
 .search__input {
   box-sizing: border-box;
   width: 100%;
@@ -73,7 +78,7 @@
   font-size: 32rpx;
 }
 
-.suggest { padding: 12rpx 28rpx 28rpx; overflow-y: auto; }
+.suggest { flex: 0 1 auto; max-height: 46vh; padding: 12rpx 28rpx 28rpx; }
 .suggest__item {
   min-height: 100rpx;
   display: flex;
@@ -113,7 +118,13 @@
 }
 .skip-room:active { opacity: 0.7; }
 
-.list { flex: 1; margin-top: 12rpx; padding: 0 28rpx 28rpx; }
+.list {
+  flex: 1 1 0;
+  height: 0;
+  min-height: 0;
+  margin-top: 12rpx;
+  padding: 0 28rpx 28rpx;
+}
 .list__item {
   display: flex;
   align-items: center;

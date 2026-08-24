@@ -19,14 +19,19 @@ import { PermissionsGuard } from '../access/permissions.guard';
 import { CreateOwnerDto, ListOwnersQueryDto, UpdateOwnerDto } from './dto';
 import { OwnersMgmtService } from './owners-mgmt.service';
 
-/** 业主档案管理（后台「房产与业主」页），纯管理端接口，走页面权限矩阵。 */
+/**
+ * 业主档案管理（后台「业主用户」页），纯管理端接口，走页面权限矩阵。
+ *
+ * 页面权限收两个 key：档案 2026-08-24 从「房产与业主」搬到「业主用户」页，
+ * 老角色矩阵里只勾了 properties 的照样能用，不用挨个租户去补勾。
+ */
 @Controller('owners-mgmt')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class OwnersMgmtController {
   constructor(private readonly ownersMgmtService: OwnersMgmtService) {}
 
   @Get()
-  @RequirePermission('properties', 'view')
+  @RequirePermission(['owners', 'properties'], 'view')
   list(
     @Query() query: ListOwnersQueryDto,
     @CurrentUser() user: AuthUser,
@@ -36,13 +41,13 @@ export class OwnersMgmtController {
   }
 
   @Post()
-  @RequirePermission('properties', 'edit')
+  @RequirePermission(['owners', 'properties'], 'edit')
   create(@Body() dto: CreateOwnerDto, @CurrentUser() user: AuthUser) {
     return this.ownersMgmtService.create(dto, user);
   }
 
   @Patch(':id')
-  @RequirePermission('properties', 'edit')
+  @RequirePermission(['owners', 'properties'], 'edit')
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOwnerDto,
@@ -52,7 +57,7 @@ export class OwnersMgmtController {
   }
 
   @Delete(':id')
-  @RequirePermission('properties', 'delete')
+  @RequirePermission(['owners', 'properties'], 'delete')
   remove(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,

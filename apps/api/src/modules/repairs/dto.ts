@@ -68,6 +68,16 @@ export class CreateRepairRequestDto {
   @IsOptional()
   @IsDateString()
   slaDueAt?: string;
+  /**
+   * 端上自动判定的类型。人如果当场把它改成别的，两者就不一致 ——
+   * 服务端据此落一条「负样本」（见 RepairTypeCorrection），
+   * 让判定越用越准。不传 = 老版本端或没判出来。
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  predictedRepairType?: string;
+
 }
 
 /** 随手拍：从描述文字里识别报修地址（「一期24号302」→ 库里真实的楼栋/房号） */

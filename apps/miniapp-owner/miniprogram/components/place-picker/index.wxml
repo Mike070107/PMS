@@ -7,8 +7,8 @@
 </view>
 
 <!-- 选择面板：手机上放不下级联面板，改成逐层钻取 -->
-<view wx:if="{{open}}" class="mask" catchtap="onClose"></view>
-<view wx:if="{{open}}" class="panel">
+<view wx:if="{{open}}" class="mask" catchtap="onClose" catchtouchmove="onBlockMove"></view>
+<view wx:if="{{open}}" class="panel" catchtouchmove="onBlockMove">
   <view class="panel__head">
     <view class="panel__back {{level === 'community' ? 'panel__back--off' : ''}}" catchtap="onBack">
       {{level === 'community' ? '' : '返回上一级'}}
@@ -31,7 +31,7 @@
       bindinput="onKeyword"
     />
   </view>
-  <view wx:if="{{suggestions.length}}" class="suggest">
+  <scroll-view wx:if="{{suggestions.length}}" class="suggest" scroll-y>
     <view
       wx:for="{{suggestions}}"
       wx:key="key"
@@ -39,7 +39,7 @@
       data-index="{{index}}"
       catchtap="onPickSuggestion"
     >{{item.text}}</view>
-  </view>
+  </scroll-view>
 
   <block wx:if="{{!suggestions.length}}">
     <!-- 停在当前这一级 = 公共区域单 -->

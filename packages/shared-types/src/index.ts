@@ -16,12 +16,37 @@ export enum UserRole {
   SUPERADMIN = 'superadmin',
 }
 
-/** 社区代报角色：用业主端小程序，但能报授权小区内的任意地址 */
+/**
+ * 社区代报角色：2026-08-24 起走**员工端**小程序（此前在业主端），
+ * 能报授权小区内的任意地址，但没有接单/库存/审批那些物业员工的功能。
+ */
 export const REPORTER_ROLES: UserRole[] = [
   UserRole.GUARD,
   UserRole.NEIGHBORHOOD,
   UserRole.OWNER_COMMITTEE,
   UserRole.PROPERTY_STAFF,
+];
+
+/** 走业主端小程序（邻修管家）的角色：只有业主 */
+export const OWNER_APP_ROLES: UserRole[] = [UserRole.OWNER];
+
+/** 走员工端小程序（邻修管理）的角色：物业员工 + 代报角色 */
+export const STAFF_APP_ROLES: UserRole[] = [
+  UserRole.TECHNICIAN,
+  UserRole.OFFICE,
+  UserRole.MANAGER,
+  UserRole.PURCHASER,
+  UserRole.ADMIN,
+  ...REPORTER_ROLES,
+];
+
+/** 员工端里真正干物业活的角色：能接单/看工单池/管库存，代报角色不在内 */
+export const STAFF_APP_WORKER_ROLES: UserRole[] = [
+  UserRole.TECHNICIAN,
+  UserRole.OFFICE,
+  UserRole.MANAGER,
+  UserRole.PURCHASER,
+  UserRole.ADMIN,
 ];
 
 /** 角色中文名，前后台展示同一套 */
@@ -203,7 +228,7 @@ export interface OwnerPlace {
   /**
    * true = 这不是他家，是物业地址：保安/居委会/业委会/物业工作人员没有
    * 「自己家」概念，默认位置显示第一个授权小区的物业地址（小区档案里的「地址」）。
-   * 端上据此把「我家里」这类文案换成「物业地址」。
+   * 他们 2026-08-24 起走员工端，业主端已经不会再收到这个标记。
    */
   officePlace?: boolean;
 }
@@ -219,15 +244,15 @@ export interface MeResp {
   status: UserStatus;
   /** 仅业主/代报角色返回；未提交入驻时为 null */
   place?: OwnerPlace | null;
-  /** 仅保安/居委会/业委会返回：能替哪些小区报修 */
+  /** 仅代报角色返回（员工端用）：能替哪些小区报修 */
   reporter?: ReporterGrant;
   /** 该物业配好的微信订阅消息模板 id，端上用它调 requestSubscribeMessage */
   subscribeTemplates?: string[];
 }
 
 /**
- * 代报授权。小程序据此在「报修位置」里多给一个「其它地址」范围 ——
- * 保安/居委会/业委会报的东西往往既不在自己家、也不在自己楼里。
+ * 代报授权。员工端据此把报修地址簿收窄到授权小区 —— 保安/居委会/业委会
+ * 报的东西往往既不在自己家、也不在自己楼里，但也不该能报到别的小区去。
  */
 export interface ReporterGrant {
   role: UserRole;
@@ -314,6 +339,11 @@ export interface RepairCreateReq {
   contactName?: string;
   contactPhone?: string;
   repairType?: string;
+  /**
+   * 端上自动判出来的类型。人当场改成别的时两者不一致，
+   * 服务端据此记一条负样本，让判定越用越准（见 RepairTypeCorrection）。
+   */
+  predictedRepairType?: string;
   content: string;
   attachments?: string[];
 }
@@ -515,10 +545,23 @@ export interface WorkOrderStockOption {
   qty: number;
 }
 
+/** 这张工单能去领料的仓库之一 */
+export interface WorkOrderStockWarehouse {
+  id: number;
+  name: string;
+  type: WarehouseType;
+  /** 就是本单小区自己的仓 */
+  own: boolean;
+  /** 这个仓里至少有一样东西有货，端上用来提示「换那个仓有货」 */
+  hasStock: boolean;
+}
+
 export interface WorkOrderStockOptions {
-  /** 本单对应的仓库（小区仓优先，没有则总仓）；一个仓都没配时为 null */
+  /** 当前这份清单出自哪个仓；一个仓都没配时为 null */
   warehouseId: number | null;
   warehouseName: string;
+  /** 可切换的仓库：本小区仓 → 总仓 → 其它小区仓 */
+  warehouses: WorkOrderStockWarehouse[];
   items: WorkOrderStockOption[];
 }
 
@@ -594,6 +637,7 @@ export interface DictItem {
 export * from './address';
 export * from './repair-classify';
 export * from './pages';
+export * from './voice-extract';
 
 // ---------- 停留时长 ----------
 

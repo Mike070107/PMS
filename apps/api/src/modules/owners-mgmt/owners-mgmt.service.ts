@@ -7,10 +7,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { OWNER_APP_ROLES, UserRole, UserStatus } from '../../common/enums';
+import { UserRole, UserStatus } from '../../common/enums';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
-import { Building, Community, House, User, UserReportCommunity } from '../../entities';
+import { Building, Community, House, User } from '../../entities';
 import { CreateOwnerDto, ListOwnersQueryDto, UpdateOwnerDto } from './dto';
 
 @Injectable()
@@ -20,8 +20,6 @@ export class OwnersMgmtService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(House)
     private readonly houseRepo: Repository<House>,
-    @InjectRepository(UserReportCommunity)
-    private readonly reportGrantRepo: Repository<UserReportCommunity>,
   ) {}
 
   async list(query: ListOwnersQueryDto, user: AuthUser, access?: ResolvedAccess) {
@@ -85,25 +83,15 @@ export class OwnersMgmtService {
       );
     }
 
+    // 这里只查 role=owner（业主端小程序用户），不再回显代报身份和代报授权 ——
+    // 保安/居委会那套 2026-08-24 整体挪到员工端，归「用户管理」维护
     const rows = await qb.getRawMany<any>();
-    const ids = rows.map((r) => Number(r.id));
-    const grants = ids.length
-      ? await this.reportGrantRepo.find({ where: { tenantId, userId: In(ids) } })
-      : [];
-    const grantsByUser = new Map<number, number[]>();
-    for (const grant of grants) {
-      const list = grantsByUser.get(grant.userId) ?? [];
-      list.push(grant.communityId);
-      grantsByUser.set(grant.userId, list);
-    }
 
     return rows.map((r) => ({
       id: Number(r.id),
       name: r.name,
       phone: r.phone,
       status: r.status,
-      reporterRole: r.role,
-      reportCommunityIds: grantsByUser.get(Number(r.id)) ?? [],
       houseId: r.houseId ? Number(r.houseId) : null,
       house: r.houseId
         ? {
@@ -155,7 +143,7 @@ export class OwnersMgmtService {
   async update(id: number, dto: UpdateOwnerDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const owner = await this.userRepo.findOne({
-      where: { id, tenantId, role: In(OWNER_APP_ROLES) },
+      where: { id, tenantId, role: UserRole.OWNER },
     });
     if (!owner) throw new NotFoundException('owner not found');
 

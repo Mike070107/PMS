@@ -4,7 +4,7 @@ export enum UserRole {
   GUARD = 'guard', // 保安
   NEIGHBORHOOD = 'neighborhood', // 居委会
   OWNER_COMMITTEE = 'owner_committee', // 业委会
-  PROPERTY_STAFF = 'property_staff', // 物业工作人员（只用业主端报修，不进后台）
+  PROPERTY_STAFF = 'property_staff', // 物业工作人员（只用员工端报修，不进后台）
   TECHNICIAN = 'technician', // 维修工
   OFFICE = 'office', // 物业办公室
   MANAGER = 'manager', // 物业经理
@@ -16,8 +16,11 @@ export enum UserRole {
 /**
  * 社区代报角色：不是业主、也不在物业编制内，但在小区里跑动，
  * 常常替住户报修（保安发现楼道灯坏、居委会接到老人电话、业委会巡查）。
- * 他们用业主端小程序，但报修位置不受「自己家」约束 ——
- * 能报哪些小区由 user_report_communities 逐条授权，不是全域放行。
+ *
+ * 2026-08-24 起他们**走员工端小程序**（此前在业主端）：一个人只在一个端登录，
+ * 后台也只在「用户管理」里维护，不再和业主档案混在一起。
+ * 报修位置不受「自己家」约束 —— 能报哪些小区由 user_report_communities
+ * 逐条授权（见 assertCanReportAt），不是全域放行。
  */
 export const REPORTER_ROLES: UserRole[] = [
   UserRole.GUARD,
@@ -26,12 +29,14 @@ export const REPORTER_ROLES: UserRole[] = [
   UserRole.PROPERTY_STAFF,
 ];
 
-/** 走业主端小程序登录的角色（业主 + 代报角色） */
-export const OWNER_APP_ROLES: UserRole[] = [UserRole.OWNER, ...REPORTER_ROLES];
+/** 走业主端小程序（邻修管家）登录的角色。业主端只有业主，别再往里加。 */
+export const OWNER_APP_ROLES: UserRole[] = [UserRole.OWNER];
 
 /**
  * 走员工端小程序（邻修管理）登录的角色。
- * 员工也能在员工端报修（发现楼道灯坏了顺手提单），位置不受「自己家」约束。
+ * 物业员工也能在员工端报修（发现楼道灯坏了顺手提单），位置不受「自己家」约束；
+ * 代报角色（保安/居委会/业委会/物业工作人员）同样从这里进，
+ * 但只有报修相关的功能，接单/库存/审批一律不给（见 STAFF_APP_WORKER_ROLES）。
  */
 export const STAFF_APP_ROLES: UserRole[] = [
   UserRole.TECHNICIAN,
@@ -39,7 +44,27 @@ export const STAFF_APP_ROLES: UserRole[] = [
   UserRole.MANAGER,
   UserRole.PURCHASER,
   UserRole.ADMIN,
+  ...REPORTER_ROLES,
 ];
+
+/** 员工端里真正干物业活的角色（能接单/看池子/管库存），代报角色不在内 */
+export const STAFF_APP_WORKER_ROLES: UserRole[] = [
+  UserRole.TECHNICIAN,
+  UserRole.OFFICE,
+  UserRole.MANAGER,
+  UserRole.PURCHASER,
+  UserRole.ADMIN,
+];
+
+/**
+ * 「只能看自己提的那些单」的角色 —— 和「从哪个端登录」是两回事，必须分开判。
+ *
+ * 业主看自己家的单；保安/居委会/业委会看自己代报的单。他们都不是物业编制内
+ * 的人，不能看到全租户工单。把这层判断写成 OWNER_APP_ROLES 会在代报角色改端时
+ * 直接漏成「无过滤分支」= 泄露全租户数据，所以单独立一个常量。
+ * 新增按人收敛可见范围的地方一律用它，不要用 OWNER_APP_ROLES。
+ */
+export const SELF_SCOPED_ROLES: UserRole[] = [UserRole.OWNER, ...REPORTER_ROLES];
 
 /** 角色中文名。工单详情、账号管理都直接展示，不能露枚举值 */
 export const USER_ROLE_LABELS: Record<string, string> = {

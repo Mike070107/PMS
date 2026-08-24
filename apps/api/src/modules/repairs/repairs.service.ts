@@ -25,6 +25,7 @@ import {
   NotifyChannel,
   NotifyStatus,
   OWNER_APP_ROLES,
+  SELF_SCOPED_ROLES,
   STAFF_APP_ROLES,
   RepairSource,
   REPAIR_SOURCE_LABELS,
@@ -267,11 +268,67 @@ export class RepairsService implements OnModuleInit {
     // keywords 不只是后台配的那几句：类型名切出来的词 + 同义词也算，
     // 否则租户自建的类型（「门铃 / 对讲 / 门禁 /监控 / 道闸 问题」）一个关键词都没有，
     // 业主写什么都判成「其它」
-    return rules.map((rule) => ({
-      repairType: rule.repairType,
-      label: rule.label,
-      keywords: buildTypeKeywords(rule),
-    }));
+    const negativeByType = await this.buildNegativeKeywords(tenantId);
+    return rules.map((rule) => {
+      const keywords = buildTypeKeywords(rule);
+      // 后台明确配过的词永远算数：人写进去的意图，不能被几次误判推翻
+      const configured = new Set(rule.contentSuggestions ?? []);
+      return {
+        repairType: rule.repairType,
+        label: rule.label,
+        keywords,
+        negativeKeywords: (negativeByType.get(rule.repairType) ?? []).filter(
+          (word) => !configured.has(word),
+        ),
+      };
+    });
+  }
+
+  /**
+   * 负样本 → 每个类型的「别再按这个词判我」清单。
+   *
+   * 来源是 repair_type_corrections：端上判成 A、人当场改成 B 的那些单。
+   * 从被改判的描述里取出「当初让 A 命中的词」，同一个词被改走 ≥2 次才算数 ——
+   * 一次可能是手滑或个例，两次就是判定确实不对。
+   *
+   * 只降权、不删配置：后台明明白白配过的词在上面被排除掉了，
+   * 这里管的是类型名切词、同义词这类「系统自己猜的」匹配。
+   */
+  private async buildNegativeKeywords(tenantId: number): Promise<Map<string, string[]>> {
+    const corrections = await this.dataSource.getRepository(RepairTypeCorrection).find({
+      where: { tenantId },
+      order: { id: 'DESC' },
+      take: 500,
+    });
+    const wrongOnes = corrections.filter((row) => row.fromType && row.fromType !== row.toType);
+    if (!wrongOnes.length) return new Map();
+
+    const rules = await this.repairTypeRuleRepo.find({ where: { tenantId } });
+    const keywordsByType = new Map(
+      rules.map((rule) => [rule.repairType, buildTypeKeywords(rule)] as const),
+    );
+
+    // type -> keyword -> 被改走的次数
+    const counter = new Map<string, Map<string, number>>();
+    for (const row of wrongOnes) {
+      const text = String(row.content || '').toLowerCase();
+      for (const word of keywordsByType.get(row.fromType!) ?? []) {
+        const key = word.trim().toLowerCase();
+        if (key.length < 2 || !text.includes(key)) continue;
+        const bucket = counter.get(row.fromType!) ?? new Map<string, number>();
+        bucket.set(word, (bucket.get(word) ?? 0) + 1);
+        counter.set(row.fromType!, bucket);
+      }
+    }
+
+    const out = new Map<string, string[]>();
+    for (const [type, bucket] of counter) {
+      const words = Array.from(bucket.entries())
+        .filter(([, count]) => count >= 2)
+        .map(([word]) => word);
+      if (words.length) out.set(type, words);
+    }
+    return out;
   }
 
   async listRepairSuggestions(user: AuthUser) {
@@ -428,7 +485,7 @@ export class RepairsService implements OnModuleInit {
     // 小程序角色按人收敛可见范围，后台角色维持全租户。
     // 业主端身份不止 OWNER：保安/居委/业委/物业工作人员也在业主端提单，
     // 漏了他们要么 403、要么（更糟）落到无过滤分支看到全租户的单
-    if (OWNER_APP_ROLES.includes(user.role as UserRole)) {
+    if (SELF_SCOPED_ROLES.includes(user.role as UserRole)) {
       const myRequestIds = await this.repairRequestRepo.find({
         where: { tenantId, submittedBy: user.id },
         select: ['id'],
@@ -517,34 +574,69 @@ export class RepairsService implements OnModuleInit {
    * 库存为 0 的材料也返回（标 qty=0）：现场需要它但仓里没有，正是要走缺料登记的场景，
    * 列表里看不到反而让人以为「这东西系统里不存在」。
    */
-  async listWorkOrderStockOptions(id: number, user: AuthUser) {
+  /**
+   * 这张工单能领哪些料。
+   *
+   * 仓库不是「只有本小区仓」：本小区没配仓库（或本小区仓空着）时，维修工照样得能领料——
+   * 之前只回退到「第一个总仓」，碰上总仓没建库存，整页全是「无货」，看着像坏了。
+   * 现在把租户下所有启用的仓库都列出来（本小区仓 → 总仓 → 其它小区仓），
+   * 默认落到「本小区仓」，没有本小区仓就落到第一个真有货的仓，端上还能自己切。
+   * 出库按选中的那个仓扣，所以端上每一行用料都要记住它是从哪个仓拿的。
+   */
+  async listWorkOrderStockOptions(id: number, user: AuthUser, warehouseId?: number) {
     const tenantId = this.resolveTenantId(user);
     const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
     if (!workOrder) throw new NotFoundException('work order not found');
 
     const warehouseRepo = this.dataSource.getRepository(Warehouse);
+    const all = await warehouseRepo.find({ where: { tenantId, enabled: true }, order: { id: 'ASC' } });
+    // 0 = 本小区仓，1 = 总仓，2 = 别的小区仓。同级按 id，保证每次顺序一样（不能靠 findOne 随机拿一个）
+    const rank = (item: Warehouse) =>
+      item.communityId && item.communityId === workOrder.communityId
+        ? 0
+        : item.type === WarehouseType.CENTRAL
+          ? 1
+          : 2;
+    const candidates = all.slice().sort((a, b) => rank(a) - rank(b) || a.id - b.id);
+
+    const stockRepo = this.dataSource.getRepository(Stock);
+    const allStocks = candidates.length
+      ? await stockRepo.find({
+          where: { tenantId, warehouseId: In(candidates.map((item) => item.id)) },
+        })
+      : [];
+    const stockedWarehouses = new Set(
+      allStocks.filter((row) => Number(row.qty) > 0).map((row) => row.warehouseId),
+    );
+
     const warehouse =
-      (await warehouseRepo.findOne({
-        where: { tenantId, communityId: workOrder.communityId, enabled: true },
-      })) ??
-      (await warehouseRepo.findOne({
-        where: { tenantId, type: WarehouseType.CENTRAL, enabled: true },
-      }));
+      candidates.find((item) => item.id === warehouseId) ??
+      candidates.find((item) => rank(item) === 0) ??
+      candidates.find((item) => stockedWarehouses.has(item.id)) ??
+      candidates[0] ??
+      null;
 
     const materials = await this.dataSource.getRepository(Material).find({
       where: { tenantId, enabled: true },
       order: { category: 'ASC', id: 'ASC' },
     });
-    const stocks = warehouse
-      ? await this.dataSource.getRepository(Stock).find({
-          where: { tenantId, warehouseId: warehouse.id },
-        })
-      : [];
-    const qtyByMaterial = new Map(stocks.map((row) => [row.materialId, Number(row.qty) || 0]));
+    const qtyByMaterial = new Map(
+      allStocks
+        .filter((row) => warehouse && row.warehouseId === warehouse.id)
+        .map((row) => [row.materialId, Number(row.qty) || 0]),
+    );
 
     return {
       warehouseId: warehouse?.id ?? null,
       warehouseName: warehouse?.name ?? '',
+      warehouses: candidates.map((item) => ({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        /** 就是本单小区自己的仓 */
+        own: rank(item) === 0,
+        hasStock: stockedWarehouses.has(item.id),
+      })),
       items: materials.map((item) => ({
         materialId: item.id,
         code: item.code,
@@ -703,7 +795,7 @@ export class RepairsService implements OnModuleInit {
       }),
     ]);
     // 业主端身份（业主/保安/居委/业委/物业工作人员）只能看自己提交的报修
-    if (OWNER_APP_ROLES.includes(user.role as UserRole) && request?.submittedBy !== user.id) {
+    if (SELF_SCOPED_ROLES.includes(user.role as UserRole) && request?.submittedBy !== user.id) {
       throw new NotFoundException('work order not found');
     }
     // 存量工单的联系人/电话是空的（那会儿端上选填、服务端也不兜底），
@@ -1202,7 +1294,7 @@ export class RepairsService implements OnModuleInit {
       });
       if (!request) throw new NotFoundException('repair request not found');
       if (
-        OWNER_APP_ROLES.includes(user.role as UserRole) &&
+        SELF_SCOPED_ROLES.includes(user.role as UserRole) &&
         request.submittedBy !== user.id
       ) {
         throw new ForbiddenException('只能验收自己提交的报修');
@@ -1248,7 +1340,7 @@ export class RepairsService implements OnModuleInit {
         'cancel',
         '当前状态不可撤单',
       );
-      if (OWNER_APP_ROLES.includes(user.role as UserRole)) {
+      if (SELF_SCOPED_ROLES.includes(user.role as UserRole)) {
         const request = await manager.findOne(RepairRequest, {
           where: { id: workOrder.requestId, tenantId },
         });
@@ -1282,7 +1374,7 @@ export class RepairsService implements OnModuleInit {
       ) {
         throw new BadRequestException('工单已在处理中，无需催单');
       }
-      if (OWNER_APP_ROLES.includes(user.role as UserRole)) {
+      if (SELF_SCOPED_ROLES.includes(user.role as UserRole)) {
         const request = await manager.findOne(RepairRequest, {
           where: { id: workOrder.requestId, tenantId },
         });
@@ -1563,6 +1655,28 @@ export class RepairsService implements OnModuleInit {
           updatedBy: submittedBy,
         }),
       );
+
+      // 端上判了一个类型、人当场改成了别的 —— 判错了的最直接证据。
+      // 只记录、不自动改关键词：报修的人只是顺手改个下拉框，没打算给系统当老师，
+      // 拿一次手滑去改配置容易把整个类型带偏。攒够次数后由 listPublicRepairTypes
+      // 给误判的词降权，后台「常被改判」里也能一键收编成正式关键词。
+      const predicted = dto.predictedRepairType?.trim();
+      if (predicted && repairType && predicted !== repairType) {
+        await manager.save(
+          RepairTypeCorrection,
+          manager.create(RepairTypeCorrection, {
+            tenantId,
+            workOrderId: workOrder.id,
+            requestId: request.id,
+            fromType: predicted,
+            toType: repairType,
+            content: dto.content,
+            learnedKeywords: [],
+            createdBy: submittedBy,
+            updatedBy: submittedBy,
+          }),
+        );
+      }
 
       return { request, workOrder };
     });

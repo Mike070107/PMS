@@ -13,6 +13,7 @@ import {
   stayDays,
   WorkOrderStatus,
   type WorkOrderStockOption,
+  type WorkOrderStockWarehouse,
   type WorkOrderDetail,
 } from '@pms/shared-types';
 
@@ -31,8 +32,11 @@ interface MaterialRow {
   unit: string;
   photoUrl: string;
   code: string;
-  /** 本小区仓可用量；手填的行为 -1（= 仓里没有这个 SKU） */
+  /** 选中那一刻所在仓的可用量；手填的行为 -1（= 仓里没有这个 SKU） */
   stockQty: number;
+  /** 从哪个仓领的（完工时按它扣库存）。手填的行为 null。
+      必须一行一个：选料途中切过仓库，整单共用一个 warehouseId 就会扣错仓。 */
+  warehouseId: number | null;
   /** 下面两个由 setMaterialRows 算好 —— wxml 里调不了函数 */
   hintText: string;
   hintShort: boolean;
@@ -65,6 +69,7 @@ const emptyMaterialRow = (): MaterialRow => ({
   photoUrl: '',
   code: '',
   stockQty: -1,
+  warehouseId: null,
   hintText: '',
   hintShort: false,
 });
@@ -99,6 +104,7 @@ function collectRows(rows: MaterialRow[]) {
       qty: Number(row.qty),
       unit: row.unit || undefined,
       stockQty: row.stockQty,
+      warehouseId: row.warehouseId ?? undefined,
     }))
     .filter((row) => row.name);
 }
@@ -149,7 +155,14 @@ interface PageData {
   skuKeyword: string;
   skuList: WorkOrderStockOption[];
   skuTargetIndex: number;
+  /** 类别筛选条：只列这个仓真有的类别，-1 = 全部 */
+  skuCategories: string[];
+  skuCategoryIndex: number;
   warehouseName: string;
+  /** 可切换的仓库（本小区仓 → 总仓 → 其它小区仓） */
+  warehouses: WorkOrderStockWarehouse[];
+  /** 当前仓一件货都没有时的出路提示 */
+  skuEmptyHint: string;
   /** 维修说明的常用话术（按本单报修类型给），点一下填进去 */
   phrases: Array<{ text: string; on: boolean }>;
 }
@@ -191,7 +204,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     skuKeyword: '',
     skuList: [],
     skuTargetIndex: 0,
+    skuCategories: [],
+    skuCategoryIndex: -1,
     warehouseName: '',
+    warehouses: [],
+    skuEmptyHint: '',
     phrases: [],
   },
 

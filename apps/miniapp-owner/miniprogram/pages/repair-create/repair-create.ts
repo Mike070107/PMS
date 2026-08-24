@@ -13,10 +13,8 @@ import {
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
   REPAIR_TYPE_OPTIONS,
-  type AddressCommunity,
 } from '@pms/shared-types';
 import { speechErrorTip } from '@pms/miniapp-ui';
-import { loadAddressBook } from '../../utils/address-picker';
 import {
   composePlaceText,
   isPublicScope,
@@ -72,7 +70,11 @@ interface PickedPlace {
 interface PageData {
   token: string;
   booting: boolean;
-  /** 'self' = 普通业主；'full' = 后台标记过身份的人，用后台那套地址选法 */
+  /**
+   * 'self' = 普通业主，只在自己家/自己楼里选位置。
+   * 'full' = 后台标记过身份的人用后台那套地址选法 —— 2026-08-24 代报角色迁到
+   * 员工端后，业主端已经没有入口会切到 full，相关分支只是还没拆的旧结构。
+   */
   mode: 'self' | 'full';
   notOnboarded: boolean;
   phoneMatchEnabled: boolean;
@@ -188,7 +190,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   /** 地址簿放实例上，不进 data —— 1000+ 条 setData 会明显卡 */
-  book: [] as AddressCommunity[],
   /** 后台配置的报修类型（带关键词，用于「猜你想输」） */
   types: [] as PublicRepairType[],
   /** 地址识别的防抖定时器 */
@@ -212,7 +213,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       this.enterFromScan(decodeURIComponent(q.scene));
     } else if (q.token) {
       this.resolveToken(q.token);
-      this.loadIdentity();
     } else if (q.communityId) {
       this.setData({
         communityId: Number(q.communityId),
@@ -226,7 +226,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         roomNo: q.roomNo ? decodeURIComponent(q.roomNo) : '',
       });
       this.refreshPlace();
-      this.loadIdentity();
     } else {
       this.loadMyPlace();
     }
@@ -234,41 +233,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   // ---------------- 身份与地址簿 ----------------
 
-  /**
-   * 物业在后台把这个账号标记成保安/居委会/业委会/物业工作人员后，
-   * 这里自动切到「和后台一样的地址选法」。本人不用做任何操作，也不显示身份字样。
-   */
-  async loadIdentity() {
-    try {
-      const me = await auth.me();
-      if (!me.reporter?.canReportOthers) return;
-      this.setData({ mode: 'full', bookLoading: true });
-      // 只拉授权小区的地址簿；一个小区一次，合并成一棵树
-      const books = await Promise.all(
-        me.reporter.communities.map((item) =>
-          loadAddressBook(item.id).catch(() => [] as AddressCommunity[]),
-        ),
-      );
-      const merged: AddressCommunity[] = [];
-      const seen = new Set<number>();
-      for (const book of books) {
-        for (const community of book) {
-          if (seen.has(community.id)) continue;
-          seen.add(community.id);
-          merged.push(community);
-        }
-      }
-      this.book = merged;
-      this.setData({ bookReady: merged.length > 0, bookLoading: false }, () => {
-        // 组件是 wx:if 出来的，setData 回调里才拿得到实例
-        const picker = this.selectComponent('#placePicker');
-        if (picker) picker.setBook(merged);
-      });
-    } catch {
-      // 查不到身份就按普通业主走，报修照常
-      this.setData({ bookLoading: false });
-    }
-  },
 
   async loadTypes() {
     try {
@@ -302,7 +266,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         });
         this.refreshPlace();
       }
-      await this.loadIdentity();
     } catch {
       // 拿不到就让用户扫码
     }
@@ -326,7 +289,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         this.setData({ notOnboarded: true, phoneMatchEnabled: true });
       }
       await this.resolveToken(token);
-      await this.loadIdentity();
     } finally {
       this.setData({ booting: false });
     }

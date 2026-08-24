@@ -1,4 +1,4 @@
-.page { min-height: 100vh; background: var(--color-bg); }
+.page { min-height: 100vh; background: var(--color-page-bg); }
 
 .hero {
   background: var(--color-brand);

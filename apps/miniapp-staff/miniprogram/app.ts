@@ -1,6 +1,9 @@
 import { configure } from '@pms/api-client';
 
 const TOKEN_KEY = 'pms.staff.access_token';
+const LOGIN_PAGE = 'pages/login/login';
+/** 上次踢回登录页的时刻，防止 401 连发时反复 reLaunch */
+let lastKickAt = 0;
 const REFRESH_KEY = 'pms.staff.refresh_token';
 
 interface AppData {
@@ -27,9 +30,21 @@ App<AppData>({
     configure({
       baseURL: this.baseURL,
       getToken: () => this.getToken(),
+      /**
+       * 登录态失效时踢回登录页。**必须防重入**：
+       * 已经在登录页时再 reLaunch 一次，会把登录页重建、它 onLoad 又发请求、
+       * 再 401 再 reLaunch …… 页面永远重建不完，表现就是「卡在登录页一片白」。
+       * 所以：已经在登录页就只清 token，不再跳；两次跳转之间也留 1 秒冷却。
+       */
       onUnauthorized: () => {
         this.clearTokens();
-        wx.reLaunch({ url: '/pages/login/login' });
+        const pages = getCurrentPages();
+        const current = pages.length ? pages[pages.length - 1].route : '';
+        if (current === LOGIN_PAGE) return;
+        const now = Date.now();
+        if (now - lastKickAt < 1000) return;
+        lastKickAt = now;
+        wx.reLaunch({ url: `/${LOGIN_PAGE}` });
       },
     });
   },

@@ -107,8 +107,8 @@
 </view>
 
 <!-- ============ 添加用料面板 ============ -->
-<view wx:if="{{panel === 'material'}}" class="sheet-mask" bindtap="onClosePanel"/>
-<view wx:if="{{panel === 'material'}}" class="sheet">
+<view wx:if="{{panel === 'material'}}" class="sheet-mask" bindtap="onClosePanel" catchtouchmove="noop"/>
+<view wx:if="{{panel === 'material'}}" class="sheet" catchtouchmove="noop">
   <view class="sheet__head">
     <text class="sheet__title">添加用料</text>
     <text class="sheet__close" bindtap="onClosePanel">关闭</text>
@@ -202,8 +202,8 @@
 </view>
 
 <!-- ============ 完工提交面板 ============ -->
-<view wx:if="{{panel === 'complete'}}" class="sheet-mask" bindtap="onClosePanel"/>
-<view wx:if="{{panel === 'complete'}}" class="sheet">
+<view wx:if="{{panel === 'complete'}}" class="sheet-mask" bindtap="onClosePanel" catchtouchmove="noop"/>
+<view wx:if="{{panel === 'complete'}}" class="sheet" catchtouchmove="noop">
   <view class="sheet__head">
     <text class="sheet__title">完工提交</text>
     <text class="sheet__close" bindtap="onClosePanel">关闭</text>
@@ -272,8 +272,8 @@
 </view>
 
 <!-- ============ 小区库存选择器（叠在用料面板之上） ============ -->
-<view wx:if="{{skuOpen}}" class="sheet-mask sheet-mask--top" bindtap="onCloseSku"/>
-<view wx:if="{{skuOpen}}" class="sheet sheet--top">
+<view wx:if="{{skuOpen}}" class="sheet-mask sheet-mask--top" bindtap="onCloseSku" catchtouchmove="noop"/>
+<view wx:if="{{skuOpen}}" class="sheet sheet--top" catchtouchmove="noop">
   <view class="sheet__head">
     <text class="sheet__title">{{warehouseName || '本小区仓'}}库存</text>
     <text class="sheet__close" bindtap="onCloseSku">关闭</text>
@@ -286,7 +286,14 @@
     bindinput="onSkuKeyword"
   />
 
-  <scroll-view class="sheet__body" scroll-y>
+  <!-- 列头常驻：列表一滚起来就不知道右边那个数字是什么了 -->
+  <view class="sku-head">
+    <text class="sku-head__photo">图片</text>
+    <text class="sku-head__name">名称</text>
+    <text class="sku-head__qty">库存</text>
+  </view>
+
+  <scroll-view class="sheet__body sheet__body--flush" scroll-y>
     <view wx:if="{{skuLoading}}" class="center muted">加载中…</view>
     <block wx:elif="{{skuError}}">
       <view class="error">{{skuError}}</view>

@@ -11,7 +11,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
-import { OWNER_APP_ROLES, STAFF_APP_ROLES, UserRole } from '../../common/enums';
+import {
+  OWNER_APP_ROLES,
+  SELF_SCOPED_ROLES,
+  STAFF_APP_ROLES,
+  UserRole,
+} from '../../common/enums';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { Roles } from '../../common/roles.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -169,7 +174,7 @@ export class RepairsController {
   }
 
   @Get('work-orders')
-  @Roles(...OWNER_APP_ROLES, UserRole.TECHNICIAN)
+  @Roles(...SELF_SCOPED_ROLES, UserRole.TECHNICIAN)
   @RequirePermission('work-orders', 'view')
   listWorkOrders(
     @Query() query: WorkOrdersQueryDto,
@@ -190,7 +195,7 @@ export class RepairsController {
   }
 
   @Get('work-orders/:id')
-  @Roles(...OWNER_APP_ROLES, UserRole.TECHNICIAN)
+  @Roles(...SELF_SCOPED_ROLES, UserRole.TECHNICIAN)
   @RequirePermission('work-orders', 'view')
   getWorkOrder(
     @Param('id', ParseIntPipe) id: number,
@@ -279,8 +284,9 @@ export class RepairsController {
   }
 
   /**
-   * 这张工单能领哪些料：本小区仓的库存清单。
-   * 维修工必须能读 —— 「添加用料」就是给他用的；仓库由工单反查，端上不用知道仓库 id。
+   * 这张工单能领哪些料：默认本小区仓，本小区没配仓库时给到有货的仓。
+   * 维修工必须能读 —— 「添加用料」就是给他用的；不传 warehouseId 时由工单反查默认仓，
+   * 端上切仓库才带上它。
    */
   @Get('work-orders/:id/stock-options')
   @Roles(UserRole.TECHNICIAN)
@@ -288,8 +294,14 @@ export class RepairsController {
   listWorkOrderStockOptions(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
+    @Query('warehouseId') warehouseId?: string,
   ) {
-    return this.repairsService.listWorkOrderStockOptions(id, user);
+    const picked = Number(warehouseId);
+    return this.repairsService.listWorkOrderStockOptions(
+      id,
+      user,
+      Number.isFinite(picked) && picked > 0 ? picked : undefined,
+    );
   }
 
   /**
@@ -307,7 +319,7 @@ export class RepairsController {
   }
 
   @Post('work-orders/:id/review')
-  @Roles(...OWNER_APP_ROLES)
+  @Roles(...SELF_SCOPED_ROLES)
   @RequirePermission('work-orders', 'edit')
   reviewWorkOrder(
     @Param('id', ParseIntPipe) id: number,
@@ -318,7 +330,7 @@ export class RepairsController {
   }
 
   @Post('work-orders/:id/cancel')
-  @Roles(...OWNER_APP_ROLES)
+  @Roles(...SELF_SCOPED_ROLES)
   @RequirePermission('work-orders', 'edit')
   cancelWorkOrder(
     @Param('id', ParseIntPipe) id: number,
@@ -329,7 +341,7 @@ export class RepairsController {
   }
 
   @Post('work-orders/:id/urge')
-  @Roles(...OWNER_APP_ROLES)
+  @Roles(...SELF_SCOPED_ROLES)
   @RequirePermission('work-orders', 'edit')
   urgeWorkOrder(
     @Param('id', ParseIntPipe) id: number,

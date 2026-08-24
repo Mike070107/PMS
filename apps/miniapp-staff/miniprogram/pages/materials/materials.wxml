@@ -55,8 +55,8 @@
 </view>
 
 <!-- 新增 / 编辑 -->
-<view wx:if="{{editorOpen}}" class="sheet-mask" bindtap="onCloseEditor" />
-<view wx:if="{{editorOpen}}" class="sheet">
+<view wx:if="{{editorOpen}}" class="sheet-mask" bindtap="onCloseEditor" catchtouchmove="noop" />
+<view wx:if="{{editorOpen}}" class="sheet" catchtouchmove="noop">
   <view class="sheet__head">
     <text class="sheet__title">{{form.id ? '编辑材料' : '新增材料'}}</text>
     <text class="sheet__close" bindtap="onCloseEditor">关闭</text>

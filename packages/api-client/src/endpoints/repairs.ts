@@ -13,6 +13,8 @@ export interface PublicRepairType {
   label: string;
   /** 该类型的常用描述关键词，用于「随手拍报修」自动判定类型 */
   keywords: string[];
+  /** 被人当场改判过的词，判定时扣分（负样本，见后端 buildNegativeKeywords） */
+  negativeKeywords?: string[];
 }
 
 /** 租户配置的报修类型（启用中的），任意登录角色可读 */
@@ -97,11 +99,15 @@ export const cancel = (id: number | string, data: { reasonCode: string; note?: s
   request<void>({ method: 'POST', url: `/work-orders/${id}/cancel`, data });
 
 /**
- * 这张工单能领哪些料：本小区仓的库存清单（含可用数量与实物照片）。
+ * 这张工单能领哪些料：默认仓库的库存清单（含可用数量与实物照片）。
  * 「添加用料」用它，别用 /materials/options —— 那个不带库存量。
+ * 不传 warehouseId 走默认仓（本小区仓优先，没有则给到有货的仓）；端上切仓库才传。
  */
-export const stockOptions = (id: number | string) =>
-  request<WorkOrderStockOptions>({ url: `/work-orders/${id}/stock-options` });
+export const stockOptions = (id: number | string, warehouseId?: number) =>
+  request<WorkOrderStockOptions>({
+    url: `/work-orders/${id}/stock-options`,
+    query: warehouseId ? { warehouseId } : undefined,
+  });
 
 export interface MissingMaterialItem {
   /** 从材料库 SKU 选的才有；现场手填的留空 */

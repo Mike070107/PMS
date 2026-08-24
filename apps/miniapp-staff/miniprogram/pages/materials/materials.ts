@@ -85,6 +85,9 @@ Page({
     this.load();
   },
 
+  /** 给弹层遮罩的 catchtouchmove 用：吞掉滑动，别让底下的列表跟着滚 */
+  noop() {},
+
   onPullDownRefresh() {
     this.load().finally(() => wx.stopPullDownRefresh());
   },

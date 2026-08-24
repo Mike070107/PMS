@@ -63,8 +63,8 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
   {
     title: '基础档案',
     items: [
-      { key: '/properties', pageKey: 'properties', icon: <HomeOutlined />, label: '房产与业主' },
-      { key: '/owners', pageKey: 'owners', icon: <AuditOutlined />, label: '业主审核' },
+      { key: '/properties', pageKey: 'properties', icon: <HomeOutlined />, label: '房产管理' },
+      { key: '/owners', pageKey: 'owners', icon: <AuditOutlined />, label: '业主用户' },
       { key: '/staff', pageKey: 'users', icon: <TeamOutlined />, label: '用户管理' },
       { key: '/roles', pageKey: 'roles', icon: <SafetyCertificateOutlined />, label: '角色管理' },
       { key: '/offices', pageKey: 'offices', icon: <ApartmentOutlined />, label: '管理处' },
@@ -98,8 +98,8 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/business': '办理停车、门禁与前台收费业务',
   '/materials': '维护标准材料、单位与基础价格',
   '/inventory': '管理库存、采购、收货与仓库调拨',
-  '/properties': '维护小区、楼栋、房屋与业主档案',
-  '/owners': '审核业主身份与房屋绑定申请',
+  '/properties': '维护小区、楼栋与房屋',
+  '/owners': '业主端小程序用户：档案、入驻审核与启停',
   '/staff': '管理员工身份、工种与后台角色',
   '/roles': '配置功能权限与可管理的数据范围',
   '/offices': '划分管理处及其负责的小区范围',

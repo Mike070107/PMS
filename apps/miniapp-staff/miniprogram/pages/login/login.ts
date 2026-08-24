@@ -1,6 +1,9 @@
 import { auth } from '@pms/api-client';
 import type { StaffLoginReq } from '@pms/shared-types';
 
+/** 只报修、不接单的角色，登录后落到「我的报修」而不是工单池 */
+const REPORTER_ROLES = ['guard', 'neighborhood', 'owner_committee', 'property_staff'];
+
 interface StaffApp {
   setTokens: (a: string, r: string) => void;
   clearTokens: () => void;
@@ -40,14 +43,25 @@ Page({
     this.silentLogin();
   },
 
-  /** 已绑定过微信的员工：只用 wx.login 的 code 直接进 */
+  /**
+   * 已绑定过微信的员工：只用 wx.login 的 code 直接进。
+   *
+   * 必须带超时：wx.login 或这一次请求卡住（弱网、后端不响应）时，checking 会一直是 true，
+   * 页面就只剩一行灰色的「正在登录…」，看着和白屏没区别，而且没有任何出路。
+   * 8 秒还没结果就先把登录方式露出来，让人能用手机号/账号密码自己登。
+   */
   async silentLogin() {
+    const timer = setTimeout(() => {
+      if (this.data.checking) this.setData({ checking: false });
+    }, 8000);
     try {
       const { code } = await wx.login();
       const resp = await auth.staffLogin({ code });
-      this.enter(resp.accessToken, resp.refreshToken);
+      clearTimeout(timer);
+      this.enter(resp.accessToken, resp.refreshToken, resp.user && resp.user.role);
     } catch {
       // 未绑定 / 已停用：停留在登录页，走手机号或账号密码验证
+      clearTimeout(timer);
       this.setData({ checking: false });
     }
   },
@@ -94,7 +108,7 @@ Page({
     try {
       const { code } = await wx.login();
       const resp = await auth.staffLogin({ code, ...extra });
-      this.enter(resp.accessToken, resp.refreshToken);
+      this.enter(resp.accessToken, resp.refreshToken, resp.user && resp.user.role);
     } catch (err: any) {
       this.setData({ errorMsg: err?.message || '登录失败，请稍后重试' });
     } finally {
@@ -102,8 +116,13 @@ Page({
     }
   },
 
-  enter(accessToken: string, refreshToken: string) {
+  enter(accessToken: string, refreshToken: string, role?: string) {
     getApp<StaffApp>().setTokens(accessToken, refreshToken);
-    wx.switchTab({ url: '/pages/pool/pool' });
+    // 保安/居委会/业委会/物业工作人员只报修不接单，工单池对他们是空的 ——
+    // 落地页直接给「我的报修」，别让人一进来就对着一屏别人要修的活。
+    // 角色也先存下，tabBar 首次渲染就能藏掉工单池，不用等 me() 回来再跳一下。
+    if (role) wx.setStorageSync('pms.staff.role', role);
+    const isReporter = REPORTER_ROLES.indexOf(String(role || '')) >= 0;
+    wx.switchTab({ url: isReporter ? '/pages/my-orders/my-orders' : '/pages/pool/pool' });
   },
 });

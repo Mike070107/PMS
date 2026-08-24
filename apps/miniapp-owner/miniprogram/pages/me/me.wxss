@@ -1,4 +1,4 @@
-.page { min-height: 100vh; background: var(--color-bg); }
+.page { min-height: 100vh; background: var(--color-page-bg); }
 
 /* ---------- 头部：与首页 hero 同一套品牌色 ---------- */
 .hero {
