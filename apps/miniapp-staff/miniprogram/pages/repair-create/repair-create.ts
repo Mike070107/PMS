@@ -22,8 +22,22 @@ import { loadAddressBook } from '../../utils/address-picker';
  * 任何一级都能停下（停在小区/楼栋 = 公共区域）；描述里说了地址（「一期24号大门」）
  * 同样自动识别并覆盖手选位置（判断口径见 utils/address-detect）。
  * 联系人默认是本人；工单来源标为「员工小程序提交」，身份会标成「xx（维修工代报）」。
- * 语音输入暂未接：同声传译插件要在员工端小程序后台单独添加，先打字。
+ * 语音输入走微信「同声传译」插件（普通话），识别结果落到可编辑文本框。
  */
+
+/**
+ * 语音输入用微信官方「同声传译」插件（员工端小程序后台已添加）。
+ * 插件只支持普通话 / 英文 / 粤语，没有上海话，所以按钮上写明「普通话」，
+ * 识别结果一律落到可编辑的文本框里，说不准能自己改。
+ * 插件加载失败（比如后台被移除）时 requirePlugin 抛错，捕获后隐藏语音按钮，打字照常。
+ */
+let speechManager: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  speechManager = requirePlugin('WechatSI').getRecordRecognitionManager();
+} catch {
+  speechManager = null;
+}
 
 const PHONE_RE = /^1[3-9]\d{9}$/;
 
@@ -65,6 +79,11 @@ Page({
     /** 描述里识别出的地址；识别到就替换手选位置展示，点 × 恢复 */
     detected: null as ParsedRepairAddress | null,
 
+    hasSpeech: !!speechManager,
+    recording: false,
+    /** 语音识别的实时中间结果，让用户知道在听 */
+    partial: '',
+
     attachments: [] as string[],
     uploading: false,
     submitting: false,
@@ -76,6 +95,7 @@ Page({
   dismissedMatch: '' as string,
 
   onLoad() {
+    this.bindSpeech();
     this.loadBook();
     this.loadTypes();
     this.loadMe();
@@ -210,6 +230,42 @@ Page({
 
   onPhone(e: WechatMiniprogram.Input) {
     this.setData({ contactPhone: e.detail.value, 'errors.phone': '' });
+  },
+
+  // ---------------- 语音转文字 ----------------
+
+  bindSpeech() {
+    if (!speechManager) return;
+    speechManager.onStart = () => this.setData({ recording: true, partial: '' });
+    speechManager.onRecognize = (res: { result: string }) => {
+      this.setData({ partial: res.result || '' });
+    };
+    speechManager.onStop = (res: { result: string }) => {
+      const text = (res.result || '').trim();
+      this.setData({ recording: false, partial: '' });
+      if (!text) {
+        wx.showToast({ icon: 'none', title: '没听清，再说一次或直接打字' });
+        return;
+      }
+      // 追加而不是覆盖，允许说好几段；说完顺手做一次地址识别
+      const next = this.data.content ? this.data.content + text : text;
+      this.setData({ content: next, 'errors.content': '' });
+      this.scheduleDetect(next);
+    };
+    speechManager.onError = (err: { msg?: string }) => {
+      this.setData({ recording: false, partial: '' });
+      wx.showToast({ icon: 'none', title: err?.msg || '语音识别失败，可直接打字' });
+    };
+  },
+
+  onSpeechStart() {
+    if (!speechManager || this.data.recording) return;
+    speechManager.start({ lang: 'zh_CN', duration: 30000 });
+  },
+
+  onSpeechEnd() {
+    if (!speechManager || !this.data.recording) return;
+    speechManager.stop();
   },
 
   // ---------------- 附件 ----------------

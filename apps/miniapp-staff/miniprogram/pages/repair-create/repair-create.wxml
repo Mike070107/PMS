@@ -70,6 +70,21 @@
         value="{{content}}"
         bindinput="onContent"
       />
+
+      <view wx:if="{{recording}}" class="listening">
+        正在听…{{partial ? ' ' + partial : ''}}
+      </view>
+
+      <button
+        wx:if="{{hasSpeech}}"
+        class="btn btn--outline mt-sm speech {{recording ? 'speech--on' : ''}}"
+        bindtouchstart="onSpeechStart"
+        bindtouchend="onSpeechEnd"
+        bindtouchcancel="onSpeechEnd"
+      >
+        <view class="icon {{recording ? 'icon--mic-on' : 'icon--mic'}}"></view>
+        <text class="speech__text">{{recording ? '松开结束' : '按住说话（普通话）'}}</text>
+      </button>
       <view class="tags">
         <text wx:for="{{contentSuggestions}}" wx:key="*this" class="tag" data-text="{{item}}" bindtap="onPickContentTag">{{item}}</text>
       </view>
