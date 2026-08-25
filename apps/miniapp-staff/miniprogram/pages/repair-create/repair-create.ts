@@ -8,6 +8,10 @@ import {
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
   extractContact,
+  isVideoUrl,
+  MAX_REPAIR_IMAGES,
+  MAX_REPAIR_VIDEO_SECONDS,
+  MAX_REPAIR_VIDEOS,
   REPAIR_TYPE_OPTIONS,
 } from '@pms/shared-types';
 import {
@@ -93,6 +97,9 @@ Page({
     partial: '',
 
     attachments: [] as string[],
+    /** 和 attachments 一一对应的渲染用数据：wxml 里调不了 isVideoUrl */
+    mediaList: [] as Array<{ url: string; video: boolean }>,
+    videoCount: 0,
     uploading: false,
     submitting: false,
     errors: { place: '', type: '', content: '', phone: '' },
@@ -368,10 +375,38 @@ Page({
 
   // ---------------- 附件 ----------------
 
-  async onChooseMedia() {
+  /** attachments 变了就同步渲染用的那份，别让两处各算各的 */
+  setAttachments(list: string[]) {
+    this.setData({
+      attachments: list,
+      mediaList: list.map((url) => ({ url, video: isVideoUrl(url) })),
+      videoCount: list.filter((url) => isVideoUrl(url)).length,
+    });
+  },
+
+  /**
+   * 拍照 / 拍视频。data-type="video" 走视频，其余走图片。
+   * 视频限 15 秒：现场情况一段十几秒就说清了，拍长了上传慢、维修工也不会看完。
+   */
+  async onChooseMedia(e: WechatMiniprogram.BaseEvent) {
     if (this.data.uploading) return;
+    const wantVideo = e.currentTarget.dataset.type === 'video';
+    const images = this.data.attachments.length - this.data.videoCount;
+    if (wantVideo && this.data.videoCount >= MAX_REPAIR_VIDEOS) {
+      return wx.showToast({ icon: 'none', title: `最多 ${MAX_REPAIR_VIDEOS} 段视频` });
+    }
+    if (!wantVideo && images >= MAX_REPAIR_IMAGES) {
+      return wx.showToast({ icon: 'none', title: `最多 ${MAX_REPAIR_IMAGES} 张照片` });
+    }
+
     const res = await wx
-      .chooseMedia({ count: 6, mediaType: ['image'], sourceType: ['album', 'camera'] })
+      .chooseMedia({
+        count: wantVideo ? 1 : MAX_REPAIR_IMAGES - images,
+        mediaType: [wantVideo ? 'video' : 'image'],
+        sourceType: ['camera', 'album'],
+        maxDuration: MAX_REPAIR_VIDEO_SECONDS,
+        camera: 'back',
+      })
       .catch(() => null);
     if (!res?.tempFiles?.length) return;
 
@@ -379,11 +414,9 @@ Page({
     wx.showLoading({ title: '上传中…', mask: true });
     try {
       const uploaded = await upload.uploadTempFiles(res.tempFiles.map((f) => f.tempFilePath));
-      this.setData({
-        attachments: [...this.data.attachments, ...uploaded.map((item) => item.publicUrl)],
-      });
-    } catch (e: any) {
-      wx.showToast({ icon: 'none', title: e?.message || '上传失败' });
+      this.setAttachments([...this.data.attachments, ...uploaded.map((item) => item.publicUrl)]);
+    } catch (e2: any) {
+      wx.showToast({ icon: 'none', title: e2?.message || '上传失败' });
     } finally {
       wx.hideLoading();
       this.setData({ uploading: false });
@@ -394,11 +427,14 @@ Page({
     const idx = Number(e.currentTarget.dataset.index);
     const next = this.data.attachments.slice();
     next.splice(idx, 1);
-    this.setData({ attachments: next });
+    this.setAttachments(next);
   },
 
+  /** 视频点开是全屏播放，图片才走 previewImage —— 视频丢进 previewImage 是一片黑 */
   onPreviewMedia(e: WechatMiniprogram.BaseEvent) {
-    wx.previewImage({ current: e.currentTarget.dataset.url, urls: this.data.attachments });
+    const url = String(e.currentTarget.dataset.url || '');
+    if (isVideoUrl(url)) return;
+    wx.previewImage({ current: url, urls: this.data.attachments.filter((item) => !isVideoUrl(item)) });
   },
 
   // ---------------- 提交 ----------------

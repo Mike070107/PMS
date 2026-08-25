@@ -735,6 +735,21 @@ export function formatDateTimeCn(value?: string | null): string {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm} ${WEEKDAY_CN[d.getDay()]}`;
 }
 
+/** 报修附件的数量上限：三端同一份，别再各写一套（后台原来自己定义了一份） */
+export const MAX_REPAIR_IMAGES = 6;
+export const MAX_REPAIR_VIDEOS = 1;
+/** 现场短视频的时长上限（秒）：拍太长上传慢、维修工也不会看完 */
+export const MAX_REPAIR_VIDEO_SECONDS = 15;
+
+/**
+ * 附件是不是视频 —— 只能按扩展名判，因为存下来的就是一个 URL。
+ * 判断口径的唯一出处：后台、业主端、员工端都引这里，
+ * 否则「后台认得出是视频、小程序把它当图片渲染成一片黑」这种事迟早发生。
+ */
+export function isVideoUrl(value?: string | null): boolean {
+  return /\.(mp4|mov|m4v|webm|avi|mkv)(\?|#|$)/i.test(String(value || ''));
+}
+
 /**
  * 卡片列表里的短日期：08/24 22:44。
  * 不带年份和星期 —— 列表卡是一行一行扫的，一行只有一个「值」的宽度，

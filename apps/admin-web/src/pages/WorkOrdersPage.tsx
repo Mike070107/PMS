@@ -49,6 +49,7 @@ import type { ReactNode } from 'react';
 import { request } from '../lib/api';
 import { auth, useAuth, usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
+import { isVideoUrl } from '@pms/shared-types';
 import type {
   AddressCommunity,
   RepairTypeWarehouseOptions,
@@ -1413,7 +1414,8 @@ function createLocalPreviewUrl(file: UploadFile<UploadResponse>) {
 
 function isUploadVideo(file: { type?: string; name?: string; url?: string; response?: UploadResponse }) {
   const value = `${file.type || ''} ${file.name || ''} ${file.url || ''} ${file.response?.publicUrl || ''}`;
-  return /^video\//i.test(file.type || '') || /\.(mp4|mov|m4v|webm|avi|mkv)(\?|#|$|\s)/i.test(value);
+  // 扩展名口径引 shared-types，三端一份；这里只多判一个浏览器给的 MIME
+  return /^video\//i.test(file.type || '') || isVideoUrl(value);
 }
 
 function isUploadImage(file: { type?: string; name?: string; url?: string; response?: UploadResponse }) {
@@ -1463,10 +1465,6 @@ function AttachmentPreview({ urls }: { urls: string[] }) {
       </Image.PreviewGroup>
     </Space>
   );
-}
-
-function isVideoUrl(url: string) {
-  return /\.(mp4|mov|m4v|webm|avi|mkv)(\?|#|$)/i.test(url);
 }
 
 function CompactRepairRecord({ detail }: { detail: WorkOrderDetail }) {

@@ -95,17 +95,41 @@
     </view>
 
     <view class="field">
-      <view class="label">现场照片<text class="label__opt">选填，最多 6 张</text></view>
+      <view class="label">现场照片 / 视频<text class="label__opt">选填，照片最多 6 张、视频 1 段 15 秒</text></view>
       <view class="thumbs">
-        <view wx:for="{{attachments}}" wx:key="*this" class="thumb-wrap">
-          <image class="thumb" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="onPreviewMedia"/>
+        <view wx:for="{{mediaList}}" wx:key="url" class="thumb-wrap">
+          <!-- 视频不能丢进 image，渲染出来是一片黑；点开也走各自的播放/预览 -->
+          <video
+            wx:if="{{item.video}}"
+            class="thumb"
+            src="{{item.url}}"
+            object-fit="cover"
+            show-center-play-btn="{{true}}"
+          />
+          <image
+            wx:else
+            class="thumb"
+            src="{{item.url}}"
+            mode="aspectFill"
+            data-url="{{item.url}}"
+            bindtap="onPreviewMedia"
+          />
           <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia">
             <view class="icon icon--close"></view>
           </view>
         </view>
-        <view wx:if="{{attachments.length < 6}}" class="thumb-add" bindtap="onChooseMedia">
+        <view
+          wx:if="{{attachments.length - videoCount < 6}}"
+          class="thumb-add"
+          data-type="image"
+          bindtap="onChooseMedia"
+        >
           <view class="icon icon--camera"></view>
-          <text class="add-text">{{uploading ? '上传中' : '拍照/相册'}}</text>
+          <text class="add-text">{{uploading ? '上传中' : '拍照'}}</text>
+        </view>
+        <view wx:if="{{!videoCount}}" class="thumb-add" data-type="video" bindtap="onChooseMedia">
+          <view class="icon icon--camera"></view>
+          <text class="add-text">{{uploading ? '上传中' : '拍视频'}}</text>
         </view>
       </view>
     </view>
