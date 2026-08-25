@@ -47,6 +47,7 @@ import {
   RepairRequest,
   RepairTypeCorrection,
   RepairTypeRule,
+  RepairTypeWarehouse,
   Review,
   Material,
   User,
@@ -72,6 +73,7 @@ import {
   UpdateWorkOrderRepairTypeDto,
   UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
+  UpsertRepairTypeWarehouseDto,
   WorkOrdersQueryDto,
 } from './dto';
 import {
@@ -574,30 +576,119 @@ export class RepairsService implements OnModuleInit {
    * 库存为 0 的材料也返回（标 qty=0）：现场需要它但仓里没有，正是要走缺料登记的场景，
    * 列表里看不到反而让人以为「这东西系统里不存在」。
    */
+  // ---------------- 报修类型 → 领料仓库（按小区配） ----------------
+
+  /**
+   * 全租户的「小区 + 类型 → 仓库」对照表，连可选仓库一起给。
+   *
+   * 仓库列表跟着一起返回，是为了不让「报修类型配置」这个页面依赖 inventory 权限——
+   * 配派单规则的办公室文员不一定有库存模块权限，缺一个 /warehouses 就整页配不了。
+   * 一次全给：小区数 × 类型数 撑死几十条，后台切小区时不用来回请求。
+   */
+  async listRepairTypeWarehouses(user: AuthUser) {
+    const tenantId = this.resolveTenantId(user);
+    const [rows, warehouses] = await Promise.all([
+      this.dataSource.getRepository(RepairTypeWarehouse).find({
+        where: { tenantId },
+        order: { communityId: 'ASC', id: 'ASC' },
+      }),
+      this.dataSource.getRepository(Warehouse).find({
+        where: { tenantId, enabled: true },
+        order: { id: 'ASC' },
+      }),
+    ]);
+    return {
+      warehouses: warehouses.map((item) => ({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        communityId: item.communityId,
+        enabled: item.enabled,
+      })),
+      items: rows.map((row) => ({
+        communityId: row.communityId,
+        repairType: row.repairType,
+        warehouseId: row.warehouseId,
+      })),
+    };
+  }
+
+  /**
+   * 配 / 改 / 清空一个「小区 + 类型」的领料仓库。warehouseId 传 null = 清空这一条。
+   * 仓库必须是本租户启用中的 —— 配到停用仓上，维修工那边就是一屏空列表。
+   */
+  async upsertRepairTypeWarehouse(dto: UpsertRepairTypeWarehouseDto, user: AuthUser) {
+    const tenantId = this.resolveTenantId(user);
+    const repo = this.dataSource.getRepository(RepairTypeWarehouse);
+    const where = {
+      tenantId,
+      communityId: dto.communityId,
+      repairType: dto.repairType,
+    };
+    const existing = await repo.findOne({ where });
+
+    if (dto.warehouseId === null || dto.warehouseId === undefined) {
+      if (existing) await repo.remove(existing);
+      return { ...where, warehouseId: null };
+    }
+
+    const warehouse = await this.dataSource.getRepository(Warehouse).findOne({
+      where: { id: dto.warehouseId, tenantId, enabled: true },
+    });
+    if (!warehouse) throw new BadRequestException('仓库不存在或已停用');
+
+    const saved = await repo.save(
+      existing
+        ? Object.assign(existing, { warehouseId: dto.warehouseId, updatedBy: user.id })
+        : repo.create({ ...where, warehouseId: dto.warehouseId, createdBy: user.id }),
+    );
+    return {
+      communityId: saved.communityId,
+      repairType: saved.repairType,
+      warehouseId: saved.warehouseId,
+    };
+  }
+
   /**
    * 这张工单能领哪些料。
    *
-   * 仓库不是「只有本小区仓」：本小区没配仓库（或本小区仓空着）时，维修工照样得能领料——
-   * 之前只回退到「第一个总仓」，碰上总仓没建库存，整页全是「无货」，看着像坏了。
-   * 现在把租户下所有启用的仓库都列出来（本小区仓 → 总仓 → 其它小区仓），
-   * 默认落到「本小区仓」，没有本小区仓就落到第一个真有货的仓，端上还能自己切。
-   * 出库按选中的那个仓扣，所以端上每一行用料都要记住它是从哪个仓拿的。
+   * 仓库由「小区 + 报修类型」定：小区取工单所在小区（= 报修人所属小区），
+   * 类型对应哪个仓在后台「报修类型配置」里按小区分别配（repair_type_warehouses）。
+   * 同一个门禁故障，一期从智能化维修工仓库领、二期可能另有仓，靠猜是猜不出来的。
+   *
+   * 没配就是没配 —— 不回退到「本小区仓」或「第一个总仓」：
+   * 猜错仓就是把料从别人的账上扣走，账对不上比领不到料更难查。
+   * 这种情况下端上给一句「去配」的提示，同时留「换仓库」让维修工手动挑，
+   * 别让人卡在这儿干等办公室。
    */
   async listWorkOrderStockOptions(id: number, user: AuthUser, warehouseId?: number) {
     const tenantId = this.resolveTenantId(user);
     const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
     if (!workOrder) throw new NotFoundException('work order not found');
 
+    const request = await this.repairRequestRepo.findOne({
+      where: { id: workOrder.requestId, tenantId },
+      select: ['id', 'repairType'],
+    });
+    const repairType = request?.repairType ?? null;
+    const labels = await this.repairTypeLabels(tenantId);
+    const repairTypeLabel = this.repairTypeLabel(repairType, labels);
+
     const warehouseRepo = this.dataSource.getRepository(Warehouse);
     const all = await warehouseRepo.find({ where: { tenantId, enabled: true }, order: { id: 'ASC' } });
-    // 0 = 本小区仓，1 = 总仓，2 = 别的小区仓。同级按 id，保证每次顺序一样（不能靠 findOne 随机拿一个）
-    const rank = (item: Warehouse) =>
-      item.communityId && item.communityId === workOrder.communityId
-        ? 0
-        : item.type === WarehouseType.CENTRAL
-          ? 1
-          : 2;
-    const candidates = all.slice().sort((a, b) => rank(a) - rank(b) || a.id - b.id);
+
+    // 本单「小区 + 类型」配的仓
+    const mapping = repairType
+      ? await this.dataSource.getRepository(RepairTypeWarehouse).findOne({
+          where: { tenantId, communityId: workOrder.communityId, repairType },
+        })
+      : null;
+    const mapped = mapping ? all.find((item) => item.id === mapping.warehouseId) ?? null : null;
+
+    // 配好的排最前，其余按 id —— 手动换仓库时也是这个顺序
+    const candidates = all
+      .slice()
+      .sort((a, b) => (a.id === mapped?.id ? -1 : 0) - (b.id === mapped?.id ? -1 : 0) || a.id - b.id);
 
     const stockRepo = this.dataSource.getRepository(Stock);
     const allStocks = candidates.length
@@ -609,12 +700,10 @@ export class RepairsService implements OnModuleInit {
       allStocks.filter((row) => Number(row.qty) > 0).map((row) => row.warehouseId),
     );
 
-    const warehouse =
-      candidates.find((item) => item.id === warehouseId) ??
-      candidates.find((item) => rank(item) === 0) ??
-      candidates.find((item) => stockedWarehouses.has(item.id)) ??
-      candidates[0] ??
-      null;
+    // 端上明确指定了就用它（手动换仓库），否则只认配置，配了才有默认仓
+    const warehouse = warehouseId
+      ? candidates.find((item) => item.id === warehouseId) ?? null
+      : mapped;
 
     const materials = await this.dataSource.getRepository(Material).find({
       where: { tenantId, enabled: true },
@@ -629,12 +718,17 @@ export class RepairsService implements OnModuleInit {
     return {
       warehouseId: warehouse?.id ?? null,
       warehouseName: warehouse?.name ?? '',
+      /** 本单报修类型（端上提示「哪个类型没配仓库」要用，别让人自己去猜） */
+      repairType,
+      repairTypeLabel,
+      /** 这个「小区 + 类型」在后台配没配仓库；没配时端上给去配的提示 */
+      configured: !!mapped,
       warehouses: candidates.map((item) => ({
         id: item.id,
         name: item.name,
         type: item.type,
-        /** 就是本单小区自己的仓 */
-        own: rank(item) === 0,
+        /** 就是本单「小区 + 类型」配好的那个仓 */
+        own: item.id === mapped?.id,
         hasStock: stockedWarehouses.has(item.id),
       })),
       items: materials.map((item) => ({

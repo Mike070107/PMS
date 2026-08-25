@@ -550,19 +550,37 @@ export interface WorkOrderStockWarehouse {
   id: number;
   name: string;
   type: WarehouseType;
-  /** 就是本单小区自己的仓 */
+  /** 本单「小区 + 报修类型」在后台配好的那个仓 */
   own: boolean;
   /** 这个仓里至少有一样东西有货，端上用来提示「换那个仓有货」 */
   hasStock: boolean;
 }
 
 export interface WorkOrderStockOptions {
-  /** 当前这份清单出自哪个仓；一个仓都没配时为 null */
+  /** 当前这份清单出自哪个仓；没配且没手动切时为 null */
   warehouseId: number | null;
   warehouseName: string;
-  /** 可切换的仓库：本小区仓 → 总仓 → 其它小区仓 */
+  /** 本单报修类型（提示「哪个类型没配仓库」要用） */
+  repairType: string | null;
+  repairTypeLabel: string;
+  /** 这个「小区 + 类型」在后台配过领料仓库没有 */
+  configured: boolean;
+  /** 可手动切换的仓库，配好的那个排最前 */
   warehouses: WorkOrderStockWarehouse[];
   items: WorkOrderStockOption[];
+}
+
+/** 「小区 + 报修类型 → 领料仓库」一条配置 */
+export interface RepairTypeWarehouseView {
+  communityId: number;
+  repairType: string;
+  warehouseId: number;
+}
+
+/** 报修类型配置页要的全部数据：可选仓库 + 已配好的对照关系 */
+export interface RepairTypeWarehouseOptions {
+  warehouses: WarehouseView[];
+  items: RepairTypeWarehouseView[];
 }
 
 export interface WarehouseView {

@@ -37,6 +37,7 @@ import { BusinessTransaction } from './business-transaction.entity';
 import { BusinessLog } from './business-log.entity';
 import { RepairTypeRule } from './repair-type-rule.entity';
 import { RepairTypeCorrection } from './repair-type-correction.entity';
+import { RepairTypeWarehouse } from './repair-type-warehouse.entity';
 import { ManagementOffice } from './management-office.entity';
 import { Role } from './role.entity';
 import { RolePermission } from './role-permission.entity';
@@ -90,6 +91,7 @@ export const entities = [
   BusinessLog,
   RepairTypeRule,
   RepairTypeCorrection,
+  RepairTypeWarehouse,
 ];
 
 export {
@@ -138,4 +140,5 @@ export {
   BusinessLog,
   RepairTypeRule,
   RepairTypeCorrection,
+  RepairTypeWarehouse,
 };

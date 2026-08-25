@@ -181,6 +181,27 @@ export class UpsertRepairTypeRuleDto {
   contentSuggestions?: string[];
 }
 
+/**
+ * 一个「小区 + 报修类型」配一个领料仓库。
+ * warehouseId 传 null 表示清空这条配置（该小区该类型回到「未配置」）。
+ */
+export class UpsertRepairTypeWarehouseDto {
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  communityId: number;
+
+  @IsString()
+  @MaxLength(60)
+  repairType: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  warehouseId?: number | null;
+}
+
 export class ReorderRepairTypeRulesDto {
   @IsArray()
   @IsInt({ each: true })

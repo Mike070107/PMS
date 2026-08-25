@@ -1,4 +1,4 @@
-param([ValidateSet("all","api","web")] [string] $Only = "all")
+﻿param([ValidateSet("all","api","web")] [string] $Only = "all")
 
 # don't set ErrorActionPreference Stop -- pwsh 5.1 turns pnpm stderr into ErrorRecord
 # we check $LASTEXITCODE explicitly.

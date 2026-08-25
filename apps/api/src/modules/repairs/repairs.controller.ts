@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -36,6 +37,7 @@ import {
   UpdateWorkOrderRepairTypeDto,
   UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
+  UpsertRepairTypeWarehouseDto,
   WorkOrdersQueryDto,
 } from './dto';
 import { RepairsService } from './repairs.service';
@@ -97,6 +99,26 @@ export class RepairsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.repairsService.reorderRepairTypeRules(dto.ids, user);
+  }
+
+  /**
+   * 「小区 + 报修类型 → 领料仓库」对照表。
+   * 工单选料就按它取仓，所以跟报修类型配置放在一起维护。
+   */
+  @Get('repair-type-warehouses')
+  @RequirePermission('work-orders', 'view')
+  listRepairTypeWarehouses(@CurrentUser() user: AuthUser) {
+    return this.repairsService.listRepairTypeWarehouses(user);
+  }
+
+  /** 配 / 改 / 清空一条（warehouseId 传 null 即清空） */
+  @Put('repair-type-warehouses')
+  @RequirePermission('work-orders', 'edit')
+  upsertRepairTypeWarehouse(
+    @Body() dto: UpsertRepairTypeWarehouseDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.repairsService.upsertRepairTypeWarehouse(dto, user);
   }
 
   /**

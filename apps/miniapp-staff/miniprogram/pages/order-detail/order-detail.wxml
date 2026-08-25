@@ -116,7 +116,7 @@
 
   <scroll-view class="sheet__body" scroll-y>
     <view class="muted">
-      从{{warehouseName || '本小区仓'}}领料，完工提交时自动扣库存。库存不够或仓里没有的，在下面直接登记，一键提报缺料。
+      领料仓库按本小区的报修类型自动带出，完工提交时按它扣库存。库存不够或仓里没有的，在下面直接登记，一键提报缺料。
     </view>
 
     <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加用料</view>
@@ -271,43 +271,48 @@
   </view>
 </view>
 
-<!-- ============ 小区库存选择器（叠在用料面板之上） ============ -->
+<!-- ============ 领料仓库的库存选择器（叠在用料面板之上） ============ -->
 <view wx:if="{{skuOpen}}" class="sheet-mask sheet-mask--top" bindtap="onCloseSku" catchtouchmove="noop"/>
 <view wx:if="{{skuOpen}}" class="sheet sheet--top" catchtouchmove="noop">
   <view class="sheet__head">
-    <text class="sheet__title">{{warehouseName || '本小区仓'}}库存</text>
+    <text class="sheet__title">{{skuTitle}}</text>
     <view class="sheet__head-right">
-      <!-- 本小区没配仓库时默认落在别的仓，得让人看得见、换得掉 -->
-      <text wx:if="{{warehouses.length > 1}}" class="sheet__link" bindtap="onSwitchWarehouse">换仓库</text>
+      <!-- 默认仓由后台「小区 + 报修类型」配好；配漏了或那个仓空了，得让人自己挑一个 -->
+      <text wx:if="{{warehouses.length}}" class="sheet__link" bindtap="onSwitchWarehouse">
+        {{skuWarehouseId ? '换仓库' : '选仓库'}}
+      </text>
       <text class="sheet__close" bindtap="onCloseSku">关闭</text>
     </view>
   </view>
 
-  <input
-    class="input sheet__search"
-    placeholder="搜索名称 / 别名 / 型号 / 编码"
-    value="{{skuKeyword}}"
-    bindinput="onSkuKeyword"
-  />
+  <!-- 没定下仓库就没有「库存」可言，搜索框/筛选/列头一起收起来，只留提示和「选仓库」 -->
+  <block wx:if="{{skuWarehouseId}}">
+    <input
+      class="input sheet__search"
+      placeholder="搜索名称 / 别名 / 型号 / 编码"
+      value="{{skuKeyword}}"
+      bindinput="onSkuKeyword"
+    />
 
-  <!-- 类别筛选：材料几十上百条，先按类别缩一轮比一直翻快得多。放不下就左右滑 -->
-  <scroll-view wx:if="{{skuCategories.length > 1}}" class="chips chips--inset" scroll-x enable-flex>
-    <view class="chip {{skuCategoryIndex < 0 ? 'chip--on' : ''}}" data-index="-1" bindtap="onPickSkuCategory">全部</view>
-    <view
-      class="chip {{skuCategoryIndex === index ? 'chip--on' : ''}}"
-      wx:for="{{skuCategories}}"
-      wx:key="*this"
-      data-index="{{index}}"
-      bindtap="onPickSkuCategory"
-    >{{item}}</view>
-  </scroll-view>
+    <!-- 类别筛选：材料几十上百条，先按类别缩一轮比一直翻快得多。放不下就左右滑 -->
+    <scroll-view wx:if="{{skuCategories.length > 1}}" class="chips chips--inset" scroll-x enable-flex>
+      <view class="chip {{skuCategoryIndex < 0 ? 'chip--on' : ''}}" data-index="-1" bindtap="onPickSkuCategory">全部</view>
+      <view
+        class="chip {{skuCategoryIndex === index ? 'chip--on' : ''}}"
+        wx:for="{{skuCategories}}"
+        wx:key="*this"
+        data-index="{{index}}"
+        bindtap="onPickSkuCategory"
+      >{{item}}</view>
+    </scroll-view>
 
-  <!-- 列头常驻：列表一滚起来就不知道右边那个数字是什么了 -->
-  <view class="sku-head">
-    <text class="sku-head__photo">图片</text>
-    <text class="sku-head__name">名称</text>
-    <text class="sku-head__qty">库存数量</text>
-  </view>
+    <!-- 列头常驻：列表一滚起来就不知道右边那个数字是什么了 -->
+    <view class="sku-head">
+      <text class="sku-head__photo">图片</text>
+      <text class="sku-head__name">名称</text>
+      <text class="sku-head__qty">库存数量</text>
+    </view>
+  </block>
 
   <scroll-view class="sheet__body sheet__body--flush" scroll-y>
     <view wx:if="{{skuLoading}}" class="center muted">加载中…</view>
@@ -315,37 +320,49 @@
       <view class="error">{{skuError}}</view>
       <button class="btn btn--outline mt" bindtap="onRetrySku">重试</button>
     </block>
-    <view wx:elif="{{!skuList.length}}" class="center muted">
-      没有匹配的材料。关掉这里点「手填一项」，提报缺料后由办公室补进材料库。
-    </view>
-    <view wx:elif="{{skuEmptyHint}}" class="sku-empty">{{skuEmptyHint}}</view>
+    <block wx:else>
+      <view wx:if="{{skuEmptyHint}}" class="sku-empty">{{skuEmptyHint}}</view>
 
-    <view
-      wx:for="{{skuList}}"
-      wx:key="materialId"
-      class="sku"
-      hover-class="wo-card--hover"
-      hover-stay-time="80"
-      data-index="{{index}}"
-      bindtap="onPickSku"
-    >
-      <image
-        wx:if="{{item.photoUrl}}"
-        class="sku__photo"
-        src="{{item.photoUrl}}"
-        mode="aspectFill"
-        data-url="{{item.photoUrl}}"
-        catchtap="onPreviewSkuPhoto"
-      />
-      <view wx:else class="sku__photo sku__photo--empty">无图</view>
-      <view class="sku__body">
-        <view class="sku__title">{{item.name}}{{item.spec ? ' · ' + item.spec : ''}}</view>
-        <view class="meta">{{item.code}} · {{item.category || '未分类'}}</view>
-      </view>
-      <!-- 有多少货是选料时最该看见的一列 -->
-      <view class="sku__qty {{item.qty > 0 ? '' : 'sku__qty--none'}}">
-        {{item.qty > 0 ? item.qty + item.unit : '无货'}}
-      </view>
-    </view>
+      <block wx:if="{{skuWarehouseId}}">
+        <view wx:if="{{!skuList.length}}" class="center muted">
+          没有匹配的材料。关掉这里点「手填一项」，提报缺料后由办公室补进材料库。
+        </view>
+
+        <view
+          wx:for="{{skuList}}"
+          wx:key="materialId"
+          class="sku"
+          hover-class="wo-card--hover"
+          hover-stay-time="80"
+          data-index="{{index}}"
+          bindtap="onPickSku"
+        >
+          <image
+            wx:if="{{item.photoUrl}}"
+            class="sku__photo"
+            src="{{item.photoUrl}}"
+            mode="aspectFill"
+            data-url="{{item.photoUrl}}"
+            catchtap="onPreviewSkuPhoto"
+          />
+          <view wx:else class="sku__photo sku__photo--empty">无图</view>
+          <view class="sku__body">
+            <view class="sku__title">{{item.name}}{{item.spec ? ' · ' + item.spec : ''}}</view>
+            <view class="meta">{{item.code}} · {{item.category || '未分类'}}</view>
+          </view>
+          <!-- 有多少货是选料时最该看见的一列 -->
+          <view class="sku__qty {{item.qty > 0 ? '' : 'sku__qty--none'}}">
+            {{item.qty > 0 ? item.qty + item.unit : '无货'}}
+          </view>
+        </view>
+      </block>
+
+      <button
+        wx:if="{{!skuWarehouseId}}"
+        class="btn btn--outline mt"
+        bindtap="onSwitchWarehouse"
+        disabled="{{!warehouses.length}}"
+      >选仓库</button>
+    </block>
   </scroll-view>
 </view>

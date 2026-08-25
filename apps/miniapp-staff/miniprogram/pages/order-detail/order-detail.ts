@@ -159,9 +159,13 @@ interface PageData {
   skuCategories: string[];
   skuCategoryIndex: number;
   warehouseName: string;
-  /** 可切换的仓库（本小区仓 → 总仓 → 其它小区仓） */
+  /** 面板标题：没仓时要写明「未配领料仓库」，不能还挂着一个仓名 */
+  skuTitle: string;
+  /** 当前在看的仓库；本单「小区 + 类型」没配、也没手动切时为 null */
+  skuWarehouseId: number | null;
+  /** 可手动切换的仓库，后台配好的那个排最前 */
   warehouses: WorkOrderStockWarehouse[];
-  /** 当前仓一件货都没有时的出路提示 */
+  /** 没配仓库 / 当前仓空了的出路提示 */
   skuEmptyHint: string;
   /** 维修说明的常用话术（按本单报修类型给），点一下填进去 */
   phrases: Array<{ text: string; on: boolean }>;
@@ -207,6 +211,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     skuCategories: [],
     skuCategoryIndex: -1,
     warehouseName: '',
+    skuTitle: '选择材料',
+    skuWarehouseId: null,
     warehouses: [],
     skuEmptyHint: '',
     phrases: [],
@@ -519,14 +525,19 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       // 旧版接口没有 warehouses（灰度期间可能撞上），当成「不能切」处理，别在这里炸
       const warehouses = resp.warehouses || [];
       const stocked = warehouses.filter((item) => item.hasStock && item.id !== resp.warehouseId);
+      const typeText = resp.repairTypeLabel || '这个报修类型';
       this.setData({
-        warehouseName: resp.warehouseName || '本小区仓',
+        warehouseName: resp.warehouseName || '',
+        skuTitle: resp.warehouseName ? `${resp.warehouseName}库存` : '未配领料仓库',
+        skuWarehouseId: resp.warehouseId,
         warehouses,
         skuCategories: seen,
         skuCategoryIndex: -1,
-        // 整仓一件货都没有时要说清是「这个仓空的」，不是清单坏了
+        // 没仓 / 仓空都得说清是哪种，否则一屏「无货」看着就是坏了
         skuEmptyHint: !resp.warehouseId
-          ? '这个租户还没配仓库，先让办公室在后台建仓入库'
+          ? warehouses.length
+            ? `本小区的「${typeText}」还没配领料仓库，让办公室在后台「报修类型配置」里配一下。急用先点上面「选仓库」自己挑一个。`
+            : `本小区的「${typeText}」还没配领料仓库，公司也还没建仓，需要的料请走「手填一项」提报缺料。`
           : resp.items.every((item) => item.qty <= 0)
             ? stocked.length
               ? `「${resp.warehouseName}」里现在一件货都没有，点上面「换仓库」看看「${stocked[0].name}」`
@@ -546,22 +557,22 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   /**
-   * 换仓库领料。
-   * 本小区没配仓库、或本小区仓空了，维修工照样得能领到料——不给这个口子，
-   * 整页「无货」看着就像系统坏了（枫桦景苑二期就是这么撞上的：库存全在一期仓）。
+   * 手动挑仓库。
+   * 默认仓由后台「小区 + 报修类型」配好，配漏了 / 配的那个仓空了，
+   * 维修工照样得能领到料 —— 不给这个口子，人就只能停在这儿等办公室。
    */
   onSwitchWarehouse() {
     const list = this.data.warehouses;
-    if (list.length < 2) return;
+    if (!list.length) return;
     const names = list.map(
       (item) =>
-        `${item.name}${item.own ? '（本小区）' : ''}${item.hasStock ? '' : '（暂无库存）'}`,
+        `${item.name}${item.own ? '（本类型默认）' : ''}${item.hasStock ? '' : '（暂无库存）'}`,
     );
     wx.showActionSheet({
       itemList: names,
       success: (res) => {
         const picked = list[res.tapIndex];
-        if (!picked || picked.id === this.warehouseId) return;
+        if (!picked || picked.id === this.data.skuWarehouseId) return;
         this.allSkus = [];
         this.setData({ skuKeyword: '' });
         this.loadSkus(true, picked.id);
