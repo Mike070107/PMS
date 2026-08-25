@@ -28,6 +28,8 @@ export class ObjectStorageService {
   private readonly publicBaseUrl: string;
   /** 代理读取的前缀，如 https://prsznh.cn/api/v1/upload/file */
   private readonly fileEndpoint: string;
+  /** 对外主机名，如 https://prsznh.cn；用于把存量的相对代理路径补成绝对地址 */
+  private readonly appBaseUrl: string;
 
   constructor(private readonly config: ConfigService) {
     this.bucket = this.config.get<string>('COS_BUCKET') || this.config.get<string>('MINIO_BUCKET', '');
@@ -39,6 +41,7 @@ export class ObjectStorageService {
     // 小程序 <image> 拿不到相对路径，所以这里必须是绝对地址；没配就退化成相对路径，
     // 同域的后台仍能显示，小程序会显示不出来 —— 部署时务必配上 APP_PUBLIC_BASE_URL。
     const appBase = this.trimRightSlash(this.config.get<string>('APP_PUBLIC_BASE_URL', ''));
+    this.appBaseUrl = appBase;
     const prefix = this.trimRightSlash(
       this.config.get<string>('API_GLOBAL_PREFIX', 'api/v1'),
     ).replace(/^\/+/, '');
@@ -98,8 +101,14 @@ export class ObjectStorageService {
     if (!url) return '';
     const value = String(url).trim();
     if (!value) return '';
-    // 已经是代理地址
-    if (value.includes('/upload/file?key=')) return value;
+    // 已经是代理地址。但可能是**相对**的：早期部署没配 APP_PUBLIC_BASE_URL 时，
+    // fileEndpoint 退化成 /api/v1/upload/file，这个相对路径被写进了库
+    // （materials.photo_url、attachments 里都有存量）。
+    // 小程序的 <image src="/api/v1/..."> 会去本地包里找，结果是一张全白的图 ——
+    // 「铁井盖」那张就是这么白的。这里补回主机名，历史数据不用改。
+    if (value.includes('/upload/file?key=')) {
+      return value.startsWith('/') ? `${this.appBaseUrl}${value}` : value;
+    }
     // COS 直连地址 → 取 objectKey 转代理
     if (this.publicBaseUrl && value.startsWith(this.publicBaseUrl + '/')) {
       return this.fileUrl(value.slice(this.publicBaseUrl.length + 1).split('?')[0]);

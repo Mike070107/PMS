@@ -180,7 +180,7 @@ button::after { border: none; }
   font-weight: 600;
   color: var(--color-text);
 }
-.sku-head__photo { width: 140rpx; flex-shrink: 0; text-align: center; }
+.sku-head__photo { width: 180rpx; flex-shrink: 0; text-align: center; }
 .sku-head__name { flex: 1; min-width: 0; }
 /* 和 .sku__qty 一样的右侧余量，数字才会正对着「库存数量」 */
 .sku-head__qty { flex-shrink: 0; padding-right: 8rpx; }
@@ -219,8 +219,9 @@ button::after { border: none; }
 
 /* ---------- 材料 SKU 行（材料库页与工单缺料登记的选择器共用） ---------- */
 .sku { display: flex; align-items: center; gap: 20rpx; padding: 24rpx 24rpx; }
-/* 照片是分 DN50 和 DN75 的主要依据，缩略图太小等于没有：跟列头的图片列同宽 */
-.sku__photo { width: 140rpx; height: 140rpx; border-radius: var(--radius-sm); flex-shrink: 0; }
+/* 照片是分 DN50 和 DN75 的主要依据，缩略图太小等于没有：跟列头的图片列同宽。
+   180rpx ≈ 屏宽的四分之一，一屏还能放下五六行；再大就翻不动了。 */
+.sku__photo { width: 180rpx; height: 180rpx; border-radius: var(--radius-sm); flex-shrink: 0; }
 .sku__photo--empty {
   display: flex;
   align-items: center;
