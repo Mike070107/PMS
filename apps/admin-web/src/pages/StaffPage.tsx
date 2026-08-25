@@ -118,6 +118,9 @@ export default function StaffPage() {
   const [rows, setRows] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(false);
   const [role, setRole] = useState<UserRole | undefined>();
+  // 默认只看在职的。停用的档案（离职、并档后作废的那条）留在列表里，
+  // 一眼看过去还是「怎么有两个叶双」—— 这正是这次要消掉的观感。
+  const [statusFilter, setStatusFilter] = useState<'active' | 'disabled' | undefined>('active');
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<Staff | null>(null);
   const [creating, setCreating] = useState(false);
@@ -127,7 +130,7 @@ export default function StaffPage() {
     try {
       const list = await request<Staff[]>({
         url: '/staff',
-        query: { role, q: q || undefined },
+        query: { role, status: statusFilter, q: q || undefined },
       });
       setRows(list);
     } catch (e: any) {
@@ -135,7 +138,7 @@ export default function StaffPage() {
     } finally {
       setLoading(false);
     }
-  }, [role, q, message]);
+  }, [role, statusFilter, q, message]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -178,6 +181,16 @@ export default function StaffPage() {
               value={role}
               onChange={(v) => setRole(v)}
               options={Object.entries(roleLabel).map(([value, label]) => ({ value, label }))}
+            />
+            <Select
+              value={statusFilter}
+              onChange={(v) => setStatusFilter(v)}
+              style={{ width: 110 }}
+              options={[
+                { value: 'active', label: '在职' },
+                { value: 'disabled', label: '已停用' },
+                { value: undefined as any, label: '全部' },
+              ]}
             />
             <Input
               placeholder="搜索姓名/电话/账号"
