@@ -122,3 +122,35 @@ textarea {
   font-size: var(--font-xl);
   line-height: 1.6;
 }
+
+/* ---------- 选择器（下拉/选项弹层的触发区） ----------
+   员工端「我要报修」的报修类型之前是一行纯文字 —— 因为员工端 app.wxss 里
+   压根没写过 .picker（业主端写了，materials / inventory 各自本地补了一份），
+   于是全库只有那一页的选择器没有任何外观，用户不知道能点。
+   「一个控件看起来不像控件，八成不是设计问题，是这条规则没写/没赢。」
+
+   两件事缺一不可：
+     1. 灰底 —— 和 .input/.textarea 同一个底色，兑现「有底色 = 要你动手填」
+     2. 右侧一个下拉箭头 —— 光有灰底只说明「这是个字段」，
+        箭头才说明「点了会弹出选项」。输入框和选择器的区别全在这个箭头上。 */
+.picker {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100rpx;
+  line-height: 100rpx;
+  /* 右边留出箭头的位置，文字不会压到箭头上 */
+  padding: 0 72rpx 0 24rpx;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xl);
+  /* 图标一律 SVG，不用 emoji */
+  background: var(--color-bg)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238c8c8c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat right 24rpx center;
+  background-size: 32rpx 32rpx;
+  /* 值太长时截断，别把箭头挤走 */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* 还没选的时候用浅灰，和输入框的 placeholder 一个意思 */
+.picker.placeholder { color: var(--color-text-tertiary); }

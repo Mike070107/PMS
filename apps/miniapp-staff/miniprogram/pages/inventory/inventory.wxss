@@ -18,15 +18,8 @@
 
 .toolbar { display: flex; align-items: center; gap: 16rpx; margin-bottom: 16rpx; }
 .picker-wrap { flex: 1; }
-.picker {
-  box-sizing: border-box;
-  height: 92rpx;
-  line-height: 92rpx;
-  padding: 0 24rpx;
-  background: var(--color-card-bg);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-lg);
-}
+/* 工具栏里的选择器矮一档、底色跟卡片走；其余外观（箭头等）走 tokens.wxss */
+.picker { height: 92rpx; line-height: 92rpx; font-size: var(--font-lg); background-color: var(--color-card-bg); }
 .chip {
   /* 这不是筛选条里的一枚类别，是工具栏里的一个开关，去掉共用样式的行间距 */
   margin-right: 0;

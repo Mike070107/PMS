@@ -66,7 +66,8 @@ button::after { border: none; }
 .field { margin-bottom: 32rpx; }
 .field:last-child { margin-bottom: 0; }
 .label { font-size: var(--font-md); color: var(--color-text-secondary); margin-bottom: 14rpx; }
-.input, .picker {
+/* .picker 的外观在 tokens.wxss 里统一定义（带下拉箭头），两端共用 */
+.input {
   box-sizing: border-box;
   width: 100%;
   height: 100rpx;

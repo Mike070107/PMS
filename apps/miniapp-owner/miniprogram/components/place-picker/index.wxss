@@ -1,18 +1,22 @@
 /* 报修位置选择器：老年友好，行高与点击区域都放大 */
 .field { margin-bottom: 32rpx; }
-.label { font-size: 30rpx; color: var(--color-text-secondary); margin-bottom: 14rpx; }
+.label { font-size: var(--font-md); color: var(--color-text-secondary); margin-bottom: 14rpx; }
+/* 自定义组件默认样式隔离，app.wxss / tokens.wxss 进不来，所以这里必须自己写一份。
+   外观要和 tokens.wxss 的 .picker 保持一致 —— 尤其是右边那个箭头：
+   没有它，用户只知道「这是个字段」，不知道「点了会弹出选项」。 */
 .picker {
   box-sizing: border-box;
   width: 100%;
   min-height: 100rpx;
-  padding: 22rpx 24rpx;
-  background: var(--color-bg);
+  padding: 22rpx 72rpx 22rpx 24rpx;
   border-radius: var(--radius-sm);
-  font-size: 34rpx;
+  font-size: var(--font-xl);
   line-height: 1.5;
+  background: var(--color-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238c8c8c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 24rpx center;
+  background-size: 32rpx 32rpx;
 }
 .picker.placeholder { color: var(--color-text-tertiary); }
-.muted { color: var(--color-text-tertiary); font-size: 28rpx; line-height: 1.7; }
+.muted { color: var(--color-text-tertiary); font-size: var(--font-sm); line-height: 1.7; }
 .mt-sm { margin-top: 12rpx; }
 
 .mask {
