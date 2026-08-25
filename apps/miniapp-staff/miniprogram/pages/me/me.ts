@@ -4,7 +4,7 @@ import { USER_ROLE_LABELS, UserRole, type MeResp } from '@pms/shared-types';
 import { rememberRole, syncTabBar } from '../../utils/tabbar';
 
 /** 构建版本：随每次上传更新。开发版/预览版微信不返回版本号，靠它确认跑的是哪份代码 */
-const BUILD_VERSION = '1.0.20260825c';
+const BUILD_VERSION = '1.0.20260825d';
 
 /** 只报修不接单的角色：保安/居委会/业委会/物业工作人员，2026-08-24 从业主端搬来 */
 const REPORTER_ROLES: string[] = [

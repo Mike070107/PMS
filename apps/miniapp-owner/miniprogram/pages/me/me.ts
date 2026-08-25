@@ -4,7 +4,7 @@ import { maskPhone } from '@pms/miniapp-ui';
 import { AuditStatus, type MeResp } from '@pms/shared-types';
 
 /** 构建版本：随每次上传更新。开发版/预览版微信不返回版本号，靠它确认跑的是哪份代码 */
-const BUILD_VERSION = '1.0.20260825a';
+const BUILD_VERSION = '1.0.20260825b';
 
 const AUDIT_TEXT: Record<string, string> = {
   [AuditStatus.PENDING]: '审核中',

@@ -214,4 +214,10 @@ textarea {
   box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.04);
 }
 .action-bar .btn { width: auto !important; flex: 1 1 0; }
-.container--with-bar { padding-bottom: 200rpx; }
+/* 选择器必须写成两个类：本文件由各端 app.wxss 开头 @import，后面 app.wxss 自己的
+   `.container { padding: 28rpx 28rpx 56rpx }` 同特异度且更靠后，会把这里的 padding-bottom
+   整个压掉（2026-08-25 随手拍页最后一张卡片被操作条盖住就是这么来的）。
+   留白 = 操作条高度（按钮 ~96rpx + 上下 40rpx + 边线阴影）+ 安全区 + 一点呼吸空间。 */
+.container.container--with-bar {
+  padding-bottom: calc(240rpx + env(safe-area-inset-bottom));
+}
