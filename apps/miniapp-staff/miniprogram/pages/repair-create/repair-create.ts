@@ -113,6 +113,9 @@ Page({
   /** 系统自动判出来的类型编码，提交时随单带上做负样本比对 */
   predictedType: '',
   contactTouched: false,
+  /** 联系人/电话当前是 loadMe 填的默认值（登录人）——描述里认出别人时可以顶掉 */
+  contactIsDefault: false,
+  phoneIsDefault: false,
   phoneTouched: false,
   /** 代报角色的授权小区；空数组 = 不限（物业员工） */
   reportCommunityIds: [] as number[],
@@ -177,6 +180,8 @@ Page({
         typeOptions: types.map((item) => ({ value: item.repairType, label: item.label })),
         typeLabels: types.map((item) => item.label),
       });
+      // 从随手拍带描述进来时，首次识别跑在词表加载完之前，判不出类型；这里补判一次
+      if (this.data.content) this.autoFillFromText(this.data.content);
     } catch {
       // 拉不到就用内置类型，别挡住报修
     }
@@ -188,9 +193,18 @@ Page({
       const me = await auth.me();
       const grants = me.reporter?.communities || [];
       this.reportCommunityIds = grants.map((c) => c.id);
+      // 只填还空着的：描述里已经认出的人（「张先生报，电话138…」）比登录人更准，不能被盖掉
+      const patch: Record<string, string> = {};
+      if (!this.data.contactName && !this.contactTouched && me.name) {
+        patch.contactName = me.name;
+        this.contactIsDefault = true;
+      }
+      if (!this.data.contactPhone && !this.phoneTouched && me.phone) {
+        patch.contactPhone = me.phone;
+        this.phoneIsDefault = true;
+      }
       this.setData({
-        contactName: me.name || '',
-        contactPhone: me.phone || '',
+        ...patch,
         scopeHint: this.reportCommunityIds.length
           ? `你可报修的范围：${grants.map((c) => c.name).join('、')}`
           : '',
@@ -270,14 +284,21 @@ Page({
     const contact = extractContact(text);
     const patch: Record<string, string> = {};
     const filled: string[] = [];
-    if (contact.name && !this.contactTouched && !this.data.contactName) {
-      patch.contactName = contact.name;
-      filled.push(`联系人 ${contact.name}`);
+    // 空着的、或者只是登录人默认值的，都让描述里认出的人顶掉；手改过的绝不动
+    if (contact.name && !this.contactTouched && (!this.data.contactName || this.contactIsDefault)) {
+      if (contact.name !== this.data.contactName) {
+        patch.contactName = contact.name;
+        filled.push(`联系人 ${contact.name}`);
+      }
+      this.contactIsDefault = false;
     }
-    if (contact.phone && !this.phoneTouched && !this.data.contactPhone) {
-      patch.contactPhone = contact.phone;
-      patch['errors.phone'] = '';
-      filled.push(`电话 ${contact.phone}`);
+    if (contact.phone && !this.phoneTouched && (!this.data.contactPhone || this.phoneIsDefault)) {
+      if (contact.phone !== this.data.contactPhone) {
+        patch.contactPhone = contact.phone;
+        patch['errors.phone'] = '';
+        filled.push(`电话 ${contact.phone}`);
+      }
+      this.phoneIsDefault = false;
     }
     if (filled.length) {
       patch.autoContactHint = `已从描述里认出${filled.join('、')}，不对可直接改`;
