@@ -1,34 +1,54 @@
-import { auth, inventory, upload } from '@pms/api-client';
-import {
-  MATERIAL_CATEGORIES,
-  MATERIAL_UNITS,
-  UserRole,
-  type MaterialView,
-} from '@pms/shared-types';
+import { inventory, upload } from '@pms/api-client';
+import { MATERIAL_CATEGORIES, MATERIAL_UNITS, type MaterialView } from '@pms/shared-types';
+import { getSession } from '../../utils/session';
+import { setTabBadge, syncTabBar } from '../../utils/tabbar';
+
+/**
+ * 材料 SKU 库。办公室一侧的常驻一屏（tabBar 第二格「材料与库存」）。
+ *
+ * 谁能改不再按业务身份写死：后端是按 materials:edit 放行的，端上照抄同一套
+ * （见 utils/session.ts）。原来这里把办公室钉成只读，可后端一直允许他们改 ——
+ * 结果「维修工现场手填了一个名字、办公室回来把它建成正经 SKU」这条主线，
+ * 在小程序里根本点不动。
+ */
 
 interface MaterialRow extends MaterialView {
   costText: string;
   aliasText: string;
   titleText: string;
+  /** 缺哪些信息，直接写成「照片、类别」贴在卡片上 */
+  missingText: string;
+  incomplete: boolean;
 }
-
-/** 和后端 /materials 的权限保持一致：办公室只读，维修工无权 */
-const VIEW_ROLES: string[] = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.PURCHASER,
-  UserRole.OFFICE,
-];
-const EDIT_ROLES: string[] = [UserRole.ADMIN, UserRole.MANAGER, UserRole.PURCHASER];
 
 const yuan = (cents: number) => (cents ? `¥${(cents / 100).toFixed(2)}` : '—');
 
+/**
+ * 「没填完整」的判定只在这里写一次。
+ *
+ * 挑这三样是因为它们决定这条 SKU 在别处还能不能用：
+ * 没照片 → 维修工在库存里认不出 DN50 和 DN75；
+ * 没类别 → 编码前缀、类别筛选都对不上；
+ * 没默认成本 → 采购申请估不出金额。
+ * 型号、别名、参数属于锦上添花，缺了不算残缺，不然整库都是红标，等于没标。
+ */
+function missingFields(item: MaterialView): string[] {
+  const missing: string[] = [];
+  if (!item.photoUrl) missing.push('照片');
+  if (!item.category) missing.push('类别');
+  if (!item.defaultCostCents) missing.push('成本');
+  return missing;
+}
+
 function toRow(item: MaterialView): MaterialRow {
+  const missing = missingFields(item);
   return {
     ...item,
     costText: yuan(item.defaultCostCents),
     aliasText: (item.aliases || []).join('、'),
     titleText: item.spec ? `${item.name} · ${item.spec}` : item.name,
+    missingText: missing.join('、'),
+    incomplete: missing.length > 0,
   };
 }
 
@@ -65,6 +85,9 @@ Page({
     roleHint: '',
     loading: true,
     keyword: '',
+    /** 只看没填完整的那些：办公室补 SKU 时先把这一堆清掉 */
+    onlyIncomplete: false,
+    incompleteCount: 0,
     categoryIndex: -1,
     categories: MATERIAL_CATEGORIES,
     units: MATERIAL_UNITS,
@@ -82,6 +105,7 @@ Page({
   all: [] as MaterialView[],
 
   onShow() {
+    syncTabBar(this, 'materials');
     this.load();
   },
 
@@ -95,18 +119,22 @@ Page({
   async load() {
     this.setData({ loading: true });
     try {
-      const me = await auth.me();
-      if (!VIEW_ROLES.includes(me.role)) {
+      const session = await getSession(this);
+      if (!session.canViewMaterials) {
         this.setData({
           canView: false,
           canEdit: false,
-          roleHint: '维修工没有材料库权限。需要材料请在工单详情里提报缺料，由办公室汇总。',
+          roleHint: '你的账号没有材料库权限。需要材料请在工单详情里提报缺料，由办公室汇总。',
           list: [],
         });
         return;
       }
-      this.setData({ canView: true, canEdit: EDIT_ROLES.includes(me.role) });
+      this.setData({ canView: true, canEdit: session.canEditMaterials });
       this.all = await inventory.listMaterials();
+      const incompleteCount = this.all.filter((item) => missingFields(item).length > 0).length;
+      this.setData({ incompleteCount });
+      // 角标 = 还有几条要补：办公室不用点进来才知道有没有活
+      setTabBadge(this, 'materials', session.canEditMaterials ? incompleteCount : 0);
       this.applyFilter();
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
@@ -122,6 +150,7 @@ Page({
     const list = this.all
       .filter((item) => {
         if (category && item.category !== category) return false;
+        if (this.data.onlyIncomplete && missingFields(item).length === 0) return false;
         if (!kw) return true;
         return [item.name, item.spec, item.code, item.category, ...(item.aliases || [])]
           .filter(Boolean)
@@ -142,6 +171,10 @@ Page({
     this.setData({ categoryIndex: this.data.categoryIndex === index ? -1 : index }, () =>
       this.applyFilter(),
     );
+  },
+
+  onToggleIncomplete() {
+    this.setData({ onlyIncomplete: !this.data.onlyIncomplete }, () => this.applyFilter());
   },
 
   // ---------------- 新增 / 编辑 ----------------
@@ -167,6 +200,7 @@ Page({
         `默认成本：${row.costText}`,
         row.aliasText ? `别名：${row.aliasText}` : '',
         row.params ? `参数：${row.params}` : '',
+        row.missingText ? `待补充：${row.missingText}（照片/类别/默认成本）` : '',
         row.enabled ? '' : '状态：已停用',
       ].filter(Boolean);
       wx.showModal({

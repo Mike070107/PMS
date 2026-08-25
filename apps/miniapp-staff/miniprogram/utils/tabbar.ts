@@ -5,7 +5,7 @@
  * 每个 tab 页在 onShow 里调一次 syncTabBar —— 微信不会自动同步选中态，
  * 漏掉的那一屏点进去后底部还高亮着上一个 tab，人就会怀疑自己点错了。
  */
-export type TabKey = 'pool' | 'mine' | 'approvals' | 'me';
+export type TabKey = 'pool' | 'mine' | 'materials' | 'approvals' | 'me';
 
 const ROLE_KEY = 'pms.staff.role';
 

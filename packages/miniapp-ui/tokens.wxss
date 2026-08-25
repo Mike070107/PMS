@@ -71,7 +71,9 @@ page {
 .kv {
   display: flex;
   align-items: flex-start;
-  margin-top: 16rpx;
+  /* 行距用 --space-md：16rpx 时四五行信息糊成一整块（描述还会折成两行，
+     行间距和段间距一样大，眼睛找不到一行从哪开始），24rpx 才一行是一行 */
+  margin-top: var(--space-md);
   line-height: 1.6;
 }
 .kv:first-child { margin-top: 0; }

@@ -25,6 +25,10 @@
 .call .icon { margin-top: 0; }
 
 .section-title { font-size: var(--font-2xl); font-weight: 600; }
+/* 「维修结果」卡里标题和下面的信息行之间要有一档，别让标题贴在第一行上 */
+.card > .section-title { display: block; margin-bottom: 28rpx; }
+/* 用料在信息行的「值」这一列里竖着排，每项之间留一点，不然几项挤成一坨 */
+.kv__v > .used-item + .used-item { margin-top: 12rpx; }
 .meta { color: var(--color-text-tertiary); font-size: var(--font-sm); margin-top: 14rpx; line-height: 1.6; }
 .label { font-size: var(--font-md); color: var(--color-text-secondary); margin-bottom: 14rpx; }
 .label.mt { margin-top: 32rpx; }
@@ -57,16 +61,7 @@
   background: rgba(49, 85, 138, 0.08);
 }
 
-.error {
-  margin-top: 24rpx;
-  padding: 22rpx 24rpx;
-  background: #fff2f0;
-  border: 2rpx solid #ffccc7;
-  border-radius: var(--radius-sm);
-  color: var(--color-danger);
-  font-size: var(--font-md);
-  line-height: 1.6;
-}
+/* .error 已挪到 app.wxss（三个页面共用，别再各写一份） */
 
 .timeline-item { display: flex; gap: 16rpx; margin-bottom: 28rpx; }
 .timeline-item:last-child { margin-bottom: 0; }

@@ -135,12 +135,23 @@ export class WorkOrdersQueryDto {
   /**
    * 小程序端取数范围：
    * - mine：业主=我提交的报修；维修工=派给我的工单
-   * - pool：维修工待接单池（未指派且未完结）
+   * - pool：待接单/待派单池（未指派且未完结）。维修工看的是「我能接什么」，
+   *   办公室看的是「我该派什么」——同一批单，所以物业内所有干活的身份共用这一档
    * 后台角色不传则为全部（仍受租户隔离）
    */
   @IsOptional()
   @IsIn(['mine', 'pool', 'all'])
   scope?: 'mine' | 'pool' | 'all';
+
+  /**
+   * 关键词：单号 / 报修地址 / 故障描述。
+   * 办公室在派单台上查「上次那单谁修的」，只能靠这几样想起来，
+   * 不给搜索就只能一页页翻（列表还截断在 100 条）。
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  q?: string;
 }
 
 export class UpsertRepairTypeRuleDto {

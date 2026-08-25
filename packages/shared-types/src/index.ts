@@ -1,5 +1,6 @@
 // 跨端共享：枚举与 DTO 类型。
 // 与 apps/api/src/common/enums.ts 同源，后续如 API 端有调整需双向同步。
+import type { AdminAccess } from './pages';
 
 // ---------- 枚举 ----------
 export enum UserRole {
@@ -268,6 +269,13 @@ export interface MeResp {
   reporter?: ReporterGrant;
   /** 该物业配好的微信订阅消息模板 id，端上用它调 requestSubscribeMessage */
   subscribeTemplates?: string[];
+  /**
+   * 后台角色的权限矩阵（业主之外的身份都返回）。管理后台一直在用，
+   * 员工端小程序也一律以它为准判「这个按钮给不给点」——
+   * 端上再照着业务身份手写一份角色白名单，就会和服务端的 @RequirePermission 判得不一样：
+   * 要么点了才 403，要么明明有权限却看不到入口（办公室改材料 SKU 就是后者）。
+   */
+  access?: AdminAccess;
 }
 
 /**
@@ -399,6 +407,11 @@ export interface WorkOrderListItem {
   summaryContent?: string | null;
   /** 等待材料的单在工单池里要让人看见缺的是什么，到货了才知道能不能接 */
   missingMaterials?: MissingMaterialLine[];
+  /**
+   * 当前维修工姓名。派单台要的是「这单在谁手上」，光有 assigneeId 端上显示不出人名，
+   * 而员工端拿不到 /staff（那是 users 页权限）。后端一并给出，未派单时为 null。
+   */
+  assigneeName?: string | null;
 }
 
 export interface RepairRequestView {
@@ -443,6 +456,29 @@ export interface WorkOrderDetail {
   };
   request: RepairRequestView | null;
   logs: WorkOrderLogItem[];
+}
+
+/**
+ * 派单台可选的维修工。
+ * 带上「手上还有几单」是派单时唯一真正需要的判断依据 —— 只给一串人名，
+ * 办公室只能凭印象派，活全压在同一个人身上也看不出来。
+ */
+export interface TechnicianOption {
+  id: number;
+  name: string;
+  phone: string | null;
+  /** 工种编码（后台给维修工配的技能），用于提示「这单是水的，他修水」 */
+  skills: string[];
+  /** 手上没完结的单数（已派单 + 维修中） */
+  openCount: number;
+}
+
+export interface AssignWorkOrderReq {
+  assigneeId: number;
+  skill?: string;
+  /** 要求完成时限（小时），不传则沿用工单原有的 slaDueAt */
+  slaHours?: number;
+  note?: string;
 }
 
 /** 完工时的用料一行。带 warehouseId = 从库存领的，后端会真的扣库存并记出库流水 */

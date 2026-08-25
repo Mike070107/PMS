@@ -22,11 +22,38 @@
 }
 .tag--off { background: var(--color-bg); color: var(--color-text-tertiary); }
 
-/* 悬浮新增 */
+/* 「还有 N 条没填完整」：办公室在这一屏的主要活儿，做成一条可点的提示块。
+   用警示色描边而不是整块填色 —— 填色会和下面的类别筛选条抢眼球，
+   而它本身只是「有活要干」，不是错误。 */
+.todo {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 24rpx 28rpx;
+  margin-bottom: 24rpx;
+  border: 2rpx solid var(--color-warning);
+  border-radius: var(--radius-md);
+  background: rgba(250, 173, 20, 0.08);
+}
+.todo__body { flex: 1; min-width: 0; }
+.todo__title { font-size: var(--font-lg); font-weight: 600; line-height: 1.5; color: #ad6800; }
+.todo__desc { margin-top: 6rpx; font-size: var(--font-md); color: var(--color-text-secondary); line-height: 1.5; }
+.todo__action { flex-shrink: 0; font-size: var(--font-md); color: var(--color-brand); }
+
+/* 卡片上直接写「待补充：照片、类别」，比一枚看不懂的角标有用 */
+.sku__missing {
+  margin-top: 8rpx;
+  font-size: var(--font-sm);
+  color: #ad6800;
+  line-height: 1.5;
+}
+
+/* 悬浮新增。底部要避开 tabBar，否则「+ 新增」正好压在「材料与库存」那一格上，
+   点新增会误点成切 tab */
 .fab {
   position: fixed;
   right: 32rpx;
-  bottom: 48rpx;
+  bottom: calc(160rpx + env(safe-area-inset-bottom));
   width: auto !important;
   height: 96rpx;
   padding: 0 44rpx;

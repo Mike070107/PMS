@@ -1,6 +1,7 @@
-import { auth, purchases } from '@pms/api-client';
+import { purchases } from '@pms/api-client';
 import { formatDateTimeCn } from '@pms/miniapp-ui';
-import { rememberRole, setTabBadge, syncTabBar } from '../../utils/tabbar';
+import { getSession } from '../../utils/session';
+import { setTabBadge, syncTabBar } from '../../utils/tabbar';
 import {
   PENDING_STATUS_BY_ROLE,
   PURCHASE_STATUS_LABELS,
@@ -49,8 +50,9 @@ Page({
 
   async load() {
     try {
-      const me = await auth.me();
-      rememberRole(this, me.role);
+      // 身份走共用会话（一次登录只打一遍 /auth/me），别每页各调各的
+      const role = (await getSession(this)).role as UserRole;
+      const me = { role };
       const pendingStatus = PENDING_STATUS_BY_ROLE[me.role];
       // 只有经理/采购/管理员有审批动作；维修工、办公室看不到审批按钮
       const canApprove =

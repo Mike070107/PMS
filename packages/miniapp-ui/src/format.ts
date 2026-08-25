@@ -103,30 +103,39 @@ export interface TimelineRow {
 /**
  * 进度时间轴：两个小程序渲染的是同一份数据，别各写一套。
  *
+ * **倒序返回：最新的动作在第 0 位。** 后端给的 logs 是按 id 升序的流水，
+ * 直接铺出来最新一条沉在最底下 —— 打开详情最想知道的是「现在到哪一步了」，
+ * 却要先划过「已提交、已派单、已接单…」。所以在这里翻一次，两个端都不用各自 reverse
+ * （谁忘了翻，谁那一屏就是老的在上面，两端还对不上）。
+ * 折叠展示时取第 0 条，不要再写 length - 1。
+ *
  * 每个节点带上「停了多久」——办公室和维修工要的是「卡在哪一步、卡了多久」，
- * 只给绝对时间还得自己心算。最后一个节点在工单没完结时算到此刻，
- * 完结了就不显示（已经结束的单再说「已停留」是误导）。
+ * 只给绝对时间还得自己心算。停留时长仍按时间正序算（本节点 → 下一个节点），
+ * 最新的那个节点在工单没完结时算到此刻，完结了就不显示
+ * （已经结束的单再说「已停留」是误导）。
  */
 export function buildTimeline(
   logs: Array<{ id: number; toStatus: string; note?: string | null; createdAt: string }>,
   labels: Record<string, string>,
   opts: { finished?: boolean } = {},
 ): TimelineRow[] {
-  return logs.map((log, index) => {
-    const next = logs[index + 1];
-    const isLast = index === logs.length - 1;
-    const stay =
-      next != null
-        ? formatDuration(log.createdAt, next.createdAt)
-        : isLast && !opts.finished
-          ? formatDuration(log.createdAt, null)
-          : '';
-    return {
-      id: log.id,
-      label: labels[log.toStatus] || log.toStatus,
-      note: log.note || '',
-      at: formatDateTimeCn(log.createdAt),
-      stay: stay ? `停留 ${stay}` : '',
-    };
-  });
+  return logs
+    .map((log, index) => {
+      const next = logs[index + 1];
+      const isLast = index === logs.length - 1;
+      const stay =
+        next != null
+          ? formatDuration(log.createdAt, next.createdAt)
+          : isLast && !opts.finished
+            ? formatDuration(log.createdAt, null)
+            : '';
+      return {
+        id: log.id,
+        label: labels[log.toStatus] || log.toStatus,
+        note: log.note || '',
+        at: formatDateTimeCn(log.createdAt),
+        stay: stay ? `停留 ${stay}` : '',
+      };
+    })
+    .reverse();
 }

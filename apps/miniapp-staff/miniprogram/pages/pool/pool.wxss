@@ -1,8 +1,9 @@
-/* 卡片结构（.wo-card / .kv）在 app.wxss 里统一定义，两个列表页共用 */
+/* 卡片结构（.wo-card / .kv）、筛选条（.chips / .chip）、底部面板（.sheet）
+   都在 app.wxss / tokens.wxss 里统一定义，这里只写这一屏独有的东西 */
 
 /* 等待材料的单：缺什么料要在池子里就看得见，否则接了也干不了 */
 .wait-mat {
-  margin-top: 16rpx;
+  margin-top: 24rpx;
   padding: 18rpx 22rpx;
   border-radius: var(--radius-sm);
   background: rgba(250, 173, 20, 0.1);
@@ -11,5 +12,74 @@
   line-height: 1.6;
 }
 
-/* 页头下的报修入口 */
-.report-entry { margin: 0 0 var(--space-md); }
+/* 页头下的两个报修入口：按钮之间 24rpx，整块与下面第一张工单卡之间 48rpx。
+   下边距要比按钮之间大一档 —— 这两个按钮是「我要报修」，下面是「别人报的单」，
+   两件事之间给一个明确的段落断口，否则整屏读起来就是一长串挨着的方块。
+   间距写在容器上，写在 .btn 上会被 app.wxss 的 margin-left/right !important 那条规则带偏 */
+.report-entry { gap: var(--space-md); margin-bottom: var(--space-xl); }
+/* 派单台上的报修入口并成一行：等宽、矮一档，明确「这不是本屏的主按钮」。
+   .btn-row .btn 在 app.wxss 里已经是 flex:1，这里只需要把高度提回可点的下限 */
+.report-entry--row { margin-bottom: var(--space-lg); }
+.report-entry--row .btn { height: 88rpx; }
+
+/* ---------- 派单台 ---------- */
+
+/* 搜索行：输入框吃掉剩余宽度，按钮按自身内容宽（.btn 的 width:100% 在 app.wxss
+   里带 !important，只能靠 .btn--sm 的 width:auto 覆盖，所以这里不再写 width） */
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: var(--space-lg);
+}
+.search-row .input { flex: 1; min-width: 0; }
+
+/* 列表到 100 条上限时的说明，和列表之间留出一整档 */
+.cap-tip { padding-top: var(--space-lg); line-height: 1.6; }
+
+/* 派单面板里被派的那一单：写清「在给哪张单派人」，否则面板一拉出来就脱离上下文 */
+.assign-order {
+  flex-shrink: 0;
+  padding: 20rpx 24rpx;
+  background: var(--color-bg);
+}
+.assign-order__text { font-size: var(--font-lg); line-height: 1.5; }
+.assign-order__now {
+  margin-top: 8rpx;
+  font-size: var(--font-md);
+  color: var(--color-text-secondary);
+}
+
+/* 维修工一行：整行可点，选中用品牌色描边 + 左侧色条，不填底
+   （填底在户外强光下反光，看不清上面的字） */
+.tech {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  min-height: 112rpx;
+  padding: 20rpx 24rpx;
+  margin-top: 16rpx;
+  border: 2rpx solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-card-bg);
+}
+.tech--on {
+  border-color: var(--color-brand);
+  border-left-width: 10rpx;
+}
+.tech__body { flex: 1; min-width: 0; }
+.tech__name { font-size: var(--font-xl); font-weight: 500; line-height: 1.5; }
+.tech__meta {
+  margin-top: 6rpx;
+  font-size: var(--font-md);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+/* 「在手 N 单」是派单时唯一的判断依据，右侧单独一列，别混进上面那行小字 */
+.tech__load {
+  flex-shrink: 0;
+  font-size: var(--font-md);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.tech__load--free { color: var(--color-success); }

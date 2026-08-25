@@ -20,17 +20,48 @@
           低于安全库存{{lowCount ? ' ' + lowCount : ''}}
         </view>
       </view>
-      <input class="input mb" placeholder="搜索材料名称 / 型号 / 编码" value="{{keyword}}" bindinput="onKeyword" />
+      <input class="input mb" placeholder="搜索名称 / 别名 / 型号 / 编码" value="{{keyword}}" bindinput="onKeyword" />
+
+      <!-- 类别筛选：材料几十上百条，先按类别缩一轮比一直翻快得多。
+           和工单里「从库存选」的筛选条是同一套（app.wxss 的 .chips/.chip） -->
+      <scroll-view wx:if="{{categories.length > 1}}" class="chips" scroll-x enable-flex>
+        <view class="chip {{categoryIndex < 0 ? 'chip--on' : ''}}" data-index="-1" bindtap="onPickCategory">全部</view>
+        <view
+          class="chip {{categoryIndex === index ? 'chip--on' : ''}}"
+          wx:for="{{categories}}"
+          wx:key="*this"
+          data-index="{{index}}"
+          bindtap="onPickCategory"
+        >{{item}}</view>
+      </scroll-view>
+
+      <!-- 列头常驻：列表一滚起来就不知道右边那个数字是什么了 -->
+      <view wx:if="{{stockRows.length}}" class="sku-head sku-head--flat">
+        <text class="sku-head__photo">图片</text>
+        <text class="sku-head__name">名称</text>
+        <text class="sku-head__qty">库存数量</text>
+      </view>
 
       <view wx:if="{{loading}}" class="muted center">加载中…</view>
       <view wx:elif="{{stockRows.length === 0}}" class="muted center">没有匹配的库存记录</view>
 
-      <view class="card row-card" wx:for="{{stockRows}}" wx:key="id">
-        <view class="row-card__body">
-          <view class="row-card__title">{{item.name}}</view>
-          <view class="muted mt-xs">{{item.code}}<text wx:if="{{item.safetyText}}"> · {{item.safetyText}}</text></view>
+      <!-- 一行的样子必须和工单「从库存选」完全一致：同一批材料在两处要长得一样，
+           否则办公室在这儿记住的东西，维修工在工单里认不出来 -->
+      <view class="card sku" wx:for="{{stockRows}}" wx:key="materialId">
+        <image
+          wx:if="{{item.photoUrl}}"
+          class="sku__photo"
+          src="{{item.photoUrl}}"
+          mode="aspectFill"
+          data-url="{{item.photoUrl}}"
+          catchtap="onPreviewPhoto"
+        />
+        <view wx:else class="sku__photo sku__photo--empty">无图</view>
+        <view class="sku__body">
+          <view class="sku__title">{{item.name}}</view>
+          <view class="meta">{{item.code}} · {{item.category}}<text wx:if="{{item.safetyText}}"> · {{item.safetyText}}</text></view>
         </view>
-        <view class="qty {{item.low ? 'qty--low' : ''}}">
+        <view class="sku__qty {{item.low ? 'sku__qty--low' : ''}}">
           {{item.qtyText}}<text class="qty__unit">{{item.unit}}</text>
         </view>
       </view>

@@ -1,8 +1,7 @@
 import { auth } from '@pms/api-client';
 import type { StaffLoginReq } from '@pms/shared-types';
-
-/** 只报修、不接单的角色，登录后落到「我的报修」而不是工单池 */
-const REPORTER_ROLES = ['guard', 'neighborhood', 'owner_committee', 'property_staff'];
+import { isReporter } from '../../utils/roles';
+import { clearSession } from '../../utils/session';
 
 /** 扫码登录票据的暂存位：web-login 页发现没登录时写入，登录成功后由这里送回去 */
 const PENDING_QR_KEY = 'pms.staff.pending_qr';
@@ -121,6 +120,8 @@ Page({
 
   enter(accessToken: string, refreshToken: string, role?: string) {
     getApp<StaffApp>().setTokens(accessToken, refreshToken);
+    // 上一个人的权限缓存必须作废，否则换账号登录后各页还按旧身份渲染
+    clearSession();
     // 角色先存下，tabBar 首次渲染就能按权限藏 tab，不用等 me() 回来再跳一下
     if (role) wx.setStorageSync('pms.staff.role', role);
 
@@ -136,7 +137,9 @@ Page({
 
     // 保安/居委会/业委会/物业工作人员只报修不接单，工单池对他们是空的 ——
     // 落地页直接给「我的报修」，别让人一进来就对着一屏别人要修的活。
-    const isReporter = REPORTER_ROLES.indexOf(String(role || '')) >= 0;
-    wx.switchTab({ url: isReporter ? '/pages/my-orders/my-orders' : '/pages/pool/pool' });
+    // 办公室一侧落在同一个页面，但那一屏对他们是「派单台」（见 pages/pool）。
+    wx.switchTab({
+      url: isReporter(String(role || '')) ? '/pages/my-orders/my-orders' : '/pages/pool/pool',
+    });
   },
 });

@@ -1,6 +1,8 @@
 import type {
+  AssignWorkOrderReq,
   CompleteWorkOrderReq,
   RepairCreateReq,
+  TechnicianOption,
   WorkOrderDetail,
   WorkOrderListItem,
   WorkOrderStatus,
@@ -74,8 +76,10 @@ export const create = (data: RepairCreateReq) =>
 export interface ListQuery {
   status?: WorkOrderStatus;
   communityId?: number;
-  /** mine=业主我提交的 / 维修工派给我的；pool=待接单池（维修工） */
+  /** mine=业主我提交的 / 维修工派给我的；pool=未指派的池子（维修工待接 = 办公室待派） */
   scope?: 'mine' | 'pool' | 'all';
+  /** 关键词：单号 / 报修地址 / 故障描述 */
+  q?: string;
 }
 
 /** 列表按角色收敛：业主只看自己提交的，维修工看 pool / mine */
@@ -86,6 +90,17 @@ export const detail = (id: number | string) => request<WorkOrderDetail>({ url: `
 
 export const accept = (id: number | string) =>
   request<void>({ method: 'POST', url: `/work-orders/${id}/accept` });
+
+/**
+ * 派单 / 改派（办公室）。维修工没有这个权限，端上也不该给入口。
+ * 不传 slaHours 时沿用工单原有的要求完成时间。
+ */
+export const assign = (id: number | string, data: AssignWorkOrderReq) =>
+  request<void>({ method: 'POST', url: `/work-orders/${id}/assign`, data });
+
+/** 派单台可选的维修工（含在手单数）。走工单页权限，不是「用户管理」权限 */
+export const technicians = () =>
+  request<TechnicianOption[]>({ url: '/work-orders/technicians' });
 
 export const complete = (id: number | string, data: CompleteWorkOrderReq) =>
   request<void>({ method: 'POST', url: `/work-orders/${id}/complete`, data });

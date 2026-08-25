@@ -48,7 +48,10 @@
   align-items: center;
   gap: var(--space-md);
   width: 100% !important;
-  margin: 0 !important;
+  /* 同 app.wxss 的 .btn：只有左右 margin 需要 !important 压微信的 auto 居中，
+     上下留给容器和 .mt 这类工具类，别写成 margin: 0 !important */
+  margin-left: 0 !important;
+  margin-right: 0 !important;
   padding: var(--space-md);
   min-height: 144rpx;
   box-sizing: border-box;

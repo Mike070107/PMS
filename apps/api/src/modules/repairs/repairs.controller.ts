@@ -216,6 +216,19 @@ export class RepairsController {
     return this.repairsService.getWorkOrderStats(query, user, access);
   }
 
+  /**
+   * 派单台的维修工清单。必须声明在 `work-orders/:id` 之前 ——
+   * Nest 按声明顺序匹配，排在后面会被 :id 吃掉（ParseIntPipe 直接 400）。
+   */
+  @Get('work-orders/technicians')
+  @RequirePermission('work-orders', 'edit')
+  listDispatchTechnicians(
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.listDispatchTechnicians(user, access);
+  }
+
   @Get('work-orders/:id')
   @Roles(...SELF_SCOPED_ROLES, UserRole.TECHNICIAN)
   @RequirePermission('work-orders', 'view')

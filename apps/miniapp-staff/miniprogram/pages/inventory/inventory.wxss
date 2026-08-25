@@ -38,16 +38,14 @@
 .tip { padding: 24rpx 16rpx 0; line-height: 1.6; }
 .mt-xs { margin-top: 8rpx; }
 
-.row-card { display: flex; align-items: center; gap: 20rpx; padding: 28rpx 24rpx; }
-.row-card__body { flex: 1; min-width: 0; }
-.row-card__title { font-size: var(--font-xl); font-weight: 500; line-height: 1.5; }
-.qty {
-  font-size: 40rpx;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-.qty--low { color: var(--color-danger); }
+/* 库存行（.sku / .sku__photo / .sku__qty）与工单里的「从库存选」共用 app.wxss 那一套。
+   这里只补两处这一屏独有的差别：列头不在弹层里、低于安全库存标红。 */
+
+/* 弹层里的列头带左右外边距（要和 .sheet 的内边距对齐），页面里不需要那一层 */
+.sku-head--flat { margin-left: 0; margin-right: 0; padding-left: 24rpx; padding-right: 24rpx; }
+
+/* 低于安全库存：数字标红。这是这一屏唯一比选料弹层多出来的信息 */
+.sku__qty--low { color: var(--color-danger); }
 .qty__unit { font-size: var(--font-sm); font-weight: 400; color: var(--color-text-tertiary); margin-left: 6rpx; }
 
 .status { font-size: var(--font-md); color: var(--color-brand); }

@@ -9,20 +9,51 @@
  * 现在：SVG 图标（wxss data URI，跟着主题色走）＋ 当前项加粗高亮 ＋ 未处理数量角标，
  * 且没权限的 tab 直接不渲染。角标由各页面加载完数据后调 setBadge 更新，
  * tabBar 自己不发列表请求，避免每次切 tab 都多打一遍接口。
+ *
+ * 三种身份看到的是三套 tab（身份判断在 utils/roles.ts，只此一份）：
+ *   维修工：工单池 / 在手工单 / 我的
+ *   办公室一侧：派单台 / 材料与库存 / 审批 / 我的
+ *   代报身份：我的报修 / 我的
+ * 办公室没有「在手工单」—— 单不会派到他自己头上，那一格永远是空的。
  */
-/** 干物业活的角色：能接单、看工单池。代报角色（保安等）不在内 */
-const WORKER_ROLES = ['technician', 'office', 'manager', 'purchaser', 'admin'];
+import { DISPATCH_ROLES, WORKER_ROLES, isDispatcher, isReporter } from '../utils/roles';
 
-/**
- * 代报角色 2026-08-24 从业主端搬进员工端，但他们只报修、不接单 ——
- * 工单池对他们没有意义（点进去全是别人要修的活），「在手工单」也不是在手的活，
- * 而是自己报上去的单，所以这里连文案一起换掉。
- */
-const REPORTER_ROLES = ['guard', 'neighborhood', 'owner_committee', 'property_staff'];
+interface TabDef {
+  key: string;
+  pagePath: string;
+  text: string;
+  /** 限定业务身份；不填 = 所有人可见 */
+  roles?: string[];
+  /** 代报身份看到的另一种叫法 */
+  reporterText?: string;
+  /** 办公室一侧看到的另一种叫法（同一个池子，他们是去派单不是去接单） */
+  dispatcherText?: string;
+  /** 办公室一侧不显示这一项 */
+  hideForDispatcher?: boolean;
+}
 
-const ALL_TABS = [
-  { key: 'pool', pagePath: '/pages/pool/pool', text: '工单池', roles: WORKER_ROLES },
-  { key: 'mine', pagePath: '/pages/my-orders/my-orders', text: '在手工单', reporterText: '我的报修' },
+const ALL_TABS: TabDef[] = [
+  {
+    key: 'pool',
+    pagePath: '/pages/pool/pool',
+    text: '工单池',
+    dispatcherText: '派单台',
+    roles: WORKER_ROLES,
+  },
+  {
+    key: 'mine',
+    pagePath: '/pages/my-orders/my-orders',
+    text: '在手工单',
+    reporterText: '我的报修',
+    hideForDispatcher: true,
+  },
+  // 办公室把「在手工单」那一格换成材料与库存：补 SKU、查库存是他们每天要干的事
+  {
+    key: 'materials',
+    pagePath: '/pages/materials/materials',
+    text: '材料与库存',
+    roles: DISPATCH_ROLES,
+  },
   // 维修工没有采购审批权限，这一项对他们不显示
   { key: 'approvals', pagePath: '/pages/approvals/approvals', text: '审批', roles: ['manager', 'purchaser', 'admin'] },
   { key: 'me', pagePath: '/pages/me/me', text: '我的' },
@@ -30,12 +61,19 @@ const ALL_TABS = [
 
 const ROLE_KEY = 'pms.staff.role';
 
-function visibleTabs(role) {
-  const isReporter = REPORTER_ROLES.indexOf(role) >= 0;
+function visibleTabs(role: string) {
+  const reporter = isReporter(role);
+  const dispatcher = isDispatcher(role);
   // 角色还没拿到时先全显示：宁可多一个 tab，也别让有权限的人以为功能没了
-  return ALL_TABS.filter((tab) => !tab.roles || !role || tab.roles.indexOf(role) >= 0).map((tab) =>
-    isReporter && tab.reporterText ? { ...tab, text: tab.reporterText } : tab,
-  );
+  return ALL_TABS.filter((tab) => {
+    if (tab.roles && role && tab.roles.indexOf(role) < 0) return false;
+    if (tab.hideForDispatcher && dispatcher) return false;
+    return true;
+  }).map((tab) => {
+    if (dispatcher && tab.dispatcherText) return { ...tab, text: tab.dispatcherText };
+    if (reporter && tab.reporterText) return { ...tab, text: tab.reporterText };
+    return tab;
+  });
 }
 
 Component({
@@ -53,19 +91,19 @@ Component({
      * tabBar 重新 attached → 又调一次 auth.me() → 又 401 …… reLaunch 打转，
      * 整个小程序卡在登录页白屏。清掉小程序缓存反而必然触发（角色缓存也被清了）。
      *
-     * 角色由两处写入，足够了：登录成功时 login.ts 直接写，之后「我的」「审批」
-     * 页拿到 auth.me() 时顺手刷新（utils/tabbar.ts 的 rememberRole）。
+     * 角色由两处写入，足够了：登录成功时 login.ts 直接写，之后各页拿到 auth.me()
+     * 时顺手刷新（utils/tabbar.ts 的 rememberRole）。
      * 拿不到角色就全显示 —— 多一个 tab 也比整个小程序打不开强。
      */
     attached() {
-      this.applyRole(wx.getStorageSync(ROLE_KEY) || '');
+      (this as any).applyRole(wx.getStorageSync(ROLE_KEY) || '');
     },
   },
 
   methods: {
-    applyRole(role) {
-      const badges = {};
-      this.data.tabs.forEach((tab) => {
+    applyRole(role: string) {
+      const badges: Record<string, string> = {};
+      this.data.tabs.forEach((tab: any) => {
         badges[tab.key] = tab.badge;
       });
       this.setData({
@@ -73,7 +111,7 @@ Component({
       });
     },
 
-    onTap(e) {
+    onTap(e: WechatMiniprogram.BaseEvent) {
       const index = Number(e.currentTarget.dataset.index);
       const tab = this.data.tabs[index];
       if (!tab || tab.key === this.data.selectedKey) return;
@@ -81,16 +119,16 @@ Component({
     },
 
     /** 各 tab 页在 onShow 里调，告诉 tabBar 现在在哪一屏 */
-    setActive(key) {
+    setActive(key: string) {
       if (this.data.selectedKey !== key) this.setData({ selectedKey: key });
     },
 
     /** 未处理数量：0 或空表示不显示 */
-    setBadge(key, count) {
-      const index = this.data.tabs.findIndex((tab) => tab.key === key);
+    setBadge(key: string, count: number) {
+      const index = this.data.tabs.findIndex((tab: any) => tab.key === key);
       if (index < 0) return;
       const value = Number(count) > 0 ? (Number(count) > 99 ? '99+' : String(count)) : '';
-      if (this.data.tabs[index].badge === value) return;
+      if ((this.data.tabs[index] as any).badge === value) return;
       this.setData({ [`tabs[${index}].badge`]: value });
     },
   },

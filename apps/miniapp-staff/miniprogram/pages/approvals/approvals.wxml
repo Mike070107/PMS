@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container container--tabbar">
   <view class="page-lead">
     <view class="page-lead__title">
       <block wx:if="{{canApprove}}">待我审批 {{list.length}} 条</block>

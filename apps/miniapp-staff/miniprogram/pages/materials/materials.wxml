@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container container--tabbar">
   <view wx:if="{{!canView}}" class="card">
     <view class="card__title">材料 SKU 库</view>
     <view class="muted mt-sm">{{roleHint}}</view>
@@ -8,11 +8,20 @@
     <view class="toolbar">
       <input
         class="input search"
-        placeholder="搜索名称 / 别名 / 型号 / 编码"
+        placeholder="搜名称 / 别名 / 编码"
         value="{{keyword}}"
         bindinput="onKeyword"
       />
-      <button class="btn btn--outline btn--sm" bindtap="onOpenInventory">库存采购</button>
+      <button class="btn btn--outline btn--sm" bindtap="onOpenInventory">看库存</button>
+    </view>
+
+    <!-- 补 SKU 是办公室在这一屏的主要活儿，入口就放在筛选条上方，别藏进类别里 -->
+    <view wx:if="{{canEdit && incompleteCount}}" class="todo" bindtap="onToggleIncomplete">
+      <view class="todo__body">
+        <view class="todo__title">{{incompleteCount}} 条材料没填完整</view>
+        <view class="todo__desc">缺照片、类别或成本</view>
+      </view>
+      <view class="todo__action">{{onlyIncomplete ? '看全部' : '去补充'}}</view>
     </view>
 
     <!-- 「全部」要显式给一枚：不给的话「怎么退回不筛选」全靠再点一次选中项，没人猜得到 -->
@@ -48,6 +57,8 @@
         </view>
         <view class="muted sku__meta">{{item.code}} · {{item.category || '未分类'}} · {{item.unit}}</view>
         <view wx:if="{{item.aliasText}}" class="muted sku__meta">别名：{{item.aliasText}}</view>
+        <!-- 缺什么直接写出来，别只给一枚「不完整」标签让人自己点进去找 -->
+        <view wx:if="{{item.missingText}}" class="sku__missing">待补充：{{item.missingText}}</view>
       </view>
       <view class="sku__cost">{{item.costText}}</view>
     </view>

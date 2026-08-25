@@ -12,6 +12,7 @@ import {
   DataSource,
   EntityManager,
   FindOptionsWhere,
+  ILike,
   In,
   IsNull,
   Repository,
@@ -51,6 +52,7 @@ import {
   RepairTypeWarehouse,
   Review,
   Material,
+  StaffProfile,
   User,
   UserReportCommunity,
   Stock,
@@ -497,25 +499,51 @@ export class RepairsService implements OnModuleInit {
       });
       if (!myRequestIds.length) return [];
       where.requestId = In(myRequestIds.map((item) => item.id));
-    } else if (user.role === UserRole.TECHNICIAN) {
-      if (query.scope === 'pool') {
-        where.assigneeId = IsNull();
-        if (!query.status) {
-          // 等待材料的单也在池子里：缺料提报后工单会退回池子（见 markNeedMaterial），
-          // 材料到货后由办公室重新派单，或维修工自己接回去接着修
-          where.status = In([
-            WorkOrderStatus.CREATED,
-            WorkOrderStatus.DISPATCHED,
-            WorkOrderStatus.WAITING_MATERIAL,
-          ]);
-        }
-      } else {
-        where.assigneeId = user.id;
+    } else if (query.scope === 'pool') {
+      // 池子对两种人是同一批单，只是叫法不同：维修工看「我能接什么」，
+      // 办公室看「我该派谁」。所以这一档不再只认 TECHNICIAN ——
+      // 原来办公室带 scope=pool 会掉进下面的无过滤分支，把全公司的单（含维修中、
+      // 已完成）当成待接单列出来，卡片上还挂着「接单」按钮。
+      where.assigneeId = IsNull();
+      if (!query.status) {
+        // 等待材料的单也在池子里：缺料提报后工单会退回池子（见 markNeedMaterial），
+        // 材料到货后由办公室重新派单，或维修工自己接回去接着修
+        where.status = In([
+          WorkOrderStatus.CREATED,
+          WorkOrderStatus.DISPATCHED,
+          WorkOrderStatus.WAITING_MATERIAL,
+        ]);
+      }
+    } else if (query.scope === 'mine' || user.role === UserRole.TECHNICIAN) {
+      // 「在手工单」= 派到我头上的单，对谁都是这个意思。
+      // 原来这一档只认 TECHNICIAN，办公室带 scope=mine 会掉进无过滤分支，
+      // 把全公司的工单当成「我手上的」列出来。
+      // 维修工不带 scope 时仍然默认只看自己的单 —— 这条不能丢，丢了就是越权看全公司。
+      where.assigneeId = user.id;
+    }
+
+    // 关键词：单号在工单表上，地址/描述在报修表上，先把命中的 requestId 捞出来再合并。
+    // 命中一条都没有时必须直接返回空 —— 不加这层，where 里没有 requestId 约束，
+    // 搜不到反而会把全部工单列出来，看着像「搜索没生效」
+    const keyword = query.q?.trim();
+    let wheres: FindOptionsWhere<WorkOrder>[] = [where];
+    if (keyword) {
+      const hitRequests = await this.repairRequestRepo.find({
+        where: [
+          { tenantId, addressText: ILike(`%${keyword}%`) },
+          { tenantId, content: ILike(`%${keyword}%`) },
+        ],
+        select: ['id'],
+        take: 300,
+      });
+      wheres = [{ ...where, orderNo: ILike(`%${keyword}%`) }];
+      if (hitRequests.length) {
+        wheres.push({ ...where, requestId: In(hitRequests.map((item) => item.id)) });
       }
     }
 
     const workOrders = await this.workOrderRepo.find({
-      where,
+      where: wheres.length === 1 ? wheres[0] : wheres,
       order: { id: 'DESC' },
       take: 100,
     });
@@ -549,6 +577,18 @@ export class RepairsService implements OnModuleInit {
     const houseById = new Map(houses.map((item) => [item.id, item]));
     const buildingById = new Map(buildings.map((item) => [item.id, item]));
     const typeLabels = await this.repairTypeLabels(tenantId);
+    // 派单台要显示「这单在谁手上」。端上查不到人名（/staff 是 users 页权限，
+    // 办公室不一定有），所以这里一并带出来
+    const assigneeIds = Array.from(
+      new Set(workOrders.map((item) => item.assigneeId).filter((id): id is number => !!id)),
+    );
+    const assignees = assigneeIds.length
+      ? await this.userRepo.find({
+          where: { tenantId, id: In(assigneeIds) },
+          select: ['id', 'name'],
+        })
+      : [];
+    const assigneeNameById = new Map(assignees.map((item) => [item.id, item.name]));
     return workOrders.map((item) => {
       const repairType = requestById.get(item.requestId)?.repairType ?? item.skill;
       return {
@@ -563,8 +603,64 @@ export class RepairsService implements OnModuleInit {
           buildingById,
         ),
         summaryContent: requestById.get(item.requestId)?.content ?? '',
+        assigneeName: item.assigneeId
+          ? assigneeNameById.get(item.assigneeId) ?? `#${item.assigneeId}`
+          : null,
       };
     });
+  }
+
+  /**
+   * 派单台的维修工清单（含在手单数）。
+   *
+   * 为什么不复用 GET /staff：那是「用户管理」页的权限，办公室的角色未必勾了 ——
+   * 派单是工单页的事，权限就该按工单页算。返回的字段也只够派单用（姓名/电话/工种/在手几单），
+   * 不下发账号、微信绑定这些跟派单无关的信息。
+   */
+  async listDispatchTechnicians(user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const technicians = await this.userRepo.find({
+      where: { tenantId, role: UserRole.TECHNICIAN, status: UserStatus.ACTIVE },
+      select: ['id', 'name', 'phone'],
+      order: { id: 'ASC' },
+    });
+    if (!technicians.length) return [];
+
+    const ids = technicians.map((item) => item.id);
+    const scope = this.scopeIds(access);
+    const openWhere: FindOptionsWhere<WorkOrder> = {
+      tenantId,
+      assigneeId: In(ids),
+      status: In([WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS]),
+    };
+    if (scope) {
+      if (!scope.length) return [];
+      openWhere.communityId = In(scope);
+    }
+    const open = await this.workOrderRepo.find({
+      where: openWhere,
+      select: ['id', 'assigneeId'],
+    });
+    const openCount = new Map<number, number>();
+    open.forEach((item) => {
+      if (item.assigneeId) {
+        openCount.set(item.assigneeId, (openCount.get(item.assigneeId) ?? 0) + 1);
+      }
+    });
+
+    const profiles = await this.dataSource.getRepository(StaffProfile).find({
+      where: { tenantId, userId: In(ids) },
+      select: ['userId', 'skills'],
+    });
+    const skillsByUser = new Map(profiles.map((item) => [item.userId, item.skills || []]));
+
+    return technicians.map((item) => ({
+      id: item.id,
+      name: item.name || `#${item.id}`,
+      phone: item.phone ?? null,
+      skills: skillsByUser.get(item.id) ?? [],
+      openCount: openCount.get(item.id) ?? 0,
+    }));
   }
 
   /**
@@ -908,9 +1004,20 @@ export class RepairsService implements OnModuleInit {
       ? await this.registeredAddressText(request.submittedBy, tenantId)
       : null;
 
+    // 详情页要写「谁在修 / 谁修的」。和列表同一口径，端上不再各自去查人名
+    const assignee = workOrder.assigneeId
+      ? await this.userRepo.findOne({
+          where: { id: workOrder.assigneeId, tenantId },
+          select: ['id', 'name'],
+        })
+      : null;
+
     return {
       workOrder: {
         ...workOrder,
+        assigneeName: workOrder.assigneeId
+          ? assignee?.name || `#${workOrder.assigneeId}`
+          : null,
         resultAttachments: this.storage.toDisplayUrls(workOrder.resultAttachments),
       },
       request: request

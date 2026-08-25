@@ -33,6 +33,10 @@
         "text": "在手工单"
       },
       {
+        "pagePath": "pages/materials/materials",
+        "text": "材料与库存"
+      },
+      {
         "pagePath": "pages/approvals/approvals",
         "text": "审批"
       },

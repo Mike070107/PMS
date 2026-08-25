@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container container--tabbar">
   <view class="page-lead">
     <view class="page-lead__title">在手 {{active.length}} 条</view>
   </view>

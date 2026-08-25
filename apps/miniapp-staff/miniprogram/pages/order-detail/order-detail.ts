@@ -1,4 +1,5 @@
 import { repairs, upload } from '@pms/api-client';
+import { getSession } from '../../utils/session';
 import {
   buildTimeline,
   missingMaterialsText,
@@ -16,6 +17,16 @@ import {
   type WorkOrderStockWarehouse,
   type WorkOrderDetail,
 } from '@pms/shared-types';
+
+/**
+ * 「维修结果」那张卡：维修工提交完工时填的东西，办公室和业主要能看到。
+ * 原来这一屏只画了报修信息 + 进度，完工填的故障位置、用料、收费、完修时间
+ * 一个都没渲染 —— 单子到了「待验收」，点进去还是和没修一样，验收的人无从判断。
+ */
+interface ResultRow {
+  label: string;
+  value: string;
+}
 
 /**
  * 「添加用料」的一行。
@@ -116,8 +127,15 @@ interface PageData {
   acceptText: string;
   /** 底部弹出的表单：'' 关闭 / material 缺料登记 / complete 完工提交 */
   panel: string;
-  /** 进度默认只露最新一条，点开看全部 */
+  /** 进度默认只露最新一条，点开看全部。倒序，第 0 条就是最新的 */
   timelineOpen: boolean;
+  /** 维修结果（完工后才有）：故障位置/现象、维修说明、用料、收费、完修时间 */
+  resultRows: ResultRow[];
+  resultMaterials: string[];
+  resultPhotos: string[];
+  hasResult: boolean;
+  /** 「王师傅」/「未派单」 */
+  assigneeText: string;
   contactPhone: string;
   resultAttachments: string[];
   actionNote: string;
@@ -168,6 +186,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     stayBadge: '',
     urgent: false,
     timeline: [],
+    resultRows: [],
+    resultMaterials: [],
+    resultPhotos: [],
+    hasResult: false,
+    assigneeText: '未派单',
     canAccept: false,
     canComplete: false,
     canNeedMaterial: false,
@@ -217,8 +240,15 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   async load() {
     if (!this.data.id) return;
     try {
-      const detail = await repairs.detail(this.data.id);
+      const [detail, session] = await Promise.all([
+        repairs.detail(this.data.id),
+        // 拿不到身份就当成「不是维修工」：宁可少给一个按钮（详情仍然能看），
+        // 也不要画一个点下去必然 403 的接单按钮
+        getSession(this).catch(() => null),
+      ]);
       const status = detail.workOrder.status;
+      const isTechnician = !!session?.isTechnician;
+      const myId = session?.me?.id ?? 0;
       // 缺料提报后工单会退回工单池（assigneeId 置空），所以「等待材料 + 没人认领」
       // 要给的是接单按钮而不是完工表单。存量数据里还有挂着人的等待材料单，那种仍按在手工单处理。
       const waitingInPool =
@@ -246,14 +276,31 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         stayBadge: `已等 ${stayedDays} 天`,
         urgent: stayTone(stayedDays) === 'danger',
         timeline: buildTimeline(detail.logs, statusLabel, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
+        // 接单按钮和后端 acceptWorkOrder 一一对应，两条路都要判：
+        //   · 认领（claim）：没人负责 + 状态在池子里 —— 只有维修工能领
+        //   · 接单（accept）：已派给我 + 状态是已派单
+        // 原来这里只看状态，于是办公室点开一张「已派单给王师傅」的单，
+        // 底部照样出现「接单」；维修工点开别人手上的单也一样。
         canAccept:
-          status === WorkOrderStatus.CREATED ||
-          status === WorkOrderStatus.DISPATCHED ||
-          waitingInPool,
+          isTechnician &&
+          (detail.workOrder.assigneeId
+            ? detail.workOrder.assigneeId === myId &&
+              status === WorkOrderStatus.DISPATCHED
+            : status === WorkOrderStatus.CREATED ||
+              status === WorkOrderStatus.DISPATCHED ||
+              waitingInPool),
+        // 完工/缺料同理：只有这单真在自己手上才给表单
         canComplete:
-          status === WorkOrderStatus.IN_PROGRESS ||
-          (status === WorkOrderStatus.WAITING_MATERIAL && !waitingInPool),
-        canNeedMaterial: status === WorkOrderStatus.IN_PROGRESS,
+          isTechnician &&
+          detail.workOrder.assigneeId === myId &&
+          (status === WorkOrderStatus.IN_PROGRESS ||
+            (status === WorkOrderStatus.WAITING_MATERIAL && !waitingInPool)),
+        canNeedMaterial:
+          isTechnician &&
+          detail.workOrder.assigneeId === myId &&
+          status === WorkOrderStatus.IN_PROGRESS,
+        assigneeText: detail.workOrder.assigneeName || '未派单',
+        ...this.buildResult(detail),
         missingText: missingMaterialsText(detail.workOrder.missingMaterials),
         acceptText: waitingInPool ? '材料到了，接回' : '接单',
         contactPhone: detail.request?.contactPhone || '',
@@ -276,6 +323,51 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     }
+  },
+
+  /**
+   * 完工填的那些东西 → 详情页「维修结果」卡片。
+   *
+   * 只列真有值的行：一屏「故障位置：—、收费：—」全是破折号，比不显示还难读。
+   * 一行都没有时整张卡不出现（hasResult=false）—— 还没修完的单本来就没有结果。
+   */
+  buildResult(detail: WorkOrderDetail) {
+    const wo = detail.workOrder;
+    const rows: ResultRow[] = [];
+    const push = (label: string, value?: string | null) => {
+      const text = (value ?? '').toString().trim();
+      if (text) rows.push({ label, value: text });
+    };
+
+    push('故障位置', wo.faultLocation);
+    push('故障现象', wo.faultSymptom);
+    // 维修说明两个字段是同一件事的历史遗留：后台走 repairContent，小程序走 actionNote，
+    // 哪个有值用哪个，不要两行都画出来
+    push('维修说明', wo.actionNote || wo.repairContent);
+    if (wo.feeCents > 0) push('收费金额', `¥${(wo.feeCents / 100).toFixed(2)}`);
+    else if (wo.completedAt) push('收费金额', '未收费');
+    push('完修时间', wo.completedAt ? formatDateTimeCn(wo.completedAt) : '');
+    // 「维修工」不在这里重复：上面那张报修卡已经有一行，同一个值在一屏出现两次
+    // 只会让人怀疑是不是两个不同的人
+
+    const materials = (wo.usedMaterials || [])
+      .filter((item) => item && (item.name || item.qty))
+      .map((item) => `${item.name || '未命名材料'} ×${item.qty}${item.unit || ''}`);
+    const photos = wo.resultAttachments || [];
+
+    return {
+      resultRows: rows,
+      resultMaterials: materials,
+      resultPhotos: photos,
+      hasResult: rows.length > 0 || materials.length > 0 || photos.length > 0,
+    };
+  },
+
+  /** 完工照片点开看大图：缩略图上看不出修没修好 */
+  onPreviewResultImage(e: WechatMiniprogram.BaseEvent) {
+    const urls = this.data.resultPhotos || [];
+    if (!urls.length) return;
+    wx.previewImage({ current: e.currentTarget.dataset.url, urls });
   },
 
   /** 常用话术拿不到不影响完工，静默失败即可，别弹一个红条吓人 */

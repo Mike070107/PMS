@@ -18,6 +18,7 @@
       <text class="kv__v">{{createdAtText}}<text class="kv__tag kv__tag--{{stayTone}}">{{stayBadge}}</text></text>
     </view>
     <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v">{{detail.request.content}}</text></view>
+    <view class="kv"><text class="kv__k">维修工</text><text class="kv__v">{{assigneeText}}</text></view>
     <view wx:if="{{missingText}}" class="kv">
       <text class="kv__k">等待材料</text><text class="kv__v">{{missingText}}</text>
     </view>
@@ -42,7 +43,39 @@
     </view>
   </view>
 
-  <!-- 4. 进度默认只露最新一条，要追溯再展开 -->
+  <!-- 修完了它才出现：故障位置、用料、收费、完修时间 —— 验收的人要看的就是这些。
+       放在进度之前：进度回答「走到哪一步」，这张卡回答「到底修了什么」，后者更该先看见 -->
+  <view wx:if="{{hasResult}}" class="card">
+    <view class="section-title">维修结果</view>
+    <view wx:for="{{resultRows}}" wx:key="label" class="kv">
+      <text class="kv__k">{{item.label}}</text>
+      <text class="kv__v">{{item.value}}</text>
+    </view>
+
+    <view wx:if="{{resultMaterials.length}}" class="kv">
+      <text class="kv__k">用料</text>
+      <view class="kv__v">
+        <view wx:for="{{resultMaterials}}" wx:for-item="mat" wx:key="*this" class="used-item">{{mat}}</view>
+      </view>
+    </view>
+
+    <block wx:if="{{resultPhotos.length}}">
+      <view class="kv"><text class="kv__k">完工照片</text><text class="kv__v">共 {{resultPhotos.length}} 张</text></view>
+      <view class="thumbs">
+        <image
+          wx:for="{{resultPhotos}}"
+          wx:key="*this"
+          class="thumb"
+          src="{{item}}"
+          mode="aspectFill"
+          data-url="{{item}}"
+          bindtap="onPreviewResultImage"
+        />
+      </view>
+    </block>
+  </view>
+
+  <!-- 进度：最新的动作在最上面（buildTimeline 已经倒序），默认只露第一条 -->
   <view class="card">
     <view class="fold fold--inline" bindtap="onToggleTimeline">
       <text class="section-title">进度</text>
@@ -54,7 +87,7 @@
     <view
       wx:for="{{timeline}}"
       wx:key="id"
-      wx:if="{{timelineOpen || index === timeline.length - 1}}"
+      wx:if="{{timelineOpen || index === 0}}"
       class="timeline-item"
     >
       <view class="dot"></view>

@@ -1,15 +1,53 @@
-<view class="container">
+<view class="container container--tabbar">
   <view class="page-lead">
-    <view class="page-lead__title">待接单 {{list.length}} 条</view>
+    <view class="page-lead__title">{{leadText}} {{list.length}} 条</view>
   </view>
 
-  <!-- 巡查发现问题：先给最快的那条路（拍+说），填表放第二个 -->
-  <button class="btn btn--primary report-entry" bindtap="onGoQuickRepair">随手拍报修</button>
-  <button class="btn btn--outline report-entry" bindtap="onGoRepair">我要报修（填表）</button>
+  <!-- 巡查发现问题：先给最快的那条路（拍+说），填表放第二个。
+       间距由外层 .btn-group / .btn-row 给（gap + margin-bottom）——按钮自身的 margin
+       在 app.wxss 里被 !important 压过一次，别再写回按钮上。
+
+       两种身份两种排法：维修工这一屏的主线就是「接活 + 顺手报修」，两个入口铺满一行一个；
+       办公室的主线是派单，报修只是顺带，两个按钮并成一行，把屏幕让给下面的工单。 -->
+  <view wx:if="{{dispatcher}}" class="btn-row report-entry report-entry--row">
+    <button class="btn btn--outline btn--sm" bindtap="onGoQuickRepair">随手拍报修</button>
+    <button class="btn btn--outline btn--sm" bindtap="onGoRepair">填表报修</button>
+  </view>
+  <view wx:else class="btn-group report-entry">
+    <button class="btn btn--primary" bindtap="onGoQuickRepair">随手拍报修</button>
+    <button class="btn btn--outline" bindtap="onGoRepair">我要报修（填表）</button>
+  </view>
+
+  <!-- ===== 派单台：状态筛选 + 搜索。维修工不需要，池子里只有一种单 ===== -->
+  <block wx:if="{{dispatcher}}">
+    <scroll-view class="chips" scroll-x enable-flex>
+      <view
+        wx:for="{{filters}}"
+        wx:key="key"
+        class="chip {{filterIndex === index ? 'chip--on' : ''}}"
+        data-index="{{index}}"
+        bindtap="onPickFilter"
+      >{{item.label}}</view>
+    </scroll-view>
+
+    <view class="search-row">
+      <input
+        class="input"
+        placeholder="搜单号 / 地址 / 故障描述"
+        value="{{keyword}}"
+        confirm-type="search"
+        bindconfirm="onSearch"
+        bindinput="onKeyword"
+      />
+      <button class="btn btn--outline btn--sm" bindtap="onSearch">搜索</button>
+      <button wx:if="{{keyword}}" class="btn btn--ghost btn--sm" bindtap="onClearKeyword">清空</button>
+    </view>
+  </block>
 
   <view wx:if="{{loading && !loaded}}" class="center muted">加载中…</view>
   <view wx:elif="{{!list.length && loaded}}">
-    <pms-empty text="工单池是空的，暂时没有待接的活"/>
+    <pms-empty wx:if="{{dispatcher}}" text="{{keyword ? '没搜到匹配的工单，换个单号或地址试试' : '这一档里没有工单'}}"/>
+    <pms-empty wx:else text="工单池是空的，暂时没有待接的活"/>
   </view>
 
   <view
@@ -36,18 +74,111 @@
       <text class="kv__k">报修时间</text>
       <text class="kv__v">{{item.timeText}}<text class="kv__tag kv__tag--{{item.stayTone}}">{{item.stayBadge}}</text></text>
     </view>
+    <!-- 派单台上「这单在谁手上」和地址一样重要：没有它就没法判断该不该改派 -->
+    <view wx:if="{{dispatcher}}" class="kv">
+      <text class="kv__k">维修工</text>
+      <text class="kv__v">{{item.assigneeText}}</text>
+    </view>
     <view wx:if="{{item.missingText}}" class="kv">
       <text class="kv__k">等待材料</text><text class="kv__v">{{item.missingText}}</text>
     </view>
 
     <view class="wo-card__foot">
-      <button
-        class="btn btn--primary btn--sm"
-        catchtap="onAccept"
-        data-id="{{item.id}}"
-        loading="{{acceptingId === item.id}}"
-        disabled="{{acceptingId !== 0}}"
-      >{{item.status === 'waiting_material' ? '接回' : '接单'}}</button>
+      <!-- 派单台 -->
+      <block wx:if="{{dispatcher}}">
+        <button
+          wx:if="{{canDispatch && item.dispatchable}}"
+          class="btn btn--primary btn--sm"
+          catchtap="onOpenAssign"
+          data-id="{{item.id}}"
+        >{{item.actionText}}</button>
+        <text wx:else class="wo-card__more">查看详情 ›</text>
+      </block>
+      <!-- 维修工：只有真正能领的单才画按钮（后端 accept 也只放行这一种） -->
+      <block wx:else>
+        <button
+          wx:if="{{item.claimable}}"
+          class="btn btn--primary btn--sm"
+          catchtap="onAccept"
+          data-id="{{item.id}}"
+          loading="{{acceptingId === item.id}}"
+          disabled="{{acceptingId !== 0}}"
+        >{{item.actionText}}</button>
+        <text wx:else class="wo-card__more">查看详情 ›</text>
+      </block>
     </view>
+  </view>
+
+  <!-- 服务端一次最多给 100 条：到顶了必须说明，否则看着就是「搜索漏了单」 -->
+  <view wx:if="{{capped}}" class="muted center cap-tip">
+    只显示最近 100 条，用上面的搜索或状态筛选缩小范围
+  </view>
+</view>
+
+<!-- ============ 派单面板 ============ -->
+<view wx:if="{{assignOpen}}" class="sheet-mask" bindtap="onCloseAssign" catchtouchmove="noop"/>
+<view wx:if="{{assignOpen}}" class="sheet" catchtouchmove="noop">
+  <view class="sheet__head">
+    <text class="sheet__title">派单</text>
+    <text class="sheet__close" bindtap="onCloseAssign">关闭</text>
+  </view>
+
+  <view class="assign-order">
+    <view class="assign-order__text">{{assignOrderText}}</view>
+    <view wx:if="{{assignCurrent}}" class="assign-order__now">{{assignCurrent}}</view>
+  </view>
+
+  <scroll-view class="sheet__body" scroll-y>
+    <view class="label">选择维修工<text class="label__opt">手上单少的排前面</text></view>
+
+    <view wx:if="{{techLoading}}" class="center muted">加载中…</view>
+    <block wx:elif="{{techError}}">
+      <view class="error">{{techError}}</view>
+      <button class="btn btn--outline mt" bindtap="onRetryTechnicians">重试</button>
+    </block>
+    <block wx:else>
+      <view wx:if="{{!technicians.length}}" class="muted">
+        本公司还没有启用中的维修工账号，请管理员先在后台「用户管理」里添加。
+      </view>
+      <view
+        wx:for="{{technicians}}"
+        wx:key="id"
+        class="tech {{pickedTechId === item.id ? 'tech--on' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="onPickTech"
+      >
+        <view class="tech__body">
+          <view class="tech__name">{{item.name}}</view>
+          <view class="tech__meta">{{item.phone || '未留电话'}}</view>
+        </view>
+        <view class="tech__load {{item.openCount ? '' : 'tech__load--free'}}">
+          {{item.openCount ? '在手 ' + item.openCount + ' 单' : '当前空闲'}}
+        </view>
+      </view>
+    </block>
+
+    <view class="label mt">要求完成时限</view>
+    <picker mode="selector" range="{{slaOptions}}" value="{{slaIndex}}" bindchange="onPickSla">
+      <view class="picker">{{slaOptions[slaIndex]}}</view>
+    </picker>
+
+    <view class="label mt">派单备注<text class="label__opt">选填，维修工能看到</text></view>
+    <input
+      class="input"
+      placeholder="如：业主下午在家，优先处理"
+      value="{{assignNote}}"
+      bindinput="onAssignNote"
+    />
+
+    <view class="error" wx:if="{{assignError}}">{{assignError}}</view>
+  </scroll-view>
+
+  <view class="sheet__foot">
+    <button
+      class="btn btn--primary"
+      loading="{{assigning}}"
+      disabled="{{assigning}}"
+      bindtap="onSubmitAssign"
+    >确认派单</button>
   </view>
 </view>

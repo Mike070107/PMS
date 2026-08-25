@@ -29,11 +29,19 @@ button::after { border: none; }
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  /* 微信 button 组件基础样式对 width / margin 用了更高优先级（实测普通类选择器压不住：
-     margin-left 仍是 auto，width 仍按内容撑开），只能用 !important 覆盖。
-     不加的话按钮左右缩水、被 auto margin 居中，看起来就是「偏、大小不一」。 */
+  /* 微信 button 组件基础样式对 width 和左右 margin 用了更高优先级（实测普通类选择器
+     压不住：margin-left 仍是 auto，width 仍按内容撑开），这两项只能用 !important 覆盖，
+     不加的话按钮左右缩水、被 auto margin 居中，看起来就是「偏、大小不一」。
+     纵向 margin 微信没有默认值，所以**不能**写成 margin: 0 !important —— 那会把所有
+     加在按钮自己身上的上下间距（.mt / .mt-sm / 页面自定义类）一起吃掉，按钮和上一块
+     内容贴死在一起，而 wxss 看上去完全正确（工单池两个报修入口就是这么糊住的）。
+     按钮的上下间距优先交给容器（.btn-group / .btn-row / 外层 view）；
+     直接写在按钮上的 margin-top / margin-bottom 现在也能生效。 */
   width: 100% !important;
-  margin: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-top: 0;
+  margin-bottom: 0;
   flex-shrink: 0;
   height: 104rpx;
   padding: 0 32rpx;

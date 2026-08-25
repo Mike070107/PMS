@@ -8,11 +8,22 @@
 
 .container { padding: 28rpx 28rpx 56rpx; }
 
+/* tab 页的内容区要给底部 tabBar 让出高度（tabBar 是 position: fixed，盖在内容上）。
+   不让出来，最后一张卡片的下半截就压在 tabBar 底下，看着像「列表少了一条」。
+   留白 = tabBar 高度（图标 + 文字 ≈ 100rpx，上下 padding 22rpx）+ 安全区 + 一点呼吸空间。
+   写成两个类的原因和 .container--with-bar 一样：单写 .container--tabbar 会被
+   上面这条同特异度、更靠后的规则整个压掉。 */
+.container.container--tabbar {
+  padding-bottom: calc(180rpx + env(safe-area-inset-bottom));
+}
+
 .card {
   background: var(--color-card-bg);
   border-radius: var(--radius-md);
-  padding: 36rpx 28rpx;
-  margin-bottom: 28rpx;
+  padding: 40rpx 28rpx;
+  /* 列表里是一张卡紧挨着下一张，28rpx 加上投影后两张卡看着像连在一起的一整块，
+     一眼分不出「这是两条工单」。卡间 40rpx、卡内上下 40rpx 才撑得开 */
+  margin-bottom: 40rpx;
   /* 发丝边 + 投影一起上：只靠投影在户外光线下看不出来，只靠边框又太生硬 */
   border: 2rpx solid rgba(18, 35, 59, 0.06);
   box-shadow: 0 4rpx 16rpx rgba(18, 35, 59, 0.07);
@@ -29,11 +40,19 @@ button::after { border: none; }
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  /* 微信 button 组件基础样式对 width / margin 用了更高优先级（实测普通类选择器压不住：
-     margin-left 仍是 auto，width 仍按内容撑开），只能用 !important 覆盖。
-     不加的话按钮左右缩水、被 auto margin 居中，看起来就是「偏、大小不一」。 */
+  /* 微信 button 组件基础样式对 width 和左右 margin 用了更高优先级（实测普通类选择器
+     压不住：margin-left 仍是 auto，width 仍按内容撑开），这两项只能用 !important 覆盖，
+     不加的话按钮左右缩水、被 auto margin 居中，看起来就是「偏、大小不一」。
+     纵向 margin 微信没有默认值，所以**不能**写成 margin: 0 !important —— 那会把所有
+     加在按钮自己身上的上下间距（.mt / .mt-sm / 页面自定义类）一起吃掉，按钮和上一块
+     内容贴死在一起，而 wxss 看上去完全正确（工单池两个报修入口就是这么糊住的）。
+     按钮的上下间距优先交给容器（.btn-group / .btn-row / 外层 view）；
+     直接写在按钮上的 margin-top / margin-bottom 现在也能生效。 */
   width: 100% !important;
-  margin: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-top: 0;
+  margin-bottom: 0;
   flex-shrink: 0;
   height: 104rpx;
   padding: 0 32rpx;
@@ -93,6 +112,20 @@ button::after { border: none; }
   font-size: var(--font-xl);
 }
 .field-error { color: var(--color-danger); font-size: var(--font-sm); margin-top: 10rpx; line-height: 1.6; }
+
+/* 整块的错误提示（登录失败、提交失败、面板里的校验不通过）。
+   原来 login 和 order-detail 各抄了一份，第三个页面（派单面板）用到 .error 时
+   就是一段没样式的黑字 —— 看着像正文，用户根本不知道那是报错。新页面直接用这一条。 */
+.error {
+  margin-top: 24rpx;
+  padding: 22rpx 24rpx;
+  background: #fff2f0;
+  border: 2rpx solid #ffccc7;
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  font-size: var(--font-md);
+  line-height: 1.6;
+}
 
 .row { display: flex; justify-content: space-between; align-items: center; }
 .muted { color: var(--color-text-tertiary); font-size: var(--font-sm); line-height: 1.7; }
@@ -265,7 +298,7 @@ button::after { border: none; }
   align-items: center;
   justify-content: space-between;
   gap: 16rpx;
-  margin-bottom: 20rpx;
+  margin-bottom: 28rpx;
 }
 .wo-card__title {
   flex: 1;
@@ -296,12 +329,14 @@ button::after { border: none; }
   font-weight: 600;
   line-height: 1.6;
 }
-/* 脚只放主按钮：单号、时间这些已经在上面的信息行里了，不用再重复一遍 */
+/* 脚只放主按钮：单号、时间这些已经在上面的信息行里了，不用再重复一遍。
+   按钮与上面最后一行信息之间留 40rpx：信息行之间才 16rpx，按钮若也贴着 24rpx，
+   看上去就是「又一行信息」而不是「这里可以点」——间距本身就是分隔线 */
 .wo-card__foot {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  margin-top: 24rpx;
+  margin-top: 40rpx;
 }
 /* 没有按钮时给一个明确的「可以点」提示，别让整卡可点变成隐藏功能 */
 .wo-card__more { color: var(--color-brand); font-size: var(--font-md); }
