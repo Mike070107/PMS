@@ -3,28 +3,6 @@
 /* 底部有固定操作条，内容要留出它的高度，否则最后一张卡被压住 */
 .container--with-bar { padding-bottom: 200rpx; }
 
-/* ---------- 现在到哪一步 ---------- */
-.status-card { background: #f2f5f9; border: 2rpx solid #dbe2ec; }
-.status-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-}
-.status-card__now {
-  font-size: 44rpx;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--color-brand);
-}
-.status-card__head .stay { margin-top: 0; }
-.status-card__next {
-  margin-top: 16rpx;
-  font-size: var(--font-lg);
-  line-height: 1.6;
-  color: var(--color-text-secondary);
-}
-
 /* 业主原话：引号块，和系统文案区分开 */
 .quote {
   margin-top: 20rpx;

@@ -42,21 +42,6 @@ interface MaterialRow {
   hintShort: boolean;
 }
 
-/**
- * 每个状态下「接下来该做什么」，直接写在详情页最上面。
- * 之前一屏并排四个同样大小的按钮（联系业主/接单/提报缺料/提交完工），
- * 维修工第一反应是「我现在该按哪个」—— 状态机自己知道答案，就别让人猜。
- */
-const NEXT_STEP: Record<string, string> = {
-  [WorkOrderStatus.CREATED]: '还没人接，点下面「接单」就归你',
-  [WorkOrderStatus.DISPATCHED]: '已派给你，点下面「接单」开始处理',
-  [WorkOrderStatus.IN_PROGRESS]: '先「添加用料」记下领了什么，修完点「完工提交」',
-  [WorkOrderStatus.WAITING_MATERIAL]: '等采购到货；到货后接回这单继续修',
-  [WorkOrderStatus.DONE_PENDING_REVIEW]: '已提交，等待业主验收（超时后系统自动完成）',
-  [WorkOrderStatus.COMPLETED]: '这单已结束',
-  [WorkOrderStatus.CANCELLED]: '这单已撤销',
-};
-
 /** 数量默认 1：缺料十有八九就是缺一个，让人少点一下 */
 const DEFAULT_QTY = '1';
 const MAX_QTY = 999;
@@ -117,6 +102,10 @@ interface PageData {
   /** 从业主提交那刻算起的停留天数，工单池里最该被看见的信息 */
   stayText: string;
   stayTone: string;
+  /** 「报修时间」那一行的值：时间 + 已等几天合成一行 */
+  timeText: string;
+  /** 压了 7 天以上，标题前挂「紧急」标签 */
+  urgent: boolean;
   timeline: TimelineRow[];
   canAccept: boolean;
   canComplete: boolean;
@@ -125,9 +114,6 @@ interface PageData {
   /** 已提报的缺料清单，等待材料时给接单的人看 */
   missingText: string;
   acceptText: string;
-  /** 顶部「现在什么状态、接下来该做什么」 */
-  statusText: string;
-  nextStep: string;
   /** 底部弹出的表单：'' 关闭 / material 缺料登记 / complete 完工提交 */
   panel: string;
   /** 进度默认只露最新一条，点开看全部 */
@@ -179,14 +165,14 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     createdAtText: '',
     stayText: '',
     stayTone: 'normal',
+    timeText: '',
+    urgent: false,
     timeline: [],
     canAccept: false,
     canComplete: false,
     canNeedMaterial: false,
     missingText: '',
     acceptText: '接单',
-    statusText: '',
-    nextStep: '',
     panel: '',
     timelineOpen: false,
     contactPhone: '',
@@ -237,6 +223,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       // 要给的是接单按钮而不是完工表单。存量数据里还有挂着人的等待材料单，那种仍按在手工单处理。
       const waitingInPool =
         status === WorkOrderStatus.WAITING_MATERIAL && !detail.workOrder.assigneeId;
+      // 停留天数算一次给三处用（文案、色调、紧急标）——原来同一段表达式抄了两遍
+      const stayedDays = stayDays(
+        detail.workOrder.createdAt,
+        detail.workOrder.completedAt ? new Date(detail.workOrder.completedAt) : new Date(),
+      );
       this.setData({
         detail,
         // 中文类型名以后端为准，租户自建的类型端上认不出（会显示成 menjing 这种编码）
@@ -250,12 +241,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           detail.workOrder.createdAt,
           detail.workOrder.completedAt ? new Date(detail.workOrder.completedAt) : new Date(),
         ),
-        stayTone: stayTone(
-          stayDays(
-            detail.workOrder.createdAt,
-            detail.workOrder.completedAt ? new Date(detail.workOrder.completedAt) : new Date(),
-          ),
-        ),
+        stayTone: stayTone(stayedDays),
+        // 和列表卡片同一句式：时间和已等几天合成一行，别占两行
+        timeText: `${formatDateTimeCn(detail.workOrder.createdAt)} · 已等 ${stayedDays} 天`,
+        urgent: stayTone(stayedDays) === 'danger',
         timeline: buildTimeline(detail.logs, statusLabel, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
         canAccept:
           status === WorkOrderStatus.CREATED ||
@@ -267,8 +256,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         canNeedMaterial: status === WorkOrderStatus.IN_PROGRESS,
         missingText: missingMaterialsText(detail.workOrder.missingMaterials),
         acceptText: waitingInPool ? '材料到了，接回' : '接单',
-        statusText: statusLabel[status] || status,
-        nextStep: NEXT_STEP[status] || '',
         contactPhone: detail.request?.contactPhone || '',
         // 故障位置/现象从报修信息带出来：业主已经说过一遍了，别让维修工再打一遍。
         // 带出来的只是初值，可以改、也可以清空 —— 现场看到的往往和业主说的不一样。

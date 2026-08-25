@@ -1,11 +1,8 @@
 <view class="container">
-  <!-- 一句话说清这一屏是干什么的：新来的维修工不用猜「池」是什么意思 -->
   <view class="page-lead">
     <view class="page-lead__title">待接单 {{list.length}} 条</view>
-    <view class="page-lead__sub">谁先接谁修。红色是已经压了 7 天以上的单，优先处理。</view>
   </view>
 
-  <!-- 巡查发现问题顺手提单：不用回办公室找人录 -->
   <button class="btn btn--outline report-entry" bindtap="onGoRepair">我要报修（巡查发现问题）</button>
 
   <view wx:if="{{loading && !loaded}}" class="center muted">加载中…</view>
@@ -16,34 +13,32 @@
   <view
     wx:for="{{list}}"
     wx:key="id"
-    class="card wo-card wo-card--{{item.stayTone}}"
+    class="card wo-card"
     hover-class="wo-card--hover"
     hover-stay-time="80"
     bindtap="onTapItem"
     data-id="{{item.id}}"
   >
     <view class="wo-card__head">
-      <view class="wo-card__type">{{item.typeLabel}}</view>
+      <view class="wo-card__title">
+        <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>
+        <text class="wo-card__type">{{item.typeLabel}}</text>
+      </view>
       <pms-tag class="status-tag" status="{{item.status}}"/>
     </view>
 
-    <!-- 停留天数从业主提交那刻算起，与有没有接单无关；3 天变黄、7 天变红 -->
-    <view class="stay stay--{{item.stayTone}}">{{item.stayText}}</view>
-
-    <view class="wo-card__addr">
-      <view class="icon icon--pin"></view>
-      <text>{{item.summaryAddress || '未填地址'}}</text>
+    <view class="kv"><text class="kv__k">工单编号</text><text class="kv__v">{{item.orderNo}}</text></view>
+    <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{item.summaryAddress || '未填地址'}}</text></view>
+    <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v kv__v--clamp">{{item.summaryContent}}</text></view>
+    <view class="kv">
+      <text class="kv__k">报修时间</text>
+      <text class="kv__v kv__v--{{item.stayTone}}">{{item.timeText}}</text>
     </view>
-    <view class="wo-card__desc">{{item.summaryContent}}</view>
-
-    <!-- 缺料退回池子的单：缺什么、到货没到货，接之前就得看得见 -->
-    <view wx:if="{{item.missingText}}" class="wait-mat">等待材料：{{item.missingText}}</view>
+    <view wx:if="{{item.missingText}}" class="kv">
+      <text class="kv__k">等待材料</text><text class="kv__v">{{item.missingText}}</text>
+    </view>
 
     <view class="wo-card__foot">
-      <view class="wo-card__meta">
-        <view class="wo-card__no">{{item.orderNo}}</view>
-        <view>报修 {{item.createdAtText}}</view>
-      </view>
       <button
         class="btn btn--primary btn--sm"
         catchtap="onAccept"

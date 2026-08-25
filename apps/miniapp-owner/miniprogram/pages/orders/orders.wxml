@@ -39,17 +39,13 @@
       <pms-tag class="status-tag" status="{{item.status}}"/>
     </view>
 
-    <view class="order__desc">{{item.summaryContent}}</view>
-
-    <view class="order__foot">
-      <view class="order__meta">
-        <view class="order__addr">{{item.summaryAddress}}</view>
-        <view class="order__time">{{item.createdAtText}}</view>
-      </view>
-      <view class="stay stay--{{item.stayTone}}">{{item.stayText}}</view>
+    <!-- 下面全部走「定宽标签 + 值」，和员工端同一套（.kv 在 tokens.wxss） -->
+    <view class="kv"><text class="kv__k">报修内容</text><text class="kv__v kv__v--clamp">{{item.summaryContent}}</text></view>
+    <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{item.summaryAddress}}</text></view>
+    <view class="kv">
+      <text class="kv__k">报修时间</text>
+      <text class="kv__v kv__v--{{item.stayTone}}">{{item.timeText}}</text>
     </view>
-
-    <!-- 单号业主基本不看，压到最弱的一行 -->
-    <view class="order__no">{{item.orderNo}}</view>
+    <view class="kv"><text class="kv__k">工单编号</text><text class="kv__v">{{item.orderNo}}</text></view>
   </view>
 </view>

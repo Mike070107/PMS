@@ -1,26 +1,26 @@
 <view wx:if="{{detail}}" class="container container--with-bar">
-  <!-- 1. 现在到哪一步、接下来该做什么。这一屏最该先回答的就是这个 -->
-  <view class="card status-card">
-    <view class="status-card__head">
-      <view class="status-card__now">{{statusText}}</view>
-      <view class="stay stay--{{stayTone}}">{{stayText}}</view>
-    </view>
-    <view wx:if="{{nextStep}}" class="status-card__next">{{nextStep}}</view>
-  </view>
-
-  <!-- 2. 修什么、在哪、谁报的 -->
-  <view class="card">
+  <!-- 这一屏最该先回答的：修什么、在哪、压了多久。
+       「现在什么状态」看右上角的状态标，「接下来干什么」看底部固定按钮条，
+       都不用再写一句话解释一遍。 -->
+  <view class="card wo-card">
     <view class="wo-card__head">
-      <view class="wo-card__type">{{typeLabel}}</view>
+      <view class="wo-card__title">
+        <text wx:if="{{urgent}}" class="badge--urgent">紧急</text>
+        <text class="wo-card__type">{{typeLabel}}</text>
+      </view>
       <pms-tag class="status-tag" status="{{detail.workOrder.status}}"/>
     </view>
 
-    <view class="wo-card__addr">
-      <view class="icon icon--pin"></view>
-      <text>{{detail.request.addressText || '未填地址'}}</text>
+    <view class="kv"><text class="kv__k">工单编号</text><text class="kv__v">{{detail.workOrder.orderNo}}</text></view>
+    <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{detail.request.addressText || '未填地址'}}</text></view>
+    <view class="kv">
+      <text class="kv__k">报修时间</text>
+      <text class="kv__v kv__v--{{stayTone}}">{{timeText}}</text>
     </view>
-
-    <view class="quote">{{detail.request.content}}</view>
+    <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v">{{detail.request.content}}</text></view>
+    <view wx:if="{{missingText}}" class="kv">
+      <text class="kv__k">等待材料</text><text class="kv__v">{{missingText}}</text>
+    </view>
 
     <view wx:if="{{detail.request.attachments.length}}" class="thumbs">
       <image
@@ -35,22 +35,11 @@
     </view>
 
     <view class="wo-card__foot">
-      <view class="wo-card__meta">
-        <view class="wo-card__no">{{detail.workOrder.orderNo}}</view>
-        <view>报修 {{createdAtText}}</view>
-      </view>
       <view class="call" bindtap="onCall">
         <view class="icon icon--phone"></view>
         <text>联系业主</text>
       </view>
     </view>
-  </view>
-
-  <!-- 3. 等待材料时把缺料清单摆出来，接单的人才知道能不能干 -->
-  <view wx:if="{{missingText}}" class="card">
-    <view class="section-title">等待材料</view>
-    <view class="wait-mat">{{missingText}}</view>
-    <view class="meta">办公室汇总采购中，到货后可由办公室重新派单，或在这里直接接回。</view>
   </view>
 
   <!-- 4. 进度默认只露最新一条，要追溯再展开 -->
@@ -115,10 +104,6 @@
   </view>
 
   <scroll-view class="sheet__body" scroll-y>
-    <view class="muted">
-      领料仓库按本小区的报修类型自动带出，完工提交时按它扣库存。库存不够或仓里没有的，在下面直接登记，一键提报缺料。
-    </view>
-
     <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加用料</view>
 
     <view class="mat-item" wx:for="{{materialRows}}" wx:key="index">
@@ -180,9 +165,7 @@
       <button class="btn btn--outline" bindtap="onOpenSku">＋ 从库存选</button>
       <button class="btn btn--ghost" bindtap="onAddMaterialRow">手填一项</button>
     </view>
-    <view class="meta mt-sm">库存里没有的直接手填名称和数量，提报缺料后由办公室补进材料库并采购。</view>
-
-    <view class="label mt">补充说明（选填）</view>
+    <view class="label mt">补充说明<text class="label__opt">选填</text></view>
     <input class="input" placeholder="型号、品牌或用途" value="{{materialNote}}" bindinput="onMaterialNote"/>
 
     <view class="error" wx:if="{{materialError}}">{{materialError}}</view>
@@ -210,11 +193,11 @@
   </view>
 
   <scroll-view class="sheet__body" scroll-y>
-    <view class="label">维修说明（业主可见）</view>
+    <view class="label">维修说明<text class="label__opt">业主可见</text></view>
     <textarea placeholder="更换了什么、处理了什么问题" bindinput="onNote" value="{{actionNote}}"/>
     <!-- 常用话术：点一下填进上面的文本框，再点一下撤掉；顺序按本小区用得多不多来 -->
     <block wx:if="{{phrases.length}}">
-      <view class="phrase-tip">常用话术，点一下填入，可继续修改</view>
+      <view class="label mt">常用话术<text class="label__opt">点一下填入</text></view>
       <view class="phrases">
         <view
           wx:for="{{phrases}}"
@@ -227,13 +210,13 @@
     </block>
 
     <!-- 位置和现象业主报修时已经说过，这里预填出来给维修工核对/改，不强制 -->
-    <view class="label mt">实际故障位置（选填，已按报修信息带出）</view>
+    <view class="label mt">故障位置<text class="label__opt">选填</text></view>
     <input class="input" placeholder="如：厨房水槽下方" value="{{faultLocation}}" data-field="faultLocation" bindinput="onFaultInput"/>
 
-    <view class="label mt">故障现象（选填，已按报修信息带出）</view>
+    <view class="label mt">故障现象<text class="label__opt">选填</text></view>
     <input class="input" placeholder="如：接头老化渗水" value="{{faultSymptom}}" data-field="faultSymptom" bindinput="onFaultInput"/>
 
-    <view class="label mt">收费金额（元，选填）</view>
+    <view class="label mt">收费金额（元）<text class="label__opt">选填</text></view>
     <input class="input" type="digit" placeholder="不收费就留空" value="{{feeYuan}}" bindinput="onFeeInput"/>
 
     <!-- 用料在「添加用料」里维护，这里只做确认，避免两处都能改 -->
@@ -244,9 +227,9 @@
         <text wx:if="{{!item.materialId}}" class="used-item__tag">手填</text>
       </view>
     </view>
-    <view wx:else class="muted">还没记用料。要记的话先关掉这里，点底部「添加用料」。</view>
+    <view wx:else class="muted">未记录</view>
 
-    <view class="label mt">完工照片（选填）</view>
+    <view class="label mt">完工照片<text class="label__opt">选填</text></view>
     <view class="thumbs">
       <view wx:for="{{resultAttachments}}" wx:key="*this" class="thumb-wrap">
         <image class="thumb" src="{{item}}" mode="aspectFill"/>

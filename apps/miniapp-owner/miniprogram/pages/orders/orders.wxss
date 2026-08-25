@@ -57,64 +57,10 @@
   line-height: 1.35;
 }
 
-.order__desc {
-  margin-top: var(--space-sm);
-  color: var(--color-text-secondary);
-  font-size: var(--font-md);
-  line-height: 1.6;
-  /* 描述最多两行，长文案不该把卡片撑成一屏 */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
 
-.order__foot {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-sm);
-  margin-top: var(--space-md);
-}
-.order__meta { flex: 1; min-width: 0; }
-.order__addr {
-  font-size: var(--font-sm);
-  color: var(--color-text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.order__time {
-  margin-top: var(--space-xs);
-  font-size: var(--font-sm);
-  color: var(--color-text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
 
 /* 停留天数：和员工端工单池同一套配色口径，≥2 天橙、≥3 天红 */
-.stay {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  padding: 6rpx var(--space-sm);
-  border-radius: 999rpx;
-  background: rgba(0, 0, 0, 0.04);
-  color: var(--color-text-secondary);
-  font-size: var(--font-xs);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-.stay--warn { background: rgba(250, 173, 20, 0.14); color: #ad6800; }
-.stay--danger { background: rgba(255, 77, 79, 0.14); color: var(--color-danger); }
 
-.order__no {
-  margin-top: var(--space-sm);
-  padding-top: var(--space-sm);
-  border-top: 2rpx solid var(--color-border);
-  color: var(--color-text-tertiary);
-  font-size: var(--font-xs);
-  font-variant-numeric: tabular-nums;
-}
 
 /* ---------- 空状态 ---------- */
 .empty-wrap { padding-top: 96rpx; }

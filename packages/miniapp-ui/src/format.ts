@@ -47,6 +47,10 @@ export function withOrderLabels<
     stayDays: number;
     stayText: string;
     stayTone: string;
+    /** 卡片「报修时间」那一行的值：时间和已等几天合成一行，不占两行 */
+    timeText: string;
+    /** 压了 7 天以上，卡片标题前挂「紧急」标签 */
+    urgent: boolean;
     missingText: string;
   }
 > {
@@ -67,6 +71,10 @@ export function withOrderLabels<
       stayDays: days,
       stayText: `已停留 ${days} 天`,
       stayTone: stayTone(days),
+      // 时间和「等了多久」合成一行：卡片每多一行就多一次上下找，
+      // 而这两件事本来就是一件事（什么时候报的、到现在压了多久）
+      timeText: `${formatDateTimeCn(item.createdAt)} · 已等 ${days} 天`,
+      urgent: stayTone(days) === 'danger',
       missingText: missingMaterialsText(item.missingMaterials),
     };
   });

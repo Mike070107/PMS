@@ -651,13 +651,16 @@ export default function WorkOrdersPage() {
               onRow={(r) => ({ onClick: () => setDetailId(r.id), style: { cursor: 'pointer' } })}
               columns={[
                 {
-                  // 第一列放「修什么、在哪、业主说了什么」——单号是查档用的，不该占第一视觉位
+                  // 一格一件事，但列数要跟容器宽度量力而行 —— 这块表格在右侧分栏里只有
+                  // 八百来像素，硬拆成七八列会被 tableLayout:fixed 压成每列一百出头，
+                  // 每格都换行，比原来更乱。所以：
+                  //   · 单号是定长标识，独立成列（原来它挤在第一格当第三行小字）
+                  //   · 第一格只留两级字号：类型 · 房号（主）/ 业主原话（次），不再有第三、第四种
                   title: '报修内容',
                   key: 'summary',
-                  width: 420,
                   render: (_, r) => (
-                    <div style={{ maxWidth: 420 }}>
-                      <div style={{ fontWeight: 600, fontSize: 16, lineHeight: 1.4 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.5 }}>
                         {getRepairTypeLabel(r.repairType || r.skill, repairTypeRules)}
                         <Text type="secondary" style={{ fontWeight: 400, marginLeft: 8 }}>
                           {r.summaryAddress || '未填写房号'}
@@ -670,7 +673,6 @@ export default function WorkOrdersPage() {
                       >
                         {r.summaryContent || '-'}
                       </Text>
-                      <Text type="secondary" style={{ fontSize: 12 }}>{r.orderNo}</Text>
                       {/* 标红光有底色不够，得让人知道红在哪：把截止时间和倒计时写出来 */}
                       {slaDanger(r) && r.slaDueAt && (
                         <div style={{ color: '#cf1322', fontSize: 12, marginTop: 2 }}>
@@ -682,7 +684,13 @@ export default function WorkOrdersPage() {
                   ),
                 },
                 {
-                  title: '状态', dataIndex: 'status', width: 120,
+                  title: '工单编号', dataIndex: 'orderNo', width: 180,
+                  render: (v: string) => (
+                    <Text type="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</Text>
+                  ),
+                },
+                {
+                  title: '状态', dataIndex: 'status', width: 100,
                   render: (s: WorkOrderStatus) => (
                     <Tag color={statusMeta[s].color}>{statusMeta[s].label}</Tag>
                   ),
@@ -691,7 +699,7 @@ export default function WorkOrdersPage() {
                   // 已停留是催办的唯一依据，必须常驻列表，而不是点进详情才看得到
                   title: '已停留',
                   key: 'stay',
-                  width: 110,
+                  width: 90,
                   sorter: (a, b) => stayDaysOf(a) - stayDaysOf(b),
                   render: (_, r) => {
                     const days = stayDaysOf(r);
@@ -704,11 +712,11 @@ export default function WorkOrdersPage() {
                   },
                 },
                 {
-                  title: '维修工', dataIndex: 'assigneeId', width: 120,
+                  title: '维修工', dataIndex: 'assigneeId', width: 100,
                   render: (id: number | null) => id ? (staffById.get(id)?.name || `#${id}`) : <Text type="secondary">未派单</Text>,
                 },
                 {
-                  title: '报修时间', dataIndex: 'createdAt', width: 200,
+                  title: '报修时间', dataIndex: 'createdAt', width: 170,
                   // 和进度时间轴、两个小程序统一：2026/8/9 17:07 周日
                   render: (v: string) => formatDateTimeCn(v) || '-',
                 },

@@ -56,3 +56,45 @@ page {
   font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC",
     "Helvetica Neue", Arial, sans-serif;
 }
+
+/* ---------- 只读信息行：定宽标签 + 值（全局，卡片里的信息一律走这一套） ----------
+   规矩来自「一眼能扫」的清单式卡片：
+     · 一张卡里只允许有这一种信息排版，不要再混图标行、彩色条、两列页脚
+     · 标签定宽，所有的「值」落在同一条竖线上 —— 眼睛顺着一列往下走就行，
+       不用每行重新找从哪儿开始读
+     · 标签一律 4 个字（报修地址 / 故障描述 / 报修时间 / 等待材料），
+       凑不满 4 个字的换词，不要靠空格凑，也不要一会儿 2 字一会儿 4 字
+   还有一条不能破的区分：
+     **有底色的框 = 要你动手填（.input/.textarea/.picker/.stepper）；
+       没底色的 = 只是给你看（.kv）。**
+   之前信息和输入长得一样，用户分不清哪些该填，就是因为这条没立起来。 */
+.kv {
+  display: flex;
+  align-items: flex-start;
+  margin-top: 16rpx;
+  line-height: 1.6;
+}
+.kv:first-child { margin-top: 0; }
+.kv__k {
+  flex-shrink: 0;
+  /* 4 个中文字 + 冒号，正好把所有值对齐到同一条竖线 */
+  width: 152rpx;
+  font-size: var(--font-lg);
+  color: var(--color-text-tertiary);
+}
+.kv__v {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-lg);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+/* 业主原话可能很长，卡片里截两行（详情页看全文），否则一屏放不下三张卡 */
+.kv__v--clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.kv__v--warn { color: #ad6800; }
+.kv__v--danger { color: var(--color-danger); }

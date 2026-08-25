@@ -87,15 +87,6 @@
   font-weight: 600;
   line-height: 1.35;
 }
-.order__desc {
-  font-size: var(--font-md);
-  color: var(--color-text-secondary);
-  margin-top: var(--space-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.order__meta { font-size: var(--font-sm); color: var(--color-text-tertiary); margin-top: var(--space-xs); }
 
 .empty {
   color: var(--color-text-tertiary);

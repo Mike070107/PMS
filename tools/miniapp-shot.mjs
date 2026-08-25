@@ -11,6 +11,12 @@
  *   2. 先起自动化端口（Node 24 不允许直接 spawn .bat，所以不走 automator.launch）：
  *      cli.bat auto --project <项目路径> --auto-port 9420
  *
+ * 2026-08-25 实测：本机装的开发者工具版本里 `cli auto` 已经没有 --auto-port 这个参数
+ * （`cli auto --help` 只剩 --project / --port / --token），多传的参数被静默忽略，
+ * 命令照样打印「√ auto」但什么端口都没监听，automator.connect 连不上。
+ * 结论：这份脚本在当前版本上跑不起来，要截图得先在工具 GUI 里确认自动化端口，
+ * 或降级到还支持 --auto-port 的开发者工具版本。别再照着上面那行命令排查半天。
+ *
  * 截图输出到 .screenshots/<app>-<page>.png（该目录不入库）。
  */
 import automator from 'miniprogram-automator';

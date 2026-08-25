@@ -4,30 +4,30 @@
       <block wx:if="{{canApprove}}">待我审批 {{list.length}} 条</block>
       <block wx:else>采购审批</block>
     </view>
-    <view class="page-lead__sub">
-      <block wx:if="{{canApprove}}">当前环节：{{roleHint}}。通过后进入下一环节，驳回要写清原因。</block>
-      <block wx:else>{{roleHint}}</block>
-    </view>
+  </view>
+
+  <!-- 没权限时才需要解释「为什么这一屏是空的」；有权限的人不用被告知怎么审批 -->
+  <view wx:if="{{!canApprove}}" class="card">
+    <view class="muted">{{roleHint}}</view>
   </view>
 
   <view wx:if="{{canApprove && !list.length && loaded}}">
     <pms-empty text="没有待你审批的采购申请"/>
   </view>
 
-  <view wx:for="{{list}}" wx:key="id" class="card">
+  <view wx:for="{{list}}" wx:key="id" class="card wo-card">
     <view class="wo-card__head">
-      <view class="wo-card__type">{{item.amountText}}</view>
-      <view class="pr-no">{{item.requestNo}}</view>
-    </view>
-
-    <view class="items">{{item.itemsText}}</view>
-
-    <view class="wo-card__foot">
-      <view class="wo-card__meta">
-        <view wx:if="{{item.workOrderId}}">来自工单 #{{item.workOrderId}}</view>
-        <view>提交 {{item.createdAtText}}</view>
+      <view class="wo-card__title">
+        <text class="wo-card__type">{{item.amountText}}</text>
       </view>
     </view>
+
+    <view class="kv"><text class="kv__k">申请编号</text><text class="kv__v">{{item.requestNo}}</text></view>
+    <view class="kv"><text class="kv__k">采购明细</text><text class="kv__v">{{item.itemsText}}</text></view>
+    <view wx:if="{{item.workOrderId}}" class="kv">
+      <text class="kv__k">来自工单</text><text class="kv__v">#{{item.workOrderId}}</text>
+    </view>
+    <view class="kv"><text class="kv__k">提交时间</text><text class="kv__v">{{item.createdAtText}}</text></view>
 
     <view class="btn-row mt">
       <button

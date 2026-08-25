@@ -66,8 +66,9 @@
             <view class="order__type">{{item.typeLabel}}</view>
             <pms-tag class="status-tag" status="{{item.status}}"/>
           </view>
-          <view class="order__desc">{{item.summaryContent}}</view>
-          <view class="order__meta">{{item.summaryAddress}} · {{item.createdAtText}}</view>
+          <view class="kv"><text class="kv__k">报修内容</text><text class="kv__v kv__v--clamp">{{item.summaryContent}}</text></view>
+          <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{item.summaryAddress}}</text></view>
+          <view class="kv"><text class="kv__k">报修时间</text><text class="kv__v">{{item.createdAtText}}</text></view>
         </view>
       </view>
 
