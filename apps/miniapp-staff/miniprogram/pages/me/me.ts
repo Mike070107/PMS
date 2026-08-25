@@ -4,7 +4,7 @@ import { clearSession, getSession } from '../../utils/session';
 import { syncTabBar } from '../../utils/tabbar';
 
 /** 构建版本：随每次上传更新。开发版/预览版微信不返回版本号，靠它确认跑的是哪份代码 */
-const BUILD_VERSION = '1.0.20260825f';
+const BUILD_VERSION = '1.0.20260826a';
 
 Page({
   data: {
@@ -67,13 +67,12 @@ Page({
     wx.navigateTo({ url: '/pages/repair-create/repair-create' });
   },
 
-  /** 材料库是 tabBar 页（办公室一侧的第二格），只能 switchTab —— navigateTo 会静默失败 */
-  onOpenMaterials() {
-    wx.switchTab({ url: '/pages/materials/materials' });
-  },
-
+  /**
+   * 材料与库存现在是一屏（tabBar 页），只能 switchTab —— navigateTo 打不开 tab 页。
+   * 原来这里有两个入口（材料 SKU 库 / 库存与采购），点进去是两份长得差不多的清单。
+   */
   onOpenInventory() {
-    wx.navigateTo({ url: '/pages/inventory/inventory' });
+    wx.switchTab({ url: '/pages/inventory/inventory' });
   },
 
   async onLogout() {

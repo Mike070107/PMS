@@ -1,6 +1,8 @@
-import { inventory, purchases } from '@pms/api-client';
+import { inventory, purchases, upload } from '@pms/api-client';
 import { formatDateTimeCn } from '@pms/miniapp-ui';
 import {
+  MATERIAL_CATEGORIES,
+  MATERIAL_UNITS,
   PURCHASE_STATUS_LABELS,
   type MaterialView,
   type PurchaseRequestView,
@@ -8,21 +10,28 @@ import {
   type WarehouseView,
 } from '@pms/shared-types';
 import { getSession } from '../../utils/session';
+import { setTabBadge, syncTabBar } from '../../utils/tabbar';
 
 /**
- * 库存与采购。
+ * 材料与库存（办公室一侧的常驻一屏）。
  *
- * 库存这一页和工单里的「添加用料 → 从库存选」是同一件东西的两个入口，
- * 所以**长一个样**：实物照片 + 名称型号 + 编码·类别 + 右侧数量，
- * 上面是搜索框和类别筛选条（共用 app.wxss 的 .sku / .chips，新增入口直接引那一套）。
- * 之前这里是一行纯文字，同一批材料在两处对不上号 —— 办公室在库存页记住的样子，
- * 到了工单里认不出来。
+ * 为什么把原来的「材料 SKU 库」和「库存」合成一页：那是同一批东西的两份清单 ——
+ * 一份带库存量、一份带成本，行长得几乎一样。分成两页的后果是
+ * 「先在 SKU 库里找到它，再去库存页找一遍看还有几个」，而点开一条 SKU 弹出来的
+ * 又是列表上已经写着的那几行字，白点一下。
+ *
+ * 现在：**一屏就是库存**，列出全部 SKU（仓里没有的标「无货」，口径和工单里
+ * 「从库存选」完全一致），每行右下角一个「编辑」直接改这条 SKU、补照片。
+ * 点开一行给的是列表上没有的东西 —— 分仓库存明细、别名、参数、成本，不再重复一遍。
  */
 
-/** 库存一行，字段与工单选料的 WorkOrderStockOption 对齐 */
-interface StockRow {
+/** 一行 = 一条 SKU + 它在当前仓（或全部仓合计）的库存 */
+interface SkuRow {
   materialId: number;
+  /** 「PVC 管 · DN50」 */
+  title: string;
   name: string;
+  spec: string;
   code: string;
   category: string;
   unit: string;
@@ -30,9 +39,17 @@ interface StockRow {
   qty: number;
   safetyQty: number;
   qtyText: string;
-  safetyText: string;
-  /** 低于安全库存，列表里要一眼看出来 */
+  metaText: string;
   low: boolean;
+  enabled: boolean;
+  defaultCostCents: number;
+  costText: string;
+  aliases: string[];
+  aliasText: string;
+  params: string;
+  /** 缺哪些信息，写成「照片、类别」贴在行里 */
+  missingText: string;
+  incomplete: boolean;
 }
 
 interface RequestRow extends PurchaseRequestView {
@@ -42,12 +59,56 @@ interface RequestRow extends PurchaseRequestView {
   createdAtText: string;
 }
 
+interface FormState {
+  id: number | null;
+  name: string;
+  spec: string;
+  category: string;
+  unit: string;
+  costYuan: string;
+  aliases: string;
+  params: string;
+  photoUrl: string;
+  enabled: boolean;
+}
+
+const emptyForm = (): FormState => ({
+  id: null,
+  name: '',
+  spec: '',
+  category: '',
+  unit: '个',
+  costYuan: '',
+  aliases: '',
+  params: '',
+  photoUrl: '',
+  enabled: true,
+});
+
 const yuan = (cents: number) => `¥${((cents || 0) / 100).toFixed(2)}`;
 const num = (value: string | number) => Number(value ?? 0);
+
+/**
+ * 「没填完整」的判定只在这里写一次。
+ *
+ * 挑这三样是因为它们决定这条 SKU 在别处还能不能用：
+ * 没照片 → 维修工在库存里认不出 DN50 和 DN75；
+ * 没类别 → 编码前缀、类别筛选都对不上；
+ * 没默认成本 → 采购申请估不出金额。
+ * 型号、别名、参数属于锦上添花，缺了不算残缺，不然整库都是红标，等于没标。
+ */
+function missingFields(item: MaterialView): string[] {
+  const missing: string[] = [];
+  if (!item.photoUrl) missing.push('照片');
+  if (!item.category) missing.push('类别');
+  if (!item.defaultCostCents) missing.push('成本');
+  return missing;
+}
 
 Page({
   data: {
     canView: true,
+    canEdit: false,
     roleHint: '',
     loading: true,
     tab: 'stock' as 'stock' | 'purchase',
@@ -57,20 +118,39 @@ Page({
     warehouseIndex: 0,
     keyword: '',
     onlyLow: false,
-    /** 类别筛选条：只列这个仓真有的类别，-1 = 全部 */
+    /** 只看没填完整的：办公室补 SKU 时先把这一堆清掉 */
+    onlyIncomplete: false,
+    incompleteCount: 0,
+    lowCount: 0,
+    /** 类别筛选条：只列真有的类别，-1 = 全部 */
     categories: [] as string[],
     categoryIndex: -1,
-    stockRows: [] as StockRow[],
-    lowCount: 0,
+    rows: [] as SkuRow[],
 
     requests: [] as RequestRow[],
+
+    // ---- 详情 / 编辑面板 ----
+    detailOpen: false,
+    detail: null as SkuRow | null,
+    /** 这条 SKU 在各仓的存量，列表上没有，点开才值得看 */
+    detailStocks: [] as Array<{ name: string; qtyText: string; low: boolean }>,
+    editorOpen: false,
+    saving: false,
+    uploading: false,
+    form: emptyForm(),
+    units: MATERIAL_UNITS,
+    formCategories: MATERIAL_CATEGORIES,
+    unitIndex: 0,
+    formCategoryIndex: -1,
+    errors: { name: '', unit: '' },
   },
 
-  /** 原始数据放实例上，筛选在本地做 */
+  /** 原始数据放实例上，筛选在本地做，翻来翻去不用每次都请求 */
   materials: [] as MaterialView[],
   stocks: [] as StockView[],
 
   onShow() {
+    syncTabBar(this, 'materials');
     this.load();
   },
 
@@ -78,20 +158,23 @@ Page({
     this.load().finally(() => wx.stopPullDownRefresh());
   },
 
+  /** 给弹层遮罩的 catchtouchmove 用：吞掉滑动，别让底下的列表跟着滚 */
+  noop() {},
+
   async load() {
     this.setData({ loading: true });
     try {
       const session = await getSession(this);
-      if (!session.canViewInventory) {
+      if (!session.canViewMaterials && !session.canViewInventory) {
         this.setData({
           canView: false,
-          roleHint: '你的账号没有库存与采购权限。需要材料请在工单详情里提报缺料。',
-          stockRows: [],
+          roleHint: '你的账号没有材料与库存权限。需要材料请在工单详情里提报缺料，由办公室汇总。',
+          rows: [],
           requests: [],
         });
         return;
       }
-      this.setData({ canView: true });
+      this.setData({ canView: true, canEdit: session.canEditMaterials });
 
       const [materials, warehouses, stocks, requests] = await Promise.all([
         inventory.listMaterials(),
@@ -102,9 +185,14 @@ Page({
       this.materials = materials;
       this.stocks = stocks;
 
+      const incompleteCount = materials.filter(
+        (item) => item.enabled && missingFields(item).length > 0,
+      ).length;
+
       this.setData({
         warehouses,
         warehouseNames: ['全部仓库', ...warehouses.map((w) => w.name)],
+        incompleteCount,
         requests: requests.map((item) => ({
           ...item,
           statusLabel: PURCHASE_STATUS_LABELS[item.status] || item.status,
@@ -113,7 +201,9 @@ Page({
           createdAtText: formatDateTimeCn(item.createdAt),
         })),
       });
-      this.applyStockFilter();
+      // 角标 = 还有几条要补：办公室不用点进来才知道有没有活
+      setTabBadge(this, 'materials', session.canEditMaterials ? incompleteCount : 0);
+      this.applyFilter();
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     } finally {
@@ -121,26 +211,39 @@ Page({
     }
   },
 
-  applyStockFilter() {
-    const materialById = new Map(this.materials.map((item) => [item.id, item]));
-    const { warehouseIndex, warehouses, keyword, onlyLow, categoryIndex } = this.data;
+  /** 某条 SKU 在某个仓（warehouseId 为空 = 全部仓合计）的存量 */
+  sumStock(materialId: number, warehouseId?: number) {
+    let qty = 0;
+    let safetyQty = 0;
+    let found = false;
+    for (const stock of this.stocks as StockView[]) {
+      if (stock.materialId !== materialId) continue;
+      if (warehouseId && stock.warehouseId !== warehouseId) continue;
+      qty += num(stock.qty);
+      safetyQty += num(stock.safetyQty);
+      found = true;
+    }
+    return { qty, safetyQty, found };
+  },
+
+  applyFilter() {
+    const { warehouseIndex, warehouses, keyword, onlyLow, onlyIncomplete, categoryIndex } =
+      this.data;
     // 0 = 全部仓库，其余按下标错一位对应 warehouses
     const warehouseId = warehouseIndex > 0 ? warehouses[warehouseIndex - 1]?.id : undefined;
     const kw = keyword.trim().toLowerCase();
-
-    // 选「全部仓库」时同一材料跨仓合并，看的是总量
-    const merged = new Map<number, StockRow>();
-    // 类别筛选只列这个仓真有的类别：列一堆点了没结果的类别等于噪音。
-    // 在按类别过滤之前收集，否则一点某个类别，筛选条就只剩这一个了
-    const seenCategories: string[] = [];
     const category = categoryIndex >= 0 ? this.data.categories[categoryIndex] : '';
 
-    for (const stock of this.stocks) {
-      if (warehouseId && stock.warehouseId !== warehouseId) continue;
-      const material = materialById.get(stock.materialId);
-      if (!material) continue;
+    // 类别筛选条只列真有的类别（点了没结果的类别等于噪音）。
+    // 在按类别过滤之前收集，否则一点某个类别，筛选条就只剩这一个了
+    const seenCategories: string[] = [];
+    const rows: SkuRow[] = [];
+
+    for (const material of this.materials as MaterialView[]) {
       const categoryName = (material.category || '').trim() || '未分类';
-      if (seenCategories.indexOf(categoryName) < 0) seenCategories.push(categoryName);
+      if (material.enabled) {
+        if (seenCategories.indexOf(categoryName) < 0) seenCategories.push(categoryName);
+      }
       if (category && categoryName !== category) continue;
       if (
         kw &&
@@ -152,44 +255,58 @@ Page({
       ) {
         continue;
       }
-      const hit = merged.get(material.id);
-      if (hit) {
-        hit.qty += num(stock.qty);
-        hit.safetyQty += num(stock.safetyQty);
-      } else {
-        merged.set(material.id, {
-          materialId: material.id,
-          name: material.spec ? `${material.name} · ${material.spec}` : material.name,
-          code: material.code,
-          category: categoryName,
-          unit: material.unit,
-          photoUrl: material.photoUrl || '',
-          qty: num(stock.qty),
-          safetyQty: num(stock.safetyQty),
-          qtyText: '',
-          safetyText: '',
-          low: false,
-        });
-      }
+
+      const { qty, safetyQty } = this.sumStock(material.id, warehouseId);
+      const missing = missingFields(material);
+      const low = safetyQty > 0 && qty < safetyQty;
+      if (onlyLow && !low) continue;
+      if (onlyIncomplete && !missing.length) continue;
+
+      const aliases = material.aliases || [];
+      rows.push({
+        materialId: material.id,
+        title: material.spec ? `${material.name} · ${material.spec}` : material.name,
+        name: material.name,
+        spec: material.spec || '',
+        code: material.code,
+        category: categoryName,
+        unit: material.unit,
+        photoUrl: material.photoUrl || '',
+        qty,
+        safetyQty,
+        // 仓里一件没有时写「无货」而不是 0：0 看着像「没统计到」
+        qtyText: qty > 0 ? String(qty) : '无货',
+        metaText: [material.code, categoryName, safetyQty > 0 ? `安全 ${safetyQty}` : '']
+          .filter(Boolean)
+          .join(' · '),
+        low,
+        enabled: material.enabled,
+        defaultCostCents: material.defaultCostCents,
+        costText: material.defaultCostCents ? yuan(material.defaultCostCents) : '未填',
+        aliases,
+        aliasText: aliases.join('、'),
+        params: material.params || '',
+        missingText: missing.join('、'),
+        incomplete: missing.length > 0,
+      });
     }
 
-    const rows = Array.from(merged.values()).map((row) => ({
-      ...row,
-      qtyText: `${row.qty}`,
-      safetyText: row.safetyQty > 0 ? `安全 ${row.safetyQty}` : '',
-      low: row.safetyQty > 0 && row.qty < row.safetyQty,
-    }));
-    rows.sort((a, b) => Number(b.low) - Number(a.low) || a.name.localeCompare(b.name));
+    // 低于安全库存的排最前（那是要立刻补货的），其次是没填完整的，再按名称
+    rows.sort(
+      (a, b) =>
+        Number(b.low) - Number(a.low) ||
+        Number(b.incomplete) - Number(a.incomplete) ||
+        a.title.localeCompare(b.title),
+    );
 
-    // 类别选中后那一项若已不在当前仓里（切仓库导致），退回「全部」，
+    // 选中的类别若已不在（切仓库/搜索导致）就退回「全部」，
     // 否则筛选条上高亮着一个不存在的类别，列表却是空的
-    const nextCategoryIndex =
-      category && seenCategories.indexOf(category) < 0 ? -1 : seenCategories.indexOf(category);
+    const nextCategoryIndex = category ? seenCategories.indexOf(category) : -1;
 
     this.setData({
       categories: seenCategories,
-      categoryIndex: category ? nextCategoryIndex : -1,
-      stockRows: onlyLow ? rows.filter((row) => row.low) : rows,
+      categoryIndex: nextCategoryIndex,
+      rows,
       lowCount: rows.filter((row) => row.low).length,
     });
   },
@@ -199,27 +316,197 @@ Page({
   },
 
   onPickWarehouse(e: WechatMiniprogram.PickerChange) {
-    this.setData({ warehouseIndex: Number(e.detail.value) }, () => this.applyStockFilter());
+    this.setData({ warehouseIndex: Number(e.detail.value) }, () => this.applyFilter());
   },
 
   onKeyword(e: WechatMiniprogram.Input) {
-    this.setData({ keyword: e.detail.value }, () => this.applyStockFilter());
+    this.setData({ keyword: e.detail.value }, () => this.applyFilter());
   },
 
   onPickCategory(e: WechatMiniprogram.BaseEvent) {
     const index = Number(e.currentTarget.dataset.index);
     this.setData({ categoryIndex: this.data.categoryIndex === index ? -1 : index }, () =>
-      this.applyStockFilter(),
+      this.applyFilter(),
     );
   },
 
   onToggleLow() {
-    this.setData({ onlyLow: !this.data.onlyLow }, () => this.applyStockFilter());
+    this.setData({ onlyLow: !this.data.onlyLow, onlyIncomplete: false }, () =>
+      this.applyFilter(),
+    );
+  },
+
+  onToggleIncomplete() {
+    this.setData({ onlyIncomplete: !this.data.onlyIncomplete, onlyLow: false }, () =>
+      this.applyFilter(),
+    );
   },
 
   /** 照片单独点开看大图：光看缩略图分不清 DN50 和 DN75 */
   onPreviewPhoto(e: WechatMiniprogram.BaseEvent) {
     const url = e.currentTarget.dataset.url as string;
     if (url) wx.previewImage({ current: url, urls: [url] });
+  },
+
+  // ---------------- 详情：只给列表上没有的东西 ----------------
+
+  onOpenDetail(e: WechatMiniprogram.BaseEvent) {
+    const row = this.data.rows[Number(e.currentTarget.dataset.index)];
+    if (!row) return;
+    const byWarehouse = (this.data.warehouses as WarehouseView[])
+      .map((warehouse) => {
+        const { qty, safetyQty, found } = this.sumStock(row.materialId, warehouse.id);
+        return {
+          name: warehouse.name,
+          qtyText: qty > 0 ? `${qty}${row.unit}` : found ? '无货' : '未入过库',
+          low: safetyQty > 0 && qty < safetyQty,
+        };
+      })
+      // 有过库存记录的排前面，没入过库的沉底
+      .sort((a, b) => Number(b.qtyText !== '未入过库') - Number(a.qtyText !== '未入过库'));
+    this.setData({ detailOpen: true, detail: row, detailStocks: byWarehouse });
+  },
+
+  onCloseDetail() {
+    this.setData({ detailOpen: false });
+  },
+
+  // ---------------- 新增 / 编辑 SKU ----------------
+
+  onCreate() {
+    this.setData({
+      detailOpen: false,
+      editorOpen: true,
+      form: emptyForm(),
+      unitIndex: Math.max(0, MATERIAL_UNITS.indexOf('个')),
+      formCategoryIndex: -1,
+      errors: { name: '', unit: '' },
+    });
+  },
+
+  /** 行内的「编辑」按钮和详情面板底部的「编辑」都走这里 */
+  onEdit(e: WechatMiniprogram.BaseEvent) {
+    const raw = e.currentTarget.dataset.index;
+    const row =
+      raw === undefined || raw === '' ? this.data.detail : this.data.rows[Number(raw)];
+    if (!row) return;
+    this.setData({
+      detailOpen: false,
+      editorOpen: true,
+      form: {
+        id: row.materialId,
+        name: row.name,
+        spec: row.spec,
+        category: row.category === '未分类' ? '' : row.category,
+        unit: row.unit,
+        costYuan: row.defaultCostCents ? String(row.defaultCostCents / 100) : '',
+        aliases: row.aliases.join('、'),
+        params: row.params,
+        photoUrl: row.photoUrl,
+        enabled: row.enabled,
+      },
+      // 历史上手填过的单位不在常用表里时，选择器停在第一项，保存时仍按表单里的值走
+      unitIndex: Math.max(0, MATERIAL_UNITS.indexOf(row.unit)),
+      formCategoryIndex:
+        row.category && row.category !== '未分类'
+          ? MATERIAL_CATEGORIES.indexOf(row.category)
+          : -1,
+      errors: { name: '', unit: '' },
+    });
+  },
+
+  onCloseEditor() {
+    this.setData({ editorOpen: false });
+  },
+
+  onFormInput(e: WechatMiniprogram.Input) {
+    const field = e.currentTarget.dataset.field as keyof FormState;
+    this.setData({ [`form.${field}`]: e.detail.value, [`errors.${field}`]: '' });
+  },
+
+  onFormUnit(e: WechatMiniprogram.PickerChange) {
+    const index = Number(e.detail.value);
+    this.setData({ unitIndex: index, 'form.unit': MATERIAL_UNITS[index], 'errors.unit': '' });
+  },
+
+  onFormCategory(e: WechatMiniprogram.PickerChange) {
+    const index = Number(e.detail.value);
+    this.setData({ formCategoryIndex: index, 'form.category': MATERIAL_CATEGORIES[index] });
+  },
+
+  onToggleEnabled(e: WechatMiniprogram.SwitchChange) {
+    this.setData({ 'form.enabled': e.detail.value });
+  },
+
+  /** 现场拍一张实物照，比在电脑上传方便得多 —— 补照片是这一屏最常干的事 */
+  async onChoosePhoto() {
+    if (this.data.uploading) return;
+    const res = await wx
+      .chooseMedia({ count: 1, mediaType: ['image'], sourceType: ['camera', 'album'] })
+      .catch(() => null);
+    if (!res?.tempFiles?.length) return;
+    this.setData({ uploading: true });
+    wx.showLoading({ title: '上传中…', mask: true });
+    try {
+      const [uploaded] = await upload.uploadTempFiles([res.tempFiles[0].tempFilePath]);
+      this.setData({ 'form.photoUrl': uploaded.publicUrl });
+    } catch (e: any) {
+      wx.showToast({ icon: 'none', title: e?.message || '上传失败' });
+    } finally {
+      wx.hideLoading();
+      this.setData({ uploading: false });
+    }
+  },
+
+  onRemovePhoto() {
+    this.setData({ 'form.photoUrl': '' });
+  },
+
+  async onSave() {
+    const form = this.data.form;
+    const errors = {
+      name: form.name.trim() ? '' : '请填写材料名称',
+      unit: form.unit.trim() ? '' : '请选择单位',
+    };
+    this.setData({ errors });
+    if (errors.name || errors.unit) return;
+
+    const cost = Number(form.costYuan);
+    if (form.costYuan && (!Number.isFinite(cost) || cost < 0)) {
+      return wx.showToast({ icon: 'none', title: '默认成本填写不正确' });
+    }
+
+    const payload = {
+      name: form.name.trim(),
+      spec: form.spec.trim() || undefined,
+      category: form.category || undefined,
+      unit: form.unit.trim(),
+      defaultCostCents: form.costYuan ? Math.round(cost * 100) : undefined,
+      photoUrl: form.photoUrl || undefined,
+      aliases: form.aliases
+        .split(/[、,，\s]+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+      params: form.params.trim() || undefined,
+      enabled: form.enabled,
+    };
+
+    this.setData({ saving: true });
+    try {
+      if (form.id) {
+        await inventory.updateMaterial(form.id, payload);
+        wx.showToast({ title: '已保存' });
+      } else {
+        await inventory.createMaterial(payload);
+        wx.showToast({ title: '材料已新增' });
+      }
+      this.setData({ editorOpen: false });
+      await this.load();
+    } catch (e: any) {
+      // 服务端的真实原因要露出来（「已被单据引用不可改名」这类），别笼统一句「保存失败」
+      wx.showToast({ icon: 'none', title: e?.message || '保存失败', duration: 3000 });
+    } finally {
+      this.setData({ saving: false });
+    }
   },
 });

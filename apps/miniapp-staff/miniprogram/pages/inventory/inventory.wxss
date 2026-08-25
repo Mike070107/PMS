@@ -1,3 +1,7 @@
+/* 库存行（.sku / .sku__photo / .sku__qty）、筛选条（.chips / .chip）、底部面板（.sheet）
+   都在 app.wxss 里统一定义，和工单里的「从库存选」共用同一套。
+   这里只写这一屏独有的东西。 */
+
 .tabs {
   display: flex;
   background: var(--color-card-bg);
@@ -20,35 +24,122 @@
 .picker-wrap { flex: 1; }
 /* 工具栏里的选择器矮一档、底色跟卡片走；其余外观（箭头等）走 tokens.wxss */
 .picker { height: 92rpx; line-height: 92rpx; font-size: var(--font-lg); background-color: var(--color-card-bg); }
-.chip {
-  /* 这不是筛选条里的一枚类别，是工具栏里的一个开关，去掉共用样式的行间距 */
-  margin-right: 0;
-  padding: 18rpx 28rpx;
-  border-radius: 999rpx;
-  background: var(--color-card-bg);
-  border: 2rpx solid var(--color-border);
-  color: var(--color-text-secondary);
-  font-size: var(--font-md);
-  white-space: nowrap;
-}
-.chip--on { border-color: var(--color-warning); color: var(--color-warning); }
+
+/* 「要补货的」「要补资料的」两个开关。它们不是类别，所以单独一行，
+   选中用警示色描边（和类别筛选条的品牌色区分开：一个是筛选，一个是待办） */
+.switches { display: flex; gap: 16rpx; margin-bottom: 16rpx; }
+.switches .chip { margin-right: 0; white-space: nowrap; }
+.chip--warn { border-color: var(--color-warning); color: #ad6800; }
 
 .mb { margin-bottom: 20rpx; }
 /* .center 在 app.wxss 里统一定义 */
 .tip { padding: 24rpx 16rpx 0; line-height: 1.6; }
-.mt-xs { margin-top: 8rpx; }
-
-/* 库存行（.sku / .sku__photo / .sku__qty）与工单里的「从库存选」共用 app.wxss 那一套。
-   这里只补两处这一屏独有的差别：列头不在弹层里、低于安全库存标红。 */
 
 /* 弹层里的列头带左右外边距（要和 .sheet 的内边距对齐），页面里不需要那一层 */
 .sku-head--flat { margin-left: 0; margin-right: 0; padding-left: 24rpx; padding-right: 24rpx; }
 
-/* 低于安全库存：数字标红。这是这一屏唯一比选料弹层多出来的信息 */
+/* 一张卡 = 上面三列（同选料弹层）+ 下面一条编辑行。
+   卡片本身不留内边距，两段各自留，否则 .card 的 40rpx 会和 .sku 的 24rpx 叠成一大圈白 */
+.sku-card { padding: 0; }
+.sku-card .sku { padding: 24rpx; }
+.sku-card__foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 24rpx 20rpx;
+}
+
+/* 低于安全库存标红 —— 这是这一屏比选料弹层多出来的一条信息 */
 .sku__qty--low { color: var(--color-danger); }
 .qty__unit { font-size: var(--font-sm); font-weight: 400; color: var(--color-text-tertiary); margin-left: 6rpx; }
+/* 「编辑 SKU」做成带框的按钮而不是一句蓝字：整卡本身也可点（看分仓存量），
+   不给它一个边框，两个点击区就分不出来，人会以为点哪儿都一样。
+   高度按可点下限给（戴手套也点得中），不是一句小字 */
+.sku__edit {
+  display: flex;
+  align-items: center;
+  min-height: 72rpx;
+  padding: 0 36rpx;
+  border: 2rpx solid var(--color-brand);
+  border-radius: var(--radius-sm);
+  color: var(--color-brand);
+  font-size: var(--font-md);
+  line-height: 1.5;
+}
+.sku__edit:active { opacity: 0.7; }
+.sku__missing { margin-top: 8rpx; font-size: var(--font-sm); color: #ad6800; line-height: 1.5; }
 
+.tag {
+  display: inline-block;
+  margin-left: 12rpx;
+  padding: 4rpx 14rpx;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  font-weight: 400;
+}
+.tag--off { background: var(--color-bg); color: var(--color-text-tertiary); }
+
+/* 详情面板里的分仓存量 */
+.wh-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 20rpx 24rpx;
+  margin-top: 16rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+}
+.wh-row__name { font-size: var(--font-lg); }
+.wh-row__qty { font-size: var(--font-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
+.wh-row__qty--low { color: var(--color-danger); }
+
+/* 采购申请 */
 .status { font-size: var(--font-md); color: var(--color-brand); }
 .items { font-size: var(--font-lg); margin-top: 16rpx; line-height: 1.6; }
 .amount { font-size: var(--font-2xl); font-weight: 600; font-variant-numeric: tabular-nums; }
 .reject { margin-top: 12rpx; font-size: var(--font-md); color: var(--color-danger); line-height: 1.6; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+
+/* 编辑面板：照片放第一位，拍照按钮和图并排 */
+.photo-row { display: flex; align-items: center; gap: 20rpx; }
+.photo { width: 160rpx; height: 160rpx; border-radius: var(--radius-sm); flex-shrink: 0; }
+.photo--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-xs);
+}
+.photo-actions { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16rpx; align-items: flex-start; }
+/* 材料备注是固定高的小框；外观走 tokens.wxss 的 textarea 基线 */
+.textarea { height: 180rpx; min-height: 180rpx; }
+.field--row { display: flex; align-items: center; justify-content: space-between; }
+.field--row .label { margin-bottom: 0; }
+
+/* 有悬浮按钮时底部再多让一档：列表最后那句说明本来正好垫在 tabBar 上方，
+   「+ 新增」悬在它上面，两行字被圆角按钮压掉半句。
+   必须写成两个类 —— 单写 .container--fab 压不过 app.wxss 里同特异度、更靠后的 .container */
+.container.container--fab {
+  padding-bottom: calc(300rpx + env(safe-area-inset-bottom));
+}
+
+/* 悬浮新增。底部要避开 tabBar，否则「+ 新增」正好压在「材料与库存」那一格上，
+   点新增会误点成切 tab */
+.fab {
+  position: fixed;
+  right: 32rpx;
+  bottom: calc(160rpx + env(safe-area-inset-bottom));
+  width: auto !important;
+  height: 96rpx;
+  padding: 0 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-brand);
+  color: #fff;
+  font-size: var(--font-xl);
+  border-radius: 999rpx;
+  box-shadow: 0 8rpx 24rpx rgba(49, 85, 138, 0.28);
+}
+.fab::after { border: none; }

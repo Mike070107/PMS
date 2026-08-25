@@ -7,7 +7,6 @@
     "pages/repair-create/repair-create",
     "pages/quick-repair/quick-repair",
     "pages/approvals/approvals",
-    "pages/materials/materials",
     "pages/inventory/inventory",
     "pages/me/me",
     "pages/web-login/web-login"
@@ -33,7 +32,7 @@
         "text": "在手工单"
       },
       {
-        "pagePath": "pages/materials/materials",
+        "pagePath": "pages/inventory/inventory",
         "text": "材料与库存"
       },
       {

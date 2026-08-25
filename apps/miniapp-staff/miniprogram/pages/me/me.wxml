@@ -21,17 +21,10 @@
   <!-- 维修工没有材料/库存权限，这块整段不显示。
        办公室一侧底部已经有「材料与库存」那一格，这里留着是给「从我的页进去」的习惯 -->
   <view wx:if="{{canUseMaterials || canUseInventory}}" class="card entries">
-    <view wx:if="{{canUseMaterials}}" class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenMaterials">
+    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenInventory">
       <view class="entry__body">
-        <view class="entry__title">材料 SKU 库</view>
-        <view class="entry__desc">查材料、补全信息、现场拍照建档</view>
-      </view>
-      <view class="entry__arrow"></view>
-    </view>
-    <view wx:if="{{canUseInventory}}" class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenInventory">
-      <view class="entry__body">
-        <view class="entry__title">库存与采购</view>
-        <view class="entry__desc">看库存余量、低于安全库存、采购申请进度</view>
+        <view class="entry__title">材料与库存</view>
+        <view class="entry__desc">看还有几个、补 SKU 资料和照片、采购申请进度</view>
       </view>
       <view class="entry__arrow"></view>
     </view>

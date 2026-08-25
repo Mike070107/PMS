@@ -1,6 +1,6 @@
-<view class="container">
+<view class="container container--tabbar {{canEdit && tab === 'stock' ? 'container--fab' : ''}}">
   <view wx:if="{{!canView}}" class="card">
-    <view class="card__title">库存与采购</view>
+    <view class="card__title">材料与库存</view>
     <view class="muted mt-sm">{{roleHint}}</view>
   </view>
 
@@ -10,20 +10,28 @@
       <view class="tab {{tab === 'purchase' ? 'tab--on' : ''}}" data-tab="purchase" bindtap="onSwitchTab">采购申请</view>
     </view>
 
-    <!-- 库存 -->
+    <!-- ============ 库存：这一屏的主体，列的是全部 SKU + 它现在还有几个 ============ -->
     <block wx:if="{{tab === 'stock'}}">
       <view class="toolbar">
         <picker class="picker-wrap" mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onPickWarehouse">
           <view class="picker">{{warehouseNames[warehouseIndex] || '全部仓库'}}</view>
         </picker>
-        <view class="chip {{onlyLow ? 'chip--on' : ''}}" bindtap="onToggleLow">
+      </view>
+      <input class="input mb" placeholder="搜名称 / 别名 / 型号 / 编码" value="{{keyword}}" bindinput="onKeyword" />
+
+      <!-- 两个开关式筛选：要补货的、要补资料的。和下面的类别筛选条分开一行，
+           它们不是「类别」，混在一起会被当成又一个类别点 -->
+      <view class="switches">
+        <view class="chip {{onlyLow ? 'chip--warn' : ''}}" bindtap="onToggleLow">
           低于安全库存{{lowCount ? ' ' + lowCount : ''}}
         </view>
+        <view wx:if="{{canEdit && incompleteCount}}" class="chip {{onlyIncomplete ? 'chip--warn' : ''}}" bindtap="onToggleIncomplete">
+          待补资料 {{incompleteCount}}
+        </view>
       </view>
-      <input class="input mb" placeholder="搜索名称 / 别名 / 型号 / 编码" value="{{keyword}}" bindinput="onKeyword" />
 
       <!-- 类别筛选：材料几十上百条，先按类别缩一轮比一直翻快得多。
-           和工单里「从库存选」的筛选条是同一套（app.wxss 的 .chips/.chip） -->
+           和工单里「从库存选」是同一套（app.wxss 的 .chips/.chip） -->
       <scroll-view wx:if="{{categories.length > 1}}" class="chips" scroll-x enable-flex>
         <view class="chip {{categoryIndex < 0 ? 'chip--on' : ''}}" data-index="-1" bindtap="onPickCategory">全部</view>
         <view
@@ -36,41 +44,65 @@
       </scroll-view>
 
       <!-- 列头常驻：列表一滚起来就不知道右边那个数字是什么了 -->
-      <view wx:if="{{stockRows.length}}" class="sku-head sku-head--flat">
+      <view wx:if="{{rows.length}}" class="sku-head sku-head--flat">
         <text class="sku-head__photo">图片</text>
         <text class="sku-head__name">名称</text>
         <text class="sku-head__qty">库存数量</text>
       </view>
 
       <view wx:if="{{loading}}" class="muted center">加载中…</view>
-      <view wx:elif="{{stockRows.length === 0}}" class="muted center">没有匹配的库存记录</view>
-
-      <!-- 一行的样子必须和工单「从库存选」完全一致：同一批材料在两处要长得一样，
-           否则办公室在这儿记住的东西，维修工在工单里认不出来 -->
-      <view class="card sku" wx:for="{{stockRows}}" wx:key="materialId">
-        <image
-          wx:if="{{item.photoUrl}}"
-          class="sku__photo"
-          src="{{item.photoUrl}}"
-          mode="aspectFill"
-          data-url="{{item.photoUrl}}"
-          catchtap="onPreviewPhoto"
-        />
-        <view wx:else class="sku__photo sku__photo--empty">无图</view>
-        <view class="sku__body">
-          <view class="sku__title">{{item.name}}</view>
-          <view class="meta">{{item.code}} · {{item.category}}<text wx:if="{{item.safetyText}}"> · {{item.safetyText}}</text></view>
-        </view>
-        <view class="sku__qty {{item.low ? 'sku__qty--low' : ''}}">
-          {{item.qtyText}}<text class="qty__unit">{{item.unit}}</text>
-        </view>
+      <view wx:elif="{{rows.length === 0}}" class="muted center">
+        {{keyword || categoryIndex >= 0 || onlyLow || onlyIncomplete ? '没有匹配的材料' : '还没有材料，点右下角新增'}}
       </view>
-      <view wx:if="{{warehouseIndex === 0 && stockRows.length}}" class="muted center tip">
-        「全部仓库」按材料合并显示总量，选具体仓库可看分仓明细
+
+      <!-- 一行的样子和工单「从库存选」完全一致：同一批材料在两处要长得一样，
+           否则办公室在这儿记住的东西，维修工在工单里认不出来 -->
+      <view
+        class="card sku-card"
+        wx:for="{{rows}}"
+        wx:key="materialId"
+        data-index="{{index}}"
+        bindtap="onOpenDetail"
+        hover-class="wo-card--hover"
+        hover-stay-time="80"
+      >
+        <!-- 上半段：图片 / 名称 / 数量 三列，和工单里「从库存选」逐列对齐，
+             编辑按钮不放进这三列 —— 试过，它会把名称挤到折行、数量和它挨在一起分不清 -->
+        <view class="sku">
+          <image
+            wx:if="{{item.photoUrl}}"
+            class="sku__photo"
+            src="{{item.photoUrl}}"
+            mode="aspectFill"
+            data-url="{{item.photoUrl}}"
+            catchtap="onPreviewPhoto"
+          />
+          <view wx:else class="sku__photo sku__photo--empty">无图</view>
+
+          <view class="sku__body">
+            <view class="sku__title">
+              {{item.title}}
+              <text wx:if="{{!item.enabled}}" class="tag tag--off">停用</text>
+            </view>
+            <view class="meta">{{item.metaText}}</view>
+            <!-- 缺什么直接写出来，别只给一枚看不懂的角标 -->
+            <view wx:if="{{item.missingText}}" class="sku__missing">待补充：{{item.missingText}}</view>
+          </view>
+
+          <view class="sku__qty {{item.low ? 'sku__qty--low' : ''}}{{item.qty > 0 ? '' : ' sku__qty--none'}}">
+            {{item.qtyText}}<text wx:if="{{item.qty > 0}}" class="qty__unit">{{item.unit}}</text>
+          </view>
+        </view>
+
+        <!-- 编辑独立成一行、靠右：整卡点开是「看分仓存量」，这个按钮是「改这条 SKU」，
+             两个动作必须分得开（catchtap 拦住冒泡，点它不会顺带打开详情） -->
+        <view wx:if="{{canEdit}}" class="sku-card__foot">
+          <view class="sku__edit" data-index="{{index}}" catchtap="onEdit">编辑 SKU</view>
+        </view>
       </view>
     </block>
 
-    <!-- 采购申请 -->
+    <!-- ============ 采购申请 ============ -->
     <block wx:else>
       <view wx:if="{{loading}}" class="muted center">加载中…</view>
       <view wx:elif="{{requests.length === 0}}" class="muted center">暂无采购申请</view>
@@ -90,4 +122,125 @@
       <view class="muted center tip">审批操作在「审批」页；下单、入库请在管理后台完成</view>
     </block>
   </block>
+
+  <view wx:if="{{tab === 'stock' && warehouseIndex === 0 && rows.length}}" class="muted center tip">
+    「全部仓库」按材料合并显示总量，选具体仓库可看分仓明细
+  </view>
+</view>
+
+<button wx:if="{{canView && canEdit && tab === 'stock'}}" class="fab" bindtap="onCreate">+ 新增</button>
+
+<!-- ============ 详情：只给列表上没有的东西（分仓存量 / 别名 / 参数 / 成本） ============ -->
+<view wx:if="{{detailOpen}}" class="sheet-mask" bindtap="onCloseDetail" catchtouchmove="noop" />
+<view wx:if="{{detailOpen}}" class="sheet" catchtouchmove="noop">
+  <view class="sheet__head">
+    <text class="sheet__title">{{detail.title}}</text>
+    <text class="sheet__close" bindtap="onCloseDetail">关闭</text>
+  </view>
+
+  <scroll-view class="sheet__body" scroll-y>
+    <view class="label">分仓库存</view>
+    <view wx:if="{{!detailStocks.length}}" class="muted">公司还没有建仓库</view>
+    <view wx:for="{{detailStocks}}" wx:key="name" class="wh-row">
+      <text class="wh-row__name">{{item.name}}</text>
+      <text class="wh-row__qty {{item.low ? 'wh-row__qty--low' : ''}}">{{item.qtyText}}</text>
+    </view>
+
+    <view class="label mt">资料</view>
+    <view class="kv"><text class="kv__k">编码</text><text class="kv__v">{{detail.code}}</text></view>
+    <view class="kv"><text class="kv__k">类别单位</text><text class="kv__v">{{detail.category}} · {{detail.unit}}</text></view>
+    <view class="kv"><text class="kv__k">默认成本</text><text class="kv__v">{{detail.costText}}</text></view>
+    <view class="kv"><text class="kv__k">别名</text><text class="kv__v">{{detail.aliasText || '未填'}}</text></view>
+    <view class="kv"><text class="kv__k">详细参数</text><text class="kv__v">{{detail.params || '未填'}}</text></view>
+  </scroll-view>
+
+  <view class="sheet__foot">
+    <button wx:if="{{canEdit}}" class="btn btn--primary" bindtap="onEdit">编辑这条 SKU</button>
+    <button wx:else class="btn btn--ghost" bindtap="onCloseDetail">知道了</button>
+  </view>
+</view>
+
+<!-- ============ 新增 / 编辑 SKU ============ -->
+<view wx:if="{{editorOpen}}" class="sheet-mask sheet-mask--top" bindtap="onCloseEditor" catchtouchmove="noop" />
+<view wx:if="{{editorOpen}}" class="sheet sheet--top" catchtouchmove="noop">
+  <view class="sheet__head">
+    <text class="sheet__title">{{form.id ? '编辑材料' : '新增材料'}}</text>
+    <text class="sheet__close" bindtap="onCloseEditor">关闭</text>
+  </view>
+
+  <scroll-view class="sheet__body" scroll-y>
+    <!-- 照片放第一位：补照片是这一屏最常干的事，别让人划到最底下才看见 -->
+    <view class="field">
+      <view class="label">实物照片<text class="label__opt">维修工靠它认货</text></view>
+      <view class="photo-row">
+        <image
+          wx:if="{{form.photoUrl}}"
+          class="photo"
+          src="{{form.photoUrl}}"
+          mode="aspectFill"
+          data-url="{{form.photoUrl}}"
+          catchtap="onPreviewPhoto"
+        />
+        <view wx:else class="photo photo--empty">无图</view>
+        <view class="photo-actions">
+          <button class="btn btn--outline btn--sm" loading="{{uploading}}" bindtap="onChoosePhoto">
+            {{form.photoUrl ? '重拍 / 重选' : '拍照或从相册选'}}
+          </button>
+          <button wx:if="{{form.photoUrl}}" class="btn btn--ghost btn--sm" bindtap="onRemovePhoto">移除</button>
+        </view>
+      </view>
+    </view>
+
+    <view class="field">
+      <view class="label">名称</view>
+      <input class="input" placeholder="如：PVC 管" value="{{form.name}}" data-field="name" bindinput="onFormInput" />
+      <view class="field-error" wx:if="{{errors.name}}">{{errors.name}}</view>
+    </view>
+
+    <view class="field">
+      <view class="label">型号<text class="label__opt">选填</text></view>
+      <input class="input" placeholder="如：DN50" value="{{form.spec}}" data-field="spec" bindinput="onFormInput" />
+    </view>
+
+    <view class="field">
+      <view class="label">类别</view>
+      <picker mode="selector" range="{{formCategories}}" bindchange="onFormCategory">
+        <view class="picker {{formCategoryIndex < 0 ? 'placeholder' : ''}}">
+          {{formCategoryIndex < 0 ? '选择类别（决定编码前缀）' : form.category}}
+        </view>
+      </picker>
+    </view>
+
+    <view class="field">
+      <view class="label">单位</view>
+      <picker mode="selector" range="{{units}}" value="{{unitIndex}}" bindchange="onFormUnit">
+        <view class="picker">{{form.unit}}</view>
+      </picker>
+      <view class="field-error" wx:if="{{errors.unit}}">{{errors.unit}}</view>
+    </view>
+
+    <view class="field">
+      <view class="label">默认成本（元）<text class="label__opt">采购按它估价</text></view>
+      <input class="input" type="digit" placeholder="0.00" value="{{form.costYuan}}" data-field="costYuan" bindinput="onFormInput" />
+    </view>
+
+    <view class="field">
+      <view class="label">别名<text class="label__opt">同物异名，顿号分隔</text></view>
+      <input class="input" placeholder="如：胶布、透明胶" value="{{form.aliases}}" data-field="aliases" bindinput="onFormInput" />
+    </view>
+
+    <view class="field">
+      <view class="label">详细参数<text class="label__opt">选填</text></view>
+      <textarea class="textarea" placeholder="材质 / 尺寸 / 技术参数等" value="{{form.params}}" data-field="params" bindinput="onFormInput" />
+    </view>
+
+    <view class="field field--row">
+      <view class="label">启用</view>
+      <switch checked="{{form.enabled}}" bindchange="onToggleEnabled" />
+    </view>
+  </scroll-view>
+
+  <view class="sheet__foot">
+    <button class="btn btn--primary" loading="{{saving}}" disabled="{{saving || uploading}}" bindtap="onSave">保存</button>
+  </view>
 </view>

@@ -110,9 +110,26 @@ export class InventoryService {
     private readonly storage: ObjectStorageService,
   ) {}
 
-  listMaterials(query: TenantQueryDto, user: AuthUser) {
+  /**
+   * 材料 SKU 全量（后台材料页、小程序「材料与库存」都用它）。
+   *
+   * 照片必须过 toDisplayUrl —— 和 /materials/options 同一个理由：库里存量数据有
+   * COS 直连地址（私有桶直取 403）和相对代理路径（小程序当成本地包路径，渲染成一张白图）。
+   * 2026-08-25 修过选料弹层那条路，漏了这一条，于是同一张照片在弹层里看得见、
+   * 在材料库页是白的。**新增任何返回 photoUrl 的接口都要过这个函数。**
+   */
+  async listMaterials(query: TenantQueryDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
-    return this.materialRepo.find({ where: { tenantId }, order: { id: 'ASC' } });
+    const materials = await this.materialRepo.find({
+      where: { tenantId },
+      order: { id: 'ASC' },
+    });
+    return materials.map((item) => this.withDisplayPhoto(item));
+  }
+
+  /** 出参统一走这里换照片地址，别在各处 map 里各写一遍 */
+  private withDisplayPhoto<T extends { photoUrl?: string | null }>(item: T): T {
+    return { ...item, photoUrl: this.storage.toDisplayUrl(item.photoUrl) || null };
   }
 
   /**
@@ -142,7 +159,7 @@ export class InventoryService {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
     await this.assertMaterialUnique(tenantId, dto.name, dto.spec ?? null, null);
     const code = dto.code?.trim() || await this.buildMaterialCode(tenantId, dto.category);
-    return this.materialRepo.save(
+    const saved = await this.materialRepo.save(
       this.materialRepo.create({
         tenantId,
         code,
@@ -159,6 +176,8 @@ export class InventoryService {
         updatedBy: user.id,
       }),
     );
+    // 新建完端上会直接把返回值塞进列表，照片地址要和 listMaterials 一个口径
+    return this.withDisplayPhoto(saved);
   }
 
   async updateMaterial(id: number, dto: UpdateMaterialDto, user: AuthUser) {
@@ -189,7 +208,7 @@ export class InventoryService {
     if (dto.params !== undefined) material.params = dto.params?.trim() || null;
     if (dto.enabled !== undefined) material.enabled = dto.enabled;
     material.updatedBy = user.id;
-    return this.materialRepo.save(material);
+    return this.withDisplayPhoto(await this.materialRepo.save(material));
   }
 
   /** 判重口径：名称 + 型号相同视为同一材料；同名不同型号不算重复 */

@@ -47,10 +47,11 @@ const ALL_TABS: TabDef[] = [
     reporterText: '我的报修',
     hideForDispatcher: true,
   },
-  // 办公室把「在手工单」那一格换成材料与库存：补 SKU、查库存是他们每天要干的事
+  // 办公室把「在手工单」那一格换成材料与库存：查库存、补 SKU 是他们每天要干的事。
+  // 落地页是库存（不是 SKU 清单）—— 先回答「还有几个」，再顺手改这条 SKU
   {
     key: 'materials',
-    pagePath: '/pages/materials/materials',
+    pagePath: '/pages/inventory/inventory',
     text: '材料与库存',
     roles: DISPATCH_ROLES,
   },
