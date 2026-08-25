@@ -94,6 +94,20 @@ export enum UserStatus {
   DISABLED = 'disabled',
 }
 
+/**
+ * 业主档案是怎么来的。
+ * 报修登记来的那批是「顺手记下来的」，不是业主自己认证过的 —— 后台必须能一眼分开，
+ * 否则谁也不知道这条档案可不可信、要不要打电话核实。
+ */
+export enum OwnerSource {
+  /** 后台手工建档 */
+  MANUAL = 'manual',
+  /** 业主自己在小程序认证房屋 */
+  SELF = 'self',
+  /** 员工报修时报出来的联系人，系统顺手记的 */
+  REPAIR_INTAKE = 'repair_intake',
+}
+
 /** 二维码粒度 */
 export enum QrGranularity {
   COMMUNITY = 'community', // 小区码

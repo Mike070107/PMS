@@ -24,6 +24,7 @@ import { SettingsService } from '../settings/settings.service';
 import {
   NotifyChannel,
   NotifyStatus,
+  OwnerSource,
   OWNER_APP_ROLES,
   SELF_SCOPED_ROLES,
   STAFF_APP_ROLES,
@@ -1781,7 +1782,95 @@ export class RepairsService implements OnModuleInit {
       }
     }
 
+    // 「这个电话 → 这个人 → 这个房号」记进业主档案。
+    // 和上面的类型负样本一样放在事务外、吞掉异常：这是顺手攒的资料，
+    // 绝不能因为它让报修提交失败。
+    await this.rememberContactAsOwner(dto, tenantId, source, submittedBy);
+
     return created;
+  }
+
+  /**
+   * 员工报修时报出来的联系人，顺手落一条业主档案（来源标记「报修登记」）。
+   *
+   * 为什么值得做：维修工在现场说一句「一期17号201，张先生，13800138000」，
+   * 这三样凑齐就是一条业主资料。不记的话，下次同一户报修还得再问一遍。
+   *
+   * 四条约束，少一条都会把档案搞脏：
+   * 1. 只认端上**明确传上来的** contactName/contactPhone —— resolveContact 会
+   *    把提交人自己兜底成联系人，那是维修工不是业主，记进去就全是自己人；
+   * 2. 业主自己报的不记：他的档案本来就该由认证流程建，来源不能被覆盖成「报修登记」；
+   * 3. 已有档案只补空字段，不覆盖已填的（尤其不改房号）—— 一个手机号可能有多套房，
+   *    也可能后台已经核实过，自动流程不跟人抢方向盘；
+   * 4. 房号已经绑了别的业主就不动，避免一次口误把人家的房子改姓。
+   */
+  private async rememberContactAsOwner(
+    dto: CreateRepairRequestDto,
+    tenantId: number,
+    source: RepairSource,
+    submittedBy: number | null,
+  ) {
+    if (source === RepairSource.OWNER_MINIAPP) return;
+
+    const name = dto.contactName?.trim();
+    const phone = dto.contactPhone?.trim();
+    if (!name || !phone) return;
+
+    try {
+      // 提交人自己的手机号：维修工把自己填成联系人了，不是业主
+      if (submittedBy) {
+        const me = await this.userRepo.findOne({
+          where: { id: submittedBy },
+          select: ['id', 'phone'],
+        });
+        if (me?.phone && me.phone === phone) return;
+      }
+
+      const houseId = dto.houseId ?? null;
+      const existing = await this.userRepo.findOne({
+        where: { tenantId, phone, role: UserRole.OWNER },
+      });
+
+      if (existing) {
+        const patch: Partial<User> = {};
+        if (!existing.name && name) patch.name = name;
+        // 只在这条档案还没绑房号时补，绝不改已绑的
+        if (!existing.houseId && houseId && (await this.isHouseFree(tenantId, houseId))) {
+          patch.houseId = houseId;
+        }
+        if (Object.keys(patch).length) {
+          await this.userRepo.update(existing.id, { ...patch, updatedBy: submittedBy });
+        }
+        return;
+      }
+
+      await this.userRepo.save(
+        this.userRepo.create({
+          tenantId,
+          name,
+          phone,
+          role: UserRole.OWNER,
+          houseId: houseId && (await this.isHouseFree(tenantId, houseId)) ? houseId : null,
+          status: UserStatus.ACTIVE,
+          source: OwnerSource.REPAIR_INTAKE,
+          createdBy: submittedBy,
+          updatedBy: submittedBy,
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `业主档案自动登记失败（不影响报修）：${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  /** 这个房号还没有业主绑着 */
+  private async isHouseFree(tenantId: number, houseId: number): Promise<boolean> {
+    const taken = await this.userRepo.findOne({
+      where: { tenantId, houseId, role: UserRole.OWNER },
+      select: ['id'],
+    });
+    return !taken;
   }
 
   /** 供定时任务调用：全租户扫描超时待验收工单并自动完成，返回处理数量 */

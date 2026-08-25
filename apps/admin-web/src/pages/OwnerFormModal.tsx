@@ -19,6 +19,8 @@ export interface OwnerRow {
   name: string | null;
   phone: string | null;
   status: 'active' | 'disabled';
+  /** 这条档案怎么来的：manual 后台建 / self 业主认证 / repair_intake 报修登记 */
+  source: string | null;
   houseId: number | null;
   house: {
     id: number;

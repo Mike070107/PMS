@@ -25,7 +25,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { request } from '../lib/api';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
-import { AuditStatus } from '@pms/shared-types';
+import { AuditStatus, OWNER_SOURCE_LABELS, OwnerSource } from '@pms/shared-types';
 import OwnerFormModal, { OwnerRow, formatOwnerLocation } from './OwnerFormModal';
 
 const { Title, Text } = Typography;
@@ -235,6 +235,15 @@ function OwnersTab() {
                   roomNo: r.house.roomNo,
                 })
               : <Text type="secondary">未绑定</Text>,
+          },
+          {
+            // 报修登记来的档案是系统顺手记的、没人核实过，必须和业主自己认证的分开，
+            // 否则谁也不知道这条资料能不能直接用来联系
+            title: '来源', dataIndex: 'source', width: 110,
+            render: (v?: string | null) =>
+              v === OwnerSource.REPAIR_INTAKE
+                ? <Tag color="orange">报修登记</Tag>
+                : <Text type="secondary">{OWNER_SOURCE_LABELS[v || ''] || '后台建档'}</Text>,
           },
           {
             title: '小程序', dataIndex: 'status', width: 110,

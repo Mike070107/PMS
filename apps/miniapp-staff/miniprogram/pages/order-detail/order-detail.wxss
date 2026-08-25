@@ -1,7 +1,5 @@
 /* 字号一律引 tokens.wxss 的 --font-* 阶梯；卡片/图标/停留徽标在 app.wxss 里统一定义 */
 
-/* 底部有固定操作条，内容要留出它的高度，否则最后一张卡被压住 */
-.container--with-bar { padding-bottom: 200rpx; }
 
 /* 业主原话：引号块，和系统文案区分开 */
 .quote {
@@ -35,50 +33,7 @@
 .fold--inline { min-height: auto; padding: 0 0 16rpx; margin-bottom: 0; }
 
 /* ---------- 底部固定操作条 ---------- */
-.action-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 8;
-  display: flex;
-  gap: 20rpx;
-  padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom));
-  background: var(--color-card-bg);
-  border-top: 2rpx solid var(--color-border);
-  box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.04);
-}
-.action-bar .btn { width: auto !important; flex: 1 1 0; }
-
-.thumbs { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 20rpx; }
-.thumb-wrap { position: relative; }
-.thumb { width: 176rpx; height: 176rpx; border-radius: var(--radius-sm); background: var(--color-bg); display: block; }
-.thumb-remove {
-  position: absolute;
-  top: -12rpx;
-  right: -12rpx;
-  width: 52rpx;
-  height: 52rpx;
-  line-height: 48rpx;
-  text-align: center;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  font-size: var(--font-lg);
-}
-.thumb-add {
-  width: 176rpx;
-  height: 176rpx;
-  border: 2rpx dashed var(--color-border);
-  border-radius: var(--radius-sm);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-tertiary);
-}
-.plus { font-size: 48rpx; line-height: 1; }
-.add-text { font-size: var(--font-xs); margin-top: 8rpx; }
+/* 底部操作条与附件缩略图都在 tokens.wxss 里统一定义 */
 
 
 /* 常用话术：现场打字慢，能点就别让人打（标题走共用的 .label） */

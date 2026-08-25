@@ -1,0 +1,95 @@
+<view class="container container--with-bar">
+  <view class="page-lead">
+    <view class="page-lead__title">随手拍报修</view>
+  </view>
+
+  <!-- 1. 拍 -->
+  <view class="card">
+    <view class="label">现场照片 / 视频<text class="label__opt">最多 {{maxImages}} 张，视频 1 段 {{maxVideoSeconds}} 秒</text></view>
+    <view class="thumbs">
+      <view wx:for="{{mediaList}}" wx:key="url" class="thumb-wrap">
+        <video
+          wx:if="{{item.video}}"
+          class="thumb"
+          src="{{item.url}}"
+          object-fit="cover"
+          show-center-play-btn="{{true}}"
+        />
+        <image
+          wx:else
+          class="thumb"
+          src="{{item.url}}"
+          mode="aspectFill"
+          data-url="{{item.url}}"
+          bindtap="onPreviewMedia"
+        />
+        <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia">
+          <view class="icon icon--close"></view>
+        </view>
+      </view>
+      <view
+        wx:if="{{attachments.length - videoCount < maxImages}}"
+        class="thumb-add"
+        data-type="image"
+        bindtap="onCapture"
+      >
+        <view class="icon icon--camera"></view>
+        <text class="add-text">{{uploading ? '上传中' : '拍照'}}</text>
+      </view>
+      <view wx:if="{{!videoCount}}" class="thumb-add" data-type="video" bindtap="onCapture">
+        <view class="icon icon--camera"></view>
+        <text class="add-text">{{uploading ? '上传中' : '拍视频'}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 2. 说 -->
+  <view class="card">
+    <view class="label">说一句话<text class="label__opt">普通话</text></view>
+
+    <button
+      wx:if="{{hasSpeech}}"
+      class="hold {{recording ? 'hold--on' : ''}}"
+      bindtouchstart="onStartRecord"
+      bindtouchend="onStopRecord"
+      bindtouchcancel="onStopRecord"
+    >{{recording ? '松开结束' : '按住说话'}}</button>
+
+    <view wx:if="{{recording && partial}}" class="partial">{{partial}}</view>
+
+    <textarea
+      class="say"
+      placeholder="例：一期17号201家里灯不亮，张先生报，电话13800138000"
+      value="{{content}}"
+      bindinput="onInput"
+    />
+  </view>
+
+  <!-- 3. 认出来的：认出来才显示，认不出就不占地方 -->
+  <view wx:if="{{found.length}}" class="card">
+    <view class="label">已自动认出<text class="label__opt">不对就改用完整表单</text></view>
+    <view wx:for="{{found}}" wx:key="key" class="kv">
+      <text class="kv__k">{{item.label}}</text>
+      <text class="kv__v">{{item.value}}</text>
+    </view>
+  </view>
+
+  <view wx:if="{{needManual}}" class="card">
+    <view class="sku-empty">
+      这句话里没认出小区房号。说清楚「几期几号几室」再说一次，或者改用完整表单逐项填。
+    </view>
+    <button class="btn btn--outline mt" bindtap="onEditInFull">改用完整表单</button>
+  </view>
+
+  <view wx:if="{{errorMsg}}" class="error card">{{errorMsg}}</view>
+</view>
+
+<view class="action-bar">
+  <button class="btn btn--ghost" bindtap="onEditInFull">完整表单</button>
+  <button
+    class="btn btn--primary"
+    loading="{{submitting}}"
+    disabled="{{submitting || uploading}}"
+    bindtap="onSubmit"
+  >提交报修</button>
+</view>

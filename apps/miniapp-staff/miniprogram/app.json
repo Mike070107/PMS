@@ -5,6 +5,7 @@
     "pages/my-orders/my-orders",
     "pages/order-detail/order-detail",
     "pages/repair-create/repair-create",
+    "pages/quick-repair/quick-repair",
     "pages/approvals/approvals",
     "pages/materials/materials",
     "pages/inventory/inventory",

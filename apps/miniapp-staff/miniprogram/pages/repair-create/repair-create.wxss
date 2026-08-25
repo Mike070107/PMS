@@ -85,45 +85,8 @@ textarea { min-height: 220rpx; }
   border-color: var(--color-brand);
 }
 
-/* ---------- 照片 ---------- */
-.thumbs { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: var(--space-sm); }
-.thumb-wrap { position: relative; }
-.thumb {
-  width: 176rpx;
-  height: 176rpx;
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  display: block;
-}
-/* 图标本身 28rpx 太小，用容器把可点区域撑到 56rpx，靠近 44pt 下限 */
-.thumb-remove {
-  position: absolute;
-  top: -16rpx;
-  right: -16rpx;
-  width: 56rpx;
-  height: 56rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-}
-.thumb-remove .icon { width: 28rpx; height: 28rpx; }
-.thumb-add {
-  width: 176rpx;
-  height: 176rpx;
-  border: 2rpx dashed var(--color-border);
-  border-radius: var(--radius-sm);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-xs);
-  color: var(--color-brand);
-  background: var(--color-bg);
-}
-.thumb-add:active { opacity: 0.7; }
-.add-text { font-size: var(--font-xs); }
+/* 附件缩略图（.thumbs、.thumb 系列、.add-text）在 tokens.wxss 里统一定义。
+   注意别在注释里写 .thumb 加星号加斜杠 —— 那串会提前闭合注释，整份 wxss 编译失败 */
 
 /* ---------- 扫码直达时的过渡遮罩 ---------- */
 .boot-mask {
@@ -187,7 +150,7 @@ textarea { min-height: 220rpx; }
 }
 .detected__close .icon { width: 36rpx; height: 36rpx; }
 .detected__close--tap { opacity: 0.6; }
-/* app.wxss 的 icon--close 是白色描边（深色圆底专用），浅色卡片上要用品牌色的 */
+/* 全局 icon--close 是白色描边（深色圆底专用），浅色卡片上要用品牌色的这个 */
 .icon--close-dark {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2331558a' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");
 }
@@ -218,12 +181,6 @@ textarea { min-height: 220rpx; }
   box-shadow: 0 -2rpx 16rpx rgba(0, 0, 0, 0.06);
 }
 .has-submit-bar { padding-bottom: 200rpx; }
-.icon--camera {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2331558a' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M3 8h3l2-3h8l2 3h3v11H3z'/%3E%3Ccircle cx='12' cy='13' r='3.5'/%3E%3C/svg%3E");
-}
-.icon--close {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");
-}
 
 /* 麦克风图标（业主端 app.wxss 同款，员工端全局没有） */
 .icon--mic {

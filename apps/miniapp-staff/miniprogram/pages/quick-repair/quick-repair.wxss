@@ -1,0 +1,37 @@
+/* 卡片、缩略图、底部操作条、.kv 信息行都在 tokens.wxss / app.wxss 里统一定义，
+   这里只放「按住说话」这一个本页独有的控件 */
+
+/* 按住说话：现场戴手套、单手拿手机，这个按钮是这一屏的主角，做到一整行、够高 */
+.hold {
+  width: 100%;
+  height: 132rpx;
+  margin-top: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-brand);
+  color: #fff;
+  font-size: var(--font-2xl);
+  font-weight: 600;
+}
+.hold::after { border: none; }
+/* 录音中变色 + 轻微缩一下：戴手套时看不清小圆点，整块变色才看得出在录 */
+.hold--on {
+  background: var(--color-brand-dark);
+  transform: scale(0.99);
+}
+
+/* 实时识别出来的半截话：让人知道系统在听、听成了什么 */
+.partial {
+  margin-top: 16rpx;
+  padding: 16rpx 24rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: var(--font-md);
+  line-height: 1.6;
+}
+
+/* 说完的整句落在这里，可以直接改 —— 语音识别不可能一次全对 */
+.say { margin-top: 16rpx; min-height: 160rpx; }

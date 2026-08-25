@@ -1,0 +1,280 @@
+import { repairs, upload } from '@pms/api-client';
+import type { ParsedRepairAddress, PublicRepairType } from '@pms/api-client/src/endpoints/repairs';
+import { speechErrorTip } from '@pms/miniapp-ui';
+import {
+  classifyRepairType,
+  extractContact,
+  isVideoUrl,
+  MAX_REPAIR_IMAGES,
+  MAX_REPAIR_VIDEO_SECONDS,
+  MAX_REPAIR_VIDEOS,
+} from '@pms/shared-types';
+import { composeDetectedAddress, detectRepairAddress } from '../../utils/address-detect';
+
+/**
+ * 随手拍报修（员工端）：拍一张 / 录 15 秒 + 按住说一句话，说完就能提交。
+ *
+ * 和「我要报修」的分工：
+ *   这里    = 现场巡查看到问题，手上不方便填表 —— 只做三件事（拍、说、提交），
+ *             地址/类型/联系人/电话全部从那句话里认，认出来的才显示一行，认不出的才展开输入；
+ *   我要报修 = 完整表单，逐项填/改。
+ * 两个页面共用同一套识别：classifyRepairType（后台配的关键词，会自学习）、
+ * detectRepairAddress（拿描述去撞库里真实的分期/楼栋/房号）、extractContact（人和电话）。
+ *
+ * 语音走微信官方「同声传译」插件，只支持普通话；插件没装时隐藏语音按钮，打字照常可用。
+ */
+let speechManager: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  speechManager = requirePlugin('WechatSI').getRecordRecognitionManager();
+} catch {
+  speechManager = null;
+}
+
+/** 识别出来的一行：认出来了才显示，认不出就不占地方 */
+interface FoundRow {
+  key: string;
+  label: string;
+  value: string;
+}
+
+Page({
+  data: {
+    content: '',
+    /** 语音识别的实时中间结果，让人知道在听 */
+    partial: '',
+    recording: false,
+    hasSpeech: !!speechManager,
+
+    attachments: [] as string[],
+    mediaList: [] as Array<{ url: string; video: boolean }>,
+    videoCount: 0,
+    uploading: false,
+
+    /** 认出来的四项，用于「已认出」那张卡 */
+    found: [] as FoundRow[],
+    /** 一样都没认出来时才展开手填 */
+    needManual: false,
+    /** 认出来的地址（撞过库的，带 id） */
+    detected: null as ParsedRepairAddress | null,
+    typeLabel: '',
+    contactName: '',
+    contactPhone: '',
+
+    submitting: false,
+    errorMsg: '',
+    maxImages: MAX_REPAIR_IMAGES,
+    maxVideoSeconds: MAX_REPAIR_VIDEO_SECONDS,
+  },
+
+  /** 后台配的报修类型（带关键词），用于自动判定 */
+  types: [] as PublicRepairType[],
+  /** 端上判出来的类型，提交时带上：和最终落库的不一致就是一条负样本 */
+  predictedType: '',
+  detectTimer: 0,
+
+  onLoad() {
+    this.bindSpeech();
+    this.loadTypes();
+  },
+
+  onUnload() {
+    if (this.detectTimer) clearTimeout(this.detectTimer);
+  },
+
+  async loadTypes() {
+    try {
+      this.types = await repairs.types();
+    } catch {
+      this.types = [];
+    }
+  },
+
+  // ---------------- 拍 ----------------
+
+  /**
+   * 拍照 / 拍视频。视频限 15 秒：现场情况十几秒就说清了，
+   * 拍长了上传慢、维修工也不会看完。
+   */
+  async onCapture(e: WechatMiniprogram.BaseEvent) {
+    if (this.data.uploading) return;
+    const wantVideo = e.currentTarget.dataset.type === 'video';
+    const images = this.data.attachments.length - this.data.videoCount;
+    if (wantVideo && this.data.videoCount >= MAX_REPAIR_VIDEOS) {
+      return wx.showToast({ icon: 'none', title: `最多 ${MAX_REPAIR_VIDEOS} 段视频` });
+    }
+    if (!wantVideo && images >= MAX_REPAIR_IMAGES) {
+      return wx.showToast({ icon: 'none', title: `最多 ${MAX_REPAIR_IMAGES} 张照片` });
+    }
+
+    const res = await wx
+      .chooseMedia({
+        count: wantVideo ? 1 : MAX_REPAIR_IMAGES - images,
+        mediaType: [wantVideo ? 'video' : 'image'],
+        sourceType: ['camera', 'album'],
+        maxDuration: MAX_REPAIR_VIDEO_SECONDS,
+        camera: 'back',
+      })
+      .catch(() => null);
+    if (!res?.tempFiles?.length) return;
+
+    this.setData({ uploading: true });
+    wx.showLoading({ title: '上传中…', mask: true });
+    try {
+      const uploaded = await upload.uploadTempFiles(res.tempFiles.map((f) => f.tempFilePath));
+      this.setAttachments([...this.data.attachments, ...uploaded.map((item) => item.publicUrl)]);
+    } catch (err: any) {
+      wx.showToast({ icon: 'none', title: err?.message || '上传失败' });
+    } finally {
+      wx.hideLoading();
+      this.setData({ uploading: false });
+    }
+  },
+
+  setAttachments(list: string[]) {
+    this.setData({
+      attachments: list,
+      mediaList: list.map((url) => ({ url, video: isVideoUrl(url) })),
+      videoCount: list.filter((url) => isVideoUrl(url)).length,
+      errorMsg: '',
+    });
+  },
+
+  onRemoveMedia(e: WechatMiniprogram.BaseEvent) {
+    const next = this.data.attachments.slice();
+    next.splice(Number(e.currentTarget.dataset.index), 1);
+    this.setAttachments(next);
+  },
+
+  /** 视频丢进 previewImage 是一片黑，只有图片走预览 */
+  onPreviewMedia(e: WechatMiniprogram.BaseEvent) {
+    const url = String(e.currentTarget.dataset.url || '');
+    if (isVideoUrl(url)) return;
+    wx.previewImage({
+      current: url,
+      urls: this.data.attachments.filter((item) => !isVideoUrl(item)),
+    });
+  },
+
+  // ---------------- 说 ----------------
+
+  bindSpeech() {
+    if (!speechManager) return;
+    speechManager.onStart = () => this.setData({ recording: true, partial: '' });
+    speechManager.onRecognize = (res: { result: string }) => {
+      this.setData({ partial: res.result || '' });
+    };
+    speechManager.onStop = (res: { result: string }) => {
+      const text = (res.result || this.data.partial || '').trim();
+      this.setData({ recording: false, partial: '' });
+      if (!text) return;
+      // 接着上一段说：一次没说完可以按第二次
+      const next = [this.data.content.trim(), text].filter(Boolean).join('，');
+      this.onContentChanged(next);
+    };
+    speechManager.onError = (err: { msg?: string; retcode?: number }) => {
+      this.setData({ recording: false, partial: '' });
+      speechErrorTip(err).then((tip) => wx.showToast({ icon: 'none', title: tip }));
+    };
+  },
+
+  onStartRecord() {
+    if (!speechManager || this.data.recording) return;
+    speechManager.start({ lang: 'zh_CN', duration: 30000 });
+  },
+
+  onStopRecord() {
+    if (!speechManager || !this.data.recording) return;
+    speechManager.stop();
+  },
+
+  onInput(e: WechatMiniprogram.Input) {
+    this.onContentChanged(e.detail.value);
+  },
+
+  // ---------------- 认 ----------------
+
+  onContentChanged(text: string) {
+    this.setData({ content: text, errorMsg: '' });
+
+    // 类型和联系人是纯本地正则，每次输入都跟着认
+    const hit = this.types.length ? classifyRepairType(text, this.types) : null;
+    const contact = extractContact(text);
+    this.predictedType = hit?.repairType || '';
+    this.setData({
+      typeLabel: hit?.label || '',
+      contactName: contact.name || '',
+      contactPhone: contact.phone || '',
+    });
+
+    // 地址要问服务端撞库，防抖 400ms
+    if (this.detectTimer) clearTimeout(this.detectTimer);
+    this.detectTimer = setTimeout(() => this.detectAddress(text), 400) as unknown as number;
+    this.refreshFound();
+  },
+
+  async detectAddress(text: string) {
+    const res = await detectRepairAddress(text);
+    // 结果回来时话可能已经变了，只认最新一次
+    if (text !== this.data.content) return;
+    this.setData({ detected: res });
+    this.refreshFound();
+  },
+
+  /** 把认出来的拼成「已认出」那张卡；一样都没认出来才展开手填 */
+  refreshFound() {
+    const { detected, typeLabel, contactName, contactPhone } = this.data;
+    const found: FoundRow[] = [];
+    if (detected) found.push({ key: 'addr', label: '报修地址', value: composeDetectedAddress(detected) });
+    if (typeLabel) found.push({ key: 'type', label: '报修类型', value: typeLabel });
+    if (contactName) found.push({ key: 'name', label: '联系人', value: contactName });
+    if (contactPhone) found.push({ key: 'phone', label: '联系电话', value: contactPhone });
+    this.setData({ found, needManual: !!this.data.content.trim() && !detected });
+  },
+
+  /** 认错了就整单改到「我要报修」去逐项改，别在这一屏里堆一套表单 */
+  onEditInFull() {
+    const q = [
+      `content=${encodeURIComponent(this.data.content)}`,
+      `attachments=${encodeURIComponent(this.data.attachments.join(','))}`,
+    ].join('&');
+    wx.redirectTo({ url: `/pages/repair-create/repair-create?${q}` });
+  },
+
+  // ---------------- 提交 ----------------
+
+  async onSubmit() {
+    const content = this.data.content.trim();
+    if (content.length < 5) {
+      return this.setData({ errorMsg: '按住说一句话，或直接打字（至少 5 个字）' });
+    }
+    const { detected } = this.data;
+    if (!detected) {
+      return this.setData({
+        errorMsg: '这句话里没认出小区房号。说清楚「几期几号几室」再试一次，或点下面改用完整表单',
+      });
+    }
+
+    this.setData({ submitting: true, errorMsg: '' });
+    try {
+      await repairs.create({
+        communityId: detected.communityId!,
+        buildingId: detected.buildingId ?? undefined,
+        houseId: detected.houseId ?? undefined,
+        addressText: composeDetectedAddress(detected),
+        contactName: this.data.contactName || undefined,
+        contactPhone: this.data.contactPhone || undefined,
+        repairType: this.predictedType || undefined,
+        predictedRepairType: this.predictedType || undefined,
+        content,
+        attachments: this.data.attachments,
+      });
+      wx.showToast({ title: '已提交' });
+      setTimeout(() => wx.navigateBack(), 800);
+    } catch (e: any) {
+      this.setData({ errorMsg: e?.message || '提交失败' });
+    } finally {
+      this.setData({ submitting: false });
+    }
+  },
+});

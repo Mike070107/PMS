@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { UserRole, UserStatus } from '../../common/enums';
+import { OwnerSource, UserRole, UserStatus } from '../../common/enums';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { Building, Community, House, User } from '../../entities';
@@ -46,6 +46,7 @@ export class OwnersMgmtService {
         'u.phone AS phone',
         'u.status AS status',
         'u.role AS role',
+        'u.source AS source',
         'u.house_id AS "houseId"',
         'h.room_no AS "roomNo"',
         'h.area_sqm AS "areaSqm"',
@@ -92,6 +93,8 @@ export class OwnersMgmtService {
       name: r.name,
       phone: r.phone,
       status: r.status,
+      // 这条档案是怎么来的：报修登记来的是系统顺手记的，还没人核实过
+      source: r.source ?? null,
       houseId: r.houseId ? Number(r.houseId) : null,
       house: r.houseId
         ? {
@@ -133,6 +136,7 @@ export class OwnersMgmtService {
         role: UserRole.OWNER,
         houseId: dto.houseId ?? null,
         status: UserStatus.ACTIVE,
+        source: OwnerSource.MANUAL,
         createdBy: user.id,
         updatedBy: user.id,
       }),

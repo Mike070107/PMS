@@ -119,9 +119,24 @@ Page({
   detectTimer: 0 as number,
   dismissedMatch: '' as string,
 
-  onLoad() {
+  /**
+   * q.content / q.attachments：从「随手拍」转过来的。
+   * 那边已经说过一遍话、拍过照了，转到完整表单只是为了逐项改，
+   * 不能让人从头再来一次。
+   */
+  onLoad(q: Record<string, string>) {
     this.bindSpeech();
     this.loadTypes();
+    const handoff = decodeURIComponent(q?.content || '').trim();
+    const media = decodeURIComponent(q?.attachments || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (media.length) this.setAttachments(media);
+    if (handoff) {
+      this.setData({ content: handoff });
+      this.scheduleDetect(handoff);
+    }
     // 地址簿范围取决于身份（代报角色只能报授权小区），所以先 me() 再拉地址簿，
     // 别并行 —— 并行的话保安会先看到全公司地址簿，选完提交才被后端拦下
     this.loadMe().then(() => this.loadBook());

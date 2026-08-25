@@ -3,7 +3,9 @@
     <view class="page-lead__title">待接单 {{list.length}} 条</view>
   </view>
 
-  <button class="btn btn--outline report-entry" bindtap="onGoRepair">我要报修（巡查发现问题）</button>
+  <!-- 巡查发现问题：先给最快的那条路（拍+说），填表放第二个 -->
+  <button class="btn btn--primary report-entry" bindtap="onGoQuickRepair">随手拍报修</button>
+  <button class="btn btn--outline report-entry" bindtap="onGoRepair">我要报修（填表）</button>
 
   <view wx:if="{{loading && !loaded}}" class="center muted">加载中…</view>
   <view wx:elif="{{!list.length && loaded}}">

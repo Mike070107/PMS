@@ -154,3 +154,64 @@ textarea {
 }
 /* 还没选的时候用浅灰，和输入框的 placeholder 一个意思 */
 .picker.placeholder { color: var(--color-text-tertiary); }
+
+/* ---------- 附件缩略图（报修录入 / 随手拍 / 完工提交共用） ----------
+   原来 repair-create 和 order-detail 各写了一份，删除按钮一个用图标一个用「×」文字，
+   加号按钮一个品牌色一个灰色 —— 同一个控件两种长相。第三个页面（随手拍）要用之前先合一。
+   取的是两份里更对的那份：删除按钮用 SVG 图标（不用文字「×」），
+   容器撑到 56rpx 让点击区域接近 44pt 下限。 */
+.thumbs { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 16rpx; }
+.thumb-wrap { position: relative; }
+.thumb {
+  width: 176rpx;
+  height: 176rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  display: block;
+}
+.thumb-remove {
+  position: absolute;
+  top: -16rpx;
+  right: -16rpx;
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+}
+.thumb-remove .icon { width: 28rpx; height: 28rpx; }
+.thumb-add {
+  width: 176rpx;
+  height: 176rpx;
+  border: 2rpx dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  color: var(--color-brand);
+  background: var(--color-bg);
+}
+.thumb-add:active { opacity: 0.7; }
+.add-text { font-size: var(--font-xs); }
+
+/* ---------- 底部固定操作条（详情页 / 随手拍共用） ----------
+   一屏里只有这一条，按钮等分；内容区要留出它的高度（.container--with-bar）。 */
+.action-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  display: flex;
+  gap: 20rpx;
+  padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom));
+  background: var(--color-card-bg);
+  border-top: 2rpx solid var(--color-border);
+  box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.04);
+}
+.action-bar .btn { width: auto !important; flex: 1 1 0; }
+.container--with-bar { padding-bottom: 200rpx; }

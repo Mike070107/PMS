@@ -233,10 +233,12 @@
     <view class="thumbs">
       <view wx:for="{{resultAttachments}}" wx:key="*this" class="thumb-wrap">
         <image class="thumb" src="{{item}}" mode="aspectFill"/>
-        <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia">×</view>
+        <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia">
+          <view class="icon icon--close"></view>
+        </view>
       </view>
       <view wx:if="{{resultAttachments.length < 6}}" class="thumb-add" bindtap="onChooseMedia">
-        <text class="plus">＋</text>
+        <view class="icon icon--camera"></view>
         <text class="add-text">{{uploading ? '上传中' : '拍照'}}</text>
       </view>
     </view>

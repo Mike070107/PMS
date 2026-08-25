@@ -1,6 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity } from '../common/base.entity';
-import { UserRole, UserStatus } from '../common/enums';
+import { OwnerSource, UserRole, UserStatus } from '../common/enums';
 
 /**
  * 所有用户（业主 / 维修工 / 物业各角色 / 平台运营）。
@@ -47,4 +47,12 @@ export class User extends BaseEntity {
 
   @Column({ type: 'varchar', length: 20, default: UserStatus.ACTIVE })
   status: UserStatus;
+
+  /**
+   * 这条档案是怎么来的（只对业主有意义，员工留空）。
+   * 报修时从一句话里抽出来的联系人会自动落一条 REPAIR_INTAKE 档案，
+   * 后台得能把它和业主自己认证过的区分开。存量数据为 null。
+   */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  source: OwnerSource | null;
 }
