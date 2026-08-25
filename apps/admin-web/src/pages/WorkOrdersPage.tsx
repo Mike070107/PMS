@@ -2355,7 +2355,7 @@ function RepairTypeRuleModal({
       open={open}
       onCancel={onClose}
       footer={null}
-      width={1280}
+      width={1360}
       destroyOnHidden
     >
       <Row gutter={20}>
@@ -2435,6 +2435,8 @@ function RepairTypeRuleModal({
               {
                 title: '操作',
                 width: 140,
+                // 多了「领料仓库」一列后表格要横滚，编辑/删除不能跟着滚出视野
+                fixed: 'right',
                 render: (_, rule) => (
                   <Space size={0}>
                     <Button type="link" onClick={() => startEdit(rule)}>编辑</Button>
