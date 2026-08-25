@@ -1047,9 +1047,11 @@ function RepairSubmitCard({
           </Upload.Dragger>
         </Form.Item>
         {canEdit && (
-          <Button type="primary" size="large" loading={saving} onClick={onSubmit} block icon={<PlusOutlined />}>
-            提交报修
-          </Button>
+          <div className="pms-repair-submit-bar">
+            <Button type="primary" size="large" loading={saving} onClick={onSubmit} block icon={<PlusOutlined />}>
+              提交报修
+            </Button>
+          </div>
         )}
       </Form>
     </Card>

@@ -1001,3 +1001,33 @@ a,
 .pms-workorder-pool-card .ant-table-tbody > tr.pms-row-sla-danger > td.ant-table-cell-row-hover {
   background: #fff1f0;
 }
+
+/* 分栏模式下让左右两栏在各自区域内滚动，页面不再整体长滚。
+   为的是让下面那条提交按钮 sticky 得住 ——
+   .pms-workorder-layout 为了容下 1040px 宽的工单表格设了 overflow-x:auto，
+   而 CSS 规范里一个方向非 visible 会把另一个方向的 visible 也算成 auto，
+   于是它成了 sticky 的依附容器；但它自身 scrollHeight == clientHeight 不滚动，
+   sticky 就永远不粘。给它限高、让它真的能滚，问题才解决
+   （2026-08-25：办公室录入表单 1600px 高，提交按钮沉在屏幕外，被当成「没有提交按钮」）。
+   窄屏走下面 900px 的单列分支，保持整页滚动，不进这条规则。 */
+@media (min-width: 901px) {
+  .pms-workorder-layout {
+    max-height: calc(100vh - 148px);
+  }
+}
+
+/* 办公室录入报修：提交按钮粘在卡片底部。
+   这张表单有房号、位置、两组「猜你想输」、类型、截止、内容、上传，展开后 1600px 上下，
+   按钮沉在最底下一屏根本看不见 —— 用的人会以为「怎么没有提交按钮」（2026-08-25 反馈）。
+   sticky 而不是 fixed：fixed 会脱离卡片，在别的 Tab / 窄屏上都要另外收拾。
+   注意别给祖先加 overflow:hidden，sticky 会当场失效。 */
+.pms-repair-submit-card .pms-repair-submit-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 4px -24px -24px;   /* 抵掉 Card body 的 24px 内边距，铺满整宽 */
+  padding: 12px 24px 16px;
+  background: #fff;
+  border-top: 1px solid #f0f0f0;
+}
+
