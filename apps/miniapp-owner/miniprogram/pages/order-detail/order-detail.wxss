@@ -35,17 +35,8 @@
 
 .stars { font-size: 56rpx; color: #d9d9d9; letter-spacing: 8rpx; }
 .stars .on { color: var(--color-warning); }
-textarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 160rpx;
-  margin-top: 16rpx;
-  padding: 20rpx 24rpx;
-  background: var(--color-bg);
-  border-radius: var(--radius-sm);
-  font-size: 34rpx;
-  line-height: 1.6;
-}
+/* 业主端这个框上面紧挨着标签，补一点间距；其余外观走 tokens.wxss */
+textarea { min-height: 160rpx; margin-top: 16rpx; }
 
 /* 每个节点停了多久：卡在哪一步、卡了多久，比绝对时间更好用 */
 .timeline-stay {

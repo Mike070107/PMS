@@ -43,16 +43,8 @@
 }
 .mt-lg { margin-top: var(--space-lg); }
 
-textarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 220rpx;
-  padding: var(--space-md);
-  background: var(--color-bg);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-xl);
-  line-height: 1.6;
-}
+/* 报修描述要多写几句，比基线高一些；其余外观走 tokens.wxss */
+textarea { min-height: 220rpx; }
 
 /* ---------- 猜你想输 ----------
    去掉了「猜你想输：」这个前缀标题 —— 一排可点的短语本身就说明了用途，

@@ -80,23 +80,8 @@
 .plus { font-size: 48rpx; line-height: 1; }
 .add-text { font-size: var(--font-xs); margin-top: 8rpx; }
 
-textarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 180rpx;
-  padding: 22rpx 24rpx;
-  background: var(--color-bg);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-xl);
-  line-height: 1.6;
-}
 
-/* 常用话术：现场打字慢，能点就别让人打 */
-.phrase-tip {
-  margin-top: 20rpx;
-  font-size: var(--font-md);
-  color: var(--color-text-tertiary);
-}
+/* 常用话术：现场打字慢，能点就别让人打（标题走共用的 .label） */
 .phrases { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 16rpx; }
 .phrase {
   min-height: 76rpx;

@@ -1,5 +1,6 @@
 /** 小程序端通用格式化工具（两个小程序共用，避免各页面各写一份） */
 import {
+  formatDateShortCn,
   formatDateTimeCn,
   formatDuration,
   REPAIR_TYPE_LABELS,
@@ -47,8 +48,10 @@ export function withOrderLabels<
     stayDays: number;
     stayText: string;
     stayTone: string;
-    /** 卡片「报修时间」那一行的值：时间和已等几天合成一行，不占两行 */
+    /** 卡片「报修时间」那一行的短日期：08/24 22:44 */
     timeText: string;
+    /** 跟在短日期后面的一枚小标：「已等 3 天」，按 stayTone 上色 */
+    stayBadge: string;
     /** 压了 7 天以上，卡片标题前挂「紧急」标签 */
     urgent: boolean;
     missingText: string;
@@ -71,9 +74,11 @@ export function withOrderLabels<
       stayDays: days,
       stayText: `已停留 ${days} 天`,
       stayTone: stayTone(days),
-      // 时间和「等了多久」合成一行：卡片每多一行就多一次上下找，
-      // 而这两件事本来就是一件事（什么时候报的、到现在压了多久）
-      timeText: `${formatDateTimeCn(item.createdAt)} · 已等 ${days} 天`,
+      // 时间和「等了多久」放同一行，但拆成两个值：
+      // 拼成一整串会超过一行宽度折行，而且整串跟着 stayTone 变红太吵 ——
+      // 日期永远是黑的，只有「已等 N 天」那一小截上色
+      timeText: formatDateShortCn(item.createdAt),
+      stayBadge: `已等 ${days} 天`,
       urgent: stayTone(days) === 'danger',
       missingText: missingMaterialsText(item.missingMaterials),
     };

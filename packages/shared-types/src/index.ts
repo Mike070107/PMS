@@ -736,6 +736,22 @@ export function formatDateTimeCn(value?: string | null): string {
 }
 
 /**
+ * 卡片列表里的短日期：08/24 22:44。
+ * 不带年份和星期 —— 列表卡是一行一行扫的，一行只有一个「值」的宽度，
+ * 完整格式（2026/8/24 22:44 周一）再拼上「已等 N 天」必然折行，
+ * 折一次这一行就断成两截，整齐就没了。详情页和时间轴仍然用完整格式。
+ */
+export function formatDateShortCn(value?: string | null): string {
+  const d = parseTime(value);
+  if (!d) return '';
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${mo}/${dd} ${hh}:${mm}`;
+}
+
+/**
  * 「猜你想输」的兜底词表。后台和小程序共用这一份 ——
  * 只在这里改一次，两端就同步了，不会出现后台加了词小程序还是老几个。
  */

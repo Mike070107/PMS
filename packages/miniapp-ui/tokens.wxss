@@ -96,5 +96,29 @@ page {
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
-.kv__v--warn { color: #ad6800; }
-.kv__v--danger { color: var(--color-danger); }
+/* 跟在值后面的一枚小标（「已等 3 天」这类）。
+   为什么不直接把整行值上色：一行「08/24 22:44 已等 8 天」全红，
+   和标题前那枚「紧急」标签加起来，一张卡上红成一片，反而看不出重点在哪。
+   日期永远是黑的，只有这一小截跟着状态变色。 */
+.kv__tag {
+  margin-left: 16rpx;
+  font-size: var(--font-sm);
+}
+.kv__tag--warn { color: #ad6800; }
+.kv__tag--danger { color: var(--color-danger); font-weight: 600; }
+
+/* ---------- 待填控件的统一外观（两端共用） ----------
+   「有底色 = 要你动手填」这条规矩，靠的就是这里的 --color-bg 底色。
+   多行输入框原来在 5 个页面里各写了一份（员工端 3 份 + 业主端 2 份），
+   min-height 三个值、还有一处把 34rpx 写死 —— 同一个控件长出五种样子，
+   下次谁改都不知道该改哪份。基线放这儿，页面只允许覆盖 min-height。 */
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 180rpx;
+  padding: 22rpx 24rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xl);
+  line-height: 1.6;
+}

@@ -29,7 +29,7 @@
     <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v kv__v--clamp">{{item.summaryContent}}</text></view>
     <view class="kv">
       <text class="kv__k">报修时间</text>
-      <text class="kv__v kv__v--{{item.stayTone}}">{{item.timeText}}</text>
+      <text class="kv__v">{{item.timeText}}<text class="kv__tag kv__tag--{{item.stayTone}}">{{item.stayBadge}}</text></text>
     </view>
 
     <view class="wo-card__foot">

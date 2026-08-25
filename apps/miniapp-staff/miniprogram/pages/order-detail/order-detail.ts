@@ -102,8 +102,8 @@ interface PageData {
   /** 从业主提交那刻算起的停留天数，工单池里最该被看见的信息 */
   stayText: string;
   stayTone: string;
-  /** 「报修时间」那一行的值：时间 + 已等几天合成一行 */
-  timeText: string;
+  /** 「报修时间」那一行日期后面的小标：「已等 3 天」 */
+  stayBadge: string;
   /** 压了 7 天以上，标题前挂「紧急」标签 */
   urgent: boolean;
   timeline: TimelineRow[];
@@ -165,7 +165,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     createdAtText: '',
     stayText: '',
     stayTone: 'normal',
-    timeText: '',
+    stayBadge: '',
     urgent: false,
     timeline: [],
     canAccept: false,
@@ -242,8 +242,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           detail.workOrder.completedAt ? new Date(detail.workOrder.completedAt) : new Date(),
         ),
         stayTone: stayTone(stayedDays),
-        // 和列表卡片同一句式：时间和已等几天合成一行，别占两行
-        timeText: `${formatDateTimeCn(detail.workOrder.createdAt)} · 已等 ${stayedDays} 天`,
+        // 和列表卡片同一句式：日期黑色，只有「已等 N 天」跟着状态上色
+        stayBadge: `已等 ${stayedDays} 天`,
         urgent: stayTone(stayedDays) === 'danger',
         timeline: buildTimeline(detail.logs, statusLabel, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
         canAccept:

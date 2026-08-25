@@ -51,16 +51,8 @@
   font-size: var(--font-xl);
 }
 .picker.placeholder { color: var(--color-text-tertiary); }
-.textarea {
-  box-sizing: border-box;
-  width: 100%;
-  height: 180rpx;
-  padding: 22rpx 24rpx;
-  background: var(--color-bg);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-xl);
-  line-height: 1.6;
-}
+/* 材料备注是固定高的小框；外观走 tokens.wxss 的 textarea 基线 */
+.textarea { height: 180rpx; min-height: 180rpx; }
 .field--row { display: flex; align-items: center; justify-content: space-between; }
 .field--row .label { margin-bottom: 0; }
 .photo-row { display: flex; align-items: center; gap: 16rpx; }

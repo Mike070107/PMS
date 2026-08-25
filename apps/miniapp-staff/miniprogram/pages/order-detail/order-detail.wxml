@@ -15,7 +15,7 @@
     <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{detail.request.addressText || '未填地址'}}</text></view>
     <view class="kv">
       <text class="kv__k">报修时间</text>
-      <text class="kv__v kv__v--{{stayTone}}">{{timeText}}</text>
+      <text class="kv__v">{{createdAtText}}<text class="kv__tag kv__tag--{{stayTone}}">{{stayBadge}}</text></text>
     </view>
     <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v">{{detail.request.content}}</text></view>
     <view wx:if="{{missingText}}" class="kv">
