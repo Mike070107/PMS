@@ -4,6 +4,9 @@ import type { StaffLoginReq } from '@pms/shared-types';
 /** 只报修、不接单的角色，登录后落到「我的报修」而不是工单池 */
 const REPORTER_ROLES = ['guard', 'neighborhood', 'owner_committee', 'property_staff'];
 
+/** 扫码登录票据的暂存位：web-login 页发现没登录时写入，登录成功后由这里送回去 */
+const PENDING_QR_KEY = 'pms.staff.pending_qr';
+
 interface StaffApp {
   setTokens: (a: string, r: string) => void;
   clearTokens: () => void;
@@ -118,10 +121,21 @@ Page({
 
   enter(accessToken: string, refreshToken: string, role?: string) {
     getApp<StaffApp>().setTokens(accessToken, refreshToken);
+    // 角色先存下，tabBar 首次渲染就能按权限藏 tab，不用等 me() 回来再跳一下
+    if (role) wx.setStorageSync('pms.staff.role', role);
+
+    // 扫了网页登录码但当时没登录的人：登录完必须送回确认页，
+    // 否则 scene 已经丢了，只能让人回电脑重新出码再扫一遍
+    let pendingQr = '';
+    try { pendingQr = wx.getStorageSync(PENDING_QR_KEY) || ''; } catch { pendingQr = ''; }
+    if (pendingQr) {
+      try { wx.removeStorageSync(PENDING_QR_KEY); } catch { /* 清不掉也不该挡住跳转 */ }
+      wx.redirectTo({ url: `/pages/web-login/web-login?scene=${encodeURIComponent(pendingQr)}` });
+      return;
+    }
+
     // 保安/居委会/业委会/物业工作人员只报修不接单，工单池对他们是空的 ——
     // 落地页直接给「我的报修」，别让人一进来就对着一屏别人要修的活。
-    // 角色也先存下，tabBar 首次渲染就能藏掉工单池，不用等 me() 回来再跳一下。
-    if (role) wx.setStorageSync('pms.staff.role', role);
     const isReporter = REPORTER_ROLES.indexOf(String(role || '')) >= 0;
     wx.switchTab({ url: isReporter ? '/pages/my-orders/my-orders' : '/pages/pool/pool' });
   },

@@ -42,6 +42,15 @@ export interface WxaCodeOptions {
   envVersion?: WxEnvVersion;
   /** true = 透明底，印刷时更好排版 */
   isHyaline?: boolean;
+  /**
+   * 是否让微信校验 page 存在。默认跟着 envVersion 走：
+   * release 才校验，trial/develop 一律不校验。
+   *
+   * 微信的规则是「check_path 为 true 时，page 必须是**已发布正式版**里存在的页面」——
+   * 小程序还没发布时，哪怕开发版里明明有这个页面，也照样回 41030。
+   * 硬编码成 true 会让未发布的小程序完全出不了码。
+   */
+  checkPath?: boolean;
 }
 
 const API_BASE = 'https://api.weixin.qq.com';
@@ -51,7 +60,8 @@ const WXACODE_ERROR_HINTS: Record<number, string> = {
   40001: 'access_token 无效，检查 WX_OWNER_APPID / WX_OWNER_SECRET 是否填对',
   41030:
     '落地页在该版本的小程序里不存在。正式版（release）要求小程序已发布上线；' +
-    '还没提审发布时，把 WX_OWNER_QR_ENV_VERSION 改成 trial（体验版）或 develop（开发版）先验证',
+    '还没提审发布时，把对应的 *_QR_ENV_VERSION 改成 trial（体验版）或 develop（开发版）—— ' +
+    '非 release 会自动关掉 check_path，未发布的小程序才出得了码',
   45009: '调用超出微信频率限制，稍后再试（getUnlimited 默认 10 万次/天）',
   40097: '参数错误：scene 超长或含非法字符，page 不能带参数、不能有前导斜杠',
   40169: 'scene 为空或不合法',
@@ -128,7 +138,7 @@ export class WechatService {
       env_version: options.envVersion ?? 'release',
       is_hyaline: options.isHyaline ?? false,
       auto_color: false,
-      check_path: true,
+      check_path: options.checkPath ?? (options.envVersion ?? 'release') === 'release',
     };
 
     let token = await this.accessToken(appType);

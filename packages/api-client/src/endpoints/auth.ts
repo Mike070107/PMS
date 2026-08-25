@@ -68,3 +68,55 @@ export interface OwnerMatchPhoneResp {
 export const matchPhone = (data: { phoneCode: string; communityId?: number }) =>
   request<OwnerMatchPhoneResp>({ method: 'POST', url: '/auth/owner-match-phone', data });
 
+// ---------------- 后台网页扫码登录 ----------------
+
+/** 网页出码。qrImage 是 data:image/png;base64,... 可直接塞进 <img src> */
+export interface QrLoginTicketResp {
+  ticket: string;
+  qrImage: string;
+  expiresIn: number;
+}
+
+/** 网页轮询的结果。confirmed 时带上 token，且这张票据当场作废 */
+export interface QrLoginStatusResp {
+  status: 'pending' | 'scanned' | 'confirmed' | 'cancelled' | 'expired';
+  accessToken?: string;
+  tokenType?: string;
+  /** 和账号密码登录同一个形状，网页两条路共用一套 setSession */
+  user?: AdminLoginResp['user'];
+}
+
+export const qrLoginTicket = () =>
+  request<QrLoginTicketResp>({
+    method: 'POST',
+    url: '/auth/qr-login/ticket',
+    anonymous: true,
+  });
+
+export const qrLoginStatus = (ticket: string) =>
+  request<QrLoginStatusResp>({
+    url: '/auth/qr-login/status',
+    query: { ticket },
+    anonymous: true,
+  });
+
+/** 扫开小程序码后，告诉本人「谁在哪台机器上要登录」 */
+export interface QrLoginScanInfo {
+  ticket: string;
+  status: string;
+  /** 出码那台机器的 IP 和浏览器，本人据此判断是不是自己 */
+  clientIp: string | null;
+  userAgent: string | null;
+  requestedAt: string;
+  expiresAt: string;
+  me: { name: string | null; roleLabel: string | null };
+}
+
+export const qrLoginScan = (ticket: string) =>
+  request<QrLoginScanInfo>({ method: 'POST', url: '/auth/qr-login/scan', data: { ticket } });
+
+export const qrLoginConfirm = (ticket: string) =>
+  request<{ ok: true }>({ method: 'POST', url: '/auth/qr-login/confirm', data: { ticket } });
+
+export const qrLoginCancel = (ticket: string) =>
+  request<{ ok: true }>({ method: 'POST', url: '/auth/qr-login/cancel', data: { ticket } });

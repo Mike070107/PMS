@@ -1,0 +1,65 @@
+<view class="container">
+  <view wx:if="{{loading}}" class="card state">
+    <view class="state__text">正在核对二维码…</view>
+  </view>
+
+  <!-- 失败/过期：说清原因，别只给一句「失败」 -->
+  <block wx:elif="{{errorMsg}}">
+    <view class="card state">
+      <view class="state__icon state__icon--warn"></view>
+      <view class="state__title">无法确认登录</view>
+      <view class="state__text">{{errorMsg}}</view>
+    </view>
+    <button class="btn btn--ghost" bindtap="onBackHome">返回首页</button>
+  </block>
+
+  <!-- 已处理完 -->
+  <block wx:elif="{{done}}">
+    <view class="card state">
+      <view class="state__icon {{done === 'confirmed' ? 'state__icon--ok' : 'state__icon--warn'}}"></view>
+      <view class="state__title">{{done === 'confirmed' ? '已确认，请回到电脑' : '已拒绝这次登录'}}</view>
+      <view class="state__text">
+        {{done === 'confirmed'
+          ? '网页会自动进入后台，这个页面可以关掉了。'
+          : '网页那边不会登录。如果这次登录不是你发起的，建议把后台密码改一下。'}}
+      </view>
+    </view>
+    <button class="btn btn--ghost" bindtap="onBackHome">返回首页</button>
+  </block>
+
+  <!-- 确认 -->
+  <block wx:else>
+    <view class="lead">
+      <view class="lead__title">确认在电脑上登录后台？</view>
+      <view class="lead__sub">确认后，那台电脑就能用你的身份进入邻修管理后台。</view>
+    </view>
+
+    <view class="card">
+      <view class="row">
+        <text class="row__label">登录身份</text>
+        <text class="row__value">{{info.me.name || '本人'}}<text wx:if="{{info.me.roleLabel}}"> · {{info.me.roleLabel}}</text></text>
+      </view>
+      <view class="row">
+        <text class="row__label">设备</text>
+        <text class="row__value">{{deviceText}}</text>
+      </view>
+      <view class="row" wx:if="{{info.clientIp}}">
+        <text class="row__label">来源 IP</text>
+        <text class="row__value">{{info.clientIp}}</text>
+      </view>
+      <view class="row">
+        <text class="row__label">发起时间</text>
+        <text class="row__value">{{timeText}}</text>
+      </view>
+    </view>
+
+    <view class="warn">不是你本人在电脑上操作？请点「不是我」，并联系管理员。</view>
+
+    <view class="btn-group">
+      <button class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onConfirm">
+        确认登录
+      </button>
+      <button class="btn btn--outline" disabled="{{submitting}}" bindtap="onCancel">不是我</button>
+    </view>
+  </block>
+</view>

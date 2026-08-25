@@ -467,18 +467,7 @@ export class AuthService {
     if (user.status !== UserStatus.ACTIVE) {
       throw new ForbiddenException('account is disabled');
     }
-    // 双轨制下业务身份不再决定后台准入：小程序端身份（业主/维修工/保安/
-    // 居委会/业委会/物业工作人员）绑了后台角色照样放行，没绑一律拦 ——
-    // 这就是「给工作人员授权网页登录」的口子：用户管理里绑角色即可。
-    if (
-      user.role === UserRole.TECHNICIAN ||
-      SELF_SCOPED_ROLES.includes(user.role as UserRole)
-    ) {
-      const bindings = await this.userRoleRepo.count({ where: { userId: user.id } });
-      if (!bindings) {
-        throw new ForbiddenException('role cannot login to admin');
-      }
-    }
+    await this.assertWebAdminAccess(user);
 
     const matched = await bcrypt.compare(dto.password, user.passwordHash);
     if (!matched) {
@@ -493,6 +482,45 @@ export class AuthService {
    * SaaS 服务闸门（登录时的友好版）：公司停用/到期在这里给出明确文案，
    * 逐请求的硬拦截在 jwt.strategy —— 两边判断口径保持一致。
    */
+  /**
+   * 「这个人能不能进网页后台」——账号密码登录和扫码登录共用这一份判断。
+   *
+   * 双轨制下业务身份不再决定后台准入：小程序端身份（业主/维修工/保安/居委会/
+   * 业委会/物业工作人员）绑了后台角色照样放行，没绑一律拦 —— 这就是
+   * 「给工作人员授权网页登录」的口子：用户管理里绑角色即可。
+   *
+   * 新增任何一种进后台的方式都必须过这里。少调一次，那条新路子就成了绕开
+   * 角色矩阵的后门（扫码登录不校验密码，尤其不能漏）。
+   */
+  private async assertWebAdminAccess(user: User) {
+    if (
+      user.role === UserRole.TECHNICIAN ||
+      SELF_SCOPED_ROLES.includes(user.role as UserRole)
+    ) {
+      const bindings = await this.userRoleRepo.count({ where: { userId: user.id } });
+      if (!bindings) {
+        throw new ForbiddenException(
+          '这个账号没有开通网页后台权限，请让管理员在「用户管理」里绑定后台角色',
+        );
+      }
+    }
+  }
+
+  /**
+   * 扫码登录换网页 token：本人已经在员工端小程序里确认过身份了，
+   * 所以跳过密码，但停用、后台角色、租户有效期三道校验一个都不能省。
+   */
+  async issueWebTokensForUser(userId: number) {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('user not found');
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException('该账号已停用，请联系管理员');
+    }
+    await this.assertWebAdminAccess(user);
+    await this.assertTenantActive(user);
+    return this.issueTokens(user);
+  }
+
   private async assertTenantActive(user: User) {
     if (user.role === UserRole.SUPERADMIN || !user.tenantId) return;
     const tenant = await this.tenantRepo.findOne({

@@ -1,0 +1,84 @@
+/* 确认页只让人做一件事：看清是不是自己，然后二选一。
+   字号沿用全局阶梯（tokens.wxss），这里不写死 rpx 字号。 */
+
+.lead {
+  padding: var(--space-md) var(--space-xs) var(--space-lg);
+}
+.lead__title {
+  font-size: var(--font-3xl);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-text);
+}
+.lead__sub {
+  margin-top: var(--space-sm);
+  font-size: var(--font-md);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding: var(--space-md) 0;
+  border-bottom: 2rpx solid var(--color-border);
+}
+.row:last-child { border-bottom: none; }
+.row__label {
+  flex: 0 0 160rpx;
+  font-size: var(--font-md);
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+}
+.row__value {
+  flex: 1 1 auto;
+  font-size: var(--font-lg);
+  line-height: 1.6;
+  color: var(--color-text);
+  word-break: break-all;
+}
+
+.warn {
+  margin: var(--space-lg) var(--space-xs);
+  font-size: var(--font-md);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.btn-group { margin-top: var(--space-lg); }
+
+/* ---- 加载 / 结果态 ---- */
+.state {
+  text-align: center;
+  padding: var(--space-xl) var(--space-lg);
+}
+.state__title {
+  margin-top: var(--space-md);
+  font-size: var(--font-3xl);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-text);
+}
+.state__text {
+  margin-top: var(--space-sm);
+  font-size: var(--font-md);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+/* 图标一律 SVG，不用 emoji */
+.state__icon {
+  width: 96rpx;
+  height: 96rpx;
+  margin: 0 auto;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+.state__icon--ok {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2352c41a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M8 12.5l2.5 2.5L16 9.5'/%3E%3C/svg%3E");
+}
+.state__icon--warn {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23faad14' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5.5'/%3E%3Cpath d='M12 16.5h.01'/%3E%3C/svg%3E");
+}

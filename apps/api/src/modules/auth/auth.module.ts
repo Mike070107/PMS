@@ -13,11 +13,13 @@ import {
   UserAudit,
   UserReportCommunity,
   UserRoleAssignment,
+  WebLoginTicket,
 } from '../../entities';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { WechatService } from './wechat.service';
+import { QrLoginService } from './qr-login.service';
 
 @Module({
   imports: [
@@ -32,6 +34,7 @@ import { WechatService } from './wechat.service';
       UserAudit,
       UserReportCommunity,
       UserRoleAssignment,
+      WebLoginTicket,
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -45,7 +48,7 @@ import { WechatService } from './wechat.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, WechatService],
-  exports: [JwtModule, PassportModule, WechatService],
+  providers: [AuthService, JwtStrategy, WechatService, QrLoginService],
+  exports: [JwtModule, PassportModule, WechatService, QrLoginService],
 })
 export class AuthModule {}

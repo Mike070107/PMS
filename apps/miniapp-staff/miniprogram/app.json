@@ -9,7 +9,8 @@
     "pages/approvals/approvals",
     "pages/materials/materials",
     "pages/inventory/inventory",
-    "pages/me/me"
+    "pages/me/me",
+    "pages/web-login/web-login"
   ],
   "window": {
     "navigationBarTitleText": "邻修工作台",

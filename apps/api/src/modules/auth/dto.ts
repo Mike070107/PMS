@@ -132,3 +132,10 @@ export class OwnerMatchPhoneDto {
   @IsInt()
   communityId?: number;
 }
+
+/** 扫码登录：小程序侧带回票据（就是小程序码的 scene） */
+export class QrLoginTicketDto {
+  @IsString()
+  @MaxLength(32)
+  ticket: string;
+}
