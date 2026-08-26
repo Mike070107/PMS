@@ -1,10 +1,16 @@
 /* 卡片、缩略图、底部操作条、.kv 信息行都在 tokens.wxss / app.wxss 里统一定义，
    这里只放「按住说话」这一个本页独有的控件 */
 
-/* 按住说话：现场戴手套、单手拿手机，这个按钮是这一屏的主角，做到一整行、够高 */
+/* 按住说话：现场戴手套、单手拿手机，做成卡片一整行宽。
+   width / 左右 margin 必须 !important —— 微信 button 基础样式对这两项优先级比普通类高，
+   不加的话按钮按文字宽度缩成一小块、被 auto margin 居中（app.wxss 的 .btn 同理，见那里的注释）。
+   高度 96rpx：够老人戴手套按（≥88rpx 的下限），又不至于把「说一句话」这张卡撑成一整屏 */
 .hold {
-  width: 100%;
-  height: 132rpx;
+  width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  box-sizing: border-box;
+  height: 96rpx;
   margin-top: 8rpx;
   display: flex;
   align-items: center;
@@ -12,7 +18,7 @@
   border-radius: var(--radius-sm);
   background: var(--color-brand);
   color: #fff;
-  font-size: var(--font-2xl);
+  font-size: var(--font-xl);
   font-weight: 600;
 }
 .hold::after { border: none; }
