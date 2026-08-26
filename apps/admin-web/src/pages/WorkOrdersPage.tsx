@@ -5,6 +5,7 @@ import {
   Card,
   Checkbox,
   Col,
+  Collapse,
   DatePicker,
   Descriptions,
   Drawer,
@@ -647,9 +648,10 @@ function isFilledFormValue(value: unknown): boolean {
 }
 
 /**
- * 同楼栋历史报修：贴在房号下面，录到「228弄4号」时立刻看到这栋楼最近报过什么，
- * 重复报修当场就能认出来。原来是工单池上方一张五列表格，面板里只有 560px 宽，
- * 改成一行一条的紧凑列表，点一条打开工单详情。
+ * 同楼栋历史报修：房号下面一张独立的折叠卡片，默认收起、标题带条数。
+ * 之前是一行一条直接铺在表单里 —— 一栋楼几十条历史就把录入面板塞满了（2026-08-27 反馈）。
+ * 展开是「时间 / 地址 / 报修内容 / 状态」的小表格，限高自己滚，点一行打开工单详情；
+ * 换了房号自动收回去，别让上一栋楼的列表挡着新的录入。
  */
 function RepairHistoryInline({
   title,
@@ -664,47 +666,78 @@ function RepairHistoryInline({
   repairTypeRules: RepairTypeRule[];
   onOpenWorkOrder: (id: number) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => { setExpanded(false); }, [title]);
   if (!title) return null;
+  const empty = !loading && rows.length === 0;
   return (
-    <div className="pms-repair-dock__history">
-      <div className="pms-repair-dock__history-head">
-        <Text strong>同楼栋历史报修</Text>
-        <Text type="secondary" className="pms-repair-dock__history-title" title={title}>{title}</Text>
-        {!loading && <Text type="secondary" className="pms-repair-dock__history-count">{rows.length} 条</Text>}
-      </div>
-      {loading ? (
-        <div className="pms-repair-dock__history-empty"><Spin size="small" /></div>
-      ) : rows.length === 0 ? (
-        <div className="pms-repair-dock__history-empty"><Text type="secondary">此楼栋暂无历史报修</Text></div>
-      ) : (
-        <ul className="pms-repair-dock__history-list">
-          {rows.map((r) => (
-            <li key={r.workOrderId || `req-${r.requestId}`}>
-              <button
-                type="button"
-                className="pms-repair-dock__history-row"
-                disabled={!r.workOrderId}
-                title={r.workOrderId ? '查看工单' : '还没建工单'}
-                onClick={() => { if (r.workOrderId) onOpenWorkOrder(r.workOrderId); }}
-              >
-                {r.status
-                  ? <Tag color={statusMeta[r.status].color} style={{ marginInlineEnd: 0 }}>{statusMeta[r.status].label}</Tag>
-                  : <Tag style={{ marginInlineEnd: 0 }}>未建单</Tag>}
-                <span className="pms-repair-dock__history-main">
-                  <span className="pms-repair-dock__history-addr" title={r.summaryAddress || undefined}>
-                    {r.summaryAddress || '-'}
+    <Collapse
+      className="pms-repair-dock__history"
+      size="small"
+      activeKey={expanded && !empty ? ['history'] : []}
+      onChange={(keys) => setExpanded((Array.isArray(keys) ? keys : [keys]).includes('history'))}
+      collapsible={empty || loading ? 'disabled' : 'header'}
+      items={[{
+        key: 'history',
+        label: (
+          <span className="pms-repair-dock__history-label">
+            <Text strong>同楼栋历史报修</Text>
+            <Text type="secondary" className="pms-repair-dock__history-title" title={title}>{title}</Text>
+          </span>
+        ),
+        extra: loading
+          ? <Spin size="small" />
+          : <Text type={rows.length ? undefined : 'secondary'} className="pms-repair-dock__history-count">{rows.length ? `${rows.length} 条` : '暂无'}</Text>,
+        children: (
+          <Table<RepairHistoryRow>
+            className="pms-repair-dock__history-table"
+            rowKey={(r) => String(r.workOrderId || `req-${r.requestId}`)}
+            size="small"
+            dataSource={rows}
+            pagination={false}
+            tableLayout="fixed"
+            scroll={rows.length > 6 ? { y: 264 } : undefined}
+            onRow={(r) => ({
+              onClick: () => { if (r.workOrderId) onOpenWorkOrder(r.workOrderId); },
+              style: { cursor: r.workOrderId ? 'pointer' : 'default' },
+              title: r.workOrderId ? '点击查看工单详情' : '还没建工单',
+            })}
+            columns={[
+              {
+                title: '时间', dataIndex: 'createdAt', width: 92,
+                render: (v: string) => {
+                  // 「2026/8/24 23:44 周一」拆成两行，窄列里不至于挤成一坨
+                  const text = formatDateTimeCn(v) || '-';
+                  const cut = text.indexOf(' ');
+                  return cut > 0
+                    ? <span className="pms-repair-dock__history-when">{text.slice(0, cut)}<br />{text.slice(cut + 1)}</span>
+                    : text;
+                },
+              },
+              {
+                title: '地址', dataIndex: 'summaryAddress', width: 110, ellipsis: true,
+                render: (v: string | null) => v || '-',
+              },
+              {
+                title: '报修内容', key: 'content', ellipsis: true,
+                render: (_, r) => (
+                  <span title={`${getRepairTypeLabel(r.repairType, repairTypeRules)} · ${r.summaryContent || '-'}`}>
+                    <Text type="secondary">{getRepairTypeLabel(r.repairType, repairTypeRules)} · </Text>
+                    {r.summaryContent || '-'}
                   </span>
-                  <span className="pms-repair-dock__history-content" title={r.summaryContent || undefined}>
-                    {getRepairTypeLabel(r.repairType, repairTypeRules)} · {r.summaryContent || '-'}
-                  </span>
-                </span>
-                <span className="pms-repair-dock__history-time">{formatDateTimeCn(r.createdAt) || ''}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+                ),
+              },
+              {
+                title: '状态', dataIndex: 'status', width: 84,
+                render: (s: WorkOrderStatus | null) => s
+                  ? <Tag color={statusMeta[s].color} style={{ marginInlineEnd: 0 }}>{statusMeta[s].label}</Tag>
+                  : <Tag style={{ marginInlineEnd: 0 }}>未建单</Tag>,
+              },
+            ]}
+          />
+        ),
+      }]}
+    />
   );
 }
 

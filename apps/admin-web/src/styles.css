@@ -1095,19 +1095,23 @@ a,
   color: var(--pms-ink-secondary);
 }
 
-/* 同楼栋历史报修：贴在房号下面的紧凑列表，一行一条，点开工单详情 */
+/* 同楼栋历史报修：房号下面一张独立折叠卡片，默认收起、标题带条数；展开是限高的小表格 */
 .pms-repair-dock__history {
   margin: -8px 0 20px;
-  padding: 10px 12px 6px;
-  border: 1px solid var(--pms-border);
-  border-radius: 10px;
   background: var(--pms-surface-soft);
 }
-.pms-repair-dock__history-head {
+.pms-repair-dock__history > .ant-collapse-item > .ant-collapse-header {
+  align-items: center;
+  padding-block: 10px;
+}
+.pms-repair-dock__history .ant-collapse-content-box {
+  padding: 0 !important;
+}
+.pms-repair-dock__history-label {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin-bottom: 4px;
+  min-width: 0;
   font-size: 14px;
 }
 .pms-repair-dock__history-title {
@@ -1119,72 +1123,21 @@ a,
   font-size: 13px;
 }
 .pms-repair-dock__history-count {
-  flex: none;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-}
-.pms-repair-dock__history-empty {
-  padding: 6px 0 8px;
-  font-size: 13px;
-}
-.pms-repair-dock__history-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 224px;
-  overflow-y: auto;
-}
-.pms-repair-dock__history-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px;
-  border: 0;
-  border-radius: 8px;
-  background: none;
-  text-align: left;
-  font: inherit;
-  color: var(--pms-ink);
-  cursor: pointer;
-  transition: background 150ms ease;
-}
-.pms-repair-dock__history-row:hover,
-.pms-repair-dock__history-row:focus-visible {
-  background: rgba(49, 85, 138, 0.08);
-  outline: none;
-}
-.pms-repair-dock__history-row:focus-visible {
-  box-shadow: 0 0 0 2px rgba(49, 85, 138, 0.35);
-}
-.pms-repair-dock__history-row:disabled {
-  cursor: default;
-  color: var(--pms-ink-secondary);
-  background: none;
-}
-.pms-repair-dock__history-main {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  line-height: 1.45;
-}
-.pms-repair-dock__history-addr,
-.pms-repair-dock__history-content {
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.pms-repair-dock__history-addr {
-  font-size: 14px;
-  font-weight: 600;
-}
-.pms-repair-dock__history-content {
+.pms-repair-dock__history-table .ant-table {
+  border-radius: 0 0 8px 8px;
   font-size: 13px;
-  color: var(--pms-ink-secondary);
 }
-.pms-repair-dock__history-time {
-  flex: none;
+.pms-repair-dock__history-table .ant-table-thead > tr > th,
+.pms-repair-dock__history-table .ant-table-tbody > tr > td {
+  padding: 6px 8px;
+}
+.pms-repair-dock__history-when {
+  display: inline-block;
+  line-height: 1.35;
   font-size: 12px;
   color: var(--pms-ink-secondary);
   font-variant-numeric: tabular-nums;
@@ -1206,8 +1159,7 @@ a,
 }
 @media (prefers-reduced-motion: reduce) {
   .pms-repair-dock,
-  .pms-repair-dock-fab,
-  .pms-repair-dock__history-row {
+  .pms-repair-dock-fab {
     transition: none;
   }
 }
