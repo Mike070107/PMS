@@ -81,6 +81,30 @@ button::after { border: none; }
 .btn-row { display: flex; gap: 20rpx; }
 .btn-row .btn { width: auto !important; flex: 1 1 0; }
 
+/* ---------- 「为什么这里是空的 / 为什么点不了」的说明块 ----------
+   权限不够、功能没配、数据为空这类情况，一律给一条看得见的说明，**不要无声隐藏按钮**。
+   2026-08-26 踩过：办公室账号的后台角色只勾了「查看」，于是派单台没有派单按钮、
+   库存页没有编辑按钮，页面看着一切正常，人只能一个个来问「我该在哪儿点」。
+   文案要写清两件事：现在为什么不行、去哪儿能解决。 */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  padding: 24rpx 28rpx;
+  margin-bottom: var(--space-lg);
+  border: 2rpx solid var(--color-warning);
+  border-radius: var(--radius-md);
+  background: rgba(250, 173, 20, 0.08);
+}
+.notice__body { flex: 1; min-width: 0; }
+.notice__title { font-size: var(--font-lg); font-weight: 600; line-height: 1.5; color: #ad6800; }
+.notice__desc {
+  margin-top: 8rpx;
+  font-size: var(--font-md);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
 /* ---------- 表单 ---------- */
 .field { margin-bottom: 32rpx; }
 .field:last-child { margin-bottom: 0; }

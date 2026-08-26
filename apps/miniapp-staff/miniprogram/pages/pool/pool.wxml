@@ -20,6 +20,17 @@
 
   <!-- ===== 派单台：状态筛选 + 搜索。维修工不需要，池子里只有一种单 ===== -->
   <block wx:if="{{dispatcher}}">
+    <!-- 只给了查看权限时，卡片上不会有派单按钮。必须说清为什么、去哪儿开，
+         不能让人对着一屏「待派单」找不到入口 -->
+    <view wx:if="{{!canDispatch}}" class="notice">
+      <view class="notice__body">
+        <view class="notice__title">你的账号只能查看工单，不能派单</view>
+        <view class="notice__desc">
+          请管理员在管理后台「角色管理」里找到你的角色，把「工单管理」这一行的「编辑」勾上，重新登录即可派单。
+        </view>
+      </view>
+    </view>
+
     <scroll-view class="chips" scroll-x enable-flex>
       <view
         wx:for="{{filters}}"

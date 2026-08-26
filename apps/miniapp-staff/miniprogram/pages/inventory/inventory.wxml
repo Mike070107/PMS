@@ -12,6 +12,17 @@
 
     <!-- ============ 库存：这一屏的主体，列的是全部 SKU + 它现在还有几个 ============ -->
     <block wx:if="{{tab === 'stock'}}">
+      <!-- 只读账号看不到「编辑 SKU」和「+ 新增」。补照片、补资料正是办公室要干的活，
+           静静地不给按钮，人只会以为功能没做 -->
+      <view wx:if="{{!canEdit}}" class="notice">
+        <view class="notice__body">
+          <view class="notice__title">你的账号只能查看，不能改材料资料</view>
+          <view class="notice__desc">
+            补照片、补类别成本、新增 SKU 都需要编辑权限。请管理员在管理后台「角色管理」里，把你的角色在「材料 SKU 库」这一行的「编辑」勾上，重新登录即可。
+          </view>
+        </view>
+      </view>
+
       <view class="toolbar">
         <picker class="picker-wrap" mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onPickWarehouse">
           <view class="picker">{{warehouseNames[warehouseIndex] || '全部仓库'}}</view>

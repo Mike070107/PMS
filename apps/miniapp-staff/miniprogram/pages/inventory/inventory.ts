@@ -154,17 +154,21 @@ Page({
     this.load();
   },
 
+  /**
+   * 下拉刷新连权限一起重新拿 —— 后台刚勾上「材料 SKU 库-编辑」，
+   * 不强制刷新的话这一屏还是没有「编辑 SKU」，得杀掉小程序重进才认。
+   */
   onPullDownRefresh() {
-    this.load().finally(() => wx.stopPullDownRefresh());
+    this.load(true).finally(() => wx.stopPullDownRefresh());
   },
 
   /** 给弹层遮罩的 catchtouchmove 用：吞掉滑动，别让底下的列表跟着滚 */
   noop() {},
 
-  async load() {
+  async load(refreshSession = false) {
     this.setData({ loading: true });
     try {
-      const session = await getSession(this);
+      const session = await getSession(this, refreshSession);
       if (!session.canViewMaterials && !session.canViewInventory) {
         this.setData({
           canView: false,

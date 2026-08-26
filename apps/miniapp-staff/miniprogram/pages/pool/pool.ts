@@ -120,14 +120,19 @@ Page({
     this.load();
   },
 
+  /**
+   * 下拉刷新连权限一起重新拿。
+   * 后台刚给这个角色勾上「工单管理-编辑」，人回到小程序却还是没有派单按钮 ——
+   * 会话里的权限是登录时那一份，不强制刷新就得杀掉小程序重进，没人猜得到。
+   */
   onPullDownRefresh() {
-    this.load().finally(() => wx.stopPullDownRefresh());
+    this.load(true).finally(() => wx.stopPullDownRefresh());
   },
 
-  async load() {
+  async load(refreshSession = false) {
     this.setData({ loading: true });
     try {
-      const session = await getSession(this);
+      const session = await getSession(this, refreshSession);
       const dispatcher = session.isDispatcher;
       const filter = FILTERS[this.data.filterIndex] || FILTERS[0];
       const keyword = this.data.keyword.trim();
