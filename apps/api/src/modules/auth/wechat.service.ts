@@ -99,7 +99,7 @@ function explainSubscribeError(resp: { errcode?: number; errmsg?: string }): str
     case 43101:
       return `对方没有授权或授权额度已用完（43101）。让他在小程序里再点一次「允许」；勾了「总是保持以上选择」之后不用再点。${raw}`;
     case 47003:
-      return `模板字段对不上（47003）：某个字段的内容不符合微信对该类型的限制（thing≤20字、character_string≤32字、time 要是日期时间）。${raw}`;
+      return `模板字段对不上（47003）：某个字段的内容不符合微信对该参数类别的规则（thing≤20 字；phrase 只收≤5 个纯汉字；name 纯汉字≤10；character_string≤32 位且不能有汉字；time 要是「2026年8月26日 22:17」这种）。${raw}`;
     case 40037:
       return `模板 ID 不存在（40037）：确认它是在**这个**小程序里申请的，模板不能跨小程序用。${raw}`;
     case 41028:

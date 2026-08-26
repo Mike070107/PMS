@@ -38,7 +38,10 @@ export const TEMPLATE_APP: Record<SubscribeTemplateKey, WxAppType> = {
 export interface TemplateFields {
   orderNo: string;
   type: string;
+  /** 状态，可以是一句话（「已派单给张师傅」），填 thing 类字段 */
   status: string;
+  /** 状态词，≤5 个汉字（「已派单」）：phrase 类字段微信只收纯汉字，长句硬截会被拒 */
+  statusShort?: string;
   content: string;
   assignee: string;
   address: string;
@@ -59,20 +62,89 @@ const LABEL_RULES: { test: RegExp; field: keyof TemplateFields }[] = [
   { test: /地址|位置|房号|地点/, field: 'address' },
 ];
 
-/** 微信对各字段类型的限制：超长直接拒收（47003），所以按类型截断 */
-const TYPE_LIMIT: Record<string, number> = {
-  thing: 20,
-  character_string: 32,
-  phrase: 5,
-  name: 10,
-  short_thing: 5,
-  letter: 32,
-  symbol: 5,
-};
+/**
+ * 按微信对每种参数类别的规则把值「整形」到能被接收的样子。
+ *
+ * 微信的校验是逐类别的，不只是长度（2026-08-26 发测试就撞上：phrase 字段填了
+ * 「新工单待…」—— 5 个字没超长，但 phrase **只收汉字**，那个省略号就让整条 47003）。
+ * 规则来自官方「参数类别」表：
+ *   thing            20 个以内字符，汉字/数字/字母/符号都行
+ *   phrase           5 个以内**纯汉字**
+ *   name             10 个以内纯汉字，或 20 个以内纯字母/符号
+ *   character_string 32 位以内数字/字母/符号（不能有汉字）
+ *   letter           32 位以内纯字母
+ *   symbol           5 位以内纯符号
+ *   number           32 位以内数字，可带小数
+ *   amount           1 个币种符号 + 10 位以内数字，结尾可带「元」
+ *   phone_number     17 位以内数字/符号
+ *   car_number       8 位以内
+ *   time             24 小时制时间，可带年月日：「2026年8月26日 22:17」
+ *   date             年月日，可带时间
+ * 每种类别都保证给出一个合法的非空值 —— 微信不接受空串，一个字段不合法整条都不发。
+ */
+export function fitToType(raw: string, type: string): string {
+  const text = String(raw ?? '').replace(/\s+/g, ' ').trim();
+  const chars = (s: string) => Array.from(s);
+  const hardCut = (s: string, max: number) => chars(s).slice(0, max).join('');
+  // 超长的自由文本截断时留个省略号，让人知道后面还有；只用于允许符号的类别
+  const softCut = (s: string, max: number) =>
+    chars(s).length > max ? `${chars(s).slice(0, max - 1).join('')}…` : s;
+  const HAN = /[\u3400-\u4dbf\u4e00-\u9fff]/g;
+  const onlyHan = (s: string) => (s.match(HAN) || []).join('');
+  const noHan = (s: string) => s.replace(HAN, '').replace(/\s+/g, '');
+  const now = () => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return {
+      date: `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`,
+      time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    };
+  };
 
-function clip(value: string, max = 20): string {
-  const text = String(value ?? '').trim();
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+  switch (type) {
+    case 'thing':
+      return softCut(text, 20) || '—';
+    case 'short_thing':
+      return hardCut(text, 5) || '—';
+    case 'phrase':
+      return hardCut(onlyHan(text), 5) || '待处理';
+    case 'name': {
+      const han = onlyHan(text);
+      if (han) return hardCut(han, 10);
+      // 没有汉字：只留字母和符号（数字、空格都不行）
+      return hardCut(text.replace(/[0-9\s]/g, ''), 20) || '未指定';
+    }
+    case 'character_string':
+      return hardCut(noHan(text), 32) || '-';
+    case 'letter':
+      return hardCut(text.replace(/[^A-Za-z]/g, ''), 32) || 'NA';
+    case 'symbol':
+      return hardCut(text.replace(/[\u3400-\u4dbf\u4e00-\u9fffA-Za-z0-9\s]/g, ''), 5) || '—';
+    case 'number':
+      return hardCut(text.replace(/[^\d.]/g, ''), 32) || '0';
+    case 'amount': {
+      if (/^[¥￥$]?\d+(\.\d+)?元?$/.test(text)) return text;
+      const digits = text.replace(/[^\d.]/g, '');
+      return `${hardCut(digits, 10) || '0'}元`;
+    }
+    case 'phone_number':
+      return hardCut(text.replace(/[^\d+\-() ]/g, ''), 17) || '-';
+    case 'car_number':
+      return hardCut(text, 8) || '-';
+    case 'time': {
+      // 「22:17」或「2026年8月26日 22:17」都合法；别的一律换成当前时刻
+      if (/^(\d{4}年\d{1,2}月\d{1,2}日 )?\d{1,2}:\d{2}(~(\d{4}年\d{1,2}月\d{1,2}日 )?\d{1,2}:\d{2})?$/.test(text)) return text;
+      const n = now();
+      return `${n.date} ${n.time}`;
+    }
+    case 'date': {
+      if (/^\d{4}年\d{1,2}月\d{1,2}日( \d{1,2}:\d{2})?$/.test(text)) return text;
+      return now().date;
+    }
+    default:
+      // 没见过的类别按最宽松的 thing 处理，至少不发空串
+      return softCut(text, 20) || '—';
+  }
 }
 
 export interface TemplateMappingRow {
@@ -87,7 +159,7 @@ export interface TemplateMappingRow {
  *
  * 顺序：1) 按关键词名称匹配；2) 没匹配上的按类型兜底（time→时间、
  * character_string→编号、phrase→状态、thing→依次挑还没用过的内容/状态/类型/地址/维修工）。
- * 每个字段都保证有值（微信不接受空串），并按类型截断。
+ * 每个字段都保证有值（微信不接受空串），并按类别整形成微信认的样子（fitToType）。
  */
 export function buildTemplateData(
   fields: TemplateFields,
@@ -111,10 +183,12 @@ export function buildTemplateData(
     }
     used.add(from);
     let value = String(fields[from] ?? '').trim();
-    if (!value) value = from === 'time' ? fields.time : '—';
-    if (f.type === 'number') value = value.replace(/\D/g, '') || '0';
-    const limit = TYPE_LIMIT[f.type];
-    if (limit) value = clip(value, limit);
+    // 状态词（phrase）只收 5 个以内汉字：优先用事件给的短状态，别把长句硬截成「新工单待…」
+    if ((f.type === 'phrase' || f.type === 'short_thing') && from === 'status') {
+      value = String(fields.statusShort ?? '').trim() || value;
+    }
+    if (!value && from === 'time') value = fields.time;
+    value = fitToType(value, f.type);
     data[f.key] = { value };
     mapping.push({ key: f.key, label: f.label, from, value });
   }
@@ -354,16 +428,17 @@ export class NotificationsService {
       address: '枫桦景苑 17号 201室',
       time,
     };
-    if (template === 'orderReview') return { ...base, status: '已修好，待验收' };
+    if (template === 'orderReview') return { ...base, status: '已修好，待验收', statusShort: '待验收' };
     if (template === 'orderAssigned') {
       return {
         ...base,
         status: '新工单待处理',
+        statusShort: '待处理',
         content: '水相关 · 枫桦景苑 17号 201室：厨房水管漏水',
         assignee: '',
       };
     }
-    return { ...base, status: '已派单给张师傅' };
+    return { ...base, status: '已派单给张师傅', statusShort: '已派单' };
   }
 
   /**
