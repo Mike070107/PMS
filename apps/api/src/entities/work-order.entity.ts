@@ -43,6 +43,13 @@ export class WorkOrder extends TenantEntity {
   @Column({ name: 'sla_due_at', type: 'timestamptz', nullable: true })
   slaDueAt: Date | null;
 
+  // 「派单后迟迟没接单」的升级提醒发出去的时刻。
+  // 只发一次：定时任务每 10 分钟扫一遍，不打标记就会每 10 分钟催一轮，
+  // 维修工和办公室会被同一张单刷屏，最后谁都不看了。
+  // 改派（assignWorkOrder）时清空，新的负责人重新计时。
+  @Column({ name: 'escalated_at', type: 'timestamptz', nullable: true })
+  escalatedAt: Date | null;
+
   // ===== 维修执行结果 =====
   // 维修动作标签编码数组
   @Column({ name: 'action_tags', type: 'jsonb', default: () => "'[]'" })

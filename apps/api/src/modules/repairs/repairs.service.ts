@@ -82,6 +82,7 @@ import {
   extractAddressCandidate,
   extractKeywordCandidates,
   sameNo,
+  tokenizeAddress,
 } from './repair-address.util';
 import {
   COMMON_ACTION_SUGGESTIONS,
@@ -522,25 +523,7 @@ export class RepairsService implements OnModuleInit {
       where.assigneeId = user.id;
     }
 
-    // 关键词：单号在工单表上，地址/描述在报修表上，先把命中的 requestId 捞出来再合并。
-    // 命中一条都没有时必须直接返回空 —— 不加这层，where 里没有 requestId 约束，
-    // 搜不到反而会把全部工单列出来，看着像「搜索没生效」
-    const keyword = query.q?.trim();
-    let wheres: FindOptionsWhere<WorkOrder>[] = [where];
-    if (keyword) {
-      const hitRequests = await this.repairRequestRepo.find({
-        where: [
-          { tenantId, addressText: ILike(`%${keyword}%`) },
-          { tenantId, content: ILike(`%${keyword}%`) },
-        ],
-        select: ['id'],
-        take: 300,
-      });
-      wheres = [{ ...where, orderNo: ILike(`%${keyword}%`) }];
-      if (hitRequests.length) {
-        wheres.push({ ...where, requestId: In(hitRequests.map((item) => item.id)) });
-      }
-    }
+    const wheres = await this.keywordWheres(tenantId, where, query.q);
 
     const workOrders = await this.workOrderRepo.find({
       where: wheres.length === 1 ? wheres[0] : wheres,
@@ -890,11 +873,29 @@ export class RepairsService implements OnModuleInit {
       qb.andWhere('wo.community_id = :communityId', { communityId: query.communityId });
     }
 
-    const rows = await qb.groupBy('wo.status').getRawMany<{ status: WorkOrderStatus; count: string }>();
-    const byStatus = rows.reduce((acc, item) => {
-      acc[item.status] = Number(item.count);
-      return acc;
-    }, {} as Partial<Record<WorkOrderStatus, number>>);
+    // 带关键词时看板只数命中的单：和列表同一套匹配（见 keywordWheres），
+    // 否则搜「198」列表两条、看板还是全公司的数，用的人会以为搜索没生效
+    let byStatus: Partial<Record<WorkOrderStatus, number>>;
+    if (query.q?.trim()) {
+      const where: FindOptionsWhere<WorkOrder> = { tenantId };
+      if (scope) where.communityId = In(scope);
+      if (query.communityId) where.communityId = query.communityId;
+      const wheres = await this.keywordWheres(tenantId, where, query.q);
+      const matched = await this.workOrderRepo.find({
+        where: wheres.length === 1 ? wheres[0] : wheres,
+        select: ['id', 'status'],
+      });
+      byStatus = matched.reduce((acc, item) => {
+        acc[item.status] = (acc[item.status] ?? 0) + 1;
+        return acc;
+      }, {} as Partial<Record<WorkOrderStatus, number>>);
+    } else {
+      const rows = await qb.groupBy('wo.status').getRawMany<{ status: WorkOrderStatus; count: string }>();
+      byStatus = rows.reduce((acc, item) => {
+        acc[item.status] = Number(item.count);
+        return acc;
+      }, {} as Partial<Record<WorkOrderStatus, number>>);
+    }
     const total = Object.values(byStatus).reduce((sum, count) => sum + (count || 0), 0);
     return { total, byStatus };
   }
@@ -955,6 +956,94 @@ export class RepairsService implements OnModuleInit {
         completedAt: workOrder?.completedAt ?? null,
       };
     });
+  }
+
+  /**
+   * 关键词 → 工单查询条件（列表和状态看板共用，口径必须一致）。
+   * 一个框查四样：
+   *   · 单号：orderNo 模糊
+   *   · 地址：先按「弄/号/室」切成段（198/47/201、198弄47号201室 都行），
+   *     每段按顺序模糊匹配 楼栋(弄/号)+房号；只敲「198」就是「地址里带 198 的楼栋」全部命中
+   *   · 具体位置 / 故障描述：报修表上的自由文本模糊
+   *   · 维修工：按姓名找到人，再按 assigneeId 命中
+   * 命中一条都没有时必须返回只有单号条件的 where —— 没有约束会把全部工单列出来，看着像「搜索没生效」。
+   */
+  private async keywordWheres(
+    tenantId: number,
+    where: FindOptionsWhere<WorkOrder>,
+    q: string | undefined,
+  ): Promise<FindOptionsWhere<WorkOrder>[]> {
+    const keyword = q?.trim();
+    if (!keyword) return [where];
+    const like = `%${keyword}%`;
+
+    const [textHits, addressRequestIds, technicians] = await Promise.all([
+      this.repairRequestRepo.find({
+        where: [
+          { tenantId, addressText: ILike(like) },
+          { tenantId, content: ILike(like) },
+        ],
+        select: ['id'],
+        take: 300,
+      }),
+      this.requestIdsByAddressTokens(tenantId, keyword),
+      this.userRepo.find({ where: { tenantId, name: ILike(like) }, select: ['id'], take: 50 }),
+    ]);
+
+    const wheres: FindOptionsWhere<WorkOrder>[] = [{ ...where, orderNo: ILike(like) }];
+    const requestIds = Array.from(new Set([...textHits.map((item) => item.id), ...addressRequestIds]));
+    if (requestIds.length) wheres.push({ ...where, requestId: In(requestIds) });
+    // 维修工本人只看自己的单（where 已带 assigneeId），这时按姓名找别人没有意义，也不能放开
+    if (technicians.length && where.assigneeId === undefined) {
+      wheres.push({ ...where, assigneeId: In(technicians.map((item) => item.id)) });
+    }
+    return wheres;
+  }
+
+  /** 「198/47/201」→ 命中的 requestId：三段及以上按房号找，两段以内按楼栋找（公区报修只挂楼栋） */
+  private async requestIdsByAddressTokens(tenantId: number, keyword: string): Promise<number[]> {
+    const tokens = tokenizeAddress(keyword).slice(0, 4);
+    if (!tokens.length) return [];
+    const pattern = `%${tokens.join('%')}%`;
+
+    const houses = await this.dataSource
+      .getRepository(House)
+      .createQueryBuilder('h')
+      .innerJoin(Building, 'b', 'b.id = h.buildingId AND b.tenantId = :tenantId', { tenantId })
+      .select(['h.id', 'h.buildingId'])
+      .where('h.tenantId = :tenantId', { tenantId })
+      .andWhere(
+        "((COALESCE(b.lane, '') || '/' || b.buildingNo || '/' || h.roomNo) ILIKE :pattern OR COALESCE(h.fullAddress, '') ILIKE :pattern)",
+        { pattern },
+      )
+      .take(500)
+      .getMany();
+    const houseIds = houses.map((item) => item.id);
+
+    let buildingIds: number[] = [];
+    if (tokens.length <= 2) {
+      const buildings = await this.dataSource
+        .getRepository(Building)
+        .createQueryBuilder('b')
+        .select(['b.id'])
+        .where('b.tenantId = :tenantId', { tenantId })
+        .andWhere("(COALESCE(b.lane, '') || '/' || b.buildingNo) ILIKE :pattern", { pattern })
+        .take(200)
+        .getMany();
+      buildingIds = buildings.map((item) => item.id);
+    }
+    if (!houseIds.length && !buildingIds.length) return [];
+
+    const conditions: FindOptionsWhere<RepairRequest>[] = [];
+    if (houseIds.length) conditions.push({ tenantId, houseId: In(houseIds) });
+    if (buildingIds.length) conditions.push({ tenantId, buildingId: In(buildingIds) });
+    const requests = await this.repairRequestRepo.find({
+      where: conditions,
+      select: ['id'],
+      order: { id: 'DESC' },
+      take: 300,
+    });
+    return requests.map((item) => item.id);
   }
 
   private buildRequestAddressSummary(

@@ -22,6 +22,14 @@ export class User extends BaseEntity {
   @Column({ name: 'wx_unionid', type: 'varchar', length: 64, nullable: true })
   wxUnionid: string | null;
 
+  /**
+   * 服务号（公众号）里的 openid。和小程序的 wx_openid **不是同一个值** ——
+   * 同一个人在不同应用下 openid 不同，只有 unionid 是共通的。
+   * 由「同步服务号关注者」按 unionid 匹配后回填；这个人取关了就置空。
+   */
+  @Column({ name: 'wx_mp_openid', type: 'varchar', length: 64, nullable: true })
+  wxMpOpenid: string | null;
+
   @Column({ type: 'varchar', length: 60, nullable: true })
   name: string | null;
 

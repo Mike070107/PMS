@@ -152,3 +152,17 @@ export function extractKeywordCandidates(
     .slice(0, limit)
     .map((item) => item.word);
 }
+
+/**
+ * 「198/47/201」「198弄47号201室」「198-47-201」→ ['198', '47', '201']。
+ * 和 packages/shared-types/src/address.ts 的 tokenizeAddress 同一套切分规则（API 不依赖那个包，这里抄一份），
+ * 工单池搜索按段依次模糊匹配 楼栋(弄/号)+房号。改规则两边一起改。
+ */
+export function tokenizeAddress(input: string): string[] {
+  return input
+    .trim()
+    .replace(/[弄号室栋幢座楼单元]/g, '/')
+    .split(/[/\\-—－_·,，、。:：;；#＃\s]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}

@@ -40,6 +40,36 @@ class AutoReviewDto {
   hours: number;
 }
 
+class WxServiceAccountDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  appId?: string;
+
+  /** 留空（或原样提交脱敏串）= 保持不变，见 settings.service */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  appSecret?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  templateOrderAssigned?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
+class DispatchEscalationDto {
+  /** 0 = 关闭；其余 5～1440 分钟 */
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  acceptMinutes: number;
+}
+
 export class UpdateTenantSettingsDto {
   @IsOptional()
   @ValidateNested()
@@ -55,4 +85,14 @@ export class UpdateTenantSettingsDto {
   @ValidateNested()
   @Type(() => AutoReviewDto)
   autoReview?: AutoReviewDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DispatchEscalationDto)
+  dispatchEscalation?: DispatchEscalationDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WxServiceAccountDto)
+  wxServiceAccount?: WxServiceAccountDto;
 }

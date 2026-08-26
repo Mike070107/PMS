@@ -25,6 +25,15 @@ interface TenantSettings {
     orderAssigned: string;
   };
   autoReview: { hours: number };
+  /** 派单后多少分钟没接单就升级提醒；0 = 关闭 */
+  dispatchEscalation: { acceptMinutes: number };
+  /** 服务号模板消息。appSecret 读回来是脱敏串，留空保存 = 不变 */
+  wxServiceAccount: {
+    appId: string;
+    appSecret: string;
+    templateOrderAssigned: string;
+    enabled: boolean;
+  };
 }
 
 type TemplateKey = 'orderDispatched' | 'orderReview' | 'orderAssigned';
@@ -71,6 +80,18 @@ export default function SettingsPage() {
   const [tplResult, setTplResult] = useState<Record<string, TemplateResult | null>>({});
   const [tplBusy, setTplBusy] = useState<string>('');
   const [autoReviewHours, setAutoReviewHours] = useState(48);
+  const [escalateMinutes, setEscalateMinutes] = useState(60);
+  const [savingEscalate, setSavingEscalate] = useState(false);
+  const [mp, setMp] = useState({
+    appId: '',
+    appSecret: '',
+    templateOrderAssigned: '',
+    enabled: false,
+  });
+  const [savingMp, setSavingMp] = useState(false);
+  const [syncingMp, setSyncingMp] = useState(false);
+  const [testingMp, setTestingMp] = useState(false);
+  const [mpResult, setMpResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [savingAutoReview, setSavingAutoReview] = useState(false);
 
   const load = useCallback(async () => {
@@ -81,6 +102,15 @@ export default function SettingsPage() {
       setTplReview(next.wxSubscribeTemplates?.orderReview || '');
       setTplAssigned(next.wxSubscribeTemplates?.orderAssigned || '');
       setAutoReviewHours(next.autoReview?.hours ?? 48);
+      setEscalateMinutes(next.dispatchEscalation?.acceptMinutes ?? 60);
+      setMp({
+        appId: next.wxServiceAccount?.appId ?? '',
+        // 后端回的是 ••••••••1234 这种脱敏串：原样放进输入框，
+        // 用户不动它就原样提交，后端认得出来「没改」（见 settings.service）
+        appSecret: next.wxServiceAccount?.appSecret ?? '',
+        templateOrderAssigned: next.wxServiceAccount?.templateOrderAssigned ?? '',
+        enabled: !!next.wxServiceAccount?.enabled,
+      });
     } catch (e: any) {
       message.error(e?.message || '加载设置失败');
     }
@@ -166,6 +196,73 @@ export default function SettingsPage() {
       message.error(e?.message || '保存失败');
     } finally {
       setSavingTpl(false);
+    }
+  };
+
+  const saveServiceAccount = async () => {
+    setSavingMp(true);
+    setMpResult(null);
+    try {
+      const next = await request<TenantSettings>({
+        method: 'PATCH',
+        url: '/settings',
+        data: { wxServiceAccount: mp },
+      });
+      setSettings(next);
+      setMp({
+        appId: next.wxServiceAccount.appId,
+        appSecret: next.wxServiceAccount.appSecret,
+        templateOrderAssigned: next.wxServiceAccount.templateOrderAssigned,
+        enabled: next.wxServiceAccount.enabled,
+      });
+      message.success('已保存');
+    } catch (e: any) {
+      message.error(e?.message || '保存失败');
+    } finally {
+      setSavingMp(false);
+    }
+  };
+
+  /** 同步关注者 / 发送测试：结果里带的是微信的真话，原样显示，不要笼统成「失败」 */
+  const runMpAction = async (
+    kind: 'sync-followers' | 'test',
+    setBusy: (v: boolean) => void,
+  ) => {
+    setBusy(true);
+    setMpResult(null);
+    try {
+      const res = await request<{ ok: boolean; message: string }>({
+        method: 'POST',
+        url: `/notifications/service-account/${kind}`,
+        data: {},
+      });
+      setMpResult({ ok: !!res.ok, message: res.message });
+    } catch (e: any) {
+      setMpResult({ ok: false, message: e?.message || '请求失败' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveEscalation = async () => {
+    setSavingEscalate(true);
+    try {
+      const next = await request<TenantSettings>({
+        method: 'PATCH',
+        url: '/settings',
+        data: { dispatchEscalation: { acceptMinutes: escalateMinutes } },
+      });
+      setSettings(next);
+      setEscalateMinutes(next.dispatchEscalation.acceptMinutes);
+      message.success(
+        next.dispatchEscalation.acceptMinutes === 0
+          ? '已关闭催单提醒'
+          : '已保存，新派出去的工单按新时限催单',
+      );
+    } catch (e: any) {
+      message.error(e?.message || '保存失败');
+    } finally {
+      setSavingEscalate(false);
     }
   };
 
@@ -312,6 +409,146 @@ export default function SettingsPage() {
         </Space>
         <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 12, marginBottom: 0 }}>
           修改后立即生效；已经处于待验收状态的工单也会使用新的租户时限。
+        </Paragraph>
+      </Card>
+
+      <Card
+        title="服务号通知维修工（推荐）"
+        style={{ maxWidth: 760, marginBottom: 24 }}
+        extra={
+          <Switch
+            checked={mp.enabled}
+            disabled={!canEdit}
+            onChange={(checked) => setMp({ ...mp, enabled: checked })}
+            checkedChildren="已开启"
+            unCheckedChildren="已关闭"
+          />
+        }
+      >
+        <Paragraph style={{ marginBottom: 8 }}>
+          小程序订阅消息是<Text strong>「同意一次只能推一条」</Text>，额度用完就哑火。
+          服务号模板消息只要维修工<Text strong>关注着</Text>就能一直推，
+          落在微信聊天列表的独立会话里，手机提醒和收到微信消息一样，
+          点开还能<Text strong>直接跳到那张工单</Text>。
+        </Paragraph>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="开通前先确认这三件事"
+          description={
+            <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>
+              <li>有一个<Text strong>已认证的服务号</Text>（企业主体，认证费 300 元/年）。未认证的订阅号发不了模板消息。</li>
+              <li>
+                服务号和员工端小程序绑到<Text strong>同一个微信开放平台账号</Text>下 ——
+                只有这样才拿得到 UnionID，系统才能把「小程序里的这个维修工」和「服务号的这个粉丝」对上。
+              </li>
+              <li>维修工本人用<Text strong>同一个微信号</Text>关注服务号，并登录过员工端小程序。</li>
+            </ol>
+          }
+        />
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <div>
+            <Text strong>服务号 AppID</Text>
+            <Input
+              value={mp.appId}
+              onChange={(e) => setMp({ ...mp, appId: e.target.value })}
+              placeholder="wx 开头，在服务号后台「设置与开发 → 基本配置」里"
+              disabled={!canEdit}
+              allowClear
+            />
+          </div>
+          <div>
+            <Text strong>服务号 AppSecret</Text>
+            <Input.Password
+              value={mp.appSecret}
+              onChange={(e) => setMp({ ...mp, appSecret: e.target.value })}
+              placeholder="留空 = 保持原有密钥不变"
+              disabled={!canEdit}
+              autoComplete="new-password"
+            />
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              保存后只回显后 4 位。不动它就是不改；换了 AppID 会要求重新填。
+            </Text>
+          </div>
+          <div>
+            <Text strong>「新工单」模板 ID</Text>
+            <Input
+              value={mp.templateOrderAssigned}
+              onChange={(e) => setMp({ ...mp, templateOrderAssigned: e.target.value })}
+              placeholder="服务号后台「广告与服务 → 模板消息」里选一个，复制模板 ID"
+              disabled={!canEdit}
+              allowClear
+            />
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              选字段是 <Text code>first</Text> / <Text code>keyword1~4</Text> / <Text code>remark</Text>{' '}
+              的通用模板即可，我们按「单号 / 类型 / 地址 / 时间」依次填。
+            </Text>
+          </div>
+
+          {canEdit && (
+            <Space wrap>
+              <Button type="primary" loading={savingMp} onClick={saveServiceAccount}>
+                保存
+              </Button>
+              <Button
+                loading={syncingMp}
+                onClick={() => runMpAction('sync-followers', setSyncingMp)}
+              >
+                同步关注者
+              </Button>
+              <Button loading={testingMp} onClick={() => runMpAction('test', setTestingMp)}>
+                给我发一条测试
+              </Button>
+            </Space>
+          )}
+
+          {mpResult && (
+            <Alert
+              type={mpResult.ok ? 'success' : 'warning'}
+              showIcon
+              message={mpResult.message}
+            />
+          )}
+        </Space>
+        <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 12, marginBottom: 0 }}>
+          维修工新关注服务号之后，点一次<Text strong>「同步关注者」</Text>系统才知道他是谁。
+          开着服务号时，派单通知优先走它；没关注的人自动退回小程序订阅消息，
+          两条都不通时仍然会写进小程序里的「消息」。
+        </Paragraph>
+      </Card>
+
+      <Card title="派单后没人接单，自动催单" style={{ maxWidth: 760, marginBottom: 24 }}>
+        <Paragraph>
+          派单之后维修工迟迟没点「接单」，系统会<Text strong>再提醒他一次</Text>，
+          同时通知<Text strong>所有能派单的人</Text>「这单还没人接」，工单进度里也会留一条记录。
+          每张单只催一次，不会反复刷屏。
+        </Paragraph>
+        <Paragraph type="secondary" style={{ fontSize: 13 }}>
+          为什么需要它：任何一条推送都可能被漏看（微信订阅额度用完、手机静音、人正在忙）。
+          与其指望「通知一定送达」，不如让漏看一条不再是终点 —— 到点没接单，办公室能当场兜住。
+        </Paragraph>
+        <Space align="center" wrap>
+          <Text strong>派单后</Text>
+          <InputNumber
+            min={0}
+            max={1440}
+            precision={0}
+            value={escalateMinutes}
+            disabled={!canEdit}
+            onChange={(value) => setEscalateMinutes(value ?? 60)}
+            addonAfter="分钟没接单就催"
+            style={{ width: 220 }}
+          />
+          {canEdit && (
+            <Button type="primary" loading={savingEscalate} onClick={saveEscalation}>
+              保存
+            </Button>
+          )}
+        </Space>
+        <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 12, marginBottom: 0 }}>
+          填 <Text code>0</Text> 表示关闭。建议 30～60 分钟：更短会把「人正在路上还没点接单」
+          也算成漏看，更长就失去了当场兜住的意义。
         </Paragraph>
       </Card>
 

@@ -64,4 +64,23 @@ export class NotificationsController {
   testTemplate(@Body() dto: TemplateTestDto, @CurrentUser() user: AuthUser) {
     return this.notificationsService.sendTest(user, dto.template);
   }
+
+  /**
+   * 服务号：把关注者拉回来，按 unionid 认领到员工账号上。
+   * 维修工新关注了服务号之后要点一次，否则系统不知道他是谁。
+   */
+  @Post('service-account/sync-followers')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('settings', 'edit')
+  syncFollowers(@Body() _body: unknown, @CurrentUser() user: AuthUser) {
+    return this.notificationsService.syncServiceAccountFollowers(user);
+  }
+
+  /** 服务号：给自己发一条测试模板消息，回显微信真实错误 */
+  @Post('service-account/test')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('settings', 'edit')
+  testServiceAccount(@Body() _body: unknown, @CurrentUser() user: AuthUser) {
+    return this.notificationsService.sendServiceAccountTest(user);
+  }
 }

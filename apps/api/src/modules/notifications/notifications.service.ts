@@ -1,10 +1,11 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { NotifyChannel, NotifyStatus } from '../../common/enums';
 import { Notification, SubscriptionGrant, User } from '../../entities';
 import { SettingsService } from '../settings/settings.service';
+import { WxServiceAccountService } from './wx-service-account.service';
 import { WechatService, type WxAppType, type WxTemplateField } from '../auth/wechat.service';
 
 /**
@@ -207,6 +208,7 @@ export class NotificationsService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly settings: SettingsService,
+    private readonly serviceAccount: WxServiceAccountService,
     private readonly wechat: WechatService,
   ) {}
 
@@ -339,6 +341,21 @@ export class NotificationsService {
       );
 
       if (!input.template || !input.templateFields) return;
+
+      // 优先走服务号：只要人关注着就能一直推，不吃订阅额度，落在聊天列表里更显眼。
+      // 推成功就到此为止 —— 两条都发的话，维修工同一件事会收到两遍。
+      // 只有发给员工的事件走这条路：业主是散户，不会去关注物业的服务号。
+      if (TEMPLATE_APP[input.template] === 'staff') {
+        const viaMp = await this.trySendServiceAccount({
+          tenantId: input.tenantId,
+          receiverId: input.receiverId,
+          fields: input.templateFields,
+          page: input.page,
+          notificationId: saved.id,
+        });
+        if (viaMp) return;
+      }
+
       await this.trySendSubscribe({
         tenantId: input.tenantId,
         receiverId: input.receiverId,
@@ -350,6 +367,66 @@ export class NotificationsService {
     } catch (err) {
       this.logger.error(`通知写入失败（${input.eventKey}）：${(err as Error).message}`);
     }
+  }
+
+  /**
+   * 走服务号模板消息。发出去了返回 true，调用方就不再走订阅消息。
+   *
+   * 没配置、没开启、这个人没关注 —— 都安静地返回 false 退回订阅消息那条路，
+   * 不算异常：服务号是加分项，不是前提。
+   */
+  private async trySendServiceAccount(input: {
+    tenantId: number;
+    receiverId: number;
+    fields: TemplateFields;
+    page?: string;
+    notificationId: number;
+  }): Promise<boolean> {
+    if (!(await this.serviceAccount.isReady(input.tenantId))) return false;
+
+    const receiver = await this.userRepo.findOne({
+      where: { id: input.receiverId },
+      select: ['id', 'wxMpOpenid'],
+    });
+    if (!receiver?.wxMpOpenid) return false;
+
+    const res = await this.serviceAccount.sendTemplate({
+      tenantId: input.tenantId,
+      openid: receiver.wxMpOpenid,
+      // 公众号模板的字段名由管理员选的行业模板决定，最常见的是 first/keyword1..n/remark。
+      // 这里按这套通用命名发；对不上时微信回 41028，后台「发送测试」会把原话显示出来
+      data: {
+        first: { value: `${input.fields.status}` },
+        keyword1: { value: input.fields.orderNo },
+        keyword2: { value: input.fields.type },
+        keyword3: { value: input.fields.address },
+        keyword4: { value: input.fields.time },
+        remark: { value: input.fields.content || '点开查看详情并接单' },
+      },
+      // 挂上小程序跳转：点消息直接落到那张工单，不用自己回小程序里翻。
+      // 服务号消息只负责「叫人」，找单永远在小程序里
+      miniprogramAppId: this.staffMiniAppId(),
+      miniprogramPage: input.page,
+    });
+
+    if (!res.ok) {
+      if (res.errcode || res.errmsg) {
+        this.logger.warn(
+          `服务号推送失败（用户 ${input.receiverId}）：${res.errmsg || res.errcode}`,
+        );
+      }
+      return false;
+    }
+    await this.notificationRepo.update(
+      { id: input.notificationId },
+      { channel: NotifyChannel.WX_SERVICE, status: NotifyStatus.SENT },
+    );
+    return true;
+  }
+
+  /** 服务号消息里跳小程序要带员工端 appid；没配就只发纯文字消息 */
+  private staffMiniAppId(): string | undefined {
+    return process.env.WX_STAFF_APPID || undefined;
   }
 
   private async trySendSubscribe(input: {
@@ -513,6 +590,115 @@ export class NotificationsService {
     return result.ok
       ? { ok: true, fields: mapping, remaining: grant.remaining }
       : { ok: false, error: result.errmsg, errcode: result.errcode, fields: mapping };
+  }
+
+  // ---------------- 服务号：后台的两个动作 ----------------
+
+  /**
+   * 同步关注者：拉服务号粉丝，按 unionid 认领到员工账号上。
+   *
+   * 为什么要手动点而不是自动跑：新关注是低频动作（一个维修工一辈子关注一次），
+   * 定时全量拉反而是白白消耗微信接口配额。管理员加完人点一下就行。
+   *
+   * 返回值要能回答管理员心里的三个问题：拉到几个粉丝、其中几个有 unionid、
+   * 最终认领上了几个员工。任何一环是 0，页面上直接指出是哪一步没做。
+   */
+  async syncServiceAccountFollowers(user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    if (!(await this.serviceAccount.isReady(tenantId))) {
+      return {
+        ok: false,
+        message: '服务号还没配好（AppID / AppSecret / 模板 ID / 开关），先保存再同步',
+      };
+    }
+
+    const res = await this.serviceAccount.fetchFollowers(tenantId);
+    if (res.error) return { ok: false, message: res.error, followers: res.total };
+
+    if (!res.total) {
+      return { ok: false, followers: 0, message: '服务号一个关注者都没有，先让维修工关注它' };
+    }
+    if (!res.withUnionId) {
+      return {
+        ok: false,
+        followers: res.total,
+        message:
+          `拉到 ${res.total} 个关注者，但一个都没有 unionid —— ` +
+          '说明服务号和员工端小程序还没绑到同一个「微信开放平台」账号下。' +
+          '绑定后维修工重新登录一次小程序，再来同步。',
+      };
+    }
+
+    // 只认领本租户里有 unionid 的员工。unionid 是登录小程序时存下的，
+    // 没登录过小程序的人对不上 —— 那也正确：他本来就收不到我们的消息
+    const staff = await this.userRepo.find({
+      where: { tenantId, wxUnionid: Not(IsNull()) },
+      select: ['id', 'wxUnionid', 'wxMpOpenid'],
+    });
+    let matched = 0;
+    let cleared = 0;
+    for (const person of staff) {
+      const openid = person.wxUnionid ? res.unionToOpenid.get(person.wxUnionid) : undefined;
+      if (openid) {
+        if (person.wxMpOpenid !== openid) {
+          await this.userRepo.update({ id: person.id }, { wxMpOpenid: openid });
+        }
+        matched += 1;
+      } else if (person.wxMpOpenid) {
+        // 之前关注过、现在取关了：清掉，否则会一直往一个收不到的 openid 推
+        await this.userRepo.update({ id: person.id }, { wxMpOpenid: null });
+        cleared += 1;
+      }
+    }
+
+    return {
+      ok: matched > 0,
+      followers: res.total,
+      withUnionId: res.withUnionId,
+      matched,
+      cleared,
+      message: matched
+        ? `已认领 ${matched} 个员工${cleared ? `，另有 ${cleared} 个已取关，已停止推送` : ''}`
+        : `${res.total} 个关注者里没有一个对得上本公司的员工账号 —— ` +
+          '确认维修工用的是同一个微信号：既关注了服务号，也登录过员工端小程序。',
+    };
+  }
+
+  /** 给当前操作人发一条服务号测试消息，微信的真实错误原样返回 */
+  async sendServiceAccountTest(user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const me = await this.userRepo.findOne({
+      where: { id: user.id },
+      select: ['id', 'name', 'wxMpOpenid'],
+    });
+    if (!me?.wxMpOpenid) {
+      return {
+        ok: false,
+        message:
+          '你自己还没和服务号对上：请先用微信关注这个服务号，再点上面的「同步关注者」，然后回来重试。',
+      };
+    }
+    const res = await this.serviceAccount.sendTemplateDetailed({
+      tenantId,
+      openid: me.wxMpOpenid,
+      data: {
+        first: { value: '这是一条测试消息' },
+        keyword1: { value: 'TEST-0001' },
+        keyword2: { value: '水暖问题' },
+        keyword3: { value: '测试地址 1 号楼 101' },
+        keyword4: { value: this.now() },
+        remark: { value: '收到这条就说明服务号通道已经打通，正式派单会用同一条路发出。' },
+      },
+    });
+    if (res.skipped) return { ok: false, message: res.skipped };
+    if (!res.ok) return { ok: false, message: res.errmsg || '发送失败' };
+    return { ok: true, message: '已发出，去微信里看看这个服务号的会话' };
+  }
+
+  private now(): string {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
   private requireTenant(user: AuthUser): number {

@@ -148,7 +148,8 @@ export enum PurchaseOrderStatus {
 
 /** 通知渠道 */
 export enum NotifyChannel {
-  WX_SUBSCRIBE = 'wx_subscribe', // 微信小程序订阅消息
+  WX_SUBSCRIBE = 'wx_subscribe', // 微信小程序订阅消息（同意一次推一条）
+  WX_SERVICE = 'wx_service', // 微信服务号模板消息（关注即可一直推，员工侧优先走它）
   IN_APP = 'in_app', // 站内消息（降级兜底）
 }
 

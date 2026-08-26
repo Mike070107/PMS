@@ -39,6 +39,7 @@ import {
   PhoneOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SearchOutlined,
   ToolOutlined,
   UploadOutlined,
   VideoCameraOutlined,
@@ -69,6 +70,7 @@ import HouseAddressPicker, {
 import MissingMaterialsInput, {
   type MissingMaterialRow,
 } from '../components/MissingMaterialsInput';
+import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumnPrefs';
 import {
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
@@ -382,7 +384,9 @@ export default function WorkOrdersPage() {
   const [statusCounts, setStatusCounts] = useState<WorkOrderStats>({ total: 0, byStatus: {} });
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | WorkOrderStatus>('all');
-  const [filterCommunity, setFilterCommunity] = useState<number | undefined>();
+  // 搜索框：输入即查，敲字停 300ms 再发请求；地址「198/47/201」/「198」、维修工姓名、单号都走同一个 q
+  const [searchInput, setSearchInput] = useState('');
+  const [searchQ, setSearchQ] = useState('');
   const [detailId, setDetailId] = useState<number | null>(null);
   const [ruleOpen, setRuleOpen] = useState(false);
   // 企业超管 / 平台超管：以权限矩阵为准，users.role 已经不表达身份了
@@ -393,6 +397,84 @@ export default function WorkOrdersPage() {
     staffList.forEach((s) => m.set(s.id, s));
     return m;
   }, [staffList]);
+
+  /* 工单池的列：拖列宽、拖列序，按「登录用户 + 表格」自动存 localStorage，刷新不丢
+     （2026-08-27 反馈「一刷新就恢复了」）。每列必须有稳定 key，它是存档标识。 */
+  const poolColumns: PrefsColumn<WorkOrderRow>[] = [
+    {
+      // 一格一件事，但列数要跟容器宽度量力而行 —— 办公室的屏幕上这块表格也就
+      // 一千像素上下，硬拆成七八列会被 tableLayout:fixed 压成每列一百出头，
+      // 每格都换行，比原来更乱。所以：
+      //   · 单号是定长标识，独立成列（原来它挤在第一格当第三行小字）
+      //   · 第一格只留两级字号：类型 · 房号（主）/ 业主原话（次），不再有第三、第四种
+      title: '报修内容',
+      key: 'summary',
+      width: 320,
+      render: (_, r) => (
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.5 }}>
+            {getRepairTypeLabel(r.repairType || r.skill, repairTypeRules)}
+            <Text type="secondary" style={{ fontWeight: 400, marginLeft: 8 }}>
+              {r.summaryAddress || '未填写房号'}
+            </Text>
+          </div>
+          <Text
+            type="secondary"
+            style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            title={r.summaryContent || undefined}
+          >
+            {r.summaryContent || '-'}
+          </Text>
+          {/* 标红光有底色不够，得让人知道红在哪：把截止时间和倒计时写出来 */}
+          {slaDanger(r) && r.slaDueAt && (
+            <div style={{ color: '#cf1322', fontSize: 12, marginTop: 2 }}>
+              <ClockCircleOutlined style={{ marginRight: 4 }} />
+              要求 {formatDateTimeCn(r.slaDueAt)} 前完成 · {slaCountdownText(r.slaDueAt)}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: '工单编号', key: 'orderNo', dataIndex: 'orderNo', width: 180,
+      render: (v: string) => (
+        <Text type="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</Text>
+      ),
+    },
+    {
+      title: '状态', key: 'status', dataIndex: 'status', width: 100,
+      render: (s: WorkOrderStatus) => (
+        <Tag color={statusMeta[s].color}>{statusMeta[s].label}</Tag>
+      ),
+    },
+    {
+      // 已停留是催办的唯一依据，必须常驻列表，而不是点进详情才看得到
+      title: '已停留',
+      key: 'stay',
+      // 表头「已停留」加上排序箭头要 100 出头，窄了会折成「已停 / 留」
+      width: 108,
+      sorter: (a, b) => stayDaysOf(a) - stayDaysOf(b),
+      render: (_, r) => {
+        const days = stayDaysOf(r);
+        const tone = stayTone(days);
+        return (
+          <Tag color={tone === 'danger' ? 'error' : tone === 'warn' ? 'warning' : 'default'}>
+            {days} 天
+          </Tag>
+        );
+      },
+    },
+    {
+      title: '维修工', key: 'assignee', dataIndex: 'assigneeId', width: 100,
+      render: (id: number | null) => id ? (staffById.get(id)?.name || `#${id}`) : <Text type="secondary">未派单</Text>,
+    },
+    {
+      title: '报修时间', key: 'createdAt', dataIndex: 'createdAt', width: 196,
+      // 和进度时间轴、两个小程序统一：2026/8/9 17:07 周日；「周日」不许折到第二行
+      render: (v: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTimeCn(v) || '-'}</span>,
+    },
+  ];
+  const poolPrefs = useTableColumnPrefs('work-orders.pool', poolColumns);
 
   const loadCommunities = useCallback(async () => {
     try {
@@ -450,7 +532,7 @@ export default function WorkOrdersPage() {
     try {
       const query: any = {};
       if (filter !== 'all') query.status = filter;
-      if (filterCommunity) query.communityId = filterCommunity;
+      if (searchQ) query.q = searchQ;
       const r = await request<WorkOrderRow[] | { list: WorkOrderRow[] }>({
         url: '/work-orders',
         query,
@@ -461,17 +543,18 @@ export default function WorkOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [filter, filterCommunity, message]);
+  }, [filter, searchQ, message]);
 
   const loadOrderStats = useCallback(async () => {
     try {
       const query: any = {};
-      if (filterCommunity) query.communityId = filterCommunity;
+      // 状态看板的数字和列表必须同一套口径：搜索时看板也只数命中的单
+      if (searchQ) query.q = searchQ;
       setStatusCounts(await request<WorkOrderStats>({ url: '/work-orders/stats', query }));
     } catch (e: any) {
       message.error(e?.message || '加载工单统计失败');
     }
-  }, [filterCommunity, message]);
+  }, [searchQ, message]);
 
   useEffect(() => {
     loadCommunities();
@@ -482,6 +565,17 @@ export default function WorkOrdersPage() {
   }, [loadAddressTree, loadCommunities, loadRepairSuggestions, loadRepairTypeRules, loadStaff]);
   useEffect(() => { loadOrders(); }, [loadOrders]);
   useEffect(() => { loadOrderStats(); }, [loadOrderStats]);
+  useEffect(() => {
+    const next = searchInput.trim();
+    const timer = window.setTimeout(() => {
+      setSearchQ((prev) => {
+        // 从空到有字 = 开始查历史：把状态筛选放回「全部」，已完成的老单才查得到
+        if (next && !prev) setFilter('all');
+        return next;
+      });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
 
   return (
     <div className="pms-workorder-page" style={{ fontSize: 16 }}>
@@ -497,16 +591,22 @@ export default function WorkOrdersPage() {
             style={{ minWidth: WORK_ORDER_TABLE_MIN_WIDTH }}
             extra={
               <Space>
-                <Select
+                {/* 查历史报修：地址敲 198/47/201 逐段匹配，敲 198 就是「地址里带 198 的」；
+                    维修工姓名、单号也走这一个框。原来这里是「按小区筛选」，小区名直接敲进来也一样查 */}
+                <Input
                   size="large"
                   allowClear
-                  placeholder="按小区筛选"
-                  style={{ width: 220 }}
-                  value={filterCommunity}
-                  onChange={(v) => setFilterCommunity(v)}
-                  options={withOptionTitles(communities.map((c) => ({ value: c.id, label: c.name })))}
-                  {...searchableWideSelectProps}
+                  className="pms-workorder-search"
+                  prefix={<SearchOutlined style={{ color: 'rgba(0,0,0,.35)' }} />}
+                  placeholder="查历史：地址 198/47/201 或 198、维修工姓名、单号"
+                  style={{ width: 400 }}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  autoComplete="off"
                 />
+                {poolPrefs.customized && (
+                  <Button size="large" onClick={poolPrefs.reset}>恢复默认列</Button>
+                )}
                 <Button size="large" icon={<ReloadOutlined />} onClick={() => { loadOrders(); loadOrderStats(); }}>刷新</Button>
               </Space>
             }
@@ -531,79 +631,9 @@ export default function WorkOrdersPage() {
               // 距要求完成截止不足 4 小时（含已超时）的未完结单整行标红，样式在 styles.css
               rowClassName={(r) => (slaDanger(r) ? 'pms-row-sla-danger' : '')}
               onRow={(r) => ({ onClick: () => setDetailId(r.id), style: { cursor: 'pointer' } })}
-              columns={[
-                {
-                  // 一格一件事，但列数要跟容器宽度量力而行 —— 办公室的屏幕上这块表格也就
-                  // 一千像素上下，硬拆成七八列会被 tableLayout:fixed 压成每列一百出头，
-                  // 每格都换行，比原来更乱。所以：
-                  //   · 单号是定长标识，独立成列（原来它挤在第一格当第三行小字）
-                  //   · 第一格只留两级字号：类型 · 房号（主）/ 业主原话（次），不再有第三、第四种
-                  title: '报修内容',
-                  key: 'summary',
-                  render: (_, r) => (
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.5 }}>
-                        {getRepairTypeLabel(r.repairType || r.skill, repairTypeRules)}
-                        <Text type="secondary" style={{ fontWeight: 400, marginLeft: 8 }}>
-                          {r.summaryAddress || '未填写房号'}
-                        </Text>
-                      </div>
-                      <Text
-                        type="secondary"
-                        style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                        title={r.summaryContent || undefined}
-                      >
-                        {r.summaryContent || '-'}
-                      </Text>
-                      {/* 标红光有底色不够，得让人知道红在哪：把截止时间和倒计时写出来 */}
-                      {slaDanger(r) && r.slaDueAt && (
-                        <div style={{ color: '#cf1322', fontSize: 12, marginTop: 2 }}>
-                          <ClockCircleOutlined style={{ marginRight: 4 }} />
-                          要求 {formatDateTimeCn(r.slaDueAt)} 前完成 · {slaCountdownText(r.slaDueAt)}
-                        </div>
-                      )}
-                    </div>
-                  ),
-                },
-                {
-                  title: '工单编号', dataIndex: 'orderNo', width: 180,
-                  render: (v: string) => (
-                    <Text type="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</Text>
-                  ),
-                },
-                {
-                  title: '状态', dataIndex: 'status', width: 100,
-                  render: (s: WorkOrderStatus) => (
-                    <Tag color={statusMeta[s].color}>{statusMeta[s].label}</Tag>
-                  ),
-                },
-                {
-                  // 已停留是催办的唯一依据，必须常驻列表，而不是点进详情才看得到
-                  title: '已停留',
-                  key: 'stay',
-                  // 表头「已停留」加上排序箭头要 100 出头，窄了会折成「已停 / 留」
-                  width: 108,
-                  sorter: (a, b) => stayDaysOf(a) - stayDaysOf(b),
-                  render: (_, r) => {
-                    const days = stayDaysOf(r);
-                    const tone = stayTone(days);
-                    return (
-                      <Tag color={tone === 'danger' ? 'error' : tone === 'warn' ? 'warning' : 'default'}>
-                        {days} 天
-                      </Tag>
-                    );
-                  },
-                },
-                {
-                  title: '维修工', dataIndex: 'assigneeId', width: 100,
-                  render: (id: number | null) => id ? (staffById.get(id)?.name || `#${id}`) : <Text type="secondary">未派单</Text>,
-                },
-                {
-                  title: '报修时间', dataIndex: 'createdAt', width: 196,
-                  // 和进度时间轴、两个小程序统一：2026/8/9 17:07 周日；「周日」不许折到第二行
-                  render: (v: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTimeCn(v) || '-'}</span>,
-                },
-              ]}
+              locale={{ emptyText: searchQ ? `没有匹配「${searchQ}」的工单` : undefined }}
+              columns={poolPrefs.columns}
+              components={poolPrefs.components}
             />
           </Card>
 
