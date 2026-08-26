@@ -61,7 +61,8 @@ function dirtyFiles(paths) {
 
 function pendingCommits(target, upto = 'HEAD') {
   const tag = tagOf(target);
-  const base = tryGit(`rev-parse --verify --quiet ${tag}^{commit}`);
+  // 不能写 ${tag}^{commit}：Windows 上 execSync 走 cmd.exe，^ 是它的转义符，会被吃掉
+  const base = tryGit(`rev-parse --verify --quiet refs/tags/${tag}`);
   if (!base) return { base: null, commits: null };
   const list = tryGit(`log --oneline ${base}..${upto} -- ${pathArgs(TARGETS[target].paths)}`) || '';
   return { base, commits: list.split('\n').filter(Boolean) };
