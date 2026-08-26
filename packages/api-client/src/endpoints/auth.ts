@@ -37,6 +37,8 @@ export interface AdminLoginResp {
     role: UserRole;
     name?: string;
     loginAccount: string;
+    /** 他绑的角色名，顶栏显示用（登录接口不返回时由 /auth/me 补上） */
+    roleNames?: string[];
   };
 }
 

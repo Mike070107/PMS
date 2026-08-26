@@ -17,7 +17,6 @@ import { isStaffAppPageKey } from '../../common/pages';
 import {
   AuditStatus,
   OWNER_APP_ROLES,
-  SELF_SCOPED_ROLES,
   STAFF_APP_ROLES,
   USER_ROLE_LABELS,
   UserRole,
@@ -504,7 +503,7 @@ export class AuthService {
    * 角色矩阵的后门（扫码登录不校验密码，尤其不能漏）。
    */
   private async assertWebAdminAccess(user: User) {
-    if (user.role === UserRole.SUPERADMIN || user.role === UserRole.ADMIN) return;
+    if (user.role === UserRole.SUPERADMIN) return;
     const denied = () => {
       throw new ForbiddenException(
         '这个账号还不能登录网页后台。请让管理员在「角色管理」里，' +
@@ -583,10 +582,14 @@ export class AuthService {
         role: user.role,
         actingOfficeId: current.actingOfficeId ?? null,
       };
-      const [access, offices] = await Promise.all([
+      const [access, offices, roleNames] = await Promise.all([
         this.accessService.getAccess(authUser),
         this.accessService.listVisibleOffices(authUser),
+        this.accessService.listRoleNames(authUser),
       ]);
+      // 顶栏和「我的」页显示他绑的角色名 —— 现在没有「身份」可显示了，
+      // 角色名就是这个人在系统里的称呼
+      base.roleNames = roleNames;
       base.access = {
         isPlatformAdmin: access.isPlatformAdmin,
         isTenantAdmin: access.isTenantAdmin,
@@ -597,11 +600,9 @@ export class AuthService {
         offices,
         actingOfficeId: access.actingOfficeId,
       };
-    }
-    if (!SELF_SCOPED_ROLES.includes(user.role)) {
-      // 维修工要能开「有新工单派给你」的提醒，所以员工端也得拿到模板 id。
-      // 只给员工端那一个 —— 见 resolveSubscribeTemplates 里为什么必须按端分。
-      if (user.role === UserRole.TECHNICIAN) {
+      // 能接单的人要开「有新工单派给你」的提醒，所以员工端也得拿到模板 id。
+      // 判据是权限而不是身份 —— 只给员工端那一个模板，见 resolveSubscribeTemplates。
+      if (access.pages['app:pool']?.edit || access.isTenantAdmin) {
         return {
           ...base,
           subscribeTemplates: await this.resolveSubscribeTemplates(user.tenantId, 'staff'),
@@ -779,7 +780,7 @@ export class AuthService {
         wxNickname: null,
         passwordHash,
         loginAccount: dto.account,
-        role: UserRole.ADMIN,
+        role: UserRole.STAFF,
         houseId: null,
         status: UserStatus.ACTIVE,
         createdBy: null,

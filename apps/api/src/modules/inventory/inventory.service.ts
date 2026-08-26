@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { AccessService } from '../access/access.service';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -91,6 +92,7 @@ interface LotAllocation {
 @Injectable()
 export class InventoryService {
   constructor(
+    private readonly accessService: AccessService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
     @InjectRepository(Material)
@@ -491,7 +493,7 @@ export class InventoryService {
       primary.status = PurchaseRequestStatus.MANAGER_REVIEW;
       primary.updatedBy = user.id;
       const saved = await manager.save(PurchaseRequest, primary);
-      await this.notifyRoles(manager, tenantId, [UserRole.MANAGER, UserRole.ADMIN], {
+      await this.notifyByPermission(manager, tenantId, 'app:approve-manager', {
         eventKey: 'purchase_pending_manager',
         title: `采购申请 ${saved.requestNo} 待物业经理审批`,
         payload: { purchaseRequestId: saved.id, requestNo: saved.requestNo },
@@ -513,7 +515,7 @@ export class InventoryService {
       request.managerAt = new Date();
       request.updatedBy = user.id;
       const saved = await manager.save(PurchaseRequest, request);
-      await this.notifyRoles(manager, tenantId, [UserRole.PURCHASER, UserRole.ADMIN], {
+      await this.notifyByPermission(manager, tenantId, 'app:approve-purchaser', {
         eventKey: 'purchase_pending_purchaser',
         title: `采购申请 ${saved.requestNo} 待采购经理审批`,
         payload: { purchaseRequestId: saved.id, requestNo: saved.requestNo },
@@ -724,7 +726,11 @@ export class InventoryService {
 
       // 实收与采购数量有差异 → 提醒采购经理和办公室
       if (variances.length) {
-        await this.notifyRoles(manager, tenantId, [UserRole.PURCHASER, UserRole.OFFICE, UserRole.ADMIN], {
+        await this.notifyByPermission(
+          manager,
+          tenantId,
+          ['app:approve-purchaser', 'app:inventory'],
+          {
           eventKey: 'receipt_qty_variance',
           title: `采购单 ${order.orderNo} 实收与订购数量存在差异`,
           payload: { purchaseOrderId: order.id, orderNo: order.orderNo, variances, receiptNo: receipt.receiptNo },
@@ -957,7 +963,7 @@ export class InventoryService {
           updatedBy: user.id,
         }),
       );
-      await this.notifyRoles(manager, tenantId, [UserRole.MANAGER, UserRole.ADMIN], {
+      await this.notifyByPermission(manager, tenantId, 'app:approve-manager', {
         eventKey: 'transfer_pending_review',
         title: `调拨单 ${saved.transferNo} 待审批`,
         payload: { transferId: saved.id, transferNo: saved.transferNo },
@@ -1441,14 +1447,27 @@ export class InventoryService {
     );
   }
 
-  private async notifyRoles(
+  /**
+   * 通知「有这一档权限的人」。
+   *
+   * 以前是 notifyRoles(..., [MANAGER, ADMIN], ...) 按业务身份找人 ——
+   * 于是「谁该收待审批提醒」和「谁真的能批」是两套判断，配了新角色就对不上。
+   * 现在两边同一个 key：能批的人才会收到待批提醒。
+   */
+  private async notifyByPermission(
     manager: EntityManager,
     tenantId: number,
-    roles: UserRole[],
+    pageKeys: string | string[],
     input: NotifyInput,
   ) {
+    const keys = Array.isArray(pageKeys) ? pageKeys : [pageKeys];
+    const idSets = await Promise.all(
+      keys.map((key) => this.accessService.userIdsWithPermission(tenantId, key, 'edit')),
+    );
+    const ids = [...new Set(idSets.flat())];
+    if (!ids.length) return;
     const users = await manager.find(User, {
-      where: { tenantId, role: In(roles), status: UserStatus.ACTIVE },
+      where: { id: In(ids), tenantId, status: UserStatus.ACTIVE },
       select: ['id'],
     });
     await this.notifyUsers(manager, tenantId, users.map((u) => u.id), input);
@@ -1470,7 +1489,7 @@ export class InventoryService {
     if (receiverIds.length) {
       await this.notifyUsers(manager, tenantId, receiverIds, input);
     } else {
-      await this.notifyRoles(manager, tenantId, [UserRole.MANAGER, UserRole.ADMIN, UserRole.OFFICE], input);
+      await this.notifyByPermission(manager, tenantId, ['app:approve-manager', 'app:inventory'], input);
     }
   }
 }

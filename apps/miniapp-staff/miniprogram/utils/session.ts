@@ -1,115 +1,101 @@
 /**
- * 「当前这个人能干什么」——员工端只有这一份判断，页面不要再各写一套角色白名单。
+ * 「当前这个人能干什么」—— 员工端只有这一份判断，页面不要再各写一套。
  *
- * 为什么必须共用：员工端有 9 种业务身份，同一个能力（能不能派单、能不能改材料）
- * 在工单页、材料页、tabBar 里各判一次，就一定会判得不一样。2026-08-25 之前就是这样：
- * 材料页把办公室写死成只读（后端其实按 materials:edit 放行），工单池对所有人都画「接单」
- * 按钮（后端只让维修工领单）。
+ * 判据只有一个：**后台给他的角色勾了哪些入口、哪些档**（access.pages 里的 app:*）。
+ * 后端接口也是按同一批 key 鉴权的，所以「端上给不给点」和「点下去会不会 403」
+ * 永远一致。这里不再有「维修工 / 办公室」之类的身份判断 ——
+ * 接单和派单是两格，审批的两步也是两格，谁有哪一格由勾选说了算。
  *
- * 判断的两条依据分工明确，别混：
- *   · **业务身份（role）** 决定「这个人在物业里干哪一行」—— 维修工接单、办公室派单。
- *     这是流程语义，后端也是按 @Roles 卡的（accept 只给 TECHNICIAN），端上照抄同一套。
- *     身份现在由后台的角色带出来（roles.business_role），不再单独设。
- *   · **角色矩阵（access.pages 里的 app:* ）** 决定「这个角色能看到哪几格、能不能动手」——
- *     后台「角色管理」里勾的就是它。凡是「按钮点下去会不会 403」，一律问它，
- *     不要再照身份猜（同是办公室，各公司配的宽窄也不一样）。
- *
- * 老会话 / 拿不到 access 时按业务身份兜底：宁可多给一个入口（后端仍会拦），
+ * 拿不到 access 的老会话一律放行：宁可多给一个入口（后端仍会拦），
  * 也不要让有权限的人以为功能没了。
  */
 import { auth } from '@pms/api-client';
 import { type MeResp } from '@pms/shared-types';
-import { APPROVER_ROLES, isDispatcher, isReporter, isTechnician } from './roles';
 import { rememberAccess } from './tabbar';
-
-export { DISPATCH_ROLES, REPORTER_ROLES, WORKER_ROLES } from './roles';
 
 export interface StaffSession {
   me: MeResp | null;
-  role: string;
-  /** 维修工：接单、完工、报缺料 */
-  isTechnician: boolean;
-  /** 办公室一侧：派单、查工单、管材料库存 */
-  isDispatcher: boolean;
-  /** 代报身份：只报修 */
-  isReporter: boolean;
-  /** 能不能派单（办公室一侧 + 工单池那一格的「接单 / 派单」） */
-  canDispatch: boolean;
-  /** 能不能接单（维修工 + 同一档权限）。和派单同一个勾选：那一格叫「接单 / 派单」 */
+  /** 他绑的角色名，「我的」页显示用 */
+  roleNames: string[];
+  /** 工单池那一格：看得到 / 能接单 */
+  canSeePool: boolean;
   canAccept: boolean;
-  /** 能不能处理手上的单：完工、报缺料（在手工单那一格的「处理工单」） */
+  /** 派单台那一格：看得到 / 能派单 */
+  canSeeDispatch: boolean;
+  canDispatch: boolean;
+  /** 在手工单：看得到 / 能完工报料 */
+  canSeeMyOrders: boolean;
   canHandleOrders: boolean;
-  /** 能不能审批采购单（业务身份 + 采购审批那一格的「审批」） */
-  canApprove: boolean;
-  /** 材料 SKU 库：能看 / 能改（改 = 补全信息、补照片、新建） */
+  /** 材料与库存 */
   canViewMaterials: boolean;
   canEditMaterials: boolean;
-  /** 库存与采购 */
   canViewInventory: boolean;
-  /** 能不能替住户提单（报修入口显隐） */
+  /** 采购审批（两步各自一格） */
+  canApproveAsManager: boolean;
+  canApproveAsPurchaser: boolean;
+  canApprove: boolean;
+  /** 替住户报修 */
   canReport: boolean;
-  /** 消息中心入口 */
+  /** 消息中心 */
   canUseMessages: boolean;
+  /**
+   * 只替住户报修的人（保安、居委会…）：既看不到工单池也看不到派单台。
+   * 报修位置受「可代报的小区」限制，落地页也不该是工单池。
+   */
+  reporterOnly: boolean;
 }
 
 const emptySession = (): StaffSession => ({
   me: null,
-  role: '',
-  isTechnician: false,
-  isDispatcher: false,
-  isReporter: false,
-  canDispatch: false,
+  roleNames: [],
+  canSeePool: false,
   canAccept: false,
+  canSeeDispatch: false,
+  canDispatch: false,
+  canSeeMyOrders: false,
   canHandleOrders: false,
-  canApprove: false,
   canViewMaterials: false,
   canEditMaterials: false,
   canViewInventory: false,
+  canApproveAsManager: false,
+  canApproveAsPurchaser: false,
+  canApprove: false,
   canReport: false,
   canUseMessages: false,
+  reporterOnly: false,
 });
-
-/** access 里某一页的某一档；没有 access 时交给调用方按身份兜底 */
-function can(me: MeResp | null, pageKey: string, action: 'view' | 'edit'): boolean | null {
-  const pages = me?.access?.pages;
-  if (!pages) return null;
-  const page = pages[pageKey];
-  return !!page && !!page[action];
-}
 
 export function buildSession(me: MeResp | null): StaffSession {
   if (!me) return emptySession();
-  const role = me.role as string;
-  const technician = isTechnician(role);
-  const dispatcher = isDispatcher(role);
-  const reporter = isReporter(role);
-  // 兜底口径 = 老代码里那份角色白名单：办公室一侧看得到材料与库存，维修工看不到
-  const fallback = dispatcher;
-  const perm = (pageKey: string, action: 'view' | 'edit', byRole: boolean) => {
-    const granted = can(me, pageKey, action);
-    return granted === null ? byRole : granted;
+  const pages = me.access?.pages;
+  // 老会话（还没拿到 access）一律给 —— 宁可多一个入口，后端仍会拦
+  const can = (key: string, action: 'view' | 'edit') => {
+    if (!pages) return true;
+    const page = pages[key];
+    return !!page && !!page[action];
   };
+  const canSeePool = can('app:pool', 'view');
+  const canSeeDispatch = can('app:dispatch', 'view');
+  const canApproveAsManager = can('app:approve-manager', 'edit');
+  const canApproveAsPurchaser = can('app:approve-purchaser', 'edit');
   return {
     me,
-    role,
-    isTechnician: technician,
-    isDispatcher: dispatcher,
-    isReporter: reporter,
-    // 工单池那一格的「操作」权：办公室拿来派单，维修工拿来接单，同一个勾选
-    canDispatch: dispatcher && perm('app:pool', 'edit', true),
-    canAccept: technician && perm('app:pool', 'edit', true),
-    canHandleOrders: technician && perm('app:my-orders', 'edit', true),
-    // 审批链仍按业务身份把关（见 docs/rbac-design.md 的例外约定），
-    // 角色矩阵只能在此基础上再收紧：经理里也可以只让一部分人批
-    canApprove: APPROVER_ROLES.indexOf(role) >= 0 && perm('app:approvals', 'edit', true),
-    canViewMaterials: perm('app:inventory', 'view', fallback),
-    // 办公室原来被端上写死成只读，但后端一直是按 materials:edit 放行的 ——
-    // 结果「补全 SKU 信息」这件本该办公室干的事，在小程序里根本点不动
-    canEditMaterials: perm('app:inventory', 'edit', fallback),
-    canViewInventory: perm('app:inventory', 'view', fallback),
-    // 报修入口：没配角色的老会话一律给（合并前人人都能报修），配了就按矩阵来
-    canReport: perm('app:repair-create', 'view', true),
-    canUseMessages: perm('app:messages', 'view', true),
+    roleNames: me.roleNames ?? [],
+    canSeePool,
+    canAccept: can('app:pool', 'edit'),
+    canSeeDispatch,
+    canDispatch: can('app:dispatch', 'edit'),
+    canSeeMyOrders: can('app:my-orders', 'view'),
+    canHandleOrders: can('app:my-orders', 'edit'),
+    canViewMaterials: can('app:inventory', 'view'),
+    canEditMaterials: can('app:inventory', 'edit'),
+    canViewInventory: can('app:inventory', 'view'),
+    canApproveAsManager,
+    canApproveAsPurchaser,
+    canApprove: canApproveAsManager || canApproveAsPurchaser,
+    canReport: can('app:repair-create', 'view'),
+    canUseMessages: can('app:messages', 'view'),
+    reporterOnly: !!pages && !canSeePool && !canSeeDispatch,
   };
 }
 
@@ -126,7 +112,7 @@ export function getSession(page?: any, force = false): Promise<StaffSession> {
     cached = auth
       .me()
       .then((me) => {
-        if (page) rememberAccess(page, me.role, me.access?.pages);
+        if (page) rememberAccess(page, me.access?.pages);
         return buildSession(me);
       })
       .catch((e) => {

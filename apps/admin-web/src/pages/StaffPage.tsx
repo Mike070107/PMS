@@ -19,16 +19,9 @@ import {
 import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '../lib/api';
-import {
-  identityHint,
-  roleColor,
-  roleLabel,
-  roleOptionLabel,
-  REPORTER_ROLE_SET,
-} from '../lib/roleLabels';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
-import { ASSIGNABLE_STAFF_ROLES, UserRole } from '@pms/shared-types';
+import { UserRole } from '@pms/shared-types';
 import { Link } from 'react-router-dom';
 
 const { Title, Paragraph, Text } = Typography;
@@ -37,7 +30,6 @@ interface BoundRole {
   id: number;
   name: string;
   builtIn: boolean;
-  businessRole?: string | null;
 }
 
 interface Staff {
@@ -63,8 +55,10 @@ interface AssignableRole {
   name: string;
   builtIn: boolean;
   dataScope: string;
-  /** 角色自带的业务身份；null = 纯后台角色，选它不改变这个人干哪一行 */
-  businessRole?: string | null;
+  /** 勾了网站后台页面 → 这个人需要账号密码才能用上 */
+  hasAdminPages?: boolean;
+  /** 勾了哪些员工端入口 */
+  appPageKeys?: string[];
   /** 已停用或超出当前操作者范围：只为回显，不该被主动选中 */
   unavailable?: boolean;
 }
@@ -92,7 +86,7 @@ export default function StaffPage() {
   const { canEdit } = usePagePerm('users');
   const [rows, setRows] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(false);
-  const [role, setRole] = useState<UserRole | undefined>();
+  const [roleId, setRoleId] = useState<number | undefined>();
   const [assignableRoles, setAssignableRoles] = useState<AssignableRole[]>([]);
   // 默认只看在职的。停用的档案（离职、并档后作废的那条）留在列表里，
   // 一眼看过去还是「怎么有两个叶双」—— 这正是这次要消掉的观感。
@@ -106,7 +100,7 @@ export default function StaffPage() {
     try {
       const list = await request<Staff[]>({
         url: '/staff',
-        query: { role, status: statusFilter, q: q || undefined },
+        query: { roleId, status: statusFilter, q: q || undefined },
       });
       setRows(list);
     } catch (e: any) {
@@ -114,7 +108,7 @@ export default function StaffPage() {
     } finally {
       setLoading(false);
     }
-  }, [role, statusFilter, q, message]);
+  }, [roleId, statusFilter, q, message]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -163,20 +157,10 @@ export default function StaffPage() {
               allowClear
               placeholder="按业务角色筛选"
               style={{ width: 180 }}
-              value={role}
-              onChange={(v) => setRole(v)}
-              // 选项按「角色管理」里的角色名显示，但**身份要列全** ——
-              // 只列有角色的身份，会让停用角色后那批在职员工从筛选里整个消失，
-              // 受限操作员那里下拉更短，会以为系统里根本没有这些人
-              options={ASSIGNABLE_STAFF_ROLES.map((identity) => {
-                const named = assignableRoles.find((r) => r.businessRole === identity);
-                return {
-                  value: identity as UserRole,
-                  label: named
-                    ? roleOptionLabel(named.name, identity)
-                    : roleLabel[identity] ?? identity,
-                };
-              })}
+              value={roleId}
+              onChange={(v) => setRoleId(v)}
+              // 选项就是「业务角色」页里配的角色本身
+              options={assignableRoles.map((r) => ({ value: r.id, label: r.name }))}
               {...searchableWideSelectProps}
             />
             <Select
@@ -222,23 +206,10 @@ export default function StaffPage() {
               render: (roles: BoundRole[] | undefined, row) => {
                 if (roles?.length) {
                   return roles.map((r) => (
-                    <div key={r.id} style={{ marginBottom: 2 }}>
-                      <Tag color={r.businessRole ? roleColor[r.businessRole] : 'default'}>
-                        {r.name}
-                      </Tag>
-                      {/* 角色名常常就叫「维修工」，再跟一个「维修工」纯属噪音，
-                          只有名字和类型不一样时才有必要点出它属于哪一类 */}
-                      {r.businessRole && r.name !== roleLabel[r.businessRole] && (
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {roleLabel[r.businessRole] || r.businessRole}
-                        </Text>
-                      )}
-                    </div>
+                    <Tag key={r.id} color={r.builtIn ? 'red' : 'blue'}>
+                      {r.name}
+                    </Tag>
                   ));
-                }
-                // 业务身份 admin 天然是企业超管，不需要绑角色
-                if (row.role === UserRole.ADMIN) {
-                  return <Tag color="red">企业超管（身份即全权限）</Tag>;
                 }
                 return <Tag>未分配角色</Tag>;
               },
@@ -355,7 +326,6 @@ function StaffFormModal({
       .catch(() => setCommunities([]));
   }, [open]);
 
-  // 身份 = 所选角色里那个带 businessRole 的；编辑存量时角色还没加载完就先用他现有的身份
   /**
    * 下拉选项 = 可分配的角色 ∪ 这个人已经绑着的角色。
    *
@@ -372,7 +342,6 @@ function StaffFormModal({
           name: r.name,
           builtIn: r.builtIn,
           dataScope: '',
-          businessRole: r.businessRole ?? null,
           unavailable: true,
         });
       }
@@ -380,11 +349,14 @@ function StaffFormModal({
     return [...byId.values()];
   }, [assignableRoles, target]);
 
-  const identityRole = roleOptions.find(
-    (r) => roleIds.includes(r.id) && r.businessRole,
-  );
-  const role = (identityRole?.businessRole ?? target?.role ?? '') as UserRole;
-  const isReporterRole = REPORTER_ROLE_SET.has(role);
+  const pickedRoles = roleOptions.filter((r) => roleIds.includes(r.id));
+  const appKeys = new Set(pickedRoles.flatMap((r) => r.appPageKeys ?? []));
+  /**
+   * 「只替住户报修的人」：他的角色里既没有工单池也没有派单台。
+   * 这类人报修位置受「可代报的小区」限制，所以才需要配那一栏。
+   */
+  const reporterOnly =
+    !!pickedRoles.length && !appKeys.has('app:pool') && !appKeys.has('app:dispatch');
 
   const onOk = async () => {
     const v = await form.validateFields();
@@ -400,7 +372,7 @@ function StaffFormModal({
             skills: v.skills,
             loginAccount: v.loginAccount || undefined,
             password: v.password || undefined,
-            reportCommunityIds: isReporterRole ? v.reportCommunityIds || [] : undefined,
+            reportCommunityIds: reporterOnly ? v.reportCommunityIds || [] : undefined,
             roleIds: v.roleIds ?? [],
           },
         });
@@ -415,12 +387,12 @@ function StaffFormModal({
             loginAccount: v.loginAccount || undefined,
             password: v.password || undefined,
             skills: v.skills,
-            reportCommunityIds: isReporterRole ? v.reportCommunityIds || [] : undefined,
+            reportCommunityIds: reporterOnly ? v.reportCommunityIds || [] : undefined,
             roleIds: v.roleIds?.length ? v.roleIds : undefined,
           },
         });
         message.success(
-          isReporterRole
+          reporterOnly
             ? '已登记。他在小程序注册过就已直接转为该身份；还没注册的，等他验证微信手机号时自动认领'
             : '员工已创建',
         );
@@ -433,9 +405,9 @@ function StaffFormModal({
     }
   };
 
-  // 维修工建档时不强制账号密码（走员工端微信手机号登录），
-  // 但账号密码字段始终可填，作为手机号登录不可用时的兜底
-  const needsLogin = role !== UserRole.TECHNICIAN && !isReporterRole;
+  // 只上小程序的角色走微信登录，账号密码留空即可；
+  // 角色里勾了网站页面的人必须有账号密码，否则他登不进后台
+  const needsLogin = pickedRoles.some((r) => r.hasAdminPages);
 
   return (
     <Modal
@@ -473,20 +445,9 @@ function StaffFormModal({
           rules={[
             {
               validator: (_, value: number[] | undefined) => {
-                const picked = roleOptions.filter((r) => (value ?? []).includes(r.id));
-                const identities = picked.filter((r) => r.businessRole);
-                if (!identities.length) {
+                if (!(value ?? []).length) {
                   return Promise.reject(
-                    new Error('请选一个业务角色（决定他在小程序里能看到什么、能干什么）'),
-                  );
-                }
-                if (identities.length > 1) {
-                  return Promise.reject(
-                    new Error(
-                      `一个人只能有一个业务角色，这里选了${identities
-                        .map((r) => r.name)
-                        .join('、')}`,
-                    ),
+                    new Error('请给他选一个业务角色，他会继承角色里配好的权限'),
                   );
                 }
                 return Promise.resolve();
@@ -494,11 +455,11 @@ function StaffFormModal({
             },
           ]}
           extra={
-            role === UserRole.ADMIN
-              ? '企业超级管理员直通全公司所有页面和数据，数据范围对其不生效。管理处负责人请选「物业经理」或「物业办公室」类角色，其数据范围限定到对应管理处。'
-              : identityRole
-                ? `${roleLabel[role] || role}。${identityHint[role] ?? ''}他在小程序里看到哪几格、在网站上能进哪些页面，都在「业务角色」页改这一个角色即可。`
-                : '业务角色决定三件事：他在小程序里看到哪几格、能不能动手，以及登录网站后能看哪些页面。'
+            pickedRoles.length
+              ? `他在小程序里看到哪几格、在网站上能进哪些页面，都在「业务角色」页改这些角色即可。${
+                  needsLogin ? '这个角色能进网站后台，记得一并设置下面的登录账号和密码。' : ''
+                }`
+              : '选一个角色，他就继承这个角色勾好的页面权限和数据范围。角色在「业务角色」页配置。'
           }
         >
           <Select
@@ -508,20 +469,20 @@ function StaffFormModal({
             options={withOptionTitles(
               roleOptions.map((r) => ({
                 value: r.id,
-                label: roleOptionLabel(r.name, r.businessRole, {
-                  unavailable: r.unavailable,
-                }),
+                label: `${r.name}${r.builtIn ? '（内置·全权限）' : ''}${
+                  r.unavailable ? ' · 已停用' : ''
+                }`,
               })),
             )}
             {...searchableWideSelectProps}
           />
         </Form.Item>
-        {isReporterRole ? (
+        {reporterOnly ? (
           <Form.Item
             name="reportCommunityIds"
             label="可代报的小区"
             rules={[{ required: true, message: '至少选一个小区，否则他在小程序里看不到代报入口' }]}
-            extra="只能替这些小区里的住户报修。填他微信注册小程序用的手机号：已注册过的账号会直接转为该身份；还没注册的，等他在小程序里验证手机号时自动认领 —— 都不会产生重复档案。"
+            extra="这个角色只能报修、看不到工单池，所以要指定他能替哪些小区报。填他微信注册小程序用的手机号：已注册过的账号会直接接上，还没注册的等他验证手机号时自动认领 —— 都不会产生重复档案。"
           >
             <Select
               mode="multiple"
@@ -533,7 +494,7 @@ function StaffFormModal({
             />
           </Form.Item>
         ) : (
-          <Form.Item name="skills" label="工种（维修工）">
+          <Form.Item name="skills" label="工种（选填，派单时按工种匹配）">
             <Select mode="multiple" options={withOptionTitles(skillOptions)} placeholder="可多选" {...searchableWideSelectProps} />
           </Form.Item>
         )}
@@ -545,9 +506,7 @@ function StaffFormModal({
               rules={[{ required: needsLogin && !target, message: '该角色必须登录后台' }]}
               extra={needsLogin
                 ? undefined
-                : isReporterRole
-                  ? '配合上面的业务角色使用：角色里勾了网站页面、这里又有账号密码，才能登录网页后台'
-                  : '维修工填了账号密码后，员工端可用账号密码登录'}
+                : '选填。这个角色只用小程序，他用微信手机号登录即可；填了账号密码则多一种登录方式'}
             >
               <Input placeholder="用于后台 / 员工端登录" />
             </Form.Item>

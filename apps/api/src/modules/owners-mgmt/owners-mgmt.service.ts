@@ -222,7 +222,8 @@ export class OwnersMgmtService {
     const rows = await this.list({} as ListOwnersQueryDto, {
       id: 0,
       tenantId,
-      role: UserRole.ADMIN,
+      // 内部复用 list 拿单条：这里的 role 只用于「不是业主端」这一层判断
+      role: UserRole.STAFF,
     } as AuthUser);
     return rows.find((r) => r.id === id) ?? null;
   }

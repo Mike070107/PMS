@@ -3,7 +3,6 @@ import { formatDateTimeCn } from '@pms/miniapp-ui';
 import { getSession } from '../../utils/session';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
 import {
-  PENDING_STATUS_BY_ROLE,
   PURCHASE_STATUS_LABELS,
   PurchaseRequestStatus,
   UserRole,
@@ -50,32 +49,17 @@ Page({
 
   async load() {
     try {
-      // 身份和权限都走共用会话（一次登录只打一遍 /auth/me），别每页各调各的
+      // 权限走共用会话（一次登录只打一遍 /auth/me），别每页各调各的
       const session = await getSession(this);
-      const role = session.role as UserRole;
-      const me = { role };
-      const pendingStatus = PENDING_STATUS_BY_ROLE[me.role];
-      // 审批链按业务身份把关（经理/采购/管理员），角色矩阵可以在此之上再收紧：
-      // 同是经理，也允许只让其中一部分人真的能批
-      const canApprove = session.canApprove;
-      const identityAllows =
-        me.role === UserRole.MANAGER ||
-        me.role === UserRole.PURCHASER ||
-        me.role === UserRole.ADMIN;
 
-      if (!canApprove) {
-        const hintByRole: Partial<Record<UserRole, string>> = {
-          [UserRole.TECHNICIAN]:
-            '维修工没有采购审批权限。缺料请在工单详情里提报，由办公室汇总后进入审批流程。',
-          [UserRole.OFFICE]:
-            '办公室负责汇总采购申请并提交给物业经理，这一步请在管理后台操作。',
-        };
+      if (!session.canApprove) {
         this.setData({
           canApprove: false,
-          // 身份本来该能批、只是角色里没勾，就把话说明白 —— 否则经理会以为系统坏了
-          roleHint: identityAllows
-            ? '你的角色暂时没有审批权限。请管理员在管理后台「业务角色」页，把你的角色在员工端小程序那张表里「采购审批」这一行的「审批」勾上；改完下拉刷新即可。'
-            : hintByRole[me.role] || '当前角色没有采购审批权限',
+          // 说清楚去哪儿开，不然人对着一句「没权限」不知道找谁
+          roleHint:
+            '你的角色没有采购审批权限。请管理员在管理后台「业务角色」页，' +
+            '把你的角色在「邻修小程序页面权限」里勾上「采购审批（经理这一步）」' +
+            '或「采购审批（采购这一步）」的「批 / 驳回」；改完在这一页下拉刷新即可。',
           list: [],
           loaded: true,
         });
@@ -83,8 +67,11 @@ Page({
         return;
       }
 
-      // 管理员没有专属待办状态，默认看经理待审的那批
-      const status = pendingStatus ?? PurchaseRequestStatus.MANAGER_REVIEW;
+      // 两步审批各看各的那批单。两步都有权限时先看经理那一步
+      // （采购申请必须先过经理，先处理前一步才不会积压）
+      const status = session.canApproveAsManager
+        ? PurchaseRequestStatus.MANAGER_REVIEW
+        : PurchaseRequestStatus.PURCHASER_REVIEW;
       const list = await purchases.listRequests({ status });
       this.setData({
         canApprove: true,

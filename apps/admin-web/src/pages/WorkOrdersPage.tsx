@@ -43,6 +43,7 @@ import {
   DeleteOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import type { TechnicianOption } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { ReactNode } from 'react';
@@ -378,12 +379,14 @@ function formatSkillList(skills: string[] | undefined, rules: RepairTypeRule[] =
 
 export default function WorkOrdersPage() {
   const { message } = AntdApp.useApp();
-  const { user } = useAuth();
+  const { user, access } = useAuth();
   const { canEdit } = usePagePerm('work-orders');
   const [communities, setCommunities] = useState<Community[]>([]);
   const [addressTree, setAddressTree] = useState<AddressCommunity[]>([]);
   const [addressLoading, setAddressLoading] = useState(false);
   const [staffList, setStaffList] = useState<Staff[]>([]);
+  /** 能接单的人（后端按「工单池 · 接单」这一格查），派单下拉用它 */
+  const [dispatchTechnicians, setDispatchTechnicians] = useState<TechnicianOption[]>([]);
   const [repairTypeRules, setRepairTypeRules] = useState<RepairTypeRule[]>([]);
   const [repairSuggestions, setRepairSuggestions] = useState<RepairSuggestions>({ locations: [], contents: [], contentsByType: {}, keywordUsageByType: {} });
   const [rows, setRows] = useState<WorkOrderRow[]>([]);
@@ -398,7 +401,8 @@ export default function WorkOrdersPage() {
   const [ruleOpen, setRuleOpen] = useState(false);
   const [submitPanelWidth, setSubmitPanelWidth] = useState(() => readSavedSubmitPanelWidth(user?.id));
   const skipNextWidthSaveRef = useRef(false);
-  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPERADMIN;
+  // 企业超管 / 平台超管：以权限矩阵为准，users.role 已经不表达身份了
+  const isAdmin = !!access?.isTenantAdmin || !!access?.isPlatformAdmin;
 
   const staffById = useMemo(() => {
     const m = new Map<number, Staff>();
@@ -429,8 +433,12 @@ export default function WorkOrdersPage() {
 
   const loadStaff = useCallback(async () => {
     try {
-      const list = await request<Staff[]>({ url: '/staff' });
+      const [list, techs] = await Promise.all([
+        request<Staff[]>({ url: '/staff' }),
+        request<TechnicianOption[]>({ url: '/work-orders/technicians' }).catch(() => []),
+      ]);
       setStaffList(list);
+      setDispatchTechnicians(techs);
     } catch (e: any) {
       // 静默：可能此账号无权访问，工单仍可看
       console.warn(e);
@@ -730,6 +738,7 @@ export default function WorkOrdersPage() {
       <WorkOrderDetailDrawer
         id={detailId}
         staffList={staffList}
+        dispatchTechnicians={dispatchTechnicians}
         repairTypeRules={repairTypeRules}
         onClose={() => setDetailId(null)}
         onChanged={() => { loadOrders(); loadOrderStats(); }}
@@ -737,7 +746,7 @@ export default function WorkOrdersPage() {
       <RepairTypeRuleModal
         open={ruleOpen}
         rules={repairTypeRules}
-        technicians={staffList.filter((s) => s.role === UserRole.TECHNICIAN)}
+        technicians={dispatchTechnicians}
         suggestions={repairSuggestions}
         communities={communities}
         onClose={() => setRuleOpen(false)}
@@ -1537,10 +1546,11 @@ function CompactRepairRecordRow({
 
 // ---------------- 工单详情抽屉 ----------------
 function WorkOrderDetailDrawer({
-  id, staffList, repairTypeRules, onClose, onChanged,
+  id, staffList, dispatchTechnicians, repairTypeRules, onClose, onChanged,
 }: {
   id: number | null;
   staffList: Staff[];
+  dispatchTechnicians: TechnicianOption[];
   repairTypeRules: RepairTypeRule[];
   onClose: () => void;
   onChanged: () => void;
@@ -1586,7 +1596,9 @@ function WorkOrderDetailDrawer({
 
   const wo = detail?.workOrder;
   const status = wo?.status;
-  const technicians = staffList.filter((s) => s.role === UserRole.TECHNICIAN);
+  // 「能接单的人」由后端按权限查（角色里勾了「工单池 · 接单」），
+  // 不再靠 users.role 过滤员工列表
+  const technicians = dispatchTechnicians;
 
   return (
     <>
@@ -2120,7 +2132,7 @@ function RepairTypeRuleModal({
 }: {
   open: boolean;
   rules: RepairTypeRule[];
-  technicians: Staff[];
+  technicians: TechnicianOption[];
   suggestions: RepairSuggestions;
   communities: Community[];
   onClose: () => void;
@@ -2489,7 +2501,6 @@ function RepairTypeRuleModal({
                   options={withOptionTitles(technicians.map((t) => ({
                     value: t.id,
                     label: `${t.name || '(未命名)'} · ${t.phone || ''}${t.skills?.length ? ' · ' + t.skills.join(',') : ''}`,
-                    disabled: t.status !== 'active',
                   })))}
                   {...searchableWideSelectProps}
                 />
@@ -2548,7 +2559,7 @@ function AssignModal({
 }: {
   open: boolean;
   workOrderId: number | null;
-  technicians: Staff[];
+  technicians: TechnicianOption[];
   repairTypeRules: RepairTypeRule[];
   currentSkill?: string;
   onClose: () => void;
@@ -2583,7 +2594,6 @@ function AssignModal({
             options={withOptionTitles(technicians.map((t) => ({
               value: t.id,
               label: `${t.name || '(未命名)'} · ${t.phone || ''}${t.skills?.length ? ' · ' + formatSkillList(t.skills, repairTypeRules) : ''}`,
-              disabled: t.status !== 'active',
             })))}
             {...searchableWideSelectProps}
           />

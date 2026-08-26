@@ -21,32 +21,17 @@ import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ADMIN_PAGES,
-  ASSIGNABLE_STAFF_ROLES,
+  DEFAULT_ROLE_TEMPLATES,
   ROLE_DATA_SCOPE_LABELS,
   RoleDataScope,
-  DEFAULT_APP_PAGES_BY_IDENTITY,
   STAFF_APP_PAGES,
-  STAFF_APP_WORKER_ROLES,
-  USER_ROLE_LABELS,
   isStaffAppPageKey,
 } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { usePagePerm, useAuth } from '../lib/auth';
-import { identityHint, roleLabel } from '../lib/roleLabels';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 
 const { Title, Text } = Typography;
-
-/** 纯后台角色的哨兵值：Select 不接受 null，用空串代过去再转回 null */
-const NO_IDENTITY = '';
-
-const identityOptions = [
-  { value: NO_IDENTITY, label: '仅后台（不上小程序）' },
-  ...ASSIGNABLE_STAFF_ROLES.map((r) => ({
-    value: r as string,
-    label: roleLabel[r] ?? USER_ROLE_LABELS[r],
-  })),
-];
 
 
 interface RolePermRow {
@@ -60,8 +45,6 @@ interface RoleRow {
   id: number;
   name: string;
   remark: string | null;
-  /** 业务身份：决定小程序端能力、审批链、登录哪个端；null = 纯后台角色 */
-  businessRole: string | null;
   dataScope: string;
   builtIn: boolean;
   enabled: boolean;
@@ -151,17 +134,6 @@ export default function RolesPage() {
                   {!r.enabled && <Tag>已停用</Tag>}
                 </Space>
               ),
-            },
-            {
-              title: '角色类型', dataIndex: 'businessRole', width: 130,
-              render: (v: string | null) =>
-                v ? (
-                  <Tag color={STAFF_APP_WORKER_ROLES.includes(v as never) ? 'blue' : 'default'}>
-                    {USER_ROLE_LABELS[v] ?? v}
-                  </Tag>
-                ) : (
-                  <Text type="secondary">仅后台</Text>
-                ),
             },
             {
               title: '数据范围', dataIndex: 'dataScope', width: 130,
@@ -259,7 +231,6 @@ function RoleFormModal({
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [dataScope, setDataScope] = useState<string>(RoleDataScope.ALL);
-  const [businessRole, setBusinessRole] = useState<string>(NO_IDENTITY);
   const [scopeOptions, setScopeOptions] = useState<ScopeOptions>({ offices: [], communities: [] });
   const [perms, setPerms] = useState<Record<string, RolePermRow>>({});
 
@@ -281,50 +252,34 @@ function RoleFormModal({
       form.setFieldsValue({
         name: target.name,
         remark: target.remark ?? undefined,
-        businessRole: target.businessRole ?? NO_IDENTITY,
         dataScope: target.dataScope,
         officeIds: target.officeIds,
         communityIds: target.communityIds,
         enabled: target.enabled,
       });
-      setBusinessRole(target.businessRole ?? NO_IDENTITY);
       setDataScope(target.dataScope);
       setPerms(Object.fromEntries(target.permissions.map((p) => [p.pageKey, { ...p }])));
     } else {
       form.resetFields();
-      form.setFieldsValue({
-        businessRole: NO_IDENTITY,
-        dataScope: RoleDataScope.ALL,
-        enabled: true,
-      });
-      setBusinessRole(NO_IDENTITY);
+      form.setFieldsValue({ dataScope: RoleDataScope.ALL, enabled: true });
       setDataScope(RoleDataScope.ALL);
       setPerms({});
     }
   }, [open, target, form]);
 
   /**
-   * 选了角色类型就把这一行常用的员工端入口先勾上（推荐组合与升级种子同一份）。
+   * 新建角色时按名字套一份现成的勾选（输入「维修工」就把维修工那套先勾上）。
    *
-   * 只在「一格都没勾」或「勾的正好是上一个类型的推荐组合」时覆盖 ——
-   * 前者是新建角色的起手，后者是选错了类型改选（先点维修工、再改成保安，
-   * 不重算的话这个保安角色会留着工单池还能接单，正是要消灭的越权组合）。
-   * 管理员手工调过的勾选不动，那是他的意思。
+   * 只在一格都没勾的时候套，套完随便改 —— 纯粹是省得从零一个个点。
+   * 建完角色发现小程序空空如也，是这套东西最容易踩的坑。
    */
-  const applyIdentityPreset = (identity: string, prevIdentity: string) => {
+  const applyTemplateByName = (name: string) => {
+    const tpl = DEFAULT_ROLE_TEMPLATES.find((t) => t.name === name.trim());
+    if (!tpl) return;
     setPerms((prev) => {
-      const current = Object.values(prev).filter(
-        (p) => isStaffAppPageKey(p.pageKey) && p.canView,
-      );
-      const prevPreset = DEFAULT_APP_PAGES_BY_IDENTITY[prevIdentity];
-      const untouched =
-        !current.length ||
-        (!!prevPreset && matchesPreset(current, prevPreset));
-      if (!untouched) return prev;
-      const next = Object.fromEntries(
-        Object.entries(prev).filter(([key]) => !isStaffAppPageKey(key)),
-      );
-      Object.entries(DEFAULT_APP_PAGES_BY_IDENTITY[identity] ?? {}).forEach(
+      if (Object.values(prev).some((p) => p.canView)) return prev;
+      const next: Record<string, RolePermRow> = {};
+      Object.entries({ ...tpl.appPages, ...(tpl.adminPages ?? {}) }).forEach(
         ([pageKey, level]) => {
           next[pageKey] = {
             pageKey,
@@ -376,19 +331,18 @@ function RoleFormModal({
     // 只上小程序的角色（维修工、保安…）本来就不该进后台，零页面权限是正常配置；
     // 只上小程序的角色（维修工、保安…）本来就不该进后台，网站页面一个不勾是正常的；
     // 没选类型又一个网站页面都不勾，才是真的配错了
-    if (!permissions.length && !v.businessRole) {
-      message.warning('纯后台角色至少要勾一个网站页面，或先选一个角色类型');
+    if (!permissions.length) {
+      message.warning('至少勾一个页面 —— 一格都不勾，绑这个角色的人什么也打不开');
       return;
     }
-    if (v.businessRole && !permissions.some((p) => isStaffAppPageKey(p.pageKey))) {
-      message.warning('这个角色在小程序里一格入口都没有，他登进去只有「我的」页');
+    if (!permissions.some((p) => isStaffAppPageKey(p.pageKey))) {
+      message.warning('这个角色在小程序里一格入口都没有，绑它的人登进去只有「我的」页');
     }
     setSaving(true);
     try {
       const data = {
         name: v.name,
         remark: v.remark || undefined,
-        businessRole: v.businessRole || null,
         dataScope: v.dataScope,
         officeIds: v.dataScope === RoleDataScope.OFFICES ? v.officeIds : undefined,
         communityIds: v.dataScope === RoleDataScope.COMMUNITIES ? v.communityIds : undefined,
@@ -422,7 +376,10 @@ function RoleFormModal({
       <Form form={form} layout="vertical">
         <Space.Compact block>
           <Form.Item name="name" label="角色名称" rules={[{ required: true, message: '请填写角色名称' }]} style={{ flex: 1, marginRight: 12 }}>
-            <Input placeholder="如：枫桦景苑维修工、管理处主任、客服专员" />
+            <Input
+              placeholder="如：枫桦景苑维修工、枫桦景苑物业经理、客服专员"
+              onBlur={(e) => applyTemplateByName(e.target.value)}
+            />
           </Form.Item>
           <Form.Item name="enabled" label="启用" valuePropName="checked" style={{ width: 80 }}>
             <Switch />
@@ -432,23 +389,6 @@ function RoleFormModal({
           <Input placeholder="给同事看的说明" maxLength={100} />
         </Form.Item>
 
-        <Form.Item
-          name="businessRole"
-          label="角色类型（决定工作流）"
-          extra={
-            identityHint[businessRole] ??
-            '纯后台角色：不上小程序，只用来给网站页面授权（比如只看报表的财务）。'
-          }
-        >
-          <Select
-            options={identityOptions}
-            onChange={(v) => {
-              applyIdentityPreset(v, businessRole);
-              setBusinessRole(v);
-            }}
-            {...searchableWideSelectProps}
-          />
-        </Form.Item>
 
         <Form.Item name="dataScope" label="数据范围" rules={[{ required: true }]}>
           <Radio.Group

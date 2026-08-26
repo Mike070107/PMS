@@ -10,7 +10,6 @@ import { Brackets, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
   ASSIGNABLE_STAFF_ROLES,
-  REPORTER_ROLES,
   STAFF_APP_ROLES,
   USER_ROLE_LABELS,
   UserRole,
@@ -18,11 +17,13 @@ import {
 } from '../../common/enums';
 import {
   Role,
+  RolePermission,
   StaffProfile,
   User,
   UserReportCommunity,
   UserRoleAssignment,
 } from '../../entities';
+import { isStaffAppPageKey } from '../../common/pages';
 import { ResolvedAccess } from '../access/access.service';
 import { RolesService } from '../roles/roles.service';
 import { CreateStaffDto, ListStaffQueryDto, UpdateStaffDto } from './dto';
@@ -31,7 +32,15 @@ import { CreateStaffDto, ListStaffQueryDto, UpdateStaffDto } from './dto';
 // 必须是同一份，否则会出现「后台能选、保存报 invalid role」这种自相矛盾
 const ASSIGNABLE_ROLES = ASSIGNABLE_STAFF_ROLES;
 
-const isReporter = (role: UserRole) => REPORTER_ROLES.includes(role);
+/**
+ * 「只替住户报修的人」—— 保安、居委会那一类。
+ * 判据是他的角色：看不到工单池也看不到派单台，就说明他只是个报修入口。
+ * 这也决定了报修位置受不受「可代报小区」限制（见 repairs.service 的 isSelfScoped）。
+ */
+const reporterOnly = (roles: { pageKeys: string[] }[]) =>
+  !roles.some((r) =>
+    r.pageKeys.some((k) => k === 'app:pool' || k === 'app:dispatch' || k === 'work-orders'),
+  );
 
 /** 报错文案里回显手机号，中间四位打码 */
 const maskPhone = (phone: string) =>
@@ -48,6 +57,8 @@ export class StaffService {
     private readonly reportGrantRepo: Repository<UserReportCommunity>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
+    @InjectRepository(RolePermission)
+    private readonly rolePermRepo: Repository<RolePermission>,
     @InjectRepository(UserRoleAssignment)
     private readonly userRoleRepo: Repository<UserRoleAssignment>,
     private readonly rolesService: RolesService,
@@ -58,11 +69,17 @@ export class StaffService {
     const qb = this.userRepo
       .createQueryBuilder('u')
       .where('u.tenant_id = :tenantId', { tenantId })
-      .andWhere('u.role IN (:...roles)', {
-        roles: query.role ? [query.role] : ASSIGNABLE_ROLES,
-      })
+      .andWhere('u.role IN (:...roles)', { roles: ASSIGNABLE_ROLES })
       .orderBy('u.id', 'DESC')
       .limit(200);
+
+    // 按业务角色筛 = 按绑定筛，不再有「身份」这一层
+    if (query.roleId) {
+      qb.andWhere(
+        `u.id IN (SELECT ur.user_id FROM user_roles ur WHERE ur.role_id = :roleId)`,
+        { roleId: query.roleId },
+      );
+    }
 
     if (query.status) qb.andWhere('u.status = :status', { status: query.status });
     if (query.q) {
@@ -113,22 +130,19 @@ export class StaffService {
     const tenantId = this.requireTenant(user);
     if (dto.roleIds?.length) {
       await this.validateAssignableRoles(dto.roleIds, tenantId, access);
-      await this.rolesService.assertSingleIdentity(tenantId, dto.roleIds);
     }
-    // 业务身份由所选角色带出来（合并后后台只选「角色」这一栏）。
-    // dto.role 只是老客户端的兜底入口，新前端不再传。
-    const role = (await this.resolveIdentity(tenantId, dto.roleIds)) ?? dto.role;
-    if (!role || !ASSIGNABLE_ROLES.includes(role)) {
-      throw new BadRequestException('请为该用户选择一个带业务身份的角色');
+    if (!dto.roleIds?.length) {
+      throw new BadRequestException('请给这个人选一个业务角色');
     }
-    this.guardAdminIdentity(role, access);
+    // 员工统一是 staff，能干什么全看他绑的角色 —— 这里不再有「业务身份」这回事
+    const role = UserRole.STAFF;
 
-    // 维修工和代报角色都走微信登录，后台账号密码选填（填了即可授权网页登录，
-    // 还需在「后台角色」里绑一个角色，adminLogin 对无角色绑定的业务身份一律拦）
-    const needsLogin = role !== UserRole.TECHNICIAN && !isReporter(role);
+    // 只有角色里勾了网站页面的人才需要账号密码；只上小程序的（维修工、保安…）
+    // 走微信登录，账号密码留空即可
+    const needsLogin = await this.roleGrantsAdminPages(tenantId, dto.roleIds);
     if (needsLogin && (!dto.loginAccount || !dto.password)) {
       throw new BadRequestException(
-        'loginAccount and password are required for this role',
+        '这个角色能进网站后台，请一并设置登录账号和密码',
       );
     }
     if (dto.loginAccount) {
@@ -177,7 +191,7 @@ export class StaffService {
     );
 
     let profile: StaffProfile | null = null;
-    if (role === UserRole.TECHNICIAN || dto.skills?.length || dto.zones?.length) {
+    if (dto.skills?.length || dto.zones?.length) {
       profile = await this.profileRepo.save(
         this.profileRepo.create({
           tenantId,
@@ -191,8 +205,9 @@ export class StaffService {
       );
     }
 
-    const communityIds = isReporter(role)
-      ? await this.replaceReportGrants(tenantId, created.id, dto.reportCommunityIds ?? [], user.id)
+    // 「可代报的小区」对谁都能配：只对没有工单池/派单台权限的人真正起限制作用
+    const communityIds = dto.reportCommunityIds?.length
+      ? await this.replaceReportGrants(tenantId, created.id, dto.reportCommunityIds, user.id)
       : [];
 
     const roles = dto.roleIds?.length
@@ -211,19 +226,10 @@ export class StaffService {
     }
     await this.guardManageable(target, access);
 
-    if (dto.role && !ASSIGNABLE_ROLES.includes(dto.role)) {
-      throw new BadRequestException('invalid role');
-    }
     if (dto.roleIds !== undefined && dto.roleIds.length) {
       await this.validateAssignableRoles(dto.roleIds, tenantId, access);
-      await this.rolesService.assertSingleIdentity(tenantId, dto.roleIds);
     }
-    // 换角色 = 换身份：这一句就是「后台把人改成维修工，员工端立刻变成维修工那套」
-    const nextRole =
-      dto.roleIds !== undefined
-        ? (await this.resolveIdentity(tenantId, dto.roleIds)) ?? dto.role
-        : dto.role;
-    if (nextRole) this.guardAdminIdentity(nextRole, access);
+
     if (dto.loginAccount !== undefined) {
       const account = dto.loginAccount.trim();
       if (account && account !== target.loginAccount) {
@@ -252,8 +258,7 @@ export class StaffService {
       }
       target.phone = dto.phone;
     }
-    const previousRole = target.role;
-    if (nextRole) target.role = nextRole;
+
     if (dto.status !== undefined) target.status = dto.status;
     if (dto.password) target.passwordHash = await bcrypt.hash(dto.password, 10);
     target.updatedBy = user.id;
@@ -281,18 +286,12 @@ export class StaffService {
       profile = await this.profileRepo.save(profile);
     }
 
-    // 身份从代报角色改走（保安转岗成维修工）时，代报授权要一并收回 ——
-    // 留着的话他哪天再被改回保安，几个月前的授权原地复活，没人记得授过
-    if (!isReporter(target.role) && previousRole !== target.role) {
-      await this.reportGrantRepo.delete({ tenantId, userId: id });
-    }
-    const communityIds = isReporter(target.role)
-      ? dto.reportCommunityIds !== undefined
+    const communityIds =
+      dto.reportCommunityIds !== undefined
         ? await this.replaceReportGrants(tenantId, id, dto.reportCommunityIds, user.id)
         : (await this.reportGrantRepo.find({ where: { tenantId, userId: id } })).map(
             (g) => g.communityId,
-          )
-      : [];
+          );
 
     const roles =
       dto.roleIds !== undefined
@@ -356,7 +355,7 @@ export class StaffService {
     user: User,
     profile: StaffProfile | null,
     reportCommunityIds: number[] = [],
-    roles: { id: number; name: string; builtIn: boolean; businessRole: string | null }[] = [],
+    roles: { id: number; name: string; builtIn: boolean }[] = [],
   ) {
     return {
       id: user.id,
@@ -370,7 +369,6 @@ export class StaffService {
       skills: profile?.skills ?? [],
       zones: profile?.zones ?? [],
       onDuty: profile?.onDuty ?? true,
-      isReporter: isReporter(user.role),
       reportCommunityIds,
       roles,
       roleIds: roles.map((r) => r.id),
@@ -380,7 +378,7 @@ export class StaffService {
   private async loadRolesByUser(tenantId: number, userIds: number[]) {
     const map = new Map<
       number,
-      { id: number; name: string; builtIn: boolean; businessRole: string | null }[]
+      { id: number; name: string; builtIn: boolean }[]
     >();
     if (!userIds.length) return map;
     const bindings = await this.userRoleRepo.find({
@@ -399,34 +397,10 @@ export class StaffService {
         id: role.id,
         name: role.name,
         builtIn: role.builtIn,
-        businessRole: role.businessRole,
       });
       map.set(b.userId, list);
     }
     return map;
-  }
-
-  /**
-   * 从所选角色里解析业务身份。
-   *
-   * 合并后「角色」自带业务身份（roles.business_role），用户管理页因此只剩一个下拉。
-   * 一个人只绑得到一个带身份的角色（保存前 assertSingleIdentity 已拦），
-   * 只绑纯权限角色时返回 null，由调用方保持原身份不变。
-   */
-  private async resolveIdentity(
-    tenantId: number,
-    roleIds?: number[],
-  ): Promise<UserRole | null> {
-    if (!roleIds?.length) return null;
-    const roles = await this.roleRepo.find({
-      where: { id: In([...new Set(roleIds)]), tenantId },
-    });
-    const identity = roles.map((r) => r.businessRole).find((v) => !!v);
-    if (!identity) return null;
-    if (!ASSIGNABLE_ROLES.includes(identity as UserRole)) {
-      throw new BadRequestException(`角色绑定的业务身份「${identity}」不可用`);
-    }
-    return identity as UserRole;
   }
 
   /** 整份覆盖后台角色绑定，返回绑定后的角色摘要 */
@@ -454,22 +428,28 @@ export class StaffService {
     return (await this.loadRolesByUser(tenantId, [userId])).get(userId) ?? [];
   }
 
-  /** 业务身份 admin 即企业超管，只有企业超管/平台能开 */
-  private guardAdminIdentity(role: UserRole, access: ResolvedAccess) {
-    if (role === UserRole.ADMIN && !access.isTenantAdmin && !access.isPlatformAdmin) {
-      throw new ForbiddenException('只有企业超级管理员可以开通管理员账号');
-    }
+  /** 角色里有没有网站后台页面（决定要不要账号密码） */
+  private async roleGrantsAdminPages(tenantId: number, roleIds: number[]) {
+    const roles = await this.roleRepo.find({
+      where: { id: In([...new Set(roleIds)]), tenantId },
+    });
+    if (roles.some((r) => r.builtIn)) return true;
+    if (!roles.length) return false;
+    const perms = await this.rolePermRepo.find({
+      where: { roleId: In(roles.map((r) => r.id)), canView: true },
+      select: ['pageKey'],
+    });
+    return perms.some((p) => !isStaffAppPageKey(p.pageKey));
   }
 
   /**
    * 受限操作者（数据范围非全公司）不能动超出范围的用户：
-   * 目标是企业超管（业务身份 admin 或绑了内置角色）、或目标绑定的角色
-   * 范围超出操作者范围时拒绝。
+   * 目标绑了内置角色（企业超管）、或目标绑定的角色范围超出操作者范围时拒绝。
    */
   private async guardManageable(target: User, access: ResolvedAccess) {
     if (access.isPlatformAdmin || access.isTenantAdmin) return;
-    if (target.role === UserRole.ADMIN || target.role === UserRole.SUPERADMIN) {
-      throw new ForbiddenException('无权管理企业超级管理员账号');
+    if (target.role === UserRole.SUPERADMIN) {
+      throw new ForbiddenException('无权管理平台账号');
     }
     if (!target.tenantId) return;
     const targetRoles = (await this.loadRolesByUser(target.tenantId, [target.id])).get(

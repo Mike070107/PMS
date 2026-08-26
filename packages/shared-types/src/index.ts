@@ -5,72 +5,22 @@ import type { AdminAccess } from './pages';
 // ---------- 枚举 ----------
 export enum UserRole {
   OWNER = 'owner',
-  GUARD = 'guard',
-  NEIGHBORHOOD = 'neighborhood',
-  OWNER_COMMITTEE = 'owner_committee',
-  PROPERTY_STAFF = 'property_staff',
-  TECHNICIAN = 'technician',
-  OFFICE = 'office',
-  MANAGER = 'manager',
-  PURCHASER = 'purchaser',
-  ADMIN = 'admin',
+  STAFF = 'staff',
   SUPERADMIN = 'superadmin',
 }
-
-/**
- * 社区代报角色：2026-08-24 起走**员工端**小程序（此前在业主端），
- * 能报授权小区内的任意地址，但没有接单/库存/审批那些物业员工的功能。
- */
-export const REPORTER_ROLES: UserRole[] = [
-  UserRole.GUARD,
-  UserRole.NEIGHBORHOOD,
-  UserRole.OWNER_COMMITTEE,
-  UserRole.PROPERTY_STAFF,
-];
 
 /** 走业主端小程序（邻修管家）的角色：只有业主 */
 export const OWNER_APP_ROLES: UserRole[] = [UserRole.OWNER];
 
-/** 走员工端小程序（邻修管理）的角色：物业员工 + 代报角色 */
-export const STAFF_APP_ROLES: UserRole[] = [
-  UserRole.TECHNICIAN,
-  UserRole.OFFICE,
-  UserRole.MANAGER,
-  UserRole.PURCHASER,
-  UserRole.ADMIN,
-  ...REPORTER_ROLES,
-];
+/** 走员工端小程序（邻修管理）的角色 */
+export const STAFF_APP_ROLES: UserRole[] = [UserRole.STAFF];
 
-/** 员工端里真正干物业活的角色：能接单/看工单池/管库存，代报角色不在内 */
-export const STAFF_APP_WORKER_ROLES: UserRole[] = [
-  UserRole.TECHNICIAN,
-  UserRole.OFFICE,
-  UserRole.MANAGER,
-  UserRole.PURCHASER,
-  UserRole.ADMIN,
-];
+/** 后台「用户管理」里能开的账号：员工（干哪一行由角色决定） */
+export const ASSIGNABLE_STAFF_ROLES: UserRole[] = [UserRole.STAFF];
 
-/**
- * 后台可开通的业务身份，也是角色表 business_role 的取值域（与 api enums 同源）。
- * 不含业主（走业主端那套档案）和平台管理员（不由物业公司开）。
- */
-export const ASSIGNABLE_STAFF_ROLES: UserRole[] = [
-  ...STAFF_APP_WORKER_ROLES,
-  ...REPORTER_ROLES,
-];
-
-/** 角色中文名，前后台展示同一套 */
 export const USER_ROLE_LABELS: Record<string, string> = {
   [UserRole.OWNER]: '业主',
-  [UserRole.GUARD]: '保安',
-  [UserRole.NEIGHBORHOOD]: '居委会',
-  [UserRole.OWNER_COMMITTEE]: '业委会',
-  [UserRole.PROPERTY_STAFF]: '物业工作人员',
-  [UserRole.TECHNICIAN]: '维修工',
-  [UserRole.OFFICE]: '物业办公室',
-  [UserRole.MANAGER]: '物业经理',
-  [UserRole.PURCHASER]: '采购经理',
-  [UserRole.ADMIN]: '物业管理员',
+  [UserRole.STAFF]: '员工',
   [UserRole.SUPERADMIN]: '平台管理员',
 };
 
@@ -272,6 +222,8 @@ export interface MeResp {
   phone: string | null;
   loginAccount: string | null;
   status: UserStatus;
+  /** 他绑的角色名。没有「身份」可显示了，角色名就是他在系统里的称呼 */
+  roleNames?: string[];
   /** 仅业主/代报角色返回；未提交入驻时为 null */
   place?: OwnerPlace | null;
   /** 仅代报角色返回（员工端用）：能替哪些小区报修 */
@@ -701,11 +653,13 @@ export const PURCHASE_STATUS_LABELS: Record<PurchaseRequestStatus, string> = {
   [PurchaseRequestStatus.DONE]: '已完成',
 };
 
-/** 各角色在员工端「审批」页要处理的状态 */
-export const PENDING_STATUS_BY_ROLE: Partial<Record<UserRole, PurchaseRequestStatus>> = {
-  [UserRole.MANAGER]: PurchaseRequestStatus.MANAGER_REVIEW,
-  [UserRole.PURCHASER]: PurchaseRequestStatus.PURCHASER_REVIEW,
-  [UserRole.OFFICE]: PurchaseRequestStatus.OFFICE_REVIEW,
+/**
+ * 员工端「审批」页要处理哪一批单，取决于他手上有哪一步的审批权：
+ * 勾了「采购审批（经理这一步）」就看待经理审的，勾了采购那一步就看待采购确认的。
+ */
+export const PENDING_STATUS_BY_APP_PAGE: Record<string, PurchaseRequestStatus> = {
+  'app:approve-manager': PurchaseRequestStatus.MANAGER_REVIEW,
+  'app:approve-purchaser': PurchaseRequestStatus.PURCHASER_REVIEW,
 };
 
 // ---------- 字典 ----------

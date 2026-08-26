@@ -139,7 +139,24 @@ Page({
     this.setData({ loading: true });
     try {
       const session = await getSession(this, refreshSession);
-      const dispatcher = session.isDispatcher;
+      // 只报修的人（保安、居委会…）在这一屏什么都看不到 —— 送他去「我的报修」，
+      // 别让人一进来就对着一片空白猜是不是坏了
+      if (session.reporterOnly) {
+        wx.switchTab({ url: '/pages/my-orders/my-orders' });
+        return;
+      }
+      // 这一屏有两种模式：派单台（把活派给别人）和工单池（自己领活）。
+      // 两格都有权限时看 tabBar 点的是哪一格；只有一格就按那一格
+      const mode = (() => {
+        if (!session.canSeeDispatch) return 'pool';
+        if (!session.canSeePool) return 'dispatch';
+        try {
+          return wx.getStorageSync('pms.staff.poolMode') === 'pool' ? 'pool' : 'dispatch';
+        } catch {
+          return 'dispatch';
+        }
+      })();
+      const dispatcher = mode === 'dispatch';
       const filter = FILTERS[this.data.filterIndex] || FILTERS[0];
       const keyword = this.data.keyword.trim();
 

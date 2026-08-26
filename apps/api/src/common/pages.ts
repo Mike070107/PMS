@@ -25,16 +25,18 @@ export const ADMIN_PAGE_KEYS = [
 export type AdminPageKey = (typeof ADMIN_PAGE_KEYS)[number];
 
 /**
- * 员工端小程序的入口 key。哪个角色能看到哪几格由角色矩阵决定，
- * 端上不再按业务身份写死（详见 shared-types/src/pages.ts 的说明）。
+ * 员工端小程序的入口 key。哪个角色能看到哪几格、能不能动手，**只由角色矩阵决定** ——
+ * 后端接口也按这些 key 鉴权，不再有「业务身份」那一层（详见 shared-types/src/pages.ts）。
  * 「我的」页人人可见，不参与勾选。
  */
 export const STAFF_APP_PAGE_KEYS = [
-  'app:pool', // 工单池 / 派单台
+  'app:pool', // 工单池（接单）
+  'app:dispatch', // 派单台（派单）
   'app:my-orders', // 在手工单 / 我的报修
-  'app:repair-create', // 报修（代住户提单）
+  'app:repair-create', // 报修
   'app:inventory', // 材料与库存
-  'app:approvals', // 采购审批
+  'app:approve-manager', // 采购审批（经理这一步）
+  'app:approve-purchaser', // 采购审批（采购这一步）
   'app:messages', // 消息中心
 ] as const;
 
@@ -46,52 +48,104 @@ export const ALL_PAGE_KEYS = [...ADMIN_PAGE_KEYS, ...STAFF_APP_PAGE_KEYS] as con
 export const isStaffAppPageKey = (key: string) => key.startsWith('app:');
 
 /**
- * 每个业务身份在员工端的推荐入口组合 —— 合并前硬编码在小程序里的那套。
- * 两处用它：升级时种子给身份角色预勾（apps/api rbac-seed），
- * 新建角色时后台表单预填。两边必须是同一份，否则「后台勾的」和「实际种的」会对不上。
+ * 开箱即用的几个角色和它们的入口。**只是初始值** —— 名字、勾选、数据范围
+ * 都可以在「业务角色」页随便改，改完不会被任何东西覆盖回去。
  *
- * 'v' = 只看，'e' = 看 + 操作。代报身份（保安/居委会/业委会/物业工作人员）共用一份。
+ * 'v' = 只看，'e' = 看 + 能动手。
  */
-export const DEFAULT_APP_PAGES_BY_IDENTITY: Record<string, Record<string, 'v' | 'e'>> = {
-  technician: {
-    'app:pool': 'e',
-    'app:my-orders': 'e',
-    'app:repair-create': 'v',
-    'app:messages': 'v',
+export const DEFAULT_ROLE_TEMPLATES: {
+  name: string;
+  remark: string;
+  appPages: Record<string, 'v' | 'e'>;
+  adminPages?: Record<string, 'v' | 'e'>;
+}[] = [
+  {
+    name: '维修工',
+    remark: '接单、完工、报缺料；不进网站后台',
+    appPages: {
+      'app:pool': 'e',
+      'app:my-orders': 'e',
+      'app:repair-create': 'v',
+      'app:messages': 'v',
+    },
   },
-  office: {
-    'app:pool': 'e',
-    'app:inventory': 'e',
-    'app:repair-create': 'v',
-    'app:messages': 'v',
+  {
+    name: '物业办公室',
+    remark: '派单、管材料与库存、提采购申请',
+    appPages: {
+      'app:dispatch': 'e',
+      'app:inventory': 'e',
+      'app:repair-create': 'v',
+      'app:messages': 'v',
+    },
+    adminPages: {
+      dashboard: 'v',
+      'work-orders': 'e',
+      materials: 'e',
+      inventory: 'e',
+      properties: 'v',
+      qr: 'v',
+    },
   },
-  manager: {
-    'app:pool': 'e',
-    'app:inventory': 'e',
-    'app:approvals': 'e',
-    'app:repair-create': 'v',
-    'app:messages': 'v',
+  {
+    name: '物业经理',
+    remark: '派单 + 采购审批（经理这一步）+ 后台各页',
+    appPages: {
+      'app:dispatch': 'e',
+      'app:inventory': 'e',
+      'app:approve-manager': 'e',
+      'app:repair-create': 'v',
+      'app:messages': 'v',
+    },
+    adminPages: {
+      dashboard: 'v',
+      'work-orders': 'e',
+      business: 'e',
+      materials: 'e',
+      inventory: 'e',
+      properties: 'e',
+      owners: 'e',
+      qr: 'e',
+    },
   },
-  purchaser: {
-    'app:pool': 'e',
-    'app:inventory': 'e',
-    'app:approvals': 'e',
-    'app:repair-create': 'v',
-    'app:messages': 'v',
+  {
+    name: '采购经理',
+    remark: '采购审批（采购这一步）+ 材料库存',
+    appPages: {
+      'app:inventory': 'e',
+      'app:approve-purchaser': 'e',
+      'app:messages': 'v',
+    },
+    adminPages: { dashboard: 'v', materials: 'e', inventory: 'e' },
   },
-  admin: {
-    'app:pool': 'e',
-    'app:my-orders': 'e',
-    'app:inventory': 'e',
-    'app:approvals': 'e',
-    'app:repair-create': 'v',
-    'app:messages': 'v',
+  {
+    name: '保安',
+    remark: '只替住户报修，看自己报的单',
+    appPages: {
+      'app:repair-create': 'v',
+      'app:my-orders': 'v',
+      'app:messages': 'v',
+    },
   },
-  guard: { 'app:repair-create': 'v', 'app:my-orders': 'v', 'app:messages': 'v' },
-  neighborhood: { 'app:repair-create': 'v', 'app:my-orders': 'v', 'app:messages': 'v' },
-  owner_committee: { 'app:repair-create': 'v', 'app:my-orders': 'v', 'app:messages': 'v' },
-  property_staff: { 'app:repair-create': 'v', 'app:my-orders': 'v', 'app:messages': 'v' },
-};
+  {
+    name: '居委会',
+    remark: '只替住户报修，看自己报的单',
+    appPages: {
+      'app:repair-create': 'v',
+      'app:my-orders': 'v',
+      'app:messages': 'v',
+    },
+  },
+  {
+    name: '业委会',
+    remark: '只替住户报修，看自己报的单',
+    appPages: {
+      'app:repair-create': 'v',
+      'app:my-orders': 'v',
+      'app:messages': 'v',
+    },
+  },
+];
 
 /** 角色数据范围类型 */
 export enum RoleDataScope {

@@ -10,7 +10,14 @@ import { DataSource, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { UserRole, UserStatus } from '../../common/enums';
 import { RoleDataScope } from '../../common/pages';
-import { Community, PlatformLog, Role, Tenant, User } from '../../entities';
+import {
+  Community,
+  PlatformLog,
+  Role,
+  Tenant,
+  User,
+  UserRoleAssignment,
+} from '../../entities';
 import { RbacSeedService } from '../access/rbac-seed.service';
 import { CreateTenantDto, ResetTenantAdminDto, UpdateTenantDto } from './dto';
 
@@ -30,6 +37,8 @@ export class PlatformService {
     private readonly communityRepo: Repository<Community>,
     @InjectRepository(PlatformLog)
     private readonly logRepo: Repository<PlatformLog>,
+    @InjectRepository(UserRoleAssignment)
+    private readonly userRoleRepo: Repository<UserRoleAssignment>,
     private readonly dataSource: DataSource,
     private readonly rbacSeed: RbacSeedService,
   ) {}
@@ -54,11 +63,28 @@ export class PlatformService {
         .andWhere('c.parent_id IS NULL')
         .groupBy('c.tenant_id')
         .getRawMany<{ tenantId: number; count: string }>(),
-      this.userRepo.find({
-        where: { tenantId: In(ids), role: UserRole.ADMIN },
-        select: ['id', 'tenantId', 'name', 'loginAccount', 'status'],
-        order: { id: 'ASC' },
-      }),
+      // 企业超管 = 绑了内置「企业超级管理员」角色的人。
+      // 2026-08-26 起 users.role 不再表达身份，不能再按 role='admin' 找
+      this.userRepo
+        .createQueryBuilder('u')
+        .innerJoin(UserRoleAssignment, 'ur', 'ur.user_id = u.id')
+        .innerJoin(Role, 'r', 'r.id = ur.role_id AND r.built_in = true')
+        .where('u.tenant_id IN (:...ids)', { ids })
+        .select([
+          'u.id AS id',
+          'u.tenant_id AS "tenantId"',
+          'u.name AS name',
+          'u.login_account AS "loginAccount"',
+          'u.status AS status',
+        ])
+        .orderBy('u.id', 'ASC')
+        .getRawMany<{
+          id: number;
+          tenantId: number;
+          name: string | null;
+          loginAccount: string | null;
+          status: string;
+        }>(),
     ]);
     const usersByTenant = new Map(userCounts.map((r) => [Number(r.tenantId), Number(r.count)]));
     const communitiesByTenant = new Map(
@@ -111,9 +137,6 @@ export class PlatformService {
           tenantId: tenant.id,
           name: BUILT_IN_ADMIN_ROLE,
           remark: '系统内置：绑定该角色即企业超级管理员，不可删除',
-          // 内置角色也要带身份，否则用户管理里它显示成「（仅后台）」、
-          // 选了还过不了「必须选一个业务角色」的校验
-          businessRole: UserRole.ADMIN,
           dataScope: RoleDataScope.ALL,
           builtIn: true,
           enabled: true,
@@ -128,7 +151,7 @@ export class PlatformService {
           phone: dto.admin.phone ?? null,
           loginAccount: account,
           passwordHash: await bcrypt.hash(dto.admin.password, 10),
-          role: UserRole.ADMIN,
+          role: UserRole.STAFF,
           status: UserStatus.ACTIVE,
           wxOpenid: null,
           wxUnionid: null,
@@ -195,8 +218,13 @@ export class PlatformService {
       where: { id: dto.userId, tenantId: tenantIdParam },
     });
     if (!target) throw new NotFoundException('用户不存在');
-    if (target.role !== UserRole.ADMIN) {
-      throw new BadRequestException('只能在这里重置企业管理员的密码');
+    const isTenantAdmin = await this.userRoleRepo
+      .createQueryBuilder('ur')
+      .innerJoin(Role, 'r', 'r.id = ur.role_id AND r.built_in = true')
+      .where('ur.user_id = :userId', { userId: target.id })
+      .getExists();
+    if (!isTenantAdmin) {
+      throw new BadRequestException('只能在这里重置企业超级管理员的密码');
     }
     target.passwordHash = await bcrypt.hash(dto.password, 10);
     target.updatedBy = operator.id;

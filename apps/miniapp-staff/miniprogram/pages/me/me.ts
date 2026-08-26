@@ -5,7 +5,7 @@ import { clearAccessCache, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, isAlwaysAllowed, refreshUnread } from '../../utils/unread';
 
 /** 构建版本：随每次上传更新。开发版/预览版微信不返回版本号，靠它确认跑的是哪份代码 */
-const BUILD_VERSION = '1.0.20260826d';
+const BUILD_VERSION = '1.0.20260826e';
 
 Page({
   data: {
@@ -53,8 +53,9 @@ Page({
       // 身份和权限都从这一份会话来（utils/session.ts），页面里不再各写角色白名单
       const session = await getSession(this, true);
       const user = session.me as MeResp;
-      const roleText = USER_ROLE_LABELS[user.role] || user.role;
-      const isReporter = session.isReporter;
+      // 显示他绑的角色名 —— 现在没有「身份」这回事，角色名就是他的称呼
+      const roleText = session.roleNames.join(' · ') || USER_ROLE_LABELS[user.role] || '员工';
+      const reporterOnly = session.reporterOnly;
       // 授权小区在 me().reporter 里，报修范围就照它写 —— 写成「全公司」会让保安
       // 选到没授权的小区，提交时才被后端拦下（assertCanReportAt），白填一遍
       const scope = (user.reporter?.communities || []).map((c) => c.name).join('、');
@@ -67,12 +68,12 @@ Page({
         canUseInventory: session.canViewInventory,
         canReport: session.canReport,
         canUseMessages: session.canUseMessages,
-        canSubscribe: session.isTechnician,
-        repairDesc: isReporter
+        canSubscribe: session.canAccept,
+        repairDesc: reporterOnly
           ? (scope ? `可报 ${scope} 内任意楼栋房号` : '还没有可代报的小区，请联系物业管理员开通')
           : '巡查发现的问题直接提单，地址可选全公司任意楼栋房号',
       });
-      if (session.isTechnician) this.refreshNotifyState();
+      if (session.canAccept) this.refreshNotifyState();
     } catch {
       // 未登录时由请求层跳转登录页
     }

@@ -9,14 +9,15 @@ import { type TabKey } from './roles';
 
 export { type TabKey };
 
-const ROLE_KEY = 'pms.staff.role';
 /** access.pages 的精简缓存：只留员工端那几个入口的「可见」 */
 const PAGES_KEY = 'pms.staff.pages';
 const TAB_PAGE_KEYS = [
   'app:pool',
+  'app:dispatch',
   'app:my-orders',
   'app:inventory',
-  'app:approvals',
+  'app:approve-manager',
+  'app:approve-purchaser',
   'app:repair-create',
   'app:messages',
 ];
@@ -26,14 +27,8 @@ const TAB_PAGE_KEYS = [
  * tabBar 的 attached 和角标刷新都会走到这里，一旦联网就会触发
  * 401 → reLaunch 打转（见 custom-tab-bar/index.ts 的说明）。
  */
-export function readCachedAccess(): {
-  role: string;
-  pages: Record<string, boolean> | null;
-} {
-  return {
-    role: wx.getStorageSync(ROLE_KEY) || '',
-    pages: wx.getStorageSync(PAGES_KEY) || null,
-  };
+export function readCachedAccess(): { pages: Record<string, boolean> | null } {
+  return { pages: wx.getStorageSync(PAGES_KEY) || null };
 }
 
 function getTabBar(page: any) {
@@ -52,7 +47,7 @@ export function setTabBadge(page: any, key: TabKey, count: number) {
 }
 
 /**
- * 页面拿到 auth.me() 后顺手存一下身份和权限，tabBar 据此决定藏哪一格。
+ * 页面拿到 auth.me() 后顺手把权限存下来，tabBar 据此决定显示哪几格。
  *
  * tabBar 在 attached 里绝不能联网（会 401 → reLaunch 打转），所以它只读这份缓存。
  * 后台改完角色，用户在任意页下拉刷新（getSession(page, true)）就会走到这里，
@@ -60,31 +55,27 @@ export function setTabBadge(page: any, key: TabKey, count: number) {
  */
 export function rememberAccess(
   page: any,
-  role: string,
   pages: Record<string, { view?: boolean }> | null | undefined,
 ) {
-  if (!role) return;
   const slim: Record<string, boolean> | null = pages
     ? TAB_PAGE_KEYS.reduce((acc, key) => {
         acc[key] = !!pages[key]?.view;
         return acc;
       }, {} as Record<string, boolean>)
     : null;
-  const roleChanged = wx.getStorageSync(ROLE_KEY) !== role;
-  const pagesChanged =
+  const changed =
     JSON.stringify(wx.getStorageSync(PAGES_KEY) || null) !== JSON.stringify(slim);
-  if (!roleChanged && !pagesChanged) return;
-  wx.setStorageSync(ROLE_KEY, role);
+  if (!changed) return;
   if (slim) wx.setStorageSync(PAGES_KEY, slim);
   else wx.removeStorageSync(PAGES_KEY);
   const tabBar = getTabBar(page);
   if (tabBar && typeof tabBar.applyAccess === 'function') {
-    tabBar.applyAccess({ role, pages: slim });
+    tabBar.applyAccess({ pages: slim });
   }
 }
 
 /** 退出登录时清掉：换个人登进来不能还按上一个人的身份渲染底部 */
 export function clearAccessCache() {
-  wx.removeStorageSync(ROLE_KEY);
   wx.removeStorageSync(PAGES_KEY);
+  wx.removeStorageSync('pms.staff.poolMode');
 }

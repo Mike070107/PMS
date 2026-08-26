@@ -18,7 +18,7 @@ import {
   Repository,
 } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { ResolvedAccess } from '../access/access.service';
+import { AccessService, ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SettingsService } from '../settings/settings.service';
@@ -27,11 +27,9 @@ import {
   NotifyStatus,
   OwnerSource,
   OWNER_APP_ROLES,
-  SELF_SCOPED_ROLES,
   STAFF_APP_ROLES,
   RepairSource,
   REPAIR_SOURCE_LABELS,
-  REPORTER_ROLES,
   USER_ROLE_LABELS,
   PurchaseRequestStatus,
   StockMovementType,
@@ -143,6 +141,7 @@ export class RepairsService implements OnModuleInit {
   private readonly logger = new Logger(RepairsService.name);
 
   constructor(
+    private readonly accessService: AccessService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
     @InjectRepository(Community)
@@ -490,7 +489,7 @@ export class RepairsService implements OnModuleInit {
     // 小程序角色按人收敛可见范围，后台角色维持全租户。
     // 业主端身份不止 OWNER：保安/居委/业委/物业工作人员也在业主端提单，
     // 漏了他们要么 403、要么（更糟）落到无过滤分支看到全租户的单
-    if (SELF_SCOPED_ROLES.includes(user.role as UserRole)) {
+    if (await this.isSelfScoped(user, access)) {
       const myRequestIds = await this.repairRequestRepo.find({
         where: { tenantId, submittedBy: user.id },
         select: ['id'],
@@ -514,7 +513,7 @@ export class RepairsService implements OnModuleInit {
           WorkOrderStatus.WAITING_MATERIAL,
         ]);
       }
-    } else if (query.scope === 'mine' || user.role === UserRole.TECHNICIAN) {
+    } else if (query.scope === 'mine' || !(await this.canDispatch(user, access))) {
       // 「在手工单」= 派到我头上的单，对谁都是这个意思。
       // 原来这一档只认 TECHNICIAN，办公室带 scope=mine 会掉进无过滤分支，
       // 把全公司的工单当成「我手上的」列出来。
@@ -619,8 +618,16 @@ export class RepairsService implements OnModuleInit {
    */
   async listDispatchTechnicians(user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
+    // 「谁能接单」= 他绑的角色里勾了「工单池 · 接单」。
+    // 以前这里按 role='technician' 查人，于是「谁是维修工」在库里有两套说法
+    const acceptorIds = await this.accessService.userIdsWithPermission(
+      tenantId,
+      'app:pool',
+      'edit',
+    );
+    if (!acceptorIds.length) return [];
     const technicians = await this.userRepo.find({
-      where: { tenantId, role: UserRole.TECHNICIAN, status: UserStatus.ACTIVE },
+      where: { id: In(acceptorIds), tenantId, status: UserStatus.ACTIVE },
       select: ['id', 'name', 'phone'],
       order: { id: 'ASC' },
     });
@@ -986,7 +993,7 @@ export class RepairsService implements OnModuleInit {
       }),
     ]);
     // 业主端身份（业主/保安/居委/业委/物业工作人员）只能看自己提交的报修
-    if (SELF_SCOPED_ROLES.includes(user.role as UserRole) && request?.submittedBy !== user.id) {
+    if ((await this.isSelfScoped(user, access)) && request?.submittedBy !== user.id) {
       throw new NotFoundException('work order not found');
     }
     // 存量工单的联系人/电话是空的（那会儿端上选填、服务端也不兜底），
@@ -1112,8 +1119,10 @@ export class RepairsService implements OnModuleInit {
     if (!assignee || assignee.status !== UserStatus.ACTIVE) {
       throw new NotFoundException('assignee not found');
     }
-    if (assignee.role !== UserRole.TECHNICIAN) {
-      throw new BadRequestException('assignee must be technician');
+    if (!(await this.accessService.userHasPermission(tenantId, assignee.id, 'app:pool', 'edit'))) {
+      throw new BadRequestException(
+        '这个人的角色没有勾「工单池 · 接单」，派给他他也接不了',
+      );
     }
 
     const saved = await this.dataSource.transaction(async (manager) => {
@@ -1159,9 +1168,7 @@ export class RepairsService implements OnModuleInit {
           'claim',
           'work order cannot be claimed',
         );
-        if (user.role !== UserRole.TECHNICIAN) {
-          throw new ForbiddenException('only technician can claim work order from pool');
-        }
+        // 能不能从池子里领单，controller 上的 app:pool·接单 已经卡过了
         workOrder.assigneeId = user.id;
         workOrder.dispatchedAt = workOrder.dispatchedAt ?? new Date();
       } else {
@@ -1171,7 +1178,7 @@ export class RepairsService implements OnModuleInit {
           'accept',
           'only dispatched work order can be accepted',
         );
-        if (user.role === UserRole.TECHNICIAN && workOrder.assigneeId !== user.id) {
+        if (!(await this.canDispatch(user)) && workOrder.assigneeId !== user.id) {
           throw new ForbiddenException('work order is not assigned to current user');
         }
       }
@@ -1207,7 +1214,7 @@ export class RepairsService implements OnModuleInit {
         'complete',
         'work order cannot be completed',
       );
-      this.ensureAssigneeOrAdmin(workOrder, user);
+      await this.ensureAssigneeOrAdmin(workOrder, user);
 
       const fromStatus = workOrder.status;
       workOrder.status = WorkOrderStatus.DONE_PENDING_REVIEW;
@@ -1331,7 +1338,7 @@ export class RepairsService implements OnModuleInit {
         'need_material',
         'work order cannot wait material',
       );
-      this.ensureAssigneeOrAdmin(workOrder, user);
+      await this.ensureAssigneeOrAdmin(workOrder, user);
 
       const fromStatus = workOrder.status;
       workOrder.status = WorkOrderStatus.WAITING_MATERIAL;
@@ -1365,11 +1372,18 @@ export class RepairsService implements OnModuleInit {
         }),
       );
 
-      // 通知物业办公室有新的缺料申请待汇总
-      const officeUsers = await manager.find(User, {
-        where: { tenantId, role: In([UserRole.OFFICE, UserRole.ADMIN]), status: UserStatus.ACTIVE },
-        select: ['id'],
-      });
+      // 通知负责派单的人有新的缺料申请待汇总（谁能派单就通知谁）
+      const dispatcherIds = await this.accessService.userIdsWithPermission(
+        tenantId,
+        'app:dispatch',
+        'edit',
+      );
+      const officeUsers = dispatcherIds.length
+        ? await manager.find(User, {
+            where: { id: In(dispatcherIds), tenantId, status: UserStatus.ACTIVE },
+            select: ['id'],
+          })
+        : [];
       if (officeUsers.length) {
         await manager.save(
           Notification,
@@ -1499,7 +1513,7 @@ export class RepairsService implements OnModuleInit {
       });
       if (!request) throw new NotFoundException('repair request not found');
       if (
-        SELF_SCOPED_ROLES.includes(user.role as UserRole) &&
+        (await this.isSelfScoped(user)) &&
         request.submittedBy !== user.id
       ) {
         throw new ForbiddenException('只能验收自己提交的报修');
@@ -1545,7 +1559,7 @@ export class RepairsService implements OnModuleInit {
         'cancel',
         '当前状态不可撤单',
       );
-      if (SELF_SCOPED_ROLES.includes(user.role as UserRole)) {
+      if (await this.isSelfScoped(user)) {
         const request = await manager.findOne(RepairRequest, {
           where: { id: workOrder.requestId, tenantId },
         });
@@ -1579,7 +1593,7 @@ export class RepairsService implements OnModuleInit {
       ) {
         throw new BadRequestException('工单已在处理中，无需催单');
       }
-      if (SELF_SCOPED_ROLES.includes(user.role as UserRole)) {
+      if (await this.isSelfScoped(user)) {
         const request = await manager.findOne(RepairRequest, {
           where: { id: workOrder.requestId, tenantId },
         });
@@ -1599,12 +1613,15 @@ export class RepairsService implements OnModuleInit {
         throw new BadRequestException('该工单已催办 2 次，物业经理已介入');
       }
 
+      // 第一次催办找派单的人，再催就往上找有审批权的（通常是经理）
       const isFirst = urgeCount === 0;
-      const targetRoles = isFirst
-        ? [UserRole.OFFICE, UserRole.ADMIN]
-        : [UserRole.MANAGER, UserRole.ADMIN];
+      const targetIds = await this.accessService.userIdsWithPermission(
+        tenantId,
+        isFirst ? 'app:dispatch' : 'app:approve-manager',
+        'edit',
+      );
       const receivers = await manager.find(User, {
-        where: { tenantId, role: In(targetRoles), status: UserStatus.ACTIVE },
+        where: { id: In(targetIds.length ? targetIds : [-1]), tenantId, status: UserStatus.ACTIVE },
         select: ['id'],
       });
       if (receivers.length) {
@@ -2175,7 +2192,9 @@ export class RepairsService implements OnModuleInit {
     tenantId: number,
     user: AuthUser,
   ) {
-    if (REPORTER_ROLES.includes(user.role as UserRole)) {
+    // 只替住户报修的人（保安、居委会…）只能报授权小区里的地址；
+    // 物业内部人员（能看工单池/派单台的）不受这条限制
+    if (user.role !== UserRole.OWNER && (await this.isSelfScoped(user))) {
       const granted = await this.dataSource.getRepository(UserReportCommunity).findOne({
         where: { tenantId, userId: user.id, communityId: dto.communityId },
       });
@@ -2534,7 +2553,8 @@ export class RepairsService implements OnModuleInit {
     const assignee = await this.userRepo.findOne({
       where: { id: rule.assigneeId, tenantId },
     });
-    if (!assignee || assignee.status !== UserStatus.ACTIVE || assignee.role !== UserRole.TECHNICIAN) {
+    if (!assignee || assignee.status !== UserStatus.ACTIVE) return null;
+    if (!(await this.accessService.userHasPermission(tenantId, assignee.id, 'app:pool', 'edit'))) {
       return null;
     }
     return rule;
@@ -2605,8 +2625,10 @@ export class RepairsService implements OnModuleInit {
     if (!assignee || assignee.status !== UserStatus.ACTIVE) {
       throw new NotFoundException('assignee not found');
     }
-    if (assignee.role !== UserRole.TECHNICIAN) {
-      throw new BadRequestException('assignee must be technician');
+    if (!(await this.accessService.userHasPermission(tenantId, assignee.id, 'app:pool', 'edit'))) {
+      throw new BadRequestException(
+        '这个人的角色没有勾「工单池 · 接单」，派给他他也接不了',
+      );
     }
   }
 
@@ -3023,8 +3045,9 @@ export class RepairsService implements OnModuleInit {
     return workOrder;
   }
 
-  private ensureAssigneeOrAdmin(workOrder: WorkOrder, user: AuthUser) {
-    if (user.role === UserRole.TECHNICIAN && workOrder.assigneeId !== user.id) {
+  /** 单不在自己手上就不许动 —— 能派单的人（办公室/经理）不受此限 */
+  private async ensureAssigneeOrAdmin(workOrder: WorkOrder, user: AuthUser) {
+    if (!(await this.canDispatch(user)) && workOrder.assigneeId !== user.id) {
       throw new ForbiddenException('work order is not assigned to current user');
     }
   }
@@ -3051,6 +3074,35 @@ export class RepairsService implements OnModuleInit {
         updatedBy: operatorId,
       }),
     );
+  }
+
+  /**
+   * 只能看/操作自己提的那些单。
+   *
+   * 业主天然如此。员工侧看的是「有没有工单池 / 派单台 / 后台工单管理的查看权」——
+   * 一个都没有，说明他只是替住户报修的人（保安、居委会、业委会…），
+   * 不该看到别人的单。以前这里写死一份 SELF_SCOPED_ROLES 身份名单，
+   * 新增一种代报身份忘了加进去，就会掉进「无过滤」分支 = 泄露全租户工单。
+   */
+  private async isSelfScoped(user: AuthUser, access?: ResolvedAccess): Promise<boolean> {
+    if (user.role === UserRole.OWNER) return true;
+    if (user.role === UserRole.SUPERADMIN) return false;
+    const resolved = access ?? (await this.accessService.getAccess(user));
+    if (resolved.isPlatformAdmin || resolved.isTenantAdmin) return false;
+    const pages = resolved.pages;
+    return !(
+      pages['app:pool']?.view ||
+      pages['app:dispatch']?.view ||
+      pages['work-orders']?.view
+    );
+  }
+
+  /** 能不能派单（决定「在手工单」默认口径、能不能操作别人手上的单） */
+  private async canDispatch(user: AuthUser, access?: ResolvedAccess): Promise<boolean> {
+    if (user.role === UserRole.OWNER) return false;
+    const resolved = access ?? (await this.accessService.getAccess(user));
+    if (resolved.isPlatformAdmin || resolved.isTenantAdmin) return true;
+    return !!(resolved.pages['app:dispatch']?.edit || resolved.pages['work-orders']?.edit);
   }
 
   private resolveTenantId(user: AuthUser, requestedTenantId?: number): number {

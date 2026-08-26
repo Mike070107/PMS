@@ -10,9 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
-import { UserRole } from '../../common/enums';
 import { RequirePermission } from '../../common/require-permission.decorator';
-import { Roles } from '../../common/roles.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesOrPermissionGuard } from '../access/roles-or-permission.guard';
 import {
@@ -67,7 +65,6 @@ export class InventoryController {
    * 但成本价不该给到现场，所以不复用 GET /materials，单独出一份不含金额的视图。
    */
   @Get('materials/options')
-  @Roles(UserRole.TECHNICIAN)
   @RequirePermission(
     ['materials', 'inventory', 'work-orders', 'app:inventory', 'app:my-orders'],
     'view',
@@ -168,7 +165,10 @@ export class InventoryController {
 
   // 员工端审批页拉待办用它；「材料与库存」那一格也要看得到采购进度
   @Get('purchase-requests')
-  @RequirePermission(['inventory', 'app:approvals', 'app:inventory'], 'view')
+  @RequirePermission(
+    ['inventory', 'app:inventory', 'app:approve-manager', 'app:approve-purchaser'],
+    'view',
+  )
   listPurchaseRequests(
     @Query() query: PurchaseRequestQueryDto,
     @CurrentUser() user: AuthUser,
@@ -187,8 +187,9 @@ export class InventoryController {
 
   // ---------- 采购审批链：保留业务身份把关 ----------
 
+  // 提交采购申请 = 管材料库存那格的「改材料 / 提采购」
   @Post('purchase-requests/submit-to-manager')
-  @Roles(UserRole.ADMIN, UserRole.OFFICE)
+  @RequirePermission(['inventory', 'app:inventory'], 'edit')
   submitToManager(
     @Body() dto: SubmitToManagerDto,
     @CurrentUser() user: AuthUser,
@@ -196,8 +197,9 @@ export class InventoryController {
     return this.inventoryService.submitToManager(dto, user);
   }
 
+  // 审批链的两步各是一格勾选：谁批第一步、谁批第二步，由角色配置说了算
   @Post('purchase-requests/:id/manager-approve')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @RequirePermission('app:approve-manager', 'edit')
   approveByManager(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
@@ -206,7 +208,7 @@ export class InventoryController {
   }
 
   @Post('purchase-requests/:id/purchaser-approve')
-  @Roles(UserRole.ADMIN, UserRole.PURCHASER)
+  @RequirePermission('app:approve-purchaser', 'edit')
   approveByPurchaser(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
@@ -214,8 +216,12 @@ export class InventoryController {
     return this.inventoryService.approveByPurchaser(id, user);
   }
 
+  // 驳回：两步审批人任一都能驳，提交人自己也能撤
   @Post('purchase-requests/:id/reject')
-  @Roles(UserRole.ADMIN, UserRole.OFFICE, UserRole.MANAGER, UserRole.PURCHASER)
+  @RequirePermission(
+    ['app:approve-manager', 'app:approve-purchaser', 'inventory', 'app:inventory'],
+    'edit',
+  )
   rejectPurchaseRequest(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectPurchaseRequestDto,
@@ -233,8 +239,9 @@ export class InventoryController {
     return this.inventoryService.listPurchaseOrders(query, user);
   }
 
+  // 下单是采购那一步的后续动作
   @Post('purchase-orders')
-  @Roles(UserRole.ADMIN, UserRole.PURCHASER)
+  @RequirePermission(['app:approve-purchaser', 'inventory'], 'edit')
   createPurchaseOrder(
     @Body() dto: CreatePurchaseOrderDto,
     @CurrentUser() user: AuthUser,
@@ -249,7 +256,7 @@ export class InventoryController {
   }
 
   @Post('goods-receipts')
-  @Roles(UserRole.ADMIN, UserRole.PURCHASER, UserRole.OFFICE)
+  @RequirePermission(['inventory', 'app:inventory', 'app:approve-purchaser'], 'edit')
   createGoodsReceipt(
     @Body() dto: CreateGoodsReceiptDto,
     @CurrentUser() user: AuthUser,
@@ -258,7 +265,7 @@ export class InventoryController {
   }
 
   @Post('goods-receipts/general')
-  @Roles(UserRole.ADMIN, UserRole.PURCHASER, UserRole.OFFICE)
+  @RequirePermission(['inventory', 'app:inventory', 'app:approve-purchaser'], 'edit')
   createGeneralReceipt(
     @Body() dto: CreateGeneralReceiptDto,
     @CurrentUser() user: AuthUser,
@@ -315,7 +322,7 @@ export class InventoryController {
   }
 
   @Post('transfer-orders/:id/approve')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @RequirePermission('app:approve-manager', 'edit')
   approveTransferOrder(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
@@ -324,7 +331,7 @@ export class InventoryController {
   }
 
   @Post('transfer-orders/:id/reject')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @RequirePermission('app:approve-manager', 'edit')
   rejectTransferOrder(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectTransferOrderDto,
@@ -334,7 +341,7 @@ export class InventoryController {
   }
 
   @Post('transfer-orders/:id/receive')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.PURCHASER, UserRole.OFFICE)
+  @RequirePermission(['inventory', 'app:inventory'], 'edit')
   receiveTransferOrder(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ReceiveTransferOrderDto,

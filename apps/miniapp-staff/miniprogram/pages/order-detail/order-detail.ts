@@ -248,7 +248,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         getSession(this).catch(() => null),
       ]);
       const status = detail.workOrder.status;
-      const isTechnician = !!session?.isTechnician;
       const myId = session?.me?.id ?? 0;
       // 缺料提报后工单会退回工单池（assigneeId 置空），所以「等待材料 + 没人认领」
       // 要给的是接单按钮而不是完工表单。存量数据里还有挂着人的等待材料单，那种仍按在手工单处理。
@@ -283,7 +282,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         // 原来这里只看状态，于是办公室点开一张「已派单给王师傅」的单，
         // 底部照样出现「接单」；维修工点开别人手上的单也一样。
         canAccept:
-          isTechnician &&
           !!session?.canAccept &&
           (detail.workOrder.assigneeId
             ? detail.workOrder.assigneeId === myId &&
@@ -293,13 +291,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
               waitingInPool),
         // 完工/缺料同理：只有这单真在自己手上才给表单
         canComplete:
-          isTechnician &&
           !!session?.canHandleOrders &&
           detail.workOrder.assigneeId === myId &&
           (status === WorkOrderStatus.IN_PROGRESS ||
             (status === WorkOrderStatus.WAITING_MATERIAL && !waitingInPool)),
         canNeedMaterial:
-          isTechnician &&
           !!session?.canHandleOrders &&
           detail.workOrder.assigneeId === myId &&
           status === WorkOrderStatus.IN_PROGRESS,

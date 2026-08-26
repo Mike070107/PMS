@@ -10,7 +10,6 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { ASSIGNABLE_STAFF_ROLES } from '../../common/enums';
 import { ALL_PAGE_KEYS, RoleDataScope } from '../../common/pages';
 
 export class RolePermissionDto {
@@ -37,14 +36,6 @@ export class SaveRoleDto {
   @IsString()
   @MaxLength(255)
   remark?: string;
-
-  /**
-   * 业务身份：这个角色的人在物业里干哪一行（决定小程序端能力、审批链、登录哪个端）。
-   * 不传 / null = 纯后台角色，不上小程序。
-   */
-  @IsOptional()
-  @IsIn([...ASSIGNABLE_STAFF_ROLES, null])
-  businessRole?: string | null;
 
   @IsIn(Object.values(RoleDataScope))
   dataScope: RoleDataScope;

@@ -23,7 +23,6 @@ import { auth as authApi } from '@pms/api-client';
 import type { AdminAccess } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { auth, pagePerm, useAuth } from '../lib/auth';
-import { roleLabel } from '../lib/roleLabels';
 import BrandLogo from './BrandLogo';
 import NotificationBell from './NotificationBell';
 
@@ -208,9 +207,8 @@ export default function AppLayout() {
       <div className="pms-sider-foot">
         <div className="pms-sider-foot-label">当前身份</div>
         <div className="pms-sider-foot-value">
-          {/* 标签只有一份（lib/roleLabels）：这里原来另抄了一份，缺了维修工和代报角色，
-              同一个人在顶栏显示「物业管理人员」、在用户管理列表里显示「维修工」 */}
-          {(user?.role && roleLabel[user.role]) || '物业管理人员'}
+          {/* 顶栏显示他绑的角色名（后端 /auth/me 下发）；没有就退回一句中性称呼 */}
+          {user?.roleNames?.join(' · ') || '物业管理人员'}
         </div>
         <div className="pms-sider-foot-meta">邻修物业管理平台 · {new Date().getFullYear()}</div>
       </div>
@@ -300,8 +298,8 @@ export default function AppLayout() {
                   <span className="pms-user-name">
                     {user?.name || user?.loginAccount || '管理员'}
                   </span>
-                  {user?.role && roleLabel[user.role] && (
-                    <span className="pms-user-role">{roleLabel[user.role]}</span>
+                  {!!user?.roleNames?.length && (
+                    <span className="pms-user-role">{user.roleNames.join(' · ')}</span>
                   )}
                 </div>
               </div>

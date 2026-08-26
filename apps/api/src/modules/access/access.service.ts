@@ -124,9 +124,6 @@ export class AccessService {
       actingOfficeId: null,
     });
 
-    // 业务身份 admin 即企业超管，不看角色矩阵
-    if (user.role === UserRole.ADMIN) return asTenantAdmin([]);
-
     const bindings = await this.userRoleRepo.find({
       where: { userId: user.id },
     });
@@ -288,6 +285,67 @@ export class AccessService {
     const all = new Set(topIds);
     children.forEach((c) => all.add(c.id));
     return [...all].sort((a, b) => a - b);
+  }
+
+  /**
+   * 「谁能做这件事」—— 按权限矩阵反查用户，替代过去的 `where role = 'technician'`。
+   *
+   * 派单候选人、缺料通知该发给谁、催办升级找谁，这些以前都写成按业务身份查人，
+   * 于是「谁是维修工」这件事在库里有两套说法（users.role 和角色绑定），迟早对不上。
+   * 现在只有一套：能不能接单 = 他绑的角色里有没有勾「工单池 · 接单」。
+   */
+  async userIdsWithPermission(
+    tenantId: number,
+    pageKey: string,
+    action: PermissionAction,
+  ): Promise<number[]> {
+    const column =
+      action === 'view' ? 'can_view' : action === 'edit' ? 'can_edit' : 'can_delete';
+    const rows = await this.userRoleRepo
+      .createQueryBuilder('ur')
+      .innerJoin(RolePermission, 'p', 'p.role_id = ur.role_id')
+      .innerJoin(Role, 'r', 'r.id = ur.role_id AND r.enabled = true')
+      .where('ur.tenant_id = :tenantId', { tenantId })
+      .andWhere('p.page_key = :pageKey', { pageKey })
+      .andWhere(`p.${column} = true`)
+      .select('DISTINCT ur.user_id', 'userId')
+      .getRawMany<{ userId: number }>();
+    const ids = rows.map((r) => Number(r.userId));
+    // 企业超管（绑内置角色）什么都能做，权限表里却没有逐页记录，得单独并进来
+    const builtIn = await this.userRoleRepo
+      .createQueryBuilder('ur')
+      .innerJoin(Role, 'r', 'r.id = ur.role_id AND r.built_in = true AND r.enabled = true')
+      .where('ur.tenant_id = :tenantId', { tenantId })
+      .select('DISTINCT ur.user_id', 'userId')
+      .getRawMany<{ userId: number }>();
+    return [...new Set([...ids, ...builtIn.map((r) => Number(r.userId))])];
+  }
+
+  /** 单个人有没有这一档（派单前校验「这个人真的能接单吗」） */
+  async userHasPermission(
+    tenantId: number,
+    userId: number,
+    pageKey: string,
+    action: PermissionAction,
+  ): Promise<boolean> {
+    const ids = await this.userIdsWithPermission(tenantId, pageKey, action);
+    return ids.includes(userId);
+  }
+
+  /** 这个人绑了哪些角色（名字），给前端显示用 */
+  async listRoleNames(user: AuthUser): Promise<string[]> {
+    if (!user.tenantId) return [];
+    const bindings = await this.userRoleRepo.find({
+      where: { userId: user.id },
+      select: ['roleId'],
+    });
+    if (!bindings.length) return [];
+    const roles = await this.roleRepo.find({
+      where: { id: In(bindings.map((b) => b.roleId)), tenantId: user.tenantId },
+      select: ['name'],
+      order: { id: 'ASC' },
+    });
+    return roles.map((r) => r.name);
   }
 
   hasPermission(

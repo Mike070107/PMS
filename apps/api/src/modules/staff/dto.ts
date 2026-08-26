@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   MaxLength,
@@ -17,9 +18,11 @@ import { ASSIGNABLE_STAFF_ROLES, UserRole, UserStatus } from '../../common/enums
 const ASSIGNABLE_ROLES = ASSIGNABLE_STAFF_ROLES;
 
 export class ListStaffQueryDto {
+  /** 按绑定的业务角色筛（角色 id） */
   @IsOptional()
-  @IsIn(ASSIGNABLE_ROLES)
-  role?: UserRole;
+  @Type(() => Number)
+  @IsInt()
+  roleId?: number;
 
   @IsOptional()
   @IsIn(Object.values(UserStatus))
@@ -39,14 +42,6 @@ export class CreateStaffDto {
   @IsString()
   @MaxLength(30)
   phone: string;
-
-  /**
-   * 业务身份。合并后由所选角色（roles.business_role）带出来，新前端不再传；
-   * 保留可选是为了兼容还没更新的调用方，两边都给时以角色为准。
-   */
-  @IsOptional()
-  @IsIn(ASSIGNABLE_ROLES)
-  role?: UserRole;
 
   @IsOptional()
   @IsString()
@@ -97,10 +92,6 @@ export class UpdateStaffDto {
   @IsString()
   @MaxLength(30)
   phone?: string;
-
-  @IsOptional()
-  @IsIn(ASSIGNABLE_ROLES)
-  role?: UserRole;
 
   @IsOptional()
   @IsIn(Object.values(UserStatus))

@@ -1,6 +1,5 @@
 import { auth } from '@pms/api-client';
 import type { StaffLoginReq } from '@pms/shared-types';
-import { isReporter } from '../../utils/roles';
 import { clearSession } from '../../utils/session';
 import { clearAccessCache } from '../../utils/tabbar';
 
@@ -138,11 +137,9 @@ Page({
       return;
     }
 
-    // 保安/居委会/业委会/物业工作人员只报修不接单，工单池对他们是空的 ——
-    // 落地页直接给「我的报修」，别让人一进来就对着一屏别人要修的活。
-    // 办公室一侧落在同一个页面，但那一屏对他们是「派单台」（见 pages/pool）。
-    wx.switchTab({
-      url: isReporter(String(role || '')) ? '/pages/my-orders/my-orders' : '/pages/pool/pool',
-    });
+    // 落地页统一先进工单池那一屏。只报修的人（保安、居委会…）进去是空的，
+    // 由 pool 页拿到权限后自己把他送去「我的报修」——
+    // 这里还没有 /auth/me 的结果，硬猜会猜错。
+    wx.switchTab({ url: '/pages/pool/pool' });
   },
 });

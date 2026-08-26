@@ -73,15 +73,13 @@ export class PropertiesController {
    * 选定小区后才能用 /address-book 拿到该小区的楼栋房号。
    */
   @Get('communities/public')
-  @Roles(
-    UserRole.OWNER,
-    UserRole.GUARD,
-    UserRole.NEIGHBORHOOD,
-    UserRole.OWNER_COMMITTEE,
-    UserRole.PROPERTY_STAFF,
-    UserRole.TECHNICIAN,
+  // 业主入驻要选小区；员工侧凡是能报修/接单的人都要能选，
+  // 所以列上报修与工单那几格，不再枚举身份
+  @Roles(UserRole.OWNER)
+  @RequirePermission(
+    ['properties', 'work-orders', 'app:repair-create', 'app:pool', 'app:my-orders'],
+    'view',
   )
-  @RequirePermission(['properties', 'work-orders'], 'view')
   listPublicCommunities(@CurrentUser() user: AuthUser) {
     return this.propertiesService.listPublicCommunities(user);
   }
@@ -91,16 +89,12 @@ export class PropertiesController {
    * 业主首次入驻时还没有 tenantId，用扫码解析出的 communityId 定位租户。
    */
   @Get('address-book')
-  @Roles(
-    UserRole.OWNER,
-    // 代报角色要在授权小区里选到具体房号，同样需要地址簿（同样不含业主信息）
-    UserRole.GUARD,
-    UserRole.NEIGHBORHOOD,
-    UserRole.OWNER_COMMITTEE,
-    UserRole.PROPERTY_STAFF,
-    UserRole.TECHNICIAN,
+  // 代报的人要在授权小区里选到具体房号，维修工要看单子的地址 —— 同样不含业主信息
+  @Roles(UserRole.OWNER)
+  @RequirePermission(
+    ['work-orders', 'properties', 'app:repair-create', 'app:pool', 'app:my-orders'],
+    'view',
   )
-  @RequirePermission(['work-orders', 'properties'], 'view')
   getAddressBook(
     @Query() query: AddressBookQueryDto,
     @CurrentUser() user: AuthUser,
