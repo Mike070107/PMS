@@ -23,8 +23,13 @@
          只有维修工需要 —— 工单是派给他的 -->
     <view wx:if="{{canSubscribe}}" class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onEnableNotify">
       <view class="entry__body">
-        <view class="entry__title">开启新工单提醒</view>
-        <view class="entry__desc">派单时微信直接提醒你，不用一直盯着小程序</view>
+        <view class="entry__title">
+          新工单微信提醒
+          <text class="entry__state {{notifyAlways ? 'entry__state--on' : ''}}">{{notifyAlways ? '已开启' : '未开启'}}</text>
+        </view>
+        <view class="entry__desc">
+          {{notifyAlways ? '每次派单微信都会提醒你，不用再点允许' : '点这里开启；弹窗里记得勾上「总是保持以上选择」'}}
+        </view>
       </view>
       <view class="entry__arrow"></view>
     </view>

@@ -37,6 +37,18 @@
 .entry--hover { background: #f2f4f7; }
 .entry__body { flex: 1; min-width: 0; }
 .entry__title { font-size: var(--font-xl); font-weight: 500; line-height: 1.4; }
+/* 「已开启 / 未开启」是状态不是动作：已开好的人再看到「开启提醒」会以为没生效，又点一遍 */
+.entry__state {
+  margin-left: 12rpx;
+  padding: 2rpx 14rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-xs);
+  font-weight: 400;
+}
+.entry__state--on { background: rgba(82, 196, 26, 0.12); color: #389e0d; }
+
 /* 未读数跟在「消息」后面：红底白字，和 tabBar 上那枚角标是一个意思 */
 .entry__badge {
   display: inline-block;

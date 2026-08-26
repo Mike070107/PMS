@@ -2,7 +2,7 @@ import { repairs } from '@pms/api-client';
 import { withOrderLabels } from '@pms/miniapp-ui';
 import { WorkOrderStatus, type WorkOrderListItem } from '@pms/shared-types';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
-import { refreshUnread } from '../../utils/unread';
+import { refreshUnread, topUpQuietly } from '../../utils/unread';
 
 type OrderRow = WorkOrderListItem & {
   typeLabel: string;
@@ -73,6 +73,8 @@ Page({
   },
 
   onTapItem(e: WechatMiniprogram.BaseEvent) {
+    // 同工单池：勾过「总是保持」的人在这里静默补额度（见 utils/unread.ts）
+    topUpQuietly();
     wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${e.currentTarget.dataset.id}` });
   },
 });

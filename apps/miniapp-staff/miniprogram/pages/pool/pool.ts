@@ -7,7 +7,7 @@ import {
 } from '@pms/shared-types';
 import { getSession } from '../../utils/session';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
-import { askOrderSubscribe, refreshUnread } from '../../utils/unread';
+import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unread';
 
 /**
  * 这一屏对两种人是两件事，同一份数据、两套动作：
@@ -328,6 +328,10 @@ Page({
   },
 
   onTapItem(e: WechatMiniprogram.BaseEvent) {
+    // 勾过「总是保持以上选择」的人，在这里静默把订阅额度补满 ——
+    // 微信要求 requestSubscribeMessage 由点击触发，而「点开一张工单」是维修工
+    // 一天里发生最多次的点击。没勾过的人这里什么都不会发生（见 topUpQuietly）
+    topUpQuietly();
     wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${e.currentTarget.dataset.id}` });
   },
 });
