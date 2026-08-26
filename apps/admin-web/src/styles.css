@@ -654,21 +654,6 @@ a,
   .pms-dashboard-summary {
     grid-row: 3;
   }
-  .pms-workorder-layout {
-    grid-template-columns: minmax(0, 1fr) !important;
-    gap: 16px !important;
-    overflow-x: visible !important;
-  }
-  .pms-workorder-resizer {
-    display: none !important;
-  }
-  .pms-workorder-pool,
-  .pms-workorder-pool-card {
-    min-width: 0 !important;
-  }
-  .pms-workorder-pool-card .ant-table-content {
-    overflow-x: auto !important;
-  }
 }
 
 @media (max-width: 900px) {
@@ -1002,33 +987,229 @@ a,
   background: #fff1f0;
 }
 
-/* 分栏模式下让左右两栏在各自区域内滚动，页面不再整体长滚。
-   为的是让下面那条提交按钮 sticky 得住 ——
-   .pms-workorder-layout 为了容下 1040px 宽的工单表格设了 overflow-x:auto，
-   而 CSS 规范里一个方向非 visible 会把另一个方向的 visible 也算成 auto，
-   于是它成了 sticky 的依附容器；但它自身 scrollHeight == clientHeight 不滚动，
-   sticky 就永远不粘。给它限高、让它真的能滚，问题才解决
-   （2026-08-25：办公室录入表单 1600px 高，提交按钮沉在屏幕外，被当成「没有提交按钮」）。
-   窄屏走下面 900px 的单列分支，保持整页滚动，不进这条规则。 */
-@media (min-width: 901px) {
-  .pms-workorder-layout {
-    max-height: calc(100vh - 148px);
-  }
+/* ---------- 工单管理：工单池独占整页 + 右下角悬浮的「办公室录入报修」 ----------
+   2026-08-26：原来左右分栏，办公室 1366 宽的屏幕上工单池只剩 800px，表格每格换行。
+   现在工单池铺满，录入表单收进右下角的悬浮面板（WorkOrdersPage 里的 RepairSubmitDock）：
+   · 收起时只剩一颗按钮；面板本身常驻 DOM（visibility 切换），没提交的内容不丢
+   · 面板内部三段：头（标题/清空/收起）固定，表单区自己滚，提交按钮固定在底 ——
+     不再需要之前那套 sticky + 给 .pms-workorder-layout 限高的折腾（那个容器已删）
+   · z-index 900：压在页面之上、antd Drawer/Modal(1000) 和下拉(1050) 之下，
+     点历史报修弹出的工单详情能盖住面板，面板里的下拉能正常弹出 */
+.pms-workorder-page {
+  /* 给右下角的悬浮按钮留出空位，滚到表格底部时翻页器不会被压住 */
+  padding-bottom: 88px;
+}
+.pms-workorder-pool {
+  overflow-x: auto;
+  padding-bottom: 4px;
 }
 
-/* 办公室录入报修：提交按钮粘在卡片底部。
-   这张表单有房号、位置、两组「猜你想输」、类型、截止、内容、上传，展开后 1600px 上下，
-   按钮沉在最底下一屏根本看不见 —— 用的人会以为「怎么没有提交按钮」（2026-08-25 反馈）。
-   sticky 而不是 fixed：fixed 会脱离卡片，在别的 Tab / 窄屏上都要另外收拾。
-   注意别给祖先加 overflow:hidden，sticky 会当场失效。 */
-.pms-repair-submit-card .pms-repair-submit-bar {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  margin: 4px -24px -24px;   /* 抵掉 Card body 的 24px 内边距，铺满整宽 */
-  padding: 12px 24px 16px;
-  background: #fff;
-  border-top: 1px solid #f0f0f0;
+.pms-repair-dock-fab {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 890;
+  transition: opacity 180ms ease, transform 180ms ease, visibility 0s;
+}
+.pms-repair-dock-fab.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
+}
+.pms-repair-dock-fab .ant-btn {
+  height: 52px;
+  padding-inline: 26px;
+  font-size: 16px;
+  box-shadow: 0 10px 28px rgba(49, 85, 138, 0.32);
+}
+.pms-repair-dock-fab .ant-btn:disabled {
+  box-shadow: none;
+}
+
+.pms-repair-dock {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 900;
+  font-size: 15px; /* 挂在 body 下，不再继承页面的 16px，这里自己定 */
+  width: min(580px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: var(--pms-surface);
+  border: 1px solid var(--pms-border);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(31, 41, 55, 0.2), 0 2px 8px rgba(31, 41, 55, 0.08);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(16px) scale(0.98);
+  transform-origin: bottom right;
+  pointer-events: none;
+  transition: opacity 200ms ease, transform 220ms ease, visibility 0s linear 220ms;
+}
+.pms-repair-dock.is-open {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  pointer-events: auto;
+  transition: opacity 200ms ease, transform 220ms ease, visibility 0s;
+}
+.pms-repair-dock__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 10px 20px;
+  border-bottom: 1px solid var(--pms-border);
+}
+.pms-repair-dock__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--pms-ink);
+}
+.pms-repair-dock__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 20px 4px;
+}
+.pms-repair-dock__foot {
+  flex: none;
+  padding: 12px 20px;
+  border-top: 1px solid var(--pms-border);
+  background: var(--pms-surface);
+  border-radius: 0 0 14px 14px;
+}
+.pms-repair-dock__foot-hint {
+  display: block;
+  margin-top: 8px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--pms-ink-secondary);
+}
+
+/* 同楼栋历史报修：贴在房号下面的紧凑列表，一行一条，点开工单详情 */
+.pms-repair-dock__history {
+  margin: -8px 0 20px;
+  padding: 10px 12px 6px;
+  border: 1px solid var(--pms-border);
+  border-radius: 10px;
+  background: var(--pms-surface-soft);
+}
+.pms-repair-dock__history-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+.pms-repair-dock__history-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.pms-repair-dock__history-count {
+  flex: none;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.pms-repair-dock__history-empty {
+  padding: 6px 0 8px;
+  font-size: 13px;
+}
+.pms-repair-dock__history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 224px;
+  overflow-y: auto;
+}
+.pms-repair-dock__history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: var(--pms-ink);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+.pms-repair-dock__history-row:hover,
+.pms-repair-dock__history-row:focus-visible {
+  background: rgba(49, 85, 138, 0.08);
+  outline: none;
+}
+.pms-repair-dock__history-row:focus-visible {
+  box-shadow: 0 0 0 2px rgba(49, 85, 138, 0.35);
+}
+.pms-repair-dock__history-row:disabled {
+  cursor: default;
+  color: var(--pms-ink-secondary);
+  background: none;
+}
+.pms-repair-dock__history-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.45;
+}
+.pms-repair-dock__history-addr,
+.pms-repair-dock__history-content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pms-repair-dock__history-addr {
+  font-size: 14px;
+  font-weight: 600;
+}
+.pms-repair-dock__history-content {
+  font-size: 13px;
+  color: var(--pms-ink-secondary);
+}
+.pms-repair-dock__history-time {
+  flex: none;
+  font-size: 12px;
+  color: var(--pms-ink-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .pms-repair-dock {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+    max-height: calc(100vh - 24px);
+  }
+  .pms-repair-dock-fab {
+    right: 16px;
+    bottom: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pms-repair-dock,
+  .pms-repair-dock-fab,
+  .pms-repair-dock__history-row {
+    transition: none;
+  }
 }
 
 

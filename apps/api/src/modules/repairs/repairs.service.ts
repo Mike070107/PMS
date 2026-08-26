@@ -38,6 +38,7 @@ import {
   WarehouseType,
   WorkOrderStatus,
 } from '../../common/enums';
+import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
 import {
   Building,
   Community,
@@ -2396,6 +2397,11 @@ export class RepairsService implements OnModuleInit {
     if (scope && !scope.includes(workOrder.communityId)) {
       throw new NotFoundException('work order not found');
     }
+    // 开工后类型锁定：维修工已经按这个类型领料/派工，事后更正只会让轨迹对不上（后台详情同步置灰）
+    const lockReason = repairTypeAndSlaLockReason(workOrder.status);
+    if (lockReason) {
+      throw new BadRequestException(`${lockReason}工单类型`);
+    }
     const request = await this.repairRequestRepo.findOne({
       where: { id: workOrder.requestId, tenantId },
     });
@@ -2486,11 +2492,10 @@ export class RepairsService implements OnModuleInit {
     if (scope && !scope.includes(workOrder.communityId)) {
       throw new NotFoundException('work order not found');
     }
-    if (
-      workOrder.status === WorkOrderStatus.COMPLETED ||
-      workOrder.status === WorkOrderStatus.CANCELLED
-    ) {
-      throw new BadRequestException('工单已完结，不能再改截止时间');
+    // 开工后就不给改了：截止时间是排班依据，中途改等于把已排好的班打乱（后台详情同步置灰）
+    const lockReason = repairTypeAndSlaLockReason(workOrder.status);
+    if (lockReason) {
+      throw new BadRequestException(`${lockReason}截止时间`);
     }
     const next = dto.slaDueAt ? new Date(dto.slaDueAt) : null;
     workOrder.slaDueAt = next;
