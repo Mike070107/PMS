@@ -284,6 +284,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         // 底部照样出现「接单」；维修工点开别人手上的单也一样。
         canAccept:
           isTechnician &&
+          !!session?.canAccept &&
           (detail.workOrder.assigneeId
             ? detail.workOrder.assigneeId === myId &&
               status === WorkOrderStatus.DISPATCHED
@@ -293,11 +294,13 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         // 完工/缺料同理：只有这单真在自己手上才给表单
         canComplete:
           isTechnician &&
+          !!session?.canHandleOrders &&
           detail.workOrder.assigneeId === myId &&
           (status === WorkOrderStatus.IN_PROGRESS ||
             (status === WorkOrderStatus.WAITING_MATERIAL && !waitingInPool)),
         canNeedMaterial:
           isTechnician &&
+          !!session?.canHandleOrders &&
           detail.workOrder.assigneeId === myId &&
           status === WorkOrderStatus.IN_PROGRESS,
         assigneeText: detail.workOrder.assigneeName || '未派单',

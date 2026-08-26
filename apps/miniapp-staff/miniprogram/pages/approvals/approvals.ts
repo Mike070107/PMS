@@ -50,12 +50,15 @@ Page({
 
   async load() {
     try {
-      // 身份走共用会话（一次登录只打一遍 /auth/me），别每页各调各的
-      const role = (await getSession(this)).role as UserRole;
+      // 身份和权限都走共用会话（一次登录只打一遍 /auth/me），别每页各调各的
+      const session = await getSession(this);
+      const role = session.role as UserRole;
       const me = { role };
       const pendingStatus = PENDING_STATUS_BY_ROLE[me.role];
-      // 只有经理/采购/管理员有审批动作；维修工、办公室看不到审批按钮
-      const canApprove =
+      // 审批链按业务身份把关（经理/采购/管理员），角色矩阵可以在此之上再收紧：
+      // 同是经理，也允许只让其中一部分人真的能批
+      const canApprove = session.canApprove;
+      const identityAllows =
         me.role === UserRole.MANAGER ||
         me.role === UserRole.PURCHASER ||
         me.role === UserRole.ADMIN;
@@ -69,7 +72,10 @@ Page({
         };
         this.setData({
           canApprove: false,
-          roleHint: hintByRole[me.role] || '当前角色没有采购审批权限',
+          // 身份本来该能批、只是角色里没勾，就把话说明白 —— 否则经理会以为系统坏了
+          roleHint: identityAllows
+            ? '你的角色暂时没有审批权限。请管理员在管理后台「业务角色」页，把你的角色在员工端小程序那张表里「采购审批」这一行的「审批」勾上；改完下拉刷新即可。'
+            : hintByRole[me.role] || '当前角色没有采购审批权限',
           list: [],
           loaded: true,
         });

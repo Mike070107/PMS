@@ -9,6 +9,7 @@ import bcrypt from 'bcryptjs';
 import { Brackets, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
+  ASSIGNABLE_STAFF_ROLES,
   REPORTER_ROLES,
   STAFF_APP_ROLES,
   USER_ROLE_LABELS,
@@ -26,15 +27,9 @@ import { ResolvedAccess } from '../access/access.service';
 import { RolesService } from '../roles/roles.service';
 import { CreateStaffDto, ListStaffQueryDto, UpdateStaffDto } from './dto';
 
-const ASSIGNABLE_ROLES: UserRole[] = [
-  UserRole.TECHNICIAN,
-  UserRole.OFFICE,
-  UserRole.MANAGER,
-  UserRole.PURCHASER,
-  UserRole.ADMIN,
-  // 保安/居委会/业委会：不进后台，但同样由物业登记与停用
-  ...REPORTER_ROLES,
-];
+// 名单只此一份（common/enums.ts）：这里和 dto.ts、角色表 business_role 的取值域
+// 必须是同一份，否则会出现「后台能选、保存报 invalid role」这种自相矛盾
+const ASSIGNABLE_ROLES = ASSIGNABLE_STAFF_ROLES;
 
 const isReporter = (role: UserRole) => REPORTER_ROLES.includes(role);
 
@@ -116,17 +111,21 @@ export class StaffService {
 
   async create(dto: CreateStaffDto, user: AuthUser, access: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    if (!ASSIGNABLE_ROLES.includes(dto.role)) {
-      throw new BadRequestException('invalid role');
-    }
-    this.guardAdminIdentity(dto.role, access);
     if (dto.roleIds?.length) {
       await this.validateAssignableRoles(dto.roleIds, tenantId, access);
+      await this.rolesService.assertSingleIdentity(tenantId, dto.roleIds);
     }
+    // 业务身份由所选角色带出来（合并后后台只选「角色」这一栏）。
+    // dto.role 只是老客户端的兜底入口，新前端不再传。
+    const role = (await this.resolveIdentity(tenantId, dto.roleIds)) ?? dto.role;
+    if (!role || !ASSIGNABLE_ROLES.includes(role)) {
+      throw new BadRequestException('请为该用户选择一个带业务身份的角色');
+    }
+    this.guardAdminIdentity(role, access);
 
     // 维修工和代报角色都走微信登录，后台账号密码选填（填了即可授权网页登录，
     // 还需在「后台角色」里绑一个角色，adminLogin 对无角色绑定的业务身份一律拦）
-    const needsLogin = dto.role !== UserRole.TECHNICIAN && !isReporter(dto.role);
+    const needsLogin = role !== UserRole.TECHNICIAN && !isReporter(role);
     if (needsLogin && (!dto.loginAccount || !dto.password)) {
       throw new BadRequestException(
         'loginAccount and password are required for this role',
@@ -169,7 +168,7 @@ export class StaffService {
         wxNickname: null,
         passwordHash,
         loginAccount: dto.loginAccount ?? null,
-        role: dto.role,
+        role,
         houseId: null,
         status: UserStatus.ACTIVE,
         createdBy: user.id,
@@ -178,7 +177,7 @@ export class StaffService {
     );
 
     let profile: StaffProfile | null = null;
-    if (dto.role === UserRole.TECHNICIAN || dto.skills?.length || dto.zones?.length) {
+    if (role === UserRole.TECHNICIAN || dto.skills?.length || dto.zones?.length) {
       profile = await this.profileRepo.save(
         this.profileRepo.create({
           tenantId,
@@ -192,7 +191,7 @@ export class StaffService {
       );
     }
 
-    const communityIds = isReporter(dto.role)
+    const communityIds = isReporter(role)
       ? await this.replaceReportGrants(tenantId, created.id, dto.reportCommunityIds ?? [], user.id)
       : [];
 
@@ -215,10 +214,16 @@ export class StaffService {
     if (dto.role && !ASSIGNABLE_ROLES.includes(dto.role)) {
       throw new BadRequestException('invalid role');
     }
-    if (dto.role) this.guardAdminIdentity(dto.role, access);
     if (dto.roleIds !== undefined && dto.roleIds.length) {
       await this.validateAssignableRoles(dto.roleIds, tenantId, access);
+      await this.rolesService.assertSingleIdentity(tenantId, dto.roleIds);
     }
+    // 换角色 = 换身份：这一句就是「后台把人改成维修工，员工端立刻变成维修工那套」
+    const nextRole =
+      dto.roleIds !== undefined
+        ? (await this.resolveIdentity(tenantId, dto.roleIds)) ?? dto.role
+        : dto.role;
+    if (nextRole) this.guardAdminIdentity(nextRole, access);
     if (dto.loginAccount !== undefined) {
       const account = dto.loginAccount.trim();
       if (account && account !== target.loginAccount) {
@@ -247,7 +252,8 @@ export class StaffService {
       }
       target.phone = dto.phone;
     }
-    if (dto.role !== undefined) target.role = dto.role;
+    const previousRole = target.role;
+    if (nextRole) target.role = nextRole;
     if (dto.status !== undefined) target.status = dto.status;
     if (dto.password) target.passwordHash = await bcrypt.hash(dto.password, 10);
     target.updatedBy = user.id;
@@ -275,6 +281,11 @@ export class StaffService {
       profile = await this.profileRepo.save(profile);
     }
 
+    // 身份从代报角色改走（保安转岗成维修工）时，代报授权要一并收回 ——
+    // 留着的话他哪天再被改回保安，几个月前的授权原地复活，没人记得授过
+    if (!isReporter(target.role) && previousRole !== target.role) {
+      await this.reportGrantRepo.delete({ tenantId, userId: id });
+    }
     const communityIds = isReporter(target.role)
       ? dto.reportCommunityIds !== undefined
         ? await this.replaceReportGrants(tenantId, id, dto.reportCommunityIds, user.id)
@@ -345,7 +356,7 @@ export class StaffService {
     user: User,
     profile: StaffProfile | null,
     reportCommunityIds: number[] = [],
-    roles: { id: number; name: string; builtIn: boolean }[] = [],
+    roles: { id: number; name: string; builtIn: boolean; businessRole: string | null }[] = [],
   ) {
     return {
       id: user.id,
@@ -367,7 +378,10 @@ export class StaffService {
   }
 
   private async loadRolesByUser(tenantId: number, userIds: number[]) {
-    const map = new Map<number, { id: number; name: string; builtIn: boolean }[]>();
+    const map = new Map<
+      number,
+      { id: number; name: string; builtIn: boolean; businessRole: string | null }[]
+    >();
     if (!userIds.length) return map;
     const bindings = await this.userRoleRepo.find({
       where: { tenantId, userId: In(userIds) },
@@ -381,10 +395,38 @@ export class StaffService {
       const role = roleById.get(b.roleId);
       if (!role) continue;
       const list = map.get(b.userId) ?? [];
-      list.push({ id: role.id, name: role.name, builtIn: role.builtIn });
+      list.push({
+        id: role.id,
+        name: role.name,
+        builtIn: role.builtIn,
+        businessRole: role.businessRole,
+      });
       map.set(b.userId, list);
     }
     return map;
+  }
+
+  /**
+   * 从所选角色里解析业务身份。
+   *
+   * 合并后「角色」自带业务身份（roles.business_role），用户管理页因此只剩一个下拉。
+   * 一个人只绑得到一个带身份的角色（保存前 assertSingleIdentity 已拦），
+   * 只绑纯权限角色时返回 null，由调用方保持原身份不变。
+   */
+  private async resolveIdentity(
+    tenantId: number,
+    roleIds?: number[],
+  ): Promise<UserRole | null> {
+    if (!roleIds?.length) return null;
+    const roles = await this.roleRepo.find({
+      where: { id: In([...new Set(roleIds)]), tenantId },
+    });
+    const identity = roles.map((r) => r.businessRole).find((v) => !!v);
+    if (!identity) return null;
+    if (!ASSIGNABLE_ROLES.includes(identity as UserRole)) {
+      throw new BadRequestException(`角色绑定的业务身份「${identity}」不可用`);
+    }
+    return identity as UserRole;
   }
 
   /** 整份覆盖后台角色绑定，返回绑定后的角色摘要 */

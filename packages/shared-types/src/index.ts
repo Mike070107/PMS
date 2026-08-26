@@ -50,6 +50,15 @@ export const STAFF_APP_WORKER_ROLES: UserRole[] = [
   UserRole.ADMIN,
 ];
 
+/**
+ * 后台可开通的业务身份，也是角色表 business_role 的取值域（与 api enums 同源）。
+ * 不含业主（走业主端那套档案）和平台管理员（不由物业公司开）。
+ */
+export const ASSIGNABLE_STAFF_ROLES: UserRole[] = [
+  ...STAFF_APP_WORKER_ROLES,
+  ...REPORTER_ROLES,
+];
+
 /** 角色中文名，前后台展示同一套 */
 export const USER_ROLE_LABELS: Record<string, string> = {
   [UserRole.OWNER]: '业主',

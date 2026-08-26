@@ -53,8 +53,11 @@ import { InventoryService } from './inventory.service';
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
+  // 员工端「材料与库存」那一格也调它：把 app:inventory 显式列出来，
+  // 而不是在守卫里做「app:inventory 等价于 materials」的通用映射 ——
+  // 那种映射会把这一格的权限顺带扩散到所有挂 materials/inventory 的接口
   @Get('materials')
-  @RequirePermission('materials', 'view')
+  @RequirePermission(['materials', 'app:inventory'], 'view')
   listMaterials(@Query() query: TenantQueryDto, @CurrentUser() user: AuthUser) {
     return this.inventoryService.listMaterials(query, user);
   }
@@ -65,19 +68,22 @@ export class InventoryController {
    */
   @Get('materials/options')
   @Roles(UserRole.TECHNICIAN)
-  @RequirePermission(['materials', 'inventory', 'work-orders'], 'view')
+  @RequirePermission(
+    ['materials', 'inventory', 'work-orders', 'app:inventory', 'app:my-orders'],
+    'view',
+  )
   listMaterialOptions(@Query() query: TenantQueryDto, @CurrentUser() user: AuthUser) {
     return this.inventoryService.listMaterialOptions(query, user);
   }
 
   @Post('materials')
-  @RequirePermission('materials', 'edit')
+  @RequirePermission(['materials', 'app:inventory'], 'edit')
   createMaterial(@Body() dto: CreateMaterialDto, @CurrentUser() user: AuthUser) {
     return this.inventoryService.createMaterial(dto, user);
   }
 
   @Patch('materials/:id')
-  @RequirePermission('materials', 'edit')
+  @RequirePermission(['materials', 'app:inventory'], 'edit')
   updateMaterial(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMaterialDto,
@@ -91,7 +97,7 @@ export class InventoryController {
    * 逻辑与 PATCH /materials/:id 完全相同。
    */
   @Post('materials/:id/update')
-  @RequirePermission('materials', 'edit')
+  @RequirePermission(['materials', 'app:inventory'], 'edit')
   updateMaterialViaPost(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMaterialDto,
@@ -101,7 +107,7 @@ export class InventoryController {
   }
 
   @Get('warehouses')
-  @RequirePermission('inventory', 'view')
+  @RequirePermission(['inventory', 'app:inventory'], 'view')
   listWarehouses(@Query() query: TenantQueryDto, @CurrentUser() user: AuthUser) {
     return this.inventoryService.listWarehouses(query, user);
   }
@@ -145,7 +151,7 @@ export class InventoryController {
   }
 
   @Get('stocks')
-  @RequirePermission('inventory', 'view')
+  @RequirePermission(['inventory', 'app:inventory'], 'view')
   listStocks(@Query() query: StockQueryDto, @CurrentUser() user: AuthUser) {
     return this.inventoryService.listStocks(query, user);
   }
@@ -160,8 +166,9 @@ export class InventoryController {
     return this.inventoryService.updateStock(id, dto, user);
   }
 
+  // 员工端审批页拉待办用它；「材料与库存」那一格也要看得到采购进度
   @Get('purchase-requests')
-  @RequirePermission('inventory', 'view')
+  @RequirePermission(['inventory', 'app:approvals', 'app:inventory'], 'view')
   listPurchaseRequests(
     @Query() query: PurchaseRequestQueryDto,
     @CurrentUser() user: AuthUser,

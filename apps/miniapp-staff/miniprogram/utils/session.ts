@@ -9,17 +9,18 @@
  * 判断的两条依据分工明确，别混：
  *   · **业务身份（role）** 决定「这个人在物业里干哪一行」—— 维修工接单、办公室派单。
  *     这是流程语义，后端也是按 @Roles 卡的（accept 只给 TECHNICIAN），端上照抄同一套。
- *   · **后台权限矩阵（access.pages）** 决定「他被授权到哪一页的哪一档」—— 后端的
- *     @RequirePermission 就是按它判的。凡是「按钮点下去会不会 403」，一律问它，
- *     不要再照身份猜（办公室的角色是企业超管在后台配的，可宽可窄）。
+ *     身份现在由后台的角色带出来（roles.business_role），不再单独设。
+ *   · **角色矩阵（access.pages 里的 app:* ）** 决定「这个角色能看到哪几格、能不能动手」——
+ *     后台「角色管理」里勾的就是它。凡是「按钮点下去会不会 403」，一律问它，
+ *     不要再照身份猜（同是办公室，各公司配的宽窄也不一样）。
  *
  * 老会话 / 拿不到 access 时按业务身份兜底：宁可多给一个入口（后端仍会拦），
  * 也不要让有权限的人以为功能没了。
  */
 import { auth } from '@pms/api-client';
 import { type MeResp } from '@pms/shared-types';
-import { isDispatcher, isReporter, isTechnician } from './roles';
-import { rememberRole } from './tabbar';
+import { APPROVER_ROLES, isDispatcher, isReporter, isTechnician } from './roles';
+import { rememberAccess } from './tabbar';
 
 export { DISPATCH_ROLES, REPORTER_ROLES, WORKER_ROLES } from './roles';
 
@@ -32,13 +33,23 @@ export interface StaffSession {
   isDispatcher: boolean;
   /** 代报身份：只报修 */
   isReporter: boolean;
-  /** 能不能派单（业务身份 + 工单页 edit 权限） */
+  /** 能不能派单（办公室一侧 + 工单池那一格的「接单 / 派单」） */
   canDispatch: boolean;
+  /** 能不能接单（维修工 + 同一档权限）。和派单同一个勾选：那一格叫「接单 / 派单」 */
+  canAccept: boolean;
+  /** 能不能处理手上的单：完工、报缺料（在手工单那一格的「处理工单」） */
+  canHandleOrders: boolean;
+  /** 能不能审批采购单（业务身份 + 采购审批那一格的「审批」） */
+  canApprove: boolean;
   /** 材料 SKU 库：能看 / 能改（改 = 补全信息、补照片、新建） */
   canViewMaterials: boolean;
   canEditMaterials: boolean;
   /** 库存与采购 */
   canViewInventory: boolean;
+  /** 能不能替住户提单（报修入口显隐） */
+  canReport: boolean;
+  /** 消息中心入口 */
+  canUseMessages: boolean;
 }
 
 const emptySession = (): StaffSession => ({
@@ -48,9 +59,14 @@ const emptySession = (): StaffSession => ({
   isDispatcher: false,
   isReporter: false,
   canDispatch: false,
+  canAccept: false,
+  canHandleOrders: false,
+  canApprove: false,
   canViewMaterials: false,
   canEditMaterials: false,
   canViewInventory: false,
+  canReport: false,
+  canUseMessages: false,
 });
 
 /** access 里某一页的某一档；没有 access 时交给调用方按身份兜底 */
@@ -79,12 +95,21 @@ export function buildSession(me: MeResp | null): StaffSession {
     isTechnician: technician,
     isDispatcher: dispatcher,
     isReporter: reporter,
-    canDispatch: dispatcher && perm('work-orders', 'edit', true),
-    canViewMaterials: perm('materials', 'view', fallback),
+    // 工单池那一格的「操作」权：办公室拿来派单，维修工拿来接单，同一个勾选
+    canDispatch: dispatcher && perm('app:pool', 'edit', true),
+    canAccept: technician && perm('app:pool', 'edit', true),
+    canHandleOrders: technician && perm('app:my-orders', 'edit', true),
+    // 审批链仍按业务身份把关（见 docs/rbac-design.md 的例外约定），
+    // 角色矩阵只能在此基础上再收紧：经理里也可以只让一部分人批
+    canApprove: APPROVER_ROLES.indexOf(role) >= 0 && perm('app:approvals', 'edit', true),
+    canViewMaterials: perm('app:inventory', 'view', fallback),
     // 办公室原来被端上写死成只读，但后端一直是按 materials:edit 放行的 ——
     // 结果「补全 SKU 信息」这件本该办公室干的事，在小程序里根本点不动
-    canEditMaterials: perm('materials', 'edit', fallback),
-    canViewInventory: perm('inventory', 'view', fallback),
+    canEditMaterials: perm('app:inventory', 'edit', fallback),
+    canViewInventory: perm('app:inventory', 'view', fallback),
+    // 报修入口：没配角色的老会话一律给（合并前人人都能报修），配了就按矩阵来
+    canReport: perm('app:repair-create', 'view', true),
+    canUseMessages: perm('app:messages', 'view', true),
   };
 }
 
@@ -101,7 +126,7 @@ export function getSession(page?: any, force = false): Promise<StaffSession> {
     cached = auth
       .me()
       .then((me) => {
-        if (page) rememberRole(page, me.role);
+        if (page) rememberAccess(page, me.role, me.access?.pages);
         return buildSession(me);
       })
       .catch((e) => {

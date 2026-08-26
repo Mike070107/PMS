@@ -2,6 +2,7 @@ import { auth } from '@pms/api-client';
 import type { StaffLoginReq } from '@pms/shared-types';
 import { isReporter } from '../../utils/roles';
 import { clearSession } from '../../utils/session';
+import { clearAccessCache } from '../../utils/tabbar';
 
 /** 扫码登录票据的暂存位：web-login 页发现没登录时写入，登录成功后由这里送回去 */
 const PENDING_QR_KEY = 'pms.staff.pending_qr';
@@ -122,7 +123,9 @@ Page({
     getApp<StaffApp>().setTokens(accessToken, refreshToken);
     // 上一个人的权限缓存必须作废，否则换账号登录后各页还按旧身份渲染
     clearSession();
-    // 角色先存下，tabBar 首次渲染就能按权限藏 tab，不用等 me() 回来再跳一下
+    clearAccessCache();
+    // 角色先存下，tabBar 首次渲染就能按身份藏 tab，不用等 me() 回来再跳一下；
+    // 权限矩阵要等首页那次 auth.me()（rememberAccess）才补齐，在那之前按身份兜底
     if (role) wx.setStorageSync('pms.staff.role', role);
 
     // 扫了网页登录码但当时没登录的人：登录完必须送回确认页，

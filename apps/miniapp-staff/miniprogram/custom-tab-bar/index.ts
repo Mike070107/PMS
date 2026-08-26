@@ -10,26 +10,27 @@
  * 且没权限的 tab 直接不渲染。角标由各页面加载完数据后调 setBadge 更新，
  * tabBar 自己不发列表请求，避免每次切 tab 都多打一遍接口。
  *
- * 三种身份看到的是三套 tab（身份判断在 utils/roles.ts，只此一份）：
+ * 三种身份看到的是三套 tab（显隐判断在 utils/roles.ts 的 canSeeTab，只此一份）：
  *   维修工：工单池 / 在手工单 / 我的
  *   办公室一侧：派单台 / 材料与库存 / 审批 / 我的
  *   代报身份：我的报修 / 我的
  * 办公室没有「在手工单」—— 单不会派到他自己头上，那一格永远是空的。
+ *
+ * 身份和权限都来自后台的角色（2026-08-26 业务身份并进角色表），
+ * 各页拿到 /auth/me 时顺手写进缓存（utils/tabbar.ts 的 rememberAccess），
+ * 所以后台改完角色，用户下拉刷新一次底部就跟着变，不用杀掉小程序重进。
  */
-import { DISPATCH_ROLES, WORKER_ROLES, isDispatcher, isReporter } from '../utils/roles';
+import { canSeeTab, isDispatcher, isReporter, type TabAccess, type TabKey } from '../utils/roles';
+import { readCachedAccess } from '../utils/tabbar';
 
 interface TabDef {
-  key: string;
+  key: TabKey;
   pagePath: string;
   text: string;
-  /** 限定业务身份；不填 = 所有人可见 */
-  roles?: string[];
   /** 代报身份看到的另一种叫法 */
   reporterText?: string;
   /** 办公室一侧看到的另一种叫法（同一个池子，他们是去派单不是去接单） */
   dispatcherText?: string;
-  /** 办公室一侧不显示这一项 */
-  hideForDispatcher?: boolean;
 }
 
 const ALL_TABS: TabDef[] = [
@@ -38,14 +39,12 @@ const ALL_TABS: TabDef[] = [
     pagePath: '/pages/pool/pool',
     text: '工单池',
     dispatcherText: '派单台',
-    roles: WORKER_ROLES,
   },
   {
     key: 'mine',
     pagePath: '/pages/my-orders/my-orders',
     text: '在手工单',
     reporterText: '我的报修',
-    hideForDispatcher: true,
   },
   // 办公室把「在手工单」那一格换成材料与库存：查库存、补 SKU 是他们每天要干的事。
   // 落地页是库存（不是 SKU 清单）—— 先回答「还有几个」，再顺手改这条 SKU
@@ -53,24 +52,16 @@ const ALL_TABS: TabDef[] = [
     key: 'materials',
     pagePath: '/pages/inventory/inventory',
     text: '材料与库存',
-    roles: DISPATCH_ROLES,
   },
   // 维修工没有采购审批权限，这一项对他们不显示
-  { key: 'approvals', pagePath: '/pages/approvals/approvals', text: '审批', roles: ['manager', 'purchaser', 'admin'] },
+  { key: 'approvals', pagePath: '/pages/approvals/approvals', text: '审批' },
   { key: 'me', pagePath: '/pages/me/me', text: '我的' },
 ];
 
-const ROLE_KEY = 'pms.staff.role';
-
-function visibleTabs(role: string) {
-  const reporter = isReporter(role);
-  const dispatcher = isDispatcher(role);
-  // 角色还没拿到时先全显示：宁可多一个 tab，也别让有权限的人以为功能没了
-  return ALL_TABS.filter((tab) => {
-    if (tab.roles && role && tab.roles.indexOf(role) < 0) return false;
-    if (tab.hideForDispatcher && dispatcher) return false;
-    return true;
-  }).map((tab) => {
+function visibleTabs(access: TabAccess) {
+  const reporter = isReporter(access.role);
+  const dispatcher = isDispatcher(access.role);
+  return ALL_TABS.filter((tab) => canSeeTab(tab.key, access)).map((tab) => {
     if (dispatcher && tab.dispatcherText) return { ...tab, text: tab.dispatcherText };
     if (reporter && tab.reporterText) return { ...tab, text: tab.reporterText };
     return tab;
@@ -80,35 +71,35 @@ function visibleTabs(role: string) {
 Component({
   data: {
     selectedKey: 'pool',
-    tabs: visibleTabs('').map((tab) => ({ ...tab, badge: '' })),
+    tabs: visibleTabs({ role: '', pages: null }).map((tab) => ({ ...tab, badge: '' })),
   },
 
   lifetimes: {
     /**
-     * 只读本地缓存的角色，**绝不在这里打任何要登录的接口**。
+     * 只读本地缓存的身份与权限，**绝不在这里打任何要登录的接口**。
      *
      * 这里原来会在没缓存角色时调 auth.me() 补一次。auth.me() 是要登录的接口，
      * 没登录时返回 401 → 请求层触发 onUnauthorized → wx.reLaunch 回登录页 →
      * tabBar 重新 attached → 又调一次 auth.me() → 又 401 …… reLaunch 打转，
      * 整个小程序卡在登录页白屏。清掉小程序缓存反而必然触发（角色缓存也被清了）。
      *
-     * 角色由两处写入，足够了：登录成功时 login.ts 直接写，之后各页拿到 auth.me()
-     * 时顺手刷新（utils/tabbar.ts 的 rememberRole）。
-     * 拿不到角色就全显示 —— 多一个 tab 也比整个小程序打不开强。
+     * 缓存由两处写入，足够了：登录成功时 login.ts 直接写角色，之后各页拿到 auth.me()
+     * 时顺手刷新身份和权限（utils/tabbar.ts 的 rememberAccess）。
+     * 拿不到就全显示 —— 多一个 tab 也比整个小程序打不开强。
      */
     attached() {
-      (this as any).applyRole(wx.getStorageSync(ROLE_KEY) || '');
+      (this as any).applyAccess(readCachedAccess());
     },
   },
 
   methods: {
-    applyRole(role: string) {
+    applyAccess(access: TabAccess) {
       const badges: Record<string, string> = {};
       this.data.tabs.forEach((tab: any) => {
         badges[tab.key] = tab.badge;
       });
       this.setData({
-        tabs: visibleTabs(role).map((tab) => ({ ...tab, badge: badges[tab.key] || '' })),
+        tabs: visibleTabs(access).map((tab) => ({ ...tab, badge: badges[tab.key] || '' })),
       });
     },
 

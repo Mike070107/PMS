@@ -76,5 +76,9 @@ export const antdTheme: ThemeConfig = {
     Tabs: { titleFontSize: 15 },
     Statistic: { contentFontSize: 30 },
     Tag: { borderRadiusSM: 6 },
+    // 全局 borderRadiusSM=9 用在 16px 的复选框上几乎就是个圆点，看着像单选 ——
+    // 一屏多选框的页面（角色权限矩阵）会被整片误读成「只能选一个」。
+    // Radio 该圆的仍然圆，这里只收回 Checkbox。
+    Checkbox: { borderRadiusSM: 4 },
   },
 };

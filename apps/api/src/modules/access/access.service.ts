@@ -5,8 +5,10 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { UserRole } from '../../common/enums';
 import {
   ADMIN_PAGE_KEYS,
+  ALL_PAGE_KEYS,
   PermissionAction,
   RoleDataScope,
+  STAFF_APP_PAGE_KEYS,
 } from '../../common/pages';
 import {
   Community,
@@ -91,7 +93,7 @@ export class AccessService {
       return {
         isPlatformAdmin: true,
         isTenantAdmin: false,
-        pages: this.fullPages(ADMIN_PAGE_KEYS),
+        pages: this.fullPages(ALL_PAGE_KEYS),
         scopeAll: true,
         communityIds: null,
         enabledPages: null,
@@ -104,9 +106,12 @@ export class AccessService {
       ? await this.tenantRepo.findOne({ where: { id: user.tenantId } })
       : null;
     const enabledPages = tenant?.enabledPages ?? null;
+    // tenants.enabled_pages 是「这家公司买了哪些后台功能」，只裁后台页面。
+    // 员工端入口（app:*）不受它限制 —— 存量租户的 enabled_pages 里当然没有
+    // 这些新 key，跟着裁会把整个小程序关掉。
     const allowedKeys = enabledPages
-      ? ADMIN_PAGE_KEYS.filter((k) => enabledPages.includes(k))
-      : [...ADMIN_PAGE_KEYS];
+      ? [...ADMIN_PAGE_KEYS.filter((k) => enabledPages.includes(k)), ...STAFF_APP_PAGE_KEYS]
+      : [...ALL_PAGE_KEYS];
 
     const asTenantAdmin = (roleIds: number[]): ResolvedAccess => ({
       isPlatformAdmin: false,
@@ -142,7 +147,7 @@ export class AccessService {
         where: { roleId: In(roles.map((r) => r.id)) },
       });
       for (const p of perms) {
-        if (!allowedKeys.includes(p.pageKey as (typeof allowedKeys)[number])) {
+        if (!(allowedKeys as readonly string[]).includes(p.pageKey)) {
           continue; // 公司没开通的页面，即使角色里勾了也不生效
         }
         const merged = pages[p.pageKey] ?? {
@@ -292,12 +297,17 @@ export class AccessService {
   ): boolean {
     if (access.isPlatformAdmin) return true;
     const keys = Array.isArray(pageKeys) ? pageKeys : [pageKeys];
-    return keys.some((key) => {
+    const allow = (key: string) => {
       const p = access.pages[key];
       if (!p) return false;
       if (action === 'view') return p.view;
       if (action === 'edit') return p.edit;
       return p.delete;
-    });
+    };
+    // 小程序要用的接口，一律在接口自己的 @RequirePermission 里显式列出 app: key
+    // （见 inventory.controller）。这里**不做**「app:inventory 等价于 inventory」
+    // 之类的通用映射 —— 那样一格权限会顺带扩散到所有挂同一个后台 key 的接口：
+    // 勾个「报修」就能派单、勾个「采购审批」就能清空库存。
+    return keys.some(allow);
   }
 }

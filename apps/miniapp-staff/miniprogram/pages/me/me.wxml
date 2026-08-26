@@ -9,7 +9,7 @@
   </view>
 
   <view class="card entries">
-    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenMessages">
+    <view wx:if="{{canUseMessages}}" class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenMessages">
       <view class="entry__body">
         <view class="entry__title">
           消息<text wx:if="{{unread}}" class="entry__badge">{{unread}}</text>
@@ -35,7 +35,7 @@
     </view>
   </view>
 
-  <view class="card entries">
+  <view wx:if="{{canReport}}" class="card entries">
     <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onGoRepair">
       <view class="entry__body">
         <view class="entry__title">我要报修</view>

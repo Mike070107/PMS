@@ -1,11 +1,11 @@
 import { maskPhone } from '@pms/miniapp-ui';
 import { USER_ROLE_LABELS, type MeResp } from '@pms/shared-types';
 import { clearSession, getSession } from '../../utils/session';
-import { syncTabBar } from '../../utils/tabbar';
+import { clearAccessCache, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, isAlwaysAllowed, refreshUnread } from '../../utils/unread';
 
 /** 构建版本：随每次上传更新。开发版/预览版微信不返回版本号，靠它确认跑的是哪份代码 */
-const BUILD_VERSION = '1.0.20260826c';
+const BUILD_VERSION = '1.0.20260826d';
 
 Page({
   data: {
@@ -17,6 +17,8 @@ Page({
     avatarText: '',
     canUseMaterials: false,
     canUseInventory: false,
+    canReport: false,
+    canUseMessages: true,
     /** 未读消息数，显示在「消息」入口右侧 */
     unread: 0,
     /** 维修工才有「新工单提醒」这回事 —— 单是派给他的 */
@@ -63,6 +65,8 @@ Page({
         avatarText: (user.name || roleText || '员').trim().charAt(0),
         canUseMaterials: session.canViewMaterials,
         canUseInventory: session.canViewInventory,
+        canReport: session.canReport,
+        canUseMessages: session.canUseMessages,
         canSubscribe: session.isTechnician,
         repairDesc: isReporter
           ? (scope ? `可报 ${scope} 内任意楼栋房号` : '还没有可代报的小区，请联系物业管理员开通')
@@ -113,8 +117,8 @@ Page({
     });
     if (!res.confirm) return;
     getApp<{ clearTokens: () => void }>().clearTokens();
-    // 角色和会话缓存都要清掉：换个人登进来，tabBar 和各页面不该还按上一个人的权限渲染
-    wx.removeStorageSync('pms.staff.role');
+    // 身份、权限、会话缓存都要清掉：换个人登进来，tabBar 和各页面不该还按上一个人的权限渲染
+    clearAccessCache();
     clearSession();
     wx.reLaunch({ url: '/pages/login/login' });
   },

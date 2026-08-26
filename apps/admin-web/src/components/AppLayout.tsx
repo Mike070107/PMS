@@ -23,6 +23,7 @@ import { auth as authApi } from '@pms/api-client';
 import type { AdminAccess } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { auth, pagePerm, useAuth } from '../lib/auth';
+import { roleLabel } from '../lib/roleLabels';
 import BrandLogo from './BrandLogo';
 import NotificationBell from './NotificationBell';
 
@@ -66,7 +67,7 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
       { key: '/properties', pageKey: 'properties', icon: <HomeOutlined />, label: '房产管理' },
       { key: '/owners', pageKey: 'owners', icon: <AuditOutlined />, label: '业主用户' },
       { key: '/staff', pageKey: 'users', icon: <TeamOutlined />, label: '用户管理' },
-      { key: '/roles', pageKey: 'roles', icon: <SafetyCertificateOutlined />, label: '角色管理' },
+      { key: '/roles', pageKey: 'roles', icon: <SafetyCertificateOutlined />, label: '业务角色' },
       { key: '/offices', pageKey: 'offices', icon: <ApartmentOutlined />, label: '管理处' },
       { key: '/qr', pageKey: 'qr', icon: <QrcodeOutlined />, label: '楼栋报修码' },
     ],
@@ -83,14 +84,6 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
     ],
   },
 ];
-
-const ROLE_LABELS: Record<string, string> = {
-  admin: '企业超级管理员',
-  manager: '物业经理',
-  office: '物业办公室',
-  purchaser: '采购经理',
-  superadmin: '平台管理员',
-};
 
 const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/dashboard': '掌握今日待办与物业运营动态',
@@ -215,7 +208,9 @@ export default function AppLayout() {
       <div className="pms-sider-foot">
         <div className="pms-sider-foot-label">当前身份</div>
         <div className="pms-sider-foot-value">
-          {user?.role && ROLE_LABELS[user.role] ? ROLE_LABELS[user.role] : '物业管理人员'}
+          {/* 标签只有一份（lib/roleLabels）：这里原来另抄了一份，缺了维修工和代报角色，
+              同一个人在顶栏显示「物业管理人员」、在用户管理列表里显示「维修工」 */}
+          {(user?.role && roleLabel[user.role]) || '物业管理人员'}
         </div>
         <div className="pms-sider-foot-meta">邻修物业管理平台 · {new Date().getFullYear()}</div>
       </div>
@@ -305,8 +300,8 @@ export default function AppLayout() {
                   <span className="pms-user-name">
                     {user?.name || user?.loginAccount || '管理员'}
                   </span>
-                  {user?.role && ROLE_LABELS[user.role] && (
-                    <span className="pms-user-role">{ROLE_LABELS[user.role]}</span>
+                  {user?.role && roleLabel[user.role] && (
+                    <span className="pms-user-role">{roleLabel[user.role]}</span>
                   )}
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -10,6 +11,7 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { UserRole, UserStatus } from '../../common/enums';
 import { RoleDataScope } from '../../common/pages';
 import { Community, PlatformLog, Role, Tenant, User } from '../../entities';
+import { RbacSeedService } from '../access/rbac-seed.service';
 import { CreateTenantDto, ResetTenantAdminDto, UpdateTenantDto } from './dto';
 
 /** 每个公司自动种下的内置角色名（不可删；绑定即企业超管） */
@@ -17,6 +19,8 @@ export const BUILT_IN_ADMIN_ROLE = '企业超级管理员';
 
 @Injectable()
 export class PlatformService {
+  private readonly logger = new Logger(PlatformService.name);
+
   constructor(
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
@@ -27,6 +31,7 @@ export class PlatformService {
     @InjectRepository(PlatformLog)
     private readonly logRepo: Repository<PlatformLog>,
     private readonly dataSource: DataSource,
+    private readonly rbacSeed: RbacSeedService,
   ) {}
 
   async listTenants() {
@@ -106,6 +111,9 @@ export class PlatformService {
           tenantId: tenant.id,
           name: BUILT_IN_ADMIN_ROLE,
           remark: '系统内置：绑定该角色即企业超级管理员，不可删除',
+          // 内置角色也要带身份，否则用户管理里它显示成「（仅后台）」、
+          // 选了还过不了「必须选一个业务角色」的校验
+          businessRole: UserRole.ADMIN,
           dataScope: RoleDataScope.ALL,
           builtIn: true,
           enabled: true,
@@ -132,7 +140,17 @@ export class PlatformService {
       );
       return { tenantId: tenant.id, adminUserId: admin.id };
     });
-
+    // 身份角色（维修工/办公室/保安…）由种子统一补，和升级走同一份预设。
+    // 不补的话这家公司要等到下次 API 重启才建得出第一个员工 —— 种子挂在启动钩子上，
+    // 只在进程起来时跑一遍，运行期新开的公司根本轮不到。
+    // 失败不回滚开通动作：记日志，下次启动的种子会补上。
+    try {
+      await this.rbacSeed.seedTenant(result.tenantId);
+    } catch (e) {
+      this.logger.error(
+        `tenant ${result.tenantId}: seed identity roles failed: ${(e as Error).message}`,
+      );
+    }
     await this.log(operator, 'tenant_create', result.tenantId, {
       name: dto.name,
       adminAccount: account,

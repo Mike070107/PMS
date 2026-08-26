@@ -9,13 +9,23 @@
 
        两种身份两种排法：维修工这一屏的主线就是「接活 + 顺手报修」，两个入口铺满一行一个；
        办公室的主线是派单，报修只是顺带，两个按钮并成一行，把屏幕让给下面的工单。 -->
-  <view wx:if="{{dispatcher}}" class="btn-row report-entry report-entry--row">
+  <view wx:if="{{canReport && dispatcher}}" class="btn-row report-entry report-entry--row">
     <button class="btn btn--outline btn--sm" bindtap="onGoQuickRepair">随手拍报修</button>
     <button class="btn btn--outline btn--sm" bindtap="onGoRepair">填表报修</button>
   </view>
-  <view wx:else class="btn-group report-entry">
+  <view wx:elif="{{canReport}}" class="btn-group report-entry">
     <button class="btn btn--primary" bindtap="onGoQuickRepair">随手拍报修</button>
     <button class="btn btn--outline" bindtap="onGoRepair">我要报修（填表）</button>
+  </view>
+
+  <!-- 维修工侧同理：卡片上不出现「接单」时，必须写清是权限收着，不是没活干 -->
+  <view wx:if="{{!dispatcher && !canAccept}}" class="notice">
+    <view class="notice__body">
+      <view class="notice__title">你的账号只能查看工单，不能接单</view>
+      <view class="notice__desc">
+        请管理员在管理后台「业务角色」页找到你的角色，把员工端小程序那张表里「工单池 / 派单台」这一行的「接单 / 派单」勾上；改完在这一页下拉刷新即可，不用退出重登。
+      </view>
+    </view>
   </view>
 
   <!-- ===== 派单台：状态筛选 + 搜索。维修工不需要，池子里只有一种单 ===== -->
@@ -26,7 +36,7 @@
       <view class="notice__body">
         <view class="notice__title">你的账号只能查看工单，不能派单</view>
         <view class="notice__desc">
-          请管理员在管理后台「角色管理」里找到你的角色，把「工单管理」这一行的「编辑」勾上，重新登录即可派单。
+          请管理员在管理后台「业务角色」页找到你的角色，把员工端小程序那张表里「工单池 / 派单台」这一行的「接单 / 派单」勾上；改完在这一页下拉刷新即可，不用退出重登。
         </view>
       </view>
     </view>
@@ -108,7 +118,7 @@
       <!-- 维修工：只有真正能领的单才画按钮（后端 accept 也只放行这一种） -->
       <block wx:else>
         <button
-          wx:if="{{item.claimable}}"
+          wx:if="{{canAccept && item.claimable}}"
           class="btn btn--primary btn--sm"
           catchtap="onAccept"
           data-id="{{item.id}}"

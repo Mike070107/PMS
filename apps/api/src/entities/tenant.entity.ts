@@ -31,6 +31,15 @@ export class Tenant extends BaseEntity {
   @Column({ name: 'expires_at', type: 'date', nullable: true })
   expiresAt: string | null;
 
+  /**
+   * 身份角色补种完成的时间。null = 还没补过。
+   *
+   * 这个标记的存在意义：补种只做一次。做成每次启动都跑，企业超管之后的调整
+   * （清空角色的身份、取消某个小程序入口、停用角色）会在下次重启时被悄悄回滚。
+   */
+  @Column({ name: 'rbac_seeded_at', type: 'timestamptz', nullable: true })
+  rbacSeededAt: Date | null;
+
   @Column({ default: true })
   enabled: boolean;
 }

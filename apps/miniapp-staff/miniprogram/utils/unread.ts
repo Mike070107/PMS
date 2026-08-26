@@ -10,7 +10,13 @@
  */
 import { notifications } from '@pms/api-client';
 import { getSession } from './session';
-import { setTabBadge } from './tabbar';
+import { readCachedAccess, setTabBadge } from './tabbar';
+
+/** 只读缓存判断，绝不在这里打接口：角标刷新会在各种时机被调到 */
+function canSeeMessages(): boolean {
+  const { pages } = readCachedAccess();
+  return pages ? !!pages['app:messages'] : true;
+}
 
 /**
  * 有没有登录，问 app 拿，别在这里写死 storage key ——
@@ -42,6 +48,13 @@ export function getLastUnread(): number {
  */
 export async function refreshUnread(page?: any): Promise<number> {
   if (!hasToken()) {
+    lastUnread = 0;
+    if (page) setTabBadge(page, 'me', 0);
+    return 0;
+  }
+  // 角色里没勾「消息中心」的人，「我的」页压根没有消息入口 ——
+  // 这时候还挂个红点，他点进去找不到地方清，只能靠杀缓存
+  if (!canSeeMessages()) {
     lastUnread = 0;
     if (page) setTabBadge(page, 'me', 0);
     return 0;

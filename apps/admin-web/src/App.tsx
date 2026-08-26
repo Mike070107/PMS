@@ -81,7 +81,7 @@ function RequirePage({ pageKey, children }: { pageKey: string; children: React.R
     if (fallback) return <Navigate to={fallback} replace />;
     return (
       <div style={{ padding: 48, textAlign: 'center', color: '#5b7370' }}>
-        当前账号没有任何页面的查看权限，请联系管理员在「角色管理」里为你的角色分配权限。
+        当前账号没有任何网站页面的查看权限，请联系管理员在「业务角色」页里，给你的角色勾上要用的页面。
       </div>
     );
   }

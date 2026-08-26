@@ -7,21 +7,14 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { REPORTER_ROLES, UserRole, UserStatus } from '../../common/enums';
+import { ASSIGNABLE_STAFF_ROLES, UserRole, UserStatus } from '../../common/enums';
 
 /**
- * 后台可开通的账号角色。
- * 保安/居委会/业委会也在这里登记 —— 他们不进后台，用业主端小程序，
+ * 后台可开通的业务身份，与角色表 business_role 的取值域同一份（common/enums.ts）。
+ * 保安/居委会/业委会也在这里登记 —— 他们只用小程序报修、不进后台，
  * 但同样需要物业先登记、能停用、能改授权小区，走员工那套管理流程最省事。
  */
-const ASSIGNABLE_ROLES: UserRole[] = [
-  UserRole.TECHNICIAN,
-  UserRole.OFFICE,
-  UserRole.MANAGER,
-  UserRole.PURCHASER,
-  UserRole.ADMIN,
-  ...REPORTER_ROLES,
-];
+const ASSIGNABLE_ROLES = ASSIGNABLE_STAFF_ROLES;
 
 export class ListStaffQueryDto {
   @IsOptional()
@@ -47,8 +40,13 @@ export class CreateStaffDto {
   @MaxLength(30)
   phone: string;
 
+  /**
+   * 业务身份。合并后由所选角色（roles.business_role）带出来，新前端不再传；
+   * 保留可选是为了兼容还没更新的调用方，两边都给时以角色为准。
+   */
+  @IsOptional()
   @IsIn(ASSIGNABLE_ROLES)
-  role: UserRole;
+  role?: UserRole;
 
   @IsOptional()
   @IsString()

@@ -57,6 +57,18 @@ export const STAFF_APP_WORKER_ROLES: UserRole[] = [
 ];
 
 /**
+ * 后台「用户管理」里可以开出来的业务身份，也就是角色表 business_role 的取值域。
+ *
+ * 不含 owner（业主档案走业主端那套管理）和 superadmin（平台账号，不由公司开）。
+ * 2026-08-26 业务身份与后台角色合并后，这份名单同时是「建角色时能选哪些身份」，
+ * 所以只留这一份 —— staff/dto.ts 和 staff.service.ts 原来各抄了一遍。
+ */
+export const ASSIGNABLE_STAFF_ROLES: UserRole[] = [
+  ...STAFF_APP_WORKER_ROLES,
+  ...REPORTER_ROLES,
+];
+
+/**
  * 「只能看自己提的那些单」的角色 —— 和「从哪个端登录」是两回事，必须分开判。
  *
  * 业主看自己家的单；保安/居委会/业委会看自己代报的单。他们都不是物业编制内

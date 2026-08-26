@@ -5,9 +5,36 @@
  * 每个 tab 页在 onShow 里调一次 syncTabBar —— 微信不会自动同步选中态，
  * 漏掉的那一屏点进去后底部还高亮着上一个 tab，人就会怀疑自己点错了。
  */
-export type TabKey = 'pool' | 'mine' | 'materials' | 'approvals' | 'me';
+import { type TabKey } from './roles';
+
+export { type TabKey };
 
 const ROLE_KEY = 'pms.staff.role';
+/** access.pages 的精简缓存：只留员工端那几个入口的「可见」 */
+const PAGES_KEY = 'pms.staff.pages';
+const TAB_PAGE_KEYS = [
+  'app:pool',
+  'app:my-orders',
+  'app:inventory',
+  'app:approvals',
+  'app:repair-create',
+  'app:messages',
+];
+
+/**
+ * 读缓存里的身份和权限。**只读缓存，绝不打接口** ——
+ * tabBar 的 attached 和角标刷新都会走到这里，一旦联网就会触发
+ * 401 → reLaunch 打转（见 custom-tab-bar/index.ts 的说明）。
+ */
+export function readCachedAccess(): {
+  role: string;
+  pages: Record<string, boolean> | null;
+} {
+  return {
+    role: wx.getStorageSync(ROLE_KEY) || '',
+    pages: wx.getStorageSync(PAGES_KEY) || null,
+  };
+}
 
 function getTabBar(page: any) {
   return typeof page?.getTabBar === 'function' ? page.getTabBar() : null;
@@ -24,11 +51,40 @@ export function setTabBadge(page: any, key: TabKey, count: number) {
   if (tabBar && typeof tabBar.setBadge === 'function') tabBar.setBadge(key, count);
 }
 
-/** 页面拿到 auth.me() 后顺手存一下角色，tabBar 据此决定藏哪个 tab */
-export function rememberRole(page: any, role: string) {
+/**
+ * 页面拿到 auth.me() 后顺手存一下身份和权限，tabBar 据此决定藏哪一格。
+ *
+ * tabBar 在 attached 里绝不能联网（会 401 → reLaunch 打转），所以它只读这份缓存。
+ * 后台改完角色，用户在任意页下拉刷新（getSession(page, true)）就会走到这里，
+ * 底部立刻跟着变 —— 不用退出重登，更不用杀掉小程序。
+ */
+export function rememberAccess(
+  page: any,
+  role: string,
+  pages: Record<string, { view?: boolean }> | null | undefined,
+) {
   if (!role) return;
-  if (wx.getStorageSync(ROLE_KEY) === role) return;
+  const slim: Record<string, boolean> | null = pages
+    ? TAB_PAGE_KEYS.reduce((acc, key) => {
+        acc[key] = !!pages[key]?.view;
+        return acc;
+      }, {} as Record<string, boolean>)
+    : null;
+  const roleChanged = wx.getStorageSync(ROLE_KEY) !== role;
+  const pagesChanged =
+    JSON.stringify(wx.getStorageSync(PAGES_KEY) || null) !== JSON.stringify(slim);
+  if (!roleChanged && !pagesChanged) return;
   wx.setStorageSync(ROLE_KEY, role);
+  if (slim) wx.setStorageSync(PAGES_KEY, slim);
+  else wx.removeStorageSync(PAGES_KEY);
   const tabBar = getTabBar(page);
-  if (tabBar && typeof tabBar.applyRole === 'function') tabBar.applyRole(role);
+  if (tabBar && typeof tabBar.applyAccess === 'function') {
+    tabBar.applyAccess({ role, pages: slim });
+  }
+}
+
+/** 退出登录时清掉：换个人登进来不能还按上一个人的身份渲染底部 */
+export function clearAccessCache() {
+  wx.removeStorageSync(ROLE_KEY);
+  wx.removeStorageSync(PAGES_KEY);
 }

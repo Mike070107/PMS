@@ -13,6 +13,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
 import { In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
+import { isStaffAppPageKey } from '../../common/pages';
 import {
   AuditStatus,
   OWNER_APP_ROLES,
@@ -26,6 +27,8 @@ import {
   Building,
   Community,
   House,
+  Role,
+  RolePermission,
   Tenant,
   User,
   UserAudit,
@@ -33,6 +36,7 @@ import {
   UserRoleAssignment,
 } from '../../entities';
 import { AccessService } from '../access/access.service';
+import { RbacSeedService } from '../access/rbac-seed.service';
 import {
   AdminLoginDto,
   BootstrapAdminDto,
@@ -68,11 +72,16 @@ export class AuthService {
     private readonly reportGrantRepo: Repository<UserReportCommunity>,
     @InjectRepository(UserRoleAssignment)
     private readonly userRoleRepo: Repository<UserRoleAssignment>,
+    @InjectRepository(Role)
+    private readonly roleRepo: Repository<Role>,
+    @InjectRepository(RolePermission)
+    private readonly rolePermRepo: Repository<RolePermission>,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly wechat: WechatService,
     private readonly settings: SettingsService,
     private readonly accessService: AccessService,
+    private readonly rbacSeed: RbacSeedService,
   ) {}
 
   /** 小程序登录：code 换 openid → 找/建用户 → 发双 token */
@@ -485,25 +494,41 @@ export class AuthService {
   /**
    * 「这个人能不能进网页后台」——账号密码登录和扫码登录共用这一份判断。
    *
-   * 双轨制下业务身份不再决定后台准入：小程序端身份（业主/维修工/保安/居委会/
-   * 业委会/物业工作人员）绑了后台角色照样放行，没绑一律拦 —— 这就是
-   * 「给工作人员授权网页登录」的口子：用户管理里绑角色即可。
+   * 准入看的是「他的角色里有没有一个能看的页面」，不是「有没有绑角色」。
+   *
+   * 2026-08-26 业务身份并进角色表后，每个员工都会绑一个身份角色（维修工也不例外），
+   * 再按「绑没绑角色」放行等于把后台向全体员工敞开 —— 维修工登进来还会撞上
+   * 一个没有任何菜单的白屏。企业超管（内置角色 / 业务身份 admin）直通。
    *
    * 新增任何一种进后台的方式都必须过这里。少调一次，那条新路子就成了绕开
    * 角色矩阵的后门（扫码登录不校验密码，尤其不能漏）。
    */
   private async assertWebAdminAccess(user: User) {
-    if (
-      user.role === UserRole.TECHNICIAN ||
-      SELF_SCOPED_ROLES.includes(user.role as UserRole)
-    ) {
-      const bindings = await this.userRoleRepo.count({ where: { userId: user.id } });
-      if (!bindings) {
-        throw new ForbiddenException(
-          '这个账号没有开通网页后台权限，请让管理员在「用户管理」里绑定后台角色',
-        );
-      }
-    }
+    if (user.role === UserRole.SUPERADMIN || user.role === UserRole.ADMIN) return;
+    const denied = () => {
+      throw new ForbiddenException(
+        '这个账号还不能登录网页后台。请让管理员在「角色管理」里，' +
+          '给你的角色勾上要用的页面（至少一个「查看」），再重新登录',
+      );
+    };
+    const bindings = await this.userRoleRepo.find({
+      where: { userId: user.id },
+      select: ['roleId'],
+    });
+    if (!bindings.length) denied();
+    const roles = await this.roleRepo.find({
+      where: { id: In(bindings.map((b) => b.roleId)), enabled: true },
+    });
+    if (!roles.length) denied();
+    // 内置「企业超级管理员」角色 = 全权限，不必去翻权限表
+    if (roles.some((r) => r.builtIn)) return;
+    const viewable = await this.rolePermRepo.find({
+      where: { roleId: In(roles.map((r) => r.id)), canView: true },
+      select: ['pageKey'],
+    });
+    // 只数网站页面：员工端那几格（app:*）也存在同一张权限表里，
+    // 跟着数就等于「会用小程序 = 能登后台」，维修工进来还是一屏没有菜单的白板。
+    if (!viewable.some((p) => !isStaffAppPageKey(p.pageKey))) denied();
   }
 
   /**
@@ -761,6 +786,14 @@ export class AuthService {
         updatedBy: null,
       }),
     );
+
+    // 内置角色和身份角色一起补上：种子挂在启动钩子上，这条路是运行期建的租户，
+    // 不补的话这家公司要等下次重启才建得出第一个员工
+    try {
+      await this.rbacSeed.seedTenant(tenant.id);
+    } catch {
+      // 引导接口不该因为种子失败就整个失败；下次启动会补
+    }
 
     return {
       tenant,

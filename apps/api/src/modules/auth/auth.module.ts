@@ -8,6 +8,8 @@ import {
   Building,
   Community,
   House,
+  Role,
+  RolePermission,
   Tenant,
   User,
   UserAudit,
@@ -34,6 +36,8 @@ import { QrLoginService } from './qr-login.service';
       UserAudit,
       UserReportCommunity,
       UserRoleAssignment,
+      Role,
+      RolePermission,
       WebLoginTicket,
     ]),
     JwtModule.registerAsync({

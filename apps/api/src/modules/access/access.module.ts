@@ -34,6 +34,6 @@ import { RolesOrPermissionGuard } from './roles-or-permission.guard';
     ]),
   ],
   providers: [AccessService, PermissionsGuard, RolesOrPermissionGuard, RbacSeedService],
-  exports: [AccessService, PermissionsGuard, RolesOrPermissionGuard],
+  exports: [AccessService, PermissionsGuard, RolesOrPermissionGuard, RbacSeedService],
 })
 export class AccessModule {}

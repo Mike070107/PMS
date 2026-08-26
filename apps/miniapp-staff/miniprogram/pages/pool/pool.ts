@@ -88,6 +88,10 @@ Page({
     /** 维修工视角 / 派单台视角，决定整屏的标题、按钮和筛选条 */
     dispatcher: false,
     canDispatch: false,
+    /** 报修入口：由角色矩阵的「报修」那一格决定 */
+    canReport: false,
+    /** 接单权：和派单同一个勾选（工单池那一格的「接单 / 派单」） */
+    canAccept: false,
     leadText: '待接单',
     list: [] as OrderRow[],
     loading: false,
@@ -175,6 +179,8 @@ Page({
       this.setData({
         dispatcher,
         canDispatch: session.canDispatch,
+        canReport: session.canReport,
+        canAccept: session.canAccept,
         leadText: dispatcher ? filter.label : '待接单',
         list: rows,
         loaded: true,
