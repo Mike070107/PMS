@@ -45,6 +45,7 @@ function parseArgs(argv) {
     skipOwners: false,
     skipStandards: false,
     skipBills: false,
+    skipParking: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const key = argv[i];
@@ -68,6 +69,7 @@ function parseArgs(argv) {
       case '--skip-owners': args.skipOwners = true; break;
       case '--skip-standards': args.skipStandards = true; break;
       case '--skip-bills': args.skipBills = true; break;
+      case '--skip-parking': args.skipParking = true; break;
       default:
         throw new Error(`未知参数：${key}`);
     }
@@ -337,6 +339,41 @@ function fetchStandards() {
   `);
 }
 
+/**
+ * 车位费（泊位费）账单。**不在 wyzj 里** —— 老系统把车位单独做了一套：
+ * `车位申请登记表`（一个车位一条登记）+ `缴费通知表`（一条登记每月一张单）。
+ * 只导物业管理费会漏掉这 12 万条（2026-08-27 就漏过一次）。
+ *
+ * 房号靠登记表的 zh_id 回到业主 → 室 → 楼；「非小区业户」（外来租户）没有本小区房号，
+ * 挂不上 house，交给调用方计数报出来，不猜。
+ */
+function fetchParkingBills(offset, limit) {
+  return queryMysql(`
+    SELECT t.ID, t.缴费年月, t.金额, t.收款日期, t.退款日期, t.取消日期, t.合并ID,
+           d.车库编号, d.车位编号, d.车型, d.牌照号, d.用户姓名, d.用户类型, d.zh_id,
+           l.管理处, l.弄, l.号, s.室
+    FROM 缴费通知表 t
+    JOIN 车位申请登记表 d ON d.登记ID = t.登记ID
+    LEFT JOIN 业主表 z ON z.ZH_ID = d.zh_id AND z.SC = 0
+    LEFT JOIN 室表 s ON s.S_ID = z.S_ID AND s.SC = 0
+    LEFT JOIN 楼表 l ON l.L_ID = s.L_ID AND l.SC = 0
+    WHERE d.管理处 IN (${officeList}) AND IFNULL(t.sc, 0) = 0
+    ORDER BY t.ID
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+}
+
+function countParkingBills() {
+  return Number(
+    queryMysql(`
+      SELECT COUNT(*) AS n
+      FROM 缴费通知表 t
+      JOIN 车位申请登记表 d ON d.登记ID = t.登记ID
+      WHERE d.管理处 IN (${officeList}) AND IFNULL(t.sc, 0) = 0
+    `)[0].n,
+  );
+}
+
 function fetchBills(offset, limit) {
   const periodFilter = args.billsFrom ? `AND w.ZJ_CNY >= '${args.billsFrom}'` : '';
   return queryMysql(`
@@ -363,7 +400,7 @@ async function main() {
 
   // ---- 1. 房产：老库有、PMS 没有的房号补齐 ----
   const rooms = fetchRooms();
-  console.log(`\n[1/4] 房产：老库 ${rooms.length} 间`);
+  console.log(`\n[1/5] 房产：老库 ${rooms.length} 间`);
 
   let houses = [];
   let communities = [];
@@ -432,7 +469,7 @@ async function main() {
 
   // ---- 2. 业主档案 ----
   const ownerRows = fetchOwners();
-  console.log(`\n[2/4] 业主档案：老库 ${ownerRows.length} 条`);
+  console.log(`\n[2/5] 业主档案：老库 ${ownerRows.length} 条`);
   const owners = ownerRows.map((row) => {
     const loc = locatorOf(row);
     const contact = splitContact(row.联系方式);
@@ -464,7 +501,7 @@ async function main() {
 
   // ---- 3. 收费标准 ----
   const stdRows = fetchStandards();
-  console.log(`\n[3/4] 收费标准：老库 ${stdRows.length} 条`);
+  console.log(`\n[3/5] 收费标准：老库 ${stdRows.length} 条`);
   const standards = stdRows.map((row) => {
     const loc = locatorOf(row);
     const code = FEE_CODE_MAP[row.DH] || 'other';
@@ -499,7 +536,7 @@ async function main() {
   }
 
   // ---- 4. 历史账单 ----
-  console.log('\n[4/4] 历史账单');
+  console.log('\n[4/5] 物业管理费账单');
   const totalBills = Number(
     queryMysql(`
       SELECT COUNT(*) AS n
@@ -571,6 +608,84 @@ async function main() {
     `      新建 ${billStats.created}，更新 ${billStats.updated}，` +
     `已缴 ${billStats.paid} / 未缴 ${billStats.unpaid} / 退款 ${billStats.refunded}，` +
     `未匹配房号 ${billStats.unmatched.length}`,
+  );
+
+  // ---- 5. 车位费账单 ----
+  console.log('\n[5/5] 车位费账单（泊位费）');
+  const totalParking = countParkingBills();
+  console.log(`      老库 ${totalParking} 条`);
+  const parkStats = {
+    total: totalParking,
+    created: 0,
+    updated: 0,
+    unmatched: [],
+    noHouse: 0,
+    paid: 0,
+    unpaid: 0,
+    refunded: 0,
+    cancelled: 0,
+  };
+
+  for (let offset = 0; offset < totalParking; offset += READ_PAGE) {
+    const page = fetchParkingBills(offset, READ_PAGE);
+    const rows = [];
+    for (const row of page) {
+      const status = row.取消日期
+        ? 'cancelled'
+        : row.退款日期
+          ? 'refunded'
+          : row.收款日期
+            ? 'paid'
+            : 'unpaid';
+      parkStats[status] += 1;
+      // 非小区业户（外来租户）没有本小区房号，fee_bills 的 house_id 挂不上，只能跳过
+      if (!row.管理处 || !row.号) {
+        parkStats.noHouse += 1;
+        continue;
+      }
+      const spot = [row.车库编号, row.车位编号].filter(Boolean).join('-');
+      const remark = [
+        spot ? `车位 ${spot}` : null,
+        row.车型 || null,
+        row.牌照号 || null,
+        row.用户类型 && row.用户类型 !== '本小区业户' ? row.用户类型 : null,
+      ].filter(Boolean).join(' · ');
+      rows.push({
+        house: locatorOf(row),
+        ownerName: truncate(row.用户姓名, 60),
+        feeCode: 'parking',
+        feeName: '泊位费',
+        period: row.缴费年月,
+        amountCents: toCents(row.金额),
+        status,
+        paidAt: toIso(row.收款日期),
+        refundedAt: toIso(row.退款日期),
+        // 车位费老系统没记收款方式，留空好过瞎填一个「现金」
+        paymentMethod: null,
+        receiptNo: status === 'unpaid' || !row.合并ID ? null : `HB${row.合并ID}`,
+        remark: truncate(remark, 255),
+        legacyRef: `wjwy:tz:${row.ID}`,
+      });
+    }
+
+    if (!args.dryRun && !args.skipParking && rows.length) {
+      const res = await postInChunks('/fees/import', 'bills', rows, (acc, r) => {
+        acc.created = (acc.created || 0) + r.bills.created;
+        acc.updated = (acc.updated || 0) + r.bills.updated;
+        acc.unmatched = [...(acc.unmatched || []), ...r.bills.unmatched];
+      });
+      parkStats.created += res.created || 0;
+      parkStats.updated += res.updated || 0;
+      parkStats.unmatched.push(...(res.unmatched || []).slice(0, 50));
+    }
+    console.log(`      已处理 ${Math.min(offset + READ_PAGE, totalParking)}/${totalParking}`);
+  }
+  parkStats.unmatched = Array.from(new Set(parkStats.unmatched)).slice(0, 200);
+  report.steps.parking = parkStats;
+  console.log(
+    `      新建 ${parkStats.created}，更新 ${parkStats.updated}，` +
+    `已缴 ${parkStats.paid} / 未缴 ${parkStats.unpaid} / 退款 ${parkStats.refunded} / 作废 ${parkStats.cancelled}，` +
+    `非小区业户无房号跳过 ${parkStats.noHouse}，未匹配房号 ${parkStats.unmatched.length}`,
   );
 
   report.finishedAt = new Date().toISOString();
