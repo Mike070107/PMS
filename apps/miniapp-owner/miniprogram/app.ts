@@ -1,4 +1,5 @@
 import { configure } from '@pms/api-client';
+import { setupAutoUpdate } from '@pms/miniapp-ui';
 
 const TOKEN_KEY = 'pms.access_token';
 const REFRESH_KEY = 'pms.refresh_token';
@@ -24,6 +25,8 @@ App<AppData>({
     wx.removeStorageSync(REFRESH_KEY);
   },
   onLaunch() {
+    // 冷启动就把新包应用上，否则「关掉重开」看到的还是旧界面（见 setupAutoUpdate 注释）
+    setupAutoUpdate();
     configure({
       baseURL: this.baseURL,
       getToken: () => this.getToken(),
