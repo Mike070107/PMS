@@ -14,7 +14,7 @@
  * 前置（只配一次）：开发者工具 → 设置 → 安全设置 → 打开「服务端口」。
  */
 import { execFileSync, execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -138,6 +138,58 @@ function readBuildVersion(appDir) {
   return matched ? matched[1] : '';
 }
 
+/**
+ * 上传台账（本机，不入库）。
+ *
+ * 为什么要这个：BUILD_VERSION 是手改的常量，很容易连着好几个提交都忘了升号
+ * （2026-08-25 就出现过 1.0.20260825e 横跨四个提交）。同一个号上传多次之后，
+ * 公众平台「版本管理」里并排几条一模一样的版本号，选体验版时根本分不出哪条是新的，
+ * 选错就表现为「体验版怎么退回旧版本了」，而手机上的版本号还长得像对的。
+ * 所以：同号但代码不同的第二次上传直接拦下来，并把 git 短 hash 写进上传描述，
+ * 让公众平台上的每条版本都能对回一个提交。
+ */
+const SHIP_LOG = join(repoRoot, '.ship-log.json');
+
+function gitInfo() {
+  try {
+    const hash = execSync('git rev-parse --short HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim();
+    const dirty = execSync('git status --porcelain', { cwd: repoRoot, encoding: 'utf8' }).trim().length > 0;
+    return { hash, dirty };
+  } catch {
+    return { hash: '', dirty: false };
+  }
+}
+
+function readShipLog() {
+  try {
+    return existsSync(SHIP_LOG) ? JSON.parse(readFileSync(SHIP_LOG, 'utf8')) : [];
+  } catch {
+    return [];
+  }
+}
+
+function appendShipLog(entry) {
+  try {
+    writeFileSync(SHIP_LOG, `${JSON.stringify([...readShipLog(), entry], null, 2)}\n`);
+  } catch {
+    // 台账写不下不该挡住发版，下次上传就少一条记录而已
+  }
+}
+
+/** 同一个版本号、不同的代码 —— 拦住，否则公众平台上两条同号版本分不清 */
+function assertVersionNotReused(appKey, ver, git) {
+  const clash = readShipLog().find(
+    (row) => row.app === appKey && row.version === ver && row.hash !== git.hash,
+  );
+  if (!clash) return;
+  fail(
+    `版本号 ${ver} 已经在 ${clash.time} 用代码 ${clash.hash} 上传过了，这次的代码是 ${git.hash}。\n` +
+      `   同号上传两次，公众平台「版本管理」里会并排两条 ${ver}，选体验版必然选错 ——\n` +
+      `   先把 apps/${appKey === 'staff' ? 'miniapp-staff' : 'miniapp-owner'}/miniprogram/pages/me/me.ts 里的\n` +
+      '   BUILD_VERSION 往后挪一位再重跑（那个常量就是手机上「我的」页显示的版本号）。',
+  );
+}
+
 // 顶层抛出的 ShipError 只打那一句可照做的说明，不要甩一屏 stack
 process.on('uncaughtException', (err) => {
   console.error(`\nx  ${err instanceof ShipError ? err.message : err?.stack || err}\n`);
@@ -167,13 +219,33 @@ try {
 
 if (opts.mode === 'upload') {
   if (!version) fail('读不到 BUILD_VERSION，无法确定上传版本号');
-  const desc = opts.desc || `${version} 构建`;
+  const git = gitInfo();
+  assertVersionNotReused(opts.app, version, git);
+  if (git.dirty) {
+    console.warn(
+      `\n!  工作区有未提交的改动，这次上传的包和提交 ${git.hash} 对不上。\n` +
+        '   以后想查「体验版里到底是哪份代码」会查不出来，建议先提交再传。\n',
+    );
+  }
+  // 描述里始终带上代码位置，公众平台版本列表里才能一眼对回提交
+  const stamp = `${git.hash}${git.dirty ? '+本地改动' : ''}`;
+  const desc = `${opts.desc || `${version} 构建`}${stamp ? `（${stamp}）` : ''}`;
   console.log(`\n==> 3/3 上传体验版 v${version}：${desc}`);
   runCli(['upload', '--project', projectPath, '-v', version, '-d', desc]);
+  appendShipLog({
+    app: opts.app,
+    version,
+    hash: git.hash,
+    dirty: git.dirty,
+    desc,
+    time: new Date().toISOString(),
+  });
   console.log(
-    '\n完成。还要两步：\n' +
-      '  1. 公众平台 → 版本管理 → 开发版本 → 「选为体验版」\n' +
-      '  2. 手机微信里先把这个小程序从「最近使用」删掉，再重新进 —— 否则跑的还是缓存包\n',
+    `\n完成。上传的是 ${version}（代码 ${stamp || '未知'}）。还要两步：\n` +
+      `  1. 公众平台 → 版本管理 → 开发版本 → 找到描述里带 ${git.hash || version} 的那条 → 「选为体验版」\n` +
+      '     （同号版本可能有多条，认描述里的 hash，别只认版本号）\n' +
+      '  2. 手机微信里先把这个小程序从「最近使用」删掉，再重新进 —— 否则跑的还是缓存包\n' +
+      '  进小程序「我的」页最下面核对版本号，和上面这个对不上就说明第 1 步选错了版本\n',
   );
 } else if (opts.mode === 'preview') {
   const outDir = join(repoRoot, '.screenshots');

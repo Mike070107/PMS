@@ -28,6 +28,8 @@ deploy/dist/
 # 本机工具与缓存
 .pnpm-store/
 .screenshots/
+# 小程序上传台账（记录每次 upload 的版本号 + git hash，防止同号重复上传）
+.ship-log.json
 .claude/
 .codex/
 .agents/
