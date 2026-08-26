@@ -13,7 +13,7 @@ import {
   scopeOptions,
   type PlaceScope,
 } from '../../utils/place-scope';
-import { askSubscribeAfterSubmit } from '../../utils/unread';
+import { askSubscribeAfterSubmit, primeSubscribeTemplates } from '../../utils/unread';
 
 /**
  * 随手拍报修：拍一张照片或一段视频 + 一句话描述（可语音），点一下就提交。
@@ -96,6 +96,8 @@ Page({
   dismissedMatch: '' as string,
 
   onLoad() {
+    // 提前把订阅模板拿好：提交时授权框要在点击里同步唤起，来不及再去请求
+    primeSubscribeTemplates();
     this.bindSpeech();
   },
 
@@ -401,6 +403,8 @@ Page({
 
     const scope = this.data.scope;
     const detected = this.data.detected;
+    // 订阅授权框必须由这次点击同步唤起，放到提交请求之后微信就不认了（见 utils/unread.ts）
+    askSubscribeAfterSubmit();
     this.setData({ submitting: true });
     try {
       const resp = await repairs.create({
@@ -421,9 +425,6 @@ Page({
         attachments,
       });
       wx.showToast({ title: '已提交' });
-      // 刚提交完是请求订阅授权的最佳时机：用户正期待「什么时候派单」，同意率最高。
-      // 一进小程序就弹多半会被下意识拒绝，而微信的拒绝是持久的，弹错一次就没机会了。
-      await askSubscribeAfterSubmit();
       setTimeout(() => {
         wx.redirectTo({ url: `/pages/order-detail/order-detail?id=${resp.workOrder.id}` });
       }, 600);

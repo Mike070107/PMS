@@ -52,6 +52,9 @@ export async function refreshUnread(page?: any): Promise<number> {
     if (page) setTabBadge(page, 'me', 0);
     return 0;
   }
+  // 顺手把订阅授权要用的东西预热好（见 primeSubscribeState）：
+  // 每个页面 onShow 都会走到这里，等用户点「开启提醒」时缓存已经在了
+  primeSubscribeState();
   // 角色里没勾「消息中心」的人，「我的」页压根没有消息入口 ——
   // 这时候还挂个红点，他点进去找不到地方清，只能靠杀缓存
   if (!canSeeMessages()) {
@@ -97,112 +100,166 @@ export function isAlwaysAllowed(tmplId: string): Promise<boolean> {
   });
 }
 
+// ---------------------------------------------------------------------------
+// 订阅授权
+//
+// **微信的硬规矩（基础库 2.8.2 起）：requestSubscribeMessage 必须在用户点击事件里
+// 同步调用。** 点击之后只要 await 过任何异步的东西 —— 一次 wx.request、一次
+// wx.getSetting、甚至一个 showModal 的回调 —— 再调它就直接 fail：
+// 「requestSubscribeMessage:fail can only be invoked by user TAP gesture」，
+// 微信的授权框根本不会弹出来。开发者工具不查这条，真机上才炸，所以本地看不出来。
+// 2026-08-26 实际反馈「我的」页点「开启新工单提醒」没反应，就是这个：
+// 原实现先 await 会话、await getSetting、再弹一个说明框，然后才调它。
+//
+// 所以这里的做法是：模板 id 和「勾没勾总是保持」都**提前缓存**（primeSubscribeState，
+// 每次 refreshUnread 顺手做），点击时直接同步发起授权框，结果回来后再处理。
+// 调用方也要遵守：在 bindtap 处理函数里**先**调 askOrderSubscribe / topUpQuietly，
+// 再去 await 接单、完工这些请求 —— 放在请求之后就又踩回同一个坑。
+// ---------------------------------------------------------------------------
+
+/** 本公司给员工端配的模板 id；null = 还没拿到过 */
+let cachedTmplIds: string[] | null = null;
+/** 这个人是否已勾「总是保持以上选择」 */
+let cachedAlways = false;
+
 /**
- * 悄悄补一次额度：**只在用户已经勾过「总是保持以上选择」时才调**。
+ * 预热订阅授权要用的两样东西。失败保持上次的值 —— 拿不到会话不该把授权入口弄坏。
+ * 走会话缓存，不会多打 /auth/me；getSetting 是本地调用。
+ */
+export async function primeSubscribeState(): Promise<void> {
+  try {
+    const me = (await getSession()).me;
+    const ids = (me?.subscribeTemplates || []).filter(Boolean).slice(0, 3);
+    cachedTmplIds = ids;
+    cachedAlways = ids.length ? await isAlwaysAllowed(ids[0]) : false;
+  } catch {
+    // 保持上次的缓存
+  }
+}
+
+interface SubscribeOutcome {
+  /** 微信回的 { 模板id: 'accept' | 'reject' | 'ban' | 'filter' } */
+  res: Record<string, string>;
+  /** fail 时微信的原话，用来给用户/管理员看真实原因 */
+  errMsg?: string;
+}
+
+/** 同步发起授权框。必须由点击事件同步调到这里，中间不能有 await */
+function requestNow(tmplIds: string[]): Promise<SubscribeOutcome> {
+  return new Promise((resolve) => {
+    wx.requestSubscribeMessage({
+      tmplIds,
+      success: (r) => resolve({ res: r as unknown as Record<string, string> }),
+      fail: (err: any) => resolve({ res: {}, errMsg: err?.errMsg || String(err || '') }),
+    });
+  });
+}
+
+/** 把微信的 errMsg 翻成能照着处理的话，同时保留原文便于排查 */
+function explainSubscribeFailure(errMsg: string): string {
+  if (/TAP gesture/i.test(errMsg)) {
+    return `微信要求授权框必须由点击直接唤起，这次没赶上。请回到「我的」页再点一次「新工单微信提醒」。（微信原话：${errMsg}）`;
+  }
+  if (/20004|mainSwitch|主开关/i.test(errMsg)) {
+    return `你把这个小程序的订阅消息总开关关掉了。请点右上角「…」→ 设置 → 订阅消息，打开后再来开启。（微信原话：${errMsg}）`;
+  }
+  if (/20001|20002|20003|template/i.test(errMsg)) {
+    return `消息模板不对，请管理员核对管理后台「系统设置」里填的「新工单提醒」模板 ID。（微信原话：${errMsg}）`;
+  }
+  if (/10005|退后台|UI/i.test(errMsg)) {
+    return `微信没能弹出授权框，请回到小程序再点一次。（微信原话：${errMsg}）`;
+  }
+  return `微信没有弹出授权框：${errMsg}`;
+}
+
+/** 处理授权结果：只把点了「允许」的模板上报，服务端按这个记额度 */
+async function settle(tmplIds: string[], outcome: SubscribeOutcome, silent: boolean): Promise<boolean> {
+  const accepted = tmplIds.filter((id) => outcome.res[id] === 'accept');
+  if (!accepted.length) {
+    if (!silent) {
+      if (outcome.errMsg) {
+        wx.showModal({
+          title: '没有开启',
+          content: explainSubscribeFailure(outcome.errMsg),
+          showCancel: false,
+          confirmText: '知道了',
+        });
+      } else {
+        wx.showToast({ icon: 'none', title: '没有开启，新工单只会在「消息」里提醒' });
+      }
+    }
+    return false;
+  }
+  await notifications.subscribe(accepted);
+  cachedAlways = await isAlwaysAllowed(accepted[0]);
+  if (!silent) {
+    // 勾了「总是保持」= 一劳永逸；没勾 = 这次只换来一条，要说明白，
+    // 否则他以为开好了，下次没收到提醒又来问一遍
+    wx.showModal({
+      title: cachedAlways ? '已开启' : '这次只会提醒一条',
+      content: cachedAlways
+        ? '以后每次派单都会在微信里提醒你。'
+        : '微信规定「同意一次只能推一条」。想以后一直收到提醒，请再点一次本入口，并在弹窗里勾上左下角的「总是保持以上选择，不再询问」。',
+      showCancel: false,
+      confirmText: '知道了',
+    });
+  }
+  return true;
+}
+
+/**
+ * 悄悄补一次额度：**只在用户已经勾过「总是保持以上选择」时才发起**。
  *
  * 没勾过就不要调 —— 那会在他每次点开一张工单时弹一次授权框，
  * 比「没通知」还烦，而且弹多了人会点「拒绝」，一拒绝就是持久的，再也推不了。
  *
- * 必须由用户的点击行为触发（微信要求），所以挂在「点开工单卡片」这类
- * 每天都会发生很多次的动作上，额度基本能一直保持满的。
+ * 挂在「点开工单卡片」这类每天都会发生很多次的点击上，额度基本能一直保持满的。
+ * 只读缓存、同步发起：这里 await 任何东西都会让微信不认这次点击（见上面的说明）。
  */
-export async function topUpQuietly(): Promise<void> {
-  try {
-    // 走会话缓存，不要再打一遍 /auth/me —— 这个函数挂在「点开工单卡片」上，
-    // 每天要跑几十次，多一个请求就是几十个
-    const me = (await getSession()).me;
-    const tmplIds = (me?.subscribeTemplates || []).filter(Boolean).slice(0, 3);
-    if (!tmplIds.length) return;
-    const allowed = await isAlwaysAllowed(tmplIds[0]);
-    if (!allowed) return;
-    await askOrderSubscribe(true);
-  } catch {
-    // 补额度是锦上添花，失败绝不能影响用户正在做的事
-  }
+export function topUpQuietly(): void {
+  const tmplIds = cachedTmplIds;
+  if (!tmplIds?.length || !cachedAlways) return;
+  requestNow(tmplIds)
+    .then((outcome) => settle(tmplIds, outcome, true))
+    .catch(() => {
+      // 补额度是锦上添花，失败绝不能影响用户正在做的事
+    });
 }
 
 /**
- * 请求「有新工单派给你」的订阅授权。
+ * 请求「有新工单派给你」的订阅授权。**必须在点击处理函数里同步调用**，
+ * 放在接单/完工这些请求之后就会被微信拒绝（真机才会，开发者工具不查）。
  *
- * 微信的一次性订阅是「同意一次 = 能推一条」，所以要在**用户刚做完一件事**的时候补额度
- * （接单后、完工后），这时他正期待下一单，同意率最高；一进小程序就弹，
- * 多数人会下意识点拒绝，而「拒绝并不再询问」是持久的，弹错一次就再也没机会了。
+ * 微信的一次性订阅是「同意一次 = 能推一条」，所以在用户每次主动做事的点击上补额度；
+ * 一进小程序就弹，多数人会下意识点拒绝，而「拒绝并不再询问」是持久的，弹错一次就再也没机会了。
  *
- * 只把用户点了「允许」的模板上报给服务端 —— 微信没有查余量的接口，
- * 服务端完全按这里记账，多报会导致「以为能推、其实推不出去」。
- *
- * @param silent true = 静默补额度（接单/完工后顺手调），失败不提示；
- *               false = 用户主动点「开启提醒」，要给明确反馈
+ * @param silent true = 顺手补额度（接单/完工的点击里调），失败不提示；
+ *               false = 用户主动点「开启提醒」，要给明确反馈，包括微信的真实报错
  */
-export async function askOrderSubscribe(silent = true): Promise<boolean> {
-  try {
-    const me = (await getSession()).me;
-    const tmplIds = (me?.subscribeTemplates || []).filter(Boolean).slice(0, 3);
+export function askOrderSubscribe(silent = true): Promise<boolean> {
+  const tmplIds = cachedTmplIds;
+  if (!tmplIds) {
+    // 缓存还没热（页面刚打开就点了）：预热一次，让他再点一下。
+    // 这里不能「await 预热完再弹」—— await 过后微信就不认这次点击了
+    primeSubscribeState();
+    if (!silent) wx.showToast({ icon: 'none', title: '正在准备，请再点一次' });
+    return Promise.resolve(false);
+  }
+  if (!tmplIds.length) {
     // 物业还没在公众平台申请模板：静默时不弹（免得弹出一个空白授权框），
     // 用户主动点的时候要说清楚为什么没反应，别让人以为按钮坏了
-    if (!tmplIds.length) {
-      if (!silent) {
-        wx.showModal({
-          title: '还不能开启',
-          content:
-            '物业还没在微信公众平台申请「新工单提醒」的消息模板。请管理员在管理后台「系统设置」里填好模板 ID 后再试。',
-          showCancel: false,
-          confirmText: '知道了',
-        });
-      }
-      return false;
-    }
-
-    // 用户主动点「开启提醒」时，先说清楚该怎么点才能一劳永逸 ——
-    // 「总是保持以上选择」这个勾选框在弹窗左下角，不说没人会去勾，
-    // 不勾就退化成「同意一次只推一条」，也就是他抱怨的「每次都要点允许」
-    if (!silent && !(await isAlwaysAllowed(tmplIds[0]))) {
-      const tip = await new Promise<boolean>((resolve) => {
-        wx.showModal({
-          title: '开启后就不用再点了',
-          content:
-            '下一步微信会弹一个授权框。请勾上左下角的「总是保持以上选择，不再询问」再点允许 —— 勾了以后每次派单都会提醒你，不用再点第二次。',
-          confirmText: '知道了，去开启',
-          cancelText: '取消',
-          success: (r) => resolve(!!r.confirm),
-          fail: () => resolve(false),
-        });
-      });
-      if (!tip) return false;
-    }
-
-    const res = await new Promise<Record<string, string>>((resolve) => {
-      wx.requestSubscribeMessage({
-        tmplIds,
-        success: (r) => resolve(r as unknown as Record<string, string>),
-        // 用户拒绝、或没开订阅能力，都当作没授权，不打扰
-        fail: () => resolve({}),
-      });
-    });
-    const accepted = tmplIds.filter((id) => res[id] === 'accept');
-    if (!accepted.length) {
-      if (!silent) {
-        wx.showToast({ icon: 'none', title: '没有开启，新工单只会在「消息」里提醒' });
-      }
-      return false;
-    }
-    await notifications.subscribe(accepted);
     if (!silent) {
-      const always = await isAlwaysAllowed(accepted[0]);
-      // 勾了「总是保持」= 一劳永逸；没勾 = 这次只换来一条，要说明白，
-      // 否则他以为开好了，下次没收到提醒又来问一遍
       wx.showModal({
-        title: always ? '已开启' : '这次只会提醒一条',
-        content: always
-          ? '以后每次派单都会在微信里提醒你。'
-          : '微信规定「同意一次只能推一条」。想以后一直收到提醒，请再点一次本入口，并在弹窗里勾上左下角的「总是保持以上选择，不再询问」。',
+        title: '还不能开启',
+        content:
+          '物业还没在微信公众平台申请「新工单提醒」的消息模板。请管理员在管理后台「系统设置」里填好模板 ID 后再试。',
         showCancel: false,
         confirmText: '知道了',
       });
     }
-    return true;
-  } catch {
-    // 授权是锦上添花，失败绝不能影响「接单」「完工」这些主流程
-    return false;
+    return Promise.resolve(false);
   }
+  // 先于任何 await 同步发起授权框
+  const pending = requestNow(tmplIds);
+  return pending.then((outcome) => settle(tmplIds, outcome, silent)).catch(() => false);
 }

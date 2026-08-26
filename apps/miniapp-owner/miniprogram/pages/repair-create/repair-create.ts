@@ -26,7 +26,7 @@ import {
 } from '../../utils/place-scope';
 import { scanForToken } from '../../utils/scan';
 import { ensureOwnerLogin } from '../../utils/session';
-import { askSubscribeAfterSubmit } from '../../utils/unread';
+import { askSubscribeAfterSubmit, primeSubscribeTemplates } from '../../utils/unread';
 
 /**
  * 一键报修。字段顺序、"猜你想输"、地址选法都与管理后台「办公室录入报修」对齐，
@@ -202,6 +202,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   onLoad(q: Record<string, string>) {
+    // 提前把订阅模板拿好：提交时授权框要在点击里同步唤起，来不及再去请求
+    primeSubscribeTemplates();
     this.bindSpeech();
     this.loadTypes();
     // 四种进入方式：
@@ -630,6 +632,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           .filter(Boolean)
           .join(' ');
 
+    // 订阅授权框必须由这次点击同步唤起，放到提交请求之后微信就不认了（见 utils/unread.ts）
+    askSubscribeAfterSubmit();
     this.setData({ submitting: true });
     try {
       const resp = await repairs.create({
@@ -643,9 +647,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         attachments: this.data.attachments,
       });
       wx.showToast({ title: '报修已提交' });
-      // 刚提交完是请求订阅授权的最佳时机：用户正期待「什么时候派单」，同意率最高。
-      // 一进小程序就弹多半会被下意识拒绝，而微信的拒绝是持久的，弹错一次就没机会了。
-      await askSubscribeAfterSubmit();
       setTimeout(() => {
         wx.redirectTo({ url: `/pages/order-detail/order-detail?id=${resp.workOrder.id}` });
       }, 600);

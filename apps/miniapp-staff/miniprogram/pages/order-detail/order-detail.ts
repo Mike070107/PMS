@@ -805,6 +805,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         unit: row.unit,
       }));
 
+    // 刚干完一单，正等着下一单 —— 这时补订阅额度同意率最高。
+    // 必须在这次点击里同步发起，放到 complete 请求之后微信就不认了（见 utils/unread.ts）
+    askOrderSubscribe();
     this.setData({ busy: true, errorMsg: '' });
     try {
       await repairs.complete(this.data.id, {
@@ -817,8 +820,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         resultAttachments: this.data.resultAttachments,
       });
       wx.showToast({ title: '已提交，等待业主验收' });
-      // 刚干完一单，正等着下一单 —— 这时补订阅额度同意率最高（见 utils/unread.ts）
-      askOrderSubscribe();
       setTimeout(() => wx.navigateBack(), 800);
     } catch (e: any) {
       this.setData({ errorMsg: e?.message || '提交失败' });
