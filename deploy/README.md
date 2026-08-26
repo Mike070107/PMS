@@ -369,6 +369,22 @@ curl -sS https://prsznh.cn/api/v1/health
 
 ## 常用排查
 
+### `pm2 reload` 报「Process 0 not found」
+
+进程反复崩溃重启到一定次数后，pm2 会把它从进程表里摘掉，这时 `reload` 无从下手，
+部署脚本会停在健康检查上。**先看崩溃原因**（`pm2 logs pms-api --err --lines 60`），
+修完用 `start` 而不是 `reload` 把它挂回来：
+
+```bash
+cd /opt/pms-repair/apps/api && pm2 start ecosystem.config.cjs --update-env && pm2 save
+```
+
+2026-08-26 踩过一次：`main.ts` 里直接 `import { json } from 'express'`，
+而 express 只是 `@nestjs/platform-express` 的传递依赖、没写进 `apps/api/package.json`，
+`pnpm deploy --prod` 打出来的产物里它不在顶层 node_modules，线上一起就
+`MODULE_NOT_FOUND`。**改 main.ts 引入新的第三方包时，先确认它在 dependencies 里**，
+body 大小这类需求用 `app.useBodyParser(...)`（platform-express 自带）绕开。
+
 ```bash
 pm2 logs pms-api --lines 100
 pm2 status
