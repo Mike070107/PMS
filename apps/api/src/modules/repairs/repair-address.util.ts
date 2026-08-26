@@ -162,7 +162,9 @@ export function tokenizeAddress(input: string): string[] {
   return input
     .trim()
     .replace(/[弄号室栋幢座楼单元]/g, '/')
-    .split(/[/\\-—－_·,，、。:：;；#＃\s]+/)
+    // 连字符必须放在字符类最后：写成 \\- 会变成「\ 到 —」的范围，连字符本身反而不算分隔符
+    // （2026-08-27 线上验收发现 228-51 查不到）。共享包那份写的是 \\\-，含义一样。
+    .split(/[/\\—－_·,，、。:：;；#＃\s-]+/)
     .map((part) => part.trim())
     .filter(Boolean);
 }
