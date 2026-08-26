@@ -16,7 +16,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ResolvedAccess } from '../access/access.service';
 import { CurrentAccess } from '../access/current-access.decorator';
 import { PermissionsGuard } from '../access/permissions.guard';
-import { CreateOwnerDto, ListOwnersQueryDto, UpdateOwnerDto } from './dto';
+import {
+  CreateOwnerDto,
+  ImportOwnersDto,
+  ListOwnersQueryDto,
+  UpdateOwnerDto,
+} from './dto';
 import { OwnersMgmtService } from './owners-mgmt.service';
 
 /**
@@ -44,6 +49,16 @@ export class OwnersMgmtController {
   @RequirePermission(['owners', 'properties'], 'edit')
   create(@Body() dto: CreateOwnerDto, @CurrentUser() user: AuthUser) {
     return this.ownersMgmtService.create(dto, user);
+  }
+
+  /**
+   * 业主档案批量导入（老系统迁移用），按 legacyRef 幂等。
+   * 放在 :id 路由之前，否则 'import' 会被当成 id 走进 PATCH/DELETE 的匹配。
+   */
+  @Post('import')
+  @RequirePermission(['owners', 'properties'], 'edit')
+  importOwners(@Body() dto: ImportOwnersDto, @CurrentUser() user: AuthUser) {
+    return this.ownersMgmtService.importOwners(dto, user);
   }
 
   @Patch(':id')

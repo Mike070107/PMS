@@ -47,12 +47,15 @@ export enum OwnerSource {
   SELF = 'self',
   /** 员工报修时报出来的联系人，系统顺手记的 */
   REPAIR_INTAKE = 'repair_intake',
+  /** 从老收费系统整批导入的存量档案（姓名/房号可信，电话可能是固话或已停用） */
+  LEGACY_IMPORT = 'legacy_import',
 }
 
 export const OWNER_SOURCE_LABELS: Record<string, string> = {
   [OwnerSource.MANUAL]: '后台建档',
   [OwnerSource.SELF]: '业主认证',
   [OwnerSource.REPAIR_INTAKE]: '报修登记',
+  [OwnerSource.LEGACY_IMPORT]: '老系统导入',
 };
 
 export enum QrGranularity {
@@ -695,6 +698,7 @@ export interface DictItem {
 export * from './address';
 export * from './repair-classify';
 export * from './pages';
+export * from './fees';
 export * from './voice-extract';
 
 // ---------- 停留时长 ----------

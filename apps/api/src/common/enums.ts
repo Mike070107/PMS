@@ -55,6 +55,8 @@ export enum OwnerSource {
   SELF = 'self',
   /** 员工报修时报出来的联系人，系统顺手记的 */
   REPAIR_INTAKE = 'repair_intake',
+  /** 从老收费系统（吴泾物业 MySQL 库）整批导入的存量业主档案 */
+  LEGACY_IMPORT = 'legacy_import',
 }
 
 /** 二维码粒度 */
@@ -183,4 +185,56 @@ export enum BusinessBillingUnit {
 export enum BusinessTransactionStatus {
   PAID = 'paid',
   CANCELLED = 'cancelled',
+}
+
+/**
+ * 物业费账单状态（与 packages/shared-types/src/fees.ts 同源）。
+ * unpaid → paid（登记收款）；paid → unpaid（撤销收款）/ refunded（退款）；
+ * unpaid → cancelled（作废，误生成/免收）→ unpaid（恢复）。
+ */
+export enum FeeBillStatus {
+  UNPAID = 'unpaid',
+  PAID = 'paid',
+  REFUNDED = 'refunded',
+  CANCELLED = 'cancelled',
+}
+
+/** 账单是怎么来的：老系统导入 / 按收费标准生成 / 后台手工录入 */
+export enum FeeBillSource {
+  LEGACY_IMPORT = 'legacy_import',
+  GENERATED = 'generated',
+  MANUAL = 'manual',
+}
+
+/** 每户收费标准的状态：当前生效 / 已被新标准替代（留作历史） */
+export enum FeeStandardStatus {
+  ACTIVE = 'active',
+  HISTORY = 'history',
+}
+
+/**
+ * 费用项目预置表。code 存库，name 随单快照 —— 同一 code 各公司叫法不同也不影响历史账单。
+ * 来源是吴泾物业老系统的 setupsfxm（管理费/租金/保洁保安费…），其它公司沿用即可，
+ * 不够用时加一行，**已上线的 code 不要改**。
+ */
+export const FEE_ITEMS: ReadonlyArray<{ code: string; name: string }> = [
+  { code: 'management', name: '物业管理费' },
+  { code: 'rent', name: '租金' },
+  { code: 'clean_guard', name: '保洁保安费' },
+  { code: 'guard', name: '保安费' },
+  { code: 'clean', name: '保洁费' },
+  { code: 'parking', name: '泊位费' },
+  { code: 'temp_parking', name: '临时停车费' },
+  { code: 'network', name: '网络费' },
+  { code: 'water', name: '水费' },
+  { code: 'electricity', name: '电费' },
+  { code: 'locker', name: '快递柜费' },
+  { code: 'vacant_rent', name: '空房租金' },
+  { code: 'other', name: '其他' },
+];
+
+export const FEE_ITEM_CODES: string[] = FEE_ITEMS.map((item) => item.code);
+
+export function feeItemName(code: string): string {
+  return FEE_ITEMS.find((item) => item.code === code)?.name ?? code;
 }

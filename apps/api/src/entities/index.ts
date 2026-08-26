@@ -39,6 +39,8 @@ import { RepairTypeRule } from './repair-type-rule.entity';
 import { RepairTypeCorrection } from './repair-type-correction.entity';
 import { RepairTypeWarehouse } from './repair-type-warehouse.entity';
 import { WebLoginTicket } from './web-login-ticket.entity';
+import { FeeStandard } from './fee-standard.entity';
+import { FeeBill } from './fee-bill.entity';
 import { ManagementOffice } from './management-office.entity';
 import { Role } from './role.entity';
 import { RolePermission } from './role-permission.entity';
@@ -94,6 +96,8 @@ export const entities = [
   RepairTypeCorrection,
   RepairTypeWarehouse,
   WebLoginTicket,
+  FeeStandard,
+  FeeBill,
 ];
 
 export {
@@ -144,4 +148,6 @@ export {
   RepairTypeCorrection,
   RepairTypeWarehouse,
   WebLoginTicket,
+  FeeStandard,
+  FeeBill,
 };

@@ -19,8 +19,10 @@ export interface OwnerRow {
   name: string | null;
   phone: string | null;
   status: 'active' | 'disabled';
-  /** 这条档案怎么来的：manual 后台建 / self 业主认证 / repair_intake 报修登记 */
+  /** 这条档案怎么来的：manual 后台建 / self 业主认证 / repair_intake 报修登记 / legacy_import 老系统导入 */
   source: string | null;
+  /** 手机号之外的联系方式（固话、第二个号码）。老系统导入的档案很多只有固话 */
+  contactNote?: string | null;
   houseId: number | null;
   house: {
     id: number;
@@ -72,6 +74,7 @@ export default function OwnerFormModal({
       form.setFieldsValue({
         name: target.name,
         phone: target.phone,
+        contactNote: target.contactNote ?? undefined,
         houseId: target.houseId,
       });
       if (target.house) {
@@ -124,6 +127,7 @@ export default function OwnerFormModal({
       const payload: Record<string, unknown> = {
         name: v.name,
         phone: v.phone,
+        contactNote: v.contactNote || null,
         houseId: v.houseId ?? null,
       };
       if (target) {
@@ -169,6 +173,13 @@ export default function OwnerFormModal({
             </Form.Item>
           </Col>
         </Row>
+        <Form.Item
+          name="contactNote"
+          label="其他联系方式（选填）"
+          extra="固话、第二个号码、「找子女」这类备注。老系统导入的档案不少只有固话，先留在这里，核实到手机号再填上面那格。"
+        >
+          <Input maxLength={255} placeholder="如：64508498（固话）" />
+        </Form.Item>
         <Form.Item
           name="houseId"
           label="绑定房产（可后续再绑）"

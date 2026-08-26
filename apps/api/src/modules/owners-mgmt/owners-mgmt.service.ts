@@ -5,13 +5,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, Repository } from 'typeorm';
+import { Brackets, DataSource, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { OwnerSource, UserRole, UserStatus } from '../../common/enums';
+import { HouseIndex } from '../../common/house-index';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { Building, Community, House, User } from '../../entities';
-import { CreateOwnerDto, ListOwnersQueryDto, UpdateOwnerDto } from './dto';
+import {
+  CreateOwnerDto,
+  ImportOwnersDto,
+  ListOwnersQueryDto,
+  UpdateOwnerDto,
+} from './dto';
 
 @Injectable()
 export class OwnersMgmtService {
@@ -20,6 +26,7 @@ export class OwnersMgmtService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(House)
     private readonly houseRepo: Repository<House>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async list(query: ListOwnersQueryDto, user: AuthUser, access?: ResolvedAccess) {
@@ -47,6 +54,7 @@ export class OwnersMgmtService {
         'u.status AS status',
         'u.role AS role',
         'u.source AS source',
+        'u.contact_note AS "contactNote"',
         'u.house_id AS "houseId"',
         'h.room_no AS "roomNo"',
         'h.area_sqm AS "areaSqm"',
@@ -95,6 +103,8 @@ export class OwnersMgmtService {
       status: r.status,
       // 这条档案是怎么来的：报修登记来的是系统顺手记的，还没人核实过
       source: r.source ?? null,
+      // 手机号之外的联系方式（老档案的固话、第二个号码），打不通手机时还有个号可以试
+      contactNote: r.contactNote ?? null,
       houseId: r.houseId ? Number(r.houseId) : null,
       house: r.houseId
         ? {
@@ -137,6 +147,8 @@ export class OwnersMgmtService {
         houseId: dto.houseId ?? null,
         status: UserStatus.ACTIVE,
         source: OwnerSource.MANUAL,
+        contactNote: dto.contactNote ?? null,
+        legacyRef: null,
         createdBy: user.id,
         updatedBy: user.id,
       }),
@@ -162,6 +174,7 @@ export class OwnersMgmtService {
     }
     if (dto.name !== undefined) owner.name = dto.name;
     if (dto.status !== undefined) owner.status = dto.status;
+    if (dto.contactNote !== undefined) owner.contactNote = dto.contactNote || null;
     if (dto.houseId !== undefined) {
       if (dto.houseId === null) {
         owner.houseId = null;
@@ -189,6 +202,172 @@ export class OwnersMgmtService {
     owner.updatedBy = user.id;
     await this.userRepo.save(owner);
     return { ok: true };
+  }
+
+  /**
+   * 业主档案批量导入（老系统迁移用），按 legacyRef 幂等：同一份数据重跑只更新、不建重。
+   *
+   * 三条必须守住的规矩，都是为了「导进来的档案能直接打电话、能直接登录」：
+   * 1. **一户一个在册业主**：房号已经绑了别人（且不是本条 legacyRef），这一条不抢绑，
+   *    退回 conflicts 让人工判断谁才是现在的业主。老库里同一室多业主的只有 1 户，
+   *    自动挑一个反而会把维修电话打给已经搬走的人。
+   * 2. **手机号全公司唯一**：号码已经属于另一条档案时，这条不写 phone，
+   *    把号码原样塞进 contactNote 并记一条 conflict —— 数据不丢，也不会两个人抢同一个登录身份。
+   * 3. **认不出手机号的联系方式不当手机号用**：固话、「13xxxx袁」这种脏数据一律进 contactNote，
+   *    phone 留空。宁可空着让人补，也不能让业主端拿一个错号码去匹配房屋。
+   */
+  async importOwners(dto: ImportOwnersDto, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const rows = dto.rows ?? [];
+    if (!rows.length) throw new BadRequestException('没有要导入的数据');
+
+    return this.dataSource.transaction(async (manager) => {
+      const index = await HouseIndex.load(manager, tenantId);
+      const result = {
+        created: 0,
+        updated: 0,
+        unmatched: [] as string[],
+        conflicts: [] as string[],
+      };
+
+      const refs = rows.map((r) => r.legacyRef);
+      const existing = await manager.find(User, {
+        where: { tenantId, role: UserRole.OWNER, legacyRef: In(refs) },
+      });
+      const byRef = new Map(existing.map((u) => [u.legacyRef as string, u]));
+
+      // 已被占用的房号 / 已被占用的手机号：一次查完，逐行判断时不再打库
+      const occupiedHouse = new Map<number, User>();
+      const occupiedPhone = new Map<string, User>();
+      const owners = await manager.find(User, {
+        where: { tenantId, role: UserRole.OWNER },
+      });
+      for (const owner of owners) {
+        if (owner.houseId && owner.status === UserStatus.ACTIVE) {
+          occupiedHouse.set(owner.houseId, owner);
+        }
+        if (owner.phone) occupiedPhone.set(owner.phone, owner);
+      }
+
+      const toSave: User[] = [];
+      for (const row of rows) {
+        const house = index.resolve({
+          houseId: row.houseId,
+          communityName: row.communityName,
+          lane: row.lane,
+          buildingNo: row.buildingNo,
+          roomNo: row.roomNo,
+        });
+        if (!house) {
+          if (result.unmatched.length < 200) {
+            result.unmatched.push(
+              `${HouseIndex.describe({
+                houseId: row.houseId,
+                communityName: row.communityName,
+                lane: row.lane,
+                buildingNo: row.buildingNo,
+                roomNo: row.roomNo,
+              })}（${row.name}）`,
+            );
+          }
+          continue;
+        }
+
+        const found = byRef.get(row.legacyRef);
+
+        // 房号占用检查：被别人占着就不抢
+        const houseOwner = occupiedHouse.get(house.id);
+        let houseId: number | null = house.id;
+        if (houseOwner && houseOwner.legacyRef !== row.legacyRef) {
+          houseId = null;
+          if (result.conflicts.length < 200) {
+            result.conflicts.push(
+              `${house.communityName} ${house.buildingNo}号${house.roomNo}：已绑定「${
+                houseOwner.name || houseOwner.phone || '#' + houseOwner.id
+              }」，${row.name} 未绑定房产`,
+            );
+          }
+        }
+
+        // 手机号唯一性检查：被别人用了就不写 phone，号码留在备注里
+        let phone = this.normalizePhone(row.phone);
+        let contactNote = row.contactNote?.trim() || null;
+        if (phone) {
+          const phoneOwner = occupiedPhone.get(phone);
+          if (phoneOwner && phoneOwner.legacyRef !== row.legacyRef) {
+            if (result.conflicts.length < 200) {
+              result.conflicts.push(
+                `手机号 ${phone} 已登记在「${
+                  phoneOwner.name || '#' + phoneOwner.id
+                }」名下，${row.name} 的号码已转存到备注`,
+              );
+            }
+            contactNote = [contactNote, `手机 ${phone}（与其他档案重复，未启用）`]
+              .filter(Boolean)
+              .join('；');
+            phone = null;
+          }
+        }
+
+        if (found) {
+          found.name = row.name;
+          found.phone = phone;
+          found.contactNote = contactNote;
+          if (houseId) found.houseId = houseId;
+          found.updatedBy = user.id;
+          toSave.push(found);
+          result.updated += 1;
+        } else {
+          const created = manager.create(User, {
+            tenantId,
+            wxOpenid: null,
+            wxUnionid: null,
+            name: row.name,
+            phone,
+            wxNickname: null,
+            passwordHash: null,
+            loginAccount: null,
+            role: UserRole.OWNER,
+            houseId,
+            status: UserStatus.ACTIVE,
+            source: OwnerSource.LEGACY_IMPORT,
+            contactNote,
+            legacyRef: row.legacyRef,
+            createdBy: user.id,
+            updatedBy: user.id,
+          });
+          toSave.push(created);
+          result.created += 1;
+        }
+
+        // 本批次内部也要互斥，否则同一手机号/同一房号的两行会一起写进去
+        if (houseId) {
+          occupiedHouse.set(houseId, {
+            ...(found ?? ({} as User)),
+            id: found?.id ?? 0,
+            name: row.name,
+            phone,
+            legacyRef: row.legacyRef,
+          } as User);
+        }
+        if (phone) {
+          occupiedPhone.set(phone, {
+            id: found?.id ?? 0,
+            name: row.name,
+            legacyRef: row.legacyRef,
+          } as User);
+        }
+      }
+
+      if (toSave.length) await manager.save(toSave, { chunk: 500 });
+      return result;
+    });
+  }
+
+  /** 认得出来才当手机号：11 位 1[3-9] 开头。其余（固话、带汉字的）一律不进 phone 字段 */
+  private normalizePhone(raw?: string | null): string | null {
+    const value = (raw ?? '').replace(/[\s-]/g, '');
+    return /^1[3-9]\d{9}$/.test(value) ? value : null;
   }
 
   private async assertHouseAvailable(

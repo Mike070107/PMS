@@ -11,6 +11,7 @@ export const ADMIN_PAGE_KEYS = [
   'dashboard', // 工作台
   'work-orders', // 工单管理
   'business', // 前台收费
+  'fees', // 物业费（账单 / 收费标准 / 欠费）
   'materials', // 材料 SKU 库
   'inventory', // 库存与采购
   'properties', // 房产与业主
@@ -107,6 +108,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       dashboard: 'v',
       'work-orders': 'e',
       business: 'e',
+      fees: 'e',
       materials: 'e',
       inventory: 'e',
       properties: 'e',

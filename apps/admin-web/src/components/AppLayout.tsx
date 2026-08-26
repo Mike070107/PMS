@@ -1,5 +1,6 @@
 import { Layout, Menu, Dropdown, Avatar, Button, Drawer, Select } from 'antd';
 import {
+  AccountBookOutlined,
   AppstoreOutlined,
   DashboardOutlined,
   HomeOutlined,
@@ -51,7 +52,10 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
   },
   {
     title: '收费业务',
-    items: [{ key: '/business', pageKey: 'business', icon: <CreditCardOutlined />, label: '前台收费' }],
+    items: [
+      { key: '/business', pageKey: 'business', icon: <CreditCardOutlined />, label: '前台收费' },
+      { key: '/fees', pageKey: 'fees', icon: <AccountBookOutlined />, label: '物业费' },
+    ],
   },
   {
     title: '材料与库存',
@@ -88,6 +92,7 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/dashboard': '掌握今日待办与物业运营动态',
   '/work-orders': '登记、调度并跟踪每一张维修工单',
   '/business': '办理停车、门禁与前台收费业务',
+  '/fees': '物业费账单、收款登记与欠费催缴',
   '/materials': '维护标准材料、单位与基础价格',
   '/inventory': '管理库存、采购、收货与仓库调拨',
   '/properties': '维护小区、楼栋与房屋',

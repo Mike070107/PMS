@@ -9,6 +9,7 @@ import { PlatformModule } from './modules/platform/platform.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { BusinessModule } from './modules/business/business.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { FeesModule } from './modules/fees/fees.module';
 import { HealthModule } from './modules/health/health.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -36,6 +37,7 @@ import { UploadModule } from './modules/upload/upload.module';
     PlatformModule,
     RolesModule,
     DashboardModule,
+    FeesModule,
     HealthModule,
     InventoryModule,
     NotificationsModule,

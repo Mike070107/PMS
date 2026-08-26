@@ -224,7 +224,15 @@ function OwnersTab() {
         pagination={{ pageSize: 20, showSizeChanger: true }}
         columns={[
           { title: '姓名', dataIndex: 'name', width: 120, render: (v) => v || <Text type="secondary">-</Text> },
-          { title: '电话', dataIndex: 'phone', width: 130 },
+          {
+            // 老系统导入的档案很多只有固话，手机号那格是空的。直接显示「-」会被当成没资料，
+            // 实际上备注里有号码可以打 —— 这里退回显示备注并标出来。
+            title: '电话', dataIndex: 'phone', width: 150,
+            render: (v: string | null, r) =>
+              v || (r.contactNote
+                ? <Text type="secondary" title={r.contactNote}>{r.contactNote}<Text type="secondary" style={{ fontSize: 11 }}>（非手机）</Text></Text>
+                : <Text type="secondary">无号码</Text>),
+          },
           {
             title: '绑定房产', key: 'house',
             render: (_, r) => r.house

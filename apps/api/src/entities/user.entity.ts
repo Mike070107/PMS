@@ -55,4 +55,19 @@ export class User extends BaseEntity {
    */
   @Column({ type: 'varchar', length: 20, nullable: true })
   source: OwnerSource | null;
+
+  /**
+   * 手机号之外的联系方式（固话、第二个手机、「找儿子」这类备注）。
+   * 老系统的「联系方式」是自由文本，只有能认出来的 11 位手机号才进 phone，
+   * 其余原样留在这里 —— 打电话前至少还有个号码可以试。
+   */
+  @Column({ name: 'contact_note', type: 'varchar', length: 255, nullable: true })
+  contactNote: string | null;
+
+  /**
+   * 导入来源标识（如 wjwy:zh:1234 = 吴泾物业老库 业主表.ZH_ID），
+   * 同一份数据重跑导入时按它认出已存在的档案，不会建重。手工建的档案为 null。
+   */
+  @Column({ name: 'legacy_ref', type: 'varchar', length: 60, nullable: true })
+  legacyRef: string | null;
 }
