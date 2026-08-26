@@ -32,6 +32,20 @@ interface WxPhoneResp {
 /** 小程序码版本：正式版 / 体验版 / 开发版 */
 export type WxEnvVersion = 'release' | 'trial' | 'develop';
 
+/** 订阅消息模板里的一个占位字段：`工单状态:{{thing1.DATA}}` → { key:'thing1', type:'thing', label:'工单状态' } */
+export interface WxTemplateField {
+  key: string;
+  /** thing / character_string / time / phrase / number / name / … —— 决定长度限制和格式 */
+  type: string;
+  label: string;
+}
+
+export interface WxSubscribeSendResult {
+  ok: boolean;
+  errcode?: number;
+  errmsg?: string;
+}
+
 export interface WxaCodeOptions {
   /** 最长 32 个可见字符，允许 数字/英文/!#$&'()*+,/:;=?@-._~ */
   scene: string;
@@ -54,6 +68,49 @@ export interface WxaCodeOptions {
 }
 
 const API_BASE = 'https://api.weixin.qq.com';
+
+interface WxTemplateListResp {
+  errcode?: number;
+  errmsg?: string;
+  data?: { priTmplId: string; title: string; content: string; type: number }[];
+}
+
+/**
+ * 模板 content 长这样（一行一个字段）：
+ *   工单状态:{{thing1.DATA}}
+ *   报单内容:{{thing2.DATA}}
+ *   提醒时间:{{time3.DATA}}
+ * 拆成 [{ key, type, label }]，顺序保持微信后台的顺序。
+ */
+export function parseTemplateContent(content: string): WxTemplateField[] {
+  const fields: WxTemplateField[] = [];
+  const re = /([^\n{}]*?)[:：]?\s*\{\{([a-zA-Z_]+?)(\d*)\.DATA\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content || '')) !== null) {
+    fields.push({ key: `${m[2]}${m[3]}`, type: m[2], label: m[1].trim() });
+  }
+  return fields;
+}
+
+/** 把微信的错误码翻成管理员看得懂的话；原始 errmsg 一并带着 */
+function explainSubscribeError(resp: { errcode?: number; errmsg?: string }): string {
+  const raw = resp.errmsg || '';
+  switch (resp.errcode) {
+    case 43101:
+      return `对方没有授权或授权额度已用完（43101）。让他在小程序里再点一次「允许」；勾了「总是保持以上选择」之后不用再点。${raw}`;
+    case 47003:
+      return `模板字段对不上（47003）：某个字段的内容不符合微信对该类型的限制（thing≤20字、character_string≤32字、time 要是日期时间）。${raw}`;
+    case 40037:
+      return `模板 ID 不存在（40037）：确认它是在**这个**小程序里申请的，模板不能跨小程序用。${raw}`;
+    case 41028:
+    case 41029:
+      return `落地页路径不合法（${resp.errcode}）：page 要是已发布版本里存在的页面。${raw}`;
+    case 43104:
+      return `模板与小程序不匹配（43104）：这条模板不属于当前 appid。${raw}`;
+    default:
+      return raw || `errcode ${resp.errcode}`;
+  }
+}
 
 /** 微信 errcode → 人话（原始 errmsg 仍会拼在后面，不做吞错） */
 const WXACODE_ERROR_HINTS: Record<number, string> = {
@@ -78,6 +135,7 @@ const WXACODE_ERROR_HINTS: Record<number, string> = {
 export class WechatService {
   private readonly logger = new Logger(WechatService.name);
   private readonly tokenCache = new Map<WxAppType, { token: string; expiresAt: number }>();
+  private readonly templateCache = new Map<string, { fields: WxTemplateField[]; expiresAt: number }>();
 
   constructor(private readonly config: ConfigService) {}
 
@@ -224,7 +282,28 @@ export class WechatService {
     },
     appType: WxAppType = 'owner',
   ): Promise<boolean> {
-    if (!this.isConfigured(appType)) return false;
+    return (await this.sendSubscribeMessageDetailed(input, appType)).ok;
+  }
+
+  /**
+   * 同上，但把微信返回的 errcode / errmsg 原样带回来 ——
+   * 后台「发一条测试」要把真实原因给管理员看，一句「失败」谁也排查不了。
+   */
+  async sendSubscribeMessageDetailed(
+    input: {
+      openid: string;
+      templateId: string;
+      page?: string;
+      data: Record<string, { value: string }>;
+    },
+    appType: WxAppType = 'owner',
+  ): Promise<WxSubscribeSendResult> {
+    if (!this.isConfigured(appType)) {
+      return {
+        ok: false,
+        errmsg: `${appType === 'owner' ? '业主端' : '员工端'}小程序的 appid/secret 没配，服务器环境变量里补上`,
+      };
+    }
     const body = {
       touser: input.openid,
       template_id: input.templateId,
@@ -249,13 +328,57 @@ export class WechatService {
           `订阅消息发送失败 errcode ${resp.errcode}: ${resp.errmsg || ''}` +
             `（template ${input.templateId}）`,
         );
-        return false;
+        return { ok: false, errcode: resp.errcode, errmsg: explainSubscribeError(resp) };
       }
-      return true;
+      return { ok: true };
     } catch (err) {
       this.logger.error(`订阅消息发送异常: ${(err as Error).message}`);
-      return false;
+      return { ok: false, errmsg: (err as Error).message };
     }
+  }
+
+  /**
+   * 拉某个模板在微信后台的真实字段（wxaapi/newtmpl/gettemplate）。
+   *
+   * 为什么要拉：字段 key（thing1 / time3…）是微信按模板生成的，每个模板都不一样。
+   * 写死在代码里就得反过来要求管理员「按代码的顺序去申请模板」，申请错一个
+   * 整条消息被拒收（47003），而且后台看不到任何提示。拉回来按关键词语义填，
+   * 管理员随便选什么模板都能用。
+   *
+   * 结果按 (appType, templateId) 缓存一小时：模板改动极少，每条通知都拉一次纯属浪费。
+   * 拉不到（网络、模板不存在）抛错，交给调用方决定降级还是回显。
+   */
+  async getTemplateFields(templateId: string, appType: WxAppType): Promise<WxTemplateField[]> {
+    const cacheKey = `${appType}:${templateId}`;
+    const cached = this.templateCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.fields;
+
+    let token = await this.accessToken(appType);
+    let resp = await this.get<WxTemplateListResp>('/wxaapi/newtmpl/gettemplate', {
+      access_token: token,
+    });
+    if (resp.errcode === 40001 || resp.errcode === 42001) {
+      this.tokenCache.delete(appType);
+      token = await this.accessToken(appType);
+      resp = await this.get<WxTemplateListResp>('/wxaapi/newtmpl/gettemplate', {
+        access_token: token,
+      });
+    }
+    if (resp.errcode) {
+      throw new ServiceUnavailableException(
+        `微信拉取模板列表失败 ${resp.errcode}：${resp.errmsg || ''}`,
+      );
+    }
+    const hit = (resp.data ?? []).find((t) => t.priTmplId === templateId);
+    if (!hit) {
+      throw new ServiceUnavailableException(
+        `${appType === 'owner' ? '业主端' : '员工端'}小程序里没有这个模板 ID —— ` +
+          '模板不能跨小程序用，确认它是在哪个小程序的公众平台里申请的',
+      );
+    }
+    const fields = parseTemplateContent(hit.content);
+    this.templateCache.set(cacheKey, { fields, expiresAt: Date.now() + 60 * 60 * 1000 });
+    return fields;
   }
 
   private postSubscribe(

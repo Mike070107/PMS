@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Notification, SubscriptionGrant, User } from '../../entities';
+import { AccessModule } from '../access/access.module';
 import { AuthModule } from '../auth/auth.module';
 import { SettingsModule } from '../settings/settings.module';
 import { NotificationsController } from './notifications.controller';
@@ -12,6 +13,8 @@ import { NotificationsService } from './notifications.service';
     // 模板 id 按租户配在设置里；WechatService 由 AuthModule 导出
     SettingsModule,
     AuthModule,
+    // 后台「校验模板 / 发测试」两个接口挂 PermissionsGuard，守卫由 AccessModule 提供
+    AccessModule,
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService],

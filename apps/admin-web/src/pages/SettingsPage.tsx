@@ -27,6 +27,30 @@ interface TenantSettings {
   autoReview: { hours: number };
 }
 
+type TemplateKey = 'orderDispatched' | 'orderReview' | 'orderAssigned';
+
+interface TemplateResult {
+  ok: boolean;
+  appType?: 'owner' | 'staff';
+  error?: string;
+  errcode?: number;
+  /** 每个关键词会被填成什么 */
+  fields?: { key: string; label: string; from: string; value: string }[];
+  remaining?: number;
+  /** 这条结果是「校验」还是「测试发送」 */
+  kind: 'check' | 'test';
+}
+
+const FIELD_FROM_LABEL: Record<string, string> = {
+  orderNo: '工单编号',
+  type: '报修类型',
+  status: '工单状态',
+  content: '报修内容',
+  assignee: '维修工',
+  address: '报修地址',
+  time: '时间',
+};
+
 interface MatchableStat {
   ownersWithPhoneAndHouse: number;
   housesTotal: number;
@@ -43,6 +67,9 @@ export default function SettingsPage() {
   const [tplReview, setTplReview] = useState('');
   const [tplAssigned, setTplAssigned] = useState('');
   const [savingTpl, setSavingTpl] = useState(false);
+  /** 每个模板的校验/测试结果，就地显示在输入框下面 */
+  const [tplResult, setTplResult] = useState<Record<string, TemplateResult | null>>({});
+  const [tplBusy, setTplBusy] = useState<string>('');
   const [autoReviewHours, setAutoReviewHours] = useState(48);
   const [savingAutoReview, setSavingAutoReview] = useState(false);
 
@@ -83,6 +110,39 @@ export default function SettingsPage() {
       message.error(e?.message || '保存失败');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const checkTemplate = async (template: TemplateKey, templateId: string) => {
+    setTplBusy(`check:${template}`);
+    try {
+      const r = await request<Omit<TemplateResult, 'kind'>>({
+        method: 'POST',
+        url: '/notifications/templates/check',
+        data: { template, templateId: templateId.trim() || undefined },
+      });
+      setTplResult((prev) => ({ ...prev, [template]: { ...r, kind: 'check' } }));
+    } catch (e: any) {
+      setTplResult((prev) => ({ ...prev, [template]: { ok: false, error: e?.message || '校验失败', kind: 'check' } }));
+    } finally {
+      setTplBusy('');
+    }
+  };
+
+  const testTemplate = async (template: TemplateKey) => {
+    setTplBusy(`test:${template}`);
+    try {
+      const r = await request<Omit<TemplateResult, 'kind'>>({
+        method: 'POST',
+        url: '/notifications/templates/test',
+        data: { template },
+      });
+      setTplResult((prev) => ({ ...prev, [template]: { ...r, kind: 'test' } }));
+      if (r.ok) message.success('已发出，看看微信有没有收到');
+    } catch (e: any) {
+      setTplResult((prev) => ({ ...prev, [template]: { ok: false, error: e?.message || '发送失败', kind: 'test' } }));
+    } finally {
+      setTplBusy('');
     }
   };
 
@@ -134,59 +194,88 @@ export default function SettingsPage() {
       <Card title="微信订阅消息" style={{ maxWidth: 760, marginBottom: 24 }}>
         <Paragraph style={{ marginBottom: 8 }}>
           填了模板 ID，业主就能在<Text strong>微信里收到「已派单」「修好了待验收」的提醒</Text>、
-          维修工能收到<Text strong>「有新工单派给你」</Text>；
-          留空则只写站内消息（要自己进小程序看）。
+          维修工能收到<Text strong>「有新工单派给你」</Text>；留空则只写站内消息。
         </Paragraph>
-        <Paragraph type="secondary" style={{ fontSize: 13 }}>
-          模板在<Text strong>微信公众平台 → 订阅消息 → 我的模板</Text>里申请，
-          每个模板会给一串 <Text code>xxxxxxxx-xxxx</Text> 形式的 ID，复制过来即可。
-          微信规定<Text strong>用户同意一次只能推一条</Text>，所以业主每次提交报修、
-          维修工每次接单完工时，小程序都会再问一次。
+        <Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 8 }}>
+          模板在<Text strong>微信公众平台 → 订阅消息 → 我的模板</Text>里申请或从公共模板库选用，
+          把模板 ID 复制过来即可。<Text strong>关键词随便选</Text>（比如「工单状态 / 报单内容 / 提醒时间」），
+          系统发送时会按关键词的意思自动填内容 —— 点「校验」能看到每个关键词会被填成什么。
+          同一个模板可以三处都填。
         </Paragraph>
         <Paragraph type="warning" style={{ fontSize: 13 }}>
-          注意：前两个模板要在<Text strong>业主端小程序</Text>里申请，
-          「新工单派给维修工」要在<Text strong>员工端小程序</Text>里单独申请 ——
-          模板 ID 不能跨小程序用，填错了维修工那边整个授权弹窗都打不开。
+          模板不能跨小程序用：前两个要在<Text strong>业主端（邻修管家）</Text>里申请，
+          「新工单派给维修工」要在<Text strong>员工端（邻修管理）</Text>里申请。
+          填错了「校验」会直接告诉你。
         </Paragraph>
-        <Paragraph type="secondary" style={{ fontSize: 13 }}>
-          申请模板时<Text strong>字段的种类和顺序要对上</Text>，否则微信会拒收整条消息：
-          已派单 = <Text code>character_string1</Text> 订单编号、<Text code>thing2</Text> 报修类型、
-          <Text code>thing3</Text> 维修工、<Text code>time4</Text> 时间；
-          待验收 = 编号、类型、<Text code>time3</Text> 完成时间；
-          新工单 = 编号、类型、<Text code>thing3</Text> 报修地址、<Text code>time4</Text> 派单时间。
-        </Paragraph>
-        <Space direction="vertical" size={12} style={{ width: '100%', marginTop: 8 }}>
-          <div>
-            <Text strong>已派单通知</Text>
-            <Input
-              value={tplDispatched}
-              onChange={(e) => setTplDispatched(e.target.value)}
-              placeholder="订单编号 / 报修类型 / 维修工 / 时间"
-              disabled={!canEdit}
-              allowClear
-            />
-          </div>
-          <div>
-            <Text strong>待验收通知</Text>
-            <Input
-              value={tplReview}
-              onChange={(e) => setTplReview(e.target.value)}
-              placeholder="订单编号 / 报修类型 / 完成时间"
-              disabled={!canEdit}
-              allowClear
-            />
-          </div>
-          <div>
-            <Text strong>新工单派给维修工</Text>
-            <Text type="secondary" style={{ marginLeft: 8, fontSize: 13 }}>员工端小程序的模板</Text>
-            <Input
-              value={tplAssigned}
-              onChange={(e) => setTplAssigned(e.target.value)}
-              placeholder="订单编号 / 报修类型 / 报修地址 / 派单时间"
-              disabled={!canEdit}
-              allowClear
-            />
-          </div>
+        <Space direction="vertical" size={16} style={{ width: '100%', marginTop: 8 }}>
+          {(
+            [
+              { key: 'orderDispatched' as TemplateKey, label: '已派单通知业主', app: '业主端', value: tplDispatched, set: setTplDispatched },
+              { key: 'orderReview' as TemplateKey, label: '待验收通知业主', app: '业主端', value: tplReview, set: setTplReview },
+              { key: 'orderAssigned' as TemplateKey, label: '新工单派给维修工', app: '员工端', value: tplAssigned, set: setTplAssigned },
+            ]
+          ).map((row) => {
+            const result = tplResult[row.key];
+            return (
+              <div key={row.key}>
+                <Text strong>{row.label}</Text>
+                <Text type="secondary" style={{ marginLeft: 8, fontSize: 13 }}>{row.app}小程序的模板</Text>
+                <Space.Compact block style={{ marginTop: 6 }}>
+                  <Input
+                    value={row.value}
+                    onChange={(e) => row.set(e.target.value)}
+                    placeholder="从公众平台复制模板 ID"
+                    disabled={!canEdit}
+                    allowClear
+                  />
+                  <Button
+                    loading={tplBusy === `check:${row.key}`}
+                    disabled={!row.value.trim()}
+                    onClick={() => checkTemplate(row.key, row.value)}
+                  >
+                    校验
+                  </Button>
+                  {canEdit && (
+                    <Button
+                      loading={tplBusy === `test:${row.key}`}
+                      disabled={!row.value.trim() || row.value.trim() !== (settings?.wxSubscribeTemplates?.[row.key] || '')}
+                      title={row.value.trim() !== (settings?.wxSubscribeTemplates?.[row.key] || '') ? '先保存再测' : undefined}
+                      onClick={() => testTemplate(row.key)}
+                    >
+                      发我一条测试
+                    </Button>
+                  )}
+                </Space.Compact>
+                {result && (
+                  <Alert
+                    style={{ marginTop: 8 }}
+                    type={result.ok ? 'success' : 'error'}
+                    showIcon
+                    message={
+                      result.ok
+                        ? result.kind === 'test'
+                          ? `已发出（这个模板你还剩 ${result.remaining ?? 0} 条额度）`
+                          : '模板可用，发送时会这样填：'
+                        : result.error
+                    }
+                    description={
+                      result.fields?.length ? (
+                        <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+                          {result.fields.map((f) => (
+                            <div key={f.key}>
+                              <Text strong>{f.label || f.key}</Text>
+                              <Text type="secondary"> ← {FIELD_FROM_LABEL[f.from] || f.from}：</Text>
+                              {f.value}
+                            </div>
+                          ))}
+                        </div>
+                      ) : undefined
+                    }
+                  />
+                )}
+              </div>
+            );
+          })}
           {canEdit && (
             <Button type="primary" loading={savingTpl} onClick={saveTemplates}>
               保存模板 ID

@@ -9,8 +9,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
+import { RequirePermission } from '../../common/require-permission.decorator';
+import { PermissionsGuard } from '../access/permissions.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { GrantSubscribeDto } from './dto';
+import { GrantSubscribeDto, TemplateCheckDto, TemplateTestDto } from './dto';
 import { NotificationsService } from './notifications.service';
 
 @Controller('notifications')
@@ -45,5 +47,21 @@ export class NotificationsController {
   @Post('read-all')
   markAllRead(@Body() _body: unknown, @CurrentUser() user: AuthUser) {
     return this.notificationsService.markAllRead(user);
+  }
+
+  /** 后台「系统设置」用：校验模板 ID，回显每个关键词会被填成什么 */
+  @Post('templates/check')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('settings', 'view')
+  checkTemplate(@Body() dto: TemplateCheckDto, @CurrentUser() user: AuthUser) {
+    return this.notificationsService.checkTemplate(user, dto.template, dto.templateId);
+  }
+
+  /** 后台「系统设置」用：给自己发一条测试，回显微信真实错误 */
+  @Post('templates/test')
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('settings', 'edit')
+  testTemplate(@Body() dto: TemplateTestDto, @CurrentUser() user: AuthUser) {
+    return this.notificationsService.sendTest(user, dto.template);
   }
 }

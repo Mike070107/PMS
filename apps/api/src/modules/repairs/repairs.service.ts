@@ -1748,11 +1748,15 @@ export class RepairsService implements OnModuleInit {
         payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo },
         page,
         template: 'orderDispatched',
-        templateData: {
-          character_string1: workOrder.orderNo,
-          thing2: typeLabel,
-          thing3: assigneeName || '物业维修工',
-          time4: when,
+        // 只给语义字段，具体填到模板哪个 thing/time 由 notifications 按模板真实字段决定
+        templateFields: {
+          orderNo: workOrder.orderNo,
+          type: typeLabel,
+          status: assigneeName ? `已派单给${assigneeName}` : '已派单',
+          content: `${typeLabel}${request.content ? '：' + request.content.trim() : ''}`,
+          assignee: assigneeName || '物业维修工',
+          address: request.addressText?.trim() || '',
+          time: when,
         },
       });
       return;
@@ -1766,10 +1770,14 @@ export class RepairsService implements OnModuleInit {
       payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo },
       page,
       template: 'orderReview',
-      templateData: {
-        character_string1: workOrder.orderNo,
-        thing2: typeLabel,
-        time3: when,
+      templateFields: {
+        orderNo: workOrder.orderNo,
+        type: typeLabel,
+        status: '已修好，待验收',
+        content: `${typeLabel}${request.content ? '：' + request.content.trim() : ''}`,
+        assignee: assigneeName || '物业维修工',
+        address: request.addressText?.trim() || '',
+        time: when,
       },
     });
   }
@@ -1820,11 +1828,14 @@ export class RepairsService implements OnModuleInit {
       // 员工端的详情页路径，和业主端同名但不是同一个小程序
       page: `pages/order-detail/order-detail?id=${workOrder.id}`,
       template: 'orderAssigned',
-      templateData: {
-        character_string1: workOrder.orderNo,
-        thing2: typeLabel,
-        thing3: address,
-        time4: this.formatWhen(new Date()),
+      templateFields: {
+        orderNo: workOrder.orderNo,
+        type: typeLabel,
+        status: '新工单待处理',
+        content: `${typeLabel} · ${address}${content ? '：' + content : ''}`,
+        assignee: '',
+        address,
+        time: this.formatWhen(new Date()),
       },
     });
   }
