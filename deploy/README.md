@@ -30,6 +30,19 @@
 - 线上执行 `deploy/srv-deploy-api.sh` / `deploy/srv-deploy-web.sh`。
 - 验证统一使用 `https://prsznh.cn/` 和 `https://prsznh.cn/api/v1/health`。
 
+### 部署后必须标记：多个会话并行时靠它知道线上是哪一版（2026-08-27 起）
+
+```powershell
+node deploy/mark-deployed.mjs status          # 推送前先看：各目标线上在哪个提交、哪些提交还没上线、工作区有没有未提交的相关改动
+node deploy/mark-deployed.mjs api --pkg pms-api-20260827-0010.tar.gz   # 部署成功后：移动 deployed/api 标签 + 追加 DEPLOY_LOG.md + 推送
+node deploy/mark-deployed.mjs web --pkg pms-web-20260827-0006.tar.gz
+node deploy/mark-deployed.mjs miniapp-staff   # 小程序同理（miniapp-owner）
+```
+
+- 标签 `deployed/api|web|miniapp-staff|miniapp-owner` 是可移动的，永远指向已上线的提交；`git log deployed/api..HEAD -- apps/api` 就是「API 还没上线的改动」。
+- `pack.ps1` 按**工作区**打包：另一个会话没提交的半成品会被一起打进去。所以相关路径有未提交改动时 `mark` 会拒绝，确认包里确实带了才加 `--allow-dirty`（记录里会注明）。
+- `deploy/DEPLOY_LOG.md` 由脚本追加，人只读不手改。
+
 ## 一次性：服务器初始化（历史记录）
 
 > 以下为早期初始化记录。当前线上实例实际使用 `ubuntu` 用户和 Ubuntu 系统；日常发布不要重新执行本节。
