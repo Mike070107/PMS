@@ -1031,3 +1031,69 @@ a,
   border-top: 1px solid #f0f0f0;
 }
 
+
+/* 表格列宽 / 列序拖动（useTableColumnPrefs）。
+   antd v5 的 th 样式都包在 :where() 里、特异度为零，这里普通类选择器就能压过，不需要 !important。
+   注意 .ant-table-cell 本身是 position: relative，拖手柄按绝对定位贴在右边缘即可；
+   如果哪天 antd 去掉了这条 relative，手柄会跑到页面角落 —— 所以这里自己再写一次。 */
+.pms-th {
+  position: relative;
+  user-select: none;
+}
+.pms-th[draggable='true'] {
+  cursor: grab;
+}
+.pms-th--dragging {
+  opacity: 0.45;
+}
+/* 落点提示：拖到哪一列的左/右边，就在那条边上画一条品牌色竖线 */
+.pms-th--drop-left::before,
+.pms-th--drop-right::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--pms-primary);
+  z-index: 2;
+}
+.pms-th--drop-left::before { left: 0; }
+.pms-th--drop-right::before { right: 0; }
+
+/* 列宽手柄：8px 命中区（比视觉上的 1px 线宽，鼠标不用瞄），hover 才显形 */
+.pms-th__resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 3;
+  touch-action: none;
+}
+.pms-th__resizer::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 150ms ease;
+}
+.pms-th__resizer:hover::after {
+  background: var(--pms-primary);
+}
+/* 拖动过程中整页保持 col-resize 光标，并且别让鼠标划过时选中表头文字 */
+body.pms-col-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.pms-col-resizing * {
+  cursor: col-resize !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pms-th__resizer::after { transition: none; }
+}

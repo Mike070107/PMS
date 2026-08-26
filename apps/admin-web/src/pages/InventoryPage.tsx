@@ -28,6 +28,7 @@ import type { UploadProps } from 'antd/es/upload/interface';
 import {
   AppstoreOutlined,
   AuditOutlined,
+  ColumnWidthOutlined,
   EditOutlined,
   InboxOutlined,
   PlusOutlined,
@@ -38,6 +39,7 @@ import {
 } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import UnitSelect from '../components/UnitSelect';
+import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumnPrefs';
 import { formatDateTimeCn, MATERIAL_CATEGORIES } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { auth, usePagePerm } from '../lib/auth';
@@ -229,6 +231,9 @@ const materialCategoryOptions = MATERIAL_CATEGORIES.map((value) => ({ value, lab
 
 const inventoryPageSizeOptions = ['30', '50', '100'];
 
+/** 材料档案没填分类的，快筛里单独归一档，否则这些料点哪个分类都看不到 */
+const UNCATEGORIZED = '未分类';
+
 const requestFilterOrder: RequestFilterKey[] = [
   'all',
   PurchaseRequestStatus.OFFICE_REVIEW,
@@ -287,6 +292,7 @@ export default function InventoryPage() {
   const [transferOrders, setTransferOrders] = useState<TransferOrderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
+  const [stockCategory, setStockCategory] = useState<string>('all');
   const [catalogOpen, setCatalogOpen] = useState<CatalogKind | null>(null);
   const [editingMaterial, setEditingMaterial] = useState<MaterialRow | null>(null);
   const [editingWarehouse, setEditingWarehouse] = useState<WarehouseRow | null>(null);
@@ -406,12 +412,44 @@ export default function InventoryPage() {
     };
   }, [materialById, materials.length, purchaseOrders, purchaseRequests, stocks, warehouses.length]);
 
-  const filteredStocks = stocks.filter((row) => {
+  const keywordStocks = useMemo(() => stocks.filter((row) => {
     if (!keyword.trim()) return true;
     const material = materialById.get(row.materialId);
     const text = `${material?.code || ''} ${materialDisplayName(material)} ${warehouseById.get(row.warehouseId)?.name || ''}`;
     return text.toLowerCase().includes(keyword.toLowerCase());
-  });
+  }), [stocks, keyword, materialById, warehouseById]);
+
+  /* 分类快筛的条数口径：先按关键词过滤，再统计分类 ——
+     和下面列表看到的是同一批数据，不会出现「角标 12 条、点进去 3 条」。
+     没填分类的归到「未分类」，否则这些料在任何分类下都找不到。 */
+  const stockCategoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    keywordStocks.forEach((row) => {
+      const key = materialById.get(row.materialId)?.category || UNCATEGORIZED;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return counts;
+  }, [keywordStocks, materialById]);
+
+  const stockCategoryItems = useMemo(() => {
+    // 只列出当前有货的分类，按材料档案里的固定顺序排，「未分类」永远垫底
+    const ordered = MATERIAL_CATEGORIES.filter((name) => stockCategoryCounts.has(name));
+    if (stockCategoryCounts.has(UNCATEGORIZED)) ordered.push(UNCATEGORIZED);
+    return [
+      { key: 'all', label: `全部 ${keywordStocks.length}` },
+      ...ordered.map((name) => ({ key: name, label: `${name} ${stockCategoryCounts.get(name) || 0}` })),
+    ];
+  }, [keywordStocks.length, stockCategoryCounts]);
+
+  /* 搜索之后当前分类可能已经一条都不剩（比如先点「五金」再搜「水管」），
+     这时快筛没有一项高亮、列表却是空的，看着像坏了 —— 自动退回「全部」。 */
+  useEffect(() => {
+    if (stockCategory !== 'all' && !stockCategoryCounts.has(stockCategory)) setStockCategory('all');
+  }, [stockCategory, stockCategoryCounts]);
+
+  const filteredStocks = stockCategory === 'all'
+    ? keywordStocks
+    : keywordStocks.filter((row) => (materialById.get(row.materialId)?.category || UNCATEGORIZED) === stockCategory);
 
   const requestCounts = useMemo(() => {
     const counts = new Map<RequestFilterKey, number>([['all', purchaseRequests.length]]);
@@ -901,6 +939,47 @@ export default function InventoryPage() {
     }
   };
 
+  /* 库存清单的列。key 必须写死且唯一 —— 列宽/列序按 key 存本地，
+     这里有三列都取 dataIndex: 'materialId'，光靠 dataIndex 区分不开。
+     列本身每次渲染重建没关系，useTableColumnPrefs 只认 key。 */
+  const stockColumns: PrefsColumn<StockRow>[] = [
+    { key: 'id', title: '库存 ID', dataIndex: 'id', width: 90 },
+    { key: 'warehouse', title: '仓库', dataIndex: 'warehouseId', width: 180, render: (id) => warehouseById.get(id)?.name || `#${id}` },
+    { key: 'warehouseType', title: '仓库类型', dataIndex: 'warehouseId', width: 110, render: (id) => warehouseById.get(id)?.type === WarehouseType.CENTRAL ? <Tag color="blue">总仓</Tag> : <Tag>小区仓</Tag> },
+    {
+      key: 'photo',
+      title: '商品图片',
+      dataIndex: 'materialId',
+      width: 130,
+      render: (id) => {
+        const url = materialById.get(id)?.photoUrl;
+        return url
+          ? <Image src={imageSrc(url)} width={64} height={64} style={{ objectFit: 'cover', borderRadius: 6 }} />
+          : <Text type="secondary">未上传</Text>;
+      },
+    },
+    { key: 'code', title: '材料编码', dataIndex: 'materialId', width: 140, render: (id) => materialById.get(id)?.code || `#${id}` },
+    { key: 'name', title: '材料名称', dataIndex: 'materialId', width: 220, ellipsis: true, render: (id) => materialById.get(id)?.name || '-' },
+    { key: 'spec', title: '规格', dataIndex: 'materialId', width: 140, render: (id) => materialById.get(id)?.spec || '-' },
+    { key: 'category', title: '分类', dataIndex: 'materialId', width: 120, render: (id) => materialById.get(id)?.category || '-' },
+    { key: 'qty', title: '当前库存', dataIndex: 'qty', width: 120, render: (v, row) => `${numberQty(v)} ${materialById.get(row.materialId)?.unit || ''}` },
+    { key: 'safetyQty', title: '安全库存', dataIndex: 'safetyQty', width: 120, render: (v, row) => `${numberQty(v)} ${materialById.get(row.materialId)?.unit || ''}` },
+    {
+      key: 'status',
+      title: '状态',
+      width: 110,
+      render: (_, row) => numberQty(row.qty) <= numberQty(row.safetyQty) ? <Tag color="red">低库存</Tag> : <Tag color="green">正常</Tag>,
+    },
+    {
+      key: 'op',
+      title: '操作',
+      width: 90,
+      fixed: 'right',
+      render: (_, row) => canEdit ? <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEditStock(row)}>编辑</Button> : null,
+    },
+  ];
+  const stockPrefs = useTableColumnPrefs('inventory.stock', stockColumns);
+
   const renderItems = (items: Array<PurchaseRequestItem | PurchaseOrderItem | TransferOrderItem>) => (
     <Space size={[6, 6]} wrap>
       {items?.length ? items.map((item, index) => {
@@ -917,7 +996,7 @@ export default function InventoryPage() {
       <Space align="start" style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
           <Title level={3} style={{ margin: 0 }}>库存与采购</Title>
-          <Text type="secondary">按库存现状、缺料审批、采购下单、到货入库、仓库调拨与领料组织日常工作。</Text>
+          <Text type="secondary">按库存清单、缺料审批、采购下单、到货入库、仓库调拨与领料组织日常工作。</Text>
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} loading={loading} onClick={loadAll}>刷新</Button>
@@ -939,12 +1018,33 @@ export default function InventoryPage() {
         items={[
           {
             key: 'stock',
-            label: <span><InboxOutlined /> 库存现状</span>,
+            label: <span><InboxOutlined /> 库存清单</span>,
             children: (
               <Card
                 title="仓库库存"
-                extra={<Input.Search allowClear placeholder="搜索材料 / 仓库" onSearch={setKeyword} onChange={(event) => setKeyword(event.target.value)} style={{ width: 260 }} />}
+                extra={(
+                  <Space>
+                    {stockPrefs.customized && (
+                      <Tooltip title="把列宽和列顺序恢复成系统默认">
+                        <Button size="small" icon={<ColumnWidthOutlined />} onClick={stockPrefs.reset}>恢复默认列</Button>
+                      </Tooltip>
+                    )}
+                    <Input.Search allowClear placeholder="搜索材料 / 仓库" onSearch={setKeyword} onChange={(event) => setKeyword(event.target.value)} style={{ width: 260 }} />
+                  </Space>
+                )}
               >
+                {/* 分类快筛：只列出当前确实有库存的分类，并带上条数，
+                    省得点进去发现是空的（数量口径 = 搜索之后、分类之前） */}
+                <Tabs
+                  size="small"
+                  activeKey={stockCategory}
+                  onChange={setStockCategory}
+                  items={stockCategoryItems}
+                  style={{ marginBottom: 12 }}
+                />
+                <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                  表头可直接拖动：拖右边缘调列宽，按住表头左右拖调列顺序，改完自动记住。
+                </Text>
                 <Table
                   rowKey="id"
                   loading={loading}
@@ -952,41 +1052,8 @@ export default function InventoryPage() {
                   tableLayout="fixed"
                   scroll={{ x: 1440 }}
                   pagination={{ defaultPageSize: 50, pageSizeOptions: inventoryPageSizeOptions, showSizeChanger: true }}
-                  columns={[
-                    { title: '库存 ID', dataIndex: 'id', width: 90 },
-                    { title: '仓库', dataIndex: 'warehouseId', width: 180, render: (id) => warehouseById.get(id)?.name || `#${id}` },
-                    { title: '仓库类型', dataIndex: 'warehouseId', width: 110, render: (id) => warehouseById.get(id)?.type === WarehouseType.CENTRAL ? <Tag color="blue">总仓</Tag> : <Tag>小区仓</Tag> },
-                    {
-                      title: '商品图片',
-                      dataIndex: 'materialId',
-                      width: 130,
-                      render: (id) => {
-                        const url = materialById.get(id)?.photoUrl;
-                        return url
-                          ? <Image src={imageSrc(url)} width={64} height={64} style={{ objectFit: 'cover', borderRadius: 6 }} />
-                          : <Text type="secondary">未上传</Text>;
-                      },
-                    },
-                    { title: '材料编码', dataIndex: 'materialId', width: 140, render: (id) => materialById.get(id)?.code || `#${id}` },
-                    { title: '材料名称', dataIndex: 'materialId', ellipsis: true, render: (id) => materialById.get(id)?.name || '-' },
-                    { title: '规格', dataIndex: 'materialId', width: 140, render: (id) => materialById.get(id)?.spec || '-' },
-                    { title: '分类', dataIndex: 'materialId', width: 120, render: (id) => materialById.get(id)?.category || '-' },
-                    { title: '当前库存', dataIndex: 'qty', width: 120, render: (v, row) => `${numberQty(v)} ${materialById.get(row.materialId)?.unit || ''}` },
-                    { title: '安全库存', dataIndex: 'safetyQty', width: 120, render: (v, row) => `${numberQty(v)} ${materialById.get(row.materialId)?.unit || ''}` },
-                    {
-                      title: '状态',
-                      key: 'status',
-                      width: 110,
-                      render: (_, row) => numberQty(row.qty) <= numberQty(row.safetyQty) ? <Tag color="red">低库存</Tag> : <Tag color="green">正常</Tag>,
-                    },
-                    {
-                      title: '操作',
-                      key: 'op',
-                      width: 90,
-                      fixed: 'right',
-                      render: (_, row) => canEdit ? <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEditStock(row)}>编辑</Button> : null,
-                    },
-                  ]}
+                  components={stockPrefs.components}
+                  columns={stockPrefs.columns}
                 />
               </Card>
             ),
