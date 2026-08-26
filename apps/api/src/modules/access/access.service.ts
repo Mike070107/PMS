@@ -6,6 +6,7 @@ import { UserRole } from '../../common/enums';
 import {
   ADMIN_PAGE_KEYS,
   ALL_PAGE_KEYS,
+  ALWAYS_ENABLED_PAGES,
   PermissionAction,
   RoleDataScope,
   STAFF_APP_PAGE_KEYS,
@@ -109,8 +110,14 @@ export class AccessService {
     // tenants.enabled_pages 是「这家公司买了哪些后台功能」，只裁后台页面。
     // 员工端入口（app:*）不受它限制 —— 存量租户的 enabled_pages 里当然没有
     // 这些新 key，跟着裁会把整个小程序关掉。
+    // 「系统设置」不受裁剪：订阅消息模板、自动验收时限是公司自己的配置，
+    // 平台没勾它就等于整家公司（连企业超管）都配不了通知 —— 2026-08-26 实际发生过，
+    // 用户找遍后台也找不到「系统设置」在哪
     const allowedKeys = enabledPages
-      ? [...ADMIN_PAGE_KEYS.filter((k) => enabledPages.includes(k)), ...STAFF_APP_PAGE_KEYS]
+      ? [
+          ...ADMIN_PAGE_KEYS.filter((k) => enabledPages.includes(k) || ALWAYS_ENABLED_PAGES.includes(k)),
+          ...STAFF_APP_PAGE_KEYS,
+        ]
       : [...ALL_PAGE_KEYS];
 
     const asTenantAdmin = (roleIds: number[]): ResolvedAccess => ({

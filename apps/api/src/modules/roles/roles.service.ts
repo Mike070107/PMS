@@ -11,6 +11,7 @@ import { ASSIGNABLE_STAFF_ROLES, UserRole } from '../../common/enums';
 import {
   ADMIN_PAGE_KEYS,
   ALL_PAGE_KEYS,
+  ALWAYS_ENABLED_PAGES,
   RoleDataScope,
   STAFF_APP_PAGE_KEYS,
 } from '../../common/pages';
@@ -292,7 +293,12 @@ export class RolesService {
     // 权限矩阵去重 + 裁剪到公司可用页面；勾了编辑/删除但没勾查看的自动补查看。
     // 员工端入口（app:*）不受 enabled_pages 裁剪，理由见 access.service。
     const allowed: string[] = access.enabledPages
-      ? [...ADMIN_PAGE_KEYS.filter((k) => access.enabledPages!.includes(k)), ...STAFF_APP_PAGE_KEYS]
+      ? [
+          ...ADMIN_PAGE_KEYS.filter(
+            (k) => access.enabledPages!.includes(k) || ALWAYS_ENABLED_PAGES.includes(k),
+          ),
+          ...STAFF_APP_PAGE_KEYS,
+        ]
       : [...ALL_PAGE_KEYS];
     const byPage = new Map<string, { canView: boolean; canEdit: boolean; canDelete: boolean }>();
     for (const p of dto.permissions) {

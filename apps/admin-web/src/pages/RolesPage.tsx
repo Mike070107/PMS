@@ -21,6 +21,7 @@ import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ADMIN_PAGES,
+  ALWAYS_ENABLED_PAGES,
   DEFAULT_ROLE_TEMPLATES,
   ROLE_DATA_SCOPE_LABELS,
   RoleDataScope,
@@ -240,7 +241,10 @@ function RoleFormModal({
   const pages = useMemo(
     () =>
       ADMIN_PAGES.filter(
-        (p) => !access?.enabledPages || access.enabledPages.includes(p.key),
+        (p) =>
+          !access?.enabledPages ||
+          access.enabledPages.includes(p.key) ||
+          ALWAYS_ENABLED_PAGES.includes(p.key),
       ),
     [access?.enabledPages],
   );

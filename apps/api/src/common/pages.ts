@@ -43,6 +43,12 @@ export const STAFF_APP_PAGE_KEYS = [
 export type StaffAppPageKey = (typeof STAFF_APP_PAGE_KEYS)[number];
 
 /** 权限矩阵可勾选的全部页面 */
+/**
+ * 不受 tenants.enabled_pages 裁剪的后台页面：公司自己的配置项（订阅消息模板、
+ * 自动验收时限），平台「可用页面」勾不勾都得能进 —— 勾漏了整家公司就配不了通知。
+ */
+export const ALWAYS_ENABLED_PAGES: string[] = ['settings'];
+
 export const ALL_PAGE_KEYS = [...ADMIN_PAGE_KEYS, ...STAFF_APP_PAGE_KEYS] as const;
 
 export const isStaffAppPageKey = (key: string) => key.startsWith('app:');

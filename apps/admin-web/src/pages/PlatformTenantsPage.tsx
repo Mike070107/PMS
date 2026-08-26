@@ -19,7 +19,7 @@ import { LoginOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ADMIN_PAGES } from '@pms/shared-types';
+import { ADMIN_PAGES, ALWAYS_ENABLED_PAGES } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { handleGone } from '../lib/gone';
 import { auth } from '../lib/auth';
@@ -225,7 +225,13 @@ function PagePicker({ value, onChange }: { value?: string[] | null; onChange?: (
           <Checkbox.Group
             value={value ?? []}
             onChange={(v) => onChange?.(v as string[])}
-            options={ADMIN_PAGES.map((p) => ({ value: p.key, label: p.label }))}
+            // 「系统设置」是公司自己的配置项，不受这里的勾选控制：没勾也永远能进，
+            // 所以画成锁定态，别让平台运营以为不勾就关掉了
+            options={ADMIN_PAGES.map((p) =>
+              ALWAYS_ENABLED_PAGES.includes(p.key)
+                ? { value: p.key, label: `${p.label}（始终可用）`, disabled: true }
+                : { value: p.key, label: p.label },
+            )}
           />
         </>
       )}
