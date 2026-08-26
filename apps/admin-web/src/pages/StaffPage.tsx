@@ -19,6 +19,7 @@ import {
 import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '../lib/api';
+import { handleGone } from '../lib/gone';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import { UserRole } from '@pms/shared-types';
@@ -129,7 +130,10 @@ export default function StaffPage() {
       });
       message.success('已更新');
       load();
-    } catch (e: any) { message.error(e?.message || '操作失败'); }
+    } catch (e: any) {
+      if (handleGone(e, message, '这个用户', load)) return;
+      message.error(e?.message || '操作失败');
+    }
   };
 
   const unbindWx = async (s: Staff) => {
@@ -137,7 +141,10 @@ export default function StaffPage() {
       await request({ method: 'POST', url: `/staff/${s.id}/unbind-wx` });
       message.success(`已解绑 ${s.name || `#${s.id}`} 的员工端微信`);
       load();
-    } catch (e: any) { message.error(e?.message || '解绑失败'); }
+    } catch (e: any) {
+      if (handleGone(e, message, '这个用户', load)) return;
+      message.error(e?.message || '解绑失败');
+    }
   };
 
   return (
@@ -399,6 +406,7 @@ function StaffFormModal({
       }
       onDone();
     } catch (e: any) {
+      if (target && handleGone(e, message, '这个用户', onDone)) return;
       message.error(e?.message || '保存失败');
     } finally {
       setSaving(false);

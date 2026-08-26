@@ -28,6 +28,7 @@ import {
   isStaffAppPageKey,
 } from '@pms/shared-types';
 import { request } from '../lib/api';
+import { handleGone } from '../lib/gone';
 import { usePagePerm, useAuth } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 
@@ -88,6 +89,7 @@ export default function RolesPage() {
       message.success('已删除');
       load();
     } catch (e: any) {
+      if (handleGone(e, message, '这个角色', load)) return;
       message.error(e?.message || '删除失败');
     }
   };
@@ -357,6 +359,7 @@ function RoleFormModal({
       message.success('已保存');
       onDone();
     } catch (e: any) {
+      if (target && handleGone(e, message, '这个角色', onDone)) return;
       message.error(e?.message || '保存失败');
     } finally {
       setSaving(false);

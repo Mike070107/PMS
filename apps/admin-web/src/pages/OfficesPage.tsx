@@ -17,6 +17,7 @@ import {
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '../lib/api';
+import { handleGone } from '../lib/gone';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 
@@ -62,6 +63,7 @@ export default function OfficesPage() {
       message.success('已删除');
       load();
     } catch (e: any) {
+      if (handleGone(e, message, '这个管理处', load)) return;
       message.error(e?.message || '删除失败');
     }
   };
@@ -206,6 +208,7 @@ function OfficeFormModal({
       message.success('已保存');
       onDone();
     } catch (e: any) {
+      if (target && handleGone(e, message, '这个管理处', onDone)) return;
       message.error(e?.message || '保存失败');
     } finally {
       setSaving(false);

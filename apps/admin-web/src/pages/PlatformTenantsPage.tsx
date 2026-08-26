@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ADMIN_PAGES } from '@pms/shared-types';
 import { request } from '../lib/api';
+import { handleGone } from '../lib/gone';
 import { auth } from '../lib/auth';
 
 const { Title, Text } = Typography;
@@ -379,6 +380,7 @@ function TenantEditModal({
       message.success('已保存');
       onDone();
     } catch (e: any) {
+      if (handleGone(e, message, '这家公司', onDone)) return;
       message.error(e?.message || '保存失败');
     } finally {
       setSaving(false);
@@ -449,6 +451,7 @@ function ResetAdminModal({
       message.success('已重置，请把新密码交给对方并提醒尽快修改');
       onDone();
     } catch (e: any) {
+      if (handleGone(e, message, '这家公司或该账号', onDone)) return;
       message.error(e?.message || '重置失败');
     } finally {
       setSaving(false);

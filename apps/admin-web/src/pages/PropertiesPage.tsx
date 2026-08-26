@@ -28,6 +28,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { request } from '../lib/api';
+import { handleGone } from '../lib/gone';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import PropertiesImportModal from './PropertiesImportModal';
@@ -280,7 +281,10 @@ function HousesTab() {
           await request({ method: 'DELETE', url: `/houses/${r.id}` });
           message.success('已删除');
           loadHouses();
-        } catch (e: any) { message.error(e?.message || '删除失败'); }
+        } catch (e: any) {
+          if (handleGone(e, message, '这套房产', loadHouses)) return;
+          message.error(e?.message || '删除失败');
+        }
       },
     });
   };
@@ -534,6 +538,7 @@ function HouseFormModal({
       }
       onDone();
     } catch (e: any) {
+      if (target && handleGone(e, message, '这套房产', onDone)) return;
       message.error(e?.message || '保存失败');
     } finally {
       setSaving(false);
@@ -686,6 +691,7 @@ function CommunityManagerModal({
       setEditing(null);
       onChanged();
     } catch (e: any) {
+      if (editing && handleGone(e, message, '这个小区', () => { setEditing(null); onChanged(); })) return;
       message.error(e?.message || '保存失败');
     } finally {
       setSaving(false);
@@ -735,7 +741,10 @@ function CommunityManagerModal({
           await request({ method: 'DELETE', url: `/communities/${c.id}` });
           message.success('已删除');
           onChanged();
-        } catch (e: any) { message.error(e?.message || '删除失败'); }
+        } catch (e: any) {
+          if (handleGone(e, message, '这个小区', onChanged)) return;
+          message.error(e?.message || '删除失败');
+        }
       },
     });
   };

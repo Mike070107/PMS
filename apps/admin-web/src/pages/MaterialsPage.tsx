@@ -27,6 +27,7 @@ import {
 } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '../lib/api';
+import { handleGone } from '../lib/gone';
 import { auth, usePagePerm } from '../lib/auth';
 import UnitSelect from '../components/UnitSelect';
 import { MATERIAL_CATEGORIES } from '@pms/shared-types';
@@ -125,6 +126,7 @@ export default function MaterialsPage() {
       message.success(row.enabled ? `已停用「${row.name}」` : `已启用「${row.name}」`);
       load();
     } catch (e: any) {
+      if (handleGone(e, message, '这个材料', load)) return;
       message.error(e?.message || '操作失败');
     }
   };
@@ -360,6 +362,7 @@ function MaterialEditorModal({
       message.success(editing ? 'SKU 已更新' : 'SKU 已创建');
       onDone();
     } catch (e: any) {
+      if (editing && handleGone(e, message, '这个材料', onDone)) return;
       message.error(e?.message || '保存失败');
     } finally {
       setSaving(false);
