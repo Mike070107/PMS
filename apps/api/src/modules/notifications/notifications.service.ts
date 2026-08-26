@@ -14,6 +14,9 @@ import { WechatService } from '../auth/wechat.service';
  */
 const MAX_GRANT_PER_TEMPLATE = 5;
 
+/** 可推的订阅消息模板。前两个发给业主（业主端小程序），最后一个发给维修工（员工端） */
+type SubscribeTemplateKey = 'orderDispatched' | 'orderReview' | 'orderAssigned';
+
 /** 订阅消息模板字段有长度限制，超了微信直接报错，这里统一截断 */
 function clip(value: string, max = 20): string {
   const text = String(value ?? '').trim();
@@ -122,15 +125,19 @@ export class NotificationsService {
   }
 
   /**
-   * 给业主发一条通知：站内信一定写，微信订阅消息尽力而为。
+   * 给某个人发一条通知：站内信一定写，微信订阅消息尽力而为。
    *
-   * 顺序是先写库再推微信 —— 推送失败业主至少还能在消息列表里看到；
+   * 收件人不限于业主 —— 「有新工单派给你」是发给维修工的（员工端小程序），
+   * 走的是同一套：同一张 notifications 表、同一套订阅额度。方法名原来叫
+   * notifyOwner，第二个收件人一进来就名不副实了，所以改成 notifyUser。
+   *
+   * 顺序是先写库再推微信 —— 推送失败对方至少还能在消息列表里看到；
    * 反过来先推后写，推成功但入库失败就成了「收到提醒却查不到记录」。
    *
    * 整个方法不抛异常：通知是旁路，绝不能把派单、完工这些主流程带崩
    * （这也是全局约定里那条「通知失败只记日志，不阻塞主业务」）。
    */
-  async notifyOwner(input: {
+  async notifyUser(input: {
     tenantId: number;
     receiverId: number;
     eventKey: string;
@@ -139,7 +146,7 @@ export class NotificationsService {
     /** 小程序落地页，点通知直接跳过去 */
     page?: string;
     /** 订阅消息模板选哪一个 */
-    template?: 'orderDispatched' | 'orderReview';
+    template?: SubscribeTemplateKey;
     /** 模板字段，按微信后台配的顺序 thing1/thing2/time3... */
     templateData?: Record<string, string>;
   }): Promise<void> {
@@ -176,7 +183,7 @@ export class NotificationsService {
   private async trySendSubscribe(input: {
     tenantId: number;
     receiverId: number;
-    template: 'orderDispatched' | 'orderReview';
+    template: SubscribeTemplateKey;
     data: Record<string, string>;
     page?: string;
     notificationId: number;

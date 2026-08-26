@@ -7,6 +7,7 @@ import {
 } from '@pms/shared-types';
 import { getSession } from '../../utils/session';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
+import { askOrderSubscribe, refreshUnread } from '../../utils/unread';
 
 /**
  * 这一屏对两种人是两件事，同一份数据、两套动作：
@@ -118,6 +119,7 @@ Page({
   onShow() {
     syncTabBar(this, 'pool');
     this.load();
+    refreshUnread(this);
   },
 
   /**
@@ -222,6 +224,10 @@ Page({
     try {
       await repairs.accept(id);
       wx.showToast({ title: '已接单，去「在手工单」' });
+      // 顺手补一次「新工单提醒」的订阅额度：微信是同意一次推一条，
+      // 刚接完单是最愿意点「允许」的时刻（一进小程序就弹，多数人会下意识拒绝，
+      // 而「拒绝并不再询问」是持久的，弹错一次就再没机会了）
+      askOrderSubscribe();
       this.load();
     } catch (e2: any) {
       wx.showToast({ icon: 'none', title: e2?.message || '接单失败' });

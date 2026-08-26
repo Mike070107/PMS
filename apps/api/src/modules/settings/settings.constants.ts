@@ -27,6 +27,12 @@ export interface WxSubscribeTemplatesSetting {
   orderDispatched: string;
   /** 「待验收」通知业主：修好了，去看看 */
   orderReview: string;
+  /**
+   * 「有新工单派给你」通知**维修工**（员工端小程序）。
+   * 前两个是发给业主的，这一个发给员工 —— 两个小程序的模板 id 不通用，
+   * 必须在员工端小程序的公众平台后台单独申请一个再填这里。
+   */
+  orderAssigned: string;
 }
 
 export interface AutoReviewSetting {
@@ -42,7 +48,7 @@ export const DEFAULT_TENANT_SETTINGS: {
   // 默认关：业主档案没导手机号之前开着也匹配不到，反而让业主白点一次
   ownerPhoneAutoMatch: { enabled: false },
   // 默认空：没在公众平台申请模板之前推不出去，留空就只走站内信，不报错
-  wxSubscribeTemplates: { orderDispatched: '', orderReview: '' },
+  wxSubscribeTemplates: { orderDispatched: '', orderReview: '', orderAssigned: '' },
   autoReview: { hours: 48 },
 };
 

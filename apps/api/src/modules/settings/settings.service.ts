@@ -83,6 +83,7 @@ export class SettingsService {
         {
           orderDispatched: dto.wxSubscribeTemplates.orderDispatched?.trim() ?? '',
           orderReview: dto.wxSubscribeTemplates.orderReview?.trim() ?? '',
+          orderAssigned: dto.wxSubscribeTemplates.orderAssigned?.trim() ?? '',
         },
         user.id,
       );

@@ -1,5 +1,6 @@
 import { repairs, upload } from '@pms/api-client';
 import { getSession } from '../../utils/session';
+import { askOrderSubscribe } from '../../utils/unread';
 import {
   buildTimeline,
   missingMaterialsText,
@@ -817,6 +818,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         resultAttachments: this.data.resultAttachments,
       });
       wx.showToast({ title: '已提交，等待业主验收' });
+      // 刚干完一单，正等着下一单 —— 这时补订阅额度同意率最高（见 utils/unread.ts）
+      askOrderSubscribe();
       setTimeout(() => wx.navigateBack(), 800);
     } catch (e: any) {
       this.setData({ errorMsg: e?.message || '提交失败' });

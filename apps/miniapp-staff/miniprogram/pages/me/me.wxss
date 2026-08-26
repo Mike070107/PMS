@@ -37,6 +37,21 @@
 .entry--hover { background: #f2f4f7; }
 .entry__body { flex: 1; min-width: 0; }
 .entry__title { font-size: var(--font-xl); font-weight: 500; line-height: 1.4; }
+/* 未读数跟在「消息」后面：红底白字，和 tabBar 上那枚角标是一个意思 */
+.entry__badge {
+  display: inline-block;
+  min-width: 36rpx;
+  margin-left: 12rpx;
+  padding: 0 10rpx;
+  border-radius: 999rpx;
+  background: var(--color-danger);
+  color: #fff;
+  font-size: var(--font-xs);
+  font-weight: 400;
+  line-height: 36rpx;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 .entry__desc {
   margin-top: 8rpx;
   font-size: var(--font-md);

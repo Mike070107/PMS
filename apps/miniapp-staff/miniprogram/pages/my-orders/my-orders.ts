@@ -2,6 +2,7 @@ import { repairs } from '@pms/api-client';
 import { withOrderLabels } from '@pms/miniapp-ui';
 import { WorkOrderStatus, type WorkOrderListItem } from '@pms/shared-types';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
+import { refreshUnread } from '../../utils/unread';
 
 type OrderRow = WorkOrderListItem & {
   typeLabel: string;
@@ -38,6 +39,8 @@ Page({
   onShow() {
     syncTabBar(this, 'mine');
     this.load();
+    // 「我的」那一格的未读角标：新工单派下来时，人得在这一屏就看见
+    refreshUnread(this);
   },
 
   onPullDownRefresh() {

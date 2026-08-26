@@ -25,6 +25,12 @@ class WxSubscribeTemplatesDto {
   @IsString()
   @MaxLength(64)
   orderReview?: string;
+
+  /** 员工端模板：有新工单派给维修工 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  orderAssigned?: string;
 }
 
 class AutoReviewDto {

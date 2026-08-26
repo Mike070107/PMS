@@ -18,7 +18,12 @@ const { Title, Text, Paragraph } = Typography;
 
 interface TenantSettings {
   ownerPhoneAutoMatch: { enabled: boolean };
-  wxSubscribeTemplates: { orderDispatched: string; orderReview: string };
+  wxSubscribeTemplates: {
+    orderDispatched: string;
+    orderReview: string;
+    /** 员工端模板：有新工单派给维修工 */
+    orderAssigned: string;
+  };
   autoReview: { hours: number };
 }
 
@@ -36,6 +41,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [tplDispatched, setTplDispatched] = useState('');
   const [tplReview, setTplReview] = useState('');
+  const [tplAssigned, setTplAssigned] = useState('');
   const [savingTpl, setSavingTpl] = useState(false);
   const [autoReviewHours, setAutoReviewHours] = useState(48);
   const [savingAutoReview, setSavingAutoReview] = useState(false);
@@ -46,6 +52,7 @@ export default function SettingsPage() {
       setSettings(next);
       setTplDispatched(next.wxSubscribeTemplates?.orderDispatched || '');
       setTplReview(next.wxSubscribeTemplates?.orderReview || '');
+      setTplAssigned(next.wxSubscribeTemplates?.orderAssigned || '');
       setAutoReviewHours(next.autoReview?.hours ?? 48);
     } catch (e: any) {
       message.error(e?.message || '加载设置失败');
@@ -89,6 +96,7 @@ export default function SettingsPage() {
           wxSubscribeTemplates: {
             orderDispatched: tplDispatched.trim(),
             orderReview: tplReview.trim(),
+            orderAssigned: tplAssigned.trim(),
           },
         },
       });
@@ -125,13 +133,27 @@ export default function SettingsPage() {
 
       <Card title="微信订阅消息" style={{ maxWidth: 760, marginBottom: 24 }}>
         <Paragraph style={{ marginBottom: 8 }}>
-          填了模板 ID，业主就能在<Text strong>微信里收到「已派单」「修好了待验收」的提醒</Text>；
-          留空则只写站内消息（业主要自己进小程序看）。
+          填了模板 ID，业主就能在<Text strong>微信里收到「已派单」「修好了待验收」的提醒</Text>、
+          维修工能收到<Text strong>「有新工单派给你」</Text>；
+          留空则只写站内消息（要自己进小程序看）。
         </Paragraph>
         <Paragraph type="secondary" style={{ fontSize: 13 }}>
           模板在<Text strong>微信公众平台 → 订阅消息 → 我的模板</Text>里申请，
           每个模板会给一串 <Text code>xxxxxxxx-xxxx</Text> 形式的 ID，复制过来即可。
-          微信规定<Text strong>用户同意一次只能推一条</Text>，所以业主每次提交报修时小程序都会再问一次。
+          微信规定<Text strong>用户同意一次只能推一条</Text>，所以业主每次提交报修、
+          维修工每次接单完工时，小程序都会再问一次。
+        </Paragraph>
+        <Paragraph type="warning" style={{ fontSize: 13 }}>
+          注意：前两个模板要在<Text strong>业主端小程序</Text>里申请，
+          「新工单派给维修工」要在<Text strong>员工端小程序</Text>里单独申请 ——
+          模板 ID 不能跨小程序用，填错了维修工那边整个授权弹窗都打不开。
+        </Paragraph>
+        <Paragraph type="secondary" style={{ fontSize: 13 }}>
+          申请模板时<Text strong>字段的种类和顺序要对上</Text>，否则微信会拒收整条消息：
+          已派单 = <Text code>character_string1</Text> 订单编号、<Text code>thing2</Text> 报修类型、
+          <Text code>thing3</Text> 维修工、<Text code>time4</Text> 时间；
+          待验收 = 编号、类型、<Text code>time3</Text> 完成时间；
+          新工单 = 编号、类型、<Text code>thing3</Text> 报修地址、<Text code>time4</Text> 派单时间。
         </Paragraph>
         <Space direction="vertical" size={12} style={{ width: '100%', marginTop: 8 }}>
           <div>
@@ -150,6 +172,17 @@ export default function SettingsPage() {
               value={tplReview}
               onChange={(e) => setTplReview(e.target.value)}
               placeholder="订单编号 / 报修类型 / 完成时间"
+              disabled={!canEdit}
+              allowClear
+            />
+          </div>
+          <div>
+            <Text strong>新工单派给维修工</Text>
+            <Text type="secondary" style={{ marginLeft: 8, fontSize: 13 }}>员工端小程序的模板</Text>
+            <Input
+              value={tplAssigned}
+              onChange={(e) => setTplAssigned(e.target.value)}
+              placeholder="订单编号 / 报修类型 / 报修地址 / 派单时间"
               disabled={!canEdit}
               allowClear
             />

@@ -1140,6 +1140,9 @@ export class RepairsService implements OnModuleInit {
     });
 
     await this.notifyOwnerOnStatus(saved, 'dispatched', assignee?.name ?? null);
+    // 派单不通知维修工，那这单就得等他自己想起来打开小程序看一眼 ——
+    // 「已派单」堆在那儿没人动，办公室还以为派出去就完事了
+    await this.notifyAssigneeOnDispatch(saved, dto.note ?? null);
     return saved;
   }
 
@@ -1720,7 +1723,7 @@ export class RepairsService implements OnModuleInit {
     const when = this.formatWhen(new Date());
 
     if (kind === 'dispatched') {
-      await this.notifications.notifyOwner({
+      await this.notifications.notifyUser({
         tenantId: workOrder.tenantId,
         receiverId: request.submittedBy,
         eventKey: 'order_dispatched',
@@ -1738,7 +1741,7 @@ export class RepairsService implements OnModuleInit {
       return;
     }
 
-    await this.notifications.notifyOwner({
+    await this.notifications.notifyUser({
       tenantId: workOrder.tenantId,
       receiverId: request.submittedBy,
       eventKey: 'order_review',
@@ -1752,6 +1755,67 @@ export class RepairsService implements OnModuleInit {
         time3: when,
       },
     });
+  }
+
+  /**
+   * 通知被派单的维修工：站内信一定写，微信订阅消息尽力而为。
+   *
+   * 为什么单独一个方法而不是塞进 notifyOwnerOnStatus：收件人不同（维修工 vs 业主）、
+   * 模板不同（员工端小程序有自己的模板 id）、落地页也不同。两件事混在一起，
+   * 以后改业主文案很容易顺手把维修工那条也改了。
+   *
+   * 通知里必须带上地址和故障描述：只写「你有一张新工单」等于没说，
+   * 人还得点进去才知道要不要现在去。
+   */
+  private async notifyAssigneeOnDispatch(
+    workOrder: WorkOrder,
+    note: string | null,
+  ): Promise<void> {
+    if (!workOrder.assigneeId) return;
+    const request = await this.repairRequestRepo.findOne({
+      where: { id: workOrder.requestId, tenantId: workOrder.tenantId },
+    });
+    const rule = request?.repairType
+      ? await this.repairTypeRuleRepo.findOne({
+          where: { tenantId: workOrder.tenantId, repairType: request.repairType },
+        })
+      : null;
+    const typeLabel = rule?.label || '报修';
+    const address = request?.addressText?.trim() || '（未填地址）';
+    const content = request?.content?.trim() || '';
+    // 标题里用短日期：站内信列表一行放不下「2026年8月26日 18:00」，
+    // 一条消息折成三行，扫一眼看不出是哪一单
+    const deadline = workOrder.slaDueAt
+      ? `，${this.formatWhenShort(new Date(workOrder.slaDueAt))} 前完成`
+      : '';
+
+    await this.notifications.notifyUser({
+      tenantId: workOrder.tenantId,
+      receiverId: workOrder.assigneeId,
+      eventKey: 'order_assigned',
+      title: `新工单：${typeLabel} · ${address}${deadline}`,
+      payload: {
+        workOrderId: workOrder.id,
+        orderNo: workOrder.orderNo,
+        note,
+        content,
+      },
+      // 员工端的详情页路径，和业主端同名但不是同一个小程序
+      page: `pages/order-detail/order-detail?id=${workOrder.id}`,
+      template: 'orderAssigned',
+      templateData: {
+        character_string1: workOrder.orderNo,
+        thing2: typeLabel,
+        thing3: address,
+        time4: this.formatWhen(new Date()),
+      },
+    });
+  }
+
+  /** 列表标题里的短日期：「8月26日 18:00」，年份靠上下文 */
+  private formatWhenShort(d: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
   /** 订阅消息里的时间字段微信要求「2026年8月9日 17:07」这种可读格式 */
@@ -1893,6 +1957,13 @@ export class RepairsService implements OnModuleInit {
     // 和上面的类型负样本一样放在事务外、吞掉异常：这是顺手攒的资料，
     // 绝不能因为它让报修提交失败。
     await this.rememberContactAsOwner(dto, tenantId, source, submittedBy);
+
+    // 按报修类型规则自动派出去的单，也要通知那位维修工 ——
+    // 派单有两个入口（办公室手动派 / 类型规则自动派），只在一个入口发通知，
+    // 自动派的那批就成了「系统悄悄塞给你、你永远不知道」
+    if (created.workOrder.assigneeId) {
+      await this.notifyAssigneeOnDispatch(created.workOrder, '按报修类型自动派单');
+    }
 
     return created;
   }

@@ -9,6 +9,28 @@
   </view>
 
   <view class="card entries">
+    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenMessages">
+      <view class="entry__body">
+        <view class="entry__title">
+          消息<text wx:if="{{unread}}" class="entry__badge">{{unread}}</text>
+        </view>
+        <view class="entry__desc">派给你的工单、缺料进度都会在这里提醒</view>
+      </view>
+      <view class="entry__arrow"></view>
+    </view>
+
+    <!-- 微信的一次性订阅：同意一次才能推一条，所以要给一个能随时再点的入口。
+         只有维修工需要 —— 工单是派给他的 -->
+    <view wx:if="{{canSubscribe}}" class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onEnableNotify">
+      <view class="entry__body">
+        <view class="entry__title">开启新工单提醒</view>
+        <view class="entry__desc">派单时微信直接提醒你，不用一直盯着小程序</view>
+      </view>
+      <view class="entry__arrow"></view>
+    </view>
+  </view>
+
+  <view class="card entries">
     <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onGoRepair">
       <view class="entry__body">
         <view class="entry__title">我要报修</view>

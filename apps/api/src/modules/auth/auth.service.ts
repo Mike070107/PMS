@@ -573,12 +573,22 @@ export class AuthService {
         actingOfficeId: access.actingOfficeId,
       };
     }
-    if (!SELF_SCOPED_ROLES.includes(user.role)) return base;
+    if (!SELF_SCOPED_ROLES.includes(user.role)) {
+      // 维修工要能开「有新工单派给你」的提醒，所以员工端也得拿到模板 id。
+      // 只给员工端那一个 —— 见 resolveSubscribeTemplates 里为什么必须按端分。
+      if (user.role === UserRole.TECHNICIAN) {
+        return {
+          ...base,
+          subscribeTemplates: await this.resolveSubscribeTemplates(user.tenantId, 'staff'),
+        };
+      }
+      return base;
+    }
     // 业主端首页要显示「我的房屋 + 入驻审核状态」，并据此决定能否直接报修
     const place = await this.resolveOwnerPlace(user);
     // 订阅消息模板 id 不是密钥，本来就要发到小程序里调 requestSubscribeMessage；
     // 跟着 me 一起下发，省掉一个只为读两个字符串的接口
-    const subscribeTemplates = await this.resolveSubscribeTemplates(user.tenantId);
+    const subscribeTemplates = await this.resolveSubscribeTemplates(user.tenantId, 'owner');
     if (user.role === UserRole.OWNER) return { ...base, place, subscribeTemplates };
 
     // 保安/居委会/业委会：小程序据此多给一个「其它地址」的报修范围。
@@ -619,7 +629,10 @@ export class AuthService {
     return {
       ...base,
       place: officePlace ?? place,
-      subscribeTemplates,
+      // 代报角色 2026-08-24 起走**员工端**小程序，不能再下发业主端的模板 id ——
+      // 那些模板不属于员工端小程序，端上一调 requestSubscribeMessage 整个弹窗就失败。
+      // 员工端目前只有「有新工单派给你」，代报角色收不到那个，所以这里通常是空数组。
+      subscribeTemplates: await this.resolveSubscribeTemplates(user.tenantId, 'staff'),
       reporter: {
         role: user.role,
         roleLabel: USER_ROLE_LABELS[user.role] ?? user.role,
@@ -629,14 +642,30 @@ export class AuthService {
     };
   }
 
-  /** 该租户配好的订阅消息模板 id（去掉没填的） */
-  private async resolveSubscribeTemplates(tenantId: number | null): Promise<string[]> {
+  /**
+   * 该租户配好的订阅消息模板 id（去掉没填的）。
+   *
+   * **必须按端分**：模板 id 是跟小程序走的，业主端申请的模板在员工端根本不存在，
+   * 把三个一起下发，员工端调 requestSubscribeMessage 会因为「模板不属于本小程序」
+   * 整个弹窗失败 —— 表现是维修工怎么点都开不了提醒。
+   *   业主端（邻修管家）：已派单 / 待验收
+   *   员工端（邻修管理）：有新工单派给你
+   */
+  private async resolveSubscribeTemplates(
+    tenantId: number | null,
+    audience: 'owner' | 'staff',
+  ): Promise<string[]> {
     if (!tenantId) return [];
     try {
       const settings = await this.settings.getSettingsByTenant(tenantId);
-      return Object.values(settings.wxSubscribeTemplates)
-        .map((id) => String(id || '').trim())
-        .filter(Boolean);
+      const picked =
+        audience === 'owner'
+          ? [
+              settings.wxSubscribeTemplates.orderDispatched,
+              settings.wxSubscribeTemplates.orderReview,
+            ]
+          : [settings.wxSubscribeTemplates.orderAssigned];
+      return picked.map((id) => String(id || '').trim()).filter(Boolean);
     } catch {
       // 设置读不到不该把「我的」页整个弄挂，退化成不弹订阅授权
       return [];

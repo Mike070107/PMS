@@ -2,9 +2,10 @@ import { maskPhone } from '@pms/miniapp-ui';
 import { USER_ROLE_LABELS, type MeResp } from '@pms/shared-types';
 import { clearSession, getSession } from '../../utils/session';
 import { syncTabBar } from '../../utils/tabbar';
+import { askOrderSubscribe, refreshUnread } from '../../utils/unread';
 
 /** 构建版本：随每次上传更新。开发版/预览版微信不返回版本号，靠它确认跑的是哪份代码 */
-const BUILD_VERSION = '1.0.20260826a';
+const BUILD_VERSION = '1.0.20260826b';
 
 Page({
   data: {
@@ -16,6 +17,10 @@ Page({
     avatarText: '',
     canUseMaterials: false,
     canUseInventory: false,
+    /** 未读消息数，显示在「消息」入口右侧 */
+    unread: 0,
+    /** 维修工才有「新工单提醒」这回事 —— 单是派给他的 */
+    canSubscribe: false,
     /** 代报角色：报修范围是授权小区，不是全公司，文案得说准 */
     repairDesc: '巡查发现的问题直接提单，地址可选全公司任意楼栋房号',
   },
@@ -35,6 +40,8 @@ Page({
     syncTabBar(this, 'me');
     this.showBuild();
     this.load();
+    // 未读数每次进来都重新拉：小程序没有推到端的长连接，角标只能主动拿
+    refreshUnread(this).then((unread) => this.setData({ unread }));
   },
 
   async load() {
@@ -54,6 +61,7 @@ Page({
         avatarText: (user.name || roleText || '员').trim().charAt(0),
         canUseMaterials: session.canViewMaterials,
         canUseInventory: session.canViewInventory,
+        canSubscribe: session.isTechnician,
         repairDesc: isReporter
           ? (scope ? `可报 ${scope} 内任意楼栋房号` : '还没有可代报的小区，请联系物业管理员开通')
           : '巡查发现的问题直接提单，地址可选全公司任意楼栋房号',
@@ -73,6 +81,15 @@ Page({
    */
   onOpenInventory() {
     wx.switchTab({ url: '/pages/inventory/inventory' });
+  },
+
+  onOpenMessages() {
+    wx.navigateTo({ url: '/pages/messages/messages' });
+  },
+
+  /** 用户主动点「开启新工单提醒」：要给明确反馈，不能静默失败 */
+  async onEnableNotify() {
+    await askOrderSubscribe(false);
   },
 
   async onLogout() {
