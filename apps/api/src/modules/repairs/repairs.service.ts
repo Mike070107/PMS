@@ -15,6 +15,7 @@ import {
   ILike,
   In,
   IsNull,
+  Not,
   Repository,
 } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -1229,6 +1230,8 @@ export class RepairsService implements OnModuleInit {
       workOrder.skill = dto.skill ?? workOrder.skill;
       workOrder.status = WorkOrderStatus.DISPATCHED;
       workOrder.dispatchedAt = new Date();
+      // 换了负责人就重新计时：上一个人没接单的催单记录，不该算在新人头上
+      workOrder.escalatedAt = null;
       workOrder.slaDueAt = dto.slaHours
         ? new Date(Date.now() + dto.slaHours * 60 * 60 * 1000)
         : workOrder.slaDueAt;
@@ -1931,6 +1934,168 @@ export class RepairsService implements OnModuleInit {
         time: this.formatWhen(new Date()),
       },
     });
+  }
+
+  /**
+   * 派单后迟迟没人接单 → 催维修工一次 + 告诉办公室。定时任务每 10 分钟调一次。
+   *
+   * 为什么要有这一层：任何一条推送都可能被漏看（微信订阅额度用完、手机静音、人在忙）。
+   * 与其指望「通知一定送达」，不如让**漏看一条不再是终点** —— 到点没接单就再催一次，
+   * 同时让办公室看见「这单还没人接」，人能兜住机器兜不住的部分。
+   *
+   * 只催一次（escalatedAt 打标记）：每 10 分钟催一轮的话，同一张单会把维修工和
+   * 办公室一起刷屏，最后谁都不看了。
+   */
+  async escalateStaleDispatchesAllTenants(): Promise<number> {
+    const dispatched = await this.workOrderRepo.find({
+      where: {
+        status: WorkOrderStatus.DISPATCHED,
+        escalatedAt: IsNull(),
+        assigneeId: Not(IsNull()),
+      },
+      select: ['id', 'tenantId', 'orderNo', 'requestId', 'communityId', 'assigneeId', 'dispatchedAt', 'slaDueAt'],
+      take: 500,
+    });
+    if (!dispatched.length) return 0;
+
+    const tenantIds = [...new Set(dispatched.map((item) => item.tenantId))];
+    const minutesByTenant = new Map(
+      await Promise.all(
+        tenantIds.map(
+          async (tenantId) =>
+            [
+              tenantId,
+              (await this.settings.getSettingsByTenant(tenantId)).dispatchEscalation
+                .acceptMinutes,
+            ] as const,
+        ),
+      ),
+    );
+
+    const now = Date.now();
+    // 只看最近一天派出去的单。
+    // 上线那一刻，库里所有存量「已派单未接」的单 escalatedAt 都是空的 ——
+    // 不设这道下限，第一轮定时任务会把积压了几个月的单一次性全催一遍，
+    // 维修工和办公室同时被几十条消息刷屏。而且一张压了三天的单，
+    // 再提醒一句「派单 60 分钟还没接」也已经没有意义了。
+    const oldestDispatchedAt = now - 24 * 60 * 60 * 1000;
+    const targets = dispatched.filter((item) => {
+      const minutes = minutesByTenant.get(item.tenantId) ?? 0;
+      if (!minutes) return false; // 该租户关掉了
+      if (!item.dispatchedAt) return false;
+      const at = item.dispatchedAt.getTime();
+      if (at < oldestDispatchedAt) return false;
+      return at <= now - minutes * 60 * 1000;
+    });
+    if (!targets.length) return 0;
+
+    let done = 0;
+    for (const workOrder of targets) {
+      try {
+        await this.escalateOne(workOrder, minutesByTenant.get(workOrder.tenantId) ?? 0);
+        done += 1;
+      } catch (err) {
+        // 一张单催失败不该让整轮停下
+        this.logger.warn(
+          `工单 ${workOrder.orderNo} 催单失败：${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    return done;
+  }
+
+  private async escalateOne(workOrder: WorkOrder, minutes: number) {
+    // 先打标记再发通知：反过来的话，通知发出去、打标记失败，下一轮会再催一次
+    await this.workOrderRepo.update({ id: workOrder.id }, { escalatedAt: new Date() });
+
+    const request = await this.repairRequestRepo.findOne({
+      where: { id: workOrder.requestId, tenantId: workOrder.tenantId },
+      select: ['id', 'repairType', 'addressText', 'content'],
+    });
+    const rule = request?.repairType
+      ? await this.repairTypeRuleRepo.findOne({
+          where: { tenantId: workOrder.tenantId, repairType: request.repairType },
+        })
+      : null;
+    const typeLabel = rule?.label || '报修';
+    const address = request?.addressText?.trim() || '（未填地址）';
+    const waited = `已派单 ${minutes} 分钟还没接`;
+    const page = `pages/order-detail/order-detail?id=${workOrder.id}`;
+
+    // 1) 再催维修工一次
+    if (workOrder.assigneeId) {
+      await this.notifications.notifyUser({
+        tenantId: workOrder.tenantId,
+        receiverId: workOrder.assigneeId,
+        eventKey: 'order_accept_overdue',
+        title: `还没接单：${typeLabel} · ${address}（${waited}）`,
+        payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo },
+        page,
+        template: 'orderAssigned',
+        templateFields: {
+          orderNo: workOrder.orderNo,
+          type: typeLabel,
+          status: `派单 ${minutes} 分钟还没接单`,
+          statusShort: '待接单',
+          content: `${typeLabel} · ${address}`,
+          assignee: '',
+          address,
+          time: this.formatWhen(new Date()),
+        },
+      });
+    }
+
+    // 2) 告诉「能派单的人」这单卡住了。
+    //    收件人按权限找（app:dispatch·派单），不按身份 —— 谁是办公室由角色矩阵说了算。
+    //    一个都没有就不发：宁可不发，也不要退到租户超管那里把他的消息列表塞满，
+    //    他不是处理派单的人。
+    const assignee = workOrder.assigneeId
+      ? await this.userRepo.findOne({
+          where: { id: workOrder.assigneeId, tenantId: workOrder.tenantId },
+          select: ['id', 'name'],
+        })
+      : null;
+    const dispatcherIds = await this.accessService.userIdsWithPermission(
+      workOrder.tenantId,
+      'app:dispatch',
+      'edit',
+    );
+    const watchers = dispatcherIds.length
+      ? await this.userRepo.find({
+          where: {
+            id: In(dispatcherIds),
+            tenantId: workOrder.tenantId,
+            status: UserStatus.ACTIVE,
+          },
+          select: ['id'],
+          take: 20,
+        })
+      : [];
+    for (const watcher of watchers) {
+      await this.notifications.notifyUser({
+        tenantId: workOrder.tenantId,
+        receiverId: watcher.id,
+        eventKey: 'order_accept_overdue_office',
+        title: `${assignee?.name || '维修工'}还没接单：${typeLabel} · ${address}（${waited}）`,
+        payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo },
+        page,
+      });
+    }
+
+    // 3) 进度时间轴上留一条，办公室点进详情能看到催过了
+    await this.dataSource.getRepository(WorkOrderLog).save(
+      this.dataSource.getRepository(WorkOrderLog).create({
+        tenantId: workOrder.tenantId,
+        workOrderId: workOrder.id,
+        fromStatus: WorkOrderStatus.DISPATCHED,
+        toStatus: WorkOrderStatus.DISPATCHED,
+        action: 'escalate',
+        operatorId: null,
+        note: `${waited}，系统已再次提醒维修工并通知办公室`,
+        createdBy: null,
+        updatedBy: null,
+      }),
+    );
   }
 
   /** 列表标题里的短日期：「8月26日 18:00」，年份靠上下文 */
