@@ -127,12 +127,10 @@ Page({
     // 权限矩阵要等首页那次 auth.me()（rememberAccess）才补齐，在那之前按身份兜底
     if (role) wx.setStorageSync('pms.staff.role', role);
 
-    // 扫了网页登录码但当时没登录的人：登录完必须送回确认页，
+    // 扫了网页登录码但当时没登录（或登录态已过期）的人：登录完必须送回确认页，
     // 否则 scene 已经丢了，只能让人回电脑重新出码再扫一遍
-    let pendingQr = '';
-    try { pendingQr = wx.getStorageSync(PENDING_QR_KEY) || ''; } catch { pendingQr = ''; }
+    const pendingQr = takePendingQr();
     if (pendingQr) {
-      try { wx.removeStorageSync(PENDING_QR_KEY); } catch { /* 清不掉也不该挡住跳转 */ }
       wx.redirectTo({ url: `/pages/web-login/web-login?scene=${encodeURIComponent(pendingQr)}` });
       return;
     }
@@ -143,3 +141,25 @@ Page({
     wx.switchTab({ url: '/pages/pool/pool' });
   },
 });
+
+/**
+ * 取出 web-login 页暂存的票据并清掉。
+ * 网页那张码只活 2 分钟，暂存超过 10 分钟的就不送了 ——
+ * 否则上次扫完没登录成的人，几天后一登录会被送到一张早就作废的码上。
+ * 兼容旧版直接存字符串的写法。
+ */
+function takePendingQr(): string {
+  let raw = '';
+  try { raw = wx.getStorageSync(PENDING_QR_KEY) || ''; } catch { raw = ''; }
+  if (!raw) return '';
+  try { wx.removeStorageSync(PENDING_QR_KEY); } catch { /* 清不掉也不该挡住跳转 */ }
+  if (!raw.startsWith('{')) return raw;
+  try {
+    const parsed = JSON.parse(raw) as { scene?: string; at?: number };
+    if (!parsed.scene) return '';
+    if (parsed.at && Date.now() - parsed.at > 10 * 60 * 1000) return '';
+    return parsed.scene;
+  } catch {
+    return '';
+  }
+}
