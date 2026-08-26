@@ -4,7 +4,7 @@ import type {
   PublicRepairType,
 } from '@pms/api-client/src/endpoints/repairs';
 import { speechErrorTip } from '@pms/miniapp-ui';
-import { AuditStatus, classifyRepairType } from '@pms/shared-types';
+import { AuditStatus, classifyRepairType, extractFaultDescription } from '@pms/shared-types';
 import { ADDRESS_HINT_RE, detectRepairAddress } from '../../utils/address-detect';
 import {
   composePlaceText,
@@ -420,8 +420,11 @@ Page({
           : scopeIds(scope, this.place)),
         addressText: detected?.matched ? detected.addressText : this.data.placeText,
         repairType: this.guessType || undefined,
+        // 描述里认出来的地址已经单独提交了，从描述里剥掉，顺带剥语音带进来的语气词；
         // 只拍照没打字时给一句占位，后端要求 content 非空
-        content: content || '业主随手拍报修，详见照片',
+        content:
+          extractFaultDescription(content, { addressText: detected?.matched ? detected.matchedText : undefined }) ||
+          '业主随手拍报修，详见照片',
         attachments,
       });
       wx.showToast({ title: '已提交' });

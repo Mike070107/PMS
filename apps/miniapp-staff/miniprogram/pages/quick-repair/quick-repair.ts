@@ -4,6 +4,7 @@ import { speechErrorTip } from '@pms/miniapp-ui';
 import {
   classifyRepairType,
   extractContact,
+  extractFaultDescription,
   isVideoUrl,
   MAX_REPAIR_IMAGES,
   MAX_REPAIR_VIDEO_SECONDS,
@@ -41,6 +42,8 @@ interface FoundRow {
 Page({
   data: {
     content: '',
+    /** 剥掉地址/联系人/电话/语气词之后的故障描述 —— 提交的是它，不是整句原话 */
+    description: '',
     /** 语音识别的实时中间结果，让人知道在听 */
     partial: '',
     recording: false,
@@ -223,19 +226,31 @@ Page({
 
   /** 把认出来的拼成「已认出」那张卡；一样都没认出来才展开手填 */
   refreshFound() {
-    const { detected, typeLabel, contactName, contactPhone } = this.data;
+    const { detected, typeLabel, contactName, contactPhone, content } = this.data;
+    // 故障描述 = 整句话剥掉已经认走的地址、联系人、电话，再剥语气词。
+    // 「业主张先生报修一期47号大门关不上电话138…」→ 描述只剩「大门关不上」，
+    // 不然后台看单的人要在一串人名电话里自己找故障是什么
+    const contact = extractContact(content);
+    const description = extractFaultDescription(content, {
+      addressText: detected?.matchedText,
+      phoneText: contact.phoneText,
+      nameText: contact.nameText,
+    });
     const found: FoundRow[] = [];
     if (detected) found.push({ key: 'addr', label: '报修地址', value: composeDetectedAddress(detected) });
+    if (description && description !== content.trim()) {
+      found.push({ key: 'desc', label: '故障描述', value: description });
+    }
     if (typeLabel) found.push({ key: 'type', label: '报修类型', value: typeLabel });
     if (contactName) found.push({ key: 'name', label: '联系人', value: contactName });
     if (contactPhone) found.push({ key: 'phone', label: '联系电话', value: contactPhone });
-    this.setData({ found, needManual: !!this.data.content.trim() && !detected });
+    this.setData({ found, description, needManual: !!this.data.content.trim() && !detected });
   },
 
   /** 认错了就整单改到「我要报修」去逐项改，别在这一屏里堆一套表单 */
   onEditInFull() {
     const q = [
-      `content=${encodeURIComponent(this.data.content)}`,
+      `content=${encodeURIComponent(this.data.description || this.data.content)}`,
       `attachments=${encodeURIComponent(this.data.attachments.join(','))}`,
     ].join('&');
     wx.redirectTo({ url: `/pages/repair-create/repair-create?${q}` });
@@ -266,7 +281,8 @@ Page({
         contactPhone: this.data.contactPhone || undefined,
         repairType: this.predictedType || undefined,
         predictedRepairType: this.predictedType || undefined,
-        content,
+        // 提交剥干净的描述；剥过头（空了）就退回原话
+        content: this.data.description || content,
         attachments: this.data.attachments,
       });
       wx.showToast({ title: '已提交' });

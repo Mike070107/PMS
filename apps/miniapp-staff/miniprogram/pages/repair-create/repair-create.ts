@@ -8,6 +8,7 @@ import {
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
   extractContact,
+  extractFaultDescription,
   isVideoUrl,
   MAX_REPAIR_IMAGES,
   MAX_REPAIR_VIDEO_SECONDS,
@@ -387,9 +388,17 @@ Page({
         wx.showToast({ icon: 'none', title: '没听清，再说一次或直接打字' });
         return;
       }
-      // 追加而不是覆盖，允许说好几段；说完顺手做一次地址识别
-      const next = this.data.content ? this.data.content + text : text;
+      // 联系人和电话由下面的字段单独接住（autoFillFromText），说的这一段里就别再留着；
+      // 语气词一并剥掉。地址先留在文字里 —— 识别要靠它撞库，提交时再从描述里去掉
+      const contact = extractContact(text);
+      const spoken = extractFaultDescription(text, {
+        phoneText: contact.phoneText,
+        nameText: contact.nameText,
+      });
+      // 追加而不是覆盖，允许说好几段；认联系人要用原话（剥过的里面已经没有电话了）
+      const next = this.data.content ? this.data.content + spoken : spoken;
       this.setData({ content: next, 'errors.content': '' });
+      this.autoFillFromText(text);
       this.scheduleDetect(next);
     };
     speechManager.onError = (err: { msg?: string; retcode?: number }) => {

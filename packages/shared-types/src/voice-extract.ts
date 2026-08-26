@@ -105,11 +105,84 @@ export function extractContact(raw: string): ExtractedContact {
   } else {
     const labeledHit = NAME_LABELED_RE.exec(text);
     const candidate = labeledHit?.[1]?.trim();
-    if (candidate && !NAME_STOPWORDS.has(candidate) && !NAME_PREFIX_NOISE.has(candidate[0])) {
+    // 「找不到开关」曾被认成联系人「不到开关」：以停用词开头的一律不算
+    const startsWithStopword = candidate
+      ? [...NAME_STOPWORDS].some((w) => candidate.startsWith(w))
+      : false;
+    if (candidate && !startsWithStopword && !NAME_PREFIX_NOISE.has(candidate[0])) {
       out.name = candidate;
       out.nameText = labeledHit![0];
     }
   }
 
   return out;
+}
+
+/**
+ * 从一句话里剥掉已经被认走的部分，剩下的才是「故障描述」。
+ *
+ * 「业主张先生报修一期47号大门关不上电话13800138000」——
+ * 地址、联系人、电话各自认走之后，描述只该剩「大门关不上」。
+ * 原来是整句话原样落进故障描述，语气词、人名、电话号全在里面，
+ * 后台看单的人要自己在一堆字里找故障是什么。
+ *
+ * 剥的顺序：先剥认出来的原文片段（地址 matchedText / phoneText / nameText），
+ * 再剥它们留下的标签词（「电话」「联系人」「业主」「报修」……），
+ * 最后剥语音识别带进来的语气词和头尾标点。剥完少于 2 个字就退回原话 —— 宁可多也别空。
+ */
+export function extractFaultDescription(
+  raw: string,
+  removals: { addressText?: string; phoneText?: string; nameText?: string } = {},
+): string {
+  let text = String(raw || '').trim();
+  if (!text) return '';
+  const original = text;
+
+  // 1) 认出来的原文片段整段去掉（地址那段可能带「一期 47 号」这类空格，宽松匹配）
+  for (const piece of [removals.addressText, removals.phoneText, removals.nameText]) {
+    const p = String(piece || '').trim();
+    if (!p) continue;
+    const UNIT = '期弄号室楼栋幢单元';
+    const loose = p
+      .split('')
+      .map((ch) => {
+        const esc = ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // 「室」「号」这类单位字原话里常省略（说「17号201」，matchedText 是「17号201室」）
+        return UNIT.includes(ch) ? `(?:${esc})?` : esc;
+      })
+      // 数字之间允许夹着原话里的「楼」「2单元」和标点（「5号楼2单元301」对「5号301室」）
+      .join('(?:[\\s，,、]|号楼|楼|栋|幢|\\d*单元)*');
+    // 地址后面紧跟的「楼 / 室 / 的」是地址的尾巴，一起剥（「3号楼电梯坏了」→「电梯坏了」）
+    text = text.replace(new RegExp(`${loose}(?:号楼|楼|栋|幢|单元|室|的)?`), ' ');
+  }
+  // 电话没被认出但仍是一串数字（阿拉伯或中文报号）：也不该留在描述里
+  text = text
+    .replace(/1[3-9]\d[\s\-]*\d{4}[\s\-]*\d{4}/g, ' ')
+    .replace(/[零〇一幺二两三四五六七八九]{7,}/g, ' ');
+
+  // 2) 标签词：这些词只是在引出人/电话/地址，本身不是故障
+  text = text
+    .replace(/(联系电话|联系方式|电话号码|手机号码|手机号|电话|手机|号码)(是|为|：|:)?/g, ' ')
+    .replace(/(联系人|户主|业主|住户|租户|物业|保安|居委会|业委会)(是|为|：|:)?/g, ' ')
+    .replace(/(来?报修的?|报的修|报了个修|报个修|报的|报单|反映|投诉|说是|说的)/g, ' ')
+    // 人名被剥掉后留下的引导词：「找 ，门铃坏了」「 的说厨房水龙头…」
+    //   「找 / 叫 / 联系」只在后面已经空了（人名刚被剥掉）时才是孤字，「找不到开关」不能动
+    .replace(/(^|[，,、\s])(找|叫|联系|通知)(?=[，,、\s]|$)/g, '$1')
+    .replace(/(^|[，,、\s])(的)?(说|讲|反映)(是|的)?(?=[一-龥，,、\s]|$)/g, '$1')
+    // 「麻烦帮忙过来看一下」「请尽快派人修一下」「谢谢」：整段都是客套，不是故障
+    .replace(/(麻烦|请|帮忙|希望|尽快|赶紧|抓紧|派人|派个人|安排人|安排|能不能|可不可以)+(过来|来|上门|上来)?(看一下|看一看|看看|看下|修一下|修修|修下|修理一下|修理|处理一下|处理下|处理|弄一下|弄下|解决一下|解决下|解决)?/g, ' ')
+    .replace(/(谢谢|麻烦了|辛苦了|拜托了|拜托)/g, ' ')
+    .replace(/(地址是|地址|位置是|位置)(：|:)?/g, ' ');
+
+  // 3) 语气词、口头禅：语音识别会把它们一字不落写进来
+  text = text
+    .replace(/(呃|嗯|啊|哦|哎|呀|吧|呢|嘛|喔|唉|那个|就是|然后|反正|其实|的话)/g, ' ')
+    .replace(/[，,。.、；;！!？?\s]+/g, (m) => (/[，,、；;]/.test(m) ? '，' : /[。.！!？?]/.test(m) ? '。' : ' '))
+    .replace(/\s+/g, '')
+    .replace(/^[，。]+|[，。]+$/g, '')
+    .replace(/，{2,}/g, '，')
+    .replace(/，。|。，/g, '。');
+
+  // 剥过头了就退回原话：描述空着比带点噪音更糟
+  return text.replace(/[，。]/g, '').length >= 2 ? text : original;
 }

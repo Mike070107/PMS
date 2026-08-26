@@ -5,7 +5,7 @@
  *   pnpm mp                 业主端自动预览（推到手机上的「微信开发者工具」小程序，不用扫码）
  *   pnpm mp:staff           员工端自动预览
  *   pnpm mp -- --qr         生成二维码图片（Windows 会自动打开），用微信扫
- *   pnpm mp -- --upload     上传成体验版，版本号自动取 me.ts 里的 BUILD_VERSION
+ *   pnpm mp -- --upload     上传成体验版，版本号自动排（1.0.<日期><字母>），不用手改常量
  *   pnpm mp -- --upload --desc "修图片黑屏"
  *
  * 每次都会依次做完：编译共享包 → 构建 npm → 预览/上传，
@@ -14,7 +14,7 @@
  * 前置（只配一次）：开发者工具 → 设置 → 安全设置 → 打开「服务端口」。
  */
 import { execFileSync, execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -33,7 +33,7 @@ const APPS = {
 };
 
 function parseArgs(argv) {
-  const opts = { app: 'owner', mode: 'auto-preview', desc: '' };
+  const opts = { app: 'owner', mode: 'auto-preview', desc: '', version: '' };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--staff') opts.app = 'staff';
@@ -41,6 +41,8 @@ function parseArgs(argv) {
     else if (arg === '--qr') opts.mode = 'preview';
     else if (arg === '--upload') opts.mode = 'upload';
     else if (arg === '--desc') opts.desc = argv[++i] ?? '';
+    // 版本号正常由脚本自动排；--version 只留给「补传某个特定号」这种例外
+    else if (arg === '--version') opts.version = argv[++i] ?? '';
     else if (APPS[arg]) opts.app = arg;
   }
   return opts;
@@ -128,14 +130,115 @@ function explainCliError(output, action) {
   return `${action} 失败，详见上面 CLI 的输出。`;
 }
 
-/** 版本号的唯一来源是「我的」页那个常量，避免上传时手填错 */
-function readBuildVersion(appDir) {
-  const mePath = join(repoRoot, appDir, 'miniprogram/pages/me/me.ts');
-  if (!existsSync(mePath)) return '';
-  const matched = /BUILD_VERSION\s*=\s*['"]([^'"]+)['"]/.exec(
-    readFileSync(mePath, 'utf8'),
+/**
+ * 版本号由脚本自动排，**不再手改常量**。
+ *
+ * 原来版本号是 me.ts 里的 BUILD_VERSION，谁发版谁手改。多个开发会话并行时两边都要改
+ * 同一行，后改的覆盖先改的（2026-08-26：一个会话排到 d，另一个排到 g，实际传出去的是 g），
+ * 于是「手机上显示的版本号」和「以为发的那份代码」对不上，还得回头翻台账才知道传了什么。
+ *
+ * 现在的规则：1.0.<当天日期><字母>，字母按当天这个端已经发过几次往后排（a、b、…、z、aa）。
+ * 依据是本机台账 .ship-log.json，配合发版锁，两个会话不会排到同一个字母。
+ * 格式和历史保持一致（三段、末尾字母），微信那边认这种写法。
+ */
+function nextVersion(appKey, at = new Date()) {
+  const ymd = `${at.getFullYear()}${String(at.getMonth() + 1).padStart(2, '0')}${String(at.getDate()).padStart(2, '0')}`;
+  const prefix = `1.0.${ymd}`;
+  const used = new Set(
+    readShipLog()
+      .filter((row) => row.app === appKey && String(row.version).startsWith(prefix))
+      .map((row) => String(row.version).slice(prefix.length)),
   );
-  return matched ? matched[1] : '';
+  // a..z 然后 aa..az —— 一天发 26 次以上才会用到两位，够了
+  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  const candidates = [...letters, ...letters.map((a) => `a${a}`)];
+  /**
+   * 取「已用过的最大后缀 + 1」，不是「第一个没用过的」。
+   * 台账是 2026-08-26 才开始记的，在那之前手改常量发的版本它不知道 ——
+   * 按「第一个空位」排号会退回到 a，和公众平台上已有的老版本撞号，
+   * 而撞号正是当初「体验版退回旧版本」的成因。只往后排，绝不回填空位。
+   */
+  const rank = (s) => (s.length === 1 ? s.charCodeAt(0) - 97 : 26 + (s.charCodeAt(1) - 97));
+  const maxUsed = [...used]
+    .filter((s) => /^a?[a-z]$/.test(s))
+    .reduce((max, s) => Math.max(max, rank(s)), -1);
+  const suffix = candidates[maxUsed + 1];
+  if (!suffix) fail(`${appKey} 今天的版本号已经排到头了（用到 ${candidates[maxUsed]}），明天再发或用 --version 指定`);
+  return `${prefix}${suffix}`;
+}
+
+/**
+ * 把版本号和 git hash 写进 utils/buildStamp.ts，上传完立刻还原。
+ *
+ * 这个文件在 git 里永远是 dev 占位：发版不产生代码改动，也就不会和别的会话冲突。
+ * 还原放在 finally 里 —— 上传失败也必须还原，否则下一个人的工作区里凭空多出一处改动。
+ */
+function stampPath(appDir) {
+  return join(repoRoot, appDir, 'miniprogram/utils/buildStamp.ts');
+}
+
+function writeStamp(appDir, version, commit) {
+  const path = stampPath(appDir);
+  const original = readFileSync(path, 'utf8');
+  const stamped = original
+    .replace(/export const BUILD_VERSION = '[^']*';/, `export const BUILD_VERSION = '${version}';`)
+    .replace(/export const BUILD_COMMIT = '[^']*';/, `export const BUILD_COMMIT = '${commit}';`);
+  if (stamped === original) fail(`写不进构建标记，检查 ${path} 里的两行常量有没有被改过`);
+  writeFileSync(path, stamped);
+  return () => writeFileSync(path, original);
+}
+
+/** 发版锁：同一时刻只允许一个上传在跑，否则两边会互相踩 buildStamp.ts */
+const SHIP_LOCK = join(repoRoot, '.ship.lock');
+
+function acquireLock() {
+  if (existsSync(SHIP_LOCK)) {
+    let held = {};
+    try { held = JSON.parse(readFileSync(SHIP_LOCK, 'utf8')); } catch { /* 锁文件坏了当没有 */ }
+    const age = Date.now() - new Date(held.time || 0).getTime();
+    // 上传最多几分钟；超过 15 分钟的锁认定是上次被强杀留下的残锁，直接接管
+    if (held.pid && age < 15 * 60 * 1000) {
+      fail(
+        `另一个发版正在进行（pid ${held.pid}，${held.app || '?'}，started ${held.time}）。\n` +
+          '   等它跑完再来 —— 两个上传同时改构建标记，传出去的版本号会串。\n' +
+          `   确认那个进程已经死了的话，删掉 ${SHIP_LOCK} 再重试。`,
+      );
+    }
+  }
+  writeFileSync(SHIP_LOCK, JSON.stringify({ pid: process.pid, app: opts.app, time: new Date().toISOString() }));
+  return () => { try { unlinkSync(SHIP_LOCK); } catch { /* 已经没了就算了 */ } };
+}
+
+/** 上传前把「这一包到底装了什么」摊开说清楚：提交到哪儿了、还夹带了哪些未提交改动 */
+function printManifest(appDir, git) {
+  const rel = appDir.replace(/\\/g, '/');
+  const subject = (() => {
+    try {
+      return execSync('git log -1 --format=%s', { cwd: repoRoot, encoding: 'utf8' }).trim();
+    } catch {
+      return '';
+    }
+  })();
+  let dirtyFiles = [];
+  try {
+    dirtyFiles = execSync('git status --porcelain', { cwd: repoRoot, encoding: 'utf8' })
+      .split('\n').map((l) => l.slice(3).trim()).filter(Boolean);
+  } catch { /* 拿不到就不列 */ }
+  const mine = dirtyFiles.filter((f) => f.startsWith(rel));
+  const others = dirtyFiles.filter((f) => !f.startsWith(rel));
+
+  console.log('\n---- 这一包装了什么 ----');
+  console.log(`  基线提交  ${git.hash}${subject ? `  ${subject}` : ''}`);
+  if (!mine.length) {
+    console.log('  夹带改动  无 —— 传的就是这个提交的代码');
+  } else {
+    console.log(`  夹带改动  ${mine.length} 个未提交文件（都会打进包里）：`);
+    mine.forEach((f) => console.log(`              ${f}`));
+  }
+  if (others.length) {
+    console.log(`  （另有 ${others.length} 个改动在这个端之外，不影响这一包）`);
+  }
+  console.log('------------------------');
 }
 
 /**
@@ -176,17 +279,18 @@ function appendShipLog(entry) {
   }
 }
 
-/** 同一个版本号、不同的代码 —— 拦住，否则公众平台上两条同号版本分不清 */
-function assertVersionNotReused(appKey, ver, git) {
-  const clash = readShipLog().find(
-    (row) => row.app === appKey && row.version === ver && row.hash !== git.hash,
-  );
+/**
+ * 同一个版本号不能用两次。
+ * 版本号现在由 nextVersion() 按台账自动排，正常不会撞；这条留作兜底 ——
+ * 台账被删过、或者有人用 --version 手工指定时仍可能撞上。
+ */
+function assertVersionNotReused(appKey, ver) {
+  const clash = readShipLog().find((row) => row.app === appKey && row.version === ver);
   if (!clash) return;
   fail(
-    `版本号 ${ver} 已经在 ${clash.time} 用代码 ${clash.hash} 上传过了，这次的代码是 ${git.hash}。\n` +
-      `   同号上传两次，公众平台「版本管理」里会并排两条 ${ver}，选体验版必然选错 ——\n` +
-      `   先把 apps/${appKey === 'staff' ? 'miniapp-staff' : 'miniapp-owner'}/miniprogram/pages/me/me.ts 里的\n` +
-      '   BUILD_VERSION 往后挪一位再重跑（那个常量就是手机上「我的」页显示的版本号）。',
+    `版本号 ${ver} 已经在 ${clash.time} 用代码 ${clash.hash} 上传过了。\n` +
+      `   同号上传两次，公众平台「版本管理」里会并排两条 ${ver}，选体验版必然选错。\n` +
+      '   去掉 --version 让脚本自动排号，或换一个没用过的号。',
   );
 }
 
@@ -200,9 +304,7 @@ const opts = parseArgs(process.argv.slice(2));
 const app = APPS[opts.app];
 const cli = resolveCli();
 const projectPath = join(repoRoot, app.dir);
-const version = readBuildVersion(app.dir);
-
-console.log(`\n==> ${app.label}（${opts.app}）  ${version ? `v${version}` : ''}`);
+console.log(`\n==> ${app.label}（${opts.app}）`);
 
 console.log('\n==> 1/3 编译共享包');
 run(process.execPath, [join(repoRoot, 'tools/build-miniapp-libs.mjs')]);
@@ -218,34 +320,40 @@ try {
 }
 
 if (opts.mode === 'upload') {
-  if (!version) fail('读不到 BUILD_VERSION，无法确定上传版本号');
   const git = gitInfo();
-  assertVersionNotReused(opts.app, version, git);
-  if (git.dirty) {
-    console.warn(
-      `\n!  工作区有未提交的改动，这次上传的包和提交 ${git.hash} 对不上。\n` +
-        '   以后想查「体验版里到底是哪份代码」会查不出来，建议先提交再传。\n',
-    );
-  }
+  const version = opts.version || nextVersion(opts.app);
+  assertVersionNotReused(opts.app, version);
+  printManifest(app.dir, git);
+
   // 描述里始终带上代码位置，公众平台版本列表里才能一眼对回提交
   const stamp = `${git.hash}${git.dirty ? '+本地改动' : ''}`;
   const desc = `${opts.desc || `${version} 构建`}${stamp ? `（${stamp}）` : ''}`;
-  console.log(`\n==> 3/3 上传体验版 v${version}：${desc}`);
-  runCli(['upload', '--project', projectPath, '-v', version, '-d', desc]);
-  appendShipLog({
-    app: opts.app,
-    version,
-    hash: git.hash,
-    dirty: git.dirty,
-    desc,
-    time: new Date().toISOString(),
-  });
+
+  const releaseLock = acquireLock();
+  // 版本号和 hash 只在上传这一瞬间写进代码里，传完立刻还原成 dev 占位
+  const restoreStamp = writeStamp(app.dir, version, git.hash);
+  try {
+    console.log(`\n==> 3/3 上传体验版 v${version}：${desc}`);
+    runCli(['upload', '--project', projectPath, '-v', version, '-d', desc]);
+    appendShipLog({
+      app: opts.app,
+      version,
+      hash: git.hash,
+      dirty: git.dirty,
+      desc,
+      time: new Date().toISOString(),
+    });
+  } finally {
+    restoreStamp();
+    releaseLock();
+  }
+
   console.log(
     `\n完成。上传的是 ${version}（代码 ${stamp || '未知'}）。还要两步：\n` +
       `  1. 公众平台 → 版本管理 → 开发版本 → 找到描述里带 ${git.hash || version} 的那条 → 「选为体验版」\n` +
-      '     （同号版本可能有多条，认描述里的 hash，别只认版本号）\n' +
       '  2. 手机微信里先把这个小程序从「最近使用」删掉，再重新进 —— 否则跑的还是缓存包\n' +
-      '  进小程序「我的」页最下面核对版本号，和上面这个对不上就说明第 1 步选错了版本\n',
+      `  进小程序「我的」页最下面应显示：${version} · ${git.hash}\n` +
+      '  对不上就是第 1 步选错了版本；页面上那个 hash 直接 git show 就是这份代码\n',
   );
 } else if (opts.mode === 'preview') {
   const outDir = join(repoRoot, '.screenshots');

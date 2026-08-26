@@ -6,7 +6,7 @@ import {
   type WorkOrderListItem,
 } from '@pms/shared-types';
 import { getSession } from '../../utils/session';
-import { setTabBadge, syncTabBar } from '../../utils/tabbar';
+import { cachedPoolMode, readCachedAccess, setTabBadge, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unread';
 
 /**
@@ -57,11 +57,13 @@ const DISPATCHABLE_STATUSES: string[] = [
   WorkOrderStatus.WAITING_MATERIAL,
 ];
 
+interface PoolFilter { key: string; label: string; scope?: 'pool' | 'all'; status?: string }
+
 /**
  * 派单台的状态筛选。第一项是默认落点 —— 办公室打开这一屏，
  * 要办的事就是「把还没派的派出去」，别让他先自己挑一遍。
  */
-const FILTERS: Array<{ key: string; label: string; scope?: 'pool' | 'all'; status?: string }> = [
+const DISPATCH_FILTERS: PoolFilter[] = [
   { key: 'pool', label: '待派单', scope: 'pool' },
   { key: 'dispatched', label: '已派单', scope: 'all', status: WorkOrderStatus.DISPATCHED },
   { key: 'in_progress', label: '维修中', scope: 'all', status: WorkOrderStatus.IN_PROGRESS },
@@ -70,6 +72,38 @@ const FILTERS: Array<{ key: string; label: string; scope?: 'pool' | 'all'; statu
   { key: 'completed', label: '已完成', scope: 'all', status: WorkOrderStatus.COMPLETED },
   { key: 'all', label: '全部', scope: 'all' },
 ];
+
+/**
+ * 工单池（维修工）的状态筛选。scope 恒为 pool（只有没人认领的单），
+ * 所以这里只按状态分档，档位就是 POOL_STATUSES 那三种：
+ *   新报修   = 还没派给任何人，谁都能领
+ *   已派单   = 派下来了但没指定到人
+ *   等待材料 = 缺料退回池子的，接回去要先确认料到没到
+ * 第一项是「全部」—— 维修工进来先看有多少活，再决定挑哪种。
+ */
+const POOL_FILTERS: PoolFilter[] = [
+  { key: 'all', label: '全部', scope: 'pool' },
+  { key: 'created', label: '新报修', scope: 'pool', status: WorkOrderStatus.CREATED },
+  { key: 'dispatched', label: '已派单', scope: 'pool', status: WorkOrderStatus.DISPATCHED },
+  { key: 'waiting', label: '等待材料', scope: 'pool', status: WorkOrderStatus.WAITING_MATERIAL },
+];
+
+/**
+ * onShow 时先点亮哪一格（session 还没回来，只能看缓存）。
+ *
+ * 不能直接用 cachedPoolMode()：它没缓存时默认 'dispatch'，而纯维修工的 tabBar 上
+ * 根本没有派单台那一格，setActive('dispatch') 会把 selectedKey 指到一个不存在的 key ——
+ * 结果是**一格都不高亮**，网络慢或 load 失败时就一直全灰。
+ * 所以先按权限缓存排除掉看不见的那一格，口径和 load() 里定 mode 的一致。
+ */
+function initialTabKey(): 'pool' | 'dispatch' {
+  const { pages } = readCachedAccess();
+  if (pages) {
+    if (!pages['app:dispatch']) return 'pool';
+    if (!pages['app:pool']) return 'dispatch';
+  }
+  return cachedPoolMode();
+}
 
 /** 要求完成时限的可选项。派单时给几个常用档，不要让人打字 */
 const SLA_OPTIONS = [
@@ -98,9 +132,10 @@ Page({
     loaded: false,
     acceptingId: 0,
     capped: false,
+    emptyText: '',
 
-    // ---- 派单台 ----
-    filters: FILTERS,
+    // ---- 状态筛选 + 搜索（两种模式都有，档位不同）----
+    filters: POOL_FILTERS as PoolFilter[],
     filterIndex: 0,
     keyword: '',
 
@@ -121,7 +156,16 @@ Page({
   },
 
   onShow() {
-    syncTabBar(this, 'pool');
+    /**
+     * 先按缓存点亮对应的那一格。
+     *
+     * 这里原来写死 syncTabBar(this, 'pool')：工单池和派单台在 tabBar 上是**两格**
+     * （key 'pool' / 'dispatch'），却共用这一个页面，于是点「派单台」进来，
+     * 页面确实是派单台，底部高亮的却是「工单池」，派单台那一格始终是灰的。
+     * 真正的模式要等 session 回来才能定（两格都没权限时按仅有的那一格），
+     * 所以 load() 里还会再同步一次；这里先按缓存点，避免高亮闪一下再跳。
+     */
+    syncTabBar(this, initialTabKey());
     this.load();
     refreshUnread(this);
   },
@@ -150,25 +194,23 @@ Page({
       const mode = (() => {
         if (!session.canSeeDispatch) return 'pool';
         if (!session.canSeePool) return 'dispatch';
-        try {
-          return wx.getStorageSync('pms.staff.poolMode') === 'pool' ? 'pool' : 'dispatch';
-        } catch {
-          return 'dispatch';
-        }
+        return cachedPoolMode();
       })();
       const dispatcher = mode === 'dispatch';
-      const filter = FILTERS[this.data.filterIndex] || FILTERS[0];
+
+      // 两种模式的档位不同（派单台 7 档、工单池 4 档），切换时必须把选中项归零，
+      // 否则从派单台的「已完成」切回工单池会落到一个越界的下标上，列表看着像空的
+      const filters = dispatcher ? DISPATCH_FILTERS : POOL_FILTERS;
+      const modeChanged = this.data.dispatcher !== dispatcher || this.data.loaded === false;
+      const filterIndex = modeChanged ? 0 : Math.min(this.data.filterIndex, filters.length - 1);
+      const filter = filters[filterIndex] || filters[0];
       const keyword = this.data.keyword.trim();
 
-      const list = await repairs.list(
-        dispatcher
-          ? {
-              scope: filter.scope || 'all',
-              status: filter.status as any,
-              q: keyword || undefined,
-            }
-          : { scope: 'pool' },
-      );
+      const list = await repairs.list({
+        scope: filter.scope || (dispatcher ? 'all' : 'pool'),
+        status: filter.status as any,
+        q: keyword || undefined,
+      });
 
       const rows: OrderRow[] = withOrderLabels(list).map((item) => {
         const claimable = !item.assigneeId && POOL_STATUSES.indexOf(item.status) >= 0;
@@ -198,17 +240,37 @@ Page({
         canDispatch: session.canDispatch,
         canReport: session.canReport,
         canAccept: session.canAccept,
-        leadText: dispatcher ? filter.label : '待接单',
+        filters,
+        filterIndex,
+        // 默认档说的是这一屏在办什么事（待派单 / 待接单），翻到别的档就报档名
+        leadText: filter.key === (dispatcher ? 'pool' : 'all')
+          ? (dispatcher ? '待派单' : '待接单')
+          : filter.label,
         list: rows,
         loaded: true,
         capped: rows.length >= PAGE_CAP,
+        /* 空态要说清「空在哪一层」：搜的没有 / 这一档没有 / 真的没活。
+           三种情况给同一句话，人会以为是坏了或者搜索没生效 */
+        emptyText: keyword
+          ? '没搜到匹配的工单，换个单号、地址或描述试试'
+          : filter.key !== (dispatcher ? 'pool' : 'all')
+            ? `「${filter.label}」这一档里没有工单`
+            : dispatcher
+              ? '没有待派单的工单，都派出去了'
+              : '工单池是空的，暂时没有待接的活',
       });
       // 顶栏标题跟着身份走：办公室进来看到的不是「工单池」而是「派单台」。
       // 标题写在 pool.json 里是静态的，只能在这儿按身份改一次
       wx.setNavigationBarTitle({ title: dispatcher ? '派单台' : '工单池' });
-      // 角标固定表示「待派单/待接单有几条」。翻到别的状态时不改它，
-      // 免得角标跟着筛选条乱跳（那样它就不再是「有几件事要办」了）
-      if (!dispatcher || filter.key === 'pool') setTabBadge(this, 'pool', rows.length);
+      // 模式定下来了，把底部高亮同步到真正的那一格（onShow 里先按缓存点过一次）
+      syncTabBar(this, dispatcher ? 'dispatch' : 'pool');
+      /**
+       * 角标固定表示「有几件事要办」= 默认档、没搜索时的条数。
+       * 翻筛选或搜索时不改它，否则角标跟着筛选跳，就不再是「待办数」了。
+       * key 必须跟着模式走：挂错格子的话，派单台的待办数会显示在工单池那一格上。
+       */
+      const isDefaultView = !keyword && filter.key === (dispatcher ? 'pool' : 'all');
+      if (isDefaultView) setTabBadge(this, dispatcher ? 'dispatch' : 'pool', rows.length);
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     } finally {
@@ -216,7 +278,7 @@ Page({
     }
   },
 
-  // ---------------- 派单台：筛选与搜索 ----------------
+  // ---------------- 筛选与搜索（工单池 / 派单台共用，档位不同）----------------
 
   onPickFilter(e: WechatMiniprogram.BaseEvent) {
     const index = Number(e.currentTarget.dataset.index);

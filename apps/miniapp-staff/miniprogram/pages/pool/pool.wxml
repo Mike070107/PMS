@@ -4,18 +4,14 @@
   </view>
 
   <!-- 巡查发现问题：先给最快的那条路（拍+说），填表放第二个。
-       间距由外层 .btn-group / .btn-row 给（gap + margin-bottom）——按钮自身的 margin
+       间距由外层 .btn-row 给（gap + margin-bottom）——按钮自身的 margin
        在 app.wxss 里被 !important 压过一次，别再写回按钮上。
 
-       两种身份两种排法：维修工这一屏的主线就是「接活 + 顺手报修」，两个入口铺满一行一个；
-       办公室的主线是派单，报修只是顺带，两个按钮并成一行，把屏幕让给下面的工单。 -->
-  <view wx:if="{{canReport && dispatcher}}" class="btn-row report-entry report-entry--row">
+       两种身份同一套排法：这一屏的主线是「看有什么单」，报修只是顺带，
+       所以两个入口并成一行、矮一档，把屏幕让给下面的筛选和工单。 -->
+  <view wx:if="{{canReport}}" class="btn-row report-entry report-entry--row">
     <button class="btn btn--outline btn--sm" bindtap="onGoQuickRepair">随手拍报修</button>
     <button class="btn btn--outline btn--sm" bindtap="onGoRepair">填表报修</button>
-  </view>
-  <view wx:elif="{{canReport}}" class="btn-group report-entry">
-    <button class="btn btn--primary" bindtap="onGoQuickRepair">随手拍报修</button>
-    <button class="btn btn--outline" bindtap="onGoRepair">我要报修（填表）</button>
   </view>
 
   <!-- 维修工侧同理：卡片上不出现「接单」时，必须写清是权限收着，不是没活干 -->
@@ -28,47 +24,46 @@
     </view>
   </view>
 
-  <!-- ===== 派单台：状态筛选 + 搜索。维修工不需要，池子里只有一种单 ===== -->
-  <block wx:if="{{dispatcher}}">
-    <!-- 只给了查看权限时，卡片上不会有派单按钮。必须说清为什么、去哪儿开，
-         不能让人对着一屏「待派单」找不到入口 -->
-    <view wx:if="{{!canDispatch}}" class="notice">
-      <view class="notice__body">
-        <view class="notice__title">你的账号只能查看工单，不能派单</view>
-        <view class="notice__desc">
-          请管理员在管理后台「业务角色」页找到你的角色，在「邻修小程序页面权限」里把「派单台」这一行的「派单」勾上；改完在这一页下拉刷新即可，不用退出重登。
-        </view>
+  <!-- 只给了查看权限时，卡片上不会有派单按钮。必须说清为什么、去哪儿开，
+       不能让人对着一屏「待派单」找不到入口 -->
+  <view wx:if="{{dispatcher && !canDispatch}}" class="notice">
+    <view class="notice__body">
+      <view class="notice__title">你的账号只能查看工单，不能派单</view>
+      <view class="notice__desc">
+        请管理员在管理后台「业务角色」页找到你的角色，在「邻修小程序页面权限」里把「派单台」这一行的「派单」勾上；改完在这一页下拉刷新即可，不用退出重登。
       </view>
     </view>
+  </view>
 
-    <scroll-view class="chips" scroll-x enable-flex>
-      <view
-        wx:for="{{filters}}"
-        wx:key="key"
-        class="chip {{filterIndex === index ? 'chip--on' : ''}}"
-        data-index="{{index}}"
-        bindtap="onPickFilter"
-      >{{item.label}}</view>
-    </scroll-view>
+  <!-- ===== 状态筛选 + 搜索：两种模式都有，只是档位不同（见 pool.ts 的两组 FILTERS）。
+       工单池原来没有这两样，池子里堆到几十条时，维修工要找「等待材料那单到料没有」
+       只能一路往下翻 —— 和派单台是同一个问题，用同一套控件解决 ===== -->
+  <scroll-view class="chips" scroll-x enable-flex>
+    <view
+      wx:for="{{filters}}"
+      wx:key="key"
+      class="chip {{filterIndex === index ? 'chip--on' : ''}}"
+      data-index="{{index}}"
+      bindtap="onPickFilter"
+    >{{item.label}}</view>
+  </scroll-view>
 
-    <view class="search-row">
-      <input
-        class="input"
-        placeholder="搜单号 / 地址 / 故障描述"
-        value="{{keyword}}"
-        confirm-type="search"
-        bindconfirm="onSearch"
-        bindinput="onKeyword"
-      />
-      <button class="btn btn--outline btn--sm" bindtap="onSearch">搜索</button>
-      <button wx:if="{{keyword}}" class="btn btn--ghost btn--sm" bindtap="onClearKeyword">清空</button>
-    </view>
-  </block>
+  <view class="search-row">
+    <input
+      class="input"
+      placeholder="搜单号 / 地址 / 故障描述"
+      value="{{keyword}}"
+      confirm-type="search"
+      bindconfirm="onSearch"
+      bindinput="onKeyword"
+    />
+    <button class="btn btn--outline btn--sm" bindtap="onSearch">搜索</button>
+    <button wx:if="{{keyword}}" class="btn btn--ghost btn--sm" bindtap="onClearKeyword">清空</button>
+  </view>
 
   <view wx:if="{{loading && !loaded}}" class="center muted">加载中…</view>
   <view wx:elif="{{!list.length && loaded}}">
-    <pms-empty wx:if="{{dispatcher}}" text="{{keyword ? '没搜到匹配的工单，换个单号或地址试试' : '这一档里没有工单'}}"/>
-    <pms-empty wx:else text="工单池是空的，暂时没有待接的活"/>
+    <pms-empty text="{{emptyText}}"/>
   </view>
 
   <view

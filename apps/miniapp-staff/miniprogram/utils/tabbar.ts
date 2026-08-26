@@ -31,6 +31,34 @@ export function readCachedAccess(): { pages: Record<string, boolean> | null } {
   return { pages: wx.getStorageSync(PAGES_KEY) || null };
 }
 
+/**
+ * 「工单池」和「派单台」在 tabBar 上是两格，却共用 /pages/pool/pool 这一个页面。
+ * switchTab 不接受参数，所以「进来该看哪一屏」只能走缓存。
+ *
+ * key 原来在 tabBar 组件、pool 页、下面的 clearAccessCache 里各硬编码一份，
+ * 三处任改其一就会对不上（表现为切了模式没生效、或退出登录没清干净）。统一收在这里。
+ */
+const POOL_MODE_KEY = 'pms.staff.poolMode';
+
+export type PoolMode = 'pool' | 'dispatch';
+
+/** 缓存里记的是哪一屏。没记过按派单台 —— 只有一格权限时页面会自己纠正 */
+export function cachedPoolMode(): PoolMode {
+  try {
+    return wx.getStorageSync(POOL_MODE_KEY) === 'pool' ? 'pool' : 'dispatch';
+  } catch {
+    return 'dispatch';
+  }
+}
+
+export function rememberPoolMode(mode: PoolMode) {
+  try {
+    wx.setStorageSync(POOL_MODE_KEY, mode);
+  } catch {
+    /* 存不下不影响跳转，页面会按权限自己判默认模式 */
+  }
+}
+
 function getTabBar(page: any) {
   return typeof page?.getTabBar === 'function' ? page.getTabBar() : null;
 }
@@ -77,5 +105,5 @@ export function rememberAccess(
 /** 退出登录时清掉：换个人登进来不能还按上一个人的身份渲染底部 */
 export function clearAccessCache() {
   wx.removeStorageSync(PAGES_KEY);
-  wx.removeStorageSync('pms.staff.poolMode');
+  wx.removeStorageSync(POOL_MODE_KEY);
 }

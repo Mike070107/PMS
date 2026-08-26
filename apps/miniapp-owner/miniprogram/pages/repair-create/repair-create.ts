@@ -13,6 +13,7 @@ import {
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
   REPAIR_TYPE_OPTIONS,
+  extractFaultDescription,
 } from '@pms/shared-types';
 import { speechErrorTip } from '@pms/miniapp-ui';
 import {
@@ -524,8 +525,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         wx.showToast({ icon: 'none', title: '没听清，再说一次或直接打字' });
         return;
       }
-      // 追加而不是覆盖，允许说好几段；识别不准也能在文本框里改
-      const next = this.data.content ? `${this.data.content}${text}` : text;
+      // 语音带进来的语气词先剥掉（地址留着给识别用）；追加而不是覆盖，允许说好几段
+      const spoken = extractFaultDescription(text);
+      const next = this.data.content ? `${this.data.content}${spoken}` : spoken;
       this.setData({ content: next, 'errors.content': '' });
       this.scheduleDetect(next);
     };

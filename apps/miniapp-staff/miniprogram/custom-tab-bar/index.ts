@@ -12,7 +12,7 @@
  * 所以后台改完角色，用户下拉刷新一次底部就跟着变，不用杀掉小程序重进。
  */
 import { canSeeTab, type TabAccess, type TabKey } from '../utils/roles';
-import { readCachedAccess } from '../utils/tabbar';
+import { readCachedAccess, rememberPoolMode } from '../utils/tabbar';
 
 interface TabDef {
   key: TabKey;
@@ -73,14 +73,32 @@ Component({
       const index = Number(e.currentTarget.dataset.index);
       const tab = this.data.tabs[index];
       if (!tab || tab.key === this.data.selectedKey) return;
+
       // 工单池和派单台是同一个页面的两种模式，switchTab 不接受参数，
-      // 所以把「进来要看哪一屏」也写进缓存，页面 onShow 时读
-      try {
-        wx.setStorageSync('pms.staff.poolMode', tab.key === 'dispatch' ? 'dispatch' : 'pool');
-      } catch {
-        /* 存不下不影响跳转，页面会按权限自己判默认模式 */
+      // 所以把「进来要看哪一屏」写进缓存，页面读它决定渲染哪一屏
+      rememberPoolMode(tab.key === 'dispatch' ? 'dispatch' : 'pool');
+
+      const current = this.data.tabs.find((t: any) => t.key === this.data.selectedKey);
+      const target = tab.pagePath.split('?')[0];
+      const samePage = !!current && current.pagePath.split('?')[0] === target;
+
+      if (samePage) {
+        /**
+         * 工单池 ↔ 派单台：目标就是当前停留的这个页面。
+         *
+         * wx.switchTab 跳到自己所在的页面**不保证触发 onShow**，靠它来刷新的话，
+         * 表现就是「点了那一格没反应」；更麻烦的是缓存这时已经改了，
+         * 等下次从别的 tab 回来，页面会莫名其妙换成另一种模式。
+         * 所以这一步不走 switchTab：直接换高亮，再让页面自己重载。
+         */
+        this.setData({ selectedKey: tab.key });
+        const pages = getCurrentPages();
+        const page = pages[pages.length - 1] as any;
+        if (page && typeof page.load === 'function') page.load();
+        return;
       }
-      wx.switchTab({ url: tab.pagePath.split('?')[0] });
+
+      wx.switchTab({ url: target });
     },
 
     /** 各 tab 页在 onShow 里调，告诉 tabBar 现在在哪一屏 */

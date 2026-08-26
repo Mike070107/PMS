@@ -1,11 +1,11 @@
 import { maskPhone } from '@pms/miniapp-ui';
+import { buildStampText } from '../../utils/buildStamp';
 import { USER_ROLE_LABELS, type MeResp } from '@pms/shared-types';
 import { clearSession, getSession } from '../../utils/session';
 import { clearAccessCache, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, isAlwaysAllowed, refreshUnread } from '../../utils/unread';
 
-/** 构建版本：随每次上传更新。开发版/预览版微信不返回版本号，靠它确认跑的是哪份代码 */
-const BUILD_VERSION = '1.0.20260826h';
+// 版本号和 git hash 由发版脚本写入 utils/buildStamp.ts，别在这里手改（见那个文件的说明）
 
 Page({
   data: {
@@ -34,7 +34,7 @@ Page({
     try {
       const info = wx.getAccountInfoSync().miniProgram;
       const envText = { develop: '开发版', trial: '体验版', release: '正式版' }[info.envVersion] || info.envVersion;
-      this.setData({ buildText: [envText, info.version || BUILD_VERSION].filter(Boolean).join(' ') });
+      this.setData({ buildText: [envText, info.version || buildStampText()].filter(Boolean).join(' ') });
     } catch {
       this.setData({ buildText: '' });
     }

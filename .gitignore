@@ -30,6 +30,7 @@ deploy/dist/
 .screenshots/
 # 小程序上传台账（记录每次 upload 的版本号 + git hash，防止同号重复上传）
 .ship-log.json
+.ship.lock
 .claude/
 .codex/
 .agents/
