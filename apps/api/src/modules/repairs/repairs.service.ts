@@ -746,8 +746,10 @@ export class RepairsService implements OnModuleInit {
     // 再退公司级（既不挂小区也不挂管理处）
     const mine = await this.accessService.userOfficeIds(tenantId, user.id);
     const myOffices = new Set(mine.officeIds);
+    // 仓库挂了管理处就以管理处为准：小区和管理处对不上的仓（录错了小区）不能靠小区匹配成「同小区仓」
+    const officeConsistent = (item: Warehouse) => !item.officeId || !officeId || item.officeId === officeId;
     const rank = (item: Warehouse) =>
-      item.communityId === workOrder.communityId
+      item.communityId === workOrder.communityId && officeConsistent(item)
         ? 0
         : (officeId && item.officeId === officeId) ||
             (item.communityId && officeCommunities.has(item.communityId))
