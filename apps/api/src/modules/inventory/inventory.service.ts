@@ -53,6 +53,7 @@ import {
   StockQueryDto,
   SubmitToManagerDto,
   TenantQueryDto,
+  WarehousesQueryDto,
   UpdateMaterialDto,
   UpdateSupplierDto,
   UpdateStockDto,
@@ -265,12 +266,20 @@ export class InventoryService {
     ).slice(0, 20);
   }
 
-  async listWarehouses(query: TenantQueryDto, user: AuthUser) {
+  /**
+   * 仓库列表。scope=mine 时按本人角色范围过滤（2026-08-27 要求「按报修类型配置里的范围显示 / 隐藏」）：
+   *   · 全公司范围的人（总公司维修工 / 办公室 / 采购）→ 全部仓
+   *   · 管理处范围的人 → 自己管理处的仓（排前面，员工端默认选第一个）+ 公司级的仓（不挂任何管理处的总仓）；
+   *     别的管理处的仓不出现
+   * 工单选料的候选仓（listWorkOrderStockOptions）也是同一条规则，两处别各写一套。
+   */
+  async listWarehouses(query: WarehousesQueryDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
-    const list = await this.warehouseRepo.find({
+    const all = await this.warehouseRepo.find({
       where: { tenantId },
       order: { id: 'ASC' },
     });
+    const list = query.scope === 'mine' ? await this.filterWarehousesForUser(tenantId, user.id, all) : all;
     // 懒补「所属管理处」：加字段之前建的小区仓按 小区 → 管理处 推一次并落库，
     // 之后人员按管理处匹配仓库就有依据了；总仓（不挂小区）保持公司级
     const missing = list.filter((item) => !item.officeId && item.communityId);
@@ -300,6 +309,16 @@ export class InventoryService {
       }
     }
     return list;
+  }
+
+  /** 按本人角色范围留下能看的仓：自己管理处的排前面，然后是公司级的；全公司范围的人不过滤 */
+  async filterWarehousesForUser(tenantId: number, userId: number, all: Warehouse[]): Promise<Warehouse[]> {
+    const mine = await this.accessService.userOfficeIds(tenantId, userId);
+    if (mine.all) return all;
+    const offices = new Set(mine.officeIds);
+    const own = all.filter((item) => item.officeId && offices.has(item.officeId));
+    const company = all.filter((item) => !item.officeId && !item.communityId);
+    return [...own, ...company];
   }
 
   /** 仓库归属校验：类型和挂靠要对得上，管理处得是本公司的 */

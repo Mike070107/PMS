@@ -30,6 +30,7 @@ import {
   StockQueryDto,
   SubmitToManagerDto,
   TenantQueryDto,
+  WarehousesQueryDto,
   UpdateMaterialDto,
   UpdateSupplierDto,
   UpdateStockDto,
@@ -105,7 +106,7 @@ export class InventoryController {
 
   @Get('warehouses')
   @RequirePermission(['inventory', 'app:inventory'], 'view')
-  listWarehouses(@Query() query: TenantQueryDto, @CurrentUser() user: AuthUser) {
+  listWarehouses(@Query() query: WarehousesQueryDto, @CurrentUser() user: AuthUser) {
     return this.inventoryService.listWarehouses(query, user);
   }
 

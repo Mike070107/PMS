@@ -19,6 +19,13 @@ export class TenantQueryDto {
   tenantId?: number;
 }
 
+/** scope=mine：只给本人范围能看的仓（按角色范围对应的管理处），员工端用 */
+export class WarehousesQueryDto extends TenantQueryDto {
+  @IsOptional()
+  @IsString()
+  scope?: string;
+}
+
 export class CreateMaterialDto {
   @IsOptional()
   @Type(() => Number)

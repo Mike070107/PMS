@@ -757,7 +757,11 @@ export class RepairsService implements OnModuleInit {
             : !item.communityId && !item.officeId
               ? 3
               : 4;
-    const candidates = all.slice().sort((a, b) => rank(a) - rank(b) || a.id - b.id);
+    // 别的管理处的仓（rank 4）只有全公司范围的人看得到；管理处范围的维修工连「换仓库」里都不列，
+    // 和员工端库存页 /warehouses?scope=mine 同一条规则
+    const candidates = all
+      .filter((item) => mine.all || rank(item) <= 3)
+      .sort((a, b) => rank(a) - rank(b) || a.id - b.id);
     const mapped = candidates.find((item) => rank(item) <= 3) ?? null;
     const byRank = ['community', 'office', 'staff_office', 'company'] as const;
     const mappedBy = mapped ? byRank[rank(mapped) as 0 | 1 | 2 | 3] : null;

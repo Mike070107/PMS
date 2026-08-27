@@ -108,10 +108,8 @@ const num = (value: string | number) => Number(value ?? 0);
 function defaultWarehouseIndex(session: StaffSession, warehouses: WarehouseView[]): number {
   const access = session.me?.access;
   if (!access || access.scopeAll) return 0;
-  const offices = access.offices || [];
-  if (offices.length !== 1) return 0;
-  const officeId = offices[0].id;
-  const index = warehouses.findIndex((w) => w.enabled && w.officeId === officeId);
+  // 列表已经是服务端按范围过滤过的（自己管理处的仓排最前），第一个挂了管理处的就是默认仓
+  const index = warehouses.findIndex((w) => w.enabled && !!w.officeId);
   return index >= 0 ? index + 1 : 0;
 }
 
@@ -131,6 +129,8 @@ Page({
     loading: true,
     /** 首次加载完成后为 true：默认仓只在第一次进来时按管理处定，之后尊重用户切过的 */
     loaded: false,
+    /** 管理处范围的人一个仓都看不到时的说明 */
+    noWarehouseHint: '',
     tab: 'stock' as 'stock' | 'purchase',
 
     warehouses: [] as WarehouseView[],
@@ -170,6 +170,8 @@ Page({
   /** 原始数据放实例上，筛选在本地做，翻来翻去不用每次都请求 */
   materials: [] as MaterialView[],
   stocks: [] as StockView[],
+  /** 本人看得见的仓 id 集合（服务端按范围过滤后的）；「全部仓库」合计只算这些 */
+  visibleWarehouseIds: undefined as Set<number> | undefined,
 
   onShow() {
     syncTabBar(this, 'materials');
@@ -204,12 +206,19 @@ Page({
 
       const [materials, warehouses, stocks, requests] = await Promise.all([
         inventory.listMaterials(),
-        inventory.listWarehouses(),
+        // 只拿本人范围能看的仓：自己管理处的排前面，公司级的在后；别的管理处的仓不出现
+        inventory.listWarehouses({ scope: 'mine' }),
         inventory.listStocks(),
         purchases.listRequests(),
       ]);
       this.materials = materials;
       this.stocks = stocks;
+      this.visibleWarehouseIds = new Set(warehouses.map((w) => w.id));
+      // 管理处范围的人却一个仓都没有：说清是没建仓，不是坏了，也别让人以为自己没权限
+      const noWarehouseHint =
+        !warehouses.length && session.me?.access && !session.me.access.scopeAll
+          ? '你所属的管理处还没有仓库，请办公室在后台「库存与采购 → 基础资料 → 仓库档案」里给管理处建仓（新建管理处会自动带一个同名仓）。'
+          : '';
 
       const incompleteCount = materials.filter(
         (item) => item.enabled && missingFields(item).length > 0,
@@ -225,6 +234,7 @@ Page({
         warehouseNames: ['全部仓库', ...warehouses.map((w) => w.name)],
         warehouseIndex,
         loaded: true,
+        noWarehouseHint,
         incompleteCount,
         requests: requests.map((item) => ({
           ...item,
@@ -249,9 +259,12 @@ Page({
     let qty = 0;
     let safetyQty = 0;
     let found = false;
+    // 「全部仓库」只合计看得见的仓：别的管理处的库存不该混进本人的数里
+    const visible = this.visibleWarehouseIds as Set<number> | undefined;
     for (const stock of this.stocks as StockView[]) {
       if (stock.materialId !== materialId) continue;
       if (warehouseId && stock.warehouseId !== warehouseId) continue;
+      if (!warehouseId && visible && !visible.has(stock.warehouseId)) continue;
       qty += num(stock.qty);
       safetyQty += num(stock.safetyQty);
       found = true;

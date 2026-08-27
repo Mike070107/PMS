@@ -23,6 +23,12 @@
         </view>
       </view>
 
+      <view wx:if="{{noWarehouseHint}}" class="notice">
+        <view class="notice__body">
+          <view class="notice__title">你所属的管理处还没有仓库</view>
+          <view class="notice__desc">{{noWarehouseHint}}</view>
+        </view>
+      </view>
       <view class="toolbar">
         <picker class="picker-wrap" mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onPickWarehouse">
           <view class="picker">{{warehouseNames[warehouseIndex] || '全部仓库'}}</view>

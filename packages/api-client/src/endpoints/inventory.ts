@@ -39,7 +39,9 @@ export const updateMaterial = (id: number, data: Partial<UpsertMaterialReq>) =>
 
 // ---------------- 库存 ----------------
 
-export const listWarehouses = () => request<WarehouseView[]>({ url: '/warehouses' });
+/** scope=mine：只要本人范围能看的仓（自己管理处的排前面 + 公司级），员工端库存页用 */
+export const listWarehouses = (query: { scope?: 'mine' } = {}) =>
+  request<WarehouseView[]>({ url: '/warehouses', query: query as any });
 
 export const listStocks = (query: { warehouseId?: number; materialId?: number } = {}) =>
   request<StockView[]>({ url: '/stocks', query: query as any });
