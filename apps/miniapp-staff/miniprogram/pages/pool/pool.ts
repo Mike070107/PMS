@@ -21,19 +21,6 @@ import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unre
  * 于是办公室看到一屏「已派单 / 维修中」的单上全挂着接单按钮，点了必然 403。
  */
 
-/**
- * 卡片「报修人」那一行的文案：名字 + 身份。代报的写「（保安代报）」，员工在小程序里顺手报的
- * 写「（员工小程序提交）」—— 维修工上门前得知道该找谁开门、出了问题该问哪位同事。
- */
-function reporterTextOf(item: WorkOrderListItem): string {
-  const name = (item.contactName || '').trim();
-  if (!name) return item.source === 'staff_miniapp' && item.sourceLabel ? item.sourceLabel : '未填';
-  // 员工在小程序里提交的，reporterRole 也是「员工」，得先按来源判，否则会写成「员工代报」
-  if (item.source === 'staff_miniapp') return `${name}（员工小程序提交）`;
-  if (item.reporterRoleLabel) return `${name}（${item.reporterRoleLabel}代报）`;
-  return name;
-}
-
 type OrderRow = WorkOrderListItem & {
   typeLabel: string;
   createdAtText: string;
@@ -45,8 +32,6 @@ type OrderRow = WorkOrderListItem & {
   urgent: boolean;
   /** 「PVC 管 DN50 ×2 米」，等待材料的单才有 */
   missingText: string;
-  /** 「张阿姨」「王保安（保安代报）」「叶双（员工小程序提交）」，没留名字就是「未填」 */
-  reporterText: string;
   /** 维修工能不能领这一单（无人认领 + 状态允许） */
   claimable: boolean;
   /** 办公室能不能派/改派这一单 */
@@ -242,7 +227,6 @@ Page({
               ? '接回'
               : '接单',
           assigneeText: item.assigneeName || '未派单',
-          reporterText: reporterTextOf(item),
         };
       });
 

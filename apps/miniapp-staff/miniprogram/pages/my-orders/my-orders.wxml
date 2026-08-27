@@ -10,7 +10,7 @@
   <view
     wx:for="{{active}}"
     wx:key="id"
-    class="card wo-card"
+    class="card wo-card wo-card--bold"
     hover-class="wo-card--hover"
     hover-stay-time="80"
     bindtap="onTapItem"
@@ -31,23 +31,39 @@
       <text class="kv__k">报修时间</text>
       <text class="kv__v">{{item.timeText}}<text class="kv__tag kv__tag--{{item.stayTone}}">{{item.stayBadge}}</text></text>
     </view>
+    <view class="kv"><text class="kv__k">报修人</text><text class="kv__v">{{item.reporterText}}</text></view>
 
     <view class="wo-card__foot">
       <text class="wo-card__more">{{item.actionText}} ›</text>
     </view>
   </view>
 
-  <!-- 已完结的默认收起：手上真正要干的活才该占屏幕 -->
-  <view wx:if="{{done.length}}" class="fold" bindtap="onToggleDone">
-    <text class="fold__title">已完结 {{done.length}} 条</text>
+  <!-- 已完结的默认收起：手上真正要干的活才该占屏幕。搜过关键词就自动展开 -->
+  <view wx:if="{{done.length || doneKeyword}}" class="fold" bindtap="onToggleDone">
+    <text class="fold__title">{{doneResults ? '已完结 · 搜到 ' + doneResults.length + ' 条' : '已完结 ' + done.length + ' 条'}}</text>
     <text class="fold__action">{{doneOpen ? '收起' : '展开'}}</text>
   </view>
 
   <block wx:if="{{doneOpen}}">
+    <!-- 已完结的单只保留最近的在列表里，要翻老单靠搜：单号 / 地址 / 描述 / 报修人 / 维修工，服务端查全量 -->
+    <view class="search-row">
+      <input
+        class="input"
+        placeholder="搜已完结：单号 / 地址 / 描述 / 报修人"
+        value="{{doneKeyword}}"
+        confirm-type="search"
+        bindconfirm="onSearchDone"
+        bindinput="onDoneKeyword"
+      />
+      <button class="btn btn--outline btn--sm" loading="{{doneSearching}}" bindtap="onSearchDone">搜索</button>
+      <button wx:if="{{doneKeyword || doneResults}}" class="btn btn--ghost btn--sm" bindtap="onClearDoneSearch">清空</button>
+    </view>
+    <view wx:if="{{doneResults && !doneResults.length}}" class="muted center tip">没有匹配「{{doneQ}}」的已完结工单</view>
+
     <view
-      wx:for="{{done}}"
+      wx:for="{{doneResults || done}}"
       wx:key="id"
-      class="card wo-card wo-card--done"
+      class="card wo-card wo-card--bold wo-card--done"
       hover-class="wo-card--hover"
       hover-stay-time="80"
       bindtap="onTapItem"
@@ -62,11 +78,15 @@
 
       <view class="kv"><text class="kv__k">工单编号</text><text class="kv__v">{{item.orderNo}}</text></view>
       <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{item.summaryAddress || '未填地址'}}</text></view>
+      <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v kv__v--clamp">{{item.summaryContent}}</text></view>
       <view class="kv"><text class="kv__k">报修时间</text><text class="kv__v">{{item.createdAtText}}</text></view>
+      <view class="kv"><text class="kv__k">报修人</text><text class="kv__v">{{item.reporterText}}</text></view>
 
       <view class="wo-card__foot">
         <text class="wo-card__more">查看详情 ›</text>
       </view>
     </view>
+    <!-- 服务端一次最多给 100 条：到顶了必须说明，否则看着就是「搜索漏了单」 -->
+    <view wx:if="{{doneCapped}}" class="muted center tip">只显示最近 100 条，换个更具体的关键词缩小范围</view>
   </block>
 </view>

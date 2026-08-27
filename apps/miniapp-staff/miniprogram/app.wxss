@@ -364,6 +364,16 @@ button::after { border: none; }
 }
 /* 没有按钮时给一个明确的「可以点」提示，别让整卡可点变成隐藏功能 */
 .wo-card__more { color: var(--color-brand); font-size: var(--font-md); }
+/* 工单池 / 在手工单这两张「看单」卡：正文加大加粗（2026-08-27 要求）。
+   标题（类型）保持 36rpx 不动，信息行的值从正文 32rpx 提到 34rpx 并加粗 ——
+   维修工站在楼道里单手看，地址和描述才是要认的字；标签仍是浅灰 32rpx，主次才拉得开。
+   审批、库存那些卡不套：它们的值是金额和数量，加粗反而像在报警 */
+.wo-card--bold .kv__v {
+  font-size: var(--font-xl);
+  font-weight: 600;
+}
+.wo-card--bold .kv__v .kv__tag { font-weight: 500; }
+.wo-card--bold .kv__tag--danger { font-weight: 600; }
 
 /* ---------- 折叠分组标题（已完结、历史记录这类默认收起的内容） ---------- */
 .fold {

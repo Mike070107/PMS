@@ -83,12 +83,4 @@
 }
 .tech__load--free { color: var(--color-success); }
 
-/* 工单池卡片正文加大加粗（2026-08-27 要求）：标题（类型）保持 36rpx 不动，
-   信息行的值从正文 32rpx 提到 34rpx 并加粗 —— 维修工站在楼道里单手看，地址和描述才是要认的字。
-   标签（.kv__k）不动，仍是浅灰 32rpx，主次才拉得开；「已等 N 天」小标保持原字重，别抢戏 */
-.wo-card .kv__v {
-  font-size: var(--font-xl);
-  font-weight: 600;
-}
-.wo-card .kv__v .kv__tag { font-weight: 500; }
-.wo-card .kv__tag--danger { font-weight: 600; }
+/* 卡片正文加大加粗的样式在 app.wxss 的 .wo-card--bold，在手工单页共用 */

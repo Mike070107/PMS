@@ -2,3 +2,13 @@
 
 /* 已完结的单弱化：还在手上的活才该抢注意力 */
 .wo-card--done { opacity: 0.72; }
+
+/* 已完结区的搜索行：和工单池同一套（输入框吃掉剩余宽度，按钮按内容宽） */
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin: var(--space-md) 0 var(--space-lg);
+}
+.search-row .input { flex: 1; min-width: 0; }
+.tip { padding: var(--space-md) 0; line-height: 1.6; }

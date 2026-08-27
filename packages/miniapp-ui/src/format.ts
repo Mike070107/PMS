@@ -38,6 +38,10 @@ export function withOrderLabels<
     createdAt: string;
     completedAt?: string | null;
     missingMaterials?: Array<{ name: string; qty: number; unit?: string }> | null;
+    contactName?: string | null;
+    reporterRoleLabel?: string | null;
+    source?: string | null;
+    sourceLabel?: string | null;
   },
 >(
   list: T[],
@@ -55,6 +59,8 @@ export function withOrderLabels<
     /** 压了 7 天以上，卡片标题前挂「紧急」标签 */
     urgent: boolean;
     missingText: string;
+    /** 卡片「报修人」：「张阿姨」「王保安（保安代报）」「叶双（员工小程序提交）」，没留名字是「未填」 */
+    reporterText: string;
   }
 > {
   return list.map((item) => {
@@ -81,8 +87,26 @@ export function withOrderLabels<
       stayBadge: `已等 ${days} 天`,
       urgent: stayTone(days) === 'danger',
       missingText: missingMaterialsText(item.missingMaterials),
+      reporterText: reporterTextOf(item),
     };
   });
+}
+
+/**
+ * 「报修人」一行的文案：名字 + 身份。工单池、在手工单两张卡共用，别各写一套。
+ * 员工在小程序里提交的，reporterRole 也是「员工」，得先按来源判，否则会写成「员工代报」。
+ */
+function reporterTextOf(item: {
+  contactName?: string | null;
+  reporterRoleLabel?: string | null;
+  source?: string | null;
+  sourceLabel?: string | null;
+}): string {
+  const name = (item.contactName || '').trim();
+  if (!name) return item.source === 'staff_miniapp' && item.sourceLabel ? item.sourceLabel : '未填';
+  if (item.source === 'staff_miniapp') return `${name}（员工小程序提交）`;
+  if (item.reporterRoleLabel) return `${name}（${item.reporterRoleLabel}代报）`;
+  return name;
 }
 
 /** 手机号脱敏：138****8000 */

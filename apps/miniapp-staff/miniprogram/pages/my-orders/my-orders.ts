@@ -11,6 +11,7 @@ type OrderRow = WorkOrderListItem & {
   stayTone: string;
   /** 卡片右下角写清下一步该干什么，而不是笼统的「查看详情」 */
   actionText: string;
+  reporterText: string;
 };
 
 /** 还要人动手的状态，排在最上面；其余归到「已完结」折叠区 */
@@ -34,6 +35,12 @@ Page({
     done: [] as OrderRow[],
     doneOpen: false,
     loaded: false,
+    /** 已完结区的搜索：输入中的词 / 已发出去的词 / 结果（null = 没在搜，显示 done） */
+    doneKeyword: '',
+    doneQ: '',
+    doneResults: null as OrderRow[] | null,
+    doneSearching: false,
+    doneCapped: false,
   },
 
   onShow() {
@@ -70,6 +77,35 @@ Page({
 
   onToggleDone() {
     this.setData({ doneOpen: !this.data.doneOpen });
+  },
+
+  onDoneKeyword(e: WechatMiniprogram.Input) {
+    this.setData({ doneKeyword: e.detail.value });
+  },
+
+  /**
+   * 搜已完结的单走服务端：手上列表只带最近 100 条，去年修过的单本地是搜不到的。
+   * 服务端 q 同时匹配 单号 / 地址（198/47/201 逐段）/ 描述 / 报修人 / 维修工，和后台工单池一个口径。
+   */
+  async onSearchDone() {
+    const q = this.data.doneKeyword.trim();
+    if (!q) return this.onClearDoneSearch();
+    this.setData({ doneSearching: true, doneOpen: true });
+    try {
+      const list = await repairs.list({ scope: 'mine', q });
+      const rows = withOrderLabels(list)
+        .map((item) => ({ ...item, actionText: '查看详情' }))
+        .filter((item) => ACTIVE_STATUSES.indexOf(item.status) < 0);
+      this.setData({ doneQ: q, doneResults: rows, doneCapped: list.length >= 100 });
+    } catch (e: any) {
+      wx.showToast({ icon: 'none', title: e?.message || '搜索失败' });
+    } finally {
+      this.setData({ doneSearching: false });
+    }
+  },
+
+  onClearDoneSearch() {
+    this.setData({ doneKeyword: '', doneQ: '', doneResults: null, doneCapped: false });
   },
 
   onTapItem(e: WechatMiniprogram.BaseEvent) {

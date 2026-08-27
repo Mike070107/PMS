@@ -69,7 +69,7 @@
   <view
     wx:for="{{list}}"
     wx:key="id"
-    class="card wo-card"
+    class="card wo-card wo-card--bold"
     hover-class="wo-card--hover"
     hover-stay-time="80"
     bindtap="onTapItem"
