@@ -269,8 +269,7 @@ export class InventoryService {
   /**
    * 仓库列表。scope=mine 时按本人角色范围过滤（2026-08-27 要求「按报修类型配置里的范围显示 / 隐藏」）：
    *   · 全公司范围的人（总公司维修工 / 办公室 / 采购）→ 全部仓
-   *   · 管理处范围的人 → 自己管理处的仓（排前面，员工端默认选第一个）+ 公司级的仓（不挂任何管理处的总仓）；
-   *     别的管理处的仓不出现
+   *   · 管理处范围的人 → 只有自己管理处的仓（员工端默认选第一个）；别的管理处的仓和公司级总仓都不出现
    * 工单选料的候选仓（listWorkOrderStockOptions）也是同一条规则，两处别各写一套。
    */
   async listWarehouses(query: WarehousesQueryDto, user: AuthUser) {
@@ -316,9 +315,9 @@ export class InventoryService {
     const mine = await this.accessService.userOfficeIds(tenantId, userId);
     if (mine.all) return all;
     const offices = new Set(mine.officeIds);
-    const own = all.filter((item) => item.officeId && offices.has(item.officeId));
-    const company = all.filter((item) => !item.officeId && !item.communityId);
-    return [...own, ...company];
+    // 严格按范围：只有自己管理处的仓，公司级总仓也不给（2026-08-27 Mike 定的口径）。
+    // 管理处没建仓 = 一个都看不到，端上会提示去建仓
+    return all.filter((item) => item.officeId && offices.has(item.officeId));
   }
 
   /** 仓库归属校验：类型和挂靠要对得上，管理处得是本公司的 */

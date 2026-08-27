@@ -759,10 +759,10 @@ export class RepairsService implements OnModuleInit {
             : !item.communityId && !item.officeId
               ? 3
               : 4;
-    // 别的管理处的仓（rank 4）只有全公司范围的人看得到；管理处范围的维修工连「换仓库」里都不列，
-    // 和员工端库存页 /warehouses?scope=mine 同一条规则
+    // 管理处范围的维修工只看得到本单所在管理处 / 自己管理处的仓（rank ≤ 2），公司级总仓和别家的仓
+    // 连「换仓库」里都不列 —— 和员工端库存页 /warehouses?scope=mine 同一条规则；全公司范围的人不限
     const candidates = all
-      .filter((item) => mine.all || rank(item) <= 3)
+      .filter((item) => mine.all || rank(item) <= 2)
       .sort((a, b) => rank(a) - rank(b) || a.id - b.id);
     const mapped = candidates.find((item) => rank(item) <= 3) ?? null;
     const byRank = ['community', 'office', 'staff_office', 'company'] as const;
