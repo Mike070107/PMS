@@ -5,7 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
+import {
+  Brackets,
+  FindOptionsWhere,
+  In,
+  IsNull,
+  Repository,
+  SelectQueryBuilder,
+} from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
@@ -364,8 +371,7 @@ export class PropertiesService {
         'u.name AS "ownerName"',
         'u.phone AS "ownerPhone"',
       ])
-      .orderBy('c.id', 'ASC')
-      .limit(5000);
+      .orderBy('c.id', 'ASC');
 
     // 小区 → 弄 → 楼号 → 房号，全部走自然序（101 在 1001 前）
     addNaturalOrderBy(qb, 'b.lane');
@@ -380,55 +386,30 @@ export class PropertiesService {
     if (query.buildingId) {
       qb.andWhere('h.building_id = :bid', { bid: query.buildingId });
     } else if (query.communityId) {
-      qb.andWhere('b.community_id = :cid', { cid: query.communityId });
+      // 选中的是分组小区（如「永南永北」）时，把它底下的分期一起算进来 ——
+      // 分组本身不挂房产，只按 id 相等过滤会得到空列表
+      const ids = await this.expandCommunityIds(tenantId, query.communityId);
+      qb.andWhere('b.community_id IN (:...cids)', { cids: ids });
     }
 
-    if (query.q) {
-      const rawQ = query.q.trim();
-      const parts = rawQ
-        .split(/[\/\\\-\s]+/)
-        .map((p) => p.trim())
-        .filter(Boolean);
-      qb.andWhere(
-        new Brackets((sub) => {
-          sub
-            .where('b.lane ILIKE :kw', { kw: `%${rawQ}%` })
-            .orWhere('b.building_no ILIKE :kw', { kw: `%${rawQ}%` })
-            .orWhere('h.room_no ILIKE :kw', { kw: `%${rawQ}%` })
-            .orWhere('h.road_name ILIKE :kw', { kw: `%${rawQ}%` })
-            .orWhere('h.full_address ILIKE :kw', { kw: `%${rawQ}%` })
-            .orWhere('h.shop_name ILIKE :kw', { kw: `%${rawQ}%` })
-            .orWhere('u.name ILIKE :kw', { kw: `%${rawQ}%` })
-            .orWhere('u.phone ILIKE :kw', { kw: `%${rawQ}%` })
-            .orWhere(
-              "concat(coalesce(b.lane, ''), '/', b.building_no, '/', h.room_no) ILIKE :kw",
-              { kw: `%${rawQ}%` },
-            )
-            .orWhere(
-              "concat(coalesce(b.lane, ''), '弄', b.building_no, '号', h.room_no, '室') ILIKE :kw",
-              { kw: `%${rawQ}%` },
-            );
-          if (parts.length === 3) {
-            sub.orWhere(
-              'b.lane = :lanePart AND b.building_no = :buildingPart AND h.room_no = :roomPart',
-              {
-                lanePart: parts[0],
-                buildingPart: parts[1],
-                roomPart: parts[2],
-              },
-            );
-          } else if (parts.length === 2) {
-            sub.orWhere('b.building_no = :buildingPart2 AND h.room_no = :roomPart2', {
-              buildingPart2: parts[0],
-              roomPart2: parts[1],
-            });
-          }
-        }),
-      );
+    if (query.q) this.applyHouseKeyword(qb, query.q);
+
+    // 传了 page 才分页。老调用方（房号搜索下拉、前台收费、物业费）不传，继续拿数组，
+    // 但上限从 5000 提到 20000 —— 一次导入几千套房很容易顶到旧上限，
+    // 顶到之后列表和左侧树的角标会一起少掉，还看不出是被截断的（2026-08-27 就这么撞上了）。
+    const paged = query.page !== undefined;
+    let total: number | undefined;
+    if (paged) {
+      total = await qb.getCount();
+      const page = Math.max(1, Number(query.page) || 1);
+      const pageSize = Math.min(500, Math.max(1, Number(query.pageSize) || 50));
+      qb.offset((page - 1) * pageSize).limit(pageSize);
+    } else {
+      qb.limit(20000);
     }
 
     const rows = await qb.getRawMany<any>();
-    return rows.map((r) => ({
+    const mapped = rows.map((r) => ({
       id: Number(r.id),
       communityId: Number(r.communityId),
       buildingId: Number(r.buildingId),
@@ -446,6 +427,134 @@ export class PropertiesService {
         ? { id: Number(r.ownerId), name: r.ownerName, phone: r.ownerPhone }
         : null,
     }));
+    if (!paged) return mapped;
+    return {
+      rows: mapped,
+      total: total ?? mapped.length,
+      page: Math.max(1, Number(query.page) || 1),
+      pageSize: Math.min(500, Math.max(1, Number(query.pageSize) || 50)),
+    };
+  }
+
+
+  /**
+   * 房号模糊搜索：弄/号/室/路名/完整地址/商铺名/业主姓名/业主电话，
+   * 外加 `198/2/101` 和 `198弄2号101室` 两种整串写法。
+   * 列表和树的角标共用这一份，两边口径才不会飘。调用前需已 join b / h / u。
+   */
+  private applyHouseKeyword(qb: SelectQueryBuilder<House>, keyword: string) {
+    const rawQ = keyword.trim();
+    const parts = rawQ
+      .split(/[\/\\\-\s]+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    qb.andWhere(
+      new Brackets((sub) => {
+        sub
+          .where('b.lane ILIKE :kw', { kw: `%${rawQ}%` })
+          .orWhere('b.building_no ILIKE :kw', { kw: `%${rawQ}%` })
+          .orWhere('h.room_no ILIKE :kw', { kw: `%${rawQ}%` })
+          .orWhere('h.road_name ILIKE :kw', { kw: `%${rawQ}%` })
+          .orWhere('h.full_address ILIKE :kw', { kw: `%${rawQ}%` })
+          .orWhere('h.shop_name ILIKE :kw', { kw: `%${rawQ}%` })
+          .orWhere('u.name ILIKE :kw', { kw: `%${rawQ}%` })
+          .orWhere('u.phone ILIKE :kw', { kw: `%${rawQ}%` })
+          .orWhere(
+            "concat(coalesce(b.lane, ''), '/', b.building_no, '/', h.room_no) ILIKE :kw",
+            { kw: `%${rawQ}%` },
+          )
+          .orWhere(
+            "concat(coalesce(b.lane, ''), '弄', b.building_no, '号', h.room_no, '室') ILIKE :kw",
+            { kw: `%${rawQ}%` },
+          );
+        if (parts.length === 3) {
+          sub.orWhere(
+            'b.lane = :lanePart AND b.building_no = :buildingPart AND h.room_no = :roomPart',
+            {
+              lanePart: parts[0],
+              buildingPart: parts[1],
+              roomPart: parts[2],
+            },
+          );
+        } else if (parts.length === 2) {
+          sub.orWhere('b.building_no = :buildingPart2 AND h.room_no = :roomPart2', {
+            buildingPart2: parts[0],
+            roomPart2: parts[1],
+          });
+        }
+      }),
+    );
+  }
+
+  /** 小区 id → 它自己 + 它底下的分期（不是分组时就只有它自己） */
+  private async expandCommunityIds(tenantId: number, communityId: number): Promise<number[]> {
+    const children = await this.communityRepo.find({
+      where: { tenantId, parentId: communityId },
+      select: ['id'],
+    });
+    return children.length ? [communityId, ...children.map((c) => c.id)] : [communityId];
+  }
+
+  /**
+   * 左侧树的户数角标专用：按小区 / 楼栋分组数房，**不受列表分页和上限影响**。
+   * 角标和列表必须同一套过滤口径（同样的 scope、同样的 q），否则用户会看到
+   * 「树上写 658 户、点进去只有 500 行」这种对不上的数。
+   */
+  async houseSummary(query: HouseQueryDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user, query.tenantId);
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.length) {
+      return { total: 0, communities: [], buildings: [] };
+    }
+    const qb = this.houseRepo
+      .createQueryBuilder('h')
+      .innerJoin(Building, 'b', 'b.id = h.building_id AND b.tenant_id = h.tenant_id')
+      .leftJoin(
+        User,
+        'u',
+        'u.house_id = h.id AND u.tenant_id = h.tenant_id AND u.role = :role',
+        { role: UserRole.OWNER },
+      )
+      .where('h.tenant_id = :tenantId', { tenantId });
+    if (scope) qb.andWhere('b.community_id IN (:...scopeIds)', { scopeIds: scope });
+    if (query.q) this.applyHouseKeyword(qb, query.q);
+
+    const rows = await qb
+      .select([
+        'b.community_id AS "communityId"',
+        'h.building_id AS "buildingId"',
+        'b.lane AS lane',
+        'b.building_no AS "buildingNo"',
+        'MIN(h.road_name) AS "roadName"',
+        'COUNT(*) AS count',
+      ])
+      .groupBy('b.community_id')
+      .addGroupBy('h.building_id')
+      .addGroupBy('b.lane')
+      .addGroupBy('b.building_no')
+      .getRawMany<any>();
+
+    const buildings = rows.map((r) => ({
+      buildingId: Number(r.buildingId),
+      communityId: Number(r.communityId),
+      lane: r.lane,
+      buildingNo: r.buildingNo,
+      roadName: r.roadName,
+      count: Number(r.count),
+    }));
+    buildings.sort(compareBuildingLike as any);
+    const communityMap = new Map<number, number>();
+    for (const b of buildings) {
+      communityMap.set(b.communityId, (communityMap.get(b.communityId) ?? 0) + b.count);
+    }
+    return {
+      total: buildings.reduce((sum, b) => sum + b.count, 0),
+      communities: [...communityMap.entries()].map(([communityId, count]) => ({
+        communityId,
+        count,
+      })),
+      buildings,
+    };
   }
 
   async createHouse(dto: CreateHouseDto, user: AuthUser) {

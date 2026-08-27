@@ -44,6 +44,20 @@ interface Community {
   address?: string | null;
   enabled?: boolean;
 }
+/** GET /houses/summary：树的户数角标 + 楼栋节点标题所需的最小信息 */
+interface HouseSummary {
+  total: number;
+  communities: Array<{ communityId: number; count: number }>;
+  buildings: Array<{
+    buildingId: number;
+    communityId: number;
+    lane: string | null;
+    buildingNo: string;
+    roadName: string | null;
+    count: number;
+  }>;
+}
+
 interface HouseRow {
   id: number;
   communityId: number;
@@ -145,6 +159,10 @@ function HousesTab() {
   const [communities, setCommunities] = useState<Community[]>([]);
   const [selection, setSelection] = useState<TreeSelection>({ kind: 'all' });
   const [rows, setRows] = useState<HouseRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [summary, setSummary] = useState<HouseSummary>({ total: 0, communities: [], buildings: [] });
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -162,61 +180,85 @@ function HousesTab() {
     } catch (e: any) { message.error(e?.message || '加载小区失败'); }
   }, [message]);
 
-  // 一次拉全，左侧树和表格用同一份数据，保证角标数量和列表口径一致
+  /**
+   * 表格走服务端分页、树的角标走 /houses/summary。
+   *
+   * 原来是「一次拉全，树和表共用一份数据」——房产到 5000 套就顶到接口上限，
+   * 树上写「全部 (5000)」、后面的房子直接看不见，还看不出是被截断的
+   * （2026-08-27 导完永德片区 5013 套就撞上了）。现在两边各查各的，
+   * 但过滤条件（scope、搜索词）保持同一套，角标和列表才对得上。
+   */
+  const houseQuery = useCallback(() => {
+    const base: Record<string, unknown> = { q: q || undefined };
+    if (selection.kind === 'building') base.buildingId = selection.id;
+    // 分组节点（如「永南永北」）本身不挂房产，后端会自动展开到它下面的分期
+    else if (selection.kind === 'community' || selection.kind === 'group') base.communityId = selection.id;
+    return base;
+  }, [q, selection]);
+
   const loadHouses = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await request<HouseRow[]>({
+      const data = await request<{ rows: HouseRow[]; total: number }>({
         url: '/houses',
-        query: { q: q || undefined },
+        query: { ...houseQuery(), page, pageSize },
       });
-      setRows(list);
+      setRows(data.rows);
+      setTotal(data.total);
     } catch (e: any) {
       message.error(e?.message || '加载房产失败');
     } finally { setLoading(false); }
+  }, [houseQuery, page, pageSize, message]);
+
+  const loadSummary = useCallback(async () => {
+    try {
+      setSummary(await request<HouseSummary>({ url: '/houses/summary', query: { q: q || undefined } }));
+    } catch (e: any) {
+      message.error(e?.message || '加载房产统计失败');
+    }
   }, [q, message]);
 
   useEffect(() => { loadCommunities(); }, [loadCommunities]);
   useEffect(() => { loadHouses(); }, [loadHouses]);
+  useEffect(() => { loadSummary(); }, [loadSummary]);
+  // 换了节点或搜索词就回到第一页，否则会停在一个空白页上
+  useEffect(() => { setPage(1); }, [selection, q]);
+
+  const reloadAll = useCallback(() => { loadHouses(); loadSummary(); }, [loadHouses, loadSummary]);
 
   const communityById = useMemo(
     () => new Map(communities.map((c) => [c.id, c])),
     [communities],
   );
 
-  /** 小区(分组) → 分期 → 楼栋 三层树；每层带户数角标 */
+  /** 小区(分组) → 分期 → 楼栋 三层树；每层带户数角标（数字来自 /houses/summary，不受分页影响） */
   const treeData = useMemo(() => {
-    const housesByCommunity = new Map<number, HouseRow[]>();
-    for (const row of rows) {
-      const list = housesByCommunity.get(row.communityId) ?? [];
-      list.push(row);
-      housesByCommunity.set(row.communityId, list);
+    const countByCommunity = new Map(summary.communities.map((c) => [c.communityId, c.count]));
+    const buildingsByCommunity = new Map<number, HouseSummary['buildings']>();
+    for (const b of summary.buildings) {
+      const list = buildingsByCommunity.get(b.communityId) ?? [];
+      list.push(b);
+      buildingsByCommunity.set(b.communityId, list);
     }
 
     const buildCommunityNode = (community: Community) => {
-      const own = housesByCommunity.get(community.id) ?? [];
-      const buildings = new Map<number, HouseRow[]>();
-      for (const row of own) {
-        const list = buildings.get(row.buildingId) ?? [];
-        list.push(row);
-        buildings.set(row.buildingId, list);
-      }
+      const own = buildingsByCommunity.get(community.id) ?? [];
       const parentName = community.parentId
         ? communityById.get(community.parentId)?.name
         : null;
       // 主弄号 = 覆盖户数最多的那个「弄」，楼栋节点里省掉它
       const laneWeight = new Map<string, number>();
-      for (const row of own) {
-        if (!row.lane) continue;
-        laneWeight.set(row.lane, (laneWeight.get(row.lane) ?? 0) + 1);
+      for (const b of own) {
+        if (!b.lane) continue;
+        laneWeight.set(b.lane, (laneWeight.get(b.lane) ?? 0) + b.count);
       }
       const mainLane = Array.from(laneWeight.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
       return {
         key: `c:${community.id}`,
-        title: `${shortPhaseName(community.name, parentName)}${mainLane ? `（${mainLane}弄）` : ''} (${own.length})`,
-        children: Array.from(buildings.entries()).map(([buildingId, list]) => ({
-          key: `b:${buildingId}`,
-          title: `${formatBuildingNode(list[0].lane, list[0].buildingNo, list[0].roadName, mainLane)} (${list.length})`,
+        title: `${shortPhaseName(community.name, parentName)}${mainLane ? `（${mainLane}弄）` : ''} (${countByCommunity.get(community.id) ?? 0})`,
+        children: own.map((b) => ({
+          key: `b:${b.buildingId}`,
+          title: `${formatBuildingNode(b.lane, b.buildingNo, b.roadName, mainLane)} (${b.count})`,
           isLeaf: true,
         })),
       };
@@ -229,13 +271,13 @@ function HousesTab() {
     const nodes = [
       ...groups.map((group) => {
         const children = communities.filter((c) => c.parentId === group.id);
-        const total = children.reduce(
-          (sum, child) => sum + (housesByCommunity.get(child.id)?.length ?? 0),
+        const groupTotal = children.reduce(
+          (sum, child) => sum + (countByCommunity.get(child.id) ?? 0),
           0,
         );
         return {
           key: `g:${group.id}`,
-          title: `${group.name} (${total})`,
+          title: `${group.name} (${groupTotal})`,
           children: children.map(buildCommunityNode),
         };
       }),
@@ -244,31 +286,17 @@ function HousesTab() {
         .map(buildCommunityNode),
     ];
     return [
-      { key: 'all', title: `全部 (${rows.length})`, isLeaf: true },
+      { key: 'all', title: `全部 (${summary.total})`, isLeaf: true },
       ...nodes,
     ];
-  }, [communities, communityById, rows]);
-
-  const visibleRows = useMemo(() => {
-    if (selection.kind === 'all') return rows;
-    if (selection.kind === 'building') {
-      return rows.filter((row) => row.buildingId === selection.id);
-    }
-    if (selection.kind === 'community') {
-      return rows.filter((row) => row.communityId === selection.id);
-    }
-    const childIds = new Set(
-      communities.filter((c) => c.parentId === selection.id).map((c) => c.id),
-    );
-    return rows.filter((row) => childIds.has(row.communityId));
-  }, [rows, selection, communities]);
+  }, [communities, communityById, summary]);
 
   /** 新增房产时默认带上当前选中的分期（分组节点不挂房产） */
   const defaultCommunityId =
     selection.kind === 'community'
       ? selection.id
       : selection.kind === 'building'
-        ? visibleRows[0]?.communityId
+        ? rows[0]?.communityId
         : undefined;
 
   const onDelete = (r: HouseRow) => {
@@ -280,9 +308,9 @@ function HousesTab() {
         try {
           await request({ method: 'DELETE', url: `/houses/${r.id}` });
           message.success('已删除');
-          loadHouses();
+          reloadAll();
         } catch (e: any) {
-          if (handleGone(e, message, '这套房产', loadHouses)) return;
+          if (handleGone(e, message, '这套房产', reloadAll)) return;
           message.error(e?.message || '删除失败');
         }
       },
@@ -328,9 +356,7 @@ function HousesTab() {
             <span>
               房产列表{' '}
               <Text type="secondary" style={{ fontSize: 12 }}>
-                {visibleRows.length === rows.length
-                  ? `共 ${rows.length} 户`
-                  : `${visibleRows.length} 户 / 共 ${rows.length} 户`}
+                {q ? `搜到 ${total} 户` : `共 ${total} 户`}
               </Text>
             </span>
           )}
@@ -341,11 +367,11 @@ function HousesTab() {
                 prefix={<SearchOutlined />}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                onPressEnter={loadHouses}
+                onPressEnter={reloadAll}
                 allowClear
                 style={{ width: 220 }}
               />
-              <Button icon={<ReloadOutlined />} onClick={loadHouses}>刷新</Button>
+              <Button icon={<ReloadOutlined />} onClick={reloadAll}>刷新</Button>
               {canEdit && (
                 <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>导入</Button>
               )}
@@ -366,8 +392,16 @@ function HousesTab() {
             rowKey="id"
             size="middle"
             loading={loading}
-            dataSource={visibleRows}
-            pagination={{ pageSize: 20, showSizeChanger: true }}
+            dataSource={rows}
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              showSizeChanger: true,
+              pageSizeOptions: [20, 50, 100, 200],
+              showTotal: (t) => `共 ${t} 户`,
+              onChange: (p, ps) => { setPage(p); setPageSize(ps); },
+            }}
             columns={[
               {
                 title: '小区', dataIndex: 'communityName', width: 170, fixed: 'left',
@@ -431,25 +465,25 @@ function HousesTab() {
         communities={communities}
         defaultCommunityId={defaultCommunityId}
         onClose={() => setCreateOpen(false)}
-        onDone={() => { setCreateOpen(false); loadHouses(); }}
+        onDone={() => { setCreateOpen(false); reloadAll(); }}
       />
       <HouseFormModal
         open={!!editingHouse}
         communities={communities}
         target={editingHouse || undefined}
         onClose={() => setEditingHouse(null)}
-        onDone={() => { setEditingHouse(null); loadHouses(); }}
+        onDone={() => { setEditingHouse(null); reloadAll(); }}
       />
       <CommunityManagerModal
         open={communityModalOpen}
         communities={communities}
         onClose={() => setCommunityModalOpen(false)}
-        onChanged={() => { loadCommunities(); loadHouses(); }}
+        onChanged={() => { loadCommunities(); reloadAll(); }}
       />
       <PropertiesImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onDone={() => { setImportOpen(false); loadCommunities(); loadHouses(); }}
+        onDone={() => { setImportOpen(false); loadCommunities(); reloadAll(); }}
       />
     </Row>
   );

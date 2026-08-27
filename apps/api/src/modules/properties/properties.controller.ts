@@ -190,6 +190,21 @@ export class PropertiesController {
     return this.propertiesService.listHouses(query, user, access);
   }
 
+  /**
+   * 房产树的户数角标：按小区/楼栋分组数房，不受列表分页影响。
+   * 单独一个接口是因为角标要的是「一共多少户」，列表要的是「这一页的行」，
+   * 用同一个接口凑会逼着列表把全量拉回来（房产上了 5000 套就顶到上限了）。
+   */
+  @Get('houses/summary')
+  @RequirePermission(['properties', 'business'], 'view')
+  houseSummary(
+    @Query() query: HouseQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.propertiesService.houseSummary(query, user, access);
+  }
+
   @Post('houses')
   @RequirePermission('properties', 'edit')
   createHouse(@Body() dto: CreateHouseDto, @CurrentUser() user: AuthUser) {

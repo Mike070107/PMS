@@ -4,7 +4,9 @@ import {
   IsNumberString,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
@@ -263,6 +265,23 @@ export class HouseQueryDto extends TenantScopedQueryDto {
   @IsString()
   @MaxLength(60)
   q?: string;
+
+  /**
+   * 传了 page 就走服务端分页，返回 { rows, total, page, pageSize }；
+   * 不传仍返回数组（房号搜索下拉、前台收费、物业费那几处调用方按数组用，别改它们的口径）。
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  pageSize?: number;
 }
 
 // ---------- 小程序地址簿 ----------
