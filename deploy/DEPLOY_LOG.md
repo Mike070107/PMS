@@ -40,3 +40,11 @@
   - 26c6e22 地址分词：连字符放到字符类末尾，\- 会被当成「\ 到 —」的范围，228-51 搜不到（线上验收发现）
   - 83e6946 派单后没人接单，自动催单
 
+## 2026-08-27 09:58 · api · 332fe97
+
+- 包：`pms-api-20260827-0952.tar.gz`
+- 提交：332fe97 报修类型配置按管理处分套、默认维修工按范围过滤、领料仓库改成按小区/管理处自动匹配
+- 说明：从 PMS-deploy worktree 打包；线上验收：/repair-type-rules 公司默认 9 条、?officeId=1 懒复制 9 条且幂等、technicians?scope=company 只列全公司范围、?officeId=1 含叶双/office、stock-options mappedBy=community、旧 repair-type-warehouses 404
+- 自上次（26c6e22）以来上线的相关提交：
+  - 332fe97 报修类型配置按管理处分套、默认维修工按范围过滤、领料仓库改成按小区/管理处自动匹配
+
