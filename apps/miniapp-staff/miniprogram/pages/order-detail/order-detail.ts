@@ -164,7 +164,7 @@ interface PageData {
   skuCategories: string[];
   skuCategoryIndex: number;
   warehouseName: string;
-  /** 面板标题：没仓时要写明「未配领料仓库」，不能还挂着一个仓名 */
+  /** 面板标题：没仓时要写明「未匹配到仓库」，不能还挂着一个仓名 */
   skuTitle: string;
   /** 当前在看的仓库；本单「小区 + 类型」没配、也没手动切时为 null */
   skuWarehouseId: number | null;
@@ -607,16 +607,18 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       const typeText = resp.repairTypeLabel || '这个报修类型';
       this.setData({
         warehouseName: resp.warehouseName || '',
-        skuTitle: resp.warehouseName ? `${resp.warehouseName}库存` : '未配领料仓库',
+        skuTitle: resp.warehouseName ? `${resp.warehouseName}库存` : '未匹配到仓库',
         skuWarehouseId: resp.warehouseId,
         warehouses,
         skuCategories: seen,
         skuCategoryIndex: -1,
         // 没仓 / 仓空都得说清是哪种，否则一屏「无货」看着就是坏了
+        // 仓库按工单所在小区 / 管理处自动匹配（同小区仓 → 同管理处仓 → 公司总仓），
+        // 匹配不到 = 仓都挂在别的管理处名下：请办公室在「库存与采购」给本管理处建仓，急用自己挑
         skuEmptyHint: !resp.warehouseId
           ? warehouses.length
-            ? `本小区的「${typeText}」还没配领料仓库，让办公室在后台「报修类型配置」里配一下。急用先点上面「选仓库」自己挑一个。`
-            : `本小区的「${typeText}」还没配领料仓库，公司也还没建仓，需要的料请走「手填一项」提报缺料。`
+            ? `本单所在的小区 / 管理处还没有自己的仓库，公司也没有总仓。急用先点上面「选仓库」自己挑一个；请办公室在后台「库存与采购」里给本管理处建仓。`
+            : `公司还没建任何仓库，「${typeText}」需要的料请走「手填一项」提报缺料。`
           : resp.items.every((item) => item.qty <= 0)
             ? stocked.length
               ? `「${resp.warehouseName}」里现在一件货都没有，点上面「换仓库」看看「${stocked[0].name}」`
@@ -637,7 +639,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   /**
    * 手动挑仓库。
-   * 默认仓由后台「小区 + 报修类型」配好，配漏了 / 配的那个仓空了，
+   * 默认仓按工单所在小区 / 管理处自动匹配，匹配不到 / 匹配到的那个仓空了，
    * 维修工照样得能领到料 —— 不给这个口子，人就只能停在这儿等办公室。
    */
   onSwitchWarehouse() {
@@ -645,7 +647,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     if (!list.length) return;
     const names = list.map(
       (item) =>
-        `${item.name}${item.own ? '（本类型默认）' : ''}${item.hasStock ? '' : '（暂无库存）'}`,
+        `${item.name}${item.own ? '（本单默认）' : ''}${item.hasStock ? '' : '（暂无库存）'}`,
     );
     wx.showActionSheet({
       itemList: names,

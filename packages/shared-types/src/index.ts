@@ -428,6 +428,8 @@ export interface WorkOrderDetail {
  * 办公室只能凭印象派，活全压在同一个人身上也看不出来。
  */
 export interface TechnicianOption {
+  /** 报修类型配置按管理处筛人时带上：all = 全公司范围，office = 只覆盖当前管理处；派单列表不带 */
+  scope?: 'all' | 'office' | null;
   id: number;
   name: string;
   phone: string | null;
@@ -612,18 +614,6 @@ export interface WorkOrderStockOptions {
 }
 
 /** 「小区 + 报修类型 → 领料仓库」一条配置 */
-export interface RepairTypeWarehouseView {
-  communityId: number;
-  repairType: string;
-  warehouseId: number;
-}
-
-/** 报修类型配置页要的全部数据：可选仓库 + 已配好的对照关系 */
-export interface RepairTypeWarehouseOptions {
-  warehouses: WarehouseView[];
-  items: RepairTypeWarehouseView[];
-}
-
 export interface WarehouseView {
   id: number;
   name: string;

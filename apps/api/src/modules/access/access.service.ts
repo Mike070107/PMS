@@ -339,6 +339,71 @@ export class AccessService {
     return ids.includes(userId);
   }
 
+  /** 管理处 → 其下全部小区 id（含分期子小区）；工单模块按管理处匹配领料仓库用 */
+  async officeCommunityIds(tenantId: number, officeId: number): Promise<number[]> {
+    return this.expandOfficeCommunityIds(tenantId, officeId);
+  }
+
+  /** 小区所属管理处：分期子小区跟着顶层小区走；没挂管理处返回 null */
+  async officeIdOfCommunity(tenantId: number, communityId: number): Promise<number | null> {
+    const community = await this.communityRepo.findOne({
+      where: { tenantId, id: communityId },
+      select: ['id', 'officeId', 'parentId'],
+    });
+    if (!community) return null;
+    if (community.officeId) return community.officeId;
+    if (!community.parentId) return null;
+    const parent = await this.communityRepo.findOne({
+      where: { tenantId, id: community.parentId },
+      select: ['id', 'officeId'],
+    });
+    return parent?.officeId ?? null;
+  }
+
+  /**
+   * 这些人里谁的数据范围覆盖某个管理处（officeId = null 表示「全公司」）。
+   * 报修类型配置选默认维修工时用：公司默认模板只能选全公司范围的人；
+   * 管理处那套可以选全公司的人 + 范围含该管理处（或其下小区）的人。
+   * 「总公司维修工 / 管理处维修工」就是两个数据范围不同的角色 —— 这里只看范围，不看业务身份。
+   * 返回 userId → 'all'（全公司）| 'office'（只覆盖这个管理处）；没覆盖的不在 Map 里。
+   */
+  async filterUsersCoveringOffice(
+    tenantId: number,
+    userIds: number[],
+    officeId: number | null,
+  ): Promise<Map<number, 'all' | 'office'>> {
+    const result = new Map<number, 'all' | 'office'>();
+    if (!userIds.length) return result;
+    const bindings = await this.userRoleRepo.find({
+      where: { tenantId, userId: In(userIds) },
+    });
+    if (!bindings.length) return result;
+    const roleIds = [...new Set(bindings.map((b) => b.roleId))];
+    const roles = await this.roleRepo.find({
+      where: { id: In(roleIds), tenantId, enabled: true },
+    });
+    const allRoleIds = new Set(
+      roles
+        .filter((r) => r.builtIn || r.dataScope === RoleDataScope.ALL)
+        .map((r) => r.id),
+    );
+    const officeRoleIds = new Set<number>();
+    if (officeId) {
+      const scopes = await this.roleScopeRepo.find({ where: { roleId: In(roleIds) } });
+      const officeCommunities = new Set(await this.expandOfficeCommunityIds(tenantId, officeId));
+      for (const s of scopes) {
+        if (s.officeId === officeId || (s.communityId && officeCommunities.has(s.communityId))) {
+          officeRoleIds.add(s.roleId);
+        }
+      }
+    }
+    for (const b of bindings) {
+      if (allRoleIds.has(b.roleId)) result.set(b.userId, 'all');
+      else if (officeRoleIds.has(b.roleId) && !result.has(b.userId)) result.set(b.userId, 'office');
+    }
+    return result;
+  }
+
   /** 这个人绑了哪些角色（名字），给前端显示用 */
   async listRoleNames(user: AuthUser): Promise<string[]> {
     if (!user.tenantId) return [];

@@ -7,7 +7,6 @@ import {
   ParseIntPipe,
   Patch,
   Post,
-  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -35,7 +34,6 @@ import {
   UpdateWorkOrderRepairTypeDto,
   UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
-  UpsertRepairTypeWarehouseDto,
   WorkOrdersQueryDto,
 } from './dto';
 import { RepairsService } from './repairs.service';
@@ -56,10 +54,14 @@ import { RepairsService } from './repairs.service';
 export class RepairsController {
   constructor(private readonly repairsService: RepairsService) {}
 
+  /** officeId 不传 = 公司默认模板；传了 = 该管理处那套（首次会从模板复制） */
   @Get('repair-type-rules')
   @RequirePermission('work-orders', 'view')
-  listRepairTypeRules(@CurrentUser() user: AuthUser) {
-    return this.repairsService.listRepairTypeRules(user);
+  listRepairTypeRules(
+    @CurrentUser() user: AuthUser,
+    @Query('officeId') officeId?: string,
+  ) {
+    return this.repairsService.listRepairTypeRules(user, officeId ? Number(officeId) : null);
   }
 
   @Post('repair-type-rules')
@@ -100,26 +102,6 @@ export class RepairsController {
   }
 
   /**
-   * 「小区 + 报修类型 → 领料仓库」对照表。
-   * 工单选料就按它取仓，所以跟报修类型配置放在一起维护。
-   */
-  @Get('repair-type-warehouses')
-  @RequirePermission('work-orders', 'view')
-  listRepairTypeWarehouses(@CurrentUser() user: AuthUser) {
-    return this.repairsService.listRepairTypeWarehouses(user);
-  }
-
-  /** 配 / 改 / 清空一条（warehouseId 传 null 即清空） */
-  @Put('repair-type-warehouses')
-  @RequirePermission('work-orders', 'edit')
-  upsertRepairTypeWarehouse(
-    @Body() dto: UpsertRepairTypeWarehouseDto,
-    @CurrentUser() user: AuthUser,
-  ) {
-    return this.repairsService.upsertRepairTypeWarehouse(dto, user);
-  }
-
-  /**
    * 报修类型（含关键词），任意登录角色可读。
    * 业主端用它渲染类型选项，并在「随手拍报修」里按关键词自动判定类型。
    * 只出启用中的类型，不下发派单规则（默认维修工 / 时限属于内部配置）。
@@ -130,8 +112,11 @@ export class RepairsController {
     ['work-orders', 'app:repair-create', 'app:pool', 'app:my-orders'],
     'view',
   )
-  listPublicRepairTypes(@CurrentUser() user: AuthUser) {
-    return this.repairsService.listPublicRepairTypes(user);
+  listPublicRepairTypes(
+    @CurrentUser() user: AuthUser,
+    @Query('communityId') communityId?: string,
+  ) {
+    return this.repairsService.listPublicRepairTypes(user, communityId ? Number(communityId) : null);
   }
 
   @Get('repair-suggestions')
@@ -228,8 +213,12 @@ export class RepairsController {
   listDispatchTechnicians(
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
+    @Query('officeId') officeId?: string,
+    @Query('scope') scope?: string,
   ) {
-    return this.repairsService.listDispatchTechnicians(user, access);
+    // 报修类型配置用：scope=company 只列全公司范围的人；officeId=X 列范围覆盖 X 的人。都不传 = 全部能接单的人（派单用）
+    const officeScope = scope === 'company' ? null : officeId ? Number(officeId) : undefined;
+    return this.repairsService.listDispatchTechnicians(user, access, officeScope);
   }
 
   @Get('work-orders/:id')

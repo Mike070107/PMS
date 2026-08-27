@@ -44,12 +44,12 @@ import {
   Building,
   Community,
   House,
+  ManagementOffice,
   Notification,
   PurchaseRequest,
   RepairRequest,
   RepairTypeCorrection,
   RepairTypeRule,
-  RepairTypeWarehouse,
   Review,
   Material,
   StaffProfile,
@@ -76,7 +76,6 @@ import {
   UpdateWorkOrderRepairTypeDto,
   UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
-  UpsertRepairTypeWarehouseDto,
   WorkOrdersQueryDto,
 } from './dto';
 import {
@@ -181,26 +180,64 @@ export class RepairsService implements OnModuleInit {
     }
   }
 
-  async listRepairTypeRules(user: AuthUser) {
+  /**
+   * 报修类型规则按管理处分套：officeId 为空 = 公司默认模板；
+   * 管理处第一次打开配置页时从模板复制一份（懒复制），之后各改各的、互不影响。
+   */
+  async listRepairTypeRules(user: AuthUser, officeId?: number | null) {
     const tenantId = this.resolveTenantId(user);
     await this.ensureDefaultRepairTypeRules(tenantId, user.id);
-    return this.repairTypeRuleRepo.find({
-      where: { tenantId },
+    if (!officeId) {
+      return this.repairTypeRuleRepo.find({
+        where: { tenantId, officeId: IsNull() },
+        order: { sortOrder: 'ASC', id: 'ASC' },
+      });
+    }
+    await this.assertOffice(tenantId, officeId);
+    const own = await this.repairTypeRuleRepo.find({
+      where: { tenantId, officeId },
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
+    if (own.length) return own;
+    const template = await this.repairTypeRuleRepo.find({
+      where: { tenantId, officeId: IsNull() },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    if (!template.length) return [];
+    const copied = await this.repairTypeRuleRepo.save(
+      template.map((rule) =>
+        this.repairTypeRuleRepo.create({
+          tenantId,
+          officeId,
+          repairType: rule.repairType,
+          label: rule.label,
+          assigneeId: rule.assigneeId,
+          slaHours: rule.slaHours,
+          sortOrder: rule.sortOrder,
+          enabled: rule.enabled,
+          contentSuggestions: [...(rule.contentSuggestions ?? [])],
+          createdBy: user.id,
+          updatedBy: user.id,
+        }),
+      ),
+    );
+    return copied.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   }
 
   async createRepairTypeRule(dto: UpsertRepairTypeRuleDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user);
-    await this.assertAssignee(tenantId, dto.assigneeId ?? null);
+    const officeId = dto.officeId ?? null;
+    if (officeId) await this.assertOffice(tenantId, officeId);
+    await this.assertAssignee(tenantId, dto.assigneeId ?? null, officeId);
     const existing = await this.repairTypeRuleRepo.findOne({
-      where: { tenantId, repairType: dto.repairType },
+      where: { tenantId, officeId: officeId ?? IsNull(), repairType: dto.repairType },
     });
     if (existing) throw new BadRequestException('该报修类型规则已存在');
-    const sortOrder = dto.sortOrder ?? (await this.nextRepairTypeSortOrder(tenantId));
+    const sortOrder = dto.sortOrder ?? (await this.nextRepairTypeSortOrder(tenantId, officeId));
     return this.repairTypeRuleRepo.save(
       this.repairTypeRuleRepo.create({
         tenantId,
+        officeId,
         repairType: dto.repairType,
         label: dto.label,
         assigneeId: dto.assigneeId ?? null,
@@ -217,11 +254,12 @@ export class RepairsService implements OnModuleInit {
 
   async updateRepairTypeRule(id: number, dto: UpsertRepairTypeRuleDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user);
-    await this.assertAssignee(tenantId, dto.assigneeId ?? null);
     const rule = await this.repairTypeRuleRepo.findOne({ where: { id, tenantId } });
     if (!rule) throw new NotFoundException('repair type rule not found');
+    // 归属的管理处不能改：要挪去别的管理处就到那一页新建
+    await this.assertAssignee(tenantId, dto.assigneeId ?? null, rule.officeId);
     const dup = await this.repairTypeRuleRepo.findOne({
-      where: { tenantId, repairType: dto.repairType },
+      where: { tenantId, officeId: rule.officeId ?? IsNull(), repairType: dto.repairType },
     });
     if (dup && dup.id !== id) throw new BadRequestException('该报修类型规则已存在');
     rule.repairType = dto.repairType;
@@ -261,17 +299,15 @@ export class RepairsService implements OnModuleInit {
       rule.updatedBy = user.id;
     });
     await this.repairTypeRuleRepo.save(ids.map((id) => ruleById.get(id)!));
-    return this.listRepairTypeRules(user);
+    return this.listRepairTypeRules(user, ruleById.get(ids[0])?.officeId ?? null);
   }
 
   /** 报修类型的对外精简版：只给编码、名称和关键词，不含派单规则 */
-  async listPublicRepairTypes(user: AuthUser) {
+  async listPublicRepairTypes(user: AuthUser, communityId?: number | null) {
     const tenantId = this.resolveTenantId(user);
     await this.ensureDefaultRepairTypeRules(tenantId, user.id);
-    const rules = await this.repairTypeRuleRepo.find({
-      where: { tenantId, enabled: true },
-      order: { sortOrder: 'ASC', id: 'ASC' },
-    });
+    // 带小区就给该小区所属管理处那套（管理处可以有自己的类型/关键词），不带就是公司默认
+    const rules = (await this.rulesForCommunity(tenantId, communityId)).filter((rule) => rule.enabled);
     // keywords 不只是后台配的那几句：类型名切出来的词 + 同义词也算，
     // 否则租户自建的类型（「门铃 / 对讲 / 门禁 /监控 / 道闸 问题」）一个关键词都没有，
     // 业主写什么都判成「其它」
@@ -601,7 +637,11 @@ export class RepairsService implements OnModuleInit {
    * 派单是工单页的事，权限就该按工单页算。返回的字段也只够派单用（姓名/电话/工种/在手几单），
    * 不下发账号、微信绑定这些跟派单无关的信息。
    */
-  async listDispatchTechnicians(user: AuthUser, access?: ResolvedAccess) {
+  async listDispatchTechnicians(
+    user: AuthUser,
+    access?: ResolvedAccess,
+    officeScope?: number | null,
+  ) {
     const tenantId = this.resolveTenantId(user);
     // 「谁能接单」= 他绑的角色里勾了「工单池 · 接单」。
     // 以前这里按 role='technician' 查人，于是「谁是维修工」在库里有两套说法
@@ -611,11 +651,22 @@ export class RepairsService implements OnModuleInit {
       'edit',
     );
     if (!acceptorIds.length) return [];
-    const technicians = await this.userRepo.find({
+    let technicians = await this.userRepo.find({
       where: { id: In(acceptorIds), tenantId, status: UserStatus.ACTIVE },
       select: ['id', 'name', 'phone'],
       order: { id: 'ASC' },
     });
+    if (!technicians.length) return [];
+    // 报修类型配置选默认维修工：只列范围覆盖该管理处的人（officeScope=null 表示公司默认，只列全公司范围的）
+    const coverage =
+      officeScope !== undefined
+        ? await this.accessService.filterUsersCoveringOffice(
+            tenantId,
+            technicians.map((item) => item.id),
+            officeScope,
+          )
+        : null;
+    if (coverage) technicians = technicians.filter((item) => coverage.has(item.id));
     if (!technicians.length) return [];
 
     const ids = technicians.map((item) => item.id);
@@ -652,6 +703,8 @@ export class RepairsService implements OnModuleInit {
       phone: item.phone ?? null,
       skills: skillsByUser.get(item.id) ?? [],
       openCount: openCount.get(item.id) ?? 0,
+      /** 按管理处筛过时带上：all = 全公司范围，office = 只覆盖这个管理处 */
+      scope: coverage?.get(item.id) ?? null,
     }));
   }
 
@@ -665,90 +718,16 @@ export class RepairsService implements OnModuleInit {
    * 库存为 0 的材料也返回（标 qty=0）：现场需要它但仓里没有，正是要走缺料登记的场景，
    * 列表里看不到反而让人以为「这东西系统里不存在」。
    */
-  // ---------------- 报修类型 → 领料仓库（按小区配） ----------------
-
-  /**
-   * 全租户的「小区 + 类型 → 仓库」对照表，连可选仓库一起给。
-   *
-   * 仓库列表跟着一起返回，是为了不让「报修类型配置」这个页面依赖 inventory 权限——
-   * 配派单规则的办公室文员不一定有库存模块权限，缺一个 /warehouses 就整页配不了。
-   * 一次全给：小区数 × 类型数 撑死几十条，后台切小区时不用来回请求。
-   */
-  async listRepairTypeWarehouses(user: AuthUser) {
-    const tenantId = this.resolveTenantId(user);
-    const [rows, warehouses] = await Promise.all([
-      this.dataSource.getRepository(RepairTypeWarehouse).find({
-        where: { tenantId },
-        order: { communityId: 'ASC', id: 'ASC' },
-      }),
-      this.dataSource.getRepository(Warehouse).find({
-        where: { tenantId, enabled: true },
-        order: { id: 'ASC' },
-      }),
-    ]);
-    return {
-      warehouses: warehouses.map((item) => ({
-        id: item.id,
-        name: item.name,
-        type: item.type,
-        communityId: item.communityId,
-        enabled: item.enabled,
-      })),
-      items: rows.map((row) => ({
-        communityId: row.communityId,
-        repairType: row.repairType,
-        warehouseId: row.warehouseId,
-      })),
-    };
-  }
-
-  /**
-   * 配 / 改 / 清空一个「小区 + 类型」的领料仓库。warehouseId 传 null = 清空这一条。
-   * 仓库必须是本租户启用中的 —— 配到停用仓上，维修工那边就是一屏空列表。
-   */
-  async upsertRepairTypeWarehouse(dto: UpsertRepairTypeWarehouseDto, user: AuthUser) {
-    const tenantId = this.resolveTenantId(user);
-    const repo = this.dataSource.getRepository(RepairTypeWarehouse);
-    const where = {
-      tenantId,
-      communityId: dto.communityId,
-      repairType: dto.repairType,
-    };
-    const existing = await repo.findOne({ where });
-
-    if (dto.warehouseId === null || dto.warehouseId === undefined) {
-      if (existing) await repo.remove(existing);
-      return { ...where, warehouseId: null };
-    }
-
-    const warehouse = await this.dataSource.getRepository(Warehouse).findOne({
-      where: { id: dto.warehouseId, tenantId, enabled: true },
-    });
-    if (!warehouse) throw new BadRequestException('仓库不存在或已停用');
-
-    const saved = await repo.save(
-      existing
-        ? Object.assign(existing, { warehouseId: dto.warehouseId, updatedBy: user.id })
-        : repo.create({ ...where, warehouseId: dto.warehouseId, createdBy: user.id }),
-    );
-    return {
-      communityId: saved.communityId,
-      repairType: saved.repairType,
-      warehouseId: saved.warehouseId,
-    };
-  }
-
   /**
    * 这张工单能领哪些料。
    *
-   * 仓库由「小区 + 报修类型」定：小区取工单所在小区（= 报修人所属小区），
-   * 类型对应哪个仓在后台「报修类型配置」里按小区分别配（repair_type_warehouses）。
-   * 同一个门禁故障，一期从智能化维修工仓库领、二期可能另有仓，靠猜是猜不出来的。
+   * 仓库按工单所在的小区 / 管理处自动匹配：同小区仓 > 同管理处仓（仓挂在该管理处下任一小区）
+   * > 公司总仓（不挂小区）。以前是后台按「小区 + 报修类型」一格一格配（repair_type_warehouses），
+   * 几十个格子总有漏配的，维修工那边就是「未配领料仓库」（2026-08-27 改）。
+   * 匹配不到（仓都挂在别的管理处名下）时端上给「去建仓」的提示，同时留「换仓库」让维修工手动挑。
    *
-   * 没配就是没配 —— 不回退到「本小区仓」或「第一个总仓」：
-   * 猜错仓就是把料从别人的账上扣走，账对不上比领不到料更难查。
-   * 这种情况下端上给一句「去配」的提示，同时留「换仓库」让维修工手动挑，
-   * 别让人卡在这儿干等办公室。
+   * 库存为 0 的材料也返回（标 qty=0）：现场需要它但仓里没有，正是要走缺料登记的场景，
+   * 列表里看不到反而让人以为「这东西系统里不存在」。
    */
   async listWorkOrderStockOptions(id: number, user: AuthUser, warehouseId?: number) {
     const tenantId = this.resolveTenantId(user);
@@ -766,18 +745,23 @@ export class RepairsService implements OnModuleInit {
     const warehouseRepo = this.dataSource.getRepository(Warehouse);
     const all = await warehouseRepo.find({ where: { tenantId, enabled: true }, order: { id: 'ASC' } });
 
-    // 本单「小区 + 类型」配的仓
-    const mapping = repairType
-      ? await this.dataSource.getRepository(RepairTypeWarehouse).findOne({
-          where: { tenantId, communityId: workOrder.communityId, repairType },
-        })
-      : null;
-    const mapped = mapping ? all.find((item) => item.id === mapping.warehouseId) ?? null : null;
-
-    // 配好的排最前，其余按 id —— 手动换仓库时也是这个顺序
-    const candidates = all
-      .slice()
-      .sort((a, b) => (a.id === mapped?.id ? -1 : 0) - (b.id === mapped?.id ? -1 : 0) || a.id - b.id);
+    // 同小区仓 0 > 同管理处仓 1 > 公司总仓（不挂小区）2 > 别的管理处的仓 3；同级按 id
+    const officeId = await this.accessService.officeIdOfCommunity(tenantId, workOrder.communityId);
+    const officeCommunities = new Set(
+      officeId ? await this.accessService.officeCommunityIds(tenantId, officeId) : [],
+    );
+    const rank = (item: Warehouse) =>
+      item.communityId === workOrder.communityId
+        ? 0
+        : item.communityId && officeCommunities.has(item.communityId)
+          ? 1
+          : !item.communityId
+            ? 2
+            : 3;
+    const candidates = all.slice().sort((a, b) => rank(a) - rank(b) || a.id - b.id);
+    const mapped = candidates.find((item) => rank(item) <= 2) ?? null;
+    const byRank = ['community', 'office', 'company'] as const;
+    const mappedBy = mapped ? byRank[rank(mapped) as 0 | 1 | 2] : null;
 
     const stockRepo = this.dataSource.getRepository(Stock);
     const allStocks = candidates.length
@@ -810,13 +794,15 @@ export class RepairsService implements OnModuleInit {
       /** 本单报修类型（端上提示「哪个类型没配仓库」要用，别让人自己去猜） */
       repairType,
       repairTypeLabel,
-      /** 这个「小区 + 类型」在后台配没配仓库；没配时端上给去配的提示 */
+      /** 有没有自动匹配到仓；没有时端上给「去建仓」的提示（字段名沿用，老版本小程序还在读） */
       configured: !!mapped,
+      /** 匹配到的是哪一级的仓：同小区 / 同管理处 / 公司总仓 */
+      mappedBy,
       warehouses: candidates.map((item) => ({
         id: item.id,
         name: item.name,
         type: item.type,
-        /** 就是本单「小区 + 类型」配好的那个仓 */
+        /** 就是本单自动匹配到的那个仓 */
         own: item.id === mapped?.id,
         hasStock: stockedWarehouses.has(item.id),
       })),
@@ -2122,8 +2108,8 @@ export class RepairsService implements OnModuleInit {
     // 端上判不出类型（或压根是老版本没判）时服务端再判一次，
     // 判不出才落「其它」——类型是自动派单的依据，空着等于这单没人认领
     const repairType =
-      dto.repairType || (await this.guessRepairType(dto.content, tenantId)) || undefined;
-    const assignRule = await this.findAutoAssignRule(repairType, tenantId);
+      dto.repairType || (await this.guessRepairType(dto.content, tenantId, dto.communityId)) || undefined;
+    const assignRule = await this.findAutoAssignRule(repairType, tenantId, dto.communityId);
     const sourceLabel = REPAIR_SOURCE_LABELS[source] ?? source;
     // 联系人/电话在端上都是选填（随手拍压根不问），不在服务端兜底的话
     // 后台工单详情就是两个「-」，办公室拿到单子找不到人
@@ -2660,7 +2646,8 @@ export class RepairsService implements OnModuleInit {
       where: { id: workOrder.requestId, tenantId },
     });
 
-    const rules = await this.repairTypeRuleRepo.find({ where: { tenantId } });
+    // 更正和学关键词都落在这单所属管理处那套规则上（没有自己那套就是公司默认）
+    const rules = await this.rulesForCommunity(tenantId, workOrder.communityId);
     const target = rules.find((rule) => rule.repairType === dto.repairType && rule.enabled);
     if (!target) throw new BadRequestException('报修类型不存在或已停用');
     const fromType = request?.repairType ?? workOrder.skill ?? null;
@@ -2786,7 +2773,9 @@ export class RepairsService implements OnModuleInit {
     const content = request?.content ?? '';
     const fromType = request?.repairType ?? workOrder.skill ?? null;
     const fromRule = fromType
-      ? await this.repairTypeRuleRepo.findOne({ where: { tenantId, repairType: fromType } })
+      ? (await this.rulesForCommunity(tenantId, workOrder.communityId)).find(
+          (rule) => rule.repairType === fromType,
+        ) ?? null
       : null;
     const text = content.toLowerCase();
     const matchedOld = fromRule
@@ -2802,12 +2791,13 @@ export class RepairsService implements OnModuleInit {
   }
 
   /** 按描述判类型。判不出返回 null，交给后台按「其它」核对，不硬塞一个 */
-  private async guessRepairType(content: string, tenantId: number): Promise<string | null> {
+  private async guessRepairType(
+    content: string,
+    tenantId: number,
+    communityId?: number | null,
+  ): Promise<string | null> {
     if (!content?.trim()) return null;
-    const rules = await this.repairTypeRuleRepo.find({
-      where: { tenantId, enabled: true },
-      order: { sortOrder: 'ASC', id: 'ASC' },
-    });
+    const rules = (await this.rulesForCommunity(tenantId, communityId)).filter((rule) => rule.enabled);
     return classifyByKeywords(
       content,
       rules.map((rule) => ({
@@ -2817,11 +2807,15 @@ export class RepairsService implements OnModuleInit {
     );
   }
 
-  private async findAutoAssignRule(repairType: string | undefined, tenantId: number) {
+  private async findAutoAssignRule(
+    repairType: string | undefined,
+    tenantId: number,
+    communityId?: number | null,
+  ) {
     if (!repairType) return null;
-    const rule = await this.repairTypeRuleRepo.findOne({
-      where: { tenantId, repairType, enabled: true },
-    });
+    const rule = (await this.rulesForCommunity(tenantId, communityId)).find(
+      (item) => item.repairType === repairType && item.enabled,
+    );
     if (!rule?.assigneeId) return null;
     const assignee = await this.userRepo.findOne({
       where: { id: rule.assigneeId, tenantId },
@@ -2872,12 +2866,13 @@ export class RepairsService implements OnModuleInit {
       await this.repairTypeRuleRepo.save(needSeed);
     }
 
-    // 仅首次初始化时播种默认类型；之后由租户自行增删，删除的类型不再自动补回
-    if (existing.length > 0) return;
+    // 仅首次初始化时播种公司默认模板；之后由租户自行增删，删除的类型不再自动补回
+    if (existing.some((rule) => rule.officeId === null)) return;
     await this.repairTypeRuleRepo.save(
       DEFAULT_REPAIR_TYPES.map((item, index) =>
         this.repairTypeRuleRepo.create({
           tenantId,
+          officeId: null,
           repairType: item.repairType,
           label: item.label,
           assigneeId: null,
@@ -2892,7 +2887,48 @@ export class RepairsService implements OnModuleInit {
     );
   }
 
-  private async assertAssignee(tenantId: number, assigneeId: number | null) {
+  /**
+   * 报修小区 → 所属管理处那套规则；管理处没有自己的一套（从没打开过配置页）就用公司默认。
+   * 自动派单、类型判定、更正学词、业主端类型列表全走这一个口子，别各自查表。
+   */
+  private async rulesForCommunity(
+    tenantId: number,
+    communityId?: number | null,
+  ): Promise<RepairTypeRule[]> {
+    const officeId = communityId
+      ? await this.accessService.officeIdOfCommunity(tenantId, communityId)
+      : null;
+    if (officeId) {
+      const own = await this.repairTypeRuleRepo.find({
+        where: { tenantId, officeId },
+        order: { sortOrder: 'ASC', id: 'ASC' },
+      });
+      if (own.length) return own;
+    }
+    return this.repairTypeRuleRepo.find({
+      where: { tenantId, officeId: IsNull() },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+  }
+
+  private async assertOffice(tenantId: number, officeId: number) {
+    const office = await this.dataSource
+      .getRepository(ManagementOffice)
+      .findOne({ where: { id: officeId, tenantId } });
+    if (!office) throw new NotFoundException('管理处不存在');
+    return office;
+  }
+
+  /**
+   * 派单 / 设默认维修工前校验这个人真的能接单。
+   * officeId 不传 = 只看能不能接单（派单用）；传了 = 还要看数据范围：
+   * null（公司默认模板）只能选全公司范围的人，管理处那套要求范围覆盖该管理处。
+   */
+  private async assertAssignee(
+    tenantId: number,
+    assigneeId: number | null,
+    officeId?: number | null,
+  ) {
     if (!assigneeId) return;
     const assignee = await this.userRepo.findOne({ where: { id: assigneeId, tenantId } });
     if (!assignee || assignee.status !== UserStatus.ACTIVE) {
@@ -2903,13 +2939,33 @@ export class RepairsService implements OnModuleInit {
         '这个人的角色没有勾「工单池 · 接单」，派给他他也接不了',
       );
     }
+    if (officeId === undefined) return;
+    const coverage = await this.accessService.filterUsersCoveringOffice(
+      tenantId,
+      [assignee.id],
+      officeId,
+    );
+    const level = coverage.get(assignee.id);
+    const name = assignee.name || `#${assignee.id}`;
+    if (officeId === null && level !== 'all') {
+      throw new BadRequestException(
+        `${name} 是管理处专属维修工，公司默认模板只能选全公司范围的人；请到对应管理处那一页去选`,
+      );
+    }
+    if (officeId !== null && !level) {
+      const office = await this.assertOffice(tenantId, officeId);
+      throw new BadRequestException(
+        `${name} 的角色范围不含「${office.name}」，不能选为这个管理处的默认维修工`,
+      );
+    }
   }
 
-  private async nextRepairTypeSortOrder(tenantId: number) {
+  private async nextRepairTypeSortOrder(tenantId: number, officeId: number | null) {
     const row = await this.repairTypeRuleRepo
       .createQueryBuilder('rule')
       .select('COALESCE(MAX(rule.sort_order), 0)', 'max')
       .where('rule.tenant_id = :tenantId', { tenantId })
+      .andWhere(officeId ? 'rule.office_id = :officeId' : 'rule.office_id IS NULL', { officeId })
       .getRawOne<{ max: string }>();
     return Number(row?.max || 0) + 10;
   }

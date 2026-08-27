@@ -23,6 +23,7 @@ import {
   Spin,
   Switch,
   Table,
+  Tabs,
   Tag,
   Timeline,
   Tooltip,
@@ -57,12 +58,7 @@ import { request } from '../lib/api';
 import { auth, useAuth, usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import { isVideoUrl } from '@pms/shared-types';
-import type {
-  AddressCommunity,
-  RepairTypeWarehouseOptions,
-  RepairTypeWarehouseView,
-  WarehouseView,
-} from '@pms/shared-types';
+import type { AddressCommunity } from '@pms/shared-types';
 import HouseAddressPicker, {
   UNKNOWN_HOUSE_VALUE,
   type PickedAddress,
@@ -86,9 +82,6 @@ import {
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-interface Community { id: number; name: string }
-/** 领料仓库下拉用（只用到 id/名称/启用），沿用库存模块的返回结构 */
-type Warehouse = WarehouseView;
 interface Staff {
   id: number;
   name?: string | null;
@@ -156,6 +149,8 @@ interface WorkOrderDetail {
 }
 interface RepairTypeRule {
   id: number;
+  /** 归属管理处；null = 公司默认模板 */
+  officeId: number | null;
   repairType: string;
   label: string;
   assigneeId: number | null;
@@ -372,7 +367,6 @@ export default function WorkOrdersPage() {
   const { message } = AntdApp.useApp();
   const { access } = useAuth();
   const { canEdit } = usePagePerm('work-orders');
-  const [communities, setCommunities] = useState<Community[]>([]);
   const [addressTree, setAddressTree] = useState<AddressCommunity[]>([]);
   const [addressLoading, setAddressLoading] = useState(false);
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -476,15 +470,6 @@ export default function WorkOrdersPage() {
   ];
   const poolPrefs = useTableColumnPrefs('work-orders.pool', poolColumns);
 
-  const loadCommunities = useCallback(async () => {
-    try {
-      const list = await request<Community[]>({ url: '/communities' });
-      setCommunities(list);
-    } catch (e: any) {
-      message.error(e?.message || '加载小区失败');
-    }
-  }, [message]);
-
   // 全量地址树，一次拉完；报修录入靠它做「228/4/201」的即时联想，不再逐级请求
   const loadAddressTree = useCallback(async () => {
     setAddressLoading(true);
@@ -557,12 +542,11 @@ export default function WorkOrdersPage() {
   }, [searchQ, message]);
 
   useEffect(() => {
-    loadCommunities();
     loadAddressTree();
     loadStaff();
     loadRepairTypeRules();
     loadRepairSuggestions();
-  }, [loadAddressTree, loadCommunities, loadRepairSuggestions, loadRepairTypeRules, loadStaff]);
+  }, [loadAddressTree, loadRepairSuggestions, loadRepairTypeRules, loadStaff]);
   useEffect(() => { loadOrders(); }, [loadOrders]);
   useEffect(() => { loadOrderStats(); }, [loadOrderStats]);
   useEffect(() => {
@@ -660,10 +644,8 @@ export default function WorkOrdersPage() {
       />
       <RepairTypeRuleModal
         open={ruleOpen}
-        rules={repairTypeRules}
         technicians={dispatchTechnicians}
         suggestions={repairSuggestions}
-        communities={communities}
         onClose={() => setRuleOpen(false)}
         onDone={() => { loadRepairTypeRules(); loadRepairSuggestions(); loadOrders(); loadOrderStats(); }}
       />
@@ -2202,76 +2184,67 @@ function CancelModal({
   );
 }
 
+/**
+ * 报修类型配置：按管理处分套（2026-08-27）。
+ * 顶部一排 Tab：「公司默认（模板）」+ 每个管理处。管理处那页第一次打开由后端从模板复制一份，
+ * 之后各改各的。默认维修工的候选按范围过滤：模板页只列全公司范围的人，管理处页列
+ * 全公司的 + 范围覆盖该管理处的（「总公司维修工 / XX 管理处维修工」就是两个范围不同的角色）。
+ * 领料仓库不再在这里配：维修工选料时按工单所在小区 / 管理处自动匹配仓库。
+ */
 function RepairTypeRuleModal({
-  open, rules, technicians, suggestions, communities, onClose, onDone,
+  open, technicians: allTechnicians, suggestions, onClose, onDone,
 }: {
   open: boolean;
-  rules: RepairTypeRule[];
+  /** 全公司能接单的人，只用来把 assigneeId 翻成名字（当前页的候选另外按范围拉） */
   technicians: TechnicianOption[];
   suggestions: RepairSuggestions;
-  communities: Community[];
   onClose: () => void;
   onDone: () => void;
 }) {
   const { message } = AntdApp.useApp();
   const { canDelete, canEdit } = usePagePerm('work-orders');
+  const { access } = useAuth();
+  const offices = access?.offices ?? [];
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<RepairTypeRule | null>(null);
+  /** 当前在配哪一套：'company' = 公司默认模板，数字 = 管理处 id */
+  const [tab, setTab] = useState<'company' | number>('company');
+  const officeId = tab === 'company' ? null : tab;
+  const officeName = officeId ? offices.find((o) => o.id === officeId)?.name || `管理处 #${officeId}` : '';
   const [localRules, setLocalRules] = useState<RepairTypeRule[]>([]);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  /** 本页可选的默认维修工（已按范围过滤） */
+  const [tabTechnicians, setTabTechnicians] = useState<TechnicianOption[]>([]);
   const [draggingRuleId, setDraggingRuleId] = useState<number | null>(null);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordDraft, setKeywordDraft] = useState('');
-  /** 领料仓库是按小区配的，所以这一栏得先选小区再看 */
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [typeWarehouses, setTypeWarehouses] = useState<RepairTypeWarehouseView[]>([]);
-  const [communityId, setCommunityId] = useState<number | undefined>();
-  const [savingWarehouse, setSavingWarehouse] = useState<string | null>(null);
 
-  /** 当前小区下 类型编码 -> 仓库 id */
-  const warehouseByType = new Map(
-    typeWarehouses
-      .filter((row) => row.communityId === communityId)
-      .map((row) => [row.repairType, row.warehouseId]),
-  );
-
-  const loadWarehouseConfig = async () => {
-    try {
-      // 仓库列表随对照表一起返回：这个页面不该因为没有库存模块权限就配不了
-      const resp = await request<RepairTypeWarehouseOptions>({ url: '/repair-type-warehouses' });
-      setWarehouses(resp.warehouses);
-      setTypeWarehouses(resp.items);
-    } catch (e: any) {
-      message.error(e?.message || '加载领料仓库配置失败');
-    }
+  const technicianName = (id: number | null) => {
+    if (!id) return null;
+    const hit = tabTechnicians.find((t) => t.id === id) || allTechnicians.find((t) => t.id === id);
+    return hit?.name || `#${id}`;
   };
 
-  /**
-   * 改一格存一格。整页「记得点保存」在这种矩阵式配置里最容易漏——
-   * 9 个类型 × N 个小区，漏存一格维修工那边就是「没配领料仓库」。
-   */
-  const onPickWarehouse = async (repairType: string, warehouseId: number | null) => {
-    if (!communityId) return;
-    setSavingWarehouse(repairType);
+  const loadTab = useCallback(async (which: 'company' | number) => {
+    setRulesLoading(true);
     try {
-      await request({
-        method: 'PUT',
-        url: '/repair-type-warehouses',
-        data: { communityId, repairType, warehouseId: warehouseId ?? null },
-      });
-      setTypeWarehouses((prev) => {
-        const rest = prev.filter(
-          (row) => !(row.communityId === communityId && row.repairType === repairType),
-        );
-        return warehouseId ? [...rest, { communityId, repairType, warehouseId }] : rest;
-      });
-      message.success(warehouseId ? '领料仓库已保存' : '已清空该类型的领料仓库');
+      const oid = which === 'company' ? null : which;
+      const [rules, techs] = await Promise.all([
+        request<RepairTypeRule[]>({ url: '/repair-type-rules', query: oid ? { officeId: oid } : {} }),
+        request<TechnicianOption[]>({
+          url: '/work-orders/technicians',
+          query: oid ? { officeId: oid } : { scope: 'company' },
+        }).catch(() => [] as TechnicianOption[]),
+      ]);
+      setLocalRules(rules);
+      setTabTechnicians(techs);
     } catch (e: any) {
-      message.error(e?.message || '保存失败');
+      message.error(e?.message || '加载报修类型失败');
     } finally {
-      setSavingWarehouse(null);
+      setRulesLoading(false);
     }
-  };
+  }, [message]);
 
   /** 当前编辑类型下，每个关键词被真实用了多少次 */
   const keywordUsage = editing
@@ -2305,6 +2278,18 @@ function RepairTypeRuleModal({
     form.setFieldsValue({ enabled: true, slaHours: 24 });
   };
 
+  const switchTab = (next: 'company' | number) => {
+    setTab(next);
+    startCreate();
+    loadTab(next);
+  };
+
+  /** 本页重新拉一遍，同时让页面里的公司默认（录入表单在用）也刷新 */
+  const refresh = () => {
+    loadTab(tab);
+    onDone();
+  };
+
   const moveKeyword = (index: number, delta: number) => {
     const next = [...keywords];
     const target = index + delta;
@@ -2336,19 +2321,12 @@ function RepairTypeRuleModal({
   };
 
   useEffect(() => {
-    if (open && !editing) startCreate();
-    if (open) loadWarehouseConfig();
+    if (!open) return;
+    setTab('company');
+    startCreate();
+    loadTab('company');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-
-  useEffect(() => {
-    if (open && communityId === undefined && communities.length) setCommunityId(communities[0].id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, communities]);
-
-  useEffect(() => {
-    setLocalRules(rules);
-  }, [rules]);
 
   const onSave = async () => {
     const v = await form.validateFields();
@@ -2358,6 +2336,7 @@ function RepairTypeRuleModal({
         method: editing ? 'PATCH' : 'POST',
         url: editing ? `/repair-type-rules/${editing.id}` : '/repair-type-rules',
         data: {
+          officeId,
           repairType: v.repairType,
           label: v.label,
           assigneeId: v.assigneeId ?? null,
@@ -2367,7 +2346,7 @@ function RepairTypeRuleModal({
         },
       });
       message.success('报修类型配置已保存');
-      onDone();
+      refresh();
       startCreate();
     } catch (e: any) {
       message.error(e?.message || '保存失败');
@@ -2381,7 +2360,7 @@ function RepairTypeRuleModal({
       await request({ method: 'DELETE', url: `/repair-type-rules/${rule.id}` });
       message.success(`已删除「${rule.label}」`);
       if (editing?.id === rule.id) startCreate();
-      onDone();
+      refresh();
     } catch (e: any) {
       message.error(e?.message || '删除失败');
     }
@@ -2398,6 +2377,7 @@ function RepairTypeRuleModal({
       setDraggingRuleId(null);
       return;
     }
+    const before = localRules;
     const next = [...localRules];
     const [moved] = next.splice(fromIndex, 1);
     next.splice(toIndex, 0, moved);
@@ -2412,7 +2392,7 @@ function RepairTypeRuleModal({
       message.success('显示顺序已保存');
       onDone();
     } catch (e: any) {
-      setLocalRules(rules);
+      setLocalRules(before);
       message.error(e?.message || '保存顺序失败');
     }
   };
@@ -2444,6 +2424,9 @@ function RepairTypeRuleModal({
     );
   };
 
+  const scopeSuffix = (t: TechnicianOption) =>
+    t.scope === 'all' ? ' · 全公司' : t.scope === 'office' ? ` · ${officeName || '本管理处'}专属` : '';
+
   return (
     <Modal
       title="报修类型配置"
@@ -2453,30 +2436,34 @@ function RepairTypeRuleModal({
       width={1360}
       destroyOnHidden
     >
+      <Tabs
+        activeKey={String(tab)}
+        onChange={(key) => switchTab(key === 'company' ? 'company' : Number(key))}
+        items={[
+          { key: 'company', label: '公司默认（模板）' },
+          ...offices.map((o) => ({ key: String(o.id), label: o.name })),
+        ]}
+        className="pms-repair-rule-tabs"
+      />
+      <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+        {officeId
+          ? `「${officeName}」这一套第一次打开时从公司默认复制而来，之后各改各的、互不影响。默认维修工只能选范围覆盖本管理处的人（全公司范围的维修工也可以）。`
+          : '公司默认是各管理处的模板：没单独配过的管理处按这里派单。这里的默认维修工只能选全公司范围的人。领料仓库不用配 —— 维修工选料时按工单所在小区 / 管理处自动匹配仓库。'}
+      </Text>
       <Row gutter={20}>
         <Col xs={24} lg={14}>
-          <Space wrap style={{ marginBottom: 8 }}>
-            <Text type="secondary">领料仓库按小区分别配，先选小区：</Text>
-            <Select
-              value={communityId}
-              onChange={(v) => setCommunityId(v)}
-              style={{ minWidth: 220 }}
-              placeholder="选择小区"
-              options={withOptionTitles(communities.map((c) => ({ value: c.id, label: c.name })))}
-              {...searchableWideSelectProps}
-            />
-          </Space>
           <Text type="secondary" style={{ display: 'block' }}>
-            拖动左侧手柄或整行可调整显示顺序。「领料仓库」改一格存一格，不用另外点保存。
+            拖动左侧手柄或整行可调整显示顺序。
           </Text>
           <Table
             rowKey="id"
             size="middle"
             style={{ marginTop: 8 }}
+            loading={rulesLoading}
             dataSource={localRules}
             pagination={false}
-            scroll={{ x: 882 }}
             components={{ body: { row: DraggableRow } }}
+            locale={{ emptyText: officeId ? '这个管理处还没有报修类型（公司默认也是空的）' : '还没有报修类型，点右侧「新增」' }}
             columns={[
               {
                 title: '',
@@ -2487,7 +2474,7 @@ function RepairTypeRuleModal({
                 // 编码不单独占一列，跟名称叠在一起，右侧关键词编辑器才有足够宽度
                 title: '报修类型',
                 dataIndex: 'label',
-                width: 180,
+                width: 200,
                 render: (label: string, rule) => (
                   <div>
                     <div>{label}</div>
@@ -2496,45 +2483,20 @@ function RepairTypeRuleModal({
                 ),
               },
               {
-                // 维修工在工单里点「从库存选」，取的就是这一格配的仓
-                title: `领料仓库（${communities.find((c) => c.id === communityId)?.name || '未选小区'}）`,
-                dataIndex: 'repairType',
-                width: 210,
-                render: (repairType: string) => (
-                  <Select
-                    size="small"
-                    allowClear
-                    disabled={!canEdit || !communityId}
-                    loading={savingWarehouse === repairType}
-                    style={{ width: '100%' }}
-                    placeholder={communityId ? '未配置' : '先选小区'}
-                    value={warehouseByType.get(repairType)}
-                    onChange={(v) => onPickWarehouse(repairType, v ?? null)}
-                    options={withOptionTitles(warehouses.map((w) => ({
-                      value: w.id,
-                      label: w.name,
-                    })))}
-                    {...searchableWideSelectProps}
-                  />
-                ),
-              },
-              {
                 title: '默认维修工',
                 dataIndex: 'assigneeId',
-                width: 130,
+                width: 150,
                 render: (id: number | null) =>
-                  id ? (technicians.find((t) => t.id === id)?.name || `#${id}`) : <Text type="secondary">未设置</Text>,
+                  id ? technicianName(id) : <Text type="secondary">未设置</Text>,
               },
               { title: '完成时限', dataIndex: 'slaHours', width: 100, render: (v) => v ? `${v}小时` : '-' },
               { title: '状态', dataIndex: 'enabled', width: 80, render: (v) => v ? <Tag color="green">启用</Tag> : <Tag>停用</Tag> },
               {
                 title: '操作',
                 width: 140,
-                // 多了「领料仓库」一列后表格要横滚，编辑/删除不能跟着滚出视野
-                fixed: 'right',
                 render: (_, rule) => (
                   <Space size={0}>
-                    <Button type="link" onClick={() => startEdit(rule)}>编辑</Button>
+                    <Button type="link" disabled={!canEdit} onClick={() => startEdit(rule)}>编辑</Button>
                     {canDelete && (
                       <Popconfirm
                         title="删除该报修类型？"
@@ -2554,8 +2516,8 @@ function RepairTypeRuleModal({
           />
         </Col>
         <Col xs={24} lg={10}>
-          <Card title={editing ? `编辑：${editing.label}` : '新增报修类型'}>
-            <Form form={form} layout="vertical" size="large">
+          <Card title={editing ? `编辑：${editing.label}` : `新增报修类型${officeId ? `（${officeName}）` : '（公司默认）'}`}>
+            <Form form={form} layout="vertical" size="large" disabled={!canEdit}>
               <Form.Item name="label" label="显示名称" rules={[{ required: true }]}>
                 <Input placeholder="如：水管 / 漏水" />
               </Form.Item>
@@ -2569,13 +2531,20 @@ function RepairTypeRuleModal({
               >
                 <Input placeholder="如：plumbing" />
               </Form.Item>
-              <Form.Item name="assigneeId" label="默认维修工">
+              <Form.Item
+                name="assigneeId"
+                label="默认维修工"
+                extra={officeId
+                  ? '只列范围覆盖本管理处的人；想让某位维修工出现在这里，去「业务角色」把他的角色范围勾上本管理处'
+                  : '只列全公司范围的人；管理处专属维修工请到对应管理处那一页去设'}
+              >
                 <Select
                   allowClear
                   placeholder="不选则进入待派单"
-                  options={withOptionTitles(technicians.map((t) => ({
+                  notFoundContent={<Text type="secondary">没有符合范围的维修工</Text>}
+                  options={withOptionTitles(tabTechnicians.map((t) => ({
                     value: t.id,
-                    label: `${t.name || '(未命名)'} · ${t.phone || ''}${t.skills?.length ? ' · ' + t.skills.join(',') : ''}`,
+                    label: `${t.name || '(未命名)'} · ${t.phone || ''}${t.skills?.length ? ' · ' + t.skills.join(',') : ''}${scopeSuffix(t)}`,
                   })))}
                   {...searchableWideSelectProps}
                 />
@@ -2619,8 +2588,8 @@ function RepairTypeRuleModal({
           <Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
             设置默认维修工后，办公室或业主提交该类型报修时，工单会自动进入“已派单”；未设置则进入“待派单”。
             关键词按这里的先后顺序显示在录入页的「猜你想输」。
-            「领料仓库」决定维修工在这个小区报这类故障时从哪个仓领料、完工时扣哪个仓的库存；
-            没配的类型维修工会看到「未配领料仓库」，只能自己手动挑仓库。
+            维修工选料时的仓库按工单所在小区 / 管理处自动匹配（同小区仓 → 同管理处仓 → 公司总仓），
+            匹配不到时维修工可以自己挑仓库，也请在「库存与采购」里给管理处建仓。
           </Text>
         </Col>
       </Row>
