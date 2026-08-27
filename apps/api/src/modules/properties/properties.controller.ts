@@ -45,7 +45,8 @@ export class PropertiesController {
   // ---------------- Communities ----------------
 
   @Get('communities')
-  @RequirePermission(['properties', 'qr', 'users', 'work-orders'], 'view')
+  // 库存页仓库档案要按名称选「所属小区」，管库存的人未必有房产页权限
+  @RequirePermission(['properties', 'qr', 'users', 'work-orders', 'inventory'], 'view')
   listCommunities(
     @Query() query: CommunityQueryDto,
     @CurrentUser() user: AuthUser,

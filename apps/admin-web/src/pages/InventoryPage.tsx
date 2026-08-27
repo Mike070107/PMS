@@ -288,6 +288,14 @@ export default function InventoryPage() {
   const { access } = useAuth();
   const offices = access?.offices ?? [];
   const officeName = (id?: number | null) => (id ? offices.find((o) => o.id === id)?.name || `#${id}` : '');
+  // 仓库档案里的「所属小区」按名称选，不让人去查小区 ID（2026-08-27 反馈）
+  const [communities, setCommunities] = useState<Array<{ id: number; name: string }>>([]);
+  useEffect(() => {
+    request<Array<{ id: number; name: string }>>({ url: '/communities' })
+      .then((list) => setCommunities(Array.isArray(list) ? list : []))
+      .catch(() => {});
+  }, []);
+  const communityName = (id?: number | null) => (id ? communities.find((c) => c.id === id)?.name || `#${id}` : '');
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseRow[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -1301,7 +1309,7 @@ export default function InventoryPage() {
                               { title: '类型', dataIndex: 'type', width: 110, render: (v) => WAREHOUSE_TYPE_LABELS[v] || v },
                               // 人员按角色范围对应管理处、再对应到这里的仓：空 = 公司级，全公司范围的人才默认它
                               { title: '所属管理处', dataIndex: 'officeId', width: 160, render: (v) => v ? officeName(v) : <Text type="secondary">公司级</Text> },
-                              { title: '小区 ID', dataIndex: 'communityId', width: 100, render: (v) => v || '-' },
+                              { title: '所属小区', dataIndex: 'communityId', width: 160, render: (v) => v ? communityName(v) : '-' },
                               {
                                 title: '库位数',
                                 key: 'locations',
@@ -1363,6 +1371,7 @@ export default function InventoryPage() {
       <CatalogModal
         kind={catalogOpen}
         form={catalogForm}
+        communities={communities}
         editingMaterial={editingMaterial}
         editingWarehouse={editingWarehouse}
         editingSupplier={editingSupplier}
@@ -1698,9 +1707,10 @@ function Metric({ title, value, suffix, alert }: { title: string; value: number;
   );
 }
 
-function CatalogModal({ kind, form, editingMaterial, editingWarehouse, editingSupplier, saving, onCancel, onOk }: {
+function CatalogModal({ kind, form, communities, editingMaterial, editingWarehouse, editingSupplier, saving, onCancel, onOk }: {
   kind: CatalogKind | null;
   form: any;
+  communities: Array<{ id: number; name: string }>;
   editingMaterial: MaterialRow | null;
   editingWarehouse: WarehouseRow | null;
   editingSupplier: SupplierRow | null;
@@ -1771,7 +1781,13 @@ function CatalogModal({ kind, form, editingMaterial, editingWarehouse, editingSu
                 </Form.Item>
               </Col>
             </Row>
-            <Form.Item name="communityId" label="小区 ID（小区仓必填；没选管理处时按小区推）"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item
+              name="communityId"
+              label="所属小区"
+              extra="小区仓必填。没选所属管理处时，按这个小区所属的管理处归属"
+            >
+              <Select allowClear placeholder="选择小区" options={withOptionTitles(communities.map((c) => ({ value: c.id, label: c.name })))} {...searchableWideSelectProps} />
+            </Form.Item>
           </>
         )}
         {kind === 'supplier' && (
