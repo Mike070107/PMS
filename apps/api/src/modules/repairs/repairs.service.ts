@@ -572,7 +572,7 @@ export class RepairsService implements OnModuleInit {
 
     const requests = await this.repairRequestRepo.find({
       where: { tenantId, id: In(requestIds) },
-      select: ['id', 'repairType', 'houseId', 'buildingId', 'addressText', 'content'],
+      select: ['id', 'repairType', 'houseId', 'buildingId', 'addressText', 'content', 'contactName', 'reporterRole', 'source'],
     });
     const houseIds = requests
       .map((item) => item.houseId)
@@ -626,6 +626,18 @@ export class RepairsService implements OnModuleInit {
         assigneeName: item.assigneeId
           ? assigneeNameById.get(item.assigneeId) ?? `#${item.assigneeId}`
           : null,
+        // 报修人：工单池卡片要有这一条（2026-08-27 要求）。存的是建单时落库的联系人，
+        // 代报的带上身份（保安 / 居委），让人一眼分清是不是业主本人报的
+        contactName: requestById.get(item.requestId)?.contactName ?? null,
+        reporterRoleLabel: (() => {
+          const role = requestById.get(item.requestId)?.reporterRole;
+          return role ? USER_ROLE_LABELS[role] ?? role : null;
+        })(),
+        source: requestById.get(item.requestId)?.source ?? null,
+        sourceLabel: (() => {
+          const src = requestById.get(item.requestId)?.source;
+          return src ? REPAIR_SOURCE_LABELS[src] ?? src : null;
+        })(),
       };
     });
   }
@@ -1088,6 +1100,23 @@ export class RepairsService implements OnModuleInit {
       ? await this.registeredAddressText(request.submittedBy, tenantId)
       : null;
 
+    // 进度里「员工小程序提交」要写清是哪位同事提交的：巡查顺手报的单，办公室和维修工
+    // 得知道该找谁问现场情况（2026-08-27 要求）。业主提交的不动，报修人一栏已经有名字
+    const submitter =
+      request?.source === RepairSource.STAFF_MINIAPP && request.submittedBy
+        ? await this.userRepo.findOne({
+            where: { id: request.submittedBy, tenantId },
+            select: ['id', 'name'],
+          })
+        : null;
+    const staffSourceLabel = REPAIR_SOURCE_LABELS[RepairSource.STAFF_MINIAPP];
+    const withSubmitter = (log: WorkOrderLog) => {
+      const note = this.displayLogNote(log.note);
+      const isCreate = log.action === 'create' || log.action === 'create_auto_assign';
+      if (!submitter || !isCreate || !note?.startsWith(staffSourceLabel)) return note;
+      return `${submitter.name || `#${submitter.id}`} 在${note}`;
+    };
+
     // 详情页要写「谁在修 / 谁修的」。和列表同一口径，端上不再各自去查人名
     const assignee = workOrder.assigneeId
       ? await this.userRepo.findOne({
@@ -1119,7 +1148,7 @@ export class RepairsService implements OnModuleInit {
             attachments: this.storage.toDisplayUrls(request.attachments),
           }
         : request,
-      logs: logs.map((log) => ({ ...log, note: this.displayLogNote(log.note) })),
+      logs: logs.map((log) => ({ ...log, note: withSubmitter(log) })),
     };
   }
 

@@ -376,6 +376,13 @@ export interface WorkOrderListItem {
    * 而员工端拿不到 /staff（那是 users 页权限）。后端一并给出，未派单时为 null。
    */
   assigneeName?: string | null;
+  /** 报修人（建单时落库的联系人）；工单池卡片「报修人」那一行用 */
+  contactName?: string | null;
+  /** 代报身份中文（保安 / 居委会…）；业主本人或员工提交时为 null */
+  reporterRoleLabel?: string | null;
+  /** 报修来源编码（owner_miniapp / staff_miniapp / office_web）及中文 */
+  source?: string | null;
+  sourceLabel?: string | null;
 }
 
 export interface RepairRequestView {
