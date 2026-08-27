@@ -73,6 +73,9 @@ node tools/legacy-fee-import.mjs --tenant 1 --token <JWT> \
 所有写入都带 `legacyRef`（`wjwy:zh:<ZH_ID>` / `wjwy:dj:<wydj.ID>` / `wjwy:zj:<ZJ_ID>`），
 服务端按它 upsert，**中途失败直接重跑即可，不用先清库**。
 
+> 房产 / 业主档案本身怎么导（含永德片区「同一套房存了 2~3 份」、
+> 「永南/永北靠车库名反推」这些坑）见 [property-import.md](./property-import.md)。
+
 房号匹配规则在 [`apps/api/src/common/house-index.ts`](../apps/api/src/common/house-index.ts)，
 业主导入和物业费导入共用一份：先按「小区/弄/号/室」精确匹配，匹配不上时，
 如果那栋楼下只有一户就按楼匹配（商铺在老库里「室」填的是门牌号，PMS 里填「商铺」）。
