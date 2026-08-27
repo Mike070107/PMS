@@ -28,8 +28,9 @@ import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unre
 function reporterTextOf(item: WorkOrderListItem): string {
   const name = (item.contactName || '').trim();
   if (!name) return item.source === 'staff_miniapp' && item.sourceLabel ? item.sourceLabel : '未填';
-  if (item.reporterRoleLabel) return `${name}（${item.reporterRoleLabel}代报）`;
+  // 员工在小程序里提交的，reporterRole 也是「员工」，得先按来源判，否则会写成「员工代报」
   if (item.source === 'staff_miniapp') return `${name}（员工小程序提交）`;
+  if (item.reporterRoleLabel) return `${name}（${item.reporterRoleLabel}代报）`;
   return name;
 }
 
