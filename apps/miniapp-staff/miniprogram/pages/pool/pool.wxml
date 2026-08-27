@@ -85,13 +85,13 @@
 
     <view class="kv"><text class="kv__k">工单编号</text><text class="kv__v">{{item.orderNo}}</text></view>
     <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{item.summaryAddress || '未填地址'}}</text></view>
-    <!-- 报修人：上门前先知道找谁开门 / 问情况；代报的带身份，员工提交的写明来源 -->
-    <view class="kv"><text class="kv__k">报修人</text><text class="kv__v">{{item.reporterText}}</text></view>
     <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v kv__v--clamp">{{item.summaryContent}}</text></view>
     <view class="kv">
       <text class="kv__k">报修时间</text>
       <text class="kv__v">{{item.timeText}}<text class="kv__tag kv__tag--{{item.stayTone}}">{{item.stayBadge}}</text></text>
     </view>
+    <!-- 报修人：上门前先知道找谁开门 / 问情况；代报的带身份，员工提交的写明来源（2026-08-27 要求放在时间下面） -->
+    <view class="kv"><text class="kv__k">报修人</text><text class="kv__v">{{item.reporterText}}</text></view>
     <!-- 派单台上「这单在谁手上」和地址一样重要：没有它就没法判断该不该改派 -->
     <view wx:if="{{dispatcher}}" class="kv">
       <text class="kv__k">维修工</text>
