@@ -29,6 +29,18 @@
    选中用警示色描边（和类别筛选条的品牌色区分开：一个是筛选，一个是待办） */
 .switches { display: flex; gap: 16rpx; margin-bottom: 16rpx; }
 .switches .chip { margin-right: 0; white-space: nowrap; }
+/* 「仅显示有货」是个真复选框（默认勾上），和左边两个待办开关并排，靠右 */
+.switches { align-items: center; flex-wrap: wrap; }
+.stocked { margin-left: auto; }
+.stocked__label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 72rpx;
+  font-size: var(--font-md);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.stocked__box { transform: scale(0.85); margin-right: 4rpx; }
 .chip--warn { border-color: var(--color-warning); color: #ad6800; }
 
 .mb { margin-bottom: 20rpx; }

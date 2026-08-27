@@ -404,6 +404,40 @@ export class AccessService {
     return result;
   }
 
+  /**
+   * 这个人「属于」哪些管理处 —— 由他绑的角色的数据范围决定，不另存字段。
+   * all = 有全公司范围的角色（总公司维修工 / 办公室）；officeIds = 范围里的管理处（含由小区推出来的）。
+   * 员工端库存页默认仓、工单选料兜底都按这个匹配仓库的 office_id。
+   */
+  async userOfficeIds(
+    tenantId: number,
+    userId: number,
+  ): Promise<{ all: boolean; officeIds: number[] }> {
+    const bindings = await this.userRoleRepo.find({ where: { tenantId, userId } });
+    if (!bindings.length) return { all: false, officeIds: [] };
+    const roleIds = bindings.map((b) => b.roleId);
+    const roles = await this.roleRepo.find({ where: { id: In(roleIds), tenantId, enabled: true } });
+    const all = roles.some((r) => r.builtIn || r.dataScope === RoleDataScope.ALL);
+    const scopes = await this.roleScopeRepo.find({ where: { roleId: In(roles.map((r) => r.id)) } });
+    const officeIds = new Set(scopes.map((s) => s.officeId).filter((v): v is number => !!v));
+    const communityIds = scopes.map((s) => s.communityId).filter((v): v is number => !!v);
+    if (communityIds.length) {
+      const communities = await this.communityRepo.find({
+        where: { tenantId, id: In(communityIds) },
+        select: ['id', 'officeId', 'parentId'],
+      });
+      const parentIds = communities.filter((c) => !c.officeId && c.parentId).map((c) => c.parentId as number);
+      const parents = parentIds.length
+        ? await this.communityRepo.find({ where: { tenantId, id: In(parentIds) }, select: ['id', 'officeId'] })
+        : [];
+      for (const c of communities) {
+        const oid = c.officeId ?? parents.find((p) => p.id === c.parentId)?.officeId ?? null;
+        if (oid) officeIds.add(oid);
+      }
+    }
+    return { all, officeIds: [...officeIds] };
+  }
+
   /** 这个人绑了哪些角色（名字），给前端显示用 */
   async listRoleNames(user: AuthUser): Promise<string[]> {
     if (!user.tenantId) return [];

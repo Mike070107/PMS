@@ -90,7 +90,15 @@ export const REPAIR_SOURCE_LABELS: Record<string, string> = {
 export enum WarehouseType {
   CENTRAL = 'central',
   COMMUNITY = 'community',
+  /** 管理处仓：新建管理处时自动建的同名仓 */
+  OFFICE = 'office',
 }
+
+export const WAREHOUSE_TYPE_LABELS: Record<string, string> = {
+  [WarehouseType.CENTRAL]: '总仓',
+  [WarehouseType.COMMUNITY]: '小区仓',
+  [WarehouseType.OFFICE]: '管理处仓',
+};
 
 export enum StockMovementType {
   INBOUND = 'inbound',
@@ -626,6 +634,8 @@ export interface WarehouseView {
   name: string;
   type: WarehouseType;
   communityId?: number | null;
+  /** 所属管理处；空 = 公司级。员工端按自己角色范围对应的管理处挑默认仓 */
+  officeId?: number | null;
   enabled: boolean;
 }
 

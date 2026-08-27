@@ -26,6 +26,8 @@ import {
   PurchaseOrder,
   PurchaseRequest,
   StaffProfile,
+  Community,
+  ManagementOffice,
   Stock,
   StockLot,
   StockMovement,
@@ -263,28 +265,95 @@ export class InventoryService {
     ).slice(0, 20);
   }
 
-  listWarehouses(query: TenantQueryDto, user: AuthUser) {
+  async listWarehouses(query: TenantQueryDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
-    return this.warehouseRepo.find({
+    const list = await this.warehouseRepo.find({
       where: { tenantId },
       order: { id: 'ASC' },
     });
+    // 懒补「所属管理处」：加字段之前建的小区仓按 小区 → 管理处 推一次并落库，
+    // 之后人员按管理处匹配仓库就有依据了；总仓（不挂小区）保持公司级
+    const missing = list.filter((item) => !item.officeId && item.communityId);
+    if (missing.length) {
+      const communities = await this.dataSource.getRepository(Community).find({
+        where: { tenantId, id: In(missing.map((item) => item.communityId as number)) },
+        select: ['id', 'officeId', 'parentId'],
+      });
+      const parents = communities.filter((c) => !c.officeId && c.parentId);
+      const parentRows = parents.length
+        ? await this.dataSource.getRepository(Community).find({
+            where: { tenantId, id: In(parents.map((c) => c.parentId as number)) },
+            select: ['id', 'officeId'],
+          })
+        : [];
+      const officeByCommunity = new Map<number, number | null>();
+      for (const c of communities) {
+        const viaParent = c.parentId ? parentRows.find((p) => p.id === c.parentId)?.officeId : null;
+        officeByCommunity.set(c.id, c.officeId ?? viaParent ?? null);
+      }
+      const toSave = missing.filter((item) => officeByCommunity.get(item.communityId as number));
+      if (toSave.length) {
+        toSave.forEach((item) => {
+          item.officeId = officeByCommunity.get(item.communityId as number) ?? null;
+        });
+        await this.warehouseRepo.save(toSave);
+      }
+    }
+    return list;
   }
 
-  createWarehouse(dto: CreateWarehouseDto, user: AuthUser) {
-    const tenantId = this.resolveTenantId(user, dto.tenantId);
-    if (!Object.values(WarehouseType).includes(dto.type)) {
+  /** 仓库归属校验：类型和挂靠要对得上，管理处得是本公司的 */
+  private async resolveWarehouseBinding(
+    tenantId: number,
+    type: WarehouseType,
+    communityId: number | null | undefined,
+    officeId: number | null | undefined,
+  ): Promise<{ communityId: number | null; officeId: number | null }> {
+    if (!Object.values(WarehouseType).includes(type)) {
       throw new BadRequestException('invalid warehouse type');
     }
-    if (dto.type === WarehouseType.COMMUNITY && !dto.communityId) {
-      throw new BadRequestException('communityId is required');
+    if (type === WarehouseType.COMMUNITY && !communityId) {
+      throw new BadRequestException('小区仓必须填小区');
     }
+    if (type === WarehouseType.OFFICE && !officeId) {
+      throw new BadRequestException('管理处仓必须选所属管理处');
+    }
+    if (officeId) {
+      const office = await this.dataSource
+        .getRepository(ManagementOffice)
+        .findOne({ where: { id: officeId, tenantId } });
+      if (!office) throw new BadRequestException('管理处不存在');
+    }
+    const nextCommunityId = type === WarehouseType.COMMUNITY ? (communityId as number) : null;
+    // 小区仓没单独选管理处时按小区推，省得每个仓都要手动挑一遍
+    let nextOfficeId = officeId ?? null;
+    if (!nextOfficeId && nextCommunityId) {
+      const community = await this.dataSource.getRepository(Community).findOne({
+        where: { tenantId, id: nextCommunityId },
+        select: ['id', 'officeId', 'parentId'],
+      });
+      nextOfficeId = community?.officeId ?? null;
+      if (!nextOfficeId && community?.parentId) {
+        const parent = await this.dataSource.getRepository(Community).findOne({
+          where: { tenantId, id: community.parentId },
+          select: ['id', 'officeId'],
+        });
+        nextOfficeId = parent?.officeId ?? null;
+      }
+    }
+    return { communityId: nextCommunityId, officeId: nextOfficeId };
+  }
+
+  async createWarehouse(dto: CreateWarehouseDto, user: AuthUser) {
+    const tenantId = this.resolveTenantId(user, dto.tenantId);
+    const binding = await this.resolveWarehouseBinding(tenantId, dto.type, dto.communityId, dto.officeId);
     return this.warehouseRepo.save(
       this.warehouseRepo.create({
         tenantId,
         name: dto.name,
         type: dto.type,
-        communityId: dto.type === WarehouseType.COMMUNITY ? dto.communityId! : null,
+        communityId: binding.communityId,
+        officeId: binding.officeId,
         enabled: dto.enabled ?? true,
         createdBy: user.id,
         updatedBy: user.id,
@@ -297,16 +366,17 @@ export class InventoryService {
     const warehouse = await this.warehouseRepo.findOne({ where: { id, tenantId } });
     if (!warehouse) throw new NotFoundException('warehouse not found');
     const nextType = dto.type ?? warehouse.type;
-    if (!Object.values(WarehouseType).includes(nextType)) {
-      throw new BadRequestException('invalid warehouse type');
-    }
-    const nextCommunityId = dto.communityId ?? warehouse.communityId;
-    if (nextType === WarehouseType.COMMUNITY && !nextCommunityId) {
-      throw new BadRequestException('communityId is required');
-    }
+    const binding = await this.resolveWarehouseBinding(
+      tenantId,
+      nextType,
+      dto.communityId ?? warehouse.communityId,
+      // 显式传 null = 清成公司级；不传 = 不动
+      dto.officeId === undefined ? warehouse.officeId : dto.officeId,
+    );
     if (dto.name !== undefined) warehouse.name = dto.name;
     warehouse.type = nextType;
-    warehouse.communityId = nextType === WarehouseType.COMMUNITY ? nextCommunityId : null;
+    warehouse.communityId = binding.communityId;
+    warehouse.officeId = binding.officeId;
     if (dto.enabled !== undefined) warehouse.enabled = dto.enabled;
     warehouse.updatedBy = user.id;
     return this.warehouseRepo.save(warehouse);

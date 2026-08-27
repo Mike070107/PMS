@@ -54,6 +54,13 @@ import { RepairsService } from './repairs.service';
 export class RepairsController {
   constructor(private readonly repairsService: RepairsService) {}
 
+  /** 报修类型配置弹窗的管理处 Tab：按本人范围算。必须声明在 repair-type-rules/:id 之前 */
+  @Get('repair-type-rules/offices')
+  @RequirePermission('work-orders', 'view')
+  listRuleOffices(@CurrentUser() user: AuthUser) {
+    return this.repairsService.listRuleOffices(user);
+  }
+
   /** officeId 不传 = 公司默认模板；传了 = 该管理处那套（首次会从模板复制） */
   @Get('repair-type-rules')
   @RequirePermission('work-orders', 'view')

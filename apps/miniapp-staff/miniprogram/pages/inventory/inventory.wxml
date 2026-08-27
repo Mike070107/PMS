@@ -39,6 +39,13 @@
         <view wx:if="{{canEdit && incompleteCount}}" class="chip {{onlyIncomplete ? 'chip--warn' : ''}}" bindtap="onToggleIncomplete">
           待补资料 {{incompleteCount}}
         </view>
+        <!-- 仅显示有货：默认勾上，现场要的是「现在能拿到什么」；点「低于安全库存 / 待补资料」时自动放开，
+             否则无货又缺资料的 SKU 永远看不到 -->
+        <checkbox-group class="stocked" bindchange="onToggleStocked">
+          <label class="stocked__label">
+            <checkbox class="stocked__box" value="1" checked="{{onlyStocked}}" color="#31558a" />仅显示有货
+          </label>
+        </checkbox-group>
       </view>
 
       <!-- 类别筛选：材料几十上百条，先按类别缩一轮比一直翻快得多。

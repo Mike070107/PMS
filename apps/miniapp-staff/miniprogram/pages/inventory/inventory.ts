@@ -9,7 +9,7 @@ import {
   type StockView,
   type WarehouseView,
 } from '@pms/shared-types';
-import { getSession } from '../../utils/session';
+import { getSession, type StaffSession } from '../../utils/session';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
 
 /**
@@ -97,6 +97,24 @@ const num = (value: string | number) => Number(value ?? 0);
  * 没默认成本 → 采购申请估不出金额。
  * 型号、别名、参数属于锦上添花，缺了不算残缺，不然整库都是红标，等于没标。
  */
+/**
+ * 进页面默认选哪个仓（picker 下标：0 = 全部仓库，其余错一位对应 warehouses）。
+ * 依据是本人角色范围对应的管理处（session.me.access.offices，由角色的数据范围算出来）
+ * 对上仓库档案里的「所属管理处」：
+ *   · 范围只有一个管理处（管理处专属维修工）→ 该管理处的第一个启用仓
+ *   · 全公司范围（总公司维修工 / 办公室 / 采购）→ 全部仓库
+ *   · 对不上（管理处还没建仓）→ 全部仓库
+ */
+function defaultWarehouseIndex(session: StaffSession, warehouses: WarehouseView[]): number {
+  const access = session.me?.access;
+  if (!access || access.scopeAll) return 0;
+  const offices = access.offices || [];
+  if (offices.length !== 1) return 0;
+  const officeId = offices[0].id;
+  const index = warehouses.findIndex((w) => w.enabled && w.officeId === officeId);
+  return index >= 0 ? index + 1 : 0;
+}
+
 function missingFields(item: MaterialView): string[] {
   const missing: string[] = [];
   if (!item.photoUrl) missing.push('照片');
@@ -111,12 +129,16 @@ Page({
     canEdit: false,
     roleHint: '',
     loading: true,
+    /** 首次加载完成后为 true：默认仓只在第一次进来时按管理处定，之后尊重用户切过的 */
+    loaded: false,
     tab: 'stock' as 'stock' | 'purchase',
 
     warehouses: [] as WarehouseView[],
     warehouseNames: [] as string[],
     warehouseIndex: 0,
     keyword: '',
+    /** 仅显示有货：默认勾上。点「低于安全库存 / 待补资料」时自动放开（那两类正是没货的） */
+    onlyStocked: true,
     onlyLow: false,
     /** 只看没填完整的：办公室补 SKU 时先把这一堆清掉 */
     onlyIncomplete: false,
@@ -193,9 +215,16 @@ Page({
         (item) => item.enabled && missingFields(item).length > 0,
       ).length;
 
+      // 默认仓：按自己角色范围对应的管理处挑（仓库档案里的「所属管理处」）。
+      // 只有第一次进来才定，之后用户切过的仓不动；全公司范围的人（办公室/采购）保持「全部仓库」
+      const warehouseIndex = this.data.loaded
+        ? Math.min(this.data.warehouseIndex, warehouses.length)
+        : defaultWarehouseIndex(session, warehouses);
       this.setData({
         warehouses,
         warehouseNames: ['全部仓库', ...warehouses.map((w) => w.name)],
+        warehouseIndex,
+        loaded: true,
         incompleteCount,
         requests: requests.map((item) => ({
           ...item,
@@ -231,7 +260,7 @@ Page({
   },
 
   applyFilter() {
-    const { warehouseIndex, warehouses, keyword, onlyLow, onlyIncomplete, categoryIndex } =
+    const { warehouseIndex, warehouses, keyword, onlyLow, onlyIncomplete, onlyStocked, categoryIndex } =
       this.data;
     // 0 = 全部仓库，其余按下标错一位对应 warehouses
     const warehouseId = warehouseIndex > 0 ? warehouses[warehouseIndex - 1]?.id : undefined;
@@ -265,6 +294,7 @@ Page({
       const low = safetyQty > 0 && qty < safetyQty;
       if (onlyLow && !low) continue;
       if (onlyIncomplete && !missing.length) continue;
+      if (onlyStocked && qty <= 0) continue;
 
       const aliases = material.aliases || [];
       rows.push({
@@ -335,15 +365,22 @@ Page({
   },
 
   onToggleLow() {
-    this.setData({ onlyLow: !this.data.onlyLow, onlyIncomplete: false }, () =>
+    const onlyLow = !this.data.onlyLow;
+    // 要补货的多半是没货的：开这个开关时把「仅显示有货」放开，否则列表看着是空的
+    this.setData({ onlyLow, onlyIncomplete: false, onlyStocked: onlyLow ? false : this.data.onlyStocked }, () =>
       this.applyFilter(),
     );
   },
 
   onToggleIncomplete() {
-    this.setData({ onlyIncomplete: !this.data.onlyIncomplete, onlyLow: false }, () =>
+    const onlyIncomplete = !this.data.onlyIncomplete;
+    this.setData({ onlyIncomplete, onlyLow: false, onlyStocked: onlyIncomplete ? false : this.data.onlyStocked }, () =>
       this.applyFilter(),
     );
+  },
+
+  onToggleStocked(e: WechatMiniprogram.CheckboxGroupChange) {
+    this.setData({ onlyStocked: (e.detail.value || []).indexOf('1') >= 0 }, () => this.applyFilter());
   },
 
   /** 照片单独点开看大图：光看缩略图分不清 DN50 和 DN75 */

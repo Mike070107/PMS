@@ -40,6 +40,7 @@ import {
   WorkOrderStatus,
 } from '../../common/enums';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
+import { ensureOfficeRepairRules } from './repair-rule-template';
 import {
   Building,
   Community,
@@ -194,34 +195,13 @@ export class RepairsService implements OnModuleInit {
       });
     }
     await this.assertOffice(tenantId, officeId);
-    const own = await this.repairTypeRuleRepo.find({
-      where: { tenantId, officeId },
-      order: { sortOrder: 'ASC', id: 'ASC' },
-    });
-    if (own.length) return own;
-    const template = await this.repairTypeRuleRepo.find({
-      where: { tenantId, officeId: IsNull() },
-      order: { sortOrder: 'ASC', id: 'ASC' },
-    });
-    if (!template.length) return [];
-    const copied = await this.repairTypeRuleRepo.save(
-      template.map((rule) =>
-        this.repairTypeRuleRepo.create({
-          tenantId,
-          officeId,
-          repairType: rule.repairType,
-          label: rule.label,
-          assigneeId: rule.assigneeId,
-          slaHours: rule.slaHours,
-          sortOrder: rule.sortOrder,
-          enabled: rule.enabled,
-          contentSuggestions: [...(rule.contentSuggestions ?? [])],
-          createdBy: user.id,
-          updatedBy: user.id,
-        }),
-      ),
-    );
-    return copied.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    // 没有自己那套就从公司默认复制（新建管理处时已经同步建过，这里是兜底）
+    return ensureOfficeRepairRules(this.repairTypeRuleRepo, tenantId, officeId, user.id);
+  }
+
+  /** 报修类型配置弹窗的管理处 Tab 列表：按本人范围算，刚新建的管理处不用重新登录就能看到 */
+  listRuleOffices(user: AuthUser) {
+    return this.accessService.listVisibleOffices(user);
   }
 
   async createRepairTypeRule(dto: UpsertRepairTypeRuleDto, user: AuthUser) {
@@ -762,18 +742,25 @@ export class RepairsService implements OnModuleInit {
     const officeCommunities = new Set(
       officeId ? await this.accessService.officeCommunityIds(tenantId, officeId) : [],
     );
+    // 工单所在管理处没有仓时，退到维修工自己所属管理处的仓（角色范围 → 管理处 → 仓的 office_id），
+    // 再退公司级（既不挂小区也不挂管理处）
+    const mine = await this.accessService.userOfficeIds(tenantId, user.id);
+    const myOffices = new Set(mine.officeIds);
     const rank = (item: Warehouse) =>
       item.communityId === workOrder.communityId
         ? 0
-        : item.communityId && officeCommunities.has(item.communityId)
+        : (officeId && item.officeId === officeId) ||
+            (item.communityId && officeCommunities.has(item.communityId))
           ? 1
-          : !item.communityId
+          : item.officeId && myOffices.has(item.officeId)
             ? 2
-            : 3;
+            : !item.communityId && !item.officeId
+              ? 3
+              : 4;
     const candidates = all.slice().sort((a, b) => rank(a) - rank(b) || a.id - b.id);
-    const mapped = candidates.find((item) => rank(item) <= 2) ?? null;
-    const byRank = ['community', 'office', 'company'] as const;
-    const mappedBy = mapped ? byRank[rank(mapped) as 0 | 1 | 2] : null;
+    const mapped = candidates.find((item) => rank(item) <= 3) ?? null;
+    const byRank = ['community', 'office', 'staff_office', 'company'] as const;
+    const mappedBy = mapped ? byRank[rank(mapped) as 0 | 1 | 2 | 3] : null;
 
     const stockRepo = this.dataSource.getRepository(Stock);
     const allStocks = candidates.length

@@ -100,6 +100,7 @@ export const REPAIR_SOURCE_LABELS: Record<string, string> = {
 export enum WarehouseType {
   CENTRAL = 'central', // 总仓
   COMMUNITY = 'community', // 小区仓
+  OFFICE = 'office', // 管理处仓：新建管理处时自动建的同名仓，挂 office_id 不挂小区
 }
 
 /** 库存流水类型 */

@@ -16,6 +16,14 @@ export class Warehouse extends TenantEntity {
   @Column({ name: 'community_id', type: 'int', nullable: true })
   communityId: number | null;
 
+  /**
+   * 所属管理处（2026-08-27）。人员按角色范围对应到管理处，再由管理处对应到仓：
+   * 员工端库存页默认仓、工单选料兜底都按它匹配。空 = 公司级（总仓）。
+   * 老数据没填时按 community_id → communities.office_id 懒补（见 InventoryService.listWarehouses）。
+   */
+  @Column({ name: 'office_id', type: 'int', nullable: true })
+  officeId: number | null;
+
   @Column({ default: true })
   enabled: boolean;
 }

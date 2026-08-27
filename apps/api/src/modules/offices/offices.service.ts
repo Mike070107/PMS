@@ -7,7 +7,9 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { Community, ManagementOffice, RoleScope } from '../../entities';
+import { Community, ManagementOffice, RepairTypeRule, RoleScope, Warehouse } from '../../entities';
+import { WarehouseType } from '../../common/enums';
+import { ensureOfficeRepairRules } from '../repairs/repair-rule-template';
 import { SaveOfficeDto } from './dto';
 
 @Injectable()
@@ -15,6 +17,10 @@ export class OfficesService {
   constructor(
     @InjectRepository(ManagementOffice)
     private readonly officeRepo: Repository<ManagementOffice>,
+    @InjectRepository(RepairTypeRule)
+    private readonly repairTypeRuleRepo: Repository<RepairTypeRule>,
+    @InjectRepository(Warehouse)
+    private readonly warehouseRepo: Repository<Warehouse>,
     @InjectRepository(Community)
     private readonly communityRepo: Repository<Community>,
     @InjectRepository(RoleScope)
@@ -63,7 +69,48 @@ export class OfficesService {
     if (dto.communityIds !== undefined) {
       await this.assignCommunities(office, dto.communityIds, user.id);
     }
+    // 新建管理处时把配套一起建好（2026-08-27 要求）：
+    //   · 报修类型配置：从公司默认模板复制一套挂在这个管理处下
+    //   · 仓库档案：一个和管理处同名的「管理处仓」（已有同名仓就把它挂过来）
+    // 失败不回滚管理处本身 —— 管理处是主，配套随时能在各自页面补
+    try {
+      await ensureOfficeRepairRules(this.repairTypeRuleRepo, tenantId, office.id, user.id);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(`管理处 ${office.id} 复制报修类型模板失败：${(error as Error)?.message}`);
+    }
+    try {
+      await this.ensureOfficeWarehouse(tenantId, office, user.id);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(`管理处 ${office.id} 建同名仓库失败：${(error as Error)?.message}`);
+    }
     return { id: office.id };
+  }
+
+  /** 同名仓已存在就挂到这个管理处（没挂过的话），否则新建一个管理处仓 */
+  private async ensureOfficeWarehouse(tenantId: number, office: ManagementOffice, operatorId: number) {
+    const existing = await this.warehouseRepo.findOne({ where: { tenantId, name: office.name } });
+    if (existing) {
+      if (!existing.officeId) {
+        existing.officeId = office.id;
+        existing.updatedBy = operatorId;
+        await this.warehouseRepo.save(existing);
+      }
+      return existing;
+    }
+    return this.warehouseRepo.save(
+      this.warehouseRepo.create({
+        tenantId,
+        name: office.name,
+        type: WarehouseType.OFFICE,
+        communityId: null,
+        officeId: office.id,
+        enabled: true,
+        createdBy: operatorId,
+        updatedBy: operatorId,
+      }),
+    );
   }
 
   async update(id: number, dto: SaveOfficeDto, user: AuthUser) {

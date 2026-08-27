@@ -137,6 +137,12 @@ export class CreateWarehouseDto {
   @IsInt()
   communityId?: number;
 
+  /** 所属管理处；不传按小区推，传 null = 公司级 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  officeId?: number | null;
+
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
@@ -156,6 +162,12 @@ export class UpdateWarehouseDto {
   @Type(() => Number)
   @IsInt()
   communityId?: number;
+
+  /** 所属管理处；传 null 清成公司级，不传不动 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  officeId?: number | null;
 
   @IsOptional()
   @IsBoolean()

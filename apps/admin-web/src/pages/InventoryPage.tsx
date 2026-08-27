@@ -42,9 +42,9 @@ import UnitSelect from '../components/UnitSelect';
 import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumnPrefs';
 import { formatDateTimeCn, MATERIAL_CATEGORIES } from '@pms/shared-types';
 import { request } from '../lib/api';
-import { auth, usePagePerm } from '../lib/auth';
+import { auth, useAuth, usePagePerm } from '../lib/auth';
 import { searchableExtraWideSelectProps, searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
-import { PurchaseOrderStatus, PurchaseRequestStatus, WarehouseType } from '@pms/shared-types';
+import { PurchaseOrderStatus, PurchaseRequestStatus, WAREHOUSE_TYPE_LABELS, WarehouseType } from '@pms/shared-types';
 
 const { Title, Text } = Typography;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -103,6 +103,8 @@ interface WarehouseRow {
   name: string;
   type: WarehouseType;
   communityId?: number | null;
+  /** 所属管理处；空 = 公司级。人员按管理处匹配仓库的依据 */
+  officeId?: number | null;
   enabled: boolean;
 }
 
@@ -283,6 +285,9 @@ function requestStepStatus(status: PurchaseRequestStatus): 'process' | 'error' {
 export default function InventoryPage() {
   const { message, modal } = AntdApp.useApp();
   const { canEdit } = usePagePerm('inventory');
+  const { access } = useAuth();
+  const offices = access?.offices ?? [];
+  const officeName = (id?: number | null) => (id ? offices.find((o) => o.id === id)?.name || `#${id}` : '');
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseRow[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -340,7 +345,7 @@ export default function InventoryPage() {
     .filter((item) => item.enabled)
     .map((item) => ({
       value: item.id,
-      label: `${item.name}${item.type === WarehouseType.CENTRAL ? ' · 总仓' : ' · 小区仓'}`,
+      label: `${item.name} · ${WAREHOUSE_TYPE_LABELS[item.type] || item.type}${item.officeId ? ' · ' + officeName(item.officeId) : ''}`,
     })));
   const supplierOptions = withOptionTitles(suppliers
     .filter((item) => item.enabled)
@@ -507,6 +512,7 @@ export default function InventoryPage() {
       name: row.name,
       type: row.type,
       communityId: row.communityId || undefined,
+      officeId: row.officeId || undefined,
       enabled: row.enabled,
     });
     setCatalogOpen('warehouse');
@@ -568,7 +574,10 @@ export default function InventoryPage() {
             defaultCostCents: values.defaultCostYuan != null ? Math.round(values.defaultCostYuan * 100) : 0,
             photoUrl: normalizePhotoUrl(values.photoUrl),
           }
-        : values;
+        : catalogOpen === 'warehouse'
+          // 下拉清空是 undefined，接口里 undefined = 不动，得明确传 null 才能清成公司级
+          ? { ...values, officeId: values.officeId ?? null }
+          : values;
       delete data.defaultCostYuan;
       delete data.photoUploading;
       const editingId = catalogOpen === 'material'
@@ -1289,7 +1298,9 @@ export default function InventoryPage() {
                             pagination={{ pageSize: 12, showSizeChanger: false }}
                             columns={[
                               { title: '名称', dataIndex: 'name', ellipsis: true },
-                              { title: '类型', dataIndex: 'type', width: 120, render: (v) => v === WarehouseType.CENTRAL ? '总仓' : '小区仓' },
+                              { title: '类型', dataIndex: 'type', width: 110, render: (v) => WAREHOUSE_TYPE_LABELS[v] || v },
+                              // 人员按角色范围对应管理处、再对应到这里的仓：空 = 公司级，全公司范围的人才默认它
+                              { title: '所属管理处', dataIndex: 'officeId', width: 160, render: (v) => v ? officeName(v) : <Text type="secondary">公司级</Text> },
                               { title: '小区 ID', dataIndex: 'communityId', width: 100, render: (v) => v || '-' },
                               {
                                 title: '库位数',
@@ -1698,6 +1709,9 @@ function CatalogModal({ kind, form, editingMaterial, editingWarehouse, editingSu
   onOk: (values: any) => void;
 }) {
   const photoUploading = Form.useWatch('photoUploading', form);
+  // 仓库表单的「所属管理处」下拉：按本人范围可见的管理处（登录时下发）
+  const { access } = useAuth();
+  const offices = access?.offices ?? [];
   const title = kind === 'material'
     ? editingMaterial ? `编辑材料SKU ${editingMaterial.code}` : '新增材料SKU'
     : kind === 'warehouse'
@@ -1742,12 +1756,22 @@ function CatalogModal({ kind, form, editingMaterial, editingWarehouse, editingSu
                 <Form.Item name="type" label="仓库类型" initialValue={WarehouseType.CENTRAL} rules={[{ required: true }]}>
                   <Select options={[
                     { value: WarehouseType.CENTRAL, label: '总仓' },
+                    { value: WarehouseType.OFFICE, label: '管理处仓' },
                     { value: WarehouseType.COMMUNITY, label: '小区仓' },
                   ]} />
                 </Form.Item>
               </Col>
-              <Col span={12}><Form.Item name="communityId" label="小区 ID（小区仓必填）"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Col>
+              <Col span={12}>
+                <Form.Item
+                  name="officeId"
+                  label="所属管理处"
+                  extra="员工端按自己角色范围对应的管理处默认选这里的仓；留空 = 公司级，只有全公司范围的人会默认它"
+                >
+                  <Select allowClear placeholder="公司级（不挂管理处）" options={withOptionTitles(offices.map((o) => ({ value: o.id, label: o.name })))} {...searchableWideSelectProps} />
+                </Form.Item>
+              </Col>
             </Row>
+            <Form.Item name="communityId" label="小区 ID（小区仓必填；没选管理处时按小区推）"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
           </>
         )}
         {kind === 'supplier' && (

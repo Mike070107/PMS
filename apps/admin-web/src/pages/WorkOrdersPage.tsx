@@ -2204,7 +2204,8 @@ function RepairTypeRuleModal({
   const { message } = AntdApp.useApp();
   const { canDelete, canEdit } = usePagePerm('work-orders');
   const { access } = useAuth();
-  const offices = access?.offices ?? [];
+  // 管理处列表现取现用：登录时拿的 access.offices 不含刚新建的管理处，拿不到就退回它
+  const [offices, setOffices] = useState<Array<{ id: number; name: string }>>(access?.offices ?? []);
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<RepairTypeRule | null>(null);
@@ -2325,6 +2326,9 @@ function RepairTypeRuleModal({
     setTab('company');
     startCreate();
     loadTab('company');
+    request<Array<{ id: number; name: string }>>({ url: '/repair-type-rules/offices' })
+      .then((list) => { if (Array.isArray(list)) setOffices(list); })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
