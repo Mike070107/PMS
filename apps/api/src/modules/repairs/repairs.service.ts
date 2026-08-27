@@ -752,7 +752,7 @@ export class RepairsService implements OnModuleInit {
       item.communityId === workOrder.communityId && officeConsistent(item)
         ? 0
         : (officeId && item.officeId === officeId) ||
-            (item.communityId && officeCommunities.has(item.communityId))
+            (item.communityId && officeCommunities.has(item.communityId) && officeConsistent(item))
           ? 1
           : item.officeId && myOffices.has(item.officeId)
             ? 2
