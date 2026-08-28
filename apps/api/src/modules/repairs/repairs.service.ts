@@ -40,7 +40,7 @@ import {
   WorkOrderStatus,
 } from '../../common/enums';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
-import { ensureOfficeRepairRules } from './repair-rule-template';
+import { ensureOfficeRepairRules, ruleAssigneeIds } from './repair-rule-template';
 import {
   Building,
   Community,
@@ -173,15 +173,20 @@ export class RepairsService implements OnModuleInit {
   async listRepairTypeRules(user: AuthUser, officeId?: number | null) {
     const tenantId = this.resolveTenantId(user);
     await this.ensureDefaultRepairTypeRules(tenantId, user.id);
+    // 老数据只有 assignee_id 一个人，读出来统一补成数组，后台页只认 assigneeIds
+    const withIds = (rules: RepairTypeRule[]) =>
+      rules.map((rule) => ({ ...rule, assigneeIds: ruleAssigneeIds(rule) }));
     if (!officeId) {
-      return this.repairTypeRuleRepo.find({
-        where: { tenantId, officeId: IsNull() },
-        order: { sortOrder: 'ASC', id: 'ASC' },
-      });
+      return withIds(
+        await this.repairTypeRuleRepo.find({
+          where: { tenantId, officeId: IsNull() },
+          order: { sortOrder: 'ASC', id: 'ASC' },
+        }),
+      );
     }
     await this.assertOffice(tenantId, officeId);
-    // 没有自己那套就从公司默认复制（新建管理处时已经同步建过，这里是兜底）
-    return ensureOfficeRepairRules(this.repairTypeRuleRepo, tenantId, officeId, user.id);
+    // 没有自己那套就从总公司复制（新建管理处时已经同步建过，这里是兜底）
+    return withIds(await ensureOfficeRepairRules(this.repairTypeRuleRepo, tenantId, officeId, user.id));
   }
 
   /** 报修类型配置弹窗的管理处 Tab 列表：按本人范围算，刚新建的管理处不用重新登录就能看到 */
@@ -193,7 +198,8 @@ export class RepairsService implements OnModuleInit {
     const tenantId = this.resolveTenantId(user);
     const officeId = dto.officeId ?? null;
     if (officeId) await this.assertOffice(tenantId, officeId);
-    await this.assertAssignee(tenantId, dto.assigneeId ?? null, officeId);
+    const assigneeIds = this.dtoAssigneeIds(dto);
+    for (const id of assigneeIds) await this.assertAssignee(tenantId, id, officeId);
     const existing = await this.repairTypeRuleRepo.findOne({
       where: { tenantId, officeId: officeId ?? IsNull(), repairType: dto.repairType },
     });
@@ -205,7 +211,9 @@ export class RepairsService implements OnModuleInit {
         officeId,
         repairType: dto.repairType,
         label: dto.label,
-        assigneeId: dto.assigneeId ?? null,
+        // assignee_id 只留第一个人做兼容，真正生效的是 assignee_ids
+        assigneeId: assigneeIds[0] ?? null,
+        assigneeIds,
         slaHours: dto.slaHours ?? null,
         sortOrder,
         enabled: dto.enabled ?? true,
@@ -222,14 +230,16 @@ export class RepairsService implements OnModuleInit {
     const rule = await this.repairTypeRuleRepo.findOne({ where: { id, tenantId } });
     if (!rule) throw new NotFoundException('repair type rule not found');
     // 归属的管理处不能改：要挪去别的管理处就到那一页新建
-    await this.assertAssignee(tenantId, dto.assigneeId ?? null, rule.officeId);
+    const assigneeIds = this.dtoAssigneeIds(dto);
+    for (const id of assigneeIds) await this.assertAssignee(tenantId, id, rule.officeId);
     const dup = await this.repairTypeRuleRepo.findOne({
       where: { tenantId, officeId: rule.officeId ?? IsNull(), repairType: dto.repairType },
     });
     if (dup && dup.id !== id) throw new BadRequestException('该报修类型规则已存在');
     rule.repairType = dto.repairType;
     rule.label = dto.label;
-    rule.assigneeId = dto.assigneeId ?? null;
+    rule.assigneeId = assigneeIds[0] ?? null;
+    rule.assigneeIds = assigneeIds;
     rule.slaHours = dto.slaHours ?? null;
     rule.sortOrder = dto.sortOrder ?? rule.sortOrder;
     rule.enabled = dto.enabled ?? true;
@@ -520,6 +530,12 @@ export class RepairsService implements OnModuleInit {
           WorkOrderStatus.DISPATCHED,
           WorkOrderStatus.WAITING_MATERIAL,
         ]);
+      }
+      // 维修工的池子只看和自己类型相关的单：他在哪些类型里被配成了默认维修工，就看哪些类型。
+      // 一个类型都没配到的人不过滤（老配置也得能用）；派单台（能派单的人）看全部
+      if (!(await this.canDispatch(user, access))) {
+        const types = await this.technicianTypes(tenantId, user.id);
+        if (types.length) where.skill = In(types);
       }
     } else if (query.scope === 'reported') {
       // 「我报的」= 我替住户/巡查提交的单，不管派给了谁。
@@ -1910,6 +1926,49 @@ export class RepairsService implements OnModuleInit {
    * 通知里必须带上地址和故障描述：只写「你有一张新工单」等于没说，
    * 人还得点进去才知道要不要现在去。
    */
+  /**
+   * 新单进池子时通知类型里配的每一位维修工：站内信 + 微信订阅消息（模板和派单那条同一个）。
+   * 点通知进详情页，详情页上就能接单；先接到的人拿走，其他人再点开会看到「已被 xx 接走」。
+   */
+  private async notifyCandidatesOnCreate(workOrder: WorkOrder, candidates: User[]): Promise<void> {
+    const request = await this.repairRequestRepo.findOne({
+      where: { id: workOrder.requestId, tenantId: workOrder.tenantId },
+    });
+    const rule = request?.repairType
+      ? await this.repairTypeRuleRepo.findOne({
+          where: { tenantId: workOrder.tenantId, repairType: request.repairType },
+        })
+      : null;
+    const typeLabel = rule?.label || '报修';
+    const address = request?.addressText?.trim() || '（未填地址）';
+    const content = request?.content?.trim() || '';
+    const deadline = workOrder.slaDueAt
+      ? `，${this.formatWhenShort(new Date(workOrder.slaDueAt))} 前完成`
+      : '';
+    const when = this.formatWhen(new Date());
+    for (const candidate of candidates) {
+      await this.notifications.notifyUser({
+        tenantId: workOrder.tenantId,
+        receiverId: candidate.id,
+        eventKey: 'order_pool_new',
+        title: `新工单待接：${typeLabel} · ${address}${deadline}`,
+        payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo, content },
+        page: `pages/order-detail/order-detail?id=${workOrder.id}`,
+        template: 'orderAssigned',
+        templateFields: {
+          orderNo: workOrder.orderNo,
+          type: typeLabel,
+          status: '新工单待接单',
+          statusShort: '待接单',
+          content: `${typeLabel} · ${address}${content ? '：' + content : ''}`,
+          assignee: '',
+          address,
+          time: when,
+        },
+      });
+    }
+  }
+
   private async notifyAssigneeOnDispatch(
     workOrder: WorkOrder,
     note: string | null,
@@ -2146,7 +2205,11 @@ export class RepairsService implements OnModuleInit {
     // 判不出才落「其它」——类型是自动派单的依据，空着等于这单没人认领
     const repairType =
       dto.repairType || (await this.guessRepairType(dto.content, tenantId, dto.communityId)) || undefined;
-    const assignRule = await this.findAutoAssignRule(repairType, tenantId, dto.communityId);
+    // 类型规则只用来定时限和「该通知谁」：匹配到的维修工都收到通知、都在自己的工单池里看到，
+    // 谁先接单归谁。原来是自动派给规则里唯一那个人（2026-08-28 之前），别的同类型维修工既没通知
+    // 也看不到单，报单的人自己也找不到
+    const typeRule = await this.findTypeRule(repairType, tenantId, dto.communityId);
+    const candidates = await this.ruleCandidates(tenantId, typeRule);
     const sourceLabel = REPAIR_SOURCE_LABELS[source] ?? source;
     // 联系人/电话在端上都是选填（随手拍压根不问），不在服务端兜底的话
     // 后台工单详情就是两个「-」，办公室拿到单子找不到人
@@ -2185,10 +2248,10 @@ export class RepairsService implements OnModuleInit {
           orderNo: await this.nextOrderNo(manager),
           requestId: request.id,
           communityId: dto.communityId,
-          assigneeId: assignRule?.assigneeId ?? null,
+          assigneeId: null,
           skill: repairType ?? null,
-          status: assignRule ? WorkOrderStatus.DISPATCHED : WorkOrderStatus.CREATED,
-          dispatchedAt: assignRule ? new Date() : null,
+          status: WorkOrderStatus.CREATED,
+          dispatchedAt: null,
           acceptedAt: null,
           completedAt: null,
           // 办公室录入时明确勾了截止时间就用它；没勾才落到类型规则里的默认时限。
@@ -2196,8 +2259,8 @@ export class RepairsService implements OnModuleInit {
           slaDueAt:
             dto.slaDueAt && source !== RepairSource.OWNER_MINIAPP
               ? new Date(dto.slaDueAt)
-              : assignRule?.slaHours
-                ? new Date(Date.now() + assignRule.slaHours * 60 * 60 * 1000)
+              : typeRule?.slaHours
+                ? new Date(Date.now() + typeRule.slaHours * 60 * 60 * 1000)
                 : null,
           actionTags: [],
           actionNote: null,
@@ -2220,11 +2283,11 @@ export class RepairsService implements OnModuleInit {
           workOrderId: workOrder.id,
           fromStatus: null,
           toStatus: workOrder.status,
-          action: assignRule ? 'create_auto_assign' : 'create',
+          action: 'create',
           operatorId: submittedBy,
           // 业主在小程序进度里能看到这一条，写中文，别把枚举值透出去
-          note: assignRule
-            ? `${sourceLabel}；按报修类型自动派单给维修工 #${assignRule.assigneeId}`
+          note: candidates.length
+            ? `${sourceLabel}；已通知维修工 ${candidates.map((c) => c.name || `#${c.id}`).join('、')}`
             : sourceLabel,
           createdBy: submittedBy,
           updatedBy: submittedBy,
@@ -2267,11 +2330,10 @@ export class RepairsService implements OnModuleInit {
     // 绝不能因为它让报修提交失败。
     await this.rememberContactAsOwner(dto, tenantId, source, submittedBy);
 
-    // 按报修类型规则自动派出去的单，也要通知那位维修工 ——
-    // 派单有两个入口（办公室手动派 / 类型规则自动派），只在一个入口发通知，
-    // 自动派的那批就成了「系统悄悄塞给你、你永远不知道」
-    if (created.workOrder.assigneeId) {
-      await this.notifyAssigneeOnDispatch(created.workOrder, '按报修类型自动派单');
+    // 类型里配的维修工每人一条「新工单」：站内信一定写，微信订阅消息尽力而为。
+    // 通知失败只记日志，不能让报修提交失败（notifyUser 内部已兜住）
+    if (candidates.length) {
+      await this.notifyCandidatesOnCreate(created.workOrder, candidates);
     }
 
     return created;
@@ -2844,24 +2906,72 @@ export class RepairsService implements OnModuleInit {
     );
   }
 
-  private async findAutoAssignRule(
+  /** 报修小区适用的那套规则里，这个类型的一条（停用的不算） */
+  private async findTypeRule(
     repairType: string | undefined,
     tenantId: number,
     communityId?: number | null,
-  ) {
+  ): Promise<RepairTypeRule | null> {
     if (!repairType) return null;
-    const rule = (await this.rulesForCommunity(tenantId, communityId)).find(
-      (item) => item.repairType === repairType && item.enabled,
+    return (
+      (await this.rulesForCommunity(tenantId, communityId)).find(
+        (item) => item.repairType === repairType && item.enabled,
+      ) ?? null
     );
-    if (!rule?.assigneeId) return null;
-    const assignee = await this.userRepo.findOne({
-      where: { id: rule.assigneeId, tenantId },
-    });
-    if (!assignee || assignee.status !== UserStatus.ACTIVE) return null;
-    if (!(await this.accessService.userHasPermission(tenantId, assignee.id, 'app:pool', 'edit'))) {
-      return null;
+  }
+
+  /**
+   * 规则里配的默认维修工中，现在真能接单的那些：在职、角色勾了「工单池 · 接单」。
+   * 配置之后被停用 / 改了角色的人自动剔除，不用回头改规则。
+   */
+  private async ruleCandidates(tenantId: number, rule: RepairTypeRule | null): Promise<User[]> {
+    const ids = rule ? ruleAssigneeIds(rule) : [];
+    if (!ids.length) return [];
+    const users = await this.userRepo.find({ where: { id: In(ids), tenantId } });
+    const picked: User[] = [];
+    for (const id of ids) {
+      const user = users.find((u) => u.id === id);
+      if (!user || user.status !== UserStatus.ACTIVE) continue;
+      if (!(await this.accessService.userHasPermission(tenantId, user.id, 'app:pool', 'edit'))) continue;
+      picked.push(user);
     }
-    return rule;
+    return picked;
+  }
+
+  /** 后台提交的默认维修工：新字段优先，老字段兜底；去重、去空 */
+  private dtoAssigneeIds(dto: UpsertRepairTypeRuleDto): number[] {
+    const raw = dto.assigneeIds ?? (dto.assigneeId ? [dto.assigneeId] : []);
+    return Array.from(new Set(raw.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
+  }
+
+  /**
+   * 这个维修工被配进了哪些类型（任意管理处那套都算）。工单池按它过滤。
+   * 规则表一个公司就几十行，直接全拉；别为这个再建表
+   */
+  private async technicianTypes(tenantId: number, userId: number): Promise<string[]> {
+    const rules = await this.repairTypeRuleRepo.find({ where: { tenantId, enabled: true } });
+    return Array.from(
+      new Set(rules.filter((rule) => ruleAssigneeIds(rule).includes(userId)).map((rule) => rule.repairType)),
+    );
+  }
+
+  /** 工单池角标：和 scope=pool 同一套口径（未指派、未完结、按维修工类型过滤） */
+  async poolCount(user: AuthUser, access: ResolvedAccess): Promise<{ count: number }> {
+    const tenantId = this.resolveTenantId(user);
+    const where: FindOptionsWhere<WorkOrder> = {
+      tenantId,
+      assigneeId: IsNull(),
+      status: In([
+        WorkOrderStatus.CREATED,
+        WorkOrderStatus.DISPATCHED,
+        WorkOrderStatus.WAITING_MATERIAL,
+      ]),
+    };
+    if (!(await this.canDispatch(user, access))) {
+      const types = await this.technicianTypes(tenantId, user.id);
+      if (types.length) where.skill = In(types);
+    }
+    return { count: await this.workOrderRepo.count({ where }) };
   }
 
   private async ensureDefaultRepairTypeRules(tenantId: number, operatorId: number) {

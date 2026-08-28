@@ -1,4 +1,5 @@
 import {
+  ArrayMaxSize,
   IsArray,
   IsDateString,
   IsIn,
@@ -169,10 +170,18 @@ export class UpsertRepairTypeRuleDto {
   @MaxLength(120)
   label: string;
 
+  /** 兼容老后台：只传一个人。新后台传 assigneeIds */
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   assigneeId?: number | null;
+
+  /** 默认维修工，可多人；不传 / 空数组 = 只进待派单 */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsInt({ each: true })
+  assigneeIds?: number[];
 
   @IsOptional()
   @Type(() => Number)

@@ -1,6 +1,12 @@
 import { IsNull, Repository } from 'typeorm';
 import { RepairTypeRule } from '../../entities';
 
+/** 规则里的默认维修工：新字段优先，老数据只有 assignee_id 时兜底成单人数组 */
+export function ruleAssigneeIds(rule: Pick<RepairTypeRule, 'assigneeId' | 'assigneeIds'>): number[] {
+  if (rule.assigneeIds?.length) return rule.assigneeIds;
+  return rule.assigneeId ? [rule.assigneeId] : [];
+}
+
 /**
  * 给一个管理处建它自己那套报修类型规则：从公司默认模板（office_id 为空）整套复制。
  * 已经有了就原样返回，不重复建。
@@ -32,6 +38,7 @@ export async function ensureOfficeRepairRules(
         repairType: rule.repairType,
         label: rule.label,
         assigneeId: rule.assigneeId,
+        assigneeIds: ruleAssigneeIds(rule),
         slaHours: rule.slaHours,
         sortOrder: rule.sortOrder,
         enabled: rule.enabled,

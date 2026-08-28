@@ -228,6 +228,13 @@ export class RepairsController {
     return this.repairsService.listDispatchTechnicians(user, access, officeScope);
   }
 
+  /** 工单池角标用：和 scope=pool 同一口径的条数。同样必须排在 :id 之前 */
+  @Get('work-orders/pool-count')
+  @RequirePermission(['app:pool', 'app:dispatch'], 'view')
+  poolCount(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.repairsService.poolCount(user, access);
+  }
+
   @Get('work-orders/:id')
   @Roles(...OWNER_APP_ROLES)
   @RequirePermission(

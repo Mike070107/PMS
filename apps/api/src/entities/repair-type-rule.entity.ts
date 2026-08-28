@@ -27,8 +27,17 @@ export class RepairTypeRule extends TenantEntity {
   @Column({ type: 'varchar', length: 120 })
   label: string;
 
+  /** 兼容字段：assignee_ids 的第一个人。老代码/老数据只认这一列，新逻辑一律读 assigneeIds */
   @Column({ name: 'assignee_id', type: 'int', nullable: true })
   assigneeId: number | null;
+
+  /**
+   * 默认维修工，可多人（2026-08-28）。新单不再自动派给某一个人：这些人都收到「新工单」通知、
+   * 都在自己的工单池里看到它，谁先接单归谁。老数据这一列是空数组，读取时用 assignee_id 兜底
+   * （见 ruleAssigneeIds）。
+   */
+  @Column({ name: 'assignee_ids', type: 'jsonb', default: () => "'[]'" })
+  assigneeIds: number[];
 
   @Column({ name: 'sla_hours', type: 'int', nullable: true })
   slaHours: number | null;

@@ -149,11 +149,14 @@ interface WorkOrderDetail {
 }
 interface RepairTypeRule {
   id: number;
-  /** 归属管理处；null = 公司默认模板 */
+  /** 归属管理处；null = 总公司（各管理处的模板） */
   officeId: number | null;
   repairType: string;
   label: string;
+  /** 兼容字段，等于 assigneeIds[0]；页面只用 assigneeIds */
   assigneeId: number | null;
+  /** 默认维修工，可多人：新单通知他们并进各自的工单池，谁先接归谁 */
+  assigneeIds: number[];
   slaHours: number | null;
   sortOrder: number;
   enabled: boolean;
@@ -2265,7 +2268,7 @@ function RepairTypeRuleModal({
     form.setFieldsValue({
       repairType: rule.repairType,
       label: rule.label,
-      assigneeId: rule.assigneeId ?? undefined,
+      assigneeIds: rule.assigneeIds?.length ? rule.assigneeIds : rule.assigneeId ? [rule.assigneeId] : [],
       slaHours: rule.slaHours ?? 24,
       enabled: rule.enabled,
     });
@@ -2343,7 +2346,7 @@ function RepairTypeRuleModal({
           officeId,
           repairType: v.repairType,
           label: v.label,
-          assigneeId: v.assigneeId ?? null,
+          assigneeIds: v.assigneeIds ?? [],
           slaHours: v.slaHours ?? null,
           enabled: v.enabled ?? true,
           contentSuggestions: keywords,
@@ -2444,15 +2447,15 @@ function RepairTypeRuleModal({
         activeKey={String(tab)}
         onChange={(key) => switchTab(key === 'company' ? 'company' : Number(key))}
         items={[
-          { key: 'company', label: '公司默认（模板）' },
+          { key: 'company', label: '总公司' },
           ...offices.map((o) => ({ key: String(o.id), label: o.name })),
         ]}
         className="pms-repair-rule-tabs"
       />
       <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
         {officeId
-          ? `「${officeName}」这一套第一次打开时从公司默认复制而来，之后各改各的、互不影响。默认维修工只能选范围覆盖本管理处的人（全公司范围的维修工也可以）。`
-          : '公司默认是各管理处的模板：没单独配过的管理处按这里派单。这里的默认维修工只能选全公司范围的人。领料仓库不用配 —— 维修工选料时按工单所在小区 / 管理处自动匹配仓库。'}
+          ? `「${officeName}」这一套第一次打开时从总公司复制而来，之后各改各的、互不影响。默认维修工只能选范围覆盖本管理处的人（全公司范围的维修工也可以）。`
+          : '总公司这一套是各管理处的模板：没单独配过的管理处按这里走。这里的默认维修工只能选全公司范围的人。领料仓库不用配 —— 维修工选料时按工单所在小区 / 管理处自动匹配仓库。'}
       </Text>
       <Row gutter={20}>
         <Col xs={24} lg={14}>
@@ -2467,7 +2470,7 @@ function RepairTypeRuleModal({
             dataSource={localRules}
             pagination={false}
             components={{ body: { row: DraggableRow } }}
-            locale={{ emptyText: officeId ? '这个管理处还没有报修类型（公司默认也是空的）' : '还没有报修类型，点右侧「新增」' }}
+            locale={{ emptyText: officeId ? '这个管理处还没有报修类型（总公司那一套也是空的）' : '还没有报修类型，点右侧「新增」' }}
             columns={[
               {
                 title: '',
@@ -2488,10 +2491,14 @@ function RepairTypeRuleModal({
               },
               {
                 title: '默认维修工',
-                dataIndex: 'assigneeId',
-                width: 150,
-                render: (id: number | null) =>
-                  id ? technicianName(id) : <Text type="secondary">未设置</Text>,
+                dataIndex: 'assigneeIds',
+                width: 180,
+                render: (_: unknown, rule) => {
+                  const ids = rule.assigneeIds?.length ? rule.assigneeIds : rule.assigneeId ? [rule.assigneeId] : [];
+                  return ids.length
+                    ? ids.map((id) => technicianName(id)).join('、')
+                    : <Text type="secondary">未设置</Text>;
+                },
               },
               { title: '完成时限', dataIndex: 'slaHours', width: 100, render: (v) => v ? `${v}小时` : '-' },
               { title: '状态', dataIndex: 'enabled', width: 80, render: (v) => v ? <Tag color="green">启用</Tag> : <Tag>停用</Tag> },
@@ -2520,7 +2527,7 @@ function RepairTypeRuleModal({
           />
         </Col>
         <Col xs={24} lg={10}>
-          <Card title={editing ? `编辑：${editing.label}` : `新增报修类型${officeId ? `（${officeName}）` : '（公司默认）'}`}>
+          <Card title={editing ? `编辑：${editing.label}` : `新增报修类型${officeId ? `（${officeName}）` : '（总公司）'}`}>
             <Form form={form} layout="vertical" size="large" disabled={!canEdit}>
               <Form.Item name="label" label="显示名称" rules={[{ required: true }]}>
                 <Input placeholder="如：水管 / 漏水" />
@@ -2536,15 +2543,16 @@ function RepairTypeRuleModal({
                 <Input placeholder="如：plumbing" />
               </Form.Item>
               <Form.Item
-                name="assigneeId"
-                label="默认维修工"
+                name="assigneeIds"
+                label="默认维修工（可多选）"
                 extra={officeId
                   ? '只列范围覆盖本管理处的人；想让某位维修工出现在这里，去「业务角色」把他的角色范围勾上本管理处'
                   : '只列全公司范围的人；管理处专属维修工请到对应管理处那一页去设'}
               >
                 <Select
+                  mode="multiple"
                   allowClear
-                  placeholder="不选则进入待派单"
+                  placeholder="不选则只进待派单，由办公室派"
                   notFoundContent={<Text type="secondary">没有符合范围的维修工</Text>}
                   options={withOptionTitles(tabTechnicians.map((t) => ({
                     value: t.id,
@@ -2590,7 +2598,7 @@ function RepairTypeRuleModal({
             </Form>
           </Card>
           <Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
-            设置默认维修工后，办公室或业主提交该类型报修时，工单会自动进入“已派单”；未设置则进入“待派单”。
+            设置默认维修工后，这个类型的新工单会通知选中的每一位维修工，并出现在他们各自的工单池里，谁先接单归谁；未设置则只进入“待派单”，由办公室派。维修工的工单池只显示他被配到的类型。
             关键词按这里的先后顺序显示在录入页的「猜你想输」。
             维修工选料时的仓库按工单所在小区 / 管理处自动匹配（同小区仓 → 同管理处仓 → 公司总仓），
             匹配不到时维修工可以自己挑仓库，也请在「库存与采购」里给管理处建仓。

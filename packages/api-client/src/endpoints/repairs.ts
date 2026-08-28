@@ -89,6 +89,9 @@ export interface ListQuery {
 export const list = (query: ListQuery = {}) =>
   request<WorkOrderListItem[]>({ url: '/work-orders', query: query as any });
 
+/** 工单池里有几条待接（按本人类型过滤），底部 tab 角标用 */
+export const poolCount = () => request<{ count: number }>({ url: '/work-orders/pool-count' });
+
 export const detail = (id: number | string) => request<WorkOrderDetail>({ url: `/work-orders/${id}` });
 
 export const accept = (id: number | string) =>
