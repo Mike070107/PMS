@@ -13,6 +13,7 @@
  */
 import { canSeeTab, type TabAccess, type TabKey } from '../utils/roles';
 import { readCachedAccess, rememberPoolMode } from '../utils/tabbar';
+import { topUpQuietly } from '../utils/unread';
 
 interface TabDef {
   key: TabKey;
@@ -70,6 +71,10 @@ Component({
     },
 
     onTap(e: WechatMiniprogram.BaseEvent) {
+      // 勾过「总是保持」的人：切 tab 这一下顺手把提醒额度补上（微信不弹框、静默放行）。
+      // 微信要求授权请求必须由点击直接触发，「打开小程序就自动补」做不到，
+      // 切 tab 是打开之后最先发生的点击，效果最接近「自动」。必须放在任何 await 之前。
+      topUpQuietly();
       const index = Number(e.currentTarget.dataset.index);
       const tab = this.data.tabs[index];
       if (!tab || tab.key === this.data.selectedKey) return;

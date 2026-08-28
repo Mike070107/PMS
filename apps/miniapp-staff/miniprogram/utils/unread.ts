@@ -275,9 +275,15 @@ async function settle(tmplIds: string[], outcome: SubscribeOutcome, silent: bool
  * 挂在「点开工单卡片」这类每天都会发生很多次的点击上，额度基本能一直保持满的。
  * 只读缓存、同步发起：这里 await 任何东西都会让微信不认这次点击（见上面的说明）。
  */
+/** 上次静默补额度的时刻：切 tab、点工单都会调，30 秒内只补一次，别把每次点击都变成两个请求 */
+let lastTopUpAt = 0;
+
 export function topUpQuietly(): void {
   const tmplIds = cachedTmplIds;
-  if (!tmplIds?.length || !cachedAlways) return;
+  if (!tmplIds?.length || !(cachedAlways || alwaysFlag())) return;
+  const now = Date.now();
+  if (now - lastTopUpAt < 30 * 1000) return;
+  lastTopUpAt = now;
   requestNow(tmplIds)
     .then((outcome) => settle(tmplIds, outcome, true))
     .catch(() => {
