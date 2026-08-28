@@ -1,0 +1,45 @@
+# PMS 项目内工作约定
+
+> 全局偏好见 `~/.claude/CLAUDE.md`，冲突时以本文件为准。
+> 本文件解决的是「一边开发一边测出 bug、多个会话并行」时反复出现的三类事故：
+> 指令被吞、改动互相覆盖、推送/部署遗漏。
+
+## 一、一个会话只干一件事（硬性）
+
+- **一个任务 = 一个分支 = 一个 worktree = 一个 Claude 会话。**
+  绝不在同一个目录里开第二个会话做另一件事 —— 两个会话共用同一个 git 索引和工作区，
+  A 的 `git add` 会把 B 的半成品一起提交推走（见 `deploy/mark-deployed.mjs` 顶部注释）。
+- 需要并行时用 worktree，不要开第二个窗口指向同一目录：
+  ```powershell
+  pwsh tools/wt.ps1 new fix-repair-time   # 建 ../PMS-fix-repair-time 并切到 feat/fix-repair-time
+  pwsh tools/wt.ps1 list
+  pwsh tools/wt.ps1 done fix-repair-time  # 合回 main 后删除
+  ```
+- 会话与目录绑定后，**开工第一件事**跑 `/start`，收尾跑 `/ship`。
+
+## 二、测试中发现 bug：写进收件箱，不要打断正在跑的会话
+
+在 Claude 执行过程中输入的消息会排队到下一个回合才送达，赶上长任务或上下文压缩时
+很容易被埋掉 —— 这就是「指令被丢弃」的真正原因。所以：
+
+- **默认动作：`/bug <一句话>`** —— 只往 `docs/bug-inbox.md` 追加一条，不打断当前任务。
+  当前任务收尾时或下一个会话开工时统一处理。
+- **必须立刻改**（阻塞测试、线上炸了）：先按 **Esc 打断**，再说这个 bug。
+  Esc 不会丢掉已经写进文件的改动，打断后说的话是下一条指令，一定被执行。
+- **不要**边跑边打字期待它照办。要么进收件箱，要么先 Esc。
+
+## 三、提交与推送
+
+- 共用 checkout 时**只 `git add` 明确路径**，禁止 `git add -A` / `git add .`；
+  提交前必看 `git diff --cached --stat`，确认没有别的会话的文件。
+- 推送 ≠ 上线。三个目标各自独立：git / 线上 API+后台 / 小程序包。
+  部署完必须 `node deploy/mark-deployed.mjs <目标>` 打标记，
+  推送前先 `node deploy/mark-deployed.mjs status` 看哪些提交还没上线。
+- 打包一律从干净 worktree（`../PMS-deploy`）出，别把别人的未提交改动打进线上包。
+
+## 四、上下文纪律
+
+- 换一件不相干的事 → 先 `/clear`。带着上一个任务的上下文做新功能，
+  最容易改到不该改的文件。
+- 超过 3 步、要动多个包的改动 → 先 Shift+Tab 进 plan mode，
+  确认计划再执行；执行期间不要插话。
