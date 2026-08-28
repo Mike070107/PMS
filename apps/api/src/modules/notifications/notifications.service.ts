@@ -46,7 +46,13 @@ export interface TemplateFields {
   content: string;
   assignee: string;
   address: string;
+  /** 报修人（建单时落库的联系人）；模板里有「报修人 / 联系人」那一格时填它 */
+  reporter: string;
+  /** 发送这条提醒的时刻；模板里写「提醒时间」的格子填它 */
   time: string;
+  /** 报修提交的时刻；模板里写「报修时间 / 提交时间」的格子填它 —— 和 time 不是一回事，
+   *  催接单那条提醒里两者差着几十分钟 */
+  reportedAt: string;
 }
 
 /**
@@ -56,9 +62,14 @@ export interface TemplateFields {
 const LABEL_RULES: { test: RegExp; field: keyof TemplateFields }[] = [
   { test: /状态|进度|结果/, field: 'status' },
   { test: /内容|描述|事项|问题|详情|说明/, field: 'content' },
+  // 「报修时间」是提交时刻、「提醒时间」是发送时刻，同一张模板里可能两格都有，
+  // 所以具体的那条必须排在通用「时间」前面
+  { test: /报修时间|报单时间|提交时间|下单时间|受理时间/, field: 'reportedAt' },
   { test: /时间|日期/, field: 'time' },
   { test: /编号|单号|工单号|订单号/, field: 'orderNo' },
   { test: /类型|类别|种类/, field: 'type' },
+  // 报修人排在维修工前面：「报修人」是报单的那位，不是去修的那位
+  { test: /报修人|报单人|联系人|申请人|来电人|业主姓名|住户姓名/, field: 'reporter' },
   { test: /维修工|师傅|人员|负责人|处理人|工程师/, field: 'assignee' },
   { test: /地址|位置|房号|地点/, field: 'address' },
 ];
@@ -170,7 +181,7 @@ export function buildTemplateData(
   const data: Record<string, { value: string }> = {};
   const mapping: TemplateMappingRow[] = [];
   const thingFallback: (keyof TemplateFields)[] = [
-    'content', 'status', 'type', 'address', 'assignee', 'orderNo',
+    'content', 'status', 'type', 'address', 'reporter', 'assignee', 'orderNo',
   ];
 
   for (const f of template) {
@@ -184,6 +195,17 @@ export function buildTemplateData(
     }
     used.add(from);
     let value = String(fields[from] ?? '').trim();
+    /**
+     * 内容那一格只放故障本身。
+     *
+     * 原来调用方往这里塞的是「类别 · 地址：内容」，而 thing 只收 20 字 ——
+     * 「智能化相关 · 枫桦景苑二期/228弄2号…」一截，真正的故障描述一个字都没进去
+     * （2026-08-28 那条测试就是这样）。类别和地址各自有自己的关键词，模板里加上就行；
+     * 模板里没有、内容又是空的，才退回用它们凑一句，总比空着强。
+     */
+    if (from === 'content' && !value) {
+      value = [fields.type, fields.address].filter(Boolean).join(' · ');
+    }
     // 状态词（phrase）只收 5 个以内汉字：优先用事件给的短状态，别把长句硬截成「新工单待…」
     if ((f.type === 'phrase' || f.type === 'short_thing') && from === 'status') {
       value = String(fields.statusShort ?? '').trim() || value;
@@ -500,20 +522,16 @@ export class NotificationsService {
     const base = {
       orderNo: 'WO20260826-0001',
       type: '水相关',
-      content: '水相关：厨房水管漏水',
+      content: '厨房水管漏水',
       assignee: '张师傅',
       address: '枫桦景苑 17号 201室',
+      reporter: '王女士',
       time,
+      reportedAt: time,
     };
     if (template === 'orderReview') return { ...base, status: '已修好，待验收', statusShort: '待验收' };
     if (template === 'orderAssigned') {
-      return {
-        ...base,
-        status: '新工单待处理',
-        statusShort: '待处理',
-        content: '水相关 · 枫桦景苑 17号 201室：厨房水管漏水',
-        assignee: '',
-      };
+      return { ...base, status: '新工单待接单', statusShort: '待接单', assignee: '' };
     }
     return { ...base, status: '已派单给张师傅', statusShort: '已派单' };
   }

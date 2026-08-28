@@ -1886,10 +1886,12 @@ export class RepairsService implements OnModuleInit {
           type: typeLabel,
           status: assigneeName ? `已派单给${assigneeName}` : '已派单',
           statusShort: '已派单',
-          content: `${typeLabel}${request.content ? '：' + request.content.trim() : ''}`,
+          content: request.content?.trim() || '',
           assignee: assigneeName || '物业维修工',
           address: request.addressText?.trim() || '',
+          reporter: request.contactName?.trim() || '',
           time: when,
+          reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
         },
       });
       return;
@@ -1908,10 +1910,12 @@ export class RepairsService implements OnModuleInit {
         type: typeLabel,
         status: '已修好，待验收',
         statusShort: '待验收',
-        content: `${typeLabel}${request.content ? '：' + request.content.trim() : ''}`,
+        content: request.content?.trim() || '',
         assignee: assigneeName || '物业维修工',
         address: request.addressText?.trim() || '',
+        reporter: request.contactName?.trim() || '',
         time: when,
+        reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
       },
     });
   }
@@ -1960,10 +1964,12 @@ export class RepairsService implements OnModuleInit {
           type: typeLabel,
           status: '新工单待接单',
           statusShort: '待接单',
-          content: `${typeLabel} · ${address}${content ? '：' + content : ''}`,
+          content,
           assignee: '',
           address,
+          reporter: request?.contactName?.trim() || '',
           time: when,
+          reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
         },
       });
     }
@@ -2010,10 +2016,12 @@ export class RepairsService implements OnModuleInit {
         type: typeLabel,
         status: '新工单待处理',
         statusShort: '待处理',
-        content: `${typeLabel} · ${address}${content ? '：' + content : ''}`,
+        content,
         assignee: '',
         address,
+        reporter: request?.contactName?.trim() || '',
         time: this.formatWhen(new Date()),
+        reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
       },
     });
   }
@@ -2092,7 +2100,7 @@ export class RepairsService implements OnModuleInit {
 
     const request = await this.repairRequestRepo.findOne({
       where: { id: workOrder.requestId, tenantId: workOrder.tenantId },
-      select: ['id', 'repairType', 'addressText', 'content'],
+      select: ['id', 'repairType', 'addressText', 'content', 'contactName'],
     });
     const rule = request?.repairType
       ? await this.repairTypeRuleRepo.findOne({
@@ -2119,10 +2127,12 @@ export class RepairsService implements OnModuleInit {
           type: typeLabel,
           status: `派单 ${minutes} 分钟还没接单`,
           statusShort: '待接单',
-          content: `${typeLabel} · ${address}`,
+          content: request?.content?.trim() || '',
           assignee: '',
           address,
+          reporter: request?.contactName?.trim() || '',
           time: this.formatWhen(new Date()),
+          reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
         },
       });
     }
