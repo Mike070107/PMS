@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import AppLayout from './components/AppLayout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import ReportsPage from './pages/ReportsPage';
 import BusinessPage from './pages/BusinessPage';
 import FeesPage from './pages/FeesPage';
 import PropertiesPage from './pages/PropertiesPage';
@@ -30,6 +31,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 /** pageKey → 路由路径（和 AppLayout 的 NAV_GROUPS 保持一致） */
 const PAGE_ROUTES: Array<[string, string]> = [
   ['dashboard', '/dashboard'],
+  ['reports', '/reports'],
   ['work-orders', '/work-orders'],
   ['business', '/business'],
   ['fees', '/fees'],
@@ -113,6 +115,7 @@ export default function App() {
       >
         <Route index element={<HomeRedirect />} />
         <Route path="dashboard" element={<RequireTenantScope><RequirePage pageKey="dashboard"><DashboardPage /></RequirePage></RequireTenantScope>} />
+        <Route path="reports" element={<RequireTenantScope><RequirePage pageKey="reports"><ReportsPage /></RequirePage></RequireTenantScope>} />
         <Route path="business" element={<RequireTenantScope><RequirePage pageKey="business"><BusinessPage /></RequirePage></RequireTenantScope>} />
         <Route path="fees" element={<RequireTenantScope><RequirePage pageKey="fees"><FeesPage /></RequirePage></RequireTenantScope>} />
         <Route path="properties" element={<RequireTenantScope><RequirePage pageKey="properties"><PropertiesPage /></RequirePage></RequireTenantScope>} />

@@ -1230,3 +1230,132 @@ body.pms-col-resizing * {
 @media (prefers-reduced-motion: reduce) {
   .pms-th__resizer::after { transition: none; }
 }
+
+/* ---------------- 报表查询 ---------------- */
+.pms-reports .ant-tabs-nav {
+  margin-bottom: 16px;
+}
+.pms-report-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pms-report-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--pms-surface-soft);
+  color: var(--pms-ink-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.pms-report-note .anticon {
+  margin-top: 4px;
+  color: var(--pms-primary);
+}
+.pms-report-note b {
+  color: var(--pms-ink);
+  font-weight: 600;
+}
+.pms-report-toolbar .ant-card-body {
+  padding: 12px 16px;
+}
+.pms-report-filters {
+  width: 100%;
+}
+.pms-report-tiles .ant-statistic-title {
+  font-size: 13px;
+}
+.pms-report-tiles .ant-statistic-content {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.pms-report-tile {
+  height: 100%;
+}
+.pms-report-tile-hint {
+  margin-top: 4px;
+  color: var(--pms-ink-secondary);
+  font-size: 12px;
+}
+.pms-report-share {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pms-report-share-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--pms-surface-soft);
+  overflow: hidden;
+}
+.pms-report-share-track span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--pms-primary), var(--pms-accent));
+  transition: width 0.3s ease;
+}
+.pms-report-share-text {
+  min-width: 46px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--pms-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.pms-report-summary-row td {
+  font-weight: 600;
+  background: var(--pms-surface-soft);
+}
+.pms-report-warehouse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.pms-report-warehouse {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--pms-border);
+  border-radius: 10px;
+  background: var(--pms-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.pms-report-warehouse:hover,
+.pms-report-warehouse:focus-visible {
+  border-color: var(--pms-primary);
+  box-shadow: var(--pms-shadow-sm);
+  outline: none;
+}
+.pms-report-warehouse.is-active {
+  border-color: var(--pms-primary);
+  background: #eef2f9;
+}
+.pms-report-warehouse strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--pms-ink);
+}
+.pms-report-warehouse span {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--pms-primary-strong);
+  font-variant-numeric: tabular-nums;
+}
+.pms-report-warehouse small {
+  color: var(--pms-ink-secondary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pms-report-share-track span,
+  .pms-report-warehouse {
+    transition: none;
+  }
+}

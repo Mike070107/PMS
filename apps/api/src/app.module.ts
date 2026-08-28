@@ -18,6 +18,7 @@ import { OwnersMgmtModule } from './modules/owners-mgmt/owners-mgmt.module';
 import { PropertiesModule } from './modules/properties/properties.module';
 import { QrModule } from './modules/qr/qr.module';
 import { RepairsModule } from './modules/repairs/repairs.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { TasksModule } from './modules/tasks/tasks.module';
@@ -47,6 +48,7 @@ import { UploadModule } from './modules/upload/upload.module';
     OwnersModule,
     OwnersMgmtModule,
     RepairsModule,
+    ReportsModule,
     SettingsModule,
     StaffModule,
     TasksModule,

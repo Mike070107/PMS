@@ -27,6 +27,21 @@
   - Returns admin dashboard counters for pending dispatch work orders, material-waiting work orders, owner-review work orders, pending owner audits, and pending purchase approvals.
   - JWT required.
 
+### Reports
+
+All endpoints require JWT and the `reports` page `view` permission. Data is scoped by the caller's role data scope / acting office (community based reports) and by the warehouses those communities map to (stock report). Dates are `YYYY-MM-DD`, inclusive, whole days in `Asia/Shanghai`; default range is the last 30 days, max 2 years.
+
+- `GET /api/v1/reports/options`
+  - Dropdown data for the report page: communities, offices, warehouses, staff (technicians + anyone ever assigned), materials, categories.
+- `GET /api/v1/reports/work-orders?from&to&groupBy=day|assignee|community|repairType|status&communityId&assigneeId`
+  - Work orders **created** in the range: total / completed / pending review / active / cancelled / overdue, average completion hours, fee, FIFO material cost, average rating. `summary` + grouped `rows`.
+- `GET /api/v1/reports/staff?from&to&communityId`
+  - Per technician: the same metrics grouped by assignee, plus `completedInRange` (by completion time) and `activeNow` (dispatched + in progress right now). Lists everyone who can take orders even with zero work.
+- `GET /api/v1/reports/stock?warehouseId&category&q&onlyLow=1`
+  - Current stock per warehouse × material with weighted lot cost (falls back to SKU default cost), amount, low-stock flag (`qty <= safetyQty`, same rule as the inventory page), per-warehouse totals.
+- `GET /api/v1/reports/material-usage?from&to&groupBy=detail|day|assignee|material|warehouse|community&communityId&assigneeId&materialId&warehouseId`
+  - Materials consumed from inventory on work-order completion. `detail` returns up to 5000 rows (`truncated` flag); other groupings are aggregated in SQL.
+
 ### Property Foundation
 
 - `GET /api/v1/communities`

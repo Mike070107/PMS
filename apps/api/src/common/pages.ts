@@ -9,6 +9,7 @@ export type PermissionAction = 'view' | 'edit' | 'delete';
 /** 企业端页面 key（参与角色权限矩阵与租户可用页面勾选） */
 export const ADMIN_PAGE_KEYS = [
   'dashboard', // 工作台
+  'reports', // 报表查询（工单 / 人员 / 库存 / 材料使用）
   'work-orders', // 工单管理
   'business', // 前台收费
   'fees', // 物业费（账单 / 收费标准 / 欠费）
@@ -106,6 +107,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     },
     adminPages: {
       dashboard: 'v',
+      reports: 'v',
       'work-orders': 'e',
       business: 'e',
       fees: 'e',

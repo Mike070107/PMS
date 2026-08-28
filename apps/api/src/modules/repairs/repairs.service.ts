@@ -103,28 +103,11 @@ import {
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { buildTypeKeywords, classifyByKeywords } from './repair-classify.util';
 import { assertWorkOrderTransition } from './work-order-state-machine';
-
-const DEFAULT_REPAIR_TYPES = [
-  { repairType: 'water', label: '水相关' },
-  { repairType: 'electric', label: '电相关' },
-  { repairType: 'door_window', label: '家里门锁/门窗相关' },
-  { repairType: 'appliance', label: '家电/设备相关' },
-  { repairType: 'elevator', label: '电梯相关' },
-  { repairType: 'smart', label: '智能化相关' },
-  { repairType: 'public', label: '公共设施相关' },
-  { repairType: 'other', label: '其它' },
-];
-
-/** 旧类型编码 → 新类型编码/标准名（存量租户懒迁移用） */
-const LEGACY_REPAIR_TYPE_MAP: Record<string, { repairType: string; label: string }> = {
-  plumbing: { repairType: 'water', label: '水相关' },
-  electric: { repairType: 'electric', label: '电相关' },
-  lock: { repairType: 'door_window', label: '家里门锁/门窗相关' },
-  elevator: { repairType: 'elevator', label: '电梯相关' },
-  appliance: { repairType: 'appliance', label: '家电/设备相关' },
-  public: { repairType: 'public', label: '公共设施相关' },
-  other: { repairType: 'other', label: '其它' },
-};
+import {
+  DEFAULT_REPAIR_TYPES,
+  LEGACY_REPAIR_TYPE_MAP,
+  resolveRepairTypeLabel,
+} from './repair-type-labels';
 
 /** 撤单快选原因 */
 const CANCEL_REASONS: Record<string, string> = {
@@ -845,13 +828,7 @@ export class RepairsService implements OnModuleInit {
     repairType: string | null | undefined,
     labels: Map<string, string>,
   ): string {
-    if (!repairType) return '其它';
-    return (
-      labels.get(repairType) ||
-      DEFAULT_REPAIR_TYPES.find((item) => item.repairType === repairType)?.label ||
-      LEGACY_REPAIR_TYPE_MAP[repairType]?.label ||
-      repairType
-    );
+    return resolveRepairTypeLabel(repairType, labels);
   }
 
   async getWorkOrderStats(query: WorkOrdersQueryDto, user: AuthUser, access?: ResolvedAccess) {

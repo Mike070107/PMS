@@ -5,6 +5,7 @@ import {
   DashboardOutlined,
   HomeOutlined,
   AuditOutlined,
+  BarChartOutlined,
   ToolOutlined,
   ShoppingOutlined,
   QrcodeOutlined,
@@ -44,7 +45,10 @@ interface NavItem {
 const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[] }> = [
   {
     title: '总览',
-    items: [{ key: '/dashboard', pageKey: 'dashboard', icon: <DashboardOutlined />, label: '工作台' }],
+    items: [
+      { key: '/dashboard', pageKey: 'dashboard', icon: <DashboardOutlined />, label: '工作台' },
+      { key: '/reports', pageKey: 'reports', icon: <BarChartOutlined />, label: '报表查询' },
+    ],
   },
   {
     title: '报修工单',
@@ -90,6 +94,7 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
 
 const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/dashboard': '掌握今日待办与物业运营动态',
+  '/reports': '工单、人员、库存与材料使用的统计与导出',
   '/work-orders': '登记、调度并跟踪每一张维修工单',
   '/business': '办理停车、门禁与前台收费业务',
   '/fees': '物业费账单、收款登记与欠费催缴',

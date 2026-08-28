@@ -21,6 +21,7 @@ export interface AdminPageDef {
 /** 企业端页面（参与角色权限矩阵与租户可用页面勾选） */
 export const ADMIN_PAGES: AdminPageDef[] = [
   { key: 'dashboard', label: '工作台', group: '总览' },
+  { key: 'reports', label: '报表查询', group: '总览' },
   { key: 'work-orders', label: '工单管理', group: '报修工单' },
   { key: 'business', label: '前台收费', group: '收费业务' },
   { key: 'fees', label: '物业费', group: '收费业务' },
@@ -181,6 +182,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     },
     adminPages: {
       dashboard: 'v',
+      reports: 'v',
       'work-orders': 'e',
       business: 'e',
       fees: 'e',
