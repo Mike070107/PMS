@@ -86,6 +86,8 @@ interface StaffReportRow extends AggMetrics {
   accountStatus: string;
   onDuty: boolean;
   skills: string[];
+  /** 工种中文（后端按字典翻译好） */
+  skillLabels: string[];
   canTakeOrders: boolean;
   completedInRange: number;
   activeNow: number;
@@ -610,7 +612,7 @@ function StaffReportView({
         </Space>
       ),
     },
-    { title: '工种', dataIndex: 'skills', key: 'skills', width: 140, render: (v: string[]) => cellEllipsis(v?.length ? v.join(' / ') : '', 120) },
+    { title: '工种', dataIndex: 'skillLabels', key: 'skills', width: 160, render: (v: string[], r) => cellEllipsis((v?.length ? v : r.skills)?.join(' / ') || '', 140) },
     { title: '处理工单', dataIndex: 'total', key: 'total', width: 100, align: 'right' },
     { title: '完工数', dataIndex: 'completedInRange', key: 'completedInRange', width: 90, align: 'right' },
     { title: '已验收', dataIndex: 'completed', key: 'completed', width: 90, align: 'right' },
@@ -634,7 +636,7 @@ function StaffReportView({
             { title: '维修工', key: 'name' },
             { title: '账号状态', key: 'accountStatus', render: (r) => (r.accountStatus === 'disabled' ? '已停用' : '正常') },
             { title: '在岗', key: 'onDuty', render: (r) => (r.onDuty ? '在岗' : '离岗') },
-            { title: '工种', key: 'skills', render: (r) => r.skills.join(' / ') },
+            { title: '工种', key: 'skills', render: (r) => (r.skillLabels?.length ? r.skillLabels : r.skills).join(' / ') },
             { title: '处理工单', key: 'total' },
             { title: '完工数', key: 'completedInRange' },
             { title: '已验收', key: 'completed' },

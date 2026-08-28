@@ -1,9 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { UserRole, WorkOrderStatus } from '../../common/enums';
+import { DictType, UserRole, WorkOrderStatus } from '../../common/enums';
 import {
   Community,
+  DictItem,
   Material,
   ManagementOffice,
   RepairTypeRule,
@@ -408,6 +409,7 @@ export class ReportsService {
       }),
     ]);
     const profileByUser = new Map(profiles.map((pf) => [pf.userId, pf]));
+    const skillLabel = await this.skillLabelResolver(tenantId);
     const rows = users
       .map((u) => {
         const a = aggByUser.get(u.id) ?? { ...this.emptyAgg(), key: String(u.id) };
@@ -419,6 +421,7 @@ export class ReportsService {
           accountStatus: u.status,
           onDuty: profile?.onDuty ?? true,
           skills: profile?.skills ?? [],
+          skillLabels: (profile?.skills ?? []).map(skillLabel),
           canTakeOrders: technicianIds.includes(u.id),
           total: a.total,
           completed: a.completed,
@@ -448,6 +451,31 @@ export class ReportsService {
       activeNow: [...activeByUser.values()].reduce((s, n) => s + n, 0),
       rows,
     };
+  }
+
+  /**
+   * 工种编码 → 中文。工种编码和报修类型编码是同一套（water / electric / smart…），
+   * 租户字典（dict_items type=skill）优先，其次租户报修类型配置的叫法，最后内置表。
+   */
+  private async skillLabelResolver(tenantId: number): Promise<(code: string) => string> {
+    const [dict, rules] = await Promise.all([
+      this.dataSource
+        .getRepository(DictItem)
+        .createQueryBuilder('d')
+        .where('d.type = :type', { type: DictType.SKILL })
+        .andWhere('(d.tenant_id IS NULL OR d.tenant_id = :tenantId)', { tenantId })
+        .getMany(),
+      this.dataSource.getRepository(RepairTypeRule).find({
+        where: { tenantId },
+        select: ['repairType', 'label'],
+      }),
+    ]);
+    const tenantLabels = new Map(rules.map((r) => [r.repairType, r.label]));
+    const dictLabels = new Map<string, string>();
+    // 平台预置先放，租户同 code 覆盖
+    for (const item of dict.filter((d) => d.tenantId === null)) dictLabels.set(item.code, item.label);
+    for (const item of dict.filter((d) => d.tenantId !== null)) dictLabels.set(item.code, item.label);
+    return (code) => dictLabels.get(code) || resolveRepairTypeLabel(code, tenantLabels);
   }
 
   // ---------------------------------------------------------------- 库存
