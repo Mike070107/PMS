@@ -124,7 +124,7 @@ export async function getSubscribeState(): Promise<SubscribeState> {
     isAlwaysAllowed(tmplId),
     notifications.subscribeState([tmplId]).catch(() => ({} as Record<string, number>)),
   ]);
-  return { tmplId, always, remaining: Number(state[tmplId] ?? 0) };
+  return { tmplId, always: always || alwaysFlag(), remaining: Number(state[tmplId] ?? 0) };
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +150,33 @@ let cachedTmplIds: string[] | null = null;
 let cachedAlways = false;
 
 /**
+ * 「总是保持以上选择」的本地旁证。
+ *
+ * 微信不一定把这个勾如实反映在 getSetting 的 itemSettings 里（2026-08-28：人明明勾了，
+ * 页面还是按没勾显示，静默补额度也因此没跑）。但勾没勾有个可靠的旁证：勾了之后
+ * requestSubscribeMessage 不弹框、几乎立刻返回 accept；没勾的话人至少要看一眼再点，
+ * 几百毫秒之内不可能。所以按返回耗时记一个本地标记，判断时和 getSetting 取并集。
+ */
+const ALWAYS_FLAG_KEY = 'pms.staff.subscribe_always';
+
+function alwaysFlag(): boolean {
+  try { return wx.getStorageSync(ALWAYS_FLAG_KEY) === '1'; } catch { return false; }
+}
+
+function noteDialogBehaviour(tmplIds: string[], res: Record<string, string>, elapsedMs: number) {
+  if (!tmplIds.some((id) => res[id] === 'accept')) return;
+  try {
+    if (elapsedMs < 600) {
+      wx.setStorageSync(ALWAYS_FLAG_KEY, '1');
+      cachedAlways = true;
+    } else {
+      // 弹了框才 accept：这次没勾（或者把勾取消了）。刚勾上的话，下一次静默返回会重新记上
+      wx.removeStorageSync(ALWAYS_FLAG_KEY);
+    }
+  } catch { /* 记不下就下次再记 */ }
+}
+
+/**
  * 预热订阅授权要用的两样东西。失败保持上次的值 —— 拿不到会话不该把授权入口弄坏。
  * 走会话缓存，不会多打 /auth/me；getSetting 是本地调用。
  */
@@ -158,7 +185,7 @@ export async function primeSubscribeState(): Promise<void> {
     const me = (await getSession()).me;
     const ids = (me?.subscribeTemplates || []).filter(Boolean).slice(0, 3);
     cachedTmplIds = ids;
-    cachedAlways = ids.length ? await isAlwaysAllowed(ids[0]) : false;
+    cachedAlways = ids.length ? (await isAlwaysAllowed(ids[0])) || alwaysFlag() : false;
   } catch {
     // 保持上次的缓存
   }
@@ -173,10 +200,15 @@ interface SubscribeOutcome {
 
 /** 同步发起授权框。必须由点击事件同步调到这里，中间不能有 await */
 function requestNow(tmplIds: string[]): Promise<SubscribeOutcome> {
+  const startedAt = Date.now();
   return new Promise((resolve) => {
     wx.requestSubscribeMessage({
       tmplIds,
-      success: (r) => resolve({ res: r as unknown as Record<string, string> }),
+      success: (r) => {
+        const res = r as unknown as Record<string, string>;
+        noteDialogBehaviour(tmplIds, res, Date.now() - startedAt);
+        resolve({ res });
+      },
       fail: (err: any) => resolve({ res: {}, errMsg: err?.errMsg || String(err || '') }),
     });
   });
@@ -218,7 +250,7 @@ async function settle(tmplIds: string[], outcome: SubscribeOutcome, silent: bool
     return false;
   }
   await notifications.subscribe(accepted);
-  cachedAlways = await isAlwaysAllowed(accepted[0]);
+  cachedAlways = (await isAlwaysAllowed(accepted[0])) || alwaysFlag();
   if (!silent) {
     // 勾了「总是保持」= 一劳永逸；没勾 = 这次只换来一条，要说明白，
     // 否则他以为开好了，下次没收到提醒又来问一遍
