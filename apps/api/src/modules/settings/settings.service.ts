@@ -116,6 +116,7 @@ export class SettingsService {
           orderDispatched: dto.wxSubscribeTemplates.orderDispatched?.trim() ?? '',
           orderReview: dto.wxSubscribeTemplates.orderReview?.trim() ?? '',
           orderAssigned: dto.wxSubscribeTemplates.orderAssigned?.trim() ?? '',
+          orderOverdue: dto.wxSubscribeTemplates.orderOverdue?.trim() ?? '',
         },
         user.id,
       );
@@ -129,10 +130,19 @@ export class SettingsService {
       );
     }
     if (dto.dispatchEscalation) {
+      const incoming = dto.dispatchEscalation;
+      // 没传的字段保持原样：老后台只发 acceptMinutes，不能顺手把时段清成默认值
+      const current = (await this.getSettingsByTenant(tenantId)).dispatchEscalation;
       await this.upsert(
         tenantId,
         TENANT_SETTING_KEYS.DISPATCH_ESCALATION,
-        { acceptMinutes: dto.dispatchEscalation.acceptMinutes },
+        {
+          // 老口径 acceptMinutes=0 就是关闭，继续认
+          enabled: incoming.enabled ?? incoming.acceptMinutes !== 0,
+          acceptMinutes: incoming.acceptMinutes || current.acceptMinutes,
+          startAt: incoming.startAt ?? current.startAt,
+          endAt: incoming.endAt ?? current.endAt,
+        },
         user.id,
       );
     }
@@ -174,16 +184,40 @@ export class SettingsService {
     return this.normalizeAutoReviewSetting(row?.value).hours;
   }
 
-  /** 0 = 关闭；其余允许 5～1440 分钟，超出范围一律退回默认值 */
+  /**
+   * 时限 5～1440 分钟，时段 HH:mm，越界一律退回默认值。
+   * 老数据没有 enabled/startAt/endAt：enabled 按当时的口径（acceptMinutes=0 即关闭）推断，
+   * 时段用默认的 8:00~20:00。
+   */
   private normalizeEscalationSetting(value: unknown): DispatchEscalationSetting {
-    const raw = Number(
-      (value as Partial<DispatchEscalationSetting> | null)?.acceptMinutes,
-    );
-    if (raw === 0) return { acceptMinutes: 0 };
-    const ok = Number.isInteger(raw) && raw >= 5 && raw <= 1440;
+    const fallback = DEFAULT_TENANT_SETTINGS.dispatchEscalation;
+    const raw = (value ?? {}) as Partial<DispatchEscalationSetting>;
+    const minutes = Number(raw.acceptMinutes);
+    const okMinutes = Number.isInteger(minutes) && minutes >= 5 && minutes <= 1440;
+    const clock = (v: unknown, dft: string) =>
+      typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : dft;
     return {
-      acceptMinutes: ok ? raw : DEFAULT_TENANT_SETTINGS.dispatchEscalation.acceptMinutes,
+      enabled: typeof raw.enabled === 'boolean' ? raw.enabled : minutes !== 0,
+      acceptMinutes: okMinutes ? minutes : fallback.acceptMinutes,
+      startAt: clock(raw.startAt, fallback.startAt),
+      endAt: clock(raw.endAt, fallback.endAt),
     };
+  }
+
+  /**
+   * 现在这一刻在不在催办时段里。startAt=endAt 视为全天。
+   * 跨零点（20:00~08:00）走「或」，不跨的走「且」。
+   */
+  static withinWindow(setting: DispatchEscalationSetting, at: Date = new Date()): boolean {
+    const toMin = (hhmm: string) => {
+      const [h, m] = hhmm.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const start = toMin(setting.startAt);
+    const end = toMin(setting.endAt);
+    if (start === end) return true;
+    const now = at.getHours() * 60 + at.getMinutes();
+    return start < end ? now >= start && now < end : now >= start || now < end;
   }
 
   private normalizeAutoReviewSetting(value: unknown): AutoReviewSetting {

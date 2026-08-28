@@ -2037,26 +2037,26 @@ export class RepairsService implements OnModuleInit {
    * 办公室一起刷屏，最后谁都不看了。
    */
   async escalateStaleDispatchesAllTenants(): Promise<number> {
+    // 派给了人还没接（dispatched）、和进了池子没人接（created）都要催 ——
+    // 新单默认进池子不指派（见 createRepairAndWorkOrder），只盯 dispatched 的话这个功能等于没有
     const dispatched = await this.workOrderRepo.find({
       where: {
-        status: WorkOrderStatus.DISPATCHED,
+        status: In([WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED]),
         escalatedAt: IsNull(),
-        assigneeId: Not(IsNull()),
       },
-      select: ['id', 'tenantId', 'orderNo', 'requestId', 'communityId', 'assigneeId', 'dispatchedAt', 'slaDueAt'],
+      select: ['id', 'tenantId', 'orderNo', 'requestId', 'communityId', 'assigneeId', 'status', 'createdAt', 'dispatchedAt', 'slaDueAt'],
       take: 500,
     });
     if (!dispatched.length) return 0;
 
     const tenantIds = [...new Set(dispatched.map((item) => item.tenantId))];
-    const minutesByTenant = new Map(
+    const settingByTenant = new Map(
       await Promise.all(
         tenantIds.map(
           async (tenantId) =>
             [
               tenantId,
-              (await this.settings.getSettingsByTenant(tenantId)).dispatchEscalation
-                .acceptMinutes,
+              (await this.settings.getSettingsByTenant(tenantId)).dispatchEscalation,
             ] as const,
         ),
       ),
@@ -2070,19 +2070,26 @@ export class RepairsService implements OnModuleInit {
     // 再提醒一句「派单 60 分钟还没接」也已经没有意义了。
     const oldestDispatchedAt = now - 24 * 60 * 60 * 1000;
     const targets = dispatched.filter((item) => {
-      const minutes = minutesByTenant.get(item.tenantId) ?? 0;
-      if (!minutes) return false; // 该租户关掉了
-      if (!item.dispatchedAt) return false;
-      const at = item.dispatchedAt.getTime();
+      const setting = settingByTenant.get(item.tenantId);
+      if (!setting?.enabled) return false; // 该租户关掉了
+      // 催办时段之外一条都不发。跳过而不是标记，窗口一开这些单照样会被催到
+      if (!SettingsService.withinWindow(setting)) return false;
+      // 派出去的从派单时刻算起；还在池子里的从建单时刻算起
+      const since = item.assigneeId ? item.dispatchedAt : item.createdAt;
+      if (!since) return false;
+      const at = since.getTime();
       if (at < oldestDispatchedAt) return false;
-      return at <= now - minutes * 60 * 1000;
+      return at <= now - setting.acceptMinutes * 60 * 1000;
     });
     if (!targets.length) return 0;
 
     let done = 0;
     for (const workOrder of targets) {
       try {
-        await this.escalateOne(workOrder, minutesByTenant.get(workOrder.tenantId) ?? 0);
+        await this.escalateOne(
+          workOrder,
+          settingByTenant.get(workOrder.tenantId)?.acceptMinutes ?? 0,
+        );
         done += 1;
       } catch (err) {
         // 一张单催失败不该让整轮停下
@@ -2109,23 +2116,38 @@ export class RepairsService implements OnModuleInit {
       : null;
     const typeLabel = rule?.label || '报修';
     const address = request?.addressText?.trim() || '（未填地址）';
-    const waited = `已派单 ${minutes} 分钟还没接`;
+    const pooled = !workOrder.assigneeId;
+    const waited = pooled
+      ? `进工单池 ${minutes} 分钟还没人接`
+      : `已派单 ${minutes} 分钟还没接`;
     const page = `pages/order-detail/order-detail?id=${workOrder.id}`;
 
-    // 1) 再催维修工一次
-    if (workOrder.assigneeId) {
+    // 1) 再催一次该接这单的人：派出去了就催那一位，还在池子里就催这个类型配的每一位
+    const receivers = workOrder.assigneeId
+      ? [workOrder.assigneeId]
+      : (
+          await this.ruleCandidates(
+            workOrder.tenantId,
+            await this.findTypeRule(
+              request?.repairType ?? undefined,
+              workOrder.tenantId,
+              workOrder.communityId,
+            ),
+          )
+        ).map((c) => c.id);
+    for (const receiverId of receivers) {
       await this.notifications.notifyUser({
         tenantId: workOrder.tenantId,
-        receiverId: workOrder.assigneeId,
+        receiverId,
         eventKey: 'order_accept_overdue',
         title: `还没接单：${typeLabel} · ${address}（${waited}）`,
         payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo },
         page,
-        template: 'orderAssigned',
+        template: 'orderOverdue',
         templateFields: {
           orderNo: workOrder.orderNo,
           type: typeLabel,
-          status: `派单 ${minutes} 分钟还没接单`,
+          status: waited,
           statusShort: '待接单',
           content: request?.content?.trim() || '',
           assignee: '',
@@ -2168,7 +2190,7 @@ export class RepairsService implements OnModuleInit {
         tenantId: workOrder.tenantId,
         receiverId: watcher.id,
         eventKey: 'order_accept_overdue_office',
-        title: `${assignee?.name || '维修工'}还没接单：${typeLabel} · ${address}（${waited}）`,
+        title: `${pooled ? '还没人接单' : `${assignee?.name || '维修工'}还没接单`}：${typeLabel} · ${address}（${waited}）`,
         payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo },
         page,
       });
@@ -2179,8 +2201,8 @@ export class RepairsService implements OnModuleInit {
       this.dataSource.getRepository(WorkOrderLog).create({
         tenantId: workOrder.tenantId,
         workOrderId: workOrder.id,
-        fromStatus: WorkOrderStatus.DISPATCHED,
-        toStatus: WorkOrderStatus.DISPATCHED,
+        fromStatus: workOrder.status,
+        toStatus: workOrder.status,
         action: 'escalate',
         operatorId: null,
         note: `${waited}，系统已再次提醒维修工并通知办公室`,

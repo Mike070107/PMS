@@ -5,6 +5,7 @@ import {
   Card,
   Input,
   InputNumber,
+  Select,
   Skeleton,
   Space,
   Switch,
@@ -23,10 +24,17 @@ interface TenantSettings {
     orderReview: string;
     /** 员工端模板：有新工单派给维修工 */
     orderAssigned: string;
+    /** 员工端模板：超时还没人接单，催办 */
+    orderOverdue: string;
   };
   autoReview: { hours: number };
-  /** 派单后多少分钟没接单就升级提醒；0 = 关闭 */
-  dispatchEscalation: { acceptMinutes: number };
+  /** 超时催办：开关、时限、只在这个时段催 */
+  dispatchEscalation: {
+    enabled: boolean;
+    acceptMinutes: number;
+    startAt: string;
+    endAt: string;
+  };
   /** 服务号模板消息。appSecret 读回来是脱敏串，留空保存 = 不变 */
   wxServiceAccount: {
     appId: string;
@@ -36,7 +44,13 @@ interface TenantSettings {
   };
 }
 
-type TemplateKey = 'orderDispatched' | 'orderReview' | 'orderAssigned';
+type TemplateKey = 'orderDispatched' | 'orderReview' | 'orderAssigned' | 'orderOverdue';
+
+/** 催办时段选到整点就够，用下拉比时间控件好点得多 */
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => {
+  const v = `${String(h).padStart(2, '0')}:00`;
+  return { value: v, label: v };
+});
 
 interface TemplateResult {
   ok: boolean;
@@ -57,7 +71,9 @@ const FIELD_FROM_LABEL: Record<string, string> = {
   content: '报修内容',
   assignee: '维修工',
   address: '报修地址',
-  time: '时间',
+  reporter: '报修人',
+  time: '提醒时间',
+  reportedAt: '报修时间',
 };
 
 interface MatchableStat {
@@ -75,12 +91,16 @@ export default function SettingsPage() {
   const [tplDispatched, setTplDispatched] = useState('');
   const [tplReview, setTplReview] = useState('');
   const [tplAssigned, setTplAssigned] = useState('');
+  const [tplOverdue, setTplOverdue] = useState('');
   const [savingTpl, setSavingTpl] = useState(false);
   /** 每个模板的校验/测试结果，就地显示在输入框下面 */
   const [tplResult, setTplResult] = useState<Record<string, TemplateResult | null>>({});
   const [tplBusy, setTplBusy] = useState<string>('');
   const [autoReviewHours, setAutoReviewHours] = useState(48);
   const [escalateMinutes, setEscalateMinutes] = useState(60);
+  const [escalateEnabled, setEscalateEnabled] = useState(true);
+  const [escalateStart, setEscalateStart] = useState('08:00');
+  const [escalateEnd, setEscalateEnd] = useState('20:00');
   const [savingEscalate, setSavingEscalate] = useState(false);
   const [mp, setMp] = useState({
     appId: '',
@@ -101,8 +121,12 @@ export default function SettingsPage() {
       setTplDispatched(next.wxSubscribeTemplates?.orderDispatched || '');
       setTplReview(next.wxSubscribeTemplates?.orderReview || '');
       setTplAssigned(next.wxSubscribeTemplates?.orderAssigned || '');
+      setTplOverdue(next.wxSubscribeTemplates?.orderOverdue || '');
       setAutoReviewHours(next.autoReview?.hours ?? 48);
       setEscalateMinutes(next.dispatchEscalation?.acceptMinutes ?? 60);
+      setEscalateEnabled(next.dispatchEscalation?.enabled ?? true);
+      setEscalateStart(next.dispatchEscalation?.startAt || '08:00');
+      setEscalateEnd(next.dispatchEscalation?.endAt || '20:00');
       setMp({
         appId: next.wxServiceAccount?.appId ?? '',
         // 后端回的是 ••••••••1234 这种脱敏串：原样放进输入框，
@@ -187,6 +211,7 @@ export default function SettingsPage() {
             orderDispatched: tplDispatched.trim(),
             orderReview: tplReview.trim(),
             orderAssigned: tplAssigned.trim(),
+            orderOverdue: tplOverdue.trim(),
           },
         },
       });
@@ -250,14 +275,24 @@ export default function SettingsPage() {
       const next = await request<TenantSettings>({
         method: 'PATCH',
         url: '/settings',
-        data: { dispatchEscalation: { acceptMinutes: escalateMinutes } },
+        data: {
+          dispatchEscalation: {
+            enabled: escalateEnabled,
+            acceptMinutes: escalateMinutes,
+            startAt: escalateStart,
+            endAt: escalateEnd,
+          },
+        },
       });
       setSettings(next);
       setEscalateMinutes(next.dispatchEscalation.acceptMinutes);
+      setEscalateEnabled(next.dispatchEscalation.enabled);
+      setEscalateStart(next.dispatchEscalation.startAt);
+      setEscalateEnd(next.dispatchEscalation.endAt);
       message.success(
-        next.dispatchEscalation.acceptMinutes === 0
-          ? '已关闭催单提醒'
-          : '已保存，新派出去的工单按新时限催单',
+        next.dispatchEscalation.enabled
+          ? `已保存，${next.dispatchEscalation.startAt}~${next.dispatchEscalation.endAt} 之间才会催`
+          : '已关闭催办提醒',
       );
     } catch (e: any) {
       message.error(e?.message || '保存失败');
@@ -310,6 +345,7 @@ export default function SettingsPage() {
               { key: 'orderDispatched' as TemplateKey, label: '已派单通知业主', app: '业主端', value: tplDispatched, set: setTplDispatched },
               { key: 'orderReview' as TemplateKey, label: '待验收通知业主', app: '业主端', value: tplReview, set: setTplReview },
               { key: 'orderAssigned' as TemplateKey, label: '新工单派给维修工', app: '员工端', value: tplAssigned, set: setTplAssigned },
+              { key: 'orderOverdue' as TemplateKey, label: '超时没人接单，催办维修工', app: '员工端', value: tplOverdue, set: setTplOverdue },
             ]
           ).map((row) => {
             const result = tplResult[row.key];
@@ -518,28 +554,58 @@ export default function SettingsPage() {
         </Paragraph>
       </Card>
 
-      <Card title="派单后没人接单，自动催单" style={{ maxWidth: 760, marginBottom: 24 }}>
+      <Card
+        title="超时没人接单，自动催办"
+        style={{ maxWidth: 760, marginBottom: 24 }}
+        extra={
+          <Space>
+            <Text type="secondary">{escalateEnabled ? '已开启' : '已关闭'}</Text>
+            <Switch
+              checked={escalateEnabled}
+              disabled={!canEdit}
+              onChange={setEscalateEnabled}
+            />
+          </Space>
+        }
+      >
         <Paragraph>
-          派单之后维修工迟迟没点「接单」，系统会<Text strong>再提醒他一次</Text>，
-          同时通知<Text strong>所有能派单的人</Text>「这单还没人接」，工单进度里也会留一条记录。
-          每张单只催一次，不会反复刷屏。
+          工单进了池子或派出去之后迟迟没人点「接单」，系统会<Text strong>再提醒该接的人一次</Text>
+          （在池子里就提醒这个类型配的每一位维修工），同时通知<Text strong>所有能派单的人</Text>
+          「这单还没人接」，工单进度里也会留一条记录。每张单只催一次，不会反复刷屏。
         </Paragraph>
         <Paragraph type="secondary" style={{ fontSize: 13 }}>
           为什么需要它：任何一条推送都可能被漏看（微信订阅额度用完、手机静音、人正在忙）。
           与其指望「通知一定送达」，不如让漏看一条不再是终点 —— 到点没接单，办公室能当场兜住。
         </Paragraph>
-        <Space align="center" wrap>
-          <Text strong>派单后</Text>
+        <Space align="center" wrap size={12}>
+          <Text strong>超过</Text>
           <InputNumber
-            min={0}
+            min={5}
             max={1440}
             precision={0}
             value={escalateMinutes}
-            disabled={!canEdit}
+            disabled={!canEdit || !escalateEnabled}
             onChange={(value) => setEscalateMinutes(value ?? 60)}
-            addonAfter="分钟没接单就催"
-            style={{ width: 220 }}
+            addonAfter="分钟没人接就催"
+            style={{ width: 230 }}
           />
+          <Text strong>只在</Text>
+          <Select
+            value={escalateStart}
+            disabled={!canEdit || !escalateEnabled}
+            onChange={setEscalateStart}
+            options={HOUR_OPTIONS}
+            style={{ width: 110 }}
+          />
+          <Text>~</Text>
+          <Select
+            value={escalateEnd}
+            disabled={!canEdit || !escalateEnabled}
+            onChange={setEscalateEnd}
+            options={HOUR_OPTIONS}
+            style={{ width: 110 }}
+          />
+          <Text strong>之间催</Text>
           {canEdit && (
             <Button type="primary" loading={savingEscalate} onClick={saveEscalation}>
               保存
@@ -547,8 +613,10 @@ export default function SettingsPage() {
           )}
         </Space>
         <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 12, marginBottom: 0 }}>
-          填 <Text code>0</Text> 表示关闭。建议 30～60 分钟：更短会把「人正在路上还没点接单」
-          也算成漏看，更长就失去了当场兜住的意义。
+          建议 30～60 分钟：更短会把「人正在路上还没点接单」也算成漏看，更长就失去了当场兜住的意义。
+          时段之外一条催办都不发（夜里把人震醒，第二天他会把提醒整个关掉）；
+          时段外到点的单不会被漏掉，等第二天窗口一开照样催。起止选同一个点表示全天都催。
+          催办用的是上面「超时没人接单，催办维修工」那个模板，没填就退回用新工单那个模板。
         </Paragraph>
       </Card>
 

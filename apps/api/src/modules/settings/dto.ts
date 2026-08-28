@@ -3,6 +3,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -31,6 +32,12 @@ class WxSubscribeTemplatesDto {
   @IsString()
   @MaxLength(64)
   orderAssigned?: string;
+
+  /** 员工端模板：超时还没人接单，催办 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  orderOverdue?: string;
 }
 
 class AutoReviewDto {
@@ -62,12 +69,30 @@ class WxServiceAccountDto {
   enabled?: boolean;
 }
 
+/** HH:mm，24 小时制 */
+const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 class DispatchEscalationDto {
-  /** 0 = 关闭；其余 5～1440 分钟 */
+  /** 总开关；老后台不传这个字段时按 acceptMinutes 是不是 0 推断 */
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  /** 0 = 关闭（老口径，仍然收）；其余 5～1440 分钟 */
   @IsInt()
   @Min(0)
   @Max(1440)
   acceptMinutes: number;
+
+  @IsOptional()
+  @IsString()
+  @Matches(CLOCK, { message: '催办时段起点要填 HH:mm' })
+  startAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(CLOCK, { message: '催办时段终点要填 HH:mm' })
+  endAt?: string;
 }
 
 export class UpdateTenantSettingsDto {

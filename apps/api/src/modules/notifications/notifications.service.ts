@@ -23,13 +23,18 @@ import { WechatService, type WxAppType, type WxTemplateField } from '../auth/wec
 const MAX_GRANT_PER_TEMPLATE = 20;
 
 /** 可推的订阅消息模板。前两个发给业主（业主端小程序），最后一个发给维修工（员工端） */
-export type SubscribeTemplateKey = 'orderDispatched' | 'orderReview' | 'orderAssigned';
+export type SubscribeTemplateKey =
+  | 'orderDispatched'
+  | 'orderReview'
+  | 'orderAssigned'
+  | 'orderOverdue';
 
 /** 每个事件走哪个小程序发。模板 id 不能跨小程序用，token 也不能 —— 发错端一律 40037/43104 */
 export const TEMPLATE_APP: Record<SubscribeTemplateKey, WxAppType> = {
   orderDispatched: 'owner',
   orderReview: 'owner',
   orderAssigned: 'staff',
+  orderOverdue: 'staff',
 };
 
 /**
@@ -460,7 +465,10 @@ export class NotificationsService {
     notificationId: number;
   }) {
     const settings = await this.settings.getSettingsByTenant(input.tenantId);
-    const templateId = settings.wxSubscribeTemplates[input.template];
+    // 催办模板没单独配就退回用「新工单」那个模板：宁可措辞糙一点，也别不推
+    const templateId =
+      settings.wxSubscribeTemplates[input.template] ||
+      (input.template === 'orderOverdue' ? settings.wxSubscribeTemplates.orderAssigned : '');
     // 物业还没在公众平台申请模板：只走站内信，不算异常
     if (!templateId) return;
     const appType = TEMPLATE_APP[input.template];
@@ -533,6 +541,9 @@ export class NotificationsService {
     if (template === 'orderAssigned') {
       return { ...base, status: '新工单待接单', statusShort: '待接单', assignee: '' };
     }
+    if (template === 'orderOverdue') {
+      return { ...base, status: '派单 60 分钟还没接单', statusShort: '待接单', assignee: '' };
+    }
     return { ...base, status: '已派单给张师傅', statusShort: '已派单' };
   }
 
@@ -565,6 +576,7 @@ export class NotificationsService {
     const settings = await this.settings.getSettingsByTenant(tenantId);
     const templateId = (settings.wxSubscribeTemplates[template] ?? '').trim();
     if (!templateId) return { ok: false, error: '这一项还没填模板 ID，先保存再测' };
+
     const appType = TEMPLATE_APP[template];
     const appName = appType === 'owner' ? '业主端（邻修管家）' : '员工端（邻修管理）';
 

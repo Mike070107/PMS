@@ -37,6 +37,12 @@ export interface WxSubscribeTemplatesSetting {
    * 必须在员工端小程序的公众平台后台单独申请一个再填这里。
    */
   orderAssigned: string;
+  /**
+   * 「超时还没人接单」催办**维修工**（员工端小程序）。
+   * 和上面那条分开：新工单是「来活了」，催办是「你那单还没接」，措辞和关键词都不一样；
+   * 混用同一个模板，维修工分不清哪条是新单。留空 = 退回用 orderAssigned 那个模板发。
+   */
+  orderOverdue: string;
 }
 
 export interface AutoReviewSetting {
@@ -52,8 +58,18 @@ export interface AutoReviewSetting {
  * 到点没接单就再催维修工一次，同时告诉办公室「这单还没人接」，办公室能兜住。
  */
 export interface DispatchEscalationSetting {
-  /** 派单后多少分钟没接单就升级；0 = 关闭。允许 5～1440 */
+  /** 总开关。关掉就完全不催 —— 以前靠 acceptMinutes=0 表达，现在有独立开关 */
+  enabled: boolean;
+  /** 派单（或进工单池）后多少分钟还没人接就催；允许 5～1440 */
   acceptMinutes: number;
+  /**
+   * 催办时段（HH:mm，服务器时区 Asia/Shanghai）。这个区间之外一条催办都不发 ——
+   * 半夜把维修工震醒，第二天他会把整个提醒都关掉，比不催更糟。
+   * 时段外到点的单不会被跳过，等窗口一开照样催（escalatedAt 还没打标记）。
+   * 支持跨零点写法：startAt=20:00 endAt=08:00 表示只在夜里催。
+   */
+  startAt: string;
+  endAt: string;
 }
 
 /**
@@ -93,11 +109,11 @@ export const DEFAULT_TENANT_SETTINGS: {
   // 默认关：业主档案没导手机号之前开着也匹配不到，反而让业主白点一次
   ownerPhoneAutoMatch: { enabled: false },
   // 默认空：没在公众平台申请模板之前推不出去，留空就只走站内信，不报错
-  wxSubscribeTemplates: { orderDispatched: '', orderReview: '', orderAssigned: '' },
+  wxSubscribeTemplates: { orderDispatched: '', orderReview: '', orderAssigned: '', orderOverdue: '' },
   autoReview: { hours: 48 },
   // 默认 60 分钟：比这更短会把「人正在路上还没点接单」也算成漏看，
-  // 更长就失去了「当场兜住」的意义。后台可改
-  dispatchEscalation: { acceptMinutes: 60 },
+  // 更长就失去了「当场兜住」的意义。默认只在 8:00~20:00 催，别打扰休息。后台都可改
+  dispatchEscalation: { enabled: true, acceptMinutes: 60, startAt: '08:00', endAt: '20:00' },
   wxServiceAccount: { appId: '', appSecret: '', templateOrderAssigned: '', enabled: false },
 };
 
