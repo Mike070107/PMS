@@ -95,6 +95,9 @@ import {
   collectSuggestion,
   normalizeSuggestionText,
   rankSuggestions,
+  extractContentGist,
+  extractSpot,
+  findSpotWord,
   type SuggestionBucket,
 } from './repair-suggestions.util';
 import { ObjectStorageService } from '../upload/object-storage.service';
@@ -356,9 +359,13 @@ export class RepairsService implements OnModuleInit {
 
   async listRepairSuggestions(user: AuthUser) {
     const tenantId = this.resolveTenantId(user);
+    // 本公司的小区名：抽位置/内容时先把它们剥掉（「枫桦景苑二期」这种名字光靠模式认不全）
+    const knownPlaces = (await this.communityRepo.find({ where: { tenantId }, select: ['name'] }))
+      .map((c) => c.name)
+      .filter(Boolean);
     const [locations, contents, rules] = await Promise.all([
-      this.listFrequentRepairText(tenantId, 'address_text', 8),
-      this.summarizeRepairContents(tenantId),
+      this.summarizeSpots(tenantId, knownPlaces, 8),
+      this.summarizeRepairContents(tenantId, knownPlaces),
       this.repairTypeRuleRepo.find({ where: { tenantId } }),
     ]);
 
@@ -3000,7 +3007,11 @@ export class RepairsService implements OnModuleInit {
    * 同一类里挑出现次数最多的原文当展示文案。
    * 只收 2~16 字的短句 —— 更长的是具体描述，贴到标签上既放不下也没法复用。
    */
-  private async summarizeRepairContents(tenantId: number, limitPerType = 8) {
+  private async summarizeRepairContents(
+    tenantId: number,
+    knownPlaces: string[] = [],
+    limitPerType = 8,
+  ) {
     const rows = await this.repairRequestRepo.find({
       where: { tenantId },
       select: ['repairType', 'content', 'createdAt'],
@@ -3011,7 +3022,8 @@ export class RepairsService implements OnModuleInit {
     const byType = new Map<string, SuggestionBucket>();
     const general: SuggestionBucket = new Map();
     for (const row of rows) {
-      const text = String(row.content ?? '').trim();
+      // 原话先抽成「大门关不上」这种关键信息，门牌、人名、语气词不进标签（见 extractContentGist）
+      const text = extractContentGist(String(row.content ?? ''), knownPlaces);
       const key = normalizeSuggestionText(text);
       if (!key) continue;
       collectSuggestion(general, key, text, row.createdAt);
@@ -3095,25 +3107,26 @@ export class RepairsService implements OnModuleInit {
     };
   }
 
-  private async listFrequentRepairText(
-    tenantId: number,
-    column: 'address_text' | 'content',
-    limit: number,
-  ) {
-    const textExpr = `BTRIM(request.${column})`;
-    const rows = await this.repairRequestRepo
-      .createQueryBuilder('request')
-      .select(textExpr, 'text')
-      .addSelect('COUNT(*)', 'count')
-      .where('request.tenant_id = :tenantId', { tenantId })
-      .andWhere(`NULLIF(${textExpr}, '') IS NOT NULL`)
-      .groupBy(textExpr)
-      .orderBy('COUNT(*)', 'DESC')
-      .addOrderBy('MAX(request.created_at)', 'DESC')
-      .limit(limit)
-      .getRawMany<{ text: string; count: string }>();
-
-    return rows.map((row) => ({ text: row.text, count: Number(row.count) }));
+  /**
+   * 「具体位置」的猜你想输：从历史地址里抽位置本身，再从报修原话里认场所词。
+   * 地址原来是整条贴出来的（「枫桦景苑二期/228弄2号 大门」），门牌在房号那一栏已经填过，
+   * 这里只该出「大门」。
+   */
+  private async summarizeSpots(tenantId: number, knownPlaces: string[], limit: number) {
+    const rows = await this.repairRequestRepo.find({
+      where: { tenantId },
+      select: ['addressText', 'content', 'createdAt'],
+      order: { id: 'DESC' },
+      take: SUGGESTION_SCAN_LIMIT,
+    });
+    const bucket: SuggestionBucket = new Map();
+    for (const row of rows) {
+      const spot = extractSpot(String(row.addressText ?? ''), knownPlaces) || findSpotWord(String(row.content ?? ''));
+      const key = normalizeSuggestionText(spot);
+      if (!key) continue;
+      collectSuggestion(bucket, key, spot, row.createdAt);
+    }
+    return rankSuggestions(bucket, limit);
   }
 
   /**

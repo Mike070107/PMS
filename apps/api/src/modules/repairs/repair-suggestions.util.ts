@@ -208,3 +208,130 @@ export function rankSuggestions(bucket: SuggestionBucket, limit: number) {
     .slice(0, limit)
     .map(({ text, count }) => ({ text, count }));
 }
+
+// ---------------- 从原话里抽「具体位置」和「报修内容」的关键信息 ----------------
+//
+// 「猜你想输」原来把历史输入原样贴出来：位置栏出现「枫桦景苑二期/228弄2号大门」，
+// 内容栏出现「对，一期47号大门关不上」。门牌在「报修人房号」那一栏已经填过了，
+// 位置栏真正要的只是「大门」；内容栏要的是「大门关不上」，语气词、人名、电话、门牌都不该进来
+// （2026-08-28 反馈）。下面这几个函数只做抽取，不做分类；聚类和排序仍走上面那套。
+
+/**
+ * 场所词表：报修「具体位置」真正想说的是这些。长词在前，保证「地下车库」不被「车库」抢先。
+ * 词表按物业场景维护，新场所直接加进来。
+ */
+export const SPOT_LEXICON: string[] = [
+  '非机动车库', '地下车库', '地下室', '停车场', '电动车棚', '车棚', '车库',
+  '单元门口', '单元门', '大门口', '大门', '门口', '门岗', '门卫室', '门卫', '岗亭', '门厅', '大堂', '门禁', '道闸',
+  '楼梯间', '楼梯', '楼道', '走廊', '过道', '电梯厅', '电梯间', '电梯口', '电梯',
+  '天台', '屋顶', '楼顶', '屋面', '外墙', '外立面', '雨棚',
+  '垃圾箱房', '垃圾房', '垃圾站', '垃圾桶', '水泵房', '配电房', '配电间', '消防通道', '消防栓', '消防箱',
+  '监控室', '物业办公室', '会所', '门房',
+  '绿化带', '草坪', '花坛', '儿童乐园', '健身区', '广场', '人行道', '路面', '道路', '井盖', '路灯', '围墙', '围栏', '栏杆',
+  '卫生间', '洗手间', '厕所', '浴室', '厨房', '阳台', '客厅', '卧室', '餐厅', '书房', '储藏室', '阁楼', '窗台',
+  '入户门', '房门', '窗户', '楼下', '楼上',
+].sort((a, b) => b.length - a.length);
+
+const CN_NUM = '\\d一二三四五六七八九十两';
+
+/**
+ * 剥掉门牌：小区名、N期、N弄、N号（楼/栋/幢）、N室、N单元、「公共区域」这类范围词和分隔符。
+ * 楼层（「4楼」「3层」）不剥 —— 「4楼电梯口」的「4楼」是位置的一部分，「5号楼」的「楼」跟着「号」走。
+ * knownPlaces 传本公司的小区名，名字里没有「苑/园/小区」字样的小区靠它兜底。
+ */
+export function stripAddress(text: string, knownPlaces: string[] = []): string {
+  let s = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  const names = knownPlaces
+    .map((n) => String(n ?? '').trim())
+    .filter((n) => n.length >= 2)
+    .sort((a, b) => b.length - a.length);
+  for (const name of names) s = s.split(name).join(' ');
+  s = s
+    .replace(new RegExp(`[一-龥]{2,}(?:小区|苑|花园|公寓|大厦|新村|家园|山庄|别墅|园区|广场)(?:[${CN_NUM}]+期)?`, 'g'), ' ')
+    .replace(new RegExp(`[${CN_NUM}]+期`, 'g'), ' ')
+    .replace(new RegExp(`[${CN_NUM}]+弄`, 'g'), ' ')
+    .replace(new RegExp(`[${CN_NUM}]+号(?:楼|栋|幢)?`, 'g'), ' ')
+    .replace(new RegExp(`[${CN_NUM}]+(?:室|栋|幢|单元)`, 'g'), ' ')
+    .replace(/公共区域|公区/g, ' ')
+    .replace(/[\/／\\|—_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return s;
+}
+
+/** 一句话里最先出现的场所词（同位置取更长的），前面紧挨的楼层一起带上：「4楼电梯口」 */
+export function findSpotWord(text: string): string {
+  const s = String(text ?? '');
+  let best: { idx: number; word: string } | null = null;
+  for (const word of SPOT_LEXICON) {
+    const idx = s.indexOf(word);
+    if (idx < 0) continue;
+    if (!best || idx < best.idx || (idx === best.idx && word.length > best.word.length)) {
+      best = { idx, word };
+    }
+  }
+  if (!best) return '';
+  const floor = s.slice(0, best.idx).match(new RegExp(`([${CN_NUM}]+(?:楼|层))$`));
+  return `${floor ? floor[1] : ''}${best.word}`;
+}
+
+/**
+ * 从「具体位置」或整条地址里抽位置本身。
+ * 剥掉门牌后剩下的短语就是位置（「枫桦景苑二期/228弄2号 大门」→「大门」）；
+ * 剩下的还是一长句（语音原话）就只认词表里的场所词。
+ */
+export function extractSpot(text: string, knownPlaces: string[] = []): string {
+  const rest = stripAddress(text, knownPlaces).replace(/^[，。、,.]+|[，。、,.]+$/g, '').trim();
+  if (!rest) return '';
+  if (rest.length <= 8 && !/[，。！？,.!?；;]/.test(rest)) return rest;
+  return findSpotWord(rest);
+}
+
+/** 句子里像故障的迹象：有这些词的一句才是「报修内容」，「说没有吗」这种不是 */
+const FAULT_HINT =
+  /(坏|不|漏|堵|停|断|裂|掉|响|臭|没|失灵|故障|损|松|卡|锁|异味|噪音|渗|冒|翘|塌|积水|打不开|关不上|不亮|无|换|修|坏了|短路|跳闸|漏电|漏水|滴水|生锈|脱落|破)/;
+
+/**
+ * 从报修原话里抽真正的内容：剥门牌、电话、人名/称呼、「报修」「麻烦看一下」这类客套、语气词，
+ * 语音里重复说的句子只留一句，再从剩下的句子里挑最像故障描述的那句（有故障词的优先，同分取短的）。
+ * 和 packages/shared-types/voice-extract.ts 的 extractFaultDescription 是同一思路，
+ * 那份跑在小程序里、要靠认出来的地址/电话去剥；这份跑在服务端、面对的是已经落库的原文，
+ * 只能靠模式，所以单独实现，API 也不在运行时依赖 shared-types。
+ */
+export function extractContentGist(text: string, knownPlaces: string[] = []): string {
+  let s = stripAddress(text, knownPlaces);
+  if (!s) return '';
+  s = s
+    .replace(/1[3-9]\d[\s-]*\d{4}[\s-]*\d{4}/g, ' ')
+    .replace(/[零〇一幺二两三四五六七八九]{7,}/g, ' ')
+    .replace(/(联系电话|联系方式|电话号码|手机号码|手机号|电话|手机|号码)(是|为|：|:)?/g, ' ')
+    // 「彭经理，」「侯队」「张师傅」：称呼连着前面 1~3 个字的姓名一起剥
+    .replace(/[一-龥]{1,3}(经理|师傅|先生|女士|小姐|队长|主任|老师|阿姨|大爷|大妈|同志|书记|主管|队)(?=[，,、：:\s]|$)/g, ' ')
+    .replace(/(联系人|户主|业主|住户|租户|物业|保安|居委会|业委会|门岗|门卫)(是|为|：|:)?/g, ' ')
+    .replace(/(来?报修的?|报的修|报了个修|报个修|报的|报单|报一下|反映|投诉|说是|说的)/g, ' ')
+    // 「报一期12号大门的密码」剥掉门牌后剩「报 大门的密码」：孤零零的「报」也是引导词
+    .replace(/(^|[，,、\s])报(?=[一-龥\s])/g, '$1 ')
+    .replace(/(麻烦|请|帮忙|希望|尽快|赶紧|抓紧|派人|派个人|安排人|安排|能不能|可不可以)+(过来|来|上门|上来)?(看一下|看一看|看看|看下|修一下|修修|修下|修理一下|修理|处理一下|处理下|处理|弄一下|弄下|解决一下|解决下|解决)?/g, ' ')
+    .replace(/(谢谢|麻烦了|辛苦了|拜托了|拜托|按住说话|说没有吗|有没有|听得到吗)/g, ' ')
+    .replace(/(地址是|地址|位置是|位置)(：|:)?/g, ' ')
+    .replace(/(呃|嗯|啊|哦|哎|呀|吧|呢|嘛|喔|唉|那个|就是|然后|反正|其实|的话|对啊|对的|好的|好了)/g, ' ')
+    .replace(/(^|[，,、。\s])(对|好|行|嗯嗯)(?=[，,、。\s]|$)/g, '$1 ')
+    .replace(/(^|[，,、。\s])的(?=[一-龥])/g, '$1');
+
+  const parts = s
+    .split(/[，。！？,.!?；;\s]+/)
+    .map((p) => p.trim())
+    .filter((p) => p.length >= 2 && p.length <= 16);
+  const uniq = parts.filter((p, i) => parts.indexOf(p) === i);
+  if (!uniq.length) return '';
+  const score = (p: string) => (FAULT_HINT.test(p) ? 2 : 0) + (findSpotWord(p) ? 1 : 0);
+  // 相邻两句拼起来放得下、且各自都有点信息的，也算候选：
+  // 「大门的密码」+「需要换一下」拼成「大门的密码需要换一下」，比任何一半都说得清
+  const joined: string[] = [];
+  for (let i = 0; i + 1 < uniq.length; i += 1) {
+    const both = `${uniq[i]}${uniq[i + 1]}`;
+    if (both.length <= 16 && score(uniq[i]) > 0 && score(uniq[i + 1]) > 0) joined.push(both);
+  }
+  return [...uniq, ...joined].sort((a, b) => score(b) - score(a) || a.length - b.length)[0];
+}
