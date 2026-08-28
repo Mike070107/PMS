@@ -3,7 +3,7 @@ import { buildStampText } from '../../utils/buildStamp';
 import { USER_ROLE_LABELS, type MeResp } from '@pms/shared-types';
 import { clearSession, getSession } from '../../utils/session';
 import { clearAccessCache, syncTabBar } from '../../utils/tabbar';
-import { askOrderSubscribe, isAlwaysAllowed, refreshUnread } from '../../utils/unread';
+import { askOrderSubscribe, getSubscribeState, refreshUnread } from '../../utils/unread';
 
 // 版本号和 git hash 由发版脚本写入 utils/buildStamp.ts，别在这里手改（见那个文件的说明）
 
@@ -23,8 +23,13 @@ Page({
     unread: 0,
     /** 维修工才有「新工单提醒」这回事 —— 单是派给他的 */
     canSubscribe: false,
-    /** 已勾「总是保持以上选择」= 以后每次派单都会提醒，不用再点 */
-    notifyAlways: false,
+    /**
+     * always = 勾了「总是保持以上选择」，每次派单都会提醒；
+     * banked = 没勾，但服务端还记着几条额度，用完就收不到了；
+     * off    = 一条额度都没有
+     */
+    notifyState: 'off' as 'off' | 'banked' | 'always',
+    notifyRemaining: 0,
     /** 代报角色：报修范围是授权小区，不是全公司，文案得说准 */
     repairDesc: '巡查发现的问题直接提单，地址可选全公司任意楼栋房号',
   },
@@ -106,9 +111,11 @@ Page({
    * 已经勾过「总是保持」的人再看到「开启提醒」会以为没生效，又点一遍。
    */
   async refreshNotifyState() {
-    const me = this.data.user;
-    const tmplId = (me?.subscribeTemplates || [])[0] || '';
-    this.setData({ notifyAlways: tmplId ? await isAlwaysAllowed(tmplId) : false });
+    const state = await getSubscribeState();
+    this.setData({
+      notifyState: state.always ? 'always' : state.remaining > 0 ? 'banked' : 'off',
+      notifyRemaining: state.remaining,
+    });
   },
 
   async onLogout() {

@@ -48,6 +48,8 @@
   font-weight: 400;
 }
 .entry__state--on { background: rgba(82, 196, 26, 0.12); color: #389e0d; }
+/* 还有额度但没勾「总是保持」：能收到，但会用完，用琥珀色提醒他再勾一次 */
+.entry__state--partial { background: rgba(250, 173, 20, 0.14); color: #d48806; }
 
 /* 未读数跟在「消息」后面：红底白字，和 tabBar 上那枚角标是一个意思 */
 .entry__badge {

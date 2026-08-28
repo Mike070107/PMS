@@ -100,6 +100,33 @@ export function isAlwaysAllowed(tmplId: string): Promise<boolean> {
   });
 }
 
+/**
+ * 「我的」页展示用的提醒状态。
+ *
+ * 两个来源缺一不可：微信只能告诉我们「勾没勾总是保持以上选择」，告诉不了还剩几条；
+ * 服务端只知道余量，不知道勾没勾。只看微信那一项会出现「明明每单都收到提醒，
+ * 页面却写着未开启」（2026-08-28 实际反馈）—— 那个人是靠一条条点允许攒了十几条额度，
+ * 没勾「总是保持」，按微信的口径确实不算「一直开着」，但按他的体感就是开着的。
+ */
+export interface SubscribeState {
+  tmplId: string;
+  /** 勾了「总是保持以上选择」：以后每次派单都会提醒 */
+  always: boolean;
+  /** 服务端记的余量：没勾「总是保持」时，还能提醒这么多条 */
+  remaining: number;
+}
+
+export async function getSubscribeState(): Promise<SubscribeState> {
+  const me = (await getSession()).me;
+  const tmplId = (me?.subscribeTemplates || []).filter(Boolean)[0] || '';
+  if (!tmplId) return { tmplId: '', always: false, remaining: 0 };
+  const [always, state] = await Promise.all([
+    isAlwaysAllowed(tmplId),
+    notifications.subscribeState([tmplId]).catch(() => ({} as Record<string, number>)),
+  ]);
+  return { tmplId, always, remaining: Number(state[tmplId] ?? 0) };
+}
+
 // ---------------------------------------------------------------------------
 // 订阅授权
 //

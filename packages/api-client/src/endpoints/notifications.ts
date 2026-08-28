@@ -34,3 +34,10 @@ export const subscribe = (templateIds: string[]) =>
     url: '/notifications/subscribe',
     data: { templateIds },
   });
+
+/** 每个模板在服务端还剩几条额度（微信没有查余量的接口，只有这里记的账知道） */
+export const subscribeState = (templateIds: string[]) =>
+  request<Record<string, number>>({
+    url: '/notifications/subscribe-state',
+    query: { templateIds: templateIds.join(',') },
+  });

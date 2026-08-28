@@ -25,10 +25,14 @@
       <view class="entry__body">
         <view class="entry__title">
           新工单微信提醒
-          <text class="entry__state {{notifyAlways ? 'entry__state--on' : ''}}">{{notifyAlways ? '已开启' : '未开启'}}</text>
+          <text class="entry__state {{notifyState === 'always' ? 'entry__state--on' : notifyState === 'banked' ? 'entry__state--partial' : ''}}">{{notifyState === 'always' ? '已开启' : notifyState === 'banked' ? '还能提醒 ' + notifyRemaining + ' 条' : '未开启'}}</text>
         </view>
         <view class="entry__desc">
-          {{notifyAlways ? '每次派单微信都会提醒你，不用再点允许' : '点这里开启；弹窗里记得勾上「总是保持以上选择」'}}
+          {{notifyState === 'always'
+            ? '每次派单微信都会提醒你，不用再点允许'
+            : notifyState === 'banked'
+              ? '每收一条提醒少一条，用完就收不到了。点这里再开一次，并勾上「总是保持以上选择」就一直有'
+              : '点这里开启；弹窗里记得勾上「总是保持以上选择」'}}
         </view>
       </view>
       <view class="entry__arrow"></view>

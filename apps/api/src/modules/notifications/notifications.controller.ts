@@ -44,6 +44,20 @@ export class NotificationsController {
     return this.notificationsService.grantSubscribe(user, dto.templateIds);
   }
 
+  /**
+   * 小程序「我的」页显示提醒状态用：每个模板还剩几条额度。
+   * 微信那边只能问到「勾没勾总是保持」，问不到余量 —— 余量只有这里记的账知道。
+   */
+  @Get('subscribe-state')
+  subscribeState(@Query('templateIds') templateIds: string, @CurrentUser() user: AuthUser) {
+    const ids = String(templateIds || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 10);
+    return this.notificationsService.subscribeState(user, ids);
+  }
+
   @Post('read-all')
   markAllRead(@Body() _body: unknown, @CurrentUser() user: AuthUser) {
     return this.notificationsService.markAllRead(user);

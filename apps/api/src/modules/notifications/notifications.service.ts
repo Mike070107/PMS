@@ -701,6 +701,19 @@ export class NotificationsService {
     return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
+  /** 每个模板还剩几条额度（没记录 = 0）。「我的」页用它区分「还能提醒几条」和「一直提醒」 */
+  async subscribeState(user: AuthUser, templateIds: string[]): Promise<Record<string, number>> {
+    const tenantId = this.requireTenant(user);
+    const out: Record<string, number> = {};
+    templateIds.forEach((id) => { out[id] = 0; });
+    if (!templateIds.length) return out;
+    const rows = await this.grantRepo.find({
+      where: { tenantId, userId: user.id, templateId: In(templateIds) },
+    });
+    rows.forEach((row) => { out[row.templateId] = Math.max(0, row.remaining); });
+    return out;
+  }
+
   private requireTenant(user: AuthUser): number {
     if (!user.tenantId) throw new ForbiddenException('tenant scope is required');
     return user.tenantId;
