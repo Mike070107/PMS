@@ -76,8 +76,11 @@ export const create = (data: RepairCreateReq) =>
 export interface ListQuery {
   status?: WorkOrderStatus;
   communityId?: number;
-  /** mine=业主我提交的 / 维修工派给我的；pool=未指派的池子（维修工待接 = 办公室待派） */
-  scope?: 'mine' | 'pool' | 'all';
+  /**
+   * mine=业主我提交的 / 维修工派给我的；pool=未指派的池子（维修工待接 = 办公室待派）；
+   * reported=我提交的（员工替人报的单，不管派给了谁）
+   */
+  scope?: 'mine' | 'pool' | 'reported' | 'all';
   /** 关键词：单号 / 报修地址 / 故障描述 */
   q?: string;
 }

@@ -3,7 +3,7 @@
     <view class="page-lead__title">在手 {{active.length}} 条</view>
   </view>
 
-  <view wx:if="{{!active.length && !done.length && loaded}}">
+  <view wx:if="{{!active.length && !done.length && !reported.length && loaded}}">
     <pms-empty text="手上没有工单，去「工单池」接一单"/>
   </view>
 
@@ -37,6 +37,38 @@
       <text class="wo-card__more">{{item.actionText}} ›</text>
     </view>
   </view>
+
+  <!-- 我报的单（派给了别人的）：报单的人要能看到它去哪儿了、修没修，否则像单子丢了 -->
+  <view wx:if="{{reported.length}}" class="fold" bindtap="onToggleReported">
+    <text class="fold__title">我报的 {{reported.length}} 条</text>
+    <text class="fold__action">{{reportedOpen ? '收起' : '展开'}}</text>
+  </view>
+  <block wx:if="{{reportedOpen}}">
+    <view
+      wx:for="{{reported}}"
+      wx:key="id"
+      class="card wo-card wo-card--bold"
+      hover-class="wo-card--hover"
+      hover-stay-time="80"
+      bindtap="onTapItem"
+      data-id="{{item.id}}"
+    >
+      <view class="wo-card__head">
+        <view class="wo-card__title">
+          <text class="wo-card__type">{{item.typeLabel}}</text>
+        </view>
+        <pms-tag class="status-tag" status="{{item.status}}"/>
+      </view>
+      <view class="kv"><text class="kv__k">工单编号</text><text class="kv__v">{{item.orderNo}}</text></view>
+      <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{item.summaryAddress || '未填地址'}}</text></view>
+      <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v kv__v--clamp">{{item.summaryContent}}</text></view>
+      <view class="kv"><text class="kv__k">报修时间</text><text class="kv__v">{{item.createdAtText}}</text></view>
+      <view class="kv"><text class="kv__k">维修工</text><text class="kv__v">{{item.assigneeText}}</text></view>
+      <view class="wo-card__foot">
+        <text class="wo-card__more">{{item.actionText}} ›</text>
+      </view>
+    </view>
+  </block>
 
   <!-- 已完结的默认收起：手上真正要干的活才该占屏幕。搜过关键词就自动展开 -->
   <view wx:if="{{done.length || doneKeyword}}" class="fold" bindtap="onToggleDone">

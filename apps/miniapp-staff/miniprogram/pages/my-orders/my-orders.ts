@@ -1,6 +1,7 @@
 import { repairs } from '@pms/api-client';
 import { withOrderLabels } from '@pms/miniapp-ui';
 import { WorkOrderStatus, type WorkOrderListItem } from '@pms/shared-types';
+import { getSession } from '../../utils/session';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
 import { refreshUnread, topUpQuietly } from '../../utils/unread';
 
@@ -12,6 +13,8 @@ type OrderRow = WorkOrderListItem & {
   /** 卡片右下角写清下一步该干什么，而不是笼统的「查看详情」 */
   actionText: string;
   reporterText: string;
+  /** 「我报的」卡片：这单现在在谁手上 */
+  assigneeText?: string;
 };
 
 /** 还要人动手的状态，排在最上面；其余归到「已完结」折叠区 */
@@ -34,6 +37,12 @@ Page({
     active: [] as OrderRow[],
     done: [] as OrderRow[],
     doneOpen: false,
+    /**
+     * 我替住户/巡查报的单（不管派给了谁）。派给别人之后在手和池子里都看不到，
+     * 报单的人会以为单子丢了；默认收起，不和手上要干的活抢位置
+     */
+    reported: [] as OrderRow[],
+    reportedOpen: false,
     loaded: false,
     /** 已完结区的搜索：输入中的词 / 已发出去的词 / 结果（null = 没在搜，显示 done） */
     doneKeyword: '',
@@ -70,9 +79,33 @@ Page({
         loaded: true,
       });
       setTabBadge(this, 'mine', active.length);
+      this.loadReported(new Set(rows.map((item) => item.id)));
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     }
+  },
+
+  /** 我报的单：能报修的人才拉；已经在手上的那些不重复列 */
+  async loadReported(shown: Set<number>) {
+    try {
+      const session = await getSession();
+      if (!session.canReport) return;
+      const list = await repairs.list({ scope: 'reported' });
+      const reported = withOrderLabels(list)
+        .filter((item) => !shown.has(item.id))
+        .map((item) => ({
+          ...item,
+          actionText: '看进度',
+          assigneeText: item.assigneeName || '还没人接',
+        }));
+      this.setData({ reported });
+    } catch {
+      // 这一块是附加信息，拉不到不影响在手工单
+    }
+  },
+
+  onToggleReported() {
+    this.setData({ reportedOpen: !this.data.reportedOpen });
   },
 
   onToggleDone() {

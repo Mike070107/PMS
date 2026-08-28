@@ -522,6 +522,18 @@ export class RepairsService implements OnModuleInit {
           WorkOrderStatus.WAITING_MATERIAL,
         ]);
       }
+    } else if (query.scope === 'reported') {
+      // 「我报的」= 我替住户/巡查提交的单，不管派给了谁。
+      // 维修工替人报的单被自动派给了别人，在手和池子里都看不到，就像单子消失了一样
+      // （2026-08-28 反馈：孔赟报的智能化单按类型规则派给了叶双，他自己哪儿都找不到）
+      const myRequestIds = await this.repairRequestRepo.find({
+        where: { tenantId, submittedBy: user.id },
+        select: ['id'],
+        order: { id: 'DESC' },
+        take: 200,
+      });
+      if (!myRequestIds.length) return [];
+      where.requestId = In(myRequestIds.map((item) => item.id));
     } else if (query.scope === 'mine' || !(await this.canDispatch(user, access))) {
       // 「在手工单」= 派到我头上的单，对谁都是这个意思。
       // 原来这一档只认 TECHNICIAN，办公室带 scope=mine 会掉进无过滤分支，

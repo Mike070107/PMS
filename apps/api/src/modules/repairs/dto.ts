@@ -140,8 +140,8 @@ export class WorkOrdersQueryDto {
    * 后台角色不传则为全部（仍受租户隔离）
    */
   @IsOptional()
-  @IsIn(['mine', 'pool', 'all'])
-  scope?: 'mine' | 'pool' | 'all';
+  @IsIn(['mine', 'pool', 'reported', 'all'])
+  scope?: 'mine' | 'pool' | 'reported' | 'all';
 
   /**
    * 关键词：单号 / 报修地址 / 故障描述。
