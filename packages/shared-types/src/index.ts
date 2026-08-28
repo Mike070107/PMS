@@ -645,6 +645,49 @@ export interface StockView {
   materialId: number;
   qty: string | number;
   safetyQty: string | number;
+  /** 剩余批次数量（不含老库存兜底），GET /stocks 附带 */
+  lotQty?: number;
+  /** 剩余批次金额（分） */
+  lotValueCents?: number;
+  /** 单位成本（分）：有批次按批次加权，没有退回 SKU 参考成本 */
+  unitCostCents?: number;
+  costSource?: 'lot' | 'default';
+  /** 该行库存金额（分）= 数量 × 单位成本 */
+  amountCents?: number;
+}
+
+/** 库存批次：同一材料不同入库单价分批追踪，出库先进先出 */
+export interface StockLotView {
+  id: number;
+  warehouseId: number;
+  materialId: number;
+  lotNo: string;
+  initialQty: string | number;
+  remainingQty: string | number;
+  unitCostCents: number;
+  supplierId?: number | null;
+  purchaseOrderId?: number | null;
+  goodsReceiptId?: number | null;
+  /** goods_receipt 采购入库 / general_receipt 一般入库 / transfer_order 调拨入库 / stock_adjust 盘盈 / legacy_stock 老库存兜底 */
+  sourceType?: string | null;
+  sourceId?: number | null;
+  receivedAt: string;
+}
+
+export interface StockMovementView {
+  id: number;
+  warehouseId: number;
+  materialId: number;
+  /** inbound / outbound / transfer / adjust */
+  type: string;
+  /** 正数入库 / 负数出库 */
+  qty: string | number;
+  unitCostCents: number;
+  refType?: string | null;
+  refId?: number | null;
+  note?: string | null;
+  createdAt?: string;
+  createdBy?: number | null;
 }
 
 // ---------- 采购 ----------

@@ -527,7 +527,7 @@ Page({
 
     const cost = Number(form.costYuan);
     if (form.costYuan && (!Number.isFinite(cost) || cost < 0)) {
-      return wx.showToast({ icon: 'none', title: '默认成本填写不正确' });
+      return wx.showToast({ icon: 'none', title: '参考成本填写不正确' });
     }
 
     const payload = {

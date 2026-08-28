@@ -2,6 +2,8 @@ import type {
   MaterialOption,
   MaterialView,
   PurchaseRequestView,
+  StockLotView,
+  StockMovementView,
   StockView,
   WarehouseView,
 } from '@pms/shared-types';
@@ -45,6 +47,14 @@ export const listWarehouses = (query: { scope?: 'mine' } = {}) =>
 
 export const listStocks = (query: { warehouseId?: number; materialId?: number } = {}) =>
   request<StockView[]>({ url: '/stocks', query: query as any });
+
+/** 某条库存的批次明细（含已耗尽的），先进先出顺序 */
+export const listStockLots = (stockId: number) =>
+  request<StockLotView[]>({ url: `/stocks/${stockId}/lots` });
+
+/** 出入库流水，最新在前，默认 100 条 */
+export const listStockMovements = (query: { warehouseId?: number; materialId?: number; limit?: number } = {}) =>
+  request<StockMovementView[]>({ url: '/stock-movements', query: query as any });
 
 // ---------------- 采购 ----------------
 

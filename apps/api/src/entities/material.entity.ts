@@ -22,7 +22,8 @@ export class Material extends TenantEntity {
   @Column({ type: 'varchar', length: 20, default: '个' })
   unit: string;
 
-  // 默认成本（分），采购入库会刷新加权均价（一期简单存默认值）
+  // 参考成本（分）= 全公司剩余批次的移动加权均价，入库 / 盘盈后由 stock-ledger 自动刷新。
+  // 只用于展示、盘盈默认单价、没批次的老库存兜底；出库成本取批次单价，不用它
   @Column({ name: 'default_cost_cents', type: 'int', default: 0 })
   defaultCostCents: number;
 

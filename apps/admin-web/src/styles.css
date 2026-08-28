@@ -1359,3 +1359,8 @@ body.pms-col-resizing * {
     transition: none;
   }
 }
+
+/* 表格里的次要行（如已用完的库存批次）：压淡但仍可读 */
+.pms-row-muted td {
+  color: rgba(0, 0, 0, 0.45);
+}

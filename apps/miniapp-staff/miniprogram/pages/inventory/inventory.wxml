@@ -173,7 +173,7 @@
     <view class="label mt">资料</view>
     <view class="kv"><text class="kv__k">编码</text><text class="kv__v">{{detail.code}}</text></view>
     <view class="kv"><text class="kv__k">类别单位</text><text class="kv__v">{{detail.category}} · {{detail.unit}}</text></view>
-    <view class="kv"><text class="kv__k">默认成本</text><text class="kv__v">{{detail.costText}}</text></view>
+    <view class="kv"><text class="kv__k">参考成本</text><text class="kv__v">{{detail.costText}}</text></view>
     <view class="kv"><text class="kv__k">别名</text><text class="kv__v">{{detail.aliasText || '未填'}}</text></view>
     <view class="kv"><text class="kv__k">详细参数</text><text class="kv__v">{{detail.params || '未填'}}</text></view>
   </scroll-view>
@@ -244,7 +244,7 @@
     </view>
 
     <view class="field">
-      <view class="label">默认成本（元）<text class="label__opt">采购按它估价</text></view>
+      <view class="label">参考成本（元）<text class="label__opt">采购按它估价，入库后自动按均价刷新</text></view>
       <input class="input" type="digit" placeholder="0.00" value="{{form.costYuan}}" data-field="costYuan" bindinput="onFormInput" />
     </view>
 

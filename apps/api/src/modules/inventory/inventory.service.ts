@@ -50,6 +50,7 @@ import {
   PurchaseRequestQueryDto,
   ReceiveTransferOrderDto,
   RejectPurchaseRequestDto,
+  StockMovementQueryDto,
   StockQueryDto,
   SubmitToManagerDto,
   TenantQueryDto,
@@ -62,6 +63,15 @@ import {
   WarehouseLocationQueryDto,
 } from './dto';
 import { ObjectStorageService } from '../upload/object-storage.service';
+import {
+  applyStockDelta,
+  averageUnitCost,
+  consumeStockLots,
+  createStockLot,
+  refreshMaterialReferenceCost,
+  resolveUnitCost,
+  summarizeLots,
+} from './stock-ledger';
 
 interface NotifyInput {
   eventKey: string;
@@ -84,13 +94,6 @@ const MATERIAL_CATEGORY_PREFIX: Record<string, string> = {
   防台防汛: 'FT',
   低值易耗品: 'DZ',
 };
-
-interface LotAllocation {
-  stockLotId: number;
-  qty: number;
-  unitCostCents: number;
-  amountCents: number;
-}
 
 @Injectable()
 export class InventoryService {
@@ -438,14 +441,74 @@ export class InventoryService {
     return this.supplierRepo.save(supplier);
   }
 
-  listStocks(query: StockQueryDto, user: AuthUser) {
+  /**
+   * 库存清单。每行附带剩余批次的数量 / 金额 / 加权均价，后台估值用它，
+   * 和报表页「库存清单」是同一口径（resolveUnitCost）：有批次按批次加权，没有才退回 SKU 参考成本。
+   */
+  async listStocks(query: StockQueryDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const where: FindOptionsWhere<Stock> = { tenantId };
     if (query.warehouseId) where.warehouseId = query.warehouseId;
     if (query.materialId) where.materialId = query.materialId;
-    return this.stockRepo.find({ where, order: { id: 'ASC' } });
+    const [rows, lotMap] = await Promise.all([
+      this.stockRepo.find({ where, order: { id: 'ASC' } }),
+      summarizeLots(this.dataSource.manager, tenantId, {
+        warehouseId: query.warehouseId,
+        materialId: query.materialId,
+      }),
+    ]);
+    const materialIds = [...new Set(rows.map((row) => row.materialId))];
+    const materials = materialIds.length
+      ? await this.materialRepo.find({ where: { tenantId, id: In(materialIds) } })
+      : [];
+    const defaultCostById = new Map(materials.map((m) => [m.id, m.defaultCostCents]));
+    return rows.map((row) => {
+      const lot = lotMap.get(`${row.warehouseId}:${row.materialId}`);
+      const lotQty = lot?.lotQty ?? 0;
+      const lotValueCents = lot?.lotValueCents ?? 0;
+      const unitCostCents = resolveUnitCost(lotQty, lotValueCents, defaultCostById.get(row.materialId) ?? 0);
+      return {
+        ...row,
+        lotQty,
+        lotValueCents,
+        unitCostCents,
+        costSource: lotQty > 0 ? 'lot' : 'default',
+        amountCents: Math.round(Number(row.qty) * unitCostCents),
+      };
+    });
   }
 
+  /** 某条库存的批次明细（含已耗尽的），先进先出的顺序 */
+  async listStockLots(stockId: number, user: AuthUser) {
+    const tenantId = this.resolveTenantId(user);
+    const stock = await this.stockRepo.findOne({ where: { id: stockId, tenantId } });
+    if (!stock) throw new NotFoundException('stock not found');
+    return this.dataSource.getRepository(StockLot).find({
+      where: { tenantId, warehouseId: stock.warehouseId, materialId: stock.materialId },
+      order: { receivedAt: 'ASC', id: 'ASC' },
+      take: 200,
+    });
+  }
+
+  /** 出入库流水，最新在前 */
+  async listStockMovements(query: StockMovementQueryDto, user: AuthUser) {
+    const tenantId = this.resolveTenantId(user, query.tenantId);
+    const where: FindOptionsWhere<StockMovement> = { tenantId };
+    if (query.warehouseId) where.warehouseId = query.warehouseId;
+    if (query.materialId) where.materialId = query.materialId;
+    return this.dataSource.getRepository(StockMovement).find({
+      where,
+      order: { id: 'DESC' },
+      take: Math.min(query.limit ?? 100, 500),
+    });
+  }
+
+  /**
+   * 盘点调整。数量只能通过批次变：
+   * - 盘盈：新建一条批次，单价用填的，不填取 SKU 参考成本，之后刷新参考成本；
+   * - 盘亏：先进先出扣批次，流水成本取被扣批次的加权价。
+   * 以前是直接改 stocks.qty 不动批次，结果批次和实物对不上、下次出库扣到不存在的批次。
+   */
   async updateStock(id: number, dto: UpdateStockDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
@@ -454,31 +517,68 @@ export class InventoryService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!stock) throw new NotFoundException('stock not found');
-      const previousQty = Number(stock.qty);
-      if (dto.qty !== undefined) stock.qty = dto.qty;
-      if (dto.safetyQty !== undefined) stock.safetyQty = dto.safetyQty;
-      stock.updatedBy = user.id;
-      const saved = await manager.save(Stock, stock);
-      const deltaQty = Number(saved.qty) - previousQty;
-      if (deltaQty !== 0) {
-        await manager.save(
-          StockMovement,
-          manager.create(StockMovement, {
-            tenantId,
-            warehouseId: saved.warehouseId,
-            materialId: saved.materialId,
-            type: StockMovementType.ADJUST,
-            qty: deltaQty,
-            unitCostCents: 0,
-            refType: 'stock',
-            refId: saved.id,
-            note: 'manual stock edit',
-            createdBy: user.id,
-            updatedBy: user.id,
-          }),
-        );
+      if (dto.safetyQty !== undefined) {
+        stock.safetyQty = dto.safetyQty;
+        stock.updatedBy = user.id;
+        await manager.save(Stock, stock);
       }
-      return saved;
+      const previousQty = Number(stock.qty);
+      const deltaQty = dto.qty !== undefined ? Number((dto.qty - previousQty).toFixed(2)) : 0;
+      if (deltaQty === 0) return stock;
+
+      const note = dto.note?.trim() ? `盘点调整：${dto.note.trim()}` : '盘点调整';
+      if (deltaQty > 0) {
+        const material = await manager.findOne(Material, { where: { id: stock.materialId, tenantId } });
+        const unitCostCents = dto.unitCostCents ?? material?.defaultCostCents ?? 0;
+        await createStockLot(manager, {
+          tenantId,
+          warehouseId: stock.warehouseId,
+          materialId: stock.materialId,
+          qty: deltaQty,
+          unitCostCents,
+          supplierId: null,
+          purchaseOrderId: null,
+          goodsReceiptId: null,
+          sourceType: 'stock_adjust',
+          sourceId: stock.id,
+          lotNo: this.buildNo('ADJ'),
+          operatorId: user.id,
+        });
+        const saved = await applyStockDelta(manager, {
+          tenantId,
+          warehouseId: stock.warehouseId,
+          materialId: stock.materialId,
+          deltaQty,
+          type: StockMovementType.ADJUST,
+          unitCostCents,
+          refType: 'stock',
+          refId: stock.id,
+          operatorId: user.id,
+          note,
+        });
+        await refreshMaterialReferenceCost(manager, tenantId, stock.materialId, user.id);
+        return saved;
+      }
+
+      const allocations = await consumeStockLots(manager, {
+        tenantId,
+        warehouseId: stock.warehouseId,
+        materialId: stock.materialId,
+        qty: -deltaQty,
+        operatorId: user.id,
+      });
+      return applyStockDelta(manager, {
+        tenantId,
+        warehouseId: stock.warehouseId,
+        materialId: stock.materialId,
+        deltaQty,
+        type: StockMovementType.ADJUST,
+        unitCostCents: averageUnitCost(allocations, -deltaQty),
+        refType: 'stock',
+        refId: stock.id,
+        operatorId: user.id,
+        note,
+      });
     });
   }
 
@@ -769,7 +869,7 @@ export class InventoryService {
       );
 
       for (const [index, item] of dto.items.entries()) {
-        await this.createStockLot(manager, {
+        await createStockLot(manager, {
           tenantId,
           warehouseId: dto.warehouseId,
           materialId: item.materialId,
@@ -783,7 +883,7 @@ export class InventoryService {
           lotNo: `${receipt.receiptNo}-${String(index + 1).padStart(2, '0')}`,
           operatorId: user.id,
         });
-        await this.applyStockDelta(manager, {
+        await applyStockDelta(manager, {
           tenantId,
           warehouseId: dto.warehouseId,
           materialId: item.materialId,
@@ -796,6 +896,7 @@ export class InventoryService {
           note: order.orderNo,
         });
       }
+      await this.refreshReferenceCosts(manager, tenantId, dto.items.map((item) => item.materialId), user.id);
 
       // 分批到货：累计各材料已收数量，判断是全部收齐(received)还是部分到货(partial)
       const receivedTotals = await this.sumReceivedQtyByMaterial(manager, tenantId, order.id);
@@ -869,7 +970,7 @@ export class InventoryService {
       );
 
       for (const [index, item] of dto.items.entries()) {
-        await this.createStockLot(manager, {
+        await createStockLot(manager, {
           tenantId,
           warehouseId: dto.warehouseId,
           materialId: item.materialId,
@@ -883,7 +984,7 @@ export class InventoryService {
           lotNo: `${receipt.receiptNo}-${String(index + 1).padStart(2, '0')}`,
           operatorId: user.id,
         });
-        await this.applyStockDelta(manager, {
+        await applyStockDelta(manager, {
           tenantId,
           warehouseId: dto.warehouseId,
           materialId: item.materialId,
@@ -896,6 +997,7 @@ export class InventoryService {
           note: dto.sourceText.trim(),
         });
       }
+      await this.refreshReferenceCosts(manager, tenantId, dto.items.map((item) => item.materialId), user.id);
       return receipt;
     });
   }
@@ -1071,20 +1173,20 @@ export class InventoryService {
       }
       const shippedItems: TransferOrder['items'] = [];
       for (const item of transfer.items) {
-        const allocations = await this.consumeStockLots(manager, {
+        const allocations = await consumeStockLots(manager, {
           tenantId,
           warehouseId: transfer.fromWarehouseId,
           materialId: item.materialId,
           qty: item.qty,
           operatorId: user.id,
         });
-        await this.applyStockDelta(manager, {
+        await applyStockDelta(manager, {
           tenantId,
           warehouseId: transfer.fromWarehouseId,
           materialId: item.materialId,
           deltaQty: -item.qty,
           type: StockMovementType.TRANSFER,
-          unitCostCents: this.averageUnitCost(allocations, item.qty),
+          unitCostCents: averageUnitCost(allocations, item.qty),
           refType: 'transfer_order',
           refId: transfer.id,
           operatorId: user.id,
@@ -1167,7 +1269,7 @@ export class InventoryService {
           if (remainingToReceive <= 0) break;
           const take = Math.min(Number(allocation.qty), remainingToReceive);
           if (take <= 0) continue;
-          await this.createStockLot(manager, {
+          await createStockLot(manager, {
             tenantId,
             warehouseId: transfer.toWarehouseId,
             materialId: item.materialId,
@@ -1184,13 +1286,13 @@ export class InventoryService {
           remainingToReceive = Number((remainingToReceive - take).toFixed(2));
         }
         if (receivedQty > 0) {
-          await this.applyStockDelta(manager, {
+          await applyStockDelta(manager, {
             tenantId,
             warehouseId: transfer.toWarehouseId,
             materialId: item.materialId,
             deltaQty: receivedQty,
             type: StockMovementType.TRANSFER,
-            unitCostCents: this.averageUnitCost(allocations, shippedQty),
+            unitCostCents: averageUnitCost(allocations, shippedQty),
             refType: 'transfer_order',
             refId: transfer.id,
             operatorId: user.id,
@@ -1220,210 +1322,6 @@ export class InventoryService {
       }
       return saved;
     });
-  }
-
-  private async applyStockDelta(
-    manager: EntityManager,
-    input: {
-      tenantId: number;
-      warehouseId: number;
-      materialId: number;
-      deltaQty: number;
-      type: StockMovementType;
-      unitCostCents: number;
-      refType: string;
-      refId: number;
-      operatorId: number | null;
-      note?: string | null;
-    },
-  ) {
-    let stock = await manager.findOne(Stock, {
-      where: {
-        tenantId: input.tenantId,
-        warehouseId: input.warehouseId,
-        materialId: input.materialId,
-      },
-      lock: { mode: 'pessimistic_write' },
-    });
-    if (!stock) {
-      stock = manager.create(Stock, {
-        tenantId: input.tenantId,
-        warehouseId: input.warehouseId,
-        materialId: input.materialId,
-        qty: 0,
-        safetyQty: 0,
-        createdBy: input.operatorId,
-        updatedBy: input.operatorId,
-      });
-    }
-    const nextQty = Number(stock.qty) + input.deltaQty;
-    if (nextQty < 0) throw new BadRequestException('stock is insufficient');
-    stock.qty = nextQty;
-    stock.updatedBy = input.operatorId;
-    await manager.save(Stock, stock);
-
-    await manager.save(
-      StockMovement,
-      manager.create(StockMovement, {
-        tenantId: input.tenantId,
-        warehouseId: input.warehouseId,
-        materialId: input.materialId,
-        type: input.type,
-        qty: input.deltaQty,
-        unitCostCents: input.unitCostCents,
-        refType: input.refType,
-        refId: input.refId,
-        note: input.note ?? null,
-        createdBy: input.operatorId,
-        updatedBy: input.operatorId,
-      }),
-    );
-  }
-
-  private async createStockLot(
-    manager: EntityManager,
-    input: {
-      tenantId: number;
-      warehouseId: number;
-      materialId: number;
-      qty: number;
-      unitCostCents: number;
-      supplierId: number | null;
-      purchaseOrderId: number | null;
-      goodsReceiptId: number | null;
-      sourceType: string;
-      sourceId: number;
-      lotNo: string;
-      operatorId: number | null;
-    },
-  ) {
-    return manager.save(
-      StockLot,
-      manager.create(StockLot, {
-        tenantId: input.tenantId,
-        warehouseId: input.warehouseId,
-        materialId: input.materialId,
-        lotNo: input.lotNo,
-        initialQty: input.qty,
-        remainingQty: input.qty,
-        unitCostCents: input.unitCostCents,
-        supplierId: input.supplierId,
-        purchaseOrderId: input.purchaseOrderId,
-        goodsReceiptId: input.goodsReceiptId,
-        sourceType: input.sourceType,
-        sourceId: input.sourceId,
-        receivedAt: new Date(),
-        createdBy: input.operatorId,
-        updatedBy: input.operatorId,
-      }),
-    );
-  }
-
-  private async consumeStockLots(
-    manager: EntityManager,
-    input: {
-      tenantId: number;
-      warehouseId: number;
-      materialId: number;
-      qty: number;
-      operatorId: number | null;
-    },
-  ): Promise<LotAllocation[]> {
-    await this.ensureLegacyLotIfNeeded(manager, input);
-    const lots = await manager
-      .createQueryBuilder(StockLot, 'lot')
-      .where('lot.tenant_id = :tenantId', { tenantId: input.tenantId })
-      .andWhere('lot.warehouse_id = :warehouseId', { warehouseId: input.warehouseId })
-      .andWhere('lot.material_id = :materialId', { materialId: input.materialId })
-      .andWhere('lot.remaining_qty > 0')
-      .orderBy('lot.received_at', 'ASC')
-      .addOrderBy('lot.id', 'ASC')
-      .setLock('pessimistic_write')
-      .getMany();
-
-    let remaining = input.qty;
-    const allocations: LotAllocation[] = [];
-    for (const lot of lots) {
-      if (remaining <= 0) break;
-      const available = Number(lot.remainingQty);
-      const take = Math.min(available, remaining);
-      if (take <= 0) continue;
-      lot.remainingQty = available - take;
-      lot.updatedBy = input.operatorId;
-      await manager.save(StockLot, lot);
-      allocations.push({
-        stockLotId: lot.id,
-        qty: take,
-        unitCostCents: lot.unitCostCents,
-        amountCents: Math.round(take * lot.unitCostCents),
-      });
-      remaining = Number((remaining - take).toFixed(2));
-    }
-    if (remaining > 0) throw new BadRequestException('stock lot is insufficient');
-    return allocations;
-  }
-
-  private async ensureLegacyLotIfNeeded(
-    manager: EntityManager,
-    input: {
-      tenantId: number;
-      warehouseId: number;
-      materialId: number;
-      qty: number;
-      operatorId: number | null;
-    },
-  ) {
-    const lots = await manager.find(StockLot, {
-      where: {
-        tenantId: input.tenantId,
-        warehouseId: input.warehouseId,
-        materialId: input.materialId,
-      },
-    });
-    const lotQty = lots.reduce((sum, lot) => sum + Number(lot.remainingQty), 0);
-    if (lotQty >= input.qty) return;
-
-    const stock = await manager.findOne(Stock, {
-      where: {
-        tenantId: input.tenantId,
-        warehouseId: input.warehouseId,
-        materialId: input.materialId,
-      },
-      lock: { mode: 'pessimistic_write' },
-    });
-    const stockQty = Number(stock?.qty ?? 0);
-    const missingLotQty = Number((stockQty - lotQty).toFixed(2));
-    if (missingLotQty <= 0) return;
-
-    const material = await manager.findOne(Material, {
-      where: { id: input.materialId, tenantId: input.tenantId },
-    });
-    await manager.save(
-      StockLot,
-      manager.create(StockLot, {
-        tenantId: input.tenantId,
-        warehouseId: input.warehouseId,
-        materialId: input.materialId,
-        lotNo: `LEGACY-${input.warehouseId}-${input.materialId}`,
-        initialQty: missingLotQty,
-        remainingQty: missingLotQty,
-        unitCostCents: material?.defaultCostCents ?? 0,
-        supplierId: null,
-        purchaseOrderId: null,
-        goodsReceiptId: null,
-        sourceType: 'legacy_stock',
-        sourceId: stock?.id ?? null,
-        receivedAt: new Date(0),
-        createdBy: input.operatorId,
-        updatedBy: input.operatorId,
-      }),
-    );
-  }
-
-  private averageUnitCost(allocations: LotAllocation[], qty: number): number {
-    if (!qty) return 0;
-    const total = allocations.reduce((sum, item) => sum + item.amountCents, 0);
-    return Math.round(total / qty);
   }
 
   private async buildMaterialCode(tenantId: number, category: string): Promise<string> {
@@ -1479,6 +1377,18 @@ export class InventoryService {
 
   private materialLabel(material: Material): string {
     return material.spec ? `${material.name}（${material.spec}）` : material.name;
+  }
+
+  /** 入库 / 盘盈后按材料去重刷新参考成本（同一张单里同一材料可能有多行） */
+  private async refreshReferenceCosts(
+    manager: EntityManager,
+    tenantId: number,
+    materialIds: number[],
+    operatorId: number | null,
+  ) {
+    for (const materialId of new Set(materialIds)) {
+      await refreshMaterialReferenceCost(manager, tenantId, materialId, operatorId);
+    }
   }
 
   private buildNo(prefix: string): string {

@@ -277,6 +277,38 @@ export class UpdateStockDto {
   @Type(() => Number)
   @Min(0)
   safetyQty?: number;
+
+  /** 盘盈时新批次的单价（分）；不填取 SKU 参考成本。盘亏按先进先出扣批次，此字段忽略 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  unitCostCents?: number;
+
+  /** 调整原因，写进流水备注 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  note?: string;
+}
+
+export class StockMovementQueryDto extends TenantQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  warehouseId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  materialId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  limit?: number;
 }
 
 export class PurchaseRequestQueryDto extends TenantQueryDto {

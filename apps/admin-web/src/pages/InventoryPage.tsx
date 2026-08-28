@@ -35,12 +35,14 @@ import {
   ReloadOutlined,
   ShoppingCartOutlined,
   SwapOutlined,
+  UnorderedListOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import UnitSelect from '../components/UnitSelect';
 import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumnPrefs';
 import { formatDateTimeCn, MATERIAL_CATEGORIES } from '@pms/shared-types';
+import type { StockLotView, StockMovementView } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { auth, useAuth, usePagePerm } from '../lib/auth';
 import { searchableExtraWideSelectProps, searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
@@ -125,6 +127,12 @@ interface StockRow {
   materialId: number;
   qty: number | string;
   safetyQty: number | string;
+  /** 下面几项由 GET /stocks 按剩余批次算好：有批次按批次加权，没有退回 SKU 参考成本 */
+  lotQty?: number;
+  lotValueCents?: number;
+  unitCostCents?: number;
+  costSource?: 'lot' | 'default';
+  amountCents?: number;
 }
 
 interface PurchaseRequestItem {
@@ -322,6 +330,7 @@ export default function InventoryPage() {
   const [selectedRequestKeys, setSelectedRequestKeys] = useState<number[]>([]);
   const [requestFilter, setRequestFilter] = useState<RequestFilterKey>('all');
   const [editingStock, setEditingStock] = useState<StockRow | null>(null);
+  const [lotDrawerStock, setLotDrawerStock] = useState<StockRow | null>(null);
   const [warehouseLocations, setWarehouseLocations] = useState<WarehouseLocationRow[]>([]);
   const [locationConfigWarehouse, setLocationConfigWarehouse] = useState<WarehouseRow | null>(null);
   const [generalReceiptOpen, setGeneralReceiptOpen] = useState(false);
@@ -408,10 +417,8 @@ export default function InventoryPage() {
   useEffect(() => { loadAll(); }, []);
 
   const stats = useMemo(() => {
-    const stockValue = stocks.reduce((sum, row) => {
-      const material = materialById.get(row.materialId);
-      return sum + numberQty(row.qty) * (material?.defaultCostCents || 0);
-    }, 0);
+    // 估值口径和报表页「库存清单」一致：接口已按剩余批次加权算好 amountCents，这里只求和
+    const stockValue = stocks.reduce((sum, row) => sum + (row.amountCents ?? 0), 0);
     return {
       materials: materials.length,
       warehouses: warehouses.length,
@@ -560,6 +567,8 @@ export default function InventoryPage() {
     stockForm.setFieldsValue({
       qty: numberQty(row.qty),
       safetyQty: numberQty(row.safetyQty),
+      unitCostYuan: (materialById.get(row.materialId)?.defaultCostCents || 0) / 100,
+      note: '',
     });
   };
 
@@ -620,6 +629,11 @@ export default function InventoryPage() {
         data: {
           qty: values.qty,
           safetyQty: values.safetyQty,
+          // 盘盈才需要单价（新批次按它入账）；盘亏按先进先出扣批次，后端会忽略
+          unitCostCents: numberQty(values.qty) > numberQty(editingStock.qty) && values.unitCostYuan != null
+            ? Math.round(values.unitCostYuan * 100)
+            : undefined,
+          note: values.note?.trim() || undefined,
         },
       });
       message.success('库存已更新');
@@ -982,6 +996,18 @@ export default function InventoryPage() {
     { key: 'qty', title: '当前库存', dataIndex: 'qty', width: 120, render: (v, row) => `${numberQty(v)} ${materialById.get(row.materialId)?.unit || ''}` },
     { key: 'safetyQty', title: '安全库存', dataIndex: 'safetyQty', width: 120, render: (v, row) => `${numberQty(v)} ${materialById.get(row.materialId)?.unit || ''}` },
     {
+      key: 'unitCost',
+      title: '批次均价',
+      dataIndex: 'unitCostCents',
+      width: 120,
+      render: (v, row) => (
+        <Tooltip title={row.costSource === 'lot' ? '按剩余入库批次加权' : '没有入库批次记录，按 SKU 参考成本'}>
+          <span>{money(v)}{row.costSource !== 'lot' && <Text type="secondary"> *</Text>}</span>
+        </Tooltip>
+      ),
+    },
+    { key: 'amount', title: '库存金额', dataIndex: 'amountCents', width: 120, render: (v) => money(v) },
+    {
       key: 'status',
       title: '状态',
       width: 110,
@@ -990,9 +1016,14 @@ export default function InventoryPage() {
     {
       key: 'op',
       title: '操作',
-      width: 90,
+      width: 150,
       fixed: 'right',
-      render: (_, row) => canEdit ? <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEditStock(row)}>编辑</Button> : null,
+      render: (_, row) => (
+        <Space size={0}>
+          <Button size="small" type="link" icon={<UnorderedListOutlined />} onClick={() => setLotDrawerStock(row)}>批次</Button>
+          {canEdit && <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEditStock(row)}>编辑</Button>}
+        </Space>
+      ),
     },
   ];
   const stockPrefs = useTableColumnPrefs('inventory.stock', stockColumns);
@@ -1022,13 +1053,15 @@ export default function InventoryPage() {
         </Space>
       </Space>
 
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={12} lg={4}><Metric title="材料 SKU" value={stats.materials} /></Col>
-        <Col xs={24} sm={12} lg={4}><Metric title="仓库数量" value={stats.warehouses} /></Col>
-        <Col xs={24} sm={12} lg={4}><Metric title="库存预警" value={stats.lowStock} alert /></Col>
-        <Col xs={24} sm={12} lg={4}><Metric title="采购待审" value={stats.pendingRequests} /></Col>
-        <Col xs={24} sm={12} lg={4}><Metric title="待下单申请" value={stats.approvedRequests} /></Col>
-        <Col xs={24} sm={12} lg={4}><Metric title="在途采购单" value={stats.placedOrders} suffix={`约 ${money(stats.stockValue)}`} /></Col>
+      {/* 金额卡占双格：¥ 带千分位的数字比计数宽得多，挤在单格里会换行、把整行高度撑乱 */}
+      <Row gutter={[16, 16]} align="stretch" style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={12} lg={6} xl={3}><Metric title="材料 SKU" value={stats.materials} /></Col>
+        <Col xs={24} sm={12} lg={6} xl={3}><Metric title="仓库数量" value={stats.warehouses} /></Col>
+        <Col xs={24} sm={12} lg={6} xl={3}><Metric title="库存预警" value={stats.lowStock} alert /></Col>
+        <Col xs={24} sm={24} lg={12} xl={6}><Metric title="库存总值" value={stats.stockValue} money suffix="按剩余入库批次加权，与报表页口径一致" /></Col>
+        <Col xs={24} sm={12} lg={6} xl={3}><Metric title="采购待审" value={stats.pendingRequests} /></Col>
+        <Col xs={24} sm={12} lg={6} xl={3}><Metric title="待下单申请" value={stats.approvedRequests} /></Col>
+        <Col xs={24} sm={12} lg={6} xl={3}><Metric title="在途采购单" value={stats.placedOrders} /></Col>
       </Row>
 
       <Tabs
@@ -1279,7 +1312,7 @@ export default function InventoryPage() {
                               { title: '名称', dataIndex: 'name', ellipsis: true },
                               { title: '规格', dataIndex: 'spec', width: 120, render: (v) => v || '-' },
                               { title: '单位', dataIndex: 'unit', width: 80 },
-                              { title: '采购单价', dataIndex: 'defaultCostCents', width: 110, render: money },
+                              { title: '参考成本', dataIndex: 'defaultCostCents', width: 110, render: money },
                               {
                                 title: '操作',
                                 key: 'op',
@@ -1692,18 +1725,198 @@ export default function InventoryPage() {
               </Form.Item>
             </Col>
           </Row>
+          {/* 数量只能通过批次变：盘盈建一条新批次（要单价），盘亏按先进先出扣旧批次 */}
+          <Form.Item noStyle shouldUpdate={(prev, next) => prev.qty !== next.qty}>
+            {({ getFieldValue }) => {
+              const nextQty = numberQty(getFieldValue('qty'));
+              const currentQty = numberQty(editingStock?.qty);
+              if (nextQty > currentQty) {
+                return (
+                  <Form.Item
+                    name="unitCostYuan"
+                    label={`盘盈单价（元）· 本次盘盈 ${(nextQty - currentQty).toFixed(stockQtyPrecision)} ${editingStockMaterial?.unit || ''}`}
+                    tooltip="盘盈的数量会作为一条新入库批次记账，之后领料按这个价算成本。默认取 SKU 参考成本。"
+                    rules={[{ required: true, message: '请填写盘盈单价' }]}
+                  >
+                    <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+                  </Form.Item>
+                );
+              }
+              if (nextQty < currentQty) {
+                return (
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    message={`本次盘亏 ${(currentQty - nextQty).toFixed(stockQtyPrecision)} ${editingStockMaterial?.unit || ''}，按先进先出从最早的入库批次扣减，成本取被扣批次的单价。`}
+                  />
+                );
+              }
+              return null;
+            }}
+          </Form.Item>
+          <Form.Item name="note" label="调整原因" extra="写进出入库流水，方便日后对账">
+            <Input maxLength={200} placeholder="如：月末盘点、报损、系统上线前存量补录" />
+          </Form.Item>
         </Form>
       </Modal>
+      <StockLotDrawer
+        stock={lotDrawerStock}
+        material={lotDrawerStock ? materialById.get(lotDrawerStock.materialId) : undefined}
+        warehouseName={lotDrawerStock ? warehouseById.get(lotDrawerStock.warehouseId)?.name || `#${lotDrawerStock.warehouseId}` : ''}
+        onClose={() => setLotDrawerStock(null)}
+      />
     </div>
   );
 }
 
-function Metric({ title, value, suffix, alert }: { title: string; value: number; suffix?: string; alert?: boolean }) {
+function Metric({ title, value, suffix, alert, money: isMoney }: { title: string; value: number; suffix?: string; alert?: boolean; money?: boolean }) {
   return (
-    <Card styles={{ body: { padding: 16 } }}>
-      <Statistic title={title} value={value} valueStyle={alert && value > 0 ? { color: '#cf1322' } : undefined} />
+    <Card style={{ height: '100%' }} styles={{ body: { padding: 16 } }}>
+      <Statistic
+        title={title}
+        value={isMoney ? value / 100 : value}
+        precision={isMoney ? 2 : 0}
+        prefix={isMoney ? '¥' : undefined}
+        valueStyle={alert && value > 0 ? { color: '#cf1322' } : undefined}
+      />
       {suffix && <Text type="secondary" style={{ fontSize: 12 }}>{suffix}</Text>}
     </Card>
+  );
+}
+
+const LOT_SOURCE_LABELS: Record<string, string> = {
+  goods_receipt: '采购入库',
+  general_receipt: '一般入库',
+  transfer_order: '调拨入库',
+  stock_adjust: '盘盈',
+  legacy_stock: '老库存兜底',
+};
+
+const REF_TYPE_LABELS: Record<string, string> = {
+  work_order: '工单',
+  goods_receipt: '采购入库单',
+  general_receipt: '一般入库单',
+  transfer_order: '调拨单',
+  stock: '库存盘点',
+};
+
+const MOVEMENT_TYPE_LABELS: Record<string, string> = {
+  inbound: '入库',
+  outbound: '领料出库',
+  transfer: '调拨',
+  adjust: '盘点调整',
+};
+
+/**
+ * 某条库存的批次 + 流水抽屉。
+ * 批次按先进先出顺序列（最早入库的排最前，出库先扣它）；流水最新在前。
+ * 为什么要有：不同批次单价不同，不看批次就解释不了「同一个东西这次领料为什么比上次贵」。
+ */
+function StockLotDrawer({ stock, material, warehouseName, onClose }: {
+  stock: StockRow | null;
+  material?: MaterialRow;
+  warehouseName: string;
+  onClose: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [lots, setLots] = useState<StockLotView[]>([]);
+  const [movements, setMovements] = useState<StockMovementView[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!stock) return;
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      request<StockLotView[]>({ url: `/stocks/${stock.id}/lots` }),
+      request<StockMovementView[]>({
+        url: '/stock-movements',
+        query: { warehouseId: stock.warehouseId, materialId: stock.materialId, limit: 100 } as any,
+      }),
+    ])
+      .then(([lotRows, movementRows]) => {
+        if (cancelled) return;
+        setLots(lotRows);
+        setMovements(movementRows);
+      })
+      .catch((e: any) => { if (!cancelled) message.error(e?.message || '加载批次失败'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [stock?.id]);
+
+  const unit = material?.unit || '';
+  const remainingLots = lots.filter((lot) => numberQty(lot.remainingQty) > 0);
+  const lotValue = remainingLots.reduce((sum, lot) => sum + numberQty(lot.remainingQty) * lot.unitCostCents, 0);
+
+  return (
+    <Drawer
+      title={stock ? `批次与流水 · ${materialDisplayName(material)} · ${warehouseName}` : ''}
+      open={!!stock}
+      onClose={onClose}
+      width={880}
+      destroyOnHidden
+    >
+      <Space size={24} wrap style={{ marginBottom: 16 }}>
+        <Statistic title="当前库存" value={numberQty(stock?.qty)} suffix={unit} />
+        <Statistic title="剩余批次" value={remainingLots.length} suffix="批" />
+        <Statistic title="批次金额" value={lotValue / 100} precision={2} prefix="¥" />
+      </Space>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="同一材料不同价格的入库各记一批，领料按先进先出扣最早那批，成本取该批单价，之后再入贵的货也不改历史工单的成本。"
+      />
+      <Title level={5} style={{ marginTop: 0 }}>入库批次（先进先出顺序）</Title>
+      <Table<StockLotView>
+        rowKey="id"
+        size="small"
+        loading={loading}
+        dataSource={lots}
+        pagination={false}
+        scroll={{ x: 760 }}
+        rowClassName={(lot) => (numberQty(lot.remainingQty) > 0 ? '' : 'pms-row-muted')}
+        columns={[
+          { title: '批次号', dataIndex: 'lotNo', width: 200 },
+          { title: '来源', dataIndex: 'sourceType', width: 110, render: (v) => LOT_SOURCE_LABELS[v || ''] || v || '-' },
+          { title: '入库时间', dataIndex: 'receivedAt', width: 160, render: (v) => formatDateTimeCn(v) },
+          { title: '入库数量', dataIndex: 'initialQty', width: 100, align: 'right', render: (v) => `${numberQty(v)} ${unit}` },
+          { title: '剩余', dataIndex: 'remainingQty', width: 100, align: 'right', render: (v) => numberQty(v) > 0 ? <b>{numberQty(v)} {unit}</b> : <Text type="secondary">已用完</Text> },
+          { title: '单价', dataIndex: 'unitCostCents', width: 100, align: 'right', render: money },
+          { title: '剩余金额', key: 'amount', width: 110, align: 'right', render: (_, lot) => money(numberQty(lot.remainingQty) * lot.unitCostCents) },
+        ]}
+        locale={{ emptyText: '还没有入库批次；老库存会在第一次出库时自动按参考成本补一批' }}
+      />
+      <Divider />
+      <Title level={5}>出入库流水（最近 100 条）</Title>
+      <Table<StockMovementView>
+        rowKey="id"
+        size="small"
+        loading={loading}
+        dataSource={movements}
+        pagination={{ pageSize: 20, size: 'small' }}
+        scroll={{ x: 760 }}
+        columns={[
+          { title: '时间', dataIndex: 'createdAt', width: 160, render: (v) => formatDateTimeCn(v) },
+          { title: '类型', dataIndex: 'type', width: 100, render: (v) => MOVEMENT_TYPE_LABELS[v] || v },
+          {
+            title: '数量',
+            dataIndex: 'qty',
+            width: 110,
+            align: 'right',
+            render: (v) => {
+              const n = numberQty(v);
+              return <span style={{ color: n < 0 ? '#cf1322' : '#3f8600' }}>{n > 0 ? '+' : ''}{n} {unit}</span>;
+            },
+          },
+          { title: '单价', dataIndex: 'unitCostCents', width: 100, align: 'right', render: money },
+          { title: '金额', key: 'amount', width: 110, align: 'right', render: (_, row) => money(Math.abs(numberQty(row.qty)) * row.unitCostCents) },
+          { title: '来源单据', key: 'ref', width: 150, render: (_, row) => row.refType ? `${REF_TYPE_LABELS[row.refType] || row.refType} #${row.refId ?? ''}` : '-' },
+          { title: '备注', dataIndex: 'note', ellipsis: true, render: (v) => v || '-' },
+        ]}
+      />
+    </Drawer>
   );
 }
 
@@ -1749,7 +1962,7 @@ function CatalogModal({ kind, form, communities, editingMaterial, editingWarehou
               <Col span={12}><Form.Item name="unit" label="单位" initialValue="个" rules={[{ required: true, message: '请选择单位' }]}><UnitSelect /></Form.Item></Col>
             </Row>
             <Row gutter={12}>
-              <Col span={12}><Form.Item name="defaultCostYuan" label="采购单价（元）"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+              <Col span={12}><Form.Item name="defaultCostYuan" label="参考成本（元）" tooltip="入库后自动刷新为剩余批次的加权均价；只用于估价和展示，领料成本按实际入库批次算"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
             </Row>
             <Form.Item name="photoUrl" hidden><Input /></Form.Item>
             <Form.Item name="photoUploading" hidden><Input /></Form.Item>

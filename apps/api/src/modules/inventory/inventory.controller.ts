@@ -27,6 +27,7 @@ import {
   ReceiveTransferOrderDto,
   RejectPurchaseRequestDto,
   RejectTransferOrderDto,
+  StockMovementQueryDto,
   StockQueryDto,
   SubmitToManagerDto,
   TenantQueryDto,
@@ -152,6 +153,19 @@ export class InventoryController {
   @RequirePermission(['inventory', 'app:inventory'], 'view')
   listStocks(@Query() query: StockQueryDto, @CurrentUser() user: AuthUser) {
     return this.inventoryService.listStocks(query, user);
+  }
+
+  /** 某条库存的批次明细：哪批、什么价、还剩多少 */
+  @Get('stocks/:id/lots')
+  @RequirePermission(['inventory', 'app:inventory'], 'view')
+  listStockLots(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.inventoryService.listStockLots(id, user);
+  }
+
+  @Get('stock-movements')
+  @RequirePermission(['inventory', 'app:inventory'], 'view')
+  listStockMovements(@Query() query: StockMovementQueryDto, @CurrentUser() user: AuthUser) {
+    return this.inventoryService.listStockMovements(query, user);
   }
 
   @Patch('stocks/:id')

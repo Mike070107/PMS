@@ -208,7 +208,7 @@ export default function MaterialsPage() {
             { title: '类别', dataIndex: 'category', width: 100, render: (v) => v || '-' },
             { title: '单位', dataIndex: 'unit', width: 70 },
             {
-              title: '默认成本',
+              title: '参考成本',
               dataIndex: 'defaultCostCents',
               width: 110,
               render: (v) => v ? `¥ ${(v / 100).toFixed(2)}` : '-',
@@ -431,7 +431,7 @@ function MaterialEditorModal({
           >
             <UnitSelect usedUnits={usedUnits} />
           </Form.Item>
-          <Form.Item name="defaultCostYuan" label="默认成本（元）" style={{ width: 150 }}>
+          <Form.Item name="defaultCostYuan" label="参考成本（元）" tooltip="入库后自动刷新为剩余批次的加权均价；只用于估价和展示，领料成本按实际入库批次算" style={{ width: 150 }}>
             <InputNumber min={0} precision={2} style={{ width: '100%' }} placeholder="0.00" />
           </Form.Item>
         </Space.Compact>

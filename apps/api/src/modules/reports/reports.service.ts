@@ -15,6 +15,7 @@ import {
 import { AccessService, ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { resolveRepairTypeLabel } from '../repairs/repair-type-labels';
+import { resolveUnitCost } from '../inventory/stock-ledger';
 import {
   MaterialUsageGroupBy,
   MaterialUsageReportDto,
@@ -523,8 +524,7 @@ export class ReportsService {
       const qty = num(r.qty);
       const safetyQty = num(r.safety_qty);
       const lotQty = num(r.lot_qty);
-      const unitCostCents =
-        lotQty > 0 ? Math.round(num(r.lot_value_cents) / lotQty) : num(r.default_cost_cents);
+      const unitCostCents = resolveUnitCost(lotQty, num(r.lot_value_cents), num(r.default_cost_cents));
       return {
         stockId: num(r.id),
         warehouseId: num(r.warehouse_id),
