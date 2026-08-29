@@ -363,7 +363,7 @@ function HousesTab() {
       <Col xs={24} md={6}>
         <Card
           size="small"
-          title={<span><ApartmentOutlined /> 小区 · 分期 · 楼栋</span>}
+          title={<span><ApartmentOutlined /> 管理处 · 小区 · 楼栋</span>}
           extra={
             <Button type="link" size="small" onClick={() => setCommunityModalOpen(true)}>
               管理
@@ -826,10 +826,10 @@ function CommunityManagerModal({
       onCancel={onClose}
       footer={null}
       destroyOnHidden
-      width={760}
+      width={1020}
     >
       <Row gutter={16}>
-        <Col span={canEdit ? 14 : 24}>
+        <Col span={canEdit ? 16 : 24}>
           <Table
             rowKey="id"
             size="small"
@@ -837,7 +837,7 @@ function CommunityManagerModal({
             pagination={false}
             columns={[
               {
-                title: '名称', dataIndex: 'name',
+                title: '名称', dataIndex: 'name', width: 170,
                 render: (v, r) => (
                   <span>
                     {v}
@@ -882,7 +882,7 @@ function CommunityManagerModal({
           />
         </Col>
         {canEdit && (
-        <Col span={10}>
+        <Col span={8}>
           <Card size="small" title={editing ? `编辑「${editing.name}」` : '新建小区'}>
             <Form form={form} layout="vertical">
               <Form.Item name="name" label="小区名称" rules={[{ required: true }]}>
