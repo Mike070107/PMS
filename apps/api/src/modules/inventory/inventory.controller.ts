@@ -13,6 +13,8 @@ import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesOrPermissionGuard } from '../access/roles-or-permission.guard';
+import { ResolvedAccess } from '../access/access.service';
+import { CurrentAccess } from '../access/current-access.decorator';
 import {
   CreateGeneralReceiptDto,
   CreateGoodsReceiptDto,
@@ -111,6 +113,13 @@ export class InventoryController {
     return this.inventoryService.listWarehouses(query, user);
   }
 
+  /** 仓库表单的「所属管理处」下拉选项（现取，不用登录时下发的那份） */
+  @Get('warehouses/offices')
+  @RequirePermission(['inventory', 'app:inventory'], 'view')
+  listWarehouseOfficeOptions(@CurrentUser() user: AuthUser) {
+    return this.inventoryService.listWarehouseOfficeOptions(user);
+  }
+
   @Post('warehouses')
   @RequirePermission('inventory', 'edit')
   createWarehouse(@Body() dto: CreateWarehouseDto, @CurrentUser() user: AuthUser) {
@@ -151,8 +160,12 @@ export class InventoryController {
 
   @Get('stocks')
   @RequirePermission(['inventory', 'app:inventory'], 'view')
-  listStocks(@Query() query: StockQueryDto, @CurrentUser() user: AuthUser) {
-    return this.inventoryService.listStocks(query, user);
+  listStocks(
+    @Query() query: StockQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.listStocks(query, user, access);
   }
 
   /** 某条库存的批次明细：哪批、什么价、还剩多少 */

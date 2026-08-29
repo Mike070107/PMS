@@ -20,6 +20,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Segmented,
   Tooltip,
   Typography,
   Upload,
@@ -105,8 +106,14 @@ interface WarehouseRow {
   name: string;
   type: WarehouseType;
   communityId?: number | null;
+  communityName?: string | null;
   /** 所属管理处；空 = 公司级。人员按管理处匹配仓库的依据 */
   officeId?: number | null;
+  /**
+   * 管理处名字由 /warehouses 直接给。别再用 access.offices 去查 ——
+   * 那是「本人可切换的管理处」，新建管理处后不重登就查不到，档案页会显示成「#5」
+   */
+  officeName?: string | null;
   enabled: boolean;
 }
 
@@ -294,16 +301,6 @@ export default function InventoryPage() {
   const { message, modal } = AntdApp.useApp();
   const { canEdit } = usePagePerm('inventory');
   const { access } = useAuth();
-  const offices = access?.offices ?? [];
-  const officeName = (id?: number | null) => (id ? offices.find((o) => o.id === id)?.name || `#${id}` : '');
-  // 仓库档案里的「所属小区」按名称选，不让人去查小区 ID（2026-08-27 反馈）
-  const [communities, setCommunities] = useState<Array<{ id: number; name: string }>>([]);
-  useEffect(() => {
-    request<Array<{ id: number; name: string }>>({ url: '/communities' })
-      .then((list) => setCommunities(Array.isArray(list) ? list : []))
-      .catch(() => {});
-  }, []);
-  const communityName = (id?: number | null) => (id ? communities.find((c) => c.id === id)?.name || `#${id}` : '');
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseRow[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -314,6 +311,9 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [stockCategory, setStockCategory] = useState<string>('all');
+  const [stockWarehouseType, setStockWarehouseType] = useState<string>('all');
+  /** 总仓（公司级）只有数据范围为「全公司」的角色能看，后端也是这个口径 */
+  const canSeeCentral = access?.scopeAll !== false;
   const [catalogOpen, setCatalogOpen] = useState<CatalogKind | null>(null);
   const [editingMaterial, setEditingMaterial] = useState<MaterialRow | null>(null);
   const [editingWarehouse, setEditingWarehouse] = useState<WarehouseRow | null>(null);
@@ -348,6 +348,11 @@ export default function InventoryPage() {
 
   const materialById = useMemo(() => new Map(materials.map((item) => [item.id, item])), [materials]);
   const warehouseById = useMemo(() => new Map(warehouses.map((item) => [item.id, item])), [warehouses]);
+  /** 小区仓不再新建，只有还留着旧数据的公司才显示这一档筛选 */
+  const hasCommunityWarehouse = useMemo(
+    () => warehouses.some((item) => item.type === WarehouseType.COMMUNITY),
+    [warehouses],
+  );
   const supplierById = useMemo(() => new Map(suppliers.map((item) => [item.id, item])), [suppliers]);
   const editingStockMaterial = editingStock ? materialById.get(editingStock.materialId) : undefined;
   const stockQtyPrecision = quantityPrecision(editingStockMaterial?.unit);
@@ -362,7 +367,7 @@ export default function InventoryPage() {
     .filter((item) => item.enabled)
     .map((item) => ({
       value: item.id,
-      label: `${item.name} · ${WAREHOUSE_TYPE_LABELS[item.type] || item.type}${item.officeId ? ' · ' + officeName(item.officeId) : ''}`,
+      label: `${item.name} · ${WAREHOUSE_TYPE_LABELS[item.type] || item.type}${item.officeName ? ' · ' + item.officeName : ''}`,
     })));
   const supplierOptions = withOptionTitles(suppliers
     .filter((item) => item.enabled)
@@ -432,12 +437,18 @@ export default function InventoryPage() {
     };
   }, [materialById, materials.length, purchaseOrders, purchaseRequests, stocks, warehouses.length]);
 
-  const keywordStocks = useMemo(() => stocks.filter((row) => {
+  const typedStocks = useMemo(
+    () => (stockWarehouseType === 'all'
+      ? stocks
+      : stocks.filter((row) => warehouseById.get(row.warehouseId)?.type === stockWarehouseType)),
+    [stocks, stockWarehouseType, warehouseById],
+  );
+  const keywordStocks = useMemo(() => typedStocks.filter((row) => {
     if (!keyword.trim()) return true;
     const material = materialById.get(row.materialId);
     const text = `${material?.code || ''} ${materialDisplayName(material)} ${warehouseById.get(row.warehouseId)?.name || ''}`;
     return text.toLowerCase().includes(keyword.toLowerCase());
-  }), [stocks, keyword, materialById, warehouseById]);
+  }), [typedStocks, keyword, materialById, warehouseById]);
 
   /* 分类快筛的条数口径：先按关键词过滤，再统计分类 ——
      和下面列表看到的是同一批数据，不会出现「角标 12 条、点进去 3 条」。
@@ -976,7 +987,15 @@ export default function InventoryPage() {
   const stockColumns: PrefsColumn<StockRow>[] = [
     { key: 'id', title: '库存 ID', dataIndex: 'id', width: 90 },
     { key: 'warehouse', title: '仓库', dataIndex: 'warehouseId', width: 180, render: (id) => warehouseById.get(id)?.name || `#${id}` },
-    { key: 'warehouseType', title: '仓库类型', dataIndex: 'warehouseId', width: 110, render: (id) => warehouseById.get(id)?.type === WarehouseType.CENTRAL ? <Tag color="blue">总仓</Tag> : <Tag>小区仓</Tag> },
+    {
+      key: 'warehouseType', title: '仓库类型', dataIndex: 'warehouseId', width: 110,
+      render: (id) => {
+        const type = warehouseById.get(id)?.type;
+        if (type === WarehouseType.CENTRAL) return <Tag color="blue">总仓</Tag>;
+        if (type === WarehouseType.OFFICE) return <Tag color="geekblue">管理处仓</Tag>;
+        return <Tag>小区仓</Tag>;
+      },
+    },
     {
       key: 'photo',
       title: '商品图片',
@@ -1071,7 +1090,33 @@ export default function InventoryPage() {
             label: <span><InboxOutlined /> 库存清单</span>,
             children: (
               <Card
-                title="仓库库存"
+                title={(
+                  <Space size={12} wrap>
+                    <span>仓库库存</span>
+                    {/*
+                      「能不能看总仓」就是角色的数据范围：管理处范围的人看到总仓库存
+                      也领不到，反而会当成自己的可用量。要放开就去「业务角色」把数据
+                      范围改成全公司 —— 不静默隐藏，写清楚为什么点不了。
+                    */}
+                    <Segmented
+                      size="small"
+                      value={stockWarehouseType}
+                      onChange={(v) => setStockWarehouseType(String(v))}
+                      options={[
+                        { value: 'all', label: '全部仓' },
+                        {
+                          value: WarehouseType.CENTRAL,
+                          label: canSeeCentral
+                            ? '总仓'
+                            : <Tooltip title="你的角色数据范围限定在管理处，看不到公司总仓。需要的话去「业务角色」把数据范围改成全公司">总仓</Tooltip>,
+                          disabled: !canSeeCentral,
+                        },
+                        { value: WarehouseType.OFFICE, label: '管理处仓' },
+                        ...(hasCommunityWarehouse ? [{ value: WarehouseType.COMMUNITY, label: '小区仓' }] : []),
+                      ]}
+                    />
+                  </Space>
+                )}
                 extra={(
                   <Space>
                     {stockPrefs.customized && (
@@ -1341,8 +1386,11 @@ export default function InventoryPage() {
                               { title: '名称', dataIndex: 'name', ellipsis: true },
                               { title: '类型', dataIndex: 'type', width: 110, render: (v) => WAREHOUSE_TYPE_LABELS[v] || v },
                               // 人员按角色范围对应管理处、再对应到这里的仓：空 = 公司级，全公司范围的人才默认它
-                              { title: '所属管理处', dataIndex: 'officeId', width: 160, render: (v) => v ? officeName(v) : <Text type="secondary">公司级</Text> },
-                              { title: '所属小区', dataIndex: 'communityId', width: 160, render: (v) => v ? communityName(v) : '-' },
+                              {
+                                title: '所属管理处', dataIndex: 'officeName', width: 180,
+                                render: (v: string | null, row) =>
+                                  v || (row.officeId ? `#${row.officeId}` : <Text type="secondary">公司级（总仓）</Text>),
+                              },
                               {
                                 title: '库位数',
                                 key: 'locations',
@@ -1404,7 +1452,6 @@ export default function InventoryPage() {
       <CatalogModal
         kind={catalogOpen}
         form={catalogForm}
-        communities={communities}
         editingMaterial={editingMaterial}
         editingWarehouse={editingWarehouse}
         editingSupplier={editingSupplier}
@@ -1920,10 +1967,9 @@ function StockLotDrawer({ stock, material, warehouseName, onClose }: {
   );
 }
 
-function CatalogModal({ kind, form, communities, editingMaterial, editingWarehouse, editingSupplier, saving, onCancel, onOk }: {
+function CatalogModal({ kind, form, editingMaterial, editingWarehouse, editingSupplier, saving, onCancel, onOk }: {
   kind: CatalogKind | null;
   form: any;
-  communities: Array<{ id: number; name: string }>;
   editingMaterial: MaterialRow | null;
   editingWarehouse: WarehouseRow | null;
   editingSupplier: SupplierRow | null;
@@ -1932,9 +1978,14 @@ function CatalogModal({ kind, form, communities, editingMaterial, editingWarehou
   onOk: (values: any) => void;
 }) {
   const photoUploading = Form.useWatch('photoUploading', form);
-  // 仓库表单的「所属管理处」下拉：按本人范围可见的管理处（登录时下发）
-  const { access } = useAuth();
-  const offices = access?.offices ?? [];
+  // 「所属管理处」现取，不用登录时下发的 access.offices —— 那份里没有新建的管理处
+  const [offices, setOffices] = useState<Array<{ id: number; name: string }>>([]);
+  useEffect(() => {
+    if (kind !== 'warehouse') return;
+    request<Array<{ id: number; name: string }>>({ url: '/warehouses/offices' })
+      .then((list) => setOffices(Array.isArray(list) ? list : []))
+      .catch(() => setOffices([]));
+  }, [kind]);
   const title = kind === 'material'
     ? editingMaterial ? `编辑材料SKU ${editingMaterial.code}` : '新增材料SKU'
     : kind === 'warehouse'
@@ -1978,9 +2029,13 @@ function CatalogModal({ kind, form, communities, editingMaterial, editingWarehou
               <Col span={12}>
                 <Form.Item name="type" label="仓库类型" initialValue={WarehouseType.CENTRAL} rules={[{ required: true }]}>
                   <Select options={[
-                    { value: WarehouseType.CENTRAL, label: '总仓' },
+                    { value: WarehouseType.CENTRAL, label: '总仓（公司级）' },
                     { value: WarehouseType.OFFICE, label: '管理处仓' },
-                    { value: WarehouseType.COMMUNITY, label: '小区仓' },
+                    // 「小区仓」不再新建：一个管理处一个仓就够，挂到某一个小区会让人
+                    // 以为同管理处的其它小区用不了它。老的小区仓仍可编辑，类型照旧显示
+                    ...(editingWarehouse?.type === WarehouseType.COMMUNITY
+                      ? [{ value: WarehouseType.COMMUNITY, label: '小区仓（旧数据）' }]
+                      : []),
                   ]} />
                 </Form.Item>
               </Col>
@@ -1994,13 +2049,6 @@ function CatalogModal({ kind, form, communities, editingMaterial, editingWarehou
                 </Form.Item>
               </Col>
             </Row>
-            <Form.Item
-              name="communityId"
-              label="所属小区"
-              extra="小区仓必填。没选所属管理处时，按这个小区所属的管理处归属"
-            >
-              <Select allowClear placeholder="选择小区" options={withOptionTitles(communities.map((c) => ({ value: c.id, label: c.name })))} {...searchableWideSelectProps} />
-            </Form.Item>
           </>
         )}
         {kind === 'supplier' && (

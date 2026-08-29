@@ -261,6 +261,11 @@ export class StockQueryDto extends TenantQueryDto {
   @IsInt()
   warehouseId?: number;
 
+  /** 只看某一类仓：central 总仓 / office 管理处仓 / community 小区仓 */
+  @IsOptional()
+  @IsString()
+  warehouseType?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

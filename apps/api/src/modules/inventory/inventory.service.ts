@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AccessService } from '../access/access.service';
+import { AccessService, ResolvedAccess } from '../access/access.service';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -310,7 +310,103 @@ export class InventoryService {
         await this.warehouseRepo.save(toSave);
       }
     }
-    return list;
+    return this.withOwnerNames(tenantId, list);
+  }
+
+  /**
+   * 仓库列表带上管理处名 / 小区名。
+   * 前端原来拿登录时下发的 `access.offices` 去查名字，那是「本人可切换的管理处」，
+   * 新建管理处后不重登就查不到，档案页上直接显示成「#5」（2026-08-30 反馈）。
+   * 名字由后端给，前端不再有第二份字典。
+   */
+  private async withOwnerNames(tenantId: number, list: Warehouse[]) {
+    const officeIds = [...new Set(list.map((w) => w.officeId).filter((id): id is number => !!id))];
+    const communityIds = [...new Set(list.map((w) => w.communityId).filter((id): id is number => !!id))];
+    const [offices, communities] = await Promise.all([
+      officeIds.length
+        ? this.dataSource.getRepository(ManagementOffice).find({
+            where: { tenantId, id: In(officeIds) },
+            select: ['id', 'name'],
+          })
+        : Promise.resolve([]),
+      communityIds.length
+        ? this.dataSource.getRepository(Community).find({
+            where: { tenantId, id: In(communityIds) },
+            select: ['id', 'name'],
+          })
+        : Promise.resolve([]),
+    ]);
+    const officeName = new Map(offices.map((o) => [o.id, o.name]));
+    const communityName = new Map(communities.map((c) => [c.id, c.name]));
+    return list.map((w) => ({
+      ...w,
+      officeName: w.officeId ? officeName.get(w.officeId) ?? null : null,
+      communityName: w.communityId ? communityName.get(w.communityId) ?? null : null,
+    }));
+  }
+
+  /**
+   * 本次请求能看到哪些仓 —— 库存清单、流水、汇总统一走这里，新增按仓查询的接口直接引。
+   *
+   * · 全公司数据范围：全部仓，包括不挂管理处的公司总仓
+   * · 受限角色 / 顶栏切了管理处视角：只有该管理处名下的仓，**公司总仓不给**
+   *
+   * 「谁能看总仓」就是数据范围本身，不另设开关：管理处角色看到总仓的库存也领不到，
+   * 反而会拿它当自己的可用量。要放开就把那个角色的数据范围改成全公司（业务角色页）。
+   * 返回 null = 不过滤。
+   */
+  private async visibleWarehouseIds(
+    tenantId: number,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ): Promise<number[] | null> {
+    const officeId = access?.actingOfficeId ?? null;
+    if (!officeId && (!access || access.scopeAll)) return null;
+    const all = await this.warehouseRepo.find({ where: { tenantId }, select: ['id', 'officeId'] });
+    if (officeId) return all.filter((w) => w.officeId === officeId).map((w) => w.id);
+    const mine = await this.accessService.userOfficeIds(tenantId, user.id);
+    if (mine.all) return null;
+    const offices = new Set(mine.officeIds);
+    return all.filter((w) => w.officeId && offices.has(w.officeId)).map((w) => w.id);
+  }
+
+  /**
+   * 仓库表单「所属管理处」的下拉选项。
+   * 前端原来用登录下发的 access.offices，那是「可切换的管理处」，新建的管理处
+   * 不重登就选不到；改成现取。受限角色只给自己范围内的。
+   */
+  async listWarehouseOfficeOptions(user: AuthUser) {
+    const tenantId = this.resolveTenantId(user);
+    const offices = await this.dataSource.getRepository(ManagementOffice).find({
+      where: { tenantId, enabled: true },
+      order: { id: 'ASC' },
+    });
+    const mine = await this.accessService.userOfficeIds(tenantId, user.id);
+    const list = mine.all ? offices : offices.filter((o) => mine.officeIds.includes(o.id));
+    return list.map((o) => ({ id: o.id, name: o.name }));
+  }
+
+  /** 「只看总仓 / 只看管理处仓 / 只看小区仓」筛选。不传返回 null = 不筛 */
+  private async warehouseIdsOfType(
+    tenantId: number,
+    type?: string,
+  ): Promise<number[] | null> {
+    if (!type) return null;
+    if (!Object.values(WarehouseType).includes(type as WarehouseType)) {
+      throw new BadRequestException('invalid warehouse type');
+    }
+    const rows = await this.warehouseRepo.find({
+      where: { tenantId, type: type as WarehouseType },
+      select: ['id'],
+    });
+    return rows.map((w) => w.id);
+  }
+
+  private intersectIds(a: number[] | null, b: number[] | null): number[] | null {
+    if (!a) return b;
+    if (!b) return a;
+    const set = new Set(b);
+    return a.filter((id) => set.has(id));
   }
 
   /** 按本人角色范围留下能看的仓：自己管理处的排前面，然后是公司级的；全公司范围的人不过滤 */
@@ -445,10 +541,21 @@ export class InventoryService {
    * 库存清单。每行附带剩余批次的数量 / 金额 / 加权均价，后台估值用它，
    * 和报表页「库存清单」是同一口径（resolveUnitCost）：有批次按批次加权，没有才退回 SKU 参考成本。
    */
-  async listStocks(query: StockQueryDto, user: AuthUser) {
+  async listStocks(query: StockQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const where: FindOptionsWhere<Stock> = { tenantId };
-    if (query.warehouseId) where.warehouseId = query.warehouseId;
+    // 清单一直是「全公司所有仓」，顶栏切了管理处也纹丝不动（2026-08-30 反馈）。
+    // 顶栏那个切换器就是本页的数据范围，这里跟着收窄。
+    const visible = await this.visibleWarehouseIds(tenantId, user, access);
+    const typed = await this.warehouseIdsOfType(tenantId, query.warehouseType);
+    const allowed = this.intersectIds(visible, typed);
+    if (allowed && !allowed.length) return [];
+    if (query.warehouseId) {
+      if (allowed && !allowed.includes(query.warehouseId)) return [];
+      where.warehouseId = query.warehouseId;
+    } else if (allowed) {
+      where.warehouseId = In(allowed);
+    }
     if (query.materialId) where.materialId = query.materialId;
     const [rows, lotMap] = await Promise.all([
       this.stockRepo.find({ where, order: { id: 'ASC' } }),
