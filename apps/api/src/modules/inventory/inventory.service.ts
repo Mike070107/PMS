@@ -386,6 +386,38 @@ export class InventoryService {
     return list.map((o) => ({ id: o.id, name: o.name }));
   }
 
+  /** 默认库位必须是这个仓自己的库位，不能拿别的仓的 */
+  private async assertLocationOfWarehouse(
+    tenantId: number,
+    warehouseId: number,
+    locationId: number | null | undefined,
+  ): Promise<number | null> {
+    if (!locationId) return null;
+    const location = await this.dataSource.getRepository(WarehouseLocation).findOne({
+      where: { id: locationId, tenantId, warehouseId },
+    });
+    if (!location) throw new BadRequestException('库位不属于这个仓库');
+    return location.id;
+  }
+
+  /** 仓库配的默认入库库位；没配或已停用就返回 null（入库时手动挑） */
+  private async defaultLocationOf(
+    manager: EntityManager,
+    tenantId: number,
+    warehouseId: number,
+  ): Promise<number | null> {
+    const warehouse = await manager.findOne(Warehouse, {
+      where: { id: warehouseId, tenantId },
+      select: ['id', 'defaultLocationId'],
+    });
+    if (!warehouse?.defaultLocationId) return null;
+    const location = await manager.findOne(WarehouseLocation, {
+      where: { id: warehouse.defaultLocationId, tenantId, warehouseId, enabled: true },
+      select: ['id'],
+    });
+    return location?.id ?? null;
+  }
+
   /** 「只看总仓 / 只看管理处仓 / 只看小区仓」筛选。不传返回 null = 不筛 */
   private async warehouseIdsOfType(
     tenantId: number,
@@ -471,6 +503,7 @@ export class InventoryService {
         type: dto.type,
         communityId: binding.communityId,
         officeId: binding.officeId,
+        defaultLocationId: null, // 库位得先建出来才能选，新建仓时还没有
         enabled: dto.enabled ?? true,
         createdBy: user.id,
         updatedBy: user.id,
@@ -494,6 +527,13 @@ export class InventoryService {
     warehouse.type = nextType;
     warehouse.communityId = binding.communityId;
     warehouse.officeId = binding.officeId;
+    if (dto.defaultLocationId !== undefined) {
+      warehouse.defaultLocationId = await this.assertLocationOfWarehouse(
+        tenantId,
+        id,
+        dto.defaultLocationId,
+      );
+    }
     if (dto.enabled !== undefined) warehouse.enabled = dto.enabled;
     warehouse.updatedBy = user.id;
     return this.warehouseRepo.save(warehouse);
@@ -569,6 +609,15 @@ export class InventoryService {
       ? await this.materialRepo.find({ where: { tenantId, id: In(materialIds) } })
       : [];
     const defaultCostById = new Map(materials.map((m) => [m.id, m.defaultCostCents]));
+    // 库位名一起带出来，清单直接显示「东西放在哪一格」，不用点进批次去猜
+    const locationIds = [...new Set(rows.map((r) => r.locationId).filter((id): id is number => !!id))];
+    const locations = locationIds.length
+      ? await this.dataSource.getRepository(WarehouseLocation).find({
+          where: { tenantId, id: In(locationIds) },
+          select: ['id', 'label'],
+        })
+      : [];
+    const locationLabel = new Map(locations.map((l) => [l.id, l.label]));
     return rows.map((row) => {
       const lot = lotMap.get(`${row.warehouseId}:${row.materialId}`);
       const lotQty = lot?.lotQty ?? 0;
@@ -581,6 +630,7 @@ export class InventoryService {
         unitCostCents,
         costSource: lotQty > 0 ? 'lot' : 'default',
         amountCents: Math.round(Number(row.qty) * unitCostCents),
+        locationLabel: row.locationId ? locationLabel.get(row.locationId) ?? null : null,
       };
     });
   }
@@ -950,6 +1000,8 @@ export class InventoryService {
         }
       }
       const locationLabels = await this.resolveLocationLabels(manager, tenantId, dto.warehouseId, dto.items);
+      // 每行没单独挑库位时落到仓库的默认库位，省得每次入库都从头选（2026-08-30）
+      const defaultLocationId = await this.defaultLocationOf(manager, tenantId, dto.warehouseId);
 
       const receipt = await manager.save(
         GoodsReceipt,
@@ -1001,6 +1053,7 @@ export class InventoryService {
           refId: receipt.id,
           operatorId: user.id,
           note: order.orderNo,
+          locationId: item.locationId ?? defaultLocationId,
         });
       }
       await this.refreshReferenceCosts(manager, tenantId, dto.items.map((item) => item.materialId), user.id);
@@ -1051,6 +1104,8 @@ export class InventoryService {
         }
       }
       const locationLabels = await this.resolveLocationLabels(manager, tenantId, dto.warehouseId, dto.items);
+      // 每行没单独挑库位时落到仓库的默认库位，省得每次入库都从头选（2026-08-30）
+      const defaultLocationId = await this.defaultLocationOf(manager, tenantId, dto.warehouseId);
 
       const receipt = await manager.save(
         GoodsReceipt,
@@ -1102,6 +1157,7 @@ export class InventoryService {
           refId: receipt.id,
           operatorId: user.id,
           note: dto.sourceText.trim(),
+          locationId: item.locationId ?? defaultLocationId,
         });
       }
       await this.refreshReferenceCosts(manager, tenantId, dto.items.map((item) => item.materialId), user.id);
@@ -1356,6 +1412,16 @@ export class InventoryService {
         throw new BadRequestException('调拨单不在待接收状态');
       }
       let hasVariance = false;
+      // 收货人可以指定入哪个库位，没指定就用接收仓的默认库位
+      const receiveLocationId =
+        dto.locationId ??
+        (await this.defaultLocationOf(manager, tenantId, transfer.toWarehouseId));
+      if (dto.locationId) {
+        const exists = await manager.findOne(WarehouseLocation, {
+          where: { id: dto.locationId, tenantId, warehouseId: transfer.toWarehouseId },
+        });
+        if (!exists) throw new BadRequestException('库位不属于接收仓');
+      }
       const finalItems: TransferOrder['items'] = [];
       for (const item of transfer.items) {
         const shippedQty = item.qty;
@@ -1404,6 +1470,7 @@ export class InventoryService {
             refId: transfer.id,
             operatorId: user.id,
             note: `调拨入库 ${transfer.transferNo}`,
+            locationId: receiveLocationId,
           });
         }
         finalItems.push({ ...item, receivedQty });

@@ -114,6 +114,8 @@ interface WarehouseRow {
    * 那是「本人可切换的管理处」，新建管理处后不重登就查不到，档案页会显示成「#5」
    */
   officeName?: string | null;
+  /** 默认入库库位：入库、调拨入库的表单带出它 */
+  defaultLocationId?: number | null;
   enabled: boolean;
 }
 
@@ -140,6 +142,8 @@ interface StockRow {
   unitCostCents?: number;
   costSource?: 'lot' | 'default';
   amountCents?: number;
+  /** 当前存放库位，最近一次入库写入；空 = 该仓没配库位 */
+  locationLabel?: string | null;
 }
 
 interface PurchaseRequestItem {
@@ -382,6 +386,18 @@ export default function InventoryPage() {
     return map;
   }, [warehouseLocations]);
 
+  /** 仓库 → 它配的默认入库库位，入库表单选了仓就带出来 */
+  const defaultLocationByWarehouse = useMemo(
+    () => new Map(warehouses.map((w) => [w.id, w.defaultLocationId ?? null])),
+    [warehouses],
+  );
+
+  /** 调拨接收弹窗里可选的库位 = 接收仓自己的库位 */
+  const receiveLocationOptions = useMemo(
+    () => (receivingTransfer ? locationOptionsByWarehouse.get(receivingTransfer.toWarehouseId) ?? [] : []),
+    [receivingTransfer, locationOptionsByWarehouse],
+  );
+
   const loadAll = async () => {
     setLoading(true);
     try {
@@ -539,6 +555,7 @@ export default function InventoryPage() {
       type: row.type,
       communityId: row.communityId || undefined,
       officeId: row.officeId || undefined,
+      defaultLocationId: row.defaultLocationId || undefined,
       enabled: row.enabled,
     });
     setCatalogOpen('warehouse');
@@ -604,7 +621,7 @@ export default function InventoryPage() {
           }
         : catalogOpen === 'warehouse'
           // 下拉清空是 undefined，接口里 undefined = 不动，得明确传 null 才能清成公司级
-          ? { ...values, officeId: values.officeId ?? null }
+          ? { ...values, officeId: values.officeId ?? null, defaultLocationId: values.defaultLocationId ?? null }
           : values;
       delete data.defaultCostYuan;
       delete data.photoUploading;
@@ -946,6 +963,8 @@ export default function InventoryPage() {
   const openReceiveTransfer = (row: TransferOrderRow) => {
     setReceivingTransfer(row);
     receiveTransferForm.setFieldsValue({
+      // 默认入哪一格由接收仓的「默认入库库位」带出来，收货人可以改
+      locationId: warehouseById.get(row.toWarehouseId)?.defaultLocationId ?? undefined,
       items: row.items.map((item) => ({
         materialId: item.materialId,
         qty: item.qty,
@@ -964,6 +983,7 @@ export default function InventoryPage() {
         method: 'POST',
         url: `/transfer-orders/${receivingTransfer.id}/receive`,
         data: {
+          locationId: values.locationId ?? null,
           items: (values.items || []).map((item: any) => ({
             materialId: item.materialId,
             receivedQty: item.receivedQty,
@@ -987,6 +1007,10 @@ export default function InventoryPage() {
   const stockColumns: PrefsColumn<StockRow>[] = [
     { key: 'id', title: '库存 ID', dataIndex: 'id', width: 90 },
     { key: 'warehouse', title: '仓库', dataIndex: 'warehouseId', width: 180, render: (id) => warehouseById.get(id)?.name || `#${id}` },
+    {
+      key: 'location', title: '库位', dataIndex: 'locationLabel', width: 130,
+      render: (v: string | null) => v || <Text type="secondary">未指定</Text>,
+    },
     {
       key: 'warehouseType', title: '仓库类型', dataIndex: 'warehouseId', width: 110,
       render: (id) => {
@@ -1452,6 +1476,7 @@ export default function InventoryPage() {
       <CatalogModal
         kind={catalogOpen}
         form={catalogForm}
+        warehouseLocationOptions={editingWarehouse ? locationOptionsByWarehouse.get(editingWarehouse.id) ?? [] : []}
         editingMaterial={editingMaterial}
         editingWarehouse={editingWarehouse}
         editingSupplier={editingSupplier}
@@ -1475,6 +1500,7 @@ export default function InventoryPage() {
         materialById={materialById}
         warehouseOptions={warehouseOptions}
         locationOptionsByWarehouse={locationOptionsByWarehouse}
+        defaultLocationByWarehouse={defaultLocationByWarehouse}
         onCancel={() => setReceiptOrder(null)}
         onOk={submitReceipt}
       />
@@ -1485,6 +1511,7 @@ export default function InventoryPage() {
         materialOptions={materialOptions}
         warehouseOptions={warehouseOptions}
         locationOptionsByWarehouse={locationOptionsByWarehouse}
+        defaultLocationByWarehouse={defaultLocationByWarehouse}
         onCancel={() => setGeneralReceiptOpen(false)}
         onOk={submitGeneralReceipt}
       />
@@ -1515,6 +1542,22 @@ export default function InventoryPage() {
       >
         <Text type="secondary">核对每种材料实际收到数量，可修改（不得超过发出数量）。存在差异时会自动通知发货人核查。</Text>
         <Form form={receiveTransferForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="locationId"
+            label="入库库位"
+            extra={
+              receiveLocationOptions.length
+                ? '默认是接收仓配的库位，可以改；整单入同一格'
+                : '接收仓还没配库位，可先在「基础资料 → 仓库档案 → 库位」里加'
+            }
+          >
+            <Select
+              allowClear
+              disabled={!receiveLocationOptions.length}
+              placeholder={receiveLocationOptions.length ? '选择库位' : '该仓暂无库位'}
+              options={receiveLocationOptions}
+            />
+          </Form.Item>
           <Form.List name="items">
             {(fields) => (
               <>
@@ -1967,9 +2010,11 @@ function StockLotDrawer({ stock, material, warehouseName, onClose }: {
   );
 }
 
-function CatalogModal({ kind, form, editingMaterial, editingWarehouse, editingSupplier, saving, onCancel, onOk }: {
+function CatalogModal({ kind, form, warehouseLocationOptions, editingMaterial, editingWarehouse, editingSupplier, saving, onCancel, onOk }: {
   kind: CatalogKind | null;
   form: any;
+  /** 正在编辑的这个仓自己的库位，用来选默认入库库位 */
+  warehouseLocationOptions: Array<{ value: number; label: string }>;
   editingMaterial: MaterialRow | null;
   editingWarehouse: WarehouseRow | null;
   editingSupplier: SupplierRow | null;
@@ -2049,6 +2094,24 @@ function CatalogModal({ kind, form, editingMaterial, editingWarehouse, editingSu
                 </Form.Item>
               </Col>
             </Row>
+            <Form.Item
+              name="defaultLocationId"
+              label="默认入库库位"
+              extra={
+                editingWarehouse
+                  ? warehouseLocationOptions.length
+                    ? '入库、调拨入库的表单会带出它，仍可逐次改'
+                    : '这个仓还没有库位，先用右侧的「库位」按钮加几个'
+                  : '库位要先建出来才能选。仓库存好后点列表里的「库位」添加，再回来设默认'
+              }
+            >
+              <Select
+                allowClear
+                disabled={!editingWarehouse || !warehouseLocationOptions.length}
+                placeholder={warehouseLocationOptions.length ? '不指定（入库时手动挑）' : '暂无库位'}
+                options={warehouseLocationOptions}
+              />
+            </Form.Item>
           </>
         )}
         {kind === 'supplier' && (
@@ -2190,18 +2253,42 @@ function PurchaseOrderModal({ open, form, saving, materialOptions, supplierOptio
   );
 }
 
-function ReceiptModal({ order, form, saving, materialById, warehouseOptions, locationOptionsByWarehouse, onCancel, onOk }: {
+/**
+ * 选了入库仓之后，把还空着的行填上该仓的「默认入库库位」。
+ * 已经手动挑过的行不动 —— 默认值是省事的，不是覆盖人的选择。
+ */
+function useApplyDefaultLocation(
+  form: any,
+  warehouseId: number | undefined,
+  defaultLocationByWarehouse: Map<number, number | null>,
+) {
+  useEffect(() => {
+    if (!warehouseId) return;
+    const fallback = defaultLocationByWarehouse.get(warehouseId) ?? null;
+    if (!fallback) return;
+    const items = form.getFieldValue('items');
+    if (!Array.isArray(items) || !items.length) return;
+    if (items.every((item: any) => item?.locationId)) return;
+    form.setFieldsValue({
+      items: items.map((item: any) => ({ ...item, locationId: item?.locationId ?? fallback })),
+    });
+  }, [warehouseId, defaultLocationByWarehouse, form]);
+}
+
+function ReceiptModal({ order, form, saving, materialById, warehouseOptions, locationOptionsByWarehouse, defaultLocationByWarehouse, onCancel, onOk }: {
   order: PurchaseOrderRow | null;
   form: any;
   saving: boolean;
   materialById: Map<number, MaterialRow>;
   warehouseOptions: Array<{ value: number; label: string }>;
   locationOptionsByWarehouse: Map<number, Array<{ value: number; label: string }>>;
+  defaultLocationByWarehouse: Map<number, number | null>;
   onCancel: () => void;
   onOk: () => void;
 }) {
   const warehouseId = Form.useWatch('warehouseId', form);
   const locationOptions = warehouseId ? (locationOptionsByWarehouse.get(warehouseId) || []) : [];
+  useApplyDefaultLocation(form, warehouseId, defaultLocationByWarehouse);
   return (
     <Modal title={`采购单入库 ${order?.orderNo || ''}`} open={!!order} onCancel={onCancel} onOk={onOk} confirmLoading={saving} width={860} destroyOnHidden>
       <Alert type="info" showIcon style={{ marginBottom: 12 }} message="核对实收数量（可与订购数量不同，差异会自动提醒采购经理与办公室）；每种材料至少 1 张实物照片，并选择存放库位。" />
@@ -2246,18 +2333,20 @@ function ReceiptModal({ order, form, saving, materialById, warehouseOptions, loc
   );
 }
 
-function GeneralReceiptModal({ open, form, saving, materialOptions, warehouseOptions, locationOptionsByWarehouse, onCancel, onOk }: {
+function GeneralReceiptModal({ open, form, saving, materialOptions, warehouseOptions, locationOptionsByWarehouse, defaultLocationByWarehouse, onCancel, onOk }: {
   open: boolean;
   form: any;
   saving: boolean;
   materialOptions: Array<{ value: number; label: string }>;
   warehouseOptions: Array<{ value: number; label: string }>;
   locationOptionsByWarehouse: Map<number, Array<{ value: number; label: string }>>;
+  defaultLocationByWarehouse: Map<number, number | null>;
   onCancel: () => void;
   onOk: () => void;
 }) {
   const warehouseId = Form.useWatch('warehouseId', form);
   const locationOptions = warehouseId ? (locationOptionsByWarehouse.get(warehouseId) || []) : [];
+  useApplyDefaultLocation(form, warehouseId, defaultLocationByWarehouse);
   return (
     <Modal title="一般入库（无采购单）" open={open} onCancel={onCancel} onOk={onOk} confirmLoading={saving} width={860} destroyOnHidden>
       <Alert type="info" showIcon style={{ marginBottom: 12 }} message="零星采买（如五金店临时采购）走此入口：填写来源、上传凭证，逐项从材料库选择并拍照。材料只能从 SKU 库选择，没有请先到「材料 SKU 库」新增。" />

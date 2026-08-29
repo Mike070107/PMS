@@ -24,6 +24,13 @@ export class Warehouse extends TenantEntity {
   @Column({ name: 'office_id', type: 'int', nullable: true })
   officeId: number | null;
 
+  /**
+   * 默认入库库位（2026-08-30）。入库、调拨入库的表单带出它，仍可改；
+   * 空 = 这个仓还没配库位或没指定默认，入库时手动挑。
+   */
+  @Column({ name: 'default_location_id', type: 'int', nullable: true })
+  defaultLocationId: number | null;
+
   @Column({ default: true })
   enabled: boolean;
 }

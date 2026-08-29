@@ -18,4 +18,8 @@ export class Stock extends TenantEntity {
   // 安全库存，低于则报表预警
   @Column({ name: 'safety_qty', type: 'numeric', precision: 12, scale: 2, default: 0 })
   safetyQty: number;
+
+  /** 当前存放库位，最近一次入库写入。空 = 该仓没配库位 */
+  @Column({ name: 'location_id', type: 'int', nullable: true })
+  locationId: number | null;
 }

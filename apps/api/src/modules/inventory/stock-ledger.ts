@@ -63,6 +63,8 @@ export async function applyStockDelta(
     refId: number | null;
     operatorId: number | null;
     note?: string | null;
+    /** 入库时的存放库位。只在入库（deltaQty > 0）时写，出库不动原来的库位 */
+    locationId?: number | null;
   },
 ): Promise<Stock> {
   let stock = await manager.findOne(Stock, {
@@ -87,6 +89,8 @@ export async function applyStockDelta(
   const nextQty = round2(Number(stock.qty) + input.deltaQty);
   if (nextQty < 0) throw new BadRequestException('stock is insufficient');
   stock.qty = nextQty;
+  // 库位跟着入库走：出库不改（东西还在原来那格），入库没指定也不清掉已有的
+  if (input.deltaQty > 0 && input.locationId) stock.locationId = input.locationId;
   stock.updatedBy = input.operatorId;
   await manager.save(Stock, stock);
 

@@ -150,6 +150,12 @@ export class CreateWarehouseDto {
   @IsInt()
   officeId?: number | null;
 
+  /** 默认入库库位；入库/调拨入库带出这个值。传 null 清除 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  defaultLocationId?: number | null;
+
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
@@ -175,6 +181,12 @@ export class UpdateWarehouseDto {
   @Type(() => Number)
   @IsInt()
   officeId?: number | null;
+
+  /** 默认入库库位；入库/调拨入库带出这个值。传 null 清除 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  defaultLocationId?: number | null;
 
   @IsOptional()
   @IsBoolean()
@@ -571,4 +583,10 @@ export class ReceiveTransferOrderDto {
   @IsOptional()
   @IsArray()
   items?: ReceiveTransferItemDto[];
+
+  /** 入哪个库位；不传用接收仓的默认库位 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  locationId?: number | null;
 }
