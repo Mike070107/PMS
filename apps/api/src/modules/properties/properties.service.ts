@@ -25,6 +25,7 @@ import {
   Building,
   Community,
   House,
+  ManagementOffice,
   Unit,
   User,
   WorkOrder,
@@ -43,16 +44,13 @@ import {
 } from './dto';
 import { QrService } from '../qr/qr.service';
 
-/** 「枫桦景苑一期」→ { group: '枫桦景苑', phase: '一期' }；不带分期后缀时返回 null */
-const PHASE_SUFFIX = /^(.*[^\s一二三四五六七八九十百零壹贰叁肆伍陆柒捌玖拾\d])\s*([一二三四五六七八九十]+|\d+)\s*期$/;
-
-function splitPhaseName(name: string): { group: string; phase: string } | null {
-  const matched = PHASE_SUFFIX.exec(name.trim());
-  if (!matched) return null;
-  const group = matched[1].trim();
-  if (!group) return null;
-  return { group, phase: `${matched[2]}期` };
-}
+/**
+ * 小区名里不该出现「管理处」：管理处是 management_offices 里的独立一层，
+ * 靠 communities.office_id 挂上来。2026-08-29 之前线上把 4 个管理处各建了一个
+ * 同名顶层小区当分组、真小区挂成它的「分期」—— 房产树上多一层假节点、
+ * 管理处页「管辖小区」显示成自己的名字，真小区还占掉了分期那一层。
+ */
+const OFFICE_WORD = /管理处|物业处|项目部/;
 
 @Injectable()
 export class PropertiesService {
@@ -69,6 +67,8 @@ export class PropertiesService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(WorkOrder)
     private readonly workOrderRepo: Repository<WorkOrder>,
+    @InjectRepository(ManagementOffice)
+    private readonly officeRepo: Repository<ManagementOffice>,
     private readonly qrService: QrService,
   ) {}
 
@@ -88,27 +88,56 @@ export class PropertiesService {
       all.map((item) => item.parentId).filter((id): id is number => !!id),
     );
     const scope = scopeCommunityIds(access);
+    // 管理处名一起带出来：房产页的层级树按它分组、小区管理里回显「所属管理处」，
+    // 都不必再去要 offices 页面的权限
+    const offices = await this.officeRepo.find({
+      where: { tenantId },
+      select: ['id', 'name'],
+    });
+    const officeName = new Map(offices.map((o) => [o.id, o.name]));
+    const byId = new Map(all.map((item) => [item.id, item]));
     const rows = all
       .filter((item) => !scope || scope.includes(item.id))
-      .map((item) => ({
-        ...item,
-        isGroup: parentIds.has(item.id),
-      }));
+      .map((item) => {
+        // 分期自己不挂管理处，显示时跟随顶层小区
+        const owner = item.officeId
+          ? item
+          : item.parentId
+            ? byId.get(item.parentId)
+            : null;
+        return {
+          ...item,
+          isGroup: parentIds.has(item.id),
+          officeName: owner?.officeId ? officeName.get(owner.officeId) ?? null : null,
+        };
+      });
     return query.includeGroups ? rows : rows.filter((item) => !item.isGroup);
   }
 
-  async createCommunity(dto: CreateCommunityDto, user: AuthUser) {
+  async createCommunity(
+    dto: CreateCommunityDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
+    // 开小区是公司级动作：新建的小区不在任何管理处角色的范围里，
+    // 让受限角色建等于建完自己就看不见。企业超管建好再划给管理处。
+    if (scopeCommunityIds(access)) {
+      throw new ForbiddenException('只有全公司数据范围的账号能新建小区');
+    }
+    this.assertNotOfficeName(dto.name);
     const existing = await this.communityRepo.findOne({
       where: { tenantId, name: dto.name },
     });
     if (existing) {
       throw new BadRequestException('同名小区已存在');
     }
+    const parentId = await this.resolveParentId(tenantId, dto.parentId, null);
     const community = this.communityRepo.create({
       tenantId,
       name: dto.name,
-      parentId: await this.resolveParentId(tenantId, dto.parentId, null),
+      parentId,
+      officeId: await this.resolveOfficeId(tenantId, dto.officeId, parentId),
       address: dto.address ?? null,
       zones: Array.isArray(dto.zones) ? dto.zones : [],
       enabled: dto.enabled ?? true,
@@ -118,14 +147,21 @@ export class PropertiesService {
     return this.communityRepo.save(community);
   }
 
-  async updateCommunity(id: number, dto: UpdateCommunityDto, user: AuthUser) {
+  async updateCommunity(
+    id: number,
+    dto: UpdateCommunityDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const community = await this.communityRepo.findOne({
       where: { id, tenantId },
     });
     if (!community) throw new NotFoundException('community not found');
+    this.assertCommunityInScope(access, id);
 
     if (dto.name && dto.name !== community.name) {
+      this.assertNotOfficeName(dto.name);
       const dup = await this.communityRepo.findOne({
         where: { tenantId, name: dto.name },
       });
@@ -137,6 +173,13 @@ export class PropertiesService {
     if (dto.parentId !== undefined) {
       community.parentId = await this.resolveParentId(tenantId, dto.parentId, id);
     }
+    if (dto.officeId !== undefined || dto.parentId !== undefined) {
+      community.officeId = await this.resolveOfficeId(
+        tenantId,
+        dto.officeId !== undefined ? dto.officeId : community.officeId,
+        community.parentId,
+      );
+    }
     if (dto.address !== undefined) community.address = dto.address ?? null;
     if (dto.zones !== undefined) community.zones = dto.zones;
     if (dto.enabled !== undefined) community.enabled = dto.enabled;
@@ -144,12 +187,13 @@ export class PropertiesService {
     return this.communityRepo.save(community);
   }
 
-  async deleteCommunity(id: number, user: AuthUser) {
+  async deleteCommunity(id: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     const community = await this.communityRepo.findOne({
       where: { id, tenantId },
     });
     if (!community) throw new NotFoundException('community not found');
+    this.assertCommunityInScope(access, id);
     const childCount = await this.communityRepo.count({
       where: { tenantId, parentId: id },
     });
@@ -170,73 +214,67 @@ export class PropertiesService {
     return { ok: true };
   }
 
-  /**
-   * 按名字里的「N期」后缀自动归组：枫桦景苑一期 / 枫桦景苑二期 → 上级「枫桦景苑」。
-   * 幂等：已归好组的再跑一次不会有变化。只处理同前缀 ≥2 个分期的情况。
-   */
-  async autoGroupCommunities(user: AuthUser, requestedTenantId?: number) {
-    const tenantId = this.resolveTenantId(user, requestedTenantId);
-    const all = await this.communityRepo.find({
-      where: { tenantId },
+  /** 「所属管理处」下拉的选项。挂在 properties 权限下，房产页不必额外开管理处页权限 */
+  async listOfficeOptions(user: AuthUser) {
+    const tenantId = this.resolveTenantId(user);
+    const offices = await this.officeRepo.find({
+      where: { tenantId, enabled: true },
       order: { id: 'ASC' },
     });
-    const byName = new Map(all.map((item) => [item.name, item]));
-    const parentIds = new Set(
-      all.map((item) => item.parentId).filter((id): id is number => !!id),
-    );
+    return offices.map((o) => ({ id: o.id, name: o.name }));
+  }
 
-    const groups = new Map<string, Community[]>();
-    for (const community of all) {
-      if (parentIds.has(community.id)) continue; // 本身已是分组节点
-      const parsed = splitPhaseName(community.name);
-      if (!parsed) continue;
-      const list = groups.get(parsed.group) ?? [];
-      list.push(community);
-      groups.set(parsed.group, list);
+  private assertNotOfficeName(name: string) {
+    if (OFFICE_WORD.test(name)) {
+      throw new BadRequestException(
+        '「管理处」不是小区。请去「管理处」页面新建管理处，再回这里把小区的「所属管理处」选上',
+      );
     }
+  }
 
-    let createdGroups = 0;
-    let linked = 0;
-    const skipped: string[] = [];
-    for (const [groupName, children] of groups) {
-      if (children.length < 2) continue;
-      let parent = byName.get(groupName);
-      if (parent && children.some((child) => child.id === parent!.id)) continue;
-      if (parent) {
-        // 同名小区自己还挂着房产，就不能当分组节点，否则它会从可选小区里消失
-        const buildingCount = await this.buildingRepo.count({
-          where: { tenantId, communityId: parent.id },
-        });
-        if (buildingCount > 0) {
-          skipped.push(groupName);
-          continue;
-        }
-      }
-      if (!parent) {
-        parent = await this.communityRepo.save(
-          this.communityRepo.create({
-            tenantId,
-            name: groupName,
-            parentId: null,
-            address: null,
-            zones: [],
-            enabled: true,
-            createdBy: user.id,
-            updatedBy: user.id,
-          }),
-        );
-        byName.set(groupName, parent);
-        createdGroups += 1;
-      }
-      for (const child of children) {
-        if (child.parentId === parent.id) continue;
-        child.parentId = parent.id;
-        child.updatedBy = user.id;
-        await this.communityRepo.save(child);
-        linked += 1;
-      }
+  /** 只有顶层小区自己挂管理处；分期一律跟随上级，office_id 留空 */
+  private async resolveOfficeId(
+    tenantId: number,
+    officeId: number | null | undefined,
+    parentId: number | null,
+  ): Promise<number | null> {
+    if (parentId) return null;
+    if (!officeId) return null;
+    const office = await this.officeRepo.findOne({
+      where: { id: officeId, tenantId },
+    });
+    if (!office) throw new BadRequestException('管理处不存在');
+    return office.id;
+  }
+
+  /**
+   * 写操作的数据范围闸门。列表接口一直过 `scopeCommunityIds`，写接口是
+   * 2026-08-30 才补的 —— 在此之前「枫桦景苑办公室」（范围=枫桦景苑管理处，
+   * 且有房产管理增删改权）能改永德段、吴泾新村的小区/楼栋/房号。
+   * properties 下任何新增的写接口都要先过这里。
+   */
+  private assertCommunityInScope(
+    access: ResolvedAccess | undefined,
+    communityId: number,
+  ) {
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.includes(communityId)) {
+      throw new ForbiddenException('该小区不在你的数据范围内');
     }
-    return { createdGroups, linked, skipped };
+  }
+
+  private async assertBuildingInScope(
+    access: ResolvedAccess | undefined,
+    tenantId: number,
+    buildingId: number,
+  ) {
+    if (!scopeCommunityIds(access)) return;
+    const building = await this.buildingRepo.findOne({
+      where: { id: buildingId, tenantId },
+      select: ['id', 'communityId'],
+    });
+    if (!building) throw new NotFoundException('building not found');
+    this.assertCommunityInScope(access, building.communityId);
   }
 
   // ---------------- Buildings ----------------
@@ -259,12 +297,17 @@ export class PropertiesService {
     );
   }
 
-  async createBuilding(dto: CreateBuildingDto, user: AuthUser) {
+  async createBuilding(
+    dto: CreateBuildingDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
     const community = await this.communityRepo.findOne({
       where: { id: dto.communityId, tenantId },
     });
     if (!community) throw new NotFoundException('community not found');
+    this.assertCommunityInScope(access, dto.communityId);
 
     const building = await this.upsertBuilding(
       tenantId,
@@ -284,12 +327,18 @@ export class PropertiesService {
     };
   }
 
-  async updateBuilding(id: number, dto: UpdateBuildingDto, user: AuthUser) {
+  async updateBuilding(
+    id: number,
+    dto: UpdateBuildingDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const building = await this.buildingRepo.findOne({
       where: { id, tenantId },
     });
     if (!building) throw new NotFoundException('building not found');
+    this.assertCommunityInScope(access, building.communityId);
 
     const nextLane = dto.lane !== undefined ? (dto.lane || null) : building.lane;
     const nextNo = dto.buildingNo !== undefined ? dto.buildingNo : building.buildingNo;
@@ -314,12 +363,13 @@ export class PropertiesService {
     return this.buildingRepo.save(building);
   }
 
-  async deleteBuilding(id: number, user: AuthUser) {
+  async deleteBuilding(id: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     const building = await this.buildingRepo.findOne({
       where: { id, tenantId },
     });
     if (!building) throw new NotFoundException('building not found');
+    this.assertCommunityInScope(access, building.communityId);
     const houseCount = await this.houseRepo.count({
       where: { tenantId, buildingId: id },
     });
@@ -557,7 +607,11 @@ export class PropertiesService {
     };
   }
 
-  async createHouse(dto: CreateHouseDto, user: AuthUser) {
+  async createHouse(
+    dto: CreateHouseDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
 
     let buildingId = dto.buildingId;
@@ -571,6 +625,7 @@ export class PropertiesService {
         where: { id: dto.communityId, tenantId },
       });
       if (!community) throw new NotFoundException('community not found');
+      this.assertCommunityInScope(access, dto.communityId);
       const building = await this.upsertBuilding(
         tenantId,
         dto.communityId,
@@ -590,6 +645,7 @@ export class PropertiesService {
         where: { id: buildingId, tenantId },
       });
       if (!building) throw new NotFoundException('building not found');
+      this.assertCommunityInScope(access, building.communityId);
     }
 
     if (dto.unitId) {
@@ -627,10 +683,16 @@ export class PropertiesService {
     return this.houseRepo.save(house);
   }
 
-  async updateHouse(id: number, dto: UpdateHouseDto, user: AuthUser) {
+  async updateHouse(
+    id: number,
+    dto: UpdateHouseDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const house = await this.houseRepo.findOne({ where: { id, tenantId } });
     if (!house) throw new NotFoundException('house not found');
+    await this.assertBuildingInScope(access, tenantId, house.buildingId);
 
     if (dto.roomNo !== undefined && dto.roomNo !== house.roomNo) {
       const dup = await this.houseRepo.findOne({
@@ -656,10 +718,11 @@ export class PropertiesService {
     return this.houseRepo.save(house);
   }
 
-  async deleteHouse(id: number, user: AuthUser) {
+  async deleteHouse(id: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     const house = await this.houseRepo.findOne({ where: { id, tenantId } });
     if (!house) throw new NotFoundException('house not found');
+    await this.assertBuildingInScope(access, tenantId, house.buildingId);
 
     const ownerCount = await this.userRepo.count({
       where: { tenantId, houseId: id, role: UserRole.OWNER, status: UserStatus.ACTIVE },

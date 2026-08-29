@@ -41,6 +41,9 @@ interface Community {
   parentId?: number | null;
   /** true = 分组节点（如「枫桦景苑」），本身不挂房产 */
   isGroup?: boolean;
+  /** 所属管理处。只有顶层小区自己挂，分期由后端按上级回填 */
+  officeId?: number | null;
+  officeName?: string | null;
   address?: string | null;
   enabled?: boolean;
 }
@@ -253,9 +256,11 @@ function HousesTab() {
         laneWeight.set(b.lane, (laneWeight.get(b.lane) ?? 0) + b.count);
       }
       const mainLane = Array.from(laneWeight.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+      const houseCount = countByCommunity.get(community.id) ?? 0;
       return {
         key: `c:${community.id}`,
-        title: `${shortPhaseName(community.name, parentName)}${mainLane ? `（${mainLane}弄）` : ''} (${countByCommunity.get(community.id) ?? 0})`,
+        houseCount,
+        title: `${shortPhaseName(community.name, parentName)}${mainLane ? `（${mainLane}弄）` : ''} (${houseCount})`,
         children: own.map((b) => ({
           key: `b:${b.buildingId}`,
           title: `${formatBuildingNode(b.lane, b.buildingNo, b.roadName, mainLane)} (${b.count})`,
@@ -277,6 +282,7 @@ function HousesTab() {
         );
         return {
           key: `g:${group.id}`,
+          houseCount: groupTotal,
           title: `${group.name} (${groupTotal})`,
           children: children.map(buildCommunityNode),
         };
@@ -285,9 +291,44 @@ function HousesTab() {
         .filter((c) => !c.isGroup && !groupedChildIds.has(c.id))
         .map(buildCommunityNode),
     ];
+
+    /**
+     * 管理处这一层是**只读分组**，节点数据来自 communities.office_id，
+     * 不在 communities 表里建对应的行 —— 2026-08-29 之前线上就是给每个管理处
+     * 建了个同名顶层小区当分组，结果真小区被挤到「分期」那一层去了。
+     * 管理处归属在「管理处」页面或小区管理的「所属管理处」里改，树上不能点改。
+     */
+    const officeOf = (node: { key: string }) => {
+      const id = Number(node.key.split(':')[1]);
+      const community = communityById.get(id);
+      if (!community) return null;
+      const owner = community.parentId ? communityById.get(community.parentId) : community;
+      return owner?.officeName ?? null;
+    };
+    const byOffice = new Map<string, typeof nodes>();
+    const loose: typeof nodes = [];
+    for (const node of nodes) {
+      const name = officeOf(node);
+      if (!name) { loose.push(node); continue; }
+      const list = byOffice.get(name) ?? [];
+      list.push(node);
+      byOffice.set(name, list);
+    }
+    const grouped = byOffice.size
+      ? [...byOffice.entries()].map(([name, children]) => ({
+          key: `o:${name}`,
+          houseCount: children.reduce((sum, n) => sum + n.houseCount, 0),
+          title: `${name} (${children.reduce((sum, n) => sum + n.houseCount, 0)})`,
+          // 管理处只是分组，本身不是可筛选的实体；要按管理处看全部数据用顶栏的管理处切换器
+          selectable: false,
+          children,
+        }))
+      : [];
+
     return [
       { key: 'all', title: `全部 (${summary.total})`, isLeaf: true },
-      ...nodes,
+      ...grouped,
+      ...(byOffice.size ? loose : nodes),
     ];
   }, [communities, communityById, summary]);
 
@@ -695,12 +736,26 @@ function CommunityManagerModal({
   const [form] = Form.useForm();
   const [editing, setEditing] = useState<Community | null>(null);
   const [saving, setSaving] = useState(false);
-  const [grouping, setGrouping] = useState(false);
+  const [offices, setOffices] = useState<Array<{ id: number; name: string }>>([]);
+  const [parentId, setParentId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    request<Array<{ id: number; name: string }>>({ url: '/communities/offices' })
+      .then(setOffices)
+      .catch(() => setOffices([]));
+  }, [open]);
 
   const startEdit = (c: Community | null) => {
     setEditing(c);
+    setParentId(c?.parentId ?? null);
     if (c) {
-      form.setFieldsValue({ name: c.name, address: c.address, parentId: c.parentId ?? null });
+      form.setFieldsValue({
+        name: c.name,
+        address: c.address,
+        parentId: c.parentId ?? null,
+        officeId: c.officeId ?? null,
+      });
     } else {
       form.resetFields();
     }
@@ -714,11 +769,20 @@ function CommunityManagerModal({
         await request({
           method: 'PATCH',
           url: `/communities/${editing.id}`,
-          data: { name: v.name, address: v.address, parentId: v.parentId ?? null },
+          data: {
+            name: v.name,
+            address: v.address,
+            parentId: v.parentId ?? null,
+            officeId: v.parentId ? null : v.officeId ?? null,
+          },
         });
         message.success('已保存');
       } else {
-        await request({ method: 'POST', url: '/communities', data: v });
+        await request({
+          method: 'POST',
+          url: '/communities',
+          data: { ...v, officeId: v.parentId ? null : v.officeId ?? null },
+        });
         message.success('小区已创建');
       }
       form.resetFields();
@@ -730,34 +794,6 @@ function CommunityManagerModal({
     } finally {
       setSaving(false);
     }
-  };
-
-  const onAutoGroup = () => {
-    modal.confirm({
-      title: '按「N 期」自动归组？',
-      content: '会把「枫桦景苑一期 / 二期」这类同前缀的小区挂到上级「枫桦景苑」下面，不改动任何房产数据。重复执行不会有副作用。',
-      onOk: async () => {
-        setGrouping(true);
-        try {
-          const r = await request<{ createdGroups: number; linked: number; skipped: string[] }>({
-            method: 'POST',
-            url: '/communities/auto-group',
-            data: {},
-          });
-          message.success(
-            r.linked
-              ? `已归组：新建上级 ${r.createdGroups} 个，挂上 ${r.linked} 个分期`
-              : '没有需要归组的小区',
-          );
-          if (r.skipped?.length) {
-            message.warning(`「${r.skipped.join('、')}」自己还挂着房产，没有当成上级`);
-          }
-          onChanged();
-        } catch (e: any) {
-          message.error(e?.message || '归组失败');
-        } finally { setGrouping(false); }
-      },
-    });
   };
 
   /** 可作为上级的：本身没有上级的小区（层级最多两层），且不能是自己 */
@@ -785,14 +821,7 @@ function CommunityManagerModal({
 
   return (
     <Modal
-      title={(
-        <Space size={12}>
-          <span>小区管理</span>
-          {canEdit && (
-            <Button size="small" loading={grouping} onClick={onAutoGroup}>按「N 期」自动归组</Button>
-          )}
-        </Space>
-      )}
+      title="小区管理"
       open={open}
       onCancel={onClose}
       footer={null}
@@ -815,6 +844,13 @@ function CommunityManagerModal({
                     {r.isGroup && <Tag color="blue" style={{ marginLeft: 6 }}>上级</Tag>}
                   </span>
                 ),
+              },
+              {
+                title: '所属管理处', dataIndex: 'officeName', width: 150,
+                render: (v: string | null | undefined, r) =>
+                  v
+                    ? <span>{v}{r.parentId && <Text type="secondary">（随上级）</Text>}</span>
+                    : <Text type="warning">未划入</Text>,
               },
               {
                 title: '上级小区', dataIndex: 'parentId', width: 120,
@@ -855,12 +891,30 @@ function CommunityManagerModal({
               <Form.Item
                 name="parentId"
                 label="上级小区"
-                extra="分期填上级，如「枫桦景苑一期」的上级是「枫桦景苑」；不分期就留空"
+                extra="只有真正分期的小区才填，如「枫桦景苑一期」的上级是「枫桦景苑」；不分期就留空"
               >
                 <Select
                   allowClear
                   placeholder="不挂上级"
                   options={withOptionTitles(parentOptions)}
+                  onChange={(v) => setParentId(v ?? null)}
+                  {...searchableWideSelectProps}
+                />
+              </Form.Item>
+              <Form.Item
+                name="officeId"
+                label="所属管理处"
+                extra={
+                  parentId
+                    ? '分期跟随上级小区的管理处，不用单独选'
+                    : '管理处在「管理处」页面新建；这里选了之后，该管理处的角色就能看到这个小区'
+                }
+              >
+                <Select
+                  allowClear
+                  disabled={!!parentId}
+                  placeholder={parentId ? '跟随上级小区' : '未划入任何管理处'}
+                  options={withOptionTitles(offices.map((o) => ({ value: o.id, label: o.name })))}
                   {...searchableWideSelectProps}
                 />
               </Form.Item>

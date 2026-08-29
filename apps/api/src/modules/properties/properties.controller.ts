@@ -103,14 +103,11 @@ export class PropertiesController {
     return this.propertiesService.getAddressBook(query.communityId, user);
   }
 
-  /** 按「N期」后缀自动归组小区（枫桦景苑一期/二期 → 枫桦景苑） */
-  @Post('communities/auto-group')
-  @RequirePermission('properties', 'edit')
-  autoGroupCommunities(
-    @Body() body: TenantScopedQueryDto,
-    @CurrentUser() user: AuthUser,
-  ) {
-    return this.propertiesService.autoGroupCommunities(user, body?.tenantId);
+  /** 「所属管理处」下拉的选项（房产页用，不必另开管理处页权限） */
+  @Get('communities/offices')
+  @RequirePermission('properties', 'view')
+  listOfficeOptions(@CurrentUser() user: AuthUser) {
+    return this.propertiesService.listOfficeOptions(user);
   }
 
   @Post('communities')
@@ -118,8 +115,9 @@ export class PropertiesController {
   createCommunity(
     @Body() dto: CreateCommunityDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.propertiesService.createCommunity(dto, user);
+    return this.propertiesService.createCommunity(dto, user, access);
   }
 
   @Patch('communities/:id')
@@ -128,8 +126,9 @@ export class PropertiesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateCommunityDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.propertiesService.updateCommunity(id, dto, user);
+    return this.propertiesService.updateCommunity(id, dto, user, access);
   }
 
   @Delete('communities/:id')
@@ -137,8 +136,9 @@ export class PropertiesController {
   deleteCommunity(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.propertiesService.deleteCommunity(id, user);
+    return this.propertiesService.deleteCommunity(id, user, access);
   }
 
   // ---------------- Buildings ----------------
@@ -155,8 +155,12 @@ export class PropertiesController {
 
   @Post('buildings')
   @RequirePermission('properties', 'edit')
-  createBuilding(@Body() dto: CreateBuildingDto, @CurrentUser() user: AuthUser) {
-    return this.propertiesService.createBuilding(dto, user);
+  createBuilding(
+    @Body() dto: CreateBuildingDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.propertiesService.createBuilding(dto, user, access);
   }
 
   @Patch('buildings/:id')
@@ -165,8 +169,9 @@ export class PropertiesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateBuildingDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.propertiesService.updateBuilding(id, dto, user);
+    return this.propertiesService.updateBuilding(id, dto, user, access);
   }
 
   @Delete('buildings/:id')
@@ -174,8 +179,9 @@ export class PropertiesController {
   deleteBuilding(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.propertiesService.deleteBuilding(id, user);
+    return this.propertiesService.deleteBuilding(id, user, access);
   }
 
   // ---------------- Houses ----------------
@@ -207,8 +213,12 @@ export class PropertiesController {
 
   @Post('houses')
   @RequirePermission('properties', 'edit')
-  createHouse(@Body() dto: CreateHouseDto, @CurrentUser() user: AuthUser) {
-    return this.propertiesService.createHouse(dto, user);
+  createHouse(
+    @Body() dto: CreateHouseDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.propertiesService.createHouse(dto, user, access);
   }
 
   @Patch('houses/:id')
@@ -217,8 +227,9 @@ export class PropertiesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateHouseDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.propertiesService.updateHouse(id, dto, user);
+    return this.propertiesService.updateHouse(id, dto, user, access);
   }
 
   @Delete('houses/:id')
@@ -226,7 +237,8 @@ export class PropertiesController {
   deleteHouse(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.propertiesService.deleteHouse(id, user);
+    return this.propertiesService.deleteHouse(id, user, access);
   }
 }

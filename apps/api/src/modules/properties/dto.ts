@@ -56,6 +56,11 @@ export class CreateCommunityDto {
   @toNullableInt()
   parentId?: number | null;
 
+  /** 所属管理处 id。只有顶层小区能挂，分期跟随上级；传 null 表示不划入任何管理处 */
+  @IsOptional()
+  @toNullableInt()
+  officeId?: number | null;
+
   @IsOptional()
   @IsString()
   @MaxLength(255)
@@ -78,6 +83,11 @@ export class UpdateCommunityDto {
   @IsOptional()
   @toNullableInt()
   parentId?: number | null;
+
+  /** 所属管理处 id。只有顶层小区能挂，分期跟随上级；传 null 表示不划入任何管理处 */
+  @IsOptional()
+  @toNullableInt()
+  officeId?: number | null;
 
   @IsOptional()
   @IsString()
