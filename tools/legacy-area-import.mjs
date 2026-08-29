@@ -1,22 +1,24 @@
 #!/usr/bin/env node
 /**
- * 永德片区（剑川路140弄 / 150弄、龙吴路5511弄）房产 + 住户 导入 PMS。
+ * 老收费系统「片区」→ PMS 房产 + 住户档案导入（按 --area 选片区，配置见 AREAS）。
  *
  * 为什么单独一个脚本、不复用 legacy-fee-import.mjs：
- * 枫桦那边一个「管理处」就是一个小区，直接映射即可；永德这片完全不是那个结构 ——
+ * 枫桦那边一个「管理处」就是一个小区，直接映射即可；永德/吴泾这些片区完全不是那个结构 ——
  *
- *  1. **同一套房在老库里存了 2~3 份**：`管理处 05 永德段` 是全量归档，
- *     `永德分公司私31xx / 居21xx / 代21xx` 是按房屋性质（私房/居住/代管）拆出来的副本。
- *     照管理处导会把每户建成两三条（150弄 2441 行室表其实只有 1233 个真实门牌）。
- *  2. **05 是 2004-2005 年的旧数据**：姓名不同的 999 户里只有 26 户有过缴费记录，
- *     最后一次收款停在 2005-12-01；分公司那几个码一路收到 2026。
- *     所以**业主姓名要取分公司副本**，05 只在「这个房号只有 05 有」时兜底。
+ *  1. **同一套房在老库里存了 2~3 份**：`永德段(05)`/`吴泾段(06)` 是全量归档，
+ *     `X分公司私31xx / 居21xx / 代21xx / 系21xx` 是按房屋性质拆出来的副本。
+ *     照管理处导会把每户建成两三条（150弄 2441 行室表其实只有 1233 个真实门牌，
+ *     龙吴路5530弄 5138 行只有 2708 个）。
+ *  2. **归档副本是十几年前的旧数据**：永德 05 最后收款停在 2005-12-01、吴泾 06 停在 2007-01-01，
+ *     姓名冲突时归档副本几乎没有缴费记录（吴泾 5530弄：现行 801/819 有收款，归档只有 10/817）。
+ *     所以**业主姓名取分公司副本**，归档只在「这个房号只有它有」时兜底。
+ *     判据是各管理处的 MAX(wyzj.ZJ_SKRQ)，接新片区先跑这条。
  *  3. **老库没有「永南/永北」这个字段**。拆分依据是车库名：车库 09=永德永南段1、
  *     11=永德永北段1、12=永北246号自行车库、13=永南140弄19号自行车库，
  *     用 3217 条车位登记的地址反推出门牌归属（见 YONGDE_RULES，多数票极其干净）。
  *
  * 用法：
- *   node tools/legacy-yongde-import.mjs --tenant 1 --token <JWT> --mysql-password <pwd> [--dry-run]
+ *   node tools/legacy-area-import.mjs --area yongde|wujing|jinchuan --tenant 1 --token <JWT> --mysql-password <pwd> [--dry-run]
  *
  * 幂等：房产按 (小区,弄,号,室) 查重，业主按 legacyRef `wjwy:zh:<ZH_ID>` upsert，可重跑。
  */
@@ -34,14 +36,15 @@ function parseArgs(argv) {
     db: '吴泾物业',
     user: 'root',
     password: process.env.LEGACY_MYSQL_PASSWORD || '',
-    lanes: '140,150,5511',
+    area: '',
     tenant: '',
     token: process.env.PMS_TOKEN || '',
     chunk: '1000',
-    out: resolve(ROOT, 'data-prep', 'yongde-import-report.json'),
+    out: '',
     dryRun: false,
     skipHouses: false,
     skipOwners: false,
+    createMissing: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const key = argv[i];
@@ -52,7 +55,7 @@ function parseArgs(argv) {
       case '--db': args.db = next(); break;
       case '--mysql-user': args.user = next(); break;
       case '--mysql-password': args.password = next(); break;
-      case '--lanes': args.lanes = next(); break;
+      case '--area': args.area = next(); break;
       case '--tenant': args.tenant = next(); break;
       case '--token': args.token = next(); break;
       case '--chunk': args.chunk = next(); break;
@@ -60,6 +63,7 @@ function parseArgs(argv) {
       case '--dry-run': args.dryRun = true; break;
       case '--skip-houses': args.skipHouses = true; break;
       case '--skip-owners': args.skipOwners = true; break;
+      case '--create-missing': args.createMissing = true; break;
       default: throw new Error(`未知参数：${key}`);
     }
   }
@@ -67,8 +71,8 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv);
-const LANES = args.lanes.split(',').map((s) => s.trim()).filter(Boolean);
 const CHUNK = Math.max(100, Number(args.chunk) || 1000);
+const REPORT_PATH = args.out || resolve(ROOT, 'data-prep', `${args.area || 'area'}-import-report.json`);
 
 /**
  * 弄 + 号 → PMS 小区名。
@@ -89,6 +93,46 @@ const YONGDE_RULES = [
   { lane: '5511', ranges: [[236, 299], [324, 350]], community: '永北5511弄', road: '龙吴路' },
 ];
 
+/**
+ * 片区配置。`sources` 决定从老库捞哪些「路+弄」，`rules` 决定每个门牌落到哪个 PMS 小区。
+ * 规则不带 `ranges` = 这个弄整个归一个小区。
+ *
+ * **弄号必须连路一起限定**：老库里同一个弄号会出现在不同的路上，
+ * 而且路名本身还有「龙吴」「龙吴路」两种写法，只按弄过滤会捞进别的小区。
+ */
+const AREAS = {
+  yongde: {
+    label: '永德片区（剑川路140/150弄、龙吴路5511弄）',
+    sources: [
+      { roadLike: '剑川%', lane: '140' },
+      { roadLike: '剑川%', lane: '150' },
+      { roadLike: '龙吴%', lane: '5511' },
+    ],
+    // 「永德段」是 2004-2005 年的全量归档，同门牌有现行副本时一律让位
+    archiveOffices: ['05'],
+    rules: YONGDE_RULES,
+  },
+  wujing: {
+    label: '吴泾新村（龙吴路5530弄）',
+    sources: [{ roadLike: '龙吴%', lane: '5530' }],
+    // 「吴泾段」同理，最后收款停在 2007-01-01
+    archiveOffices: ['06'],
+    rules: [{ lane: '5530', community: '吴泾新村', road: '龙吴路' }],
+  },
+  jinchuan: {
+    label: '锦川公寓（剑川路139弄）',
+    sources: [{ roadLike: '剑川%', lane: '139' }],
+    // 只有管理处 14 一份，没有归档副本
+    archiveOffices: [],
+    rules: [{ lane: '139', community: '锦川公寓', road: '剑川路' }],
+  },
+};
+
+const AREA = AREAS[args.area];
+if (!AREA) {
+  throw new Error(`--area 必须是：${Object.keys(AREAS).join(' / ')}`);
+}
+
 /** 老系统房屋性质 → 商铺（其余按住宅） */
 const SHOP_KINDS = new Set(['04', '05', '06', '08', '10']);
 
@@ -100,10 +144,10 @@ function buildingNumber(no) {
 
 function resolveCommunity(lane, buildingNo) {
   const n = buildingNumber(buildingNo);
-  if (!Number.isFinite(n)) return null;
-  for (const rule of YONGDE_RULES) {
+  for (const rule of AREA.rules) {
     if (rule.lane !== lane) continue;
-    if (rule.ranges.some(([lo, hi]) => n >= lo && n <= hi)) return rule;
+    if (!rule.ranges) return rule; // 整个弄归一个小区，门牌不是数字也认（车库、配套房）
+    if (Number.isFinite(n) && rule.ranges.some(([lo, hi]) => n >= lo && n <= hi)) return rule;
   }
   return null;
 }
@@ -187,10 +231,13 @@ async function api(path, { method = 'GET', body, query } = {}) {
 
 // ---------------------------------------------------------------- 主流程
 
-const laneList = LANES.map((l) => `'${l}'`).join(',');
+/** 路 + 弄 一起限定，见 AREAS 的注释 */
+const sourceFilter = AREA.sources
+  .map((s) => `(l.路 LIKE '${s.roadLike}' AND l.弄 = '${s.lane}')`)
+  .join(' OR ');
 
 async function main() {
-  const report = { startedAt: new Date().toISOString(), lanes: LANES, steps: {} };
+  const report = { startedAt: new Date().toISOString(), area: args.area, steps: {} };
 
   // 一次把三个弄的所有房间连业主查出来（约 6600 行），在 JS 里按门牌去重
   const raw = queryMysql(`
@@ -199,10 +246,10 @@ async function main() {
     FROM 楼表 l
     JOIN 室表 s ON s.L_ID = l.L_ID AND s.SC = 0
     LEFT JOIN 业主表 z ON z.S_ID = s.S_ID AND z.SC = 0 AND z.退户日期 IS NULL
-    WHERE l.弄 IN (${laneList}) AND l.SC = 0
+    WHERE (${sourceFilter}) AND l.SC = 0
     ORDER BY l.弄, l.号, s.室
   `);
-  console.log(`老库室表原始行数：${raw.length}（含 05 归档副本）`);
+  console.log(`【${AREA.label}】老库室表原始行数：${raw.length}（含归档副本）`);
 
   /**
    * 按 (弄,号,室) 去重。同一门牌有多份时：
@@ -219,7 +266,7 @@ async function main() {
     }
     const key = `${row.弄}|${row.号}|${row.室}`;
     const prev = byDoor.get(key);
-    const isArchive = row.管理处 === '05';
+    const isArchive = (AREA.archiveOffices ?? []).includes(row.管理处);
     if (!prev) { byDoor.set(key, { ...row, rule, isArchive, others: [] }); continue; }
     // 现行副本压归档副本；同档次取 ZH_ID 大的
     const better =
@@ -233,7 +280,7 @@ async function main() {
   }
 
   /**
-   * 联系方式补捞：93 条联系方式里 91 条在 05 归档副本上，选中的现行副本反而是空的。
+   * 联系方式补捞：永德那批 93 条联系方式里 91 条在归档副本上，选中的现行副本反而是空的。
    * **只在两份记录姓名一致时才补** —— 姓名不同说明房子已经换过户，
    * 那个号码是上一任业主的，安到现住户名下就是给错人打电话（37 条属于这种，一律不补）。
    */
@@ -259,7 +306,7 @@ async function main() {
     byCommunity[d.rule.community] = (byCommunity[d.rule.community] || 0) + 1;
   }
   console.log('按小区分布：', byCommunity);
-  console.log(`其中仍取自 05 归档副本（该门牌没有现行副本）：${doors.filter((d) => d.isArchive).length}`);
+  console.log(`其中仍取自归档副本（该门牌没有现行副本）：${doors.filter((d) => d.isArchive).length}`);
   console.log(`从同名的另一份副本补回联系方式：${mergedContacts} 条`);
   report.steps.dedupe = {
     rawRows: raw.length,
@@ -275,18 +322,43 @@ async function main() {
     const contacts = withOwner.map((d) => splitContact(d.联系方式));
     console.log(`业主档案：${withOwner.length} 条（手机 ${contacts.filter((c) => c.phone).length}、其它联系方式 ${contacts.filter((c) => !c.phone && c.contactNote).length}）`);
     console.log('\n[dry-run] 未写入任何数据');
-    mkdirSync(dirname(args.out), { recursive: true });
-    writeFileSync(args.out, JSON.stringify(report, null, 2), 'utf8');
+    mkdirSync(dirname(REPORT_PATH), { recursive: true });
+    writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2), 'utf8');
     return;
   }
 
   authHeader = `Bearer ${args.token}`;
   const communities = await api('/communities', { query: { includeGroups: true } });
   const communityByName = new Map(communities.map((c) => [c.name, c]));
-  for (const name of Object.keys(byCommunity)) {
-    if (!communityByName.has(name)) {
-      throw new Error(`PMS 里没有小区「${name}」，请先在「房产管理」里建好再导`);
-    }
+  /**
+   * 目标小区必须在 PMS 里已经存在，**默认不自动创建**。
+   *
+   * 2026-08-29 踩过：这里原来是「找不到就建一个顶层小区」。用户当天把小区结构
+   * 重组过（「龙吴路5530弄」改名成「吴泾新村」并挂到管理处底下），规则里的名字没跟着改，
+   * 脚本就默默建了个游离的顶层「龙吴路5530弄」，2713 套房全导进了错的地方 ——
+   * 树上看不出异常，得对着数据库才发现。名字对不上时**停下来把候选列出来**，
+   * 比事后搬 149 栋楼便宜得多。确实要新建时加 --create-missing。
+   */
+  const missing = Object.keys(byCommunity).filter((name) => !communityByName.has(name));
+  if (missing.length && !args.createMissing) {
+    const candidates = communities
+      .filter((c) => !c.isGroup)
+      .map((c) => c.name)
+      .join('、');
+    throw new Error(
+      `PMS 里没有小区「${missing.join('」「')}」。\n` +
+      `  现有可挂房产的小区：${candidates}\n` +
+      `  → 改 AREAS 里的 community 名字对上，或加 --create-missing 让脚本新建（会建成顶层小区，之后要手工挂到管理处下）`,
+    );
+  }
+  for (const name of missing) {
+    const rule = AREA.rules.find((r) => r.community === name);
+    const created = await api('/communities', {
+      method: 'POST',
+      body: { name, address: rule ? `${rule.road}${rule.lane}弄` : undefined },
+    });
+    communityByName.set(name, created);
+    console.log(`  ⚠ 新建了顶层小区「${name}」（id ${created.id}）—— 记得去「房产管理」把它挂到对应管理处下面`);
   }
 
   // ---- 房产 ----
@@ -393,9 +465,9 @@ async function main() {
   report.steps.owners = ownerResult;
 
   report.finishedAt = new Date().toISOString();
-  mkdirSync(dirname(args.out), { recursive: true });
-  writeFileSync(args.out, JSON.stringify(report, null, 2), 'utf8');
-  console.log(`\n报告已写入 ${args.out}`);
+  mkdirSync(dirname(REPORT_PATH), { recursive: true });
+  writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2), 'utf8');
+  console.log(`\n报告已写入 ${REPORT_PATH}`);
 }
 
 main().catch((err) => {
