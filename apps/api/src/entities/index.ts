@@ -44,6 +44,7 @@ import { ManagementOffice } from './management-office.entity';
 import { Role } from './role.entity';
 import { RolePermission } from './role-permission.entity';
 import { RoleScope } from './role-scope.entity';
+import { RoleWarehouse } from './role-warehouse.entity';
 import { UserRoleAssignment } from './user-role.entity';
 import { PlatformLog } from './platform-log.entity';
 
@@ -53,6 +54,7 @@ export const entities = [
   Role,
   RolePermission,
   RoleScope,
+  RoleWarehouse,
   UserRoleAssignment,
   PlatformLog,
   Community,
@@ -104,6 +106,7 @@ export {
   Role,
   RolePermission,
   RoleScope,
+  RoleWarehouse,
   UserRoleAssignment,
   PlatformLog,
   Community,

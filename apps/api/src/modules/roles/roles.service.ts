@@ -21,6 +21,8 @@ import {
   Role,
   RolePermission,
   RoleScope,
+  RoleWarehouse,
+  Warehouse,
   User,
   UserRoleAssignment,
 } from '../../entities';
@@ -56,10 +58,11 @@ export class RolesService {
     });
     if (!roles.length) return [];
     const ids = roles.map((r) => r.id);
-    const [perms, scopes, bindings] = await Promise.all([
+    const [perms, scopes, bindings, extraWarehouses] = await Promise.all([
       this.permRepo.find({ where: { roleId: In(ids) } }),
       this.scopeRepo.find({ where: { roleId: In(ids) } }),
       this.userRoleRepo.find({ where: { roleId: In(ids) } }),
+      this.dataSource.getRepository(RoleWarehouse).find({ where: { roleId: In(ids) } }),
     ]);
     const countByRole = new Map<number, number>();
     bindings.forEach((b) =>
@@ -87,6 +90,9 @@ export class RolesService {
       communityIds: scopes
         .filter((s) => s.roleId === r.id && s.communityId)
         .map((s) => s.communityId as number),
+      warehouseIds: extraWarehouses
+        .filter((w) => w.roleId === r.id)
+        .map((w) => w.warehouseId),
     }));
   }
 
@@ -102,6 +108,11 @@ export class RolesService {
         .orderBy('c.id', 'ASC')
         .getMany(),
     ]);
+    const warehouses = await this.dataSource.getRepository(Warehouse).find({
+      where: { tenantId },
+      order: { id: 'ASC' },
+    });
+    const officeNameById = new Map(offices.map((o) => [o.id, o.name]));
     return {
       offices: offices.map((o) => ({
         id: o.id,
@@ -113,6 +124,15 @@ export class RolesService {
         name: c.name,
         officeId: c.officeId,
       })),
+      // 「额外可见的仓库」的可选项。带上归属，配的人才看得出哪些是总仓
+      warehouses: warehouses
+        .filter((w) => w.enabled)
+        .map((w) => ({
+          id: w.id,
+          name: w.name,
+          type: w.type,
+          officeName: w.officeId ? officeNameById.get(w.officeId) ?? null : null,
+        })),
     };
   }
 
@@ -212,6 +232,7 @@ export class RolesService {
       await em.getRepository(Role).save(role);
       await em.getRepository(RolePermission).delete({ roleId: role.id });
       await em.getRepository(RoleScope).delete({ roleId: role.id });
+      await em.getRepository(RoleWarehouse).delete({ roleId: role.id });
       await this.writePermsAndScopes(em, role, dto, user.id, access);
       return { id: role.id };
     });
@@ -232,6 +253,7 @@ export class RolesService {
     await this.dataSource.transaction(async (em) => {
       await em.getRepository(RolePermission).delete({ roleId: id });
       await em.getRepository(RoleScope).delete({ roleId: id });
+      await em.getRepository(RoleWarehouse).delete({ roleId: id });
       await em.getRepository(Role).delete({ id });
     });
     return { ok: true };
@@ -361,6 +383,26 @@ export class RolesService {
             roleId: role.id,
             officeId: null,
             communityId,
+            createdBy: operatorId,
+            updatedBy: operatorId,
+          }),
+        ),
+      );
+    }
+
+    // 额外可见的仓库：和数据范围无关，全公司范围的角色也能配（配了也不多给，它本来就全看得到）
+    const warehouseIds = [...new Set(dto.warehouseIds ?? [])];
+    if (warehouseIds.length) {
+      const found = await em.getRepository(Warehouse).count({
+        where: { id: In(warehouseIds), tenantId: role.tenantId },
+      });
+      if (found !== warehouseIds.length) throw new BadRequestException('仓库不存在');
+      await em.getRepository(RoleWarehouse).save(
+        warehouseIds.map((warehouseId) =>
+          em.getRepository(RoleWarehouse).create({
+            tenantId: role.tenantId,
+            roleId: role.id,
+            warehouseId,
             createdBy: operatorId,
             updatedBy: operatorId,
           }),

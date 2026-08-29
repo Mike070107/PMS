@@ -58,6 +58,15 @@ export class SaveRoleDto {
   @Type(() => Number)
   communityIds?: number[];
 
+  /**
+   * 额外可见的仓库 id。数据范围只能圈到管理处/小区，总仓不挂管理处 ——
+   * 「让这个管理处角色用总公司那个总仓」只能在这里配。传了就整份覆盖。
+   */
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  warehouseIds?: number[];
+
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;

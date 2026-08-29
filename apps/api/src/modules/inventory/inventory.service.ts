@@ -363,11 +363,17 @@ export class InventoryService {
     const officeId = access?.actingOfficeId ?? null;
     if (!officeId && (!access || access.scopeAll)) return null;
     const all = await this.warehouseRepo.find({ where: { tenantId }, select: ['id', 'officeId'] });
-    if (officeId) return all.filter((w) => w.officeId === officeId).map((w) => w.id);
+    // 角色额外授权的仓一直可见：总仓不挂管理处，切了管理处视角也不该把它藏掉
+    const extra = new Set(await this.accessService.extraWarehouseIdsOfUser(tenantId, user.id));
+    if (officeId) {
+      return all.filter((w) => w.officeId === officeId || extra.has(w.id)).map((w) => w.id);
+    }
     const mine = await this.accessService.userOfficeIds(tenantId, user.id);
     if (mine.all) return null;
     const offices = new Set(mine.officeIds);
-    return all.filter((w) => w.officeId && offices.has(w.officeId)).map((w) => w.id);
+    return all
+      .filter((w) => (w.officeId && offices.has(w.officeId)) || extra.has(w.id))
+      .map((w) => w.id);
   }
 
   /**
@@ -446,9 +452,11 @@ export class InventoryService {
     const mine = await this.accessService.userOfficeIds(tenantId, userId);
     if (mine.all) return all;
     const offices = new Set(mine.officeIds);
-    // 严格按范围：只有自己管理处的仓，公司级总仓也不给（2026-08-27 Mike 定的口径）。
-    // 管理处没建仓 = 一个都看不到，端上会提示去建仓
-    return all.filter((item) => item.officeId && offices.has(item.officeId));
+    // 严格按范围：只有自己管理处的仓，公司级总仓也不给（2026-08-27 Mike 定的口径）
+    // —— 除非角色在「额外可见的仓库」里点名给了（2026-08-30）。
+    // 管理处没建仓、也没额外授权 = 一个都看不到，端上会提示去建仓
+    const extra = new Set(await this.accessService.extraWarehouseIdsOfUser(tenantId, userId));
+    return all.filter((item) => (item.officeId && offices.has(item.officeId)) || extra.has(item.id));
   }
 
   /** 仓库归属校验：类型和挂靠要对得上，管理处得是本公司的 */

@@ -17,6 +17,7 @@ import {
   Role,
   RolePermission,
   RoleScope,
+  RoleWarehouse,
   Tenant,
   UserRoleAssignment,
 } from '../../entities';
@@ -67,6 +68,8 @@ export class AccessService {
     private readonly rolePermRepo: Repository<RolePermission>,
     @InjectRepository(RoleScope)
     private readonly roleScopeRepo: Repository<RoleScope>,
+    @InjectRepository(RoleWarehouse)
+    private readonly roleWarehouseRepo: Repository<RoleWarehouse>,
     @InjectRepository(UserRoleAssignment)
     private readonly userRoleRepo: Repository<UserRoleAssignment>,
     @InjectRepository(Community)
@@ -212,6 +215,22 @@ export class AccessService {
       if (!narrowed.length) return access;
     }
     return { ...access, scopeAll: false, communityIds: narrowed, actingOfficeId: officeId };
+  }
+
+  /**
+   * 这个人的角色额外授权了哪些仓（role_warehouses 的并集）。
+   *
+   * 数据范围只能圈到管理处/小区，总仓不挂管理处 —— 「让枫桦景苑办公室用总公司
+   * 那个总仓」只能靠这张表。与管理处视角正交：切了视角也照样可见，
+   * 因为它是角色本身的授权，不属于任何一个管理处。
+   */
+  async extraWarehouseIdsOfUser(tenantId: number, userId: number): Promise<number[]> {
+    const bindings = await this.userRoleRepo.find({ where: { userId } });
+    if (!bindings.length) return [];
+    const rows = await this.roleWarehouseRepo.find({
+      where: { tenantId, roleId: In(bindings.map((b) => b.roleId)) },
+    });
+    return [...new Set(rows.map((r) => r.warehouseId))];
   }
 
   /** 管理处 → 其下顶层小区 + 分期子小区的完整 id 集合 */

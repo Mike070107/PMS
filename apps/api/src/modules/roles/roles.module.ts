@@ -6,6 +6,7 @@ import {
   Role,
   RolePermission,
   RoleScope,
+  RoleWarehouse,
   User,
   UserRoleAssignment,
 } from '../../entities';
@@ -18,6 +19,7 @@ import { RolesService } from './roles.service';
       Role,
       RolePermission,
       RoleScope,
+  RoleWarehouse,
       User,
       UserRoleAssignment,
       ManagementOffice,

@@ -26,6 +26,8 @@ import {
   ROLE_DATA_SCOPE_LABELS,
   RoleDataScope,
   STAFF_APP_PAGES,
+  WAREHOUSE_TYPE_LABELS,
+  WarehouseType,
   isStaffAppPageKey,
 } from '@pms/shared-types';
 import { request } from '../lib/api';
@@ -54,11 +56,14 @@ interface RoleRow {
   permissions: RolePermRow[];
   officeIds: number[];
   communityIds: number[];
+  /** 额外可见的仓库（数据范围之外点名给的，主要是总仓） */
+  warehouseIds: number[];
 }
 
 interface ScopeOptions {
   offices: { id: number; name: string; enabled: boolean }[];
   communities: { id: number; name: string; officeId: number | null }[];
+  warehouses: { id: number; name: string; type: string; officeName: string | null }[];
 }
 
 export default function RolesPage() {
@@ -234,7 +239,7 @@ function RoleFormModal({
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [dataScope, setDataScope] = useState<string>(RoleDataScope.ALL);
-  const [scopeOptions, setScopeOptions] = useState<ScopeOptions>({ offices: [], communities: [] });
+  const [scopeOptions, setScopeOptions] = useState<ScopeOptions>({ offices: [], communities: [], warehouses: [] });
   const [perms, setPerms] = useState<Record<string, RolePermRow>>({});
 
   // 公司没开通的页面不出现在矩阵里
@@ -253,7 +258,7 @@ function RoleFormModal({
     if (!open) return;
     request<ScopeOptions>({ url: '/roles/scope-options' })
       .then(setScopeOptions)
-      .catch(() => setScopeOptions({ offices: [], communities: [] }));
+      .catch(() => setScopeOptions({ offices: [], communities: [], warehouses: [] }));
     if (target) {
       form.setFieldsValue({
         name: target.name,
@@ -261,6 +266,7 @@ function RoleFormModal({
         dataScope: target.dataScope,
         officeIds: target.officeIds,
         communityIds: target.communityIds,
+        warehouseIds: target.warehouseIds ?? [],
         enabled: target.enabled,
       });
       setDataScope(target.dataScope);
@@ -352,6 +358,7 @@ function RoleFormModal({
         dataScope: v.dataScope,
         officeIds: v.dataScope === RoleDataScope.OFFICES ? v.officeIds : undefined,
         communityIds: v.dataScope === RoleDataScope.COMMUNITIES ? v.communityIds : undefined,
+        warehouseIds: v.warehouseIds ?? [],
         enabled: v.enabled,
         permissions,
       };
@@ -415,6 +422,26 @@ function RoleFormModal({
               placeholder="可多选"
               options={withOptionTitles(
                 scopeOptions.offices.map((o) => ({ value: o.id, label: o.name })),
+              )}
+              {...searchableWideSelectProps}
+            />
+          </Form.Item>
+        )}
+        {dataScope !== RoleDataScope.ALL && (
+          <Form.Item
+            name="warehouseIds"
+            label="额外可见的仓库"
+            extra="数据范围只圈得到管理处和小区，总仓不挂任何管理处。要让这个角色用某个总仓（看库存、领料、调拨），在这里点名。留空 = 只看数据范围内的仓。"
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="留空即可，需要用总仓时才选"
+              options={withOptionTitles(
+                scopeOptions.warehouses.map((w) => ({
+                  value: w.id,
+                  label: `${w.name} · ${WAREHOUSE_TYPE_LABELS[w.type as WarehouseType] || w.type}${w.officeName ? ' · ' + w.officeName : ''}`,
+                })),
               )}
               {...searchableWideSelectProps}
             />
