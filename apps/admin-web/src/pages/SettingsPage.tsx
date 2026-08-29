@@ -26,6 +26,8 @@ interface TenantSettings {
     orderAssigned: string;
     /** 员工端模板：超时还没人接单，催办 */
     orderOverdue: string;
+    /** 员工端模板：办公室手动催修 */
+    orderUrge: string;
   };
   autoReview: { hours: number };
   /** 超时催办：开关、时限、只在这个时段催 */
@@ -44,7 +46,12 @@ interface TenantSettings {
   };
 }
 
-type TemplateKey = 'orderDispatched' | 'orderReview' | 'orderAssigned' | 'orderOverdue';
+type TemplateKey =
+  | 'orderDispatched'
+  | 'orderReview'
+  | 'orderAssigned'
+  | 'orderOverdue'
+  | 'orderUrge';
 
 /** 催办时段选到整点就够，用下拉比时间控件好点得多 */
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => {
@@ -74,6 +81,7 @@ const FIELD_FROM_LABEL: Record<string, string> = {
   reporter: '报修人',
   time: '提醒时间',
   reportedAt: '报修时间',
+  dueAt: '要求完成截止',
 };
 
 interface MatchableStat {
@@ -92,6 +100,7 @@ export default function SettingsPage() {
   const [tplReview, setTplReview] = useState('');
   const [tplAssigned, setTplAssigned] = useState('');
   const [tplOverdue, setTplOverdue] = useState('');
+  const [tplUrge, setTplUrge] = useState('');
   const [savingTpl, setSavingTpl] = useState(false);
   /** 每个模板的校验/测试结果，就地显示在输入框下面 */
   const [tplResult, setTplResult] = useState<Record<string, TemplateResult | null>>({});
@@ -122,6 +131,7 @@ export default function SettingsPage() {
       setTplReview(next.wxSubscribeTemplates?.orderReview || '');
       setTplAssigned(next.wxSubscribeTemplates?.orderAssigned || '');
       setTplOverdue(next.wxSubscribeTemplates?.orderOverdue || '');
+      setTplUrge(next.wxSubscribeTemplates?.orderUrge || '');
       setAutoReviewHours(next.autoReview?.hours ?? 48);
       setEscalateMinutes(next.dispatchEscalation?.acceptMinutes ?? 60);
       setEscalateEnabled(next.dispatchEscalation?.enabled ?? true);
@@ -212,6 +222,7 @@ export default function SettingsPage() {
             orderReview: tplReview.trim(),
             orderAssigned: tplAssigned.trim(),
             orderOverdue: tplOverdue.trim(),
+            orderUrge: tplUrge.trim(),
           },
         },
       });
@@ -346,6 +357,7 @@ export default function SettingsPage() {
               { key: 'orderReview' as TemplateKey, label: '待验收通知业主', app: '业主端', value: tplReview, set: setTplReview },
               { key: 'orderAssigned' as TemplateKey, label: '新工单派给维修工', app: '员工端', value: tplAssigned, set: setTplAssigned },
               { key: 'orderOverdue' as TemplateKey, label: '超时没人接单，催办维修工', app: '员工端', value: tplOverdue, set: setTplOverdue },
+              { key: 'orderUrge' as TemplateKey, label: '办公室催修（工单详情里手动发）', app: '员工端', value: tplUrge, set: setTplUrge },
             ]
           ).map((row) => {
             const result = tplResult[row.key];

@@ -48,6 +48,7 @@ import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   DeleteOutlined,
+  BellOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { TechnicianOption } from '@pms/shared-types';
@@ -1756,13 +1757,21 @@ function WorkOrderDetailDrawer({
                   key: 'sla',
                   label: '要求完成截止日期',
                   children: (
-                    <SlaDueEditor
-                      workOrderId={detail.workOrder.id}
-                      value={detail.workOrder.slaDueAt ?? null}
-                      status={detail.workOrder.status}
-                      canEdit={canEdit}
-                      onChanged={refresh}
-                    />
+                    <Space size={12} wrap>
+                      <SlaDueEditor
+                        workOrderId={detail.workOrder.id}
+                        value={detail.workOrder.slaDueAt ?? null}
+                        status={detail.workOrder.status}
+                        canEdit={canEdit}
+                        onChanged={refresh}
+                      />
+                      <UrgeRepairButton
+                        workOrderId={detail.workOrder.id}
+                        status={detail.workOrder.status}
+                        canEdit={canEdit}
+                        onDone={refresh}
+                      />
+                    </Space>
                   ),
                 },
                 { key: 'fee', label: '费用', children: detail.workOrder.feeCents ? `¥ ${(detail.workOrder.feeCents / 100).toFixed(2)}` : '-' },
@@ -1896,11 +1905,69 @@ function actionLabel(a: string) {
     auto_review_complete: '超时自动完成',
     change_type: '类型更正',
     set_sla: '设定完成截止',
+    urge_repair: '办公室催单',
     cancel: '撤单',
     urge_office: '业主催单（提醒办公室）',
     urge_manager: '业主催单（升级经理）',
   };
   return m[a] || a;
+}
+
+/**
+ * 「发送催单通知」：办公室催维修工在截止日期前修完，微信 + 站内信各一条。
+ *
+ * 和系统那条「超时没人接单」的自动催办不是一回事 —— 那个催的是接单、到点自动发、
+ * 还受催办时段限制；这个是人看着情况主动点的，不受时段和开关影响。
+ * 服务端 5 分钟内只发一条（连点会烧光维修工的微信订阅额度），这里只管把话说清楚。
+ */
+function UrgeRepairButton({
+  workOrderId, status, canEdit, onDone,
+}: {
+  workOrderId: number;
+  status: WorkOrderStatus;
+  canEdit: boolean;
+  onDone: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [sending, setSending] = useState(false);
+  const closed = status === WorkOrderStatus.COMPLETED || status === WorkOrderStatus.CANCELLED;
+  if (!canEdit || closed) return null;
+
+  const send = async () => {
+    setSending(true);
+    try {
+      const res = await request<{ ok: true; notified: number }>({
+        method: 'POST',
+        url: `/work-orders/${workOrderId}/urge`,
+        data: {},
+      });
+      // 一个人都没催到要说清楚为什么，不然办公室以为发出去了，一直等
+      if (res.notified > 0) {
+        message.success(`已催单，通知了 ${res.notified} 人`);
+      } else {
+        message.warning('这单还没人可催：既没派单，报修类型也没配默认维修工');
+      }
+      onDone();
+    } catch (e: any) {
+      message.error(e?.message || '催单失败');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Popconfirm
+      title="给维修工发一条催单通知？"
+      description="微信 + 站内信各一条，5 分钟内只能发一次。"
+      okText="发送"
+      cancelText="取消"
+      onConfirm={send}
+    >
+      <Button size="small" icon={<BellOutlined />} loading={sending}>
+        发送催单通知
+      </Button>
+    </Popconfirm>
+  );
 }
 
 /**

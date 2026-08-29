@@ -27,7 +27,8 @@ export type SubscribeTemplateKey =
   | 'orderDispatched'
   | 'orderReview'
   | 'orderAssigned'
-  | 'orderOverdue';
+  | 'orderOverdue'
+  | 'orderUrge';
 
 /** 每个事件走哪个小程序发。模板 id 不能跨小程序用，token 也不能 —— 发错端一律 40037/43104 */
 export const TEMPLATE_APP: Record<SubscribeTemplateKey, WxAppType> = {
@@ -35,6 +36,16 @@ export const TEMPLATE_APP: Record<SubscribeTemplateKey, WxAppType> = {
   orderReview: 'owner',
   orderAssigned: 'staff',
   orderOverdue: 'staff',
+  orderUrge: 'staff',
+};
+
+/**
+ * 模板没单独配时退到哪一个。都是发给维修工的员工端模板，措辞糙一点也比不推强。
+ * 催修 → 催接单 → 新工单。
+ */
+const TEMPLATE_FALLBACK: Partial<Record<SubscribeTemplateKey, SubscribeTemplateKey[]>> = {
+  orderUrge: ['orderOverdue', 'orderAssigned'],
+  orderOverdue: ['orderAssigned'],
 };
 
 /**
@@ -58,6 +69,9 @@ export interface TemplateFields {
   /** 报修提交的时刻；模板里写「报修时间 / 提交时间」的格子填它 —— 和 time 不是一回事，
    *  催接单那条提醒里两者差着几十分钟 */
   reportedAt: string;
+  /** 要求完成截止时间（工单上的 slaDueAt）；模板里写「截止时间 / 完成期限」的格子填它。
+   *  没设截止的单退回填当前时刻 —— 微信的 time 类型不收空串，也不收「未设置」这种字 */
+  dueAt: string;
 }
 
 /**
@@ -67,9 +81,10 @@ export interface TemplateFields {
 const LABEL_RULES: { test: RegExp; field: keyof TemplateFields }[] = [
   { test: /状态|进度|结果/, field: 'status' },
   { test: /内容|描述|事项|问题|详情|说明/, field: 'content' },
-  // 「报修时间」是提交时刻、「提醒时间」是发送时刻，同一张模板里可能两格都有，
-  // 所以具体的那条必须排在通用「时间」前面
+  // 「报修时间」是提交时刻、「截止时间」是要求完成时刻、「提醒/催单时间」是发送时刻，
+  // 一张模板里可能三格都有，所以具体的那两条必须排在通用「时间」前面
   { test: /报修时间|报单时间|提交时间|下单时间|受理时间/, field: 'reportedAt' },
+  { test: /截止|到期|期限|最迟|要求完成/, field: 'dueAt' },
   { test: /时间|日期/, field: 'time' },
   { test: /编号|单号|工单号|订单号/, field: 'orderNo' },
   { test: /类型|类别|种类/, field: 'type' },
@@ -468,7 +483,10 @@ export class NotificationsService {
     // 催办模板没单独配就退回用「新工单」那个模板：宁可措辞糙一点，也别不推
     const templateId =
       settings.wxSubscribeTemplates[input.template] ||
-      (input.template === 'orderOverdue' ? settings.wxSubscribeTemplates.orderAssigned : '');
+      (TEMPLATE_FALLBACK[input.template] ?? [])
+        .map((key) => settings.wxSubscribeTemplates[key])
+        .find(Boolean) ||
+      '';
     // 物业还没在公众平台申请模板：只走站内信，不算异常
     if (!templateId) return;
     const appType = TEMPLATE_APP[input.template];
@@ -536,6 +554,7 @@ export class NotificationsService {
       reporter: '王女士',
       time,
       reportedAt: time,
+      dueAt: time,
     };
     if (template === 'orderReview') return { ...base, status: '已修好，待验收', statusShort: '待验收' };
     if (template === 'orderAssigned') {
@@ -543,6 +562,9 @@ export class NotificationsService {
     }
     if (template === 'orderOverdue') {
       return { ...base, status: '派单 60 分钟还没接单', statusShort: '待接单', assignee: '' };
+    }
+    if (template === 'orderUrge') {
+      return { ...base, status: '办公室催修', statusShort: '维修中' };
     }
     return { ...base, status: '已派单给张师傅', statusShort: '已派单' };
   }

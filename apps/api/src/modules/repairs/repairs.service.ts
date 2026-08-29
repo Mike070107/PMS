@@ -15,6 +15,7 @@ import {
   ILike,
   In,
   IsNull,
+  MoreThan,
   Not,
   Repository,
 } from 'typeorm';
@@ -1892,6 +1893,7 @@ export class RepairsService implements OnModuleInit {
           reporter: request.contactName?.trim() || '',
           time: when,
           reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
+          dueAt: this.formatDue(workOrder),
         },
       });
       return;
@@ -1916,6 +1918,7 @@ export class RepairsService implements OnModuleInit {
         reporter: request.contactName?.trim() || '',
         time: when,
         reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
+        dueAt: this.formatDue(workOrder),
       },
     });
   }
@@ -1970,6 +1973,7 @@ export class RepairsService implements OnModuleInit {
           reporter: request?.contactName?.trim() || '',
           time: when,
           reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
+          dueAt: this.formatDue(workOrder),
         },
       });
     }
@@ -2022,6 +2026,7 @@ export class RepairsService implements OnModuleInit {
         reporter: request?.contactName?.trim() || '',
         time: this.formatWhen(new Date()),
         reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
+        dueAt: this.formatDue(workOrder),
       },
     });
   }
@@ -2101,6 +2106,126 @@ export class RepairsService implements OnModuleInit {
     return done;
   }
 
+  /**
+   * 「催这单」该发给谁：派出去了就是那一位维修工，还在池子里就是这个类型配的每一位。
+   * 自动催接单和办公室手动催修共用 —— 两处各写一套，改了一处另一处必然走偏。
+   */
+  private async urgeReceivers(
+    workOrder: WorkOrder,
+    repairType: string | null,
+  ): Promise<number[]> {
+    if (workOrder.assigneeId) return [workOrder.assigneeId];
+    const candidates = await this.ruleCandidates(
+      workOrder.tenantId,
+      await this.findTypeRule(repairType ?? undefined, workOrder.tenantId, workOrder.communityId),
+    );
+    return candidates.map((c) => c.id);
+  }
+
+  /**
+   * 办公室在工单详情里点「发送催单通知」：催维修工在要求完成截止日期前修完。
+   *
+   * 和定时的「超时没人接单」不是一回事：那个催的是**接单**、由系统按时限自动发；
+   * 这个催的是**修完**、由人按当下情况发，所以不看催办时段、也不看那个开关 ——
+   * 人主动点的，就该发出去。
+   *
+   * 5 分钟内不重复发：连点会把维修工的微信订阅额度烧光（一次同意只能推一条）。
+   */
+  async urgeRepair(id: number, user: AuthUser, access: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
+    if (!workOrder) throw new NotFoundException('work order not found');
+    if (
+      workOrder.status === WorkOrderStatus.COMPLETED ||
+      workOrder.status === WorkOrderStatus.CANCELLED
+    ) {
+      throw new BadRequestException('这单已经结束了，不用催');
+    }
+    // 数据范围受限的人只能催自己范围内的单，和改截止时间一个口径
+    const scope = this.scopeIds(access);
+    if (scope && !scope.includes(workOrder.communityId)) {
+      throw new NotFoundException('work order not found');
+    }
+
+    const logRepo = this.dataSource.getRepository(WorkOrderLog);
+    const recent = await logRepo.findOne({
+      where: {
+        workOrderId: id,
+        action: 'urge_repair',
+        createdAt: MoreThan(new Date(Date.now() - 5 * 60 * 1000)),
+      },
+      order: { id: 'DESC' },
+    });
+    if (recent) {
+      throw new BadRequestException('刚催过（5 分钟内只发一条），别把维修工的提醒额度用光');
+    }
+
+    const request = await this.repairRequestRepo.findOne({
+      where: { id: workOrder.requestId, tenantId },
+      select: ['id', 'repairType', 'addressText', 'content', 'contactName'],
+    });
+    const rule = request?.repairType
+      ? await this.repairTypeRuleRepo.findOne({ where: { tenantId, repairType: request.repairType } })
+      : null;
+    const typeLabel = rule?.label || '报修';
+    const address = request?.addressText?.trim() || '（未填地址）';
+    const due = workOrder.slaDueAt
+      ? `，${this.formatWhenShort(new Date(workOrder.slaDueAt))} 前完成`
+      : '';
+    const page = `pages/order-detail/order-detail?id=${workOrder.id}`;
+    // 状态词进 phrase 那一格，只收 5 个以内纯汉字
+    const statusShort =
+      workOrder.status === WorkOrderStatus.IN_PROGRESS
+        ? '维修中'
+        : workOrder.status === WorkOrderStatus.WAITING_MATERIAL
+          ? '等材料'
+          : '待接单';
+
+    const receivers = await this.urgeReceivers(workOrder, request?.repairType ?? null);
+    for (const receiverId of receivers) {
+      await this.notifications.notifyUser({
+        tenantId,
+        receiverId,
+        eventKey: 'order_urge_repair',
+        title: `办公室催单：${typeLabel} · ${address}${due}`,
+        payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo },
+        page,
+        template: 'orderUrge',
+        templateFields: {
+          orderNo: workOrder.orderNo,
+          type: typeLabel,
+          status: '办公室催单',
+          statusShort,
+          content: `办公室催单：${request?.content?.trim() || typeLabel}`,
+          assignee: '',
+          address,
+          reporter: request?.contactName?.trim() || '',
+          time: this.formatWhen(new Date()),
+          reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
+          dueAt: this.formatDue(workOrder),
+        },
+      });
+    }
+
+    await logRepo.save(
+      logRepo.create({
+        tenantId,
+        workOrderId: workOrder.id,
+        fromStatus: workOrder.status,
+        toStatus: workOrder.status,
+        action: 'urge_repair',
+        operatorId: user.id,
+        note: receivers.length
+          ? `办公室催单，已提醒 ${receivers.length} 人${due ? `（要求${due.replace('，', '')}）` : ''}`
+          : '办公室催单，但这单还没有人可催（没派单、类型也没配默认维修工）',
+        createdBy: user.id,
+        updatedBy: user.id,
+      }),
+    );
+
+    return { ok: true as const, notified: receivers.length };
+  }
+
   private async escalateOne(workOrder: WorkOrder, minutes: number) {
     // 先打标记再发通知：反过来的话，通知发出去、打标记失败，下一轮会再催一次
     await this.workOrderRepo.update({ id: workOrder.id }, { escalatedAt: new Date() });
@@ -2122,19 +2247,8 @@ export class RepairsService implements OnModuleInit {
       : `已派单 ${minutes} 分钟还没接`;
     const page = `pages/order-detail/order-detail?id=${workOrder.id}`;
 
-    // 1) 再催一次该接这单的人：派出去了就催那一位，还在池子里就催这个类型配的每一位
-    const receivers = workOrder.assigneeId
-      ? [workOrder.assigneeId]
-      : (
-          await this.ruleCandidates(
-            workOrder.tenantId,
-            await this.findTypeRule(
-              request?.repairType ?? undefined,
-              workOrder.tenantId,
-              workOrder.communityId,
-            ),
-          )
-        ).map((c) => c.id);
+    // 1) 再催一次该接这单的人
+    const receivers = await this.urgeReceivers(workOrder, request?.repairType ?? null);
     for (const receiverId of receivers) {
       await this.notifications.notifyUser({
         tenantId: workOrder.tenantId,
@@ -2157,6 +2271,7 @@ export class RepairsService implements OnModuleInit {
           reporter: request?.contactName?.trim() || '',
           time: this.formatWhen(new Date()),
           reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
+          dueAt: this.formatDue(workOrder),
         },
       });
     }
@@ -2218,6 +2333,17 @@ export class RepairsService implements OnModuleInit {
   private formatWhenShort(d: Date): string {
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  /**
+   * 「截止时间」那一格：工单的要求完成截止日期。
+   * 没设过截止的单退回当前时刻 —— 微信 time 类型不收空串，也不收「未设置」这种字，
+   * 填当下读起来就是「该完成了」，比整条消息被拒收强。
+   */
+  private formatDue(workOrder: { slaDueAt?: Date | string | null }): string {
+    return workOrder.slaDueAt
+      ? this.formatWhen(new Date(workOrder.slaDueAt))
+      : this.formatWhen(new Date());
   }
 
   /** 订阅消息里的时间字段微信要求「2026年8月9日 17:07」这种可读格式 */

@@ -117,6 +117,7 @@ export class SettingsService {
           orderReview: dto.wxSubscribeTemplates.orderReview?.trim() ?? '',
           orderAssigned: dto.wxSubscribeTemplates.orderAssigned?.trim() ?? '',
           orderOverdue: dto.wxSubscribeTemplates.orderOverdue?.trim() ?? '',
+          orderUrge: dto.wxSubscribeTemplates.orderUrge?.trim() ?? '',
         },
         user.id,
       );

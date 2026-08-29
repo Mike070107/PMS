@@ -38,6 +38,12 @@ class WxSubscribeTemplatesDto {
   @IsString()
   @MaxLength(64)
   orderOverdue?: string;
+
+  /** 员工端模板：办公室手动催修 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  orderUrge?: string;
 }
 
 class AutoReviewDto {

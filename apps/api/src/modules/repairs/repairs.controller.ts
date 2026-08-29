@@ -260,6 +260,21 @@ export class RepairsController {
     return this.repairsService.repairTypeCorrectionHints(id, user, access);
   }
 
+  /**
+   * 办公室手动催修：催维修工在要求完成截止日期前修完。
+   * 和定时的「超时没人接单」两回事 —— 那个催接单、系统发；这个催完成、人点发。
+   */
+  @Post('work-orders/:id/urge')
+  @RequirePermission(['work-orders', 'app:dispatch'], 'edit')
+  urgeRepair(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() _body: unknown,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.urgeRepair(id, user, access);
+  }
+
   /** 设定/取消工单的要求完成截止时间（body 不带 slaDueAt = 取消） */
   @Patch('work-orders/:id/sla-due')
   @RequirePermission(['work-orders', 'app:dispatch'], 'edit')

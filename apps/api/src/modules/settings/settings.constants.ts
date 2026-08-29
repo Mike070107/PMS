@@ -43,6 +43,12 @@ export interface WxSubscribeTemplatesSetting {
    * 混用同一个模板，维修工分不清哪条是新单。留空 = 退回用 orderAssigned 那个模板发。
    */
   orderOverdue: string;
+  /**
+   * 「催修」：办公室在工单详情里点「发送催单通知」时发给维修工，催他在要求完成截止日期前修完。
+   * 和 orderOverdue 不是一回事 —— 那个催的是「没人接单」，这个催的是「接了还没修完」。
+   * 留空 = 退回用 orderOverdue / orderAssigned 的模板发。
+   */
+  orderUrge: string;
 }
 
 export interface AutoReviewSetting {
@@ -109,7 +115,13 @@ export const DEFAULT_TENANT_SETTINGS: {
   // 默认关：业主档案没导手机号之前开着也匹配不到，反而让业主白点一次
   ownerPhoneAutoMatch: { enabled: false },
   // 默认空：没在公众平台申请模板之前推不出去，留空就只走站内信，不报错
-  wxSubscribeTemplates: { orderDispatched: '', orderReview: '', orderAssigned: '', orderOverdue: '' },
+  wxSubscribeTemplates: {
+    orderDispatched: '',
+    orderReview: '',
+    orderAssigned: '',
+    orderOverdue: '',
+    orderUrge: '',
+  },
   autoReview: { hours: 48 },
   // 默认 60 分钟：比这更短会把「人正在路上还没点接单」也算成漏看，
   // 更长就失去了「当场兜住」的意义。默认只在 8:00~20:00 催，别打扰休息。后台都可改
