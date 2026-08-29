@@ -2149,7 +2149,9 @@ export class RepairsService implements OnModuleInit {
           type: typeLabel,
           status: waited,
           statusShort: '待接单',
-          content: request?.content?.trim() || '',
+          // 前缀不能省：物业选的公共模板（物业报修提醒）没有「状态」这一格，
+          // 不标一下的话，催办消息和新工单消息在微信里长得一模一样，维修工分不出这是催他
+          content: `超时未接：${request?.content?.trim() || typeLabel}`,
           assignee: '',
           address,
           reporter: request?.contactName?.trim() || '',
