@@ -153,6 +153,66 @@ test('restoreStockLots：冲回后批次剩余原样加回', async () => {
   assert.equal(Number(lot.remainingQty), 5);
 });
 
+/**
+ * 库位是 2026-08-30 加的：入库写，出库不动。
+ * 「出库不动」这条最容易在以后被顺手改成「跟着最后一笔动」——
+ * 那样领完一次料，清单上的库位就变成空值，仓库里的人按清单找不到货。
+ */
+test('applyStockDelta：入库写库位，出库不动，入库没指定时保留原库位', async () => {
+  const manager = fakeManager();
+  await applyStockDelta(manager, {
+    ...KEY,
+    deltaQty: 5,
+    type: StockMovementType.INBOUND,
+    unitCostCents: 100,
+    refType: 'goods_receipt',
+    refId: 1,
+    operatorId: 1,
+    locationId: 11,
+  });
+  const stock = manager.tables.get(Stock)![0];
+  assert.equal(stock.locationId, 11);
+
+  // 出库：东西还在原来那格，不能被清掉
+  await applyStockDelta(manager, {
+    ...KEY,
+    deltaQty: -2,
+    type: StockMovementType.OUTBOUND,
+    unitCostCents: 100,
+    refType: 'work_order',
+    refId: 2,
+    operatorId: 1,
+  });
+  assert.equal(stock.locationId, 11);
+  assert.equal(Number(stock.qty), 3);
+
+  // 入库但没指定库位（仓库没配默认库位）：保留原来的，不清空
+  await applyStockDelta(manager, {
+    ...KEY,
+    deltaQty: 4,
+    type: StockMovementType.INBOUND,
+    unitCostCents: 100,
+    refType: 'general_receipt',
+    refId: 3,
+    operatorId: 1,
+  });
+  assert.equal(stock.locationId, 11);
+
+  // 入库指定了新库位：改过去
+  await applyStockDelta(manager, {
+    ...KEY,
+    deltaQty: 1,
+    type: StockMovementType.INBOUND,
+    unitCostCents: 100,
+    refType: 'transfer_order',
+    refId: 4,
+    operatorId: 1,
+    locationId: 12,
+  });
+  assert.equal(stock.locationId, 12);
+  assert.equal(Number(stock.qty), 8);
+});
+
 test('applyStockDelta：改数量并落带成本快照的流水；扣成负数直接拒绝', async () => {
   const manager = fakeManager();
   const stock = await applyStockDelta(manager, {
