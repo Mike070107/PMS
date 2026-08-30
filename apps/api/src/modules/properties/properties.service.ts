@@ -31,12 +31,17 @@ import {
   WorkOrder,
 } from '../../entities';
 import {
+  extractAddressCandidate,
+  matchCommunityByName,
+} from '../repairs/repair-address.util';
+import {
   BuildingQueryDto,
   CommunityQueryDto,
   CreateBuildingDto,
   CreateCommunityDto,
   CreateHouseDto,
   HouseQueryDto,
+  ParseHouseAddressDto,
   TenantScopedQueryDto,
   UpdateBuildingDto,
   UpdateCommunityDto,
@@ -212,6 +217,64 @@ export class PropertiesService {
     }
     await this.communityRepo.remove(community);
     return { ok: true };
+  }
+
+  /**
+   * 把一整句地址拆成表单字段：「剑川路198弄3号301室」→ 路名/小区/弄/号/室。
+   *
+   * 和报修的语音地址识别**共用同一套解析**（repair-address.util）——
+   * 一边改了另一边跟着变，不会出现「小程序认得出、后台认不出」这种两套口径。
+   * 小区一律撞库：名字对不上就不填，留给人自己选，绝不猜一个小区塞进去。
+   */
+  async parseHouseAddress(dto: ParseHouseAddressDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user, dto.tenantId);
+    const candidate = extractAddressCandidate(dto.text);
+    if (!candidate) {
+      return { matched: false as const };
+    }
+    const scope = scopeCommunityIds(access);
+    const all = await this.communityRepo.find({ where: { tenantId, enabled: true } });
+    const parentIds = new Set(
+      all.map((c) => c.parentId).filter((id): id is number => !!id),
+    );
+    // 分组节点不挂房产，只在叶子里选；受限角色只在自己范围内选
+    const leaves = all.filter(
+      (c) => !parentIds.has(c.id) && (!scope || scope.includes(c.id)),
+    );
+
+    const byName = matchCommunityByName(candidate.namePrefix, leaves);
+    const byPhase = candidate.phase
+      ? leaves.filter((c) => c.name.endsWith(candidate.phase as string))
+      : [];
+    let pool = byName.length && byPhase.length
+      ? byName.filter((c) => byPhase.some((p) => p.id === c.id))
+      : byName.length
+        ? byName
+        : byPhase;
+
+    // 名字和分期都没说：用「弄」反查——同一个弄基本只属于一个小区
+    if (!pool.length && candidate.lane) {
+      const laneBuildings = await this.buildingRepo.find({
+        where: { tenantId, lane: candidate.lane },
+        select: ['id', 'communityId'],
+      });
+      const ids = [...new Set(laneBuildings.map((b) => b.communityId))];
+      pool = leaves.filter((c) => ids.includes(c.id));
+    }
+    // 认出不止一个就等于没认出来，让人自己选，不赌
+    const community = pool.length === 1 ? pool[0] : null;
+
+    return {
+      matched: true as const,
+      roadName: candidate.roadName,
+      communityId: community?.id ?? null,
+      communityName: community?.name ?? null,
+      lane: candidate.lane,
+      buildingNo: candidate.buildingNo,
+      roomNo: candidate.roomNo,
+      /** 没认出小区时告诉前端为什么，别让人对着空下拉猜 */
+      ambiguous: pool.length > 1 ? pool.map((c) => c.name) : [],
+    };
   }
 
   /** 「所属管理处」下拉的选项。挂在 properties 权限下，房产页不必额外开管理处页权限 */

@@ -545,6 +545,61 @@ function HouseFormModal({
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [fullAddressTouched, setFullAddressTouched] = useState(false);
+  const [quickAddress, setQuickAddress] = useState('');
+  const [parsing, setParsing] = useState(false);
+
+  /**
+   * 一句话地址 → 逐个字段。解析在服务端，和小程序语音报修**共用同一套**
+   * （repair-address.util + 撞库），不会出现「小程序认得出、后台认不出」。
+   * 只填认出来的那几项，认不出的保持原样让人自己填 —— 不猜、不清空已填的。
+   */
+  const parseQuickAddress = async () => {
+    const text = quickAddress.trim();
+    if (!text) return;
+    setParsing(true);
+    try {
+      const r = await request<{
+        matched: boolean;
+        roadName?: string | null;
+        communityId?: number | null;
+        communityName?: string | null;
+        lane?: string | null;
+        buildingNo?: string | null;
+        roomNo?: string | null;
+        ambiguous?: string[];
+      }>({ method: 'POST', url: '/houses/parse-address', data: { text } });
+      if (!r.matched) {
+        message.warning('没认出地址，按「弄 / 号 / 室」的写法再试，或直接逐项填');
+        return;
+      }
+      const patch: Record<string, unknown> = {};
+      if (r.roadName) patch.roadName = r.roadName;
+      if (r.communityId) patch.communityId = r.communityId;
+      if (r.lane) patch.lane = r.lane;
+      if (r.buildingNo) patch.buildingNo = r.buildingNo;
+      if (r.roomNo) patch.roomNo = r.roomNo;
+      form.setFieldsValue(patch);
+      setTimeout(syncFullAddress, 0);
+      const filled = [
+        r.roadName && `路名 ${r.roadName}`,
+        r.communityName && `小区 ${r.communityName}`,
+        r.lane && `${r.lane} 弄`,
+        r.buildingNo && `${r.buildingNo} 号`,
+        r.roomNo && `${r.roomNo} 室`,
+      ].filter(Boolean).join('、');
+      message.success(`已填：${filled || '（没认出可填的字段）'}`);
+      // 认出一堆小区 = 等于没认出，明说是哪几个，让人自己选
+      if (r.ambiguous?.length) {
+        message.warning(`这个地址在 ${r.ambiguous.join('、')} 都有，小区请自己选`);
+      } else if (!r.communityId) {
+        message.warning('没认出是哪个小区，请自己选');
+      }
+    } catch (e: any) {
+      message.error(e?.message || '解析失败');
+    } finally {
+      setParsing(false);
+    }
+  };
 
   const syncFullAddress = () => {
     if (fullAddressTouched) return;
@@ -643,6 +698,25 @@ function HouseFormModal({
           }
         }}
       >
+        {/* 录入提速：整句地址粘进来一次填好，逐项填照旧可用。
+            编辑已有房产时不给这个入口——小区/弄/号在编辑态本来就锁着 */}
+        {!target && (
+          <Form.Item
+            label="一句话地址"
+            extra="把整句地址粘进来点「拆分」，自动填下面的路名 / 小区 / 弄 / 号 / 室。和小程序语音报修用的是同一套识别"
+          >
+            <Space.Compact style={{ width: '100%' }}>
+              <Input
+                placeholder="如：剑川路198弄3号301室"
+                value={quickAddress}
+                onChange={(e) => setQuickAddress(e.target.value)}
+                onPressEnter={(e) => { e.preventDefault(); parseQuickAddress(); }}
+                allowClear
+              />
+              <Button type="primary" loading={parsing} onClick={parseQuickAddress}>拆分</Button>
+            </Space.Compact>
+          </Form.Item>
+        )}
         <Row gutter={12}>
           <Col span={12}>
             <Form.Item name="propertyType" label="房产类型" initialValue="住宅">

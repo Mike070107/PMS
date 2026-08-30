@@ -26,6 +26,7 @@ import {
   CreateCommunityDto,
   CreateHouseDto,
   HouseQueryDto,
+  ParseHouseAddressDto,
   TenantScopedQueryDto,
   UpdateBuildingDto,
   UpdateCommunityDto,
@@ -101,6 +102,17 @@ export class PropertiesController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.propertiesService.getAddressBook(query.communityId, user);
+  }
+
+  /** 后台录房产：一整句地址拆成路名/小区/弄/号/室（与小程序语音识别共用同一套解析） */
+  @Post('houses/parse-address')
+  @RequirePermission('properties', 'edit')
+  parseHouseAddress(
+    @Body() dto: ParseHouseAddressDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.propertiesService.parseHouseAddress(dto, user, access);
   }
 
   /** 「所属管理处」下拉的选项（房产页用，不必另开管理处页权限） */

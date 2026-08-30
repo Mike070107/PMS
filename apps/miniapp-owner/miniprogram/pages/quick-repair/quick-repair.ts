@@ -352,6 +352,14 @@ Page({
     }
     // 用户点过 × 的同一段地址不再弹出来
     if (res.matchedText && res.matchedText === this.dismissedMatch) return;
+    // 语音把小区名听成同音字时，服务端给回正名版本，直接换掉描述里的错字。
+    // 只有靠分期/弄这类数字撞上库的才会给，名字是跟着数字改的、不是猜的；
+    // 改完仍在可编辑的框里，不对就自己改回去
+    if (res.correctedText && res.correctedText !== content) {
+      this.setData({ content: res.correctedText, detected: res });
+      wx.showToast({ title: '已按小区名单更正', icon: 'none' });
+      return;
+    }
     this.setData({ detected: res });
   },
 

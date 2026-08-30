@@ -52,6 +52,12 @@ export interface ParsedRepairAddress {
   addressText?: string;
   /** 描述里命中的片段（归一化），如「一期24号」，用于展示与「忽略」去重 */
   matchedText?: string;
+  /**
+   * 语音把小区名听成同音字时的正名版本：「风华一期17号201」→「枫桦景苑一期17号201」。
+   * null / 缺省 = 没什么好改的，别动用户说的话。
+   * 只在小区是靠分期或弄这类**数字**定位到时才会给值。
+   */
+  correctedText?: string | null;
 }
 
 /**

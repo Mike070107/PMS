@@ -13,6 +13,13 @@
 export interface RepairAddressCandidate {
   /** 分期，统一成中文写法「一期」；描述里没说就是 null */
   phase: string | null;
+  /** 路名，如「剑川路」；描述里没说就是 null */
+  roadName: string | null;
+  /**
+   * 地址数字之前的那段文字，疑似小区名（「枫桦一期17号」→「枫桦」）。
+   * 只是候选 —— 撞不上库里的小区名就丢掉，绝不拿它猜地址。
+   */
+  namePrefix: string | null;
   /** 弄的数字部分，如「198」 */
   lane: string | null;
   /** 号的数字部分，如「24」 */
@@ -35,6 +42,12 @@ export function phaseToCn(raw: string): string {
 }
 
 const PHASE_RE = /([一二三四五六七八九十两\d]{1,3})期/;
+/** 路名：「剑川路」「龙吴路」「塘中路」「前进街」。放在数字之前，长度给足 8 字 */
+const ROAD_RE = /([一-龥]{1,8}?(?:大道|路|街|巷|道))(?=[0-9０-９]|[一二三四五六七八九十两]*[弄号])/;
+/** 找地址数字段的起点，用来切出前面那段疑似小区名 */
+const ADDR_START_RE = /[0-9０-９]|[一二三四五六七八九十两]{1,3}期/;
+/** 小区名前后常见的废话，切出来之后剥掉 */
+const NAME_NOISE_RE = /^(?:我家在|我家|家住|住在|地址是|地址|位于|在|报修|这里是|这里|那个|那|的)+|(?:的|这边|那边|这里|那里)+$/g;
 const LANE_RE = /(\d{1,4})弄/;
 /** 「24号」但不是「24号码」；「号楼/栋」的后缀吞掉 */
 const BUILDING_RE = /(\d{1,4})号(?!码)(?:楼|栋)?/g;
@@ -58,6 +71,8 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
 
   const phaseMatch = PHASE_RE.exec(value);
   const phase = phaseMatch ? phaseToCn(phaseMatch[1]) + '期' : null;
+  const roadMatch = ROAD_RE.exec(value);
+  const roadName = roadMatch ? roadMatch[1] : null;
   const laneMatch = LANE_RE.exec(value);
   const lane = laneMatch ? laneMatch[1] : null;
 
@@ -91,7 +106,88 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
     buildingNo ? `${buildingNo}号` : '',
     roomNo ? `${roomNo}室` : '',
   ].join('');
-  return { phase, lane, buildingNo, roomNo, matchedText };
+  return {
+    phase,
+    roadName,
+    namePrefix: extractNamePrefix(value, roadName),
+    lane,
+    buildingNo,
+    roomNo,
+    matchedText,
+  };
+}
+
+/**
+ * 切出地址数字之前那段疑似小区名。
+ *
+ * 「枫桦一期17号201灯不亮」→「枫桦」；「剑川路198弄3号」→ 路名已单独抽走，这里给 null。
+ * 只是候选：调用方必须拿它去撞库里真实的小区名，撞不上就当没说过 ——
+ * 语音识别把「枫桦」听成「风华」是常事，绝不能拿这段文字去猜地址。
+ */
+function extractNamePrefix(value: string, roadName: string | null): string | null {
+  const start = ADDR_START_RE.exec(value);
+  if (!start || start.index === 0) return null;
+  let head = value.slice(0, start.index);
+  if (roadName) head = head.replace(roadName, '');
+  // 只留中文；标点、英文、空格都不是小区名的一部分
+  const runs = head.split(/[^一-龥]+/).filter(Boolean);
+  let name = runs.length ? runs[runs.length - 1] : '';
+  name = name.replace(NAME_NOISE_RE, '');
+  // 太短（1 字）判不出是不是小区名，太长（>8 字）多半把整句话捞进来了
+  if (name.length < 2 || name.length > 8) return null;
+  return name;
+}
+
+/**
+ * 语音把小区名听成同音字时，用撞库撞出来的正名换回去：
+ * 「风华一期17号201灯不亮」→「枫桦景苑一期17号201灯不亮」。
+ *
+ * 只在这三条同时成立时才动，其余一律返回 null（宁可留着错字，也不能改错）：
+ *   1. 说了小区名（namePrefix 有值）；
+ *   2. 这个名字**撞不上**库里任何小区 —— 说对了就没什么好改的；
+ *   3. 地址是靠**数字**（分期 / 弄）定位到的 —— 数字比名字可靠得多。
+ *      只有「7号」这种孤零零的门牌撞出来的小区不算数，那本来就可能撞到别家去。
+ *
+ * 连着分期一起换：原句「风华一期」里的「一期」已经包含在库名「枫桦景苑一期」里，
+ * 只换「风华」会得到「枫桦景苑一期一期17号」。
+ */
+export function correctCommunityNameInText(
+  text: string,
+  candidate: RepairAddressCandidate,
+  communityName: string,
+  matchedByNumber: boolean,
+): string | null {
+  const prefix = candidate.namePrefix;
+  if (!prefix || !matchedByNumber || !communityName) return null;
+  // 说对了（哪怕只是库名的一部分）就不动人家的话
+  if (communityName.includes(prefix) || prefix.includes(communityName)) return null;
+
+  // 「风华一期」→ 整段换成库名；库名本身不含这个分期时才把分期留下
+  const phase = candidate.phase;
+  if (phase && text.includes(prefix + phase)) {
+    const replacement = communityName.endsWith(phase) ? communityName : communityName + phase;
+    return text.replace(prefix + phase, replacement);
+  }
+  if (!text.includes(prefix)) return null;
+  return text.replace(prefix, communityName);
+}
+
+/**
+ * 拿候选文字去撞库里真实的小区名 —— 「判断口径的唯一出处」，
+ * 报修的语音识别和后台录房产的地址拆分都走这一个函数。
+ *
+ * 只做包含关系，不做同音：「枫桦」对得上「枫桦景苑一期」，
+ * 「风华」（识别错的同音字）一律撞不上，此时退回按「期/弄/号」定位 ——
+ * 宁可不认，也不能把单派到别的小区去。
+ */
+export function matchCommunityByName<T extends { id: number; name: string }>(
+  text: string | null | undefined,
+  communities: T[],
+): T[] {
+  const key = String(text || '').trim();
+  if (key.length < 2) return [];
+  const hit = communities.filter((c) => c.name.includes(key) || key.includes(c.name));
+  return hit;
 }
 
 /** 「024」和「24」当同一个号；楼栋表里存的是数字串，这里统一成十进制比较 */

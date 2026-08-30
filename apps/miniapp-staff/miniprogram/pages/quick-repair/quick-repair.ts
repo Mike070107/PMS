@@ -220,6 +220,15 @@ Page({
     const res = await detectRepairAddress(text);
     // 结果回来时话可能已经变了，只认最新一次
     if (text !== this.data.content) return;
+    // 语音把小区名听成同音字（「枫桦」→「风华」）时，服务端给回正名版本。
+    // 只有靠分期/弄这类数字撞上库的才会给 —— 名字是跟着数字改的，不是猜的。
+    // 改完的话仍然落在可编辑的框里，人一眼能看出被改了什么、不对就自己改回去。
+    if (res?.correctedText && res.correctedText !== text) {
+      this.setData({ content: res.correctedText, detected: res });
+      wx.showToast({ title: '已按小区名单更正', icon: 'none' });
+      this.refreshFound();
+      return;
+    }
     this.setData({ detected: res });
     this.refreshFound();
   },

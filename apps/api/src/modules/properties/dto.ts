@@ -31,6 +31,13 @@ export class TenantScopedQueryDto {
   tenantId?: number;
 }
 
+/** 后台录房产时，把一整句地址拆成路名/小区/弄/号/室 */
+export class ParseHouseAddressDto extends TenantScopedQueryDto {
+  @IsString()
+  @MaxLength(200)
+  text: string;
+}
+
 export class CommunityQueryDto extends TenantScopedQueryDto {
   /** 默认只返回挂房产的小区（分期）；true 时把分组节点也带上 */
   @IsOptional()

@@ -81,7 +81,9 @@ import {
   WorkOrdersQueryDto,
 } from './dto';
 import {
+  correctCommunityNameInText,
   extractAddressCandidate,
+  matchCommunityByName,
   extractKeywordCandidates,
   sameNo,
   tokenizeAddress,
@@ -2770,7 +2772,22 @@ export class RepairsService implements OnModuleInit {
         return shortName === candidate.phase || c.name.endsWith(candidate.phase!);
       });
     }
-    const pool = phaseLeaves.length ? phaseLeaves : leaves;
+    // 说了小区名就先按名字收敛：「吴泾新村3号102」不必再靠分期。
+    // 撞不上库里的名字（语音把「枫桦」听成「风华」）就当没说过，退回按分期/号定位 ——
+    // 名字是锦上添花，绝不能因为名字没对上就认不出地址。
+    const nameLeaves = matchCommunityByName(candidate.namePrefix, leaves);
+    let pool: Community[];
+    if (nameLeaves.length && phaseLeaves.length) {
+      const phaseIds = new Set(phaseLeaves.map((c) => c.id));
+      const both = nameLeaves.filter((c) => phaseIds.has(c.id));
+      // 名字和分期对不上（说「吴泾新村一期」而库里吴泾新村没分期）：以分期为准，
+      // 分期是数字，听错的概率比名字低
+      pool = both.length ? both : phaseLeaves;
+    } else if (nameLeaves.length) {
+      pool = nameLeaves;
+    } else {
+      pool = phaseLeaves.length ? phaseLeaves : leaves;
+    }
     const ranked = [...pool].sort((a, b) => {
       const rank = (c: Community) =>
         c.id === context?.id
@@ -2783,7 +2800,11 @@ export class RepairsService implements OnModuleInit {
 
     // 只说了分期没说楼栋：定位到小区级就够了（「二期大门坏了」）
     if (!candidate.buildingNo) {
-      if (!phaseLeaves.length) return { matched: false as const };
+      // 只说位置不说楼栋（「二期大门坏了」「吴泾新村门口路灯不亮」）：
+      // 分期或小区名认出唯一一个才算数，认出一堆等于没认出来
+      if (!phaseLeaves.length && nameLeaves.length !== 1) {
+        return { matched: false as const };
+      }
       const community = ranked[0];
       return {
         matched: true as const,
@@ -2797,6 +2818,12 @@ export class RepairsService implements OnModuleInit {
         // 没有室号就是公区单，文案里写明白，派单的人一眼看出不是入户维修
         addressText: `${community.name} 公共区域`,
         matchedText: candidate.matchedText,
+        correctedText: correctCommunityNameInText(
+          dto.text,
+          candidate,
+          community.name,
+          !!candidate.phase,
+        ),
       };
     }
 
@@ -2874,6 +2901,18 @@ export class RepairsService implements OnModuleInit {
         .filter(Boolean)
         .join(' '),
       matchedText: candidate.matchedText,
+      /**
+       * 语音把小区名听成同音字时的正名版本（「风华一期17号」→「枫桦景苑一期17号」）；
+       * 没什么好改的就是 null。端上拿它替换描述框里的文字。
+       * 只有靠分期 / 弄这类**数字**定位到的小区才纠 —— 光靠门牌号撞出来的小区
+       * 本来就可能撞到别家去，那种情况下改名字等于把错误坐实。
+       */
+      correctedText: correctCommunityNameInText(
+        dto.text,
+        candidate,
+        pickedCommunity.name,
+        !!(candidate.phase || candidate.lane),
+      ),
     };
   }
 
