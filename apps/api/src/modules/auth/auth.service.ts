@@ -220,7 +220,23 @@ export class AuthService {
     }
 
     if (bound && bound.id !== target.id) {
-      throw new ConflictException('该微信已绑定其他员工账号，请联系管理员解绑后重试');
+      /**
+       * 占着这个 openid 的不一定是员工账号 —— 上面那句 findOne 不限角色。
+       * 两端共用一个小程序 AppID 时（2026-08-30 AppID 互换后就是这样），同一个微信
+       * 在业主端和员工端拿到的是同一个 openid，占用者往往是个业主账号。
+       *
+       * 2026-08-30 踩过：文案写死「已绑定其他员工账号」，管理员照着去「员工管理」里
+       * 挨个解绑，解了半天没用 —— 真正占着的是个 tenant_id 为空的空壳业主账号，
+       * 那个列表里根本看不到它。提示必须说清是哪一种、该去哪儿找。
+       */
+      const who = bound.name?.trim() || `#${bound.id}`;
+      throw new ConflictException(
+        STAFF_ROLES.includes(bound.role)
+          ? `该微信已绑定员工「${who}」，请管理员在后台「员工管理」里给该员工解绑后重试。`
+          : `该微信已绑定业主账号「${who}」（业主端和员工端目前共用同一个小程序，两边的 openid 是同一个）。` +
+            '请管理员在后台「用户管理」里找到这个业主账号解绑；' +
+            '列表里找不到它，说明这个账号还没归属到你的物业公司名下，需要平台管理员处理。',
+      );
     }
     if (target.wxOpenid && target.wxOpenid !== session.openid) {
       // openid 按小程序隔离：保安/居委会等 2026-08-24 从业主端搬来时，账号里存的
