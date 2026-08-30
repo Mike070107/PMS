@@ -726,18 +726,68 @@ a,
   }
 }
 
+/* 系统设置：可折叠卡片（默认全部折叠，见 SettingsPage 的 SettingSection）。
+   整个标题区是点击热区，右侧 extra 里的开关不在热区内，点开关不会顺带展开卡片。 */
+.pms-setting-card .ant-card-head-title {
+  /* antd 默认 nowrap + overflow:hidden，会把标题下的摘要那行截掉 */
+  overflow: visible;
+  white-space: normal;
+}
+.pms-setting-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-block: 2px;
+  cursor: pointer;
+  user-select: none;
+}
+.pms-setting-card__head:focus-visible {
+  outline: 2px solid var(--pms-primary);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+.pms-setting-card__caret {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--pms-ink-secondary);
+  transition: transform 0.2s ease;
+}
+.pms-setting-card__caret[data-open='1'] {
+  transform: rotate(90deg);
+}
+.pms-setting-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pms-setting-card__summary {
+  font-weight: 400;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--pms-ink-secondary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pms-setting-card__caret {
+    transition: none;
+  }
+}
+
 /* 登录页 */
 .pms-login {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(420px, 46%) 1fr;
+  /* 深色品牌区收窄：46% 在 1366 上就是 628px、在 1920 上 883px，整块文案摊得太开，
+     大屏上尤其空。38% 且最多 620px —— 够放下标题两行和四条卖点，再宽只是留白变多。 */
+  grid-template-columns: minmax(360px, min(38%, 620px)) 1fr;
 }
 .pms-login-brandpane {
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 56px 60px;
+  /* 区块收窄后左右内边距跟着收，卖点那几行才不会为了两个字折行 */
+  padding: 56px 46px;
   color: #f8fafc;
   background: linear-gradient(155deg, #263247 0%, #111827 100%);
   overflow: hidden;

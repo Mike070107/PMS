@@ -116,20 +116,13 @@ export default function LoginPage() {
             管理后台登录
           </Title>
           <Text type="secondary" style={{ display: 'block', marginBottom: 14 }}>
-            请使用物业分配的账号登录
+            用微信扫码登录，或使用物业分配的账号
           </Text>
+          {/* 扫码放第一个并作为默认页签：不用记密码、也不会把密码敲在公用电脑上，
+              是日常最该走的那条路；账号密码留给没绑微信/扫不了码的情况 */}
           <Tabs
-            defaultActiveKey="account"
+            defaultActiveKey="qr"
             items={[
-              {
-                key: 'account',
-                label: (
-                  <span>
-                    <UserOutlined /> 账号密码
-                  </span>
-                ),
-                children: accountForm,
-              },
               {
                 key: 'qr',
                 label: (
@@ -138,6 +131,15 @@ export default function LoginPage() {
                   </span>
                 ),
                 children: <QrLoginPanel onSuccess={finishLogin} />,
+              },
+              {
+                key: 'account',
+                label: (
+                  <span>
+                    <UserOutlined /> 账号密码
+                  </span>
+                ),
+                children: accountForm,
               },
             ]}
           />

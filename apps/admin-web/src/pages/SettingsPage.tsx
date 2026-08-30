@@ -11,7 +11,8 @@ import {
   Switch,
   Typography,
 } from 'antd';
-import { useCallback, useEffect, useState } from 'react';
+import { RightOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { request } from '../lib/api';
 import { usePagePerm } from '../lib/auth';
 
@@ -87,6 +88,62 @@ const FIELD_FROM_LABEL: Record<string, string> = {
 interface MatchableStat {
   ownersWithPhoneAndHouse: number;
   housesTotal: number;
+}
+
+/**
+ * 可折叠的设置卡片，**默认全部折叠**。
+ *
+ * 设置页是「偶尔进来改一件事」的地方，五张卡片全摊开要滚三四屏才找得到目标；
+ * 折叠后一屏就能看完有哪些设置，点标题展开要改的那张。标题下留一行摘要，
+ * 免得折叠状态只剩几个光秃秃的名词。
+ *
+ * 开关放在标题右侧（extra，不在可点区域里）：折叠时也能直接看状态、直接切，
+ * 且点开关不会顺带把卡片展开。
+ */
+function SettingSection({
+  title,
+  summary,
+  extra,
+  children,
+}: {
+  title: string;
+  summary: string;
+  extra?: ReactNode;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const toggle = () => setOpen((v) => !v);
+  return (
+    <Card
+      className="pms-setting-card"
+      style={{ maxWidth: 760, marginBottom: 16 }}
+      styles={open ? undefined : { body: { display: 'none' } }}
+      title={
+        <div
+          className="pms-setting-card__head"
+          role="button"
+          tabIndex={0}
+          aria-expanded={open}
+          onClick={toggle}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              toggle();
+            }
+          }}
+        >
+          <RightOutlined className="pms-setting-card__caret" data-open={open ? '1' : '0'} />
+          <span className="pms-setting-card__text">
+            <span>{title}</span>
+            <span className="pms-setting-card__summary">{summary}</span>
+          </span>
+        </div>
+      }
+      extra={extra}
+    >
+      {open ? children : null}
+    </Card>
+  );
 }
 
 export default function SettingsPage() {
@@ -334,7 +391,10 @@ export default function SettingsPage() {
     <div>
       <Title level={4} style={{ marginTop: 0 }}>系统设置</Title>
 
-      <Card title="微信订阅消息" style={{ maxWidth: 760, marginBottom: 24 }}>
+      <SettingSection
+        title="微信订阅消息"
+        summary="业主收「已派单 / 待验收」，维修工收「有新工单」，填模板 ID 才发得出去"
+      >
         <Paragraph style={{ marginBottom: 8 }}>
           填了模板 ID，业主就能在<Text strong>微信里收到「已派单」「修好了待验收」的提醒</Text>、
           维修工能收到<Text strong>「有新工单派给你」</Text>；留空则只写站内消息。
@@ -427,9 +487,12 @@ export default function SettingsPage() {
             </Button>
           )}
         </Space>
-      </Card>
+      </SettingSection>
 
-      <Card title="工单自动验收" style={{ maxWidth: 760, marginBottom: 24 }}>
+      <SettingSection
+        title="工单自动验收"
+        summary={`维修工报完工，业主 ${autoReviewHours} 小时不验收就由系统自动验收`}
+      >
         <Paragraph>
           维修工提交完工后，业主未在设定时间内验收，系统将自动完成工单并记录
           <Text strong>“系统自动验收”</Text>。建议保持 48～72 小时。
@@ -458,11 +521,11 @@ export default function SettingsPage() {
         <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 12, marginBottom: 0 }}>
           修改后立即生效；已经处于待验收状态的工单也会使用新的租户时限。
         </Paragraph>
-      </Card>
+      </SettingSection>
 
-      <Card
+      <SettingSection
         title="服务号通知维修工（推荐）"
-        style={{ maxWidth: 760, marginBottom: 24 }}
+        summary="关注了服务号就能一直推，不受小程序订阅「一次一条」的额度限制"
         extra={
           <Switch
             checked={mp.enabled}
@@ -564,11 +627,15 @@ export default function SettingsPage() {
           开着服务号时，派单通知优先走它；没关注的人自动退回小程序订阅消息，
           两条都不通时仍然会写进小程序里的「消息」。
         </Paragraph>
-      </Card>
+      </SettingSection>
 
-      <Card
+      <SettingSection
         title="超时没人接单，自动催办"
-        style={{ maxWidth: 760, marginBottom: 24 }}
+        summary={
+          escalateEnabled
+            ? `超过 ${escalateMinutes} 分钟没人接，在 ${escalateStart}~${escalateEnd} 之间催一次`
+            : '已关闭：没人接单时不会再提醒'
+        }
         extra={
           <Space>
             <Text type="secondary">{escalateEnabled ? '已开启' : '已关闭'}</Text>
@@ -630,9 +697,12 @@ export default function SettingsPage() {
           时段外到点的单不会被漏掉，等第二天窗口一开照样催。起止选同一个点表示全天都催。
           催办用的是上面「超时没人接单，催办维修工」那个模板，没填就退回用新工单那个模板。
         </Paragraph>
-      </Card>
+      </SettingSection>
 
-      <Card title="业主手机号快速识别" style={{ maxWidth: 760 }}>
+      <SettingSection
+        title="业主手机号快速识别"
+        summary="业主授权手机号后，按房产档案里的同号业主直接带出地址，不用扫码填房号"
+      >
         {!settings ? (
           <Skeleton active paragraph={{ rows: 2 }} />
         ) : (
@@ -692,7 +762,7 @@ export default function SettingsPage() {
             )}
           </>
         )}
-      </Card>
+      </SettingSection>
     </div>
   );
 }

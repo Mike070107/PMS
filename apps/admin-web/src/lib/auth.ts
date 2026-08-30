@@ -7,6 +7,22 @@ const USER_KEY = 'pms.admin.user';
 const ACCESS_KEY = 'pms.admin.access';
 const ACTING_KEY = 'pms.admin.actingTenant';
 const ACTING_OFFICE_KEY = 'pms.admin.actingOffice';
+const SESSION_KEYS = [TOKEN_KEY, USER_KEY, ACCESS_KEY, ACTING_KEY, ACTING_OFFICE_KEY];
+
+/**
+ * 会话存 sessionStorage 而不是 localStorage：**关掉网页就登出**。
+ *
+ * 物业办公室多是公用电脑，用 localStorage 的话人走了、浏览器关了，下一个人打开
+ * 后台仍然是上一个人的身份，能看能改能导出。sessionStorage 由浏览器在标签页关闭时
+ * 清空，天然就是「这一次开着网页」的生命周期：
+ * - 刷新 / 页内跳转：会话保留，不会把人踢出去；
+ * - 从当前页面里打开的新标签页：浏览器会复制一份，仍然是登录态；
+ * - 手动新开标签页贴地址进来：要重新登录（或直接扫码，比输密码快）。这是这条规则的代价。
+ *
+ * 注意：这里清的是浏览器这一侧。服务端的 access token 是无状态 JWT，仍然按
+ * JWT_ACCESS_EXPIRES_IN（默认 2h）自然过期，没有吊销名单。
+ */
+const store: Storage = window.sessionStorage;
 
 type AuthUser = AdminLoginResp['user'];
 
@@ -43,7 +59,24 @@ let cached: Snapshot = {
   actingTenant: null,
   actingOffice: null,
 };
+migrateLegacyLocalSession();
 refreshFromStorage();
+
+/**
+ * 改用 sessionStorage 之前的会话躺在 localStorage 里。把它搬到本标签页的
+ * sessionStorage（不至于一上线就把所有人踢下线），并**从 localStorage 里删掉** ——
+ * 否则「关掉网页就登出」在老用户那儿永远不成立，token 还留在磁盘上。
+ */
+function migrateLegacyLocalSession() {
+  // 判断只在循环前做一次：搬完 token 之后 store 里就有值了，写在循环里会漏搬后面几项
+  const adopt = !!localStorage.getItem(TOKEN_KEY) && !store.getItem(TOKEN_KEY);
+  for (const key of SESSION_KEYS) {
+    const raw = localStorage.getItem(key);
+    if (raw === null) continue;
+    if (adopt) store.setItem(key, raw);
+    localStorage.removeItem(key);
+  }
+}
 
 function parseJson<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -56,20 +89,20 @@ function parseJson<T>(raw: string | null): T | null {
 
 function refreshFromStorage() {
   const parts = [
-    localStorage.getItem(TOKEN_KEY) ?? '',
-    localStorage.getItem(USER_KEY) ?? '',
-    localStorage.getItem(ACCESS_KEY) ?? '',
-    localStorage.getItem(ACTING_KEY) ?? '',
-    localStorage.getItem(ACTING_OFFICE_KEY) ?? '',
+    store.getItem(TOKEN_KEY) ?? '',
+    store.getItem(USER_KEY) ?? '',
+    store.getItem(ACCESS_KEY) ?? '',
+    store.getItem(ACTING_KEY) ?? '',
+    store.getItem(ACTING_OFFICE_KEY) ?? '',
   ].join(' ');
   if (parts === cachedRaw) return;
   cachedRaw = parts;
   cached = {
-    token: localStorage.getItem(TOKEN_KEY) || undefined,
-    user: parseJson<AuthUser>(localStorage.getItem(USER_KEY)),
-    access: parseJson<AdminAccess>(localStorage.getItem(ACCESS_KEY)),
-    actingTenant: parseJson<ActingTenant>(localStorage.getItem(ACTING_KEY)),
-    actingOffice: parseJson<ActingOffice>(localStorage.getItem(ACTING_OFFICE_KEY)),
+    token: store.getItem(TOKEN_KEY) || undefined,
+    user: parseJson<AuthUser>(store.getItem(USER_KEY)),
+    access: parseJson<AdminAccess>(store.getItem(ACCESS_KEY)),
+    actingTenant: parseJson<ActingTenant>(store.getItem(ACTING_KEY)),
+    actingOffice: parseJson<ActingOffice>(store.getItem(ACTING_OFFICE_KEY)),
   };
 }
 
@@ -85,33 +118,29 @@ export const auth = {
   getActingTenant(): ActingTenant | null { return cached.actingTenant; },
   getActingOffice(): ActingOffice | null { return cached.actingOffice; },
   setSession(token: string, user: AuthUser) {
-    localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    store.setItem(TOKEN_KEY, token);
+    store.setItem(USER_KEY, JSON.stringify(user));
     refresh();
   },
   setAccess(access: AdminAccess | null) {
-    if (access) localStorage.setItem(ACCESS_KEY, JSON.stringify(access));
-    else localStorage.removeItem(ACCESS_KEY);
+    if (access) store.setItem(ACCESS_KEY, JSON.stringify(access));
+    else store.removeItem(ACCESS_KEY);
     refresh();
   },
   setActingTenant(t: ActingTenant | null) {
-    if (t) localStorage.setItem(ACTING_KEY, JSON.stringify(t));
-    else localStorage.removeItem(ACTING_KEY);
+    if (t) store.setItem(ACTING_KEY, JSON.stringify(t));
+    else store.removeItem(ACTING_KEY);
     // 换公司后旧的管理处选择必然无效，跟着清掉
-    localStorage.removeItem(ACTING_OFFICE_KEY);
+    store.removeItem(ACTING_OFFICE_KEY);
     refresh();
   },
   setActingOffice(o: ActingOffice | null) {
-    if (o) localStorage.setItem(ACTING_OFFICE_KEY, JSON.stringify(o));
-    else localStorage.removeItem(ACTING_OFFICE_KEY);
+    if (o) store.setItem(ACTING_OFFICE_KEY, JSON.stringify(o));
+    else store.removeItem(ACTING_OFFICE_KEY);
     refresh();
   },
   clear() {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(ACCESS_KEY);
-    localStorage.removeItem(ACTING_KEY);
-    localStorage.removeItem(ACTING_OFFICE_KEY);
+    SESSION_KEYS.forEach((key) => store.removeItem(key));
     refresh();
   },
   subscribe(l: () => void) {
@@ -120,18 +149,12 @@ export const auth = {
   },
 };
 
-// 跨标签页同步
+// 同源同标签页内（iframe）的会话变更同步。
+// 注意：sessionStorage 的 storage 事件不跨标签页 —— 每个标签页各有一份会话，
+// 这是「关掉网页就登出」的直接后果，不是漏掉了同步。
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
-    if (
-      e.key === TOKEN_KEY ||
-      e.key === USER_KEY ||
-      e.key === ACCESS_KEY ||
-      e.key === ACTING_KEY ||
-      e.key === ACTING_OFFICE_KEY
-    ) {
-      refresh();
-    }
+    if (e.key === null || SESSION_KEYS.includes(e.key)) refresh();
   });
 }
 
