@@ -136,6 +136,22 @@
 .media__hint { font-size: 26rpx; color: var(--color-text-tertiary); }
 
 /* 描述区 */
+/* 「按住说话」下面的用法说明。老人界面：辅助说明 26-28rpx、行高 1.6，
+   和上面的语音按钮留 24rpx，别挤在一起 */
+.howto {
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+.howto__line {
+  font-size: var(--font-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+.howto__line + .howto__line { margin-top: 8rpx; }
+.howto__eg { color: var(--color-brand); }
+
 .desc {
   box-sizing: border-box;
   width: 100%;

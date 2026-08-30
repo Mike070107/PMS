@@ -137,6 +137,15 @@
         <text class="speech__text">{{recording ? '松开结束' : '按住说话'}}</text>
       </button>
 
+      <!-- 用法说明。业主端**没有联系人/电话字段**（业主本人就是联系人），位置在上面选，
+           所以这里不写「说联系人电话」——写了人会去找一个不存在的输入框。
+           员工端那页要代报，文案不一样，两边各写各的 -->
+      <view class="howto">
+        <view class="howto__line">一句话说清哪里坏了、什么现象，AI 自动判类型、认地址。</view>
+        <view class="howto__line">例如说出：<text class="howto__eg">厨房水管漏水了</text></view>
+        <view class="howto__line">然后点【提交报修】即可</view>
+      </view>
+
       <!-- 自动判定出的类型，允许改 -->
       <view wx:if="{{guessLabel}}" class="guess">
         <view class="guess__row">

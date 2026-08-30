@@ -67,7 +67,7 @@
 
     <textarea
       class="say"
-      placeholder="例：一期17号201家里灯不亮，张先生报，电话13800138000"
+      placeholder="例：枫桦一期17号201家里灯不亮，联系人张先生，电话13800138000"
       value="{{content}}"
       bindinput="onInput"
     />
