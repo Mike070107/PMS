@@ -10,7 +10,8 @@
     "pages/inventory/inventory",
     "pages/messages/messages",
     "pages/me/me",
-    "pages/web-login/web-login"
+    "pages/web-login/web-login",
+    "pages/index/index"
   ],
   "window": {
     "navigationBarTitleText": "邻修工作台",
