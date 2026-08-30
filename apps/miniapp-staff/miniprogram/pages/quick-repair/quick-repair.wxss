@@ -28,6 +28,23 @@
   transform: scale(0.99);
 }
 
+/* 「按住说话」下面的用法说明。辅助说明用 26-28rpx（面向老人的下限），
+   行高 1.6，别和上面的按钮挤在一起 */
+.howto {
+  margin-top: 16rpx;
+  padding: 20rpx 24rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+.howto__line {
+  font-size: var(--font-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+.howto__line + .howto__line { margin-top: 8rpx; }
+/* 例句给出颜色，一眼看得出「这句是照着念的」 */
+.howto__eg { color: var(--color-brand); }
+
 /* 实时识别出来的半截话：让人知道系统在听、听成了什么 */
 .partial {
   margin-top: 16rpx;

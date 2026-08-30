@@ -1,6 +1,6 @@
 <view class="container container--with-bar">
   <view class="page-lead">
-    <view class="page-lead__title">随手拍报修</view>
+    <view class="page-lead__title">AI随手拍报修</view>
   </view>
 
   <!-- 1. 拍 -->
@@ -54,6 +54,14 @@
       bindtouchend="onStopRecord"
       bindtouchcancel="onStopRecord"
     >{{recording ? '松开结束' : '按住说话'}}</button>
+
+    <!-- 按钮下面这段是「这页到底怎么用」：不写的话，人按完话不知道还要不要自己填表。
+         例句用真实小区名，照着念一遍就能成一单 -->
+    <view class="howto">
+      <view class="howto__line">一句话描述故障地点和现象以及联系人联系电话，AI 自动填表。</view>
+      <view class="howto__line">例如说出：<text class="howto__eg">枫桦一期17号201家里灯不亮，联系人张先生，电话13800138000</text></view>
+      <view class="howto__line">然后点【提交报修】即可</view>
+    </view>
 
     <view wx:if="{{recording && partial}}" class="partial">{{partial}}</view>
 

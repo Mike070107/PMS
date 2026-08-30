@@ -41,7 +41,7 @@
       <button class="action" bindtap="onTapSnapRepair">
         <view class="icon icon--camera action__icon"></view>
         <view class="action__body">
-          <view class="action__title">随手拍报修</view>
+          <view class="action__title">AI随手拍报修</view>
           <view class="action__desc">拍张照片、说一句话就行</view>
         </view>
         <view class="icon icon--chevron"></view>
