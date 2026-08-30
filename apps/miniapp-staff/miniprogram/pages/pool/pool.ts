@@ -40,7 +40,31 @@ type OrderRow = WorkOrderListItem & {
   actionText: string;
   /** 「王师傅」/「未派单」，派单台专用 */
   assigneeText: string;
+
+  /* ---- 下面三个只给卡片上的数据网格用（data-first-ui） ----
+     网格是「标签 / 值 / 说明」三层，值那一层是全卡唯一的视觉锚点，
+     所以要的是「8天」这种能放大的短值，不是「已等 8 天」这种整句。
+     stayBadge / reporterText 那两个整句仍留着给别的页面用，这里不动它们。 */
+  /** 「8天」/「今天」—— 网格里放大到 44rpx 的那个数 */
+  statStay: string;
+  /** 「王女士」—— 报修人姓名，不带身份后缀 */
+  statReporter: string;
+  /** 「业主」「保安代报」—— 身份，压在姓名下面当说明 */
+  statReporterHint: string;
 };
+
+/**
+ * 「王保安（保安代报）」→ 姓名 + 身份两截。
+ *
+ * 网格的值那一层要放大，只放得下姓名；身份降到下面 24rpx 的说明位。
+ * 括号按全角匹配 —— withOrderLabels 的 reporterTextOf 拼的就是全角，别写成半角。
+ * 拆不出来（只有姓名、或格式变了）就整串当姓名用，不要吞掉信息。
+ */
+function splitReporter(text: string): { statReporter: string; statReporterHint: string } {
+  const matched = /^(.+?)（(.+)）$/.exec(text || '');
+  if (matched) return { statReporter: matched[1], statReporterHint: matched[2] };
+  return { statReporter: text || '未填', statReporterHint: '' };
+}
 
 /** 未指派 + 这些状态 = 维修工可以领、办公室需要派 */
 const POOL_STATUSES: string[] = [
@@ -127,6 +151,8 @@ Page({
     /** 接单权：和派单同一个勾选（工单池那一格的「接单 / 派单」） */
     canAccept: false,
     leadText: '待接单',
+    /** 页头红数字：这一屏里压了 3 天以上的单数，0 就不显示那一格 */
+    overdueCount: 0,
     list: [] as OrderRow[],
     loading: false,
     loaded: false,
@@ -227,6 +253,9 @@ Page({
               ? '接回'
               : '接单',
           assigneeText: item.assigneeName || '未派单',
+          // 当天报的显示「今天」而不是「0天」——「0」放大到 44rpx 看着像出错了
+          statStay: item.stayDays >= 1 ? `${item.stayDays}天` : '今天',
+          ...splitReporter(item.reporterText),
         };
       });
 
@@ -247,6 +276,10 @@ Page({
           ? (dispatcher ? '待派单' : '待接单')
           : filter.label,
         list: rows,
+        // 页头那个红数字：压了 3 天以上的（stayTone 的 danger 档）。
+        // 前端按当前这一屏算，不另开接口 —— 它说的就是「你眼前这批里有几单压着」，
+        // 换筛选档跟着变是对的，别理解成全局待办数。
+        overdueCount: rows.filter((row) => row.stayTone === 'danger').length,
         loaded: true,
         capped: rows.length >= PAGE_CAP,
         /* 空态要说清「空在哪一层」：搜的没有 / 这一档没有 / 真的没活。

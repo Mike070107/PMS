@@ -14,7 +14,9 @@
    写成两个类的原因和 .container--with-bar 一样：单写 .container--tabbar 会被
    上面这条同特异度、更靠后的规则整个压掉。 */
 .container.container--tabbar {
-  padding-bottom: calc(180rpx + env(safe-area-inset-bottom));
+  /* 2026-08-31 tabBar 改成悬浮胶囊后要多让一档：胶囊高 112 + 离底 24 + 呼吸 64。
+     改这个数之前先看 custom-tab-bar/index.wxss 里的 .tabbar 尺寸，两边是一套账。 */
+  padding-bottom: calc(200rpx + env(safe-area-inset-bottom));
 }
 
 .card {
@@ -426,3 +428,87 @@ button::after { border: none; }
    优先保证「待派单/维修中」这些状态看得见 —— 旁边的报修类型再长也只能截断，
    状态被挤没了业主就不知道单子走到哪一步了。 */
 .status-tag { flex-shrink: 0; }
+
+/* ==================== data-first-ui 公共件 ====================
+   规范与判断标准见 .claude/skills/data-first-ui/（SKILL.md + references/patterns.md）。
+   一句话：每块信息只留一个视觉锚点，其余压到 26-28rpx 灰。
+   放全局是因为工单池 / 在手工单 / 审批 / 库存都要用同一套 —— 别在页面里再抄一份。 */
+
+/* ---------- 深色页头：一眼交代「这屏是什么、现在什么情况」 ---------- */
+.hero {
+  background: var(--color-brand-dark);
+  color: #fff;
+  /* padding-bottom 必须比视觉留白多出一个 --radius-lg：下面的 .sheet 要上翻这么多，
+     少留了就会盖住统计数字（改这个值前先看 .hero-sheet 的 margin-top）。 */
+  padding: var(--space-lg) var(--space-lg) calc(var(--space-lg) + var(--radius-lg));
+}
+.hero__title { font-size: var(--font-3xl); font-weight: 600; line-height: 1.4; }
+.hero__stats { display: flex; gap: var(--space-xl); margin-top: var(--space-md); }
+.hero__num {
+  font-size: var(--font-stat-lg);
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+/* 深色底上不用 --color-danger（#ff4d4f 在海军蓝上发闷），提亮一档才看得出是警示 */
+.hero__num--danger { color: #ff9a9b; }
+.hero__cap {
+  font-size: var(--font-sm);
+  /* 不用 --color-text-tertiary：灰字压在深蓝上会脏，半透明白才干净 */
+  color: rgba(255, 255, 255, 0.72);
+  margin-top: 4rpx;
+}
+
+/* 内容区上翻，压住页头底部预留的那一截圆角 */
+.hero-sheet {
+  position: relative;
+  margin-top: calc(-1 * var(--radius-lg));
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--color-page-bg);
+  padding: var(--space-lg) 28rpx var(--space-xl);
+  min-height: 60vh;
+}
+/* tab 页：给底部悬浮栏让出高度，否则最后一张卡被压住 */
+.hero-sheet.hero-sheet--tabbar {
+  padding-bottom: calc(200rpx + env(safe-area-inset-bottom));
+}
+
+/* ---------- 数据网格：本设计语言的核心 ---------- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  /* 缝隙即分隔线：底色透过 2rpx 缝显出来，不给每一格画 border */
+  gap: 2rpx;
+  background: var(--color-hairline);
+  border-radius: var(--radius-md);
+  /* 必须写在容器上。写在 .stat 上圆角不生效，四角会露出直角白块 */
+  overflow: hidden;
+  margin-top: var(--space-md);
+}
+.stat-grid--2 { grid-template-columns: repeat(2, 1fr); }
+.stat-grid--4 { grid-template-columns: repeat(4, 1fr); }
+
+.stat {
+  background: var(--color-card-bg);
+  padding: var(--space-md) var(--space-xs);
+  text-align: center;
+  /* 三层内容 + 呼吸，低于这个数就挤成一坨 */
+  min-height: 168rpx;
+  box-sizing: border-box;
+}
+.stat__label { font-size: var(--font-xs); color: var(--color-text-tertiary); line-height: 1.5; }
+.stat__value {
+  margin-top: var(--space-xs);
+  font-size: var(--font-stat);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-brand);
+  /* 数字等宽：多张卡并排滚动时，数值不会左右跳 */
+  font-variant-numeric: tabular-nums;
+}
+/* 值是中文词（「水暖」「王女士」）时降一档 —— 44rpx 放四个汉字会撑破格子 */
+.stat__value--text { font-size: var(--font-2xl); }
+.stat__value--danger { color: var(--color-danger); }
+.stat__value--warn { color: #ad6800; }
+.stat__value--success { color: var(--color-success); }
+.stat__hint { margin-top: var(--space-xs); font-size: 24rpx; color: var(--color-text-tertiary); line-height: 1.4; }

@@ -1,7 +1,21 @@
-<view class="container container--tabbar">
-  <view class="page-lead">
-    <view class="page-lead__title">{{leadText}} {{list.length}} 条</view>
+<!-- 深色页头（data-first-ui）：把「这屏是什么、现在什么情况」在第一眼说完。
+     标题按身份变，和 pool.ts 里那句 setNavigationBarTitle 同源 —— 改一处要改两处。 -->
+<view class="hero">
+  <view class="hero__title">{{dispatcher ? '派单台' : '工单池'}}</view>
+  <view class="hero__stats">
+    <view>
+      <view class="hero__num">{{list.length}}</view>
+      <view class="hero__cap">{{leadText}}</view>
+    </view>
+    <!-- 一单都没压着就整格不显示：常年挂个 0 会让这抹红失去意义 -->
+    <view wx:if="{{overdueCount}}">
+      <view class="hero__num hero__num--danger">{{overdueCount}}</view>
+      <view class="hero__cap">压 3 天以上</view>
+    </view>
   </view>
+</view>
+
+<view class="hero-sheet hero-sheet--tabbar">
 
   <!-- 巡查发现问题：先给最快的那条路（拍+说），填表放第二个。
        间距由外层 .btn-row 给（gap + margin-bottom）——按钮自身的 margin
@@ -78,31 +92,41 @@
     bindtap="onTapItem"
     data-id="{{item.id}}"
   >
+    <!-- 标题放故障描述，不放报修类型：站在楼道里先要知道「什么坏了」，
+         类型是分类不是内容，降到下面网格里。工单编号同理 —— 只在核对时才念，
+         跟着地址走一行小字就够，不值得占一整行（data-first-ui 的判断表）。 -->
     <view class="wo-card__head">
-      <view class="wo-card__title">
-        <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>
-        <text class="wo-card__type">{{item.typeLabel}}</text>
+      <view class="wo-card__main">
+        <view class="wo-card__title">
+          <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>{{item.summaryContent || '未填描述'}}
+        </view>
+        <view class="wo-card__sub">{{item.summaryAddress || '未填地址'}} · 单号 {{item.orderNo}}</view>
       </view>
       <pms-tag class="status-tag" status="{{item.status}}"/>
     </view>
 
-    <view class="kv"><text class="kv__k">工单编号</text><text class="kv__v">{{item.orderNo}}</text></view>
-    <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{item.summaryAddress || '未填地址'}}</text></view>
-    <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v kv__v--clamp">{{item.summaryContent}}</text></view>
-    <view class="kv">
-      <text class="kv__k">报修时间</text>
-      <text class="kv__v">{{item.timeText}}<text class="kv__tag kv__tag--{{item.stayTone}}">{{item.stayBadge}}</text></text>
+    <!-- 数据网格：全卡唯一的视觉锚点是「已等」那个数，压 3 天以上转红。
+         第三格按身份换：派单台要看「在谁手上」，维修工要看「找谁开门」。 -->
+    <view class="stat-grid">
+      <view class="stat">
+        <view class="stat__label">已等</view>
+        <view class="stat__value stat__value--{{item.stayTone}}">{{item.statStay}}</view>
+        <view class="stat__hint">{{item.timeText}}</view>
+      </view>
+      <view class="stat">
+        <view class="stat__label">类型</view>
+        <view class="stat__value stat__value--text">{{item.typeLabel}}</view>
+        <view class="stat__hint">{{item.missingText ? '等待材料' : ''}}</view>
+      </view>
+      <view class="stat">
+        <view class="stat__label">{{dispatcher ? '维修工' : '报修人'}}</view>
+        <view class="stat__value stat__value--text">{{dispatcher ? item.assigneeText : item.statReporter}}</view>
+        <view class="stat__hint">{{dispatcher ? '' : item.statReporterHint}}</view>
+      </view>
     </view>
-    <!-- 报修人：上门前先知道找谁开门 / 问情况；代报的带身份，员工提交的写明来源（2026-08-27 要求放在时间下面） -->
-    <view class="kv"><text class="kv__k">报修人</text><text class="kv__v">{{item.reporterText}}</text></view>
-    <!-- 派单台上「这单在谁手上」和地址一样重要：没有它就没法判断该不该改派 -->
-    <view wx:if="{{dispatcher}}" class="kv">
-      <text class="kv__k">维修工</text>
-      <text class="kv__v">{{item.assigneeText}}</text>
-    </view>
-    <view wx:if="{{item.missingText}}" class="kv">
-      <text class="kv__k">等待材料</text><text class="kv__v">{{item.missingText}}</text>
-    </view>
+
+    <!-- 缺料清单太长塞不进网格，放正文；网格那格只标「等待材料」当索引 -->
+    <view wx:if="{{item.missingText}}" class="wo-card__note">等待材料：{{item.missingText}}</view>
 
     <view class="wo-card__foot">
       <!-- 派单台 -->

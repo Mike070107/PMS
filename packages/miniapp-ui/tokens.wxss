@@ -49,6 +49,18 @@ page {
   --font-2xl: 36rpx; /* 卡片标题、按钮 */
   --font-3xl: 38rpx; /* 页面主标题 */
 
+  /* ---------- 锚点字号（data-first-ui，见 .claude/skills/data-first-ui/） ----------
+     只给「每块信息里唯一的那个数值」用 —— 等待时长、工单数、库存量这种一眼要看到的。
+     **不要拿来做标题**：满屏 44rpx 就等于没有锚点，又退回「全是字」。
+     和上面的阶梯是两回事：阶梯管正文层级，这两个管「让眼睛先落在哪」。 */
+  --font-stat: 44rpx; /* 卡片内数据网格里的数值 */
+  --font-stat-lg: 56rpx; /* 深色页头里的统计数字 */
+
+  /* 数据网格的分隔线：靠 1-2rpx 的缝隙透出底色来画线，比给每格加 border 干净 */
+  --color-hairline: #eaecf0;
+  /* 悬浮层阴影，全局只此一档（底部悬浮栏、浮动按钮） */
+  --shadow-float: 0 8rpx 32rpx rgba(31, 45, 74, 0.12);
+
   background: var(--color-page-bg);
   color: var(--color-text);
   font-size: var(--font-lg);
