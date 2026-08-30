@@ -1,0 +1,280 @@
+<title>工单池 · data-first-ui 重设计</title>
+<style>
+  /* 750rpx = 375px，1rpx = 0.5px —— 与真机等比 */
+  :root {
+    --brand: #31558a;
+    --brand-dark: #243f69;
+    --page-bg: #e6eaf1;
+    --card-bg: #ffffff;
+    --text: #1f1f1f;
+    --text-2: #595959;
+    --text-3: #8c8c8c;
+    --hairline: #eaecf0;
+    --border: #e5e7eb;
+    --danger: #ff4d4f;
+    --success: #52c41a;
+    --warn: #ad6800;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #d8dde6; padding: 24px;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", -apple-system, sans-serif;
+    display: flex; gap: 28px; align-items: flex-start;
+  }
+  .col { width: 375px; flex: none; }
+  .col__cap { font-size: 14px; font-weight: 600; color: #1f2d4a; margin-bottom: 4px; }
+  .col__sub { font-size: 12px; color: #5b6478; margin-bottom: 12px; line-height: 1.6; }
+  .screen {
+    width: 375px; background: var(--page-bg);
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 6px 24px rgba(20,32,60,.16);
+  }
+
+  /* ==================== 改前 ==================== */
+  .old-wrap { padding: 14px; }
+  .old-lead { font-size: 19px; font-weight: 600; color: var(--text); line-height: 1.4; margin-bottom: 16px; }
+  .old-card {
+    background: var(--card-bg); border-radius: 12px; padding: 16px; margin-bottom: 12px;
+  }
+  .old-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .old-type { font-size: 18px; font-weight: 600; color: var(--text); }
+  .old-tag {
+    font-size: 13px; color: var(--brand); border: 1px solid var(--brand);
+    border-radius: 4px; padding: 2px 8px;
+  }
+  .kv { display: flex; align-items: flex-start; margin-top: 12px; line-height: 1.6; }
+  .kv:first-child { margin-top: 0; }
+  .kv__k { flex: none; width: 76px; font-size: 16px; color: var(--text-3); }
+  .kv__v { flex: 1; font-size: 16px; color: var(--text); }
+  .kv__tag--danger { color: var(--danger); font-weight: 600; margin-left: 8px; }
+  .old-foot { display: flex; justify-content: flex-end; margin-top: 14px; }
+  .old-btn {
+    height: 38px; padding: 0 16px; background: var(--brand); color: #fff;
+    border-radius: 8px; font-size: 15px; display: flex; align-items: center;
+  }
+
+  /* ==================== 改后 ==================== */
+  /* 深色页头 */
+  .hero { background: var(--brand-dark); color: #fff; padding: 16px 16px 30px; }
+  .hero__title { font-size: 19px; font-weight: 600; line-height: 1.4; }
+  .hero__stats { display: flex; gap: 24px; margin-top: 12px; }
+  .hero__num { font-size: 28px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .hero__num--danger { color: #ff9a9b; }
+  .hero__cap { font-size: 14px; color: rgba(255,255,255,.72); margin-top: 2px; }
+
+  /* 内容区上翻，压住页头底部预留的那一截 */
+  .sheet {
+    position: relative; margin-top: -12px;
+    border-radius: 12px 12px 0 0; background: var(--page-bg);
+    padding: 16px 16px 88px;
+  }
+
+  .entry-row { display: flex; gap: 10px; margin-bottom: 16px; }
+  .entry {
+    flex: 1; height: 56px; border-radius: 8px; display: flex;
+    align-items: center; justify-content: center; font-size: 19px; font-weight: 500;
+  }
+  .entry--primary { background: var(--brand); color: #fff; }
+  .entry--outline { background: #fff; color: var(--brand); border: 1px solid var(--brand); }
+
+  .card {
+    background: var(--card-bg); border-radius: 12px; border: 1px solid var(--hairline);
+    padding: 16px; margin-bottom: 12px;
+  }
+  .card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .card__title { font-size: 18px; font-weight: 600; color: var(--text); line-height: 1.35; }
+  .card__addr { font-size: 14px; color: var(--text-3); margin-top: 4px; line-height: 1.5; }
+
+  .pill {
+    flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 8px;
+    border-radius: 999px; font-size: 13px; line-height: 1; border: 1px solid currentColor;
+  }
+  .pill--pending { color: #1677ff; }
+  .pill--doing { color: var(--brand); }
+  .pill--overdue { color: var(--danger); }
+
+  /* 数据网格：缝隙即分隔线 */
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+    background: var(--hairline); border-radius: 8px; overflow: hidden;
+    margin-top: 14px;
+  }
+  .stat { background: #fff; padding: 12px 6px; text-align: center; min-height: 84px; }
+  .stat__label { font-size: 13px; color: var(--text-3); line-height: 1.5; }
+  .stat__value {
+    margin-top: 4px; font-size: 22px; font-weight: 600; line-height: 1.2;
+    color: var(--brand); font-variant-numeric: tabular-nums;
+  }
+  .stat__value--text { font-size: 18px; }
+  .stat__value--danger { color: var(--danger); }
+  .stat__value--warn { color: var(--warn); }
+  .stat__hint { margin-top: 4px; font-size: 12px; color: var(--text-3); line-height: 1.4; }
+
+  .card__desc {
+    margin-top: 12px; font-size: 16px; color: var(--text-2); line-height: 1.6;
+  }
+  .card__foot { display: flex; justify-content: flex-end; align-items: center; margin-top: 14px; }
+  .card__more { font-size: 15px; color: var(--brand); }
+  .btn-accept {
+    height: 40px; padding: 0 20px; background: var(--brand); color: #fff;
+    border-radius: 8px; font-size: 16px; font-weight: 500; display: flex; align-items: center;
+  }
+
+  /* 悬浮底栏 */
+  .tabbar {
+    position: absolute; left: 16px; right: 16px; bottom: 12px; height: 56px;
+    background: #fff; border-radius: 999px; display: flex;
+    box-shadow: 0 4px 16px rgba(31,45,74,.12);
+  }
+  .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+  .tab__t { font-size: 12px; color: var(--text-3); }
+  .tab--on .tab__t { color: var(--brand); font-weight: 500; }
+  .tab svg { width: 20px; height: 20px; stroke: var(--text-3); fill: none; stroke-width: 1.8; }
+  .tab--on svg { stroke: var(--brand); }
+  .screen--new { position: relative; }
+</style>
+
+<!-- ============================ 改前 ============================ -->
+<div class="col">
+  <div class="col__cap">现在</div>
+  <div class="col__sub">7 行等重的「标签：值」，没有视觉锚点<br>眼睛只能从第一行逐行读到最后一行</div>
+  <div class="screen">
+    <div class="old-wrap">
+      <div class="old-lead">待接工单 12 条</div>
+
+      <div class="old-card">
+        <div class="old-head">
+          <div class="old-type">水暖</div>
+          <div class="old-tag">待接单</div>
+        </div>
+        <div class="kv"><div class="kv__k">工单编号</div><div class="kv__v">WO20260830-0007</div></div>
+        <div class="kv"><div class="kv__k">报修地址</div><div class="kv__v">枫桦景苑 17号 201室</div></div>
+        <div class="kv"><div class="kv__k">故障描述</div><div class="kv__v">厨房水管漏水，水一直流</div></div>
+        <div class="kv"><div class="kv__k">报修时间</div><div class="kv__v">08/22 22:44<span class="kv__tag--danger">已等 8 天</span></div></div>
+        <div class="kv"><div class="kv__k">报修人</div><div class="kv__v">王女士（业主）</div></div>
+        <div class="old-foot"><div class="old-btn">接单</div></div>
+      </div>
+
+      <div class="old-card">
+        <div class="old-head">
+          <div class="old-type">电气</div>
+          <div class="old-tag">待接单</div>
+        </div>
+        <div class="kv"><div class="kv__k">工单编号</div><div class="kv__v">WO20260830-0011</div></div>
+        <div class="kv"><div class="kv__k">报修地址</div><div class="kv__v">枫桦景苑 9号 1单元楼道</div></div>
+        <div class="kv"><div class="kv__k">故障描述</div><div class="kv__v">楼道灯不亮</div></div>
+        <div class="kv"><div class="kv__k">报修时间</div><div class="kv__v">08/30 21:12</div></div>
+        <div class="kv"><div class="kv__k">报修人</div><div class="kv__v">李保安（代报）</div></div>
+        <div class="old-foot"><div class="old-btn">接单</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ 改后 ============================ -->
+<div class="col">
+  <div class="col__cap">data-first-ui 重设计</div>
+  <div class="col__sub">深色页头交代「这屏是什么、现在什么情况」<br>每张卡一个锚点：等待时长（超时转红）</div>
+  <div class="screen screen--new">
+    <div class="hero">
+      <div class="hero__title">工单池</div>
+      <div class="hero__stats">
+        <div>
+          <div class="hero__num">12</div>
+          <div class="hero__cap">待接单</div>
+        </div>
+        <div>
+          <div class="hero__num hero__num--danger">3</div>
+          <div class="hero__cap">已超时</div>
+        </div>
+        <div>
+          <div class="hero__num">5</div>
+          <div class="hero__cap">在我手上</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet">
+      <div class="entry-row">
+        <div class="entry entry--primary">AI随手拍报修</div>
+        <div class="entry entry--outline">填表报修</div>
+      </div>
+
+      <div class="card">
+        <div class="card__head">
+          <div>
+            <div class="card__title">厨房水管漏水</div>
+            <div class="card__addr">枫桦景苑 17号 201室 · 单号 0007</div>
+          </div>
+          <div class="pill pill--overdue">已超时</div>
+        </div>
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="stat__label">已等</div>
+            <div class="stat__value stat__value--danger">8天</div>
+            <div class="stat__hint">08/22 报修</div>
+          </div>
+          <div class="stat">
+            <div class="stat__label">类型</div>
+            <div class="stat__value stat__value--text">水暖</div>
+            <div class="stat__hint">业主自住</div>
+          </div>
+          <div class="stat">
+            <div class="stat__label">报修人</div>
+            <div class="stat__value stat__value--text">王女士</div>
+            <div class="stat__hint">业主</div>
+          </div>
+        </div>
+        <div class="card__desc">水一直流，关不掉，麻烦尽快来看看</div>
+        <div class="card__foot"><div class="btn-accept">接单</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card__head">
+          <div>
+            <div class="card__title">楼道灯不亮</div>
+            <div class="card__addr">枫桦景苑 9号 1单元楼道 · 单号 0011</div>
+          </div>
+          <div class="pill pill--pending">待接单</div>
+        </div>
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="stat__label">已等</div>
+            <div class="stat__value">3小时</div>
+            <div class="stat__hint">21:12 报修</div>
+          </div>
+          <div class="stat">
+            <div class="stat__label">类型</div>
+            <div class="stat__value stat__value--text">电气</div>
+            <div class="stat__hint">公共区域</div>
+          </div>
+          <div class="stat">
+            <div class="stat__label">报修人</div>
+            <div class="stat__value stat__value--text">李保安</div>
+            <div class="stat__hint">代报</div>
+          </div>
+        </div>
+        <div class="card__foot"><div class="btn-accept">接单</div></div>
+      </div>
+
+      <div class="tabbar">
+        <div class="tab tab--on">
+          <svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h10" stroke-linecap="round"/></svg>
+          <div class="tab__t">工单池</div>
+        </div>
+        <div class="tab">
+          <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="tab__t">在手工单</div>
+        </div>
+        <div class="tab">
+          <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v10l-9 4-9-4z" stroke-linejoin="round"/><path d="M3 7l9 4 9-4M12 11v10"/></svg>
+          <div class="tab__t">材料</div>
+        </div>
+        <div class="tab">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" stroke-linecap="round"/></svg>
+          <div class="tab__t">我的</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

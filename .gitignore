@@ -31,7 +31,13 @@ deploy/dist/
 # 小程序上传台账（记录每次 upload 的版本号 + git hash，防止同号重复上传）
 .ship-log.json
 .ship.lock
-.claude/
+# 写 `.claude/*` 而不是 `.claude/`：目录本身被忽略时 git 不会递归进去，
+# 下面那条 `!` 放行规则就永远不生效（2026-08-31 踩过）。
+.claude/*
+# skills 是团队资产，不是本机配置：设计规范、工作流约定放在这里，
+# 换台机器 / 另一个会话 / 姊妹项目都要能拿到，所以单独放行。
+# settings.local.json、commands/ 这些仍被上面那条挡着。
+!.claude/skills/
 .codex/
 .agents/
 
