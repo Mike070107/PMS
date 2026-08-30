@@ -7,11 +7,14 @@
        间距由外层 .btn-row 给（gap + margin-bottom）——按钮自身的 margin
        在 app.wxss 里被 !important 压过一次，别再写回按钮上。
 
-       两种身份同一套排法：这一屏的主线是「看有什么单」，报修只是顺带，
-       所以两个入口并成一行、矮一档，把屏幕让给下面的筛选和工单。 -->
+       2026-08-30 改：原来两个都是 btn--outline btn--sm，等于 30rpx 字 + 88rpx 高 +
+       只有描边没有底色 —— 在这一屏里几乎注意不到，用户直接反馈「不显眼」。
+       而且 30rpx 低于本项目对按钮的下限（36rpx，面向老人）。
+       现在去掉 btn--sm 走正常按钮规格，再由 pool.wxss 往上提一档；
+       「随手拍」是最短路径，提成实底主按钮，填表保持描边做次级，拉开主次。 -->
   <view wx:if="{{canReport}}" class="btn-row report-entry report-entry--row">
-    <button class="btn btn--outline btn--sm" bindtap="onGoQuickRepair">AI随手拍报修</button>
-    <button class="btn btn--outline btn--sm" bindtap="onGoRepair">填表报修</button>
+    <button class="btn btn--primary" bindtap="onGoQuickRepair">AI随手拍报修</button>
+    <button class="btn btn--outline" bindtap="onGoRepair">填表报修</button>
   </view>
 
   <!-- 维修工侧同理：卡片上不出现「接单」时，必须写清是权限收着，不是没活干 -->
