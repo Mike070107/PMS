@@ -150,9 +150,16 @@ curl -s -X POST "https://api.weixin.qq.com/wxa/getwxadevinfo?access_token=<TOKEN
 
 - **openid 全部作废**：openid 是 AppID 维度的。互换时线上 7817 个用户里只有 5 个绑过微信，
   这 5 人重新登录一次即可（手机号还在，`/auth/*-login` 会重新绑定）。
-- **订阅消息模板 ID 失效**：模板不能跨小程序用（微信回 `43104`/`40037`）。
-  `tenant_configs.wx_subscribe_templates` 里已配的 `orderAssigned`、`orderUrge` 是在原员工端 AppID 下申请的，
-  互换后要在 `wx002fde4bfaa4c7d9` 里重新申请同名模板，再到后台「设置 → 微信订阅消息」填新 ID。
+- **订阅消息模板：实测不用重新申请**（2026-08-30 互换后在线上验过）。
+  模板确实不能跨小程序用，但 `tenant_configs.wx_subscribe_templates` 里已配的
+  `orderAssigned`、`orderUrge` 在 `wx002fde4bfaa4c7d9` 下都查得到 ——
+  `POST /notifications/templates/check` 回 `ok:true` 并带回微信后台的真实字段
+  （单号 `character_string3`、工单状态 `phrase1` 等，这些编不出来）。
+  说明当初两个小程序都申请过同名模板。**互换前先跑一遍这个接口**，
+  回 `ok:true` 就不用动；真回 `43104`/`40037` 再去新小程序申请、到后台「设置 → 微信订阅消息」填新 ID。
+- **微信同声传译插件（WechatSI `wx069ba97219f66d99`）不用重新申请**：
+  两个 AppID 都已授权（`POST /wxa/plugin {"action":"list"}` 查得 `status:2`、`apply_list` 为空）。
+  两端 `app.json` 都声明了这个插件，历史上各自申请过，互换后照常可用。
 - **服务器域名白名单**：两个 AppID 都已配 `https://prsznh.cn`（见上文），互换后不用再配。
 - **业主端暂时不可用**：`wx8ef4de0e498064c4` 未认证，`wx.getPhoneNumber` 拿不到手机号，
   业主走不完入驻。等认证下来再把两边换回去（把上面三处反着改一遍即可）。
