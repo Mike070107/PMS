@@ -7,6 +7,7 @@ import { Notification, SubscriptionGrant, User } from '../../entities';
 import { SettingsService } from '../settings/settings.service';
 import { WxServiceAccountService } from './wx-service-account.service';
 import { WechatService, type WxAppType, type WxTemplateField } from '../auth/wechat.service';
+import type { SubscribeTemplateKey } from './dto';
 
 /**
  * 一次授权最多累计几条额度。
@@ -22,13 +23,11 @@ import { WechatService, type WxAppType, type WxTemplateField } from '../auth/wec
  */
 const MAX_GRANT_PER_TEMPLATE = 20;
 
-/** 可推的订阅消息模板。前两个发给业主（业主端小程序），最后一个发给维修工（员工端） */
-export type SubscribeTemplateKey =
-  | 'orderDispatched'
-  | 'orderReview'
-  | 'orderAssigned'
-  | 'orderOverdue'
-  | 'orderUrge';
+/**
+ * 可推的订阅消息模板。前两个发给业主（业主端小程序），后三个发给维修工（员工端）。
+ * key 列表连同校验白名单都定义在 ./dto，这里只转出去给别的模块用。
+ */
+export type { SubscribeTemplateKey };
 
 /** 每个事件走哪个小程序发。模板 id 不能跨小程序用，token 也不能 —— 发错端一律 40037/43104 */
 export const TEMPLATE_APP: Record<SubscribeTemplateKey, WxAppType> = {
