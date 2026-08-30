@@ -118,12 +118,44 @@ curl -s -X POST "https://api.weixin.qq.com/wxa/getwxadevinfo?access_token=<TOKEN
 
 ---
 
-## 已启用的 AppID（2026-07-22 回填）
+## 已启用的 AppID（2026-08-30 互换后）
 
-| 端 | 名称 | AppID | 代码位置 |
-|---|---|---|---|
-| 业主端 | 邻修 | `wx002fde4bfaa4c7d9` | `apps/miniapp-owner/project.config.json` |
-| 员工端 | 邻修管理 | `wx8ef4de0e498064c4` | `apps/miniapp-staff/project.config.json` |
+| 端（代码） | 现用 AppID | 这个 AppID 原来是谁 | 认证状态 | 代码位置 |
+|---|---|---|---|---|
+| 员工端 `miniapp-staff` | `wx002fde4bfaa4c7d9` | 原业主端「邻修」 | **已认证** | `apps/miniapp-staff/project.config.json` |
+| 业主端 `miniapp-owner` | `wx8ef4de0e498064c4` | 原员工端「邻修管理」 | 未认证 | `apps/miniapp-owner/project.config.json` |
+
+### 为什么互换（2026-08-30）
+
+员工端那个主体的认证卡住了，而 `wx.getPhoneNumber`（员工手机号一键登录的唯一入口，见本文末「员工端登录与微信绑定流程」）
+要求小程序**企业主体已认证** —— 员工端在原 AppID 上根本发不出可用的版本。
+业主端的 `wx002fde4bfaa4c7d9` 已经认证过，所以把它先让给员工端用，业主端暂挪到未认证的那个 AppID 上。
+
+**代码目录、发版命令、品牌资源都没动**：员工端代码仍在 `apps/miniapp-staff/`，仍用 `pnpm mp:staff`，
+`assets/brand-icon.png` 和「邻修工作台」这些还是员工端自己的 —— 换的只有它发到哪个 AppID。
+
+互换要同时改三处，少一处就登录失败：
+
+| 处 | 内容 |
+|---|---|
+| 仓库 | 两个 `project.config.json` 的 `appid`（已改） |
+| 服务器 `.env` | `WX_OWNER_APPID/SECRET` 与 `WX_STAFF_APPID/SECRET` 整组对调，之后 `pm2 reload pms-api --update-env` |
+| 公众平台（人工） | 两个小程序的**头像和名称**对调：`wx002fde4bfaa4c7d9` 换成 `tools/logos/logo-staff.png` +「邻修工作台」，`wx8ef4de0e498064c4` 换成 `logo-owner.png` +「邻修」 |
+
+`appType`（`'owner'` / `'staff'`）是**代码侧的端标识**，不跟着 AppID 走：员工端小程序照旧调
+`/auth/staff-login`，服务端照旧按 `appType='staff'` 去读 `WX_STAFF_*` —— 所以对调的是 `.env` 里那两组值，
+不是代码里的 `appType`。
+
+### 互换带来的后续影响
+
+- **openid 全部作废**：openid 是 AppID 维度的。互换时线上 7817 个用户里只有 5 个绑过微信，
+  这 5 人重新登录一次即可（手机号还在，`/auth/*-login` 会重新绑定）。
+- **订阅消息模板 ID 失效**：模板不能跨小程序用（微信回 `43104`/`40037`）。
+  `tenant_configs.wx_subscribe_templates` 里已配的 `orderAssigned`、`orderUrge` 是在原员工端 AppID 下申请的，
+  互换后要在 `wx002fde4bfaa4c7d9` 里重新申请同名模板，再到后台「设置 → 微信订阅消息」填新 ID。
+- **服务器域名白名单**：两个 AppID 都已配 `https://prsznh.cn`（见上文），互换后不用再配。
+- **业主端暂时不可用**：`wx8ef4de0e498064c4` 未认证，`wx.getPhoneNumber` 拿不到手机号，
+  业主走不完入驻。等认证下来再把两边换回去（把上面三处反着改一遍即可）。
 
 AppSecret **只存服务器** `/opt/pms-repair/apps/api/.env`，对应 `WX_OWNER_APPID/SECRET`、`WX_STAFF_APPID/SECRET`，
 不写进仓库、不进日志、不下发前端。两个小程序的 `baseURL` 均指向 `https://prsznh.cn/api/v1`。
