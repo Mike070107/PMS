@@ -29,6 +29,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '../lib/api';
 import { handleGone } from '../lib/gone';
 import { auth, usePagePerm } from '../lib/auth';
+import { useTableSeq } from '../components/tableSeqColumn';
 import UnitSelect from '../components/UnitSelect';
 import { MATERIAL_CATEGORIES } from '@pms/shared-types';
 
@@ -113,6 +114,8 @@ export default function MaterialsPage() {
     });
   }, [rows, keyword, categoryFilter]);
 
+  const seq = useTableSeq<MaterialRow>(filtered.length, { defaultPageSize: 20 });
+
   const openCreate = () => { setEditing(null); setEditorOpen(true); };
   const openEdit = (row: MaterialRow) => { setEditing(row); setEditorOpen(true); };
 
@@ -174,8 +177,9 @@ export default function MaterialsPage() {
           dataSource={filtered}
           tableLayout="fixed"
           scroll={{ x: 1280 }}
-          pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+          pagination={seq.pagination}
           columns={[
+            seq.column,
             {
               title: '照片',
               dataIndex: 'photoUrl',

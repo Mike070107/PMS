@@ -24,7 +24,7 @@ const SESSION_KEYS = [TOKEN_KEY, USER_KEY, ACCESS_KEY, ACTING_KEY, ACTING_OFFICE
  */
 const store: Storage = window.sessionStorage;
 
-type AuthUser = AdminLoginResp['user'];
+export type AuthUser = AdminLoginResp['user'];
 
 /** 平台超管「进入公司视角」时记录的目标公司 */
 export interface ActingTenant {
@@ -173,6 +173,27 @@ export function usePagePerm(pageKey: string): {
 } {
   const { access } = useAuth();
   return pagePerm(access, pageKey);
+}
+
+/**
+ * 是否「全公司视角」：平台管理员 / 租户管理员 / 数据范围是全公司的角色。
+ *
+ * 用来决定要不要显示**全公司口径的家底数字**（材料 SKU 总数、仓库数量这类）：
+ * 范围受限的人页面上其它数据都是自己范围内的，旁边再摆一个全公司总数，
+ * 只会让人对不上账、以为自己少看了东西。
+ *
+ * 与 pagePerm 相反，access 还没拉到时按 false 处理 —— 少显示一个统计卡没有代价，
+ * 把全公司数字漏给受限角色才有。判断一律用这里，别在页面里手写角色名。
+ */
+export function isCompanyWideView(access: AdminAccess | null, user: AuthUser | null): boolean {
+  if (user?.role === 'superadmin') return true;
+  if (!access) return false;
+  return access.isPlatformAdmin || access.isTenantAdmin || access.scopeAll;
+}
+
+export function useCompanyWideView(): boolean {
+  const { access, user } = useAuth();
+  return isCompanyWideView(access, user);
 }
 
 export function pagePerm(access: AdminAccess | null, pageKey: string) {

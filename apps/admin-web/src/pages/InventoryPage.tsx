@@ -45,7 +45,8 @@ import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumn
 import { formatDateTimeCn, MATERIAL_CATEGORIES } from '@pms/shared-types';
 import type { StockLotView, StockMovementView } from '@pms/shared-types';
 import { request } from '../lib/api';
-import { auth, useAuth, usePagePerm } from '../lib/auth';
+import { auth, useAuth, useCompanyWideView, usePagePerm } from '../lib/auth';
+import { useTableSeq } from '../components/tableSeqColumn';
 import { searchableExtraWideSelectProps, searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import { PurchaseOrderStatus, PurchaseRequestStatus, WAREHOUSE_TYPE_LABELS, WarehouseType } from '@pms/shared-types';
 
@@ -305,6 +306,8 @@ export default function InventoryPage() {
   const { message, modal } = AntdApp.useApp();
   const { canEdit } = usePagePerm('inventory');
   const { access } = useAuth();
+  // 「材料 SKU」「仓库数量」是全公司口径的家底数字，范围受限的角色看了对不上账
+  const companyWide = useCompanyWideView();
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseRow[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -497,6 +500,16 @@ export default function InventoryPage() {
   const filteredStocks = stockCategory === 'all'
     ? keywordStocks
     : keywordStocks.filter((row) => (materialById.get(row.materialId)?.category || UNCATEGORIZED) === stockCategory);
+
+  // 序号跟着分页连续（第 2 页从 51 起），不是页内下标
+  const stockSeq = useTableSeq<StockRow>(filteredStocks.length, {
+    defaultPageSize: 50,
+    pageSizeOptions: inventoryPageSizeOptions,
+  });
+  const materialSeq = useTableSeq<MaterialRow>(materials.length, {
+    defaultPageSize: 50,
+    pageSizeOptions: inventoryPageSizeOptions,
+  });
 
   const requestCounts = useMemo(() => {
     const counts = new Map<RequestFilterKey, number>([['all', purchaseRequests.length]]);
@@ -1005,7 +1018,7 @@ export default function InventoryPage() {
      这里有三列都取 dataIndex: 'materialId'，光靠 dataIndex 区分不开。
      列本身每次渲染重建没关系，useTableColumnPrefs 只认 key。 */
   const stockColumns: PrefsColumn<StockRow>[] = [
-    { key: 'id', title: '库存 ID', dataIndex: 'id', width: 90 },
+    stockSeq.column,
     { key: 'warehouse', title: '仓库', dataIndex: 'warehouseId', width: 180, render: (id) => warehouseById.get(id)?.name || `#${id}` },
     {
       key: 'location', title: '库位', dataIndex: 'locationLabel', width: 130,
@@ -1098,8 +1111,8 @@ export default function InventoryPage() {
 
       {/* 金额卡占双格：¥ 带千分位的数字比计数宽得多，挤在单格里会换行、把整行高度撑乱 */}
       <Row gutter={[16, 16]} align="stretch" style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={12} lg={6} xl={3}><Metric title="材料 SKU" value={stats.materials} /></Col>
-        <Col xs={24} sm={12} lg={6} xl={3}><Metric title="仓库数量" value={stats.warehouses} /></Col>
+        {companyWide && <Col xs={24} sm={12} lg={6} xl={3}><Metric title="材料 SKU" value={stats.materials} /></Col>}
+        {companyWide && <Col xs={24} sm={12} lg={6} xl={3}><Metric title="仓库数量" value={stats.warehouses} /></Col>}
         <Col xs={24} sm={12} lg={6} xl={3}><Metric title="库存预警" value={stats.lowStock} alert /></Col>
         <Col xs={24} sm={24} lg={12} xl={6}><Metric title="库存总值" value={stats.stockValue} money suffix="按剩余入库批次加权，与报表页口径一致" /></Col>
         <Col xs={24} sm={12} lg={6} xl={3}><Metric title="采购待审" value={stats.pendingRequests} /></Col>
@@ -1170,7 +1183,7 @@ export default function InventoryPage() {
                   dataSource={filteredStocks}
                   tableLayout="fixed"
                   scroll={{ x: 1440 }}
-                  pagination={{ defaultPageSize: 50, pageSizeOptions: inventoryPageSizeOptions, showSizeChanger: true }}
+                  pagination={stockSeq.pagination}
                   components={stockPrefs.components}
                   columns={stockPrefs.columns}
                 />
@@ -1365,9 +1378,9 @@ export default function InventoryPage() {
                             rowKey="id"
                             size="small"
                             dataSource={materials}
-                            pagination={{ defaultPageSize: 50, pageSizeOptions: inventoryPageSizeOptions, showSizeChanger: true }}
+                            pagination={materialSeq.pagination}
                             columns={[
-                              { title: '序号', key: 'index', width: 64, render: (_v, _row, index) => index + 1 },
+                              materialSeq.column,
                               { title: '类别', dataIndex: 'category', width: 110, render: (v) => v || '-' },
                               { title: '编码', dataIndex: 'code', width: 120, ellipsis: true },
                               {
