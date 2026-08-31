@@ -157,8 +157,24 @@ button::after { border: none; }
 .muted { color: var(--color-text-tertiary); font-size: var(--font-sm); line-height: 1.7; }
 .center { text-align: center; padding: 48rpx 0; }
 
+/* ---------- 层级账本（员工端所有 fixed 浮层都按这一份来，别各页面自己拍脑袋定） ----------
+   员工端的 tabBar 是**页面内**的悬浮胶囊（custom-tab-bar/index.wxss，写死 z-index: 100，
+   下方还有一层 .tabbar-shield 99），和原生 tabBar 不一样 —— 原生的在 webview 之外，
+   页面元素永远盖不住；胶囊是同一个页面里的 fixed 元素，谁的 z-index 大谁在上面。
+   所以 **tab 页里任何贴底的 fixed 浮层，z-index 必须 > 100**，否则底部那排按钮
+   正好被胶囊压住，而且它是固定在面板底部的，怎么滑都露不出来
+   （2026-08-31 反馈：材料与库存「新增」面板的「保存」按钮被胶囊挡住、上滑不上去）。
+
+     8   .action-bar   详情页/随手拍的底部操作条（都不是 tab 页，胶囊不在，所以低也没事）
+     99  .tabbar-shield
+     100 .tabbar       ← 分水岭：贴底浮层必须高过这条线
+     200 .sheet-mask   201 .sheet         底部面板（遮罩顺带盖住胶囊，开着面板时点不到切 tab，正是要的）
+     210 .sheet-mask--top 211 .sheet--top 面板之上再叠一层面板
+     220 place-picker 的 .mask  221 .panel（组件自带，见 components/place-picker/index.wxss）
+   新增浮层就往这张表里加一档，改胶囊尺寸/层级也回来同步这里。 */
+
 /* ---------- 底部弹出面板（材料库、选择器等共用，别再各页面复制一份） ---------- */
-.sheet-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 10; }
+.sheet-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 200; }
 /* 高度写死 86vh，不用 max-height：
    面板高度靠内容撑时，里面的 scroll-view 拿不到确定高度 —— flex: 1 只分配「剩余空间」，
    而内容撑起来的容器没有剩余空间，body 直接算成 0 高（表现为面板只剩标题和底部按钮），
@@ -168,7 +184,7 @@ button::after { border: none; }
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 11;
+  z-index: 201;
   height: 86vh;
   display: flex;
   flex-direction: column;
@@ -219,8 +235,8 @@ button::after { border: none; }
 .sheet__foot--row .btn { width: auto !important; flex: 1 1 0; }
 .sheet__search { margin: 20rpx 24rpx 0; width: auto; }
 /* 叠在另一个面板之上的面板（缺料登记里再拉出材料库选择器） */
-.sheet-mask--top { z-index: 20; }
-.sheet--top { z-index: 21; }
+.sheet-mask--top { z-index: 210; }
+.sheet--top { z-index: 211; }
 
 /* 库存清单的常驻列头：三列宽度必须和下面 .sku 一行一一对齐，
    否则「库存数量」几个字飘在名称上方，列头等于白加。

@@ -21,6 +21,9 @@
   pointer-events: none;
 }
 
+/* 胶囊是**页面内**的 fixed 元素（不是原生 tabBar），所以它和页面里的浮层是同一场
+   z-index 比大小：100 这个数是 app.wxss 顶部「层级账本」里的分水岭，贴底浮层都按
+   高于它来定。要改这里的 z-index，先去改那份账本，别单改一处。 */
 .tabbar {
   position: fixed;
   left: 28rpx;

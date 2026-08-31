@@ -19,11 +19,14 @@
 .muted { color: var(--color-text-tertiary); font-size: var(--font-sm); line-height: 1.7; }
 .mt-sm { margin-top: 12rpx; }
 
+/* z-index 按 app.wxss 顶部那份「层级账本」来：员工端 tabBar 是页面内的悬浮胶囊（100），
+   贴底浮层低于它就会被压住且划不上来，所以这里排在所有 .sheet 之上的 220/221。
+   （业主端的同名组件不用跟着改：那边是原生 tabBar，在 webview 之外，压根不参与比较） */
 .mask {
   position: fixed;
   left: 0; top: 0; right: 0; bottom: 0;
   background: rgba(0, 0, 0, 0.45);
-  z-index: 90;
+  z-index: 220;
 }
 
 /* 面板占屏幕下 80%。
@@ -34,7 +37,7 @@
 .panel {
   position: fixed;
   left: 0; right: 0; bottom: 0;
-  z-index: 91;
+  z-index: 221;
   display: flex;
   flex-direction: column;
   height: 80vh;
