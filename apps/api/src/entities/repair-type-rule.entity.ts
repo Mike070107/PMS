@@ -9,6 +9,11 @@ import { TenantEntity } from '../common/base.entity';
  * （见 RepairsService.rulesForCommunity）。
  * 唯一性分两条：公司默认里类型编码唯一（部分索引 office_id IS NULL），
  * 同一管理处内类型编码唯一。
+ *
+ * **关键词不分套（2026-08-31）**：类型名 / 维修工 / 时限仍各管理处独立（叶双只在他那个管理处），
+ * 但「猜你想输」关键词改成模板叠加，见下面 contentSuggestions / extraSuggestions / mutedSuggestions
+ * 三个字段的说明。原因：关键词同时是报修类型的判定依据，每处各配一套等于同一句话在 A 处判得出、
+ * 在 B 处判不出，而且词库被切碎后谁都攒不够数据。
  */
 @Entity('repair_type_rules')
 @Index(['tenantId', 'officeId', 'repairType'], { unique: true })
@@ -49,9 +54,28 @@ export class RepairTypeRule extends TenantEntity {
   enabled: boolean;
 
   /**
-   * 该类型的「猜你想输」常用词，按数组顺序展示（后台可拖动调序 / 按使用次数排序）。
-   * 首次初始化时用内置种子词播种，之后完全由租户维护。
+   * 「猜你想输」**公司模板词**：只有 office_id IS NULL 那些行的这一列算数，全公司共用。
+   * 公司层改了，所有管理处立刻跟着变（不再需要逐处配一遍）。
+   *
+   * 管理处行的这一列迁移后一律为空、也不再读 —— 本处的词走 extra_suggestions /
+   * mutedSuggestions。留着这一列没删是为了迁移可回滚（见 RepairKeywordTemplate 迁移的 down）。
    */
   @Column({ name: 'content_suggestions', type: 'jsonb', default: () => "'[]'" })
   contentSuggestions: string[];
+
+  /**
+   * 本处自己加的词（只有管理处行有意义）：某个小区管道闸叫「抬杆机」这种本地叫法。
+   * 排在模板词前面 —— 本地叫法更贴当地人的嘴。
+   */
+  @Column({ name: 'extra_suggestions', type: 'jsonb', default: () => "'[]'" })
+  extraSuggestions: string[];
+
+  /**
+   * 本处停用的模板词（只有管理处行有意义）。
+   *
+   * 为什么是「屏蔽」不是「删除」：模板词被某个管理处删掉后，公司层再也不知道哪几处不认这个词，
+   * 也没法回滚。屏蔽留了痕，配置页上能一眼看出「本处停用了 3 个模板词」并随时恢复。
+   */
+  @Column({ name: 'muted_suggestions', type: 'jsonb', default: () => "'[]'" })
+  mutedSuggestions: string[];
 }

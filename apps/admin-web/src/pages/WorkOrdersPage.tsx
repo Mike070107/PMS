@@ -50,9 +50,14 @@ import {
   ArrowDownOutlined,
   DeleteOutlined,
   BellOutlined,
+  StopOutlined,
+  UndoOutlined,
+  WarningOutlined,
+  BulbOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import type { TechnicianOption } from '@pms/shared-types';
+import type { ClassifiableType, TechnicianOption } from '@pms/shared-types';
+import { classifyRepairType } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -167,8 +172,17 @@ interface RepairTypeRule {
   slaHours: number | null;
   sortOrder: number;
   enabled: boolean;
-  /** 「猜你想输」常用词，按数组顺序展示，后台可编辑/调序 */
+  /**
+   * 生效的「猜你想输」关键词 = 本处增补 ∪（公司模板 − 本处屏蔽）。
+   * 录入页和类型判定都用这一份，别再自己拼。
+   */
   contentSuggestions: string[];
+  /** 从公司模板继承来的词（本处屏蔽掉的已剔除）；总公司那一页等于它自己 */
+  templateSuggestions: string[];
+  /** 本处自己加的词。总公司那一页恒为空 —— 那一页改的就是模板 */
+  extraSuggestions: string[];
+  /** 本处停用的模板词 */
+  mutedSuggestions: string[];
 }
 interface RepairSuggestion {
   text: string;
@@ -180,8 +194,21 @@ interface RepairSuggestions {
   contents: RepairSuggestion[];
   /** 按报修类型归纳的高频短语：repairType -> 短语 */
   contentsByType: Record<string, RepairSuggestion[]>;
-  /** 已配置关键词的真实使用次数：repairType -> 关键词 -> 次数 */
+  /** 已配置关键词的真实使用次数（当前口径）：repairType -> 关键词 -> 次数 */
   keywordUsageByType: Record<string, Record<string, number>>;
+  /** 同一批词的全公司次数，和上面并排显示，一眼看出「本地词」还是「全公司都在说」 */
+  companyKeywordUsageByType?: Record<string, Record<string, number>>;
+  /** 这份数据按谁的历史算出来的 */
+  scope?: SuggestionScope;
+  officeScoped?: boolean;
+}
+type SuggestionScope = 'office_first' | 'company';
+/** 报修类型配置弹窗的管理处 Tab（带各自的「猜你想输」口径开关） */
+interface RuleOffice {
+  id: number;
+  name: string;
+  suggestionScope: SuggestionScope;
+  suggestionFeedback: boolean;
 }
 interface RepairHistoryRow {
   requestId: number;
@@ -809,6 +836,54 @@ function RepairSubmitDock({
   const pickedRepairTypeLabel = pickedRepairType
     ? getRepairTypeLabel(pickedRepairType, repairTypeRules)
     : '';
+  const pickedHouseRef: unknown = Form.useWatch('houseRef', form);
+  const pickedCommunityId = Array.isArray(pickedHouseRef) ? (pickedHouseRef[0] as number | undefined) : undefined;
+  const contentValue: string | undefined = Form.useWatch('content', form);
+  /**
+   * 按描述自动判报修类型（2026-08-31）。
+   *
+   * 以前这一栏纯手选：办公室接完电话得自己想「旋钮打滑算智能化还是门窗」，
+   * 想错了就通知错维修工。判定用的关键词和小程序端是同一份（GET /repair-types 下发，
+   * 含类型名切词和同义词），所以后台和业主端不会一个判得出、一个判不出。
+   */
+  const [publicTypes, setPublicTypes] = useState<ClassifiableType[]>([]);
+  const [predicted, setPredicted] = useState<{ repairType: string; label: string; matched: string[] } | null>(null);
+  /** 人一旦自己动过这个下拉框，就不再自动改它 —— 别跟正在录入的人抢方向盘 */
+  const typeTouchedRef = useRef(false);
+  /** 该小区所属管理处口径的「猜你想输」，拿不到就退回页面级那份（全公司） */
+  const [dockSuggestions, setDockSuggestions] = useState<RepairSuggestions | null>(null);
+  const activeSuggestions = dockSuggestions ?? suggestions;
+
+  // 类型关键词和常用短语都跟着报修小区走：不同管理处可以有自己的类型和本地叫法
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    const query = pickedCommunityId ? { communityId: pickedCommunityId } : {};
+    Promise.all([
+      request<ClassifiableType[]>({ url: '/repair-types', query }).catch(() => [] as ClassifiableType[]),
+      request<RepairSuggestions>({ url: '/repair-suggestions', query }).catch(() => null),
+    ]).then(([types, sugg]) => {
+      if (!alive) return;
+      setPublicTypes(Array.isArray(types) ? types : []);
+      setDockSuggestions(sugg);
+    });
+    return () => { alive = false; };
+  }, [open, pickedCommunityId]);
+
+  // 边打字边判，350ms 防抖：接电话时是一句一句敲进来的，每个字都算一次既费也晃眼
+  useEffect(() => {
+    const text = (contentValue || '').trim();
+    if (!open || text.length < 2 || !publicTypes.length) {
+      setPredicted(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const hit = classifyRepairType(text, publicTypes);
+      setPredicted(hit ? { repairType: hit.repairType, label: hit.label, matched: hit.matched } : null);
+      if (hit && !typeTouchedRef.current) form.setFieldsValue({ repairType: hit.repairType });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [contentValue, publicTypes, open, form]);
 
   // 展开后光标直接进房号框：办公室接着电话就能敲「228/4/201」
   useEffect(() => {
@@ -843,6 +918,8 @@ function RepairSubmitDock({
     form.resetFields();
     setFileList([]);
     setFormHasValue(false);
+    setPredicted(null);
+    typeTouchedRef.current = false;
     loadBuildingHistory(undefined);
   };
 
@@ -880,6 +957,9 @@ function RepairSubmitDock({
           content: v.content,
           addressText: v.spotText,
           attachments,
+          // 系统当时判的是什么：和最终提交的不一致时服务端记一条负样本，
+          // 同一个词被改走两次以上就自动降权（见 buildNegativeKeywords）
+          predictedRepairType: predicted?.repairType,
           // 勾了「要求完成截止日期」才带；没勾走类型规则里的默认时限
           slaDueAt: v.slaEnabled && v.slaDueAt ? v.slaDueAt.toISOString() : undefined,
         },
@@ -912,7 +992,7 @@ function RepairSubmitDock({
   };
   const repairTypeSelectOptions = buildRepairTypeSelectOptions(repairTypeRules);
   const locationSuggestions = mergeSuggestionTexts(
-    suggestions.locations.map((item) => item.text),
+    activeSuggestions.locations.map((item) => item.text),
     DEFAULT_LOCATION_SUGGESTIONS,
   );
   // 「猜你想输」跟着报修类型走：先按配置好的顺序展示（后台可调序/按次数排序），
@@ -923,10 +1003,10 @@ function RepairSubmitDock({
   const contentSuggestions = pickedRepairType
     ? mergeSuggestionTexts(
         pickedRule?.contentSuggestions || [],
-        (suggestions.contentsByType?.[pickedRepairType] || []).map((item) => item.text),
+        (activeSuggestions.contentsByType?.[pickedRepairType] || []).map((item) => item.text),
       )
     : mergeSuggestionTexts(
-        suggestions.contents.map((item) => item.text),
+        activeSuggestions.contents.map((item) => item.text),
         DEFAULT_CONTENT_SUGGESTIONS,
       );
   const contentSuggestionTitle = pickedRepairTypeLabel
@@ -1053,8 +1133,27 @@ function RepairSubmitDock({
                   </Space>
                 }
               >
-                <Select {...searchableWideSelectProps} placeholder="选择类型" options={withOptionTitles(repairTypeSelectOptions)} allowClear />
+                <Select
+                  {...searchableWideSelectProps}
+                  placeholder="按报修内容自动判定，也可以自己选"
+                  options={withOptionTitles(repairTypeSelectOptions)}
+                  allowClear
+                  onChange={() => { typeTouchedRef.current = true; }}
+                />
               </Form.Item>
+              {predicted && (
+                <Text
+                  type="secondary"
+                  style={{ display: 'block', fontSize: 12, marginTop: -16, marginBottom: 16 }}
+                >
+                  <BulbOutlined />{' '}
+                  {pickedRepairType === predicted.repairType
+                    ? `按报修内容判为「${predicted.label}」`
+                    : `按报修内容像是「${predicted.label}」，你已改成「${pickedRepairTypeLabel || '未选'}」，按你选的走`}
+                  {predicted.matched.length > 0 && `（命中：${predicted.matched.slice(0, 3).join('、')}）`}
+                  。判错了直接改上面的下拉框，改多了系统会自己学。
+                </Text>
+              )}
               <Form.Item
                 label="要求完成截止日期"
                 extra="不勾按报修类型的默认时限；距截止不足 4 小时或已超时的工单会在工单池整行标红"
@@ -1138,20 +1237,80 @@ function mergeSuggestionTexts(primary: string[], extra: string[]) {
   return picked.slice(0, MAX_SUGGESTION_TAGS);
 }
 
-/** 报修类型配置里的「猜你想输」关键词编辑器：增删、上下调序、按使用次数排序 */
-function KeywordEditor({
-  keywords, usage, draft, learned, onDraftChange, onAdd, onRemove, onMove, onSortByUsage,
+/** 「本处 3 次 · 全公司 24 次」：一个词是本地叫法还是全公司通用，看这两个数的差 */
+function KeywordUsage({
+  word, usage, companyUsage, scoped,
 }: {
-  keywords: string[];
+  word: string;
   usage: Record<string, number>;
+  companyUsage: Record<string, number>;
+  scoped: boolean;
+}) {
+  const own = usage[word] || 0;
+  const all = companyUsage[word] || 0;
+  const text = scoped ? `本处 ${own} · 全公司 ${all}` : `${own} 次`;
+  return (
+    <Text
+      type="secondary"
+      title={scoped
+        ? `本管理处历史里用过 ${own} 次，全公司 ${all} 次`
+        : `历史里用过 ${own} 次`}
+      style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
+    >
+      {text}
+    </Text>
+  );
+}
+
+/**
+ * 报修类型配置里的「猜你想输」关键词编辑器。
+ *
+ * 三层（2026-08-31）：本处增补（可增删调序）+ 公司模板（只能停用/恢复，公司层改了立刻跟着变）。
+ * 总公司那一页只有一层 —— 那一页改的就是模板本身，所以 template/muted 都传空。
+ *
+ * 关键词同时是报修类型的判定依据，所以加词时要挡撞车：同一套里一个词只能属于一个类型，
+ * 两边都配了系统只会按排序悄悄挑一个（服务端 assertNoKeywordConflict 也会再拦一道）。
+ */
+function KeywordEditor({
+  keywords, template, muted, usage, companyUsage, scoped, isTemplateTab,
+  draft, learned, conflictOf, similarOf,
+  onDraftChange, onAdd, onRemove, onMove, onSortByUsage, onToggleMute,
+}: {
+  /** 本处增补（总公司那一页就是模板词本身） */
+  keywords: string[];
+  /** 继承自公司模板的词，含已停用的 */
+  template: string[];
+  muted: string[];
+  usage: Record<string, number>;
+  companyUsage: Record<string, number>;
+  scoped: boolean;
+  isTemplateTab: boolean;
   draft: string;
   learned: RepairSuggestion[];
+  /** 这个词被本套里的哪个类型占了；没占返回 null */
+  conflictOf: (word: string) => string | null;
+  /** 包含关系的近似词（不拦，只提醒） */
+  similarOf: (word: string) => { word: string; label: string } | null;
   onDraftChange: (value: string) => void;
   onAdd: (text: string) => void;
   onRemove: (index: number) => void;
   onMove: (index: number, delta: number) => void;
   onSortByUsage: () => void;
+  onToggleMute: (word: string) => void;
 }) {
+  const draftWord = draft.trim();
+  const draftConflict = draftWord ? conflictOf(draftWord) : null;
+  const draftSimilar = draftWord && !draftConflict ? similarOf(draftWord) : null;
+
+  const rowStyle = (last: boolean) => ({
+    display: 'flex' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    minHeight: 44,
+    padding: '4px 8px 4px 12px',
+    borderBottom: last ? 'none' : '1px solid #f5f5f5',
+  });
+
   return (
     <div>
       <Space.Compact style={{ width: '100%' }}>
@@ -1159,47 +1318,52 @@ function KeywordEditor({
           value={draft}
           placeholder="添加关键词，如：水管漏水"
           maxLength={30}
+          status={draftConflict ? 'error' : undefined}
           onChange={(e) => onDraftChange(e.target.value)}
           onPressEnter={(e) => { e.preventDefault(); onAdd(draft); }}
         />
         <Button type="primary" icon={<PlusOutlined />} onClick={() => onAdd(draft)}>添加</Button>
       </Space.Compact>
 
+      {draftConflict && (
+        <Text type="danger" style={{ display: 'block', fontSize: 12, marginTop: 6 }}>
+          <WarningOutlined /> 「{draftWord}」已经是「{draftConflict}」的关键词。
+          同一个词只能属于一个类型，否则系统只能按排序挑一个，判得准不准全看运气。
+        </Text>
+      )}
+      {draftSimilar && (
+        <Text type="warning" style={{ display: 'block', fontSize: 12, marginTop: 6 }}>
+          <BulbOutlined /> 「{draftSimilar.label}」里有个相近的「{draftSimilar.word}」。
+          两个词长短不同，系统按字数多的那个判，一般不会打架 —— 确认是两回事就直接加。
+        </Text>
+      )}
+
       <Space size={8} style={{ marginTop: 8 }}>
         <Button size="small" onClick={onSortByUsage} disabled={keywords.length < 2}>
           按使用次数排序
         </Button>
-        <Text type="secondary" style={{ fontSize: 12 }}>次数来自历史报修内容归纳</Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {scoped ? '次数按本管理处的历史报修算' : '次数来自历史报修内容归纳'}
+        </Text>
       </Space>
 
+      {!isTemplateTab && (
+        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 12 }}>
+          本处关键词（{keywords.length}）· 只在这个管理处生效，排在模板词前面
+        </Text>
+      )}
       {keywords.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="还没有关键词"
+          description={isTemplateTab ? '还没有关键词' : '本处还没有自己的词，下面的模板词已经在用了'}
           style={{ margin: '12px 0' }}
         />
       ) : (
-        <div style={{ marginTop: 12, border: '1px solid #f0f0f0', borderRadius: 8 }}>
+        <div style={{ marginTop: 8, border: '1px solid #f0f0f0', borderRadius: 8 }}>
           {keywords.map((keyword, index) => (
-            <div
-              key={keyword}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                minHeight: 44,
-                padding: '4px 8px 4px 12px',
-                borderBottom: index === keywords.length - 1 ? 'none' : '1px solid #f5f5f5',
-              }}
-            >
+            <div key={keyword} style={rowStyle(index === keywords.length - 1)}>
               <Text style={{ flex: 1, minWidth: 0 }} ellipsis={{ tooltip: keyword }}>{keyword}</Text>
-              <Text
-                type="secondary"
-                title={`历史里用过 ${usage[keyword] || 0} 次`}
-                style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
-              >
-                {usage[keyword] || 0} 次
-              </Text>
+              <KeywordUsage word={keyword} usage={usage} companyUsage={companyUsage} scoped={scoped} />
               <Button
                 type="text"
                 aria-label={`上移 ${keyword}`}
@@ -1229,22 +1393,63 @@ function KeywordEditor({
         </div>
       )}
 
+      {!isTemplateTab && template.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            公司模板（{template.length}）· 总公司那一页改了这里立刻跟着变；本处用不上的可以停用
+          </Text>
+          <div style={{ marginTop: 8, border: '1px solid #f0f0f0', borderRadius: 8, background: '#fafafa' }}>
+            {template.map((keyword, index) => {
+              const off = muted.includes(keyword);
+              return (
+                <div key={keyword} style={rowStyle(index === template.length - 1)}>
+                  <Text
+                    delete={off}
+                    type={off ? 'secondary' : undefined}
+                    style={{ flex: 1, minWidth: 0 }}
+                    ellipsis={{ tooltip: keyword }}
+                  >
+                    {keyword}
+                  </Text>
+                  {off
+                    ? <Tag style={{ marginInlineEnd: 0 }}>本处已停用</Tag>
+                    : <KeywordUsage word={keyword} usage={usage} companyUsage={companyUsage} scoped={scoped} />}
+                  <Button
+                    type="text"
+                    aria-label={`${off ? '恢复' : '停用'} ${keyword}`}
+                    title={off ? '在本处恢复这个词' : '在本处停用这个词（不影响其它管理处）'}
+                    icon={off ? <UndoOutlined /> : <StopOutlined />}
+                    onClick={() => onToggleMute(keyword)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {learned.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            历史里常被输入、还没加进来的（点一下加入）：
+            {isTemplateTab
+              ? '各管理处历史里常被输入、模板还没收的（点一下收进模板）：'
+              : '本处历史里常被输入、还没加进来的（点一下加入）：'}
           </Text>
           <Space size={[6, 6]} wrap style={{ marginTop: 6 }}>
-            {learned.map((item) => (
-              <Tag
-                key={item.text}
-                color="blue"
-                style={{ cursor: 'pointer', marginInlineEnd: 0 }}
-                onClick={() => onAdd(item.text)}
-              >
-                {item.text} · {item.count}
-              </Tag>
-            ))}
+            {learned.map((item) => {
+              const taken = conflictOf(item.text);
+              return (
+                <Tag
+                  key={item.text}
+                  color={taken ? 'default' : 'blue'}
+                  title={taken ? `已经是「${taken}」的关键词，加不进来` : `历史里出现 ${item.count} 次`}
+                  style={{ cursor: taken ? 'not-allowed' : 'pointer', marginInlineEnd: 0, opacity: taken ? 0.55 : 1 }}
+                  onClick={() => { if (!taken) onAdd(item.text); }}
+                >
+                  {item.text} · {item.count}
+                </Tag>
+              );
+            })}
           </Space>
         </div>
       )}
@@ -2308,7 +2513,14 @@ function RepairTypeRuleModal({
   const { canDelete, canEdit } = usePagePerm('work-orders');
   const { access } = useAuth();
   // 管理处列表现取现用：登录时拿的 access.offices 不含刚新建的管理处，拿不到就退回它
-  const [offices, setOffices] = useState<Array<{ id: number; name: string }>>(access?.offices ?? []);
+  // （退回来的那份没有「猜你想输」口径开关，按默认值补上，等接口回来再覆盖）
+  const [offices, setOffices] = useState<RuleOffice[]>(
+    (access?.offices ?? []).map((office) => ({
+      ...office,
+      suggestionScope: 'office_first' as SuggestionScope,
+      suggestionFeedback: true,
+    })),
+  );
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<RepairTypeRule | null>(null);
@@ -2321,8 +2533,19 @@ function RepairTypeRuleModal({
   /** 本页可选的默认维修工（已按范围过滤） */
   const [tabTechnicians, setTabTechnicians] = useState<TechnicianOption[]>([]);
   const [draggingRuleId, setDraggingRuleId] = useState<number | null>(null);
+  /** 正在编辑的这条：本处增补（总公司那一页就是模板词本身） */
   const [keywords, setKeywords] = useState<string[]>([]);
+  /** 正在编辑的这条：继承自公司模板的词（含已停用的），只读 */
+  const [templateWords, setTemplateWords] = useState<string[]>([]);
+  /** 正在编辑的这条：本处停用掉的模板词 */
+  const [mutedWords, setMutedWords] = useState<string[]>([]);
   const [keywordDraft, setKeywordDraft] = useState('');
+  /**
+   * 「猜你想输」的次数按当前 Tab 的管理处口径重拉：本处口径下配出来的顺序，
+   * 才是这个小区的人真正常说的顺序。页面级那份（全公司）留给录入表单兜底。
+   */
+  const [tabSuggestions, setTabSuggestions] = useState<RepairSuggestions>(suggestions);
+  const [savingOfficeSettings, setSavingOfficeSettings] = useState(false);
 
   const technicianName = (id: number | null) => {
     if (!id) return null;
@@ -2334,15 +2557,21 @@ function RepairTypeRuleModal({
     setRulesLoading(true);
     try {
       const oid = which === 'company' ? null : which;
-      const [rules, techs] = await Promise.all([
+      const [rules, techs, tabSugg] = await Promise.all([
         request<RepairTypeRule[]>({ url: '/repair-type-rules', query: oid ? { officeId: oid } : {} }),
         request<TechnicianOption[]>({
           url: '/work-orders/technicians',
           query: oid ? { officeId: oid } : { scope: 'company' },
         }).catch(() => [] as TechnicianOption[]),
+        // 次数按这个管理处的口径重算（口径开关在这一页顶部）
+        request<RepairSuggestions>({
+          url: '/repair-suggestions',
+          query: oid ? { officeId: oid } : {},
+        }).catch(() => null),
       ]);
       setLocalRules(rules);
       setTabTechnicians(techs);
+      if (tabSugg) setTabSuggestions(tabSugg);
     } catch (e: any) {
       message.error(e?.message || '加载报修类型失败');
     } finally {
@@ -2350,20 +2579,87 @@ function RepairTypeRuleModal({
     }
   }, [message]);
 
-  /** 当前编辑类型下，每个关键词被真实用了多少次 */
+  /** 当前编辑类型下，每个关键词被真实用了多少次（本处口径 / 全公司各一份） */
   const keywordUsage = editing
-    ? suggestions.keywordUsageByType?.[editing.repairType] || {}
+    ? tabSuggestions.keywordUsageByType?.[editing.repairType] || {}
+    : {};
+  const companyKeywordUsage = editing
+    ? tabSuggestions.companyKeywordUsageByType?.[editing.repairType] || {}
     : {};
   /** 历史里归纳出来、还没配进关键词的高频短语 */
   const learnedExtras = editing
-    ? (suggestions.contentsByType?.[editing.repairType] || []).filter(
-        (item) => !keywords.includes(item.text),
+    ? (tabSuggestions.contentsByType?.[editing.repairType] || []).filter(
+        (item) => !keywords.includes(item.text) && !templateWords.includes(item.text),
       )
     : [];
 
+  /**
+   * 关键词撞车：同一套里这个词被别的类型占了没有。
+   *
+   * 判定用的是每条规则的**生效关键词**（已经含继承来的模板词），
+   * 所以本处加一个和别人模板词一样的词也会被挡下 —— 那种撞法一样会让判定按排序瞎猜。
+   */
+  const conflictOf = useCallback(
+    (word: string): string | null => {
+      const value = word.trim();
+      if (!value) return null;
+      for (const rule of localRules) {
+        if (editing && rule.id === editing.id) continue;
+        if (!editing && rule.repairType === form.getFieldValue('repairType')) continue;
+        if ((rule.contentSuggestions || []).includes(value)) return rule.label;
+      }
+      return null;
+    },
+    [localRules, editing, form],
+  );
+
+  /** 包含关系的近似词：不拦，只提醒 —— 真实词库里「漏水」和「厨房漏水」这种交叉到处都是 */
+  const similarOf = useCallback(
+    (word: string): { word: string; label: string } | null => {
+      const value = word.trim();
+      if (value.length < 2) return null;
+      for (const rule of localRules) {
+        if (editing && rule.id === editing.id) continue;
+        for (const other of rule.contentSuggestions || []) {
+          if (other === value) continue;
+          if (other.includes(value) || value.includes(other)) {
+            return { word: other, label: rule.label };
+          }
+        }
+      }
+      return null;
+    },
+    [localRules, editing],
+  );
+
+  /**
+   * 这一套里现存的撞车（别人早就配重了的）。
+   * 不能等人一条条保存才发现 —— 那样得挨个点开每个类型才知道哪里出了问题。
+   */
+  const existingConflicts = useMemo(() => {
+    const owner = new Map<string, string>();
+    const out: Array<{ word: string; labels: string[] }> = [];
+    for (const rule of localRules) {
+      for (const word of rule.contentSuggestions || []) {
+        const holder = owner.get(word);
+        if (holder && holder !== rule.label) {
+          const hit = out.find((item) => item.word === word);
+          if (hit) { if (!hit.labels.includes(rule.label)) hit.labels.push(rule.label); }
+          else out.push({ word, labels: [holder, rule.label] });
+        } else if (!holder) {
+          owner.set(word, rule.label);
+        }
+      }
+    }
+    return out;
+  }, [localRules]);
+
   const startEdit = (rule: RepairTypeRule) => {
     setEditing(rule);
-    setKeywords(rule.contentSuggestions || []);
+    // 本处增补和模板词分开编辑：模板词只能停用/恢复，删不掉（删了公司层就不知道谁不认它）
+    setKeywords(rule.officeId ? rule.extraSuggestions || [] : rule.contentSuggestions || []);
+    setTemplateWords(rule.officeId ? rule.templateSuggestions || [] : []);
+    setMutedWords(rule.officeId ? rule.mutedSuggestions || [] : []);
     setKeywordDraft('');
     form.setFieldsValue({
       repairType: rule.repairType,
@@ -2377,6 +2673,8 @@ function RepairTypeRuleModal({
   const startCreate = () => {
     setEditing(null);
     setKeywords([]);
+    setTemplateWords([]);
+    setMutedWords([]);
     setKeywordDraft('');
     form.resetFields();
     form.setFieldsValue({ enabled: true, slaHours: 24 });
@@ -2409,12 +2707,42 @@ function RepairTypeRuleModal({
       message.warning('该关键词已存在');
       return;
     }
+    // 模板里已经有了：本处不用再加一遍（加了也只是同一个词，白占位置）；
+    // 之前把它停用过的话，这一下就是要它回来
+    if (templateWords.includes(value)) {
+      if (mutedWords.includes(value)) {
+        setMutedWords(mutedWords.filter((word) => word !== value));
+        setKeywordDraft('');
+        message.success(`「${value}」是公司模板词，已在本处恢复启用`);
+      } else {
+        message.warning(`「${value}」已经在公司模板里，本处不用重复加`);
+      }
+      return;
+    }
+    const taken = conflictOf(value);
+    if (taken) {
+      message.error(
+        `「${value}」已经是「${taken}」的关键词。同一个词只能属于一个报修类型 —— ` +
+          `两边都留着，系统只会按排序挑一个，判得准不准全看运气。` +
+          `请先去「${taken}」里删掉它，或者在这里换个说法。`,
+      );
+      return;
+    }
     if (keywords.length >= MAX_KEYWORDS_PER_TYPE) {
       message.warning(`最多 ${MAX_KEYWORDS_PER_TYPE} 个关键词`);
       return;
     }
     setKeywords([...keywords, value]);
     setKeywordDraft('');
+  };
+
+  /** 本处停用 / 恢复一个模板词。停用只影响这个管理处，别处照旧 */
+  const toggleMute = (word: string) => {
+    setMutedWords(
+      mutedWords.includes(word)
+        ? mutedWords.filter((item) => item !== word)
+        : [...mutedWords, word],
+    );
   };
 
   const sortKeywordsByUsage = () => {
@@ -2424,12 +2752,32 @@ function RepairTypeRuleModal({
     message.success('已按使用次数从高到低排序，记得点保存');
   };
 
+  /** 改这个管理处的「猜你想输」口径开关，立刻生效并重拉次数 */
+  const saveOfficeSettings = async (patch: Partial<Pick<RuleOffice, 'suggestionScope' | 'suggestionFeedback'>>) => {
+    if (!officeId) return;
+    setSavingOfficeSettings(true);
+    try {
+      const saved = await request<RuleOffice>({
+        method: 'PATCH',
+        url: `/repair-type-rules/offices/${officeId}/suggestion-settings`,
+        data: patch,
+      });
+      setOffices((list) => list.map((office) => (office.id === officeId ? { ...office, ...saved } : office)));
+      message.success('已保存');
+      loadTab(officeId);
+    } catch (e: any) {
+      message.error(e?.message || '保存失败');
+    } finally {
+      setSavingOfficeSettings(false);
+    }
+  };
+
   useEffect(() => {
     if (!open) return;
     setTab('company');
     startCreate();
     loadTab('company');
-    request<Array<{ id: number; name: string }>>({ url: '/repair-type-rules/offices' })
+    request<RuleOffice[]>({ url: '/repair-type-rules/offices' })
       .then((list) => { if (Array.isArray(list)) setOffices(list); })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2449,7 +2797,11 @@ function RepairTypeRuleModal({
           assigneeIds: v.assigneeIds ?? [],
           slaHours: v.slaHours ?? null,
           enabled: v.enabled ?? true,
-          contentSuggestions: keywords,
+          // 总公司那一页改的就是模板本身；管理处那一页只提交本处增补和本处停用的模板词，
+          // 模板词绝不回传 —— 回传一次就等于把当时的模板抄死在这个管理处
+          ...(officeId
+            ? { extraSuggestions: keywords, mutedSuggestions: mutedWords }
+            : { contentSuggestions: keywords }),
         },
       });
       message.success('报修类型配置已保存');
@@ -2554,9 +2906,73 @@ function RepairTypeRuleModal({
       />
       <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
         {officeId
-          ? `「${officeName}」这一套第一次打开时从总公司复制而来，之后各改各的、互不影响。默认维修工只能选范围覆盖本管理处的人（全公司范围的维修工也可以）。`
-          : '总公司这一套是各管理处的模板：没单独配过的管理处按这里走。这里的默认维修工只能选全公司范围的人。领料仓库不用配 —— 维修工选料时按工单所在小区 / 管理处自动匹配仓库。'}
+          ? `「${officeName}」的类型名 / 默认维修工 / 时限各改各的，互不影响；`
+            + '「猜你想输」关键词是全公司共用的模板，总公司那一页改了这里立刻跟着变，本处可以另加自己的词、也可以停用用不上的模板词。'
+            + '默认维修工只能选范围覆盖本管理处的人（全公司范围的维修工也可以）。'
+          : '总公司这一套是各管理处的模板：类型名 / 维修工 / 时限只作为新管理处的初始值，'
+            + '「猜你想输」关键词则一直下发给所有管理处 —— 在这里加一个词，全公司立刻都能用它判类型。'
+            + '这里的默认维修工只能选全公司范围的人。领料仓库不用配 —— 维修工选料时按工单所在小区 / 管理处自动匹配仓库。'}
       </Text>
+
+      {officeId && (
+        <div
+          style={{
+            display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16,
+            padding: '10px 14px', marginBottom: 12,
+            background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8,
+          }}
+        >
+          <Space size={8}>
+            <Text style={{ whiteSpace: 'nowrap' }}>「猜你想输」排序按</Text>
+            <Segmented
+              size="small"
+              disabled={!canEdit || savingOfficeSettings}
+              value={offices.find((o) => o.id === officeId)?.suggestionScope ?? 'office_first'}
+              onChange={(value) => saveOfficeSettings({ suggestionScope: value as SuggestionScope })}
+              options={[
+                { label: '本处优先', value: 'office_first' },
+                { label: '全公司', value: 'company' },
+              ]}
+            />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              本处优先 = 本小区常说的排前面，不够时用全公司的补齐
+            </Text>
+          </Space>
+          <Space size={8}>
+            <Text style={{ whiteSpace: 'nowrap' }}>本处高频词进公司候选池</Text>
+            <Switch
+              size="small"
+              disabled={!canEdit || savingOfficeSettings}
+              checked={offices.find((o) => o.id === officeId)?.suggestionFeedback ?? true}
+              onChange={(checked) => saveOfficeSettings({ suggestionFeedback: checked })}
+            />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              关掉后本处的话术不再出现在总公司那一页的候选里（本处照样能用全公司的词）
+            </Text>
+          </Space>
+        </div>
+      )}
+
+      {existingConflicts.length > 0 && (
+        <div
+          style={{
+            padding: '10px 14px', marginBottom: 12,
+            background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 8,
+          }}
+        >
+          <Text type="warning" style={{ display: 'block' }}>
+            <WarningOutlined /> 这一套里有 {existingConflicts.length} 个词被多个类型同时占用，
+            判定时只会按显示顺序挑一个 —— 请在其中一个类型里删掉它：
+          </Text>
+          <Space size={[6, 6]} wrap style={{ marginTop: 6 }}>
+            {existingConflicts.map((item) => (
+              <Tag key={item.word} color="warning" style={{ marginInlineEnd: 0 }}>
+                {item.word}：{item.labels.join(' / ')}
+              </Tag>
+            ))}
+          </Space>
+        </div>
+      )}
       <Row gutter={20}>
         <Col xs={24} lg={14}>
           <Text type="secondary" style={{ display: 'block' }}>
@@ -2673,21 +3089,32 @@ function RepairTypeRuleModal({
                   <Space size={8}>
                     <span>猜你想输 关键词</span>
                     <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
-                      {keywords.length}/{MAX_KEYWORDS_PER_TYPE}
+                      {officeId
+                        ? `本处 ${keywords.length}/${MAX_KEYWORDS_PER_TYPE} · 模板 ${templateWords.length - mutedWords.length}`
+                        : `${keywords.length}/${MAX_KEYWORDS_PER_TYPE}`}
                     </Text>
                   </Space>
                 }
+                extra="这些词同时是报修类型的判定依据：办公室录入 / 业主报修时，系统按它们猜出报修类型，再通知该类型的默认维修工。"
               >
                 <KeywordEditor
                   keywords={keywords}
+                  template={templateWords}
+                  muted={mutedWords}
                   usage={keywordUsage}
+                  companyUsage={companyKeywordUsage}
+                  scoped={Boolean(officeId) && Boolean(tabSuggestions.officeScoped)}
+                  isTemplateTab={!officeId}
                   draft={keywordDraft}
                   learned={learnedExtras}
+                  conflictOf={conflictOf}
+                  similarOf={similarOf}
                   onDraftChange={setKeywordDraft}
                   onAdd={addKeyword}
                   onRemove={(index) => setKeywords(keywords.filter((_, i) => i !== index))}
                   onMove={moveKeyword}
                   onSortByUsage={sortKeywordsByUsage}
+                  onToggleMute={toggleMute}
                 />
               </Form.Item>
 
@@ -2699,7 +3126,8 @@ function RepairTypeRuleModal({
           </Card>
           <Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
             设置默认维修工后，这个类型的新工单会通知选中的每一位维修工，并出现在他们各自的工单池里，谁先接单归谁；未设置则只进入“待派单”，由办公室派。维修工的工单池只显示他被配到的类型。
-            关键词按这里的先后顺序显示在录入页的「猜你想输」。
+            关键词按这里的先后顺序显示在录入页的「猜你想输」，本处的词排在公司模板词前面；
+            同一个词只能属于一个类型，撞了会当场拦下。
             维修工选料时的仓库按工单所在小区 / 管理处自动匹配（同小区仓 → 同管理处仓 → 公司总仓），
             匹配不到时维修工可以自己挑仓库，也请在「库存与采购」里给管理处建仓。
           </Text>

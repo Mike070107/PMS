@@ -208,11 +208,40 @@ export class UpsertRepairTypeRuleDto {
   @Min(0)
   sortOrder?: number;
 
-  /** 「猜你想输」常用词，按数组顺序展示 */
+  /**
+   * 「猜你想输」常用词，按数组顺序展示。
+   * 公司模板那一页 = 全公司通用的模板词；管理处那一页只有老后台才会传它，
+   * 服务端当成本处增补收下（见 RepairsService.dtoSuggestions）。
+   */
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   contentSuggestions?: string[];
+
+  /** 管理处专用：本处自己加的词（模板词不用重复传） */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  extraSuggestions?: string[];
+
+  /** 管理处专用：本处停用的模板词 */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  mutedSuggestions?: string[];
+}
+
+/** 管理处的「猜你想输」口径开关 */
+export class UpdateOfficeSuggestionSettingsDto {
+  /** office_first = 本处优先（本处数据不足用全公司补齐）；company = 直接用全公司 */
+  @IsOptional()
+  @IsIn(['office_first', 'company'])
+  suggestionScope?: 'office_first' | 'company';
+
+  /** 本处归纳出的高频词要不要进公司模板的候选池 */
+  @IsOptional()
+  @IsBoolean()
+  suggestionFeedback?: boolean;
 }
 
 export class ReorderRepairTypeRulesDto {

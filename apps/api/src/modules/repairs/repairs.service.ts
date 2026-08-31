@@ -42,7 +42,13 @@ import {
 } from '../../common/enums';
 import { detectUrgency } from '../../common/repair-urgency.util';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
-import { ensureOfficeRepairRules, ruleAssigneeIds } from './repair-rule-template';
+import {
+  ensureOfficeRepairRules,
+  ruleAssigneeIds,
+  toRuleView,
+  toRuleViews,
+  type RepairTypeRuleView,
+} from './repair-rule-template';
 import {
   Building,
   Community,
@@ -67,6 +73,7 @@ import {
   WorkOrderLog,
   WorkOrderMaterial,
   WorkOrderMaterialAllocation,
+  type SuggestionScope,
 } from '../../entities';
 import {
   AssignWorkOrderDto,
@@ -77,6 +84,7 @@ import {
   ParseRepairAddressDto,
   ReviewWorkOrderDto,
   UpdateMissingMaterialsDto,
+  UpdateOfficeSuggestionSettingsDto,
   UpdateWorkOrderRepairTypeDto,
   UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
@@ -177,29 +185,75 @@ export class RepairsService implements OnModuleInit {
   /**
    * 报修类型规则按管理处分套：officeId 为空 = 公司默认模板；
    * 管理处第一次打开配置页时从模板复制一份（懒复制），之后各改各的、互不影响。
+   *
+   * 关键词是例外：不复制、按模板叠加下发（见 toRuleViews）。返回的
+   * contentSuggestions 是**生效关键词**，另外带 templateSuggestions / extraSuggestions /
+   * mutedSuggestions 三层来源给配置页分开显示。
    */
   async listRepairTypeRules(user: AuthUser, officeId?: number | null) {
     const tenantId = this.resolveTenantId(user);
     await this.ensureDefaultRepairTypeRules(tenantId, user.id);
+    const templates = await this.templateRules(tenantId);
     // 老数据只有 assignee_id 一个人，读出来统一补成数组，后台页只认 assigneeIds
-    const withIds = (rules: RepairTypeRule[]) =>
-      rules.map((rule) => ({ ...rule, assigneeIds: ruleAssigneeIds(rule) }));
-    if (!officeId) {
-      return withIds(
-        await this.repairTypeRuleRepo.find({
-          where: { tenantId, officeId: IsNull() },
-          order: { sortOrder: 'ASC', id: 'ASC' },
-        }),
-      );
-    }
+    const decorate = (rules: RepairTypeRule[]) =>
+      toRuleViews(rules, templates).map((rule) => ({
+        ...rule,
+        assigneeIds: ruleAssigneeIds(rule),
+      }));
+    if (!officeId) return decorate(templates);
     await this.assertOffice(tenantId, officeId);
     // 没有自己那套就从总公司复制（新建管理处时已经同步建过，这里是兜底）
-    return withIds(await ensureOfficeRepairRules(this.repairTypeRuleRepo, tenantId, officeId, user.id));
+    return decorate(
+      await ensureOfficeRepairRules(this.repairTypeRuleRepo, tenantId, officeId, user.id),
+    );
   }
 
-  /** 报修类型配置弹窗的管理处 Tab 列表：按本人范围算，刚新建的管理处不用重新登录就能看到 */
-  listRuleOffices(user: AuthUser) {
-    return this.accessService.listVisibleOffices(user);
+  /** 公司模板那一套（office_id 为空）：关键词的唯一真源，各管理处那套都靠它叠出来 */
+  private templateRules(tenantId: number) {
+    return this.repairTypeRuleRepo.find({
+      where: { tenantId, officeId: IsNull() },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+  }
+
+  /**
+   * 报修类型配置弹窗的管理处 Tab 列表：按本人范围算，刚新建的管理处不用重新登录就能看到。
+   * 顺带把每个管理处的「猜你想输」口径开关一起给出去，配置页顶部直接能改。
+   */
+  async listRuleOffices(user: AuthUser) {
+    const visible = await this.accessService.listVisibleOffices(user);
+    if (!visible.length) return [];
+    const tenantId = this.resolveTenantId(user);
+    const rows = await this.dataSource.getRepository(ManagementOffice).find({
+      where: { tenantId, id: In(visible.map((office) => office.id)) },
+      select: ['id', 'suggestionScope', 'suggestionFeedback'],
+    });
+    const settingById = new Map(rows.map((row) => [row.id, row] as const));
+    return visible.map((office) => ({
+      ...office,
+      suggestionScope: settingById.get(office.id)?.suggestionScope ?? 'office_first',
+      suggestionFeedback: settingById.get(office.id)?.suggestionFeedback ?? true,
+    }));
+  }
+
+  /** 改某个管理处的「猜你想输」口径：按谁的历史排序、本处高频词要不要进公司候选池 */
+  async updateOfficeSuggestionSettings(
+    officeId: number,
+    dto: UpdateOfficeSuggestionSettingsDto,
+    user: AuthUser,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    const office = await this.assertOffice(tenantId, officeId);
+    if (dto.suggestionScope !== undefined) office.suggestionScope = dto.suggestionScope;
+    if (dto.suggestionFeedback !== undefined) office.suggestionFeedback = dto.suggestionFeedback;
+    office.updatedBy = user.id;
+    await this.dataSource.getRepository(ManagementOffice).save(office);
+    return {
+      id: office.id,
+      name: office.name,
+      suggestionScope: office.suggestionScope,
+      suggestionFeedback: office.suggestionFeedback,
+    };
   }
 
   async createRepairTypeRule(dto: UpsertRepairTypeRuleDto, user: AuthUser) {
@@ -212,6 +266,8 @@ export class RepairsService implements OnModuleInit {
       where: { tenantId, officeId: officeId ?? IsNull(), repairType: dto.repairType },
     });
     if (existing) throw new BadRequestException('该报修类型规则已存在');
+    const words = this.dtoSuggestions(dto, officeId, SEED_CONTENT_SUGGESTIONS[dto.repairType] ?? []);
+    await this.assertNoKeywordConflict(tenantId, officeId, dto.repairType, words.own);
     const sortOrder = dto.sortOrder ?? (await this.nextRepairTypeSortOrder(tenantId, officeId));
     return this.repairTypeRuleRepo.save(
       this.repairTypeRuleRepo.create({
@@ -225,12 +281,114 @@ export class RepairsService implements OnModuleInit {
         slaHours: dto.slaHours ?? null,
         sortOrder,
         enabled: dto.enabled ?? true,
-        contentSuggestions:
-          dto.contentSuggestions ?? SEED_CONTENT_SUGGESTIONS[dto.repairType] ?? [],
+        contentSuggestions: words.template,
+        extraSuggestions: words.extra,
+        mutedSuggestions: words.muted,
         createdBy: user.id,
         updatedBy: user.id,
       }),
     );
+  }
+
+  /**
+   * 后台提交的关键词落到哪一列：公司模板行写 content_suggestions（全公司生效），
+   * 管理处行写 extra_suggestions（本处增补）+ muted_suggestions（本处停用的模板词）。
+   *
+   * 老后台只会传 contentSuggestions —— 在管理处那一页把它当成本处增补收下，
+   * 不然老页面一保存就会把一整套模板词写死进这个管理处。
+   */
+  private dtoSuggestions(
+    dto: UpsertRepairTypeRuleDto,
+    officeId: number | null,
+    fallback: string[] = [],
+  ): { template: string[]; extra: string[]; muted: string[]; own: string[] } {
+    if (officeId === null) {
+      const template = normalizeSuggestionList(dto.contentSuggestions ?? fallback);
+      return { template, extra: [], muted: [], own: template };
+    }
+    const extra = normalizeSuggestionList(dto.extraSuggestions ?? dto.contentSuggestions ?? []);
+    return {
+      template: [],
+      extra,
+      muted: normalizeSuggestionList(dto.mutedSuggestions ?? []),
+      own: extra,
+    };
+  }
+
+  /**
+   * 关键词撞车校验：同一套（公司模板 / 某个管理处）里，一个词只能属于一个报修类型。
+   *
+   * 为什么必须硬拦：classifyByKeywords 按「命中词的字数总和」打分，两个类型配了同一个词时
+   * 分数会打平，最后由 sortOrder 靠前的那个悄悄赢走 —— 配置的人完全看不出发生了什么，
+   * 只会觉得「系统判得不准」。
+   *
+   * 只拦**完全相同**的词。包含关系（「漏水」vs「厨房漏水」）不拦：真实词库里这种交叉大量存在，
+   * 硬拦会让人根本配不下去，而它们靠字数打分本来就分得开。
+   */
+  private async assertNoKeywordConflict(
+    tenantId: number,
+    officeId: number | null,
+    repairType: string,
+    words: string[],
+    excludeRuleId: number | null = null,
+  ) {
+    const wanted = words.map((word) => word.trim()).filter(Boolean);
+    if (!wanted.length) return;
+
+    const all = await this.repairTypeRuleRepo.find({ where: { tenantId } });
+    const templateByType = new Map(
+      all.filter((rule) => rule.officeId === null).map((rule) => [rule.repairType, rule] as const),
+    );
+    /** 一套规则里「词 -> 占用它的类型名」；同编码的那条就是正在编辑的自己，跳过 */
+    const ownerOf = (rules: RepairTypeRule[]) => {
+      const owner = new Map<string, string>();
+      for (const rule of rules) {
+        // 正在编辑的那条自己不算撞车。按 id 排除，别只按编码 ——
+        // 改编码的同时改关键词时，按编码排除会把自己当成「另一个类型」拦下来
+        if (excludeRuleId !== null && rule.id === excludeRuleId) continue;
+        if (rule.repairType === repairType) continue;
+        for (const word of toRuleView(rule, templateByType).contentSuggestions) {
+          if (!owner.has(word)) owner.set(word, rule.label);
+        }
+      }
+      return owner;
+    };
+
+    const sameSet = ownerOf(all.filter((rule) => (rule.officeId ?? null) === officeId));
+    for (const word of wanted) {
+      const label = sameSet.get(word);
+      if (label) {
+        throw new BadRequestException(
+          `「${word}」已经是「${label}」的关键词，同一个词只能属于一个报修类型 —— ` +
+            `留着两边都有，系统只会按排序挑一个，判得准不准全看运气。` +
+            `请先去「${label}」里删掉它，或者在这里换个说法。`,
+        );
+      }
+    }
+
+    // 改公司模板时，还要看会不会和某个管理处的本处词撞上：模板是下发给所有管理处的，
+    // 那边撞了同样会判错，而且当事人在公司这一页根本看不到。
+    if (officeId !== null) return;
+    const officeIds = Array.from(
+      new Set(all.map((rule) => rule.officeId).filter((id): id is number => id !== null)),
+    );
+    if (!officeIds.length) return;
+    const offices = await this.dataSource
+      .getRepository(ManagementOffice)
+      .find({ where: { tenantId, id: In(officeIds) }, select: ['id', 'name'] });
+    const officeName = new Map(offices.map((office) => [office.id, office.name] as const));
+    for (const id of officeIds) {
+      const owner = ownerOf(all.filter((rule) => rule.officeId === id));
+      for (const word of wanted) {
+        const label = owner.get(word);
+        if (!label) continue;
+        const name = officeName.get(id) ?? `管理处 #${id}`;
+        throw new BadRequestException(
+          `「${word}」在「${name}」已经是「${label}」的本处关键词，加进公司模板会和那边撞车。` +
+            `请先去「${name}」那一页把它删掉，再回来加。`,
+        );
+      }
+    }
   }
 
   async updateRepairTypeRule(id: number, dto: UpsertRepairTypeRuleDto, user: AuthUser) {
@@ -244,6 +402,23 @@ export class RepairsService implements OnModuleInit {
       where: { tenantId, officeId: rule.officeId ?? IsNull(), repairType: dto.repairType },
     });
     if (dup && dup.id !== id) throw new BadRequestException('该报修类型规则已存在');
+    const touchesKeywords =
+      dto.contentSuggestions !== undefined ||
+      dto.extraSuggestions !== undefined ||
+      dto.mutedSuggestions !== undefined;
+    if (touchesKeywords) {
+      const words = this.dtoSuggestions(dto, rule.officeId);
+      await this.assertNoKeywordConflict(tenantId, rule.officeId, dto.repairType, words.own, rule.id);
+      if (rule.officeId === null) {
+        rule.contentSuggestions = words.template;
+      } else {
+        // 管理处行的 content_suggestions 迁移后就该一直是空的：本处的词走 extra/muted，
+        // 模板词是继承来的。老后台把生效词整份回传时，dtoSuggestions 已经把它收成 extra 了。
+        rule.contentSuggestions = [];
+        rule.extraSuggestions = words.extra;
+        if (dto.mutedSuggestions !== undefined) rule.mutedSuggestions = words.muted;
+      }
+    }
     rule.repairType = dto.repairType;
     rule.label = dto.label;
     rule.assigneeId = assigneeIds[0] ?? null;
@@ -251,9 +426,6 @@ export class RepairsService implements OnModuleInit {
     rule.slaHours = dto.slaHours ?? null;
     rule.sortOrder = dto.sortOrder ?? rule.sortOrder;
     rule.enabled = dto.enabled ?? true;
-    if (dto.contentSuggestions !== undefined) {
-      rule.contentSuggestions = normalizeSuggestionList(dto.contentSuggestions);
-    }
     rule.updatedBy = user.id;
     return this.repairTypeRuleRepo.save(rule);
   }
@@ -329,9 +501,11 @@ export class RepairsService implements OnModuleInit {
     const wrongOnes = corrections.filter((row) => row.fromType && row.fromType !== row.toType);
     if (!wrongOnes.length) return new Map();
 
+    // 关键词要按模板叠加算，管理处那些行自己那一列是空的
     const rules = await this.repairTypeRuleRepo.find({ where: { tenantId } });
+    const views = toRuleViews(rules, rules.filter((rule) => rule.officeId === null));
     const keywordsByType = new Map(
-      rules.map((rule) => [rule.repairType, buildTypeKeywords(rule)] as const),
+      views.map((rule) => [rule.repairType, buildTypeKeywords(rule)] as const),
     );
 
     // type -> keyword -> 被改走的次数
@@ -357,35 +531,157 @@ export class RepairsService implements OnModuleInit {
     return out;
   }
 
-  async listRepairSuggestions(user: AuthUser) {
+  async listRepairSuggestions(
+    user: AuthUser,
+    opts?: { officeId?: number | null; communityId?: number | null },
+  ) {
     const tenantId = this.resolveTenantId(user);
+    const scope = await this.suggestionScope(tenantId, opts);
     // 本公司的小区名：抽位置/内容时先把它们剥掉（「枫桦景苑二期」这种名字光靠模式认不全）
-    const knownPlaces = (await this.communityRepo.find({ where: { tenantId }, select: ['name'] }))
-      .map((c) => c.name)
-      .filter(Boolean);
-    const [locations, contents, rules] = await Promise.all([
-      this.summarizeSpots(tenantId, knownPlaces, 8),
-      this.summarizeRepairContents(tenantId, knownPlaces),
+    const communities = await this.communityRepo.find({
+      where: { tenantId },
+      select: ['id', 'name', 'parentId', 'officeId'],
+    });
+    const knownPlaces = communities.map((c) => c.name).filter(Boolean);
+    const [locations, companyStats, officeStats, rules] = await Promise.all([
+      this.summarizeSpots(tenantId, knownPlaces, 8, scope.officeCommunityIds),
+      this.summarizeRepairContents(tenantId, knownPlaces, 8, scope.companyCommunityIds),
+      scope.officeCommunityIds
+        ? this.summarizeRepairContents(tenantId, knownPlaces, 8, scope.officeCommunityIds)
+        : Promise.resolve(null),
       this.repairTypeRuleRepo.find({ where: { tenantId } }),
     ]);
 
-    // 每个已配置关键词被真实用了多少次，供后台「按使用次数排序」
-    const keywordUsageByType: Record<string, Record<string, number>> = {};
-    for (const rule of rules) {
-      const counts = contents.keyCountsByType[rule.repairType];
-      const usage: Record<string, number> = {};
-      for (const keyword of rule.contentSuggestions ?? []) {
-        const key = normalizeSuggestionText(keyword);
-        usage[keyword] = (key && counts?.[key]) || 0;
+    // 本处优先：本处有数据的词排前面，不够 8 条用全公司的补齐。
+    // 新管理处一条报修都没有，纯本处口径会是一片空白 —— 那比不分口径还难用。
+    const useOfficeFirst = officeStats && scope.scope === 'office_first';
+    const primary = scope.scope === 'company' || !officeStats ? companyStats : officeStats;
+    const contentsByType: Record<string, Array<{ text: string; count: number }>> = {};
+    for (const type of new Set([
+      ...Object.keys(primary.byType),
+      ...Object.keys(companyStats.byType),
+    ])) {
+      const rows = [...(primary.byType[type] ?? [])];
+      if (useOfficeFirst) {
+        const seen = new Set(rows.map((item) => normalizeSuggestionText(item.text)));
+        for (const item of companyStats.byType[type] ?? []) {
+          if (rows.length >= 8) break;
+          const key = normalizeSuggestionText(item.text);
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          rows.push(item);
+        }
       }
-      keywordUsageByType[rule.repairType] = usage;
+      contentsByType[type] = rows;
     }
+
+    /**
+     * 每个关键词被真实用了多少次，供后台「按使用次数排序」。
+     * 一个类型的词可能来自模板，也可能来自各管理处的本处增补 —— 这里按类型把它们并起来算，
+     * 哪一页打开都查得到次数。
+     */
+    const views = toRuleViews(rules, rules.filter((rule) => rule.officeId === null));
+    const wordsByType = new Map<string, Set<string>>();
+    for (const rule of views) {
+      const bucket = wordsByType.get(rule.repairType) ?? new Set<string>();
+      for (const word of rule.contentSuggestions ?? []) bucket.add(word);
+      wordsByType.set(rule.repairType, bucket);
+    }
+    const usageFrom = (counts: Record<string, Record<string, number>>) => {
+      const out: Record<string, Record<string, number>> = {};
+      for (const [type, words] of wordsByType) {
+        const byKey = counts[type];
+        const usage: Record<string, number> = {};
+        for (const word of words) {
+          const key = normalizeSuggestionText(word);
+          usage[word] = (key && byKey?.[key]) || 0;
+        }
+        out[type] = usage;
+      }
+      return out;
+    };
 
     return {
       locations,
-      contents: contents.general,
-      contentsByType: contents.byType,
-      keywordUsageByType,
+      contents: (primary.general.length ? primary : companyStats).general,
+      contentsByType,
+      // 当前口径下的次数（本处口径时就是本处的），配置页的「按使用次数排序」按它来
+      keywordUsageByType: usageFrom(
+        (officeStats && scope.scope !== 'company' ? officeStats : companyStats).keyCountsByType,
+      ),
+      // 全公司次数单独给一份：配置页上显示成「本处 3 次 · 全公司 12 次」，
+      // 判断一个本地词值不值得收编进模板全看这两个数的差
+      companyKeywordUsageByType: usageFrom(companyStats.keyCountsByType),
+      scope: scope.scope,
+      officeId: scope.officeId,
+      officeScoped: Boolean(officeStats),
+    };
+  }
+
+  /**
+   * 「猜你想输」这次按谁的历史算。
+   *
+   * - officeCommunityIds：本处口径的小区（不传管理处 / 该管理处没有小区时为 null，表示不分口径）
+   * - companyCommunityIds：全公司口径的小区，**不含**关掉了「回流公司候选池」的管理处 ——
+   *   那个开关的意思就是「本处的话术别铺到全公司去」，统计口径上必须真的排除掉，
+   *   不然开关就是个摆设。收（用全公司数据兜底）和送（把本处数据交出去）是两回事，
+   *   关掉的管理处照样能用全公司的词兜底。
+   */
+  private async suggestionScope(
+    tenantId: number,
+    opts?: { officeId?: number | null; communityId?: number | null },
+  ): Promise<{
+    scope: SuggestionScope;
+    officeId: number | null;
+    officeCommunityIds: number[] | null;
+    companyCommunityIds: number[] | null;
+  }> {
+    const officeId =
+      opts?.officeId ??
+      (opts?.communityId
+        ? await this.accessService.officeIdOfCommunity(tenantId, opts.communityId)
+        : null);
+    const offices = await this.dataSource.getRepository(ManagementOffice).find({
+      where: { tenantId },
+      select: ['id', 'suggestionScope', 'suggestionFeedback'],
+    });
+    const communities = await this.communityRepo.find({
+      where: { tenantId },
+      select: ['id', 'parentId', 'officeId'],
+    });
+    const officeOf = new Map<number, number | null>();
+    const byId = new Map(communities.map((c) => [c.id, c] as const));
+    for (const community of communities) {
+      const own = community.officeId ?? null;
+      // 分期跟随顶层小区（和 AccessService.officeIdOfCommunity 同一套口径）
+      const inherited = own ?? (community.parentId ? byId.get(community.parentId)?.officeId ?? null : null);
+      officeOf.set(community.id, inherited);
+    }
+
+    const muted = new Set(
+      offices.filter((office) => !office.suggestionFeedback).map((office) => office.id),
+    );
+    const companyCommunityIds = muted.size
+      ? communities
+          .filter((c) => {
+            const owner = officeOf.get(c.id);
+            return !owner || !muted.has(owner);
+          })
+          .map((c) => c.id)
+      : null;
+
+    if (!officeId) {
+      return { scope: 'company', officeId: null, officeCommunityIds: null, companyCommunityIds };
+    }
+    const officeCommunityIds = communities
+      .filter((c) => officeOf.get(c.id) === officeId)
+      .map((c) => c.id);
+    const setting = offices.find((office) => office.id === officeId);
+    return {
+      scope: setting?.suggestionScope ?? 'office_first',
+      officeId,
+      officeCommunityIds: officeCommunityIds.length ? officeCommunityIds : null,
+      companyCommunityIds,
     };
   }
 
@@ -3126,22 +3422,9 @@ export class RepairsService implements OnModuleInit {
           (learned.length ? `；记住关键词：${learned.join('、')}` : ''),
       );
       if (learned.length) {
-        // 学到的词插到最前面：这就是刚被误判的场景，下次要立刻生效
-        target.contentSuggestions = normalizeSuggestionList([
-          ...learned,
-          ...(target.contentSuggestions ?? []),
-        ]);
-        target.updatedBy = user.id;
-        await manager.save(RepairTypeRule, target);
+        await this.learnKeywordsIntoRule(manager, target, learned, user.id);
         if (fromRule && fromRule.id !== target.id) {
-          const remaining = (fromRule.contentSuggestions ?? []).filter(
-            (word) => !learned.includes(word),
-          );
-          if (remaining.length !== (fromRule.contentSuggestions ?? []).length) {
-            fromRule.contentSuggestions = remaining;
-            fromRule.updatedBy = user.id;
-            await manager.save(RepairTypeRule, fromRule);
-          }
+          await this.unlearnKeywordsFromRule(manager, fromRule, learned, user.id);
         }
       }
       await manager.save(
@@ -3160,6 +3443,84 @@ export class RepairsService implements OnModuleInit {
       );
     });
     return { ok: true, learned };
+  }
+
+  /**
+   * 更正工单类型时，把关键词学进新类型。
+   *
+   * 落到哪一列取决于这条规则归谁：公司模板行写 content_suggestions（全公司立刻生效），
+   * 管理处行写 extra_suggestions —— 现场一次更正只代表这个管理处的叫法，
+   * 直接改模板等于替全公司做主。要收编成全公司通用词，去配置页的总公司那一页点一下。
+   *
+   * 传进来的是 rulesForCommunity 给的**副本**（contentSuggestions 已经掺了模板词），
+   * 所以这里按 id 重新查实体再改，绝不能拿副本直接 save。
+   */
+  private async learnKeywordsIntoRule(
+    manager: EntityManager,
+    view: RepairTypeRuleView,
+    learned: string[],
+    operatorId: number,
+  ) {
+    const rule = await manager.findOne(RepairTypeRule, { where: { id: view.id } });
+    if (!rule) return;
+    // 学到的词插到最前面：这就是刚被误判的场景，下次要立刻生效
+    if (rule.officeId === null) {
+      rule.contentSuggestions = normalizeSuggestionList([
+        ...learned,
+        ...(rule.contentSuggestions ?? []),
+      ]);
+    } else {
+      rule.extraSuggestions = normalizeSuggestionList([
+        ...learned,
+        ...(rule.extraSuggestions ?? []),
+      ]);
+      // 本处之前停用过这个词，现在人工把它判到这个类型上，等于要它回来
+      rule.mutedSuggestions = (rule.mutedSuggestions ?? []).filter(
+        (word) => !learned.includes(word),
+      );
+    }
+    rule.updatedBy = operatorId;
+    await manager.save(RepairTypeRule, rule);
+  }
+
+  /**
+   * 从原类型里摘掉刚被学走的词，否则下次两边照旧五五开。
+   *
+   * 词是本处自己加的就直接删；是从公司模板继承来的就只在本处停用 ——
+   * 模板是全公司共用的，不能因为一个管理处改了一单，就替所有管理处把词删掉。
+   */
+  private async unlearnKeywordsFromRule(
+    manager: EntityManager,
+    view: RepairTypeRuleView,
+    learned: string[],
+    operatorId: number,
+  ) {
+    const rule = await manager.findOne(RepairTypeRule, { where: { id: view.id } });
+    if (!rule) return;
+    let dirty = false;
+    if (rule.officeId === null) {
+      const remaining = (rule.contentSuggestions ?? []).filter((word) => !learned.includes(word));
+      if (remaining.length !== (rule.contentSuggestions ?? []).length) {
+        rule.contentSuggestions = remaining;
+        dirty = true;
+      }
+    } else {
+      const remaining = (rule.extraSuggestions ?? []).filter((word) => !learned.includes(word));
+      if (remaining.length !== (rule.extraSuggestions ?? []).length) {
+        rule.extraSuggestions = remaining;
+        dirty = true;
+      }
+      const inherited = view.templateSuggestions.filter((word) => learned.includes(word));
+      if (inherited.length) {
+        rule.mutedSuggestions = Array.from(
+          new Set([...(rule.mutedSuggestions ?? []), ...inherited]),
+        );
+        dirty = true;
+      }
+    }
+    if (!dirty) return;
+    rule.updatedBy = operatorId;
+    await manager.save(RepairTypeRule, rule);
   }
 
   /**
@@ -3347,8 +3708,12 @@ export class RepairsService implements OnModuleInit {
 
     // 懒补种子关键词：老租户的规则建于「猜你想输」可配置之前，content_suggestions 是空的。
     // 只填空，不覆盖租户已经维护过的词。
+    // **只补公司模板行**：关键词改成模板叠加之后，管理处那些行的这一列本来就该一直是空的
+    // （见 RepairTypeRule.contentSuggestions），照着补会把一整套种子词写死进每个管理处，
+    // 模板从此改不动它们。
     const needSeed = existing.filter(
       (rule) =>
+        rule.officeId === null &&
         (!rule.contentSuggestions || rule.contentSuggestions.length === 0) &&
         SEED_CONTENT_SUGGESTIONS[rule.repairType]?.length,
     );
@@ -3388,7 +3753,8 @@ export class RepairsService implements OnModuleInit {
   private async rulesForCommunity(
     tenantId: number,
     communityId?: number | null,
-  ): Promise<RepairTypeRule[]> {
+  ): Promise<RepairTypeRuleView[]> {
+    const templates = await this.templateRules(tenantId);
     const officeId = communityId
       ? await this.accessService.officeIdOfCommunity(tenantId, communityId)
       : null;
@@ -3397,12 +3763,11 @@ export class RepairsService implements OnModuleInit {
         where: { tenantId, officeId },
         order: { sortOrder: 'ASC', id: 'ASC' },
       });
-      if (own.length) return own;
+      // 关键词按模板叠加算出来。注意返回的是**副本**，contentSuggestions 已经掺了模板词，
+      // 谁要落库必须按 id 重新查实体（见 learnKeywordsIntoRule）
+      if (own.length) return toRuleViews(own, templates);
     }
-    return this.repairTypeRuleRepo.find({
-      where: { tenantId, officeId: IsNull() },
-      order: { sortOrder: 'ASC', id: 'ASC' },
-    });
+    return toRuleViews(templates, templates);
   }
 
   private async assertOffice(tenantId: number, officeId: number) {
@@ -3476,9 +3841,12 @@ export class RepairsService implements OnModuleInit {
     tenantId: number,
     knownPlaces: string[] = [],
     limitPerType = 8,
+    communityIds?: number[] | null,
   ) {
     const rows = await this.repairRequestRepo.find({
-      where: { tenantId },
+      where: communityIds?.length
+        ? { tenantId, communityId: In(communityIds) }
+        : { tenantId },
       select: ['repairType', 'content', 'createdAt'],
       order: { id: 'DESC' },
       take: SUGGESTION_SCAN_LIMIT,
@@ -3577,9 +3945,16 @@ export class RepairsService implements OnModuleInit {
    * 地址原来是整条贴出来的（「枫桦景苑二期/228弄2号 大门」），门牌在房号那一栏已经填过，
    * 这里只该出「大门」。
    */
-  private async summarizeSpots(tenantId: number, knownPlaces: string[], limit: number) {
+  private async summarizeSpots(
+    tenantId: number,
+    knownPlaces: string[],
+    limit: number,
+    communityIds?: number[] | null,
+  ) {
     const rows = await this.repairRequestRepo.find({
-      where: { tenantId },
+      where: communityIds?.length
+        ? { tenantId, communityId: In(communityIds) }
+        : { tenantId },
       select: ['addressText', 'content', 'createdAt'],
       order: { id: 'DESC' },
       take: SUGGESTION_SCAN_LIMIT,

@@ -166,3 +166,5 @@ export {
   MaintenanceOrder,
   QuotaItem,
 };
+
+export type { SuggestionScope } from './management-office.entity';

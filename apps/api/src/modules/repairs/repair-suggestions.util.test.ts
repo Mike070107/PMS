@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  SEED_CONTENT_SUGGESTIONS,
   extractContentGist,
   extractSpot,
   findSpotWord,
   stripAddress,
 } from './repair-suggestions.util';
+import { mergeSuggestions } from './repair-rule-template';
 
 const PLACES = ['枫桦景苑一期', '枫桦景苑二期'];
 
@@ -77,4 +79,34 @@ test('内容抽取：电话多听一位时整串剥掉，不留孤零零的尾�
   );
   assert.ok(!/\d/.test(gist), `内容里还剩数字：${gist}`);
   assert.ok(gist.includes('灯不亮'), `故障词丢了：${gist}`);
+});
+
+test('种子关键词：同一个词不能落在两个报修类型里', () => {
+  // 两个类型配同一个词时 classifyByKeywords 会打平，最后按 sortOrder 悄悄挑一个 ——
+  // 后台已经硬拦这种配置（assertNoKeywordConflict），种子表自己更不能带头违规
+  const owner = new Map<string, string>();
+  const clashes: string[] = [];
+  for (const [type, words] of Object.entries(SEED_CONTENT_SUGGESTIONS)) {
+    for (const word of words) {
+      const holder = owner.get(word);
+      if (holder) clashes.push(`「${word}」同时在 ${holder} 和 ${type}`);
+      else owner.set(word, type);
+    }
+  }
+  assert.deepEqual(clashes, []);
+});
+
+test('关键词三层叠加：本处增补在前，屏蔽掉的模板词不出现', () => {
+  assert.deepEqual(
+    mergeSuggestions(['抬杆机不动'], ['道闸不抬杆', '门禁刷不开'], ['门禁刷不开']),
+    ['抬杆机不动', '道闸不抬杆'],
+  );
+  // 本处把模板里已有的词又加了一遍：只留一个，位置以本处那份为准
+  assert.deepEqual(
+    mergeSuggestions(['门禁刷不开'], ['道闸不抬杆', '门禁刷不开'], []),
+    ['门禁刷不开', '道闸不抬杆'],
+  );
+  // 管理处自建、模板里没有这个类型时，全靠本处增补
+  assert.deepEqual(mergeSuggestions(['外墙渗水'], [], []), ['外墙渗水']);
+  assert.deepEqual(mergeSuggestions([], null, undefined), []);
 });

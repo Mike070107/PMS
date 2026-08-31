@@ -4,6 +4,11 @@
  * 各报修类型的种子常用词。只在租户首次初始化报修类型时写进
  * repair_type_rules.content_suggestions，之后由后台「报修类型配置」维护，
  * 这里的改动不会再覆盖已有数据。
+ *
+ * **同一个词只能出现在一个类型里**：这些词同时是判定依据，两个类型都配了同一个词时
+ * classifyByKeywords 会打平、按 sortOrder 悄悄挑一个（后台也会拦下这种配置，
+ * 见 RepairsService.assertNoKeywordConflict）。种子表自己先守住这条规矩，
+ * 不然新租户一开张就带着一处撞车。改这里之后跑 repair-suggestions.util.test.ts 会验。
  */
 export const SEED_CONTENT_SUGGESTIONS: Record<string, string[]> = {
   water: ['水管漏水', '下水道堵塞', '马桶堵了', '水龙头坏了', '热水器不出热水'],
@@ -22,7 +27,9 @@ export const SEED_CONTENT_SUGGESTIONS: Record<string, string[]> = {
     '监控看不了',
     '车牌识别不了',
   ],
-  public: ['楼道灯不亮', '路面破损', '井盖松动损坏', '绿化需修剪', '垃圾桶损坏', '自行车挡道', '垃圾需要清扫'],
+  // 「楼道灯不亮」归 electric：灯不亮是电工的活，派给公共设施那边等于派错人。
+  // 楼道本身（「楼道/走廊/过道」同义词组）仍然会把这类描述往这一类上带。
+  public: ['路面破损', '井盖松动损坏', '绿化需修剪', '垃圾桶损坏', '自行车挡道', '垃圾需要清扫'],
   other: ['异味', '噪音', '野蛮装修', '需要师傅上门看一下'],
 };
 

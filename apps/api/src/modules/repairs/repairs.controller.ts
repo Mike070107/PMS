@@ -31,6 +31,7 @@ import {
   ReorderRepairTypeRulesDto,
   ReviewWorkOrderDto,
   UpdateMissingMaterialsDto,
+  UpdateOfficeSuggestionSettingsDto,
   UpdateWorkOrderRepairTypeDto,
   UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
@@ -59,6 +60,17 @@ export class RepairsController {
   @RequirePermission('work-orders', 'view')
   listRuleOffices(@CurrentUser() user: AuthUser) {
     return this.repairsService.listRuleOffices(user);
+  }
+
+  /** 某个管理处的「猜你想输」口径开关。同样要排在 repair-type-rules/:id 之前 */
+  @Patch('repair-type-rules/offices/:id/suggestion-settings')
+  @RequirePermission('work-orders', 'edit')
+  updateOfficeSuggestionSettings(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateOfficeSuggestionSettingsDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.repairsService.updateOfficeSuggestionSettings(id, dto, user);
   }
 
   /** officeId 不传 = 公司默认模板；传了 = 该管理处那套（首次会从模板复制） */
@@ -126,10 +138,21 @@ export class RepairsController {
     return this.repairsService.listPublicRepairTypes(user, communityId ? Number(communityId) : null);
   }
 
+  /**
+   * 「猜你想输」。带 officeId / communityId 就按那个管理处的口径排序
+   * （本处优先还是全公司，由管理处自己的开关决定）；都不带 = 全公司口径。
+   */
   @Get('repair-suggestions')
   @RequirePermission('work-orders', 'view')
-  listRepairSuggestions(@CurrentUser() user: AuthUser) {
-    return this.repairsService.listRepairSuggestions(user);
+  listRepairSuggestions(
+    @CurrentUser() user: AuthUser,
+    @Query('officeId') officeId?: string,
+    @Query('communityId') communityId?: string,
+  ) {
+    return this.repairsService.listRepairSuggestions(user, {
+      officeId: officeId ? Number(officeId) : null,
+      communityId: communityId ? Number(communityId) : null,
+    });
   }
 
   /**
