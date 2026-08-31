@@ -3,7 +3,7 @@ import type {
   ParsedRepairAddress,
   PublicRepairType,
 } from '@pms/api-client/src/endpoints/repairs';
-import { speechErrorTip } from '@pms/miniapp-ui';
+import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
 import { AuditStatus, classifyRepairType, extractFaultDescription } from '@pms/shared-types';
 import { ADDRESS_HINT_RE, detectRepairAddress } from '../../utils/address-detect';
 import {
@@ -30,6 +30,9 @@ try {
 } catch {
   speechManager = null;
 }
+
+/** 按住说话的按压状态机，bindSpeech() 里创建；插件不可用时一直是 null */
+let hold: HoldToTalk | null = null;
 
 const MAX_MEDIA = 3;
 
@@ -281,11 +284,17 @@ Page({
 
   bindSpeech() {
     if (!speechManager) return;
-    speechManager.onStart = () => this.setData({ recording: true, partial: '' });
+    hold = createHoldToTalk(speechManager);
+    speechManager.onStart = () => {
+      this.setData({ recording: true, partial: '' });
+      // 首次授权时 touchend 被授权框吃掉，这里替它补 stop（见 createHoldToTalk 注释）
+      hold?.started();
+    };
     speechManager.onRecognize = (res: { result: string }) => {
       this.setData({ partial: res.result || '' });
     };
     speechManager.onStop = (res: { result: string }) => {
+      hold?.ended();
       const text = (res.result || '').trim();
       this.setData({ recording: false, partial: '' });
       if (!text) {
@@ -300,6 +309,7 @@ Page({
       this.refreshSubmittable();
     };
     speechManager.onError = (err: { msg?: string; retcode?: number }) => {
+      hold?.ended();
       this.setData({ recording: false, partial: '' });
       // 云端识别，网差必失败：先探网络，网差就明说，别让人以为自己没说清
       speechErrorTip(err).then((title) => wx.showToast({ icon: 'none', title, duration: 3000 }));
@@ -307,13 +317,12 @@ Page({
   },
 
   onSpeechStart() {
-    if (!speechManager || this.data.recording) return;
-    speechManager.start({ lang: 'zh_CN', duration: 30000 });
+    hold?.press();
   },
 
+  /** touchend 和 touchcancel 都指到这里：手指滑出按钮、被来电打断也要收尾 */
   onSpeechEnd() {
-    if (!speechManager || !this.data.recording) return;
-    speechManager.stop();
+    hold?.release();
   },
 
   // ---------------- 描述与类型 ----------------

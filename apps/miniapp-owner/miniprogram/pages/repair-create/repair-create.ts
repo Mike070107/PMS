@@ -15,7 +15,7 @@ import {
   REPAIR_TYPE_OPTIONS,
   extractFaultDescription,
 } from '@pms/shared-types';
-import { speechErrorTip } from '@pms/miniapp-ui';
+import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
 import {
   composePlaceText,
   isPublicScope,
@@ -54,6 +54,9 @@ try {
 } catch {
   speechManager = null;
 }
+
+/** 按住说话的按压状态机，bindSpeech() 里创建；插件不可用时一直是 null */
+let hold: HoldToTalk | null = null;
 
 const PHONE_RE = /^1[3-9]\d{9}$/;
 
@@ -514,11 +517,17 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   bindSpeech() {
     if (!speechManager) return;
-    speechManager.onStart = () => this.setData({ recording: true, partial: '' });
+    hold = createHoldToTalk(speechManager);
+    speechManager.onStart = () => {
+      this.setData({ recording: true, partial: '' });
+      // 首次授权时 touchend 被授权框吃掉，这里替它补 stop（见 createHoldToTalk 注释）
+      hold?.started();
+    };
     speechManager.onRecognize = (res: { result: string }) => {
       this.setData({ partial: res.result || '' });
     };
     speechManager.onStop = (res: { result: string }) => {
+      hold?.ended();
       const text = (res.result || '').trim();
       this.setData({ recording: false, partial: '' });
       if (!text) {
@@ -532,6 +541,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       this.scheduleDetect(next);
     };
     speechManager.onError = (err: { msg?: string; retcode?: number }) => {
+      hold?.ended();
       this.setData({ recording: false, partial: '' });
       // 云端识别，网差必失败：先探网络，网差就明说，别让人以为自己没说清
       speechErrorTip(err).then((title) => wx.showToast({ icon: 'none', title, duration: 3000 }));
@@ -539,14 +549,14 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   onSpeechStart() {
-    if (!speechManager || this.data.recording) return;
-    // 插件的 lang 只有 zh_CN / en_US / zh_HK，没有上海话，这里只能按普通话识别
-    speechManager.start({ lang: 'zh_CN', duration: 30000 });
+    // 插件的 lang 只有 zh_CN / en_US / zh_HK，没有上海话，只能按普通话识别
+    // （lang 现在由 createHoldToTalk 统一传，默认就是 zh_CN）
+    hold?.press();
   },
 
+  /** touchend 和 touchcancel 都指到这里：手指滑出按钮、被来电打断也要收尾 */
   onSpeechEnd() {
-    if (!speechManager || !this.data.recording) return;
-    speechManager.stop();
+    hold?.release();
   },
 
   // ---------------- 附件 ----------------

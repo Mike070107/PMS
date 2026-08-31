@@ -1,6 +1,6 @@
 import { repairs, upload } from '@pms/api-client';
 import type { ParsedRepairAddress, PublicRepairType } from '@pms/api-client/src/endpoints/repairs';
-import { speechErrorTip } from '@pms/miniapp-ui';
+import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
 import {
   classifyRepairType,
   extractContact,
@@ -31,6 +31,9 @@ try {
 } catch {
   speechManager = null;
 }
+
+/** 按住说话的按压状态机，bindSpeech() 里创建；插件不可用时一直是 null */
+let hold: HoldToTalk | null = null;
 
 /** 识别出来的一行：认出来了才显示，认不出就不占地方 */
 interface FoundRow {
@@ -163,11 +166,17 @@ Page({
 
   bindSpeech() {
     if (!speechManager) return;
-    speechManager.onStart = () => this.setData({ recording: true, partial: '' });
+    hold = createHoldToTalk(speechManager);
+    speechManager.onStart = () => {
+      this.setData({ recording: true, partial: '' });
+      // 首次授权时 touchend 被授权框吃掉，这里会替它补 stop（见 createHoldToTalk 注释）
+      hold?.started();
+    };
     speechManager.onRecognize = (res: { result: string }) => {
       this.setData({ partial: res.result || '' });
     };
     speechManager.onStop = (res: { result: string }) => {
+      hold?.ended();
       const text = (res.result || this.data.partial || '').trim();
       this.setData({ recording: false, partial: '' });
       if (!text) return;
@@ -176,19 +185,19 @@ Page({
       this.onContentChanged(next);
     };
     speechManager.onError = (err: { msg?: string; retcode?: number }) => {
+      hold?.ended();
       this.setData({ recording: false, partial: '' });
       speechErrorTip(err).then((tip) => wx.showToast({ icon: 'none', title: tip }));
     };
   },
 
   onStartRecord() {
-    if (!speechManager || this.data.recording) return;
-    speechManager.start({ lang: 'zh_CN', duration: 30000 });
+    hold?.press();
   },
 
+  /** touchend 和 touchcancel 都指到这里：手指滑出按钮、被来电打断也要收尾 */
   onStopRecord() {
-    if (!speechManager || !this.data.recording) return;
-    speechManager.stop();
+    hold?.release();
   },
 
   onInput(e: WechatMiniprogram.Input) {
