@@ -40,6 +40,7 @@ import {
   WarehouseType,
   WorkOrderStatus,
 } from '../../common/enums';
+import { RepairTextAiService } from '../ai/repair-text.ai';
 import { formatAddressLine } from '../../common/address-line.util';
 import { detectUrgency } from '../../common/repair-urgency.util';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
@@ -166,6 +167,8 @@ export class RepairsService implements OnModuleInit {
     private readonly storage: ObjectStorageService,
     private readonly notifications: NotificationsService,
     private readonly settings: SettingsService,
+    /** 一句话报修的语义整理。没配大模型时它一律返回 null，整条链路退回规则 */
+    private readonly repairTextAi: RepairTextAiService,
   ) {}
 
   /**
@@ -3197,7 +3200,47 @@ export class RepairsService implements OnModuleInit {
    * 分期/楼栋/房号 —— 撞上才算识别到，撞不上宁可返回没识别，绝不猜。
    * 识别结果在端上明示并可一键撤掉，提交时关联 id 跟着识别结果走。
    */
+  /**
+   * 一句话报修的识别入口。**规则和大模型分工，不是二选一**：
+   *
+   *   · 规则 + 房产库定门牌和电话 —— 模型不知道你的库，它会编一个看着合理的房号，
+   *     地址编错的代价是师傅按门牌找过去白跑一趟。
+   *   · 模型只做语义：哪一段是地址、故障描述怎么理顺、有没有说人名。
+   *     这才是正则永远追不完的地方（今天补了逗号停顿，明天来一句「五千五百十一弄」）。
+   *
+   * 两条路**并行**跑，模型给的地址只当线索：规则自己撞上库了就不用它；没撞上才拿
+   * 模型圈出来的那一段再撞一次 —— 撞不上照样返回未匹配，绝不把模型说的地址直接当结果。
+   * 没配大模型 / 调不通 / 超时，ai 为 null，整条链路退回原来的行为。
+   */
   async parseRepairAddress(
+    dto: ParseRepairAddressDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    const [ai, byRule] = await Promise.all([
+      this.repairTextAi.parse(tenantId, dto.text),
+      this.parseAddressByRule(dto, user, access),
+    ]);
+    let result = byRule;
+    if (!result.matched && ai?.addressText && ai.addressText !== dto.text) {
+      const retry = await this.parseAddressByRule({ ...dto, text: ai.addressText }, user, access);
+      if (retry.matched) result = retry;
+    }
+    return {
+      ...result,
+      /** 模型整理出来的那几样，端上按需覆盖对应输入框；没开 AI 时不返回这个字段 */
+      ai: ai
+        ? {
+            description: ai.description || '',
+            contactName: ai.contactName || '',
+            urgent: !!ai.urgent,
+          }
+        : undefined,
+    };
+  }
+
+  private async parseAddressByRule(
     dto: ParseRepairAddressDto,
     user: AuthUser,
     access?: ResolvedAccess,

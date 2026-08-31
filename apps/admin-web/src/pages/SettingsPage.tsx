@@ -45,6 +45,14 @@ interface TenantSettings {
     templateOrderAssigned: string;
     enabled: boolean;
   };
+  /** 大模型辅助识别。apiKey 读回来是脱敏串，留空保存 = 不变 */
+  aiAssist: {
+    enabled: boolean;
+    baseUrl: string;
+    model: string;
+    apiKey: string;
+    timeoutMs: number;
+  };
 }
 
 type TemplateKey =
@@ -179,6 +187,17 @@ export default function SettingsPage() {
   const [testingMp, setTestingMp] = useState(false);
   const [mpResult, setMpResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [savingAutoReview, setSavingAutoReview] = useState(false);
+  /** 大模型辅助识别。apiKey 和服务号那份一样：回显脱敏串，原样交回 = 不改 */
+  const [ai, setAi] = useState({
+    enabled: false,
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
+    apiKey: '',
+    timeoutMs: 6000,
+  });
+  const [savingAi, setSavingAi] = useState(false);
+  const [testingAi, setTestingAi] = useState(false);
+  const [aiResult, setAiResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -201,6 +220,14 @@ export default function SettingsPage() {
         appSecret: next.wxServiceAccount?.appSecret ?? '',
         templateOrderAssigned: next.wxServiceAccount?.templateOrderAssigned ?? '',
         enabled: !!next.wxServiceAccount?.enabled,
+      });
+      setAi({
+        enabled: !!next.aiAssist?.enabled,
+        baseUrl: next.aiAssist?.baseUrl ?? 'https://api.deepseek.com',
+        model: next.aiAssist?.model ?? 'deepseek-chat',
+        // 同上：脱敏串原样放回输入框，不动它就是不改
+        apiKey: next.aiAssist?.apiKey ?? '',
+        timeoutMs: next.aiAssist?.timeoutMs ?? 6000,
       });
     } catch (e: any) {
       message.error(e?.message || '加载设置失败');
@@ -334,6 +361,52 @@ export default function SettingsPage() {
       setMpResult({ ok: false, message: e?.message || '请求失败' });
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** 大模型：填完直接点「发送测试」，结果里带服务商的原话，不要笼统成「失败」 */
+  const testAi = async () => {
+    setTestingAi(true);
+    setAiResult(null);
+    try {
+      const res = await request<{ ok: boolean; reply?: string; error?: string; model?: string }>({
+        method: 'POST',
+        url: '/settings/ai/test',
+        data: ai,
+      });
+      setAiResult(
+        res.ok
+          ? { ok: true, message: `连通正常（${res.model}）：${res.reply || ''}` }
+          : { ok: false, message: res.error || '调用失败' },
+      );
+    } catch (e: any) {
+      setAiResult({ ok: false, message: e?.message || '请求失败' });
+    } finally {
+      setTestingAi(false);
+    }
+  };
+
+  const saveAi = async () => {
+    setSavingAi(true);
+    try {
+      const next = await request<TenantSettings>({
+        method: 'PATCH',
+        url: '/settings',
+        data: { aiAssist: ai },
+      });
+      setSettings(next);
+      setAi({
+        enabled: !!next.aiAssist?.enabled,
+        baseUrl: next.aiAssist?.baseUrl ?? '',
+        model: next.aiAssist?.model ?? '',
+        apiKey: next.aiAssist?.apiKey ?? '',
+        timeoutMs: next.aiAssist?.timeoutMs ?? 6000,
+      });
+      message.success('已保存');
+    } catch (e: any) {
+      message.error(e?.message || '保存失败');
+    } finally {
+      setSavingAi(false);
     }
   };
 
@@ -626,6 +699,122 @@ export default function SettingsPage() {
           维修工新关注服务号之后，点一次<Text strong>「同步关注者」</Text>系统才知道他是谁。
           开着服务号时，派单通知优先走它；没关注的人自动退回小程序订阅消息，
           两条都不通时仍然会写进小程序里的「消息」。
+        </Paragraph>
+      </SettingSection>
+
+      <SettingSection
+        title="AI 辅助识别报修（一句话报修 / 随手拍）"
+        summary={
+          ai.enabled
+            ? `已开启：${ai.model}（${ai.baseUrl}）`
+            : '未开启：只用内置的规则识别，行为和以前一样'
+        }
+        extra={
+          <Space>
+            <Text type="secondary">{ai.enabled ? '已开启' : '已关闭'}</Text>
+            <Switch
+              checked={ai.enabled}
+              disabled={!canEdit}
+              onChange={(v) => setAi({ ...ai, enabled: v })}
+            />
+          </Space>
+        }
+      >
+        <Paragraph>
+          维修工在小程序里说一句「5511弄236号502电子门旋钮打滑，急急急，138…」，
+          系统要自己把<Text strong>地址、故障、联系人、电话</Text>分开填好。
+          纯靠正则总有说不到的说法，开了这个之后由大模型来做<Text strong>语义</Text>那一半。
+        </Paragraph>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="门牌和电话仍然由系统自己定，不交给大模型"
+          description={
+            <span>
+              大模型不知道你的房产库，它会编一个看着合理的房号，而地址错了就是师傅白跑一趟。
+              所以模型给的地址只当<Text strong>线索</Text>，仍要回到房产库里撞一遍，撞不上就不采信；
+              电话也仍按 11 位严格抽取。模型只负责「哪一段是地址、故障怎么说得通顺、有没有说人名」。
+              <br />
+              调不通、超时、返回看不懂的内容时，<Text strong>自动退回原来的规则识别</Text>，
+              不会因此让人提交不了报修。
+            </span>
+          }
+        />
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <div>
+            <Text strong>接口地址</Text>
+            <Input
+              value={ai.baseUrl}
+              onChange={(e) => setAi({ ...ai, baseUrl: e.target.value })}
+              placeholder="https://api.deepseek.com"
+              disabled={!canEdit}
+              allowClear
+            />
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              走 OpenAI 兼容协议（会自动拼上 <Text code>/v1/chat/completions</Text>）。
+              DeepSeek、通义千问、智谱、Moonshot、本地 ollama 都能填，换一家只改这三栏。
+            </Text>
+          </div>
+          <div>
+            <Text strong>模型名</Text>
+            <Input
+              value={ai.model}
+              onChange={(e) => setAi({ ...ai, model: e.target.value })}
+              placeholder="deepseek-chat"
+              disabled={!canEdit}
+              allowClear
+            />
+          </div>
+          <div>
+            <Text strong>API Key</Text>
+            <Input.Password
+              value={ai.apiKey}
+              onChange={(e) => setAi({ ...ai, apiKey: e.target.value })}
+              placeholder="留空 = 保持原有密钥不变"
+              disabled={!canEdit}
+              autoComplete="new-password"
+            />
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              保存后只回显后 4 位。密钥只存在服务器，不会出现在日志和前端；换了接口地址会要求重填。
+            </Text>
+          </div>
+          <div>
+            <Text strong>超时</Text>
+            <Space>
+              <InputNumber
+                min={1}
+                max={30}
+                value={Math.round(ai.timeoutMs / 1000)}
+                onChange={(v) => setAi({ ...ai, timeoutMs: Math.round((v || 6) * 1000) })}
+                disabled={!canEdit}
+              />
+              <Text type="secondary">秒，超过就退回规则识别</Text>
+            </Space>
+          </div>
+
+          {canEdit && (
+            <Space wrap>
+              <Button type="primary" loading={savingAi} onClick={saveAi}>
+                保存
+              </Button>
+              <Button loading={testingAi} onClick={testAi}>
+                发送测试
+              </Button>
+            </Space>
+          )}
+
+          {aiResult && (
+            <Alert
+              type={aiResult.ok ? 'success' : 'warning'}
+              showIcon
+              message={aiResult.message}
+            />
+          )}
+        </Space>
+        <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 12, marginBottom: 0 }}>
+          费用参考：一次报修一次调用、输入一百来字，按 DeepSeek 这类国产模型的价格，
+          一天几十单的量每月也就几块钱。报修内容里带住户姓名电话，服务商请选国内合规的。
         </Paragraph>
       </SettingSection>
 

@@ -13,6 +13,8 @@ export const TENANT_SETTING_KEYS = {
   DISPATCH_ESCALATION: 'dispatch_escalation',
   /** 微信服务号（公众号）模板消息，用来给维修工发派单通知 */
   WX_SERVICE_ACCOUNT: 'wx_service_account',
+  /** 大模型辅助识别（一句话报修的语义整理） */
+  AI_ASSIST: 'ai_assist',
 } as const;
 
 export interface OwnerPhoneAutoMatchSetting {
@@ -105,12 +107,43 @@ export interface WxServiceAccountSetting {
   enabled: boolean;
 }
 
+/**
+ * 大模型辅助识别（一句话报修 / 随手拍的语义整理）。
+ *
+ * 只做**语义**那一半：哪一段是地址、哪一段是故障、把口语理成一句通顺的话。
+ * 门牌和电话仍然归规则 + 房产库管 —— 模型不知道你的房产库，它会编一个看着合理的房号，
+ * 而地址编错的代价是师傅白跑一趟。所以模型给的地址一律拿回去撞库，撞不上就不采信
+ * （见 repairs.service 的 aiParseRepairText）。
+ *
+ * 走 **OpenAI 兼容协议**（POST {baseUrl}/v1/chat/completions）：DeepSeek、通义、
+ * 智谱、Moonshot、本地 ollama 都认这一套，**换服务商只改 baseUrl + model + apiKey，
+ * 不用改一行代码**。
+ *
+ * apiKey 是密钥：只存库、只在服务端用，读接口一律脱敏，日志里绝不出现。
+ */
+export interface AiAssistSetting {
+  /** 总开关。关掉整条 AI 路径根本不执行，行为和没接过一模一样 */
+  enabled: boolean;
+  /** 接口地址，填到 /v1 之前即可（DeepSeek：https://api.deepseek.com） */
+  baseUrl: string;
+  /** 模型名（DeepSeek：deepseek-chat） */
+  model: string;
+  /** API Key。读出去是脱敏预览，留空保存 = 保持不变 */
+  apiKey: string;
+  /**
+   * 单次超时（毫秒）。超时或报错一律退回规则法的结果 —— 报修是现场业务，
+   * 宁可少整理一次，也不能因为模型慢就让人交不了单。
+   */
+  timeoutMs: number;
+}
+
 export const DEFAULT_TENANT_SETTINGS: {
   ownerPhoneAutoMatch: OwnerPhoneAutoMatchSetting;
   wxSubscribeTemplates: WxSubscribeTemplatesSetting;
   autoReview: AutoReviewSetting;
   dispatchEscalation: DispatchEscalationSetting;
   wxServiceAccount: WxServiceAccountSetting;
+  aiAssist: AiAssistSetting;
 } = {
   // 默认关：业主档案没导手机号之前开着也匹配不到，反而让业主白点一次
   ownerPhoneAutoMatch: { enabled: false },
@@ -127,6 +160,15 @@ export const DEFAULT_TENANT_SETTINGS: {
   // 更长就失去了「当场兜住」的意义。默认只在 8:00~20:00 催，别打扰休息。后台都可改
   dispatchEscalation: { enabled: true, acceptMinutes: 60, startAt: '08:00', endAt: '20:00' },
   wxServiceAccount: { appId: '', appSecret: '', templateOrderAssigned: '', enabled: false },
+  /* 默认关，但地址和模型名先填好 DeepSeek 的：管理员只要贴一个 key、打开开关就能用，
+     不用先去查「接口地址该填什么」。6 秒超时是现场能忍的上限，超了就退回规则结果 */
+  aiAssist: {
+    enabled: false,
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
+    apiKey: '',
+    timeoutMs: 6000,
+  },
 };
 
 export interface TenantSettings {
@@ -135,4 +177,5 @@ export interface TenantSettings {
   autoReview: AutoReviewSetting;
   dispatchEscalation: DispatchEscalationSetting;
   wxServiceAccount: WxServiceAccountSetting;
+  aiAssist: AiAssistSetting;
 }

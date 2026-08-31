@@ -70,6 +70,20 @@ export interface ParsedRepairAddress {
    * 只在小区是靠分期或弄这类**数字**定位到时才会给值。
    */
   correctedText?: string | null;
+  /**
+   * 大模型整理出来的那几样（后台没开 AI 辅助识别时不返回这个字段）。
+   *
+   * 只有语义那一半：地址仍以上面撞过库的字段为准 —— 模型不知道房产库，
+   * 它给的地址只是线索，服务端已经拿去撞过一遍了，撞不上就是 matched=false。
+   */
+  ai?: {
+    /** 理顺后的故障描述，只留故障本身 */
+    description?: string;
+    /** 明确说了人名才有；没说就是空串，不会拿地址或数字充数 */
+    contactName?: string;
+    /** 说话人是不是在催（急急急、等着用） */
+    urgent?: boolean;
+  };
 }
 
 /**

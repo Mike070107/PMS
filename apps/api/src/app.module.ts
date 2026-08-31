@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { buildTypeOrmOptions } from './config/typeorm.config';
 import { AccessModule } from './modules/access/access.module';
+import { AiModule } from './modules/ai/ai.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OfficesModule } from './modules/offices/offices.module';
 import { PlatformModule } from './modules/platform/platform.module';
@@ -33,6 +34,7 @@ import { UploadModule } from './modules/upload/upload.module';
       useFactory: (config: ConfigService) => buildTypeOrmOptions(config),
     }),
     AccessModule,
+    AiModule,
     AuthModule,
     BusinessModule,
     OfficesModule,

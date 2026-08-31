@@ -36,7 +36,10 @@ export async function detectRepairAddress(
 ): Promise<ParsedRepairAddress | null> {
   try {
     const res = await repairs.parseAddress({ text, communityId });
-    return res.matched ? res : null;
+    // 地址没撞上库时也要把结果带回去 —— 后台开了 AI 辅助识别的话，
+    // res.ai 里还有整理好的故障描述和联系人，那部分不依赖撞库。
+    // 调用方自己看 matched 决定要不要显示地址（见 quick-repair 的 refreshFound）
+    return res.matched || res.ai ? res : null;
   } catch {
     return null;
   }

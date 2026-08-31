@@ -11,6 +11,7 @@ import {
   type AutoReviewSetting,
   type DispatchEscalationSetting,
   type OwnerPhoneAutoMatchSetting,
+  type AiAssistSetting,
   type WxServiceAccountSetting,
   type TenantSettings,
   type WxSubscribeTemplatesSetting,
@@ -36,6 +37,10 @@ export class SettingsService {
       wxServiceAccount: {
         ...settings.wxServiceAccount,
         appSecret: this.maskSecret(settings.wxServiceAccount.appSecret),
+      },
+      aiAssist: {
+        ...settings.aiAssist,
+        apiKey: this.maskSecret(settings.aiAssist.apiKey),
       },
     };
   }
@@ -66,7 +71,19 @@ export class SettingsService {
         ...((byKey.get(TENANT_SETTING_KEYS.WX_SERVICE_ACCOUNT) ??
           {}) as Partial<WxServiceAccountSetting>),
       },
+      aiAssist: {
+        ...DEFAULT_TENANT_SETTINGS.aiAssist,
+        ...((byKey.get(TENANT_SETTING_KEYS.AI_ASSIST) ?? {}) as Partial<AiAssistSetting>),
+      },
     };
+  }
+
+  /**
+   * 大模型的**明文**配置，只给服务端内部调接口用。
+   * 对外的 getSettings 一律走脱敏版，apiKey 绝不能从接口漏出去。
+   */
+  async getAiAssistRaw(tenantId: number): Promise<AiAssistSetting> {
+    return (await this.getSettingsByTenant(tenantId)).aiAssist;
   }
 
   /**
@@ -170,6 +187,28 @@ export class SettingsService {
             dto.wxServiceAccount.templateOrderAssigned?.trim() ??
             current.templateOrderAssigned,
           enabled: dto.wxServiceAccount.enabled ?? current.enabled,
+        },
+        user.id,
+      );
+    }
+    if (dto.aiAssist) {
+      const current = await this.getAiAssistRaw(tenantId);
+      const nextBaseUrl = dto.aiAssist.baseUrl?.trim().replace(/\/+$/, '') || current.baseUrl;
+      // 留空 / 原样交回脱敏串 = 保持不变。页面回显的是圆点串，
+      // 管理员改个模型名顺手保存，密钥不能被那串圆点覆盖
+      const incoming = dto.aiAssist.apiKey?.trim() ?? '';
+      const keepKey = !incoming || incoming.startsWith('••');
+      // 换了服务商地址还留着旧 key 必然认证失败，直接清掉，逼管理员重填
+      const nextKey = keepKey ? (nextBaseUrl === current.baseUrl ? current.apiKey : '') : incoming;
+      await this.upsert(
+        tenantId,
+        TENANT_SETTING_KEYS.AI_ASSIST,
+        {
+          enabled: dto.aiAssist.enabled ?? current.enabled,
+          baseUrl: nextBaseUrl,
+          model: dto.aiAssist.model?.trim() || current.model,
+          apiKey: nextKey,
+          timeoutMs: dto.aiAssist.timeoutMs ?? current.timeoutMs,
         },
         user.id,
       );

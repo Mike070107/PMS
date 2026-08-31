@@ -266,22 +266,39 @@ Page({
     // 「业主张先生报修一期47号大门关不上电话138…」→ 描述只剩「大门关不上」，
     // 不然后台看单的人要在一串人名电话里自己找故障是什么
     const contact = extractContact(content);
-    const description = extractFaultDescription(content, {
+    /**
+     * 故障描述：后台开了 AI 辅助识别就用模型理顺的那一句，否则走规则剥。
+     * 模型强在「把口语理成通顺的一句话」，规则强在「一个字都不改地剥掉已认走的片段」——
+     * 模型没给（没开、超时、调不通）时无缝退回规则，用户看不出区别。
+     */
+    const ruleDescription = extractFaultDescription(content, {
       // 用原话里的那一段，不是归一化的 matchedText ——
       // 后者不含小区名，剥完描述里会剩个「枫桦景苑」
       addressText: detected?.matchedRaw || detected?.matchedText,
       phoneText: contact.phoneText,
       nameText: contact.nameText,
     });
+    const description = (detected?.ai?.description || '').trim() || ruleDescription;
     const found: FoundRow[] = [];
-    if (detected) found.push({ key: 'addr', label: '报修地址', value: composeDetectedAddress(detected) });
+    // 地址只在真撞上库时才显示：模型给的地址服务端已经拿去撞过一遍了，
+    // 撞不上就是 matched=false —— 那种情况下宁可不填，也不能让师傅按一个编出来的门牌去找
+    if (detected?.matched) {
+      found.push({ key: 'addr', label: '报修地址', value: composeDetectedAddress(detected) });
+    }
     if (description && description !== content.trim()) {
       found.push({ key: 'desc', label: '故障描述', value: description });
     }
     if (typeLabel) found.push({ key: 'type', label: '报修类型', value: typeLabel });
-    if (contactName) found.push({ key: 'name', label: '联系人', value: contactName });
+    // 联系人：规则没抽到时用模型的。模型被要求「没说人名就留空、绝不拿地址数字充数」
+    const name = contactName || (detected?.ai?.contactName || '').trim();
+    if (name) found.push({ key: 'name', label: '联系人', value: name });
     if (contactPhone) found.push({ key: 'phone', label: '联系电话', value: contactPhone });
-    this.setData({ found, description, needManual: !!this.data.content.trim() && !detected });
+    this.setData({
+      found,
+      description,
+      contactName: name,
+      needManual: !!this.data.content.trim() && !detected?.matched,
+    });
   },
 
   /** 判错了点一下取消，想标回去再点一下 */

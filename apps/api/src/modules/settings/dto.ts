@@ -75,6 +75,38 @@ class WxServiceAccountDto {
   enabled?: boolean;
 }
 
+/**
+ * 大模型辅助识别。走 OpenAI 兼容协议，换服务商只改这三个字段。
+ * apiKey 留空（或把页面回显的脱敏串原样交回来）= 保持不变，见 settings.service。
+ */
+class AiAssistDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  baseUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  model?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  apiKey?: string;
+
+  /** 1~30 秒。再长就不如直接退回规则结果 —— 现场没人对着转圈等 */
+  @IsOptional()
+  @IsInt()
+  @Min(1000)
+  @Max(30000)
+  timeoutMs?: number;
+}
+
 /** HH:mm，24 小时制 */
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -126,4 +158,9 @@ export class UpdateTenantSettingsDto {
   @ValidateNested()
   @Type(() => WxServiceAccountDto)
   wxServiceAccount?: WxServiceAccountDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AiAssistDto)
+  aiAssist?: AiAssistDto;
 }

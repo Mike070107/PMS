@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AiModule } from '../ai/ai.module';
 import { SettingsModule } from '../settings/settings.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
@@ -31,6 +32,7 @@ import { RepairsService } from './repairs.service';
     // 派单/完工后给业主发通知
     NotificationsModule,
     SettingsModule,
+    AiModule,
     TypeOrmModule.forFeature([
       Community,
       Building,
