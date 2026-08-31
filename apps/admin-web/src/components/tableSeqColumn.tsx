@@ -21,7 +21,7 @@ export interface TableSeqOptions {
   pageSizeOptions?: Array<string | number>;
   showSizeChanger?: boolean;
   size?: TablePaginationConfig['size'];
-  /** 序号列宽；行数上万时可以调宽一点 */
+  /** 序号列宽。默认 80：再窄的话表头「序号」两个字会被 antd 的左右内边距挤成两行 */
   width?: number;
 }
 
@@ -38,7 +38,7 @@ export function useTableSeq<T>(total: number, options: TableSeqOptions = {}): Ta
     pageSizeOptions,
     showSizeChanger = true,
     size,
-    width = 64,
+    width = 80,
   } = options;
   const [current, setCurrent] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
