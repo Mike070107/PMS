@@ -213,7 +213,15 @@ export class SettingsService {
         user.id,
       );
     }
-    return this.getSettingsByTenant(tenantId);
+    /**
+     * 保存完回**脱敏**版，不能走 getSettingsByTenant。
+     *
+     * 那个是给服务端内部用的明文版：管理员点一次保存，服务号 AppSecret 和大模型
+     * API Key 就原样出现在接口响应里 —— 浏览器 network 面板看得到、前端日志和
+     * 网关访问日志都可能留下（2026-09-01 配置大模型时发现，服务号那份一直如此）。
+     * 页面本来也只认脱敏串（原样交回 = 不改），回明文没有任何好处。
+     */
+    return this.getSettings(user);
   }
 
   /** 定时任务与工单查询共用，保证所有入口使用同一租户口径。 */
