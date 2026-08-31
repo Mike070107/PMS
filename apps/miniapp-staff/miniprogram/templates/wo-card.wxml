@@ -16,16 +16,15 @@
 <template name="wo-card-body">
   <view class="wo-card__head">
     <view class="wo-card__main">
-      <!-- 第一行地址、第二行报修内容，各占一行超出省略。
-           站在楼道里先要知道去哪儿，再看修什么。
+      <!-- 第一行报修内容、第二行地址，两行都加粗，各占一行超出省略（2026-09-01 定的）。
 
-           「紧急」标挂在第二行行首，不放地址那一行：它占掉近 90rpx，
-           地址就被截成「枫桦景苑一期17号20…」——room 号看不全，跟没写一样。
-           地址是这张卡上最不能截的东西，整行只留给它。 -->
-      <view class="wo-card__title">{{item.summaryAddress || '未填地址'}}</view>
-      <view class="wo-card__desc">
+           「紧急」标挂在第一行行首，不放地址那一行：它占掉近 90rpx，
+           地址会被截成「枫桦景苑一期17号20…」——室号看不全，跟没写一样。
+           地址整行只留给它自己。 -->
+      <view class="wo-card__title">
         <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>{{item.summaryContent || '未填描述'}}
       </view>
+      <view class="wo-card__addr">{{item.summaryAddress || '未填地址'}}</view>
     </view>
     <pms-tag class="status-tag" status="{{item.status}}"/>
   </view>

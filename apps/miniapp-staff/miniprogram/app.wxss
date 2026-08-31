@@ -410,11 +410,12 @@ button::after { border: none; }
   margin-bottom: 0;
 }
 .wo-card__main { flex: 1; min-width: 0; }
-/* 第一行：地址。整卡最先要认的就是「去哪儿」，所以它是标题。
-   各占一行、超出省略（2026-08-31 要求：地址一行、报修内容一行，下面那行小字和单号都去掉）——
-   两行都定高，一屏能扫过的卡片数才稳定；单号只在打电话核对时才念，留给详情页。
+/* 卡片头两行（2026-09-01 定的）：第一行报修内容、第二行地址，**两行都加粗**，
+   各占一行、超出省略；下面那行小字地址和单号都去掉了（单号只在打电话核对时才念，
+   留给详情页）。两行都定高，一屏能扫过的卡片数才稳定。
+   两行同为主体档，靠字号差一级分主次，不靠灰色 —— 地址是要照着找门的，压成灰的读着费劲。
    不能用 flex：flex 容器里的匿名文本节点和「紧急」标签基线对不齐，
-   改成 -webkit-box 截一行，badge 作为行内元素落在句首 */
+   改成 -webkit-box 截一行，badge 作为行内元素落在句首。 */
 .wo-card--data .wo-card__title {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -424,16 +425,16 @@ button::after { border: none; }
   font-weight: 600;
   line-height: 1.35;
 }
-/* 第二行：报修内容。比地址轻一档 —— 先定位、再看修什么 */
-.wo-card__desc {
+.wo-card__addr {
   margin-top: var(--space-xs);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
   overflow: hidden;
-  font-size: var(--font-lg);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
+  font-size: var(--font-xl);
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.45;
 }
 /* 塞不进网格的长文本（缺料清单、派单备注）走这里 */
 .wo-card__note {
