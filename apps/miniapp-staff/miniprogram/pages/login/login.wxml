@@ -16,7 +16,7 @@
       bindgetphonenumber="onGetPhone"
       loading="{{loading}}"
       disabled="{{loading}}"
-    >微信手机号一键登录</button>
+    >手机号快捷登录</button>
     <view class="hint">需与管理员登记的手机号一致，首次登录后自动绑定本微信</view>
 
     <view class="error" wx:if="{{errorMsg}}">{{errorMsg}}</view>

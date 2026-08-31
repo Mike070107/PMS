@@ -68,7 +68,7 @@ Page({
     }
   },
 
-  /** 微信手机号一键登录（首次绑定） */
+  /** 手机号快捷登录：微信把手机号给我们，首次登录后自动绑定本微信 */
   async onGetPhone(
     e: WechatMiniprogram.CustomEvent<{ code?: string; errMsg?: string; encryptedData?: string }>,
   ) {

@@ -175,7 +175,7 @@ AppSecret **只存服务器** `/opt/pms-repair/apps/api/.env`，对应 `WX_OWNER
 
 员工账号不自助注册，由管理员在后台「员工管理」预先建号（姓名 + 手机号 + 角色）。
 
-1. 员工打开「邻修管理」→ 点「微信手机号一键登录」
+1. 员工打开「邻修管理」→ 点「手机号快捷登录」
    → `wx.getPhoneNumber` 拿到 code → 后端 `POST /auth/staff-login` 用 `getuserphonenumber` 解出手机号
    → 匹配到该手机号的在职员工账号 → 绑定本微信 openid → 发双 token。
 2. 非维修工角色（办公室/经理/采购/管理员）也可用「账号密码登录」兜底，登录成功同样完成绑定。
