@@ -41,10 +41,11 @@ type OrderRow = WorkOrderListItem & {
   /** 「王师傅」/「未派单」，派单台专用 */
   assigneeText: string;
 
-  /* ---- 下面三个只给卡片上的数据网格用（data-first-ui） ----
-     网格是「标签 / 值 / 说明」三层，值那一层是全卡唯一的视觉锚点，
-     所以要的是「8天」这种能放大的短值，不是「已等 8 天」这种整句。
-     stayBadge / reporterText 那两个整句仍留着给别的页面用，这里不动它们。 */
+  /* ---- 卡片数据网格用的四个短值（data-first-ui）：由 withOrderLabels 一并算好 ----
+     在手工单页用的是同一份，改口径去 packages/miniapp-ui/src/format.ts，别在页面里再算一遍。
+     stayBadge / reporterText 那两个整句仍留着给详情页用。 */
+  /** 「已等」/「用时」—— 第一格的标签，完结了就换说法 */
+  statStayLabel: string;
   /** 「8天」/「今天」—— 网格里放大到 44rpx 的那个数 */
   statStay: string;
   /** 「王女士」—— 报修人姓名，不带身份后缀 */
@@ -52,19 +53,6 @@ type OrderRow = WorkOrderListItem & {
   /** 「业主」「保安代报」—— 身份，压在姓名下面当说明 */
   statReporterHint: string;
 };
-
-/**
- * 「王保安（保安代报）」→ 姓名 + 身份两截。
- *
- * 网格的值那一层要放大，只放得下姓名；身份降到下面 24rpx 的说明位。
- * 括号按全角匹配 —— withOrderLabels 的 reporterTextOf 拼的就是全角，别写成半角。
- * 拆不出来（只有姓名、或格式变了）就整串当姓名用，不要吞掉信息。
- */
-function splitReporter(text: string): { statReporter: string; statReporterHint: string } {
-  const matched = /^(.+?)（(.+)）$/.exec(text || '');
-  if (matched) return { statReporter: matched[1], statReporterHint: matched[2] };
-  return { statReporter: text || '未填', statReporterHint: '' };
-}
 
 /** 未指派 + 这些状态 = 维修工可以领、办公室需要派 */
 const POOL_STATUSES: string[] = [
@@ -253,9 +241,6 @@ Page({
               ? '接回'
               : '接单',
           assigneeText: item.assigneeName || '未派单',
-          // 当天报的显示「今天」而不是「0天」——「0」放大到 44rpx 看着像出错了
-          statStay: item.stayDays >= 1 ? `${item.stayDays}天` : '今天',
-          ...splitReporter(item.reporterText),
         };
       });
 

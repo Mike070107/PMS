@@ -1,4 +1,6 @@
-/* 卡片结构（.wo-card / .kv / .page-lead）在 app.wxss 里统一定义 */
+/* 这一屏的版式件全部在 app.wxss / tokens.wxss：
+   深色页头 .hero + 上翻内容区 .hero-sheet、数据卡 .wo-card--data、数据网格 .stat-grid、
+   折叠标题 .fold。和工单池是同一套（data-first-ui），这里只写这一屏独有的东西。 */
 
 /* 已完结的单弱化：还在手上的活才该抢注意力 */
 .wo-card--done { opacity: 0.72; }

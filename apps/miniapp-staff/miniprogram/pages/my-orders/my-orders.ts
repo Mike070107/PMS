@@ -8,13 +8,29 @@ import { refreshUnread, topUpQuietly } from '../../utils/unread';
 type OrderRow = WorkOrderListItem & {
   typeLabel: string;
   createdAtText: string;
+  stayDays: number;
   stayText: string;
   stayTone: string;
+  timeText: string;
+  urgent: boolean;
+  /** 「PVC 管 DN50 ×2 米」，等待材料的单才有 */
+  missingText: string;
   /** 卡片右下角写清下一步该干什么，而不是笼统的「查看详情」 */
   actionText: string;
   reporterText: string;
   /** 「我报的」卡片：这单现在在谁手上 */
   assigneeText?: string;
+
+  /* ---- 卡片数据网格用的四个短值（data-first-ui）：由 withOrderLabels 一并算好 ----
+     工单池那页用的是同一份，改口径去 packages/miniapp-ui/src/format.ts，别在页面里再算一遍 */
+  /** 「已等」/「用时」—— 第一格的标签，完结了就换说法 */
+  statStayLabel: string;
+  /** 「8天」/「今天」—— 网格里放大到 44rpx 的那个数 */
+  statStay: string;
+  /** 「王女士」—— 报修人姓名，不带身份后缀 */
+  statReporter: string;
+  /** 「业主」「保安代报」—— 身份，压在姓名下面当说明 */
+  statReporterHint: string;
 };
 
 /** 还要人动手的状态，排在最上面；其余归到「已完结」折叠区 */
@@ -35,6 +51,11 @@ const ACTION_TEXT: Record<string, string> = {
 Page({
   data: {
     active: [] as OrderRow[],
+    /**
+     * 页头那个红数字：在手的单里压了 3 天以上的（stayTone 的 danger 档）。
+     * 和工单池同一口径，两屏之间的数才对得上
+     */
+    overdueCount: 0,
     done: [] as OrderRow[],
     doneOpen: false,
     /**
@@ -75,6 +96,7 @@ Page({
       active.sort((a, b) => b.stayDays - a.stayDays || b.id - a.id);
       this.setData({
         active,
+        overdueCount: active.filter((item) => item.stayTone === 'danger').length,
         done: rows.filter((item) => ACTIVE_STATUSES.indexOf(item.status) < 0),
         loaded: true,
       });

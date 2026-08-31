@@ -1,44 +1,79 @@
-<view class="container container--tabbar">
-  <view class="page-lead">
-    <view class="page-lead__title">在手 {{active.length}} 条</view>
+<!-- 深色页头（data-first-ui）：「手上几单、其中几单压着」第一眼说完。
+     和工单池同一套页头 + 数据卡，两屏之间不用重新认版式。
+     标题写死「在手工单」，和 my-orders.json 的 navigationBarTitleText 同源 —— 改一处要改两处。 -->
+<view class="hero">
+  <view class="hero__title">在手工单</view>
+  <view class="hero__stats">
+    <view>
+      <view class="hero__num">{{active.length}}</view>
+      <view class="hero__cap">在手</view>
+    </view>
+    <!-- 一单都没压着就整格不显示：常年挂个 0 会让这抹红失去意义 -->
+    <view wx:if="{{overdueCount}}">
+      <view class="hero__num hero__num--danger">{{overdueCount}}</view>
+      <view class="hero__cap">压 3 天以上</view>
+    </view>
   </view>
+</view>
 
+<view class="hero-sheet hero-sheet--tabbar">
   <view wx:if="{{!active.length && !done.length && !reported.length && loaded}}">
     <pms-empty text="手上没有工单，去「工单池」接一单"/>
   </view>
 
+  <!-- ============ 在手的活：这一屏的主线，不折叠 ============
+       卡片结构和工单池完全一致（.wo-card--data，样式在 app.wxss）：
+       标题 = 故障描述（站在楼道里先要知道什么坏了），地址和单号降成一行小字，
+       决策用的短值进数据网格。 -->
   <view
     wx:for="{{active}}"
     wx:key="id"
-    class="card wo-card wo-card--bold"
+    class="card wo-card wo-card--data"
     hover-class="wo-card--hover"
     hover-stay-time="80"
     bindtap="onTapItem"
     data-id="{{item.id}}"
   >
     <view class="wo-card__head">
-      <view class="wo-card__title">
-        <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>
-        <text class="wo-card__type">{{item.typeLabel}}</text>
+      <view class="wo-card__main">
+        <view class="wo-card__title">
+          <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>{{item.summaryContent || '未填描述'}}
+        </view>
+        <view class="wo-card__sub">{{item.summaryAddress || '未填地址'}} · 单号 {{item.orderNo}}</view>
       </view>
       <pms-tag class="status-tag" status="{{item.status}}"/>
     </view>
 
-    <view class="kv"><text class="kv__k">工单编号</text><text class="kv__v">{{item.orderNo}}</text></view>
-    <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{item.summaryAddress || '未填地址'}}</text></view>
-    <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v kv__v--clamp">{{item.summaryContent}}</text></view>
-    <view class="kv">
-      <text class="kv__k">报修时间</text>
-      <text class="kv__v">{{item.timeText}}<text class="kv__tag kv__tag--{{item.stayTone}}">{{item.stayBadge}}</text></text>
+    <!-- 全卡唯一的视觉锚点是第一格那个数，压 3 天以上转红。
+         第三格放报修人：手上的活要找谁开门，是干活前最先要知道的 -->
+    <view class="stat-grid">
+      <view class="stat">
+        <view class="stat__label">{{item.statStayLabel}}</view>
+        <view class="stat__value stat__value--{{item.stayTone}}">{{item.statStay}}</view>
+        <view class="stat__hint">{{item.timeText}}</view>
+      </view>
+      <view class="stat">
+        <view class="stat__label">类型</view>
+        <view class="stat__value stat__value--text">{{item.typeLabel}}</view>
+        <view class="stat__hint"></view>
+      </view>
+      <view class="stat">
+        <view class="stat__label">报修人</view>
+        <view class="stat__value stat__value--text">{{item.statReporter}}</view>
+        <view class="stat__hint">{{item.statReporterHint}}</view>
+      </view>
     </view>
-    <view class="kv"><text class="kv__k">报修人</text><text class="kv__v">{{item.reporterText}}</text></view>
+
+    <!-- 缺料清单塞不进网格，放正文：状态标签只说「在等料」，等的是什么得写出来才有用 -->
+    <view wx:if="{{item.missingText}}" class="wo-card__note">等待材料：{{item.missingText}}</view>
 
     <view class="wo-card__foot">
       <text class="wo-card__more">{{item.actionText}} ›</text>
     </view>
   </view>
 
-  <!-- 我报的单（派给了别人的）：报单的人要能看到它去哪儿了、修没修，否则像单子丢了 -->
+  <!-- ============ 我报的单（派给了别人的）============
+       报单的人要能看到它去哪儿了、修没修，否则像单子丢了。默认收起，不和手上的活抢位置 -->
   <view wx:if="{{reported.length}}" class="fold" bindtap="onToggleReported">
     <text class="fold__title">我报的 {{reported.length}} 条</text>
     <text class="fold__action">{{reportedOpen ? '收起' : '展开'}}</text>
@@ -47,30 +82,48 @@
     <view
       wx:for="{{reported}}"
       wx:key="id"
-      class="card wo-card wo-card--bold"
+      class="card wo-card wo-card--data"
       hover-class="wo-card--hover"
       hover-stay-time="80"
       bindtap="onTapItem"
       data-id="{{item.id}}"
     >
       <view class="wo-card__head">
-        <view class="wo-card__title">
-          <text class="wo-card__type">{{item.typeLabel}}</text>
+        <view class="wo-card__main">
+          <view class="wo-card__title">
+            <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>{{item.summaryContent || '未填描述'}}
+          </view>
+          <view class="wo-card__sub">{{item.summaryAddress || '未填地址'}} · 单号 {{item.orderNo}}</view>
         </view>
         <pms-tag class="status-tag" status="{{item.status}}"/>
       </view>
-      <view class="kv"><text class="kv__k">工单编号</text><text class="kv__v">{{item.orderNo}}</text></view>
-      <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{item.summaryAddress || '未填地址'}}</text></view>
-      <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v kv__v--clamp">{{item.summaryContent}}</text></view>
-      <view class="kv"><text class="kv__k">报修时间</text><text class="kv__v">{{item.createdAtText}}</text></view>
-      <view class="kv"><text class="kv__k">维修工</text><text class="kv__v">{{item.assigneeText}}</text></view>
+
+      <!-- 这一摞单我是报的人不是修的人：第三格换成「在谁手上」 -->
+      <view class="stat-grid">
+        <view class="stat">
+          <view class="stat__label">{{item.statStayLabel}}</view>
+          <view class="stat__value stat__value--{{item.stayTone}}">{{item.statStay}}</view>
+          <view class="stat__hint">{{item.timeText}}</view>
+        </view>
+        <view class="stat">
+          <view class="stat__label">类型</view>
+          <view class="stat__value stat__value--text">{{item.typeLabel}}</view>
+          <view class="stat__hint"></view>
+        </view>
+        <view class="stat">
+          <view class="stat__label">维修工</view>
+          <view class="stat__value stat__value--text">{{item.assigneeText}}</view>
+          <view class="stat__hint"></view>
+        </view>
+      </view>
+
       <view class="wo-card__foot">
         <text class="wo-card__more">{{item.actionText}} ›</text>
       </view>
     </view>
   </block>
 
-  <!-- 已完结的默认收起：手上真正要干的活才该占屏幕。搜过关键词就自动展开 -->
+  <!-- ============ 已完结：默认收起，手上真正要干的活才该占屏幕。搜过关键词就自动展开 ============ -->
   <view wx:if="{{done.length || doneKeyword}}" class="fold" bindtap="onToggleDone">
     <text class="fold__title">{{doneResults ? '已完结 · 搜到 ' + doneResults.length + ' 条' : '已完结 ' + done.length + ' 条'}}</text>
     <text class="fold__action">{{doneOpen ? '收起' : '展开'}}</text>
@@ -95,24 +148,39 @@
     <view
       wx:for="{{doneResults || done}}"
       wx:key="id"
-      class="card wo-card wo-card--bold wo-card--done"
+      class="card wo-card wo-card--data wo-card--done"
       hover-class="wo-card--hover"
       hover-stay-time="80"
       bindtap="onTapItem"
       data-id="{{item.id}}"
     >
       <view class="wo-card__head">
-        <view class="wo-card__title">
-          <text class="wo-card__type">{{item.typeLabel}}</text>
+        <view class="wo-card__main">
+          <view class="wo-card__title">{{item.summaryContent || '未填描述'}}</view>
+          <view class="wo-card__sub">{{item.summaryAddress || '未填地址'}} · 单号 {{item.orderNo}}</view>
         </view>
         <pms-tag class="status-tag" status="{{item.status}}"/>
       </view>
 
-      <view class="kv"><text class="kv__k">工单编号</text><text class="kv__v">{{item.orderNo}}</text></view>
-      <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{item.summaryAddress || '未填地址'}}</text></view>
-      <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v kv__v--clamp">{{item.summaryContent}}</text></view>
-      <view class="kv"><text class="kv__k">报修时间</text><text class="kv__v">{{item.createdAtText}}</text></view>
-      <view class="kv"><text class="kv__k">报修人</text><text class="kv__v">{{item.reporterText}}</text></view>
+      <!-- 完结的单第一格自动变成「用时」（withOrderLabels 按有没有 completedAt 判），
+           再说「已等 3 天」会被当成还堆在那儿没人管 -->
+      <view class="stat-grid">
+        <view class="stat">
+          <view class="stat__label">{{item.statStayLabel}}</view>
+          <view class="stat__value">{{item.statStay}}</view>
+          <view class="stat__hint">{{item.timeText}}</view>
+        </view>
+        <view class="stat">
+          <view class="stat__label">类型</view>
+          <view class="stat__value stat__value--text">{{item.typeLabel}}</view>
+          <view class="stat__hint"></view>
+        </view>
+        <view class="stat">
+          <view class="stat__label">报修人</view>
+          <view class="stat__value stat__value--text">{{item.statReporter}}</view>
+          <view class="stat__hint">{{item.statReporterHint}}</view>
+        </view>
+      </view>
 
       <view class="wo-card__foot">
         <text class="wo-card__more">查看详情 ›</text>

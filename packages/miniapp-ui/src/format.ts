@@ -63,11 +63,26 @@ export function withOrderLabels<
     missingText: string;
     /** 卡片「报修人」：「张阿姨」「王保安（保安代报）」「叶双（员工小程序提交）」，没留名字是「未填」 */
     reporterText: string;
+
+    /* ---- 下面四个只给卡片上的数据网格用（data-first-ui，工单池 / 在手工单共用） ----
+       网格是「标签 / 值 / 说明」三层，值那一层是全卡唯一的视觉锚点，
+       要的是「8天」这种能放大的短值，不是「已等 8 天」这种整句。
+       stayBadge / reporterText 那两个整句仍留着给详情页等别的地方用。 */
+    /** 网格第一格的标签：还没完结说「已等」，完结了说「用时」—— 同一个数，两种意思。
+     *  少了这一条，派单台按「已完成」筛出来的单会写成「已等 3 天」，像是还堆在那儿没人管 */
+    statStayLabel: string;
+    /** 「8天」/「今天」/「当天」—— 网格里放大到 44rpx 的那个数 */
+    statStay: string;
+    /** 「王女士」—— 报修人姓名，不带身份后缀 */
+    statReporter: string;
+    /** 「业主」「保安代报」—— 身份，压在姓名下面当说明 */
+    statReporterHint: string;
   }
 > {
   return list.map((item) => {
     const end = item.completedAt ? new Date(item.completedAt) : new Date();
     const days = stayDays(item.createdAt, isNaN(end.getTime()) ? new Date() : end);
+    const reporterText = reporterTextOf(item);
     return {
       ...item,
       // 租户自建的类型只有后端知道中文名（端上的 REPAIR_TYPE_LABELS 只有内置那 8 个），
@@ -91,9 +106,26 @@ export function withOrderLabels<
       // 分成两种标只会让卡片上多一个要认的东西，而处理动作是一样的
       urgent: !!item.urgent || stayTone(days) === 'danger',
       missingText: missingMaterialsText(item.missingMaterials),
-      reporterText: reporterTextOf(item),
+      reporterText,
+      statStayLabel: item.completedAt ? '用时' : '已等',
+      // 当天的写「今天 / 当天」而不是「0天」——「0」放大到 44rpx 看着像出错了
+      statStay: days >= 1 ? `${days}天` : item.completedAt ? '当天' : '今天',
+      ...splitReporter(reporterText),
     };
   });
+}
+
+/**
+ * 「王保安（保安代报）」→ 姓名 + 身份两截。
+ *
+ * 网格的值那一层要放大，只放得下姓名；身份降到下面 24rpx 的说明位。
+ * 括号按全角匹配 —— 上面 reporterTextOf 拼的就是全角，别写成半角。
+ * 拆不出来（只有姓名、或格式变了）就整串当姓名用，不要吞掉信息。
+ */
+function splitReporter(text: string): { statReporter: string; statReporterHint: string } {
+  const matched = /^(.+?)（(.+)）$/.exec(text || '');
+  if (matched) return { statReporter: matched[1], statReporterHint: matched[2] };
+  return { statReporter: text || '未填', statReporterHint: '' };
 }
 
 /**

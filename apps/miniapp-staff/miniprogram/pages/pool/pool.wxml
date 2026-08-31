@@ -86,7 +86,7 @@
   <view
     wx:for="{{list}}"
     wx:key="id"
-    class="card wo-card wo-card--bold"
+    class="card wo-card wo-card--data"
     hover-class="wo-card--hover"
     hover-stay-time="80"
     bindtap="onTapItem"
@@ -105,18 +105,21 @@
       <pms-tag class="status-tag" status="{{item.status}}"/>
     </view>
 
-    <!-- 数据网格：全卡唯一的视觉锚点是「已等」那个数，压 3 天以上转红。
+    <!-- 数据网格：全卡唯一的视觉锚点是第一格那个数，压 3 天以上转红。
+         标签按是否完结换（已等 / 用时）—— 按「已完成」筛出来的单再说「已等」是误导。
          第三格按身份换：派单台要看「在谁手上」，维修工要看「找谁开门」。 -->
     <view class="stat-grid">
       <view class="stat">
-        <view class="stat__label">已等</view>
+        <view class="stat__label">{{item.statStayLabel}}</view>
         <view class="stat__value stat__value--{{item.stayTone}}">{{item.statStay}}</view>
         <view class="stat__hint">{{item.timeText}}</view>
       </view>
+      <!-- 类型格不再挂「等待材料」小字：右上角的状态标签已经写了一次，
+           下面正文还有「等待材料：xxx」，同一张卡上说三遍 -->
       <view class="stat">
         <view class="stat__label">类型</view>
         <view class="stat__value stat__value--text">{{item.typeLabel}}</view>
-        <view class="stat__hint">{{item.missingText ? '等待材料' : ''}}</view>
+        <view class="stat__hint"></view>
       </view>
       <view class="stat">
         <view class="stat__label">{{dispatcher ? '维修工' : '报修人'}}</view>
@@ -125,7 +128,7 @@
       </view>
     </view>
 
-    <!-- 缺料清单太长塞不进网格，放正文；网格那格只标「等待材料」当索引 -->
+    <!-- 缺料清单塞不进网格，放正文：状态标签只说「在等料」，等的是什么得写出来才有用 -->
     <view wx:if="{{item.missingText}}" class="wo-card__note">等待材料：{{item.missingText}}</view>
 
     <view class="wo-card__foot">

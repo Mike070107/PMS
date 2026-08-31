@@ -327,12 +327,14 @@ button::after { border: none; }
 .page-lead { padding: 8rpx 8rpx 24rpx; }
 .page-lead__title { font-size: var(--font-3xl); font-weight: 600; line-height: 1.4; }
 
-/* ---------- 工单卡片（工单池 / 在手工单 / 详情共用，新增列表页直接复用） ----------
-   三段，不多不少：
-     头   = 类型（+ 紧急标签） 左，状态 右
-     正文 = 若干条 .kv，值全部对齐
-     脚   = 唯一的实心主按钮，靠右
-   整卡可点进详情；卡片里只允许有一个实心按钮。 */
+/* ---------- 工单卡片（工单池 / 在手工单 / 详情 / 审批共用，新增列表页直接复用） ----------
+   三段，不多不少：头 / 正文 / 脚（唯一的实心主按钮，靠右）。
+   整卡可点进详情；卡片里只允许有一个实心按钮。
+
+   两个版本，别混着用：
+     基础版           头 = 短词（类型、金额）+ 状态，正文 = 若干条 .kv —— 详情页、审批页
+     .wo-card--data   头 = 故障描述做标题（可两行）+ 地址·单号小字，正文 = .stat-grid
+                      —— 列表页（工单池 / 在手工单），data-first-ui 那一套，见下面那节 */
 .wo-card { position: relative; }
 .wo-card--hover { background: #f2f4f7; }
 .wo-card__head {
@@ -382,16 +384,57 @@ button::after { border: none; }
 }
 /* 没有按钮时给一个明确的「可以点」提示，别让整卡可点变成隐藏功能 */
 .wo-card__more { color: var(--color-brand); font-size: var(--font-md); }
-/* 工单池 / 在手工单这两张「看单」卡：正文加大加粗（2026-08-27 要求）。
-   标题（类型）保持 36rpx 不动，信息行的值从正文 32rpx 提到 34rpx 并加粗 ——
-   维修工站在楼道里单手看，地址和描述才是要认的字；标签仍是浅灰 32rpx，主次才拉得开。
-   审批、库存那些卡不套：它们的值是金额和数量，加粗反而像在报警 */
-.wo-card--bold .kv__v {
-  font-size: var(--font-xl);
-  font-weight: 600;
+
+/* ---------- .wo-card--data：列表页的数据卡（工单池 / 在手工单共用） ----------
+   2026-08-31 先在工单池落地，2026-08-31 在手工单跟上时提到这里 —— 两页共一份，
+   下一个列表页加上 .wo-card--data 就能直接用，别再抄一遍。
+
+   为什么标题放故障描述而不是报修类型：站在楼道里先要知道「什么坏了」，
+   类型是分类不是内容，降到网格里；工单编号只在打电话核对时才念，跟着地址走一行小字
+   就够（data-first-ui 的判断表：只在详情页有意义的字段从列表卡里降级）。
+
+   都用 .wo-card--data 前缀限定（0,2,0），压得过上面那几条基础版规则（0,1,0），
+   不依赖谁写在后面 —— 详情页和审批页的卡还是基础版，别被带走。 */
+
+/* 右侧状态标签要跟标题第一行齐平：父级原来是 align-items:center，
+   标题变两行后标签会掉到两行中间，看着像浮在半空。
+   下边距归零，间距交给 .stat-grid 自己的 margin-top，否则 28+24 叠成 52rpx */
+.wo-card--data .wo-card__head {
+  align-items: flex-start;
+  margin-bottom: 0;
 }
-.wo-card--bold .kv__v .kv__tag { font-weight: 500; }
-.wo-card--bold .kv__tag--danger { font-weight: 600; }
+.wo-card__main { flex: 1; min-width: 0; }
+/* 标题不能再是 flex：flex 容器里的匿名文本节点换行后，和「紧急」标签的基线对不齐。
+   改成 -webkit-box 截两行，badge 作为行内元素落在句首 */
+.wo-card--data .wo-card__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--font-2xl);
+  font-weight: 600;
+  line-height: 1.35;
+}
+/* 地址 + 单号：辅助档，压到 28rpx 灰。
+   截两行封顶：公区点位那种长地址（「枫桦景苑一期 监控室2号」）加上单号会排到三四行，
+   一行辅助小字撑得比标题还高，卡片就散了 */
+.wo-card__sub {
+  margin-top: var(--space-xs);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--font-sm);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+/* 塞不进网格的长文本（缺料清单、派单备注）走这里 */
+.wo-card__note {
+  margin-top: var(--space-md);
+  font-size: var(--font-md);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
 
 /* ---------- 折叠分组标题（已完结、历史记录这类默认收起的内容） ---------- */
 .fold {
