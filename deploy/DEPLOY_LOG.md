@@ -480,3 +480,12 @@
 - 自上次（57422dc）以来上线的相关提交：
   - 5a112a0 后台: 材料/库存表加序号列，全公司口径统计卡按角色显示
 
+## 2026-08-31 13:32 · web · 3c11a71
+
+- 包：`pms-web-20260831-1329.tar.gz`
+- 提交：3c11a71 后台: 序号列宽 64→80，表头「序号」不再被挤成两行
+- 说明：从 PMS-deploy 干净 worktree（origin/main 3c11a71）打包；工作区未提交的是别的会话的改动，没进包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/src/App.tsx，M apps/admin-web/src/components/AppLayout.tsx，M apps/admin-web/src/pages/RolesPage.tsx，M apps/admin-web/src/pages/WorkOrdersPage.tsx，M apps/admin-web/src/styles.css，M apps/admin-web/tsconfig.tsbuildinfo，M packages/shared-types/src/index.ts，M packages/shared-types/src/pages.ts，?? apps/admin-web/src/components/SignaturePad.tsx，?? apps/admin-web/src/lib/printSheet.ts，?? apps/admin-web/src/pages/MaintenanceOrdersPage.tsx，?? apps/admin-web/src/pages/maintenance/
+- 自上次（5a112a0）以来上线的相关提交：
+  - 3c11a71 后台: 序号列宽 64→80，表头「序号」不再被挤成两行
+
