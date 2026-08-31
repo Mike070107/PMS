@@ -2870,6 +2870,7 @@ export class RepairsService implements OnModuleInit {
         // 没有室号就是公区单，文案里写明白，派单的人一眼看出不是入户维修
         addressText: `${community.name} 公共区域`,
         matchedText: candidate.matchedText,
+        matchedRaw: candidate.matchedRaw,
         correctedText: correctCommunityNameInText(
           dto.text,
           candidate,
@@ -2954,6 +2955,11 @@ export class RepairsService implements OnModuleInit {
         .filter(Boolean)
         .join(' '),
       matchedText: candidate.matchedText,
+      /**
+       * 地址在原话里占的那一段。端上剥故障描述要用它 ——
+       * 用归一化的 matchedText 剥，小区名会剩在描述里
+       */
+      matchedRaw: candidate.matchedRaw,
       /**
        * 语音把小区名听成同音字时的正名版本（「风华一期17号」→「枫桦景苑一期17号」）；
        * 没什么好改的就是 null。端上拿它替换描述框里的文字。

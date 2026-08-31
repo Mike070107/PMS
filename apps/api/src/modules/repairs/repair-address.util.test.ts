@@ -154,3 +154,38 @@ test('同名点位在多个小区：全部返回，交给调用方按所在小�
     [1, 2],
   );
 });
+
+/**
+ * matchedRaw = 地址在原话里占的那一段。
+ * 剥故障描述必须用它，用归一化的 matchedText 会把小区名剩在描述里 ——
+ * 2026-08-31 实际现象：「枫桦景苑一期17号201家里灯不亮」的描述抽成了
+ * 「枫桦景苑家里灯不亮」。
+ */
+test('matchedRaw：把小区名到室号整段圈进去', () => {
+  const c = extractAddressCandidate('枫桦景苑一期17号201家里灯不亮')!;
+  assert.equal(c.matchedRaw, '枫桦景苑一期17号201');
+  // 归一化的那份不含小区名，正是它剥不干净
+  assert.equal(c.matchedText, '一期17号201室');
+});
+
+test('matchedRaw：带路名和弄的老式门牌', () => {
+  const c = extractAddressCandidate('剑川路198弄3号301室灯不亮')!;
+  assert.equal(c.matchedRaw, '剑川路198弄3号301室');
+});
+
+test('matchedRaw：没说小区名时就从数字开始', () => {
+  const c = extractAddressCandidate('17号201灯不亮')!;
+  assert.equal(c.matchedRaw, '17号201');
+});
+
+test('matchedRaw：室号带「室」字时把它一起圈进去，别剩个孤字', () => {
+  const c = extractAddressCandidate('吴泾新村7号102室漏水')!;
+  assert.equal(c.matchedRaw, '吴泾新村7号102室');
+});
+
+test('剥描述：用 matchedRaw 剥完只剩故障本身', () => {
+  const raw = '枫桦景苑一期17号201家里灯不亮';
+  const c = extractAddressCandidate(raw)!;
+  const desc = raw.replace(c.matchedRaw, '').trim();
+  assert.equal(desc, '家里灯不亮');
+});

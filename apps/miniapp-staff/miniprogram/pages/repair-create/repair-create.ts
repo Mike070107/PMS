@@ -24,6 +24,20 @@ import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-
 import { loadAddressBook } from '../../utils/address-picker';
 
 /**
+ * 提交前把描述里的地址剥掉。地址已经单独放进 addressText，描述只该留故障本身。
+ *
+ * 传 matchedRaw（地址在原话里占的整段，含小区名），不要传归一化的 matchedText ——
+ * 那份不含小区名，剥完描述里会剩个「枫桦景苑」（2026-08-31 用户实际看到的）。
+ * 剥空了就退回原文：宁可描述里带点地址，也不能提交一条空描述。
+ */
+function stripAddress(content: string, matchedRaw?: string | null): string {
+  const full = content.trim();
+  if (!matchedRaw) return full;
+  const stripped = extractFaultDescription(full, { addressText: matchedRaw }).trim();
+  return stripped || full;
+}
+
+/**
  * 员工端报修：维修工 / 办公室巡查发现问题顺手提单。
  *
  * 地址选法照搬业主端「一键报修」的工作人员模式 —— 三级地址簿，全公司范围，
@@ -533,7 +547,12 @@ Page({
         // 把「系统当初判的是什么」一并带上：和最终选的不一致时，
         // 后端记一条负样本，下次这个词就不会再往错的类型上撞
         predictedRepairType: this.predictedType || undefined,
-        content: content.trim(),
+        // 地址在描述里留到这一刻是为了让识别撞库（见 onSpeech 那段注释），
+        // 提交时剥掉：地址已经单独放在 addressText 里了，描述只留故障本身。
+        // 用 matchedRaw（原话里的那一整段，含小区名），不是归一化的 matchedText ——
+        // 后者剥完会剩个「枫桦景苑」在描述开头（2026-08-31 实际现象）。
+        // 剥空了就退回原文：宁可带点地址，也不能提交一条空描述
+        content: stripAddress(content, detected?.matchedRaw),
         attachments: this.data.attachments,
       });
       wx.showToast({ title: '报修已提交' });

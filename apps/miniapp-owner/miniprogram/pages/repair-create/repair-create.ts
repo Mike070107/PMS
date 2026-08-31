@@ -30,6 +30,19 @@ import { ensureOwnerLogin } from '../../utils/session';
 import { askSubscribeAfterSubmit, primeSubscribeTemplates } from '../../utils/unread';
 
 /**
+ * 提交前把描述里的地址剥掉（员工端 repair-create 有一份一样的）。
+ * 必须传 matchedRaw ——「地址在原话里占的整段」，含小区名；
+ * 归一化的 matchedText 不含小区名，剥完会在描述开头剩个「枫桦景苑」。
+ * 剥空了退回原文，不提交空描述。
+ */
+function stripAddress(content: string, matchedRaw?: string | null): string {
+  const full = content.trim();
+  if (!matchedRaw) return full;
+  const stripped = extractFaultDescription(full, { addressText: matchedRaw }).trim();
+  return stripped || full;
+}
+
+/**
  * 一键报修。字段顺序、"猜你想输"、地址选法都与管理后台「办公室录入报修」对齐，
  * 只是排成手机的样子；后台那张表单改了，这里跟着改。
  *
@@ -667,7 +680,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         contactName: this.data.contactName.trim() || undefined,
         contactPhone: contactPhone || undefined,
         repairType: this.data.typeOptions[typeIndex].value,
-        content: content.trim(),
+        // 地址已经单独放进 addressText，描述只留故障本身。用 matchedRaw
+        // （原话里地址占的整段，含小区名）剥 —— 归一化的 matchedText 不含小区名，
+        // 剥完会剩个「枫桦景苑」在描述开头。剥空就退回原文，不提交空描述。
+        content: stripAddress(content, detected?.matchedRaw),
         attachments: this.data.attachments,
       });
       wx.showToast({ title: '报修已提交' });

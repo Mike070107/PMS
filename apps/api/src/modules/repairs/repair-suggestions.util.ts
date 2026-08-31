@@ -251,6 +251,11 @@ export function stripAddress(text: string, knownPlaces: string[] = []): string {
     .replace(new RegExp(`[一-龥]{2,}(?:小区|苑|花园|公寓|大厦|新村|家园|山庄|别墅|园区|广场)(?:[${CN_NUM}]+期)?`, 'g'), ' ')
     .replace(new RegExp(`[${CN_NUM}]+期`, 'g'), ' ')
     .replace(new RegExp(`[${CN_NUM}]+弄`, 'g'), ' ')
+    // 「17号201」：号后面紧跟的 3-4 位裸数字是室号，得和「号」一起剥。
+    // **必须排在下面那条「N号」前面** —— 先把「17号」剥走，201 就成了孤零零的
+    // 数字，后面所有规则都认不出它是室号，于是「枫桦景苑一期17号201家里灯不亮」
+    // 归纳出来是「201家里灯不亮」（2026-08-31 实测）
+    .replace(/[\d一二三四五六七八九十两]+号(?:楼|栋|幢)?\s*\d{3,4}(?!\d)/g, ' ')
     .replace(new RegExp(`[${CN_NUM}]+号(?:楼|栋|幢)?`, 'g'), ' ')
     .replace(new RegExp(`[${CN_NUM}]+(?:室|栋|幢|单元)`, 'g'), ' ')
     .replace(/公共区域|公区/g, ' ')

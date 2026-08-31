@@ -448,7 +448,10 @@ Page({
         // 描述里认出来的地址已经单独提交了，从描述里剥掉，顺带剥语音带进来的语气词；
         // 只拍照没打字时给一句占位，后端要求 content 非空
         content:
-          extractFaultDescription(content, { addressText: detected?.matched ? detected.matchedText : undefined }) ||
+          extractFaultDescription(content, {
+            // matchedRaw 是地址在原话里占的整段（含小区名），剥得干净
+            addressText: detected?.matched ? detected.matchedRaw || detected.matchedText : undefined,
+          }) ||
           '业主随手拍报修，详见照片',
         attachments,
       });

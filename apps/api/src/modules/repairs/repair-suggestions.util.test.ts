@@ -47,3 +47,23 @@ test('报修内容：剥过头就给空，不把噪音当短语', () => {
   assert.equal(extractContentGist('嗯，那个，啊', PLACES), '');
   assert.equal(extractContentGist('', PLACES), '');
 });
+
+/**
+ * 「猜你想输」归纳关键词前要把地址剥干净。
+ * 2026-08-31 实测漏了一种：「17号201」里的 201 是**裸数字**室号（没有「室」字），
+ * 剥完「17号」之后它成了孤零零的数字，归纳出来是「201家里灯不亮」。
+ */
+test('地址剥离：号后面紧跟的裸数字室号也要剥掉', () => {
+  const places = ['枫桦景苑一期', '吴泾新村'];
+  assert.equal(extractContentGist('枫桦景苑一期17号201家里灯不亮', places), '家里灯不亮');
+  assert.equal(extractContentGist('吴泾新村7号102漏水，联系人张先生13800138000', places), '漏水');
+  // 小区名没在名单里（语音听错成同音字）也照样剥：靠「苑/新村」这类后缀模式兜底
+  assert.equal(extractContentGist('风华一期17号201家里灯不亮', places), '家里灯不亮');
+});
+
+test('地址剥离：原有行为不变', () => {
+  assert.equal(extractContentGist('一期24号大门关不上'), '大门关不上');
+  assert.equal(extractContentGist('3号楼电梯坏了'), '电梯坏了');
+  // 「监控室2号」的 2 号不是门牌，场所词要留着
+  assert.equal(extractContentGist('监控室2号显示屏不亮'), '监控室显示屏不亮');
+});

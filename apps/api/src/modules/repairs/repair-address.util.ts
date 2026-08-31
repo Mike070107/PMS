@@ -28,6 +28,15 @@ export interface RepairAddressCandidate {
   roomNo: string | null;
   /** 归一化后的命中内容，如「一期24号302室」，给用户看、也用来做「忽略」去重 */
   matchedText: string;
+  /**
+   * 地址在**原话里**实际占的那一段，如「枫桦景苑一期17号201」。
+   *
+   * 和 matchedText 的区别：那个是归一化的（补上「室」、去掉小区名），只适合展示；
+   * 要从描述里把地址剥干净必须用这一段 —— 否则小区名剥不掉，
+   * 「枫桦景苑一期17号201家里灯不亮」的故障描述会剩下「枫桦景苑家里灯不亮」
+   * （2026-08-31 实际踩到）。
+   */
+  matchedRaw: string;
 }
 
 const CN_DIGITS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
@@ -85,6 +94,7 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
 
   let buildingNo: string | null = null;
   let roomNo: string | null = null;
+  let buildingMatch: RegExpExecArray | null = null;
   BUILDING_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = BUILDING_RE.exec(value))) {
@@ -92,6 +102,7 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
     if (NO_PREFIX_BLACKLIST.has(before)) continue;
     if (PLACE_CHAR_BEFORE_NO.test(value.slice(Math.max(0, m.index - 1), m.index))) continue;
     buildingNo = m[1];
+    buildingMatch = m;
     // 紧跟在「Y号」后面的 3-4 位数字当室号：「24号302」。
     // 两位以下的裸数字歧义太大（24号3 可能是 3 楼、3 个），必须带「室」才认。
     const rest = value.slice(m.index + m[0].length);
@@ -114,15 +125,66 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
     buildingNo ? `${buildingNo}号` : '',
     roomNo ? `${roomNo}室` : '',
   ].join('');
+  const namePrefix = extractNamePrefix(value, roadName);
   return {
     phase,
     roadName,
-    namePrefix: extractNamePrefix(value, roadName),
+    namePrefix,
+    matchedRaw: sliceMatchedRaw(value, {
+      namePrefix,
+      roadName,
+      phaseMatch,
+      laneMatch,
+      buildingMatch,
+      roomNo,
+    }),
     lane,
     buildingNo,
     roomNo,
     matchedText,
   };
+}
+
+/**
+ * 地址在原话里占的区间 —— 从最靠前的那个片段（小区名 / 路名 / 期 / 弄 / 号）
+ * 一直到最靠后的（室号）。剥描述时按这一段剥，小区名才不会剩下。
+ *
+ * 只取**连续的一段**：起点到终点之间的原文原样返回，中间的「弄」「号楼」
+ * 「2单元」这些连接字自然包含在内，不用再去猜写法。
+ */
+function sliceMatchedRaw(
+  value: string,
+  parts: {
+    namePrefix: string | null;
+    roadName: string | null;
+    phaseMatch: RegExpExecArray | null;
+    laneMatch: RegExpExecArray | null;
+    buildingMatch: RegExpExecArray | null;
+    roomNo: string | null;
+  },
+): string {
+  const spans: Array<[number, number]> = [];
+  const push = (index: number | undefined, len: number) => {
+    if (index === undefined || index < 0 || !len) return;
+    spans.push([index, index + len]);
+  };
+  if (parts.roadName) push(value.indexOf(parts.roadName), parts.roadName.length);
+  if (parts.namePrefix) push(value.indexOf(parts.namePrefix), parts.namePrefix.length);
+  push(parts.phaseMatch?.index, parts.phaseMatch?.[0].length ?? 0);
+  push(parts.laneMatch?.index, parts.laneMatch?.[0].length ?? 0);
+  push(parts.buildingMatch?.index, parts.buildingMatch?.[0].length ?? 0);
+  // 室号可能是「号」后面紧跟的裸数字，也可能带「室」，一律按它在原文的位置算
+  if (parts.roomNo) {
+    const from = parts.buildingMatch ? parts.buildingMatch.index : 0;
+    const at = value.indexOf(parts.roomNo, from);
+    // 「201室」把「室」也算进去，剥完不留一个孤零零的「室」
+    const tail = value.slice(at + parts.roomNo.length, at + parts.roomNo.length + 1);
+    push(at, parts.roomNo.length + (tail === '室' || tail === '房' ? 1 : 0));
+  }
+  if (!spans.length) return '';
+  const start = Math.min(...spans.map((s) => s[0]));
+  const end = Math.max(...spans.map((s) => s[1]));
+  return value.slice(start, end);
 }
 
 /**

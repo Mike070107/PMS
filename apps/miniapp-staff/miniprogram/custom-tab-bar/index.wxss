@@ -6,6 +6,21 @@
    贴边横条会把页面在视觉上截断一刀，悬浮之后底部还剩一条底色，一屏看着更有余地。
    代价是内容区要多让出高度 —— app.wxss 的 .container--tabbar / .hero-sheet--tabbar
    都按「胶囊高 112 + 离底 24 + 安全区 + 呼吸」算的，改这里的尺寸要同步改那两处。 */
+/* 胶囊下方的遮挡：z-index 夹在页面内容和胶囊之间 —— 高过内容才挡得住，
+   低于胶囊才不会盖住图标。颜色跟 page 一致（tokens.wxss 里 page 的 background
+   就是这个变量），所以看不出多了一层；带回退值是防组件里取不到变量 */
+.tabbar-shield {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* 盖到胶囊底边再往上 40rpx，藏进胶囊后面 */
+  height: calc(24rpx + env(safe-area-inset-bottom) + 40rpx);
+  background: var(--color-page-bg, #e6eaf1);
+  z-index: 99;
+  pointer-events: none;
+}
+
 .tabbar {
   position: fixed;
   left: 28rpx;

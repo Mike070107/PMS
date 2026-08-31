@@ -250,7 +250,9 @@ Page({
     // 不然后台看单的人要在一串人名电话里自己找故障是什么
     const contact = extractContact(content);
     const description = extractFaultDescription(content, {
-      addressText: detected?.matchedText,
+      // 用原话里的那一段，不是归一化的 matchedText ——
+      // 后者不含小区名，剥完描述里会剩个「枫桦景苑」
+      addressText: detected?.matchedRaw || detected?.matchedText,
       phoneText: contact.phoneText,
       nameText: contact.nameText,
     });
