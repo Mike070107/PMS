@@ -16,6 +16,19 @@ import type { ParsedRepairAddress } from '@pms/api-client/src/endpoints/repairs'
 /** 描述里疑似出现地址（一期 / 198弄 / 24号）才值得问服务端 */
 export const ADDRESS_HINT_RE = /[0-9一二三四五六七八九十两]+\s*[期弄号]/;
 
+/**
+ * 这句话值不值得问服务端。
+ *
+ * 原来只看「数字 + 期/弄/号」，但公区点位（监控室、水泵房、门卫室）一个数字都没有，
+ * 卡在这一步就永远认不出来 —— 后台登记了点位也白登记。所以放宽成：
+ * 出现地址数字，**或者**话已经说到 5 个字（能提交的最短长度）。
+ * 服务端撞不上库一律返回「没识别」，多问一次没有副作用，只是一个请求。
+ */
+export function shouldDetectAddress(text: string): boolean {
+  const value = String(text || '').trim();
+  return value.length >= 5 || ADDRESS_HINT_RE.test(value);
+}
+
 /** 识别失败一律静默返回 null：这只是锦上添花，绝不打扰报修 */
 export async function detectRepairAddress(
   text: string,

@@ -48,6 +48,12 @@ export interface ParsedRepairAddress {
   buildingText?: string;
   houseId?: number | null;
   roomNo?: string | null;
+  /**
+   * 认到的公区点位名（监控室、门卫室、水泵房…），来自后台「公区点位」。
+   * 有值时地址就是「小区 [楼栋] 点位名」，不再缀「公共区域」占位，
+   * 端上也不用再追问「具体在哪」。
+   */
+  spotName?: string | null;
   /** 可直接展示/提交的完整地址文案，如「枫桦景苑一期 198弄24号302室」 */
   addressText?: string;
   /** 描述里命中的片段（归一化），如「一期24号」，用于展示与「忽略」去重 */

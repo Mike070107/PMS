@@ -22,14 +22,17 @@ import {
   BuildingQueryDto,
   AddressBookQueryDto,
   CommunityQueryDto,
+  CommunitySpotQueryDto,
   CreateBuildingDto,
   CreateCommunityDto,
+  CreateCommunitySpotDto,
   CreateHouseDto,
   HouseQueryDto,
   ParseHouseAddressDto,
   TenantScopedQueryDto,
   UpdateBuildingDto,
   UpdateCommunityDto,
+  UpdateCommunitySpotDto,
   UpdateHouseDto,
 } from './dto';
 import { PropertiesService } from './properties.service';
@@ -194,6 +197,49 @@ export class PropertiesController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.propertiesService.deleteBuilding(id, user, access);
+  }
+
+  // ---------------- 公区点位 ----------------
+
+  @Get('community-spots')
+  @RequirePermission(['properties', 'work-orders', 'app:repair-create'], 'view')
+  listCommunitySpots(
+    @Query() query: CommunitySpotQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.propertiesService.listCommunitySpots(query, user, access);
+  }
+
+  @Post('community-spots')
+  @RequirePermission('properties', 'edit')
+  createCommunitySpot(
+    @Body() dto: CreateCommunitySpotDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.propertiesService.createCommunitySpot(dto, user, access);
+  }
+
+  @Patch('community-spots/:id')
+  @RequirePermission('properties', 'edit')
+  updateCommunitySpot(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCommunitySpotDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.propertiesService.updateCommunitySpot(id, dto, user, access);
+  }
+
+  @Delete('community-spots/:id')
+  @RequirePermission('properties', 'delete')
+  deleteCommunitySpot(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.propertiesService.deleteCommunitySpot(id, user, access);
   }
 
   // ---------------- Houses ----------------

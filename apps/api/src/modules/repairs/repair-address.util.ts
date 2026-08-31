@@ -58,6 +58,13 @@ const BUILDING_RE = /(\d{1,4})号(?!码)(?:楼|栋)?/g;
 const NO_PREFIX_BLACKLIST = new Set([
   '车位', '车牌', '电话', '手机', '编号', '工号', '单号', '卡号', '证号', '房号',
 ]);
+/**
+ * 紧挨在数字前面的这个字是「屋子」，那这个「号」是屋子里第几个东西，不是门牌号：
+ * 「监控室2号显示屏」「机房3号柜」。
+ * 2026-08-31 线上实测：不拦的话「监控室2号显示屏不亮」会撞上 228弄2号楼，
+ * 维修工按地址去 2 号楼白跑一趟。
+ */
+const PLACE_CHAR_BEFORE_NO = /[室房间厅库]/;
 /** 显式室号：302室 / 302房 */
 const ROOM_EXPLICIT_RE = /(\d{1,5})\s*[室房](?![屋子])/;
 
@@ -83,6 +90,7 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
   while ((m = BUILDING_RE.exec(value))) {
     const before = value.slice(Math.max(0, m.index - 2), m.index);
     if (NO_PREFIX_BLACKLIST.has(before)) continue;
+    if (PLACE_CHAR_BEFORE_NO.test(value.slice(Math.max(0, m.index - 1), m.index))) continue;
     buildingNo = m[1];
     // 紧跟在「Y号」后面的 3-4 位数字当室号：「24号302」。
     // 两位以下的裸数字歧义太大（24号3 可能是 3 楼、3 个），必须带「室」才认。
@@ -188,6 +196,40 @@ export function matchCommunityByName<T extends { id: number; name: string }>(
   if (key.length < 2) return [];
   const hit = communities.filter((c) => c.name.includes(key) || key.includes(c.name));
   return hit;
+}
+
+/** 公区点位（community_spots）匹配时只需要这几个字段 */
+export interface SpotLike {
+  id: number;
+  name: string;
+  communityId: number;
+  buildingId: number | null;
+}
+
+/**
+ * 描述里出现了哪个公区点位：「监控室2号显示屏不亮」→ 监控室。
+ *
+ * 为什么要有它：识别只认「期/弄/号/室」这种数字模式，监控室、门卫室、水泵房这些
+ * 地方压根没有房号，说得再清楚也认不出来 —— 更糟的是「监控室2号」里的「2号」
+ * 会被当成门牌号撞到 2 号楼去（2026-08-31 线上实测过）。
+ *
+ * 口径：
+ * - 只做包含匹配，不做同音、不做分词 —— 和 matchCommunityByName 一样宁可不认；
+ * - 名字最长的赢：「电梯机房」和「机房」都命中时取「电梯机房」，更精确的那个；
+ * - 同名点位可能挂在多个小区（每个小区都有门卫室），这里全部返回，
+ *   由调用方按报修人所在小区收敛；收敛不掉就当没认出来，
+ *   认成隔壁小区的门卫室比不认更糟。
+ */
+export function matchSpotsInText<T extends SpotLike>(
+  text: string,
+  spots: T[],
+): T[] {
+  const value = String(text || '');
+  if (!value.trim()) return [];
+  const hits = spots.filter((s) => s.name && s.name.length >= 2 && value.includes(s.name));
+  if (!hits.length) return [];
+  const longest = Math.max(...hits.map((s) => s.name.length));
+  return hits.filter((s) => s.name.length === longest);
 }
 
 /** 「024」和「24」当同一个号；楼栋表里存的是数字串，这里统一成十进制比较 */

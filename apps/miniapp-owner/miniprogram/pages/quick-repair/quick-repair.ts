@@ -5,7 +5,7 @@ import type {
 } from '@pms/api-client/src/endpoints/repairs';
 import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
 import { AuditStatus, classifyRepairType, extractFaultDescription } from '@pms/shared-types';
-import { ADDRESS_HINT_RE, detectRepairAddress } from '../../utils/address-detect';
+import { detectRepairAddress, shouldDetectAddress } from '../../utils/address-detect';
 import {
   composePlaceText,
   scopeHint,
@@ -352,7 +352,7 @@ Page({
    */
   scheduleDetect(content: string) {
     if (this.detectTimer) clearTimeout(this.detectTimer);
-    if (!ADDRESS_HINT_RE.test(content)) {
+    if (!shouldDetectAddress(content)) {
       if (this.data.detected) this.setData({ detected: null });
       return;
     }

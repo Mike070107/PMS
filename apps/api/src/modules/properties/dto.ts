@@ -266,6 +266,66 @@ export class BuildingQueryDto extends TenantScopedQueryDto {
   communityId?: number;
 }
 
+// ---------------- 公区点位（监控室、门卫室、水泵房…） ----------------
+
+export class CommunitySpotQueryDto extends TenantScopedQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  communityId?: number;
+}
+
+export class CreateCommunitySpotDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  tenantId?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  communityId: number;
+
+  /** 点位在某一栋楼里（「3号楼电梯机房」）；不传 = 整个小区的公共点位 */
+  @IsOptional()
+  @toNullableInt()
+  buildingId?: number | null;
+
+  @IsString()
+  @MaxLength(60)
+  name: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+
+  @IsOptional()
+  @toBool()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
+export class UpdateCommunitySpotDto {
+  @IsOptional()
+  @toNullableInt()
+  buildingId?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  name?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+
+  @IsOptional()
+  @toBool()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
 export class HouseQueryDto extends TenantScopedQueryDto {
   @IsOptional()
   @Type(() => Number)

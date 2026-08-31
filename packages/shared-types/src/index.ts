@@ -864,6 +864,12 @@ export function formatDateShortCn(value?: string | null): string {
  * 「猜你想输」的兜底词表。后台和小程序共用这一份 ——
  * 只在这里改一次，两端就同步了，不会出现后台加了词小程序还是老几个。
  */
+/**
+ * 「具体位置」的快捷词。前半是楼里/小区里的方位，后半是公区房间 ——
+ * 监控室、水泵房这类地方没有房号，报修描述里说了也认不出地址，
+ * 点一下写进「具体位置」，维修工才知道去哪（点位登记在后台「公区点位」里，
+ * 登记过的还能被描述直接认出来）。
+ */
 export const DEFAULT_LOCATION_SUGGESTIONS = [
   '大门',
   '4楼电梯口',
@@ -871,6 +877,12 @@ export const DEFAULT_LOCATION_SUGGESTIONS = [
   '地下车库',
   '楼道',
   '单元门口',
+  '监控室',
+  '门卫室',
+  '水泵房',
+  '电梯机房',
+  '垃圾房',
+  '配电间',
 ];
 
 export const DEFAULT_CONTENT_SUGGESTIONS = [

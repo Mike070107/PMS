@@ -45,6 +45,7 @@ import { ensureOfficeRepairRules, ruleAssigneeIds } from './repair-rule-template
 import {
   Building,
   Community,
+  CommunitySpot,
   House,
   ManagementOffice,
   Notification,
@@ -84,6 +85,7 @@ import {
   correctCommunityNameInText,
   extractAddressCandidate,
   matchCommunityByName,
+  matchSpotsInText,
   extractKeywordCandidates,
   sameNo,
   tokenizeAddress,
@@ -141,6 +143,8 @@ export class RepairsService implements OnModuleInit {
     private readonly buildingRepo: Repository<Building>,
     @InjectRepository(House)
     private readonly houseRepo: Repository<House>,
+    @InjectRepository(CommunitySpot)
+    private readonly spotRepo: Repository<CommunitySpot>,
     @InjectRepository(WorkOrder)
     private readonly workOrderRepo: Repository<WorkOrder>,
     @InjectRepository(RepairRequest)
@@ -2739,10 +2743,13 @@ export class RepairsService implements OnModuleInit {
    * 分期/楼栋/房号 —— 撞上才算识别到，撞不上宁可返回没识别，绝不猜。
    * 识别结果在端上明示并可一键撤掉，提交时关联 id 跟着识别结果走。
    */
-  async parseRepairAddress(dto: ParseRepairAddressDto, user: AuthUser) {
+  async parseRepairAddress(
+    dto: ParseRepairAddressDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const candidate = extractAddressCandidate(dto.text);
-    if (!candidate) return { matched: false as const };
 
     const communities = await this.communityRepo.find({
       where: { tenantId, enabled: true },
@@ -2751,18 +2758,27 @@ export class RepairsService implements OnModuleInit {
       communities.map((c) => c.parentId).filter((id): id is number => !!id),
     );
     // 分组节点（「枫桦景苑」）不挂楼栋，候选只在叶子（分期或独立小区）里找
-    const leaves = communities.filter((c) => !parentIds.has(c.id));
+    let leaves = communities.filter((c) => !parentIds.has(c.id));
+    // 数据范围收窄：枫桦景苑管理处的人报修，不该认到别的管理处的小区去。
+    // 只在拿得到明确清单时收窄 —— scopeCommunityIds 返回 null 表示全公司范围或
+    // 走业务身份的小程序请求，那种情况下按原样在全租户里找。
+    const scope = scopeCommunityIds(access);
+    if (scope?.length) leaves = leaves.filter((c) => scope.includes(c.id));
     if (!leaves.length) return { matched: false as const };
 
-    const context = dto.communityId
-      ? communities.find((c) => c.id === dto.communityId) ?? null
+    // 上下文小区：端上传了就用它；业主没传就用他自己认证的那套房所在小区 ——
+    // 随手拍不带 communityId，光靠「2号」这种孤零零的门牌会按 id 顺序撞到一期去
+    // （2026-08-31 线上实测：二期的人报「监控室2号」认成了枫桦景苑一期 198弄2号）。
+    const contextId = dto.communityId ?? (await this.ownCommunityId(tenantId, user));
+    const context = contextId
+      ? communities.find((c) => c.id === contextId) ?? null
       : null;
     const contextGroupId = context ? context.parentId ?? context.id : null;
     const nameById = new Map(communities.map((c) => [c.id, c.name] as const));
 
     // 「一期」优先解释成报修人所在分组里的分期；整个租户都没有这个分期时当没说
     let phaseLeaves: Community[] = [];
-    if (candidate.phase) {
+    if (candidate?.phase) {
       phaseLeaves = leaves.filter((c) => {
         const groupName = c.parentId ? nameById.get(c.parentId) ?? '' : '';
         const shortName =
@@ -2775,7 +2791,7 @@ export class RepairsService implements OnModuleInit {
     // 说了小区名就先按名字收敛：「吴泾新村3号102」不必再靠分期。
     // 撞不上库里的名字（语音把「枫桦」听成「风华」）就当没说过，退回按分期/号定位 ——
     // 名字是锦上添花，绝不能因为名字没对上就认不出地址。
-    const nameLeaves = matchCommunityByName(candidate.namePrefix, leaves);
+    const nameLeaves = matchCommunityByName(candidate?.namePrefix, leaves);
     let pool: Community[];
     if (nameLeaves.length && phaseLeaves.length) {
       const phaseIds = new Set(phaseLeaves.map((c) => c.id));
@@ -2798,6 +2814,41 @@ export class RepairsService implements OnModuleInit {
       return rank(a) - rank(b) || a.id - b.id;
     });
 
+    // ---- 公区点位优先 ----
+    // 监控室、门卫室、水泵房这些地方没有房号，靠数字永远认不出来；点位名是人自己
+    // 在后台登记的，比「2号」这种数字可靠，所以先按名字认，认到就不再走门牌号那条路。
+    const spot = await this.pickCommunitySpot(tenantId, dto.text, ranked);
+    if (spot) {
+      const community = ranked.find((c) => c.id === spot.communityId)!;
+      const building = spot.buildingId
+        ? await this.buildingRepo.findOne({
+            where: { tenantId, id: spot.buildingId },
+          })
+        : null;
+      const spotBuildingText = building
+        ? `${building.lane ? building.lane + '弄' : ''}${building.buildingNo}号`
+        : '';
+      return {
+        matched: true as const,
+        level: building ? ('building' as const) : ('community' as const),
+        communityId: community.id,
+        communityName: community.name,
+        buildingId: building?.id ?? null,
+        buildingText: spotBuildingText,
+        houseId: null,
+        roomNo: null,
+        spotName: spot.name,
+        // 点位名本身就是「具体在哪」，不再缀「公共区域」占位
+        addressText: [community.name, spotBuildingText, spot.name]
+          .filter(Boolean)
+          .join(' '),
+        matchedText: spot.name,
+        correctedText: null,
+      };
+    }
+
+    if (!candidate) return { matched: false as const };
+
     // 只说了分期没说楼栋：定位到小区级就够了（「二期大门坏了」）
     if (!candidate.buildingNo) {
       // 只说位置不说楼栋（「二期大门坏了」「吴泾新村门口路灯不亮」）：
@@ -2815,6 +2866,7 @@ export class RepairsService implements OnModuleInit {
         buildingText: '',
         houseId: null,
         roomNo: null,
+        spotName: null,
         // 没有室号就是公区单，文案里写明白，派单的人一眼看出不是入户维修
         addressText: `${community.name} 公共区域`,
         matchedText: candidate.matchedText,
@@ -2892,6 +2944,7 @@ export class RepairsService implements OnModuleInit {
       buildingText,
       houseId,
       roomNo: house?.roomNo ?? null,
+      spotName: null,
       // 门牌连写、段间空格，与 auth.me 的 addressText 同口径：枫桦景苑一期 198弄24号302室。
       // 连楼里哪个位置都没说的按公区单写，派单的人一眼看出不是入户维修
       addressText: [
@@ -2914,6 +2967,64 @@ export class RepairsService implements OnModuleInit {
         !!(candidate.phase || candidate.lane),
       ),
     };
+  }
+
+  /**
+   * 描述里认到哪个公区点位。
+   *
+   * 同名点位可能挂在好几个小区（每个小区都有门卫室），按 ranked 的顺序收敛 ——
+   * ranked 第一档是报修人所在小区、第二档是同一个分组里的其它分期。
+   * 排第一的没有比第二名更近（并列）时一律放弃：认成隔壁小区的门卫室，
+   * 维修工照样白跑一趟，还不如不认、让人自己选位置。
+   */
+  private async pickCommunitySpot(
+    tenantId: number,
+    text: string,
+    ranked: Community[],
+  ): Promise<CommunitySpot | null> {
+    if (!ranked.length) return null;
+    const spots = await this.spotRepo.find({
+      where: { tenantId, communityId: In(ranked.map((c) => c.id)), enabled: true },
+    });
+    if (!spots.length) return null;
+    const hits = matchSpotsInText(text, spots);
+    if (!hits.length) return null;
+    const rankOf = new Map(ranked.map((c, index) => [c.id, index] as const));
+    const sorted = [...hits].sort(
+      (a, b) =>
+        (rankOf.get(a.communityId) ?? 0) - (rankOf.get(b.communityId) ?? 0) ||
+        a.id - b.id,
+    );
+    if (sorted.length === 1) return sorted[0];
+    const first = rankOf.get(sorted[0].communityId) ?? 0;
+    const second = rankOf.get(sorted[1].communityId) ?? 0;
+    return first < second ? sorted[0] : null;
+  }
+
+  /**
+   * 业主自己认证的那套房在哪个小区。随手拍不传 communityId 时用它兜底，
+   * 免得「2号」这种孤零零的门牌按小区 id 顺序撞到别的小区去。
+   * 员工/办公室账号没有 houseId，返回 null，由数据范围那一层收窄。
+   */
+  private async ownCommunityId(
+    tenantId: number,
+    user: AuthUser,
+  ): Promise<number | null> {
+    const self = await this.userRepo.findOne({
+      where: { id: user.id, tenantId },
+      select: ['id', 'houseId'],
+    });
+    if (!self?.houseId) return null;
+    const house = await this.houseRepo.findOne({
+      where: { tenantId, id: self.houseId },
+      select: ['id', 'buildingId'],
+    });
+    if (!house) return null;
+    const building = await this.buildingRepo.findOne({
+      where: { tenantId, id: house.buildingId },
+      select: ['id', 'communityId'],
+    });
+    return building?.communityId ?? null;
   }
 
   /**

@@ -2,6 +2,7 @@ import { Tenant } from './tenant.entity';
 import { Community } from './community.entity';
 import { Building } from './building.entity';
 import { Unit } from './unit.entity';
+import { CommunitySpot } from './community-spot.entity';
 import { House } from './house.entity';
 import { QrCode } from './qr-code.entity';
 import { User } from './user.entity';
@@ -60,6 +61,7 @@ export const entities = [
   Community,
   Building,
   Unit,
+  CommunitySpot,
   House,
   QrCode,
   User,
@@ -112,6 +114,7 @@ export {
   Community,
   Building,
   Unit,
+  CommunitySpot,
   House,
   QrCode,
   User,

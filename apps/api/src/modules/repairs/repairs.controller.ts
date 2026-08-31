@@ -164,8 +164,9 @@ export class RepairsController {
   parseRepairAddress(
     @Body() dto: ParseRepairAddressDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.parseRepairAddress(dto, user);
+    return this.repairsService.parseRepairAddress(dto, user, access);
   }
 
   /** 两个小程序共用：业主端各身份 + 员工端（维修工/办公室巡查顺手报修） */

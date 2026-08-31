@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   Building,
   Community,
+  CommunitySpot,
   House,
   Material,
   PurchaseRequest,
@@ -33,6 +34,7 @@ import { RepairsService } from './repairs.service';
     TypeOrmModule.forFeature([
       Community,
       Building,
+      CommunitySpot,
       House,
       Material,
       User,

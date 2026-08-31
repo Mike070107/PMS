@@ -24,6 +24,7 @@ import {
 import {
   Building,
   Community,
+  CommunitySpot,
   House,
   ManagementOffice,
   Unit,
@@ -37,14 +38,17 @@ import {
 import {
   BuildingQueryDto,
   CommunityQueryDto,
+  CommunitySpotQueryDto,
   CreateBuildingDto,
   CreateCommunityDto,
+  CreateCommunitySpotDto,
   CreateHouseDto,
   HouseQueryDto,
   ParseHouseAddressDto,
   TenantScopedQueryDto,
   UpdateBuildingDto,
   UpdateCommunityDto,
+  UpdateCommunitySpotDto,
   UpdateHouseDto,
 } from './dto';
 import { QrService } from '../qr/qr.service';
@@ -74,6 +78,8 @@ export class PropertiesService {
     private readonly workOrderRepo: Repository<WorkOrder>,
     @InjectRepository(ManagementOffice)
     private readonly officeRepo: Repository<ManagementOffice>,
+    @InjectRepository(CommunitySpot)
+    private readonly spotRepo: Repository<CommunitySpot>,
     private readonly qrService: QrService,
   ) {}
 
@@ -443,6 +449,160 @@ export class PropertiesService {
     }
     await this.buildingRepo.remove(building);
     return { ok: true };
+  }
+
+  // ---------------- 公区点位 ----------------
+
+  /**
+   * 公区点位 = 没有房号的地方：监控室、门卫室、水泵房、电梯机房、垃圾房……
+   *
+   * 为什么不在 houses 里加一条「商铺」：这些地方没有业主、没有面积、不收物业费，
+   * 塞进房产台账会弄脏统计和收费口径；而且报修识别找房号只按数字撞，
+   * 名字叫「监控室」的房号永远撞不上。单独一张表之后，「监控室2号显示屏不亮」
+   * 才能认成「枫桦景苑二期 监控室」，而不是错挂到 228弄2号楼上。
+   */
+  async listCommunitySpots(
+    query: CommunitySpotQueryDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user, query.tenantId);
+    const where: FindOptionsWhere<CommunitySpot> = { tenantId };
+    const scope = scopeCommunityIds(access);
+    if (scope) {
+      if (!scope.length) return [];
+      if (query.communityId && !scope.includes(query.communityId)) return [];
+      where.communityId = query.communityId ?? In(scope);
+    } else if (query.communityId) {
+      where.communityId = query.communityId;
+    }
+    const rows = await this.spotRepo.find({ where });
+    // 挂了楼栋的点位要显示「228弄3号」，否则后台只看得到一个楼栋 id
+    const buildingIds = [
+      ...new Set(rows.map((r) => r.buildingId).filter((id): id is number => !!id)),
+    ];
+    const buildings = buildingIds.length
+      ? await this.buildingRepo.find({ where: { tenantId, id: In(buildingIds) } })
+      : [];
+    const buildingById = new Map(buildings.map((b) => [b.id, b]));
+    return rows
+      .sort((a, b) => a.communityId - b.communityId || a.sortOrder - b.sortOrder || a.id - b.id)
+      .map((row) => {
+        const building = row.buildingId ? buildingById.get(row.buildingId) : null;
+        return {
+          ...row,
+          buildingText: building
+            ? `${building.lane ? building.lane + '弄' : ''}${building.buildingNo}号`
+            : '',
+        };
+      });
+  }
+
+  async createCommunitySpot(
+    dto: CreateCommunitySpotDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user, dto.tenantId);
+    const name = this.assertSpotName(dto.name);
+    await this.assertSpotPlace(tenantId, dto.communityId, dto.buildingId ?? null, access);
+    await this.assertSpotNameFree(tenantId, dto.communityId, name, null);
+    const spot = this.spotRepo.create({
+      tenantId,
+      communityId: dto.communityId,
+      buildingId: dto.buildingId ?? null,
+      name,
+      sortOrder: dto.sortOrder ?? 0,
+      enabled: dto.enabled ?? true,
+      createdBy: user.id,
+      updatedBy: user.id,
+    });
+    return this.spotRepo.save(spot);
+  }
+
+  async updateCommunitySpot(
+    id: number,
+    dto: UpdateCommunitySpotDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    const spot = await this.spotRepo.findOne({ where: { id, tenantId } });
+    if (!spot) throw new NotFoundException('spot not found');
+    this.assertCommunityInScope(access, spot.communityId);
+    if (dto.name !== undefined) {
+      const name = this.assertSpotName(dto.name);
+      await this.assertSpotNameFree(tenantId, spot.communityId, name, id);
+      spot.name = name;
+    }
+    if (dto.buildingId !== undefined) {
+      await this.assertSpotPlace(tenantId, spot.communityId, dto.buildingId, access);
+      spot.buildingId = dto.buildingId;
+    }
+    if (dto.sortOrder !== undefined) spot.sortOrder = dto.sortOrder;
+    if (dto.enabled !== undefined) spot.enabled = dto.enabled;
+    spot.updatedBy = user.id;
+    return this.spotRepo.save(spot);
+  }
+
+  async deleteCommunitySpot(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const spot = await this.spotRepo.findOne({ where: { id, tenantId } });
+    if (!spot) throw new NotFoundException('spot not found');
+    this.assertCommunityInScope(access, spot.communityId);
+    // 点位只被地址识别读，删掉不影响已经开出去的工单（工单存的是地址文本和 id 快照）
+    await this.spotRepo.remove(spot);
+    return { ok: true };
+  }
+
+  /**
+   * 点位名要能在一句话里被认出来，所以：至少两个字（一个字满句子都是误撞），
+   * 不能是纯数字（会和门牌号「2号」打架）。
+   */
+  private assertSpotName(raw: string): string {
+    const name = String(raw || '').trim();
+    if (name.length < 2) throw new BadRequestException('点位名称至少 2 个字');
+    if (/^[0-9０-９]+$/.test(name)) {
+      throw new BadRequestException('点位名称不能是纯数字，会和门牌号混掉');
+    }
+    return name;
+  }
+
+  private async assertSpotPlace(
+    tenantId: number,
+    communityId: number,
+    buildingId: number | null,
+    access?: ResolvedAccess,
+  ) {
+    const community = await this.communityRepo.findOne({
+      where: { id: communityId, tenantId },
+    });
+    if (!community) throw new NotFoundException('community not found');
+    this.assertCommunityInScope(access, communityId);
+    if (buildingId === null) return;
+    const building = await this.buildingRepo.findOne({
+      where: { id: buildingId, tenantId },
+      select: ['id', 'communityId'],
+    });
+    if (!building) throw new NotFoundException('building not found');
+    if (building.communityId !== communityId) {
+      throw new BadRequestException('这栋楼不在该小区下');
+    }
+  }
+
+  /** 同一小区里点位不能重名：识别是按名字撞的，重名等于认出来也不知道是哪一个 */
+  private async assertSpotNameFree(
+    tenantId: number,
+    communityId: number,
+    name: string,
+    selfId: number | null,
+  ) {
+    const dup = await this.spotRepo.findOne({
+      where: { tenantId, communityId, name },
+    });
+    if (dup && dup.id !== selfId) {
+      throw new BadRequestException('该小区下已有同名点位');
+    }
   }
 
   // ---------------- Houses ----------------

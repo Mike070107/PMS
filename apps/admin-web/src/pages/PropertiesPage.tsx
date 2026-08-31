@@ -12,6 +12,7 @@ import {
   Row,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
   Tree,
@@ -171,6 +172,7 @@ function HousesTab() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingHouse, setEditingHouse] = useState<HouseRow | null>(null);
   const [communityModalOpen, setCommunityModalOpen] = useState(false);
+  const [spotModalOpen, setSpotModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
   const loadCommunities = useCallback(async () => {
@@ -365,9 +367,15 @@ function HousesTab() {
           size="small"
           title={<span><ApartmentOutlined /> 管理处 · 小区 · 楼栋</span>}
           extra={
-            <Button type="link" size="small" onClick={() => setCommunityModalOpen(true)}>
-              管理
-            </Button>
+            <Space size={0}>
+              <Button type="link" size="small" onClick={() => setCommunityModalOpen(true)}>
+                管理
+              </Button>
+              {/* 监控室、水泵房这些地方没有房号，登记在这里，报修描述里说到就能认出来 */}
+              <Button type="link" size="small" onClick={() => setSpotModalOpen(true)}>
+                公区点位
+              </Button>
+            </Space>
           }
           styles={{ body: { padding: 8, maxHeight: 560, overflowY: 'auto' } }}
         >
@@ -520,6 +528,12 @@ function HousesTab() {
         communities={communities}
         onClose={() => setCommunityModalOpen(false)}
         onChanged={() => { loadCommunities(); reloadAll(); }}
+      />
+      <CommunitySpotsModal
+        open={spotModalOpen}
+        communities={communities}
+        defaultCommunityId={defaultCommunityId}
+        onClose={() => setSpotModalOpen(false)}
       />
       <PropertiesImportModal
         open={importOpen}
@@ -1004,6 +1018,301 @@ function CommunityManagerModal({
             </Form>
           </Card>
         </Col>
+        )}
+      </Row>
+    </Modal>
+  );
+}
+
+// ============= 公区点位 Modal =============
+
+interface CommunitySpot {
+  id: number;
+  communityId: number;
+  buildingId: number | null;
+  buildingText?: string;
+  name: string;
+  sortOrder: number;
+  enabled: boolean;
+}
+
+/** 「一键补齐」用的常用点位，和小程序「具体位置」快捷词保持同一批 */
+const COMMON_SPOT_NAMES = ['监控室', '门卫室', '水泵房', '电梯机房', '垃圾房', '配电间'];
+
+/**
+ * 公区点位维护。
+ *
+ * 为什么不在房产列表里加一条「商铺」：监控室、水泵房这些地方没有业主、没有面积、
+ * 不收物业费，塞进房产台账会弄脏统计和收费口径；而且报修地址识别找房号只按数字撞，
+ * 名字叫「监控室」的房号永远撞不上。登记在这里之后，报修描述里说到点位名就能
+ * 直接认出来 ——「监控室2号显示屏不亮」认成「枫桦景苑二期 监控室」，
+ * 而不是错挂到 228弄2号楼、让维修工白跑一趟。
+ */
+function CommunitySpotsModal({
+  open,
+  communities,
+  defaultCommunityId,
+  onClose,
+}: {
+  open: boolean;
+  communities: Community[];
+  defaultCommunityId?: number;
+  onClose: () => void;
+}) {
+  const { message, modal } = AntdApp.useApp();
+  const { canEdit, canDelete } = usePagePerm('properties');
+  const [form] = Form.useForm();
+  // 分组节点（「枫桦景苑」）不挂楼栋也不挂点位，只能选到分期这一层
+  const leaves = useMemo(() => communities.filter((c) => !c.isGroup), [communities]);
+  const [communityId, setCommunityId] = useState<number | undefined>(defaultCommunityId);
+  const [rows, setRows] = useState<CommunitySpot[]>([]);
+  const [buildings, setBuildings] = useState<Array<{ id: number; lane: string | null; buildingNo: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<CommunitySpot | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setCommunityId((prev) => prev ?? defaultCommunityId ?? leaves[0]?.id);
+  }, [open, defaultCommunityId, leaves]);
+
+  const load = useCallback(async () => {
+    if (!open || !communityId) { setRows([]); return; }
+    setLoading(true);
+    try {
+      const [spots, bs] = await Promise.all([
+        request<CommunitySpot[]>({ url: '/community-spots', query: { communityId } }),
+        request<Array<{ id: number; lane: string | null; buildingNo: string }>>({
+          url: '/buildings',
+          query: { communityId },
+        }),
+      ]);
+      setRows(spots);
+      setBuildings(bs);
+    } catch (e: any) {
+      message.error(e?.message || '加载公区点位失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [open, communityId, message]);
+
+  useEffect(() => { load(); }, [load]);
+  // 换小区时把半填的表单收掉，免得把 A 小区的点位存到 B 小区去
+  useEffect(() => { setEditing(null); form.resetFields(); }, [communityId, form]);
+
+  const buildingOptions = buildings.map((b) => ({
+    value: b.id,
+    label: `${b.lane ? b.lane + '弄' : ''}${b.buildingNo}号`,
+  }));
+
+  const startEdit = (row: CommunitySpot) => {
+    setEditing(row);
+    form.setFieldsValue({
+      name: row.name,
+      buildingId: row.buildingId ?? undefined,
+      enabled: row.enabled,
+    });
+  };
+
+  const onSubmit = async () => {
+    const v = await form.validateFields();
+    if (!communityId) return;
+    setSaving(true);
+    try {
+      if (editing) {
+        await request({
+          method: 'PATCH',
+          url: `/community-spots/${editing.id}`,
+          data: { name: v.name, buildingId: v.buildingId ?? null, enabled: v.enabled ?? true },
+        });
+        message.success('已保存');
+      } else {
+        await request({
+          method: 'POST',
+          url: '/community-spots',
+          data: {
+            communityId,
+            name: v.name,
+            buildingId: v.buildingId ?? null,
+            enabled: v.enabled ?? true,
+          },
+        });
+        message.success('点位已新增');
+      }
+      form.resetFields();
+      setEditing(null);
+      load();
+    } catch (e: any) {
+      if (editing && handleGone(e, message, '这个点位', () => { setEditing(null); load(); })) return;
+      message.error(e?.message || '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onDelete = (row: CommunitySpot) => {
+    modal.confirm({
+      title: `确认删除点位「${row.name}」?`,
+      content: '删除后这个词不再参与报修地址识别；已经开出去的工单不受影响。',
+      okType: 'danger',
+      onOk: async () => {
+        try {
+          await request({ method: 'DELETE', url: `/community-spots/${row.id}` });
+          message.success('已删除');
+          load();
+        } catch (e: any) {
+          if (handleGone(e, message, '这个点位', load)) return;
+          message.error(e?.message || '删除失败');
+        }
+      },
+    });
+  };
+
+  const missingCommon = COMMON_SPOT_NAMES.filter(
+    (name) => !rows.some((r) => r.name === name),
+  );
+
+  const addCommon = async () => {
+    if (!communityId || !missingCommon.length) return;
+    setSaving(true);
+    try {
+      for (const name of missingCommon) {
+        await request({
+          method: 'POST',
+          url: '/community-spots',
+          data: { communityId, name },
+        });
+      }
+      message.success(`已补上 ${missingCommon.length} 个常用点位`);
+      load();
+    } catch (e: any) {
+      message.error(e?.message || '批量添加失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="公区点位"
+      open={open}
+      onCancel={onClose}
+      footer={null}
+      destroyOnHidden
+      width={1020}
+    >
+      <Paragraph type="secondary" style={{ fontSize: 13 }}>
+        监控室、门卫室、水泵房这类地方<Text strong>没有房号</Text>，不该当成商铺录进房产台账
+        （没业主、没面积、不收费，录进去会把统计弄脏）。登记在这里之后，报修描述里说到
+        点位名就能<Text strong>直接认出地址</Text> ——「监控室2号显示屏不亮」会认成
+        「{leaves.find((c) => c.id === communityId)?.name || '本小区'} 监控室」，
+        而不是撞到 2 号楼上让维修工白跑一趟。
+      </Paragraph>
+      <Space wrap style={{ marginBottom: 12 }}>
+        <Text strong>小区</Text>
+        <Select
+          value={communityId}
+          onChange={setCommunityId}
+          options={withOptionTitles(leaves.map((c) => ({ value: c.id, label: c.name })))}
+          style={{ width: 240 }}
+          {...searchableWideSelectProps}
+        />
+        {canEdit && missingCommon.length > 0 && (
+          <Button
+            icon={<PlusOutlined />}
+            loading={saving}
+            disabled={!communityId}
+            onClick={addCommon}
+          >
+            一键补上常用点位（{missingCommon.length}）
+          </Button>
+        )}
+      </Space>
+      <Row gutter={16}>
+        <Col span={canEdit ? 15 : 24}>
+          <Table<CommunitySpot>
+            rowKey="id"
+            size="small"
+            loading={loading}
+            dataSource={rows}
+            pagination={false}
+            locale={{ emptyText: '这个小区还没登记公区点位' }}
+            columns={[
+              { title: '点位名称', dataIndex: 'name', width: 160 },
+              {
+                title: '所在楼栋',
+                dataIndex: 'buildingText',
+                width: 140,
+                render: (v: string) => v || <Text type="secondary">整个小区</Text>,
+              },
+              {
+                title: '状态',
+                dataIndex: 'enabled',
+                width: 90,
+                render: (v: boolean) => (v ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>),
+              },
+              {
+                title: '操作',
+                key: 'op',
+                width: 100,
+                render: (_, r) => (
+                  <Space size="small">
+                    {canEdit && (
+                      <Button type="link" size="small" onClick={() => startEdit(r)}>改</Button>
+                    )}
+                    {canDelete && (
+                      <Popconfirm title="确认删除？" onConfirm={() => onDelete(r)} okType="danger">
+                        <Button type="link" size="small" danger>删</Button>
+                      </Popconfirm>
+                    )}
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        </Col>
+        {canEdit && (
+          <Col span={9}>
+            <Card size="small" title={editing ? `编辑「${editing.name}」` : '新增点位'}>
+              <Form form={form} layout="vertical" initialValues={{ enabled: true }}>
+                <Form.Item
+                  name="name"
+                  label="点位名称"
+                  rules={[
+                    { required: true, message: '请输入点位名称' },
+                    { min: 2, message: '至少 2 个字，太短会在描述里误撞' },
+                    { pattern: /[^0-9０-９]/, message: '不能是纯数字，会和门牌号混掉' },
+                  ]}
+                  extra="报修描述里出现这个词就按它定位，写维修工认得的叫法（监控室、水泵房）"
+                >
+                  <Input placeholder="如：监控室" maxLength={20} />
+                </Form.Item>
+                <Form.Item
+                  name="buildingId"
+                  label="所在楼栋"
+                  extra="在某一栋楼里（如 3 号楼电梯机房）才选；整个小区共用的留空"
+                >
+                  <Select
+                    allowClear
+                    placeholder="整个小区"
+                    options={withOptionTitles(buildingOptions)}
+                    {...searchableWideSelectProps}
+                  />
+                </Form.Item>
+                <Form.Item name="enabled" label="参与地址识别" valuePropName="checked">
+                  <Switch checkedChildren="启用" unCheckedChildren="停用" />
+                </Form.Item>
+                <Space>
+                  <Button type="primary" loading={saving} onClick={onSubmit} disabled={!communityId}>
+                    {editing ? '保存' : '新增'}
+                  </Button>
+                  {editing && (
+                    <Button onClick={() => { setEditing(null); form.resetFields(); }}>取消</Button>
+                  )}
+                </Space>
+              </Form>
+            </Card>
+          </Col>
         )}
       </Row>
     </Modal>

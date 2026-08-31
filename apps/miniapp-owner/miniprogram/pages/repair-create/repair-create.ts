@@ -4,7 +4,7 @@ import type {
   PublicRepairType,
 } from '@pms/api-client/src/endpoints/repairs';
 import {
-  ADDRESS_HINT_RE,
+  shouldDetectAddress,
   composeDetectedAddress,
   detectRepairAddress,
 } from '../../utils/address-detect';
@@ -491,7 +491,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
    */
   scheduleDetect(content: string) {
     if (this.detectTimer) clearTimeout(this.detectTimer);
-    if (!ADDRESS_HINT_RE.test(content)) {
+    if (!shouldDetectAddress(content)) {
       if (this.data.detected) this.setData({ detected: null });
       return;
     }

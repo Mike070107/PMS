@@ -4,6 +4,7 @@ import {
   correctCommunityNameInText,
   extractAddressCandidate,
   matchCommunityByName,
+  matchSpotsInText,
   phaseToCn,
   sameNo,
 } from './repair-address.util';
@@ -110,5 +111,46 @@ test('同音纠错：库名不带分期时，分期要留着', () => {
   assert.equal(
     correctCommunityNameInText('五金新村二期3号101', c, '吴泾新村', true),
     '吴泾新村二期3号101',
+  );
+});
+
+// ---------------- 公区点位（监控室、门卫室…） ----------------
+
+test('「监控室2号」里的 2 号不是门牌号', () => {
+  // 2026-08-31 线上实测：不拦的话「监控室2号显示屏不亮」撞上 228弄2号楼，
+  // 维修工按地址去 2 号楼白跑一趟
+  assert.equal(extractAddressCandidate('监控室2号显示屏不亮'), null);
+  assert.equal(extractAddressCandidate('机房3号柜子坏了'), null);
+  // 真门牌不受影响
+  assert.equal(extractAddressCandidate('228弄2号楼道灯不亮')?.buildingNo, '2');
+  assert.equal(extractAddressCandidate('二期24号302漏水')?.roomNo, '302');
+});
+
+test('点位按名字认，最长的那个赢', () => {
+  const spots = [
+    { id: 1, name: '监控室', communityId: 2, buildingId: null },
+    { id: 2, name: '机房', communityId: 2, buildingId: null },
+    { id: 3, name: '电梯机房', communityId: 2, buildingId: 82 },
+  ];
+  assert.deepEqual(
+    matchSpotsInText('监控室2号显示屏不亮', spots).map((s) => s.id),
+    [1],
+  );
+  // 「机房」和「电梯机房」都命中时取更精确的那个
+  assert.deepEqual(
+    matchSpotsInText('电梯机房漏水了', spots).map((s) => s.id),
+    [3],
+  );
+  assert.deepEqual(matchSpotsInText('楼道灯不亮', spots), []);
+});
+
+test('同名点位在多个小区：全部返回，交给调用方按所在小区收敛', () => {
+  const spots = [
+    { id: 1, name: '门卫室', communityId: 1, buildingId: null },
+    { id: 2, name: '门卫室', communityId: 2, buildingId: null },
+  ];
+  assert.deepEqual(
+    matchSpotsInText('门卫室的灯不亮', spots).map((s) => s.communityId),
+    [1, 2],
   );
 });

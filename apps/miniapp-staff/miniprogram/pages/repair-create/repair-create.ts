@@ -16,7 +16,7 @@ import {
   REPAIR_TYPE_OPTIONS,
 } from '@pms/shared-types';
 import {
-  ADDRESS_HINT_RE,
+  shouldDetectAddress,
   composeDetectedAddress,
   detectRepairAddress,
 } from '../../utils/address-detect';
@@ -321,7 +321,7 @@ Page({
     if (this.detectTimer) clearTimeout(this.detectTimer);
     // 类型/联系人/电话不受地址关键词限制，任何一次输入都跟着识别
     this.autoFillFromText(content);
-    if (!ADDRESS_HINT_RE.test(content)) {
+    if (!shouldDetectAddress(content)) {
       if (this.data.detected) this.setData({ detected: null });
       return;
     }
