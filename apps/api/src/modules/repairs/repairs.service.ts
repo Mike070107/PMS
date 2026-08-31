@@ -3223,9 +3223,26 @@ export class RepairsService implements OnModuleInit {
       this.parseAddressByRule(dto, user, access),
     ]);
     let result = byRule;
-    if (!result.matched && ai?.addressText && ai.addressText !== dto.text) {
+    /**
+     * 什么时候拿模型圈的那一段再撞一次：规则没撞上，**或者只撞到小区级**。
+     *
+     * 只看 matched 不够 —— 「枫桦一期十七号二零一」里规则靠「一期」就撞上了小区，
+     * matched=true 但 level='community'，地址落成「枫桦景苑一期 公共区域」，
+     * 门牌整个丢了（2026-09-01 线上实测）。模型会把中文数字转成「17号201」，
+     * 那一段再走一遍规则就能定位到房号。
+     * 重试只做一次，而且**只有撞出更细的粒度才采用** —— 撞不上或更粗就保持原判。
+     */
+    const rank = (level?: string) =>
+      level === 'house' ? 3 : level === 'building' ? 2 : level === 'community' ? 1 : 0;
+    if (
+      (!result.matched || rank(result.level) <= 1) &&
+      ai?.addressText &&
+      ai.addressText !== dto.text
+    ) {
       const retry = await this.parseAddressByRule({ ...dto, text: ai.addressText }, user, access);
-      if (retry.matched) result = retry;
+      if (retry.matched && rank(retry.level) > rank(result.matched ? result.level : undefined)) {
+        result = retry;
+      }
     }
     return {
       ...result,
