@@ -199,3 +199,100 @@ export function extractFaultDescription(
   // 剥过头了就退回原话：描述空着比带点噪音更糟
   return text.replace(/[，。]/g, '').length >= 2 ? text : original;
 }
+
+// ---------------- 认出来的人/电话怎么合进表单 ----------------
+
+/** 表单里联系人两个字段的当前状态 */
+export interface ContactFormState {
+  name: string;
+  phone: string;
+  /** 当前这个值是「登录人默认值」，不是用户手填的 —— 描述里认出别人时可以顶掉 */
+  nameIsDefault: boolean;
+  phoneIsDefault: boolean;
+  /** 用户手动改过：自动识别一律不许再动 */
+  nameTouched: boolean;
+  phoneTouched: boolean;
+}
+
+export interface ContactMergeResult {
+  /** 要写回表单的值；这一轮没变化的字段不出现 */
+  name?: string;
+  phone?: string;
+  /** 合并后这两个字段还算不算「默认值」，调用方要存回去 */
+  nameIsDefault: boolean;
+  phoneIsDefault: boolean;
+  /** 「已从描述里认出…」提示里的短语 */
+  filled: string[];
+  /** 默认联系人被清掉了：电话换成了别人的，但这句话里没说是谁 */
+  clearedName: boolean;
+}
+
+/**
+ * 把描述里认出的联系人/电话合进表单当前值 —— 判断口径的唯一出处，
+ * 新增「一句话填单」的入口直接引这里，别各写一套。
+ *
+ * 三条老规矩：
+ *   1. 用户手改过的绝不覆盖；
+ *   2. 空着的、或者只是登录人默认值的，让描述里认出的人顶掉；
+ *   3. 认不出就不动。
+ *
+ * 2026-08-31 补的第四条 —— **电话换人了，默认联系人必须一起清空**：
+ * 代报的人说「一期17号201漏水，电话13800138000」，电话被顶成业主的号，
+ * 联系人却还留着登录的保安/维修工自己的名字，工单上就成了
+ * 「张保安 138xxxx（业主的号）」这种拼出来的假联系人 —— 维修工照着名字喊人，
+ * 开门的是另一个人。既然电话已经不是默认那个人的了，那个名字也就一定不对，
+ * 宁可空着让人补填，也不能留一个错的。
+ */
+export function mergeExtractedContact(
+  extracted: ExtractedContact,
+  state: ContactFormState,
+): ContactMergeResult {
+  const out: ContactMergeResult = {
+    nameIsDefault: state.nameIsDefault,
+    phoneIsDefault: state.phoneIsDefault,
+    filled: [],
+    clearedName: false,
+  };
+  const canFillName = !state.nameTouched && (!state.name || state.nameIsDefault);
+  const canFillPhone = !state.phoneTouched && (!state.phone || state.phoneIsDefault);
+
+  if (extracted.name && canFillName) {
+    if (extracted.name !== state.name) {
+      out.name = extracted.name;
+      out.filled.push(`联系人 ${extracted.name}`);
+    }
+    out.nameIsDefault = false;
+  }
+
+  // 电话从「登录人的默认号」被换成了描述里那个号 —— 这单的联系人已经换人了
+  const phoneTookOverDefault =
+    !!extracted.phone &&
+    canFillPhone &&
+    state.phoneIsDefault &&
+    extracted.phone !== state.phone;
+
+  if (extracted.phone && canFillPhone) {
+    if (extracted.phone !== state.phone) {
+      out.phone = extracted.phone;
+      out.filled.push(`电话 ${extracted.phone}`);
+    }
+    out.phoneIsDefault = false;
+  }
+
+  if (phoneTookOverDefault && !extracted.name && canFillName && state.name && state.nameIsDefault) {
+    out.name = '';
+    out.nameIsDefault = false;
+    out.clearedName = true;
+  }
+
+  return out;
+}
+
+/** 「自动填了什么」的那一句提示，各入口别各写一套 */
+export function contactFillHint(result: ContactMergeResult): string {
+  const parts: string[] = [];
+  if (result.filled.length) parts.push(`已从描述里认出${result.filled.join('、')}，不对可直接改`);
+  // 清空是「我把原来那个人删了」，必须说出来，不然用户以为是自己不小心删的
+  if (result.clearedName) parts.push('电话不是你本人的，联系人已清空，请填写实际联系人');
+  return parts.join('；');
+}

@@ -32,3 +32,24 @@ test('零件名不标', () => {
   assert.equal(detectUrgency('电梯紧急呼叫按钮按了没反应').urgent, false);
   assert.equal(detectUrgency('地下车库紧急照明不亮').urgent, false);
 });
+
+// ---- 2026-08-31 扩的三类，用例与 shared-types 那份保持一致 ----
+
+test('急急 / 急急急', () => {
+  assert.equal(detectUrgency('水管爆了，急急急').matched, '急急急');
+  assert.equal(detectUrgency('大门打不开了急急').urgent, true);
+});
+
+test('单个「急」', () => {
+  assert.equal(detectUrgency('楼道灯全灭了，急').urgent, true);
+  assert.equal(detectUrgency('这个不急').urgent, false);
+  assert.equal(detectUrgency('地下车库应急照明不亮').urgent, false);
+  assert.equal(detectUrgency('电梯急停按钮被按了').urgent, false);
+});
+
+test('有人被关在里面', () => {
+  assert.equal(detectUrgency('电子门坏了，居民出不来').urgent, true);
+  assert.equal(detectUrgency('电梯困人').urgent, true);
+  // 「热水出不来」不算
+  assert.equal(detectUrgency('热水器坏了，热水出不来').urgent, false);
+});

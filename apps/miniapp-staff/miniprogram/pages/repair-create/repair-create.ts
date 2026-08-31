@@ -5,6 +5,7 @@ import type {
 } from '@pms/api-client/src/endpoints/repairs';
 import {
   classifyRepairType,
+  contactFillHint,
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
   detectUrgency,
@@ -14,6 +15,7 @@ import {
   MAX_REPAIR_IMAGES,
   MAX_REPAIR_VIDEO_SECONDS,
   MAX_REPAIR_VIDEOS,
+  mergeExtractedContact,
   REPAIR_TYPE_OPTIONS,
   urgencyReason,
 } from '@pms/shared-types';
@@ -291,7 +293,9 @@ Page({
    * 三条硬规矩：
    * 1. 人手动选过/填过的，绝不覆盖 —— 自动识别只负责省事，不负责跟人抢方向盘；
    * 2. 认出来的都留一句提示（按哪个词判的、谁是自动填的），认错时一眼能看见；
-   * 3. 认不出就保持空白，不瞎猜。
+   * 3. 认不出就保持空白，不瞎猜；
+   * 4. 电话被描述里的号码顶掉、这句话又没说是谁时，默认联系人（登录人）一起清空 ——
+   *    号码换人了，那个名字就一定不对，留着会拼出「张保安 + 业主的号」的假联系人。
    */
   autoFillFromText(content: string) {
     const text = String(content || '').trim();
@@ -318,29 +322,27 @@ Page({
     }
 
     // ---- 联系人 / 电话 ----
-    const contact = extractContact(text);
+    // 合并规则（空着的/默认值可被顶掉、手改过的不动、电话换人则清空默认联系人）
+    // 统一在 shared-types 的 mergeExtractedContact 里，别在页面里再写一套
+    const merged = mergeExtractedContact(extractContact(text), {
+      name: this.data.contactName,
+      phone: this.data.contactPhone,
+      nameIsDefault: this.contactIsDefault,
+      phoneIsDefault: this.phoneIsDefault,
+      nameTouched: this.contactTouched,
+      phoneTouched: this.phoneTouched,
+    });
+    this.contactIsDefault = merged.nameIsDefault;
+    this.phoneIsDefault = merged.phoneIsDefault;
     const patch: Record<string, string> = {};
-    const filled: string[] = [];
-    // 空着的、或者只是登录人默认值的，都让描述里认出的人顶掉；手改过的绝不动
-    if (contact.name && !this.contactTouched && (!this.data.contactName || this.contactIsDefault)) {
-      if (contact.name !== this.data.contactName) {
-        patch.contactName = contact.name;
-        filled.push(`联系人 ${contact.name}`);
-      }
-      this.contactIsDefault = false;
+    if (merged.name !== undefined) patch.contactName = merged.name;
+    if (merged.phone !== undefined) {
+      patch.contactPhone = merged.phone;
+      patch['errors.phone'] = '';
     }
-    if (contact.phone && !this.phoneTouched && (!this.data.contactPhone || this.phoneIsDefault)) {
-      if (contact.phone !== this.data.contactPhone) {
-        patch.contactPhone = contact.phone;
-        patch['errors.phone'] = '';
-        filled.push(`电话 ${contact.phone}`);
-      }
-      this.phoneIsDefault = false;
-    }
-    if (filled.length) {
-      patch.autoContactHint = `已从描述里认出${filled.join('、')}，不对可直接改`;
-      this.setData(patch);
-    }
+    const hint = contactFillHint(merged);
+    if (hint) patch.autoContactHint = hint;
+    if (Object.keys(patch).length) this.setData(patch);
   },
 
   scheduleDetect(content: string) {

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { extractContact, extractFaultDescription } from './voice-extract';
+import {
+  contactFillHint,
+  extractContact,
+  extractFaultDescription,
+  mergeExtractedContact,
+} from './voice-extract';
 
 /**
  * 语音抽取一直没有测试，而它决定了工单上的「联系人 / 电话 / 故障描述」——
@@ -71,4 +76,70 @@ test('故障描述：房号里的短数字不能被当成电话剥掉', () => {
   // 「17号201」被单位字隔开，两段都远不到 10 位，必须原样留着给地址识别用
   const desc = extractFaultDescription('17号201的灯不亮', {});
   assert.ok(desc.includes('201'), `房号被误剥了：${desc}`);
+});
+
+// ---------------- 认出来的人/电话怎么合进表单 ----------------
+
+/** 员工端「我要报修」的起手式：联系人/电话都是登录人的默认值 */
+const defaults = {
+  name: '张保安',
+  phone: '13900000001',
+  nameIsDefault: true,
+  phoneIsDefault: true,
+  nameTouched: false,
+  phoneTouched: false,
+};
+
+test('电话换成了描述里那个号、又没说是谁 → 默认联系人必须一起清空', () => {
+  // 2026-08-31 实际问题：工单上留下「张保安 + 业主的号」这种拼出来的假联系人
+  const r = mergeExtractedContact(extractContact('一期17号201漏水，电话13800138000'), defaults);
+  assert.equal(r.phone, '13800138000');
+  assert.equal(r.name, '');
+  assert.equal(r.clearedName, true);
+  assert.match(contactFillHint(r), /联系人已清空/);
+});
+
+test('描述里说了是谁，就换成那个人，不清空', () => {
+  const r = mergeExtractedContact(
+    extractContact('一期17号201漏水，找李师傅，13800138000'),
+    defaults,
+  );
+  assert.equal(r.name, '李师傅');
+  assert.equal(r.phone, '13800138000');
+  assert.equal(r.clearedName, false);
+});
+
+test('只认出电话、但联系人是用户自己手填的 → 一个字都不许动', () => {
+  const r = mergeExtractedContact(extractContact('一期17号201漏水，电话13800138000'), {
+    ...defaults,
+    name: '王阿姨',
+    nameIsDefault: false,
+    nameTouched: true,
+  });
+  assert.equal(r.name, undefined);
+  assert.equal(r.clearedName, false);
+});
+
+test('说的就是登录人自己的号 → 联系人不动', () => {
+  const r = mergeExtractedContact(extractContact('一期17号201漏水，电话13900000001'), defaults);
+  assert.equal(r.phone, undefined);
+  assert.equal(r.name, undefined);
+  assert.equal(r.clearedName, false);
+});
+
+test('清空只做一次：再敲一个字不会把人刚补填的联系人又抹掉', () => {
+  const first = mergeExtractedContact(
+    extractContact('一期17号201漏水，电话13800138000'),
+    defaults,
+  );
+  const second = mergeExtractedContact(extractContact('一期17号201漏水了，电话13800138000'), {
+    name: '业主本人',
+    phone: '13800138000',
+    nameIsDefault: first.nameIsDefault,
+    phoneIsDefault: first.phoneIsDefault,
+    nameTouched: false,
+    phoneTouched: false,
+  });
+  assert.equal(second.name, undefined);
+  assert.equal(second.clearedName, false);
 });
