@@ -408,7 +408,17 @@ export class RepairsService implements OnModuleInit {
       dto.mutedSuggestions !== undefined;
     if (touchesKeywords) {
       const words = this.dtoSuggestions(dto, rule.officeId);
-      await this.assertNoKeywordConflict(tenantId, rule.officeId, dto.repairType, words.own, rule.id);
+      /*
+       * 只拦**这次新加的词**，不拦本来就在的。
+       *
+       * 老数据里早就有撞车（吴泾的「门锁打不开」同时挂在门窗和智能化下，
+       * 「楼道灯不亮」同时挂在电和公共设施下）。按整份词去校验的话，
+       * 这两个类型连改个完成时限都保存不了 —— 报错还指着一个跟这次修改无关的词。
+       * 已经存在的撞车由配置页顶部那条横幅列出来请人处理，不堵住其它修改。
+       */
+      const before = rule.officeId === null ? rule.contentSuggestions ?? [] : rule.extraSuggestions ?? [];
+      const added = words.own.filter((word) => !before.includes(word));
+      await this.assertNoKeywordConflict(tenantId, rule.officeId, dto.repairType, added, rule.id);
       if (rule.officeId === null) {
         rule.contentSuggestions = words.template;
       } else {
