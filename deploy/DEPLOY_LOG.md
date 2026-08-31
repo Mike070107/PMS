@@ -361,3 +361,11 @@
 - 自上次（13385b9）以来上线的相关提交：
   - 73ff0b8 修：首次授权麦克风后「按住说话」卡在按住态，看着像点一下就开始录
 
+## 2026-08-31 09:56 · api · 706e400
+
+- 提交：706e400 测试文件别进小程序产物：shared-types 的构建把发版卡住了
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/entities/index.ts，M apps/api/src/modules/properties/dto.ts，M apps/api/src/modules/properties/properties.controller.ts，M apps/api/src/modules/properties/properties.service.ts，?? apps/api/src/entities/community-spot.entity.ts
+- 自上次（59a8fe3）以来上线的相关提交：
+  - 706e400 测试文件别进小程序产物：shared-types 的构建把发版卡住了
+  - e12c617 代报角色提交不了报修；随手拍转表单把认出来的信息弄丢了
+
