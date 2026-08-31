@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ResolvedAccess } from '../access/access.service';
 import { CurrentAccess } from '../access/current-access.decorator';
 import { PermissionsGuard } from '../access/permissions.guard';
-import { SaveRoleDto } from './dto';
+import { SaveAsTemplateDto, SaveRoleDto, SaveRoleTemplateDto } from './dto';
 import { RolesService } from './roles.service';
 
 @Controller('roles')
@@ -41,6 +41,70 @@ export class RolesController {
   assignable(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.rolesService.assignable(user, access);
   }
+
+  // ---------------- 权限模板 ----------------
+  // 注意路由顺序：'templates' 必须写在 ':id' 之前，否则会被当成一个 id 走进角色详情。
+
+  @Get('templates')
+  @RequirePermission('roles', 'view')
+  listTemplates(@CurrentUser() user: AuthUser) {
+    return this.rolesService.listTemplates(user);
+  }
+
+  @Post('templates')
+  @RequirePermission('roles', 'edit')
+  createTemplate(
+    @Body() dto: SaveRoleTemplateDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.rolesService.createTemplate(dto, user, access);
+  }
+
+  /** 把代码里那几个开箱模板导成可编辑的模板行；同名的跳过 */
+  @Post('templates/import-built-in')
+  @RequirePermission('roles', 'edit')
+  importBuiltInTemplates(
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.rolesService.importBuiltInTemplates(user, access);
+  }
+
+  @Patch('templates/:id')
+  @RequirePermission('roles', 'edit')
+  updateTemplate(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SaveRoleTemplateDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.rolesService.updateTemplate(id, dto, user, access);
+  }
+
+  @Delete('templates/:id')
+  @RequirePermission('roles', 'delete')
+  removeTemplate(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.rolesService.removeTemplate(id, user, access);
+  }
+
+  /** 把这个角色当前的勾选另存为模板，并让它改成跟随（权限不变） */
+  @Post(':id/save-as-template')
+  @RequirePermission('roles', 'edit')
+  saveAsTemplate(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SaveAsTemplateDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.rolesService.saveRoleAsTemplate(id, dto, user, access);
+  }
+
+  // ---------------- 角色 ----------------
 
   @Post()
   @RequirePermission('roles', 'edit')

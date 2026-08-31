@@ -24,6 +24,14 @@ export class Role extends TenantEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   remark: string | null;
 
+  /**
+   * 跟随的权限模板（role_templates）。有值时**页面权限来自模板**，
+   * 这个角色自己不存 role_permissions —— 权限只有一份出处，改模板立刻生效。
+   * null = 自定义，权限存在自己的 role_permissions 里（老行为，一个字没变）。
+   */
+  @Column({ name: 'template_id', type: 'int', nullable: true })
+  templateId: number | null;
+
   /** RoleDataScope: all / offices / communities */
   @Column({ name: 'data_scope', type: 'varchar', length: 20, default: 'all' })
   dataScope: string;

@@ -43,6 +43,8 @@ import { FeeStandard } from './fee-standard.entity';
 import { FeeBill } from './fee-bill.entity';
 import { ManagementOffice } from './management-office.entity';
 import { Role } from './role.entity';
+import { RoleTemplate } from './role-template.entity';
+import { RoleTemplatePermission } from './role-template-permission.entity';
 import { RolePermission } from './role-permission.entity';
 import { RoleScope } from './role-scope.entity';
 import { RoleWarehouse } from './role-warehouse.entity';
@@ -53,6 +55,8 @@ export const entities = [
   Tenant,
   ManagementOffice,
   Role,
+  RoleTemplate,
+  RoleTemplatePermission,
   RolePermission,
   RoleScope,
   RoleWarehouse,
@@ -106,6 +110,8 @@ export {
   Tenant,
   ManagementOffice,
   Role,
+  RoleTemplate,
+  RoleTemplatePermission,
   RolePermission,
   RoleScope,
   RoleWarehouse,

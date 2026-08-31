@@ -17,6 +17,7 @@ import {
   Role,
   RolePermission,
   RoleScope,
+  RoleTemplatePermission,
   RoleWarehouse,
   Tenant,
   UserRoleAssignment,
@@ -66,6 +67,8 @@ export class AccessService {
     private readonly roleRepo: Repository<Role>,
     @InjectRepository(RolePermission)
     private readonly rolePermRepo: Repository<RolePermission>,
+    @InjectRepository(RoleTemplatePermission)
+    private readonly tplPermRepo: Repository<RoleTemplatePermission>,
     @InjectRepository(RoleScope)
     private readonly roleScopeRepo: Repository<RoleScope>,
     @InjectRepository(RoleWarehouse)
@@ -150,9 +153,7 @@ export class AccessService {
 
     const pages: Record<string, PageActions> = {};
     if (roles.length) {
-      const perms = await this.rolePermRepo.find({
-        where: { roleId: In(roles.map((r) => r.id)) },
-      });
+      const perms = await this.effectivePermissions(roles);
       for (const p of perms) {
         if (!(allowedKeys as readonly string[]).includes(p.pageKey)) {
           continue; // 公司没开通的页面，即使角色里勾了也不生效
@@ -188,6 +189,30 @@ export class AccessService {
       roleIds,
       actingOfficeId: null,
     };
+  }
+
+  /**
+   * 这些角色实际生效的页面权限。
+   *
+   * 跟随权限模板的角色（`roles.template_id` 有值）自己不存 role_permissions，
+   * 权限在 role_template_permissions 里 —— 两张表字段一样，取回来按 page_key
+   * 取并集即可，调用方不用关心它是哪来的。改模板立刻对所有跟随的角色生效，
+   * 靠的就是这里每次请求都现读。
+   */
+  private async effectivePermissions(
+    roles: Role[],
+  ): Promise<Array<Pick<RolePermission, 'pageKey' | 'canView' | 'canEdit' | 'canDelete'>>> {
+    const ownIds = roles.filter((r) => !r.templateId).map((r) => r.id);
+    const templateIds = [
+      ...new Set(roles.map((r) => r.templateId).filter((id): id is number => !!id)),
+    ];
+    const [own, fromTemplates] = await Promise.all([
+      ownIds.length ? this.rolePermRepo.find({ where: { roleId: In(ownIds) } }) : [],
+      templateIds.length
+        ? this.tplPermRepo.find({ where: { templateId: In(templateIds) } })
+        : [],
+    ]);
+    return [...own, ...fromTemplates];
   }
 
   /**
