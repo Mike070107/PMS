@@ -34,6 +34,7 @@ import { scopeCommunityIds } from '../access/scope.util';
 import { extractSpot } from '../repairs/repair-suggestions.util';
 import { resolveRepairTypeLabel } from '../repairs/repair-type-labels';
 import { ObjectStorageService } from '../upload/object-storage.service';
+import { stripAddrUnit } from './maintenance-address.util';
 import { materialTotalCents, totalFeeCents } from './maintenance-money.util';
 import {
   CreateMaintenanceOrderDto,
@@ -335,11 +336,13 @@ export class MaintenanceService {
     }
     row.unitName = text(dto.unitName, row.unitName);
     row.reporterName = text(dto.reporterName, row.reporterName);
-    row.addrVillage = text(dto.addrVillage, row.addrVillage);
-    row.addrRoad = text(dto.addrRoad, row.addrRoad);
-    row.addrLane = text(dto.addrLane, row.addrLane);
-    row.addrBuildingNo = text(dto.addrBuildingNo, row.addrBuildingNo);
-    row.addrRoom = text(dto.addrRoom, row.addrRoom);
+    const addr = (v: string | undefined, cur: string | null, unit: string) =>
+      v === undefined ? cur : stripAddrUnit(v, unit);
+    row.addrVillage = addr(dto.addrVillage, row.addrVillage, '村');
+    row.addrRoad = addr(dto.addrRoad, row.addrRoad, '路');
+    row.addrLane = addr(dto.addrLane, row.addrLane, '弄');
+    row.addrBuildingNo = addr(dto.addrBuildingNo, row.addrBuildingNo, '号');
+    row.addrRoom = addr(dto.addrRoom, row.addrRoom, '室');
     row.presentTime = text(dto.presentTime, row.presentTime);
     row.faultPart = text(dto.faultPart, row.faultPart);
     row.repairItem = text(dto.repairItem, row.repairItem);
@@ -508,11 +511,11 @@ export class MaintenanceService {
       // 有门牌的地址不写「村」：小区名在「管房单位」那一格已经有了，
       // 两处写同一个名字既重复，也会把纸上不到 1cm 的格子撑爆。
       // 公区没有门牌，才拿小区名占住这一格，否则地址整行是空的
-      addrVillage: isPublicArea ? topCommunity?.name || null : null,
-      addrRoad: house?.roadName || null,
-      addrLane: building?.lane || null,
-      addrBuildingNo: building?.buildingNo || null,
-      addrRoom: house?.roomNo || null,
+      addrVillage: stripAddrUnit(isPublicArea ? topCommunity?.name : null, '村'),
+      addrRoad: stripAddrUnit(house?.roadName, '路'),
+      addrLane: stripAddrUnit(building?.lane, '弄'),
+      addrBuildingNo: stripAddrUnit(building?.buildingNo, '号'),
+      addrRoom: stripAddrUnit(house?.roomNo, '室'),
       reportedOn: this.dateOnly(request?.createdAt ?? workOrder.createdAt),
       presentTime: null,
       faultPart: spot || null,
