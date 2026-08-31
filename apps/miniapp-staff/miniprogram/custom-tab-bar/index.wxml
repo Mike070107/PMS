@@ -1,6 +1,7 @@
 <!-- 胶囊离底 24rpx + 安全区，那条缝不挡住的话，滚动时卡片会从胶囊和屏幕
      下边缘之间穿过去（2026-08-31 用户反馈）。这一层和页面同色，铺满整个屏幕宽度，
      顶边藏进胶囊后面一截，免得两者之间留一条亚像素缝。 -->
+<block wx:if="{{!hidden}}">
 <view class="tabbar-shield"></view>
 <view class="tabbar">
   <view
@@ -18,3 +19,4 @@
     <view class="tabbar__text">{{item.text}}</view>
   </view>
 </view>
+</block>

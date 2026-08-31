@@ -157,21 +157,27 @@ button::after { border: none; }
 .muted { color: var(--color-text-tertiary); font-size: var(--font-sm); line-height: 1.7; }
 .center { text-align: center; padding: 48rpx 0; }
 
-/* ---------- 层级账本（员工端所有 fixed 浮层都按这一份来，别各页面自己拍脑袋定） ----------
-   员工端的 tabBar 是**页面内**的悬浮胶囊（custom-tab-bar/index.wxss，写死 z-index: 100，
-   下方还有一层 .tabbar-shield 99），和原生 tabBar 不一样 —— 原生的在 webview 之外，
-   页面元素永远盖不住；胶囊是同一个页面里的 fixed 元素，谁的 z-index 大谁在上面。
-   所以 **tab 页里任何贴底的 fixed 浮层，z-index 必须 > 100**，否则底部那排按钮
-   正好被胶囊压住，而且它是固定在面板底部的，怎么滑都露不出来
-   （2026-08-31 反馈：材料与库存「新增」面板的「保存」按钮被胶囊挡住、上滑不上去）。
+/* ---------- 层级账本 + 一条硬规矩（员工端所有 fixed 浮层都按这一份来） ----------
 
-     8   .action-bar   详情页/随手拍的底部操作条（都不是 tab 页，胶囊不在，所以低也没事）
+   **tab 页里开底部弹层，必须调 setTabBarHidden 把胶囊 tabBar 藏掉。z-index 不管用。**
+
+   这一条踩了两次，第二次才弄明白：员工端的 tabBar 是自定义组件（custom-tab-bar），
+   微信把它渲染在**页面之上的另一层**，不参与页面里的 z-index 比较 ——
+   2026-08-31 先按「浮层排到 100 以上就能盖住它」改了一版（.sheet 从 11 提到 201），
+   真机上「确认派单」那排按钮**照样被压住**，因为这个前提本身就是错的。
+   唯一可靠的办法是打开期间不渲染它，见 utils/tabbar.ts 的 setTabBarHidden。
+
+   下面这张表仍然有效，但它管的是**浮层之间**的先后（遮罩盖住页面内容、两层面板叠放），
+   跟胶囊没关系：
+
+     8   .action-bar   详情页/随手拍的底部操作条（都不是 tab 页，胶囊压根不在）
      99  .tabbar-shield
-     100 .tabbar       ← 分水岭：贴底浮层必须高过这条线
-     200 .sheet-mask   201 .sheet         底部面板（遮罩顺带盖住胶囊，开着面板时点不到切 tab，正是要的）
+     100 .tabbar       ← 胶囊自己的层，页面里的浮层跟它不在一个赛道上
+     200 .sheet-mask   201 .sheet         底部面板
      210 .sheet-mask--top 211 .sheet--top 面板之上再叠一层面板
      220 place-picker 的 .mask  221 .panel（组件自带，见 components/place-picker/index.wxss）
-   新增浮层就往这张表里加一档，改胶囊尺寸/层级也回来同步这里。 */
+
+   新增浮层：往这张表里加一档，**并且**在开关处调 setTabBarHidden —— 两件事都要做。 */
 
 /* ---------- 底部弹出面板（材料库、选择器等共用，别再各页面复制一份） ---------- */
 .sheet-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 200; }

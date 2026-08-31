@@ -68,6 +68,21 @@ export function syncTabBar(page: any, key: TabKey) {
   if (tabBar && typeof tabBar.setActive === 'function') tabBar.setActive(key);
 }
 
+/**
+ * 底部弹层开着时把胶囊 tabBar 藏起来 —— **tab 页里每个弹层的开和关都必须调这个**。
+ *
+ * 为什么不能只靠 z-index：员工端的 tabBar 是自定义组件，微信把它渲染在页面之上的
+ * 另一层，不参与页面内的 z-index 比较。2026-08-31 实测，把弹层排到 200（胶囊 100）
+ * 之后真机上「确认派单」那排按钮照样被压住 —— 那次以为改完了，其实没有。
+ *
+ * 关的时候要传「这一页是不是还有别的弹层开着」，别一关就把胶囊放出来盖住下面那层
+ * （材料页是两层弹层叠着的）。
+ */
+export function setTabBarHidden(page: any, hidden: boolean) {
+  const tabBar = getTabBar(page);
+  if (tabBar && typeof tabBar.setHidden === 'function') tabBar.setHidden(!!hidden);
+}
+
 /** 角标：0 / 空表示不显示。数据加载完再调，别让角标比列表先变 */
 export function setTabBadge(page: any, key: TabKey, count: number) {
   const tabBar = getTabBar(page);

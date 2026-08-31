@@ -39,6 +39,15 @@ function visibleTabs(access: TabAccess) {
 Component({
   data: {
     selectedKey: 'pool',
+    /**
+     * 页面上有底部弹层开着时整条胶囊都不渲染。
+     *
+     * 2026-08-31 实测：胶囊不参与页面内的 z-index 比较 —— 把弹层排到 200（胶囊是 100）
+     * 之后，真机上「确认派单」那排按钮**照样被压住**。微信把自定义 tabBar 渲染在页面
+     * 之上的另一层，页面里的 fixed 元素再高也盖不过它。所以唯一可靠的办法是藏掉它。
+     * 由 utils/tabbar.ts 的 setTabBarHidden 驱动，tab 页的弹层开关处必须调。
+     */
+    hidden: false,
     tabs: visibleTabs({ pages: null }).map((tab) => ({ ...tab, badge: '' })),
   },
 
@@ -109,6 +118,11 @@ Component({
     /** 各 tab 页在 onShow 里调，告诉 tabBar 现在在哪一屏 */
     setActive(key: string) {
       if (this.data.selectedKey !== key) this.setData({ selectedKey: key });
+    },
+
+    /** 有弹层开着时把整条胶囊藏起来，见 data.hidden 的说明 */
+    setHidden(hidden: boolean) {
+      if (this.data.hidden !== !!hidden) this.setData({ hidden: !!hidden });
     },
 
     /** 未处理数量：0 或空表示不显示 */

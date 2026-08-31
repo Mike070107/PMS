@@ -6,7 +6,7 @@ import {
   type WorkOrderListItem,
 } from '@pms/shared-types';
 import { getSession } from '../../utils/session';
-import { cachedPoolMode, readCachedAccess, setTabBadge, syncTabBar } from '../../utils/tabbar';
+import { cachedPoolMode, readCachedAccess, setTabBadge, setTabBarHidden, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unread';
 
 /**
@@ -355,11 +355,14 @@ Page({
       assignError: '',
       slaIndex: 3,
     });
+    // 胶囊 tabBar 会盖住面板底部的「确认派单」，且它不吃页面里的 z-index —— 开着面板就藏起来
+    setTabBarHidden(this, true);
     this.loadTechnicians();
   },
 
   onCloseAssign() {
     this.setData({ assignOpen: false });
+    setTabBarHidden(this, false);
   },
 
   /** 面板内容区滚动时不要把底下的列表也带着滚 */
@@ -409,6 +412,7 @@ Page({
         note: this.data.assignNote.trim() || undefined,
       });
       this.setData({ assignOpen: false });
+      setTabBarHidden(this, false);
       wx.showToast({ title: '已派单' });
       // 派完这一单就不在「待派单」里了，重新拉一遍，别让它还留在列表上
       this.load();

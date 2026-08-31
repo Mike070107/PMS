@@ -10,7 +10,7 @@ import {
   type WarehouseView,
 } from '@pms/shared-types';
 import { getSession, type StaffSession } from '../../utils/session';
-import { setTabBadge, syncTabBar } from '../../utils/tabbar';
+import { setTabBadge, setTabBarHidden, syncTabBar } from '../../utils/tabbar';
 
 /**
  * 材料与库存（办公室一侧的常驻一屏）。
@@ -419,10 +419,24 @@ Page({
       // 有过库存记录的排前面，没入过库的沉底
       .sort((a, b) => Number(b.qtyText !== '未入过库') - Number(a.qtyText !== '未入过库'));
     this.setData({ detailOpen: true, detail: row, detailStocks: byWarehouse });
+    this.syncSheetTabBar();
+  },
+
+  /**
+   * 弹层开着就把胶囊 tabBar 藏起来。
+   *
+   * 只靠 z-index 不行：胶囊是自定义 tabBar，微信把它渲染在页面之上的另一层，
+   * 不参与页面里的 z-index 比较（2026-08-31 实测，弹层排到 200 照样被压住）。
+   * 每次开关弹层后调一次，两个弹层叠着时不会被误放出来 —— setData 之后
+   * this.data 已经是新值，所以直接在下一行调即可。
+   */
+  syncSheetTabBar() {
+    setTabBarHidden(this, !!(this.data.detailOpen || this.data.editorOpen));
   },
 
   onCloseDetail() {
     this.setData({ detailOpen: false });
+    this.syncSheetTabBar();
   },
 
   // ---------------- 新增 / 编辑 SKU ----------------
@@ -436,6 +450,7 @@ Page({
       formCategoryIndex: -1,
       errors: { name: '', unit: '' },
     });
+    this.syncSheetTabBar();
   },
 
   /** 行内的「编辑」按钮和详情面板底部的「编辑」都走这里 */
@@ -467,10 +482,13 @@ Page({
           : -1,
       errors: { name: '', unit: '' },
     });
+    // 列表行上的「编辑 SKU」是从没有弹层的状态直接进编辑器的，这一句不能省
+    this.syncSheetTabBar();
   },
 
   onCloseEditor() {
     this.setData({ editorOpen: false });
+    this.syncSheetTabBar();
   },
 
   onFormInput(e: WechatMiniprogram.Input) {
@@ -555,6 +573,7 @@ Page({
         wx.showToast({ title: '材料已新增' });
       }
       this.setData({ editorOpen: false });
+      this.syncSheetTabBar();
       await this.load();
     } catch (e: any) {
       // 服务端的真实原因要露出来（「已被单据引用不可改名」这类），别笼统一句「保存失败」
