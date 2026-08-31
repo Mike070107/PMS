@@ -18,7 +18,7 @@
  *     用 3217 条车位登记的地址反推出门牌归属（见 YONGDE_RULES，多数票极其干净）。
  *
  * 用法：
- *   node tools/legacy-area-import.mjs --area yongde|wujing|jinchuan --tenant 1 --token <JWT> --mysql-password <pwd> [--dry-run]
+ *   node tools/legacy-area-import.mjs --area yongde|wujing|jinchuan|xinjia --tenant 1 --token <JWT> --mysql-password <pwd> [--dry-run]
  *
  * 幂等：房产按 (小区,弄,号,室) 查重，业主按 legacyRef `wjwy:zh:<ZH_ID>` upsert，可重跑。
  */
@@ -126,6 +126,32 @@ const AREAS = {
     archiveOffices: [],
     rules: [{ lane: '139', community: '锦川公寓', road: '剑川路' }],
   },
+  xinjia: {
+    label: '上海新家（通海路328弄 + 临街非居住）',
+    // 通海路还有 360弄（管理处 99/61）和招商部的几间，不属于上海新家，
+    // 所以这里必须连管理处一起限定，不能只按路名捞
+    sources: [
+      { roadLike: '通海%', lane: '328', office: '44' },
+      { roadLike: '通海%', lane: null, office: '44' },
+    ],
+    archiveOffices: [],
+    rules: [
+      { lane: '328', community: '上海新家', road: '通海路' },
+      { lane: null, community: '上海新家', road: '通海路' },
+    ],
+    /**
+     * 临街那 8 间的「号」在老库里被填成了字面量「非居住」（房屋性质当门牌用），
+     * 真门牌（348甲/348乙/350甲…）塞在「室」里。照搬会在房产树上出现一个
+     * 「非居住号」的楼栋，维修工按这个地址找不到门。
+     * 这里把它掰正：门牌号 = 原来的「室」，室号统一记「商铺」（与枫桦临街商铺一致）。
+     */
+    normalize(row) {
+      if (String(row.号 ?? '').trim() === '非居住') {
+        return { ...row, 号: String(row.室 ?? '').trim(), 室: '商铺' };
+      }
+      return row;
+    },
+  },
 };
 
 const AREA = AREAS[args.area];
@@ -145,7 +171,9 @@ function buildingNumber(no) {
 function resolveCommunity(lane, buildingNo) {
   const n = buildingNumber(buildingNo);
   for (const rule of AREA.rules) {
-    if (rule.lane !== lane) continue;
+    // lane 为 null 的规则匹配「这条路上没写弄」的那批
+    const laneMatch = rule.lane == null ? (lane == null || lane === '') : rule.lane === lane;
+    if (!laneMatch) continue;
     if (!rule.ranges) return rule; // 整个弄归一个小区，门牌不是数字也认（车库、配套房）
     if (Number.isFinite(n) && rule.ranges.some(([lo, hi]) => n >= lo && n <= hi)) return rule;
   }
@@ -231,9 +259,17 @@ async function api(path, { method = 'GET', body, query } = {}) {
 
 // ---------------------------------------------------------------- 主流程
 
-/** 路 + 弄 一起限定，见 AREAS 的注释 */
+/**
+ * 路 + 弄（+ 可选管理处）一起限定，见 AREAS 的注释。
+ * `lane: null` = 这条路上没写弄的那批；`office` 用于同一条路上还有别家小区的情况。
+ */
 const sourceFilter = AREA.sources
-  .map((s) => `(l.路 LIKE '${s.roadLike}' AND l.弄 = '${s.lane}')`)
+  .map((s) => {
+    const parts = [`l.路 LIKE '${s.roadLike}'`];
+    parts.push(s.lane == null ? `(l.弄 IS NULL OR l.弄 = '')` : `l.弄 = '${s.lane}'`);
+    if (s.office) parts.push(`l.管理处 = '${s.office}'`);
+    return `(${parts.join(' AND ')})`;
+  })
   .join(' OR ');
 
 async function main() {
@@ -258,7 +294,10 @@ async function main() {
    */
   const byDoor = new Map();
   const skippedNoCommunity = [];
-  for (const row of raw) {
+  for (const rawRow of raw) {
+    // 片区自带的门牌矫正（如上海新家把「号」填成了「非居住」），在去重之前做，
+    // 否则同一间房会因为矫正前后 key 不同而被当成两间
+    const row = AREA.normalize ? AREA.normalize(rawRow) : rawRow;
     const rule = resolveCommunity(row.弄, row.号);
     if (!rule) {
       skippedNoCommunity.push(`${row.弄}弄${row.号}号${row.室}`);
@@ -398,7 +437,17 @@ async function main() {
           if (done % 200 === 0) process.stdout.write(`    房产 ${done}/${doors.length}\r`);
           if (have.has(houseKey(d.rule.community, d.弄, d.号, d.室))) { houseResult.skipped += 1; continue; }
           const road = d.rule.road;
-          const roomSuffix = /^\d+$/.test(String(d.室 || '')) ? '室' : '';
+          // 「弄」可能没有（临街门牌）。不判空会拼出「通海路null弄348甲号」这种地址，
+          // 前面几个片区每行都有弄，一直没暴露（2026-08-31 导上海新家时撞上）。
+          const lanePart = d.弄 ? `${d.弄}弄` : '';
+          const room = String(d.室 ?? '').trim();
+          const isShop = SHOP_KINDS.has(d.房屋性质);
+          // 商铺的「室」在老库里就是「商铺」两个字，地址里不该再重复一遍
+          // （与房产页 buildFullAddress 的规则一致）
+          const roomPart =
+            isShop && (!room || room === '商铺')
+              ? ''
+              : `${room}${/^\d+$/.test(room) ? '室' : ''}`;
           try {
             await api('/houses', {
               method: 'POST',
@@ -409,7 +458,7 @@ async function main() {
                 roomNo: d.室,
                 propertyType: SHOP_KINDS.has(d.房屋性质) ? '商铺' : '住宅',
                 roadName: road,
-                fullAddress: `${road}${d.弄}弄${d.号}号${d.室}${roomSuffix}`,
+                fullAddress: `${road}${lanePart}${d.号}号${roomPart}`,
                 areaSqm: d.建筑面积 && Number(d.建筑面积) > 0 ? String(d.建筑面积) : undefined,
               },
             });
