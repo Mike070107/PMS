@@ -41,9 +41,27 @@ function round2(value: number): number {
   return Number(value.toFixed(2));
 }
 
-/** 批次加权均价；没有批次时退回 SKU 参考成本。库存页、报表页、估值统一用它 */
+/** 批次加权均价；没有批次时退回 SKU 参考成本。**只做展示**，金额一律用 resolveStockValue */
 export function resolveUnitCost(lotQty: number, lotValueCents: number, defaultCostCents: number): number {
   return lotQty > 0 ? Math.round(lotValueCents / lotQty) : defaultCostCents;
+}
+
+/**
+ * 某行库存的金额（分）：批次剩余值直接加总，批次盖不住的部分按参考成本兜底。
+ *
+ * 不要写成 round(数量 × 加权均价)——均价四舍五入到分之后再乘回数量会差出几分钱：
+ * 马桶 1 只 ¥278 + 5 只 ¥280 = ¥1,678.00，均价 round(167800/6)=27967，
+ * 6 × 27967 = ¥1,678.02，和客户手上的清单对不上（2026-08-31 上海新家期初导入实测）。
+ * 期初补录、财务对账都要求分毫不差，所以金额从批次原值出，均价只是给人看的。
+ */
+export function resolveStockValue(
+  qty: number,
+  lotQty: number,
+  lotValueCents: number,
+  defaultCostCents: number,
+): number {
+  const uncovered = Math.max(0, round2(qty - lotQty));
+  return Math.round(lotValueCents + uncovered * defaultCostCents);
 }
 
 export function averageUnitCost(allocations: LotAllocation[], qty: number): number {

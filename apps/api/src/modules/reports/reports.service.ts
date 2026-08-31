@@ -15,7 +15,7 @@ import {
 import { AccessService, ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { resolveRepairTypeLabel } from '../repairs/repair-type-labels';
-import { resolveUnitCost } from '../inventory/stock-ledger';
+import { resolveStockValue, resolveUnitCost } from '../inventory/stock-ledger';
 import {
   MaterialUsageGroupBy,
   MaterialUsageReportDto,
@@ -544,7 +544,8 @@ export class ReportsService {
         unitCostCents,
         /** 成本来源：lot = 批次加权；default = SKU 默认成本（老库存没批次） */
         costSource: lotQty > 0 ? 'lot' : 'default',
-        amountCents: Math.round(qty * unitCostCents),
+        // 金额从批次原值加总；均价只做展示（round 后乘回会差几分钱，客户对不上账）
+        amountCents: resolveStockValue(qty, lotQty, num(r.lot_value_cents), num(r.default_cost_cents)),
       };
     });
     if (query.onlyLow === '1') rows = rows.filter((r) => r.low);

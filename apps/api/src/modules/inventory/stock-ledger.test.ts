@@ -7,6 +7,7 @@ import {
   applyStockDelta,
   averageUnitCost,
   consumeStockLots,
+  resolveStockValue,
   resolveUnitCost,
   restoreStockLots,
 } from './stock-ledger';
@@ -85,6 +86,16 @@ test('resolveUnitCost：有批次按批次加权，没有退回参考成本', ()
   assert.equal(resolveUnitCost(10, 1500, 999), 150);
   assert.equal(resolveUnitCost(0, 0, 999), 999);
   assert.equal(resolveUnitCost(3, 1000, 0), 333);
+});
+
+test('resolveStockValue：金额按批次原值加总，不吃均价的四舍五入误差', () => {
+  // 上海新家实测案例：马桶 1 只 ¥278 + 5 只 ¥280 = ¥1,678.00 整。
+  // 均价口径会算成 round(167800/6)=27967 → 6×27967=167802，多出 2 分，客户不认。
+  assert.equal(resolveStockValue(6, 6, 167800, 0), 167800);
+  // 没批次的老库存：数量 × 参考成本（和以前一致）
+  assert.equal(resolveStockValue(4, 0, 0, 250), 1000);
+  // 批次只盖住一部分：盖住的按批次值，盖不住的按参考成本兜底
+  assert.equal(resolveStockValue(5, 3, 900, 250), 900 + 2 * 250);
 });
 
 test('averageUnitCost：按分摊金额合计除以数量四舍五入', () => {

@@ -69,6 +69,7 @@ import {
   consumeStockLots,
   createStockLot,
   refreshMaterialReferenceCost,
+  resolveStockValue,
   resolveUnitCost,
   summarizeLots,
 } from './stock-ledger';
@@ -637,7 +638,8 @@ export class InventoryService {
         lotValueCents,
         unitCostCents,
         costSource: lotQty > 0 ? 'lot' : 'default',
-        amountCents: Math.round(Number(row.qty) * unitCostCents),
+        // 金额从批次原值加总，别用均价乘回去（见 resolveStockValue 注释）
+        amountCents: resolveStockValue(Number(row.qty), lotQty, lotValueCents, defaultCostById.get(row.materialId) ?? 0),
         locationLabel: row.locationId ? locationLabel.get(row.locationId) ?? null : null,
       };
     });
