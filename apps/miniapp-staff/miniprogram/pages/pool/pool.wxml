@@ -199,8 +199,12 @@
           <view class="tech__name">{{item.name}}</view>
           <view class="tech__meta">{{item.phone || '未留电话'}}</view>
         </view>
+        <!-- 一律写「在手 N 单」，0 单也照写，不再写「当前空闲」：
+             派单的人要比的是数字（谁手上少派给谁），两种句式混排还得先换算一下；
+             而且「空闲」是对人的断言 —— 他手上没这个系统里的单，不等于他闲着。
+             0 单仍用绿色标出来，颜色只做「最闲的那个」的视觉提示，不再下结论 -->
         <view class="tech__load {{item.openCount ? '' : 'tech__load--free'}}">
-          {{item.openCount ? '在手 ' + item.openCount + ' 单' : '当前空闲'}}
+          在手 {{item.openCount}} 单
         </view>
       </view>
     </block>
