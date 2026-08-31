@@ -10,6 +10,7 @@ import {
   PermissionAction,
   RoleDataScope,
   STAFF_APP_PAGE_KEYS,
+  isStaffAppPageKey,
 } from '../../common/pages';
 import {
   Community,
@@ -189,6 +190,25 @@ export class AccessService {
       roleIds,
       actingOfficeId: null,
     };
+  }
+
+  /**
+   * 这些角色加起来有没有一个「网站后台」页面。
+   *
+   * 「能不能登网页后台」（auth.service）和「建员工时要不要账号密码」
+   * （staff.service）用的是同一个判断，所以只留这一份实现，新增入口直接引这里。
+   *
+   * 必须走 effectivePermissions：跟随模板的角色自己不存 role_permissions，
+   * 直接查那张表会把整批「跟随模板」的角色判成没有后台权限 ——
+   * 2026-08-31 实际发生过：账号绑「上海新家物业办公室」（跟随「物业办公室」模板），
+   * 模板里后台页面勾得好好的，登录却被拒，界面上完全看不出原因。
+   */
+  async rolesGrantAdminPages(roles: Role[]): Promise<boolean> {
+    if (!roles.length) return false;
+    // 内置「企业超级管理员」= 全部页面，权限表里没有逐条记录
+    if (roles.some((r) => r.builtIn)) return true;
+    const perms = await this.effectivePermissions(roles);
+    return perms.some((p) => p.canView && !isStaffAppPageKey(p.pageKey));
   }
 
   /**

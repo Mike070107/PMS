@@ -17,14 +17,12 @@ import {
 } from '../../common/enums';
 import {
   Role,
-  RolePermission,
   StaffProfile,
   User,
   UserReportCommunity,
   UserRoleAssignment,
 } from '../../entities';
-import { isStaffAppPageKey } from '../../common/pages';
-import { ResolvedAccess } from '../access/access.service';
+import { AccessService, ResolvedAccess } from '../access/access.service';
 import { RolesService } from '../roles/roles.service';
 import { CreateStaffDto, ListStaffQueryDto, UpdateStaffDto } from './dto';
 
@@ -57,11 +55,10 @@ export class StaffService {
     private readonly reportGrantRepo: Repository<UserReportCommunity>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
-    @InjectRepository(RolePermission)
-    private readonly rolePermRepo: Repository<RolePermission>,
     @InjectRepository(UserRoleAssignment)
     private readonly userRoleRepo: Repository<UserRoleAssignment>,
     private readonly rolesService: RolesService,
+    private readonly accessService: AccessService,
   ) {}
 
   async list(query: ListStaffQueryDto, user: AuthUser) {
@@ -428,18 +425,17 @@ export class StaffService {
     return (await this.loadRolesByUser(tenantId, [userId])).get(userId) ?? [];
   }
 
-  /** 角色里有没有网站后台页面（决定要不要账号密码） */
+  /**
+   * 角色里有没有网站后台页面（决定要不要账号密码）。判断口径与「能不能登后台」
+   * 完全一致，所以直接引 AccessService 那一份 —— 跟随权限模板的角色自己不存
+   * role_permissions，在这里另查一次那张表会把它们判成「只上小程序」，
+   * 建档时不要账号密码，人建完了也登不进后台。
+   */
   private async roleGrantsAdminPages(tenantId: number, roleIds: number[]) {
     const roles = await this.roleRepo.find({
       where: { id: In([...new Set(roleIds)]), tenantId },
     });
-    if (roles.some((r) => r.builtIn)) return true;
-    if (!roles.length) return false;
-    const perms = await this.rolePermRepo.find({
-      where: { roleId: In(roles.map((r) => r.id)), canView: true },
-      select: ['pageKey'],
-    });
-    return perms.some((p) => !isStaffAppPageKey(p.pageKey));
+    return this.accessService.rolesGrantAdminPages(roles);
   }
 
   /**

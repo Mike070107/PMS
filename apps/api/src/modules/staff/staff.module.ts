@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   Role,
-  RolePermission,
   StaffProfile,
   User,
   UserReportCommunity,
@@ -19,7 +18,6 @@ import { StaffService } from './staff.service';
       StaffProfile,
       UserReportCommunity,
       Role,
-      RolePermission,
       UserRoleAssignment,
     ]),
     // 校验「角色范围是否不超过操作者」复用 RolesService

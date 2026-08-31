@@ -13,7 +13,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
 import { In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { isStaffAppPageKey } from '../../common/pages';
 import {
   AuditStatus,
   OWNER_APP_ROLES,
@@ -27,7 +26,6 @@ import {
   Community,
   House,
   Role,
-  RolePermission,
   Tenant,
   User,
   UserAudit,
@@ -73,8 +71,6 @@ export class AuthService {
     private readonly userRoleRepo: Repository<UserRoleAssignment>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
-    @InjectRepository(RolePermission)
-    private readonly rolePermRepo: Repository<RolePermission>,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly wechat: WechatService,
@@ -535,15 +531,11 @@ export class AuthService {
       where: { id: In(bindings.map((b) => b.roleId)), enabled: true },
     });
     if (!roles.length) denied();
-    // 内置「企业超级管理员」角色 = 全权限，不必去翻权限表
-    if (roles.some((r) => r.builtIn)) return;
-    const viewable = await this.rolePermRepo.find({
-      where: { roleId: In(roles.map((r) => r.id)), canView: true },
-      select: ['pageKey'],
-    });
-    // 只数网站页面：员工端那几格（app:*）也存在同一张权限表里，
-    // 跟着数就等于「会用小程序 = 能登后台」，维修工进来还是一屏没有菜单的白板。
-    if (!viewable.some((p) => !isStaffAppPageKey(p.pageKey))) denied();
+    // 只数网站页面：员工端那几格（app:*）也存在同一张权限表里，跟着数就等于
+    // 「会用小程序 = 能登后台」，维修工进来还是一屏没有菜单的白板。
+    // 内置角色（全权限）和「跟随权限模板」的角色都在这一个判断里 —— 绝不要在
+    // 这里另查一次 role_permissions：跟随模板的角色在那张表里一行都没有。
+    if (!(await this.accessService.rolesGrantAdminPages(roles))) denied();
   }
 
   /**

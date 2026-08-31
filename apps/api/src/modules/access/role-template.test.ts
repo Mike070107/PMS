@@ -81,3 +81,60 @@ test('角色列表/可分配角色也按同一套口径拿勾选', async () => {
   assert.deepEqual(byRole.get(1), ['work-orders']);
   assert.deepEqual(byRole.get(2), ['app:dispatch'], '跟随模板的角色不能算成「一格都没勾」');
 });
+
+/**
+ * 2026-08-31 线上故障：账号绑「上海新家物业办公室」（跟随「物业办公室」模板），
+ * 模板里后台页面勾得好好的，登录却报「这个账号还不能登录网页后台」——
+ * 准入判断直接查了 role_permissions，而跟随模板的角色在那张表里一行都没有。
+ * 现在「能不能进后台」只有 rolesGrantAdminPages 这一份实现，锁在这里。
+ */
+test('跟随模板的角色，模板勾了后台页面就能登后台', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  svc.rolePermRepo = {
+    async find() {
+      throw new Error('跟随模板的角色不该去查 role_permissions');
+    },
+  };
+  svc.tplPermRepo = fakeRepo(
+    [
+      { pageKey: 'app:pool', canView: true },
+      { pageKey: 'work-orders', canView: true },
+    ],
+    {},
+  );
+
+  assert.equal(await svc.rolesGrantAdminPages([{ id: 2, templateId: 9 }]), true);
+});
+
+test('模板只勾了小程序入口时不算后台权限', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  svc.tplPermRepo = fakeRepo([{ pageKey: 'app:pool', canView: true }], {});
+
+  assert.equal(await svc.rolesGrantAdminPages([{ id: 2, templateId: 9 }]), false);
+});
+
+test('勾了后台页面但没打勾「查看」不算 —— 只是被列出来不等于能看', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  svc.tplPermRepo = fakeRepo(
+    [{ pageKey: 'work-orders', canView: false, canEdit: true }],
+    {},
+  );
+
+  assert.equal(await svc.rolesGrantAdminPages([{ id: 2, templateId: 9 }]), false);
+});
+
+test('内置企业超管角色直通，一张权限表都不用查', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  svc.rolePermRepo = {
+    async find() {
+      throw new Error('内置角色不该翻权限表');
+    },
+  };
+  svc.tplPermRepo = svc.rolePermRepo;
+
+  assert.equal(
+    await svc.rolesGrantAdminPages([{ id: 1, templateId: null, builtIn: true }]),
+    true,
+  );
+  assert.equal(await svc.rolesGrantAdminPages([]), false, '一个角色都没绑：不放行');
+});
