@@ -59,7 +59,7 @@ export class RolesOrPermissionGuard implements CanActivate {
       const access = req.access ?? (await this.accessService.getAccess(user));
       req.access = access;
       if (
-        this.accessService.hasPermission(access, permission.pageKeys, permission.action)
+        this.accessService.hasAnyPermission(access, permission.items)
       ) {
         return true;
       }

@@ -37,7 +37,7 @@ export class PermissionsGuard implements CanActivate {
     const access = req.access ?? (await this.accessService.getAccess(user));
     req.access = access;
 
-    if (!this.accessService.hasPermission(access, required.pageKeys, required.action)) {
+    if (!this.accessService.hasAnyPermission(access, required.items)) {
       throw new ForbiddenException('权限不足');
     }
     return true;

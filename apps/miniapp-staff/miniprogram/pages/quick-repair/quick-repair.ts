@@ -267,8 +267,13 @@ Page({
 
   /** 认错了就整单改到「我要报修」去逐项改，别在这一屏里堆一套表单 */
   onEditInFull() {
+    // content 给「问题描述」框（已经剥掉地址/人名/电话，只剩故障本身），
+    // raw 是原话 —— 完整表单要拿它重新认地址、联系人、电话、类型。
+    // 2026-08-31 之前只传剥干净的那份，等于把信息删掉再让下一页去猜：
+    // 联系人电话抽不出来，就被登录人的默认值顶上了，转过去一看全是自己。
     const q = [
       `content=${encodeURIComponent(this.data.description || this.data.content)}`,
+      `raw=${encodeURIComponent(this.data.content)}`,
       `attachments=${encodeURIComponent(this.data.attachments.join(','))}`,
     ].join('&');
     wx.redirectTo({ url: `/pages/repair-create/repair-create?${q}` });

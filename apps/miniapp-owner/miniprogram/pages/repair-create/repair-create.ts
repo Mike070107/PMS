@@ -210,6 +210,18 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     primeSubscribeTemplates();
     this.bindSpeech();
     this.loadTypes();
+    // 从「随手拍」转过来的话和照片：那边已经说过拍过，这里只是逐项改，
+    // 不能让人从头再来一次（员工端 repair-create 同一套做法）
+    const handoff = decodeURIComponent(q?.content || '').trim();
+    const media = decodeURIComponent(q?.attachments || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (media.length) this.setData({ attachments: media });
+    if (handoff) {
+      this.setData({ content: handoff });
+      this.scheduleDetect(handoff);
+    }
     // 四种进入方式：
     // 1) 微信扫一扫楼栋小程序码（scene=token）—— 这时本页就是启动页，要自己登录并判断入驻状态
     // 2) 小程序内扫码带 token

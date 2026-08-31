@@ -158,7 +158,9 @@ export class RepairsController {
    */
   @Post('repair-requests/parse-address')
   @Roles(...OWNER_APP_ROLES)
-  @RequirePermission(['work-orders', 'app:repair-create'], 'edit')
+  // 「报修」这一格在矩阵里只有查看档，勾了就是能报修，别要求它有 edit ——
+  // 要了的话维修工/保安/居委会这些代报角色一个都过不去（2026-08-31 修）
+  @RequirePermission([['work-orders', 'edit'], ['app:repair-create', 'view']], 'edit')
   parseRepairAddress(
     @Body() dto: ParseRepairAddressDto,
     @CurrentUser() user: AuthUser,
@@ -169,7 +171,8 @@ export class RepairsController {
   /** 两个小程序共用：业主端各身份 + 员工端（维修工/办公室巡查顺手报修） */
   @Post('repair-requests')
   @Roles(...OWNER_APP_ROLES)
-  @RequirePermission(['work-orders', 'app:repair-create'], 'edit')
+  // 同上：代报角色靠 app:repair-create 的查看档提单
+  @RequirePermission([['work-orders', 'edit'], ['app:repair-create', 'view']], 'edit')
   submitOwnerRepair(
     @Body() dto: CreateRepairRequestDto,
     @CurrentUser() user: AuthUser,

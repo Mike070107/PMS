@@ -213,7 +213,15 @@ Page({
 
   /** 走完整报修表单（和网页后台一样逐项填） */
   onGoFullForm() {
-    wx.navigateTo({ url: '/pages/repair-create/repair-create' });
+    // 说过的话、拍好的照片一起带过去。2026-08-31 之前什么都不传，
+    // 转过去要从头再说一遍、再拍一遍 —— 老人尤其吃不消
+    const params: string[] = [];
+    const content = this.data.content.trim();
+    if (content) params.push(`content=${encodeURIComponent(content)}`);
+    const attachments = this.data.media.map((item) => item.url).filter(Boolean);
+    if (attachments.length) params.push(`attachments=${encodeURIComponent(attachments.join(','))}`);
+    const query = params.length ? `?${params.join('&')}` : '';
+    wx.navigateTo({ url: `/pages/repair-create/repair-create${query}` });
   },
 
   onRetry() {

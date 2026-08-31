@@ -473,6 +473,15 @@ export class AccessService {
     return roles.map((r) => r.name);
   }
 
+  /** 逐条判断「某个 key 上要有某个动作」，任一条命中即放行 */
+  hasAnyPermission(
+    access: ResolvedAccess,
+    items: Array<{ pageKey: string; action: PermissionAction }>,
+  ): boolean {
+    if (access.isPlatformAdmin) return true;
+    return items.some((item) => this.hasPermission(access, item.pageKey, item.action));
+  }
+
   hasPermission(
     access: ResolvedAccess,
     pageKeys: string | string[],

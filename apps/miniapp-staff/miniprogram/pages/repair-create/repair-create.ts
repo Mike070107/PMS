@@ -124,6 +124,8 @@ Page({
   /** 代报角色的授权小区；空数组 = 不限（物业员工） */
   reportCommunityIds: [] as number[],
   detectTimer: 0 as number,
+  /** 随手拍转过来的原话。它和「问题描述」框里的文字不是同一份，识别守卫要认它 */
+  handoffRaw: '' as string,
   dismissedMatch: '' as string,
 
   /**
@@ -135,6 +137,10 @@ Page({
     this.bindSpeech();
     this.loadTypes();
     const handoff = decodeURIComponent(q?.content || '').trim();
+    // 随手拍那边剥干净的描述进「问题描述」框，原话只用来做识别 ——
+    // 剥过的话里已经没有联系人和电话了，拿它去抽只会抽出个空
+    const rawSpeech = decodeURIComponent(q?.raw || '').trim();
+    this.handoffRaw = rawSpeech;
     const media = decodeURIComponent(q?.attachments || '')
       .split(',')
       .map((item) => item.trim())
@@ -142,7 +148,8 @@ Page({
     if (media.length) this.setAttachments(media);
     if (handoff) {
       this.setData({ content: handoff });
-      this.scheduleDetect(handoff);
+      // 有原话就用原话认（地址/联系人/电话/类型都在里面），没有就退回描述本身
+      this.scheduleDetect(rawSpeech || handoff);
     }
     // 地址簿范围取决于身份（代报角色只能报授权小区），所以先 me() 再拉地址簿，
     // 别并行 —— 并行的话保安会先看到全公司地址簿，选完提交才被后端拦下
@@ -323,8 +330,10 @@ Page({
 
   async detectAddress(content: string) {
     const res = await detectRepairAddress(content, this.data.communityId ?? undefined);
-    // 结果回来时文字可能已经变了，只认最新一次输入
-    if (content !== this.data.content) return;
+    // 结果回来时文字可能已经变了，只认最新一次输入。
+    // 随手拍转过来的原话是个例外：它本来就和描述框里的文字不同（描述已剥掉地址），
+    // 不放行的话地址识别结果会被这条守卫直接丢掉
+    if (content !== this.data.content && content !== this.handoffRaw) return;
     if (!res) {
       if (this.data.detected) this.setData({ detected: null });
       return;
