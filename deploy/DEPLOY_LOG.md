@@ -575,3 +575,12 @@
   - 4a97505 养护单：地址分两行、填写内容用楷体、单号按联单连号走；表格窄屏不再把中文压成竖排
   - a63f9d5 修：电话多听一位时，描述里会剩个孤零零的尾数
 
+## 2026-08-31 17:17 · api · 78229d1
+
+- 包：`pms-api-20260831-1716.tar.gz`
+- 提交：78229d1 养护单地址不再印成「永德路 路」：值里带的单位字剥掉
+- 说明：包从独立干净 worktree（origin/main 78229d1）打出；工作区那些未提交改动是别的会话的（urgency.ts 等），没进包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/package.json，M apps/api/src/entities/repair-request.entity.ts，M packages/shared-types/src/index.ts，?? apps/api/src/migrations/1788224400000-RepairUrgent.ts，?? packages/shared-types/src/urgency.test.ts，?? packages/shared-types/src/urgency.ts
+- 自上次（4a97505）以来上线的相关提交：
+  - 78229d1 养护单地址不再印成「永德路 路」：值里带的单位字剥掉
+
