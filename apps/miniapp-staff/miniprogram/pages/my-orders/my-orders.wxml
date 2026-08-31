@@ -74,9 +74,14 @@
 
   <!-- ============ 我报的单（派给了别人的）============
        报单的人要能看到它去哪儿了、修没修，否则像单子丢了。默认收起，不和手上的活抢位置 -->
-  <view wx:if="{{reported.length}}" class="fold" bindtap="onToggleReported">
+  <view wx:if="{{reported.length}}" id="reported" class="fold" bindtap="onToggleReported">
     <text class="fold__title">我报的 {{reported.length}} 条</text>
     <text class="fold__action">{{reportedOpen ? '收起' : '展开'}}</text>
+  </view>
+  <!-- 从「我的 → 我的报修」进来、却一条都没报过：得说一句，否则人对着在手工单列表
+       会以为入口点错了或者单子丢了 -->
+  <view wx:elif="{{reportedOpen && loaded}}" class="muted center tip">
+    你还没有替住户或巡查报过修。要报一单，去「我的 → 我要报修」。
   </view>
   <block wx:if="{{reportedOpen}}">
     <view

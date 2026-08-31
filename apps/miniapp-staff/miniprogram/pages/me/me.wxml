@@ -20,20 +20,16 @@
     </view>
 
     <!-- 微信的一次性订阅：同意一次才能推一条，所以要给一个能随时再点的入口。
-         只有维修工需要 —— 工单是派给他的 -->
+         只有维修工需要 —— 工单是派给他的。
+         状态文案在 me.ts 里算好（notifyStateText / notifyDesc）：三种状态各带一个条数，
+         塞进 wxml 的三元表达式里没人看得懂，改一次要在两处对着数括号 -->
     <view wx:if="{{canSubscribe}}" class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onEnableNotify">
       <view class="entry__body">
         <view class="entry__title">
           新工单微信提醒
-          <text class="entry__state {{notifyState === 'always' ? 'entry__state--on' : notifyState === 'banked' ? 'entry__state--partial' : ''}}">{{notifyState === 'always' ? '已开启' : notifyState === 'banked' ? '还能提醒 ' + notifyRemaining + ' 条' : '未开启'}}</text>
+          <text class="entry__state entry__state--{{notifyTone}}">{{notifyStateText}}</text>
         </view>
-        <view class="entry__desc">
-          {{notifyState === 'always'
-            ? '每次派单微信都会提醒你，不用再点允许'
-            : notifyState === 'banked'
-              ? '每收一条提醒少一条，用完就收不到了。点这里再开一次，并勾上「总是保持以上选择」就一直有'
-              : '点这里开启；弹窗里记得勾上「总是保持以上选择」'}}
-        </view>
+        <view class="entry__desc">{{notifyDesc}}</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -47,23 +43,25 @@
       </view>
       <view class="entry__arrow"></view>
     </view>
-  </view>
 
-  <!-- 维修工没有材料/库存权限，这块整段不显示。
-       办公室一侧底部已经有「材料与库存」那一格，这里留着是给「从我的页进去」的习惯 -->
-  <view wx:if="{{canUseMaterials || canUseInventory}}" class="card entries">
-    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenInventory">
+    <!-- 我报的单派给别人之后，在手和工单池里都看不到，只在「在手工单」页那个折叠区里。
+         替住户报完修的人最想知道的就是「那单后来怎么样了」，得给一个找得到的入口 -->
+    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenReported">
       <view class="entry__body">
-        <view class="entry__title">材料与库存</view>
-        <view class="entry__desc">看还有几个、补 SKU 资料和照片、采购申请进度</view>
+        <view class="entry__title">我的报修</view>
+        <view class="entry__desc">我替住户和巡查提的单，派给谁了、修到哪一步了</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
   </view>
 
+  <!-- 「材料与库存」不再放这里：底部 tabBar 已经有那一格，而且两处是同一个权限
+       （app:inventory · 可见），看得到入口的人底部一定也有，重复放只是让这一屏更长 -->
+
   <view class="card">
     <view class="card__title">账号说明</view>
-    <view class="card__desc">账号由物业管理员开通。换手机或换微信后无法登录时，请联系管理员在后台「解绑微信」。</view>
+    <view class="card__desc">账号由物业管理员开通，一个微信只能绑一个员工账号。</view>
+    <view class="card__desc mt-sm">要换一个手机号登录：先在下面退出，再用另一个手机号登录。如果提示「该微信已绑定员工 X」，说明这个微信还挂在原来那个账号上，请管理员在后台「用户管理」里给它解绑后再登。</view>
   </view>
 
   <button class="btn btn--ghost" bindtap="onLogout">退出登录</button>

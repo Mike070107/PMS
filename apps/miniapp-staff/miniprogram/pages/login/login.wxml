@@ -19,6 +19,13 @@
     >手机号快捷登录</button>
     <view class="hint">需与管理员登记的手机号一致，首次登录后自动绑定本微信</view>
 
+    <!-- 刚退出登录是件正常事，用中性的说明块，不能用下面那条红色的 .error -->
+    <view class="notice" wx:if="{{noticeMsg}}">
+      <view class="notice__body">
+        <view class="notice__desc">{{noticeMsg}}</view>
+      </view>
+    </view>
+
     <view class="error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
 
     <view class="divider">

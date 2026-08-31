@@ -5,6 +5,8 @@ import { clearAccessCache } from '../../utils/tabbar';
 
 /** 扫码登录票据的暂存位：web-login 页发现没登录时写入，登录成功后由这里送回去 */
 const PENDING_QR_KEY = 'pms.staff.pending_qr';
+/** 「我的」页点退出时写下的一次性标记，见 onLoad */
+const JUST_LOGGED_OUT_KEY = 'pms.staff.just_logged_out';
 
 interface StaffApp {
   setTokens: (a: string, r: string) => void;
@@ -39,9 +41,27 @@ Page({
     accountErr: '',
     passwordErr: '',
     errorMsg: '',          // 行内错误（绑定冲突/未开通等）
+    noticeMsg: '',         // 中性提示（刚退出登录），别用红色的 errorMsg 说这件事
   },
 
+  /**
+   * 刚点过「退出登录」的人**不能**再走静默登录。
+   *
+   * 静默登录只认微信 openid，绑定关系是留在服务端的，清掉本地 token 没有任何影响 ——
+   * 于是退出后一跳回这一页，onLoad 立刻又把人登了进去、switchTab 回工单池，
+   * 屏幕上只闪一下，看起来就是「点了退出退不出去」（2026-08-31 反馈）。
+   * 想换个手机号登录的人也因此被锁死在原账号里。
+   *
+   * 标记只用一次，读完就清：下次正常打开小程序仍然免登录直接进，别把免登录也弄没了。
+   */
   onLoad() {
+    if (takeJustLoggedOut()) {
+      this.setData({
+        checking: false,
+        noticeMsg: '已退出登录。可以换一个手机号登录，或用账号密码登录。',
+      });
+      return;
+    }
     this.silentLogin();
   },
 
@@ -82,7 +102,7 @@ Page({
   },
 
   onTapAccountMode() {
-    this.setData({ accountMode: !this.data.accountMode, errorMsg: '' });
+    this.setData({ accountMode: !this.data.accountMode, errorMsg: '', noticeMsg: '' });
   },
 
   onInputAccount(e: WechatMiniprogram.Input) {
@@ -106,7 +126,7 @@ Page({
 
   async submit(extra: Omit<StaffLoginReq, 'code'>) {
     if (this.data.loading) return;
-    this.setData({ loading: true, errorMsg: '' });
+    this.setData({ loading: true, errorMsg: '', noticeMsg: '' });
     try {
       const { code } = await wx.login();
       const resp = await auth.staffLogin({ code, ...extra });
@@ -141,6 +161,17 @@ Page({
     wx.switchTab({ url: '/pages/pool/pool' });
   },
 });
+
+/** 读一次「刚退出登录」标记并清掉。存不下 / 读不到都当没退出过，最多是又静默登回去 */
+function takeJustLoggedOut(): boolean {
+  try {
+    if (wx.getStorageSync(JUST_LOGGED_OUT_KEY) !== '1') return false;
+    wx.removeStorageSync(JUST_LOGGED_OUT_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * 取出 web-login 页暂存的票据并清掉。

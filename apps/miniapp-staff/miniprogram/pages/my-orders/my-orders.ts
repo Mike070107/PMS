@@ -33,6 +33,9 @@ type OrderRow = WorkOrderListItem & {
   statReporterHint: string;
 };
 
+/** 「我的」页点「我的报修」时写下的一次性标记：进来把「我报的」那一段展开 */
+const OPEN_REPORTED_KEY = 'pms.staff.open_reported';
+
 /** 还要人动手的状态，排在最上面；其余归到「已完结」折叠区 */
 const ACTIVE_STATUSES: string[] = [
   WorkOrderStatus.CREATED,
@@ -75,6 +78,14 @@ Page({
 
   onShow() {
     syncTabBar(this, 'mine');
+    // 从「我的 → 我的报修」进来的：把「我报的」那一段展开并滚过去。
+    // tabBar 页 switchTab 带不了参数，所以用一次性标记传话（见 me.ts 的 onOpenReported）
+    if (takeOpenReported()) {
+      // 只能先记个心愿：这会儿 reported 还没拉回来，#reported 那个锚点压根不在页面上，
+      // 现在 pageScrollTo 会静默找不到目标。真正的滚动在 loadReported 拿到数据之后
+      (this as any).pendingReportedScroll = true;
+      this.setData({ reportedOpen: true });
+    }
     this.load();
     // 「我的」那一格的未读角标：新工单派下来时，人得在这一屏就看见
     refreshUnread(this);
@@ -120,7 +131,13 @@ Page({
           actionText: '看进度',
           assigneeText: item.assigneeName || '还没人接',
         }));
-      this.setData({ reported });
+      this.setData({ reported }, () => {
+        // 在手的单可能有十几张，不滚过去的话人只看到列表顶部，会以为入口点错了
+        if ((this as any).pendingReportedScroll && reported.length) {
+          (this as any).pendingReportedScroll = false;
+          wx.pageScrollTo({ selector: '#reported', duration: 200 });
+        }
+      });
     } catch {
       // 这一块是附加信息，拉不到不影响在手工单
     }
@@ -169,3 +186,14 @@ Page({
     wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${e.currentTarget.dataset.id}` });
   },
 });
+
+/** 读一次「展开我报的」标记并清掉。读不到就按平常进页面处理 */
+function takeOpenReported(): boolean {
+  try {
+    if (wx.getStorageSync(OPEN_REPORTED_KEY) !== '1') return false;
+    wx.removeStorageSync(OPEN_REPORTED_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}

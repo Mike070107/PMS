@@ -7,6 +7,11 @@ import { askOrderSubscribe, getSubscribeState, refreshUnread } from '../../utils
 
 // 版本号和 git hash 由发版脚本写入 utils/buildStamp.ts，别在这里手改（见那个文件的说明）
 
+/** 传给「在手工单」页：进去把「我报的」那一段展开。tabBar 页 switchTab 不能带参数 */
+const OPEN_REPORTED_KEY = 'pms.staff.open_reported';
+/** 传给登录页：这次是人主动退出的，别再静默登回来 */
+const JUST_LOGGED_OUT_KEY = 'pms.staff.just_logged_out';
+
 Page({
   data: {
     buildText: '',
@@ -15,8 +20,6 @@ Page({
     phoneText: '',
     /** 头像用姓名首字，没名字就用角色首字 */
     avatarText: '',
-    canUseMaterials: false,
-    canUseInventory: false,
     canReport: false,
     canUseMessages: true,
     /** 未读消息数，显示在「消息」入口右侧 */
@@ -26,10 +29,14 @@ Page({
     /**
      * always = 勾了「总是保持以上选择」，每次派单都会提醒；
      * banked = 没勾，但服务端还记着几条额度，用完就收不到了；
-     * off    = 一条额度都没有
+     * off    = 一条额度都没有。
+     * 文案在 refreshNotifyState 里一次算好，wxml 只负责渲染
      */
     notifyState: 'off' as 'off' | 'banked' | 'always',
     notifyRemaining: 0,
+    notifyTone: '' as '' | 'on' | 'partial',
+    notifyStateText: '未开启',
+    notifyDesc: '点这里开启；弹窗里记得勾上「总是保持以上选择」',
     /** 代报角色：报修范围是授权小区，不是全公司，文案得说准 */
     repairDesc: '巡查发现的问题直接提单，地址可选全公司任意楼栋房号',
   },
@@ -69,8 +76,6 @@ Page({
         roleText,
         phoneText: maskPhone(user.phone),
         avatarText: (user.name || roleText || '员').trim().charAt(0),
-        canUseMaterials: session.canViewMaterials,
-        canUseInventory: session.canViewInventory,
         canReport: session.canReport,
         canUseMessages: session.canUseMessages,
         canSubscribe: session.canAccept,
@@ -89,11 +94,15 @@ Page({
   },
 
   /**
-   * 材料与库存现在是一屏（tabBar 页），只能 switchTab —— navigateTo 打不开 tab 页。
-   * 原来这里有两个入口（材料 SKU 库 / 库存与采购），点进去是两份长得差不多的清单。
+   * 「我的报修」= 在手工单页那个「我报的」折叠区。
+   *
+   * 不另做一个列表页：同一批单两处各查一次、各渲染一套，迟早对不上（口径、状态文案、
+   * 卡片样式）。这里只负责把人送过去并让那一段自动展开 —— tabBar 页 switchTab
+   * 不能带参数，所以用一次性标记传话（my-orders 的 onShow 读完就清）。
    */
-  onOpenInventory() {
-    wx.switchTab({ url: '/pages/inventory/inventory' });
+  onOpenReported() {
+    try { wx.setStorageSync(OPEN_REPORTED_KEY, '1'); } catch { /* 存不下就只是没自动展开 */ }
+    wx.switchTab({ url: '/pages/my-orders/my-orders' });
   },
 
   onOpenMessages() {
@@ -112,9 +121,27 @@ Page({
    */
   async refreshNotifyState() {
     const state = await getSubscribeState();
+    const notifyState = state.always ? 'always' : state.remaining > 0 ? 'banked' : 'off';
+    // 勾了「总是保持」也要把剩余条数显出来（2026-08-31 反馈「怎么不显示剩余条数了」）：
+    // 「已开启」是靠**每次点击悄悄补额度**换来的，不是微信给了长期权限 ——
+    // 额度照样一条条扣。不显示的话，万一补额度那条路断了，人只会看到一个「已开启」
+    // 却收不到提醒，谁都查不出问题出在哪。
     this.setData({
-      notifyState: state.always ? 'always' : state.remaining > 0 ? 'banked' : 'off',
+      notifyState,
       notifyRemaining: state.remaining,
+      notifyTone: notifyState === 'always' ? 'on' : notifyState === 'banked' ? 'partial' : '',
+      notifyStateText:
+        notifyState === 'always'
+          ? `已开启 · 剩 ${state.remaining} 条`
+          : notifyState === 'banked'
+            ? `还能提醒 ${state.remaining} 条`
+            : '未开启',
+      notifyDesc:
+        notifyState === 'always'
+          ? '每次派单微信都会提醒你。你在小程序里切底部页签、点开工单时会自动补额度，不用再点允许'
+          : notifyState === 'banked'
+            ? '每收一条提醒少一条，用完就收不到了。点这里再开一次，并勾上「总是保持以上选择」，以后就会自动补'
+            : '点这里开启；弹窗里记得勾上「总是保持以上选择」',
     });
   },
 
@@ -128,6 +155,15 @@ Page({
     // 身份、权限、会话缓存都要清掉：换个人登进来，tabBar 和各页面不该还按上一个人的权限渲染
     clearAccessCache();
     clearSession();
+    /**
+     * 关键的一步：告诉登录页「这次是人主动退出的，别再静默登回来」。
+     *
+     * 登录页 onLoad 会拿 wx.login 的 code 直接换 token（微信 openid 早就绑好了），
+     * 所以清掉 token 跳过去之后，它一进页面就又把人登了进来、switchTab 回工单池 ——
+     * 屏幕上一闪，看起来就是「点了退出没反应，退不出去」（2026-08-31 反馈）。
+     * 想换个手机号登录的人更是被锁死在原账号里。
+     */
+    try { wx.setStorageSync(JUST_LOGGED_OUT_KEY, '1'); } catch { /* 存不下最多是又静默登回去 */ }
     wx.reLaunch({ url: '/pages/login/login' });
   },
 });
