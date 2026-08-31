@@ -53,3 +53,22 @@ test('故障描述：地址没认出来时也不该把整句原样塞进描述',
   const desc = extractFaultDescription('一期17号201家里灯不亮', {});
   assert.equal(typeof desc, 'string');
 });
+
+test('故障描述：电话多听一位时整串剥掉，不留孤零零的尾数', () => {
+  /* 「138000138000」是 12 位：extractContact 按边界规则正确地拒填（宁可不填也不给错号），
+     于是 phoneText 是空的、剥描述时拿不到它。描述里这串数字同样不该留 ——
+     旧的清理正则卡死 11 位，只吃掉前 11 位，描述就成了「家里灯不亮，0」（2026-08-31 实测）。 */
+  const heard = '风华一期17号201，家里灯不亮。联系人，张先生。电话，138000138000';
+  const desc = extractFaultDescription(heard, {
+    addressText: '风华一期17号201',
+    nameText: '张先生',
+  });
+  assert.equal(desc.trim(), '家里灯不亮');
+});
+
+test('故障描述：房号里的短数字不能被当成电话剥掉', () => {
+  // 上一条把清理正则放宽成「≥10 位连续数字」，这条守住下限：
+  // 「17号201」被单位字隔开，两段都远不到 10 位，必须原样留着给地址识别用
+  const desc = extractFaultDescription('17号201的灯不亮', {});
+  assert.ok(desc.includes('201'), `房号被误剥了：${desc}`);
+});
