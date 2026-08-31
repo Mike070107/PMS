@@ -11,6 +11,9 @@ import {
   DETAIL_COLS,
   DETAIL_HEAD_SPLIT,
   FOOTER,
+  MAIN_LEFT,
+  PAGE,
+  PERF_LEFT,
   QUOTA_GROUP_W,
   ROW1,
   ROW2,
@@ -18,7 +21,11 @@ import {
   ROW_H,
   STUB_LABEL_NARROW,
   STUB_LABEL_WIDE,
+  STUB_LEFT,
   STUB_ROWS,
+  STUB_W,
+  TABLE_W,
+  UNIT_LINE,
   VOUCHER_SPLIT,
 } from './sheet-geometry';
 import {
@@ -91,6 +98,21 @@ export function paperNoForSheet(order: MaintenanceOrder, pageNo: number): string
   if (!/^\d+$/.test(raw)) return raw;
   return String(Number(raw) + pageNo - 1).padStart(raw.length, '0');
 }
+
+// ---------------- 版心位置（全部来自 sheet-geometry） ----------------
+
+const SHEET_STYLE = { width: `${PAGE.w}mm`, height: `${PAGE.h}mm` };
+const MAIN_STYLE = { left: `${MAIN_LEFT}mm`, width: `${TABLE_W}mm` };
+const STUB_STYLE = { left: `${STUB_LEFT}mm`, width: `${STUB_W}mm` };
+const PERF_STYLE = { left: `${PERF_LEFT}mm` };
+/** 背面是正面的镜像：块从右边往回排 */
+const BACK_MAIN_STYLE = { left: `${PAGE.w - MAIN_LEFT - TABLE_W}mm`, width: `${TABLE_W}mm` };
+const BACK_STUB_STYLE = { left: `${PAGE.w - STUB_LEFT - STUB_W}mm`, width: `${STUB_W}mm` };
+const BACK_PERF_STYLE = { left: `${PAGE.w - PERF_LEFT}mm` };
+const UNIT_LINE_STYLE = {
+  marginLeft: `${UNIT_LINE.left}mm`,
+  flex: `0 0 ${UNIT_LINE.width}mm`,
+};
 
 // ---------------- 骨架 ----------------
 
@@ -377,15 +399,15 @@ export function MaintenanceFront(props: SheetProps) {
   const pageMark = pageCount > 1 ? `（第 ${pageNo} 页 / 共 ${pageCount} 页）` : '';
 
   return (
-    <div className={`mo-sheet ${overlay ? 'mo-sheet--overlay' : ''}`}>
-      <div className="mo-perf" />
+    <div className={`mo-sheet ${overlay ? 'mo-sheet--overlay' : ''}`} style={SHEET_STYLE}>
+      <div className="mo-perf" style={PERF_STYLE} />
 
-      <div className="mo-block mo-block--main">
+      <div className="mo-block mo-block--main" style={MAIN_STYLE}>
         <SheetHead title="房屋修理养护任务单" no={paperNo} page={pageMark} />
 
         <div className="mo-unitline">
           <Lb>管房单位</Lb>
-          <span className="mo-unitline__value">
+          <span className="mo-unitline__value" style={UNIT_LINE_STYLE}>
             <Field
               editable={editable}
               value={text(order.unitName)}
@@ -819,7 +841,7 @@ export function MaintenanceFront(props: SheetProps) {
       </div>
 
       {/* 右边的「报修凭证」存根 */}
-      <div className="mo-block mo-block--stub">
+      <div className="mo-block mo-block--stub" style={STUB_STYLE}>
         <div className="mo-head mo-head--stubno">
           {paperNo && <span className="mo-no">{paperNo}</span>}
         </div>
@@ -907,10 +929,13 @@ export function MaintenanceBack(props: SheetProps) {
   const paperNo = paperNoForSheet(order, pageNo);
 
   return (
-    <div className={`mo-sheet mo-sheet--back ${overlay ? 'mo-sheet--overlay' : ''}`}>
-      <div className="mo-perf" />
+    <div
+      className={`mo-sheet mo-sheet--back ${overlay ? 'mo-sheet--overlay' : ''}`}
+      style={SHEET_STYLE}
+    >
+      <div className="mo-perf" style={BACK_PERF_STYLE} />
 
-      <div className="mo-block mo-block--main">
+      <div className="mo-block mo-block--main" style={BACK_MAIN_STYLE}>
         <SheetHead
           title="材料领耗记录"
           spaced
@@ -1072,7 +1097,7 @@ export function MaintenanceBack(props: SheetProps) {
       </div>
 
       {/* 左边存根背面的「说明」 */}
-      <div className="mo-block mo-block--stub">
+      <div className="mo-block mo-block--stub" style={BACK_STUB_STYLE}>
         <div className="mo-head" style={{ height: '15mm' }}>
           <span className="mo-title mo-title--spaced">说明</span>
         </div>

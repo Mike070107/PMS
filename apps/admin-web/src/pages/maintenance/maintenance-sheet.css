@@ -20,6 +20,8 @@
     'Source Han Serif SC', serif;
   position: relative;
   box-sizing: border-box;
+  /* 纸张尺寸和版心位置由组件按 sheet-geometry 的实测值下发（改一个常量全跟着走），
+     这里留一份兜底值，单独看 CSS 时不至于摸不着头脑 */
   width: 227mm;
   height: 116mm;
   background: #fff;
@@ -41,29 +43,11 @@
   /* 6 + 标题带 9 + 管房单位 5 + 1.5 间隙 = 表格上沿 21.5mm（实测纸面就是这个位置） */
   top: 6mm;
 }
-.mo-block--main {
-  left: 10mm;
-  width: 160mm;
-}
-.mo-block--stub {
-  left: 177mm;
-  width: 44mm;
-}
-.mo-sheet--back .mo-block--main {
-  left: 57mm;
-}
-.mo-sheet--back .mo-block--stub {
-  left: 6mm;
-}
 .mo-perf {
   position: absolute;
   top: 4mm;
-  left: 173.5mm;
   height: 108mm;
   border-left: 0.3mm dashed #000;
-}
-.mo-sheet--back .mo-perf {
-  left: 53.5mm;
 }
 
 /* ---------- 标题区 ---------- */
@@ -146,10 +130,8 @@
   font-size: 3mm;
   padding-left: 2mm;
 }
+/* 起点和长度由组件按实测值下发（UNIT_LINE） */
 .mo-unitline__value {
-  /* 实测：线从表格左边起 17mm 处开始，长 41mm */
-  flex: 0 0 41mm;
-  margin-left: 2mm;
   border-bottom: 0.25mm solid #000;
   height: 4.6mm;
   text-align: center;
