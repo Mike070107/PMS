@@ -161,7 +161,7 @@ function DateField({
       editable={editable}
       value={formatMD(value)}
       title={value || undefined}
-      placeholder="8/11"
+      placeholder="月/日"
       className="mo-in--num"
       onChange={
         onChange
@@ -301,14 +301,12 @@ export function MaintenanceFront(props: SheetProps) {
       <div className="mo-block mo-block--main">
         <div className="mo-head">
           <span className="mo-title">房屋修理养护任务单</span>
-          <span className="mo-no">
-            {order.paperNo || order.orderNo}
-            {pageCount > 1 && (
-              <span className="mo-no__page">
-                （第 {pageNo} 页 / 共 {pageCount} 页）
-              </span>
-            )}
-          </span>
+          <OrderNo order={order} />
+          {pageCount > 1 && (
+            <span className="mo-no__page">
+              （第 {pageNo} 页 / 共 {pageCount} 页）
+            </span>
+          )}
         </div>
 
         <div className="mo-unitline">
@@ -733,7 +731,7 @@ export function MaintenanceFront(props: SheetProps) {
       {/* 右边的「报修凭证」存根 */}
       <div className="mo-block mo-block--stub">
         <div className="mo-head" style={{ height: '7mm' }}>
-          <span className="mo-no">{order.paperNo || order.orderNo}</span>
+          <OrderNo order={order} />
         </div>
         <div className="mo-head" style={{ height: '8mm' }}>
           <span className="mo-title">报修凭证</span>
@@ -821,12 +819,12 @@ export function MaintenanceBack(props: SheetProps) {
         <div className="mo-head">
           <span className="mo-title mo-title--spaced">材料领耗记录</span>
           {pageCount > 1 && (
-            <span className="mo-no">
-              {order.paperNo || order.orderNo}
+            <>
+              <OrderNo order={order} />
               <span className="mo-no__page">
                 （第 {pageNo} 页 / 共 {pageCount} 页）
               </span>
-            </span>
+            </>
           )}
         </div>
         <div className="mo-unitline" />
@@ -1014,6 +1012,12 @@ export function MaintenanceSheets(props: Omit<SheetProps, 'pageNo' | 'pageCount'
       ))}
     </>
   );
+}
+
+/** 单号：纸质联单号是 7 位，系统号 16 位 —— 长的自动小一档，别把存根撑折行 */
+function OrderNo({ order }: { order: MaintenanceOrder }) {
+  const no = order.paperNo || order.orderNo;
+  return <span className={`mo-no ${no.length > 10 ? 'mo-no--long' : ''}`}>{no}</span>;
 }
 
 function ymd(iso: string | null | undefined): { y: string; m: string; d: string } {

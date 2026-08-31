@@ -61,6 +61,23 @@ const DEFAULT_QUOTA_PARAMS: QuotaParams = {
   coefficient: 1.0341,
 };
 
+/**
+ * 纸上三个括号里写的字。勾了哪一格就把哪个名字写进括号 ——
+ * 前端勾选时也会跟着改（MaintenanceOrdersPage 的 optionText），两处口径一致。
+ * 「修缮日期」那个括号不自动写：它要的是日期，不是部位名。
+ */
+const FEE_CATEGORY_LABELS: Record<string, string> = {
+  owner: '业主自理',
+  repair_fund: '修缮基金',
+  elevator_fund: '电梯水泵基金',
+  public_fund: '公共设施基金',
+};
+const SHARE_METHOD_LABELS: Record<string, string> = {
+  natural: '自然幢',
+  door: '门牌幢',
+  zone: '住宅区域',
+};
+
 /** 单号字符集与工单同一套：去掉了 0/O、1/I、5/S、8/B 这些手写会认错的字 */
 const ORDER_NO_ALPHABET = '34679ACDEFGHJKMNPQRTUVWXY';
 
@@ -493,13 +510,15 @@ export class MaintenanceService {
       feeCategory: house ? 'owner' : 'repair_fund',
       shareMethod: house ? null : 'door',
       repairDateText: null,
-      feeCategoryText: null,
-      shareMethodText: null,
+      // 括号里的字跟着勾选一起写上，不然纸上勾了「修缮基金」括号却是空的
+      feeCategoryText: house ? FEE_CATEGORY_LABELS.owner : FEE_CATEGORY_LABELS.repair_fund,
+      shareMethodText: house ? null : SHARE_METHOD_LABELS.door,
       items: [firstItem],
       materials,
       laborRateCents: params.laborRateCents,
       coefficient: String(params.coefficient),
-      totalCents: 0,
+      // 用料的钱开单那一刻就该出现在「合计」里，不能等人点一下才算
+      totalCents: totalFeeCents([firstItem], params.coefficient),
       materialTotalCents: materialTotalCents(materials),
       scrapNote: null,
       voucherIssue: null,
