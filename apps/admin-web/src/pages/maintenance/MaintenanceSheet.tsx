@@ -239,6 +239,37 @@ function SignSlotBox({
   );
 }
 
+/**
+ * 地址格四个槽的宽度（占地址格 45mm 的百分比）。量的是纸上「路 弄 号 室」四个字的位置：
+ * 上行的「村」宽度 = 路 + 弄，这样它才正对着下行的「弄」。改这里两行一起动，不会跑偏。
+ */
+const ADDR_SLOTS = { road: 27, lane: 20, buildingNo: 23, room: 25 };
+
+function AddrSlot({
+  width,
+  unit,
+  value,
+  editable,
+  onChange,
+}: {
+  /** 百分比；不给就占满剩下的 */
+  width?: number;
+  unit: string;
+  value: string;
+  editable: boolean;
+  onChange?: (next: string) => void;
+}) {
+  return (
+    <span
+      className="mo-addr__slot"
+      style={width ? { flex: `0 0 ${width}%` } : { flex: '1 1 auto' }}
+    >
+      <Field editable={editable} value={value} onChange={onChange} />
+      <span className="mo-addr__unit">{unit}</span>
+    </span>
+  );
+}
+
 /** 一组「名称 + 勾选框」：点中的那个打 ✓，再点一下取消 */
 function TickGroup({
   options,
@@ -301,7 +332,7 @@ export function MaintenanceFront(props: SheetProps) {
       <div className="mo-block mo-block--main">
         <div className="mo-head">
           <span className="mo-title">房屋修理养护任务单</span>
-          <OrderNo order={order} />
+          <OrderNo order={order} pageNo={pageNo} />
           {pageCount > 1 && (
             <span className="mo-no__page">
               （第 {pageNo} 页 / 共 {pageCount} 页）
@@ -337,25 +368,48 @@ export function MaintenanceFront(props: SheetProps) {
               <Lb>地址</Lb>
             </Cell>
             <Cell w={45}>
+              {/* 纸上是两行：上行只有「村」，且正对着下行的「弄」（ADDR_SLOTS 的宽度就是按这个配的） */}
               <div className="mo-addr">
-                {(
-                  [
-                    ['addrVillage', '村', 1.5],
-                    ['addrRoad', '路', 1.5],
-                    ['addrLane', '弄', 0.95],
-                    ['addrBuildingNo', '号', 0.95],
-                    ['addrRoom', '室', 0.95],
-                  ] as const
-                ).map(([key, unit, weight]) => (
-                  <span className="mo-addr__slot" key={key} style={{ flexGrow: weight }}>
-                    <Field
-                      editable={editable}
-                      value={text(order[key] as string | null)}
-                      onChange={patch && ((v) => patch({ [key]: v } as Partial<MaintenanceOrder>))}
-                    />
-                    <span className="mo-addr__unit">{unit}</span>
-                  </span>
-                ))}
+                <div className="mo-addr__row">
+                  <AddrSlot
+                    width={ADDR_SLOTS.road + ADDR_SLOTS.lane}
+                    unit="村"
+                    value={text(order.addrVillage)}
+                    editable={editable}
+                    onChange={patch && ((v) => patch({ addrVillage: v }))}
+                  />
+                  <span style={{ flex: '1 1 auto' }} />
+                </div>
+                <div className="mo-addr__row">
+                  <AddrSlot
+                    width={ADDR_SLOTS.road}
+                    unit="路"
+                    value={text(order.addrRoad)}
+                    editable={editable}
+                    onChange={patch && ((v) => patch({ addrRoad: v }))}
+                  />
+                  <AddrSlot
+                    width={ADDR_SLOTS.lane}
+                    unit="弄"
+                    value={text(order.addrLane)}
+                    editable={editable}
+                    onChange={patch && ((v) => patch({ addrLane: v }))}
+                  />
+                  <AddrSlot
+                    width={ADDR_SLOTS.buildingNo}
+                    unit="号"
+                    value={text(order.addrBuildingNo)}
+                    editable={editable}
+                    onChange={patch && ((v) => patch({ addrBuildingNo: v }))}
+                  />
+                  <AddrSlot
+                    width={ADDR_SLOTS.room}
+                    unit="室"
+                    value={text(order.addrRoom)}
+                    editable={editable}
+                    onChange={patch && ((v) => patch({ addrRoom: v }))}
+                  />
+                </div>
               </div>
             </Cell>
             <Cell w={10.5}>
@@ -731,7 +785,7 @@ export function MaintenanceFront(props: SheetProps) {
       {/* 右边的「报修凭证」存根 */}
       <div className="mo-block mo-block--stub">
         <div className="mo-head" style={{ height: '7mm' }}>
-          <OrderNo order={order} />
+          <OrderNo order={order} pageNo={pageNo} />
         </div>
         <div className="mo-head" style={{ height: '8mm' }}>
           <span className="mo-title">报修凭证</span>
@@ -820,7 +874,7 @@ export function MaintenanceBack(props: SheetProps) {
           <span className="mo-title mo-title--spaced">材料领耗记录</span>
           {pageCount > 1 && (
             <>
-              <OrderNo order={order} />
+              <OrderNo order={order} pageNo={pageNo} />
               <span className="mo-no__page">
                 （第 {pageNo} 页 / 共 {pageCount} 页）
               </span>
@@ -1014,9 +1068,22 @@ export function MaintenanceSheets(props: Omit<SheetProps, 'pageNo' | 'pageCount'
   );
 }
 
+/**
+ * 这一张纸上印的单号。
+ *
+ * 实体联单是一本连号的纸，连打时每印一张号码就往后走一个 —— 所以库里只存起始号，
+ * 第 N 张显示「起始号 + N - 1」，位数保持不变（0119610 → 0119611）。
+ * 没填实体单号就退回系统单号（那个不连号，也不用递增）。
+ */
+export function paperNoForSheet(order: MaintenanceOrder, pageNo: number): string {
+  const raw = (order.paperNo || '').trim();
+  if (!/^\d+$/.test(raw)) return raw || order.orderNo;
+  return String(Number(raw) + pageNo - 1).padStart(raw.length, '0');
+}
+
 /** 单号：纸质联单号是 7 位，系统号 16 位 —— 长的自动小一档，别把存根撑折行 */
-function OrderNo({ order }: { order: MaintenanceOrder }) {
-  const no = order.paperNo || order.orderNo;
+function OrderNo({ order, pageNo }: { order: MaintenanceOrder; pageNo: number }) {
+  const no = paperNoForSheet(order, pageNo);
   return <span className={`mo-no ${no.length > 10 ? 'mo-no--long' : ''}`}>{no}</span>;
 }
 

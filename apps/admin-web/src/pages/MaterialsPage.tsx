@@ -176,7 +176,9 @@ export default function MaterialsPage() {
           loading={loading}
           dataSource={filtered}
           tableLayout="fixed"
-          scroll={{ x: 1280 }}
+          // x 必须 ≥ 各列宽度之和：小于总和时，没写 width 的那列只能分到剩下的几十像素，
+          // 表头中文会被压成竖排（2026-08-31 在 1366 宽的屏上量到「详细参数」只剩 36px）
+          scroll={{ x: 1464 }}
           pagination={seq.pagination}
           columns={[
             seq.column,
@@ -220,6 +222,7 @@ export default function MaterialsPage() {
             {
               title: '详细参数',
               dataIndex: 'params',
+              width: 220,
               ellipsis: true,
               render: (v) => v ? <Tooltip title={v}>{v}</Tooltip> : <Text type="secondary">-</Text>,
             },

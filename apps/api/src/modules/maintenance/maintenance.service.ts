@@ -78,6 +78,13 @@ const SHARE_METHOD_LABELS: Record<string, string> = {
   zone: '住宅区域',
 };
 
+/**
+ * 一张纸能放几行 —— 和 MaintenanceSheet.tsx 里的格子数一致（正面 4 行明细、背面 7 行材料）。
+ * 服务端只在算「下一张实体联单号」时用它：一张单印了几张纸，号码就往后走几个。
+ */
+const ITEMS_PER_SHEET = 4;
+const MATERIALS_PER_SHEET = 7;
+
 /** 单号字符集与工单同一套：去掉了 0/O、1/I、5/S、8/B 这些手写会认错的字 */
 const ORDER_NO_ALPHABET = '34679ACDEFGHJKMNPQRTUVWXY';
 
@@ -244,7 +251,7 @@ export class MaintenanceService {
     const row = await this.orderRepo.findOne({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('养护单不存在');
     this.assertInScope(row.communityId, access);
-    return this.toDetail(row);
+    return { ...this.toDetail(row), suggestedPaperNo: await this.suggestPaperNo(tenantId) };
   }
 
   /** 工单详情页「填养护单」用：这张工单有没有养护单，有就直接打开 */
@@ -285,14 +292,16 @@ export class MaintenanceService {
         { tenantId, workOrderId: workOrder.id, status: MAINTENANCE_STATUS.INSPECTED },
       ],
     });
-    if (existing) return this.toDetail(existing);
+    if (existing) {
+      return { ...this.toDetail(existing), suggestedPaperNo: await this.suggestPaperNo(tenantId) };
+    }
 
     const draft = await this.buildPrefill(tenantId, workOrder, user);
     const saved = await this.dataSource.transaction(async (manager) => {
       draft.orderNo = await this.nextOrderNo(manager);
       return manager.save(MaintenanceOrder, manager.create(MaintenanceOrder, draft));
     });
-    return this.toDetail(saved);
+    return { ...this.toDetail(saved), suggestedPaperNo: await this.suggestPaperNo(tenantId) };
   }
 
   async update(
@@ -316,7 +325,14 @@ export class MaintenanceService {
     const text = (v: string | undefined, cur: string | null) =>
       v === undefined ? cur : v.trim() || null;
 
-    row.paperNo = text(dto.paperNo, row.paperNo);
+    // 实体联单号只收数字：连打时要按它逐张 +1，混进字母就加不了
+    if (dto.paperNo !== undefined) {
+      const paperNo = dto.paperNo.trim();
+      if (paperNo && !/^\d+$/.test(paperNo)) {
+        throw new BadRequestException('实体单号只能填数字（联单上号码机打的那串）');
+      }
+      row.paperNo = paperNo || null;
+    }
     row.unitName = text(dto.unitName, row.unitName);
     row.reporterName = text(dto.reporterName, row.reporterName);
     row.addrVillage = text(dto.addrVillage, row.addrVillage);
@@ -682,6 +698,32 @@ export class MaintenanceService {
       finishOn: row.finishOn,
       createdAt: row.createdAt,
     };
+  }
+
+  /**
+   * 下一张实体联单的号：库里已用过的最大号 + 1，位数保持不变（0119610 → 0119611）。
+   * 联单是一本连号的纸，办公室不会想每次自己数到哪儿了。
+   * 一个号都没用过就返回 null，让端上退回「上次填的」或空着。
+   */
+  private async suggestPaperNo(tenantId: number): Promise<string | null> {
+    // 上一张单印了几张纸，号码就往后走几个 —— 两张纸的单只 +1 会和已经打出去的纸撞号
+    const rows: Array<{ paper_no: string; sheets: string }> = await this.orderRepo.query(
+      `SELECT paper_no,
+              GREATEST(
+                1,
+                CEIL(jsonb_array_length(items)::numeric / $2),
+                CEIL(jsonb_array_length(materials)::numeric / $3)
+              ) AS sheets
+         FROM maintenance_orders
+        WHERE tenant_id = $1 AND paper_no ~ '^[0-9]+$'
+        ORDER BY length(paper_no) DESC, paper_no DESC
+        LIMIT 1`,
+      [tenantId, ITEMS_PER_SHEET, MATERIALS_PER_SHEET],
+    );
+    const last = rows[0]?.paper_no;
+    if (!last) return null;
+    const sheets = Math.max(1, Number(rows[0]?.sheets) || 1);
+    return String(Number(last) + sheets).padStart(last.length, '0');
   }
 
   private toDetail(row: MaintenanceOrder) {

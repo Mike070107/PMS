@@ -202,10 +202,13 @@ export default function StaffPage() {
           loading={loading}
           dataSource={rows}
           pagination={{ pageSize: 20 }}
+          // 每列都给宽度 + 合计当 scroll.x：不给的话窗口一窄 antd 就把列压到一个字宽，
+          // 「赵丽萍」变成竖着排的三行（2026-08-31 在 1024 宽的屏上量到 30px 宽 / 91px 高）
+          scroll={{ x: 1180 }}
           columns={[
             { title: 'ID', dataIndex: 'id', width: 70 },
-            { title: '姓名', dataIndex: 'name', render: (v) => v || '-' },
-            { title: '电话', dataIndex: 'phone', render: (v) => v || '-' },
+            { title: '姓名', dataIndex: 'name', width: 110, render: (v) => v || '-' },
+            { title: '电话', dataIndex: 'phone', width: 130, render: (v) => v || '-' },
             {
               // 合并后只剩这一列：角色名打头，底下小字写清它属于哪一类工作流 ——
               // 「张三 = 枫桦管理处主任（物业经理）」比只看到一个角色名有用得多
@@ -225,7 +228,7 @@ export default function StaffPage() {
               title: '工种', dataIndex: 'skills', width: 200,
               render: (s: string[]) => s?.length ? s.map((x) => <Tag key={x}>{skillOptions.find((o) => o.value === x)?.label || x}</Tag>) : '-',
             },
-            { title: '登录账号', dataIndex: 'loginAccount', render: (v) => v || '-' },
+            { title: '登录账号', dataIndex: 'loginAccount', width: 130, render: (v) => v || '-' },
             {
               title: '员工端微信', dataIndex: 'wxBound', width: 110,
               render: (bound: boolean) =>

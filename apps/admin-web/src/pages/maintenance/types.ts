@@ -81,6 +81,8 @@ export interface MaintenanceOrder {
   followUpRecord: string | null;
   addressText?: string;
   createdAt?: string;
+  /** 服务端算的下一张实体联单号（库里最大号 + 上一张单印了几张纸）；没用过号时为 null */
+  suggestedPaperNo?: string | null;
 }
 
 export interface MaintenanceListRow {

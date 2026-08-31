@@ -69,6 +69,30 @@ const SIGN_SLOT_LABELS: Record<SignSlot, string> = {
 
 const DEFAULT_PARAMS: QuotaParams = { laborRateCents: 1750, coefficient: 1.0341 };
 
+/**
+ * 上一次填的实体联单号，存在本机 —— 服务端还没有任何单用过号时（第一次用）拿它兜底，
+ * 省得每次翻本子看撕到第几张了。服务端一旦有号，以服务端的为准（多台机器共用同一本联单）。
+ */
+const LAST_PAPER_NO_KEY = 'pms.maintenance.lastPaperNo';
+
+function nextPaperNoFromLocal(): string {
+  try {
+    const raw = localStorage.getItem(LAST_PAPER_NO_KEY) || '';
+    if (!/^\d+$/.test(raw)) return '';
+    return String(Number(raw) + 1).padStart(raw.length, '0');
+  } catch {
+    return '';
+  }
+}
+
+function rememberPaperNo(value: string | null | undefined) {
+  try {
+    if (value && /^\d+$/.test(value)) localStorage.setItem(LAST_PAPER_NO_KEY, value);
+  } catch {
+    // 隐私模式下写不了，无所谓：服务端那份建议才是主力
+  }
+}
+
 const emptyItem = (): MaintenanceItem => ({
   part: '',
   name: '',
@@ -238,6 +262,7 @@ export default function MaintenanceOrdersPage() {
     {
       title: '报修地址 / 项目',
       key: 'address',
+      width: 280,
       render: (_: unknown, r: MaintenanceListRow) => (
         <div>
           <div style={{ fontWeight: 600 }}>{r.addressText || '—'}</div>
@@ -263,7 +288,7 @@ export default function MaintenanceOrdersPage() {
       key: 'people',
       width: 200,
       render: (_: unknown, r: MaintenanceListRow) => (
-        <Text>
+        <Text style={{ whiteSpace: 'nowrap' }}>
           {[r.fillerName || '—', r.repairerName || '—', r.inspectorName || '未查验'].join(' / ')}
         </Text>
       ),
@@ -300,14 +325,23 @@ export default function MaintenanceOrdersPage() {
 
   return (
     <div className="pms-content pms-fadein">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+          marginBottom: 8,
+        }}
+      >
         <div>
           <Title level={3} style={{ margin: 0 }}>
             养护单
           </Title>
           <Text type="secondary">《房屋修理养护任务单》：按工单开单、手写签名、查验后打印</Text>
         </div>
-        <Space>
+        <Space wrap>
           <Button size="large" icon={<SettingOutlined />} onClick={() => setQuotaOpen(true)}>
             预算定额配置
           </Button>
@@ -358,6 +392,9 @@ export default function MaintenanceOrdersPage() {
           dataSource={rows}
           columns={columns}
           tableLayout="fixed"
+          // 列宽合计约 1180：窗口比它窄就横向滚，不让列被压到一个字宽、
+          // 把「养护单号」挤成竖排（2026-08-31 反馈）
+          scroll={{ x: 1180 }}
           pagination={{ pageSize: 10, showSizeChanger: false }}
           onRow={(r) => ({ onClick: () => setOpenId(r.id), style: { cursor: 'pointer' } })}
           locale={{
@@ -461,6 +498,7 @@ function WorkOrderPicker({
         size="middle"
         loading={loading}
         dataSource={rows}
+        scroll={{ x: 720 }}
         pagination={{ pageSize: 8, showSizeChanger: false }}
         onRow={(r) => ({ onClick: () => onPick(r.id), style: { cursor: 'pointer' } })}
         columns={[
@@ -468,7 +506,7 @@ function WorkOrderPicker({
           {
             title: '报修地址',
             dataIndex: 'summaryAddress',
-            width: 150,
+            width: 160,
             render: (v: string | null) => v || '—',
           },
           {
@@ -532,8 +570,12 @@ function MaintenanceEditor({
     setLoading(true);
     request<MaintenanceOrder>({ url: `/maintenance-orders/${id}` })
       .then((data) => {
-        setDraft(data);
-        setDirty(false);
+        // 还没填实体单号的草稿：直接把下一个号填上（服务端算的优先，其次本机上次填的）,
+        // 让人少翻一次联单本；填错了改一下就行，保存时才落库
+        const suggestion = data.suggestedPaperNo || nextPaperNoFromLocal();
+        const prefilled = !data.paperNo && suggestion;
+        setDraft(prefilled ? { ...data, paperNo: suggestion } : data);
+        setDirty(!!prefilled);
       })
       .catch((e: any) => message.error(e?.message || '加载养护单失败'))
       .finally(() => setLoading(false));
@@ -650,6 +692,7 @@ function MaintenanceEditor({
       });
       setDraft(saved);
       setDirty(false);
+      rememberPaperNo(saved.paperNo);
       onChanged();
       message.success('已保存');
     } catch (e: any) {
@@ -761,15 +804,18 @@ function MaintenanceEditor({
         footer={
           <Space wrap>
             {editable && (
-              <Space.Compact>
+              <Tooltip title="联单上号码机打的那串数字。多张纸时这里填第一张的号，打印时逐张 +1。">
                 <Input
-                  addonBefore="纸质单号"
-                  style={{ width: 220 }}
-                  placeholder="联单上预印的号，如 0119524"
+                  addonBefore="实体单号"
+                  style={{ width: 230 }}
+                  inputMode="numeric"
+                  maxLength={12}
+                  placeholder="起始编号，如 0119610"
                   value={draft?.paperNo || ''}
-                  onChange={(e) => patch({ paperNo: e.target.value })}
+                  // 只收数字：连打要按它逐张 +1，混进字母就加不了（服务端也拦一道）
+                  onChange={(e) => patch({ paperNo: e.target.value.replace(/\D/g, '') })}
                 />
-              </Space.Compact>
+              </Tooltip>
             )}
             <Select
               value={zoom}
@@ -1017,11 +1063,12 @@ function QuotaConfigModal({
         rowKey="id"
         size="middle"
         dataSource={items}
+        scroll={{ x: 760 }}
         pagination={{ pageSize: 6, showSizeChanger: false }}
         locale={{ emptyText: '还没有定额条目，在下面加一条' }}
         columns={[
           { title: '编号', dataIndex: 'code', width: 120 },
-          { title: '项目名称', dataIndex: 'name' },
+          { title: '项目名称', dataIndex: 'name', width: 200 },
           { title: '单位', dataIndex: 'unit', width: 70 },
           {
             title: '工时定额',
