@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { AiExtractSample } from '../../entities';
 import { SettingsModule } from '../settings/settings.module';
 import { AiController } from './ai.controller';
+import { ExtractSamplesService } from './extract-samples.service';
 import { LlmService } from './llm.service';
 import { RepairTextAiService } from './repair-text.ai';
 
@@ -9,9 +12,9 @@ import { RepairTextAiService } from './repair-text.ai';
  * 换服务商、加一个用得上模型的地方，都只动这一个模块。
  */
 @Module({
-  imports: [SettingsModule],
+  imports: [TypeOrmModule.forFeature([AiExtractSample]), SettingsModule],
   controllers: [AiController],
-  providers: [LlmService, RepairTextAiService],
-  exports: [LlmService, RepairTextAiService],
+  providers: [LlmService, RepairTextAiService, ExtractSamplesService],
+  exports: [LlmService, RepairTextAiService, ExtractSamplesService],
 })
 export class AiModule {}

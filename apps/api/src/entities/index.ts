@@ -38,6 +38,7 @@ import { BusinessTransaction } from './business-transaction.entity';
 import { BusinessLog } from './business-log.entity';
 import { RepairTypeRule } from './repair-type-rule.entity';
 import { RepairTypeCorrection } from './repair-type-correction.entity';
+import { AiExtractSample } from './ai-extract-sample.entity';
 import { WebLoginTicket } from './web-login-ticket.entity';
 import { FeeStandard } from './fee-standard.entity';
 import { FeeBill } from './fee-bill.entity';
@@ -103,6 +104,7 @@ export const entities = [
   BusinessLog,
   RepairTypeRule,
   RepairTypeCorrection,
+  AiExtractSample,
   WebLoginTicket,
   FeeStandard,
   FeeBill,
@@ -160,6 +162,7 @@ export {
   BusinessLog,
   RepairTypeRule,
   RepairTypeCorrection,
+  AiExtractSample,
   WebLoginTicket,
   FeeStandard,
   FeeBill,

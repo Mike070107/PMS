@@ -13,6 +13,7 @@ import {
 } from 'antd';
 import { RightOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import AiSamplesPanel from '../components/AiSamplesPanel';
 import { request } from '../lib/api';
 import { usePagePerm } from '../lib/auth';
 
@@ -812,7 +813,9 @@ export default function SettingsPage() {
             />
           )}
         </Space>
-        <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 12, marginBottom: 0 }}>
+        <AiSamplesPanel canEdit={canEdit} />
+
+        <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 24, marginBottom: 0 }}>
           费用参考：一次报修一次调用、输入一百来字，按 DeepSeek 这类国产模型的价格，
           一天几十单的量每月也就几块钱。报修内容里带住户姓名电话，服务商请选国内合规的。
         </Paragraph>

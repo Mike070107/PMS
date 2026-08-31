@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ExtractSamplesService } from './extract-samples.service';
 import { LlmService } from './llm.service';
 
 /**
@@ -48,14 +49,26 @@ const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很
 
 @Injectable()
 export class RepairTextAiService {
-  constructor(private readonly llm: LlmService) {}
+  constructor(
+    private readonly llm: LlmService,
+    private readonly samples: ExtractSamplesService,
+  ) {}
 
   /** 没配大模型、调不通、返回不是 JSON —— 一律 null，调用方退回规则结果 */
   async parse(tenantId: number, text: string): Promise<RepairTextAiResult | null> {
     const value = (text || '').trim();
     // 太短的话规则法足够了，不值得多花一次调用和 1~2 秒延迟
     if (value.length < 6) return null;
-    const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, SYSTEM_PROMPT, value);
+    /**
+     * 提示词 = 固定规则 + **样例库**。
+     *
+     * 样例库在数据库里、后台能加（ai_extract_samples）：遇到一种没见过的说法，
+     * 办公室自己加一条「这么说 → 应该这么认」就行，不用改代码重新发版
+     * （2026-09-01 用户要求：已经处理过的正例要让 AI 记住，别每次重讲一遍规则）。
+     * 拿不到样例（库挂了、还没灌种子）也不影响 —— 固定规则那部分照常工作。
+     */
+    const system = await this.buildSystemPrompt(tenantId);
+    const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value);
     if (!raw) return null;
     return {
       addressText: str(raw.addressText),
@@ -65,6 +78,33 @@ export class RepairTextAiService {
       urgent: raw.urgent === true,
     };
   }
+
+  /** 固定规则 + 样例库拼成的完整提示词。样例取不到就只用固定规则那半截 */
+  private async buildSystemPrompt(tenantId: number): Promise<string> {
+    let examples: string[] = [];
+    try {
+      const rows = await this.samples.forPrompt(tenantId);
+      examples = rows
+        .filter((row) => row.text?.trim() && row.expected && Object.keys(row.expected).length)
+        .map((row) => `输入：${row.text.trim()}\n输出：${JSON.stringify(fullShape(row.expected))}`);
+    } catch {
+      // 样例是加分项，取不到就算了，别让识别整个失效
+    }
+    if (!examples.length) return SYSTEM_PROMPT;
+    const header = '下面是这家物业实际遇到过、并且已经确认过正确的例子，照着这个口径来：';
+    return [SYSTEM_PROMPT, header, examples.join('\n\n')].join('\n\n');
+  }
+}
+
+/** 样例只存要教的字段，喂给模型时补齐成完整形状 —— 缺字段会教出「可以不输出某个字段」 */
+function fullShape(expected: Record<string, unknown>): Record<string, unknown> {
+  return {
+    addressText: typeof expected.addressText === 'string' ? expected.addressText : '',
+    description: typeof expected.description === 'string' ? expected.description : '',
+    contactName: typeof expected.contactName === 'string' ? expected.contactName : '',
+    phone: typeof expected.phone === 'string' ? expected.phone : '',
+    urgent: expected.urgent === true,
+  };
 }
 
 function str(v: unknown): string {
