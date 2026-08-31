@@ -1,10 +1,17 @@
 import { repairs } from '@pms/api-client';
 import { withOrderLabels } from '@pms/miniapp-ui';
 import { WorkOrderStatus, type WorkOrderListItem } from '@pms/shared-types';
-import { getSession } from '../../utils/session';
+import { isActiveOrder } from '../../utils/order-status';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
 import { refreshUnread, topUpQuietly } from '../../utils/unread';
 
+/**
+ * 这一页只列「手上真正要干的活」。
+ *
+ * 「我报的」「已完结」2026-08-31 搬去了工单池的三档 Tab：这一屏是干活的地方，
+ * 底下压着一摞已经结束的单，人得先翻过它们才看得到今天该干什么。
+ * 要找自己报过的单、或者翻旧单，去「工单池 → 我报的 / 已完结」。
+ */
 type OrderRow = WorkOrderListItem & {
   typeLabel: string;
   createdAtText: string;
@@ -18,8 +25,6 @@ type OrderRow = WorkOrderListItem & {
   /** 卡片右下角写清下一步该干什么，而不是笼统的「查看详情」 */
   actionText: string;
   reporterText: string;
-  /** 「我报的」卡片：这单现在在谁手上 */
-  assigneeText?: string;
 
   /* ---- 卡片数据网格用的四个短值（data-first-ui）：由 withOrderLabels 一并算好 ----
      工单池那页用的是同一份，改口径去 packages/miniapp-ui/src/format.ts，别在页面里再算一遍 */
@@ -32,17 +37,6 @@ type OrderRow = WorkOrderListItem & {
   /** 「业主」「保安代报」—— 身份，压在姓名下面当说明 */
   statReporterHint: string;
 };
-
-/** 「我的」页点「我的报修」时写下的一次性标记：进来把「我报的」那一段展开 */
-const OPEN_REPORTED_KEY = 'pms.staff.open_reported';
-
-/** 还要人动手的状态，排在最上面；其余归到「已完结」折叠区 */
-const ACTIVE_STATUSES: string[] = [
-  WorkOrderStatus.CREATED,
-  WorkOrderStatus.DISPATCHED,
-  WorkOrderStatus.IN_PROGRESS,
-  WorkOrderStatus.WAITING_MATERIAL,
-];
 
 const ACTION_TEXT: Record<string, string> = {
   [WorkOrderStatus.CREATED]: '去接单',
@@ -59,33 +53,11 @@ Page({
      * 和工单池同一口径，两屏之间的数才对得上
      */
     overdueCount: 0,
-    done: [] as OrderRow[],
-    doneOpen: false,
-    /**
-     * 我替住户/巡查报的单（不管派给了谁）。派给别人之后在手和池子里都看不到，
-     * 报单的人会以为单子丢了；默认收起，不和手上要干的活抢位置
-     */
-    reported: [] as OrderRow[],
-    reportedOpen: false,
     loaded: false,
-    /** 已完结区的搜索：输入中的词 / 已发出去的词 / 结果（null = 没在搜，显示 done） */
-    doneKeyword: '',
-    doneQ: '',
-    doneResults: null as OrderRow[] | null,
-    doneSearching: false,
-    doneCapped: false,
   },
 
   onShow() {
     syncTabBar(this, 'mine');
-    // 从「我的 → 我的报修」进来的：把「我报的」那一段展开并滚过去。
-    // tabBar 页 switchTab 带不了参数，所以用一次性标记传话（见 me.ts 的 onOpenReported）
-    if (takeOpenReported()) {
-      // 只能先记个心愿：这会儿 reported 还没拉回来，#reported 那个锚点压根不在页面上，
-      // 现在 pageScrollTo 会静默找不到目标。真正的滚动在 loadReported 拿到数据之后
-      (this as any).pendingReportedScroll = true;
-      this.setData({ reportedOpen: true });
-    }
     this.load();
     // 「我的」那一格的未读角标：新工单派下来时，人得在这一屏就看见
     refreshUnread(this);
@@ -98,86 +70,23 @@ Page({
   async load() {
     try {
       const list = await repairs.list({ scope: 'mine' });
-      const rows = withOrderLabels(list).map((item) => ({
-        ...item,
-        actionText: ACTION_TEXT[item.status] || '查看详情',
-      }));
-      const active = rows.filter((item) => ACTIVE_STATUSES.indexOf(item.status) >= 0);
+      const active = withOrderLabels(list)
+        .filter((item) => isActiveOrder(item.status))
+        .map((item) => ({
+          ...item,
+          actionText: ACTION_TEXT[item.status] || '查看详情',
+        }));
       // 急的排前面，和工单池同一套口径
       active.sort((a, b) => b.stayDays - a.stayDays || b.id - a.id);
       this.setData({
         active,
         overdueCount: active.filter((item) => item.stayTone === 'danger').length,
-        done: rows.filter((item) => ACTIVE_STATUSES.indexOf(item.status) < 0),
         loaded: true,
       });
       setTabBadge(this, 'mine', active.length);
-      this.loadReported(new Set(rows.map((item) => item.id)));
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     }
-  },
-
-  /** 我报的单：能报修的人才拉；已经在手上的那些不重复列 */
-  async loadReported(shown: Set<number>) {
-    try {
-      const session = await getSession();
-      if (!session.canReport) return;
-      const list = await repairs.list({ scope: 'reported' });
-      const reported = withOrderLabels(list)
-        .filter((item) => !shown.has(item.id))
-        .map((item) => ({
-          ...item,
-          actionText: '看进度',
-          assigneeText: item.assigneeName || '还没人接',
-        }));
-      this.setData({ reported }, () => {
-        // 在手的单可能有十几张，不滚过去的话人只看到列表顶部，会以为入口点错了
-        if ((this as any).pendingReportedScroll && reported.length) {
-          (this as any).pendingReportedScroll = false;
-          wx.pageScrollTo({ selector: '#reported', duration: 200 });
-        }
-      });
-    } catch {
-      // 这一块是附加信息，拉不到不影响在手工单
-    }
-  },
-
-  onToggleReported() {
-    this.setData({ reportedOpen: !this.data.reportedOpen });
-  },
-
-  onToggleDone() {
-    this.setData({ doneOpen: !this.data.doneOpen });
-  },
-
-  onDoneKeyword(e: WechatMiniprogram.Input) {
-    this.setData({ doneKeyword: e.detail.value });
-  },
-
-  /**
-   * 搜已完结的单走服务端：手上列表只带最近 100 条，去年修过的单本地是搜不到的。
-   * 服务端 q 同时匹配 单号 / 地址（198/47/201 逐段）/ 描述 / 报修人 / 维修工，和后台工单池一个口径。
-   */
-  async onSearchDone() {
-    const q = this.data.doneKeyword.trim();
-    if (!q) return this.onClearDoneSearch();
-    this.setData({ doneSearching: true, doneOpen: true });
-    try {
-      const list = await repairs.list({ scope: 'mine', q });
-      const rows = withOrderLabels(list)
-        .map((item) => ({ ...item, actionText: '查看详情' }))
-        .filter((item) => ACTIVE_STATUSES.indexOf(item.status) < 0);
-      this.setData({ doneQ: q, doneResults: rows, doneCapped: list.length >= 100 });
-    } catch (e: any) {
-      wx.showToast({ icon: 'none', title: e?.message || '搜索失败' });
-    } finally {
-      this.setData({ doneSearching: false });
-    }
-  },
-
-  onClearDoneSearch() {
-    this.setData({ doneKeyword: '', doneQ: '', doneResults: null, doneCapped: false });
   },
 
   onTapItem(e: WechatMiniprogram.BaseEvent) {
@@ -186,14 +95,3 @@ Page({
     wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${e.currentTarget.dataset.id}` });
   },
 });
-
-/** 读一次「展开我报的」标记并清掉。读不到就按平常进页面处理 */
-function takeOpenReported(): boolean {
-  try {
-    if (wx.getStorageSync(OPEN_REPORTED_KEY) !== '1') return false;
-    wx.removeStorageSync(OPEN_REPORTED_KEY);
-    return true;
-  } catch {
-    return false;
-  }
-}

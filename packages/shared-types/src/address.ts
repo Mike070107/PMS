@@ -77,6 +77,44 @@ export function formatBuildingFull(
   return `${building.buildingNo}号`;
 }
 
+/**
+ * 这个弄号跟在小区名后面是不是废话。
+ *
+ * 两种情况都是废话（2026-08-31 用户反馈「小区里已经包含了地址的一部分就别重复显示」）：
+ *   · 小区名里已经写了它 —— 「永南140弄」+「140弄3号201室」，弄号说了两遍
+ *   · 这个小区就这一个弄 —— 「枫桦景苑一期」只有 198 弄，说了小区名就等于说了弄号
+ * 反过来，一个小区有好几个弄时**绝不能省**：省了「198弄17号」和「228弄17号」
+ * 会显示成同一个地址，维修工按门牌找过去是白跑一趟。
+ */
+export function isLaneRedundant(
+  community: { name: string; mainLane?: string | null; laneCount?: number | null },
+  lane?: string | null,
+): boolean {
+  if (!lane) return false;
+  if (community.name.includes(`${lane}弄`)) return true;
+  return community.laneCount === 1;
+}
+
+/**
+ * 一行展示的完整地址：`枫桦景苑一期17号201室`。
+ *
+ * 工单卡片、消息标题、通知文案这些「给人看一眼就知道去哪」的地方都用它，
+ * 别再各处自己拼 —— 拼出来的差别就是「永北5511弄 5511弄278号503室」这种重复。
+ * 需要可复制/可搜索的规范写法（带分隔符、带弄号）用 formatFullAddress。
+ */
+export function formatAddressLine(
+  community: { name: string; mainLane?: string | null; laneCount?: number | null },
+  building?: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName'> | null,
+  roomNo?: string | null,
+): string {
+  const lane = building?.lane || '';
+  const keepLane = lane && !isLaneRedundant(community, lane);
+  const buildingText = building
+    ? `${keepLane ? `${lane}弄` : ''}${!lane && building.roadName ? building.roadName : ''}${building.buildingNo ? `${building.buildingNo}号` : ''}`
+    : '';
+  return `${community.name}${buildingText}${roomNo ? `${roomNo}室` : ''}`;
+}
+
 /** 最终填进表单、可复制的地址：枫桦景苑二期/228弄4号/201 */
 export function formatFullAddress(
   communityName: string,

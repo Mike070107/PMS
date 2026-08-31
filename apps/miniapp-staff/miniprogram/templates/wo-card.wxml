@@ -1,0 +1,55 @@
+<!--
+  工单卡片的正文（头部两行 + 数据网格 + 缺料说明），工单池 / 派单台 / 在手工单 / 我报的 /
+  已完结**共用这一份**。以前是各页面各抄一遍，改一次要改四处，漏一处就长得不一样。
+
+  卡片外壳（.card.wo-card.wo-card--data、点击、hover）和底部那行动作按钮留在各页面：
+  外壳上的 wx:for/data-id 每页不同，动作更是每页都不一样（接单 / 派单 / 去完工 / 看进度）。
+
+  用法：
+    <import src="/templates/wo-card.wxml"/>
+    <template is="wo-card-body" data="{{item, thirdLabel: '报修人', thirdValue: item.statReporter, thirdHint: item.statReporterHint}}"/>
+
+  第三格由调用方给（thirdLabel/thirdValue/thirdHint）：维修工要看「找谁开门」，
+  派单台要看「在谁手上」，报单的人要看「派给谁了」—— 同一格三种含义，不能写死。
+  样式在 app.wxss 的 .wo-card--data 一节。
+-->
+<template name="wo-card-body">
+  <view class="wo-card__head">
+    <view class="wo-card__main">
+      <!-- 第一行地址、第二行报修内容，各占一行超出省略。
+           站在楼道里先要知道去哪儿，再看修什么。
+
+           「紧急」标挂在第二行行首，不放地址那一行：它占掉近 90rpx，
+           地址就被截成「枫桦景苑一期17号20…」——room 号看不全，跟没写一样。
+           地址是这张卡上最不能截的东西，整行只留给它。 -->
+      <view class="wo-card__title">{{item.summaryAddress || '未填地址'}}</view>
+      <view class="wo-card__desc">
+        <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>{{item.summaryContent || '未填描述'}}
+      </view>
+    </view>
+    <pms-tag class="status-tag" status="{{item.status}}"/>
+  </view>
+
+  <!-- 全卡唯一的视觉锚点是第一格那个数，压 3 天以上转红。
+       标签按是否完结换（已等 / 用时）—— 完结的单再说「已等」会被当成还堆在那儿没人管 -->
+  <view class="stat-grid">
+    <view class="stat">
+      <view class="stat__label">{{item.statStayLabel}}</view>
+      <view class="stat__value stat__value--{{item.stayTone}}">{{item.statStay}}</view>
+      <view class="stat__hint">{{item.timeText}}</view>
+    </view>
+    <view class="stat">
+      <view class="stat__label">类型</view>
+      <view class="stat__value stat__value--text">{{item.typeLabel}}</view>
+      <view class="stat__hint"></view>
+    </view>
+    <view class="stat">
+      <view class="stat__label">{{thirdLabel}}</view>
+      <view class="stat__value stat__value--text">{{thirdValue}}</view>
+      <view class="stat__hint">{{thirdHint}}</view>
+    </view>
+  </view>
+
+  <!-- 缺料清单塞不进网格，放正文：状态标签只说「在等料」，等的是什么得写出来才有用 -->
+  <view wx:if="{{item.missingText}}" class="wo-card__note">等待材料：{{item.missingText}}</view>
+</template>

@@ -40,6 +40,7 @@ import {
   WarehouseType,
   WorkOrderStatus,
 } from '../../common/enums';
+import { formatAddressLine } from '../../common/address-line.util';
 import { detectUrgency } from '../../common/repair-urgency.util';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
 import {
@@ -883,7 +884,7 @@ export class RepairsService implements OnModuleInit {
 
     const requests = await this.repairRequestRepo.find({
       where: { tenantId, id: In(requestIds) },
-      select: ['id', 'repairType', 'houseId', 'buildingId', 'addressText', 'content', 'contactName', 'reporterRole', 'source', 'urgent'],
+      select: ['id', 'repairType', 'houseId', 'buildingId', 'communityId', 'addressText', 'content', 'contactName', 'reporterRole', 'source', 'urgent'],
     });
     const houseIds = requests
       .map((item) => item.houseId)
@@ -907,6 +908,11 @@ export class RepairsService implements OnModuleInit {
     const requestById = new Map(requests.map((item) => [item.id, item]));
     const houseById = new Map(houses.map((item) => [item.id, item]));
     const buildingById = new Map(buildings.map((item) => [item.id, item]));
+    // 卡片地址要带小区名，还要按「这个小区有几个弄」决定弄号省不省
+    const communityById = await this.communityAddressInfo(
+      tenantId,
+      workOrders.map((item) => item.communityId),
+    );
     const typeLabels = await this.repairTypeLabels(tenantId);
     // 派单台要显示「这单在谁手上」。端上查不到人名（/staff 是 users 页权限，
     // 办公室不一定有），所以这里一并带出来
@@ -934,6 +940,7 @@ export class RepairsService implements OnModuleInit {
           requestById.get(item.requestId),
           houseById,
           buildingById,
+          communityById,
         ),
         summaryContent: requestById.get(item.requestId)?.content ?? '',
         assigneeName: item.assigneeId
@@ -1371,22 +1378,75 @@ export class RepairsService implements OnModuleInit {
     return requests.map((item) => item.id);
   }
 
+  /**
+   * 列表卡片上那一行地址：`枫桦景苑一期17号201室`。
+   *
+   * 带小区名 —— 只写「17号201室」，跨小区的列表里根本不知道是哪儿（2026-08-31 要求：
+   * 卡片上地址独占一行，不再有下面那行小字）。
+   * 弄号该不该留交给 formatAddressLine 判断（小区名里已经写了它、或者这个小区就一个弄
+   * 就是废话；有好几个弄的小区一个都不能省）—— 规则和取舍见 common/address-line.util.ts。
+   */
   private buildRequestAddressSummary(
-    request: Pick<RepairRequest, 'addressText' | 'houseId' | 'buildingId'> | undefined,
+    request:
+      | Pick<RepairRequest, 'addressText' | 'houseId' | 'buildingId' | 'communityId'>
+      | undefined,
     houseById: Map<number, Pick<House, 'id' | 'buildingId' | 'roomNo' | 'fullAddress'>>,
     buildingById: Map<number, Pick<Building, 'id' | 'lane' | 'buildingNo'>>,
+    communityById?: Map<number, { name: string; laneCount: number }>,
   ) {
     if (!request) return '';
     const house = request.houseId ? houseById.get(request.houseId) : undefined;
     const buildingId = house?.buildingId ?? request.buildingId ?? undefined;
     const building = buildingId ? buildingById.get(buildingId) : undefined;
+    const community = request.communityId ? communityById?.get(request.communityId) : undefined;
+    if (community && building) {
+      return formatAddressLine(community, building, house?.roomNo);
+    }
+    /**
+     * 没传 communityById 的调用方（同楼栋历史报修：一屏里全是同一栋楼的单，
+     * 再写一遍小区名是废话），以及落不到楼栋的单（公共区域、只填了自由文本），
+     * 都保持原来的写法：楼栋房号优先，没有才回退到自由文本。
+     */
     const parts = [
       building?.lane ? `${building.lane}弄` : '',
       building?.buildingNo ? `${building.buildingNo}号` : '',
       house?.roomNo ? `${house.roomNo}室` : '',
     ];
-    const houseLabel = parts.filter(Boolean).join('');
-    return houseLabel || request.addressText || '';
+    return parts.filter(Boolean).join('') || request.addressText || community?.name || '';
+  }
+
+  /**
+   * 这批小区的名字 + 有几个不同的「弄」。
+   * 弄数量用来判断弄号是不是废话 —— 只有一个弄的小区，说了小区名就等于说了弄号。
+   */
+  private async communityAddressInfo(
+    tenantId: number,
+    communityIds: Array<number | null | undefined>,
+  ): Promise<Map<number, { name: string; laneCount: number }>> {
+    const ids = Array.from(new Set(communityIds.filter((id): id is number => !!id)));
+    if (!ids.length) return new Map();
+    const [communities, laneRows] = await Promise.all([
+      this.communityRepo.find({ where: { tenantId, id: In(ids) }, select: ['id', 'name'] }),
+      this.dataSource
+        .getRepository(Building)
+        .createQueryBuilder('b')
+        .select('b.community_id', 'communityId')
+        .addSelect('COUNT(DISTINCT b.lane)', 'laneCount')
+        .where('b.tenant_id = :tenantId', { tenantId })
+        .andWhere('b.community_id IN (:...ids)', { ids })
+        .andWhere("COALESCE(b.lane, '') <> ''")
+        .groupBy('b.community_id')
+        .getRawMany<{ communityId: number; laneCount: string }>(),
+    ]);
+    const laneCountById = new Map(
+      laneRows.map((row) => [Number(row.communityId), Number(row.laneCount)]),
+    );
+    return new Map(
+      communities.map((item) => [
+        item.id,
+        { name: item.name, laneCount: laneCountById.get(item.id) ?? 0 },
+      ]),
+    );
   }
 
   async getWorkOrder(id: number, user: AuthUser, access?: ResolvedAccess) {

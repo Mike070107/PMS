@@ -1,16 +1,5 @@
 /* 这一屏的版式件全部在 app.wxss / tokens.wxss：
-   深色页头 .hero + 上翻内容区 .hero-sheet、数据卡 .wo-card--data、数据网格 .stat-grid、
-   折叠标题 .fold。和工单池是同一套（data-first-ui），这里只写这一屏独有的东西。 */
-
-/* 已完结的单弱化：还在手上的活才该抢注意力 */
-.wo-card--done { opacity: 0.72; }
-
-/* 已完结区的搜索行：和工单池同一套（输入框吃掉剩余宽度，按钮按内容宽） */
-.search-row {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  margin: var(--space-md) 0 var(--space-lg);
-}
-.search-row .input { flex: 1; min-width: 0; }
-.tip { padding: var(--space-md) 0; line-height: 1.6; }
+   深色页头 .hero + 上翻内容区 .hero-sheet、数据卡 .wo-card--data、数据网格 .stat-grid。
+   卡片正文用的是 /templates/wo-card.wxml，和工单池共一份。
+   这一页现在只有「在手」一摞卡片，没有自己的东西要写 —— 「我报的 / 已完结」连同
+   它们的搜索行 2026-08-31 一起搬去了工单池的三档 Tab。 */

@@ -1,3 +1,5 @@
+<import src="/templates/wo-card.wxml"/>
+
 <!-- 深色页头（data-first-ui）：把「这屏是什么、现在什么情况」在第一眼说完。
      标题按身份变，和 pool.ts 里那句 setNavigationBarTitle 同源 —— 改一处要改两处。 -->
 <view class="hero">
@@ -31,6 +33,15 @@
     <button class="btn btn--outline" bindtap="onGoRepair">填表报修</button>
   </view>
 
+  <!-- 三档：这一屏看哪一批单。只有工单池这一侧有 —— 派单台自己就有 7 档状态筛选，
+       再叠一层会变成两排筛选条，人分不清该点哪一排（2026-08-31 要求把「我报的」
+       「已完结」从「在手工单」搬过来，那一页只留手上真正要干的活）。 -->
+  <view wx:if="{{!dispatcher}}" class="tabs">
+    <view class="tab {{mainTab === 'pool' ? 'tab--on' : ''}}" data-tab="pool" bindtap="onSwitchMainTab">工单池</view>
+    <view class="tab {{mainTab === 'reported' ? 'tab--on' : ''}}" data-tab="reported" bindtap="onSwitchMainTab">我报的</view>
+    <view class="tab {{mainTab === 'done' ? 'tab--on' : ''}}" data-tab="done" bindtap="onSwitchMainTab">已完结</view>
+  </view>
+
   <!-- 维修工侧同理：卡片上不出现「接单」时，必须写清是权限收着，不是没活干 -->
   <view wx:if="{{!dispatcher && !canAccept}}" class="notice">
     <view class="notice__body">
@@ -55,7 +66,7 @@
   <!-- ===== 状态筛选 + 搜索：两种模式都有，只是档位不同（见 pool.ts 的两组 FILTERS）。
        工单池原来没有这两样，池子里堆到几十条时，维修工要找「等待材料那单到料没有」
        只能一路往下翻 —— 和派单台是同一个问题，用同一套控件解决 ===== -->
-  <scroll-view class="chips" scroll-x enable-flex>
+  <scroll-view wx:if="{{mainTab === 'pool'}}" class="chips" scroll-x enable-flex>
     <view
       wx:for="{{filters}}"
       wx:key="key"
@@ -92,44 +103,9 @@
     bindtap="onTapItem"
     data-id="{{item.id}}"
   >
-    <!-- 标题放故障描述，不放报修类型：站在楼道里先要知道「什么坏了」，
-         类型是分类不是内容，降到下面网格里。工单编号同理 —— 只在核对时才念，
-         跟着地址走一行小字就够，不值得占一整行（data-first-ui 的判断表）。 -->
-    <view class="wo-card__head">
-      <view class="wo-card__main">
-        <view class="wo-card__title">
-          <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>{{item.summaryContent || '未填描述'}}
-        </view>
-        <view class="wo-card__sub">{{item.summaryAddress || '未填地址'}} · 单号 {{item.orderNo}}</view>
-      </view>
-      <pms-tag class="status-tag" status="{{item.status}}"/>
-    </view>
-
-    <!-- 数据网格：全卡唯一的视觉锚点是第一格那个数，压 3 天以上转红。
-         标签按是否完结换（已等 / 用时）—— 按「已完成」筛出来的单再说「已等」是误导。
-         第三格按身份换：派单台要看「在谁手上」，维修工要看「找谁开门」。 -->
-    <view class="stat-grid">
-      <view class="stat">
-        <view class="stat__label">{{item.statStayLabel}}</view>
-        <view class="stat__value stat__value--{{item.stayTone}}">{{item.statStay}}</view>
-        <view class="stat__hint">{{item.timeText}}</view>
-      </view>
-      <!-- 类型格不再挂「等待材料」小字：右上角的状态标签已经写了一次，
-           下面正文还有「等待材料：xxx」，同一张卡上说三遍 -->
-      <view class="stat">
-        <view class="stat__label">类型</view>
-        <view class="stat__value stat__value--text">{{item.typeLabel}}</view>
-        <view class="stat__hint"></view>
-      </view>
-      <view class="stat">
-        <view class="stat__label">{{dispatcher ? '维修工' : '报修人'}}</view>
-        <view class="stat__value stat__value--text">{{dispatcher ? item.assigneeText : item.statReporter}}</view>
-        <view class="stat__hint">{{dispatcher ? '' : item.statReporterHint}}</view>
-      </view>
-    </view>
-
-    <!-- 缺料清单塞不进网格，放正文：状态标签只说「在等料」，等的是什么得写出来才有用 -->
-    <view wx:if="{{item.missingText}}" class="wo-card__note">等待材料：{{item.missingText}}</view>
+    <!-- 卡片正文（地址一行 + 报修内容一行 + 数据网格）在 /templates/wo-card.wxml，
+         和在手工单共用一份。第三格的含义每一档不同，由 pool.ts 一并算好塞进 row -->
+    <template is="wo-card-body" data="{{item: item, thirdLabel: item.thirdLabel, thirdValue: item.thirdValue, thirdHint: item.thirdHint}}"/>
 
     <view class="wo-card__foot">
       <!-- 派单台 -->

@@ -5,6 +5,7 @@ import {
   type TechnicianOption,
   type WorkOrderListItem,
 } from '@pms/shared-types';
+import { isActiveOrder } from '../../utils/order-status';
 import { getSession } from '../../utils/session';
 import { cachedPoolMode, readCachedAccess, setTabBadge, setTabBarHidden, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unread';
@@ -138,6 +139,12 @@ Page({
     canReport: false,
     /** 接单权：和派单同一个勾选（工单池那一格的「接单 / 派单」） */
     canAccept: false,
+    /**
+     * 这一屏看哪一批单：工单池（待接的）/ 我报的 / 已完结。
+     * 只有工单池这一侧有这三档 —— 派单台自己就有 7 档状态筛选，再叠一层人分不清点哪排。
+     * 「我报的」「已完结」原来在「在手工单」页，2026-08-31 搬过来，那页只留手上要干的活。
+     */
+    mainTab: 'pool',
     leadText: '待接单',
     /** 页头红数字：这一屏里压了 3 天以上的单数，0 就不显示那一格 */
     overdueCount: 0,
@@ -180,6 +187,9 @@ Page({
      * 所以 load() 里还会再同步一次；这里先按缓存点，避免高亮闪一下再跳。
      */
     syncTabBar(this, initialTabKey());
+    // 从「我的 → 我的报修」进来的：直接落在「我报的」那一档（tabBar 页 switchTab
+    // 带不了参数，所以用一次性标记传话，见 me.ts 的 onOpenReported）
+    if (takeOpenReported()) this.setData({ mainTab: 'reported' });
     this.load();
     refreshUnread(this);
   },
@@ -197,12 +207,14 @@ Page({
     this.setData({ loading: true });
     try {
       const session = await getSession(this, refreshSession);
-      // 只报修的人（保安、居委会…）在这一屏什么都看不到 —— 送他去「我的报修」，
-      // 别让人一进来就对着一片空白猜是不是坏了
-      if (session.reporterOnly) {
-        wx.switchTab({ url: '/pages/my-orders/my-orders' });
-        return;
-      }
+      /**
+       * 只报修的人（保安、居委会…）在「工单池」那一档什么都看不到 —— 直接把他放在
+       * 「我报的」这一档，别让人一进来就对着一片空白猜是不是坏了。
+       *
+       * 原来是 switchTab 去「在手工单」页，那页 2026-08-31 只剩手上要干的活了，
+       * 他手上一张单都没有，跳过去还是一片空白 —— 这三档就是为这种人准备的。
+       */
+      const reporterOnly = session.reporterOnly;
       // 这一屏有两种模式：派单台（把活派给别人）和工单池（自己领活）。
       // 两格都有权限时看 tabBar 点的是哪一格；只有一格就按那一格
       const mode = (() => {
@@ -220,32 +232,63 @@ Page({
       const filter = filters[filterIndex] || filters[0];
       const keyword = this.data.keyword.trim();
 
-      const list = await repairs.list({
-        scope: filter.scope || (dispatcher ? 'all' : 'pool'),
-        status: filter.status as any,
-        q: keyword || undefined,
-      });
+      // 派单台没有这三档，强制回「工单池」那一档的取数方式
+      const mainTab = dispatcher
+        ? 'pool'
+        : reporterOnly && this.data.mainTab === 'pool'
+          ? 'reported'
+          : this.data.mainTab;
+      const raw = await repairs.list(
+        mainTab === 'reported'
+          ? { scope: 'reported', q: keyword || undefined }
+          : mainTab === 'done'
+            // 已完结走 scope=mine：这是「我经手的单」里已经结束的那些，和原来在手工单页那一档同口径。
+            // 服务端不按「完结与否」筛，拿回来再过一遍（判断只此一份，见 utils/order-status.ts）
+            ? { scope: 'mine', q: keyword || undefined }
+            : {
+                scope: filter.scope || (dispatcher ? 'all' : 'pool'),
+                status: filter.status as any,
+                q: keyword || undefined,
+              },
+      );
+      const list = mainTab === 'done' ? raw.filter((item) => !isActiveOrder(item.status)) : raw;
 
       const rows: OrderRow[] = withOrderLabels(list).map((item) => {
-        const claimable = !item.assigneeId && POOL_STATUSES.indexOf(item.status) >= 0;
+        // 只有「工单池」那一档才画接单按钮：我报的 / 已完结里那张单未必轮得到我领
+        const claimable =
+          mainTab === 'pool' && !item.assigneeId && POOL_STATUSES.indexOf(item.status) >= 0;
         const dispatchable = DISPATCHABLE_STATUSES.indexOf(item.status) >= 0;
         return {
           ...item,
           claimable,
           dispatchable,
-          actionText: dispatcher
-            ? item.assigneeId
-              ? '改派'
-              : '派单'
-            : item.status === WorkOrderStatus.WAITING_MATERIAL
-              ? '接回'
-              : '接单',
+          actionText:
+            mainTab === 'reported'
+              ? '看进度'
+              : mainTab === 'done'
+                ? '查看详情'
+                : dispatcher
+                  ? item.assigneeId
+                    ? '改派'
+                    : '派单'
+                  : item.status === WorkOrderStatus.WAITING_MATERIAL
+                    ? '接回'
+                    : '接单',
           assigneeText: item.assigneeName || '未派单',
+          /* 网格第三格：同一格在四种场合是四个意思 —— 派单台看「在谁手上」，
+             工单池 / 已完结看「找谁开门」，我报的看「派给谁了」。
+             算在这里而不写进 wxml：那份模板是四处共用的，条件堆进去就没人看得懂了 */
+          thirdLabel: dispatcher || mainTab === 'reported' ? '维修工' : '报修人',
+          thirdValue:
+            dispatcher || mainTab === 'reported'
+              ? item.assigneeName || (mainTab === 'reported' ? '还没人接' : '未派单')
+              : item.statReporter,
+          thirdHint: dispatcher || mainTab === 'reported' ? '' : item.statReporterHint,
         };
       });
 
       // 待派单/待接单这一档按压得久的排前面；按状态翻历史时保持服务端的时间倒序
-      if (!dispatcher || filter.key === 'pool') {
+      if (mainTab === 'pool' && (!dispatcher || filter.key === 'pool')) {
         rows.sort((a, b) => b.stayDays - a.stayDays || b.id - a.id);
       }
 
@@ -254,28 +297,41 @@ Page({
         canDispatch: session.canDispatch,
         canReport: session.canReport,
         canAccept: session.canAccept,
+        mainTab,
         filters,
         filterIndex,
-        // 默认档说的是这一屏在办什么事（待派单 / 待接单），翻到别的档就报档名
-        leadText: filter.key === (dispatcher ? 'pool' : 'all')
-          ? (dispatcher ? '待派单' : '待接单')
-          : filter.label,
+        // 页头那句话说的是「这一屏在办什么事」
+        leadText:
+          mainTab === 'reported'
+            ? '我报的'
+            : mainTab === 'done'
+              ? '已完结'
+              : filter.key === (dispatcher ? 'pool' : 'all')
+                ? dispatcher
+                  ? '待派单'
+                  : '待接单'
+                : filter.label,
         list: rows,
-        // 页头那个红数字：压了 3 天以上的（stayTone 的 danger 档）。
-        // 前端按当前这一屏算，不另开接口 —— 它说的就是「你眼前这批里有几单压着」，
-        // 换筛选档跟着变是对的，别理解成全局待办数。
-        overdueCount: rows.filter((row) => row.stayTone === 'danger').length,
+        /* 页头那个红数字：压了 3 天以上的（stayTone 的 danger 档）。只在「待接 / 待派」这一档算 ——
+           已完结的单再标「压了 3 天」是翻旧账，我报的那摞也不该用这个口径催自己。
+           前端按当前这一屏算，不另开接口，换筛选档跟着变是对的，别理解成全局待办数。 */
+        overdueCount:
+          mainTab === 'pool' ? rows.filter((row) => row.stayTone === 'danger').length : 0,
         loaded: true,
         capped: rows.length >= PAGE_CAP,
         /* 空态要说清「空在哪一层」：搜的没有 / 这一档没有 / 真的没活。
            三种情况给同一句话，人会以为是坏了或者搜索没生效 */
         emptyText: keyword
           ? '没搜到匹配的工单，换个单号、地址或描述试试'
-          : filter.key !== (dispatcher ? 'pool' : 'all')
-            ? `「${filter.label}」这一档里没有工单`
-            : dispatcher
-              ? '没有待派单的工单，都派出去了'
-              : '工单池是空的，暂时没有待接的活',
+          : mainTab === 'reported'
+            ? '你还没有替住户或巡查报过修'
+            : mainTab === 'done'
+              ? '还没有已完结的工单'
+              : filter.key !== (dispatcher ? 'pool' : 'all')
+                ? `「${filter.label}」这一档里没有工单`
+                : dispatcher
+                  ? '没有待派单的工单，都派出去了'
+                  : '工单池是空的，暂时没有待接的活',
       });
       // 顶栏标题跟着身份走：办公室进来看到的不是「工单池」而是「派单台」。
       // 标题写在 pool.json 里是静态的，只能在这儿按身份改一次
@@ -287,13 +343,21 @@ Page({
        * 翻筛选或搜索时不改它，否则角标跟着筛选跳，就不再是「待办数」了。
        * key 必须跟着模式走：挂错格子的话，派单台的待办数会显示在工单池那一格上。
        */
-      const isDefaultView = !keyword && filter.key === (dispatcher ? 'pool' : 'all');
+      const isDefaultView =
+        mainTab === 'pool' && !keyword && filter.key === (dispatcher ? 'pool' : 'all');
       if (isDefaultView) setTabBadge(this, dispatcher ? 'dispatch' : 'pool', rows.length);
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  /** 切「工单池 / 我报的 / 已完结」。换的是一批数据，状态筛选和搜索词都归零 */
+  onSwitchMainTab(e: WechatMiniprogram.BaseEvent) {
+    const tab = String(e.currentTarget.dataset.tab || 'pool') as 'pool' | 'reported' | 'done';
+    if (tab === this.data.mainTab) return;
+    this.setData({ mainTab: tab, filterIndex: 0, keyword: '' }, () => this.load());
   },
 
   // ---------------- 筛选与搜索（工单池 / 派单台共用，档位不同）----------------
@@ -442,3 +506,16 @@ Page({
     wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${e.currentTarget.dataset.id}` });
   },
 });
+
+/** 「我的」页点「我的报修」时写下的一次性标记：进来直接切到「我报的」那一档 */
+const OPEN_REPORTED_KEY = 'pms.staff.open_reported';
+
+function takeOpenReported(): boolean {
+  try {
+    if (wx.getStorageSync(OPEN_REPORTED_KEY) !== '1') return false;
+    wx.removeStorageSync(OPEN_REPORTED_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}

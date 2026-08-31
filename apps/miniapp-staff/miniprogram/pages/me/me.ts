@@ -2,12 +2,12 @@ import { maskPhone } from '@pms/miniapp-ui';
 import { buildStampText } from '../../utils/buildStamp';
 import { USER_ROLE_LABELS, type MeResp } from '@pms/shared-types';
 import { clearSession, getSession } from '../../utils/session';
-import { clearAccessCache, syncTabBar } from '../../utils/tabbar';
+import { clearAccessCache, rememberPoolMode, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, getSubscribeState, refreshUnread } from '../../utils/unread';
 
 // 版本号和 git hash 由发版脚本写入 utils/buildStamp.ts，别在这里手改（见那个文件的说明）
 
-/** 传给「在手工单」页：进去把「我报的」那一段展开。tabBar 页 switchTab 不能带参数 */
+/** 传给工单池那一屏：进去切到「我报的」那一档。tabBar 页 switchTab 不能带参数 */
 const OPEN_REPORTED_KEY = 'pms.staff.open_reported';
 /** 传给登录页：这次是人主动退出的，别再静默登回来 */
 const JUST_LOGGED_OUT_KEY = 'pms.staff.just_logged_out';
@@ -94,15 +94,18 @@ Page({
   },
 
   /**
-   * 「我的报修」= 在手工单页那个「我报的」折叠区。
+   * 「我的报修」= 工单池那一屏的「我报的」档（2026-08-31 从「在手工单」搬过去的）。
    *
    * 不另做一个列表页：同一批单两处各查一次、各渲染一套，迟早对不上（口径、状态文案、
-   * 卡片样式）。这里只负责把人送过去并让那一段自动展开 —— tabBar 页 switchTab
-   * 不能带参数，所以用一次性标记传话（my-orders 的 onShow 读完就清）。
+   * 卡片样式）。这里只负责把人送过去并切到那一档 —— tabBar 页 switchTab 不能带参数，
+   * 所以用一次性标记传话（pool 的 onShow 读完就清）。
+   * 顺手把「工单池 / 派单台」的模式定成工单池：两格都有权限的人（维修组长）
+   * 上次停在派单台的话，那一屏没有这三档，标记会白写。
    */
   onOpenReported() {
-    try { wx.setStorageSync(OPEN_REPORTED_KEY, '1'); } catch { /* 存不下就只是没自动展开 */ }
-    wx.switchTab({ url: '/pages/my-orders/my-orders' });
+    try { wx.setStorageSync(OPEN_REPORTED_KEY, '1'); } catch { /* 存不下就只是没自动切档 */ }
+    rememberPoolMode('pool');
+    wx.switchTab({ url: '/pages/pool/pool' });
   },
 
   onOpenMessages() {

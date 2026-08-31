@@ -410,28 +410,29 @@ button::after { border: none; }
   margin-bottom: 0;
 }
 .wo-card__main { flex: 1; min-width: 0; }
-/* 标题不能再是 flex：flex 容器里的匿名文本节点换行后，和「紧急」标签的基线对不齐。
-   改成 -webkit-box 截两行，badge 作为行内元素落在句首 */
+/* 第一行：地址。整卡最先要认的就是「去哪儿」，所以它是标题。
+   各占一行、超出省略（2026-08-31 要求：地址一行、报修内容一行，下面那行小字和单号都去掉）——
+   两行都定高，一屏能扫过的卡片数才稳定；单号只在打电话核对时才念，留给详情页。
+   不能用 flex：flex 容器里的匿名文本节点和「紧急」标签基线对不齐，
+   改成 -webkit-box 截一行，badge 作为行内元素落在句首 */
 .wo-card--data .wo-card__title {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   overflow: hidden;
   font-size: var(--font-2xl);
   font-weight: 600;
   line-height: 1.35;
 }
-/* 地址 + 单号：辅助档，压到 28rpx 灰。
-   截两行封顶：公区点位那种长地址（「枫桦景苑一期 监控室2号」）加上单号会排到三四行，
-   一行辅助小字撑得比标题还高，卡片就散了 */
-.wo-card__sub {
+/* 第二行：报修内容。比地址轻一档 —— 先定位、再看修什么 */
+.wo-card__desc {
   margin-top: var(--space-xs);
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   overflow: hidden;
-  font-size: var(--font-sm);
-  color: var(--color-text-tertiary);
+  font-size: var(--font-lg);
+  color: var(--color-text-secondary);
   line-height: 1.5;
 }
 /* 塞不进网格的长文本（缺料清单、派单备注）走这里 */
@@ -441,6 +442,28 @@ button::after { border: none; }
   color: var(--color-text-secondary);
   line-height: 1.6;
 }
+
+/* ---------- 段落 Tab（一屏里切「看哪一批」，不是筛选条） ----------
+   工单池的「工单池 / 我报的 / 已完结」、材料页的「库存 / 采购申请」共用这一套。
+   和 .chips/.chip 的区别：chips 是在同一批数据里按状态筛，tab 是换一批数据看，
+   所以给它实底高亮、做得比 chip 重一档。 */
+.tabs {
+  display: flex;
+  background: var(--color-card-bg);
+  border-radius: var(--radius-md);
+  padding: 8rpx;
+  margin-bottom: 24rpx;
+}
+.tab {
+  flex: 1;
+  height: 88rpx;
+  line-height: 88rpx;
+  text-align: center;
+  font-size: var(--font-lg);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+}
+.tab--on { background: var(--color-brand); color: #fff; font-weight: 500; }
 
 /* ---------- 折叠分组标题（已完结、历史记录这类默认收起的内容） ---------- */
 .fold {
