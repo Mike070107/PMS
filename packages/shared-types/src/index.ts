@@ -469,6 +469,8 @@ export interface UsedMaterialLine {
   name?: string;
   qty: number;
   unit?: string;
+  /** 用料备注，会原样印到养护单背面《材料领耗记录》的备注格 */
+  note?: string;
 }
 
 export interface CompleteWorkOrderReq {

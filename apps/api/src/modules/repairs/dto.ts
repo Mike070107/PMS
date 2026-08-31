@@ -264,6 +264,15 @@ export class MaterialUsageDto {
   @Type(() => Number)
   @IsInt()
   unitCostCents?: number;
+
+  /**
+   * 这一项用料的备注（「原件锈死一并换掉」之类）。
+   * 会原样印到养护单背面《材料领耗记录》的备注格里，所以别写内部黑话。
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  note?: string;
 }
 
 export class CompleteWorkOrderDto {

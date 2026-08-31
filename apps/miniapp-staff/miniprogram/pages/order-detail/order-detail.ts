@@ -49,6 +49,8 @@ interface MaterialRow {
   /** 从哪个仓领的（完工时按它扣库存）。手填的行为 null。
       必须一行一个：选料途中切过仓库，整单共用一个 warehouseId 就会扣错仓。 */
   warehouseId: number | null;
+  /** 这一项的备注（「原件锈死一并换掉」），会原样印到养护单背面的备注格 */
+  note: string;
   /** 下面两个由 setMaterialRows 算好 —— wxml 里调不了函数 */
   hintText: string;
   hintShort: boolean;
@@ -67,6 +69,7 @@ const emptyMaterialRow = (): MaterialRow => ({
   code: '',
   stockQty: -1,
   warehouseId: null,
+  note: '',
   hintText: '',
   hintShort: false,
 });
@@ -102,6 +105,7 @@ function collectRows(rows: MaterialRow[]) {
       unit: row.unit || undefined,
       stockQty: row.stockQty,
       warehouseId: row.warehouseId ?? undefined,
+      note: row.note?.trim() || undefined,
     }))
     .filter((row) => row.name);
 }
@@ -525,7 +529,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   onMaterialInput(e: WechatMiniprogram.Input) {
     const index = Number(e.currentTarget.dataset.index);
-    const field = e.currentTarget.dataset.field as 'name' | 'qty';
+    const field = e.currentTarget.dataset.field as 'name' | 'qty' | 'note';
     const rows = this.data.materialRows.slice();
     rows[index] = { ...rows[index], [field]: e.detail.value };
     // 名称一旦被手改，就不再是库存里那一项了：关联 id 必须跟着摘掉，
@@ -805,6 +809,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         name: row.name,
         qty: row.qty,
         unit: row.unit,
+        note: row.note,
       }));
 
     // 刚干完一单，正等着下一单 —— 这时补订阅额度同意率最高。

@@ -67,8 +67,9 @@ export class WorkOrder extends TenantEntity {
   @Column({ name: 'repair_content', type: 'text', nullable: true })
   repairContent: string | null;
 
+  // note = 用料备注，会印到养护单背面《材料领耗记录》的备注格
   @Column({ name: 'used_materials', type: 'jsonb', default: () => "'[]'" })
-  usedMaterials: Array<{ name: string; qty: number; unit?: string }>;
+  usedMaterials: Array<{ name: string; qty: number; unit?: string; note?: string }>;
 
   // 维修现场附件
   @Column({ name: 'result_attachments', type: 'jsonb', default: () => "'[]'" })

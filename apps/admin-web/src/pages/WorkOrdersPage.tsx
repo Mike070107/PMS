@@ -36,6 +36,7 @@ import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 import {
   ClockCircleOutlined,
   DownOutlined,
+  FileTextOutlined,
   SettingOutlined,
   PhoneOutlined,
   PlusOutlined,
@@ -54,6 +55,7 @@ import dayjs from 'dayjs';
 import type { TechnicianOption } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { request } from '../lib/api';
 import { auth, useAuth, usePagePerm } from '../lib/auth';
@@ -1600,7 +1602,9 @@ function WorkOrderDetailDrawer({
   onChanged: () => void;
 }) {
   const { message } = AntdApp.useApp();
+  const nav = useNavigate();
   const { canEdit } = usePagePerm('work-orders');
+  const canFillMaintenance = usePagePerm('maintenance-orders').canEdit;
   const [detail, setDetail] = useState<WorkOrderDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -1653,30 +1657,39 @@ function WorkOrderDetailDrawer({
         onClose={onClose}
         loading={loading}
         extra={
-          status && canEdit && (
+          status && (canEdit || canFillMaintenance) && (
             <Space>
-              {[WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
+              {/* 养护单是另一格权限（办公室填、经理查验），所以单独判、不跟着 canEdit */}
+              {canFillMaintenance && status !== WorkOrderStatus.CANCELLED && (
+                <Button
+                  icon={<FileTextOutlined />}
+                  onClick={() => nav(`/maintenance-orders?workOrderId=${id}`)}
+                >
+                  填养护单
+                </Button>
+              )}
+              {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
                 <Button type="primary" onClick={() => setAssignOpen(true)}>
                   {status === WorkOrderStatus.CREATED ? '派单' : '改派'}
                 </Button>
               )}
-              {status === WorkOrderStatus.DISPATCHED && (
+              {canEdit && status === WorkOrderStatus.DISPATCHED && (
                 <Button onClick={onAccept}>代接单</Button>
               )}
-              {status === WorkOrderStatus.IN_PROGRESS && (
+              {canEdit && status === WorkOrderStatus.IN_PROGRESS && (
                 <Button onClick={() => setNeedMaterialOpen(true)}>标记缺料</Button>
               )}
               {/* 补建 SKU 后回来把维修工手填的那几行关联上，改的是同一张采购申请 */}
-              {status === WorkOrderStatus.WAITING_MATERIAL && (
+              {canEdit && status === WorkOrderStatus.WAITING_MATERIAL && (
                 <Button onClick={() => setEditMissingOpen(true)}>修改缺料</Button>
               )}
-              {[WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
+              {canEdit && [WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
                 <Button type="primary" onClick={() => setCompleteOpen(true)}>完工</Button>
               )}
-              {status === WorkOrderStatus.DONE_PENDING_REVIEW && (
+              {canEdit && status === WorkOrderStatus.DONE_PENDING_REVIEW && (
                 <Button type="primary" onClick={() => setReviewOpen(true)}>验收</Button>
               )}
-              {[WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
+              {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
                 <Button danger onClick={() => setCancelOpen(true)}>撤单</Button>
               )}
             </Space>

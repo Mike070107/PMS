@@ -177,6 +177,18 @@
         <text class="mat-unit">{{item.unit || ''}}</text>
       </view>
 
+      <!-- 用料备注：会原样印到养护单背面《材料领耗记录》的备注格 -->
+      <view class="mat-row">
+        <input
+          class="mat-name mat-note"
+          placeholder="备注（选填，会印到养护单）"
+          value="{{item.note}}"
+          data-index="{{index}}"
+          data-field="note"
+          bindinput="onMaterialInput"
+        />
+      </view>
+
       <!-- 够不够，写在行里，不用自己去库存页查 -->
       <view wx:if="{{item.hintText}}" class="mat-hint {{item.hintShort ? 'mat-hint--short' : ''}}">
         {{item.hintText}}

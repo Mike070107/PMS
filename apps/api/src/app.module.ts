@@ -12,6 +12,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { FeesModule } from './modules/fees/fees.module';
 import { HealthModule } from './modules/health/health.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { OwnersMgmtModule } from './modules/owners-mgmt/owners-mgmt.module';
@@ -41,6 +42,7 @@ import { UploadModule } from './modules/upload/upload.module';
     FeesModule,
     HealthModule,
     InventoryModule,
+    MaintenanceModule,
     NotificationsModule,
     UploadModule,
     PropertiesModule,

@@ -16,13 +16,41 @@ export interface AdminPageDef {
   label: string;
   /** 菜单分组名 */
   group: string;
+  /** 权限矩阵里这一行的说明（不填就显示分组名） */
+  hint?: string;
+  /**
+   * 勾中之后还能再细分的动作。不填 = 默认的「编辑（含新增）」+「删除」两档；
+   * 空数组 = 这一格只有「给 / 不给」（如养护单查验：勾中就是能查验签字）。
+   */
+  actions?: Array<{ field: 'canEdit' | 'canDelete'; label: string; hint?: string }>;
 }
+
+/** 后台页面默认的两档细分动作 */
+export const DEFAULT_ADMIN_PAGE_ACTIONS: NonNullable<AdminPageDef['actions']> = [
+  { field: 'canEdit', label: '编辑（含新增）' },
+  { field: 'canDelete', label: '删除' },
+];
 
 /** 企业端页面（参与角色权限矩阵与租户可用页面勾选） */
 export const ADMIN_PAGES: AdminPageDef[] = [
   { key: 'dashboard', label: '工作台', group: '总览' },
   { key: 'reports', label: '报表查询', group: '总览' },
   { key: 'work-orders', label: '工单管理', group: '报修工单' },
+  {
+    key: 'maintenance-orders',
+    label: '养护单',
+    group: '报修工单',
+    hint: '按工单开《房屋修理养护任务单》、打印',
+  },
+  {
+    key: 'maintenance-inspect',
+    label: '养护单查验（签字）',
+    group: '报修工单',
+    // 勾中即可查验，不再分档：这一格表达的就是「他是那个签字的人」（物业经理）。
+    // 和「养护单」分开是有意的 —— 填单的人自己查验自己，三方签字就白签了。
+    hint: '勾中 = 可以查验并手写签名（物业经理）',
+    actions: [],
+  },
   { key: 'business', label: '前台收费', group: '收费业务' },
   { key: 'fees', label: '物业费', group: '收费业务' },
   { key: 'materials', label: '材料 SKU 库', group: '材料与库存' },
@@ -164,6 +192,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     adminPages: {
       dashboard: 'v',
       'work-orders': 'e',
+      'maintenance-orders': 'e',
       materials: 'e',
       inventory: 'e',
       properties: 'v',
@@ -184,6 +213,8 @@ export const DEFAULT_ROLE_TEMPLATES: {
       dashboard: 'v',
       reports: 'v',
       'work-orders': 'e',
+      'maintenance-orders': 'e',
+      'maintenance-inspect': 'v',
       business: 'e',
       fees: 'e',
       materials: 'e',

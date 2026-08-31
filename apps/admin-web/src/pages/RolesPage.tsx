@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ADMIN_PAGES,
   ALWAYS_ENABLED_PAGES,
+  DEFAULT_ADMIN_PAGE_ACTIONS,
   DEFAULT_ROLE_TEMPLATES,
   ROLE_DATA_SCOPE_LABELS,
   RoleDataScope,
@@ -665,11 +666,10 @@ function RoleFormModal({
                     rows={pages.map((p) => ({
                       key: p.key,
                       label: p.label,
-                      hint: p.group,
-                      actions: [
-                        { field: 'canEdit', label: '编辑（含新增）' },
-                        { field: 'canDelete', label: '删除' },
-                      ],
+                      hint: p.hint || p.group,
+                      // 大多数页面就是「编辑 / 删除」两档；个别能力位（养护单查验）
+                      // 在 ADMIN_PAGES 里自带 actions:[]，勾中即生效，不再分档
+                      actions: p.actions ?? DEFAULT_ADMIN_PAGE_ACTIONS,
                     }))}
                     empty="这家公司没有开通任何后台页面"
                     note="勾中的页面才会出现在他的后台菜单里；展开后可以再细分能不能改、能不能删。只用小程序的角色（维修工、保安…）这里可以一个都不勾。"
@@ -1122,11 +1122,10 @@ function TemplateFormModal({
                     rows={pages.map((p) => ({
                       key: p.key,
                       label: p.label,
-                      hint: p.group,
-                      actions: [
-                        { field: 'canEdit', label: '编辑（含新增）' },
-                        { field: 'canDelete', label: '删除' },
-                      ],
+                      hint: p.hint || p.group,
+                      // 大多数页面就是「编辑 / 删除」两档；个别能力位（养护单查验）
+                      // 在 ADMIN_PAGES 里自带 actions:[]，勾中即生效，不再分档
+                      actions: p.actions ?? DEFAULT_ADMIN_PAGE_ACTIONS,
                     }))}
                     empty="这家公司没有开通任何后台页面"
                     note="勾中的页面才会出现在跟随这个模板的人的后台菜单里。"

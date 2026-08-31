@@ -7,6 +7,7 @@ import {
   AuditOutlined,
   BarChartOutlined,
   ToolOutlined,
+  FileTextOutlined,
   ShoppingOutlined,
   QrcodeOutlined,
   SettingOutlined,
@@ -52,7 +53,15 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
   },
   {
     title: '报修工单',
-    items: [{ key: '/work-orders', pageKey: 'work-orders', icon: <ToolOutlined />, label: '工单管理' }],
+    items: [
+      { key: '/work-orders', pageKey: 'work-orders', icon: <ToolOutlined />, label: '工单管理' },
+      {
+        key: '/maintenance-orders',
+        pageKey: 'maintenance-orders',
+        icon: <FileTextOutlined />,
+        label: '养护单',
+      },
+    ],
   },
   {
     title: '收费业务',
@@ -96,6 +105,7 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/dashboard': '掌握今日待办与物业运营动态',
   '/reports': '工单、人员、库存与材料使用的统计与导出',
   '/work-orders': '登记、调度并跟踪每一张维修工单',
+  '/maintenance-orders': '按工单开《房屋修理养护任务单》，签字后打印',
   '/business': '办理停车、门禁与前台收费业务',
   '/fees': '物业费账单、收款登记与欠费催缴',
   '/materials': '维护标准材料、单位与基础价格',

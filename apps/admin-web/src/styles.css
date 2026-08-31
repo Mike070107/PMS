@@ -1414,3 +1414,41 @@ body.pms-col-resizing * {
 .pms-row-muted td {
   color: rgba(0, 0, 0, 0.45);
 }
+
+/* ---------- 手写签名板（SignaturePad） ---------- */
+.pms-signpad {
+  display: block;
+  width: 100%;
+  height: 240px;
+  border: 1px dashed #b7c7c4;
+  border-radius: 8px;
+  background:
+    linear-gradient(#fff, #fff) padding-box,
+    repeating-linear-gradient(#fff 0 30px, #eef3f2 30px 31px) padding-box;
+  cursor: crosshair;
+  /* 触屏上手写时别让页面跟着滚 */
+  touch-action: none;
+}
+
+/* ---------- 养护单页 ---------- */
+/* 纸面是固定的 227mm，屏幕窄就自己滚 + 可缩放，不去动纸的尺寸 */
+.mo-stage {
+  overflow: auto;
+  background: #e9efee;
+  padding: 16px;
+  border-radius: 10px;
+}
+.mo-stage__inner {
+  transform-origin: top left;
+}
+.mo-stage .mo-sheet {
+  box-shadow: 0 2px 12px rgba(15, 44, 40, 0.16);
+  margin-bottom: 16px;
+}
+/* 打印实体平时移出屏幕。用 class 不用行内样式：行内样式会压过打印规则 */
+.mo-print-offscreen {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 227mm;
+}

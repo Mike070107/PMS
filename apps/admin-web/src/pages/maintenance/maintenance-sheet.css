@@ -1,0 +1,466 @@
+/*
+ * 《房屋修理养护任务单》的纸面还原。纸张 227mm × 116mm（横向），
+ * 左边是任务单本体（160mm），中间一条骑缝线，右边是「报修凭证」存根（44mm）；
+ * 背面镜像：左存根（说明）、右本体（材料领耗记录）。
+ *
+ * 这份样式**同时**用于屏幕预览和打印：
+ *   · 预览：MaintenanceSheet.tsx 里 import 'maintenance-sheet.css'
+ *   · 打印：以 ?inline 取到同一份文本，塞进打印用的 iframe
+ * 所以这里不许依赖 antd 的任何全局样式，也不许写在 styles.css 里 ——
+ * styles.css 有一条全局的 @page { size: A5 }（楼栋报修码在用），
+ * 两个 @page 会互相覆盖，养护单要么被截、要么多吐空白页。iframe 各管各的。
+ *
+ * 尺寸一律用 mm：这是一张要对着纸校对的表格，px 换算一次就再也说不清了。
+ */
+
+.mo-sheet {
+  /* 表单字体用宋体：这是政府/物业单据的标准脸，换成黑体一眼就不像那张纸了。
+     后面几档是 macOS / Linux / 兜底的中文回退，缺字不会掉进默认西文字体。 */
+  font-family: 'SimSun', '宋体', 'Songti SC', 'STSong', 'Noto Serif CJK SC',
+    'Source Han Serif SC', serif;
+  position: relative;
+  box-sizing: border-box;
+  width: 227mm;
+  height: 116mm;
+  background: #fff;
+  color: #000;
+  overflow: hidden;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.mo-sheet *,
+.mo-sheet *::before,
+.mo-sheet *::after {
+  box-sizing: border-box;
+}
+
+/* 本体 / 存根 / 骑缝线的位置：正面本体在左，背面镜像过去 */
+.mo-block {
+  position: absolute;
+  top: 5mm;
+}
+.mo-block--main {
+  left: 10mm;
+  width: 160mm;
+}
+.mo-block--stub {
+  left: 177mm;
+  width: 44mm;
+}
+.mo-sheet--back .mo-block--main {
+  left: 57mm;
+}
+.mo-sheet--back .mo-block--stub {
+  left: 6mm;
+}
+.mo-perf {
+  position: absolute;
+  top: 4mm;
+  left: 173.5mm;
+  height: 108mm;
+  border-left: 0.3mm dashed #000;
+}
+.mo-sheet--back .mo-perf {
+  left: 53.5mm;
+}
+
+/* ---------- 标题区 ---------- */
+.mo-head {
+  height: 9mm;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.mo-title {
+  font-family: 'SimHei', '黑体', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC',
+    sans-serif;
+  font-size: 5.4mm;
+  font-weight: 700;
+  letter-spacing: 0.3mm;
+  line-height: 1;
+}
+.mo-title--spaced {
+  letter-spacing: 2.4mm;
+  padding-left: 2.4mm;
+}
+.mo-no {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 5mm;
+  font-weight: 700;
+  color: #c8102e;
+  letter-spacing: 0.2mm;
+  line-height: 1;
+  margin-left: 1mm;
+}
+.mo-no__page {
+  font-size: 2.6mm;
+  margin-left: 1mm;
+}
+
+/* 管房单位 ______ */
+.mo-unitline {
+  height: 6mm;
+  display: flex;
+  align-items: flex-end;
+  font-size: 3mm;
+  padding-left: 2mm;
+}
+.mo-unitline__value {
+  flex: 0 0 60mm;
+  margin-left: 1mm;
+  border-bottom: 0.3mm solid #000;
+  height: 4.6mm;
+  text-align: center;
+}
+
+/* ---------- 表格骨架 ---------- */
+.mo-tbl {
+  border: 0.4mm solid #000;
+  width: 100%;
+}
+.mo-row {
+  display: flex;
+  width: 100%;
+}
+.mo-row + .mo-row {
+  border-top: 0.2mm solid #000;
+}
+.mo-cell {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.35mm;
+  font-size: 2.9mm;
+  line-height: 1.12;
+  text-align: center;
+  overflow: hidden;
+}
+.mo-cell + .mo-cell {
+  border-left: 0.2mm solid #000;
+}
+.mo-cell--grow {
+  flex: 1 1 auto;
+}
+/* 表头/字段名：纸上预印的字 */
+.mo-lb {
+  font-size: 2.8mm;
+  white-space: pre-line;
+}
+.mo-lb--sm {
+  /* 「电梯水泵基金」这种三字一行的标签，字号大一点就撑成三行、被行高裁掉底部 */
+  font-size: 2.3mm;
+  line-height: 1.15;
+}
+.mo-cell--left {
+  justify-content: flex-start;
+  text-align: left;
+  padding-left: 1.4mm;
+}
+/* 竖排字段名（填单人 / 修理人 / 查验员） */
+.mo-vlabel {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.4mm;
+  font-size: 2.8mm;
+  line-height: 1;
+}
+.mo-vpair {
+  display: flex;
+  gap: 0.6mm;
+}
+
+/* 列内再分两行（预算定额 / 凭证发放） */
+.mo-col2 {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.mo-col2 > .mo-sub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+.mo-col2 > .mo-sub + .mo-sub {
+  border-top: 0.2mm solid #000;
+}
+.mo-subrow {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+.mo-subrow > .mo-cell {
+  height: 100%;
+}
+
+/* ---------- 值 ---------- */
+.mo-in,
+.mo-txt {
+  font-family: inherit;
+  font-size: 2.8mm;
+  line-height: 1.15;
+  color: #000;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  text-align: center;
+  padding: 0 0.2mm;
+  margin: 0;
+}
+.mo-in::placeholder {
+  color: #c8d3d1;
+}
+.mo-in:hover {
+  background: #f2f7f6;
+}
+.mo-in:focus {
+  background: #e6f4f1;
+}
+.mo-txt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.mo-txt--left,
+.mo-in--left {
+  text-align: left;
+  justify-content: flex-start;
+}
+.mo-in--num {
+  font-variant-numeric: tabular-nums;
+}
+/* 备注格窄（材料备注 23mm、明细备注 11.5mm），比正文再小一档才装得下一句话 */
+.mo-in--note {
+  font-size: 2.6mm;
+}
+/* 定额编号「15-4-17」七位，按正常字号会被 14mm 的格子裁掉最后一位（量过：需 53px、只有 49px） */
+.mo-in--code {
+  font-size: 2.45mm;
+  letter-spacing: -0.01em;
+}
+/* 多行文本（查勘修理项目、备注）在格子里能折两行 */
+.mo-in--wrap {
+  resize: none;
+  overflow: hidden;
+  padding-top: 0.6mm;
+}
+
+/* 地址那一格：__村 __路 __弄 __号 __室 */
+.mo-addr {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 2.8mm;
+}
+.mo-addr__slot {
+  display: flex;
+  align-items: baseline;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mo-addr__slot .mo-in,
+.mo-addr__slot .mo-txt {
+  height: 5mm;
+  /* 「永德一村」四个字要塞进不到 9mm 的格子，比别处再小一档 */
+  font-size: 2.6mm;
+}
+.mo-addr__unit {
+  flex: 0 0 auto;
+  padding: 0 0.3mm;
+}
+
+/* 「费用类别（____）」这种带括号的一行 */
+.mo-paren {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.mo-in--paren {
+  flex: 0 0 22mm;
+  width: 22mm;
+  height: 5mm;
+}
+.mo-paren .mo-txt {
+  flex: 0 0 22mm;
+  width: 22mm;
+  height: 5mm;
+}
+
+/* 存根上的「__年 __月 __日」 */
+.mo-ymd {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  font-size: 2.8mm;
+}
+
+/* 勾选框 */
+.mo-tick {
+  font-family: 'SimSun', '宋体', serif;
+  font-size: 4mm;
+  line-height: 1;
+}
+.mo-check {
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mo-check:hover {
+  background: #f2f7f6;
+}
+
+/* 手写签名 */
+.mo-sign {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+}
+.mo-signslot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  gap: 1mm;
+}
+.mo-signslot__hint {
+  font-size: 2.4mm;
+  color: #9bb0ad;
+}
+.mo-signslot--clickable {
+  cursor: pointer;
+}
+.mo-signslot--clickable:hover {
+  background: #f2f7f6;
+}
+
+/* 查验员格里的「月 日」 */
+.mo-md {
+  position: absolute;
+  right: 1.5mm;
+  bottom: 0.8mm;
+  font-size: 2.8mm;
+  letter-spacing: 0.3mm;
+}
+.mo-md__n {
+  font-variant-numeric: tabular-nums;
+  padding: 0 1.2mm;
+}
+
+/* 合计格：左上角一个「合计」，值写在右边 */
+.mo-total {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+.mo-total__lb {
+  flex: 0 0 auto;
+  font-size: 2.8mm;
+  padding-right: 1mm;
+}
+.mo-total__v {
+  flex: 1 1 auto;
+  font-size: 3.2mm;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* ---------- 背面 ---------- */
+.mo-back-grid {
+  display: flex;
+  width: 100%;
+  border: 0.4mm solid #000;
+}
+.mo-back-grid__left {
+  flex: 0 0 131.5mm;
+}
+.mo-back-grid__right {
+  flex: 1 1 auto;
+  border-left: 0.2mm solid #000;
+  display: flex;
+  flex-direction: column;
+}
+.mo-back-grid__right > .mo-cell {
+  width: 100%;
+}
+.mo-back-grid__right > .mo-cell + .mo-cell {
+  border-left: 0;
+  border-top: 0.2mm solid #000;
+}
+.mo-back-grid .mo-tbl {
+  border: 0;
+}
+
+/* 存根背面的说明 */
+.mo-notes {
+  font-size: 3mm;
+  line-height: 1.75;
+  padding: 0 1mm;
+}
+.mo-notes__item {
+  text-indent: 2em;
+  margin-bottom: 1mm;
+}
+
+/* ---------- 打印 ---------- */
+/* 只在打印用的 iframe 里生效：文档里只有一张纸，@page 不会和后台别的打印冲突 */
+@page {
+  size: 227mm 116mm;
+  margin: 0;
+}
+
+.mo-print-doc {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+}
+.mo-print-doc .mo-sheet {
+  break-after: page;
+  page-break-after: always;
+}
+.mo-print-doc .mo-sheet:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+/*
+ * 套打：纸是预印好的联单，只把内容打上去，表格线和预印字全部隐藏。
+ * 用 visibility 而不是 display:none —— 布局必须原地不动，
+ * 否则内容会整体挪位，落不进纸上的格子。
+ */
+.mo-sheet--overlay .mo-tbl,
+.mo-sheet--overlay .mo-back-grid,
+.mo-sheet--overlay .mo-back-grid__right,
+.mo-sheet--overlay .mo-row + .mo-row,
+.mo-sheet--overlay .mo-cell + .mo-cell,
+.mo-sheet--overlay .mo-col2 > .mo-sub + .mo-sub,
+.mo-sheet--overlay .mo-unitline__value,
+.mo-sheet--overlay .mo-perf {
+  border-color: transparent !important;
+}
+.mo-sheet--overlay .mo-lb,
+.mo-sheet--overlay .mo-title,
+.mo-sheet--overlay .mo-vlabel,
+.mo-sheet--overlay .mo-notes,
+.mo-sheet--overlay .mo-addr__unit,
+.mo-sheet--overlay .mo-md,
+.mo-sheet--overlay .mo-total__lb,
+.mo-sheet--overlay .mo-no {
+  visibility: hidden;
+}

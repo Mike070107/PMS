@@ -1349,6 +1349,7 @@ export class RepairsService implements OnModuleInit {
           name: item.name || (item.materialId ? `#${item.materialId}` : ''),
           qty: item.qty,
           unit: item.unit,
+          note: item.note?.trim() || undefined,
         })).filter((item) => item.name || item.materialId) ?? workOrder.usedMaterials;
       workOrder.resultAttachments =
         dto.resultAttachments ?? workOrder.resultAttachments;

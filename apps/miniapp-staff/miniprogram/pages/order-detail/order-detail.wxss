@@ -123,6 +123,9 @@
   font-size: var(--font-md);
   color: var(--color-text-secondary);
 }
+/* 用料备注：比名称轻一档，别和主信息抢眼 */
+.mat-note { font-size: var(--font-lg); color: var(--color-text-secondary); }
+
 .mat-sku { display: flex; align-items: center; gap: 12rpx; margin-top: 16rpx; }
 .mat-sku__photo { width: 88rpx; height: 88rpx; border-radius: var(--radius-sm); flex-shrink: 0; }
 .mat-sku__text { font-size: var(--font-sm); color: var(--color-text-tertiary); }

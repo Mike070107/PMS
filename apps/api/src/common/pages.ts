@@ -11,6 +11,8 @@ export const ADMIN_PAGE_KEYS = [
   'dashboard', // 工作台
   'reports', // 报表查询（工单 / 人员 / 库存 / 材料使用）
   'work-orders', // 工单管理
+  'maintenance-orders', // 养护单（房屋修理养护任务单）：填单 / 打印
+  'maintenance-inspect', // 养护单查验（物业经理签字），单独一格：填单的人不该能自己查验自己
   'business', // 前台收费
   'fees', // 物业费（账单 / 收费标准 / 欠费）
   'materials', // 材料 SKU 库
@@ -89,6 +91,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     adminPages: {
       dashboard: 'v',
       'work-orders': 'e',
+      'maintenance-orders': 'e',
       materials: 'e',
       inventory: 'e',
       properties: 'v',
@@ -109,6 +112,8 @@ export const DEFAULT_ROLE_TEMPLATES: {
       dashboard: 'v',
       reports: 'v',
       'work-orders': 'e',
+      'maintenance-orders': 'e',
+      'maintenance-inspect': 'v',
       business: 'e',
       fees: 'e',
       materials: 'e',

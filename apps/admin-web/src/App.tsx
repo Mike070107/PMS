@@ -8,6 +8,7 @@ import FeesPage from './pages/FeesPage';
 import PropertiesPage from './pages/PropertiesPage';
 import OwnerAuditPage from './pages/OwnerAuditPage';
 import WorkOrdersPage from './pages/WorkOrdersPage';
+import MaintenanceOrdersPage from './pages/MaintenanceOrdersPage';
 import StaffPage from './pages/StaffPage';
 import InventoryPage from './pages/InventoryPage';
 import MaterialsPage from './pages/MaterialsPage';
@@ -33,6 +34,7 @@ const PAGE_ROUTES: Array<[string, string]> = [
   ['dashboard', '/dashboard'],
   ['reports', '/reports'],
   ['work-orders', '/work-orders'],
+  ['maintenance-orders', '/maintenance-orders'],
   ['business', '/business'],
   ['fees', '/fees'],
   ['materials', '/materials'],
@@ -121,6 +123,7 @@ export default function App() {
         <Route path="properties" element={<RequireTenantScope><RequirePage pageKey="properties"><PropertiesPage /></RequirePage></RequireTenantScope>} />
         <Route path="owners" element={<RequireTenantScope><RequirePage pageKey="owners"><OwnerAuditPage /></RequirePage></RequireTenantScope>} />
         <Route path="work-orders" element={<RequireTenantScope><RequirePage pageKey="work-orders"><WorkOrdersPage /></RequirePage></RequireTenantScope>} />
+        <Route path="maintenance-orders" element={<RequireTenantScope><RequirePage pageKey="maintenance-orders"><MaintenanceOrdersPage /></RequirePage></RequireTenantScope>} />
         <Route path="staff" element={<RequireTenantScope><RequirePage pageKey="users"><StaffPage /></RequirePage></RequireTenantScope>} />
         <Route path="roles" element={<RequireTenantScope><RequirePage pageKey="roles"><RolesPage /></RequirePage></RequireTenantScope>} />
         <Route path="offices" element={<RequireTenantScope><RequirePage pageKey="offices"><OfficesPage /></RequirePage></RequireTenantScope>} />
