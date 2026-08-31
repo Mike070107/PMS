@@ -146,6 +146,16 @@
         <view class="howto__line">然后点【提交报修】即可</view>
       </view>
 
+      <!-- 说了「急修」就标紧急。整行可点：取消 / 标回来都在这一下，
+           不给单独的开关控件 —— 这一屏本来就是「拍完就提交」，多一个控件就多一步 -->
+      <view wx:if="{{urgentMatched || urgent}}" class="urgency {{urgent ? 'urgency--on' : ''}}" bindtap="onToggleUrgent">
+        <text class="urgency__badge">{{urgent ? '紧急' : '普通'}}</text>
+        <view class="urgency__body">
+          <view class="urgency__text">{{urgent ? '这单按紧急处理' : '这单不按紧急处理'}}</view>
+          <view class="urgency__hint">{{urgent ? urgentReasonText + '，点这行取消' : '点这行标回紧急'}}</view>
+        </view>
+      </view>
+
       <!-- 自动判定出的类型，允许改 -->
       <view wx:if="{{guessLabel}}" class="guess">
         <view class="guess__row">

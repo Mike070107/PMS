@@ -13,7 +13,9 @@ import {
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
   REPAIR_TYPE_OPTIONS,
+  detectUrgency,
   extractFaultDescription,
+  urgencyReason,
 } from '@pms/shared-types';
 import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
 import {
@@ -138,6 +140,14 @@ interface PageData {
   contentSuggestTitle: string;
 
   /**
+   * 描述里说了「急修 / 加急 / 抢修」→ 这单按紧急处理（判定见 shared-types 的
+   * detectUrgency，随手拍走的是同一份）。认出来才显示那一行，可以点掉、再点回来。
+   */
+  urgent: boolean;
+  urgentMatched: string;
+  urgentReasonText: string;
+
+  /**
    * 从描述里识别出来的报修地址（「一期24号302」→ 库里真实的楼栋/房号）。
    * 识别到就替换上面选的位置展示，提交时关联 id 跟着它走；点 × 恢复 ——
    * 默认值必须能改，改完提交的 id 也要跟着变，这是全局口径。
@@ -194,6 +204,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     content: '',
     contentSuggestions: DEFAULT_CONTENT_SUGGESTIONS,
     contentSuggestTitle: '猜你想输',
+    urgent: false,
+    urgentMatched: '',
+    urgentReasonText: '',
     detected: null,
 
     hasSpeech: !!speechManager,
@@ -213,6 +226,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   detectTimer: 0 as number,
   /** 用户点过 × 的识别片段：同一段文字不再弹出来烦人 */
   dismissedMatch: '' as string,
+  /** 人自己点过「紧急」那一行之后，就别再被自动判定覆盖 */
+  urgentTouched: false,
 
   onUnload() {
     if (this.detectTimer) clearTimeout(this.detectTimer);
@@ -504,6 +519,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
    */
   scheduleDetect(content: string) {
     if (this.detectTimer) clearTimeout(this.detectTimer);
+    // 紧急判定挂在这里：描述框、猜你想输、语音、随手拍转过来的话，
+    // 每一处改内容都会走到这一句，新增入口只要调 scheduleDetect 就自动跟上
+    this.refreshUrgency(content);
     if (!shouldDetectAddress(content)) {
       if (this.data.detected) this.setData({ detected: null });
       return;
@@ -522,6 +540,22 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     // 用户点过 × 的同一段地址不再弹出来
     if (res.matchedText && res.matchedText === this.dismissedMatch) return;
     this.setData({ detected: res });
+  },
+
+  /** 说了「急修」就标紧急；人自己定过就不再自动改 */
+  refreshUrgency(content: string) {
+    const hit = detectUrgency(content);
+    this.setData({
+      urgentMatched: hit.matched,
+      urgentReasonText: urgencyReason(hit.matched),
+      ...(this.urgentTouched ? {} : { urgent: hit.urgent }),
+    });
+  },
+
+  /** 判错了点一下取消，想标回去再点一下 */
+  onToggleUrgent() {
+    this.urgentTouched = true;
+    this.setData({ urgent: !this.data.urgent });
   },
 
   /** 点 × 撤掉识别结果，回到上面手选的位置 */
@@ -680,6 +714,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         contactName: this.data.contactName.trim() || undefined,
         contactPhone: contactPhone || undefined,
         repairType: this.data.typeOptions[typeIndex].value,
+        // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
+        urgent: this.data.urgent,
         // 地址已经单独放进 addressText，描述只留故障本身。用 matchedRaw
         // （原话里地址占的整段，含小区名）剥 —— 归一化的 matchedText 不含小区名，
         // 剥完会剩个「枫桦景苑」在描述开头。剥空就退回原文，不提交空描述。

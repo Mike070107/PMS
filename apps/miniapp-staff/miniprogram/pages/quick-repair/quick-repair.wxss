@@ -58,3 +58,32 @@
 
 /* 说完的整句落在这里，可以直接改 —— 语音识别不可能一次全对 */
 .say { margin-top: 16rpx; min-height: 160rpx; }
+
+/* 紧急那一行：整张卡是点击目标，戴手套也点得中 */
+.urgency { display: flex; align-items: center; gap: 16rpx; }
+.urgency--on {
+  border-color: rgba(255, 77, 79, 0.5);
+  background: rgba(255, 77, 79, 0.06);
+}
+.urgency__badge {
+  flex-shrink: 0;
+  padding: 6rpx 16rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+.urgency--on .urgency__badge {
+  background: rgba(255, 77, 79, 0.14);
+  color: var(--color-danger);
+}
+.urgency__body { flex: 1; }
+.urgency__text { font-size: var(--font-lg); font-weight: 500; line-height: 1.5; }
+.urgency--on .urgency__text { color: var(--color-danger); }
+.urgency__hint {
+  margin-top: 6rpx;
+  font-size: var(--font-sm);
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+}

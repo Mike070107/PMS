@@ -120,7 +120,7 @@ interface PageData {
   stayTone: string;
   /** 「报修时间」那一行日期后面的小标：「已等 3 天」 */
   stayBadge: string;
-  /** 压了 7 天以上，标题前挂「紧急」标签 */
+  /** 报修时说了「急修」，或压了 7 天以上：标题前挂「紧急」标签 */
   urgent: boolean;
   timeline: TimelineRow[];
   canAccept: boolean;
@@ -278,7 +278,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         stayTone: stayTone(stayedDays),
         // 和列表卡片同一句式：日期黑色，只有「已等 N 天」跟着状态上色
         stayBadge: `已等 ${stayedDays} 天`,
-        urgent: stayTone(stayedDays) === 'danger',
+        // 和列表卡片同一口径：报单时说了「急修」，或者压了 7 天，都挂红标
+        urgent: !!detail.request?.urgent || stayTone(stayedDays) === 'danger',
         timeline: buildTimeline(detail.logs, statusLabel, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
         // 接单按钮和后端 acceptWorkOrder 一一对应，两条路都要判：
         //   · 认领（claim）：没人负责 + 状态在池子里 —— 只有维修工能领

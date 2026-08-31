@@ -346,6 +346,11 @@ export interface RepairCreateReq {
   predictedRepairType?: string;
   content: string;
   attachments?: string[];
+  /**
+   * 按紧急处理。端上从描述里认出「急修 / 加急 / 抢修」就带 true，
+   * 人点掉就带 false —— 不传时服务端会拿描述自己判（见 detectUrgency）。
+   */
+  urgent?: boolean;
 }
 
 /**
@@ -391,6 +396,8 @@ export interface WorkOrderListItem {
   /** 报修来源编码（owner_miniapp / staff_miniapp / office_web）及中文 */
   source?: string | null;
   sourceLabel?: string | null;
+  /** 报修时就说了「急修」：卡片标题前挂红色「紧急」标，工单池里排最前 */
+  urgent?: boolean;
 }
 
 export interface RepairRequestView {
@@ -406,6 +413,8 @@ export interface RepairRequestView {
   repairTypeLabel?: string | null;
   content: string;
   attachments: string[];
+  /** 报修时标的紧急（描述里说了「急修」，或报单的人自己勾的） */
+  urgent?: boolean;
   submittedBy: number | null;
   createdAt: string;
 }
@@ -752,6 +761,7 @@ export * from './repair-classify';
 export * from './pages';
 export * from './fees';
 export * from './voice-extract';
+export * from './urgency';
 
 // ---------- 停留时长 ----------
 

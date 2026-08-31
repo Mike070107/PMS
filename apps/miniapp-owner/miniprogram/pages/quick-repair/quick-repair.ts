@@ -4,7 +4,13 @@ import type {
   PublicRepairType,
 } from '@pms/api-client/src/endpoints/repairs';
 import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
-import { AuditStatus, classifyRepairType, extractFaultDescription } from '@pms/shared-types';
+import {
+  AuditStatus,
+  classifyRepairType,
+  detectUrgency,
+  extractFaultDescription,
+  urgencyReason,
+} from '@pms/shared-types';
 import { detectRepairAddress, shouldDetectAddress } from '../../utils/address-detect';
 import {
   composePlaceText,
@@ -75,6 +81,15 @@ Page({
     media: [] as Array<{ url: string; type: 'image' | 'video' }>,
     uploading: false,
     submitting: false,
+    /**
+      * 说了「急修 / 加急 / 抢修」就把这单标成紧急（判定见 shared-types 的 detectUrgency，
+      * 所有报修入口共用一份）。识别到才显示那一行，点一下能取消、再点能标回来 ——
+      * 自动填的默认值必须能改，改完提交的字段跟着走。
+      */
+    urgent: false,
+    /** 命中的那个词，用来告诉用户「凭什么标成紧急」 */
+    urgentMatched: '',
+    urgentReasonText: '',
     /** 自动判定出来的类型，展示给用户并允许改 */
     guessLabel: '',
     guessReason: '',
@@ -97,6 +112,8 @@ Page({
   detectTimer: 0 as number,
   /** 用户点过 × 的识别片段：同一段文字不再弹出来烦人 */
   dismissedMatch: '' as string,
+  /** 人自己点过「紧急」那一行之后，就别再被自动判定覆盖 */
+  urgentTouched: false,
 
   onLoad() {
     // 提前把订阅模板拿好：提交时授权框要在点击里同步唤起，来不及再去请求
@@ -313,6 +330,7 @@ Page({
       const next = this.data.content ? `${this.data.content}${text}` : text;
       this.setData({ content: next });
       this.guess(next);
+      this.refreshUrgency(next);
       this.scheduleDetect(next);
       this.refreshSubmittable();
     };
@@ -339,8 +357,27 @@ Page({
     const value = e.detail.value;
     this.setData({ content: value });
     this.guess(value);
+    this.refreshUrgency(value);
     this.scheduleDetect(value);
     this.refreshSubmittable();
+  },
+
+  // ---------------- 紧急 ----------------
+
+  /** 描述里说了「急修」就标紧急；人自己定过就不再自动改 */
+  refreshUrgency(content: string) {
+    const hit = detectUrgency(content);
+    this.setData({
+      urgentMatched: hit.matched,
+      urgentReasonText: urgencyReason(hit.matched),
+      ...(this.urgentTouched ? {} : { urgent: hit.urgent }),
+    });
+  },
+
+  /** 判错了点一下取消，想标回去再点一下 */
+  onToggleUrgent() {
+    this.urgentTouched = true;
+    this.setData({ urgent: !this.data.urgent });
   },
 
   // ---------------- 描述里的地址识别 ----------------
@@ -445,6 +482,8 @@ Page({
           : scopeIds(scope, this.place)),
         addressText: detected?.matched ? detected.addressText : this.data.placeText,
         repairType: this.guessType || undefined,
+        // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
+        urgent: this.data.urgent,
         // 描述里认出来的地址已经单独提交了，从描述里剥掉，顺带剥语音带进来的语气词；
         // 只拍照没打字时给一句占位，后端要求 content 非空
         content:

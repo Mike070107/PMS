@@ -3,12 +3,14 @@ import type { ParsedRepairAddress, PublicRepairType } from '@pms/api-client/src/
 import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
 import {
   classifyRepairType,
+  detectUrgency,
   extractContact,
   extractFaultDescription,
   isVideoUrl,
   MAX_REPAIR_IMAGES,
   MAX_REPAIR_VIDEO_SECONDS,
   MAX_REPAIR_VIDEOS,
+  urgencyReason,
 } from '@pms/shared-types';
 import { composeDetectedAddress, detectRepairAddress } from '../../utils/address-detect';
 
@@ -66,6 +68,14 @@ Page({
     typeLabel: '',
     contactName: '',
     contactPhone: '',
+    /**
+     * 说了「急修 / 加急 / 抢修」就把这单标成紧急（判定见 shared-types 的 detectUrgency，
+     * 所有报修入口共用一份）。认出来才显示那一行，点一下取消、再点标回来 ——
+     * 认错了必须能改，改完提交的字段跟着走。
+     */
+    urgent: false,
+    urgentMatched: '',
+    urgentReasonText: '',
 
     submitting: false,
     errorMsg: '',
@@ -77,6 +87,8 @@ Page({
   types: [] as PublicRepairType[],
   /** 端上判出来的类型，提交时带上：和最终落库的不一致就是一条负样本 */
   predictedType: '',
+  /** 人自己点过「紧急」那一行之后，就别再被自动判定覆盖 */
+  urgentTouched: false,
   detectTimer: 0,
 
   onLoad() {
@@ -212,11 +224,16 @@ Page({
     // 类型和联系人是纯本地正则，每次输入都跟着认
     const hit = this.types.length ? classifyRepairType(text, this.types) : null;
     const contact = extractContact(text);
+    const urgency = detectUrgency(text);
     this.predictedType = hit?.repairType || '';
     this.setData({
       typeLabel: hit?.label || '',
       contactName: contact.name || '',
       contactPhone: contact.phone || '',
+      urgentMatched: urgency.matched,
+      urgentReasonText: urgencyReason(urgency.matched),
+      // 人自己定过紧急就不再自动改
+      ...(this.urgentTouched ? {} : { urgent: urgency.urgent }),
     });
 
     // 地址要问服务端撞库，防抖 400ms
@@ -267,6 +284,12 @@ Page({
     this.setData({ found, description, needManual: !!this.data.content.trim() && !detected });
   },
 
+  /** 判错了点一下取消，想标回去再点一下 */
+  onToggleUrgent() {
+    this.urgentTouched = true;
+    this.setData({ urgent: !this.data.urgent });
+  },
+
   /** 认错了就整单改到「我要报修」去逐项改，别在这一屏里堆一套表单 */
   onEditInFull() {
     // content 给「问题描述」框（已经剥掉地址/人名/电话，只剩故障本身），
@@ -306,6 +329,8 @@ Page({
         contactPhone: this.data.contactPhone || undefined,
         repairType: this.predictedType || undefined,
         predictedRepairType: this.predictedType || undefined,
+        // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
+        urgent: this.data.urgent,
         // 提交剥干净的描述；剥过头（空了）就退回原话
         content: this.data.description || content,
         attachments: this.data.attachments,

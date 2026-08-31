@@ -40,6 +40,7 @@ import {
   WarehouseType,
   WorkOrderStatus,
 } from '../../common/enums';
+import { detectUrgency } from '../../common/repair-urgency.util';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
 import { ensureOfficeRepairRules, ruleAssigneeIds } from './repair-rule-template';
 import {
@@ -576,7 +577,7 @@ export class RepairsService implements OnModuleInit {
 
     const requests = await this.repairRequestRepo.find({
       where: { tenantId, id: In(requestIds) },
-      select: ['id', 'repairType', 'houseId', 'buildingId', 'addressText', 'content', 'contactName', 'reporterRole', 'source'],
+      select: ['id', 'repairType', 'houseId', 'buildingId', 'addressText', 'content', 'contactName', 'reporterRole', 'source', 'urgent'],
     });
     const houseIds = requests
       .map((item) => item.houseId)
@@ -613,11 +614,13 @@ export class RepairsService implements OnModuleInit {
         })
       : [];
     const assigneeNameById = new Map(assignees.map((item) => [item.id, item.name]));
-    return workOrders.map((item) => {
+    const rows = workOrders.map((item) => {
       const repairType = requestById.get(item.requestId)?.repairType ?? item.skill;
       return {
         ...item,
         repairType,
+        // 报修时就说了「急修」的单：卡片和后台列表挂红色「紧急」标
+        urgent: requestById.get(item.requestId)?.urgent ?? false,
         // 租户自建的类型（menjing、duijiang…）在端上查不到中文，卡片会直接显示编码，
         // 所以中文名由后端给：租户配的 label 优先，回退到内置类型表
         repairTypeLabel: this.repairTypeLabel(repairType, typeLabels),
@@ -644,6 +647,12 @@ export class RepairsService implements OnModuleInit {
         })(),
       };
     });
+    // 工单池是「先到先接」，急单排在第 20 条等于没标 —— 只有池子这一档提前。
+    // 「在手工单」「后台全部」维持时间倒序：那两处人是按时间找单的，抽一条到顶更难找
+    if (query.scope === 'pool') {
+      rows.sort((a, b) => Number(b.urgent) - Number(a.urgent));
+    }
+    return rows;
   }
 
   /**
@@ -1954,6 +1963,8 @@ export class RepairsService implements OnModuleInit {
         })
       : null;
     const typeLabel = rule?.label || '报修';
+    // 紧急写进标题第一格：站内信列表和微信订阅消息都只露出开头那几个字
+    const urgentTag = request?.urgent ? '【紧急】' : '';
     const address = request?.addressText?.trim() || '（未填地址）';
     const content = request?.content?.trim() || '';
     const deadline = workOrder.slaDueAt
@@ -1965,15 +1976,15 @@ export class RepairsService implements OnModuleInit {
         tenantId: workOrder.tenantId,
         receiverId: candidate.id,
         eventKey: 'order_pool_new',
-        title: `新工单待接：${typeLabel} · ${address}${deadline}`,
+        title: `${urgentTag}新工单待接：${typeLabel} · ${address}${deadline}`,
         payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo, content },
         page: `pages/order-detail/order-detail?id=${workOrder.id}`,
         template: 'orderAssigned',
         templateFields: {
           orderNo: workOrder.orderNo,
           type: typeLabel,
-          status: '新工单待接单',
-          statusShort: '待接单',
+          status: request?.urgent ? '紧急，请优先处理' : '新工单待接单',
+          statusShort: request?.urgent ? '紧急待接' : '待接单',
           content,
           assignee: '',
           address,
@@ -2377,6 +2388,12 @@ export class RepairsService implements OnModuleInit {
     // 也看不到单，报单的人自己也找不到
     const typeRule = await this.findTypeRule(repairType, tenantId, dto.communityId);
     const candidates = await this.ruleCandidates(tenantId, typeRule);
+    // 「这个要急修」以前只躺在描述文本里，派单的人得逐条读才看得见。
+    // 端上认出来会带 urgent 上来（人当场点掉就是 false，听端上的）；
+    // 不带这个字段的（老版本小程序、后台录入）在这里用同一份口径兜一次底，
+    // 报修的每个入口一个都不漏 —— 判定见 common/repair-urgency.util
+    const urgency = detectUrgency(dto.content);
+    const urgent = dto.urgent ?? urgency.urgent;
     const sourceLabel = REPAIR_SOURCE_LABELS[source] ?? source;
     // 联系人/电话在端上都是选填（随手拍压根不问），不在服务端兜底的话
     // 后台工单详情就是两个「-」，办公室拿到单子找不到人
@@ -2401,6 +2418,7 @@ export class RepairsService implements OnModuleInit {
           reporterRole,
           repairType: repairType ?? null,
           content: dto.content,
+          urgent,
           attachments: dto.attachments ?? [],
           submittedBy,
           createdBy: submittedBy,
@@ -2452,10 +2470,22 @@ export class RepairsService implements OnModuleInit {
           toStatus: workOrder.status,
           action: 'create',
           operatorId: submittedBy,
-          // 业主在小程序进度里能看到这一条，写中文，别把枚举值透出去
-          note: candidates.length
-            ? `${sourceLabel}；已通知维修工 ${candidates.map((c) => c.name || `#${c.id}`).join('、')}`
-            : sourceLabel,
+          // 业主在小程序进度里能看到这一条，写中文，别把枚举值透出去。
+          // 紧急要写明凭什么标的：只写「已按紧急处理」，报单的人会以为是物业定的，
+          // 标错了也不知道该改哪句话
+          note: [
+            sourceLabel,
+            urgent
+              ? urgency.matched
+                ? `已按紧急处理（描述里说了「${urgency.matched}」）`
+                : '已按紧急处理'
+              : '',
+            candidates.length
+              ? `已通知维修工 ${candidates.map((c) => c.name || `#${c.id}`).join('、')}`
+              : '',
+          ]
+            .filter(Boolean)
+            .join('；'),
           createdBy: submittedBy,
           updatedBy: submittedBy,
         }),

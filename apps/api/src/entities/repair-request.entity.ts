@@ -43,6 +43,14 @@ export class RepairRequest extends TenantEntity {
   @Column({ type: 'text' })
   content: string;
 
+  /**
+   * 报修时就要求当紧急处理。来源有二：描述里说了「急修 / 加急 / 抢修」
+   * （见 shared-types 的 detectUrgency，端上和服务端同一份口径），
+   * 或者报单的人自己勾了。工单池、在手工单、后台列表都靠它挂红色「紧急」标。
+   */
+  @Column({ type: 'boolean', default: false })
+  urgent: boolean;
+
   // 附件 URL 数组（图片/视频）
   @Column({ type: 'jsonb', default: () => "'[]'" })
   attachments: string[];

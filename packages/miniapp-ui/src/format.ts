@@ -42,6 +42,8 @@ export function withOrderLabels<
     reporterRoleLabel?: string | null;
     source?: string | null;
     sourceLabel?: string | null;
+    /** 报修时就标了紧急（描述里说了「急修」），由后端给 */
+    urgent?: boolean;
   },
 >(
   list: T[],
@@ -56,7 +58,7 @@ export function withOrderLabels<
     timeText: string;
     /** 跟在短日期后面的一枚小标：「已等 3 天」，按 stayTone 上色 */
     stayBadge: string;
-    /** 压了 7 天以上，卡片标题前挂「紧急」标签 */
+    /** 报修时说了「急修」，或者压了 7 天以上 —— 两种都挂「紧急」标 */
     urgent: boolean;
     missingText: string;
     /** 卡片「报修人」：「张阿姨」「王保安（保安代报）」「叶双（员工小程序提交）」，没留名字是「未填」 */
@@ -85,7 +87,9 @@ export function withOrderLabels<
       // 日期永远是黑的，只有「已等 N 天」那一小截上色
       timeText: formatDateShortCn(item.createdAt),
       stayBadge: `已等 ${days} 天`,
-      urgent: stayTone(days) === 'danger',
+      // 报单时说的「急修」和「压了 7 天」都是「这单得先处理」，共用同一枚红标：
+      // 分成两种标只会让卡片上多一个要认的东西，而处理动作是一样的
+      urgent: !!item.urgent || stayTone(days) === 'danger',
       missingText: missingMaterialsText(item.missingMaterials),
       reporterText: reporterTextOf(item),
     };

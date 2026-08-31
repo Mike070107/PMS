@@ -82,6 +82,19 @@
     </view>
   </view>
 
+  <!-- 说了「急修」就标紧急。整行可点：取消 / 标回来都在这一下 -->
+  <view
+    wx:if="{{urgentMatched || urgent}}"
+    class="card urgency {{urgent ? 'urgency--on' : ''}}"
+    bindtap="onToggleUrgent"
+  >
+    <text class="urgency__badge">{{urgent ? '紧急' : '普通'}}</text>
+    <view class="urgency__body">
+      <view class="urgency__text">{{urgent ? '这单按紧急处理' : '这单不按紧急处理'}}</view>
+      <view class="urgency__hint">{{urgent ? urgentReasonText + '，点这行取消' : '点这行标回紧急'}}</view>
+    </view>
+  </view>
+
   <view wx:if="{{needManual}}" class="card">
     <view class="sku-empty">
       这句话里没认出小区房号。说清楚「几期几号几室」再说一次，或者改用完整表单逐项填。

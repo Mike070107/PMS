@@ -7,6 +7,7 @@ import {
   classifyRepairType,
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
+  detectUrgency,
   extractContact,
   extractFaultDescription,
   isVideoUrl,
@@ -14,6 +15,7 @@ import {
   MAX_REPAIR_VIDEO_SECONDS,
   MAX_REPAIR_VIDEOS,
   REPAIR_TYPE_OPTIONS,
+  urgencyReason,
 } from '@pms/shared-types';
 import {
   shouldDetectAddress,
@@ -104,6 +106,14 @@ Page({
     /** 描述里识别出的地址；识别到就替换手选位置展示，点 × 恢复 */
     detected: null as ParsedRepairAddress | null,
 
+    /**
+     * 描述里说了「急修 / 加急 / 抢修」→ 这单按紧急处理（判定见 shared-types 的
+     * detectUrgency，随手拍走的是同一份）。认出来才显示那一行，点一下取消、再点标回来。
+     */
+    urgent: false,
+    urgentMatched: '',
+    urgentReasonText: '',
+
     /** 「一句话填单」的识别痕迹，摆出来让人核对：判成什么类型、按哪个词判的 */
     autoTypeHint: '',
     /** 联系人/电话是自动填的，提示一句，认错了好改 */
@@ -138,6 +148,8 @@ Page({
   /** 代报角色的授权小区；空数组 = 不限（物业员工） */
   reportCommunityIds: [] as number[],
   detectTimer: 0 as number,
+  /** 人自己点过「紧急」那一行之后，就别再被自动判定覆盖 */
+  urgentTouched: false,
   /** 随手拍转过来的原话。它和「问题描述」框里的文字不是同一份，识别守卫要认它 */
   handoffRaw: '' as string,
   dismissedMatch: '' as string,
@@ -333,8 +345,10 @@ Page({
 
   scheduleDetect(content: string) {
     if (this.detectTimer) clearTimeout(this.detectTimer);
-    // 类型/联系人/电话不受地址关键词限制，任何一次输入都跟着识别
+    // 类型/联系人/电话/紧急都不受地址关键词限制，任何一次输入都跟着识别。
+    // 描述框、猜你想输、语音、随手拍转过来的话都走到这里，新增入口只要调它就自动跟上
     this.autoFillFromText(content);
+    this.refreshUrgency(content);
     if (!shouldDetectAddress(content)) {
       if (this.data.detected) this.setData({ detected: null });
       return;
@@ -376,6 +390,22 @@ Page({
       contentSuggestTitle: type ? type.label + '·猜你想输' : '猜你想输',
       autoTypeHint: '',
     });
+  },
+
+  /** 说了「急修」就标紧急；人自己定过就不再自动改 */
+  refreshUrgency(content: string) {
+    const hit = detectUrgency(content);
+    this.setData({
+      urgentMatched: hit.matched,
+      urgentReasonText: urgencyReason(hit.matched),
+      ...(this.urgentTouched ? {} : { urgent: hit.urgent }),
+    });
+  },
+
+  /** 判错了点一下取消，想标回去再点一下 */
+  onToggleUrgent() {
+    this.urgentTouched = true;
+    this.setData({ urgent: !this.data.urgent });
   },
 
   onPickContentTag(e: WechatMiniprogram.BaseEvent) {
@@ -547,6 +577,8 @@ Page({
         // 把「系统当初判的是什么」一并带上：和最终选的不一致时，
         // 后端记一条负样本，下次这个词就不会再往错的类型上撞
         predictedRepairType: this.predictedType || undefined,
+        // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
+        urgent: this.data.urgent,
         // 地址在描述里留到这一刻是为了让识别撞库（见 onSpeech 那段注释），
         // 提交时剥掉：地址已经单独放在 addressText 里了，描述只留故障本身。
         // 用 matchedRaw（原话里的那一整段，含小区名），不是归一化的 matchedText ——

@@ -103,6 +103,8 @@ interface WorkOrderRow {
   repairType?: string | null;
   summaryAddress?: string | null;
   summaryContent?: string | null;
+  /** 报修时就说了「急修」：列表第一格挂红色「紧急」标 */
+  urgent?: boolean;
   skill?: string | null;
   feeCents?: number;
   dispatchedAt?: string | null;
@@ -134,6 +136,8 @@ interface RepairRequestDetail {
   reporterAddressText?: string | null;
   repairType: string | null;
   content: string;
+  /** 报修时就说了「急修」：详情和列表挂红色「紧急」标 */
+  urgent?: boolean;
   attachments: string[];
 }
 interface WorkOrderLog {
@@ -413,6 +417,9 @@ export default function WorkOrdersPage() {
       render: (_, r) => (
         <div>
           <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.5 }}>
+            {/* 报修时说了「急修」的单，红标顶在类型前面 —— 派单的人扫这一列，
+                标在后面（比如跟在业主原话后）会被省略号吃掉 */}
+            {r.urgent && <Tag color="error" style={{ marginInlineEnd: 6 }}>紧急</Tag>}
             {getRepairTypeLabel(r.repairType || r.skill, repairTypeRules)}
             <Text type="secondary" style={{ fontWeight: 400, marginLeft: 8 }}>
               {r.summaryAddress || '未填写房号'}
@@ -1705,7 +1712,20 @@ function WorkOrderDetailDrawer({
               labelStyle={compactDescriptionLabelStyle}
               contentStyle={compactDescriptionContentStyle}
               items={[
-                { key: 'status', label: '当前状态', children: <Tag color={statusMeta[detail.workOrder.status].color}>{statusMeta[detail.workOrder.status].label}</Tag>, span: 2 },
+                {
+                  key: 'status',
+                  label: '当前状态',
+                  children: (
+                    <>
+                      <Tag color={statusMeta[detail.workOrder.status].color}>
+                        {statusMeta[detail.workOrder.status].label}
+                      </Tag>
+                      {/* 报修时说了「急修」：状态旁边挂红标，进度里那条创建记录写着凭哪个词标的 */}
+                      {detail.request?.urgent && <Tag color="error">紧急</Tag>}
+                    </>
+                  ),
+                  span: 2,
+                },
                 {
                   key: 'stay',
                   label: '已停留',

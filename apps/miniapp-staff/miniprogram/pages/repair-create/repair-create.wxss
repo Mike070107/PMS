@@ -202,3 +202,41 @@ textarea { min-height: 220rpx; }
   line-height: 1.5;
 }
 .auto-hint--block { margin: 0 0 20rpx; }
+/* 描述里说了「急修」时冒出来的那一行：整行是点击目标（≥88rpx），点一下切换 */
+.urgency {
+  margin-top: 16rpx;
+  padding: 20rpx 24rpx;
+  min-height: 88rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  border: 2rpx solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+.urgency--on {
+  border-color: rgba(255, 77, 79, 0.5);
+  background: rgba(255, 77, 79, 0.08);
+}
+.urgency__badge {
+  flex-shrink: 0;
+  padding: 6rpx 16rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-card-bg);
+  color: var(--color-text-secondary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+.urgency--on .urgency__badge {
+  background: rgba(255, 77, 79, 0.14);
+  color: var(--color-danger);
+}
+.urgency__body { flex: 1; }
+.urgency__text { font-size: var(--font-xl); font-weight: 500; line-height: 1.5; }
+.urgency--on .urgency__text { color: var(--color-danger); }
+.urgency__hint {
+  margin-top: 6rpx;
+  font-size: var(--font-sm);
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+}

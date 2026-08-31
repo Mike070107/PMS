@@ -79,6 +79,14 @@ export class CreateRepairRequestDto {
   @MaxLength(60)
   predictedRepairType?: string;
 
+  /**
+   * 按紧急处理。端上从描述里认出「急修 / 加急 / 抢修」时会带 true 上来，
+   * 人当场点掉就是 false —— 所以这里传了什么就听什么，不传才由服务端
+   * 拿描述再判一次（老版本小程序、后台录入走的都是那条兜底）。
+   */
+  @IsOptional()
+  @IsBoolean()
+  urgent?: boolean;
 }
 
 /** 随手拍：从描述文字里识别报修地址（「一期24号302」→ 库里真实的楼栋/房号） */

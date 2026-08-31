@@ -177,6 +177,40 @@
 .speech--on { background: var(--color-brand); color: #fff; border-color: var(--color-brand); }
 
 /* 自动判定 */
+/* 紧急那一行：整行是点击目标，高度够老人一次点中（≥88rpx） */
+.urgency {
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  min-height: 88rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  border: 2rpx solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+.urgency--on {
+  border-color: rgba(255, 77, 79, 0.5);
+  background: rgba(255, 77, 79, 0.08);
+}
+.urgency__badge {
+  flex-shrink: 0;
+  padding: 6rpx 16rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.urgency--on .urgency__badge {
+  background: rgba(255, 77, 79, 0.14);
+  color: var(--color-danger);
+}
+.urgency__body { flex: 1; }
+.urgency__text { font-size: 34rpx; font-weight: 500; line-height: 1.5; }
+.urgency--on .urgency__text { color: var(--color-danger); }
+.urgency__hint { margin-top: 6rpx; font-size: 28rpx; line-height: 1.6; color: var(--color-text-tertiary); }
+
 .guess {
   margin-top: 24rpx;
   padding-top: 24rpx;
