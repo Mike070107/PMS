@@ -708,3 +708,12 @@
 - 自上次（9b9e3b7）以来上线的相关提交：
   - 8efc1d9 一句话报修：电话换人清空默认联系人、急急急/困人算紧急、电子门归智能化
 
+## 2026-08-31 22:40 · api · 392e9b6
+
+- 包：`pms-api-20260831-2236.tar.gz`
+- 提交：392e9b6 新工单没人收到提醒：判不出类型的单落「其它」，没配维修工时转办公室
+- 说明：新工单提醒：判不出类型的单落「其它」；没配默认维修工时转通知能派单的人。（另一个会话的 maintenance 签名改动是在打包之后才写的，已核对线上 dist 里没有 signProgress，包干净）
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/maintenance/maintenance.service.ts，M apps/api/src/modules/maintenance/sign.controller.ts
+- 自上次（8efc1d9）以来上线的相关提交：
+  - 392e9b6 新工单没人收到提醒：判不出类型的单落「其它」，没配维修工时转办公室
+
