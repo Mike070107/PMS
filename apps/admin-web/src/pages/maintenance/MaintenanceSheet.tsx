@@ -2,6 +2,26 @@ import { Fragment } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import './maintenance-sheet.css';
 import {
+  ADDR_SLOTS,
+  BACK_COLS,
+  BACK_LEFT_W,
+  BACK_RIGHT,
+  BACK_ROW_H,
+  CHECK_GROUPS,
+  DETAIL_COLS,
+  DETAIL_HEAD_SPLIT,
+  FOOTER,
+  QUOTA_GROUP_W,
+  ROW1,
+  ROW2,
+  ROW3,
+  ROW_H,
+  STUB_LABEL_NARROW,
+  STUB_LABEL_WIDE,
+  STUB_ROWS,
+  VOUCHER_SPLIT,
+} from './sheet-geometry';
+import {
   FEE_CATEGORY_OPTIONS,
   ITEMS_PER_SHEET,
   MATERIALS_PER_SHEET,
@@ -21,7 +41,8 @@ import {
 } from './types';
 
 /**
- * 纸面还原：《房屋修理养护任务单》正反面，1:1 铺在 227mm × 116mm 的纸上。
+ * 纸面还原：《房屋修理养护任务单》正反面，铺在 227mm × 116mm 的纸上。
+ * 每一格的尺寸都在 sheet-geometry.ts 里（量自 300dpi 1:1 扫描件），要调尺寸去那儿改。
  *
  * 同一个组件既是**填单界面**也是**打印稿**（editable 切换）：
  * 所见即所印，不做两套渲染 —— 两套一定会跑偏，纸上少一格没人发现得了。
@@ -55,6 +76,20 @@ export function sheetCount(order: MaintenanceOrder): number {
     Math.ceil((order.items?.length || 0) / ITEMS_PER_SHEET),
     Math.ceil((order.materials?.length || 0) / MATERIALS_PER_SHEET),
   );
+}
+
+/**
+ * 这一张纸上印的单号 —— 只印**实体联单号**，不印系统单号。
+ *
+ * 实体联单是一本连号的纸，连打时每印一张号码就往后走一个：库里只存起始号，
+ * 第 N 张显示「起始号 + N − 1」，位数保持不变（0119610 → 0119611）。
+ * 还没填实体单号就留空 —— 系统号（YH-…）印上去只会和纸上的号对不上账。
+ */
+export function paperNoForSheet(order: MaintenanceOrder, pageNo: number): string {
+  const raw = (order.paperNo || '').trim();
+  if (!raw) return '';
+  if (!/^\d+$/.test(raw)) return raw;
+  return String(Number(raw) + pageNo - 1).padStart(raw.length, '0');
 }
 
 // ---------------- 骨架 ----------------
@@ -164,9 +199,7 @@ function DateField({
       placeholder="月/日"
       className="mo-in--num"
       onChange={
-        onChange
-          ? (text) => onChange(text.trim() ? parseMD(text, refIso) : null)
-          : undefined
+        onChange ? (text) => onChange(text.trim() ? parseMD(text, refIso) : null) : undefined
       }
     />
   );
@@ -232,18 +265,12 @@ function SignSlotBox({
     <div
       className={`mo-signslot ${editable && onSign ? 'mo-signslot--clickable' : ''}`}
       onClick={editable && onSign ? onSign : undefined}
-      title={editable && onSign ? '点击手写签名' : undefined}
+      title={editable && onSign ? '点击签名（可发到手机上签）' : undefined}
     >
       {body}
     </div>
   );
 }
-
-/**
- * 地址格四个槽的宽度（占地址格 45mm 的百分比）。量的是纸上「路 弄 号 室」四个字的位置：
- * 上行的「村」宽度 = 路 + 弄，这样它才正对着下行的「弄」。改这里两行一起动，不会跑偏。
- */
-const ADDR_SLOTS = { road: 27, lane: 20, buildingNo: 23, room: 25 };
 
 function AddrSlot({
   width,
@@ -260,11 +287,8 @@ function AddrSlot({
   onChange?: (next: string) => void;
 }) {
   return (
-    <span
-      className="mo-addr__slot"
-      style={width ? { flex: `0 0 ${width}%` } : { flex: '1 1 auto' }}
-    >
-      <Field editable={editable} value={value} onChange={onChange} />
+    <span className="mo-addr__slot" style={width ? { flex: `0 0 ${width}%` } : { flex: '1 1 auto' }}>
+      <Field editable={editable} value={value} onChange={onChange} className="mo-in--addr" />
       <span className="mo-addr__unit">{unit}</span>
     </span>
   );
@@ -273,41 +297,66 @@ function AddrSlot({
 /** 一组「名称 + 勾选框」：点中的那个打 ✓，再点一下取消 */
 function TickGroup({
   options,
+  sizes,
   value,
-  labelW,
-  boxW,
-  lastGrow,
   editable,
   onPick,
 }: {
   options: { value: string; label: string }[];
+  /** 每项的 [名称宽, 勾选框宽]，量自纸面 */
+  sizes: readonly (readonly [number, number])[];
   value: string | null;
-  labelW: number;
-  boxW: number;
-  lastGrow?: boolean;
   editable: boolean;
   onPick?: (next: string) => void;
 }) {
   return (
     <>
-      {options.map((opt, i) => {
-        const last = lastGrow && i === options.length - 1;
-        return (
-          <Fragment key={opt.value}>
-            <Cell w={labelW}>
-              <Lb small>{opt.label}</Lb>
-            </Cell>
-            <Cell w={last ? undefined : boxW} grow={last}>
-              <Tick
-                on={value === opt.value}
-                editable={editable}
-                onToggle={onPick && (() => onPick(value === opt.value ? '' : opt.value))}
-              />
-            </Cell>
-          </Fragment>
-        );
-      })}
+      {options.map((opt, i) => (
+        <Fragment key={opt.value}>
+          <Cell w={sizes[i][0]}>
+            <Lb small>{opt.label}</Lb>
+          </Cell>
+          <Cell w={sizes[i][1]}>
+            <Tick
+              on={value === opt.value}
+              editable={editable}
+              onToggle={onPick && (() => onPick(value === opt.value ? '' : opt.value))}
+            />
+          </Cell>
+        </Fragment>
+      ))}
     </>
+  );
+}
+
+/**
+ * 标题带：标题在表格上**左右居中**，单号紧挨着标题右边 —— 纸上就是这么排的
+ * （量到标题中心 988px、表格中心 998px，基本重合；单号从标题右边 1.8mm 处起）。
+ * 单号用绝对定位挂在标题右侧，不参与居中计算，否则标题会被单号推向左边。
+ */
+function SheetHead({
+  title,
+  no,
+  page,
+  spaced,
+}: {
+  title: string;
+  no?: string;
+  page?: string;
+  spaced?: boolean;
+}) {
+  return (
+    <div className="mo-head">
+      <span className="mo-head__anchor">
+        <span className={`mo-title ${spaced ? 'mo-title--spaced' : ''}`}>{title}</span>
+        {(no || page) && (
+          <span className="mo-head__after">
+            {no && <span className="mo-no">{no}</span>}
+            {page && <span className="mo-no__page">{page}</span>}
+          </span>
+        )}
+      </span>
+    </div>
   );
 }
 
@@ -324,21 +373,15 @@ export function MaintenanceFront(props: SheetProps) {
     (_, i) => order.items?.[offset + i] ?? null,
   );
   const inspectedAt = parseIsoDate(order.inspectedAt);
+  const paperNo = paperNoForSheet(order, pageNo);
+  const pageMark = pageCount > 1 ? `（第 ${pageNo} 页 / 共 ${pageCount} 页）` : '';
 
   return (
     <div className={`mo-sheet ${overlay ? 'mo-sheet--overlay' : ''}`}>
       <div className="mo-perf" />
 
       <div className="mo-block mo-block--main">
-        <div className="mo-head">
-          <span className="mo-title">房屋修理养护任务单</span>
-          <OrderNo order={order} pageNo={pageNo} />
-          {pageCount > 1 && (
-            <span className="mo-no__page">
-              （第 {pageNo} 页 / 共 {pageCount} 页）
-            </span>
-          )}
-        </div>
+        <SheetHead title="房屋修理养护任务单" no={paperNo} page={pageMark} />
 
         <div className="mo-unitline">
           <Lb>管房单位</Lb>
@@ -353,22 +396,22 @@ export function MaintenanceFront(props: SheetProps) {
 
         <div className="mo-tbl">
           {/* 第 1 行：报修人 / 地址 / 报修日期 / 有人时间 / 验收 */}
-          <Row h={9}>
-            <Cell w={14}>
+          <Row h={ROW_H.reporter}>
+            <Cell w={ROW1[0]}>
               <Lb>{'报修人\n姓名'}</Lb>
             </Cell>
-            <Cell w={13}>
+            <Cell w={ROW1[1]}>
               <Field
                 editable={editable}
                 value={text(order.reporterName)}
                 onChange={patch && ((v) => patch({ reporterName: v }))}
               />
             </Cell>
-            <Cell w={11}>
+            <Cell w={ROW1[2]}>
               <Lb>地址</Lb>
             </Cell>
-            <Cell w={45}>
-              {/* 纸上是两行：上行只有「村」，且正对着下行的「弄」（ADDR_SLOTS 的宽度就是按这个配的） */}
+            <Cell w={ROW1[3]}>
+              {/* 纸上是两行：上行只有「村」，正对着下行的「弄」 */}
               <div className="mo-addr">
                 <div className="mo-addr__row">
                   <AddrSlot
@@ -412,10 +455,10 @@ export function MaintenanceFront(props: SheetProps) {
                 </div>
               </div>
             </Cell>
-            <Cell w={10.5}>
+            <Cell w={ROW1[4]}>
               <Lb>{'报修\n日期'}</Lb>
             </Cell>
-            <Cell w={10.5}>
+            <Cell w={ROW1[5]}>
               <DateField
                 editable={editable}
                 value={order.reportedOn}
@@ -423,10 +466,10 @@ export function MaintenanceFront(props: SheetProps) {
                 onChange={patch && ((v) => patch({ reportedOn: v }))}
               />
             </Cell>
-            <Cell w={10.5}>
+            <Cell w={ROW1[6]}>
               <Lb>{'有人\n时间'}</Lb>
             </Cell>
-            <Cell w={10.5}>
+            <Cell w={ROW1[7]}>
               <Field
                 editable={editable}
                 value={text(order.presentTime)}
@@ -439,31 +482,31 @@ export function MaintenanceFront(props: SheetProps) {
           </Row>
 
           {/* 第 2 行：报修部位 / 项目 / 三个日期 */}
-          <Row h={9}>
-            <Cell w={14}>
+          <Row h={ROW_H.part}>
+            <Cell w={ROW2[0]}>
               <Lb>{'报修\n部位'}</Lb>
             </Cell>
-            <Cell w={13}>
+            <Cell w={ROW2[1]}>
               <Field
                 editable={editable}
                 value={text(order.faultPart)}
                 onChange={patch && ((v) => patch({ faultPart: v }))}
               />
             </Cell>
-            <Cell w={11}>
+            <Cell w={ROW2[2]}>
               <Lb>{'报修\n项目'}</Lb>
             </Cell>
-            <Cell w={21.5}>
+            <Cell w={ROW2[3]}>
               <Field
                 editable={editable}
                 value={text(order.repairItem)}
                 onChange={patch && ((v) => patch({ repairItem: v }))}
               />
             </Cell>
-            <Cell w={11}>
+            <Cell w={ROW2[4]}>
               <Lb>{'预约\n日期'}</Lb>
             </Cell>
-            <Cell w={12.5}>
+            <Cell w={ROW2[5]}>
               <DateField
                 editable={editable}
                 value={order.appointOn}
@@ -471,10 +514,10 @@ export function MaintenanceFront(props: SheetProps) {
                 onChange={patch && ((v) => patch({ appointOn: v }))}
               />
             </Cell>
-            <Cell w={10.5}>
+            <Cell w={ROW2[6]}>
               <Lb>{'开工\n日期'}</Lb>
             </Cell>
-            <Cell w={10.5}>
+            <Cell w={ROW2[7]}>
               <DateField
                 editable={editable}
                 value={order.startOn}
@@ -482,10 +525,10 @@ export function MaintenanceFront(props: SheetProps) {
                 onChange={patch && ((v) => patch({ startOn: v }))}
               />
             </Cell>
-            <Cell w={10.5}>
+            <Cell w={ROW2[8]}>
               <Lb>{'完工\n日期'}</Lb>
             </Cell>
-            <Cell w={10.5}>
+            <Cell w={ROW2[9]}>
               <DateField
                 editable={editable}
                 value={order.finishOn}
@@ -505,8 +548,8 @@ export function MaintenanceFront(props: SheetProps) {
           </Row>
 
           {/* 第 3 行：三个括号 */}
-          <Row h={7.6}>
-            <Cell w={52.5}>
+          <Row h={ROW_H.category}>
+            <Cell w={ROW3[0]}>
               <span className="mo-paren">
                 <Lb>修缮日期（</Lb>
                 <Field
@@ -518,7 +561,7 @@ export function MaintenanceFront(props: SheetProps) {
                 <Lb>）</Lb>
               </span>
             </Cell>
-            <Cell w={52}>
+            <Cell w={ROW3[1]}>
               <span className="mo-paren">
                 <Lb>费用类别（</Lb>
                 <Field
@@ -544,65 +587,61 @@ export function MaintenanceFront(props: SheetProps) {
             </Cell>
           </Row>
 
-          {/* 第 4 行：三组勾选 —— 每组的总宽和上一行三个括号对齐 */}
-          <Row h={7.6}>
+          {/* 第 4 行：三组勾选。三组的分界和上一行的三格并不对齐 —— 纸上就是错开的 */}
+          <Row h={ROW_H.checks}>
             <TickGroup
               options={PART_CATEGORY_OPTIONS}
+              sizes={CHECK_GROUPS.part}
               value={order.partCategory}
-              labelW={11}
-              boxW={6.5}
               editable={editable}
               onPick={patch && ((v) => patch({ partCategory: v }))}
             />
             <TickGroup
               options={FEE_CATEGORY_OPTIONS}
+              sizes={CHECK_GROUPS.fee}
               value={order.feeCategory}
-              labelW={8.5}
-              boxW={4.5}
               editable={editable}
               onPick={patch && ((v) => patch({ feeCategory: v }))}
             />
             <TickGroup
               options={SHARE_METHOD_OPTIONS}
+              sizes={CHECK_GROUPS.share}
               value={order.shareMethod}
-              labelW={12}
-              boxW={6.5}
-              lastGrow
               editable={editable}
               onPick={patch && ((v) => patch({ shareMethod: v }))}
             />
           </Row>
 
           {/* 第 5 行：明细表头 */}
-          <Row h={10.2}>
-            <Cell w={10.5}>
+          <Row h={ROW_H.detailHead}>
+            <Cell w={DETAIL_COLS.part}>
               <Lb>{'查勘\n部位'}</Lb>
             </Cell>
-            <Cell w={35.5}>
+            <Cell w={DETAIL_COLS.name}>
               <Lb>查勘修理项目</Lb>
             </Cell>
-            <Cell w={10}>
+            <Cell w={DETAIL_COLS.surveyQty}>
               <Lb>{'查勘\n数量'}</Lb>
             </Cell>
-            <Cell w={10.5}>
+            <Cell w={DETAIL_COLS.actualQty}>
               <Lb>{'实做\n数量'}</Lb>
             </Cell>
-            <Cell w={10}>
+            <Cell w={DETAIL_COLS.actualHours}>
               <Lb>{'实做\n工时'}</Lb>
             </Cell>
-            <Cell w={10.5}>
+            <Cell w={DETAIL_COLS.measureQty}>
               <Lb>{'量方\n数量'}</Lb>
             </Cell>
-            <Cell w={38} className="mo-col2">
-              <div className="mo-sub" style={{ height: '4.2mm' }}>
+            <Cell w={QUOTA_GROUP_W} className="mo-col2">
+              <div className="mo-sub" style={{ height: `${DETAIL_HEAD_SPLIT.top}mm` }}>
                 <Lb>预 算 定 额</Lb>
               </div>
-              <div className="mo-sub" style={{ height: '6mm' }}>
+              <div className="mo-sub" style={{ height: `${DETAIL_HEAD_SPLIT.bottom}mm` }}>
                 <div className="mo-subrow">
-                  <Cell w={14}>
+                  <Cell w={DETAIL_COLS.quotaCode}>
                     <Lb>编号</Lb>
                   </Cell>
-                  <Cell w={9.5}>
+                  <Cell w={DETAIL_COLS.quotaHours}>
                     <Lb>工时</Lb>
                   </Cell>
                   <Cell grow>
@@ -611,10 +650,10 @@ export function MaintenanceFront(props: SheetProps) {
                 </div>
               </div>
             </Cell>
-            <Cell w={13.5}>
+            <Cell w={DETAIL_COLS.materialFee}>
               <Lb>材料费</Lb>
             </Cell>
-            <Cell w={10}>
+            <Cell w={DETAIL_COLS.quality}>
               <Lb>{'质量\n验收'}</Lb>
             </Cell>
             <Cell grow>
@@ -626,32 +665,29 @@ export function MaintenanceFront(props: SheetProps) {
           {rows.map((item, i) => {
             const index = offset + i;
             const patchItem = props.onItemPatch;
-            const cell = (
-              key: keyof MaintenanceItem,
-              width: number | undefined,
-              grow?: boolean,
-            ) => (
-              <Cell w={width} grow={grow}>
+            const numCell = (key: keyof MaintenanceItem, width: number) => (
+              <Cell w={width}>
                 <Field
                   editable={editable}
                   className="mo-in--num"
                   value={numText(item?.[key] as number | null)}
                   onChange={
-                    patchItem && ((v) => patchItem(index, { [key]: toNum(v) } as Partial<MaintenanceItem>))
+                    patchItem &&
+                    ((v) => patchItem(index, { [key]: toNum(v) } as Partial<MaintenanceItem>))
                   }
                 />
               </Cell>
             );
             return (
-              <Row h={6.6} key={index}>
-                <Cell w={10.5}>
+              <Row h={ROW_H.detail} key={index}>
+                <Cell w={DETAIL_COLS.part}>
                   <Field
                     editable={editable}
                     value={item?.part || ''}
                     onChange={patchItem && ((v) => patchItem(index, { part: v }))}
                   />
                 </Cell>
-                <Cell w={35.5}>
+                <Cell w={DETAIL_COLS.name}>
                   <Field
                     editable={editable}
                     className="mo-in--left"
@@ -659,11 +695,11 @@ export function MaintenanceFront(props: SheetProps) {
                     onChange={patchItem && ((v) => patchItem(index, { name: v }))}
                   />
                 </Cell>
-                {cell('surveyQty', 10)}
-                {cell('actualQty', 10.5)}
-                {cell('actualHours', 10)}
-                {cell('measureQty', 10.5)}
-                <Cell w={14}>
+                {numCell('surveyQty', DETAIL_COLS.surveyQty)}
+                {numCell('actualQty', DETAIL_COLS.actualQty)}
+                {numCell('actualHours', DETAIL_COLS.actualHours)}
+                {numCell('measureQty', DETAIL_COLS.measureQty)}
+                <Cell w={DETAIL_COLS.quotaCode}>
                   <Field
                     editable={editable}
                     list={quotaListId}
@@ -672,8 +708,8 @@ export function MaintenanceFront(props: SheetProps) {
                     onChange={patchItem && ((v) => patchItem(index, { quotaCode: v }))}
                   />
                 </Cell>
-                {cell('quotaHours', 9.5)}
-                <Cell w={14.5}>
+                {numCell('quotaHours', DETAIL_COLS.quotaHours)}
+                <Cell w={DETAIL_COLS.laborFee}>
                   <Field
                     editable={editable}
                     className="mo-in--num"
@@ -683,7 +719,7 @@ export function MaintenanceFront(props: SheetProps) {
                     }
                   />
                 </Cell>
-                <Cell w={13.5}>
+                <Cell w={DETAIL_COLS.materialFee}>
                   <Field
                     editable={editable}
                     className="mo-in--num"
@@ -693,7 +729,7 @@ export function MaintenanceFront(props: SheetProps) {
                     }
                   />
                 </Cell>
-                <Cell w={10}>
+                <Cell w={DETAIL_COLS.quality}>
                   <Field
                     editable={editable}
                     value={item?.quality || ''}
@@ -713,11 +749,11 @@ export function MaintenanceFront(props: SheetProps) {
           })}
 
           {/* 页脚：三个签名 + 合计 + 凭证发放 */}
-          <Row h={14.9}>
-            <Cell w={7}>
+          <Row h={ROW_H.footer}>
+            <Cell w={FOOTER.fillerLabel}>
               <span className="mo-vlabel">填单人</span>
             </Cell>
-            <Cell w={21}>
+            <Cell w={FOOTER.fillerValue}>
               <SignSlotBox
                 url={order.fillerSignUrl}
                 name={order.fillerName}
@@ -725,10 +761,10 @@ export function MaintenanceFront(props: SheetProps) {
                 onSign={props.onSign && (() => props.onSign?.('filler'))}
               />
             </Cell>
-            <Cell w={7}>
+            <Cell w={FOOTER.repairerLabel}>
               <span className="mo-vlabel">修理人</span>
             </Cell>
-            <Cell w={22}>
+            <Cell w={FOOTER.repairerValue}>
               <SignSlotBox
                 url={order.repairerSignUrl}
                 name={order.repairerName}
@@ -736,10 +772,10 @@ export function MaintenanceFront(props: SheetProps) {
                 onSign={props.onSign && (() => props.onSign?.('repairer'))}
               />
             </Cell>
-            <Cell w={7}>
+            <Cell w={FOOTER.inspectorLabel}>
               <span className="mo-vlabel">查验员</span>
             </Cell>
-            <Cell w={24}>
+            <Cell w={FOOTER.inspectorValue}>
               {/* 查验员这一格在表单里不给点：签名只能从「查验并签名」进来，
                   否则填单的人自己就把经理的字签了 */}
               <SignSlotBox
@@ -754,23 +790,23 @@ export function MaintenanceFront(props: SheetProps) {
                 <Lb>日</Lb>
               </span>
             </Cell>
-            <Cell w={11}>
+            <Cell w={FOOTER.quotaFeeLabel}>
               <span className="mo-vpair">
                 <span className="mo-vlabel">定额</span>
                 <span className="mo-vlabel">工料费</span>
               </span>
             </Cell>
-            <Cell w={25}>
+            <Cell w={FOOTER.total}>
               <span className="mo-total">
                 <span className="mo-total__lb">合计</span>
                 <span className="mo-total__v">{isLast ? centsToYuan(order.totalCents) : ''}</span>
               </span>
             </Cell>
             <Cell grow className="mo-col2">
-              <div className="mo-sub" style={{ height: '7mm' }}>
+              <div className="mo-sub" style={{ height: `${VOUCHER_SPLIT.label}mm` }}>
                 <Lb>凭证发放</Lb>
               </div>
-              <div className="mo-sub" style={{ height: '7.9mm' }}>
+              <div className="mo-sub" style={{ height: `${VOUCHER_SPLIT.value}mm` }}>
                 <Field
                   editable={editable}
                   value={text(order.voucherIssue)}
@@ -784,15 +820,13 @@ export function MaintenanceFront(props: SheetProps) {
 
       {/* 右边的「报修凭证」存根 */}
       <div className="mo-block mo-block--stub">
-        <div className="mo-head" style={{ height: '7mm' }}>
-          <OrderNo order={order} pageNo={pageNo} />
+        <div className="mo-head mo-head--stubno">
+          {paperNo && <span className="mo-no">{paperNo}</span>}
         </div>
-        <div className="mo-head" style={{ height: '8mm' }}>
-          <span className="mo-title">报修凭证</span>
-        </div>
+        <SheetHead title="报修凭证" />
         <div className="mo-tbl">
-          <Row h={9.5}>
-            <Cell w={13}>
+          <Row h={STUB_ROWS[0]}>
+            <Cell w={STUB_LABEL_NARROW}>
               <Lb>{'报修\n日期'}</Lb>
             </Cell>
             <Cell grow>
@@ -806,40 +840,46 @@ export function MaintenanceFront(props: SheetProps) {
               </span>
             </Cell>
           </Row>
-          <Row h={10.5}>
-            <Cell w={18}>
+          <Row h={STUB_ROWS[1]}>
+            <Cell w={STUB_LABEL_WIDE}>
               <Lb>{'报修人\n姓名'}</Lb>
             </Cell>
             <Cell grow>
               <div className="mo-txt">{text(order.reporterName)}</div>
             </Cell>
           </Row>
-          <Row h={10}>
-            <Cell w={13}>
+          <Row h={STUB_ROWS[2]}>
+            <Cell w={STUB_LABEL_NARROW}>
               <Lb>{'报修\n部位'}</Lb>
             </Cell>
             <Cell grow>
               <div className="mo-txt">{text(order.faultPart)}</div>
             </Cell>
           </Row>
-          <Row h={7.5}>
+          <Row h={STUB_ROWS[3]}>
             <Cell grow>
               <Lb>报 修 项 目</Lb>
             </Cell>
           </Row>
-          <Row h={16.5}>
+          <Row h={STUB_ROWS[4]}>
             <Cell grow className="mo-cell--left">
               <div className="mo-txt mo-txt--left">{text(order.repairItem)}</div>
             </Cell>
           </Row>
-          <Row h={15.5}>
+          <Row h={STUB_ROWS[5]}>
             <Cell grow />
           </Row>
-          <Row h={8}>
+          <Row h={STUB_ROWS[6]}>
             <Cell grow />
           </Row>
-          <Row h={7.2}>
-            <Cell w={18}>
+          <Row h={STUB_ROWS[7]}>
+            <Cell grow />
+          </Row>
+          <Row h={STUB_ROWS[8]}>
+            <Cell grow />
+          </Row>
+          <Row h={STUB_ROWS[9]}>
+            <Cell w={STUB_LABEL_WIDE}>
               <Lb>填单人</Lb>
             </Cell>
             <Cell grow>
@@ -864,51 +904,47 @@ export function MaintenanceBack(props: SheetProps) {
     (_, i) => order.materials?.[offset + i] ?? null,
   );
   const patchMaterial = props.onMaterialPatch;
+  const paperNo = paperNoForSheet(order, pageNo);
 
   return (
     <div className={`mo-sheet mo-sheet--back ${overlay ? 'mo-sheet--overlay' : ''}`}>
       <div className="mo-perf" />
 
       <div className="mo-block mo-block--main">
-        <div className="mo-head">
-          <span className="mo-title mo-title--spaced">材料领耗记录</span>
-          {pageCount > 1 && (
-            <>
-              <OrderNo order={order} pageNo={pageNo} />
-              <span className="mo-no__page">
-                （第 {pageNo} 页 / 共 {pageCount} 页）
-              </span>
-            </>
-          )}
-        </div>
+        <SheetHead
+          title="材料领耗记录"
+          spaced
+          no={pageCount > 1 ? paperNo : undefined}
+          page={pageCount > 1 ? `（第 ${pageNo} 页 / 共 ${pageCount} 页）` : ''}
+        />
         <div className="mo-unitline" />
 
         <div className="mo-back-grid">
-          <div className="mo-back-grid__left">
+          <div className="mo-back-grid__left" style={{ flex: `0 0 ${BACK_LEFT_W}mm` }}>
             <div className="mo-tbl">
-              <Row h={9.5}>
-                <Cell w={19.5}>
+              <Row h={BACK_ROW_H.head}>
+                <Cell w={BACK_COLS.name}>
                   <Lb>材料名称</Lb>
                 </Cell>
-                <Cell w={12}>
+                <Cell w={BACK_COLS.spec}>
                   <Lb>规格</Lb>
                 </Cell>
-                <Cell w={10}>
+                <Cell w={BACK_COLS.unit}>
                   <Lb>单位</Lb>
                 </Cell>
-                <Cell w={14}>
+                <Cell w={BACK_COLS.estQty}>
                   <Lb>{'估料\n数量'}</Lb>
                 </Cell>
-                <Cell w={14}>
+                <Cell w={BACK_COLS.pickQty}>
                   <Lb>{'领料\n数量'}</Lb>
                 </Cell>
-                <Cell w={13}>
+                <Cell w={BACK_COLS.usedQty}>
                   <Lb>{'实耗\n数量'}</Lb>
                 </Cell>
-                <Cell w={13}>
+                <Cell w={BACK_COLS.returnQty}>
                   <Lb>{'退料\n数量'}</Lb>
                 </Cell>
-                <Cell w={13}>
+                <Cell w={BACK_COLS.amount}>
                   <Lb>{'实耗\n金额'}</Lb>
                 </Cell>
                 <Cell grow>
@@ -932,8 +968,8 @@ export function MaintenanceBack(props: SheetProps) {
                   </Cell>
                 );
                 return (
-                  <Row h={8.4} key={index}>
-                    <Cell w={19.5}>
+                  <Row h={BACK_ROW_H.detail} key={index}>
+                    <Cell w={BACK_COLS.name}>
                       <Field
                         editable={editable}
                         className="mo-in--left"
@@ -941,25 +977,27 @@ export function MaintenanceBack(props: SheetProps) {
                         onChange={patchMaterial && ((v) => patchMaterial(index, { name: v }))}
                       />
                     </Cell>
-                    <Cell w={12}>
+                    <Cell w={BACK_COLS.spec}>
                       <Field
                         editable={editable}
+                        className="mo-in--spec"
                         value={row?.spec || ''}
                         onChange={patchMaterial && ((v) => patchMaterial(index, { spec: v }))}
                       />
                     </Cell>
-                    <Cell w={10}>
+                    <Cell w={BACK_COLS.unit}>
                       <Field
                         editable={editable}
+                        className="mo-in--spec"
                         value={row?.unit || ''}
                         onChange={patchMaterial && ((v) => patchMaterial(index, { unit: v }))}
                       />
                     </Cell>
-                    {numCell('estQty', 14)}
-                    {numCell('pickQty', 14)}
-                    {numCell('usedQty', 13)}
-                    {numCell('returnQty', 13)}
-                    <Cell w={13}>
+                    {numCell('estQty', BACK_COLS.estQty)}
+                    {numCell('pickQty', BACK_COLS.pickQty)}
+                    {numCell('usedQty', BACK_COLS.usedQty)}
+                    {numCell('returnQty', BACK_COLS.returnQty)}
+                    <Cell w={BACK_COLS.amount}>
                       <Field
                         editable={editable}
                         className="mo-in--num"
@@ -981,8 +1019,8 @@ export function MaintenanceBack(props: SheetProps) {
                   </Row>
                 );
               })}
-              <Row h={8.5}>
-                <Cell w={19.5}>
+              <Row h={BACK_ROW_H.service}>
+                <Cell w={BACK_COLS.name}>
                   <Lb>服务记录</Lb>
                 </Cell>
                 <Cell grow>
@@ -993,8 +1031,8 @@ export function MaintenanceBack(props: SheetProps) {
                   />
                 </Cell>
               </Row>
-              <Row h={8.2}>
-                <Cell w={19.5}>
+              <Row h={BACK_ROW_H.followUp}>
+                <Cell w={BACK_COLS.name}>
                   <Lb>回访记录</Lb>
                 </Cell>
                 <Cell grow>
@@ -1009,10 +1047,10 @@ export function MaintenanceBack(props: SheetProps) {
           </div>
 
           <div className="mo-back-grid__right">
-            <Cell style={{ height: '9.5mm' }}>
+            <Cell style={{ height: `${BACK_RIGHT.head}mm` }}>
               <Lb>{'折旧料或\n整料记录'}</Lb>
             </Cell>
-            <Cell style={{ height: '42mm', alignItems: 'flex-start' }}>
+            <Cell style={{ height: `${BACK_RIGHT.scrap}mm`, alignItems: 'flex-start' }}>
               <Field
                 editable={editable}
                 wrap
@@ -1021,7 +1059,7 @@ export function MaintenanceBack(props: SheetProps) {
                 onChange={patch && ((v) => patch({ scrapNote: v }))}
               />
             </Cell>
-            <Cell style={{ height: '8.4mm' }}>
+            <Cell style={{ height: `${BACK_RIGHT.totalLabel}mm` }}>
               <Lb>材料合计</Lb>
             </Cell>
             <Cell grow>
@@ -1066,25 +1104,6 @@ export function MaintenanceSheets(props: Omit<SheetProps, 'pageNo' | 'pageCount'
       ))}
     </>
   );
-}
-
-/**
- * 这一张纸上印的单号。
- *
- * 实体联单是一本连号的纸，连打时每印一张号码就往后走一个 —— 所以库里只存起始号，
- * 第 N 张显示「起始号 + N - 1」，位数保持不变（0119610 → 0119611）。
- * 没填实体单号就退回系统单号（那个不连号，也不用递增）。
- */
-export function paperNoForSheet(order: MaintenanceOrder, pageNo: number): string {
-  const raw = (order.paperNo || '').trim();
-  if (!/^\d+$/.test(raw)) return raw || order.orderNo;
-  return String(Number(raw) + pageNo - 1).padStart(raw.length, '0');
-}
-
-/** 单号：纸质联单号是 7 位，系统号 16 位 —— 长的自动小一档，别把存根撑折行 */
-function OrderNo({ order, pageNo }: { order: MaintenanceOrder; pageNo: number }) {
-  const no = paperNoForSheet(order, pageNo);
-  return <span className={`mo-no ${no.length > 10 ? 'mo-no--long' : ''}`}>{no}</span>;
 }
 
 function ymd(iso: string | null | undefined): { y: string; m: string; d: string } {

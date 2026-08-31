@@ -9,6 +9,7 @@ import PropertiesPage from './pages/PropertiesPage';
 import OwnerAuditPage from './pages/OwnerAuditPage';
 import WorkOrdersPage from './pages/WorkOrdersPage';
 import MaintenanceOrdersPage from './pages/MaintenanceOrdersPage';
+import SignPage from './pages/SignPage';
 import StaffPage from './pages/StaffPage';
 import InventoryPage from './pages/InventoryPage';
 import MaterialsPage from './pages/MaterialsPage';
@@ -107,6 +108,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* 手机扫码签名页：不需要登录，凭据是链接里那串 5 分钟有效的 token */}
+      <Route path="/sign/:token" element={<SignPage />} />
       <Route
         path="/"
         element={

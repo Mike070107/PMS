@@ -60,6 +60,14 @@ const STATUS_COLOR: Record<MaintenanceStatus, string> = {
   void: 'default',
 };
 
+/** 签名位 → 单据上的字段名（轮询时看这一格有没有值） */
+const SIGN_FIELDS: Record<SignSlot, keyof MaintenanceOrder> = {
+  filler: 'fillerSignUrl',
+  repairer: 'repairerSignUrl',
+  inspector: 'inspectorSignUrl',
+  owner: 'ownerSignUrl',
+};
+
 const SIGN_SLOT_LABELS: Record<SignSlot, string> = {
   filler: '填单人',
   repairer: '修理人',
@@ -243,21 +251,18 @@ export default function MaintenanceOrdersPage() {
 
   const columns = [
     {
+      // 只显示实体联单号 —— 系统号（YH-…）是内部标识，纸上没有，摆在这儿只会和纸对不上
       title: '养护单号',
       key: 'orderNo',
-      width: 200,
-      render: (_: unknown, r: MaintenanceListRow) => (
-        <div>
-          <div style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-            {r.paperNo || r.orderNo}
-          </div>
-          {r.paperNo && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              系统号 {r.orderNo}
-            </Text>
-          )}
-        </div>
-      ),
+      width: 140,
+      render: (_: unknown, r: MaintenanceListRow) =>
+        r.paperNo ? (
+          <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', fontSize: 16 }}>
+            {r.paperNo}
+          </span>
+        ) : (
+          <Text type="secondary">未填单号</Text>
+        ),
     },
     {
       title: '报修地址 / 项目',
@@ -394,7 +399,7 @@ export default function MaintenanceOrdersPage() {
           tableLayout="fixed"
           // 列宽合计约 1180：窗口比它窄就横向滚，不让列被压到一个字宽、
           // 把「养护单号」挤成竖排（2026-08-31 反馈）
-          scroll={{ x: 1180 }}
+          scroll={{ x: 1120 }}
           pagination={{ pageSize: 10, showSizeChanger: false }}
           onRow={(r) => ({ onClick: () => setOpenId(r.id), style: { cursor: 'pointer' } })}
           locale={{
@@ -553,6 +558,8 @@ function MaintenanceEditor({
   const [dirty, setDirty] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [signSlot, setSignSlot] = useState<SignSlot | null>(null);
+  /** 「发到手机签」的二维码弹窗，签哪个位置 */
+  const [phoneSlot, setPhoneSlot] = useState<SignSlot | null>(null);
   const [printJob, setPrintJob] = useState<null | 'normal' | 'overlay'>(null);
   const printRef = useRef<HTMLDivElement | null>(null);
 
@@ -702,6 +709,15 @@ function MaintenanceEditor({
     }
   };
 
+  /** 手机上签完了：服务端已经落库，这里把最新的单子换上来，不要标成「未保存」 */
+  const onPhoneSigned = (fresh: MaintenanceOrder) => {
+    setPhoneSlot(null);
+    setDraft((prev) => (prev ? { ...prev, ...fresh } : fresh));
+    setDirty(false);
+    onChanged();
+    message.success('手机上的签名已收到');
+  };
+
   const onSigned = async (url: string) => {
     const slot = signSlot;
     setSignSlot(null);
@@ -803,6 +819,9 @@ function MaintenanceEditor({
         destroyOnHidden
         footer={
           <Space wrap>
+            {editable && !draft?.paperNo && (
+              <Tag color="warning">未填实体单号，纸上那格会是空的</Tag>
+            )}
             {editable && (
               <Tooltip title="联单上号码机打的那串数字。多张纸时这里填第一张的号，打印时逐张 +1。">
                 <Input
@@ -908,6 +927,10 @@ function MaintenanceEditor({
 
       <SignaturePad
         open={!!signSlot}
+        onSendToPhone={() => {
+          setPhoneSlot(signSlot);
+          setSignSlot(null);
+        }}
         title={signSlot ? `${SIGN_SLOT_LABELS[signSlot]}手写签名` : '手写签名'}
         hint={
           signSlot === 'inspector'
@@ -917,6 +940,14 @@ function MaintenanceEditor({
         confirmText={signSlot === 'inspector' ? '查验并签名' : '确认签名'}
         onCancel={() => setSignSlot(null)}
         onDone={onSigned}
+      />
+
+      <PhoneSignModal
+        open={!!phoneSlot}
+        orderId={draft?.id ?? null}
+        slot={phoneSlot}
+        onClose={() => setPhoneSlot(null)}
+        onSigned={onPhoneSigned}
       />
 
       {/* 打印实体挂在 body 下：Modal 里套着 overflow:auto 的滚动容器，会把超出一屏的页裁掉 */}
@@ -929,6 +960,119 @@ function MaintenanceEditor({
           document.body,
         )}
     </>
+  );
+}
+
+/**
+ * 「发到手机签」：显示一个 5 分钟有效的二维码，微信扫了直接进签名页。
+ *
+ * 这边一边显示倒计时，一边每 3 秒问一次服务端「那个签名位有没有回来」——
+ * 手机上签完页面自己关掉，人不会再回电脑上点什么，只能这边自己发现。
+ */
+function PhoneSignModal({
+  open,
+  orderId,
+  slot,
+  onClose,
+  onSigned,
+}: {
+  open: boolean;
+  orderId: number | null;
+  slot: SignSlot | null;
+  onClose: () => void;
+  onSigned: (order: MaintenanceOrder) => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [qr, setQr] = useState<{ qrDataUrl: string; url: string; expiresInSec: number } | null>(null);
+  const [left, setLeft] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!orderId || !slot) return;
+    setLoading(true);
+    setQr(null);
+    try {
+      // 查验签名走另一个接口 —— 权限那一格不一样（只有物业经理有）
+      const data = await request<{ qrDataUrl: string; url: string; expiresInSec: number }>(
+        slot === 'inspector'
+          ? { method: 'POST', url: `/maintenance-orders/${orderId}/inspect-token` }
+          : { method: 'POST', url: `/maintenance-orders/${orderId}/sign-token`, data: { slot } },
+      );
+      setQr(data);
+      setLeft(data.expiresInSec);
+    } catch (e: any) {
+      message.error(e?.message || '二维码生成失败');
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  }, [orderId, slot, message, onClose]);
+
+  useEffect(() => {
+    if (open) load();
+  }, [open, load]);
+
+  // 倒计时
+  useEffect(() => {
+    if (!open || !qr || left <= 0) return;
+    const timer = window.setTimeout(() => setLeft((v) => v - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [open, qr, left]);
+
+  // 轮询：签名回来了就收工
+  useEffect(() => {
+    if (!open || !orderId || !slot || left <= 0) return;
+    const field = SIGN_FIELDS[slot];
+    const timer = window.setInterval(async () => {
+      try {
+        const fresh = await request<MaintenanceOrder>({ url: `/maintenance-orders/${orderId}` });
+        if (fresh[field]) {
+          window.clearInterval(timer);
+          onSigned(fresh);
+        }
+      } catch {
+        // 网络抖一下就算了，下一轮再问
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [open, orderId, slot, left, onSigned]);
+
+  const expired = !!qr && left <= 0;
+
+  return (
+    <Modal
+      open={open}
+      title={slot ? `${SIGN_SLOT_LABELS[slot]}：用手机扫码签名` : '手机签名'}
+      width={460}
+      onCancel={onClose}
+      destroyOnHidden
+      footer={
+        <Space>
+          <Button onClick={load} loading={loading}>
+            重新生成
+          </Button>
+          <Button onClick={onClose}>关闭</Button>
+        </Space>
+      }
+    >
+      <div className="pms-signqr">
+        {qr && !expired ? (
+          <>
+            <img className="pms-signqr__img" src={qr.qrDataUrl} alt="签名二维码" />
+            <div className="pms-signqr__tip">
+              让签字的人用<b>微信扫一扫</b>，手机横过来写；写完点提交，页面会自己关掉。
+              <br />
+              二维码 <b>{Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}</b> 后失效，
+              签好这边会自动收到。
+            </div>
+          </>
+        ) : (
+          <div className="pms-signqr__tip">
+            {loading ? '正在生成二维码…' : expired ? '二维码已失效，点「重新生成」再来一张' : ''}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

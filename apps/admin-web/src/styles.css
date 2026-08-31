@@ -1452,3 +1452,146 @@ body.pms-col-resizing * {
   top: 0;
   width: 227mm;
 }
+
+/* ---------- 手机签名页（/sign/:token，不需要登录） ---------- */
+.pms-sign {
+  position: fixed;
+  inset: 0;
+  background: #f4f7f6;
+  overflow: hidden;
+}
+/*
+ * 竖屏时把整块签名区转 90°：手机浏览器锁不了屏幕方向（微信里 screen.orientation.lock 无效），
+ * 只能把界面转过来让人把手机横过来写。宽高对调 + 以左上角为原点右移一屏，正好铺满。
+ */
+.pms-sign--portrait .pms-sign__stage {
+  width: 100vh;
+  height: 100vw;
+  transform-origin: top left;
+  transform: translateX(100vw) rotate(90deg);
+}
+.pms-sign__stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px 14px;
+  box-sizing: border-box;
+  gap: 10px;
+}
+.pms-sign__rotate-tip {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 44, 40, 0.82);
+  color: #fff;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+.pms-sign__head {
+  flex: 0 0 auto;
+}
+.pms-sign__title {
+  font-size: 19px;
+  line-height: 1.4;
+  color: var(--pms-ink, #16302c);
+}
+.pms-sign__meta {
+  margin-top: 2px;
+  font-size: 14px;
+  color: #5b7370;
+  line-height: 1.5;
+}
+.pms-sign__warn {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #ad6800;
+}
+.pms-sign__pad {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 120px;
+  background: #fff;
+  border: 1px dashed #b7c7c4;
+  border-radius: 10px;
+}
+.pms-sign__error {
+  flex: 0 0 auto;
+  color: #cf1322;
+  font-size: 14px;
+}
+.pms-sign__foot {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+}
+.pms-sign__btn {
+  flex: 1 1 0;
+  min-height: 48px;
+  border: 1px solid #cbd8d5;
+  border-radius: 10px;
+  background: #fff;
+  color: #16302c;
+  font-size: 17px;
+  cursor: pointer;
+}
+.pms-sign__btn:disabled {
+  opacity: 0.45;
+}
+.pms-sign__btn--primary {
+  flex: 2 1 0;
+  border-color: transparent;
+  background: var(--pms-primary, #31558a);
+  color: #fff;
+  font-weight: 600;
+}
+.pms-sign__done {
+  margin: auto;
+  text-align: center;
+  padding: 24px;
+}
+.pms-sign__done-mark {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: #e8f6ef;
+  color: #237804;
+  font-size: 34px;
+  line-height: 64px;
+}
+.pms-sign__done-text {
+  font-size: 20px;
+  color: #16302c;
+}
+.pms-sign__done-sub {
+  margin-top: 6px;
+  font-size: 14px;
+  color: #5b7370;
+  line-height: 1.6;
+}
+
+/* ---------- 「发到手机签」二维码 ---------- */
+.pms-signqr {
+  text-align: center;
+}
+.pms-signqr__img {
+  width: 240px;
+  height: 240px;
+  border: 1px solid #e6edeb;
+  border-radius: 12px;
+  padding: 8px;
+  background: #fff;
+}
+.pms-signqr__tip {
+  margin-top: 12px;
+  line-height: 1.8;
+  color: #5b7370;
+}

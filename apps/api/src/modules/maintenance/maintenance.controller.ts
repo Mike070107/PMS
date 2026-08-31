@@ -19,6 +19,7 @@ import { PermissionsGuard } from '../access/permissions.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import {
   CreateMaintenanceOrderDto,
+  CreateSignTokenDto,
   InspectMaintenanceOrderDto,
   MaintenanceQueryDto,
   SaveQuotaItemDto,
@@ -135,6 +136,32 @@ export class MaintenanceController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.service.update(id, dto, user, access);
+  }
+
+  /**
+   * 「发到手机签」：生成 5 分钟有效的二维码，手机微信扫了直接进签名页。
+   * 填单人 / 修理人 / 报修人这三个位置走填单权限。
+   */
+  @Post('maintenance-orders/:id/sign-token')
+  @RequirePermission('maintenance-orders', 'edit')
+  signToken(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateSignTokenDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.createSignToken(id, dto.slot, user, access);
+  }
+
+  /** 查验签名的二维码：只有「养护单查验」那一格的人能生成 —— 和下面的 inspect 同一道门 */
+  @Post('maintenance-orders/:id/inspect-token')
+  @RequirePermission('maintenance-inspect', 'view')
+  inspectToken(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.createSignToken(id, 'inspector', user, access);
   }
 
   /** 查验只认「养护单查验」这一格，填单权限再大也点不了 */

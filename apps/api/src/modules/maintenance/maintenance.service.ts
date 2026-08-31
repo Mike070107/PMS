@@ -4,8 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
+import * as QRCode from 'qrcode';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { UserRole } from '../../common/enums';
@@ -86,6 +89,29 @@ const SHARE_METHOD_LABELS: Record<string, string> = {
 const ITEMS_PER_SHEET = 4;
 const MATERIALS_PER_SHEET = 7;
 
+/** 手机签名二维码的有效期。够走到师傅跟前让他签个字，过期就重新点一次 */
+const SIGN_TOKEN_TTL_SEC = 5 * 60;
+
+/** 四个签名位 → 库里的字段和中文名 */
+export const SIGN_SLOTS = {
+  filler: { field: 'fillerSignUrl', label: '填单人' },
+  repairer: { field: 'repairerSignUrl', label: '修理人' },
+  owner: { field: 'ownerSignUrl', label: '报修人（户）' },
+  inspector: { field: 'inspectorSignUrl', label: '查验员' },
+} as const;
+
+export type SignSlotKey = keyof typeof SIGN_SLOTS;
+
+interface SignTokenPayload {
+  moId: number;
+  tenantId: number;
+  slot: SignSlotKey;
+  /** 谁点的「发到手机」——查验签名要记在他名下 */
+  uid: number;
+  name: string;
+  purpose: 'maintenance-sign';
+}
+
 /** 单号字符集与工单同一套：去掉了 0/O、1/I、5/S、8/B 这些手写会认错的字 */
 const ORDER_NO_ALPHABET = '34679ACDEFGHJKMNPQRTUVWXY';
 
@@ -93,6 +119,8 @@ const ORDER_NO_ALPHABET = '34679ACDEFGHJKMNPQRTUVWXY';
 export class MaintenanceService {
   constructor(
     private readonly dataSource: DataSource,
+    private readonly jwt: JwtService,
+    private readonly config: ConfigService,
     @InjectRepository(MaintenanceOrder)
     private readonly orderRepo: Repository<MaintenanceOrder>,
     @InjectRepository(QuotaItem)
@@ -424,7 +452,159 @@ export class MaintenanceService {
     return { ok: true };
   }
 
+
+  // ==================== 手机签名（扫码到手机上签） ====================
+
+  /**
+   * 生成一个 5 分钟有效的签名链接和二维码。
+   *
+   * 用的是**另一把密钥**（JWT_SECRET + ':maintenance-sign'）：这样它永远通不过登录态校验，
+   * 就算被截走也只能给这一张单的这一个签名位签个字，五分钟后作废。
+   * 谁点的这个按钮就把谁记在 token 里 —— 查验签名要落在他名下。
+   */
+  async createSignToken(
+    id: number,
+    slot: SignSlotKey,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    if (!SIGN_SLOTS[slot]) throw new BadRequestException('签名位不对');
+    const row = await this.orderRepo.findOne({ where: { id, tenantId } });
+    if (!row) throw new NotFoundException('养护单不存在');
+    this.assertInScope(row.communityId, access);
+    if (row.status === MAINTENANCE_STATUS.VOID) {
+      throw new BadRequestException('这张养护单已作废');
+    }
+    if (slot !== 'inspector' && row.status !== MAINTENANCE_STATUS.DRAFT) {
+      throw new BadRequestException('已查验的养护单不能再改签名');
+    }
+    const me = await this.userRepo.findOne({
+      where: { id: user.id },
+      select: ['id', 'name'],
+    });
+    const payload: SignTokenPayload = {
+      moId: row.id,
+      tenantId,
+      slot,
+      uid: user.id,
+      name: me?.name || '',
+      purpose: 'maintenance-sign',
+    };
+    const token = await this.jwt.signAsync(payload, {
+      secret: this.signSecret(),
+      expiresIn: SIGN_TOKEN_TTL_SEC,
+    });
+    const base = this.appBaseUrl();
+    const url = `${base}/sign/${token}`;
+    const qrDataUrl = await QRCode.toDataURL(url, {
+      width: 560,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+    });
+    return {
+      token,
+      url,
+      qrDataUrl,
+      slot,
+      slotLabel: SIGN_SLOTS[slot].label,
+      expiresInSec: SIGN_TOKEN_TTL_SEC,
+      expiresAt: new Date(Date.now() + SIGN_TOKEN_TTL_SEC * 1000).toISOString(),
+    };
+  }
+
+  /** 手机打开签名页时先问一句：这是给哪张单、哪个位置签的（链接过期就直接说过期） */
+  async getSignSession(token: string) {
+    const payload = await this.verifySignToken(token);
+    const row = await this.orderRepo.findOne({
+      where: { id: payload.moId, tenantId: payload.tenantId },
+    });
+    if (!row) throw new NotFoundException('养护单不存在');
+    const field = SIGN_SLOTS[payload.slot].field;
+    return {
+      slot: payload.slot,
+      slotLabel: SIGN_SLOTS[payload.slot].label,
+      paperNo: row.paperNo,
+      orderNo: row.orderNo,
+      addressText: this.addressText(row),
+      repairItem: row.repairItem,
+      unitName: row.unitName,
+      /** 已经签过就提示一句，允许重签（现场经常写歪了要重来） */
+      signed: !!row[field],
+      signerName: payload.name || null,
+    };
+  }
+
+  /**
+   * 手机上提交签名。图片以 data URL 送上来（现场网络差，一次请求搞定，不走两段式上传）。
+   * 查验位提交 = 查验通过，和后台点「查验并签名」等效。
+   */
+  async submitSignature(token: string, imageDataUrl: string) {
+    const payload = await this.verifySignToken(token);
+    const buffer = this.decodePngDataUrl(imageDataUrl);
+    const row = await this.orderRepo.findOne({
+      where: { id: payload.moId, tenantId: payload.tenantId },
+    });
+    if (!row) throw new NotFoundException('养护单不存在');
+    if (row.status === MAINTENANCE_STATUS.VOID) {
+      throw new BadRequestException('这张养护单已作废');
+    }
+    const stored = await this.storage.putBuffer(buffer, 'image/png', 'uploads', 'signature.png');
+    const url = stored.fileUrl;
+
+    if (payload.slot === 'inspector') {
+      row.inspectorId = payload.uid;
+      row.inspectorName = payload.name || row.inspectorName;
+      row.inspectorSignUrl = url;
+      row.inspectedAt = new Date();
+      row.status = MAINTENANCE_STATUS.INSPECTED;
+    } else {
+      if (row.status !== MAINTENANCE_STATUS.DRAFT) {
+        throw new BadRequestException('已查验的养护单不能再改签名');
+      }
+      row[SIGN_SLOTS[payload.slot].field] = url;
+    }
+    row.updatedBy = payload.uid;
+    await this.orderRepo.save(row);
+    return { ok: true, slotLabel: SIGN_SLOTS[payload.slot].label };
+  }
+
+  private signSecret(): string {
+    return `${this.config.get<string>('JWT_SECRET', 'change-me-in-prod')}:maintenance-sign`;
+  }
+
+  /** 后台自己的地址（微信里打开签名页要用绝对地址） */
+  private appBaseUrl(): string {
+    return (this.config.get<string>('APP_PUBLIC_BASE_URL', '') || '').replace(/\/+$/, '');
+  }
+
+  private async verifySignToken(token: string): Promise<SignTokenPayload> {
+    let payload: SignTokenPayload;
+    try {
+      payload = await this.jwt.verifyAsync<SignTokenPayload>(token, {
+        secret: this.signSecret(),
+      });
+    } catch {
+      throw new BadRequestException('签名链接已过期，请回电脑上重新生成二维码');
+    }
+    if (payload?.purpose !== 'maintenance-sign' || !SIGN_SLOTS[payload.slot]) {
+      throw new BadRequestException('签名链接无效');
+    }
+    return payload;
+  }
+
+  /** data:image/png;base64,... → Buffer。只收 PNG，最大 2MB（签名撑死几十 KB） */
+  private decodePngDataUrl(dataUrl: string): Buffer {
+    const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec((dataUrl || '').trim());
+    if (!match) throw new BadRequestException('签名图片格式不对');
+    const buffer = Buffer.from(match[1], 'base64');
+    if (!buffer.length) throw new BadRequestException('签名是空的');
+    if (buffer.length > 2 * 1024 * 1024) throw new BadRequestException('签名图片太大了');
+    return buffer;
+  }
+
   // ==================== 内部 ====================
+
 
   private async buildPrefill(
     tenantId: number,

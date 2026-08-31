@@ -126,6 +126,23 @@ export class InspectMaintenanceOrderDto {
   inspectedOn?: string;
 }
 
+/** 生成手机签名二维码：填单人 / 修理人 / 报修人（查验走另一个接口，权限不同） */
+export class CreateSignTokenDto {
+  @IsIn(['filler', 'repairer', 'owner'])
+  slot: 'filler' | 'repairer' | 'owner';
+}
+
+/** 手机上提交签名：图片以 data:image/png;base64 送上来 */
+export class SubmitSignatureDto {
+  @IsString()
+  @MaxLength(4000)
+  token: string;
+
+  @IsString()
+  @MaxLength(2_800_000)
+  image: string;
+}
+
 export class MaintenanceQueryDto {
   @IsOptional() @IsString() @MaxLength(60) q?: string;
   @IsOptional() @IsIn(['draft', 'inspected', 'void', 'all']) status?: string;
