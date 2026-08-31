@@ -14,6 +14,7 @@ import {
   Segmented,
   Select,
   Space,
+  Spin,
   Table,
   Tag,
   Tooltip,
@@ -59,6 +60,24 @@ const STATUS_COLOR: Record<MaintenanceStatus, string> = {
   inspected: 'success',
   void: 'default',
 };
+
+/**
+ * 「发到手机签」这一轮的进度。六个状态，界面上一一对应，不让人猜：
+ * loading 生成二维码 → waiting 等扫码 → opened 手机已打开 → signed 已签好
+ * （expired 过期、error 生成失败各自有出路）
+ */
+interface PhoneSign {
+  slot: SignSlot;
+  status: 'loading' | 'waiting' | 'opened' | 'signed' | 'expired' | 'error';
+  token?: string;
+  qrDataUrl?: string;
+  /** 毫秒时间戳 */
+  expiresAt?: number;
+  /** 开二维码之前这一格就有签名 → 提示「重签会覆盖」 */
+  hadSignature?: boolean;
+  signUrl?: string | null;
+  error?: string;
+}
 
 /** 签名位 → 单据上的字段名（轮询时看这一格有没有值） */
 const SIGN_FIELDS: Record<SignSlot, keyof MaintenanceOrder> = {
@@ -576,7 +595,13 @@ function MaintenanceEditor({
   const [zoom, setZoom] = useState(1);
   const [signSlot, setSignSlot] = useState<SignSlot | null>(null);
   /** 「发到手机签」的二维码弹窗，签哪个位置 */
-  const [phoneSlot, setPhoneSlot] = useState<SignSlot | null>(null);
+  /**
+   * 「发到手机签」的进度。放在编辑器这一层而不是弹窗里 ——
+   * 关掉二维码窗口之后还得继续盯着，不然师傅晚一步签完，这边就得刷新页面才看得到。
+   */
+  const [phoneSign, setPhoneSign] = useState<PhoneSign | null>(null);
+  /** 二维码窗口开着没有（关了也照样在后台盯） */
+  const [phoneOpen, setPhoneOpen] = useState(false);
   const [printJob, setPrintJob] = useState<null | 'normal' | 'overlay'>(null);
   const printRef = useRef<HTMLDivElement | null>(null);
 
@@ -725,14 +750,100 @@ function MaintenanceEditor({
     }
   };
 
-  /** 手机上签完了：服务端已经落库，这里把最新的单子换上来，不要标成「未保存」 */
-  const onPhoneSigned = (fresh: MaintenanceOrder) => {
-    setPhoneSlot(null);
-    setDraft((prev) => (prev ? { ...prev, ...fresh } : fresh));
-    setDirty(false);
-    onChanged();
-    message.success('手机上的签名已收到');
-  };
+  /** 二维码窗口关掉之后仍在后台盯着，这时候签名回来要吱一声 */
+  const phoneOpenRef = useRef(phoneOpen);
+  useEffect(() => {
+    phoneOpenRef.current = phoneOpen;
+  }, [phoneOpen]);
+
+  /** 发到手机签：拿二维码。查验签名走另一个接口 —— 权限那一格不一样（只有物业经理有） */
+  const startPhoneSign = useCallback(
+    async (slot: SignSlot) => {
+      if (!draft) return;
+      setPhoneOpen(true);
+      setPhoneSign({ slot, status: 'loading' });
+      try {
+        const data = await request<{
+          token: string;
+          url: string;
+          qrDataUrl: string;
+          expiresInSec: number;
+        }>(
+          slot === 'inspector'
+            ? { method: 'POST', url: `/maintenance-orders/${draft.id}/inspect-token` }
+            : { method: 'POST', url: `/maintenance-orders/${draft.id}/sign-token`, data: { slot } },
+        );
+        setPhoneSign({
+          slot,
+          status: 'waiting',
+          token: data.token,
+          qrDataUrl: data.qrDataUrl,
+          expiresAt: Date.now() + data.expiresInSec * 1000,
+          /** 开二维码之前这一格是不是已经有签名了 —— 有的话要提醒「重签会覆盖」 */
+          hadSignature: !!draft[SIGN_FIELDS[slot]],
+        });
+      } catch (e: any) {
+        setPhoneSign({ slot, status: 'error', error: e?.message || '二维码生成失败' });
+      }
+    },
+    [draft],
+  );
+
+  /*
+   * 盯着这一张二维码走到哪一步了：等待扫码 → 手机已打开 → 已签好。
+   *
+   * 问的是 /sign/status（按 token 记的进度），**不是**看单据上那一格有没有值 ——
+   * 重签的时候那一格本来就有签名，按「有没有值」判会一开窗就当成签好了，
+   * 人根本没机会重签（2026-08-31 用户实际遇到）。
+   *
+   * 依赖只留 token 和 status：把倒计时或回调放进来，effect 每秒重建一次，
+   * 定时器永远轮不到（同一天踩过的另一个坑）。
+   */
+  useEffect(() => {
+    const token = phoneSign?.token;
+    const status = phoneSign?.status;
+    if (!token || !draft || (status !== 'waiting' && status !== 'opened')) return;
+    let alive = true;
+    const timer = window.setInterval(async () => {
+      if (!alive) return;
+      if (phoneSign?.expiresAt && Date.now() > phoneSign.expiresAt) {
+        setPhoneSign((prev) => (prev && prev.token === token ? { ...prev, status: 'expired' } : prev));
+        return;
+      }
+      try {
+        const st = await request<{ opened: boolean; submitted: boolean }>({
+          url: '/sign/status',
+          query: { token },
+        });
+        if (!alive) return;
+        if (st.submitted) {
+          const fresh = await request<MaintenanceOrder>({ url: `/maintenance-orders/${draft.id}` });
+          if (!alive) return;
+          setDraft((prev) => (prev ? { ...prev, ...fresh } : fresh));
+          setDirty(false);
+          onChanged();
+          setPhoneSign((prev) =>
+            prev && prev.token === token
+              ? { ...prev, status: 'signed', signUrl: (fresh[SIGN_FIELDS[prev.slot]] as string) || null }
+              : prev,
+          );
+          // 窗口已经关掉的话，得吱一声，不然人不知道签好了
+          if (!phoneOpenRef.current) {
+            message.success(`${SIGN_SLOT_LABELS[phoneSign!.slot]}的签名已收到`);
+          }
+        } else if (st.opened && status !== 'opened') {
+          setPhoneSign((prev) => (prev && prev.token === token ? { ...prev, status: 'opened' } : prev));
+        }
+      } catch {
+        // 网络抖一下就算了，下一轮再问
+      }
+    }, 2000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phoneSign?.token, phoneSign?.status, draft?.id]);
 
   const onSigned = async (url: string) => {
     const slot = signSlot;
@@ -944,14 +1055,22 @@ function MaintenanceEditor({
       <SignaturePad
         open={!!signSlot}
         onSendToPhone={() => {
-          setPhoneSlot(signSlot);
+          const slot = signSlot;
           setSignSlot(null);
+          if (slot) startPhoneSign(slot);
         }}
         title={signSlot ? `${SIGN_SLOT_LABELS[signSlot]}手写签名` : '手写签名'}
         hint={
-          signSlot === 'inspector'
-            ? '签名即代表已查验。签完这张单就锁定，不能再改内容。'
-            : '在下面的框里手写姓名。用平板或触摸屏可以直接用手指/触控笔签。'
+          [
+            signSlot === 'inspector'
+              ? '签名即代表已查验，签完这张单就锁定、不能再改内容。'
+              : '在下面的框里手写姓名；鼠标不好写就点「发到手机签」，微信扫码在手机上签。',
+            signSlot && draft?.[SIGN_FIELDS[signSlot]]
+              ? '这一格原来就有签名，签完会覆盖掉原来那个。'
+              : '',
+          ]
+            .filter(Boolean)
+            .join('')
         }
         confirmText={signSlot === 'inspector' ? '查验并签名' : '确认签名'}
         onCancel={() => setSignSlot(null)}
@@ -959,11 +1078,10 @@ function MaintenanceEditor({
       />
 
       <PhoneSignModal
-        open={!!phoneSlot}
-        orderId={draft?.id ?? null}
-        slot={phoneSlot}
-        onClose={() => setPhoneSlot(null)}
-        onSigned={onPhoneSigned}
+        open={phoneOpen}
+        state={phoneSign}
+        onRetry={() => phoneSign && startPhoneSign(phoneSign.slot)}
+        onClose={() => setPhoneOpen(false)}
       />
 
       {/* 打印实体挂在 body 下：Modal 里套着 overflow:auto 的滚动容器，会把超出一屏的页裁掉 */}
@@ -985,134 +1103,126 @@ function MaintenanceEditor({
  * 这边一边显示倒计时，一边每 3 秒问一次服务端「那个签名位有没有回来」——
  * 手机上签完页面自己关掉，人不会再回电脑上点什么，只能这边自己发现。
  */
+/**
+ * 「发到手机签」的二维码窗口 —— 纯展示，进度由编辑器那边盯着（关掉窗口也不会断）。
+ *
+ * 六个状态各有各的说法和出路：等待扫码 / 手机已打开 / 已签好 / 已过期 / 生成失败 / 生成中。
+ * 特别是**签好之后不自动关窗**：直接把签名亮出来，人才知道到底成没成 ——
+ * 窗口自己消失最让人心里没底（用户原话：「签完后签字窗口没有自动更新」）。
+ */
 function PhoneSignModal({
   open,
-  orderId,
-  slot,
+  state,
+  onRetry,
   onClose,
-  onSigned,
 }: {
   open: boolean;
-  orderId: number | null;
-  slot: SignSlot | null;
+  state: PhoneSign | null;
+  onRetry: () => void;
   onClose: () => void;
-  onSigned: (order: MaintenanceOrder) => void;
 }) {
-  const { message } = AntdApp.useApp();
-  const [qr, setQr] = useState<{ qrDataUrl: string; url: string; expiresInSec: number } | null>(null);
-  const [left, setLeft] = useState(0);
-  const [loading, setLoading] = useState(false);
-  // 轮询里要调最新的回调，但它不能进 effect 依赖（父组件每次渲染都是新函数）
-  const onSignedRef = useRef(onSigned);
-  useEffect(() => {
-    onSignedRef.current = onSigned;
-  }, [onSigned]);
-
-  const load = useCallback(async () => {
-    if (!orderId || !slot) return;
-    setLoading(true);
-    setQr(null);
-    try {
-      // 查验签名走另一个接口 —— 权限那一格不一样（只有物业经理有）
-      const data = await request<{ qrDataUrl: string; url: string; expiresInSec: number }>(
-        slot === 'inspector'
-          ? { method: 'POST', url: `/maintenance-orders/${orderId}/inspect-token` }
-          : { method: 'POST', url: `/maintenance-orders/${orderId}/sign-token`, data: { slot } },
-      );
-      setQr(data);
-      setLeft(data.expiresInSec);
-    } catch (e: any) {
-      message.error(e?.message || '二维码生成失败');
-      onClose();
-    } finally {
-      setLoading(false);
-    }
-  }, [orderId, slot, message, onClose]);
+  const [now, setNow] = useState(() => Date.now());
+  const status = state?.status;
+  const counting = status === 'waiting' || status === 'opened';
 
   useEffect(() => {
-    if (open) load();
-  }, [open, load]);
+    if (!open || !counting) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [open, counting]);
 
-  // 倒计时
-  useEffect(() => {
-    if (!open || !qr || left <= 0) return;
-    const timer = window.setTimeout(() => setLeft((v) => v - 1), 1000);
-    return () => window.clearTimeout(timer);
-  }, [open, qr, left]);
+  const leftSec = Math.max(0, Math.ceil(((state?.expiresAt ?? 0) - now) / 1000));
+  const leftText = `${Math.floor(leftSec / 60)}:${String(leftSec % 60).padStart(2, '0')}`;
+  const slotLabel = state ? SIGN_SLOT_LABELS[state.slot] : '';
 
-  /*
-   * 轮询：手机上签完了，这边自己发现。
-   *
-   * 依赖里**不能**放 left（倒计时每秒变一次）或 onSigned（父组件每次渲染都是新函数）——
-   * 放了的话这个 effect 每秒重建一次，3 秒的定时器还没轮到就被清掉了，
-   * 结果是手机上签完、电脑这边一直停在二维码那一屏（2026-08-31 用户实际遇到）。
-   * 回调走 ref，依赖只留真正决定「要不要轮询」的三个值。
-   */
-  useEffect(() => {
-    if (!open || !orderId || !slot) return;
-    const field = SIGN_FIELDS[slot];
-    let alive = true;
-    const timer = window.setInterval(async () => {
-      try {
-        const fresh = await request<MaintenanceOrder>({ url: `/maintenance-orders/${orderId}` });
-        if (alive && fresh[field]) {
-          window.clearInterval(timer);
-          onSignedRef.current(fresh);
-        }
-      } catch {
-        // 网络抖一下就算了，下一轮再问
-      }
-    }, 3000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, [open, orderId, slot]);
-
-  /** 关窗时再问一次：轮询正好卡在两拍之间、或者网络慢了一拍，也不至于白签 */
-  const closeAndRefresh = async () => {
-    onClose();
-    if (!orderId || !slot) return;
-    try {
-      const fresh = await request<MaintenanceOrder>({ url: `/maintenance-orders/${orderId}` });
-      if (fresh[SIGN_FIELDS[slot]]) onSignedRef.current(fresh);
-    } catch {
-      // 关都关了，问不到就算了
-    }
-  };
-
-  const expired = !!qr && left <= 0;
+  const footer =
+    status === 'signed' ? (
+      <Space>
+        <Button onClick={onRetry}>重新签一次</Button>
+        <Button type="primary" onClick={onClose}>
+          完成
+        </Button>
+      </Space>
+    ) : status === 'expired' || status === 'error' ? (
+      <Space>
+        <Button type="primary" onClick={onRetry}>
+          {status === 'expired' ? '重新生成二维码' : '重试'}
+        </Button>
+        <Button onClick={onClose}>关闭</Button>
+      </Space>
+    ) : (
+      <Space>
+        <Button onClick={onRetry} disabled={status === 'loading'}>
+          换一张二维码
+        </Button>
+        <Button onClick={onClose}>关闭</Button>
+      </Space>
+    );
 
   return (
     <Modal
       open={open}
-      title={slot ? `${SIGN_SLOT_LABELS[slot]}：用手机扫码签名` : '手机签名'}
+      title={`${slotLabel}：用手机扫码签名`}
       width={460}
-      onCancel={closeAndRefresh}
+      onCancel={onClose}
       destroyOnHidden
-      footer={
-        <Space>
-          <Button onClick={load} loading={loading}>
-            重新生成
-          </Button>
-          <Button onClick={closeAndRefresh}>关闭</Button>
-        </Space>
-      }
+      footer={footer}
     >
       <div className="pms-signqr">
-        {qr && !expired ? (
+        {status === 'loading' && (
+          <div className="pms-signqr__state">
+            <Spin />
+            <div className="pms-signqr__tip">正在生成二维码…</div>
+          </div>
+        )}
+
+        {(status === 'waiting' || status === 'opened') && (
           <>
-            <img className="pms-signqr__img" src={qr.qrDataUrl} alt="签名二维码" />
-            <div className="pms-signqr__tip">
-              让签字的人用<b>微信扫一扫</b>，手机横过来写；写完点提交，页面会自己关掉。
-              <br />
-              二维码 <b>{Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}</b> 后失效，
-              签好这边会自动收到。
+            <img className="pms-signqr__img" src={state?.qrDataUrl} alt="签名二维码" />
+            <div
+              className={`pms-signqr__status ${status === 'opened' ? 'is-opened' : ''}`}
+              role="status"
+            >
+              <span className="pms-signqr__dot" />
+              {status === 'opened' ? '手机已打开签名页，等他写完' : '等待手机扫码…'}
             </div>
+            <div className="pms-signqr__tip">
+              让签字的人用<b>微信扫一扫</b>，手机横过来写，写完点提交。
+              <br />
+              二维码 <b>{leftText}</b> 后失效；<b>这个窗口关掉也没关系</b>，签好了会自动贴到单子上。
+            </div>
+            {state?.hadSignature && (
+              <div className="pms-signqr__warn">这一格原来就有签名，签完会覆盖掉原来那个</div>
+            )}
           </>
-        ) : (
-          <div className="pms-signqr__tip">
-            {loading ? '正在生成二维码…' : expired ? '二维码已失效，点「重新生成」再来一张' : ''}
+        )}
+
+        {status === 'signed' && (
+          <div className="pms-signqr__state">
+            <div className="pms-signqr__ok">✓</div>
+            <div className="pms-signqr__oktext">{slotLabel}的签名已收到</div>
+            {state?.signUrl && (
+              <img className="pms-signqr__preview" src={state.signUrl} alt={`${slotLabel}签名`} />
+            )}
+            <div className="pms-signqr__tip">
+              已经存进这张养护单了，不用再点保存。写歪了可以「重新签一次」，会覆盖这个。
+            </div>
+          </div>
+        )}
+
+        {status === 'expired' && (
+          <div className="pms-signqr__state">
+            <div className="pms-signqr__expired">⏱</div>
+            <div className="pms-signqr__oktext">二维码已过期</div>
+            <div className="pms-signqr__tip">
+              5 分钟内没人签。手机上那个链接现在也打不开了，重新生成一张就行。
+            </div>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div className="pms-signqr__state">
+            <div className="pms-signqr__tip pms-signqr__warn">{state?.error}</div>
           </div>
         )}
       </div>

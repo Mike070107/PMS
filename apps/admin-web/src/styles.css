@@ -1567,6 +1567,10 @@ body.pms-col-resizing * {
   font-size: 34px;
   line-height: 64px;
 }
+.pms-sign__done-mark--warn {
+  background: #fff7e6;
+  color: #ad6800;
+}
 .pms-sign__done-text {
   font-size: 20px;
   color: #16302c;
@@ -1578,7 +1582,7 @@ body.pms-col-resizing * {
   line-height: 1.6;
 }
 
-/* ---------- 「发到手机签」二维码 ---------- */
+/* ---------- 「发到手机签」二维码：六个状态一一对应，别让人猜 ---------- */
 .pms-signqr {
   text-align: center;
 }
@@ -1594,4 +1598,73 @@ body.pms-col-resizing * {
   margin-top: 12px;
   line-height: 1.8;
   color: #5b7370;
+}
+.pms-signqr__state {
+  padding: 20px 8px 4px;
+}
+/* 状态行：一个会呼吸的点 + 一句人话，说明这会儿在等什么 */
+.pms-signqr__status {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #f2f7f6;
+  color: #5b7370;
+  font-size: 14px;
+}
+.pms-signqr__status.is-opened {
+  background: #e8f6ef;
+  color: #237804;
+}
+.pms-signqr__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pms-signqr-pulse 1.4s ease-in-out infinite;
+}
+@keyframes pms-signqr-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pms-signqr__dot { animation: none; opacity: 0.9; }
+}
+.pms-signqr__ok,
+.pms-signqr__expired {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  font-size: 30px;
+  line-height: 56px;
+  background: #e8f6ef;
+  color: #237804;
+}
+.pms-signqr__expired {
+  background: #fff7e6;
+  color: #ad6800;
+}
+.pms-signqr__oktext {
+  font-size: 17px;
+  color: var(--pms-ink, #16302c);
+}
+/* 签好之后把手迹亮出来 —— 窗口自己关掉最让人心里没底 */
+.pms-signqr__preview {
+  display: block;
+  max-width: 240px;
+  max-height: 90px;
+  margin: 14px auto 0;
+  padding: 8px 12px;
+  border: 1px solid #e6edeb;
+  border-radius: 10px;
+  background: #fff;
+  object-fit: contain;
+}
+.pms-signqr__warn {
+  margin-top: 10px;
+  color: #ad6800;
+  line-height: 1.7;
 }

@@ -7,7 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import * as QRCode from 'qrcode';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -91,6 +91,36 @@ const MATERIALS_PER_SHEET = 7;
 
 /** 手机签名二维码的有效期。够走到师傅跟前让他签个字，过期就重新点一次 */
 const SIGN_TOKEN_TTL_SEC = 5 * 60;
+
+/**
+ * 这一张二维码走到哪一步了：手机打开过没有、签完没有。
+ *
+ * 只放内存、跟着 token 走，5 分钟自然过期 —— 它不是业务数据，只是给电脑那头
+ * 「等待扫码 / 已打开 / 已签好」三个状态用的信号灯。进程重启就没了，
+ * 那边会退回「关掉窗口自己刷新」的兜底路径，不影响签名本身（签名是落库的）。
+ *
+ * 为什么必须按 token 记、而不是看单据上那一格有没有签名：
+ * 重签的时候那一格本来就有签名，按「有没有值」判会立刻当成刚签好，
+ * 窗口一开就自己关了，人根本没机会重签（2026-08-31 用户实际遇到）。
+ */
+interface SignProgress {
+  openedAt?: number;
+  submittedAt?: number;
+  expiresAt: number;
+}
+const signProgress = new Map<string, SignProgress>();
+
+function pruneSignProgress() {
+  const now = Date.now();
+  for (const [key, value] of signProgress) {
+    if (value.expiresAt <= now) signProgress.delete(key);
+  }
+}
+
+/** token 的指纹，不把整串 token 当 key 留在内存里 */
+function signKey(token: string): string {
+  return createHash('sha256').update(token).digest('hex').slice(0, 32);
+}
 
 /** 四个签名位 → 库里的字段和中文名 */
 export const SIGN_SLOTS = {
@@ -516,6 +546,7 @@ export class MaintenanceService {
   /** 手机打开签名页时先问一句：这是给哪张单、哪个位置签的（链接过期就直接说过期） */
   async getSignSession(token: string) {
     const payload = await this.verifySignToken(token);
+    this.markSignProgress(token, 'opened');
     const row = await this.orderRepo.findOne({
       where: { id: payload.moId, tenantId: payload.tenantId },
     });
@@ -566,7 +597,36 @@ export class MaintenanceService {
     }
     row.updatedBy = payload.uid;
     await this.orderRepo.save(row);
+    this.markSignProgress(token, 'submitted');
     return { ok: true, slotLabel: SIGN_SLOTS[payload.slot].label };
+  }
+
+  /**
+   * 电脑那头轮询这一个接口看进度：等待扫码 → 已打开 → 已签好。
+   * 按 token 判，不看单据上那一格有没有值 —— 重签时那一格本来就有签名。
+   */
+  async getSignStatus(token: string) {
+    const payload = await this.verifySignToken(token);
+    pruneSignProgress();
+    const progress = signProgress.get(signKey(token));
+    return {
+      slot: payload.slot,
+      slotLabel: SIGN_SLOTS[payload.slot].label,
+      /** 手机已经打开签名页 */
+      opened: !!progress?.openedAt,
+      /** 这一轮签完了（电脑那头据此把签名取回去） */
+      submitted: !!progress?.submittedAt,
+    };
+  }
+
+  private markSignProgress(token: string, step: 'opened' | 'submitted') {
+    pruneSignProgress();
+    const key = signKey(token);
+    const now = Date.now();
+    const current = signProgress.get(key) ?? { expiresAt: now + SIGN_TOKEN_TTL_SEC * 1000 };
+    if (step === 'opened') current.openedAt = current.openedAt ?? now;
+    else current.submittedAt = now;
+    signProgress.set(key, current);
   }
 
   private signSecret(): string {

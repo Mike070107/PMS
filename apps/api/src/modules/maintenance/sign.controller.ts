@@ -22,6 +22,12 @@ export class SignController {
     return this.service.getSignSession(token || '');
   }
 
+  /** 电脑那头轮询：手机打开了没有、签完了没有（按 token 判，重签也认得出来） */
+  @Get('status')
+  status(@Query('token') token: string) {
+    return this.service.getSignStatus(token || '');
+  }
+
   @Post('submit')
   submit(@Body() dto: SubmitSignatureDto) {
     return this.service.submitSignature(dto.token, dto.image);

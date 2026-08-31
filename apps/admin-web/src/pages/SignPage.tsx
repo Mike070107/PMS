@@ -33,6 +33,8 @@ export default function SignPage() {
   const [empty, setEmpty] = useState(true);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  /** 提交完成后没能自动关掉页面（不在微信里就关不掉），改口告诉人可以自己关 */
+  const [closeFailed, setCloseFailed] = useState(false);
   const [portrait, setPortrait] = useState(
     typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : false,
   );
@@ -86,6 +88,7 @@ export default function SignPage() {
       setDone(true);
       // 微信里直接把页面关掉；不是微信就留在「已签好」那一屏
       window.setTimeout(closeWebView, 900);
+      window.setTimeout(() => setCloseFailed(true), 3000);
     } catch (e: any) {
       setError(e?.message || '提交失败，请重试');
     } finally {
@@ -97,12 +100,25 @@ export default function SignPage() {
     <div className="pms-sign__done">
       <div className="pms-sign__done-mark">✓</div>
       <div className="pms-sign__done-text">签名已提交</div>
-      <div className="pms-sign__done-sub">页面即将关闭，可以把手机还回去了</div>
+      <div className="pms-sign__done-sub">
+        {closeFailed
+          ? '已经存好了，可以关掉这个页面，把手机还回去'
+          : '页面马上自动关闭，可以把手机还回去了'}
+      </div>
+    </div>
+  ) : error && !session ? (
+    <div className="pms-sign__done">
+      <div className="pms-sign__done-mark pms-sign__done-mark--warn">⏱</div>
+      <div className="pms-sign__done-text">链接已过期</div>
+      <div className="pms-sign__done-sub">
+        {error}
+        <br />
+        二维码只有 5 分钟有效期。请让办公室在电脑上重新生成一张，再扫一次。
+      </div>
     </div>
   ) : !session ? (
     <div className="pms-sign__done">
-      <div className="pms-sign__done-text">{error || '正在打开签名页…'}</div>
-      {error && <div className="pms-sign__done-sub">链接 5 分钟有效，过期请在电脑上重新生成</div>}
+      <div className="pms-sign__done-text">正在打开签名页…</div>
     </div>
   ) : (
     <>
