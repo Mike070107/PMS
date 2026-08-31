@@ -137,6 +137,7 @@ localStorage key：`pms.admin.actingOffice`；切公司视角、退出登录、�
 | 「谁是维修工」 | 不存在这个问题。派单候选人 = 有 `app:pool·接单` 的人；缺料通知发给有 `app:dispatch·派单` 的人；待批提醒发给有对应审批格的人（`AccessService.userIdsWithPermission`） |
 | 数据隔离 | 「只能看自己提的单」= 业主，或员工侧**既没有工单池也没有派单台也没有后台工单管理**的人（`repairs.service.isSelfScoped`）。以前写死一份身份名单，新增一种代报身份漏加就会掉进无过滤分支 |
 | 一人几个角色 | 随便绑，权限取并集。没有「一个人只能一个身份」的限制了 |
+| 权限模板 | `role_templates` + `role_template_permissions`：**只管页面权限**，不含数据范围、不能分配给人。角色 `roles.template_id` 有值 = 权限跟随模板（角色自己不存 `role_permissions`，`AccessService.effectivePermissions` 每次现读，改模板下一次请求就生效）；留空 = 自定义（老行为）。几个管理处的同一类角色选同一个模板，之后改权限只改模板一处。解绑回自定义时把模板当前那份固化成角色自己的；模板被跟随时不允许删除。关联一律手动 —— 自动把同名角色挂上去等于悄悄改一批人的权限。后台在「业务角色 → 权限模板」页签，带「导入开箱模板」和角色行的「存为模板」 |
 | 开箱即用 | `DEFAULT_ROLE_TEMPLATES`（shared-types 与 api 同源）：维修工 / 物业办公室 / 物业经理 / 采购经理 / 保安 / 居委会 / 业委会。**只是初始值**，改名改勾选删掉都行；每公司只种一次（`tenants.rbac_seeded_at`），种子不会覆盖后来的调整。新建角色时输入这些名字会自动套模板 |
 
 ### 员工端的 8 格
