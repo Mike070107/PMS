@@ -31,6 +31,7 @@ import {
 } from '../../entities/maintenance-order.entity';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
+import { extractSpot } from '../repairs/repair-suggestions.util';
 import { resolveRepairTypeLabel } from '../repairs/repair-type-labels';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { materialTotalCents, totalFeeCents } from './maintenance-money.util';
@@ -433,8 +434,17 @@ export class MaintenanceService {
     // 具体位置落在「报修部位」那一格 —— 硬塞进「号」会印出「监控室2号号」
     const isPublicArea = !house && !building;
 
+    // 「报修部位」纸上只有 13mm 宽，写的是「大门 / 楼道 / 水泵房」这种部位。
+    // 工单的 faultLocation 常常是整条地址（「枫桦景苑二期 228弄51号 公共区域」），
+    // 原样搬过去既印不下、也和上面的地址栏重复 —— 用报修建议那套把门牌剥掉只留部位，
+    // 剥完什么都不剩就留空，让办公室手填（2026-08-31 线上真实工单上验出来的）
+    const spot = extractSpot(
+      workOrder.faultLocation ?? '',
+      [community?.name, topCommunity?.name].filter((name): name is string => !!name),
+    );
+
     const firstItem: MaintenanceItem = {
-      part: workOrder.faultLocation?.trim() || '',
+      part: spot,
       name:
         workOrder.repairContent?.trim() ||
         workOrder.actionNote?.trim() ||
@@ -472,7 +482,7 @@ export class MaintenanceService {
       addrRoom: house?.roomNo || null,
       reportedOn: this.dateOnly(request?.createdAt ?? workOrder.createdAt),
       presentTime: null,
-      faultPart: workOrder.faultLocation?.trim() || null,
+      faultPart: spot || null,
       repairItem: typeLabel || null,
       appointOn: null,
       startOn: this.dateOnly(workOrder.acceptedAt ?? workOrder.dispatchedAt),

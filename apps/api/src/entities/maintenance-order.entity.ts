@@ -78,6 +78,7 @@ export type MaintenanceStatus =
 @Index(['tenantId', 'status'])
 // 一张工单同时只有一张有效养护单；作废的那张不占位，可以重新开
 @Index(['tenantId', 'workOrderId'], { unique: true, where: "status <> 'void'" })
+@Index(['orderNo'], { unique: true })
 export class MaintenanceOrder extends TenantEntity {
   /** 系统单号 YH-YYYYMMDD-XXXX */
   @Column({ name: 'order_no', type: 'varchar', length: 40 })
