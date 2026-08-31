@@ -138,6 +138,23 @@ const isEmptyItem = (item: MaintenanceItem) =>
     (v) => v === null || v === undefined,
   );
 
+/**
+ * 保存时要不要带上签名字段。
+ *
+ * **只有刚签完的那一次才带**：签名是各自的接口写的（手机扫码签、查验签名），
+ * 电脑上的草稿未必知道最新状态 —— 二维码关掉之后师傅才在手机上签完，
+ * 这边草稿里那一格还是空的，普通保存要是把它一起发上去，服务端就把人家刚签的字抹了。
+ * 服务端对没传的字段是「保持不变」，所以不带最安全。
+ */
+function signaturePatch(extra?: Partial<MaintenanceOrder>): Record<string, string> {
+  const keys = ['fillerSignUrl', 'repairerSignUrl', 'ownerSignUrl'] as const;
+  const patch: Record<string, string> = {};
+  for (const key of keys) {
+    if (extra && key in extra) patch[key] = (extra[key] as string | null) ?? '';
+  }
+  return patch;
+}
+
 const isEmptyMaterial = (row: MaintenanceMaterial) =>
   !row.name &&
   !row.spec &&
@@ -691,10 +708,9 @@ function MaintenanceEditor({
           serviceRecord: merged.serviceRecord ?? '',
           followUpRecord: merged.followUpRecord ?? '',
           fillerName: merged.fillerName ?? '',
-          fillerSignUrl: merged.fillerSignUrl ?? '',
           repairerName: merged.repairerName ?? '',
-          repairerSignUrl: merged.repairerSignUrl ?? '',
-          ownerSignUrl: merged.ownerSignUrl ?? '',
+          // 签名一律只在「刚签完」那一次随 extra 带上，普通保存不碰它（见下面 signaturePatch）
+          ...signaturePatch(extra),
         },
       });
       setDraft(saved);
@@ -986,6 +1002,11 @@ function PhoneSignModal({
   const [qr, setQr] = useState<{ qrDataUrl: string; url: string; expiresInSec: number } | null>(null);
   const [left, setLeft] = useState(0);
   const [loading, setLoading] = useState(false);
+  // 轮询里要调最新的回调，但它不能进 effect 依赖（父组件每次渲染都是新函数）
+  const onSignedRef = useRef(onSigned);
+  useEffect(() => {
+    onSignedRef.current = onSigned;
+  }, [onSigned]);
 
   const load = useCallback(async () => {
     if (!orderId || !slot) return;
@@ -1019,23 +1040,46 @@ function PhoneSignModal({
     return () => window.clearTimeout(timer);
   }, [open, qr, left]);
 
-  // 轮询：签名回来了就收工
+  /*
+   * 轮询：手机上签完了，这边自己发现。
+   *
+   * 依赖里**不能**放 left（倒计时每秒变一次）或 onSigned（父组件每次渲染都是新函数）——
+   * 放了的话这个 effect 每秒重建一次，3 秒的定时器还没轮到就被清掉了，
+   * 结果是手机上签完、电脑这边一直停在二维码那一屏（2026-08-31 用户实际遇到）。
+   * 回调走 ref，依赖只留真正决定「要不要轮询」的三个值。
+   */
   useEffect(() => {
-    if (!open || !orderId || !slot || left <= 0) return;
+    if (!open || !orderId || !slot) return;
     const field = SIGN_FIELDS[slot];
+    let alive = true;
     const timer = window.setInterval(async () => {
       try {
         const fresh = await request<MaintenanceOrder>({ url: `/maintenance-orders/${orderId}` });
-        if (fresh[field]) {
+        if (alive && fresh[field]) {
           window.clearInterval(timer);
-          onSigned(fresh);
+          onSignedRef.current(fresh);
         }
       } catch {
         // 网络抖一下就算了，下一轮再问
       }
     }, 3000);
-    return () => window.clearInterval(timer);
-  }, [open, orderId, slot, left, onSigned]);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [open, orderId, slot]);
+
+  /** 关窗时再问一次：轮询正好卡在两拍之间、或者网络慢了一拍，也不至于白签 */
+  const closeAndRefresh = async () => {
+    onClose();
+    if (!orderId || !slot) return;
+    try {
+      const fresh = await request<MaintenanceOrder>({ url: `/maintenance-orders/${orderId}` });
+      if (fresh[SIGN_FIELDS[slot]]) onSignedRef.current(fresh);
+    } catch {
+      // 关都关了，问不到就算了
+    }
+  };
 
   const expired = !!qr && left <= 0;
 
@@ -1044,14 +1088,14 @@ function PhoneSignModal({
       open={open}
       title={slot ? `${SIGN_SLOT_LABELS[slot]}：用手机扫码签名` : '手机签名'}
       width={460}
-      onCancel={onClose}
+      onCancel={closeAndRefresh}
       destroyOnHidden
       footer={
         <Space>
           <Button onClick={load} loading={loading}>
             重新生成
           </Button>
-          <Button onClick={onClose}>关闭</Button>
+          <Button onClick={closeAndRefresh}>关闭</Button>
         </Space>
       }
     >
