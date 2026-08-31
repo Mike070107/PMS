@@ -189,3 +189,28 @@ test('剥描述：用 matchedRaw 剥完只剩故障本身', () => {
   const desc = raw.replace(c.matchedRaw, '').trim();
   assert.equal(desc, '家里灯不亮');
 });
+
+/**
+ * 语音转文字会在门牌各段之间断出逗号：「5511弄，236号，502报修电子门…」。
+ * 认不出 502 的后果是三重的（2026-09-01 线上实际发生）：地址落成「公共区域」、
+ * 502 留在故障描述里、师傅拿到单不知道去哪一户。
+ */
+test('门牌各段之间有逗号停顿，房号照样认得出来', () => {
+  const c = extractAddressCandidate('5511弄，236号，502报修电子门里面，旋钮打滑，居民出不来');
+  assert.equal(c?.lane, '5511');
+  assert.equal(c?.buildingNo, '236');
+  assert.equal(c?.roomNo, '502');
+  // 剥描述要按这一段剥，502 必须被圈进去，否则它会留在描述里
+  assert.ok(c!.matchedRaw.includes('502'), c!.matchedRaw);
+});
+
+test('空格断句同理', () => {
+  assert.equal(extractAddressCandidate('198弄 17号 201 灯不亮')?.roomNo, '201');
+});
+
+test('停顿后面跟的不是房号就别认：年份、量词都不算', () => {
+  assert.equal(extractAddressCandidate('12号，2024年装的水管漏了')?.roomNo, null);
+  assert.equal(extractAddressCandidate('3号，200个灯泡要换')?.roomNo, null);
+  // 隔太远的数字也不算：中间还有别的话，说的多半不是这栋楼的房号
+  assert.equal(extractAddressCandidate('24号楼下的 302 路公交站牌歪了')?.roomNo, null);
+});

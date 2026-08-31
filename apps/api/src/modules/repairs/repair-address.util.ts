@@ -103,10 +103,18 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
     if (PLACE_CHAR_BEFORE_NO.test(value.slice(Math.max(0, m.index - 1), m.index))) continue;
     buildingNo = m[1];
     buildingMatch = m;
-    // 紧跟在「Y号」后面的 3-4 位数字当室号：「24号302」。
-    // 两位以下的裸数字歧义太大（24号3 可能是 3 楼、3 个），必须带「室」才认。
+    /**
+     * 跟在「Y号」后面的 3-4 位数字当室号：「24号302」「236号，502」。
+     *
+     * 允许中间隔一两个分隔符：说话的人在门牌各段之间会停顿，语音转文字就断成
+     * 「5511弄，236号，502报修…」——原来要求紧邻，这一句里的 502 就认不出来，
+     * 结果地址落成「公共区域」，502 还留在故障描述里（2026-09-01 实际反馈）。
+     *
+     * 两位以下的裸数字歧义太大（24号3 可能是 3 楼、3 个），必须带「室」才认；
+     * 数字后面跟着量词或年月的也不是房号（「12号，2024年装的」「3号，200个」）。
+     */
     const rest = value.slice(m.index + m[0].length);
-    const bareRoom = /^(\d{3,4})(?!\d)/.exec(rest);
+    const bareRoom = /^[\s、,，]{0,2}(\d{3,4})(?![\d年月日号元个台只条根米])/.exec(rest);
     if (bareRoom) roomNo = bareRoom[1];
     break;
   }

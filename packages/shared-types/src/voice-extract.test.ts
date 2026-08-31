@@ -143,3 +143,30 @@ test('清空只做一次：再敲一个字不会把人刚补填的联系人又�
   assert.equal(second.name, undefined);
   assert.equal(second.clearedName, false);
 });
+
+/**
+ * 2026-09-01 线上实际说的那一句。四个字段各归各的，描述里不留门牌、不留催促语。
+ * 房号「502」跟在「236号，」后面（语音断句断出来的逗号），地址那一段必须把它一起带走。
+ */
+test('一句话报修：门牌带停顿、末尾催促，描述只剩故障本身', () => {
+  const raw = '5511弄，236号，502报修电子门里面，旋钮打滑，居民出不来。急急急，13818909545';
+  const contact = extractContact(raw);
+  assert.equal(contact.phone, '13818909545');
+  const desc = extractFaultDescription(raw, {
+    // 服务端撞库后给回的 matchedRaw 就是这一段（见 repair-address.util 的 sliceMatchedRaw）
+    addressText: '5511弄，236号，502',
+    phoneText: contact.phoneText,
+    nameText: contact.nameText,
+  });
+  assert.ok(!desc.includes('502'), desc);
+  assert.ok(!desc.includes('5511'), desc);
+  assert.ok(!desc.includes('急急急'), desc);
+  assert.ok(!desc.includes('13818909545'), desc);
+  assert.ok(desc.includes('旋钮打滑'), desc);
+  assert.ok(desc.includes('电子门'), desc);
+});
+
+test('「急修」是要办的事，不能跟着催促语一起剥掉', () => {
+  const desc = extractFaultDescription('水管爆了要急修', {});
+  assert.ok(desc.includes('急修'), desc);
+});

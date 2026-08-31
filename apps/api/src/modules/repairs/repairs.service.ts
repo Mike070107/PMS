@@ -3390,6 +3390,19 @@ export class RepairsService implements OnModuleInit {
 
     const buildingText = `${picked.lane ? picked.lane + '弄' : ''}${picked.buildingNo}号`;
     const roomText = house ? `${house.roomNo}室` : '';
+    /**
+     * 这一行地址要走和工单卡片同一套去重：小区名叫「永北5511弄」时，
+     * 再拼一遍 buildingText 就成了「永北5511弄 5511弄236号」（2026-09-01 反馈）。
+     * 规则见 common/address-line.util.ts —— 弄号只在小区有好几个弄时才留。
+     */
+    const communityLine = formatAddressLine(
+      (await this.communityAddressInfo(tenantId, [pickedCommunity.id])).get(pickedCommunity.id) ?? {
+        name: pickedCommunity.name,
+        laneCount: 0,
+      },
+      picked,
+      house?.roomNo,
+    );
     return {
       matched: true as const,
       level: houseId ? ('house' as const) : ('building' as const),
@@ -3400,14 +3413,8 @@ export class RepairsService implements OnModuleInit {
       houseId,
       roomNo: house?.roomNo ?? null,
       spotName: null,
-      // 门牌连写、段间空格，与 auth.me 的 addressText 同口径：枫桦景苑一期 198弄24号302室。
       // 连楼里哪个位置都没说的按公区单写，派单的人一眼看出不是入户维修
-      addressText: [
-        pickedCommunity.name,
-        roomText ? `${buildingText}${roomText}` : `${buildingText} 公共区域`,
-      ]
-        .filter(Boolean)
-        .join(' '),
+      addressText: roomText ? communityLine : `${communityLine} 公共区域`,
       matchedText: candidate.matchedText,
       /**
        * 地址在原话里占的那一段。端上剥故障描述要用它 ——
