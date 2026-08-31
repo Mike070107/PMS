@@ -2258,16 +2258,28 @@ export class RepairsService implements OnModuleInit {
   /**
    * 新单进池子时通知类型里配的每一位维修工：站内信 + 微信订阅消息（模板和派单那条同一个）。
    * 点通知进详情页，详情页上就能接单；先接到的人拿走，其他人再点开会看到「已被 xx 接走」。
+   *
+   * **这个类型一个默认维修工都没配时，退一步通知能派单的人**（2026-08-31 加）：
+   * 报修类型配置里绝大多数类型的「默认维修工」是空的，候选人算出来就是空数组，
+   * 于是这个方法整个 for 循环空转 —— 新单一条通知都不发，而维修工的工单池又按
+   * 「他被配进了哪些类型」过滤，这单对谁都不显示。等于业主报了修，没有一个人知道。
+   * 办公室本来就该知道有新单进来，也是唯一能把它派出去的人，所以由他们兜这一手。
    */
-  private async notifyCandidatesOnCreate(workOrder: WorkOrder, candidates: User[]): Promise<void> {
+  private async notifyCandidatesOnCreate(
+    workOrder: WorkOrder,
+    candidates: User[],
+    submittedBy: number | null,
+  ): Promise<void> {
     const request = await this.repairRequestRepo.findOne({
       where: { id: workOrder.requestId, tenantId: workOrder.tenantId },
     });
-    const rule = request?.repairType
-      ? await this.repairTypeRuleRepo.findOne({
-          where: { tenantId: workOrder.tenantId, repairType: request.repairType },
-        })
-      : null;
+    // 走 findTypeRule 而不是直接按 repairType 查一行：类型规则按管理处分套，
+    // 不带小区去找会拿到别的管理处（或公司模板）那条，类型名就显示成别人改过的叫法
+    const rule = await this.findTypeRule(
+      request?.repairType ?? undefined,
+      workOrder.tenantId,
+      workOrder.communityId,
+    );
     const typeLabel = rule?.label || '报修';
     // 紧急写进标题第一格：站内信列表和微信订阅消息都只露出开头那几个字
     const urgentTag = request?.urgent ? '【紧急】' : '';
@@ -2277,20 +2289,45 @@ export class RepairsService implements OnModuleInit {
       ? `，${this.formatWhenShort(new Date(workOrder.slaDueAt))} 前完成`
       : '';
     const when = this.formatWhen(new Date());
-    for (const candidate of candidates) {
+
+    // 没有候选维修工就退给能派单的人。两拨人不叠加：配了维修工时办公室不再收，
+    // 否则每来一单办公室都跟着响一次，真正要盯的「没人接的单」反而淹了
+    const unassigned = !candidates.length;
+    const receivers = unassigned
+      ? await this.dispatchersToNotify(workOrder.tenantId, submittedBy)
+      : candidates;
+    if (!receivers.length) {
+      // 兜底的兜底：连能派单的人都没有（角色没配全）。不出声的话，这单谁都不知道，
+      // 而现场只会以为是「提醒又不灵了」——留一行日志，下次排查一眼看得到
+      this.logger.warn(
+        `新工单 ${workOrder.orderNo} 没有任何人可通知：类型「${request?.repairType || '未判定'}」` +
+          `没配默认维修工，本公司也没有带「派单台 · 派单」权限的在职账号`,
+      );
+      return;
+    }
+
+    for (const receiver of receivers) {
       await this.notifications.notifyUser({
         tenantId: workOrder.tenantId,
-        receiverId: candidate.id,
-        eventKey: 'order_pool_new',
-        title: `${urgentTag}新工单待接：${typeLabel} · ${address}${deadline}`,
+        receiverId: receiver.id,
+        eventKey: unassigned ? 'order_pool_unassigned' : 'order_pool_new',
+        // 标题要写清该干什么：待派的单点进去是派单，待接的单点进去是接单，
+        // 两种情况下这条提醒推给的是不同的人，措辞一样只会让人点开才知道要干嘛
+        title: unassigned
+          ? `${urgentTag}新工单待派：${typeLabel} · ${address}${deadline}`
+          : `${urgentTag}新工单待接：${typeLabel} · ${address}${deadline}`,
         payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo, content },
         page: `pages/order-detail/order-detail?id=${workOrder.id}`,
         template: 'orderAssigned',
         templateFields: {
           orderNo: workOrder.orderNo,
           type: typeLabel,
-          status: request?.urgent ? '紧急，请优先处理' : '新工单待接单',
-          statusShort: request?.urgent ? '紧急待接' : '待接单',
+          status: request?.urgent
+            ? '紧急，请优先处理'
+            : unassigned
+              ? '新工单待派单'
+              : '新工单待接单',
+          statusShort: request?.urgent ? '紧急待派' : unassigned ? '待派单' : '待接单',
           content,
           assignee: '',
           address,
@@ -2301,6 +2338,18 @@ export class RepairsService implements OnModuleInit {
         },
       });
     }
+  }
+
+  /**
+   * 能派单、且现在还在职的人。报单的人自己排除掉 —— 他刚点完提交，
+   * 屏幕上就是「提交成功」，再推一条「有新工单」纯属噪音。
+   */
+  private async dispatchersToNotify(tenantId: number, exceptUserId: number | null): Promise<User[]> {
+    const ids = (
+      await this.accessService.userIdsWithPermission(tenantId, 'app:dispatch', 'edit')
+    ).filter((id) => id !== exceptUserId);
+    if (!ids.length) return [];
+    return this.userRepo.find({ where: { id: In(ids), tenantId, status: UserStatus.ACTIVE } });
   }
 
   private async notifyAssigneeOnDispatch(
@@ -2685,10 +2734,16 @@ export class RepairsService implements OnModuleInit {
     reporterRole: string | null,
   ) {
     await this.validateLocation(dto, tenantId);
-    // 端上判不出类型（或压根是老版本没判）时服务端再判一次，
-    // 判不出才落「其它」——类型是自动派单的依据，空着等于这单没人认领
+    // 端上判不出类型（或压根是老版本没判）时服务端再判一次，判不出**落「其它」**。
+    //
+    // 这里原来写的是 `|| undefined`，和上面这句注释说的不是一回事，后果实测过
+    // （2026-08-31 用户反馈「新工单怎么没有微信提醒了」）：类型为空 → findTypeRule
+    // 返回 null → 一个候选维修工都算不出来 → 谁都不通知；而且维修工的工单池按
+    // 「他被配进了哪些类型」过滤（technicianTypes），skill 为 NULL 的单对谁都不显示。
+    // 单子就这么静悄悄躺在库里，只有办公室在后台翻才看得见。
+    // 「其它」至少是个能挂人、能过滤、能在后台看出来的归属。
     const repairType =
-      dto.repairType || (await this.guessRepairType(dto.content, tenantId, dto.communityId)) || undefined;
+      dto.repairType || (await this.guessRepairType(dto.content, tenantId, dto.communityId)) || 'other';
     // 类型规则只用来定时限和「该通知谁」：匹配到的维修工都收到通知、都在自己的工单池里看到，
     // 谁先接单归谁。原来是自动派给规则里唯一那个人（2026-08-28 之前），别的同类型维修工既没通知
     // 也看不到单，报单的人自己也找不到
@@ -2786,9 +2841,11 @@ export class RepairsService implements OnModuleInit {
                 ? `已按紧急处理（描述里说了「${urgency.matched}」）`
                 : '已按紧急处理'
               : '',
+            // 没有候选人时也要写一句：进度里空着，办公室只会以为系统没动作。
+            // 写的是系统做了什么（转成待派单），不是「谁收到了」—— 送达结果这里还不知道
             candidates.length
               ? `已通知维修工 ${candidates.map((c) => c.name || `#${c.id}`).join('、')}`
-              : '',
+              : '这个类型还没配默认维修工，已转办公室派单',
           ]
             .filter(Boolean)
             .join('；'),
@@ -2836,7 +2893,7 @@ export class RepairsService implements OnModuleInit {
     // 类型里配的维修工每人一条「新工单」：站内信一定写，微信订阅消息尽力而为。
     // 通知失败只记日志，不能让报修提交失败（notifyUser 内部已兜住）
     if (candidates.length) {
-      await this.notifyCandidatesOnCreate(created.workOrder, candidates);
+      await this.notifyCandidatesOnCreate(created.workOrder, candidates, submittedBy);
     }
 
     return created;
