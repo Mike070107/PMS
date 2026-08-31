@@ -11,8 +11,11 @@
  * 库存行只能由入库动作顺带建出来。空行不含任何数量 / 金额语义，建完之后所有数量和成本
  * 都由 PATCH /stocks/:id 产生，批次、流水、参考成本一条不漏。
  *
- * 同一材料多个单价 = 同一 SKU 多条批次（docs/inventory-costing.md），
- * 清单里重复出现的行按顺序逐条盘盈，各自成一条批次，绝不因为价格不同建新 SKU。
+ * 同一材料多个单价：先分清是哪种情况（docs/inventory-costing.md「价格不同 ≠ 多批次」）——
+ *   同一种货、不同时间买的不同价 → 同一 SKU 多条批次，加 --allow-multi-price 确认后导入；
+ *   其实是不同规格的货、清单没写规格 → 把 spec 补全再导，别并进一个 SKU。
+ * 默认遇到「同名同规格多个单价」直接停下来要求二选一（2026-08-31 上海新家踩过：
+ *   断路器 ¥55/¥20 其实是两种规格，并成一个 SKU 后客户对不上，拆分用 inventory-split-sku.mjs）。
  *
  * 用法：
  *   node tools/inventory-stock-import.mjs --file data-prep/inventory-opening-xxx.json \
@@ -57,6 +60,7 @@ function parseArgs(argv) {
     pgDb: 'pms_repair',
     dryRun: false,
     force: false,
+    allowMultiPrice: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const key = argv[i];
@@ -73,6 +77,7 @@ function parseArgs(argv) {
     else if (key === '--pg-db') args.pgDb = next();
     else if (key === '--dry-run') args.dryRun = true;
     else if (key === '--force') args.force = true;
+    else if (key === '--allow-multi-price') args.allowMultiPrice = true;
     else throw new Error(`未知参数：${key}`);
   }
   if (!args.file) throw new Error('必须指定 --file <清单 json>');
@@ -153,6 +158,19 @@ async function main() {
       skus.set(key, { category: item.category, name: String(item.name).trim(), spec: normSpec(item.spec), unit: item.unit, rows: [] });
     }
     skus.get(key).rows.push({ qty: Number(item.qty), unitCostCents: toCents(item.unitPrice) });
+  }
+
+  // 同名同规格出现多个单价：十有八九是规格没写全，先逼着确认再动手
+  const multiPrice = [...skus.values()].filter((sku) => new Set(sku.rows.map((r) => r.unitCostCents)).size > 1);
+  if (multiPrice.length && !args.allowMultiPrice) {
+    for (const sku of multiPrice) {
+      const prices = sku.rows.map((r) => `${yuan(r.unitCostCents)} 元 ×${r.qty}`).join('、');
+      console.error(`多价待确认  ${sku.name}${sku.spec ? ' / ' + sku.spec : ''}：${prices}`);
+    }
+    throw new Error(
+      '同名同规格出现多个单价（上面已列出）。是不同规格的货就把清单里的 spec 补全；' +
+      '确认是同一种货不同批价，再加 --allow-multi-price 重跑。',
+    );
   }
 
   const report = { warehouseId: warehouse.id, warehouse: warehouse.name, createdMaterials: [], reusedMaterials: [], skipped: [], adjustments: [] };
