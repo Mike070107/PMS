@@ -18,6 +18,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * - 两边都有的 → 不用存，从模板继承
  *
  * 同时给管理处加两个「猜你想输」开关（排序口径、是否回流公司候选池）。
+ *
+ * **线上不靠这个文件**：生产是 DB_SYNCHRONIZE=true、没有 migrations 表，两列由 synchronize 建出来、
+ * 这里的 UPDATE 一句都不会执行。数据拆分在 RepairsService.ensureDefaultRepairTypeRules 里
+ * 又做了一遍（幂等，拆完 content_suggestions 就空了）。两边口径必须一致，改一处记得改另一处。
  */
 export class RepairKeywordTemplate1788310800000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {

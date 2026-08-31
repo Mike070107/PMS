@@ -3706,6 +3706,50 @@ export class RepairsService implements OnModuleInit {
       existing = await this.repairTypeRuleRepo.find({ where: { tenantId } });
     }
 
+    /*
+     * 关键词分层的数据兜底（2026-08-31）。
+     *
+     * 线上 DB_SYNCHRONIZE=true，migrations 表压根不存在、迁移文件不会执行：
+     * extra_suggestions / muted_suggestions 两列会被 synchronize 建出来，
+     * 但 RepairKeywordTemplate 迁移里的**数据拆分不会跑**。不在这里补的话，
+     * 各管理处早先攒的词还躺在 content_suggestions 里，而新代码只读 extra + 模板，
+     * 等于那些词凭空消失 —— 猜你想输和类型判定会同时失灵。
+     *
+     * 幂等：拆完 content_suggestions 就空了，之后再也不进这个分支。
+     * 跑过迁移的环境（本地 dev）到这里也已经是空的，不会重复拆。
+     */
+    const templateWords = new Map(
+      existing
+        .filter((rule) => rule.officeId === null)
+        .map((rule) => [rule.repairType, rule.contentSuggestions ?? []] as const),
+    );
+    const needSplit = existing.filter(
+      (rule) => rule.officeId !== null && (rule.contentSuggestions?.length ?? 0) > 0,
+    );
+    if (needSplit.length) {
+      for (const rule of needSplit) {
+        const template = templateWords.get(rule.repairType) ?? [];
+        const own = rule.contentSuggestions ?? [];
+        rule.extraSuggestions = Array.from(
+          new Set([
+            ...(rule.extraSuggestions ?? []),
+            ...own.filter((word) => !template.includes(word)),
+          ]),
+        );
+        // 模板里有、本处当初删掉的词：继续保持停用，别趁这次改造悄悄塞回去
+        rule.mutedSuggestions = Array.from(
+          new Set([
+            ...(rule.mutedSuggestions ?? []),
+            ...template.filter((word) => !own.includes(word)),
+          ]),
+        );
+        rule.contentSuggestions = [];
+        rule.updatedBy = operatorId;
+      }
+      await this.repairTypeRuleRepo.save(needSplit);
+      this.logger.log(`报修关键词分层：拆开了 ${needSplit.length} 条管理处规则`);
+    }
+
     // 懒补种子关键词：老租户的规则建于「猜你想输」可配置之前，content_suggestions 是空的。
     // 只填空，不覆盖租户已经维护过的词。
     // **只补公司模板行**：关键词改成模板叠加之后，管理处那些行的这一列本来就该一直是空的
