@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiExtractSample } from '../../entities';
 import { SettingsModule } from '../settings/settings.module';
 import { AiController } from './ai.controller';
+import { AiToolsController } from './ai-tools.controller';
 import { ExtractSamplesService } from './extract-samples.service';
 import { LlmService } from './llm.service';
 import { RepairTextAiService } from './repair-text.ai';
@@ -13,7 +14,7 @@ import { RepairTextAiService } from './repair-text.ai';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([AiExtractSample]), SettingsModule],
-  controllers: [AiController],
+  controllers: [AiController, AiToolsController],
   providers: [LlmService, RepairTextAiService, ExtractSamplesService],
   exports: [LlmService, RepairTextAiService, ExtractSamplesService],
 })

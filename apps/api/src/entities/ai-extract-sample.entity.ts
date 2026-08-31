@@ -16,8 +16,17 @@ import { TenantEntity } from '../common/base.entity';
  * expected 里只放模型该输出的那几样；房号仍然要回房产库撞，样例不能让模型跳过撞库。
  */
 @Entity('ai_extract_samples')
-@Index(['tenantId', 'enabled'])
+@Index(['tenantId', 'kind', 'enabled'])
 export class AiExtractSample extends TenantEntity {
+  /**
+   * 这条样例教的是哪件事：
+   *   repair     一句话报修（原话 → 地址/故障/联系人）
+   *   completion 完工小结（维修工说一句 → 维修说明/故障位置/现象）
+   * 两边的提示词各取各的，别混着教 —— 报修的例子会把完工那边带偏。
+   */
+  @Column({ type: 'varchar', length: 20, default: 'repair' })
+  kind: string;
+
   /** 原话。就是维修工/业主实际会说出口的那一句 */
   @Column({ type: 'text' })
   text: string;

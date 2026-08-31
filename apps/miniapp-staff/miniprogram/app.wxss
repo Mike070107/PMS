@@ -444,6 +444,36 @@ button::after { border: none; }
   line-height: 1.6;
 }
 
+/* ---------- 「按住说话」（AI随手拍报修 / 完工小结共用） ----------
+   现场戴手套、单手拿手机，做成卡片一整行宽。
+   width / 左右 margin 必须 !important —— 微信 button 基础样式对这两项优先级比普通类高，
+   不加的话按钮按文字宽度缩成一小块、被 auto margin 居中（同 .btn，见那里的注释）。
+   高度 96rpx：够戴手套按（≥88rpx 下限），又不至于把这张卡撑成一整屏。 */
+.hold {
+  width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  box-sizing: border-box;
+  height: 96rpx;
+  margin-top: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-brand);
+  color: #fff;
+  font-size: var(--font-xl);
+  font-weight: 600;
+}
+.hold::after { border: none; }
+/* 录音中变色 + 轻微缩一下：戴手套时看不清小圆点，整块变色才看得出在录 */
+.hold--on {
+  background: var(--color-brand-dark);
+  transform: scale(0.99);
+}
+/* 识别中的实时文字 */
+.partial { margin-top: 8rpx; line-height: 1.6; }
+
 /* ---------- 段落 Tab（一屏里切「看哪一批」，不是筛选条） ----------
    工单池的「工单池 / 我报的 / 已完结」、材料页的「库存 / 采购申请」共用这一套。
    和 .chips/.chip 的区别：chips 是在同一批数据里按状态筛，tab 是换一批数据看，

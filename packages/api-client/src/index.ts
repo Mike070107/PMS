@@ -1,5 +1,6 @@
 export * from './request';
 export * as auth from './endpoints/auth';
+export * as ai from './endpoints/ai';
 export * as repairs from './endpoints/repairs';
 export * as purchases from './endpoints/purchases';
 export * as qr from './endpoints/qr';

@@ -47,6 +47,28 @@ const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很
 输入：枫桦一期十七号二零一，家里灯不亮了，找张先生，13800138000
 输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false}`;
 
+const COMPLETION_PROMPT = `你是物业维修的完工记录助手。维修工刚干完活，站在现场口述做了什么，话很随意、有口头禅。
+把它整理成办公室和业主都看得懂的记录，只输出 JSON，不要解释、不要代码围栏。
+
+字段：
+- actionNote: 维修说明，业主会看到。写清做了什么处理，一到两句，用书面语。不要编造原话里没有的动作和结果；没修成（人不在家、缺料）就如实写没修成和原因。
+- faultLocation: 故障位置（厨房水槽下方、三楼楼道）。原话没说就给空字符串。
+- faultSymptom: 故障现象（接头老化渗水、角阀锈死）。原话没说就给空字符串。
+- materials: 他提到用了哪些材料的名字，字符串数组，如 ["角阀","生料带"]。只列名字、不要数量，这只是提示维修工去库存里选，不作数。没提到就给空数组。
+
+例子：
+输入：换了个角阀，原来那个锈死了，顺手把水管接头缠了生料带
+输出：{"actionNote":"更换角阀一只；水管接头加缠生料带","faultLocation":"","faultSymptom":"角阀锈蚀卡死","materials":["角阀","生料带"]}`;
+
+/** 完工小结的结果。materials 只是提示，用料仍要维修工自己从库存里选 */
+export interface CompletionSummary {
+  actionNote: string;
+  faultLocation: string;
+  faultSymptom: string;
+  /** 他提到的材料名，只用来提示「别忘了记用料」，不自动填进用料清单 */
+  materials: string[];
+}
+
 @Injectable()
 export class RepairTextAiService {
   constructor(
@@ -67,7 +89,7 @@ export class RepairTextAiService {
      * （2026-09-01 用户要求：已经处理过的正例要让 AI 记住，别每次重讲一遍规则）。
      * 拿不到样例（库挂了、还没灌种子）也不影响 —— 固定规则那部分照常工作。
      */
-    const system = await this.buildSystemPrompt(tenantId);
+    const system = await this.buildSystemPrompt(tenantId, SYSTEM_PROMPT, 'repair');
     const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value);
     if (!raw) return null;
     return {
@@ -79,25 +101,58 @@ export class RepairTextAiService {
     };
   }
 
+  /**
+   * 完工小结：维修工站在现场说一句，理成办公室和业主都看得懂的维修记录。
+   *
+   * 和一句话报修同一套路数、同一个样例库（kind='completion'）。
+   * **模型只理文字，不碰要落库的东西** —— 用料仍然要维修工自己从库存里选，
+   * 模型只把他提到的材料名列出来当提示。理由和地址一样：编一个「角阀」出来很容易，
+   * 但库存要扣的是某个具体 SKU，编错了就是账不平。
+   */
+  async summarizeCompletion(tenantId: number, text: string): Promise<CompletionSummary | null> {
+    const value = (text || '').trim();
+    if (value.length < 4) return null;
+    const system = await this.buildSystemPrompt(tenantId, COMPLETION_PROMPT, 'completion');
+    const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value);
+    if (!raw) return null;
+    return {
+      actionNote: str(raw.actionNote),
+      faultLocation: str(raw.faultLocation),
+      faultSymptom: str(raw.faultSymptom),
+      materials: Array.isArray(raw.materials)
+        ? raw.materials.map((m) => str(m)).filter(Boolean).slice(0, 8)
+        : [],
+    };
+  }
+
   /** 固定规则 + 样例库拼成的完整提示词。样例取不到就只用固定规则那半截 */
-  private async buildSystemPrompt(tenantId: number): Promise<string> {
+  private async buildSystemPrompt(tenantId: number, base: string, kind: string): Promise<string> {
     let examples: string[] = [];
     try {
-      const rows = await this.samples.forPrompt(tenantId);
+      const rows = await this.samples.forPrompt(tenantId, kind);
       examples = rows
         .filter((row) => row.text?.trim() && row.expected && Object.keys(row.expected).length)
         .map((row) => `输入：${row.text.trim()}\n输出：${JSON.stringify(fullShape(row.expected))}`);
     } catch {
       // 样例是加分项，取不到就算了，别让识别整个失效
     }
-    if (!examples.length) return SYSTEM_PROMPT;
+    if (!examples.length) return base;
     const header = '下面是这家物业实际遇到过、并且已经确认过正确的例子，照着这个口径来：';
-    return [SYSTEM_PROMPT, header, examples.join('\n\n')].join('\n\n');
+    return [base, header, examples.join('\n\n')].join('\n\n');
   }
 }
 
 /** 样例只存要教的字段，喂给模型时补齐成完整形状 —— 缺字段会教出「可以不输出某个字段」 */
 function fullShape(expected: Record<string, unknown>): Record<string, unknown> {
+  // 完工小结的样例只补它自己那几个字段：把报修的字段混进去会教偏
+  if ('actionNote' in expected || 'faultLocation' in expected || 'faultSymptom' in expected) {
+    return {
+      actionNote: typeof expected.actionNote === 'string' ? expected.actionNote : '',
+      faultLocation: typeof expected.faultLocation === 'string' ? expected.faultLocation : '',
+      faultSymptom: typeof expected.faultSymptom === 'string' ? expected.faultSymptom : '',
+      materials: [],
+    };
+  }
   return {
     addressText: typeof expected.addressText === 'string' ? expected.addressText : '',
     description: typeof expected.description === 'string' ? expected.description : '',

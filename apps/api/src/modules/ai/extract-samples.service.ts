@@ -33,44 +33,46 @@ export class ExtractSamplesService {
    * 只在「一条都没有」时灌 —— 之后办公室自己加的、改的、关掉的一律不动。
    * 灌失败只记日志：样例是加分项，不能因此让识别整个不可用。
    */
-  async ensureSeeded(tenantId: number): Promise<void> {
+  async ensureSeeded(tenantId: number, kind: string): Promise<void> {
     try {
-      const count = await this.repo.count({ where: { tenantId } });
+      const count = await this.repo.count({ where: { tenantId, kind } });
       if (count > 0) return;
+      const seeds = kind === 'completion' ? COMPLETION_SEEDS : SEED_SAMPLES;
       await this.repo.save(
-        SEED_SAMPLES.map((item) =>
-          this.repo.create({ ...item, tenantId, enabled: true, createdBy: null, updatedBy: null }),
+        seeds.map((item) =>
+          this.repo.create({ ...item, kind, tenantId, enabled: true, createdBy: null, updatedBy: null }),
         ),
       );
-      this.logger.log(`租户 ${tenantId} 灌入 ${SEED_SAMPLES.length} 条识别样例种子`);
+      this.logger.log(`租户 ${tenantId} 灌入 ${seeds.length} 条「${kind}」样例种子`);
     } catch (err) {
       this.logger.warn(`识别样例种子灌入失败（不影响识别）：${(err as Error).message}`);
     }
   }
 
   /** 拼提示词用：启用的、最近更新的若干条 */
-  async forPrompt(tenantId: number): Promise<AiExtractSample[]> {
-    await this.ensureSeeded(tenantId);
+  async forPrompt(tenantId: number, kind = 'repair'): Promise<AiExtractSample[]> {
+    await this.ensureSeeded(tenantId, kind);
     return this.repo.find({
-      where: { tenantId, enabled: true },
+      where: { tenantId, kind, enabled: true },
       order: { updatedAt: 'DESC' },
       take: ExtractSamplesService.SAMPLE_LIMIT,
     });
   }
 
-  async list(tenantId: number): Promise<AiExtractSample[]> {
-    await this.ensureSeeded(tenantId);
-    return this.repo.find({ where: { tenantId }, order: { updatedAt: 'DESC' } });
+  async list(tenantId: number, kind = 'repair'): Promise<AiExtractSample[]> {
+    await this.ensureSeeded(tenantId, kind);
+    return this.repo.find({ where: { tenantId, kind }, order: { updatedAt: 'DESC' } });
   }
 
   async create(
     tenantId: number,
     userId: number,
-    input: { text: string; expected: Record<string, unknown>; note?: string },
+    input: { text: string; expected: Record<string, unknown>; note?: string; kind?: string },
   ): Promise<AiExtractSample> {
     return this.repo.save(
       this.repo.create({
         tenantId,
+        kind: input.kind === 'completion' ? 'completion' : 'repair',
         text: input.text.trim(),
         expected: pruneExpected(input.expected),
         note: (input.note ?? '').trim(),
@@ -108,7 +110,17 @@ export class ExtractSamplesService {
 /** 空字段不写进提示词：教一堆空值会让模型倾向于什么都不填 */
 function pruneExpected(expected: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const key of ['addressText', 'description', 'contactName', 'phone'] as const) {
+  for (const key of [
+    // 一句话报修
+    'addressText',
+    'description',
+    'contactName',
+    'phone',
+    // 完工小结
+    'actionNote',
+    'faultLocation',
+    'faultSymptom',
+  ] as const) {
     const v = expected?.[key];
     if (typeof v === 'string' && v.trim()) out[key] = v.trim();
   }
@@ -170,5 +182,34 @@ const SEED_SAMPLES: Array<{ text: string; expected: Record<string, unknown>; not
       phone: '13900139000',
     },
     note: '「业主」「报修」这类标签词不属于故障描述',
+  },
+];
+
+/**
+ * 完工小结的种子样例。维修工站在现场单手拿手机，说出来的就是这个样子 ——
+ * 目标是把它理成办公室和业主都看得懂的一句话，而不是原样记下来。
+ */
+const COMPLETION_SEEDS: Array<{ text: string; expected: Record<string, unknown>; note: string }> = [
+  {
+    text: '换了个角阀，原来那个锈死了，顺手把水管接头缠了生料带',
+    expected: {
+      actionNote: '更换角阀一只；水管接头加缠生料带',
+      faultSymptom: '角阀锈蚀卡死',
+    },
+    note: '口述的动作要理成规范的维修说明；用料只提示、仍要自己从库存选',
+  },
+  {
+    text: '就厨房水槽下面那个接头漏水，我给紧了一下，观察了十分钟没再滴',
+    expected: {
+      actionNote: '紧固厨房水槽下方接头，观察十分钟无渗漏',
+      faultLocation: '厨房水槽下方',
+      faultSymptom: '接头渗水',
+    },
+    note: '位置和现象要从话里拆出来各归各的字段，别全塞进维修说明',
+  },
+  {
+    text: '人不在家没进去，改天再约',
+    expected: { actionNote: '上门时业主不在家，未能入户，另约时间' },
+    note: '没修成也要能提交：只写发生了什么，不要编造维修动作',
   },
 ];

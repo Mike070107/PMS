@@ -196,3 +196,15 @@
   font-size: var(--font-lg);
   line-height: 1.6;
 }
+
+/* 完工小结里模型听出来的材料名：只是提醒去「添加用料」里选，不是已经记上了，
+   所以做成橙色说明而不是列表 —— 看着像「已记录」的话，用料就漏了 */
+.mat-said {
+  margin-top: 14rpx;
+  padding: 16rpx 20rpx;
+  border-radius: var(--radius-sm);
+  background: rgba(250, 173, 20, 0.1);
+  color: #ad6800;
+  font-size: var(--font-md);
+  line-height: 1.6;
+}

@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { IsBoolean, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { ExtractSamplesService } from './extract-samples.service';
+import { RepairTextAiService } from './repair-text.ai';
 import { LlmService } from './llm.service';
 
 /**
@@ -22,6 +23,8 @@ class TestAiDto {
 
 /** 识别样例：「这么说 → 应该这么认」。expected 的字段和模型输出对齐 */
 class SampleDto {
+  /** repair = 一句话报修；completion = 完工小结。两边的提示词各取各的样例 */
+  @IsOptional() @IsString() @MaxLength(20) kind?: string;
   @IsOptional() @IsString() @MaxLength(500) text?: string;
   @IsOptional() @IsObject() expected?: Record<string, unknown>;
   @IsOptional() @IsString() @MaxLength(200) note?: string;
@@ -35,6 +38,7 @@ export class AiController {
     private readonly llm: LlmService,
     private readonly samples: ExtractSamplesService,
   ) {}
+
 
   /**
    * 连通性测试。**把服务商返回的原话带回去** ——「调用失败」四个字帮不了任何人，
@@ -56,8 +60,8 @@ export class AiController {
    */
   @Get('samples')
   @RequirePermission('settings', 'view')
-  listSamples(@CurrentUser() user: AuthUser) {
-    return this.samples.list(user.tenantId as number);
+  listSamples(@CurrentUser() user: AuthUser, @Query('kind') kind?: string) {
+    return this.samples.list(user.tenantId as number, kind === 'completion' ? 'completion' : 'repair');
   }
 
   @Post('samples')
@@ -67,6 +71,7 @@ export class AiController {
       text: dto.text ?? '',
       expected: dto.expected ?? {},
       note: dto.note,
+      kind: dto.kind,
     });
   }
 

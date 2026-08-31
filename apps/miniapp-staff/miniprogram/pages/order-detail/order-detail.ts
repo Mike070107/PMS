@@ -1,10 +1,13 @@
-import { repairs, upload } from '@pms/api-client';
+import { ai, repairs, upload } from '@pms/api-client';
 import { getSession } from '../../utils/session';
 import { askOrderSubscribe } from '../../utils/unread';
 import {
   buildTimeline,
+  createHoldToTalk,
   missingMaterialsText,
+  speechErrorTip,
   statusLabel,
+  type HoldToTalk,
   type TimelineRow,
 } from '@pms/miniapp-ui';
 import {
@@ -57,6 +60,21 @@ interface MaterialRow {
 }
 
 /** 数量默认 1：缺料十有八九就是缺一个，让人少点一下 */
+/**
+ * 完工小结的语音识别。走微信官方「同声传译」插件（只支持普通话），
+ * 插件没装时 speechManager 一直是 null，「按住说话」整个按钮不显示，打字照常可用。
+ */
+let speechManager: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  speechManager = requirePlugin('WechatSI').getRecordRecognitionManager();
+} catch {
+  speechManager = null;
+}
+
+/** 按住说话的按压状态机，bindSpeech() 里创建；插件不可用时一直是 null */
+let hold: HoldToTalk | null = null;
+
 const DEFAULT_QTY = '1';
 const MAX_QTY = 999;
 
@@ -144,6 +162,16 @@ interface PageData {
   contactPhone: string;
   resultAttachments: string[];
   actionNote: string;
+  /* ---- 完工小结：按住说一句，大模型理成规范的维修记录 ---- */
+  /** 微信同声传译插件在不在。不在就整个隐藏「按住说话」，打字照常可用 */
+  hasSpeech: boolean;
+  recording: boolean;
+  /** 识别中的实时文字，让人知道在听 */
+  partial: string;
+  /** 正在让模型整理 */
+  summarizing: boolean;
+  /** 模型从话里听出的材料名 —— 只做提示，用料仍要自己从库存选 */
+  materialHints: string[];
   faultLocation: string;
   faultSymptom: string;
   /** 收费金额（元，字符串便于输入）；提交时换算成分 */
@@ -206,6 +234,17 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     contactPhone: '',
     resultAttachments: [],
     actionNote: '',
+    /* ---- 完工小结：按住说一句，大模型理成规范的维修记录（2026-09-01 加） ----
+       维修工是蹲在水管边单手拿手机，打字比说话慢十倍，「维修说明」常年只有「已修」两个字，
+       回头对账、查保修全靠猜。语音走微信同声传译（只支持普通话），插件没装就隐藏按钮。 */
+    hasSpeech: false,
+    recording: false,
+    /** 识别中的实时文字，让人知道在听 */
+    partial: '',
+    /** 正在让模型整理 */
+    summarizing: false,
+    /** 模型从话里听出的材料名 —— 只做提示，用料仍要自己从库存选（要扣的是具体 SKU） */
+    materialHints: [] as string[],
     faultLocation: '',
     faultSymptom: '',
     feeYuan: '',
@@ -239,6 +278,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   onLoad(q: Record<string, string>) {
     this.setData({ id: q.id || '' });
+    this.bindSpeech();
     this.load();
   },
 
@@ -451,6 +491,77 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     const next = this.data.resultAttachments.slice();
     next.splice(idx, 1);
     this.setData({ resultAttachments: next });
+  },
+
+  // ---------------- 完工小结：说一句，模型理成维修记录 ----------------
+
+  bindSpeech() {
+    if (!speechManager) return;
+    this.setData({ hasSpeech: true });
+    hold = createHoldToTalk(speechManager);
+    speechManager.onStart = () => {
+      this.setData({ recording: true, partial: '' });
+      // 首次授权时 touchend 被授权框吃掉，这里替它补 stop（见 createHoldToTalk 的注释）
+      hold?.started();
+    };
+    speechManager.onRecognize = (res: { result: string }) => {
+      this.setData({ partial: res.result || '' });
+    };
+    speechManager.onStop = (res: { result: string }) => {
+      hold?.ended();
+      const text = (res.result || this.data.partial || '').trim();
+      this.setData({ recording: false, partial: '' });
+      if (text) this.summarize(text);
+    };
+    speechManager.onError = (err: { msg?: string; retcode?: number }) => {
+      hold?.ended();
+      this.setData({ recording: false, partial: '' });
+      speechErrorTip(err).then((tip) => wx.showToast({ icon: 'none', title: tip }));
+    };
+  },
+
+  onStartRecord() {
+    hold?.press();
+  },
+
+  /** touchend 和 touchcancel 都指到这里：手指滑出按钮、被来电打断也要收尾 */
+  onStopRecord() {
+    hold?.release();
+  },
+
+  /**
+   * 把口述交给模型整理成维修记录。
+   *
+   * **整理不成也要有结果**：没配大模型、调不通、超时时，把原话原样接到「维修说明」后面 ——
+   * 他话已经说完了，总不能让它凭空消失，宁可格式糙一点。
+   * 位置和现象只在原来空着时才填，不覆盖他手工改过的内容。
+   * 用料一律不自动填：库存要扣的是具体 SKU，模型说的「角阀」对不上哪一条，
+   * 只把名字列出来提醒他去「添加用料」里选。
+   */
+  async summarize(text: string) {
+    this.setData({ summarizing: true });
+    const fallback = () => {
+      const next = [this.data.actionNote.trim(), text].filter(Boolean).join('；');
+      this.setData({ actionNote: next }, () => this.syncPhraseState());
+    };
+    try {
+      const res = await ai.completionSummary({ text });
+      if (!res?.ok || !res.actionNote) {
+        fallback();
+        return;
+      }
+      const patch: Record<string, unknown> = {
+        actionNote: [this.data.actionNote.trim(), res.actionNote].filter(Boolean).join('；'),
+        materialHints: res.materials || [],
+      };
+      if (!this.data.faultLocation && res.faultLocation) patch.faultLocation = res.faultLocation;
+      if (!this.data.faultSymptom && res.faultSymptom) patch.faultSymptom = res.faultSymptom;
+      this.setData(patch, () => this.syncPhraseState());
+    } catch {
+      fallback();
+    } finally {
+      this.setData({ summarizing: false });
+    }
   },
 
   onNote(e: WechatMiniprogram.Input) {

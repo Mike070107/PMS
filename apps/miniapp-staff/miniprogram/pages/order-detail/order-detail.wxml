@@ -239,7 +239,22 @@
 
   <scroll-view class="sheet__body" scroll-y>
     <view class="label">维修说明<text class="label__opt">业主可见</text></view>
+    <!-- 按住说一句，大模型理成规范的维修记录（2026-09-01 加）。
+         维修工蹲在水管边单手拿手机，打字比说话慢十倍，这一栏常年只有「已修」两个字。
+         插件没装（hasSpeech 为假）就整个不显示，打字那条路一点没变。 -->
+    <button
+      wx:if="{{hasSpeech}}"
+      class="hold {{recording ? 'hold--on' : ''}}"
+      bindtouchstart="onStartRecord"
+      bindtouchend="onStopRecord"
+      bindtouchcancel="onStopRecord"
+    >{{recording ? '松开结束' : summarizing ? '正在整理…' : '按住说：做了什么'}}</button>
+    <view wx:if="{{recording && partial}}" class="muted partial">{{partial}}</view>
     <textarea placeholder="更换了什么、处理了什么问题" bindinput="onNote" value="{{actionNote}}"/>
+    <!-- 模型听出来的材料名只做提示：库存要扣的是具体 SKU，得他自己去「添加用料」里选 -->
+    <view wx:if="{{materialHints.length}}" class="mat-said">
+      听到你提了：{{materialHints}}，记得在「添加用料」里选一下
+    </view>
     <!-- 常用话术：点一下填进上面的文本框，再点一下撤掉；顺序按本小区用得多不多来 -->
     <block wx:if="{{phrases.length}}">
       <view class="label mt">常用话术<text class="label__opt">点一下填入</text></view>
