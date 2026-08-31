@@ -117,12 +117,20 @@ export class LlmService {
   }
 }
 
-/** 页面回显的是脱敏串，原样提交回来时当没改 —— 别拿一串圆点去调接口 */
+/**
+ * 把「页面上还没保存的那几个值」并进已存配置时，只取**真正传了的**字段。
+ *
+ * 不能直接 `{ ...saved, ...override }`：override 是 class-validator 的 DTO 实例，
+ * 没填的可选字段是 `undefined` 但**键是在的**，一展开就把存好的 baseUrl / model
+ * 覆盖成 undefined，测试直接报「还没填接口地址」（2026-09-01 线上实测踩到）。
+ * apiKey 另外判：页面回显的是脱敏圆点串，原样交回来时当没改，别拿圆点去调接口。
+ */
 function stripMasked(override?: Partial<AiAssistSetting>): Partial<AiAssistSetting> {
-  if (!override) return {};
-  const next = { ...override };
-  if (typeof next.apiKey === 'string' && (!next.apiKey.trim() || next.apiKey.startsWith('••'))) {
-    delete next.apiKey;
+  const next: Partial<AiAssistSetting> = {};
+  for (const [key, value] of Object.entries(override ?? {})) {
+    if (value === undefined || value === null || value === '') continue;
+    if (key === 'apiKey' && (typeof value !== 'string' || value.startsWith('••'))) continue;
+    (next as Record<string, unknown>)[key] = value;
   }
   return next;
 }
