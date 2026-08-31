@@ -352,3 +352,12 @@
 - 自上次（4e1f712）以来上线的相关提交：
   - 13385b9 工单池按 data-first-ui 重做：深色页头 + 数据网格 + 悬浮胶囊 tabBar
 
+## 2026-08-31 09:42 · miniapp-staff · 73ff0b8
+
+- 包：`1.0.20260831b`
+- 提交：73ff0b8 修：首次授权麦克风后「按住说话」卡在按住态，看着像点一下就开始录
+- 说明：修按住说话首次授权卡态；包内夹带另一会话未提交的 voice-extract 手机号边界修复（已核对为完整改动）
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M packages/shared-types/src/voice-extract.ts，?? packages/shared-types/src/voice-extract.test.ts
+- 自上次（13385b9）以来上线的相关提交：
+  - 73ff0b8 修：首次授权麦克风后「按住说话」卡在按住态，看着像点一下就开始录
+
