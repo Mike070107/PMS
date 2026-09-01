@@ -53,6 +53,9 @@
 }
 .picked__change:active { opacity: 0.7; }
 
+/* 挑到没图的材料时的一句指路（入库这一步不收照片，见 wxml 注释） */
+.no-photo-tip { margin: -4rpx 8rpx 20rpx; }
+
 /* 数量 × 单价的合计：一位数点错在这里立刻看得出来 */
 .amount {
   margin-top: 12rpx;

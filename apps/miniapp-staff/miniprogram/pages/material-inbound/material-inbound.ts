@@ -111,7 +111,6 @@ Page({
       qty: '',
       priceYuan: '',
       sourceText: '',
-      photoUrls: [] as string[],
     },
     inboundErrors: { qty: '', priceYuan: '', sourceText: '' },
     amountText: '',
@@ -391,11 +390,14 @@ Page({
     this.setData({ amountText: ok ? `合计 ¥${(qty * price).toFixed(2)}` : '' });
   },
 
-  // ---------------- 照片：建档和入库两处共用 ----------------
+  // ---------------- 照片：只有「新建 SKU」那一步有 ----------------
+  //
+  // 入库那一步不放照片：它只会写进入库单，替代不了材料档案的照片，端上也翻不出来看。
+  // 保留 data-target 参数是为了以后真有第二处要传图时不用再改一遍签名。
 
   async onChoosePhoto(e: WechatMiniprogram.BaseEvent) {
     if (this.data.uploading) return;
-    const target = (e.currentTarget.dataset.target as 'createForm' | 'inboundForm') || 'createForm';
+    const target = (e.currentTarget.dataset.target as 'createForm') || 'createForm';
     const current = (this.data[target].photoUrls || []) as string[];
     const room = PHOTO_LIMIT - current.length;
     if (room <= 0) {
@@ -424,7 +426,7 @@ Page({
   },
 
   onRemovePhoto(e: WechatMiniprogram.BaseEvent) {
-    const target = (e.currentTarget.dataset.target as 'createForm' | 'inboundForm') || 'createForm';
+    const target = (e.currentTarget.dataset.target as 'createForm') || 'createForm';
     const index = Number(e.currentTarget.dataset.index);
     const next = ((this.data[target].photoUrls || []) as string[]).filter((_, i) => i !== index);
     this.setData({ [`${target}.photoUrls`]: next });
@@ -469,8 +471,6 @@ Page({
             materialId: selected.materialId,
             qty,
             unitCostCents: Math.round(price * 100),
-            // 实物照片选填，事后能在材料档案里补
-            photoUrls: this.data.inboundForm.photoUrls,
             locationId: location?.id,
           },
         ],

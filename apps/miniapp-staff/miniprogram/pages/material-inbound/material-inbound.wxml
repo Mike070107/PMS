@@ -169,6 +169,12 @@
         <view class="picked__change" catchtap="onBackToSearch">换一个</view>
       </view>
 
+      <!-- 这一步去掉「实物照片」之后，得说清楚照片该去哪儿补，
+           否则挑到一条没图的老材料，人还是会在这一屏找上传口 -->
+      <view wx:if="{{!selected.photoUrl}}" class="muted no-photo-tip">
+        这条材料还没有照片。入库不需要拍照，照片在「材料与库存」里点这条的「编辑 SKU」补，最多 4 张。
+      </view>
+
       <view class="card">
         <view class="field">
           <view class="label">入库仓库</view>
@@ -215,26 +221,12 @@
           </view>
         </view>
 
-        <view class="field">
-          <view class="label">实物照片<text class="label__opt">选填，事后也能在材料档案里补</text></view>
-          <view class="photo-grid">
-            <view class="photo-grid__cell" wx:for="{{inboundForm.photoUrls}}" wx:key="*this">
-              <image
-                class="photo-grid__img"
-                src="{{item}}"
-                mode="aspectFill"
-                data-url="{{item}}"
-                data-urls="{{inboundForm.photoUrls}}"
-                catchtap="onPreviewPhoto"
-              />
-              <view class="photo-grid__del" data-target="inboundForm" data-index="{{index}}" catchtap="onRemovePhoto">×</view>
-            </view>
-            <view wx:if="{{inboundForm.photoUrls.length < 4}}" class="photo-grid__add" data-target="inboundForm" bindtap="onChoosePhoto">
-              <text class="photo-grid__plus">{{uploading ? '…' : '+'}}</text>
-              <text class="photo-grid__hint">{{inboundForm.photoUrls.length}}/4</text>
-            </view>
-          </view>
-        </view>
+        <!--
+          这一步不再有「实物照片」。它原来写进的是**入库单**（goods_receipts.items[].photoUrls），
+          和材料档案的照片是两回事：传了不会替代前面选的 SKU 照片，端上也没有任何地方
+          能把入库单的照片翻出来看 —— 等于让人白传一次（2026-09-01 实测反馈）。
+          要补材料照片请在「材料与库存」里点这条 SKU 的「编辑 SKU」。
+        -->
       </view>
     </block>
   </block>
