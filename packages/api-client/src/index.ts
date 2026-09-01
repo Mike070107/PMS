@@ -1,4 +1,5 @@
 export * from './request';
+export * from './envelope';
 export * as auth from './endpoints/auth';
 export * as ai from './endpoints/ai';
 export * as repairs from './endpoints/repairs';

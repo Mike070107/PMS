@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { isApiEnvelope } from '@pms/api-client';
 import { SignatureCanvas, type SignatureCanvasHandle } from '../components/SignatureCanvas';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -54,7 +55,8 @@ export default function SignPage() {
     fetch(`${API_BASE_URL}/sign/session?token=${encodeURIComponent(token)}`)
       .then(async (res) => {
         const body = await res.json().catch(() => null);
-        const payload = body && typeof body === 'object' && 'code' in body ? body.data : body;
+        // 同 SignaturePad：解包口径统一在 api-client 的 isApiEnvelope
+        const payload = isApiEnvelope(body) ? body.data : body;
         if (!res.ok) throw new Error(body?.message || '链接无效');
         return payload as SignSession;
       })

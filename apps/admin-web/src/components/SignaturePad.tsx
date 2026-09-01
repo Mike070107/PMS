@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { App as AntdApp, Button, Modal, Space, Typography } from 'antd';
 import { MobileOutlined } from '@ant-design/icons';
 import { auth } from '../lib/auth';
+import { isApiEnvelope } from '@pms/api-client';
 import { SignatureCanvas, type SignatureCanvasHandle } from './SignatureCanvas';
 
 const { Text } = Typography;
@@ -109,7 +110,9 @@ async function uploadSignature(blob: Blob): Promise<string> {
     throw new Error(body?.message || `签名上传失败（HTTP ${res.status}）`);
   }
   const body = await res.json();
-  const payload = body && typeof body === 'object' && 'code' in body ? body.data : body;
+  // 解包口径统一走 api-client 的 isApiEnvelope：光看「有没有 code 字段」会把
+  // 业务对象当成包装，然后取 .data 拿到 undefined（材料 SKU 的编码字段就叫 code）
+  const payload = isApiEnvelope(body) ? body.data : body;
   const url = payload?.displayUrl || payload?.publicUrl;
   if (!url) throw new Error('签名上传失败：服务端没有返回图片地址');
   return url as string;
