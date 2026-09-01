@@ -1011,6 +1011,9 @@ function MaintenanceEditor({
                 }}
                 style={{ width: 210 }}
                 popupMatchSelectWidth={280}
+                // 每项两行、约 68px，默认 256px 只露得出三项半 ——
+                // 被挡住的恰好是「系统自带（不下载）」，网速不好的人最需要的那一档
+                listHeight={400}
                 options={HANDWRITING_FONTS.map((item) => ({
                   value: item.id,
                   label: item.label,
