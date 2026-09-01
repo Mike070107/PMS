@@ -385,8 +385,8 @@ Page({
     this.setData({ tab: e.currentTarget.dataset.tab });
   },
 
-  onPickWarehouse(e: WechatMiniprogram.PickerChange) {
-    this.setData({ warehouseIndex: Number(e.detail.value) }, () => this.applyFilter());
+  onPickWarehouse(e: WechatMiniprogram.BaseEvent) {
+    this.setData({ warehouseIndex: Number(e.currentTarget.dataset.index) }, () => this.applyFilter());
   },
 
   onKeyword(e: WechatMiniprogram.Input) {

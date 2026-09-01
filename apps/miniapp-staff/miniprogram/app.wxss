@@ -268,13 +268,20 @@ button::after { border: none; }
 /* 列头已经带了左右边距，列表就别再叠一层，否则两者对不齐 */
 .sheet__body--flush { padding-left: 24rpx; padding-right: 24rpx; }
 
-/* ---------- 横向类别筛选条（材料库页与工单库存选择器共用，新增入口直接引这里） ----------
+/* ---------- 横向筛选条（材料库页、工单库存选择器、仓库切换共用，新增入口直接引这里） ----------
    放不下就左右滑，别换行堆成两三排把列表挤下去。
-   语义：--on = 当前选中，用品牌色描边+品牌色字，不填底（填底在老人机上反光看不清字）。 */
+
+   语义：--on = 当前选中，**品牌色实底 + 白字**；--warn = 开关型筛选已打开，警示色实底 + 白字。
+   2026-09-01 现场反馈推翻了原来「只描边不填底」的写法：描边式选中是「蓝字 vs 灰字」，
+   两者亮度差太小，户外屏幕不够亮时根本分不出哪个是选中的（维修工在小区里就是这个场景）。
+   实底白字对比度 8:1 以上，太阳底下也认得出，和业主端 .place__scope--on、
+   本页 .tab--on / 入库页 .step--on 是同一套做法 —— 整站选中态只有这一种画法。 */
 .chips { white-space: nowrap; margin-bottom: 16rpx; }
 /* 面板里用时要和搜索框、列头对齐同样的左右边距。
    flex-shrink: 0 不能省 —— .sheet 是定高的 flex 列，不写就会被下面的列表压扁成一条线。 */
 .chips--inset { flex-shrink: 0; margin: 16rpx 24rpx 0; }
+/* 表单字段里用（入库仓库这种）：紧跟 label，不要筛选条那一档下边距 */
+.chips--field { margin-top: 8rpx; margin-bottom: 0; }
 .chip {
   display: inline-block;
   padding: 16rpx 28rpx;
@@ -285,7 +292,21 @@ button::after { border: none; }
   color: var(--color-text-secondary);
   font-size: var(--font-md);
 }
-.chip--on { border-color: var(--color-brand); color: var(--color-brand); }
+.chip--on {
+  background: var(--color-brand);
+  border-color: var(--color-brand);
+  color: #fff;
+  font-weight: 500;
+}
+/* 开关型筛选（低于安全库存、待补资料）打开时的样子。
+   琥珀色只在深到 #ad6800 才压得住白字（原生 --color-warning #faad14 配白字对比不足 2:1），
+   放这里而不是各页自己写：库存页、采购页、以后的告警筛选都是同一个意思 */
+.chip--warn {
+  background: #ad6800;
+  border-color: #ad6800;
+  color: #fff;
+  font-weight: 500;
+}
 
 /* 整个仓一件货都没有时的出路提示：满屏「无货」不解释，用户会当成系统坏了 */
 .sku-empty {

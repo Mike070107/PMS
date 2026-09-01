@@ -29,11 +29,19 @@
           <view class="notice__desc">{{noWarehouseHint}}</view>
         </view>
       </view>
-      <view class="toolbar">
-        <picker class="picker-wrap" mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onPickWarehouse">
-          <view class="picker">{{warehouseNames[warehouseIndex] || '全部仓库'}}</view>
-        </picker>
-      </view>
+      <!-- 看哪个仓：原来是原生 picker，它弹出的滚轮是系统 UI（wxss 改不了），
+           选中项和其它项几乎一样亮，户外光线不足时认不出现在看的是哪个仓
+           （2026-09-01 现场反馈）。改成一排 chip：选中的实底品牌色，扫一眼就知道，
+           还省掉「点开 → 滚 → 确定」三步。仓多了横向滑，不换行挤掉下面的列表 -->
+      <scroll-view class="chips" scroll-x enable-flex>
+        <view
+          wx:for="{{warehouseNames}}"
+          wx:key="index"
+          class="chip {{warehouseIndex === index ? 'chip--on' : ''}}"
+          data-index="{{index}}"
+          bindtap="onPickWarehouse"
+        >{{item}}</view>
+      </scroll-view>
       <input class="input mb" placeholder="搜名称 / 别名 / 型号 / 编码" value="{{keyword}}" bindinput="onKeyword" />
 
       <!-- 两个开关式筛选：要补货的、要补资料的。和下面的类别筛选条分开一行，

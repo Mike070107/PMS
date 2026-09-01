@@ -55,10 +55,13 @@
   line-height: 1.4;
   transition: background 200ms ease, border-color 200ms ease, color 200ms ease;
 }
+/* 选中 = 品牌色实底 + 白字，和 .chip--on 同一套：
+   8% 的淡底在户外看不出来，维修工会重复点同一句话（2026-09-01 反馈的同一类问题） */
 .phrase--on {
   border-color: var(--color-brand);
-  color: var(--color-brand);
-  background: rgba(49, 85, 138, 0.08);
+  background: var(--color-brand);
+  color: #fff;
+  font-weight: 500;
 }
 
 /* .error 已挪到 app.wxss（三个页面共用，别再各写一份） */

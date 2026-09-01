@@ -169,11 +169,18 @@
       <view class="card">
         <view class="field">
           <view class="label">入库仓库</view>
-          <picker mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onPickWarehouse">
-            <view class="picker {{warehouseIndex < 0 ? 'placeholder' : ''}}">
-              {{warehouseIndex < 0 ? '请选择仓库' : warehouseNames[warehouseIndex]}}
-            </view>
-          </picker>
+          <!-- 和库存页同一套 chip：原生 picker 的滚轮在户外分不出选中项（系统 UI 改不了样式），
+               而入错仓是要盘点才发现的错。选中的实底品牌色，一直摆在眼前 -->
+          <scroll-view class="chips chips--field" scroll-x enable-flex>
+            <view
+              wx:for="{{warehouseNames}}"
+              wx:key="index"
+              class="chip {{warehouseIndex === index ? 'chip--on' : ''}}"
+              data-index="{{index}}"
+              bindtap="onPickWarehouse"
+            >{{item}}</view>
+          </scroll-view>
+          <view wx:if="{{warehouseIndex < 0}}" class="muted mt-sm">先选一个入库仓库</view>
         </view>
 
         <view class="field">

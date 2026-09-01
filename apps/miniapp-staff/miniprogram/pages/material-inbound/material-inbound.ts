@@ -355,8 +355,8 @@ Page({
 
   // ---------------- 第三步：填入库 ----------------
 
-  onPickWarehouse(e: WechatMiniprogram.PickerChange) {
-    this.setData({ warehouseIndex: Number(e.detail.value) }, () => {
+  onPickWarehouse(e: WechatMiniprogram.BaseEvent) {
+    this.setData({ warehouseIndex: Number(e.currentTarget.dataset.index) }, () => {
       this.loadLocations();
       // 换仓之后「本仓存量」这句就变了，重算一遍
       const selected = this.data.selected;

@@ -41,8 +41,10 @@
   color: var(--color-text-secondary);
 }
 
-/* 维修工一行：整行可点，选中用品牌色描边 + 左侧色条，不填底
-   （填底在户外强光下反光，看不清上面的字） */
+/* 维修工一行：整行可点。选中 = 品牌色实底 + 白字。
+   原来是「描边 + 左侧色条、不填底」，理由写的是「填底在户外强光下反光」——
+   2026-09-01 现场反馈正相反：户外屏幕不够亮时，描边式的选中和未选中几乎一样，
+   根本看不出派给了谁。整站选中态统一成实底白字（见 app.wxss 的 .chip--on 注释）。 */
 .tech {
   display: flex;
   align-items: center;
@@ -56,8 +58,15 @@
 }
 .tech--on {
   border-color: var(--color-brand);
-  border-left-width: 10rpx;
+  background: var(--color-brand);
 }
+/* 实底之后卡片里三行字都要跟着翻白，否则灰字压在深蓝上更看不清 */
+.tech--on .tech__name,
+.tech--on .tech__meta,
+.tech--on .tech__load { color: #fff; }
+/* 「在手 0 单」的绿在海军蓝上发闷，提亮一档才看得出是「最闲的那个」
+   （同 app.wxss 深色页头里对 --color-danger 的处理） */
+.tech--on .tech__load--free { color: #b7f5c8; }
 .tech__body { flex: 1; min-width: 0; }
 .tech__name { font-size: var(--font-xl); font-weight: 500; line-height: 1.5; }
 .tech__meta {

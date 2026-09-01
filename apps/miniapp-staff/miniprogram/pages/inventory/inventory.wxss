@@ -4,8 +4,6 @@
 
 /* 段落 Tab（.tabs/.tab）已提到 app.wxss，和工单池的三档共用一套 */
 
-.toolbar { display: flex; align-items: center; gap: 16rpx; margin-bottom: 16rpx; }
-.picker-wrap { flex: 1; }
 /* 工具栏里的选择器矮一档、底色跟卡片走；其余外观（箭头等）走 tokens.wxss */
 .picker { height: 92rpx; line-height: 92rpx; font-size: var(--font-lg); background-color: var(--color-card-bg); }
 
@@ -25,7 +23,7 @@
   white-space: nowrap;
 }
 .stocked__box { transform: scale(0.85); margin-right: 4rpx; }
-.chip--warn { border-color: var(--color-warning); color: #ad6800; }
+/* .chip / .chip--on / .chip--warn 都在 app.wxss（多页共用，别再各写一份） */
 
 .mb { margin-bottom: 20rpx; }
 /* .center 在 app.wxss 里统一定义 */
