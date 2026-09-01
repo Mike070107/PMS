@@ -251,9 +251,10 @@
     >{{recording ? '松开结束' : summarizing ? '正在整理…' : '按住说：做了什么'}}</button>
     <view wx:if="{{recording && partial}}" class="muted partial">{{partial}}</view>
     <textarea placeholder="更换了什么、处理了什么问题" bindinput="onNote" value="{{actionNote}}"/>
-    <!-- 模型听出来的材料名只做提示：库存要扣的是具体 SKU，得他自己去「添加用料」里选 -->
+    <!-- 听出来的材料已经加成用料行了，但都是「手填行」：还得去「添加用料」里
+         点「从库存选」绑上真正的 SKU，否则扣不了库存 -->
     <view wx:if="{{materialHints.length}}" class="mat-said">
-      听到你提了：{{materialHints}}，记得在「添加用料」里选一下
+      已按你说的加了用料：{{materialHints}}。请到「添加用料」里核对数量、点「从库存选」绑一下，否则扣不了库存
     </view>
     <!-- 常用话术：点一下填进上面的文本框，再点一下撤掉；顺序按本小区用得多不多来 -->
     <block wx:if="{{phrases.length}}">

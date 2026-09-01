@@ -169,7 +169,8 @@ function fullShape(expected: Record<string, unknown>): Record<string, unknown> {
       actionNote: typeof expected.actionNote === 'string' ? expected.actionNote : '',
       faultLocation: typeof expected.faultLocation === 'string' ? expected.faultLocation : '',
       faultSymptom: typeof expected.faultSymptom === 'string' ? expected.faultSymptom : '',
-      materials: [],
+      // 样例里教了用料就照着教；写死空数组等于教它「永远别输出用料」
+      materials: Array.isArray(expected.materials) ? expected.materials : [],
     };
   }
   return {

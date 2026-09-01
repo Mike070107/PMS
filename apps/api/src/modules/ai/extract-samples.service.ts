@@ -124,6 +124,10 @@ function pruneExpected(expected: Record<string, unknown>): Record<string, unknow
     const v = expected?.[key];
     if (typeof v === 'string' && v.trim()) out[key] = v.trim();
   }
+  if (Array.isArray(expected?.materials)) {
+    const list = expected.materials.map((m) => String(m).trim()).filter(Boolean);
+    if (list.length) out.materials = list;
+  }
   if (typeof expected?.urgent === 'boolean') out.urgent = expected.urgent;
   if (typeof expected?.publicArea === 'boolean') out.publicArea = expected.publicArea;
   return out;
@@ -206,6 +210,7 @@ const COMPLETION_SEEDS: Array<{ text: string; expected: Record<string, unknown>;
     expected: {
       actionNote: '更换角阀一只；水管接头加缠生料带',
       faultSymptom: '角阀锈蚀卡死',
+      materials: ['角阀', '生料带'],
     },
     note: '口述的动作要理成规范的维修说明；用料只提示、仍要自己从库存选',
   },

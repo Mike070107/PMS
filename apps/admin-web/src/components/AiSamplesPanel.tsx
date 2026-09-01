@@ -42,6 +42,7 @@ export interface AiSample {
     actionNote?: string;
     faultLocation?: string;
     faultSymptom?: string;
+    materials?: string[];
   };
   note: string;
   enabled: boolean;
@@ -69,6 +70,12 @@ const FIELDS: Record<SampleKind, Array<{ key: string; label: string; placeholder
     },
     { key: 'description', label: '应该认出的故障描述', placeholder: '电子门旋钮打滑，居民出不去' },
     { key: 'contactName', label: '应该认出的联系人', placeholder: '没说人名就留空' },
+    {
+      key: 'phone',
+      label: '应该认出的联系电话',
+      placeholder: '18201728748',
+      hint: '11 位手机号。教它「哪一串数字是电话」—— 门牌号里的数字不能当电话。',
+    },
   ],
   completion: [
     {
@@ -79,6 +86,12 @@ const FIELDS: Record<SampleKind, Array<{ key: string; label: string; placeholder
     },
     { key: 'faultLocation', label: '应该认出的故障位置', placeholder: '厨房水槽下方' },
     { key: 'faultSymptom', label: '应该认出的故障现象', placeholder: '角阀锈蚀卡死' },
+    {
+      key: 'materials',
+      label: '应该认出的用料',
+      placeholder: '角阀、生料带（顿号分隔，只写名字不写数量）',
+      hint: '这些会自动加进用料清单当草稿行，维修工仍要点「从库存选」绑 SKU 才扣得了库存。',
+    },
   ],
 };
 
@@ -91,6 +104,8 @@ const EMPTY_DRAFT: Record<string, string> = {
   actionNote: '',
   faultLocation: '',
   faultSymptom: '',
+  phone: '',
+  materials: '',
 };
 
 export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
@@ -132,10 +147,19 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
           text: draft.text,
           note: draft.note,
           // 只提交填了的字段：空字段进了提示词会教出「什么都可以不填」
+          // 用料是数组，页面上按顿号/逗号分隔输入，存进去前拆开
           expected: Object.fromEntries(
             FIELDS[kind]
-              .map((f) => [f.key, draft[f.key]?.trim()])
-              .filter(([, v]) => !!v),
+              .map((f) => [
+                f.key,
+                f.key === 'materials'
+                  ? (draft[f.key] || '')
+                      .split(/[、,，\s]+/)
+                      .map((x) => x.trim())
+                      .filter(Boolean)
+                  : draft[f.key]?.trim(),
+              ])
+              .filter(([, v]) => (Array.isArray(v) ? v.length : !!v)),
           ),
         },
       });
@@ -219,6 +243,8 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
                 {v?.actionNote ? <Tag color="blue">维修说明 {v.actionNote}</Tag> : null}
                 {v?.faultLocation ? <Tag>位置 {v.faultLocation}</Tag> : null}
                 {v?.faultSymptom ? <Tag>现象 {v.faultSymptom}</Tag> : null}
+                {v?.phone ? <Tag>电话 {v.phone}</Tag> : null}
+                {v?.materials?.length ? <Tag>用料 {v.materials.join('、')}</Tag> : null}
                 {v?.urgent ? <Tag color="red">紧急</Tag> : null}
               </Space>
             ),

@@ -59,7 +59,6 @@ interface MaterialRow {
   hintShort: boolean;
 }
 
-/** 数量默认 1：缺料十有八九就是缺一个，让人少点一下 */
 /**
  * 完工小结的语音识别。走微信官方「同声传译」插件（只支持普通话），
  * 插件没装时 speechManager 一直是 null，「按住说话」整个按钮不显示，打字照常可用。
@@ -75,6 +74,7 @@ try {
 /** 按住说话的按压状态机，bindSpeech() 里创建；插件不可用时一直是 null */
 let hold: HoldToTalk | null = null;
 
+/** 数量默认 1：缺料十有八九就是缺一个，让人少点一下 */
 const DEFAULT_QTY = '1';
 const MAX_QTY = 999;
 
@@ -170,7 +170,7 @@ interface PageData {
   partial: string;
   /** 正在让模型整理 */
   summarizing: boolean;
-  /** 模型从话里听出的材料名 —— 只做提示，用料仍要自己从库存选 */
+  /** 这一轮小结自动加进用料清单的材料名，用来说明「这几行是听出来的，记得核对」 */
   materialHints: string[];
   faultLocation: string;
   faultSymptom: string;
@@ -243,7 +243,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     partial: '',
     /** 正在让模型整理 */
     summarizing: false,
-    /** 模型从话里听出的材料名 —— 只做提示，用料仍要自己从库存选（要扣的是具体 SKU） */
+    /** 这一轮小结自动加进用料清单的材料名，用来在面板上说明「这几行是听出来的」 */
     materialHints: [] as string[],
     faultLocation: '',
     faultSymptom: '',
@@ -552,16 +552,44 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       }
       const patch: Record<string, unknown> = {
         actionNote: [this.data.actionNote.trim(), res.actionNote].filter(Boolean).join('；'),
-        materialHints: res.materials || [],
       };
       if (!this.data.faultLocation && res.faultLocation) patch.faultLocation = res.faultLocation;
       if (!this.data.faultSymptom && res.faultSymptom) patch.faultSymptom = res.faultSymptom;
+      /**
+       * 听出来的材料**直接加成用料行**（2026-09-01 用户要求：自动添加，但不要提交）。
+       *
+       * 加的是「手填行」：只有名字、数量默认 1、没有 materialId ——
+       * 库存要扣的是具体 SKU，模型说的「角阀」对不上哪一条，所以仍然要他点「从库存选」
+       * 绑一下。这一步省掉的是「一行行从头加」，不是「核对」。
+       * 重名的不重复加：同一句说第二遍、或者他已经手工加过的，跳过。
+       */
+      const added = this.mergeMaterialHints(res.materials || []);
+      if (added.rows) patch.materialRows = added.rows;
+      patch.materialHints = added.names;
       this.setData(patch, () => this.syncPhraseState());
     } catch {
       fallback();
     } finally {
       this.setData({ summarizing: false });
     }
+  },
+
+  /**
+   * 把听出来的材料名并进用料清单。返回新的行（没有要加的就不返回，免得白刷一次列表）
+   * 和「这一轮真正加进去的名字」（用来在面板上说明哪几行是听出来的）。
+   */
+  mergeMaterialHints(names: string[]): { rows?: MaterialRow[]; names: string[] } {
+    const clean = names.map((n) => (n || '').trim()).filter(Boolean);
+    if (!clean.length) return { names: [] };
+    const rows = this.data.materialRows.slice();
+    const added: string[] = [];
+    for (const name of clean) {
+      if (rows.some((row) => (row.name || '').trim() === name)) continue;
+      rows.push({ ...emptyMaterialRow(), name });
+      added.push(name);
+    }
+    if (!added.length) return { names: [] };
+    return { rows, names: added };
   },
 
   onNote(e: WechatMiniprogram.Input) {
