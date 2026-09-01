@@ -1022,8 +1022,8 @@ function MaintenanceEditor({
                     <Space size={4} direction="vertical" style={{ lineHeight: 1.35 }}>
                       <span
                         style={{
-                          fontFamily: item.family
-                            ? `'${item.family}', cursive`
+                          fontFamily: item.previewFamily
+                            ? `'${item.previewFamily}', cursive`
                             : "'STXingkai','KaiTi','楷体',cursive",
                           fontSize: 17,
                           fontWeight: 700,

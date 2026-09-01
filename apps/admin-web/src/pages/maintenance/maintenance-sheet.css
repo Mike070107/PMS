@@ -46,6 +46,29 @@
   font-display: swap;
 }
 
+/* 下拉里「每个选项用它自己那款字写自己的名字」用的预览字体：只切了选项那几十个字，
+   8–18KB 一款。不这么做的话，下拉一展开就把四款完整字体（14MB）全拉下来了 —— 线上量过。 */
+@font-face {
+  font-family: 'MOZhangqingpingP';
+  src: url('../../fonts/zhangqingping-preview.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'MOWanweiweiP';
+  src: url('../../fonts/wanweiwei-preview.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'MOShoushuP';
+  src: url('../../fonts/shoushu-preview.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'MOZhaizaijiaP';
+  src: url('../../fonts/zhaizaijia-preview.woff2') format('woff2');
+  font-display: swap;
+}
+
 .mo-sheet {
   /* 表单字体用宋体：这是政府/物业单据的标准脸，换成黑体一眼就不像那张纸了。
      后面几档是 macOS / Linux / 兜底的中文回退，缺字不会掉进默认西文字体。 */

@@ -53,6 +53,11 @@ UNICODES = ','.join([
     'U+00B7', 'U+00D7', 'U+2103', 'U+2116', 'U+339C-33A1',
 ])
 
+# 下拉里「用这款字体写出它自己的名字」那一行要用的字。
+# 单独切一份几 KB 的预览字体，是因为下拉一展开就会用到**每一款** ——
+# 直接用完整字体的话，光是看一眼列表就要下 14MB（线上实测过，四个文件全被拉下来了）。
+PREVIEW_TEXT = '张清平硬笔行书我爱万伟伟手写体宅在家自动笔系统自带不下载修换声控灯王小明0123456789.·（）'
+
 # 汉字基本区：单据上出现的字 99.9% 落在这一段（扩展 A/B 是古籍生僻字，这几款字体本来也没有）
 CJK_LO, CJK_HI = 0x4E00, 0x9FFF
 
@@ -125,6 +130,20 @@ def build_one(src: str, dst: str) -> None:
     ])
 
 
+def build_preview(src: str, dst: str) -> None:
+    subset.main([
+        src,
+        '--text=' + PREVIEW_TEXT,
+        '--layout-features=',
+        '--flavor=woff2',
+        '--desubroutinize',
+        '--no-hinting',
+        '--name-IDs=*',
+        '--notdef-outline',
+        '--output-file=' + dst,
+    ])
+
+
 def write_coverage() -> None:
     """
     生成 coverage.ts：每款字体一张「这个字有没有」的位图。
@@ -134,7 +153,7 @@ def write_coverage() -> None:
     """
     import base64
     lines = []
-    for out_name in sorted(set(FONTS.values())):
+    for out_name in sorted(set(FONTS.values())):  # 覆盖位图只按完整字体算，预览字体不参与
         font = TTFont(os.path.join(OUT, out_name), lazy=True)
         cmap = font.getBestCmap()
         bits = bytearray((CJK_HI - CJK_LO + 1 + 7) // 8)
@@ -162,8 +181,11 @@ def main() -> int:
         src = os.path.join(SRC, name)
         dst = os.path.join(OUT, out_name)
         build_one(src, dst)
-        print('%-24s %6.2fMB -> %5.2fMB  %s' % (
-            name, os.path.getsize(src) / 1048576, os.path.getsize(dst) / 1048576, out_name))
+        preview = dst.replace('.woff2', '-preview.woff2')
+        build_preview(src, preview)
+        print('%-24s %6.2fMB -> %5.2fMB  %s（预览 %.1fKB）' % (
+            name, os.path.getsize(src) / 1048576, os.path.getsize(dst) / 1048576, out_name,
+            os.path.getsize(preview) / 1024))
     write_coverage()
     return 0
 

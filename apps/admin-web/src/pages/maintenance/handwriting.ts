@@ -23,6 +23,12 @@ export interface HandwritingFont {
   sizeMb?: number;
   /** CSS 里的 font-family 名，用来判断「下载完了没有」；系统字体没有 */
   family?: string;
+  /**
+   * 下拉选项里预览用的字体名 —— 只切了选项那几十个字的迷你版（8–18KB）。
+   * 预览必须用它，不能直接用 family：下拉一展开每一项都会用到自己那款字，
+   * 用完整字体等于看一眼列表就下 14MB。
+   */
+  previewFamily?: string;
 }
 
 export const HANDWRITING_FONTS: HandwritingFont[] = [
@@ -32,6 +38,7 @@ export const HANDWRITING_FONTS: HandwritingFont[] = [
     desc: '钢笔字，最像人手填的',
     sizeMb: 2.9,
     family: 'MOZhangqingping',
+    previewFamily: 'MOZhangqingpingP',
   },
   {
     id: 'wanweiwei',
@@ -39,6 +46,7 @@ export const HANDWRITING_FONTS: HandwritingFont[] = [
     desc: '随意些的圆珠笔字',
     sizeMb: 1.7,
     family: 'MOWanweiwei',
+    previewFamily: 'MOWanweiweiP',
   },
   {
     id: 'shoushu',
@@ -46,6 +54,7 @@ export const HANDWRITING_FONTS: HandwritingFont[] = [
     desc: '连笔多，偏草',
     sizeMb: 3.8,
     family: 'MOShoushu',
+    previewFamily: 'MOShoushuP',
   },
   {
     id: 'zhaizaijia',
@@ -53,6 +62,7 @@ export const HANDWRITING_FONTS: HandwritingFont[] = [
     desc: '工整清楚，生僻字最全（2 万字）',
     sizeMb: 5.7,
     family: 'MOZhaizaijia',
+    previewFamily: 'MOZhaizaijiaP',
   },
   {
     id: 'system',
