@@ -1054,9 +1054,12 @@ export function MaintenanceBack(props: SheetProps) {
                 <Cell w={BACK_COLS.name}>
                   <Lb>服务记录</Lb>
                 </Cell>
-                <Cell grow>
+                <Cell grow className="mo-cell--left">
+                  {/* 这两格是一句话不是一个值，居中会飘在格子正中间；
+                      靠左从 1.4mm 处起写，跟纸上手写的位置一致 */}
                   <Field
                     editable={editable}
+                    className="mo-in--left"
                     value={order.serviceRecord || ''}
                     onChange={patch && ((v) => patch({ serviceRecord: v }))}
                   />
@@ -1066,9 +1069,10 @@ export function MaintenanceBack(props: SheetProps) {
                 <Cell w={BACK_COLS.name}>
                   <Lb>回访记录</Lb>
                 </Cell>
-                <Cell grow>
+                <Cell grow className="mo-cell--left">
                   <Field
                     editable={editable}
+                    className="mo-in--left"
                     value={order.followUpRecord || ''}
                     onChange={patch && ((v) => patch({ followUpRecord: v }))}
                   />
