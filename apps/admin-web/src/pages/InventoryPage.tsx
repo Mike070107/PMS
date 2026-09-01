@@ -20,7 +20,6 @@ import {
   Table,
   Tabs,
   Tag,
-  Segmented,
   Tooltip,
   Typography,
   Upload,
@@ -47,40 +46,20 @@ import type { StockLotView, StockMovementView } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { auth, useAuth, useCompanyWideView, usePagePerm } from '../lib/auth';
 import { useTableSeq } from '../components/tableSeqColumn';
+import {
+  MATERIAL_PHOTO_LIMIT,
+  MaterialPhotoCell,
+  MaterialPhotosUpload,
+  imageSrc,
+  materialPhotoList,
+  normalizePhotoUrl,
+  uploadFileUrl,
+} from '../components/MaterialPhotos';
 import { searchableExtraWideSelectProps, searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import { PurchaseOrderStatus, PurchaseRequestStatus, WAREHOUSE_TYPE_LABELS, WarehouseType } from '@pms/shared-types';
 
 const { Title, Text } = Typography;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
-
-function uploadFileUrl(objectKey: string) {
-  return `${API_BASE_URL}/upload/file?key=${encodeURIComponent(objectKey)}`;
-}
-
-function uploadObjectKey(url?: string | null) {
-  if (!url || url.startsWith('blob:') || url.startsWith('data:')) return '';
-  try {
-    const parsed = new URL(url, window.location.origin);
-    const key = parsed.searchParams.get('key');
-    if (parsed.pathname.endsWith('/upload/file') && key) return key;
-    const pathKey = parsed.pathname.replace(/^\/+/, '');
-    if (pathKey.startsWith('uploads/')) return pathKey;
-  } catch {
-    if (url.startsWith('uploads/')) return url;
-  }
-  return '';
-}
-
-function normalizePhotoUrl(url?: string | null) {
-  const key = uploadObjectKey(url);
-  return key ? uploadFileUrl(key) : (url || '');
-}
-
-function imageSrc(url?: string | null) {
-  if (!url) return '';
-  if (url.startsWith('blob:') || url.startsWith('data:') || url.includes('/upload/file?key=')) return url;
-  return normalizePhotoUrl(url);
-}
 
 interface MaterialRow {
   id: number;
@@ -91,6 +70,7 @@ interface MaterialRow {
   unit: string;
   defaultCostCents: number;
   photoUrl?: string | null;
+  photoUrls?: string[];
   enabled: boolean;
   createdAt?: string;
 }
@@ -305,7 +285,7 @@ function requestStepStatus(status: PurchaseRequestStatus): 'process' | 'error' {
 export default function InventoryPage() {
   const { message, modal } = AntdApp.useApp();
   const { canEdit } = usePagePerm('inventory');
-  const { access } = useAuth();
+  const { access, actingOffice } = useAuth();
   // 「材料 SKU」「仓库数量」是全公司口径的家底数字，范围受限的角色看了对不上账
   const companyWide = useCompanyWideView();
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
@@ -318,9 +298,19 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [stockCategory, setStockCategory] = useState<string>('all');
-  const [stockWarehouseType, setStockWarehouseType] = useState<string>('all');
-  /** 总仓（公司级）只有数据范围为「全公司」的角色能看，后端也是这个口径 */
-  const canSeeCentral = access?.scopeAll !== false;
+  /**
+   * 仓库库存看哪个仓。'all' = 全部（本人看得见的那些合并）。
+   * 默认落在自己所属管理处的仓上（见 defaultStockWarehouseId），
+   * 选过一次之后就尊重用户的选择，不再被默认值改回去。
+   */
+  const [stockWarehouseId, setStockWarehouseId] = useState<number | 'all'>('all');
+  const [stockWarehousePicked, setStockWarehousePicked] = useState(false);
+  /**
+   * 「本次请求看得见哪些仓」——和 GET /stocks 是同一口径（后端 visibleWarehouseIds）。
+   * 下拉必须用它而不是全量仓库列表：全量里会混进选了就是空表的仓，
+   * 看着像库存丢了（2026-09-01 反馈「总仓是空的」正是这一类）。
+   */
+  const [visibleWarehouses, setVisibleWarehouses] = useState<WarehouseRow[]>([]);
   const [catalogOpen, setCatalogOpen] = useState<CatalogKind | null>(null);
   const [editingMaterial, setEditingMaterial] = useState<MaterialRow | null>(null);
   const [editingWarehouse, setEditingWarehouse] = useState<WarehouseRow | null>(null);
@@ -355,11 +345,6 @@ export default function InventoryPage() {
 
   const materialById = useMemo(() => new Map(materials.map((item) => [item.id, item])), [materials]);
   const warehouseById = useMemo(() => new Map(warehouses.map((item) => [item.id, item])), [warehouses]);
-  /** 小区仓不再新建，只有还留着旧数据的公司才显示这一档筛选 */
-  const hasCommunityWarehouse = useMemo(
-    () => warehouses.some((item) => item.type === WarehouseType.COMMUNITY),
-    [warehouses],
-  );
   const supplierById = useMemo(() => new Map(suppliers.map((item) => [item.id, item])), [suppliers]);
   const editingStockMaterial = editingStock ? materialById.get(editingStock.materialId) : undefined;
   const stockQtyPrecision = quantityPrecision(editingStockMaterial?.unit);
@@ -407,6 +392,7 @@ export default function InventoryPage() {
       const [
         materialRows,
         warehouseRows,
+        visibleWarehouseRows,
         supplierRows,
         stockRows,
         requestRows,
@@ -416,6 +402,7 @@ export default function InventoryPage() {
       ] = await Promise.all([
         request<MaterialRow[]>({ url: '/materials' }),
         request<WarehouseRow[]>({ url: '/warehouses' }),
+        request<WarehouseRow[]>({ url: '/warehouses', query: { scope: 'visible' } }),
         request<SupplierRow[]>({ url: '/suppliers' }),
         request<StockRow[]>({ url: '/stocks' }),
         request<PurchaseRequestRow[]>({ url: '/purchase-requests' }),
@@ -425,6 +412,7 @@ export default function InventoryPage() {
       ]);
       setMaterials(materialRows);
       setWarehouses(warehouseRows);
+      setVisibleWarehouses(visibleWarehouseRows);
       setSuppliers(supplierRows);
       setStocks(stockRows);
       setPurchaseRequests(requestRows);
@@ -456,11 +444,51 @@ export default function InventoryPage() {
     };
   }, [materialById, materials.length, purchaseOrders, purchaseRequests, stocks, warehouses.length]);
 
+  /**
+   * 默认选哪个仓：**自己所属管理处的那个仓**。
+   * 「自己所属」的判据和员工端小程序一致（见 inventory.ts 的 defaultWarehouseIndex）：
+   *   · 顶栏切了管理处视角 → 那个管理处的仓
+   *   · 没切、但本人只挂着一个管理处 → 那个管理处的仓
+   *   · 其余（全公司范围又没切视角）→ 全部仓库，别替他挑一个
+   * 有别的仓的权限时下拉里照样能切，切过就不再自动改回来。
+   */
+  const defaultStockWarehouseId = useMemo<number | 'all'>(() => {
+    const officeId = actingOffice?.id
+      ?? (access?.offices?.length === 1 ? access.offices[0].id : null);
+    if (!officeId) return 'all';
+    const own = visibleWarehouses.find((item) => item.enabled && item.officeId === officeId);
+    return own?.id ?? 'all';
+  }, [actingOffice, access, visibleWarehouses]);
+
+  useEffect(() => {
+    if (!stockWarehousePicked) setStockWarehouseId(defaultStockWarehouseId);
+  }, [defaultStockWarehouseId, stockWarehousePicked]);
+
+  /** 下拉选项：只列本人看得见的仓（口径同 GET /stocks），带上类型和管理处好区分同名仓 */
+  const stockWarehouseOptions = useMemo(() => ([
+    { value: 'all' as const, label: `全部仓库（${visibleWarehouses.length}）` },
+    ...withOptionTitles(visibleWarehouses.map((item) => ({
+      value: item.id,
+      label: `${item.name} · ${WAREHOUSE_TYPE_LABELS[item.type] || item.type}${item.officeName ? ' · ' + item.officeName : ''}`,
+    }))),
+  ]), [visibleWarehouses]);
+
+  /**
+   * 一个总仓都看不见时说明原因，别让人对着空下拉猜。
+   * 「能不能看总仓」就是角色的数据范围：管理处范围的人看到总仓库存也领不到，
+   * 反而会当成自己的可用量。要放开去「业务角色」把数据范围改成全公司。
+   */
+  const centralHint = useMemo(() => {
+    if (!visibleWarehouses.length) return '';
+    if (visibleWarehouses.some((item) => item.type === WarehouseType.CENTRAL)) return '';
+    return '你的角色数据范围限定在管理处，看不到公司总仓。需要的话去「业务角色」把数据范围改成全公司。';
+  }, [visibleWarehouses]);
+
   const typedStocks = useMemo(
-    () => (stockWarehouseType === 'all'
+    () => (stockWarehouseId === 'all'
       ? stocks
-      : stocks.filter((row) => warehouseById.get(row.warehouseId)?.type === stockWarehouseType)),
-    [stocks, stockWarehouseType, warehouseById],
+      : stocks.filter((row) => row.warehouseId === stockWarehouseId)),
+    [stocks, stockWarehouseId],
   );
   const keywordStocks = useMemo(() => typedStocks.filter((row) => {
     if (!keyword.trim()) return true;
@@ -533,7 +561,7 @@ export default function InventoryPage() {
   const openCreateMaterial = () => {
     setEditingMaterial(null);
     catalogForm.resetFields();
-    catalogForm.setFieldsValue({ unit: '个', enabled: true, photoUploading: false });
+    catalogForm.setFieldsValue({ unit: '个', enabled: true, photoUrls: [], photoUploading: false });
     setCatalogOpen('material');
   };
 
@@ -546,7 +574,7 @@ export default function InventoryPage() {
       category: row.category,
       unit: row.unit,
       defaultCostYuan: row.defaultCostCents / 100,
-      photoUrl: row.photoUrl || undefined,
+      photoUrls: materialPhotoList(row),
       photoUploading: false,
       enabled: row.enabled,
     });
@@ -630,7 +658,7 @@ export default function InventoryPage() {
         ? {
             ...values,
             defaultCostCents: values.defaultCostYuan != null ? Math.round(values.defaultCostYuan * 100) : 0,
-            photoUrl: normalizePhotoUrl(values.photoUrl),
+            photoUrls: (values.photoUrls || []).map((url: string) => normalizePhotoUrl(url)),
           }
         : catalogOpen === 'warehouse'
           // 下拉清空是 undefined，接口里 undefined = 不动，得明确传 null 才能清成公司级
@@ -845,11 +873,7 @@ export default function InventoryPage() {
   const submitReceipt = async () => {
     const values = await receiptForm.validateFields();
     const items = (values.items || []);
-    const missingPhoto = items.find((item: any) => !item.photoUrls?.length);
-    if (missingPhoto) {
-      message.warning('每种材料至少上传 1 张实物照片');
-      return;
-    }
+    // 实物照片选填：货到了先入账，照片仓库慢慢补（2026-09-01）
     setSaving(true);
     try {
       await request({
@@ -888,11 +912,6 @@ export default function InventoryPage() {
     const items = (values.items || []).filter((item: any) => item?.materialId && item?.qty);
     if (!items.length) {
       message.warning('请至少添加一种材料');
-      return;
-    }
-    const missingPhoto = items.find((item: any) => !item.photoUrls?.length);
-    if (missingPhoto) {
-      message.warning('每种材料至少上传 1 张实物照片');
       return;
     }
     setSaving(true);
@@ -1038,12 +1057,8 @@ export default function InventoryPage() {
       title: '商品图片',
       dataIndex: 'materialId',
       width: 130,
-      render: (id) => {
-        const url = materialById.get(id)?.photoUrl;
-        return url
-          ? <Image src={imageSrc(url)} width={64} height={64} style={{ objectFit: 'cover', borderRadius: 6 }} />
-          : <Text type="secondary">未上传</Text>;
-      },
+      // 点开是这条 SKU 的整组大图，可左右翻
+      render: (id) => <MaterialPhotoCell item={materialById.get(id)} />,
     },
     { key: 'code', title: '材料编码', dataIndex: 'materialId', width: 140, render: (id) => materialById.get(id)?.code || `#${id}` },
     { key: 'name', title: '材料名称', dataIndex: 'materialId', width: 220, ellipsis: true, render: (id) => materialById.get(id)?.name || '-' },
@@ -1127,41 +1142,29 @@ export default function InventoryPage() {
             label: <span><InboxOutlined /> 库存清单</span>,
             children: (
               <Card
-                title={(
-                  <Space size={12} wrap>
-                    <span>仓库库存</span>
-                    {/*
-                      「能不能看总仓」就是角色的数据范围：管理处范围的人看到总仓库存
-                      也领不到，反而会当成自己的可用量。要放开就去「业务角色」把数据
-                      范围改成全公司 —— 不静默隐藏，写清楚为什么点不了。
-                    */}
-                    <Segmented
-                      size="small"
-                      value={stockWarehouseType}
-                      onChange={(v) => setStockWarehouseType(String(v))}
-                      options={[
-                        { value: 'all', label: '全部仓' },
-                        {
-                          value: WarehouseType.CENTRAL,
-                          label: canSeeCentral
-                            ? '总仓'
-                            : <Tooltip title="你的角色数据范围限定在管理处，看不到公司总仓。需要的话去「业务角色」把数据范围改成全公司">总仓</Tooltip>,
-                          disabled: !canSeeCentral,
-                        },
-                        { value: WarehouseType.OFFICE, label: '管理处仓' },
-                        ...(hasCommunityWarehouse ? [{ value: WarehouseType.COMMUNITY, label: '小区仓' }] : []),
-                      ]}
-                    />
-                  </Space>
-                )}
+                title="仓库库存"
                 extra={(
-                  <Space>
+                  <Space wrap>
+                    {/* 看哪个仓：默认自己所属管理处的仓，有别的仓的权限就能在这里切 */}
+                    <Select
+                      {...searchableWideSelectProps}
+                      value={stockWarehouseId}
+                      onChange={(value) => { setStockWarehousePicked(true); setStockWarehouseId(value); }}
+                      options={stockWarehouseOptions}
+                      style={{ width: 280 }}
+                      placeholder="选择仓库"
+                    />
+                    {centralHint && (
+                      <Tooltip title={centralHint}>
+                        <Text type="secondary" style={{ fontSize: 12, cursor: 'help' }}>看不到总仓？</Text>
+                      </Tooltip>
+                    )}
                     {stockPrefs.customized && (
                       <Tooltip title="把列宽和列顺序恢复成系统默认">
                         <Button size="small" icon={<ColumnWidthOutlined />} onClick={stockPrefs.reset}>恢复默认列</Button>
                       </Tooltip>
                     )}
-                    <Input.Search allowClear placeholder="搜索材料 / 仓库" onSearch={setKeyword} onChange={(event) => setKeyword(event.target.value)} style={{ width: 260 }} />
+                    <Input.Search allowClear placeholder="搜索材料 / 仓库" onSearch={setKeyword} onChange={(event) => setKeyword(event.target.value)} style={{ width: 220 }} />
                   </Space>
                 )}
               >
@@ -1385,11 +1388,10 @@ export default function InventoryPage() {
                               { title: '编码', dataIndex: 'code', width: 120, ellipsis: true },
                               {
                                 title: '实物照片',
-                                dataIndex: 'photoUrl',
+                                key: 'photos',
                                 width: 130,
-                                render: (url) => url
-                                  ? <Image src={imageSrc(url)} width={64} height={64} style={{ objectFit: 'cover', borderRadius: 6 }} />
-                                  : <Text type="secondary">未上传</Text>,
+                                // 点开是整组大图，可左右翻
+                                render: (_, row) => <MaterialPhotoCell item={row} />,
                               },
                               { title: '名称', dataIndex: 'name', ellipsis: true },
                               { title: '规格', dataIndex: 'spec', width: 120, render: (v) => v || '-' },
@@ -2073,10 +2075,15 @@ function CatalogModal({ kind, form, warehouseLocationOptions, editingMaterial, e
             <Row gutter={12}>
               <Col span={12}><Form.Item name="defaultCostYuan" label="参考成本（元）" tooltip="入库后自动刷新为剩余批次的加权均价；只用于估价和展示，领料成本按实际入库批次算"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
             </Row>
-            <Form.Item name="photoUrl" hidden><Input /></Form.Item>
             <Form.Item name="photoUploading" hidden><Input /></Form.Item>
-            <Form.Item label="实物照片">
-              <MaterialPhotoUpload form={form} />
+            <Form.Item
+              name="photoUrls"
+              label={`实物照片（最多 ${MATERIAL_PHOTO_LIMIT} 张）`}
+              tooltip="正面 / 侧面 / 铭牌 / 包装各一张；第一张作封面，在列表和选料弹层里显示"
+            >
+              <MaterialPhotosUpload
+                onUploadingChange={(uploading) => form.setFieldsValue({ photoUploading: uploading })}
+              />
             </Form.Item>
           </>
         )}
@@ -2143,88 +2150,6 @@ function CatalogModal({ kind, form, warehouseLocationOptions, editingMaterial, e
         )}
       </Form>
     </Modal>
-  );
-}
-
-function MaterialPhotoUpload({ form }: { form: any }) {
-  const { message } = AntdApp.useApp();
-  const photoUrl = Form.useWatch('photoUrl', form);
-  const [localPreview, setLocalPreview] = useState<string>();
-  const displayUrl = localPreview || imageSrc(photoUrl);
-
-  useEffect(() => {
-    return () => {
-      if (localPreview) URL.revokeObjectURL(localPreview);
-    };
-  }, [localPreview]);
-
-  const uploadProps: UploadProps<UploadResponse> = {
-    name: 'file',
-    action: `${API_BASE_URL}/upload`,
-    headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
-    accept: 'image/*',
-    multiple: false,
-    maxCount: 1,
-    showUploadList: false,
-    beforeUpload: (file) => {
-      if (!/^image\//i.test(file.type || '')) {
-        message.error('只能上传照片');
-        return Upload.LIST_IGNORE;
-      }
-      if (file.size / 1024 / 1024 > 10) {
-        message.error('照片不能超过 10MB');
-        return Upload.LIST_IGNORE;
-      }
-      setLocalPreview((current) => {
-        if (current) URL.revokeObjectURL(current);
-        return URL.createObjectURL(file);
-      });
-      form.setFieldsValue({ photoUploading: true });
-      return true;
-    },
-    onChange: ({ file }) => {
-      if (file.status === 'uploading') {
-        form.setFieldsValue({ photoUploading: true });
-      } else if (file.status === 'done') {
-        const url = file.response?.displayUrl ||
-          (file.response?.objectKey ? uploadFileUrl(file.response.objectKey) : file.response?.publicUrl);
-        if (url) {
-          form.setFieldsValue({ photoUrl: normalizePhotoUrl(url) });
-          message.success('实物照片已上传');
-        }
-        form.setFieldsValue({ photoUploading: false });
-      } else if (file.status === 'error') {
-        form.setFieldsValue({ photoUploading: false });
-        message.error(`${file.name} 上传失败`);
-      }
-    },
-  };
-
-  return (
-    <Upload.Dragger {...uploadProps} style={{ padding: 12 }}>
-      {displayUrl ? (
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Image src={displayUrl} width={96} height={96} style={{ objectFit: 'cover', borderRadius: 6 }} preview={false} />
-          <Text type="secondary">拖拽或点击更换照片</Text>
-          <Button
-            size="small"
-            onClick={(event) => {
-              event.stopPropagation();
-              if (localPreview) URL.revokeObjectURL(localPreview);
-              setLocalPreview(undefined);
-              form.setFieldsValue({ photoUrl: '', photoUploading: false });
-            }}
-          >
-            移除照片
-          </Button>
-        </Space>
-      ) : (
-        <Space direction="vertical">
-          <UploadOutlined style={{ fontSize: 28, color: '#1677ff' }} />
-          <Text>拖拽或点击上传实物照片</Text>
-        </Space>
-      )}
-    </Upload.Dragger>
   );
 }
 
@@ -2304,7 +2229,7 @@ function ReceiptModal({ order, form, saving, materialById, warehouseOptions, loc
   useApplyDefaultLocation(form, warehouseId, defaultLocationByWarehouse);
   return (
     <Modal title={`采购单入库 ${order?.orderNo || ''}`} open={!!order} onCancel={onCancel} onOk={onOk} confirmLoading={saving} width={860} destroyOnHidden>
-      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="核对实收数量（可与订购数量不同，差异会自动提醒采购经理与办公室）；每种材料至少 1 张实物照片，并选择存放库位。" />
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="核对实收数量（可与订购数量不同，差异会自动提醒采购经理与办公室），并选择存放库位。实物照片选填，可事后在材料档案里补。" />
       <Form form={form} layout="vertical">
         <Form.Item name="purchaseOrderId" hidden><InputNumber /></Form.Item>
         <Form.Item name="warehouseId" label="入库仓库" rules={[{ required: true, message: '请选择入库仓库' }]}>
@@ -2332,7 +2257,7 @@ function ReceiptModal({ order, form, saving, materialById, warehouseOptions, loc
                       <Col span={8}><Form.Item name={[field.name, 'unitCostYuan']} label="入库单价(元)" rules={[{ required: true, message: '请填单价' }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
                       <Col span={8}><Form.Item name={[field.name, 'locationId']} label="存放库位"><Select allowClear options={locationOptions} placeholder="选择库位" /></Form.Item></Col>
                     </Row>
-                    <Form.Item name={[field.name, 'photoUrls']} label="实物照片（至少 1 张）" style={{ marginBottom: 0 }}>
+                    <Form.Item name={[field.name, 'photoUrls']} label="实物照片（选填，可事后补）" style={{ marginBottom: 0 }}>
                       <MultiPhotoUpload />
                     </Form.Item>
                   </Card>
@@ -2362,7 +2287,7 @@ function GeneralReceiptModal({ open, form, saving, materialOptions, warehouseOpt
   useApplyDefaultLocation(form, warehouseId, defaultLocationByWarehouse);
   return (
     <Modal title="一般入库（无采购单）" open={open} onCancel={onCancel} onOk={onOk} confirmLoading={saving} width={860} destroyOnHidden>
-      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="零星采买（如五金店临时采购）走此入口：填写来源、上传凭证，逐项从材料库选择并拍照。材料只能从 SKU 库选择，没有请先到「材料 SKU 库」新增。" />
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="零星采买（如五金店临时采购）走此入口：填写来源、上传凭证，逐项从材料库选择。实物照片选填，可事后补。材料只能从 SKU 库选择，没有请先到「材料 SKU 库」新增。" />
       <Form form={form} layout="vertical">
         <Row gutter={12}>
           <Col span={12}><Form.Item name="warehouseId" label="入库仓库" rules={[{ required: true, message: '请选择入库仓库' }]}><Select {...searchableWideSelectProps} options={warehouseOptions} /></Form.Item></Col>
@@ -2386,7 +2311,7 @@ function GeneralReceiptModal({ open, form, saving, materialOptions, warehouseOpt
                     <Col span={8}><Form.Item name={[field.name, 'unitCostYuan']} label="单价(元)" rules={[{ required: true, message: '请填单价' }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
                     <Col span={8}><Form.Item name={[field.name, 'locationId']} label="存放库位"><Select allowClear options={locationOptions} placeholder="选择库位" /></Form.Item></Col>
                   </Row>
-                  <Form.Item name={[field.name, 'photoUrls']} label="实物照片（至少 1 张）" style={{ marginBottom: 0 }}>
+                  <Form.Item name={[field.name, 'photoUrls']} label="实物照片（选填，可事后补）" style={{ marginBottom: 0 }}>
                     <MultiPhotoUpload />
                   </Form.Item>
                 </Card>

@@ -96,18 +96,81 @@
 .reject { margin-top: 12rpx; font-size: var(--font-md); color: var(--color-danger); line-height: 1.6; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
 
-/* 编辑面板：照片放第一位，拍照按钮和图并排 */
-.photo-row { display: flex; align-items: center; gap: 20rpx; }
-.photo { width: 160rpx; height: 160rpx; border-radius: var(--radius-sm); flex-shrink: 0; }
-.photo--empty {
+/* 编辑面板的照片九宫格（最多 4 张）：缩略图 + 一个「+」格，点缩略图看大图可左右滑 */
+.photo-grid { display: flex; flex-wrap: wrap; gap: 20rpx; }
+.photo-grid__cell { position: relative; width: 160rpx; height: 160rpx; }
+.photo-grid__img { width: 100%; height: 100%; border-radius: var(--radius-sm); }
+/* 删除按钮压在角上，点击区按可点下限给（不是一个 20rpx 的小叉） */
+.photo-grid__del {
+  position: absolute;
+  top: -12rpx;
+  right: -12rpx;
+  width: 56rpx;
+  height: 56rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-bg);
-  color: var(--color-text-tertiary);
+  border-radius: 999rpx;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: var(--font-lg);
+  line-height: 1;
+}
+.photo-grid__cover {
+  position: absolute;
+  left: 8rpx;
+  bottom: 8rpx;
+  padding: 2rpx 12rpx;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
   font-size: var(--font-xs);
 }
-.photo-actions { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16rpx; align-items: flex-start; }
+.photo-grid__add {
+  width: 160rpx;
+  height: 160rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  border: 2rpx dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+}
+.photo-grid__plus { font-size: 56rpx; line-height: 1; }
+.photo-grid__hint { font-size: var(--font-xs); font-variant-numeric: tabular-nums; }
+
+/* 详情面板顶部的照片条：横着排，点任意一张都能左右滑着看完 */
+.photo-strip { display: flex; flex-wrap: wrap; gap: 16rpx; margin-bottom: 24rpx; }
+.photo-strip__item { width: 160rpx; height: 160rpx; border-radius: var(--radius-sm); }
+
+/* 列表缩略图右下角的张数角标 */
+.sku__photo-count {
+  position: absolute;
+  left: 132rpx;
+  margin-top: 132rpx;
+  padding: 0 12rpx;
+  border-radius: 999rpx;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: var(--font-xs);
+  line-height: 36rpx;
+}
+.sku-card .sku { position: relative; }
+
+/* 「仅显示有货」挡住东西时的提示条：点一下就放开。
+   不写成一句灰字 —— 它是可点的，看着必须像可点的 */
+.hidden-tip {
+  margin: 8rpx 0 20rpx;
+  padding: 20rpx 24rpx;
+  border: 2rpx solid var(--color-brand);
+  border-radius: var(--radius-sm);
+  color: var(--color-brand);
+  font-size: var(--font-md);
+  line-height: 1.6;
+}
+.hidden-tip:active { opacity: 0.7; }
 /* 材料备注是固定高的小框；外观走 tokens.wxss 的 textarea 基线 */
 .textarea { height: 180rpx; min-height: 180rpx; }
 .field--row { display: flex; align-items: center; justify-content: space-between; }

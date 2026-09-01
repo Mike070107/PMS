@@ -36,6 +36,8 @@ interface SkuRow {
   category: string;
   unit: string;
   photoUrl: string;
+  /** 全部实物照片（最多 4 张）：点开大图要把整组交给 previewImage 才能左右滑 */
+  photoUrls: string[];
   qty: number;
   safetyQty: number;
   qtyText: string;
@@ -68,9 +70,12 @@ interface FormState {
   costYuan: string;
   aliases: string;
   params: string;
-  photoUrl: string;
+  photoUrls: string[];
   enabled: boolean;
 }
+
+/** 一条 SKU 最多几张实物照片，和后端 MATERIAL_PHOTO_LIMIT 是一套账 */
+const PHOTO_LIMIT = 4;
 
 const emptyForm = (): FormState => ({
   id: null,
@@ -81,9 +86,16 @@ const emptyForm = (): FormState => ({
   costYuan: '',
   aliases: '',
   params: '',
-  photoUrl: '',
+  photoUrls: [],
   enabled: true,
 });
+
+/** 老数据只有单图字段，新数据有数组；取用一律走这里 */
+function photoList(item: { photoUrl?: string | null; photoUrls?: string[] | null }): string[] {
+  const list = (item.photoUrls || []).filter(Boolean) as string[];
+  if (list.length) return list;
+  return item.photoUrl ? [item.photoUrl] : [];
+}
 
 const yuan = (cents: number) => `¥${((cents || 0) / 100).toFixed(2)}`;
 const num = (value: string | number) => Number(value ?? 0);
@@ -115,7 +127,7 @@ function defaultWarehouseIndex(session: StaffSession, warehouses: WarehouseView[
 
 function missingFields(item: MaterialView): string[] {
   const missing: string[] = [];
-  if (!item.photoUrl) missing.push('照片');
+  if (!photoList(item).length) missing.push('照片');
   if (!item.category) missing.push('类别');
   if (!item.defaultCostCents) missing.push('成本');
   return missing;
@@ -139,6 +151,8 @@ Page({
     keyword: '',
     /** 仅显示有货：默认勾上。点「低于安全库存 / 待补资料」时自动放开（那两类正是没货的） */
     onlyStocked: true,
+    /** 只因为「仅显示有货」而被藏起来的条数，列表上写清楚，别让人以为系统里没这东西 */
+    hiddenByStocked: 0,
     onlyLow: false,
     /** 只看没填完整的：办公室补 SKU 时先把这一堆清掉 */
     onlyIncomplete: false,
@@ -284,6 +298,8 @@ Page({
     // 在按类别过滤之前收集，否则一点某个类别，筛选条就只剩这一个了
     const seenCategories: string[] = [];
     const rows: SkuRow[] = [];
+    /** 只是因为「仅显示有货」而没露面的条数 */
+    let hiddenByStocked = 0;
 
     for (const material of this.materials as MaterialView[]) {
       const categoryName = (material.category || '').trim() || '未分类';
@@ -307,7 +323,12 @@ Page({
       const low = safetyQty > 0 && qty < safetyQty;
       if (onlyLow && !low) continue;
       if (onlyIncomplete && !missing.length) continue;
-      if (onlyStocked && qty <= 0) continue;
+      // 建过档但一件都没入库的 SKU 会被这个开关整条藏掉 —— 2026-09-01 有人因此
+      // 「新增材料说已存在 WJ-0010，可列表里翻到 WJ-0009 就没了」。数出来，下面提示他放开
+      if (onlyStocked && qty <= 0) {
+        hiddenByStocked += 1;
+        continue;
+      }
 
       const aliases = material.aliases || [];
       rows.push({
@@ -318,7 +339,8 @@ Page({
         code: material.code,
         category: categoryName,
         unit: material.unit,
-        photoUrl: material.photoUrl || '',
+        photoUrl: photoList(material)[0] || '',
+        photoUrls: photoList(material),
         qty,
         safetyQty,
         // 仓里一件没有时写「无货」而不是 0：0 看着像「没统计到」
@@ -354,6 +376,7 @@ Page({
       categories: seenCategories,
       categoryIndex: nextCategoryIndex,
       rows,
+      hiddenByStocked,
       lowCount: rows.filter((row) => row.low).length,
     });
   },
@@ -396,10 +419,21 @@ Page({
     this.setData({ onlyStocked: (e.detail.value || []).indexOf('1') >= 0 }, () => this.applyFilter());
   },
 
-  /** 照片单独点开看大图：光看缩略图分不清 DN50 和 DN75 */
+  /**
+   * 照片点开看大图。**urls 一定要给整组**，只给当前这一张就滑不动 ——
+   * 一条 SKU 有正面/侧面/铭牌/包装四张，光看一张分不清 DN50 和 DN75。
+   */
   onPreviewPhoto(e: WechatMiniprogram.BaseEvent) {
-    const url = e.currentTarget.dataset.url as string;
-    if (url) wx.previewImage({ current: url, urls: [url] });
+    const url = String(e.currentTarget.dataset.url || '');
+    const urls = ((e.currentTarget.dataset.urls || []) as string[]).filter(Boolean);
+    const list = urls.length ? urls : url ? [url] : [];
+    if (!list.length) return;
+    wx.previewImage({ current: url || list[0], urls: list });
+  },
+
+  /** 「仅显示有货」挡住了东西时，一键放开（提示条上点） */
+  onShowHidden() {
+    this.setData({ onlyStocked: false }, () => this.applyFilter());
   },
 
   // ---------------- 详情：只给列表上没有的东西 ----------------
@@ -441,16 +475,16 @@ Page({
 
   // ---------------- 新增 / 编辑 SKU ----------------
 
+  /**
+   * 「+ 新增」走的是**入库向导**，不是直接弹建档表单。
+   *
+   * 直接建档的老流程有两个坑：一是不先查一遍就填，填到一半才被「已存在同名同型号」
+   * 挡回来；二是建完只有一条光杆 SKU，一件库存都没有，在这一屏（默认「仅显示有货」）
+   * 里当场就看不见了，人会以为没建上、再建一次。
+   * 向导按「先找 → 找不到再建 → 当场入库」的顺序走，两个坑都不成立。
+   */
   onCreate() {
-    this.setData({
-      detailOpen: false,
-      editorOpen: true,
-      form: emptyForm(),
-      unitIndex: Math.max(0, MATERIAL_UNITS.indexOf('个')),
-      formCategoryIndex: -1,
-      errors: { name: '', unit: '' },
-    });
-    this.syncSheetTabBar();
+    wx.navigateTo({ url: '/pages/material-inbound/material-inbound' });
   },
 
   /** 行内的「编辑」按钮和详情面板底部的「编辑」都走这里 */
@@ -471,7 +505,7 @@ Page({
         costYuan: row.defaultCostCents ? String(row.defaultCostCents / 100) : '',
         aliases: row.aliases.join('、'),
         params: row.params,
-        photoUrl: row.photoUrl,
+        photoUrls: row.photoUrls,
         enabled: row.enabled,
       },
       // 历史上手填过的单位不在常用表里时，选择器停在第一项，保存时仍按表单里的值走
@@ -510,18 +544,28 @@ Page({
     this.setData({ 'form.enabled': e.detail.value });
   },
 
-  /** 现场拍一张实物照，比在电脑上传方便得多 —— 补照片是这一屏最常干的事 */
+  /**
+   * 现场拍实物照，比在电脑上传方便得多 —— 补照片是这一屏最常干的事。
+   * 最多 4 张（正面 / 侧面 / 铭牌 / 包装），一次可多选，剩几个位就只让选几张。
+   */
   async onChoosePhoto() {
     if (this.data.uploading) return;
+    const current = this.data.form.photoUrls || [];
+    const room = PHOTO_LIMIT - current.length;
+    if (room <= 0) {
+      return wx.showToast({ icon: 'none', title: `最多 ${PHOTO_LIMIT} 张照片` });
+    }
     const res = await wx
-      .chooseMedia({ count: 1, mediaType: ['image'], sourceType: ['camera', 'album'] })
+      .chooseMedia({ count: room, mediaType: ['image'], sourceType: ['camera', 'album'] })
       .catch(() => null);
     if (!res?.tempFiles?.length) return;
     this.setData({ uploading: true });
     wx.showLoading({ title: '上传中…', mask: true });
     try {
-      const [uploaded] = await upload.uploadTempFiles([res.tempFiles[0].tempFilePath]);
-      this.setData({ 'form.photoUrl': uploaded.publicUrl });
+      const uploaded = await upload.uploadTempFiles(res.tempFiles.map((f) => f.tempFilePath));
+      this.setData({
+        'form.photoUrls': [...current, ...uploaded.map((item) => item.publicUrl)].slice(0, PHOTO_LIMIT),
+      });
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '上传失败' });
     } finally {
@@ -530,8 +574,10 @@ Page({
     }
   },
 
-  onRemovePhoto() {
-    this.setData({ 'form.photoUrl': '' });
+  onRemovePhoto(e: WechatMiniprogram.BaseEvent) {
+    const index = Number(e.currentTarget.dataset.index);
+    const next = (this.data.form.photoUrls || []).filter((_, i) => i !== index);
+    this.setData({ 'form.photoUrls': next });
   },
 
   async onSave() {
@@ -554,7 +600,7 @@ Page({
       category: form.category || undefined,
       unit: form.unit.trim(),
       defaultCostCents: form.costYuan ? Math.round(cost * 100) : undefined,
-      photoUrl: form.photoUrl || undefined,
+      photoUrls: form.photoUrls || [],
       aliases: form.aliases
         .split(/[、,，\s]+/)
         .map((item) => item.trim())

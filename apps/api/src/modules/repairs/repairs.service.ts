@@ -1177,6 +1177,10 @@ export class RepairsService implements OnModuleInit {
         category: item.category,
         unit: item.unit,
         photoUrl: this.storage.toDisplayUrl(item.photoUrl) || null,
+        // 多图一起给：点开大图要能左右滑着看完（正面/侧面/铭牌/包装）
+        photoUrls: (item.photoUrls || [])
+          .map((url) => this.storage.toDisplayUrl(url) || '')
+          .filter(Boolean),
         aliases: item.aliases || [],
         qty: qtyByMaterial.get(item.id) ?? 0,
       })),

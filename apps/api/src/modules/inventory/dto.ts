@@ -19,7 +19,10 @@ export class TenantQueryDto {
   tenantId?: number;
 }
 
-/** scope=mine：只给本人范围能看的仓（按角色范围对应的管理处），员工端用 */
+/**
+ * scope=mine：只给本人范围能看的仓（按角色范围对应的管理处），员工端用；
+ * scope=visible：和库存清单同一口径（受顶栏管理处视角影响），后台仓库下拉用。
+ */
 export class WarehousesQueryDto extends TenantQueryDto {
   @IsOptional()
   @IsString()
@@ -64,6 +67,12 @@ export class CreateMaterialDto {
   @IsString()
   @MaxLength(500)
   photoUrl?: string;
+
+  // 实物照片，最多 4 张；photoUrl 由服务端取第一张同步，前端不用两个字段都传
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  photoUrls?: string[];
 
   @IsOptional()
   @IsArray()
@@ -110,6 +119,11 @@ export class UpdateMaterialDto {
   @IsString()
   @MaxLength(500)
   photoUrl?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  photoUrls?: string[];
 
   @IsOptional()
   @IsArray()
@@ -418,7 +432,7 @@ export class GoodsReceiptItemDto {
   @IsInt()
   unitCostCents: number;
 
-  // 每种材料至少一张实物照片
+  // 实物照片，选填 —— 货先入账，照片事后补（2026-09-01）
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

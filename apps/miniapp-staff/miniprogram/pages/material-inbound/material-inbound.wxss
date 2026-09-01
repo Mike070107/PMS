@@ -1,0 +1,109 @@
+/* 卡片、字段、按钮、底部操作条（.action-bar / .container--with-bar）、
+   库存行（.sku / .sku__photo / .sku__qty）都在 app.wxss / tokens.wxss 里，
+   这里只写这一屏独有的东西。 */
+
+/* 行内的次要信息（编码 · 类别 · 单位）。和 order-detail 那份是同一个观感，
+   等哪天有第三个页面要用，再提到 app.wxss 去 */
+.meta { color: var(--color-text-tertiary); font-size: var(--font-sm); margin-top: 14rpx; line-height: 1.6; }
+
+/* 三步进度：告诉人「现在在第几步、后面还有什么」，别让人以为填完这屏就完了 */
+.steps { display: flex; gap: 12rpx; margin-bottom: 24rpx; }
+.step {
+  flex: 1 1 0;
+  padding: 16rpx 8rpx;
+  text-align: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-md);
+  line-height: 1.5;
+}
+.step--on { background: var(--color-brand); color: #fff; }
+.step--done { color: var(--color-brand); }
+
+/* 搜索结果行：整卡可点 = 选中它 */
+.sku-head--flat { margin-left: 0; margin-right: 0; padding-left: 24rpx; padding-right: 24rpx; }
+.sku-card { padding: 0; }
+.sku-card .sku { padding: 24rpx; }
+
+/* 已选材料条：入库那一步顶上常驻，随时看得见自己在给哪样东西入库 */
+.picked { display: flex; align-items: center; gap: 20rpx; }
+.picked__photo { width: 128rpx; height: 128rpx; border-radius: var(--radius-sm); flex-shrink: 0; }
+.picked__photo--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-xs);
+}
+.picked__body { flex: 1; min-width: 0; }
+.picked__title { font-size: var(--font-xl); font-weight: 500; line-height: 1.5; }
+/* 「换一个」做成带框的按钮：它和整条信息挨着，不给边框看不出能点 */
+.picked__change {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  min-height: 72rpx;
+  padding: 0 28rpx;
+  border: 2rpx solid var(--color-brand);
+  border-radius: var(--radius-sm);
+  color: var(--color-brand);
+  font-size: var(--font-md);
+}
+.picked__change:active { opacity: 0.7; }
+
+/* 数量 × 单价的合计：一位数点错在这里立刻看得出来 */
+.amount {
+  margin-top: 12rpx;
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--color-brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.textarea { height: 180rpx; min-height: 180rpx; }
+
+/* 照片九宫格（最多 4 张），和库存页编辑器是同一套观感 */
+.photo-grid { display: flex; flex-wrap: wrap; gap: 20rpx; }
+.photo-grid__cell { position: relative; width: 160rpx; height: 160rpx; }
+.photo-grid__img { width: 100%; height: 100%; border-radius: var(--radius-sm); }
+.photo-grid__del {
+  position: absolute;
+  top: -12rpx;
+  right: -12rpx;
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: var(--font-lg);
+  line-height: 1;
+}
+.photo-grid__cover {
+  position: absolute;
+  left: 8rpx;
+  bottom: 8rpx;
+  padding: 2rpx 12rpx;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: var(--font-xs);
+}
+.photo-grid__add {
+  width: 160rpx;
+  height: 160rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  border: 2rpx dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+}
+.photo-grid__plus { font-size: 56rpx; line-height: 1; }
+.photo-grid__hint { font-size: var(--font-xs); font-variant-numeric: tabular-nums; }

@@ -1,0 +1,257 @@
+<view class="container container--with-bar">
+  <view wx:if="{{loading}}" class="muted center">加载中…</view>
+
+  <view wx:elif="{{!canEdit}}" class="card">
+    <view class="card__title">新增材料入库</view>
+    <view class="muted mt-sm">{{roleHint}}</view>
+  </view>
+
+  <block wx:else>
+    <view wx:if="{{noWarehouseHint}}" class="notice">
+      <view class="notice__body">
+        <view class="notice__title">你所属的管理处还没有仓库</view>
+        <view class="notice__desc">{{noWarehouseHint}}</view>
+      </view>
+    </view>
+
+    <!-- 三步一条线画出来，人知道自己在哪一步、后面还有什么 -->
+    <view class="steps">
+      <view class="step {{mode === 'search' ? 'step--on' : 'step--done'}}">1 找材料</view>
+      <view class="step {{mode === 'create' ? 'step--on' : (mode === 'inbound' ? 'step--done' : '')}}">2 建档</view>
+      <view class="step {{mode === 'inbound' ? 'step--on' : ''}}">3 入库</view>
+    </view>
+
+    <!-- ============ 1 先搜：有现成的就直接用，别重复建 ============ -->
+    <block wx:if="{{mode === 'search'}}">
+      <view class="card">
+        <view class="field">
+          <view class="label">先搜一下，看仓库里有没有这样东西</view>
+          <input
+            class="input"
+            placeholder="名称 / 型号 / 编码 / 别名"
+            value="{{keyword}}"
+            confirm-type="search"
+            bindinput="onKeyword"
+          />
+          <view class="muted mt-sm">搜到就点它直接入库；确实没有，再新建一条。</view>
+        </view>
+      </view>
+
+      <view wx:if="{{results.length}}" class="sku-head sku-head--flat">
+        <text class="sku-head__photo">图片</text>
+        <text class="sku-head__name">名称</text>
+        <text class="sku-head__qty">本仓库存</text>
+      </view>
+
+      <view
+        class="card sku-card"
+        wx:for="{{results}}"
+        wx:key="materialId"
+        data-index="{{index}}"
+        bindtap="onPickExisting"
+        hover-class="wo-card--hover"
+        hover-stay-time="80"
+      >
+        <view class="sku">
+          <image
+            wx:if="{{item.photoUrl}}"
+            class="sku__photo"
+            src="{{item.photoUrl}}"
+            mode="aspectFill"
+            data-url="{{item.photoUrl}}"
+            data-urls="{{item.photoUrls}}"
+            catchtap="onPreviewPhoto"
+          />
+          <view wx:else class="sku__photo sku__photo--empty">无图</view>
+          <view class="sku__body">
+            <view class="sku__title">{{item.title}}</view>
+            <view class="meta">{{item.code}} · {{item.category}} · {{item.unit}}</view>
+          </view>
+          <view class="sku__qty sku__qty--none">{{item.qtyText}}</view>
+        </view>
+      </view>
+
+      <view wx:if="{{searched && !results.length}}" class="muted center">
+        没搜到「{{keyword}}」，可以新建一条
+      </view>
+    </block>
+
+    <!-- ============ 2 新建 SKU ============ -->
+    <block wx:elif="{{mode === 'create'}}">
+      <view class="card">
+        <view class="field">
+          <view class="label">名称</view>
+          <input class="input" placeholder="如：PVC 管" value="{{createForm.name}}" data-field="name" bindinput="onCreateInput" />
+          <view class="field-error" wx:if="{{createErrors.name}}">{{createErrors.name}}</view>
+        </view>
+
+        <view class="field">
+          <view class="label">型号<text class="label__opt">选填，同名不同型号算两条</text></view>
+          <input class="input" placeholder="如：DN50" value="{{createForm.spec}}" data-field="spec" bindinput="onCreateInput" />
+        </view>
+
+        <view class="field">
+          <view class="label">类别</view>
+          <picker mode="selector" range="{{categories}}" bindchange="onCreateCategory">
+            <view class="picker {{categoryIndex < 0 ? 'placeholder' : ''}}">
+              {{categoryIndex < 0 ? '选择类别（决定材料编码前缀）' : createForm.category}}
+            </view>
+          </picker>
+          <view class="field-error" wx:if="{{createErrors.category}}">{{createErrors.category}}</view>
+        </view>
+
+        <view class="field">
+          <view class="label">单位</view>
+          <picker mode="selector" range="{{units}}" value="{{unitIndex}}" bindchange="onCreateUnit">
+            <view class="picker">{{createForm.unit}}</view>
+          </picker>
+        </view>
+
+        <view class="field">
+          <view class="label">参考成本（元）<text class="label__opt">选填，入库后按均价自动刷新</text></view>
+          <input class="input" type="digit" placeholder="0.00" value="{{createForm.costYuan}}" data-field="costYuan" bindinput="onCreateInput" />
+        </view>
+
+        <view class="field">
+          <view class="label">别名<text class="label__opt">同物异名，顿号分隔，选填</text></view>
+          <input class="input" placeholder="如：胶布、透明胶" value="{{createForm.aliases}}" data-field="aliases" bindinput="onCreateInput" />
+        </view>
+
+        <view class="field">
+          <view class="label">详细参数<text class="label__opt">选填</text></view>
+          <textarea class="textarea" placeholder="材质 / 尺寸 / 技术参数等" value="{{createForm.params}}" data-field="params" bindinput="onCreateInput" />
+        </view>
+
+        <view class="field">
+          <view class="label">实物照片<text class="label__opt">最多 4 张，维修工靠它认货</text></view>
+          <view class="photo-grid">
+            <view class="photo-grid__cell" wx:for="{{createForm.photoUrls}}" wx:key="*this">
+              <image
+                class="photo-grid__img"
+                src="{{item}}"
+                mode="aspectFill"
+                data-url="{{item}}"
+                data-urls="{{createForm.photoUrls}}"
+                catchtap="onPreviewPhoto"
+              />
+              <view class="photo-grid__del" data-target="createForm" data-index="{{index}}" catchtap="onRemovePhoto">×</view>
+              <view wx:if="{{index === 0}}" class="photo-grid__cover">封面</view>
+            </view>
+            <view wx:if="{{createForm.photoUrls.length < 4}}" class="photo-grid__add" data-target="createForm" bindtap="onChoosePhoto">
+              <text class="photo-grid__plus">{{uploading ? '…' : '+'}}</text>
+              <text class="photo-grid__hint">{{createForm.photoUrls.length}}/4</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </block>
+
+    <!-- ============ 3 入库 ============ -->
+    <block wx:else>
+      <view class="card picked">
+        <image
+          wx:if="{{selected.photoUrl}}"
+          class="picked__photo"
+          src="{{selected.photoUrl}}"
+          mode="aspectFill"
+          data-url="{{selected.photoUrl}}"
+          data-urls="{{selected.photoUrls}}"
+          catchtap="onPreviewPhoto"
+        />
+        <view wx:else class="picked__photo picked__photo--empty">无图</view>
+        <view class="picked__body">
+          <view class="picked__title">{{selected.title}}</view>
+          <view class="meta">{{selected.code}} · {{selected.unit}} · {{selected.qtyText}}</view>
+        </view>
+        <view class="picked__change" catchtap="onBackToSearch">换一个</view>
+      </view>
+
+      <view class="card">
+        <view class="field">
+          <view class="label">入库仓库</view>
+          <picker mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onPickWarehouse">
+            <view class="picker {{warehouseIndex < 0 ? 'placeholder' : ''}}">
+              {{warehouseIndex < 0 ? '请选择仓库' : warehouseNames[warehouseIndex]}}
+            </view>
+          </picker>
+        </view>
+
+        <view class="field">
+          <view class="label">入库数量（{{selected.unit}}）</view>
+          <input class="input" type="digit" placeholder="如：20" value="{{inboundForm.qty}}" data-field="qty" bindinput="onInboundInput" />
+          <view class="field-error" wx:if="{{inboundErrors.qty}}">{{inboundErrors.qty}}</view>
+        </view>
+
+        <view class="field">
+          <view class="label">入库单价（元）</view>
+          <input class="input" type="digit" placeholder="0.00" value="{{inboundForm.priceYuan}}" data-field="priceYuan" bindinput="onInboundInput" />
+          <view class="amount" wx:if="{{amountText}}">{{amountText}}</view>
+          <view class="field-error" wx:if="{{inboundErrors.priceYuan}}">{{inboundErrors.priceYuan}}</view>
+        </view>
+
+        <view class="field">
+          <view class="label">入库来源</view>
+          <input class="input" placeholder="如：XX 五金店零星采买 / 张师傅代购" value="{{inboundForm.sourceText}}" data-field="sourceText" bindinput="onInboundInput" />
+          <view class="field-error" wx:if="{{inboundErrors.sourceText}}">{{inboundErrors.sourceText}}</view>
+        </view>
+
+        <view class="field">
+          <view class="label">入库库位<text class="label__opt">选填，东西放在哪一格</text></view>
+          <picker mode="selector" range="{{locationNames}}" value="{{locationIndex}}" bindchange="onPickLocation">
+            <view class="picker">{{locationNames[locationIndex] || '不指定库位'}}</view>
+          </picker>
+          <view wx:if="{{locations.length === 0}}" class="muted mt-sm">
+            这个仓还没配库位，可以先不指定；要用货架编号，请办公室在后台「仓库档案 → 库位」里加。
+          </view>
+        </view>
+
+        <view class="field">
+          <view class="label">实物照片<text class="label__opt">选填，事后也能在材料档案里补</text></view>
+          <view class="photo-grid">
+            <view class="photo-grid__cell" wx:for="{{inboundForm.photoUrls}}" wx:key="*this">
+              <image
+                class="photo-grid__img"
+                src="{{item}}"
+                mode="aspectFill"
+                data-url="{{item}}"
+                data-urls="{{inboundForm.photoUrls}}"
+                catchtap="onPreviewPhoto"
+              />
+              <view class="photo-grid__del" data-target="inboundForm" data-index="{{index}}" catchtap="onRemovePhoto">×</view>
+            </view>
+            <view wx:if="{{inboundForm.photoUrls.length < 4}}" class="photo-grid__add" data-target="inboundForm" bindtap="onChoosePhoto">
+              <text class="photo-grid__plus">{{uploading ? '…' : '+'}}</text>
+              <text class="photo-grid__hint">{{inboundForm.photoUrls.length}}/4</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </block>
+  </block>
+</view>
+
+<!-- 底部操作条：固定在屏幕底，不参与内容滚动，并让开安全区 -->
+<view wx:if="{{!loading && canEdit}}" class="action-bar">
+  <block wx:if="{{mode === 'search'}}">
+    <button class="btn btn--primary" bindtap="onStartCreate">找不到？新建材料</button>
+  </block>
+
+  <block wx:elif="{{mode === 'create'}}">
+    <view class="btn-row">
+      <button class="btn btn--ghost" bindtap="onBackToSearch">返回搜索</button>
+      <button class="btn btn--primary" loading="{{saving}}" disabled="{{saving || uploading}}" bindtap="onSaveCreate">
+        建档并去入库
+      </button>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="btn-row">
+      <button wx:if="{{justCreated}}" class="btn btn--ghost" bindtap="onSkipInbound">暂不入库</button>
+      <button wx:else class="btn btn--ghost" bindtap="onBackToSearch">换一个</button>
+      <button class="btn btn--primary" loading="{{saving}}" disabled="{{saving || uploading}}" bindtap="onSubmitInbound">
+        添加入库
+      </button>
+    </view>
+  </block>
+</view>

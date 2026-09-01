@@ -46,6 +46,8 @@ interface MaterialRow {
   qty: string;
   unit: string;
   photoUrl: string;
+  /** 这条 SKU 的全部实物照片；点开大图要给整组才能左右滑 */
+  photoUrls: string[];
   code: string;
   /** 选中那一刻所在仓的可用量；手填的行为 -1（= 仓里没有这个 SKU） */
   stockQty: number;
@@ -84,6 +86,7 @@ const emptyMaterialRow = (): MaterialRow => ({
   qty: DEFAULT_QTY,
   unit: '',
   photoUrl: '',
+  photoUrls: [],
   code: '',
   stockQty: -1,
   warehouseId: null,
@@ -678,6 +681,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       rows[index].materialId = null;
       rows[index].unit = '';
       rows[index].photoUrl = '';
+      rows[index].photoUrls = [];
       rows[index].code = '';
       rows[index].stockQty = -1;
     }
@@ -841,10 +845,16 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.setData({ skuKeyword: e.detail.value }, () => this.applySkuFilter());
   },
 
-  /** 照片单独点开看大图：光看缩略图分不清 DN50 和 DN75 */
+  /**
+   * 照片点开看大图。urls 给整组才能左右滑 —— 一条 SKU 有正面/侧面/铭牌/包装，
+   * 只给当前这张的话，现场想看铭牌确认型号就滑不出来。
+   */
   onPreviewSkuPhoto(e: WechatMiniprogram.BaseEvent) {
-    const url = e.currentTarget.dataset.url as string;
-    if (url) wx.previewImage({ current: url, urls: [url] });
+    const url = String(e.currentTarget.dataset.url || '');
+    const urls = ((e.currentTarget.dataset.urls || []) as string[]).filter(Boolean);
+    const list = urls.length ? urls : url ? [url] : [];
+    if (!list.length) return;
+    wx.previewImage({ current: url || list[0], urls: list });
   },
 
   onPickSku(e: WechatMiniprogram.BaseEvent) {
@@ -857,6 +867,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       name: sku.spec ? `${sku.name} ${sku.spec}` : sku.name,
       unit: sku.unit,
       photoUrl: sku.photoUrl || '',
+      photoUrls: (sku.photoUrls && sku.photoUrls.length ? sku.photoUrls : [sku.photoUrl || '']).filter(Boolean),
       code: sku.code,
       stockQty: sku.qty,
       warehouseId: this.warehouseId,

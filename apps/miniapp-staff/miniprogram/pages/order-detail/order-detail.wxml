@@ -200,6 +200,7 @@
           src="{{item.photoUrl}}"
           mode="aspectFill"
           data-url="{{item.photoUrl}}"
+          data-urls="{{item.photoUrls}}"
           catchtap="onPreviewSkuPhoto"
         />
         <text class="mat-sku__text">{{item.code}}</text>
@@ -389,6 +390,7 @@
             src="{{item.photoUrl}}"
             mode="aspectFill"
             data-url="{{item.photoUrl}}"
+            data-urls="{{item.photoUrls}}"
             catchtap="onPreviewSkuPhoto"
           />
           <view wx:else class="sku__photo sku__photo--empty">无图</view>

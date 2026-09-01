@@ -581,7 +581,10 @@ export interface MaterialView {
   category?: string | null;
   unit: string;
   defaultCostCents: number;
+  /** 第一张实物照片（列表缩略图用）；由服务端从 photoUrls[0] 同步 */
   photoUrl?: string | null;
+  /** 实物照片全集，最多 4 张；点开大图要把整个数组交给预览器才能左右滑 */
+  photoUrls?: string[];
   aliases?: string[];
   params?: string | null;
   enabled: boolean;
@@ -599,6 +602,7 @@ export interface MaterialOption {
   category?: string | null;
   unit: string;
   photoUrl?: string | null;
+  photoUrls?: string[];
   aliases?: string[];
 }
 
@@ -614,6 +618,7 @@ export interface WorkOrderStockOption {
   category?: string | null;
   unit: string;
   photoUrl?: string | null;
+  photoUrls?: string[];
   aliases?: string[];
   qty: number;
 }
@@ -651,6 +656,22 @@ export interface WarehouseView {
   communityId?: number | null;
   /** 所属管理处；空 = 公司级。员工端按自己角色范围对应的管理处挑默认仓 */
   officeId?: number | null;
+  /** 管理处名 / 小区名由服务端带出，端上不要再存一份字典 */
+  officeName?: string | null;
+  communityName?: string | null;
+  /** 仓库配的默认入库库位；入库表单选了仓就带出来 */
+  defaultLocationId?: number | null;
+  enabled: boolean;
+}
+
+/** 仓库里的一个库位（货架格），入库时选存放位置 */
+export interface WarehouseLocationView {
+  id: number;
+  warehouseId: number;
+  zone?: string | null;
+  shelf?: string | null;
+  bin?: string | null;
+  label: string;
   enabled: boolean;
 }
 

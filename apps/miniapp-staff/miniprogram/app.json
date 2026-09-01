@@ -8,6 +8,7 @@
     "pages/quick-repair/quick-repair",
     "pages/approvals/approvals",
     "pages/inventory/inventory",
+    "pages/material-inbound/material-inbound",
     "pages/messages/messages",
     "pages/me/me",
     "pages/web-login/web-login",

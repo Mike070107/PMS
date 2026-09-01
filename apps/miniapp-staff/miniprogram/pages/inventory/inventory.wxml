@@ -79,6 +79,11 @@
         {{keyword || categoryIndex >= 0 || onlyLow || onlyIncomplete ? '没有匹配的材料' : '还没有材料，点右下角新增'}}
       </view>
 
+      <!-- 建过档但还没入过库的材料会被「仅显示有货」整条藏掉，人会以为系统里没这东西 -->
+      <view wx:if="{{!loading && onlyStocked && hiddenByStocked}}" class="hidden-tip" bindtap="onShowHidden">
+        还有 {{hiddenByStocked}} 条无货的材料被「仅显示有货」挡住了，点这里一并显示
+      </view>
+
       <!-- 一行的样子和工单「从库存选」完全一致：同一批材料在两处要长得一样，
            否则办公室在这儿记住的东西，维修工在工单里认不出来 -->
       <view
@@ -99,8 +104,10 @@
             src="{{item.photoUrl}}"
             mode="aspectFill"
             data-url="{{item.photoUrl}}"
+            data-urls="{{item.photoUrls}}"
             catchtap="onPreviewPhoto"
           />
+          <text wx:if="{{item.photoUrls.length > 1}}" class="sku__photo-count">{{item.photoUrls.length}}</text>
           <view wx:else class="sku__photo sku__photo--empty">无图</view>
 
           <view class="sku__body">
@@ -163,6 +170,19 @@
   </view>
 
   <scroll-view class="sheet__body" scroll-y>
+    <view wx:if="{{detail.photoUrls.length}}" class="photo-strip">
+      <image
+        wx:for="{{detail.photoUrls}}"
+        wx:key="*this"
+        class="photo-strip__item"
+        src="{{item}}"
+        mode="aspectFill"
+        data-url="{{item}}"
+        data-urls="{{detail.photoUrls}}"
+        catchtap="onPreviewPhoto"
+      />
+    </view>
+
     <view class="label">分仓库存</view>
     <view wx:if="{{!detailStocks.length}}" class="muted">公司还没有建仓库</view>
     <view wx:for="{{detailStocks}}" wx:key="name" class="wh-row">
@@ -195,22 +215,27 @@
   <scroll-view class="sheet__body" scroll-y>
     <!-- 照片放第一位：补照片是这一屏最常干的事，别让人划到最底下才看见 -->
     <view class="field">
-      <view class="label">实物照片<text class="label__opt">维修工靠它认货</text></view>
-      <view class="photo-row">
-        <image
-          wx:if="{{form.photoUrl}}"
-          class="photo"
-          src="{{form.photoUrl}}"
-          mode="aspectFill"
-          data-url="{{form.photoUrl}}"
-          catchtap="onPreviewPhoto"
-        />
-        <view wx:else class="photo photo--empty">无图</view>
-        <view class="photo-actions">
-          <button class="btn btn--outline btn--sm" loading="{{uploading}}" bindtap="onChoosePhoto">
-            {{form.photoUrl ? '重拍 / 重选' : '拍照或从相册选'}}
-          </button>
-          <button wx:if="{{form.photoUrl}}" class="btn btn--ghost btn--sm" bindtap="onRemovePhoto">移除</button>
+      <view class="label">实物照片<text class="label__opt">最多 4 张，维修工靠它认货</text></view>
+      <view class="photo-grid">
+        <view class="photo-grid__cell" wx:for="{{form.photoUrls}}" wx:key="*this">
+          <image
+            class="photo-grid__img"
+            src="{{item}}"
+            mode="aspectFill"
+            data-url="{{item}}"
+            data-urls="{{form.photoUrls}}"
+            catchtap="onPreviewPhoto"
+          />
+          <view class="photo-grid__del" data-index="{{index}}" catchtap="onRemovePhoto">×</view>
+          <view wx:if="{{index === 0}}" class="photo-grid__cover">封面</view>
+        </view>
+        <view
+          wx:if="{{form.photoUrls.length < 4}}"
+          class="photo-grid__add"
+          bindtap="onChoosePhoto"
+        >
+          <text class="photo-grid__plus">{{uploading ? '…' : '+'}}</text>
+          <text class="photo-grid__hint">{{form.photoUrls.length}}/4</text>
         </view>
       </view>
     </view>

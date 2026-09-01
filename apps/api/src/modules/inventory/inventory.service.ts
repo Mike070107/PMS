@@ -81,6 +81,12 @@ interface NotifyInput {
   operatorId: number | null;
 }
 
+/**
+ * 一条 SKU 最多几张实物照片。四张的来历：正面、侧面、铭牌/型号、包装 ——
+ * 维修工在库房比对时正是按这四样认货。改这个数要同步改端上的选图上限。
+ */
+const MATERIAL_PHOTO_LIMIT = 4;
+
 const MATERIAL_CATEGORY_PREFIX: Record<string, string> = {
   卫生: 'WS',
   电器: 'DQ',
@@ -136,9 +142,30 @@ export class InventoryService {
     return materials.map((item) => this.withDisplayPhoto(item));
   }
 
-  /** 出参统一走这里换照片地址，别在各处 map 里各写一遍 */
-  private withDisplayPhoto<T extends { photoUrl?: string | null }>(item: T): T {
-    return { ...item, photoUrl: this.storage.toDisplayUrl(item.photoUrl) || null };
+  /** 出参统一走这里换照片地址，别在各处 map 里各写一遍（多图那一份也要换，否则第二张起是白图） */
+  private withDisplayPhoto<T extends { photoUrl?: string | null; photoUrls?: string[] | null }>(
+    item: T,
+  ): T {
+    const photoUrls = (item.photoUrls || [])
+      .map((url) => this.storage.toDisplayUrl(url) || '')
+      .filter(Boolean);
+    return {
+      ...item,
+      photoUrl: this.storage.toDisplayUrl(item.photoUrl) || photoUrls[0] || null,
+      photoUrls,
+    };
+  }
+
+  /**
+   * 实物照片入库前的清洗：去空、去重、限 4 张。
+   * 只在这里写一次 —— 新建、编辑、以后从别处补图都走它，
+   * 免得某个入口漏了限制，库里出现 20 张图的 SKU。
+   */
+  private normalizePhotoUrls(photoUrls?: string[] | null, fallback?: string | null): string[] {
+    const source = photoUrls?.length ? photoUrls : fallback ? [fallback] : [];
+    return Array.from(
+      new Set(source.map((url) => (url || '').trim()).filter(Boolean)),
+    ).slice(0, MATERIAL_PHOTO_LIMIT);
   }
 
   /**
@@ -160,6 +187,10 @@ export class InventoryService {
       category: item.category,
       unit: item.unit,
       photoUrl: this.storage.toDisplayUrl(item.photoUrl) || null,
+      // 多图一起给：选料弹层点开大图要能左右滑，只给一张就滑不动
+      photoUrls: (item.photoUrls || [])
+        .map((url) => this.storage.toDisplayUrl(url) || '')
+        .filter(Boolean),
       aliases: item.aliases || [],
     }));
   }
@@ -168,6 +199,7 @@ export class InventoryService {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
     await this.assertMaterialUnique(tenantId, dto.name, dto.spec ?? null, null);
     const code = dto.code?.trim() || await this.buildMaterialCode(tenantId, dto.category);
+    const photoUrls = this.normalizePhotoUrls(dto.photoUrls, dto.photoUrl);
     const saved = await this.materialRepo.save(
       this.materialRepo.create({
         tenantId,
@@ -177,7 +209,8 @@ export class InventoryService {
         category: dto.category,
         unit: dto.unit ?? '个',
         defaultCostCents: dto.defaultCostCents ?? 0,
-        photoUrl: dto.photoUrl ?? null,
+        photoUrl: photoUrls[0] ?? null,
+        photoUrls,
         aliases: this.normalizeAliases(dto.aliases),
         params: dto.params?.trim() || null,
         enabled: dto.enabled ?? true,
@@ -212,7 +245,14 @@ export class InventoryService {
     if (dto.defaultCostCents !== undefined) {
       material.defaultCostCents = dto.defaultCostCents;
     }
-    if (dto.photoUrl !== undefined) material.photoUrl = dto.photoUrl || null;
+    // 多图是唯一真相，photoUrl 跟着取第一张：两个字段各改各的迟早对不上
+    if (dto.photoUrls !== undefined) {
+      material.photoUrls = this.normalizePhotoUrls(dto.photoUrls);
+      material.photoUrl = material.photoUrls[0] ?? null;
+    } else if (dto.photoUrl !== undefined) {
+      material.photoUrl = dto.photoUrl || null;
+      material.photoUrls = this.normalizePhotoUrls(null, material.photoUrl);
+    }
     if (dto.aliases !== undefined) material.aliases = this.normalizeAliases(dto.aliases);
     if (dto.params !== undefined) material.params = dto.params?.trim() || null;
     if (dto.enabled !== undefined) material.enabled = dto.enabled;
@@ -220,7 +260,14 @@ export class InventoryService {
     return this.withDisplayPhoto(await this.materialRepo.save(material));
   }
 
-  /** 判重口径：名称 + 型号相同视为同一材料；同名不同型号不算重复 */
+  /**
+   * 判重口径：名称 + 型号相同视为同一材料；同名不同型号不算重复。
+   *
+   * 报错必须说清「那条在哪」：2026-09-01 反馈过一次「提示已存在 WJ-0010，可我在
+   * 库存里翻到 WJ-0009 就没有了」—— 那条 SKU 建过但**一件都没入库**，
+   * 而库存页默认勾着「仅显示有货」，于是它在列表里根本不出现。
+   * 所以这里连名称、型号、启用状态、当前是否有货一并写进提示。
+   */
   private async assertMaterialUnique(
     tenantId: number,
     name: string,
@@ -238,11 +285,23 @@ export class InventoryService {
     }
     if (ignoreId) qb.andWhere('m.id <> :ignoreId', { ignoreId });
     const dup = await qb.getOne();
-    if (dup) {
-      throw new BadRequestException(
-        `已存在同名同型号材料（编码 ${dup.code}），请直接使用或补充为别名`,
-      );
-    }
+    if (!dup) return;
+    const stocked = await this.stockRepo
+      .createQueryBuilder('s')
+      .where('s.tenant_id = :tenantId', { tenantId })
+      .andWhere('s.material_id = :materialId', { materialId: dup.id })
+      .andWhere('s.qty > 0')
+      .getCount();
+    const hints = [
+      !dup.enabled ? '已停用' : '',
+      stocked ? '' : '当前无库存，库存页勾着「仅显示有货」时看不到它',
+    ].filter(Boolean);
+    const title = [dup.name, dup.spec].filter(Boolean).join(' · ');
+    throw new BadRequestException(
+      `已存在同名同型号材料：${dup.code} ${title}` +
+        (hints.length ? `（${hints.join('；')}）` : '') +
+        '。请直接选它入库，或把这个名称加成它的别名',
+    );
   }
 
   /** 是否已被业务引用（库存/批次/流水/工单耗材/采购单任一存在即锁定名称型号） */
@@ -276,13 +335,13 @@ export class InventoryService {
    *   · 管理处范围的人 → 只有自己管理处的仓（员工端默认选第一个）；别的管理处的仓和公司级总仓都不出现
    * 工单选料的候选仓（listWorkOrderStockOptions）也是同一条规则，两处别各写一套。
    */
-  async listWarehouses(query: WarehousesQueryDto, user: AuthUser) {
+  async listWarehouses(query: WarehousesQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const all = await this.warehouseRepo.find({
       where: { tenantId },
       order: { id: 'ASC' },
     });
-    const list = query.scope === 'mine' ? await this.filterWarehousesForUser(tenantId, user.id, all) : all;
+    const list = await this.scopeWarehouses(tenantId, user, all, query.scope, access);
     // 懒补「所属管理处」：加字段之前建的小区仓按 小区 → 管理处 推一次并落库，
     // 之后人员按管理处匹配仓库就有依据了；总仓（不挂小区）保持公司级
     const missing = list.filter((item) => !item.officeId && item.communityId);
@@ -350,10 +409,15 @@ export class InventoryService {
    * 本次请求能看到哪些仓 —— 库存清单、流水、汇总统一走这里，新增按仓查询的接口直接引。
    *
    * · 全公司数据范围：全部仓，包括不挂管理处的公司总仓
-   * · 受限角色 / 顶栏切了管理处视角：只有该管理处名下的仓，**公司总仓不给**
+   * · 受限角色：只有自己管理处名下的仓，**公司总仓不给**
+   * · 本体是全公司、只是在顶栏切了管理处视角：该管理处的仓 **+ 公司级总仓**
    *
    * 「谁能看总仓」就是数据范围本身，不另设开关：管理处角色看到总仓的库存也领不到，
    * 反而会拿它当自己的可用量。要放开就把那个角色的数据范围改成全公司（业务角色页）。
+   *
+   * 最后那条是 2026-09-01 修的：顶栏切管理处对管理员只是「换个筛子」，
+   * 总仓不挂任何管理处，一律按 office_id 匹配就把它筛没了 ——
+   * 于是管理员在库存清单里点「总仓」永远是空的，看着像总仓一件东西都没有。
    * 返回 null = 不过滤。
    */
   private async visibleWarehouseIds(
@@ -366,10 +430,19 @@ export class InventoryService {
     const all = await this.warehouseRepo.find({ where: { tenantId }, select: ['id', 'officeId'] });
     // 角色额外授权的仓一直可见：总仓不挂管理处，切了管理处视角也不该把它藏掉
     const extra = new Set(await this.accessService.extraWarehouseIdsOfUser(tenantId, user.id));
-    if (officeId) {
-      return all.filter((w) => w.officeId === officeId || extra.has(w.id)).map((w) => w.id);
-    }
+    // 本人「本体」的数据范围（access 里的 scopeAll 在切了视角之后已被置 false，问不出来）
     const mine = await this.accessService.userOfficeIds(tenantId, user.id);
+    if (officeId) {
+      return all
+        .filter(
+          (w) =>
+            w.officeId === officeId ||
+            extra.has(w.id) ||
+            // 公司级仓（不挂管理处）：本体是全公司范围的人切了视角也还看得见
+            (mine.all && !w.officeId),
+        )
+        .map((w) => w.id);
+    }
     if (mine.all) return null;
     const offices = new Set(mine.officeIds);
     return all
@@ -446,6 +519,31 @@ export class InventoryService {
     if (!b) return a;
     const set = new Set(b);
     return a.filter((id) => set.has(id));
+  }
+
+  /**
+   * 仓库列表的三档范围，别在调用方各写一套：
+   *   · 不传      → 全部仓（后台基础资料、下拉选项等要看全量的地方）
+   *   · mine     → 本人角色范围能用的仓（员工端），与顶栏视角无关
+   *   · visible  → **和库存清单同一口径**（visibleWarehouseIds，受顶栏管理处视角影响）。
+   *                后台「仓库库存」的仓库下拉必须用它 —— 用全量的话，
+   *                下拉里会出现一些选了就是空表的仓，看着像库存丢了。
+   */
+  private async scopeWarehouses(
+    tenantId: number,
+    user: AuthUser,
+    all: Warehouse[],
+    scope: string | undefined,
+    access?: ResolvedAccess,
+  ): Promise<Warehouse[]> {
+    if (scope === 'mine') return this.filterWarehousesForUser(tenantId, user.id, all);
+    if (scope === 'visible') {
+      const ids = await this.visibleWarehouseIds(tenantId, user, access);
+      if (!ids) return all;
+      const allowed = new Set(ids);
+      return all.filter((item) => allowed.has(item.id));
+    }
+    return all;
   }
 
   /** 按本人角色范围留下能看的仓：自己管理处的排前面，然后是公司级的；全公司范围的人不过滤 */
@@ -1003,12 +1101,8 @@ export class InventoryService {
       }
       await this.ensureWarehouse(manager, tenantId, dto.warehouseId);
       await this.ensureMaterials(manager, tenantId, dto.items.map((item) => item.materialId));
-      // 每种材料至少一张实物照片
-      for (const item of dto.items) {
-        if (!item.photoUrls?.length) {
-          throw new BadRequestException('每种材料至少需要上传 1 张实物照片');
-        }
-      }
+      // 实物照片选填（2026-09-01）：货到了先入账，照片仓库慢慢补。
+      // 强制拍照的后果是仓管手上没相机就干脆不入库，账实差得更远
       const locationLabels = await this.resolveLocationLabels(manager, tenantId, dto.warehouseId, dto.items);
       // 每行没单独挑库位时落到仓库的默认库位，省得每次入库都从头选（2026-08-30）
       const defaultLocationId = await this.defaultLocationOf(manager, tenantId, dto.warehouseId);
@@ -1100,7 +1194,7 @@ export class InventoryService {
     });
   }
 
-  /** 一般入库（无采购单，零星采买）：填来源 + 凭证附件，逐项拍照 + 选库位 */
+  /** 一般入库（无采购单，零星采买）：填来源 + 凭证附件，逐项选库位；实物照片选填，可事后补 */
   createGeneralReceipt(dto: CreateGeneralReceiptDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
     if (!dto.items.length) throw new BadRequestException('items is required');
@@ -1108,11 +1202,7 @@ export class InventoryService {
     return this.dataSource.transaction(async (manager) => {
       await this.ensureWarehouse(manager, tenantId, dto.warehouseId);
       await this.ensureMaterials(manager, tenantId, dto.items.map((item) => item.materialId));
-      for (const item of dto.items) {
-        if (!item.photoUrls?.length) {
-          throw new BadRequestException('每种材料至少需要上传 1 张实物照片');
-        }
-      }
+      // 实物照片选填，理由同 createGoodsReceipt
       const locationLabels = await this.resolveLocationLabels(manager, tenantId, dto.warehouseId, dto.items);
       // 每行没单独挑库位时落到仓库的默认库位，省得每次入库都从头选（2026-08-30）
       const defaultLocationId = await this.defaultLocationOf(manager, tenantId, dto.warehouseId);

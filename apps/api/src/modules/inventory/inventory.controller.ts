@@ -109,8 +109,12 @@ export class InventoryController {
 
   @Get('warehouses')
   @RequirePermission(['inventory', 'app:inventory'], 'view')
-  listWarehouses(@Query() query: WarehousesQueryDto, @CurrentUser() user: AuthUser) {
-    return this.inventoryService.listWarehouses(query, user);
+  listWarehouses(
+    @Query() query: WarehousesQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.listWarehouses(query, user, access);
   }
 
   /** 仓库表单的「所属管理处」下拉选项（现取，不用登录时下发的那份） */
@@ -303,8 +307,9 @@ export class InventoryController {
 
   // ---------------- 库位/货架 ----------------
 
+  // 员工端「新增材料并入库」也要挑库位，所以带上 app:inventory
   @Get('warehouse-locations')
-  @RequirePermission('inventory', 'view')
+  @RequirePermission(['inventory', 'app:inventory'], 'view')
   listWarehouseLocations(
     @Query() query: WarehouseLocationQueryDto,
     @CurrentUser() user: AuthUser,

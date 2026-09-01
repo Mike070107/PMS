@@ -27,8 +27,14 @@ export class Material extends TenantEntity {
   @Column({ name: 'default_cost_cents', type: 'int', default: 0 })
   defaultCostCents: number;
 
+  // 第一张实物照片。列表 / 选料弹层 / 工单里只要一张缩略图的地方全读它，
+  // 写入时由服务端从 photoUrls[0] 同步，别单独改这一个字段
   @Column({ name: 'photo_url', type: 'varchar', length: 500, nullable: true })
   photoUrl: string | null;
+
+  // 实物照片全集（最多 4 张）：正面 / 侧面 / 铭牌 / 包装，维修工靠它比对认货
+  @Column({ name: 'photo_urls', type: 'jsonb', default: () => "'[]'" })
+  photoUrls: string[];
 
   // 别名（同物异名：胶带/胶布），搜索时与名称一起匹配
   @Column({ type: 'jsonb', default: () => "'[]'" })

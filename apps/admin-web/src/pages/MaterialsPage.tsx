@@ -4,7 +4,6 @@ import {
   Button,
   Card,
   Form,
-  Image,
   Input,
   InputNumber,
   Modal,
@@ -15,26 +14,28 @@ import {
   Tag,
   Tooltip,
   Typography,
-  Upload,
 } from 'antd';
-import type { UploadProps } from 'antd/es/upload/interface';
 import {
   AppstoreOutlined,
   LockOutlined,
   PlusOutlined,
   ReloadOutlined,
-  UploadOutlined,
 } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '../lib/api';
 import { handleGone } from '../lib/gone';
-import { auth, usePagePerm } from '../lib/auth';
+import { usePagePerm } from '../lib/auth';
 import { useTableSeq } from '../components/tableSeqColumn';
 import UnitSelect from '../components/UnitSelect';
+import {
+  MATERIAL_PHOTO_LIMIT,
+  MaterialPhotoCell,
+  MaterialPhotosUpload,
+  materialPhotoList,
+} from '../components/MaterialPhotos';
 import { MATERIAL_CATEGORIES } from '@pms/shared-types';
 
 const { Title, Text } = Typography;
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 const CATEGORY_OPTIONS = MATERIAL_CATEGORIES.map((c) => ({ value: c, label: c }));
 
@@ -47,34 +48,10 @@ interface MaterialRow {
   unit: string;
   defaultCostCents: number;
   photoUrl?: string | null;
+  photoUrls?: string[];
   aliases?: string[];
   params?: string | null;
   enabled: boolean;
-}
-
-interface UploadResponse {
-  objectKey?: string;
-  publicUrl?: string;
-  displayUrl?: string;
-}
-
-function uploadFileUrl(objectKey: string) {
-  return `${API_BASE_URL}/upload/file?key=${encodeURIComponent(objectKey)}`;
-}
-
-function imageSrc(url?: string | null) {
-  if (!url) return '';
-  if (url.startsWith('blob:') || url.startsWith('data:') || url.includes('/upload/file?key=')) return url;
-  try {
-    const parsed = new URL(url, window.location.origin);
-    const key = parsed.searchParams.get('key');
-    if (parsed.pathname.endsWith('/upload/file') && key) return uploadFileUrl(key);
-    const pathKey = parsed.pathname.replace(/^\/+/, '');
-    if (pathKey.startsWith('uploads/')) return uploadFileUrl(pathKey);
-  } catch {
-    if (url.startsWith('uploads/')) return uploadFileUrl(url);
-  }
-  return url;
 }
 
 export default function MaterialsPage() {
@@ -184,11 +161,10 @@ export default function MaterialsPage() {
             seq.column,
             {
               title: '照片',
-              dataIndex: 'photoUrl',
+              key: 'photos',
               width: 84,
-              render: (url) => url
-                ? <Image src={imageSrc(url)} width={52} height={52} style={{ objectFit: 'cover', borderRadius: 6 }} />
-                : <Text type="secondary">无</Text>,
+              // 点开是整组大图，可左右翻（一条 SKU 最多 4 张）
+              render: (_, row) => <MaterialPhotoCell item={row} size={52} />,
             },
             { title: '编码', dataIndex: 'code', width: 120 },
             {
@@ -282,12 +258,12 @@ function MaterialEditorModal({
         defaultCostYuan: editing.defaultCostCents ? editing.defaultCostCents / 100 : undefined,
         aliases: editing.aliases || [],
         params: editing.params || undefined,
-        photoUrl: editing.photoUrl || '',
+        photoUrls: materialPhotoList(editing),
         enabled: editing.enabled,
       });
     } else {
       form.resetFields();
-      form.setFieldsValue({ unit: '个', enabled: true, aliases: [] });
+      form.setFieldsValue({ unit: '个', enabled: true, aliases: [], photoUrls: [] });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing]);
@@ -362,7 +338,7 @@ function MaterialEditorModal({
           defaultCostCents: v.defaultCostYuan != null ? Math.round(v.defaultCostYuan * 100) : 0,
           aliases: v.aliases || [],
           params: v.params?.trim() || undefined,
-          photoUrl: v.photoUrl || undefined,
+          photoUrls: v.photoUrls || [],
           enabled: v.enabled ?? true,
         },
       });
@@ -451,93 +427,20 @@ function MaterialEditorModal({
         <Form.Item name="params" label="详细参数">
           <Input.TextArea rows={3} maxLength={2000} placeholder="材质 / 尺寸 / 技术参数等" />
         </Form.Item>
-        <Form.Item label="实物照片">
-          <PhotoUpload form={form} />
+        <Form.Item
+          name="photoUrls"
+          label={`实物照片（最多 ${MATERIAL_PHOTO_LIMIT} 张）`}
+          tooltip="正面 / 侧面 / 铭牌 / 包装各一张，维修工在库房靠它认货；第一张作封面，在列表和选料弹层里显示"
+        >
+          <MaterialPhotosUpload
+            onUploadingChange={(uploading) => form.setFieldsValue({ photoUploading: uploading })}
+          />
         </Form.Item>
-        <Form.Item name="photoUrl" hidden><Input /></Form.Item>
         <Form.Item name="photoUploading" hidden valuePropName="checked"><Switch /></Form.Item>
         <Form.Item name="enabled" label="启用" valuePropName="checked">
           <Switch />
         </Form.Item>
       </Form>
     </Modal>
-  );
-}
-
-function PhotoUpload({ form }: { form: any }) {
-  const { message } = AntdApp.useApp();
-  const photoUrl = Form.useWatch('photoUrl', form);
-  const [localPreview, setLocalPreview] = useState<string>();
-  const displayUrl = localPreview || imageSrc(photoUrl);
-
-  useEffect(() => {
-    return () => { if (localPreview) URL.revokeObjectURL(localPreview); };
-  }, [localPreview]);
-
-  const uploadProps: UploadProps<UploadResponse> = {
-    name: 'file',
-    action: `${API_BASE_URL}/upload`,
-    headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
-    accept: 'image/*',
-    multiple: false,
-    maxCount: 1,
-    showUploadList: false,
-    beforeUpload: (file) => {
-      if (!/^image\//i.test(file.type || '')) {
-        message.error('只能上传照片');
-        return Upload.LIST_IGNORE;
-      }
-      if (file.size / 1024 / 1024 > 10) {
-        message.error('照片不能超过 10MB');
-        return Upload.LIST_IGNORE;
-      }
-      setLocalPreview((current) => {
-        if (current) URL.revokeObjectURL(current);
-        return URL.createObjectURL(file);
-      });
-      form.setFieldsValue({ photoUploading: true });
-      return true;
-    },
-    onChange: ({ file }) => {
-      if (file.status === 'done') {
-        const url = file.response?.displayUrl ||
-          (file.response?.objectKey ? uploadFileUrl(file.response.objectKey) : file.response?.publicUrl);
-        if (url) {
-          form.setFieldsValue({ photoUrl: url });
-          message.success('照片已上传');
-        }
-        form.setFieldsValue({ photoUploading: false });
-      } else if (file.status === 'error') {
-        form.setFieldsValue({ photoUploading: false });
-        message.error(`${file.name} 上传失败`);
-      }
-    },
-  };
-
-  return (
-    <Upload.Dragger {...uploadProps} style={{ padding: 10 }}>
-      {displayUrl ? (
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Image src={displayUrl} width={88} height={88} style={{ objectFit: 'cover', borderRadius: 6 }} preview={false} />
-          <Text type="secondary">拖拽或点击更换照片</Text>
-          <Button
-            size="small"
-            onClick={(event) => {
-              event.stopPropagation();
-              if (localPreview) URL.revokeObjectURL(localPreview);
-              setLocalPreview(undefined);
-              form.setFieldsValue({ photoUrl: '', photoUploading: false });
-            }}
-          >
-            移除照片
-          </Button>
-        </Space>
-      ) : (
-        <Space direction="vertical">
-          <UploadOutlined style={{ fontSize: 26, color: '#31558a' }} />
-          <Text>拖拽或点击上传实物照片</Text>
-        </Space>
-      )}
-    </Upload.Dragger>
   );
 }

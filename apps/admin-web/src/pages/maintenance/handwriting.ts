@@ -33,6 +33,14 @@ export interface HandwritingFont {
 
 export const HANDWRITING_FONTS: HandwritingFont[] = [
   {
+    id: 'zhaizaijia',
+    label: '宅在家自动笔',
+    desc: '工整清楚，生僻字最全（2 万字）',
+    sizeMb: 5.7,
+    family: 'MOZhaizaijia',
+    previewFamily: 'MOZhaizaijiaP',
+  },
+  {
     id: 'zhangqingping',
     label: '张清平硬笔行书',
     desc: '钢笔字，最像人手填的',
@@ -57,21 +65,13 @@ export const HANDWRITING_FONTS: HandwritingFont[] = [
     previewFamily: 'MOShoushuP',
   },
   {
-    id: 'zhaizaijia',
-    label: '宅在家自动笔',
-    desc: '工整清楚，生僻字最全（2 万字）',
-    sizeMb: 5.7,
-    family: 'MOZhaizaijia',
-    previewFamily: 'MOZhaizaijiaP',
-  },
-  {
     id: 'system',
     label: '系统自带（不下载）',
     desc: '用打印这台电脑上的行楷/楷体',
   },
 ];
 
-export const DEFAULT_FONT_ID = 'zhangqingping';
+export const DEFAULT_FONT_ID = 'zhaizaijia';
 
 const FONT_KEY = 'pms.maintenance.handFont';
 
