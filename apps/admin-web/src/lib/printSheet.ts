@@ -8,7 +8,12 @@ import sheetCss from '../pages/maintenance/maintenance-sheet.css?inline';
  * 一个文档里两条 @page 只有一条生效 —— 谁后加载谁赢，另一个要么被裁要么多吐空白页。
  * iframe 是独立文档，各自的 @page 互不干扰，样式也只带这一份 CSS。
  */
-export async function printMaintenanceSheets(html: string, title: string): Promise<void> {
+export async function printMaintenanceSheets(
+  html: string,
+  title: string,
+  /** 打印偏移那段样式（print-offset.ts 生成），没设过就是空串 */
+  extraCss = '',
+): Promise<void> {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.title = title;
@@ -26,7 +31,10 @@ export async function printMaintenanceSheets(html: string, title: string): Promi
   doc.open();
   doc.write(
     `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">` +
-      `<title>${escapeHtml(title)}</title><style>${sheetCss}</style></head>` +
+      `<title>${escapeHtml(title)}</title><style>${sheetCss}</style>` +
+      // 偏移样式排在整份 CSS 后面才压得住 .mo-sheet 自己的 transform
+      (extraCss ? `<style>${extraCss}</style>` : '') +
+      `</head>` +
       `<body class="mo-print-doc">${html}</body></html>`,
   );
   doc.close();

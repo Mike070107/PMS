@@ -11,6 +11,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Popover,
   Segmented,
   Select,
   Space,
@@ -43,6 +44,14 @@ import {
   readFontId,
   rememberFontId,
 } from './maintenance/handwriting';
+import {
+  isZeroOffset,
+  printOffsetCss,
+  readPrintOffset,
+  savePrintOffset,
+  ZERO_OFFSET,
+  type PrintOffset,
+} from './maintenance/print-offset';
 import {
   FEE_CATEGORY_OPTIONS,
   MAINTENANCE_STATUS_LABELS,
@@ -577,6 +586,99 @@ function WorkOrderPicker({
   );
 }
 
+/**
+ * 标题栏右边那个「打印偏移」：抵掉打印机进纸误差用的。
+ *
+ * 为什么不是每张单一个值：偏移是**打印机**的属性，不是单据的 ——
+ * 同一张单换台机器打就该是另一个数。所以存在这台电脑的浏览器里，
+ * 下次同一个浏览器打开还是这组数（print-offset.ts）。
+ *
+ * 正反面分开填：双面打印时反面是另一次走纸，套准误差跟正面对不上，
+ * 只给一个值补不齐 —— 这也是反面不再画骑缝线的同一个原因。
+ */
+function PrintOffsetButton({
+  value,
+  onChange,
+}: {
+  value: PrintOffset;
+  onChange: (next: PrintOffset) => void;
+}) {
+  const set = (patch: Partial<PrintOffset>) => {
+    const next = { ...value, ...patch };
+    onChange(next);
+    savePrintOffset(next);
+  };
+  const dirty = !isZeroOffset(value);
+
+  const field = (label: string, key: keyof PrintOffset) => (
+    <Space size={6}>
+      <span style={{ fontSize: 12, color: '#5d6b69', width: 28, display: 'inline-block' }}>
+        {label}
+      </span>
+      <InputNumber
+        size="small"
+        style={{ width: 104 }}
+        step={0.5}
+        min={-15}
+        max={15}
+        precision={1}
+        addonAfter="mm"
+        value={value[key]}
+        onChange={(next) => set({ [key]: Number(next) || 0 })}
+      />
+    </Space>
+  );
+
+  return (
+    <Popover
+      trigger="click"
+      placement="bottomRight"
+      title="打印偏移"
+      content={
+        <div style={{ width: 300 }}>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', lineHeight: 1.6 }}>
+            套打时内容没落进纸上的格子，用这里整体挪一挪。
+            <br />
+            正数往右 / 往下，负数反向。<b>只影响打印</b>，屏幕预览不动。
+          </Text>
+          <div style={{ marginTop: 12, fontSize: 13, fontWeight: 600 }}>正面</div>
+          <Space direction="vertical" size={6} style={{ marginTop: 6 }}>
+            {field('左右', 'fx')}
+            {field('上下', 'fy')}
+          </Space>
+          <div style={{ marginTop: 12, fontSize: 13, fontWeight: 600 }}>反面</div>
+          <Space direction="vertical" size={6} style={{ marginTop: 6 }}>
+            {field('左右', 'bx')}
+            {field('上下', 'by')}
+          </Space>
+          <Space size={8} style={{ marginTop: 14 }}>
+            <Button size="small" onClick={() => set({ bx: value.fx, by: value.fy })}>
+              反面同正面
+            </Button>
+            <Button size="small" disabled={!dirty} onClick={() => set(ZERO_OFFSET)}>
+              全部归零
+            </Button>
+          </Space>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 10 }}>
+            这组数存在这台电脑上，换台电脑要重新设。
+          </Text>
+        </div>
+      }
+    >
+      <Button
+        size="small"
+        type={dirty ? 'link' : 'text'}
+        icon={<SettingOutlined />}
+        // 主题把 controlHeight 调到了 40，small 跟着变成 30px，会把 24px 的标题行顶高 6px。
+        // 写死 24 让它和标题一样高 —— 用户要的是「并排，不增加高度」
+        style={{ height: 24, paddingInline: 8, fontSize: 13 }}
+      >
+        打印偏移{dirty ? '·已设' : ''}
+      </Button>
+    </Popover>
+  );
+}
+
 function MaintenanceEditor({
   id,
   quotaItems,
@@ -617,6 +719,8 @@ function MaintenanceEditor({
   const [fontId, setFontId] = useState(readFontId);
   /** 网页字体几 MB，下载要一会儿；没下完就打印会印成宋体，所以这个状态要摊给用户看 */
   const [fontReady, setFontReady] = useState(false);
+  /** 打印偏移：这台电脑 + 这台打印机的属性，存本机 */
+  const [offset, setOffset] = useState<PrintOffset>(readPrintOffset);
 
   const quotaByCode = useMemo(
     () => new Map(quotaItems.map((item) => [item.code, item])),
@@ -917,7 +1021,13 @@ function MaintenanceEditor({
     // 而联单是一次性的纸，印废一张就少一张
     ensureFontLoaded(fontId, filledText(draft))
       .catch(() => undefined)
-      .then(() => printMaintenanceSheets(html, `养护单 ${draft.paperNo || draft.orderNo}`))
+      .then(() =>
+        printMaintenanceSheets(
+          html,
+          `养护单 ${draft.paperNo || draft.orderNo}`,
+          printOffsetCss(offset),
+        ),
+      )
       .catch((e: any) => message.error(e?.message || '打印失败'))
       .finally(() => {
         if (alive) setPrintJob(null);
@@ -925,7 +1035,7 @@ function MaintenanceEditor({
     return () => {
       alive = false;
     };
-  }, [printJob, draft, fontId, message]);
+  }, [printJob, draft, fontId, offset, message]);
 
   const close = () => {
     if (dirty) {
@@ -965,12 +1075,27 @@ function MaintenanceEditor({
         open={!!id}
         title={
           draft ? (
-            <Space size={12} wrap>
-              <span>养护单 {draft.paperNo || draft.orderNo}</span>
-              <Tag color={STATUS_COLOR[draft.status]}>{MAINTENANCE_STATUS_LABELS[draft.status]}</Tag>
-              {pages > 1 && <Tag>共 {pages} 张</Tag>}
-              {dirty && <Tag color="warning">未保存</Tag>}
-            </Space>
+            // 偏移按钮和标题并排、靠右。右边留 28px 是给 Modal 自己的关闭叉，
+            // 按钮用 small（24px 高）跟标题一样高，这一行不会因此变高
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                paddingRight: 28,
+              }}
+            >
+              <Space size={12} wrap>
+                <span>养护单 {draft.paperNo || draft.orderNo}</span>
+                <Tag color={STATUS_COLOR[draft.status]}>
+                  {MAINTENANCE_STATUS_LABELS[draft.status]}
+                </Tag>
+                {pages > 1 && <Tag>共 {pages} 张</Tag>}
+                {dirty && <Tag color="warning">未保存</Tag>}
+              </Space>
+              <PrintOffsetButton value={offset} onChange={setOffset} />
+            </div>
           ) : (
             '养护单'
           )

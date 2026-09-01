@@ -110,7 +110,8 @@ const PERF_STYLE = { left: `${PERF_LEFT}mm` };
 /** 背面是正面的镜像：块从右边往回排 */
 const BACK_MAIN_STYLE = { left: `${PAGE.w - MAIN_LEFT - TABLE_W}mm`, width: `${TABLE_W}mm` };
 const BACK_STUB_STYLE = { left: `${PAGE.w - STUB_LEFT - STUB_W}mm`, width: `${STUB_W}mm` };
-const BACK_PERF_STYLE = { left: `${PAGE.w - PERF_LEFT}mm` };
+/* 背面**不画**骑缝线：原版联单反面本来就没有，而且双面打印的套准误差（普通激光机 ±0.5～1mm）
+   一定大于线宽，反面再画一根只会跟正面那根错开、看着像印歪了。正面一根就够撕。 */
 const UNIT_LINE_STYLE = {
   marginLeft: `${UNIT_LINE.left}mm`,
   flex: `0 0 ${UNIT_LINE.width}mm`,
@@ -940,8 +941,6 @@ export function MaintenanceBack(props: SheetProps) {
       data-font={props.fontId}
       style={SHEET_STYLE}
     >
-      <div className="mo-perf" style={BACK_PERF_STYLE} />
-
       <div className="mo-block mo-block--main" style={BACK_MAIN_STYLE}>
         <SheetHead
           title="材料领耗记录"
