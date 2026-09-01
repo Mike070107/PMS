@@ -24,8 +24,9 @@
 
     <view class="kv"><text class="kv__k">申请编号</text><text class="kv__v">{{item.requestNo}}</text></view>
     <view class="kv"><text class="kv__k">采购明细</text><text class="kv__v">{{item.itemsText}}</text></view>
-    <view wx:if="{{item.workOrderId}}" class="kv">
-      <text class="kv__k">来自工单</text><text class="kv__v">#{{item.workOrderId}}</text>
+    <view class="kv"><text class="kv__k">申请人</text><text class="kv__v">{{item.applicantText}}</text></view>
+    <view wx:if="{{item.sourceText}}" class="kv">
+      <text class="kv__k">来自工单</text><text class="kv__v">{{item.sourceText}}</text>
     </view>
     <view class="kv"><text class="kv__k">提交时间</text><text class="kv__v">{{item.createdAtText}}</text></view>
 

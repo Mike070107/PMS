@@ -152,7 +152,7 @@ export default function PlatformTenantsPage() {
                 admins.length
                   ? admins.map((a) => (
                       <Tag key={a.id} color={a.status === 'active' ? 'processing' : 'default'}>
-                        {a.loginAccount || a.name || `#${a.id}`}
+                        {a.loginAccount || a.name || '未填账号'}
                       </Tag>
                     ))
                   : <Text type="secondary">未开通</Text>,
@@ -479,7 +479,7 @@ function ResetAdminModal({
           <Select
             options={(target?.admins ?? []).map((a) => ({
               value: a.id,
-              label: `${a.loginAccount || a.name || `#${a.id}`}${a.status !== 'active' ? '（停用）' : ''}`,
+              label: `${a.loginAccount || a.name || '未填账号'}${a.status !== 'active' ? '（停用）' : ''}`,
             }))}
             placeholder="选择要重置的账号"
           />

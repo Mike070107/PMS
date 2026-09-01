@@ -97,7 +97,9 @@ export class HouseIndex {
 
   /** 人看的定位文字：枫桦景苑一期 198弄2号 101 */
   static describe(loc: HouseLocator): string {
-    if (loc.houseId) return `房产 #${loc.houseId}`;
+    // 只给了 house_id 的行（导入表里自己填的编号）：写成「房产编号 123」，
+    // 那是他文件里的值、找得回去；不要写 `#123`，看着像系统内部编号（2026-09-01）
+    if (loc.houseId) return `房产编号 ${loc.houseId}`;
     const lane = norm(loc.lane) ? `${norm(loc.lane)}弄` : '';
     return `${norm(loc.communityName)} ${lane}${norm(loc.buildingNo)}号 ${norm(loc.roomNo)}`.trim();
   }

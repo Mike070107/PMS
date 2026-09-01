@@ -721,6 +721,8 @@ export interface StockMovementView {
   unitCostCents: number;
   refType?: string | null;
   refId?: number | null;
+  /** 来源单据号（入库单号 / 调拨单号 / 工单号），服务端下发；界面上显示它而不是 refId */
+  refNo?: string | null;
   note?: string | null;
   createdAt?: string;
   createdBy?: number | null;
@@ -740,7 +742,13 @@ export interface PurchaseRequestView {
   id: number;
   requestNo: string;
   workOrderId: number | null;
+  /** 来源工单的工单号，服务端下发；界面上显示它而不是 workOrderId */
+  workOrderNo?: string | null;
   applicantId: number;
+  /** 申请人 / 两位审批人的姓名，服务端下发 —— 端上不要拿 id 顶着显示 */
+  applicantName?: string | null;
+  managerName?: string | null;
+  purchaserName?: string | null;
   items: PurchaseRequestItem[];
   estTotalCents: number;
   status: PurchaseRequestStatus;

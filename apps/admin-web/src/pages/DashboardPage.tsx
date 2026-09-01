@@ -35,6 +35,7 @@ import {
 } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { nameOr } from '../lib/displayName';
 
 const { Text } = Typography;
 
@@ -380,7 +381,7 @@ export default function DashboardPage() {
               dataIndex: 'assigneeName',
               width: 130,
               render: (value: string | null | undefined, row: WorkOrderRow) =>
-                value || (row.assigneeId ? `#${row.assigneeId}` : <Text type="secondary">尚未派单</Text>),
+                value || (row.assigneeId ? nameOr(null, '维修工') : <Text type="secondary">尚未派单</Text>),
             },
             {
               title: '提交时间',

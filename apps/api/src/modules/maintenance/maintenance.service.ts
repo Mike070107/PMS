@@ -857,7 +857,8 @@ export class MaintenanceService {
       if (covered.has(row.materialId)) continue;
       const sku = skuById.get(row.materialId);
       rows.push({
-        name: sku?.name || `#${row.materialId}`,
+        // 查不到 SKU 就直说，别把 id 印到养护单上（2026-09-01：用户看不懂 #19）
+        name: sku?.name || '未知材料',
         spec: sku?.spec || '',
         unit: sku?.unit || '',
         estQty: null,

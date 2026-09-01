@@ -344,7 +344,7 @@ export class QrService {
       const building = buildings.find((item) => item.id === code.buildingId);
       failed.push({
         buildingId: code.buildingId as number,
-        buildingText: building ? this.buildingText(building) : `#${code.buildingId}`,
+        buildingText: building ? this.buildingText(building) : '未知楼栋',
         reason: done.lastError || '未知错误',
       });
     });

@@ -46,6 +46,7 @@ import type { StockLotView, StockMovementView } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { auth, useAuth, useCompanyWideView, usePagePerm } from '../lib/auth';
 import { useTableSeq } from '../components/tableSeqColumn';
+import { nameOr, unknown } from '../lib/displayName';
 import {
   MATERIAL_PHOTO_LIMIT,
   MaterialPhotoCell,
@@ -135,6 +136,11 @@ interface PurchaseRequestItem {
 }
 
 interface PurchaseRequestRow {
+  /** 名字/单号由服务端随行下发（见 InventoryService.withRequestNames），端上不再自己查 */
+  applicantName?: string | null;
+  managerName?: string | null;
+  purchaserName?: string | null;
+  workOrderNo?: string | null;
   id: number;
   requestNo: string;
   workOrderId?: number | null;
@@ -157,6 +163,8 @@ interface PurchaseOrderItem {
 }
 
 interface PurchaseOrderRow {
+  /** 关联采购申请的单号，服务端下发；界面上不显示申请的 id */
+  requestNo?: string | null;
   id: number;
   orderNo: string;
   requestId?: number | null;
@@ -1038,7 +1046,7 @@ export default function InventoryPage() {
      列本身每次渲染重建没关系，useTableColumnPrefs 只认 key。 */
   const stockColumns: PrefsColumn<StockRow>[] = [
     stockSeq.column,
-    { key: 'warehouse', title: '仓库', dataIndex: 'warehouseId', width: 180, render: (id) => warehouseById.get(id)?.name || `#${id}` },
+    { key: 'warehouse', title: '仓库', dataIndex: 'warehouseId', width: 180, render: (id) => nameOr(warehouseById.get(id)?.name, '仓库') },
     {
       key: 'location', title: '库位', dataIndex: 'locationLabel', width: 130,
       render: (v: string | null) => v || <Text type="secondary">未指定</Text>,
@@ -1060,7 +1068,7 @@ export default function InventoryPage() {
       // 点开是这条 SKU 的整组大图，可左右翻
       render: (id) => <MaterialPhotoCell item={materialById.get(id)} />,
     },
-    { key: 'code', title: '材料编码', dataIndex: 'materialId', width: 140, render: (id) => materialById.get(id)?.code || `#${id}` },
+    { key: 'code', title: '材料编码', dataIndex: 'materialId', width: 140, render: (id) => materialById.get(id)?.code || '-' },
     { key: 'name', title: '材料名称', dataIndex: 'materialId', width: 220, ellipsis: true, render: (id) => materialById.get(id)?.name || '-' },
     { key: 'spec', title: '规格', dataIndex: 'materialId', width: 140, render: (id) => materialById.get(id)?.spec || '-' },
     { key: 'category', title: '分类', dataIndex: 'materialId', width: 120, render: (id) => materialById.get(id)?.category || '-' },
@@ -1103,7 +1111,7 @@ export default function InventoryPage() {
     <Space size={[6, 6]} wrap>
       {items?.length ? items.map((item, index) => {
         const material = 'materialId' in item && item.materialId ? materialById.get(item.materialId) : null;
-        const name = material ? materialDisplayName(material) : ('name' in item ? item.name : `#${item.materialId}`);
+        const name = material ? materialDisplayName(material) : (('name' in item && item.name) ? item.name : unknown('材料'));
         const unit = material?.unit || '';
         return <Tag key={`${name}-${index}`}>{name} x {item.qty}{unit}</Tag>;
       }) : <Text type="secondary">无明细</Text>}
@@ -1246,10 +1254,10 @@ export default function InventoryPage() {
                   columns={[
                     { title: '申请单号', dataIndex: 'requestNo', width: 180, ellipsis: true },
                     { title: '当前环节', dataIndex: 'status', width: 140, render: (s: PurchaseRequestStatus) => <Tag color={requestStatusMeta[s]?.color}>{requestStatusMeta[s]?.label || s}</Tag> },
-                    { title: '来源', dataIndex: 'workOrderId', width: 110, render: (id) => id ? `工单 #${id}` : '手工申请' },
+                    { title: '来源', key: 'source', width: 170, ellipsis: true, render: (_, row) => row.workOrderId ? (row.workOrderNo || unknown('工单')) : '手工申请' },
                     { title: '材料摘要', dataIndex: 'items', width: 360, render: renderItems },
                     { title: '预估金额', dataIndex: 'estTotalCents', width: 120, render: money },
-                    { title: '申请人', dataIndex: 'applicantId', width: 100, render: (id) => `#${id}` },
+                    { title: '申请人', key: 'applicant', width: 110, render: (_, row) => nameOr(row.applicantName, '申请人') },
                     {
                       title: '审批进度',
                       key: 'progress',
@@ -1300,8 +1308,8 @@ export default function InventoryPage() {
                   pagination={{ pageSize: 10, showSizeChanger: false }}
                   columns={[
                     { title: '采购单号', dataIndex: 'orderNo', width: 180, ellipsis: true },
-                    { title: '关联申请', dataIndex: 'requestId', width: 100, render: (id) => id ? `#${id}` : '-' },
-                    { title: '供应商', dataIndex: 'supplierId', width: 180, render: (id) => supplierById.get(id)?.name || `#${id}` },
+                    { title: '关联申请', key: 'request', width: 180, ellipsis: true, render: (_, row) => row.requestId ? (row.requestNo || unknown('申请单')) : '手工下单' },
+                    { title: '供应商', dataIndex: 'supplierId', width: 180, render: (id) => nameOr(supplierById.get(id)?.name, '供应商') },
                     { title: '采购明细', dataIndex: 'items', width: 340, render: renderItems },
                     { title: '总金额', dataIndex: 'totalCents', width: 120, render: money },
                     { title: '状态', dataIndex: 'status', width: 110, render: (s) => <Tag color={orderStatusMeta[s]?.color}>{orderStatusMeta[s]?.label || s}</Tag> },
@@ -1333,8 +1341,8 @@ export default function InventoryPage() {
                   pagination={{ pageSize: 10, showSizeChanger: false }}
                   columns={[
                     { title: '调拨单号', dataIndex: 'transferNo', width: 180, ellipsis: true },
-                    { title: '出库仓', dataIndex: 'fromWarehouseId', width: 180, render: (id) => warehouseById.get(id)?.name || `#${id}` },
-                    { title: '入库仓', dataIndex: 'toWarehouseId', width: 180, render: (id) => warehouseById.get(id)?.name || `#${id}` },
+                    { title: '出库仓', dataIndex: 'fromWarehouseId', width: 180, render: (id) => nameOr(warehouseById.get(id)?.name, '仓库') },
+                    { title: '入库仓', dataIndex: 'toWarehouseId', width: 180, render: (id) => nameOr(warehouseById.get(id)?.name, '仓库') },
                     { title: '调拨明细', dataIndex: 'items', width: 300, render: renderItems },
                     { title: '状态', dataIndex: 'status', width: 120, render: (s) => <Tag color={transferStatusMeta[s]?.color}>{transferStatusMeta[s]?.label || s}</Tag> },
                     { title: '审批时间', dataIndex: 'approvedAt', width: 160, render: formatDateTime },
@@ -1428,7 +1436,7 @@ export default function InventoryPage() {
                               {
                                 title: '所属管理处', dataIndex: 'officeName', width: 180,
                                 render: (v: string | null, row) =>
-                                  v || (row.officeId ? `#${row.officeId}` : <Text type="secondary">公司级（总仓）</Text>),
+                                  v || (row.officeId ? unknown('管理处') : <Text type="secondary">公司级（总仓）</Text>),
                               },
                               {
                                 title: '库位数',
@@ -1582,7 +1590,7 @@ export default function InventoryPage() {
                   return (
                     <div key={field.key} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600 }}>{material ? materialDisplayName(material) : `#${item?.materialId}`}</div>
+                        <div style={{ fontWeight: 600 }}>{material ? materialDisplayName(material) : unknown('材料')}</div>
                         <Text type="secondary" style={{ fontSize: 12 }}>发出 {item?.qty} {material?.unit || ''}</Text>
                       </div>
                       <Form.Item name={[field.name, 'materialId']} hidden><Input /></Form.Item>
@@ -1674,11 +1682,16 @@ export default function InventoryPage() {
                 },
                 {
                   title: '物业经理审批',
-                  description: requestDetail.managerAt ? formatDateTime(requestDetail.managerAt) : '待处理',
+                  // 「谁在什么时候批的」要一起写，只有时间的话回头查是谁批的还得去问人
+                  description: requestDetail.managerAt
+                    ? `${nameOr(requestDetail.managerName, '审批人')} · ${formatDateTime(requestDetail.managerAt)}`
+                    : '待处理',
                 },
                 {
                   title: '采购经理审批',
-                  description: requestDetail.purchaserAt ? formatDateTime(requestDetail.purchaserAt) : '待处理',
+                  description: requestDetail.purchaserAt
+                    ? `${nameOr(requestDetail.purchaserName, '审批人')} · ${formatDateTime(requestDetail.purchaserAt)}`
+                    : '待处理',
                 },
                 {
                   title: '采购下单',
@@ -1693,14 +1706,19 @@ export default function InventoryPage() {
               <Alert type="error" showIcon message="采购申请已驳回" description={requestDetail.rejectReason || '未填写驳回原因'} />
             )}
 
+            {/* 只放人看得懂的：单号、姓名、金额、时间。
+                申请的数据库 id 不显示 —— 那是程序定位用的，用户不关心（2026-09-01 反馈） */}
             <Card size="small" title="申请信息">
               <Row gutter={[16, 12]}>
+                <Col span={8}><Text type="secondary">申请单号</Text><br /><Text>{requestDetail.requestNo}</Text></Col>
                 <Col span={8}><Text type="secondary">当前状态</Text><br /><Tag color={requestStatusMeta[requestDetail.status]?.color}>{requestStatusMeta[requestDetail.status]?.label || requestDetail.status}</Tag></Col>
-                <Col span={8}><Text type="secondary">来源工单</Text><br /><Text>{requestDetail.workOrderId ? `#${requestDetail.workOrderId}` : '-'}</Text></Col>
-                <Col span={8}><Text type="secondary">申请人</Text><br /><Text>#{requestDetail.applicantId}</Text></Col>
+                <Col span={8}><Text type="secondary">申请人</Text><br /><Text>{nameOr(requestDetail.applicantName, '申请人')}</Text></Col>
+                <Col span={8}>
+                  <Text type="secondary">来源工单</Text><br />
+                  <Text>{requestDetail.workOrderId ? (requestDetail.workOrderNo || unknown('工单')) : '手工申请，无来源工单'}</Text>
+                </Col>
                 <Col span={8}><Text type="secondary">预估金额</Text><br /><Text strong>{money(requestDetail.estTotalCents)}</Text></Col>
                 <Col span={8}><Text type="secondary">创建时间</Text><br /><Text>{formatDateTime(requestDetail.createdAt)}</Text></Col>
-                <Col span={8}><Text type="secondary">申请 ID</Text><br /><Text>#{requestDetail.id}</Text></Col>
               </Row>
             </Card>
 
@@ -1716,7 +1734,7 @@ export default function InventoryPage() {
                     title: '材料编码',
                     dataIndex: 'materialId',
                     width: 120,
-                    render: (id) => id ? materialById.get(id)?.code || `#${id}` : '-',
+                    render: (id) => id ? materialById.get(id)?.code || '-' : '-',
                   },
                   {
                     title: '材料名称',
@@ -1798,7 +1816,9 @@ export default function InventoryPage() {
         </Form>
       </Modal>
       <Modal
-        title={`编辑库存 #${editingStock?.id || ''}`}
+        title={editingStock
+          ? `编辑库存：${materialDisplayName(materialById.get(editingStock.materialId)) || unknown('材料')} · ${nameOr(warehouseById.get(editingStock.warehouseId)?.name, '仓库')}`
+          : '编辑库存'}
         open={!!editingStock}
         onCancel={() => setEditingStock(null)}
         onOk={submitStock}
@@ -1814,7 +1834,7 @@ export default function InventoryPage() {
           </Form.Item>
           <Form.Item label="仓库">
             <Input
-              value={editingStock ? warehouseById.get(editingStock.warehouseId)?.name || `#${editingStock.warehouseId}` : ''}
+              value={editingStock ? nameOr(warehouseById.get(editingStock.warehouseId)?.name, '仓库') : ''}
               disabled
             />
           </Form.Item>
@@ -1868,7 +1888,7 @@ export default function InventoryPage() {
       <StockLotDrawer
         stock={lotDrawerStock}
         material={lotDrawerStock ? materialById.get(lotDrawerStock.materialId) : undefined}
-        warehouseName={lotDrawerStock ? warehouseById.get(lotDrawerStock.warehouseId)?.name || `#${lotDrawerStock.warehouseId}` : ''}
+        warehouseName={lotDrawerStock ? nameOr(warehouseById.get(lotDrawerStock.warehouseId)?.name, '仓库') : ''}
         onClose={() => setLotDrawerStock(null)}
       />
     </div>
@@ -2017,7 +2037,15 @@ function StockLotDrawer({ stock, material, warehouseName, onClose }: {
           },
           { title: '单价', dataIndex: 'unitCostCents', width: 100, align: 'right', render: money },
           { title: '金额', key: 'amount', width: 110, align: 'right', render: (_, row) => money(Math.abs(numberQty(row.qty)) * row.unitCostCents) },
-          { title: '来源单据', key: 'ref', width: 150, render: (_, row) => row.refType ? `${REF_TYPE_LABELS[row.refType] || row.refType} #${row.refId ?? ''}` : '-' },
+          {
+            // 单号由服务端带下来（refNo）；没有单号的老流水只写单据类型，不写内部 id
+            title: '来源单据', key: 'ref', width: 190, ellipsis: true,
+            render: (_, row) => {
+              if (!row.refType) return '-';
+              const label = REF_TYPE_LABELS[row.refType] || row.refType;
+              return row.refNo ? `${label} ${row.refNo}` : label;
+            },
+          },
           { title: '备注', dataIndex: 'note', ellipsis: true, render: (v) => v || '-' },
         ]}
       />
@@ -2049,8 +2077,8 @@ function CatalogModal({ kind, form, warehouseLocationOptions, editingMaterial, e
   const title = kind === 'material'
     ? editingMaterial ? `编辑材料SKU ${editingMaterial.code}` : '新增材料SKU'
     : kind === 'warehouse'
-      ? editingWarehouse ? `编辑仓库 #${editingWarehouse.id}` : '新增仓库'
-      : editingSupplier ? `编辑供应商 #${editingSupplier.id}` : '新增供应商';
+      ? editingWarehouse ? `编辑仓库：${editingWarehouse.name}` : '新增仓库'
+      : editingSupplier ? `编辑供应商：${editingSupplier.name}` : '新增供应商';
   return (
     <Modal
       title={title}
@@ -2247,7 +2275,7 @@ function ReceiptModal({ order, form, saving, materialById, warehouseOptions, loc
                 return (
                   <Card key={field.key} size="small" style={{ background: '#fafafa' }}>
                     <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                      {material ? `${material.code} · ${materialDisplayName(material)}` : `#${item?.materialId}`}
+                      {material ? `${material.code} · ${materialDisplayName(material)}` : unknown('材料')}
                       <Text type="secondary" style={{ fontWeight: 400, marginLeft: 8 }}>订购 {item?.orderedQty} {material?.unit || ''}</Text>
                     </div>
                     <Form.Item name={[field.name, 'materialId']} hidden><InputNumber /></Form.Item>
@@ -2473,7 +2501,7 @@ function AttachmentsUpload({ value, onChange }: { value?: string[]; onChange?: (
     <Space direction="vertical" style={{ width: '100%' }}>
       {urls.map((url, index) => (
         <Space key={url}>
-          <Text style={{ maxWidth: 320 }} ellipsis>{url.toLowerCase().includes('.pdf') ? '📄 PDF 凭证' : '🖼 图片凭证'} #{index + 1}</Text>
+          <Text style={{ maxWidth: 320 }} ellipsis>{url.toLowerCase().includes('.pdf') ? '📄 PDF 凭证' : '🖼 图片凭证'} {index + 1}</Text>
           <Button size="small" danger type="link" onClick={() => onChange?.(urls.filter((_, i) => i !== index))}>移除</Button>
         </Space>
       ))}

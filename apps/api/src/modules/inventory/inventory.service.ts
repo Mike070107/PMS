@@ -759,16 +759,73 @@ export class InventoryService {
     });
   }
 
-  /** 出入库流水，最新在前 */
+  /**
+   * 出入库流水，最新在前。**来源单据要带单号**（refNo）——
+   * 界面上写「一般入库单 GR20260901…」，不是「一般入库单 #12」：
+   * id 是程序定位用的，人对不上（2026-09-01 反馈）。
+   */
   async listStockMovements(query: StockMovementQueryDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const where: FindOptionsWhere<StockMovement> = { tenantId };
     if (query.warehouseId) where.warehouseId = query.warehouseId;
     if (query.materialId) where.materialId = query.materialId;
-    return this.dataSource.getRepository(StockMovement).find({
+    const rows = await this.dataSource.getRepository(StockMovement).find({
       where,
       order: { id: 'DESC' },
       take: Math.min(query.limit ?? 100, 500),
+    });
+    return this.withRefNos(tenantId, rows);
+  }
+
+  /** 流水的来源单据 id → 单号（入库单号 / 调拨单号 / 工单号）；查不到就给 null */
+  private async withRefNos(tenantId: number, rows: StockMovement[]) {
+    const idsOf = (type: string) => [
+      ...new Set(
+        rows
+          .filter((r) => r.refType === type && r.refId)
+          .map((r) => r.refId as number),
+      ),
+    ];
+    const receiptIds = [...new Set([...idsOf('goods_receipt'), ...idsOf('general_receipt')])];
+    const transferIds = idsOf('transfer_order');
+    const workOrderIds = idsOf('work_order');
+    const [receipts, transfers, workOrders] = await Promise.all([
+      receiptIds.length
+        ? this.dataSource.getRepository(GoodsReceipt).find({
+            where: { tenantId, id: In(receiptIds) },
+            select: ['id', 'receiptNo'],
+          })
+        : Promise.resolve([]),
+      transferIds.length
+        ? this.transferOrderRepo.find({
+            where: { tenantId, id: In(transferIds) },
+            select: ['id', 'transferNo'],
+          })
+        : Promise.resolve([]),
+      workOrderIds.length
+        ? this.dataSource.query(
+            'SELECT id, order_no FROM work_orders WHERE tenant_id = $1 AND id = ANY($2::int[])',
+            [tenantId, workOrderIds],
+          )
+        : Promise.resolve([]),
+    ]);
+    const receiptNo = new Map(receipts.map((r) => [r.id, r.receiptNo]));
+    const transferNo = new Map(transfers.map((t) => [t.id, t.transferNo]));
+    const orderNo = new Map<number, string>(
+      (workOrders as Array<{ id: number; order_no: string }>).map((w) => [w.id, w.order_no]),
+    );
+    return rows.map((row) => {
+      let refNo: string | null = null;
+      if (row.refId) {
+        if (row.refType === 'goods_receipt' || row.refType === 'general_receipt') {
+          refNo = receiptNo.get(row.refId) ?? null;
+        } else if (row.refType === 'transfer_order') {
+          refNo = transferNo.get(row.refId) ?? null;
+        } else if (row.refType === 'work_order') {
+          refNo = orderNo.get(row.refId) ?? null;
+        }
+      }
+      return { ...row, refNo };
     });
   }
 
@@ -851,7 +908,12 @@ export class InventoryService {
     });
   }
 
-  listPurchaseRequests(query: PurchaseRequestQueryDto, user: AuthUser) {
+  /**
+   * 采购申请列表。**名字和单号由服务端补齐**，端上不许拿 id 顶着显示 ——
+   * 2026-09-01 反馈：申请信息里「申请人 #2」「来源工单 #19」，用户看不懂这是谁、是哪张单。
+   * id 是程序定位用的，人看的是姓名和单号，新增字段一律照这个口径给。
+   */
+  async listPurchaseRequests(query: PurchaseRequestQueryDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const where: FindOptionsWhere<PurchaseRequest> = { tenantId };
     if (query.status) {
@@ -864,7 +926,49 @@ export class InventoryService {
       }
       where.status = query.status as PurchaseRequestStatus;
     }
-    return this.purchaseRequestRepo.find({ where, order: { id: 'DESC' } });
+    const rows = await this.purchaseRequestRepo.find({ where, order: { id: 'DESC' } });
+    return this.withRequestNames(tenantId, rows);
+  }
+
+  /** 采购申请出参统一补名字：申请人 / 两位审批人 / 来源工单单号 */
+  private async withRequestNames(tenantId: number, rows: PurchaseRequest[]) {
+    if (!rows.length) return [];
+    const userIds = [
+      ...new Set(
+        rows
+          .flatMap((r) => [r.applicantId, r.managerId, r.purchaserId])
+          .filter((id): id is number => !!id),
+      ),
+    ];
+    const workOrderIds = [
+      ...new Set(rows.map((r) => r.workOrderId).filter((id): id is number => !!id)),
+    ];
+    const [users, workOrders] = await Promise.all([
+      userIds.length
+        ? this.dataSource.getRepository(User).find({
+            where: { id: In(userIds) },
+            select: ['id', 'name'],
+          })
+        : Promise.resolve([]),
+      workOrderIds.length
+        ? this.dataSource.query(
+            'SELECT id, order_no FROM work_orders WHERE tenant_id = $1 AND id = ANY($2::int[])',
+            [tenantId, workOrderIds],
+          )
+        : Promise.resolve([]),
+    ]);
+    const nameById = new Map(users.map((u) => [u.id, u.name || '']));
+    const orderNoById = new Map<number, string>(
+      (workOrders as Array<{ id: number; order_no: string }>).map((w) => [w.id, w.order_no]),
+    );
+    const nameOf = (id: number | null) => (id ? nameById.get(id) || null : null);
+    return rows.map((row) => ({
+      ...row,
+      applicantName: nameOf(row.applicantId),
+      managerName: nameOf(row.managerId),
+      purchaserName: nameOf(row.purchaserId),
+      workOrderNo: row.workOrderId ? orderNoById.get(row.workOrderId) ?? null : null,
+    }));
   }
 
   /** 办公室手工新建采购申请（直接进入办公室汇总环节，可继续合并或提交经理） */
@@ -886,7 +990,7 @@ export class InventoryService {
           applicantId: user.id,
           items: dto.items.map((item) => ({
             materialId: item.materialId,
-            name: nameById.get(item.materialId) ?? `#${item.materialId}`,
+            name: nameById.get(item.materialId) ?? '未知材料',
             qty: item.qty,
             estUnitCostCents: item.estUnitCostCents ?? 0,
           })),
@@ -1018,12 +1122,27 @@ export class InventoryService {
     });
   }
 
-  listPurchaseOrders(query: TenantQueryDto, user: AuthUser) {
+  /** 采购单列表。「关联申请」要给申请单号，不是申请的 id（同 withRequestNames 的口径） */
+  async listPurchaseOrders(query: TenantQueryDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
-    return this.purchaseOrderRepo.find({
+    const rows = await this.purchaseOrderRepo.find({
       where: { tenantId },
       order: { id: 'DESC' },
     });
+    const requestIds = [
+      ...new Set(rows.map((r) => r.requestId).filter((id): id is number => !!id)),
+    ];
+    const requests = requestIds.length
+      ? await this.purchaseRequestRepo.find({
+          where: { tenantId, id: In(requestIds) },
+          select: ['id', 'requestNo'],
+        })
+      : [];
+    const requestNoById = new Map(requests.map((r) => [r.id, r.requestNo]));
+    return rows.map((row) => ({
+      ...row,
+      requestNo: row.requestId ? requestNoById.get(row.requestId) ?? null : null,
+    }));
   }
 
   createPurchaseOrder(dto: CreatePurchaseOrderDto, user: AuthUser) {
@@ -1168,13 +1287,21 @@ export class InventoryService {
 
       // 分批到货：累计各材料已收数量，判断是全部收齐(received)还是部分到货(partial)
       const receivedTotals = await this.sumReceivedQtyByMaterial(manager, tenantId, order.id);
+      const orderLabels = await this.materialLabels(
+        manager,
+        tenantId,
+        order.items.map((i) => i.materialId),
+      );
       const variances: string[] = [];
       let allComplete = true;
       for (const orderItem of order.items) {
         const received = receivedTotals.get(orderItem.materialId) ?? 0;
         if (received < orderItem.qty) allComplete = false;
         if (received !== orderItem.qty) {
-          variances.push(`材料 #${orderItem.materialId}：订 ${orderItem.qty}、累计收 ${received}`);
+          // 这条会原样进通知，采购经理看到的必须是材料名
+          variances.push(
+            `${orderLabels.get(orderItem.materialId) ?? '未知材料'}：订 ${orderItem.qty}、累计收 ${received}`,
+          );
         }
       }
       order.status = allComplete ? PurchaseOrderStatus.RECEIVED : PurchaseOrderStatus.PARTIAL;
@@ -1391,7 +1518,7 @@ export class InventoryService {
     return this.dataSource.transaction(async (manager) => {
       await this.ensureWarehouse(manager, tenantId, dto.fromWarehouseId);
       await this.ensureWarehouse(manager, tenantId, dto.toWarehouseId);
-      await this.ensureMaterials(manager, tenantId, dto.items.map((item) => item.materialId));
+      const labels = await this.ensureMaterials(manager, tenantId, dto.items.map((item) => item.materialId));
 
       // 提交时校验发货仓当前库存足够（正式扣减在审批通过时）
       for (const item of dto.items) {
@@ -1399,7 +1526,10 @@ export class InventoryService {
           where: { tenantId, warehouseId: dto.fromWarehouseId, materialId: item.materialId },
         });
         if (Number(stock?.qty ?? 0) < item.qty) {
-          throw new BadRequestException(`材料 #${item.materialId} 发货仓库存不足`);
+          const have = Number(stock?.qty ?? 0);
+          throw new BadRequestException(
+            `${labels.get(item.materialId) ?? '未知材料'} 发货仓只有 ${have}，不够调 ${item.qty}`,
+          );
         }
       }
 
@@ -1526,6 +1656,11 @@ export class InventoryService {
         });
         if (!exists) throw new BadRequestException('库位不属于接收仓');
       }
+      const receiveLabels = await this.materialLabels(
+        manager,
+        tenantId,
+        transfer.items.map((i) => i.materialId),
+      );
       const finalItems: TransferOrder['items'] = [];
       for (const item of transfer.items) {
         const shippedQty = item.qty;
@@ -1533,7 +1668,9 @@ export class InventoryService {
           ? Number(receivedByMaterial.get(item.materialId))
           : shippedQty;
         if (receivedQty < 0 || receivedQty > shippedQty) {
-          throw new BadRequestException(`材料 #${item.materialId} 实收数量必须在 0 ~ ${shippedQty} 之间`);
+          throw new BadRequestException(
+            `${receiveLabels.get(item.materialId) ?? '未知材料'} 实收数量必须在 0 ~ ${shippedQty} 之间`,
+          );
         }
         if (receivedQty !== shippedQty) hasVariance = true;
 
@@ -1625,14 +1762,38 @@ export class InventoryService {
     return warehouse;
   }
 
-  private async ensureMaterials(manager, tenantId: number, materialIds: number[]) {
+  /**
+   * 校验材料都在、都启用，**并把名字带回来**。
+   * 带名字是因为下游的报错和通知都是给人看的：「材料 #37 发货仓库存不足」
+   * 没人知道 37 是什么（2026-09-01 反馈：不要再出现 #19 这种表述）。
+   */
+  private async ensureMaterials(
+    manager,
+    tenantId: number,
+    materialIds: number[],
+  ): Promise<Map<number, string>> {
     const uniqueIds = Array.from(new Set(materialIds));
+    const labels = new Map<number, string>();
     for (const id of uniqueIds) {
       const material = await manager.findOne(Material, {
         where: { id, tenantId, enabled: true },
       });
       if (!material) throw new NotFoundException(`material not found: ${id}`);
+      labels.set(id, this.materialLabel(material));
     }
+    return labels;
+  }
+
+  /** 材料 id → 「名称（型号）」，查不到就说查不到，别把 id 当名字给用户 */
+  private async materialLabels(
+    manager: EntityManager,
+    tenantId: number,
+    materialIds: number[],
+  ): Promise<Map<number, string>> {
+    const ids = [...new Set(materialIds)];
+    if (!ids.length) return new Map();
+    const rows = await manager.find(Material, { where: { tenantId, id: In(ids) } });
+    return new Map(rows.map((m) => [m.id, this.materialLabel(m)]));
   }
 
   private async lockPurchaseRequest(manager, id: number, tenantId: number) {

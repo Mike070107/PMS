@@ -387,7 +387,7 @@ export class RepairsService implements OnModuleInit {
       for (const word of wanted) {
         const label = owner.get(word);
         if (!label) continue;
-        const name = officeName.get(id) ?? `管理处 #${id}`;
+        const name = officeName.get(id) ?? '未知管理处';
         throw new BadRequestException(
           `「${word}」在「${name}」已经是「${label}」的本处关键词，加进公司模板会和那边撞车。` +
             `请先去「${name}」那一页把它删掉，再回来加。`,
@@ -956,7 +956,7 @@ export class RepairsService implements OnModuleInit {
         photos: pickPhotos(requestById.get(item.requestId)?.attachments),
         photoCount: countPhotos(requestById.get(item.requestId)?.attachments),
         assigneeName: item.assigneeId
-          ? assigneeNameById.get(item.assigneeId) ?? `#${item.assigneeId}`
+          ? assigneeNameById.get(item.assigneeId) ?? '未知维修工'
           : null,
         // 报修人：工单池卡片要有这一条（2026-08-27 要求）。存的是建单时落库的联系人，
         // 代报的带上身份（保安 / 居委），让人一眼分清是不是业主本人报的
@@ -1049,7 +1049,7 @@ export class RepairsService implements OnModuleInit {
 
     return technicians.map((item) => ({
       id: item.id,
-      name: item.name || `#${item.id}`,
+      name: item.name || '未命名员工',
       phone: item.phone ?? null,
       skills: skillsByUser.get(item.id) ?? [],
       openCount: openCount.get(item.id) ?? 0,
@@ -1185,6 +1185,20 @@ export class RepairsService implements OnModuleInit {
         qty: qtyByMaterial.get(item.id) ?? 0,
       })),
     };
+  }
+
+  /** 材料 id → 「名称（型号）」。查不到就让调用方兜「未知材料」，别把 id 当名字 */
+  private async materialNamesByIds(
+    manager: EntityManager,
+    tenantId: number,
+    materialIds: number[],
+  ): Promise<Map<number, string>> {
+    const ids = [...new Set(materialIds)];
+    if (!ids.length) return new Map();
+    const rows = await manager.find(Material, { where: { tenantId, id: In(ids) } });
+    return new Map(
+      rows.map((m) => [m.id, m.spec ? `${m.name}（${m.spec}）` : m.name]),
+    );
   }
 
   /** 报修类型编码 → 中文名（租户配的），端上不该自己猜 */
@@ -1516,7 +1530,7 @@ export class RepairsService implements OnModuleInit {
       const note = this.displayLogNote(log.note);
       const isCreate = log.action === 'create' || log.action === 'create_auto_assign';
       if (!submitter || !isCreate || !note?.startsWith(staffSourceLabel)) return note;
-      return `${submitter.name || `#${submitter.id}`} 在${note}`;
+      return `${submitter.name || '未命名员工'} 在${note}`;
     };
 
     // 详情页要写「谁在修 / 谁修的」。和列表同一口径，端上不再各自去查人名
@@ -1531,7 +1545,7 @@ export class RepairsService implements OnModuleInit {
       workOrder: {
         ...workOrder,
         assigneeName: workOrder.assigneeId
-          ? assignee?.name || `#${workOrder.assigneeId}`
+          ? assignee?.name || '未知维修工'
           : null,
         resultAttachments: this.storage.toDisplayUrls(workOrder.resultAttachments),
       },
@@ -1734,10 +1748,21 @@ export class RepairsService implements OnModuleInit {
       workOrder.faultLocation = dto.faultLocation ?? workOrder.faultLocation;
       workOrder.faultSymptom = dto.faultSymptom ?? workOrder.faultSymptom;
       workOrder.repairContent = dto.repairContent ?? workOrder.repairContent;
+      // 端上从库存选的行本来就带名字；万一只传了 id，去材料库把名字查出来 ——
+      // 工单和养护单上印的是给人看的名称，不能落一个 #37（2026-09-01）
+      const materialNames = dto.materials?.length
+        ? await this.materialNamesByIds(
+            manager,
+            tenantId,
+            dto.materials.map((item) => item.materialId).filter((v): v is number => !!v),
+          )
+        : new Map<number, string>();
       workOrder.usedMaterials =
         dto.materials?.map((item) => ({
           materialId: item.materialId,
-          name: item.name || (item.materialId ? `#${item.materialId}` : ''),
+          name:
+            item.name ||
+            (item.materialId ? materialNames.get(item.materialId) ?? '未知材料' : ''),
           qty: item.qty,
           unit: item.unit,
           note: item.note?.trim() || undefined,
@@ -2958,7 +2983,7 @@ export class RepairsService implements OnModuleInit {
             // 没有候选人时也要写一句：进度里空着，办公室只会以为系统没动作。
             // 写的是系统做了什么（转成待派单），不是「谁收到了」—— 送达结果这里还不知道
             candidates.length
-              ? `已通知维修工 ${candidates.map((c) => c.name || `#${c.id}`).join('、')}`
+              ? `已通知维修工 ${candidates.map((c) => c.name || '未命名员工').join('、')}`
               : '这个类型还没配默认维修工，已转办公室派单',
           ]
             .filter(Boolean)
@@ -4124,7 +4149,7 @@ export class RepairsService implements OnModuleInit {
       officeId,
     );
     const level = coverage.get(assignee.id);
-    const name = assignee.name || `#${assignee.id}`;
+    const name = assignee.name || '未命名员工';
     if (officeId === null && level !== 'all') {
       throw new BadRequestException(
         `${name} 是管理处专属维修工，公司默认模板只能选全公司范围的人；请到对应管理处那一页去选`,

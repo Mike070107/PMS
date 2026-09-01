@@ -14,6 +14,9 @@ interface ApprovalRow extends PurchaseRequestView {
   amountText: string;
   itemsText: string;
   createdAtText: string;
+  /** 「来自工单 XXX」显示的文字：工单号 + 申请人，不是工单的数据库 id */
+  sourceText: string;
+  applicantText: string;
 }
 
 const yuan = (cents: number) => `¥${((cents || 0) / 100).toFixed(2)}`;
@@ -25,6 +28,9 @@ function toRow(item: PurchaseRequestView): ApprovalRow {
     amountText: yuan(item.estTotalCents),
     itemsText: (item.items || []).map((i) => `${i.name} ×${i.qty}${i.unit || ''}`).join('、'),
     createdAtText: formatDateTimeCn(item.createdAt),
+    // 工单号和申请人姓名由服务端下发；以前这里写的是「#19」，审批的人根本认不出是哪张单
+    sourceText: item.workOrderId ? item.workOrderNo || '未知工单' : '',
+    applicantText: item.applicantName || '未知申请人',
   };
 }
 

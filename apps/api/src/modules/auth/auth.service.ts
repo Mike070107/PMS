@@ -225,7 +225,8 @@ export class AuthService {
        * 挨个解绑，解了半天没用 —— 真正占着的是个 tenant_id 为空的空壳业主账号，
        * 那个列表里根本看不到它。提示必须说清是哪一种、该去哪儿找。
        */
-      const who = bound.name?.trim() || `#${bound.id}`;
+      // 没填姓名就直说，别拿 id 冒充名字 —— 管理员在列表里也是按姓名找人
+      const who = bound.name?.trim() || '未填姓名';
       throw new ConflictException(
         STAFF_ROLES.includes(bound.role)
           ? `该微信已绑定员工「${who}」，请管理员在后台「员工管理」里给该员工解绑后重试。`

@@ -11,5 +11,10 @@
     "rootDir": "src",
     "outDir": "miniprogram_dist"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // 测试文件不进小程序产物：它们 import node:test / node:assert，
+  // 而这个包是给小程序用的、没有 node 类型 —— 不排掉 tsc 直接失败，
+  // 连带 `pnpm mp` 发版整个卡住。shared-types 那份 2026-08-31 已经这么修过，
+  // 这里当时漏了，2026-09-01 有人给 api-client 加了 request.test.ts 就复现了
+  "exclude": ["src/**/*.test.ts"]
 }

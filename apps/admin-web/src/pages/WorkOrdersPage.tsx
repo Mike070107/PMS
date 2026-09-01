@@ -75,6 +75,7 @@ import MissingMaterialsInput, {
   type MissingMaterialRow,
 } from '../components/MissingMaterialsInput';
 import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumnPrefs';
+import { nameOr } from '../lib/displayName';
 import {
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
@@ -525,7 +526,7 @@ export default function WorkOrdersPage() {
       title: '维修工', key: 'assignee', dataIndex: 'assigneeId', width: 100,
       // 姓名优先用接口给的（它按 tenant 查过了）；staffById 是本页自己拉的员工表，作兜底
       render: (id: number | null, r) =>
-        id ? (r.assigneeName || staffById.get(id)?.name || `#${id}`) : <Text type="secondary">未派单</Text>,
+        id ? nameOr(r.assigneeName || staffById.get(id)?.name, '维修工') : <Text type="secondary">未派单</Text>,
     },
     {
       title: '报修时间', key: 'createdAt', dataIndex: 'createdAt', width: 196,
@@ -1766,7 +1767,7 @@ function CompactRepairRecord({ detail }: { detail: WorkOrderDetail }) {
   const usedMaterials = wo.usedMaterials?.length
     ? wo.usedMaterials.map((item, index) => (
         <Tag key={`${item.name || item.materialId || index}-${index}`}>
-          {item.name || `#${item.materialId}`} x {item.qty}{item.unit || ''}
+          {item.name || nameOr(null, '材料')} x {item.qty}{item.unit || ''}
         </Tag>
       ))
     : '-';
@@ -2018,7 +2019,7 @@ function WorkOrderDetailDrawer({
                   })(),
                 },
                 { key: 'skill', label: '工种', children: getRepairTypeLabel(detail.workOrder.skill, repairTypeRules) },
-                { key: 'assignee', label: '当前维修工', children: detail.workOrder.assigneeId ? (staffList.find((s) => s.id === detail.workOrder.assigneeId)?.name || `#${detail.workOrder.assigneeId}`) : '未派单' },
+                { key: 'assignee', label: '当前维修工', children: detail.workOrder.assigneeId ? nameOr(staffList.find((s) => s.id === detail.workOrder.assigneeId)?.name, '维修工') : '未派单' },
                 {
                   key: 'sla',
                   label: '要求完成截止日期',
@@ -2578,7 +2579,7 @@ function RepairTypeRuleModal({
   const technicianName = (id: number | null) => {
     if (!id) return null;
     const hit = tabTechnicians.find((t) => t.id === id) || allTechnicians.find((t) => t.id === id);
-    return hit?.name || `#${id}`;
+    return nameOr(hit?.name, '维修工');
   };
 
   const loadTab = useCallback(async (which: 'company' | number) => {

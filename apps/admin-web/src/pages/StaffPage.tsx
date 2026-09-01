@@ -139,7 +139,7 @@ export default function StaffPage() {
   const unbindWx = async (s: Staff) => {
     try {
       await request({ method: 'POST', url: `/staff/${s.id}/unbind-wx` });
-      message.success(`已解绑 ${s.name || `#${s.id}`} 的员工端微信`);
+      message.success(`已解绑 ${s.name?.trim() || '该员工'} 的员工端微信`);
       load();
     } catch (e: any) {
       if (handleGone(e, message, '这个用户', load)) return;
