@@ -5,6 +5,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Segmented,
   Space,
   Switch,
   Table,
@@ -27,28 +28,74 @@ const { Text, Paragraph } = Typography;
  */
 export interface AiSample {
   id: number;
+  /** repair = 一句话报修；completion = 完工小结 */
+  kind: string;
   text: string;
   expected: {
+    // 一句话报修
     addressText?: string;
     description?: string;
     contactName?: string;
     phone?: string;
     urgent?: boolean;
+    // 完工小结
+    actionNote?: string;
+    faultLocation?: string;
+    faultSymptom?: string;
   };
   note: string;
   enabled: boolean;
 }
 
-const EMPTY_DRAFT = {
+/**
+ * 两类样例教的是两件事，字段也不一样，所以表单跟着切换：
+ *   repair     维修工/业主说一句报修 → 地址 / 故障描述 / 联系人
+ *   completion 维修工干完活说一句   → 维修说明 / 故障位置 / 故障现象
+ * 两边的提示词各取各的样例（服务端按 kind 过滤）—— 混着教会互相带偏。
+ */
+const KINDS = [
+  { value: 'repair', label: '一句话报修' },
+  { value: 'completion', label: '完工小结' },
+] as const;
+type SampleKind = (typeof KINDS)[number]['value'];
+
+const FIELDS: Record<SampleKind, Array<{ key: string; label: string; placeholder: string; hint?: string }>> = {
+  repair: [
+    {
+      key: 'addressText',
+      label: '应该认出的地址',
+      placeholder: '5511弄，236号，502（照抄原话里表示地点的那一段；中文数字写成阿拉伯数字）',
+      hint: '这里教的是「哪一段是地址」。真正的门牌仍然要回房产库里撞，撞不上系统不会填。',
+    },
+    { key: 'description', label: '应该认出的故障描述', placeholder: '电子门旋钮打滑，居民出不去' },
+    { key: 'contactName', label: '应该认出的联系人', placeholder: '没说人名就留空' },
+  ],
+  completion: [
+    {
+      key: 'actionNote',
+      label: '应该整理成的维修说明',
+      placeholder: '更换角阀一只；水管接头加缠生料带',
+      hint: '业主会看到这一句。只写实际做了什么，没修成就如实写没修成。',
+    },
+    { key: 'faultLocation', label: '应该认出的故障位置', placeholder: '厨房水槽下方' },
+    { key: 'faultSymptom', label: '应该认出的故障现象', placeholder: '角阀锈蚀卡死' },
+  ],
+};
+
+const EMPTY_DRAFT: Record<string, string> = {
   text: '',
+  note: '',
   addressText: '',
   description: '',
   contactName: '',
-  note: '',
+  actionNote: '',
+  faultLocation: '',
+  faultSymptom: '',
 };
 
 export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
   const { message } = AntdApp.useApp();
+  const [kind, setKind] = useState<SampleKind>('repair');
   const [rows, setRows] = useState<AiSample[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -58,13 +105,13 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setRows(await request<AiSample[]>({ url: '/settings/ai/samples' }));
+      setRows(await request<AiSample[]>({ url: `/settings/ai/samples?kind=${kind}` }));
     } catch (e: any) {
       message.error(e?.message || '加载样例失败');
     } finally {
       setLoading(false);
     }
-  }, [message]);
+  }, [message, kind]);
 
   useEffect(() => {
     void load();
@@ -81,14 +128,15 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
         method: 'POST',
         url: '/settings/ai/samples',
         data: {
+          kind,
           text: draft.text,
           note: draft.note,
           // 只提交填了的字段：空字段进了提示词会教出「什么都可以不填」
-          expected: {
-            addressText: draft.addressText || undefined,
-            description: draft.description || undefined,
-            contactName: draft.contactName || undefined,
-          },
+          expected: Object.fromEntries(
+            FIELDS[kind]
+              .map((f) => [f.key, draft[f.key]?.trim()])
+              .filter(([, v]) => !!v),
+          ),
         },
       });
       setOpen(false);
@@ -123,7 +171,15 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div style={{ marginTop: 24 }}>
-      <Text strong>识别样例</Text>
+      <Space style={{ marginBottom: 8 }}>
+        <Text strong>识别样例</Text>
+        <Segmented
+          size="small"
+          value={kind}
+          onChange={(v) => setKind(v as SampleKind)}
+          options={KINDS.map((k) => ({ value: k.value, label: k.label }))}
+        />
+      </Space>
       <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 4, marginBottom: 12 }}>
         遇到一种系统没认对的说法，把原话和「应该认成什么」加在这里，
         下一次识别就照着这个口径来，<Text strong>不用等开发改代码</Text>。
@@ -160,6 +216,9 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
                 {v?.addressText ? <Tag color="blue">地址 {v.addressText}</Tag> : null}
                 {v?.description ? <Tag>描述 {v.description}</Tag> : null}
                 {v?.contactName ? <Tag>联系人 {v.contactName}</Tag> : null}
+                {v?.actionNote ? <Tag color="blue">维修说明 {v.actionNote}</Tag> : null}
+                {v?.faultLocation ? <Tag>位置 {v.faultLocation}</Tag> : null}
+                {v?.faultSymptom ? <Tag>现象 {v.faultSymptom}</Tag> : null}
                 {v?.urgent ? <Tag color="red">紧急</Tag> : null}
               </Space>
             ),
@@ -197,7 +256,7 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
       )}
 
       <Modal
-        title="加一条识别样例"
+        title={`加一条样例 · ${KINDS.find((k) => k.value === kind)?.label}`}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={add}
@@ -211,36 +270,24 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
               rows={2}
               value={draft.text}
               onChange={(e) => setDraft({ ...draft, text: e.target.value })}
-              placeholder="5511弄，236号，502报修电子门里面，旋钮打滑"
+              placeholder={kind === 'completion' ? '换了个角阀，原来那个锈死了' : '5511弄，236号，502报修电子门里面，旋钮打滑'}
             />
           </div>
-          <div>
-            <Text strong>应该认出的地址</Text>
-            <Input
-              value={draft.addressText}
-              onChange={(e) => setDraft({ ...draft, addressText: e.target.value })}
-              placeholder="5511弄，236号，502（照抄原话里表示地点的那一段；中文数字写成阿拉伯数字）"
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              这里教的是「哪一段是地址」。真正的门牌仍然要回房产库里撞，撞不上系统不会填。
-            </Text>
-          </div>
-          <div>
-            <Text strong>应该认出的故障描述</Text>
-            <Input
-              value={draft.description}
-              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-              placeholder="电子门旋钮打滑，居民出不去"
-            />
-          </div>
-          <div>
-            <Text strong>应该认出的联系人</Text>
-            <Input
-              value={draft.contactName}
-              onChange={(e) => setDraft({ ...draft, contactName: e.target.value })}
-              placeholder="没说人名就留空"
-            />
-          </div>
+          {FIELDS[kind].map((f) => (
+            <div key={f.key}>
+              <Text strong>{f.label}</Text>
+              <Input
+                value={draft[f.key]}
+                onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
+                placeholder={f.placeholder}
+              />
+              {f.hint ? (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {f.hint}
+                </Text>
+              ) : null}
+            </div>
+          ))}
           <div>
             <Text strong>备注</Text>
             <Input
