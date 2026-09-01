@@ -26,10 +26,16 @@ export interface StaffSession {
   /** 在手工单：看得到 / 能完工报料 */
   canSeeMyOrders: boolean;
   canHandleOrders: boolean;
-  /** 材料与库存 */
+  /** 材料与库存（现场查存量、看采购进度） */
   canViewMaterials: boolean;
   canEditMaterials: boolean;
   canViewInventory: boolean;
+  /**
+   * 材料 SKU 库单独一格（app:materials）：看全部材料档案、改名称型号照片。
+   * 和上面那一格分开是因为改档案会影响全公司的编码和统计，不是人人都该有。
+   */
+  canViewSku: boolean;
+  canEditSku: boolean;
   /** 采购审批（两步各自一格） */
   canApproveAsManager: boolean;
   canApproveAsPurchaser: boolean;
@@ -57,6 +63,8 @@ const emptySession = (): StaffSession => ({
   canViewMaterials: false,
   canEditMaterials: false,
   canViewInventory: false,
+  canViewSku: false,
+  canEditSku: false,
   canApproveAsManager: false,
   canApproveAsPurchaser: false,
   canApprove: false,
@@ -90,6 +98,8 @@ export function buildSession(me: MeResp | null): StaffSession {
     canViewMaterials: can('app:inventory', 'view'),
     canEditMaterials: can('app:inventory', 'edit'),
     canViewInventory: can('app:inventory', 'view'),
+    canViewSku: can('app:materials', 'view'),
+    canEditSku: can('app:materials', 'edit'),
     canApproveAsManager,
     canApproveAsPurchaser,
     canApprove: canApproveAsManager || canApproveAsPurchaser,

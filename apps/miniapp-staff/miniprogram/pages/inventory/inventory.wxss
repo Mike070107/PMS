@@ -26,6 +26,8 @@
 /* .chip / .chip--on / .chip--warn 都在 app.wxss（多页共用，别再各写一份） */
 
 .mb { margin-bottom: 20rpx; }
+/* 材料 SKU 页的条数说明：贴在筛选条下面，别和列表挤在一起 */
+.sku-count { padding: 0 8rpx 16rpx; }
 /* .center 在 app.wxss 里统一定义 */
 .tip { padding: 24rpx 16rpx 0; line-height: 1.6; }
 

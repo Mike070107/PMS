@@ -1,13 +1,17 @@
-<view class="container container--tabbar {{canEdit && tab === 'stock' ? 'container--fab' : ''}}">
+<!-- 有悬浮「+ 新增」的两个 tab 要多留一档底部留白，否则最后一条被圆角按钮压住 -->
+<view class="container container--tabbar {{(canEdit && tab === 'stock') || (canEditSku && tab === 'sku') ? 'container--fab' : ''}}">
   <view wx:if="{{!canView}}" class="card">
     <view class="card__title">材料与库存</view>
     <view class="muted mt-sm">{{roleHint}}</view>
   </view>
 
   <block wx:else>
+    <!-- 「材料SKU」只给勾了 app:materials 的角色（角色矩阵里配）。
+         没勾的人这一格整个不出现 —— 改材料档案会影响全公司的编码和统计，不是人人该有 -->
     <view class="tabs">
-      <view class="tab {{tab === 'stock' ? 'tab--on' : ''}}" data-tab="stock" bindtap="onSwitchTab">库存</view>
-      <view class="tab {{tab === 'purchase' ? 'tab--on' : ''}}" data-tab="purchase" bindtap="onSwitchTab">采购申请</view>
+      <view wx:if="{{canViewStock}}" class="tab {{tab === 'stock' ? 'tab--on' : ''}}" data-tab="stock" bindtap="onSwitchTab">库存</view>
+      <view wx:if="{{canViewSku}}" class="tab {{tab === 'sku' ? 'tab--on' : ''}}" data-tab="sku" bindtap="onSwitchTab">材料SKU</view>
+      <view wx:if="{{canViewStock}}" class="tab {{tab === 'purchase' ? 'tab--on' : ''}}" data-tab="purchase" bindtap="onSwitchTab">采购申请</view>
     </view>
 
     <!-- ============ 库存：这一屏的主体，列的是全部 SKU + 它现在还有几个 ============ -->
@@ -148,6 +152,69 @@
       </view>
     </block>
 
+    <!-- ============ 材料 SKU 库：材料档案，不看库存 ============ -->
+    <block wx:elif="{{tab === 'sku'}}">
+      <input class="input mb" placeholder="搜名称 / 别名 / 型号 / 编码" value="{{skuKeyword}}" bindinput="onSkuKeyword" />
+
+      <scroll-view wx:if="{{skuCategories.length > 1}}" class="chips" scroll-x enable-flex>
+        <view class="chip {{skuCategoryIndex < 0 ? 'chip--on' : ''}}" data-index="-1" bindtap="onPickSkuCategory">全部</view>
+        <view
+          class="chip {{skuCategoryIndex === index ? 'chip--on' : ''}}"
+          wx:for="{{skuCategories}}"
+          wx:key="*this"
+          data-index="{{index}}"
+          bindtap="onPickSkuCategory"
+        >{{item}}</view>
+      </scroll-view>
+
+      <view class="muted sku-count">共 {{skuRows.length}} 条材料档案（含无货和已停用的）</view>
+
+      <view wx:if="{{loading}}" class="muted center">加载中…</view>
+      <view wx:elif="{{skuRows.length === 0}}" class="muted center">
+        {{skuKeyword || skuCategoryIndex >= 0 ? '没有匹配的材料' : '还没有材料档案'}}
+      </view>
+
+      <view
+        class="card sku-card"
+        wx:for="{{skuRows}}"
+        wx:key="materialId"
+        data-index="{{index}}"
+        data-from="sku"
+        bindtap="onOpenDetail"
+        hover-class="wo-card--hover"
+        hover-stay-time="80"
+      >
+        <view class="sku">
+          <view wx:if="{{item.photoUrl}}" class="sku__photo sku__photo--box">
+            <image
+              class="sku__photo-img"
+              src="{{item.photoUrl}}"
+              mode="aspectFill"
+              data-url="{{item.photoUrl}}"
+              data-urls="{{item.photoUrls}}"
+              catchtap="onPreviewPhoto"
+            />
+            <text wx:if="{{item.photoUrls.length > 1}}" class="sku__photo-count">{{item.photoUrls.length}}</text>
+          </view>
+          <view wx:else class="sku__photo sku__photo--empty">无图</view>
+
+          <view class="sku__body">
+            <view class="sku__title">
+              {{item.title}}
+              <text wx:if="{{!item.enabled}}" class="tag tag--off">停用</text>
+            </view>
+            <view class="meta">{{item.metaText}} · {{item.unit}}</view>
+            <view class="meta">参考成本 {{item.costText}}{{item.aliasText ? ' · 别名 ' + item.aliasText : ''}}</view>
+            <view wx:if="{{item.missingText}}" class="sku__missing">待补充：{{item.missingText}}</view>
+          </view>
+        </view>
+
+        <view wx:if="{{canEditSku}}" class="sku-card__foot">
+          <view class="sku__edit" data-index="{{index}}" data-from="sku" catchtap="onEdit">编辑 SKU</view>
+        </view>
+      </view>
+    </block>
+
     <!-- ============ 采购申请 ============ -->
     <block wx:else>
       <view wx:if="{{loading}}" class="muted center">加载中…</view>
@@ -174,7 +241,8 @@
   </view>
 </view>
 
-<button wx:if="{{canView && canEdit && tab === 'stock'}}" class="fab" bindtap="onCreate">+ 新增</button>
+<!-- 两个 tab 都能新增，走的是同一个「先搜再建、当场入库」向导 -->
+<button wx:if="{{canView && ((canEdit && tab === 'stock') || (canEditSku && tab === 'sku'))}}" class="fab" bindtap="onCreate">+ 新增</button>
 
 <!-- ============ 详情：只给列表上没有的东西（分仓存量 / 别名 / 参数 / 成本） ============ -->
 <view wx:if="{{detailOpen}}" class="sheet-mask" bindtap="onCloseDetail" catchtouchmove="noop" />

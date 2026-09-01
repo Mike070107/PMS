@@ -61,7 +61,7 @@ export class InventoryController {
   // 而不是在守卫里做「app:inventory 等价于 materials」的通用映射 ——
   // 那种映射会把这一格的权限顺带扩散到所有挂 materials/inventory 的接口
   @Get('materials')
-  @RequirePermission(['materials', 'app:inventory'], 'view')
+  @RequirePermission(['materials', 'app:inventory', 'app:materials'], 'view')
   listMaterials(@Query() query: TenantQueryDto, @CurrentUser() user: AuthUser) {
     return this.inventoryService.listMaterials(query, user);
   }
@@ -72,7 +72,7 @@ export class InventoryController {
    */
   @Get('materials/options')
   @RequirePermission(
-    ['materials', 'inventory', 'work-orders', 'app:inventory', 'app:my-orders'],
+    ['materials', 'inventory', 'work-orders', 'app:inventory', 'app:materials', 'app:my-orders'],
     'view',
   )
   listMaterialOptions(@Query() query: TenantQueryDto, @CurrentUser() user: AuthUser) {
@@ -80,13 +80,13 @@ export class InventoryController {
   }
 
   @Post('materials')
-  @RequirePermission(['materials', 'app:inventory'], 'edit')
+  @RequirePermission(['materials', 'app:inventory', 'app:materials'], 'edit')
   createMaterial(@Body() dto: CreateMaterialDto, @CurrentUser() user: AuthUser) {
     return this.inventoryService.createMaterial(dto, user);
   }
 
   @Patch('materials/:id')
-  @RequirePermission(['materials', 'app:inventory'], 'edit')
+  @RequirePermission(['materials', 'app:inventory', 'app:materials'], 'edit')
   updateMaterial(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMaterialDto,
@@ -100,7 +100,7 @@ export class InventoryController {
    * 逻辑与 PATCH /materials/:id 完全相同。
    */
   @Post('materials/:id/update')
-  @RequirePermission(['materials', 'app:inventory'], 'edit')
+  @RequirePermission(['materials', 'app:inventory', 'app:materials'], 'edit')
   updateMaterialViaPost(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMaterialDto,
@@ -113,7 +113,7 @@ export class InventoryController {
   // 读：新建 SKU 的下拉要用，员工端也要（所以带 app:inventory）
   @Get('material-categories')
   @RequirePermission(
-    ['materials', 'inventory', 'work-orders', 'app:inventory'],
+    ['materials', 'inventory', 'work-orders', 'app:inventory', 'app:materials'],
     'view',
   )
   listMaterialCategories(@Query() query: TenantQueryDto, @CurrentUser() user: AuthUser) {

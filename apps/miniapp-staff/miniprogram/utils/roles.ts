@@ -22,7 +22,7 @@ export const TAB_PAGE: Record<TabKey, string> = {
   pool: 'app:pool',
   dispatch: 'app:dispatch',
   mine: 'app:my-orders',
-  materials: 'app:inventory',
+  materials: 'app:inventory', // 「材料 SKU 库」那一格在 canSeeTab 里一并判
   approvals: 'app:approve-manager', // 采购那一步在 canSeeTab 里一并判
   me: '',
 };
@@ -40,6 +40,11 @@ export function canSeeTab(key: TabKey, access: TabAccess): boolean {
   if (!pages) return true;
   if (key === 'approvals') {
     return !!(pages['app:approve-manager'] || pages['app:approve-purchaser']);
+  }
+  // 「材料与库存」这一页里有两格：库存（app:inventory）和材料 SKU 库（app:materials）。
+  // 只勾了后者的角色也得进得来，否则那一格永远够不着
+  if (key === 'materials') {
+    return !!(pages['app:inventory'] || pages['app:materials']);
   }
   return !!pages[TAB_PAGE[key]];
 }

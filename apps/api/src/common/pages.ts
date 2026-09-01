@@ -38,7 +38,8 @@ export const STAFF_APP_PAGE_KEYS = [
   'app:dispatch', // 派单台（派单）
   'app:my-orders', // 在手工单 / 我的报修
   'app:repair-create', // 报修
-  'app:inventory', // 材料与库存
+  'app:inventory', // 材料与库存（现场查存量、看采购进度）
+  'app:materials', // 材料 SKU 库（看/改材料档案，单独一格）
   'app:approve-manager', // 采购审批（经理这一步）
   'app:approve-purchaser', // 采购审批（采购这一步）
   'app:messages', // 消息中心
@@ -85,6 +86,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     appPages: {
       'app:dispatch': 'e',
       'app:inventory': 'e',
+      'app:materials': 'e',
       'app:repair-create': 'v',
       'app:messages': 'v',
     },
@@ -104,6 +106,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     appPages: {
       'app:dispatch': 'e',
       'app:inventory': 'e',
+      'app:materials': 'e',
       'app:approve-manager': 'e',
       'app:repair-create': 'v',
       'app:messages': 'v',
@@ -128,6 +131,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '采购审批（采购这一步）+ 材料库存',
     appPages: {
       'app:inventory': 'e',
+      'app:materials': 'e',
       'app:approve-purchaser': 'e',
       'app:messages': 'v',
     },

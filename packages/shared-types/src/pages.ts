@@ -113,6 +113,16 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
     editHint: '补 SKU 资料和照片、发起采购申请',
   },
   {
+    // 和「材料与库存」分成两格：那一格是「现场查还有几个」，人人都该有；
+    // 这一格是「改材料档案」—— 改错名称型号会影响全公司的编码和统计，
+    // 所以谁能进材料 SKU 库要单独勾（2026-09-01 要求）
+    key: 'app:materials',
+    label: '材料 SKU 库',
+    hint: '看全部材料档案：编码、型号、别名、参考成本',
+    editLabel: '改 SKU',
+    editHint: '改名称型号、补照片和参数、停用',
+  },
+  {
     key: 'app:approve-manager',
     label: '采购审批（经理这一步）',
     hint: '看待经理审批的采购单',
@@ -186,6 +196,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     appPages: {
       'app:dispatch': 'e',
       'app:inventory': 'e',
+      'app:materials': 'e',
       'app:repair-create': 'v',
       'app:messages': 'v',
     },
@@ -205,6 +216,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     appPages: {
       'app:dispatch': 'e',
       'app:inventory': 'e',
+      'app:materials': 'e',
       'app:approve-manager': 'e',
       'app:repair-create': 'v',
       'app:messages': 'v',

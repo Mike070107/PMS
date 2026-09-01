@@ -1399,7 +1399,9 @@ export default function InventoryPage() {
                       children: (
                         <>
                           <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 12 }}>
-                            {canEdit && <Button size="small" icon={<PlusOutlined />} onClick={openCreateMaterial}>新增材料</Button>}
+                            {/* 这一档叫「材料SKU」，按钮就得叫「新增 SKU」——
+                                同一件事在标题和按钮上两个叫法，人会以为是两个东西 */}
+                            {canEdit && <Button size="small" icon={<PlusOutlined />} onClick={openCreateMaterial}>新增 SKU</Button>}
                           </Space>
                           <Table
                             rowKey="id"
@@ -2254,7 +2256,7 @@ function CatalogModal({ kind, form, warehouseLocationOptions, materialCategoryOp
       .catch(() => setOffices([]));
   }, [kind]);
   const title = kind === 'material'
-    ? editingMaterial ? `编辑材料SKU ${editingMaterial.code}` : '新增材料SKU'
+    ? editingMaterial ? `编辑 SKU：${editingMaterial.code}` : '新增 SKU'
     : kind === 'warehouse'
       ? editingWarehouse ? `编辑仓库：${editingWarehouse.name}` : '新增仓库'
       : editingSupplier ? `编辑供应商：${editingSupplier.name}` : '新增供应商';
