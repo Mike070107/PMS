@@ -1,3 +1,5 @@
+import { isApiEnvelope } from './envelope';
+
 export interface RequestConfig {
   baseURL: string;
   getToken: () => string | undefined;
@@ -47,14 +49,12 @@ function buildUrl(
   return url;
 }
 
-/** 判断响应是否是 `{ code, data, message }` 包装 */
+/** 是不是 `{ code, data, message }` 包装 —— 判断口径见 envelope.ts */
 function unwrap(raw: any) {
-  if (raw && typeof raw === 'object' && 'code' in raw) {
-    const r = raw as { code: number; data?: any; message?: string };
-    if (r.code === 0) return r.data;
-    throw new ApiError(r.code, r.message || '请求失败');
-  }
-  return raw;
+  if (!isApiEnvelope(raw)) return raw;
+  const r = raw as { code: number; data?: any; message?: string };
+  if (r.code === 0) return r.data;
+  throw new ApiError(r.code, r.message || '请求失败');
 }
 
 /** 从后端错误响应里取真实提示（Nest 的 message 可能是字符串或字符串数组） */
