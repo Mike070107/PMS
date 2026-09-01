@@ -43,7 +43,15 @@ interface WorkOrderRow {
   orderNo: string;
   status: WorkOrderStatus;
   assigneeId?: number | null;
+  /**
+   * 工种的**中文名**，由 /work-orders 一并给出。
+   * 别拿 skill 直接显示 —— 那是编码（menjing、water），而且租户自建的类型
+   * 前端根本没有对照表，只能显示成一串拼音（2026-09-01 用户在工作台看到的就是这个）。
+   */
+  repairTypeLabel?: string | null;
   skill?: string | null;
+  /** 维修工姓名，同样由接口给 —— 前端没有 id→姓名 的表，硬拼只能拼出「员工 #2」 */
+  assigneeName?: string | null;
   createdAt?: string;
 }
 
@@ -361,17 +369,18 @@ export default function DashboardPage() {
             },
             {
               title: '工种',
-              dataIndex: 'skill',
+              dataIndex: 'repairTypeLabel',
               width: 130,
-              render: (value?: string) => value || <Text type="secondary">待判断</Text>,
+              // 接口给的中文名优先；老数据没有 label 时退回编码，也比空着强
+              render: (value: string | null | undefined, row: WorkOrderRow) =>
+                value || row.skill || <Text type="secondary">待判断</Text>,
             },
             {
               title: '维修人员',
-              dataIndex: 'assigneeId',
+              dataIndex: 'assigneeName',
               width: 130,
-              render: (value?: number | null) => value
-                ? `员工 #${value}`
-                : <Text type="secondary">尚未派单</Text>,
+              render: (value: string | null | undefined, row: WorkOrderRow) =>
+                value || (row.assigneeId ? `#${row.assigneeId}` : <Text type="secondary">尚未派单</Text>),
             },
             {
               title: '提交时间',
