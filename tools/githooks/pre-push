@@ -1,0 +1,96 @@
+#!/bin/sh
+# PMS pre-push：把「main 上是坏的」挡在推送之前。
+#
+# 2026-09-01 的事故：一个会话把 request.test.ts 提交进 main，而 api-client 的
+# tsconfig.build.json 当时没排除测试文件 —— main 上的共享包直接编译不过，
+# 那十几分钟里谁都发不了小程序包，是另一个会话打包时才撞上的。
+# 多会话并行的代价就在这里：谁把半成品推进 main，账由下一个发版的人付。
+#
+# 只跑和本次推送内容相关的那几项（改哪块跑哪块），常见的小改动几十秒。
+# 真要紧急推送：git push --no-verify（自己负责）。
+#
+# 装法（每台机器一次，同一个仓库的所有 worktree 共享）：
+#   git config core.hooksPath tools/githooks
+
+ZERO=0000000000000000000000000000000000000000
+files=""
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # 删远端分支：没有内容要校验
+  if [ "$local_sha" = "$ZERO" ]; then continue; fi
+
+  if [ "$remote_sha" = "$ZERO" ]; then
+    # 新分支：和 main 的共同祖先比，只校验这条分支自己带来的改动
+    base=$(git merge-base origin/main "$local_sha" 2>/dev/null || true)
+  else
+    base="$remote_sha"
+  fi
+
+  if [ -z "$base" ]; then
+    # 比不出基准（首次推送、没有 origin/main）：宁可全跑一遍
+    files="ALL"
+    break
+  fi
+  files="$files
+$(git diff --name-only "$base" "$local_sha" 2>/dev/null || true)"
+done
+
+# 没有 ref 要推（一切都是最新的）
+if [ -z "$files" ]; then exit 0; fi
+
+hit() {
+  if [ "$files" = "ALL" ]; then return 0; fi
+  echo "$files" | grep -q "$1"
+}
+
+need_libs=0; need_api=0; need_web=0; need_owner=0; need_staff=0
+# 共享包一改，三个消费方都可能被带崩：产物构建必跑，两个小程序也跟着类型检查
+if hit '^packages/'; then need_libs=1; need_owner=1; need_staff=1; fi
+if hit '^apps/api/'; then need_api=1; fi
+if hit '^apps/admin-web/'; then need_web=1; fi
+if hit '^apps/miniapp-owner/'; then need_owner=1; fi
+if hit '^apps/miniapp-staff/'; then need_staff=1; fi
+
+if [ $((need_libs + need_api + need_web + need_owner + need_staff)) -eq 0 ]; then
+  echo "pre-push: 本次推送只动了文档/脚本，跳过校验"
+  exit 0
+fi
+
+fail() {
+  echo ""
+  echo "x  pre-push 校验没过：$1"
+  echo "   修好再推。确定要带着这个问题推（比如推到自己的分支上继续调）："
+  echo "   git push --no-verify"
+  exit 1
+}
+
+run() {
+  echo "==> $1"
+  shift
+  if ! "$@"; then fail "$1"; fi
+}
+
+# 共享包的产物构建：今天真正咬人的那一项，放最前面，几秒就出结果
+if [ $need_libs -eq 1 ]; then
+  echo "==> 共享包构建（packages/* → miniprogram_dist）"
+  node tools/build-miniapp-libs.mjs >/dev/null || fail "node tools/build-miniapp-libs.mjs（共享包编译不过，两个小程序都会发不了包）"
+fi
+if [ $need_api -eq 1 ]; then
+  echo "==> API typecheck"
+  pnpm --filter @pms/api exec tsc --noEmit || fail "API typecheck"
+fi
+if [ $need_web -eq 1 ]; then
+  echo "==> 管理后台 typecheck"
+  pnpm --filter @pms/admin-web typecheck || fail "管理后台 typecheck"
+fi
+if [ $need_owner -eq 1 ]; then
+  echo "==> 业主端小程序 typecheck"
+  pnpm --filter @pms/miniapp-owner exec tsc --noEmit || fail "业主端小程序 typecheck"
+fi
+if [ $need_staff -eq 1 ]; then
+  echo "==> 员工端小程序 typecheck"
+  pnpm --filter @pms/miniapp-staff exec tsc --noEmit || fail "员工端小程序 typecheck"
+fi
+
+echo "pre-push: 通过"
+exit 0

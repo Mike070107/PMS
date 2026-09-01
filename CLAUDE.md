@@ -34,6 +34,14 @@
 
 - 共用 checkout 时**只 `git add` 明确路径**，禁止 `git add -A` / `git add .`；
   提交前必看 `git diff --cached --stat`，确认没有别的会话的文件。
+- **推送前的校验闸门（每台机器配一次，所有 worktree 共享）**：
+  ```powershell
+  git config core.hooksPath tools/githooks
+  ```
+  `tools/githooks/pre-push` 按本次推送改了哪块决定跑哪几项（共享包构建 / 各端 typecheck），
+  不过就拒绝推送。它挡的是 2026-09-01 那类事故：一个会话把编译不过的东西推进 main，
+  十几分钟后另一个会话打包才撞上，谁都发不了小程序包。
+  紧急情况用 `git push --no-verify` 跳过，自己负责。
 - 推送 ≠ 上线。三个目标各自独立：git / 线上 API+后台 / 小程序包。
   部署完必须 `node deploy/mark-deployed.mjs <目标>` 打标记，
   推送前先 `node deploy/mark-deployed.mjs status` 看哪些提交还没上线。
