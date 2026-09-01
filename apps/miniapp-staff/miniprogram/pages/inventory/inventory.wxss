@@ -143,11 +143,15 @@
 .photo-strip { display: flex; flex-wrap: wrap; gap: 16rpx; margin-bottom: 24rpx; }
 .photo-strip__item { width: 160rpx; height: 160rpx; border-radius: var(--radius-sm); }
 
-/* 列表缩略图右下角的张数角标 */
+/* 列表缩略图：图 + 右下角张数角标包在同一个框里。
+   角标相对这个框定位，不再靠 left/margin 硬凑像素 —— 那种写法换个图片尺寸就歪。
+   （app.wxss 的 .sku__photo 只给宽高圆角，这里补上定位和内部图片的铺满） */
+.sku__photo--box { position: relative; overflow: hidden; }
+.sku__photo-img { width: 100%; height: 100%; display: block; }
 .sku__photo-count {
   position: absolute;
-  left: 132rpx;
-  margin-top: 132rpx;
+  right: 8rpx;
+  bottom: 8rpx;
   padding: 0 12rpx;
   border-radius: 999rpx;
   background: rgba(0, 0, 0, 0.55);
@@ -155,7 +159,6 @@
   font-size: var(--font-xs);
   line-height: 36rpx;
 }
-.sku-card .sku { position: relative; }
 
 /* 「仅显示有货」挡住东西时的提示条：点一下就放开。
    不写成一句灰字 —— 它是可点的，看着必须像可点的 */

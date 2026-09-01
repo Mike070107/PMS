@@ -92,12 +92,13 @@
 
         <view class="field">
           <view class="label">类别</view>
+          <!-- 类别在后台「库存与采购 → 基础资料 → 材料类别」维护。
+               注释写在 wx:if 之前：wx:if / wx:else 中间不放任何东西 -->
           <picker wx:if="{{categories.length}}" mode="selector" range="{{categories}}" bindchange="onCreateCategory">
             <view class="picker {{categoryIndex < 0 ? 'placeholder' : ''}}">
               {{categoryIndex < 0 ? '选择类别（决定材料编码前缀）' : createForm.category}}
             </view>
           </picker>
-          <!-- 类别在后台「库存与采购 → 基础资料 → 材料类别」维护 -->
           <view wx:else class="field-error">还没有可选的材料类别，请办公室在管理后台「库存与采购 → 基础资料 → 材料类别」里先添加</view>
           <view class="field-error" wx:if="{{createErrors.category}}">{{createErrors.category}}</view>
         </view>

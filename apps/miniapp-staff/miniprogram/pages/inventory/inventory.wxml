@@ -106,16 +106,23 @@
         <!-- 上半段：图片 / 名称 / 数量 三列，和工单里「从库存选」逐列对齐，
              编辑按钮不放进这三列 —— 试过，它会把名称挤到折行、数量和它挨在一起分不清 -->
         <view class="sku">
-          <image
-            wx:if="{{item.photoUrl}}"
-            class="sku__photo"
-            src="{{item.photoUrl}}"
-            mode="aspectFill"
-            data-url="{{item.photoUrl}}"
-            data-urls="{{item.photoUrls}}"
-            catchtap="onPreviewPhoto"
-          />
-          <text wx:if="{{item.photoUrls.length > 1}}" class="sku__photo-count">{{item.photoUrls.length}}</text>
+          <!--
+            图和张数角标必须包在同一个 view 里：wx:else 只认**紧挨着**的那个兄弟节点，
+            中间插进来一个带 wx:if 的角标，wx:else 就改去配对角标了 ——
+            只有 1 张图时角标条件为假，「无图」灰块反而被渲染出来，一行冒出两个框
+            （2026-09-01 反馈）。角标也顺势改成相对这个框定位，不再靠像素硬凑。
+          -->
+          <view wx:if="{{item.photoUrl}}" class="sku__photo sku__photo--box">
+            <image
+              class="sku__photo-img"
+              src="{{item.photoUrl}}"
+              mode="aspectFill"
+              data-url="{{item.photoUrl}}"
+              data-urls="{{item.photoUrls}}"
+              catchtap="onPreviewPhoto"
+            />
+            <text wx:if="{{item.photoUrls.length > 1}}" class="sku__photo-count">{{item.photoUrls.length}}</text>
+          </view>
           <view wx:else class="sku__photo sku__photo--empty">无图</view>
 
           <view class="sku__body">
@@ -261,12 +268,13 @@
 
     <view class="field">
       <view class="label">类别</view>
+      <!-- 类别在后台「库存与采购 → 基础资料 → 材料类别」维护；拿不到就说清楚去哪儿加。
+           注释写在 wx:if 之前：wx:if / wx:else 之间不放任何东西，免得下次又被插断 -->
       <picker wx:if="{{formCategories.length}}" mode="selector" range="{{formCategories}}" bindchange="onFormCategory">
         <view class="picker {{formCategoryIndex < 0 ? 'placeholder' : ''}}">
           {{formCategoryIndex < 0 ? '选择类别（决定编码前缀）' : form.category}}
         </view>
       </picker>
-      <!-- 类别在后台「库存与采购 → 基础资料 → 材料类别」维护；这里拿不到就说清楚去哪儿加 -->
       <view wx:else class="field-error">还没有可选的材料类别，请办公室在管理后台「库存与采购 → 基础资料 → 材料类别」里先添加</view>
     </view>
 
