@@ -1440,6 +1440,9 @@ body.pms-col-resizing * {
 }
 .mo-stage__inner {
   transform-origin: top left;
+  /* 纸比容器窄时居中；宽了（缩放拉大 / 窗口窄）auto 自动变 0，照常从左边开始横向滚动。
+     这个盒子的 width/height 是按缩放后的视觉尺寸算好的，所以居中的是「看到的那张纸」。 */
+  margin-inline: auto;
 }
 .mo-stage .mo-sheet {
   box-shadow: 0 2px 12px rgba(15, 44, 40, 0.16);
