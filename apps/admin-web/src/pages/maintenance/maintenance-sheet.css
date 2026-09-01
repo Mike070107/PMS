@@ -221,15 +221,19 @@
 }
 
 /* ---------- 值 ----------
- * 填上去的内容一律楷体加粗：纸上这些字是人手写的，和预印的宋体表格文字混在一起
- * 分不清哪些是表单、哪些是填的。楷体在 2.8mm 上还认得清，行楷只作缺字回退。 */
+ * 填上去的内容用**行楷**：纸上这些字是人一笔一笔写的，用印刷体（哪怕是楷体）
+ * 一眼就看得出是打印的。行楷带连笔、略斜，最接近钢笔字，而且比楷体窄一点，
+ * 同样的格子能多塞一两个字。
+ *
+ * 回退链是按「装了什么」排的：行楷/舒体随 Office 装，楷体是 Windows 自带 ——
+ * 打印那台机器万一没有行楷，退到舒体、再退到楷体，不会掉进默认宋体（那就穿帮了）。 */
 .mo-in,
 .mo-txt {
-  font-family: 'STKaiti', '华文楷体', 'KaiTi', '楷体', 'Kaiti SC', 'STXingkai', '华文行楷',
-    cursive;
+  font-family: 'STXingkai', '华文行楷', 'Xingkai SC', 'FZShuTi', '方正舒体', 'STKaiti',
+    '华文楷体', 'KaiTi', '楷体', cursive;
   font-weight: 700;
-  /* 在不出格的前提下尽量大：格子最矮 7.15mm，3.2mm 的楷体还留得下上下气口 */
-  font-size: 3.2mm;
+  /* 在不出格的前提下尽量大：格子最矮 7.15mm；行楷比楷体窄，3.4mm 仍留得下上下气口 */
+  font-size: 3.4mm;
   line-height: 1.15;
   color: #000;
   width: 100%;
@@ -268,7 +272,8 @@
 /* 合计、月日这些也是填上去的数，跟值同一套脸 */
 .mo-total__v,
 .mo-md__n {
-  font-family: 'STKaiti', '华文楷体', 'KaiTi', '楷体', 'Kaiti SC', cursive;
+  font-family: 'STXingkai', '华文行楷', 'Xingkai SC', 'FZShuTi', '方正舒体', 'STKaiti',
+    '华文楷体', 'KaiTi', '楷体', cursive;
   font-weight: 700;
 }
 /* 规格 / 单位这两列只有 11mm 宽，「LED 5W」这种型号按正文字号会被裁掉尾巴 */
