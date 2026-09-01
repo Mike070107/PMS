@@ -430,8 +430,12 @@ export class InventoryService {
     const all = await this.warehouseRepo.find({ where: { tenantId }, select: ['id', 'officeId'] });
     // 角色额外授权的仓一直可见：总仓不挂管理处，切了管理处视角也不该把它藏掉
     const extra = new Set(await this.accessService.extraWarehouseIdsOfUser(tenantId, user.id));
-    // 本人「本体」的数据范围（access 里的 scopeAll 在切了视角之后已被置 false，问不出来）
+    // 本人「本体」的数据范围。access.scopeAll 在切了视角之后已被置 false，问不出来；
+    // 而 userOfficeIds 只看 user_roles —— 管理员往往一个业务角色都没绑，
+    // 单靠它会把管理员判成「受限」（2026-09-01 线上实测：切管理处后总仓又没了）。
+    // 所以平台超管 / 企业超管直接算全公司。
     const mine = await this.accessService.userOfficeIds(tenantId, user.id);
+    const baseScopeAll = !!access?.isPlatformAdmin || !!access?.isTenantAdmin || mine.all;
     if (officeId) {
       return all
         .filter(
@@ -439,11 +443,11 @@ export class InventoryService {
             w.officeId === officeId ||
             extra.has(w.id) ||
             // 公司级仓（不挂管理处）：本体是全公司范围的人切了视角也还看得见
-            (mine.all && !w.officeId),
+            (baseScopeAll && !w.officeId),
         )
         .map((w) => w.id);
     }
-    if (mine.all) return null;
+    if (baseScopeAll) return null;
     const offices = new Set(mine.officeIds);
     return all
       .filter((w) => (w.officeId && offices.has(w.officeId)) || extra.has(w.id))
