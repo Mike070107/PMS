@@ -105,6 +105,8 @@ interface WorkOrderRow {
   status: WorkOrderStatus;
   communityId: number;
   assigneeId: number | null;
+  /** 维修工姓名，由接口给（本页的 staffById 只是兜底） */
+  assigneeName?: string | null;
   repairType?: string | null;
   summaryAddress?: string | null;
   summaryContent?: string | null;
@@ -238,7 +240,8 @@ const statusMeta: Record<WorkOrderStatus, { label: string; color: string }> = {
   waiting_material: { label: '等待材料', color: 'orange' },
   done_pending_review: { label: '待业主验收', color: 'purple' },
   completed: { label: '已完成', color: 'success' },
-  cancelled: { label: '已撤单', color: 'error' },
+  // 撤单是「不用办了」，不是出了错。红色会让人以为这单出了问题、还得去处理
+  cancelled: { label: '已撤单', color: 'default' },
 };
 
 /** 距要求完成截止不足这个数就标红（含已超时） */
@@ -306,11 +309,36 @@ const FILTER_TABS: Array<{ label: string; value: 'all' | WorkOrderStatus }> = [
   { label: '已完成', value: WorkOrderStatus.COMPLETED },
 ];
 
-/** 从业主提交那一刻算起的自然日跨天数，和两个小程序同一套口径 */
-function stayDaysOf(row: { createdAt?: string; completedAt?: string | null }) {
+/**
+ * 从业主提交那一刻算起的自然日跨天数，和两个小程序同一套口径。
+ *
+ * 已撤单的单**不写 completedAt**（撤单不算完工），拿它当「还没结束」算的话，
+ * 撤了三个月的单会一直涨到「90 天」还标着红 —— 那是在催一件早就不用办的事。
+ * 所以撤单按最后一次更新时间收口（撤单就是那一次更新）。
+ */
+function stayDaysOf(row: {
+  createdAt?: string;
+  completedAt?: string | null;
+  updatedAt?: string | null;
+  status?: WorkOrderStatus;
+}) {
   if (!row.createdAt) return 0;
-  const end = row.completedAt ? new Date(row.completedAt) : new Date();
+  const closedAt =
+    row.completedAt || (row.status === WorkOrderStatus.CANCELLED ? row.updatedAt : null);
+  const end = closedAt ? new Date(closedAt) : new Date();
   return stayDays(row.createdAt, Number.isNaN(end.getTime()) ? new Date() : end);
+}
+
+/**
+ * 「已停留」那枚标签的颜色。**已经结束的单一律灰**（撤单、完成）——
+ * 单子都结束了还标红标橙，等于在催一件不用办的事；一屏红色，真正压着的那几单就淹了。
+ */
+function stayTagColor(row: { status?: WorkOrderStatus }, days: number): string {
+  if (row.status === WorkOrderStatus.CANCELLED || row.status === WorkOrderStatus.COMPLETED) {
+    return 'default';
+  }
+  const tone = stayTone(days);
+  return tone === 'danger' ? 'error' : tone === 'warn' ? 'warning' : 'default';
 }
 
 /**
@@ -490,17 +518,14 @@ export default function WorkOrdersPage() {
       sorter: (a, b) => stayDaysOf(a) - stayDaysOf(b),
       render: (_, r) => {
         const days = stayDaysOf(r);
-        const tone = stayTone(days);
-        return (
-          <Tag color={tone === 'danger' ? 'error' : tone === 'warn' ? 'warning' : 'default'}>
-            {days} 天
-          </Tag>
-        );
+        return <Tag color={stayTagColor(r, days)}>{days} 天</Tag>;
       },
     },
     {
       title: '维修工', key: 'assignee', dataIndex: 'assigneeId', width: 100,
-      render: (id: number | null) => id ? (staffById.get(id)?.name || `#${id}`) : <Text type="secondary">未派单</Text>,
+      // 姓名优先用接口给的（它按 tenant 查过了）；staffById 是本页自己拉的员工表，作兜底
+      render: (id: number | null, r) =>
+        id ? (r.assigneeName || staffById.get(id)?.name || `#${id}`) : <Text type="secondary">未派单</Text>,
     },
     {
       title: '报修时间', key: 'createdAt', dataIndex: 'createdAt', width: 196,
@@ -1937,14 +1962,17 @@ function WorkOrderDetailDrawer({
                   // 从业主提交那一刻算起，按自然日跨天数，当天 0 天；
                   // 与有没有接单无关 —— 业主感知到的等待就是从他提交开始的
                   children: (() => {
-                    const end = detail.workOrder.completedAt
-                      ? new Date(detail.workOrder.completedAt)
-                      : new Date();
-                    const days = stayDays(detail.workOrder.createdAt, end);
-                    const tone = stayTone(days);
+                    const wo = detail.workOrder;
+                    const days = stayDaysOf(wo);
+                    const closedNote =
+                      wo.status === WorkOrderStatus.CANCELLED
+                        ? '（已撤单）'
+                        : wo.completedAt
+                          ? '（已完结）'
+                          : '';
                     return (
-                      <Tag color={tone === 'danger' ? 'red' : tone === 'warn' ? 'orange' : 'default'}>
-                        {days} 天{detail.workOrder.completedAt ? '（已完结）' : ''}
+                      <Tag color={stayTagColor(wo, days)}>
+                        {days} 天{closedNote}
                       </Tag>
                     );
                   })(),
