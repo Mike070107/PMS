@@ -289,9 +289,27 @@ Page({
       found.push({ key: 'desc', label: '故障描述', value: description });
     }
     if (typeLabel) found.push({ key: 'type', label: '报修类型', value: typeLabel });
-    // 联系人：规则没抽到时用模型的。模型被要求「没说人名就留空、绝不拿地址数字充数」
-    const name = contactName || (detected?.ai?.contactName || '').trim();
-    if (name) found.push({ key: 'name', label: '联系人', value: name });
+    /**
+     * 联系人：规则没抽到就用模型的（模型被要求「没说人名就留空、绝不拿地址数字充数」）。
+     *
+     * 两边都没有、但**报了电话**时，用门牌当标识（「278号503室」）而不是留空，
+     * 更不能拿登录人的名字去凑 —— 那会变成「叶双 / 别人的号码」这种张冠李戴
+     * （2026-09-01 用户反馈）。服务端 resolveContact 是同一条口径。
+     */
+    const aiName = (detected?.ai?.contactName || '').trim();
+    const roomLabel = detected?.matched
+      ? [detected.buildingText, detected.reporterRoomNo ? `${detected.reporterRoomNo}室` : '']
+          .filter(Boolean)
+          .join('')
+      : '';
+    const name = contactName || aiName || (contactPhone && roomLabel ? roomLabel : '');
+    if (name) {
+      found.push({
+        key: 'name',
+        label: '联系人',
+        value: name === roomLabel ? `${name}（按房号）` : name,
+      });
+    }
     if (contactPhone) found.push({ key: 'phone', label: '联系电话', value: contactPhone });
     this.setData({
       found,

@@ -41,6 +41,7 @@ import {
   WorkOrderStatus,
 } from '../../common/enums';
 import { RepairTextAiService } from '../ai/repair-text.ai';
+import { isPublicAreaText } from './repair-public-area.util';
 import { formatAddressLine } from '../../common/address-line.util';
 import { detectUrgency } from '../../common/repair-urgency.util';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
@@ -2192,24 +2193,48 @@ export class RepairsService implements OnModuleInit {
    * 再回落到住户会出现「联系人写着住户的名字、身份标着保安」这种自相矛盾的单子。
    */
   private async resolveContact(
-    input: { contactName?: string | null; contactPhone?: string | null; houseId?: number | null },
+    input: {
+      contactName?: string | null;
+      contactPhone?: string | null;
+      houseId?: number | null;
+      /** 只留了电话没留姓名时，拿它里面的门牌当联系人标识 */
+      addressText?: string | null;
+    },
     tenantId: number,
     submittedBy: number | null,
     opts: { submitterIsContact: boolean; allowHouseOwnerFallback: boolean },
   ): Promise<{ name: string | null; phone: string | null }> {
-    let name = input.contactName?.trim() || null;
-    let phone = input.contactPhone?.trim() || null;
+    const name = input.contactName?.trim() || null;
+    const phone = input.contactPhone?.trim() || null;
     if (name && phone) return { name, phone };
 
+    /**
+     * **姓名和电话必须成对来自同一个人**（2026-09-01 用户反馈）。
+     *
+     * 原来两个字段各自独立兜底：`name = name || 提交人.name`、`phone = phone || 提交人.phone`。
+     * 于是报修人说了别人的电话、没说人名时，落库的是「叶双 / 18201728748」——
+     * 名字是登录的那个人，号码是另一个人的。维修工照着打过去会喊错人，
+     * 办公室看单也以为是叶双报的。
+     *
+     * 现在：只要有一半是报修人明确给的，就**不拿另一个人来凑**。
+     * 缺的那一半用「门牌」当标识（房号是这一单唯一确定的身份线索），
+     * 连门牌都没有才留空 —— 空着至少不会张冠李戴。
+     */
+    if (name || phone) {
+      return { name: name || this.contactLabelFromAddress(input) || null, phone };
+    }
+
+    // 两个都没有：整对取同一个人，先提交人后房主，不混着拿
     if (submittedBy && opts.submitterIsContact) {
       const submitter = await this.dataSource.getRepository(User).findOne({
         where: { id: submittedBy },
         select: ['id', 'name', 'phone', 'wxNickname'],
       });
-      name = name || submitter?.name || submitter?.wxNickname || null;
-      phone = phone || submitter?.phone || null;
+      const submitterName = submitter?.name || submitter?.wxNickname || null;
+      if (submitterName || submitter?.phone) {
+        return { name: submitterName, phone: submitter?.phone || null };
+      }
     }
-    if (name && phone) return { name, phone };
 
     if (input.houseId && opts.allowHouseOwnerFallback) {
       const owner = await this.dataSource.getRepository(User).findOne({
@@ -2221,10 +2246,24 @@ export class RepairsService implements OnModuleInit {
         },
         select: ['id', 'name', 'phone'],
       });
-      name = name || owner?.name || null;
-      phone = phone || owner?.phone || null;
+      if (owner?.name || owner?.phone) {
+        return { name: owner.name || null, phone: owner.phone || null };
+      }
     }
-    return { name, phone };
+    return { name: null, phone: null };
+  }
+
+  /**
+   * 只留了电话、没留姓名时拿来当联系人的标识：「278号503室」。
+   *
+   * 比空着强 —— 维修工一眼知道是哪一户报的；也比硬安一个登录人的名字强 ——
+   * 那是张冠李戴。addressText 里已经带了小区名，这里只取门牌那一截。
+   */
+  private contactLabelFromAddress(input: { addressText?: string | null }): string {
+    const text = (input.addressText || '').trim();
+    if (!text) return '';
+    const matched = /(\d+弄)?\s*\d+号\s*\d*室?/.exec(text);
+    return matched ? matched[0].replace(/\s+/g, '') : '';
   }
 
   /**
@@ -3244,8 +3283,38 @@ export class RepairsService implements OnModuleInit {
         result = retry;
       }
     }
+    /**
+     * 公区报修：报修人会连着**自己的门牌**一起说 ——「5511弄278号503报门口机没有反应」。
+     * 503 是他住哪儿，不是坏在哪儿；门口机在单元门口。
+     *
+     * 不降级的话这单会挂到 503 室头上：统计上算成这一户的户内维修，维修工按 503
+     * 敲门也找错地方（该去的是 278 号楼下）。所以撞到房号也要退回楼栋级 +「公共区域」，
+     * 而房号不丢 —— 转成 reporterRoomNo 给端上当联系人标识（那户人报的、他的电话）。
+     *
+     * 谁来判：大模型优先（它分得清「我家门口的灯」不是公区）；没开 AI 时用词表兜底，
+     * 词表只认明确的公区设施，宁可漏判也不把户内单错判成公区（见 repair-public-area.util）。
+     */
+    const publicArea = ai ? !!ai.publicArea : isPublicAreaText(dto.text);
+    const reporterRoomNo = result.matched && result.level === 'house' ? result.roomNo ?? null : null;
+    if (publicArea && result.matched && result.level === 'house') {
+      result = {
+        ...result,
+        level: 'building' as const,
+        houseId: null,
+        roomNo: null,
+        // 把地址里的室号摘掉，剩下的就是「小区+楼栋」：永北5511弄278号503室 → 永北5511弄278号
+        addressText: `${(result.addressText || '').replace(/\d+室$/, '')} 公共区域`.trim(),
+      };
+    }
     return {
       ...result,
+      /** 这单坏在公共区域（不是某一户里）—— 端上据此提示，也别再追问房号 */
+      publicArea,
+      /**
+       * 报修人自己的房号。公区单降级后房号从地址里拿掉了，但它仍然有用：
+       * 端上拿它当联系人标识（「278号503室」），比挂一个对不上号的默认联系人强。
+       */
+      reporterRoomNo,
       /** 模型整理出来的那几样，端上按需覆盖对应输入框；没开 AI 时不返回这个字段 */
       ai: ai
         ? {

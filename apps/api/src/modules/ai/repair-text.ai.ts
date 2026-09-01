@@ -25,6 +25,14 @@ export interface RepairTextAiResult {
   phone?: string;
   /** 是不是催得很急（「急急急」「等着用」这类） */
   urgent?: boolean;
+  /**
+   * 坏的东西在**公共区域**（门口机、单元门、楼道、电梯…）还是户内。
+   *
+   * 报修人会连着自己的门牌一起说：「5511弄278号503报门口机没有反应」——
+   * 503 是他住哪儿，不是坏在哪儿。判成公区后服务端会把地址落到楼栋级，
+   * 房号转去当联系人标识（见 repairs.service 的 parseRepairAddress）。
+   */
+  publicArea?: boolean;
 }
 
 const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很口语的话，可能带停顿、重复、语气词。
@@ -36,16 +44,26 @@ const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很
 - contactName: 联系人姓名。只有明确说了人名才填（张先生、李阿姨、王师傅）。没说就给空字符串，绝对不要把地址或数字当成姓名。
 - phone: 手机号，11位数字。没有就给空字符串。
 - urgent: 说话人是否表达了很急（急急急、十万火急、马上、等着用）。布尔值。
+- publicArea: 坏的东西在公共区域还是在住户家里。布尔值。
+  判断的是"**坏的东西**在哪"，不是"说话人住哪"。报修人常常连自己的门牌一起说，
+  那个门牌只是他的住址：说"278号503报门口机没反应"，门口机在单元门口，publicArea 就是 true。
+  公共区域的东西：门口机/可视对讲/单元门/门禁/道闸、电梯、楼道、楼道灯、路灯、监控、
+  水泵房、配电箱、垃圾房、车库、外墙、绿化、井盖。
+  住户家里的东西：家里的灯、马桶、水管、热水器、入户门锁、阳台、厨房卫生间里的东西。
+  说了"我家""家里"的一律按住户家里算。
 
 例子：
 输入：5511弄，236号，502报修电子门里面，旋钮打滑，居民出不来。急急急，13818909545
-输出：{"addressText":"5511弄，236号，502","description":"电子门旋钮打滑，居民出不去","contactName":"","phone":"13818909545","urgent":true}
+输出：{"addressText":"5511弄，236号，502","description":"电子门旋钮打滑，居民出不去","contactName":"","phone":"13818909545","urgent":true,"publicArea":true}
+
+输入：5511弄278号503报门口机没有反应18201728748
+输出：{"addressText":"5511弄278号503","description":"门口机没有反应","contactName":"","phone":"18201728748","urgent":false,"publicArea":true}
 
 输入：枫桦一期17号201家里灯不亮，联系人张先生，电话13800138000
-输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false}
+输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false,"publicArea":false}
 
 输入：枫桦一期十七号二零一，家里灯不亮了，找张先生，13800138000
-输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false}`;
+输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false,"publicArea":false}`;
 
 const COMPLETION_PROMPT = `你是物业维修的完工记录助手。维修工刚干完活，站在现场口述做了什么，话很随意、有口头禅。
 把它整理成办公室和业主都看得懂的记录，只输出 JSON，不要解释、不要代码围栏。
@@ -98,6 +116,7 @@ export class RepairTextAiService {
       contactName: str(raw.contactName),
       phone: str(raw.phone).replace(/\D/g, ''),
       urgent: raw.urgent === true,
+      publicArea: raw.publicArea === true,
     };
   }
 
@@ -159,6 +178,7 @@ function fullShape(expected: Record<string, unknown>): Record<string, unknown> {
     contactName: typeof expected.contactName === 'string' ? expected.contactName : '',
     phone: typeof expected.phone === 'string' ? expected.phone : '',
     urgent: expected.urgent === true,
+    publicArea: expected.publicArea === true,
   };
 }
 

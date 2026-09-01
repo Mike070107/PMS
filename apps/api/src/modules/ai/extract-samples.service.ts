@@ -125,6 +125,7 @@ function pruneExpected(expected: Record<string, unknown>): Record<string, unknow
     if (typeof v === 'string' && v.trim()) out[key] = v.trim();
   }
   if (typeof expected?.urgent === 'boolean') out.urgent = expected.urgent;
+  if (typeof expected?.publicArea === 'boolean') out.publicArea = expected.publicArea;
   return out;
 }
 
@@ -162,6 +163,16 @@ const SEED_SAMPLES: Array<{ text: string; expected: Record<string, unknown>; not
       urgent: true,
     },
     note: '整句都是口语：语气词、客套话（麻烦、谢谢）都不该进故障描述',
+  },
+  {
+    text: '5511弄278号503报门口机没有反应18201728748',
+    expected: {
+      addressText: '5511弄278号503',
+      description: '门口机没有反应',
+      phone: '18201728748',
+      publicArea: true,
+    },
+    note: '门牌是报修人住址、坏的是单元门口机 —— 地址要落到楼栋级公共区域，不能挂到 503 室',
   },
   {
     text: '监控室2号那个显示屏不亮了',
