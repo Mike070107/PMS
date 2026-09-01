@@ -691,7 +691,7 @@ function HouseFormModal({
 
   return (
     <Modal
-      title={target ? `编辑房产 #${target.id}` : '新增房产'}
+      title={target ? `编辑房产：${formatLocation(target)}` : '新增房产'}
       open={open}
       onCancel={onClose}
       onOk={onOk}

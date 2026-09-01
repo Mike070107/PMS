@@ -145,7 +145,7 @@ export default function OwnerFormModal({
 
   return (
     <Modal
-      title={target ? `编辑业主 #${target.id}` : '新增业主'}
+      title={target ? `编辑业主：${target.name?.trim() || '未填姓名'}` : '新增业主'}
       open={open}
       onCancel={onClose}
       onOk={onOk}

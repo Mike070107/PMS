@@ -28,6 +28,7 @@ import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '../lib/api';
 import { useAuth, usePagePerm } from '../lib/auth';
+import { nameOr } from '../lib/displayName';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 
 const { Title, Text } = Typography;
@@ -518,7 +519,7 @@ function RulesPanel() {
 
   const communityName = useCallback(
     (id: number | null) =>
-      id == null ? '全部小区' : communities.find((c) => c.id === id)?.name ?? `小区 #${id}`,
+      id == null ? '全部小区' : nameOr(communities.find((c) => c.id === id)?.name, '小区'),
     [communities],
   );
 

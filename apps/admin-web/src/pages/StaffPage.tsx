@@ -422,7 +422,7 @@ function StaffFormModal({
 
   return (
     <Modal
-      title={target ? `编辑员工 #${target.id}` : '新增员工'}
+      title={target ? `编辑员工：${target.name?.trim() || '未填姓名'}` : '新增员工'}
       open={open}
       onCancel={onClose}
       onOk={onOk}

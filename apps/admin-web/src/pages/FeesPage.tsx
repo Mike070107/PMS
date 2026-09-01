@@ -1075,7 +1075,7 @@ function BillFormModal({
 
   return (
     <Modal
-      title={target ? `编辑账单 #${target.id}` : '新增账单'}
+      title={target ? `编辑账单：${placeText(target)} · ${target.feeName} ${target.period}` : '新增账单'}
       open={open}
       onCancel={onClose}
       onOk={onOk}
@@ -1203,7 +1203,7 @@ function StandardFormModal({
 
   return (
     <Modal
-      title={target ? `编辑收费标准 #${target.id}` : '新增收费标准'}
+      title={target ? `编辑收费标准：${placeText(target)} · ${target.feeName}` : '新增收费标准'}
       open={open}
       onCancel={onClose}
       onOk={onOk}

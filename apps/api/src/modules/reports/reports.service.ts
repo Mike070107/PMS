@@ -287,8 +287,8 @@ export class ReportsService {
               select: ['id', 'name', 'loginAccount'],
             })
           : [];
-        const map = new Map(users.map((u) => [String(u.id), u.name || u.loginAccount || `#${u.id}`]));
-        return (key) => (key ? map.get(key) ?? `#${key}` : '未派单');
+        const map = new Map(users.map((u) => [String(u.id), u.name || u.loginAccount || '未命名员工']));
+        return (key) => (key ? map.get(key) ?? '未知维修工' : '未派单');
       }
       case 'community': {
         const list = ids.length
@@ -298,7 +298,7 @@ export class ReportsService {
             })
           : [];
         const map = new Map(list.map((c) => [String(c.id), c.name]));
-        return (key) => (key ? map.get(key) ?? `#${key}` : '未指定小区');
+        return (key) => (key ? map.get(key) ?? '未知小区' : '未指定小区');
       }
       case 'repairType': {
         const rules = await this.dataSource.getRepository(RepairTypeRule).find({
@@ -320,7 +320,7 @@ export class ReportsService {
         const map = new Map(
           list.map((m) => [String(m.id), `${m.name}${m.spec ? ` ${m.spec}` : ''}`]),
         );
-        return (key) => (key ? map.get(key) ?? `#${key}` : '-');
+        return (key) => (key ? map.get(key) ?? '未知材料' : '-');
       }
       case 'warehouse': {
         const list = ids.length
@@ -330,7 +330,7 @@ export class ReportsService {
             })
           : [];
         const map = new Map(list.map((w) => [String(w.id), w.name]));
-        return (key) => (key ? map.get(key) ?? `#${key}` : '-');
+        return (key) => (key ? map.get(key) ?? '未知仓库' : '-');
       }
       default:
         return (key) => key ?? '-';
@@ -417,7 +417,7 @@ export class ReportsService {
         const profile = profileByUser.get(u.id);
         return {
           userId: u.id,
-          name: u.name || u.loginAccount || `#${u.id}`,
+          name: u.name || u.loginAccount || '未命名员工',
           phone: u.phone,
           accountStatus: u.status,
           onDuty: profile?.onDuty ?? true,
@@ -686,7 +686,7 @@ export class ReportsService {
         status: String(r.status ?? ''),
         statusLabel: STATUS_LABELS[String(r.status ?? '')] ?? String(r.status ?? ''),
         assigneeId: numOrNull(r.assignee_id),
-        assigneeName: (r.assignee_name as string | null) || (r.assignee_account as string | null) || (r.assignee_id ? `#${r.assignee_id}` : '未派单'),
+        assigneeName: (r.assignee_name as string | null) || (r.assignee_account as string | null) || (r.assignee_id ? '未知维修工' : '未派单'),
         communityId: numOrNull(r.community_id),
         communityName: (r.community_name as string | null) ?? '',
         materialId: num(r.material_id),
@@ -810,7 +810,7 @@ export class ReportsService {
       warehouses,
       staff: staff.map((u) => ({
         id: u.id,
-        name: u.name || u.loginAccount || `#${u.id}`,
+        name: u.name || u.loginAccount || '未命名员工',
         status: u.status,
         canTakeOrders: technicianIds.includes(u.id),
       })),

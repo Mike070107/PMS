@@ -2556,7 +2556,7 @@ function RepairTypeRuleModal({
   /** 当前在配哪一套：'company' = 公司默认模板，数字 = 管理处 id */
   const [tab, setTab] = useState<'company' | number>('company');
   const officeId = tab === 'company' ? null : tab;
-  const officeName = officeId ? offices.find((o) => o.id === officeId)?.name || `管理处 #${officeId}` : '';
+  const officeName = officeId ? nameOr(offices.find((o) => o.id === officeId)?.name, '管理处') : '';
   const [localRules, setLocalRules] = useState<RepairTypeRule[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
   /** 本页可选的默认维修工（已按范围过滤） */
