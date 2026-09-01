@@ -404,7 +404,13 @@ Page({
       return wx.showToast({ icon: 'none', title: `最多 ${PHOTO_LIMIT} 张照片` });
     }
     const res = await wx
-      .chooseMedia({ count: room, mediaType: ['image'], sourceType: ['camera', 'album'] })
+      // 显式要压缩图，别靠微信默认值（理由同库存页）
+      .chooseMedia({
+        count: room,
+        mediaType: ['image'],
+        sourceType: ['camera', 'album'],
+        sizeType: ['compressed'],
+      })
       .catch(() => null);
     if (!res?.tempFiles?.length) return;
     this.setData({ uploading: true });

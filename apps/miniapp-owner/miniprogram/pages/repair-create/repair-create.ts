@@ -623,7 +623,13 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   async onChooseMedia() {
     if (this.data.uploading) return;
     const res = await wx
-      .chooseMedia({ count: 6, mediaType: ['image'], sourceType: ['album', 'camera'] })
+      // 显式要压缩图，别靠微信默认值
+      .chooseMedia({
+        count: 6,
+        mediaType: ['image'],
+        sourceType: ['album', 'camera'],
+        sizeType: ['compressed'],
+      })
       .catch(() => null);
     if (!res?.tempFiles?.length) return;
 

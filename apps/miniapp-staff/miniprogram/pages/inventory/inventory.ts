@@ -559,7 +559,14 @@ Page({
       return wx.showToast({ icon: 'none', title: `最多 ${PHOTO_LIMIT} 张照片` });
     }
     const res = await wx
-      .chooseMedia({ count: room, mediaType: ['image'], sourceType: ['camera', 'album'] })
+      // sizeType 必须显式写：不写是拿微信的默认值，机型/版本不同可能给原图。
+      // 上传时还会再兜一道压缩（api-client 的 compressImageIfNeeded）
+      .chooseMedia({
+        count: room,
+        mediaType: ['image'],
+        sourceType: ['camera', 'album'],
+        sizeType: ['compressed'],
+      })
       .catch(() => null);
     if (!res?.tempFiles?.length) return;
     this.setData({ uploading: true });

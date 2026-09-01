@@ -76,6 +76,7 @@ import MissingMaterialsInput, {
 } from '../components/MissingMaterialsInput';
 import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumnPrefs';
 import { nameOr } from '../lib/displayName';
+import { compressImageFile } from '../lib/compressImage';
 import {
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
@@ -1650,7 +1651,7 @@ function buildAttachmentUploadProps({
     multiple: true,
     showUploadList: false,
     fileList,
-    beforeUpload: (file, selectedFiles) => {
+    beforeUpload: async (file, selectedFiles) => {
       const isImage = isUploadImage(file);
       const isVideo = isUploadVideo(file);
       if (!isImage && !isVideo) {
@@ -1671,7 +1672,8 @@ function buildAttachmentUploadProps({
         message.error(`视频最多上传 ${maxVideos} 个`);
         return Upload.LIST_IGNORE;
       }
-      return true;
+      // 视频原样传（浏览器里转码代价太大）；照片压一道再传
+      return compressImageFile(file);
     },
     onChange: ({ file, fileList: nextList }) => {
       if (file.status === 'done') {

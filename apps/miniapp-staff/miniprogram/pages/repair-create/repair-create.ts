@@ -513,6 +513,9 @@ Page({
         count: wantVideo ? 1 : MAX_REPAIR_IMAGES - images,
         mediaType: [wantVideo ? 'video' : 'image'],
         sourceType: ['camera', 'album'],
+        // 图片显式要压缩图（不写就是微信默认值，机型不同可能给原图）；
+        // 视频不受 sizeType 影响，靠上面的 maxDuration 限时长
+        sizeType: ['compressed'],
         maxDuration: MAX_REPAIR_VIDEO_SECONDS,
         camera: 'back',
       })

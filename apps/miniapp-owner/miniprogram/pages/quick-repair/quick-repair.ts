@@ -259,6 +259,8 @@ Page({
         count: mediaType === 'video' ? 1 : left,
         mediaType: [mediaType],
         sourceType: ['camera', 'album'],
+        // 图片显式要压缩图；视频不受它影响，靠 maxDuration 限时长
+        sizeType: ['compressed'],
         maxDuration: 15,
         camera: 'back',
       })

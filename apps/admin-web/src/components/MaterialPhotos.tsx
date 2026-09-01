@@ -3,6 +3,7 @@ import type { UploadProps } from 'antd/es/upload/interface';
 import { UploadOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { auth } from '../lib/auth';
+import { compressImageFile } from '../lib/compressImage';
 
 /**
  * 材料实物照片：**一条 SKU 最多 4 张**，上传、缩略图、点开看大图三件事只在这里实现一次。
@@ -142,7 +143,9 @@ export function MaterialPhotosUpload({
     accept: 'image/*',
     multiple: true,
     showUploadList: false,
-    beforeUpload: (file, fileList) => {
+    // 返回 Promise<File> 时 antd 传的是这里返回的那个文件 —— 压缩就挂在这一步，
+    // 长边缩到 1600、重新编码，几 MB 的原图通常降到几百 KB（见 lib/compressImage.ts）
+    beforeUpload: async (file, fileList) => {
       if (!/^image\//i.test(file.type || '')) {
         message.error('只能上传照片');
         return Upload.LIST_IGNORE;
@@ -158,7 +161,7 @@ export function MaterialPhotosUpload({
         return Upload.LIST_IGNORE;
       }
       bumpPending(1);
-      return true;
+      return compressImageFile(file);
     },
     onChange: ({ file }) => {
       if (file.status === 'done') {

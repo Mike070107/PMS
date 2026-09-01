@@ -1,5 +1,7 @@
 import { isApiEnvelope } from './envelope';
 
+import { compressImageIfNeeded } from './compress';
+
 export interface RequestConfig {
   baseURL: string;
   getToken: () => string | undefined;
@@ -184,9 +186,15 @@ export function uploadFile(tempFilePath: string, timeout = 60000): Promise<Uploa
   if (!hasWxRequest()) {
     return Promise.reject(new ApiError(-1, 'uploadFile 仅在小程序环境可用'));
   }
-  const url = buildUrl(config.baseURL, '/upload');
+  // 压缩挂在这一条路上，全端所有选图入口都会经过，新入口不用记得自己压。
+  // 压不动会原样返回，绝不因此上传失败（见 compress.ts）
+  return compressImageIfNeeded(tempFilePath).then((filePath) => uploadTempFile(filePath, timeout));
+}
+
+function uploadTempFile(tempFilePath: string, timeout: number): Promise<UploadFileResp> {
+  const url = buildUrl(config!.baseURL, '/upload');
   const header: Record<string, string> = {};
-  const token = config.getToken();
+  const token = config!.getToken();
   if (token) header['Authorization'] = `Bearer ${token}`;
   return new Promise<UploadFileResp>((resolve, reject) => {
     // @ts-ignore — 小程序运行时注入

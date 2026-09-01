@@ -49,6 +49,7 @@ import { request } from '../lib/api';
 import { auth, useAuth, useCompanyWideView, usePagePerm } from '../lib/auth';
 import { useTableSeq } from '../components/tableSeqColumn';
 import { nameOr, unknown } from '../lib/displayName';
+import { compressImageFile } from '../lib/compressImage';
 import {
   MATERIAL_PHOTO_LIMIT,
   MaterialPhotoCell,
@@ -2616,10 +2617,10 @@ function MultiPhotoUpload({ value, onChange }: { value?: string[]; onChange?: (u
     accept: 'image/*',
     multiple: true,
     showUploadList: false,
-    beforeUpload: (file) => {
+    beforeUpload: async (file) => {
       if (!/^image\//i.test(file.type || '')) { message.error('只能上传照片'); return Upload.LIST_IGNORE; }
       if (file.size / 1024 / 1024 > 10) { message.error('照片不能超过 10MB'); return Upload.LIST_IGNORE; }
-      return true;
+      return compressImageFile(file);
     },
     onChange: ({ file }) => {
       if (file.status === 'done') {
@@ -2660,11 +2661,12 @@ function AttachmentsUpload({ value, onChange }: { value?: string[]; onChange?: (
     accept: 'image/*,application/pdf',
     multiple: true,
     showUploadList: false,
-    beforeUpload: (file) => {
+    beforeUpload: async (file) => {
       const ok = /^image\//i.test(file.type || '') || file.type === 'application/pdf';
       if (!ok) { message.error('只能上传图片或 PDF'); return Upload.LIST_IGNORE; }
       if (file.size / 1024 / 1024 > 20) { message.error('附件不能超过 20MB'); return Upload.LIST_IGNORE; }
-      return true;
+      // PDF 原样传，只有图片走压缩（compressImageFile 自己会判类型）
+      return compressImageFile(file);
     },
     onChange: ({ file }) => {
       if (file.status === 'done') {
