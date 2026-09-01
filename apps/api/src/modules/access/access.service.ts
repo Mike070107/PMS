@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -60,7 +60,9 @@ export interface ResolvedAccess {
 }
 
 @Injectable()
-export class AccessService {
+export class AccessService implements OnModuleInit {
+  private readonly logger = new Logger(AccessService.name);
+
   constructor(
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
@@ -81,6 +83,44 @@ export class AccessService {
     @InjectRepository(ManagementOffice)
     private readonly officeRepo: Repository<ManagementOffice>,
   ) {}
+
+  /**
+   * 新拆出来的权限格要给老公司补一份，**不能只加进内置模板就完事**。
+   *
+   * 内置模板只在公司第一次建号时种一次（tenants.rbac_seeded_at），之后往
+   * DEFAULT_ROLE_TEMPLATES 里加什么都不会再落库；线上 DB_SYNCHRONIZE=true、
+   * migrations 表根本不存在，写在 migration 里的 INSERT 也一句都不跑。
+   * 2026-09-01 就是这么翻的车：加了「材料 SKU 库」这一格，办公室角色（跟模板 3）
+   * 在小程序上一个新 tab 都没多出来，因为库里既没有角色行也没有模板行。
+   *
+   * 所以在这里做一次幂等补齐：**谁已经有 app:inventory，就照原样给他 app:materials**。
+   * 这不是放权 —— 那一格本来就是从「材料与库存」里拆出来的，
+   * 有 app:inventory 的人此前就能在库存页看和改材料档案，能力没变，只是多了个入口。
+   * 已经有 app:materials 行的（自己勾过的）一概不动。
+   */
+  async onModuleInit() {
+    const SQL = (table: string, owner: string) => `
+      INSERT INTO ${table} (tenant_id, ${owner}, page_key, can_view, can_edit, can_delete, created_at, updated_at)
+      SELECT src.tenant_id, src.${owner}, 'app:materials', src.can_view, src.can_edit, false, now(), now()
+        FROM ${table} src
+       WHERE src.page_key = 'app:inventory'
+         AND NOT EXISTS (
+           SELECT 1 FROM ${table} dst
+            WHERE dst.${owner} = src.${owner} AND dst.page_key = 'app:materials'
+         )
+    `;
+    try {
+      const role = await this.rolePermRepo.query(SQL('role_permissions', 'role_id'));
+      const tpl = await this.tplPermRepo.query(SQL('role_template_permissions', 'template_id'));
+      const n = (r: unknown) => (Array.isArray(r) && typeof r[1] === 'number' ? r[1] : 0);
+      if (n(role) || n(tpl)) {
+        this.logger.log(`补齐 app:materials：角色 ${n(role)} 条、模板 ${n(tpl)} 条`);
+      }
+    } catch (e) {
+      // 补不上不该拦住服务启动：大不了管理员去角色页手动勾一下
+      this.logger.warn(`补齐 app:materials 失败：${(e as Error).message}`);
+    }
+  }
 
   private fullPages(keys: readonly string[]): Record<string, PageActions> {
     const pages: Record<string, PageActions> = {};
