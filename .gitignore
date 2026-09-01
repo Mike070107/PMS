@@ -38,6 +38,10 @@ deploy/dist/
 # 换台机器 / 另一个会话 / 姊妹项目都要能拿到，所以单独放行。
 # settings.local.json、commands/ 这些仍被上面那条挡着。
 !.claude/skills/
+# commands/ 同理：/start /ship /inbox /handoff 是工作流约定，不是本机配置。
+# 不放行的话，用 worktree 开的会话（tools/wt.ps1）里这些命令全都不存在 ——
+# 正好是最需要它们的场景（2026-09-01）。settings.local.json 仍被挡着。
+!.claude/commands/
 .codex/
 .agents/
 
