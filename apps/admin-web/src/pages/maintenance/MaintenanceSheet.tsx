@@ -75,6 +75,8 @@ export interface SheetProps extends SheetHandlers {
   overlay?: boolean;
   /** 定额编号候选（datalist id） */
   quotaListId?: string;
+  /** 填写内容用哪款手写体（handwriting.ts 的 id）；不给就用 CSS 里的本机回退 */
+  fontId?: string;
 }
 
 export function sheetCount(order: MaintenanceOrder): number {
@@ -399,7 +401,11 @@ export function MaintenanceFront(props: SheetProps) {
   const pageMark = pageCount > 1 ? `（第 ${pageNo} 页 / 共 ${pageCount} 页）` : '';
 
   return (
-    <div className={`mo-sheet ${overlay ? 'mo-sheet--overlay' : ''}`} style={SHEET_STYLE}>
+    <div
+      className={`mo-sheet ${overlay ? 'mo-sheet--overlay' : ''}`}
+      data-font={props.fontId}
+      style={SHEET_STYLE}
+    >
       <div className="mo-perf" style={PERF_STYLE} />
 
       <div className="mo-block mo-block--main" style={MAIN_STYLE}>
@@ -931,6 +937,7 @@ export function MaintenanceBack(props: SheetProps) {
   return (
     <div
       className={`mo-sheet mo-sheet--back ${overlay ? 'mo-sheet--overlay' : ''}`}
+      data-font={props.fontId}
       style={SHEET_STYLE}
     >
       <div className="mo-perf" style={BACK_PERF_STYLE} />

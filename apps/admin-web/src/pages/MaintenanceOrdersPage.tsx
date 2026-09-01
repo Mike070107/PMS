@@ -35,6 +35,15 @@ import { printMaintenanceSheets } from '../lib/printSheet';
 import { SignaturePad } from '../components/SignaturePad';
 import { MaintenanceSheets, sheetCount } from './maintenance/MaintenanceSheet';
 import {
+  ensureFontLoaded,
+  filledText,
+  findFont,
+  HANDWRITING_FONTS,
+  missingForOrder,
+  readFontId,
+  rememberFontId,
+} from './maintenance/handwriting';
+import {
   FEE_CATEGORY_OPTIONS,
   MAINTENANCE_STATUS_LABELS,
   SHARE_METHOD_OPTIONS,
@@ -604,6 +613,10 @@ function MaintenanceEditor({
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [printJob, setPrintJob] = useState<null | 'normal' | 'overlay'>(null);
   const printRef = useRef<HTMLDivElement | null>(null);
+  /** 填写内容用哪款手写体。存本机：一个办公室通常固定一款，不必每次选 */
+  const [fontId, setFontId] = useState(readFontId);
+  /** 网页字体几 MB，下载要一会儿；没下完就打印会印成宋体，所以这个状态要摊给用户看 */
+  const [fontReady, setFontReady] = useState(false);
 
   const quotaByCode = useMemo(
     () => new Map(quotaItems.map((item) => [item.code, item])),
@@ -632,6 +645,30 @@ function MaintenanceEditor({
 
   // 已查验/已作废的单只读：经理签的是他当时看到的那一份，改了签名就不作数了
   const editable = canEdit && draft?.status === 'draft';
+
+  const font = findFont(fontId);
+  const missing = useMemo(() => missingForOrder(fontId, draft), [fontId, draft]);
+
+  // 选中的字体先下下来：预览要用，打印更要用（swap 会让没下完的那一张印成宋体）
+  useEffect(() => {
+    if (!id) return;
+    if (!font.family) {
+      setFontReady(true);
+      return;
+    }
+    let alive = true;
+    setFontReady(false);
+    ensureFontLoaded(fontId, filledText(draft))
+      .catch(() => undefined)
+      .finally(() => {
+        if (alive) setFontReady(true);
+      });
+    return () => {
+      alive = false;
+    };
+    // draft 只是拿来做「优先加载这几个字」的提示，变了不必重下
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, fontId, font.family]);
 
   const recompute = (order: MaintenanceOrder): MaintenanceOrder => ({
     ...order,
@@ -875,10 +912,12 @@ function MaintenanceEditor({
   useEffect(() => {
     if (!printJob || !printRef.current || !draft) return;
     let alive = true;
-    printMaintenanceSheets(
-      printRef.current.innerHTML,
-      `养护单 ${draft.paperNo || draft.orderNo}`,
-    )
+    const html = printRef.current.innerHTML;
+    // 先把手写体下完再打：font-display 是 swap，字体没到位这一张就印成宋体了，
+    // 而联单是一次性的纸，印废一张就少一张
+    ensureFontLoaded(fontId, filledText(draft))
+      .catch(() => undefined)
+      .then(() => printMaintenanceSheets(html, `养护单 ${draft.paperNo || draft.orderNo}`))
       .catch((e: any) => message.error(e?.message || '打印失败'))
       .finally(() => {
         if (alive) setPrintJob(null);
@@ -886,7 +925,7 @@ function MaintenanceEditor({
     return () => {
       alive = false;
     };
-  }, [printJob, draft, message]);
+  }, [printJob, draft, fontId, message]);
 
   const close = () => {
     if (dirty) {
@@ -963,6 +1002,50 @@ function MaintenanceEditor({
                 />
               </Tooltip>
             )}
+            <Tooltip title="填上去的内容用哪款手写体。字体是网站发下来的，打印这台电脑不用装任何字体；第一次用会下载几 MB，之后有缓存。">
+              <Select
+                value={fontId}
+                onChange={(value) => {
+                  setFontId(value);
+                  rememberFontId(value);
+                }}
+                style={{ width: 210 }}
+                popupMatchSelectWidth={280}
+                options={HANDWRITING_FONTS.map((item) => ({
+                  value: item.id,
+                  label: item.label,
+                  title: item.desc,
+                }))}
+                optionRender={(option) => {
+                  const item = findFont(String(option.value));
+                  return (
+                    <Space size={4} direction="vertical" style={{ lineHeight: 1.35 }}>
+                      <span
+                        style={{
+                          fontFamily: item.family
+                            ? `'${item.family}', cursive`
+                            : "'STXingkai','KaiTi','楷体',cursive",
+                          fontSize: 17,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {item.label}
+                      </span>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {item.desc}
+                        {item.sizeMb ? ` · 约 ${item.sizeMb}MB` : ''}
+                      </Text>
+                    </Space>
+                  );
+                }}
+                labelRender={(option) => (
+                  <span>
+                    字体：{String(option.label)}
+                    {!fontReady && font.family ? '（下载中）' : ''}
+                  </span>
+                )}
+              />
+            </Tooltip>
             <Select
               value={zoom}
               onChange={setZoom}
@@ -1028,6 +1111,7 @@ function MaintenanceEditor({
                 <MaintenanceSheets
                   order={draft}
                   editable={editable}
+                  fontId={fontId}
                   quotaListId="mo-quota-codes"
                   onPatch={patch}
                   onItemPatch={patchItem}
@@ -1043,6 +1127,15 @@ function MaintenanceEditor({
                   <option key={item.id} value={item.code} label={`${item.name}（${item.hours} 工时/${item.unit}）`} />
                 ))}
             </datalist>
+            {missing.length > 0 && (
+              <Paragraph style={{ marginTop: 12, marginBottom: 0, lineHeight: 1.7 }}>
+                <Text type="warning">
+                  「{font.label}」里没有这几个字：<b>{missing.join(' ')}</b> ——
+                  纸上它们会用系统宋体顶上，跟旁边的字不是一套。
+                  换成「宅在家自动笔」（生僻字最全）可以避免。
+                </Text>
+              </Paragraph>
+            )}
             <Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0, lineHeight: 1.7 }}>
               定额人工单价 {centsToYuan(quotaParams.laborRateCents)} 元/工时 · 取费系数{' '}
               {quotaParams.coefficient} · 合计 =（人工费 + 材料费）× 系数。
@@ -1089,7 +1182,12 @@ function MaintenanceEditor({
         draft &&
         createPortal(
           <div ref={printRef} className="mo-print-offscreen">
-            <MaintenanceSheets order={draft} editable={false} overlay={printJob === 'overlay'} />
+            <MaintenanceSheets
+              order={draft}
+              editable={false}
+              fontId={fontId}
+              overlay={printJob === 'overlay'}
+            />
           </div>,
           document.body,
         )}

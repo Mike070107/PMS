@@ -13,11 +13,50 @@
  * 尺寸一律用 mm：这是一张要对着纸校对的表格，px 换算一次就再也说不清了。
  */
 
+/* ---------- 手写体：填写内容用的网页字体 ----------
+ * 这几款字体由我们自己发出去（tools/fonts/build-webfonts.py 转的 woff2），
+ * **打印那台电脑不需要装任何字体**。声明必须写在这份 CSS 里：它同时供屏幕预览和
+ * 打印 iframe 用（printSheet.ts 以 ?inline 取同一份文本），写到 styles.css 里打印就没字体了。
+ *
+ * url 用相对路径，Vite 会把它编译成 /assets/<名字>-<哈希>.woff2 ——
+ * 哈希文件名 + nginx 对 /assets/ 的 `expires 30d; immutable`，等于下一次就不再下了。
+ *
+ * font-display:swap：没下完先用系统字体顶着，页面不空着。
+ * **打印前一定要 ensureFontLoaded + doc.fonts.ready 等一等**，否则 swap 会让第一张单
+ * 印成宋体（一张联单就废了）。
+ */
+@font-face {
+  font-family: 'MOZhangqingping';
+  src: url('../../fonts/zhangqingping.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'MOWanweiwei';
+  src: url('../../fonts/wanweiwei.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'MOShoushu';
+  src: url('../../fonts/shoushu.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'MOZhaizaijia';
+  src: url('../../fonts/zhaizaijia.woff2') format('woff2');
+  font-display: swap;
+}
+
 .mo-sheet {
   /* 表单字体用宋体：这是政府/物业单据的标准脸，换成黑体一眼就不像那张纸了。
      后面几档是 macOS / Linux / 兜底的中文回退，缺字不会掉进默认西文字体。 */
   font-family: 'SimSun', '宋体', 'Songti SC', 'STSong', 'Noto Serif CJK SC',
     'Source Han Serif SC', serif;
+  /* 填写内容的脸：默认用本机的行楷/舒体/楷体，选了网页字体就把它排到最前面。
+     一处定义、下面所有「值」类样式都引 var(--mo-hand)，不必各写一条 font-family。
+     网页字体缺字时（多数手写体只有 GB2312 的 6763 字）会自动落到后面这串本机字体。 */
+  --mo-hand-fallback: 'STXingkai', '华文行楷', 'Xingkai SC', 'FZShuTi', '方正舒体', 'STKaiti',
+    '华文楷体', 'KaiTi', '楷体', cursive;
+  --mo-hand: var(--mo-hand-fallback);
   position: relative;
   box-sizing: border-box;
   /* 纸张尺寸和版心位置由组件按 sheet-geometry 的实测值下发（改一个常量全跟着走），
@@ -29,6 +68,22 @@
   overflow: hidden;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+}
+
+/* 选中哪款就把哪款排到最前面。用变量而不是给每条「值」样式加一条
+   `.mo-sheet[data-font=x] .mo-in{...}`：那样是四条选择器 × 三处值样式，
+   以后加一款字体要改十二个地方，还得跟现有的特异度打架。 */
+.mo-sheet[data-font='zhangqingping'] {
+  --mo-hand: 'MOZhangqingping', var(--mo-hand-fallback);
+}
+.mo-sheet[data-font='wanweiwei'] {
+  --mo-hand: 'MOWanweiwei', var(--mo-hand-fallback);
+}
+.mo-sheet[data-font='shoushu'] {
+  --mo-hand: 'MOShoushu', var(--mo-hand-fallback);
+}
+.mo-sheet[data-font='zhaizaijia'] {
+  --mo-hand: 'MOZhaizaijia', var(--mo-hand-fallback);
 }
 
 .mo-sheet *,
@@ -230,16 +285,14 @@
 }
 
 /* ---------- 值 ----------
- * 填上去的内容用**行楷**：纸上这些字是人一笔一笔写的，用印刷体（哪怕是楷体）
- * 一眼就看得出是打印的。行楷带连笔、略斜，最接近钢笔字，而且比楷体窄一点，
- * 同样的格子能多塞一两个字。
+ * 填上去的内容用**手写体**：纸上这些字是人一笔一笔写的，用印刷体（哪怕是楷体）
+ * 一眼就看得出是打印的。默认那款是硬笔行书，带连笔、略斜，最接近钢笔字，
+ * 而且比楷体窄一点，同样的格子能多塞一两个字。
  *
- * 回退链是按「装了什么」排的：行楷/舒体随 Office 装，楷体是 Windows 自带 ——
- * 打印那台机器万一没有行楷，退到舒体、再退到楷体，不会掉进默认宋体（那就穿帮了）。 */
+ * 具体用哪款由 .mo-sheet[data-font] 决定（填单页下方可选），见上面 --mo-hand。 */
 .mo-in,
 .mo-txt {
-  font-family: 'STXingkai', '华文行楷', 'Xingkai SC', 'FZShuTi', '方正舒体', 'STKaiti',
-    '华文楷体', 'KaiTi', '楷体', cursive;
+  font-family: var(--mo-hand);
   font-weight: 700;
   /* 在不出格的前提下尽量大：格子最矮 7.15mm；行楷比楷体窄，3.4mm 仍留得下上下气口 */
   font-size: 3.4mm;
@@ -281,8 +334,7 @@
 /* 合计、月日这些也是填上去的数，跟值同一套脸 */
 .mo-total__v,
 .mo-md__n {
-  font-family: 'STXingkai', '华文行楷', 'Xingkai SC', 'FZShuTi', '方正舒体', 'STKaiti',
-    '华文楷体', 'KaiTi', '楷体', cursive;
+  font-family: var(--mo-hand);
   font-weight: 700;
 }
 /* 规格 / 单位这两列只有 11mm 宽，「LED 5W」这种型号按正文字号会被裁掉尾巴 */

@@ -47,3 +47,8 @@ htdocs.rar
 
 # 真实小区房产导入数据，含业主信息，绝不入库
 data-prep/
+
+# 原始素材：养护单扫描件、手写体 TTF 原文件（40MB）。
+# 字体转成 woff2 后进仓库（apps/admin-web/src/fonts/），源文件留在本机。
+# 重新生成：python tools/fonts/build-webfonts.py
+/src/

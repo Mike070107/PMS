@@ -33,10 +33,26 @@ export async function printMaintenanceSheets(html: string, title: string): Promi
 
   // 签名是远程图片，没加载完就打印会印出空白格
   await waitForImages(doc);
+  // 手写体是几 MB 的网页字体，iframe 是独立文档、要自己再走一遍字体加载
+  // （文件走 HTTP 缓存，命中就是一瞬间）。不等的话 font-display:swap 会先拿宋体顶上，
+  // 印出来的那张就穿帮了。
+  await waitForFonts(doc);
   win.focus();
   win.print();
   // 打印对话框在 Chrome 里是同步阻塞的，Safari/部分环境不是 —— 留一段时间再拆
   window.setTimeout(() => iframe.remove(), 60_000);
+}
+
+/** 等这个文档里的字体就位，最多 8 秒 —— 宁可字体没到位也不能卡住不让打印 */
+function waitForFonts(doc: Document): Promise<void> {
+  const fonts = (doc as Document & { fonts?: FontFaceSet }).fonts;
+  if (!fonts) return Promise.resolve();
+  return Promise.race([
+    fonts.ready.then(() => undefined),
+    new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 8000);
+    }),
+  ]);
 }
 
 function waitForImages(doc: Document): Promise<void> {
