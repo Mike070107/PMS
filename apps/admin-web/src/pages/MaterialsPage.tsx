@@ -33,11 +33,9 @@ import {
   MaterialPhotosUpload,
   materialPhotoList,
 } from '../components/MaterialPhotos';
-import { MATERIAL_CATEGORIES } from '@pms/shared-types';
+import type { MaterialCategoryView } from '@pms/shared-types';
 
 const { Title, Text } = Typography;
-
-const CATEGORY_OPTIONS = MATERIAL_CATEGORIES.map((c) => ({ value: c, label: c }));
 
 interface MaterialRow {
   id: number;
@@ -63,12 +61,19 @@ export default function MaterialsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<MaterialRow | null>(null);
+  /** 类别档案由服务端给（后台「库存与采购 → 基础资料 → 材料类别」可增删改），
+      这里不再引 MATERIAL_CATEGORIES 常量 —— 两个入口必须是同一份清单 */
+  const [categories, setCategories] = useState<MaterialCategoryView[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await request<MaterialRow[]>({ url: '/materials' });
+      const [r, categoryRows] = await Promise.all([
+        request<MaterialRow[]>({ url: '/materials' }),
+        request<MaterialCategoryView[]>({ url: '/material-categories' }),
+      ]);
       setRows(r);
+      setCategories(categoryRows);
     } catch (e: any) {
       message.error(e?.message || '加载失败');
     } finally {
@@ -92,6 +97,18 @@ export default function MaterialsPage() {
   }, [rows, keyword, categoryFilter]);
 
   const seq = useTableSeq<MaterialRow>(filtered.length, { defaultPageSize: 20 });
+
+  /** 筛选用：档案里全部类别（含停用的，否则老材料筛不出来） */
+  const filterOptions = useMemo(
+    () => categories.map((item) => ({ value: item.label, label: item.label })),
+    [categories],
+  );
+  /** 新建/编辑用：只给启用中的，并把编码前缀写在选项上（选「五金」建出来就是 WJ-0001） */
+  const editorOptions = useMemo(
+    () => categories.filter((item) => item.enabled)
+      .map((item) => ({ value: item.label, label: `${item.label}（${item.code}-）` })),
+    [categories],
+  );
 
   const openCreate = () => { setEditing(null); setEditorOpen(true); };
   const openEdit = (row: MaterialRow) => { setEditing(row); setEditorOpen(true); };
@@ -142,7 +159,7 @@ export default function MaterialsPage() {
             allowClear
             placeholder="按类别筛选"
             style={{ width: 160 }}
-            options={CATEGORY_OPTIONS}
+            options={filterOptions}
             value={categoryFilter}
             onChange={setCategoryFilter}
           />
@@ -224,6 +241,7 @@ export default function MaterialsPage() {
         open={editorOpen}
         editing={editing}
         allRows={rows}
+        categoryOptions={editorOptions}
         onClose={() => setEditorOpen(false)}
         onDone={() => { setEditorOpen(false); load(); }}
       />
@@ -232,11 +250,13 @@ export default function MaterialsPage() {
 }
 
 function MaterialEditorModal({
-  open, editing, allRows, onClose, onDone,
+  open, editing, allRows, categoryOptions, onClose, onDone,
 }: {
   open: boolean;
   editing: MaterialRow | null;
   allRows: MaterialRow[];
+  /** 服务端的材料类别档案（只含启用中的），不是写死的常量 */
+  categoryOptions: Array<{ value: string; label: string }>;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -404,7 +424,7 @@ function MaterialEditorModal({
             rules={[{ required: true, message: '请选择类别' }]}
             style={{ flex: 1, marginRight: 12 }}
           >
-            <Select options={CATEGORY_OPTIONS} placeholder="选择类别（决定编码前缀）" />
+            <Select options={categoryOptions} placeholder="选择类别（决定编码前缀）" />
           </Form.Item>
           <Form.Item
             name="unit"

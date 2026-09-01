@@ -552,10 +552,31 @@ export function repairTypeAndSlaLockReason(status: WorkOrderStatus): string | nu
 // ---------- 材料 / 库存 ----------
 
 /** 材料类别（决定 SKU 编码前缀），后台与小程序共用 */
+/**
+ * 材料类别的**内置种子**，只用于两件事：新公司第一次打开时种进档案、
+ * 以及接口还没返回时的兜底占位。
+ *
+ * **不要再拿它当下拉数据源** —— 类别在后台「库存与采购 → 基础资料 → 材料类别」
+ * 可以增删改（2026-09-01 起），真值在服务端 GET /material-categories。
+ * 往这里加类别只对还没种过的新公司生效。
+ */
 export const MATERIAL_CATEGORIES: string[] = [
   '卫生', '电器', '化工', '黑色', '有色', '水料',
   '木料', '五金', '工具', '防护用品', '防台防汛', '低值易耗品',
 ];
+
+/** 材料类别档案。code = SKU 编码前缀（五金 → WJ-0001），下发过编码后不可改 */
+export interface MaterialCategoryView {
+  id: number;
+  /** 编码前缀，2~4 位大写字母 */
+  code: string;
+  /** 类别名称，materials.category 存的就是它 */
+  label: string;
+  sortOrder: number;
+  enabled: boolean;
+  /** 这个类别下有几条材料：>0 时不给删，只能停用 */
+  materialCount: number;
+}
 
 /**
  * 材料计量单位。分组只影响下拉展示，存库仍是单位本身的字符串。

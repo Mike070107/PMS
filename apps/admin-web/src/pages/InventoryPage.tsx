@@ -17,6 +17,7 @@ import {
   Space,
   Statistic,
   Steps,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -41,7 +42,8 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import UnitSelect from '../components/UnitSelect';
 import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumnPrefs';
-import { formatDateTimeCn, MATERIAL_CATEGORIES } from '@pms/shared-types';
+import { formatDateTimeCn } from '@pms/shared-types';
+import type { MaterialCategoryView } from '@pms/shared-types';
 import type { StockLotView, StockMovementView } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { auth, useAuth, useCompanyWideView, usePagePerm } from '../lib/auth';
@@ -237,8 +239,6 @@ const transferStatusMeta: Record<string, { label: string; color: string }> = {
   shipped: { label: '运输中(旧)', color: 'blue' },
 };
 
-const materialCategoryOptions = MATERIAL_CATEGORIES.map((value) => ({ value, label: value }));
-
 const inventoryPageSizeOptions = ['30', '50', '100'];
 
 /** 材料档案没填分类的，快筛里单独归一档，否则这些料点哪个分类都看不到 */
@@ -292,7 +292,7 @@ function requestStepStatus(status: PurchaseRequestStatus): 'process' | 'error' {
 
 export default function InventoryPage() {
   const { message, modal } = AntdApp.useApp();
-  const { canEdit } = usePagePerm('inventory');
+  const { canEdit, canDelete } = usePagePerm('inventory');
   const { access, actingOffice } = useAuth();
   // 「材料 SKU」「仓库数量」是全公司口径的家底数字，范围受限的角色看了对不上账
   const companyWide = useCompanyWideView();
@@ -337,6 +337,9 @@ export default function InventoryPage() {
   const [editingStock, setEditingStock] = useState<StockRow | null>(null);
   const [lotDrawerStock, setLotDrawerStock] = useState<StockRow | null>(null);
   const [warehouseLocations, setWarehouseLocations] = useState<WarehouseLocationRow[]>([]);
+  /** 材料类别档案（后台可增删改）。新建/编辑 SKU 的下拉、分类快筛的排序都以它为准 */
+  const [materialCategories, setMaterialCategories] = useState<MaterialCategoryView[]>([]);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [locationConfigWarehouse, setLocationConfigWarehouse] = useState<WarehouseRow | null>(null);
   const [generalReceiptOpen, setGeneralReceiptOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -350,6 +353,15 @@ export default function InventoryPage() {
   const [rejectForm] = Form.useForm();
   const [manualRequestForm] = Form.useForm();
   const [stockForm] = Form.useForm();
+
+  /** 新建/编辑 SKU 的类别下拉：只列启用中的（停用的选不到，但老材料照常显示） */
+  const materialCategoryOptions = useMemo(
+    () => materialCategories.filter((item) => item.enabled)
+      .map((item) => ({ value: item.label, label: `${item.label}（${item.code}-）` })),
+    [materialCategories],
+  );
+  /** 分类快筛的排列顺序按档案里的排序走 */
+  const categoryOrder = useMemo(() => materialCategories.map((item) => item.label), [materialCategories]);
 
   const materialById = useMemo(() => new Map(materials.map((item) => [item.id, item])), [materials]);
   const warehouseById = useMemo(() => new Map(warehouses.map((item) => [item.id, item])), [warehouses]);
@@ -407,6 +419,7 @@ export default function InventoryPage() {
         orderRows,
         transferRows,
         locationRows,
+        categoryRows,
       ] = await Promise.all([
         request<MaterialRow[]>({ url: '/materials' }),
         request<WarehouseRow[]>({ url: '/warehouses' }),
@@ -417,6 +430,7 @@ export default function InventoryPage() {
         request<PurchaseOrderRow[]>({ url: '/purchase-orders' }),
         request<TransferOrderRow[]>({ url: '/transfer-orders' }),
         request<WarehouseLocationRow[]>({ url: '/warehouse-locations' }),
+        request<MaterialCategoryView[]>({ url: '/material-categories' }),
       ]);
       setMaterials(materialRows);
       setWarehouses(warehouseRows);
@@ -427,6 +441,7 @@ export default function InventoryPage() {
       setPurchaseOrders(orderRows);
       setTransferOrders(transferRows);
       setWarehouseLocations(locationRows);
+      setMaterialCategories(categoryRows);
     } catch (e: any) {
       message.error(e?.message || '加载库存采购数据失败');
     } finally {
@@ -519,13 +534,13 @@ export default function InventoryPage() {
 
   const stockCategoryItems = useMemo(() => {
     // 只列出当前有货的分类，按材料档案里的固定顺序排，「未分类」永远垫底
-    const ordered = MATERIAL_CATEGORIES.filter((name) => stockCategoryCounts.has(name));
+    const ordered = categoryOrder.filter((name) => stockCategoryCounts.has(name));
     if (stockCategoryCounts.has(UNCATEGORIZED)) ordered.push(UNCATEGORIZED);
     return [
       { key: 'all', label: `全部 ${keywordStocks.length}` },
       ...ordered.map((name) => ({ key: name, label: `${name} ${stockCategoryCounts.get(name) || 0}` })),
     ];
-  }, [keywordStocks.length, stockCategoryCounts]);
+  }, [keywordStocks.length, stockCategoryCounts, categoryOrder]);
 
   /* 搜索之后当前分类可能已经一条都不剩（比如先点「五金」再搜「水管」），
      这时快筛没有一项高亮、列表却是空的，看着像坏了 —— 自动退回「全部」。 */
@@ -1417,6 +1432,18 @@ export default function InventoryPage() {
                       ),
                     },
                     {
+                      key: 'categories',
+                      label: '材料类别',
+                      children: (
+                        <MaterialCategoryPanel
+                          rows={materialCategories}
+                          canEdit={canEdit}
+                          canDelete={canDelete}
+                          onChanged={loadAll}
+                        />
+                      ),
+                    },
+                    {
                       key: 'warehouses',
                       label: '仓库档案',
                       children: (
@@ -1500,6 +1527,7 @@ export default function InventoryPage() {
         kind={catalogOpen}
         form={catalogForm}
         warehouseLocationOptions={editingWarehouse ? locationOptionsByWarehouse.get(editingWarehouse.id) ?? [] : []}
+        materialCategoryOptions={materialCategoryOptions}
         editingMaterial={editingMaterial}
         editingWarehouse={editingWarehouse}
         editingSupplier={editingSupplier}
@@ -2053,9 +2081,159 @@ function StockLotDrawer({ stock, material, warehouseName, onClose }: {
   );
 }
 
-function CatalogModal({ kind, form, warehouseLocationOptions, editingMaterial, editingWarehouse, editingSupplier, saving, onCancel, onOk }: {
+/**
+ * 材料类别档案（后台可增删改）。
+ *
+ * 两条规矩直接写在界面上，别等用户点了才弹错：
+ * · **编码前缀决定新建材料的编码**（五金 → WJ-0001），这个类别一旦发出过编码就锁死 ——
+ *   编码已经贴在实物上、印在单据里，改前缀会让老编码解释不了自己属于谁。
+ * · **用着的类别不给删，只能停用**：停用后新建材料选不到它，已有的材料照常显示。
+ *   改名是安全的，服务端会把这个类别下的材料一起改过去。
+ */
+function MaterialCategoryPanel({ rows, canEdit, canDelete, onChanged }: {
+  rows: MaterialCategoryView[];
+  canEdit: boolean;
+  canDelete: boolean;
+  onChanged: () => void;
+}) {
+  const { message, modal } = AntdApp.useApp();
+  const [editing, setEditing] = useState<MaterialCategoryView | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form] = Form.useForm();
+
+  const open = (row: MaterialCategoryView | null) => {
+    setEditing(row);
+    setCreating(!row);
+    form.resetFields();
+    form.setFieldsValue(row
+      ? { label: row.label, code: row.code, sortOrder: row.sortOrder, enabled: row.enabled }
+      : { enabled: true, sortOrder: (rows.length + 1) * 10 });
+  };
+  const close = () => { setEditing(null); setCreating(false); };
+
+  const submit = async () => {
+    const v = await form.validateFields();
+    setSaving(true);
+    try {
+      await request({
+        method: editing ? 'PATCH' : 'POST',
+        url: editing ? `/material-categories/${editing.id}` : '/material-categories',
+        data: {
+          label: v.label?.trim(),
+          code: v.code?.trim().toUpperCase(),
+          sortOrder: v.sortOrder ?? 0,
+          enabled: v.enabled ?? true,
+        },
+      });
+      message.success(editing ? '类别已更新' : '类别已新增');
+      close();
+      onChanged();
+    } catch (e: any) {
+      message.error(e?.message || '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = (row: MaterialCategoryView) => {
+    modal.confirm({
+      title: `删除类别「${row.label}」？`,
+      content: '删除后这个类别不再出现在任何下拉里。已经有材料在用的类别删不掉，请改成停用。',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await request({ method: 'DELETE', url: `/material-categories/${row.id}` });
+          message.success('已删除');
+          onChanged();
+        } catch (e: any) {
+          message.error(e?.message || '删除失败');
+        }
+      },
+    });
+  };
+
+  return (
+    <>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 12 }}
+        message="类别决定新建材料的编码前缀：选「五金」新建出来的就是 WJ-0001。已经发出过编码的类别不能再改前缀；有材料在用的类别不能删，请改成停用。改名是安全的，这个类别下的材料会一起改过去。"
+      />
+      <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 12 }}>
+        {canEdit && <Button size="small" icon={<PlusOutlined />} onClick={() => open(null)}>新增类别</Button>}
+      </Space>
+      <Table
+        rowKey="id"
+        size="small"
+        dataSource={rows}
+        pagination={false}
+        columns={[
+          { title: '排序', dataIndex: 'sortOrder', width: 80 },
+          { title: '类别名称', dataIndex: 'label', width: 160, render: (v, row) => (
+            <Space size={4}><span style={{ fontWeight: 600 }}>{v}</span>{!row.enabled && <Tag>停用</Tag>}</Space>
+          ) },
+          { title: '编码前缀', dataIndex: 'code', width: 120, render: (v) => <Tag color="blue">{v}-</Tag> },
+          { title: '在用材料', dataIndex: 'materialCount', width: 110, render: (v) => v ? `${v} 条` : <Text type="secondary">未使用</Text> },
+          {
+            title: '操作', key: 'op', width: 140,
+            render: (_, row) => (
+              <Space size={0}>
+                {canEdit && <Button type="link" size="small" onClick={() => open(row)}>编辑</Button>}
+                {canDelete && (
+                  <Tooltip title={row.materialCount ? '有材料在用，删不掉；请改成停用' : ''}>
+                    <Button type="link" size="small" danger disabled={!!row.materialCount} onClick={() => remove(row)}>删除</Button>
+                  </Tooltip>
+                )}
+              </Space>
+            ),
+          },
+        ]}
+      />
+      <Modal
+        open={creating || !!editing}
+        title={editing ? `编辑类别：${editing.label}` : '新增材料类别'}
+        onCancel={close}
+        onOk={submit}
+        confirmLoading={saving}
+        destroyOnHidden
+      >
+        <Form form={form} layout="vertical">
+          <Form.Item name="label" label="类别名称" rules={[{ required: true, message: '请输入类别名称' }]}>
+            <Input placeholder="如：五金" maxLength={20} />
+          </Form.Item>
+          <Form.Item
+            name="code"
+            label="编码前缀"
+            tooltip="2~4 位英文字母，决定这个类别下新建材料的编码（WJ → WJ-0001）"
+            rules={[
+              { required: true, message: '请输入编码前缀' },
+              { pattern: /^[A-Za-z]{2,4}$/, message: '只能是 2~4 位英文字母' },
+            ]}
+            extra={editing && editing.materialCount > 0
+              ? `已有 ${editing.materialCount} 条材料用着 ${editing.code}- 开头的编码，前缀不能再改`
+              : '定下来之后，一旦这个类别下建过材料就不能改了'}
+          >
+            <Input placeholder="如：WJ" maxLength={4} disabled={!!editing && editing.materialCount > 0} />
+          </Form.Item>
+          <Form.Item name="sortOrder" label="排序" tooltip="数字小的排前面，影响下拉和分类快筛的顺序">
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="enabled" label="启用" valuePropName="checked" extra="停用后新建材料时选不到它，已有的材料照常显示">
+            <Switch />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
+  );
+}
+
+function CatalogModal({ kind, form, warehouseLocationOptions, materialCategoryOptions, editingMaterial, editingWarehouse, editingSupplier, saving, onCancel, onOk }: {
   kind: CatalogKind | null;
   form: any;
+  /** 类别下拉：服务端的材料类别档案，只含启用中的 */
+  materialCategoryOptions: Array<{ value: string; label: string }>;
   /** 正在编辑的这个仓自己的库位，用来选默认入库库位 */
   warehouseLocationOptions: Array<{ value: number; label: string }>;
   editingMaterial: MaterialRow | null;

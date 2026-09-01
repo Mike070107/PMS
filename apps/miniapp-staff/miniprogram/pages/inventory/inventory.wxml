@@ -261,11 +261,13 @@
 
     <view class="field">
       <view class="label">类别</view>
-      <picker mode="selector" range="{{formCategories}}" bindchange="onFormCategory">
+      <picker wx:if="{{formCategories.length}}" mode="selector" range="{{formCategories}}" bindchange="onFormCategory">
         <view class="picker {{formCategoryIndex < 0 ? 'placeholder' : ''}}">
           {{formCategoryIndex < 0 ? '选择类别（决定编码前缀）' : form.category}}
         </view>
       </picker>
+      <!-- 类别在后台「库存与采购 → 基础资料 → 材料类别」维护；这里拿不到就说清楚去哪儿加 -->
+      <view wx:else class="field-error">还没有可选的材料类别，请办公室在管理后台「库存与采购 → 基础资料 → 材料类别」里先添加</view>
     </view>
 
     <view class="field">

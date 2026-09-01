@@ -1,4 +1,5 @@
 import type {
+  MaterialCategoryView,
   MaterialOption,
   MaterialView,
   PurchaseRequestView,
@@ -41,6 +42,15 @@ export const createMaterial = (data: UpsertMaterialReq) =>
 /** 小程序不支持 PATCH，后端另开了等价的 POST 入口 */
 export const updateMaterial = (id: number, data: Partial<UpsertMaterialReq>) =>
   request<MaterialView>({ method: 'POST', url: `/materials/${id}/update`, data });
+
+// ---------------- 材料类别 ----------------
+
+/**
+ * 材料类别档案（后台可增删改）。**新建 / 编辑 SKU 的类别下拉一律用它**，
+ * 不要再引 shared-types 里的 MATERIAL_CATEGORIES 常量 —— 那只是种子。
+ */
+export const listMaterialCategories = () =>
+  request<MaterialCategoryView[]>({ url: '/material-categories' });
 
 // ---------------- 库存 ----------------
 

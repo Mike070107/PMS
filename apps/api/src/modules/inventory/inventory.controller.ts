@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -35,6 +36,7 @@ import {
   TenantQueryDto,
   WarehousesQueryDto,
   UpdateMaterialDto,
+  UpsertMaterialCategoryDto,
   UpdateSupplierDto,
   UpdateStockDto,
   UpdateWarehouseDto,
@@ -105,6 +107,47 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.inventoryService.updateMaterial(id, dto, user);
+  }
+
+  // ---------------- 材料类别 ----------------
+  // 读：新建 SKU 的下拉要用，员工端也要（所以带 app:inventory）
+  @Get('material-categories')
+  @RequirePermission(
+    ['materials', 'inventory', 'work-orders', 'app:inventory'],
+    'view',
+  )
+  listMaterialCategories(@Query() query: TenantQueryDto, @CurrentUser() user: AuthUser) {
+    return this.inventoryService.listMaterialCategoriesWithUsage(user, query);
+  }
+
+  // 写：只给后台「材料 SKU 库 / 库存与采购」的编辑权限，
+  // 类别是全公司的账本口径，不放给员工端现场改
+  @Post('material-categories')
+  @RequirePermission(['materials', 'inventory'], 'edit')
+  createMaterialCategory(
+    @Body() dto: UpsertMaterialCategoryDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.inventoryService.createMaterialCategory(dto, user);
+  }
+
+  @Patch('material-categories/:id')
+  @RequirePermission(['materials', 'inventory'], 'edit')
+  updateMaterialCategory(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpsertMaterialCategoryDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.inventoryService.updateMaterialCategory(id, dto, user);
+  }
+
+  @Delete('material-categories/:id')
+  @RequirePermission(['materials', 'inventory'], 'delete')
+  deleteMaterialCategory(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.inventoryService.deleteMaterialCategory(id, user);
   }
 
   @Get('warehouses')

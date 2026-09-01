@@ -9,6 +9,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
+  DictType,
   NotifyChannel,
   NotifyStatus,
   PurchaseOrderStatus,
@@ -20,6 +21,7 @@ import {
   WarehouseType,
 } from '../../common/enums';
 import {
+  DictItem,
   GoodsReceipt,
   Material,
   Notification,
@@ -56,6 +58,7 @@ import {
   TenantQueryDto,
   WarehousesQueryDto,
   UpdateMaterialDto,
+  UpsertMaterialCategoryDto,
   UpdateSupplierDto,
   UpdateStockDto,
   UpdateWarehouseDto,
@@ -87,7 +90,15 @@ interface NotifyInput {
  */
 const MATERIAL_PHOTO_LIMIT = 4;
 
-const MATERIAL_CATEGORY_PREFIX: Record<string, string> = {
+/**
+ * 内置材料类别的**种子**：名称 → SKU 编码前缀（五金 → WJ-0001）。
+ *
+ * 这份表只在「公司第一次打开材料类别」时种进 dict_items（type=material_category），
+ * 之后**以库里那份为准** —— 类别要能在后台增删改（2026-09-01 Mike 问「材料类别
+ * 怎样修改怎样新增」，当时答案是「只能改代码」）。
+ * 别再往这里加类别：加了也只对还没种过的新公司生效。
+ */
+const MATERIAL_CATEGORY_SEED: Record<string, string> = {
   卫生: 'WS',
   电器: 'DQ',
   化工: 'HG',
@@ -195,9 +206,197 @@ export class InventoryService {
     }));
   }
 
+  // ---------------- 材料类别（后台可增删改） ----------------
+
+  /**
+   * 材料类别档案。存 dict_items（type=material_category），**一个公司一份**。
+   *
+   * 为什么不用平台预置（tenant_id 为空）那一档：类别是各家物业自己的账本口径，
+   * 甲公司把「五金」改名成「五金件」不该影响乙公司。所以第一次读的时候
+   * 按 MATERIAL_CATEGORY_SEED 给这家公司种一份，之后各改各的。
+   *
+   * 种子必须写在这里而不是只写 migration：线上 DB_SYNCHRONIZE=true、
+   * migrations 表不存在，migration 里的 INSERT 一句都不会跑（见部署约定）。
+   */
+  async listMaterialCategories(tenantId: number): Promise<DictItem[]> {
+    const repo = this.dataSource.getRepository(DictItem);
+    const where = { tenantId, type: DictType.MATERIAL_CATEGORY };
+    let rows = await repo.find({ where, order: { sortOrder: 'ASC', id: 'ASC' } });
+    if (rows.length) return rows;
+    // 幂等：并发第一次进来时可能重复种，靠再查一次收敛（类别量极小，代价可忽略）
+    const seeds = Object.entries(MATERIAL_CATEGORY_SEED).map(([label, code], index) =>
+      repo.create({
+        tenantId,
+        type: DictType.MATERIAL_CATEGORY,
+        code,
+        label,
+        sortOrder: (index + 1) * 10,
+        enabled: true,
+      }),
+    );
+    await repo.save(seeds);
+    rows = await repo.find({ where, order: { sortOrder: 'ASC', id: 'ASC' } });
+    return rows;
+  }
+
+  /** 出参带上「有几条 SKU 在用」：用着的类别不给删，只能停用 */
+  async listMaterialCategoriesWithUsage(user: AuthUser, query: TenantQueryDto) {
+    const tenantId = this.resolveTenantId(user, query.tenantId);
+    const rows = await this.listMaterialCategories(tenantId);
+    const counts = await this.materialRepo
+      .createQueryBuilder('m')
+      .select('BTRIM(m.category)', 'label')
+      .addSelect('COUNT(*)', 'count')
+      .where('m.tenant_id = :tenantId', { tenantId })
+      .andWhere('m.category IS NOT NULL')
+      .groupBy('BTRIM(m.category)')
+      .getRawMany<{ label: string; count: string }>();
+    const usedBy = new Map(counts.map((row) => [row.label, Number(row.count)]));
+    return rows.map((row) => ({
+      id: row.id,
+      code: row.code,
+      label: row.label,
+      sortOrder: row.sortOrder,
+      enabled: row.enabled,
+      materialCount: usedBy.get(row.label) ?? 0,
+    }));
+  }
+
+  /** 前缀：2~4 位大写字母，全公司唯一 —— 它直接决定 SKU 编码（五金 → WJ-0001） */
+  private normalizeCategoryCode(code: string): string {
+    const value = (code || '').trim().toUpperCase();
+    if (!/^[A-Z]{2,4}$/.test(value)) {
+      throw new BadRequestException('编码前缀只能是 2~4 位英文字母，如 WJ');
+    }
+    return value;
+  }
+
+  async createMaterialCategory(dto: UpsertMaterialCategoryDto, user: AuthUser) {
+    const tenantId = this.resolveTenantId(user, dto.tenantId);
+    const label = (dto.label || '').trim();
+    if (!label) throw new BadRequestException('请填写类别名称');
+    const code = this.normalizeCategoryCode(dto.code || '');
+    const existing = await this.listMaterialCategories(tenantId);
+    if (existing.some((item) => item.label === label)) {
+      throw new BadRequestException(`已经有「${label}」这个类别了`);
+    }
+    if (existing.some((item) => item.code === code)) {
+      const hit = existing.find((item) => item.code === code) as DictItem;
+      throw new BadRequestException(`编码前缀 ${code} 已被「${hit.label}」占用，换一个`);
+    }
+    const repo = this.dataSource.getRepository(DictItem);
+    return repo.save(
+      repo.create({
+        tenantId,
+        type: DictType.MATERIAL_CATEGORY,
+        code,
+        label,
+        sortOrder: dto.sortOrder ?? (existing.length + 1) * 10,
+        enabled: dto.enabled ?? true,
+        createdBy: user.id,
+        updatedBy: user.id,
+      }),
+    );
+  }
+
+  /**
+   * 改类别。两条硬规矩：
+   * 1. **改名要把已有 SKU 一起改**  —— materials.category 存的是名字本身，
+   *    只改字典的话，老料的类别名对不上任何一条档案，在列表里全掉进「未分类」。
+   * 2. **已发过编码的类别不许改前缀** —— WJ-0001 已经贴在实物上、印在单据里，
+   *    改成别的前缀之后老编码再也解释不了它属于谁。
+   */
+  async updateMaterialCategory(id: number, dto: UpsertMaterialCategoryDto, user: AuthUser) {
+    const tenantId = this.resolveTenantId(user);
+    return this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(DictItem);
+      const row = await repo.findOne({
+        where: { id, tenantId, type: DictType.MATERIAL_CATEGORY },
+      });
+      if (!row) throw new NotFoundException('material category not found');
+      const siblings = (
+        await repo.find({ where: { tenantId, type: DictType.MATERIAL_CATEGORY } })
+      ).filter((item) => item.id !== id);
+
+      const nextLabel = dto.label !== undefined ? dto.label.trim() : row.label;
+      if (!nextLabel) throw new BadRequestException('请填写类别名称');
+      if (siblings.some((item) => item.label === nextLabel)) {
+        throw new BadRequestException(`已经有「${nextLabel}」这个类别了`);
+      }
+
+      const usedCount = await manager.count(Material, { where: { tenantId, category: row.label } });
+      if (dto.code !== undefined) {
+        const nextCode = this.normalizeCategoryCode(dto.code);
+        if (nextCode !== row.code) {
+          if (usedCount > 0) {
+            throw new BadRequestException(
+              `「${row.label}」下已有 ${usedCount} 条材料用着 ${row.code}- 开头的编码，前缀不能再改；` +
+                '需要换前缀请新建一个类别，把这些材料改过去。',
+            );
+          }
+          if (siblings.some((item) => item.code === nextCode)) {
+            throw new BadRequestException(`编码前缀 ${nextCode} 已被占用，换一个`);
+          }
+          row.code = nextCode;
+        }
+      }
+
+      if (nextLabel !== row.label) {
+        // 存量材料跟着改名，一条都不能落下（见方法头注释第 1 条）
+        await manager
+          .createQueryBuilder()
+          .update(Material)
+          .set({ category: nextLabel })
+          .where('tenant_id = :tenantId AND BTRIM(category) = :label', {
+            tenantId,
+            label: row.label,
+          })
+          .execute();
+        row.label = nextLabel;
+      }
+      if (dto.sortOrder !== undefined) row.sortOrder = dto.sortOrder;
+      if (dto.enabled !== undefined) row.enabled = dto.enabled;
+      row.updatedBy = user.id;
+      return repo.save(row);
+    });
+  }
+
+  /** 删类别：只有一条材料都没用过的才给删，用过的走停用（停用后新建选不到，老料照常显示） */
+  async deleteMaterialCategory(id: number, user: AuthUser) {
+    const tenantId = this.resolveTenantId(user);
+    const repo = this.dataSource.getRepository(DictItem);
+    const row = await repo.findOne({
+      where: { id, tenantId, type: DictType.MATERIAL_CATEGORY },
+    });
+    if (!row) throw new NotFoundException('material category not found');
+    const usedCount = await this.materialRepo.count({
+      where: { tenantId, category: row.label },
+    });
+    if (usedCount > 0) {
+      throw new BadRequestException(
+        `「${row.label}」下还有 ${usedCount} 条材料，删了这些材料就没类别了。` +
+          '不想再用请改成「停用」：新建材料时选不到它，已有的材料照常显示。',
+      );
+    }
+    await repo.remove(row);
+    return { id };
+  }
+
   async createMaterial(dto: CreateMaterialDto, user: AuthUser) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
     await this.assertMaterialUnique(tenantId, dto.name, dto.spec ?? null, null);
+    // 类别必须是档案里有的、且没停用的 —— 端上的下拉就是这份档案，
+    // 走到这里对不上说明客户端拿的是旧列表，直说比默默落成「其它 QT」强
+    const categories = await this.listMaterialCategories(tenantId);
+    const picked = categories.find((item) => item.label === dto.category?.trim());
+    if (!picked) {
+      throw new BadRequestException(
+        `材料类别「${dto.category}」不存在。请下拉刷新重选，或去后台「库存与采购 → 基础资料 → 材料类别」新增它`,
+      );
+    }
+    if (!picked.enabled) {
+      throw new BadRequestException(`材料类别「${picked.label}」已停用，请选别的类别`);
+    }
     const code = dto.code?.trim() || await this.buildMaterialCode(tenantId, dto.category);
     const photoUrls = this.normalizePhotoUrls(dto.photoUrls, dto.photoUrl);
     const saved = await this.materialRepo.save(
@@ -1740,7 +1939,12 @@ export class InventoryService {
   }
 
   private async buildMaterialCode(tenantId: number, category: string): Promise<string> {
-    const prefix = MATERIAL_CATEGORY_PREFIX[category] ?? 'QT';
+    // 前缀以库里的类别档案为准（后台可改），种子表只是兜底；都没有就落「其它」QT
+    const categories = await this.listMaterialCategories(tenantId);
+    const prefix =
+      categories.find((item) => item.label === category?.trim())?.code ||
+      MATERIAL_CATEGORY_SEED[category] ||
+      'QT';
     const rows = await this.materialRepo
       .createQueryBuilder('material')
       .select('material.code', 'code')

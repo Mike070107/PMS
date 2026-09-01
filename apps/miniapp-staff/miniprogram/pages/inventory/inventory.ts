@@ -1,7 +1,6 @@
 import { inventory, purchases, upload } from '@pms/api-client';
 import { formatDateTimeCn } from '@pms/miniapp-ui';
 import {
-  MATERIAL_CATEGORIES,
   MATERIAL_UNITS,
   PURCHASE_STATUS_LABELS,
   type MaterialView,
@@ -175,7 +174,8 @@ Page({
     uploading: false,
     form: emptyForm(),
     units: MATERIAL_UNITS,
-    formCategories: MATERIAL_CATEGORIES,
+    /** 类别档案由服务端给（后台可增删改），不再用写死的常量 —— 两端必须是同一份清单 */
+    formCategories: [] as string[],
     unitIndex: 0,
     formCategoryIndex: -1,
     errors: { name: '', unit: '' },
@@ -218,12 +218,14 @@ Page({
       }
       this.setData({ canView: true, canEdit: session.canEditMaterials });
 
-      const [materials, warehouses, stocks, requests] = await Promise.all([
+      const [materials, warehouses, stocks, requests, categories] = await Promise.all([
         inventory.listMaterials(),
         // 只拿本人范围能看的仓：自己管理处的排前面，公司级的在后；别的管理处的仓不出现
         inventory.listWarehouses({ scope: 'mine' }),
         inventory.listStocks(),
         purchases.listRequests(),
+        // 启用中的类别才让选；停用的老材料照常显示，只是不能再往里新建
+        inventory.listMaterialCategories().catch(() => []),
       ]);
       this.materials = materials;
       this.stocks = stocks;
@@ -244,6 +246,7 @@ Page({
         ? Math.min(this.data.warehouseIndex, warehouses.length)
         : defaultWarehouseIndex(session, warehouses);
       this.setData({
+        formCategories: categories.filter((item) => item.enabled).map((item) => item.label),
         warehouses,
         warehouseNames: ['全部仓库', ...warehouses.map((w) => w.name)],
         warehouseIndex,
@@ -512,7 +515,7 @@ Page({
       unitIndex: Math.max(0, MATERIAL_UNITS.indexOf(row.unit)),
       formCategoryIndex:
         row.category && row.category !== '未分类'
-          ? MATERIAL_CATEGORIES.indexOf(row.category)
+          ? this.data.formCategories.indexOf(row.category)
           : -1,
       errors: { name: '', unit: '' },
     });
@@ -537,7 +540,7 @@ Page({
 
   onFormCategory(e: WechatMiniprogram.PickerChange) {
     const index = Number(e.detail.value);
-    this.setData({ formCategoryIndex: index, 'form.category': MATERIAL_CATEGORIES[index] });
+    this.setData({ formCategoryIndex: index, 'form.category': this.data.formCategories[index] });
   },
 
   onToggleEnabled(e: WechatMiniprogram.SwitchChange) {

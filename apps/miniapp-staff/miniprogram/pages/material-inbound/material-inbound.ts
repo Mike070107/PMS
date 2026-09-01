@@ -1,6 +1,5 @@
 import { inventory, upload } from '@pms/api-client';
 import {
-  MATERIAL_CATEGORIES,
   MATERIAL_UNITS,
   type MaterialView,
   type StockView,
@@ -93,7 +92,8 @@ Page({
       photoUrls: [] as string[],
     },
     units: MATERIAL_UNITS,
-    categories: MATERIAL_CATEGORIES,
+    /** 类别档案由服务端给（后台「基础资料 → 材料类别」可增删改），不用写死的常量 */
+    categories: [] as string[],
     unitIndex: Math.max(0, MATERIAL_UNITS.indexOf('个')),
     categoryIndex: -1,
     createErrors: { name: '', category: '' },
@@ -140,11 +140,13 @@ Page({
         });
         return;
       }
-      const [materials, warehouses, stocks] = await Promise.all([
+      const [materials, warehouses, stocks, categories] = await Promise.all([
         inventory.listMaterials(),
         // 只拿本人范围能入的仓：自己管理处的排最前
         inventory.listWarehouses({ scope: 'mine' }),
         inventory.listStocks(),
+        // 停用的类别不让选：新建时选不到，老材料照常显示
+        inventory.listMaterialCategories().catch(() => []),
       ]);
       this.materials = materials;
       this.stocks = stocks;
@@ -153,6 +155,7 @@ Page({
       this.setData(
         {
           canEdit: true,
+          categories: categories.filter((item) => item.enabled).map((item) => item.label),
           warehouses: enabled,
           warehouseNames: enabled.map((item) => item.name),
           warehouseIndex,
@@ -295,7 +298,7 @@ Page({
     const index = Number(e.detail.value);
     this.setData({
       categoryIndex: index,
-      'createForm.category': MATERIAL_CATEGORIES[index],
+      'createForm.category': this.data.categories[index],
       'createErrors.category': '',
     });
   },

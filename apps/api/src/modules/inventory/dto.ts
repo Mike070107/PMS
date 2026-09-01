@@ -89,6 +89,36 @@ export class CreateMaterialDto {
   enabled?: boolean;
 }
 
+/**
+ * 材料类别（后台可增删改）。code = SKU 编码前缀，决定新建材料的编码（五金 → WJ-0001），
+ * 一旦这个类别下发过编码就不许再改（见 InventoryService.updateMaterialCategory）。
+ */
+export class UpsertMaterialCategoryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  tenantId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  label?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  code?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
 export class UpdateMaterialDto {
   @IsOptional()
   @IsString()
