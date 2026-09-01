@@ -70,7 +70,13 @@ const DISPATCHABLE_STATUSES: string[] = [
   WorkOrderStatus.WAITING_MATERIAL,
 ];
 
-interface PoolFilter { key: string; label: string; scope?: 'pool' | 'all'; status?: string }
+interface PoolFilter {
+  key: string;
+  label: string;
+  /** 服务端的取数范围：pool 未认领的 / all 全部 / reported 我提交的 */
+  scope?: 'pool' | 'all' | 'reported';
+  status?: string;
+}
 
 /**
  * 派单台的状态筛选。第一项是默认落点 —— 办公室打开这一屏，
@@ -99,6 +105,23 @@ const POOL_FILTERS: PoolFilter[] = [
   { key: 'created', label: '新报修', scope: 'pool', status: WorkOrderStatus.CREATED },
   { key: 'dispatched', label: '已派单', scope: 'pool', status: WorkOrderStatus.DISPATCHED },
   { key: 'waiting', label: '等待材料', scope: 'pool', status: WorkOrderStatus.WAITING_MATERIAL },
+];
+
+/**
+ * 「我报的」那一档的状态筛选。
+ *
+ * 和工单池那组不是一回事：工单池只有**没人认领**的单，所以只有三种状态可分；
+ * 我报的单从提交那一刻起会走完整个流程，所以档位要盖到「已完成」——
+ * 报单的人最想知道的恰恰是「修到哪一步了」（2026-09-01 要求）。
+ */
+const REPORTED_FILTERS: PoolFilter[] = [
+  { key: 'all', label: '全部', scope: 'reported' },
+  { key: 'created', label: '待派单', scope: 'reported', status: WorkOrderStatus.CREATED },
+  { key: 'dispatched', label: '已派单', scope: 'reported', status: WorkOrderStatus.DISPATCHED },
+  { key: 'in_progress', label: '维修中', scope: 'reported', status: WorkOrderStatus.IN_PROGRESS },
+  { key: 'waiting', label: '等待材料', scope: 'reported', status: WorkOrderStatus.WAITING_MATERIAL },
+  { key: 'review', label: '待验收', scope: 'reported', status: WorkOrderStatus.DONE_PENDING_REVIEW },
+  { key: 'completed', label: '已完成', scope: 'reported', status: WorkOrderStatus.COMPLETED },
 ];
 
 /**
@@ -224,23 +247,31 @@ Page({
       })();
       const dispatcher = mode === 'dispatch';
 
-      // 两种模式的档位不同（派单台 7 档、工单池 4 档），切换时必须把选中项归零，
-      // 否则从派单台的「已完成」切回工单池会落到一个越界的下标上，列表看着像空的
-      const filters = dispatcher ? DISPATCH_FILTERS : POOL_FILTERS;
-      const modeChanged = this.data.dispatcher !== dispatcher || this.data.loaded === false;
-      const filterIndex = modeChanged ? 0 : Math.min(this.data.filterIndex, filters.length - 1);
-      const filter = filters[filterIndex] || filters[0];
-      const keyword = this.data.keyword.trim();
-
-      // 派单台没有这三档，强制回「工单池」那一档的取数方式
+      // 派单台没有这三档，强制回「工单池」那一档的取数方式；
+      // 只报修的人在「工单池」那一档什么都看不到，直接落到「我报的」
       const mainTab = dispatcher
         ? 'pool'
         : reporterOnly && this.data.mainTab === 'pool'
           ? 'reported'
           : this.data.mainTab;
+
+      /* 三档各有各的筛选：工单池只有未认领的三种状态；我报的要盖到「已完成」——
+         报单的人最想知道的就是「修到哪一步了」；已完结那一档本身是终态，不给筛选条。
+         切换时必须把选中项归零，否则从派单台的「已完成」切回工单池会落到一个
+         越界的下标上，列表看着像空的。 */
+      const filters =
+        mainTab === 'reported'
+          ? REPORTED_FILTERS
+          : dispatcher
+            ? DISPATCH_FILTERS
+            : POOL_FILTERS;
+      const modeChanged = this.data.dispatcher !== dispatcher || this.data.loaded === false;
+      const filterIndex = modeChanged ? 0 : Math.min(this.data.filterIndex, filters.length - 1);
+      const filter = filters[filterIndex] || filters[0];
+      const keyword = this.data.keyword.trim();
       const raw = await repairs.list(
         mainTab === 'reported'
-          ? { scope: 'reported', q: keyword || undefined }
+          ? { scope: 'reported', status: filter.status as any, q: keyword || undefined }
           : mainTab === 'done'
             // 已完结走 scope=mine：这是「我经手的单」里已经结束的那些，和原来在手工单页那一档同口径。
             // 服务端不按「完结与否」筛，拿回来再过一遍（判断只此一份，见 utils/order-status.ts）
@@ -303,7 +334,8 @@ Page({
         // 页头那句话说的是「这一屏在办什么事」
         leadText:
           mainTab === 'reported'
-            ? '我报的'
+            // 翻到具体某一档就报档名，和工单池同一个做法：页头那个数说的是「眼前这批」
+            ? (filter.key === 'all' ? '我报的' : filter.label)
             : mainTab === 'done'
               ? '已完结'
               : filter.key === (dispatcher ? 'pool' : 'all')
@@ -324,7 +356,9 @@ Page({
         emptyText: keyword
           ? '没搜到匹配的工单，换个单号、地址或描述试试'
           : mainTab === 'reported'
-            ? '你还没有替住户或巡查报过修'
+            ? filter.key === 'all'
+              ? '你还没有替住户或巡查报过修'
+              : `你报的单里没有「${filter.label}」的`
             : mainTab === 'done'
               ? '还没有已完结的工单'
               : filter.key !== (dispatcher ? 'pool' : 'all')

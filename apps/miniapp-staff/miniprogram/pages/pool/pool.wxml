@@ -66,7 +66,8 @@
   <!-- ===== 状态筛选 + 搜索：两种模式都有，只是档位不同（见 pool.ts 的两组 FILTERS）。
        工单池原来没有这两样，池子里堆到几十条时，维修工要找「等待材料那单到料没有」
        只能一路往下翻 —— 和派单台是同一个问题，用同一套控件解决 ===== -->
-  <scroll-view wx:if="{{mainTab === 'pool'}}" class="chips" scroll-x enable-flex>
+  <!-- 已完结那一档不给筛选条：它本身就是终态，再按状态分没有意义 -->
+  <scroll-view wx:if="{{mainTab !== 'done'}}" class="chips" scroll-x enable-flex>
     <view
       wx:for="{{filters}}"
       wx:key="key"
