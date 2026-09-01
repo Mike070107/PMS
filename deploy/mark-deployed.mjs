@@ -139,7 +139,23 @@ function mark(target, args) {
   if (args.push) {
     git('push -q origin HEAD:main');
     git(`push -q -f origin ${tagOf(target)}`);
-    console.log(`✓ 已推送 main 和标签 ${tagOf(target)}`);
+    // 推完回读一次远端。多会话并行时，别人一句 `git push --tags -f` 就能把这个标签
+    // 顶回旧值，而这里照样打印「已推送」——2026-09-01 就这么让 deployed/miniapp-owner
+    // 退回上一版：DEPLOY_LOG 里明明记着刚发的包，status 却说「还有 8 个提交没上线」，
+    // 下一个会话照着这个状态会把同一版再发一遍。
+    const remoteLine = tryGit(`ls-remote --tags origin refs/tags/${tagOf(target)}`) || '';
+    const remoteSha = remoteLine.split(/\s+/)[0] || '';
+    if (remoteSha !== commit) {
+      console.error('');
+      console.error(
+        `✗ 标签没落到远端：${tagOf(target)} 现在指向 ${remoteSha.slice(0, 7) || '(不存在)'}，应该是 ${short}。`,
+      );
+      console.error('  多半是别的会话用旧标签强推了一次。重新打并回读确认：');
+      console.error(`    git tag -f ${tagOf(target)} ${short} && git push -f origin ${tagOf(target)}`);
+      console.error(`    git ls-remote --tags origin | grep ${tagOf(target)}`);
+      process.exit(1);
+    }
+    console.log(`✓ 已推送 main 和标签 ${tagOf(target)}（远端已回读确认 = ${short}）`);
   } else {
     console.log(`（--no-push：记得 git push origin main && git push -f origin ${tagOf(target)}）`);
   }
