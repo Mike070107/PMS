@@ -410,26 +410,50 @@ export class AccessService implements OnModuleInit {
     pageKey: string,
     action: PermissionAction,
   ): Promise<number[]> {
-    const column =
-      action === 'view' ? 'can_view' : action === 'edit' ? 'can_edit' : 'can_delete';
-    const rows = await this.userRoleRepo
-      .createQueryBuilder('ur')
-      .innerJoin(RolePermission, 'p', 'p.role_id = ur.role_id')
-      .innerJoin(Role, 'r', 'r.id = ur.role_id AND r.enabled = true')
-      .where('ur.tenant_id = :tenantId', { tenantId })
-      .andWhere('p.page_key = :pageKey', { pageKey })
-      .andWhere(`p.${column} = true`)
-      .select('DISTINCT ur.user_id', 'userId')
-      .getRawMany<{ userId: number }>();
-    const ids = rows.map((r) => Number(r.userId));
-    // 企业超管（绑内置角色）什么都能做，权限表里却没有逐页记录，得单独并进来
-    const builtIn = await this.userRoleRepo
-      .createQueryBuilder('ur')
-      .innerJoin(Role, 'r', 'r.id = ur.role_id AND r.built_in = true AND r.enabled = true')
-      .where('ur.tenant_id = :tenantId', { tenantId })
-      .select('DISTINCT ur.user_id', 'userId')
-      .getRawMany<{ userId: number }>();
-    return [...new Set([...ids, ...builtIn.map((r) => Number(r.userId))])];
+    const bindings = await this.userRoleRepo.find({ where: { tenantId } });
+    if (!bindings.length) return [];
+    const roleIds = [...new Set(bindings.map((row) => row.roleId))];
+    const roles = await this.roleRepo.find({
+      where: { tenantId, id: In(roleIds), enabled: true },
+    });
+    if (!roles.length) return [];
+
+    const ownRoleIds = roles.filter((role) => !role.templateId).map((role) => role.id);
+    const templateIds = [
+      ...new Set(roles.map((role) => role.templateId).filter((id): id is number => !!id)),
+    ];
+    const [ownPermissions, templatePermissions] = await Promise.all([
+      ownRoleIds.length
+        ? this.rolePermRepo.find({ where: { tenantId, roleId: In(ownRoleIds), pageKey } })
+        : [],
+      templateIds.length
+        ? this.tplPermRepo.find({ where: { tenantId, templateId: In(templateIds), pageKey } })
+        : [],
+    ]);
+    const actionField =
+      action === 'view' ? 'canView' : action === 'edit' ? 'canEdit' : 'canDelete';
+    const permittedRoleIds = new Set(
+      roles.filter((role) => role.builtIn).map((role) => role.id),
+    );
+    ownPermissions
+      .filter((permission) => permission[actionField])
+      .forEach((permission) => permittedRoleIds.add(permission.roleId));
+    const permittedTemplateIds = new Set(
+      templatePermissions
+        .filter((permission) => permission[actionField])
+        .map((permission) => permission.templateId),
+    );
+    roles
+      .filter((role) => role.templateId && permittedTemplateIds.has(role.templateId))
+      .forEach((role) => permittedRoleIds.add(role.id));
+
+    return [
+      ...new Set(
+        bindings
+          .filter((binding) => permittedRoleIds.has(binding.roleId))
+          .map((binding) => binding.userId),
+      ),
+    ];
   }
 
   /** 单个人有没有这一档（派单前校验「这个人真的能接单吗」） */

@@ -41,6 +41,7 @@ import {
   WorkOrderStatus,
 } from '../../common/enums';
 import { RepairTextAiService } from '../ai/repair-text.ai';
+import { AiFeedbackService } from '../ai/ai-feedback.service';
 import { isPublicAreaText } from './repair-public-area.util';
 import { formatAddressLine } from '../../common/address-line.util';
 import { detectUrgency } from '../../common/repair-urgency.util';
@@ -83,6 +84,7 @@ import {
   CancelWorkOrderDto,
   CompleteWorkOrderDto,
   CreateRepairRequestDto,
+  MaterialUsageDto,
   NeedMaterialDto,
   ParseRepairAddressDto,
   ReviewWorkOrderDto,
@@ -121,7 +123,6 @@ import {
   applyStockDelta,
   averageUnitCost,
   consumeStockLots,
-  restoreStockLots,
 } from '../inventory/stock-ledger';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { buildTypeKeywords, classifyByKeywords } from './repair-classify.util';
@@ -170,6 +171,7 @@ export class RepairsService implements OnModuleInit {
     private readonly settings: SettingsService,
     /** 一句话报修的语义整理。没配大模型时它一律返回 null，整条链路退回规则 */
     private readonly repairTextAi: RepairTextAiService,
+    private readonly aiFeedback: AiFeedbackService,
   ) {}
 
   /**
@@ -1079,10 +1081,16 @@ export class RepairsService implements OnModuleInit {
    * 库存为 0 的材料也返回（标 qty=0）：现场需要它但仓里没有，正是要走缺料登记的场景，
    * 列表里看不到反而让人以为「这东西系统里不存在」。
    */
-  async listWorkOrderStockOptions(id: number, user: AuthUser, warehouseId?: number) {
+  async listWorkOrderStockOptions(
+    id: number,
+    user: AuthUser,
+    access?: ResolvedAccess,
+    warehouseId?: number,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
     if (!workOrder) throw new NotFoundException('work order not found');
+    this.assertWorkOrderScope(workOrder, access);
 
     const request = await this.repairRequestRepo.findOne({
       where: { id: workOrder.requestId, tenantId },
@@ -1679,10 +1687,11 @@ export class RepairsService implements OnModuleInit {
     return saved;
   }
 
-  async acceptWorkOrder(id: number, user: AuthUser) {
+  async acceptWorkOrder(id: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
       // 工单池抢单：未指派的工单允许维修工自行认领（行锁保证只会有一个人抢到）
       const isClaim = workOrder.assigneeId === null;
       if (isClaim) {
@@ -1728,10 +1737,85 @@ export class RepairsService implements OnModuleInit {
     });
   }
 
-  async completeWorkOrder(id: number, dto: CompleteWorkOrderDto, user: AuthUser) {
+  /**
+   * 从指定仓库领用工单材料，并同时写 FIFO 分摊、用料明细和库存流水。
+   * 完工与「有库存记用料、没库存提报缺料」共用，避免出现两套扣库存口径。
+   */
+  private async consumeWorkOrderMaterials(
+    manager: EntityManager,
+    tenantId: number,
+    workOrderId: number,
+    items: MaterialUsageDto[],
+    operatorId: number,
+    note: string,
+  ) {
+    for (const item of items) {
+      if (!item.materialId || !item.warehouseId) continue;
+      const allocations = await consumeStockLots(manager, {
+        tenantId,
+        warehouseId: item.warehouseId,
+        materialId: item.materialId,
+        qty: item.qty,
+        operatorId,
+      });
+      const totalCostCents = allocations.reduce(
+        (sum, allocation) => sum + allocation.amountCents,
+        0,
+      );
+      const materialUsage = await manager.save(
+        WorkOrderMaterial,
+        manager.create(WorkOrderMaterial, {
+          tenantId,
+          workOrderId,
+          materialId: item.materialId,
+          warehouseId: item.warehouseId,
+          qty: item.qty,
+          unitCostCents: averageUnitCost(allocations, item.qty),
+          totalCostCents,
+          createdBy: operatorId,
+          updatedBy: operatorId,
+        }),
+      );
+      await manager.save(
+        WorkOrderMaterialAllocation,
+        allocations.map((allocation) =>
+          manager.create(WorkOrderMaterialAllocation, {
+            tenantId,
+            workOrderMaterialId: materialUsage.id,
+            stockLotId: allocation.stockLotId,
+            qty: allocation.qty,
+            unitCostCents: allocation.unitCostCents,
+            amountCents: allocation.amountCents,
+            createdBy: operatorId,
+            updatedBy: operatorId,
+          }),
+        ),
+      );
+      await applyStockDelta(manager, {
+        tenantId,
+        warehouseId: item.warehouseId,
+        materialId: item.materialId,
+        deltaQty: -item.qty,
+        type: StockMovementType.OUTBOUND,
+        unitCostCents: averageUnitCost(allocations, item.qty),
+        refType: 'work_order',
+        refId: workOrderId,
+        operatorId,
+        note,
+      });
+    }
+  }
+
+  async completeWorkOrder(
+    id: number,
+    dto: CompleteWorkOrderDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const saved = await this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
       assertWorkOrderTransition(
         workOrder.status,
         WorkOrderStatus.DONE_PENDING_REVIEW,
@@ -1757,8 +1841,8 @@ export class RepairsService implements OnModuleInit {
             dto.materials.map((item) => item.materialId).filter((v): v is number => !!v),
           )
         : new Map<number, string>();
-      workOrder.usedMaterials =
-        dto.materials?.map((item) => ({
+      const incomingUsedMaterials = dto.materials
+        ?.map((item) => ({
           materialId: item.materialId,
           name:
             item.name ||
@@ -1766,7 +1850,21 @@ export class RepairsService implements OnModuleInit {
           qty: item.qty,
           unit: item.unit,
           note: item.note?.trim() || undefined,
-        })).filter((item) => item.name || item.materialId) ?? workOrder.usedMaterials;
+        }))
+        .filter((item) => item.name || item.materialId);
+      // 缺料提报时可能已经领过一部分库存；材料到齐后再次接单完工，只追加本轮用料，
+      // 不能把上次已扣、已记的记录覆盖掉。
+      const existingRows = dto.materials?.length
+        ? await manager.find(WorkOrderMaterial, {
+            where: { tenantId, workOrderId: workOrder.id },
+          })
+        : [];
+      // 前端没有新增用料时会传 []；空数组不能把缺料前已经领用的记录清掉。
+      if (incomingUsedMaterials?.length) {
+        workOrder.usedMaterials = existingRows.length
+          ? [...(workOrder.usedMaterials || []), ...incomingUsedMaterials]
+          : incomingUsedMaterials;
+      }
       workOrder.resultAttachments =
         dto.resultAttachments ?? workOrder.resultAttachments;
       workOrder.feeCents = dto.feeCents ?? workOrder.feeCents;
@@ -1775,90 +1873,14 @@ export class RepairsService implements OnModuleInit {
 
       const inventoryMaterials = dto.materials?.filter((item) => item.materialId && item.warehouseId) ?? [];
       if (inventoryMaterials.length) {
-        // 同一单已经记过用料（将来若允许退回重做）：先把上次扣的批次和数量原样冲回并留流水，
-        // 再按这次提交的重新扣。以前这里只删记录不还库存，会双扣。
-        const existingRows = await manager.find(WorkOrderMaterial, {
-          where: { tenantId, workOrderId: saved.id },
-        });
-        if (existingRows.length) {
-          const previousAllocations = await manager.find(WorkOrderMaterialAllocation, {
-            where: { tenantId, workOrderMaterialId: In(existingRows.map((row) => row.id)) },
-          });
-          await restoreStockLots(manager, previousAllocations, user.id);
-          for (const row of existingRows) {
-            await applyStockDelta(manager, {
-              tenantId,
-              warehouseId: row.warehouseId,
-              materialId: row.materialId,
-              deltaQty: Number(row.qty),
-              type: StockMovementType.ADJUST,
-              unitCostCents: row.unitCostCents,
-              refType: 'work_order',
-              refId: saved.id,
-              operatorId: user.id,
-              note: `重新提交完工，冲回工单 ${saved.id} 上次领料`,
-            });
-          }
-          await manager.delete(WorkOrderMaterialAllocation, {
-            tenantId,
-            workOrderMaterialId: In(existingRows.map((row) => row.id)),
-          });
-        }
-        await manager.delete(WorkOrderMaterial, {
+        await this.consumeWorkOrderMaterials(
+          manager,
           tenantId,
-          workOrderId: saved.id,
-        });
-        for (const item of inventoryMaterials) {
-          const allocations = await consumeStockLots(manager, {
-            tenantId,
-            warehouseId: item.warehouseId!,
-            materialId: item.materialId!,
-            qty: item.qty,
-            operatorId: user.id,
-          });
-          const totalCostCents = allocations.reduce((sum, allocation) => sum + allocation.amountCents, 0);
-          const materialUsage = await manager.save(
-            WorkOrderMaterial,
-            manager.create(WorkOrderMaterial, {
-              tenantId,
-              workOrderId: saved.id,
-              materialId: item.materialId!,
-              warehouseId: item.warehouseId!,
-              qty: item.qty,
-              unitCostCents: averageUnitCost(allocations, item.qty),
-              totalCostCents,
-              createdBy: user.id,
-              updatedBy: user.id,
-            }),
-          );
-          await manager.save(
-            WorkOrderMaterialAllocation,
-            allocations.map((allocation) =>
-              manager.create(WorkOrderMaterialAllocation, {
-                tenantId,
-                workOrderMaterialId: materialUsage.id,
-                stockLotId: allocation.stockLotId,
-                qty: allocation.qty,
-                unitCostCents: allocation.unitCostCents,
-                amountCents: allocation.amountCents,
-                createdBy: user.id,
-                updatedBy: user.id,
-              }),
-            ),
-          );
-          await applyStockDelta(manager, {
-            tenantId,
-            warehouseId: item.warehouseId!,
-            materialId: item.materialId!,
-            deltaQty: -item.qty,
-            type: StockMovementType.OUTBOUND,
-            unitCostCents: averageUnitCost(allocations, item.qty),
-            refType: 'work_order',
-            refId: saved.id,
-            operatorId: user.id,
-            note: `complete work order ${saved.id}`,
-          });
-        }
+          saved.id,
+          inventoryMaterials,
+          user.id,
+          `完工领用，工单 ${saved.id}`,
+        );
       }
 
       await this.writeLog(
@@ -1873,6 +1895,7 @@ export class RepairsService implements OnModuleInit {
     });
 
     await this.notifyOwnerOnStatus(saved, 'review');
+    await this.recordCompletionAiFeedback(dto, saved, tenantId, user.id);
     return saved;
   }
 
@@ -1883,11 +1906,17 @@ export class RepairsService implements OnModuleInit {
    * 「我的工单」里只留真正在手上能干的活。材料到货后办公室重新派单，
    * 或者哪个维修工顺路就自己从池子里接回去（见 acceptWorkOrder 的 isClaim 分支）。
    */
-  async markNeedMaterial(id: number, dto: NeedMaterialDto, user: AuthUser) {
+  async markNeedMaterial(
+    id: number,
+    dto: NeedMaterialDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const missingMaterials = this.normalizeMissingMaterials(dto.missingMaterials);
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
       assertWorkOrderTransition(
         workOrder.status,
         WorkOrderStatus.WAITING_MATERIAL,
@@ -1899,10 +1928,41 @@ export class RepairsService implements OnModuleInit {
       const fromStatus = workOrder.status;
       workOrder.status = WorkOrderStatus.WAITING_MATERIAL;
       workOrder.missingMaterials = missingMaterials;
+      const usedMaterials =
+        dto.usedMaterials?.filter((item) => item.materialId && item.warehouseId) ?? [];
+      const usedMaterialNames = usedMaterials.length
+        ? await this.materialNamesByIds(
+            manager,
+            tenantId,
+            usedMaterials.map((item) => item.materialId).filter((id): id is number => !!id),
+          )
+        : new Map<number, string>();
+      const newlyUsed = usedMaterials
+        .map((item) => ({
+          materialId: item.materialId,
+          name:
+            item.name ||
+            (item.materialId ? usedMaterialNames.get(item.materialId) ?? '未知材料' : ''),
+          qty: item.qty,
+          unit: item.unit,
+          note: item.note?.trim() || undefined,
+        }))
+        .filter((item) => item.name || item.materialId);
+      if (newlyUsed.length) {
+        workOrder.usedMaterials = [...(workOrder.usedMaterials || []), ...newlyUsed];
+      }
       workOrder.assigneeId = null;
       workOrder.acceptedAt = null;
       workOrder.updatedBy = user.id;
       const saved = await manager.save(WorkOrder, workOrder);
+      await this.consumeWorkOrderMaterials(
+        manager,
+        tenantId,
+        saved.id,
+        usedMaterials,
+        user.id,
+        `工单 ${saved.orderNo} 缺料前已领用`,
+      );
 
       const purchaseRequest = await manager.save(
         PurchaseRequest,
@@ -1968,7 +2028,14 @@ export class RepairsService implements OnModuleInit {
         fromStatus,
         'need_material',
         user.id,
-        [`缺料：${summary}`, dto.note?.trim(), '已退回工单池，材料到位后重新派单']
+        [
+          newlyUsed.length
+            ? `已领用：${newlyUsed.map((item) => `${item.name} ×${item.qty}${item.unit || ''}`).join('、')}`
+            : null,
+          `缺料：${summary}`,
+          dto.note?.trim(),
+          '已退回工单池，材料到位后重新派单',
+        ]
           .filter(Boolean)
           .join('；'),
       );
@@ -1984,11 +2051,13 @@ export class RepairsService implements OnModuleInit {
     id: number,
     dto: UpdateMissingMaterialsDto,
     user: AuthUser,
+    access?: ResolvedAccess,
   ) {
     const missingMaterials = this.normalizeMissingMaterials(dto.missingMaterials);
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
       if (workOrder.status !== WorkOrderStatus.WAITING_MATERIAL) {
         throw new BadRequestException('work order is not waiting material');
       }
@@ -2053,10 +2122,16 @@ export class RepairsService implements OnModuleInit {
     return rows.map((item) => `${item.name} ×${item.qty}${item.unit || ''}`).join('、');
   }
 
-  async reviewWorkOrder(id: number, dto: ReviewWorkOrderDto, user: AuthUser) {
+  async reviewWorkOrder(
+    id: number,
+    dto: ReviewWorkOrderDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
       assertWorkOrderTransition(
         workOrder.status,
         WorkOrderStatus.COMPLETED,
@@ -2100,7 +2175,12 @@ export class RepairsService implements OnModuleInit {
   }
 
   /** 撤单：业主（限本人提交）与后台均可，需选择原因 */
-  async cancelWorkOrder(id: number, dto: CancelWorkOrderDto, user: AuthUser) {
+  async cancelWorkOrder(
+    id: number,
+    dto: CancelWorkOrderDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const reasonLabel = CANCEL_REASONS[dto.reasonCode];
     if (!reasonLabel) throw new BadRequestException('invalid cancel reason');
     if (dto.reasonCode === 'other' && !dto.note?.trim()) {
@@ -2109,6 +2189,7 @@ export class RepairsService implements OnModuleInit {
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
       assertWorkOrderTransition(
         workOrder.status,
         WorkOrderStatus.CANCELLED,
@@ -3031,11 +3112,83 @@ export class RepairsService implements OnModuleInit {
 
     // 类型里配的维修工每人一条「新工单」：站内信一定写，微信订阅消息尽力而为。
     // 通知失败只记日志，不能让报修提交失败（notifyUser 内部已兜住）
-    if (candidates.length) {
-      await this.notifyCandidatesOnCreate(created.workOrder, candidates, submittedBy);
-    }
+    // 即使类型没配默认维修工也必须调用：notifyCandidatesOnCreate 会退给有「派单台·派单」
+    // 权限的办公室人员。旧代码在外层先判断 candidates.length，导致方法里的办公室兜底
+    // 永远进不去，新报修就静悄悄躺在池子里。
+    await this.notifyCandidatesOnCreate(created.workOrder, candidates, submittedBy);
+
+    await this.recordRepairAiFeedback(dto, created, repairType, urgent, submittedBy);
 
     return created;
+  }
+
+  /** 记录草稿与最终提交的差异；失败只影响学习数据，不影响主业务。 */
+  private async recordRepairAiFeedback(
+    dto: CreateRepairRequestDto,
+    created: { request: RepairRequest; workOrder: WorkOrder },
+    repairType: string,
+    urgent: boolean,
+    userId: number | null,
+  ) {
+    if (!dto.aiAssist) return;
+    try {
+      const cfg = await this.settings.getAiAssistRaw(created.workOrder.tenantId);
+      await this.aiFeedback.record(created.workOrder.tenantId, {
+        kind: 'repair',
+        workOrderId: created.workOrder.id,
+        sourceText: dto.aiAssist.sourceText,
+        draft: dto.aiAssist.draft,
+        finalValue: {
+          description: dto.content,
+          // 只拿本次表单真正提交的联系人对比；服务端从登录账号/房屋档案兜出的联系人
+          // 不在原话里，拿它教模型会变成“没说人名也要猜一个”。
+          contactName: dto.contactName || '',
+          phone: dto.contactPhone || '',
+          repairType,
+          urgent,
+        },
+        model: cfg.model,
+        userId,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `AI 报修纠错记录失败（不影响报修）：${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  private async recordCompletionAiFeedback(
+    dto: CompleteWorkOrderDto,
+    workOrder: WorkOrder,
+    tenantId: number,
+    userId: number,
+  ) {
+    if (!dto.aiAssist) return;
+    try {
+      const cfg = await this.settings.getAiAssistRaw(tenantId);
+      await this.aiFeedback.record(tenantId, {
+        kind: 'completion',
+        workOrderId: workOrder.id,
+        sourceText: dto.aiAssist.sourceText,
+        draft: dto.aiAssist.draft,
+        finalValue: {
+          actionNote: dto.actionNote || '',
+          faultLocation: dto.faultLocation || '',
+          faultSymptom: dto.faultSymptom || '',
+          materials: (dto.materials || [])
+            .map((item) => item.name?.trim().split(/[（(\s]/)[0])
+            .filter((item): item is string => !!item),
+          feeRuleCode: dto.feeRuleCode || '',
+          feeCents: dto.feeCents ?? null,
+        },
+        model: cfg.model,
+        userId,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `AI 完工纠错记录失败（不影响完工）：${error instanceof Error ? error.message : error}`,
+      );
+    }
   }
 
   /**
@@ -3294,8 +3447,9 @@ export class RepairsService implements OnModuleInit {
     access?: ResolvedAccess,
   ) {
     const tenantId = this.resolveTenantId(user);
+    const repairTypes = this.listPublicRepairTypes(user, dto.communityId ?? null);
     const [ai, byRule] = await Promise.all([
-      this.repairTextAi.parse(tenantId, dto.text),
+      repairTypes.then((types) => this.repairTextAi.parse(tenantId, dto.text, types)),
       this.parseAddressByRule(dto, user, access),
     ]);
     let result = byRule;
@@ -3355,9 +3509,13 @@ export class RepairsService implements OnModuleInit {
       /** 模型整理出来的那几样，端上按需覆盖对应输入框；没开 AI 时不返回这个字段 */
       ai: ai
         ? {
+            addressText: ai.addressText || '',
             description: ai.description || '',
             contactName: ai.contactName || '',
+            phone: ai.phone || '',
             urgent: !!ai.urgent,
+            publicArea: !!ai.publicArea,
+            repairType: ai.repairType || '',
           }
         : undefined,
     };
@@ -4426,6 +4584,14 @@ export class RepairsService implements OnModuleInit {
     });
     if (!workOrder) throw new NotFoundException('work order not found');
     return workOrder;
+  }
+
+  /** 按 id 操作也必须套同一份管理处/小区范围；越界统一伪装成不存在，避免泄露单号。 */
+  private assertWorkOrderScope(workOrder: WorkOrder, access?: ResolvedAccess): void {
+    const scope = this.scopeIds(access);
+    if (scope && !scope.includes(workOrder.communityId)) {
+      throw new NotFoundException('work order not found');
+    }
   }
 
   /** 单不在自己手上就不许动 —— 能派单的人（办公室/经理）不受此限 */

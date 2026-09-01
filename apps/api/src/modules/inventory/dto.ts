@@ -1,5 +1,6 @@
 import {
   IsArray,
+  ArrayMinSize,
   IsBoolean,
   IsInt,
   IsOptional,
@@ -8,6 +9,7 @@ import {
   MaxLength,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { WarehouseType } from '../../common/enums';
@@ -61,6 +63,7 @@ export class CreateMaterialDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(0)
   defaultCostCents?: number;
 
   @IsOptional()
@@ -143,6 +146,7 @@ export class UpdateMaterialDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(0)
   defaultCostCents?: number;
 
   @IsOptional()
@@ -390,6 +394,7 @@ export class ManualPurchaseItemDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(0)
   estUnitCostCents?: number;
 }
 
@@ -400,6 +405,9 @@ export class CreatePurchaseRequestDto {
   tenantId?: number;
 
   @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => ManualPurchaseItemDto)
   items: ManualPurchaseItemDto[];
 }
 
@@ -426,6 +434,7 @@ export class PurchaseOrderItemDto {
 
   @Type(() => Number)
   @IsInt()
+  @Min(0)
   unitCostCents: number;
 }
 
@@ -446,6 +455,9 @@ export class CreatePurchaseOrderDto {
 
   @IsOptional()
   @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseOrderItemDto)
   items?: PurchaseOrderItemDto[];
 }
 
@@ -460,6 +472,7 @@ export class GoodsReceiptItemDto {
 
   @Type(() => Number)
   @IsInt()
+  @Min(0)
   unitCostCents: number;
 
   // 实物照片，选填 —— 货先入账，照片事后补（2026-09-01）
@@ -489,6 +502,9 @@ export class CreateGoodsReceiptDto {
   warehouseId: number;
 
   @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => GoodsReceiptItemDto)
   items: GoodsReceiptItemDto[];
 }
 
@@ -513,6 +529,9 @@ export class CreateGeneralReceiptDto {
   attachments?: string[];
 
   @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => GoodsReceiptItemDto)
   items: GoodsReceiptItemDto[];
 }
 
@@ -599,6 +618,9 @@ export class CreateTransferOrderDto {
   toWarehouseId: number;
 
   @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => TransferItemDto)
   items: TransferItemDto[];
 
   @IsOptional()
@@ -626,6 +648,9 @@ export class ReceiveTransferItemDto {
 export class ReceiveTransferOrderDto {
   @IsOptional()
   @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => ReceiveTransferItemDto)
   items?: ReceiveTransferItemDto[];
 
   /** 入哪个库位；不传用接收仓的默认库位 */

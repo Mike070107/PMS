@@ -10,14 +10,34 @@ import { request } from '../request';
  * 完工小结：维修工口述一句「换了个角阀，原来那个锈死了」，
  * 服务端交给大模型理成规范的维修记录。
  *
- * materials 只是**提示**他提到了哪些材料，不会自动填进用料清单 ——
- * 库存要扣的是具体 SKU，模型说的「角阀」对不上哪一条，得他自己从库存里选。
+ * materials 保留给老版本显示；新版本读 materialSuggestions。
+ * 只有名称/别名唯一精确命中且数量明确时才形成草稿行，真正扣库存仍在人工提交之后。
  */
-export const completionSummary = (data: { text: string }) =>
+export interface CompletionMaterialSuggestion {
+  spokenName: string;
+  qty: number | null;
+  unit: string;
+  materialId: number | null;
+  materialName: string;
+  spec: string;
+  catalogUnit: string;
+  match: 'exact' | 'candidate' | 'none';
+  needsConfirmation: boolean;
+}
+
+export const completionSummary = (data: { text: string; workOrderId?: number }) =>
   request<{
     ok: boolean;
     actionNote?: string;
     faultLocation?: string;
     faultSymptom?: string;
     materials?: string[];
+    materialSuggestions?: CompletionMaterialSuggestion[];
+    feeSuggestion?: {
+      ruleCode: string;
+      ruleName: string;
+      feeCents: number;
+      basis: string;
+    } | null;
+    draft?: Record<string, unknown>;
   }>({ method: 'POST', url: '/ai/completion-summary', data });

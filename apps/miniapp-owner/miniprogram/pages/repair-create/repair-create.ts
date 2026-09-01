@@ -539,7 +539,22 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     }
     // 用户点过 × 的同一段地址不再弹出来
     if (res.matchedText && res.matchedText === this.dismissedMatch) return;
-    this.setData({ detected: res });
+    const patch: Record<string, unknown> = { detected: res };
+    if (this.data.typeIndex < 0 && res.ai?.repairType) {
+      const index = this.types.findIndex(
+        (item: PublicRepairType) => item.repairType === res.ai?.repairType,
+      );
+      if (index >= 0) {
+        patch.typeIndex = index;
+        patch.contentSuggestions = (this.types[index].keywords || []).slice(0, 8);
+        patch.contentSuggestTitle = `${this.types[index].label}·猜你想输`;
+      }
+    }
+    if (!this.data.contactName && res.ai?.contactName) patch.contactName = res.ai.contactName;
+    if (!this.data.contactPhone && /^1\d{10}$/.test(res.ai?.phone || '')) {
+      patch.contactPhone = res.ai?.phone;
+    }
+    this.setData(patch);
   },
 
   /** 说了「急修」就标紧急；人自己定过就不再自动改 */
@@ -666,9 +681,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     // 家里的问题不给房号就必须留电话，否则维修工既不知道去哪、也联系不上人。
     // 公共区域本来就没有房号，再要求留电话就是无谓的拦路。
     // 描述里识别到了地址时按识别的走，房号那套校验就不适用了
-    const anonymousRoom = !detected && mode === 'self' && scope === 'home' && !roomNo.trim();
+    const anonymousRoom = !detected?.matched && mode === 'self' && scope === 'home' && !roomNo.trim();
     const errors = {
-      place: communityId || detected ? '' : '请先选择报修位置',
+      place: communityId || detected?.matched ? '' : '请先选择报修位置',
       type: typeIndex < 0 ? '请选择报修类型' : '',
       content: content.trim().length >= 5 ? '' : '请至少填写 5 个字描述问题',
       phone: !contactPhone
@@ -684,7 +699,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
     // 描述里识别到了地址就按识别结果提交（id 和文案一起换，不能只换显示）；
     // 否则 full 模式带地址簿选的 id，self 模式按范围摘 id（公区不挂房号）
-    const ids = detected
+    const ids = detected?.matched
       ? {
           buildingId: detected.buildingId ?? undefined,
           houseId: detected.houseId ?? undefined,
@@ -696,7 +711,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           }
         : scopeIds(scope, this.data);
 
-    const addressText = detected
+    const addressText = detected?.matched
       ? composeDetectedAddress(detected, this.data.spotText)
       : [
           this.data.placeText,
@@ -714,18 +729,19 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.setData({ submitting: true });
     try {
       const resp = await repairs.create({
-        communityId: detected ? detected.communityId! : (communityId as number),
+        communityId: detected?.matched ? detected.communityId! : (communityId as number),
         ...ids,
         addressText,
         contactName: this.data.contactName.trim() || undefined,
         contactPhone: contactPhone || undefined,
         repairType: this.data.typeOptions[typeIndex].value,
+        aiAssist: repairs.buildRepairAiAssist(content, detected),
         // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
         urgent: this.data.urgent,
         // 地址已经单独放进 addressText，描述只留故障本身。用 matchedRaw
         // （原话里地址占的整段，含小区名）剥 —— 归一化的 matchedText 不含小区名，
         // 剥完会剩个「枫桦景苑」在描述开头。剥空就退回原文，不提交空描述。
-        content: stripAddress(content, detected?.matchedRaw),
+        content: (detected?.ai?.description || '').trim() || stripAddress(content, detected?.matchedRaw),
         attachments: this.data.attachments,
       });
       wx.showToast({ title: '报修已提交' });

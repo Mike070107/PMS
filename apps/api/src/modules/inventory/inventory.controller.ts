@@ -169,8 +169,12 @@ export class InventoryController {
 
   @Post('warehouses')
   @RequirePermission('inventory', 'edit')
-  createWarehouse(@Body() dto: CreateWarehouseDto, @CurrentUser() user: AuthUser) {
-    return this.inventoryService.createWarehouse(dto, user);
+  createWarehouse(
+    @Body() dto: CreateWarehouseDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.createWarehouse(dto, user, access);
   }
 
   @Patch('warehouses/:id')
@@ -179,8 +183,9 @@ export class InventoryController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateWarehouseDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.updateWarehouse(id, dto, user);
+    return this.inventoryService.updateWarehouse(id, dto, user, access);
   }
 
   @Get('suppliers')
@@ -218,14 +223,22 @@ export class InventoryController {
   /** 某条库存的批次明细：哪批、什么价、还剩多少 */
   @Get('stocks/:id/lots')
   @RequirePermission(['inventory', 'app:inventory'], 'view')
-  listStockLots(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
-    return this.inventoryService.listStockLots(id, user);
+  listStockLots(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.listStockLots(id, user, access);
   }
 
   @Get('stock-movements')
   @RequirePermission(['inventory', 'app:inventory'], 'view')
-  listStockMovements(@Query() query: StockMovementQueryDto, @CurrentUser() user: AuthUser) {
-    return this.inventoryService.listStockMovements(query, user);
+  listStockMovements(
+    @Query() query: StockMovementQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.listStockMovements(query, user, access);
   }
 
   @Patch('stocks/:id')
@@ -234,8 +247,9 @@ export class InventoryController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateStockDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.updateStock(id, dto, user);
+    return this.inventoryService.updateStock(id, dto, user, access);
   }
 
   // 员工端审批页拉待办用它；「材料与库存」那一格也要看得到采购进度
@@ -301,8 +315,9 @@ export class InventoryController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectPurchaseRequestDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.rejectPurchaseRequest(id, dto, user);
+    return this.inventoryService.rejectPurchaseRequest(id, dto, user, access);
   }
 
   @Get('purchase-orders')
@@ -326,8 +341,12 @@ export class InventoryController {
 
   @Get('goods-receipts')
   @RequirePermission('inventory', 'view')
-  listGoodsReceipts(@Query() query: TenantQueryDto, @CurrentUser() user: AuthUser) {
-    return this.inventoryService.listGoodsReceipts(query, user);
+  listGoodsReceipts(
+    @Query() query: TenantQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.listGoodsReceipts(query, user, access);
   }
 
   @Post('goods-receipts')
@@ -335,8 +354,9 @@ export class InventoryController {
   createGoodsReceipt(
     @Body() dto: CreateGoodsReceiptDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.createGoodsReceipt(dto, user);
+    return this.inventoryService.createGoodsReceipt(dto, user, access);
   }
 
   @Post('goods-receipts/general')
@@ -344,8 +364,9 @@ export class InventoryController {
   createGeneralReceipt(
     @Body() dto: CreateGeneralReceiptDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.createGeneralReceipt(dto, user);
+    return this.inventoryService.createGeneralReceipt(dto, user, access);
   }
 
   // ---------------- 库位/货架 ----------------
@@ -356,8 +377,9 @@ export class InventoryController {
   listWarehouseLocations(
     @Query() query: WarehouseLocationQueryDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.listWarehouseLocations(query, user);
+    return this.inventoryService.listWarehouseLocations(query, user, access);
   }
 
   @Post('warehouse-locations')
@@ -365,8 +387,9 @@ export class InventoryController {
   createWarehouseLocation(
     @Body() dto: CreateWarehouseLocationDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.createWarehouseLocation(dto, user);
+    return this.inventoryService.createWarehouseLocation(dto, user, access);
   }
 
   @Patch('warehouse-locations/:id')
@@ -375,8 +398,9 @@ export class InventoryController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateWarehouseLocationDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.updateWarehouseLocation(id, dto, user);
+    return this.inventoryService.updateWarehouseLocation(id, dto, user, access);
   }
 
   @Get('transfer-orders')
@@ -384,8 +408,9 @@ export class InventoryController {
   listTransferOrders(
     @Query() query: TenantQueryDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.listTransferOrders(query, user);
+    return this.inventoryService.listTransferOrders(query, user, access);
   }
 
   @Post('transfer-orders')
@@ -393,8 +418,9 @@ export class InventoryController {
   createTransferOrder(
     @Body() dto: CreateTransferOrderDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.createTransferOrder(dto, user);
+    return this.inventoryService.createTransferOrder(dto, user, access);
   }
 
   @Post('transfer-orders/:id/approve')
@@ -402,8 +428,9 @@ export class InventoryController {
   approveTransferOrder(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.approveTransferOrder(id, user);
+    return this.inventoryService.approveTransferOrder(id, user, access);
   }
 
   @Post('transfer-orders/:id/reject')
@@ -412,8 +439,9 @@ export class InventoryController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectTransferOrderDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.rejectTransferOrder(id, dto.reason, user);
+    return this.inventoryService.rejectTransferOrder(id, dto.reason, user, access);
   }
 
   @Post('transfer-orders/:id/receive')
@@ -422,7 +450,8 @@ export class InventoryController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ReceiveTransferOrderDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.receiveTransferOrder(id, dto, user);
+    return this.inventoryService.receiveTransferOrder(id, dto, user, access);
   }
 }

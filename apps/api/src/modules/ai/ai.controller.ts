@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { IsBoolean, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -7,6 +7,8 @@ import { PermissionsGuard } from '../access/permissions.guard';
 import { ExtractSamplesService } from './extract-samples.service';
 import { RepairTextAiService } from './repair-text.ai';
 import { LlmService } from './llm.service';
+import { AiFeedbackService } from './ai-feedback.service';
+import { RepairFeeRulesService } from './repair-fee-rules.service';
 
 /**
  * 「发送测试」用的入参：允许带上页面里**还没保存**的那几个值，
@@ -31,12 +33,24 @@ class SampleDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
 }
 
+class FeeRuleDto {
+  @IsString() @MaxLength(60) @Matches(/^[a-zA-Z0-9_-]+$/) code: string;
+  @IsString() @MaxLength(120) name: string;
+  @IsOptional() @IsString() @MaxLength(60) repairType?: string;
+  @IsOptional() @IsInt() @Min(1) officeId?: number;
+  @IsOptional() @IsArray() @IsString({ each: true }) keywords?: string[];
+  @IsInt() @Min(0) @Max(100000000) feeCents: number;
+  @IsOptional() @IsBoolean() enabled?: boolean;
+}
+
 @Controller('settings/ai')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AiController {
   constructor(
     private readonly llm: LlmService,
     private readonly samples: ExtractSamplesService,
+    private readonly feedback: AiFeedbackService,
+    private readonly feeRules: RepairFeeRulesService,
   ) {}
 
 
@@ -89,5 +103,55 @@ export class AiController {
   @RequirePermission('settings', 'edit')
   removeSample(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.samples.remove(user.tenantId as number, id);
+  }
+
+  @Get('feedback')
+  @RequirePermission('settings', 'view')
+  listFeedback(
+    @CurrentUser() user: AuthUser,
+    @Query('kind') kind?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.feedback.list(user.tenantId as number, kind, status);
+  }
+
+  @Post('feedback/:id/promote')
+  @RequirePermission('settings', 'edit')
+  promoteFeedback(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.feedback.promote(user.tenantId as number, user.id, id);
+  }
+
+  @Post('feedback/:id/ignore')
+  @RequirePermission('settings', 'edit')
+  ignoreFeedback(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.feedback.ignore(user.tenantId as number, user.id, id);
+  }
+
+  @Get('fee-rules')
+  @RequirePermission('settings', 'view')
+  listFeeRules(@CurrentUser() user: AuthUser) {
+    return this.feeRules.list(user.tenantId as number);
+  }
+
+  @Post('fee-rules')
+  @RequirePermission('settings', 'edit')
+  createFeeRule(@Body() dto: FeeRuleDto, @CurrentUser() user: AuthUser) {
+    return this.feeRules.create(user.tenantId as number, user.id, dto);
+  }
+
+  @Patch('fee-rules/:id')
+  @RequirePermission('settings', 'edit')
+  updateFeeRule(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: FeeRuleDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.feeRules.update(user.tenantId as number, user.id, id, dto);
+  }
+
+  @Delete('fee-rules/:id')
+  @RequirePermission('settings', 'edit')
+  removeFeeRule(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.feeRules.remove(user.tenantId as number, id);
   }
 }

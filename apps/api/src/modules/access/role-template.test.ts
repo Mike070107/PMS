@@ -138,3 +138,37 @@ test('内置企业超管角色直通，一张权限表都不用查', async () =>
   );
   assert.equal(await svc.rolesGrantAdminPages([]), false, '一个角色都没绑：不放行');
 });
+
+test('按权限反查通知收件人时包含跟随模板的角色，不再只剩企业超管', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  svc.userRoleRepo = fakeRepo(
+    [
+      { tenantId: 1, userId: 101, roleId: 11 },
+      { tenantId: 1, userId: 102, roleId: 12 },
+      { tenantId: 1, userId: 103, roleId: 13 },
+    ],
+    {},
+  );
+  svc.roleRepo = fakeRepo(
+    [
+      { id: 11, tenantId: 1, templateId: 9, enabled: true, builtIn: false },
+      { id: 12, tenantId: 1, templateId: null, enabled: true, builtIn: false },
+      { id: 13, tenantId: 1, templateId: null, enabled: true, builtIn: true },
+    ],
+    {},
+  );
+  svc.rolePermRepo = fakeRepo(
+    [{ roleId: 12, pageKey: 'app:dispatch', canView: true, canEdit: true, canDelete: false }],
+    {},
+  );
+  svc.tplPermRepo = fakeRepo(
+    [{ templateId: 9, pageKey: 'app:dispatch', canView: true, canEdit: true, canDelete: false }],
+    {},
+  );
+
+  assert.deepEqual(
+    await svc.userIdsWithPermission(1, 'app:dispatch', 'edit'),
+    [101, 102, 103],
+    '模板角色、自定义角色和内置超管都应成为新报修通知候选人',
+  );
+});

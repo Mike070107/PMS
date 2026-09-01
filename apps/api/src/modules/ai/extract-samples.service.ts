@@ -116,6 +116,7 @@ function pruneExpected(expected: Record<string, unknown>): Record<string, unknow
     'description',
     'contactName',
     'phone',
+    'repairType',
     // 完工小结
     'actionNote',
     'faultLocation',
@@ -145,6 +146,7 @@ const SEED_SAMPLES: Array<{ text: string; expected: Record<string, unknown>; not
       description: '电子门旋钮打滑，居民出不去',
       phone: '13818909545',
       urgent: true,
+      repairType: 'smart',
     },
     note: '语音把门牌断成三段（弄/号/室之间有逗号）；房号 502 后面直接跟「报修」两个字',
   },
@@ -156,6 +158,7 @@ const SEED_SAMPLES: Array<{ text: string; expected: Record<string, unknown>; not
       contactName: '张先生',
       phone: '13800138000',
       urgent: false,
+      repairType: 'electric',
     },
     note: '语音把门牌说成中文数字，要转成阿拉伯数字才撞得上房产库',
   },
@@ -165,6 +168,7 @@ const SEED_SAMPLES: Array<{ text: string; expected: Record<string, unknown>; not
       addressText: '永北5511弄236号502',
       description: '电子门旋钮打滑，居民出不去',
       urgent: true,
+      repairType: 'smart',
     },
     note: '整句都是口语：语气词、客套话（麻烦、谢谢）都不该进故障描述',
   },
@@ -175,17 +179,18 @@ const SEED_SAMPLES: Array<{ text: string; expected: Record<string, unknown>; not
       description: '门口机没有反应',
       phone: '18201728748',
       publicArea: true,
+      repairType: 'smart',
     },
     note: '门牌是报修人住址、坏的是单元门口机 —— 地址要落到楼栋级公共区域，不能挂到 503 室',
   },
   {
     text: '监控室2号那个显示屏不亮了',
-    expected: { addressText: '监控室2号', description: '显示屏不亮' },
+    expected: { addressText: '监控室2号', description: '显示屏不亮', repairType: 'smart' },
     note: '公区点位：「2号」是点位名的一部分，不是门牌号，别当成 2 号楼',
   },
   {
     text: '那个什么，水管漏水了',
-    expected: { description: '水管漏水' },
+    expected: { description: '水管漏水', repairType: 'water' },
     note: '一个字都没提地址时就留空，绝不能编一个门牌出来',
   },
   {
@@ -195,8 +200,19 @@ const SEED_SAMPLES: Array<{ text: string; expected: Record<string, unknown>; not
       description: '大门关不上',
       contactName: '王女士',
       phone: '13900139000',
+      repairType: 'smart',
     },
     note: '「业主」「报修」这类标签词不属于故障描述',
+  },
+  {
+    text: '枫桦景苑二期25号303家里门铃打不开门',
+    expected: {
+      addressText: '枫桦景苑二期25号303',
+      description: '家里门铃打不开门',
+      publicArea: false,
+      repairType: 'smart',
+    },
+    note: '门铃是明确的智能化设备词；「家里」「打不开门」不能把它误判成入户门锁/门窗',
   },
 ];
 

@@ -1,24 +1,28 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import AppLayout from './components/AppLayout';
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import ReportsPage from './pages/ReportsPage';
-import BusinessPage from './pages/BusinessPage';
-import FeesPage from './pages/FeesPage';
-import PropertiesPage from './pages/PropertiesPage';
-import OwnerAuditPage from './pages/OwnerAuditPage';
-import WorkOrdersPage from './pages/WorkOrdersPage';
-import MaintenanceOrdersPage from './pages/MaintenanceOrdersPage';
-import SignPage from './pages/SignPage';
-import StaffPage from './pages/StaffPage';
-import InventoryPage from './pages/InventoryPage';
-import MaterialsPage from './pages/MaterialsPage';
-import QrPage from './pages/QrPage';
-import SettingsPage from './pages/SettingsPage';
-import RolesPage from './pages/RolesPage';
-import OfficesPage from './pages/OfficesPage';
-import PlatformTenantsPage from './pages/PlatformTenantsPage';
 import { pagePerm, useAuth } from './lib/auth';
+
+// 每个业务页按路由加载。库存页会带 xlsx、工单页组件也很大，一次全塞进首页会让登录页
+// 先下载近 2 MB 脚本；按页拆开后用户只为实际打开的功能付下载和解析成本。
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const BusinessPage = lazy(() => import('./pages/BusinessPage'));
+const FeesPage = lazy(() => import('./pages/FeesPage'));
+const PropertiesPage = lazy(() => import('./pages/PropertiesPage'));
+const OwnerAuditPage = lazy(() => import('./pages/OwnerAuditPage'));
+const WorkOrdersPage = lazy(() => import('./pages/WorkOrdersPage'));
+const MaintenanceOrdersPage = lazy(() => import('./pages/MaintenanceOrdersPage'));
+const SignPage = lazy(() => import('./pages/SignPage'));
+const StaffPage = lazy(() => import('./pages/StaffPage'));
+const InventoryPage = lazy(() => import('./pages/InventoryPage'));
+const MaterialsPage = lazy(() => import('./pages/MaterialsPage'));
+const QrPage = lazy(() => import('./pages/QrPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const RolesPage = lazy(() => import('./pages/RolesPage'));
+const OfficesPage = lazy(() => import('./pages/OfficesPage'));
+const PlatformTenantsPage = lazy(() => import('./pages/PlatformTenantsPage'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -106,7 +110,8 @@ function RequirePlatform({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
+    <Suspense fallback={<div style={{ padding: 48, textAlign: 'center', color: '#5b7370' }}>页面加载中…</div>}>
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
       {/* 手机扫码签名页：不需要登录，凭据是链接里那串 5 分钟有效的 token */}
       <Route path="/sign/:token" element={<SignPage />} />
@@ -137,6 +142,7 @@ export default function App() {
         <Route path="settings" element={<RequireTenantScope><RequirePage pageKey="settings"><SettingsPage /></RequirePage></RequireTenantScope>} />
         <Route path="*" element={<HomeRedirect />} />
       </Route>
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }

@@ -33,6 +33,13 @@ export interface RepairTextAiResult {
    * 房号转去当联系人标识（见 repairs.service 的 parseRepairAddress）。
    */
   publicArea?: boolean;
+  /** 报修类型编码。只能取本次提示词给出的租户有效类型；规则明确命中时仍以规则为准 */
+  repairType?: string;
+}
+
+export interface RepairTypePromptOption {
+  repairType: string;
+  label: string;
 }
 
 const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很口语的话，可能带停顿、重复、语气词。
@@ -51,19 +58,27 @@ const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很
   水泵房、配电箱、垃圾房、车库、外墙、绿化、井盖。
   住户家里的东西：家里的灯、马桶、水管、热水器、入户门锁、阳台、厨房卫生间里的东西。
   说了"我家""家里"的一律按住户家里算。
+- repairType: 报修类型编码。必须从本提示词后面给出的「本项目可用报修类型」中选择；无法确定时给空字符串。
+  先看坏的是哪一种设备，再看故障动作。明确设备词优先于泛词：门铃、门口机、可视对讲、
+  门禁属于智能化；入户门锁、锁芯、钥匙、窗户才属于门锁/门窗。
+  「打不开门」「家里」只是故障/位置，不能把明确说出的「门铃」改成「门锁」。
+  publicArea 和 repairType 是两件事：住户家里的门铃可以是 publicArea=false，但类型仍是智能化。
 
 例子：
 输入：5511弄，236号，502报修电子门里面，旋钮打滑，居民出不来。急急急，13818909545
-输出：{"addressText":"5511弄，236号，502","description":"电子门旋钮打滑，居民出不去","contactName":"","phone":"13818909545","urgent":true,"publicArea":true}
+输出：{"addressText":"5511弄，236号，502","description":"电子门旋钮打滑，居民出不去","contactName":"","phone":"13818909545","urgent":true,"publicArea":true,"repairType":"smart"}
 
 输入：5511弄278号503报门口机没有反应18201728748
-输出：{"addressText":"5511弄278号503","description":"门口机没有反应","contactName":"","phone":"18201728748","urgent":false,"publicArea":true}
+输出：{"addressText":"5511弄278号503","description":"门口机没有反应","contactName":"","phone":"18201728748","urgent":false,"publicArea":true,"repairType":"smart"}
 
 输入：枫桦一期17号201家里灯不亮，联系人张先生，电话13800138000
-输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false,"publicArea":false}
+输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false,"publicArea":false,"repairType":"electric"}
 
 输入：枫桦一期十七号二零一，家里灯不亮了，找张先生，13800138000
-输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false,"publicArea":false}`;
+输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false,"publicArea":false,"repairType":"electric"}
+
+输入：枫桦景苑二期25号303家里门铃打不开门
+输出：{"addressText":"枫桦景苑二期25号303","description":"家里门铃打不开门","contactName":"","phone":"","urgent":false,"publicArea":false,"repairType":"smart"}`;
 
 const COMPLETION_PROMPT = `你是物业维修的完工记录助手。维修工刚干完活，站在现场口述做了什么，话很随意、有口头禅。
 把它整理成办公室和业主都看得懂的记录，只输出 JSON，不要解释、不要代码围栏。
@@ -72,22 +87,61 @@ const COMPLETION_PROMPT = `你是物业维修的完工记录助手。维修工�
 - actionNote: 维修说明，业主会看到。写清做了什么处理，一到两句，用书面语。不要编造原话里没有的动作和结果；没修成（人不在家、缺料）就如实写没修成和原因。
 - faultLocation: 故障位置（厨房水槽下方、三楼楼道）。原话没说就给空字符串。
 - faultSymptom: 故障现象（接头老化渗水、角阀锈死）。原话没说就给空字符串。
-- materials: 他提到用了哪些材料的名字，字符串数组，如 ["角阀","生料带"]。只列名字、不要数量。
+- materials: 他提到用了哪些材料，数组元素形如 {"name":"角阀","qty":1,"unit":"只"}。
+  原话明确说了数量才填数字；「换了个/装了一只」可记为 1；完全没说数量就把 qty 设为 null。
   **换掉的、装上的东西本身就是用料**："换了个角阀" → 角阀；"接了段PVC管" → PVC管。
   别因为已经写进 actionNote 就不列了 —— 这一栏会自动加进用料清单，漏一样就是账不平。
   纯动作（紧固、清理、复位）不算用料。没提到任何材料就给空数组。
+- feeRuleCode: 只能从后面给出的「本项目维修收费规则」选择编码。只有口述内容明确符合某条规则才选；
+  不确定、没提供规则或说了免费时给空字符串。绝对不要自己计算或编造金额。
 
 例子：
 输入：换了个角阀，原来那个锈死了，顺手把水管接头缠了生料带
-输出：{"actionNote":"更换角阀一只；水管接头加缠生料带","faultLocation":"","faultSymptom":"角阀锈蚀卡死","materials":["角阀","生料带"]}`;
+输出：{"actionNote":"更换角阀一只；水管接头加缠生料带","faultLocation":"","faultSymptom":"角阀锈蚀卡死","materials":[{"name":"角阀","qty":1,"unit":"只"},{"name":"生料带","qty":null,"unit":""}],"feeRuleCode":""}`;
 
-/** 完工小结的结果。materials 只是提示，用料仍要维修工自己从库存里选 */
+/** 完工小结里从口述抽出的材料提及；后续还必须匹配真实 SKU */
+export interface CompletionMaterialMention {
+  name: string;
+  qty: number | null;
+  unit: string;
+}
+
+export interface CompletionFeeRuleOption {
+  code: string;
+  name: string;
+  repairType?: string | null;
+  keywords?: string[];
+  feeCents: number;
+}
+
+/**
+ * 收费建议的第二道校验：模型选了编码还不够，原话/整理结果必须命中规则关键词。
+ * 没写关键词的规则只有在本场景仅剩一条时才可采用，避免多条模糊规则由模型随便挑。
+ */
+export function validateCompletionFeeRule(
+  code: string,
+  rules: CompletionFeeRuleOption[],
+  text: string,
+): CompletionFeeRuleOption | null {
+  if (!code || /(?:免费|不收费|免单|不收钱)/.test(text)) return null;
+  const rule = rules.find((item) => item.code === code);
+  if (!rule) return null;
+  const keywords = (rule.keywords || []).map((item) => item.trim()).filter(Boolean);
+  if (!keywords.length) return rules.length === 1 ? rule : null;
+  const normalized = text.toLowerCase().replace(/\s+/g, '');
+  return keywords.some((word) => normalized.includes(word.toLowerCase().replace(/\s+/g, '')))
+    ? rule
+    : null;
+}
+
 export interface CompletionSummary {
   actionNote: string;
   faultLocation: string;
   faultSymptom: string;
-  /** 他提到的材料名，只用来提示「别忘了记用料」，不自动填进用料清单 */
-  materials: string[];
+  /** 他提到的材料和明确数量；是否能形成草稿行由真实材料库唯一匹配决定 */
+  materials: CompletionMaterialMention[];
+  /** 只返回收费规则编码，金额必须由服务端从规则表回填 */
+  feeRuleCode: string;
 }
 
 @Injectable()
@@ -98,7 +152,11 @@ export class RepairTextAiService {
   ) {}
 
   /** 没配大模型、调不通、返回不是 JSON —— 一律 null，调用方退回规则结果 */
-  async parse(tenantId: number, text: string): Promise<RepairTextAiResult | null> {
+  async parse(
+    tenantId: number,
+    text: string,
+    repairTypes: RepairTypePromptOption[] = [],
+  ): Promise<RepairTextAiResult | null> {
     const value = (text || '').trim();
     // 太短的话规则法足够了，不值得多花一次调用和 1~2 秒延迟
     if (value.length < 6) return null;
@@ -110,9 +168,21 @@ export class RepairTextAiService {
      * （2026-09-01 用户要求：已经处理过的正例要让 AI 记住，别每次重讲一遍规则）。
      * 拿不到样例（库挂了、还没灌种子）也不影响 —— 固定规则那部分照常工作。
      */
-    const system = await this.buildSystemPrompt(tenantId, SYSTEM_PROMPT, 'repair');
+    const typeContext = repairTypes.length
+      ? [
+          '本项目可用报修类型（repairType 必须返回冒号前的编码，不要返回名称）：',
+          ...repairTypes.map((item) => `- ${item.repairType}: ${item.label}`),
+        ].join('\n')
+      : '本项目没有提供可用报修类型；repairType 返回空字符串。';
+    const system = await this.buildSystemPrompt(
+      tenantId,
+      `${SYSTEM_PROMPT}\n\n${typeContext}`,
+      'repair',
+    );
     const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value);
     if (!raw) return null;
+    const allowedTypes = new Set(repairTypes.map((item) => item.repairType));
+    const repairType = str(raw.repairType);
     return {
       addressText: str(raw.addressText),
       description: str(raw.description),
@@ -120,6 +190,7 @@ export class RepairTextAiService {
       phone: str(raw.phone).replace(/\D/g, ''),
       urgent: raw.urgent === true,
       publicArea: raw.publicArea === true,
+      repairType: allowedTypes.has(repairType) ? repairType : '',
     };
   }
 
@@ -127,23 +198,45 @@ export class RepairTextAiService {
    * 完工小结：维修工站在现场说一句，理成办公室和业主都看得懂的维修记录。
    *
    * 和一句话报修同一套路数、同一个样例库（kind='completion'）。
-   * **模型只理文字，不碰要落库的东西** —— 用料仍然要维修工自己从库存里选，
-   * 模型只把他提到的材料名列出来当提示。理由和地址一样：编一个「角阀」出来很容易，
-   * 但库存要扣的是某个具体 SKU，编错了就是账不平。
+   * **模型只理文字，不碰要落库的东西** —— 模型先抽出材料名和明确说过的数量，
+   * 服务端再拿真实材料库做名称/别名匹配。只有唯一精确命中才给端上形成草稿行，
+   * 最终仍由维修工确认后随完工事务扣库存。
    */
-  async summarizeCompletion(tenantId: number, text: string): Promise<CompletionSummary | null> {
+  async summarizeCompletion(
+    tenantId: number,
+    text: string,
+    feeRules: CompletionFeeRuleOption[] = [],
+  ): Promise<CompletionSummary | null> {
     const value = (text || '').trim();
     if (value.length < 4) return null;
-    const system = await this.buildSystemPrompt(tenantId, COMPLETION_PROMPT, 'completion');
+    const feeContext = feeRules.length
+      ? [
+          '本项目维修收费规则（feeRuleCode 只能返回冒号前编码，金额由系统回填）：',
+          ...feeRules.map(
+            (rule) => `- ${rule.code}: ${JSON.stringify({
+              name: rule.name,
+              feeYuan: (rule.feeCents / 100).toFixed(2),
+              repairType: rule.repairType || '',
+              keywords: rule.keywords || [],
+            })}`,
+          ),
+        ].join('\n')
+      : '本项目没有配置维修收费规则；feeRuleCode 必须返回空字符串。';
+    const system = await this.buildSystemPrompt(
+      tenantId,
+      `${COMPLETION_PROMPT}\n\n${feeContext}`,
+      'completion',
+    );
     const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value);
     if (!raw) return null;
     return {
       actionNote: str(raw.actionNote),
       faultLocation: str(raw.faultLocation),
       faultSymptom: str(raw.faultSymptom),
-      materials: Array.isArray(raw.materials)
-        ? raw.materials.map((m) => str(m)).filter(Boolean).slice(0, 8)
-        : [],
+      materials: parseMaterialMentions(raw.materials),
+      feeRuleCode: feeRules.some((rule) => rule.code === str(raw.feeRuleCode))
+        ? str(raw.feeRuleCode)
+        : '',
     };
   }
 
@@ -173,7 +266,12 @@ function fullShape(expected: Record<string, unknown>): Record<string, unknown> {
       faultLocation: typeof expected.faultLocation === 'string' ? expected.faultLocation : '',
       faultSymptom: typeof expected.faultSymptom === 'string' ? expected.faultSymptom : '',
       // 样例里教了用料就照着教；写死空数组等于教它「永远别输出用料」
-      materials: Array.isArray(expected.materials) ? expected.materials : [],
+      materials: Array.isArray(expected.materials)
+        ? expected.materials.map((item) =>
+            typeof item === 'string' ? { name: item, qty: null, unit: '' } : item,
+          )
+        : [],
+      feeRuleCode: typeof expected.feeRuleCode === 'string' ? expected.feeRuleCode : '',
     };
   }
   return {
@@ -183,9 +281,82 @@ function fullShape(expected: Record<string, unknown>): Record<string, unknown> {
     phone: typeof expected.phone === 'string' ? expected.phone : '',
     urgent: expected.urgent === true,
     publicArea: expected.publicArea === true,
+    // 老样例没有这个字段时不硬填一个类型；新建/种子样例都会明确携带。
+    ...(typeof expected.repairType === 'string' && expected.repairType
+      ? { repairType: expected.repairType }
+      : {}),
   };
 }
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v.trim() : '';
+}
+
+function parseMaterialMentions(value: unknown): CompletionMaterialMention[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return { name: item.trim(), qty: null, unit: '' };
+      if (!item || typeof item !== 'object') return null;
+      const row = item as Record<string, unknown>;
+      const qty = Number(row.qty);
+      return {
+        name: str(row.name),
+        qty: Number.isFinite(qty) && qty > 0 && qty <= 999 ? qty : null,
+        unit: str(row.unit).slice(0, 20),
+      };
+    })
+    .filter((item): item is CompletionMaterialMention => !!item?.name)
+    .slice(0, 8);
+}
+
+export interface CompletionMaterialCatalogItem {
+  id: number;
+  name: string;
+  spec?: string | null;
+  unit?: string;
+  aliases?: string[];
+}
+
+/**
+ * 模型只抽出口语材料名；真正的 SKU 在服务端按名称/别名匹配。
+ * 只有完全命中才允许端上自动形成草稿行，包含关系只展示候选、必须人工点选。
+ */
+export function matchCompletionMaterials(
+  mentions: CompletionMaterialMention[],
+  catalog: CompletionMaterialCatalogItem[],
+) {
+  return mentions.map((mention) => {
+    const wanted = normalizeMaterialName(mention.name);
+    const ranked = catalog
+      .map((item) => {
+        const names = [item.name, ...(item.aliases || [])]
+          .map(normalizeMaterialName)
+          .filter(Boolean);
+        const exact = names.some((name) => name === wanted);
+        const partial = !exact && names.some((name) => name.includes(wanted) || wanted.includes(name));
+        return { item, score: exact ? 2 : partial ? 1 : 0 };
+      })
+      .filter((row) => row.score > 0)
+      .sort((a, b) => b.score - a.score || a.item.id - b.item.id);
+    const best = ranked[0];
+    const ambiguous = !!best && ranked.some(
+      (row, index) => index > 0 && row.score === best.score && row.item.id !== best.item.id,
+    );
+    return {
+      spokenName: mention.name,
+      qty: mention.qty,
+      unit: mention.unit,
+      materialId: best?.item.id ?? null,
+      materialName: best?.item.name ?? '',
+      spec: best?.item.spec ?? '',
+      catalogUnit: best?.item.unit ?? '',
+      match: !best ? 'none' : best.score === 2 && !ambiguous ? 'exact' : 'candidate',
+      needsConfirmation: !best || best.score !== 2 || ambiguous || mention.qty == null,
+    };
+  });
+}
+
+function normalizeMaterialName(value: string): string {
+  return value.toLowerCase().replace(/[\s·（）()\-_型号规格]/g, '');
 }

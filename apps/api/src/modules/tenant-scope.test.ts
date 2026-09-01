@@ -46,3 +46,24 @@ test('bare superadmin still needs an explicit tenant outside company view', () =
     );
   }
 });
+
+test('按编号读取或操作工单时仍校验管理处小区范围', () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  service.scopeIds = () => [10, 11];
+  assert.doesNotThrow(() => service.assertWorkOrderScope({ communityId: 10 }, {}));
+  assert.throws(
+    () => service.assertWorkOrderScope({ communityId: 99 }, {}),
+    /work order not found/,
+  );
+});
+
+test('按库存/仓库编号操作时仍校验可见仓范围', async () => {
+  const service = Object.create(InventoryService.prototype) as any;
+  service.visibleWarehouseIds = async () => [3, 4];
+  const user = { id: 7, tenantId: 1 };
+  await assert.doesNotReject(() => service.assertWarehouseVisible(1, user, 3, {}));
+  await assert.rejects(
+    () => service.assertWarehouseVisible(1, user, 9, {}),
+    /warehouse not found/,
+  );
+});

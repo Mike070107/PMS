@@ -653,6 +653,42 @@ export class InventoryService {
       .map((w) => w.id);
   }
 
+  /** 所有按仓库 id 读写的接口共用这一道范围校验，避免列表收窄了、详情/操作仍能猜 id 越界。 */
+  private async assertWarehouseVisible(
+    tenantId: number,
+    user: AuthUser,
+    warehouseId: number,
+    access?: ResolvedAccess,
+  ): Promise<void> {
+    const visible = await this.visibleWarehouseIds(tenantId, user, access);
+    if (visible && !visible.includes(warehouseId)) {
+      throw new NotFoundException('warehouse not found');
+    }
+  }
+
+  /** 新建/改挂靠时还没有可供反查的仓库 id，直接按目标管理处/小区校验数据范围。 */
+  private async assertWarehouseBindingVisible(
+    tenantId: number,
+    binding: { communityId: number | null; officeId: number | null },
+    access?: ResolvedAccess,
+  ): Promise<void> {
+    if (!access || (access.scopeAll && !access.actingOfficeId)) return;
+    if (access.actingOfficeId) {
+      if (binding.officeId === access.actingOfficeId) return;
+      throw new ForbiddenException('不能在当前管理处视角下创建或改挂到其它范围的仓库');
+    }
+    const communities = new Set(access.communityIds ?? []);
+    if (binding.communityId && communities.has(binding.communityId)) return;
+    if (binding.officeId) {
+      const officeCommunities = await this.accessService.officeCommunityIds(
+        tenantId,
+        binding.officeId,
+      );
+      if (officeCommunities.some((id) => communities.has(id))) return;
+    }
+    throw new ForbiddenException('仓库不在你的管理范围内');
+  }
+
   /**
    * 仓库表单「所属管理处」的下拉选项。
    * 前端原来用登录下发的 access.offices，那是「可切换的管理处」，新建的管理处
@@ -803,9 +839,10 @@ export class InventoryService {
     return { communityId: nextCommunityId, officeId: nextOfficeId };
   }
 
-  async createWarehouse(dto: CreateWarehouseDto, user: AuthUser) {
+  async createWarehouse(dto: CreateWarehouseDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
     const binding = await this.resolveWarehouseBinding(tenantId, dto.type, dto.communityId, dto.officeId);
+    await this.assertWarehouseBindingVisible(tenantId, binding, access);
     return this.warehouseRepo.save(
       this.warehouseRepo.create({
         tenantId,
@@ -821,10 +858,16 @@ export class InventoryService {
     );
   }
 
-  async updateWarehouse(id: number, dto: UpdateWarehouseDto, user: AuthUser) {
+  async updateWarehouse(
+    id: number,
+    dto: UpdateWarehouseDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const warehouse = await this.warehouseRepo.findOne({ where: { id, tenantId } });
     if (!warehouse) throw new NotFoundException('warehouse not found');
+    await this.assertWarehouseVisible(tenantId, user, warehouse.id, access);
     const nextType = dto.type ?? warehouse.type;
     const binding = await this.resolveWarehouseBinding(
       tenantId,
@@ -833,6 +876,7 @@ export class InventoryService {
       // 显式传 null = 清成公司级；不传 = 不动
       dto.officeId === undefined ? warehouse.officeId : dto.officeId,
     );
+    await this.assertWarehouseBindingVisible(tenantId, binding, access);
     if (dto.name !== undefined) warehouse.name = dto.name;
     warehouse.type = nextType;
     warehouse.communityId = binding.communityId;
@@ -947,10 +991,11 @@ export class InventoryService {
   }
 
   /** 某条库存的批次明细（含已耗尽的），先进先出的顺序 */
-  async listStockLots(stockId: number, user: AuthUser) {
+  async listStockLots(stockId: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     const stock = await this.stockRepo.findOne({ where: { id: stockId, tenantId } });
     if (!stock) throw new NotFoundException('stock not found');
+    await this.assertWarehouseVisible(tenantId, user, stock.warehouseId, access);
     return this.dataSource.getRepository(StockLot).find({
       where: { tenantId, warehouseId: stock.warehouseId, materialId: stock.materialId },
       order: { receivedAt: 'ASC', id: 'ASC' },
@@ -963,10 +1008,21 @@ export class InventoryService {
    * 界面上写「一般入库单 GR20260901…」，不是「一般入库单 #12」：
    * id 是程序定位用的，人对不上（2026-09-01 反馈）。
    */
-  async listStockMovements(query: StockMovementQueryDto, user: AuthUser) {
+  async listStockMovements(
+    query: StockMovementQueryDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const where: FindOptionsWhere<StockMovement> = { tenantId };
-    if (query.warehouseId) where.warehouseId = query.warehouseId;
+    const visible = await this.visibleWarehouseIds(tenantId, user, access);
+    if (query.warehouseId) {
+      if (visible && !visible.includes(query.warehouseId)) return [];
+      where.warehouseId = query.warehouseId;
+    } else if (visible) {
+      if (!visible.length) return [];
+      where.warehouseId = In(visible);
+    }
     if (query.materialId) where.materialId = query.materialId;
     const rows = await this.dataSource.getRepository(StockMovement).find({
       where,
@@ -1034,8 +1090,11 @@ export class InventoryService {
    * - 盘亏：先进先出扣批次，流水成本取被扣批次的加权价。
    * 以前是直接改 stocks.qty 不动批次，结果批次和实物对不上、下次出库扣到不存在的批次。
    */
-  async updateStock(id: number, dto: UpdateStockDto, user: AuthUser) {
+  async updateStock(id: number, dto: UpdateStockDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
+    const current = await this.stockRepo.findOne({ where: { id, tenantId } });
+    if (!current) throw new NotFoundException('stock not found');
+    await this.assertWarehouseVisible(tenantId, user, current.warehouseId, access);
     return this.dataSource.transaction(async (manager) => {
       const stock = await manager.findOne(Stock, {
         where: { id, tenantId },
@@ -1300,7 +1359,12 @@ export class InventoryService {
     });
   }
 
-  rejectPurchaseRequest(id: number, dto: RejectPurchaseRequestDto, user: AuthUser) {
+  rejectPurchaseRequest(
+    id: number,
+    dto: RejectPurchaseRequestDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const request = await this.lockPurchaseRequest(manager, id, tenantId);
@@ -1313,6 +1377,21 @@ export class InventoryService {
         ].includes(request.status)
       ) {
         throw new BadRequestException('purchase request cannot be rejected');
+      }
+      const canEdit = (pageKey: string) =>
+        !!access?.isPlatformAdmin ||
+        !!access?.isTenantAdmin ||
+        access?.pages?.[pageKey]?.edit === true;
+      const allowed =
+        (request.status === PurchaseRequestStatus.OFFICE_REVIEW &&
+          (request.applicantId === user.id || canEdit('inventory') || canEdit('app:inventory'))) ||
+        (request.status === PurchaseRequestStatus.MANAGER_REVIEW &&
+          canEdit('app:approve-manager')) ||
+        ([PurchaseRequestStatus.PURCHASER_REVIEW, PurchaseRequestStatus.APPROVED].includes(
+          request.status,
+        ) && canEdit('app:approve-purchaser'));
+      if (!allowed) {
+        throw new ForbiddenException('当前审批环节不能由你驳回');
       }
       request.status = PurchaseRequestStatus.REJECTED;
       request.rejectReason = dto.reason;
@@ -1409,9 +1488,14 @@ export class InventoryService {
     });
   }
 
-  createGoodsReceipt(dto: CreateGoodsReceiptDto, user: AuthUser) {
+  async createGoodsReceipt(
+    dto: CreateGoodsReceiptDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
     if (!dto.items.length) throw new BadRequestException('items is required');
+    await this.assertWarehouseVisible(tenantId, user, dto.warehouseId, access);
     return this.dataSource.transaction(async (manager) => {
       const order = await manager.findOne(PurchaseOrder, {
         where: { id: dto.purchaseOrderId, tenantId },
@@ -1525,10 +1609,15 @@ export class InventoryService {
   }
 
   /** 一般入库（无采购单，零星采买）：填来源 + 凭证附件，逐项选库位；实物照片选填，可事后补 */
-  createGeneralReceipt(dto: CreateGeneralReceiptDto, user: AuthUser) {
+  async createGeneralReceipt(
+    dto: CreateGeneralReceiptDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
     if (!dto.items.length) throw new BadRequestException('items is required');
     if (!dto.sourceText?.trim()) throw new BadRequestException('请填写材料来源');
+    await this.assertWarehouseVisible(tenantId, user, dto.warehouseId, access);
     return this.dataSource.transaction(async (manager) => {
       await this.ensureWarehouse(manager, tenantId, dto.warehouseId);
       await this.ensureMaterials(manager, tenantId, dto.items.map((item) => item.materialId));
@@ -1595,10 +1684,12 @@ export class InventoryService {
     });
   }
 
-  listGoodsReceipts(query: TenantQueryDto, user: AuthUser) {
+  async listGoodsReceipts(query: TenantQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
+    const visible = await this.visibleWarehouseIds(tenantId, user, access);
+    if (visible && !visible.length) return [];
     return this.dataSource.getRepository(GoodsReceipt).find({
-      where: { tenantId },
+      where: { tenantId, ...(visible ? { warehouseId: In(visible) } : {}) },
       order: { id: 'DESC' },
       take: 100,
     });
@@ -1646,18 +1737,34 @@ export class InventoryService {
 
   // ---------------- 库位/货架 ----------------
 
-  listWarehouseLocations(query: WarehouseLocationQueryDto, user: AuthUser) {
+  async listWarehouseLocations(
+    query: WarehouseLocationQueryDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const where: FindOptionsWhere<WarehouseLocation> = { tenantId };
-    if (query.warehouseId) where.warehouseId = query.warehouseId;
+    const visible = await this.visibleWarehouseIds(tenantId, user, access);
+    if (query.warehouseId) {
+      if (visible && !visible.includes(query.warehouseId)) return [];
+      where.warehouseId = query.warehouseId;
+    } else if (visible) {
+      if (!visible.length) return [];
+      where.warehouseId = In(visible);
+    }
     return this.dataSource.getRepository(WarehouseLocation).find({
       where,
       order: { id: 'ASC' },
     });
   }
 
-  async createWarehouseLocation(dto: CreateWarehouseLocationDto, user: AuthUser) {
+  async createWarehouseLocation(
+    dto: CreateWarehouseLocationDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
+    await this.assertWarehouseVisible(tenantId, user, dto.warehouseId, access);
     await this.ensureWarehouse(this.dataSource.manager, tenantId, dto.warehouseId);
     const label = this.buildLocationLabel(dto.zone, dto.shelf, dto.bin);
     if (!label) throw new BadRequestException('请至少填写库区、货架或货位之一');
@@ -1676,11 +1783,17 @@ export class InventoryService {
     );
   }
 
-  async updateWarehouseLocation(id: number, dto: UpdateWarehouseLocationDto, user: AuthUser) {
+  async updateWarehouseLocation(
+    id: number,
+    dto: UpdateWarehouseLocationDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const repo = this.dataSource.getRepository(WarehouseLocation);
     const location = await repo.findOne({ where: { id, tenantId } });
     if (!location) throw new NotFoundException('库位不存在');
+    await this.assertWarehouseVisible(tenantId, user, location.warehouseId, access);
     if (dto.zone !== undefined) location.zone = dto.zone?.trim() || null;
     if (dto.shelf !== undefined) location.shelf = dto.shelf?.trim() || null;
     if (dto.bin !== undefined) location.bin = dto.bin?.trim() || null;
@@ -1699,21 +1812,33 @@ export class InventoryService {
     return [zone?.trim(), shelf?.trim(), bin?.trim()].filter(Boolean).join('-');
   }
 
-  listTransferOrders(query: TenantQueryDto, user: AuthUser) {
+  async listTransferOrders(query: TenantQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
-    return this.transferOrderRepo.find({
+    const rows = await this.transferOrderRepo.find({
       where: { tenantId },
       order: { id: 'DESC' },
     });
+    const visible = await this.visibleWarehouseIds(tenantId, user, access);
+    if (!visible) return rows;
+    const allowed = new Set(visible);
+    return rows.filter(
+      (row) => allowed.has(row.fromWarehouseId) || allowed.has(row.toWarehouseId),
+    );
   }
 
   /** 发起调拨 → 进入经理审批（此时不扣库存，仅校验发货仓库存充足） */
-  createTransferOrder(dto: CreateTransferOrderDto, user: AuthUser) {
+  async createTransferOrder(
+    dto: CreateTransferOrderDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
     if (!dto.items.length) throw new BadRequestException('items is required');
     if (dto.fromWarehouseId === dto.toWarehouseId) {
       throw new BadRequestException('发货仓与接收仓不能相同');
     }
+    await this.assertWarehouseVisible(tenantId, user, dto.fromWarehouseId, access);
+    await this.assertWarehouseVisible(tenantId, user, dto.toWarehouseId, access);
     return this.dataSource.transaction(async (manager) => {
       await this.ensureWarehouse(manager, tenantId, dto.fromWarehouseId);
       await this.ensureWarehouse(manager, tenantId, dto.toWarehouseId);
@@ -1760,10 +1885,12 @@ export class InventoryService {
   }
 
   /** 经理审批通过 → 发货仓扣减、锁定在途，推送接收仓仓管 */
-  approveTransferOrder(id: number, user: AuthUser) {
+  approveTransferOrder(id: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const transfer = await this.lockTransferOrder(manager, id, tenantId);
+      await this.assertWarehouseVisible(tenantId, user, transfer.fromWarehouseId, access);
+      await this.assertWarehouseVisible(tenantId, user, transfer.toWarehouseId, access);
       if (transfer.status !== TransferOrderStatus.PENDING_REVIEW) {
         throw new BadRequestException('调拨单不在待审批状态');
       }
@@ -1808,10 +1935,17 @@ export class InventoryService {
   }
 
   /** 经理驳回 */
-  rejectTransferOrder(id: number, reason: string, user: AuthUser) {
+  rejectTransferOrder(
+    id: number,
+    reason: string,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const transfer = await this.lockTransferOrder(manager, id, tenantId);
+      await this.assertWarehouseVisible(tenantId, user, transfer.fromWarehouseId, access);
+      await this.assertWarehouseVisible(tenantId, user, transfer.toWarehouseId, access);
       if (transfer.status !== TransferOrderStatus.PENDING_REVIEW) {
         throw new BadRequestException('调拨单不在待审批状态');
       }
@@ -1834,13 +1968,19 @@ export class InventoryService {
   }
 
   /** 接收仓确认收货（可修改实收数量）→ 按实收入接收仓，通知发货人 */
-  receiveTransferOrder(id: number, dto: ReceiveTransferOrderDto, user: AuthUser) {
+  receiveTransferOrder(
+    id: number,
+    dto: ReceiveTransferOrderDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const receivedByMaterial = new Map<number, number>();
     (dto.items ?? []).forEach((item) => receivedByMaterial.set(item.materialId, item.receivedQty));
 
     return this.dataSource.transaction(async (manager) => {
       const transfer = await this.lockTransferOrder(manager, id, tenantId);
+      await this.assertWarehouseVisible(tenantId, user, transfer.toWarehouseId, access);
       if (transfer.status !== TransferOrderStatus.APPROVED) {
         throw new BadRequestException('调拨单不在待接收状态');
       }

@@ -199,7 +199,10 @@ export class RolesService {
     const tplIds = [
       ...new Set(roles.map((r) => r.templateId).filter((id): id is number => !!id)),
     ];
-    const [own, tpl] = await Promise.all([
+    const [own, tpl]: [
+      Array<Pick<RolePermission, 'roleId' | 'pageKey'>>,
+      Array<Pick<RoleTemplatePermission, 'templateId' | 'pageKey'>>,
+    ] = await Promise.all([
       ownIds.length
         ? this.permRepo.find({
             where: { roleId: In(ownIds), canView: true },

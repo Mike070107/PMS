@@ -2,12 +2,17 @@
 
 
 /* 业主原话：引号块，和系统文案区分开 */
+.order-summary { border-top: 8rpx solid #4f88b5; box-shadow: 0 12rpx 30rpx rgba(26,54,83,.10); }
+.order-summary .wo-card__head { padding-bottom: 22rpx; border-bottom: 2rpx solid #e4ebf2; }
+.order-summary .wo-card__type { font-size: 38rpx; }
+.order-summary .wo-card__foot { margin-top: 28rpx; padding-top: 22rpx; border-top: 2rpx solid #e4ebf2; }
+
 .quote {
   margin-top: 20rpx;
   padding: 20rpx 24rpx;
-  border-left: 6rpx solid var(--color-border);
-  background: var(--color-bg);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-left: 6rpx solid #5f91b9;
+  background: #edf4fa;
+  border-radius: 0 20rpx 20rpx 0;
   font-size: var(--font-lg);
   line-height: 1.7;
 }
@@ -18,13 +23,16 @@
   display: flex;
   align-items: center;
   gap: 10rpx;
-  padding: 16rpx 8rpx 16rpx 16rpx;
+  padding: 14rpx 22rpx;
+  border: 2rpx solid #b9d0e3;
+  border-radius: 999rpx;
+  background: #f3f8fc;
   color: var(--color-brand);
   font-size: var(--font-lg);
 }
 .call .icon { margin-top: 0; }
 
-.section-title { font-size: var(--font-2xl); font-weight: 600; }
+.section-title { font-size: var(--font-2xl); font-weight: 700; }
 /* 「维修结果」卡里标题和下面的信息行之间要有一档，别让标题贴在第一行上 */
 .card > .section-title { display: block; margin-bottom: 28rpx; }
 /* 用料在信息行的「值」这一列里竖着排，每项之间留一点，不然几项挤成一坨 */
@@ -66,9 +74,11 @@
 
 /* .error 已挪到 app.wxss（三个页面共用，别再各写一份） */
 
-.timeline-item { display: flex; gap: 16rpx; margin-bottom: 28rpx; }
+.timeline-item { position: relative; display: flex; gap: 20rpx; margin-bottom: 28rpx; }
+.timeline-item::after { content: ""; position: absolute; left: 7rpx; top: 32rpx; bottom: -28rpx; width: 2rpx; background: #d9e5ee; }
 .timeline-item:last-child { margin-bottom: 0; }
-.dot { width: 16rpx; height: 16rpx; border-radius: 50%; background: var(--color-brand); margin-top: 14rpx; flex-shrink: 0; }
+.timeline-item:last-child::after { display: none; }
+.dot { width: 16rpx; height: 16rpx; border: 6rpx solid #dbeaf5; border-radius: 50%; background: var(--color-brand); margin-top: 10rpx; flex-shrink: 0; z-index: 1; }
 .timeline-body { flex: 1; }
 .timeline-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; }
 .timeline-label { font-size: var(--font-xl); font-weight: 500; }
@@ -83,6 +93,7 @@
 }
 
 /* ---------- 添加用料 ---------- */
+.sheet__body { box-sizing: border-box; }
 .mat-empty {
   padding: 40rpx 0;
   text-align: center;
@@ -91,12 +102,30 @@
 }
 /* 够不够：够用是灰的（不打扰），不够/没有是橙的（提示要走缺料） */
 .mat-hint {
-  margin-top: 14rpx;
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin-top: 20rpx;
   font-size: var(--font-md);
   line-height: 1.5;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 .mat-hint--short { color: #ad6800; }
+.mat-hint__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44rpx;
+  height: 44rpx;
+  flex-shrink: 0;
+  border-radius: 12rpx;
+  background: var(--color-brand);
+  color: #fff;
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+.mat-hint__icon--short { background: #d48806; }
+.mat-hint__text { flex: 1; min-width: 0; }
 
 /* 完工面板里回显已记的用料 */
 .used-list { display: flex; flex-direction: column; gap: 12rpx; }
@@ -115,26 +144,101 @@
 
 .mat-item {
   margin-top: 24rpx;
-  padding: 22rpx;
-  background: var(--color-bg);
-  border-radius: var(--radius-sm);
+  padding: 28rpx;
+  background: #d4e0eb;
+  border: 2rpx solid #aebfd1;
+  border-radius: 40rpx;
+  box-shadow: 0 10rpx 26rpx rgba(35, 65, 105, 0.13);
 }
 .mat-item .mat-name { background: var(--color-card-bg); }
-.mat-pick { flex-shrink: 0; }
-.mat-unit {
+.mat-title {
   flex: 1;
+  min-width: 0;
+  padding: 8rpx 0;
+  font-size: var(--font-xl);
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+.mat-spec {
+  flex-shrink: 0;
+  padding: 10rpx 18rpx;
+  border: 2rpx solid rgba(49, 95, 155, 0.25);
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--color-brand);
+  font-size: var(--font-md);
+  font-weight: 600;
+  line-height: 1;
+}
+.mat-main {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  margin-top: 24rpx;
+}
+.mat-photo {
+  width: 184rpx;
+  height: 184rpx;
+  border: 4rpx solid rgba(255, 255, 255, 0.75);
+  border-radius: 28rpx;
+  flex-shrink: 0;
+  background: #e4e9ef;
+}
+.mat-photo--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-xs);
+}
+.mat-control {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14rpx;
+}
+.mat-qty-label {
+  font-size: var(--font-md);
+  color: var(--color-text-secondary);
+}
+.mat-qty {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  min-width: 0;
+}
+.mat-pick {
+  flex-shrink: 0;
+  min-width: 112rpx;
+  padding-left: 10rpx;
+  padding-right: 10rpx;
+  border-radius: 20rpx;
+  font-size: var(--font-sm);
+}
+.mat-unit {
+  flex-shrink: 0;
+  max-width: 64rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--font-md);
   color: var(--color-text-secondary);
 }
 /* 用料备注：比名称轻一档，别和主信息抢眼 */
-.mat-note { font-size: var(--font-lg); color: var(--color-text-secondary); }
-
-.mat-sku { display: flex; align-items: center; gap: 12rpx; margin-top: 16rpx; }
-.mat-sku__photo { width: 88rpx; height: 88rpx; border-radius: var(--radius-sm); flex-shrink: 0; }
-.mat-sku__text { font-size: var(--font-sm); color: var(--color-text-tertiary); }
+.mat-note {
+  height: 104rpx;
+  border: 2rpx solid rgba(49, 95, 155, 0.1);
+  border-radius: 20rpx;
+  font-size: var(--font-lg);
+  color: var(--color-text-secondary);
+}
 
 .mat-row { display: flex; align-items: center; gap: 12rpx; margin-top: 16rpx; }
 .mat-row:first-child { margin-top: 0; }
+.mat-row--title { align-items: flex-start; }
 .mat-name {
   box-sizing: border-box;
   flex: 1;
@@ -156,9 +260,9 @@
   overflow: hidden;
 }
 .stepper__btn {
-  width: 92rpx;
-  height: 92rpx;
-  line-height: 92rpx;
+  width: 64rpx;
+  height: 72rpx;
+  line-height: 72rpx;
   text-align: center;
   font-size: 40rpx;
   color: var(--color-brand);
@@ -170,8 +274,8 @@
 .stepper__btn--off { color: var(--color-text-tertiary); }
 .stepper__input {
   box-sizing: border-box;
-  width: 120rpx;
-  height: 92rpx;
+  width: 78rpx;
+  height: 72rpx;
   padding: 0 8rpx;
   border-left: 2rpx solid var(--color-border);
   border-right: 2rpx solid var(--color-border);
@@ -181,13 +285,21 @@
   text-align: center;
 }
 .mat-del {
-  width: 72rpx;
-  height: 92rpx;
-  line-height: 92rpx;
+  width: 56rpx;
+  height: 56rpx;
+  line-height: 50rpx;
   text-align: center;
   color: var(--color-text-tertiary);
   font-size: 40rpx;
   flex-shrink: 0;
+}
+.mat-submit {
+  font-size: var(--font-md);
+}
+.sku-no-result {
+  padding-left: 36rpx;
+  padding-right: 36rpx;
+  line-height: 1.6;
 }
 
 /* 等待材料的缺料清单 */
@@ -210,4 +322,11 @@
   color: #ad6800;
   font-size: var(--font-md);
   line-height: 1.6;
+}
+
+.ai-basis {
+  margin-top: 10rpx;
+  color: var(--brand-700);
+  font-size: var(--font-md);
+  line-height: 1.55;
 }

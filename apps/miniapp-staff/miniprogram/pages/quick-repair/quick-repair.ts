@@ -249,6 +249,7 @@ Page({
     const res = await detectRepairAddress(text);
     // 结果回来时话可能已经变了，只认最新一次
     if (text !== this.data.content) return;
+    this.applyAiType(text, res);
     // 语音把小区名听成同音字（「枫桦」→「风华」）时，服务端给回正名版本。
     // 只有靠分期/弄这类数字撞上库的才会给 —— 名字是跟着数字改的，不是猜的。
     // 改完的话仍然落在可编辑的框里，人一眼能看出被改了什么、不对就自己改回去。
@@ -260,6 +261,20 @@ Page({
     }
     this.setData({ detected: res });
     this.refreshFound();
+  },
+
+  /** 明确关键词优先；本地仅有模糊片段或没命中时，用带项目类型上下文的 AI 结果补判 */
+  applyAiType(text: string, res: ParsedRepairAddress | null) {
+    const aiType = res?.ai?.repairType;
+    if (!aiType) return;
+    const local = classifyRepairType(text, this.types);
+    const lower = text.toLowerCase();
+    const hasExplicitKeyword = !!local?.matched.some((word) => lower.includes(word.toLowerCase()));
+    if (local && hasExplicitKeyword) return;
+    const type = this.types.find((item) => item.repairType === aiType);
+    if (!type) return;
+    this.predictedType = type.repairType;
+    this.setData({ typeLabel: type.label });
   },
 
   /** 把认出来的拼成「已认出」那张卡；一样都没认出来才展开手填 */
@@ -350,7 +365,7 @@ Page({
       return this.setData({ errorMsg: '按住说一句话，或直接打字（至少 5 个字）' });
     }
     const { detected } = this.data;
-    if (!detected) {
+    if (!detected?.matched) {
       return this.setData({
         errorMsg: '这句话里没认出小区房号。说清楚「几期几号几室」再试一次，或点下面改用完整表单',
       });
@@ -367,6 +382,7 @@ Page({
         contactPhone: this.data.contactPhone || undefined,
         repairType: this.predictedType || undefined,
         predictedRepairType: this.predictedType || undefined,
+        aiAssist: repairs.buildRepairAiAssist(content, detected),
         // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
         urgent: this.data.urgent,
         // 提交剥干净的描述；剥过头（空了）就退回原话

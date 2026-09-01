@@ -609,9 +609,14 @@ export class AuthService {
         offices,
         actingOfficeId: access.actingOfficeId,
       };
-      // 能接单的人要开「有新工单派给你」的提醒，所以员工端也得拿到模板 id。
-      // 判据是权限而不是身份 —— 只给员工端那一个模板，见 resolveSubscribeTemplates。
-      if (access.pages['app:pool']?.edit || access.isTenantAdmin) {
+      // 会收到工单提醒的人都要拿到员工端模板：维修工收新单/催修，办公室收待派单。
+      // 以前只判断 app:pool，办公室角色即使会收到待派通知，也无法在小程序里授权；
+      // 只有企业超管被 isTenantAdmin 放行，正是「只有超管能收到提醒」的另一层原因。
+      if (
+        access.pages['app:pool']?.edit ||
+        access.pages['app:dispatch']?.edit ||
+        access.isTenantAdmin
+      ) {
         return {
           ...base,
           subscribeTemplates: await this.resolveSubscribeTemplates(user.tenantId, 'staff'),
@@ -684,7 +689,7 @@ export class AuthService {
    * 把三个一起下发，员工端调 requestSubscribeMessage 会因为「模板不属于本小程序」
    * 整个弹窗失败 —— 表现是维修工怎么点都开不了提醒。
    *   业主端（邻修管家）：已派单 / 待验收
-   *   员工端（邻修管理）：有新工单派给你
+   *   员工端（邻修管理）：新工单 / 催接单 / 办公室催修（同属员工端，最多 3 个）
    */
   private async resolveSubscribeTemplates(
     tenantId: number | null,
@@ -699,8 +704,14 @@ export class AuthService {
               settings.wxSubscribeTemplates.orderDispatched,
               settings.wxSubscribeTemplates.orderReview,
             ]
-          : [settings.wxSubscribeTemplates.orderAssigned];
-      return picked.map((id) => String(id || '').trim()).filter(Boolean);
+          : [
+              settings.wxSubscribeTemplates.orderAssigned,
+              settings.wxSubscribeTemplates.orderOverdue,
+              settings.wxSubscribeTemplates.orderUrge,
+            ];
+      return [
+        ...new Set(picked.map((id) => String(id || '').trim()).filter(Boolean)),
+      ];
     } catch {
       // 设置读不到不该把「我的」页整个弄挂，退化成不弹订阅授权
       return [];

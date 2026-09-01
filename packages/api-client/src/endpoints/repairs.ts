@@ -3,6 +3,7 @@ import type {
   CompleteWorkOrderReq,
   RepairCreateReq,
   TechnicianOption,
+  UsedMaterialLine,
   WorkOrderDetail,
   WorkOrderListItem,
   WorkOrderStatus,
@@ -88,12 +89,35 @@ export interface ParsedRepairAddress {
    * 它给的地址只是线索，服务端已经拿去撞过一遍了，撞不上就是 matched=false。
    */
   ai?: {
+    /** 模型圈出的地址原话，只用于纠错记录；真正地址仍用上方撞库结果 */
+    addressText?: string;
     /** 理顺后的故障描述，只留故障本身 */
     description?: string;
     /** 明确说了人名才有；没说就是空串，不会拿地址或数字充数 */
     contactName?: string;
+    phone?: string;
     /** 说话人是不是在催（急急急、等着用） */
     urgent?: boolean;
+    publicArea?: boolean;
+    /** AI 按当前项目可用类型给出的类型编码；明确关键词规则优先，AI 用于无命中/模糊命中 */
+    repairType?: string;
+  };
+}
+
+/** 把模型草稿随最终表单带回。服务端只用它计算人工纠错，不用它覆盖业务字段。 */
+export function buildRepairAiAssist(sourceText: string, parsed?: ParsedRepairAddress | null) {
+  if (!sourceText.trim() || !parsed?.ai) return undefined;
+  return {
+    sourceText: sourceText.trim(),
+    draft: {
+      addressText: parsed.ai.addressText || '',
+      description: parsed.ai.description || '',
+      contactName: parsed.ai.contactName || '',
+      phone: parsed.ai.phone || '',
+      urgent: !!parsed.ai.urgent,
+      publicArea: !!parsed.ai.publicArea,
+      repairType: parsed.ai.repairType || '',
+    },
   };
 }
 
@@ -187,7 +211,12 @@ export interface MissingMaterialItem {
  */
 export const needMaterial = (
   id: number | string,
-  data: { missingMaterials: MissingMaterialItem[]; note?: string },
+  data: {
+    missingMaterials: MissingMaterialItem[];
+    /** 混合选料时同步领用的有库存材料；后端与缺料提报在同一事务中扣减 */
+    usedMaterials?: UsedMaterialLine[];
+    note?: string;
+  },
 ) => request<void>({ method: 'POST', url: `/work-orders/${id}/need-material`, data });
 
 /** 办公室补建 SKU 后更正缺料清单（不新开采购申请，改的是同一张） */

@@ -43,6 +43,8 @@ interface ResultRow {
 interface MaterialRow {
   materialId: number | null;
   name: string;
+  /** SKU 规格单独保存，卡片首行按「名称 · 规格」展示；提交时再与名称合并 */
+  spec: string;
   qty: string;
   unit: string;
   photoUrl: string;
@@ -54,6 +56,8 @@ interface MaterialRow {
   /** 从哪个仓领的（完工时按它扣库存）。手填的行为 null。
       必须一行一个：选料途中切过仓库，整单共用一个 warehouseId 就会扣错仓。 */
   warehouseId: number | null;
+  /** 卡片上直接告诉维修工这份库存来自哪个仓，避免只看到一个孤零零的数量 */
+  warehouseName: string;
   /** 这一项的备注（「原件锈死一并换掉」），会原样印到养护单背面的备注格 */
   note: string;
   /** 下面两个由 setMaterialRows 算好 —— wxml 里调不了函数 */
@@ -83,6 +87,7 @@ const MAX_QTY = 999;
 const emptyMaterialRow = (): MaterialRow => ({
   materialId: null,
   name: '',
+  spec: '',
   qty: DEFAULT_QTY,
   unit: '',
   photoUrl: '',
@@ -90,6 +95,7 @@ const emptyMaterialRow = (): MaterialRow => ({
   code: '',
   stockQty: -1,
   warehouseId: null,
+  warehouseName: '',
   note: '',
   hintText: '',
   hintShort: false,
@@ -103,17 +109,18 @@ function decorateRow(row: MaterialRow): MaterialRow {
       ? { ...row, hintText: '仓库里没有这项，提报缺料后由办公室采购', hintShort: true }
       : { ...row, hintText: '', hintShort: false };
   }
+  const warehouse = row.warehouseName || '所选仓库';
   if (row.stockQty <= 0) {
-    return { ...row, hintText: '所选仓库无库存，需走缺料登记', hintShort: true };
+    return { ...row, hintText: `${warehouse} · 无库存，需走缺料登记`, hintShort: true };
   }
   if (need > row.stockQty) {
     return {
       ...row,
-      hintText: `所选仓库只剩 ${row.stockQty}${row.unit}，不够，需走缺料登记`,
+      hintText: `${warehouse} · 只剩 ${row.stockQty}${row.unit}，不够，需走缺料登记`,
       hintShort: true,
     };
   }
-  return { ...row, hintText: `所选仓库可用 ${row.stockQty}${row.unit}`, hintShort: false };
+  return { ...row, hintText: `${warehouse} · 可用 ${row.stockQty}${row.unit}`, hintShort: false };
 }
 
 /** 表单行 → 提交用的数组（去空行、数量转数字） */
@@ -121,7 +128,7 @@ function collectRows(rows: MaterialRow[]) {
   return rows
     .map((row) => ({
       materialId: row.materialId ?? undefined,
-      name: row.name.trim(),
+      name: [row.name.trim(), row.spec.trim()].filter(Boolean).join(' '),
       qty: Number(row.qty),
       unit: row.unit || undefined,
       stockQty: row.stockQty,
@@ -129,6 +136,28 @@ function collectRows(rows: MaterialRow[]) {
       note: row.note?.trim() || undefined,
     }))
     .filter((row) => row.name);
+}
+
+type CollectedMaterialRow = ReturnType<typeof collectRows>[number];
+
+/**
+ * 一行可能同时包含「现有库存」和「缺口」：例如要 5 个、仓里只有 2 个，
+ * 就领用 2 个并提报缺 3 个。这里统一拆开，按钮文案和提交载荷使用同一口径。
+ */
+function splitMaterialRows(rows: CollectedMaterialRow[]) {
+  const used: CollectedMaterialRow[] = [];
+  const missing: CollectedMaterialRow[] = [];
+  rows.forEach((row) => {
+    if (!Number.isFinite(row.qty) || row.qty <= 0) return;
+    const available =
+      row.materialId && row.warehouseId && row.stockQty > 0
+        ? Math.min(row.qty, row.stockQty)
+        : 0;
+    if (available > 0) used.push({ ...row, qty: available });
+    const shortQty = Number((row.qty - available).toFixed(2));
+    if (shortQty > 0) missing.push({ ...row, qty: shortQty });
+  });
+  return { used, missing };
 }
 
 interface PageData {
@@ -173,8 +202,12 @@ interface PageData {
   partial: string;
   /** 正在让模型整理 */
   summarizing: boolean;
-  /** 这一轮小结自动加进用料清单的材料名，用来说明「这几行是听出来的，记得核对」 */
+  /** 模型从话里听出的材料名 —— 只做提示，用料仍要自己从库存选 */
   materialHints: string[];
+  /** AI 按真实收费规则给出的依据；金额仍可手工改，提交前必须由维修工确认 */
+  feeSuggestionText: string;
+  feeRuleCode: string;
+  aiAssistTrace: { sourceText: string; draft: Record<string, unknown> } | null;
   faultLocation: string;
   faultSymptom: string;
   /** 收费金额（元，字符串便于输入）；提交时换算成分 */
@@ -188,6 +221,10 @@ interface PageData {
   materialError: string;
   /** 有一行库存不够或仓里没有 —— 面板底部要给「提报缺料」这条出路 */
   hasShortage: boolean;
+  /** 至少有一部分可以立即从库存领用 */
+  hasStockUsage: boolean;
+  /** 根据全有货 / 全缺货 / 混合三种情况生成的唯一主按钮文案 */
+  materialActionText: string;
   /** 库存选择器 */
   skuOpen: boolean;
   skuLoading: boolean;
@@ -246,8 +283,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     partial: '',
     /** 正在让模型整理 */
     summarizing: false,
-    /** 这一轮小结自动加进用料清单的材料名，用来在面板上说明「这几行是听出来的」 */
+    /** 模型从话里听出的材料名 —— 只做提示，用料仍要自己从库存选（要扣的是具体 SKU） */
     materialHints: [] as string[],
+    feeSuggestionText: '',
+    feeRuleCode: '',
+    aiAssistTrace: null,
     faultLocation: '',
     faultSymptom: '',
     feeYuan: '',
@@ -258,6 +298,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     materialNote: '',
     materialError: '',
     hasShortage: false,
+    hasStockUsage: false,
+    materialActionText: '记录用料',
     skuOpen: false,
     skuLoading: false,
     skuError: '',
@@ -280,6 +322,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   warehouseId: null as number | null,
 
   onLoad(q: Record<string, string>) {
+    // Page 配置对象上的自定义字段可能跨页面实例残留，而 data 会恢复初始值。
+    // 不清理就会出现「列表缓存还有、仓库 id 已空」的半旧状态，再打开选料只剩空面板。
+    this.allSkus = [];
+    this.warehouseId = null;
     this.setData({ id: q.id || '' });
     this.bindSpeech();
     this.load();
@@ -544,8 +590,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
    * **整理不成也要有结果**：没配大模型、调不通、超时时，把原话原样接到「维修说明」后面 ——
    * 他话已经说完了，总不能让它凭空消失，宁可格式糙一点。
    * 位置和现象只在原来空着时才填，不覆盖他手工改过的内容。
-   * 用料一律不自动填：库存要扣的是具体 SKU，模型说的「角阀」对不上哪一条，
-   * 只把名字列出来提醒他去「添加用料」里选。
+   * 用料一律不自动填：模型听出的名字和库存 SKU 常对不上（2026-09-02 反馈：
+   * 「角阀」「弯头」这类口语名跟材料库里的规范名不匹配），只把名字列出来提醒他
+   * 去「添加用料」里手动核对、从库存选，不直接塞进用料行。
    */
   async summarize(text: string) {
     this.setData({ summarizing: true });
@@ -554,28 +601,36 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       this.setData({ actionNote: next }, () => this.syncPhraseState());
     };
     try {
-      const res = await ai.completionSummary({ text });
+      const res = await ai.completionSummary({ text, workOrderId: Number(this.data.id) });
       if (!res?.ok || !res.actionNote) {
         fallback();
         return;
       }
       const patch: Record<string, unknown> = {
         actionNote: [this.data.actionNote.trim(), res.actionNote].filter(Boolean).join('；'),
+        materialHints: res.materials || [],
       };
       if (!this.data.faultLocation && res.faultLocation) patch.faultLocation = res.faultLocation;
       if (!this.data.faultSymptom && res.faultSymptom) patch.faultSymptom = res.faultSymptom;
-      /**
-       * 听出来的材料**直接加成用料行**（2026-09-01 用户要求：自动添加，但不要提交）。
-       *
-       * 加的是「手填行」：只有名字、数量默认 1、没有 materialId ——
-       * 库存要扣的是具体 SKU，模型说的「角阀」对不上哪一条，所以仍然要他点「从库存选」
-       * 绑一下。这一步省掉的是「一行行从头加」，不是「核对」。
-       * 重名的不重复加：同一句说第二遍、或者他已经手工加过的，跳过。
-       */
-      const added = this.mergeMaterialHints(res.materials || []);
-      if (added.rows) patch.materialRows = added.rows;
-      patch.materialHints = added.names;
+      if (!this.data.feeYuan && res.feeSuggestion) {
+        patch.feeYuan = String(res.feeSuggestion.feeCents / 100);
+        patch.feeRuleCode = res.feeSuggestion.ruleCode;
+        patch.feeSuggestionText = `${res.feeSuggestion.basis}，请核对`;
+      }
+      const previousTrace = this.data.aiAssistTrace;
+      patch.aiAssistTrace = {
+        sourceText: [previousTrace?.sourceText, text].filter(Boolean).join('；'),
+        draft: {
+          ...(res.draft || {}),
+          actionNote: patch.actionNote,
+          faultLocation: patch.faultLocation ?? this.data.faultLocation,
+          faultSymptom: patch.faultSymptom ?? this.data.faultSymptom,
+          materials: [...new Set([...(this.data.materialHints || []), ...(res.materials || [])])],
+          feeRuleCode: patch.feeRuleCode ?? this.data.feeRuleCode,
+        },
+      };
       this.setData(patch, () => this.syncPhraseState());
+      await this.applyAiMaterialSuggestions(res.materialSuggestions || []);
     } catch {
       fallback();
     } finally {
@@ -584,21 +639,53 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   /**
-   * 把听出来的材料名并进用料清单。返回新的行（没有要加的就不返回，免得白刷一次列表）
-   * 和「这一轮真正加进去的名字」（用来在面板上说明哪几行是听出来的）。
+   * 只有“口语名唯一精确命中材料名称/别名 + 数量明确”才形成用料草稿行。
+   * 模糊命中仍只显示提示，库存仓、SKU、数量任一不确定都不替维修工做决定。
    */
-  mergeMaterialHints(names: string[]): { rows?: MaterialRow[]; names: string[] } {
-    const clean = names.map((n) => (n || '').trim()).filter(Boolean);
-    if (!clean.length) return { names: [] };
-    const rows = this.data.materialRows.slice();
-    const added: string[] = [];
-    for (const name of clean) {
-      if (rows.some((row) => (row.name || '').trim() === name)) continue;
-      rows.push({ ...emptyMaterialRow(), name });
-      added.push(name);
+  async applyAiMaterialSuggestions(
+    suggestions: Array<{
+      spokenName: string;
+      qty: number | null;
+      materialId: number | null;
+      match: string;
+      needsConfirmation: boolean;
+    }>,
+  ) {
+    const exact = suggestions.filter(
+      (item) => item.match === 'exact' && !item.needsConfirmation && item.materialId && item.qty,
+    );
+    if (!exact.length) return;
+    try {
+      const resp = await repairs.stockOptions(this.data.id);
+      if (!resp.warehouseId) return;
+      const existing = new Set(
+        this.data.materialRows.map((row) => row.materialId).filter((id): id is number => !!id),
+      );
+      const rows = this.data.materialRows.slice();
+      exact.forEach((suggestion) => {
+        if (!suggestion.materialId || existing.has(suggestion.materialId)) return;
+        const sku = resp.items.find((item) => item.materialId === suggestion.materialId);
+        if (!sku) return;
+        rows.push({
+          ...emptyMaterialRow(),
+          materialId: sku.materialId,
+          name: sku.name,
+          spec: sku.spec || '',
+          qty: String(suggestion.qty),
+          unit: sku.unit,
+          photoUrl: sku.photoUrl || '',
+          photoUrls: (sku.photoUrls?.length ? sku.photoUrls : [sku.photoUrl || '']).filter(Boolean),
+          code: sku.code,
+          stockQty: sku.qty,
+          warehouseId: resp.warehouseId,
+          warehouseName: resp.warehouseName,
+        });
+        existing.add(sku.materialId);
+      });
+      if (rows.length !== this.data.materialRows.length) this.setMaterialRows(rows);
+    } catch {
+      // 自动匹配只是省点击；失败时保留材料文字提示，让维修工手工选，不阻断完工。
     }
-    if (!added.length) return { names: [] };
-    return { rows, names: added };
   },
 
   onNote(e: WechatMiniprogram.Input) {
@@ -669,9 +756,19 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
    */
   setMaterialRows(rows: MaterialRow[]) {
     const decorated = rows.map(decorateRow);
+    const parts = splitMaterialRows(collectRows(decorated));
+    const hasStockUsage = parts.used.length > 0;
+    const hasShortage = parts.missing.length > 0;
     this.setData({
       materialRows: decorated,
-      hasShortage: decorated.some((row) => !!row.name && row.hintShort),
+      hasShortage,
+      hasStockUsage,
+      materialActionText:
+        hasStockUsage && hasShortage
+          ? '有库存记用料，没库存提报缺料'
+          : hasShortage
+            ? '提报缺料'
+            : '记录用料',
       materialError: '',
     });
   },
@@ -685,6 +782,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     // 否则完工时按 id 扣的是另一样东西，而办公室看到的名字还是维修工写的这个。
     if (field === 'name') {
       rows[index].materialId = null;
+      rows[index].spec = '';
       rows[index].unit = '';
       rows[index].photoUrl = '';
       rows[index].photoUrls = [];
@@ -741,7 +839,12 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   async loadSkus(force = false, warehouseId?: number) {
-    if (this.allSkus.length && !force) {
+    if (
+      this.allSkus.length &&
+      !force &&
+      this.warehouseId !== null &&
+      this.data.skuWarehouseId === this.warehouseId
+    ) {
       return this.applySkuFilter();
     }
     this.setData({ skuLoading: true, skuError: '' });
@@ -751,7 +854,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       this.warehouseId = resp.warehouseId;
       // 类别筛选只列这个仓真有的类别：列一堆点了没结果的类别等于噪音
       const seen: string[] = [];
-      resp.items.forEach((item) => {
+      resp.items.filter((item) => item.qty > 0).forEach((item) => {
         const name = (item.category || '').trim() || '未分类';
         if (!seen.includes(name)) seen.push(name);
       });
@@ -827,7 +930,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     const kw = this.data.skuKeyword.trim().toLowerCase();
     const category =
       this.data.skuCategoryIndex >= 0 ? this.data.skuCategories[this.data.skuCategoryIndex] : '';
-    const all = (this.allSkus as WorkOrderStockOption[]).filter(
+    // 默认只给现场看拿得到的货；开始搜索后扩大到整个材料库，0 库存 SKU 也能选来报缺料。
+    const source = kw
+      ? (this.allSkus as WorkOrderStockOption[])
+      : (this.allSkus as WorkOrderStockOption[]).filter((item) => item.qty > 0);
+    const all = source.filter(
       (item) => !category || ((item.category || '').trim() || '未分类') === category,
     );
     const matched = !kw
@@ -848,7 +955,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   onSkuKeyword(e: WechatMiniprogram.Input) {
-    this.setData({ skuKeyword: e.detail.value }, () => this.applySkuFilter());
+    const skuKeyword = e.detail.value;
+    // 搜索要覆盖全材料库，不能被刚才点过的「有货类别」悄悄挡住。
+    this.setData({ skuKeyword, skuCategoryIndex: skuKeyword.trim() ? -1 : this.data.skuCategoryIndex }, () =>
+      this.applySkuFilter(),
+    );
   },
 
   /**
@@ -870,13 +981,15 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     const picked: MaterialRow = {
       ...emptyMaterialRow(),
       materialId: sku.materialId,
-      name: sku.spec ? `${sku.name} ${sku.spec}` : sku.name,
+      name: sku.name,
+      spec: sku.spec || '',
       unit: sku.unit,
       photoUrl: sku.photoUrl || '',
       photoUrls: (sku.photoUrls && sku.photoUrls.length ? sku.photoUrls : [sku.photoUrl || '']).filter(Boolean),
       code: sku.code,
       stockQty: sku.qty,
       warehouseId: this.warehouseId,
+      warehouseName: this.data.warehouseName,
     };
     const index = this.data.skuTargetIndex;
     if (index < 0 || !rows[index]) {
@@ -901,7 +1014,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     if (bad) {
       return this.setData({ materialError: `「${bad.name}」的数量要填大于 0 的数字` });
     }
-    const shortage = rows.filter((row) => row.stockQty < 0 || row.qty > row.stockQty);
+    const { used, missing: shortage } = splitMaterialRows(rows);
     if (!shortage.length) {
       return this.setData({
         materialError: '这些料仓库里都够用，直接完工提交即可，不用报缺料',
@@ -911,21 +1024,25 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.setData({ busy: true, materialError: '' });
     try {
       await repairs.needMaterial(this.data.id, {
+        usedMaterials: used.map((row) => ({
+          materialId: row.materialId,
+          warehouseId: row.warehouseId,
+          name: row.name,
+          qty: row.qty,
+          unit: row.unit,
+          note: row.note,
+        })),
         missingMaterials: shortage.map((row) => ({
           materialId: row.materialId,
           name: row.name,
-          // 仓里还有一些时只报差额：要 5 个、仓里有 2 个，采购买 3 个就行
-          qty:
-            row.stockQty > 0
-              ? Math.max(1, Number((row.qty - row.stockQty).toFixed(2)))
-              : row.qty,
+          qty: row.qty,
           unit: row.unit,
         })),
         note: this.data.materialNote.trim() || undefined,
       });
       this.setData({ panel: '', materialNote: '' });
       this.setMaterialRows([]);
-      wx.showToast({ title: '已提报，工单退回工单池' });
+      wx.showToast({ title: used.length ? '已记用料并提报缺料' : '已提报缺料' });
       // 这单已经不在自己手上了，留在详情页只会让人以为还能继续干，直接回工单池
       setTimeout(() => wx.switchTab({ url: '/pages/pool/pool' }), 900);
     } catch (e: any) {
@@ -946,8 +1063,22 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     if (rows.length) wx.showToast({ title: `已记 ${rows.length} 项用料` });
   },
 
+  /** 底部只保留一个主按钮，根据材料构成选择「记录」或「提报并记录」 */
+  onMaterialPrimaryAction() {
+    if (this.data.hasShortage) {
+      this.onSubmitMaterial();
+      return;
+    }
+    this.onConfirmMaterial();
+  },
+
   onFeeInput(e: WechatMiniprogram.Input) {
-    this.setData({ feeYuan: e.detail.value, errorMsg: '' });
+    this.setData({
+      feeYuan: e.detail.value,
+      feeRuleCode: '',
+      feeSuggestionText: '',
+      errorMsg: '',
+    });
   },
 
   async onComplete() {
@@ -980,6 +1111,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         faultLocation: this.data.faultLocation.trim() || undefined,
         faultSymptom: this.data.faultSymptom.trim() || undefined,
         feeCents: fee ? Math.round(Number(fee) * 100) : undefined,
+        feeRuleCode: this.data.feeRuleCode || undefined,
+        aiAssist: this.data.aiAssistTrace || undefined,
         materials: used.length ? used : undefined,
         resultAttachments: this.data.resultAttachments,
       });

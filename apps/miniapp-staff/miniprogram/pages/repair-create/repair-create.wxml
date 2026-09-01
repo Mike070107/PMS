@@ -1,5 +1,9 @@
 <!-- 表单按「一次问一件事」分成三组：在哪 → 什么问题 → 怎么联系（与业主端一键报修同构） -->
 <view class="container has-submit-bar">
+  <view class="screen-head">
+    <view class="screen-head__title">新建报修</view>
+    <view class="screen-head__desc">按位置、问题和联系人三步填写，提交前可随时修改</view>
+  </view>
 
   <!-- ① 在哪 -->
   <view class="card section">
@@ -9,7 +13,7 @@
     </view>
 
     <!-- 描述里识别到了地址：替换手选的位置展示，点 × 恢复 -->
-    <block wx:if="{{detected}}">
+    <block wx:if="{{detected && detected.matched}}">
       <view class="detected">
         <view class="detected__row">
           <view class="detected__text">{{detected.addressText}}</view>
@@ -34,7 +38,7 @@
 
     <!-- 具体位置：公共区域才补一句「在哪」；识别到的地址没到房号级同理 -->
     <!-- 认到公区点位（监控室、水泵房）时地址里已经写清在哪了，不必再追问一遍 -->
-    <view class="field mt-lg" wx:if="{{detected ? (detected.level !== 'house' && !detected.spotName) : showSpot}}">
+    <view class="field mt-lg" wx:if="{{detected && detected.matched ? (detected.level !== 'house' && !detected.spotName) : showSpot}}">
       <view class="label">具体位置</view>
       <input
         class="input"

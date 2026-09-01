@@ -29,14 +29,14 @@ export function shouldDetectAddress(text: string): boolean {
   return value.length >= 5 || ADDRESS_HINT_RE.test(value);
 }
 
-/** 识别失败一律静默返回 null：这只是锦上添花，绝不打扰报修 */
+/** 地址没撞上时仍保留 AI 的语义草稿；调用方必须看 matched 决定能不能采用地址 */
 export async function detectRepairAddress(
   text: string,
   communityId?: number,
 ): Promise<ParsedRepairAddress | null> {
   try {
     const res = await repairs.parseAddress({ text, communityId });
-    return res.matched ? res : null;
+    return res.matched || res.ai ? res : null;
   } catch {
     return null;
   }

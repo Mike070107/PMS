@@ -79,6 +79,9 @@ export class LlmService {
     user: string,
   ): Promise<{ ok: true; content: string } | { ok: false; error: string }> {
     const url = `${cfg.baseUrl.replace(/\/+$/, '')}/v1/chat/completions`;
+    const deepSeek = /(^|\.)deepseek\.com(?=\/|$)/i.test(
+      cfg.baseUrl.replace(/^https?:\/\//i, '').split('/')[0],
+    );
     try {
       const res = await axios.post(
         url,
@@ -90,8 +93,15 @@ export class LlmService {
           ],
           // 抽取任务要的是稳定，不是创意：同一句话每次都该得到同一个结果
           temperature: 0,
-          max_tokens: 500,
+          max_tokens: 800,
           stream: false,
+          // DeepSeek 官方支持 JSON Output。这里只对官方域名开启，其他 OpenAI 兼容服务商
+          // 继续走宽松 JSON 解析，避免某些本地/旧接口因不认识 response_format 而 400。
+          ...(deepSeek ? { response_format: { type: 'json_object' } } : {}),
+          // V4 默认可进入思考模式；字段抽取不需要长推理，关闭后更快、更稳定、更省输出。
+          ...(deepSeek && /^deepseek-v4/i.test(cfg.model)
+            ? { thinking: { type: 'disabled' } }
+            : {}),
         },
         {
           timeout: cfg.timeoutMs || 6000,

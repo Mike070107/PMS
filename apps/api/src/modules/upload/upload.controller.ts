@@ -24,9 +24,14 @@ export class UploadController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
   async upload(@UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('file is required');
+    const detectedType = detectUploadContentType(file.buffer);
+    if (!detectedType) {
+      throw new BadRequestException('只支持 JPG/PNG/GIF/WebP/HEIC 图片、MP4/MOV 视频或 PDF');
+    }
     const stored = await this.storage.putBuffer(
       file.buffer,
-      file.mimetype || 'application/octet-stream',
+      // 浏览器报上来的 mimetype 可以伪造；对象元数据必须用文件签名识别出的安全类型。
+      detectedType,
       'uploads',
       file.originalname,
     );
@@ -46,9 +51,21 @@ export class UploadController {
     const objectKey = this.validateObjectKey(key);
     try {
       const object = await this.storage.getObject(objectKey);
-      if (object.contentType) res.setHeader('Content-Type', object.contentType);
+      const contentType = safeStoredContentType(object.contentType);
+      res.setHeader('Content-Type', contentType);
       if (object.contentLength) res.setHeader('Content-Length', String(object.contentLength));
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader(
+        'Content-Disposition',
+        contentType === 'application/octet-stream' ? 'attachment' : 'inline',
+      );
+      // 二维码会覆盖固定 key，不能缓存一年；普通上传是随机 key，可以长期缓存。
+      res.setHeader(
+        'Cache-Control',
+        objectKey.startsWith('qr-codes/')
+          ? 'public, max-age=300, must-revalidate'
+          : 'public, max-age=31536000, immutable',
+      );
       object.stream.pipe(res);
     } catch {
       throw new NotFoundException('file not found');
@@ -64,4 +81,53 @@ export class UploadController {
     }
     return key;
   }
+}
+
+const SAFE_STORED_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'video/mp4',
+  'video/quicktime',
+  'application/pdf',
+]);
+
+/** 读取历史对象时也不信任元数据；旧的 text/html / SVG 一律作为下载流，不能同源执行。 */
+export function safeStoredContentType(value?: string): string {
+  const type = String(value || '').split(';')[0].trim().toLowerCase();
+  return SAFE_STORED_TYPES.has(type) ? type : 'application/octet-stream';
+}
+
+/** 用文件签名判断允许类型，防止把 HTML/SVG 伪装成图片上传后从同源地址执行。 */
+export function detectUploadContentType(buffer: Buffer): string | null {
+  if (!buffer?.length) return null;
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    return 'image/png';
+  }
+  const head6 = buffer.subarray(0, 6).toString('ascii');
+  if (head6 === 'GIF87a' || head6 === 'GIF89a') return 'image/gif';
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  if (buffer.length >= 5 && buffer.subarray(0, 5).toString('ascii') === '%PDF-') {
+    return 'application/pdf';
+  }
+  if (buffer.length >= 12 && buffer.subarray(4, 8).toString('ascii') === 'ftyp') {
+    const brand = buffer.subarray(8, 12).toString('ascii').toLowerCase();
+    if (['heic', 'heix', 'hevc', 'hevx'].includes(brand)) return 'image/heic';
+    if (['mif1', 'msf1'].includes(brand)) return 'image/heif';
+    if (brand === 'qt  ') return 'video/quicktime';
+    return 'video/mp4';
+  }
+  return null;
 }

@@ -2207,7 +2207,7 @@ function UrgeRepairButton({
     try {
       const res = await request<{ ok: true; notified: number }>({
         method: 'POST',
-        url: `/work-orders/${workOrderId}/urge`,
+        url: `/work-orders/${workOrderId}/urge-repair`,
         data: {},
       });
       // 一个人都没催到要说清楚为什么，不然办公室以为发出去了，一直等

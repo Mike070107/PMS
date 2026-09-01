@@ -408,15 +408,35 @@ Page({
     }
     // 用户点过 × 的同一段地址不再弹出来
     if (res.matchedText && res.matchedText === this.dismissedMatch) return;
+    this.applyAiType(content, res);
     // 语音把小区名听成同音字时，服务端给回正名版本，直接换掉描述里的错字。
     // 只有靠分期/弄这类数字撞上库的才会给，名字是跟着数字改的、不是猜的；
     // 改完仍在可编辑的框里，不对就自己改回去
     if (res.correctedText && res.correctedText !== content) {
+      this.guess(res.correctedText);
       this.setData({ content: res.correctedText, detected: res });
       wx.showToast({ title: '已按小区名单更正', icon: 'none' });
       return;
     }
     this.setData({ detected: res });
+  },
+
+  /** 关键词完整命中时规则更可靠；只有规则没认出或只是模糊片段命中时才让 AI 补判 */
+  applyAiType(content: string, res: ParsedRepairAddress) {
+    const aiType = res.ai?.repairType;
+    if (!aiType) return;
+    const local = classifyRepairType(content, this.types);
+    const lower = content.toLowerCase();
+    const hasExplicitKeyword = !!local?.matched.some((word) => lower.includes(word.toLowerCase()));
+    if (local && hasExplicitKeyword) return;
+    const type = this.types.find((item) => item.repairType === aiType);
+    if (!type) return;
+    this.guessType = type.repairType;
+    this.setData({
+      guessLabel: type.label,
+      guessReason: 'AI 按设备场景识别',
+      typeIndex: this.types.findIndex((item) => item.repairType === type.repairType),
+    });
   },
 
   /** 点 × 撤掉识别结果，回到默认位置（我家 / 手选范围） */
@@ -483,12 +503,16 @@ Page({
             }
           : scopeIds(scope, this.place)),
         addressText: detected?.matched ? detected.addressText : this.data.placeText,
+        contactName: (detected?.ai?.contactName || '').trim() || undefined,
+        contactPhone: /^1\d{10}$/.test(detected?.ai?.phone || '') ? detected?.ai?.phone : undefined,
         repairType: this.guessType || undefined,
+        aiAssist: repairs.buildRepairAiAssist(content, detected),
         // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
         urgent: this.data.urgent,
         // 描述里认出来的地址已经单独提交了，从描述里剥掉，顺带剥语音带进来的语气词；
         // 只拍照没打字时给一句占位，后端要求 content 非空
         content:
+          (detected?.ai?.description || '').trim() ||
           extractFaultDescription(content, {
             // matchedRaw 是地址在原话里占的整段（含小区名），剥得干净
             addressText: detected?.matched ? detected.matchedRaw || detected.matchedText : undefined,

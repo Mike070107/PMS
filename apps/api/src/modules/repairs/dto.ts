@@ -4,6 +4,7 @@ import {
   IsDateString,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsPhoneNumber,
   IsPositive,
@@ -15,6 +16,15 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export class AiAssistTraceDto {
+  @IsString()
+  @MaxLength(1000)
+  sourceText: string;
+
+  @IsObject()
+  draft: Record<string, unknown>;
+}
 
 export class CreateRepairRequestDto {
   @IsOptional()
@@ -87,6 +97,11 @@ export class CreateRepairRequestDto {
   @IsOptional()
   @IsBoolean()
   urgent?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AiAssistTraceDto)
+  aiAssist?: AiAssistTraceDto;
 }
 
 /** 随手拍：从描述文字里识别报修地址（「一期24号302」→ 库里真实的楼栋/房号） */
@@ -300,6 +315,7 @@ export class MaterialUsageDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(0)
   unitCostCents?: number;
 
   /**
@@ -341,11 +357,25 @@ export class CompleteWorkOrderDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(0)
   feeCents?: number;
 
   @IsOptional()
   @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MaterialUsageDto)
   materials?: MaterialUsageDto[];
+
+  /** 只用于审计/学习；后端绝不据此覆盖 feeCents */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  feeRuleCode?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AiAssistTraceDto)
+  aiAssist?: AiAssistTraceDto;
 }
 
 export class MissingMaterialDto {
@@ -371,6 +401,7 @@ export class MissingMaterialDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(0)
   estUnitCostCents?: number;
 }
 
@@ -381,6 +412,16 @@ export class NeedMaterialDto {
   @ValidateNested({ each: true })
   @Type(() => MissingMaterialDto)
   missingMaterials: MissingMaterialDto[];
+
+  /**
+   * 同一次选择里有库存的部分：先领用并记出库，缺口再进入采购。
+   * 两部分由服务层放在同一事务里，任何一步失败都不会留下半套库存账。
+   */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MaterialUsageDto)
+  usedMaterials?: MaterialUsageDto[];
 
   @IsOptional()
   @IsString()

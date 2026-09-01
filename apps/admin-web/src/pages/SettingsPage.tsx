@@ -14,6 +14,7 @@ import {
 import { RightOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import AiSamplesPanel from '../components/AiSamplesPanel';
+import AiLearningPanel from '../components/AiLearningPanel';
 import { request } from '../lib/api';
 import { usePagePerm } from '../lib/auth';
 
@@ -192,7 +193,7 @@ export default function SettingsPage() {
   const [ai, setAi] = useState({
     enabled: false,
     baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-chat',
+    model: 'deepseek-v4-flash',
     apiKey: '',
     timeoutMs: 6000,
   });
@@ -225,7 +226,7 @@ export default function SettingsPage() {
       setAi({
         enabled: !!next.aiAssist?.enabled,
         baseUrl: next.aiAssist?.baseUrl ?? 'https://api.deepseek.com',
-        model: next.aiAssist?.model ?? 'deepseek-chat',
+        model: next.aiAssist?.model ?? 'deepseek-v4-flash',
         // 同上：脱敏串原样放回输入框，不动它就是不改
         apiKey: next.aiAssist?.apiKey ?? '',
         timeoutMs: next.aiAssist?.timeoutMs ?? 6000,
@@ -704,7 +705,7 @@ export default function SettingsPage() {
       </SettingSection>
 
       <SettingSection
-        title="AI 辅助识别报修（一句话报修 / 随手拍）"
+        title="AI 维修填单助手（一句话报修 / 完工小结）"
         summary={
           ai.enabled
             ? `已开启：${ai.model}（${ai.baseUrl}）`
@@ -722,8 +723,9 @@ export default function SettingsPage() {
         }
       >
         <Paragraph>
-          维修工在小程序里说一句「5511弄236号502电子门旋钮打滑，急急急，138…」，
-          系统要自己把<Text strong>地址、故障、联系人、电话</Text>分开填好。
+          报修人说一句「5511弄236号502电子门旋钮打滑，急急急，138…」，
+          系统把<Text strong>地址、故障、联系人、电话、报修类型</Text>分开填好；维修工完工后
+          说一句做了什么，系统再整理<Text strong>位置、现象、说明、用料草稿和收费建议</Text>。
           纯靠正则总有说不到的说法，开了这个之后由大模型来做<Text strong>语义</Text>那一半。
         </Paragraph>
         <Alert
@@ -736,6 +738,8 @@ export default function SettingsPage() {
               大模型不知道你的房产库，它会编一个看着合理的房号，而地址错了就是师傅白跑一趟。
               所以模型给的地址只当<Text strong>线索</Text>，仍要回到房产库里撞一遍，撞不上就不采信；
               电话也仍按 11 位严格抽取。模型只负责「哪一段是地址、故障怎么说得通顺、有没有说人名」。
+              <br />
+              完工用料必须匹配真实材料 SKU，收费只能选后台已有规则；提交、扣库存和记费前都要人工确认。
               <br />
               调不通、超时、返回看不懂的内容时，<Text strong>自动退回原来的规则识别</Text>，
               不会因此让人提交不了报修。
@@ -762,10 +766,15 @@ export default function SettingsPage() {
             <Input
               value={ai.model}
               onChange={(e) => setAi({ ...ai, model: e.target.value })}
-              placeholder="deepseek-chat"
+              placeholder="deepseek-v4-flash"
               disabled={!canEdit}
               allowClear
             />
+            {ai.baseUrl.includes('deepseek.com') && ai.model === 'deepseek-chat' ? (
+              <Text type="warning" style={{ fontSize: 13 }}>
+                当前仍是 DeepSeek 旧兼容模型名。建议改为 deepseek-v4-flash 后先点“发送测试”，通过再保存。
+              </Text>
+            ) : null}
           </div>
           <div>
             <Text strong>API Key</Text>
@@ -814,10 +823,11 @@ export default function SettingsPage() {
           )}
         </Space>
         <AiSamplesPanel canEdit={canEdit} />
+        <AiLearningPanel canEdit={canEdit} />
 
         <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 24, marginBottom: 0 }}>
-          费用参考：一次报修一次调用、输入一百来字，按 DeepSeek 这类国产模型的价格，
-          一天几十单的量每月也就几块钱。报修内容里带住户姓名电话，服务商请选国内合规的。
+          每次识别会调用一次模型，费用以服务商实时价格为准。报修原话可能包含住户姓名、电话和门牌，
+          请使用符合公司数据合规要求的服务，并妥善保管 API Key。
         </Paragraph>
       </SettingSection>
 

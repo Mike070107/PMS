@@ -107,6 +107,10 @@ export function buildTypeKeywords(rule: {
     const text = String(word ?? '').trim();
     if (text && !seeds.includes(text)) seeds.push(text);
   }
+  // 老租户的「智能化相关」创建时种子里没有门铃，之后的懒补种子又只补整列为空的规则，
+  // 所以只改 SEED_CONTENT_SUGGESTIONS 也救不到线上已有数据。类型名明确是智能/弱电时，
+  // 给一个稳定锚点触发门铃同义词组；租户自建的「门铃/对讲…」类型本来就会由标题切出来。
+  if (/智能|弱电/.test(rule.label) && !seeds.includes('门铃')) seeds.push('门铃');
   return expandSynonyms(seeds);
 }
 

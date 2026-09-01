@@ -2,7 +2,7 @@
   <!-- 这一屏最该先回答的：修什么、在哪、压了多久。
        「现在什么状态」看右上角的状态标，「接下来干什么」看底部固定按钮条，
        都不用再写一句话解释一遍。 -->
-  <view class="card wo-card">
+  <view class="card wo-card order-summary">
     <view class="wo-card__head">
       <view class="wo-card__title">
         <text wx:if="{{urgent}}" class="badge--urgent">紧急</text>
@@ -140,8 +140,11 @@
     <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加用料</view>
 
     <view class="mat-item" wx:for="{{materialRows}}" wx:key="index">
-      <view class="mat-row">
+      <!-- 第一行：名称 + 规格。库存 SKU 固定展示，手填行仍允许输入名称。 -->
+      <view class="mat-row mat-row--title">
+        <view wx:if="{{item.materialId}}" class="mat-title">{{item.name}}</view>
         <input
+          wx:else
           class="mat-name"
           placeholder="材料名称"
           value="{{item.name}}"
@@ -149,32 +152,49 @@
           data-field="name"
           bindinput="onMaterialInput"
         />
+        <text wx:if="{{item.materialId && item.spec}}" class="mat-spec">{{item.spec}}</text>
         <view class="mat-del" data-index="{{index}}" bindtap="onRemoveMaterialRow">×</view>
       </view>
 
-      <view class="mat-row">
+      <!-- 第二行：图片在左，数量/单位居中，「换一个」在右。 -->
+      <view class="mat-main">
+        <image
+          wx:if="{{item.photoUrl}}"
+          class="mat-photo"
+          src="{{item.photoUrl}}"
+          mode="aspectFill"
+          data-url="{{item.photoUrl}}"
+          data-urls="{{item.photoUrls}}"
+          catchtap="onPreviewSkuPhoto"
+        />
+        <view wx:else class="mat-photo mat-photo--empty">无图</view>
+        <view class="mat-control">
+          <text class="mat-qty-label">使用数量</text>
+          <view class="mat-qty">
+            <!-- 数量步进：默认 1，两边各一个 ±；数字大时直接改中间输入框 -->
+            <view class="stepper">
+              <view
+                class="stepper__btn {{item.qty <= 1 ? 'stepper__btn--off' : ''}}"
+                data-index="{{index}}"
+                data-step="-1"
+                bindtap="onStepQty"
+              >−</view>
+              <input
+                class="stepper__input"
+                type="digit"
+                value="{{item.qty}}"
+                data-index="{{index}}"
+                data-field="qty"
+                bindinput="onMaterialInput"
+              />
+              <view class="stepper__btn" data-index="{{index}}" data-step="1" bindtap="onStepQty">＋</view>
+            </view>
+            <text class="mat-unit">{{item.unit || ''}}</text>
+          </view>
+        </view>
         <button class="btn btn--outline btn--sm mat-pick" data-index="{{index}}" bindtap="onOpenSku">
           {{item.materialId ? '换一个' : '从库存选'}}
         </button>
-        <!-- 数量步进：默认 1，两边各一个 ±；数字大时直接改中间输入框 -->
-        <view class="stepper">
-          <view
-            class="stepper__btn {{item.qty <= 1 ? 'stepper__btn--off' : ''}}"
-            data-index="{{index}}"
-            data-step="-1"
-            bindtap="onStepQty"
-          >−</view>
-          <input
-            class="stepper__input"
-            type="digit"
-            value="{{item.qty}}"
-            data-index="{{index}}"
-            data-field="qty"
-            bindinput="onMaterialInput"
-          />
-          <view class="stepper__btn" data-index="{{index}}" data-step="1" bindtap="onStepQty">＋</view>
-        </view>
-        <text class="mat-unit">{{item.unit || ''}}</text>
       </view>
 
       <!-- 用料备注：会原样印到养护单背面《材料领耗记录》的备注格 -->
@@ -191,20 +211,10 @@
 
       <!-- 够不够，写在行里，不用自己去库存页查 -->
       <view wx:if="{{item.hintText}}" class="mat-hint {{item.hintShort ? 'mat-hint--short' : ''}}">
-        {{item.hintText}}
+        <view class="mat-hint__icon {{item.hintShort ? 'mat-hint__icon--short' : ''}}">仓</view>
+        <text class="mat-hint__text">{{item.hintText}}</text>
       </view>
 
-      <view wx:if="{{item.materialId && item.photoUrl}}" class="mat-sku">
-        <image
-          class="mat-sku__photo"
-          src="{{item.photoUrl}}"
-          mode="aspectFill"
-          data-url="{{item.photoUrl}}"
-          data-urls="{{item.photoUrls}}"
-          catchtap="onPreviewSkuPhoto"
-        />
-        <text class="mat-sku__text">{{item.code}}</text>
-      </view>
     </view>
 
     <view class="btn-row mt">
@@ -217,16 +227,13 @@
     <view class="error" wx:if="{{materialError}}">{{materialError}}</view>
   </scroll-view>
 
-  <view class="sheet__foot sheet__foot--row">
-    <!-- 有缺料才给「提报缺料」这条出路；都够用时它没有意义 -->
+  <view class="sheet__foot">
     <button
-      wx:if="{{hasShortage}}"
-      class="btn btn--outline"
+      class="btn btn--primary mat-submit"
       loading="{{busy}}"
-      disabled="{{busy}}"
-      bindtap="onSubmitMaterial"
-    >提报缺料</button>
-    <button class="btn btn--primary" bindtap="onConfirmMaterial">记下用料</button>
+      disabled="{{busy || !materialRows.length}}"
+      bindtap="onMaterialPrimaryAction"
+    >{{materialActionText}}</button>
   </view>
 </view>
 
@@ -252,10 +259,9 @@
     >{{recording ? '松开结束' : summarizing ? '正在整理…' : '按住说：做了什么'}}</button>
     <view wx:if="{{recording && partial}}" class="muted partial">{{partial}}</view>
     <textarea placeholder="更换了什么、处理了什么问题" bindinput="onNote" value="{{actionNote}}"/>
-    <!-- 听出来的材料已经加成用料行了，但都是「手填行」：还得去「添加用料」里
-         点「从库存选」绑上真正的 SKU，否则扣不了库存 -->
+    <!-- 模型听出来的材料名只做提示：库存要扣的是具体 SKU，得他自己去「添加用料」里选 -->
     <view wx:if="{{materialHints.length}}" class="mat-said">
-      已按你说的加了用料：{{materialHints}}。请到「添加用料」里核对数量、点「从库存选」绑一下，否则扣不了库存
+      听到你提了：{{materialHints}}。已唯一匹配的会加入用料草稿，其余请到「添加用料」核对选择
     </view>
     <!-- 常用话术：点一下填进上面的文本框，再点一下撤掉；顺序按本小区用得多不多来 -->
     <block wx:if="{{phrases.length}}">
@@ -280,6 +286,7 @@
 
     <view class="label mt">收费金额（元）<text class="label__opt">选填</text></view>
     <input class="input" type="digit" placeholder="不收费就留空" value="{{feeYuan}}" bindinput="onFeeInput"/>
+    <view wx:if="{{feeSuggestionText}}" class="ai-basis">{{feeSuggestionText}}。金额不会自动提交，可直接修改。</view>
 
     <!-- 用料在「添加用料」里维护，这里只做确认，避免两处都能改 -->
     <view class="label mt">用料</view>
@@ -371,8 +378,8 @@
       <view wx:if="{{skuEmptyHint}}" class="sku-empty">{{skuEmptyHint}}</view>
 
       <block wx:if="{{skuWarehouseId}}">
-        <view wx:if="{{!skuList.length}}" class="center muted">
-          没有匹配的材料。关掉这里点「手填一项」，提报缺料后由办公室补进材料库。
+        <view wx:if="{{!skuList.length}}" class="center muted sku-no-result">
+          {{skuKeyword ? '没有匹配的材料。关掉这里点「手填一项」，提报缺料后由办公室补进材料库。' : '默认只展示有库存的材料；输入名称可以搜索无库存 SKU 并提报缺料。'}}
         </view>
 
         <view

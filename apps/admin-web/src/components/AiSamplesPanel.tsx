@@ -6,6 +6,7 @@ import {
   Modal,
   Popconfirm,
   Segmented,
+  Select,
   Space,
   Switch,
   Table,
@@ -38,6 +39,8 @@ export interface AiSample {
     contactName?: string;
     phone?: string;
     urgent?: boolean;
+    publicArea?: boolean;
+    repairType?: string;
     // 完工小结
     actionNote?: string;
     faultLocation?: string;
@@ -62,6 +65,12 @@ type SampleKind = (typeof KINDS)[number]['value'];
 
 const FIELDS: Record<SampleKind, Array<{ key: string; label: string; placeholder: string; hint?: string }>> = {
   repair: [
+    {
+      key: 'repairType',
+      label: '应该识别成的报修类型',
+      placeholder: '请选择报修类型',
+      hint: '类型样例会随原话一起发给 AI；明确的设备关键词仍优先于泛化的故障动作。',
+    },
     {
       key: 'addressText',
       label: '应该认出的地址',
@@ -105,6 +114,7 @@ const EMPTY_DRAFT: Record<string, string> = {
   faultLocation: '',
   faultSymptom: '',
   phone: '',
+  repairType: '',
   materials: '',
 };
 
@@ -116,6 +126,7 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
+  const [repairTypes, setRepairTypes] = useState<Array<{ repairType: string; label: string }>>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -132,9 +143,19 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    request<Array<{ repairType: string; label: string }>>({ url: '/repair-types' })
+      .then(setRepairTypes)
+      .catch(() => setRepairTypes([]));
+  }, []);
+
   const add = async () => {
     if (!draft.text.trim()) {
       message.warning('先把「这句话」填上');
+      return;
+    }
+    if (kind === 'repair' && !draft.repairType) {
+      message.warning('请选择这条样例应该识别成的报修类型');
       return;
     }
     setSaving(true);
@@ -238,6 +259,11 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
             render: (v: AiSample['expected']) => (
               <Space direction="vertical" size={2}>
                 {v?.addressText ? <Tag color="blue">地址 {v.addressText}</Tag> : null}
+                {v?.repairType ? (
+                  <Tag color="purple">
+                    类型 {repairTypes.find((item) => item.repairType === v.repairType)?.label || v.repairType}
+                  </Tag>
+                ) : null}
                 {v?.description ? <Tag>描述 {v.description}</Tag> : null}
                 {v?.contactName ? <Tag>联系人 {v.contactName}</Tag> : null}
                 {v?.actionNote ? <Tag color="blue">维修说明 {v.actionNote}</Tag> : null}
@@ -302,11 +328,21 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
           {FIELDS[kind].map((f) => (
             <div key={f.key}>
               <Text strong>{f.label}</Text>
-              <Input
-                value={draft[f.key]}
-                onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
-                placeholder={f.placeholder}
-              />
+              {f.key === 'repairType' ? (
+                <Select
+                  style={{ width: '100%' }}
+                  value={draft.repairType || undefined}
+                  onChange={(value) => setDraft({ ...draft, repairType: value })}
+                  placeholder={f.placeholder}
+                  options={repairTypes.map((item) => ({ value: item.repairType, label: item.label }))}
+                />
+              ) : (
+                <Input
+                  value={draft[f.key]}
+                  onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
+                  placeholder={f.placeholder}
+                />
+              )}
               {f.hint ? (
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {f.hint}

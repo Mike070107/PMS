@@ -369,7 +369,26 @@ Page({
       return;
     }
     if (res.matchedText && res.matchedText === this.dismissedMatch) return;
-    this.setData({ detected: res });
+    const patch: Record<string, unknown> = { detected: res };
+    const aiType = res.ai?.repairType;
+    if (aiType && !this.typePickedByUser) {
+      const local = classifyRepairType(content, this.types);
+      const lower = content.toLowerCase();
+      const explicit = !!local?.matched.some((word) => lower.includes(word.toLowerCase()));
+      const index = this.types.findIndex((item) => item.repairType === aiType);
+      if (!explicit && index >= 0) {
+        this.predictedType = aiType;
+        patch.typeIndex = index;
+        patch.autoTypeHint = 'AI 按设备场景识别，可手动修改';
+        patch.contentSuggestions = (this.types[index].keywords || []).slice(0, 8);
+        patch.contentSuggestTitle = `${this.types[index].label}·猜你想输`;
+      }
+    }
+    if (!this.data.contactName && res.ai?.contactName) patch.contactName = res.ai.contactName;
+    if (!this.data.contactPhone && /^1\d{10}$/.test(res.ai?.phone || '')) {
+      patch.contactPhone = res.ai?.phone;
+    }
+    this.setData(patch);
   },
 
   onDismissDetected() {
@@ -554,7 +573,7 @@ Page({
   async onSubmit() {
     const { communityId, typeIndex, content, contactPhone, detected } = this.data;
     const errors = {
-      place: communityId || detected ? '' : '请先选择报修位置',
+      place: communityId || detected?.matched ? '' : '请先选择报修位置',
       type: typeIndex < 0 ? '请选择报修类型' : '',
       content: content.trim().length >= 5 ? '' : '请至少填写 5 个字描述问题',
       phone: contactPhone && !PHONE_RE.test(contactPhone) ? '请填写正确的手机号' : '',
@@ -563,17 +582,17 @@ Page({
     if (errors.place || errors.type || errors.content || errors.phone) return;
 
     // 描述里识别到了地址就按识别结果提交（id 和文案一起换）；否则用地址簿选的
-    const ids = detected
+    const ids = detected?.matched
       ? { buildingId: detected.buildingId ?? undefined, houseId: detected.houseId ?? undefined }
       : { buildingId: this.data.buildingId ?? undefined, houseId: this.data.houseId ?? undefined };
-    const addressText = detected
+    const addressText = detected?.matched
       ? composeDetectedAddress(detected, this.data.spotText)
       : [this.data.placeText, this.data.spotText.trim()].filter(Boolean).join(' ');
 
     this.setData({ submitting: true });
     try {
       const resp = await repairs.create({
-        communityId: detected ? detected.communityId! : (communityId as number),
+        communityId: detected?.matched ? detected.communityId! : (communityId as number),
         ...ids,
         addressText,
         contactName: this.data.contactName.trim() || undefined,
@@ -582,6 +601,7 @@ Page({
         // 把「系统当初判的是什么」一并带上：和最终选的不一致时，
         // 后端记一条负样本，下次这个词就不会再往错的类型上撞
         predictedRepairType: this.predictedType || undefined,
+        aiAssist: repairs.buildRepairAiAssist(this.handoffRaw || content, detected),
         // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
         urgent: this.data.urgent,
         // 地址在描述里留到这一刻是为了让识别撞库（见 onSpeech 那段注释），
@@ -589,7 +609,7 @@ Page({
         // 用 matchedRaw（原话里的那一整段，含小区名），不是归一化的 matchedText ——
         // 后者剥完会剩个「枫桦景苑」在描述开头（2026-08-31 实际现象）。
         // 剥空了就退回原文：宁可带点地址，也不能提交一条空描述
-        content: stripAddress(content, detected?.matchedRaw),
+        content: (detected?.ai?.description || '').trim() || stripAddress(content, detected?.matchedRaw),
         attachments: this.data.attachments,
       });
       wx.showToast({ title: '报修已提交' });

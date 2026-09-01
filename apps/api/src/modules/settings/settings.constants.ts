@@ -126,7 +126,7 @@ export interface AiAssistSetting {
   enabled: boolean;
   /** 接口地址，填到 /v1 之前即可（DeepSeek：https://api.deepseek.com） */
   baseUrl: string;
-  /** 模型名（DeepSeek：deepseek-chat） */
+  /** 模型名（DeepSeek 当前推荐低延迟抽取：deepseek-v4-flash） */
   model: string;
   /** API Key。读出去是脱敏预览，留空保存 = 保持不变 */
   apiKey: string;
@@ -165,7 +165,7 @@ export const DEFAULT_TENANT_SETTINGS: {
   aiAssist: {
     enabled: false,
     baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-chat',
+    model: 'deepseek-v4-flash',
     apiKey: '',
     timeoutMs: 6000,
   },

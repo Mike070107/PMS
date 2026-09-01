@@ -291,7 +291,7 @@ export class RepairsController {
    * 办公室手动催修：催维修工在要求完成截止日期前修完。
    * 和定时的「超时没人接单」两回事 —— 那个催接单、系统发；这个催完成、人点发。
    */
-  @Post('work-orders/:id/urge')
+  @Post('work-orders/:id/urge-repair')
   @RequirePermission(['work-orders', 'app:dispatch'], 'edit')
   urgeRepair(
     @Param('id', ParseIntPipe) id: number,
@@ -342,8 +342,9 @@ export class RepairsController {
   acceptWorkOrder(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.acceptWorkOrder(id, user);
+    return this.repairsService.acceptWorkOrder(id, user, access);
   }
 
   @Post('work-orders/:id/complete')
@@ -352,8 +353,9 @@ export class RepairsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CompleteWorkOrderDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.completeWorkOrder(id, dto, user);
+    return this.repairsService.completeWorkOrder(id, dto, user, access);
   }
 
   @Post('work-orders/:id/need-material')
@@ -362,8 +364,9 @@ export class RepairsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: NeedMaterialDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.markNeedMaterial(id, dto, user);
+    return this.repairsService.markNeedMaterial(id, dto, user, access);
   }
 
   /**
@@ -376,12 +379,14 @@ export class RepairsController {
   listWorkOrderStockOptions(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
     @Query('warehouseId') warehouseId?: string,
   ) {
     const picked = Number(warehouseId);
     return this.repairsService.listWorkOrderStockOptions(
       id,
       user,
+      access,
       Number.isFinite(picked) && picked > 0 ? picked : undefined,
     );
   }
@@ -396,8 +401,9 @@ export class RepairsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMissingMaterialsDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.updateMissingMaterials(id, dto, user);
+    return this.repairsService.updateMissingMaterials(id, dto, user, access);
   }
 
   @Post('work-orders/:id/review')
@@ -407,8 +413,9 @@ export class RepairsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ReviewWorkOrderDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.reviewWorkOrder(id, dto, user);
+    return this.repairsService.reviewWorkOrder(id, dto, user, access);
   }
 
   @Post('work-orders/:id/cancel')
@@ -418,8 +425,9 @@ export class RepairsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CancelWorkOrderDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.cancelWorkOrder(id, dto, user);
+    return this.repairsService.cancelWorkOrder(id, dto, user, access);
   }
 
   @Post('work-orders/:id/urge')

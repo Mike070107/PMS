@@ -28,7 +28,11 @@ export interface ClassifyResult {
 function scoreKeyword(text: string, keyword: string): number {
   const word = keyword.trim();
   if (!word) return 0;
-  if (text.includes(word)) return word.length * 2;
+  // 完整命中必须明显压过模糊片段命中。
+  // 例如「门铃打不开门」里，「门铃」是智能化的完整设备词；而门窗类型只能从
+  // 「门锁打不开」「家里门锁」里各蹭到几个双字片段。旧权重会刚好打平，并按类型
+  // 顺序误选门窗。明确设备词应当优先，所以完整命中的权重至少拉开一倍。
+  if (text.includes(word)) return word.length * 4;
 
   // 「电梯按键失灵」对上「电梯按键坏了」：取关键词里的连续双字去撞
   let hits = 0;
@@ -78,7 +82,7 @@ export function classifyRepairType(
     // 「电梯相关」→ 去掉「相关」后的「电梯」也是很强的信号
     const bareLabel = type.label.replace(/相关|问题|类$/g, '').trim();
     if (bareLabel.length >= 2 && text.includes(bareLabel.toLowerCase())) {
-      score += bareLabel.length * 2;
+      score += bareLabel.length * 4;
       if (!matched.includes(bareLabel)) matched.push(bareLabel);
     }
 

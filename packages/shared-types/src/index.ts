@@ -344,6 +344,8 @@ export interface RepairCreateReq {
    * 服务端据此记一条负样本，让判定越用越准（见 RepairTypeCorrection）。
    */
   predictedRepairType?: string;
+  /** AI 草稿随最终提交带回，仅用于记录人工纠错 */
+  aiAssist?: { sourceText: string; draft: Record<string, unknown> };
   content: string;
   attachments?: string[];
   /**
@@ -496,6 +498,10 @@ export interface CompleteWorkOrderReq {
   /** 收费金额（分）。一期只记账，不做支付 */
   feeCents?: number;
   materials?: UsedMaterialLine[];
+  /** 命中的收费规则编码，只做审计，不会覆盖 feeCents */
+  feeRuleCode?: string;
+  /** AI 草稿随最终提交带回，仅用于记录人工纠错 */
+  aiAssist?: { sourceText: string; draft: Record<string, unknown> };
 }
 
 // ---------- 报修类型 / 状态文案（前后台与小程序共用） ----------

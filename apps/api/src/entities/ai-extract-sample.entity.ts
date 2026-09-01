@@ -33,7 +33,7 @@ export class AiExtractSample extends TenantEntity {
 
   /**
    * 期望的识别结果，字段和 RepairTextAiResult 对齐：
-   * { addressText, description, contactName, phone, urgent }
+   * { addressText, description, contactName, phone, urgent, publicArea, repairType }
    * 只填要教的那几个；留空的字段不会写进提示词，避免教出「什么都空」。
    */
   @Column({ type: 'jsonb', default: () => "'{}'" })
