@@ -532,6 +532,17 @@ Page({
     wx.navigateTo({ url: '/pages/quick-repair/quick-repair' });
   },
 
+  /**
+   * 点卡片上的报修照片 = 看大图（catchtap 已经拦住冒泡，不会顺带进详情）。
+   * urls 用这张卡自己的那几张，别把整屏的图都串进去 —— 左右滑会滑到别人家的照片。
+   */
+  onPreviewShot(e: WechatMiniprogram.BaseEvent) {
+    const urls = (e.currentTarget.dataset.urls || []) as string[];
+    const current = e.currentTarget.dataset.url as string;
+    if (!urls.length || !current) return;
+    wx.previewImage({ current, urls });
+  },
+
   onTapItem(e: WechatMiniprogram.BaseEvent) {
     // 勾过「总是保持以上选择」的人，在这里静默把订阅额度补满 ——
     // 微信要求 requestSubscribeMessage 由点击触发，而「点开一张工单」是维修工

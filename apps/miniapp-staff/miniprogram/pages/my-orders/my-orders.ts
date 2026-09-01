@@ -89,6 +89,17 @@ Page({
     }
   },
 
+  /**
+   * 点卡片上的报修照片 = 看大图（catchtap 已经拦住冒泡，不会顺带进详情）。
+   * urls 用这张卡自己的那几张，别把整屏的图都串进去 —— 左右滑会滑到别人家的照片。
+   */
+  onPreviewShot(e: WechatMiniprogram.BaseEvent) {
+    const urls = (e.currentTarget.dataset.urls || []) as string[];
+    const current = e.currentTarget.dataset.url as string;
+    if (!urls.length || !current) return;
+    wx.previewImage({ current, urls });
+  },
+
   onTapItem(e: WechatMiniprogram.BaseEvent) {
     // 同工单池：勾过「总是保持」的人在这里静默补额度（见 utils/unread.ts）
     topUpQuietly();

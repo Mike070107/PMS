@@ -25,6 +25,25 @@
         <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>{{item.summaryContent || '未填描述'}}
       </view>
       <view class="wo-card__addr">{{item.summaryAddress || '未填地址'}}</view>
+      <!-- 报修照片：一眼看出坏成什么样，比读一句描述快得多。
+           catchtap 拦住冒泡 —— 点图是看大图，点卡片才是进详情。
+           超过 4 张时最后一张压一个「+N」，别把卡片撑成相册 -->
+      <view wx:if="{{item.photos.length}}" class="wo-card__shots">
+        <view
+          wx:for="{{item.photos}}"
+          wx:for-item="shot"
+          wx:key="*this"
+          class="wo-card__shot"
+          data-url="{{shot}}"
+          data-urls="{{item.photos}}"
+          catchtap="onPreviewShot"
+        >
+          <image class="wo-card__shot-img" src="{{shot}}" mode="aspectFill" lazy-load />
+          <view wx:if="{{index === 3 && item.photoCount > 4}}" class="wo-card__shot-more">
+            +{{item.photoCount - 4}}
+          </view>
+        </view>
+      </view>
     </view>
     <pms-tag class="status-tag" status="{{item.status}}"/>
   </view>

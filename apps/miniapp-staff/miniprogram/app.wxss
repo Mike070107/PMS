@@ -436,6 +436,39 @@ button::after { border: none; }
   color: var(--color-text);
   line-height: 1.45;
 }
+/* 报修照片：一行四张方图，够看清「坏成什么样」，又不至于把卡片撑成相册。
+   宽度用 flex 等分而不是写死 rpx —— 屏幕宽度差一档就会掉行 */
+.wo-card__shots {
+  display: flex;
+  gap: 12rpx;
+  margin-top: var(--space-md);
+}
+.wo-card__shot {
+  position: relative;
+  /* 固定 150×150 的方图，不用 flex 等分：等分的话两张图会被拉成两个大长条，
+     和四张图那行完全不是一个观感。四张 150 + 三道 12 = 636rpx，正好放得下卡片内容宽。
+     （别用 height:0 + padding-top 那套：和 min-height 一起写会叠加成竖长条） */
+  flex-shrink: 0;
+  width: 150rpx;
+  height: 150rpx;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-bg);
+}
+.wo-card__shot-img { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* 「+3」压在最后一张上，告诉人还有更多，点进详情能看全 */
+.wo-card__shot-more {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: var(--font-lg);
+  font-weight: 600;
+}
+
 /* 塞不进网格的长文本（缺料清单、派单备注）走这里 */
 .wo-card__note {
   margin-top: var(--space-md);

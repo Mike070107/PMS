@@ -365,6 +365,10 @@ export interface MissingMaterialLine {
 }
 
 export interface WorkOrderListItem {
+  /** 报修时拍的照片（只图片、最多 4 张），卡片上直接给缩略图 */
+  photos?: string[];
+  /** 图片总张数，卡片上「+N」按它算 */
+  photoCount?: number;
   id: number;
   orderNo: string;
   status: WorkOrderStatus;

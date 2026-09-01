@@ -888,7 +888,7 @@ export class RepairsService implements OnModuleInit {
 
     const requests = await this.repairRequestRepo.find({
       where: { tenantId, id: In(requestIds) },
-      select: ['id', 'repairType', 'houseId', 'buildingId', 'communityId', 'addressText', 'content', 'contactName', 'reporterRole', 'source', 'urgent'],
+      select: ['id', 'repairType', 'houseId', 'buildingId', 'communityId', 'addressText', 'content', 'attachments', 'contactName', 'reporterRole', 'source', 'urgent'],
     });
     const houseIds = requests
       .map((item) => item.houseId)
@@ -947,6 +947,14 @@ export class RepairsService implements OnModuleInit {
           communityById,
         ),
         summaryContent: requestById.get(item.requestId)?.content ?? '',
+        /**
+         * 报修时拍的照片，卡片上直接给缩略图（2026-09-01 要求）。
+         *
+         * 只挑图片、最多 4 张：卡片是用来扫的，视频没有封面帧、在列表里只能是个黑块，
+         * 留给详情页。photoCount 给的是**图片总数**，卡片上「+N」按它算。
+         */
+        photos: pickPhotos(requestById.get(item.requestId)?.attachments),
+        photoCount: countPhotos(requestById.get(item.requestId)?.attachments),
         assigneeName: item.assigneeId
           ? assigneeNameById.get(item.assigneeId) ?? `#${item.assigneeId}`
           : null,
@@ -4466,4 +4474,15 @@ export class RepairsService implements OnModuleInit {
     }
     throw new ForbiddenException('账号还没有归属物业，请先认证房屋或扫楼栋码报修');
   }
+}
+/** 报修附件里挑出图片（视频没封面帧，列表里只会是个黑块，留给详情页） */
+const VIDEO_EXT = /\.(mp4|mov|m4v|webm|avi|mkv)(\?|#|$)/i;
+
+function countPhotos(list?: string[] | null): number {
+  return Array.isArray(list) ? list.filter((u) => u && !VIDEO_EXT.test(u)).length : 0;
+}
+
+/** 卡片上最多摆 4 张，再多用「+N」表示 */
+function pickPhotos(list?: string[] | null): string[] {
+  return Array.isArray(list) ? list.filter((u) => u && !VIDEO_EXT.test(u)).slice(0, 4) : [];
 }
