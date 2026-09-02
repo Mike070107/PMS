@@ -1436,3 +1436,12 @@
   - 876f068 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
   - 3f14d39 feat: 完善业务日志与异常反馈
 
+## 2026-09-02 14:09 · web · 9c1622d
+
+- 包：`deploy/pms-web-20260902-1359.tar.gz`
+- 提交：9c1622d chore: 补充最新采购业务日志
+- 说明：日志管理重构、全站反馈入口；首页、SPA、登录页及资源均为 200
+- 自上次（9309994）以来上线的相关提交：
+  - 876f068 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
+  - 3f14d39 feat: 完善业务日志与异常反馈
+
