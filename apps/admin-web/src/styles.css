@@ -2143,3 +2143,244 @@ body.pms-col-resizing * {
   .pms-detail-section { padding: 14px; }
   .pms-detail-title-row h2 { font-size: 20px; }
 }
+
+/* ===========================================================================
+   2026 清爽蓝适老化主题
+   这一层只统一视觉与可读性，不改变各页面的数据结构和交互逻辑。
+   ========================================================================== */
+:root {
+  --pms-primary: #31558a;
+  --pms-primary-strong: #243f69;
+  --pms-accent: #4f7fb3;
+  --pms-ink: #1f334a;
+  --pms-ink-secondary: #5f7287;
+  --pms-bg: #eef3f8;
+  --pms-surface: #ffffff;
+  --pms-surface-soft: #f5f8fb;
+  --pms-border: #d6e1ec;
+  --pms-sider: #31558a;
+  --pms-sider-deep: #243f69;
+  --pms-shadow-sm: 0 2px 10px rgba(31, 62, 96, 0.06), 0 12px 30px rgba(31, 62, 96, 0.05);
+  --pms-shadow-md: 0 16px 38px rgba(31, 62, 96, 0.13);
+}
+
+body {
+  color: var(--pms-ink);
+  background: var(--pms-bg);
+}
+
+/* 导航从黑灰改成品牌蓝，当前栏目同时用底色和左侧标记提示。 */
+.pms-sider {
+  background:
+    radial-gradient(circle at 22% 0%, rgba(255, 255, 255, 0.12), transparent 30%),
+    linear-gradient(180deg, var(--pms-sider) 0%, var(--pms-sider-deep) 100%) !important;
+  box-shadow: 10px 0 34px rgba(36, 63, 105, 0.15);
+}
+.pms-sider .ant-menu-item,
+.pms-sider .ant-menu-submenu-title {
+  font-size: 15px;
+}
+.pms-sider .ant-menu-item-selected {
+  background: rgba(255, 255, 255, 0.18) !important;
+  box-shadow: inset 4px 0 0 #ffffff;
+}
+.pms-sider-nav-label,
+.pms-sider-group {
+  color: rgba(255, 255, 255, 0.58);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+.pms-sider-foot {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.pms-login-brandpane {
+  background:
+    radial-gradient(circle at 18% 5%, rgba(255, 255, 255, 0.14), transparent 30%),
+    linear-gradient(155deg, #31558a 0%, #243f69 100%);
+}
+
+/* 顶栏和正文保持更明确的蓝白层次。 */
+.pms-header {
+  height: 76px !important;
+  padding-inline: 26px !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  border-bottom-color: #d9e3ed;
+  box-shadow: 0 2px 10px rgba(37, 70, 105, 0.04);
+}
+.pms-header-title {
+  color: var(--pms-ink);
+  font-size: 20px;
+  font-weight: 500;
+}
+.pms-header-description {
+  color: var(--pms-ink-secondary);
+  font-size: 14px;
+}
+.pms-user-name { font-size: 15px; font-weight: 500; }
+.pms-user-role { font-size: 12px; }
+.pms-content {
+  max-width: 1680px;
+  padding: 26px 28px 44px;
+}
+.pms-fadein { animation-duration: 180ms; }
+
+/* 所有业务页的卡片、表格、弹窗和抽屉使用同一套表面语言。 */
+.ant-card {
+  border-color: var(--pms-border) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--pms-shadow-sm);
+}
+.ant-card .ant-card-head {
+  min-height: 62px;
+  border-bottom-color: #e2e9f0;
+}
+.ant-card .ant-card-head-title {
+  color: var(--pms-ink);
+  font-size: 18px;
+  font-weight: 500;
+}
+.ant-table-wrapper .ant-table {
+  color: var(--pms-ink);
+  border-radius: 12px;
+}
+.ant-table-wrapper .ant-table-thead > tr > th {
+  padding-block: 15px;
+  color: #465d75;
+  font-size: 15px;
+  font-weight: 500;
+  background: #f4f8fc;
+  border-bottom-color: #d9e4ee;
+}
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  padding-block: 15px;
+  border-bottom-color: #e5ebf1;
+}
+.ant-table-wrapper .ant-table-tbody > tr.ant-table-row:hover > td {
+  background: #edf4fa !important;
+}
+.ant-modal .ant-modal-content,
+.ant-drawer .ant-drawer-content {
+  border-radius: 16px;
+  box-shadow: 0 22px 54px rgba(31, 62, 96, 0.2);
+}
+.ant-drawer .ant-drawer-content { border-radius: 16px 0 0 16px; }
+.ant-modal .ant-modal-header,
+.ant-drawer .ant-drawer-header {
+  padding-bottom: 18px;
+  border-bottom: 1px solid #dce5ee;
+}
+.ant-modal .ant-modal-title,
+.ant-drawer .ant-drawer-title {
+  color: var(--pms-ink);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+/* 适老化：字号、行高与点击区域整体提高，按钮只保留一档品牌主色。 */
+.ant-form-item .ant-form-item-label > label {
+  min-height: 28px;
+  color: #334c66;
+  font-size: 16px;
+  font-weight: 500;
+}
+.ant-input,
+.ant-input-number,
+.ant-input-number-input,
+.ant-picker,
+.ant-select-single .ant-select-selector,
+.ant-cascader-picker,
+.ant-radio-wrapper,
+.ant-checkbox-wrapper {
+  font-size: 16px;
+}
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number,
+.ant-picker,
+.ant-select-selector {
+  border-color: #bdccdb !important;
+  background: #ffffff !important;
+}
+.ant-input:hover,
+.ant-input:focus,
+.ant-input-affix-wrapper:hover,
+.ant-input-affix-wrapper-focused,
+.ant-input-number:hover,
+.ant-picker:hover,
+.ant-select-focused .ant-select-selector {
+  border-color: var(--pms-primary) !important;
+}
+.ant-input::placeholder,
+.ant-select-selection-placeholder { color: #8191a3 !important; }
+.ant-btn {
+  min-height: 46px;
+  padding-inline: 18px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.ant-btn-sm { min-height: 38px; font-size: 14px; }
+.ant-btn-primary {
+  background: var(--pms-primary);
+  border-color: var(--pms-primary);
+  box-shadow: 0 5px 14px rgba(49, 85, 138, 0.18);
+}
+.ant-tabs .ant-tabs-tab {
+  min-height: 48px;
+  font-size: 16px;
+}
+.ant-pagination .ant-pagination-item,
+.ant-pagination .ant-pagination-prev,
+.ant-pagination .ant-pagination-next {
+  min-width: 40px;
+  height: 40px;
+  line-height: 38px;
+}
+.ant-descriptions .ant-descriptions-item-label {
+  color: #60758a;
+  font-size: 15px;
+}
+.ant-descriptions .ant-descriptions-item-content {
+  color: var(--pms-ink);
+  font-size: 16px;
+}
+.ant-empty-description,
+.ant-typography-secondary { color: var(--pms-ink-secondary) !important; }
+
+/* 页面标题和工具区在所有业务页形成统一的“标题—说明—操作”节奏。 */
+.pms-page-title,
+.pms-list-title,
+.ant-typography h2,
+h2.ant-typography {
+  color: var(--pms-ink);
+  font-weight: 500;
+}
+.pms-detail-section,
+.pms-detail-metric {
+  border-color: var(--pms-border);
+  background: var(--pms-surface);
+}
+.pms-detail-section-heading strong,
+.pms-detail-metric strong { color: var(--pms-ink); }
+.pms-detail-section-heading span,
+.pms-detail-metric span { color: var(--pms-ink-secondary); }
+.pms-detail-section .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #f4f8fc;
+}
+.pms-form-mode-note {
+  color: #315674;
+  background: #eef6fb;
+  border-color: #d1e2ef;
+}
+.pms-form-section-label {
+  color: #294a6b;
+  border-bottom-color: #dce6ef;
+}
+
+@media (max-width: 900px) {
+  .pms-header { height: 68px !important; padding-inline: 14px !important; }
+  .pms-header-title { font-size: 18px; }
+  .pms-content { padding: 18px 14px 34px; }
+  .ant-btn { min-height: 44px; }
+}

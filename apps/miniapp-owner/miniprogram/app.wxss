@@ -14,8 +14,8 @@
   padding: 36rpx 28rpx;
   margin-bottom: 28rpx;
   /* 发丝边 + 投影一起上：只靠投影在户外光线下看不出来，只靠边框又太生硬 */
-  border: 2rpx solid rgba(18, 35, 59, 0.06);
-  box-shadow: 0 4rpx 16rpx rgba(18, 35, 59, 0.07);
+  border: 2rpx solid var(--color-border);
+  box-shadow: 0 6rpx 22rpx rgba(31, 62, 96, 0.08);
 }
 
 /* ---------- 按钮体系 ----------
@@ -55,7 +55,11 @@ button::after { border: none; }
 .btn:active { opacity: 0.85; }
 .btn[disabled] { opacity: 0.5; }
 
-.btn--primary { background: var(--color-brand); color: #fff; }
+.btn--primary {
+  background: linear-gradient(135deg, #3d6598, var(--color-brand));
+  color: #fff;
+  box-shadow: 0 8rpx 18rpx rgba(49, 85, 138, 0.20);
+}
 .btn--outline {
   background: var(--color-card-bg);
   color: var(--color-brand);

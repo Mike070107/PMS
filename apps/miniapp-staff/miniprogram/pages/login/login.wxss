@@ -1,8 +1,8 @@
-.page { min-height: 100vh; background: linear-gradient(180deg, #e8f0f7 0, #f4f7fa 58%, #edf2f7 100%); padding-top: 24rpx; box-sizing: border-box; }
+.page { min-height: 100vh; background: linear-gradient(180deg, #f5f8fb 0, #eef3f8 58%, #eef3f8 100%); padding-top: 24rpx; box-sizing: border-box; }
 
 .page .hero {
   margin: 0 24rpx;
-  background: linear-gradient(135deg, #173b63 0%, #2b6b9d 100%);
+  background: linear-gradient(135deg, #31558a 0%, #243f69 100%);
   color: #fff;
   padding: 76rpx 40rpx 64rpx;
   border-radius: 40rpx;

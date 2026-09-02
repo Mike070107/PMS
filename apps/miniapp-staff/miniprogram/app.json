@@ -20,9 +20,9 @@
   ],
   "window": {
     "navigationBarTitleText": "邻修工作台",
-    "navigationBarBackgroundColor": "#f2f6fa",
+    "navigationBarBackgroundColor": "#f5f8fb",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#edf2f7"
+    "backgroundColor": "#eef3f8"
   },
   "tabBar": {
     "custom": true,

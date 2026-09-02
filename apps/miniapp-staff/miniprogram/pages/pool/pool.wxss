@@ -133,7 +133,7 @@
   padding: 14rpx 20rpx;
   border-radius: 999rpx;
   color: #fff;
-  background: linear-gradient(135deg, #236da6, #174f83);
+  background: linear-gradient(135deg, #3d6598, #31558a);
   box-shadow: 0 12rpx 34rpx rgba(23, 79, 131, .32);
   font-size: 24rpx;
   animation: receiver-pop 580ms ease both;
@@ -197,7 +197,7 @@
 }
 .tech--on {
   border-color: var(--color-brand);
-  background: linear-gradient(135deg, #236da6, #174f83);
+  background: linear-gradient(135deg, #3d6598, #31558a);
 }
 /* 实底之后卡片里三行字都要跟着翻白，否则灰字压在深蓝上更看不清 */
 .tech--on .tech__name,

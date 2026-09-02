@@ -14,7 +14,7 @@
     "navigationBarTitleText": "邻修",
     "navigationBarBackgroundColor": "#ffffff",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#f5f6f8"
+    "backgroundColor": "#eef3f8"
   },
   "tabBar": {
     "color": "#8c8c8c",

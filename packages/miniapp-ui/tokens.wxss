@@ -2,24 +2,25 @@
 page {
   --color-brand: #31558a;
   --color-brand-dark: #243f69;
-  --color-success: #52c41a;
-  --color-warning: #faad14;
-  --color-danger: #ff4d4f;
-  --color-text: #1f1f1f;
-  --color-text-secondary: #595959;
-  --color-text-tertiary: #8c8c8c;
-  --color-border: #e5e7eb;
+  --color-brand-soft: #edf4fa;
+  --color-success: #2f7a54;
+  --color-warning: #ad6800;
+  --color-danger: #c53d45;
+  --color-text: #1f334a;
+  --color-text-secondary: #536a80;
+  --color-text-tertiary: #718499;
+  --color-border: #d6e1ec;
   /* 页面底色。和白卡片必须拉开差距 —— 原来是 #f5f6f8，跟 #ffffff 差不到 2%，
      手机上在户外光线下卡片和底色糊成一片，看不出「一张一张」。
      注意它和 --color-bg 是两回事：--color-bg 还兼着卡片内输入框/引用块的底色，
      那个不能跟着变深，否则白卡片里一块块灰太脏。 */
-  --color-page-bg: #e6eaf1;
-  --color-bg: #f5f6f8;
+  --color-page-bg: #eef3f8;
+  --color-bg: #f5f8fb;
   --color-card-bg: #ffffff;
 
-  --radius-sm: 8rpx;
-  --radius-md: 16rpx;
-  --radius-lg: 24rpx;
+  --radius-sm: 12rpx;
+  --radius-md: 20rpx;
+  --radius-lg: 28rpx;
 
   /* ---------- 间距：严格 8rpx 节奏 ----------
      只用这几档，页面里不要再写 10rpx / 12rpx / 22rpx 这种随手值 ——
@@ -57,9 +58,9 @@ page {
   --font-stat-lg: 56rpx; /* 深色页头里的统计数字 */
 
   /* 数据网格的分隔线：靠 1-2rpx 的缝隙透出底色来画线，比给每格加 border 干净 */
-  --color-hairline: #eaecf0;
+  --color-hairline: #e1e9f1;
   /* 悬浮层阴影，全局只此一档（底部悬浮栏、浮动按钮） */
-  --shadow-float: 0 8rpx 32rpx rgba(31, 45, 74, 0.12);
+  --shadow-float: 0 10rpx 32rpx rgba(31, 62, 96, 0.14);
 
   background: var(--color-page-bg);
   color: var(--color-text);
