@@ -340,6 +340,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.load();
   },
 
+  onBack() {
+    wx.navigateBack();
+  },
+
   async load() {
     if (!this.data.id) return;
     try {

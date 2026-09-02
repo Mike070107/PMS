@@ -1,144 +1,92 @@
-<view wx:if="{{detail}}" class="container container--with-bar">
-  <!-- 详情首屏只放现场真正要用的四件事：去哪、修什么、找谁、下一步。 -->
-  <view class="card detail-summary {{urgent ? 'detail-summary--urgent' : ''}}">
-    <view class="detail-summary__top">
-      <view class="detail-summary__tags">
-        <text wx:if="{{urgent}}" class="badge--urgent">紧急</text>
-        <text class="detail-summary__type">{{typeLabel}}</text>
-      </view>
-      <pms-tag class="status-tag" status="{{detail.workOrder.status}}"/>
-    </view>
-
-    <view class="detail-summary__address">
-      <view class="icon icon--pin"></view>
-      <text>{{detail.request.addressText || '未填地址'}}</text>
-    </view>
-    <view class="detail-summary__problem">{{detail.request.content || '未填写故障描述'}}</view>
-
-    <view class="detail-summary__facts">
-      <view class="detail-fact">
-        <view class="detail-fact__label">工单编号</view>
-        <view class="detail-fact__value">{{detail.workOrder.orderNo}}</view>
-      </view>
-      <view class="detail-fact">
-        <view class="detail-fact__label">报修时间</view>
-        <view class="detail-fact__value">{{createdAtText}}</view>
-        <view class="detail-fact__hint detail-fact__hint--{{stayTone}}">{{stayBadge}}</view>
-      </view>
-      <view class="detail-fact">
-        <view class="detail-fact__label">当前维修工</view>
-        <view class="detail-fact__value">{{assigneeText}}</view>
-      </view>
-    </view>
-
-    <view wx:if="{{missingText}}" class="detail-summary__material">
-      <text>等待材料</text>
-      <view>{{missingText}}</view>
-    </view>
-
-    <view wx:if="{{detail.request.attachments.length}}" class="thumbs">
-      <image
-        wx:for="{{detail.request.attachments}}"
-        wx:key="*this"
-        class="thumb"
-        src="{{item}}"
-        mode="aspectFill"
-        data-url="{{item}}"
-        bindtap="onPreviewRequestImage"
-      />
-    </view>
-
-    <view class="detail-summary__foot">
-      <view class="call" bindtap="onCall">
-        <view class="icon icon--phone"></view>
-        <text>电话联系报修人</text>
-      </view>
+<view class="detail-page">
+  <view class="detail-nav">
+    <view class="detail-nav__safe"></view>
+    <view class="detail-nav__bar">
+      <view class="detail-nav__back" bindtap="onBack">‹</view>
+      <view class="detail-nav__center"><view class="detail-nav__title">工单现场处理</view><view class="detail-nav__desc">先核对现场，再记录用料和完工情况</view></view>
+      <view class="detail-nav__side"></view>
     </view>
   </view>
 
-  <!-- 修完了它才出现：故障位置、用料、收费、完修时间 —— 验收的人要看的就是这些。
-       放在进度之前：进度回答「走到哪一步」，这张卡回答「到底修了什么」，后者更该先看见 -->
-  <view wx:if="{{hasResult}}" class="card">
-    <view class="section-title">维修结果</view>
-    <view wx:for="{{resultRows}}" wx:key="label" class="kv">
-      <text class="kv__k">{{item.label}}</text>
-      <text class="kv__v">{{item.value}}</text>
-    </view>
-
-    <view wx:if="{{resultMaterials.length}}" class="kv">
-      <text class="kv__k">用料</text>
-      <view class="kv__v">
-        <view wx:for="{{resultMaterials}}" wx:for-item="mat" wx:key="*this" class="used-item">{{mat}}</view>
+  <view wx:if="{{detail}}" class="detail-body {{canAccept || canComplete ? 'detail-body--with-bar' : ''}}">
+    <view class="site-card {{urgent ? 'site-card--urgent' : ''}}">
+      <view class="site-card__head">
+        <view class="site-card__tags"><text wx:if="{{urgent}}" class="badge--urgent">紧急</text><text class="site-card__type">{{typeLabel}}</text></view>
+        <pms-tag class="status-tag" status="{{detail.workOrder.status}}"/>
       </view>
-    </view>
+      <view class="site-card__number">工单编号：{{detail.workOrder.orderNo}}</view>
 
-    <block wx:if="{{resultPhotos.length}}">
-      <view class="kv"><text class="kv__k">完工照片</text><text class="kv__v">共 {{resultPhotos.length}} 张</text></view>
-      <view class="thumbs">
-        <image
-          wx:for="{{resultPhotos}}"
-          wx:key="*this"
-          class="thumb"
-          src="{{item}}"
-          mode="aspectFill"
-          data-url="{{item}}"
-          bindtap="onPreviewResultImage"
-        />
+      <view class="site-block">
+        <view class="site-block__label"><text>1</text> 去哪里</view>
+        <view class="site-block__address"><view class="icon icon--pin"></view><text>{{detail.request.addressText || '未填地址'}}</text></view>
       </view>
-    </block>
-  </view>
-
-  <!-- 进度：最新的动作在最上面（buildTimeline 已经倒序），默认只露第一条 -->
-  <view class="card">
-    <view class="fold fold--inline" bindtap="onToggleTimeline">
-      <text class="section-title">进度</text>
-      <text class="fold__action" wx:if="{{timeline.length > 1}}">
-        {{timelineOpen ? '收起' : '展开全部 ' + timeline.length + ' 步'}}
-      </text>
-    </view>
-
-    <view
-      wx:for="{{timeline}}"
-      wx:key="id"
-      wx:if="{{timelineOpen || index === 0}}"
-      class="timeline-item"
-    >
-      <view class="dot"></view>
-      <view class="timeline-body">
-        <view class="timeline-row">
-          <text class="timeline-label">{{item.label}}</text>
-          <text class="timeline-at">{{item.at}}</text>
+      <view class="site-block">
+        <view class="site-block__label"><text>2</text> 什么问题</view>
+        <view class="site-block__problem">{{detail.request.content || '未填写故障描述'}}</view>
+      </view>
+      <view class="site-block site-block--contact">
+        <view class="site-block__label"><text>3</text> 联系谁</view>
+        <view class="contact-row">
+          <view class="contact-row__body"><view class="contact-row__name">{{detail.request.contactName || '未留联系人姓名'}}</view><view class="contact-row__phone">{{detail.request.contactPhone || '未留联系电话'}}</view></view>
+          <view class="contact-call" bindtap="onCall"><view class="icon icon--phone"></view><text>打电话</text></view>
         </view>
-        <view wx:if="{{item.stay}}" class="timeline-stay">{{item.stay}}</view>
-        <view wx:if="{{item.note}}" class="timeline-note">{{item.note}}</view>
+      </view>
+
+      <view wx:if="{{detail.request.attachments.length}}" class="site-photos">
+        <view class="site-photos__title">报修现场照片 · {{detail.request.attachments.length}}张</view>
+        <scroll-view class="site-photos__list" scroll-x enable-flex>
+          <image wx:for="{{detail.request.attachments}}" wx:key="*this" class="site-photo" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="onPreviewRequestImage"/>
+        </scroll-view>
       </view>
     </view>
-  </view>
 
-  <view class="error card" wx:if="{{errorMsg && !panel}}">{{errorMsg}}</view>
+    <view wx:if="{{canComplete || canNeedMaterial}}" class="work-card">
+      <view class="work-card__head"><view><view class="work-card__title">现场处理顺序</view><view class="work-card__desc">按下面三步做，不容易漏填</view></view><view class="work-card__assignee">{{assigneeText}}</view></view>
+      <view class="work-steps">
+        <view class="work-step work-step--done"><text>✓</text><view>核对现场</view></view>
+        <view class="work-step__line"></view>
+        <view class="work-step {{materialRows.length || issuedMaterials.length ? 'work-step--done' : 'work-step--on'}}"><text>{{materialRows.length || issuedMaterials.length ? '✓' : '2'}}</text><view>记录用料</view></view>
+        <view class="work-step__line"></view>
+        <view class="work-step work-step--on"><text>3</text><view>提交完工</view></view>
+      </view>
+      <view class="material-summary">
+        <view class="material-summary__label">本单用料</view>
+        <view class="material-summary__value">{{materialRows.length || issuedMaterials.length ? '已记录 ' + (materialRows.length + issuedMaterials.length) + ' 项' : '还没有记录用料'}}</view>
+      </view>
+      <view wx:if="{{missingText}}" class="material-wait"><text>等待材料</text><view>{{missingText}}</view></view>
+    </view>
+
+    <view class="detail-meta-card">
+      <view class="detail-meta"><view class="detail-meta__label">报修时间</view><view class="detail-meta__value">{{createdAtText}}</view><view class="detail-meta__hint detail-meta__hint--{{stayTone}}">{{stayBadge}}</view></view>
+      <view class="detail-meta"><view class="detail-meta__label">当前维修工</view><view class="detail-meta__value">{{assigneeText}}</view></view>
+    </view>
+
+    <view wx:if="{{hasResult}}" class="content-card">
+      <view class="content-card__title">维修结果</view>
+      <view wx:for="{{resultRows}}" wx:key="label" class="result-row"><text>{{item.label}}</text><view>{{item.value}}</view></view>
+      <view wx:if="{{resultMaterials.length}}" class="result-row"><text>用料</text><view><view wx:for="{{resultMaterials}}" wx:for-item="mat" wx:key="*this" class="result-material">{{mat}}</view></view></view>
+      <block wx:if="{{resultPhotos.length}}">
+        <view class="result-row"><text>完工照片</text><view>共 {{resultPhotos.length}} 张</view></view>
+        <view class="result-photos"><image wx:for="{{resultPhotos}}" wx:key="*this" class="thumb" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="onPreviewResultImage"/></view>
+      </block>
+    </view>
+
+    <view class="content-card">
+      <view class="progress-head" bindtap="onToggleTimeline"><view class="content-card__title">工单进度</view><view wx:if="{{timeline.length > 1}}" class="progress-head__action">{{timelineOpen ? '收起' : '展开全部 ' + timeline.length + ' 步'}} ›</view></view>
+      <view wx:for="{{timeline}}" wx:key="id" wx:if="{{timelineOpen || index === 0}}" class="timeline-item">
+        <view class="dot"></view>
+        <view class="timeline-body"><view class="timeline-row"><text class="timeline-label">{{item.label}}</text><text class="timeline-at">{{item.at}}</text></view><view wx:if="{{item.stay}}" class="timeline-stay">{{item.stay}}</view><view wx:if="{{item.note}}" class="timeline-note">{{item.note}}</view></view>
+      </view>
+    </view>
+
+    <view class="detail-error" wx:if="{{errorMsg && !panel}}">{{errorMsg}}</view>
+  </view>
 </view>
 
-<!-- 底部固定操作条：一屏里只有一个实心主按钮，不用再猜该点哪个 -->
-<view wx:if="{{detail && (canAccept || canComplete)}}" class="action-bar">
-  <button
-    wx:if="{{canNeedMaterial}}"
-    class="btn btn--outline"
-    data-panel="material"
-    bindtap="onOpenPanel"
-  ><view class="btn__icon icon-action--box-blue"></view><text>添加用料{{materialRows.length ? ' ' + materialRows.length : ''}}</text></button>
-  <button
-    wx:if="{{canAccept}}"
-    class="btn btn--primary"
-    loading="{{busy}}"
-    disabled="{{busy}}"
-    bindtap="onAccept"
-  ><view class="btn__icon icon-action--check-white"></view><text>{{acceptText}}</text></button>
-  <button
-    wx:if="{{canComplete}}"
-    class="btn btn--primary"
-    data-panel="complete"
-    bindtap="onOpenPanel"
-  ><view class="btn__icon icon-action--wrench-white"></view><text>完工提交</text></button>
+<view wx:if="{{detail && (canAccept || canComplete)}}" class="site-action-bar">
+  <button wx:if="{{canNeedMaterial}}" class="site-action site-action--secondary" data-panel="material" bindtap="onOpenPanel"><view class="btn__icon icon-action--box-blue"></view><text>记录用料{{materialRows.length || issuedMaterials.length ? ' ' + (materialRows.length + issuedMaterials.length) : ''}}</text></button>
+  <button wx:if="{{canAccept}}" class="site-action site-action--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onAccept"><view class="btn__icon icon-action--check-white"></view><text>{{acceptText}}</text></button>
+  <button wx:if="{{canComplete}}" class="site-action site-action--primary" data-panel="complete" bindtap="onOpenPanel"><view class="btn__icon icon-action--wrench-white"></view><text>去完工</text></button>
 </view>
 
 <!-- ============ 添加用料面板 ============ -->
