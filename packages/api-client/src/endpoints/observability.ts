@@ -12,6 +12,7 @@ export interface UserFeedbackReq {
   version?: string;
   errorMessage?: string;
   context?: Record<string, unknown>;
+  attachments?: Array<{ type: 'image' | 'video'; url: string }>;
 }
 
 export const feedback = (data: UserFeedbackReq) =>

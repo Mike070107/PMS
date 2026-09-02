@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
   IsInt,
   IsObject,
@@ -9,6 +11,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 
 export const LOG_CATEGORIES = ['login', 'operation', 'error', 'alert', 'usage', 'feedback'] as const;
@@ -16,6 +19,15 @@ export const LOG_LEVELS = ['info', 'warning', 'error'] as const;
 export const CLIENT_SOURCES = ['admin-web', 'miniapp-staff', 'miniapp-owner'] as const;
 export const FEEDBACK_TYPES = ['error', 'hard_to_use', 'data_issue', 'suggestion', 'other'] as const;
 export const FEEDBACK_STATUSES = ['new', 'processing', 'resolved', 'ignored'] as const;
+
+export class FeedbackAttachmentDto {
+  @IsIn(['image', 'video'])
+  type: 'image' | 'video';
+
+  @IsString()
+  @MaxLength(800)
+  url: string;
+}
 
 export class SystemLogQueryDto {
   @IsOptional()
@@ -139,6 +151,13 @@ export class UserFeedbackDto {
   @IsOptional()
   @IsObject()
   context?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  @ValidateNested({ each: true })
+  @Type(() => FeedbackAttachmentDto)
+  attachments?: FeedbackAttachmentDto[];
 }
 
 export class FeedbackStatusDto {

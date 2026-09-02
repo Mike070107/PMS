@@ -1,10 +1,10 @@
 import {
   AlertOutlined, ApiOutlined, BugOutlined, ClockCircleOutlined, EyeOutlined,
-  ReloadOutlined, SafetyCertificateOutlined, UserOutlined, WarningOutlined,
+  PaperClipOutlined, ReloadOutlined, SafetyCertificateOutlined, UserOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import {
   App as AntdApp, Button, Card, Col, Collapse, DatePicker, Descriptions, Drawer,
-  Empty, Input, Progress, Row, Segmented, Select, Space, Statistic, Table, Tag,
+  Empty, Image, Input, Progress, Row, Segmented, Select, Space, Statistic, Table, Tag,
   Typography,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -143,7 +143,7 @@ export default function LogsPage() {
     { title: '时间', dataIndex: 'createdAt', width: 154, render: (v: string) => dayjs(v).format('MM-DD HH:mm:ss') },
     { title: '状态', width: 96, render: (_: unknown, r: LogRow) => { const m = feedbackStatusMeta[feedbackStatus(r)]; return <Tag color={m?.color}>{m?.label}</Tag>; } },
     { title: '类型', width: 108, render: (_: unknown, r: LogRow) => { const m = feedbackTypeMeta[String(r.detail?.feedbackType || 'other')]; return <Tag color={m?.color}>{m?.label}</Tag>; } },
-    { title: '反馈内容', dataIndex: 'message', width: 360, ellipsis: { showTitle: false }, render: (v: string) => <Text ellipsis={{ tooltip: v }}>{v}</Text> },
+    { title: '反馈内容', dataIndex: 'message', width: 360, ellipsis: { showTitle: false }, render: (v: string, r: LogRow) => <div className="pms-log-message"><Text ellipsis={{ tooltip: v }}>{v}</Text>{Array.isArray(r.detail?.attachments) && r.detail.attachments.length > 0 && <Text type="secondary"><PaperClipOutlined /> {r.detail.attachments.length} 个附件</Text>}</div> },
     { title: '出错页面', dataIndex: 'requestPath', width: 180, ellipsis: true, render: (v: string) => pageName(v) },
     { title: '反馈人', dataIndex: 'actorName', width: 120, ellipsis: true },
     { title: '来源', dataIndex: 'source', width: 120, render: (v: string) => sourceLabels[v] || v },
@@ -236,7 +236,10 @@ function Metric({ title, value, suffix, precision, icon, note, danger }: { title
 function LogDetailDrawer({ row, onClose, canManageFeedback, onStatus }: { row: LogRow | null; onClose: () => void; canManageFeedback: boolean; onStatus: (row: LogRow, status: string) => Promise<void> }) {
   if (!row) return null;
   const detail = row.detail || {}; const status = feedbackStatus(row);
-  const friendly = Object.entries(detail).filter(([key]) => !['history', 'context', 'stack', 'operationLabel', 'businessArea', 'feedbackStatus', 'errorMessage'].includes(key));
+  const attachments = Array.isArray(detail.attachments) ? detail.attachments : [];
+  const feedbackImages = attachments.filter((item: any) => item?.type === 'image' && item?.url);
+  const feedbackVideos = attachments.filter((item: any) => item?.type === 'video' && item?.url);
+  const friendly = Object.entries(detail).filter(([key]) => !['history', 'context', 'stack', 'operationLabel', 'businessArea', 'feedbackStatus', 'errorMessage', 'attachments'].includes(key));
   return <Drawer title={row.category === 'feedback' ? '反馈详情' : row.category === 'operation' ? '业务操作详情' : '日志详情'} open width={680} onClose={onClose}>
     <Space direction="vertical" size={18} style={{ width: '100%' }}>
       {row.category === 'feedback' && <div className="pms-feedback-detail-head"><Space><Tag color={feedbackStatusMeta[status]?.color}>{feedbackStatusMeta[status]?.label}</Tag><Tag color={feedbackTypeMeta[String(detail.feedbackType || 'other')]?.color}>{feedbackTypeMeta[String(detail.feedbackType || 'other')]?.label}</Tag></Space>{canManageFeedback && <Space><Button disabled={status === 'processing'} onClick={() => void onStatus(row, 'processing')}>标记处理中</Button><Button type="primary" disabled={status === 'resolved'} onClick={() => void onStatus(row, 'resolved')}>标记已解决</Button></Space>}</div>}
@@ -249,6 +252,13 @@ function LogDetailDrawer({ row, onClose, canManageFeedback, onStatus }: { row: L
         {detail.errorMessage && <Descriptions.Item label="自动捕获的错误"><Text type="danger">{String(detail.errorMessage)}</Text></Descriptions.Item>}
         {friendly.map(([key, value]) => value == null ? null : <Descriptions.Item key={key} label={detailLabel(key)}>{typeof value === 'object' ? JSON.stringify(value) : String(value)}</Descriptions.Item>)}
       </Descriptions>
+      {!!attachments.length && <div className="pms-feedback-attachments">
+        <Text strong>现场附件（{feedbackImages.length} 张图片，{feedbackVideos.length} 个视频）</Text>
+        <div className="pms-feedback-media-grid">
+          <Image.PreviewGroup>{feedbackImages.map((item: any, index: number) => <Image key={`${item.url}-${index}`} src={item.url} width={112} height={112} style={{ objectFit: 'cover', borderRadius: 8 }} />)}</Image.PreviewGroup>
+          {feedbackVideos.map((item: any, index: number) => <video key={`${item.url}-${index}`} src={item.url} controls preload="metadata" className="pms-feedback-video">浏览器不支持播放此视频</video>)}
+        </div>
+      </div>}
       <Collapse ghost items={[{ key: 'technical', label: '查看技术信息（默认隐藏）', children: <Descriptions bordered size="small" column={1}>
         <Descriptions.Item label="请求">{[row.requestMethod, row.requestPath].filter(Boolean).join(' ') || '—'}</Descriptions.Item><Descriptions.Item label="状态/耗时">{row.statusCode || '—'} / {row.durationMs == null ? '—' : `${row.durationMs}ms`}</Descriptions.Item><Descriptions.Item label="IP">{row.ipAddress || '—'}</Descriptions.Item><Descriptions.Item label="设备">{row.userAgent || '—'}</Descriptions.Item><Descriptions.Item label="原始附加信息"><pre className="pms-log-detail">{JSON.stringify(row.detail, null, 2)}</pre></Descriptions.Item>
       </Descriptions> }]} />

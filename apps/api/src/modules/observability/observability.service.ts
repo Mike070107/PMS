@@ -8,6 +8,7 @@ import { RequestMetric, SystemLog, User } from '../../entities';
 import { AccessService } from '../access/access.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { resolveBusinessAction } from './business-action';
+import { safeFeedbackAttachments } from './feedback-attachment';
 import {
   ClientErrorDto,
   FeedbackStatusDto,
@@ -218,6 +219,7 @@ export class ObservabilityService {
   async recordUserFeedback(user: AuthUser, dto: UserFeedbackDto, req: Request) {
     const tenantId = requireTenant(user);
     const source = sourceFromRequest(req);
+    const attachments = safeFeedbackAttachments(dto.attachments, req);
     const saved = await this.saveLog({
       tenantId,
       category: 'feedback',
@@ -240,6 +242,7 @@ export class ObservabilityService {
         version: dto.version || null,
         errorMessage: dto.errorMessage || null,
         context: safeFeedbackContext(dto.context),
+        attachments,
         history: [{ status: 'new', at: new Date().toISOString(), by: user.id }],
       },
     });
@@ -254,7 +257,7 @@ export class ObservabilityService {
             receiverId,
             eventKey: 'user_feedback',
             title: '收到用户异常反馈',
-            payload: { feedbackId: saved.id, source, route: dto.route || '' },
+            payload: { feedbackId: saved.id, source, route: dto.route || '', attachmentCount: attachments.length },
             page: '/pages/messages/messages',
           }),
         ),

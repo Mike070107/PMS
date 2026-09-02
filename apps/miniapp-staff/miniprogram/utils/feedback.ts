@@ -1,4 +1,4 @@
-import { getLastApiFailure, observability, type FeedbackType } from '@pms/api-client';
+import { getLastApiFailure, observability, upload, type FeedbackType } from '@pms/api-client';
 
 const TYPES: Array<{ label: string; value: FeedbackType }> = [
   { label: '页面报错 / 操作失败', value: 'error' },
@@ -22,6 +22,28 @@ export async function openFeedback() {
   if (!input?.confirm) return;
   if (description.length < 5) return wx.showToast({ icon: 'none', title: '至少说明 5 个字' });
 
+  const attachChoice = await wx.showActionSheet({
+    itemList: ['添加现场图片/视频', '不添加，直接提交'],
+  }).catch(() => null);
+  if (!attachChoice) return;
+  let selected: WechatMiniprogram.ChooseMediaSuccessCallbackResult['tempFiles'] = [];
+  if (attachChoice.tapIndex === 0) {
+    const media = await wx.chooseMedia({
+      count: 5,
+      mediaType: ['image', 'video'],
+      sourceType: ['camera', 'album'],
+      sizeType: ['compressed'],
+      maxDuration: 30,
+      camera: 'back',
+    }).catch(() => null);
+    const images = (media?.tempFiles || []).filter((item) => item.fileType === 'image').slice(0, 4);
+    const videos = (media?.tempFiles || []).filter((item) => item.fileType === 'video').slice(0, 1);
+    selected = [...images, ...videos];
+    if ((media?.tempFiles.length || 0) > selected.length) {
+      wx.showToast({ icon: 'none', title: '已保留前 4 张图片和 1 个视频' });
+    }
+  }
+
   const last = getLastApiFailure();
   const pages = getCurrentPages();
   const route = last?.route || `/${pages[pages.length - 1]?.route || ''}`;
@@ -29,6 +51,11 @@ export async function openFeedback() {
   try { version = wx.getAccountInfoSync().miniProgram.version || ''; } catch {}
   wx.showLoading({ title: '提交中…', mask: true });
   try {
+    const attachments: Array<{ type: 'image' | 'video'; url: string }> = [];
+    for (const file of selected) {
+      const uploaded = await upload.uploadTempFile(file.tempFilePath, 120000);
+      attachments.push({ type: file.fileType, url: uploaded.displayUrl || uploaded.publicUrl });
+    }
     await observability.feedback({
       source: 'miniapp-staff',
       type: TYPES[picked.tapIndex]?.value || 'other',
@@ -38,6 +65,7 @@ export async function openFeedback() {
       version,
       errorMessage: last?.message,
       context: last ? { ...last } : undefined,
+      attachments,
     });
     wx.showToast({ title: '已反馈给后台' });
   } catch (error: any) {
