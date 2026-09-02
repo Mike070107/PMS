@@ -400,6 +400,16 @@ export class MissingMaterialDto {
   @IsInt()
   materialId?: number;
 
+  /**
+   * 这项材料是在哪个仓里判定为不足的。有 SKU 但本仓尚未管理时，
+   * 服务端会建一条数量为 0 的仓库材料记录，不会再新建 SKU。
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  warehouseId?: number;
+
   @IsString()
   @MaxLength(120)
   name: string;

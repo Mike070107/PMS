@@ -364,6 +364,8 @@ export interface RepairCreateReq {
  */
 export interface MissingMaterialLine {
   materialId?: number;
+  /** 提报缺料时选中的仓库；用于把零库存 SKU 加入该仓的材料清单 */
+  warehouseId?: number;
   name: string;
   qty: number;
   unit?: string;
@@ -854,6 +856,8 @@ export interface PurchaseRequestItem {
   /** 合并后仍保持稳定的行标识，用于单项驳回和修改重提 */
   lineId?: string;
   materialId?: number;
+  /** 工单报缺料时所选的目标仓；历史数据可为空 */
+  warehouseId?: number;
   name: string;
   qty: number;
   /** 单位随缺料登记一起带过来：「阀芯 ×2」和「阀芯 ×2 套」采购起来不是一回事 */

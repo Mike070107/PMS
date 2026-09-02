@@ -91,7 +91,13 @@ export class WorkOrder extends TenantEntity {
   // 缺料清单快照（材料名称/数量/单位），等待材料时填。
   // materialId 有值 = 从材料库 SKU 选的；只有 name = 现场手填，办公室建完 SKU 后可回来补关联
   @Column({ name: 'missing_materials', type: 'jsonb', default: () => "'[]'" })
-  missingMaterials: Array<{ name: string; qty: number; materialId?: number; unit?: string }>;
+  missingMaterials: Array<{
+    name: string;
+    qty: number;
+    materialId?: number;
+    warehouseId?: number;
+    unit?: string;
+  }>;
 
   /**
    * 管理员“删除”实际是可审计作废：TypeORM 默认查询自动排除 deleted_at 有值的工单，

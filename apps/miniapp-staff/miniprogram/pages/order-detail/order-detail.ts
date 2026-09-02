@@ -1070,6 +1070,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         })),
         missingMaterials: shortage.map((row) => ({
           materialId: row.materialId,
+          warehouseId: row.materialId ? row.warehouseId ?? undefined : undefined,
           name: row.name,
           qty: row.qty,
           unit: row.unit,

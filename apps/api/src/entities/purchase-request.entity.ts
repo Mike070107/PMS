@@ -25,6 +25,7 @@ export class PurchaseRequest extends TenantEntity {
   items: Array<{
     lineId?: string;
     materialId?: number;
+    warehouseId?: number;
     name: string;
     qty: number;
     unit?: string;

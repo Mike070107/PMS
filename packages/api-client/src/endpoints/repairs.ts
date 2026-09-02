@@ -208,6 +208,8 @@ export const stockOptions = (id: number | string, warehouseId?: number) =>
 export interface MissingMaterialItem {
   /** 从材料库 SKU 选的才有；现场手填的留空 */
   materialId?: number;
+  /** 判定为不足时所选的仓；服务端用它维护该仓的材料清单 */
+  warehouseId?: number;
   name: string;
   qty: number;
   unit?: string;

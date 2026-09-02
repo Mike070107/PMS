@@ -26,7 +26,7 @@
       <view wx:if="{{canViewStock}}" class="tab {{tab === 'purchase' ? 'tab--on' : ''}}" data-tab="purchase" bindtap="onSwitchTab">采购申请</view>
     </view>
 
-    <!-- ============ 库存：这一屏的主体，列的是全部 SKU + 它现在还有几个 ============ -->
+    <!-- ============ 库存：只列当前仓添加/使用过的材料，库存归零仍保留 ============ -->
     <block wx:if="{{tab === 'stock'}}">
       <view class="inventory-overview">
         <view class="inventory-overview__head">
@@ -37,19 +37,28 @@
           <view class="inventory-overview__refresh">下拉可刷新库存</view>
         </view>
         <view class="inventory-metrics">
-          <view class="inventory-metric">
-            <view class="inventory-metric__value">{{overviewSkuCount}}</view>
-            <view class="inventory-metric__label">材料种类</view>
+          <view class="inventory-metric inventory-metric--action" data-metric="work_shortage" bindtap="onOpenMetric" hover-class="inventory-metric--press">
+            <view class="inventory-metric__value">{{overviewWorkShortageCount}}</view>
+            <view class="inventory-metric__label">工单缺料</view>
+            <view class="inventory-metric__link">点击查看</view>
           </view>
-          <view class="inventory-metric inventory-metric--warn">
+          <view class="inventory-metric inventory-metric--warn inventory-metric--action" data-metric="low_stock" bindtap="onOpenMetric" hover-class="inventory-metric--press">
             <view class="inventory-metric__value">{{overviewLowCount}}</view>
             <view class="inventory-metric__label">低于安全库存</view>
+            <view class="inventory-metric__link">点击查看</view>
           </view>
-          <view class="inventory-metric inventory-metric--danger">
+          <view class="inventory-metric inventory-metric--danger inventory-metric--action" data-metric="safety_out" bindtap="onOpenMetric" hover-class="inventory-metric--press">
             <view class="inventory-metric__value">{{overviewOutCount}}</view>
-            <view class="inventory-metric__label">无货</view>
+            <view class="inventory-metric__label">常备料无货</view>
+            <view class="inventory-metric__link">点击查看</view>
           </view>
         </view>
+      </view>
+
+      <view wx:if="{{activeMetric}}" class="metric-focus">
+        <view class="metric-focus__back" bindtap="onCloseMetric">‹ 返回库存</view>
+        <view class="metric-focus__title">{{activeMetricTitle}} · {{rows.length}}项</view>
+        <view class="metric-focus__hint">{{activeMetricHint}}</view>
       </view>
 
       <!-- 只读账号看不到「编辑 SKU」和「+ 新增」。补照片、补资料正是办公室要干的活，
@@ -69,7 +78,7 @@
           <view class="notice__desc">{{noWarehouseHint}}</view>
         </view>
       </view>
-      <view class="inventory-tools">
+      <view wx:if="{{!activeMetric}}" class="inventory-tools">
         <view class="inventory-tools__title">查找材料</view>
         <view class="inventory-tools__hint">先选仓库，再搜索名称或编码</view>
       <!-- 看哪个仓：原来是原生 picker，它弹出的滚轮是系统 UI（wxss 改不了），
@@ -93,11 +102,10 @@
         <view class="chip {{onlyLow ? 'chip--warn' : ''}}" bindtap="onToggleLow">
           低于安全库存{{lowCount ? ' ' + lowCount : ''}}
         </view>
-        <view wx:if="{{canEdit && incompleteCount}}" class="chip {{onlyIncomplete ? 'chip--warn' : ''}}" bindtap="onToggleIncomplete">
-          待补资料 {{incompleteCount}}
+        <view wx:if="{{canEdit && warehouseIncompleteCount}}" class="chip {{onlyIncomplete ? 'chip--warn' : ''}}" bindtap="onToggleIncomplete">
+          待补资料 {{warehouseIncompleteCount}}
         </view>
-        <!-- 仅显示有货：默认勾上，现场要的是「现在能拿到什么」；点「低于安全库存 / 待补资料」时自动放开，
-             否则无货又缺资料的 SKU 永远看不到 -->
+        <!-- 默认不勾：已经加入本仓的材料即使用完也要看得到；现场只想找可领用材料时可手动勾上 -->
         <checkbox-group class="stocked" bindchange="onToggleStocked">
           <label class="stocked__label">
             <checkbox class="stocked__box" value="1" checked="{{onlyStocked}}" color="#31558a" />仅显示有货
@@ -128,11 +136,11 @@
 
       <view wx:if="{{loading}}" class="muted center">加载中…</view>
       <view wx:elif="{{rows.length === 0}}" class="muted center">
-        {{keyword || categoryIndex >= 0 || onlyLow || onlyIncomplete ? '没有匹配的材料' : '还没有材料，点右下角新增'}}
+        {{activeMetric ? '当前没有这类待处理材料' : (keyword || categoryIndex >= 0 || onlyLow || onlyIncomplete ? '没有匹配的材料' : '这个仓还没有添加过材料，点右下角新增入库')}}
       </view>
 
       <!-- 建过档但还没入过库的材料会被「仅显示有货」整条藏掉，人会以为系统里没这东西 -->
-      <view wx:if="{{!loading && onlyStocked && hiddenByStocked}}" class="hidden-tip" bindtap="onShowHidden">
+      <view wx:if="{{!activeMetric && !loading && onlyStocked && hiddenByStocked}}" class="hidden-tip" bindtap="onShowHidden">
         还有 {{hiddenByStocked}} 条无货的材料被「仅显示有货」挡住了，点这里一并显示
       </view>
 
@@ -172,6 +180,7 @@
           <view class="sku__body">
             <view class="sku__title">
               {{item.title}}
+              <text wx:if="{{item.workShortage}}" class="tag tag--shortage">工单缺料</text>
               <text wx:if="{{!item.enabled}}" class="tag tag--off">停用</text>
             </view>
             <view class="meta">{{item.metaText}}</view>

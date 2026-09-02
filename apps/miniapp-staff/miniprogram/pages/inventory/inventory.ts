@@ -3,6 +3,7 @@ import { formatDateTimeCn } from '@pms/miniapp-ui';
 import {
   MATERIAL_UNITS,
   PURCHASE_STATUS_LABELS,
+  PurchaseRequestStatus,
   type MaterialView,
   type PurchaseRequestView,
   type StockView,
@@ -19,8 +20,8 @@ import { setTabBadge, setTabBarHidden, syncTabBar } from '../../utils/tabbar';
  * 「先在 SKU 库里找到它，再去库存页找一遍看还有几个」，而点开一条 SKU 弹出来的
  * 又是列表上已经写着的那几行字，白点一下。
  *
- * 现在：**一屏就是库存**，列出全部 SKU（仓里没有的标「无货」，口径和工单里
- * 「从库存选」完全一致），每行右下角一个「编辑」直接改这条 SKU、补照片。
+ * 现在：**一屏就是库存**，只列出当前仓加入、入库、领用或报缺料过的 SKU；
+ * 数量归零后仍显示。全局 SKU 只在「材料 SKU」和工单选料搜索中展开，不再铺满每个仓。
  * 点开一行给的是列表上没有的东西 —— 分仓库存明细、别名、参数、成本，不再重复一遍。
  */
 
@@ -42,6 +43,8 @@ interface SkuRow {
   qtyText: string;
   metaText: string;
   low: boolean;
+  /** 有未完成的工单缺料需求，与安全库存是两套口径 */
+  workShortage: boolean;
   enabled: boolean;
   defaultCostCents: number;
   costText: string;
@@ -72,6 +75,27 @@ interface FormState {
   photoUrls: string[];
   enabled: boolean;
 }
+
+type InventoryMetric = '' | 'work_shortage' | 'low_stock' | 'safety_out';
+
+interface InventoryFilterSnapshot {
+  keyword: string;
+  onlyStocked: boolean;
+  onlyLow: boolean;
+  onlyIncomplete: boolean;
+  categoryIndex: number;
+  scrollTop: number;
+}
+
+const ACTIVE_SHORTAGE_STATUSES = new Set<PurchaseRequestStatus>([
+  PurchaseRequestStatus.DRAFT,
+  PurchaseRequestStatus.OFFICE_REVIEW,
+  PurchaseRequestStatus.MANAGER_REVIEW,
+  PurchaseRequestStatus.PURCHASER_REVIEW,
+  PurchaseRequestStatus.APPROVED,
+  // 驳回只表示需要修改后重提，工单需要的材料并没有凭空消失。
+  PurchaseRequestStatus.REJECTED,
+]);
 
 /** 一条 SKU 最多几张实物照片，和后端 MATERIAL_PHOTO_LIMIT 是一套账 */
 const PHOTO_LIMIT = 4;
@@ -167,18 +191,23 @@ Page({
     warehouseNames: [] as string[],
     warehouseIndex: 0,
     keyword: '',
-    /** 仅显示有货：默认勾上。点「低于安全库存 / 待补资料」时自动放开（那两类正是没货的） */
-    onlyStocked: true,
+    /** 默认展示本仓管理过的全部材料，用完归零也不隐藏 */
+    onlyStocked: false,
     /** 只因为「仅显示有货」而被藏起来的条数，列表上写清楚，别让人以为系统里没这东西 */
     hiddenByStocked: 0,
     onlyLow: false,
     /** 只看没填完整的：办公室补 SKU 时先把这一堆清掉 */
     onlyIncomplete: false,
     incompleteCount: 0,
+    warehouseIncompleteCount: 0,
     lowCount: 0,
-    overviewSkuCount: 0,
+    overviewWorkShortageCount: 0,
     overviewLowCount: 0,
     overviewOutCount: 0,
+    /** 点击概览数字后进入的聚焦清单 */
+    activeMetric: '' as InventoryMetric,
+    activeMetricTitle: '',
+    activeMetricHint: '',
     selectedWarehouseName: '全部仓库',
     /** 类别筛选条：只列真有的类别，-1 = 全部 */
     categories: [] as string[],
@@ -209,6 +238,9 @@ Page({
   stocks: [] as StockView[],
   /** 本人看得见的仓 id 集合（服务端按范围过滤后的）；「全部仓库」合计只算这些 */
   visibleWarehouseIds: undefined as Set<number> | undefined,
+  /** 进入统计明细前的筛选和滚动位置，返回时原样恢复 */
+  metricReturnState: null as InventoryFilterSnapshot | null,
+  pageScrollTop: 0,
 
   onShow() {
     syncTabBar(this, 'materials');
@@ -221,6 +253,10 @@ Page({
    */
   onPullDownRefresh() {
     this.load(true).finally(() => wx.stopPullDownRefresh());
+  },
+
+  onPageScroll(e: { scrollTop: number }) {
+    this.pageScrollTop = Number(e.scrollTop) || 0;
   },
 
   /** 给弹层遮罩的 catchtouchmove 用：吞掉滑动，别让底下的列表跟着滚 */
@@ -335,7 +371,12 @@ Page({
    * 一条 SKU → 列表里的一行。**库存页和材料 SKU 页共用这一个** ——
    * 同一批材料在两处长得不一样，办公室在这边记住的东西，维修工在那边认不出来。
    */
-  buildRow(material: MaterialView, qty: number, safetyQty: number): SkuRow {
+  buildRow(
+    material: MaterialView,
+    qty: number,
+    safetyQty: number,
+    workShortage = false,
+  ): SkuRow {
     const categoryName = (material.category || '').trim() || '未分类';
     const aliases = material.aliases || [];
     const missing = missingFields(material);
@@ -357,6 +398,7 @@ Page({
         .filter(Boolean)
         .join(' · '),
       low: safetyQty > 0 && qty < safetyQty,
+      workShortage,
       enabled: material.enabled,
       defaultCostCents: material.defaultCostCents,
       costText: material.defaultCostCents ? yuan(material.defaultCostCents) : '未填',
@@ -401,6 +443,30 @@ Page({
     this.setData({ skuCategories: seen, skuCategoryIndex: nextCategoryIndex, skuRows: rows });
   },
 
+  /**
+   * 当前仓库需要处理的工单缺料 SKU。
+   * 已合并的原单和已完成采购不再统计；驳回单仍是未解决缺料。合并后的主单保留了
+   * sourceWorkOrderId / warehouseId，所以仍会正常命中。
+   */
+  workShortageMaterialIds(warehouseId: number | undefined, managedMaterialIds: Set<number>) {
+    const ids = new Set<number>();
+    for (const request of this.data.requests as RequestRow[]) {
+      if (!ACTIVE_SHORTAGE_STATUSES.has(request.status)) continue;
+      for (const item of request.items || []) {
+        const fromWorkOrder = !!(item.sourceWorkOrderId || request.workOrderId);
+        const materialId = Number(item.materialId || 0);
+        if (!fromWorkOrder || !materialId) continue;
+        const itemWarehouseId = Number(item.warehouseId || 0);
+        if (warehouseId && itemWarehouseId && itemWarehouseId !== warehouseId) continue;
+        if (!managedMaterialIds.has(materialId)) continue;
+        // 历史缺料数据没有 warehouseId：只在该 SKU 本来就属于当前仓时才纳入，
+        // 不把全公司的旧申请都算到每一个仓头上。
+        ids.add(materialId);
+      }
+    }
+    return ids;
+  },
+
   onSkuKeyword(e: WechatMiniprogram.Input) {
     this.setData({ skuKeyword: e.detail.value }, () => this.applySkuFilter());
   },
@@ -414,63 +480,80 @@ Page({
   },
 
   applyFilter() {
-    const { warehouseIndex, warehouses, keyword, onlyLow, onlyIncomplete, onlyStocked, categoryIndex } =
-      this.data;
+    const {
+      warehouseIndex,
+      warehouses,
+      keyword,
+      onlyLow,
+      onlyIncomplete,
+      onlyStocked,
+      categoryIndex,
+      activeMetric,
+    } = this.data;
     // 0 = 全部仓库，其余按下标错一位对应 warehouses
     const warehouseId = warehouseIndex > 0 ? warehouses[warehouseIndex - 1]?.id : undefined;
     const kw = keyword.trim().toLowerCase();
     const category = categoryIndex >= 0 ? this.data.categories[categoryIndex] : '';
 
-    // 页头概览按当前仓库统计，但不受关键词、类别和“仅显示有货”等筛选影响。
-    // 否则搜一个名称，顶部“全部材料”会跟着变成 1，看起来像仓库只剩一种材料。
-    let overviewSkuCount = 0;
+    // 库存页的数据源是「仓库材料清单」（stocks 记录），不是全部 SKU。
+    // qty=0 的记录仍然 found=true，所以用完后依旧展示；只建了 SKU、从没加入这个仓的不展示。
+    const managed = (this.materials as MaterialView[])
+      .map((material) => ({ material, stock: this.sumStock(material.id, warehouseId) }))
+      .filter((item) => item.stock.found);
+    const managedMaterialIds = new Set(managed.map((item) => item.material.id));
+    const workShortageIds = this.workShortageMaterialIds(warehouseId, managedMaterialIds);
+
+    // 页头概览不受搜索和类别筛选影响；安全库存为 0 就是按需采购，不发任何补库预警。
     let overviewLowCount = 0;
     let overviewOutCount = 0;
-    for (const material of this.materials as MaterialView[]) {
+    let warehouseIncompleteCount = 0;
+    for (const { material, stock } of managed) {
       if (!material.enabled) continue;
-      const { qty, safetyQty } = this.sumStock(material.id, warehouseId);
-      overviewSkuCount += 1;
+      const { qty, safetyQty } = stock;
+      if (missingFields(material).length) warehouseIncompleteCount += 1;
       if (safetyQty > 0 && qty < safetyQty) overviewLowCount += 1;
-      if (qty <= 0) overviewOutCount += 1;
+      if (safetyQty > 0 && qty <= 0) overviewOutCount += 1;
     }
 
-    // 类别筛选条只列真有的类别（点了没结果的类别等于噪音）。
-    // 在按类别过滤之前收集，否则一点某个类别，筛选条就只剩这一个了
+    // 类别筛选也只从当前仓真正管理的材料中产生。
     const seenCategories: string[] = [];
     const rows: SkuRow[] = [];
-    /** 只是因为「仅显示有货」而没露面的条数 */
     let hiddenByStocked = 0;
 
-    for (const material of this.materials as MaterialView[]) {
+    for (const { material, stock } of managed) {
       const categoryName = (material.category || '').trim() || '未分类';
       if (material.enabled) {
         if (seenCategories.indexOf(categoryName) < 0) seenCategories.push(categoryName);
       }
-      if (category && categoryName !== category) continue;
-      if (
-        kw &&
-        ![material.name, material.spec, material.code, material.category, ...(material.aliases || [])]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-          .includes(kw)
-      ) {
-        continue;
-      }
-
-      const { qty, safetyQty } = this.sumStock(material.id, warehouseId);
+      const { qty, safetyQty } = stock;
       const missing = missingFields(material);
       const low = safetyQty > 0 && qty < safetyQty;
-      if (onlyLow && !low) continue;
-      if (onlyIncomplete && !missing.length) continue;
-      // 建过档但一件都没入库的 SKU 会被这个开关整条藏掉 —— 2026-09-01 有人因此
-      // 「新增材料说已存在 WJ-0010，可列表里翻到 WJ-0009 就没了」。数出来，下面提示他放开
-      if (onlyStocked && qty <= 0) {
-        hiddenByStocked += 1;
-        continue;
+
+      if (activeMetric) {
+        if (activeMetric === 'work_shortage' && !workShortageIds.has(material.id)) continue;
+        if (activeMetric === 'low_stock' && !low) continue;
+        if (activeMetric === 'safety_out' && !(safetyQty > 0 && qty <= 0)) continue;
+      } else {
+        if (category && categoryName !== category) continue;
+        if (
+          kw &&
+          ![material.name, material.spec, material.code, material.category, ...(material.aliases || [])]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+            .includes(kw)
+        ) {
+          continue;
+        }
+        if (onlyLow && !low) continue;
+        if (onlyIncomplete && !missing.length) continue;
+        if (onlyStocked && qty <= 0) {
+          hiddenByStocked += 1;
+          continue;
+        }
       }
 
-      rows.push(this.buildRow(material, qty, safetyQty));
+      rows.push(this.buildRow(material, qty, safetyQty, workShortageIds.has(material.id)));
     }
 
     // 库存与材料 SKU 两格统一按材料名称 A-Z；低库存、资料不全仍保留醒目标记和筛选。
@@ -486,11 +569,80 @@ Page({
       rows,
       hiddenByStocked,
       lowCount: rows.filter((row) => row.low).length,
-      overviewSkuCount,
+      overviewWorkShortageCount: workShortageIds.size,
       overviewLowCount,
       overviewOutCount,
+      warehouseIncompleteCount,
       selectedWarehouseName: this.data.warehouseNames[warehouseIndex] || '全部仓库',
     });
+  },
+
+  /** 统计卡片数字可点：进入对应材料清单，并保存原来的筛选与滚动位置。 */
+  onOpenMetric(e: WechatMiniprogram.BaseEvent) {
+    const metric = String(e.currentTarget.dataset.metric || '') as InventoryMetric;
+    if (!metric) return;
+    if (!this.data.activeMetric) {
+      this.metricReturnState = {
+        keyword: this.data.keyword,
+        onlyStocked: this.data.onlyStocked,
+        onlyLow: this.data.onlyLow,
+        onlyIncomplete: this.data.onlyIncomplete,
+        categoryIndex: this.data.categoryIndex,
+        scrollTop: this.pageScrollTop,
+      };
+    }
+    const copy = {
+      work_shortage: {
+        title: '工单缺料',
+        hint: '已有工单需要、当前正在采购处理的材料',
+      },
+      low_stock: {
+        title: '低于安全库存',
+        hint: '仅统计安全库存大于 0，且当前可用数量不足的常备材料',
+      },
+      safety_out: {
+        title: '常备料无货',
+        hint: '安全库存大于 0，但当前库存已经为 0',
+      },
+    }[metric];
+    if (!copy) return;
+    this.setData(
+      {
+        activeMetric: metric,
+        activeMetricTitle: copy.title,
+        activeMetricHint: copy.hint,
+        keyword: '',
+        onlyStocked: false,
+        onlyLow: false,
+        onlyIncomplete: false,
+        categoryIndex: -1,
+      },
+      () => {
+        this.applyFilter();
+        wx.pageScrollTo({ scrollTop: 0, duration: 180 });
+      },
+    );
+  },
+
+  onCloseMetric() {
+    const previous = this.metricReturnState;
+    this.metricReturnState = null;
+    this.setData(
+      {
+        activeMetric: '',
+        activeMetricTitle: '',
+        activeMetricHint: '',
+        keyword: previous?.keyword ?? '',
+        onlyStocked: previous?.onlyStocked ?? false,
+        onlyLow: previous?.onlyLow ?? false,
+        onlyIncomplete: previous?.onlyIncomplete ?? false,
+        categoryIndex: previous?.categoryIndex ?? -1,
+      },
+      () => {
+        this.applyFilter();
+        wx.pageScrollTo({ scrollTop: previous?.scrollTop ?? 0, duration: 180 });
+      },
+    );
   },
 
   onSwitchTab(e: WechatMiniprogram.BaseEvent) {

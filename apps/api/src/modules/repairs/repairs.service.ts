@@ -2425,6 +2425,27 @@ export class RepairsService implements OnModuleInit {
   ) {
     const missingMaterials = this.normalizeMissingMaterials(dto.missingMaterials);
     const tenantId = this.resolveTenantId(user);
+
+    // 零库存 SKU 也能从全局基础库选中报缺料。先校验端上带回的仓确实是
+    // 这个人在该工单上可选的仓，再在事务里建仓库材料关系，避免伪造 id 污染别的仓。
+    const requestedWarehouseIds = [
+      ...new Set(
+        missingMaterials
+          .map((item) => item.warehouseId)
+          .filter((warehouseId): warehouseId is number => !!warehouseId),
+      ),
+    ];
+    for (const requestedWarehouseId of requestedWarehouseIds) {
+      const option = await this.listWorkOrderStockOptions(
+        id,
+        user,
+        access,
+        requestedWarehouseId,
+      );
+      if (option.warehouseId !== requestedWarehouseId) {
+        throw new BadRequestException('缺料所选仓库不在当前用户可用范围内');
+      }
+    }
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
       this.assertWorkOrderScope(workOrder, access);
@@ -2466,6 +2487,39 @@ export class RepairsService implements OnModuleInit {
       workOrder.acceptedAt = null;
       workOrder.updatedBy = user.id;
       const saved = await manager.save(WorkOrder, workOrder);
+
+      // stocks 同时就是「这个仓管理过哪些材料」的清单。只有 SKU 资料、本仓从未入过库时，
+      // 建一条 qty=0 的记录；数量用完也不删，所以库存页以后仍能找到它。
+      const warehouseMaterials = [
+        ...new Map(
+          missingMaterials
+            .filter(
+              (item): item is typeof item & { materialId: number; warehouseId: number } =>
+                !!item.materialId && !!item.warehouseId,
+            )
+            .map((item) => [`${item.warehouseId}:${item.materialId}`, item]),
+        ).values(),
+      ];
+      if (warehouseMaterials.length) {
+        await manager
+          .createQueryBuilder()
+          .insert()
+          .into(Stock)
+          .values(
+            warehouseMaterials.map((item) => ({
+              tenantId,
+              warehouseId: item.warehouseId,
+              materialId: item.materialId,
+              qty: 0,
+              safetyQty: 0,
+              locationId: null,
+              createdBy: user.id,
+              updatedBy: user.id,
+            })),
+          )
+          .orIgnore()
+          .execute();
+      }
       await this.consumeWorkOrderMaterials(
         manager,
         tenantId,
@@ -2627,11 +2681,19 @@ export class RepairsService implements OnModuleInit {
 
   /** 缺料明细统一整形：去空行、名称去空格、数量转数字，落库的永远是干净数据 */
   private normalizeMissingMaterials(
-    rows: Array<{ materialId?: number; name: string; qty: number; unit?: string; estUnitCostCents?: number }>,
+    rows: Array<{
+      materialId?: number;
+      warehouseId?: number;
+      name: string;
+      qty: number;
+      unit?: string;
+      estUnitCostCents?: number;
+    }>,
   ) {
     const normalized = (rows || [])
       .map((item) => ({
         materialId: item.materialId ?? undefined,
+        warehouseId: item.warehouseId ?? undefined,
         name: String(item.name ?? '').trim(),
         qty: Number(item.qty),
         unit: item.unit?.trim() || undefined,
