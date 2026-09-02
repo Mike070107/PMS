@@ -1426,3 +1426,13 @@
 - 自上次（5ce9537）以来上线的相关提交：
   - 9309994 feat: 完善采购申请与工单处理
 
+## 2026-09-02 14:08 · api · 9c1622d
+
+- 包：`deploy/pms-api-20260902-1359.tar.gz`
+- 提交：9c1622d chore: 补充最新采购业务日志
+- 说明：业务语义日志、异常反馈接口与功能热度统计；生产健康检查通过
+- 自上次（9309994）以来上线的相关提交：
+  - 9c1622d chore: 补充最新采购业务日志
+  - 876f068 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
+  - 3f14d39 feat: 完善业务日志与异常反馈
+
