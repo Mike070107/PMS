@@ -1578,3 +1578,11 @@
 - 自上次（0c07f61）以来上线的相关提交：
   - 2d944ef fix: expose work order delete actions in lists
 
+## 2026-09-02 17:31 · api · c316cad
+
+- 包：`pms-api-20260902-1725.tar.gz`
+- 提交：c316cad deploy: web → 2d944ef
+- 说明：重新打包并部署工单审计删除路由，修复生产 404
+- 自上次（e3fc848）以来上线的相关提交：
+  - 2d944ef fix: expose work order delete actions in lists
+
