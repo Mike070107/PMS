@@ -1040,7 +1040,7 @@ export class RepairsService implements OnModuleInit {
 
     const requests = await this.repairRequestRepo.find({
       where: { tenantId, id: In(requestIds) },
-      select: ['id', 'repairType', 'houseId', 'buildingId', 'communityId', 'addressText', 'content', 'attachments', 'contactName', 'reporterRole', 'source', 'urgent', 'createdAt'],
+      select: ['id', 'repairType', 'houseId', 'buildingId', 'communityId', 'addressText', 'content', 'attachments', 'contactName', 'reporterRole', 'source', 'urgent', 'submittedBy', 'createdAt'],
     });
     const houseIds = requests
       .map((item) => item.houseId)
@@ -1082,6 +1082,18 @@ export class RepairsService implements OnModuleInit {
         })
       : [];
     const assigneeNameById = new Map(assignees.map((item) => [item.id, item.name]));
+    const submitterIds = Array.from(
+      new Set(requests.map((item) => item.submittedBy).filter((id): id is number => !!id)),
+    );
+    const submitters = submitterIds.length
+      ? await this.userRepo.find({
+          where: { tenantId, id: In(submitterIds) },
+          select: ['id', 'name', 'wxNickname'],
+        })
+      : [];
+    const submitterNameById = new Map(
+      submitters.map((item) => [item.id, item.name || item.wxNickname || '未记录姓名']),
+    );
     const rows = workOrders.map((item) => {
       const repairType = requestById.get(item.requestId)?.repairType ?? item.skill;
       return {
@@ -1123,6 +1135,10 @@ export class RepairsService implements OnModuleInit {
         sourceLabel: (() => {
           const src = requestById.get(item.requestId)?.source;
           return src ? REPAIR_SOURCE_LABELS[src] ?? src : null;
+        })(),
+        submittedByName: (() => {
+          const id = requestById.get(item.requestId)?.submittedBy;
+          return id ? submitterNameById.get(id) ?? '未记录姓名' : null;
         })(),
       };
     });

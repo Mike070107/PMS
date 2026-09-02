@@ -36,8 +36,8 @@ export type AdminPageKey = (typeof ADMIN_PAGE_KEYS)[number];
  * 「我的」页人人可见，不参与勾选。
  */
 export const STAFF_APP_PAGE_KEYS = [
-  'app:pool', // 工单池（接单）
   'app:dispatch', // 派单台（派单）
+  'app:pool', // 工单池（接单）
   'app:my-orders', // 在手工单（派给本人、由本人处理）
   'app:my-repairs', // 我的报修（本人提交的报修进度）
   'app:repair-create', // 报修

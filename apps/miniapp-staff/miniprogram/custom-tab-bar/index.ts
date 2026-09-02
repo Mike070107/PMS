@@ -24,8 +24,8 @@ interface TabDef {
 // 工单池和派单台是两格：一个是「有活我领」，一个是「有活我派给谁」。
 // 同一个角色两格都勾也行（比如维修组长），底部就都显示。
 const ALL_TABS: TabDef[] = [
-  { key: 'pool', pagePath: '/pages/pool/pool', text: '工单池' },
   { key: 'dispatch', pagePath: '/pages/pool/pool?mode=dispatch', text: '派单台' },
+  { key: 'pool', pagePath: '/pages/pool/pool', text: '工单池' },
   { key: 'mine', pagePath: '/pages/my-orders/my-orders', text: '在手工单' },
   { key: 'materials', pagePath: '/pages/inventory/inventory', text: '材料与库存' },
   { key: 'approvals', pagePath: '/pages/approvals/approvals', text: '审批' },

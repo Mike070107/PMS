@@ -116,18 +116,18 @@ export const ADMIN_PAGE_KEYS = ADMIN_PAGES.map((p) => p.key);
  */
 export const STAFF_APP_PAGES: StaffAppPageDef[] = [
   {
-    key: 'app:pool',
-    label: '工单池',
-    hint: '看还没人接的活',
-    editLabel: '接单',
-    editHint: '把单领到自己名下',
-  },
-  {
     key: 'app:dispatch',
     label: '派单台',
     hint: '看待派单的活',
     editLabel: '派单',
     editHint: '把单指派给维修工、改期限',
+  },
+  {
+    key: 'app:pool',
+    label: '工单池',
+    hint: '看还没人接的活',
+    editLabel: '接单',
+    editHint: '把单领到自己名下',
   },
   {
     key: 'app:my-orders',

@@ -9,7 +9,7 @@
     <import src="/templates/wo-card.wxml"/>
     <template is="wo-card-body" data="{{item, thirdLabel: '报修人', thirdValue: item.statReporter, thirdHint: item.statReporterHint}}"/>
 
-  第三格由调用方给（thirdLabel/thirdValue/thirdHint）：维修工要看「找谁开门」，
+  第三格由调用方给（thirdLabel/thirdValue/thirdHint）：维修工要看「找谁开门、谁从哪提交」，
   派单台要看「在谁手上」，报单的人要看「派给谁了」—— 同一格三种含义，不能写死。
   样式在 app.wxss 的 .wo-card--data 一节。
 -->

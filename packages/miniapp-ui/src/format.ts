@@ -42,6 +42,7 @@ export function withOrderLabels<
     reporterRoleLabel?: string | null;
     source?: string | null;
     sourceLabel?: string | null;
+    submittedByName?: string | null;
     status?: string;
     candidateIds?: number[];
     /** 报修时就标了紧急（描述里说了「急修」），由后端给 */
@@ -79,7 +80,7 @@ export function withOrderLabels<
     statStay: string;
     /** 「王女士」—— 报修人姓名，不带身份后缀 */
     statReporter: string;
-    /** 「业主」「保安代报」—— 身份，压在姓名下面当说明 */
+    /** 「由张三（提交人）在员工小程序提交」—— 压在报修联系人下面 */
     statReporterHint: string;
   }
 > {
@@ -119,6 +120,9 @@ export function withOrderLabels<
       // 当天的写「今天 / 当天」而不是「0天」——「0」放大到 44rpx 看着像出错了
       statStay: days >= 1 ? `${days}天` : item.completedAt ? '当天' : '今天',
       ...splitReporter(reporterText),
+      // 主值仍是报修联系人；下面的小字专门交代“谁通过哪个入口提交”，
+      // 两个人不是同一概念，不能再只写一个模糊的“员工小程序提交”。
+      statReporterHint: submitterHintOf(item) || splitReporter(reporterText).statReporterHint,
     };
   });
 }
@@ -147,10 +151,27 @@ function reporterTextOf(item: {
   sourceLabel?: string | null;
 }): string {
   const name = (item.contactName || '').trim();
-  if (!name) return item.source === 'staff_miniapp' && item.sourceLabel ? item.sourceLabel : '未填';
+  if (!name) return '未填';
   if (item.source === 'staff_miniapp') return `${name}（员工小程序提交）`;
   if (item.reporterRoleLabel) return `${name}（${item.reporterRoleLabel}代报）`;
   return name;
+}
+
+function submitterHintOf(item: {
+  submittedByName?: string | null;
+  source?: string | null;
+}): string {
+  const channel =
+    item.source === 'staff_miniapp'
+      ? '员工小程序'
+      : item.source === 'owner_miniapp'
+        ? '业主小程序'
+        : item.source === 'office_web'
+          ? '网页平台'
+          : '';
+  if (!channel) return '';
+  const submitter = (item.submittedByName || '').trim() || '未记录姓名';
+  return `由 ${submitter}（提交人）在${channel}提交`;
 }
 
 /** 手机号脱敏：138****8000 */

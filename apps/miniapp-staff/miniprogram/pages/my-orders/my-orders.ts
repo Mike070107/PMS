@@ -34,7 +34,7 @@ type OrderRow = WorkOrderListItem & {
   statStay: string;
   /** 「王女士」—— 报修人姓名，不带身份后缀 */
   statReporter: string;
-  /** 「业主」「保安代报」—— 身份，压在姓名下面当说明 */
+  /** 谁通过哪个入口提交，压在报修联系人下面 */
   statReporterHint: string;
   /** 紧急 / 普通分组的第一张卡，用于在列表里插入组标题 */
   groupStart?: boolean;

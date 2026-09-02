@@ -407,6 +407,8 @@ export interface WorkOrderListItem {
   /** 报修来源编码（owner_miniapp / staff_miniapp / office_web）及中文 */
   source?: string | null;
   sourceLabel?: string | null;
+  /** 实际点击提交的人；可能与报修联系人不是同一个人 */
+  submittedByName?: string | null;
   /** 报修时就说了「急修」：卡片标题前挂红色「紧急」标，工单池里排最前 */
   urgent?: boolean;
 }
