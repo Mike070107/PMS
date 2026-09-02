@@ -1672,3 +1672,11 @@
 - 自上次（b7afa4c）以来上线的相关提交：
   - 069fa37 feat: 重构工单调度台与办公室报修录入
 
+## 2026-09-02 21:06 · api · 099c75b
+
+- 包：`pms-api-20260902-2100.tar.gz`
+- 提交：099c75b fix: align dispatch scope across clients and API
+- 说明：修复员工端派单台 scope=dispatch 与生产接口不兼容
+- 自上次（e2fd1fe）以来上线的相关提交：
+  - 099c75b fix: align dispatch scope across clients and API
+
