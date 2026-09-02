@@ -79,6 +79,7 @@ import MissingMaterialsInput, {
 import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumnPrefs';
 import { nameOr } from '../lib/displayName';
 import { compressImageFile } from '../lib/compressImage';
+import { DetailHero, DetailMetrics, DetailSection } from '../components/DetailPrimitives';
 import {
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
@@ -1924,57 +1925,72 @@ function WorkOrderDetailDrawer({
   // 「能接单的人」由后端按权限查（角色里勾了「工单池 · 接单」），
   // 不再靠 users.role 过滤员工列表
   const technicians = dispatchTechnicians;
+  const assigneeName = wo?.assigneeId
+    ? nameOr(staffList.find((staff) => staff.id === wo.assigneeId)?.name, '维修工')
+    : '未派单';
+  const actionBar = status && (canEdit || canFillMaintenance) ? (
+    <Space wrap>
+      {canFillMaintenance && status !== WorkOrderStatus.CANCELLED && (
+        <Button icon={<FileTextOutlined />} onClick={() => nav(`/maintenance-orders?workOrderId=${id}`)}>填养护单</Button>
+      )}
+      {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
+        <Button type="primary" onClick={() => setAssignOpen(true)}>{status === WorkOrderStatus.CREATED ? '派单' : '改派'}</Button>
+      )}
+      {canEdit && status === WorkOrderStatus.DISPATCHED && <Button onClick={onAccept}>代接单</Button>}
+      {canEdit && status === WorkOrderStatus.IN_PROGRESS && <Button onClick={() => setNeedMaterialOpen(true)}>标记缺料</Button>}
+      {canEdit && status === WorkOrderStatus.WAITING_MATERIAL && <Button onClick={() => setEditMissingOpen(true)}>修改缺料</Button>}
+      {canEdit && [WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
+        <Button type="primary" onClick={() => setCompleteOpen(true)}>完工</Button>
+      )}
+      {canEdit && status === WorkOrderStatus.DONE_PENDING_REVIEW && <Button type="primary" onClick={() => setReviewOpen(true)}>验收</Button>}
+      {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
+        <Button danger onClick={() => setCancelOpen(true)}>撤单</Button>
+      )}
+    </Space>
+  ) : null;
 
   return (
     <>
       <Drawer
+        className="pms-workorder-detail-drawer"
         open={!!id}
-        title={wo ? `工单 ${wo.orderNo}` : '工单详情'}
-        width={760}
+        title="工单详情"
+        width="min(920px, 96vw)"
         onClose={onClose}
         loading={loading}
-        extra={
-          status && (canEdit || canFillMaintenance) && (
-            <Space>
-              {/* 养护单是另一格权限（办公室填、经理查验），所以单独判、不跟着 canEdit */}
-              {canFillMaintenance && status !== WorkOrderStatus.CANCELLED && (
-                <Button
-                  icon={<FileTextOutlined />}
-                  onClick={() => nav(`/maintenance-orders?workOrderId=${id}`)}
-                >
-                  填养护单
-                </Button>
-              )}
-              {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
-                <Button type="primary" onClick={() => setAssignOpen(true)}>
-                  {status === WorkOrderStatus.CREATED ? '派单' : '改派'}
-                </Button>
-              )}
-              {canEdit && status === WorkOrderStatus.DISPATCHED && (
-                <Button onClick={onAccept}>代接单</Button>
-              )}
-              {canEdit && status === WorkOrderStatus.IN_PROGRESS && (
-                <Button onClick={() => setNeedMaterialOpen(true)}>标记缺料</Button>
-              )}
-              {/* 补建 SKU 后回来把维修工手填的那几行关联上，改的是同一张采购申请 */}
-              {canEdit && status === WorkOrderStatus.WAITING_MATERIAL && (
-                <Button onClick={() => setEditMissingOpen(true)}>修改缺料</Button>
-              )}
-              {canEdit && [WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
-                <Button type="primary" onClick={() => setCompleteOpen(true)}>完工</Button>
-              )}
-              {canEdit && status === WorkOrderStatus.DONE_PENDING_REVIEW && (
-                <Button type="primary" onClick={() => setReviewOpen(true)}>验收</Button>
-              )}
-              {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
-                <Button danger onClick={() => setCancelOpen(true)}>撤单</Button>
-              )}
-            </Space>
-          )
-        }
+        extra={wo ? <Text copyable={{ text: wo.orderNo }} type="secondary">{wo.orderNo}</Text> : null}
       >
         {!detail ? <Empty /> : (
           <>
+            <DetailHero
+              eyebrow="报修地址"
+              title={detail.request.addressText || '地址待补充'}
+              description={detail.request.content || '未填写问题描述'}
+              tags={<>
+                <Tag color={statusMeta[detail.workOrder.status].color}>
+                  {detail.workOrder.status === WorkOrderStatus.CREATED
+                    ? detail.workOrder.candidateIds?.length ? '待接单' : '待派单'
+                    : statusMeta[detail.workOrder.status].label}
+                </Tag>
+                {detail.request.urgent && <Tag color="error">紧急</Tag>}
+                <Tag color="blue">{getRepairTypeLabel(detail.request.repairType, repairTypeRules)}</Tag>
+              </>}
+              meta={<>
+                <span><strong>报修人</strong>{detail.request.contactName || '未填写'}{detail.request.reporterRoleLabel ? `（${detail.request.reporterRoleLabel}代报）` : ''}</span>
+                <span><strong>联系电话</strong>{detail.request.contactPhone || '未填写'}</span>
+                {detail.request.reporterAddressText && <span><strong>登记地址</strong>{detail.request.reporterAddressText}</span>}
+              </>}
+              visual={<AttachmentPreview urls={(detail.request.attachments || []).slice(0, 3)} />}
+              actions={actionBar}
+            />
+            <DetailMetrics items={[
+              { label: '已停留', value: `${stayDaysOf(detail.workOrder)} 天`, tone: stayDaysOf(detail.workOrder) >= 3 ? 'warning' : 'normal' },
+              { label: '当前负责人', value: assigneeName },
+              { label: '完成期限', value: detail.workOrder.slaDueAt ? slaCountdownText(detail.workOrder.slaDueAt) : '未设置', tone: slaDanger(detail.workOrder) ? 'danger' : 'normal' },
+              { label: '收费金额', value: detail.workOrder.feeCents ? `¥ ${(detail.workOrder.feeCents / 100).toFixed(2)}` : '未收费' },
+            ]} />
+
+            <DetailSection title="报修与调度信息" description="联系人、工种、期限及完整附件">
             <Descriptions
               size="middle"
               column={2}
@@ -2096,12 +2112,14 @@ function WorkOrderDetailDrawer({
                 },
               ]}
             />
+            </DetailSection>
 
-            <Title level={5} style={{ marginTop: 24 }}>维修记录</Title>
-            <CompactRepairRecord detail={detail} />
+            <DetailSection title="维修记录" description="实际故障、处理内容、费用和用料">
+              <CompactRepairRecord detail={detail} />
+            </DetailSection>
 
-            <Title level={5} style={{ marginTop: 24 }}>处理进度</Title>
-            <Timeline
+            <DetailSection title="处理进度" description="按时间查看每一次状态变化及停留时长">
+              <Timeline className="pms-detail-timeline"
               items={detail.logs.map((log, index) => ({
                 color: log.toStatus === WorkOrderStatus.COMPLETED ? 'green' : 'blue',
                 children: (
@@ -2142,7 +2160,8 @@ function WorkOrderDetailDrawer({
                   </div>
                 ),
               }))}
-            />
+              />
+            </DetailSection>
           </>
         )}
       </Drawer>
@@ -3438,6 +3457,7 @@ function CompleteModal({
 
   return (
     <Modal
+      className="pms-complete-modal"
       title="维修记录"
       open={open}
       onCancel={onClose}
@@ -3448,6 +3468,7 @@ function CompleteModal({
       width={840}
     >
       <Segmented
+        block
         value={mode}
         onChange={(value) => setMode(value as 'done' | 'waiting')}
         options={[
@@ -3456,11 +3477,16 @@ function CompleteModal({
         ]}
         style={{ marginBottom: 16 }}
       />
+      <div className={`pms-form-mode-note is-${mode}`}>
+        <strong>{mode === 'done' ? '提交真实维修结果' : '暂时无法完工'}</strong>
+        <span>{mode === 'done' ? '重点核对实际位置、故障现象、做了什么、收费和用料。' : '列清缺少的材料，提交后办公室可继续采购和调度。'}</span>
+      </div>
       <Form form={form} layout="vertical" initialValues={{ usedMaterials: [{}], missingMaterials: [{}] }}>
         {mode === 'done' ? (
           <>
             {/* 都不强制必填：现场能写清楚最好，写不出来也不该卡住工单流转。
                 位置/现象已按报修信息预填，改一改即可 */}
+            <div className="pms-form-section-label"><strong>现场核实</strong><span>以实际到场看到的情况为准</span></div>
             <Row gutter={12}>
               <Col span={12}>
                 <Form.Item
@@ -3480,10 +3506,11 @@ function CompleteModal({
             <Form.Item name="faultSymptom" label="故障现象" extra="已按报修信息带出，可修改">
               <TextArea rows={3} placeholder="例如：门禁无法识别，读卡无反应" />
             </Form.Item>
-            <Form.Item name="repairContent" label="维修内容">
+            <Form.Item name="repairContent" label="维修内容（做了什么）">
               <TextArea rows={3} placeholder="例如：更换读卡器接线端子，重新固定并测试通过" />
             </Form.Item>
 
+            <div className="pms-form-section-label"><strong>实际用料</strong><span>用于库存扣减和工单成本统计</span></div>
             <Form.Item label="用料和数量">
               <Form.List name="usedMaterials">
                 {(fields, { add, remove }) => (
@@ -3516,6 +3543,7 @@ function CompleteModal({
               </Form.List>
             </Form.Item>
 
+            <div className="pms-form-section-label"><strong>完工凭证</strong><span>上传维修后照片并补充需要交代的事项</span></div>
             <Form.Item label="维修照片 / 视频">
               <Upload.Dragger {...uploadProps} style={attachmentDropStyle}>
                 <p style={{ marginBottom: 6 }}><UploadOutlined /> 拖拽或点击上传维修照片、视频</p>

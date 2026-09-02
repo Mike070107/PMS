@@ -51,6 +51,7 @@ import { useTableSeq } from '../components/tableSeqColumn';
 import { nameOr, unknown } from '../lib/displayName';
 import { compressImageFile } from '../lib/compressImage';
 import StocktakePanel from '../components/StocktakePanel';
+import { DetailHero, DetailMetrics, DetailSection } from '../components/DetailPrimitives';
 import {
   MATERIAL_PHOTO_LIMIT,
   MaterialPhotoCell,
@@ -1673,10 +1674,11 @@ export default function InventoryPage() {
         </Form>
       </Modal>
       <Drawer
-        title={requestDetail ? `采购申请单 ${requestDetail.requestNo}` : '采购申请单'}
+        className="pms-purchase-detail-drawer"
+        title="采购申请详情"
         open={!!requestDetail}
         onClose={() => setRequestDetail(null)}
-        width={860}
+        width="min(940px, 96vw)"
         extra={requestDetail ? (
           <Space>
             {requestDetail.status === PurchaseRequestStatus.OFFICE_REVIEW && (
@@ -1705,6 +1707,25 @@ export default function InventoryPage() {
       >
         {requestDetail && (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <DetailHero
+              eyebrow={<Text copyable={{ text: requestDetail.requestNo }}>{requestDetail.requestNo}</Text>}
+              title={requestStatusMeta[requestDetail.status]?.label || requestDetail.status}
+              description={requestDetail.workOrderId
+                ? `来源工单：${requestDetail.workOrderNo || unknown('工单')}`
+                : '办公室手工发起，无来源工单'}
+              tags={<Tag color={requestStatusMeta[requestDetail.status]?.color}>{requestStatusMeta[requestDetail.status]?.label || requestDetail.status}</Tag>}
+              meta={<>
+                <span><strong>申请人</strong>{nameOr(requestDetail.applicantName, '申请人')}</span>
+                <span><strong>创建时间</strong>{formatDateTime(requestDetail.createdAt)}</span>
+                <span><strong>材料种类</strong>{requestDetail.items?.length || 0} 种</span>
+              </>}
+            />
+            <DetailMetrics items={[
+              { label: '预估总额', value: money(requestDetail.estTotalCents), tone: 'warning' },
+              { label: '材料种类', value: `${requestDetail.items?.length || 0} 种` },
+              { label: '经理审批', value: requestDetail.managerAt ? '已完成' : '待处理', tone: requestDetail.managerAt ? 'success' : 'normal' },
+              { label: '采购审批', value: requestDetail.purchaserAt ? '已完成' : '待处理', tone: requestDetail.purchaserAt ? 'success' : 'normal' },
+            ]} />
             <Steps
               size="small"
               current={requestStepCurrent(requestDetail.status)}
@@ -2010,25 +2031,35 @@ function StockLotDrawer({ stock, material, warehouseName, onClose }: {
 
   return (
     <Drawer
-      title={stock ? `批次与流水 · ${materialDisplayName(material)} · ${warehouseName}` : ''}
+      className="pms-stock-detail-drawer"
+      title="库存批次与流水"
       open={!!stock}
       onClose={onClose}
-      width={880}
+      width="min(980px, 96vw)"
+      extra={stock ? <Text copyable={{ text: material?.code || '' }} type="secondary">{material?.code || ''}</Text> : null}
       destroyOnHidden
     >
-      <Space size={24} wrap style={{ marginBottom: 16 }}>
-        <Statistic title="当前库存" value={numberQty(stock?.qty)} suffix={unit} />
-        <Statistic title="剩余批次" value={remainingLots.length} suffix="批" />
-        <Statistic title="批次金额" value={lotValue / 100} precision={2} prefix="¥" />
-      </Space>
+      <DetailHero
+        eyebrow={warehouseName || '仓库'}
+        title={materialDisplayName(material) || '材料库存'}
+        description={`当前库位：${stock?.locationLabel || '未设置库位'} · 安全库存 ${numberQty(stock?.safetyQty)}${unit}`}
+        tags={<Tag color={numberQty(stock?.qty) <= numberQty(stock?.safetyQty) ? 'error' : 'success'}>{numberQty(stock?.qty) <= numberQty(stock?.safetyQty) ? '库存预警' : '库存正常'}</Tag>}
+        visual={material ? <MaterialPhotoCell item={material} size={72} /> : null}
+      />
+      <DetailMetrics items={[
+        { label: '当前库存', value: `${numberQty(stock?.qty)} ${unit}`, tone: numberQty(stock?.qty) <= numberQty(stock?.safetyQty) ? 'danger' : 'success' },
+        { label: '安全库存', value: `${numberQty(stock?.safetyQty)} ${unit}` },
+        { label: '剩余批次', value: `${remainingLots.length} 批` },
+        { label: '库存金额', value: money(lotValue) },
+      ]} />
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
         message="同一材料不同价格的入库各记一批，领料按先进先出扣最早那批，成本取该批单价，之后再入贵的货也不改历史工单的成本。"
       />
-      <Title level={5} style={{ marginTop: 0 }}>入库批次（先进先出顺序）</Title>
-      <Table<StockLotView>
+      <DetailSection title="入库批次" description="按先进先出顺序排列，最上方批次优先领用">
+        <Table<StockLotView>
         rowKey="id"
         size="small"
         loading={loading}
@@ -2046,10 +2077,10 @@ function StockLotDrawer({ stock, material, warehouseName, onClose }: {
           { title: '剩余金额', key: 'amount', width: 110, align: 'right', render: (_, lot) => money(numberQty(lot.remainingQty) * lot.unitCostCents) },
         ]}
         locale={{ emptyText: '还没有入库批次；老库存会在第一次出库时自动按参考成本补一批' }}
-      />
-      <Divider />
-      <Title level={5}>出入库流水（最近 100 条）</Title>
-      <Table<StockMovementView>
+        />
+      </DetailSection>
+      <DetailSection title="出入库流水" description="最近 100 条变动，可追溯来源单据和成本">
+        <Table<StockMovementView>
         rowKey="id"
         size="small"
         loading={loading}
@@ -2082,7 +2113,8 @@ function StockLotDrawer({ stock, material, warehouseName, onClose }: {
           },
           { title: '备注', dataIndex: 'note', ellipsis: true, render: (v) => v || '-' },
         ]}
-      />
+        />
+      </DetailSection>
     </Drawer>
   );
 }
