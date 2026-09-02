@@ -130,14 +130,11 @@ export default function MaterialsPage() {
 
   return (
     <div>
-      <Space align="start" style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div>
-          <Title level={3} style={{ margin: 0 }}><AppstoreOutlined /> 材料 SKU 库</Title>
-          <Text type="secondary">
+      <Space className="pms-page-toolbar" align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
+        <Text className="pms-page-note" type="secondary">
             全系统材料的唯一来源：缺料申请、采购、入库、调拨、完工用料一律从这里选择。
             判重口径：名称 + 型号相同为同一材料；被业务单据引用后名称和型号锁定不可改。
-          </Text>
-        </div>
+        </Text>
         <Space>
           <Button icon={<ReloadOutlined />} loading={loading} onClick={load}>刷新</Button>
           {canEdit && (

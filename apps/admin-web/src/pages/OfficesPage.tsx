@@ -70,7 +70,6 @@ export default function OfficesPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginTop: 0 }}>管理处</Title>
       {data.unassigned.length > 0 && (
         <Alert
           type="warning"

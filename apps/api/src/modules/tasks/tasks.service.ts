@@ -2,6 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { RepairsService } from '../repairs/repairs.service';
 import { QrLoginService } from '../auth/qr-login.service';
+import { AccessService } from '../access/access.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { ObservabilityService } from '../observability/observability.service';
 
 /** 系统定时任务（自动验收按租户配置；后续：SLA 提醒、账单生成、库存预警） */
 @Injectable()
@@ -11,7 +14,50 @@ export class TasksService {
   constructor(
     private readonly repairsService: RepairsService,
     private readonly qrLoginService: QrLoginService,
+    private readonly observability: ObservabilityService,
+    private readonly notifications: NotificationsService,
+    private readonly access: AccessService,
   ) {}
+
+  /** 每 5 分钟：聚合网站和小程序异常；同一问题一小时内只提醒一次。 */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async detectSystemAlerts() {
+    try {
+      const alerts = await this.observability.detectAlerts();
+      for (const alert of alerts) {
+        const receivers = await this.access.userIdsWithPermission(alert.tenantId, 'logs', 'view');
+        const now = formatWxTime(new Date());
+        for (const receiverId of receivers) {
+          await this.notifications.notifyUser({
+            tenantId: alert.tenantId,
+            receiverId,
+            eventKey: 'system_alert',
+            title: alert.title,
+            payload: { alertId: alert.id, source: alert.source },
+            page: '/pages/messages/messages',
+            // 先走服务号；未关注时复用员工端的催接单模板及其授权额度。
+            template: 'orderOverdue',
+            templateFields: {
+              orderNo: `SYS-${alert.id}`,
+              type: '系统异常',
+              status: alert.title,
+              statusShort: '有异常',
+              content: alert.message,
+              assignee: '系统管理员',
+              address: sourceLabel(alert.source),
+              reporter: '系统监控',
+              time: now,
+              reportedAt: now,
+              dueAt: now,
+            },
+          });
+        }
+      }
+      if (alerts.length) this.logger.warn(`emitted ${alerts.length} system alerts`);
+    } catch (err) {
+      this.logger.error('detectSystemAlerts failed', err as Error);
+    }
+  }
 
   /** 每小时：按各租户配置扫描超时待验收工单 */
   @Cron(CronExpression.EVERY_HOUR)
@@ -54,4 +100,26 @@ export class TasksService {
       this.logger.error('purgeExpiredQrTickets failed', err as Error);
     }
   }
+
+  /** 每天清理过期指标和日志：请求明细留 30 天，审计与异常留 180 天。 */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async purgeObservabilityHistory() {
+    try {
+      const result = await this.observability.purgeExpired();
+      if (result.metrics || result.logs) {
+        this.logger.log(`purged ${result.metrics} request metrics and ${result.logs} system logs`);
+      }
+    } catch (err) {
+      this.logger.error('purgeObservabilityHistory failed', err as Error);
+    }
+  }
+}
+
+function formatWxTime(value: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${value.getFullYear()}年${value.getMonth() + 1}月${value.getDate()}日 ${pad(value.getHours())}:${pad(value.getMinutes())}`;
+}
+
+function sourceLabel(source: string) {
+  return ({ 'admin-web': '管理后台', 'miniapp-staff': '员工端小程序', 'miniapp-owner': '业主端小程序' } as Record<string, string>)[source] || source;
 }

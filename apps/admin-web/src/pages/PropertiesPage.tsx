@@ -128,8 +128,7 @@ function buildFullAddress(values: {
 export default function PropertiesPage() {
   return (
     <div>
-      <Title level={4} style={{ marginTop: 0 }}>房产管理</Title>
-      <Paragraph type="secondary" style={{ marginTop: -8 }}>
+      <Paragraph className="pms-page-note" type="secondary">
         业主档案已挪到 <Link to="/owners">「业主用户」</Link> 页 —— 业主端小程序的用户
         （档案、入驻审核、启停）都在那里；保安/居委会/业委会等走员工端，在「用户管理」。
       </Paragraph>

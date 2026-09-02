@@ -24,6 +24,7 @@ export const ADMIN_PAGE_KEYS = [
   'offices', // 管理处
   'qr', // 楼栋报修码
   'settings', // 系统设置
+  'logs', // 日志管理、使用分析与异常监控
 ] as const;
 
 export type AdminPageKey = (typeof ADMIN_PAGE_KEYS)[number];
@@ -53,7 +54,7 @@ export type StaffAppPageKey = (typeof STAFF_APP_PAGE_KEYS)[number];
  * 不受 tenants.enabled_pages 裁剪的后台页面：公司自己的配置项（订阅消息模板、
  * 自动验收时限），平台「可用页面」勾不勾都得能进 —— 勾漏了整家公司就配不了通知。
  */
-export const ALWAYS_ENABLED_PAGES: string[] = ['settings'];
+export const ALWAYS_ENABLED_PAGES: string[] = ['settings', 'logs'];
 
 export const ALL_PAGE_KEYS = [...ADMIN_PAGE_KEYS, ...STAFF_APP_PAGE_KEYS] as const;
 
@@ -128,6 +129,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       properties: 'e',
       owners: 'e',
       qr: 'e',
+      logs: 'v',
     },
   },
   {

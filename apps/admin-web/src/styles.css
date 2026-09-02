@@ -1037,6 +1037,88 @@ a,
   background: #fff1f0;
 }
 
+.pms-workorder-pool-card {
+  overflow: hidden;
+  border-radius: 14px !important;
+}
+.pms-workorder-pool-card .ant-card-head {
+  min-height: 72px;
+}
+.pms-workorder-search {
+  width: min(400px, 42vw);
+}
+.pms-workorder-photo {
+  position: relative;
+  width: 58px;
+  height: 58px;
+}
+.pms-workorder-photo > span {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  color: #fff;
+  border: 2px solid #fff;
+  border-radius: 11px;
+  background: rgba(31, 41, 55, 0.82);
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+}
+.pms-workorder-address,
+.pms-workorder-problem,
+.pms-workorder-state {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.pms-workorder-address strong {
+  overflow: hidden;
+  color: var(--pms-ink);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pms-workorder-address .ant-typography {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pms-workorder-problem .ant-typography {
+  margin: 0;
+  color: #454d5c;
+  line-height: 1.55;
+}
+.pms-workorder-state {
+  justify-items: start;
+}
+.pms-workorder-sla {
+  color: #b42318;
+  font-size: 11px;
+  font-weight: 600;
+}
+.pms-workorder-pool-card .ant-table-tbody > tr.pms-row-action-needed:not(.pms-row-sla-danger) > td {
+  background: #fffbf2;
+}
+.pms-workorder-pool-card .ant-table-tbody > tr.pms-row-urgent > td:first-child {
+  box-shadow: inset 4px 0 0 #d4380d;
+}
+.pms-workorder-pool-card .ant-table-cell-fix-left {
+  z-index: 2;
+}
+
+@media (max-width: 760px) {
+  .pms-workorder-search { width: min(100%, 340px); }
+  .pms-workorder-pool-card .ant-card-head-wrapper { align-items: flex-start; flex-direction: column; }
+  .pms-workorder-pool-card .ant-card-extra { width: 100%; margin-top: 10px; }
+}
+
 /* ---------- 工单管理：工单池独占整页 + 右下角悬浮的「办公室录入报修」 ----------
    2026-08-26：原来左右分栏，办公室 1366 宽的屏幕上工单池只剩 800px，表格每格换行。
    现在工单池铺满，录入表单收进右下角的悬浮面板（WorkOrdersPage 里的 RepairSubmitDock）：
@@ -1670,4 +1752,136 @@ body.pms-col-resizing * {
   margin-top: 10px;
   color: #ad6800;
   line-height: 1.7;
+}
+.pms-page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pms-page-note {
+  display: block;
+  max-width: 880px;
+  margin: 0 0 16px !important;
+  color: #647773 !important;
+  line-height: 1.65;
+}
+
+.pms-page-toolbar .pms-page-note { margin-bottom: 0 !important; }
+
+.pms-observability-page .pms-metric-card,
+.pms-observability-page .pms-panel-card {
+  height: 100%;
+  border-color: #e6eeec;
+  box-shadow: 0 5px 18px rgba(31, 65, 60, 0.045);
+}
+
+.pms-observability-page .pms-metric-card {
+  overflow: hidden;
+  position: relative;
+}
+
+.pms-observability-page .pms-metric-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: #6f9f98;
+}
+
+.pms-observability-page .pms-metric-card.is-danger::before { background: #cf4d56; }
+.pms-observability-page .ant-statistic-title { color: #61736f; }
+.pms-observability-page .ant-statistic-content { font-weight: 700; letter-spacing: -.02em; }
+
+.pms-health-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  color: #9f1f2d;
+  background: #fff1f0;
+  border: 1px solid #ffccc7;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.pms-hourly-chart {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  height: 190px;
+  padding-top: 8px;
+}
+
+.pms-hourly-column {
+  display: flex;
+  flex: 1;
+  min-width: 9px;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+
+.pms-hourly-bars {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: 158px;
+  border-bottom: 1px solid #e9efed;
+}
+
+.pms-hourly-bars span,
+.pms-hourly-bars i {
+  display: block;
+  width: min(12px, 48%);
+  border-radius: 4px 4px 1px 1px;
+  transition: height .2s ease;
+}
+
+.pms-hourly-bars span { background: linear-gradient(180deg, #5b948b, #9bc1bb); }
+.pms-hourly-bars i { background: #dc5f69; }
+.pms-hourly-column small { color: #82938f; font-size: 10px; }
+.pms-hourly-column:nth-child(even) small { visibility: hidden; }
+
+.pms-chart-legend {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+  margin-top: 10px;
+  color: #6e807c;
+  font-size: 12px;
+}
+
+.pms-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.pms-chart-legend i { width: 10px; height: 10px; border-radius: 3px; }
+.pms-chart-legend .is-request { background: #6f9f98; }
+.pms-chart-legend .is-error { background: #dc5f69; }
+.pms-memory-row { margin-top: 15px; }
+
+.pms-filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: #f7faf9;
+  border: 1px solid #edf2f0;
+  border-radius: 10px;
+}
+
+.pms-log-time { color: #526761; font-variant-numeric: tabular-nums; }
+.pms-log-message { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.pms-log-slow { color: #cf3c4b; font-weight: 600; }
+.pms-log-detail { max-height: 260px; overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-all; }
+
+@media (max-width: 720px) {
+  .pms-page-toolbar { align-items: stretch; flex-direction: column; }
+  .pms-filter-bar > * { width: 100% !important; }
+  .pms-hourly-chart { gap: 3px; }
 }

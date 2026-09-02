@@ -1,4 +1,4 @@
-import { configure } from '@pms/api-client';
+import { configure, request } from '@pms/api-client';
 import { setupAutoUpdate } from '@pms/miniapp-ui';
 
 const TOKEN_KEY = 'pms.staff.access_token';
@@ -6,6 +6,8 @@ const LOGIN_PAGE = 'pages/login/login';
 /** 上次踢回登录页的时刻，防止 401 连发时反复 reLaunch */
 let lastKickAt = 0;
 const REFRESH_KEY = 'pms.staff.refresh_token';
+let lastError = '';
+let lastErrorAt = 0;
 
 interface AppData {
   baseURL: string;
@@ -33,6 +35,7 @@ App<AppData>({
     configure({
       baseURL: this.baseURL,
       getToken: () => this.getToken(),
+      getExtraHeaders: () => ({ 'x-client-source': 'miniapp-staff' }),
       /**
        * 登录态失效时踢回登录页。**必须防重入**：
        * 已经在登录页时再 reLaunch 一次，会把登录页重建、它 onLoad 又发请求、
@@ -51,4 +54,24 @@ App<AppData>({
       },
     });
   },
+  onError(error) {
+    reportError(this.getToken(), error);
+  },
+  onUnhandledRejection(event) {
+    const reason = event.reason as any;
+    reportError(this.getToken(), reason?.message || String(reason || '未处理的异步异常'), reason?.stack);
+  },
 });
+
+function reportError(token: string | undefined, message: string, stack?: string) {
+  const fingerprint = `${message}\n${stack || ''}`.slice(0, 800);
+  const now = Date.now();
+  if (!token || (lastError === fingerprint && now - lastErrorAt < 60_000)) return;
+  lastError = fingerprint;
+  lastErrorAt = now;
+  const pages = getCurrentPages();
+  void request({ method: 'POST', url: '/observability/client-errors', data: {
+    source: 'miniapp-staff', message: String(message || '小程序异常').slice(0, 500),
+    stack: String(stack || '').slice(0, 4000), route: pages[pages.length - 1]?.route || '',
+  } }).catch(() => undefined);
+}

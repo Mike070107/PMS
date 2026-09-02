@@ -18,6 +18,7 @@ import {
   SafetyCertificateOutlined,
   ApartmentOutlined,
   CloudServerOutlined,
+  MonitorOutlined,
   MenuOutlined,
 } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
@@ -30,6 +31,10 @@ import BrandLogo from './BrandLogo';
 import NotificationBell from './NotificationBell';
 
 const { Header, Sider, Content } = Layout;
+
+function hasAuthToken() {
+  return !!auth.getToken();
+}
 
 interface NavItem {
   key: string;
@@ -91,7 +96,10 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
   },
   {
     title: '系统',
-    items: [{ key: '/settings', pageKey: 'settings', icon: <SettingOutlined />, label: '系统设置' }],
+    items: [
+      { key: '/settings', pageKey: 'settings', icon: <SettingOutlined />, label: '系统设置' },
+      { key: '/logs', pageKey: 'logs', icon: <MonitorOutlined />, label: '日志管理' },
+    ],
   },
   {
     title: '平台管理',
@@ -119,6 +127,7 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/offices': '划分管理处及其负责的小区范围',
   '/qr': '生成、下载并管理楼栋报修二维码',
   '/settings': '配置通知、识别与工单处理规则',
+  '/logs': '查看登录与重要操作，分析使用情况、负载和异常告警',
   '/platform/tenants': '管理平台上的物业公司与功能授权',
 };
 
@@ -171,6 +180,16 @@ export default function AppLayout() {
       }
     })();
   }, [actingTenant?.id, actingOffice?.id]);
+
+  // 页面访问只记业务路由，不含筛选条件；统计失败不影响页面正常使用。
+  useEffect(() => {
+    if (!hasAuthToken()) return;
+    void request({
+      method: 'POST',
+      url: '/observability/page-view',
+      data: { path: loc.pathname, title: document.title },
+    }).catch(() => undefined);
+  }, [loc.pathname]);
 
   const isPlatform = user?.role === 'superadmin' || !!access?.isPlatformAdmin;
   const hasTenantScope = !isPlatform || !!actingTenant;

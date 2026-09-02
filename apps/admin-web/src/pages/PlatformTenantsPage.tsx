@@ -110,7 +110,6 @@ export default function PlatformTenantsPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginTop: 0 }}>物业公司</Title>
       <Card
         title="平台租户：创建公司与企业超管账号、分配可用页面、进入公司视角代操作（导入数据、改设置）"
         extra={

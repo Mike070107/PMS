@@ -57,6 +57,8 @@ import { UserRoleAssignment } from './user-role.entity';
 import { PlatformLog } from './platform-log.entity';
 import { StocktakeTask } from './stocktake-task.entity';
 import { StocktakeItem } from './stocktake-item.entity';
+import { SystemLog } from './system-log.entity';
+import { RequestMetric } from './request-metric.entity';
 
 export const entities = [
   Tenant,
@@ -71,6 +73,8 @@ export const entities = [
   PlatformLog,
   StocktakeTask,
   StocktakeItem,
+  SystemLog,
+  RequestMetric,
   Community,
   Building,
   Unit,
@@ -133,6 +137,8 @@ export {
   PlatformLog,
   StocktakeTask,
   StocktakeItem,
+  SystemLog,
+  RequestMetric,
   Community,
   Building,
   Unit,

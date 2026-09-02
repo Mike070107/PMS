@@ -177,12 +177,9 @@ export default function FeesPage() {
   return (
     <div>
       <Space align="start" style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>物业费</Title>
-          <Text type="secondary">
+        <Text className="pms-page-note" type="secondary">
             按户记账：登记收款、查欠费、维护每户的收费标准。目前只做账目管理，不接在线支付与发票。
-          </Text>
-        </div>
+        </Text>
       </Space>
       <Tabs
         activeKey={tab}

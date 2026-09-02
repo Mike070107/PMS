@@ -346,10 +346,7 @@ export default function QrPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginTop: 0 }}>
-        楼栋报修码
-      </Title>
-      <Paragraph type="secondary" style={{ marginTop: -8 }}>
+      <Paragraph className="pms-page-note" type="secondary">
         每个楼栋一张小程序码，微信「扫一扫」直接进报修页并带出小区/弄/号；
         未入驻的业主会被引导到入驻页，同样预填好位置。新建楼栋时自动生成。
       </Paragraph>

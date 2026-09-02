@@ -119,10 +119,7 @@ export default function BusinessPage() {
   return (
     <div>
       <Space align="start" style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>业务办理</Title>
-          <Text type="secondary">按房号、业主、手机号或车牌查询后办理收费业务，收费规则支持全公司通用或按小区单独定价。</Text>
-        </div>
+        <Text className="pms-page-note" type="secondary">按房号、业主、手机号或车牌查询后办理收费业务，收费规则支持全公司通用或按小区单独定价。</Text>
       </Space>
       <Tabs
         activeKey={tab}

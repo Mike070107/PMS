@@ -62,6 +62,13 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { key: 'offices', label: '管理处', group: '基础档案' },
   { key: 'qr', label: '楼栋报修码', group: '基础档案' },
   { key: 'settings', label: '系统设置', group: '系统' },
+  {
+    key: 'logs',
+    label: '日志管理',
+    group: '系统',
+    hint: '登录与重要操作日志、使用情况、负载和异常告警',
+    actions: [],
+  },
 ];
 
 export const ADMIN_PAGE_KEYS = ADMIN_PAGES.map((p) => p.key);
@@ -152,7 +159,7 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
  * 不受 tenants.enabled_pages 裁剪的后台页面：公司自己的配置项（订阅消息模板、
  * 自动验收时限），平台「可用页面」勾不勾都得能进 —— 勾漏了整家公司就配不了通知。
  */
-export const ALWAYS_ENABLED_PAGES: string[] = ['settings'];
+export const ALWAYS_ENABLED_PAGES: string[] = ['settings', 'logs'];
 
 export const STAFF_APP_PAGE_KEYS = STAFF_APP_PAGES.map((p) => p.key);
 
@@ -242,6 +249,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       properties: 'e',
       owners: 'e',
       qr: 'e',
+      logs: 'v',
     },
   },
   {

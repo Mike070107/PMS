@@ -80,7 +80,6 @@ export default function OwnerAuditPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginTop: 0 }}>业主用户</Title>
       <Tabs
         activeKey={tab}
         onChange={setTab}

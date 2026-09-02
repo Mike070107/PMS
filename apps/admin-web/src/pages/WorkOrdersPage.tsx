@@ -115,6 +115,12 @@ interface WorkOrderRow {
   repairType?: string | null;
   summaryAddress?: string | null;
   summaryContent?: string | null;
+  /** 报修时拍的图片（接口已裁成最多 4 张，列表直接展示缩略图） */
+  photos?: string[];
+  photoCount?: number;
+  contactName?: string | null;
+  reporterRoleLabel?: string | null;
+  sourceLabel?: string | null;
   /** 报修时就说了「急修」：列表第一格挂红色「紧急」标 */
   urgent?: boolean;
   skill?: string | null;
@@ -364,7 +370,7 @@ function StatusBoard({
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(${FILTER_TABS.length}, minmax(0, 1fr))`,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(118px, 1fr))',
         gap: 8,
         marginBottom: 16,
       }}
@@ -466,56 +472,53 @@ export default function WorkOrdersPage() {
      （2026-08-27 反馈「一刷新就恢复了」）。每列必须有稳定 key，它是存档标识。 */
   const poolColumns: PrefsColumn<WorkOrderRow>[] = [
     {
-      // 一格一件事，但列数要跟容器宽度量力而行 —— 办公室的屏幕上这块表格也就
-      // 一千像素上下，硬拆成七八列会被 tableLayout:fixed 压成每列一百出头，
-      // 每格都换行，比原来更乱。所以：
-      //   · 单号是定长标识，独立成列（原来它挤在第一格当第三行小字）
-      //   · 第一格只留两级字号：类型 · 房号（主）/ 业主原话（次），不再有第三、第四种
-      title: '报修内容',
-      key: 'summary',
-      width: 320,
+      title: '报修图片', key: 'photos', width: 92, fixed: 'left',
+      render: (_, r) => <RepairPhotoCell photos={r.photos || []} total={r.photoCount || 0} />,
+    },
+    {
+      // 调度最先要回答「去哪儿」，地址不能再作为类型后面的一段灰色小字。
+      // 固定在图片之后，横向滚动时始终可见。
+      title: '报修地址', key: 'address', width: 250, fixed: 'left',
       render: (_, r) => (
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 15, lineHeight: 1.5 }}>
-            {/* 报修时说了「急修」的单，红标顶在类型前面 —— 派单的人扫这一列，
-                标在后面（比如跟在业主原话后）会被省略号吃掉 */}
-            {r.urgent && <Tag color="error" style={{ marginInlineEnd: 6 }}>紧急</Tag>}
-            {getRepairTypeLabel(r.repairType || r.skill, repairTypeRules)}
-            <Text type="secondary" style={{ fontWeight: 400, marginLeft: 8 }}>
-              {r.summaryAddress || '未填写房号'}
-            </Text>
-          </div>
+        <div className="pms-workorder-address">
+          <strong title={r.summaryAddress || undefined}>{r.summaryAddress || '地址待补充'}</strong>
           <Text
             type="secondary"
-            style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-            title={r.summaryContent || undefined}
+            title={[r.contactName, r.reporterRoleLabel, r.sourceLabel].filter(Boolean).join(' · ') || undefined}
           >
-            {r.summaryContent || '-'}
+            {[r.contactName || '未填报修人', r.reporterRoleLabel, r.sourceLabel].filter(Boolean).join(' · ')}
           </Text>
-          {/* 标红光有底色不够，得让人知道红在哪：把截止时间和倒计时写出来 */}
-          {slaDanger(r) && r.slaDueAt && (
-            <div style={{ color: '#cf1322', fontSize: 12, marginTop: 2 }}>
-              <ClockCircleOutlined style={{ marginRight: 4 }} />
-              要求 {formatDateTimeCn(r.slaDueAt)} 前完成 · {slaCountdownText(r.slaDueAt)}
-            </div>
-          )}
         </div>
       ),
     },
     {
-      title: '工单编号', key: 'orderNo', dataIndex: 'orderNo', width: 180,
-      render: (v: string) => (
-        <Text type="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</Text>
+      title: '问题描述', key: 'summary', width: 320,
+      render: (_, r) => (
+        <div className="pms-workorder-problem">
+          <div>
+            {r.urgent && <Tag color="error">紧急</Tag>}
+            <Tag color="blue">{getRepairTypeLabel(r.repairType || r.skill, repairTypeRules)}</Tag>
+          </div>
+          <Text ellipsis={{ tooltip: r.summaryContent || '-' }}>{r.summaryContent || '-'}</Text>
+        </div>
       ),
     },
     {
-      title: '状态', key: 'status', dataIndex: 'status', width: 100,
-      render: (s: WorkOrderStatus, row) => (
-        <Tag color={statusMeta[s].color}>
-          {s === WorkOrderStatus.CREATED
-            ? row.candidateIds?.length ? '待接单' : '待派单'
-            : statusMeta[s].label}
-        </Tag>
+      title: '处理状态', key: 'status', width: 178,
+      render: (_, r) => (
+        <div className="pms-workorder-state">
+          <Tag color={statusMeta[r.status].color}>
+            {r.status === WorkOrderStatus.CREATED
+              ? r.candidateIds?.length ? '待接单' : '待派单'
+              : statusMeta[r.status].label}
+          </Tag>
+          {slaDanger(r) && r.slaDueAt && (
+            <span className="pms-workorder-sla">
+              <ClockCircleOutlined style={{ marginRight: 4 }} />
+              {slaCountdownText(r.slaDueAt)}
+            </span>
+          )}
+        </div>
       ),
     },
     {
@@ -531,15 +534,21 @@ export default function WorkOrdersPage() {
       },
     },
     {
-      title: '维修工', key: 'assignee', dataIndex: 'assigneeId', width: 100,
+      title: '当前负责人', key: 'assignee', dataIndex: 'assigneeId', width: 120,
       // 姓名优先用接口给的（它按 tenant 查过了）；staffById 是本页自己拉的员工表，作兜底
       render: (id: number | null, r) =>
         id ? nameOr(r.assigneeName || staffById.get(id)?.name, '维修工') : <Text type="secondary">未派单</Text>,
     },
     {
-      title: '报修时间', key: 'createdAt', dataIndex: 'createdAt', width: 196,
+      title: '报修时间', key: 'createdAt', dataIndex: 'createdAt', width: 180,
       // 和进度时间轴、两个小程序统一：2026/8/9 17:07 周日；「周日」不许折到第二行
       render: (v: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTimeCn(v) || '-'}</span>,
+    },
+    {
+      title: '工单编号', key: 'orderNo', dataIndex: 'orderNo', width: 180,
+      render: (v: string) => (
+        <Text copyable={{ text: v }} type="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</Text>
+      ),
     },
   ];
   const poolPrefs = useTableColumnPrefs('work-orders.pool', poolColumns);
@@ -637,7 +646,6 @@ export default function WorkOrdersPage() {
 
   return (
     <div className="pms-workorder-page" style={{ fontSize: 16 }}>
-      <Title level={3} style={{ marginTop: 0, marginBottom: 20 }}>报修与工单</Title>
       {/* 工单池独占整页。物业办公室的电脑普遍只有 1366 宽，原来左右分栏各占一半，
           表格被挤到 800px、每格换行，看着就是「乱」（2026-08-26 反馈）。
           办公室录入报修收成右下角一颗悬浮按钮（RepairSubmitDock），
@@ -645,19 +653,17 @@ export default function WorkOrdersPage() {
       <div className="pms-workorder-pool">
           <Card
             className="pms-workorder-pool-card"
-            title={<span><ToolOutlined /> 工单池</span>}
-            style={{ minWidth: WORK_ORDER_TABLE_MIN_WIDTH }}
+            title={<div className="pms-section-title"><strong><ToolOutlined /> 工单调度台</strong><span>先看地址、图片和时效，再决定派单与催办</span></div>}
             extra={
-              <Space>
+              <Space wrap>
                 {/* 查历史报修：地址敲 198/47/201 逐段匹配，敲 198 就是「地址里带 198 的」；
                     维修工姓名、单号也走这一个框。原来这里是「按小区筛选」，小区名直接敲进来也一样查 */}
                 <Input
                   size="large"
                   allowClear
-                  className="pms-workorder-search"
                   prefix={<SearchOutlined style={{ color: 'rgba(0,0,0,.35)' }} />}
                   placeholder="查历史：地址 198/47/201 或 198、维修工姓名、单号"
-                  style={{ width: 400 }}
+                  className="pms-workorder-search"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   autoComplete="off"
@@ -683,11 +689,14 @@ export default function WorkOrdersPage() {
               loading={loading}
               dataSource={rows}
               tableLayout="fixed"
-              // 不设 scroll.x：列宽合计小于容器时 antd 也会挂一条横向滚动条出来，
-              // 表格底下永远飘着一根没用的灰条，看着就是「乱」
+              scroll={{ x: WORK_ORDER_TABLE_MIN_WIDTH + 508 }}
               pagination={{ pageSize: 10, showSizeChanger: false }}
               // 距要求完成截止不足 4 小时（含已超时）的未完结单整行标红，样式在 styles.css
-              rowClassName={(r) => (slaDanger(r) ? 'pms-row-sla-danger' : '')}
+              rowClassName={(r) => [
+                slaDanger(r) ? 'pms-row-sla-danger' : '',
+                r.urgent ? 'pms-row-urgent' : '',
+                r.status === WorkOrderStatus.CREATED ? 'pms-row-action-needed' : '',
+              ].filter(Boolean).join(' ')}
               onRow={(r) => ({ onClick: () => setDetailId(r.id), style: { cursor: 'pointer' } })}
               locale={{ emptyText: searchQ ? `没有匹配「${searchQ}」的工单` : undefined }}
               columns={poolPrefs.columns}
@@ -1725,6 +1734,27 @@ function isUploadVideo(file: { type?: string; name?: string; url?: string; respo
 function isUploadImage(file: { type?: string; name?: string; url?: string; response?: UploadResponse }) {
   const value = `${file.type || ''} ${file.name || ''} ${file.url || ''} ${file.response?.publicUrl || ''}`;
   return /^image\//i.test(file.type || '') || /\.(jpg|jpeg|png|gif|webp|bmp|heic)(\?|#|$|\s)/i.test(value);
+}
+
+/** 工单池缩略图：列表只占一格，点击可查看这一单的全部报修图片。 */
+function RepairPhotoCell({ photos, total }: { photos: string[]; total: number }) {
+  if (!photos.length) return <Text type="secondary" style={{ fontSize: 12 }}>无图片</Text>;
+  return (
+    <div className="pms-workorder-photo" onClick={(event) => event.stopPropagation()}>
+      <Image.PreviewGroup>
+        <Image
+          src={photos[0]}
+          width={58}
+          height={58}
+          style={{ objectFit: 'cover', borderRadius: 8 }}
+          preview={{ src: photos[0] }}
+          fallback=""
+        />
+        {photos.slice(1).map((url) => <Image key={url} src={url} style={{ display: 'none' }} fallback="" />)}
+      </Image.PreviewGroup>
+      {total > 1 && <span>+{total - 1}</span>}
+    </div>
+  );
 }
 
 function AttachmentPreview({ urls }: { urls: string[] }) {

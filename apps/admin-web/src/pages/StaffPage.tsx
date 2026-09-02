@@ -149,8 +149,7 @@ export default function StaffPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginTop: 0 }}>用户管理</Title>
-      <Paragraph type="secondary" style={{ marginTop: -8 }}>
+      <Paragraph className="pms-page-note" type="secondary">
         这里管<strong>员工端小程序</strong>和<strong>网站后台</strong>的用户：维修工、办公室、经理、
         采购、管理员，以及保安/居委会/业委会/物业工作人员。给他分配的<strong>业务角色</strong>
         一并决定他在小程序里看到哪几格、在网站上能进哪些页面，配置在 <Link to="/roles">「业务角色」</Link> 页。

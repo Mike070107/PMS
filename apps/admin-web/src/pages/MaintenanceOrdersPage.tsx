@@ -383,7 +383,7 @@ export default function MaintenanceOrdersPage() {
   if (!canView) return null;
 
   return (
-    <div className="pms-content pms-fadein">
+    <div>
       <div
         style={{
           display: 'flex',
@@ -394,12 +394,7 @@ export default function MaintenanceOrdersPage() {
           marginBottom: 8,
         }}
       >
-        <div>
-          <Title level={3} style={{ margin: 0 }}>
-            养护单
-          </Title>
-          <Text type="secondary">《房屋修理养护任务单》：按工单开单、手写签名、查验后打印</Text>
-        </div>
+        <Text className="pms-page-note" type="secondary">《房屋修理养护任务单》：按工单开单、手写签名、查验后打印</Text>
         <Space wrap>
           <Button size="large" icon={<SettingOutlined />} onClick={() => setQuotaOpen(true)}>
             预算定额配置

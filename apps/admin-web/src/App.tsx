@@ -21,6 +21,7 @@ const StocktakePage = lazy(() => import('./pages/StocktakePage'));
 const MaterialsPage = lazy(() => import('./pages/MaterialsPage'));
 const QrPage = lazy(() => import('./pages/QrPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const LogsPage = lazy(() => import('./pages/LogsPage'));
 const RolesPage = lazy(() => import('./pages/RolesPage'));
 const OfficesPage = lazy(() => import('./pages/OfficesPage'));
 const PlatformTenantsPage = lazy(() => import('./pages/PlatformTenantsPage'));
@@ -52,6 +53,7 @@ const PAGE_ROUTES: Array<[string, string]> = [
   ['offices', '/offices'],
   ['qr', '/qr'],
   ['settings', '/settings'],
+  ['logs', '/logs'],
 ];
 
 function firstVisiblePath(access: ReturnType<typeof useAuth>['access']): string | null {
@@ -142,6 +144,7 @@ export default function App() {
         <Route path="materials" element={<RequireTenantScope><RequirePage pageKey="materials"><MaterialsPage /></RequirePage></RequireTenantScope>} />
         <Route path="qr" element={<RequireTenantScope><RequirePage pageKey="qr"><QrPage /></RequirePage></RequireTenantScope>} />
         <Route path="settings" element={<RequireTenantScope><RequirePage pageKey="settings"><SettingsPage /></RequirePage></RequireTenantScope>} />
+        <Route path="logs" element={<RequireTenantScope><RequirePage pageKey="logs"><LogsPage /></RequirePage></RequireTenantScope>} />
         <Route path="*" element={<HomeRedirect />} />
       </Route>
       </Routes>

@@ -1,8 +1,10 @@
-import { configure } from '@pms/api-client';
+import { configure, request } from '@pms/api-client';
 import { setupAutoUpdate } from '@pms/miniapp-ui';
 
 const TOKEN_KEY = 'pms.access_token';
 const REFRESH_KEY = 'pms.refresh_token';
+let lastError = '';
+let lastErrorAt = 0;
 
 interface AppData {
   baseURL: string;
@@ -30,10 +32,31 @@ App<AppData>({
     configure({
       baseURL: this.baseURL,
       getToken: () => this.getToken(),
+      getExtraHeaders: () => ({ 'x-client-source': 'miniapp-owner' }),
       onUnauthorized: () => {
         this.clearTokens();
         wx.reLaunch({ url: '/pages/index/index' });
       },
     });
   },
+  onError(error) {
+    reportError(this.getToken(), error);
+  },
+  onUnhandledRejection(event) {
+    const reason = event.reason as any;
+    reportError(this.getToken(), reason?.message || String(reason || '未处理的异步异常'), reason?.stack);
+  },
 });
+
+function reportError(token: string | undefined, message: string, stack?: string) {
+  const fingerprint = `${message}\n${stack || ''}`.slice(0, 800);
+  const now = Date.now();
+  if (!token || (lastError === fingerprint && now - lastErrorAt < 60_000)) return;
+  lastError = fingerprint;
+  lastErrorAt = now;
+  const pages = getCurrentPages();
+  void request({ method: 'POST', url: '/observability/client-errors', data: {
+    source: 'miniapp-owner', message: String(message || '小程序异常').slice(0, 500),
+    stack: String(stack || '').slice(0, 4000), route: pages[pages.length - 1]?.route || '',
+  } }).catch(() => undefined);
+}

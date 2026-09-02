@@ -464,8 +464,6 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <Title level={4} style={{ marginTop: 0 }}>系统设置</Title>
-
       <SettingSection
         title="微信订阅消息"
         summary="业主收「已派单 / 待验收」，维修工收「有新工单」，填模板 ID 才发得出去"

@@ -1137,11 +1137,8 @@ export default function InventoryPage() {
 
   return (
     <div>
-      <Space align="start" style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div>
-          <Title level={3} style={{ margin: 0 }}>库存与采购</Title>
-          <Text type="secondary">按库存清单、库存盘点、缺料审批、采购入库、仓库调拨与领料组织日常工作。</Text>
-        </div>
+      <Space className="pms-page-toolbar" align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
+        <Text className="pms-page-note" type="secondary">按库存清单、库存盘点、缺料审批、采购入库、仓库调拨与领料组织日常工作。</Text>
         <Space>
           <Button icon={<ReloadOutlined />} loading={loading} onClick={loadAll}>刷新</Button>
           {canEdit && <Button icon={<InboxOutlined />} onClick={openGeneralReceipt}>一般入库</Button>}
