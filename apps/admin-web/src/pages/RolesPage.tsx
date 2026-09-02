@@ -80,15 +80,7 @@ interface ScopeOptions {
   warehouses: { id: number; name: string; type: string; officeName: string | null }[];
 }
 
-/**
- * 盘点入口最初有两条独立权限，后来并入“库存与采购 / 材料与库存”。
- * 老租户数据库里可能还留着旧 key；编辑角色或模板时不能原样送回 API，
- * 否则 class-validator 会在保存前报 pageKey 不合法。
- */
-const LEGACY_PERMISSION_PAGE_ALIASES: Record<string, string> = {
-  stocktakes: 'inventory',
-  'app:stocktakes': 'app:inventory',
-};
+/** 过滤已经从产品中移除的页面键，防止旧数据库记录导致整张模板无法保存。 */
 const CURRENT_PERMISSION_PAGE_KEYS = new Set([
   ...ADMIN_PAGES.map((page) => page.key),
   ...STAFF_APP_PAGES.map((page) => page.key),
@@ -97,7 +89,7 @@ const CURRENT_PERMISSION_PAGE_KEYS = new Set([
 function sanitizePermissionRows(rows: RolePermRow[]): RolePermRow[] {
   const merged = new Map<string, RolePermRow>();
   for (const row of rows) {
-    const pageKey = LEGACY_PERMISSION_PAGE_ALIASES[row.pageKey] ?? row.pageKey;
+    const pageKey = row.pageKey;
     if (!CURRENT_PERMISSION_PAGE_KEYS.has(pageKey)) continue;
     const previous = merged.get(pageKey);
     merged.set(pageKey, {

@@ -10,7 +10,7 @@
       <view class="screen-head__title">材料中心</view>
       <view class="screen-head__desc">查库存、维护材料档案和跟进采购申请</view>
     </view>
-    <view wx:if="{{canViewStock}}" class="stocktake-entry" bindtap="onStocktake" hover-class="stocktake-entry--press">
+    <view wx:if="{{canViewStocktake}}" class="stocktake-entry" bindtap="onStocktake" hover-class="stocktake-entry--press">
       <view class="stocktake-entry__icon"><view class="entry-icon__glyph icon-action--scan-white"></view></view>
       <view class="stocktake-entry__body">
         <view class="stocktake-entry__title">库存盘点</view>

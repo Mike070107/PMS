@@ -69,7 +69,7 @@ Page({
         ? warehouses.findIndex((item) => item.id === this.preferredWarehouseId)
         : -1;
       this.setData({
-        canEdit: session.canEditMaterials,
+        canEdit: session.canEditStocktakes,
         warehouses,
         warehouseNames: warehouses.map((item) => item.name),
         warehouseIndex: preferred >= 0 ? preferred : 0,
@@ -139,7 +139,9 @@ Page({
     const id = Number(e.currentTarget.dataset.id);
     const task = this.allTasks.find((item) => item.id === id);
     if (!task) return;
-    const page = task.status === 'counting' || task.status === 'rejected' ? 'stocktake-count' : 'stocktake-review';
+    const page = this.data.canEdit && (task.status === 'counting' || task.status === 'rejected')
+      ? 'stocktake-count'
+      : 'stocktake-review';
     wx.navigateTo({ url: `/pages/${page}/${page}?id=${id}` });
   },
 

@@ -11,7 +11,7 @@ import { usePagePerm } from '../lib/auth';
  */
 export default function StocktakePage() {
   const { message } = AntdApp.useApp();
-  const { canEdit } = usePagePerm('inventory');
+  const { canEdit } = usePagePerm('stocktakes');
   const [warehouses, setWarehouses] = useState<WarehouseView[]>([]);
   const [loading, setLoading] = useState(true);
 

@@ -304,6 +304,7 @@ function requestStepStatus(status: PurchaseRequestStatus): 'process' | 'error' {
 export default function InventoryPage() {
   const { message, modal } = AntdApp.useApp();
   const { canEdit, canDelete } = usePagePerm('inventory');
+  const { canView: canViewStocktakes, canEdit: canEditStocktakes } = usePagePerm('stocktakes');
   const { access, actingOffice } = useAuth();
   // 「材料 SKU」「仓库数量」是全公司口径的家底数字，范围受限的角色看了对不上账
   const companyWide = useCompanyWideView();
@@ -1291,11 +1292,11 @@ export default function InventoryPage() {
               </Card>
             ),
           },
-          {
+          ...(canViewStocktakes ? [{
             key: 'stocktake',
             label: <span><AuditOutlined /> 库存盘点</span>,
-            children: <StocktakePanel warehouses={visibleWarehouses} canEdit={canEdit} />,
-          },
+            children: <StocktakePanel warehouses={visibleWarehouses} canEdit={canEditStocktakes} />,
+          }] : []),
           {
             key: 'requests',
             label: <span><AuditOutlined /> 采购申请</span>,

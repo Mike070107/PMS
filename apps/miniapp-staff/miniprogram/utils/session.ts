@@ -32,6 +32,9 @@ export interface StaffSession {
   canViewMaterials: boolean;
   canEditMaterials: boolean;
   canViewInventory: boolean;
+  /** 库存盘点独立权限：可以只看盘点报告，不必同时开放库存与采购。 */
+  canViewStocktakes: boolean;
+  canEditStocktakes: boolean;
   /**
    * 材料 SKU 库单独一格（app:materials）：看全部材料档案、改名称型号照片。
    * 和上面那一格分开是因为改档案会影响全公司的编码和统计，不是人人都该有。
@@ -66,6 +69,8 @@ const emptySession = (): StaffSession => ({
   canViewMaterials: false,
   canEditMaterials: false,
   canViewInventory: false,
+  canViewStocktakes: false,
+  canEditStocktakes: false,
   canViewSku: false,
   canEditSku: false,
   canApproveAsManager: false,
@@ -103,6 +108,8 @@ export function buildSession(me: MeResp | null): StaffSession {
     canViewMaterials: can('app:inventory', 'view'),
     canEditMaterials: can('app:inventory', 'edit'),
     canViewInventory: can('app:inventory', 'view'),
+    canViewStocktakes: can('app:stocktakes', 'view'),
+    canEditStocktakes: can('app:stocktakes', 'edit'),
     canViewSku: can('app:materials', 'view'),
     canEditSku: can('app:materials', 'edit'),
     canApproveAsManager,

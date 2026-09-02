@@ -63,7 +63,7 @@ Page({
       const shortageCount = differences.filter((item) => Number(item.differenceQty) < 0).length;
       this.setData({
         detail,
-        canEdit: session.canEditMaterials,
+        canEdit: session.canEditStocktakes,
         statusLabel: STOCKTAKE_STATUS_LABELS[detail.status],
         statusTone:
           detail.status === 'approved'
@@ -84,7 +84,7 @@ Page({
         canReview: detail.status === 'submitted',
         approved: detail.status === 'approved',
         showActions:
-          session.canEditMaterials &&
+          session.canEditStocktakes &&
           (detail.status === 'submitted' || detail.status === 'counting' || detail.status === 'rejected'),
         reviewNote: detail.reviewNote || '',
       });

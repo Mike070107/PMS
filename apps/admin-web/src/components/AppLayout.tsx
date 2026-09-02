@@ -81,7 +81,7 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
     items: [
       { key: '/materials', pageKey: 'materials', icon: <AppstoreOutlined />, label: '材料 SKU 库' },
       { key: '/inventory', pageKey: 'inventory', icon: <ShoppingOutlined />, label: '库存与采购' },
-      { key: '/stocktakes', pageKey: 'inventory', icon: <AuditOutlined />, label: '库存盘点' },
+      { key: '/stocktakes', pageKey: 'stocktakes', icon: <AuditOutlined />, label: '库存盘点' },
     ],
   },
   {

@@ -19,7 +19,7 @@ export class StocktakeController {
   constructor(private readonly service: StocktakeService) {}
 
   @Get()
-  @RequirePermission(['inventory', 'app:inventory'], 'view')
+  @RequirePermission(['stocktakes', 'app:stocktakes'], 'view')
   list(
     @Query() query: StocktakeQueryDto,
     @CurrentUser() user: AuthUser,
@@ -29,7 +29,7 @@ export class StocktakeController {
   }
 
   @Post()
-  @RequirePermission(['inventory', 'app:inventory'], 'edit')
+  @RequirePermission(['stocktakes', 'app:stocktakes'], 'edit')
   create(
     @Body() dto: CreateStocktakeDto,
     @CurrentUser() user: AuthUser,
@@ -39,7 +39,7 @@ export class StocktakeController {
   }
 
   @Get(':id')
-  @RequirePermission(['inventory', 'app:inventory'], 'view')
+  @RequirePermission(['stocktakes', 'app:stocktakes'], 'view')
   detail(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
@@ -50,7 +50,7 @@ export class StocktakeController {
 
   /** 小程序统一走 POST，避免部分基础库对 PATCH 的兼容差异。 */
   @Post(':id/items/:itemId/count')
-  @RequirePermission(['inventory', 'app:inventory'], 'edit')
+  @RequirePermission(['stocktakes', 'app:stocktakes'], 'edit')
   count(
     @Param('id', ParseIntPipe) id: number,
     @Param('itemId', ParseIntPipe) itemId: number,
@@ -62,7 +62,7 @@ export class StocktakeController {
   }
 
   @Post(':id/submit')
-  @RequirePermission(['inventory', 'app:inventory'], 'edit')
+  @RequirePermission(['stocktakes', 'app:stocktakes'], 'edit')
   submit(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
@@ -72,7 +72,7 @@ export class StocktakeController {
   }
 
   @Post(':id/review')
-  @RequirePermission(['inventory', 'app:inventory'], 'edit')
+  @RequirePermission(['stocktakes', 'app:stocktakes'], 'edit')
   review(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ReviewStocktakeDto,

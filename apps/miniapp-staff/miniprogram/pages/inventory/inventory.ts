@@ -150,6 +150,8 @@ Page({
     tab: 'stock' as 'stock' | 'sku' | 'purchase',
     /** 「库存 / 采购申请」两格：app:inventory。只勾了材料 SKU 的角色看不到它们 */
     canViewStock: true,
+    /** 独立的库存盘点入口，不跟库存/采购权限捆绑。 */
+    canViewStocktake: false,
     /** 「材料 SKU」这一格由角色矩阵的 app:materials 决定，没勾的人连这个 tab 都看不到 */
     canViewSku: false,
     canEditSku: false,
@@ -222,7 +224,7 @@ Page({
     try {
       const session = await getSession(this, refreshSession);
       // 只勾了「材料 SKU 库」的角色也该进得来 —— 他进来看到的就只有那一个 tab
-      if (!session.canViewMaterials && !session.canViewInventory && !session.canViewSku) {
+      if (!session.canViewMaterials && !session.canViewInventory && !session.canViewSku && !session.canViewStocktakes) {
         this.setData({
           canView: false,
           roleHint: '你的账号没有材料与库存权限。需要材料请在工单详情里提报缺料，由办公室汇总。',
@@ -236,6 +238,7 @@ Page({
         canView: true,
         canEdit: session.canEditMaterials,
         canViewStock,
+        canViewStocktake: session.canViewStocktakes,
         // 看不到库存那一格的人（只勾了材料 SKU）默认落在 SKU 页，
         // 否则进来是一片空白，还以为坏了
         tab: canViewStock ? this.data.tab : 'sku',
@@ -244,6 +247,10 @@ Page({
         // 再并上新的这一格 —— 新增一格权限不该把老角色已有的能力拿走
         canEditSku: session.canEditSku || session.canEditMaterials,
       });
+
+      // 只授权盘点的人只需要上面的“库存盘点”入口；不要继续请求库存、采购和 SKU
+      // 接口，否则这些独立权限会因为后续接口 403 而整页显示“加载失败”。
+      if (!canViewStock && !session.canViewSku) return;
 
       const [materials, warehouses, stocks, requests, categories] = await Promise.all([
         inventory.listMaterials(),

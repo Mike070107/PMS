@@ -140,7 +140,7 @@ export default function App() {
         <Route path="offices" element={<RequireTenantScope><RequirePage pageKey="offices"><OfficesPage /></RequirePage></RequireTenantScope>} />
         <Route path="platform/tenants" element={<RequirePlatform><PlatformTenantsPage /></RequirePlatform>} />
         <Route path="inventory" element={<RequireTenantScope><RequirePage pageKey="inventory"><InventoryPage /></RequirePage></RequireTenantScope>} />
-        <Route path="stocktakes" element={<RequireTenantScope><RequirePage pageKey="inventory"><StocktakePage /></RequirePage></RequireTenantScope>} />
+        <Route path="stocktakes" element={<RequireTenantScope><RequirePage pageKey="stocktakes"><StocktakePage /></RequirePage></RequireTenantScope>} />
         <Route path="materials" element={<RequireTenantScope><RequirePage pageKey="materials"><MaterialsPage /></RequirePage></RequireTenantScope>} />
         <Route path="qr" element={<RequireTenantScope><RequirePage pageKey="qr"><QrPage /></RequirePage></RequireTenantScope>} />
         <Route path="settings" element={<RequireTenantScope><RequirePage pageKey="settings"><SettingsPage /></RequirePage></RequireTenantScope>} />
