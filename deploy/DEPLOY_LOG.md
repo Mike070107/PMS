@@ -1554,3 +1554,11 @@
 - ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-owner/miniprogram/app.json，M apps/miniapp-owner/miniprogram/pages/me/me.ts，M apps/miniapp-owner/miniprogram/pages/me/me.wxml，M apps/miniapp-owner/miniprogram/pages/messages/messages.ts，M apps/miniapp-owner/miniprogram/pages/messages/messages.wxml，M apps/miniapp-owner/miniprogram/utils/feedback.ts，M packages/api-client/src/endpoints/observability.ts，M packages/api-client/src/index.ts，?? apps/miniapp-owner/miniprogram/pages/feedback-history/
 - 自上次（4d6b38f）以来没有相关提交（重新部署）
 
+## 2026-09-02 16:11 · api · e3fc848
+
+- 包：`pms-api-20260902-1604.tar.gz`
+- 提交：e3fc848 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
+- 自上次（cf14ab6）以来上线的相关提交：
+  - e3fc848 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
+  - 8bed144 feat: 支持管理员审计作废工单
+
