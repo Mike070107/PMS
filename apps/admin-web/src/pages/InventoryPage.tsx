@@ -50,6 +50,7 @@ import { auth, useAuth, useCompanyWideView, usePagePerm } from '../lib/auth';
 import { useTableSeq } from '../components/tableSeqColumn';
 import { nameOr, unknown } from '../lib/displayName';
 import { compressImageFile } from '../lib/compressImage';
+import StocktakePanel from '../components/StocktakePanel';
 import {
   MATERIAL_PHOTO_LIMIT,
   MaterialPhotoCell,
@@ -1139,7 +1140,7 @@ export default function InventoryPage() {
       <Space align="start" style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
           <Title level={3} style={{ margin: 0 }}>库存与采购</Title>
-          <Text type="secondary">按库存清单、缺料审批、采购下单、到货入库、仓库调拨与领料组织日常工作。</Text>
+          <Text type="secondary">按库存清单、库存盘点、缺料审批、采购入库、仓库调拨与领料组织日常工作。</Text>
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} loading={loading} onClick={loadAll}>刷新</Button>
@@ -1216,6 +1217,11 @@ export default function InventoryPage() {
                 />
               </Card>
             ),
+          },
+          {
+            key: 'stocktake',
+            label: <span><AuditOutlined /> 库存盘点</span>,
+            children: <StocktakePanel warehouses={visibleWarehouses} canEdit={canEdit} />,
           },
           {
             key: 'requests',
