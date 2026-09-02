@@ -2,16 +2,20 @@ import { Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 
-export const LOG_CATEGORIES = ['login', 'operation', 'error', 'alert', 'usage'] as const;
+export const LOG_CATEGORIES = ['login', 'operation', 'error', 'alert', 'usage', 'feedback'] as const;
 export const LOG_LEVELS = ['info', 'warning', 'error'] as const;
 export const CLIENT_SOURCES = ['admin-web', 'miniapp-staff', 'miniapp-owner'] as const;
+export const FEEDBACK_TYPES = ['error', 'hard_to_use', 'data_issue', 'suggestion', 'other'] as const;
+export const FEEDBACK_STATUSES = ['new', 'processing', 'resolved', 'ignored'] as const;
 
 export class SystemLogQueryDto {
   @IsOptional()
@@ -30,6 +34,10 @@ export class SystemLogQueryDto {
   @IsOptional()
   @IsIn(['true', 'false'])
   success?: 'true' | 'false';
+
+  @IsOptional()
+  @IsIn(FEEDBACK_STATUSES)
+  feedbackStatus?: (typeof FEEDBACK_STATUSES)[number];
 
   @IsOptional()
   @IsString()
@@ -93,4 +101,52 @@ export class ClientErrorDto {
   @IsString()
   @MaxLength(80)
   version?: string;
+}
+
+/** 用户主动提交的问题；页面和最近错误由端上自动附带。 */
+export class UserFeedbackDto {
+  @IsIn(CLIENT_SOURCES)
+  source: (typeof CLIENT_SOURCES)[number];
+
+  @IsIn(FEEDBACK_TYPES)
+  type: (typeof FEEDBACK_TYPES)[number];
+
+  @IsString()
+  @MinLength(5)
+  @MaxLength(1000)
+  message: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  route?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  pageTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  version?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  errorMessage?: string;
+
+  @IsOptional()
+  @IsObject()
+  context?: Record<string, unknown>;
+}
+
+export class FeedbackStatusDto {
+  @IsIn(FEEDBACK_STATUSES)
+  status: (typeof FEEDBACK_STATUSES)[number];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
 }

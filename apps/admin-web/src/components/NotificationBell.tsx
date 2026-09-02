@@ -28,6 +28,7 @@ const EVENT_META: Record<string, { label: string; color: string; to?: string }> 
   purchase_pending_office: { label: '采购待汇总', color: 'gold', to: '/inventory' },
   purchase_pending_manager: { label: '采购待经理审批', color: 'gold', to: '/inventory' },
   purchase_pending_purchaser: { label: '采购待采购审批', color: 'blue', to: '/inventory' },
+  user_feedback: { label: '异常反馈', color: 'purple', to: '/logs?mode=feedback' },
 };
 
 function timeAgo(iso: string): string {

@@ -346,6 +346,8 @@ export interface RepairCreateReq {
   predictedRepairType?: string;
   /** AI 草稿随最终提交带回，仅用于记录人工纠错 */
   aiAssist?: { sourceText: string; draft: Record<string, unknown> };
+  /** 报修入口：AI 随手拍 / 完整表单，用于功能使用统计 */
+  entryMode?: 'quick_ai' | 'form';
   content: string;
   attachments?: string[];
   /**

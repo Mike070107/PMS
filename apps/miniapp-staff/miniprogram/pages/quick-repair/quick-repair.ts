@@ -375,6 +375,7 @@ Page({
     this.setData({ submitting: true, errorMsg: '' });
     try {
       await repairs.create({
+        entryMode: 'quick_ai',
         communityId: detected.communityId!,
         buildingId: detected.buildingId ?? undefined,
         houseId: detected.houseId ?? undefined,

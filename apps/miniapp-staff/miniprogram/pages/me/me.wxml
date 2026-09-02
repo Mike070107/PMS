@@ -63,6 +63,17 @@
     </view>
   </view>
 
+  <view class="card entries">
+    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onFeedback">
+      <view class="entry-icon"><view class="entry-icon__glyph icon-menu--message"></view></view>
+      <view class="entry__body">
+        <view class="entry__title">反馈异常</view>
+        <view class="entry__desc">操作失败、数据不对或不好用，自动带上出错页面和最近错误</view>
+      </view>
+      <view class="entry__arrow"></view>
+    </view>
+  </view>
+
   <!-- 「材料与库存」不再放这里：底部 tabBar 已经有那一格，而且两处是同一个权限
        （app:inventory · 可见），看得到入口的人底部一定也有，重复放只是让这一屏更长 -->
 

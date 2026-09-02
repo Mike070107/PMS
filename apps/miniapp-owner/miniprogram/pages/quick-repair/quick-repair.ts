@@ -502,6 +502,7 @@ Page({
     this.setData({ submitting: true });
     try {
       const resp = await repairs.create({
+        entryMode: 'quick_ai',
         // 描述里识别到了地址就按识别结果提交（id 和文案一起换，不能只换显示）；
         // 否则维持默认：公共区域的单不能挂到业主房号上 —— 挂了工单看着像入户维修，
         // 维修工会去敲门，统计上也把公区故障算进了这户

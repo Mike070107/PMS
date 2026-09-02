@@ -102,6 +102,11 @@ export class CreateRepairRequestDto {
   @ValidateNested()
   @Type(() => AiAssistTraceDto)
   aiAssist?: AiAssistTraceDto;
+
+  /** 只用于区分功能使用统计：随手拍 AI 入口 / 完整表单入口。 */
+  @IsOptional()
+  @IsIn(['quick_ai', 'form'])
+  entryMode?: 'quick_ai' | 'form';
 }
 
 /** 随手拍：从描述文字里识别报修地址（「一期24号302」→ 库里真实的楼栋/房号） */

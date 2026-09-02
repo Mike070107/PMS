@@ -4,6 +4,7 @@ import { USER_ROLE_LABELS, type MeResp } from '@pms/shared-types';
 import { clearSession, getSession } from '../../utils/session';
 import { clearAccessCache, rememberPoolMode, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, getSubscribeState, refreshUnread } from '../../utils/unread';
+import { openFeedback } from '../../utils/feedback';
 
 // 版本号和 git hash 由发版脚本写入 utils/buildStamp.ts，别在这里手改（见那个文件的说明）
 
@@ -112,6 +113,10 @@ Page({
 
   onOpenMessages() {
     wx.navigateTo({ url: '/pages/messages/messages' });
+  },
+
+  onFeedback() {
+    void openFeedback();
   },
 
   /** 用户主动点「开启新工单提醒」：要给明确反馈，不能静默失败 */

@@ -34,6 +34,8 @@ export class ObservabilityInterceptor implements NestInterceptor {
         ipAddress: clientIp(req),
         userAgent: req.headers['user-agent'] || null,
         errorMessage: safeErrorMessage(error),
+        body: req.body,
+        result,
       };
       void this.observability.captureRequest(capture);
 
@@ -70,6 +72,7 @@ function shouldAuditOperation(req: Request, actorUserId: number | null) {
   const path = String(req.originalUrl || req.url).split('?')[0];
   return !path.includes('/observability/page-view')
     && !path.includes('/observability/client-errors')
+    && !path.includes('/observability/feedback')
     && !path.includes('/auth/refresh')
     && !path.match(/\/notifications\/(read-all|\d+\/read)$/);
 }

@@ -68,6 +68,15 @@
         </view>
         <view class="icon icon--chevron"></view>
       </view>
+
+      <view wx:if="{{user}}" class="list__row" bindtap="onFeedback">
+        <view class="icon icon--doc list__icon"></view>
+        <view class="list__body">
+          <view class="list__title">反馈异常</view>
+          <view class="list__desc">报错、数据不对或不好用，会自动带上出错页面</view>
+        </view>
+        <view class="icon icon--chevron"></view>
+      </view>
     </view>
 
     <view wx:if="{{user}}" class="card list">

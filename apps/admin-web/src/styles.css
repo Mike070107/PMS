@@ -1863,6 +1863,40 @@ body.pms-col-resizing * {
 .pms-chart-legend .is-error { background: #dc5f69; }
 .pms-memory-row { margin-top: 15px; }
 
+.pms-feedback-trigger {
+  color: #3f635d;
+  background: #f3f8f6;
+  border-color: #d7e6e2;
+}
+
+.pms-feedback-trigger:hover {
+  color: #21685c !important;
+  background: #e9f4f1 !important;
+  border-color: #9fc7bf !important;
+}
+
+.pms-log-table-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.pms-log-table-head h4 { margin: 0 0 3px !important; }
+
+.pms-feedback-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  background: #f5f9f8;
+  border: 1px solid #e0ebe8;
+  border-radius: 10px;
+}
+
 .pms-filter-bar {
   display: flex;
   align-items: center;
@@ -1884,6 +1918,7 @@ body.pms-col-resizing * {
   .pms-page-toolbar { align-items: stretch; flex-direction: column; }
   .pms-filter-bar > * { width: 100% !important; }
   .pms-hourly-chart { gap: 3px; }
+  .pms-feedback-detail-head { align-items: flex-start; flex-direction: column; }
 }
 
 /* 二级工作区：详情抽屉、弹窗和 Tab 不再沿用组件库的默认白板样式。 */

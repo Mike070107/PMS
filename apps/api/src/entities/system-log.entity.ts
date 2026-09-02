@@ -14,7 +14,7 @@ export class SystemLog extends BaseEntity {
   tenantId: number | null;
 
   @Column({ type: 'varchar', length: 20 })
-  category: 'login' | 'operation' | 'error' | 'alert' | 'usage';
+  category: 'login' | 'operation' | 'error' | 'alert' | 'usage' | 'feedback';
 
   @Column({ type: 'varchar', length: 12, default: 'info' })
   level: 'info' | 'warning' | 'error';

@@ -1,11 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, LessThan, MoreThan, Repository } from 'typeorm';
 import * as os from 'node:os';
 import type { Request } from 'express';
 import { AuthUser } from '../../common/current-user.decorator';
 import { RequestMetric, SystemLog, User } from '../../entities';
-import { ClientErrorDto, PageViewDto, SystemLogQueryDto } from './dto';
+import { AccessService } from '../access/access.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { resolveBusinessAction } from './business-action';
+import {
+  ClientErrorDto,
+  FeedbackStatusDto,
+  PageViewDto,
+  SystemLogQueryDto,
+  UserFeedbackDto,
+} from './dto';
 
 export interface DetectedAlert {
   id: number;
@@ -27,6 +36,8 @@ interface RequestCapture {
   ipAddress?: string | null;
   userAgent?: string | null;
   errorMessage?: string | null;
+  body?: unknown;
+  result?: unknown;
 }
 
 @Injectable()
@@ -36,6 +47,8 @@ export class ObservabilityService {
     @InjectRepository(RequestMetric) private readonly metricRepo: Repository<RequestMetric>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly access: AccessService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** 指标和审计是旁路：任何写入失败都不能影响业务请求。 */
@@ -79,12 +92,18 @@ export class ObservabilityService {
 
   async recordOperation(input: RequestCapture) {
     try {
+      const business = resolveBusinessAction(
+        input.method,
+        input.path,
+        input.body,
+        input.result,
+      );
       await this.saveLog({
         tenantId: input.tenantId,
         category: 'operation',
         level: input.statusCode >= 400 ? 'warning' : 'info',
         source: input.source,
-        action: `${input.method.toUpperCase()} ${normalizePath(input.path)}`,
+        action: business.code,
         success: input.statusCode < 400,
         actorUserId: input.actorUserId,
         ipAddress: input.ipAddress,
@@ -93,8 +112,18 @@ export class ObservabilityService {
         requestPath: input.path,
         statusCode: input.statusCode,
         durationMs: input.durationMs,
-        message: input.statusCode < 400 ? '操作成功' : input.errorMessage || '操作失败',
-        detail: null,
+        message:
+          input.statusCode < 400
+            ? business.label
+            : `${business.label}失败：${input.errorMessage || '未知原因'}`,
+        detail: {
+          operationLabel: business.label,
+          businessArea: business.area,
+          objectType: business.objectType || null,
+          objectId: business.objectId || null,
+          ...(business.detail || {}),
+          ...(input.errorMessage ? { errorMessage: input.errorMessage } : {}),
+        },
       });
     } catch {
       /* 旁路失败不阻断主流程 */
@@ -185,6 +214,67 @@ export class ObservabilityService {
     return { ok: true };
   }
 
+  /** 用户主动反馈：自动带当前页面和最近错误，并通知有日志查看权的管理员。 */
+  async recordUserFeedback(user: AuthUser, dto: UserFeedbackDto, req: Request) {
+    const tenantId = requireTenant(user);
+    const source = sourceFromRequest(req);
+    const saved = await this.saveLog({
+      tenantId,
+      category: 'feedback',
+      level: dto.type === 'error' || dto.type === 'data_issue' ? 'warning' : 'info',
+      source,
+      action: 'user_feedback',
+      success: false,
+      actorUserId: user.id,
+      ipAddress: clientIp(req),
+      userAgent: req.headers['user-agent'],
+      requestMethod: null,
+      requestPath: dto.route || null,
+      statusCode: null,
+      durationMs: null,
+      message: dto.message,
+      detail: {
+        feedbackType: dto.type,
+        feedbackStatus: 'new',
+        pageTitle: dto.pageTitle || null,
+        version: dto.version || null,
+        errorMessage: dto.errorMessage || null,
+        context: safeFeedbackContext(dto.context),
+        history: [{ status: 'new', at: new Date().toISOString(), by: user.id }],
+      },
+    });
+
+    const receivers = await this.access.userIdsWithPermission(tenantId, 'logs', 'view');
+    await Promise.all(
+      receivers
+        .filter((id) => id !== user.id)
+        .map((receiverId) =>
+          this.notifications.notifyUser({
+            tenantId,
+            receiverId,
+            eventKey: 'user_feedback',
+            title: '收到用户异常反馈',
+            payload: { feedbackId: saved.id, source, route: dto.route || '' },
+            page: '/pages/messages/messages',
+          }),
+        ),
+    );
+    return { ok: true, id: saved.id };
+  }
+
+  async updateFeedbackStatus(id: number, dto: FeedbackStatusDto, user: AuthUser) {
+    const tenantId = requireTenant(user);
+    const row = await this.logRepo.findOne({ where: { id, tenantId, category: 'feedback' } });
+    if (!row) throw new NotFoundException('反馈记录不存在');
+    const detail = { ...(row.detail || {}) } as Record<string, any>;
+    const history = Array.isArray(detail.history) ? detail.history.slice(-19) : [];
+    history.push({ status: dto.status, note: dto.note?.trim() || null, at: new Date().toISOString(), by: user.id });
+    row.detail = { ...detail, feedbackStatus: dto.status, handlingNote: dto.note?.trim() || null, history };
+    row.success = dto.status === 'resolved';
+    row.updatedBy = user.id;
+    return this.logRepo.save(row);
+  }
+
   async list(user: AuthUser, query: SystemLogQueryDto) {
     const tenantId = requireTenant(user);
     const qb = this.logRepo.createQueryBuilder('log').where('log.tenant_id = :tenantId', { tenantId });
@@ -192,6 +282,11 @@ export class ObservabilityService {
     if (query.level) qb.andWhere('log.level = :level', { level: query.level });
     if (query.source) qb.andWhere('log.source = :source', { source: query.source });
     if (query.success) qb.andWhere('log.success = :success', { success: query.success === 'true' });
+    if (query.feedbackStatus) {
+      qb.andWhere("log.detail ->> 'feedbackStatus' = :feedbackStatus", {
+        feedbackStatus: query.feedbackStatus,
+      });
+    }
     if (query.from) qb.andWhere('log.created_at >= :from', { from: new Date(query.from) });
     if (query.to) qb.andWhere('log.created_at <= :to', { to: new Date(query.to) });
     if (query.keyword?.trim()) {
@@ -208,12 +303,26 @@ export class ObservabilityService {
       : [];
     const userById = new Map(users.map((row) => [row.id, row]));
     return {
-      list: rows.map((row) => ({
-        ...row,
-        actorName: row.actorUserId
-          ? userById.get(row.actorUserId)?.name || userById.get(row.actorUserId)?.loginAccount || `用户 #${row.actorUserId}`
-          : '系统',
-      })),
+      list: rows.map((row) => {
+        const legacyBusiness = row.category === 'operation' && !row.detail?.operationLabel
+          ? resolveBusinessAction(row.requestMethod || row.action.split(' ')[0] || '', row.requestPath || row.action.replace(/^\w+\s+/, ''))
+          : null;
+        return {
+          ...row,
+          detail: legacyBusiness
+            ? {
+                ...(row.detail || {}),
+                operationLabel: legacyBusiness.label,
+                businessArea: legacyBusiness.area,
+                objectType: legacyBusiness.objectType || null,
+                objectId: legacyBusiness.objectId || null,
+              }
+            : row.detail,
+          actorName: row.actorUserId
+            ? userById.get(row.actorUserId)?.name || userById.get(row.actorUserId)?.loginAccount || `用户 #${row.actorUserId}`
+            : '系统',
+        };
+      }),
       total,
       page,
       pageSize,
@@ -229,7 +338,7 @@ export class ObservabilityService {
     try { await this.dataSource.query('SELECT 1'); } catch { dbStatus = 'down'; }
     const dbLatencyMs = Date.now() - started;
 
-    const [summary, sources, routes, pages, hours, logCounts] = await Promise.all([
+    const [summary, sources, routes, pages, hours, logCounts, operations] = await Promise.all([
       this.metricRepo.createQueryBuilder('m')
         .select('COUNT(*)', 'requests')
         .addSelect('COUNT(*) FILTER (WHERE m.status_code >= 500)', 'errors')
@@ -265,6 +374,23 @@ export class ObservabilityService {
         .select('log.category', 'category').addSelect('COUNT(*)', 'count')
         .where('log.tenant_id = :tenantId AND log.created_at >= :since', { tenantId, since })
         .groupBy('log.category').getRawMany(),
+      this.logRepo.createQueryBuilder('log')
+        .select('log.action', 'action')
+        .addSelect("COALESCE(log.detail->>'operationLabel', log.message)", 'label')
+        .addSelect("COALESCE(log.detail->>'businessArea', '其他')", 'area')
+        .addSelect('COUNT(*)', 'uses')
+        .addSelect('COUNT(DISTINCT log.actor_user_id)', 'users')
+        .addSelect('COUNT(*) FILTER (WHERE log.success = false)', 'failures')
+        .where("log.tenant_id = :tenantId AND log.category = 'operation' AND log.created_at >= :since30d", {
+          tenantId,
+          since30d: new Date(Date.now() - 30 * 24 * 3600 * 1000),
+        })
+        .groupBy('log.action')
+        .addGroupBy("COALESCE(log.detail->>'operationLabel', log.message)")
+        .addGroupBy("COALESCE(log.detail->>'businessArea', '其他')")
+        .orderBy('COUNT(*)', 'DESC')
+        .limit(12)
+        .getRawMany(),
     ]);
 
     const memory = process.memoryUsage();
@@ -276,6 +402,7 @@ export class ObservabilityService {
       pages: pages.map(numericRow),
       hours: hours.map(numericRow),
       logCounts: Object.fromEntries(logCounts.map((row) => [row.category, Number(row.count || 0)])),
+      operations: operations.map(numericRow),
       runtime: {
         status: dbStatus === 'up' ? 'healthy' : 'unhealthy',
         dbStatus,
@@ -371,6 +498,16 @@ export class ObservabilityService {
       updatedBy: input.actorUserId ?? null,
     }));
   }
+}
+
+function safeFeedbackContext(value?: Record<string, unknown>) {
+  if (!value) return null;
+  const allowed = ['method', 'url', 'code', 'httpStatus', 'at', 'route', 'orderId', 'stockId', 'warehouseId'];
+  return Object.fromEntries(
+    allowed
+      .filter((key) => value[key] !== undefined)
+      .map((key) => [key, typeof value[key] === 'string' ? String(value[key]).slice(0, 300) : value[key]]),
+  );
 }
 
 export function sourceFromRequest(req: Request): string {

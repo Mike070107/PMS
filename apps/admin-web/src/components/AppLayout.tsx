@@ -29,6 +29,7 @@ import { request } from '../lib/api';
 import { auth, pagePerm, useAuth } from '../lib/auth';
 import BrandLogo from './BrandLogo';
 import NotificationBell from './NotificationBell';
+import FeedbackButton from './FeedbackButton';
 
 const { Header, Sider, Content } = Layout;
 
@@ -301,6 +302,7 @@ export default function AppLayout() {
             </div>
           </div>
           <div className="pms-header-actions">
+            {hasTenantScope && <FeedbackButton pageTitle={pageTitle} compact={isMobile} />}
             {showOfficeSwitcher && (
               <Select
                 className="pms-office-switcher"

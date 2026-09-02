@@ -649,6 +649,7 @@ Page({
     this.setData({ submitting: true });
     try {
       const resp = await repairs.create({
+        entryMode: 'form',
         communityId: detected?.matched ? detected.communityId! : (communityId as number),
         ...ids,
         addressText,

@@ -3,6 +3,7 @@ import { refreshUnreadBadge } from '../../utils/unread';
 import { maskPhone } from '@pms/miniapp-ui';
 import { buildStampText } from '../../utils/buildStamp';
 import { AuditStatus, type MeResp } from '@pms/shared-types';
+import { openFeedback } from '../../utils/feedback';
 
 // 版本号和 git hash 由发版脚本写入 utils/buildStamp.ts，别在这里手改（见那个文件的说明）
 
@@ -86,6 +87,10 @@ Page({
       showCancel: false,
       confirmText: '知道了',
     });
+  },
+
+  onFeedback() {
+    void openFeedback();
   },
 
   onTapOnboard() {

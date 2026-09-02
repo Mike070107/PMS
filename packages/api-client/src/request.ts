@@ -35,6 +35,23 @@ export class ApiError extends Error {
   }
 }
 
+export interface LastApiFailure {
+  method: string;
+  url: string;
+  message: string;
+  code: number;
+  httpStatus?: number;
+  at: string;
+  route?: string;
+}
+
+let lastApiFailure: LastApiFailure | null = null;
+
+/** 供“反馈异常”自动附带最近一次请求失败，不包含请求表单和个人信息。 */
+export function getLastApiFailure(): LastApiFailure | null {
+  return lastApiFailure ? { ...lastApiFailure } : null;
+}
+
 function buildUrl(
   base: string,
   path: string,
@@ -239,7 +256,32 @@ export function request<T = unknown>(opts: RequestOptions): Promise<T> {
     if (token) header['Authorization'] = `Bearer ${token}`;
     Object.assign(header, config.getExtraHeaders?.() ?? {});
   }
-  return hasWxRequest()
+  const pending = hasWxRequest()
     ? requestViaWx<T>(url, opts, header)
     : requestViaFetch<T>(url, opts, header);
+  return pending.catch((error: any) => {
+    lastApiFailure = {
+      method: opts.method || 'GET',
+      url: opts.url,
+      message: String(error?.message || '请求失败').slice(0, 500),
+      code: Number(error?.code || -1),
+      httpStatus: error?.httpStatus,
+      at: new Date().toISOString(),
+      route: currentClientRoute(),
+    };
+    throw error;
+  });
+}
+
+function currentClientRoute(): string | undefined {
+  try {
+    if (hasWxRequest()) {
+      // @ts-ignore — 小程序运行时全局函数
+      const pages = getCurrentPages();
+      const current = pages[pages.length - 1];
+      return current?.route ? `/${current.route}` : undefined;
+    }
+    if (typeof window !== 'undefined') return `${window.location.pathname}${window.location.search}`;
+  } catch {}
+  return undefined;
 }
