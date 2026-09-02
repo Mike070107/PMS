@@ -30,6 +30,9 @@
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23536c84' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E");
   background-position: 20rpx center, right 20rpx center;
   background-size: 32rpx 32rpx, 30rpx 30rpx;
+  font-size: 35rpx;
+  font-weight: 500;
+  line-height: 1.5;
 }
 
 /* z-index 按 app.wxss 顶部那份「层级账本」来：员工端 tabBar 是页面内的悬浮胶囊（100），
