@@ -1548,3 +1548,9 @@
 - ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.json，M apps/miniapp-staff/miniprogram/pages/feedback/feedback.ts，M apps/miniapp-staff/miniprogram/pages/me/me.ts，M apps/miniapp-staff/miniprogram/pages/me/me.wxml，M apps/miniapp-staff/miniprogram/pages/messages/messages.ts，M apps/miniapp-staff/miniprogram/utils/feedback.ts，M packages/api-client/src/endpoints/observability.ts，M packages/api-client/src/index.ts，?? apps/miniapp-staff/miniprogram/pages/feedback-history/
 - 自上次（4d6b38f）以来没有相关提交（重新部署）
 
+## 2026-09-02 15:31 · miniapp-owner · e4a52b6
+
+- 提交：e4a52b6 deploy: miniapp-staff → d1b57e9
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-owner/miniprogram/app.json，M apps/miniapp-owner/miniprogram/pages/me/me.ts，M apps/miniapp-owner/miniprogram/pages/me/me.wxml，M apps/miniapp-owner/miniprogram/pages/messages/messages.ts，M apps/miniapp-owner/miniprogram/pages/messages/messages.wxml，M apps/miniapp-owner/miniprogram/utils/feedback.ts，M packages/api-client/src/endpoints/observability.ts，M packages/api-client/src/index.ts，?? apps/miniapp-owner/miniprogram/pages/feedback-history/
+- 自上次（4d6b38f）以来没有相关提交（重新部署）
+
