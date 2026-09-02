@@ -4,12 +4,32 @@ SaaS 多物业公司的物业管理系统，一期聚焦报修闭环：业主报
 
 完整需求见 [`docs/PRD.md`](docs/PRD.md)。
 
+## 唯一开发入口
+
+- 唯一长期工作目录：`D:\00项目开发\PMS`
+- 唯一集成主线：`main`
+- `origin/main` 是代码事实来源；线上版本另由 `deployed/api`、`deployed/web`、
+  `deployed/miniapp-owner`、`deployed/miniapp-staff` 标签记录。
+- 名称带 `PMS-*` 的其它目录都是历史或临时 worktree，不作为后续修改入口。
+
+每次开始修改前先执行：
+
+```powershell
+Set-Location 'D:\00项目开发\PMS'
+git switch main
+git pull --ff-only
+git status --short
+```
+
+完整的分支、并行开发、合并与部署约定见
+[`docs/development-workflow.md`](docs/development-workflow.md)。
+
 ## 技术栈
 
 | 端 | 技术 |
 |---|---|
 | 后端 API | NestJS 10 + TypeORM + PostgreSQL 16 + Redis + MinIO/对象存储 |
-| 管理后台 | Next.js（`apps/admin-web`，待开发） |
+| 管理后台 | React + Vite（`apps/admin-web`，已上线） |
 | 业主小程序 | 微信小程序「邻修」（`apps/miniapp-owner`，AppID `wx002fde4bfaa4c7d9`） |
 | 员工小程序 | 微信小程序「邻修管理」（`apps/miniapp-staff`，AppID `wx8ef4de0e498064c4`） |
 
@@ -103,6 +123,6 @@ curl http://localhost:4000/api/v1/health
 - [x] 业主端微信登录 + 入驻（AppID 已接入，线上闭环）
 - [x] 员工端微信登录：手机号一键登录 / 账号密码兜底 + 微信绑定与后台解绑
 - [x] 小程序业务闭环：扫码报修 → 工单池抢单 → 完工上传 → 业主验收/催单/撤单
-- [ ] 材料库存 + 三级采购审批
-- [ ] 订阅消息通知 + 数据看板（模板 ID 待申请）
+- [x] 材料库存、库存盘点、缺料汇总与采购审批
+- [x] 订阅消息通知基础闭环 + 数据看板
 - [ ] 两个小程序业务页面完善与提审发布

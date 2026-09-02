@@ -4,18 +4,27 @@
 > 本文件解决的是「一边开发一边测出 bug、多个会话并行」时反复出现的三类事故：
 > 指令被吞、改动互相覆盖、推送/部署遗漏。
 
-## 一、一个会话只干一件事（硬性）
+## 一、唯一主目录与分支（硬性）
 
-- **一个任务 = 一个分支 = 一个 worktree = 一个 Claude 会话。**
-  绝不在同一个目录里开第二个会话做另一件事 —— 两个会话共用同一个 git 索引和工作区，
-  A 的 `git add` 会把 B 的半成品一起提交推走（见 `deploy/mark-deployed.mjs` 顶部注释）。
-- 需要并行时用 worktree，不要开第二个窗口指向同一目录：
+- **唯一长期工作目录是 `D:\00项目开发\PMS`，唯一集成主线是 `main`。**
+  不要再进入 `PMS-theme-deploy`、`PMS-stocktake`、`PMS-web-stocktake` 等历史目录继续开发。
+- 默认在唯一主目录中从最新 `main` 建一个短期任务分支；任务完成后合回 `main` 并删除任务分支：
   ```powershell
-  pwsh tools/wt.ps1 new fix-repair-time   # 建 ../PMS-fix-repair-time 并切到 feat/fix-repair-time
-  pwsh tools/wt.ps1 list
-  pwsh tools/wt.ps1 done fix-repair-time  # 合回 main 后删除
+  Set-Location 'D:\00项目开发\PMS'
+  git switch main
+  git pull --ff-only
+  git switch -c codex/fix-repair-time
+  # 修改、测试、提交
+  git switch main
+  git pull --ff-only
+  git merge --ff-only codex/fix-repair-time
+  git push origin main
+  git branch -d codex/fix-repair-time
   ```
-- 会话与目录绑定后，**开工第一件事**跑 `/start`，收尾跑 `/ship`。
+- 只有两个任务确实需要同时执行时才创建临时 worktree，并做到“一任务一分支一会话”。
+  临时 worktree 必须在任务合回 `main` 后马上删除，不得把 `*-deploy` 目录长期保留为第二主线。
+- 两个会话绝不能同时指向同一个目录；那会共享 Git 索引，导致提交夹带别人的半成品。
+- 开工第一件事跑 `/start`，收尾跑 `/ship`。完整流程见 `docs/development-workflow.md`。
 
 ## 二、测试中发现 bug：写进收件箱，不要打断正在跑的会话
 
@@ -45,7 +54,8 @@
 - 推送 ≠ 上线。三个目标各自独立：git / 线上 API+后台 / 小程序包。
   部署完必须 `node deploy/mark-deployed.mjs <目标>` 打标记，
   推送前先 `node deploy/mark-deployed.mjs status` 看哪些提交还没上线。
-- 打包一律从干净 worktree（`../PMS-deploy`）出，别把别人的未提交改动打进线上包。
+- 打包一律从已经合并并保持干净的 `D:\00项目开发\PMS` 主目录执行。
+  如主目录正在进行未完成任务，先完成或暂停并恢复干净状态，不得换到历史 `*-deploy` 目录发布旧代码。
 
 ## 四、上下文纪律
 
