@@ -1392,3 +1392,11 @@
   - d6ab216 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
   - 4cb3c94 fix: 允许维修工从工单池主动接单
 
+## 2026-09-02 13:44 · api · 9309994
+
+- 包：`pms-api-20260902-1338.tar.gz`
+- 提交：9309994 feat: 完善采购申请与工单处理
+- 说明：采购申请与工单处理完善；生产直连及公网健康检查通过
+- 自上次（d6ab216）以来上线的相关提交：
+  - 9309994 feat: 完善采购申请与工单处理
+
