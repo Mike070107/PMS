@@ -1618,3 +1618,11 @@
 - 自上次（f762f91）以来上线的相关提交：
   - 861b4cb fix: restore independent stocktake permissions
 
+## 2026-09-02 18:29 · api · e2fd1fe
+
+- 包：`pms-api-20260902-1824.tar.gz`
+- 提交：e2fd1fe fix: reconcile stocktake movements during review
+- 说明：盘点复核并发冲突修复
+- 自上次（861b4cb）以来上线的相关提交：
+  - e2fd1fe fix: reconcile stocktake movements during review
+
