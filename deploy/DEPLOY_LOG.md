@@ -1642,3 +1642,15 @@
 - 自上次（e2fd1fe）以来上线的相关提交：
   - b7afa4c style: 统一三端清爽蓝适老主题
 
+## 2026-09-02 18:43 · miniapp-staff · 9dc6ca9
+
+- 提交：9dc6ca9 deploy: web → b7afa4c
+- 说明：已上传微信开发版本 1.0.20260902j（9dc6ca9），清爽蓝适老主题
+- 自上次（d1b57e9）以来上线的相关提交：
+  - b7afa4c style: 统一三端清爽蓝适老主题
+  - e2fd1fe fix: reconcile stocktake movements during review
+  - 861b4cb fix: restore independent stocktake permissions
+  - 2d944ef fix: expose work order delete actions in lists
+  - e3fc848 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
+  - 8bed144 feat: 支持管理员审计作废工单
+
