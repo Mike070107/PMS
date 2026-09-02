@@ -1384,3 +1384,11 @@
   - d6ab216 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
   - 4cb3c94 fix: 允许维修工从工单池主动接单
 
+## 2026-09-02 13:21 · miniapp-staff · 5ce9537
+
+- 提交：5ce9537 deploy: api → d6ab216
+- 说明：体验版 1.0.20260902c（d6ab216）：权限隔离与主动接单最终版
+- 自上次（890d97d）以来上线的相关提交：
+  - d6ab216 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
+  - 4cb3c94 fix: 允许维修工从工单池主动接单
+
