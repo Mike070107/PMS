@@ -118,7 +118,7 @@ const POOL_FILTERS: PoolFilter[] = [
  */
 const REPORTED_FILTERS: PoolFilter[] = [
   { key: 'all', label: '全部', scope: 'reported' },
-  { key: 'created', label: '待派单', scope: 'reported', status: WorkOrderStatus.CREATED },
+  { key: 'created', label: '待派/待接', scope: 'reported', status: WorkOrderStatus.CREATED },
   { key: 'dispatched', label: '已派单', scope: 'reported', status: WorkOrderStatus.DISPATCHED },
   { key: 'in_progress', label: '维修中', scope: 'reported', status: WorkOrderStatus.IN_PROGRESS },
   { key: 'waiting', label: '等待材料', scope: 'reported', status: WorkOrderStatus.WAITING_MATERIAL },
@@ -559,7 +559,15 @@ Page({
     repairs.list({ scope: 'mine' })
       .then((rows) => setTabBadge(this, 'mine', rows.filter((row) => isActiveOrder(row.status)).length))
       .catch(() => undefined);
-    wx.showToast({ title: '已收入在手工单', icon: 'none', duration: 1200 });
+    wx.showToast({ title: '已接单，正在打开在手工单', icon: 'none', duration: 900 });
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
+    await new Promise<void>((resolve) => {
+      wx.switchTab({
+        url: '/pages/my-orders/my-orders',
+        success: () => resolve(),
+        fail: () => resolve(),
+      });
+    });
   },
 
   // ---------------- 办公室：派单 ----------------

@@ -558,6 +558,21 @@ export const WORK_ORDER_STATUS_LABELS: Record<WorkOrderStatus, string> = {
 };
 
 /**
+ * CREATED 是数据库里的「尚未开工」状态，业务上还要按分流结果再分两种：
+ * 没有候选维修工 = 等办公室派单；已按报修类型匹配到工种候选人 = 等维修工接单。
+ * 列表、详情、业主端都必须走这一个函数，不能再直接拿 CREATED 的固定文案。
+ */
+export function workOrderStatusText(
+  status: WorkOrderStatus | string,
+  candidateIds?: number[] | null,
+): string {
+  if (status === WorkOrderStatus.CREATED) {
+    return candidateIds?.length ? '待接单' : '待派单';
+  }
+  return WORK_ORDER_STATUS_LABELS[status as WorkOrderStatus] || status;
+}
+
+/**
  * 工单类型 / 要求完成截止日期只允许在「待维修阶段」（待派单、已派单）改。
  * 维修工一开工就按类型领了料、按截止排了班，事后再改会让轨迹和统计对不上号，
  * 所以后台详情里这两项过了这个阶段就置灰（2026-08-26 要求）。

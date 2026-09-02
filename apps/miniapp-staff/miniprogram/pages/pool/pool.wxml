@@ -139,7 +139,7 @@
           <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>
           <text>等待材料</text>
         </view>
-        <pms-tag status="{{item.status}}"/>
+        <pms-tag status="{{item.status}}" label="{{item.statusText}}"/>
       </view>
       <view class="waiting-fold__addr">
         <view class="icon icon--pin"></view>

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { workOrderStatusText } from '../../../../../packages/shared-types/src';
 import { WorkOrderStatus } from '../../common/enums';
 import {
   assertWorkOrderTransition,
@@ -7,6 +8,14 @@ import {
 } from './work-order-state-machine';
 
 test('allows the supported repair lifecycle transitions', () => {
+  assert.equal(
+    canTransitionWorkOrder(
+      WorkOrderStatus.CREATED,
+      WorkOrderStatus.IN_PROGRESS,
+      'claim',
+    ),
+    true,
+  );
   assert.equal(
     canTransitionWorkOrder(
       WorkOrderStatus.CREATED,
@@ -49,4 +58,10 @@ test('rejects a target state reached through the wrong action', () => {
       'cancel',
     ),
   );
+});
+
+test('shows created orders as pending dispatch or pending acceptance by routing result', () => {
+  assert.equal(workOrderStatusText('created', []), '待派单');
+  assert.equal(workOrderStatusText('created', [18]), '待接单');
+  assert.equal(workOrderStatusText('in_progress', [18]), '维修中');
 });

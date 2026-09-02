@@ -6,6 +6,7 @@ import {
   REPAIR_TYPE_LABELS,
   stayDays,
   stayTone,
+  workOrderStatusText,
 } from '@pms/shared-types';
 
 /**
@@ -112,10 +113,7 @@ export function withOrderLabels<
       urgent: !!item.urgent || stayTone(days) === 'danger',
       missingText: missingMaterialsText(item.missingMaterials),
       reporterText,
-      statusText:
-        item.status === 'created'
-          ? item.candidateIds?.length ? '待接单' : '待派单'
-          : '',
+      statusText: workOrderStatusText(item.status || '', item.candidateIds),
       statStayLabel: item.completedAt ? '用时' : '已等',
       // 当天的写「今天 / 当天」而不是「0天」——「0」放大到 44rpx 看着像出错了
       statStay: days >= 1 ? `${days}天` : item.completedAt ? '当天' : '今天',

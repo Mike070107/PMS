@@ -12,7 +12,7 @@
     <view class="site-card {{urgent ? 'site-card--urgent' : ''}}">
       <view class="site-card__head">
         <view class="site-card__tags"><text wx:if="{{urgent}}" class="badge--urgent">紧急</text><text class="site-card__type">{{typeLabel}}</text></view>
-        <pms-tag class="status-tag" status="{{detail.workOrder.status}}"/>
+        <pms-tag class="status-tag" status="{{detail.workOrder.status}}" label="{{currentStatusText}}"/>
       </view>
       <view class="site-card__number">工单编号：{{detail.workOrder.orderNo}}</view>
 

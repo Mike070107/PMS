@@ -16,6 +16,7 @@ import {
   stayDaysText,
   stayTone,
   stayDays,
+  workOrderStatusText,
   WorkOrderStatus,
   type WorkOrderStockOption,
   type WorkOrderStockWarehouse,
@@ -169,6 +170,7 @@ function splitMaterialRows(rows: CollectedMaterialRow[]) {
 interface PageData {
   id: string;
   detail: WorkOrderDetail | null;
+  currentStatusText: string;
   typeLabel: string;
   createdAtText: string;
   /** 从业主提交那刻算起的停留天数，工单池里最该被看见的信息 */
@@ -260,6 +262,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   data: {
     id: '',
     detail: null,
+    currentStatusText: '',
     typeLabel: '',
     createdAtText: '',
     stayText: '',
@@ -370,6 +373,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       );
       this.setData({
         detail,
+        currentStatusText: workOrderStatusText(status, detail.workOrder.candidateIds),
         // 中文类型名以后端为准，租户自建的类型端上认不出（会显示成 menjing 这种编码）
         typeLabel:
           detail.request?.repairTypeLabel ||
@@ -502,8 +506,15 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.setData({ busy: true, errorMsg: '' });
     try {
       await repairs.accept(this.data.id);
-      wx.showToast({ title: '已接单' });
-      this.load();
+      wx.showToast({ title: '已接单，正在打开在手工单', icon: 'none', duration: 900 });
+      await new Promise<void>((resolve) => setTimeout(resolve, 300));
+      await new Promise<void>((resolve) => {
+        wx.switchTab({
+          url: '/pages/my-orders/my-orders',
+          success: () => resolve(),
+          fail: () => resolve(),
+        });
+      });
     } catch (e: any) {
       this.setData({ errorMsg: e?.message || '接单失败' });
     } finally {

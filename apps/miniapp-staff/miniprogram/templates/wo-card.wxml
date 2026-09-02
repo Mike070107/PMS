@@ -48,7 +48,7 @@
         </view>
       </view>
     </view>
-    <pms-tag class="status-tag" status="{{item.status}}"/>
+    <pms-tag class="status-tag" status="{{item.status}}" label="{{item.statusText}}"/>
   </view>
 
   <view class="wo-card__chips">

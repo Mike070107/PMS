@@ -26,7 +26,12 @@ Component({
   data: { text: '', color: '' },
   observers: {
     'status,label'(status, label) {
-      this.setData({ text: label || labelMap[status] || status, color: colorMap[status] || '#8c8c8c' });
+      this.setData({
+        text: label || labelMap[status] || status,
+        // CREATED 已经匹配到工种时是「等维修工确认」，用处理中的蓝色；
+        // 真正等办公室派单才保留黄色提醒。
+        color: label === '待接单' ? '#1677ff' : colorMap[status] || '#8c8c8c',
+      });
     },
   },
 });
