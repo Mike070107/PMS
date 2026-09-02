@@ -1234,3 +1234,12 @@
   - 1de1201 feat: 增加库存盘点并统一员工端界面
   - 5fbadfe fix: 按管理处分流报修并优化类型配置
 
+## 2026-09-02 09:26 · web · 0309bb1
+
+- 包：`pms-web-20260902-0919.tar.gz`
+- 提交：0309bb1 deploy: api → 1de1201
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
+- 自上次（e323534）以来上线的相关提交：
+  - 1de1201 feat: 增加库存盘点并统一员工端界面
+  - 5fbadfe fix: 按管理处分流报修并优化类型配置
+
