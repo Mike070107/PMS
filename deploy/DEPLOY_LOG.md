@@ -1654,3 +1654,14 @@
   - e3fc848 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
   - 8bed144 feat: 支持管理员审计作废工单
 
+## 2026-09-02 18:44 · miniapp-owner · dea7edb
+
+- 提交：dea7edb deploy: miniapp-staff → 9dc6ca9
+- 说明：已上传微信开发版本 1.0.20260902h（dea7edb），清爽蓝适老主题
+- 自上次（e4a52b6）以来上线的相关提交：
+  - b7afa4c style: 统一三端清爽蓝适老主题
+  - 861b4cb fix: restore independent stocktake permissions
+  - 2d944ef fix: expose work order delete actions in lists
+  - e3fc848 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
+  - 8bed144 feat: 支持管理员审计作废工单
+
