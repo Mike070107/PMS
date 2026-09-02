@@ -1461,3 +1461,11 @@
   - 876f068 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
   - 3f14d39 feat: 完善业务日志与异常反馈
 
+## 2026-09-02 14:34 · api · 9be76c3
+
+- 包：`deploy/pms-api-20260902-1427.tar.gz`
+- 提交：9be76c3 feat: 支持反馈上传图片和视频
+- 说明：反馈支持最多4张图片和1个视频；生产健康检查通过
+- 自上次（9c1622d）以来上线的相关提交：
+  - 9be76c3 feat: 支持反馈上传图片和视频
+
