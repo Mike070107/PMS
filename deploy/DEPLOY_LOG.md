@@ -1594,3 +1594,11 @@
 - 自上次（2d944ef）以来上线的相关提交：
   - 59c6dc0 fix: default dispatch and inspection filters
 
+## 2026-09-02 17:50 · web · f762f91
+
+- 包：`pms-web-20260902-1749.tar.gz`
+- 提交：f762f91 fix: normalize legacy stocktake permissions
+- 说明：兼容并清理旧库存盘点权限键，修复模板保存校验失败
+- 自上次（59c6dc0）以来上线的相关提交：
+  - f762f91 fix: normalize legacy stocktake permissions
+
