@@ -1243,3 +1243,15 @@
   - 1de1201 feat: 增加库存盘点并统一员工端界面
   - 5fbadfe fix: 按管理处分流报修并优化类型配置
 
+## 2026-09-02 09:26 · miniapp-owner · 3a77cc1
+
+- 提交：3a77cc1 deploy: web → 0309bb1
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-owner/project.config.json
+- 自上次（ea5aa1f）以来上线的相关提交：
+  - 1de1201 feat: 增加库存盘点并统一员工端界面
+  - 5fbadfe fix: 按管理处分流报修并优化类型配置
+  - e323534 fix: 拆分在手工单与我的报修权限
+  - 42656ca feat: 上线 AI 维修填单助手并修复通知与工单权限
+  - 031767f 员工端加「材料SKU」tab（带搜索），单独一格权限；后台「新增材料」改叫「新增 SKU」
+  - be30952 上传前压图：小程序显式要压缩图 + 上传口兜一道，后台 web 用 canvas 压
+
