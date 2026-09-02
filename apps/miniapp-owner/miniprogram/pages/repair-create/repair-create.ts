@@ -14,7 +14,9 @@ import {
   DEFAULT_LOCATION_SUGGESTIONS,
   REPAIR_TYPE_OPTIONS,
   detectUrgency,
+  extractContact,
   extractFaultDescription,
+  formatReporterRoomLabel,
   urgencyReason,
 } from '@pms/shared-types';
 import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
@@ -228,6 +230,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   dismissedMatch: '' as string,
   /** 人自己点过「紧急」那一行之后，就别再被自动判定覆盖 */
   urgentTouched: false,
+  /** 联系人是业主自己改的时候，AI 识别不能覆盖 */
+  contactTouched: false,
+  phoneTouched: false,
 
   onUnload() {
     if (this.detectTimer) clearTimeout(this.detectTimer);
@@ -300,6 +305,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       const me = await auth.me();
       const place = me.place;
       if (place) {
+        this.contactTouched = false;
         this.setData({
           communityId: place.communityId,
           buildingId: place.buildingId,
@@ -554,6 +560,19 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     if (!this.data.contactPhone && /^1\d{10}$/.test(res.ai?.phone || '')) {
       patch.contactPhone = res.ai?.phone;
     }
+    if (res.publicArea && res.reporterRoomNo) {
+      const spoken = extractContact(content);
+      const spokenName = spoken.name || (res.ai?.contactName || '').trim();
+      const spokenPhone = spoken.phone || (/^1\d{10}$/.test(res.ai?.phone || '') ? res.ai?.phone || '' : '');
+      const roomLabel = formatReporterRoomLabel(res.buildingText, res.reporterRoomNo);
+      // 公区单只采用原话明确说出的联系信息。只说一项时另一项留空，
+      // 两项都没说则用当前房号做联系人标识，不与登录人默认资料混用。
+      if (!this.contactTouched) patch.contactName = spokenName || roomLabel;
+      if (!this.phoneTouched) {
+        patch.contactPhone = spokenPhone;
+        patch['errors.phone'] = '';
+      }
+    }
     this.setData(patch);
   },
 
@@ -580,10 +599,12 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   onContactName(e: WechatMiniprogram.Input) {
+    this.contactTouched = true;
     this.setData({ contactName: e.detail.value });
   },
 
   onPhone(e: WechatMiniprogram.Input) {
+    this.phoneTouched = true;
     this.setData({ contactPhone: e.detail.value, 'errors.phone': '' });
   },
 

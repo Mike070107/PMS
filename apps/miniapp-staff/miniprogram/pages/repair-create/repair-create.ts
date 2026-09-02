@@ -11,6 +11,7 @@ import {
   detectUrgency,
   extractContact,
   extractFaultDescription,
+  formatReporterRoomLabel,
   isVideoUrl,
   MAX_REPAIR_IMAGES,
   MAX_REPAIR_VIDEO_SECONDS,
@@ -147,8 +148,12 @@ Page({
   contactIsDefault: false,
   phoneIsDefault: false,
   phoneTouched: false,
-  /** 代报角色的授权小区；空数组 = 不限（物业员工） */
-  reportCommunityIds: [] as number[],
+  /** 公区报修已经按原话处理过联系人后，不允许异步 loadMe 再把登录人默认值补回来 */
+  suppressContactDefaults: false,
+  /** 当前角色可见小区；null = 全公司，空数组 = 一个小区都没授权 */
+  reportCommunityIds: null as number[] | null,
+  /** 地址簿缓存必须带登录人和范围，避免同一台手机切账号后看到上个人的数据 */
+  addressCacheScope: 'staff:unknown',
   detectTimer: 0 as number,
   /** 人自己点过「紧急」那一行之后，就别再被自动判定覆盖 */
   urgentTouched: false,
@@ -189,16 +194,28 @@ Page({
   },
 
   /**
-   * 员工有租户归属，不传小区就是整个公司的地址簿（不含业主信息）。
-   * 保安/居委会/业委会只能报授权小区，就按授权小区逐个拉再拼起来 ——
-   * 让人选得到却提不了，比一开始就看不到更难受。
+   * 不再由端上逐个小区拼地址簿：后台根据当前业务角色的数据范围统一收窄，
+   * 管理处角色只能拿到该管理处的小区；空范围就返回空集。
    */
   async loadBook() {
     try {
       const scope = this.reportCommunityIds;
-      const book = scope.length
-        ? (await Promise.all(scope.map((id) => loadAddressBook(id).catch(() => [])))).flat()
-        : await loadAddressBook();
+      const book = scope === null
+        ? await loadAddressBook(undefined, this.addressCacheScope)
+        : scope.length
+          ? Array.from(
+              new Map(
+                (await Promise.all(
+                  scope.map((id) => loadAddressBook(id, this.addressCacheScope).catch(() => [])),
+                ))
+                  .flat()
+                  // 兼容后台尚未更新时「选一个分期顺带返回同组其它分期」的旧行为，
+                  // 端上仍按角色的精确范围做最后一道过滤和去重。
+                  .filter((item) => scope.includes(item.id))
+                  .map((item) => [item.id, item] as const),
+              ).values(),
+            )
+          : [];
       this.setData({ bookReady: book.length > 0, bookLoading: false }, () => {
         // 组件是 wx:if 出来的，setData 回调里才拿得到实例
         const picker = this.selectComponent('#placePicker');
@@ -226,27 +243,41 @@ Page({
     }
   },
 
-  /** 联系人默认本人：系统已知的直接预填，允许改。顺带取回代报授权范围 */
+  /** 联系人默认本人：系统已知的直接预填，允许改。顺带取回角色的数据范围 */
   async loadMe() {
     try {
       const me = await auth.me();
       const grants = me.reporter?.communities || [];
-      this.reportCommunityIds = grants.map((c) => c.id);
+      const accessScope = me.access?.scopeAll === false
+        ? (me.access.communityIds ?? [])
+        : null;
+      // reporter 是旧代报授权口径；员工统一角色上线后以 access 为准。
+      // 保留前者兼容尚未迁完的账号，但绝不把空数组解释成全公司。
+      this.reportCommunityIds = grants.length
+        ? grants.map((c) => c.id)
+        : accessScope;
+      this.addressCacheScope = `staff:${me.id}:${
+        this.reportCommunityIds === null ? 'all' : this.reportCommunityIds.join(',') || 'none'
+      }`;
       // 只填还空着的：描述里已经认出的人（「张先生报，电话138…」）比登录人更准，不能被盖掉
       const patch: Record<string, string> = {};
-      if (!this.data.contactName && !this.contactTouched && me.name) {
+      if (!this.suppressContactDefaults && !this.data.contactName && !this.contactTouched && me.name) {
         patch.contactName = me.name;
         this.contactIsDefault = true;
       }
-      if (!this.data.contactPhone && !this.phoneTouched && me.phone) {
+      if (!this.suppressContactDefaults && !this.data.contactPhone && !this.phoneTouched && me.phone) {
         patch.contactPhone = me.phone;
         this.phoneIsDefault = true;
       }
       this.setData({
         ...patch,
-        scopeHint: this.reportCommunityIds.length
+        scopeHint: grants.length
           ? `你可报修的范围：${grants.map((c) => c.name).join('、')}`
-          : '',
+          : this.reportCommunityIds === null
+            ? ''
+            : this.reportCommunityIds.length
+              ? `当前按${(me.access?.offices || []).map((o) => o.name).join('、') || '业务角色范围'}显示`
+              : '当前业务角色还没有配置可报修的小区，请联系管理员',
       });
     } catch {
       // 拿不到就让人自己填
@@ -376,17 +407,43 @@ Page({
       const lower = content.toLowerCase();
       const explicit = !!local?.matched.some((word) => lower.includes(word.toLowerCase()));
       const index = this.types.findIndex((item) => item.repairType === aiType);
-      if (!explicit && index >= 0) {
+      if ((res.ai?.sampleMatched || !explicit) && index >= 0) {
         this.predictedType = aiType;
         patch.typeIndex = index;
-        patch.autoTypeHint = 'AI 按设备场景识别，可手动修改';
+        patch.autoTypeHint = res.ai?.sampleMatched
+          ? '已采用后台确认过的识别样例，可手动修改'
+          : 'AI 按设备场景识别，可手动修改';
         patch.contentSuggestions = (this.types[index].keywords || []).slice(0, 8);
         patch.contentSuggestTitle = `${this.types[index].label}·猜你想输`;
       }
     }
-    if (!this.data.contactName && res.ai?.contactName) patch.contactName = res.ai.contactName;
-    if (!this.data.contactPhone && /^1\d{10}$/.test(res.ai?.phone || '')) {
-      patch.contactPhone = res.ai?.phone;
+    if (res.publicArea && res.reporterRoomNo) {
+      /**
+       * 公区单里的房号表示“哪一户报的”，不是维修地点。联系人只认原话明确说出的值：
+       * 两项都说就都填；只说一项就把另一项登录人默认值清掉；都没说就用房号作姓名、电话留空。
+       */
+      this.suppressContactDefaults = true;
+      const spoken = extractContact(content);
+      const spokenName = spoken.name || (res.ai?.contactName || '').trim();
+      const spokenPhone = spoken.phone || (/^1\d{10}$/.test(res.ai?.phone || '') ? res.ai?.phone || '' : '');
+      const roomLabel = formatReporterRoomLabel(res.buildingText, res.reporterRoomNo);
+      if (!this.contactTouched) {
+        patch.contactName = spokenName || roomLabel;
+        this.contactIsDefault = false;
+      }
+      if (!this.phoneTouched) {
+        patch.contactPhone = spokenPhone;
+        patch['errors.phone'] = '';
+        this.phoneIsDefault = false;
+      }
+      patch.autoContactHint = spokenName || spokenPhone
+        ? '已按原话填写联系人信息；没说的项目已清空，避免混用登录人资料'
+        : `公共区域报修未留联系人，已用房号 ${roomLabel} 作为联系人标识`;
+    } else {
+      if (!this.data.contactName && res.ai?.contactName) patch.contactName = res.ai.contactName;
+      if (!this.data.contactPhone && /^1\d{10}$/.test(res.ai?.phone || '')) {
+        patch.contactPhone = res.ai?.phone;
+      }
     }
     this.setData(patch);
   },

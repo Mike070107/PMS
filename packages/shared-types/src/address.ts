@@ -126,6 +126,19 @@ export function formatFullAddress(
     .join('/');
 }
 
+/**
+ * 公区报修里，住户门牌不是维修地址，而是联系人标识。
+ * 统一写成收费系统/地址联想一致的短格式：228弄2号 + 802室 → 228/2/802。
+ */
+export function formatReporterRoomLabel(
+  buildingText?: string | null,
+  roomNo?: string | null,
+): string {
+  const room = String(roomNo || '').trim().replace(/[室房]$/, '');
+  if (!room) return '';
+  return [...tokenizeAddress(String(buildingText || '')), room].filter(Boolean).join('/');
+}
+
 // ---------------- 匹配打分 ----------------
 
 /** 每一层参与匹配的候选串，越靠前权重越高 */

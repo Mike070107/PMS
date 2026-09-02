@@ -229,6 +229,8 @@ export interface ContactMergeResult {
   filled: string[];
   /** 默认联系人被清掉了：电话换成了别人的，但这句话里没说是谁 */
   clearedName: boolean;
+  /** 默认电话被清掉了：姓名换成了别人，但这句话里没说他的电话 */
+  clearedPhone: boolean;
 }
 
 /**
@@ -256,6 +258,7 @@ export function mergeExtractedContact(
     phoneIsDefault: state.phoneIsDefault,
     filled: [],
     clearedName: false,
+    clearedPhone: false,
   };
   const canFillName = !state.nameTouched && (!state.name || state.nameIsDefault);
   const canFillPhone = !state.phoneTouched && (!state.phone || state.phoneIsDefault);
@@ -289,6 +292,18 @@ export function mergeExtractedContact(
     out.clearedName = true;
   }
 
+  // 对称规则：只说了实际联系人姓名，就不能继续挂着登录人的默认手机号。
+  const nameTookOverDefault =
+    !!extracted.name &&
+    canFillName &&
+    state.nameIsDefault &&
+    extracted.name !== state.name;
+  if (nameTookOverDefault && !extracted.phone && canFillPhone && state.phone && state.phoneIsDefault) {
+    out.phone = '';
+    out.phoneIsDefault = false;
+    out.clearedPhone = true;
+  }
+
   return out;
 }
 
@@ -298,5 +313,6 @@ export function contactFillHint(result: ContactMergeResult): string {
   if (result.filled.length) parts.push(`已从描述里认出${result.filled.join('、')}，不对可直接改`);
   // 清空是「我把原来那个人删了」，必须说出来，不然用户以为是自己不小心删的
   if (result.clearedName) parts.push('电话不是你本人的，联系人已清空，请填写实际联系人');
+  if (result.clearedPhone) parts.push('联系人不是你本人，默认电话已清空，请填写实际电话');
   return parts.join('；');
 }

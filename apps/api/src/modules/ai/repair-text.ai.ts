@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ExtractSamplesService } from './extract-samples.service';
 import { LlmService } from './llm.service';
+import { isPublicAreaText } from '../repairs/repair-public-area.util';
 
 /**
  * 一句话报修的语义整理。
@@ -35,6 +36,8 @@ export interface RepairTextAiResult {
   publicArea?: boolean;
   /** 报修类型编码。只能取本次提示词给出的租户有效类型；规则明确命中时仍以规则为准 */
   repairType?: string;
+  /** 完全命中管理员启用样例；端上可据此覆盖本地关键词的旧误判 */
+  sampleMatched?: boolean;
 }
 
 export interface RepairTypePromptOption {
@@ -100,6 +103,7 @@ const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很
   门禁属于智能化；入户门锁、锁芯、钥匙、窗户才属于门锁/门窗。
   「打不开门」「家里」只是故障/位置，不能把明确说出的「门铃」改成「门锁」。
   publicArea 和 repairType 是两件事：住户家里的门铃可以是 publicArea=false，但类型仍是智能化。
+  公区报修即使说了住户房号，contactName 仍只提取明确的人名；房号联系人标识由系统撞库后按当前地址生成，模型不要照抄样例里的固定房号。
 
 例子：
 输入：5511弄，236号，502报修电子门里面，旋钮打滑，居民出不来。急急急，13818909545
@@ -197,6 +201,15 @@ export class RepairTextAiService {
     const value = (text || '').trim();
     // 太短的话规则法足够了，不值得多花一次调用和 1~2 秒延迟
     if (value.length < 6) return null;
+    const allowedTypes = new Set(repairTypes.map((item) => item.repairType));
+    // 同一句已经由管理员确认过，就直接采用样例。few-shot 只能“劝”模型参考，
+    // 不能保证它听话；精确命中若仍调用模型，就会出现同一句话依旧识别错。
+    try {
+      const exact = await this.samples.findExact(tenantId, value, 'repair');
+      if (exact) return repairResultFromSample(exact.expected, value, allowedTypes);
+    } catch {
+      // 样例库不可用时继续走原来的模型链路，不影响正常报修
+    }
     /**
      * 提示词 = 固定规则 + **样例库**。
      *
@@ -239,7 +252,6 @@ export class RepairTextAiService {
     );
     const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value);
     if (!raw) return null;
-    const allowedTypes = new Set(repairTypes.map((item) => item.repairType));
     const repairType = keywordRepairType || str(raw.repairType);
     return {
       addressText: str(raw.addressText),
@@ -305,7 +317,7 @@ export class RepairTextAiService {
       const rows = await this.samples.forPrompt(tenantId, kind);
       examples = rows
         .filter((row) => row.text?.trim() && row.expected && Object.keys(row.expected).length)
-        .map((row) => `输入：${row.text.trim()}\n输出：${JSON.stringify(fullShape(row.expected))}`);
+        .map((row) => `输入：${row.text.trim()}\n输出：${JSON.stringify(fullShape(row.expected, row.text))}`);
     } catch {
       // 样例是加分项，取不到就算了，别让识别整个失效
     }
@@ -316,7 +328,7 @@ export class RepairTextAiService {
 }
 
 /** 样例只存要教的字段，喂给模型时补齐成完整形状 —— 缺字段会教出「可以不输出某个字段」 */
-function fullShape(expected: Record<string, unknown>): Record<string, unknown> {
+function fullShape(expected: Record<string, unknown>, sourceText = ''): Record<string, unknown> {
   // 完工小结的样例只补它自己那几个字段：把报修的字段混进去会教偏
   if ('actionNote' in expected || 'faultLocation' in expected || 'faultSymptom' in expected) {
     return {
@@ -335,15 +347,51 @@ function fullShape(expected: Record<string, unknown>): Record<string, unknown> {
   return {
     addressText: typeof expected.addressText === 'string' ? expected.addressText : '',
     description: typeof expected.description === 'string' ? expected.description : '',
-    contactName: typeof expected.contactName === 'string' ? expected.contactName : '',
+    // “228/2/802”是系统按当前地址生成的房号联系人，不是原话里的人名。
+    // 把它原样喂给模型会导致换一个地址仍复制 228/2/802，所以这里只教“没说人名”。
+    contactName:
+      typeof expected.contactName === 'string' && !isRoomContactLabel(expected.contactName)
+        ? expected.contactName
+        : '',
     phone: typeof expected.phone === 'string' ? expected.phone : '',
     urgent: expected.urgent === true,
-    publicArea: expected.publicArea === true,
+    publicArea:
+      typeof expected.publicArea === 'boolean'
+        ? expected.publicArea
+        : String(expected.addressText || '').includes('公共区域') || isPublicAreaText(sourceText),
     // 老样例没有这个字段时不硬填一个类型；新建/种子样例都会明确携带。
     ...(typeof expected.repairType === 'string' && expected.repairType
       ? { repairType: expected.repairType }
       : {}),
   };
+}
+
+/** 精确命中样例时的确定性结果，不再让大模型二次改写。 */
+export function repairResultFromSample(
+  expected: Record<string, unknown>,
+  sourceText: string,
+  allowedTypes: Set<string>,
+): RepairTextAiResult {
+  const type = str(expected.repairType);
+  const expectedName = str(expected.contactName);
+  return {
+    addressText: str(expected.addressText),
+    description: str(expected.description),
+    // 房号标识必须按本次撞到的地址动态生成，不能把样例里的 228/2/802 带去别家。
+    contactName: isRoomContactLabel(expectedName) ? '' : expectedName,
+    phone: str(expected.phone).replace(/\D/g, ''),
+    urgent: expected.urgent === true,
+    publicArea:
+      typeof expected.publicArea === 'boolean'
+        ? expected.publicArea
+        : str(expected.addressText).includes('公共区域') || isPublicAreaText(sourceText),
+    repairType: allowedTypes.has(type) ? type : '',
+    sampleMatched: true,
+  };
+}
+
+function isRoomContactLabel(value: string): boolean {
+  return /^\d+(?:\/\d+){1,2}$/.test(value.trim());
 }
 
 function str(v: unknown): string {

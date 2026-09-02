@@ -69,8 +69,9 @@ export class RepairsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOfficeSuggestionSettingsDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.updateOfficeSuggestionSettings(id, dto, user);
+    return this.repairsService.updateOfficeSuggestionSettings(id, dto, user, access);
   }
 
   /** officeId 不传 = 公司默认模板；传了 = 该管理处那套（首次会从模板复制） */
@@ -79,8 +80,13 @@ export class RepairsController {
   listRepairTypeRules(
     @CurrentUser() user: AuthUser,
     @Query('officeId') officeId?: string,
+    @CurrentAccess() access?: ResolvedAccess,
   ) {
-    return this.repairsService.listRepairTypeRules(user, officeId ? Number(officeId) : null);
+    return this.repairsService.listRepairTypeRules(
+      user,
+      officeId ? Number(officeId) : null,
+      access,
+    );
   }
 
   @Post('repair-type-rules')
@@ -88,8 +94,9 @@ export class RepairsController {
   createRepairTypeRule(
     @Body() dto: UpsertRepairTypeRuleDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.createRepairTypeRule(dto, user);
+    return this.repairsService.createRepairTypeRule(dto, user, access);
   }
 
   @Patch('repair-type-rules/:id')
@@ -98,8 +105,9 @@ export class RepairsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpsertRepairTypeRuleDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.updateRepairTypeRule(id, dto, user);
+    return this.repairsService.updateRepairTypeRule(id, dto, user, access);
   }
 
   @Delete('repair-type-rules/:id')
@@ -107,8 +115,9 @@ export class RepairsController {
   deleteRepairTypeRule(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.deleteRepairTypeRule(id, user);
+    return this.repairsService.deleteRepairTypeRule(id, user, access);
   }
 
   @Post('repair-type-rules/reorder')
@@ -116,8 +125,9 @@ export class RepairsController {
   reorderRepairTypeRules(
     @Body() dto: ReorderRepairTypeRulesDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.reorderRepairTypeRules(dto.ids, user);
+    return this.repairsService.reorderRepairTypeRules(dto.ids, user, access);
   }
 
   /**
@@ -134,8 +144,13 @@ export class RepairsController {
   listPublicRepairTypes(
     @CurrentUser() user: AuthUser,
     @Query('communityId') communityId?: string,
+    @CurrentAccess() access?: ResolvedAccess,
   ) {
-    return this.repairsService.listPublicRepairTypes(user, communityId ? Number(communityId) : null);
+    return this.repairsService.listPublicRepairTypes(
+      user,
+      communityId ? Number(communityId) : null,
+      access,
+    );
   }
 
   /**
@@ -148,11 +163,12 @@ export class RepairsController {
     @CurrentUser() user: AuthUser,
     @Query('officeId') officeId?: string,
     @Query('communityId') communityId?: string,
+    @CurrentAccess() access?: ResolvedAccess,
   ) {
     return this.repairsService.listRepairSuggestions(user, {
       officeId: officeId ? Number(officeId) : null,
       communityId: communityId ? Number(communityId) : null,
-    });
+    }, access);
   }
 
   /**
@@ -200,8 +216,9 @@ export class RepairsController {
   submitOwnerRepair(
     @Body() dto: CreateRepairRequestDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.submitOwnerRepair(dto, user);
+    return this.repairsService.submitOwnerRepair(dto, user, access);
   }
 
   @Post('repair-requests/office')

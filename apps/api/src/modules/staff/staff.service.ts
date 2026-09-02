@@ -61,7 +61,7 @@ export class StaffService {
     private readonly accessService: AccessService,
   ) {}
 
-  async list(query: ListStaffQueryDto, user: AuthUser) {
+  async list(query: ListStaffQueryDto, user: AuthUser, access: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const qb = this.userRepo
       .createQueryBuilder('u')
@@ -90,8 +90,42 @@ export class StaffService {
       );
     }
 
-    const users = await qb.getMany();
+    let users = await qb.getMany();
     if (users.length === 0) return [];
+
+    const rolesByUser = await this.loadRolesByUser(
+      tenantId,
+      users.map((item) => item.id),
+    );
+    if (!access.isPlatformAdmin && !access.isTenantAdmin && !access.scopeAll) {
+      const roleIds = [
+        ...new Set(
+          users.flatMap((item) =>
+            (rolesByUser.get(item.id) ?? []).map((role) => role.id),
+          ),
+        ),
+      ];
+      const roles = roleIds.length
+        ? await this.roleRepo.find({ where: { tenantId, id: In(roleIds) } })
+        : [];
+      const visibleRoleIds = new Set<number>();
+      for (const role of roles) {
+        if (
+          !role.builtIn &&
+          (await this.rolesService.roleWithinScope(role, access))
+        ) {
+          visibleRoleIds.add(role.id);
+        }
+      }
+      users = users.filter((item) => {
+        const bound = rolesByUser.get(item.id) ?? [];
+        return (
+          bound.length > 0 &&
+          bound.every((role) => visibleRoleIds.has(role.id))
+        );
+      });
+      if (!users.length) return [];
+    }
 
     const profiles = await this.profileRepo.find({
       where: { tenantId, userId: In(users.map((u) => u.id)) },
@@ -107,11 +141,6 @@ export class StaffService {
       list.push(grant.communityId);
       grantsByUser.set(grant.userId, list);
     }
-
-    const rolesByUser = await this.loadRolesByUser(
-      tenantId,
-      users.map((u) => u.id),
-    );
 
     return users.map((u) =>
       this.toView(
@@ -451,7 +480,9 @@ export class StaffService {
     const targetRoles = (await this.loadRolesByUser(target.tenantId, [target.id])).get(
       target.id,
     );
-    if (!targetRoles?.length) return;
+    if (!targetRoles?.length) {
+      throw new ForbiddenException('该用户没有可判断归属的数据范围');
+    }
     if (targetRoles.some((r) => r.builtIn)) {
       throw new ForbiddenException('无权管理企业超级管理员账号');
     }

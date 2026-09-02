@@ -57,12 +57,21 @@ export class RolesService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async list(user: AuthUser) {
+  async list(user: AuthUser, access: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const roles = await this.roleRepo.find({
+    let roles = await this.roleRepo.find({
       where: { tenantId },
       order: { builtIn: 'DESC', id: 'ASC' },
     });
+    if (!access.isPlatformAdmin && !access.isTenantAdmin && !access.scopeAll) {
+      const visible: Role[] = [];
+      for (const role of roles) {
+        if (!role.builtIn && (await this.roleWithinScope(role, access))) {
+          visible.push(role);
+        }
+      }
+      roles = visible;
+    }
     if (!roles.length) return [];
     const ids = roles.map((r) => r.id);
     const [perms, scopes, bindings, extraWarehouses, templates] = await Promise.all([
@@ -114,7 +123,7 @@ export class RolesService {
   }
 
   /** 角色编辑页的数据范围可选项：管理处 + 顶层小区（标注归属管理处） */
-  async scopeOptions(user: AuthUser) {
+  async scopeOptions(user: AuthUser, access: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const [offices, tops] = await Promise.all([
       this.officeRepo.find({ where: { tenantId }, order: { id: 'ASC' } }),
@@ -129,21 +138,48 @@ export class RolesService {
       where: { tenantId },
       order: { id: 'ASC' },
     });
+    const scope = access.scopeAll ? null : access.communityIds ?? [];
+    const visibleOfficeIds = new Set<number>();
+    for (const office of offices) {
+      if (access.scopeAll) {
+        visibleOfficeIds.add(office.id);
+        continue;
+      }
+      const ids = await this.accessService.officeCommunityIds(
+        tenantId,
+        office.id,
+      );
+      if (ids.length && ids.every((id) => scope?.includes(id))) {
+        visibleOfficeIds.add(office.id);
+      }
+    }
+    const extraWarehouseIds = new Set(
+      access.scopeAll
+        ? warehouses.map((warehouse) => warehouse.id)
+        : await this.accessService.extraWarehouseIdsOfUser(tenantId, user.id),
+    );
     const officeNameById = new Map(offices.map((o) => [o.id, o.name]));
     return {
-      offices: offices.map((o) => ({
+      offices: offices.filter((o) => visibleOfficeIds.has(o.id)).map((o) => ({
         id: o.id,
         name: o.name,
         enabled: o.enabled,
       })),
-      communities: tops.map((c) => ({
+      communities: tops.filter((c) => !scope || scope.includes(c.id)).map((c) => ({
         id: c.id,
         name: c.name,
         officeId: c.officeId,
       })),
       // 「额外可见的仓库」的可选项。带上归属，配的人才看得出哪些是总仓
       warehouses: warehouses
-        .filter((w) => w.enabled)
+        .filter(
+          (w) =>
+            w.enabled &&
+            (access.scopeAll ||
+              (w.officeId != null && visibleOfficeIds.has(w.officeId)) ||
+              (w.communityId != null && !!scope?.includes(w.communityId)) ||
+              extraWarehouseIds.has(w.id)),
+        )
         .map((w) => ({
           id: w.id,
           name: w.name,

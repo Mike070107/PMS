@@ -12,6 +12,8 @@ import {
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ResolvedAccess } from '../access/access.service';
+import { CurrentAccess } from '../access/current-access.decorator';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { SaveOfficeDto } from './dto';
 import { OfficesService } from './offices.service';
@@ -23,14 +25,18 @@ export class OfficesController {
 
   @Get()
   @RequirePermission('offices', 'view')
-  list(@CurrentUser() user: AuthUser) {
-    return this.officesService.list(user);
+  list(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.officesService.list(user, access);
   }
 
   @Post()
   @RequirePermission('offices', 'edit')
-  create(@Body() dto: SaveOfficeDto, @CurrentUser() user: AuthUser) {
-    return this.officesService.create(dto, user);
+  create(
+    @Body() dto: SaveOfficeDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.officesService.create(dto, user, access);
   }
 
   @Patch(':id')
@@ -39,13 +45,18 @@ export class OfficesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SaveOfficeDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.officesService.update(id, dto, user);
+    return this.officesService.update(id, dto, user, access);
   }
 
   @Delete(':id')
   @RequirePermission('offices', 'delete')
-  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
-    return this.officesService.remove(id, user);
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.officesService.remove(id, user, access);
   }
 }

@@ -103,8 +103,9 @@ export class PropertiesController {
   getAddressBook(
     @Query() query: AddressBookQueryDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.propertiesService.getAddressBook(query.communityId, user);
+    return this.propertiesService.getAddressBook(query.communityId, user, access);
   }
 
   /** 后台录房产：一整句地址拆成路名/小区/弄/号/室（与小程序语音识别共用同一套解析） */
@@ -121,8 +122,11 @@ export class PropertiesController {
   /** 「所属管理处」下拉的选项（房产页用，不必另开管理处页权限） */
   @Get('communities/offices')
   @RequirePermission('properties', 'view')
-  listOfficeOptions(@CurrentUser() user: AuthUser) {
-    return this.propertiesService.listOfficeOptions(user);
+  listOfficeOptions(
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.propertiesService.listOfficeOptions(user, access);
   }
 
   @Post('communities')

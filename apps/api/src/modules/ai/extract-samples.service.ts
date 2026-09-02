@@ -59,6 +59,28 @@ export class ExtractSamplesService {
     });
   }
 
+  /**
+   * 用户说的原话和启用样例完全相同时，样例就是确定规则，不该再交给模型猜一次。
+   * 先走数据库精确命中；标点/空格不同再在最近 100 条里做一次归一化比较。
+   */
+  async findExact(tenantId: number, text: string, kind = 'repair'): Promise<AiExtractSample | null> {
+    await this.ensureSeeded(tenantId, kind);
+    const value = text.trim();
+    if (!value) return null;
+    const exact = await this.repo.findOne({
+      where: { tenantId, kind, enabled: true, text: value },
+      order: { updatedAt: 'DESC' },
+    });
+    if (exact) return exact;
+    const normalized = normalizeSampleText(value);
+    const recent = await this.repo.find({
+      where: { tenantId, kind, enabled: true },
+      order: { updatedAt: 'DESC' },
+      take: 100,
+    });
+    return recent.find((row) => normalizeSampleText(row.text) === normalized) ?? null;
+  }
+
   async list(tenantId: number, kind = 'repair'): Promise<AiExtractSample[]> {
     await this.ensureSeeded(tenantId, kind);
     return this.repo.find({ where: { tenantId, kind }, order: { updatedAt: 'DESC' } });
@@ -107,6 +129,13 @@ export class ExtractSamplesService {
   }
 }
 
+export function normalizeSampleText(value: string): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[，,。；;：:、！？!?“”"'（）()\s]+/g, '');
+}
+
 /** 空字段不写进提示词：教一堆空值会让模型倾向于什么都不填 */
 function pruneExpected(expected: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -131,6 +160,11 @@ function pruneExpected(expected: Record<string, unknown>): Record<string, unknow
   }
   if (typeof expected?.urgent === 'boolean') out.urgent = expected.urgent;
   if (typeof expected?.publicArea === 'boolean') out.publicArea = expected.publicArea;
+  else if (typeof expected?.addressText === 'string' && expected.addressText.includes('公共区域')) {
+    // 兼容旧后台：当时没有“故障区域”控件，管理员只能把“公共区域”写进地址。
+    // 不补这一位，完整提示词会把缺失值当 false，和地址文字自相矛盾。
+    out.publicArea = true;
+  }
   return out;
 }
 

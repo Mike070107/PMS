@@ -38,7 +38,9 @@ import {
   User,
   Warehouse,
   WarehouseLocation,
+  WorkOrder,
 } from '../../entities';
+import { scopeCommunityIds } from '../access/scope.util';
 import {
   CreateGeneralReceiptDto,
   CreateGoodsReceiptDto,
@@ -82,6 +84,8 @@ interface NotifyInput {
   title: string;
   payload: Record<string, unknown>;
   operatorId: number | null;
+  /** undefined = 沿用公司级旧行为；null = 只通知全公司范围；数字 = 覆盖该管理处 */
+  officeId?: number | null;
 }
 
 /**
@@ -1171,7 +1175,11 @@ export class InventoryService {
    * 2026-09-01 反馈：申请信息里「申请人 #2」「来源工单 #19」，用户看不懂这是谁、是哪张单。
    * id 是程序定位用的，人看的是姓名和单号，新增字段一律照这个口径给。
    */
-  async listPurchaseRequests(query: PurchaseRequestQueryDto, user: AuthUser) {
+  async listPurchaseRequests(
+    query: PurchaseRequestQueryDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const where: FindOptionsWhere<PurchaseRequest> = { tenantId };
     if (query.status) {
@@ -1185,7 +1193,133 @@ export class InventoryService {
       where.status = query.status as PurchaseRequestStatus;
     }
     const rows = await this.purchaseRequestRepo.find({ where, order: { id: 'DESC' } });
-    return this.withRequestNames(tenantId, rows);
+    return this.withRequestNames(
+      tenantId,
+      await this.filterPurchaseRequestsByAccess(tenantId, rows, user, access),
+    );
+  }
+
+  /**
+   * 采购申请旧表没有 office_id：工单缺料按工单小区判断；办公室手工申请按申请人
+   * 当前角色所属管理处判断。这样先把跨管理处读取和审批封住，后续即使补 office_id，
+   * 对外口径也不需要再变。
+   */
+  private async filterPurchaseRequestsByAccess(
+    tenantId: number,
+    rows: PurchaseRequest[],
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ): Promise<PurchaseRequest[]> {
+    const scope = scopeCommunityIds(access);
+    if (!scope) return rows;
+    if (!scope.length || !rows.length) return [];
+
+    const workOrderIds = [
+      ...new Set(rows.map((row) => row.workOrderId).filter((id): id is number => !!id)),
+    ];
+    const workOrders = workOrderIds.length
+      ? await this.dataSource.getRepository(WorkOrder).find({
+          where: { tenantId, id: In(workOrderIds) },
+          select: ['id', 'communityId'],
+        })
+      : [];
+    const visibleWorkOrderIds = new Set(
+      workOrders
+        .filter((workOrder) => scope.includes(workOrder.communityId))
+        .map((workOrder) => workOrder.id),
+    );
+
+    const allowedOfficeIds = new Set<number>();
+    for (const communityId of scope) {
+      const officeId = await this.accessService.officeIdOfCommunity(
+        tenantId,
+        communityId,
+      );
+      if (officeId) allowedOfficeIds.add(officeId);
+    }
+    const manualApplicantIds = [
+      ...new Set(
+        rows
+          .filter((row) => !row.workOrderId)
+          .map((row) => row.applicantId),
+      ),
+    ];
+    const visibleApplicants = new Set<number>();
+    for (const applicantId of manualApplicantIds) {
+      if (applicantId === user.id) {
+        visibleApplicants.add(applicantId);
+        continue;
+      }
+      const mine = await this.accessService.userOfficeIds(tenantId, applicantId);
+      if (
+        !mine.all &&
+        mine.officeIds.length > 0 &&
+        mine.officeIds.every((id) => allowedOfficeIds.has(id))
+      ) {
+        visibleApplicants.add(applicantId);
+      }
+    }
+
+    return rows.filter((row) =>
+      row.workOrderId
+        ? visibleWorkOrderIds.has(row.workOrderId)
+        : visibleApplicants.has(row.applicantId),
+    );
+  }
+
+  private async assertPurchaseRequestVisible(
+    tenantId: number,
+    request: PurchaseRequest,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    if (
+      !(await this.filterPurchaseRequestsByAccess(
+        tenantId,
+        [request],
+        user,
+        access,
+      )).length
+    ) {
+      throw new NotFoundException('purchase request not found');
+    }
+  }
+
+  private async purchaseRequestOfficeId(
+    tenantId: number,
+    request: PurchaseRequest,
+  ): Promise<number | null> {
+    if (request.workOrderId) {
+      const workOrder = await this.dataSource.getRepository(WorkOrder).findOne({
+        where: { tenantId, id: request.workOrderId },
+        select: ['id', 'communityId'],
+      });
+      return workOrder
+        ? this.accessService.officeIdOfCommunity(tenantId, workOrder.communityId)
+        : null;
+    }
+    const applicant = await this.accessService.userOfficeIds(
+      tenantId,
+      request.applicantId,
+    );
+    return !applicant.all && applicant.officeIds.length === 1
+      ? applicant.officeIds[0]
+      : null;
+  }
+
+  private async assertPurchaseOrderVisible(
+    tenantId: number,
+    order: PurchaseOrder,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    if (!scopeCommunityIds(access)) return;
+    if (!order.requestId) throw new NotFoundException('purchase order not found');
+    const request = await this.purchaseRequestRepo.findOne({
+      where: { tenantId, id: order.requestId },
+    });
+    if (!request) throw new NotFoundException('purchase order not found');
+    await this.assertPurchaseRequestVisible(tenantId, request, user, access);
   }
 
   /** 采购申请出参统一补名字：申请人 / 两位审批人 / 来源工单单号 */
@@ -1266,7 +1400,11 @@ export class InventoryService {
   }
 
   /** 办公室汇总提交：把若干条办公室待汇总申请合并成一条，提交给物业经理 */
-  submitToManager(dto: SubmitToManagerDto, user: AuthUser) {
+  submitToManager(
+    dto: SubmitToManagerDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const ids = Array.from(new Set(dto.requestIds));
     if (!ids.length) throw new BadRequestException('请选择要提交的申请');
@@ -1274,6 +1412,7 @@ export class InventoryService {
       const requests: PurchaseRequest[] = [];
       for (const id of ids) {
         const req = await this.lockPurchaseRequest(manager, id, tenantId);
+        await this.assertPurchaseRequestVisible(tenantId, req, user, access);
         if (req.status !== PurchaseRequestStatus.OFFICE_REVIEW) {
           throw new BadRequestException(`申请 ${req.requestNo} 不在办公室汇总环节`);
         }
@@ -1312,20 +1451,23 @@ export class InventoryService {
       primary.status = PurchaseRequestStatus.MANAGER_REVIEW;
       primary.updatedBy = user.id;
       const saved = await manager.save(PurchaseRequest, primary);
+      const officeId = await this.purchaseRequestOfficeId(tenantId, saved);
       await this.notifyByPermission(manager, tenantId, 'app:approve-manager', {
         eventKey: 'purchase_pending_manager',
         title: `采购申请 ${saved.requestNo} 待物业经理审批`,
         payload: { purchaseRequestId: saved.id, requestNo: saved.requestNo },
         operatorId: user.id,
+        officeId,
       });
       return saved;
     });
   }
 
-  approveByManager(id: number, user: AuthUser) {
+  approveByManager(id: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const request = await this.lockPurchaseRequest(manager, id, tenantId);
+      await this.assertPurchaseRequestVisible(tenantId, request, user, access);
       if (request.status !== PurchaseRequestStatus.MANAGER_REVIEW) {
         throw new BadRequestException('purchase request is not pending manager');
       }
@@ -1334,20 +1476,23 @@ export class InventoryService {
       request.managerAt = new Date();
       request.updatedBy = user.id;
       const saved = await manager.save(PurchaseRequest, request);
+      const officeId = await this.purchaseRequestOfficeId(tenantId, saved);
       await this.notifyByPermission(manager, tenantId, 'app:approve-purchaser', {
         eventKey: 'purchase_pending_purchaser',
         title: `采购申请 ${saved.requestNo} 待采购经理审批`,
         payload: { purchaseRequestId: saved.id, requestNo: saved.requestNo },
         operatorId: user.id,
+        officeId,
       });
       return saved;
     });
   }
 
-  approveByPurchaser(id: number, user: AuthUser) {
+  approveByPurchaser(id: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const request = await this.lockPurchaseRequest(manager, id, tenantId);
+      await this.assertPurchaseRequestVisible(tenantId, request, user, access);
       if (request.status !== PurchaseRequestStatus.PURCHASER_REVIEW) {
         throw new BadRequestException('purchase request is not pending purchaser');
       }
@@ -1368,6 +1513,7 @@ export class InventoryService {
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const request = await this.lockPurchaseRequest(manager, id, tenantId);
+      await this.assertPurchaseRequestVisible(tenantId, request, user, access);
       if (
         ![
           PurchaseRequestStatus.OFFICE_REVIEW,
@@ -1401,12 +1547,30 @@ export class InventoryService {
   }
 
   /** 采购单列表。「关联申请」要给申请单号，不是申请的 id（同 withRequestNames 的口径） */
-  async listPurchaseOrders(query: TenantQueryDto, user: AuthUser) {
+  async listPurchaseOrders(
+    query: TenantQueryDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
-    const rows = await this.purchaseOrderRepo.find({
+    let rows = await this.purchaseOrderRepo.find({
       where: { tenantId },
       order: { id: 'DESC' },
     });
+    if (scopeCommunityIds(access)) {
+      const linkedIds = [
+        ...new Set(rows.map((row) => row.requestId).filter((id): id is number => !!id)),
+      ];
+      const requests = linkedIds.length
+        ? await this.purchaseRequestRepo.find({ where: { tenantId, id: In(linkedIds) } })
+        : [];
+      const visible = new Set(
+        (await this.filterPurchaseRequestsByAccess(tenantId, requests, user, access)).map(
+          (request) => request.id,
+        ),
+      );
+      rows = rows.filter((row) => row.requestId != null && visible.has(row.requestId));
+    }
     const requestIds = [
       ...new Set(rows.map((r) => r.requestId).filter((id): id is number => !!id)),
     ];
@@ -1423,8 +1587,15 @@ export class InventoryService {
     }));
   }
 
-  createPurchaseOrder(dto: CreatePurchaseOrderDto, user: AuthUser) {
+  createPurchaseOrder(
+    dto: CreatePurchaseOrderDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
+    if (scopeCommunityIds(access) && !dto.requestId) {
+      throw new ForbiddenException('受限账号只能为本管理处的采购申请下单');
+    }
     return this.dataSource.transaction(async (manager) => {
       const supplier = await manager.findOne(Supplier, {
         where: { id: dto.supplierId, tenantId, enabled: true },
@@ -1440,6 +1611,7 @@ export class InventoryService {
           tenantId,
         );
         request = lockedRequest;
+        await this.assertPurchaseRequestVisible(tenantId, lockedRequest, user, access);
         if (lockedRequest.status !== PurchaseRequestStatus.APPROVED) {
           throw new BadRequestException('purchase request is not approved');
         }
@@ -1502,6 +1674,7 @@ export class InventoryService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!order) throw new NotFoundException('purchase order not found');
+      await this.assertPurchaseOrderVisible(tenantId, order, user, access);
       if (![PurchaseOrderStatus.PLACED, PurchaseOrderStatus.PARTIAL].includes(order.status)) {
         throw new BadRequestException('purchase order cannot receive goods');
       }
@@ -2245,7 +2418,15 @@ export class InventoryService {
     const idSets = await Promise.all(
       keys.map((key) => this.accessService.userIdsWithPermission(tenantId, key, 'edit')),
     );
-    const ids = [...new Set(idSets.flat())];
+    let ids = [...new Set(idSets.flat())];
+    if (input.officeId !== undefined) {
+      const coverage = await this.accessService.filterUsersCoveringOffice(
+        tenantId,
+        ids,
+        input.officeId,
+      );
+      ids = ids.filter((id) => coverage.has(id));
+    }
     if (!ids.length) return;
     const users = await manager.find(User, {
       where: { id: In(ids), tenantId, status: UserStatus.ACTIVE },

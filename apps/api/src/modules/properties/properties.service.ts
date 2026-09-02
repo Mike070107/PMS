@@ -189,6 +189,7 @@ export class PropertiesService {
         tenantId,
         dto.officeId !== undefined ? dto.officeId : community.officeId,
         community.parentId,
+        access,
       );
     }
     if (dto.address !== undefined) community.address = dto.address ?? null;
@@ -284,13 +285,36 @@ export class PropertiesService {
   }
 
   /** 「所属管理处」下拉的选项。挂在 properties 权限下，房产页不必额外开管理处页权限 */
-  async listOfficeOptions(user: AuthUser) {
+  async listOfficeOptions(user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     const offices = await this.officeRepo.find({
       where: { tenantId, enabled: true },
       order: { id: 'ASC' },
     });
-    return offices.map((o) => ({ id: o.id, name: o.name }));
+    const scope = scopeCommunityIds(access);
+    if (!scope) return offices.map((o) => ({ id: o.id, name: o.name }));
+    if (!scope.length) return [];
+    const officeIds = await this.officeIdsForScope(tenantId, scope);
+    return offices
+      .filter((office) => officeIds.has(office.id))
+      .map((office) => ({ id: office.id, name: office.name }));
+  }
+
+  private async officeIdsForScope(tenantId: number, scope: number[]) {
+    const communities = await this.communityRepo.find({
+      where: { tenantId },
+      select: ['id', 'parentId', 'officeId'],
+    });
+    const byId = new Map(communities.map((item) => [item.id, item]));
+    const officeIds = new Set<number>();
+    for (const id of scope) {
+      const item = byId.get(id);
+      const officeId =
+        item?.officeId ??
+        (item?.parentId ? byId.get(item.parentId)?.officeId : null);
+      if (officeId) officeIds.add(officeId);
+    }
+    return officeIds;
   }
 
   private assertNotOfficeName(name: string) {
@@ -306,6 +330,7 @@ export class PropertiesService {
     tenantId: number,
     officeId: number | null | undefined,
     parentId: number | null,
+    access?: ResolvedAccess,
   ): Promise<number | null> {
     if (parentId) return null;
     if (!officeId) return null;
@@ -313,6 +338,13 @@ export class PropertiesService {
       where: { id: officeId, tenantId },
     });
     if (!office) throw new BadRequestException('管理处不存在');
+    const scope = scopeCommunityIds(access);
+    if (
+      scope &&
+      !(await this.officeIdsForScope(tenantId, scope)).has(office.id)
+    ) {
+      throw new ForbiddenException('该管理处不在你的数据范围内');
+    }
     return office.id;
   }
 
@@ -1037,7 +1069,11 @@ export class PropertiesService {
    * 业主首次入驻时账号还没有 tenantId，此时用 communityId 反查租户
    * （与 ownerOnboard 同样的信任模型：小区 id 来自扫码解析出的二维码）。
    */
-  async getAddressBook(communityId: number | undefined, user: AuthUser) {
+  async getAddressBook(
+    communityId: number | undefined,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     let tenantId = user.tenantId ?? null;
     if (!tenantId) {
       if (!communityId) {
@@ -1050,12 +1086,18 @@ export class PropertiesService {
       tenantId = community.tenantId;
     }
     const tree = await this.buildAddressTree(tenantId, { withOwners: false });
-    if (!communityId) return tree;
+    // 员工端必须服从业务角色的数据范围。空数组是「一个小区都没授权」，
+    // 不能再当成全公司；业主首次扫码没有 access，仍沿用原来的扫码定位逻辑。
+    const scope = scopeCommunityIds(access);
+    const visibleTree = scope
+      ? tree.filter((item) => scope.includes(item.id))
+      : tree;
+    if (!communityId) return visibleTree;
     // 只给这个小区（含它所属分组下的其它分期，业主可能扫了隔壁期的码）
-    const picked = tree.find((item) => item.id === communityId);
+    const picked = visibleTree.find((item) => item.id === communityId);
     if (!picked) throw new NotFoundException('community not found');
     if (!picked.parentId) return [picked];
-    return tree.filter(
+    return visibleTree.filter(
       (item) => item.id === communityId || item.parentId === picked.parentId,
     );
   }

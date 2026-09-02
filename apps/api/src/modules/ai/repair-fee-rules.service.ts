@@ -2,6 +2,8 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ManagementOffice, RepairFeeRule } from '../../entities';
+import { AccessService, ResolvedAccess } from '../access/access.service';
+import { scopeCommunityIds } from '../access/scope.util';
 
 export interface RepairFeeRuleInput {
   code: string;
@@ -19,17 +21,33 @@ export class RepairFeeRulesService {
     @InjectRepository(RepairFeeRule)
     private readonly repo: Repository<RepairFeeRule>,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly accessService: AccessService,
   ) {}
 
-  list(tenantId: number, enabledOnly = false) {
-    return this.repo.find({
+  async list(tenantId: number, enabledOnly = false, access?: ResolvedAccess) {
+    const rows = await this.repo.find({
       where: { tenantId, ...(enabledOnly ? { enabled: true } : {}) },
       order: { id: 'ASC' },
     });
+    const scope = scopeCommunityIds(access);
+    if (!scope) return rows;
+    if (!scope.length) return rows.filter((row) => row.officeId === null);
+    const officeIds = new Set<number>();
+    for (const communityId of scope) {
+      const officeId = await this.accessService.officeIdOfCommunity(tenantId, communityId);
+      if (officeId) officeIds.add(officeId);
+    }
+    return rows.filter((row) => row.officeId === null || officeIds.has(row.officeId));
   }
 
-  async create(tenantId: number, userId: number, input: RepairFeeRuleInput) {
+  async create(
+    tenantId: number,
+    userId: number,
+    input: RepairFeeRuleInput,
+    access?: ResolvedAccess,
+  ) {
     await this.assertOffice(tenantId, input.officeId);
+    await this.assertOfficeManageable(tenantId, input.officeId, access);
     try {
       return await this.repo.save(
         this.repo.create({
@@ -45,10 +63,18 @@ export class RepairFeeRulesService {
     }
   }
 
-  async update(tenantId: number, userId: number, id: number, input: RepairFeeRuleInput) {
+  async update(
+    tenantId: number,
+    userId: number,
+    id: number,
+    input: RepairFeeRuleInput,
+    access?: ResolvedAccess,
+  ) {
     const row = await this.repo.findOne({ where: { tenantId, id } });
     if (!row) throw new NotFoundException('维修收费规则不存在');
+    await this.assertOfficeManageable(tenantId, row.officeId, access);
     await this.assertOffice(tenantId, input.officeId);
+    await this.assertOfficeManageable(tenantId, input.officeId, access);
     Object.assign(row, normalizeRule(input), { updatedBy: userId });
     try {
       return await this.repo.save(row);
@@ -58,9 +84,10 @@ export class RepairFeeRulesService {
     }
   }
 
-  async remove(tenantId: number, id: number) {
+  async remove(tenantId: number, id: number, access?: ResolvedAccess) {
     const row = await this.repo.findOne({ where: { tenantId, id } });
     if (!row) throw new NotFoundException('维修收费规则不存在');
+    await this.assertOfficeManageable(tenantId, row.officeId, access);
     await this.repo.remove(row);
     return { ok: true as const };
   }
@@ -71,6 +98,28 @@ export class RepairFeeRulesService {
       where: { tenantId, id: officeId, enabled: true },
     });
     if (!exists) throw new BadRequestException('适用管理处不存在或已停用');
+  }
+
+  private async assertOfficeManageable(
+    tenantId: number,
+    officeId: number | null | undefined,
+    access?: ResolvedAccess,
+  ) {
+    const scope = scopeCommunityIds(access);
+    if (!scope) return;
+    if (!officeId) {
+      throw new NotFoundException('维修收费规则不存在');
+    }
+    const officeCommunityIds = await this.accessService.officeCommunityIds(
+      tenantId,
+      officeId,
+    );
+    if (
+      !officeCommunityIds.length ||
+      officeCommunityIds.some((communityId) => !scope.includes(communityId))
+    ) {
+      throw new NotFoundException('维修收费规则不存在');
+    }
   }
 }
 

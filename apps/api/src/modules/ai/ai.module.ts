@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AiAssistFeedback, AiExtractSample, RepairFeeRule } from '../../entities';
+import { AiAssistFeedback, AiExtractSample, RepairFeeRule, WorkOrder } from '../../entities';
 import { SettingsModule } from '../settings/settings.module';
 import { AiController } from './ai.controller';
 import { AiToolsController } from './ai-tools.controller';
@@ -15,7 +15,10 @@ import { RepairFeeRulesService } from './repair-fee-rules.service';
  * 换服务商、加一个用得上模型的地方，都只动这一个模块。
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([AiExtractSample, AiAssistFeedback, RepairFeeRule]), SettingsModule],
+  imports: [
+    TypeOrmModule.forFeature([AiExtractSample, AiAssistFeedback, RepairFeeRule, WorkOrder]),
+    SettingsModule,
+  ],
   controllers: [AiController, AiToolsController],
   providers: [
     LlmService,

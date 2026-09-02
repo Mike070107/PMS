@@ -109,6 +109,14 @@ test('描述里说了是谁，就换成那个人，不清空', () => {
   assert.equal(r.clearedName, false);
 });
 
+test('只认出姓名、没说电话 → 登录人的默认电话必须一起清空', () => {
+  const r = mergeExtractedContact(extractContact('一期17号201漏水，找李师傅'), defaults);
+  assert.equal(r.name, '李师傅');
+  assert.equal(r.phone, '');
+  assert.equal(r.clearedPhone, true);
+  assert.match(contactFillHint(r), /默认电话已清空/);
+});
+
 test('只认出电话、但联系人是用户自己手填的 → 一个字都不许动', () => {
   const r = mergeExtractedContact(extractContact('一期17号201漏水，电话13800138000'), {
     ...defaults,

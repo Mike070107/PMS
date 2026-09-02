@@ -25,14 +25,14 @@ export class RolesController {
 
   @Get()
   @RequirePermission('roles', 'view')
-  list(@CurrentUser() user: AuthUser) {
-    return this.rolesService.list(user);
+  list(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.rolesService.list(user, access);
   }
 
   @Get('scope-options')
   @RequirePermission('roles', 'view')
-  scopeOptions(@CurrentUser() user: AuthUser) {
-    return this.rolesService.scopeOptions(user);
+  scopeOptions(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.rolesService.scopeOptions(user, access);
   }
 
   /** 用户管理页的角色下拉：按操作者范围裁剪，所以挂在 users 的查看权下 */

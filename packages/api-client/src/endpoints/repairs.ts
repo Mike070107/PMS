@@ -80,8 +80,8 @@ export interface ParsedRepairAddress {
   publicArea?: boolean;
   /**
    * 报修人自己的房号。公区单的地址里没有它，但它仍然有用 ——
-   * 只留了电话没留姓名时，端上拿「N号N室」当联系人标识，
-   * 比挂一个对不上号的默认联系人强（2026-09-01 用户反馈）。
+   * 原话没留姓名时，端上按「228/2/802」格式当联系人标识；
+   * 只留姓名或电话时，另一项不再混入登录人的默认资料。
    */
   reporterRoomNo?: string | null;
   /**
@@ -103,6 +103,8 @@ export interface ParsedRepairAddress {
     publicArea?: boolean;
     /** AI 按当前项目可用类型给出的类型编码；明确关键词规则优先，AI 用于无命中/模糊命中 */
     repairType?: string;
+    /** 完全命中管理员确认过的样例，可覆盖端上旧关键词误判 */
+    sampleMatched?: boolean;
   };
 }
 
@@ -119,6 +121,7 @@ export function buildRepairAiAssist(sourceText: string, parsed?: ParsedRepairAdd
       urgent: !!parsed.ai.urgent,
       publicArea: !!parsed.ai.publicArea,
       repairType: parsed.ai.repairType || '',
+      sampleMatched: !!parsed.ai.sampleMatched,
     },
   };
 }

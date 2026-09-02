@@ -6,6 +6,7 @@ import {
   detectUrgency,
   extractContact,
   extractFaultDescription,
+  formatReporterRoomLabel,
   isVideoUrl,
   MAX_REPAIR_IMAGES,
   MAX_REPAIR_VIDEO_SECONDS,
@@ -270,7 +271,7 @@ Page({
     const local = classifyRepairType(text, this.types);
     const lower = text.toLowerCase();
     const hasExplicitKeyword = !!local?.matched.some((word) => lower.includes(word.toLowerCase()));
-    if (local && hasExplicitKeyword) return;
+    if (local && hasExplicitKeyword && !res?.ai?.sampleMatched) return;
     const type = this.types.find((item) => item.repairType === aiType);
     if (!type) return;
     this.predictedType = type.repairType;
@@ -316,11 +317,11 @@ Page({
      */
     const aiName = (detected?.ai?.contactName || '').trim();
     const roomLabel = detected?.matched
-      ? [detected.buildingText, detected.reporterRoomNo ? `${detected.reporterRoomNo}室` : '']
-          .filter(Boolean)
-          .join('')
+      ? formatReporterRoomLabel(detected.buildingText, detected.reporterRoomNo)
       : '';
-    const name = contactName || aiName || (contactPhone && roomLabel ? roomLabel : '');
+    // 公区单没说人名时始终用当前房号作联系人标识；不能拿登录人默认名，也不能
+    // 只有留了电话才显示房号。换一个报修地址会按本次地址动态生成，不会复制样例里的房号。
+    const name = contactName || aiName || (detected?.publicArea ? roomLabel : '');
     if (name) {
       found.push({
         key: 'name',
