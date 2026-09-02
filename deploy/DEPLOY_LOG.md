@@ -1680,3 +1680,15 @@
 - 自上次（e2fd1fe）以来上线的相关提交：
   - 099c75b fix: align dispatch scope across clients and API
 
+## 2026-09-02 21:16 · web · b146aa8
+
+- 包：`pms-web-20260902-2115.tar.gz`
+- 提交：b146aa8 Merge remote-tracking branch 'origin/main' into codex/theme-deploy
+- 说明：重做Web工单详情页并上线此前待发布的工单管理调整
+- 自上次（069fa37）以来上线的相关提交：
+  - b146aa8 Merge remote-tracking branch 'origin/main' into codex/theme-deploy
+  - 6630f2a feat: 重做Web工单详情抽屉
+  - 099c75b fix: align dispatch scope across clients and API
+  - 0eccc7e feat: 展示工单提交人与调整导航顺序
+  - 63368c3 fix: 分离待派单与待接单并重做完工页
+
