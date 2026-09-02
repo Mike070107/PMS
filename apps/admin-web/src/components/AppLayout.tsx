@@ -75,6 +75,7 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
     items: [
       { key: '/materials', pageKey: 'materials', icon: <AppstoreOutlined />, label: '材料 SKU 库' },
       { key: '/inventory', pageKey: 'inventory', icon: <ShoppingOutlined />, label: '库存与采购' },
+      { key: '/stocktakes', pageKey: 'inventory', icon: <AuditOutlined />, label: '库存盘点' },
     ],
   },
   {
@@ -110,6 +111,7 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/fees': '物业费账单、收款登记与欠费催缴',
   '/materials': '维护标准材料、单位与基础价格',
   '/inventory': '管理库存、盘点、采购、收货与仓库调拨',
+  '/stocktakes': '发起盘点、办公室复核并查看盘点报告',
   '/properties': '维护小区、楼栋与房屋',
   '/owners': '业主端小程序用户：档案、入驻审核与启停',
   '/staff': '管理员工身份、工种与后台角色',

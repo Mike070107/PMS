@@ -17,6 +17,7 @@ const MaintenanceOrdersPage = lazy(() => import('./pages/MaintenanceOrdersPage')
 const SignPage = lazy(() => import('./pages/SignPage'));
 const StaffPage = lazy(() => import('./pages/StaffPage'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
+const StocktakePage = lazy(() => import('./pages/StocktakePage'));
 const MaterialsPage = lazy(() => import('./pages/MaterialsPage'));
 const QrPage = lazy(() => import('./pages/QrPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
@@ -137,6 +138,7 @@ export default function App() {
         <Route path="offices" element={<RequireTenantScope><RequirePage pageKey="offices"><OfficesPage /></RequirePage></RequireTenantScope>} />
         <Route path="platform/tenants" element={<RequirePlatform><PlatformTenantsPage /></RequirePlatform>} />
         <Route path="inventory" element={<RequireTenantScope><RequirePage pageKey="inventory"><InventoryPage /></RequirePage></RequireTenantScope>} />
+        <Route path="stocktakes" element={<RequireTenantScope><RequirePage pageKey="inventory"><StocktakePage /></RequirePage></RequireTenantScope>} />
         <Route path="materials" element={<RequireTenantScope><RequirePage pageKey="materials"><MaterialsPage /></RequirePage></RequireTenantScope>} />
         <Route path="qr" element={<RequireTenantScope><RequirePage pageKey="qr"><QrPage /></RequirePage></RequireTenantScope>} />
         <Route path="settings" element={<RequireTenantScope><RequirePage pageKey="settings"><SettingsPage /></RequirePage></RequireTenantScope>} />
