@@ -1634,3 +1634,11 @@
 - 自上次（861b4cb）以来上线的相关提交：
   - e2fd1fe fix: reconcile stocktake movements during review
 
+## 2026-09-02 18:41 · web · b7afa4c
+
+- 包：`pms-web-20260902-1840.tar.gz`
+- 提交：b7afa4c style: 统一三端清爽蓝适老主题
+- 说明：清爽蓝适老主题已上线；首页、调度台路由、静态资源和 API 健康检查通过
+- 自上次（e2fd1fe）以来上线的相关提交：
+  - b7afa4c style: 统一三端清爽蓝适老主题
+
