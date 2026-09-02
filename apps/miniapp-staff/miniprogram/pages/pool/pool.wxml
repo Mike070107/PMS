@@ -109,7 +109,7 @@
     wx:key="id"
     id="pool-order-{{item.id}}"
     class="order-slot {{collectingId === item.id ? 'order-slot--collecting' : ''}} {{closingId === item.id ? 'order-slot--closing' : ''}} {{settling && index > collectingIndex ? 'order-slot--following' : ''}}"
-    style="{{collectingId === item.id || closingId === item.id ? 'height:' + collectingHeight + 'px' : ''}}"
+    style="{{collectingId === item.id ? collectingStyle : closingId === item.id ? 'height:' + collectingHeight + 'px' : ''}}"
   >
     <view
       wx:if="{{item.waitingCollapsed}}"
@@ -188,7 +188,7 @@
 </view>
 
 <!-- 动画落点：与卡片同时出现，让人明确知道这单收到哪里去了 -->
-<view wx:if="{{collectingId}}" class="mine-receiver">
+<view wx:if="{{collectingId}}" class="mine-receiver" style="{{mineReceiverStyle}}">
   <view class="mine-receiver__dot"></view>
   <text>已收入在手工单</text>
 </view>

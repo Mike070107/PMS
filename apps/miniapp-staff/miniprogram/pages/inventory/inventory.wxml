@@ -10,7 +10,7 @@
       <view class="screen-head__title">材料中心</view>
       <view class="screen-head__desc">查库存、维护材料档案和跟进采购申请</view>
     </view>
-    <view wx:if="{{canViewStock}}" class="stocktake-entry" bindtap="onStocktake" hover-class="stocktake-entry--press">
+    <view wx:if="{{canViewStocktake}}" class="stocktake-entry" bindtap="onStocktake" hover-class="stocktake-entry--press">
       <view class="stocktake-entry__icon"><view class="entry-icon__glyph icon-action--scan-white"></view></view>
       <view class="stocktake-entry__body">
         <view class="stocktake-entry__title">库存盘点</view>
@@ -20,7 +20,7 @@
     </view>
     <!-- 「材料SKU」只给勾了 app:materials 的角色（角色矩阵里配）。
          没勾的人这一格整个不出现 —— 改材料档案会影响全公司的编码和统计，不是人人该有 -->
-    <view class="tabs">
+    <view wx:if="{{canViewStock || canViewSku}}" class="tabs">
       <view wx:if="{{canViewStock}}" class="tab {{tab === 'stock' ? 'tab--on' : ''}}" data-tab="stock" bindtap="onSwitchTab">库存</view>
       <view wx:if="{{canViewSku}}" class="tab {{tab === 'sku' ? 'tab--on' : ''}}" data-tab="sku" bindtap="onSwitchTab">材料SKU</view>
       <view wx:if="{{canViewStock}}" class="tab {{tab === 'purchase' ? 'tab--on' : ''}}" data-tab="purchase" bindtap="onSwitchTab">采购申请</view>
@@ -228,7 +228,7 @@
     </block>
 
     <!-- ============ 采购申请 ============ -->
-    <block wx:else>
+    <block wx:elif="{{tab === 'purchase'}}">
       <view wx:if="{{loading}}" class="muted center">加载中…</view>
       <view wx:elif="{{requests.length === 0}}" class="muted center">暂无采购申请</view>
 

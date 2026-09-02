@@ -55,6 +55,12 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { key: 'fees', label: '物业费', group: '收费业务' },
   { key: 'materials', label: '材料 SKU 库', group: '材料与库存' },
   { key: 'inventory', label: '库存与采购', group: '材料与库存' },
+  {
+    key: 'stocktakes',
+    label: '库存盘点',
+    group: '材料与库存',
+    hint: '发起盘点、录入实盘数量、复核并查看盘点报告',
+  },
   { key: 'properties', label: '房产与业主', group: '基础档案' },
   { key: 'owners', label: '业主审核', group: '基础档案' },
   { key: 'users', label: '用户管理', group: '基础档案' },
@@ -123,6 +129,13 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
     hint: '查还有几个、看采购进度',
     editLabel: '改材料 / 提采购',
     editHint: '补 SKU 资料和照片、发起采购申请',
+  },
+  {
+    key: 'app:stocktakes',
+    label: '库存盘点',
+    hint: '现场扫码、查看盘点任务',
+    editLabel: '盘点 / 复核',
+    editHint: '新建盘点任务、录入实盘数量并复核',
   },
   {
     // 和「材料与库存」分成两格：那一格是「现场查还有几个」，人人都该有；
@@ -209,6 +222,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     appPages: {
       'app:dispatch': 'e',
       'app:inventory': 'e',
+      'app:stocktakes': 'e',
       'app:materials': 'e',
       'app:my-repairs': 'v',
       'app:repair-create': 'v',
@@ -220,6 +234,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'maintenance-orders': 'e',
       materials: 'e',
       inventory: 'e',
+      stocktakes: 'e',
       properties: 'v',
       qr: 'v',
     },
@@ -230,6 +245,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     appPages: {
       'app:dispatch': 'e',
       'app:inventory': 'e',
+      'app:stocktakes': 'e',
       'app:materials': 'e',
       'app:approve-manager': 'e',
       'app:my-repairs': 'v',
@@ -246,6 +262,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       fees: 'e',
       materials: 'e',
       inventory: 'e',
+      stocktakes: 'e',
       properties: 'e',
       owners: 'e',
       qr: 'e',
@@ -257,10 +274,11 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '采购审批（采购这一步）+ 材料库存',
     appPages: {
       'app:inventory': 'e',
+      'app:stocktakes': 'e',
       'app:approve-purchaser': 'e',
       'app:messages': 'v',
     },
-    adminPages: { dashboard: 'v', materials: 'e', inventory: 'e' },
+    adminPages: { dashboard: 'v', materials: 'e', inventory: 'e', stocktakes: 'e' },
   },
   {
     name: '保安',

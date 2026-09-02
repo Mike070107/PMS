@@ -275,7 +275,71 @@ export class ObservabilityService {
     row.detail = { ...detail, feedbackStatus: dto.status, handlingNote: dto.note?.trim() || null, history };
     row.success = dto.status === 'resolved';
     row.updatedBy = user.id;
-    return this.logRepo.save(row);
+    const saved = await this.logRepo.save(row);
+
+    // 状态变化必须回到提交人手里，不能只在后台日志里自说自话。
+    if (row.actorUserId && row.actorUserId !== user.id) {
+      const title = {
+        new: '你的反馈已转为待处理',
+        processing: '你的反馈正在处理中',
+        resolved: '你的反馈已解决',
+        ignored: '你的反馈已有处理结果',
+      }[dto.status];
+      await this.notifications.notifyUser({
+        tenantId,
+        receiverId: row.actorUserId,
+        eventKey: 'feedback_status_changed',
+        title,
+        payload: {
+          feedbackId: row.id,
+          feedbackStatus: dto.status,
+          note: dto.note?.trim() || '',
+        },
+        page: `pages/feedback-history/feedback-history?id=${row.id}`,
+      });
+    }
+    return saved;
+  }
+
+  /**
+   * 给提交人看的反馈进度。技术上下文、堆栈、IP 等内部排障信息一律不下发，
+   * 只保留用户自己提交的内容、附件、状态与后台明确写给他的回复。
+   */
+  async listMyFeedback(user: AuthUser) {
+    const tenantId = requireTenant(user);
+    const rows = await this.logRepo.find({
+      where: { tenantId, category: 'feedback', actorUserId: user.id },
+      order: { id: 'DESC' },
+      take: 100,
+    });
+    return rows.map((row) => {
+      const detail = (row.detail || {}) as Record<string, any>;
+      const history = Array.isArray(detail.history)
+        ? detail.history
+            .filter((item: any) => item && typeof item.status === 'string')
+            .map((item: any) => ({
+              status: String(item.status),
+              note: typeof item.note === 'string' ? item.note : '',
+              at: String(item.at || ''),
+            }))
+        : [];
+      const attachments = Array.isArray(detail.attachments)
+        ? detail.attachments
+            .filter((item: any) => item?.url && (item.type === 'image' || item.type === 'video'))
+            .map((item: any) => ({ type: item.type, url: String(item.url) }))
+        : [];
+      return {
+        id: row.id,
+        type: String(detail.feedbackType || 'other'),
+        status: String(detail.feedbackStatus || 'new'),
+        message: row.message,
+        handlingNote: typeof detail.handlingNote === 'string' ? detail.handlingNote : '',
+        attachments,
+        history,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      };
+    });
   }
 
   async list(user: AuthUser, query: SystemLogQueryDto) {

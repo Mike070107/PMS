@@ -153,7 +153,7 @@ export class InventoryController {
   }
 
   @Get('warehouses')
-  @RequirePermission(['inventory', 'app:inventory'], 'view')
+  @RequirePermission(['inventory', 'stocktakes', 'app:inventory', 'app:stocktakes'], 'view')
   listWarehouses(
     @Query() query: WarehousesQueryDto,
     @CurrentUser() user: AuthUser,

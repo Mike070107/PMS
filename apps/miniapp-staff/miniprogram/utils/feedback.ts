@@ -56,7 +56,7 @@ export async function openFeedback() {
       const uploaded = await upload.uploadTempFile(file.tempFilePath, 120000);
       attachments.push({ type: file.fileType, url: uploaded.displayUrl || uploaded.publicUrl });
     }
-    await observability.feedback({
+    const saved = await observability.feedback({
       source: 'miniapp-staff',
       type: TYPES[picked.tapIndex]?.value || 'other',
       message: description,
@@ -67,7 +67,16 @@ export async function openFeedback() {
       context: last ? { ...last } : undefined,
       attachments,
     });
-    wx.showToast({ title: '已反馈给后台' });
+    wx.hideLoading();
+    const result = await wx.showModal({
+      title: '反馈已提交',
+      content: '处理进度和回复会显示在“我的反馈”中。',
+      confirmText: '查看反馈',
+      cancelText: '稍后再看',
+    });
+    if (result.confirm) {
+      wx.navigateTo({ url: `/pages/feedback-history/feedback-history?id=${saved.id}` });
+    }
   } catch (error: any) {
     wx.showToast({ icon: 'none', title: error?.message || '反馈提交失败' });
   } finally {

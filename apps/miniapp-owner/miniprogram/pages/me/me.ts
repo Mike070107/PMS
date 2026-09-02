@@ -93,6 +93,10 @@ Page({
     void openFeedback();
   },
 
+  onFeedbackHistory() {
+    wx.navigateTo({ url: '/pages/feedback-history/feedback-history' });
+  },
+
   onTapOnboard() {
     wx.navigateTo({ url: '/pages/onboard/onboard' });
   },

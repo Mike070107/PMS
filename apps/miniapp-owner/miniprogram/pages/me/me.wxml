@@ -77,6 +77,15 @@
         </view>
         <view class="icon icon--chevron"></view>
       </view>
+
+      <view wx:if="{{user}}" class="list__row" bindtap="onFeedbackHistory">
+        <view class="icon icon--doc list__icon"></view>
+        <view class="list__body">
+          <view class="list__title">我的反馈</view>
+          <view class="list__desc">查看处理进度和物业回复</view>
+        </view>
+        <view class="icon icon--chevron"></view>
+      </view>
     </view>
 
     <view wx:if="{{user}}" class="card list">

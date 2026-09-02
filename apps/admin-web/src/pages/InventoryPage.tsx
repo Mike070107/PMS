@@ -28,7 +28,6 @@ import {
 import type { UploadProps } from 'antd/es/upload/interface';
 import {
   AppstoreOutlined,
-  AuditOutlined,
   ColumnWidthOutlined,
   EditOutlined,
   InboxOutlined,
@@ -50,7 +49,6 @@ import { auth, useAuth, useCompanyWideView, usePagePerm } from '../lib/auth';
 import { useTableSeq } from '../components/tableSeqColumn';
 import { nameOr, unknown } from '../lib/displayName';
 import { compressImageFile } from '../lib/compressImage';
-import StocktakePanel from '../components/StocktakePanel';
 import { DetailHero, DetailMetrics, DetailSection } from '../components/DetailPrimitives';
 import {
   MATERIAL_PHOTO_LIMIT,
@@ -1214,7 +1212,7 @@ export default function InventoryPage() {
   return (
     <div>
       <Space className="pms-page-toolbar" align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Text className="pms-page-note" type="secondary">按库存清单、库存盘点、缺料审批、采购入库、仓库调拨与领料组织日常工作。</Text>
+        <Text className="pms-page-note" type="secondary">按库存清单、缺料审批、采购入库、仓库调拨与领料组织日常工作。</Text>
         <Space>
           <Button icon={<ReloadOutlined />} loading={loading} onClick={loadAll}>刷新</Button>
           {canEdit && <Button icon={<InboxOutlined />} onClick={openGeneralReceipt}>一般入库</Button>}
@@ -1292,13 +1290,8 @@ export default function InventoryPage() {
             ),
           },
           {
-            key: 'stocktake',
-            label: <span><AuditOutlined /> 库存盘点</span>,
-            children: <StocktakePanel warehouses={visibleWarehouses} canEdit={canEdit} />,
-          },
-          {
             key: 'requests',
-            label: <span><AuditOutlined /> 采购申请</span>,
+            label: <span><UnorderedListOutlined /> 采购申请</span>,
             children: (
               <Card
                 title="采购申请单"

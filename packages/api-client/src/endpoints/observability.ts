@@ -15,5 +15,26 @@ export interface UserFeedbackReq {
   attachments?: Array<{ type: 'image' | 'video'; url: string }>;
 }
 
+export interface MyFeedbackHistoryItem {
+  status: FeedbackStatus;
+  note: string;
+  at: string;
+}
+
+export interface MyFeedbackItem {
+  id: number;
+  type: FeedbackType;
+  status: FeedbackStatus;
+  message: string;
+  handlingNote: string;
+  attachments: Array<{ type: 'image' | 'video'; url: string }>;
+  history: MyFeedbackHistoryItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const feedback = (data: UserFeedbackReq) =>
   request<{ ok: true; id: number }>({ method: 'POST', url: '/observability/feedback', data });
+
+export const myFeedback = () =>
+  request<MyFeedbackItem[]>({ method: 'GET', url: '/observability/my-feedback' });

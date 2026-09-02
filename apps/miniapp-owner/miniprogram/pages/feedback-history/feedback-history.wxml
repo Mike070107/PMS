@@ -1,0 +1,66 @@
+<view class="container feedback-history-page">
+  <view class="feedback-head">
+    <view class="feedback-head__title">我的反馈</view>
+    <view class="feedback-head__desc">后台开始处理或解决后，会在这里留下状态和回复</view>
+  </view>
+
+  <view wx:if="{{loading && !loaded}}" class="center muted loading-tip">加载中…</view>
+  <view wx:elif="{{!list.length && loaded}}" class="empty-wrap">
+    <pms-empty text="还没有提交过异常反馈"/>
+  </view>
+
+  <view
+    wx:for="{{list}}"
+    wx:key="id"
+    class="card feedback-item {{item.highlighted ? 'feedback-item--focus' : ''}}"
+  >
+    <view class="feedback-item__head">
+      <view class="feedback-item__type">{{item.typeText}}</view>
+      <view class="feedback-status feedback-status--{{item.tone}}">{{item.statusText}}</view>
+    </view>
+    <view class="feedback-item__message">{{item.message}}</view>
+    <view class="feedback-item__time">提交于 {{item.timeText}}</view>
+
+    <view wx:if="{{item.imageUrls.length}}" class="feedback-media">
+      <image
+        wx:for="{{item.imageUrls}}"
+        wx:for-item="imageUrl"
+        wx:key="*this"
+        class="feedback-media__image"
+        src="{{imageUrl}}"
+        mode="aspectFill"
+        data-url="{{imageUrl}}"
+        data-urls="{{item.imageUrls}}"
+        bindtap="onPreviewImage"
+      />
+    </view>
+    <video
+      wx:for="{{item.videos}}"
+      wx:for-item="videoUrl"
+      wx:key="*this"
+      class="feedback-media__video"
+      src="{{videoUrl}}"
+      controls
+      object-fit="cover"
+    />
+
+    <view wx:if="{{item.handlingNote}}" class="latest-reply">
+      <view class="latest-reply__label">最新处理回复</view>
+      <view class="latest-reply__text">{{item.handlingNote}}</view>
+    </view>
+
+    <view wx:if="{{item.progress.length}}" class="progress-list">
+      <view class="progress-list__title">处理记录</view>
+      <view wx:for="{{item.progress}}" wx:for-item="step" wx:key="at" class="progress-step">
+        <view class="progress-step__dot progress-step__dot--{{step.tone}}"></view>
+        <view class="progress-step__body">
+          <view class="progress-step__line">
+            <text class="progress-step__status">{{step.statusText}}</text>
+            <text class="progress-step__time">{{step.timeText}}</text>
+          </view>
+          <view wx:if="{{step.note}}" class="progress-step__note">{{step.note}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

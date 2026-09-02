@@ -3,7 +3,7 @@ import type { NotificationItem } from '@pms/api-client/src/endpoints/notificatio
 import { formatDateTimeCn } from '@pms/shared-types';
 import { refreshUnreadBadge } from '../../utils/unread';
 
-type Row = NotificationItem & { timeText: string; page: string };
+type Row = NotificationItem & { timeText: string; page: string; desc: string };
 
 Page({
   data: {
@@ -28,6 +28,10 @@ Page({
           ...item,
           timeText: formatDateTimeCn(item.createdAt),
           page: String(item.payload?.page || ''),
+          desc: [item.payload?.note, item.payload?.content]
+            .map((value) => String(value || '').trim())
+            .filter(Boolean)
+            .join('；'),
         })),
         unread: list.filter((item) => !item.readAt).length,
         loaded: true,
@@ -51,7 +55,7 @@ Page({
       refreshUnreadBadge();
     }
     if (row.page) {
-      wx.navigateTo({ url: `/${row.page}` });
+      wx.navigateTo({ url: row.page.startsWith('/') ? row.page : `/${row.page}` });
       return;
     }
     // 没有落地页的消息（比如纯公告）就只标已读，本地把圆点灭掉

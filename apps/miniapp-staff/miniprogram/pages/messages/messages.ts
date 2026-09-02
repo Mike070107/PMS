@@ -71,7 +71,7 @@ Page({
       refreshUnread();
     }
     if (row.page) {
-      wx.navigateTo({ url: `/${row.page}` });
+      wx.navigateTo({ url: row.page.startsWith('/') ? row.page : `/${row.page}` });
       return;
     }
     this.load();

@@ -6,12 +6,12 @@ import { request } from '../lib/api';
 import { usePagePerm } from '../lib/auth';
 
 /**
- * Web 端独立盘点入口。数据和「库存与采购」里的快捷页签是同一套，
- * 放在左侧「材料与库存」分组下，办公室不用先进采购页再找。
+ * Web 端独立盘点入口。与「库存与采购」分开授权，
+ * 办公室、经理和盘点人员可以按业务角色单独分配。
  */
 export default function StocktakePage() {
   const { message } = AntdApp.useApp();
-  const { canEdit } = usePagePerm('inventory');
+  const { canEdit } = usePagePerm('stocktakes');
   const [warehouses, setWarehouses] = useState<WarehouseView[]>([]);
   const [loading, setLoading] = useState(true);
 

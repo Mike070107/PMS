@@ -24,7 +24,7 @@ function fakeRepo(rows: any[], sink: { last?: FakeCall }) {
   };
 }
 
-test('启动时把旧的「在手工单 / 我的报修」查看权复制为独立权限', async () => {
+test('启动时把从旧页面拆出的功能复制为独立权限', async () => {
   const svc = Object.create(AccessService.prototype) as any;
   const roleSql: string[] = [];
   const templateSql: string[] = [];
@@ -52,8 +52,20 @@ test('启动时把旧的「在手工单 / 我的报修」查看权复制为独�
   assert.match(templateRepairSql, /src\.page_key = 'app:my-orders'/);
   assert.match(roleRepairSql, /src\.can_view, false, false/);
   assert.match(templateRepairSql, /src\.can_view, false, false/);
-  assert.equal(roleSql.length, 2, '目前角色权限共有两组拆分回填');
-  assert.equal(templateSql.length, 2, '目前模板权限共有两组拆分回填');
+
+  const roleStocktakeSql = roleSql.find((sql) => sql.includes("'stocktakes'"));
+  const roleAppStocktakeSql = roleSql.find((sql) => sql.includes("'app:stocktakes'"));
+  assert.ok(roleStocktakeSql, '后台库存权限应拆出盘点权限');
+  assert.ok(roleAppStocktakeSql, '员工端材料库存权限应拆出盘点权限');
+  assert.match(roleStocktakeSql, /src\.page_key = 'inventory'/);
+  assert.match(roleAppStocktakeSql, /src\.page_key = 'app:inventory'/);
+  assert.match(roleStocktakeSql, /src\.can_view, src\.can_edit, false/);
+  assert.match(roleAppStocktakeSql, /src\.can_view, src\.can_edit, false/);
+
+  const tenantPageSql = roleSql.find((sql) => sql.includes('UPDATE tenants'));
+  assert.ok(tenantPageSql, '已开通库存页的存量租户也应自动开通独立盘点页');
+  assert.equal(roleSql.length, 5, '四组权限拆分 + 一次租户页面回填');
+  assert.equal(templateSql.length, 4, '模板权限共有四组拆分回填');
 });
 
 test('跟随模板的角色读模板那份权限，自定义角色读自己的', async () => {

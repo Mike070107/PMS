@@ -793,11 +793,16 @@ export class InventoryService {
     return all;
   }
 
-  /** 按本人角色范围留下能看的仓：自己管理处的排前面，然后是公司级的；全公司范围的人不过滤 */
+  /** 按本人角色范围留下能看的仓；即使有全公司权限，也把其它受限角色明确所属管理处的仓排前 */
   async filterWarehousesForUser(tenantId: number, userId: number, all: Warehouse[]): Promise<Warehouse[]> {
     const mine = await this.accessService.userOfficeIds(tenantId, userId);
-    if (mine.all) return all;
     const offices = new Set(mine.officeIds);
+    if (mine.all) {
+      return [...all].sort((a, b) => {
+        const rank = (item: Warehouse) => item.officeId && offices.has(item.officeId) ? 0 : item.officeId ? 1 : 2;
+        return rank(a) - rank(b) || a.id - b.id;
+      });
+    }
     // 严格按范围：只有自己管理处的仓，公司级总仓也不给（2026-08-27 Mike 定的口径）
     // —— 除非角色在「额外可见的仓库」里点名给了（2026-08-30）。
     // 管理处没建仓、也没额外授权 = 一个都看不到，端上会提示去建仓

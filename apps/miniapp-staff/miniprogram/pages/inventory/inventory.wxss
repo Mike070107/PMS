@@ -231,7 +231,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #236da6, #174f83);
+  background: linear-gradient(135deg, #3d6598, #31558a);
   color: #fff;
   font-size: var(--font-xl);
   border-radius: 999rpx;

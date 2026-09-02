@@ -4,7 +4,9 @@ import {
   contactFillHint,
   extractContact,
   extractFaultDescription,
+  isRoomLikeContactName,
   mergeExtractedContact,
+  resolveContactName,
 } from './voice-extract';
 
 /**
@@ -39,6 +41,15 @@ test('联系人：称谓式', () => {
 test('联系人：动词不能粘进姓里', () => {
   // 实测抽出过「找张师傅」「人李女士」
   assert.equal(extractContact('联系人李女士 13800138000').name, '李女士');
+});
+
+test('联系人名排除数字房号', () => {
+  assert.equal(isRoomLikeContactName('2号'), true);
+  assert.equal(isRoomLikeContactName('228/2/201'), true);
+  assert.equal(isRoomLikeContactName('张师傅'), false);
+  assert.equal(resolveContactName({ spokenName: '', aiName: '2号', roomLabel: '228/2/201', hasPhone: true }), '228/2/201');
+  assert.equal(resolveContactName({ spokenName: '', aiName: '2号', roomLabel: '', hasPhone: true }), '未告知');
+  assert.equal(resolveContactName({ spokenName: '李阿姨', aiName: '2号', roomLabel: '228/2/201', hasPhone: false }), '李阿姨');
 });
 
 test('故障描述：把地址、人名、电话都剥掉，只剩故障本身', () => {

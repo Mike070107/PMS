@@ -69,7 +69,7 @@ Page({
         ? warehouses.findIndex((item) => item.id === this.preferredWarehouseId)
         : -1;
       this.setData({
-        canEdit: session.canEditMaterials,
+        canEdit: session.canEditStocktake,
         warehouses,
         warehouseNames: warehouses.map((item) => item.name),
         warehouseIndex: preferred >= 0 ? preferred : 0,

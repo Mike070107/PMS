@@ -4,7 +4,7 @@ import {
 } from '@ant-design/icons';
 import {
   App as AntdApp, Button, Card, Col, Collapse, DatePicker, Descriptions, Drawer,
-  Empty, Image, Input, Progress, Row, Segmented, Select, Space, Statistic, Table, Tag,
+  Empty, Image, Input, Modal, Progress, Row, Segmented, Select, Space, Statistic, Table, Tag,
   Typography,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -97,6 +97,9 @@ export default function LogsPage() {
   const [keyword, setKeyword] = useState('');
   const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [detailRow, setDetailRow] = useState<LogRow | null>(null);
+  const [feedbackAction, setFeedbackAction] = useState<{ row: LogRow; status: string } | null>(null);
+  const [handlingNote, setHandlingNote] = useState('');
+  const [updatingFeedback, setUpdatingFeedback] = useState(false);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -122,11 +125,33 @@ export default function LogsPage() {
   useEffect(() => { if (mode === 'overview') void loadOverview(); else void loadLogs(1); }, [mode]);
 
   const updateFeedback = async (row: LogRow, status: string) => {
+    setFeedbackAction({ row, status });
+    setHandlingNote(
+      status === 'processing'
+        ? '你的反馈我们已收到，正在安排处理。'
+        : status === 'resolved'
+          ? '该问题已处理完成，请重新进入小程序查看。如仍有问题，可以再次反馈。'
+          : '你的反馈已记录，感谢你的建议。',
+    );
+  };
+
+  const submitFeedbackStatus = async () => {
+    if (!feedbackAction) return;
+    const note = handlingNote.trim();
+    if (!note) return message.warning('请填写给用户的处理回复');
+    setUpdatingFeedback(true);
     try {
-      await request({ method: 'PATCH', url: `/observability/feedback/${row.id}/status`, data: { status } });
-      message.success(`已标记为「${feedbackStatusMeta[status]?.label}」`);
+      await request({
+        method: 'PATCH',
+        url: `/observability/feedback/${feedbackAction.row.id}/status`,
+        data: { status: feedbackAction.status, note },
+      });
+      message.success(`已标记为「${feedbackStatusMeta[feedbackAction.status]?.label}」，并通知反馈人`);
+      setFeedbackAction(null);
+      setDetailRow(null);
       void loadLogs(logs.page);
     } catch (e: any) { message.error(e?.message || '状态更新失败'); }
+    finally { setUpdatingFeedback(false); }
   };
 
   const operationColumns = useMemo(() => [
@@ -226,6 +251,26 @@ export default function LogsPage() {
       <Table<LogRow> rowKey="id" loading={loading} dataSource={logs.list} columns={mode === 'operations' ? operationColumns : mode === 'feedback' ? feedbackColumns : logColumns} scroll={{ x: mode === 'feedback' ? 1320 : 1100 }} pagination={{ current: logs.page, pageSize: logs.pageSize, total: logs.total, showSizeChanger: true, showTotal: (total) => `共 ${total} 条`, onChange: (page, pageSize) => void loadLogs(page, pageSize) }} />
     </Card>}
     <LogDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} canManageFeedback={canManageFeedback} onStatus={updateFeedback} />
+    <Modal
+      title={`标记为「${feedbackStatusMeta[feedbackAction?.status || 'new']?.label}」并回复用户`}
+      open={!!feedbackAction}
+      confirmLoading={updatingFeedback}
+      okText="确认并通知用户"
+      cancelText="取消"
+      onOk={() => void submitFeedbackStatus()}
+      onCancel={() => !updatingFeedback && setFeedbackAction(null)}
+    >
+      <Text type="secondary">这段回复会显示在用户小程序的“我的反馈”中，并发送一条站内消息。</Text>
+      <Input.TextArea
+        value={handlingNote}
+        onChange={(event) => setHandlingNote(event.target.value)}
+        maxLength={500}
+        showCount
+        rows={5}
+        style={{ marginTop: 14 }}
+        placeholder="说明正在怎么处理，或已经解决了什么"
+      />
+    </Modal>
   </div>;
 }
 

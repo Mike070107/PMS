@@ -19,6 +19,7 @@
     <view class="msg__dot {{item.readAt ? 'msg__dot--off' : ''}}"></view>
     <view class="msg__body">
       <view class="msg__title">{{item.title}}</view>
+      <view wx:if="{{item.desc}}" class="msg__desc">{{item.desc}}</view>
       <view class="msg__time">{{item.timeText}}</view>
     </view>
     <view wx:if="{{item.page}}" class="icon icon--chevron"></view>

@@ -1,4 +1,4 @@
-import { feedback, upload } from '@pms/api-client';
+import { observability, upload } from '@pms/api-client';
 
 const MAX_IMAGES = 4;
 const MAX_VIDEO_SECONDS = 15;
@@ -116,23 +116,28 @@ Page({
     if (this.data.uploadingImages || this.data.uploadingVideo || this.data.saving) return;
     this.setData({ saving: true, errorMsg: '' });
     try {
-      await feedback.submit({
-        content,
-        imageUrls: this.data.imageUrls,
-        ...(this.data.videoUrl
-          ? {
-              videoUrl: this.data.videoUrl,
-              videoDurationSeconds: this.data.videoDurationSeconds,
-            }
-          : {}),
+      const saved = await observability.feedback({
+        source: 'miniapp-staff',
+        type: 'suggestion',
+        message: content,
+        route: '/pages/feedback/feedback',
+        pageTitle: '意见与建议',
+        attachments: [
+          ...this.data.imageUrls.map((url) => ({ type: 'image' as const, url })),
+          ...(this.data.videoUrl ? [{ type: 'video' as const, url: this.data.videoUrl }] : []),
+        ],
       });
-      await wx.showModal({
+      const result = await wx.showModal({
         title: '提交成功',
-        content: '感谢你的意见，我们会认真查看。',
-        showCancel: false,
-        confirmText: '知道了',
+        content: '感谢你的意见。处理进度和回复会显示在“我的反馈”中。',
+        confirmText: '查看反馈',
+        cancelText: '返回',
       });
-      wx.navigateBack();
+      if (result.confirm) {
+        wx.redirectTo({ url: `/pages/feedback-history/feedback-history?id=${saved.id}` });
+      } else {
+        wx.navigateBack();
+      }
     } catch (e: any) {
       this.setData({ errorMsg: e?.message || '提交失败，请稍后重试' });
     } finally {

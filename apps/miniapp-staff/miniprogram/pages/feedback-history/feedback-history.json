@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "我的反馈",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "pms-empty": "@pms/miniapp-ui/components/empty/index"
+  }
+}

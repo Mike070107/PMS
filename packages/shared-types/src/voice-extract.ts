@@ -72,6 +72,42 @@ const NAME_STOPWORDS = new Set([
   '他们', '这里', '那里', '楼上', '楼下', '隔壁', '业主', '保安', '电话', '手机',
 ]);
 
+/** 住户通常不会叫「2号」或「228/2/201」做名字；这类数字式值要当房号 fallback 而不是联系人 */
+const ROOM_CONTACT_NAME_RE = /^(?:\d{1,4}(?:[号楼栋室单元]?)|[一二三四五六七八九十〇零两]{1,12}(?:[号楼栋室单元]?)|(?:\d{1,4}\/\d{1,4}(?:\/\d{1,4})?))$/;
+
+/**
+ * 「2号」这种值是常见的房号写法，不该落在联系人字段。
+ * 返回 true 表示这个“姓名”应视为无效/可忽略，避免误填成名字。
+ */
+export function isRoomLikeContactName(value: string): boolean {
+  const normalized = String(value || '').trim().replace(/\s+/g, '');
+  if (!normalized || normalized === '未告知') return false;
+  return ROOM_CONTACT_NAME_RE.test(normalized);
+}
+
+/** 联系人名称兜底规则：有说人名就信说人名；AI 给错房号就忽略；
+ * 没有姓名且有电话就回退为「未告知」，有房号就用房号做联系人标识。 */
+export function resolveContactName({
+  spokenName,
+  aiName,
+  roomLabel,
+  hasPhone,
+}: {
+  spokenName?: string;
+  aiName?: string;
+  roomLabel?: string;
+  hasPhone?: boolean;
+}): string {
+  const explicit = String(spokenName || '').trim();
+  if (explicit && !isRoomLikeContactName(explicit)) return explicit;
+
+  const ai = String(aiName || '').trim();
+  if (ai && !isRoomLikeContactName(ai)) return ai;
+
+  if (roomLabel) return roomLabel;
+  return hasPhone ? '未告知' : '';
+}
+
 export interface ExtractedContact {
   /** 规范化后的号码，可直接填进表单 */
   phone?: string;

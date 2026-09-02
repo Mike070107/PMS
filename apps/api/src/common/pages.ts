@@ -17,6 +17,7 @@ export const ADMIN_PAGE_KEYS = [
   'fees', // 物业费（账单 / 收费标准 / 欠费）
   'materials', // 材料 SKU 库
   'inventory', // 库存与采购
+  'stocktakes', // 库存盘点（独立页面 / 独立权限）
   'properties', // 房产与业主
   'owners', // 业主审核
   'users', // 用户管理
@@ -41,6 +42,7 @@ export const STAFF_APP_PAGE_KEYS = [
   'app:my-repairs', // 我的报修（本人提交的报修进度）
   'app:repair-create', // 报修
   'app:inventory', // 材料与库存（现场查存量、看采购进度）
+  'app:stocktakes', // 库存盘点（现场扫码、录入与复核）
   'app:materials', // 材料 SKU 库（看/改材料档案，单独一格）
   'app:approve-manager', // 采购审批（经理这一步）
   'app:approve-purchaser', // 采购审批（采购这一步）
@@ -89,6 +91,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     appPages: {
       'app:dispatch': 'e',
       'app:inventory': 'e',
+      'app:stocktakes': 'e',
       'app:materials': 'e',
       'app:my-repairs': 'v',
       'app:repair-create': 'v',
@@ -100,6 +103,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'maintenance-orders': 'e',
       materials: 'e',
       inventory: 'e',
+      stocktakes: 'e',
       properties: 'v',
       qr: 'v',
     },
@@ -110,6 +114,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     appPages: {
       'app:dispatch': 'e',
       'app:inventory': 'e',
+      'app:stocktakes': 'e',
       'app:materials': 'e',
       'app:approve-manager': 'e',
       'app:my-repairs': 'v',
@@ -126,6 +131,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       fees: 'e',
       materials: 'e',
       inventory: 'e',
+      stocktakes: 'e',
       properties: 'e',
       owners: 'e',
       qr: 'e',
@@ -137,11 +143,12 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '采购审批（采购这一步）+ 材料库存',
     appPages: {
       'app:inventory': 'e',
+      'app:stocktakes': 'e',
       'app:materials': 'e',
       'app:approve-purchaser': 'e',
       'app:messages': 'v',
     },
-    adminPages: { dashboard: 'v', materials: 'e', inventory: 'e' },
+    adminPages: { dashboard: 'v', materials: 'e', inventory: 'e', stocktakes: 'e' },
   },
   {
     name: '保安',

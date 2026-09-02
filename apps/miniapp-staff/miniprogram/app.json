@@ -13,6 +13,7 @@
     "pages/stocktake-review/stocktake-review",
     "pages/material-inbound/material-inbound",
     "pages/messages/messages",
+    "pages/feedback-history/feedback-history",
     "pages/feedback/feedback",
     "pages/me/me",
     "pages/web-login/web-login",
@@ -20,9 +21,9 @@
   ],
   "window": {
     "navigationBarTitleText": "邻修工作台",
-    "navigationBarBackgroundColor": "#f2f6fa",
+    "navigationBarBackgroundColor": "#f5f8fb",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#edf2f7"
+    "backgroundColor": "#eef3f8"
   },
   "tabBar": {
     "custom": true,

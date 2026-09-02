@@ -117,15 +117,21 @@ const compareSkuName = (a: Pick<SkuRow, 'name' | 'spec' | 'code'>, b: Pick<SkuRo
  * 进页面默认选哪个仓（picker 下标：0 = 全部仓库，其余错一位对应 warehouses）。
  * 依据是本人角色范围对应的管理处（session.me.access.offices，由角色的数据范围算出来）
  * 对上仓库档案里的「所属管理处」：
- *   · 范围只有一个管理处（管理处专属维修工）→ 该管理处的第一个启用仓
- *   · 全公司范围（总公司维修工 / 办公室 / 采购）→ 全部仓库
- *   · 对不上（管理处还没建仓）→ 全部仓库
+ *   · 已切管理处视角 / 范围只有一个管理处 → 该管理处的第一个启用仓
+ *   · 全公司范围 → 服务端会把本人显式所属管理处的仓排前，选第一个启用的管理处仓
+ *   · 确实没有管理处仓 → 才回退「全部仓库」
  */
 function defaultWarehouseIndex(session: StaffSession, warehouses: WarehouseView[]): number {
   const access = session.me?.access;
-  if (!access || access.scopeAll) return 0;
-  // 列表已经是服务端按范围过滤过的（自己管理处的仓排最前），第一个挂了管理处的就是默认仓
-  const index = warehouses.findIndex((w) => w.enabled && !!w.officeId);
+  const preferredOfficeId = access?.actingOfficeId ?? (!access?.scopeAll && access?.offices.length === 1
+    ? access.offices[0].id
+    : null);
+  const exact = preferredOfficeId
+    ? warehouses.findIndex((w) => w.enabled && w.officeId === preferredOfficeId)
+    : -1;
+  // 列表已经是服务端按「本人显式所属管理处」排过序的。
+  // 即使是全公司范围，也不再默认聚合全部仓，避免现场看错库存。
+  const index = exact >= 0 ? exact : warehouses.findIndex((w) => w.enabled && !!w.officeId);
   return index >= 0 ? index + 1 : 0;
 }
 
@@ -147,9 +153,11 @@ Page({
     loaded: false,
     /** 管理处范围的人一个仓都看不到时的说明 */
     noWarehouseHint: '',
-    tab: 'stock' as 'stock' | 'sku' | 'purchase',
+    tab: 'stock' as 'stock' | 'sku' | 'purchase' | 'none',
     /** 「库存 / 采购申请」两格：app:inventory。只勾了材料 SKU 的角色看不到它们 */
     canViewStock: true,
+    /** 库存盘点已经是独立权限，只勾这一格也能进现场盘点 */
+    canViewStocktake: false,
     /** 「材料 SKU」这一格由角色矩阵的 app:materials 决定，没勾的人连这个 tab 都看不到 */
     canViewSku: false,
     canEditSku: false,
@@ -222,7 +230,7 @@ Page({
     try {
       const session = await getSession(this, refreshSession);
       // 只勾了「材料 SKU 库」的角色也该进得来 —— 他进来看到的就只有那一个 tab
-      if (!session.canViewMaterials && !session.canViewInventory && !session.canViewSku) {
+      if (!session.canViewMaterials && !session.canViewInventory && !session.canViewSku && !session.canViewStocktake) {
         this.setData({
           canView: false,
           roleHint: '你的账号没有材料与库存权限。需要材料请在工单详情里提报缺料，由办公室汇总。',
@@ -236,9 +244,10 @@ Page({
         canView: true,
         canEdit: session.canEditMaterials,
         canViewStock,
+        canViewStocktake: session.canViewStocktake,
         // 看不到库存那一格的人（只勾了材料 SKU）默认落在 SKU 页，
         // 否则进来是一片空白，还以为坏了
-        tab: canViewStock ? this.data.tab : 'sku',
+        tab: canViewStock ? (this.data.tab === 'none' ? 'stock' : this.data.tab) : session.canViewSku ? 'sku' : 'none',
         canViewSku: session.canViewSku,
         // 库存页那个「编辑 SKU」保留旧口径（app:inventory 的改材料），
         // 再并上新的这一格 —— 新增一格权限不该把老角色已有的能力拿走
@@ -246,13 +255,17 @@ Page({
       });
 
       const [materials, warehouses, stocks, requests, categories] = await Promise.all([
-        inventory.listMaterials(),
+        canViewStock || session.canViewSku ? inventory.listMaterials() : Promise.resolve([]),
         // 只拿本人范围能看的仓：自己管理处的排前面，公司级的在后；别的管理处的仓不出现
-        inventory.listWarehouses({ scope: 'mine' }),
-        inventory.listStocks(),
-        purchases.listRequests(),
+        canViewStock || session.canViewStocktake
+          ? inventory.listWarehouses({ scope: 'mine' })
+          : Promise.resolve([]),
+        canViewStock ? inventory.listStocks() : Promise.resolve([]),
+        canViewStock ? purchases.listRequests() : Promise.resolve([]),
         // 启用中的类别才让选；停用的老材料照常显示，只是不能再往里新建
-        inventory.listMaterialCategories().catch(() => []),
+        canViewStock || session.canViewSku
+          ? inventory.listMaterialCategories().catch(() => [])
+          : Promise.resolve([]),
       ]);
       this.materials = materials;
       this.stocks = stocks;
@@ -268,7 +281,7 @@ Page({
       ).length;
 
       // 默认仓：按自己角色范围对应的管理处挑（仓库档案里的「所属管理处」）。
-      // 只有第一次进来才定，之后用户切过的仓不动；全公司范围的人（办公室/采购）保持「全部仓库」
+      // 只有第一次进来才定，之后用户切过的仓不动。
       const warehouseIndex = this.data.loaded
         ? Math.min(this.data.warehouseIndex, warehouses.length)
         : defaultWarehouseIndex(session, warehouses);

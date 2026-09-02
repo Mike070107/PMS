@@ -41,10 +41,9 @@ export function canSeeTab(key: TabKey, access: TabAccess): boolean {
   if (key === 'approvals') {
     return !!(pages['app:approve-manager'] || pages['app:approve-purchaser']);
   }
-  // 「材料与库存」这一页里有两格：库存（app:inventory）和材料 SKU 库（app:materials）。
-  // 只勾了后者的角色也得进得来，否则那一格永远够不着
+  // 「材料与库存」是员工端的容器页：库存、材料 SKU、盘点任一有权限都得进得来。
   if (key === 'materials') {
-    return !!(pages['app:inventory'] || pages['app:materials']);
+    return !!(pages['app:inventory'] || pages['app:materials'] || pages['app:stocktakes']);
   }
   // 「我的报修」虽然复用工单池页面，但授权是独立的。只给这格的人仍要能进入
   // 容器页，进去后页面只展示「我报的」，不会展示待接工单。

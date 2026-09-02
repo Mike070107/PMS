@@ -17,7 +17,7 @@
     </button>
   </view>
   <checkbox-group class="uncounted" bindchange="onToggleUncounted">
-    <label><checkbox value="1" checked="{{onlyUncounted}}" color="#1d5f96"/>仅看未盘</label>
+    <label><checkbox value="1" checked="{{onlyUncounted}}" color="#31558a"/>仅看未盘</label>
     <text bindtap="onReview">查看汇总 ›</text>
   </checkbox-group>
 

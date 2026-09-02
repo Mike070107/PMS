@@ -119,6 +119,10 @@ Page({
     void openFeedback();
   },
 
+  onOpenFeedbackHistory() {
+    wx.navigateTo({ url: '/pages/feedback-history/feedback-history' });
+  },
+
   onOpenFeedback() {
     wx.navigateTo({ url: '/pages/feedback/feedback' });
   },

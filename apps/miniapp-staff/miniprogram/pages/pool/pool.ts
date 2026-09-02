@@ -183,6 +183,8 @@ Page({
     collectingId: 0,
     collectingIndex: -1,
     collectingHeight: 0,
+    collectingStyle: '',
+    mineReceiverStyle: '',
     closingId: 0,
     settling: false,
     capped: false,
@@ -311,9 +313,15 @@ Page({
       const myId = session.me?.id ?? 0;
 
       const rows: OrderRow[] = withOrderLabels(list).map((item) => {
+        const canBeClaimedByMe =
+          item.status === WorkOrderStatus.CREATED
+            ? item.assigneeId === myId || !!(item.candidateIds?.length && item.candidateIds.includes(myId))
+            : item.status === WorkOrderStatus.WAITING_MATERIAL
+              ? item.assigneeId === myId || !item.candidateIds?.length || item.candidateIds?.includes(myId)
+              : false;
         // 只有「工单池」那一档才画接单按钮：我报的 / 已完结里那张单未必轮得到我领
         const claimable =
-          mainTab === 'pool' && POOL_STATUSES.indexOf(item.status) >= 0;
+          mainTab === 'pool' && POOL_STATUSES.indexOf(item.status) >= 0 && canBeClaimedByMe;
         const dispatchable = DISPATCHABLE_STATUSES.indexOf(item.status) >= 0;
         return {
           ...item,
@@ -508,6 +516,46 @@ Page({
         .boundingClientRect((rect) => resolve(rect?.height || 320))
         .exec();
     });
+    const sourceRect = await new Promise<WechatMiniprogram.BoundingClientRectResult>((resolve) => {
+      this.createSelectorQuery()
+        .select(`#pool-order-${id}`)
+        .boundingClientRect((rect) => {
+          resolve(
+            rect || {
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 0,
+              height: 0,
+            } as WechatMiniprogram.BoundingClientRectResult,
+          );
+        })
+        .exec();
+    });
+    const mineRect = await new Promise<WechatMiniprogram.BoundingClientRectResult | null>((resolve) => {
+      this.createSelectorQuery()
+        .select('.tabbar__icon--mine')
+        .boundingClientRect((rect) => resolve(rect || null))
+        .exec();
+    });
+    const windowInfo = wx.getWindowInfo();
+    const mineCenterX =
+      mineRect?.width
+        ? mineRect.left + mineRect.width / 2
+        : windowInfo.windowWidth - 88;
+    const mineCenterY =
+      mineRect?.height
+        ? mineRect.top + mineRect.height / 2
+        : windowInfo.windowHeight - 108;
+    const sourceCenterX = sourceRect.left + sourceRect.width / 2;
+    const sourceCenterY = sourceRect.top + sourceRect.height / 2;
+    const collectDx = Math.round(mineCenterX - sourceCenterX);
+    const collectDy = Math.round(mineCenterY - sourceCenterY);
+    const collectingStyle = `height:${height}px; --collect-dx:${collectDx}px; --collect-dy:${collectDy}px;`;
+    const mineReceiverStyle = mineRect
+      ? `left:${Math.round(mineCenterX - 28)}px; top:${Math.round(mineCenterY - 24)}px;`
+      : '';
     try {
       wx.vibrateShort({ type: 'light' });
     } catch {
@@ -517,6 +565,8 @@ Page({
       collectingId: id,
       collectingIndex: index,
       collectingHeight: height,
+      collectingStyle,
+      mineReceiverStyle,
       closingId: 0,
       settling: false,
     });
@@ -529,6 +579,8 @@ Page({
       collectingId: 0,
       collectingIndex: -1,
       collectingHeight: 0,
+      collectingStyle: '',
+      mineReceiverStyle: '',
       closingId: 0,
       settling: false,
       overdueCount: next.filter((row) => row.stayTone === 'danger').length,

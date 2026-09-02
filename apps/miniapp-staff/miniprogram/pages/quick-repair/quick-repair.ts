@@ -7,6 +7,7 @@ import {
   extractContact,
   extractFaultDescription,
   formatReporterRoomLabel,
+  resolveContactName,
   isVideoUrl,
   MAX_REPAIR_IMAGES,
   MAX_REPAIR_VIDEO_SECONDS,
@@ -319,9 +320,15 @@ Page({
     const roomLabel = detected?.matched
       ? formatReporterRoomLabel(detected.buildingText, detected.reporterRoomNo)
       : '';
-    // 公区单没说人名时始终用当前房号作联系人标识；不能拿登录人默认名，也不能
-    // 只有留了电话才显示房号。换一个报修地址会按本次地址动态生成，不会复制样例里的房号。
-    const name = contactName || aiName || (detected?.publicArea ? roomLabel : '');
+    // 只说了电话但没说姓名：按房号（有则）或「未告知」填联系人，避免拿 2号 这类房号片段误当姓名。
+    const aiPhone = (detected?.ai?.phone || '').replace(/\D/g, '');
+    const hasPhone = !!contactPhone || /^1\d{10}$/.test(aiPhone);
+    const name = resolveContactName({
+      spokenName: contactName,
+      aiName,
+      roomLabel: detected?.publicArea ? roomLabel : '',
+      hasPhone,
+    });
     if (name) {
       found.push({
         key: 'name',

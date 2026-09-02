@@ -945,6 +945,35 @@ export class RepairsService implements OnModuleInit {
     // 小程序角色按人收敛可见范围，后台角色维持全租户。
     // 业主端身份不止 OWNER：保安/居委/业委/物业工作人员也在业主端提单，
     // 漏了他们要么 403、要么（更糟）落到无过滤分支看到全租户的单
+    let restrictToWorkerPool = false;
+    let dispatchPoolView = false;
+    const parseCandidateIds = (workOrder: WorkOrder): number[] =>
+      Array.isArray((workOrder as { candidateIds?: unknown }).candidateIds)
+        ? (workOrder as { candidateIds?: number[] }).candidateIds || []
+        : [];
+    const isWorkerPoolItem = (workOrder: WorkOrder) => {
+      const candidates = parseCandidateIds(workOrder);
+      if (workOrder.status === WorkOrderStatus.CREATED) {
+        return (
+          workOrder.assigneeId === user.id ||
+          candidates.includes(user.id)
+        );
+      }
+      if (workOrder.status === WorkOrderStatus.WAITING_MATERIAL) {
+        return (
+          workOrder.assigneeId === user.id ||
+          !candidates.length ||
+          candidates.includes(user.id)
+        );
+      }
+      return false;
+    };
+    const canShowInDispatchPool = (workOrder: WorkOrder) => {
+      const candidates = parseCandidateIds(workOrder);
+      if (workOrder.status !== WorkOrderStatus.CREATED) return true;
+      // 自动流转到候选维修工的单，在派单台不应当再出现（已进入待接单池，等候某人接单）。
+      return !candidates.length;
+    };
     if (await this.isSelfScoped(user, access)) {
       const myRequestIds = await this.repairRequestRepo.find({
         where: { tenantId, submittedBy: user.id },
@@ -964,6 +993,7 @@ export class RepairsService implements OnModuleInit {
       }
       const dispatcher = await this.canDispatch(user, access);
       if (dispatcher) {
+        dispatchPoolView = true;
         // 派单台只看真正还没选维修工的单。已经定向派给某人的单属于维修工的待接池，
         // 不能继续留在办公室“待派单”里。
         where.assigneeId = IsNull();
@@ -976,6 +1006,7 @@ export class RepairsService implements OnModuleInit {
         // - 缺料退回池子的单，料到后可以接回；
         // - 已经定向派人的单只进该维修工的「在手工单」，不再留在公开池里。
         // 可见小区仍由 access 的 community scope 限制，不会跨管理处。
+        restrictToWorkerPool = true;
         if (!query.status) {
           where.status = In(CLAIMABLE_WORK_ORDER_STATUSES);
         }
@@ -1013,7 +1044,7 @@ export class RepairsService implements OnModuleInit {
     // 必须在数据库取前 100 条之前完成优先级排序。以前先拿最新 100 条、回来后才
     // 把急单提到前面，会漏掉更早的急单，也会让同组的新单排在老单前面。
     // 单测里的轻量仓库桩只有 find；生产仓库走带报修表联查的完整排序。
-    const workOrders = typeof (this.workOrderRepo as any).createQueryBuilder === 'function'
+    let workOrders = typeof (this.workOrderRepo as any).createQueryBuilder === 'function'
       ? await this.workOrderRepo
           .createQueryBuilder('wo')
           .innerJoin(
@@ -1035,6 +1066,12 @@ export class RepairsService implements OnModuleInit {
           order: { id: 'ASC' },
           take: 100,
         });
+    if (restrictToWorkerPool) {
+      workOrders = workOrders.filter((workOrder) => isWorkerPoolItem(workOrder));
+    }
+    if (dispatchPoolView) {
+      workOrders = workOrders.filter((workOrder) => canShowInDispatchPool(workOrder));
+    }
     const requestIds = workOrders.map((item) => item.requestId);
     if (!requestIds.length) return workOrders;
 
@@ -1266,6 +1303,9 @@ export class RepairsService implements OnModuleInit {
     // 再退公司级（既不挂小区也不挂管理处）
     const mine = await this.accessService.userOfficeIds(tenantId, user.id);
     const myOffices = new Set(mine.officeIds);
+    const extraWarehouseIds = new Set(
+      await this.accessService.extraWarehouseIdsOfUser(tenantId, user.id),
+    );
     // 仓库挂了管理处就以管理处为准：小区和管理处对不上的仓（录错了小区）不能靠小区匹配成「同小区仓」
     const officeConsistent = (item: Warehouse) => !item.officeId || !officeId || item.officeId === officeId;
     const rank = (item: Warehouse) =>
@@ -1282,7 +1322,7 @@ export class RepairsService implements OnModuleInit {
     // 管理处范围的维修工只看得到本单所在管理处 / 自己管理处的仓（rank ≤ 2），公司级总仓和别家的仓
     // 连「换仓库」里都不列 —— 和员工端库存页 /warehouses?scope=mine 同一条规则；全公司范围的人不限
     const candidates = all
-      .filter((item) => mine.all || rank(item) <= 2)
+      .filter((item) => mine.all || rank(item) <= 2 || extraWarehouseIds.has(item.id))
       .sort((a, b) => rank(a) - rank(b) || a.id - b.id);
     const mapped = candidates.find((item) => rank(item) <= 3) ?? null;
     const byRank = ['community', 'office', 'staff_office', 'company'] as const;
@@ -1952,6 +1992,28 @@ export class RepairsService implements OnModuleInit {
       const previousAssigneeId = workOrder.assigneeId;
       const isClaim = previousAssigneeId !== user.id;
       if (isClaim) {
+        const candidates = Array.isArray((workOrder as { candidateIds?: unknown }).candidateIds)
+          ? (workOrder as { candidateIds?: number[] }).candidateIds || []
+          : [];
+        if (
+          workOrder.status === WorkOrderStatus.CREATED &&
+          !(
+            workOrder.assigneeId === user.id ||
+            candidates.includes(user.id)
+          )
+        ) {
+          throw new ForbiddenException('你暂时没有这张工单的接单权限');
+        }
+        if (
+          workOrder.status === WorkOrderStatus.WAITING_MATERIAL &&
+          !(
+            workOrder.assigneeId === user.id ||
+            !candidates.length ||
+            candidates.includes(user.id)
+          )
+        ) {
+          throw new ForbiddenException('你暂时没有这张工单的接单权限');
+        }
         if (workOrder.status === WorkOrderStatus.DISPATCHED && previousAssigneeId) {
           throw new ForbiddenException('工单已派给其他维修工');
         }

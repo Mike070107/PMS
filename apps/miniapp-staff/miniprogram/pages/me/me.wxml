@@ -81,6 +81,14 @@
       </view>
       <view class="entry__arrow"></view>
     </view>
+    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenFeedbackHistory">
+      <view class="entry-icon"><view class="entry-icon__glyph icon-menu--clipboard"></view></view>
+      <view class="entry__body">
+        <view class="entry__title">我的反馈</view>
+        <view class="entry__desc">查看已经提交的问题、处理进度和后台回复</view>
+      </view>
+      <view class="entry__arrow"></view>
+    </view>
   </view>
 
   <!-- 「材料与库存」不再放这里：底部 tabBar 已经有那一格，而且两处是同一个权限

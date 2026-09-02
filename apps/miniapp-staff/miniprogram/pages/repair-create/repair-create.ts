@@ -18,6 +18,7 @@ import {
   MAX_REPAIR_VIDEOS,
   mergeExtractedContact,
   REPAIR_TYPE_OPTIONS,
+  resolveContactName,
   urgencyReason,
 } from '@pms/shared-types';
 import {
@@ -424,11 +425,19 @@ Page({
        */
       this.suppressContactDefaults = true;
       const spoken = extractContact(content);
-      const spokenName = spoken.name || (res.ai?.contactName || '').trim();
+      const spokenName = spoken.name || '';
+      const aiName = (res.ai?.contactName || '').trim();
       const spokenPhone = spoken.phone || (/^1\d{10}$/.test(res.ai?.phone || '') ? res.ai?.phone || '' : '');
       const roomLabel = formatReporterRoomLabel(res.buildingText, res.reporterRoomNo);
+      const hasPhone = !!spokenPhone;
+      const contactName = resolveContactName({
+        spokenName,
+        aiName,
+        roomLabel,
+        hasPhone,
+      });
       if (!this.contactTouched) {
-        patch.contactName = spokenName || roomLabel;
+        patch.contactName = contactName;
         this.contactIsDefault = false;
       }
       if (!this.phoneTouched) {
@@ -436,13 +445,30 @@ Page({
         patch['errors.phone'] = '';
         this.phoneIsDefault = false;
       }
-      patch.autoContactHint = spokenName || spokenPhone
-        ? '已按原话填写联系人信息；没说的项目已清空，避免混用登录人资料'
-        : `公共区域报修未留联系人，已用房号 ${roomLabel} 作为联系人标识`;
+      if (hasPhone || contactName || roomLabel || aiName) {
+        patch.autoContactHint = contactName === '未告知' || contactName === roomLabel
+          ? `公共区域报修未留明确姓名，已用 ${contactName} 作为联系人标识`
+          : '已按原话填写联系人信息；没说的项目已清空，避免混用登录人资料';
+      } else {
+        patch.autoContactHint = `公共区域报修未留联系人，当前未识别到电话，${roomLabel ? `已用房号 ${roomLabel} 作为联系人标识` : '请确认是否为业主本人'}`;
+      }
     } else {
-      if (!this.data.contactName && res.ai?.contactName) patch.contactName = res.ai.contactName;
-      if (!this.data.contactPhone && /^1\d{10}$/.test(res.ai?.phone || '')) {
-        patch.contactPhone = res.ai?.phone;
+      const spoken = extractContact(content);
+      const spokenName = spoken.name || '';
+      const aiName = resolveContactName({
+        aiName: res.ai?.contactName,
+        roomLabel: '',
+        hasPhone: !!spoken.phone || /^1\d{10}$/.test(res.ai?.phone || ''),
+      });
+      if (!this.contactTouched && (this.contactIsDefault || !this.data.contactName)) {
+        patch.contactName = aiName;
+        this.contactIsDefault = false;
+      }
+      const detectedPhone = spoken.phone || ((/^1\d{10}$/.test(res.ai?.phone || '')) ? (res.ai?.phone || '').trim() : '');
+      if (!this.phoneTouched && (this.phoneIsDefault || !this.data.contactPhone) && detectedPhone) {
+        patch.contactPhone = detectedPhone;
+        patch['errors.phone'] = '';
+        this.phoneIsDefault = false;
       }
     }
     this.setData(patch);

@@ -5,6 +5,7 @@
     "pages/quick-repair/quick-repair",
     "pages/repair-create/repair-create",
     "pages/messages/messages",
+    "pages/feedback-history/feedback-history",
     "pages/orders/orders",
     "pages/order-detail/order-detail",
     "pages/me/me",
@@ -14,7 +15,7 @@
     "navigationBarTitleText": "邻修",
     "navigationBarBackgroundColor": "#ffffff",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#f5f6f8"
+    "backgroundColor": "#eef3f8"
   },
   "tabBar": {
     "color": "#8c8c8c",

@@ -26,6 +26,12 @@ export class ClientTelemetryController {
   feedback(@Body() dto: UserFeedbackDto, @CurrentUser() user: AuthUser, @Req() req: Request) {
     return this.observability.recordUserFeedback(user, dto, req);
   }
+
+  /** 小程序「我的反馈」：只返回当前账号自己提交的记录和处理回复。 */
+  @Get('my-feedback')
+  myFeedback(@CurrentUser() user: AuthUser) {
+    return this.observability.listMyFeedback(user);
+  }
 }
 
 @Controller('observability')
