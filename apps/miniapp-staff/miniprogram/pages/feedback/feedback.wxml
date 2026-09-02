@@ -1,0 +1,66 @@
+<view class="container feedback-page">
+  <view class="screen-head">
+    <view class="screen-head__title">意见与建议</view>
+    <view class="screen-head__desc">功能不好用、流程不顺或有新想法，都可以告诉我们</view>
+  </view>
+
+  <view class="card feedback-card">
+    <view class="label">意见内容</view>
+    <textarea
+      class="feedback-input"
+      value="{{content}}"
+      maxlength="500"
+      placeholder="请尽量说明在哪个页面、做了什么操作、希望怎样改进…"
+      bindinput="onContent"
+    />
+    <view class="word-count">{{content.length}}/500</view>
+
+    <view class="media-head">
+      <view>
+        <view class="label">补充图片<text class="label__opt">选填，最多4张</text></view>
+        <view class="media-hint">截图或现场照片能帮助我们更快看懂问题</view>
+      </view>
+      <text class="media-count">{{imageUrls.length}}/4</text>
+    </view>
+    <view class="photos">
+      <view wx:for="{{imageUrls}}" wx:key="*this" class="photo-wrap">
+        <image class="photo" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="onPreviewImage"/>
+        <view class="media-remove" data-index="{{index}}" catchtap="onRemoveImage">×</view>
+      </view>
+      <view wx:if="{{imageUrls.length < 4}}" class="media-add" bindtap="onChooseImages">
+        <view class="media-add__plus">＋</view>
+        <text>{{uploadingImages ? '上传中' : '添加图片'}}</text>
+      </view>
+    </view>
+
+    <view class="video-section">
+      <view class="label">补充视频<text class="label__opt">选填，1个且不超过15秒</text></view>
+      <view wx:if="{{videoUrl}}">
+        <view class="video-wrap">
+          <video class="video" src="{{videoUrl}}" controls object-fit="cover"/>
+        </view>
+        <view class="video-meta">
+          <text>{{videoDurationSeconds}}秒视频</text>
+          <text class="video-delete" bindtap="onRemoveVideo">删除视频</text>
+        </view>
+      </view>
+      <view wx:else class="video-add" bindtap="onChooseVideo">
+        <view class="video-add__icon">▶</view>
+        <view>
+          <view class="video-add__title">{{uploadingVideo ? '视频上传中…' : '拍摄或选择视频'}}</view>
+          <view class="media-hint">相册里的视频也会校验真实时长</view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{errorMsg}}" class="error feedback-error">{{errorMsg}}</view>
+  </view>
+
+  <button
+    class="btn btn--primary submit-btn"
+    loading="{{saving}}"
+    disabled="{{saving || uploadingImages || uploadingVideo || !content}}"
+    bindtap="onSubmit"
+  ><view class="btn__icon icon-action--send-white"></view><text>提交意见</text></button>
+  <view class="privacy-hint">提交时会附带当前账号姓名和联系电话，方便需要时与你确认。</view>
+</view>

@@ -85,6 +85,11 @@ let hold: HoldToTalk | null = null;
 const DEFAULT_QTY = '1';
 const MAX_QTY = 999;
 
+const compareStockOptionName = (a: WorkOrderStockOption, b: WorkOrderStockOption) =>
+  a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+  || (a.spec || '').localeCompare(b.spec || '', 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+  || a.code.localeCompare(b.code, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+
 const emptyMaterialRow = (): MaterialRow => ({
   materialId: null,
   name: '',
@@ -977,11 +982,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
             .toLowerCase()
             .includes(kw),
         );
-    // 有货的排前面：现场要的是「现在能拿到什么」，没货的沉到下面但仍然可选（选了走缺料）
-    const list = matched
-      .slice()
-      .sort((a, b) => (b.qty > 0 ? 1 : 0) - (a.qty > 0 ? 1 : 0))
-      .slice(0, 200);
+    const list = matched.slice().sort(compareStockOptionName).slice(0, 200);
     this.setData({ skuList: list });
   },
 

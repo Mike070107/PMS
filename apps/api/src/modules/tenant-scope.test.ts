@@ -322,7 +322,7 @@ test('「在手工单」不再隐式授予「我的报修」列表权限', async
   );
 });
 
-test('维修工的工单池不再按候选人或当前负责人过滤', async () => {
+test('维修工的工单池只包含未派单和等待材料', async () => {
   const service = Object.create(RepairsService.prototype) as any;
   let capturedWhere: any;
   service.resolveTenantId = () => 1;
@@ -346,7 +346,6 @@ test('维修工的工单池不再按候选人或当前负责人过滤', async ()
   assert.equal(capturedWhere.candidateIds, undefined);
   assert.deepEqual(capturedWhere.status._value, [
     WorkOrderStatus.CREATED,
-    WorkOrderStatus.DISPATCHED,
     WorkOrderStatus.WAITING_MATERIAL,
   ]);
 
@@ -358,6 +357,31 @@ test('维修工的工单池不再按候选人或当前负责人过滤', async ()
     ),
     [],
   );
+});
+
+test('定向已派单进入对应维修工的在手工单', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  let capturedWhere: any;
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => [10];
+  service.isSelfScoped = async () => false;
+  service.canDispatch = async () => false;
+  service.keywordWheres = async (_tenantId: number, where: any) => [where];
+  service.workOrderRepo = {
+    async find(options: any) {
+      capturedWhere = options.where;
+      return [];
+    },
+  };
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+  const access = appAccess({ 'app:my-orders': { view: true } });
+
+  await service.listWorkOrders({ scope: 'mine' }, user, access);
+
+  assert.equal(capturedWhere.assigneeId, 7);
+  assert.equal(capturedWhere.status._type, 'not');
+  assert.equal(capturedWhere.status._value, WorkOrderStatus.CREATED);
 });
 
 test('有工单池接单权时，可认领未推送给自己的未派单', async () => {
@@ -393,7 +417,7 @@ test('有工单池接单权时，可认领未推送给自己的未派单', async
   assert.equal(logAction, 'claim');
 });
 
-test('已派给别人但尚未接单的工单，可从工单池主动接走', async () => {
+test('已派给别人的工单不能被其他维修工主动接走', async () => {
   const service = Object.create(RepairsService.prototype) as any;
   const workOrder = {
     id: 6,
@@ -404,32 +428,22 @@ test('已派给别人但尚未接单的工单，可从工单池主动接走', as
     candidateIds: [99],
     escalatedAt: new Date(),
   };
-  let logNote = '';
   service.resolveTenantId = () => 1;
   service.assertWorkOrderScope = () => {};
   service.lockWorkOrder = async () => workOrder;
-  service.writeLog = async (
-    _manager: any,
-    _saved: any,
-    _from: any,
-    _action: string,
-    _operatorId: number,
-    note: string,
-  ) => {
-    logNote = note;
-  };
+  service.writeLog = async () => {};
   service.dataSource = {
     async transaction(run: (manager: any) => Promise<any>) {
       return run({ async save(_entity: any, value: any) { return value; } });
     },
   };
 
-  const saved = await service.acceptWorkOrder(6, { id: 7, tenantId: 1 }, {});
-
-  assert.equal(saved.assigneeId, 7);
-  assert.deepEqual(saved.candidateIds, [7]);
-  assert.equal(saved.status, WorkOrderStatus.IN_PROGRESS);
-  assert.match(logNote, /原已派给其他维修工/);
+  await assert.rejects(
+    () => service.acceptWorkOrder(6, { id: 7, tenantId: 1 }, {}),
+    /工单已派给其他维修工/,
+  );
+  assert.equal(workOrder.assigneeId, 99);
+  assert.equal(workOrder.status, WorkOrderStatus.DISPATCHED);
 });
 
 test('只有「我的报修」权限时，不能打开别人提交的工单详情', async () => {

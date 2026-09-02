@@ -107,39 +107,77 @@
   <view
     wx:for="{{list}}"
     wx:key="id"
-    class="card wo-card wo-card--data"
-    hover-class="wo-card--hover"
-    hover-stay-time="80"
-    bindtap="onTapItem"
-    data-id="{{item.id}}"
+    id="pool-order-{{item.id}}"
+    class="order-slot {{collectingId === item.id ? 'order-slot--collecting' : ''}} {{closingId === item.id ? 'order-slot--closing' : ''}} {{settling && index > collectingIndex ? 'order-slot--following' : ''}}"
+    style="{{collectingId === item.id || closingId === item.id ? 'height:' + collectingHeight + 'px' : ''}}"
   >
-    <!-- 卡片正文（地址一行 + 报修内容一行 + 数据网格）在 /templates/wo-card.wxml，
-         和在手工单共用一份。第三格的含义每一档不同，由 pool.ts 一并算好塞进 row -->
-    <template is="wo-card-body" data="{{item: item, thirdLabel: item.thirdLabel, thirdValue: item.thirdValue, thirdHint: item.thirdHint}}"/>
+    <view
+      wx:if="{{item.waitingCollapsed}}"
+      class="card order-card waiting-fold"
+      hover-class="waiting-fold--hover"
+      hover-stay-time="80"
+      bindtap="onExpandWaiting"
+      data-id="{{item.id}}"
+    >
+      <view class="waiting-fold__head">
+        <view class="waiting-fold__title">
+          <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>
+          <text>等待材料</text>
+        </view>
+        <pms-tag status="{{item.status}}"/>
+      </view>
+      <view class="waiting-fold__addr">
+        <view class="icon icon--pin"></view>
+        <text>{{item.summaryAddress || '未填地址'}}</text>
+      </view>
+      <view class="waiting-fold__material">{{item.missingText || '待补充缺料明细'}}</view>
+      <view class="waiting-fold__foot">
+        <text>{{item.orderNo}} · {{item.timeText}}</text>
+        <text class="waiting-fold__expand">展开详情⌄</text>
+      </view>
+    </view>
+    <view
+      wx:else
+      class="card wo-card wo-card--data order-card"
+      hover-class="wo-card--hover"
+      hover-stay-time="80"
+      bindtap="onTapItem"
+      data-id="{{item.id}}"
+    >
+      <!-- 卡片正文（地址一行 + 报修内容一行 + 数据网格）在 /templates/wo-card.wxml，
+           和在手工单共用一份。第三格的含义每一档不同，由 pool.ts 一并算好塞进 row -->
+      <template is="wo-card-body" data="{{item: item, thirdLabel: item.thirdLabel, thirdValue: item.thirdValue, thirdHint: item.thirdHint}}"/>
 
-    <view class="wo-card__foot">
-      <!-- 派单台 -->
-      <block wx:if="{{dispatcher}}">
-        <button
-          wx:if="{{canDispatch && item.dispatchable}}"
-          class="btn btn--primary btn--sm"
-          catchtap="onOpenAssign"
+      <view class="wo-card__foot">
+        <text
+          wx:if="{{!dispatcher && mainTab === 'pool' && item.status === 'waiting_material'}}"
+          class="waiting-collapse"
+          catchtap="onCollapseWaiting"
           data-id="{{item.id}}"
-        ><view class="btn__icon icon-action--send-white"></view><text>{{item.actionText}}</text></button>
-        <text wx:else class="wo-card__more">查看详情 ›</text>
-      </block>
-      <!-- 维修工：未派单或已派但尚未接单都可主动接，接完才进“在手工单” -->
-      <block wx:else>
-        <button
-          wx:if="{{canAccept && item.claimable}}"
-          class="btn btn--primary btn--sm"
-          catchtap="onAccept"
-          data-id="{{item.id}}"
-          loading="{{acceptingId === item.id}}"
-          disabled="{{acceptingId !== 0}}"
-        ><view class="btn__icon icon-action--check-white"></view><text>{{item.actionText}}</text></button>
-        <text wx:else class="wo-card__more">查看详情 ›</text>
-      </block>
+        >收起⌃</text>
+        <!-- 派单台 -->
+        <block wx:if="{{dispatcher}}">
+          <button
+            wx:if="{{canDispatch && item.dispatchable}}"
+            class="btn btn--primary btn--sm"
+            catchtap="onOpenAssign"
+            data-id="{{item.id}}"
+          ><view class="btn__icon icon-action--send-white"></view><text>{{item.actionText}}</text></button>
+          <text wx:else class="wo-card__more">查看详情 ›</text>
+        </block>
+        <!-- 维修工：未派单或等待材料可主动接，接完才进“在手工单” -->
+        <block wx:else>
+          <button
+            wx:if="{{canAccept && item.claimable}}"
+            class="btn btn--primary btn--sm"
+            catchtap="onAccept"
+            data-id="{{item.id}}"
+            loading="{{acceptingId === item.id}}"
+            disabled="{{acceptingId !== 0 || collectingId !== 0}}"
+          ><view class="btn__icon icon-action--check-white"></view><text>{{item.actionText}}</text></button>
+          <text wx:else class="wo-card__more">查看详情 ›</text>
+        </block>
+      </view>
     </view>
   </view>
 
@@ -147,6 +185,12 @@
   <view wx:if="{{capped}}" class="muted center cap-tip">
     只显示最近 100 条，用上面的搜索或状态筛选缩小范围
   </view>
+</view>
+
+<!-- 动画落点：与卡片同时出现，让人明确知道这单收到哪里去了 -->
+<view wx:if="{{collectingId}}" class="mine-receiver">
+  <view class="mine-receiver__dot"></view>
+  <text>已收入在手工单</text>
 </view>
 
 <!-- ============ 派单面板 ============ -->

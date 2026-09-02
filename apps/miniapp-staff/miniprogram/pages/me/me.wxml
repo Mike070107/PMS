@@ -1,7 +1,7 @@
 <view class="container container--tabbar">
   <view class="screen-head">
     <view class="screen-head__title">我的工作台</view>
-    <view class="screen-head__desc">管理提醒、报修入口和当前账号</view>
+    <view class="screen-head__desc">管理提醒、报修入口、意见反馈和当前账号</view>
   </view>
   <!-- 身份先说清楚：不同角色能看到的功能不一样，别让人以为是「功能没了」 -->
   <view wx:if="{{user}}" class="card profile">
@@ -36,6 +36,15 @@
           <text class="entry__state entry__state--{{notifyTone}}">{{notifyStateText}}</text>
         </view>
         <view class="entry__desc">{{notifyDesc}}</view>
+      </view>
+      <view class="entry__arrow"></view>
+    </view>
+
+    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenFeedback">
+      <view class="entry-icon"><view class="entry-icon__glyph icon-menu--feedback"></view></view>
+      <view class="entry__body">
+        <view class="entry__title">意见与建议</view>
+        <view class="entry__desc">告诉我们哪里不好用，也可以提出新的功能想法</view>
       </view>
       <view class="entry__arrow"></view>
     </view>

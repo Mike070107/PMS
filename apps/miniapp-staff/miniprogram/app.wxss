@@ -194,6 +194,9 @@ button::after { border: none; }
 .icon-menu--clipboard {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231d5f96' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5H6a2 2 0 0 0-2 2v14h16V7a2 2 0 0 0-2-2h-3'/%3E%3Crect x='9' y='2' width='6' height='5' rx='1'/%3E%3Cpath d='M8 12h8M8 16h6'/%3E%3C/svg%3E");
 }
+.icon-menu--feedback {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231d5f96' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a4 4 0 0 1-4 4H8l-5 3 1.5-5A8 8 0 1 1 21 15z'/%3E%3Cpath d='m9 12 2 2 4-5'/%3E%3C/svg%3E");
+}
 
 .btn-group { display: flex; flex-direction: column; align-items: stretch; gap: 20rpx; }
 .btn-row { display: flex; gap: 20rpx; }
