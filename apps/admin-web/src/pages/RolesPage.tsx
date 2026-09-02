@@ -80,6 +80,36 @@ interface ScopeOptions {
   warehouses: { id: number; name: string; type: string; officeName: string | null }[];
 }
 
+/**
+ * 盘点入口最初有两条独立权限，后来并入“库存与采购 / 材料与库存”。
+ * 老租户数据库里可能还留着旧 key；编辑角色或模板时不能原样送回 API，
+ * 否则 class-validator 会在保存前报 pageKey 不合法。
+ */
+const LEGACY_PERMISSION_PAGE_ALIASES: Record<string, string> = {
+  stocktakes: 'inventory',
+  'app:stocktakes': 'app:inventory',
+};
+const CURRENT_PERMISSION_PAGE_KEYS = new Set([
+  ...ADMIN_PAGES.map((page) => page.key),
+  ...STAFF_APP_PAGES.map((page) => page.key),
+]);
+
+function sanitizePermissionRows(rows: RolePermRow[]): RolePermRow[] {
+  const merged = new Map<string, RolePermRow>();
+  for (const row of rows) {
+    const pageKey = LEGACY_PERMISSION_PAGE_ALIASES[row.pageKey] ?? row.pageKey;
+    if (!CURRENT_PERMISSION_PAGE_KEYS.has(pageKey)) continue;
+    const previous = merged.get(pageKey);
+    merged.set(pageKey, {
+      pageKey,
+      canView: Boolean(previous?.canView || row.canView),
+      canEdit: Boolean(previous?.canEdit || row.canEdit),
+      canDelete: Boolean(previous?.canDelete || row.canDelete),
+    });
+  }
+  return [...merged.values()];
+}
+
 export default function RolesPage() {
   const { message } = AntdApp.useApp();
   const { canEdit, canDelete } = usePagePerm('roles');
@@ -99,8 +129,18 @@ export default function RolesPage() {
         request<RoleRow[]>({ url: '/roles' }),
         request<TemplateRow[]>({ url: '/roles/templates' }),
       ]);
-      setRows(roleRows);
-      setTemplates(tplRows);
+      setRows(
+        roleRows.map((role) => ({
+          ...role,
+          permissions: sanitizePermissionRows(role.permissions),
+        })),
+      );
+      setTemplates(
+        tplRows.map((template) => ({
+          ...template,
+          permissions: sanitizePermissionRows(template.permissions),
+        })),
+      );
     } catch (e: any) {
       message.error(e?.message || '加载失败');
     } finally {
@@ -493,7 +533,9 @@ function RoleFormModal({
   const onOk = async () => {
     const v = await form.validateFields();
     // 跟随模板时权限由模板给，这个角色不送也不存勾选
-    const permissions = followed ? [] : Object.values(perms).filter((p) => p.canView);
+    const permissions = followed
+      ? []
+      : sanitizePermissionRows(Object.values(perms).filter((p) => p.canView));
     if (!followed) {
     // 只上小程序的角色（维修工、保安…）本来就不该进后台，零页面权限是正常配置；
     // 只上小程序的角色（维修工、保安…）本来就不该进后台，网站页面一个不勾是正常的；
@@ -1051,7 +1093,7 @@ function TemplateFormModal({
 
   const onOk = async () => {
     const v = await form.validateFields();
-    const permissions = Object.values(perms).filter((p) => p.canView);
+    const permissions = sanitizePermissionRows(Object.values(perms).filter((p) => p.canView));
     if (!permissions.length) {
       message.warning('至少勾一个页面 —— 空模板套上去的角色什么也打不开');
       return;
