@@ -134,10 +134,16 @@ interface StockRow {
 }
 
 interface PurchaseRequestItem {
+  lineId?: string;
   materialId?: number;
   name: string;
   qty: number;
+  unit?: string;
   estUnitCostCents?: number;
+  sourceRequestNo?: string;
+  sourceWorkOrderNo?: string | null;
+  rejectReason?: string;
+  rejectedAtStage?: 'manager' | 'purchaser';
 }
 
 interface PurchaseRequestRow {
@@ -146,6 +152,8 @@ interface PurchaseRequestRow {
   managerName?: string | null;
   purchaserName?: string | null;
   workOrderNo?: string | null;
+  sourceRequestNos?: string[];
+  sourceWorkOrderNos?: string[];
   id: number;
   requestNo: string;
   workOrderId?: number | null;
@@ -333,6 +341,8 @@ export default function InventoryPage() {
   const [receivingTransfer, setReceivingTransfer] = useState<TransferOrderRow | null>(null);
   const [rejectTransferTarget, setRejectTransferTarget] = useState<TransferOrderRow | null>(null);
   const [rejectTarget, setRejectTarget] = useState<PurchaseRequestRow | null>(null);
+  const [itemRejectTarget, setItemRejectTarget] = useState<{ request: PurchaseRequestRow; item: PurchaseRequestItem } | null>(null);
+  const [editRequestTarget, setEditRequestTarget] = useState<PurchaseRequestRow | null>(null);
   const [requestDetail, setRequestDetail] = useState<PurchaseRequestRow | null>(null);
   const [manualRequestOpen, setManualRequestOpen] = useState(false);
   const [selectedRequestKeys, setSelectedRequestKeys] = useState<number[]>([]);
@@ -354,6 +364,8 @@ export default function InventoryPage() {
   const [receiveTransferForm] = Form.useForm();
   const [rejectTransferForm] = Form.useForm();
   const [rejectForm] = Form.useForm();
+  const [itemRejectForm] = Form.useForm();
+  const [editRequestForm] = Form.useForm();
   const [manualRequestForm] = Form.useForm();
   const [stockForm] = Form.useForm();
 
@@ -836,6 +848,69 @@ export default function InventoryPage() {
     }
   };
 
+  const submitItemReject = async () => {
+    if (!itemRejectTarget?.item.lineId) return;
+    const values = await itemRejectForm.validateFields();
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: `/purchase-requests/${itemRejectTarget.request.id}/reject-item`,
+        data: { lineId: itemRejectTarget.item.lineId, reason: values.reason },
+      });
+      message.success('已驳回该明细，申请已退回办公室修改');
+      itemRejectForm.resetFields();
+      setItemRejectTarget(null);
+      setRequestDetail(null);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '单项驳回失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEditRequest = (row: PurchaseRequestRow) => {
+    editRequestForm.setFieldsValue({
+      items: (row.items || []).map((item, index) => ({
+        ...item,
+        lineId: item.lineId || `${row.id}-${index + 1}`,
+        estUnitCostYuan: item.estUnitCostCents != null ? item.estUnitCostCents / 100 : 0,
+      })),
+    });
+    setEditRequestTarget(row);
+  };
+
+  const submitEditRequest = async () => {
+    if (!editRequestTarget) return;
+    const values = await editRequestForm.validateFields();
+    setSaving(true);
+    try {
+      await request({
+        method: 'PATCH',
+        url: `/purchase-requests/${editRequestTarget.id}/items`,
+        data: {
+          items: (values.items || []).map((item: any) => ({
+            lineId: item.lineId,
+            materialId: item.materialId || undefined,
+            name: item.name,
+            qty: item.qty,
+            unit: item.unit || undefined,
+            estUnitCostCents: Math.round((item.estUnitCostYuan || 0) * 100),
+          })),
+        },
+      });
+      message.success('明细已修改，可重新提交经理审批');
+      setEditRequestTarget(null);
+      setRequestDetail(null);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '修改失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const openPurchaseOrder = (requestRow?: PurchaseRequestRow) => {
     purchaseOrderForm.resetFields();
     purchaseOrderForm.setFieldsValue({
@@ -1274,7 +1349,17 @@ export default function InventoryPage() {
                   columns={[
                     { title: '申请单号', dataIndex: 'requestNo', width: 180, ellipsis: true },
                     { title: '当前环节', dataIndex: 'status', width: 140, render: (s: PurchaseRequestStatus) => <Tag color={requestStatusMeta[s]?.color}>{requestStatusMeta[s]?.label || s}</Tag> },
-                    { title: '来源', key: 'source', width: 170, ellipsis: true, render: (_, row) => row.workOrderId ? (row.workOrderNo || unknown('工单')) : '手工申请' },
+                    {
+                      title: '来源',
+                      key: 'source',
+                      width: 210,
+                      ellipsis: true,
+                      render: (_, row) => row.sourceWorkOrderNos?.length
+                        ? row.sourceWorkOrderNos.join('、')
+                        : row.workOrderId
+                          ? row.workOrderNo || unknown('工单')
+                          : '手工申请',
+                    },
                     { title: '材料摘要', dataIndex: 'items', width: 360, render: renderItems },
                     { title: '预估金额', dataIndex: 'estTotalCents', width: 120, render: money },
                     { title: '申请人', key: 'applicant', width: 110, render: (_, row) => nameOr(row.applicantName, '申请人') },
@@ -1682,9 +1767,12 @@ export default function InventoryPage() {
         extra={requestDetail ? (
           <Space>
             {requestDetail.status === PurchaseRequestStatus.OFFICE_REVIEW && (
-              <Popconfirm title="提交给物业经理审批？" description="如需合并多条申请，请在列表勾选后批量提交。" onConfirm={() => submitRequestsToManager([requestDetail.id])}>
-                <Button type="primary" loading={saving}>提交经理</Button>
-              </Popconfirm>
+              <>
+                <Button icon={<EditOutlined />} onClick={() => openEditRequest(requestDetail)}>修改明细</Button>
+                <Popconfirm title="提交给物业经理审批？" description="如需合并多条申请，请在列表勾选后批量提交。" onConfirm={() => submitRequestsToManager([requestDetail.id])}>
+                  <Button type="primary" loading={saving}>提交经理</Button>
+                </Popconfirm>
+              </>
             )}
             {requestDetail.status === PurchaseRequestStatus.MANAGER_REVIEW && (
               <Popconfirm title="确认物业经理审批通过？" onConfirm={() => approveRequest(requestDetail, 'manager')}>
@@ -1710,7 +1798,9 @@ export default function InventoryPage() {
             <DetailHero
               eyebrow={<Text copyable={{ text: requestDetail.requestNo }}>{requestDetail.requestNo}</Text>}
               title={requestStatusMeta[requestDetail.status]?.label || requestDetail.status}
-              description={requestDetail.workOrderId
+              description={requestDetail.sourceWorkOrderNos?.length
+                ? `来源工单：${requestDetail.sourceWorkOrderNos.join('、')}`
+                : requestDetail.workOrderId
                 ? `来源工单：${requestDetail.workOrderNo || unknown('工单')}`
                 : '办公室手工发起，无来源工单'}
               tags={<Tag color={requestStatusMeta[requestDetail.status]?.color}>{requestStatusMeta[requestDetail.status]?.label || requestDetail.status}</Tag>}
@@ -1770,7 +1860,11 @@ export default function InventoryPage() {
                 <Col span={8}><Text type="secondary">申请人</Text><br /><Text>{nameOr(requestDetail.applicantName, '申请人')}</Text></Col>
                 <Col span={8}>
                   <Text type="secondary">来源工单</Text><br />
-                  <Text>{requestDetail.workOrderId ? (requestDetail.workOrderNo || unknown('工单')) : '手工申请，无来源工单'}</Text>
+                  <Text>{requestDetail.sourceWorkOrderNos?.length
+                    ? requestDetail.sourceWorkOrderNos.join('、')
+                    : requestDetail.workOrderId
+                      ? requestDetail.workOrderNo || unknown('工单')
+                      : '手工申请，无来源工单'}</Text>
                 </Col>
                 <Col span={8}><Text type="secondary">预估金额</Text><br /><Text strong>{money(requestDetail.estTotalCents)}</Text></Col>
                 <Col span={8}><Text type="secondary">创建时间</Text><br /><Text>{formatDateTime(requestDetail.createdAt)}</Text></Col>
@@ -1785,6 +1879,7 @@ export default function InventoryPage() {
                 dataSource={(requestDetail.items || []).map((item, index) => ({ ...item, key: index }))}
                 columns={[
                   { title: '序号', dataIndex: 'key', width: 64, render: (v) => Number(v) + 1 },
+                  { title: '来源工单', dataIndex: 'sourceWorkOrderNo', width: 160, render: (v) => v || '手工申请' },
                   {
                     title: '材料编码',
                     dataIndex: 'materialId',
@@ -1822,12 +1917,100 @@ export default function InventoryPage() {
                     width: 120,
                     render: (_, item) => item.estUnitCostCents != null ? money(item.qty * item.estUnitCostCents) : '-',
                   },
+                  {
+                    title: '审批',
+                    key: 'review',
+                    width: 160,
+                    render: (_, item) => item.rejectReason
+                      ? <Tooltip title={item.rejectReason}><Tag color="red">已单项驳回</Tag></Tooltip>
+                      : [PurchaseRequestStatus.MANAGER_REVIEW, PurchaseRequestStatus.PURCHASER_REVIEW].includes(requestDetail.status)
+                        ? <Button size="small" type="link" danger onClick={() => { itemRejectForm.resetFields(); setItemRejectTarget({ request: requestDetail, item }); }}>驳回此项</Button>
+                        : <Text type="secondary">待审</Text>,
+                  },
                 ]}
               />
             </Card>
           </Space>
         )}
       </Drawer>
+      <Modal
+        title={`修改采购申请 ${editRequestTarget?.requestNo || ''}`}
+        open={!!editRequestTarget}
+        onCancel={() => setEditRequestTarget(null)}
+        onOk={submitEditRequest}
+        confirmLoading={saving}
+        width={920}
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="可修改材料描述、数量、单位和预估单价；保存后需重新提交物业经理审批。"
+        />
+        <Form form={editRequestForm} layout="vertical">
+          <Form.List name="items">
+            {(fields) => (
+              <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                {fields.map((field, index) => {
+                  const original = editRequestTarget?.items[index];
+                  return (
+                    <Card
+                      key={field.key}
+                      size="small"
+                      title={`${index + 1}. ${original?.sourceWorkOrderNo || '手工申请'}`}
+                      extra={original?.rejectReason ? <Tag color="red">驳回：{original.rejectReason}</Tag> : null}
+                    >
+                      <Form.Item name={[field.name, 'lineId']} hidden><Input /></Form.Item>
+                      <Form.Item name={[field.name, 'materialId']} hidden><InputNumber /></Form.Item>
+                      <Row gutter={12}>
+                        <Col span={10}>
+                          <Form.Item name={[field.name, 'name']} label="材料描述" rules={[{ required: true, message: '请填材料描述' }]}>
+                            <Input maxLength={120} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={5}>
+                          <Form.Item name={[field.name, 'qty']} label="数量" rules={[{ required: true, message: '请填数量' }]}>
+                            <InputNumber min={0.01} precision={2} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={4}>
+                          <Form.Item name={[field.name, 'unit']} label="单位"><Input maxLength={20} /></Form.Item>
+                        </Col>
+                        <Col span={5}>
+                          <Form.Item name={[field.name, 'estUnitCostYuan']} label="预估单价（元）">
+                            <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    </Card>
+                  );
+                })}
+              </Space>
+            )}
+          </Form.List>
+        </Form>
+      </Modal>
+      <Modal
+        title={`驳回单项：${itemRejectTarget?.item.name || ''}`}
+        open={!!itemRejectTarget}
+        onCancel={() => setItemRejectTarget(null)}
+        onOk={submitItemReject}
+        confirmLoading={saving}
+        destroyOnHidden
+      >
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="只驳回这一项，整张申请退回办公室修改；其他明细会保留。"
+        />
+        <Form form={itemRejectForm} layout="vertical">
+          <Form.Item name="reason" label="单项驳回原因" rules={[{ required: true, message: '请填驳回原因' }]}>
+            <Input.TextArea rows={3} maxLength={200} placeholder="如：数量与现场需求不符，请核对" />
+          </Form.Item>
+        </Form>
+      </Modal>
       <Modal
         title={`驳回采购申请 ${rejectTarget?.requestNo || ''}`}
         open={!!rejectTarget}
@@ -1984,6 +2167,7 @@ const REF_TYPE_LABELS: Record<string, string> = {
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   inbound: '入库',
   outbound: '领料出库',
+  return: '工单退料',
   transfer: '调拨',
   adjust: '盘点调整',
 };

@@ -20,6 +20,7 @@ import {
   type WorkOrderStockOption,
   type WorkOrderStockWarehouse,
   type WorkOrderDetail,
+  type WorkOrderMaterialUsageView,
 } from '@pms/shared-types';
 
 /**
@@ -217,6 +218,8 @@ interface PageData {
   errorMsg: string;
   /** 添加用料 */
   materialRows: Array<MaterialRow & { hintText: string; hintShort: boolean }>;
+  /** 已经领用并实时扣库的用料，重新进单仍可见 */
+  issuedMaterials: WorkOrderMaterialUsageView[];
   materialNote: string;
   materialError: string;
   /** 有一行库存不够或仓里没有 —— 面板底部要给「提报缺料」这条出路 */
@@ -295,6 +298,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     busy: false,
     errorMsg: '',
     materialRows: [],
+    issuedMaterials: [],
     materialNote: '',
     materialError: '',
     hasShortage: false,
@@ -400,6 +404,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
             ? '主动接单'
             : '接单',
         contactPhone: detail.request?.contactPhone || '',
+        issuedMaterials: detail.materialUsages || [],
         // 故障位置/现象从报修信息带出来：业主已经说过一遍了，别让维修工再打一遍。
         // 带出来的只是初值，可以改、也可以清空 —— 现场看到的往往和业主说的不一样。
         faultLocation:
@@ -822,6 +827,30 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     );
   },
 
+  /** 已领用的料不是端上草稿：删除要走服务端退库，不能只从界面上抹掉。 */
+  onRemoveIssuedMaterial(e: WechatMiniprogram.BaseEvent) {
+    const usageId = Number(e.currentTarget.dataset.id);
+    const row = this.data.issuedMaterials.find((item) => item.id === usageId);
+    if (!row || this.data.busy) return;
+    wx.showModal({
+      title: '删除并退回库存？',
+      content: `${row.name} ×${row.qty}${row.unit || ''}将退回${row.warehouseName}，并留一条退料流水。`,
+      success: async (res) => {
+        if (!res.confirm) return;
+        this.setData({ busy: true, materialError: '' });
+        try {
+          await repairs.removeUsedMaterial(this.data.id, usageId);
+          wx.showToast({ title: '已删除并退库' });
+          await this.load();
+        } catch (error: any) {
+          this.setData({ materialError: error?.message || '退料失败' });
+        } finally {
+          this.setData({ busy: false });
+        }
+      },
+    });
+  },
+
   onMaterialNote(e: WechatMiniprogram.Input) {
     this.setData({ materialNote: e.detail.value });
   },
@@ -1044,9 +1073,15 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       });
       this.setData({ panel: '', materialNote: '' });
       this.setMaterialRows([]);
-      wx.showToast({ title: used.length ? '已记用料并提报缺料' : '已提报缺料' });
-      // 这单已经不在自己手上了，留在详情页只会让人以为还能继续干，直接回工单池
-      setTimeout(() => wx.switchTab({ url: '/pages/pool/pool' }), 900);
+      const orderNo = this.data.detail?.workOrder.orderNo || '';
+      wx.setStorageSync('pms.staff.open_order', JSON.stringify({ mainTab: 'pool', status: 'waiting', orderNo }));
+      wx.showModal({
+        title: '已转等待材料',
+        content: `${orderNo || '该工单'}${used.length ? '的有库存用料已扣减，' : ''}缺料已生成采购申请。可在工单池的「等待材料」中找到。`,
+        showCancel: false,
+        confirmText: '去看工单',
+        success: () => wx.switchTab({ url: '/pages/pool/pool' }),
+      });
     } catch (e: any) {
       this.setData({ materialError: e?.message || '提报失败' });
     } finally {
@@ -1118,8 +1153,15 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         materials: used.length ? used : undefined,
         resultAttachments: this.data.resultAttachments,
       });
-      wx.showToast({ title: '已提交，等待业主验收' });
-      setTimeout(() => wx.navigateBack(), 800);
+      const orderNo = this.data.detail?.workOrder.orderNo || '';
+      wx.setStorageSync('pms.staff.open_order', JSON.stringify({ mainTab: 'done', orderNo }));
+      wx.showModal({
+        title: '已提交完工',
+        content: `${orderNo || '该工单'}已进入待验收，可在工单池的「已完结」里回看刚填的内容。`,
+        showCancel: false,
+        confirmText: '去看工单',
+        success: () => wx.switchTab({ url: '/pages/pool/pool' }),
+      });
     } catch (e: any) {
       this.setData({ errorMsg: e?.message || '提交失败' });
     } finally {

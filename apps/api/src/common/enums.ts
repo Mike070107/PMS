@@ -107,6 +107,7 @@ export enum WarehouseType {
 export enum StockMovementType {
   INBOUND = 'inbound', // 采购入库
   OUTBOUND = 'outbound', // 工单领料出库
+  RETURN = 'return', // 工单删除已领用料后退回原仓原批次
   TRANSFER = 'transfer', // 调拨
   ADJUST = 'adjust', // 盘点调整
 }

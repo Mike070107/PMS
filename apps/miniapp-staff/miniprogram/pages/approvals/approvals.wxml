@@ -24,7 +24,21 @@
     </view>
 
     <view class="kv"><text class="kv__k">申请编号</text><text class="kv__v">{{item.requestNo}}</text></view>
-    <view class="kv"><text class="kv__k">采购明细</text><text class="kv__v">{{item.itemsText}}</text></view>
+    <view class="label mt">采购明细<text class="label__opt">可单项驳回</text></view>
+    <view wx:for="{{item.reviewItems}}" wx:for-item="line" wx:key="lineId" class="approval-line">
+      <view class="approval-line__body">
+        <view class="approval-line__name">{{line.name}} ×{{line.qty}}{{line.unit || ''}}</view>
+        <view class="muted">来源 {{line.sourceText}} · {{line.amountText}}</view>
+      </view>
+      <button
+        class="btn btn--ghost btn--sm"
+        data-id="{{item.id}}"
+        data-line="{{line.lineId}}"
+        data-name="{{line.name}}"
+        disabled="{{busyId !== 0}}"
+        bindtap="onRejectItem"
+      >驳回此项</button>
+    </view>
     <view class="kv"><text class="kv__k">申请人</text><text class="kv__v">{{item.applicantText}}</text></view>
     <view wx:if="{{item.sourceText}}" class="kv">
       <text class="kv__k">来自工单</text><text class="kv__v">{{item.sourceText}}</text>
@@ -38,7 +52,7 @@
         loading="{{busyId === item.id}}"
         disabled="{{busyId !== 0}}"
         bindtap="onReject"
-      ><view class="btn__icon icon-action--close-gray"></view><text>驳回</text></button>
+      ><view class="btn__icon icon-action--close-gray"></view><text>整单驳回</text></button>
       <button
         class="btn btn--primary"
         data-id="{{item.id}}"

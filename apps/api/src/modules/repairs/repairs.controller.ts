@@ -392,6 +392,17 @@ export class RepairsController {
     return this.repairsService.markNeedMaterial(id, dto, user, access);
   }
 
+  @Delete('work-orders/:id/materials/:usageId')
+  @RequirePermission(['work-orders', 'app:my-orders'], 'edit')
+  removeWorkOrderMaterial(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('usageId', ParseIntPipe) usageId: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.removeWorkOrderMaterial(id, usageId, user, access);
+  }
+
   /**
    * 这张工单能领哪些料：默认本小区仓，本小区没配仓库时给到有货的仓。
    * 维修工必须能读 —— 「添加用料」就是给他用的；不传 warehouseId 时由工单反查默认仓，

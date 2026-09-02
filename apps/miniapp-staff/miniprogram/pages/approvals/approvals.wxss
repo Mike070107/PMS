@@ -5,3 +5,6 @@
 .wo-card__head { padding-bottom: 20rpx; border-bottom: 2rpx solid #e5ecf2; }
 .wo-card__type { color: #a5630b; font-size: 42rpx; }
 .btn--ghost { color: var(--color-danger); background: #fff3f3; }
+.approval-line { display: flex; align-items: center; gap: 14rpx; padding: 16rpx 0; border-bottom: 2rpx solid #edf1f5; }
+.approval-line__body { flex: 1; min-width: 0; }
+.approval-line__name { color: #243b4f; font-weight: 600; line-height: 1.5; }

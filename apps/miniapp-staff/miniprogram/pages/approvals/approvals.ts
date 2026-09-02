@@ -7,7 +7,14 @@ import {
   PurchaseRequestStatus,
   UserRole,
   type PurchaseRequestView,
+  type PurchaseRequestItem,
 } from '@pms/shared-types';
+
+interface ApprovalItem extends PurchaseRequestItem {
+  lineId: string;
+  sourceText: string;
+  amountText: string;
+}
 
 interface ApprovalRow extends PurchaseRequestView {
   statusLabel: string;
@@ -17,6 +24,7 @@ interface ApprovalRow extends PurchaseRequestView {
   /** 「来自工单 XXX」显示的文字：工单号 + 申请人，不是工单的数据库 id */
   sourceText: string;
   applicantText: string;
+  reviewItems: ApprovalItem[];
 }
 
 const yuan = (cents: number) => `¥${((cents || 0) / 100).toFixed(2)}`;
@@ -29,8 +37,21 @@ function toRow(item: PurchaseRequestView): ApprovalRow {
     itemsText: (item.items || []).map((i) => `${i.name} ×${i.qty}${i.unit || ''}`).join('、'),
     createdAtText: formatDateTimeCn(item.createdAt),
     // 工单号和申请人姓名由服务端下发；以前这里写的是「#19」，审批的人根本认不出是哪张单
-    sourceText: item.workOrderId ? item.workOrderNo || '未知工单' : '',
+    sourceText: item.sourceWorkOrderNos?.length
+      ? item.sourceWorkOrderNos.join('、')
+      : item.workOrderId
+        ? item.workOrderNo || '未知工单'
+        : '',
     applicantText: item.applicantName || '未知申请人',
+    reviewItems: (item.items || []).map((line, index) => ({
+      ...line,
+      lineId: line.lineId || `${item.id}-${index + 1}`,
+      sourceText: line.sourceWorkOrderNo || line.sourceRequestNo || '手工申请',
+      amountText:
+        line.estUnitCostCents != null
+          ? yuan(line.estUnitCostCents * line.qty)
+          : '未估价',
+    })),
   };
 }
 
@@ -129,6 +150,33 @@ Page({
     try {
       await purchases.reject(id, { reason });
       wx.showToast({ title: '已驳回' });
+      this.load();
+    } catch (err: any) {
+      wx.showToast({ icon: 'none', title: err?.message || '操作失败' });
+    } finally {
+      this.setData({ busyId: 0 });
+    }
+  },
+
+  async onRejectItem(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.id);
+    const lineId = String(e.currentTarget.dataset.line || '');
+    const name = String(e.currentTarget.dataset.name || '该明细');
+    if (!id || !lineId || this.data.busyId) return;
+    const res = await wx.showModal({
+      title: `驳回单项：${name}`,
+      content: '只驳回这一行，申请会退回办公室修改后重新提审。',
+      editable: true,
+      placeholderText: '请填单项驳回原因（必填）',
+      confirmText: '驳回此项',
+    });
+    if (!res.confirm) return;
+    const reason = (res.content || '').trim();
+    if (!reason) return wx.showToast({ icon: 'none', title: '请填驳回原因' });
+    this.setData({ busyId: id });
+    try {
+      await purchases.rejectItem(id, { lineId, reason });
+      wx.showToast({ title: '已驳回该项' });
       this.load();
     } catch (err: any) {
       wx.showToast({ icon: 'none', title: err?.message || '操作失败' });

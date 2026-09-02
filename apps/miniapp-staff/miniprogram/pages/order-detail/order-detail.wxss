@@ -330,3 +330,21 @@
   font-size: var(--font-md);
   line-height: 1.55;
 }
+.issued-block {
+  padding: 18rpx;
+  border: 2rpx solid #c9dff2;
+  border-radius: 16rpx;
+  background: #f5f9fd;
+}
+
+.issued-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 14rpx;
+  padding-top: 14rpx;
+  border-top: 2rpx solid #e2edf6;
+}
+
+.issued-item__body { flex: 1; min-width: 0; }
+.issued-item__name { color: #173b59; font-weight: 600; line-height: 1.5; }

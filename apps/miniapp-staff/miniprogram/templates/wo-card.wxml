@@ -52,6 +52,7 @@
   </view>
 
   <view class="wo-card__chips">
+    <text class="wo-card__chip wo-card__chip--no">{{item.orderNo}}</text>
     <text class="wo-card__chip wo-card__chip--{{item.stayTone}}">{{item.statStayLabel}} {{item.statStay}}</text>
     <text class="wo-card__chip">{{item.typeLabel}}</text>
   </view>

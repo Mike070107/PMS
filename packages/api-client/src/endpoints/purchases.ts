@@ -24,3 +24,23 @@ export const reject = (id: number | string, data: { reason: string }) =>
     url: `/purchase-requests/${id}/reject`,
     data,
   });
+
+export const rejectItem = (
+  id: number | string,
+  data: { lineId: string; reason: string },
+) =>
+  request<PurchaseRequestView>({
+    method: 'POST',
+    url: `/purchase-requests/${id}/reject-item`,
+    data,
+  });
+
+export const updateItems = (
+  id: number | string,
+  data: { items: Array<{ lineId: string; materialId?: number; name: string; qty: number; unit?: string; estUnitCostCents?: number }> },
+) =>
+  request<PurchaseRequestView>({
+    method: 'PATCH',
+    url: `/purchase-requests/${id}/items`,
+    data,
+  });
