@@ -1,4 +1,5 @@
 import { isApiEnvelope } from './envelope';
+import { diagnosticRequestPath } from './request-diagnostic';
 
 import { compressImageIfNeeded } from './compress';
 
@@ -262,7 +263,7 @@ export function request<T = unknown>(opts: RequestOptions): Promise<T> {
   return pending.catch((error: any) => {
     lastApiFailure = {
       method: opts.method || 'GET',
-      url: opts.url,
+      url: diagnosticRequestPath(opts.url, opts.query),
       message: String(error?.message || '请求失败').slice(0, 500),
       code: Number(error?.code || -1),
       httpStatus: error?.httpStatus,
