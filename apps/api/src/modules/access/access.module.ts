@@ -9,9 +9,11 @@ import {
   RoleTemplate,
   RoleTemplatePermission,
   RoleWarehouse,
+  StaffProfile,
   Tenant,
   User,
   UserRoleAssignment,
+  Warehouse,
 } from '../../entities';
 import { AccessService } from './access.service';
 import { PermissionsGuard } from './permissions.guard';
@@ -32,11 +34,13 @@ import { RolesOrPermissionGuard } from './roles-or-permission.guard';
       RoleScope,
       RoleTemplate,
       RoleTemplatePermission,
-  RoleWarehouse,
+      RoleWarehouse,
+      StaffProfile,
       UserRoleAssignment,
       Community,
       ManagementOffice,
       User,
+      Warehouse,
     ]),
   ],
   providers: [AccessService, PermissionsGuard, RolesOrPermissionGuard, RbacSeedService],

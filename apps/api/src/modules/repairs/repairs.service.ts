@@ -1297,12 +1297,29 @@ export class RepairsService implements OnModuleInit {
               : 4;
     // 管理处范围的维修工只看得到本单所在管理处 / 自己管理处的仓（rank ≤ 2），公司级总仓和别家的仓
     // 连「换仓库」里都不列 —— 和员工端库存页 /warehouses?scope=mine 同一条规则；全公司范围的人不限
+    const extraWarehouseIds = new Set(
+      await this.accessService.extraWarehouseIdsOfUser(tenantId, user.id),
+    );
+    const smartWarehouseId = await this.accessService.smartWarehouseIdOfUser(tenantId, user.id);
     const candidates = all
-      .filter((item) => mine.all || rank(item) <= 2)
-      .sort((a, b) => rank(a) - rank(b) || a.id - b.id);
-    const mapped = candidates.find((item) => rank(item) <= 3) ?? null;
+      .filter((item) => mine.all || rank(item) <= 2 || extraWarehouseIds.has(item.id))
+      .sort(
+        (a, b) =>
+          Number(b.id === smartWarehouseId) - Number(a.id === smartWarehouseId) ||
+          rank(a) - rank(b) ||
+          a.id - b.id,
+      );
+    // 智能化维修工首次打开优先选专属仓；仓不存在/被停用时才退回原来的管理处匹配规则。
+    const smartWarehouse = smartWarehouseId
+      ? candidates.find((item) => item.id === smartWarehouseId) ?? null
+      : null;
+    const mapped = smartWarehouse ?? candidates.find((item) => rank(item) <= 3) ?? null;
     const byRank = ['community', 'office', 'staff_office', 'company'] as const;
-    const mappedBy = mapped ? byRank[rank(mapped) as 0 | 1 | 2 | 3] : null;
+    const mappedBy = smartWarehouse
+      ? 'staff_skill'
+      : mapped
+        ? byRank[rank(mapped) as 0 | 1 | 2 | 3]
+        : null;
 
     const stockRepo = this.dataSource.getRepository(Stock);
     const allStocks = candidates.length
@@ -1314,7 +1331,7 @@ export class RepairsService implements OnModuleInit {
       allStocks.filter((row) => Number(row.qty) > 0).map((row) => row.warehouseId),
     );
 
-    // 端上明确指定了就用它（手动换仓库），否则只认配置，配了才有默认仓
+    // 智能化维修工首次打开默认专属仓；手动换仓后仍尊重端上传来的 warehouseId。
     const warehouse = warehouseId
       ? candidates.find((item) => item.id === warehouseId) ?? null
       : mapped;

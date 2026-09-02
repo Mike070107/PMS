@@ -676,7 +676,7 @@ export interface WorkOrderStockWarehouse {
   id: number;
   name: string;
   type: WarehouseType;
-  /** 本单「小区 + 报修类型」在后台配好的那个仓 */
+  /** 本次自动选中的默认仓（工种专属仓优先，其次是工单所属管理处仓） */
   own: boolean;
   /** 这个仓里至少有一样东西有货，端上用来提示「换那个仓有货」 */
   hasStock: boolean;
@@ -710,6 +710,8 @@ export interface WarehouseView {
   /** 仓库配的默认入库库位；入库表单选了仓就带出来 */
   defaultLocationId?: number | null;
   enabled: boolean;
+  /** 当前用户的工种专属默认仓；员工端库存页优先选中。 */
+  preferred?: boolean;
 }
 
 /** 仓库里的一个库位（货架格），入库时选存放位置 */

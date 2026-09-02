@@ -577,7 +577,13 @@ export class InventoryService {
         await this.warehouseRepo.save(toSave);
       }
     }
-    return this.withOwnerNames(tenantId, list);
+    const named = await this.withOwnerNames(tenantId, list);
+    if (query.scope !== 'mine') return named;
+    const preferredId = await this.accessService.smartWarehouseIdOfUser(tenantId, user.id);
+    return named.map((warehouse) => ({
+      ...warehouse,
+      preferred: warehouse.id === preferredId,
+    }));
   }
 
   /**

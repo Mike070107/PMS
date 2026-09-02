@@ -20,9 +20,15 @@ import {
   RoleScope,
   RoleTemplatePermission,
   RoleWarehouse,
+  StaffProfile,
   Tenant,
   UserRoleAssignment,
+  Warehouse,
 } from '../../entities';
+import {
+  findSmartRepairWarehouse,
+  hasSmartRepairSkill,
+} from '../../common/warehouse-preference';
 
 export interface PageActions {
   view: boolean;
@@ -82,6 +88,10 @@ export class AccessService implements OnModuleInit {
     private readonly communityRepo: Repository<Community>,
     @InjectRepository(ManagementOffice)
     private readonly officeRepo: Repository<ManagementOffice>,
+    @InjectRepository(StaffProfile)
+    private readonly staffProfileRepo: Repository<StaffProfile>,
+    @InjectRepository(Warehouse)
+    private readonly warehouseRepo: Repository<Warehouse>,
   ) {}
 
   /**
@@ -331,12 +341,35 @@ export class AccessService implements OnModuleInit {
    * 因为它是角色本身的授权，不属于任何一个管理处。
    */
   async extraWarehouseIdsOfUser(tenantId: number, userId: number): Promise<number[]> {
-    const bindings = await this.userRoleRepo.find({ where: { userId } });
-    if (!bindings.length) return [];
-    const rows = await this.roleWarehouseRepo.find({
-      where: { tenantId, roleId: In(bindings.map((b) => b.roleId)) },
+    const bindings = await this.userRoleRepo.find({ where: { tenantId, userId } });
+    const rows = bindings.length
+      ? await this.roleWarehouseRepo.find({
+          where: { tenantId, roleId: In(bindings.map((b) => b.roleId)) },
+        })
+      : [];
+    const ids = new Set(rows.map((r) => r.warehouseId));
+    // 智能化维修工的专属仓由工种自动授权，不要求办公室再到每个业务角色里重复勾仓库。
+    const smartWarehouseId = await this.smartWarehouseIdOfUser(tenantId, userId);
+    if (smartWarehouseId) ids.add(smartWarehouseId);
+    return [...ids];
+  }
+
+  /**
+   * smart 工种 → 启用中的「智能化维修工仓库」。库存页默认仓与工单领料共用这一处，
+   * 避免两个页面各按文字猜一次后出现不同结果。没有专属仓时返回 null，调用方沿用原规则。
+   */
+  async smartWarehouseIdOfUser(tenantId: number, userId: number): Promise<number | null> {
+    const profile = await this.staffProfileRepo.findOne({
+      where: { tenantId, userId },
+      select: ['id', 'skills'],
     });
-    return [...new Set(rows.map((r) => r.warehouseId))];
+    if (!hasSmartRepairSkill(profile?.skills)) return null;
+    const warehouses = await this.warehouseRepo.find({
+      where: { tenantId, enabled: true },
+      select: ['id', 'name', 'enabled'],
+      order: { id: 'ASC' },
+    });
+    return findSmartRepairWarehouse(warehouses)?.id ?? null;
   }
 
   /** 管理处 → 其下顶层小区 + 分期子小区的完整 id 集合 */

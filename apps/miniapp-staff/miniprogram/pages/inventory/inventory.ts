@@ -122,6 +122,9 @@ const compareSkuName = (a: Pick<SkuRow, 'name' | 'spec' | 'code'>, b: Pick<SkuRo
  *   · 对不上（管理处还没建仓）→ 全部仓库
  */
 function defaultWarehouseIndex(session: StaffSession, warehouses: WarehouseView[]): number {
+  // smart 工种的专属仓由后端标 preferred；即使角色是全公司范围，也不能再落到「全部仓库」。
+  const preferred = warehouses.findIndex((warehouse) => warehouse.enabled && warehouse.preferred);
+  if (preferred >= 0) return preferred + 1;
   const access = session.me?.access;
   if (!access || access.scopeAll) return 0;
   // 列表已经是服务端按范围过滤过的（自己管理处的仓排最前），第一个挂了管理处的就是默认仓
@@ -278,8 +281,8 @@ Page({
         (item) => item.enabled && missingFields(item).length > 0,
       ).length;
 
-      // 默认仓：按自己角色范围对应的管理处挑（仓库档案里的「所属管理处」）。
-      // 只有第一次进来才定，之后用户切过的仓不动；全公司范围的人（办公室/采购）保持「全部仓库」
+      // 默认仓：智能化维修工先选工种专属仓；其他人按角色范围对应的管理处挑。
+      // 只有第一次进来才定，之后尊重用户手动切换；非智能化的全公司角色保持「全部仓库」
       const warehouseIndex = this.data.loaded
         ? Math.min(this.data.warehouseIndex, warehouses.length)
         : defaultWarehouseIndex(session, warehouses);
