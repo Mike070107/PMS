@@ -3,7 +3,6 @@ import {
   Alert,
   Button,
   Card,
-  Col,
   Descriptions,
   Drawer,
   Form,
@@ -13,10 +12,8 @@ import {
   Modal,
   Popconfirm,
   Progress,
-  Row,
   Select,
   Space,
-  Statistic,
   Table,
   Tag,
   Typography,
@@ -24,6 +21,7 @@ import {
 import {
   AuditOutlined,
   CheckCircleOutlined,
+  ClockCircleOutlined,
   DiffOutlined,
   EditOutlined,
   FileTextOutlined,
@@ -33,6 +31,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { stocktakes } from '@pms/api-client';
 import { MaterialPhotoCell, MaterialPhotosUpload, imageSrc } from './MaterialPhotos';
+import './StocktakePanel.css';
 import {
   STOCKTAKE_REASON_OPTIONS,
   STOCKTAKE_STATUS_LABELS,
@@ -325,72 +324,104 @@ export default function StocktakePanel({ warehouses, canEdit }: Props) {
   const allCounted = !!detail && detail.totalCount > 0 && detail.countedCount === detail.totalCount;
 
   return (
-    <>
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} md={6}><Card><Statistic title="盘点中" value={summary.active} /></Card></Col>
-        <Col xs={12} md={6}><Card><Statistic title="待办公室复核" value={summary.pending} valueStyle={summary.pending ? { color: '#d46b08' } : undefined} /></Card></Col>
-        <Col xs={12} md={6}><Card><Statistic title="已完成报告" value={summary.approved} /></Card></Col>
-        <Col xs={12} md={6}><Card><Statistic title="历史差异项" value={summary.differences} /></Card></Col>
-      </Row>
+    <div className="stocktake-workspace">
+      <section className="stocktake-overview">
+        <div className="stocktake-overview__copy">
+          <span className="stocktake-overview__eyebrow">库存核对工作台</span>
+          <h2>先盘清，再过账</h2>
+          <p>盘点数据提交后由办公室统一复核，确认通过才会调整库存并生成可追溯报告。</p>
+        </div>
+        <Space wrap className="stocktake-overview__actions">
+          <Button icon={<ReloadOutlined />} onClick={loadTasks} loading={loading}>刷新数据</Button>
+          {canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建盘点</Button>}
+        </Space>
+      </section>
+
+      <div className="stocktake-metrics">
+        <div className="stocktake-metric stocktake-metric--blue">
+          <span className="stocktake-metric__icon"><AuditOutlined /></span>
+          <div><span>正在盘点</span><strong>{summary.active}</strong><small>含退回后重新核对</small></div>
+        </div>
+        <div className={`stocktake-metric stocktake-metric--amber${summary.pending ? ' stocktake-metric--attention' : ''}`}>
+          <span className="stocktake-metric__icon"><ClockCircleOutlined /></span>
+          <div><span>等待办公室复核</span><strong>{summary.pending}</strong><small>{summary.pending ? '建议优先处理' : '当前没有待复核任务'}</small></div>
+        </div>
+        <div className="stocktake-metric stocktake-metric--green">
+          <span className="stocktake-metric__icon"><CheckCircleOutlined /></span>
+          <div><span>已完成报告</span><strong>{summary.approved}</strong><small>已复核并完成过账</small></div>
+        </div>
+        <div className="stocktake-metric stocktake-metric--rose">
+          <span className="stocktake-metric__icon"><DiffOutlined /></span>
+          <div><span>历史差异项</span><strong>{summary.differences}</strong><small>累计盘盈与盘亏项目</small></div>
+        </div>
+      </div>
 
       {summary.pending > 0 && (
         <Alert
+          className="stocktake-review-alert"
           type="warning"
           showIcon
-          style={{ marginBottom: 16 }}
           message={`有 ${summary.pending} 张盘点单等待办公室复核`}
           description="复核通过后才会把盘盈、盘亏写入库存和出入库流水。"
+          action={<Button size="small" onClick={() => setStatus('submitted')}>只看待复核</Button>}
         />
       )}
 
       <Card
-        title="盘点任务与报告"
-        extra={(
-          <Space wrap>
-            <Button icon={<ReloadOutlined />} onClick={loadTasks} loading={loading}>刷新</Button>
-            {canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建盘点</Button>}
-          </Space>
-        )}
+        className="stocktake-task-card"
+        title={<div className="stocktake-section-title"><strong>盘点任务与报告</strong><span>统一查看盘点进度、办公室复核与历史报告</span></div>}
       >
-        <Space wrap style={{ marginBottom: 16 }}>
-          <Select
-            value={warehouseId}
-            onChange={setWarehouseId}
-            style={{ width: 260 }}
-            options={[
-              { value: 'all', label: '全部可见仓库' },
-              ...warehouses.map((item) => ({
-                value: item.id,
-                label: `${item.name}${item.officeName ? ` · ${item.officeName}` : ''}`,
-              })),
-            ]}
-          />
-          <Select
-            value={status}
-            onChange={setStatus}
-            style={{ width: 150 }}
-            options={[
-              { value: 'all', label: '全部状态' },
-              ...Object.entries(STOCKTAKE_STATUS_LABELS).map(([value, label]) => ({ value, label })),
-            ]}
-          />
-          <Input.Search
-            allowClear
-            placeholder="搜盘点单号 / 任务名 / 仓库"
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            style={{ width: 300 }}
-          />
-        </Space>
+        <div className="stocktake-toolbar">
+          <Space wrap>
+            <Select
+              value={warehouseId}
+              onChange={setWarehouseId}
+              className="stocktake-filter--warehouse"
+              options={[
+                { value: 'all', label: '全部可见仓库' },
+                ...warehouses.map((item) => ({
+                  value: item.id,
+                  label: `${item.name}${item.officeName ? ` · ${item.officeName}` : ''}`,
+                })),
+              ]}
+            />
+            <Select
+              value={status}
+              onChange={setStatus}
+              className="stocktake-filter--status"
+              options={[
+                { value: 'all', label: '全部状态' },
+                ...Object.entries(STOCKTAKE_STATUS_LABELS).map(([value, label]) => ({ value, label })),
+              ]}
+            />
+            <Input.Search
+              allowClear
+              placeholder="搜索单号、任务名或仓库"
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              className="stocktake-filter--search"
+            />
+          </Space>
+          <Text type="secondary">共 {visibleTasks.length} 张盘点单</Text>
+        </div>
         <Table
+          className="stocktake-task-table"
           rowKey="id"
           loading={loading}
           dataSource={visibleTasks}
           scroll={{ x: 1180 }}
           pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }}
+          rowClassName={(row) => row.status === 'submitted' ? 'stocktake-task-row--pending' : ''}
           columns={[
-            { title: '盘点单号', dataIndex: 'taskNo', width: 210, ellipsis: true },
-            { title: '任务名称', dataIndex: 'title', width: 180, ellipsis: true },
+            {
+              title: '盘点任务', key: 'task', width: 280,
+              render: (_: unknown, row: StocktakeTaskView) => (
+                <div className="stocktake-task-name">
+                  <Text strong ellipsis={{ tooltip: row.title }}>{row.title}</Text>
+                  <Text type="secondary" copyable={{ text: row.taskNo }}>{row.taskNo}</Text>
+                </div>
+              ),
+            },
             { title: '盘点仓库', dataIndex: 'warehouseName', width: 180, ellipsis: true },
             {
               title: '状态', dataIndex: 'status', width: 100,
@@ -417,7 +448,7 @@ export default function StocktakePanel({ warehouses, canEdit }: Props) {
             {
               title: '操作', key: 'operation', fixed: 'right' as const, width: 130,
               render: (_: unknown, row: StocktakeTaskView) => (
-                <Button type="link" size="small" onClick={() => loadDetail(row.id)}>
+                <Button className="stocktake-open-button" type={row.status === 'submitted' && canEdit ? 'primary' : 'default'} size="small" onClick={() => loadDetail(row.id)}>
                   {row.status === 'submitted' && canEdit
                     ? '办公室复核'
                     : row.status === 'approved'
@@ -465,7 +496,13 @@ export default function StocktakePanel({ warehouses, canEdit }: Props) {
       </Modal>
 
       <Drawer
-        title={detail ? `${detail.status === 'approved' ? '盘点报告' : '盘点任务'} · ${detail.taskNo}` : '盘点明细'}
+        className="stocktake-detail-drawer"
+        title={detail ? (
+          <div className="stocktake-drawer-title">
+            <span>{detail.status === 'approved' ? '盘点报告' : '盘点任务'}</span>
+            <strong>{detail.taskNo}</strong>
+          </div>
+        ) : '盘点明细'}
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
         width="min(1180px, 94vw)"
@@ -497,7 +534,7 @@ export default function StocktakePanel({ warehouses, canEdit }: Props) {
             {detail.status === 'submitted' && (
               <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="待办公室复核" description="请重点核对盘盈、盘亏项及原因。通过后差异会立即过账。" />
             )}
-            <Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }} style={{ marginBottom: 16 }}>
+            <Descriptions className="stocktake-detail-meta" bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }}>
               <Descriptions.Item label="任务名称">{detail.title}</Descriptions.Item>
               <Descriptions.Item label="仓库">{detail.warehouseName}</Descriptions.Item>
               <Descriptions.Item label="状态"><Tag color={statusMeta[detail.status].color}>{statusMeta[detail.status].label}</Tag></Descriptions.Item>
@@ -509,25 +546,31 @@ export default function StocktakePanel({ warehouses, canEdit }: Props) {
               {detail.reviewNote && <Descriptions.Item label="复核意见" span={4}>{detail.reviewNote}</Descriptions.Item>}
             </Descriptions>
 
-            <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-              <Col xs={12} md={6}><Card size="small"><Statistic title="SKU 项数" value={detail.totalCount} /></Card></Col>
-              <Col xs={12} md={6}><Card size="small"><Statistic title="已盘" value={detail.countedCount} /></Card></Col>
-              <Col xs={12} md={6}><Card size="small"><Statistic title="账实一致" value={detail.items.filter((item) => item.actualQty != null && Number(item.differenceQty) === 0).length} /></Card></Col>
-              <Col xs={12} md={6}><Card size="small"><Statistic title="存在差异" value={detail.differenceCount} valueStyle={detail.differenceCount ? { color: '#cf1322' } : undefined} /></Card></Col>
-            </Row>
+            <div className="stocktake-detail-metrics">
+              <div><span>SKU 项数</span><strong>{detail.totalCount}</strong></div>
+              <div><span>已盘</span><strong>{detail.countedCount}</strong></div>
+              <div><span>账实一致</span><strong>{detail.items.filter((item) => item.actualQty != null && Number(item.differenceQty) === 0).length}</strong></div>
+              <div className={detail.differenceCount ? 'is-difference' : ''}><span>存在差异</span><strong>{detail.differenceCount}</strong></div>
+            </div>
 
-            <Space wrap style={{ marginBottom: 12 }}>
-              <Input.Search allowClear placeholder="搜编码 / 材料 / 规格 / 库位" value={itemKeyword} onChange={(event) => setItemKeyword(event.target.value)} style={{ width: 320 }} />
-              <Button type={onlyDifference ? 'primary' : 'default'} icon={<DiffOutlined />} onClick={() => setOnlyDifference((value) => !value)}>
-                只看差异 {detail.differenceCount ? `(${detail.differenceCount})` : ''}
-              </Button>
-            </Space>
-            <Table
+            <section className="stocktake-detail-section">
+              <div className="stocktake-detail-toolbar">
+                <div className="stocktake-section-title"><strong>材料盘点明细</strong><span>核对材料图片、账面数量、实盘结果与现场凭证</span></div>
+                <Space wrap>
+                  <Input.Search allowClear placeholder="搜编码 / 材料 / 规格 / 库位" value={itemKeyword} onChange={(event) => setItemKeyword(event.target.value)} className="stocktake-detail-search" />
+                  <Button type={onlyDifference ? 'primary' : 'default'} icon={<DiffOutlined />} onClick={() => setOnlyDifference((value) => !value)}>
+                    只看差异 {detail.differenceCount ? `(${detail.differenceCount})` : ''}
+                  </Button>
+                </Space>
+              </div>
+              <Table
+              className="stocktake-detail-table"
               rowKey="id"
               size="small"
               dataSource={visibleItems}
               scroll={{ x: 1560 }}
               pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['30', '50', '100'] }}
+              rowClassName={(item) => Number(item.differenceQty || 0) !== 0 ? 'stocktake-row--difference' : ''}
               columns={[
                 { title: 'SKU编码', dataIndex: ['material', 'code'], width: 130, ellipsis: true },
                 {
@@ -565,7 +608,8 @@ export default function StocktakePanel({ warehouses, canEdit }: Props) {
                   render: (_: unknown, item: StocktakeItemView) => <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openCount(item)}>{item.actualQty == null ? '录入' : '修改'}</Button>,
                 }] : []),
               ]}
-            />
+              />
+            </section>
           </>
         )}
       </Drawer>
@@ -642,6 +686,6 @@ export default function StocktakePanel({ warehouses, canEdit }: Props) {
           </Form.Item>
         </Form>
       </Modal>
-    </>
+    </div>
   );
 }
