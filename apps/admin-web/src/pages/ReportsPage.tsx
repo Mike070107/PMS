@@ -782,7 +782,7 @@ function StockReportView({ options }: { options: ReportOptions | null }) {
       </span>
     ) },
     { title: '安全库存', dataIndex: 'safetyQty', key: 'safetyQty', width: 100, align: 'right', render: (v: number) => fmtQty(v) },
-    { title: '状态', key: 'low', width: 110, render: (_, r) => (r.low ? <Tag color="red">低于安全库存</Tag> : <Tag color="green">正常</Tag>) },
+    { title: '状态', key: 'low', width: 130, render: (_, r) => (r.low ? <Tag color="red">达到/低于安全库存</Tag> : <Tag color="green">正常</Tag>) },
     { title: '单位成本', dataIndex: 'unitCostCents', key: 'unitCostCents', width: 130, align: 'right', render: (v: number, r) => (
       <Tooltip title={r.costSource === 'lot' ? '按剩余批次加权成本' : '没有入库批次记录，按 SKU 默认成本'}>
         <span>{formatFeeMoney(v)}{r.costSource === 'default' && <Text type="secondary"> *</Text>}</span>
@@ -807,7 +807,7 @@ function StockReportView({ options }: { options: ReportOptions | null }) {
             { title: '单位', key: 'unit' },
             { title: '数量', key: 'qty' },
             { title: '安全库存', key: 'safetyQty' },
-            { title: '低于安全库存', key: 'low', render: (r) => (r.low ? '是' : '否') },
+            { title: '达到/低于安全库存', key: 'low', render: (r) => (r.low ? '是' : '否') },
             { title: '单位成本(元)', key: 'unitCost', render: (r) => centsToYuan(r.unitCostCents) },
             { title: '成本来源', key: 'costSource', render: (r) => (r.costSource === 'lot' ? '批次加权' : 'SKU 默认成本') },
             { title: '库存金额(元)', key: 'amount', render: (r) => centsToYuan(r.amountCents) },
@@ -820,7 +820,7 @@ function StockReportView({ options }: { options: ReportOptions | null }) {
           columns: [
             { title: '仓库', key: 'warehouseName' },
             { title: 'SKU 数', key: 'skuCount' },
-            { title: '低于安全库存', key: 'lowCount' },
+            { title: '库存预警', key: 'lowCount' },
             { title: '库存金额(元)', key: 'amount', render: (r) => centsToYuan(r.amountCents) },
           ] satisfies ExportColumn<StockReport['byWarehouse'][number]>[],
           rows: data.byWarehouse,
@@ -837,7 +837,7 @@ function StockReportView({ options }: { options: ReportOptions | null }) {
     <div className="pms-report-pane">
       <CaliberNote>
         当前时点的库存，按「仓库 × 材料」一行。单位成本按该仓该材料剩余入库批次加权；没有批次记录的老库存按 SKU 默认成本（带 * 号）。
-        「低于安全库存」与「库存与采购」页同一口径：数量 ≤ 安全库存。
+        “库存预警”与“库存与采购”页同一口径：安全库存大于 0，且当前数量 ≤ 安全库存。
       </CaliberNote>
       <Card size="small" className="pms-report-toolbar">
         <Space wrap size={[8, 8]} className="pms-report-filters">
@@ -854,7 +854,7 @@ function StockReportView({ options }: { options: ReportOptions | null }) {
           />
           <Space size={6}>
             <Switch size="small" checked={onlyLow} onChange={setOnlyLow} />
-            <span>只看低于安全库存</span>
+            <span>只看库存预警</span>
           </Space>
           <Button icon={<ReloadOutlined />} loading={loading} onClick={load}>查询</Button>
           <Button icon={<DownloadOutlined />} loading={exporting} disabled={!rows.length} onClick={onExport}>导出 Excel</Button>
@@ -865,7 +865,7 @@ function StockReportView({ options }: { options: ReportOptions | null }) {
         <Col xs={12} md={6}><MetricTile title="库存金额" value={formatFeeMoney(summary?.totalAmountCents)} /></Col>
         <Col xs={12} md={6}><MetricTile title="材料行数" value={summary?.skuCount ?? 0} hint={summary ? `有库存 ${summary.totalQtyRows} 行` : undefined} /></Col>
         <Col xs={12} md={6}><MetricTile title="仓库数" value={summary?.warehouseCount ?? 0} /></Col>
-        <Col xs={12} md={6}><MetricTile title="低于安全库存" value={summary?.lowCount ?? 0} tone={summary?.lowCount ? 'warn' : undefined} /></Col>
+        <Col xs={12} md={6}><MetricTile title="库存预警" value={summary?.lowCount ?? 0} tone={summary?.lowCount ? 'warn' : undefined} /></Col>
       </Row>
 
       {!!data?.byWarehouse.length && data.byWarehouse.length > 1 && (
@@ -897,13 +897,13 @@ function StockReportView({ options }: { options: ReportOptions | null }) {
           tableLayout="fixed"
           scroll={{ x: 1270 }}
           pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: [50, 100, 200], showTotal: (t) => `共 ${t} 行` }}
-          locale={{ emptyText: onlyLow ? '没有低于安全库存的材料' : '没有库存记录' }}
+          locale={{ emptyText: onlyLow ? '没有达到预警线的材料' : '没有库存记录' }}
           summary={() =>
             summary && rows.length ? (
               <Table.Summary fixed>
                 <Table.Summary.Row className="pms-report-summary-row">
                   <Table.Summary.Cell index={0}>合计</Table.Summary.Cell>
-                  <Table.Summary.Cell index={1} colSpan={6}>{rows.length} 行，{summary.lowCount} 行低于安全库存</Table.Summary.Cell>
+                  <Table.Summary.Cell index={1} colSpan={6}>{rows.length} 行，{summary.lowCount} 行库存预警</Table.Summary.Cell>
                   <Table.Summary.Cell index={7} colSpan={2} />
                   <Table.Summary.Cell index={9} align="right">{formatFeeMoney(summary.totalAmountCents)}</Table.Summary.Cell>
                 </Table.Summary.Row>

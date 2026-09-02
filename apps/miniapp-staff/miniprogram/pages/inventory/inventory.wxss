@@ -175,7 +175,7 @@
   background: #f8fafc;
 }
 
-/* 低于安全库存标红 —— 这是这一屏比选料弹层多出来的一条信息 */
+/* 到达或低于安全库存标红 —— 这是这一屏比选料弹层多出来的一条信息 */
 .sku__qty--low { color: var(--color-danger); }
 .qty__unit { font-size: var(--font-sm); font-weight: 400; color: var(--color-text-tertiary); margin-left: 6rpx; }
 /* 「编辑 SKU」做成带框的按钮而不是一句蓝字：整卡本身也可点（看分仓存量），

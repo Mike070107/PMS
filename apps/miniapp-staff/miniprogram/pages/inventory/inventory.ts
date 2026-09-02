@@ -397,7 +397,7 @@ Page({
       metaText: [material.code, categoryName, safetyQty > 0 ? `安全 ${safetyQty}` : '']
         .filter(Boolean)
         .join(' · '),
-      low: safetyQty > 0 && qty < safetyQty,
+      low: safetyQty > 0 && qty <= safetyQty,
       workShortage,
       enabled: material.enabled,
       defaultCostCents: material.defaultCostCents,
@@ -511,7 +511,7 @@ Page({
       if (!material.enabled) continue;
       const { qty, safetyQty } = stock;
       if (missingFields(material).length) warehouseIncompleteCount += 1;
-      if (safetyQty > 0 && qty < safetyQty) overviewLowCount += 1;
+      if (safetyQty > 0 && qty <= safetyQty) overviewLowCount += 1;
       if (safetyQty > 0 && qty <= 0) overviewOutCount += 1;
     }
 
@@ -527,7 +527,7 @@ Page({
       }
       const { qty, safetyQty } = stock;
       const missing = missingFields(material);
-      const low = safetyQty > 0 && qty < safetyQty;
+      const low = safetyQty > 0 && qty <= safetyQty;
 
       if (activeMetric) {
         if (activeMetric === 'work_shortage' && !workShortageIds.has(material.id)) continue;
@@ -597,8 +597,8 @@ Page({
         hint: '已有工单需要、当前正在采购处理的材料',
       },
       low_stock: {
-        title: '低于安全库存',
-        hint: '仅统计安全库存大于 0，且当前可用数量不足的常备材料',
+        title: '达到或低于安全库存',
+        hint: '仅统计安全库存大于 0，且当前可用数量已到达或低于补货线的常备材料',
       },
       safety_out: {
         title: '常备料无货',
@@ -712,7 +712,7 @@ Page({
         return {
           name: warehouse.name,
           qtyText: qty > 0 ? `${qty}${row.unit}` : found ? '无货' : '未入过库',
-          low: safetyQty > 0 && qty < safetyQty,
+          low: safetyQty > 0 && qty <= safetyQty,
         };
       })
       // 有过库存记录的排前面，没入过库的沉底

@@ -44,7 +44,7 @@
           </view>
           <view class="inventory-metric inventory-metric--warn inventory-metric--action" data-metric="low_stock" bindtap="onOpenMetric" hover-class="inventory-metric--press">
             <view class="inventory-metric__value">{{overviewLowCount}}</view>
-            <view class="inventory-metric__label">低于安全库存</view>
+            <view class="inventory-metric__label">库存预警</view>
             <view class="inventory-metric__link">点击查看</view>
           </view>
           <view class="inventory-metric inventory-metric--danger inventory-metric--action" data-metric="safety_out" bindtap="onOpenMetric" hover-class="inventory-metric--press">
@@ -100,7 +100,7 @@
            它们不是「类别」，混在一起会被当成又一个类别点 -->
       <view class="switches">
         <view class="chip {{onlyLow ? 'chip--warn' : ''}}" bindtap="onToggleLow">
-          低于安全库存{{lowCount ? ' ' + lowCount : ''}}
+          达到/低于安全库存{{lowCount ? ' ' + lowCount : ''}}
         </view>
         <view wx:if="{{canEdit && warehouseIncompleteCount}}" class="chip {{onlyIncomplete ? 'chip--warn' : ''}}" bindtap="onToggleIncomplete">
           待补资料 {{warehouseIncompleteCount}}

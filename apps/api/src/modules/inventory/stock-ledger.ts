@@ -41,6 +41,14 @@ function round2(value: number): number {
   return Number(value.toFixed(2));
 }
 
+/**
+ * 安全库存是补货触发线，不是“跌穿后才提醒”：到达阈值就应该预警。
+ * 0 表示按需采购、不设常备线，不能把所有 0 库存 SKU 都算成预警。
+ */
+export function isSafetyStockWarning(qty: number, safetyQty: number): boolean {
+  return safetyQty > 0 && qty <= safetyQty;
+}
+
 /** 批次加权均价；没有批次时退回 SKU 参考成本。**只做展示**，金额一律用 resolveStockValue */
 export function resolveUnitCost(lotQty: number, lotValueCents: number, defaultCostCents: number): number {
   return lotQty > 0 ? Math.round(lotValueCents / lotQty) : defaultCostCents;

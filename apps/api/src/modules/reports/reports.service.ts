@@ -15,7 +15,7 @@ import {
 import { AccessService, ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { resolveRepairTypeLabel } from '../repairs/repair-type-labels';
-import { resolveStockValue, resolveUnitCost } from '../inventory/stock-ledger';
+import { isSafetyStockWarning, resolveStockValue, resolveUnitCost } from '../inventory/stock-ledger';
 import {
   MaterialUsageGroupBy,
   MaterialUsageReportDto,
@@ -40,7 +40,7 @@ import {
  *   维修工手填、没走库存的材料没有成本，不计入。
  * - 库存清单：按仓 × 材料一行；单位成本 = 该仓该材料剩余批次的加权成本，
  *   没有批次记录的老库存按 SKU 默认成本；金额 = 数量 × 单位成本。
- *   「低于安全库存」和「库存与采购」页同一口径：数量 ≤ 安全库存。
+ *   「库存预警」和「库存与采购」页同一口径：安全库存 > 0，且数量 ≤ 安全库存。
  * - 材料使用：按领料记录（完工时自动出库）统计，时间取出库时刻。
  *
  * 所有时间按 Asia/Shanghai 取整天（服务器时区是 UTC，直接 ::date 会差 8 小时）。
@@ -543,7 +543,7 @@ export class ReportsService {
         enabled: r.enabled !== false,
         qty,
         safetyQty,
-        low: qty <= safetyQty,
+        low: isSafetyStockWarning(qty, safetyQty),
         unitCostCents,
         /** 成本来源：lot = 批次加权；default = SKU 默认成本（老库存没批次） */
         costSource: lotQty > 0 ? 'lot' : 'default',

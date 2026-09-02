@@ -7,10 +7,18 @@ import {
   applyStockDelta,
   averageUnitCost,
   consumeStockLots,
+  isSafetyStockWarning,
   resolveStockValue,
   resolveUnitCost,
   restoreStockLots,
 } from './stock-ledger';
+
+test('安全库存大于0且当前库存到达或低于阈值时预警', () => {
+  assert.equal(isSafetyStockWarning(1, 1), true);
+  assert.equal(isSafetyStockWarning(0, 1), true);
+  assert.equal(isSafetyStockWarning(2, 1), false);
+  assert.equal(isSafetyStockWarning(0, 0), false);
+});
 
 /**
  * 内存版 EntityManager：只实现 stock-ledger 用到的那几个方法。

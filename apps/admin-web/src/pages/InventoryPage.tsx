@@ -274,6 +274,11 @@ function numberQty(value: number | string | undefined | null) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function isStockWarning(row?: Pick<StockRow, 'qty' | 'safetyQty'> | null) {
+  const safetyQty = numberQty(row?.safetyQty);
+  return safetyQty > 0 && numberQty(row?.qty) <= safetyQty;
+}
+
 function quantityPrecision(unit?: string | null) {
   return ['米', '公斤', '升', '平方米', '立方米'].includes(unit || '') ? 2 : 0;
 }
@@ -473,7 +478,7 @@ export default function InventoryPage() {
     return {
       materials: materials.length,
       warehouses: warehouses.length,
-      lowStock: stocks.filter((row) => numberQty(row.qty) <= numberQty(row.safetyQty)).length,
+      lowStock: stocks.filter(isStockWarning).length,
       pendingRequests: purchaseRequests.filter((row) =>
         [PurchaseRequestStatus.MANAGER_REVIEW, PurchaseRequestStatus.PURCHASER_REVIEW].includes(row.status),
       ).length,
@@ -1184,7 +1189,7 @@ export default function InventoryPage() {
       key: 'status',
       title: '状态',
       width: 110,
-      render: (_, row) => numberQty(row.qty) <= numberQty(row.safetyQty) ? <Tag color="red">低库存</Tag> : <Tag color="green">正常</Tag>,
+      render: (_, row) => isStockWarning(row) ? <Tag color="red">库存预警</Tag> : <Tag color="green">正常</Tag>,
     },
     {
       key: 'op',
@@ -2228,11 +2233,11 @@ function StockLotDrawer({ stock, material, warehouseName, onClose }: {
         eyebrow={warehouseName || '仓库'}
         title={materialDisplayName(material) || '材料库存'}
         description={`当前库位：${stock?.locationLabel || '未设置库位'} · 安全库存 ${numberQty(stock?.safetyQty)}${unit}`}
-        tags={<Tag color={numberQty(stock?.qty) <= numberQty(stock?.safetyQty) ? 'error' : 'success'}>{numberQty(stock?.qty) <= numberQty(stock?.safetyQty) ? '库存预警' : '库存正常'}</Tag>}
+        tags={<Tag color={isStockWarning(stock) ? 'error' : 'success'}>{isStockWarning(stock) ? '库存预警' : '库存正常'}</Tag>}
         visual={material ? <MaterialPhotoCell item={material} size={72} /> : null}
       />
       <DetailMetrics items={[
-        { label: '当前库存', value: `${numberQty(stock?.qty)} ${unit}`, tone: numberQty(stock?.qty) <= numberQty(stock?.safetyQty) ? 'danger' : 'success' },
+        { label: '当前库存', value: `${numberQty(stock?.qty)} ${unit}`, tone: isStockWarning(stock) ? 'danger' : 'success' },
         { label: '安全库存', value: `${numberQty(stock?.safetyQty)} ${unit}` },
         { label: '剩余批次', value: `${remainingLots.length} 批` },
         { label: '库存金额', value: money(lotValue) },
