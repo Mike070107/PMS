@@ -58,11 +58,17 @@
 
 <view wx:if="{{detail && !approved && showActions}}" class="review-actions">
   <block wx:if="{{canReview && canEdit}}">
-    <button class="btn btn--ghost" loading="{{busy}}" disabled="{{busy}}" bindtap="onReject">退回重盘</button>
-    <button class="btn btn--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onApprove">复核通过</button>
+    <button class="btn btn--ghost" loading="{{busy}}" disabled="{{busy}}" bindtap="onReject">
+      <view class="btn__icon icon-action--close-gray"></view><text>退回重盘</text>
+    </button>
+    <button class="btn btn--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onApprove">
+      <view class="btn__icon icon-action--check-white"></view><text>复核通过</text>
+    </button>
   </block>
   <block wx:else>
     <button class="btn btn--ghost" bindtap="onBackCheck">返回检查</button>
-    <button wx:if="{{canSubmit && canEdit}}" class="btn btn--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onSubmit">提交复核</button>
+    <button wx:if="{{canSubmit && canEdit}}" class="btn btn--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onSubmit">
+      <view class="btn__icon icon-action--send-white"></view><text>提交复核</text>
+    </button>
   </block>
 </view>

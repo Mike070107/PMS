@@ -11,7 +11,7 @@
       <view class="screen-head__desc">查库存、维护材料档案和跟进采购申请</view>
     </view>
     <view wx:if="{{canViewStock}}" class="stocktake-entry" bindtap="onStocktake" hover-class="stocktake-entry--press">
-      <view class="stocktake-entry__icon">盘</view>
+      <view class="stocktake-entry__icon"><view class="entry-icon__glyph icon-action--scan-white"></view></view>
       <view class="stocktake-entry__body">
         <view class="stocktake-entry__title">库存盘点</view>
         <view class="stocktake-entry__desc">手机扫码，现场逐项核对库存</view>
@@ -254,7 +254,9 @@
 </view>
 
 <!-- 两个 tab 都能新增，走的是同一个「先搜再建、当场入库」向导 -->
-<button wx:if="{{canView && ((canEdit && tab === 'stock') || (canEditSku && tab === 'sku'))}}" class="fab" bindtap="onCreate">+ 新增</button>
+<button wx:if="{{canView && ((canEdit && tab === 'stock') || (canEditSku && tab === 'sku'))}}" class="fab" bindtap="onCreate">
+  <view class="btn__icon icon-action--plus-white"></view><text>新增</text>
+</button>
 
 <!-- ============ 详情：只给列表上没有的东西（分仓存量 / 别名 / 参数 / 成本） ============ -->
 <view wx:if="{{detailOpen}}" class="sheet-mask" bindtap="onCloseDetail" catchtouchmove="noop" />
@@ -294,7 +296,9 @@
   </scroll-view>
 
   <view class="sheet__foot">
-    <button wx:if="{{canEdit}}" class="btn btn--primary" bindtap="onEdit">编辑这条 SKU</button>
+    <button wx:if="{{canEdit}}" class="btn btn--primary" bindtap="onEdit">
+      <view class="btn__icon icon-action--wrench-white"></view><text>编辑这条 SKU</text>
+    </button>
     <button wx:else class="btn btn--ghost" bindtap="onCloseDetail">知道了</button>
   </view>
 </view>
@@ -388,6 +392,8 @@
   </scroll-view>
 
   <view class="sheet__foot">
-    <button class="btn btn--primary" loading="{{saving}}" disabled="{{saving || uploading}}" bindtap="onSave">保存</button>
+    <button class="btn btn--primary" loading="{{saving}}" disabled="{{saving || uploading}}" bindtap="onSave">
+      <view class="btn__icon icon-action--check-white"></view><text>保存</text>
+    </button>
   </view>
 </view>

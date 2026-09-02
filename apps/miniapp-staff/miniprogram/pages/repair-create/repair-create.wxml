@@ -174,5 +174,7 @@
 </view>
 
 <view class="submit-bar">
-  <button class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="onSubmit">提交报修</button>
+  <button class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="onSubmit">
+    <view class="btn__icon icon-action--send-white"></view><text>提交报修</text>
+  </button>
 </view>

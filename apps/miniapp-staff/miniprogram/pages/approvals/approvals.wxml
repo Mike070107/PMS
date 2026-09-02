@@ -38,14 +38,14 @@
         loading="{{busyId === item.id}}"
         disabled="{{busyId !== 0}}"
         bindtap="onReject"
-      >驳回</button>
+      ><view class="btn__icon icon-action--close-gray"></view><text>驳回</text></button>
       <button
         class="btn btn--primary"
         data-id="{{item.id}}"
         loading="{{busyId === item.id}}"
         disabled="{{busyId !== 0}}"
         bindtap="onApprove"
-      >通过</button>
+      ><view class="btn__icon icon-action--check-white"></view><text>通过</text></button>
     </view>
   </view>
 </view>

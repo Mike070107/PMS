@@ -57,9 +57,11 @@
 
     <view class="btn-group">
       <button class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onConfirm">
-        确认登录
+        <view class="btn__icon icon-action--check-white"></view><text>确认登录</text>
       </button>
-      <button class="btn btn--outline" disabled="{{submitting}}" bindtap="onCancel">不是我</button>
+      <button class="btn btn--outline" disabled="{{submitting}}" bindtap="onCancel">
+        <view class="btn__icon icon-action--close-gray"></view><text>不是我</text>
+      </button>
     </view>
   </block>
 </view>

@@ -2,16 +2,22 @@
    都在 app.wxss / tokens.wxss 里统一定义，这里只写这一屏独有的东西 */
 
 /* 页头下的两个报修入口。
-   工单池和派单台用同一套：等宽并成一行、矮一档，明确「这不是本屏的主按钮」——
-   这一屏的主线是看单和接/派单，报修只是巡查时顺手提一单。
+   工单池和派单台用同一套：等宽并成一行，用图标和 116rpx 高度突出巡查报修入口。
    间距写在容器上，写在 .btn 上会被 app.wxss 的 margin-left/right !important 那条规则带偏。
-   .btn-row .btn 在 app.wxss 里已经是 flex:1，这里只需要把高度提回可点的下限 */
+   .btn-row .btn 在 app.wxss 里已经是 flex:1，这里只定义本屏的加强规格。 */
 .report-entry { gap: 16rpx; }
 .report-entry--row { margin-bottom: var(--space-lg); }
 /* 比全局按钮（104rpx / --font-2xl 36rpx）再大一档：这一屏里报修是唯一的「录入」动作，
    其余都是浏览和筛选，做大一档才找得到。2026-08-30 用户反馈原来那版（88rpx / 30rpx）
    看不见 —— 别再往回调小，要调先问。 */
-.report-entry--row .btn { height: 92rpx; font-size: 31rpx; border-radius: 20rpx; }
+.report-entry--row .btn {
+  height: 116rpx;
+  padding: 0 22rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  border-radius: 26rpx;
+}
+.report-entry--row .btn__icon { width: 44rpx; height: 44rpx; margin-right: 12rpx; }
 
 /* ---------- 筛选与搜索（两种模式共用） ---------- */
 

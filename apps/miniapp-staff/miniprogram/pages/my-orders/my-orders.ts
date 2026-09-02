@@ -76,8 +76,13 @@ Page({
           ...item,
           actionText: ACTION_TEXT[item.status] || '查看详情',
         }));
-      // 急的排前面，和工单池同一套口径
-      active.sort((a, b) => b.stayDays - a.stayDays || b.id - a.id);
+      // 人工标记的紧急单永远置顶；同为紧急/普通时，再按等待时间和新旧顺序排。
+      active.sort(
+        (a, b) =>
+          Number(b.urgent) - Number(a.urgent)
+          || b.stayDays - a.stayDays
+          || b.id - a.id,
+      );
       this.setData({
         active,
         overdueCount: active.filter((item) => item.stayTone === 'danger').length,

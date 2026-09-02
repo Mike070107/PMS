@@ -16,7 +16,7 @@
       bindgetphonenumber="onGetPhone"
       loading="{{loading}}"
       disabled="{{loading}}"
-    >手机号快捷登录</button>
+    ><view class="btn__icon icon-action--phone-white"></view><text>手机号快捷登录</text></button>
     <view class="hint">需与管理员登记的手机号一致，首次登录后自动绑定本微信</view>
 
     <!-- 刚退出登录是件正常事，用中性的说明块，不能用下面那条红色的 .error -->
@@ -67,7 +67,7 @@
         loading="{{loading}}"
         disabled="{{loading}}"
         bindtap="onTapAccountLogin"
-      >登录并绑定微信</button>
+      ><view class="btn__icon icon-action--login-blue"></view><text>登录并绑定微信</text></button>
       <view class="hint">维修工默认无账号密码，请用微信手机号登录</view>
     </view>
 

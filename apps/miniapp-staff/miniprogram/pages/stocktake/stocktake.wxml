@@ -5,8 +5,12 @@
   </view>
 
   <view class="top-actions">
-    <button class="btn btn--outline btn--sm" bindtap="onScan">扫码盘点</button>
-    <button wx:if="{{canEdit}}" class="btn btn--primary btn--sm" bindtap="onNew">新建任务</button>
+    <button class="btn btn--outline btn--sm" bindtap="onScan">
+      <view class="btn__icon icon-action--scan-blue"></view><text>扫码盘点</text>
+    </button>
+    <button wx:if="{{canEdit}}" class="btn btn--primary btn--sm" bindtap="onNew">
+      <view class="btn__icon icon-action--plus-white"></view><text>新建任务</text>
+    </button>
   </view>
 
   <view class="tabs task-tabs">
@@ -71,6 +75,8 @@
     <view wx:if="{{errorMsg}}" class="error">{{errorMsg}}</view>
   </view>
   <view class="sheet__foot">
-    <button class="btn btn--primary" loading="{{saving}}" disabled="{{saving}}" bindtap="onCreate">创建并开始盘点</button>
+    <button class="btn btn--primary" loading="{{saving}}" disabled="{{saving}}" bindtap="onCreate">
+      <view class="btn__icon icon-action--check-white"></view><text>创建并开始盘点</text>
+    </button>
   </view>
 </view>

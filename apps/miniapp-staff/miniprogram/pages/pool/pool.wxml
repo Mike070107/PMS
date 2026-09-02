@@ -29,8 +29,14 @@
        现在去掉 btn--sm 走正常按钮规格，再由 pool.wxss 往上提一档；
        「随手拍」是最短路径，提成实底主按钮，填表保持描边做次级，拉开主次。 -->
   <view wx:if="{{canReport}}" class="btn-row report-entry report-entry--row">
-    <button class="btn btn--primary" bindtap="onGoQuickRepair">AI随手拍报修</button>
-    <button class="btn btn--outline" bindtap="onGoRepair">填表报修</button>
+    <button class="btn btn--primary" bindtap="onGoQuickRepair">
+      <view class="btn__icon icon-action--camera-white"></view>
+      <text>AI随手拍报修</text>
+    </button>
+    <button class="btn btn--outline" bindtap="onGoRepair">
+      <view class="btn__icon icon-action--form-blue"></view>
+      <text>填表报修</text>
+    </button>
   </view>
 
   <!-- 三档：这一屏看哪一批单。只有工单池这一侧有 —— 派单台自己就有 7 档状态筛选，
@@ -86,7 +92,10 @@
       bindconfirm="onSearch"
       bindinput="onKeyword"
     />
-    <button class="btn btn--outline btn--sm" bindtap="onSearch">搜索</button>
+    <button class="btn btn--outline btn--sm" bindtap="onSearch">
+      <view class="btn__icon icon-action--search-blue"></view>
+      <text>搜索</text>
+    </button>
     <button wx:if="{{keyword}}" class="btn btn--ghost btn--sm" bindtap="onClearKeyword">清空</button>
   </view>
 
@@ -116,7 +125,7 @@
           class="btn btn--primary btn--sm"
           catchtap="onOpenAssign"
           data-id="{{item.id}}"
-        >{{item.actionText}}</button>
+        ><view class="btn__icon icon-action--send-white"></view><text>{{item.actionText}}</text></button>
         <text wx:else class="wo-card__more">查看详情 ›</text>
       </block>
       <!-- 维修工：多人待抢或办公室定向派给我的单才画接单按钮，接完才进“在手工单” -->
@@ -128,7 +137,7 @@
           data-id="{{item.id}}"
           loading="{{acceptingId === item.id}}"
           disabled="{{acceptingId !== 0}}"
-        >{{item.actionText}}</button>
+        ><view class="btn__icon icon-action--check-white"></view><text>{{item.actionText}}</text></button>
         <text wx:else class="wo-card__more">查看详情 ›</text>
       </block>
     </view>
@@ -208,6 +217,6 @@
       loading="{{assigning}}"
       disabled="{{assigning}}"
       bindtap="onSubmitAssign"
-    >确认派单</button>
+    ><view class="btn__icon icon-action--send-white"></view><text>确认派单</text></button>
   </view>
 </view>

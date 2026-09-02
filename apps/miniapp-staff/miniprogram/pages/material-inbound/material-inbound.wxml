@@ -239,14 +239,18 @@
 <!-- 底部操作条：固定在屏幕底，不参与内容滚动，并让开安全区 -->
 <view wx:if="{{!loading && canEdit}}" class="action-bar">
   <block wx:if="{{mode === 'search'}}">
-    <button class="btn btn--primary" bindtap="onStartCreate">找不到？新建材料</button>
+    <button class="btn btn--primary" bindtap="onStartCreate">
+      <view class="btn__icon icon-action--plus-white"></view><text>找不到？新建材料</text>
+    </button>
   </block>
 
   <block wx:elif="{{mode === 'create'}}">
     <view class="btn-row">
-      <button class="btn btn--ghost" bindtap="onBackToSearch">返回搜索</button>
+      <button class="btn btn--ghost" bindtap="onBackToSearch">
+        <view class="btn__icon icon-action--back-gray"></view><text>返回搜索</text>
+      </button>
       <button class="btn btn--primary" loading="{{saving}}" disabled="{{saving || uploading}}" bindtap="onSaveCreate">
-        建档并去入库
+        <view class="btn__icon icon-action--check-white"></view><text>建档并去入库</text>
       </button>
     </view>
   </block>
@@ -256,7 +260,7 @@
       <button wx:if="{{justCreated}}" class="btn btn--ghost" bindtap="onSkipInbound">暂不入库</button>
       <button wx:else class="btn btn--ghost" bindtap="onBackToSearch">换一个</button>
       <button class="btn btn--primary" loading="{{saving}}" disabled="{{saving || uploading}}" bindtap="onSubmitInbound">
-        添加入库
+        <view class="btn__icon icon-action--plus-white"></view><text>添加入库</text>
       </button>
     </view>
   </block>

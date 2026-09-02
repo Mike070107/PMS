@@ -112,20 +112,20 @@
     class="btn btn--outline"
     data-panel="material"
     bindtap="onOpenPanel"
-  >添加用料{{materialRows.length ? ' ' + materialRows.length : ''}}</button>
+  ><view class="btn__icon icon-action--box-blue"></view><text>添加用料{{materialRows.length ? ' ' + materialRows.length : ''}}</text></button>
   <button
     wx:if="{{canAccept}}"
     class="btn btn--primary"
     loading="{{busy}}"
     disabled="{{busy}}"
     bindtap="onAccept"
-  >{{acceptText}}</button>
+  ><view class="btn__icon icon-action--check-white"></view><text>{{acceptText}}</text></button>
   <button
     wx:if="{{canComplete}}"
     class="btn btn--primary"
     data-panel="complete"
     bindtap="onOpenPanel"
-  >完工提交</button>
+  ><view class="btn__icon icon-action--wrench-white"></view><text>完工提交</text></button>
 </view>
 
 <!-- ============ 添加用料面板 ============ -->
@@ -193,7 +193,7 @@
           </view>
         </view>
         <button class="btn btn--outline btn--sm mat-pick" data-index="{{index}}" bindtap="onOpenSku">
-          {{item.materialId ? '换一个' : '从库存选'}}
+          <view class="btn__icon icon-action--box-blue"></view><text>{{item.materialId ? '换一个' : '从库存选'}}</text>
         </button>
       </view>
 
@@ -218,8 +218,12 @@
     </view>
 
     <view class="btn-row mt">
-      <button class="btn btn--outline" bindtap="onOpenSku">＋ 从库存选</button>
-      <button class="btn btn--ghost" bindtap="onAddMaterialRow">手填一项</button>
+      <button class="btn btn--outline" bindtap="onOpenSku">
+        <view class="btn__icon icon-action--box-blue"></view><text>从库存选</text>
+      </button>
+      <button class="btn btn--ghost" bindtap="onAddMaterialRow">
+        <view class="btn__icon icon-action--edit-blue"></view><text>手填一项</text>
+      </button>
     </view>
     <view class="label mt">补充说明<text class="label__opt">选填</text></view>
     <input class="input" placeholder="型号、品牌或用途" value="{{materialNote}}" bindinput="onMaterialNote"/>
@@ -233,7 +237,7 @@
       loading="{{busy}}"
       disabled="{{busy || !materialRows.length}}"
       bindtap="onMaterialPrimaryAction"
-    >{{materialActionText}}</button>
+    ><view class="btn__icon icon-action--check-white"></view><text>{{materialActionText}}</text></button>
   </view>
 </view>
 
@@ -256,7 +260,7 @@
       bindtouchstart="onStartRecord"
       bindtouchend="onStopRecord"
       bindtouchcancel="onStopRecord"
-    >{{recording ? '松开结束' : summarizing ? '正在整理…' : '按住说：做了什么'}}</button>
+    ><view class="btn__icon icon-action--mic-white"></view><text>{{recording ? '松开结束' : summarizing ? '正在整理…' : '按住说：做了什么'}}</text></button>
     <view wx:if="{{recording && partial}}" class="muted partial">{{partial}}</view>
     <textarea placeholder="更换了什么、处理了什么问题" bindinput="onNote" value="{{actionNote}}"/>
     <!-- 模型听出来的材料名只做提示：库存要扣的是具体 SKU，得他自己去「添加用料」里选 -->
@@ -321,7 +325,7 @@
       loading="{{busy}}"
       disabled="{{busy || uploading}}"
       bindtap="onComplete"
-    >提交完工</button>
+    ><view class="btn__icon icon-action--check-white"></view><text>提交完工</text></button>
   </view>
 </view>
 
@@ -417,7 +421,7 @@
         class="btn btn--outline mt"
         bindtap="onSwitchWarehouse"
         disabled="{{!warehouses.length}}"
-      >选仓库</button>
+      ><view class="btn__icon icon-action--box-blue"></view><text>选仓库</text></button>
     </block>
   </scroll-view>
 </view>

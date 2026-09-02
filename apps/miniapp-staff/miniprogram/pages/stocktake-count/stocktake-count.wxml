@@ -12,7 +12,9 @@
 
   <view class="search-row">
     <input class="input search-input" placeholder="搜索名称 / 型号 / 编码 / 库位" value="{{keyword}}" bindinput="onKeyword"/>
-    <button class="scan-btn" bindtap="onScan">扫码</button>
+    <button class="scan-btn" bindtap="onScan">
+      <view class="btn__icon icon-action--scan-white"></view><text>扫码</text>
+    </button>
   </view>
   <checkbox-group class="uncounted" bindchange="onToggleUncounted">
     <label><checkbox value="1" checked="{{onlyUncounted}}" color="#1d5f96"/>仅看未盘</label>
@@ -98,6 +100,10 @@
 </view>
 
 <view wx:if="{{current}}" class="count-actions">
-  <button class="btn btn--ghost previous-btn" bindtap="onPrevious">上一项</button>
-  <button class="btn btn--primary save-btn" loading="{{saving}}" disabled="{{saving || uploading}}" bindtap="onSaveNext">保存并下一项</button>
+  <button class="btn btn--ghost previous-btn" bindtap="onPrevious">
+    <view class="btn__icon icon-action--back-gray"></view><text>上一项</text>
+  </button>
+  <button class="btn btn--primary save-btn" loading="{{saving}}" disabled="{{saving || uploading}}" bindtap="onSaveNext">
+    <view class="btn__icon icon-action--check-white"></view><text>保存并下一项</text>
+  </button>
 </view>

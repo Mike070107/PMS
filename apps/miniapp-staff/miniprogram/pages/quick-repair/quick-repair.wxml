@@ -54,7 +54,7 @@
       bindtouchstart="onStartRecord"
       bindtouchend="onStopRecord"
       bindtouchcancel="onStopRecord"
-    >{{recording ? '松开结束' : '按住说话'}}</button>
+    ><view class="btn__icon icon-action--mic-white"></view><text>{{recording ? '松开结束' : '按住说话'}}</text></button>
 
     <!-- 按钮下面这段是「这页到底怎么用」：不写的话，人按完话不知道还要不要自己填表。
          例句用真实小区名，照着念一遍就能成一单 -->
@@ -100,18 +100,22 @@
     <view class="sku-empty">
       这句话里没认出小区房号。说清楚「几期几号几室」再说一次，或者改用完整表单逐项填。
     </view>
-    <button class="btn btn--outline mt" bindtap="onEditInFull">改用完整表单</button>
+    <button class="btn btn--outline mt" bindtap="onEditInFull">
+      <view class="btn__icon icon-action--form-blue"></view><text>改用完整表单</text>
+    </button>
   </view>
 
   <view wx:if="{{errorMsg}}" class="error card">{{errorMsg}}</view>
 </view>
 
 <view class="action-bar">
-  <button class="btn btn--ghost" bindtap="onEditInFull">完整表单</button>
+  <button class="btn btn--ghost" bindtap="onEditInFull">
+    <view class="btn__icon icon-action--edit-blue"></view><text>完整表单</text>
+  </button>
   <button
     class="btn btn--primary"
     loading="{{submitting}}"
     disabled="{{submitting || uploading}}"
     bindtap="onSubmit"
-  >提交报修</button>
+  ><view class="btn__icon icon-action--send-white"></view><text>提交报修</text></button>
 </view>
