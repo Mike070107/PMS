@@ -1626,3 +1626,11 @@
 - 自上次（861b4cb）以来上线的相关提交：
   - e2fd1fe fix: reconcile stocktake movements during review
 
+## 2026-09-02 18:29 · web · e2fd1fe
+
+- 包：`pms-web-20260902-1824.tar.gz`
+- 提交：e2fd1fe fix: reconcile stocktake movements during review
+- 说明：盘点复核冲突明确提示
+- 自上次（861b4cb）以来上线的相关提交：
+  - e2fd1fe fix: reconcile stocktake movements during review
+
