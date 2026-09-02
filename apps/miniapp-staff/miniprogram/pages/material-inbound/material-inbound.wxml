@@ -7,6 +7,10 @@
   </view>
 
   <block wx:else>
+    <view class="screen-head">
+      <view class="screen-head__title">材料入库</view>
+      <view class="screen-head__desc">先查重，再建档，最后登记入库数量</view>
+    </view>
     <view wx:if="{{noWarehouseHint}}" class="notice">
       <view class="notice__body">
         <view class="notice__title">你所属的管理处还没有仓库</view>

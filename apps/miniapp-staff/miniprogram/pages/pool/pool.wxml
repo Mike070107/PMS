@@ -3,14 +3,14 @@
 <!-- 深色页头（data-first-ui）：把「这屏是什么、现在什么情况」在第一眼说完。
      标题按身份变，和 pool.ts 里那句 setNavigationBarTitle 同源 —— 改一处要改两处。 -->
 <view class="hero">
-  <view class="hero__title">{{screenTitle}}</view>
-  <view class="hero__stats">
-    <view>
-      <view class="hero__num">{{list.length}}</view>
-      <view class="hero__cap">{{leadText}}</view>
-    </view>
+  <view class="hero__top">
+    <view class="hero__title">{{screenTitle}}</view>
+    <view class="hero__count">{{list.length}} {{leadText}}</view>
+  </view>
+  <view class="hero__hint">{{dispatcher ? '把待办准确派给合适的维修人员' : '优先处理等待较久、距离合适的工单'}}</view>
+  <view wx:if="{{overdueCount}}" class="hero__stats">
     <!-- 一单都没压着就整格不显示：常年挂个 0 会让这抹红失去意义 -->
-    <view wx:if="{{overdueCount}}">
+    <view>
       <view class="hero__num hero__num--danger">{{overdueCount}}</view>
       <view class="hero__cap">压 3 天以上</view>
     </view>
@@ -119,7 +119,7 @@
         >{{item.actionText}}</button>
         <text wx:else class="wo-card__more">查看详情 ›</text>
       </block>
-      <!-- 维修工：只有真正能领的单才画按钮（后端 accept 也只放行这一种） -->
+      <!-- 维修工：多人待抢或办公室定向派给我的单才画接单按钮，接完才进“在手工单” -->
       <block wx:else>
         <button
           wx:if="{{canAccept && item.claimable}}"

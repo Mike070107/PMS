@@ -6,6 +6,18 @@
   </view>
 
   <block wx:else>
+    <view class="screen-head">
+      <view class="screen-head__title">材料中心</view>
+      <view class="screen-head__desc">查库存、维护材料档案和跟进采购申请</view>
+    </view>
+    <view wx:if="{{canViewStock}}" class="stocktake-entry" bindtap="onStocktake" hover-class="stocktake-entry--press">
+      <view class="stocktake-entry__icon">盘</view>
+      <view class="stocktake-entry__body">
+        <view class="stocktake-entry__title">库存盘点</view>
+        <view class="stocktake-entry__desc">手机扫码，现场逐项核对库存</view>
+      </view>
+      <view class="stocktake-entry__arrow">›</view>
+    </view>
     <!-- 「材料SKU」只给勾了 app:materials 的角色（角色矩阵里配）。
          没勾的人这一格整个不出现 —— 改材料档案会影响全公司的编码和统计，不是人人该有 -->
     <view class="tabs">

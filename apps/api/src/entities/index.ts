@@ -55,6 +55,8 @@ import { RoleScope } from './role-scope.entity';
 import { RoleWarehouse } from './role-warehouse.entity';
 import { UserRoleAssignment } from './user-role.entity';
 import { PlatformLog } from './platform-log.entity';
+import { StocktakeTask } from './stocktake-task.entity';
+import { StocktakeItem } from './stocktake-item.entity';
 
 export const entities = [
   Tenant,
@@ -67,6 +69,8 @@ export const entities = [
   RoleWarehouse,
   UserRoleAssignment,
   PlatformLog,
+  StocktakeTask,
+  StocktakeItem,
   Community,
   Building,
   Unit,
@@ -127,6 +131,8 @@ export {
   RoleWarehouse,
   UserRoleAssignment,
   PlatformLog,
+  StocktakeTask,
+  StocktakeItem,
   Community,
   Building,
   Unit,
@@ -177,3 +183,4 @@ export {
 };
 
 export type { SuggestionScope } from './management-office.entity';
+export type { StocktakeStatus } from './stocktake-task.entity';

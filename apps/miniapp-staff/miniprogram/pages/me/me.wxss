@@ -1,11 +1,19 @@
 /* 头像用姓名首字，不用 emoji 也不用占位图：跨机型长得一样，也不用额外请求 */
-.profile { display: flex; align-items: center; gap: 24rpx; }
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  background: linear-gradient(135deg, #173b63 0%, #285f8d 100%);
+  border: none;
+  box-shadow: 0 14rpx 32rpx rgba(23,59,99,.20);
+}
 .profile__avatar {
   width: 112rpx;
   height: 112rpx;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--color-brand);
+  background: rgba(255,255,255,.16);
+  border: 2rpx solid rgba(255,255,255,.28);
   color: #fff;
   font-size: var(--font-3xl);
   font-weight: 600;
@@ -14,16 +22,16 @@
   justify-content: center;
 }
 .profile__body { flex: 1; min-width: 0; }
-.profile__name { font-size: var(--font-3xl); font-weight: 600; line-height: 1.4; }
+.profile__name { font-size: var(--font-3xl); font-weight: 700; line-height: 1.4; color: #fff; }
 .profile__meta {
   margin-top: 8rpx;
   font-size: var(--font-md);
-  color: var(--color-text-tertiary);
+  color: rgba(255,255,255,.72);
   line-height: 1.6;
 }
 
 /* 功能入口：整行可点，右侧箭头是 SVG（不用 › 字符，各机型字体里粗细不一） */
-.entries { padding: 0 28rpx; }
+.entries { padding: 8rpx 28rpx; }
 .entry {
   display: flex;
   align-items: center;
@@ -31,12 +39,12 @@
   gap: 16rpx;
   min-height: 128rpx;
   padding: 28rpx 0;
-  border-bottom: 2rpx solid var(--color-border);
+  border-bottom: 2rpx solid #e5ecf2;
 }
 .entry:last-child { border-bottom: none; }
-.entry--hover { background: #f2f4f7; }
+.entry--hover { background: #f5f8fa; }
 .entry__body { flex: 1; min-width: 0; }
-.entry__title { font-size: var(--font-xl); font-weight: 500; line-height: 1.4; }
+.entry__title { font-size: var(--font-xl); font-weight: 600; line-height: 1.4; }
 /* 「已开启 / 未开启」是状态不是动作：已开好的人再看到「开启提醒」会以为没生效，又点一遍 */
 .entry__state {
   margin-left: 12rpx;

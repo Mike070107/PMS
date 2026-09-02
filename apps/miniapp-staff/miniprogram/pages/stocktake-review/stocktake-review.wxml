@@ -1,0 +1,68 @@
+<view class="container review-page">
+  <view wx:if="{{loading}}" class="muted center">加载盘点汇总…</view>
+  <view wx:elif="{{errorMsg && !detail}}" class="error">{{errorMsg}}</view>
+
+  <block wx:if="{{detail}}">
+    <view class="result-head result-head--{{statusTone}}">
+      <view class="result-head__mark">{{approved ? '✓' : countedCount === totalCount ? '✓' : countedCount}}</view>
+      <view class="result-head__body">
+        <view class="result-head__title">{{approved ? '盘点复核完成' : countedCount === totalCount ? '本次盘点完成' : '盘点尚未完成'}}</view>
+        <view class="result-head__desc">{{detail.warehouseName}} · {{detail.taskNo}}</view>
+      </view>
+      <view class="status-tag status-tag--{{statusTone}}">{{statusLabel}}</view>
+    </view>
+
+    <view class="summary-card">
+      <view class="summary-total">共盘点 <text>{{countedCount}}</text> / {{totalCount}} 项</view>
+      <view class="summary-grid">
+        <view class="summary-cell"><text class="summary-cell__value same">{{sameCount}}</text><text>一致</text></view>
+        <view class="summary-cell"><text class="summary-cell__value plus">{{surplusCount}}</text><text>盘盈</text></view>
+        <view class="summary-cell"><text class="summary-cell__value minus">{{shortageCount}}</text><text>盘亏</text></view>
+      </view>
+    </view>
+
+    <view wx:if="{{uncountedCount}}" class="notice">
+      <view class="notice__body">
+        <view class="notice__title">还有 {{uncountedCount}} 项未盘点</view>
+        <view class="notice__desc">返回现场盘点，把剩余材料核对完成后才能提交复核。</view>
+      </view>
+    </view>
+
+    <view class="section-title">差异材料 <text>{{differences.length}}项</text></view>
+    <view wx:if="{{!differences.length}}" class="card no-difference">账面库存与实盘数量全部一致</view>
+    <view wx:for="{{differences}}" wx:key="id" class="difference-row">
+      <view class="difference-row__main">
+        <view class="difference-row__title">{{item.title}}</view>
+        <view class="difference-row__meta">{{item.bookActualText}} · {{item.material.unit}}</view>
+        <view class="difference-row__reason">{{item.reasonText}}{{item.note ? ' · ' + item.note : ''}}</view>
+      </view>
+      <view class="difference-row__qty difference-row__qty--{{item.tone}}">{{item.differenceText}}</view>
+    </view>
+
+    <view wx:if="{{canReview && canEdit}}" class="card review-card">
+      <view class="label">复核意见<text class="label__opt">退回时必填</text></view>
+      <textarea class="review-note" value="{{reviewNote}}" bindinput="onNote" placeholder="如：角阀数量与领用记录不一致，请重新核对"/>
+    </view>
+
+    <view wx:if="{{detail.reviewNote && !canReview}}" class="card review-history">
+      <view class="review-history__label">复核意见</view>
+      <view class="review-history__text">{{detail.reviewNote}}</view>
+    </view>
+
+    <view class="flow-notice">
+      {{approved ? '本次差异已生成盘点调整流水，可在库存流水中查询。' : '提交后进入复核；只有复核通过，系统才会生成盘盈、盘亏库存流水。'}}
+    </view>
+    <view wx:if="{{errorMsg}}" class="error">{{errorMsg}}</view>
+  </block>
+</view>
+
+<view wx:if="{{detail && !approved && showActions}}" class="review-actions">
+  <block wx:if="{{canReview && canEdit}}">
+    <button class="btn btn--ghost" loading="{{busy}}" disabled="{{busy}}" bindtap="onReject">退回重盘</button>
+    <button class="btn btn--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onApprove">复核通过</button>
+  </block>
+  <block wx:else>
+    <button class="btn btn--ghost" bindtap="onBackCheck">返回检查</button>
+    <button wx:if="{{canSubmit && canEdit}}" class="btn btn--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onSubmit">提交复核</button>
+  </block>
+</view>

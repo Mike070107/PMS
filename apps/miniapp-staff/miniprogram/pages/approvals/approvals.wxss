@@ -1,3 +1,7 @@
 /* 卡片骨架（.wo-card__head / __foot / __meta、.page-lead）在 app.wxss 里统一定义 */
 
 /* 金额是审批时第一眼要看的，所以占了主标题的位置；单号退到右上角 */
+.wo-card { border-left: 8rpx solid #d4a04b; }
+.wo-card__head { padding-bottom: 20rpx; border-bottom: 2rpx solid #e5ecf2; }
+.wo-card__type { color: #a5630b; font-size: 42rpx; }
+.btn--ghost { color: var(--color-danger); background: #fff3f3; }

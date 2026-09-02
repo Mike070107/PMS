@@ -572,6 +572,17 @@ Page({
     wx.navigateTo({ url: '/pages/material-inbound/material-inbound' });
   },
 
+  /** 现场拿手机盘点：带上当前选中的仓，进入任务页后直接作为新任务默认仓。 */
+  onStocktake() {
+    const warehouse =
+      this.data.warehouseIndex > 0
+        ? this.data.warehouses[this.data.warehouseIndex - 1]
+        : undefined;
+    wx.navigateTo({
+      url: `/pages/stocktake/stocktake${warehouse ? `?warehouseId=${warehouse.id}` : ''}`,
+    });
+  },
+
   /** 行内的「编辑」按钮和详情面板底部的「编辑」都走这里 */
   onEdit(e: WechatMiniprogram.BaseEvent) {
     const raw = e.currentTarget.dataset.index;

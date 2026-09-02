@@ -25,6 +25,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { UploadModule } from './modules/upload/upload.module';
+import { StocktakeModule } from './modules/stocktake/stocktake.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { UploadModule } from './modules/upload/upload.module';
     MaintenanceModule,
     NotificationsModule,
     UploadModule,
+    StocktakeModule,
     PropertiesModule,
     QrModule,
     OwnersModule,

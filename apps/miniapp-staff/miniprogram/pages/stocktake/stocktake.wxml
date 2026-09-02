@@ -1,0 +1,76 @@
+<view class="container stocktake-page">
+  <view class="screen-head">
+    <view class="screen-head__title">盘点任务</view>
+    <view class="screen-head__desc">带手机到仓库，边走边盘</view>
+  </view>
+
+  <view class="top-actions">
+    <button class="btn btn--outline btn--sm" bindtap="onScan">扫码盘点</button>
+    <button wx:if="{{canEdit}}" class="btn btn--primary btn--sm" bindtap="onNew">新建任务</button>
+  </view>
+
+  <view class="tabs task-tabs">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="key"
+      class="tab {{tab === item.key ? 'tab--on' : ''}}"
+      data-key="{{item.key}}"
+      bindtap="onTab"
+    >{{item.label}}{{item.count ? ' ' + item.count : ''}}</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="muted center">加载中…</view>
+  <view wx:elif="{{errorMsg && !createOpen}}" class="error">{{errorMsg}}</view>
+  <view wx:elif="{{!rows.length}}" class="card empty-card">
+    <view class="empty-card__title">{{emptyText}}</view>
+    <view wx:if="{{tab === 'active' && canEdit}}" class="muted mt-sm">新建任务后会按当前账面库存生成盘点清单</view>
+  </view>
+
+  <view wx:for="{{rows}}" wx:key="id" class="card task-card" data-id="{{item.id}}" bindtap="onOpenTask">
+    <view class="task-card__head">
+      <view class="task-card__title">{{item.title}}</view>
+      <view class="status-tag status-tag--{{item.statusTone}}">{{item.statusLabel}}</view>
+    </view>
+    <view class="task-card__no">{{item.taskNo}}</view>
+    <view class="task-card__meta"><text>盘点仓库</text><text>{{item.warehouseName}}</text></view>
+    <view class="task-card__meta"><text>发起时间</text><text>{{item.createdText}}</text></view>
+    <view class="progress-row">
+      <text>{{item.progressText}}</text>
+      <text>{{item.progressPercent}}%</text>
+    </view>
+    <view class="progress"><view class="progress__bar" style="width: {{item.progressPercent}}%"/></view>
+    <view wx:if="{{item.differenceCount}}" class="difference-tip">{{item.differenceCount}} 项存在差异</view>
+    <view wx:if="{{item.reviewNote && item.status === 'rejected'}}" class="reject-tip">退回原因：{{item.reviewNote}}</view>
+    <view class="task-card__action">{{item.actionText}} <text>›</text></view>
+  </view>
+</view>
+
+<view wx:if="{{createOpen}}" class="sheet-mask" bindtap="onCloseCreate" catchtouchmove="noop"/>
+<view wx:if="{{createOpen}}" class="sheet create-sheet" catchtouchmove="noop">
+  <view class="sheet__head">
+    <text class="sheet__title">新建盘点任务</text>
+    <text class="sheet__close" bindtap="onCloseCreate">关闭</text>
+  </view>
+  <view class="sheet__body create-body">
+    <view class="field">
+      <view class="label">盘点仓库</view>
+      <picker mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onWarehouse">
+        <view class="picker">{{warehouseNames[warehouseIndex]}}</view>
+      </picker>
+    </view>
+    <view class="field">
+      <view class="label">任务名称<text class="label__opt">选填</text></view>
+      <input class="input" value="{{title}}" bindinput="onTitle" placeholder="不填则自动使用本月月度盘点"/>
+    </view>
+    <view class="notice compact-notice">
+      <view class="notice__body">
+        <view class="notice__title">创建时记录账面快照</view>
+        <view class="notice__desc">复核前如果仓库发生领料、入库或调拨，系统会要求重新核对，避免覆盖新库存。</view>
+      </view>
+    </view>
+    <view wx:if="{{errorMsg}}" class="error">{{errorMsg}}</view>
+  </view>
+  <view class="sheet__foot">
+    <button class="btn btn--primary" loading="{{saving}}" disabled="{{saving}}" bindtap="onCreate">创建并开始盘点</button>
+  </view>
+</view>

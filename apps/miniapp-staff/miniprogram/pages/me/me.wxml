@@ -1,4 +1,8 @@
 <view class="container container--tabbar">
+  <view class="screen-head">
+    <view class="screen-head__title">我的工作台</view>
+    <view class="screen-head__desc">管理提醒、报修入口和当前账号</view>
+  </view>
   <!-- 身份先说清楚：不同角色能看到的功能不一样，别让人以为是「功能没了」 -->
   <view wx:if="{{user}}" class="card profile">
     <view class="profile__avatar">{{avatarText}}</view>
@@ -26,7 +30,7 @@
     <view wx:if="{{canSubscribe}}" class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onEnableNotify">
       <view class="entry__body">
         <view class="entry__title">
-          新工单微信提醒
+          工单微信提醒
           <text class="entry__state entry__state--{{notifyTone}}">{{notifyStateText}}</text>
         </view>
         <view class="entry__desc">{{notifyDesc}}</view>

@@ -1,6 +1,7 @@
 <view class="container container--with-bar">
-  <view class="page-lead">
-    <view class="page-lead__title">AI随手拍报修</view>
+  <view class="screen-head">
+    <view class="screen-head__title">AI 随手拍报修</view>
+    <view class="screen-head__desc">拍现场、说清位置和故障，AI 帮你整理成报修单</view>
   </view>
 
   <!-- 1. 拍 -->

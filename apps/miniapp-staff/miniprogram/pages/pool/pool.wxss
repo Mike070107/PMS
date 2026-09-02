@@ -6,12 +6,12 @@
    这一屏的主线是看单和接/派单，报修只是巡查时顺手提一单。
    间距写在容器上，写在 .btn 上会被 app.wxss 的 margin-left/right !important 那条规则带偏。
    .btn-row .btn 在 app.wxss 里已经是 flex:1，这里只需要把高度提回可点的下限 */
-.report-entry { gap: var(--space-md); }
+.report-entry { gap: 16rpx; }
 .report-entry--row { margin-bottom: var(--space-lg); }
 /* 比全局按钮（104rpx / --font-2xl 36rpx）再大一档：这一屏里报修是唯一的「录入」动作，
    其余都是浏览和筛选，做大一档才找得到。2026-08-30 用户反馈原来那版（88rpx / 30rpx）
    看不见 —— 别再往回调小，要调先问。 */
-.report-entry--row .btn { height: 112rpx; font-size: var(--font-3xl); }
+.report-entry--row .btn { height: 92rpx; font-size: 31rpx; border-radius: 20rpx; }
 
 /* ---------- 筛选与搜索（两种模式共用） ---------- */
 
@@ -21,9 +21,13 @@
   display: flex;
   align-items: center;
   gap: 16rpx;
+  padding: 12rpx;
   margin-bottom: var(--space-lg);
+  border: 2rpx solid #d8e3ec;
+  border-radius: 24rpx;
+  background: #ffffff;
 }
-.search-row .input { flex: 1; min-width: 0; }
+.search-row .input { flex: 1; min-width: 0; border: none; background: transparent; }
 
 /* 列表到 100 条上限时的说明，和列表之间留出一整档 */
 .cap-tip { padding-top: var(--space-lg); line-height: 1.6; }
@@ -32,7 +36,7 @@
 .assign-order {
   flex-shrink: 0;
   padding: 20rpx 24rpx;
-  background: var(--color-bg);
+  background: #edf4fa;
 }
 .assign-order__text { font-size: var(--font-lg); line-height: 1.5; }
 .assign-order__now {
@@ -53,12 +57,12 @@
   padding: 20rpx 24rpx;
   margin-top: 16rpx;
   border: 2rpx solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: 24rpx;
   background: var(--color-card-bg);
 }
 .tech--on {
   border-color: var(--color-brand);
-  background: var(--color-brand);
+  background: linear-gradient(135deg, #236da6, #174f83);
 }
 /* 实底之后卡片里三行字都要跟着翻白，否则灰字压在深蓝上更看不清 */
 .tech--on .tech__name,

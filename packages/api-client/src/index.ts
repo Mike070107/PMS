@@ -8,4 +8,5 @@ export * as qr from './endpoints/qr';
 export * as upload from './endpoints/upload';
 export * as address from './endpoints/address';
 export * as inventory from './endpoints/inventory';
+export * as stocktakes from './endpoints/stocktakes';
 export * as notifications from './endpoints/notifications';

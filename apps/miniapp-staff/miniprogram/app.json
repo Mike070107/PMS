@@ -8,6 +8,9 @@
     "pages/quick-repair/quick-repair",
     "pages/approvals/approvals",
     "pages/inventory/inventory",
+    "pages/stocktake/stocktake",
+    "pages/stocktake-count/stocktake-count",
+    "pages/stocktake-review/stocktake-review",
     "pages/material-inbound/material-inbound",
     "pages/messages/messages",
     "pages/me/me",
@@ -16,9 +19,9 @@
   ],
   "window": {
     "navigationBarTitleText": "邻修工作台",
-    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarBackgroundColor": "#f2f6fa",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#f5f6f8"
+    "backgroundColor": "#edf2f7"
   },
   "tabBar": {
     "custom": true,

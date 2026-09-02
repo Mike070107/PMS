@@ -1,0 +1,42 @@
+.review-page { padding-bottom: calc(160rpx + env(safe-area-inset-bottom)); }
+.result-head { display: flex; align-items: center; gap: 20rpx; padding: 28rpx; margin-bottom: 24rpx; border: 2rpx solid #c7d8e6; border-radius: 30rpx; background: #f7fbff; }
+.result-head--done { border-color: #b7dfca; background: #f3fbf7; }
+.result-head--review { border-color: #ffd591; background: #fffaf0; }
+.result-head--reject { border-color: #ffccc7; background: #fff7f6; }
+.result-head__mark { width: 80rpx; height: 80rpx; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 999rpx; background: var(--color-brand); color: #fff; font-size: var(--font-2xl); font-weight: 700; }
+.result-head--done .result-head__mark { background: var(--color-success); }
+.result-head__body { flex: 1; min-width: 0; }
+.result-head__title { color: var(--color-text); font-size: var(--font-xl); font-weight: 600; }
+.result-head__desc { margin-top: 6rpx; color: var(--color-text-secondary); font-size: var(--font-sm); }
+.status-tag { flex-shrink: 0; padding: 8rpx 16rpx; border-radius: 999rpx; font-size: var(--font-xs); color: var(--color-brand); background: #eaf3fb; }
+.status-tag--done { color: var(--color-success); background: #e8f6ef; }
+.status-tag--review { color: #ad6800; background: #fff1cc; }
+.status-tag--reject { color: var(--color-danger); background: #ffe4e2; }
+.summary-card { margin-bottom: 24rpx; overflow: hidden; border: 2rpx solid #dbe5ee; border-radius: 30rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(26,54,83,.07); }
+.summary-total { padding: 24rpx 28rpx; color: var(--color-text-secondary); font-size: var(--font-md); }
+.summary-total text { color: var(--color-brand-dark); font-size: var(--font-xl); font-weight: 700; }
+.summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 2rpx solid var(--color-hairline); }
+.summary-cell { display: flex; flex-direction: column; align-items: center; gap: 8rpx; padding: 24rpx 8rpx; color: var(--color-text-secondary); font-size: var(--font-sm); }
+.summary-cell + .summary-cell { border-left: 2rpx solid var(--color-hairline); }
+.summary-cell__value { font-size: 46rpx; font-weight: 700; font-variant-numeric: tabular-nums; }
+.summary-cell__value.same { color: var(--color-success); }
+.summary-cell__value.plus { color: #ad6800; }
+.summary-cell__value.minus { color: var(--color-danger); }
+.section-title { display: flex; justify-content: space-between; margin: 36rpx 4rpx 18rpx; color: var(--color-text); font-size: var(--font-xl); font-weight: 600; }
+.section-title text { color: var(--color-text-tertiary); font-size: var(--font-sm); font-weight: 400; }
+.no-difference { text-align: center; color: var(--color-success); font-size: var(--font-md); }
+.difference-row { display: flex; align-items: center; gap: 20rpx; padding: 24rpx 26rpx; margin-bottom: 16rpx; border: 2rpx solid #dbe5ee; border-radius: 24rpx; background: #fff; }
+.difference-row__main { flex: 1; min-width: 0; }
+.difference-row__title { color: var(--color-text); font-size: var(--font-lg); font-weight: 600; }
+.difference-row__meta { margin-top: 7rpx; color: var(--color-text-secondary); font-size: var(--font-sm); }
+.difference-row__reason { margin-top: 8rpx; color: var(--color-text-tertiary); font-size: var(--font-xs); line-height: 1.5; }
+.difference-row__qty { flex-shrink: 0; font-size: var(--font-xl); font-weight: 700; font-variant-numeric: tabular-nums; }
+.difference-row__qty--plus { color: #ad6800; }
+.difference-row__qty--minus { color: var(--color-danger); }
+.review-card { margin-top: 28rpx; }
+.review-note { box-sizing: border-box; width: 100%; height: 180rpx; padding: 20rpx 24rpx; font-size: var(--font-md); }
+.review-history__label { color: var(--color-text-tertiary); font-size: var(--font-sm); }
+.review-history__text { margin-top: 10rpx; color: var(--color-text); font-size: var(--font-md); line-height: 1.6; }
+.flow-notice { padding: 22rpx 24rpx; margin-top: 28rpx; border-radius: 20rpx; background: #edf3f8; color: var(--color-text-secondary); font-size: var(--font-sm); line-height: 1.7; }
+.review-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; display: flex; gap: 18rpx; padding: 20rpx 24rpx calc(20rpx + env(safe-area-inset-bottom)); border-top: 2rpx solid var(--color-hairline); background: rgba(255,255,255,.97); box-shadow: 0 -8rpx 24rpx rgba(20,48,78,.08); }
+.review-actions .btn { width: auto !important; flex: 1; height: 96rpx; }

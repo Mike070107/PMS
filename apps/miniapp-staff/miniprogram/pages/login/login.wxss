@@ -1,9 +1,12 @@
-.page { min-height: 100vh; background: var(--color-page-bg); }
+.page { min-height: 100vh; background: linear-gradient(180deg, #e8f0f7 0, #f4f7fa 58%, #edf2f7 100%); padding-top: 24rpx; box-sizing: border-box; }
 
-.hero {
-  background: var(--color-brand);
+.page .hero {
+  margin: 0 24rpx;
+  background: linear-gradient(135deg, #173b63 0%, #2b6b9d 100%);
   color: #fff;
-  padding: 96rpx 48rpx 72rpx;
+  padding: 76rpx 40rpx 64rpx;
+  border-radius: 40rpx;
+  box-shadow: 0 18rpx 40rpx rgba(23,59,99,.22);
 }
 .brand { display: flex; align-items: center; gap: var(--space-lg); }
 .brand__logo {
@@ -37,7 +40,7 @@
 .link { text-align: center; color: var(--color-brand); font-size: var(--font-lg); padding: 20rpx; }
 .link:active { opacity: 0.7; }
 
-.form { margin-top: 24rpx; }
+.form { margin-top: 24rpx; box-shadow: 0 10rpx 28rpx rgba(26,54,83,.08); }
 .input-error { border: 2rpx solid var(--color-danger); }
 
 .tip { text-align: center; color: var(--color-text-tertiary); font-size: var(--font-sm); margin-top: 48rpx; line-height: 1.6; }

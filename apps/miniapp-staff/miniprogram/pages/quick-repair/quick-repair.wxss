@@ -9,7 +9,8 @@
   margin-top: 16rpx;
   padding: 20rpx 24rpx;
   border-radius: var(--radius-sm);
-  background: var(--color-bg);
+  background: #edf4fa;
+  border: 2rpx solid #d7e5f0;
 }
 .howto__line {
   font-size: var(--font-sm);
@@ -25,7 +26,8 @@
   margin-top: 16rpx;
   padding: 16rpx 24rpx;
   border-radius: var(--radius-sm);
-  background: var(--color-bg);
+  background: #edf4fa;
+  border: 2rpx solid #d7e5f0;
   color: var(--color-text-secondary);
   font-size: var(--font-md);
   line-height: 1.6;

@@ -4,7 +4,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-sm);
-  padding: 0 var(--space-xs) var(--space-md);
+  padding: 0 var(--space-xs) 18rpx;
 }
 .topbar__count { font-size: var(--font-md); color: var(--color-text-tertiary); }
 .topbar__action {
@@ -21,14 +21,16 @@
   display: flex;
   align-items: flex-start;
   gap: var(--space-md);
-  padding: var(--space-md);
-  margin-bottom: var(--space-sm);
-  border-radius: var(--radius-md);
+  padding: 26rpx 24rpx;
+  margin-bottom: 18rpx;
+  border: 2rpx solid #dbe5ee;
+  border-radius: 28rpx;
   background: var(--color-card-bg);
+  box-shadow: 0 6rpx 18rpx rgba(26,54,83,.05);
   transition: opacity var(--dur) ease;
 }
 .msg:active { opacity: 0.75; }
-.msg--unread { background: rgba(49, 85, 138, 0.06); }
+.msg--unread { background: #edf5fb; border-color: #b9d1e4; }
 
 .msg__dot {
   flex-shrink: 0;
@@ -41,7 +43,7 @@
 .msg__dot--off { background: transparent; }
 
 .msg__body { flex: 1; min-width: 0; }
-.msg__title { font-size: var(--font-xl); line-height: 1.5; }
+.msg__title { font-size: var(--font-xl); font-weight: 600; line-height: 1.5; }
 /* 派单备注 / 故障描述：光一句「有新工单」判断不了要不要现在去 */
 .msg__desc {
   margin-top: 8rpx;

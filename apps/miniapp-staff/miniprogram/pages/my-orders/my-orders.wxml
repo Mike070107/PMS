@@ -4,14 +4,14 @@
      和工单池同一套页头 + 数据卡，两屏之间不用重新认版式。
      标题写死「在手工单」，和 my-orders.json 的 navigationBarTitleText 同源 —— 改一处要改两处。 -->
 <view class="hero">
-  <view class="hero__title">在手工单</view>
-  <view class="hero__stats">
-    <view>
-      <view class="hero__num">{{active.length}}</view>
-      <view class="hero__cap">在手</view>
-    </view>
+  <view class="hero__top">
+    <view class="hero__title">在手工单</view>
+    <view class="hero__count">{{active.length}} 单在手</view>
+  </view>
+  <view class="hero__hint">先做紧急和等待时间较长的任务</view>
+  <view wx:if="{{overdueCount}}" class="hero__stats">
     <!-- 一单都没压着就整格不显示：常年挂个 0 会让这抹红失去意义 -->
-    <view wx:if="{{overdueCount}}">
+    <view>
       <view class="hero__num hero__num--danger">{{overdueCount}}</view>
       <view class="hero__cap">压 3 天以上</view>
     </view>

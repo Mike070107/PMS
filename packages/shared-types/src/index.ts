@@ -757,6 +757,77 @@ export interface StockMovementView {
   createdBy?: number | null;
 }
 
+// ---------- 库存盘点 ----------
+
+export type StocktakeStatus = 'counting' | 'submitted' | 'approved' | 'rejected' | 'cancelled';
+
+export const STOCKTAKE_STATUS_LABELS: Record<StocktakeStatus, string> = {
+  counting: '盘点中',
+  submitted: '待复核',
+  approved: '已完成',
+  rejected: '已退回',
+  cancelled: '已取消',
+};
+
+export const STOCKTAKE_REASON_OPTIONS = [
+  { value: 'unregistered_usage', label: '领用未登记' },
+  { value: 'unregistered_inbound', label: '入库未登记' },
+  { value: 'damaged', label: '破损报废' },
+  { value: 'expired', label: '过期报废' },
+  { value: 'misplaced', label: '库位放错' },
+  { value: 'counting_error', label: '上次盘点有误' },
+  { value: 'other', label: '其他' },
+] as const;
+
+export interface StocktakeTaskView {
+  id: number;
+  taskNo: string;
+  title: string;
+  warehouseId: number;
+  warehouseName: string;
+  status: StocktakeStatus;
+  totalCount: number;
+  countedCount: number;
+  differenceCount: number;
+  snapshotAt: string;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewerId?: number | null;
+  reviewNote?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StocktakeItemView {
+  id: number;
+  taskId: number;
+  materialId: number;
+  locationId?: number | null;
+  locationLabel?: string | null;
+  bookQty: number;
+  actualQty: number | null;
+  differenceQty: number | null;
+  reasonCode?: string | null;
+  note?: string | null;
+  attachments: string[];
+  countedBy?: number | null;
+  countedAt?: string | null;
+  material: {
+    id: number;
+    code: string;
+    name: string;
+    spec?: string | null;
+    category?: string | null;
+    unit: string;
+    photoUrl?: string | null;
+    aliases?: string[];
+  };
+}
+
+export interface StocktakeDetailView extends StocktakeTaskView {
+  items: StocktakeItemView[];
+}
+
 // ---------- 采购 ----------
 export interface PurchaseRequestItem {
   materialId?: number;

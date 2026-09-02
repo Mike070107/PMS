@@ -24,7 +24,10 @@
       <view class="wo-card__title">
         <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>{{item.summaryContent || '未填描述'}}
       </view>
-      <view class="wo-card__addr">{{item.summaryAddress || '未填地址'}}</view>
+      <view class="wo-card__addr-line">
+        <view class="icon icon--pin"></view>
+        <view class="wo-card__addr">{{item.summaryAddress || '未填地址'}}</view>
+      </view>
       <!-- 报修照片：一眼看出坏成什么样，比读一句描述快得多。
            catchtap 拦住冒泡 —— 点图是看大图，点卡片才是进详情。
            超过 4 张时最后一张压一个「+N」，别把卡片撑成相册 -->
@@ -48,24 +51,17 @@
     <pms-tag class="status-tag" status="{{item.status}}"/>
   </view>
 
-  <!-- 全卡唯一的视觉锚点是第一格那个数，压 3 天以上转红。
-       标签按是否完结换（已等 / 用时）—— 完结的单再说「已等」会被当成还堆在那儿没人管 -->
-  <view class="stat-grid">
-    <view class="stat">
-      <view class="stat__label">{{item.statStayLabel}}</view>
-      <view class="stat__value stat__value--{{item.stayTone}}">{{item.statStay}}</view>
-      <view class="stat__hint">{{item.timeText}}</view>
+  <view class="wo-card__chips">
+    <text class="wo-card__chip wo-card__chip--{{item.stayTone}}">{{item.statStayLabel}} {{item.statStay}}</text>
+    <text class="wo-card__chip">{{item.typeLabel}}</text>
+  </view>
+
+  <view class="wo-card__info">
+    <view class="wo-card__info-main">
+      <view class="wo-card__info-label">{{thirdLabel}}</view>
+      <view class="wo-card__info-value">{{thirdValue}}<text wx:if="{{thirdHint}}" class="wo-card__info-hint">{{thirdHint}}</text></view>
     </view>
-    <view class="stat">
-      <view class="stat__label">类型</view>
-      <view class="stat__value stat__value--text">{{item.typeLabel}}</view>
-      <view class="stat__hint"></view>
-    </view>
-    <view class="stat">
-      <view class="stat__label">{{thirdLabel}}</view>
-      <view class="stat__value stat__value--text">{{thirdValue}}</view>
-      <view class="stat__hint">{{thirdHint}}</view>
-    </view>
+    <view class="wo-card__time">{{item.timeText}}</view>
   </view>
 
   <!-- 缺料清单塞不进网格，放正文：状态标签只说「在等料」，等的是什么得写出来才有用 -->

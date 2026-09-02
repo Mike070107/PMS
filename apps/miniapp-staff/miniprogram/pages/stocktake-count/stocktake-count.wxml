@@ -1,0 +1,103 @@
+<view class="count-page">
+  <view class="count-head">
+    <view class="count-head__row">
+      <view>
+        <view class="count-head__warehouse">{{warehouseName}}</view>
+        <view class="count-head__no">{{taskNo}}</view>
+      </view>
+      <view class="count-head__progress">{{progressText}}</view>
+    </view>
+    <view class="progress"><view class="progress__bar" style="width: {{progressPercent}}%"/></view>
+  </view>
+
+  <view class="search-row">
+    <input class="input search-input" placeholder="搜索名称 / 型号 / 编码 / 库位" value="{{keyword}}" bindinput="onKeyword"/>
+    <button class="scan-btn" bindtap="onScan">扫码</button>
+  </view>
+  <checkbox-group class="uncounted" bindchange="onToggleUncounted">
+    <label><checkbox value="1" checked="{{onlyUncounted}}" color="#1d5f96"/>仅看未盘</label>
+    <text bindtap="onReview">查看汇总 ›</text>
+  </checkbox-group>
+
+  <scroll-view wx:if="{{keyword || onlyUncounted}}" class="result-strip" scroll-x enable-flex>
+    <view
+      wx:for="{{visibleItems}}"
+      wx:key="id"
+      class="result-chip {{current && current.id === item.id ? 'result-chip--on' : ''}}"
+      data-id="{{item.id}}"
+      bindtap="onPickItem"
+    >
+      <text>{{item.title}}</text>
+      <text class="result-chip__state">{{item.qtyText}}</text>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{loading}}" class="muted center">加载盘点清单…</view>
+  <view wx:elif="{{errorMsg && !current}}" class="error page-error">{{errorMsg}}</view>
+
+  <view wx:if="{{current}}" class="container count-container">
+    <view class="card material-card">
+      <view class="material-row">
+        <image wx:if="{{current.material.photoUrl}}" class="material-photo" src="{{current.material.photoUrl}}" mode="aspectFill"/>
+        <view wx:else class="material-photo material-photo--empty">无图</view>
+        <view class="material-info">
+          <view class="material-title">{{current.title}}</view>
+          <view class="material-code">{{current.material.code}} · {{current.material.category || '未分类'}}</view>
+          <view class="location-tag">库位 {{current.locationLabel || '未指定'}}</view>
+        </view>
+      </view>
+      <view class="book-row">
+        <view>
+          <view class="book-row__label">账面数量</view>
+          <view class="book-row__hint">系统快照，只读</view>
+        </view>
+        <view class="book-row__qty">{{current.bookQty}}<text>{{current.material.unit}}</text></view>
+      </view>
+    </view>
+
+    <view class="card count-card">
+      <view class="label">实盘数量<text class="label__opt">现场实际数到多少就填多少</text></view>
+      <view class="stepper">
+        <button class="stepper__btn" data-delta="-1" bindtap="onStep">−</button>
+        <input class="stepper__input" type="digit" value="{{actualQty}}" bindinput="onActual" focus="{{true}}" placeholder="0"/>
+        <button class="stepper__btn" data-delta="1" bindtap="onStep">＋</button>
+      </view>
+      <view class="quick-row">
+        <button class="quick-btn" bindtap="onClear">清零</button>
+        <button class="quick-btn" bindtap="onSame">与账面一致</button>
+      </view>
+
+      <view wx:if="{{differenceText}}" class="difference-box difference-box--{{differenceTone}}">
+        <view class="difference-box__title">{{differenceText}}</view>
+        <view class="difference-box__desc">账面 {{current.bookQty}}{{current.material.unit}}，实盘 {{actualQty}}{{current.material.unit}}</view>
+      </view>
+
+      <view wx:if="{{differenceQty !== null && differenceQty !== 0}}" class="field difference-field">
+        <view class="label">差异原因</view>
+        <picker mode="selector" range="{{reasonOptions}}" value="{{reasonIndex < 0 ? 0 : reasonIndex}}" bindchange="onReason">
+          <view class="picker {{reasonIndex < 0 ? 'picker--placeholder' : ''}}">{{reasonIndex < 0 ? '请选择原因' : reasonOptions[reasonIndex]}}</view>
+        </picker>
+      </view>
+
+      <view class="field">
+        <view class="label">盘点备注<text class="label__opt">选填</text></view>
+        <textarea class="note-input" value="{{note}}" bindinput="onNote" placeholder="破损、过期、库位异常等情况"/>
+      </view>
+
+      <view class="label">现场照片<text class="label__opt">有差异时建议拍照</text></view>
+      <view class="photos">
+        <view wx:for="{{attachments}}" wx:key="*this" class="photo-wrap">
+          <image class="photo" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="onPreviewPhoto"/>
+          <view class="photo-remove" data-index="{{index}}" catchtap="onRemovePhoto">×</view>
+        </view>
+        <view wx:if="{{attachments.length < 6}}" class="photo-add" bindtap="onChoosePhoto">{{uploading ? '上传中' : '+ 拍照'}}</view>
+      </view>
+      <view wx:if="{{errorMsg}}" class="error">{{errorMsg}}</view>
+    </view>
+  </view>
+</view>
+
+<view wx:if="{{current}}" class="count-actions">
+  <button class="btn btn--ghost previous-btn" bindtap="onPrevious">上一项</button>
+  <button class="btn btn--primary save-btn" loading="{{saving}}" disabled="{{saving || uploading}}" bindtap="onSaveNext">保存并下一项</button>
+</view>
