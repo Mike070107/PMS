@@ -321,7 +321,7 @@ const SLA_MINUTE_STEP = 30;
 
 const FILTER_TABS: Array<{ label: string; value: 'all' | WorkOrderStatus }> = [
   { label: '全部', value: 'all' },
-  { label: '待派 / 待接', value: WorkOrderStatus.CREATED },
+  { label: '待派单/待接单', value: WorkOrderStatus.CREATED },
   { label: '已派单', value: WorkOrderStatus.DISPATCHED },
   { label: '维修中', value: WorkOrderStatus.IN_PROGRESS },
   { label: '等待材料', value: WorkOrderStatus.WAITING_MATERIAL },
@@ -462,7 +462,8 @@ export default function WorkOrdersPage() {
   const [rows, setRows] = useState<WorkOrderRow[]>([]);
   const [statusCounts, setStatusCounts] = useState<WorkOrderStats>({ total: 0, byStatus: {} });
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<'all' | WorkOrderStatus>('all');
+  // 调度人员进来先处理还没人负责的单；查历史时再自动切到“全部”。
+  const [filter, setFilter] = useState<'all' | WorkOrderStatus>(WorkOrderStatus.CREATED);
   // 搜索框：输入即查，敲字停 300ms 再发请求；地址「198/47/201」/「198」、维修工姓名、单号都走同一个 q
   const [searchInput, setSearchInput] = useState('');
   const [searchQ, setSearchQ] = useState('');

@@ -218,7 +218,8 @@ export default function MaintenanceOrdersPage() {
 
   const [rows, setRows] = useState<MaintenanceListRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'all' | MaintenanceStatus>('all');
+  // 办公室日常工作入口默认只看待查验，已作废记录留在独立筛选里查。
+  const [status, setStatus] = useState<'all' | MaintenanceStatus>('draft');
   const [searchInput, setSearchInput] = useState('');
   const [searchQ, setSearchQ] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
@@ -235,12 +236,12 @@ export default function MaintenanceOrdersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setRows(
-        await request<MaintenanceListRow[]>({
-          url: '/maintenance-orders',
-          query: { status: status === 'all' ? undefined : status, q: searchQ || undefined },
-        }),
-      );
+      const list = await request<MaintenanceListRow[]>({
+        url: '/maintenance-orders',
+        query: { status: status === 'all' ? undefined : status, q: searchQ || undefined },
+      });
+      // “全部”表示全部有效养护单；已删除/作废有独立入口，不应继续混在日常列表中。
+      setRows(status === 'all' ? list.filter((row) => row.status !== 'void') : list);
     } catch (e: any) {
       message.error(e?.message || '加载养护单失败');
     } finally {
@@ -476,7 +477,7 @@ export default function MaintenanceOrdersPage() {
               value={status}
               onChange={(v) => setStatus(v as typeof status)}
               options={[
-                { label: '全部', value: 'all' },
+                { label: '全部有效', value: 'all' },
                 { label: '待查验', value: 'draft' },
                 { label: '已查验', value: 'inspected' },
                 { label: '已作废', value: 'void' },
