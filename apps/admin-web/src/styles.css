@@ -2809,3 +2809,363 @@ h2.ant-typography {
   .pms-content { padding: 18px 14px 34px; }
   .ant-btn { min-height: 44px; }
 }
+
+/* Web 工单详情：把办公室最常看的地点、故障、节点和下一步操作放在第一视线。 */
+.pms-workorder-detail-drawer .ant-drawer-header {
+  min-height: 86px;
+  padding: 16px 24px;
+  color: #fff;
+  background: linear-gradient(135deg, #31558a 0%, #3d69a1 100%);
+  border-bottom: 0;
+}
+.pms-workorder-detail-drawer .ant-drawer-close,
+.pms-workorder-detail-drawer .ant-drawer-close:hover { color: #fff; }
+.pms-workorder-detail-drawer .ant-drawer-title { color: #fff; }
+.pms-workorder-detail-drawer-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pms-workorder-detail-drawer-title strong {
+  color: #fff;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.pms-workorder-detail-drawer-title span {
+  color: rgba(255,255,255,.78);
+  font-size: 14px;
+  font-weight: 400;
+}
+.pms-workorder-detail-order-no {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding-right: 4px;
+}
+.pms-workorder-detail-order-no > span {
+  color: rgba(255,255,255,.7);
+  font-size: 12px;
+}
+.pms-workorder-detail-order-no .ant-typography,
+.pms-workorder-detail-order-no .ant-typography-copy {
+  color: #fff !important;
+  font-size: 15px;
+}
+.pms-workorder-detail-drawer .ant-drawer-body {
+  padding: 22px 24px 30px;
+  background: #eef3f8;
+}
+.pms-workorder-detail-drawer .ant-drawer-footer {
+  padding: 14px 24px;
+  background: #fff;
+  border-top: 1px solid #d6e1ec;
+  box-shadow: 0 -8px 24px rgba(31, 51, 74, .08);
+}
+.pms-workorder-detail-content { max-width: 1120px; margin: 0 auto; }
+.pms-workorder-detail-drawer .pms-detail-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 22px;
+  margin: 0 0 14px;
+  padding: 24px 26px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(255,255,255,.16), transparent 32%),
+    linear-gradient(135deg, #294a79 0%, #3f6da5 100%);
+  border: 0;
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(49, 85, 138, .18);
+}
+.pms-workorder-detail-drawer .pms-detail-hero::before { display: none; }
+.pms-workorder-detail-drawer .pms-detail-eyebrow {
+  margin-bottom: 8px;
+  color: #dbe9f7;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+.pms-workorder-detail-address-label::before {
+  content: '●';
+  margin-right: 8px;
+  color: #8fc8ff;
+  font-size: 10px;
+  vertical-align: 2px;
+}
+.pms-workorder-detail-drawer .pms-detail-title-row {
+  align-items: flex-start;
+  gap: 12px;
+}
+.pms-workorder-detail-drawer .pms-detail-title-row h2 {
+  flex: 1 1 360px;
+  color: #fff;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.pms-workorder-detail-drawer .pms-detail-tags .ant-tag {
+  margin: 2px 0 0;
+  padding: 3px 10px;
+  font-size: 14px;
+  border-radius: 999px;
+}
+.pms-workorder-detail-drawer .pms-detail-description {
+  max-width: 720px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  color: #fff;
+  font-size: 19px;
+  line-height: 1.7;
+  background: rgba(13, 40, 77, .24);
+  border-left: 4px solid #9ed0ff;
+  border-radius: 4px 12px 12px 4px;
+}
+.pms-workorder-detail-drawer .pms-detail-meta {
+  gap: 10px 24px;
+  margin-top: 17px;
+  color: rgba(255,255,255,.92);
+  font-size: 15px;
+}
+.pms-workorder-detail-drawer .pms-detail-meta strong {
+  color: rgba(255,255,255,.62);
+  font-size: 13px;
+}
+.pms-workorder-detail-drawer .pms-detail-visual {
+  max-width: 260px;
+  align-items: flex-start;
+}
+.pms-workorder-detail-drawer .pms-detail-visual .ant-typography { color: rgba(255,255,255,.76) !important; }
+.pms-workorder-detail-drawer .pms-detail-visual .ant-image-img,
+.pms-workorder-detail-drawer .pms-detail-visual video {
+  border: 2px solid rgba(255,255,255,.34);
+  box-shadow: 0 5px 16px rgba(11, 31, 58, .2);
+}
+.pms-workorder-detail-drawer .pms-detail-metrics {
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.pms-workorder-detail-drawer .pms-detail-metric {
+  min-height: 88px;
+  padding: 15px 17px;
+  border: 1px solid #d4e0eb;
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(31, 51, 74, .04);
+}
+.pms-workorder-detail-drawer .pms-detail-metric span {
+  margin-bottom: 7px;
+  font-size: 14px;
+}
+.pms-workorder-detail-drawer .pms-detail-metric strong {
+  font-size: 18px;
+  font-weight: 600;
+}
+.pms-workorder-detail-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.42fr) minmax(320px, .88fr);
+  align-items: start;
+  gap: 16px;
+}
+.pms-workorder-detail-main-column,
+.pms-workorder-detail-side-column {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.pms-workorder-detail-drawer .pms-detail-section {
+  margin: 0;
+  padding: 20px;
+  border: 1px solid #d6e1ec;
+  border-radius: 16px;
+  box-shadow: 0 5px 16px rgba(31, 51, 74, .045);
+}
+.pms-workorder-detail-drawer .pms-detail-section-heading {
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid #e1e9f1;
+}
+.pms-workorder-detail-drawer .pms-detail-section-heading strong {
+  position: relative;
+  padding-left: 13px;
+  font-size: 20px;
+  font-weight: 600;
+}
+.pms-workorder-detail-drawer .pms-detail-section-heading strong::before {
+  content: '';
+  position: absolute;
+  inset: 3px auto 3px 0;
+  width: 4px;
+  background: #31558a;
+  border-radius: 4px;
+}
+.pms-workorder-detail-drawer .pms-detail-section-heading span {
+  padding-left: 13px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.pms-workorder-report-descriptions .ant-descriptions-view {
+  overflow: hidden;
+  border-color: #d9e4ee;
+  border-radius: 12px;
+}
+.pms-workorder-detail-drawer .ant-descriptions-bordered .ant-descriptions-item-label {
+  min-width: 110px;
+  padding: 14px 15px;
+  color: #587089;
+  font-size: 15px;
+  font-weight: 600;
+  background: #f3f7fb;
+}
+.pms-workorder-detail-drawer .ant-descriptions-bordered .ant-descriptions-item-content {
+  padding: 14px 16px;
+  font-size: 16px;
+  line-height: 1.65;
+}
+.pms-workorder-assignee-card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 16px;
+  padding: 15px;
+  background: linear-gradient(135deg, #edf4fb, #f7faff);
+  border: 1px solid #d4e2f0;
+  border-radius: 13px;
+}
+.pms-workorder-assignee-avatar {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  color: #fff;
+  font-size: 22px;
+  background: #31558a;
+  border-radius: 50%;
+}
+.pms-workorder-assignee-card div { display: flex; flex-direction: column; gap: 2px; }
+.pms-workorder-assignee-card small { color: #688099; font-size: 14px; }
+.pms-workorder-assignee-card strong { color: #1f334a; font-size: 19px; }
+.pms-workorder-side-descriptions .ant-descriptions-row > th,
+.pms-workorder-side-descriptions .ant-descriptions-row > td { padding-bottom: 14px; }
+.pms-workorder-side-descriptions .ant-descriptions-item-label {
+  display: block;
+  width: 112px;
+  color: #617890;
+  font-size: 15px;
+  font-weight: 600;
+}
+.pms-workorder-side-descriptions .ant-descriptions-item-content {
+  display: block;
+  font-size: 16px;
+}
+.pms-workorder-side-descriptions .ant-btn-link { min-height: 36px; padding-inline: 4px; }
+.pms-workorder-lock-reason { font-size: 13px; }
+.pms-workorder-repair-record {
+  overflow: hidden;
+  border: 1px solid #d9e4ee;
+  border-radius: 12px;
+}
+.pms-workorder-repair-row {
+  display: grid;
+  grid-template-columns: var(--repair-label-width, 132px) minmax(0, 1fr);
+  border-bottom: 1px solid #e1e9f1;
+}
+.pms-workorder-repair-row:last-child { border-bottom: 0; }
+.pms-workorder-repair-label {
+  padding: 14px 15px;
+  color: #587089;
+  font-size: 15px;
+  font-weight: 600;
+  background: #f3f7fb;
+  border-right: 1px solid #e1e9f1;
+}
+.pms-workorder-repair-value {
+  min-width: 0;
+  padding: 14px 16px;
+  color: #1f334a;
+  font-size: 16px;
+  line-height: 1.65;
+}
+.pms-workorder-repair-value .ant-tag { padding: 2px 9px; font-size: 14px; }
+.pms-workorder-fee-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 15px 17px;
+  color: #5e7389;
+  font-size: 15px;
+  background: #f3f7fb;
+  border-radius: 12px;
+}
+.pms-workorder-fee-summary strong { color: #31558a; font-size: 21px; }
+.pms-workorder-detail-drawer .pms-detail-timeline { padding-top: 4px; }
+.pms-workorder-detail-drawer .pms-detail-timeline .ant-timeline-item-content { padding: 0 0 20px 10px; }
+.pms-workorder-timeline-entry { min-width: 0; }
+.pms-workorder-timeline-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.pms-workorder-timeline-title strong { color: #263d57; font-size: 16px; }
+.pms-workorder-timeline-title .ant-typography { font-size: 13px; }
+.pms-workorder-timeline-stay {
+  padding: 2px 7px;
+  color: #8b651f !important;
+  background: #fff5db;
+  border-radius: 999px;
+}
+.pms-workorder-timeline-note {
+  margin-top: 6px;
+  color: #526a82;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.pms-workorder-timeline-note > div { margin-top: 4px; }
+.pms-workorder-detail-actionbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.pms-workorder-detail-secondary-actions,
+.pms-workorder-detail-primary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.pms-workorder-detail-primary-actions { justify-content: flex-end; margin-left: auto; }
+.pms-workorder-detail-actionbar .ant-btn {
+  min-height: 46px;
+  padding-inline: 18px;
+  font-size: 16px;
+  border-radius: 10px;
+}
+.pms-workorder-detail-primary-actions .ant-btn-primary {
+  min-width: 154px;
+  min-height: 50px;
+  font-size: 17px;
+  font-weight: 600;
+  box-shadow: 0 6px 15px rgba(49, 85, 138, .22);
+}
+
+@media (max-width: 900px) {
+  .pms-workorder-detail-drawer .ant-drawer-body { padding: 16px 14px 24px; }
+  .pms-workorder-detail-drawer .ant-drawer-footer { padding: 12px 14px; }
+  .pms-workorder-detail-drawer .pms-detail-hero { grid-template-columns: 1fr; padding: 20px; }
+  .pms-workorder-detail-drawer .pms-detail-title-row h2 { font-size: 24px; }
+  .pms-workorder-detail-drawer .pms-detail-description { font-size: 17px; }
+  .pms-workorder-detail-columns { grid-template-columns: 1fr; }
+  .pms-workorder-detail-actionbar { align-items: stretch; flex-direction: column-reverse; }
+  .pms-workorder-detail-primary-actions { margin-left: 0; }
+  .pms-workorder-detail-primary-actions .ant-btn { flex: 1; }
+}
+
+@media (max-width: 620px) {
+  .pms-workorder-detail-drawer-title span,
+  .pms-workorder-detail-order-no > span { display: none; }
+  .pms-workorder-detail-drawer .ant-drawer-header { min-height: 70px; padding: 12px 14px; }
+  .pms-workorder-detail-drawer .pms-detail-metrics { grid-template-columns: 1fr 1fr; }
+  .pms-workorder-detail-drawer .pms-detail-visual { max-width: 100%; justify-content: flex-start; }
+  .pms-workorder-detail-drawer .pms-detail-section { padding: 16px 14px; }
+  .pms-workorder-repair-row { grid-template-columns: 1fr; }
+  .pms-workorder-repair-label { padding-bottom: 6px; border-right: 0; }
+  .pms-workorder-report-descriptions .ant-descriptions-row { display: flex; flex-direction: column; }
+  .pms-workorder-report-descriptions .ant-descriptions-item { display: flex; width: 100%; }
+  .pms-workorder-detail-secondary-actions .ant-btn { flex: 1 1 42%; }
+}

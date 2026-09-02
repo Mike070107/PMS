@@ -68,7 +68,7 @@ import { classifyRepairType } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { request } from '../lib/api';
 import { auth, useAuth, usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
@@ -2122,7 +2122,7 @@ function CompactRepairRecord({ detail }: { detail: WorkOrderDetail }) {
     : '-';
 
   return (
-    <div style={{ border: '1px solid #f0f0f0', borderRadius: 6, overflow: 'hidden' }}>
+    <div className="pms-workorder-repair-record">
       <CompactRepairRecordRow label="实际故障位置">{wo.faultLocation || '-'}</CompactRepairRecordRow>
       <CompactRepairRecordRow label="故障现象">{wo.faultSymptom || '-'}</CompactRepairRecordRow>
       <CompactRepairRecordRow label="维修内容">{wo.repairContent || wo.actionNote || '-'}</CompactRepairRecordRow>
@@ -2144,29 +2144,23 @@ function CompactRepairRecordRow({
 }) {
   return (
     <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `${REPAIR_RECORD_LABEL_WIDTH}px minmax(0, 1fr)`,
-        borderBottom: '1px solid #f0f0f0',
-      }}
+      className="pms-workorder-repair-row"
+      style={{ '--repair-label-width': `${REPAIR_RECORD_LABEL_WIDTH}px` } as CSSProperties}
     >
-      <div
-        style={{
-          background: '#fafafa',
-          color: 'rgba(0,0,0,.88)',
-          fontWeight: 500,
-          padding: '12px 14px',
-          whiteSpace: 'nowrap',
-          borderRight: '1px solid #f0f0f0',
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ padding: '12px 14px', minWidth: 0 }}>
-        {children}
-      </div>
+      <div className="pms-workorder-repair-label">{label}</div>
+      <div className="pms-workorder-repair-value">{children}</div>
     </div>
   );
+}
+
+function repairSourceText(source?: string | null) {
+  return source === 'staff_miniapp'
+    ? '员工小程序'
+    : source === 'owner_miniapp'
+      ? '业主小程序'
+      : source === 'office_web'
+        ? '网页平台'
+        : source || '来源未记录';
 }
 
 // ---------------- 工单详情抽屉 ----------------
@@ -2228,30 +2222,46 @@ function WorkOrderDetailDrawer({
   // 不再靠 users.role 过滤员工列表
   const technicians = dispatchTechnicians;
   const assigneeName = wo?.assigneeId
-    ? nameOr(staffList.find((staff) => staff.id === wo.assigneeId)?.name, '维修工')
+    ? nameOr(wo.assigneeName || staffList.find((staff) => staff.id === wo.assigneeId)?.name, '维修工')
     : '未派单';
+  const statusLabel = wo
+    ? wo.status === WorkOrderStatus.CREATED
+      ? wo.candidateIds?.length ? '待维修工接单' : '等待办公室派单'
+      : statusMeta[wo.status].label
+    : '';
   const actionBar = status && (canEdit || canDelete || canFillMaintenance) ? (
-    <Space wrap>
-      {canFillMaintenance && status !== WorkOrderStatus.CANCELLED && (
-        <Button icon={<FileTextOutlined />} onClick={() => nav(`/maintenance-orders?workOrderId=${id}`)}>填养护单</Button>
-      )}
-      {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
-        <Button type="primary" onClick={() => setAssignOpen(true)}>{status === WorkOrderStatus.CREATED ? '派单' : '改派'}</Button>
-      )}
-      {canEdit && status === WorkOrderStatus.DISPATCHED && <Button onClick={onAccept}>代接单</Button>}
-      {canEdit && status === WorkOrderStatus.IN_PROGRESS && <Button onClick={() => setNeedMaterialOpen(true)}>标记缺料</Button>}
-      {canEdit && status === WorkOrderStatus.WAITING_MATERIAL && <Button onClick={() => setEditMissingOpen(true)}>修改缺料</Button>}
-      {canEdit && [WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
-        <Button type="primary" onClick={() => setCompleteOpen(true)}>完工</Button>
-      )}
-      {canEdit && status === WorkOrderStatus.DONE_PENDING_REVIEW && <Button type="primary" onClick={() => setReviewOpen(true)}>验收</Button>}
-      {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
-        <Button danger onClick={() => setCancelOpen(true)}>撤单</Button>
-      )}
-      {canDelete && (
-        <Button danger icon={<DeleteOutlined />} onClick={() => setVoidOpen(true)}>删除工单</Button>
-      )}
-    </Space>
+    <div className="pms-workorder-detail-actionbar">
+      <div className="pms-workorder-detail-secondary-actions">
+        {canFillMaintenance && status !== WorkOrderStatus.CANCELLED && (
+          <Button icon={<FileTextOutlined />} onClick={() => nav(`/maintenance-orders?workOrderId=${id}`)}>填养护单</Button>
+        )}
+        {canEdit && [WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
+          <Button onClick={() => setAssignOpen(true)}>改派维修工</Button>
+        )}
+        {canEdit && status === WorkOrderStatus.IN_PROGRESS && <Button onClick={() => setNeedMaterialOpen(true)}>标记缺料</Button>}
+        {canEdit && status === WorkOrderStatus.WAITING_MATERIAL && <Button onClick={() => setEditMissingOpen(true)}>修改缺料</Button>}
+        {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
+          <Button danger onClick={() => setCancelOpen(true)}>撤单</Button>
+        )}
+        {canDelete && (
+          <Button danger icon={<DeleteOutlined />} onClick={() => setVoidOpen(true)}>删除工单</Button>
+        )}
+      </div>
+      <div className="pms-workorder-detail-primary-actions">
+        {canEdit && status === WorkOrderStatus.CREATED && (
+          <Button type="primary" onClick={() => setAssignOpen(true)}>立即派单</Button>
+        )}
+        {canEdit && status === WorkOrderStatus.DISPATCHED && (
+          <Button type="primary" onClick={onAccept}>代维修工接单</Button>
+        )}
+        {canEdit && [WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
+          <Button type="primary" onClick={() => setCompleteOpen(true)}>填写完工结果</Button>
+        )}
+        {canEdit && status === WorkOrderStatus.DONE_PENDING_REVIEW && (
+          <Button type="primary" onClick={() => setReviewOpen(true)}>开始验收</Button>
+        )}
+      </div>
+    </div>
   ) : null;
 
   return (
@@ -2259,215 +2269,196 @@ function WorkOrderDetailDrawer({
       <Drawer
         className="pms-workorder-detail-drawer"
         open={!!id}
-        title="工单详情"
-        width="min(920px, 96vw)"
+        title={(
+          <div className="pms-workorder-detail-drawer-title">
+            <strong>工单详情</strong>
+            <span>集中查看现场、调度、维修结果与处理进度</span>
+          </div>
+        )}
+        width="min(1040px, 97vw)"
         onClose={onClose}
         loading={loading}
-        extra={wo ? <Text copyable={{ text: wo.orderNo }} type="secondary">{wo.orderNo}</Text> : null}
+        extra={wo ? (
+          <div className="pms-workorder-detail-order-no">
+            <span>工单编号</span>
+            <Text copyable={{ text: wo.orderNo }}>{wo.orderNo}</Text>
+          </div>
+        ) : null}
+        footer={detail && actionBar ? actionBar : null}
       >
         {!detail ? <Empty /> : (
-          <>
+          <div className="pms-workorder-detail-content">
             <DetailHero
-              eyebrow="报修地址"
+              eyebrow={<span className="pms-workorder-detail-address-label">需要去这里维修</span>}
               title={detail.request.addressText || '地址待补充'}
               description={detail.request.content || '未填写问题描述'}
               tags={<>
                 <Tag color={statusMeta[detail.workOrder.status].color}>
-                  {detail.workOrder.status === WorkOrderStatus.CREATED
-                    ? detail.workOrder.candidateIds?.length ? '待接单' : '待派单'
-                    : statusMeta[detail.workOrder.status].label}
+                  {statusLabel}
                 </Tag>
-                {detail.request.urgent && <Tag color="error">紧急</Tag>}
+                {detail.request.urgent && <Tag color="error">紧急工单</Tag>}
                 <Tag color="blue">{getRepairTypeLabel(detail.request.repairType, repairTypeRules)}</Tag>
               </>}
               meta={<>
                 <span><strong>报修人</strong>{detail.request.contactName || '未填写'}{detail.request.reporterRoleLabel ? `（${detail.request.reporterRoleLabel}代报）` : ''}</span>
                 <span><strong>联系电话</strong>{detail.request.contactPhone || '未填写'}</span>
-                {detail.request.reporterAddressText && <span><strong>登记地址</strong>{detail.request.reporterAddressText}</span>}
+                <span><strong>提交渠道</strong>{repairSourceText(detail.request.source)}</span>
+                <span><strong>报修时间</strong>{formatDateTimeCn(detail.workOrder.createdAt) || '未记录'}</span>
               </>}
               visual={<AttachmentPreview urls={(detail.request.attachments || []).slice(0, 3)} />}
-              actions={actionBar}
             />
             <DetailMetrics items={[
-              { label: '已停留', value: `${stayDaysOf(detail.workOrder)} 天`, tone: stayDaysOf(detail.workOrder) >= 3 ? 'warning' : 'normal' },
+              { label: '当前处理节点', value: statusLabel, tone: detail.request.urgent ? 'danger' : 'normal' },
               { label: '当前负责人', value: assigneeName },
-              { label: '完成期限', value: detail.workOrder.slaDueAt ? slaCountdownText(detail.workOrder.slaDueAt) : '未设置', tone: slaDanger(detail.workOrder) ? 'danger' : 'normal' },
-              { label: '收费金额', value: detail.workOrder.feeCents ? `¥ ${(detail.workOrder.feeCents / 100).toFixed(2)}` : '未收费' },
+              { label: '从报修至今', value: `${stayDaysOf(detail.workOrder)} 天`, tone: stayDaysOf(detail.workOrder) >= 3 ? 'warning' : 'normal' },
+              { label: '要求完成时间', value: detail.workOrder.slaDueAt ? slaCountdownText(detail.workOrder.slaDueAt) : '未设置', tone: slaDanger(detail.workOrder) ? 'danger' : 'normal' },
             ]} />
 
-            <DetailSection title="报修与调度信息" description="联系人、工种、期限及完整附件">
-            <Descriptions
-              size="middle"
-              column={2}
-              bordered
-              labelStyle={compactDescriptionLabelStyle}
-              contentStyle={compactDescriptionContentStyle}
-              items={[
-                {
-                  key: 'status',
-                  label: '当前状态',
-                  children: (
-                    <>
-                      <Tag color={statusMeta[detail.workOrder.status].color}>
-                        {detail.workOrder.status === WorkOrderStatus.CREATED
-                          ? detail.workOrder.candidateIds?.length ? '待接单' : '待派单'
-                          : statusMeta[detail.workOrder.status].label}
-                      </Tag>
-                      {/* 报修时说了「急修」：状态旁边挂红标，进度里那条创建记录写着凭哪个词标的 */}
-                      {detail.request?.urgent && <Tag color="error">紧急</Tag>}
-                    </>
-                  ),
-                  span: 2,
-                },
-                {
-                  key: 'stay',
-                  label: '已停留',
-                  // 从业主提交那一刻算起，按自然日跨天数，当天 0 天；
-                  // 与有没有接单无关 —— 业主感知到的等待就是从他提交开始的
-                  children: (() => {
-                    const wo = detail.workOrder;
-                    const days = stayDaysOf(wo);
-                    const closedNote =
-                      wo.status === WorkOrderStatus.CANCELLED
-                        ? '（已撤单）'
-                        : wo.completedAt
-                          ? '（已完结）'
-                          : '';
-                    return (
-                      <Tag color={stayTagColor(wo, days)}>
-                        {days} 天{closedNote}
-                      </Tag>
-                    );
-                  })(),
-                  span: 2,
-                },
-                { key: 'phone', label: '联系电话', children: detail.request.contactPhone || '-' },
-                {
-                  key: 'name',
-                  label: '联系人',
-                  // 代报时把身份标出来：办公室要知道电话那头不是住户本人，
-                  // 需要住户配合（开门、确认损坏情况）时得另找业主
-                  children: detail.request.contactName
-                    ? detail.request.reporterRoleLabel
-                      ? `${detail.request.contactName}（${detail.request.reporterRoleLabel}代报）`
-                      : detail.request.contactName
-                    : '-',
-                },
-                {
-                  key: 'type',
-                  label: '工单类型',
-                  children: (() => {
-                    const label = getRepairTypeLabel(detail.request.repairType, repairTypeRules);
-                    // 开工后置灰：维修工已按这个类型领料/派工，事后更正只会让轨迹对不上（服务端同样拦）
-                    const lockReason = repairTypeAndSlaLockReason(detail.workOrder.status);
-                    if (!canEdit) return label;
-                    if (lockReason) {
-                      return (
-                        <Space size={6} wrap>
-                          <Text type="secondary">{label}</Text>
-                          <Text type="secondary" style={{ fontSize: 12 }}>（{lockReason}）</Text>
-                        </Space>
-                      );
-                    }
-                    return (
-                      <Space size={4}>
-                        {label}
-                        {/* 判错了在这里更正，还能顺手把关键词学进新类型，下次自动判对 */}
-                        <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setChangeTypeOpen(true)}>
-                          更正
-                        </Button>
-                      </Space>
-                    );
-                  })(),
-                },
-                { key: 'skill', label: '工种', children: getRepairTypeLabel(detail.workOrder.skill, repairTypeRules) },
-                { key: 'assignee', label: '当前维修工', children: detail.workOrder.assigneeId ? nameOr(staffList.find((s) => s.id === detail.workOrder.assigneeId)?.name, '维修工') : '未派单' },
-                {
-                  key: 'sla',
-                  label: '要求完成截止日期',
-                  children: (
-                    <Space size={12} wrap>
-                      <SlaDueEditor
-                        workOrderId={detail.workOrder.id}
-                        value={detail.workOrder.slaDueAt ?? null}
-                        status={detail.workOrder.status}
-                        canEdit={canEdit}
-                        onChanged={refresh}
-                      />
-                      <UrgeRepairButton
-                        workOrderId={detail.workOrder.id}
-                        status={detail.workOrder.status}
-                        canEdit={canEdit}
-                        onDone={refresh}
-                      />
-                    </Space>
-                  ),
-                },
-                { key: 'fee', label: '费用', children: detail.workOrder.feeCents ? `¥ ${(detail.workOrder.feeCents / 100).toFixed(2)}` : '-' },
-                { key: 'content', label: '报修内容', children: detail.request.content, span: 2 },
-                // 两个地址分开给：报修地址可能是公区或别人家，
-                // 办公室要一眼分清「他家在哪」和「要去修哪」
-                { key: 'regAddr', label: '报修人登记地址', children: detail.request.reporterAddressText || '-', span: 2 },
-                { key: 'addr', label: '报修地址', children: detail.request.addressText || '-', span: 2 },
-                {
-                  key: 'attachments',
-                  label: '照片 / 视频',
-                  children: <AttachmentPreview urls={detail.request.attachments || []} />,
-                  span: 2,
-                },
-              ]}
-            />
-            </DetailSection>
+            <div className="pms-workorder-detail-columns">
+              <div className="pms-workorder-detail-main-column">
+                <DetailSection title="报修信息" description="先核对维修地点、问题描述和联系人">
+                  <Descriptions
+                    className="pms-workorder-report-descriptions"
+                    size="middle"
+                    column={2}
+                    bordered
+                    labelStyle={compactDescriptionLabelStyle}
+                    contentStyle={compactDescriptionContentStyle}
+                    items={[
+                      { key: 'addr', label: '报修地址', children: detail.request.addressText || '-', span: 2 },
+                      { key: 'content', label: '故障描述', children: detail.request.content, span: 2 },
+                      {
+                        key: 'name',
+                        label: '联系人',
+                        children: detail.request.contactName
+                          ? detail.request.reporterRoleLabel
+                            ? `${detail.request.contactName}（${detail.request.reporterRoleLabel}代报）`
+                            : detail.request.contactName
+                          : '-',
+                      },
+                      { key: 'phone', label: '联系电话', children: detail.request.contactPhone || '-' },
+                      { key: 'source', label: '提交渠道', children: repairSourceText(detail.request.source) },
+                      { key: 'created', label: '报修时间', children: formatDateTimeCn(detail.workOrder.createdAt) || '-' },
+                      { key: 'regAddr', label: '报修人登记地址', children: detail.request.reporterAddressText || '-', span: 2 },
+                      {
+                        key: 'attachments',
+                        label: '现场照片 / 视频',
+                        children: <AttachmentPreview urls={detail.request.attachments || []} />,
+                        span: 2,
+                      },
+                    ]}
+                  />
+                </DetailSection>
 
-            <DetailSection title="维修记录" description="实际故障、处理内容、费用和用料">
-              <CompactRepairRecord detail={detail} />
-            </DetailSection>
-
-            <DetailSection title="处理进度" description="按时间查看每一次状态变化及停留时长">
-              <Timeline className="pms-detail-timeline"
-              items={detail.logs.map((log, index) => ({
-                color: log.toStatus === WorkOrderStatus.COMPLETED ? 'green' : 'blue',
-                children: (
-                  <div>
-                    <div>
-                      <strong>{actionLabel(log.action)}</strong>
-                      <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                        {/* 三端同一个格式：2026/8/9 17:07 周日 */}
-                        {formatDateTimeCn(log.createdAt)}
-                      </Text>
-                      {/* 这一步停了多久：卡在哪个环节、卡了多久，比绝对时间更好用。
-                          最后一个节点在工单没完结时算到此刻。 */}
-                      {(() => {
-                        const next = detail.logs[index + 1];
-                        const finished =
-                          detail.workOrder.status === WorkOrderStatus.COMPLETED ||
-                          detail.workOrder.status === WorkOrderStatus.CANCELLED;
-                        const stay = next
-                          ? formatDuration(log.createdAt, next.createdAt)
-                          : finished
-                            ? ''
-                            : formatDuration(log.createdAt, null);
-                        return stay ? (
-                          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                            · 停留 {stay}
-                          </Text>
-                        ) : null;
-                      })()}
-                    </div>
-                    <div style={{ fontSize: 12 }}>
-                      {log.fromStatus && (
-                        <Text type="secondary">
-                          {statusMeta[log.fromStatus].label} → {statusMeta[log.toStatus].label}
-                        </Text>
-                      )}
-                      {log.note && <div style={{ marginTop: 4 }}>{log.note}</div>}
-                    </div>
+                <DetailSection title="维修结果" description="维修工实际填写的故障、处理、用料与费用">
+                  <CompactRepairRecord detail={detail} />
+                  <div className="pms-workorder-fee-summary">
+                    <span>本单收费金额</span>
+                    <strong>{detail.workOrder.feeCents ? `¥ ${(detail.workOrder.feeCents / 100).toFixed(2)}` : '未收费'}</strong>
                   </div>
-                ),
-              }))}
-              />
-            </DetailSection>
-          </>
+                </DetailSection>
+              </div>
+
+              <div className="pms-workorder-detail-side-column">
+                <DetailSection title="调度信息" description="负责人、工种和完成期限">
+                  <div className="pms-workorder-assignee-card">
+                    <span className="pms-workorder-assignee-avatar"><UserOutlined /></span>
+                    <div><small>当前负责人</small><strong>{assigneeName}</strong></div>
+                  </div>
+                  <Descriptions
+                    className="pms-workorder-side-descriptions"
+                    size="middle"
+                    column={1}
+                    colon={false}
+                    items={[
+                      {
+                        key: 'type',
+                        label: '工单类型',
+                        children: (() => {
+                          const label = getRepairTypeLabel(detail.request.repairType, repairTypeRules);
+                          const lockReason = repairTypeAndSlaLockReason(detail.workOrder.status);
+                          if (!canEdit) return label;
+                          if (lockReason) {
+                            return (
+                              <Space size={6} wrap>
+                                <Text type="secondary">{label}</Text>
+                                <Text type="secondary" className="pms-workorder-lock-reason">（{lockReason}）</Text>
+                              </Space>
+                            );
+                          }
+                          return (
+                            <Space size={6} wrap>
+                              {label}
+                              <Button type="link" size="small" onClick={() => setChangeTypeOpen(true)}>更正类型</Button>
+                            </Space>
+                          );
+                        })(),
+                      },
+                      { key: 'skill', label: '维修工种', children: getRepairTypeLabel(detail.workOrder.skill, repairTypeRules) },
+                      {
+                        key: 'sla',
+                        label: '要求完成时间',
+                        children: (
+                          <Space direction="vertical" size={10}>
+                            <SlaDueEditor
+                              workOrderId={detail.workOrder.id}
+                              value={detail.workOrder.slaDueAt ?? null}
+                              status={detail.workOrder.status}
+                              canEdit={canEdit}
+                              onChanged={refresh}
+                            />
+                            <UrgeRepairButton
+                              workOrderId={detail.workOrder.id}
+                              status={detail.workOrder.status}
+                              canEdit={canEdit}
+                              onDone={refresh}
+                            />
+                          </Space>
+                        ),
+                      },
+                    ]}
+                  />
+                </DetailSection>
+
+                <DetailSection title="处理进度" description="从报修到当前节点的完整轨迹">
+                  <Timeline
+                    className="pms-detail-timeline"
+                    items={detail.logs.map((log, index) => ({
+                      color: log.toStatus === WorkOrderStatus.COMPLETED ? 'green' : 'blue',
+                      children: (
+                        <div className="pms-workorder-timeline-entry">
+                          <div className="pms-workorder-timeline-title">
+                            <strong>{actionLabel(log.action)}</strong>
+                            <Text type="secondary">{formatDateTimeCn(log.createdAt)}</Text>
+                            {(() => {
+                              const next = detail.logs[index + 1];
+                              const finished =
+                                detail.workOrder.status === WorkOrderStatus.COMPLETED ||
+                                detail.workOrder.status === WorkOrderStatus.CANCELLED;
+                              const stay = next
+                                ? formatDuration(log.createdAt, next.createdAt)
+                                : finished
+                                  ? ''
+                                  : formatDuration(log.createdAt, null);
+                              return stay ? <Text type="secondary" className="pms-workorder-timeline-stay">停留 {stay}</Text> : null;
+                            })()}
+                          </div>
+                          <div className="pms-workorder-timeline-note">
+                            {log.fromStatus && (
+                              <Text type="secondary">
+                                {statusMeta[log.fromStatus].label} → {statusMeta[log.toStatus].label}
+                              </Text>
+                            )}
+                            {log.note && <div>{log.note}</div>}
+                          </div>
+                        </div>
+                      ),
+                    }))}
+                  />
+                </DetailSection>
+              </div>
+            </div>
+          </div>
         )}
       </Drawer>
 
