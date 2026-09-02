@@ -115,11 +115,14 @@ function flattenCached(book: AddressCommunity[]) {
   return hit;
 }
 
-/** 地址簿按小区缓存，一次进页面只拉一次 */
+/** 地址簿按「登录人数据范围 + 小区」缓存，换账号时绝不能复用上个人的地址簿 */
 const cache = new Map<string, AddressCommunity[]>();
 
-export async function loadAddressBook(communityId?: number): Promise<AddressCommunity[]> {
-  const key = String(communityId ?? 'all');
+export async function loadAddressBook(
+  communityId?: number,
+  cacheScope = 'default',
+): Promise<AddressCommunity[]> {
+  const key = `${cacheScope}:${String(communityId ?? 'all')}`;
   const hit = cache.get(key);
   if (hit) return hit;
   const book = await address.book(communityId);

@@ -22,7 +22,7 @@
 const PUBLIC_AREA_WORDS: string[] = [
   // 门禁对讲这一套：报修最常见的公区故障
   '单元门口机', '门口机', '可视对讲', '楼宇对讲', '对讲机', '对讲', '单元门禁', '门禁',
-  '道闸', '车闸', '闸机', '单元门', '大门', '铁门', '防盗门',
+  '道闸', '车闸', '闸机', '单元门', '楼下门', '大门', '铁门', '防盗门',
   // 垂直交通与通道
   '电梯', '扶梯', '楼道', '楼梯间', '走廊', '过道', '消防通道', '天井',
   // 公共机电
@@ -62,4 +62,17 @@ export function detectPublicAreaWord(text: string): string {
 
 export function isPublicAreaText(text: string): boolean {
   return !!detectPublicAreaWord(text);
+}
+
+/**
+ * 规则能明确判断时返回 true / false，文字本身没说清时返回 null 交给 AI。
+ * 确定性的“楼下门”和“家里”都不能再被模型的偶发误判反向覆盖。
+ */
+export function classifyPublicAreaText(text: string): boolean | null {
+  const value = String(text || '');
+  if (!value) return null;
+  if (INDOOR_MARKERS.some((word) => value.includes(word))) return false;
+  if (INDOOR_WORDS.some((word) => value.includes(word))) return false;
+  if (PUBLIC_AREA_WORDS.some((word) => value.includes(word))) return true;
+  return null;
 }

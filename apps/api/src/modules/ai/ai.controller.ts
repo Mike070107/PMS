@@ -4,6 +4,8 @@ import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../access/permissions.guard';
+import { ResolvedAccess } from '../access/access.service';
+import { CurrentAccess } from '../access/current-access.decorator';
 import { ExtractSamplesService } from './extract-samples.service';
 import { RepairTextAiService } from './repair-text.ai';
 import { LlmService } from './llm.service';
@@ -109,34 +111,50 @@ export class AiController {
   @RequirePermission('settings', 'view')
   listFeedback(
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
     @Query('kind') kind?: string,
     @Query('status') status?: string,
   ) {
-    return this.feedback.list(user.tenantId as number, kind, status);
+    return this.feedback.list(user.tenantId as number, user, access, kind, status);
   }
 
   @Post('feedback/:id/promote')
   @RequirePermission('settings', 'edit')
-  promoteFeedback(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
-    return this.feedback.promote(user.tenantId as number, user.id, id);
+  promoteFeedback(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feedback.promote(user.tenantId as number, user, access, id);
   }
 
   @Post('feedback/:id/ignore')
   @RequirePermission('settings', 'edit')
-  ignoreFeedback(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
-    return this.feedback.ignore(user.tenantId as number, user.id, id);
+  ignoreFeedback(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feedback.ignore(user.tenantId as number, user, access, id);
   }
 
   @Get('fee-rules')
   @RequirePermission('settings', 'view')
-  listFeeRules(@CurrentUser() user: AuthUser) {
-    return this.feeRules.list(user.tenantId as number);
+  listFeeRules(
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feeRules.list(user.tenantId as number, false, access);
   }
 
   @Post('fee-rules')
   @RequirePermission('settings', 'edit')
-  createFeeRule(@Body() dto: FeeRuleDto, @CurrentUser() user: AuthUser) {
-    return this.feeRules.create(user.tenantId as number, user.id, dto);
+  createFeeRule(
+    @Body() dto: FeeRuleDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feeRules.create(user.tenantId as number, user.id, dto, access);
   }
 
   @Patch('fee-rules/:id')
@@ -145,13 +163,18 @@ export class AiController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: FeeRuleDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.feeRules.update(user.tenantId as number, user.id, id, dto);
+    return this.feeRules.update(user.tenantId as number, user.id, id, dto, access);
   }
 
   @Delete('fee-rules/:id')
   @RequirePermission('settings', 'edit')
-  removeFeeRule(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
-    return this.feeRules.remove(user.tenantId as number, id);
+  removeFeeRule(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feeRules.remove(user.tenantId as number, id, access);
   }
 }

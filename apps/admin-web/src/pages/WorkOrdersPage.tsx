@@ -582,7 +582,28 @@ export default function WorkOrdersPage() {
 
   const loadRepairTypeRules = useCallback(async () => {
     try {
-      setRepairTypeRules(await request<RepairTypeRule[]>({ url: '/repair-type-rules' }));
+      // 工单录入只需要类型名称和关键词，不需要默认维修工等内部配置。
+      // 受限管理处账号不能读取总公司配置页，但仍要能正常显示类型名称。
+      const types = await request<
+        Array<{ repairType: string; label: string; keywords: string[] }>
+      >({ url: '/repair-types' });
+      setRepairTypeRules(
+        types.map((item, index) => ({
+          id: -(index + 1),
+          officeId: null,
+          repairType: item.repairType,
+          label: item.label,
+          assigneeId: null,
+          assigneeIds: [],
+          slaHours: null,
+          sortOrder: index,
+          enabled: true,
+          contentSuggestions: item.keywords ?? [],
+          templateSuggestions: [],
+          extraSuggestions: [],
+          mutedSuggestions: [],
+        })),
+      );
     } catch (e: any) {
       message.error(e?.message || '加载报修类型失败');
     }
@@ -2602,6 +2623,8 @@ function RepairTypeRuleModal({
   const { message } = AntdApp.useApp();
   const { canDelete, canEdit } = usePagePerm('work-orders');
   const { access } = useAuth();
+  const canUseCompanyScope =
+    !!access?.scopeAll || !!access?.isTenantAdmin || !!access?.isPlatformAdmin;
   // 管理处列表现取现用：登录时拿的 access.offices 不含刚新建的管理处，拿不到就退回它
   // （退回来的那份没有「猜你想输」口径开关，按默认值补上，等接口回来再覆盖）
   const [offices, setOffices] = useState<RuleOffice[]>(
@@ -2615,7 +2638,9 @@ function RepairTypeRuleModal({
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<RepairTypeRule | null>(null);
   /** 当前在配哪一套：'company' = 公司默认模板，数字 = 管理处 id */
-  const [tab, setTab] = useState<'company' | number>('company');
+  const [tab, setTab] = useState<'company' | number>(() =>
+    canUseCompanyScope ? 'company' : access?.offices?.[0]?.id ?? 'company',
+  );
   const officeId = tab === 'company' ? null : tab;
   const officeName = officeId ? nameOr(offices.find((o) => o.id === officeId)?.name, '管理处') : '';
   const [localRules, setLocalRules] = useState<RepairTypeRule[]>([]);
@@ -2864,12 +2889,25 @@ function RepairTypeRuleModal({
 
   useEffect(() => {
     if (!open) return;
-    setTab('company');
-    startCreate();
-    loadTab('company');
     request<RuleOffice[]>({ url: '/repair-type-rules/offices' })
-      .then((list) => { if (Array.isArray(list)) setOffices(list); })
-      .catch(() => {});
+      .then((list) => {
+        const next = Array.isArray(list) ? list : [];
+        setOffices(next);
+        const firstTab: 'company' | number = canUseCompanyScope
+          ? 'company'
+          : next[0]?.id ?? access?.offices?.[0]?.id ?? 'company';
+        setTab(firstTab);
+        startCreate();
+        loadTab(firstTab);
+      })
+      .catch(() => {
+        const firstTab: 'company' | number = canUseCompanyScope
+          ? 'company'
+          : access?.offices?.[0]?.id ?? 'company';
+        setTab(firstTab);
+        startCreate();
+        loadTab(firstTab);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -2996,7 +3034,7 @@ function RepairTypeRuleModal({
         activeKey={String(tab)}
         onChange={(key) => switchTab(key === 'company' ? 'company' : Number(key))}
         items={[
-          { key: 'company', label: '总公司' },
+          ...(canUseCompanyScope ? [{ key: 'company', label: '总公司' }] : []),
           ...offices.map((o) => ({ key: String(o.id), label: o.name })),
         ]}
         className="pms-repair-rule-tabs"

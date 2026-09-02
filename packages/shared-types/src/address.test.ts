@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatAddressLine, isLaneRedundant } from './address';
+import { formatAddressLine, formatReporterRoomLabel, isLaneRedundant } from './address';
 
 /**
  * 地址少一段还是多一段，代价都落在维修工腿上：
@@ -13,6 +13,11 @@ const b = (lane: string | null, no: string, road: string | null = null) => ({
   lane,
   buildingNo: no,
   roadName: road,
+});
+
+test('公区报修的住户门牌统一成斜杠联系人标识', () => {
+  assert.equal(formatReporterRoomLabel('228弄2号', '802'), '228/2/802');
+  assert.equal(formatReporterRoomLabel('2号', '802室'), '2/802');
 });
 
 test('小区名里已经写了这个弄 → 省掉，不说两遍', () => {

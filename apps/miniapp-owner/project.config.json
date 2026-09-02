@@ -1,49 +1,49 @@
 {
-    "miniprogramRoot": "miniprogram/",
-    "projectname": "miniapp-owner",
-    "description": "邻修 · 业主端",
-    "appid": "wx8ef4de0e498064c4",
-    "setting": {
-        "urlCheck": true,
-        "es6": true,
-        "enhance": true,
-        "postcss": true,
-        "minified": true,
-        "newFeature": true,
-        "nodeModules": true,
-        "packNpmManually": true,
-        "packNpmRelationList": [
-            {
-                "packageJsonPath": "./package.json",
-                "miniprogramNpmDistDir": "./miniprogram/"
-            }
-        ],
-        "compileWorklet": false,
-        "uglifyFileName": false,
-        "uploadWithSourceMap": true,
-        "minifyWXSS": true,
-        "minifyWXML": true,
-        "localPlugins": false,
-        "disableUseStrict": false,
-        "useCompilerPlugins": [
-            "typescript"
-        ],
-        "condition": false,
-        "swc": false,
-        "disableSWC": true,
-        "babelSetting": {
-            "ignore": [],
-            "disablePlugins": [],
-            "outputPath": ""
-        }
-    },
-    "compileType": "miniprogram",
-    "libVersion": "3.5.0",
-    "condition": {},
-    "simulatorPluginLibVersion": {},
-    "packOptions": {
-        "ignore": [],
-        "include": []
-    },
-    "editorSetting": {}
+  "miniprogramRoot": "miniprogram/",
+  "projectname": "miniapp-owner",
+  "description": "邻修 · 业主端",
+  "appid": "wx8ef4de0e498064c4",
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "newFeature": true,
+    "nodeModules": true,
+    "packNpmManually": true,
+    "packNpmRelationList": [
+      {
+        "packageJsonPath": "./package.json",
+        "miniprogramNpmDistDir": "./miniprogram/"
+      }
+    ],
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": [
+      "typescript"
+    ],
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "compileType": "miniprogram",
+  "libVersion": "3.5.0",
+  "condition": {},
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "editorSetting": {}
 }

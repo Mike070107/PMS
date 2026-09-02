@@ -1,7 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { AiAssistFeedback } from '../../entities';
+import { In, Repository } from 'typeorm';
+import { AuthUser } from '../../common/current-user.decorator';
+import { AiAssistFeedback, WorkOrder } from '../../entities';
+import { ResolvedAccess } from '../access/access.service';
+import { scopeCommunityIds } from '../access/scope.util';
 import { ExtractSamplesService } from './extract-samples.service';
 
 export interface AiFeedbackInput {
@@ -19,6 +22,8 @@ export class AiFeedbackService {
   constructor(
     @InjectRepository(AiAssistFeedback)
     private readonly repo: Repository<AiAssistFeedback>,
+    @InjectRepository(WorkOrder)
+    private readonly workOrderRepo: Repository<WorkOrder>,
     private readonly samples: ExtractSamplesService,
   ) {}
 
@@ -47,8 +52,14 @@ export class AiFeedbackService {
     );
   }
 
-  list(tenantId: number, kind?: string, status?: string) {
-    return this.repo.find({
+  async list(
+    tenantId: number,
+    user: AuthUser,
+    access?: ResolvedAccess,
+    kind?: string,
+    status?: string,
+  ) {
+    const rows = await this.repo.find({
       where: {
         tenantId,
         ...(kind === 'repair' || kind === 'completion' ? { kind } : {}),
@@ -59,31 +70,83 @@ export class AiFeedbackService {
       order: { updatedAt: 'DESC' },
       take: 100,
     });
+    return this.filterByAccess(tenantId, rows, user, access);
   }
 
-  async promote(tenantId: number, userId: number, id: number) {
+  async promote(
+    tenantId: number,
+    user: AuthUser,
+    access: ResolvedAccess | undefined,
+    id: number,
+  ) {
     const row = await this.findOne(tenantId, id);
+    await this.assertVisible(tenantId, row, user, access);
     if (row.status !== 'pending') throw new BadRequestException('只有待审核的纠错可以收为样例');
     if (Object.keys(row.fieldDiff).every((key) => key === 'feeRuleCode' || key === 'feeCents')) {
       throw new BadRequestException('这次只修改了收费，请调整维修收费规则后忽略本条');
     }
-    await this.samples.create(tenantId, userId, {
+    await this.samples.create(tenantId, user.id, {
       kind: row.kind,
       text: row.sourceText,
       expected: sampleExpected(row.kind, row.finalValue),
       note: `由工单 #${row.workOrderId ?? '-'} 的人工纠错审核收录`,
     });
     row.status = 'promoted';
-    row.updatedBy = userId;
+    row.updatedBy = user.id;
     await this.repo.save(row);
     return row;
   }
 
-  async ignore(tenantId: number, userId: number, id: number) {
+  async ignore(
+    tenantId: number,
+    user: AuthUser,
+    access: ResolvedAccess | undefined,
+    id: number,
+  ) {
     const row = await this.findOne(tenantId, id);
+    await this.assertVisible(tenantId, row, user, access);
     row.status = 'ignored';
-    row.updatedBy = userId;
+    row.updatedBy = user.id;
     return this.repo.save(row);
+  }
+
+  private async filterByAccess(
+    tenantId: number,
+    rows: AiAssistFeedback[],
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const scope = scopeCommunityIds(access);
+    if (!scope) return rows;
+    if (!scope.length || !rows.length) return [];
+    const workOrderIds = [
+      ...new Set(rows.map((row) => row.workOrderId).filter((id): id is number => !!id)),
+    ];
+    const workOrders = workOrderIds.length
+      ? await this.workOrderRepo.find({
+          where: { tenantId, id: In(workOrderIds) },
+          select: ['id', 'communityId'],
+        })
+      : [];
+    const visibleIds = new Set(
+      workOrders
+        .filter((workOrder) => scope.includes(workOrder.communityId))
+        .map((workOrder) => workOrder.id),
+    );
+    return rows.filter((row) =>
+      row.workOrderId ? visibleIds.has(row.workOrderId) : row.createdBy === user.id,
+    );
+  }
+
+  private async assertVisible(
+    tenantId: number,
+    row: AiAssistFeedback,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    if (!(await this.filterByAccess(tenantId, [row], user, access)).length) {
+      throw new NotFoundException('AI 纠错记录不存在');
+    }
   }
 
   private async findOne(tenantId: number, id: number) {

@@ -5,11 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { Community, ManagementOffice, RepairTypeRule, RoleScope, Warehouse } from '../../entities';
 import { WarehouseType } from '../../common/enums';
 import { ensureOfficeRepairRules } from '../repairs/repair-rule-template';
+import { ResolvedAccess } from '../access/access.service';
+import { scopeCommunityIds } from '../access/scope.util';
 import { SaveOfficeDto } from './dto';
 
 @Injectable()
@@ -27,34 +29,46 @@ export class OfficesService {
     private readonly roleScopeRepo: Repository<RoleScope>,
   ) {}
 
-  async list(user: AuthUser) {
+  async list(user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const [offices, tops] = await Promise.all([
+    const [offices, communities] = await Promise.all([
       this.officeRepo.find({ where: { tenantId }, order: { id: 'ASC' } }),
       this.communityRepo.find({
-        where: { tenantId, parentId: IsNull() },
+        where: { tenantId },
         order: { id: 'ASC' },
       }),
     ]);
+    const tops = communities.filter((item) => item.parentId === null);
+    const scope = scopeCommunityIds(access);
+    const visibleOfficeIds = this.officeIdsInScope(scope, communities);
+    const visibleOffices = visibleOfficeIds
+      ? offices.filter((office) => visibleOfficeIds.has(office.id))
+      : offices;
     return {
-      offices: offices.map((o) => ({
+      offices: visibleOffices.map((o) => ({
         id: o.id,
         name: o.name,
         remark: o.remark,
         enabled: o.enabled,
         communities: tops
-          .filter((c) => c.officeId === o.id)
+          .filter(
+            (c) =>
+              c.officeId === o.id && (!scope || scope.includes(c.id)),
+          )
           .map((c) => ({ id: c.id, name: c.name })),
       })),
       /** 尚未划入任何管理处的顶层小区，页面上提示分配 */
       unassigned: tops
-        .filter((c) => !c.officeId)
+        .filter((c) => !c.officeId && (!scope || scope.includes(c.id)))
         .map((c) => ({ id: c.id, name: c.name })),
     };
   }
 
-  async create(dto: SaveOfficeDto, user: AuthUser) {
+  async create(dto: SaveOfficeDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
+    if (scopeCommunityIds(access)) {
+      throw new ForbiddenException('只有全公司数据范围的账号能新建管理处');
+    }
     await this.ensureNameFree(tenantId, dto.name);
     const office = await this.officeRepo.save(
       this.officeRepo.create({
@@ -113,10 +127,12 @@ export class OfficesService {
     );
   }
 
-  async update(id: number, dto: SaveOfficeDto, user: AuthUser) {
+  async update(id: number, dto: SaveOfficeDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const office = await this.officeRepo.findOne({ where: { id, tenantId } });
     if (!office) throw new NotFoundException('管理处不存在');
+    await this.assertOfficeInScope(tenantId, id, access);
+    this.assertCommunityIdsInScope(dto.communityIds, access);
     if (dto.name.trim() !== office.name) {
       await this.ensureNameFree(tenantId, dto.name);
     }
@@ -131,10 +147,11 @@ export class OfficesService {
     return { id: office.id };
   }
 
-  async remove(id: number, user: AuthUser) {
+  async remove(id: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const office = await this.officeRepo.findOne({ where: { id, tenantId } });
     if (!office) throw new NotFoundException('管理处不存在');
+    await this.assertOfficeInScope(tenantId, id, access);
     const communityCount = await this.communityRepo.count({
       where: { tenantId, officeId: id },
     });
@@ -151,6 +168,61 @@ export class OfficesService {
     }
     await this.officeRepo.delete({ id, tenantId });
     return { ok: true };
+  }
+
+  private officeIdsInScope(
+    scope: number[] | null,
+    communities: Array<Pick<Community, 'id' | 'parentId' | 'officeId'>>,
+  ): Set<number> | null {
+    if (!scope) return null;
+    const byId = new Map(communities.map((item) => [item.id, item]));
+    const officeIds = new Set<number>();
+    for (const id of scope) {
+      const item = byId.get(id);
+      const officeId =
+        item?.officeId ??
+        (item?.parentId ? byId.get(item.parentId)?.officeId : null);
+      if (officeId) officeIds.add(officeId);
+    }
+    return officeIds;
+  }
+
+  private async assertOfficeInScope(
+    tenantId: number,
+    officeId: number,
+    access?: ResolvedAccess,
+  ) {
+    const scope = scopeCommunityIds(access);
+    if (!scope) return;
+    if (!scope.length) throw new NotFoundException('管理处不存在');
+    const communities = await this.communityRepo.find({
+      where: { tenantId },
+      select: ['id', 'parentId', 'officeId'],
+    });
+    const topIds = communities
+      .filter((item) => item.officeId === officeId)
+      .map((item) => item.id);
+    const officeCommunityIds = new Set(topIds);
+    communities
+      .filter((item) => item.parentId != null && topIds.includes(item.parentId))
+      .forEach((item) => officeCommunityIds.add(item.id));
+    if (
+      !officeCommunityIds.size ||
+      [...officeCommunityIds].some((id) => !scope.includes(id))
+    ) {
+      throw new NotFoundException('管理处不存在');
+    }
+  }
+
+  private assertCommunityIdsInScope(
+    communityIds: number[] | undefined,
+    access?: ResolvedAccess,
+  ) {
+    if (communityIds === undefined) return;
+    const scope = scopeCommunityIds(access);
+    if (scope && communityIds.some((id) => !scope.includes(id))) {
+      throw new ForbiddenException('所选小区超出你的数据范围');
+    }
   }
 
   /**

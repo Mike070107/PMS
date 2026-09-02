@@ -77,6 +77,12 @@ const FIELDS: Record<SampleKind, Array<{ key: string; label: string; placeholder
       placeholder: '5511弄，236号，502（照抄原话里表示地点的那一段；中文数字写成阿拉伯数字）',
       hint: '这里教的是「哪一段是地址」。真正的门牌仍然要回房产库里撞，撞不上系统不会填。',
     },
+    {
+      key: 'publicArea',
+      label: '故障区域',
+      placeholder: '请选择户内或公共区域',
+      hint: '按坏的设施判断。住户说了自己房号，但坏的是楼下门、门口机、单元门时，应选公共区域。',
+    },
     { key: 'description', label: '应该认出的故障描述', placeholder: '电子门旋钮打滑，居民出不去' },
     { key: 'contactName', label: '应该认出的联系人', placeholder: '没说人名就留空' },
     {
@@ -115,6 +121,7 @@ const EMPTY_DRAFT: Record<string, string> = {
   faultSymptom: '',
   phone: '',
   repairType: '',
+  publicArea: '',
   materials: '',
 };
 
@@ -178,9 +185,15 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
                       .split(/[、,，\s]+/)
                       .map((x) => x.trim())
                       .filter(Boolean)
+                  : f.key === 'publicArea'
+                    ? draft.publicArea === 'true'
+                      ? true
+                      : draft.publicArea === 'false'
+                        ? false
+                        : undefined
                   : draft[f.key]?.trim(),
               ])
-              .filter(([, v]) => (Array.isArray(v) ? v.length : !!v)),
+              .filter(([, v]) => (Array.isArray(v) ? v.length : v !== undefined && v !== '')),
           ),
         },
       });
@@ -270,6 +283,11 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
                 {v?.faultLocation ? <Tag>位置 {v.faultLocation}</Tag> : null}
                 {v?.faultSymptom ? <Tag>现象 {v.faultSymptom}</Tag> : null}
                 {v?.phone ? <Tag>电话 {v.phone}</Tag> : null}
+                {typeof v?.publicArea === 'boolean' ? (
+                  <Tag color={v.publicArea ? 'cyan' : 'green'}>
+                    {v.publicArea ? '公共区域' : '住户户内'}
+                  </Tag>
+                ) : null}
                 {v?.materials?.length ? <Tag>用料 {v.materials.join('、')}</Tag> : null}
                 {v?.urgent ? <Tag color="red">紧急</Tag> : null}
               </Space>
@@ -335,6 +353,17 @@ export default function AiSamplesPanel({ canEdit }: { canEdit: boolean }) {
                   onChange={(value) => setDraft({ ...draft, repairType: value })}
                   placeholder={f.placeholder}
                   options={repairTypes.map((item) => ({ value: item.repairType, label: item.label }))}
+                />
+              ) : f.key === 'publicArea' ? (
+                <Select
+                  style={{ width: '100%' }}
+                  value={draft.publicArea || undefined}
+                  onChange={(value) => setDraft({ ...draft, publicArea: value })}
+                  placeholder={f.placeholder}
+                  options={[
+                    { value: 'true', label: '公共区域（楼下门、门口机、单元门等）' },
+                    { value: 'false', label: '住户户内' },
+                  ]}
                 />
               ) : (
                 <Input

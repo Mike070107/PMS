@@ -67,8 +67,8 @@ export class OwnersMgmtService {
       .limit(500);
 
     if (scope) {
-      // 未绑房号的业主没有小区归属，仍然要能被范围内的管理员处理，所以放行 NULL
-      qb.andWhere('(c.id IN (:...scopeIds) OR c.id IS NULL)', { scopeIds: scope });
+      // 未绑房号的业主没有可判断的管理处归属，只能由全公司范围账号处理。
+      qb.andWhere('c.id IN (:...scopeIds)', { scopeIds: scope });
     }
     if (query.communityId) {
       qb.andWhere('c.id = :cid', { cid: query.communityId });
@@ -120,9 +120,10 @@ export class OwnersMgmtService {
     }));
   }
 
-  async create(dto: CreateOwnerDto, user: AuthUser) {
+  async create(dto: CreateOwnerDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     if (!dto.phone) throw new BadRequestException('phone is required');
+    await this.assertHouseInScope(tenantId, dto.houseId ?? null, access);
 
     const dup = await this.userRepo.findOne({
       where: { tenantId, phone: dto.phone, role: UserRole.OWNER },
@@ -156,12 +157,18 @@ export class OwnersMgmtService {
     return this.fetchOne(owner.id, tenantId);
   }
 
-  async update(id: number, dto: UpdateOwnerDto, user: AuthUser) {
+  async update(
+    id: number,
+    dto: UpdateOwnerDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.requireTenant(user);
     const owner = await this.userRepo.findOne({
       where: { id, tenantId, role: UserRole.OWNER },
     });
     if (!owner) throw new NotFoundException('owner not found');
+    await this.assertHouseInScope(tenantId, owner.houseId, access);
 
     if (dto.phone && dto.phone !== owner.phone) {
       const dup = await this.userRepo.findOne({
@@ -177,8 +184,12 @@ export class OwnersMgmtService {
     if (dto.contactNote !== undefined) owner.contactNote = dto.contactNote || null;
     if (dto.houseId !== undefined) {
       if (dto.houseId === null) {
+        if (scopeCommunityIds(access)) {
+          throw new ForbiddenException('受限账号不能把业主改成无管理处归属');
+        }
         owner.houseId = null;
       } else {
+        await this.assertHouseInScope(tenantId, dto.houseId, access);
         await this.assertHouseAvailable(tenantId, dto.houseId, id);
         owner.houseId = dto.houseId;
       }
@@ -191,12 +202,13 @@ export class OwnersMgmtService {
     return this.fetchOne(id, tenantId);
   }
 
-  async remove(id: number, user: AuthUser) {
+  async remove(id: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const owner = await this.userRepo.findOne({
       where: { id, tenantId, role: UserRole.OWNER },
     });
     if (!owner) throw new NotFoundException('owner not found');
+    await this.assertHouseInScope(tenantId, owner.houseId, access);
     // 软停用：保留历史工单/审计链路
     owner.status = UserStatus.DISABLED;
     owner.updatedBy = user.id;
@@ -216,8 +228,15 @@ export class OwnersMgmtService {
    * 3. **认不出手机号的联系方式不当手机号用**：固话、「13xxxx袁」这种脏数据一律进 contactNote，
    *    phone 留空。宁可空着让人补，也不能让业主端拿一个错号码去匹配房屋。
    */
-  async importOwners(dto: ImportOwnersDto, user: AuthUser) {
+  async importOwners(
+    dto: ImportOwnersDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.requireTenant(user);
+    if (scopeCommunityIds(access)) {
+      throw new ForbiddenException('批量导入只能由全公司数据范围的账号执行');
+    }
     const rows = dto.rows ?? [];
     if (!rows.length) throw new BadRequestException('没有要导入的数据');
 
@@ -362,6 +381,27 @@ export class OwnersMgmtService {
       if (toSave.length) await manager.save(toSave, { chunk: 500 });
       return result;
     });
+  }
+
+  private async assertHouseInScope(
+    tenantId: number,
+    houseId: number | null,
+    access?: ResolvedAccess,
+  ) {
+    const scope = scopeCommunityIds(access);
+    if (!scope) return;
+    if (!houseId) {
+      throw new ForbiddenException('受限账号只能维护已归属本管理处房屋的业主');
+    }
+    const house = await this.houseRepo.findOne({ where: { id: houseId, tenantId } });
+    if (!house) throw new NotFoundException('house not found');
+    const building = await this.dataSource.getRepository(Building).findOne({
+      where: { id: house.buildingId, tenantId },
+      select: ['id', 'communityId'],
+    });
+    if (!building || !scope.includes(building.communityId)) {
+      throw new NotFoundException('owner not found');
+    }
   }
 
   /** 认得出来才当手机号：11 位 1[3-9] 开头。其余（固话、带汉字的）一律不进 phone 字段 */

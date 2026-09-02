@@ -47,8 +47,12 @@ export class OwnersMgmtController {
 
   @Post()
   @RequirePermission(['owners', 'properties'], 'edit')
-  create(@Body() dto: CreateOwnerDto, @CurrentUser() user: AuthUser) {
-    return this.ownersMgmtService.create(dto, user);
+  create(
+    @Body() dto: CreateOwnerDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.ownersMgmtService.create(dto, user, access);
   }
 
   /**
@@ -57,8 +61,12 @@ export class OwnersMgmtController {
    */
   @Post('import')
   @RequirePermission(['owners', 'properties'], 'edit')
-  importOwners(@Body() dto: ImportOwnersDto, @CurrentUser() user: AuthUser) {
-    return this.ownersMgmtService.importOwners(dto, user);
+  importOwners(
+    @Body() dto: ImportOwnersDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.ownersMgmtService.importOwners(dto, user, access);
   }
 
   @Patch(':id')
@@ -67,8 +75,9 @@ export class OwnersMgmtController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOwnerDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.ownersMgmtService.update(id, dto, user);
+    return this.ownersMgmtService.update(id, dto, user, access);
   }
 
   @Delete(':id')
@@ -76,7 +85,8 @@ export class OwnersMgmtController {
   remove(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.ownersMgmtService.remove(id, user);
+    return this.ownersMgmtService.remove(id, user, access);
   }
 }

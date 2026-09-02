@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { UserRole, WorkOrderStatus } from '../common/enums';
 import { InventoryService } from './inventory/inventory.service';
+import { AiFeedbackService } from './ai/ai-feedback.service';
+import { RepairFeeRulesService } from './ai/repair-fee-rules.service';
+import { OfficesService } from './offices/offices.service';
 import { PropertiesService } from './properties/properties.service';
 import { QrService } from './qr/qr.service';
 import { RepairsService } from './repairs/repairs.service';
@@ -65,6 +68,207 @@ test('按库存/仓库编号操作时仍校验可见仓范围', async () => {
   await assert.rejects(
     () => service.assertWarehouseVisible(1, user, 9, {}),
     /warehouse not found/,
+  );
+});
+
+test('员工地址簿只返回业务角色范围内的小区，空范围不是全公司', async () => {
+  const service = Object.create(PropertiesService.prototype) as any;
+  service.buildAddressTree = async () => [
+    { id: 10, parentId: 1, name: '枫桦景苑一期' },
+    { id: 11, parentId: 1, name: '枫桦景苑二期' },
+    { id: 20, parentId: null, name: '其它小区' },
+  ];
+  const user = { id: 7, role: UserRole.STAFF, tenantId: 1 } as any;
+  const scoped = { scopeAll: false, communityIds: [10, 11] } as any;
+
+  assert.deepEqual(
+    (await service.getAddressBook(undefined, user, scoped)).map((item: any) => item.id),
+    [10, 11],
+  );
+  await assert.rejects(
+    () => service.getAddressBook(20, user, scoped),
+    /community not found/,
+  );
+  assert.deepEqual(
+    await service.getAddressBook(undefined, user, {
+      scopeAll: false,
+      communityIds: [],
+    }),
+    [],
+  );
+});
+
+test('员工报修地址识别在空数据范围时不会退化成全公司匹配', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  service.resolveTenantId = () => 1;
+  service.communityRepo = {
+    async find() {
+      return [{ id: 20, parentId: null, tenantId: 1, enabled: true, name: '其它小区' }];
+    },
+  };
+
+  const result = await service.parseAddressByRule(
+    { text: '其它小区大门坏了' },
+    { id: 7, role: UserRole.STAFF, tenantId: 1 },
+    { scopeAll: false, communityIds: [] },
+  );
+  assert.deepEqual(result, { matched: false });
+});
+
+test('员工不能伪造其它管理处的小区编号提交报修', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  service.resolveTenantId = () => 1;
+  const user = { id: 7, role: UserRole.STAFF, tenantId: 1 } as any;
+
+  await assert.rejects(
+    () => service.submitOwnerRepair(
+      { communityId: 20 },
+      user,
+      { scopeAll: false, communityIds: [10, 11] },
+    ),
+    /该小区不在你的管理范围内/,
+  );
+});
+
+test('管理处列表按任意员工角色的数据范围过滤，不按角色名称判断', () => {
+  const service = Object.create(OfficesService.prototype) as any;
+  const communities = [
+    { id: 10, parentId: null, officeId: 1 },
+    { id: 11, parentId: 10, officeId: null },
+    { id: 20, parentId: null, officeId: 2 },
+  ];
+  assert.deepEqual(
+    [...service.officeIdsInScope([10, 11], communities)],
+    [1],
+  );
+  assert.deepEqual(
+    [...service.officeIdsInScope([20], communities)],
+    [2],
+  );
+  assert.equal(service.officeIdsInScope(null, communities), null);
+});
+
+test('报修类型配置只能维护角色完整覆盖的管理处', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  service.accessService = {
+    async officeCommunityIds() {
+      return [10, 11];
+    },
+  };
+  await assert.doesNotReject(() =>
+    service.assertRuleOfficeInScope(1, 1, {
+      scopeAll: false,
+      communityIds: [10, 11],
+    }),
+  );
+  await assert.rejects(
+    () => service.assertRuleOfficeInScope(1, 1, {
+      scopeAll: false,
+      communityIds: [10],
+    }),
+    /管理处不存在/,
+  );
+  await assert.rejects(
+    () => service.assertRuleOfficeInScope(1, null, {
+      scopeAll: false,
+      communityIds: [10, 11],
+    }),
+    /全公司报修类型模板/,
+  );
+});
+
+test('采购申请按工单小区或申请人所属管理处过滤', async () => {
+  const service = Object.create(InventoryService.prototype) as any;
+  service.dataSource = {
+    getRepository() {
+      return {
+        async find() {
+          return [
+            { id: 101, communityId: 10 },
+            { id: 102, communityId: 20 },
+          ];
+        },
+      };
+    },
+  };
+  service.accessService = {
+    async officeIdOfCommunity(_tenantId: number, communityId: number) {
+      return communityId === 10 ? 1 : 2;
+    },
+    async userOfficeIds(_tenantId: number, userId: number) {
+      return userId === 8
+        ? { all: false, officeIds: [1] }
+        : { all: false, officeIds: [2] };
+    },
+  };
+  const rows = [
+    { id: 1, workOrderId: 101, applicantId: 7 },
+    { id: 2, workOrderId: 102, applicantId: 7 },
+    { id: 3, workOrderId: null, applicantId: 8 },
+    { id: 4, workOrderId: null, applicantId: 9 },
+  ];
+  const visible = await service.filterPurchaseRequestsByAccess(
+    1,
+    rows,
+    { id: 7, tenantId: 1, role: UserRole.STAFF },
+    { scopeAll: false, communityIds: [10] },
+  );
+  assert.deepEqual(visible.map((row: any) => row.id), [1, 3]);
+});
+
+test('AI 纠错记录按关联工单小区过滤，未关联记录只允许本人查看', async () => {
+  const service = Object.create(AiFeedbackService.prototype) as any;
+  service.workOrderRepo = {
+    async find() {
+      return [
+        { id: 101, communityId: 10 },
+        { id: 102, communityId: 20 },
+      ];
+    },
+  };
+  const rows = [
+    { id: 1, workOrderId: 101, createdBy: 8 },
+    { id: 2, workOrderId: 102, createdBy: 7 },
+    { id: 3, workOrderId: null, createdBy: 7 },
+    { id: 4, workOrderId: null, createdBy: 8 },
+  ];
+  const visible = await service.filterByAccess(
+    1,
+    rows,
+    { id: 7, tenantId: 1, role: UserRole.STAFF },
+    { scopeAll: false, communityIds: [10] },
+  );
+  assert.deepEqual(visible.map((row: any) => row.id), [1, 3]);
+});
+
+test('收费规则只能由完整覆盖对应管理处的角色维护', async () => {
+  const service = Object.create(RepairFeeRulesService.prototype) as any;
+  service.accessService = {
+    async officeCommunityIds() {
+      return [10, 11];
+    },
+  };
+  await assert.doesNotReject(() =>
+    service.assertOfficeManageable(1, 1, {
+      scopeAll: false,
+      communityIds: [10, 11],
+    }),
+  );
+  await assert.rejects(
+    () =>
+      service.assertOfficeManageable(1, 1, {
+        scopeAll: false,
+        communityIds: [10],
+      }),
+    /维修收费规则不存在/,
+  );
+  await assert.rejects(
+    () =>
+      service.assertOfficeManageable(1, null, {
+        scopeAll: false,
+        communityIds: [10, 11],
+      }),
+    /维修收费规则不存在/,
   );
 });
 

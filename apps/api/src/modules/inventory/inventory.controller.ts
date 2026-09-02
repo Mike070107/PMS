@@ -261,8 +261,9 @@ export class InventoryController {
   listPurchaseRequests(
     @Query() query: PurchaseRequestQueryDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.listPurchaseRequests(query, user);
+    return this.inventoryService.listPurchaseRequests(query, user, access);
   }
 
   @Post('purchase-requests')
@@ -282,8 +283,9 @@ export class InventoryController {
   submitToManager(
     @Body() dto: SubmitToManagerDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.submitToManager(dto, user);
+    return this.inventoryService.submitToManager(dto, user, access);
   }
 
   // 审批链的两步各是一格勾选：谁批第一步、谁批第二步，由角色配置说了算
@@ -292,8 +294,9 @@ export class InventoryController {
   approveByManager(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.approveByManager(id, user);
+    return this.inventoryService.approveByManager(id, user, access);
   }
 
   @Post('purchase-requests/:id/purchaser-approve')
@@ -301,8 +304,9 @@ export class InventoryController {
   approveByPurchaser(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.approveByPurchaser(id, user);
+    return this.inventoryService.approveByPurchaser(id, user, access);
   }
 
   // 驳回：两步审批人任一都能驳，提交人自己也能撤
@@ -325,8 +329,9 @@ export class InventoryController {
   listPurchaseOrders(
     @Query() query: TenantQueryDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.listPurchaseOrders(query, user);
+    return this.inventoryService.listPurchaseOrders(query, user, access);
   }
 
   // 下单是采购那一步的后续动作
@@ -335,8 +340,9 @@ export class InventoryController {
   createPurchaseOrder(
     @Body() dto: CreatePurchaseOrderDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.createPurchaseOrder(dto, user);
+    return this.inventoryService.createPurchaseOrder(dto, user, access);
   }
 
   @Get('goods-receipts')

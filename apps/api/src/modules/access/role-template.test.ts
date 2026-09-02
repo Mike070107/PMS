@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AccessService } from './access.service';
 import { RolesService } from '../roles/roles.service';
+import { RoleDataScope } from '../../common/pages';
+import { UserRole } from '../../common/enums';
 
 /**
  * 权限模板：角色 `template_id` 有值时，权限从 role_template_permissions 读。
@@ -203,4 +205,61 @@ test('按权限反查通知收件人时包含跟随模板的角色，不再只�
     [101, 102, 103],
     '模板角色、自定义角色和内置超管都应成为新报修通知候选人',
   );
+});
+
+test('多个受限角色的数据范围取并集，不因角色名称或工种改变', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  svc.tenantRepo = { async findOne() { return { enabledPages: null }; } };
+  svc.userRoleRepo = fakeRepo(
+    [
+      { userId: 7, roleId: 11 },
+      { userId: 7, roleId: 12 },
+    ],
+    {},
+  );
+  svc.roleRepo = fakeRepo(
+    [
+      { id: 11, tenantId: 1, enabled: true, builtIn: false, dataScope: RoleDataScope.OFFICES },
+      { id: 12, tenantId: 1, enabled: true, builtIn: false, dataScope: RoleDataScope.COMMUNITIES },
+    ],
+    {},
+  );
+  svc.effectivePermissions = async () => [];
+  let resolvedRoleIds: number[] = [];
+  svc.resolveScopeCommunityIds = async (_tenantId: number, roleIds: number[]) => {
+    resolvedRoleIds = roleIds;
+    return [10, 11, 20];
+  };
+
+  const access = await svc.getAccess({ id: 7, tenantId: 1, role: UserRole.STAFF });
+  assert.equal(access.scopeAll, false);
+  assert.deepEqual(access.communityIds, [10, 11, 20]);
+  assert.deepEqual(resolvedRoleIds, [11, 12]);
+});
+
+test('任一角色是全公司范围时才放开全公司，且不再误套局部清单', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  svc.tenantRepo = { async findOne() { return { enabledPages: null }; } };
+  svc.userRoleRepo = fakeRepo(
+    [
+      { userId: 7, roleId: 11 },
+      { userId: 7, roleId: 12 },
+    ],
+    {},
+  );
+  svc.roleRepo = fakeRepo(
+    [
+      { id: 11, tenantId: 1, enabled: true, builtIn: false, dataScope: RoleDataScope.OFFICES },
+      { id: 12, tenantId: 1, enabled: true, builtIn: false, dataScope: RoleDataScope.ALL },
+    ],
+    {},
+  );
+  svc.effectivePermissions = async () => [];
+  svc.resolveScopeCommunityIds = async () => {
+    throw new Error('已有全公司角色时不应再解析局部范围');
+  };
+
+  const access = await svc.getAccess({ id: 7, tenantId: 1, role: UserRole.STAFF });
+  assert.equal(access.scopeAll, true);
+  assert.equal(access.communityIds, null);
 });

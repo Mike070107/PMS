@@ -29,8 +29,12 @@ export class StaffController {
 
   @Get()
   @RequirePermission('users', 'view')
-  list(@Query() query: ListStaffQueryDto, @CurrentUser() user: AuthUser) {
-    return this.staffService.list(query, user);
+  list(
+    @Query() query: ListStaffQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.staffService.list(query, user, access);
   }
 
   @Post()

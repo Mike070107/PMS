@@ -8,7 +8,9 @@ import {
   AuditStatus,
   classifyRepairType,
   detectUrgency,
+  extractContact,
   extractFaultDescription,
+  formatReporterRoomLabel,
   urgencyReason,
 } from '@pms/shared-types';
 import { detectRepairAddress, shouldDetectAddress } from '../../utils/address-detect';
@@ -428,7 +430,7 @@ Page({
     const local = classifyRepairType(content, this.types);
     const lower = content.toLowerCase();
     const hasExplicitKeyword = !!local?.matched.some((word) => lower.includes(word.toLowerCase()));
-    if (local && hasExplicitKeyword) return;
+    if (local && hasExplicitKeyword && !res.ai?.sampleMatched) return;
     const type = this.types.find((item) => item.repairType === aiType);
     if (!type) return;
     this.guessType = type.repairType;
@@ -487,6 +489,14 @@ Page({
 
     const scope = this.data.scope;
     const detected = this.data.detected;
+    const spokenContact = extractContact(content);
+    const reporterRoomLabel = detected?.publicArea
+      ? formatReporterRoomLabel(detected.buildingText, detected.reporterRoomNo)
+      : '';
+    const detectedContactName =
+      spokenContact.name || (detected?.ai?.contactName || '').trim() || reporterRoomLabel;
+    const detectedContactPhone =
+      spokenContact.phone || (/^1\d{10}$/.test(detected?.ai?.phone || '') ? detected?.ai?.phone || '' : '');
     // 订阅授权框必须由这次点击同步唤起，放到提交请求之后微信就不认了（见 utils/unread.ts）
     askSubscribeAfterSubmit();
     this.setData({ submitting: true });
@@ -503,8 +513,8 @@ Page({
             }
           : scopeIds(scope, this.place)),
         addressText: detected?.matched ? detected.addressText : this.data.placeText,
-        contactName: (detected?.ai?.contactName || '').trim() || undefined,
-        contactPhone: /^1\d{10}$/.test(detected?.ai?.phone || '') ? detected?.ai?.phone : undefined,
+        contactName: detectedContactName || undefined,
+        contactPhone: detectedContactPhone || undefined,
         repairType: this.guessType || undefined,
         aiAssist: repairs.buildRepairAiAssist(content, detected),
         // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么

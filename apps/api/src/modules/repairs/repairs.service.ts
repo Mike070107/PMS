@@ -42,7 +42,7 @@ import {
 } from '../../common/enums';
 import { RepairTextAiService } from '../ai/repair-text.ai';
 import { AiFeedbackService } from '../ai/ai-feedback.service';
-import { isPublicAreaText } from './repair-public-area.util';
+import { classifyPublicAreaText } from './repair-public-area.util';
 import { formatAddressLine } from '../../common/address-line.util';
 import { detectUrgency } from '../../common/repair-urgency.util';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
@@ -204,8 +204,13 @@ export class RepairsService implements OnModuleInit {
    * contentSuggestions 是**生效关键词**，另外带 templateSuggestions / extraSuggestions /
    * mutedSuggestions 三层来源给配置页分开显示。
    */
-  async listRepairTypeRules(user: AuthUser, officeId?: number | null) {
+  async listRepairTypeRules(
+    user: AuthUser,
+    officeId?: number | null,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
+    await this.assertRuleOfficeInScope(tenantId, officeId ?? null, access);
     await this.ensureDefaultRepairTypeRules(tenantId, user.id);
     const templates = await this.templateRules(tenantId);
     // 老数据只有 assignee_id 一个人，读出来统一补成数组，后台页只认 assigneeIds
@@ -255,8 +260,10 @@ export class RepairsService implements OnModuleInit {
     officeId: number,
     dto: UpdateOfficeSuggestionSettingsDto,
     user: AuthUser,
+    access?: ResolvedAccess,
   ) {
     const tenantId = this.resolveTenantId(user);
+    await this.assertRuleOfficeInScope(tenantId, officeId, access);
     const office = await this.assertOffice(tenantId, officeId);
     if (dto.suggestionScope !== undefined) office.suggestionScope = dto.suggestionScope;
     if (dto.suggestionFeedback !== undefined) office.suggestionFeedback = dto.suggestionFeedback;
@@ -270,9 +277,14 @@ export class RepairsService implements OnModuleInit {
     };
   }
 
-  async createRepairTypeRule(dto: UpsertRepairTypeRuleDto, user: AuthUser) {
+  async createRepairTypeRule(
+    dto: UpsertRepairTypeRuleDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const officeId = dto.officeId ?? null;
+    await this.assertRuleOfficeInScope(tenantId, officeId, access);
     if (officeId) await this.assertOffice(tenantId, officeId);
     const assigneeIds = this.dtoAssigneeIds(dto);
     for (const id of assigneeIds) await this.assertAssignee(tenantId, id, officeId);
@@ -405,10 +417,16 @@ export class RepairsService implements OnModuleInit {
     }
   }
 
-  async updateRepairTypeRule(id: number, dto: UpsertRepairTypeRuleDto, user: AuthUser) {
+  async updateRepairTypeRule(
+    id: number,
+    dto: UpsertRepairTypeRuleDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const rule = await this.repairTypeRuleRepo.findOne({ where: { id, tenantId } });
     if (!rule) throw new NotFoundException('repair type rule not found');
+    await this.assertRuleOfficeInScope(tenantId, rule.officeId, access);
     // 归属的管理处不能改：要挪去别的管理处就到那一页新建
     const assigneeIds = this.dtoAssigneeIds(dto);
     for (const id of assigneeIds) await this.assertAssignee(tenantId, id, rule.officeId);
@@ -454,23 +472,34 @@ export class RepairsService implements OnModuleInit {
     return this.repairTypeRuleRepo.save(rule);
   }
 
-  async deleteRepairTypeRule(id: number, user: AuthUser) {
+  async deleteRepairTypeRule(id: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     const rule = await this.repairTypeRuleRepo.findOne({ where: { id, tenantId } });
     if (!rule) throw new NotFoundException('repair type rule not found');
+    await this.assertRuleOfficeInScope(tenantId, rule.officeId, access);
     await this.repairTypeRuleRepo.remove(rule);
     return { ok: true };
   }
 
-  async reorderRepairTypeRules(ids: number[], user: AuthUser) {
+  async reorderRepairTypeRules(
+    ids: number[],
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
-    if (!ids.length) return this.listRepairTypeRules(user);
+    if (!ids.length) return this.listRepairTypeRules(user, null, access);
 
     const rules = await this.repairTypeRuleRepo.find({ where: { tenantId } });
     const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
     for (const id of ids) {
       if (!ruleById.has(id)) throw new NotFoundException('repair type rule not found');
     }
+    const officeIds = new Set(ids.map((id) => ruleById.get(id)?.officeId ?? null));
+    if (officeIds.size !== 1) {
+      throw new BadRequestException('只能调整同一个管理处内的报修类型顺序');
+    }
+    const officeId = [...officeIds][0];
+    await this.assertRuleOfficeInScope(tenantId, officeId, access);
 
     ids.forEach((id, index) => {
       const rule = ruleById.get(id)!;
@@ -478,12 +507,36 @@ export class RepairsService implements OnModuleInit {
       rule.updatedBy = user.id;
     });
     await this.repairTypeRuleRepo.save(ids.map((id) => ruleById.get(id)!));
-    return this.listRepairTypeRules(user, ruleById.get(ids[0])?.officeId ?? null);
+    return this.listRepairTypeRules(user, officeId, access);
+  }
+
+  private async assertRuleOfficeInScope(
+    tenantId: number,
+    officeId: number | null,
+    access?: ResolvedAccess,
+  ) {
+    const scope = scopeCommunityIds(access);
+    if (!scope) return;
+    if (!officeId) {
+      throw new ForbiddenException('全公司报修类型模板只能由全公司数据范围的账号维护');
+    }
+    const ids = await this.accessService.officeCommunityIds(tenantId, officeId);
+    if (!ids.length || ids.some((id) => !scope.includes(id))) {
+      throw new NotFoundException('管理处不存在');
+    }
   }
 
   /** 报修类型的对外精简版：只给编码、名称和关键词，不含派单规则 */
-  async listPublicRepairTypes(user: AuthUser, communityId?: number | null) {
+  async listPublicRepairTypes(
+    user: AuthUser,
+    communityId?: number | null,
+    access?: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
+    const allowed = scopeCommunityIds(access);
+    if (communityId && allowed && !allowed.includes(communityId)) {
+      throw new NotFoundException('community not found');
+    }
     await this.ensureDefaultRepairTypeRules(tenantId, user.id);
     // 带小区就给该小区所属管理处那套（管理处可以有自己的类型/关键词），不带就是公司默认
     const rules = (await this.rulesForCommunity(tenantId, communityId)).filter((rule) => rule.enabled);
@@ -559,9 +612,20 @@ export class RepairsService implements OnModuleInit {
   async listRepairSuggestions(
     user: AuthUser,
     opts?: { officeId?: number | null; communityId?: number | null },
+    access?: ResolvedAccess,
   ) {
     const tenantId = this.resolveTenantId(user);
-    const scope = await this.suggestionScope(tenantId, opts);
+    let scope = await this.suggestionScope(tenantId, opts);
+    const allowed = scopeCommunityIds(access);
+    if (allowed) {
+      const restrict = (ids: number[] | null) =>
+        ids ? ids.filter((id) => allowed.includes(id)) : [...allowed];
+      scope = {
+        ...scope,
+        companyCommunityIds: restrict(scope.companyCommunityIds),
+        officeCommunityIds: restrict(scope.officeCommunityIds),
+      };
+    }
     // 本公司的小区名：抽位置/内容时先把它们剥掉（「枫桦景苑二期」这种名字光靠模式认不全）
     const communities = await this.communityRepo.find({
       where: { tenantId },
@@ -754,7 +818,11 @@ export class RepairsService implements OnModuleInit {
     };
   }
 
-  async submitOwnerRepair(dto: CreateRepairRequestDto, user: AuthUser) {
+  async submitOwnerRepair(
+    dto: CreateRepairRequestDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
     // 两个小程序都走这个入口：业主端（业主 + 保安/居委会/业委会/物业工作人员）
     // 和员工端（维修工/办公室等，巡查发现问题顺手提单），位置都不受「自己家」约束
     const allowed: string[] = [...OWNER_APP_ROLES, ...STAFF_APP_ROLES];
@@ -776,6 +844,13 @@ export class RepairsService implements OnModuleInit {
       tenantId = community.tenantId;
       // 落一次租户归属，否则他之后看不到自己提的工单
       await this.userRepo.update({ id: user.id }, { tenantId });
+    }
+
+    // 员工端的报修入口也必须服从角色的数据范围。此前这里只校验租户，
+    // 导致维修工可通过手改 communityId 把单报到同公司其它管理处。
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.includes(dto.communityId)) {
+      throw new ForbiddenException('该小区不在你的管理范围内');
     }
 
     await this.assertCanReportAt(dto, tenantId, user);
@@ -2059,9 +2134,25 @@ export class RepairsService implements OnModuleInit {
         'app:dispatch',
         'edit',
       );
-      const officeUsers = dispatcherIds.length
+      const requestOfficeId = await this.accessService.officeIdOfCommunity(
+        tenantId,
+        saved.communityId,
+      );
+      const dispatcherCoverage = await this.accessService.filterUsersCoveringOffice(
+        tenantId,
+        dispatcherIds,
+        requestOfficeId,
+      );
+      const scopedDispatcherIds = dispatcherIds.filter((id) =>
+        dispatcherCoverage.has(id),
+      );
+      const officeUsers = scopedDispatcherIds.length
         ? await manager.find(User, {
-            where: { id: In(dispatcherIds), tenantId, status: UserStatus.ACTIVE },
+            where: {
+              id: In(scopedDispatcherIds),
+              tenantId,
+              status: UserStatus.ACTIVE,
+            },
             select: ['id'],
           })
         : [];
@@ -3519,7 +3610,11 @@ export class RepairsService implements OnModuleInit {
     access?: ResolvedAccess,
   ) {
     const tenantId = this.resolveTenantId(user);
-    const repairTypes = this.listPublicRepairTypes(user, dto.communityId ?? null);
+    const repairTypes = this.listPublicRepairTypes(
+      user,
+      dto.communityId ?? null,
+      access,
+    );
     const [ai, byRule] = await Promise.all([
       repairTypes.then((types) => this.repairTextAi.parse(tenantId, dto.text, types)),
       this.parseAddressByRule(dto, user, access),
@@ -3554,10 +3649,10 @@ export class RepairsService implements OnModuleInit {
      * 敲门也找错地方（该去的是 278 号楼下）。所以撞到房号也要退回楼栋级 +「公共区域」，
      * 而房号不丢 —— 转成 reporterRoomNo 给端上当联系人标识（那户人报的、他的电话）。
      *
-     * 谁来判：大模型优先（它分得清「我家门口的灯」不是公区）；没开 AI 时用词表兜底，
-     * 词表只认明确的公区设施，宁可漏判也不把户内单错判成公区（见 repair-public-area.util）。
+     * 谁来判：「楼下门 / 单元门 / 家里」这类明确词由确定规则优先，
+     * 文字没说清时才交给 AI。这样同一句话不会因模型偶发输出而反向覆盖明确场景。
      */
-    const publicArea = ai ? !!ai.publicArea : isPublicAreaText(dto.text);
+    const publicArea = classifyPublicAreaText(dto.text) ?? !!ai?.publicArea;
     const reporterRoomNo = result.matched && result.level === 'house' ? result.roomNo ?? null : null;
     if (publicArea && result.matched && result.level === 'house') {
       result = {
@@ -3588,6 +3683,7 @@ export class RepairsService implements OnModuleInit {
             urgent: !!ai.urgent,
             publicArea: !!ai.publicArea,
             repairType: ai.repairType || '',
+            sampleMatched: !!ai.sampleMatched,
           }
         : undefined,
     };
@@ -3613,7 +3709,7 @@ export class RepairsService implements OnModuleInit {
     // 只在拿得到明确清单时收窄 —— scopeCommunityIds 返回 null 表示全公司范围或
     // 走业务身份的小程序请求，那种情况下按原样在全租户里找。
     const scope = scopeCommunityIds(access);
-    if (scope?.length) leaves = leaves.filter((c) => scope.includes(c.id));
+    if (scope) leaves = leaves.filter((c) => scope.includes(c.id));
     if (!leaves.length) return { matched: false as const };
 
     // 上下文小区：端上传了就用它；业主没传就用他自己认证的那套房所在小区 ——
@@ -4436,8 +4532,8 @@ export class RepairsService implements OnModuleInit {
     communityIds?: number[] | null,
   ) {
     const rows = await this.repairRequestRepo.find({
-      where: communityIds?.length
-        ? { tenantId, communityId: In(communityIds) }
+      where: communityIds
+        ? { tenantId, communityId: In(communityIds.length ? communityIds : [-1]) }
         : { tenantId },
       select: ['repairType', 'content', 'createdAt'],
       order: { id: 'DESC' },
@@ -4544,8 +4640,8 @@ export class RepairsService implements OnModuleInit {
     communityIds?: number[] | null,
   ) {
     const rows = await this.repairRequestRepo.find({
-      where: communityIds?.length
-        ? { tenantId, communityId: In(communityIds) }
+      where: communityIds
+        ? { tenantId, communityId: In(communityIds.length ? communityIds : [-1]) }
         : { tenantId },
       select: ['addressText', 'content', 'createdAt'],
       order: { id: 'DESC' },
