@@ -1,118 +1,143 @@
-<view class="container container--with-bar">
-  <view class="screen-head">
-    <view class="screen-head__title">AI 随手拍报修</view>
-    <view class="screen-head__desc">按住说一句话，AI 自动整理地址、故障和联系人</view>
+<view class="quick-page">
+  <view class="quick-nav">
+    <view class="quick-nav__safe"></view>
+    <view class="quick-nav__bar">
+      <view class="quick-nav__side quick-nav__back" bindtap="onBack">‹</view>
+      <view class="quick-nav__center">
+        <view class="quick-nav__title">AI 随手拍报修</view>
+        <view class="quick-nav__subtitle">说一句话，自动填好报修信息</view>
+      </view>
+      <view class="quick-nav__side quick-nav__help" bindtap="onHelp">?</view>
+    </view>
   </view>
 
-  <!-- 1. 先说：这是这页的主入口，保持和微信发语音一样的“按住说、松开发送”。 -->
-  <view class="card quick-step quick-step--primary">
-    <view class="quick-step__head">
-      <text class="quick-step__num">1</text>
-      <view><view class="quick-step__title">按住说一句话</view><view class="quick-step__desc">说清地点、故障、联系人和电话</view></view>
+  <view class="quick-body">
+    <view class="voice-guide">
+      <view class="voice-guide__icon"><view class="voice-guide__bubble">•••</view></view>
+      <view class="voice-guide__body">
+        <view class="voice-guide__title">像微信发语音一样，按住说就行</view>
+        <view class="voice-guide__desc">松手立即停止并识别，不会继续录杂音</view>
+      </view>
     </view>
 
-    <button
-      wx:if="{{hasSpeech}}"
-      class="hold {{recording ? 'hold--on' : ''}}"
-      bindtouchstart="onStartRecord"
-      bindtouchend="onStopRecord"
-      bindtouchcancel="onStopRecord"
-    ><view class="btn__icon icon-action--mic-white"></view><text>{{recording ? '正在听，松开发送' : '按住说话'}}</text></button>
+    <block wx:if="{{!content && !recording}}">
+      <view class="say-checklist">
+        <view class="say-checklist__title">一句话说清这 3 件事</view>
+        <view class="say-checklist__row">
+          <view class="say-checklist__num">1</view>
+          <view><view class="say-checklist__name">在哪里</view><view class="say-checklist__desc">小区、楼号、房号或公共位置</view></view>
+        </view>
+        <view class="say-checklist__row">
+          <view class="say-checklist__num">2</view>
+          <view><view class="say-checklist__name">什么坏了</view><view class="say-checklist__desc">把看到的问题直接说出来</view></view>
+        </view>
+        <view class="say-checklist__row">
+          <view class="say-checklist__num">3</view>
+          <view><view class="say-checklist__name">找谁联系</view><view class="say-checklist__desc">替别人报修时，再说姓名和电话</view></view>
+        </view>
+      </view>
 
-    <!-- 按钮下面这段是「这页到底怎么用」：不写的话，人按完话不知道还要不要自己填表。
-         例句用真实小区名，照着念一遍就能成一单 -->
-    <view class="howto">
-      <view class="howto__line">一句话描述故障地点和现象以及联系人联系电话，AI 自动填表。</view>
-      <view class="howto__line">例如说出：<text class="howto__eg">枫桦一期17号201家里灯不亮，联系人张先生，电话13800138000</text></view>
-      <view class="howto__line">然后点【提交报修】即可</view>
+      <view class="voice-example">
+        <view class="voice-example__head">
+          <text>照着这样说</text>
+          <view class="voice-example__play" bindtap="onPlayExample"><text class="voice-example__speaker">◖))</text> 听示范</view>
+        </view>
+        <view class="voice-example__sentence">
+          <text class="voice-example__location">枫桦景苑二期2号802室</text>，
+          <text class="voice-example__fault">门铃开不了楼下门</text>，
+          <text class="voice-example__contact">联系王阿姨，13800000000</text>。
+        </view>
+        <view class="voice-example__legend">
+          <text class="legend legend--location">位置</text>
+          <text class="legend legend--fault">故障</text>
+          <text class="legend legend--contact">联系人</text>
+        </view>
+      </view>
+    </block>
+
+    <view wx:if="{{recording}}" class="listening-panel">
+      <view class="listening-panel__pulse"><view class="listening-panel__mic">●</view></view>
+      <view class="listening-panel__title">正在听，请继续说</view>
+      <view class="listening-panel__partial">{{partial || '在哪里、什么坏了、找谁联系…'}}</view>
+      <view class="listening-panel__hint">说完松手，立即停止并识别</view>
     </view>
 
-    <view wx:if="{{recording && partial}}" class="partial">{{partial}}</view>
+    <block wx:if="{{content && !recording}}">
+      <view class="review-card">
+        <view class="review-card__head">
+          <view class="review-card__check">✓</view>
+          <view><view class="review-card__title">我听懂了，请核对</view><view class="review-card__desc">重点看地址、故障和联系电话</view></view>
+        </view>
+        <textarea class="review-card__raw" value="{{content}}" bindinput="onInput" auto-height />
+        <view wx:if="{{found.length}}" class="review-card__rows">
+          <view wx:for="{{found}}" wx:key="key" class="review-row">
+            <text class="review-row__label">{{item.label}}</text>
+            <text class="review-row__value">{{item.value}}</text>
+          </view>
+        </view>
+      </view>
+      <view wx:if="{{needManual}}" class="recognize-warning">
+        还没认出准确地址。可以再按住补充说“几期几号几室”，或者改用填表报修。
+      </view>
+    </block>
 
-    <textarea
-      class="say"
-      placeholder="例：枫桦一期17号201家里灯不亮，联系人张先生，电话13800138000"
-      value="{{content}}"
-      bindinput="onInput"
-    />
-  </view>
-
-  <!-- 2. 照片是补充，不挡住一句话报修的主路径。 -->
-  <view class="card quick-step">
-    <view class="quick-step__head">
-      <text class="quick-step__num">2</text>
-      <view><view class="quick-step__title">补充现场照片</view><view class="quick-step__desc">选填，方便维修工提前判断</view></view>
+    <view class="photo-entry" data-type="image" bindtap="onCapture">
+      <view class="photo-entry__camera"></view>
+      <view class="photo-entry__body">
+        <view class="photo-entry__title">{{attachments.length ? '继续补拍现场照片' : '先拍一张现场照片'}}</view>
+        <view class="photo-entry__desc">选填，不拍也可以直接说</view>
+      </view>
+      <view class="photo-entry__arrow">›</view>
     </view>
-    <view class="thumbs">
+
+    <view wx:if="{{mediaList.length}}" class="quick-media">
       <view wx:for="{{mediaList}}" wx:key="url" class="thumb-wrap">
         <video wx:if="{{item.video}}" class="thumb" src="{{item.url}}" object-fit="cover" show-center-play-btn="{{true}}" />
         <image wx:else class="thumb" src="{{item.url}}" mode="aspectFill" data-url="{{item.url}}" bindtap="onPreviewMedia" />
         <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia"><view class="icon icon--close"></view></view>
       </view>
-      <view wx:if="{{attachments.length - videoCount < maxImages}}" class="thumb-add" data-type="image" bindtap="onCapture">
-        <view class="icon icon--camera"></view><text class="add-text">{{uploading ? '上传中' : '拍照'}}</text>
+    </view>
+
+    <view wx:if="{{!content}}" class="hold-area">
+      <view class="hold-area__prompt">↓ 按住下面蓝色按钮</view>
+      <button
+        wx:if="{{hasSpeech}}"
+        class="prototype-hold {{recording ? 'prototype-hold--on' : ''}}"
+        bindtouchstart="onStartRecord"
+        bindtouchend="onStopRecord"
+        bindtouchcancel="onStopRecord"
+      ><view class="prototype-hold__mic"></view><text>{{recording ? '松开结束' : '按住说话'}}</text></button>
+      <view wx:else class="speech-unavailable">当前微信环境不支持语音识别，请使用下方填表报修。</view>
+      <view class="hold-area__title">按住时说，说完松手</view>
+      <view class="hold-area__desc">最长 60 秒，松手后立即停止录音</view>
+    </view>
+
+    <view wx:if="{{content}}" class="after-recognize">
+      <view class="urgency-simple">
+        <view class="urgency-simple__head">紧急程度</view>
+        <view class="urgency-choice">
+          <view class="urgency-choice__item {{!urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="0" bindtap="onPickUrgency">
+            <view class="urgency-choice__title">普通（默认）</view><view class="urgency-choice__desc">按正常顺序处理</view>
+          </view>
+          <view class="urgency-choice__item urgency-choice__item--danger {{urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="1" bindtap="onPickUrgency">
+            <view class="urgency-choice__title">紧急</view><view class="urgency-choice__desc">进入优先处理组</view>
+          </view>
+        </view>
       </view>
-      <view wx:if="{{!videoCount}}" class="thumb-add" data-type="video" bindtap="onCapture">
-        <view class="icon icon--camera"></view><text class="add-text">{{uploading ? '上传中' : '拍视频'}}</text>
+      <button
+        wx:if="{{hasSpeech}}"
+        class="prototype-hold prototype-hold--secondary"
+        bindtouchstart="onStartRecord"
+        bindtouchend="onStopRecord"
+        bindtouchcancel="onStopRecord"
+      ><view class="prototype-hold__mic"></view><text>按住补充一句</text></button>
+      <view wx:if="{{errorMsg}}" class="error">{{errorMsg}}</view>
+      <view class="review-actions">
+        <button class="btn btn--outline" bindtap="onEditInFull">打开填表修改</button>
+        <button class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="onSubmit">确认提交报修</button>
       </view>
     </view>
-    <view class="quick-step__limit">最多 {{maxImages}} 张照片，或 1 段 {{maxVideoSeconds}} 秒视频</view>
+
+    <view class="form-link" bindtap="onEditInFull"><text class="form-link__icon">▦</text> 不方便说话，改用填表报修</view>
   </view>
-
-  <!-- 3. 识别结果集中确认，避免自动填入后还要去多个位置寻找。 -->
-  <view wx:if="{{found.length}}" class="card ai-result">
-    <view class="ai-result__head">
-      <view class="ai-result__mark">AI</view>
-      <view class="ai-result__head-body">
-        <view class="ai-result__title">已整理成报修单</view>
-        <view class="ai-result__desc">重点核对地址和联系电话</view>
-      </view>
-    </view>
-    <view wx:for="{{found}}" wx:key="key" class="kv">
-      <text class="kv__k">{{item.label}}</text>
-      <text class="kv__v">{{item.value}}</text>
-    </view>
-    <button class="btn btn--outline mt" bindtap="onEditInFull">
-      <view class="btn__icon icon-action--edit-blue"></view><text>有内容不对，打开完整表单修改</text>
-    </button>
-  </view>
-
-  <view class="card urgency-panel">
-    <view class="quick-step__title">紧急程度</view>
-    <view class="quick-step__desc">默认普通；只有确实需要优先处理时选择紧急</view>
-    <view class="urgency-choice">
-      <view class="urgency-choice__item {{!urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="0" bindtap="onPickUrgency">
-        <view class="urgency-choice__title">普通（默认）</view>
-        <view class="urgency-choice__desc">按正常顺序处理</view>
-      </view>
-      <view class="urgency-choice__item urgency-choice__item--danger {{urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="1" bindtap="onPickUrgency">
-        <view class="urgency-choice__title">紧急</view>
-        <view class="urgency-choice__desc">进入优先处理组</view>
-      </view>
-    </view>
-    <view wx:if="{{urgent && urgentReasonText}}" class="urgency-reason">AI 判断依据：{{urgentReasonText}}</view>
-  </view>
-
-  <view wx:if="{{needManual}}" class="card">
-    <view class="sku-empty">
-      这句话里没认出小区房号。说清楚「几期几号几室」再说一次，或者改用完整表单逐项填。
-    </view>
-    <button class="btn btn--outline mt" bindtap="onEditInFull">
-      <view class="btn__icon icon-action--form-blue"></view><text>改用完整表单</text>
-    </button>
-  </view>
-
-  <view wx:if="{{errorMsg}}" class="error card">{{errorMsg}}</view>
-</view>
-
-<view class="action-bar">
-  <button class="btn btn--ghost" bindtap="onEditInFull">
-    <view class="btn__icon icon-action--edit-blue"></view><text>完整表单</text>
-  </button>
-  <button
-    class="btn btn--primary"
-    loading="{{submitting}}"
-    disabled="{{submitting || uploading}}"
-    bindtap="onSubmit"
-  ><view class="btn__icon icon-action--send-white"></view><text>提交报修</text></button>
 </view>

@@ -1,4 +1,5 @@
 {
   "navigationBarTitleText": "AI随手拍报修",
+  "navigationStyle": "custom",
   "usingComponents": {}
 }

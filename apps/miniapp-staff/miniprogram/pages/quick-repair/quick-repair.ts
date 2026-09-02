@@ -27,13 +27,18 @@ import { composeDetectedAddress, detectRepairAddress } from '../../utils/address
  *
  * 语音走微信官方「同声传译」插件，只支持普通话；插件没装时隐藏语音按钮，打字照常可用。
  */
+let speechPlugin: any = null;
 let speechManager: any = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  speechManager = requirePlugin('WechatSI').getRecordRecognitionManager();
+  speechPlugin = requirePlugin('WechatSI');
+  speechManager = speechPlugin.getRecordRecognitionManager();
 } catch {
+  speechPlugin = null;
   speechManager = null;
 }
+
+const VOICE_EXAMPLE = '枫桦景苑二期2号802室，门铃开不了楼下门，联系王阿姨，13800000000。';
 
 /** 按住说话的按压状态机，bindSpeech() 里创建；插件不可用时一直是 null */
 let hold: HoldToTalk | null = null;
@@ -91,6 +96,7 @@ Page({
   /** 人自己点过「紧急」那一行之后，就别再被自动判定覆盖 */
   urgentTouched: false,
   detectTimer: 0,
+  exampleAudio: null as WechatMiniprogram.InnerAudioContext | null,
 
   onLoad() {
     this.bindSpeech();
@@ -99,6 +105,48 @@ Page({
 
   onUnload() {
     if (this.detectTimer) clearTimeout(this.detectTimer);
+    this.exampleAudio?.destroy();
+    this.exampleAudio = null;
+  },
+
+  onBack() {
+    wx.navigateBack();
+  },
+
+  onHelp() {
+    wx.showModal({
+      title: '怎样说最容易识别',
+      content: '按住蓝色按钮，依次说清：在哪里、什么坏了、找谁联系。说完松手，系统会立即整理成报修单。',
+      showCancel: false,
+      confirmText: '知道了',
+    });
+  },
+
+  onPlayExample() {
+    if (!speechPlugin?.textToSpeech) {
+      wx.showModal({ title: '示范句', content: VOICE_EXAMPLE, showCancel: false, confirmText: '知道了' });
+      return;
+    }
+    wx.showLoading({ title: '正在播放…' });
+    speechPlugin.textToSpeech({
+      lang: 'zh_CN',
+      tts: true,
+      content: VOICE_EXAMPLE,
+      success: (res: { filename?: string }) => {
+        if (!res.filename) return;
+        this.exampleAudio?.destroy();
+        const audio = wx.createInnerAudioContext();
+        audio.src = res.filename;
+        audio.onEnded(() => {
+          audio.destroy();
+          if (this.exampleAudio === audio) this.exampleAudio = null;
+        });
+        audio.play();
+        this.exampleAudio = audio;
+      },
+      fail: () => wx.showModal({ title: '示范句', content: VOICE_EXAMPLE, showCancel: false, confirmText: '知道了' }),
+      complete: () => wx.hideLoading(),
+    });
   },
 
   async loadTypes() {
