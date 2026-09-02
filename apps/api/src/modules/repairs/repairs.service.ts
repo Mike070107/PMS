@@ -1022,6 +1022,9 @@ export class RepairsService implements OnModuleInit {
             'request.id = wo.requestId AND request.tenantId = wo.tenantId',
           )
           .setFindOptions({ where: workOrderWhere })
+          // TypeORM 在 join + take 场景会包一层 DISTINCT 子查询。排序字段如果
+          // 没进入内层 SELECT，外层会引用不存在的 request_urgent / request_created_at。
+          .addSelect(['request.urgent', 'request.createdAt'])
           .orderBy('request.urgent', 'DESC')
           .addOrderBy('request.createdAt', 'ASC')
           .addOrderBy('wo.id', 'ASC')

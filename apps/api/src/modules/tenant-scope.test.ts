@@ -282,6 +282,37 @@ function appAccess(pages: Record<string, { view: boolean }>) {
   } as any;
 }
 
+test('工单联表分页排序把关联表排序列加入内层查询', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  let selected: string[] | undefined;
+  const queryBuilder = {
+    innerJoin() { return this; },
+    setFindOptions() { return this; },
+    addSelect(columns: string[]) { selected = columns; return this; },
+    orderBy() { return this; },
+    addOrderBy() { return this; },
+    take() { return this; },
+    async getMany() { return []; },
+  };
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => null;
+  service.isSelfScoped = async () => false;
+  service.canDispatch = async () => true;
+  service.keywordWheres = async (_tenantId: number, where: any) => [where];
+  service.workOrderRepo = {
+    createQueryBuilder() { return queryBuilder; },
+  };
+
+  await service.listWorkOrders(
+    { scope: 'all' },
+    { id: 7, role: UserRole.STAFF, tenantId: 1 },
+    appAccess({ 'work-orders': { view: true } }),
+  );
+
+  assert.deepEqual(selected, ['request.urgent', 'request.createdAt']);
+});
+
 test('「我的报修」权限只能读本人提交的列表，不能借 scope 越权看工单池', async () => {
   const service = Object.create(RepairsService.prototype) as any;
   service.resolveTenantId = () => 1;
