@@ -2,6 +2,40 @@
 
 /* ---------- 位置 ---------- */
 .section { overflow: hidden; }
+.step-card {
+  padding-top: 0;
+  border-color: #cfdeea;
+}
+.step-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  margin: 0 -28rpx 28rpx;
+  padding: 24rpx 28rpx;
+  border-bottom: 2rpx solid #dce7f0;
+  background: linear-gradient(135deg, #eaf4fc 0%, #f9fbfd 100%);
+}
+.step-head__num {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 50%;
+  background: var(--color-brand);
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+.step-head__body { flex: 1; min-width: 0; }
+.step-head__title { color: #203e5c; font-size: 36rpx; font-weight: 700; line-height: 1.4; }
+.step-head__desc { margin-top: 4rpx; color: #60778c; font-size: 25rpx; line-height: 1.55; }
+.urgency-field {
+  margin-top: 24rpx;
+  padding-top: 24rpx;
+  border-top: 2rpx solid #e4ebf2;
+}
 .place-row {
   display: flex;
   justify-content: space-between;

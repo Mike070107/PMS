@@ -59,25 +59,38 @@
     <view class="quick-step__limit">最多 {{maxImages}} 张照片，或 1 段 {{maxVideoSeconds}} 秒视频</view>
   </view>
 
-  <!-- 3. 认出来的：认出来才显示，认不出就不占地方 -->
-  <view wx:if="{{found.length}}" class="card">
-    <view class="label">已自动认出<text class="label__opt">不对就改用完整表单</text></view>
+  <!-- 3. 识别结果集中确认，避免自动填入后还要去多个位置寻找。 -->
+  <view wx:if="{{found.length}}" class="card ai-result">
+    <view class="ai-result__head">
+      <view class="ai-result__mark">AI</view>
+      <view class="ai-result__head-body">
+        <view class="ai-result__title">已整理成报修单</view>
+        <view class="ai-result__desc">重点核对地址和联系电话</view>
+      </view>
+    </view>
     <view wx:for="{{found}}" wx:key="key" class="kv">
       <text class="kv__k">{{item.label}}</text>
       <text class="kv__v">{{item.value}}</text>
     </view>
+    <button class="btn btn--outline mt" bindtap="onEditInFull">
+      <view class="btn__icon icon-action--edit-blue"></view><text>有内容不对，打开完整表单修改</text>
+    </button>
   </view>
 
-  <!-- 说了「急修」就标紧急。整行可点：取消 / 标回来都在这一下 -->
-  <view
-    class="card urgency {{urgent ? 'urgency--on' : ''}}"
-    bindtap="onToggleUrgent"
-  >
-    <text class="urgency__badge">{{urgent ? '紧急' : '普通'}}</text>
-    <view class="urgency__body">
-      <view class="urgency__text">{{urgent ? '这单按紧急处理' : '这单不按紧急处理'}}</view>
-      <view class="urgency__hint">{{urgent ? urgentReasonText + '，点这行取消' : urgentMatched ? '已改为普通，点这行标回紧急' : '默认普通；只有确实需要优先处理时才点这里'}}</view>
+  <view class="card urgency-panel">
+    <view class="quick-step__title">紧急程度</view>
+    <view class="quick-step__desc">默认普通；只有确实需要优先处理时选择紧急</view>
+    <view class="urgency-choice">
+      <view class="urgency-choice__item {{!urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="0" bindtap="onPickUrgency">
+        <view class="urgency-choice__title">普通（默认）</view>
+        <view class="urgency-choice__desc">按正常顺序处理</view>
+      </view>
+      <view class="urgency-choice__item urgency-choice__item--danger {{urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="1" bindtap="onPickUrgency">
+        <view class="urgency-choice__title">紧急</view>
+        <view class="urgency-choice__desc">进入优先处理组</view>
+      </view>
     </view>
+    <view wx:if="{{urgent && urgentReasonText}}" class="urgency-reason">AI 判断依据：{{urgentReasonText}}</view>
   </view>
 
   <view wx:if="{{needManual}}" class="card">

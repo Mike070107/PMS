@@ -173,6 +173,10 @@ Page({
     onlyIncomplete: false,
     incompleteCount: 0,
     lowCount: 0,
+    overviewSkuCount: 0,
+    overviewLowCount: 0,
+    overviewOutCount: 0,
+    selectedWarehouseName: '全部仓库',
     /** 类别筛选条：只列真有的类别，-1 = 全部 */
     categories: [] as string[],
     categoryIndex: -1,
@@ -414,6 +418,19 @@ Page({
     const kw = keyword.trim().toLowerCase();
     const category = categoryIndex >= 0 ? this.data.categories[categoryIndex] : '';
 
+    // 页头概览按当前仓库统计，但不受关键词、类别和“仅显示有货”等筛选影响。
+    // 否则搜一个名称，顶部“全部材料”会跟着变成 1，看起来像仓库只剩一种材料。
+    let overviewSkuCount = 0;
+    let overviewLowCount = 0;
+    let overviewOutCount = 0;
+    for (const material of this.materials as MaterialView[]) {
+      if (!material.enabled) continue;
+      const { qty, safetyQty } = this.sumStock(material.id, warehouseId);
+      overviewSkuCount += 1;
+      if (safetyQty > 0 && qty < safetyQty) overviewLowCount += 1;
+      if (qty <= 0) overviewOutCount += 1;
+    }
+
     // 类别筛选条只列真有的类别（点了没结果的类别等于噪音）。
     // 在按类别过滤之前收集，否则一点某个类别，筛选条就只剩这一个了
     const seenCategories: string[] = [];
@@ -466,6 +483,10 @@ Page({
       rows,
       hiddenByStocked,
       lowCount: rows.filter((row) => row.low).length,
+      overviewSkuCount,
+      overviewLowCount,
+      overviewOutCount,
+      selectedWarehouseName: this.data.warehouseNames[warehouseIndex] || '全部仓库',
     });
   },
 

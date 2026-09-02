@@ -594,6 +594,43 @@ textarea {
   text-align: right;
 }
 
+/* 普通 / 紧急显式二选一：不再用“点整行切换”的隐藏状态。 */
+.urgency-choice {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16rpx;
+  margin-top: 18rpx;
+}
+.urgency-choice__item {
+  min-width: 0;
+  padding: 22rpx 18rpx;
+  border: 3rpx solid #d5e1eb;
+  border-radius: 22rpx;
+  background: #fff;
+}
+.urgency-choice__item--on {
+  border-color: var(--color-brand);
+  background: #eaf4fc;
+  box-shadow: 0 0 0 4rpx rgba(49, 85, 138, 0.08);
+}
+.urgency-choice__item--danger.urgency-choice__item--on {
+  border-color: var(--color-danger);
+  background: #fff1f1;
+  box-shadow: 0 0 0 4rpx rgba(197, 61, 69, 0.07);
+}
+.urgency-choice__title { color: var(--color-text); font-size: 30rpx; font-weight: 700; line-height: 1.4; }
+.urgency-choice__item--danger.urgency-choice__item--on .urgency-choice__title { color: #ad343b; }
+.urgency-choice__desc { margin-top: 5rpx; color: var(--color-text-tertiary); font-size: 24rpx; line-height: 1.45; }
+.urgency-reason {
+  margin-top: 14rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 14rpx;
+  background: #fff5e7;
+  color: #8b5a16;
+  font-size: 25rpx;
+  line-height: 1.55;
+}
+
 .section__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; margin-bottom: 28rpx; }
 .section__title {
   position: relative;

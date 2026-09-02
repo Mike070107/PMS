@@ -486,6 +486,11 @@ Page({
     this.setData({ urgent: !this.data.urgent });
   },
 
+  onPickUrgency(e: WechatMiniprogram.BaseEvent) {
+    this.urgentTouched = true;
+    this.setData({ urgent: String(e.currentTarget.dataset.urgent) === '1' });
+  },
+
   onPickContentTag(e: WechatMiniprogram.BaseEvent) {
     const text = String(e.currentTarget.dataset.text || '');
     this.setData({ content: text, 'errors.content': '' });

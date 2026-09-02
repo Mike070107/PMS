@@ -344,6 +344,11 @@ Page({
     this.setData({ urgent: !this.data.urgent });
   },
 
+  onPickUrgency(e: WechatMiniprogram.BaseEvent) {
+    this.urgentTouched = true;
+    this.setData({ urgent: String(e.currentTarget.dataset.urgent) === '1' });
+  },
+
   /** 认错了就整单改到「我要报修」去逐项改，别在这一屏里堆一套表单 */
   onEditInFull() {
     // content 给「问题描述」框（已经剥掉地址/人名/电话，只剩故障本身），

@@ -6,10 +6,13 @@
   </view>
 
   <!-- ① 在哪 -->
-  <view class="card section">
-    <view class="section__head">
-      <text class="section__title">修哪里</text>
-      <text class="section__hint">可停在小区或楼栋（公共区域）</text>
+  <view class="card section step-card">
+    <view class="step-head">
+      <text class="step-head__num">1</text>
+      <view class="step-head__body">
+        <view class="step-head__title">修哪里</view>
+        <view class="step-head__desc">先选小区、楼栋和房号；公共区域可停在楼栋</view>
+      </view>
     </view>
 
     <!-- 描述里识别到了地址：替换手选的位置展示，点 × 恢复 -->
@@ -54,9 +57,13 @@
   </view>
 
   <!-- ② 什么问题 -->
-  <view class="card section">
-    <view class="section__head">
-      <text class="section__title">什么问题</text>
+  <view class="card section step-card">
+    <view class="step-head">
+      <text class="step-head__num">2</text>
+      <view class="step-head__body">
+        <view class="step-head__title">什么问题</view>
+        <view class="step-head__desc">选择类型并记录居民原话，系统会辅助识别</view>
+      </view>
     </view>
 
     <view class="field">
@@ -97,16 +104,19 @@
         <text wx:for="{{contentSuggestions}}" wx:key="*this" class="tag" data-text="{{item}}" bindtap="onPickContentTag">{{item}}</text>
       </view>
 
-      <!-- 说了「急修」就标紧急。整行可点：取消 / 标回来都在这一下 -->
-      <view
-        class="urgency {{urgent ? 'urgency--on' : ''}}"
-        bindtap="onToggleUrgent"
-      >
-        <text class="urgency__badge">{{urgent ? '紧急' : '普通'}}</text>
-        <view class="urgency__body">
-          <view class="urgency__text">{{urgent ? '这单按紧急处理' : '这单不按紧急处理'}}</view>
-          <view class="urgency__hint">{{urgent ? urgentReasonText + '，点这行取消' : urgentMatched ? '已改为普通，点这行标回紧急' : '默认普通；只有确实需要优先处理时才点这里'}}</view>
+      <view class="field urgency-field">
+        <view class="label">紧急程度<text class="label__opt">默认普通</text></view>
+        <view class="urgency-choice">
+          <view class="urgency-choice__item {{!urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="0" bindtap="onPickUrgency">
+            <view class="urgency-choice__title">普通（默认）</view>
+            <view class="urgency-choice__desc">按正常顺序处理</view>
+          </view>
+          <view class="urgency-choice__item urgency-choice__item--danger {{urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="1" bindtap="onPickUrgency">
+            <view class="urgency-choice__title">紧急</view>
+            <view class="urgency-choice__desc">进入优先处理组</view>
+          </view>
         </view>
+        <view wx:if="{{urgent && urgentReasonText}}" class="urgency-reason">AI 判断依据：{{urgentReasonText}}</view>
       </view>
 
       <view class="field-error" wx:if="{{errors.content}}">{{errors.content}}</view>
@@ -154,10 +164,13 @@
   </view>
 
   <!-- ③ 怎么联系 -->
-  <view class="card section">
-    <view class="section__head">
-      <text class="section__title">怎么联系</text>
-      <text class="section__hint">默认是你本人，替住户报的可以改成住户</text>
+  <view class="card section step-card">
+    <view class="step-head">
+      <text class="step-head__num">3</text>
+      <view class="step-head__body">
+        <view class="step-head__title">怎么联系</view>
+        <view class="step-head__desc">填写居民实际提供的姓名和电话</view>
+      </view>
     </view>
     <view class="auto-hint auto-hint--block" wx:if="{{autoContactHint}}">{{autoContactHint}}</view>
     <view class="field">

@@ -30,6 +30,45 @@
 .quick-step__title { color: #233f5a; font-size: 34rpx; font-weight: 700; line-height: 1.4; }
 .quick-step__desc { margin-top: 4rpx; color: var(--color-text-secondary); font-size: 26rpx; line-height: 1.5; }
 .quick-step__limit { margin-top: 18rpx; color: var(--color-text-tertiary); font-size: 25rpx; line-height: 1.55; }
+.quick-step--primary .hold {
+  height: 148rpx;
+  margin-top: 4rpx;
+  border-radius: 74rpx;
+  font-size: 38rpx;
+  box-shadow: 0 14rpx 30rpx rgba(49, 85, 138, 0.25);
+}
+.quick-step--primary .hold .btn__icon { width: 50rpx; height: 50rpx; }
+.quick-step--primary .hold--on {
+  background: #b43b43;
+  box-shadow: 0 0 0 14rpx rgba(197, 61, 69, 0.10);
+}
+
+.ai-result { border-color: #b7d5c7; background: #fbfefc; }
+.ai-result__head {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 18rpx;
+  padding-bottom: 20rpx;
+  border-bottom: 2rpx solid #dcebe3;
+}
+.ai-result__mark {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 66rpx;
+  height: 66rpx;
+  border-radius: 20rpx;
+  background: #2f7a54;
+  color: #fff;
+  font-size: 25rpx;
+  font-weight: 700;
+}
+.ai-result__head-body { flex: 1; min-width: 0; }
+.ai-result__title { color: #275f46; font-size: 34rpx; font-weight: 700; line-height: 1.4; }
+.ai-result__desc { margin-top: 3rpx; color: var(--color-text-secondary); font-size: 25rpx; }
+.urgency-panel { padding-top: 28rpx; }
 
 /* 「按住说话」下面的用法说明。辅助说明用 26-28rpx（面向老人的下限），
    行高 1.6，别和上面的按钮挤在一起 */

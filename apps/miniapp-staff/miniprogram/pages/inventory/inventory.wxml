@@ -28,6 +28,30 @@
 
     <!-- ============ 库存：这一屏的主体，列的是全部 SKU + 它现在还有几个 ============ -->
     <block wx:if="{{tab === 'stock'}}">
+      <view class="inventory-overview">
+        <view class="inventory-overview__head">
+          <view>
+            <view class="inventory-overview__label">当前查看仓库</view>
+            <view class="inventory-overview__warehouse">{{selectedWarehouseName}}</view>
+          </view>
+          <view class="inventory-overview__refresh">下拉可刷新库存</view>
+        </view>
+        <view class="inventory-metrics">
+          <view class="inventory-metric">
+            <view class="inventory-metric__value">{{overviewSkuCount}}</view>
+            <view class="inventory-metric__label">材料种类</view>
+          </view>
+          <view class="inventory-metric inventory-metric--warn">
+            <view class="inventory-metric__value">{{overviewLowCount}}</view>
+            <view class="inventory-metric__label">低于安全库存</view>
+          </view>
+          <view class="inventory-metric inventory-metric--danger">
+            <view class="inventory-metric__value">{{overviewOutCount}}</view>
+            <view class="inventory-metric__label">无货</view>
+          </view>
+        </view>
+      </view>
+
       <!-- 只读账号看不到「编辑 SKU」和「+ 新增」。补照片、补资料正是办公室要干的活，
            静静地不给按钮，人只会以为功能没做 -->
       <view wx:if="{{!canEdit}}" class="notice">
@@ -45,6 +69,9 @@
           <view class="notice__desc">{{noWarehouseHint}}</view>
         </view>
       </view>
+      <view class="inventory-tools">
+        <view class="inventory-tools__title">查找材料</view>
+        <view class="inventory-tools__hint">先选仓库，再搜索名称或编码</view>
       <!-- 看哪个仓：原来是原生 picker，它弹出的滚轮是系统 UI（wxss 改不了），
            选中项和其它项几乎一样亮，户外光线不足时认不出现在看的是哪个仓
            （2026-09-01 现场反馈）。改成一排 chip：选中的实底品牌色，扫一眼就知道，
@@ -90,6 +117,7 @@
           bindtap="onPickCategory"
         >{{item}}</view>
       </scroll-view>
+      </view>
 
       <!-- 列头常驻：列表一滚起来就不知道右边那个数字是什么了 -->
       <view wx:if="{{rows.length}}" class="sku-head sku-head--flat">
