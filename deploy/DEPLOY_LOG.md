@@ -1528,3 +1528,10 @@
 - 自上次（4d6b38f）以来上线的相关提交：
   - c09b945 fix: 修复工单列表联表分页排序
 
+## 2026-09-02 15:29 · api · cf14ab6
+
+- 包：`pms-api-20260902-1524.tar.gz`
+- 提交：cf14ab6 deploy: api → c09b945
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/package.json，M apps/api/src/modules/observability/observability.controller.ts，M apps/api/src/modules/observability/observability.service.ts，?? apps/api/src/modules/observability/feedback-flow.test.ts
+- 自上次（c09b945）以来没有相关提交（重新部署）
+
