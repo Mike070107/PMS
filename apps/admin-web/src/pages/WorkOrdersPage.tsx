@@ -16,8 +16,10 @@ import {
   Input,
   InputNumber,
   Modal,
+  Pagination,
   Popconfirm,
   Rate,
+  Radio,
   Row,
   Segmented,
   Select,
@@ -56,6 +58,9 @@ import {
   UndoOutlined,
   WarningOutlined,
   BulbOutlined,
+  CheckCircleOutlined,
+  RightOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { ClassifiableType, TechnicianOption } from '@pms/shared-types';
@@ -369,62 +374,63 @@ function stayTagColor(row: { status?: WorkOrderStatus }, days: number): string {
 function StatusBoard({
   value,
   counts,
+  urgentCount,
+  overdueCount,
   onChange,
 }: {
   value: 'all' | WorkOrderStatus;
   counts: WorkOrderStats;
+  urgentCount: number;
+  overdueCount: number;
   onChange: (next: 'all' | WorkOrderStatus) => void;
 }) {
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(118px, 1fr))',
-        gap: 8,
-        marginBottom: 16,
-      }}
-    >
-      {FILTER_TABS.map((tab) => {
-        const active = value === tab.value;
-        const count = tab.value === 'all'
-          ? counts.total
-          : counts.byStatus[tab.value as WorkOrderStatus] || 0;
-        // 需要人动手的环节（待派单/等待材料）有积压时标红，扫一眼就知道该先处理哪一堆
-        const urgent =
-          !active &&
-          count > 0 &&
-          (tab.value === WorkOrderStatus.CREATED || tab.value === WorkOrderStatus.WAITING_MATERIAL);
-        return (
-          <div
-            key={tab.value}
-            role="button"
-            tabIndex={0}
-            onClick={() => onChange(tab.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onChange(tab.value); }}
-            style={{
-              cursor: 'pointer',
-              padding: '12px 14px',
-              borderRadius: 8,
-              border: `1px solid ${active ? '#1677ff' : '#f0f0f0'}`,
-              background: active ? '#e6f0ff' : '#fafafa',
-              transition: 'background 200ms ease, border-color 200ms ease',
-            }}
-          >
-            <div style={{ fontSize: 13, color: active ? '#1677ff' : 'rgba(0,0,0,.65)' }}>{tab.label}</div>
-            <div
-              style={{
-                fontSize: 24,
-                fontWeight: 600,
-                lineHeight: 1.2,
-                fontVariantNumeric: 'tabular-nums',
-                color: active ? '#1677ff' : urgent ? '#ff4d4f' : 'rgba(0,0,0,.88)',
-              }}
+    <div className="pms-dispatch-board">
+      <div className="pms-dispatch-metrics" aria-label="调度待办概览">
+        <div className="pms-dispatch-metric is-danger">
+          <span><WarningOutlined /> 当前列表紧急</span>
+          <strong>{urgentCount} 单</strong>
+        </div>
+        <div className="pms-dispatch-metric is-danger">
+          <span><ClockCircleOutlined /> 已超时或临期</span>
+          <strong>{overdueCount} 单</strong>
+        </div>
+        <button
+          type="button"
+          className={`pms-dispatch-metric${value === WorkOrderStatus.CREATED ? ' is-selected' : ''}`}
+          onClick={() => onChange(WorkOrderStatus.CREATED)}
+        >
+          <span><UserOutlined /> 等待派单</span>
+          <strong>{counts.byStatus[WorkOrderStatus.CREATED] || 0} 单</strong>
+        </button>
+        <button
+          type="button"
+          className={`pms-dispatch-metric is-warning${value === WorkOrderStatus.WAITING_MATERIAL ? ' is-selected' : ''}`}
+          onClick={() => onChange(WorkOrderStatus.WAITING_MATERIAL)}
+        >
+          <span><FileTextOutlined /> 等待材料</span>
+          <strong>{counts.byStatus[WorkOrderStatus.WAITING_MATERIAL] || 0} 单</strong>
+        </button>
+      </div>
+      <div className="pms-dispatch-filters" aria-label="工单状态筛选">
+        {FILTER_TABS.map((tab) => {
+          const active = value === tab.value;
+          const count = tab.value === 'all'
+            ? counts.total
+            : counts.byStatus[tab.value as WorkOrderStatus] || 0;
+          return (
+            <button
+              type="button"
+              key={tab.value}
+              className={active ? 'is-selected' : ''}
+              aria-pressed={active}
+              onClick={() => onChange(tab.value)}
             >
-              {count}
-            </div>
-          </div>
-        );
-      })}
+              {tab.label} <span>{count}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -440,6 +446,109 @@ function buildRepairTypeSelectOptions(rules: RepairTypeRule[] = []) {
   return activeRules.length
     ? activeRules.map((item) => ({ value: item.repairType, label: item.label }))
     : repairTypeOptions;
+}
+
+function dispatchWaitingText(createdAt?: string) {
+  if (!createdAt) return '报修时间待补';
+  const elapsed = Math.max(0, Date.now() - new Date(createdAt).getTime());
+  if (elapsed < 60 * 60 * 1000) return `已等待 ${Math.max(1, Math.floor(elapsed / 60000))} 分钟`;
+  if (elapsed < 24 * 60 * 60 * 1000) return `已等待 ${Math.floor(elapsed / 3600000)} 小时`;
+  return `已等待 ${stayDaysOf({ createdAt })} 天`;
+}
+
+function DispatchOrderCard({
+  row,
+  repairTypeRules,
+  recommended,
+  canDelete,
+  quickAssigning,
+  onOpen,
+  onAssign,
+  onQuickAssign,
+  onVoid,
+}: {
+  row: WorkOrderRow;
+  repairTypeRules: RepairTypeRule[];
+  recommended?: TechnicianOption;
+  canDelete: boolean;
+  quickAssigning: boolean;
+  onOpen: () => void;
+  onAssign: () => void;
+  onQuickAssign: () => void;
+  onVoid: () => void;
+}) {
+  const pendingAssign = row.status === WorkOrderStatus.CREATED;
+  const canReassign = row.status === WorkOrderStatus.DISPATCHED || row.status === WorkOrderStatus.IN_PROGRESS;
+  const stateLabel = pendingAssign
+    ? row.candidateIds?.length ? '待维修工接单' : '待办公室派单'
+    : statusMeta[row.status].label;
+  return (
+    <article
+      className={`pms-dispatch-order${row.urgent ? ' is-urgent' : ''}${slaDanger(row) ? ' is-sla-danger' : ''}`}
+      onClick={onOpen}
+    >
+      <div className="pms-dispatch-order__photo">
+        <RepairPhotoCell photos={row.photos || []} total={row.photoCount || 0} />
+      </div>
+      <div className="pms-dispatch-order__main">
+        <div className="pms-dispatch-order__title-row">
+          <h3>{row.summaryAddress || '地址待补充'}</h3>
+          {row.urgent && <Tag color="error">紧急</Tag>}
+          <Tag color={statusMeta[row.status].color}>{stateLabel}</Tag>
+        </div>
+        <p className="pms-dispatch-order__problem">
+          {row.summaryContent || '暂无故障描述'}
+          <span> · {getRepairTypeLabel(row.repairType || row.skill, repairTypeRules)}</span>
+        </p>
+        <div className="pms-dispatch-order__meta">
+          <span>联系人：{row.contactName || '未填写'}</span>
+          <span>报修时间：{formatDateTimeCn(row.createdAt) || '-'}</span>
+          <span>工单编号：{row.orderNo}</span>
+        </div>
+      </div>
+      <div className="pms-dispatch-order__dispatch">
+        <div className={`pms-dispatch-order__waiting${slaDanger(row) ? ' is-danger' : ''}`}>
+          <ClockCircleOutlined />
+          <strong>{row.slaDueAt && slaDanger(row) ? slaCountdownText(row.slaDueAt) : dispatchWaitingText(row.createdAt)}</strong>
+        </div>
+        {recommended ? (
+          <div className="pms-dispatch-recommendation">
+            <span>推荐维修工</span>
+            <strong>{recommended.name}</strong>
+            <small>
+              {formatSkillList(recommended.skills, repairTypeRules) || '综合维修'} · 当前 {recommended.openCount} 单
+            </small>
+          </div>
+        ) : (
+          <div className="pms-dispatch-recommendation is-empty">
+            <span>当前负责人</span>
+            <strong>{row.assigneeName || '尚未选择维修工'}</strong>
+            <small>{pendingAssign ? '请从有权限的维修人员中选择' : '点击详情查看处理进度'}</small>
+          </div>
+        )}
+      </div>
+      <div className="pms-dispatch-order__actions" onClick={(event) => event.stopPropagation()}>
+        {pendingAssign && recommended && (
+          <Popconfirm
+            title={`确认派给${recommended.name}？`}
+            description={`该维修工当前有 ${recommended.openCount} 张在手工单`}
+            okText="确认派单"
+            cancelText="取消"
+            onConfirm={onQuickAssign}
+          >
+            <Button type="primary" size="large" loading={quickAssigning}>派给{recommended.name}</Button>
+          </Popconfirm>
+        )}
+        {(pendingAssign || canReassign) && (
+          <Button size="large" onClick={onAssign}>{recommended ? '换维修工' : '选择维修工'}</Button>
+        )}
+        <Button type="link" size="large" onClick={onOpen}>查看详情 <RightOutlined /></Button>
+        <Tooltip title={canDelete ? '作废后从正常列表和统计中排除，并按规则退回库存' : '请在业务角色中授权：工单管理 · 作废工单'}>
+          <Button type="link" danger disabled={!canDelete} onClick={onVoid}>作废</Button>
+        </Tooltip>
+      </div>
+    </article>
+  );
 }
 
 function formatSkillList(skills: string[] | undefined, rules: RepairTypeRule[] = []) {
@@ -469,6 +578,11 @@ export default function WorkOrdersPage() {
   const [searchQ, setSearchQ] = useState('');
   const [detailId, setDetailId] = useState<number | null>(null);
   const [voidTarget, setVoidTarget] = useState<WorkOrderRow | null>(null);
+  const [dispatchTarget, setDispatchTarget] = useState<WorkOrderRow | null>(null);
+  const [quickAssigningId, setQuickAssigningId] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [page, setPage] = useState(1);
+  const [repairDockOpenSignal, setRepairDockOpenSignal] = useState(0);
   const [ruleOpen, setRuleOpen] = useState(false);
   // 企业超管 / 平台超管：以权限矩阵为准，users.role 已经不表达身份了
   const isAdmin = !!access?.isTenantAdmin || !!access?.isPlatformAdmin;
@@ -585,6 +699,27 @@ export default function WorkOrdersPage() {
   ];
   const poolPrefs = useTableColumnPrefs('work-orders.pool', poolColumns);
 
+  const sortedRows = useMemo(() => [...rows].sort((a, b) => {
+    const urgency = Number(Boolean(b.urgent)) - Number(Boolean(a.urgent));
+    if (urgency) return urgency;
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
+    return aTime - bTime;
+  }), [rows]);
+  const pageSize = 10;
+  const pagedRows = sortedRows.slice((page - 1) * pageSize, page * pageSize);
+  const urgentRows = pagedRows.filter((row) => row.urgent);
+  const normalRows = pagedRows.filter((row) => !row.urgent);
+  const recommendTechnician = useCallback((row: WorkOrderRow) => {
+    const candidates = row.candidateIds?.length
+      ? dispatchTechnicians.filter((item) => row.candidateIds?.includes(item.id))
+      : dispatchTechnicians.filter((item) => {
+          const skill = row.repairType || row.skill;
+          return skill ? item.skills?.includes(skill) : false;
+        });
+    return [...candidates].sort((a, b) => a.openCount - b.openCount || a.id - b.id)[0];
+  }, [dispatchTechnicians]);
+
   // 全量地址树，一次拉完；报修录入靠它做「228/4/201」的即时联想，不再逐级请求
   const loadAddressTree = useCallback(async () => {
     setAddressLoading(true);
@@ -677,6 +812,23 @@ export default function WorkOrdersPage() {
     }
   }, [searchQ, message]);
 
+  const quickAssign = useCallback(async (row: WorkOrderRow, technician: TechnicianOption) => {
+    setQuickAssigningId(row.id);
+    try {
+      await request({
+        method: 'POST',
+        url: `/work-orders/${row.id}/assign`,
+        data: { assigneeId: technician.id, skill: row.repairType || row.skill || undefined },
+      });
+      message.success(`已派给${technician.name}`);
+      await Promise.all([loadOrders(), loadOrderStats(), loadStaff()]);
+    } catch (e: any) {
+      message.error(e?.message || '派单失败');
+    } finally {
+      setQuickAssigningId(null);
+    }
+  }, [loadOrderStats, loadOrders, loadStaff, message]);
+
   useEffect(() => {
     loadAddressTree();
     loadStaff();
@@ -685,6 +837,7 @@ export default function WorkOrdersPage() {
   }, [loadAddressTree, loadRepairSuggestions, loadRepairTypeRules, loadStaff]);
   useEffect(() => { loadOrders(); }, [loadOrders]);
   useEffect(() => { loadOrderStats(); }, [loadOrderStats]);
+  useEffect(() => { setPage(1); }, [filter, searchQ]);
   useEffect(() => {
     const next = searchInput.trim();
     const timer = window.setTimeout(() => {
@@ -697,54 +850,96 @@ export default function WorkOrdersPage() {
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
+  const renderDispatchGroup = (title: string, list: WorkOrderRow[], urgent = false) => {
+    if (!list.length) return null;
+    return (
+      <section className="pms-dispatch-group">
+        <div className={`pms-dispatch-group__head${urgent ? ' is-urgent' : ''}`}>
+          <h2>{title} · {list.length} 单</h2>
+          <span>同组按报修时间从早到晚</span>
+        </div>
+        <div className="pms-dispatch-order-list">
+          {list.map((row) => {
+            const recommended = recommendTechnician(row);
+            return (
+              <DispatchOrderCard
+                key={row.id}
+                row={row}
+                repairTypeRules={repairTypeRules}
+                recommended={recommended}
+                canDelete={canDelete}
+                quickAssigning={quickAssigningId === row.id}
+                onOpen={() => setDetailId(row.id)}
+                onAssign={() => setDispatchTarget(row)}
+                onQuickAssign={() => recommended && quickAssign(row, recommended)}
+                onVoid={() => setVoidTarget(row)}
+              />
+            );
+          })}
+        </div>
+      </section>
+    );
+  };
+
   return (
-    <div className="pms-workorder-page" style={{ fontSize: 16 }}>
-      {/* 工单池独占整页。物业办公室的电脑普遍只有 1366 宽，原来左右分栏各占一半，
-          表格被挤到 800px、每格换行，看着就是「乱」（2026-08-26 反馈）。
-          办公室录入报修收成右下角一颗悬浮按钮（RepairSubmitDock），
-          要录时点开、提交完自动缩回，不占工单池一寸地方。 */}
-      <div className="pms-workorder-pool">
-          <Card
-            className="pms-workorder-pool-card"
-            title={<div className="pms-section-title"><strong><ToolOutlined /> 工单调度台</strong><span>先看地址、图片和时效，再决定派单与催办</span></div>}
-            extra={
-              <Space wrap>
-                {/* 查历史报修：地址敲 198/47/201 逐段匹配，敲 198 就是「地址里带 198 的」；
-                    维修工姓名、单号也走这一个框。原来这里是「按小区筛选」，小区名直接敲进来也一样查 */}
-                <Input
-                  size="large"
-                  allowClear
-                  prefix={<SearchOutlined style={{ color: 'rgba(0,0,0,.35)' }} />}
-                  placeholder="查历史：地址 198/47/201 或 198、维修工姓名、单号"
-                  className="pms-workorder-search"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  autoComplete="off"
-                />
-                {poolPrefs.customized && (
-                  <Button size="large" onClick={poolPrefs.reset}>恢复默认列</Button>
-                )}
-                <Button size="large" icon={<ReloadOutlined />} onClick={() => { loadOrders(); loadOrderStats(); }}>刷新</Button>
-              </Space>
-            }
-            styles={{ body: { paddingTop: 16 } }}
+    <div className="pms-workorder-page">
+      <section className="pms-dispatch-shell">
+        <div className="pms-dispatch-header">
+          <div>
+            <h1><ToolOutlined /> 工单调度台</h1>
+            <p>先处理紧急、超时和待派工单，再查看普通工单。</p>
+          </div>
+          <Button
+            type="primary"
+            size="large"
+            icon={<PlusOutlined />}
+            onClick={() => setRepairDockOpenSignal((value) => value + 1)}
           >
-            {/* 状态看板兼筛选器：积压在哪一环，进页面第一眼就该看见，
-                而不是先读一条七格的分段控件再去数角标 */}
-            <StatusBoard
-              value={filter}
-              counts={statusCounts}
-              onChange={(next) => setFilter(next)}
-            />
+            录入报修
+          </Button>
+        </div>
+
+        <div className="pms-dispatch-toolbar">
+          <Input
+            size="large"
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="搜索小区、房号、维修工、电话或工单编号"
+            className="pms-workorder-search"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            autoComplete="off"
+          />
+          <Segmented
+            size="large"
+            value={viewMode}
+            options={[{ label: '卡片调度', value: 'cards' }, { label: '表格明细', value: 'table' }]}
+            onChange={(value) => setViewMode(value as 'cards' | 'table')}
+          />
+          {viewMode === 'table' && poolPrefs.customized && (
+            <Button size="large" onClick={poolPrefs.reset}>恢复默认列</Button>
+          )}
+          <Button size="large" icon={<ReloadOutlined />} onClick={() => { loadOrders(); loadOrderStats(); loadStaff(); }}>刷新</Button>
+        </div>
+
+        <StatusBoard
+          value={filter}
+          counts={statusCounts}
+          urgentCount={rows.filter((row) => row.urgent).length}
+          overdueCount={rows.filter(slaDanger).length}
+          onChange={(next) => setFilter(next)}
+        />
+
+        {viewMode === 'table' ? (
+          <div className="pms-workorder-pool pms-workorder-pool-card">
             <Table
               rowKey="id"
               size="large"
               loading={loading}
-              dataSource={rows}
+              dataSource={sortedRows}
               tableLayout="fixed"
               scroll={{ x: WORK_ORDER_TABLE_MIN_WIDTH + 508 }}
-              pagination={{ pageSize: 10, showSizeChanger: false }}
-              // 距要求完成截止不足 4 小时（含已超时）的未完结单整行标红，样式在 styles.css
+              pagination={{ pageSize, showSizeChanger: false }}
               rowClassName={(r) => [
                 slaDanger(r) ? 'pms-row-sla-danger' : '',
                 r.urgent ? 'pms-row-urgent' : '',
@@ -755,11 +950,33 @@ export default function WorkOrdersPage() {
               columns={poolPrefs.columns}
               components={poolPrefs.components}
             />
-          </Card>
-
-      </div>
+          </div>
+        ) : (
+          <Spin spinning={loading}>
+            <div className="pms-dispatch-card-view">
+              {!pagedRows.length ? (
+                <Empty description={searchQ ? `没有匹配“${searchQ}”的工单` : '当前筛选下没有工单'} />
+              ) : (
+                <>
+                  {renderDispatchGroup('紧急工单 · 先处理', urgentRows, true)}
+                  {renderDispatchGroup('普通工单', normalRows)}
+                  <Pagination
+                    current={page}
+                    pageSize={pageSize}
+                    total={sortedRows.length}
+                    showSizeChanger={false}
+                    hideOnSinglePage
+                    onChange={setPage}
+                  />
+                </>
+              )}
+            </div>
+          </Spin>
+        )}
+      </section>
 
       <RepairSubmitDock
+        openSignal={repairDockOpenSignal}
         addressTree={addressTree}
         addressLoading={addressLoading}
         repairTypeRules={repairTypeRules}
@@ -768,6 +985,20 @@ export default function WorkOrdersPage() {
         onManageRepairTypes={() => setRuleOpen(true)}
         onOpenWorkOrder={(id) => setDetailId(id)}
         onSubmitted={() => { loadOrders(); loadOrderStats(); loadRepairSuggestions(); }}
+      />
+
+      <AssignModal
+        open={Boolean(dispatchTarget)}
+        workOrderId={dispatchTarget?.id ?? null}
+        communityId={dispatchTarget?.communityId}
+        technicians={dispatchTechnicians}
+        repairTypeRules={repairTypeRules}
+        currentSkill={dispatchTarget?.repairType || dispatchTarget?.skill || undefined}
+        onClose={() => setDispatchTarget(null)}
+        onDone={async () => {
+          setDispatchTarget(null);
+          await Promise.all([loadOrders(), loadOrderStats(), loadStaff()]);
+        }}
       />
 
       <WorkOrderDetailDrawer
@@ -914,9 +1145,10 @@ const OFFICE_REPAIR_DOCK_ID = 'pms-repair-dock';
  * 「有没提交的草稿」—— 接电话记到一半被打断，回来接着填，不用重来。
  */
 function RepairSubmitDock({
-  addressTree, addressLoading, repairTypeRules, suggestions, canManageRepairTypes,
+  openSignal, addressTree, addressLoading, repairTypeRules, suggestions, canManageRepairTypes,
   onManageRepairTypes, onOpenWorkOrder, onSubmitted,
 }: {
+  openSignal: number;
   addressTree: AddressCommunity[];
   addressLoading: boolean;
   repairTypeRules: RepairTypeRule[];
@@ -932,10 +1164,13 @@ function RepairSubmitDock({
   const [open, setOpen] = useState(false);
   const [fileList, setFileList] = useState<UploadFile<UploadResponse>[]>([]);
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmValues, setConfirmValues] = useState<Record<string, any> | null>(null);
   const [formHasValue, setFormHasValue] = useState(false);
   const [historyRows, setHistoryRows] = useState<RepairHistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyTitle, setHistoryTitle] = useState('');
+  const [pickedAddressText, setPickedAddressText] = useState('');
   // 连着换两次房号时，只认最后一次的返回
   const historySeqRef = useRef(0);
   const hasDraft = formHasValue || fileList.length > 0;
@@ -961,6 +1196,10 @@ function RepairSubmitDock({
   /** 该小区所属管理处口径的「猜你想输」，拿不到就退回页面级那份（全公司） */
   const [dockSuggestions, setDockSuggestions] = useState<RepairSuggestions | null>(null);
   const activeSuggestions = dockSuggestions ?? suggestions;
+
+  useEffect(() => {
+    if (openSignal > 0) setOpen(true);
+  }, [openSignal]);
 
   // 类型关键词和常用短语都跟着报修小区走：不同管理处可以有自己的类型和本地叫法
   useEffect(() => {
@@ -1027,8 +1266,25 @@ function RepairSubmitDock({
     setFileList([]);
     setFormHasValue(false);
     setPredicted(null);
+    setConfirming(false);
+    setConfirmValues(null);
+    setPickedAddressText('');
     typeTouchedRef.current = false;
     loadBuildingHistory(undefined);
+  };
+
+  const onReview = async () => {
+    const values = await form.validateFields();
+    if (fileList.some((file) => file.status === 'uploading')) {
+      message.warning('照片或视频还在上传，请稍后确认');
+      return;
+    }
+    if (fileList.some((file) => file.status === 'error')) {
+      message.error('有附件上传失败，请删除后重新上传');
+      return;
+    }
+    setConfirmValues(values);
+    setConfirming(true);
   };
 
   const onSubmit = async () => {
@@ -1063,6 +1319,7 @@ function RepairSubmitDock({
           contactPhone: v.contactPhone || undefined,
           repairType: v.repairType,
           content: v.content,
+          urgent: Boolean(v.urgent),
           addressText: v.spotText,
           attachments,
           // 系统当时判的是什么：和最终提交的不一致时服务端记一条负样本，
@@ -1085,6 +1342,7 @@ function RepairSubmitDock({
   };
 
   const onAddressPicked = (picked: PickedAddress | null) => {
+    setPickedAddressText(picked?.fullText || '');
     if (!picked?.buildingId) {
       loadBuildingHistory(undefined);
       return;
@@ -1156,14 +1414,19 @@ function RepairSubmitDock({
       </div>
 
       {canEdit && (
-        <section
-          id={OFFICE_REPAIR_DOCK_ID}
-          className={`pms-repair-dock${open ? ' is-open' : ''}`}
-          aria-label="办公室录入报修"
-          aria-hidden={!open}
-        >
+        <>
+          <div className={`pms-repair-dock-backdrop${open ? ' is-open' : ''}`} aria-hidden="true" />
+          <section
+            id={OFFICE_REPAIR_DOCK_ID}
+            className={`pms-repair-dock${open ? ' is-open' : ''}`}
+            aria-label="办公室录入报修"
+            aria-hidden={!open}
+          >
           <div className="pms-repair-dock__head">
-            <div className="pms-repair-dock__title"><PhoneOutlined /> 办公室录入报修</div>
+            <div className="pms-repair-dock__title">
+              {confirming ? <CheckCircleOutlined /> : <PhoneOutlined />}
+              {confirming ? '提交前确认' : '办公室录入报修'}
+            </div>
             <Space size={0}>
               <Popconfirm
                 title="清空已填的内容？"
@@ -1178,149 +1441,120 @@ function RepairSubmitDock({
             </Space>
           </div>
           <div className="pms-repair-dock__body">
-            {/* autoComplete=off + 非地址类字段名，避免 Chrome 把这些框认成地址栏弹出自动填充遮挡下拉 */}
-            <Form
-              form={form}
-              name={OFFICE_REPAIR_FORM_NAME}
-              layout="vertical"
-              requiredMark="optional"
-              size="large"
-              autoComplete="off"
-              onValuesChange={(_, all) => setFormHasValue(Object.values(all).some(isFilledFormValue))}
-            >
-              <Form.Item
-                name="houseRef"
-                label="报修人房号"
-                rules={[{ required: true, message: '请选择小区/楼栋/室号' }]}
-                extra="可直接敲 228/4/201，逐段联想；也可以点开一级级选"
+            {confirming && confirmValues ? (
+              <div className="pms-repair-confirm">
+                <div className="pms-repair-confirm__intro">
+                  <CheckCircleOutlined />
+                  <div><h2>请核对重点信息</h2><p>重点看地址、联系电话和故障描述，确认无误后再提交。</p></div>
+                </div>
+                <dl className="pms-repair-confirm__list">
+                  <div><dt>报修地址</dt><dd>{pickedAddressText || '已选择房屋'}{confirmValues.spotText ? ` · ${confirmValues.spotText}` : ''}</dd></div>
+                  <div><dt>联系人</dt><dd>{confirmValues.contactName || '未填写'} · {confirmValues.contactPhone || '未填写电话'}</dd></div>
+                  <div><dt>报修内容</dt><dd>{confirmValues.content}</dd></div>
+                  <div><dt>报修类型</dt><dd>{getRepairTypeLabel(confirmValues.repairType, repairTypeRules)}</dd></div>
+                  <div><dt>紧急程度</dt><dd>{confirmValues.urgent ? '紧急，需要优先处理' : '普通'}</dd></div>
+                  <div><dt>完成时限</dt><dd>{confirmValues.slaEnabled && confirmValues.slaDueAt ? confirmValues.slaDueAt.format('YYYY-MM-DD HH:mm') : '按报修类型默认时限'}</dd></div>
+                  <div><dt>附件资料</dt><dd>{fileList.length ? `${fileList.length} 个照片或视频` : '未添加附件'}</dd></div>
+                </dl>
+                <Alert type="info" showIcon message="提交后自动进入待派单列表，并根据工种推荐维修人员。" />
+              </div>
+            ) : (
+              <Form
+                form={form}
+                name={OFFICE_REPAIR_FORM_NAME}
+                layout="vertical"
+                requiredMark="optional"
+                size="large"
+                initialValues={{ urgent: false, slaEnabled: false }}
+                autoComplete="off"
+                onValuesChange={(_, all) => setFormHasValue(Object.values(all).some(isFilledFormValue))}
               >
-                <HouseAddressPicker communities={addressTree} loading={addressLoading} onPicked={onAddressPicked} />
-              </Form.Item>
-              <RepairHistoryInline
-                title={historyTitle}
-                rows={historyRows}
-                loading={historyLoading}
-                repairTypeRules={repairTypeRules}
-                onOpenWorkOrder={onOpenWorkOrder}
-              />
-              <Form.Item name="spotText" label="具体位置">
-                <Input placeholder="例如：大门，4楼电梯口，3楼楼梯" autoComplete="off" />
-              </Form.Item>
-              <SuggestionTags
-                items={locationSuggestions}
-                onPick={(text) => { form.setFieldsValue({ spotText: text }); setFormHasValue(true); }}
-              />
-              <Row gutter={12}>
-                <Col span={12}>
-                  <Form.Item name="contactName" label="联系人">
-                    <Input placeholder="业主姓名" autoComplete="off" />
+                <section className="pms-repair-form-section">
+                  <div className="pms-repair-form-section__head"><span>1</span><div><h2>先确认报修地址</h2><p>接电话时可以直接输入“228/2/802”查找。</p></div></div>
+                  <Form.Item name="houseRef" label="房屋或公共区域" rules={[{ required: true, message: '请选择小区/楼栋/室号' }]}>
+                    <HouseAddressPicker communities={addressTree} loading={addressLoading} onPicked={onAddressPicked} />
                   </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    name="contactPhone"
-                    label="联系电话"
-                    rules={[
-                      { pattern: /^1[3-9]\d{9}$/, message: '请填写正确的手机号' },
-                    ]}
-                  >
-                    <Input placeholder="手机号" autoComplete="off" />
+                  <RepairHistoryInline title={historyTitle} rows={historyRows} loading={historyLoading} repairTypeRules={repairTypeRules} onOpenWorkOrder={onOpenWorkOrder} />
+                  <Form.Item name="spotText" label="具体位置">
+                    <Input placeholder="例如：大门、4楼电梯口、楼道公共区域" autoComplete="off" />
                   </Form.Item>
-                </Col>
-              </Row>
-              <Form.Item
-                name="repairType"
-                label={
-                  <Space size={8}>
-                    <span>报修类型</span>
-                    {canManageRepairTypes && (
-                      <Button type="link" size="small" icon={<SettingOutlined />} onClick={onManageRepairTypes}>
-                        配置
-                      </Button>
-                    )}
-                  </Space>
-                }
-              >
-                <Select
-                  {...searchableWideSelectProps}
-                  placeholder="按报修内容自动判定，也可以自己选"
-                  options={withOptionTitles(repairTypeSelectOptions)}
-                  allowClear
-                  onChange={() => { typeTouchedRef.current = true; }}
-                />
-              </Form.Item>
-              {predicted && (
-                <Text
-                  type="secondary"
-                  style={{ display: 'block', fontSize: 12, marginTop: -16, marginBottom: 16 }}
-                >
-                  <BulbOutlined />{' '}
-                  {pickedRepairType === predicted.repairType
-                    ? `按报修内容判为「${predicted.label}」`
-                    : `按报修内容像是「${predicted.label}」，你已改成「${pickedRepairTypeLabel || '未选'}」，按你选的走`}
-                  {predicted.matched.length > 0 && `（命中：${predicted.matched.slice(0, 3).join('、')}）`}
-                  。判错了直接改上面的下拉框，改多了系统会自己学。
-                </Text>
-              )}
-              <Form.Item
-                label="要求完成截止日期"
-                extra="不勾按报修类型的默认时限；距截止不足 4 小时或已超时的工单会在工单池整行标红"
-              >
-                <Space align="center">
-                  <Form.Item name="slaEnabled" valuePropName="checked" noStyle>
-                    <Checkbox>设定</Checkbox>
+                  <SuggestionTags items={locationSuggestions} onPick={(text) => { form.setFieldsValue({ spotText: text }); setFormHasValue(true); }} />
+                </section>
+
+                <section className="pms-repair-form-section">
+                  <div className="pms-repair-form-section__head"><span>2</span><div><h2>联系人怎么称呼</h2><p>姓名和电话按居民实际提供的内容填写。</p></div></div>
+                  <Row gutter={16}>
+                    <Col xs={24} md={12}><Form.Item name="contactName" label="联系人"><Input placeholder="例如：李阿姨" autoComplete="off" /></Form.Item></Col>
+                    <Col xs={24} md={12}><Form.Item name="contactPhone" label="联系电话" rules={[{ pattern: /^1[3-9]\d{9}$/, message: '请填写正确的手机号' }]}><Input placeholder="手机号" autoComplete="off" /></Form.Item></Col>
+                  </Row>
+                </section>
+
+                <section className="pms-repair-form-section">
+                  <div className="pms-repair-form-section__head"><span>3</span><div><h2>居民遇到了什么问题</h2><p>尽量记录居民原话，系统会自动识别报修类型。</p></div></div>
+                  <Form.Item name="content" label="报修内容" rules={[{ required: true, message: '请填写故障描述' }]}>
+                    <TextArea rows={4} placeholder="例如：家里门铃打不开楼下单元门" />
                   </Form.Item>
-                  <Form.Item noStyle shouldUpdate={(prev, cur) => prev.slaEnabled !== cur.slaEnabled}>
-                    {({ getFieldValue }) =>
-                      getFieldValue('slaEnabled') ? (
-                        <Form.Item
-                          name="slaDueAt"
-                          noStyle
-                          rules={[{ required: true, message: '请选择截止时间' }]}
-                        >
-                          <DatePicker
-                            showTime={{ format: 'HH:mm', minuteStep: SLA_MINUTE_STEP }}
-                            format="YYYY-MM-DD HH:mm"
-                            placeholder="选择日期时间"
-                          />
-                        </Form.Item>
-                      ) : null
-                    }
+                  <SuggestionTags title={contentSuggestionTitle} items={contentSuggestions} onPick={(text) => { form.setFieldsValue({ content: text }); setFormHasValue(true); }} />
+                  {predicted && (
+                    <div className="pms-repair-ai-result">
+                      <BulbOutlined />
+                      <div><span>AI识别的报修类型</span><strong>{predicted.label}</strong><small>{predicted.matched.length ? `识别依据：${predicted.matched.slice(0, 3).join('、')}` : '根据报修内容判断'}</small></div>
+                    </div>
+                  )}
+                  <Form.Item name="repairType" label={<Space size={8}><span>报修类型</span>{canManageRepairTypes && <Button type="link" size="small" icon={<SettingOutlined />} onClick={onManageRepairTypes}>配置</Button>}</Space>}>
+                    <Select {...searchableWideSelectProps} placeholder="系统自动识别，也可以人工修改" options={withOptionTitles(repairTypeSelectOptions)} allowClear onChange={() => { typeTouchedRef.current = true; }} />
                   </Form.Item>
-                </Space>
-              </Form.Item>
-              <Form.Item
-                name="content"
-                label="报修内容"
-                rules={[{ required: true, message: '请填写故障描述' }]}
-              >
-                <TextArea rows={4} placeholder="故障描述，越详细越好" />
-              </Form.Item>
-              <SuggestionTags
-                title={contentSuggestionTitle}
-                items={contentSuggestions}
-                onPick={(text) => { form.setFieldsValue({ content: text }); setFormHasValue(true); }}
-              />
-              <Form.Item label="上传照片 / 视频">
-                <Upload.Dragger {...uploadProps} style={attachmentDropStyle}>
-                  <p style={{ margin: 0, fontSize: 28, color: '#1677ff' }}><UploadOutlined /></p>
-                  <p style={{ margin: '8px 0 4px', fontSize: 15 }}>点击上传，或把照片 / 视频拖到这里</p>
-                  <Text type="secondary">照片最多 {MAX_IMAGE_COUNT} 张，视频最多 {MAX_VIDEO_COUNT} 个；单个不超过 50MB。</Text>
-                  <AttachmentUploadPreview
-                    files={fileList}
-                    onRemove={(uid) => setFileList((list) => list.filter((file) => file.uid !== uid))}
-                  />
-                </Upload.Dragger>
-              </Form.Item>
-            </Form>
+                </section>
+
+                <section className="pms-repair-form-section">
+                  <div className="pms-repair-form-section__head"><span>4</span><div><h2>是否紧急</h2><p>默认普通；只有确实需要优先处理时才选择紧急。</p></div></div>
+                  <Form.Item name="urgent">
+                    <Radio.Group className="pms-repair-urgency">
+                      <Radio value={false}><strong>普通（默认）</strong><span>按正常顺序派单处理</span></Radio>
+                      <Radio value={true}><strong>紧急</strong><span>进入紧急工单组并优先处理</span></Radio>
+                    </Radio.Group>
+                  </Form.Item>
+                  <Form.Item label="要求完成截止日期" extra="不设定时，按报修类型的默认时限执行。">
+                    <Space align="center" wrap>
+                      <Form.Item name="slaEnabled" valuePropName="checked" noStyle><Checkbox>手动设定</Checkbox></Form.Item>
+                      <Form.Item noStyle shouldUpdate={(prev, cur) => prev.slaEnabled !== cur.slaEnabled}>
+                        {({ getFieldValue }) => getFieldValue('slaEnabled') ? (
+                          <Form.Item name="slaDueAt" noStyle rules={[{ required: true, message: '请选择截止时间' }]}>
+                            <DatePicker showTime={{ format: 'HH:mm', minuteStep: SLA_MINUTE_STEP }} format="YYYY-MM-DD HH:mm" placeholder="选择日期时间" />
+                          </Form.Item>
+                        ) : null}
+                      </Form.Item>
+                    </Space>
+                  </Form.Item>
+                </section>
+
+                <section className="pms-repair-form-section">
+                  <div className="pms-repair-form-section__head"><span>5</span><div><h2>补充照片或视频</h2><p>可选；有现场照片时更方便维修工判断。</p></div></div>
+                  <Form.Item label="上传照片 / 视频">
+                    <Upload.Dragger {...uploadProps} style={attachmentDropStyle}>
+                      <p className="pms-repair-upload-icon"><UploadOutlined /></p>
+                      <p>点击上传，或把照片、视频拖到这里</p>
+                      <Text type="secondary">照片最多 {MAX_IMAGE_COUNT} 张，视频最多 {MAX_VIDEO_COUNT} 个；单个不超过 50MB。</Text>
+                      <AttachmentUploadPreview files={fileList} onRemove={(uid) => setFileList((list) => list.filter((file) => file.uid !== uid))} />
+                    </Upload.Dragger>
+                  </Form.Item>
+                </section>
+              </Form>
+            )}
           </div>
           <div className="pms-repair-dock__foot">
-            <Button type="primary" size="large" loading={saving} onClick={onSubmit} block icon={<PlusOutlined />}>
-              提交报修
-            </Button>
-            <span className="pms-repair-dock__foot-hint">提交后面板自动收起；没提交就收起，已填内容会保留</span>
+            {confirming ? (
+              <div className="pms-repair-dock__foot-actions">
+                <Button size="large" onClick={() => setConfirming(false)}>返回修改</Button>
+                <Button type="primary" size="large" loading={saving} onClick={onSubmit} icon={<CheckCircleOutlined />}>确认提交报修</Button>
+              </div>
+            ) : (
+              <Button type="primary" size="large" onClick={onReview} block icon={<RightOutlined />}>下一步：确认报修信息</Button>
+            )}
+            <span className="pms-repair-dock__foot-hint">必填项完整后再进入确认；收起不会清除已填写内容。</span>
           </div>
-        </section>
+          </section>
+        </>
       )}
     </>,
     document.body,
