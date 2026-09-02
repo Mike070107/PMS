@@ -1542,3 +1542,9 @@
 - ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/src/pages/LogsPage.tsx，M packages/api-client/src/endpoints/observability.ts，M packages/api-client/src/index.ts
 - 自上次（4d6b38f）以来没有相关提交（重新部署）
 
+## 2026-09-02 15:31 · miniapp-staff · d1b57e9
+
+- 提交：d1b57e9 deploy: web → 480bb37
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.json，M apps/miniapp-staff/miniprogram/pages/feedback/feedback.ts，M apps/miniapp-staff/miniprogram/pages/me/me.ts，M apps/miniapp-staff/miniprogram/pages/me/me.wxml，M apps/miniapp-staff/miniprogram/pages/messages/messages.ts，M apps/miniapp-staff/miniprogram/utils/feedback.ts，M packages/api-client/src/endpoints/observability.ts，M packages/api-client/src/index.ts，?? apps/miniapp-staff/miniprogram/pages/feedback-history/
+- 自上次（4d6b38f）以来没有相关提交（重新部署）
+
