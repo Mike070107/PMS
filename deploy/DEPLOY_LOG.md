@@ -1610,3 +1610,11 @@
 - 自上次（c316cad）以来上线的相关提交：
   - 861b4cb fix: restore independent stocktake permissions
 
+## 2026-09-02 18:05 · web · 861b4cb
+
+- 包：`pms-web-20260902-1801.tar.gz`
+- 提交：861b4cb fix: restore independent stocktake permissions
+- 说明：业务角色恢复 Web 与员工端库存盘点独立勾选项
+- 自上次（f762f91）以来上线的相关提交：
+  - 861b4cb fix: restore independent stocktake permissions
+
