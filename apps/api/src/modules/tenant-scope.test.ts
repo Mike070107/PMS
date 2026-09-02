@@ -67,3 +67,81 @@ test('按库存/仓库编号操作时仍校验可见仓范围', async () => {
     /warehouse not found/,
   );
 });
+
+function appAccess(pages: Record<string, { view: boolean }>) {
+  return {
+    isPlatformAdmin: false,
+    isTenantAdmin: false,
+    scopeAll: true,
+    communityIds: [],
+    pages,
+  } as any;
+}
+
+test('「我的报修」权限只能读本人提交的列表，不能借 scope 越权看工单池', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => null;
+  service.repairRequestRepo = {
+    async find() {
+      return [];
+    },
+  };
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+  const access = appAccess({ 'app:my-repairs': { view: true } });
+
+  await assert.doesNotReject(() =>
+    service.listWorkOrders({ scope: 'reported' }, user, access),
+  );
+  await assert.rejects(
+    () => service.listWorkOrders({ scope: 'pool' }, user, access),
+    /没有查看这类工单的权限/,
+  );
+  await assert.rejects(
+    () => service.listWorkOrders({ scope: 'mine' }, user, access),
+    /没有查看这类工单的权限/,
+  );
+});
+
+test('「在手工单」不再隐式授予「我的报修」列表权限', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => null;
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+  const access = appAccess({ 'app:my-orders': { view: true } });
+
+  await assert.rejects(
+    () => service.listWorkOrders({ scope: 'reported' }, user, access),
+    /没有查看这类工单的权限/,
+  );
+});
+
+test('只有「我的报修」权限时，不能打开别人提交的工单详情', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => null;
+  service.workOrderRepo = {
+    async findOne() {
+      return { id: 5, tenantId: 1, communityId: 10, requestId: 20, assigneeId: 99 };
+    },
+  };
+  service.repairRequestRepo = {
+    async findOne() {
+      return { id: 20, tenantId: 1, submittedBy: 8 };
+    },
+  };
+  service.dataSource = {
+    getRepository() {
+      return { async find() { return []; } };
+    },
+  };
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+
+  await assert.rejects(
+    () => service.getWorkOrder(5, user, appAccess({ 'app:my-repairs': { view: true } })),
+    /work order not found/,
+  );
+});

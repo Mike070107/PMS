@@ -22,6 +22,38 @@ function fakeRepo(rows: any[], sink: { last?: FakeCall }) {
   };
 }
 
+test('启动时把旧的「在手工单 / 我的报修」查看权复制为独立权限', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  const roleSql: string[] = [];
+  const templateSql: string[] = [];
+  svc.rolePermRepo = {
+    async query(sql: string) {
+      roleSql.push(sql);
+      return [[], 0];
+    },
+  };
+  svc.tplPermRepo = {
+    async query(sql: string) {
+      templateSql.push(sql);
+      return [[], 0];
+    },
+  };
+  svc.logger = { log() {}, warn(message: string) { throw new Error(message); } };
+
+  await svc.onModuleInit();
+
+  const roleRepairSql = roleSql.find((sql) => sql.includes("'app:my-repairs'"));
+  const templateRepairSql = templateSql.find((sql) => sql.includes("'app:my-repairs'"));
+  assert.ok(roleRepairSql, '角色权限应完成一次性拆分');
+  assert.ok(templateRepairSql, '角色模板权限应完成一次性拆分');
+  assert.match(roleRepairSql, /src\.page_key = 'app:my-orders'/);
+  assert.match(templateRepairSql, /src\.page_key = 'app:my-orders'/);
+  assert.match(roleRepairSql, /src\.can_view, false, false/);
+  assert.match(templateRepairSql, /src\.can_view, false, false/);
+  assert.equal(roleSql.length, 2, '目前角色权限共有两组拆分回填');
+  assert.equal(templateSql.length, 2, '目前模板权限共有两组拆分回填');
+});
+
 test('跟随模板的角色读模板那份权限，自定义角色读自己的', async () => {
   const svc = Object.create(AccessService.prototype) as any;
   const own = { last: undefined as FakeCall | undefined };

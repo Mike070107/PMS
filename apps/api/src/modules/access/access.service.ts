@@ -93,32 +93,53 @@ export class AccessService implements OnModuleInit {
    * 2026-09-01 就是这么翻的车：加了「材料 SKU 库」这一格，办公室角色（跟模板 3）
    * 在小程序上一个新 tab 都没多出来，因为库里既没有角色行也没有模板行。
    *
-   * 所以在这里做一次幂等补齐：**谁已经有 app:inventory，就照原样给他 app:materials**。
-   * 这不是放权 —— 那一格本来就是从「材料与库存」里拆出来的，
-   * 有 app:inventory 的人此前就能在库存页看和改材料档案，能力没变，只是多了个入口。
-   * 已经有 app:materials 行的（自己勾过的）一概不动。
+   * 所以在这里做幂等补齐。已经有目标权限行的（管理员自己配置过的）一概不动：
+   * - app:inventory → app:materials：原来同一页里的材料档案入口拆成独立页；
+   * - app:my-orders → app:my-repairs：原来的「在手工单 / 我的报修」拆成两格。
    */
   async onModuleInit() {
-    const SQL = (table: string, owner: string) => `
+    const SQL = (
+      table: string,
+      owner: string,
+      sourceKey: string,
+      targetKey: string,
+      copyEdit: boolean,
+    ) => `
       INSERT INTO ${table} (tenant_id, ${owner}, page_key, can_view, can_edit, can_delete, created_at, updated_at)
-      SELECT src.tenant_id, src.${owner}, 'app:materials', src.can_view, src.can_edit, false, now(), now()
+      SELECT src.tenant_id, src.${owner}, '${targetKey}', src.can_view, ${copyEdit ? 'src.can_edit' : 'false'}, false, now(), now()
         FROM ${table} src
-       WHERE src.page_key = 'app:inventory'
+       WHERE src.page_key = '${sourceKey}'
          AND NOT EXISTS (
            SELECT 1 FROM ${table} dst
-            WHERE dst.${owner} = src.${owner} AND dst.page_key = 'app:materials'
+            WHERE dst.${owner} = src.${owner} AND dst.page_key = '${targetKey}'
          )
     `;
     try {
-      const role = await this.rolePermRepo.query(SQL('role_permissions', 'role_id'));
-      const tpl = await this.tplPermRepo.query(SQL('role_template_permissions', 'template_id'));
       const n = (r: unknown) => (Array.isArray(r) && typeof r[1] === 'number' ? r[1] : 0);
-      if (n(role) || n(tpl)) {
-        this.logger.log(`补齐 app:materials：角色 ${n(role)} 条、模板 ${n(tpl)} 条`);
+      const splits = [
+        { source: 'app:inventory', target: 'app:materials', copyEdit: true },
+        { source: 'app:my-orders', target: 'app:my-repairs', copyEdit: false },
+      ];
+      for (const split of splits) {
+        const role = await this.rolePermRepo.query(
+          SQL('role_permissions', 'role_id', split.source, split.target, split.copyEdit),
+        );
+        const tpl = await this.tplPermRepo.query(
+          SQL(
+            'role_template_permissions',
+            'template_id',
+            split.source,
+            split.target,
+            split.copyEdit,
+          ),
+        );
+        if (n(role) || n(tpl)) {
+          this.logger.log(`补齐 ${split.target}：角色 ${n(role)} 条、模板 ${n(tpl)} 条`);
+        }
       }
     } catch (e) {
       // 补不上不该拦住服务启动：大不了管理员去角色页手动勾一下
-      this.logger.warn(`补齐 app:materials 失败：${(e as Error).message}`);
+      this.logger.warn(`补齐拆分权限失败：${(e as Error).message}`);
     }
   }
 

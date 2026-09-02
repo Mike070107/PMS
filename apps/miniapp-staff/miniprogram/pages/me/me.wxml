@@ -35,8 +35,8 @@
     </view>
   </view>
 
-  <view wx:if="{{canReport}}" class="card entries">
-    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onGoRepair">
+  <view wx:if="{{canReport || canSeeMyRepairs}}" class="card entries">
+    <view wx:if="{{canReport}}" class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onGoRepair">
       <view class="entry__body">
         <view class="entry__title">我要报修</view>
         <view class="entry__desc">{{repairDesc}}</view>
@@ -46,7 +46,7 @@
 
     <!-- 我报的单派给别人之后，在手和工单池里都看不到，只在「在手工单」页那个折叠区里。
          替住户报完修的人最想知道的就是「那单后来怎么样了」，得给一个找得到的入口 -->
-    <view class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenReported">
+    <view wx:if="{{canSeeMyRepairs}}" class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenReported">
       <view class="entry__body">
         <view class="entry__title">我的报修</view>
         <view class="entry__desc">我替住户和巡查提的单，派给谁了、修到哪一步了</view>

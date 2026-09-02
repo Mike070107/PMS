@@ -33,7 +33,19 @@ const ALL_TABS: TabDef[] = [
 ];
 
 function visibleTabs(access: TabAccess) {
-  return ALL_TABS.filter((tab) => canSeeTab(tab.key, access));
+  return ALL_TABS.filter((tab) => canSeeTab(tab.key, access)).map((tab) => {
+    // 「我的报修」复用工单池这个 tab 页。如果员工只被授予我的报修、
+    // 没有工单池权限，底部入口也必须叫「我的报修」，否则会误以为能看全部待接单。
+    if (
+      tab.key === 'pool' &&
+      access.pages &&
+      !access.pages['app:pool'] &&
+      access.pages['app:my-repairs']
+    ) {
+      return { ...tab, text: '我的报修' };
+    }
+    return tab;
+  });
 }
 
 Component({

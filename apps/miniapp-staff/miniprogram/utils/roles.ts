@@ -46,5 +46,10 @@ export function canSeeTab(key: TabKey, access: TabAccess): boolean {
   if (key === 'materials') {
     return !!(pages['app:inventory'] || pages['app:materials']);
   }
+  // 「我的报修」虽然复用工单池页面，但授权是独立的。只给这格的人仍要能进入
+  // 容器页，进去后页面只展示「我报的」，不会展示待接工单。
+  if (key === 'pool') {
+    return !!(pages['app:pool'] || pages['app:my-repairs']);
+  }
   return !!pages[TAB_PAGE[key]];
 }

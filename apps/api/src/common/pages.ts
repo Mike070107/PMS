@@ -36,7 +36,8 @@ export type AdminPageKey = (typeof ADMIN_PAGE_KEYS)[number];
 export const STAFF_APP_PAGE_KEYS = [
   'app:pool', // 工单池（接单）
   'app:dispatch', // 派单台（派单）
-  'app:my-orders', // 在手工单 / 我的报修
+  'app:my-orders', // 在手工单（派给本人、由本人处理）
+  'app:my-repairs', // 我的报修（本人提交的报修进度）
   'app:repair-create', // 报修
   'app:inventory', // 材料与库存（现场查存量、看采购进度）
   'app:materials', // 材料 SKU 库（看/改材料档案，单独一格）
@@ -76,6 +77,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     appPages: {
       'app:pool': 'e',
       'app:my-orders': 'e',
+      'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',
     },
@@ -87,6 +89,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:dispatch': 'e',
       'app:inventory': 'e',
       'app:materials': 'e',
+      'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',
     },
@@ -108,6 +111,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:inventory': 'e',
       'app:materials': 'e',
       'app:approve-manager': 'e',
+      'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',
     },
@@ -142,7 +146,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '只替住户报修，看自己报的单',
     appPages: {
       'app:repair-create': 'v',
-      'app:my-orders': 'v',
+      'app:my-repairs': 'v',
       'app:messages': 'v',
     },
   },
@@ -151,7 +155,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '只替住户报修，看自己报的单',
     appPages: {
       'app:repair-create': 'v',
-      'app:my-orders': 'v',
+      'app:my-repairs': 'v',
       'app:messages': 'v',
     },
   },
@@ -160,7 +164,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '只替住户报修，看自己报的单',
     appPages: {
       'app:repair-create': 'v',
-      'app:my-orders': 'v',
+      'app:my-repairs': 'v',
       'app:messages': 'v',
     },
   },

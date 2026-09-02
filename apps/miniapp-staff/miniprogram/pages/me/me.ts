@@ -21,6 +21,7 @@ Page({
     /** 头像用姓名首字，没名字就用角色首字 */
     avatarText: '',
     canReport: false,
+    canSeeMyRepairs: false,
     canUseMessages: true,
     /** 未读消息数，显示在「消息」入口右侧 */
     unread: 0,
@@ -77,6 +78,7 @@ Page({
         phoneText: maskPhone(user.phone),
         avatarText: (user.name || roleText || '员').trim().charAt(0),
         canReport: session.canReport,
+        canSeeMyRepairs: session.canSeeMyRepairs,
         canUseMessages: session.canUseMessages,
         canSubscribe: session.canAccept,
         repairDesc: reporterOnly

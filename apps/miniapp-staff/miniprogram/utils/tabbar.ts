@@ -15,6 +15,7 @@ const TAB_PAGE_KEYS = [
   'app:pool',
   'app:dispatch',
   'app:my-orders',
+  'app:my-repairs',
   'app:inventory',
   'app:materials',
   'app:approve-manager',

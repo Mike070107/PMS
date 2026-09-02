@@ -825,6 +825,33 @@ export class RepairsService implements OnModuleInit {
       where.status = query.status as WorkOrderStatus;
     }
 
+    // 列表接口被多个小程序页面复用，Guard 只能判断「拥有其中任意一格」，
+    // 具体 scope 仍必须在这里逐档校验。否则同时拥有「在手工单 + 我的报修」的人
+    // 可以手改 scope=pool 绕过工单池权限，拆权限反而扩大了可见范围。
+    if (user.role !== UserRole.OWNER) {
+      const resolved = access ?? (await this.accessService.getAccess(user));
+      const privileged =
+        resolved.isPlatformAdmin ||
+        resolved.isTenantAdmin ||
+        !!resolved.pages['work-orders']?.view;
+      if (!privileged) {
+        const allowed =
+          query.scope === 'reported'
+            ? !!resolved.pages['app:my-repairs']?.view
+            : query.scope === 'pool'
+              ? !!(
+                  resolved.pages['app:pool']?.view ||
+                  resolved.pages['app:dispatch']?.view
+                )
+              : query.scope === 'mine'
+                ? !!resolved.pages['app:my-orders']?.view
+                : query.scope === 'all'
+                  ? !!resolved.pages['app:dispatch']?.view
+                  : true;
+        if (!allowed) throw new ForbiddenException('没有查看这类工单的权限');
+      }
+    }
+
     // 小程序角色按人收敛可见范围，后台角色维持全租户。
     // 业主端身份不止 OWNER：保安/居委/业委/物业工作人员也在业主端提单，
     // 漏了他们要么 403、要么（更糟）落到无过滤分支看到全租户的单
@@ -1505,9 +1532,27 @@ export class RepairsService implements OnModuleInit {
         order: { id: 'ASC' },
       }),
     ]);
-    // 业主端身份（业主/保安/居委/业委/物业工作人员）只能看自己提交的报修
-    if ((await this.isSelfScoped(user, access)) && request?.submittedBy !== user.id) {
-      throw new NotFoundException('work order not found');
+    // 详情权限按「这张单与本人是什么关系」校验：
+    // - 我的报修：必须是本人提交；
+    // - 在手工单：必须派给本人；
+    // - 工单池/派单台/后台工单管理：沿用其较宽的查看范围（仍受上面小区范围约束）。
+    if (user.role === UserRole.OWNER) {
+      if (request?.submittedBy !== user.id) throw new NotFoundException('work order not found');
+    } else {
+      const resolved = access ?? (await this.accessService.getAccess(user));
+      const broad =
+        resolved.isPlatformAdmin ||
+        resolved.isTenantAdmin ||
+        !!resolved.pages['work-orders']?.view ||
+        !!resolved.pages['app:pool']?.view ||
+        !!resolved.pages['app:dispatch']?.view;
+      const assignedToMe =
+        !!resolved.pages['app:my-orders']?.view && workOrder.assigneeId === user.id;
+      const reportedByMe =
+        !!resolved.pages['app:my-repairs']?.view && request?.submittedBy === user.id;
+      if (!broad && !assignedToMe && !reportedByMe) {
+        throw new NotFoundException('work order not found');
+      }
     }
     // 存量工单的联系人/电话是空的（那会儿端上选填、服务端也不兜底），
     // 读取时补上，不改历史数据；新单在创建时就已经写进库里了
@@ -4628,8 +4673,8 @@ export class RepairsService implements OnModuleInit {
   /**
    * 只能看/操作自己提的那些单。
    *
-   * 业主天然如此。员工侧看的是「有没有工单池 / 派单台 / 后台工单管理的查看权」——
-   * 一个都没有，说明他只是替住户报修的人（保安、居委会、业委会…），
+   * 业主天然如此。员工侧看的是「有没有工单池 / 派单台 / 在手工单 /
+   * 后台工单管理的查看权」——一个都没有，说明他只是替住户报修的人，
    * 不该看到别人的单。以前这里写死一份 SELF_SCOPED_ROLES 身份名单，
    * 新增一种代报身份忘了加进去，就会掉进「无过滤」分支 = 泄露全租户工单。
    */
@@ -4642,6 +4687,7 @@ export class RepairsService implements OnModuleInit {
     return !(
       pages['app:pool']?.view ||
       pages['app:dispatch']?.view ||
+      pages['app:my-orders']?.view ||
       pages['work-orders']?.view
     );
   }

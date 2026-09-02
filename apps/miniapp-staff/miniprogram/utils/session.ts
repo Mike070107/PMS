@@ -26,6 +26,8 @@ export interface StaffSession {
   /** 在手工单：看得到 / 能完工报料 */
   canSeeMyOrders: boolean;
   canHandleOrders: boolean;
+  /** 我的报修：查看本人替住户或巡查提交的报修进度 */
+  canSeeMyRepairs: boolean;
   /** 材料与库存（现场查存量、看采购进度） */
   canViewMaterials: boolean;
   canEditMaterials: boolean;
@@ -60,6 +62,7 @@ const emptySession = (): StaffSession => ({
   canDispatch: false,
   canSeeMyOrders: false,
   canHandleOrders: false,
+  canSeeMyRepairs: false,
   canViewMaterials: false,
   canEditMaterials: false,
   canViewInventory: false,
@@ -84,6 +87,7 @@ export function buildSession(me: MeResp | null): StaffSession {
   };
   const canSeePool = can('app:pool', 'view');
   const canSeeDispatch = can('app:dispatch', 'view');
+  const canSeeMyOrders = can('app:my-orders', 'view');
   const canApproveAsManager = can('app:approve-manager', 'edit');
   const canApproveAsPurchaser = can('app:approve-purchaser', 'edit');
   return {
@@ -93,8 +97,9 @@ export function buildSession(me: MeResp | null): StaffSession {
     canAccept: can('app:pool', 'edit'),
     canSeeDispatch,
     canDispatch: can('app:dispatch', 'edit'),
-    canSeeMyOrders: can('app:my-orders', 'view'),
+    canSeeMyOrders,
     canHandleOrders: can('app:my-orders', 'edit'),
+    canSeeMyRepairs: can('app:my-repairs', 'view'),
     canViewMaterials: can('app:inventory', 'view'),
     canEditMaterials: can('app:inventory', 'edit'),
     canViewInventory: can('app:inventory', 'view'),
@@ -105,7 +110,7 @@ export function buildSession(me: MeResp | null): StaffSession {
     canApprove: canApproveAsManager || canApproveAsPurchaser,
     canReport: can('app:repair-create', 'view'),
     canUseMessages: can('app:messages', 'view'),
-    reporterOnly: !!pages && !canSeePool && !canSeeDispatch,
+    reporterOnly: !!pages && !canSeePool && !canSeeDispatch && !canSeeMyOrders,
   };
 }
 

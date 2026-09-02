@@ -217,7 +217,7 @@ export class RepairsController {
   @Get('work-orders')
   @Roles(...OWNER_APP_ROLES)
   @RequirePermission(
-    ['work-orders', 'app:pool', 'app:dispatch', 'app:my-orders'],
+    ['work-orders', 'app:pool', 'app:dispatch', 'app:my-orders', 'app:my-repairs'],
     'view',
   )
   listWorkOrders(
@@ -265,7 +265,7 @@ export class RepairsController {
   @Get('work-orders/:id')
   @Roles(...OWNER_APP_ROLES)
   @RequirePermission(
-    ['work-orders', 'app:pool', 'app:dispatch', 'app:my-orders'],
+    ['work-orders', 'app:pool', 'app:dispatch', 'app:my-orders', 'app:my-repairs'],
     'view',
   )
   getWorkOrder(

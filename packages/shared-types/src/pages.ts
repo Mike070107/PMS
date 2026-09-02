@@ -95,10 +95,15 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
   },
   {
     key: 'app:my-orders',
-    label: '在手工单 / 我的报修',
-    hint: '自己接的单，或自己报的单',
+    label: '在手工单',
+    hint: '派给自己、由自己处理的工单',
     editLabel: '处理工单',
     editHint: '完工、报缺料、回填处理结果',
+  },
+  {
+    key: 'app:my-repairs',
+    label: '我的报修',
+    hint: '查看自己替住户或巡查提交的报修进度',
   },
   {
     key: 'app:repair-create',
@@ -186,6 +191,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     appPages: {
       'app:pool': 'e',
       'app:my-orders': 'e',
+      'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',
     },
@@ -197,6 +203,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:dispatch': 'e',
       'app:inventory': 'e',
       'app:materials': 'e',
+      'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',
     },
@@ -218,6 +225,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:inventory': 'e',
       'app:materials': 'e',
       'app:approve-manager': 'e',
+      'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',
     },
@@ -251,7 +259,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '只替住户报修，看自己报的单',
     appPages: {
       'app:repair-create': 'v',
-      'app:my-orders': 'v',
+      'app:my-repairs': 'v',
       'app:messages': 'v',
     },
   },
@@ -260,7 +268,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '只替住户报修，看自己报的单',
     appPages: {
       'app:repair-create': 'v',
-      'app:my-orders': 'v',
+      'app:my-repairs': 'v',
       'app:messages': 'v',
     },
   },
@@ -269,7 +277,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '只替住户报修，看自己报的单',
     appPages: {
       'app:repair-create': 'v',
-      'app:my-orders': 'v',
+      'app:my-repairs': 'v',
       'app:messages': 'v',
     },
   },

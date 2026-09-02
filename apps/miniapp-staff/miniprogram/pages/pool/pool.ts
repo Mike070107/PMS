@@ -135,8 +135,9 @@ const REPORTED_FILTERS: PoolFilter[] = [
 function initialTabKey(): 'pool' | 'dispatch' {
   const { pages } = readCachedAccess();
   if (pages) {
+    const poolVisible = !!(pages['app:pool'] || pages['app:my-repairs']);
     if (!pages['app:dispatch']) return 'pool';
-    if (!pages['app:pool']) return 'dispatch';
+    if (!poolVisible) return 'dispatch';
   }
   return cachedPoolMode();
 }
@@ -157,6 +158,10 @@ Page({
   data: {
     /** 维修工视角 / 派单台视角，决定整屏的标题、按钮和筛选条 */
     dispatcher: false,
+    screenTitle: '工单池',
+    canSeePool: false,
+    canSeeMyRepairs: false,
+    canSeeMyOrders: false,
     canDispatch: false,
     /** 报修入口：由角色矩阵的「报修」那一格决定 */
     canReport: false,
@@ -237,23 +242,28 @@ Page({
        * 原来是 switchTab 去「在手工单」页，那页 2026-08-31 只剩手上要干的活了，
        * 他手上一张单都没有，跳过去还是一片空白 —— 这三档就是为这种人准备的。
        */
-      const reporterOnly = session.reporterOnly;
       // 这一屏有两种模式：派单台（把活派给别人）和工单池（自己领活）。
       // 两格都有权限时看 tabBar 点的是哪一格；只有一格就按那一格
       const mode = (() => {
+        const poolVisible = session.canSeePool || session.canSeeMyRepairs;
         if (!session.canSeeDispatch) return 'pool';
-        if (!session.canSeePool) return 'dispatch';
+        if (!poolVisible) return 'dispatch';
         return cachedPoolMode();
       })();
       const dispatcher = mode === 'dispatch';
 
-      // 派单台没有这三档，强制回「工单池」那一档的取数方式；
-      // 只报修的人在「工单池」那一档什么都看不到，直接落到「我报的」
-      const mainTab = dispatcher
-        ? 'pool'
-        : reporterOnly && this.data.mainTab === 'pool'
-          ? 'reported'
-          : this.data.mainTab;
+      // 三档各自有独立权限。当前档被管理员取消后，刷新必须落到仍有权限的第一档，
+      // 不能继续请求旧 scope（服务端也会按 scope 拒绝）。
+      const mainTab = (() => {
+        if (dispatcher) return 'pool';
+        if (this.data.mainTab === 'pool' && session.canSeePool) return 'pool';
+        if (this.data.mainTab === 'reported' && session.canSeeMyRepairs) return 'reported';
+        if (this.data.mainTab === 'done' && session.canSeeMyOrders) return 'done';
+        if (session.canSeePool) return 'pool';
+        if (session.canSeeMyRepairs) return 'reported';
+        if (session.canSeeMyOrders) return 'done';
+        return 'pool';
+      })();
 
       /* 三档各有各的筛选：工单池只有未认领的三种状态；我报的要盖到「已完成」——
          报单的人最想知道的就是「修到哪一步了」；已完结那一档本身是终态，不给筛选条。
@@ -325,6 +335,15 @@ Page({
 
       this.setData({
         dispatcher,
+        screenTitle:
+          dispatcher
+            ? '派单台'
+            : !session.canSeePool && session.canSeeMyRepairs
+              ? '我的报修'
+              : '工单池',
+        canSeePool: session.canSeePool,
+        canSeeMyRepairs: session.canSeeMyRepairs,
+        canSeeMyOrders: session.canSeeMyOrders,
         canDispatch: session.canDispatch,
         canReport: session.canReport,
         canAccept: session.canAccept,
@@ -369,7 +388,14 @@ Page({
       });
       // 顶栏标题跟着身份走：办公室进来看到的不是「工单池」而是「派单台」。
       // 标题写在 pool.json 里是静态的，只能在这儿按身份改一次
-      wx.setNavigationBarTitle({ title: dispatcher ? '派单台' : '工单池' });
+      wx.setNavigationBarTitle({
+        title:
+          dispatcher
+            ? '派单台'
+            : !session.canSeePool && session.canSeeMyRepairs
+              ? '我的报修'
+              : '工单池',
+      });
       // 模式定下来了，把底部高亮同步到真正的那一格（onShow 里先按缓存点过一次）
       syncTabBar(this, dispatcher ? 'dispatch' : 'pool');
       /**
@@ -390,6 +416,11 @@ Page({
   /** 切「工单池 / 我报的 / 已完结」。换的是一批数据，状态筛选和搜索词都归零 */
   onSwitchMainTab(e: WechatMiniprogram.BaseEvent) {
     const tab = String(e.currentTarget.dataset.tab || 'pool') as 'pool' | 'reported' | 'done';
+    if (
+      (tab === 'pool' && !this.data.canSeePool) ||
+      (tab === 'reported' && !this.data.canSeeMyRepairs) ||
+      (tab === 'done' && !this.data.canSeeMyOrders)
+    ) return;
     if (tab === this.data.mainTab) return;
     this.setData({ mainTab: tab, filterIndex: 0, keyword: '' }, () => this.load());
   },
