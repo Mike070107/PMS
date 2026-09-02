@@ -1419,3 +1419,10 @@
   - d6ab216 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
   - 4cb3c94 fix: 允许维修工从工单池主动接单
 
+## 2026-09-02 13:46 · miniapp-staff · 9309994
+
+- 提交：9309994 feat: 完善采购申请与工单处理
+- 说明：已上传开发版本 1.0.20260902d（9309994），无未提交夹带
+- 自上次（5ce9537）以来上线的相关提交：
+  - 9309994 feat: 完善采购申请与工单处理
+
