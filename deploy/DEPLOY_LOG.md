@@ -1665,3 +1665,10 @@
   - e3fc848 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
   - 8bed144 feat: 支持管理员审计作废工单
 
+## 2026-09-02 19:23 · web · 069fa37
+
+- 包：`pms-web-20260902-1922.tar.gz`
+- 提交：069fa37 feat: 重构工单调度台与办公室报修录入
+- 自上次（b7afa4c）以来上线的相关提交：
+  - 069fa37 feat: 重构工单调度台与办公室报修录入
+
