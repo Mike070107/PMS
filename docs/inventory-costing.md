@@ -131,3 +131,24 @@ name+spec 判重并成了一个 SKU。并错的后果：库存数把两种货加
 均价四舍五入到分再乘回数量会差出几分钱——马桶 1 只 ¥278 + 5 只 ¥280 = ¥1,678.00，
 均价口径算出 ¥1,678.02，客户拿纸质清单一对就不认。均价（`resolveUnitCost`）只做展示，
 任何新页面/导出要显示金额，一律引 `resolveStockValue`。
+
+## 盘点单（2026-09-01）
+
+单条盘点调整（`PATCH /stocks/:id`）之外的整仓盘点：`stocktake_orders`，
+counting（盘点中，可分批存实盘数）→ pending_review（待审核）→ approved（已过账）；
+退回不作废、回到 counting 改数；counting 可作废。**同仓同时只允许一张在途单**——
+两张单先后过账会把先过账的差异当新差异再调一遍。
+
+口径：
+
+- **不锁仓**。差异按**过账时刻**的账面数算（不是建单快照）；快照只用来在界面标
+  「盘点期间动过」。过账在一个事务里逐行加锁库存行再读数，保证差异等于加锁那一刻的账。
+- 盘盈 = 新建批次（单价取 SKU 参考成本）+ ADJUST 流水 + 刷新参考成本；
+  盘亏 = 先进先出扣批次，流水成本取被扣批次加权价，金额从被扣批次原值加总。
+  与单条盘点调整完全同一套（都走 stock-ledger）。
+- 过账把 systemQty / diffQty / unitCostCents / amountCents **快照写回明细**，
+  报表和列表读快照，不在查询时拿当前价现算。
+- 流水 refType=`stocktake_order`（refNo 显示盘点单号），批次 sourceType=`stocktake`。
+- 账上没有、货架上有的材料：录入时补行（snapshotQty 取当时系统数，多为 0），过账即全额盘盈。
+- 审核过账/退回和调拨单同一档权限（app:approve-manager）；建单/录入挂
+  inventory / app:inventory 的编辑档。

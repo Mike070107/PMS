@@ -959,3 +959,75 @@ export const DEFAULT_CONTENT_SUGGESTIONS = [
   '下水道堵塞',
   '墙面渗水',
 ];
+
+// ---------- 盘点单 ----------
+
+/**
+ * 盘点单状态机：counting（盘点中）→ pending_review（待审核）→ approved（已过账）。
+ * 审核退回不作废、回到 counting 继续改；counting 可作废（cancelled）。
+ */
+export enum StocktakeStatus {
+  COUNTING = 'counting',
+  PENDING_REVIEW = 'pending_review',
+  APPROVED = 'approved',
+  CANCELLED = 'cancelled',
+}
+
+export const STOCKTAKE_STATUS_LABELS: Record<string, string> = {
+  [StocktakeStatus.COUNTING]: '盘点中',
+  [StocktakeStatus.PENDING_REVIEW]: '待审核',
+  [StocktakeStatus.APPROVED]: '已过账',
+  [StocktakeStatus.CANCELLED]: '已作废',
+};
+
+/** 盘点单里的一行（GET /stocktake-orders/:id 下发的已 enrich 形态） */
+export interface StocktakeItemView {
+  materialId: number;
+  code: string;
+  name: string;
+  spec?: string | null;
+  unit: string;
+  category?: string | null;
+  photoUrl?: string | null;
+  /** 建单时的账面数量 */
+  snapshotQty: number;
+  /** 当前账面数量（过账时以它算差异，不是快照） */
+  currentQty: number;
+  /** 建单后这行有过出入库（currentQty ≠ snapshotQty），审核时要多看一眼 */
+  changedSinceCreate: boolean;
+  /** 差异金额预估用的单价（分）＝SKU 参考成本；过账后以 unitCostCents 快照为准 */
+  estUnitCostCents: number;
+  countedQty?: number | null;
+  note?: string | null;
+  // ---- 过账后写入的快照 ----
+  systemQty?: number;
+  diffQty?: number;
+  unitCostCents?: number;
+  amountCents?: number;
+}
+
+export interface StocktakeOrderView {
+  id: number;
+  stocktakeNo: string;
+  warehouseId: number;
+  /** 仓库名由服务端下发，端上不要拿 id 顶着显示 */
+  warehouseName?: string | null;
+  status: StocktakeStatus | string;
+  note?: string | null;
+  rejectReason?: string | null;
+  applicantId?: number | null;
+  applicantName?: string | null;
+  approverName?: string | null;
+  submittedAt?: string | null;
+  approvedAt?: string | null;
+  createdAt?: string;
+  /** 明细行数 / 已盘行数（列表页进度用；列表不带 items，点开详情才有） */
+  itemCount: number;
+  countedCount: number;
+  /** 过账后的盘盈/盘亏汇总（数量与金额都是过账快照） */
+  profitQty?: number;
+  lossQty?: number;
+  profitCents?: number;
+  lossCents?: number;
+  items?: StocktakeItemView[];
+}

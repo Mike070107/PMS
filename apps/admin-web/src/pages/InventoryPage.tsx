@@ -38,6 +38,7 @@ import {
   SwapOutlined,
   UnorderedListOutlined,
   UploadOutlined,
+  CarryOutOutlined,
 } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import UnitSelect from '../components/UnitSelect';
@@ -46,6 +47,7 @@ import { formatDateTimeCn } from '@pms/shared-types';
 import type { MaterialCategoryView } from '@pms/shared-types';
 import type { StockLotView, StockMovementView } from '@pms/shared-types';
 import { request } from '../lib/api';
+import StocktakeTab from './InventoryStocktake';
 import { auth, useAuth, useCompanyWideView, usePagePerm } from '../lib/auth';
 import { useTableSeq } from '../components/tableSeqColumn';
 import { nameOr, unknown } from '../lib/displayName';
@@ -1387,6 +1389,18 @@ export default function InventoryPage() {
             ),
           },
           {
+            key: 'stocktake',
+            label: <span><CarryOutOutlined /> 库存盘点</span>,
+            children: (
+              <StocktakeTab
+                canEdit={canEdit}
+                visibleWarehouses={visibleWarehouses}
+                materialOptions={materialOptions}
+                onPosted={loadAll}
+              />
+            ),
+          },
+          {
             key: 'catalog',
             label: '基础资料',
             children: (
@@ -1945,6 +1959,7 @@ const LOT_SOURCE_LABELS: Record<string, string> = {
   goods_receipt: '采购入库',
   general_receipt: '一般入库',
   transfer_order: '调拨入库',
+  stocktake: '盘盈（盘点单）',
   stock_adjust: '盘盈',
   legacy_stock: '老库存兜底',
 };
@@ -1954,6 +1969,7 @@ const REF_TYPE_LABELS: Record<string, string> = {
   goods_receipt: '采购入库单',
   general_receipt: '一般入库单',
   transfer_order: '调拨单',
+  stocktake_order: '盘点单',
   stock: '库存盘点',
 };
 

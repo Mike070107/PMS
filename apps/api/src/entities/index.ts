@@ -21,6 +21,7 @@ import { Stock } from './stock.entity';
 import { StockLot } from './stock-lot.entity';
 import { StockMovement } from './stock-movement.entity';
 import { TransferOrder } from './transfer-order.entity';
+import { StocktakeOrder } from './stocktake-order.entity';
 import { Supplier } from './supplier.entity';
 import { SupplierMaterial } from './supplier-material.entity';
 import { PurchaseRequest } from './purchase-request.entity';
@@ -87,6 +88,7 @@ export const entities = [
   StockLot,
   StockMovement,
   TransferOrder,
+  StocktakeOrder,
   Supplier,
   SupplierMaterial,
   PurchaseRequest,
@@ -145,6 +147,7 @@ export {
   StockLot,
   StockMovement,
   TransferOrder,
+  StocktakeOrder,
   Supplier,
   SupplierMaterial,
   PurchaseRequest,

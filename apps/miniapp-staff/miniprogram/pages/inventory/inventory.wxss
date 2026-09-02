@@ -205,3 +205,6 @@
   box-shadow: 0 8rpx 24rpx rgba(49, 85, 138, 0.28);
 }
 .fab::after { border: none; }
+
+/* 盘点入口：它是去另一页的导航、不是筛选开关，描边＋箭头和筛选 chip 区分开 */
+.chip--nav { border: 2rpx solid var(--color-brand); color: var(--color-brand); background: var(--color-card-bg); }

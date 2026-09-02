@@ -5,6 +5,7 @@ import type {
   PurchaseRequestView,
   StockLotView,
   StockMovementView,
+  StocktakeOrderView,
   StockView,
   WarehouseLocationView,
   WarehouseView,
@@ -108,3 +109,30 @@ export const createGeneralReceipt = (data: CreateGeneralReceiptReq) =>
 
 export const listPurchaseRequests = (query: { status?: string } = {}) =>
   request<PurchaseRequestView[]>({ url: '/purchase-requests', query: query as any });
+
+// ---------------- 盘点单 ----------------
+
+/** 盘点单列表（不带明细行，只有进度和过账汇总），最新在前 */
+export const listStocktakeOrders = (query: { status?: string } = {}) =>
+  request<StocktakeOrderView[]>({ url: '/stocktake-orders', query: query as any });
+
+/** 盘点单详情：明细行已带材料名/编码/照片/当前账面数，端上直接渲染 */
+export const getStocktakeOrder = (id: number) =>
+  request<StocktakeOrderView>({ url: `/stocktake-orders/${id}` });
+
+/** 开一张盘点单：按当时该仓的库存行生成盘点清单 */
+export const createStocktakeOrder = (data: { warehouseId: number; note?: string }) =>
+  request<StocktakeOrderView>({ method: 'POST', url: '/stocktake-orders', data });
+
+/**
+ * 分批保存实盘数（只传这次改过的行）。账上没有、实物有的材料
+ * 也从这里进：传一个不在清单里的 materialId 就会补一行。
+ */
+export const saveStocktakeCounts = (
+  id: number,
+  data: { items: Array<{ materialId: number; countedQty?: number; note?: string }> },
+) => request<StocktakeOrderView>({ method: 'POST', url: `/stocktake-orders/${id}/counts`, data });
+
+/** 盘完提交审核（counting → pending_review）；审核和过账在管理后台完成 */
+export const submitStocktakeOrder = (id: number) =>
+  request<StocktakeOrderView>({ method: 'POST', url: `/stocktake-orders/${id}/submit` });

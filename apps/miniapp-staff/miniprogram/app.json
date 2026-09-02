@@ -9,6 +9,7 @@
     "pages/approvals/approvals",
     "pages/inventory/inventory",
     "pages/material-inbound/material-inbound",
+    "pages/stocktake/stocktake",
     "pages/messages/messages",
     "pages/me/me",
     "pages/web-login/web-login",

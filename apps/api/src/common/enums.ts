@@ -124,6 +124,20 @@ export enum TransferOrderStatus {
 }
 
 /**
+ * 盘点单状态机
+ * counting（盘点中，可分批保存实盘数）→ pending_review（待经理审核）→ approved（已过账）
+ * 旁路：审核退回 → 回到 counting 继续改（盘一个仓几百条，不能一驳全重来）；
+ *       counting 可作废（cancelled）—— 同一个仓同时只允许一张在途盘点单，
+ *       废单不作废掉会把下一次盘点堵死。
+ */
+export enum StocktakeOrderStatus {
+  COUNTING = 'counting',
+  PENDING_REVIEW = 'pending_review',
+  APPROVED = 'approved',
+  CANCELLED = 'cancelled',
+}
+
+/**
  * 采购申请状态（四级链路）
  * office_review（办公室汇总合并）→ manager_review（物业经理）→ purchaser_review（采购经理）→ approved（待下单）→ done
  * 旁路：rejected、merged（被合并进其他申请）

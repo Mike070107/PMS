@@ -51,6 +51,7 @@
       <!-- 两个开关式筛选：要补货的、要补资料的。和下面的类别筛选条分开一行，
            它们不是「类别」，混在一起会被当成又一个类别点 -->
       <view class="switches">
+        <view wx:if="{{canEdit}}" class="chip chip--nav" bindtap="onOpenStocktake">盘点 ›</view>
         <view class="chip {{onlyLow ? 'chip--warn' : ''}}" bindtap="onToggleLow">
           低于安全库存{{lowCount ? ' ' + lowCount : ''}}
         </view>

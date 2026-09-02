@@ -568,6 +568,11 @@ Page({
    * 里当场就看不见了，人会以为没建上、再建一次。
    * 向导按「先找 → 找不到再建 → 当场入库」的顺序走，两个坑都不成立。
    */
+  /** 库存盘点入口：整仓盘点走独立页面，这里只负责跳过去 */
+  onOpenStocktake() {
+    wx.navigateTo({ url: '/pages/stocktake/stocktake' });
+  },
+
   onCreate() {
     wx.navigateTo({ url: '/pages/material-inbound/material-inbound' });
   },

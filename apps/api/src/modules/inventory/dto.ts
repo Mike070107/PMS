@@ -634,3 +634,60 @@ export class ReceiveTransferOrderDto {
   @IsInt()
   locationId?: number | null;
 }
+
+// ---------------- 盘点单 ----------------
+
+export class StocktakeQueryDto extends TenantQueryDto {
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+
+export class CreateStocktakeOrderDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  tenantId?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  warehouseId: number;
+
+  /** 盘点说明，如「2026 年 8 月月末盘点」 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  note?: string;
+}
+
+export class StocktakeCountItemDto {
+  @Type(() => Number)
+  @IsInt()
+  materialId: number;
+
+  /**
+   * 实盘数量；不传 = 这行这次没动（保留原值）。
+   * 填错了就再传一次新值覆盖，不支持清回「未盘」—— 少一个口径少一类误会。
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  countedQty?: number;
+
+  /** 这一行的备注（「外借 2 把在东区」这类差异原因） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  note?: string;
+}
+
+export class SaveStocktakeCountsDto {
+  @IsArray()
+  items: StocktakeCountItemDto[];
+}
+
+export class RejectStocktakeOrderDto {
+  @IsString()
+  @MaxLength(255)
+  reason: string;
+}
