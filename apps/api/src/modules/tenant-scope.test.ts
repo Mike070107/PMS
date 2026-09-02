@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { UserRole } from '../common/enums';
+import { UserRole, WorkOrderStatus } from '../common/enums';
 import { InventoryService } from './inventory/inventory.service';
 import { PropertiesService } from './properties/properties.service';
 import { QrService } from './qr/qr.service';
@@ -116,6 +116,116 @@ test('「在手工单」不再隐式授予「我的报修」列表权限', async
     () => service.listWorkOrders({ scope: 'reported' }, user, access),
     /没有查看这类工单的权限/,
   );
+});
+
+test('维修工的工单池不再按候选人或当前负责人过滤', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  let capturedWhere: any;
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => [10];
+  service.isSelfScoped = async () => false;
+  service.canDispatch = async () => false;
+  service.keywordWheres = async (_tenantId: number, where: any) => [where];
+  service.workOrderRepo = {
+    async find(options: any) {
+      capturedWhere = options.where;
+      return [];
+    },
+  };
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+  const access = appAccess({ 'app:pool': { view: true } });
+
+  await service.listWorkOrders({ scope: 'pool' }, user, access);
+
+  assert.equal(capturedWhere.assigneeId, undefined);
+  assert.equal(capturedWhere.candidateIds, undefined);
+  assert.deepEqual(capturedWhere.status._value, [
+    WorkOrderStatus.CREATED,
+    WorkOrderStatus.DISPATCHED,
+    WorkOrderStatus.WAITING_MATERIAL,
+  ]);
+
+  assert.deepEqual(
+    await service.listWorkOrders(
+      { scope: 'pool', status: WorkOrderStatus.IN_PROGRESS },
+      user,
+      access,
+    ),
+    [],
+  );
+});
+
+test('有工单池接单权时，可认领未推送给自己的未派单', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  const workOrder = {
+    id: 5,
+    tenantId: 1,
+    communityId: 10,
+    status: WorkOrderStatus.CREATED,
+    assigneeId: null,
+    candidateIds: [],
+    escalatedAt: new Date(),
+  };
+  let logAction = '';
+  service.resolveTenantId = () => 1;
+  service.assertWorkOrderScope = () => {};
+  service.lockWorkOrder = async () => workOrder;
+  service.writeLog = async (_manager: any, _saved: any, _from: any, action: string) => {
+    logAction = action;
+  };
+  service.dataSource = {
+    async transaction(run: (manager: any) => Promise<any>) {
+      return run({ async save(_entity: any, value: any) { return value; } });
+    },
+  };
+
+  const saved = await service.acceptWorkOrder(5, { id: 7, tenantId: 1 }, {});
+
+  assert.equal(saved.assigneeId, 7);
+  assert.deepEqual(saved.candidateIds, [7]);
+  assert.equal(saved.status, WorkOrderStatus.IN_PROGRESS);
+  assert.equal(saved.escalatedAt, null);
+  assert.equal(logAction, 'claim');
+});
+
+test('已派给别人但尚未接单的工单，可从工单池主动接走', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  const workOrder = {
+    id: 6,
+    tenantId: 1,
+    communityId: 10,
+    status: WorkOrderStatus.DISPATCHED,
+    assigneeId: 99,
+    candidateIds: [99],
+    escalatedAt: new Date(),
+  };
+  let logNote = '';
+  service.resolveTenantId = () => 1;
+  service.assertWorkOrderScope = () => {};
+  service.lockWorkOrder = async () => workOrder;
+  service.writeLog = async (
+    _manager: any,
+    _saved: any,
+    _from: any,
+    _action: string,
+    _operatorId: number,
+    note: string,
+  ) => {
+    logNote = note;
+  };
+  service.dataSource = {
+    async transaction(run: (manager: any) => Promise<any>) {
+      return run({ async save(_entity: any, value: any) { return value; } });
+    },
+  };
+
+  const saved = await service.acceptWorkOrder(6, { id: 7, tenantId: 1 }, {});
+
+  assert.equal(saved.assigneeId, 7);
+  assert.deepEqual(saved.candidateIds, [7]);
+  assert.equal(saved.status, WorkOrderStatus.IN_PROGRESS);
+  assert.match(logNote, /原已派给其他维修工/);
 });
 
 test('只有「我的报修」权限时，不能打开别人提交的工单详情', async () => {

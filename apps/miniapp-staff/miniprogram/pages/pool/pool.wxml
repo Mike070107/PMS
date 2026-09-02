@@ -128,7 +128,7 @@
         ><view class="btn__icon icon-action--send-white"></view><text>{{item.actionText}}</text></button>
         <text wx:else class="wo-card__more">查看详情 ›</text>
       </block>
-      <!-- 维修工：多人待抢或办公室定向派给我的单才画接单按钮，接完才进“在手工单” -->
+      <!-- 维修工：未派单或已派但尚未接单都可主动接，接完才进“在手工单” -->
       <block wx:else>
         <button
           wx:if="{{canAccept && item.claimable}}"

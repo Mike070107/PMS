@@ -374,20 +374,13 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         // 和列表卡片同一口径：报单时说了「急修」，或者压了 7 天，都挂红标
         urgent: !!detail.request?.urgent || stayTone(stayedDays) === 'danger',
         timeline: buildTimeline(detail.logs, timelineLabels, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
-        // 接单按钮和后端 acceptWorkOrder 一一对应，两条路都要判：
-        //   · 认领（claim）：没人负责 + 状态在池子里 —— 只有维修工能领
-        //   · 接单（accept）：已派给我 + 状态是已派单
-        // 原来这里只看状态，于是办公室点开一张「已派单给王师傅」的单，
-        // 底部照样出现「接单」；维修工点开别人手上的单也一样。
+        // 工单池内未开工的单都可主动接：未派人、派给自己或派给别人都一样。
+        // 权限由 session.canAccept 管，小区范围和并发抢单由后端再兜底。
         canAccept:
           !!session?.canAccept &&
-          (detail.workOrder.assigneeId
-            ? detail.workOrder.assigneeId === myId &&
-              status === WorkOrderStatus.DISPATCHED
-            : (detail.workOrder.candidateIds || []).indexOf(myId) >= 0 &&
-              (status === WorkOrderStatus.CREATED ||
-                status === WorkOrderStatus.DISPATCHED ||
-                waitingInPool)),
+          (status === WorkOrderStatus.CREATED ||
+            status === WorkOrderStatus.DISPATCHED ||
+            waitingInPool),
         // 完工/缺料同理：只有这单真在自己手上才给表单
         canComplete:
           !!session?.canHandleOrders &&
@@ -401,7 +394,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         assigneeText: detail.workOrder.assigneeName || '未派单',
         ...this.buildResult(detail),
         missingText: missingMaterialsText(detail.workOrder.missingMaterials),
-        acceptText: waitingInPool ? '材料到了，接回' : '接单',
+        acceptText: waitingInPool
+          ? '材料到了，接回'
+          : detail.workOrder.assigneeId && detail.workOrder.assigneeId !== myId
+            ? '主动接单'
+            : '接单',
         contactPhone: detail.request?.contactPhone || '',
         // 故障位置/现象从报修信息带出来：业主已经说过一遍了，别让维修工再打一遍。
         // 带出来的只是初值，可以改、也可以清空 —— 现场看到的往往和业主说的不一样。

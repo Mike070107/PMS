@@ -146,7 +146,7 @@ export interface ListQuery {
   status?: WorkOrderStatus;
   communityId?: number;
   /**
-   * mine=业主我提交的 / 维修工派给我的；pool=未指派的池子（维修工待接 = 办公室待派）；
+   * mine=业主我提交的 / 维修工派给我的；pool=待接/待派池（维修工可看全部未开工单）；
    * reported=我提交的（员工替人报的单，不管派给了谁）
    */
   scope?: 'mine' | 'pool' | 'reported' | 'all';
@@ -158,7 +158,7 @@ export interface ListQuery {
 export const list = (query: ListQuery = {}) =>
   request<WorkOrderListItem[]>({ url: '/work-orders', query: query as any });
 
-/** 工单池里有几条待接（按本人类型过滤），底部 tab 角标用 */
+/** 管理处范围内有几条待接，底部 tab 角标用 */
 export const poolCount = () => request<{ count: number }>({ url: '/work-orders/pool-count' });
 
 export const detail = (id: number | string) => request<WorkOrderDetail>({ url: `/work-orders/${id}` });

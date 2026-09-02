@@ -17,7 +17,6 @@ import {
   IsNull,
   MoreThan,
   Not,
-  Raw,
   Repository,
 } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -133,6 +132,13 @@ import {
   LEGACY_REPAIR_TYPE_MAP,
   resolveRepairTypeLabel,
 } from './repair-type-labels';
+
+/** 工单池只包含尚未开工、可以被主动接单的状态。 */
+const CLAIMABLE_WORK_ORDER_STATUSES: WorkOrderStatus[] = [
+  WorkOrderStatus.CREATED,
+  WorkOrderStatus.DISPATCHED,
+  WorkOrderStatus.WAITING_MATERIAL,
+];
 
 /** 撤单快选原因 */
 const CANCEL_REASONS: Record<string, string> = {
@@ -868,46 +874,29 @@ export class RepairsService implements OnModuleInit {
       if (!myRequestIds.length) return [];
       where.requestId = In(myRequestIds.map((item) => item.id));
     } else if (query.scope === 'pool') {
+      // scope=pool 是一个待接池，不能通过手改 status 把别人已开工/已完成的单列出来。
+      if (
+        query.status &&
+        !CLAIMABLE_WORK_ORDER_STATUSES.includes(query.status as WorkOrderStatus)
+      ) {
+        return [];
+      }
       const dispatcher = await this.canDispatch(user, access);
       if (dispatcher) {
         // 派单台只看真正还没选维修工的单。已经定向派给某人的单属于维修工的待接池，
         // 不能继续留在办公室“待派单”里。
         where.assigneeId = IsNull();
         if (!query.status) {
-          where.status = In([
-            WorkOrderStatus.CREATED,
-            WorkOrderStatus.DISPATCHED,
-            WorkOrderStatus.WAITING_MATERIAL,
-          ]);
+          where.status = In(CLAIMABLE_WORK_ORDER_STATUSES);
         }
       } else {
-        // 维修工工单池有两种来源：
-        // 1) 类型规则同时通知了多人，candidate_ids 里有我，谁先接归谁；
-        // 2) 办公室定向派给我，assignee_id 是我，但我还没点接单。
-        // candidate_ids 是建单快照，不能再按 skill 反查：同一个类型在不同管理处的人不同，
-        // 只按类型会让全公司范围的维修工看到别的管理处没有发给他的单。
-        const candidateWhere: FindOptionsWhere<WorkOrder> = {
-          ...where,
-          assigneeId: IsNull(),
-          candidateIds: Raw((alias) => `${alias} @> :candidateIds`, {
-            candidateIds: JSON.stringify([user.id]),
-          }),
-        };
+        // 维修工的「工单池」是管理处范围内公开的待接区：
+        // - 还没派人的单，可以主动认领；
+        // - 已派给别人但尚未接单的单，也可以主动接走。
+        // 可见小区仍由 access 的 community scope 限制，不会跨管理处。
         if (!query.status) {
-          candidateWhere.status = In([
-            WorkOrderStatus.CREATED,
-            WorkOrderStatus.DISPATCHED,
-            WorkOrderStatus.WAITING_MATERIAL,
-          ]);
+          where.status = In(CLAIMABLE_WORK_ORDER_STATUSES);
         }
-        const directedWhere: FindOptionsWhere<WorkOrder> = {
-          ...where,
-          assigneeId: user.id,
-          status: query.status
-            ? (query.status as WorkOrderStatus)
-            : WorkOrderStatus.DISPATCHED,
-        };
-        whereVariants = [candidateWhere, directedWhere];
       }
     } else if (query.scope === 'reported') {
       // 「我报的」= 我替住户/巡查提交的单，不管派给了谁。
@@ -1764,21 +1753,23 @@ export class RepairsService implements OnModuleInit {
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
       this.assertWorkOrderScope(workOrder, access);
-      // 工单池抢单：未指派的工单允许维修工自行认领（行锁保证只会有一个人抢到）
-      const isClaim = workOrder.assigneeId === null;
+      // 工单池主动接单：未派单和已派给别人但尚未接单的工单都可认领。
+      // controller 已校验 app:pool·edit，这里再校验小区数据范围；行锁保证并发时
+      // 只有第一个人能把待接单改成维修中。
+      const previousAssigneeId = workOrder.assigneeId;
+      const isClaim = previousAssigneeId !== user.id;
       if (isClaim) {
-        if (!(workOrder.candidateIds ?? []).includes(user.id)) {
-          throw new ForbiddenException('这张工单没有推送给你，不能接单');
-        }
         assertWorkOrderTransition(
           workOrder.status,
           WorkOrderStatus.IN_PROGRESS,
           'claim',
           'work order cannot be claimed',
         );
-        // 能不能从池子里领单，controller 上的 app:pool·接单 已经卡过了
         workOrder.assigneeId = user.id;
-        workOrder.dispatchedAt = workOrder.dispatchedAt ?? new Date();
+        workOrder.candidateIds = [user.id];
+        // 被别人主动接走后从现在重新计时，避免旧负责人的催修记录落到新人头上。
+        workOrder.dispatchedAt = new Date();
+        workOrder.escalatedAt = null;
       } else {
         assertWorkOrderTransition(
           workOrder.status,
@@ -1786,9 +1777,6 @@ export class RepairsService implements OnModuleInit {
           'accept',
           'only dispatched work order can be accepted',
         );
-        if (!(await this.canDispatch(user)) && workOrder.assigneeId !== user.id) {
-          throw new ForbiddenException('work order is not assigned to current user');
-        }
       }
 
       const fromStatus = workOrder.status;
@@ -1805,7 +1793,9 @@ export class RepairsService implements OnModuleInit {
         isClaim
           ? fromStatus === WorkOrderStatus.WAITING_MATERIAL
             ? '维修工从工单池接回（缺料单）'
-            : '维修工从工单池认领'
+            : previousAssigneeId
+              ? '维修工主动接单（原已派给其他维修工）'
+              : '维修工从工单池认领'
           : null,
       );
       return saved;
@@ -4208,7 +4198,7 @@ export class RepairsService implements OnModuleInit {
     return Array.from(new Set(raw.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
   }
 
-  /** 工单池角标：多人待抢 + 办公室定向派给我但尚未接单。 */
+  /** 工单池角标：管理处范围内所有尚可主动接单的工单。 */
   async poolCount(user: AuthUser, access: ResolvedAccess): Promise<{ count: number }> {
     const tenantId = this.resolveTenantId(user);
     const base: FindOptionsWhere<WorkOrder> = {
@@ -4225,32 +4215,17 @@ export class RepairsService implements OnModuleInit {
           where: {
             ...base,
             assigneeId: IsNull(),
-            status: In([
-              WorkOrderStatus.CREATED,
-              WorkOrderStatus.DISPATCHED,
-              WorkOrderStatus.WAITING_MATERIAL,
-            ]),
+            status: In(CLAIMABLE_WORK_ORDER_STATUSES),
           },
         }),
       };
     }
     return {
       count: await this.workOrderRepo.count({
-        where: [
-          {
-            ...base,
-            assigneeId: IsNull(),
-            candidateIds: Raw((alias) => `${alias} @> :candidateIds`, {
-              candidateIds: JSON.stringify([user.id]),
-            }),
-            status: In([
-              WorkOrderStatus.CREATED,
-              WorkOrderStatus.DISPATCHED,
-              WorkOrderStatus.WAITING_MATERIAL,
-            ]),
-          },
-          { ...base, assigneeId: user.id, status: WorkOrderStatus.DISPATCHED },
-        ],
+        where: {
+          ...base,
+          status: In(CLAIMABLE_WORK_ORDER_STATUSES),
+        },
       }),
     };
   }

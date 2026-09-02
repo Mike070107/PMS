@@ -12,13 +12,13 @@ import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unre
 
 /**
  * 这一屏对两种人是两件事，同一份数据、两套动作：
- *   · 维修工 = 工单池：类型规则推给我的多人待抢单 + 办公室定向派给我的待接单
+ *   · 维修工 = 工单池：管理处范围内的未派单 + 已派但尚未接单
  *   · 办公室一侧 = 派单台：还没派出去的单，动作是「派单」；另外要能按状态翻、
  *     按单号/地址/描述搜，进详情看修的结果
  * 报修入口两边都留 —— 巡查发现问题顺手提单和身份无关。
  *
- * 「接单」按钮为什么要判两层（isTechnician + claimable）：后端 accept 只让维修工
- * 领未指派的单（见 acceptWorkOrder 的 claim 分支），端上原来对所有行都画按钮，
+ * 「接单」按钮要判两层（有接单权 + claimable）：待接状态可主动认领，
+ * 已进入维修中/待验收的工单不能再抢。端上原来对所有行都画按钮，
  * 于是办公室看到一屏「已派单 / 维修中」的单上全挂着接单按钮，点了必然 403。
  */
 
@@ -33,7 +33,7 @@ type OrderRow = WorkOrderListItem & {
   urgent: boolean;
   /** 「PVC 管 DN50 ×2 米」，等待材料的单才有 */
   missingText: string;
-  /** 维修工能不能领这一单（多人待抢或定向派给我 + 状态允许） */
+  /** 维修工能不能主动领这一单 */
   claimable: boolean;
   /** 办公室能不能派/改派这一单 */
   dispatchable: boolean;
@@ -55,7 +55,7 @@ type OrderRow = WorkOrderListItem & {
   statReporterHint: string;
 };
 
-/** 未指派 + 这些状态 = 维修工可以领、办公室需要派 */
+/** 这些状态还没开工，维修工可主动领；办公室也可派/改派 */
 const POOL_STATUSES: string[] = [
   WorkOrderStatus.CREATED,
   WorkOrderStatus.DISPATCHED,
@@ -93,10 +93,10 @@ const DISPATCH_FILTERS: PoolFilter[] = [
 ];
 
 /**
- * 工单池（维修工）的状态筛选。scope 恒为 pool（等待我接的单），
+ * 工单池（维修工）的状态筛选。scope 恒为 pool（管理处范围内的待接单），
  * 所以这里只按状态分档，档位就是 POOL_STATUSES 那三种：
- *   新报修   = 报修类型规则推给我的多人待抢单
- *   已派单   = 办公室明确派给我、还没有接单
+ *   新报修   = 还没指定维修工的单
+ *   已派单   = 已指定维工、但对方还没接的单（可主动接走）
  *   等待材料 = 缺料退回池子的，接回去要先确认料到没到
  * 第一项是「全部」—— 维修工进来先看有多少活，再决定挑哪种。
  */
@@ -296,13 +296,12 @@ Page({
               },
       );
       const list = mainTab === 'done' ? raw.filter((item) => !isActiveOrder(item.status)) : raw;
+      const myId = session.me?.id ?? 0;
 
       const rows: OrderRow[] = withOrderLabels(list).map((item) => {
         // 只有「工单池」那一档才画接单按钮：我报的 / 已完结里那张单未必轮得到我领
         const claimable =
-          mainTab === 'pool' &&
-          POOL_STATUSES.indexOf(item.status) >= 0 &&
-          (!item.assigneeId || item.status === WorkOrderStatus.DISPATCHED);
+          mainTab === 'pool' && POOL_STATUSES.indexOf(item.status) >= 0;
         const dispatchable = DISPATCHABLE_STATUSES.indexOf(item.status) >= 0;
         return {
           ...item,
@@ -319,6 +318,8 @@ Page({
                     : '派单'
                   : item.status === WorkOrderStatus.WAITING_MATERIAL
                     ? '接回'
+                    : item.assigneeId && item.assigneeId !== myId
+                      ? '主动接单'
                     : '接单',
           assigneeText: item.assigneeName || '未派单',
           /* 网格第三格：同一格在四种场合是四个意思 —— 派单台看「在谁手上」，
