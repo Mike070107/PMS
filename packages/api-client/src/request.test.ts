@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { isApiEnvelope } from './envelope';
+import { diagnosticRequestPath } from './request-diagnostic';
 
 /**
  * 这条口径判错一次，用户看到的是红字报错、而数据其实已经存进去了 ——
@@ -30,4 +31,15 @@ test('裸返回照原样过：数组、null、没有 code 的对象', () => {
   assert.equal(isApiEnvelope({ id: 1, name: '张三' }), false);
   // 数字 code 但既没 data 也没 message：不像包装，按业务对象放行
   assert.equal(isApiEnvelope({ id: 3, code: 200 }), false);
+});
+
+test('异常反馈保留排障参数但不记录搜索词', () => {
+  assert.equal(
+    diagnosticRequestPath('/work-orders', {
+      scope: 'dispatch',
+      status: 'created',
+      q: '枫桦景苑 303',
+    } as any),
+    '/work-orders?scope=dispatch&status=created',
+  );
 });

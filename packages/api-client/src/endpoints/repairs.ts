@@ -149,10 +149,10 @@ export interface ListQuery {
   status?: WorkOrderStatus;
   communityId?: number;
   /**
-   * mine=业主我提交的 / 维修工派给我的；pool=待接/待派池（维修工可看全部未开工单）；
+   * mine=业主我提交的 / 维修工派给我的；pool=维修工待接池；dispatch=办公室待派单；
    * reported=我提交的（员工替人报的单，不管派给了谁）
    */
-  scope?: 'mine' | 'pool' | 'reported' | 'all';
+  scope?: 'mine' | 'pool' | 'dispatch' | 'reported' | 'all';
   /** 关键词：单号 / 报修地址 / 故障描述 */
   q?: string;
 }

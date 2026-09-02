@@ -17,6 +17,7 @@ import {
   IsNull,
   MoreThan,
   Not,
+  Raw,
   Repository,
 } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -936,6 +937,8 @@ export class RepairsService implements OnModuleInit {
                   resolved.pages['app:pool']?.view ||
                   resolved.pages['app:dispatch']?.view
                 )
+              : query.scope === 'dispatch'
+                ? !!resolved.pages['app:dispatch']?.view
               : query.scope === 'mine'
                 ? !!resolved.pages['app:my-orders']?.view
                 : query.scope === 'all'
@@ -957,6 +960,12 @@ export class RepairsService implements OnModuleInit {
       });
       if (!myRequestIds.length) return [];
       where.requestId = In(myRequestIds.map((item) => item.id));
+    } else if (query.scope === 'dispatch') {
+      // 派单台只处理“没有任何去向”的新单。已匹配候选维修工的单留在工单池等待接单。
+      if (query.status && query.status !== WorkOrderStatus.CREATED) return [];
+      where.assigneeId = IsNull();
+      where.candidateIds = Raw((alias) => `jsonb_array_length(${alias}) = 0`);
+      where.status = WorkOrderStatus.CREATED;
     } else if (query.scope === 'pool') {
       // scope=pool 是一个待接池，不能通过手改 status 把别人已开工/已完成的单列出来。
       if (
@@ -965,23 +974,9 @@ export class RepairsService implements OnModuleInit {
       ) {
         return [];
       }
-      const dispatcher = await this.canDispatch(user, access);
-      if (dispatcher) {
-        // 派单台只看真正还没选维修工的单。已经定向派给某人的单属于维修工的待接池，
-        // 不能继续留在办公室“待派单”里。
-        where.assigneeId = IsNull();
-        if (!query.status) {
-          where.status = In(CLAIMABLE_WORK_ORDER_STATUSES);
-        }
-      } else {
-        // 维修工的「工单池」是管理处范围内公开的待接区：
-        // - 还没派人的单，可以主动认领；
-        // - 缺料退回池子的单，料到后可以接回；
-        // - 已经定向派人的单只进该维修工的「在手工单」，不再留在公开池里。
-        // 可见小区仍由 access 的 community scope 限制，不会跨管理处。
-        if (!query.status) {
-          where.status = In(CLAIMABLE_WORK_ORDER_STATUSES);
-        }
+      // 工单池和用户是否同时拥有派单权限无关，两格权限同时勾选时也不能串台。
+      if (!query.status) {
+        where.status = In(CLAIMABLE_WORK_ORDER_STATUSES);
       }
     } else if (query.scope === 'reported') {
       // 「我报的」= 我替住户/巡查提交的单，不管派给了谁。

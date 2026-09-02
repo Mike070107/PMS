@@ -174,13 +174,13 @@ export class WorkOrdersQueryDto {
   /**
    * 小程序端取数范围：
    * - mine：业主=我提交的报修；维修工=派给我的工单
-   * - pool：待接单/待派单池。维修工看管理处内所有未开工的单（包括已派给别人的待接单），
-   *   办公室看尚未指定维修工的单
+   * - pool：工单池。维修工看管理处内所有未开工的单
+   * - dispatch：派单台。只看既没有负责人、也没有候选维修工的待派单
    * 后台角色不传则为全部（仍受租户隔离）
    */
   @IsOptional()
-  @IsIn(['mine', 'pool', 'reported', 'all'])
-  scope?: 'mine' | 'pool' | 'reported' | 'all';
+  @IsIn(['mine', 'pool', 'dispatch', 'reported', 'all'])
+  scope?: 'mine' | 'pool' | 'dispatch' | 'reported' | 'all';
 
   /**
    * 关键词：单号 / 报修地址 / 故障描述。
