@@ -1586,3 +1586,11 @@
 - 自上次（e3fc848）以来上线的相关提交：
   - 2d944ef fix: expose work order delete actions in lists
 
+## 2026-09-02 17:34 · web · 59c6dc0
+
+- 包：`pms-web-20260902-1734.tar.gz`
+- 提交：59c6dc0 fix: default dispatch and inspection filters
+- 说明：养护单默认待查验并隐藏作废记录，工单默认待派单/待接单
+- 自上次（2d944ef）以来上线的相关提交：
+  - 59c6dc0 fix: default dispatch and inspection filters
+
