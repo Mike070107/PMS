@@ -80,7 +80,9 @@ Page({
         .filter((item) => isActiveOrder(item.status))
         .map((item) => ({
           ...item,
-          actionText: ACTION_TEXT[item.status] || '查看详情',
+          // 接单成功后 acceptedAt 已落库，即使极端情况下列表状态缓存仍是 dispatched，
+          // 卡片也不能再误导用户去接第二次；有接单时间就只能进入完工流程。
+          actionText: item.acceptedAt ? '去完工' : ACTION_TEXT[item.status] || '查看详情',
         }));
       // 在手工单与工单池同一口径：紧急在前；同组按报修时间从早到晚。
       active.sort(

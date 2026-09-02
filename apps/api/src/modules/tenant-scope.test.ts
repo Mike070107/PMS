@@ -390,6 +390,58 @@ test('维修工的工单池只包含未派单和等待材料', async () => {
   );
 });
 
+test('派单台只列没有负责人且没有候选维修工的新单', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  let capturedWhere: any;
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => [10];
+  service.isSelfScoped = async () => false;
+  service.keywordWheres = async (_tenantId: number, where: any) => [where];
+  service.workOrderRepo = {
+    async find(options: any) {
+      capturedWhere = options.where;
+      return [];
+    },
+  };
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+  const access = appAccess({ 'app:dispatch': { view: true } });
+
+  await service.listWorkOrders({ scope: 'dispatch' }, user, access);
+
+  assert.equal(capturedWhere.assigneeId._type, 'isNull');
+  assert.equal(capturedWhere.candidateIds._type, 'raw');
+  assert.match(capturedWhere.candidateIds._getSql('candidate_ids'), /jsonb_array_length/);
+  assert.equal(capturedWhere.status, WorkOrderStatus.CREATED);
+});
+
+test('同时有派单权限的人打开工单池时仍按工单池范围取数', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  let capturedWhere: any;
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => [10];
+  service.isSelfScoped = async () => false;
+  service.keywordWheres = async (_tenantId: number, where: any) => [where];
+  service.workOrderRepo = {
+    async find(options: any) {
+      capturedWhere = options.where;
+      return [];
+    },
+  };
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+  const access = appAccess({ 'app:pool': { view: true }, 'app:dispatch': { view: true } });
+
+  await service.listWorkOrders({ scope: 'pool' }, user, access);
+
+  assert.equal(capturedWhere.assigneeId, undefined);
+  assert.equal(capturedWhere.candidateIds, undefined);
+  assert.deepEqual(capturedWhere.status._value, [
+    WorkOrderStatus.CREATED,
+    WorkOrderStatus.WAITING_MATERIAL,
+  ]);
+});
+
 test('定向已派单进入对应维修工的在手工单', async () => {
   const service = Object.create(RepairsService.prototype) as any;
   let capturedWhere: any;

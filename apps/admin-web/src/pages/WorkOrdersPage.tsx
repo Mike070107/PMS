@@ -788,6 +788,9 @@ export default function WorkOrdersPage() {
     try {
       const query: any = {};
       if (filter !== 'all') query.status = filter;
+      // 已按类型匹配到候选维修工并推送的 CREATED 工单是在等维修工接单，
+      // 不属于办公室待派事项；默认“待派单”只取真正没有去向的单。
+      if (filter === WorkOrderStatus.CREATED) query.scope = 'dispatch';
       if (searchQ) query.q = searchQ;
       const r = await request<WorkOrderRow[] | { list: WorkOrderRow[] }>({
         url: '/work-orders',

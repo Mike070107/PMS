@@ -77,8 +77,8 @@ const DISPATCHABLE_STATUSES: string[] = [
 interface PoolFilter {
   key: string;
   label: string;
-  /** 服务端的取数范围：pool 未认领的 / all 全部 / reported 我提交的 */
-  scope?: 'pool' | 'all' | 'reported';
+  /** 服务端的取数范围：pool 待接 / dispatch 待派 / all 全部 / reported 我提交的 */
+  scope?: 'pool' | 'dispatch' | 'all' | 'reported';
   status?: string;
 }
 
@@ -87,7 +87,7 @@ interface PoolFilter {
  * 要办的事就是「把还没派的派出去」，别让他先自己挑一遍。
  */
 const DISPATCH_FILTERS: PoolFilter[] = [
-  { key: 'pool', label: '待派单', scope: 'pool' },
+  { key: 'pool', label: '待派单', scope: 'dispatch' },
   { key: 'dispatched', label: '已派单', scope: 'all', status: WorkOrderStatus.DISPATCHED },
   { key: 'in_progress', label: '维修中', scope: 'all', status: WorkOrderStatus.IN_PROGRESS },
   { key: 'waiting', label: '等待材料', scope: 'all', status: WorkOrderStatus.WAITING_MATERIAL },
