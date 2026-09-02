@@ -1602,3 +1602,11 @@
 - 自上次（59c6dc0）以来上线的相关提交：
   - f762f91 fix: normalize legacy stocktake permissions
 
+## 2026-09-02 18:05 · api · 861b4cb
+
+- 包：`pms-api-20260902-1801.tar.gz`
+- 提交：861b4cb fix: restore independent stocktake permissions
+- 说明：恢复 Web 与员工端独立库存盘点权限及接口鉴权
+- 自上次（c316cad）以来上线的相关提交：
+  - 861b4cb fix: restore independent stocktake permissions
+
