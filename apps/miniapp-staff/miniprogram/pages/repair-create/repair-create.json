@@ -1,5 +1,6 @@
 {
   "navigationBarTitleText": "报修",
+  "navigationStyle": "custom",
   "enablePullDownRefresh": true,
   "usingComponents": {
     "place-picker": "/components/place-picker/index"

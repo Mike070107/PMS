@@ -18,6 +18,19 @@
 .picker.placeholder { color: var(--color-text-tertiary); }
 .muted { color: var(--color-text-tertiary); font-size: var(--font-sm); line-height: 1.7; }
 .mt-sm { margin-top: 12rpx; }
+.field--compact { margin-bottom: 0; }
+.picker--compact {
+  min-height: 98rpx;
+  padding: 22rpx 70rpx 22rpx 64rpx;
+  border: 2rpx solid #c8d8e8;
+  border-radius: 18rpx;
+  background-color: #fff;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23536c84' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z'/%3E%3Ccircle cx='12' cy='10' r='2.5'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23536c84' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E");
+  background-position: 20rpx center, right 20rpx center;
+  background-size: 32rpx 32rpx, 30rpx 30rpx;
+}
 
 /* z-index 按 app.wxss 顶部那份「层级账本」来：员工端 tabBar 是页面内的悬浮胶囊（100），
    贴底浮层低于它就会被压住且划不上来，所以这里排在所有 .sheet 之上的 220/221。

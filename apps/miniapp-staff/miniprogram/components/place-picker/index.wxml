@@ -1,9 +1,9 @@
-<view class="field" bindtap="onOpen">
-  <view class="label">报修位置</view>
-  <view class="picker {{valueText ? '' : 'placeholder'}}">
+<view class="field {{compact ? 'field--compact' : ''}}" bindtap="onOpen">
+  <view wx:if="{{!compact}}" class="label">报修位置</view>
+  <view class="picker {{compact ? 'picker--compact' : ''}} {{valueText ? '' : 'placeholder'}}">
     {{valueText || (loading ? '正在加载地址…' : '点这里选小区 / 楼栋 / 房号')}}
   </view>
-  <view class="muted mt-sm">楼道、电梯、大门这类公共区域，选到那一级就行，不用选房号。</view>
+  <view wx:if="{{!compact}}" class="muted mt-sm">楼道、电梯、大门这类公共区域，选到那一级就行，不用选房号。</view>
 </view>
 
 <!-- 选择面板：手机上放不下级联面板，改成逐层钻取 -->

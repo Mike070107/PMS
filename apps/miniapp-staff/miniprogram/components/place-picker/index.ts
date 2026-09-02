@@ -79,6 +79,8 @@ Component<
     /** 已选中的展示文案，由页面回传，组件只负责选 */
     valueText: { type: String, value: '' },
     loading: { type: Boolean, value: false },
+    /** 报修三步表单使用紧凑外观，标签和辅助说明由页面统一排版 */
+    compact: { type: Boolean, value: false },
   },
 
   data: {

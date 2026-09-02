@@ -193,6 +193,10 @@ Page({
     if (this.detectTimer) clearTimeout(this.detectTimer);
   },
 
+  onBack() {
+    wx.navigateBack();
+  },
+
   /**
    * 不再由端上逐个小区拼地址簿：后台根据当前业务角色的数据范围统一收窄，
    * 管理处角色只能拿到该管理处的小区；空范围就返回空集。
@@ -631,6 +635,40 @@ Page({
   },
 
   // ---------------- 提交 ----------------
+
+  /**
+   * 原型里的“下一步：确认信息”不是直接提交：先做完整校验，再把关键内容
+   * 用大字号确认框摆给用户，避免年纪大的办公室人员误点后无法返回修改。
+   */
+  onReview() {
+    const { communityId, typeIndex, content, contactPhone, detected } = this.data;
+    const errors = {
+      place: communityId || detected?.matched ? '' : '请先选择报修位置',
+      type: typeIndex < 0 ? '请选择报修类型' : '',
+      content: content.trim().length >= 5 ? '' : '请至少填写 5 个字描述问题',
+      phone: contactPhone && !PHONE_RE.test(contactPhone) ? '请填写正确的手机号' : '',
+    };
+    this.setData({ errors });
+    if (errors.place || errors.type || errors.content || errors.phone) {
+      wx.showToast({ icon: 'none', title: errors.place || errors.content || errors.type || errors.phone });
+      return;
+    }
+
+    const addressText = detected?.matched
+      ? composeDetectedAddress(detected, this.data.spotText)
+      : [this.data.placeText, this.data.spotText.trim()].filter(Boolean).join(' ');
+    const typeLabel = this.data.typeOptions[typeIndex]?.label || '未识别';
+    const contact = [this.data.contactName.trim(), contactPhone].filter(Boolean).join('，') || '未填写';
+    wx.showModal({
+      title: '确认报修信息',
+      content: `位置：${addressText}\n类型：${typeLabel}\n故障：${content.trim()}\n联系：${contact}\n紧急程度：${this.data.urgent ? '紧急' : '普通'}`,
+      confirmText: '确认提交',
+      cancelText: '返回修改',
+      success: (res) => {
+        if (res.confirm) this.onSubmit();
+      },
+    });
+  },
 
   async onSubmit() {
     const { communityId, typeIndex, content, contactPhone, detected } = this.data;
