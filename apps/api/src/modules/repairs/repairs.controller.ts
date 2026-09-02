@@ -36,6 +36,7 @@ import {
   UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
   WorkOrdersQueryDto,
+  VoidWorkOrderDto,
 } from './dto';
 import { RepairsService } from './repairs.service';
 
@@ -297,6 +298,21 @@ export class RepairsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.repairsService.getWorkOrder(id, user, access);
+  }
+
+  /**
+   * 管理员作废工单：退回已领用库存、冲销报表口径并保留完整审计快照。
+   * 必须是工单管理的独立“作废工单”权限，普通编辑权不能调用。
+   */
+  @Delete('work-orders/:id')
+  @RequirePermission('work-orders', 'delete')
+  voidWorkOrder(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: VoidWorkOrderDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.voidWorkOrder(id, dto, user, access);
   }
 
   /** 更正类型弹窗用的关键词候选（从这单描述里挑「学进新类型」的词） */

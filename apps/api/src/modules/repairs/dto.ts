@@ -109,6 +109,16 @@ export class CreateRepairRequestDto {
   entryMode?: 'quick_ai' | 'form';
 }
 
+/** 管理员作废工单。确认字段防止前端误触或绕过二次确认。 */
+export class VoidWorkOrderDto {
+  @IsString()
+  @MaxLength(500)
+  reason: string;
+
+  @IsBoolean()
+  confirmReversal: boolean;
+}
+
 /** 随手拍：从描述文字里识别报修地址（「一期24号302」→ 库里真实的楼栋/房号） */
 export class ParseRepairAddressDto {
   @IsString()

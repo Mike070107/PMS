@@ -29,6 +29,7 @@ const RULES: Rule[] = [
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/need-material$/, code: 'work_order_need_material', label: '提报缺料', area: '工单', objectType: 'work_order' },
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/missing-materials$/, code: 'work_order_missing_material_update', label: '更新工单缺料', area: '工单', objectType: 'work_order' },
   { method: 'DELETE', pattern: /^\/work-orders\/(\d+)\/materials\/\d+$/, code: 'work_order_material_delete', label: '删除工单用料', area: '工单', objectType: 'work_order' },
+  { method: 'DELETE', pattern: /^\/work-orders\/(\d+)$/, code: 'work_order_void', label: '作废工单', area: '工单', objectType: 'work_order' },
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/review$/, code: 'work_order_review', label: '验收工单', area: '工单', objectType: 'work_order' },
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/cancel$/, code: 'work_order_cancel', label: '撤销工单', area: '工单', objectType: 'work_order' },
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/urge(?:-repair)?$/, code: 'work_order_urge', label: '催修', area: '工单', objectType: 'work_order' },

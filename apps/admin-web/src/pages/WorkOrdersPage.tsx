@@ -172,6 +172,14 @@ interface WorkOrderDetail {
   workOrder: WorkOrderRow;
   request: RepairRequestDetail;
   logs: WorkOrderLog[];
+  materialUsages?: Array<{
+    id: number;
+    materialId: number;
+    warehouseId: number;
+    qty: number;
+    name?: string;
+    unit?: string;
+  }>;
 }
 interface RepairTypeRule {
   id: number;
@@ -1902,7 +1910,7 @@ function WorkOrderDetailDrawer({
 }) {
   const { message } = AntdApp.useApp();
   const nav = useNavigate();
-  const { canEdit } = usePagePerm('work-orders');
+  const { canDelete, canEdit } = usePagePerm('work-orders');
   const canFillMaintenance = usePagePerm('maintenance-orders').canEdit;
   const [detail, setDetail] = useState<WorkOrderDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1912,6 +1920,7 @@ function WorkOrderDetailDrawer({
   const [editMissingOpen, setEditMissingOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [voidOpen, setVoidOpen] = useState(false);
   const [changeTypeOpen, setChangeTypeOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -1949,7 +1958,7 @@ function WorkOrderDetailDrawer({
   const assigneeName = wo?.assigneeId
     ? nameOr(staffList.find((staff) => staff.id === wo.assigneeId)?.name, '维修工')
     : '未派单';
-  const actionBar = status && (canEdit || canFillMaintenance) ? (
+  const actionBar = status && (canEdit || canDelete || canFillMaintenance) ? (
     <Space wrap>
       {canFillMaintenance && status !== WorkOrderStatus.CANCELLED && (
         <Button icon={<FileTextOutlined />} onClick={() => nav(`/maintenance-orders?workOrderId=${id}`)}>填养护单</Button>
@@ -1966,6 +1975,9 @@ function WorkOrderDetailDrawer({
       {canEdit && status === WorkOrderStatus.DONE_PENDING_REVIEW && <Button type="primary" onClick={() => setReviewOpen(true)}>验收</Button>}
       {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
         <Button danger onClick={() => setCancelOpen(true)}>撤单</Button>
+      )}
+      {canDelete && (
+        <Button danger icon={<DeleteOutlined />} onClick={() => setVoidOpen(true)}>删除工单</Button>
       )}
     </Space>
   ) : null;
@@ -2222,6 +2234,17 @@ function WorkOrderDetailDrawer({
         workOrderId={id}
         onClose={() => setCancelOpen(false)}
         onDone={async () => { setCancelOpen(false); await refresh(); }}
+      />
+      <VoidWorkOrderModal
+        open={voidOpen}
+        workOrder={detail?.workOrder ?? null}
+        materialLines={detail?.materialUsages?.length ?? 0}
+        onClose={() => setVoidOpen(false)}
+        onDone={() => {
+          setVoidOpen(false);
+          onClose();
+          onChanged();
+        }}
       />
       <ReviewModal
         open={reviewOpen}
@@ -2518,6 +2541,135 @@ function ChangeTypeModal({
           学到的词会写进「报修类型配置」的关键词列表（原类型里的同名词会摘掉），随时可以去那里删改。
         </Text>
       </div>
+    </Modal>
+  );
+}
+
+/**
+ * “删除工单”是后台的审计作废，不是数据库物理删除。
+ * 把退料、收费统计和 AI 学习影响当场说清楚，避免管理员把“撤单”和“删除”混用。
+ */
+function VoidWorkOrderModal({
+  open, workOrder, materialLines, onClose, onDone,
+}: {
+  open: boolean;
+  workOrder: WorkOrderRow | null;
+  materialLines: number;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [reason, setReason] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setReason('');
+    setConfirmed(false);
+  }, [open, workOrder?.id]);
+
+  const submit = async () => {
+    const value = reason.trim();
+    if (value.length < 2) {
+      message.warning('请填写至少 2 个字的作废原因');
+      return;
+    }
+    if (!confirmed) {
+      message.warning('请先确认退料和统计处理方式');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await request<{
+        returnedMaterialLines: number;
+        returnedQty: number;
+        excludedFeeCents: number;
+        detachedPurchaseRequests: number;
+      }>({
+        method: 'DELETE',
+        url: `/work-orders/${workOrder?.id}`,
+        data: { reason: value, confirmReversal: true },
+      });
+      const notes = ['工单已作废'];
+      if (result.returnedMaterialLines) notes.push(`已退回 ${result.returnedMaterialLines} 条用料`);
+      if (result.excludedFeeCents) notes.push(`¥${(result.excludedFeeCents / 100).toFixed(2)} 已从报表排除`);
+      if (result.detachedPurchaseRequests) notes.push(`已解除 ${result.detachedPurchaseRequests} 张采购申请关联`);
+      message.success(notes.join('，'));
+      onDone();
+    } catch (e: any) {
+      message.error(e?.message || '删除工单失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const feeCents = workOrder?.feeCents ?? 0;
+  return (
+    <Modal
+      open={open}
+      title={<Space><DeleteOutlined style={{ color: '#cf1322' }} />删除工单</Space>}
+      okText="确认删除并作废"
+      okButtonProps={{ danger: true, loading: submitting, disabled: !confirmed || reason.trim().length < 2 }}
+      cancelButtonProps={{ disabled: submitting }}
+      onOk={submit}
+      onCancel={onClose}
+      closable={!submitting}
+      maskClosable={!submitting}
+      destroyOnHidden
+    >
+      <Alert
+        type="warning"
+        showIcon
+        message={`工单 ${workOrder?.orderNo || ''} 将从所有正常页面和统计中消失`}
+        description="这是可审计作废：不能在页面恢复，但原始报修、金额、用料和操作原因仍会保留在后台审计记录中。"
+        style={{ marginBottom: 16 }}
+      />
+      <Descriptions
+        size="small"
+        bordered
+        column={1}
+        style={{ marginBottom: 16 }}
+        items={[
+          {
+            key: 'material',
+            label: '库存用料',
+            children: materialLines
+              ? `${materialLines} 条将按原仓库、原批次退回，并生成退料流水`
+              : '没有库存领料，无需退库',
+          },
+          {
+            key: 'fee',
+            label: '收费金额',
+            children: feeCents
+              ? `¥${(feeCents / 100).toFixed(2)} 将从工单经营报表排除，原金额保留在审计快照`
+              : '没有登记收费',
+          },
+          {
+            key: 'learning',
+            label: '数据学习',
+            children: '该报修不再进入常用报修词、AI 学习样本和工单统计',
+          },
+        ]}
+      />
+      <div style={{ marginBottom: 8 }}><Text strong>作废原因</Text></div>
+      <TextArea
+        rows={3}
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+        placeholder="必填，例如：重复录入、地址填错、测试工单"
+        maxLength={500}
+        showCount
+        disabled={submitting}
+      />
+      <Checkbox
+        checked={confirmed}
+        onChange={(event) => setConfirmed(event.target.checked)}
+        disabled={submitting}
+        style={{ marginTop: 14 }}
+      >
+        我已确认：已领用材料退回库存，收费从报表排除，工单不再参与统计和 AI 学习
+      </Checkbox>
     </Modal>
   );
 }

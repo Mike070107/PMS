@@ -1,4 +1,4 @@
-import { Entity, Column, Index } from 'typeorm';
+import { Entity, Column, DeleteDateColumn, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
 import { WorkOrderStatus } from '../common/enums';
 
@@ -92,4 +92,21 @@ export class WorkOrder extends TenantEntity {
   // materialId 有值 = 从材料库 SKU 选的；只有 name = 现场手填，办公室建完 SKU 后可回来补关联
   @Column({ name: 'missing_materials', type: 'jsonb', default: () => "'[]'" })
   missingMaterials: Array<{ name: string; qty: number; materialId?: number; unit?: string }>;
+
+  /**
+   * 管理员“删除”实际是可审计作废：TypeORM 默认查询自动排除 deleted_at 有值的工单，
+   * 但数据仍留在库里，后续可从操作日志和快照核对，不会把统计口径悄悄改掉。
+   */
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt: Date | null;
+
+  @Column({ name: 'voided_by', type: 'int', nullable: true })
+  voidedBy: number | null;
+
+  @Column({ name: 'void_reason', type: 'varchar', length: 500, nullable: true })
+  voidReason: string | null;
+
+  /** 作废前的收费、用料、状态等原始值；退库后仍能完整审计。 */
+  @Column({ name: 'void_snapshot', type: 'jsonb', default: () => "'{}'" })
+  voidSnapshot: Record<string, unknown>;
 }

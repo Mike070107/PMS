@@ -35,7 +35,19 @@ export const DEFAULT_ADMIN_PAGE_ACTIONS: NonNullable<AdminPageDef['actions']> = 
 export const ADMIN_PAGES: AdminPageDef[] = [
   { key: 'dashboard', label: '工作台', group: '总览' },
   { key: 'reports', label: '报表查询', group: '总览' },
-  { key: 'work-orders', label: '工单管理', group: '报修工单' },
+  {
+    key: 'work-orders',
+    label: '工单管理',
+    group: '报修工单',
+    actions: [
+      { field: 'canEdit', label: '编辑（含新增）' },
+      {
+        field: 'canDelete',
+        label: '作废工单',
+        hint: '退回已领用库存，并从调度台、常用词学习和统计报表中排除；全程保留审计记录',
+      },
+    ],
+  },
   {
     key: 'maintenance-orders',
     label: '养护单',

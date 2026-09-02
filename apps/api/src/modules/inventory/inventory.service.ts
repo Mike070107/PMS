@@ -1066,7 +1066,7 @@ export class InventoryService {
         : Promise.resolve([]),
       workOrderIds.length
         ? this.dataSource.query(
-            'SELECT id, order_no FROM work_orders WHERE tenant_id = $1 AND id = ANY($2::int[])',
+            'SELECT id, order_no FROM work_orders WHERE tenant_id = $1 AND deleted_at IS NULL AND id = ANY($2::int[])',
             [tenantId, workOrderIds],
           )
         : Promise.resolve([]),
@@ -1354,7 +1354,7 @@ export class InventoryService {
         : Promise.resolve([]),
       workOrderIds.length
         ? this.dataSource.query(
-            'SELECT id, order_no FROM work_orders WHERE tenant_id = $1 AND id = ANY($2::int[])',
+            'SELECT id, order_no FROM work_orders WHERE tenant_id = $1 AND deleted_at IS NULL AND id = ANY($2::int[])',
             [tenantId, workOrderIds],
           )
         : Promise.resolve([]),

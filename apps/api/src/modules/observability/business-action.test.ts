@@ -20,6 +20,13 @@ test('工单、库存和盘点操作转成稳定业务事件', () => {
   assert.equal(assigned.detail?.assigneeId, 9);
   assert.equal(resolveBusinessAction('PATCH', '/stocks/12', { warehouseId: 2 }).label, '修改库存');
   assert.equal(resolveBusinessAction('POST', '/stocktakes/7/review').label, '复核盘点');
+  const voided = resolveBusinessAction('DELETE', '/api/v1/work-orders/38', {
+    reason: '重复录入',
+    confirmReversal: true,
+  });
+  assert.equal(voided.code, 'work_order_void');
+  assert.equal(voided.label, '作废工单');
+  assert.equal(voided.objectId, 38);
 });
 
 test('日志详情只摘要业务索引，不记联系人和表单原文', () => {

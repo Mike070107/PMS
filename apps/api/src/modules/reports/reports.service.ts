@@ -170,6 +170,7 @@ export class ReportsService {
     const p = new SqlParams();
     const where: string[] = [
       `wo.tenant_id = ${p.add(tenantId)}`,
+      `wo.deleted_at IS NULL`,
       `wo.created_at >= ${p.add(range.fromTs)}`,
       `wo.created_at < ${p.add(range.toTs)}`,
     ];
@@ -359,6 +360,7 @@ export class ReportsService {
     const p = new SqlParams();
     const completedWhere = [
       `wo.tenant_id = ${p.add(tenantId)}`,
+      `wo.deleted_at IS NULL`,
       `wo.assignee_id IS NOT NULL`,
       `wo.completed_at >= ${p.add(range.fromTs)}`,
       `wo.completed_at < ${p.add(range.toTs)}`,
@@ -379,6 +381,7 @@ export class ReportsService {
     const p2 = new SqlParams();
     const activeWhere = [
       `wo.tenant_id = ${p2.add(tenantId)}`,
+      `wo.deleted_at IS NULL`,
       `wo.assignee_id IS NOT NULL`,
       `wo.status IN ('dispatched','in_progress')`,
     ];
@@ -628,6 +631,7 @@ export class ReportsService {
     const buildWhere = (p: SqlParams) => {
       const where = [
         `wm.tenant_id = ${p.add(tenantId)}`,
+        `wo.deleted_at IS NULL`,
         `wm.created_at >= ${p.add(range.fromTs)}`,
         `wm.created_at < ${p.add(range.toTs)}`,
       ];
@@ -792,7 +796,7 @@ export class ReportsService {
     ]);
     // 维修工 + 历史上被派过单的人（离职/改角色后名字还要能选出来看历史）
     const assigneeRows: Array<{ assignee_id: number }> = await this.dataSource.query(
-      `SELECT DISTINCT assignee_id FROM work_orders WHERE tenant_id = $1 AND assignee_id IS NOT NULL`,
+      `SELECT DISTINCT assignee_id FROM work_orders WHERE tenant_id = $1 AND deleted_at IS NULL AND assignee_id IS NOT NULL`,
       [tenantId],
     );
     const staffIds = [...new Set([...technicianIds, ...assigneeRows.map((r) => Number(r.assignee_id))])];

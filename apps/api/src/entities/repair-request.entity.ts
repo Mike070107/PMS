@@ -1,4 +1,4 @@
-import { Entity, Column, Index } from 'typeorm';
+import { Entity, Column, DeleteDateColumn, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
 import { RepairSource } from '../common/enums';
 
@@ -58,4 +58,8 @@ export class RepairRequest extends TenantEntity {
   // 提交人 user id（业主或办公室人员）
   @Column({ name: 'submitted_by', type: 'int', nullable: true })
   submittedBy: number | null;
+
+  /** 跟随工单作废，避免错误报修继续进入常用词和 AI 学习样本。 */
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt: Date | null;
 }

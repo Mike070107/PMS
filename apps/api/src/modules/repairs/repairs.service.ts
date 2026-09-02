@@ -59,6 +59,7 @@ import {
   CommunitySpot,
   House,
   ManagementOffice,
+  MaintenanceOrder,
   Notification,
   PurchaseRequest,
   RepairRequest,
@@ -94,6 +95,7 @@ import {
   UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
   WorkOrdersQueryDto,
+  VoidWorkOrderDto,
 } from './dto';
 import {
   correctCommunityNameInText,
@@ -135,6 +137,7 @@ import {
   LEGACY_REPAIR_TYPE_MAP,
   resolveRepairTypeLabel,
 } from './repair-type-labels';
+import { MAINTENANCE_STATUS } from '../../entities/maintenance-order.entity';
 
 /** 工单池只包含尚未开工、可以被主动接单的状态。 */
 const CLAIMABLE_WORK_ORDER_STATUSES: WorkOrderStatus[] = [
@@ -1746,6 +1749,208 @@ export class RepairsService implements OnModuleInit {
         qty: Number(row.qty),
       })),
     };
+  }
+
+  /**
+   * 管理员作废工单（页面叫“删除”）。
+   *
+   * 这里不能真的 DELETE work_orders：收费和领料一旦发生，物理删除会让历史报表失去依据。
+   * 所以在一个事务里完成四件事：原批次退料、保留原值快照、断开采购来源、软删除工单。
+   * TypeORM 的普通查询会自动排除软删除记录；原始行和操作日志仍可用于审计。
+   */
+  async voidWorkOrder(
+    id: number,
+    dto: VoidWorkOrderDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const reason = dto.reason?.trim();
+    if (!reason || reason.length < 2) {
+      throw new BadRequestException('请填写至少 2 个字的作废原因');
+    }
+    if (dto.confirmReversal !== true) {
+      throw new BadRequestException('请确认退回用料并从统计中排除该工单');
+    }
+
+    const tenantId = this.resolveTenantId(user);
+    return this.dataSource.transaction(async (manager) => {
+      const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
+      const repairRequest = await manager.findOne(RepairRequest, {
+        where: { tenantId, id: workOrder.requestId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!repairRequest) throw new NotFoundException('repair request not found');
+
+      const maintenanceOrder = await manager.findOne(MaintenanceOrder, {
+        where: [
+          { tenantId, workOrderId: id, status: MAINTENANCE_STATUS.DRAFT },
+          { tenantId, workOrderId: id, status: MAINTENANCE_STATUS.INSPECTED },
+        ],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (maintenanceOrder?.status === MAINTENANCE_STATUS.INSPECTED) {
+        throw new BadRequestException('该工单已有查验签字的养护单，请先在养护单页面作废后再删除工单');
+      }
+
+      const usages = await manager.find(WorkOrderMaterial, {
+        where: { tenantId, workOrderId: id },
+        order: { id: 'ASC' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const allocationByUsage = new Map<number, WorkOrderMaterialAllocation[]>();
+      for (const usage of usages) {
+        const allocations = await manager.find(WorkOrderMaterialAllocation, {
+          where: { tenantId, workOrderMaterialId: usage.id },
+          order: { id: 'ASC' },
+        });
+        const allocatedQty = allocations.reduce((sum, item) => sum + Number(item.qty), 0);
+        if (Math.abs(allocatedQty - Number(usage.qty)) > 0.005) {
+          throw new BadRequestException(
+            `用料 #${usage.id} 的批次记录不完整，已停止删除以免库存错账，请联系管理员核对`,
+          );
+        }
+        const lotIds = [...new Set(allocations.map((item) => item.stockLotId))];
+        const lotCount = lotIds.length
+          ? await manager.count(StockLot, { where: { tenantId, id: In(lotIds) } })
+          : 0;
+        if (lotCount !== lotIds.length) {
+          throw new BadRequestException(
+            `用料 #${usage.id} 的原库存批次不存在，已停止删除以免库存错账，请联系管理员核对`,
+          );
+        }
+        allocationByUsage.set(usage.id, allocations);
+      }
+
+      workOrder.voidedBy = user.id;
+      workOrder.voidReason = reason;
+      workOrder.voidSnapshot = {
+        voidedAt: new Date().toISOString(),
+        status: workOrder.status,
+        assigneeId: workOrder.assigneeId,
+        feeCents: workOrder.feeCents,
+        usedMaterials: workOrder.usedMaterials ?? [],
+        missingMaterials: workOrder.missingMaterials ?? [],
+        actionTags: workOrder.actionTags ?? [],
+        actionNote: workOrder.actionNote,
+        faultLocation: workOrder.faultLocation,
+        faultSymptom: workOrder.faultSymptom,
+        repairContent: workOrder.repairContent,
+        repairRequest: {
+          id: repairRequest.id,
+          source: repairRequest.source,
+          communityId: repairRequest.communityId,
+          buildingId: repairRequest.buildingId,
+          houseId: repairRequest.houseId,
+          addressText: repairRequest.addressText,
+          contactName: repairRequest.contactName,
+          contactPhone: repairRequest.contactPhone,
+          repairType: repairRequest.repairType,
+          content: repairRequest.content,
+          urgent: repairRequest.urgent,
+          attachments: repairRequest.attachments,
+          submittedBy: repairRequest.submittedBy,
+        },
+        materialUsages: usages.map((usage) => ({
+          id: usage.id,
+          materialId: usage.materialId,
+          warehouseId: usage.warehouseId,
+          qty: Number(usage.qty),
+          unitCostCents: usage.unitCostCents,
+          totalCostCents: usage.totalCostCents,
+          allocations: (allocationByUsage.get(usage.id) ?? []).map((item) => ({
+            stockLotId: item.stockLotId,
+            qty: Number(item.qty),
+            unitCostCents: item.unitCostCents,
+            amountCents: item.amountCents,
+          })),
+        })),
+      };
+      workOrder.updatedBy = user.id;
+      await manager.save(WorkOrder, workOrder);
+
+      const touchedMaterialIds = new Set<number>();
+      let returnedQty = 0;
+      for (const usage of usages) {
+        const allocations = allocationByUsage.get(usage.id) ?? [];
+        await restoreStockLots(manager, allocations, user.id);
+        await applyStockDelta(manager, {
+          tenantId,
+          warehouseId: usage.warehouseId,
+          materialId: usage.materialId,
+          deltaQty: Number(usage.qty),
+          type: StockMovementType.RETURN,
+          unitCostCents: usage.unitCostCents,
+          refType: 'work_order_void_return',
+          refId: usage.id,
+          operatorId: user.id,
+          note: `作废工单退料：${workOrder.orderNo}`,
+        });
+        await manager.delete(WorkOrderMaterialAllocation, {
+          tenantId,
+          workOrderMaterialId: usage.id,
+        });
+        await manager.delete(WorkOrderMaterial, { tenantId, id: usage.id });
+        touchedMaterialIds.add(usage.materialId);
+        returnedQty += Number(usage.qty);
+      }
+      for (const materialId of touchedMaterialIds) {
+        await refreshMaterialReferenceCost(manager, tenantId, materialId, user.id);
+      }
+
+      if (maintenanceOrder?.status === MAINTENANCE_STATUS.DRAFT) {
+        maintenanceOrder.status = MAINTENANCE_STATUS.VOID;
+        maintenanceOrder.updatedBy = user.id;
+        await manager.save(MaintenanceOrder, maintenanceOrder);
+      }
+
+      // 采购申请可能已经审批甚至下单，不能跟着删除；只解除“由这张工单发起”的关系。
+      // 它仍作为独立采购单据保留，是否继续采购由采购流程自身决定。
+      const purchaseIdRows: Array<{ id: number }> = await manager.query(
+        `SELECT id FROM purchase_requests
+          WHERE tenant_id = $1
+            AND (work_order_id = $2 OR items @> $3::jsonb)`,
+        [tenantId, id, JSON.stringify([{ sourceWorkOrderId: id }])],
+      );
+      const purchaseRequests = purchaseIdRows.length
+        ? await manager.find(PurchaseRequest, {
+            where: { tenantId, id: In(purchaseIdRows.map((item) => Number(item.id))) },
+          })
+        : [];
+      for (const request of purchaseRequests) {
+        const direct = request.workOrderId === id;
+        request.workOrderId = direct ? null : request.workOrderId;
+        request.items = (request.items ?? []).map((item) =>
+          item.sourceWorkOrderId === id || (direct && item.sourceWorkOrderId == null)
+            ? { ...item, sourceWorkOrderId: null }
+            : item,
+        );
+        request.updatedBy = user.id;
+      }
+      if (purchaseRequests.length) await manager.save(PurchaseRequest, purchaseRequests);
+
+      const note = [
+        `管理员作废：${reason}`,
+        usages.length ? `退回 ${usages.length} 条用料，共 ${Number(returnedQty.toFixed(2))}` : '无库存用料',
+        workOrder.feeCents ? `原登记收费 ¥${(workOrder.feeCents / 100).toFixed(2)} 已从统计排除` : '无登记收费',
+        maintenanceOrder?.status === MAINTENANCE_STATUS.VOID ? '草稿养护单已同步作废' : null,
+        purchaseRequests.length ? `已解除 ${purchaseRequests.length} 张采购申请的工单关联` : null,
+      ].filter(Boolean).join('；');
+      await this.writeLog(manager, workOrder, workOrder.status, 'void', user.id, note);
+      repairRequest.updatedBy = user.id;
+      await manager.softRemove(RepairRequest, repairRequest);
+      await manager.softRemove(WorkOrder, workOrder);
+
+      return {
+        id: workOrder.id,
+        orderNo: workOrder.orderNo,
+        returnedMaterialLines: usages.length,
+        returnedQty: Number(returnedQty.toFixed(2)),
+        excludedFeeCents: workOrder.feeCents,
+        voidedMaintenanceOrder: !!maintenanceOrder,
+        detachedPurchaseRequests: purchaseRequests.length,
+      };
+    });
   }
 
   /**
