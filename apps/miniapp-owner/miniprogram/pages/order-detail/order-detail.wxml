@@ -2,7 +2,7 @@
   <view class="card">
     <view class="row">
       <view class="order-no">{{detail.workOrder.orderNo}}</view>
-      <pms-tag class="status-tag" status="{{detail.workOrder.status}}"/>
+      <pms-tag class="status-tag" status="{{detail.workOrder.status}}" label="{{currentStatusLabel}}"/>
     </view>
     <view class="title">{{typeLabel}}</view>
     <view class="desc">{{detail.request.content}}</view>

@@ -40,6 +40,43 @@ export interface RepairTextAiResult {
 export interface RepairTypePromptOption {
   repairType: string;
   label: string;
+  /** 后台“猜你想输”里明确配置的生效关键词，优先级最高 */
+  configuredKeywords?: string[];
+  /** 类型名和同义词扩展出的辅助关键词 */
+  keywords?: string[];
+  /** 已被人工改判验证为不应归入此类型的词 */
+  negativeKeywords?: string[];
+}
+
+/**
+ * AI 调用前先跑一次租户自己的关键词口径。
+ * 明确配置的“猜你想输”词权重远高于系统同义词；分数相同时保持后台类型顺序。
+ */
+export function matchRepairTypeKeywords(
+  text: string,
+  repairTypes: RepairTypePromptOption[],
+): string {
+  const value = String(text || '').trim().toLowerCase();
+  if (!value) return '';
+  let bestType = '';
+  let bestScore = 0;
+  for (const item of repairTypes) {
+    const blocked = new Set((item.negativeKeywords || []).map((word) => word.trim().toLowerCase()));
+    let score = 0;
+    for (const word of item.configuredKeywords || []) {
+      const key = word.trim().toLowerCase();
+      if (key.length >= 2 && value.includes(key)) score += key.length * 100;
+    }
+    for (const word of item.keywords || []) {
+      const key = word.trim().toLowerCase();
+      if (key.length >= 2 && !blocked.has(key) && value.includes(key)) score += key.length;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestType = item.repairType;
+    }
+  }
+  return bestType;
 }
 
 const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很口语的话，可能带停顿、重复、语气词。
@@ -66,19 +103,19 @@ const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很
 
 例子：
 输入：5511弄，236号，502报修电子门里面，旋钮打滑，居民出不来。急急急，13818909545
-输出：{"addressText":"5511弄，236号，502","description":"电子门旋钮打滑，居民出不去","contactName":"","phone":"13818909545","urgent":true,"publicArea":true,"repairType":"smart"}
+输出：{"addressText":"5511弄，236号，502","description":"电子门旋钮打滑，居民出不去","contactName":"","phone":"13818909545","urgent":true,"publicArea":true,"repairType":"__SMART_TYPE__"}
 
 输入：5511弄278号503报门口机没有反应18201728748
-输出：{"addressText":"5511弄278号503","description":"门口机没有反应","contactName":"","phone":"18201728748","urgent":false,"publicArea":true,"repairType":"smart"}
+输出：{"addressText":"5511弄278号503","description":"门口机没有反应","contactName":"","phone":"18201728748","urgent":false,"publicArea":true,"repairType":"__SMART_TYPE__"}
 
 输入：枫桦一期17号201家里灯不亮，联系人张先生，电话13800138000
-输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false,"publicArea":false,"repairType":"electric"}
+输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false,"publicArea":false,"repairType":"__ELECTRIC_TYPE__"}
 
 输入：枫桦一期十七号二零一，家里灯不亮了，找张先生，13800138000
-输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false,"publicArea":false,"repairType":"electric"}
+输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false,"publicArea":false,"repairType":"__ELECTRIC_TYPE__"}
 
 输入：枫桦景苑二期25号303家里门铃打不开门
-输出：{"addressText":"枫桦景苑二期25号303","description":"家里门铃打不开门","contactName":"","phone":"","urgent":false,"publicArea":false,"repairType":"smart"}`;
+输出：{"addressText":"枫桦景苑二期25号303","description":"家里门铃打不开门","contactName":"","phone":"","urgent":false,"publicArea":false,"repairType":"__SMART_TYPE__"}`;
 
 const COMPLETION_PROMPT = `你是物业维修的完工记录助手。维修工刚干完活，站在现场口述做了什么，话很随意、有口头禅。
 把它整理成办公室和业主都看得懂的记录，只输出 JSON，不要解释、不要代码围栏。
@@ -168,21 +205,42 @@ export class RepairTextAiService {
      * （2026-09-01 用户要求：已经处理过的正例要让 AI 记住，别每次重讲一遍规则）。
      * 拿不到样例（库挂了、还没灌种子）也不影响 —— 固定规则那部分照常工作。
      */
+    const keywordRepairType = matchRepairTypeKeywords(value, repairTypes);
+    // 固定样例不能写死 smart/electric：租户可以把类型编码命名成 menjing 等任意值。
+    // 先从本租户类型与关键词中找到对应编码，再替换样例占位符，避免样例反过来教模型
+    // 返回一个“不在本项目可用类型里”的编码。
+    const typeCode = (pattern: RegExp, keywordPattern: RegExp) =>
+      repairTypes.find((item) =>
+        pattern.test(item.label) ||
+        [...(item.configuredKeywords || []), ...(item.keywords || [])]
+          .some((word) => keywordPattern.test(word)),
+      )?.repairType || '';
+    const tenantPrompt = SYSTEM_PROMPT
+      .replaceAll('__SMART_TYPE__', typeCode(/智能|弱电|门禁|对讲/, /门铃|门禁|对讲|门口机/))
+      .replaceAll('__ELECTRIC_TYPE__', typeCode(/电相关|电气|强电/, /灯不亮|跳闸|插座|漏电/));
     const typeContext = repairTypes.length
       ? [
           '本项目可用报修类型（repairType 必须返回冒号前的编码，不要返回名称）：',
-          ...repairTypes.map((item) => `- ${item.repairType}: ${item.label}`),
+          ...repairTypes.map((item) =>
+            `- ${item.repairType}: ${item.label}`
+            + `；物业明确配置的“猜你想输”关键词=${JSON.stringify(item.configuredKeywords || [])}`
+            + `；系统辅助关键词=${JSON.stringify(item.keywords || [])}`
+            + `；排除词=${JSON.stringify(item.negativeKeywords || [])}`,
+          ),
+          keywordRepairType
+            ? `系统已先按物业配置关键词明确命中：${keywordRepairType}。repairType 必须采用这个编码；模型只负责整理其他字段。`
+            : '系统关键词未明确命中，请结合设备语义从上述类型中选择；不能确定就返回空字符串。',
         ].join('\n')
       : '本项目没有提供可用报修类型；repairType 返回空字符串。';
     const system = await this.buildSystemPrompt(
       tenantId,
-      `${SYSTEM_PROMPT}\n\n${typeContext}`,
+      `${tenantPrompt}\n\n${typeContext}`,
       'repair',
     );
     const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value);
     if (!raw) return null;
     const allowedTypes = new Set(repairTypes.map((item) => item.repairType));
-    const repairType = str(raw.repairType);
+    const repairType = keywordRepairType || str(raw.repairType);
     return {
       addressText: str(raw.addressText),
       description: str(raw.description),

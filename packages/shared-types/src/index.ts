@@ -377,6 +377,8 @@ export interface WorkOrderListItem {
   requestId: number;
   communityId: number;
   assigneeId: number | null;
+  /** 建单时实际收到“新工单待接”通知的维修工；空数组表示等待办公室派单 */
+  candidateIds?: number[];
   skill: string | null;
   createdAt: string;
   dispatchedAt: string | null;

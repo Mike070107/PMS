@@ -36,7 +36,7 @@
     <!-- 第一行放业主真正关心的：什么问题 + 现在什么状态 -->
     <view class="order__head">
       <text class="order__type">{{item.typeLabel}}</text>
-      <pms-tag class="status-tag" status="{{item.status}}"/>
+      <pms-tag class="status-tag" status="{{item.status}}" label="{{item.statusText}}"/>
     </view>
 
     <!-- 下面全部走「定宽标签 + 值」，和员工端同一套（.kv 在 tokens.wxss） -->

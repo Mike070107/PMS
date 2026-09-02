@@ -20,11 +20,13 @@ const colorMap = {
 Component({
   properties: {
     status: { type: String, value: 'created' },
+    /** created 状态可按分流结果覆盖成“待接单”；不传保持原有标签 */
+    label: { type: String, value: '' },
   },
-  data: { label: '', color: '' },
+  data: { text: '', color: '' },
   observers: {
-    status(v) {
-      this.setData({ label: labelMap[v] || v, color: colorMap[v] || '#8c8c8c' });
+    'status,label'(status, label) {
+      this.setData({ text: label || labelMap[status] || status, color: colorMap[status] || '#8c8c8c' });
     },
   },
 });

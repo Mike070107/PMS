@@ -22,6 +22,15 @@ export class WorkOrder extends TenantEntity {
   @Column({ name: 'assignee_id', type: 'int', nullable: true })
   assigneeId: number | null;
 
+  /**
+   * 建单时按“所属管理处 + 报修类型”算出的待接单维修工快照。
+   *
+   * 不能只靠 skill 反查当前规则：同一个类型在不同管理处配置的人不同，规则之后也可能被修改。
+   * 工单池必须严格只给当时收到新单通知的这些人看；办公室定向派单则仍以 assignee_id 为准。
+   */
+  @Column({ name: 'candidate_ids', type: 'jsonb', default: () => "'[]'" })
+  candidateIds: number[];
+
   // 该工单需要的工种编码（派单匹配用）
   @Column({ type: 'varchar', length: 60, nullable: true })
   skill: string | null;

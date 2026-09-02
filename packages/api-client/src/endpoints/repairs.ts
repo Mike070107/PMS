@@ -16,6 +16,8 @@ export interface PublicRepairType {
   label: string;
   /** 该类型的常用描述关键词，用于「随手拍报修」自动判定类型 */
   keywords: string[];
+  /** 后台“猜你想输”明确配置的生效关键词；AI 与规则判断均优先采用 */
+  configuredKeywords?: string[];
   /** 被人当场改判过的词，判定时扣分（负样本，见后端 buildNegativeKeywords） */
   negativeKeywords?: string[];
 }
@@ -172,8 +174,11 @@ export const assign = (id: number | string, data: AssignWorkOrderReq) =>
   request<void>({ method: 'POST', url: `/work-orders/${id}/assign`, data });
 
 /** 派单台可选的维修工（含在手单数）。走工单页权限，不是「用户管理」权限 */
-export const technicians = () =>
-  request<TechnicianOption[]>({ url: '/work-orders/technicians' });
+export const technicians = (communityId?: number) =>
+  request<TechnicianOption[]>({
+    url: '/work-orders/technicians',
+    query: communityId ? { communityId } : undefined,
+  });
 
 export const complete = (id: number | string, data: CompleteWorkOrderReq) =>
   request<void>({ method: 'POST', url: `/work-orders/${id}/complete`, data });

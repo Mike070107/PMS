@@ -341,6 +341,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         getSession(this).catch(() => null),
       ]);
       const status = detail.workOrder.status;
+      const timelineLabels = {
+        ...statusLabel,
+        [WorkOrderStatus.CREATED]: detail.workOrder.candidateIds?.length ? '待接单' : '待派单',
+      };
       const myId = session?.me?.id ?? 0;
       // 缺料提报后工单会退回工单池（assigneeId 置空），所以「等待材料 + 没人认领」
       // 要给的是接单按钮而不是完工表单。存量数据里还有挂着人的等待材料单，那种仍按在手工单处理。
@@ -369,7 +373,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         stayBadge: `已等 ${stayedDays} 天`,
         // 和列表卡片同一口径：报单时说了「急修」，或者压了 7 天，都挂红标
         urgent: !!detail.request?.urgent || stayTone(stayedDays) === 'danger',
-        timeline: buildTimeline(detail.logs, statusLabel, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
+        timeline: buildTimeline(detail.logs, timelineLabels, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
         // 接单按钮和后端 acceptWorkOrder 一一对应，两条路都要判：
         //   · 认领（claim）：没人负责 + 状态在池子里 —— 只有维修工能领
         //   · 接单（accept）：已派给我 + 状态是已派单
@@ -380,9 +384,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           (detail.workOrder.assigneeId
             ? detail.workOrder.assigneeId === myId &&
               status === WorkOrderStatus.DISPATCHED
-            : status === WorkOrderStatus.CREATED ||
-              status === WorkOrderStatus.DISPATCHED ||
-              waitingInPool),
+            : (detail.workOrder.candidateIds || []).indexOf(myId) >= 0 &&
+              (status === WorkOrderStatus.CREATED ||
+                status === WorkOrderStatus.DISPATCHED ||
+                waitingInPool)),
         // 完工/缺料同理：只有这单真在自己手上才给表单
         canComplete:
           !!session?.canHandleOrders &&

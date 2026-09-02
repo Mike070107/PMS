@@ -249,10 +249,16 @@ export class RepairsController {
     @CurrentAccess() access: ResolvedAccess,
     @Query('officeId') officeId?: string,
     @Query('scope') scope?: string,
+    @Query('communityId') communityId?: string,
   ) {
     // 报修类型配置用：scope=company 只列全公司范围的人；officeId=X 列范围覆盖 X 的人。都不传 = 全部能接单的人（派单用）
     const officeScope = scope === 'company' ? null : officeId ? Number(officeId) : undefined;
-    return this.repairsService.listDispatchTechnicians(user, access, officeScope);
+    return this.repairsService.listDispatchTechnicians(
+      user,
+      access,
+      officeScope,
+      communityId ? Number(communityId) : undefined,
+    );
   }
 
   /** 工单池角标用：和 scope=pool 同一口径的条数。同样必须排在 :id 之前 */

@@ -1,5 +1,6 @@
 import {
   App as AntdApp,
+  Alert,
   Badge,
   Button,
   Card,
@@ -8,6 +9,7 @@ import {
   Collapse,
   DatePicker,
   Descriptions,
+  Divider,
   Drawer,
   Empty,
   Form,
@@ -107,6 +109,7 @@ interface WorkOrderRow {
   status: WorkOrderStatus;
   communityId: number;
   assigneeId: number | null;
+  candidateIds?: number[];
   /** 维修工姓名，由接口给（本页的 staffById 只是兜底） */
   assigneeName?: string | null;
   repairType?: string | null;
@@ -236,7 +239,7 @@ interface UploadResponse {
 }
 
 const statusMeta: Record<WorkOrderStatus, { label: string; color: string }> = {
-  created: { label: '待派单', color: 'default' },
+  created: { label: '待处理', color: 'default' },
   dispatched: { label: '已派单', color: 'processing' },
   in_progress: { label: '维修中', color: 'blue' },
   waiting_material: { label: '等待材料', color: 'orange' },
@@ -303,7 +306,7 @@ const SLA_MINUTE_STEP = 30;
 
 const FILTER_TABS: Array<{ label: string; value: 'all' | WorkOrderStatus }> = [
   { label: '全部', value: 'all' },
-  { label: '待派单', value: WorkOrderStatus.CREATED },
+  { label: '待派 / 待接', value: WorkOrderStatus.CREATED },
   { label: '已派单', value: WorkOrderStatus.DISPATCHED },
   { label: '维修中', value: WorkOrderStatus.IN_PROGRESS },
   { label: '等待材料', value: WorkOrderStatus.WAITING_MATERIAL },
@@ -507,8 +510,12 @@ export default function WorkOrdersPage() {
     },
     {
       title: '状态', key: 'status', dataIndex: 'status', width: 100,
-      render: (s: WorkOrderStatus) => (
-        <Tag color={statusMeta[s].color}>{statusMeta[s].label}</Tag>
+      render: (s: WorkOrderStatus, row) => (
+        <Tag color={statusMeta[s].color}>
+          {s === WorkOrderStatus.CREATED
+            ? row.candidateIds?.length ? '待接单' : '待派单'
+            : statusMeta[s].label}
+        </Tag>
       ),
     },
     {
@@ -1951,7 +1958,9 @@ function WorkOrderDetailDrawer({
                   children: (
                     <>
                       <Tag color={statusMeta[detail.workOrder.status].color}>
-                        {statusMeta[detail.workOrder.status].label}
+                        {detail.workOrder.status === WorkOrderStatus.CREATED
+                          ? detail.workOrder.candidateIds?.length ? '待接单' : '待派单'
+                          : statusMeta[detail.workOrder.status].label}
                       </Tag>
                       {/* 报修时说了「急修」：状态旁边挂红标，进度里那条创建记录写着凭哪个词标的 */}
                       {detail.request?.urgent && <Tag color="error">紧急</Tag>}
@@ -2111,6 +2120,7 @@ function WorkOrderDetailDrawer({
       <AssignModal
         open={assignOpen}
         workOrderId={id}
+        communityId={detail?.workOrder.communityId}
         technicians={technicians}
         repairTypeRules={repairTypeRules}
         currentSkill={detail?.workOrder.skill ?? undefined}
@@ -2919,11 +2929,18 @@ function RepairTypeRuleModal({
 
   return (
     <Modal
-      title="报修类型配置"
+      title={
+        <div>
+          <div>报修类型与自动分流</div>
+          <Text type="secondary" style={{ fontSize: 13, fontWeight: 400 }}>
+            先按管理处匹配类型，再决定通知哪些维修工；没有匹配结果的工单进入派单台
+          </Text>
+        </div>
+      }
       open={open}
       onCancel={onClose}
       footer={null}
-      width={1360}
+      width={1380}
       destroyOnHidden
     >
       <Tabs
@@ -2935,53 +2952,75 @@ function RepairTypeRuleModal({
         ]}
         className="pms-repair-rule-tabs"
       />
-      <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-        {officeId
-          ? `「${officeName}」的类型名 / 默认维修工 / 时限各改各的，互不影响；`
-            + '「猜你想输」关键词是全公司共用的模板，总公司那一页改了这里立刻跟着变，本处可以另加自己的词、也可以停用用不上的模板词。'
-            + '默认维修工只能选范围覆盖本管理处的人（全公司范围的维修工也可以）。'
-          : '总公司这一套是各管理处的模板：类型名 / 维修工 / 时限只作为新管理处的初始值，'
-            + '「猜你想输」关键词则一直下发给所有管理处 —— 在这里加一个词，全公司立刻都能用它判类型。'
-            + '这里的默认维修工只能选全公司范围的人。领料仓库不用配 —— 维修工选料时按工单所在小区 / 管理处自动匹配仓库。'}
-      </Text>
+      <Alert
+        type={officeId ? 'info' : 'warning'}
+        showIcon
+        style={{ marginBottom: 12 }}
+        message={officeId ? `当前配置：${officeName}` : '当前配置：总公司初始化模板'}
+        description={officeId
+          ? '这里保存本管理处实际生效的类型、默认维修工和时限。默认维修工只能选择业务范围覆盖本管理处且有接单权限的人。'
+          : '这套配置用于新建管理处时初始化。管理处专属维修工请切换到对应管理处设置；“猜你想输”模板词会持续下发到各管理处。'}
+      />
+
+      <div
+        style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10,
+          marginBottom: 12,
+        }}
+      >
+        {[
+          ['1', '识别管理处与类型', '优先使用本处“猜你想输”生效关键词，AI 使用同一份词表辅助判断'],
+          ['2', '进入待接或待派', '有默认维修工则通知多人并进工单池；没有则只进派单台'],
+          ['3', '接单后才在手', '多人抢单或办公室定向派单，都要维修工确认接单后才进入在手工单'],
+        ].map(([step, title, desc]) => (
+          <div key={step} style={{ padding: '12px 14px', border: '1px solid #e6edf7', borderRadius: 10, background: '#f7faff' }}>
+            <Space align="start" size={10}>
+              <Tag color="blue" style={{ marginInlineEnd: 0, borderRadius: 12 }}>{step}</Tag>
+              <div>
+                <Text strong>{title}</Text>
+                <Text type="secondary" style={{ display: 'block', marginTop: 2, fontSize: 12 }}>{desc}</Text>
+              </div>
+            </Space>
+          </div>
+        ))}
+      </div>
 
       {officeId && (
-        <div
-          style={{
-            display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16,
-            padding: '10px 14px', marginBottom: 12,
-            background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8,
-          }}
-        >
-          <Space size={8}>
-            <Text style={{ whiteSpace: 'nowrap' }}>「猜你想输」排序按</Text>
-            <Segmented
-              size="small"
-              disabled={!canEdit || savingOfficeSettings}
-              value={offices.find((o) => o.id === officeId)?.suggestionScope ?? 'office_first'}
-              onChange={(value) => saveOfficeSettings({ suggestionScope: value as SuggestionScope })}
-              options={[
-                { label: '本处优先', value: 'office_first' },
-                { label: '全公司', value: 'company' },
-              ]}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              本处优先 = 本小区常说的排前面，不够时用全公司的补齐
-            </Text>
-          </Space>
-          <Space size={8}>
-            <Text style={{ whiteSpace: 'nowrap' }}>本处高频词进公司候选池</Text>
-            <Switch
-              size="small"
-              disabled={!canEdit || savingOfficeSettings}
-              checked={offices.find((o) => o.id === officeId)?.suggestionFeedback ?? true}
-              onChange={(checked) => saveOfficeSettings({ suggestionFeedback: checked })}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              关掉后本处的话术不再出现在总公司那一页的候选里（本处照样能用全公司的词）
-            </Text>
-          </Space>
-        </div>
+        <Collapse
+          size="small"
+          style={{ marginBottom: 12, background: '#fafafa' }}
+          items={[{
+            key: 'suggestion-settings',
+            label: '识别词库高级设置',
+            children: (
+              <Space size={24} wrap>
+                <Space size={8} wrap>
+                  <Text>常用词排序</Text>
+                  <Segmented
+                    size="small"
+                    disabled={!canEdit || savingOfficeSettings}
+                    value={offices.find((o) => o.id === officeId)?.suggestionScope ?? 'office_first'}
+                    onChange={(value) => saveOfficeSettings({ suggestionScope: value as SuggestionScope })}
+                    options={[
+                      { label: '本处优先', value: 'office_first' },
+                      { label: '全公司', value: 'company' },
+                    ]}
+                  />
+                  <Text type="secondary" style={{ fontSize: 12 }}>本处不足时自动用全公司数据补齐</Text>
+                </Space>
+                <Space size={8} wrap>
+                  <Text>本处高频词进入公司候选池</Text>
+                  <Switch
+                    size="small"
+                    disabled={!canEdit || savingOfficeSettings}
+                    checked={offices.find((o) => o.id === officeId)?.suggestionFeedback ?? true}
+                    onChange={(checked) => saveOfficeSettings({ suggestionFeedback: checked })}
+                  />
+                </Space>
+              </Space>
+            ),
+          }]}
+        />
       )}
 
       {existingConflicts.length > 0 && (
@@ -3005,14 +3044,20 @@ function RepairTypeRuleModal({
         </div>
       )}
       <Row gutter={20}>
-        <Col xs={24} lg={14}>
-          <Text type="secondary" style={{ display: 'block' }}>
-            拖动左侧手柄或整行可调整显示顺序。
-          </Text>
+        <Col xs={24} lg={15}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <Title level={5} style={{ margin: 0 }}>类型列表</Title>
+              <Text type="secondary">拖动行可调整录入页面的显示顺序</Text>
+            </div>
+            <Button type="primary" icon={<PlusOutlined />} disabled={!canEdit} onClick={startCreate}>
+              新增类型
+            </Button>
+          </div>
           <Table
             rowKey="id"
             size="middle"
-            style={{ marginTop: 8 }}
+            style={{ marginTop: 10 }}
             loading={rulesLoading}
             dataSource={localRules}
             pagination={false}
@@ -3039,13 +3084,20 @@ function RepairTypeRuleModal({
               {
                 title: '默认维修工',
                 dataIndex: 'assigneeIds',
-                width: 180,
+                width: 210,
                 render: (_: unknown, rule) => {
                   const ids = rule.assigneeIds?.length ? rule.assigneeIds : rule.assigneeId ? [rule.assigneeId] : [];
                   return ids.length
                     ? ids.map((id) => technicianName(id)).join('、')
-                    : <Text type="secondary">未设置</Text>;
+                    : <Tag color="orange">未设置 · 进入派单台</Tag>;
                 },
+              },
+              {
+                title: '识别词',
+                width: 90,
+                render: (_, rule) => (
+                  <Text>{(rule.contentSuggestions || []).length} 个</Text>
+                ),
               },
               { title: '完成时限', dataIndex: 'slaHours', width: 100, render: (v) => v ? `${v}小时` : '-' },
               { title: '状态', dataIndex: 'enabled', width: 80, render: (v) => v ? <Tag color="green">启用</Tag> : <Tag>停用</Tag> },
@@ -3073,22 +3125,35 @@ function RepairTypeRuleModal({
             ]}
           />
         </Col>
-        <Col xs={24} lg={10}>
-          <Card title={editing ? `编辑：${editing.label}` : `新增报修类型${officeId ? `（${officeName}）` : '（总公司）'}`}>
+        <Col xs={24} lg={9}>
+          <Card
+            title={editing ? `编辑：${editing.label}` : '新增报修类型'}
+            extra={<Tag color={editing ? 'blue' : 'green'}>{officeId ? officeName : '总公司模板'}</Tag>}
+          >
             <Form form={form} layout="vertical" size="large" disabled={!canEdit}>
-              <Form.Item name="label" label="显示名称" rules={[{ required: true }]}>
-                <Input placeholder="如：水管 / 漏水" />
-              </Form.Item>
-              <Form.Item
-                name="repairType"
-                label="类型编码"
-                rules={[
-                  { required: true },
-                  { pattern: /^[a-zA-Z0-9_-]+$/, message: '仅支持字母、数字、下划线、短横线' },
-                ]}
-              >
-                <Input placeholder="如：plumbing" />
-              </Form.Item>
+              <Title level={5} style={{ marginTop: 0 }}>基本信息</Title>
+              <Row gutter={12}>
+                <Col span={14}>
+                  <Form.Item name="label" label="显示名称" rules={[{ required: true }]}>
+                    <Input placeholder="如：智能化相关" />
+                  </Form.Item>
+                </Col>
+                <Col span={10}>
+                  <Form.Item
+                    name="repairType"
+                    label="类型编码"
+                    rules={[
+                      { required: true },
+                      { pattern: /^[a-zA-Z0-9_-]+$/, message: '仅支持字母、数字、下划线、短横线' },
+                    ]}
+                  >
+                    <Input placeholder="如：smart" />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Divider style={{ margin: '2px 0 16px' }} />
+              <Title level={5} style={{ marginTop: 0 }}>工单分流</Title>
               <Form.Item
                 name="assigneeIds"
                 label="默认维修工（可多选）"
@@ -3103,17 +3168,33 @@ function RepairTypeRuleModal({
                   notFoundContent={<Text type="secondary">没有符合范围的维修工</Text>}
                   options={withOptionTitles(tabTechnicians.map((t) => ({
                     value: t.id,
-                    label: `${t.name || '(未命名)'} · ${t.phone || ''}${t.skills?.length ? ' · ' + t.skills.join(',') : ''}${scopeSuffix(t)}`,
+                    label: `${t.name || '(未命名)'}${t.phone ? ` · ${t.phone}` : ''}${t.skills?.length ? ' · ' + formatSkillList(t.skills, localRules) : ''}${scopeSuffix(t)}`,
                   })))}
                   {...searchableWideSelectProps}
                 />
               </Form.Item>
-              <Form.Item name="slaHours" label="要求完成时限（小时）">
-                <InputNumber min={1} max={168} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item name="enabled" label="启用" valuePropName="checked">
-                <Switch />
-              </Form.Item>
+              <Row gutter={12}>
+                <Col span={16}>
+                  <Form.Item name="slaHours" label="要求完成时限（小时）">
+                    <InputNumber min={1} max={168} placeholder="不填则不限制" style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name="enabled" label="启用类型" valuePropName="checked">
+                    <Switch checkedChildren="启用" unCheckedChildren="停用" />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Divider style={{ margin: '2px 0 16px' }} />
+              <Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>识别关键词</Title>
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 14 }}
+                message="这不是只用于快捷输入"
+                description="系统会先用这里的生效关键词判断报修类型，再把同一份词表交给 AI；明确命中时以这里的配置为准。"
+              />
 
               <Form.Item
                 label={
@@ -3126,7 +3207,7 @@ function RepairTypeRuleModal({
                     </Text>
                   </Space>
                 }
-                extra="这些词同时是报修类型的判定依据：办公室录入 / 业主报修时，系统按它们猜出报修类型，再通知该类型的默认维修工。"
+                extra="本处增补词优先于公司模板词；同一个词只能属于一个类型。"
               >
                 <KeywordEditor
                   keywords={keywords}
@@ -3149,19 +3230,14 @@ function RepairTypeRuleModal({
                 />
               </Form.Item>
 
-              <Space>
-                <Button type="primary" loading={saving} onClick={onSave}>保存</Button>
-                <Button onClick={startCreate}>新增</Button>
-              </Space>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                {editing && <Button onClick={startCreate}>取消编辑</Button>}
+                <Button type="primary" loading={saving} onClick={onSave}>
+                  {editing ? '保存修改' : '创建类型'}
+                </Button>
+              </div>
             </Form>
           </Card>
-          <Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
-            设置默认维修工后，这个类型的新工单会通知选中的每一位维修工，并出现在他们各自的工单池里，谁先接单归谁；未设置则只进入“待派单”，由办公室派。维修工的工单池只显示他被配到的类型。
-            关键词按这里的先后顺序显示在录入页的「猜你想输」，本处的词排在公司模板词前面；
-            同一个词只能属于一个类型，撞了会当场拦下。
-            维修工选料时的仓库按工单所在小区 / 管理处自动匹配（同小区仓 → 同管理处仓 → 公司总仓），
-            匹配不到时维修工可以自己挑仓库，也请在「库存与采购」里给管理处建仓。
-          </Text>
         </Col>
       </Row>
     </Modal>
@@ -3170,10 +3246,11 @@ function RepairTypeRuleModal({
 
 // ---------------- 派单 Modal ----------------
 function AssignModal({
-  open, workOrderId, technicians, repairTypeRules, currentSkill, onClose, onDone,
+  open, workOrderId, communityId, technicians, repairTypeRules, currentSkill, onClose, onDone,
 }: {
   open: boolean;
   workOrderId: number | null;
+  communityId?: number;
   technicians: TechnicianOption[];
   repairTypeRules: RepairTypeRule[];
   currentSkill?: string;
@@ -3183,8 +3260,21 @@ function AssignModal({
   const { message } = AntdApp.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const [availableTechnicians, setAvailableTechnicians] = useState<TechnicianOption[]>(technicians);
 
   useEffect(() => { if (open) form.setFieldsValue({ skill: currentSkill, slaHours: 24 }); }, [open, currentSkill, form]);
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setAvailableTechnicians(technicians);
+    request<TechnicianOption[]>({
+      url: '/work-orders/technicians',
+      query: communityId ? { communityId } : {},
+    })
+      .then((items) => { if (!cancelled) setAvailableTechnicians(items); })
+      .catch(() => { /* 后端保存时还会再次校验范围；加载失败时保留原列表 */ });
+    return () => { cancelled = true; };
+  }, [open, communityId, technicians]);
 
   const onOk = async () => {
     const v = await form.validateFields();
@@ -3206,7 +3296,7 @@ function AssignModal({
         <Form.Item name="assigneeId" label="维修工" rules={[{ required: true }]}>
           <Select
             placeholder="选择维修工"
-            options={withOptionTitles(technicians.map((t) => ({
+            options={withOptionTitles(availableTechnicians.map((t) => ({
               value: t.id,
               label: `${t.name || '(未命名)'} · ${t.phone || ''}${t.skills?.length ? ' · ' + formatSkillList(t.skills, repairTypeRules) : ''}`,
             })))}

@@ -12,7 +12,7 @@ import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unre
 
 /**
  * 这一屏对两种人是两件事，同一份数据、两套动作：
- *   · 维修工 = 工单池：没人认领的单，动作是「接单」
+ *   · 维修工 = 工单池：类型规则推给我的多人待抢单 + 办公室定向派给我的待接单
  *   · 办公室一侧 = 派单台：还没派出去的单，动作是「派单」；另外要能按状态翻、
  *     按单号/地址/描述搜，进详情看修的结果
  * 报修入口两边都留 —— 巡查发现问题顺手提单和身份无关。
@@ -33,7 +33,7 @@ type OrderRow = WorkOrderListItem & {
   urgent: boolean;
   /** 「PVC 管 DN50 ×2 米」，等待材料的单才有 */
   missingText: string;
-  /** 维修工能不能领这一单（无人认领 + 状态允许） */
+  /** 维修工能不能领这一单（多人待抢或定向派给我 + 状态允许） */
   claimable: boolean;
   /** 办公室能不能派/改派这一单 */
   dispatchable: boolean;
@@ -93,10 +93,10 @@ const DISPATCH_FILTERS: PoolFilter[] = [
 ];
 
 /**
- * 工单池（维修工）的状态筛选。scope 恒为 pool（只有没人认领的单），
+ * 工单池（维修工）的状态筛选。scope 恒为 pool（等待我接的单），
  * 所以这里只按状态分档，档位就是 POOL_STATUSES 那三种：
- *   新报修   = 还没派给任何人，谁都能领
- *   已派单   = 派下来了但没指定到人
+ *   新报修   = 报修类型规则推给我的多人待抢单
+ *   已派单   = 办公室明确派给我、还没有接单
  *   等待材料 = 缺料退回池子的，接回去要先确认料到没到
  * 第一项是「全部」—— 维修工进来先看有多少活，再决定挑哪种。
  */
@@ -191,6 +191,9 @@ Page({
     // ---- 派单面板 ----
     assignOpen: false,
     assignOrderId: 0,
+    assignCommunityId: 0,
+    /** 当前维修工候选列表是按哪个小区加载的，切换管理处后不能复用旧缓存 */
+    techCommunityId: 0,
     assignOrderText: '',
     assignCurrent: '',
     techLoading: false,
@@ -265,7 +268,7 @@ Page({
         return 'pool';
       })();
 
-      /* 三档各有各的筛选：工单池只有未认领的三种状态；我报的要盖到「已完成」——
+      /* 三档各有各的筛选：工单池只有待接的三种状态；我报的要盖到「已完成」——
          报单的人最想知道的就是「修到哪一步了」；已完结那一档本身是终态，不给筛选条。
          切换时必须把选中项归零，否则从派单台的「已完成」切回工单池会落到一个
          越界的下标上，列表看着像空的。 */
@@ -297,7 +300,9 @@ Page({
       const rows: OrderRow[] = withOrderLabels(list).map((item) => {
         // 只有「工单池」那一档才画接单按钮：我报的 / 已完结里那张单未必轮得到我领
         const claimable =
-          mainTab === 'pool' && !item.assigneeId && POOL_STATUSES.indexOf(item.status) >= 0;
+          mainTab === 'pool' &&
+          POOL_STATUSES.indexOf(item.status) >= 0 &&
+          (!item.assigneeId || item.status === WorkOrderStatus.DISPATCHED);
         const dispatchable = DISPATCHABLE_STATUSES.indexOf(item.status) >= 0;
         return {
           ...item,
@@ -477,6 +482,7 @@ Page({
     this.setData({
       assignOpen: true,
       assignOrderId: id,
+      assignCommunityId: row.communityId,
       assignOrderText: `${row.typeLabel} · ${row.summaryAddress || '未填地址'}`,
       assignCurrent: row.assigneeId ? `当前：${row.assigneeText}` : '',
       pickedTechId: row.assigneeId || 0,
@@ -498,13 +504,14 @@ Page({
   noop() {},
 
   async loadTechnicians(force = false) {
-    if (this.data.technicians.length && !force) return;
+    const communityId = this.data.assignCommunityId || 0;
+    if (this.data.technicians.length && this.data.techCommunityId === communityId && !force) return;
     this.setData({ techLoading: true, techError: '' });
     try {
-      const list = await repairs.technicians();
+      const list = await repairs.technicians(communityId || undefined);
       // 手上活少的排前面：派单台上最该先看见「谁现在闲着」
       list.sort((a, b) => a.openCount - b.openCount || a.id - b.id);
-      this.setData({ technicians: list });
+      this.setData({ technicians: list, techCommunityId: communityId });
     } catch (e: any) {
       this.setData({ techError: e?.message || '维修工列表加载失败' });
     } finally {

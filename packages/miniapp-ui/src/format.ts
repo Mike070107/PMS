@@ -42,6 +42,8 @@ export function withOrderLabels<
     reporterRoleLabel?: string | null;
     source?: string | null;
     sourceLabel?: string | null;
+    status?: string;
+    candidateIds?: number[];
     /** 报修时就标了紧急（描述里说了「急修」），由后端给 */
     urgent?: boolean;
   },
@@ -63,6 +65,8 @@ export function withOrderLabels<
     missingText: string;
     /** 卡片「报修人」：「张阿姨」「王保安（保安代报）」「叶双（员工小程序提交）」，没留名字是「未填」 */
     reporterText: string;
+    /** created 要按是否已进入维修工池区分“待接单 / 待派单” */
+    statusText: string;
 
     /* ---- 下面四个只给卡片上的数据网格用（data-first-ui，工单池 / 在手工单共用） ----
        网格是「标签 / 值 / 说明」三层，值那一层是全卡唯一的视觉锚点，
@@ -107,6 +111,10 @@ export function withOrderLabels<
       urgent: !!item.urgent || stayTone(days) === 'danger',
       missingText: missingMaterialsText(item.missingMaterials),
       reporterText,
+      statusText:
+        item.status === 'created'
+          ? item.candidateIds?.length ? '待接单' : '待派单'
+          : '',
       statStayLabel: item.completedAt ? '用时' : '已等',
       // 当天的写「今天 / 当天」而不是「0天」——「0」放大到 44rpx 看着像出错了
       statStay: days >= 1 ? `${days}天` : item.completedAt ? '当天' : '今天',

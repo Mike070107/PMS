@@ -8,6 +8,7 @@ type OrderRow = WorkOrderListItem & {
   stayDays: number;
   stayText: string;
   stayTone: string;
+  statusText: string;
 };
 
 /**

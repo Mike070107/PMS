@@ -19,6 +19,7 @@ interface PageData {
   detail: WorkOrderDetail | null;
   typeLabel: string;
   createdAtText: string;
+  currentStatusLabel: string;
   timeline: TimelineRow[];
   canReview: boolean;
   canCancel: boolean;
@@ -48,6 +49,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     detail: null,
     typeLabel: '',
     createdAtText: '',
+    currentStatusLabel: '',
     timeline: [],
     canReview: false,
     canCancel: false,
@@ -67,6 +69,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     try {
       const detail = await repairs.detail(this.data.id);
       const status = detail.workOrder.status;
+      const timelineLabels = {
+        ...statusLabel,
+        [WorkOrderStatus.CREATED]: detail.workOrder.candidateIds?.length ? '待接单' : '待派单',
+      };
       this.setData({
         detail,
         // 中文类型名以后端为准，租户自建的类型端上认不出（会显示成 menjing 这种编码）
@@ -76,7 +82,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           detail.request?.repairType ||
           '其它',
         createdAtText: formatDateTimeCn(detail.workOrder.createdAt),
-        timeline: buildTimeline(detail.logs, statusLabel, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
+        currentStatusLabel:
+          status === WorkOrderStatus.CREATED
+            ? detail.workOrder.candidateIds?.length ? '待接单' : '待派单'
+            : '',
+        timeline: buildTimeline(detail.logs, timelineLabels, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
         canReview: status === WorkOrderStatus.DONE_PENDING_REVIEW,
         canCancel: ACTIVE_STATUSES.indexOf(status) >= 0,
         canUrge: ACTIVE_STATUSES.indexOf(status) >= 0,
