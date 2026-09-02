@@ -53,6 +53,14 @@ export const ADMIN_PAGES: AdminPageDef[] = [
     label: '养护单',
     group: '报修工单',
     hint: '按工单开《房屋修理养护任务单》、打印',
+    actions: [
+      { field: 'canEdit', label: '编辑（含开单）' },
+      {
+        field: 'canDelete',
+        label: '删除/作废养护单',
+        hint: '从正常列表中排除并保留审计记录，允许原工单重新开养护单',
+      },
+    ],
   },
   {
     key: 'maintenance-inspect',

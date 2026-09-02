@@ -287,6 +287,20 @@ export default function MaintenanceOrdersPage() {
     [load, message],
   );
 
+  const voidMaintenanceOrder = useCallback(
+    async (row: MaintenanceListRow) => {
+      try {
+        await request({ method: 'DELETE', url: `/maintenance-orders/${row.id}` });
+        message.success(`养护单 ${row.paperNo || row.orderNo} 已删除并作废`);
+        if (openId === row.id) setOpenId(null);
+        await load();
+      } catch (e: any) {
+        message.error(e?.message || '删除养护单失败');
+      }
+    },
+    [load, message, openId],
+  );
+
   // 工单页点「填养护单」跳过来：?workOrderId=123
   const handledParam = useRef<string | null>(null);
   useEffect(() => {
@@ -378,6 +392,46 @@ export default function MaintenanceOrdersPage() {
       width: 190,
       render: (v: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTimeCn(v) || '—'}</span>,
     },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 150,
+      fixed: 'right' as const,
+      render: (_: unknown, r: MaintenanceListRow) => (
+        <Space size={0} onClick={(event) => event.stopPropagation()}>
+          <Button type="link" onClick={() => setOpenId(r.id)}>详情</Button>
+          <Tooltip
+            title={
+              r.status === 'void'
+                ? '这张养护单已经作废'
+                : canDelete
+                  ? '删除后按作废记录保留，可重新从原工单开单'
+                  : '请在「业务角色」中授权：养护单 · 删除/作废养护单'
+            }
+          >
+            <span>
+              <Popconfirm
+                title="删除这张养护单？"
+                description="删除后按作废记录保留，原工单可以重新开养护单。"
+                okText="确认删除"
+                okButtonProps={{ danger: true }}
+                disabled={!canDelete || r.status === 'void'}
+                onConfirm={() => voidMaintenanceOrder(r)}
+              >
+                <Button
+                  type="link"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={!canDelete || r.status === 'void'}
+                >
+                  删除
+                </Button>
+              </Popconfirm>
+            </span>
+          </Tooltip>
+        </Space>
+      ),
+    },
   ];
 
   if (!canView) return null;
@@ -448,7 +502,7 @@ export default function MaintenanceOrdersPage() {
           tableLayout="fixed"
           // 列宽合计约 1180：窗口比它窄就横向滚，不让列被压到一个字宽、
           // 把「养护单号」挤成竖排（2026-08-31 反馈）
-          scroll={{ x: 1120 }}
+          scroll={{ x: 1270 }}
           pagination={{ pageSize: 10, showSizeChanger: false }}
           onRow={(r) => ({ onClick: () => setOpenId(r.id), style: { cursor: 'pointer' } })}
           locale={{
@@ -1181,9 +1235,9 @@ function MaintenanceEditor({
               ]}
             />
             {canDelete && draft && draft.status !== 'void' && (
-              <Popconfirm title="作废这张养护单？" description="作废后这张工单可以重新开单。" onConfirm={voidOrder}>
+              <Popconfirm title="删除这张养护单？" description="删除后按作废记录保留，原工单可以重新开单。" onConfirm={voidOrder}>
                 <Button danger icon={<DeleteOutlined />}>
-                  作废
+                  删除养护单
                 </Button>
               </Popconfirm>
             )}

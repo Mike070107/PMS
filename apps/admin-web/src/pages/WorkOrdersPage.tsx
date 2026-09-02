@@ -451,7 +451,7 @@ function formatSkillList(skills: string[] | undefined, rules: RepairTypeRule[] =
 export default function WorkOrdersPage() {
   const { message } = AntdApp.useApp();
   const { access } = useAuth();
-  const { canEdit } = usePagePerm('work-orders');
+  const { canDelete, canEdit } = usePagePerm('work-orders');
   const [addressTree, setAddressTree] = useState<AddressCommunity[]>([]);
   const [addressLoading, setAddressLoading] = useState(false);
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -467,6 +467,7 @@ export default function WorkOrdersPage() {
   const [searchInput, setSearchInput] = useState('');
   const [searchQ, setSearchQ] = useState('');
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [voidTarget, setVoidTarget] = useState<WorkOrderRow | null>(null);
   const [ruleOpen, setRuleOpen] = useState(false);
   // 企业超管 / 平台超管：以权限矩阵为准，users.role 已经不表达身份了
   const isAdmin = !!access?.isTenantAdmin || !!access?.isPlatformAdmin;
@@ -557,6 +558,27 @@ export default function WorkOrdersPage() {
       title: '工单编号', key: 'orderNo', dataIndex: 'orderNo', width: 180,
       render: (v: string) => (
         <Text copyable={{ text: v }} type="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</Text>
+      ),
+    },
+    {
+      title: '操作', key: 'actions', width: 150, fixed: 'right',
+      render: (_, r) => (
+        <Space size={0} onClick={(event) => event.stopPropagation()}>
+          <Button type="link" onClick={() => setDetailId(r.id)}>详情</Button>
+          <Tooltip title={canDelete ? '作废后从正常列表和统计中排除，并按规则退回库存' : '请在「业务角色」中授权：工单管理 · 作废工单'}>
+            <span>
+              <Button
+                type="link"
+                danger
+                icon={<DeleteOutlined />}
+                disabled={!canDelete}
+                onClick={() => setVoidTarget(r)}
+              >
+                删除
+              </Button>
+            </span>
+          </Tooltip>
+        </Space>
       ),
     },
   ];
@@ -754,6 +776,18 @@ export default function WorkOrdersPage() {
         repairTypeRules={repairTypeRules}
         onClose={() => setDetailId(null)}
         onChanged={() => { loadOrders(); loadOrderStats(); }}
+      />
+      <VoidWorkOrderModal
+        open={!!voidTarget}
+        workOrder={voidTarget}
+        materialLines={voidTarget?.usedMaterials?.length ?? 0}
+        onClose={() => setVoidTarget(null)}
+        onDone={() => {
+          setVoidTarget(null);
+          loadOrders();
+          loadOrderStats();
+          loadRepairSuggestions();
+        }}
       />
       <RepairTypeRuleModal
         open={ruleOpen}
