@@ -1375,3 +1375,12 @@
 - 说明：体验版 1.0.20260902b：主动接未派单和他人待接单
 - 自上次（890d97d）以来上线的相关提交：
   - 4cb3c94 fix: 允许维修工从工单池主动接单
+## 2026-09-02 13:21 · api · d6ab216
+
+- 包：`deploy/pms-api-20260902-1317.tar.gz`
+- 提交：d6ab216 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
+- 说明：最终合并版：保留管理处数据隔离并支持工单池主动接单
+- 自上次（890d97d）以来上线的相关提交：
+  - d6ab216 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
+  - 4cb3c94 fix: 允许维修工从工单池主动接单
+
