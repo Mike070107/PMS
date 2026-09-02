@@ -21,7 +21,12 @@ import {
 } from '../inventory/stock-ledger';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { CreateStocktakeDto, ReviewStocktakeDto, SaveStocktakeItemDto, StocktakeQueryDto } from './dto';
-import { roundStocktakeQty, stocktakeDifference, stocktakeProgress } from './stocktake.util';
+import {
+  roundStocktakeQty,
+  stockChangedAfterCount,
+  stocktakeDifference,
+  stocktakeProgress,
+} from './stocktake.util';
 
 const ACTIVE_STATUSES = ['counting', 'submitted', 'rejected'] as const;
 
@@ -184,6 +189,12 @@ export class StocktakeService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!item) throw new NotFoundException('盘点材料不存在');
+      // 以实盘保存当时的库存为账面基准，避免把实盘前的正常出入库算成差异。
+      const stock = await manager.findOne(Stock, {
+        where: { tenantId, warehouseId: task.warehouseId, materialId: item.materialId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      item.bookQty = roundStocktakeQty(Number(stock?.qty ?? 0));
       item.actualQty = roundStocktakeQty(Number(dto.actualQty));
       item.differenceQty = stocktakeDifference(Number(item.bookQty), item.actualQty);
       item.reasonCode = item.differenceQty === 0 ? null : dto.reasonCode?.trim() || null;
@@ -227,7 +238,7 @@ export class StocktakeService {
 
   async review(id: number, dto: ReviewStocktakeDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.tenantId(user);
-    await this.dataSource.transaction(async (manager) => {
+    const outcome = await this.dataSource.transaction(async (manager) => {
       const task = await this.lockTask(manager, tenantId, id);
       await this.assertWarehouseVisible(tenantId, user, task.warehouseId, access);
       if (task.status !== 'submitted') throw new BadRequestException('该任务不在待复核状态');
@@ -239,7 +250,7 @@ export class StocktakeService {
         task.reviewedAt = new Date();
         task.updatedBy = user.id;
         await manager.save(task);
-        return;
+        return null;
       }
 
       const items = await manager.find(StocktakeItem, {
@@ -248,23 +259,67 @@ export class StocktakeService {
       });
       const current = await manager.find(Stock, {
         where: { tenantId, warehouseId: task.warehouseId, materialId: In(items.map((row) => row.materialId)) },
+        order: { materialId: 'ASC' },
+        lock: { mode: 'pessimistic_write' },
       });
-      const currentByMaterial = new Map(current.map((row) => [row.materialId, Number(row.qty)]));
+      const currentByMaterial = new Map(current.map((row) => [row.materialId, row]));
       const drifted = items.filter(
         (item) =>
-          roundStocktakeQty(currentByMaterial.get(item.materialId) ?? 0) !==
+          roundStocktakeQty(Number(currentByMaterial.get(item.materialId)?.qty ?? 0)) !==
           roundStocktakeQty(Number(item.bookQty)),
       );
-      if (drifted.length) {
-        throw new BadRequestException(
-          `盘点期间有 ${drifted.length} 项库存发生过出入库，请退回并重新核对这些材料`,
-        );
-      }
 
       const materials = await manager.find(Material, {
         where: { tenantId, id: In(items.map((row) => row.materialId)) },
       });
       const materialById = new Map(materials.map((row) => [row.id, row]));
+
+      const recountItems: StocktakeItem[] = [];
+      for (const item of drifted) {
+        const stock = currentByMaterial.get(item.materialId);
+        const currentQty = roundStocktakeQty(Number(stock?.qty ?? 0));
+        if (stockChangedAfterCount(Number(item.bookQty), currentQty, item.countedAt, stock?.updatedAt)) {
+          recountItems.push(item);
+          continue;
+        }
+
+        // 兼容升级前的盘点单：出入库发生在实盘前，按最新账面数重算差异。
+        const rebasedDifference = stocktakeDifference(currentQty, Number(item.actualQty));
+        if (rebasedDifference !== 0 && !item.reasonCode) {
+          recountItems.push(item);
+          continue;
+        }
+        item.bookQty = currentQty;
+        item.differenceQty = rebasedDifference;
+        if (rebasedDifference === 0) item.reasonCode = null;
+        item.updatedBy = user.id;
+        await manager.save(item);
+      }
+
+      if (recountItems.length) {
+        for (const item of recountItems) {
+          item.bookQty = roundStocktakeQty(Number(currentByMaterial.get(item.materialId)?.qty ?? 0));
+          item.actualQty = null;
+          item.differenceQty = null;
+          item.reasonCode = null;
+          item.countedBy = null;
+          item.countedAt = null;
+          item.updatedBy = user.id;
+        }
+        await manager.save(recountItems);
+        const names = recountItems.map(
+          (item) => materialById.get(item.materialId)?.name ?? `#${item.materialId}`,
+        );
+        const shownNames = names.slice(0, 5).join('、');
+        const extra = names.length > 5 ? `等 ${names.length} 项` : '';
+        task.status = 'counting';
+        task.reviewerId = user.id;
+        task.reviewedAt = new Date();
+        task.reviewNote = `实盘后又发生库存变动，已自动刷新账面数并退回重盘：${shownNames}${extra}`.slice(0, 500);
+        await this.refreshProgress(manager, task, user.id);
+        return { names };
+      }
+
       for (const item of items) {
         const delta = roundStocktakeQty(Number(item.differenceQty ?? 0));
         if (!delta) continue;
@@ -316,7 +371,15 @@ export class StocktakeService {
       task.reviewNote = dto.note?.trim() || null;
       task.updatedBy = user.id;
       await manager.save(task);
+      return null;
     });
+    if (outcome?.names.length) {
+      const shownNames = outcome.names.slice(0, 5).join('、');
+      const extra = outcome.names.length > 5 ? `等 ${outcome.names.length} 项` : '';
+      throw new BadRequestException(
+        `检测到实盘保存后库存又发生变动，已自动刷新账面数并只退回这些材料重盘：${shownNames}${extra}。其他已盘结果和差异均已保留`,
+      );
+    }
     return this.detail(id, user, access);
   }
 

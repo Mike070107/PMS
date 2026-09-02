@@ -281,7 +281,15 @@ export default function StocktakePanel({ warehouses, canEdit }: Props) {
       await loadTasks();
       message.success(approved ? '复核通过，库存已按差异过账' : '已退回盘点人重新核对');
     } catch (e: any) {
-      message.error(e?.message || '盘点复核失败');
+      const errorMessage = e?.message || '盘点复核失败';
+      if (errorMessage.includes('已自动刷新账面数')) {
+        setReviewOpen(false);
+        setOnlyDifference(false);
+        await Promise.all([loadDetail(detail.id, false), loadTasks()]);
+        message.warning(errorMessage, 8);
+      } else {
+        message.error(errorMessage);
+      }
     } finally {
       setSaving(false);
     }
@@ -663,7 +671,7 @@ export default function StocktakePanel({ warehouses, canEdit }: Props) {
             <Button danger loading={saving} onClick={() => reviewTask(false)}>退回重盘</Button>
             <Popconfirm
               title="确认复核通过？"
-              description="通过后所有盘盈、盘亏会立即写入库存和流水，不能撤销。"
+              description="正常盘盈、盘亏会立即过账；若实盘后又有出入库，系统只退回受影响材料重盘。"
               onConfirm={() => reviewTask(true)}
             >
               <Button type="primary" icon={<CheckCircleOutlined />} loading={saving}>复核通过并过账</Button>

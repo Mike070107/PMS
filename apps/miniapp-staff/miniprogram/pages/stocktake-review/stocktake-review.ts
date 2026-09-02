@@ -172,7 +172,13 @@ Page({
       if (approved) await this.load();
       else wx.redirectTo({ url: `/pages/stocktake-count/stocktake-count?id=${this.data.id}` });
     } catch (e: any) {
-      this.setData({ errorMsg: e?.message || '复核操作失败' });
+      const errorMessage = e?.message || '复核操作失败';
+      if (errorMessage.includes('已自动刷新账面数')) {
+        await wx.showModal({ title: '已退回冲突材料', content: errorMessage, showCancel: false });
+        wx.redirectTo({ url: `/pages/stocktake-count/stocktake-count?id=${this.data.id}` });
+      } else {
+        this.setData({ errorMsg: errorMessage });
+      }
     } finally {
       this.setData({ busy: false });
     }
