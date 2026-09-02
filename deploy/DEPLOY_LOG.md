@@ -1702,3 +1702,20 @@
   - 0eccc7e feat: 展示工单提交人与调整导航顺序
   - 63368c3 fix: 分离待派单与待接单并重做完工页
 
+## 2026-09-02 22:00 · miniapp-staff · ce21c0f
+
+- 提交：ce21c0f feat: 智能化维修工默认使用专属仓
+- 说明：体验版 1.0.20260902k：智能化维修工默认专属仓，可手动切换其它授权仓
+- 自上次（9dc6ca9）以来上线的相关提交：
+  - ce21c0f feat: 智能化维修工默认使用专属仓
+  - b146aa8 Merge remote-tracking branch 'origin/main' into codex/theme-deploy
+  - 099c75b fix: align dispatch scope across clients and API
+  - e34a87c feat: 重做工单现场处理详情页
+  - 0eccc7e feat: 展示工单提交人与调整导航顺序
+  - 63368c3 fix: 分离待派单与待接单并重做完工页
+  - f17c4e5 fix: 提高报修页面老年用户字号
+  - bb4e709 feat: 按原型重做填表报修
+  - 3cafc64 feat: 按原型重做AI随手拍报修
+  - 2bd8558 feat: 重做员工报修与库存页面
+  - 937b63a feat: 重构员工小程序现场工作界面
+
