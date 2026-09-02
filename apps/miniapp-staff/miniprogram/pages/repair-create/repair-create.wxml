@@ -99,14 +99,13 @@
 
       <!-- 说了「急修」就标紧急。整行可点：取消 / 标回来都在这一下 -->
       <view
-        wx:if="{{urgentMatched || urgent}}"
         class="urgency {{urgent ? 'urgency--on' : ''}}"
         bindtap="onToggleUrgent"
       >
         <text class="urgency__badge">{{urgent ? '紧急' : '普通'}}</text>
         <view class="urgency__body">
           <view class="urgency__text">{{urgent ? '这单按紧急处理' : '这单不按紧急处理'}}</view>
-          <view class="urgency__hint">{{urgent ? urgentReasonText + '，点这行取消' : '点这行标回紧急'}}</view>
+          <view class="urgency__hint">{{urgent ? urgentReasonText + '，点这行取消' : urgentMatched ? '已改为普通，点这行标回紧急' : '默认普通；只有确实需要优先处理时才点这里'}}</view>
         </view>
       </view>
 

@@ -482,9 +482,117 @@ textarea {
 .page-lead { padding: 12rpx 8rpx 28rpx; }
 .page-lead__title { font-size: 42rpx; font-weight: 700; line-height: 1.35; letter-spacing: 1rpx; }
 
-.screen-head { padding: 8rpx 8rpx 26rpx; }
-.screen-head__title { font-size: 42rpx; font-weight: 700; color: var(--color-text); line-height: 1.35; }
-.screen-head__desc { margin-top: 8rpx; font-size: 27rpx; color: var(--color-text-tertiary); line-height: 1.6; }
+.screen-head {
+  padding: 28rpx 30rpx;
+  margin-bottom: 28rpx;
+  border: 2rpx solid #c9ddec;
+  border-radius: 28rpx;
+  background: linear-gradient(135deg, #e8f3fc 0%, #f8fbfe 100%);
+  box-shadow: 0 8rpx 24rpx rgba(42, 83, 124, 0.08);
+}
+.screen-head__title { font-size: 42rpx; font-weight: 700; color: #203e5c; line-height: 1.35; }
+.screen-head__desc { margin-top: 8rpx; font-size: 27rpx; color: #5d7388; line-height: 1.6; }
+
+/* 工单池 / 在手工单的现场工作页头：浅蓝底比大块深色更适合户外持续阅读，
+   三个数字固定在同一行，打开页面不用先扫列表才能知道今天先做什么。 */
+.work-hero {
+  margin: 20rpx 24rpx 0;
+  padding: 30rpx;
+  border: 2rpx solid #bfd6e9;
+  border-radius: 34rpx;
+  background: linear-gradient(135deg, #e7f3fd 0%, #f8fbfe 100%);
+  box-shadow: 0 12rpx 32rpx rgba(43, 85, 126, 0.11);
+}
+.work-hero__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22rpx;
+}
+.work-hero__eyebrow {
+  color: #587894;
+  font-size: 24rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+}
+.work-hero__title {
+  margin-top: 5rpx;
+  color: #1f405f;
+  font-size: 44rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.work-hero__count {
+  flex-shrink: 0;
+  padding: 10rpx 18rpx;
+  border: 2rpx solid #b8d3e8;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.8);
+  color: #315b80;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+.work-hero__hint {
+  margin-top: 12rpx;
+  color: #5d7388;
+  font-size: 27rpx;
+  line-height: 1.55;
+}
+.work-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12rpx;
+  margin-top: 24rpx;
+}
+.work-metric {
+  min-width: 0;
+  padding: 18rpx 8rpx;
+  border: 2rpx solid #d7e5f0;
+  border-radius: 20rpx;
+  background: rgba(255, 255, 255, 0.88);
+  text-align: center;
+}
+.work-metric__value {
+  color: #315b80;
+  font-size: 42rpx;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.work-metric__label {
+  margin-top: 4rpx;
+  overflow: hidden;
+  color: #667d91;
+  font-size: 23rpx;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.work-metric--danger { border-color: #efc6c8; background: #fff8f8; }
+.work-metric--danger .work-metric__value { color: #b93d43; }
+.work-metric--warning { border-color: #eed6ae; background: #fffaf1; }
+.work-metric--warning .work-metric__value { color: #a7640e; }
+
+.priority-group {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin: 34rpx 4rpx 16rpx;
+}
+.priority-group__title {
+  color: #2b4b69;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.priority-group--urgent .priority-group__title { color: #ac343a; }
+.priority-group__hint {
+  color: var(--color-text-tertiary);
+  font-size: 23rpx;
+  line-height: 1.45;
+  text-align: right;
+}
 
 .section__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; margin-bottom: 28rpx; }
 .section__title {

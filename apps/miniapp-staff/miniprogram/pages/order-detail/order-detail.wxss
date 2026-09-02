@@ -1,11 +1,97 @@
 /* 字号一律引 tokens.wxss 的 --font-* 阶梯；卡片/图标/停留徽标在 app.wxss 里统一定义 */
 
 
-/* 业主原话：引号块，和系统文案区分开 */
-.order-summary { border-top: 8rpx solid #4f88b5; box-shadow: 0 12rpx 30rpx rgba(26,54,83,.10); }
-.order-summary .wo-card__head { padding-bottom: 22rpx; border-bottom: 2rpx solid #e4ebf2; }
-.order-summary .wo-card__type { font-size: 38rpx; }
-.order-summary .wo-card__foot { margin-top: 28rpx; padding-top: 22rpx; border-top: 2rpx solid #e4ebf2; }
+/* 工单详情首屏：地址和故障做视觉锚点，编号、时间、负责人收成三格。 */
+.detail-summary {
+  padding: 0;
+  overflow: hidden;
+  border-top: 8rpx solid #5a8fb8;
+  box-shadow: 0 12rpx 30rpx rgba(26,54,83,.10);
+}
+.detail-summary--urgent { border-top-color: #bd3c42; }
+.detail-summary__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  padding: 24rpx 28rpx 18rpx;
+}
+.detail-summary__tags { display: flex; align-items: center; gap: 12rpx; min-width: 0; }
+.detail-summary__type {
+  color: #315b80;
+  font-size: 30rpx;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.detail-summary__address {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+  padding: 24rpx 28rpx;
+  border-top: 2rpx solid #dce8f1;
+  border-bottom: 2rpx solid #dce8f1;
+  background: linear-gradient(135deg, #e9f4fc 0%, #f8fbfe 100%);
+  color: #1e3e5c;
+  font-size: 38rpx;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.detail-summary__address .icon { margin-top: 9rpx; }
+.detail-summary__problem {
+  padding: 26rpx 28rpx;
+  color: #263f58;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1.65;
+}
+.detail-summary__facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rpx;
+  margin: 0 28rpx 26rpx;
+  overflow: hidden;
+  border-radius: 18rpx;
+  background: #dfe9f1;
+}
+.detail-fact {
+  min-width: 0;
+  padding: 18rpx 10rpx;
+  background: #f6f9fc;
+  text-align: center;
+}
+.detail-fact__label { color: var(--color-text-tertiary); font-size: 23rpx; line-height: 1.4; }
+.detail-fact__value {
+  margin-top: 8rpx;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 27rpx;
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-fact__hint { margin-top: 5rpx; color: var(--color-text-tertiary); font-size: 22rpx; }
+.detail-fact__hint--danger { color: var(--color-danger); }
+.detail-fact__hint--warn { color: #a7640e; }
+.detail-summary__material {
+  margin: 0 28rpx 26rpx;
+  padding: 18rpx 20rpx;
+  border: 2rpx solid #ecd3a9;
+  border-radius: 18rpx;
+  background: #fff8ec;
+  color: #7e531a;
+  font-size: 27rpx;
+  line-height: 1.55;
+}
+.detail-summary__material > text { display: block; margin-bottom: 5rpx; font-weight: 700; }
+.detail-summary .thumbs { padding: 0 28rpx 24rpx; }
+.detail-summary__foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 20rpx 28rpx 24rpx;
+  border-top: 2rpx solid #e4ebf2;
+  background: #f8fafc;
+}
 
 .quote {
   margin-top: 20rpx;

@@ -1,26 +1,39 @@
 <view wx:if="{{detail}}" class="container container--with-bar">
-  <!-- 这一屏最该先回答的：修什么、在哪、压了多久。
-       「现在什么状态」看右上角的状态标，「接下来干什么」看底部固定按钮条，
-       都不用再写一句话解释一遍。 -->
-  <view class="card wo-card order-summary">
-    <view class="wo-card__head">
-      <view class="wo-card__title">
+  <!-- 详情首屏只放现场真正要用的四件事：去哪、修什么、找谁、下一步。 -->
+  <view class="card detail-summary {{urgent ? 'detail-summary--urgent' : ''}}">
+    <view class="detail-summary__top">
+      <view class="detail-summary__tags">
         <text wx:if="{{urgent}}" class="badge--urgent">紧急</text>
-        <text class="wo-card__type">{{typeLabel}}</text>
+        <text class="detail-summary__type">{{typeLabel}}</text>
       </view>
       <pms-tag class="status-tag" status="{{detail.workOrder.status}}"/>
     </view>
 
-    <view class="kv"><text class="kv__k">工单编号</text><text class="kv__v">{{detail.workOrder.orderNo}}</text></view>
-    <view class="kv"><text class="kv__k">报修地址</text><text class="kv__v">{{detail.request.addressText || '未填地址'}}</text></view>
-    <view class="kv">
-      <text class="kv__k">报修时间</text>
-      <text class="kv__v">{{createdAtText}}<text class="kv__tag kv__tag--{{stayTone}}">{{stayBadge}}</text></text>
+    <view class="detail-summary__address">
+      <view class="icon icon--pin"></view>
+      <text>{{detail.request.addressText || '未填地址'}}</text>
     </view>
-    <view class="kv"><text class="kv__k">故障描述</text><text class="kv__v">{{detail.request.content}}</text></view>
-    <view class="kv"><text class="kv__k">维修工</text><text class="kv__v">{{assigneeText}}</text></view>
-    <view wx:if="{{missingText}}" class="kv">
-      <text class="kv__k">等待材料</text><text class="kv__v">{{missingText}}</text>
+    <view class="detail-summary__problem">{{detail.request.content || '未填写故障描述'}}</view>
+
+    <view class="detail-summary__facts">
+      <view class="detail-fact">
+        <view class="detail-fact__label">工单编号</view>
+        <view class="detail-fact__value">{{detail.workOrder.orderNo}}</view>
+      </view>
+      <view class="detail-fact">
+        <view class="detail-fact__label">报修时间</view>
+        <view class="detail-fact__value">{{createdAtText}}</view>
+        <view class="detail-fact__hint detail-fact__hint--{{stayTone}}">{{stayBadge}}</view>
+      </view>
+      <view class="detail-fact">
+        <view class="detail-fact__label">当前维修工</view>
+        <view class="detail-fact__value">{{assigneeText}}</view>
+      </view>
+    </view>
+
+    <view wx:if="{{missingText}}" class="detail-summary__material">
+      <text>等待材料</text>
+      <view>{{missingText}}</view>
     </view>
 
     <view wx:if="{{detail.request.attachments.length}}" class="thumbs">
@@ -35,10 +48,10 @@
       />
     </view>
 
-    <view class="wo-card__foot">
+    <view class="detail-summary__foot">
       <view class="call" bindtap="onCall">
         <view class="icon icon--phone"></view>
-        <text>联系业主</text>
+        <text>电话联系报修人</text>
       </view>
     </view>
   </view>

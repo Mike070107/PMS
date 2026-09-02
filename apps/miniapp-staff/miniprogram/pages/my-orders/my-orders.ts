@@ -36,6 +36,9 @@ type OrderRow = WorkOrderListItem & {
   statReporter: string;
   /** 「业主」「保安代报」—— 身份，压在姓名下面当说明 */
   statReporterHint: string;
+  /** 紧急 / 普通分组的第一张卡，用于在列表里插入组标题 */
+  groupStart?: boolean;
+  groupLabel?: string;
 };
 
 const ACTION_TEXT: Record<string, string> = {
@@ -53,6 +56,9 @@ Page({
      * 和工单池同一口径，两屏之间的数才对得上
      */
     overdueCount: 0,
+    urgentCount: 0,
+    normalCount: 0,
+    waitingMaterialCount: 0,
     loaded: false,
   },
 
@@ -70,7 +76,7 @@ Page({
   async load() {
     try {
       const list = await repairs.list({ scope: 'mine' });
-      const active = withOrderLabels(list)
+      const active: OrderRow[] = withOrderLabels(list)
         .filter((item) => isActiveOrder(item.status))
         .map((item) => ({
           ...item,
@@ -83,9 +89,17 @@ Page({
           || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           || a.id - b.id,
       );
+      active.forEach((row, index) => {
+        const previous = active[index - 1];
+        row.groupStart = index === 0 || !!previous?.urgent !== !!row.urgent;
+        row.groupLabel = row.urgent ? '紧急工单 · 先处理' : '普通工单';
+      });
       this.setData({
         active,
         overdueCount: active.filter((item) => item.stayTone === 'danger').length,
+        urgentCount: active.filter((item) => item.urgent).length,
+        normalCount: active.filter((item) => !item.urgent).length,
+        waitingMaterialCount: active.filter((item) => item.status === WorkOrderStatus.WAITING_MATERIAL).length,
         loaded: true,
       });
       setTabBadge(this, 'mine', active.length);

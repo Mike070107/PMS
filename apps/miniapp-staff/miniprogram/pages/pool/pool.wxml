@@ -1,18 +1,27 @@
 <import src="/templates/wo-card.wxml"/>
 
-<!-- 深色页头（data-first-ui）：把「这屏是什么、现在什么情况」在第一眼说完。
-     标题按身份变，和 pool.ts 里那句 setNavigationBarTitle 同源 —— 改一处要改两处。 -->
-<view class="hero">
-  <view class="hero__top">
-    <view class="hero__title">{{screenTitle}}</view>
-    <view class="hero__count">{{list.length}} {{leadText}}</view>
-  </view>
-  <view class="hero__hint">{{dispatcher ? '把待办准确派给合适的维修人员' : '优先处理等待较久、距离合适的工单'}}</view>
-  <view wx:if="{{overdueCount}}" class="hero__stats">
-    <!-- 一单都没压着就整格不显示：常年挂个 0 会让这抹红失去意义 -->
+<!-- 现场工作页头：标题、当前范围和三个关键数字放在同一张浅蓝工作卡里。 -->
+<view class="work-hero">
+  <view class="work-hero__top">
     <view>
-      <view class="hero__num hero__num--danger">{{overdueCount}}</view>
-      <view class="hero__cap">压 3 天以上</view>
+      <view class="work-hero__eyebrow">邻修现场工作台</view>
+      <view class="work-hero__title">{{screenTitle}}</view>
+    </view>
+    <view class="work-hero__count">{{list.length}} {{leadText}}</view>
+  </view>
+  <view class="work-hero__hint">{{dispatcher ? '把待办准确派给合适的维修人员' : '紧急优先；同组按报修时间从早到晚'}}</view>
+  <view class="work-metrics">
+    <view class="work-metric work-metric--danger">
+      <view class="work-metric__value">{{urgentCount}}</view>
+      <view class="work-metric__label">紧急</view>
+    </view>
+    <view class="work-metric work-metric--warning">
+      <view class="work-metric__value">{{overdueCount}}</view>
+      <view class="work-metric__label">压 3 天以上</view>
+    </view>
+    <view class="work-metric">
+      <view class="work-metric__value">{{normalCount}}</view>
+      <view class="work-metric__label">普通</view>
     </view>
   </view>
 </view>
@@ -104,9 +113,15 @@
     <pms-empty text="{{emptyText}}"/>
   </view>
 
-  <view
+  <block
     wx:for="{{list}}"
     wx:key="id"
+  >
+    <view wx:if="{{showPriorityGroups && item.groupStart}}" class="priority-group {{item.urgent ? 'priority-group--urgent' : ''}}">
+      <view class="priority-group__title">{{item.groupLabel}}</view>
+      <view class="priority-group__hint">同组按报修时间从早到晚</view>
+    </view>
+    <view
     id="pool-order-{{item.id}}"
     class="order-slot {{collectingId === item.id ? 'order-slot--collecting' : ''}} {{closingId === item.id ? 'order-slot--closing' : ''}} {{settling && index > collectingIndex ? 'order-slot--following' : ''}}"
     style="{{collectingId === item.id || closingId === item.id ? 'height:' + collectingHeight + 'px' : ''}}"
@@ -179,7 +194,8 @@
         </block>
       </view>
     </view>
-  </view>
+    </view>
+  </block>
 
   <!-- 服务端一次最多给 100 条：到顶了必须说明，否则看着就是「搜索漏了单」 -->
   <view wx:if="{{capped}}" class="muted center cap-tip">

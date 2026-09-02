@@ -55,6 +55,9 @@ type OrderRow = WorkOrderListItem & {
   statReporter: string;
   /** 「业主」「保安代报」—— 身份，压在姓名下面当说明 */
   statReporterHint: string;
+  /** 紧急 / 普通分组的第一张卡，用于在列表里插入组标题 */
+  groupStart?: boolean;
+  groupLabel?: string;
 };
 
 /** 这些状态还没开工，维修工可主动领；办公室也可派/改派 */
@@ -175,6 +178,9 @@ Page({
     leadText: '待接单',
     /** 页头红数字：这一屏里压了 3 天以上的单数，0 就不显示那一格 */
     overdueCount: 0,
+    urgentCount: 0,
+    normalCount: 0,
+    showPriorityGroups: false,
     list: [] as OrderRow[],
     loading: false,
     loaded: false,
@@ -359,6 +365,15 @@ Page({
         );
       }
 
+      const showPriorityGroups = mainTab === 'pool' && (!dispatcher || filter.key === 'pool');
+      if (showPriorityGroups) {
+        rows.forEach((row, index) => {
+          const previous = rows[index - 1];
+          row.groupStart = index === 0 || !!previous?.urgent !== !!row.urgent;
+          row.groupLabel = row.urgent ? '紧急工单 · 先处理' : '普通工单';
+        });
+      }
+
       this.setData({
         dispatcher,
         screenTitle:
@@ -394,6 +409,9 @@ Page({
            前端按当前这一屏算，不另开接口，换筛选档跟着变是对的，别理解成全局待办数。 */
         overdueCount:
           mainTab === 'pool' ? rows.filter((row) => row.stayTone === 'danger').length : 0,
+        urgentCount: rows.filter((row) => row.urgent).length,
+        normalCount: rows.filter((row) => !row.urgent).length,
+        showPriorityGroups,
         loaded: true,
         capped: rows.length >= PAGE_CAP,
         /* 空态要说清「空在哪一层」：搜的没有 / 这一档没有 / 真的没活。

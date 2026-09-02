@@ -1,19 +1,26 @@
 <import src="/templates/wo-card.wxml"/>
 
-<!-- 深色页头（data-first-ui）：「手上几单、其中几单压着」第一眼说完。
-     和工单池同一套页头 + 数据卡，两屏之间不用重新认版式。
-     标题写死「在手工单」，和 my-orders.json 的 navigationBarTitleText 同源 —— 改一处要改两处。 -->
-<view class="hero">
-  <view class="hero__top">
-    <view class="hero__title">在手工单</view>
-    <view class="hero__count">{{active.length}} 单在手</view>
-  </view>
-  <view class="hero__hint">先做紧急和等待时间较长的任务</view>
-  <view wx:if="{{overdueCount}}" class="hero__stats">
-    <!-- 一单都没压着就整格不显示：常年挂个 0 会让这抹红失去意义 -->
+<view class="work-hero">
+  <view class="work-hero__top">
     <view>
-      <view class="hero__num hero__num--danger">{{overdueCount}}</view>
-      <view class="hero__cap">压 3 天以上</view>
+      <view class="work-hero__eyebrow">我的现场任务</view>
+      <view class="work-hero__title">在手工单</view>
+    </view>
+    <view class="work-hero__count">{{active.length}} 单在手</view>
+  </view>
+  <view class="work-hero__hint">紧急优先；同组按报修时间从早到晚</view>
+  <view class="work-metrics">
+    <view class="work-metric work-metric--danger">
+      <view class="work-metric__value">{{urgentCount}}</view>
+      <view class="work-metric__label">紧急</view>
+    </view>
+    <view class="work-metric work-metric--warning">
+      <view class="work-metric__value">{{waitingMaterialCount}}</view>
+      <view class="work-metric__label">等待材料</view>
+    </view>
+    <view class="work-metric">
+      <view class="work-metric__value">{{normalCount}}</view>
+      <view class="work-metric__label">普通</view>
     </view>
   </view>
 </view>
@@ -26,9 +33,15 @@
     <pms-empty text="手上没有工单，去「工单池」接一单"/>
   </view>
 
-  <view
+  <block
     wx:for="{{active}}"
     wx:key="id"
+  >
+    <view wx:if="{{item.groupStart}}" class="priority-group {{item.urgent ? 'priority-group--urgent' : ''}}">
+      <view class="priority-group__title">{{item.groupLabel}}</view>
+      <view class="priority-group__hint">同组按报修时间从早到晚</view>
+    </view>
+    <view
     class="card wo-card wo-card--data"
     hover-class="wo-card--hover"
     hover-stay-time="80"
@@ -45,5 +58,6 @@
     <view class="wo-card__foot">
       <text class="wo-card__more">{{item.actionText}} ›</text>
     </view>
-  </view>
+    </view>
+  </block>
 </view>
