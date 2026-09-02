@@ -1570,3 +1570,11 @@
   - e3fc848 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
   - 8bed144 feat: 支持管理员审计作废工单
 
+## 2026-09-02 17:18 · web · 2d944ef
+
+- 包：`pms-web-20260902-1717.tar.gz`
+- 提交：2d944ef fix: expose work order delete actions in lists
+- 说明：工单与养护单列表增加删除入口及权限提示
+- 自上次（0c07f61）以来上线的相关提交：
+  - 2d944ef fix: expose work order delete actions in lists
+
