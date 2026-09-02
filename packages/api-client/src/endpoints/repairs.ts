@@ -227,6 +227,13 @@ export const needMaterial = (
   },
 ) => request<void>({ method: 'POST', url: `/work-orders/${id}/need-material`, data });
 
+/** 删除已扣库的工单用料，服务端会按原批次自动退库 */
+export const removeUsedMaterial = (id: number | string, usageId: number | string) =>
+  request<{ ok: true }>({
+    method: 'DELETE',
+    url: `/work-orders/${id}/materials/${usageId}`,
+  });
+
 /** 办公室补建 SKU 后更正缺料清单（不新开采购申请，改的是同一张） */
 export const updateMissingMaterials = (
   id: number | string,

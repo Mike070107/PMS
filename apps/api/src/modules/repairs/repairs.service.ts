@@ -123,10 +123,13 @@ import {
   applyStockDelta,
   averageUnitCost,
   consumeStockLots,
+  refreshMaterialReferenceCost,
+  restoreStockLots,
 } from '../inventory/stock-ledger';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { buildTypeKeywords, classifyByKeywords } from './repair-classify.util';
 import { assertWorkOrderTransition } from './work-order-state-machine';
+import { nextPurchaseRequestNo } from '../inventory/purchase-request-no.util';
 import {
   DEFAULT_REPAIR_TYPES,
   LEGACY_REPAIR_TYPE_MAP,
@@ -1653,6 +1656,24 @@ export class RepairsService implements OnModuleInit {
         throw new NotFoundException('work order not found');
       }
     }
+    // 先做完工单关系权限校验再读领料，不让无权用户借用料查询探测工单是否存在。
+    const materialUsages = await this.dataSource.query(
+      `SELECT wom.id,
+              wom.material_id AS "materialId",
+              wom.warehouse_id AS "warehouseId",
+              wom.qty,
+              wom.created_at AS "createdAt",
+              m.name,
+              m.spec,
+              m.unit,
+              w.name AS "warehouseName"
+         FROM work_order_materials wom
+         JOIN materials m ON m.id = wom.material_id AND m.tenant_id = wom.tenant_id
+         JOIN warehouses w ON w.id = wom.warehouse_id AND w.tenant_id = wom.tenant_id
+        WHERE wom.tenant_id = $1 AND wom.work_order_id = $2
+        ORDER BY wom.id ASC`,
+      [tenantId, id],
+    );
     // 存量工单的联系人/电话是空的（那会儿端上选填、服务端也不兜底），
     // 读取时补上，不改历史数据；新单在创建时就已经写进库里了
     const contact = request
@@ -1717,7 +1738,79 @@ export class RepairsService implements OnModuleInit {
           }
         : request,
       logs: logs.map((log) => ({ ...log, note: withSubmitter(log) })),
+      materialUsages: (materialUsages as Array<Record<string, unknown>>).map((row) => ({
+        ...row,
+        id: Number(row.id),
+        materialId: Number(row.materialId),
+        warehouseId: Number(row.warehouseId),
+        qty: Number(row.qty),
+      })),
     };
+  }
+
+  /**
+   * 删除工单上一条已领用料：按原 FIFO 分摊退回原批次，同时回补库存并留退料流水。
+   * 只有等料/维修中的单允许改；已提交完工的历史成本不能被事后悄悄改掉。
+   */
+  async removeWorkOrderMaterial(
+    workOrderId: number,
+    usageId: number,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    return this.dataSource.transaction(async (manager) => {
+      const workOrder = await this.lockWorkOrder(manager, workOrderId, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
+      if (![WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(workOrder.status)) {
+        throw new BadRequestException('当前工单状态不能删除用料');
+      }
+      await this.ensureAssigneeOrAdmin(workOrder, user);
+      const usage = await manager.findOne(WorkOrderMaterial, {
+        where: { id: usageId, tenantId, workOrderId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!usage) throw new NotFoundException('工单用料不存在');
+      const allocations = await manager.find(WorkOrderMaterialAllocation, {
+        where: { tenantId, workOrderMaterialId: usage.id },
+      });
+      await restoreStockLots(manager, allocations, user.id);
+      await applyStockDelta(manager, {
+        tenantId,
+        warehouseId: usage.warehouseId,
+        materialId: usage.materialId,
+        deltaQty: Number(usage.qty),
+        type: StockMovementType.RETURN,
+        unitCostCents: usage.unitCostCents,
+        refType: 'work_order_material_return',
+        refId: usage.id,
+        operatorId: user.id,
+        note: `删除工单用料，退回 ${workOrder.orderNo}`,
+      });
+      await manager.delete(WorkOrderMaterialAllocation, {
+        tenantId,
+        workOrderMaterialId: usage.id,
+      });
+      await manager.delete(WorkOrderMaterial, { tenantId, id: usage.id });
+      const snapshot = [...(workOrder.usedMaterials || [])];
+      const index = snapshot.findIndex(
+        (item) => item.materialId === usage.materialId && Number(item.qty) === Number(usage.qty),
+      );
+      if (index >= 0) snapshot.splice(index, 1);
+      workOrder.usedMaterials = snapshot;
+      workOrder.updatedBy = user.id;
+      await manager.save(WorkOrder, workOrder);
+      await refreshMaterialReferenceCost(manager, tenantId, usage.materialId, user.id);
+      await this.writeLog(
+        manager,
+        workOrder,
+        workOrder.status,
+        'return_material',
+        user.id,
+        `已删除用料并退库：材料 #${usage.materialId} ×${Number(usage.qty)}`,
+      );
+      return { ok: true };
+    });
   }
 
   /** 报修人（提交账号）认证的登记地址；没绑房时返回 null */
@@ -4745,22 +4838,13 @@ export class RepairsService implements OnModuleInit {
     return out;
   }
 
-  /**
-   * 采购申请号。同一张工单可能缺料好几轮（第一次报的料不对、到货后又发现少件），
-   * 单号里带上第几次，否则办公室会看到两张一模一样的 PR-20260809-000123。
-   */
+  /** 采购申请号改为每日短序号（PR-260902-001），工单来源改在明细行中展示。 */
   private async buildPurchaseRequestNo(
     manager: EntityManager,
     tenantId: number,
-    workOrderId: number,
+    _workOrderId: number,
   ): Promise<string> {
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const seq = await manager.count(PurchaseRequest, { where: { tenantId, workOrderId } });
-    const base = `PR-${yyyy}${mm}${dd}-${String(workOrderId).padStart(6, '0')}`;
-    return seq > 0 ? `${base}-${seq + 1}` : base;
+    return nextPurchaseRequestNo(manager, tenantId);
   }
 
   private async lockWorkOrder(manager, id: number, tenantId: number) {

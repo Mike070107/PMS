@@ -29,10 +29,12 @@ import {
   PurchaseRequestQueryDto,
   ReceiveTransferOrderDto,
   RejectPurchaseRequestDto,
+  RejectPurchaseRequestItemDto,
   RejectTransferOrderDto,
   StockMovementQueryDto,
   StockQueryDto,
   SubmitToManagerDto,
+  UpdatePurchaseRequestItemsDto,
   TenantQueryDto,
   WarehousesQueryDto,
   UpdateMaterialDto,
@@ -288,6 +290,18 @@ export class InventoryController {
     return this.inventoryService.submitToManager(dto, user, access);
   }
 
+  /** 办公室修改被单项驳回的描述/数量，之后可再次提交经理 */
+  @Patch('purchase-requests/:id/items')
+  @RequirePermission(['inventory', 'app:inventory'], 'edit')
+  updatePurchaseRequestItems(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdatePurchaseRequestItemsDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.updatePurchaseRequestItems(id, dto, user, access);
+  }
+
   // 审批链的两步各是一格勾选：谁批第一步、谁批第二步，由角色配置说了算
   @Post('purchase-requests/:id/manager-approve')
   @RequirePermission('app:approve-manager', 'edit')
@@ -322,6 +336,17 @@ export class InventoryController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.inventoryService.rejectPurchaseRequest(id, dto, user, access);
+  }
+
+  @Post('purchase-requests/:id/reject-item')
+  @RequirePermission(['app:approve-manager', 'app:approve-purchaser'], 'edit')
+  rejectPurchaseRequestItem(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RejectPurchaseRequestItemDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.rejectPurchaseRequestItem(id, dto, user, access);
   }
 
   @Get('purchase-orders')

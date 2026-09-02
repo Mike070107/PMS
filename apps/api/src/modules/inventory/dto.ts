@@ -9,6 +9,7 @@ import {
   MaxLength,
   Max,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -421,6 +422,51 @@ export class RejectPurchaseRequestDto {
   @IsString()
   @MaxLength(255)
   reason: string;
+}
+
+export class UpdatePurchaseRequestItemDto {
+  @IsString()
+  @MaxLength(80)
+  lineId: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  materialId?: number;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  name: string;
+
+  @Type(() => Number)
+  @IsPositive()
+  qty: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  unit?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  estUnitCostCents?: number;
+}
+
+export class UpdatePurchaseRequestItemsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => UpdatePurchaseRequestItemDto)
+  items: UpdatePurchaseRequestItemDto[];
+}
+
+export class RejectPurchaseRequestItemDto extends RejectPurchaseRequestDto {
+  @IsString()
+  @MaxLength(80)
+  lineId: string;
 }
 
 export class PurchaseOrderItemDto {

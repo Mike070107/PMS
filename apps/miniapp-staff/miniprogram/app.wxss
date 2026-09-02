@@ -874,6 +874,7 @@ textarea {
 }
 .wo-card__chip--danger { background: #fff0f0; color: #c93f45; }
 .wo-card__chip--warn { background: #fff5e5; color: #a96810; }
+.wo-card__chip--no { background: #e7f0fb; color: #174f80; font-weight: 600; letter-spacing: .5rpx; }
 .wo-card__info {
   display: flex;
   align-items: flex-start;

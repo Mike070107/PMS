@@ -220,7 +220,14 @@ Page({
     syncTabBar(this, initialTabKey());
     // 从「我的 → 我的报修」进来的：直接落在「我报的」那一档（tabBar 页 switchTab
     // 带不了参数，所以用一次性标记传话，见 me.ts 的 onOpenReported）
-    if (takeOpenReported()) this.setData({ mainTab: 'reported' });
+    const openOrder = takeOpenOrder();
+    if (openOrder) {
+      this.setData({
+        mainTab: openOrder.mainTab === 'done' ? 'done' : 'pool',
+        keyword: openOrder.orderNo || '',
+        filterIndex: 0,
+      });
+    } else if (takeOpenReported()) this.setData({ mainTab: 'reported' });
     this.load();
     refreshUnread(this);
   },
@@ -601,5 +608,17 @@ function takeOpenReported(): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+function takeOpenOrder(): { mainTab?: string; orderNo?: string } | null {
+  try {
+    const raw = wx.getStorageSync('pms.staff.open_order');
+    if (!raw) return null;
+    wx.removeStorageSync('pms.staff.open_order');
+    const value = JSON.parse(String(raw));
+    return value && typeof value === 'object' ? value : null;
+  } catch {
+    return null;
   }
 }

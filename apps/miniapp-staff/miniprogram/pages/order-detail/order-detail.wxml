@@ -137,7 +137,19 @@
   </view>
 
   <scroll-view class="sheet__body" scroll-y>
-    <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加用料</view>
+    <view wx:if="{{issuedMaterials.length}}" class="issued-block">
+      <view class="label">已领用·已扣库<text class="label__opt">删除会自动退库</text></view>
+      <view wx:for="{{issuedMaterials}}" wx:key="id" class="issued-item">
+        <view class="issued-item__body">
+          <view class="issued-item__name">{{item.name}}{{item.spec ? ' · ' + item.spec : ''}}</view>
+          <view class="muted">{{item.warehouseName}} · ×{{item.qty}}{{item.unit || ''}}</view>
+        </view>
+        <button class="btn btn--ghost btn--sm" data-id="{{item.id}}" bindtap="onRemoveIssuedMaterial">删除退库</button>
+      </view>
+    </view>
+
+    <view class="label {{issuedMaterials.length ? 'mt' : ''}}">本次新增<text class="label__opt">可连续添加多项</text></view>
+    <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加，下方选“仓库材料”或“库外/缺料”</view>
 
     <view class="mat-item" wx:for="{{materialRows}}" wx:key="index">
       <!-- 第一行：名称 + 规格。库存 SKU 固定展示，手填行仍允许输入名称。 -->
@@ -219,10 +231,10 @@
 
     <view class="btn-row mt">
       <button class="btn btn--outline" bindtap="onOpenSku">
-        <view class="btn__icon icon-action--box-blue"></view><text>从库存选</text>
+        <view class="btn__icon icon-action--box-blue"></view><text>+ 仓库材料</text>
       </button>
       <button class="btn btn--ghost" bindtap="onAddMaterialRow">
-        <view class="btn__icon icon-action--edit-blue"></view><text>手填一项</text>
+        <view class="btn__icon icon-action--edit-blue"></view><text>+ 库外/缺料</text>
       </button>
     </view>
     <view class="label mt">补充说明<text class="label__opt">选填</text></view>

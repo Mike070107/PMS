@@ -23,11 +23,17 @@ export class PurchaseRequest extends TenantEntity {
   // 明细：[{materialId, name, qty, unit, estUnitCostCents}]
   @Column({ type: 'jsonb', default: () => "'[]'" })
   items: Array<{
+    lineId?: string;
     materialId?: number;
     name: string;
     qty: number;
     unit?: string;
     estUnitCostCents?: number;
+    sourceRequestId?: number;
+    sourceRequestNo?: string;
+    sourceWorkOrderId?: number | null;
+    rejectReason?: string;
+    rejectedAtStage?: 'manager' | 'purchaser';
   }>;
 
   // 预估总额（分），决定是否走采购经理审批

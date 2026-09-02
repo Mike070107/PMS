@@ -103,6 +103,7 @@ export const WAREHOUSE_TYPE_LABELS: Record<string, string> = {
 export enum StockMovementType {
   INBOUND = 'inbound',
   OUTBOUND = 'outbound',
+  RETURN = 'return',
   TRANSFER = 'transfer',
   ADJUST = 'adjust',
 }
@@ -452,6 +453,20 @@ export interface WorkOrderDetail {
   };
   request: RepairRequestView | null;
   logs: WorkOrderLogItem[];
+  /** 已经从仓库领用并扣库的明细；与尚未提交的端上草稿分开。 */
+  materialUsages?: WorkOrderMaterialUsageView[];
+}
+
+export interface WorkOrderMaterialUsageView {
+  id: number;
+  materialId: number;
+  warehouseId: number;
+  name: string;
+  spec?: string | null;
+  unit: string;
+  qty: number;
+  warehouseName: string;
+  createdAt: string;
 }
 
 /**
@@ -830,12 +845,20 @@ export interface StocktakeDetailView extends StocktakeTaskView {
 
 // ---------- 采购 ----------
 export interface PurchaseRequestItem {
+  /** 合并后仍保持稳定的行标识，用于单项驳回和修改重提 */
+  lineId?: string;
   materialId?: number;
   name: string;
   qty: number;
   /** 单位随缺料登记一起带过来：「阀芯 ×2」和「阀芯 ×2 套」采购起来不是一回事 */
   unit?: string;
   estUnitCostCents?: number;
+  sourceRequestId?: number;
+  sourceRequestNo?: string;
+  sourceWorkOrderId?: number | null;
+  sourceWorkOrderNo?: string | null;
+  rejectReason?: string;
+  rejectedAtStage?: 'manager' | 'purchaser';
 }
 
 export interface PurchaseRequestView {
@@ -844,6 +867,9 @@ export interface PurchaseRequestView {
   workOrderId: number | null;
   /** 来源工单的工单号，服务端下发；界面上显示它而不是 workOrderId */
   workOrderNo?: string | null;
+  /** 合并表格的全部来源，不再只显示主单那一张 */
+  sourceRequestNos?: string[];
+  sourceWorkOrderNos?: string[];
   applicantId: number;
   /** 申请人 / 两位审批人的姓名，服务端下发 —— 端上不要拿 id 顶着显示 */
   applicantName?: string | null;

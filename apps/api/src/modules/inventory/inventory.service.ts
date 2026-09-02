@@ -54,9 +54,11 @@ import {
   PurchaseRequestQueryDto,
   ReceiveTransferOrderDto,
   RejectPurchaseRequestDto,
+  RejectPurchaseRequestItemDto,
   StockMovementQueryDto,
   StockQueryDto,
   SubmitToManagerDto,
+  UpdatePurchaseRequestItemsDto,
   TenantQueryDto,
   WarehousesQueryDto,
   UpdateMaterialDto,
@@ -78,6 +80,7 @@ import {
   resolveUnitCost,
   summarizeLots,
 } from './stock-ledger';
+import { nextPurchaseRequestNo } from './purchase-request-no.util';
 
 interface NotifyInput {
   eventKey: string;
@@ -1333,7 +1336,14 @@ export class InventoryService {
       ),
     ];
     const workOrderIds = [
-      ...new Set(rows.map((r) => r.workOrderId).filter((id): id is number => !!id)),
+      ...new Set(
+        rows
+          .flatMap((r) => [
+            r.workOrderId,
+            ...(r.items || []).map((item) => item.sourceWorkOrderId),
+          ])
+          .filter((id): id is number => !!id),
+      ),
     ];
     const [users, workOrders] = await Promise.all([
       userIds.length
@@ -1354,13 +1364,31 @@ export class InventoryService {
       (workOrders as Array<{ id: number; order_no: string }>).map((w) => [w.id, w.order_no]),
     );
     const nameOf = (id: number | null) => (id ? nameById.get(id) || null : null);
-    return rows.map((row) => ({
-      ...row,
-      applicantName: nameOf(row.applicantId),
-      managerName: nameOf(row.managerId),
-      purchaserName: nameOf(row.purchaserId),
-      workOrderNo: row.workOrderId ? orderNoById.get(row.workOrderId) ?? null : null,
-    }));
+    return rows.map((row) => {
+      const items = (row.items || []).map((item, index) => {
+        const sourceWorkOrderId = item.sourceWorkOrderId ?? row.workOrderId;
+        return {
+          ...item,
+          lineId: item.lineId || `${row.id}-${index + 1}`,
+          sourceRequestId: item.sourceRequestId ?? row.id,
+          sourceRequestNo: item.sourceRequestNo || row.requestNo,
+          sourceWorkOrderId,
+          sourceWorkOrderNo: sourceWorkOrderId
+            ? orderNoById.get(sourceWorkOrderId) ?? null
+            : null,
+        };
+      });
+      return {
+        ...row,
+        items,
+        applicantName: nameOf(row.applicantId),
+        managerName: nameOf(row.managerId),
+        purchaserName: nameOf(row.purchaserId),
+        workOrderNo: row.workOrderId ? orderNoById.get(row.workOrderId) ?? null : null,
+        sourceRequestNos: [...new Set(items.map((item) => item.sourceRequestNo).filter(Boolean))],
+        sourceWorkOrderNos: [...new Set(items.map((item) => item.sourceWorkOrderNo).filter(Boolean))],
+      };
+    });
   }
 
   /** 办公室手工新建采购申请（直接进入办公室汇总环节，可继续合并或提交经理） */
@@ -1377,7 +1405,7 @@ export class InventoryService {
         PurchaseRequest,
         manager.create(PurchaseRequest, {
           tenantId,
-          requestNo: this.buildNo('PR'),
+          requestNo: await nextPurchaseRequestNo(manager, tenantId),
           workOrderId: null,
           applicantId: user.id,
           items: dto.items.map((item) => ({
@@ -1418,24 +1446,32 @@ export class InventoryService {
         }
         requests.push(req);
       }
+      const officeIds = new Set(
+        await Promise.all(
+          requests.map(async (request) =>
+            (await this.purchaseRequestOfficeId(tenantId, request)) ?? 'company',
+          ),
+        ),
+      );
+      if (officeIds.size > 1) {
+        throw new BadRequestException('不同管理处的采购申请不能合并到同一张审批表');
+      }
 
-      // 单条：直接推进；多条：合并明细为主单，其余标记 merged
+      // 单条：直接推进；多条：合并成一张多行表。
+      // 不再把同 SKU 合成一行：每行要保留来源工单，才能单项驳回。
       const primary = requests[0];
       if (requests.length > 1) {
-        // 按 materialId 合并同材料数量
-        const merged = new Map<string, { materialId?: number; name: string; qty: number; estUnitCostCents?: number }>();
-        for (const req of requests) {
-          for (const item of req.items) {
-            const key = item.materialId ? `m${item.materialId}` : `n${item.name}`;
-            const exist = merged.get(key);
-            if (exist) {
-              exist.qty += item.qty;
-            } else {
-              merged.set(key, { ...item });
-            }
-          }
-        }
-        primary.items = Array.from(merged.values());
+        primary.items = requests.flatMap((req) =>
+          (req.items || []).map((item, index) => ({
+            ...item,
+            lineId: item.lineId || `${req.id}-${index + 1}`,
+            sourceRequestId: item.sourceRequestId ?? req.id,
+            sourceRequestNo: item.sourceRequestNo || req.requestNo,
+            sourceWorkOrderId: item.sourceWorkOrderId ?? req.workOrderId,
+            rejectReason: undefined,
+            rejectedAtStage: undefined,
+          })),
+        );
         primary.estTotalCents = primary.items.reduce(
           (sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty,
           0,
@@ -1448,7 +1484,22 @@ export class InventoryService {
         }
       }
 
+      primary.items = (primary.items || []).map((item, index) => ({
+        ...item,
+        lineId: item.lineId || `${primary.id}-${index + 1}`,
+        sourceRequestId: item.sourceRequestId ?? primary.id,
+        sourceRequestNo: item.sourceRequestNo || primary.requestNo,
+        sourceWorkOrderId: item.sourceWorkOrderId ?? primary.workOrderId,
+        rejectReason: undefined,
+        rejectedAtStage: undefined,
+      }));
+
       primary.status = PurchaseRequestStatus.MANAGER_REVIEW;
+      primary.rejectReason = null;
+      primary.managerId = null;
+      primary.managerAt = null;
+      primary.purchaserId = null;
+      primary.purchaserAt = null;
       primary.updatedBy = user.id;
       const saved = await manager.save(PurchaseRequest, primary);
       const officeId = await this.purchaseRequestOfficeId(tenantId, saved);
@@ -1485,6 +1536,100 @@ export class InventoryService {
         officeId,
       });
       return saved;
+    });
+  }
+
+  async updatePurchaseRequestItems(
+    id: number,
+    dto: UpdatePurchaseRequestItemsDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    return this.dataSource.transaction(async (manager) => {
+      const request = await this.lockPurchaseRequest(manager, id, tenantId);
+      await this.assertPurchaseRequestVisible(tenantId, request, user, access);
+      if (request.status !== PurchaseRequestStatus.OFFICE_REVIEW) {
+        throw new BadRequestException('只能修改办公室待汇总的申请');
+      }
+      const existing = new Map(
+        (request.items || []).map((item, index) => [item.lineId || `${request.id}-${index + 1}`, item]),
+      );
+      if (dto.items.length !== existing.size) {
+        throw new BadRequestException('修改明细时不能删除或新增审批行');
+      }
+      const seen = new Set<string>();
+      request.items = dto.items.map((item) => {
+        if (seen.has(item.lineId)) throw new BadRequestException('申请明细行重复');
+        seen.add(item.lineId);
+        const old = existing.get(item.lineId);
+        if (!old) throw new BadRequestException(`申请明细 ${item.lineId} 不存在`);
+        return {
+          ...old,
+          lineId: item.lineId,
+          materialId: item.materialId,
+          name: item.name.trim(),
+          qty: item.qty,
+          unit: item.unit?.trim() || undefined,
+          estUnitCostCents: item.estUnitCostCents ?? 0,
+          rejectReason: undefined,
+          rejectedAtStage: undefined,
+        };
+      });
+      request.estTotalCents = request.items.reduce(
+        (sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty,
+        0,
+      );
+      request.rejectReason = null;
+      request.managerId = null;
+      request.managerAt = null;
+      request.purchaserId = null;
+      request.purchaserAt = null;
+      request.updatedBy = user.id;
+      return manager.save(PurchaseRequest, request);
+    });
+  }
+
+  async rejectPurchaseRequestItem(
+    id: number,
+    dto: RejectPurchaseRequestItemDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    return this.dataSource.transaction(async (manager) => {
+      const request = await this.lockPurchaseRequest(manager, id, tenantId);
+      await this.assertPurchaseRequestVisible(tenantId, request, user, access);
+      const stage =
+        request.status === PurchaseRequestStatus.MANAGER_REVIEW
+          ? 'manager'
+          : request.status === PurchaseRequestStatus.PURCHASER_REVIEW
+            ? 'purchaser'
+            : null;
+      if (!stage) throw new BadRequestException('当前环节不能单项驳回');
+      const pageKey = stage === 'manager' ? 'app:approve-manager' : 'app:approve-purchaser';
+      const canReject =
+        !!access?.isPlatformAdmin ||
+        !!access?.isTenantAdmin ||
+        access?.pages?.[pageKey]?.edit === true;
+      if (!canReject) throw new ForbiddenException('当前审批环节不能由你驳回');
+      let found = false;
+      request.items = (request.items || []).map((item, index) => {
+        const lineId = item.lineId || `${request.id}-${index + 1}`;
+        if (lineId !== dto.lineId) return { ...item, lineId };
+        found = true;
+        return { ...item, lineId, rejectReason: dto.reason.trim(), rejectedAtStage: stage };
+      });
+      if (!found) throw new NotFoundException('采购申请明细不存在');
+      // 修改数量/描述后必须从经理再审；不允许修改过的行绕过前一级。
+      request.status = PurchaseRequestStatus.OFFICE_REVIEW;
+      request.rejectReason = `单项驳回：${dto.reason.trim()}`;
+      request.managerId = null;
+      request.managerAt = null;
+      request.purchaserId = null;
+      request.purchaserAt = null;
+      request.updatedBy = user.id;
+      return manager.save(PurchaseRequest, request);
     });
   }
 
