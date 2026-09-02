@@ -1562,3 +1562,11 @@
   - e3fc848 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
   - 8bed144 feat: 支持管理员审计作废工单
 
+## 2026-09-02 16:12 · web · 0c07f61
+
+- 包：`pms-web-20260902-1604.tar.gz`
+- 提交：0c07f61 deploy: api → e3fc848
+- 自上次（480bb37）以来上线的相关提交：
+  - e3fc848 Merge remote-tracking branch 'origin/main' into codex/web-stocktake
+  - 8bed144 feat: 支持管理员审计作废工单
+
