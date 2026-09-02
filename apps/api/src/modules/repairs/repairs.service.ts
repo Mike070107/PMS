@@ -47,6 +47,10 @@ import { formatAddressLine } from '../../common/address-line.util';
 import { detectUrgency } from '../../common/repair-urgency.util';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
 import {
+  compareNameAlphabetically,
+  compareWorkOrderPriority,
+} from '../../common/list-order';
+import {
   ensureOfficeRepairRules,
   ruleAssigneeIds,
   toRuleView,
@@ -142,7 +146,6 @@ import { MAINTENANCE_STATUS } from '../../entities/maintenance-order.entity';
 /** 工单池只包含尚未开工、可以被主动接单的状态。 */
 const CLAIMABLE_WORK_ORDER_STATUSES: WorkOrderStatus[] = [
   WorkOrderStatus.CREATED,
-  WorkOrderStatus.DISPATCHED,
   WorkOrderStatus.WAITING_MATERIAL,
 ];
 
@@ -973,7 +976,8 @@ export class RepairsService implements OnModuleInit {
       } else {
         // 维修工的「工单池」是管理处范围内公开的待接区：
         // - 还没派人的单，可以主动认领；
-        // - 已派给别人但尚未接单的单，也可以主动接走。
+        // - 缺料退回池子的单，料到后可以接回；
+        // - 已经定向派人的单只进该维修工的「在手工单」，不再留在公开池里。
         // 可见小区仍由 access 的 community scope 限制，不会跨管理处。
         if (!query.status) {
           where.status = In(CLAIMABLE_WORK_ORDER_STATUSES);
@@ -997,10 +1001,10 @@ export class RepairsService implements OnModuleInit {
       // 把全公司的工单当成「我手上的」列出来。
       // 维修工不带 scope 时仍然默认只看自己的单 —— 这条不能丢，丢了就是越权看全公司。
       where.assigneeId = user.id;
-      // “在手工单”从接单那一刻才开始。办公室刚派过来、尚未接单的 dispatched
-      // 留在工单池；scope=mine 仍保留已完结状态，供“已完结”页复用。
+      // 办公室刚派过来、尚未接单的 dispatched 也属于这个人的待办，直接进入
+      // 「在手工单」等待本人接单；scope=mine 仍保留已完结状态，供“已完结”页复用。
       if (!query.status) {
-        where.status = Not(In([WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED]));
+        where.status = Not(WorkOrderStatus.CREATED);
       }
     }
 
@@ -1008,17 +1012,38 @@ export class RepairsService implements OnModuleInit {
       await Promise.all(whereVariants.map((variant) => this.keywordWheres(tenantId, variant, query.q)))
     ).flat();
 
-    const workOrders = await this.workOrderRepo.find({
-      where: wheres.length === 1 ? wheres[0] : wheres,
-      order: { id: 'DESC' },
-      take: 100,
-    });
+    const workOrderWhere = wheres.length === 1 ? wheres[0] : wheres;
+    // 必须在数据库取前 100 条之前完成优先级排序。以前先拿最新 100 条、回来后才
+    // 把急单提到前面，会漏掉更早的急单，也会让同组的新单排在老单前面。
+    // 单测里的轻量仓库桩只有 find；生产仓库走带报修表联查的完整排序。
+    const workOrders = typeof (this.workOrderRepo as any).createQueryBuilder === 'function'
+      ? await this.workOrderRepo
+          .createQueryBuilder('wo')
+          .innerJoin(
+            RepairRequest,
+            'request',
+            'request.id = wo.requestId AND request.tenantId = wo.tenantId',
+          )
+          .setFindOptions({ where: workOrderWhere })
+          // TypeORM 在 join + take 场景会包一层 DISTINCT 子查询。排序字段如果
+          // 没进入内层 SELECT，外层会引用不存在的 request_urgent / request_created_at。
+          .addSelect(['request.urgent', 'request.createdAt'])
+          .orderBy('request.urgent', 'DESC')
+          .addOrderBy('request.createdAt', 'ASC')
+          .addOrderBy('wo.id', 'ASC')
+          .take(100)
+          .getMany()
+      : await this.workOrderRepo.find({
+          where: workOrderWhere,
+          order: { id: 'ASC' },
+          take: 100,
+        });
     const requestIds = workOrders.map((item) => item.requestId);
     if (!requestIds.length) return workOrders;
 
     const requests = await this.repairRequestRepo.find({
       where: { tenantId, id: In(requestIds) },
-      select: ['id', 'repairType', 'houseId', 'buildingId', 'communityId', 'addressText', 'content', 'attachments', 'contactName', 'reporterRole', 'source', 'urgent'],
+      select: ['id', 'repairType', 'houseId', 'buildingId', 'communityId', 'addressText', 'content', 'attachments', 'contactName', 'reporterRole', 'source', 'urgent', 'createdAt'],
     });
     const houseIds = requests
       .map((item) => item.houseId)
@@ -1064,6 +1089,8 @@ export class RepairsService implements OnModuleInit {
       const repairType = requestById.get(item.requestId)?.repairType ?? item.skill;
       return {
         ...item,
+        // 列表上的“报修时间”以报修表提交时间为准，不拿稍后生成工单的时间代替。
+        createdAt: requestById.get(item.requestId)?.createdAt ?? item.createdAt,
         repairType,
         // 报修时就说了「急修」的单：卡片和后台列表挂红色「紧急」标
         urgent: requestById.get(item.requestId)?.urgent ?? false,
@@ -1102,11 +1129,9 @@ export class RepairsService implements OnModuleInit {
         })(),
       };
     });
-    // 工单池是「先到先接」，急单排在第 20 条等于没标 —— 只有池子这一档提前。
-    // 「在手工单」「后台全部」维持时间倒序：那两处人是按时间找单的，抽一条到顶更难找
-    if (query.scope === 'pool') {
-      rows.sort((a, b) => Number(b.urgent) - Number(a.urgent));
-    }
+    // 工单池、在手工单和 Web 调度台统一：紧急一组在前，两组内部都先到先处理。
+    // 数据库已按同样口径取前 100 条；这里再排一次，防止关联数据缺失时顺序漂移。
+    rows.sort(compareWorkOrderPriority);
     return rows;
   }
 
@@ -1283,8 +1308,8 @@ export class RepairsService implements OnModuleInit {
 
     const materials = await this.dataSource.getRepository(Material).find({
       where: { tenantId, enabled: true },
-      order: { category: 'ASC', id: 'ASC' },
     });
+    materials.sort((a, b) => compareNameAlphabetically(a.name, b.name) || a.id - b.id);
     const qtyByMaterial = new Map(
       allStocks
         .filter((row) => warehouse && row.warehouseId === warehouse.id)
@@ -2126,12 +2151,15 @@ export class RepairsService implements OnModuleInit {
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
       this.assertWorkOrderScope(workOrder, access);
-      // 工单池主动接单：未派单和已派给别人但尚未接单的工单都可认领。
+      // 工单池主动接单只认领公开池里的未派单/等待材料；定向派单只能由被派人接单。
       // controller 已校验 app:pool·edit，这里再校验小区数据范围；行锁保证并发时
       // 只有第一个人能把待接单改成维修中。
       const previousAssigneeId = workOrder.assigneeId;
       const isClaim = previousAssigneeId !== user.id;
       if (isClaim) {
+        if (workOrder.status === WorkOrderStatus.DISPATCHED && previousAssigneeId) {
+          throw new ForbiddenException('工单已派给其他维修工');
+        }
         assertWorkOrderTransition(
           workOrder.status,
           WorkOrderStatus.IN_PROGRESS,
@@ -2166,9 +2194,7 @@ export class RepairsService implements OnModuleInit {
         isClaim
           ? fromStatus === WorkOrderStatus.WAITING_MATERIAL
             ? '维修工从工单池接回（缺料单）'
-            : previousAssigneeId
-              ? '维修工主动接单（原已派给其他维修工）'
-              : '维修工从工单池认领'
+            : '维修工从工单池认领'
           : null,
       );
       return saved;

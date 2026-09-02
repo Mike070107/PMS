@@ -27,6 +27,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { StocktakeModule } from './modules/stocktake/stocktake.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { ObservabilityModule } from './modules/observability/observability.modul
     UploadModule,
     StocktakeModule,
     ObservabilityModule,
+    FeedbackModule,
     PropertiesModule,
     QrModule,
     OwnersModule,

@@ -12,7 +12,7 @@ import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unre
 
 /**
  * 这一屏对两种人是两件事，同一份数据、两套动作：
- *   · 维修工 = 工单池：管理处范围内的未派单 + 已派但尚未接单
+ *   · 维修工 = 工单池：管理处范围内的未派单 + 等待材料
  *   · 办公室一侧 = 派单台：还没派出去的单，动作是「派单」；另外要能按状态翻、
  *     按单号/地址/描述搜，进详情看修的结果
  * 报修入口两边都留 —— 巡查发现问题顺手提单和身份无关。
@@ -41,6 +41,8 @@ type OrderRow = WorkOrderListItem & {
   actionText: string;
   /** 「王师傅」/「未派单」，派单台专用 */
   assigneeText: string;
+  /** 工单池里的等待材料卡默认只露出摘要，点开后再展示完整信息 */
+  waitingCollapsed: boolean;
 
   /* ---- 卡片数据网格用的四个短值（data-first-ui）：由 withOrderLabels 一并算好 ----
      在手工单页用的是同一份，改口径去 packages/miniapp-ui/src/format.ts，别在页面里再算一遍。
@@ -58,7 +60,6 @@ type OrderRow = WorkOrderListItem & {
 /** 这些状态还没开工，维修工可主动领；办公室也可派/改派 */
 const POOL_STATUSES: string[] = [
   WorkOrderStatus.CREATED,
-  WorkOrderStatus.DISPATCHED,
   WorkOrderStatus.WAITING_MATERIAL,
 ];
 
@@ -94,23 +95,21 @@ const DISPATCH_FILTERS: PoolFilter[] = [
 
 /**
  * 工单池（维修工）的状态筛选。scope 恒为 pool（管理处范围内的待接单），
- * 所以这里只按状态分档，档位就是 POOL_STATUSES 那三种：
+ * 所以这里只按状态分档，档位就是 POOL_STATUSES 这两种：
  *   新报修   = 还没指定维修工的单
- *   已派单   = 已指定维工、但对方还没接的单（可主动接走）
  *   等待材料 = 缺料退回池子的，接回去要先确认料到没到
  * 第一项是「全部」—— 维修工进来先看有多少活，再决定挑哪种。
  */
 const POOL_FILTERS: PoolFilter[] = [
   { key: 'all', label: '全部', scope: 'pool' },
   { key: 'created', label: '新报修', scope: 'pool', status: WorkOrderStatus.CREATED },
-  { key: 'dispatched', label: '已派单', scope: 'pool', status: WorkOrderStatus.DISPATCHED },
   { key: 'waiting', label: '等待材料', scope: 'pool', status: WorkOrderStatus.WAITING_MATERIAL },
 ];
 
 /**
  * 「我报的」那一档的状态筛选。
  *
- * 和工单池那组不是一回事：工单池只有**没人认领**的单，所以只有三种状态可分；
+ * 和工单池那组不是一回事：工单池只有**没人认领**的单，所以只有两种状态可分；
  * 我报的单从提交那一刻起会走完整个流程，所以档位要盖到「已完成」——
  * 报单的人最想知道的恰恰是「修到哪一步了」（2026-09-01 要求）。
  */
@@ -180,6 +179,12 @@ Page({
     loading: false,
     loaded: false,
     acceptingId: 0,
+    /** 接单成功后的收纳动画：先飞向底部「在手工单」，再收起占位 */
+    collectingId: 0,
+    collectingIndex: -1,
+    collectingHeight: 0,
+    closingId: 0,
+    settling: false,
     capped: false,
     emptyText: '',
 
@@ -275,7 +280,7 @@ Page({
         return 'pool';
       })();
 
-      /* 三档各有各的筛选：工单池只有待接的三种状态；我报的要盖到「已完成」——
+      /* 三档各有各的筛选：工单池只有未派单和等待材料；我报的要盖到「已完成」——
          报单的人最想知道的就是「修到哪一步了」；已完结那一档本身是终态，不给筛选条。
          切换时必须把选中项归零，否则从派单台的「已完成」切回工单池会落到一个
          越界的下标上，列表看着像空的。 */
@@ -314,6 +319,8 @@ Page({
           ...item,
           claimable,
           dispatchable,
+          waitingCollapsed:
+            mainTab === 'pool' && !dispatcher && item.status === WorkOrderStatus.WAITING_MATERIAL,
           actionText:
             mainTab === 'reported'
               ? '看进度'
@@ -341,9 +348,15 @@ Page({
         };
       });
 
-      // 待派单/待接单这一档按压得久的排前面；按状态翻历史时保持服务端的时间倒序
+      // 工单池默认分两组：紧急在前；同组严格按报修时间从早到晚。
+      // 服务端已按这条规则取前 100 条，这里再排一次，避免端上后续加工打乱稳定顺序。
       if (mainTab === 'pool' && (!dispatcher || filter.key === 'pool')) {
-        rows.sort((a, b) => b.stayDays - a.stayDays || b.id - a.id);
+        rows.sort(
+          (a, b) =>
+            Number(b.urgent) - Number(a.urgent)
+            || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            || a.id - b.id,
+        );
       }
 
       this.setData({
@@ -464,21 +477,71 @@ Page({
 
   async onAccept(e: WechatMiniprogram.BaseEvent) {
     const id = Number(e.currentTarget.dataset.id);
-    if (this.data.acceptingId) return;
+    if (this.data.acceptingId || this.data.collectingId) return;
+    // requestSubscribeMessage 必须由本次点击同步触发。接单请求与订阅选择并行，
+    // 等原生弹窗收起后再播放动效，避免「收入在手工单」被弹窗盖住。
+    const subscribePending = askOrderSubscribe().catch(() => false);
     this.setData({ acceptingId: id });
     try {
-      await repairs.accept(id);
-      wx.showToast({ title: '已接单，去「在手工单」' });
-      // 顺手补一次「新工单提醒」的订阅额度：微信是同意一次推一条，
-      // 刚接完单是最愿意点「允许」的时刻（一进小程序就弹，多数人会下意识拒绝，
-      // 而「拒绝并不再询问」是持久的，弹错一次就再没机会了）
-      askOrderSubscribe();
-      this.load();
+      await Promise.all([repairs.accept(id), subscribePending]);
+      this.setData({ acceptingId: 0 });
+      await this.playAcceptAnimation(id);
     } catch (e2: any) {
       wx.showToast({ icon: 'none', title: e2?.message || '接单失败' });
     } finally {
-      this.setData({ acceptingId: 0 });
+      if (!this.data.collectingId) this.setData({ acceptingId: 0 });
     }
+  },
+
+  /**
+   * 只在服务端确认接单后播放：
+   * 1) 卡片轻弹后缩小飞向底部「在手工单」；
+   * 2) 原卡片高度收起；
+   * 3) 下方卡片上移补位，并轻微回弹。
+   */
+  async playAcceptAnimation(id: number) {
+    const index = this.data.list.findIndex((item) => item.id === id);
+    if (index < 0) return this.load();
+    const height = await new Promise<number>((resolve) => {
+      this.createSelectorQuery()
+        .select(`#pool-order-${id}`)
+        .boundingClientRect((rect) => resolve(rect?.height || 320))
+        .exec();
+    });
+    try {
+      wx.vibrateShort({ type: 'light' });
+    } catch {
+      // 旧版微信不支持 type，动画照常播放
+    }
+    this.setData({
+      collectingId: id,
+      collectingIndex: index,
+      collectingHeight: height,
+      closingId: 0,
+      settling: false,
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 580));
+    this.setData({ closingId: id, settling: true });
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
+    const next = this.data.list.filter((item) => item.id !== id);
+    this.setData({
+      list: next,
+      collectingId: 0,
+      collectingIndex: -1,
+      collectingHeight: 0,
+      closingId: 0,
+      settling: false,
+      overdueCount: next.filter((row) => row.stayTone === 'danger').length,
+      emptyText: next.length ? this.data.emptyText : '工单池是空的，暂时没有待接的活',
+    });
+    if (this.data.mainTab === 'pool' && !this.data.keyword) {
+      setTabBadge(this, this.data.dispatcher ? 'dispatch' : 'pool', next.length);
+    }
+    // 收纳落点的角标立即同步，不用等用户真的点进「在手工单」才刷新。
+    repairs.list({ scope: 'mine' })
+      .then((rows) => setTabBadge(this, 'mine', rows.filter((row) => isActiveOrder(row.status)).length))
+      .catch(() => undefined);
+    wx.showToast({ title: '已收入在手工单', icon: 'none', duration: 1200 });
   },
 
   // ---------------- 办公室：派单 ----------------
@@ -590,11 +653,28 @@ Page({
   },
 
   onTapItem(e: WechatMiniprogram.BaseEvent) {
+    if (this.data.collectingId) return;
     // 勾过「总是保持以上选择」的人，在这里静默把订阅额度补满 ——
     // 微信要求 requestSubscribeMessage 由点击触发，而「点开一张工单」是维修工
     // 一天里发生最多次的点击。没勾过的人这里什么都不会发生（见 topUpQuietly）
     topUpQuietly();
     wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${e.currentTarget.dataset.id}` });
+  },
+
+  /** 等待材料默认折叠：第一次点只展开，不直接跳详情，避免误触。 */
+  onExpandWaiting(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.id);
+    const index = this.data.list.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    this.setData({ [`list[${index}].waitingCollapsed`]: false });
+  },
+
+  /** 展开后可随时收回摘要态，且不触发整卡的详情跳转。 */
+  onCollapseWaiting(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.id);
+    const index = this.data.list.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    this.setData({ [`list[${index}].waitingCollapsed`]: true });
   },
 });
 

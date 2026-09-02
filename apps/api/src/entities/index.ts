@@ -59,6 +59,7 @@ import { StocktakeTask } from './stocktake-task.entity';
 import { StocktakeItem } from './stocktake-item.entity';
 import { SystemLog } from './system-log.entity';
 import { RequestMetric } from './request-metric.entity';
+import { UserFeedback } from './user-feedback.entity';
 
 export const entities = [
   Tenant,
@@ -75,6 +76,7 @@ export const entities = [
   StocktakeItem,
   SystemLog,
   RequestMetric,
+  UserFeedback,
   Community,
   Building,
   Unit,
@@ -139,6 +141,7 @@ export {
   StocktakeItem,
   SystemLog,
   RequestMetric,
+  UserFeedback,
   Community,
   Building,
   Unit,

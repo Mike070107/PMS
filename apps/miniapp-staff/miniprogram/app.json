@@ -13,6 +13,7 @@
     "pages/stocktake-review/stocktake-review",
     "pages/material-inbound/material-inbound",
     "pages/messages/messages",
+    "pages/feedback/feedback",
     "pages/me/me",
     "pages/web-login/web-login",
     "pages/index/index"

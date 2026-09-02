@@ -1491,3 +1491,66 @@
 - 自上次（9c1622d）以来上线的相关提交：
   - 9be76c3 feat: 支持反馈上传图片和视频
 
+## 2026-09-02 14:57 · api · 4d6b38f
+
+- 包：`pms-api-20260902-1449.tar.gz`
+- 提交：4d6b38f feat: 增加员工反馈并统一列表排序
+- 说明：员工反馈与列表排序；生产数据库及公网健康检查通过
+- 自上次（9be76c3）以来上线的相关提交：
+  - 4d6b38f feat: 增加员工反馈并统一列表排序
+
+## 2026-09-02 14:57 · web · 4d6b38f
+
+- 包：`pms-web-20260902-1449.tar.gz`
+- 提交：4d6b38f feat: 增加员工反馈并统一列表排序
+- 说明：员工反馈与列表排序；首页、SPA、登录页及静态资源均为 200
+- 自上次（9be76c3）以来上线的相关提交：
+  - 4d6b38f feat: 增加员工反馈并统一列表排序
+
+## 2026-09-02 14:57 · miniapp-staff · 4d6b38f
+
+- 提交：4d6b38f feat: 增加员工反馈并统一列表排序
+- 说明：已上传微信开发版本 1.0.20260902g，员工反馈与列表排序
+- 自上次（9be76c3）以来上线的相关提交：
+  - 4d6b38f feat: 增加员工反馈并统一列表排序
+
+## 2026-09-02 14:57 · miniapp-owner · 4d6b38f
+
+- 提交：4d6b38f feat: 增加员工反馈并统一列表排序
+- 说明：已上传微信开发版本 1.0.20260902f，员工反馈与列表排序
+- 自上次（9be76c3）以来上线的相关提交：
+  - 4d6b38f feat: 增加员工反馈并统一列表排序
+
+## 2026-09-02 15:12 · api · c09b945
+
+- 提交：c09b945 fix: 修复工单列表联表分页排序
+- 说明：紧急热修工单列表联表分页排序；生产同形查询已通过
+- 自上次（4d6b38f）以来上线的相关提交：
+  - c09b945 fix: 修复工单列表联表分页排序
+
+## 2026-09-02 15:29 · api · cf14ab6
+
+- 包：`pms-api-20260902-1524.tar.gz`
+- 提交：cf14ab6 deploy: api → c09b945
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/package.json，M apps/api/src/modules/observability/observability.controller.ts，M apps/api/src/modules/observability/observability.service.ts，?? apps/api/src/modules/observability/feedback-flow.test.ts
+- 自上次（c09b945）以来没有相关提交（重新部署）
+
+## 2026-09-02 15:29 · web · 480bb37
+
+- 包：`pms-web-20260902-1524.tar.gz`
+- 提交：480bb37 deploy: api → cf14ab6
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/src/pages/LogsPage.tsx，M packages/api-client/src/endpoints/observability.ts，M packages/api-client/src/index.ts
+- 自上次（4d6b38f）以来没有相关提交（重新部署）
+
+## 2026-09-02 15:31 · miniapp-staff · d1b57e9
+
+- 提交：d1b57e9 deploy: web → 480bb37
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.json，M apps/miniapp-staff/miniprogram/pages/feedback/feedback.ts，M apps/miniapp-staff/miniprogram/pages/me/me.ts，M apps/miniapp-staff/miniprogram/pages/me/me.wxml，M apps/miniapp-staff/miniprogram/pages/messages/messages.ts，M apps/miniapp-staff/miniprogram/utils/feedback.ts，M packages/api-client/src/endpoints/observability.ts，M packages/api-client/src/index.ts，?? apps/miniapp-staff/miniprogram/pages/feedback-history/
+- 自上次（4d6b38f）以来没有相关提交（重新部署）
+
+## 2026-09-02 15:31 · miniapp-owner · e4a52b6
+
+- 提交：e4a52b6 deploy: miniapp-staff → d1b57e9
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-owner/miniprogram/app.json，M apps/miniapp-owner/miniprogram/pages/me/me.ts，M apps/miniapp-owner/miniprogram/pages/me/me.wxml，M apps/miniapp-owner/miniprogram/pages/messages/messages.ts，M apps/miniapp-owner/miniprogram/pages/messages/messages.wxml，M apps/miniapp-owner/miniprogram/utils/feedback.ts，M packages/api-client/src/endpoints/observability.ts，M packages/api-client/src/index.ts，?? apps/miniapp-owner/miniprogram/pages/feedback-history/
+- 自上次（4d6b38f）以来没有相关提交（重新部署）
+

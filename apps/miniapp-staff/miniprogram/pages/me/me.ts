@@ -119,6 +119,10 @@ Page({
     void openFeedback();
   },
 
+  onOpenFeedback() {
+    wx.navigateTo({ url: '/pages/feedback/feedback' });
+  },
+
   /** 用户主动点「开启新工单提醒」：要给明确反馈，不能静默失败 */
   async onEnableNotify() {
     await askOrderSubscribe(false);

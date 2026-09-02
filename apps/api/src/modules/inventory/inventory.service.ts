@@ -41,6 +41,7 @@ import {
   WorkOrder,
 } from '../../entities';
 import { scopeCommunityIds } from '../access/scope.util';
+import { compareNameAlphabetically } from '../../common/list-order';
 import {
   CreateGeneralReceiptDto,
   CreateGoodsReceiptDto,
@@ -155,8 +156,8 @@ export class InventoryService {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const materials = await this.materialRepo.find({
       where: { tenantId },
-      order: { id: 'ASC' },
     });
+    materials.sort((a, b) => compareNameAlphabetically(a.name, b.name) || a.id - b.id);
     return materials.map((item) => this.withDisplayPhoto(item));
   }
 
@@ -195,8 +196,8 @@ export class InventoryService {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const materials = await this.materialRepo.find({
       where: { tenantId, enabled: true },
-      order: { category: 'ASC', id: 'ASC' },
     });
+    materials.sort((a, b) => compareNameAlphabetically(a.name, b.name) || a.id - b.id);
     return materials.map((item) => ({
       id: item.id,
       code: item.code,
@@ -970,6 +971,7 @@ export class InventoryService {
       ? await this.materialRepo.find({ where: { tenantId, id: In(materialIds) } })
       : [];
     const defaultCostById = new Map(materials.map((m) => [m.id, m.defaultCostCents]));
+    const materialNameById = new Map(materials.map((m) => [m.id, m.name]));
     // 库位名一起带出来，清单直接显示「东西放在哪一格」，不用点进批次去猜
     const locationIds = [...new Set(rows.map((r) => r.locationId).filter((id): id is number => !!id))];
     const locations = locationIds.length
@@ -994,7 +996,13 @@ export class InventoryService {
         amountCents: resolveStockValue(Number(row.qty), lotQty, lotValueCents, defaultCostById.get(row.materialId) ?? 0),
         locationLabel: row.locationId ? locationLabel.get(row.locationId) ?? null : null,
       };
-    });
+    }).sort(
+      (a, b) =>
+        compareNameAlphabetically(
+          materialNameById.get(a.materialId),
+          materialNameById.get(b.materialId),
+        ) || a.warehouseId - b.warehouseId || a.id - b.id,
+    );
   }
 
   /** 某条库存的批次明细（含已耗尽的），先进先出的顺序 */

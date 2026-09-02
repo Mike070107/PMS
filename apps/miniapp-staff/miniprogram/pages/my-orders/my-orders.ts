@@ -76,12 +76,12 @@ Page({
           ...item,
           actionText: ACTION_TEXT[item.status] || '查看详情',
         }));
-      // 人工标记的紧急单永远置顶；同为紧急/普通时，再按等待时间和新旧顺序排。
+      // 在手工单与工单池同一口径：紧急在前；同组按报修时间从早到晚。
       active.sort(
         (a, b) =>
           Number(b.urgent) - Number(a.urgent)
-          || b.stayDays - a.stayDays
-          || b.id - a.id,
+          || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          || a.id - b.id,
       );
       this.setData({
         active,

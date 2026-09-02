@@ -98,6 +98,11 @@ function photoList(item: { photoUrl?: string | null; photoUrls?: string[] | null
 
 const yuan = (cents: number) => `¥${((cents || 0) / 100).toFixed(2)}`;
 const num = (value: string | number) => Number(value ?? 0);
+/** 材料名称按中文拼音 / 英文 A-Z；名称相同再按型号、编码保证顺序稳定。 */
+const compareSkuName = (a: Pick<SkuRow, 'name' | 'spec' | 'code'>, b: Pick<SkuRow, 'name' | 'spec' | 'code'>) =>
+  a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+  || a.spec.localeCompare(b.spec, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+  || a.code.localeCompare(b.code, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
 
 /**
  * 「没填完整」的判定只在这里写一次。
@@ -377,10 +382,7 @@ Page({
       const { qty, safetyQty } = this.sumStock(material.id);
       rows.push(this.buildRow(material, qty, safetyQty));
     }
-    // 停用的沉底，其余按编码排 —— 编码带类别前缀，同类自然挨在一起
-    rows.sort(
-      (a, b) => Number(b.enabled) - Number(a.enabled) || a.code.localeCompare(b.code),
-    );
+    rows.sort(compareSkuName);
     const nextCategoryIndex = category ? seen.indexOf(category) : -1;
     this.setData({ skuCategories: seen, skuCategoryIndex: nextCategoryIndex, skuRows: rows });
   },
@@ -444,13 +446,8 @@ Page({
       rows.push(this.buildRow(material, qty, safetyQty));
     }
 
-    // 低于安全库存的排最前（那是要立刻补货的），其次是没填完整的，再按名称
-    rows.sort(
-      (a, b) =>
-        Number(b.low) - Number(a.low) ||
-        Number(b.incomplete) - Number(a.incomplete) ||
-        a.title.localeCompare(b.title),
-    );
+    // 库存与材料 SKU 两格统一按材料名称 A-Z；低库存、资料不全仍保留醒目标记和筛选。
+    rows.sort(compareSkuName);
 
     // 选中的类别若已不在（切仓库/搜索导致）就退回「全部」，
     // 否则筛选条上高亮着一个不存在的类别，列表却是空的

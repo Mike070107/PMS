@@ -12,3 +12,4 @@ export * as stocktakes from './endpoints/stocktakes';
 export * as notifications from './endpoints/notifications';
 export * as observability from './endpoints/observability';
 export type { FeedbackType, FeedbackStatus, UserFeedbackReq } from './endpoints/observability';
+export * as feedback from './endpoints/feedback';
