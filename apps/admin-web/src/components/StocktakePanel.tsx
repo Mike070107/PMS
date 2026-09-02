@@ -32,7 +32,7 @@ import {
 } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { stocktakes } from '@pms/api-client';
-import { MaterialPhotosUpload, imageSrc } from './MaterialPhotos';
+import { MaterialPhotoCell, MaterialPhotosUpload, imageSrc } from './MaterialPhotos';
 import {
   STOCKTAKE_REASON_OPTIONS,
   STOCKTAKE_STATUS_LABELS,
@@ -526,10 +526,14 @@ export default function StocktakePanel({ warehouses, canEdit }: Props) {
               rowKey="id"
               size="small"
               dataSource={visibleItems}
-              scroll={{ x: 1480 }}
+              scroll={{ x: 1560 }}
               pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['30', '50', '100'] }}
               columns={[
                 { title: 'SKU编码', dataIndex: ['material', 'code'], width: 130, ellipsis: true },
+                {
+                  title: '材料图片', key: 'materialPhoto', width: 90,
+                  render: (_: unknown, item: StocktakeItemView) => <MaterialPhotoCell item={item.material} size={48} />,
+                },
                 {
                   title: '材料', key: 'material', width: 220, ellipsis: true,
                   render: (_: unknown, item: StocktakeItemView) => [item.material.name, item.material.spec].filter(Boolean).join(' · '),
