@@ -31,12 +31,20 @@ export default function ExperienceNotesPage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
+  /** 一本都看不到时后端给的原因（多半是员工档案没配工种），照原样显示给人 */
+  const [emptyReason, setEmptyReason] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const rows = await repairExperiences.list();
       setNotebooks(rows);
+      // 空列表要能解释为什么空；有内容就不用多问一次
+      if (rows.length) setEmptyReason(null);
+      else {
+        try { setEmptyReason((await repairExperiences.access()).emptyReason ?? null); }
+        catch { setEmptyReason(null); }
+      }
       setActiveKey((current) => current && rows.some((row) => `${row.officeId}:${row.repairType}` === current) ? current : rows.length ? `${rows[0].officeId}:${rows[0].repairType}` : '');
     } catch (e: any) { message.error(e?.message || '维修经验加载失败'); }
     finally { setLoading(false); }
@@ -135,7 +143,9 @@ export default function ExperienceNotesPage() {
             children: <div className="experience-notebook-list">{group.rows.map((row) => { const key = `${row.officeId}:${row.repairType}`; return <button key={key} className={`experience-notebook ${activeKey === key ? 'is-active' : ''}`} onClick={() => setActiveKey(key)}><strong>{row.repairTypeLabel}</strong><em>{row.notes.length} 篇</em></button>; })}</div>,
           }))}
         /> : <div className="experience-notebook-list">{notebooks.map((row) => { const key = `${row.officeId}:${row.repairType}`; return <button key={key} className={`experience-notebook ${activeKey === key ? 'is-active' : ''}`} onClick={() => setActiveKey(key)}><strong>{row.repairTypeLabel}</strong><em>{row.notes.length} 篇</em></button>; })}</div>}
-        {!loading && !notebooks.length && <Empty description="暂无可查看的类别笔记本" />}
+        {!loading && !notebooks.length && (
+          <Empty description={emptyReason || '暂无可查看的类别笔记本'} />
+        )}
       </Card>
       <Card className="experience-notes" title={active ? <Space wrap><span>{active.repairTypeLabel}</span><Tag>{active.officeName}</Tag></Space> : '经验笔记'}>
         {!active || !active.notes.length ? <Empty description={active ? '还没有经验记录' : '请先选择笔记本'} /> : <div className="experience-note-grid">{active.notes.map((note) => <button key={note.id} className="experience-note-card" onClick={() => void openNote(note.id)}><ReadOutlined className="experience-note-icon" /><strong>{note.title}</strong><span>{note.preview || '包含图片或结构化内容，点击查看'}</span><small>{note.updatedByName} · {formatDateTimeCn(note.updatedAt)}{note.imageCount ? ` · ${note.imageCount} 张图` : ''}</small></button>)}</div>}

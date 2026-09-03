@@ -81,7 +81,10 @@ page { background: #f1f6fb; }
 .timeline-photo { width: 136rpx; height: 112rpx; border-radius: 14rpx; background: #e5ecf2; }
 .field-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16rpx; margin-top: 24rpx; padding: 18rpx; border-radius: 24rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(39,72,108,.055); }
 .field-actions--split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.field-action { width: 100% !important; min-height: 88rpx; margin: 0; padding: 0 20rpx; border-radius: 16rpx; font-size: 30rpx; font-weight: 700; }
+/* 居中要写在类自己身上：只靠 app.wxss 的 button{} 那条，文字会贴着按钮上沿
+   （项目里 .btn / .site-action 都各自声明了一遍，就是这个原因）。
+   min-height 保留，文案换行时按钮跟着长高，文字仍在上下正中。 */
+.field-action { width: 100% !important; min-height: 88rpx; margin: 0; padding: 14rpx 20rpx; display: flex; align-items: center; justify-content: center; line-height: 1.35; text-align: center; border-radius: 16rpx; font-size: 30rpx; font-weight: 700; }
 .field-action::after { border: 0; }
 .field-action--progress { border: 2rpx solid #88a9c9; background: #edf5fb; color: #315f98; }
 .field-action--transfer { border: 2rpx solid #e3b5b5; background: #fff7f7; color: #a7383e; }
@@ -103,7 +106,13 @@ page { background: #f1f6fb; }
   min-width: 174rpx;
   min-height: 78rpx;
   margin: 0 !important;
-  padding: 0 22rpx;
+  padding: 12rpx 22rpx;
+  /* 居中写在类自己身上：只靠 app.wxss 的 button{} 那条，文字会贴按钮上沿
+     （.btn / .site-action 都各自声明了一遍，就是这个原因） */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.35;
   border: 2rpx solid #b7c9d9;
   border-radius: 18rpx;
   color: #315f98;

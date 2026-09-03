@@ -42,6 +42,11 @@ export interface RepairExperienceAccessView {
   canView: boolean;
   canEdit: boolean;
   notebookCount: number;
+  /**
+   * 一本都看不到时的原因（最常见：员工档案里还没配工种）。
+   * 直接展示给用户——空页面不给理由，人只会以为功能坏了。
+   */
+  emptyReason?: string | null;
 }
 
 export interface SaveRepairExperienceNoteReq {

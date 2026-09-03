@@ -37,7 +37,8 @@
 .stepper__btn::after { border: none; }
 .stepper__input { height: 120rpx; margin: 0 14rpx; text-align: center; border: 3rpx solid var(--color-brand); border-radius: 22rpx; background: #fff; color: var(--color-text); font-size: 58rpx; font-weight: 700; font-variant-numeric: tabular-nums; }
 .quick-row { display: flex; gap: 16rpx; margin-top: 18rpx; }
-.quick-btn { width: auto !important; height: 72rpx; flex: 1; margin: 0 !important; padding: 0 16rpx; border: 2rpx solid #b8cfe2; border-radius: 18rpx; background: #f7fbff; color: var(--color-brand); font-size: var(--font-sm); }
+/* 居中写在类自己身上（同 .field-action：只靠 app.wxss 的 button{} 文字会贴上沿） */
+.quick-btn { width: auto !important; height: 72rpx; flex: 1; margin: 0 !important; padding: 0 16rpx; display: flex; align-items: center; justify-content: center; line-height: 1.35; border: 2rpx solid #b8cfe2; border-radius: 18rpx; background: #f7fbff; color: var(--color-brand); font-size: var(--font-sm); }
 .quick-btn::after { border: none; }
 .difference-box { margin-top: 28rpx; padding: 24rpx; border-radius: 22rpx; border: 2rpx solid transparent; }
 .difference-box--same { background: #edf8f2; border-color: #b7dfca; }
