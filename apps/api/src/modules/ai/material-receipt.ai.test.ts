@@ -82,6 +82,20 @@ test('库里压根没有这样材料：标记要建档，名称规格原样带�
   assert.equal(row.unitPriceCents, 1800);
 });
 
+test('口述的乘号要能对上库里的 *：50乘50 = 50*50，否则会建出重复 SKU', () => {
+  const catalog: ReceiptCatalogItem[] = [{ id: 9, code: 'SL0001', name: '铁井盖', spec: '50*50', unit: '套' }];
+  for (const spoken of ['50乘50', '50 x 50', '50×50']) {
+    const [row] = matchReceiptMaterials(
+      [{ name: '铁井盖', spec: spoken, qty: 2, unit: '套', unitPriceYuan: 320 }],
+      catalog,
+    );
+    assert.equal(row.match, 'exact', `「${spoken}」应命中 50*50`);
+    assert.equal(row.materialId, 9);
+  }
+  // 但不能把 box / max 这类词里的 x 也吃掉
+  assert.equal(normalizeReceiptName('maxbox'), 'maxbox');
+});
+
 test('比对前抹掉标点空格和「型号/规格」这类垫字', () => {
   assert.equal(normalizeReceiptName('PPR 弯头（25）'), 'ppr弯头25');
   assert.equal(normalizeReceiptName('规格 DN-50'), 'dn50');
