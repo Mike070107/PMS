@@ -1941,3 +1941,12 @@
 - 自上次（75d5335）以来上线的相关提交：
   - 765b7e4 fix(维修经验): 按角色收窄可见范围、小程序图片能预览、按钮文字垂直居中
 
+## 2026-09-04 01:39 · api · d2146ec
+
+- 包：`pms-api-20260904-0136.tar.gz`
+- 提交：d2146ec fix(员工端): 完工「点了没反应」、工单池默认档、反馈带工单号
+- 说明：干净 worktree(d2146ec)
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（e797bf0）以来上线的相关提交：
+  - d2146ec fix(员工端): 完工「点了没反应」、工单池默认档、反馈带工单号
+
