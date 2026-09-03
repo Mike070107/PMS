@@ -77,6 +77,32 @@ export class RepairExperiencesService {
   }
 
   /**
+   * 要不要按工种收窄，收窄成哪几个工种。返回 null = 看全部工种。
+   *
+   * **「办公室」只认派单台编辑权和企业/平台管理员**，故意不认 `work-orders·edit` ——
+   * 这家公司的「XX管理处维修工」角色模板里就带着 work-orders 编辑权（2026-09-04 实测：
+   * 角色 39 继承模板 2，work-orders can_edit=true），按 canDispatch 那套口径会把维修工
+   * 判成办公室，工种过滤整个失效。
+   *
+   * 另一道保险是「配了工种就按工种收窄」：维修工档案里一定有工种，办公室/经理通常没有。
+   * 两条合起来，权限怎么配都不至于把电工的界面塞成 36 本。
+   */
+  private async skillFilterFor(
+    user: AuthUser,
+    access: ResolvedAccess,
+  ): Promise<Set<string> | null> {
+    if (access.isPlatformAdmin || access.isTenantAdmin) return null;
+    if (access.pages['app:dispatch']?.edit) return null;
+    const profile = await this.staffProfileRepo.findOne({
+      where: { tenantId: this.tenantId(user), userId: user.id },
+      select: ['userId', 'skills'],
+    });
+    const skills = (profile?.skills ?? []).filter(Boolean);
+    // 一个工种都没配：维持原样看全部（别把人的界面弄成全空），空态里会提示去配工种
+    return skills.length ? new Set(skills) : null;
+  }
+
+  /**
    * 一本笔记本都看不到时，告诉他到底缺什么。
    *
    * 最常见的是「员工档案里没配工种」—— 维修工现在只能看自己工种那几本，
@@ -84,12 +110,6 @@ export class RepairExperiencesService {
    */
   private async emptyReason(user: AuthUser): Promise<string | null> {
     const access = await this.accessService.getAccess(user);
-    const isOffice =
-      access.isPlatformAdmin ||
-      access.isTenantAdmin ||
-      !!access.pages['app:dispatch']?.edit ||
-      !!access.pages['work-orders']?.edit;
-    if (isOffice) return null;
     if (!this.accessService.hasPermission(access, ['experience-notes', 'app:experience-notes'], 'view')) {
       return '你的角色还没有「维修经验」的查看权限，请让管理员在「业务角色」里勾上。';
     }
@@ -98,7 +118,7 @@ export class RepairExperiencesService {
       select: ['userId', 'skills'],
     });
     if (!profile?.skills?.length) {
-      return '你的员工档案里还没有配工种，所以看不到任何笔记本。请办公室在「用户管理」里给你配上工种（如电、水），配好后这里就会出现对应工种的笔记本。';
+      return '你的员工档案里还没有配工种，请办公室在「用户管理」里给你配上（如电、水）。';
     }
     return '你所在管理处这几个工种还没有建笔记本，等办公室配好报修类型后就会出现。';
   }
@@ -226,21 +246,7 @@ export class RepairExperiencesService {
      * 「办公室」沿用项目里既有的 canDispatch 口径（派单权或后台工单管理权，加企业/平台管理员），
      * 别再另立一套判定。
      */
-    const isOffice =
-      access.isPlatformAdmin ||
-      access.isTenantAdmin ||
-      !!access.pages['app:dispatch']?.edit ||
-      !!access.pages['work-orders']?.edit;
-    const mySkills = isOffice
-      ? null
-      : new Set(
-          (
-            await this.staffProfileRepo.findOne({
-              where: { tenantId, userId: user.id },
-              select: ['userId', 'skills'],
-            })
-          )?.skills ?? [],
-        );
+    const mySkills = await this.skillFilterFor(user, access);
 
     const result = new Map<string, AllowedNotebook>();
     for (const rule of officeRules) {
