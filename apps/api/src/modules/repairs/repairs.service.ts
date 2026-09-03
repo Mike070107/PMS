@@ -269,12 +269,81 @@ export class RepairsService implements OnModuleInit {
     try {
       await this.recoverLegacyVoidedWorkOrders();
       await this.renumberLegacyOrderNos();
+      await this.backfillCompletionBatches();
     } catch (error) {
       // 迁移失败不能拦住服务启动 —— 报修比单号好看重要
       this.logger.error(
         `工单号迁移失败：${error instanceof Error ? error.message : error}`,
       );
     }
+  }
+
+  /**
+   * 存量用料补上「完工批次」归属。和迁移 1789088400000 的 SQL 同一口径。
+   *
+   * 为什么要在服务里再做一遍：线上 DB_SYNCHRONIZE=true，`migrations` 表根本不存在，
+   * **migration 文件一句都不会跑**。新列会被 synchronize 建出来、默认值填上，
+   * 但 UPDATE / INSERT 不执行 —— 结果是所有历史待验收工单都查不到有效完工批次，
+   * 撤回完工时静默地不退料，退回旧的错误行为，而且没有任何报错（2026-08-31 踩过同类坑）。
+   *
+   * 幂等：只处理 completion_batch_id IS NULL 的行，且工单还没有批次时才建。
+   * **不动任何库存数量**；对不上的记录由 tools/work-order-material-audit.mjs 出清单，人工核对。
+   */
+  private async backfillCompletionBatches(): Promise<void> {
+    const pending: Array<{ n: string }> = await this.dataSource.query(
+      `SELECT COUNT(*)::text AS n FROM work_order_materials WHERE completion_batch_id IS NULL`,
+    );
+    if (!Number(pending[0]?.n ?? 0)) return;
+
+    await this.dataSource.query(
+      `UPDATE work_order_materials SET source_action = 'legacy_issue' WHERE completion_batch_id IS NULL`,
+    );
+    await this.dataSource.query(`
+      INSERT INTO work_order_completion_batches (
+        tenant_id, work_order_id, version_no, status, from_status,
+        submitted_by, submitted_at, snapshot, created_by, updated_by
+      )
+      SELECT wo.tenant_id, wo.id, 1, 'active', NULL,
+             wo.updated_by, COALESCE(wo.completed_at, wo.updated_at),
+             jsonb_build_object(
+               'legacy', true,
+               'faultLocation', wo.fault_location,
+               'faultSymptom', wo.fault_symptom,
+               'repairContent', wo.repair_content,
+               'actionTags', wo.action_tags,
+               'actionNote', wo.action_note,
+               'resultAttachments', wo.result_attachments,
+               'feeCents', wo.fee_cents,
+               'materials', COALESCE(
+                 (SELECT jsonb_agg(jsonb_build_object(
+                           'materialId', m.material_id,
+                           'warehouseId', m.warehouse_id,
+                           'qty', m.qty
+                         ))
+                    FROM work_order_materials m
+                   WHERE m.tenant_id = wo.tenant_id AND m.work_order_id = wo.id),
+                 '[]'::jsonb)
+             ),
+             wo.updated_by, wo.updated_by
+        FROM work_orders wo
+       WHERE wo.status IN ('done_pending_review', 'completed')
+         AND NOT EXISTS (
+           SELECT 1 FROM work_order_completion_batches b
+            WHERE b.tenant_id = wo.tenant_id AND b.work_order_id = wo.id
+         )
+    `);
+    const linked = await this.dataSource.query(`
+      UPDATE work_order_materials m
+         SET completion_batch_id = b.id
+        FROM work_order_completion_batches b
+       WHERE b.tenant_id = m.tenant_id
+         AND b.work_order_id = m.work_order_id
+         AND m.completion_batch_id IS NULL
+      RETURNING m.id
+    `);
+    this.logger.log(
+      `完工批次补迁移完成：${Array.isArray(linked) ? linked.length : 0} 条历史用料已归入兼容批次（库存数量未改动）`,
+    );
   }
 
   /**
