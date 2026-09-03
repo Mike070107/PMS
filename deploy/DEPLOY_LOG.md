@@ -1922,3 +1922,13 @@
   - d79bffe feat: 完善养护签字流程与维修经验库
   - 35ef83a feat: 完善工单治理与消息分类
 
+## 2026-09-04 01:10 · api · e797bf0
+
+- 包：`pms-api-20260904-0044.tar.gz`
+- 提交：e797bf0 fix(维修经验): 工种收窄不能靠 canDispatch 口径判「办公室」
+- 说明：干净 worktree(e797bf0)
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（168c7a5）以来上线的相关提交：
+  - e797bf0 fix(维修经验): 工种收窄不能靠 canDispatch 口径判「办公室」
+  - 765b7e4 fix(维修经验): 按角色收窄可见范围、小程序图片能预览、按钮文字垂直居中
+
