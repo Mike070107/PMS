@@ -79,9 +79,9 @@ page { background: #f1f6fb; }
 .content-card .timeline-stay, .content-card .timeline-note { font-size: 29rpx; line-height: 1.55; }
 .timeline-photos { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 14rpx; }
 .timeline-photo { width: 136rpx; height: 112rpx; border-radius: 14rpx; background: #e5ecf2; }
-.field-actions { margin-top: 24rpx; padding: 24rpx; border-radius: 28rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(39,72,108,.055); }
-.field-action { width: 100%; min-height: 94rpx; margin: 0; border-radius: 18rpx; font-size: 32rpx; font-weight: 700; }
-.field-action + .field-action { margin-top: 16rpx; }
+.field-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16rpx; margin-top: 24rpx; padding: 18rpx; border-radius: 24rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(39,72,108,.055); }
+.field-actions--split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.field-action { width: 100% !important; min-height: 88rpx; margin: 0; padding: 0 20rpx; border-radius: 16rpx; font-size: 30rpx; font-weight: 700; }
 .field-action::after { border: 0; }
 .field-action--progress { border: 2rpx solid #88a9c9; background: #edf5fb; color: #315f98; }
 .field-action--transfer { border: 2rpx solid #e3b5b5; background: #fff7f7; color: #a7383e; }
@@ -121,7 +121,24 @@ page { background: #f1f6fb; }
   line-height: 1.65;
 }
 .rollback-warning__title { margin-bottom: 6rpx; color: #694600; font-size: 31rpx; font-weight: 700; }
-.field-actions__hint { margin-top: 12rpx; color: #74879a; font-size: 26rpx; line-height: 1.5; text-align: center; }
+/* 撤回后果逐条列出：办公室点确认前就该看见「要退哪几样料」 */
+.rollback-warning__impact { margin-top: 6rpx; }
+/* 被拦下时用告警色，别和「即将执行」的黄色提示混在一起 */
+.rollback-warning--blocked { color: #8c2f2f; background: #fdeeee; }
+.rollback-warning--blocked .rollback-warning__title { color: #8c2f2f; }
+/* 返工提示：上一次完工已撤回，下面是原草稿 */
+.complete-draft-note {
+  margin-bottom: 24rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 18rpx;
+  color: #1f4a7a;
+  background: #eef5fd;
+  font-size: 28rpx;
+  line-height: 1.65;
+}
+.complete-draft-note__title { font-size: 30rpx; font-weight: 700; }
+.complete-draft-note__desc { margin-top: 6rpx; color: #4a6b8c; font-size: 26rpx; }
+.field-actions__hint { grid-column: 1 / -1; color: #74879a; font-size: 25rpx; line-height: 1.5; text-align: center; }
 .progress-photo-add { min-height: 94rpx; display: flex; align-items: center; justify-content: center; border: 2rpx dashed #8cabc8; border-radius: 18rpx; background: #f5f9fc; color: #315f98; font-size: 30rpx; font-weight: 600; }
 .transfer-warning { padding: 22rpx; border: 2rpx solid #ecd1a3; border-radius: 18rpx; background: #fff8ec; color: #715127; font-size: 28rpx; line-height: 1.75; }
 .transfer-warning__title { margin-bottom: 6rpx; color: #8f5d18; font-size: 31rpx; font-weight: 700; }

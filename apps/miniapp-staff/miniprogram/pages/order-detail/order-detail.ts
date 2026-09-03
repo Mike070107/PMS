@@ -96,15 +96,9 @@ function appendSpeech(existing: string, spoken: string, separator = '；'): stri
   return `${before}${separator}${after}`;
 }
 
-function rollbackTargetText(status: WorkOrderStatus): string {
-  if (status === WorkOrderStatus.DISPATCHED) return '待派单/待接单';
-  if (status === WorkOrderStatus.IN_PROGRESS) return '已派单';
-  if (status === WorkOrderStatus.WAITING_MATERIAL) return '缺料前的处理节点';
-  if (status === WorkOrderStatus.DONE_PENDING_REVIEW) return '完工前的处理节点';
-  if (status === WorkOrderStatus.COMPLETED) return '待验收';
-  if (status === WorkOrderStatus.CANCELLED) return '撤单前的处理节点';
-  return '上一处理节点';
-}
+// 撤回目标状态一律由后端 /rollback-preview 给出。
+// 端上硬编码「维修中 → 已派单」在旁路节点上必错：维修中也可能来自主动认领、
+// 等待材料接回，弹窗上写的和真正发生的事对不上（2026-09-03 改造）。
 
 const compareStockOptionName = (a: WorkOrderStockOption, b: WorkOrderStockOption) =>
   a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
@@ -209,7 +203,14 @@ interface PageData {
   canTransfer: boolean;
   canRedispatch: boolean;
   canRollback: boolean;
+  /** 以下几项全部来自后端撤回预览，端上不做推导 */
   rollbackTargetText: string;
+  rollbackLoading: boolean;
+  rollbackBlocked: boolean;
+  rollbackBlockedReason: string;
+  rollbackActionLabel: string;
+  /** 「本次完工扣的 3 项材料将退回 A 仓」这类后果，一行一条 */
+  rollbackImpacts: string[];
   /** 已提报的缺料清单，等待材料时给接单的人看 */
   missingText: string;
   acceptText: string;
@@ -250,6 +251,9 @@ interface PageData {
   aiAssistTrace: { sourceText: string; draft: Record<string, unknown> } | null;
   faultLocation: string;
   faultSymptom: string;
+  /** 上一次完工被撤回后的提示语（材料已退库，重新提交才会再扣）；空 = 不是返工 */
+  completionDraftNotice: string;
+  completionDraftReason: string;
   /** 收费金额（元，字符串便于输入）；提交时换算成分 */
   feeYuan: string;
   uploading: boolean;
@@ -315,6 +319,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     canRedispatch: false,
     canRollback: false,
     rollbackTargetText: '上一处理节点',
+    rollbackLoading: false,
+    rollbackBlocked: false,
+    rollbackBlockedReason: '',
+    rollbackActionLabel: '',
+    rollbackImpacts: [],
     missingText: '',
     acceptText: '接单',
     panel: '',
@@ -345,6 +354,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     aiAssistTrace: null,
     faultLocation: '',
     faultSymptom: '',
+    completionDraftNotice: '',
+    completionDraftReason: '',
     feeYuan: '',
     uploading: false,
     busy: false,
@@ -376,12 +387,18 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   allSkus: [] as WorkOrderStockOption[],
   /** 当前在看的仓库 id：从这里选中的行会把它记进 row.warehouseId */
   warehouseId: null as number | null,
+  /** 已经回填过的完工草稿批次号：同一份草稿只回填一次，之后由维修工自己改 */
+  appliedDraftBatchId: null as number | null,
+  /** 本次完工提交的幂等令牌：连点两下或弱网重试都只扣一次库存 */
+  completeIdempotencyKey: '',
 
   onLoad(q: Record<string, string>) {
     // Page 配置对象上的自定义字段可能跨页面实例残留，而 data 会恢复初始值。
     // 不清理就会出现「列表缓存还有、仓库 id 已空」的半旧状态，再打开选料只剩空面板。
     this.allSkus = [];
     this.warehouseId = null;
+    this.appliedDraftBatchId = null;
+    this.completeIdempotencyKey = '';
     this.setData({ id: q.id || '' });
     this.bindSpeech();
     this.load();
@@ -466,9 +483,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           !!session?.canDispatch &&
           status === WorkOrderStatus.CREATED &&
           !(detail.workOrder.candidateIds || []).length,
+        // 已作废的单不给撤回入口；待派单能不能撤（可能是误转单）由后端预览判定
         canRollback:
-          !!session?.canDispatch && status !== WorkOrderStatus.CREATED,
-        rollbackTargetText: rollbackTargetText(status),
+          !!session?.canDispatch && status !== WorkOrderStatus.VOIDED,
         assigneeText: detail.workOrder.assigneeName || '未派单',
         ...this.buildResult(detail),
         missingText: missingMaterialsText(detail.workOrder.missingMaterials),
@@ -494,10 +511,87 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         feeYuan:
           this.data.feeYuan || (detail.workOrder.feeCents ? String(detail.workOrder.feeCents / 100) : ''),
       });
+      await this.applyCompletionDraft(detail);
       if (this.data.canComplete) this.loadPhrases(detail.request?.repairType || '');
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     }
+  },
+
+  /**
+   * 完工被撤回后，把上一次提交的内容原样带回完工表单当草稿。
+   *
+   * 不带回来的结果是维修工面对一张空表，随手提交一个空的，把原来的照片和说明全冲掉。
+   * 材料**只是草稿**：库存在撤回时已经退回去了，重新提交完工时才会按最终清单再次扣库。
+   * 同一份草稿只回填一次（记 appliedDraftBatchId），之后由维修工自己删改。
+   */
+  async applyCompletionDraft(detail: WorkOrderDetail) {
+    const draft = detail.completionDraft;
+    if (!draft) {
+      if (this.data.completionDraftNotice) {
+        this.setData({ completionDraftNotice: '', completionDraftReason: '' });
+      }
+      return;
+    }
+    this.setData({
+      completionDraftNotice: draft.notice,
+      completionDraftReason: draft.reverseReason || '',
+    });
+    if (this.appliedDraftBatchId === draft.fromBatchId) return;
+    this.appliedDraftBatchId = draft.fromBatchId;
+
+    this.setData({
+      faultLocation: draft.faultLocation || this.data.faultLocation,
+      faultSymptom: draft.faultSymptom || this.data.faultSymptom,
+      actionNote: draft.actionNote || draft.repairContent || this.data.actionNote,
+      feeYuan: draft.feeCents != null ? String(draft.feeCents / 100) : this.data.feeYuan,
+      resultAttachments: draft.resultAttachments?.length
+        ? draft.resultAttachments.slice()
+        : this.data.resultAttachments,
+    });
+
+    const lines = (draft.materials || []).filter((item) => item && (item.name || item.materialId));
+    if (!lines.length) return;
+    // 草稿里只有 id / 数量；可用量、规格、实物照片要按当前库存重新查一遍，
+    // 直接拿旧值展示会让人以为还有货（撤回到现在别人可能已经领走了）。
+    const stockByWarehouse = new Map<number, WorkOrderStockOption[]>();
+    for (const warehouseId of [
+      ...new Set(
+        lines.map((item) => item.warehouseId).filter((id): id is number => !!id),
+      ),
+    ]) {
+      try {
+        const resp = await repairs.stockOptions(this.data.id, warehouseId);
+        stockByWarehouse.set(warehouseId, resp.items || []);
+        if (this.warehouseId === null) this.warehouseId = resp.warehouseId;
+      } catch {
+        // 查不到就按「仓里没有」处理，页面会提示走缺料登记，总比假装有货强
+        stockByWarehouse.set(warehouseId, []);
+      }
+    }
+    const rows: MaterialRow[] = lines.map((item) => {
+      const sku = item.warehouseId
+        ? (stockByWarehouse.get(item.warehouseId) || []).find(
+            (option) => option.materialId === item.materialId,
+          )
+        : undefined;
+      return {
+        ...emptyMaterialRow(),
+        materialId: item.materialId ?? null,
+        name: sku?.name || item.name || '',
+        spec: sku?.spec || '',
+        qty: String(item.qty ?? ''),
+        unit: sku?.unit || item.unit || '',
+        photoUrl: sku?.photoUrl || '',
+        photoUrls: (sku?.photoUrls?.length ? sku.photoUrls : [sku?.photoUrl || '']).filter(Boolean),
+        code: sku?.code || '',
+        stockQty: sku ? sku.qty : -1,
+        warehouseId: item.warehouseId ?? null,
+        warehouseName: sku ? this.data.warehouseName || '原仓库' : '原仓库',
+        note: item.note || '',
+      };
+    });
+    this.setMaterialRows(rows);
   },
 
   /**
@@ -681,9 +775,13 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     if (reason.length < 2) return this.setData({ errorMsg: '请填写至少 2 个字的撤回原因' });
     this.setData({ busy: true, errorMsg: '' });
     try {
-      await repairs.rollback(this.data.id, { reason });
+      const result = await repairs.rollback(this.data.id, { reason });
+      const lines = result?.rollback?.returnedMaterials?.length ?? 0;
       this.setData({ panel: '', rollbackNote: '' });
-      wx.showToast({ title: '已撤回上一步', icon: 'success' });
+      wx.showToast({
+        title: lines ? `已撤回，退料 ${lines} 项` : '已撤回上一步',
+        icon: 'success',
+      });
       await this.load();
     } catch (e: any) {
       this.setData({ errorMsg: e?.message || '撤回失败' });
@@ -874,61 +972,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         },
       };
       this.setData(patch, () => this.syncPhraseState());
-      await this.applyAiMaterialSuggestions(res.materialSuggestions || []);
     } catch {
       fallback();
     } finally {
       this.setData({ summarizing: false });
-    }
-  },
-
-  /**
-   * 只有“口语名唯一精确命中材料名称/别名 + 数量明确”才形成用料草稿行。
-   * 模糊命中仍只显示提示，库存仓、SKU、数量任一不确定都不替维修工做决定。
-   */
-  async applyAiMaterialSuggestions(
-    suggestions: Array<{
-      spokenName: string;
-      qty: number | null;
-      materialId: number | null;
-      match: string;
-      needsConfirmation: boolean;
-    }>,
-  ) {
-    const exact = suggestions.filter(
-      (item) => item.match === 'exact' && !item.needsConfirmation && item.materialId && item.qty,
-    );
-    if (!exact.length) return;
-    try {
-      const resp = await repairs.stockOptions(this.data.id);
-      if (!resp.warehouseId) return;
-      const existing = new Set(
-        this.data.materialRows.map((row) => row.materialId).filter((id): id is number => !!id),
-      );
-      const rows = this.data.materialRows.slice();
-      exact.forEach((suggestion) => {
-        if (!suggestion.materialId || existing.has(suggestion.materialId)) return;
-        const sku = resp.items.find((item) => item.materialId === suggestion.materialId);
-        if (!sku) return;
-        rows.push({
-          ...emptyMaterialRow(),
-          materialId: sku.materialId,
-          name: sku.name,
-          spec: sku.spec || '',
-          qty: String(suggestion.qty),
-          unit: sku.unit,
-          photoUrl: sku.photoUrl || '',
-          photoUrls: (sku.photoUrls?.length ? sku.photoUrls : [sku.photoUrl || '']).filter(Boolean),
-          code: sku.code,
-          stockQty: sku.qty,
-          warehouseId: resp.warehouseId,
-          warehouseName: resp.warehouseName,
-        });
-        existing.add(sku.materialId);
-      });
-      if (rows.length !== this.data.materialRows.length) this.setMaterialRows(rows);
-    } catch {
-      // 自动匹配只是省点击；失败时保留材料文字提示，让维修工手工选，不阻断完工。
     }
   },
 
@@ -981,6 +1028,59 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   onOpenPanel(e: WechatMiniprogram.BaseEvent) {
     const panel = String(e.currentTarget.dataset.panel || '');
     this.setData({ panel, materialError: '', errorMsg: '' });
+    if (panel === 'rollback') void this.loadRollbackPreview();
+  },
+
+  /**
+   * 撤回预览：会退回哪个状态、退哪些材料、驳回哪张采购申请，全部由后端算。
+   * 办公室在点「确认撤回」之前就知道后果，不是点完才发现材料被退了。
+   */
+  async loadRollbackPreview() {
+    this.setData({
+      rollbackLoading: true,
+      rollbackBlocked: false,
+      rollbackBlockedReason: '',
+      rollbackImpacts: [],
+    });
+    try {
+      const preview = await repairs.rollbackPreview(this.data.id);
+      const impacts: string[] = [];
+      if (preview.restoreAssigneeName) impacts.push(`维修工将恢复为：${preview.restoreAssigneeName}`);
+      if (preview.willReturnMaterials && preview.materialLines.length) {
+        impacts.push(
+          `本次完工扣除的 ${preview.materialLines.length} 项材料（共 ${preview.materialTotalQty} 件）将退回原仓库，并生成撤回还料流水`,
+        );
+        preview.materialLines.forEach((line) => {
+          impacts.push(`· ${line.name} ×${line.qty}（${line.warehouseName}）`);
+        });
+        impacts.push('原完工内容会保留为草稿，重新提交完工时才会再次扣库');
+      }
+      const rejects = (preview.purchaseRequests || []).filter((item) => item.willReject);
+      if (rejects.length) {
+        impacts.push(`采购申请 ${rejects.map((item) => item.requestNo).join('、')} 将同步驳回`);
+      }
+      if (preview.maintenanceOrder?.willVoid) impacts.push('关联的草稿养护单将同步作废');
+      if (preview.reviewWillReverse) {
+        impacts.push('原验收评价将失效（不再计入评分统计），历史记录仍可查看');
+      }
+      if (preview.allowed && !preview.usedSnapshot) {
+        impacts.push('这一步是本次改造前记录的，只能恢复状态；撤回后请核对负责人与时限');
+      }
+      this.setData({
+        rollbackLoading: false,
+        rollbackBlocked: !preview.allowed,
+        rollbackBlockedReason: preview.blockedReason || '',
+        rollbackActionLabel: preview.actionLabel || '上一步',
+        rollbackTargetText: preview.targetStatusLabel || '上一处理节点',
+        rollbackImpacts: impacts,
+      });
+    } catch (e: any) {
+      this.setData({
+        rollbackLoading: false,
+        rollbackBlocked: true,
+        rollbackBlockedReason: e?.message || '撤回预览加载失败，请稍后再试',
+      });
+    }
   },
 
   onClosePanel() {
@@ -1359,6 +1459,15 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     if (fee && (!Number.isFinite(Number(fee)) || Number(fee) < 0)) {
       return this.setData({ errorMsg: '收费金额填写不正确' });
     }
+    const shortage = this.data.materialRows.find((row) => {
+      const qty = Number(row.qty);
+      return !!row.materialId && Number.isFinite(qty) && qty > 0 && qty > row.stockQty;
+    });
+    if (shortage) {
+      return this.setData({
+        errorMsg: `“${shortage.name}”当前库存不足，请返回用料记录重新选择，或改为提报缺料。`,
+      });
+    }
     // 从库存领的料才带 warehouseId：后端按它扣库存、记出库流水；
     // 用的是「这一行选中时所在的仓」——选料途中切过仓库，共用一个 id 会扣到别的仓去。
     // 手填的（仓里没有）不带，只留个名字在维修记录里
@@ -1376,9 +1485,17 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     // 刚干完一单，正等着下一单 —— 这时补订阅额度同意率最高。
     // 必须在这次点击里同步发起，放到 complete 请求之后微信就不认了（见 utils/unread.ts）
     askOrderSubscribe();
+    // 同一次填写复用同一个令牌：连点两下、弱网自动重试时服务端只认第一次，
+    // 不会再扣一遍库存（库存错账事后没人对得回来）
+    if (!this.completeIdempotencyKey) {
+      this.completeIdempotencyKey = `staff-${this.data.id}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+    }
     this.setData({ busy: true, errorMsg: '' });
     try {
       await repairs.complete(this.data.id, {
+        idempotencyKey: this.completeIdempotencyKey,
         actionNote: this.data.actionNote || undefined,
         repairContent: this.data.actionNote || undefined,
         faultLocation: this.data.faultLocation.trim() || undefined,
@@ -1390,6 +1507,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         resultAttachments: this.data.resultAttachments,
       });
       const orderNo = this.data.detail?.workOrder.orderNo || '';
+      // 提交成功后作废令牌：下一张单/下一次填写要用新的
+      this.completeIdempotencyKey = '';
+      this.appliedDraftBatchId = null;
       wx.showModal({
         title: '已提交完工',
         content: `${orderNo || '该工单'}已进入待验收，返回「在手工单」继续处理下一项工作。`,
@@ -1398,7 +1518,12 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         success: () => wx.switchTab({ url: '/pages/my-orders/my-orders' }),
       });
     } catch (e: any) {
-      this.setData({ errorMsg: e?.message || '提交失败' });
+      const message = String(e?.message || '');
+      this.setData({
+        errorMsg: /stock(?: lot)? is insufficient/i.test(message)
+          ? '所选材料的实时库存不足，请返回用料记录重新选择，或联系办公室核对库存。'
+          : message || '提交失败',
+      });
     } finally {
       this.setData({ busy: false });
     }

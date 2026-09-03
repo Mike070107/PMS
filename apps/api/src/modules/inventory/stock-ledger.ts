@@ -78,7 +78,12 @@ export function averageUnitCost(allocations: LotAllocation[], qty: number): numb
   return Math.round(total / qty);
 }
 
-/** 改数量并落一条流水；库存行不存在就建。不动批次——批次由调用方按语义处理 */
+/**
+ * 改数量并落一条流水；库存行不存在就建。不动批次——批次由调用方按语义处理。
+ *
+ * 返回值把**流水行**也带出来：冲回时要把新流水的 reversalOfMovementId 指向原出库流水，
+ * 靠它上面的唯一索引保证「一条扣料最多只被冲销一次」（2026-09-03 工单撤回退料）。
+ */
 export async function applyStockDelta(
   manager: EntityManager,
   input: StockKey & {
@@ -91,8 +96,10 @@ export async function applyStockDelta(
     note?: string | null;
     /** 入库时的存放库位。只在入库（deltaQty > 0）时写，出库不动原来的库位 */
     locationId?: number | null;
+    /** 本条是冲回时，指向被冲销的那条出库流水 id */
+    reversalOfMovementId?: number | null;
   },
-): Promise<Stock> {
+): Promise<{ stock: Stock; movement: StockMovement }> {
   let stock = await manager.findOne(Stock, {
     where: {
       tenantId: input.tenantId,
@@ -120,7 +127,7 @@ export async function applyStockDelta(
   stock.updatedBy = input.operatorId;
   await manager.save(Stock, stock);
 
-  await manager.save(
+  const movement = await manager.save(
     StockMovement,
     manager.create(StockMovement, {
       tenantId: input.tenantId,
@@ -132,11 +139,12 @@ export async function applyStockDelta(
       refType: input.refType,
       refId: input.refId,
       note: input.note ?? null,
+      reversalOfMovementId: input.reversalOfMovementId ?? null,
       createdBy: input.operatorId,
       updatedBy: input.operatorId,
     }),
   );
-  return stock;
+  return { stock, movement };
 }
 
 export async function createStockLot(

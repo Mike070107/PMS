@@ -289,6 +289,36 @@ export class NotificationsService {
     return { ok: true };
   }
 
+  /**
+   * 把某张工单已经失效的待办通知标记掉（撤回后旧的派单/验收/采购待办不该还能点）。
+   *
+   * 不删记录：通知也是审计线索。只在 payload 上打 invalidated 标记并置为已读，
+   * 让它从「待办角标」和可操作入口里消失，历史消息里仍能看到发生过什么。
+   */
+  async invalidateWorkOrderNotifications(
+    tenantId: number,
+    workOrderId: number,
+    eventKeys: string[],
+    reason: string,
+  ): Promise<number> {
+    if (!eventKeys.length) return 0;
+    const rows = await this.notificationRepo.find({
+      where: { tenantId, eventKey: In(eventKeys), readAt: IsNull() },
+      order: { id: 'DESC' },
+      take: 500,
+    });
+    const targets = rows.filter(
+      (row) => Number((row.payload ?? {}).workOrderId) === workOrderId,
+    );
+    if (!targets.length) return 0;
+    for (const row of targets) {
+      row.payload = { ...(row.payload ?? {}), invalidated: true, invalidReason: reason };
+      row.readAt = new Date();
+      await this.notificationRepo.save(row);
+    }
+    return targets.length;
+  }
+
   async markAllRead(user: AuthUser) {
     const tenantId = this.requireTenant(user);
     await this.notificationRepo.update(

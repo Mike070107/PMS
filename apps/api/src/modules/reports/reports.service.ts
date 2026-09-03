@@ -191,12 +191,16 @@ export class ReportsService {
         FROM work_orders wo
         LEFT JOIN repair_requests rr ON rr.id = wo.request_id
         LEFT JOIN (
+          -- 已冲销的用料（撤回完工/删除用料）库存已经退回去了，成本不能再算进这单
           SELECT work_order_id, SUM(total_cost_cents) AS cost_cents
-          FROM work_order_materials WHERE tenant_id = $1 GROUP BY work_order_id
+          FROM work_order_materials
+          WHERE tenant_id = $1 AND status = 'active'
+          GROUP BY work_order_id
         ) wm ON wm.work_order_id = wo.id
         LEFT JOIN (
+          -- 撤回验收后原评价转为 reversed：历史仍可查，但不再参与评分统计
           SELECT work_order_id, AVG(rating) AS rating
-          FROM reviews WHERE tenant_id = $1 GROUP BY work_order_id
+          FROM reviews WHERE tenant_id = $1 AND status = 'active' GROUP BY work_order_id
         ) rv ON rv.work_order_id = wo.id
         WHERE ${where.join(' AND ')}
       )
@@ -210,9 +214,14 @@ export class ReportsService {
           WHERE sla_due_at IS NOT NULL AND status <> 'cancelled'
             AND COALESCE(completed_at, NOW()) > sla_due_at
         )::int AS overdue,
+        -- 完工时长只认真正走完验收的单：待验收随时可能被撤回重修，
+        -- 把它算进平均时长，撤回一次数字就跳一次，谁都不敢信这个指标
         AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600)
-          FILTER (WHERE completed_at IS NOT NULL) AS avg_hours,
-        COALESCE(SUM(fee_cents), 0)::bigint AS fee_cents,
+          FILTER (WHERE completed_at IS NOT NULL AND status = 'completed') AS avg_hours,
+        -- 收费同理：已完成才算收入，待验收的单独给一个「待确认」指标
+        COALESCE(SUM(fee_cents) FILTER (WHERE status = 'completed'), 0)::bigint AS fee_cents,
+        COALESCE(SUM(fee_cents) FILTER (WHERE status = 'done_pending_review'), 0)::bigint
+          AS pending_fee_cents,
         COALESCE(SUM(material_cost_cents), 0)::bigint AS material_cost_cents,
         AVG(rating) AS avg_rating,
         COUNT(rating)::int AS rating_count
@@ -231,6 +240,7 @@ export class ReportsService {
       overdue: num(r.overdue),
       avgHours: numOrNull(r.avg_hours),
       feeCents: num(r.fee_cents),
+      pendingFeeCents: num(r.pending_fee_cents),
       materialCostCents: num(r.material_cost_cents),
       avgRating: numOrNull(r.avg_rating),
       ratingCount: num(r.rating_count),
@@ -637,6 +647,8 @@ export class ReportsService {
         `wm.tenant_id = ${p.add(tenantId)}`,
         `wo.deleted_at IS NULL`,
         `wo.status <> 'voided'`,
+        // 已冲销的用料库存已退回，净数量必须和库存台账对得上
+        `wm.status = 'active'`,
         `wm.created_at >= ${p.add(range.fromTs)}`,
         `wm.created_at < ${p.add(range.toTs)}`,
       ];

@@ -63,7 +63,13 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import type { ClassifiableType, TechnicianOption } from '@pms/shared-types';
+import type {
+  ClassifiableType,
+  CompletionDraft,
+  RollbackPreview,
+  TechnicianOption,
+  UsedMaterialLine,
+} from '@pms/shared-types';
 import { classifyRepairType, compareWorkOrderRoutePriority } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -187,6 +193,8 @@ interface WorkOrderDetail {
     name?: string;
     unit?: string;
   }>;
+  /** 完工被撤回后留下的草稿：材料已退库，重新提交完工时才会再次扣库 */
+  completionDraft?: CompletionDraft | null;
 }
 interface RepairTypeRule {
   id: number;
@@ -272,15 +280,9 @@ const statusMeta: Record<WorkOrderStatus, { label: string; color: string }> = {
   voided: { label: '已作废', color: 'default' },
 };
 
-function rollbackTargetLabel(status: WorkOrderStatus | null): string {
-  if (status === WorkOrderStatus.DISPATCHED) return '待派单/待接单';
-  if (status === WorkOrderStatus.IN_PROGRESS) return '已派单';
-  if (status === WorkOrderStatus.WAITING_MATERIAL) return '缺料前的处理节点';
-  if (status === WorkOrderStatus.DONE_PENDING_REVIEW) return '完工前的处理节点';
-  if (status === WorkOrderStatus.COMPLETED) return '待验收';
-  if (status === WorkOrderStatus.CANCELLED) return '撤单前的处理节点';
-  return '上一处理节点';
-}
+// 撤回目标状态一律由后端 /rollback-preview 给出。
+// 这里以前硬编码「维修中 → 已派单」，可维修中也可能来自主动认领或等待材料接回，
+// 弹窗上写的和真正发生的事对不上（2026-09-03 改造）。
 
 /** 距要求完成截止不足这个数就标红（含已超时） */
 const SLA_WARN_MS = 4 * 60 * 60 * 1000;
@@ -2610,7 +2612,6 @@ function WorkOrderDetailDrawer({
       <RollbackWorkOrderModal
         open={rollbackOpen}
         workOrderId={id}
-        status={detail?.workOrder.status ?? null}
         onClose={() => setRollbackOpen(false)}
         onDone={async () => { setRollbackOpen(false); await refresh(); }}
       />
@@ -3944,20 +3945,34 @@ function RepairTypeRuleModal({
 }
 
 // ---------------- 撤回 / 维修进度 / 转单 Modal ----------------
+/**
+ * 撤回弹窗。打开时先问后端「这一次撤回会发生什么」，把退料明细、会驳回的采购申请、
+ * 会作废的养护单原样列出来，办公室点确认前就知道后果，不再是一句笼统的「撤回上一步」。
+ */
 function RollbackWorkOrderModal({
-  open, workOrderId, status, onClose, onDone,
+  open, workOrderId, onClose, onDone,
 }: {
   open: boolean;
   workOrderId: number | null;
-  status: WorkOrderStatus | null;
   onClose: () => void;
   onDone: () => void;
 }) {
   const { message } = AntdApp.useApp();
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState<RollbackPreview | null>(null);
 
-  useEffect(() => { if (open) setReason(''); }, [open]);
+  useEffect(() => {
+    if (!open || !workOrderId) return;
+    setReason('');
+    setPreview(null);
+    setLoading(true);
+    request<RollbackPreview>({ url: `/work-orders/${workOrderId}/rollback-preview` })
+      .then((data) => setPreview(data))
+      .catch((e: any) => message.error(e?.message || '撤回预览加载失败'))
+      .finally(() => setLoading(false));
+  }, [open, workOrderId, message]);
 
   const submit = async () => {
     if (reason.trim().length < 2) {
@@ -3966,12 +3981,18 @@ function RollbackWorkOrderModal({
     }
     setSaving(true);
     try {
-      await request({
+      const result = await request<{
+        rollback?: { targetStatusLabel?: string; returnedQty?: number; returnedMaterials?: unknown[] };
+      }>({
         method: 'POST',
         url: `/work-orders/${workOrderId}/rollback`,
         data: { reason: reason.trim() },
       });
-      message.success(`已撤回到${rollbackTargetLabel(status)}`);
+      const lines = result?.rollback?.returnedMaterials?.length ?? 0;
+      message.success(
+        `已撤回到${result?.rollback?.targetStatusLabel ?? preview?.targetStatusLabel ?? '上一节点'}` +
+          (lines ? `，${lines} 项材料已退回库存` : ''),
+      );
       onDone();
     } catch (e: any) {
       message.error(e?.message || '撤回失败');
@@ -3980,6 +4001,8 @@ function RollbackWorkOrderModal({
     }
   };
 
+  const blocked = !!preview && !preview.allowed;
+
   return (
     <Modal
       title="撤回上一步"
@@ -3987,32 +4010,93 @@ function RollbackWorkOrderModal({
       onCancel={onClose}
       onOk={submit}
       okText="确认撤回"
+      okButtonProps={{ disabled: loading || blocked }}
       confirmLoading={saving}
       destroyOnHidden
+      // 退料清单一长，弹窗就比 768 高的屏还高，「确认撤回」被挤到视口外面点不到
+      // （1366×768 实测，按钮底边 773 > 768）。居中 + 内容区自己滚，按钮条永远在屏幕里。
+      centered
+      styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }}
     >
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        <Alert
-          type="warning"
-          showIcon
-          message={`将撤回到：${rollbackTargetLabel(status)}`}
-          description="原操作不会消失；操作人、撤回前后状态和本次原因都会如实保留在工单进度中。"
-        />
-        <div>
-          <Text strong>撤回原因</Text>
-          <Text type="secondary" style={{ display: 'block', margin: '4px 0 8px' }}>
-            例如：误点完工，现场还有一项需要处理
-          </Text>
-          <TextArea
-            value={reason}
-            maxLength={500}
-            showCount
-            rows={4}
-            autoFocus
-            placeholder="请说明为什么撤回，方便后续人员查看"
-            onChange={(event) => setReason(event.target.value)}
-          />
-        </div>
-      </Space>
+      <Spin spinning={loading}>
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          {blocked ? (
+            <Alert
+              type="error"
+              showIcon
+              message="这张工单现在不能撤回"
+              description={preview?.blockedReason || '请联系管理员核对工单轨迹'}
+            />
+          ) : (
+            <Alert
+              type="warning"
+              showIcon
+              message={
+                preview
+                  ? `将撤回「${preview.actionLabel ?? '上一步'}」，工单恢复到「${preview.targetStatusLabel ?? ''}」`
+                  : '正在读取撤回影响…'
+              }
+              description={
+                <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                  {preview?.restoreAssigneeName ? (
+                    <Text>维修工将恢复为：{preview.restoreAssigneeName}</Text>
+                  ) : null}
+                  {preview?.willReturnMaterials ? (
+                    <>
+                      <Text>
+                        本次完工扣除的 {preview.materialLines.length} 项材料（共 {preview.materialTotalQty} 件）
+                        将退回原仓库，并生成撤回还料流水。
+                      </Text>
+                      <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                        {preview.materialLines.map((line) => (
+                          <li key={line.usageId}>
+                            {line.name} ×{line.qty}（{line.warehouseName}）
+                          </li>
+                        ))}
+                      </ul>
+                      <Text type="secondary">原完工内容会保留为草稿，重新提交完工时才会再次扣库。</Text>
+                    </>
+                  ) : null}
+                  {preview?.purchaseRequests?.filter((item) => item.willReject).length ? (
+                    <Text>
+                      采购申请 {preview.purchaseRequests.filter((item) => item.willReject).map((item) => item.requestNo).join('、')} 将同步驳回。
+                    </Text>
+                  ) : null}
+                  {preview?.maintenanceOrder?.willVoid ? <Text>关联的草稿养护单将同步作废。</Text> : null}
+                  {preview?.reviewWillReverse ? (
+                    <Text>原验收评价将失效（不再计入评分统计），历史记录仍可查看。</Text>
+                  ) : null}
+                  {preview && !preview.usedSnapshot ? (
+                    <Text type="warning">
+                      这一步是本次改造前记录的，只能恢复状态；撤回后请核对负责人与时限。
+                    </Text>
+                  ) : null}
+                  <Text type="secondary">
+                    原操作不会消失；操作人、撤回前后状态和本次原因都会如实保留在工单进度中。
+                  </Text>
+                </Space>
+              }
+            />
+          )}
+          {blocked ? null : (
+            <div>
+              <Text strong>撤回原因</Text>
+              <Text type="secondary" style={{ display: 'block', margin: '4px 0 8px' }}>
+                例如：误点完工，现场还有一项需要处理
+              </Text>
+              <TextArea
+                value={reason}
+                maxLength={500}
+                showCount
+                rows={4}
+                autoFocus
+                placeholder="请说明为什么撤回，方便后续人员查看"
+                onChange={(event) => setReason(event.target.value)}
+              />
+            </div>
+          )}
+        </Space>
+      </Spin>
     </Modal>
   );
 }
@@ -4355,23 +4439,60 @@ function CompleteModal({
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<'done' | 'waiting'>('done');
   const [fileList, setFileList] = useState<UploadFile<UploadResponse>[]>([]);
+  // 同一次填写复用同一个令牌：连点两下或弱网重试时服务端只认第一次，不会扣两遍库存
+  const [idempotencyKey, setIdempotencyKey] = useState('');
+
+  /** 上一次完工被撤回后留下的草稿（材料已退库，重新提交才会再扣） */
+  const draft = detail?.completionDraft ?? null;
 
   useEffect(() => {
     if (!open) return;
     form.resetFields();
+    const draftMaterials = (draft?.materials ?? []).filter(
+      (item: UsedMaterialLine) => item?.name || item?.materialId,
+    );
     form.setFieldsValue({
-      usedMaterials: [{}],
+      // 撤回后原用料清单原样带回来当草稿：让人重填一遍的结果是他随手提交一个空的
+      usedMaterials: draftMaterials.length
+        ? draftMaterials.map((item: UsedMaterialLine) => ({ ...item }))
+        : [{}],
       missingMaterials: [{}],
       // 位置和现象从报修信息带出来，允许改、也允许清空 ——
       // 现场看到的往往和业主说的不一样，但从零开始打字更没人愿意填
-      faultLocation: detail?.workOrder.faultLocation || detail?.request?.addressText || undefined,
-      faultSymptom: detail?.workOrder.faultSymptom || detail?.request?.content || undefined,
-      repairContent: detail?.workOrder.repairContent || undefined,
-      feeYuan: detail?.workOrder.feeCents ? detail.workOrder.feeCents / 100 : undefined,
+      faultLocation:
+        draft?.faultLocation ||
+        detail?.workOrder.faultLocation ||
+        detail?.request?.addressText ||
+        undefined,
+      faultSymptom:
+        draft?.faultSymptom ||
+        detail?.workOrder.faultSymptom ||
+        detail?.request?.content ||
+        undefined,
+      repairContent: draft?.repairContent || detail?.workOrder.repairContent || undefined,
+      remark: draft?.actionNote || detail?.workOrder.actionNote || undefined,
+      feeYuan:
+        draft?.feeCents != null
+          ? draft.feeCents / 100
+          : detail?.workOrder.feeCents
+            ? detail.workOrder.feeCents / 100
+            : undefined,
     });
     setMode('done');
-    setFileList([]);
-  }, [open, form, detail]);
+    // 原完工照片一并带回：不带的话提交时一个空数组就把原来的照片全冲掉了
+    const photos = draft?.resultAttachments?.length
+      ? draft.resultAttachments
+      : detail?.workOrder.resultAttachments ?? [];
+    setFileList(
+      photos.map((url: string, index: number) => ({
+        uid: `kept-${index}`,
+        name: url.split('/').pop() || `附件${index + 1}`,
+        status: 'done' as const,
+        url,
+      })),
+    );
+    setIdempotencyKey(`web-${workOrderId ?? 0}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  }, [open, form, detail, draft, workOrderId]);
 
   const onOk = async () => {
     const v = await form.validateFields();
@@ -4410,6 +4531,7 @@ function CompleteModal({
             feeCents: v.feeYuan != null ? Math.round(v.feeYuan * 100) : undefined,
             resultAttachments,
             materials: (v.usedMaterials || []).filter((item: any) => item?.name && item?.qty),
+            idempotencyKey,
           },
         });
         message.success('已完成维修，进入待验收');
@@ -4448,6 +4570,17 @@ function CompleteModal({
         <strong>{mode === 'done' ? '提交真实维修结果' : '暂时无法完工'}</strong>
         <span>{mode === 'done' ? '重点核对实际位置、故障现象、做了什么、收费和用料。' : '列清缺少的材料，提交后办公室可继续采购和调度。'}</span>
       </div>
+      {mode === 'done' && draft ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={draft.notice}
+          description={
+            draft.reverseReason ? `撤回原因：${draft.reverseReason}` : undefined
+          }
+        />
+      ) : null}
       <Form form={form} layout="vertical" initialValues={{ usedMaterials: [{}], missingMaterials: [{}] }}>
         {mode === 'done' ? (
           <>

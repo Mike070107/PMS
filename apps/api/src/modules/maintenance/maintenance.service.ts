@@ -999,8 +999,9 @@ export class MaintenanceService implements OnModuleInit {
     tenantId: number,
     workOrder: WorkOrder,
   ): Promise<MaintenanceMaterial[]> {
+    // 已冲销的用料（撤回完工退回库存了）不能印到养护单的《材料领耗记录》上
     const usageRows = await this.workOrderMaterialRepo.find({
-      where: { tenantId, workOrderId: workOrder.id },
+      where: { tenantId, workOrderId: workOrder.id, status: 'active' },
       order: { id: 'ASC' },
     });
     const materialIds = [

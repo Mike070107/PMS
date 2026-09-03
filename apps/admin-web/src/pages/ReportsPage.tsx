@@ -61,7 +61,10 @@ interface AggMetrics {
   active: number;
   overdue: number;
   avgHours: number | null;
+  /** 已完成工单的收费；待验收的单独算，撤回一次就变的数字不能混进收入 */
   feeCents: number;
+  /** 待验收工单的收费：还可能被撤回重修，只作参考不计入收入 */
+  pendingFeeCents: number;
   materialCostCents: number;
   avgRating: number | null;
   ratingCount: number;
@@ -443,7 +446,9 @@ function WorkOrdersReport({
     { title: '已撤单', dataIndex: 'cancelled', key: 'cancelled', width: 90, align: 'right' },
     { title: '超时', dataIndex: 'overdue', key: 'overdue', width: 80, align: 'right', render: (v: number) => (v ? <Text type="danger">{v}</Text> : 0) },
     { title: '平均完成时长', dataIndex: 'avgHours', key: 'avgHours', width: 130, align: 'right', render: (v: number | null) => fmtHours(v) },
+    // 收费按「已完成」算，待验收的单独一列：待验收随时可能被撤回，混在一起报表数字会跳
     { title: '收费金额', dataIndex: 'feeCents', key: 'feeCents', width: 120, align: 'right', render: (v: number) => formatFeeMoney(v) },
+    { title: '待确认收费', dataIndex: 'pendingFeeCents', key: 'pendingFeeCents', width: 120, align: 'right', render: (v: number) => formatFeeMoney(v) },
     { title: '材料成本', dataIndex: 'materialCostCents', key: 'materialCostCents', width: 120, align: 'right', render: (v: number) => formatFeeMoney(v) },
     { title: '评分', key: 'rating', width: 110, align: 'right', render: (_, r) => fmtRating(r.avgRating, r.ratingCount) },
   ];
@@ -463,6 +468,7 @@ function WorkOrdersReport({
         { title: '超时', key: 'overdue' },
         { title: '平均完成时长(小时)', key: 'avgHours', render: (r) => (r.avgHours === null ? null : Number(r.avgHours.toFixed(2))) },
         { title: '收费金额(元)', key: 'fee', render: (r) => centsToYuan(r.feeCents) },
+        { title: '待确认收费(元)', key: 'pendingFee', render: (r) => centsToYuan(r.pendingFeeCents) },
         { title: '材料成本(元)', key: 'cost', render: (r) => centsToYuan(r.materialCostCents) },
         { title: '平均评分', key: 'avgRating', render: (r) => (r.avgRating === null ? null : Number(r.avgRating.toFixed(2))) },
         { title: '评价数', key: 'ratingCount' },
@@ -507,7 +513,7 @@ function WorkOrdersReport({
         <Col xs={12} md={8} xl={4}><MetricTile title="已完成" value={summary?.completed ?? 0} hint={summary ? `完成率 ${fmtPct(summary.completed, summary.total)}` : undefined} tone="good" /></Col>
         <Col xs={12} md={8} xl={4}><MetricTile title="进行中 / 待验收" value={`${summary?.active ?? 0} / ${summary?.pendingReview ?? 0}`} hint={`已撤单 ${summary?.cancelled ?? 0}`} /></Col>
         <Col xs={12} md={8} xl={4}><MetricTile title="超时工单" value={summary?.overdue ?? 0} tone={summary?.overdue ? 'bad' : undefined} hint={summary ? `平均完成 ${fmtHours(summary.avgHours)}` : undefined} /></Col>
-        <Col xs={12} md={8} xl={4}><MetricTile title="收费金额" value={formatFeeMoney(summary?.feeCents)} /></Col>
+        <Col xs={12} md={8} xl={4}><MetricTile title="收费金额" value={formatFeeMoney(summary?.feeCents)} hint={`待确认 ${formatFeeMoney(summary?.pendingFeeCents)}`} /></Col>
         <Col xs={12} md={8} xl={4}><MetricTile title="材料成本" value={formatFeeMoney(summary?.materialCostCents)} hint={summary ? `平均评分 ${fmtRating(summary.avgRating, summary.ratingCount)}` : undefined} /></Col>
       </Row>
 
@@ -552,8 +558,9 @@ function WorkOrdersReport({
                   <Table.Summary.Cell index={8} align="right">{summary.overdue}</Table.Summary.Cell>
                   <Table.Summary.Cell index={9} align="right">{fmtHours(summary.avgHours)}</Table.Summary.Cell>
                   <Table.Summary.Cell index={10} align="right">{formatFeeMoney(summary.feeCents)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={11} align="right">{formatFeeMoney(summary.materialCostCents)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={12} align="right">{fmtRating(summary.avgRating, summary.ratingCount)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={11} align="right">{formatFeeMoney(summary.pendingFeeCents)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={12} align="right">{formatFeeMoney(summary.materialCostCents)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={13} align="right">{fmtRating(summary.avgRating, summary.ratingCount)}</Table.Summary.Cell>
                 </Table.Summary.Row>
               </Table.Summary>
             ) : null

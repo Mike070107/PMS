@@ -1064,7 +1064,15 @@ export class InventoryService {
     ];
     const receiptIds = [...new Set([...idsOf('goods_receipt'), ...idsOf('general_receipt')])];
     const transferIds = idsOf('transfer_order');
-    const workOrderIds = idsOf('work_order');
+    // 工单类流水有四种 refType（历史 work_order、完工扣料、撤回还料、作废退料），
+    // 都要能在流水页显示工单号，否则用户只看到一个孤零零的 id（2026-09-03）
+    const workOrderIds = [
+      ...new Set([
+        ...idsOf('work_order'),
+        ...idsOf('work_order_complete'),
+        ...idsOf('work_order_rollback_return'),
+      ]),
+    ];
     const [receipts, transfers, workOrders] = await Promise.all([
       receiptIds.length
         ? this.dataSource.getRepository(GoodsReceipt).find({
@@ -1097,7 +1105,11 @@ export class InventoryService {
           refNo = receiptNo.get(row.refId) ?? null;
         } else if (row.refType === 'transfer_order') {
           refNo = transferNo.get(row.refId) ?? null;
-        } else if (row.refType === 'work_order') {
+        } else if (
+          row.refType === 'work_order' ||
+          row.refType === 'work_order_complete' ||
+          row.refType === 'work_order_rollback_return'
+        ) {
           refNo = orderNo.get(row.refId) ?? null;
         }
       }
@@ -1149,7 +1161,7 @@ export class InventoryService {
           lotNo: this.buildNo('ADJ'),
           operatorId: user.id,
         });
-        const saved = await applyStockDelta(manager, {
+        const { stock: saved } = await applyStockDelta(manager, {
           tenantId,
           warehouseId: stock.warehouseId,
           materialId: stock.materialId,
@@ -1172,7 +1184,7 @@ export class InventoryService {
         qty: -deltaQty,
         operatorId: user.id,
       });
-      return applyStockDelta(manager, {
+      const { stock: adjusted } = await applyStockDelta(manager, {
         tenantId,
         warehouseId: stock.warehouseId,
         materialId: stock.materialId,
@@ -1184,6 +1196,7 @@ export class InventoryService {
         operatorId: user.id,
         note,
       });
+      return adjusted;
     });
   }
 

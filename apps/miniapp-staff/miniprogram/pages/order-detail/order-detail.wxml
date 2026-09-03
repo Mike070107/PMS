@@ -87,14 +87,14 @@
       </view>
     </view>
 
-    <view wx:if="{{canAddProgress || canTransfer}}" class="field-actions">
+    <view wx:if="{{canAddProgress || canTransfer}}" class="field-actions {{canAddProgress && canTransfer ? 'field-actions--split' : ''}}">
       <button wx:if="{{canAddProgress}}" class="field-action field-action--progress" data-panel="progress" bindtap="onOpenPanel">＋ 添加维修进度</button>
       <button wx:if="{{canTransfer}}" class="field-action field-action--transfer" data-panel="transfer" bindtap="onOpenPanel">转给其他人修</button>
       <view wx:if="{{canTransfer}}" class="field-actions__hint">转单后由所属管理处重新选择工单类型和维修工</view>
     </view>
 
     <view wx:if="{{canRollback}}" class="rollback-entry">
-      <view><view class="rollback-entry__title">刚才处理错了？</view><view class="rollback-entry__desc">办公室可撤回到{{rollbackTargetText}}，原操作仍会保留在进度里</view></view>
+      <view><view class="rollback-entry__title">刚才处理错了？</view><view class="rollback-entry__desc">办公室可撤回上一笔操作，退回哪一步、要不要退料，点开后由系统告诉你</view></view>
       <button class="rollback-entry__button" data-panel="rollback" bindtap="onOpenPanel">撤回上一步</button>
     </view>
 
@@ -114,16 +114,25 @@
 <view wx:if="{{panel === 'rollback'}}" class="sheet" catchtouchmove="noop">
   <view class="sheet__head"><text class="sheet__title">撤回上一步</text><text class="sheet__close" bindtap="onClosePanel">关闭</text></view>
   <scroll-view class="sheet__body" scroll-y>
-    <view class="rollback-warning"><view class="rollback-warning__title">将撤回到：{{rollbackTargetText}}</view><view>原操作不会消失，操作人、前后状态和撤回原因都会如实保留在工单进度中。</view></view>
-    <view class="label mt">撤回原因<text class="label__opt">必填</text></view>
-    <button wx:if="{{hasSpeech}}" class="speech-field-button {{recording && speechTarget === 'rollback' ? 'speech-field-button--on' : ''}}" data-speech-target="rollback" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord">
+    <view wx:if="{{rollbackLoading}}" class="rollback-warning"><view>正在读取这次撤回会影响什么…</view></view>
+    <view wx:elif="{{rollbackBlocked}}" class="rollback-warning rollback-warning--blocked">
+      <view class="rollback-warning__title">这张工单现在不能撤回</view>
+      <view>{{rollbackBlockedReason || '请联系管理员核对工单轨迹'}}</view>
+    </view>
+    <view wx:else class="rollback-warning">
+      <view class="rollback-warning__title">将撤回「{{rollbackActionLabel}}」，工单恢复到「{{rollbackTargetText}}」</view>
+      <view wx:for="{{rollbackImpacts}}" wx:key="*this" class="rollback-warning__impact">{{item}}</view>
+      <view>原操作不会消失，操作人、前后状态和撤回原因都会如实保留在工单进度中。</view>
+    </view>
+    <view wx:if="{{!rollbackBlocked}}" class="label mt">撤回原因<text class="label__opt">必填</text></view>
+    <button wx:if="{{hasSpeech && !rollbackBlocked}}" class="speech-field-button {{recording && speechTarget === 'rollback' ? 'speech-field-button--on' : ''}}" data-speech-target="rollback" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord">
       <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'rollback' ? '松开结束' : '按住说撤回原因'}}</view><view class="speech-field-button__desc">说完自动填到下面，还可以修改</view></view>
     </button>
     <view wx:if="{{recording && speechTarget === 'rollback'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
-    <textarea class="complete-textarea" maxlength="500" placeholder="例如：误点完工，现场还有一项需要处理" value="{{rollbackNote}}" bindinput="onRollbackNote"/>
+    <textarea wx:if="{{!rollbackBlocked}}" class="complete-textarea" maxlength="500" placeholder="例如：误点完工，现场还有一项需要处理" value="{{rollbackNote}}" bindinput="onRollbackNote"/>
     <view class="complete-error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
   </scroll-view>
-  <view class="sheet__foot"><button class="btn btn--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onSubmitRollback">确认撤回</button></view>
+  <view class="sheet__foot"><button class="btn btn--primary" loading="{{busy}}" disabled="{{busy || rollbackLoading || rollbackBlocked}}" bindtap="onSubmitRollback">确认撤回</button></view>
 </view>
 
 <!-- ============ 维修过程记录 ============ -->
@@ -311,6 +320,11 @@
   </view>
 
   <scroll-view class="complete-body" scroll-y>
+    <!-- 上一次完工被撤回：材料已退库，这里是原草稿，重新提交才会再次扣库 -->
+    <view wx:if="{{completionDraftNotice}}" class="complete-draft-note">
+      <view class="complete-draft-note__title">{{completionDraftNotice}}</view>
+      <view wx:if="{{completionDraftReason}}" class="complete-draft-note__desc">撤回原因：{{completionDraftReason}}</view>
+    </view>
     <view class="complete-guide">
       <view class="complete-guide__badge">AI</view>
       <view><view class="complete-guide__title">可以按住说一句话</view><view class="complete-guide__desc">说清做了什么、实际故障、是否收费，系统会帮你整理</view></view>
@@ -328,7 +342,7 @@
       <view wx:if="{{recording && speechTarget === 'summary'}}" class="complete-listening">正在听：{{partial || '请继续说…'}}</view>
       <view class="complete-label">维修说明 <text class="complete-required">必填</text></view>
       <textarea class="complete-textarea" placeholder="例如：更换门铃电源并重新接线，测试后已能正常开门" bindinput="onNote" value="{{actionNote}}"/>
-      <view wx:if="{{materialHints.length}}" class="mat-said">听到你提了：{{materialHints}}。请在用料记录里核对具体材料。</view>
+      <view wx:if="{{materialHints.length}}" class="mat-said">AI听到可能用了：{{materialHints}}。这只是提醒，不会自动加入用料；请按实际情况到用料记录中手动选择。</view>
       <block wx:if="{{phrases.length}}">
         <view class="complete-subtitle">常用话术，点一下就能填</view>
         <view class="phrases">

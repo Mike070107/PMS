@@ -31,4 +31,13 @@ export class StockMovement extends TenantEntity {
 
   @Column({ type: 'text', nullable: true })
   note: string | null;
+
+  /**
+   * 冲回流水指向被它冲销的那条出库流水。
+   *
+   * 加了唯一索引（见迁移）：一条扣料流水最多只能被冲销一次，
+   * 重复点击撤回、或并发重试都不可能退出第二份库存。
+   */
+  @Column({ name: 'reversal_of_movement_id', type: 'int', nullable: true })
+  reversalOfMovementId: number | null;
 }

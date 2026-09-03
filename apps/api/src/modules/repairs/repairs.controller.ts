@@ -391,6 +391,20 @@ export class RepairsController {
     return this.repairsService.assignWorkOrder(id, dto, user, access);
   }
 
+  /**
+   * 撤回预览：将退回哪个状态、会退哪些材料、会驳回哪张采购申请，全部由后端算。
+   * 前端只负责显示，不许再自己推导目标状态（旁路节点上必错）。
+   */
+  @Get('work-orders/:id/rollback-preview')
+  @RequirePermission(['work-orders', 'app:dispatch'], 'view')
+  previewRollback(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.previewRollback(id, user, access);
+  }
+
   @Post('work-orders/:id/rollback')
   @RequirePermission(['work-orders', 'app:dispatch'], 'edit')
   rollbackWorkOrder(

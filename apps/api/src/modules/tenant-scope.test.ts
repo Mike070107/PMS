@@ -589,7 +589,11 @@ test('有工单池接单权时，可认领未推送给自己的未派单', async
   };
   service.dataSource = {
     async transaction(run: (manager: any) => Promise<any>) {
-      return run({ async save(_entity: any, value: any) { return value; } });
+      // findOne：接单前会拍一张工单快照（撤回时按它还原），要读报修单和完工批次
+      return run({
+        async save(_entity: any, value: any) { return value; },
+        async findOne() { return null; },
+      });
     },
   };
 
@@ -619,7 +623,11 @@ test('已派给别人的工单不能被其他维修工主动接走', async () =>
   service.writeLog = async () => {};
   service.dataSource = {
     async transaction(run: (manager: any) => Promise<any>) {
-      return run({ async save(_entity: any, value: any) { return value; } });
+      // findOne：接单前会拍一张工单快照（撤回时按它还原），要读报修单和完工批次
+      return run({
+        async save(_entity: any, value: any) { return value; },
+        async findOne() { return null; },
+      });
     },
   };
 

@@ -464,8 +464,75 @@ export interface WorkOrderDetail {
   };
   request: RepairRequestView | null;
   logs: WorkOrderLogItem[];
-  /** 已经从仓库领用并扣库的明细；与尚未提交的端上草稿分开。 */
+  /** 已经从仓库领用并扣库的明细；与尚未提交的端上草稿分开。已冲销的不在其中。 */
   materialUsages?: WorkOrderMaterialUsageView[];
+  /**
+   * 完工被撤回后留下的草稿：上一次提交的完工内容和用料。
+   * 材料**只是草稿**，库存已经退回，重新提交完工时才会再次扣库。
+   */
+  completionDraft?: CompletionDraft | null;
+}
+
+/** 撤回完工后回填完工表单用的草稿 */
+export interface CompletionDraft {
+  fromBatchId: number;
+  fromBatchVersion: number;
+  reversedAt: string | null;
+  reverseReason: string | null;
+  /** 直接展示给维修工的提示语，端上不要自己另写一句 */
+  notice: string;
+  faultLocation?: string | null;
+  faultSymptom?: string | null;
+  repairContent?: string | null;
+  actionTags?: string[];
+  actionNote?: string | null;
+  resultAttachments?: string[];
+  feeCents?: number;
+  materials?: UsedMaterialLine[];
+}
+
+/**
+ * 撤回预览：这一次撤回具体会发生什么，全部由后端算好。
+ * 端上**不许**再自己推导目标状态 —— 旁路节点（等待材料、撤单、转单）上必错。
+ */
+export interface RollbackPreview {
+  allowed: boolean;
+  /** 不能撤回时的原因，直接展示给用户 */
+  blockedReason?: string;
+  /** 被撤销的业务动作，如 complete / assign / transfer_request */
+  action?: string;
+  /** 动作中文名，如「完工提交」 */
+  actionLabel?: string;
+  fromStatus: WorkOrderStatus;
+  fromStatusLabel: string;
+  targetStatus?: WorkOrderStatus;
+  targetStatusLabel?: string;
+  restoreAssigneeId?: number | null;
+  restoreAssigneeName?: string | null;
+  willReturnMaterials: boolean;
+  materialLines: RollbackMaterialLine[];
+  materialTotalQty: number;
+  completionBatchId?: number | null;
+  completionBatchVersion?: number | null;
+  purchaseRequests: Array<{
+    id: number;
+    requestNo: string;
+    status: string;
+    willReject: boolean;
+  }>;
+  maintenanceOrder: { id: number; willVoid: boolean } | null;
+  reviewWillReverse: boolean;
+  /** false = 这一步是快照机制上线前记录的，只能恢复状态，界面上要提示人工核对 */
+  usedSnapshot: boolean;
+}
+
+export interface RollbackMaterialLine {
+  usageId: number;
+  materialId: number;
+  name: string;
+  qty: number;
+  warehouseId: number;
+  warehouseName: string;
 }
 
 export interface WorkOrderMaterialUsageView {
@@ -528,6 +595,11 @@ export interface CompleteWorkOrderReq {
   materials?: UsedMaterialLine[];
   /** 命中的收费规则编码，只做审计，不会覆盖 feeCents */
   feeRuleCode?: string;
+  /**
+   * 一次性提交令牌：同一次填写复用同一个值，连点两下或弱网重试时
+   * 服务端认出是同一次提交，直接返回上次结果，不会扣第二次库存。
+   */
+  idempotencyKey?: string;
   /** AI 草稿随最终提交带回，仅用于记录人工纠错 */
   aiAssist?: { sourceText: string; draft: Record<string, unknown> };
 }

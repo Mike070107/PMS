@@ -234,7 +234,7 @@ test('applyStockDelta：入库写库位，出库不动，入库没指定时保�
 
 test('applyStockDelta：改数量并落带成本快照的流水；扣成负数直接拒绝', async () => {
   const manager = fakeManager();
-  const stock = await applyStockDelta(manager, {
+  const { stock } = await applyStockDelta(manager, {
     ...KEY,
     deltaQty: 3,
     type: StockMovementType.INBOUND,

@@ -27,6 +27,7 @@ import { PurchaseRequest } from './purchase-request.entity';
 import { PurchaseOrder } from './purchase-order.entity';
 import { GoodsReceipt } from './goods-receipt.entity';
 import { WorkOrderMaterialAllocation } from './work-order-material-allocation.entity';
+import { WorkOrderCompletionBatch } from './work-order-completion-batch.entity';
 import { DictItem } from './dict-item.entity';
 import { TenantConfig } from './tenant-config.entity';
 import { Notification } from './notification.entity';
@@ -108,6 +109,7 @@ export const entities = [
   PurchaseOrder,
   GoodsReceipt,
   WorkOrderMaterialAllocation,
+  WorkOrderCompletionBatch,
   DictItem,
   TenantConfig,
   Notification,
@@ -175,6 +177,7 @@ export {
   PurchaseOrder,
   GoodsReceipt,
   WorkOrderMaterialAllocation,
+  WorkOrderCompletionBatch,
   DictItem,
   TenantConfig,
   Notification,
@@ -197,5 +200,11 @@ export {
   QuotaItem,
 };
 
+export type { WorkOrderSnapshot } from './work-order-log.entity';
+export type { CompletionBatchStatus } from './work-order-completion-batch.entity';
+export type {
+  WorkOrderMaterialStatus,
+  WorkOrderMaterialSource,
+} from './work-order-material.entity';
 export type { SuggestionScope } from './management-office.entity';
 export type { StocktakeStatus } from './stocktake-task.entity';

@@ -10,6 +10,8 @@ import { ExtractSamplesService } from './extract-samples.service';
 export interface AiFeedbackInput {
   kind: 'repair' | 'completion';
   workOrderId?: number | null;
+  /** 完工类反馈所属的完工提交批次；该批次被撤回时这条样例一起失效 */
+  completionBatchId?: number | null;
   sourceText: string;
   draft: Record<string, unknown>;
   finalValue: Record<string, unknown>;
@@ -39,6 +41,7 @@ export class AiFeedbackService {
         tenantId,
         kind: input.kind,
         workOrderId: input.workOrderId ?? null,
+        completionBatchId: input.completionBatchId ?? null,
         sourceText,
         draft,
         finalValue,
@@ -63,8 +66,8 @@ export class AiFeedbackService {
       where: {
         tenantId,
         ...(kind === 'repair' || kind === 'completion' ? { kind } : {}),
-        ...(status === 'pending' || status === 'confirmed' || status === 'promoted' || status === 'ignored'
-          ? { status }
+        ...(['pending', 'confirmed', 'promoted', 'ignored', 'reversed'].includes(status ?? '')
+          ? { status: status as AiAssistFeedback['status'] }
           : {}),
       },
       order: { updatedAt: 'DESC' },

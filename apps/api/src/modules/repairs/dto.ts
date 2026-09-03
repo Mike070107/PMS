@@ -426,6 +426,16 @@ export class CompleteWorkOrderDto {
   @MaxLength(60)
   feeRuleCode?: string;
 
+  /**
+   * 端上生成的一次性提交令牌（同一次填写复用同一个值）。
+   * 连点两下、弱网自动重试时，服务端认出同一令牌直接返回上次结果，
+   * 不会扣第二次库存——库存错账事后没人能对得回来。
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  idempotencyKey?: string;
+
   @IsOptional()
   @ValidateNested()
   @Type(() => AiAssistTraceDto)

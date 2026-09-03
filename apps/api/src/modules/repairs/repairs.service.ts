@@ -80,10 +80,12 @@ import {
   StockMovement,
   Warehouse,
   WorkOrder,
+  WorkOrderCompletionBatch,
   WorkOrderLog,
   WorkOrderMaterial,
   WorkOrderMaterialAllocation,
   type SuggestionScope,
+  type WorkOrderSnapshot,
 } from '../../entities';
 import {
   AssignWorkOrderDto,
@@ -141,7 +143,9 @@ import { ObjectStorageService } from '../upload/object-storage.service';
 import { buildTypeKeywords, classifyByKeywords } from './repair-classify.util';
 import {
   assertWorkOrderTransition,
-  workOrderRollbackTarget,
+  resolveRollback,
+  workOrderStatusLabel,
+  type RollbackResolution,
 } from './work-order-state-machine';
 import { nextPurchaseRequestNo } from '../inventory/purchase-request-no.util';
 import {
@@ -150,6 +154,65 @@ import {
   resolveRepairTypeLabel,
 } from './repair-type-labels';
 import { MAINTENANCE_STATUS } from '../../entities/maintenance-order.entity';
+
+/** 撤回预览里的一行退料 */
+export interface RollbackMaterialLine {
+  usageId: number;
+  materialId: number;
+  name: string;
+  qty: number;
+  warehouseId: number;
+  warehouseName: string;
+}
+
+/**
+ * 一次撤回会发生什么。预览接口和执行逻辑共用同一份判定，
+ * 前端不许再自己推导「将退回哪个状态」——那份硬编码在旁路节点上必然出错。
+ */
+export interface RollbackPlan {
+  allowed: boolean;
+  blockedReason?: string;
+  /** 被撤销的业务动作 */
+  action?: string;
+  actionLabel?: string;
+  sourceLogId?: number;
+  fromStatus: WorkOrderStatus;
+  fromStatusLabel: string;
+  targetStatus?: WorkOrderStatus;
+  targetStatusLabel?: string;
+  restoreAssigneeId?: number | null;
+  restoreAssigneeName?: string | null;
+  restoreRepairType?: string | null;
+  willReturnMaterials: boolean;
+  materialLines: RollbackMaterialLine[];
+  materialTotalQty: number;
+  completionBatchId?: number | null;
+  completionBatchVersion?: number | null;
+  purchaseRequests: Array<{
+    id: number;
+    requestNo: string;
+    status: PurchaseRequestStatus;
+    willReject: boolean;
+  }>;
+  maintenanceOrder: { id: number; willVoid: boolean } | null;
+  reviewWillReverse: boolean;
+  /** false = 老日志没有快照，只能恢复状态，界面上要提示人工核对 */
+  usedSnapshot: boolean;
+}
+
+/** 轨迹和撤回弹窗里显示的动作名；界面上不许出现 need_material 这种编码 */
+const ROLLBACK_ACTION_LABELS: Record<string, string> = {
+  assign: '派单',
+  auto_dispatch: '自动派单',
+  accept: '接单',
+  claim: '接单',
+  complete: '完工提交',
+  need_material: '提报缺料',
+  transfer_request: '转单',
+  review: '验收',
+  auto_review_complete: '系统自动完成',
+  cancel: '撤销工单',
+};
 
 /** 工单池只包含尚未开工、可以被主动接单的状态。 */
 const CLAIMABLE_WORK_ORDER_STATUSES: WorkOrderStatus[] = [
@@ -1842,6 +1905,7 @@ export class RepairsService implements OnModuleInit {
          JOIN materials m ON m.id = wom.material_id AND m.tenant_id = wom.tenant_id
          JOIN warehouses w ON w.id = wom.warehouse_id AND w.tenant_id = wom.tenant_id
         WHERE wom.tenant_id = $1 AND wom.work_order_id = $2
+          AND wom.status = 'active'
         ORDER BY wom.id ASC`,
       [tenantId, id],
     );
@@ -1876,6 +1940,33 @@ export class RepairsService implements OnModuleInit {
       if (!submitter || !isCreate || !note?.startsWith(staffSourceLabel)) return note;
       return `${submitter.name || '未命名员工'} 在${note}`;
     };
+
+    /**
+     * 完工被撤回后，把上一次提交的内容当草稿带回来（照片、备注、收费、材料清单）。
+     *
+     * 不带回来的话维修工要把整张表重填一遍，实测的结果是他随手提交一个空的，
+     * 把原来的完工照片和说明全冲掉。材料只是草稿：**重新提交时才会再次扣库**。
+     */
+    const latestBatch = await this.dataSource.getRepository(WorkOrderCompletionBatch).findOne({
+      where: { tenantId, workOrderId: id },
+      order: { versionNo: 'DESC' },
+    });
+    const completionDraft =
+      latestBatch &&
+      latestBatch.status === 'reversed' &&
+      [WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(workOrder.status)
+        ? {
+            fromBatchId: latestBatch.id,
+            fromBatchVersion: latestBatch.versionNo,
+            reversedAt: latestBatch.reversedAt,
+            reverseReason: latestBatch.reverseReason,
+            notice: '上一次完工用料已退回库存。下面是原用料草稿，重新提交后才会再次扣库。',
+            ...latestBatch.snapshot,
+            resultAttachments: this.storage.toDisplayUrls(
+              latestBatch.snapshot?.resultAttachments ?? [],
+            ),
+          }
+        : null;
 
     // 详情页要写「谁在修 / 谁修的」。和列表同一口径，端上不再各自去查人名
     const assignee = workOrder.assigneeId
@@ -1921,6 +2012,7 @@ export class RepairsService implements OnModuleInit {
         warehouseId: Number(row.warehouseId),
         qty: Number(row.qty),
       })),
+      completionDraft,
     };
   }
 
@@ -1968,7 +2060,7 @@ export class RepairsService implements OnModuleInit {
       }
 
       const usages = await manager.find(WorkOrderMaterial, {
-        where: { tenantId, workOrderId: id },
+        where: { tenantId, workOrderId: id, status: 'active' },
         order: { id: 'ASC' },
         lock: { mode: 'pessimistic_write' },
       });
@@ -2049,7 +2141,7 @@ export class RepairsService implements OnModuleInit {
       for (const usage of usages) {
         const allocations = allocationByUsage.get(usage.id) ?? [];
         await restoreStockLots(manager, allocations, user.id);
-        await applyStockDelta(manager, {
+        const { movement } = await applyStockDelta(manager, {
           tenantId,
           warehouseId: usage.warehouseId,
           materialId: usage.materialId,
@@ -2060,12 +2152,17 @@ export class RepairsService implements OnModuleInit {
           refId: usage.id,
           operatorId: user.id,
           note: `作废工单退料：${workOrder.orderNo}`,
+          reversalOfMovementId: usage.issueMovementId ?? null,
         });
-        await manager.delete(WorkOrderMaterialAllocation, {
-          tenantId,
-          workOrderMaterialId: usage.id,
-        });
-        await manager.delete(WorkOrderMaterial, { tenantId, id: usage.id });
+        // 退料只标冲销、不删记录：原 FIFO 成本、原仓、原数量是成本报表还原历史的唯一依据，
+        // 删掉之后「这单当初到底扣了哪批货」再也答不出来（2026-09-03 改为软冲销）。
+        usage.status = 'reversed';
+        usage.reversedAt = new Date();
+        usage.reversedBy = user.id;
+        usage.reverseReason = `作废工单：${reason}`.slice(0, 500);
+        usage.reversalMovementId = movement.id;
+        usage.updatedBy = user.id;
+        await manager.save(WorkOrderMaterial, usage);
         touchedMaterialIds.add(usage.materialId);
         returnedQty += Number(usage.qty);
       }
@@ -2161,8 +2258,9 @@ export class RepairsService implements OnModuleInit {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
       this.assertWorkOrderScope(workOrder, access);
 
+      // 已经冲销过的用料库存早就退回去了，再退一次就是凭空多货；这里只处理仍有效的行。
       const usages = await manager.find(WorkOrderMaterial, {
-        where: { tenantId, workOrderId: id },
+        where: { tenantId, workOrderId: id, status: 'active' },
         order: { id: 'ASC' },
         lock: { mode: 'pessimistic_write' },
       });
@@ -2201,14 +2299,21 @@ export class RepairsService implements OnModuleInit {
           operatorId: user.id,
           note: `永久删除工单退料：${workOrder.orderNo}`,
         });
-        await manager.delete(WorkOrderMaterialAllocation, {
-          tenantId,
-          workOrderMaterialId: usage.id,
-        });
-        await manager.delete(WorkOrderMaterial, { tenantId, id: usage.id });
         touchedMaterialIds.add(usage.materialId);
         returnedQty += Number(usage.qty);
       }
+      // 永久删除是唯一真的抹掉历史的入口：连已冲销的用料和完工批次一起清干净，
+      // 否则会留下指向不存在工单的孤儿行。
+      await manager.query(
+        `DELETE FROM work_order_material_allocations
+          WHERE tenant_id = $1
+            AND work_order_material_id IN (
+              SELECT id FROM work_order_materials WHERE tenant_id = $1 AND work_order_id = $2
+            )`,
+        [tenantId, id],
+      );
+      await manager.delete(WorkOrderMaterial, { tenantId, workOrderId: id });
+      await manager.delete(WorkOrderCompletionBatch, { tenantId, workOrderId: id });
       for (const materialId of touchedMaterialIds) {
         await refreshMaterialReferenceCost(manager, tenantId, materialId, user.id);
       }
@@ -2298,11 +2403,16 @@ export class RepairsService implements OnModuleInit {
         lock: { mode: 'pessimistic_write' },
       });
       if (!usage) throw new NotFoundException('工单用料不存在');
+      if (usage.status !== 'active') {
+        throw new BadRequestException('该用料已经退过库，请刷新后再试');
+      }
+      const problem = await this.checkUsageReturnable(manager, tenantId, usage);
+      if (problem) throw new BadRequestException(problem);
       const allocations = await manager.find(WorkOrderMaterialAllocation, {
         where: { tenantId, workOrderMaterialId: usage.id },
       });
       await restoreStockLots(manager, allocations, user.id);
-      await applyStockDelta(manager, {
+      const { movement } = await applyStockDelta(manager, {
         tenantId,
         warehouseId: usage.warehouseId,
         materialId: usage.materialId,
@@ -2313,12 +2423,15 @@ export class RepairsService implements OnModuleInit {
         refId: usage.id,
         operatorId: user.id,
         note: `删除工单用料，退回 ${workOrder.orderNo}`,
+        reversalOfMovementId: usage.issueMovementId ?? null,
       });
-      await manager.delete(WorkOrderMaterialAllocation, {
-        tenantId,
-        workOrderMaterialId: usage.id,
-      });
-      await manager.delete(WorkOrderMaterial, { tenantId, id: usage.id });
+      usage.status = 'reversed';
+      usage.reversedAt = new Date();
+      usage.reversedBy = user.id;
+      usage.reverseReason = '维修工删除用料';
+      usage.reversalMovementId = movement.id;
+      usage.updatedBy = user.id;
+      await manager.save(WorkOrderMaterial, usage);
       const snapshot = [...(workOrder.usedMaterials || [])];
       const index = snapshot.findIndex(
         (item) => item.materialId === usage.materialId && Number(item.qty) === Number(usage.qty),
@@ -2419,6 +2532,9 @@ export class RepairsService implements OnModuleInit {
         'assign',
         'work order cannot be assigned',
       );
+      // 派单可能发生在待派单/已派单/维修中/等待材料四种节点上，换人派单前后状态还一样。
+      // 撤回要恢复的是「上一位维修工 + 上一个节点」，只能靠这张快照。
+      const beforeSnapshot = await this.captureWorkOrderSnapshot(manager, workOrder);
 
       workOrder.assigneeId = dto.assigneeId;
       workOrder.candidateIds = [dto.assigneeId];
@@ -2444,7 +2560,10 @@ export class RepairsService implements OnModuleInit {
         await manager.save(RepairRequest, repairRequest);
       }
       const saved = await manager.save(WorkOrder, workOrder);
-      await this.writeLog(manager, saved, fromStatus, 'assign', user.id, dto.note);
+      await this.writeLog(manager, saved, fromStatus, 'assign', user.id, dto.note, [], {
+        beforeSnapshot,
+        afterSnapshot: await this.captureWorkOrderSnapshot(manager, saved),
+      });
       return saved;
     });
 
@@ -2456,11 +2575,344 @@ export class RepairsService implements OnModuleInit {
   }
 
   /**
-   * 办公室/管理员撤回一个处理节点。
+   * 撤回预览与执行共用的判定。
    *
-   * 这不是覆盖历史：当前状态退回，原动作和本次撤回都留在 work_order_logs。
-   * 对会产生关联数据的节点同步收尾：误报缺料会驳回尚未流转的采购申请；
-   * 误验收会把原评分、文字和照片转存到撤回日志后移除当前验收结果，避免报表继续计入。
+   * **只读**，不写任何数据：预览接口直接返回它，执行时在事务里再算一次并按它落库。
+   * 两边算法只有一份，前端弹窗上写的「将退回 3 项材料」和真正发生的事必然一致 ——
+   * 以前前端自己硬编码「将退回已派单」，状态一复杂就是错的（2026-09-03）。
+   */
+  private async buildRollbackPlan(
+    manager: EntityManager,
+    tenantId: number,
+    workOrder: WorkOrder,
+  ): Promise<RollbackPlan> {
+    const fromStatus = workOrder.status;
+    const base: RollbackPlan = {
+      allowed: false,
+      fromStatus,
+      fromStatusLabel: workOrderStatusLabel(fromStatus),
+      willReturnMaterials: false,
+      materialLines: [],
+      materialTotalQty: 0,
+      purchaseRequests: [],
+      maintenanceOrder: null,
+      reviewWillReverse: false,
+      usedSnapshot: false,
+    };
+    if (fromStatus === WorkOrderStatus.VOIDED) {
+      return { ...base, blockedReason: '工单已作废，不能撤回；如需恢复请联系系统管理员' };
+    }
+
+    const logs = await manager.find(WorkOrderLog, {
+      where: { tenantId, workOrderId: workOrder.id },
+      order: { id: 'DESC' },
+    });
+    const { resolution, blockedReason } = resolveRollback(fromStatus, logs);
+    if (!resolution) return { ...base, blockedReason };
+
+    const sourceLog = logs.find((log) => log.id === resolution.log.id) as WorkOrderLog;
+    const plan: RollbackPlan = {
+      ...base,
+      action: sourceLog.action,
+      actionLabel: ROLLBACK_ACTION_LABELS[sourceLog.action] ?? sourceLog.action,
+      sourceLogId: sourceLog.id,
+      targetStatus: resolution.targetStatus,
+      targetStatusLabel: workOrderStatusLabel(resolution.targetStatus),
+      usedSnapshot: resolution.usedSnapshot,
+      restoreAssigneeId: resolution.usedSnapshot
+        ? sourceLog.beforeSnapshot?.assigneeId ?? null
+        : workOrder.assigneeId,
+      restoreRepairType: sourceLog.beforeSnapshot?.repairType ?? null,
+    };
+
+    // ---- 完工撤回：要退这一次完工扣的料 ----
+    // 「已完成 → 待验收」撤的是验收，完工提交仍然有效，绝不能在这一步退料（规则 2.3）。
+    if (sourceLog.action === 'complete') {
+      const batch = await this.findActiveCompletionBatch(manager, tenantId, workOrder.id);
+      if (batch) {
+        plan.completionBatchId = batch.id;
+        plan.completionBatchVersion = batch.versionNo;
+        const usages = await manager.find(WorkOrderMaterial, {
+          where: {
+            tenantId,
+            workOrderId: workOrder.id,
+            completionBatchId: batch.id,
+            status: 'active',
+          },
+          order: { id: 'ASC' },
+        });
+        if (usages.length) {
+          const names = await this.materialNamesByIds(
+            manager,
+            tenantId,
+            usages.map((usage) => usage.materialId),
+          );
+          const warehouses = await manager.find(Warehouse, {
+            where: { tenantId, id: In([...new Set(usages.map((u) => u.warehouseId))]) },
+            select: ['id', 'name'],
+          });
+          const warehouseName = new Map(warehouses.map((w) => [w.id, w.name]));
+          plan.willReturnMaterials = true;
+          plan.materialLines = usages.map((usage) => ({
+            usageId: usage.id,
+            materialId: usage.materialId,
+            name: names.get(usage.materialId) ?? `材料 #${usage.materialId}`,
+            qty: Number(usage.qty),
+            warehouseId: usage.warehouseId,
+            warehouseName: warehouseName.get(usage.warehouseId) ?? '未知仓库',
+          }));
+          plan.materialTotalQty = Number(
+            plan.materialLines.reduce((sum, line) => sum + line.qty, 0).toFixed(2),
+          );
+          // 批次记录不完整就整单拒绝：宁可不让撤，也不能只加库存总数不还批次，
+          // 那样账面数量对得上、批次对不上，下次出库会扣到不存在的批次。
+          for (const usage of usages) {
+            const problem = await this.checkUsageReturnable(manager, tenantId, usage);
+            if (problem) return { ...plan, blockedReason: problem };
+          }
+        }
+      }
+
+      // 已签字的养护单是正式凭据，不能让工单悄悄退回维修中而单据仍显示已查验。
+      const maintenanceOrder = await manager
+        .createQueryBuilder(MaintenanceOrder, 'mo')
+        .where('mo.tenant_id = :tenantId AND mo.work_order_id = :id', {
+          tenantId,
+          id: workOrder.id,
+        })
+        .andWhere("mo.status <> 'void'")
+        .orderBy('mo.id', 'DESC')
+        .getOne();
+      if (maintenanceOrder) {
+        if (maintenanceOrder.status !== MAINTENANCE_STATUS.FILLING) {
+          return {
+            ...plan,
+            maintenanceOrder: { id: maintenanceOrder.id, willVoid: false },
+            blockedReason: '该工单的养护单已进入签字流程，请先作废养护单再撤回工单',
+          };
+        }
+        plan.maintenanceOrder = { id: maintenanceOrder.id, willVoid: true };
+      }
+    }
+
+    // ---- 撤回缺料：同步处理该工单**全部**还在流程里的采购申请 ----
+    if (sourceLog.action === 'need_material') {
+      const requests = await this.findWorkOrderPurchaseRequests(manager, tenantId, workOrder.id);
+      const handleable = [
+        PurchaseRequestStatus.DRAFT,
+        PurchaseRequestStatus.OFFICE_REVIEW,
+        PurchaseRequestStatus.REJECTED,
+      ];
+      const blocking = requests.filter((request) => !handleable.includes(request.status));
+      plan.purchaseRequests = requests.map((request) => ({
+        id: request.id,
+        requestNo: request.requestNo,
+        status: request.status,
+        willReject:
+          request.status === PurchaseRequestStatus.DRAFT ||
+          request.status === PurchaseRequestStatus.OFFICE_REVIEW,
+      }));
+      if (blocking.length) {
+        return {
+          ...plan,
+          blockedReason: `采购申请 ${blocking
+            .map((request) => request.requestNo)
+            .join('、')} 已经进入经理审批、合并或采购环节，请先处理采购申请后再撤回`,
+        };
+      }
+    }
+
+    // ---- 撤回验收：原评价转为已失效，但永久保留 ----
+    if (sourceLog.action === 'review' || sourceLog.action === 'auto_review_complete') {
+      const count = await manager.count(Review, {
+        where: { tenantId, workOrderId: workOrder.id, status: 'active' },
+      });
+      plan.reviewWillReverse = count > 0;
+    }
+
+    plan.allowed = true;
+    return plan;
+  }
+
+  /** 这条用料能不能安全退回原批次；不能则返回给用户看的原因 */
+  private async checkUsageReturnable(
+    manager: EntityManager,
+    tenantId: number,
+    usage: WorkOrderMaterial,
+  ): Promise<string | null> {
+    if (usage.reversalMovementId) {
+      return `用料 #${usage.id} 已经退过料，请刷新后再试`;
+    }
+    const allocations = await manager.find(WorkOrderMaterialAllocation, {
+      where: { tenantId, workOrderMaterialId: usage.id },
+    });
+    const allocatedQty = allocations.reduce((sum, item) => sum + Number(item.qty), 0);
+    if (Math.abs(allocatedQty - Number(usage.qty)) > 0.005) {
+      return `用料 #${usage.id} 的批次记录不完整，已停止撤回以免库存错账，请联系管理员核对`;
+    }
+    const lotIds = [...new Set(allocations.map((item) => item.stockLotId))];
+    const lotCount = lotIds.length
+      ? await manager.count(StockLot, { where: { tenantId, id: In(lotIds) } })
+      : 0;
+    if (lotCount !== lotIds.length) {
+      return `用料 #${usage.id} 的原库存批次不存在，已停止撤回以免库存错账，请联系管理员核对`;
+    }
+    return null;
+  }
+
+  /** 该工单发起的采购申请：直接挂在工单上的，以及被合并进别的申请单里的行 */
+  private async findWorkOrderPurchaseRequests(
+    manager: EntityManager,
+    tenantId: number,
+    workOrderId: number,
+  ): Promise<PurchaseRequest[]> {
+    const rows: Array<{ id: number }> = await manager.query(
+      `SELECT id FROM purchase_requests
+        WHERE tenant_id = $1
+          AND (work_order_id = $2 OR items @> $3::jsonb)`,
+      [tenantId, workOrderId, JSON.stringify([{ sourceWorkOrderId: workOrderId }])],
+    );
+    if (!rows.length) return [];
+    return manager.find(PurchaseRequest, {
+      where: { tenantId, id: In(rows.map((row) => Number(row.id))) },
+      order: { id: 'DESC' },
+    });
+  }
+
+  /**
+   * 冲销一次完工提交：把这个批次扣的料按原 FIFO 分摊精确退回原仓原批次。
+   *
+   * 三条铁律：
+   * 1. 退的是**批次数量**，不是只把库存总数加回去 —— 只加总数会让批次与实物对不上，
+   *    下次出库就会扣到不存在的批次；
+   * 2. 原用料记录只标 reversed，绝不删除，原成本/原仓/原数量永久留档；
+   * 3. 冲回流水的 reversalOfMovementId 指向原出库流水，靠唯一索引保证一条扣料只退一次。
+   */
+  private async reverseCompletionBatch(
+    manager: EntityManager,
+    tenantId: number,
+    workOrder: WorkOrder,
+    batch: WorkOrderCompletionBatch,
+    operatorId: number,
+    reason: string,
+  ): Promise<{ lines: RollbackMaterialLine[]; totalQty: number }> {
+    const usages = await manager.find(WorkOrderMaterial, {
+      where: { tenantId, workOrderId: workOrder.id, completionBatchId: batch.id, status: 'active' },
+      order: { id: 'ASC' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    const names = usages.length
+      ? await this.materialNamesByIds(
+          manager,
+          tenantId,
+          usages.map((usage) => usage.materialId),
+        )
+      : new Map<number, string>();
+    const warehouses = usages.length
+      ? await manager.find(Warehouse, {
+          where: { tenantId, id: In([...new Set(usages.map((u) => u.warehouseId))]) },
+          select: ['id', 'name'],
+        })
+      : [];
+    const warehouseName = new Map(warehouses.map((w) => [w.id, w.name]));
+
+    const lines: RollbackMaterialLine[] = [];
+    const touchedMaterialIds = new Set<number>();
+    for (const usage of usages) {
+      const problem = await this.checkUsageReturnable(manager, tenantId, usage);
+      if (problem) throw new BadRequestException(problem);
+      const allocations = await manager.find(WorkOrderMaterialAllocation, {
+        where: { tenantId, workOrderMaterialId: usage.id },
+        order: { id: 'ASC' },
+      });
+      await restoreStockLots(manager, allocations, operatorId);
+      const { movement } = await applyStockDelta(manager, {
+        tenantId,
+        warehouseId: usage.warehouseId,
+        materialId: usage.materialId,
+        deltaQty: Number(usage.qty),
+        type: StockMovementType.RETURN,
+        unitCostCents: usage.unitCostCents,
+        refType: 'work_order_rollback_return',
+        refId: workOrder.id,
+        operatorId,
+        note: `工单撤回还料：${workOrder.orderNo}（完工批次 #${batch.versionNo}，原用料 #${usage.id}）`,
+        reversalOfMovementId: usage.issueMovementId ?? null,
+      });
+      usage.status = 'reversed';
+      usage.reversedAt = new Date();
+      usage.reversedBy = operatorId;
+      usage.reverseReason = reason.slice(0, 500);
+      usage.reversalMovementId = movement.id;
+      usage.updatedBy = operatorId;
+      await manager.save(WorkOrderMaterial, usage);
+      touchedMaterialIds.add(usage.materialId);
+      lines.push({
+        usageId: usage.id,
+        materialId: usage.materialId,
+        name: names.get(usage.materialId) ?? `材料 #${usage.materialId}`,
+        qty: Number(usage.qty),
+        warehouseId: usage.warehouseId,
+        warehouseName: warehouseName.get(usage.warehouseId) ?? '未知仓库',
+      });
+    }
+    for (const materialId of touchedMaterialIds) {
+      await refreshMaterialReferenceCost(manager, tenantId, materialId, operatorId);
+    }
+    return {
+      lines,
+      totalQty: Number(lines.reduce((sum, line) => sum + line.qty, 0).toFixed(2)),
+    };
+  }
+
+  /**
+   * 撤回预览：告诉前端**这一次**撤回具体会发生什么，由后端算，前端只负责显示。
+   * 没有权限或不能撤回时也返回 200，用 allowed=false + blockedReason 说明原因，
+   * 让按钮能提前置灰并说清为什么（权限藏起来的功能要说明原因）。
+   */
+  async previewRollback(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
+    if (!workOrder) throw new NotFoundException('work order not found');
+    this.assertWorkOrderScope(workOrder, access);
+    if (!(await this.canDispatch(user, access))) {
+      return {
+        allowed: false,
+        blockedReason: '只有办公室人员或管理员可以撤回工单',
+        fromStatus: workOrder.status,
+        fromStatusLabel: workOrderStatusLabel(workOrder.status),
+        willReturnMaterials: false,
+        materialLines: [],
+        materialTotalQty: 0,
+        purchaseRequests: [],
+        maintenanceOrder: null,
+        reviewWillReverse: false,
+        usedSnapshot: false,
+      } satisfies RollbackPlan;
+    }
+    const plan = await this.buildRollbackPlan(this.dataSource.manager, tenantId, workOrder);
+    return this.decorateRollbackPlan(tenantId, plan);
+  }
+
+  /** 预览里出现的人名由后端补齐：界面上不许出现「#19」这种 id */
+  private async decorateRollbackPlan(tenantId: number, plan: RollbackPlan): Promise<RollbackPlan> {
+    if (!plan.restoreAssigneeId) return plan;
+    const assignee = await this.userRepo.findOne({
+      where: { tenantId, id: plan.restoreAssigneeId },
+      select: ['id', 'name'],
+    });
+    return { ...plan, restoreAssigneeName: assignee?.name ?? '未知维修工' };
+  }
+
+  /**
+   * 办公室/管理员撤回上一笔业务操作。
+   *
+   * 这不是覆盖历史：被撤销的动作、本次撤回、退料流水全部留档，只是把工单的
+   * **当前状态和关键字段**恢复到那一步之前 —— 恢复依据是当时拍的 before 快照，
+   * 不是按当前状态硬编码退一格（同样是「维修中」来路完全不同，硬编码必错）。
+   *
+   * 撤回完工时还会把这一次扣的料按原 FIFO 批次精确退回，原用料记录标为已冲销，
+   * 完工内容留作草稿；维修工改完再次提交时按最终清单重新扣库，净变化和实际用料一致。
    */
   async rollbackWorkOrder(
     id: number,
@@ -2477,175 +2929,306 @@ export class RepairsService implements OnModuleInit {
     }
 
     const tenantId = this.resolveTenantId(user);
-    const saved = await this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
       this.assertWorkOrderScope(workOrder, access);
       const fromStatus = workOrder.status;
-      const logs = await manager.find(WorkOrderLog, {
-        where: { tenantId, workOrderId: id },
-        order: { id: 'DESC' },
+      const plan = await this.buildRollbackPlan(manager, tenantId, workOrder);
+      if (!plan.allowed || !plan.targetStatus || !plan.sourceLogId) {
+        throw new BadRequestException(plan.blockedReason ?? '当前工单不能撤回');
+      }
+      const sourceLog = await manager.findOne(WorkOrderLog, {
+        where: { tenantId, id: plan.sourceLogId },
+        lock: { mode: 'pessimistic_write' },
       });
-      // 连续撤回时不能把上一次 rollback 当成“上一节点”，否则会在两个状态之间来回跳。
-      const sourceLog = logs.find(
-        (log) =>
-          log.action !== 'rollback' &&
-          log.toStatus === fromStatus &&
-          !!log.fromStatus &&
-          log.fromStatus !== log.toStatus,
-      );
-      const targetStatus = workOrderRollbackTarget(fromStatus, sourceLog?.fromStatus);
-      if (!targetStatus) {
-        throw new BadRequestException(
-          fromStatus === WorkOrderStatus.CREATED
-            ? '当前已经是最早的待派单/待接单节点，不能继续撤回'
-            : '找不到可安全恢复的上一处理节点，请联系管理员核对工单轨迹',
+      // 并发下另一个请求可能刚把这一步撤掉了；行锁 + 这个判断保证同一步不会被撤两次。
+      if (!sourceLog || sourceLog.revertedByLogId) {
+        throw new BadRequestException('这一步已经被撤回过了，请刷新后再试');
+      }
+
+      const notes: string[] = [];
+      const detail: Record<string, unknown> = {
+        rolledBackAction: sourceLog.action,
+        rolledBackActionLabel: plan.actionLabel,
+        rolledBackLogId: sourceLog.id,
+        fromStatus,
+        targetStatus: plan.targetStatus,
+      };
+      let returnedLines: RollbackMaterialLine[] = [];
+
+      // 1) 完工撤回：先退料，再恢复字段
+      if (sourceLog.action === 'complete' && plan.completionBatchId) {
+        const batch = await manager.findOne(WorkOrderCompletionBatch, {
+          where: { tenantId, id: plan.completionBatchId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!batch || batch.status !== 'active') {
+          throw new BadRequestException('该次完工已经被撤回，请刷新后再试');
+        }
+        const returned = await this.reverseCompletionBatch(
+          manager,
+          tenantId,
+          workOrder,
+          batch,
+          user.id,
+          reason,
+        );
+        returnedLines = returned.lines;
+        batch.status = 'reversed';
+        batch.reversedBy = user.id;
+        batch.reversedAt = new Date();
+        batch.reverseReason = reason.slice(0, 500);
+        batch.updatedBy = user.id;
+        await manager.save(WorkOrderCompletionBatch, batch);
+        detail.completionBatchId = batch.id;
+        detail.completionBatchVersion = batch.versionNo;
+        detail.returnedMaterials = returned.lines;
+        detail.returnedQty = returned.totalQty;
+        if (returned.lines.length) {
+          notes.push(
+            `已退回材料 ${returned.lines.length} 项、共 ${returned.totalQty} 件：` +
+              returned.lines
+                .map((line) => `${line.name} ×${line.qty}（${line.warehouseName}）`)
+                .join('、'),
+          );
+        }
+        notes.push('原完工内容和用料已保留为草稿，重新提交完工时才会再次扣库');
+
+        // 这一批 AI 填单样例是被推翻的填写，不能继续当正确答案教模型。
+        // 已经人工提升为正式样例的只打「来源已撤回」标记，交管理员复核，不自动删。
+        const aiReversed = await manager.query(
+          `UPDATE ai_assist_feedback
+              SET status = CASE WHEN status = 'promoted' THEN status ELSE 'reversed' END,
+                  source_reversed = true,
+                  updated_at = now(),
+                  updated_by = $3
+            WHERE tenant_id = $1 AND completion_batch_id = $2
+            RETURNING id`,
+          [tenantId, batch.id, user.id],
+        );
+        if (Array.isArray(aiReversed) && aiReversed.length) {
+          detail.aiFeedbackReversed = aiReversed.length;
+        }
+      }
+
+      // 养护单和有没有用料无关，所以放在批次分支外面：撤回完工时草稿养护单一律同步作废，
+      // 否则工单退回维修中了，养护单还停在「填写中」等人签字。
+      if (sourceLog.action === 'complete' && plan.maintenanceOrder?.willVoid) {
+        await manager.query(
+          `UPDATE maintenance_orders SET status = 'void', updated_by = $3, updated_at = now()
+            WHERE tenant_id = $1 AND id = $2`,
+          [tenantId, plan.maintenanceOrder.id, user.id],
+        );
+        detail.maintenanceOrderVoided = plan.maintenanceOrder.id;
+        notes.push('原草稿养护单已同步作废');
+      }
+
+      // 2) 撤回缺料：把还在低阶段的采购申请一起驳回，并关掉它们的待办通知
+      if (sourceLog.action === 'need_material' && plan.purchaseRequests.length) {
+        const rejected: string[] = [];
+        for (const item of plan.purchaseRequests.filter((request) => request.willReject)) {
+          const request = await manager.findOne(PurchaseRequest, {
+            where: { tenantId, id: item.id },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!request) continue;
+          request.status = PurchaseRequestStatus.REJECTED;
+          request.rejectReason = `工单撤回：${reason}`.slice(0, 255);
+          request.updatedBy = user.id;
+          await manager.save(PurchaseRequest, request);
+          rejected.push(request.requestNo);
+        }
+        if (rejected.length) {
+          detail.rejectedPurchaseRequests = rejected;
+          notes.push(`采购申请 ${rejected.join('、')} 已同步驳回`);
+        }
+      }
+
+      // 3) 撤回验收：原评价转失效但永久保留，评分统计不再算它
+      if (plan.reviewWillReverse) {
+        const reviews = await manager.find(Review, {
+          where: { tenantId, workOrderId: id, status: 'active' },
+          order: { id: 'DESC' },
+        });
+        const latest = reviews[0];
+        detail.reversedReviews = reviews.map((review) => ({
+          id: review.id,
+          rating: review.rating,
+          comment: review.comment,
+          attachments: review.attachments ?? [],
+          autoConfirmed: review.autoConfirmed,
+        }));
+        notes.push(
+          `原验收记录已失效（${latest.rating} 星${latest.comment ? `，${latest.comment}` : ''}），历史仍可查看`,
         );
       }
 
-      let extraNote = '';
-      let logAttachments: string[] = [];
-
-      // 已签字养护单是正式业务凭据，不能让工单状态悄悄退到维修中而单据仍显示已查验。
-      if (
-        fromStatus === WorkOrderStatus.DONE_PENDING_REVIEW ||
-        fromStatus === WorkOrderStatus.COMPLETED
-      ) {
-        const maintenanceOrder = await manager
-          .createQueryBuilder(MaintenanceOrder, 'mo')
-          .where('mo.tenant_id = :tenantId AND mo.work_order_id = :id', { tenantId, id })
-          .andWhere("mo.status <> 'void'")
-          .orderBy('mo.id', 'DESC')
-          .getOne();
-        if (maintenanceOrder && maintenanceOrder.status !== MAINTENANCE_STATUS.FILLING) {
-          throw new BadRequestException('该工单的养护单已进入签字流程，请先作废养护单再撤回工单');
-        }
-        if (
-          maintenanceOrder?.status === MAINTENANCE_STATUS.FILLING &&
-          fromStatus === WorkOrderStatus.DONE_PENDING_REVIEW
-        ) {
-          maintenanceOrder.status = MAINTENANCE_STATUS.VOID;
-          maintenanceOrder.updatedBy = user.id;
-          await manager.save(MaintenanceOrder, maintenanceOrder);
-          extraNote = '原草稿养护单已同步作废';
-        }
-      }
-
-      if (fromStatus === WorkOrderStatus.DISPATCHED) {
-        // “已派单 → 待派单”：负责人和派单计时一起撤销，回到办公室调度台。
-        workOrder.assigneeId = null;
-        workOrder.candidateIds = [];
-        workOrder.dispatchedAt = null;
-        workOrder.acceptedAt = null;
-        workOrder.escalatedAt = null;
-      } else if (fromStatus === WorkOrderStatus.IN_PROGRESS) {
-        // 保留原负责人，只撤销接单动作，让他重新确认接单。
-        workOrder.acceptedAt = null;
-      } else if (fromStatus === WorkOrderStatus.WAITING_MATERIAL) {
-        const latestPurchase = await manager.findOne(PurchaseRequest, {
-          where: { tenantId, workOrderId: id },
-          order: { id: 'DESC' },
-        });
-        if (
-          latestPurchase &&
-          ![
-            PurchaseRequestStatus.DRAFT,
-            PurchaseRequestStatus.OFFICE_REVIEW,
-            PurchaseRequestStatus.REJECTED,
-          ].includes(latestPurchase.status)
-        ) {
-          throw new BadRequestException(
-            '关联采购申请已经进入经理审批、合并或采购环节，请先处理采购申请后再撤回',
-          );
-        }
-        if (latestPurchase && latestPurchase.status !== PurchaseRequestStatus.REJECTED) {
-          latestPurchase.status = PurchaseRequestStatus.REJECTED;
-          latestPurchase.rejectReason = `工单撤回：${reason}`.slice(0, 255);
-          latestPurchase.updatedBy = user.id;
-          await manager.save(PurchaseRequest, latestPurchase);
-          extraNote = `采购申请 ${latestPurchase.requestNo} 已同步驳回`;
-        }
-        const restoredAssigneeId = workOrder.assigneeId || workOrder.candidateIds?.[0];
-        if (!restoredAssigneeId) {
-          throw new BadRequestException('原维修工信息已缺失，无法安全撤回；请在派单台重新派单');
-        }
-        workOrder.assigneeId = restoredAssigneeId;
-        workOrder.candidateIds = [restoredAssigneeId];
-        workOrder.missingMaterials = [];
-        if (targetStatus === WorkOrderStatus.IN_PROGRESS) {
-          const acceptedLog = logs.find(
-            (log) =>
-              (!sourceLog || log.id < sourceLog.id) &&
-              log.toStatus === WorkOrderStatus.IN_PROGRESS &&
-              ['accept', 'claim'].includes(log.action),
-          );
-          workOrder.acceptedAt = acceptedLog ? new Date(acceptedLog.createdAt) : new Date();
-        } else {
+      // 4) 按快照恢复工单字段
+      const beforeRollback = await this.captureWorkOrderSnapshot(manager, workOrder);
+      if (sourceLog.beforeSnapshot) {
+        this.applyWorkOrderSnapshot(workOrder, sourceLog.beforeSnapshot);
+      } else {
+        // 老日志没有快照：只做能确定安全的最小恢复（resolveRollback 已经挡掉了
+        // 需要恢复负责人/类型的那几种动作）。
+        workOrder.status = plan.targetStatus;
+        if (sourceLog.action === 'complete') workOrder.completedAt = null;
+        if (sourceLog.action === 'accept' || sourceLog.action === 'claim') {
           workOrder.acceptedAt = null;
         }
-      } else if (fromStatus === WorkOrderStatus.DONE_PENDING_REVIEW) {
-        // 完工填写内容和已领用材料保留为草稿，避免维修工返工后全部重填、重复扣库。
-        workOrder.completedAt = null;
-        extraNote = [extraNote, '原完工填写内容和已领用材料已保留，重新完工时请核对'].filter(Boolean).join('；');
-      } else if (fromStatus === WorkOrderStatus.COMPLETED) {
-        const reviews = await manager.find(Review, {
-          where: { tenantId, workOrderId: id },
-          order: { id: 'DESC' },
+        notes.push('该节点为改造前记录，仅恢复了状态；请核对负责人与时限');
+      }
+      workOrder.status = plan.targetStatus;
+
+      // 报修类型/工种在转单时被改过，一并按快照还原（撤回转单）
+      if (sourceLog.beforeSnapshot?.repairType !== undefined) {
+        const request = await manager.findOne(RepairRequest, {
+          where: { tenantId, id: workOrder.requestId },
+          lock: { mode: 'pessimistic_write' },
         });
-        if (reviews.length) {
-          const latest = reviews[0];
-          logAttachments = reviews.flatMap((review) => review.attachments || []);
-          extraNote = [
-            `原验收记录已撤回（${latest.rating} 星${latest.comment ? `，${latest.comment}` : ''}）`,
-            logAttachments.length ? `原验收照片 ${logAttachments.length} 张已保留在本节点` : '',
-          ].filter(Boolean).join('；');
-          await manager.delete(Review, { tenantId, workOrderId: id });
-        } else {
-          extraNote = '原节点为系统自动完成，现已恢复待验收';
+        if (request && request.repairType !== sourceLog.beforeSnapshot.repairType) {
+          detail.restoredRepairType = sourceLog.beforeSnapshot.repairType;
+          request.repairType = sourceLog.beforeSnapshot.repairType ?? null;
+          request.updatedBy = user.id;
+          await manager.save(RepairRequest, request);
         }
-        // 待验收的自动完成按 completedAt 计时。不重置的话，旧工单一撤回就会被下一次详情查询
-        // 立即自动完成，看起来像按钮没生效。
-        workOrder.completedAt = new Date();
-        extraNote = [extraNote, '待验收时限已从本次撤回重新计算'].filter(Boolean).join('；');
       }
 
-      workOrder.status = targetStatus;
+      // 待验收的自动完成按 completedAt 计时。照搬旧时间的话，老工单一撤回就会被
+      // 下一次详情查询立刻自动完成，看起来像按钮没生效（2026-08 实测）。
+      if (plan.targetStatus === WorkOrderStatus.DONE_PENDING_REVIEW) {
+        workOrder.completedAt = new Date();
+        notes.push('待验收时限已从本次撤回重新计算');
+      }
+
       workOrder.updatedBy = user.id;
       const saved = await manager.save(WorkOrder, workOrder);
+
       const operator = await manager.findOne(User, {
         where: { tenantId, id: user.id },
         select: ['id', 'name'],
       });
-      const statusName = (status: WorkOrderStatus) => ({
-        [WorkOrderStatus.CREATED]: '待派单/待接单',
-        [WorkOrderStatus.DISPATCHED]: '已派单',
-        [WorkOrderStatus.IN_PROGRESS]: '维修中',
-        [WorkOrderStatus.WAITING_MATERIAL]: '等待材料',
-        [WorkOrderStatus.DONE_PENDING_REVIEW]: '待验收',
-        [WorkOrderStatus.COMPLETED]: '已完成',
-        [WorkOrderStatus.CANCELLED]: '已撤单',
-      })[status];
-      await this.writeLog(
+      if (plan.restoreAssigneeId) {
+        const assignee = await manager.findOne(User, {
+          where: { tenantId, id: plan.restoreAssigneeId },
+          select: ['id', 'name'],
+        });
+        detail.restoredAssignee = {
+          id: plan.restoreAssigneeId,
+          name: assignee?.name ?? '未知维修工',
+        };
+        if (assignee?.name) notes.push(`维修工恢复为 ${assignee.name}`);
+      }
+
+      const rollbackLog = await this.writeLog(
         manager,
         saved,
         fromStatus,
         'rollback',
         user.id,
         [
-          `${operator?.name || '办公室'}撤回：${statusName(fromStatus)} → ${statusName(targetStatus)}`,
+          `${operator?.name || '办公室'}撤回${plan.actionLabel ? `「${plan.actionLabel}」` : ''}：${workOrderStatusLabel(fromStatus)} → ${workOrderStatusLabel(plan.targetStatus)}`,
           `原因：${reason}`,
-          extraNote,
-        ].filter(Boolean).join('；'),
-        logAttachments,
+          ...notes,
+        ]
+          .filter(Boolean)
+          .join('；'),
+        [],
+        {
+          beforeSnapshot: beforeRollback,
+          afterSnapshot: await this.captureWorkOrderSnapshot(manager, saved),
+          rolledBackLogId: sourceLog.id,
+          rollbackDetail: detail,
+        },
       );
-      return saved;
+
+      // 被撤销的那一步打上标记：同一步不能撤第二次，连续撤回会自然往前找上一步。
+      sourceLog.revertedByLogId = rollbackLog.id;
+      await manager.save(WorkOrderLog, sourceLog);
+
+      if (plan.reviewWillReverse) {
+        await manager.update(
+          Review,
+          { tenantId, workOrderId: id, status: 'active' },
+          { status: 'reversed', reversedAt: new Date(), reversedByLogId: rollbackLog.id, updatedBy: user.id },
+        );
+      }
+      if (detail.completionBatchId) {
+        await manager.update(
+          WorkOrderCompletionBatch,
+          { tenantId, id: detail.completionBatchId as number },
+          { rollbackLogId: rollbackLog.id },
+        );
+      }
+
+      return { workOrder: saved, plan, detail, returnedLines, rollbackLogId: rollbackLog.id };
     });
-    // 撤回后若重新变成“待接单/待验收”，相关人员也要重新收到待办，不能只在时间轴里变化。
-    if (saved.status === WorkOrderStatus.DISPATCHED) {
-      await this.notifyAssigneeOnDispatch(saved, `办公室撤回上一步：${reason}`);
-    } else if (saved.status === WorkOrderStatus.DONE_PENDING_REVIEW) {
-      await this.notifyOwnerOnStatus(saved, 'review');
+
+    // 事务外做通知：微信侧抖动不能让已经落库的撤回回滚，也不能让前端以为失败去重试。
+    await this.notifyAfterRollback(result.workOrder, result.plan, reason);
+    return {
+      ...result.workOrder,
+      rollback: {
+        rolledBackAction: result.plan.action,
+        rolledBackActionLabel: result.plan.actionLabel,
+        fromStatus: result.plan.fromStatus,
+        targetStatus: result.plan.targetStatus,
+        targetStatusLabel: result.plan.targetStatusLabel,
+        returnedMaterials: result.returnedLines,
+        returnedQty: Number(
+          result.returnedLines.reduce((sum, line) => sum + line.qty, 0).toFixed(2),
+        ),
+        completionBatchId: result.plan.completionBatchId ?? null,
+        rejectedPurchaseRequests: result.detail.rejectedPurchaseRequests ?? [],
+        maintenanceOrderVoided: result.detail.maintenanceOrderVoided ?? null,
+        reviewReversed: result.plan.reviewWillReverse,
+      },
+    };
+  }
+
+  /**
+   * 撤回之后按**目标状态**重新生成待办，并关掉已经失效的旧待办。
+   *
+   * 不做这一步的话，工单退回维修中了，维修工那边还挂着「请验收」，
+   * 办公室这边却没有任何提示 —— 撤回等于只有数据库知道。
+   */
+  private async notifyAfterRollback(
+    workOrder: WorkOrder,
+    plan: RollbackPlan,
+    reason: string,
+  ): Promise<void> {
+    try {
+      // 失效的旧待办：派单、验收、采购审批的操作入口都不该继续可点
+      const staleEvents = ['order_assigned', 'order_review', 'order_transfer_requested'];
+      if (plan.action === 'need_material') staleEvents.push('purchase_pending_office');
+      await this.notifications.invalidateWorkOrderNotifications(
+        workOrder.tenantId,
+        workOrder.id,
+        staleEvents,
+        `工单已撤回${plan.actionLabel ? `「${plan.actionLabel}」` : ''}`,
+      );
+
+      const note = `办公室撤回${plan.actionLabel ? `「${plan.actionLabel}」` : '上一步'}：${reason}`;
+      switch (workOrder.status) {
+        case WorkOrderStatus.DISPATCHED:
+        case WorkOrderStatus.IN_PROGRESS:
+          await this.notifyAssigneeOnDispatch(workOrder, note);
+          break;
+        case WorkOrderStatus.DONE_PENDING_REVIEW:
+          await this.notifyOwnerOnStatus(workOrder, 'review');
+          break;
+        case WorkOrderStatus.CREATED:
+        case WorkOrderStatus.WAITING_MATERIAL:
+          await this.notifyOfficeOnTransfer(workOrder, note, workOrder.updatedBy ?? 0);
+          break;
+        default:
+          break;
+      }
+    } catch (error) {
+      // 撤回本身已经落库成功，通知失败只记日志：不能让前端以为撤回没成功而重复提交。
+      this.logger.error(
+        `工单 ${workOrder.orderNo} 撤回已完成，但通知发送失败：${(error as Error).message}`,
+      );
     }
-    return saved;
   }
 
   async acceptWorkOrder(id: number, user: AuthUser, access?: ResolvedAccess) {
@@ -2668,11 +3251,6 @@ export class RepairsService implements OnModuleInit {
           'claim',
           'work order cannot be claimed',
         );
-        workOrder.assigneeId = user.id;
-        workOrder.candidateIds = [user.id];
-        // 被别人主动接走后从现在重新计时，避免旧负责人的催修记录落到新人头上。
-        workOrder.dispatchedAt = new Date();
-        workOrder.escalatedAt = null;
       } else {
         assertWorkOrderTransition(
           workOrder.status,
@@ -2680,6 +3258,17 @@ export class RepairsService implements OnModuleInit {
           'accept',
           'only dispatched work order can be accepted',
         );
+      }
+
+      // 校验全部通过之后才拍快照、才改字段：「维修中」的来路有三种
+      // （待派单认领 / 等待材料接回 / 定向派单后接单），撤回要回到真正的那一种。
+      const beforeSnapshot = await this.captureWorkOrderSnapshot(manager, workOrder);
+      if (isClaim) {
+        workOrder.assigneeId = user.id;
+        workOrder.candidateIds = [user.id];
+        // 被别人主动接走后从现在重新计时，避免旧负责人的催修记录落到新人头上。
+        workOrder.dispatchedAt = new Date();
+        workOrder.escalatedAt = null;
       }
 
       const fromStatus = workOrder.status;
@@ -2698,6 +3287,11 @@ export class RepairsService implements OnModuleInit {
             ? '维修工从工单池接回（缺料单）'
             : '维修工从工单池认领'
           : null,
+        [],
+        {
+          beforeSnapshot,
+          afterSnapshot: await this.captureWorkOrderSnapshot(manager, saved),
+        },
       );
       return saved;
     });
@@ -2780,6 +3374,9 @@ export class RepairsService implements OnModuleInit {
       });
       if (!request) throw new NotFoundException('repair request not found');
       const fromStatus = workOrder.status;
+      // 转单会把报修类型、工种、负责人、全部计时点一次清空。误转单撤回时要一件件还原，
+      // 而转单后状态是「待派单」——没有快照的话根本区分不出它和一张新单（2026-09-03）。
+      const beforeSnapshot = await this.captureWorkOrderSnapshot(manager, workOrder);
       request.repairType = null;
       request.updatedBy = user.id;
       workOrder.status = WorkOrderStatus.CREATED;
@@ -2793,7 +3390,19 @@ export class RepairsService implements OnModuleInit {
       workOrder.updatedBy = user.id;
       await manager.save(RepairRequest, request);
       const result = await manager.save(WorkOrder, workOrder);
-      await this.writeLog(manager, result, fromStatus, 'transfer_request', user.id, `维修工申请转单：${reason}；已退回办公室重新分类派单`);
+      await this.writeLog(
+        manager,
+        result,
+        fromStatus,
+        'transfer_request',
+        user.id,
+        `维修工申请转单：${reason}；已退回办公室重新分类派单`,
+        [],
+        {
+          beforeSnapshot,
+          afterSnapshot: await this.captureWorkOrderSnapshot(manager, result),
+        },
+      );
       return result;
     });
     try {
@@ -2808,6 +3417,10 @@ export class RepairsService implements OnModuleInit {
   /**
    * 从指定仓库领用工单材料，并同时写 FIFO 分摊、用料明细和库存流水。
    * 完工与「有库存记用料、没库存提报缺料」共用，避免出现两套扣库存口径。
+   *
+   * 成本一律由后端 FIFO 算出，**绝不采信端上传来的金额**——端上能改的数字进不了成本账。
+   * 完工扣的料挂在完工批次上（sourceAction=completion），撤回时按批次精确退回；
+   * 缺料流程里的领用不挂批次（legacy_issue），撤回完工不会连它一起退掉。
    */
   private async consumeWorkOrderMaterials(
     manager: EntityManager,
@@ -2815,10 +3428,19 @@ export class RepairsService implements OnModuleInit {
     workOrderId: number,
     items: MaterialUsageDto[],
     operatorId: number,
-    note: string,
+    options: {
+      note: string;
+      refType: string;
+      batchId?: number | null;
+      sourceAction?: 'completion' | 'legacy_issue';
+    },
   ) {
+    const created: WorkOrderMaterial[] = [];
     for (const item of items) {
       if (!item.materialId || !item.warehouseId) continue;
+      if (!(Number(item.qty) > 0)) {
+        throw new BadRequestException('用料数量必须大于 0');
+      }
       const allocations = await consumeStockLots(manager, {
         tenantId,
         warehouseId: item.warehouseId,
@@ -2840,6 +3462,9 @@ export class RepairsService implements OnModuleInit {
           qty: item.qty,
           unitCostCents: averageUnitCost(allocations, item.qty),
           totalCostCents,
+          completionBatchId: options.batchId ?? null,
+          status: 'active',
+          sourceAction: options.sourceAction ?? 'completion',
           createdBy: operatorId,
           updatedBy: operatorId,
         }),
@@ -2859,21 +3484,64 @@ export class RepairsService implements OnModuleInit {
           }),
         ),
       );
-      await applyStockDelta(manager, {
+      const { movement } = await applyStockDelta(manager, {
         tenantId,
         warehouseId: item.warehouseId,
         materialId: item.materialId,
         deltaQty: -item.qty,
         type: StockMovementType.OUTBOUND,
         unitCostCents: averageUnitCost(allocations, item.qty),
-        refType: 'work_order',
+        refType: options.refType,
         refId: workOrderId,
         operatorId,
-        note,
+        note: options.note,
       });
+      // 记住出库流水 id：撤回退料时新流水的 reversalOfMovementId 指向它，
+      // 由唯一索引挡住「同一条扣料被冲销两次」。
+      materialUsage.issueMovementId = movement.id;
+      await manager.save(WorkOrderMaterial, materialUsage);
+      created.push(materialUsage);
     }
+    return created;
   }
 
+  /**
+   * 同仓同 SKU 的重复行合并成一行。
+   *
+   * 不合并的话，同一 SKU 会扣两次 FIFO、生成两条用料记录，撤回时看起来像重复退料；
+   * 直接报错又会把维修工卡在完工页（他只是分两行填了同一个水龙头）。合并最省事。
+   */
+  private static mergeMaterialUsageRows(items: MaterialUsageDto[]): MaterialUsageDto[] {
+    const merged: MaterialUsageDto[] = [];
+    const indexByKey = new Map<string, number>();
+    for (const item of items) {
+      const key = `${item.materialId ?? 'x'}:${item.warehouseId ?? 'x'}`;
+      const qty = Number(item.qty);
+      if (!(qty > 0)) throw new BadRequestException('用料数量必须大于 0');
+      const existing = indexByKey.get(key);
+      if (existing === undefined || !item.materialId || !item.warehouseId) {
+        indexByKey.set(key, merged.length);
+        merged.push({ ...item, qty });
+        continue;
+      }
+      const row = merged[existing];
+      row.qty = Number((Number(row.qty) + qty).toFixed(2));
+      const notes = [row.note?.trim(), item.note?.trim()].filter(Boolean);
+      row.note = notes.length ? [...new Set(notes)].join('；').slice(0, 120) : row.note;
+    }
+    return merged;
+  }
+
+  /**
+   * 提交完工。
+   *
+   * 完工是**唯一**扣库存的时机：维修过程中选的材料只是草稿，以本次提交的最终清单为准。
+   * 一次提交对应一个完工批次（work_order_completion_batches），扣的料全部挂在这个批次上，
+   * 撤回时才能精确退回「这一次」扣的料，而不是把缺料阶段领的也一起退掉。
+   *
+   * 全程一个事务：状态、批次、用料、FIFO 分摊、库存流水任一步失败就整体回滚，
+   * 不会出现「状态到了待验收但库存没扣」或反过来的半笔账。
+   */
   async completeWorkOrder(
     id: number,
     dto: CompleteWorkOrderDto,
@@ -2881,9 +3549,34 @@ export class RepairsService implements OnModuleInit {
     access?: ResolvedAccess,
   ) {
     const tenantId = this.resolveTenantId(user);
-    const saved = await this.dataSource.transaction(async (manager) => {
+    const materials = RepairsService.mergeMaterialUsageRows(dto.materials ?? []);
+    const inventoryMaterials = materials.filter((item) => item.materialId && item.warehouseId);
+
+    // 仓库权限和缺料提报走同一套判定：先确认端上带回的仓确实在这个人可选范围内，
+    // 再进事务动库存，避免伪造 warehouseId 扣到别的管理处的仓。
+    for (const warehouseId of [
+      ...new Set(inventoryMaterials.map((item) => item.warehouseId as number)),
+    ]) {
+      const option = await this.listWorkOrderStockOptions(id, user, access, warehouseId);
+      if (option.warehouseId !== warehouseId) {
+        throw new BadRequestException('完工用料所选仓库不在当前用户可用范围内');
+      }
+    }
+
+    const idempotencyKey = dto.idempotencyKey?.trim() || null;
+    const outcome = await this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
       this.assertWorkOrderScope(workOrder, access);
+
+      // 幂等闸门放在状态校验**之前**：连点两下时第二次的状态已经是待验收，
+      // 先校验状态只会抛「不能完工」，用户以为失败又点一次，反而更乱。
+      if (idempotencyKey) {
+        const done = await manager.findOne(WorkOrderCompletionBatch, {
+          where: { tenantId, workOrderId: id, idempotencyKey },
+        });
+        if (done) return { workOrder, batch: done, duplicated: true as const };
+      }
+
       assertWorkOrderTransition(
         workOrder.status,
         WorkOrderStatus.DONE_PENDING_REVIEW,
@@ -2893,24 +3586,19 @@ export class RepairsService implements OnModuleInit {
       await this.ensureAssigneeOrAdmin(workOrder, user);
 
       const fromStatus = workOrder.status;
-      workOrder.status = WorkOrderStatus.DONE_PENDING_REVIEW;
-      workOrder.completedAt = new Date();
-      workOrder.actionTags = dto.actionTags ?? workOrder.actionTags;
-      workOrder.actionNote = dto.actionNote ?? workOrder.actionNote;
-      workOrder.faultLocation = dto.faultLocation ?? workOrder.faultLocation;
-      workOrder.faultSymptom = dto.faultSymptom ?? workOrder.faultSymptom;
-      workOrder.repairContent = dto.repairContent ?? workOrder.repairContent;
+      const beforeSnapshot = await this.captureWorkOrderSnapshot(manager, workOrder);
+
       // 端上从库存选的行本来就带名字；万一只传了 id，去材料库把名字查出来 ——
       // 工单和养护单上印的是给人看的名称，不能落一个 #37（2026-09-01）
-      const materialNames = dto.materials?.length
+      const materialNames = materials.length
         ? await this.materialNamesByIds(
             manager,
             tenantId,
-            dto.materials.map((item) => item.materialId).filter((v): v is number => !!v),
+            materials.map((item) => item.materialId).filter((v): v is number => !!v),
           )
         : new Map<number, string>();
-      const incomingUsedMaterials = dto.materials
-        ?.map((item) => ({
+      const incomingUsedMaterials = materials
+        .map((item) => ({
           materialId: item.materialId,
           name:
             item.name ||
@@ -2920,26 +3608,69 @@ export class RepairsService implements OnModuleInit {
           note: item.note?.trim() || undefined,
         }))
         .filter((item) => item.name || item.materialId);
-      // 缺料提报时可能已经领过一部分库存；材料到齐后再次接单完工，只追加本轮用料，
-      // 不能把上次已扣、已记的记录覆盖掉。
-      const existingRows = dto.materials?.length
-        ? await manager.find(WorkOrderMaterial, {
-            where: { tenantId, workOrderId: workOrder.id },
-          })
-        : [];
-      // 前端没有新增用料时会传 []；空数组不能把缺料前已经领用的记录清掉。
-      if (incomingUsedMaterials?.length) {
-        workOrder.usedMaterials = existingRows.length
+
+      const lastBatch = await manager.findOne(WorkOrderCompletionBatch, {
+        where: { tenantId, workOrderId: id },
+        order: { versionNo: 'DESC' },
+      });
+      const batch = await manager.save(
+        WorkOrderCompletionBatch,
+        manager.create(WorkOrderCompletionBatch, {
+          tenantId,
+          workOrderId: id,
+          versionNo: (lastBatch?.versionNo ?? 0) + 1,
+          status: 'active',
+          idempotencyKey,
+          fromStatus,
+          submittedBy: user.id,
+          submittedAt: new Date(),
+          snapshot: {
+            faultLocation: dto.faultLocation ?? workOrder.faultLocation,
+            faultSymptom: dto.faultSymptom ?? workOrder.faultSymptom,
+            repairContent: dto.repairContent ?? workOrder.repairContent,
+            actionTags: dto.actionTags ?? workOrder.actionTags ?? [],
+            actionNote: dto.actionNote ?? workOrder.actionNote,
+            resultAttachments: dto.resultAttachments ?? workOrder.resultAttachments ?? [],
+            feeCents: dto.feeCents ?? workOrder.feeCents ?? 0,
+            // 撤回后这份清单原样回填成可编辑草稿，维修工不用把材料重选一遍
+            materials: materials.map((item) => ({
+              materialId: item.materialId ?? null,
+              warehouseId: item.warehouseId ?? null,
+              name:
+                item.name ||
+                (item.materialId ? materialNames.get(item.materialId) ?? '未知材料' : ''),
+              qty: Number(item.qty),
+              unit: item.unit,
+              note: item.note?.trim() || undefined,
+            })),
+          },
+          createdBy: user.id,
+          updatedBy: user.id,
+        }),
+      );
+
+      workOrder.status = WorkOrderStatus.DONE_PENDING_REVIEW;
+      workOrder.completedAt = new Date();
+      workOrder.actionTags = dto.actionTags ?? workOrder.actionTags;
+      workOrder.actionNote = dto.actionNote ?? workOrder.actionNote;
+      workOrder.faultLocation = dto.faultLocation ?? workOrder.faultLocation;
+      workOrder.faultSymptom = dto.faultSymptom ?? workOrder.faultSymptom;
+      workOrder.repairContent = dto.repairContent ?? workOrder.repairContent;
+      // 缺料阶段可能已经领过一部分库存（sourceAction=legacy_issue，不挂完工批次）；
+      // 那几行要留着，本次提交的只往后追加，不能整体覆盖。
+      const carriedRows = await manager.count(WorkOrderMaterial, {
+        where: { tenantId, workOrderId: id, status: 'active', completionBatchId: IsNull() },
+      });
+      if (incomingUsedMaterials.length) {
+        workOrder.usedMaterials = carriedRows
           ? [...(workOrder.usedMaterials || []), ...incomingUsedMaterials]
           : incomingUsedMaterials;
       }
-      workOrder.resultAttachments =
-        dto.resultAttachments ?? workOrder.resultAttachments;
+      workOrder.resultAttachments = dto.resultAttachments ?? workOrder.resultAttachments;
       workOrder.feeCents = dto.feeCents ?? workOrder.feeCents;
       workOrder.updatedBy = user.id;
       const saved = await manager.save(WorkOrder, workOrder);
 
-      const inventoryMaterials = dto.materials?.filter((item) => item.materialId && item.warehouseId) ?? [];
       if (inventoryMaterials.length) {
         await this.consumeWorkOrderMaterials(
           manager,
@@ -2947,7 +3678,12 @@ export class RepairsService implements OnModuleInit {
           saved.id,
           inventoryMaterials,
           user.id,
-          `完工领用，工单 ${saved.id}`,
+          {
+            note: `完工领用：${saved.orderNo}（完工批次 #${batch.versionNo}）`,
+            refType: 'work_order_complete',
+            batchId: batch.id,
+            sourceAction: 'completion',
+          },
         );
       }
 
@@ -2958,13 +3694,27 @@ export class RepairsService implements OnModuleInit {
         'complete',
         user.id,
         dto.actionNote ?? null,
+        [],
+        {
+          beforeSnapshot,
+          afterSnapshot: await this.captureWorkOrderSnapshot(manager, saved),
+        },
       );
-      return saved;
+      return { workOrder: saved, batch, duplicated: false as const };
     });
 
-    await this.notifyOwnerOnStatus(saved, 'review');
-    await this.recordCompletionAiFeedback(dto, saved, tenantId, user.id);
-    return saved;
+    // 重复提交（连点/重试）不再重复发通知、重复记 AI 样例，直接把上次的结果给回去。
+    if (outcome.duplicated) return outcome.workOrder;
+
+    await this.notifyOwnerOnStatus(outcome.workOrder, 'review');
+    await this.recordCompletionAiFeedback(
+      dto,
+      outcome.workOrder,
+      tenantId,
+      user.id,
+      outcome.batch.id,
+    );
+    return outcome.workOrder;
   }
 
   /**
@@ -3015,6 +3765,8 @@ export class RepairsService implements OnModuleInit {
       await this.ensureAssigneeOrAdmin(workOrder, user);
 
       const fromStatus = workOrder.status;
+      // 缺料会把负责人置空退回工单池。撤回时要把人和接单时间原样接回来。
+      const beforeSnapshot = await this.captureWorkOrderSnapshot(manager, workOrder);
       workOrder.status = WorkOrderStatus.WAITING_MATERIAL;
       workOrder.missingMaterials = missingMaterials;
       const usedMaterials =
@@ -3077,13 +3829,20 @@ export class RepairsService implements OnModuleInit {
           .orIgnore()
           .execute();
       }
+      // 缺料前的领用不挂完工批次：撤回完工只退「完工那次扣的料」，
+      // 不能把维修工早就装上去的这几件也退回仓库。
       await this.consumeWorkOrderMaterials(
         manager,
         tenantId,
         saved.id,
         usedMaterials,
         user.id,
-        `工单 ${saved.orderNo} 缺料前已领用`,
+        {
+          note: `工单 ${saved.orderNo} 缺料前已领用`,
+          refType: 'work_order',
+          batchId: null,
+          sourceAction: 'legacy_issue',
+        },
       );
 
       const purchaseRequest = await manager.save(
@@ -3148,7 +3907,12 @@ export class RepairsService implements OnModuleInit {
               channel: NotifyChannel.IN_APP,
               eventKey: 'purchase_pending_office',
               title: `工单 ${saved.orderNo} 缺料申请待汇总（${purchaseRequest.requestNo}）`,
-              payload: { purchaseRequestId: purchaseRequest.id, requestNo: purchaseRequest.requestNo },
+              // 带上 workOrderId：工单撤回缺料时要按它找到这条待办并标为已失效
+              payload: {
+                purchaseRequestId: purchaseRequest.id,
+                requestNo: purchaseRequest.requestNo,
+                workOrderId: saved.id,
+              },
               status: NotifyStatus.SENT,
               readAt: null,
               createdBy: user.id,
@@ -3176,6 +3940,11 @@ export class RepairsService implements OnModuleInit {
         ]
           .filter(Boolean)
           .join('；'),
+        [],
+        {
+          beforeSnapshot,
+          afterSnapshot: await this.captureWorkOrderSnapshot(manager, saved),
+        },
       );
       return { workOrder: saved, purchaseRequest };
     });
@@ -3296,6 +4065,7 @@ export class RepairsService implements OnModuleInit {
         throw new ForbiddenException('只能验收自己提交的报修');
       }
 
+      const beforeSnapshot = await this.captureWorkOrderSnapshot(manager, workOrder);
       const review = await manager.save(
         Review,
         manager.create(Review, {
@@ -3315,7 +4085,10 @@ export class RepairsService implements OnModuleInit {
       workOrder.status = WorkOrderStatus.COMPLETED;
       workOrder.updatedBy = user.id;
       const saved = await manager.save(WorkOrder, workOrder);
-      await this.writeLog(manager, saved, fromStatus, 'review', user.id, null);
+      await this.writeLog(manager, saved, fromStatus, 'review', user.id, null, [], {
+        beforeSnapshot,
+        afterSnapshot: await this.captureWorkOrderSnapshot(manager, saved),
+      });
       return { workOrder: saved, review };
     });
   }
@@ -3352,13 +4125,19 @@ export class RepairsService implements OnModuleInit {
       }
 
       const fromStatus = workOrder.status;
+      // 撤单是旁路节点：可以从待派单/已派单/维修中/等待材料任意一处进来，
+      // 撤回时必须回到真实的那一处，而不是统一退回「待派单」。
+      const beforeSnapshot = await this.captureWorkOrderSnapshot(manager, workOrder);
       workOrder.status = WorkOrderStatus.CANCELLED;
       workOrder.updatedBy = user.id;
       const saved = await manager.save(WorkOrder, workOrder);
       const note = dto.note?.trim()
         ? `${reasonLabel}：${dto.note.trim()}`
         : reasonLabel;
-      await this.writeLog(manager, saved, fromStatus, 'cancel', user.id, note);
+      await this.writeLog(manager, saved, fromStatus, 'cancel', user.id, note, [], {
+        beforeSnapshot,
+        afterSnapshot: await this.captureWorkOrderSnapshot(manager, saved),
+      });
       return saved;
     });
   }
@@ -4398,6 +5177,7 @@ export class RepairsService implements OnModuleInit {
     workOrder: WorkOrder,
     tenantId: number,
     userId: number,
+    completionBatchId?: number | null,
   ) {
     if (!dto.aiAssist) return;
     try {
@@ -4405,6 +5185,9 @@ export class RepairsService implements OnModuleInit {
       await this.aiFeedback.record(tenantId, {
         kind: 'completion',
         workOrderId: workOrder.id,
+        // 挂上完工批次：这次完工被撤回时，这条样例要一起标失效，
+        // 否则一份「后来被推翻的填写」会作为正确答案继续教模型。
+        completionBatchId: completionBatchId ?? null,
         sourceText: dto.aiAssist.sourceText,
         draft: dto.aiAssist.draft,
         finalValue: {
@@ -4574,6 +5357,7 @@ export class RepairsService implements OnModuleInit {
           WorkOrderStatus.COMPLETED,
           'auto_review_complete',
         );
+        const beforeSnapshot = await this.captureWorkOrderSnapshot(manager, current);
         current.status = WorkOrderStatus.COMPLETED;
         current.updatedBy = null;
         const saved = await manager.save(WorkOrder, current);
@@ -4584,6 +5368,11 @@ export class RepairsService implements OnModuleInit {
           'auto_review_complete',
           null,
           `待验收超过${workOrder.autoReviewHours}小时，系统自动完成`,
+          [],
+          {
+            beforeSnapshot,
+            afterSnapshot: await this.captureWorkOrderSnapshot(manager, saved),
+          },
         );
         completedCount += 1;
       }
@@ -5875,7 +6664,14 @@ export class RepairsService implements OnModuleInit {
     operatorId: number | null,
     note?: string | null,
     attachments: string[] = [],
-  ) {
+    extra?: {
+      /** 动作执行**前**的工单快照；撤回时原样写回，是精确撤回的唯一依据 */
+      beforeSnapshot?: WorkOrderSnapshot | null;
+      afterSnapshot?: WorkOrderSnapshot | null;
+      rolledBackLogId?: number | null;
+      rollbackDetail?: Record<string, unknown> | null;
+    },
+  ): Promise<WorkOrderLog> {
     return manager.save(
       WorkOrderLog,
       manager.create(WorkOrderLog, {
@@ -5887,10 +6683,110 @@ export class RepairsService implements OnModuleInit {
         operatorId,
         note: note ?? null,
         attachments,
+        beforeSnapshot: extra?.beforeSnapshot ?? null,
+        afterSnapshot: extra?.afterSnapshot ?? null,
+        rolledBackLogId: extra?.rolledBackLogId ?? null,
+        rollbackDetail: extra?.rollbackDetail ?? null,
         createdBy: operatorId,
         updatedBy: operatorId,
       }),
     );
+  }
+
+  private static toIso(value: Date | string | null | undefined): string | null {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  /**
+   * 工单关键字段快照，写进 work_order_logs.before_snapshot。
+   *
+   * 为什么每个流转动作都要拍一张：撤回**必须**恢复到真实的上一节点，不能靠当前字段倒推。
+   * 「维修中」可能来自待派单主动认领、等待材料接回、或定向派单后接单；
+   * 「已派单」可能是首次派单也可能是换人改派——不拍快照就只能猜，猜错就是
+   * 把单挂到错的维修工头上、SLA 从错的时刻重算（2026-09-03 撤回改造）。
+   *
+   * repair_type 存在 repair_requests 上、转单会改它，所以额外读一次报修单。
+   */
+  private async captureWorkOrderSnapshot(
+    manager: EntityManager,
+    workOrder: WorkOrder,
+  ): Promise<WorkOrderSnapshot> {
+    const request = await manager.findOne(RepairRequest, {
+      where: { tenantId: workOrder.tenantId, id: workOrder.requestId },
+      select: ['id', 'repairType'],
+    });
+    const activeBatch = await this.findActiveCompletionBatch(
+      manager,
+      workOrder.tenantId,
+      workOrder.id,
+    );
+    return {
+      status: workOrder.status,
+      assigneeId: workOrder.assigneeId ?? null,
+      candidateIds: [...(workOrder.candidateIds ?? [])],
+      skill: workOrder.skill ?? null,
+      repairType: request?.repairType ?? null,
+      dispatchedAt: RepairsService.toIso(workOrder.dispatchedAt),
+      acceptedAt: RepairsService.toIso(workOrder.acceptedAt),
+      completedAt: RepairsService.toIso(workOrder.completedAt),
+      slaDueAt: RepairsService.toIso(workOrder.slaDueAt),
+      escalatedAt: RepairsService.toIso(workOrder.escalatedAt),
+      missingMaterials: [...(workOrder.missingMaterials ?? [])],
+      usedMaterials: [...(workOrder.usedMaterials ?? [])],
+      resultAttachments: [...(workOrder.resultAttachments ?? [])],
+      actionTags: [...(workOrder.actionTags ?? [])],
+      actionNote: workOrder.actionNote ?? null,
+      faultLocation: workOrder.faultLocation ?? null,
+      faultSymptom: workOrder.faultSymptom ?? null,
+      repairContent: workOrder.repairContent ?? null,
+      feeCents: workOrder.feeCents ?? 0,
+      activeCompletionBatchId: activeBatch?.id ?? null,
+    };
+  }
+
+  /**
+   * 把快照写回工单实体（不 save，由调用方统一保存）。
+   * 只写快照里**明确存在**的键：老日志的快照可能缺字段，用 undefined 覆盖会把好数据抹掉。
+   */
+  private applyWorkOrderSnapshot(workOrder: WorkOrder, snapshot: WorkOrderSnapshot) {
+    const has = (key: keyof WorkOrderSnapshot) => snapshot[key] !== undefined;
+    const date = (value?: string | null) => (value ? new Date(value) : null);
+    if (has('status')) workOrder.status = snapshot.status as WorkOrderStatus;
+    if (has('assigneeId')) workOrder.assigneeId = snapshot.assigneeId ?? null;
+    if (has('candidateIds')) workOrder.candidateIds = [...(snapshot.candidateIds ?? [])];
+    if (has('skill')) workOrder.skill = snapshot.skill ?? null;
+    if (has('dispatchedAt')) workOrder.dispatchedAt = date(snapshot.dispatchedAt);
+    if (has('acceptedAt')) workOrder.acceptedAt = date(snapshot.acceptedAt);
+    if (has('completedAt')) workOrder.completedAt = date(snapshot.completedAt);
+    if (has('slaDueAt')) workOrder.slaDueAt = date(snapshot.slaDueAt);
+    if (has('escalatedAt')) workOrder.escalatedAt = date(snapshot.escalatedAt);
+    if (has('missingMaterials')) {
+      workOrder.missingMaterials = (snapshot.missingMaterials ??
+        []) as WorkOrder['missingMaterials'];
+    }
+    if (has('usedMaterials')) {
+      workOrder.usedMaterials = (snapshot.usedMaterials ?? []) as WorkOrder['usedMaterials'];
+    }
+    if (has('resultAttachments')) workOrder.resultAttachments = [...(snapshot.resultAttachments ?? [])];
+    if (has('actionTags')) workOrder.actionTags = [...(snapshot.actionTags ?? [])];
+    if (has('actionNote')) workOrder.actionNote = snapshot.actionNote ?? null;
+    if (has('faultLocation')) workOrder.faultLocation = snapshot.faultLocation ?? null;
+    if (has('faultSymptom')) workOrder.faultSymptom = snapshot.faultSymptom ?? null;
+    if (has('repairContent')) workOrder.repairContent = snapshot.repairContent ?? null;
+    if (has('feeCents')) workOrder.feeCents = snapshot.feeCents ?? 0;
+  }
+
+  private findActiveCompletionBatch(
+    manager: EntityManager,
+    tenantId: number,
+    workOrderId: number,
+  ): Promise<WorkOrderCompletionBatch | null> {
+    return manager.findOne(WorkOrderCompletionBatch, {
+      where: { tenantId, workOrderId, status: 'active' },
+      order: { versionNo: 'DESC' },
+    });
   }
 
   /**

@@ -2,6 +2,8 @@ import type {
   AssignWorkOrderReq,
   CompleteWorkOrderReq,
   RepairCreateReq,
+  RollbackMaterialLine,
+  RollbackPreview,
   TechnicianOption,
   UsedMaterialLine,
   WorkOrderDetail,
@@ -202,9 +204,36 @@ export const addProgress = (
 export const requestTransfer = (id: number | string, data: { note: string }) =>
   request<void>({ method: 'POST', url: `/work-orders/${id}/transfer-request`, data });
 
-/** 办公室/管理员把工单撤回一个处理节点；原因会写入工单时间轴。 */
+/**
+ * 撤回预览：将退回哪个状态、会退哪些材料、会驳回哪张采购申请，全部由后端算。
+ * 打开撤回弹窗前先调一次，用它渲染确认文案，**不要**在端上自己推导目标状态。
+ */
+export const rollbackPreview = (id: number | string) =>
+  request<RollbackPreview>({ url: `/work-orders/${id}/rollback-preview` });
+
+/**
+ * 办公室/管理员撤回上一笔业务操作；原因会写入工单时间轴。
+ * 撤回完工时会同时把那一次扣的料退回原仓原批次，返回值里带退料明细。
+ */
 export const rollback = (id: number | string, data: { reason: string }) =>
-  request<void>({ method: 'POST', url: `/work-orders/${id}/rollback`, data });
+  request<RollbackResult>({ method: 'POST', url: `/work-orders/${id}/rollback`, data });
+
+/** 撤回接口的返回：工单本体之外，额外说明这次撤回实际做了什么 */
+export interface RollbackResult {
+  rollback: {
+    rolledBackAction?: string;
+    rolledBackActionLabel?: string;
+    fromStatus: WorkOrderStatus;
+    targetStatus?: WorkOrderStatus;
+    targetStatusLabel?: string;
+    returnedMaterials: RollbackMaterialLine[];
+    returnedQty: number;
+    completionBatchId: number | null;
+    rejectedPurchaseRequests: string[];
+    maintenanceOrderVoided: number | null;
+    reviewReversed: boolean;
+  };
+}
 
 export const review = (
   id: number | string,
