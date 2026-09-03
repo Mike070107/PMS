@@ -5,6 +5,12 @@ import { StockMovementType } from '../common/enums';
 /** 出入库流水（审计用，永不修改） */
 @Entity('stock_movements')
 @Index(['tenantId', 'warehouseId', 'materialId'])
+// 线上 DB_SYNCHRONIZE=true 不跑 migration，唯一索引只有在实体上声明才会被建出来。
+// 它是「重复撤回不可能退出第二份库存」的最后一道闸门，不能只写在迁移里。
+@Index(['reversalOfMovementId'], {
+  unique: true,
+  where: '"reversal_of_movement_id" IS NOT NULL',
+})
 export class StockMovement extends TenantEntity {
   @Column({ name: 'warehouse_id', type: 'int' })
   warehouseId: number;

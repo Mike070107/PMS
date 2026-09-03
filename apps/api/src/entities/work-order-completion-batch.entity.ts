@@ -18,6 +18,13 @@ export type CompletionBatchStatus = 'active' | 'reversed';
 @Entity('work_order_completion_batches')
 @Index(['tenantId', 'workOrderId'])
 @Index(['tenantId', 'workOrderId', 'status'])
+// 同一工单同一版本号只能有一条：并发重复完工插不出两条 active
+@Index(['tenantId', 'workOrderId', 'versionNo'], { unique: true })
+// 幂等令牌：同一工单同一令牌只认第一次提交
+@Index(['tenantId', 'workOrderId', 'idempotencyKey'], {
+  unique: true,
+  where: '"idempotency_key" IS NOT NULL',
+})
 export class WorkOrderCompletionBatch extends TenantEntity {
   @Column({ name: 'work_order_id', type: 'int' })
   workOrderId: number;

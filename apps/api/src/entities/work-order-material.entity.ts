@@ -20,6 +20,11 @@ export type WorkOrderMaterialSource = 'completion' | 'legacy_issue';
 @Entity('work_order_materials')
 @Index(['tenantId', 'workOrderId'])
 @Index(['tenantId', 'workOrderId', 'status'])
+// 一条用料最多退一次料（同上：靠实体声明才能在线上生效）
+@Index(['reversalMovementId'], {
+  unique: true,
+  where: '"reversal_movement_id" IS NOT NULL',
+})
 export class WorkOrderMaterial extends TenantEntity {
   @Column({ name: 'work_order_id', type: 'int' })
   workOrderId: number;
