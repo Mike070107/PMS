@@ -9,7 +9,7 @@
  */
 
 /** 底部 tab 的 key，与 custom-tab-bar 的 ALL_TABS 一一对应 */
-export type TabKey = 'pool' | 'dispatch' | 'mine' | 'maintenance' | 'materials' | 'approvals' | 'me';
+export type TabKey = 'pool' | 'dispatch' | 'mine' | 'maintenance' | 'materials' | 'approvals' | 'more' | 'me';
 
 /** tabBar 判显隐要的那点东西：角色矩阵里各入口的「可见」 */
 export interface TabAccess {
@@ -25,6 +25,7 @@ export const TAB_PAGE: Record<TabKey, string> = {
   maintenance: 'app:maintenance-inspect',
   materials: 'app:inventory', // SKU、盘点入口在 canSeeTab 里一并判
   approvals: 'app:approve-manager', // 采购那一步在 canSeeTab 里一并判
+  more: '',
   me: '',
 };
 
@@ -36,11 +37,14 @@ export const TAB_PAGE: Record<TabKey, string> = {
  * 多一格也比让有权限的人以为功能没了强，后端仍会拦。
  */
 export function canSeeTab(key: TabKey, access: TabAccess): boolean {
-  if (key === 'me') return true;
+  if (key === 'me' || key === 'more') return true;
   const { pages } = access;
   if (!pages) return true;
   if (key === 'approvals') {
     return !!(pages['app:approve-manager'] || pages['app:approve-purchaser']);
+  }
+  if (key === 'maintenance') {
+    return !!(pages['app:maintenance-sign'] || pages['app:maintenance-inspect']);
   }
   // 「材料与库存」容器里有库存、材料 SKU、盘点三个独立入口。
   // 只勾其中任意一个都得进得来，否则独立授权没有实际入口。

@@ -954,6 +954,7 @@ export * from './fees';
 export * from './voice-extract';
 export * from './urgency';
 export * from './notification';
+export * from './repair-experience';
 
 // ---------- 停留时长 ----------
 

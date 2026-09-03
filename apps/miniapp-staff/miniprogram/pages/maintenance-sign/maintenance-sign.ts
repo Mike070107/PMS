@@ -139,6 +139,8 @@ function toDisplay(session: MaintenanceSignSession): DisplayOrder {
 Page({
   data: {
     token: '',
+    orderId: 0,
+    external: false,
     loading: true,
     error: '',
     slotLabel: '查验员',
@@ -156,26 +158,33 @@ Page({
 
   canvasContext: null as WechatMiniprogram.CanvasContext | null,
   drawing: false,
+  pinchStartDistance: 0,
+  pinchStartScale: 1,
 
   onLoad(query: Record<string, string>) {
     const token = decodeURIComponent(query.token || '');
-    if (!token) {
+    const orderId = Number(query.id || 0);
+    if (!token && !orderId) {
       this.setData({ loading: false, error: '签字凭证无效，请返回重新打开' });
       return;
     }
-    this.setData({ token });
+    this.setData({ token, orderId, external: !!token });
     this.loadSession();
   },
 
   async loadSession() {
     try {
-      const session = await maintenance.signSession(this.data.token);
+      const session = this.data.external
+        ? await maintenance.signSession(this.data.token)
+        : await maintenance.internalSignSession(this.data.orderId);
       this.setData({
         loading: false,
         error: '',
         slotLabel: session.slotLabel,
         alreadySigned: session.signed,
-        expiresText: `${dateTimeText(session.expiresAt)} 前有效`,
+        expiresText: this.data.external && session.expiresAt
+          ? `${dateTimeText(session.expiresAt)} 前有效`
+          : '',
         order: toDisplay(session),
       });
     } catch (error: any) {
@@ -251,6 +260,7 @@ Page({
       wx.showToast({ icon: 'none', title: '请先手写签名' });
       return;
     }
+
     wx.canvasToTempFilePath({
       canvasId: 'maintenanceSignature',
       fileType: 'png',
@@ -277,6 +287,26 @@ Page({
     }, this);
   },
 
+  onPreviewTouchStart(event: any) {
+    if (event.touches?.length !== 2) return;
+    const [a, b] = event.touches;
+    this.pinchStartDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    this.pinchStartScale = [0.85, 1, 1.2][this.data.zoomLevel] || 1;
+  },
+
+  onPreviewTouchMove(event: any) {
+    if (event.touches?.length !== 2 || !this.pinchStartDistance) return;
+    const [a, b] = event.touches;
+    const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const scale = this.pinchStartScale * distance / this.pinchStartDistance;
+    const level = scale < 0.93 ? 0 : scale > 1.1 ? 2 : 1;
+    if (level !== this.data.zoomLevel) this.applyZoom(level);
+  },
+
+  onPreviewTouchEnd() {
+    this.pinchStartDistance = 0;
+  },
+
   async submit() {
     if (!this.data.draftImage || this.data.submitting) {
       if (!this.data.draftImage) wx.showToast({ icon: 'none', title: `请先签署${this.data.slotLabel}` });
@@ -284,8 +314,12 @@ Page({
     }
     this.setData({ submitting: true });
     try {
-      await maintenance.submitSignature(this.data.token, this.data.draftImage);
-      wx.showToast({ title: '查验签字已保存', icon: 'success', duration: 1200 });
+      if (this.data.external) {
+        await maintenance.submitSignature(this.data.token, this.data.draftImage);
+      } else {
+        await maintenance.submitInternalSignature(this.data.orderId, this.data.draftImage);
+      }
+      wx.showToast({ title: `${this.data.slotLabel}签字已保存`, icon: 'success', duration: 1200 });
       setTimeout(() => wx.navigateBack(), 900);
     } catch (error: any) {
       wx.showModal({

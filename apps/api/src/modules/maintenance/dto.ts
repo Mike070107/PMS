@@ -143,9 +143,21 @@ export class SubmitSignatureDto {
   image: string;
 }
 
+/** 员工端内部待签任务：使用登录态，不生成、也不检查临时链接有效期。 */
+export class SubmitInternalSignatureDto {
+  @IsString()
+  @MaxLength(2_800_000)
+  image: string;
+}
+
 export class MaintenanceQueryDto {
   @IsOptional() @IsString() @MaxLength(60) q?: string;
-  @IsOptional() @IsIn(['draft', 'inspected', 'void', 'all']) status?: string;
+  @IsOptional()
+  @IsIn([
+    'filling', 'waiting_filler', 'waiting_repairer', 'waiting_inspector',
+    'pending_print', 'completed', 'void', 'all',
+  ])
+  status?: string;
   @IsOptional() @Type(() => Number) @IsInt() communityId?: number;
 }
 

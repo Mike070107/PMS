@@ -32,6 +32,7 @@ const yuan = (cents: number) => `¥${((cents || 0) / 100).toFixed(2)}`;
 interface MaintenanceRow extends maintenance.MaintenanceListItem {
   createdAtText: string;
   amountText: string;
+  slotLabel?: string;
 }
 
 function toRow(item: PurchaseRequestView): ApprovalRow {
@@ -65,6 +66,7 @@ Page({
     mode: 'approvals' as 'approvals' | 'maintenance',
     canApprove: false,
     canInspectMaintenance: false,
+    canSignMaintenance: false,
     isPurchaserStage: false,
     roleHint: '',
     list: [] as ApprovalRow[],
@@ -86,21 +88,22 @@ Page({
       // 权限走共用会话（一次登录只打一遍 /auth/me），别每页各调各的
       const session = await getSession(this);
       const requestedMode = cachedApprovalMode();
-      const mode = requestedMode === 'maintenance' && session.canInspectMaintenance
+      const canUseMaintenance = session.canInspectMaintenance || session.canSignMaintenance;
+      const mode = requestedMode === 'maintenance' && canUseMaintenance
         ? 'maintenance'
         : requestedMode === 'approvals' && session.canApprove
           ? 'approvals'
-          : session.canInspectMaintenance ? 'maintenance' : 'approvals';
-      this.setData({ mode, canInspectMaintenance: session.canInspectMaintenance });
+          : canUseMaintenance ? 'maintenance' : 'approvals';
+      this.setData({ mode, canInspectMaintenance: session.canInspectMaintenance, canSignMaintenance: session.canSignMaintenance });
       syncTabBar(this, mode === 'maintenance' ? 'maintenance' : 'approvals');
 
       if (mode === 'maintenance') {
-        if (!session.canInspectMaintenance) {
+        if (!canUseMaintenance) {
           this.setData({ maintenanceList: [], loaded: true });
           setTabBadge(this, 'maintenance', 0);
           return;
         }
-        const list = await maintenance.list({ status: 'draft' });
+        const list = await maintenance.signTasks();
         const maintenanceList = list.map((item) => ({
           ...item,
           createdAtText: formatDateTimeCn(item.createdAt),
@@ -151,10 +154,8 @@ Page({
     if (!id || this.data.busyId) return;
     this.setData({ busyId: id });
     try {
-      const link = await maintenance.inspectLink(id);
-      // 员工端直接用原生页面预览和签名，不再通过 web-view 打开外部网址。
-      // web-view 依赖微信公众平台另配“业务域名”，漏配就会出现“不支持打开”。
-      wx.navigateTo({ url: `/pages/maintenance-sign/maintenance-sign?token=${encodeURIComponent(link.token)}` });
+      // 员工端用登录身份直接打开：不创建 30 分钟链接，任务在本人手机里一直有效。
+      wx.navigateTo({ url: `/pages/maintenance-sign/maintenance-sign?id=${id}` });
     } catch (err: any) {
       wx.showToast({ icon: 'none', title: err?.message || '养护单打开失败' });
     } finally { this.setData({ busyId: 0 }); }

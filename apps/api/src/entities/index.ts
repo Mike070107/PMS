@@ -61,6 +61,7 @@ import { StocktakeItem } from './stocktake-item.entity';
 import { SystemLog } from './system-log.entity';
 import { RequestMetric } from './request-metric.entity';
 import { UserFeedback } from './user-feedback.entity';
+import { RepairExperienceNote } from './repair-experience-note.entity';
 
 export const entities = [
   Tenant,
@@ -78,6 +79,7 @@ export const entities = [
   SystemLog,
   RequestMetric,
   UserFeedback,
+  RepairExperienceNote,
   Community,
   Building,
   Unit,
@@ -144,6 +146,7 @@ export {
   SystemLog,
   RequestMetric,
   UserFeedback,
+  RepairExperienceNote,
   Community,
   Building,
   Unit,

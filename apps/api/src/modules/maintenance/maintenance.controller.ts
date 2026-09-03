@@ -24,6 +24,7 @@ import {
   MaintenanceQueryDto,
   SaveQuotaItemDto,
   SaveQuotaParamsDto,
+  SubmitInternalSignatureDto,
   UpdateMaintenanceOrderDto,
 } from './dto';
 import { MaintenanceService } from './maintenance.service';
@@ -107,6 +108,37 @@ export class MaintenanceController {
     return this.service.findByWorkOrder(workOrderId, user, access);
   }
 
+  /** 员工端内部待签任务：不生成临时链接，不设过期时间。 */
+  @Get('maintenance-orders/sign-tasks')
+  @RequirePermission(['app:maintenance-sign', 'app:maintenance-inspect'], 'view')
+  listSignTasks(
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.listSignTasks(user, access);
+  }
+
+  @Get('maintenance-orders/:id/sign-task')
+  @RequirePermission(['app:maintenance-sign', 'app:maintenance-inspect'], 'view')
+  getSignTask(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.getInternalSignTask(id, user, access);
+  }
+
+  @Post('maintenance-orders/:id/sign-task')
+  @RequirePermission(['app:maintenance-sign', 'app:maintenance-inspect'], 'view')
+  submitSignTask(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SubmitInternalSignatureDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.submitInternalSignature(id, dto.image, user, access);
+  }
+
   @Get('maintenance-orders/:id')
   @RequirePermission(['maintenance-orders', 'maintenance-inspect', 'app:maintenance-inspect'], 'view')
   getOne(
@@ -136,6 +168,26 @@ export class MaintenanceController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.service.update(id, dto, user, access);
+  }
+
+  @Post('maintenance-orders/:id/publish')
+  @RequirePermission('maintenance-orders', 'edit')
+  publish(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.publish(id, user, access);
+  }
+
+  @Post('maintenance-orders/:id/printed')
+  @RequirePermission('maintenance-orders', 'edit')
+  markPrinted(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.markPrinted(id, user, access);
   }
 
   /**

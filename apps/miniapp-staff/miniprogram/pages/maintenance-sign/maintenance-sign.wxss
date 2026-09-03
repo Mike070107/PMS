@@ -16,7 +16,7 @@ page { background: #edf2f7; }
 .sign-notice__title { color: #80550c; font-size: 29rpx; font-weight: 800; }
 .sign-notice--ready .sign-notice__title { color: #267248; }
 .sign-notice__text { margin-top: 6rpx; color: #7c8793; font-size: 23rpx; line-height: 1.55; }
-.sign-scroll { width: 100%; }
+.sign-scroll { width: 100%; height: calc(100vh - 410rpx); }
 .sign-preview { width: 930rpx; margin: 0 24rpx 26rpx; padding: 30rpx; border: 2rpx solid #cfd9e2; border-radius: 10rpx; background: #fff; box-shadow: 0 8rpx 30rpx rgba(38, 58, 78, .08); transform-origin: top left; }
 .sign-preview--small { width: 790rpx; font-size: 23rpx; }
 .sign-preview--normal { width: 930rpx; font-size: 26rpx; }

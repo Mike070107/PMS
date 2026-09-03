@@ -1,12 +1,12 @@
 <view class="container container--tabbar">
   <block wx:if="{{mode === 'maintenance'}}">
     <view class="screen-head">
-      <view class="screen-head__title">待查验养护单 {{maintenanceList.length}} 张</view>
-      <view class="screen-head__desc">点击查看完整单据，放大核对后手写签字</view>
+      <view class="screen-head__title">待我签字 {{maintenanceList.length}} 张</view>
+      <view class="screen-head__desc">只显示当前轮到你的单据，小程序内任务不过期</view>
     </view>
-    <view wx:if="{{!maintenanceList.length && loaded}}"><pms-empty text="没有待查验的养护单"/></view>
+    <view wx:if="{{!maintenanceList.length && loaded}}"><pms-empty text="没有待你签字的养护单"/></view>
     <view wx:for="{{maintenanceList}}" wx:key="id" class="card wo-card maintenance-card" data-id="{{item.id}}" bindtap="onOpenMaintenance">
-      <view class="wo-card__head"><view class="wo-card__title"><text class="wo-card__type">{{item.addressText || '地址待补充'}}</text></view><text class="maintenance-card__status">待查验</text></view>
+      <view class="wo-card__head"><view class="wo-card__title"><text class="wo-card__type">{{item.addressText || '地址待补充'}}</text></view><text class="maintenance-card__status">待{{item.slotLabel || '签字'}}</text></view>
       <view class="kv"><text class="kv__k">养护单号</text><text class="kv__v">{{item.paperNo || item.orderNo}}</text></view>
       <view class="kv"><text class="kv__k">修理项目</text><text class="kv__v">{{item.repairItem || '未填写'}}</text></view>
       <view class="kv"><text class="kv__k">修理人</text><text class="kv__v">{{item.repairerName || '未签名'}}</text></view>

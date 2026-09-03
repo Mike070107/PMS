@@ -56,10 +56,18 @@ export interface MaintenanceMaterial {
 }
 
 export const MAINTENANCE_STATUS = {
-  /** 已填单，等物业经理查验 */
-  DRAFT: 'draft',
-  /** 物业经理已查验并签名 */
-  INSPECTED: 'inspected',
+  /** Web 端刚从工单开出，办公室正在核对表单 */
+  FILLING: 'filling',
+  /** 已推送，只允许填单人签字 */
+  WAITING_FILLER: 'waiting_filler',
+  /** 填单人已签，只允许修理人签字 */
+  WAITING_REPAIRER: 'waiting_repairer',
+  /** 修理人已签，只允许查验员签字 */
+  WAITING_INSPECTOR: 'waiting_inspector',
+  /** 三方签字完成，等办公室打印 */
+  PENDING_PRINT: 'pending_print',
+  /** 已打印归档 */
+  COMPLETED: 'completed',
   /** 作废 */
   VOID: 'void',
 } as const;
@@ -100,7 +108,7 @@ export class MaintenanceOrder extends TenantEntity {
   @Column({ name: 'community_id', type: 'int' })
   communityId: number;
 
-  @Column({ type: 'varchar', length: 24, default: MAINTENANCE_STATUS.DRAFT })
+  @Column({ type: 'varchar', length: 24, default: MAINTENANCE_STATUS.FILLING })
   status: MaintenanceStatus;
 
   // ===== 表头 =====

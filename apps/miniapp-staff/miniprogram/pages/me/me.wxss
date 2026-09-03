@@ -97,3 +97,28 @@
   font-size: var(--font-xs);
   line-height: 1.6;
 }
+
+.more-panel { padding: 28rpx; }
+.more-panel__title { font-size: var(--font-lg); font-weight: 700; color: var(--color-text); }
+.app-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24rpx; margin-top: 24rpx; }
+.app-tile {
+  position: relative;
+  min-height: 280rpx;
+  padding: 28rpx 22rpx;
+  border: 2rpx solid #d9e5ef;
+  border-radius: 24rpx;
+  background: linear-gradient(145deg, #fff 0%, #f4f8fc 100%);
+  box-shadow: 0 10rpx 24rpx rgba(49, 85, 138, .08);
+}
+.app-tile--disabled { opacity: .58; box-shadow: none; }
+.app-tile__icon {
+  width: 88rpx; height: 88rpx; display: flex; align-items: center; justify-content: center;
+  border-radius: 22rpx; background: linear-gradient(145deg, #31558a, #4c79b5);
+}
+.experience-glyph {
+  width: 50rpx; height: 50rpx; background: center / contain no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 19.5A2.5 2.5 0 0 1 6.5 17H20'/%3E%3Cpath d='M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z'/%3E%3Cpath d='m9 9 2 2 4-4'/%3E%3C/svg%3E");
+}
+.app-tile__name { margin-top: 22rpx; font-size: var(--font-xl); font-weight: 700; line-height: 1.35; }
+.app-tile__desc { margin-top: 10rpx; font-size: var(--font-sm); color: var(--color-text-tertiary); line-height: 1.55; }
+.app-tile__badge { display: inline-block; margin-top: 16rpx; padding: 4rpx 14rpx; border-radius: 999rpx; background: #e7f0fb; color: #31558a; font-size: var(--font-xs); }

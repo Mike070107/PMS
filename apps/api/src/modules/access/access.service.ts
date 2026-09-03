@@ -130,6 +130,9 @@ export class AccessService implements OnModuleInit {
         { source: 'app:inventory', target: 'app:materials', copyEdit: true },
         { source: 'app:my-orders', target: 'app:my-repairs', copyEdit: false },
         { source: 'maintenance-inspect', target: 'app:maintenance-inspect', copyEdit: false },
+        { source: 'app:my-orders', target: 'app:maintenance-sign', copyEdit: false },
+        { source: 'app:dispatch', target: 'app:maintenance-sign', copyEdit: false },
+        { source: 'work-orders', target: 'experience-notes', copyEdit: true },
       ];
       for (const split of splits) {
         const role = await this.rolePermRepo.query(

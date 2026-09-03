@@ -12,7 +12,7 @@
  * 所以后台改完角色，用户下拉刷新一次底部就跟着变，不用杀掉小程序重进。
  */
 import { canSeeTab, type TabAccess, type TabKey } from '../utils/roles';
-import { readCachedAccess, rememberApprovalMode, rememberPoolMode } from '../utils/tabbar';
+import { readCachedAccess, rememberApprovalMode, rememberMeMode, rememberPoolMode } from '../utils/tabbar';
 import { topUpQuietly } from '../utils/unread';
 
 interface TabDef {
@@ -30,6 +30,7 @@ const ALL_TABS: TabDef[] = [
   { key: 'maintenance', pagePath: '/pages/approvals/approvals?mode=maintenance', text: '养护单' },
   { key: 'materials', pagePath: '/pages/inventory/inventory', text: '材料与库存' },
   { key: 'approvals', pagePath: '/pages/approvals/approvals', text: '审批' },
+  { key: 'more', pagePath: '/pages/me/me?mode=more', text: '更多' },
   { key: 'me', pagePath: '/pages/me/me', text: '我的' },
 ];
 
@@ -52,7 +53,7 @@ function visibleTabs(access: TabAccess) {
   if (tabs.length <= 6) return tabs;
   const compact: Record<TabKey, string> = {
     dispatch: '派单', pool: '工单池', mine: '在手', maintenance: '养护',
-    materials: '库存', approvals: '审批', me: '我的',
+    materials: '库存', approvals: '审批', more: '更多', me: '我的',
   };
   return tabs.map((tab) => ({ ...tab, text: compact[tab.key] }));
 }
@@ -114,6 +115,9 @@ Component({
       rememberPoolMode(tab.key === 'dispatch' ? 'dispatch' : 'pool');
       if (tab.key === 'approvals' || tab.key === 'maintenance') {
         rememberApprovalMode(tab.key === 'maintenance' ? 'maintenance' : 'approvals');
+      }
+      if (tab.key === 'more' || tab.key === 'me') {
+        rememberMeMode(tab.key);
       }
 
       const current = this.data.tabs.find((t: any) => t.key === this.data.selectedKey);

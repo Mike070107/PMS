@@ -12,7 +12,6 @@ import {
   Modal,
   Popconfirm,
   Popover,
-  Segmented,
   Select,
   Space,
   Spin,
@@ -74,8 +73,12 @@ import {
 const { Title, Text, Paragraph } = Typography;
 
 const STATUS_COLOR: Record<MaintenanceStatus, string> = {
-  draft: 'processing',
-  inspected: 'success',
+  filling: 'processing',
+  waiting_filler: 'gold',
+  waiting_repairer: 'cyan',
+  waiting_inspector: 'purple',
+  pending_print: 'orange',
+  completed: 'success',
   void: 'default',
 };
 
@@ -220,8 +223,7 @@ export default function MaintenanceOrdersPage() {
 
   const [rows, setRows] = useState<MaintenanceListRow[]>([]);
   const [loading, setLoading] = useState(false);
-  // 办公室日常工作入口默认只看待查验，已作废记录留在独立筛选里查。
-  const [status, setStatus] = useState<'all' | MaintenanceStatus>('draft');
+  const [status, setStatus] = useState<'all' | MaintenanceStatus>('filling');
   const [searchInput, setSearchInput] = useState('');
   const [searchQ, setSearchQ] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
@@ -475,13 +477,19 @@ export default function MaintenanceOrdersPage() {
         styles={{ body: { paddingTop: 16 } }}
         title={
           <Space size={16} wrap>
-            <Segmented
+            <Select
               value={status}
               onChange={(v) => setStatus(v as typeof status)}
+              size="large"
+              style={{ width: 190 }}
               options={[
                 { label: '全部有效', value: 'all' },
-                { label: '待查验', value: 'draft' },
-                { label: '已查验', value: 'inspected' },
+                { label: '填单中', value: 'filling' },
+                { label: '待填单人', value: 'waiting_filler' },
+                { label: '待修理人', value: 'waiting_repairer' },
+                { label: '待查验员', value: 'waiting_inspector' },
+                { label: '待打印', value: 'pending_print' },
+                { label: '已完成', value: 'completed' },
                 { label: '已作废', value: 'void' },
               ]}
             />
@@ -560,6 +568,7 @@ interface WorkOrderPickRow {
   summaryContent?: string | null;
   completedAt?: string | null;
   createdAt?: string;
+  usedMaterials?: Array<{ name?: string; qty?: number; unit?: string }>;
 }
 
 function WorkOrderPicker({
@@ -625,6 +634,15 @@ function WorkOrderPicker({
             dataIndex: 'summaryContent',
             ellipsis: true,
             render: (v: string | null) => v || '—',
+          },
+          {
+            title: '工单用料',
+            key: 'materials',
+            width: 220,
+            render: (_: unknown, row: WorkOrderPickRow) =>
+              row.usedMaterials?.length
+                ? row.usedMaterials.map((item) => `${item.name || '未命名'} ×${item.qty ?? 0}${item.unit || ''}`).join('、')
+                : <Text type="secondary">未登记用料</Text>,
           },
           {
             title: '完工时间',
@@ -799,8 +817,8 @@ function MaintenanceEditor({
       .finally(() => setLoading(false));
   }, [id, message]);
 
-  // 已查验/已作废的单只读：经理签的是他当时看到的那一份，改了签名就不作数了
-  const editable = canEdit && draft?.status === 'draft';
+  // 只有「填单中」可改正文；推送后三方签的必须是同一份快照。
+  const editable = canEdit && draft?.status === 'filling';
 
   const font = findFont(fontId);
   const missing = useMemo(() => missingForOrder(fontId, draft), [fontId, draft]);
@@ -889,8 +907,8 @@ function MaintenanceEditor({
     setDirty(true);
   };
 
-  const save = async (extra?: Partial<MaintenanceOrder>) => {
-    if (!draft) return;
+  const save = async (extra?: Partial<MaintenanceOrder>): Promise<boolean> => {
+    if (!draft) return false;
     const merged = recompute({ ...draft, ...extra });
     setSaving(true);
     try {
@@ -936,8 +954,29 @@ function MaintenanceEditor({
       rememberPaperNo(saved.paperNo);
       onChanged();
       message.success('已保存');
+      return true;
     } catch (e: any) {
       message.error(e?.message || '保存失败');
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const publish = async () => {
+    if (!draft || saving) return;
+    if (dirty && !(await save())) return;
+    setSaving(true);
+    try {
+      const saved = await request<MaintenanceOrder>({
+        method: 'POST', url: `/maintenance-orders/${draft.id}/publish`,
+      });
+      setDraft(saved);
+      setDirty(false);
+      onChanged();
+      message.success('已推送给填单人，小程序内任务不过期');
+    } catch (e: any) {
+      message.error(e?.message || '推送签名失败');
     } finally {
       setSaving(false);
     }
@@ -1081,14 +1120,35 @@ function MaintenanceEditor({
           printOffsetCss(offset),
         ),
       )
-      .catch((e: any) => message.error(e?.message || '打印失败'))
+      .then(async () => {
+        if (draft.status !== 'pending_print') return;
+        const confirmed = await new Promise<boolean>((resolve) => {
+          modal.confirm({
+            title: '这张养护单已成功打印吗？',
+            content: '只有纸质单已正常打出时才标记已完成；如果取消打印或打印失败，请选择“还没打好”。',
+            okText: '已打印，完成归档',
+            cancelText: '还没打好',
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false),
+          });
+        });
+        if (!confirmed) return;
+        const saved = await request<MaintenanceOrder>({
+          method: 'POST', url: `/maintenance-orders/${draft.id}/printed`,
+        });
+        if (!alive) return;
+        setDraft(saved);
+        onChanged();
+        message.success('已标记为完成');
+      })
+      .catch((e: any) => message.error(e?.message || '打印或归档失败'))
       .finally(() => {
         if (alive) setPrintJob(null);
       });
     return () => {
       alive = false;
     };
-  }, [printJob, draft, fontId, offset, message]);
+  }, [printJob, draft, fontId, offset, message, modal, onChanged]);
 
   const close = () => {
     if (dirty) {
@@ -1245,20 +1305,29 @@ function MaintenanceEditor({
                 </Button>
               </Popconfirm>
             )}
-            <Tooltip title="纸是空白纸时用这个：表格线和预印字一起打">
-              <Button icon={<PrinterOutlined />} onClick={() => setPrintJob('normal')} disabled={!draft}>
+            <Tooltip title={draft?.status === 'pending_print' ? '打印后自动标记已完成' : '三方签字完成后才能正式打印'}>
+              <Button icon={<PrinterOutlined />} onClick={() => setPrintJob('normal')} disabled={!draft || draft.status !== 'pending_print'}>
                 打印整单
               </Button>
             </Tooltip>
-            <Tooltip title="纸是预印好的联单时用这个：只把填的内容打上去">
-              <Button icon={<PrinterOutlined />} onClick={() => setPrintJob('overlay')} disabled={!draft}>
+            <Tooltip title={draft?.status === 'pending_print' ? '套打后自动标记已完成' : '三方签字完成后才能正式打印'}>
+              <Button icon={<PrinterOutlined />} onClick={() => setPrintJob('overlay')} disabled={!draft || draft.status !== 'pending_print'}>
                 套打（只打内容）
               </Button>
             </Tooltip>
-            {canInspect && draft?.status === 'draft' && (
-              <Button type="primary" ghost onClick={() => setSignSlot('inspector')}>
-                查验并签名
-              </Button>
+            {draft?.status === 'filling' && canEdit && (
+              <Button type="primary" loading={saving} onClick={publish}>保存并推送签名</Button>
+            )}
+            {draft && ['waiting_filler', 'waiting_repairer', 'waiting_inspector'].includes(draft.status) && (
+              <Button
+                type="primary"
+                ghost
+                disabled={draft.status === 'waiting_inspector' && !canInspect}
+                onClick={() => startPhoneSign(
+                  draft.status === 'waiting_filler' ? 'filler'
+                    : draft.status === 'waiting_repairer' ? 'repairer' : 'inspector',
+                )}
+              >生成当前签字链接 / 二维码</Button>
             )}
             {editable && (
               <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => save()}>
@@ -1275,9 +1344,9 @@ function MaintenanceEditor({
           <>
             {!editable && draft.status !== 'void' && (
               <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                {draft.status === 'inspected'
-                  ? '已经查验签字的单不能再改 —— 经理签的是他当时看到的那一份。要改请先作废，再从工单重新开单。'
-                  : '你的角色只有查看权限，可以打印，不能修改。'}
+                {draft.status !== 'filling'
+                  ? '已进入顺序签字流程，正文已锁定。需要修改请作废后从原工单重新开单。'
+                  : '你的角色只有查看权限，不能修改。'}
               </Text>
             )}
             <div className="mo-stage">
@@ -1297,7 +1366,8 @@ function MaintenanceEditor({
                   onPatch={patch}
                   onItemPatch={patchItem}
                   onMaterialPatch={patchMaterial}
-                  onSign={editable ? (slot) => setSignSlot(slot) : undefined}
+                  // 三方顺序签名一律在「推送签名」后进行，填单阶段不显示可越级点击的签名区。
+                  onSign={undefined}
                 />
               </div>
             </div>

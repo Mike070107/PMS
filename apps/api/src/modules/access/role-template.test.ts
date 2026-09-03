@@ -56,8 +56,16 @@ test('启动时把历史合并权限复制为新的独立页面权限', async ()
   const templateMaintenanceSql = templateSql.find((sql) => sql.includes("'app:maintenance-inspect'"));
   assert.match(roleMaintenanceSql || '', /src\.page_key = 'maintenance-inspect'/);
   assert.match(templateMaintenanceSql || '', /src\.page_key = 'maintenance-inspect'/);
-  assert.equal(roleSql.length, 3, '目前角色权限共有三组拆分回填');
-  assert.equal(templateSql.length, 3, '目前模板权限共有三组拆分回填');
+  const roleExperienceSql = roleSql.find((sql) => sql.includes("'experience-notes'"));
+  const templateExperienceSql = templateSql.find((sql) => sql.includes("'experience-notes'"));
+  assert.match(roleExperienceSql || '', /src\.page_key = 'work-orders'/);
+  assert.match(templateExperienceSql || '', /src\.page_key = 'work-orders'/);
+  const roleSignSql = roleSql.filter((sql) => sql.includes("'app:maintenance-sign'"));
+  const templateSignSql = templateSql.filter((sql) => sql.includes("'app:maintenance-sign'"));
+  assert.equal(roleSignSql.length, 2, '在手工单和派单台两类老角色都要补养护单签字入口');
+  assert.equal(templateSignSql.length, 2, '两类老模板都要补养护单签字入口');
+  assert.equal(roleSql.length, 6, '目前角色权限共有六组拆分回填');
+  assert.equal(templateSql.length, 6, '目前模板权限共有六组拆分回填');
 });
 
 test('跟随模板的角色读模板那份权限，自定义角色读自己的', async () => {

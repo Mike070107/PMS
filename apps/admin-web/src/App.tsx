@@ -22,6 +22,7 @@ const MaterialsPage = lazy(() => import('./pages/MaterialsPage'));
 const QrPage = lazy(() => import('./pages/QrPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const LogsPage = lazy(() => import('./pages/LogsPage'));
+const ExperienceNotesPage = lazy(() => import('./pages/ExperienceNotesPage'));
 const RolesPage = lazy(() => import('./pages/RolesPage'));
 const OfficesPage = lazy(() => import('./pages/OfficesPage'));
 const PlatformTenantsPage = lazy(() => import('./pages/PlatformTenantsPage'));
@@ -42,6 +43,7 @@ const PAGE_ROUTES: Array<[string, string]> = [
   ['reports', '/reports'],
   ['work-orders', '/work-orders'],
   ['maintenance-orders', '/maintenance-orders'],
+  ['experience-notes', '/experience-notes'],
   ['business', '/business'],
   ['fees', '/fees'],
   ['materials', '/materials'],
@@ -135,6 +137,7 @@ export default function App() {
         <Route path="owners" element={<RequireTenantScope><RequirePage pageKey="owners"><OwnerAuditPage /></RequirePage></RequireTenantScope>} />
         <Route path="work-orders" element={<RequireTenantScope><RequirePage pageKey="work-orders"><WorkOrdersPage /></RequirePage></RequireTenantScope>} />
         <Route path="maintenance-orders" element={<RequireTenantScope><RequirePage pageKey="maintenance-orders"><MaintenanceOrdersPage /></RequirePage></RequireTenantScope>} />
+        <Route path="experience-notes" element={<RequireTenantScope><RequirePage pageKey="experience-notes"><ExperienceNotesPage /></RequirePage></RequireTenantScope>} />
         <Route path="staff" element={<RequireTenantScope><RequirePage pageKey="users"><StaffPage /></RequirePage></RequireTenantScope>} />
         <Route path="roles" element={<RequireTenantScope><RequirePage pageKey="roles"><RolesPage /></RequirePage></RequireTenantScope>} />
         <Route path="offices" element={<RequireTenantScope><RequirePage pageKey="offices"><OfficesPage /></RequirePage></RequireTenantScope>} />

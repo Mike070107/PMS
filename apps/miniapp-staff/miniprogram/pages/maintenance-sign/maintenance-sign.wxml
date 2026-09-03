@@ -23,11 +23,13 @@
       <view class="sign-notice__title">
         {{draftImage ? slotLabel + '已签，请核对后提交' : alreadySigned ? slotLabel + '已有签名，可重新签署' : '请签署：' + slotLabel}}
       </view>
-      <view class="sign-notice__text">完整核对养护内容后签字；本次凭证提交一次立即失效</view>
+      <view class="sign-notice__text">
+        {{external ? '完整核对后签字；该临时链接提交一次立即失效' : '完整核对后签字；这是你的内部任务，不受链接时效限制'}}
+      </view>
     </view>
 
-    <scroll-view class="sign-scroll" scroll-x enhanced show-scrollbar>
-      <view class="sign-preview {{zoomClass}}">
+    <scroll-view class="sign-scroll" scroll-x scroll-y enhanced show-scrollbar>
+      <view class="sign-preview {{zoomClass}}" bindtouchstart="onPreviewTouchStart" bindtouchmove="onPreviewTouchMove" bindtouchend="onPreviewTouchEnd" bindtouchcancel="onPreviewTouchEnd">
         <view class="paper-title">房屋修理养护任务单</view>
         <view class="paper-no">单号：{{order.no}}　工单：{{order.workOrderNo}}</view>
 
@@ -65,9 +67,9 @@
         <view class="paper-section">
           <view class="paper-section__title">签名与费用</view>
           <view class="paper-sign-grid">
-            <view><text>填单人</text><image wx:if="{{order.fillerSignUrl}}" src="{{order.fillerSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.fillerName}}</strong></view>
-            <view><text>修理人</text><image wx:if="{{order.repairerSignUrl}}" src="{{order.repairerSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.repairerName}}</strong></view>
-            <view class="paper-sign-grid__target"><text>查验员 · 本次签署</text><image wx:if="{{draftImage}}" src="{{draftImage}}" mode="aspectFit"/><image wx:elif="{{order.inspectorSignUrl}}" src="{{order.inspectorSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.inspectorName}}</strong><button bindtap="openPad">{{draftImage ? '重新签名' : '点击手写签名'}}</button></view>
+            <view class="{{slotLabel === '填单人' ? 'paper-sign-grid__target' : ''}}"><text>填单人{{slotLabel === '填单人' ? ' · 本次签署' : ''}}</text><image wx:if="{{slotLabel === '填单人' && draftImage}}" src="{{draftImage}}" mode="aspectFit"/><image wx:elif="{{order.fillerSignUrl}}" src="{{order.fillerSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.fillerName}}</strong><button wx:if="{{slotLabel === '填单人'}}" catchtap="openPad">{{draftImage ? '重新签名' : '点击手写签名'}}</button></view>
+            <view class="{{slotLabel === '修理人' ? 'paper-sign-grid__target' : ''}}"><text>修理人{{slotLabel === '修理人' ? ' · 本次签署' : ''}}</text><image wx:if="{{slotLabel === '修理人' && draftImage}}" src="{{draftImage}}" mode="aspectFit"/><image wx:elif="{{order.repairerSignUrl}}" src="{{order.repairerSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.repairerName}}</strong><button wx:if="{{slotLabel === '修理人'}}" catchtap="openPad">{{draftImage ? '重新签名' : '点击手写签名'}}</button></view>
+            <view class="{{slotLabel === '查验员' ? 'paper-sign-grid__target' : ''}}"><text>查验员{{slotLabel === '查验员' ? ' · 本次签署' : ''}}</text><image wx:if="{{slotLabel === '查验员' && draftImage}}" src="{{draftImage}}" mode="aspectFit"/><image wx:elif="{{order.inspectorSignUrl}}" src="{{order.inspectorSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.inspectorName}}</strong><button wx:if="{{slotLabel === '查验员'}}" catchtap="openPad">{{draftImage ? '重新签名' : '点击手写签名'}}</button></view>
             <view><text>报修人验收</text><image wx:if="{{order.ownerSignUrl}}" src="{{order.ownerSignUrl}}" mode="aspectFit"/><strong wx:else>未签名</strong></view>
           </view>
           <view class="paper-total"><text>定额工料费合计</text><strong>{{order.totalText}}</strong></view>
@@ -92,7 +94,7 @@
 
     <view class="sign-actions-safe"></view>
     <view class="sign-actions">
-      <view class="sign-actions__hint">{{expiresText}}</view>
+      <view wx:if="{{expiresText}}" class="sign-actions__hint">{{expiresText}}</view>
       <view class="sign-actions__buttons">
         <button class="sign-actions__write" bindtap="openPad">{{draftImage ? '重新签名' : '手写签名'}}</button>
         <button class="sign-actions__submit" bindtap="submit" loading="{{submitting}}" disabled="{{!draftImage || submitting}}">确认无误并提交</button>

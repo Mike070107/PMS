@@ -2,9 +2,10 @@ import { maskPhone } from '@pms/miniapp-ui';
 import { buildStampText } from '../../utils/buildStamp';
 import { USER_ROLE_LABELS, type MeResp } from '@pms/shared-types';
 import { clearSession, getSession } from '../../utils/session';
-import { clearAccessCache, rememberPoolMode, syncTabBar } from '../../utils/tabbar';
+import { cachedMeMode, clearAccessCache, rememberPoolMode, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, getSubscribeState, refreshUnread } from '../../utils/unread';
 import { openFeedback } from '../../utils/feedback';
+import { repairExperiences } from '@pms/api-client';
 
 // 版本号和 git hash 由发版脚本写入 utils/buildStamp.ts，别在这里手改（见那个文件的说明）
 
@@ -15,6 +16,7 @@ const JUST_LOGGED_OUT_KEY = 'pms.staff.just_logged_out';
 
 Page({
   data: {
+    mode: 'me' as 'me' | 'more',
     buildText: '',
     user: null as MeResp | null,
     roleText: '',
@@ -41,6 +43,7 @@ Page({
     notifyDesc: '点这里开启；弹窗里记得勾上「总是保持以上选择」',
     /** 代报角色：报修范围是授权小区，不是全公司，文案得说准 */
     repairDesc: '巡查发现的问题直接提单，地址可选全公司任意楼栋房号',
+    experienceAccess: { canView: false, canEdit: false, notebookCount: 0 },
   },
 
   /** 显示当前跑的是哪个包：改完重新上传后，忘记「选为体验版本」一眼就能看出来 */
@@ -55,7 +58,7 @@ Page({
   },
 
   onShow() {
-    syncTabBar(this, 'me');
+    this.applyMode();
     this.showBuild();
     this.load();
     // 未读数每次进来都重新拉：小程序没有推到端的长连接，角标只能主动拿
@@ -63,9 +66,15 @@ Page({
   },
 
   async load() {
+    // “更多”和“我的”共用一个原生 tab 页；同页切换不一定触发 onShow，
+    // custom-tab-bar 会直接调用 load，所以这里也必须重新读模式。
+    this.applyMode();
     try {
       // 身份和权限都从这一份会话来（utils/session.ts），页面里不再各写角色白名单
-      const session = await getSession(this, true);
+      const [session, experienceAccess] = await Promise.all([
+        getSession(this, true),
+        repairExperiences.access().catch(() => ({ canView: false, canEdit: false, notebookCount: 0 })),
+      ]);
       const user = session.me as MeResp;
       // 显示他绑的角色名 —— 现在没有「身份」这回事，角色名就是他的称呼
       const roleText = session.roleNames.join(' · ') || USER_ROLE_LABELS[user.role] || '员工';
@@ -85,11 +94,27 @@ Page({
         repairDesc: reporterOnly
           ? (scope ? `可报 ${scope} 内任意楼栋房号` : '还没有可代报的小区，请联系物业管理员开通')
           : '巡查发现的问题直接提单，地址可选全公司任意楼栋房号',
+        experienceAccess,
       });
       if (session.canAccept) this.refreshNotifyState();
     } catch {
       // 未登录时由请求层跳转登录页
     }
+  },
+
+  applyMode() {
+    const mode = cachedMeMode();
+    this.setData({ mode });
+    syncTabBar(this, mode);
+    wx.setNavigationBarTitle({ title: mode === 'more' ? '更多' : '我的' });
+  },
+
+  onOpenExperience() {
+    if (!this.data.experienceAccess.canView) {
+      wx.showToast({ icon: 'none', title: '暂无可查看的类别笔记本' });
+      return;
+    }
+    wx.navigateTo({ url: '/pages/experience-notes/experience-notes' });
   },
 
   onGoRepair() {

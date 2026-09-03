@@ -28,6 +28,7 @@ import { UploadModule } from './modules/upload/upload.module';
 import { StocktakeModule } from './modules/stocktake/stocktake.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
+import { RepairExperiencesModule } from './modules/repair-experiences/repair-experiences.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
     StocktakeModule,
     ObservabilityModule,
     FeedbackModule,
+    RepairExperiencesModule,
     PropertiesModule,
     QrModule,
     OwnersModule,

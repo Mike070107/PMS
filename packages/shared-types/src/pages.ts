@@ -71,6 +71,15 @@ export const ADMIN_PAGES: AdminPageDef[] = [
     hint: '勾中 = 可以查验并手写签名（物业经理）',
     actions: [],
   },
+  {
+    key: 'experience-notes',
+    label: '维修经验总结',
+    group: '报修工单',
+    hint: '按管理处和报修类别共享图文经验；角色权限仅在本角色数据范围内生效',
+    actions: [
+      { field: 'canEdit', label: '编辑笔记', hint: '新建、修改标题、正文、步骤、注意事项和图片' },
+    ],
+  },
   { key: 'business', label: '前台收费', group: '收费业务' },
   { key: 'fees', label: '物业费', group: '收费业务' },
   { key: 'materials', label: '材料 SKU 库', group: '材料与库存' },
@@ -137,6 +146,11 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
     editHint: '完工、报缺料、回填处理结果',
   },
   {
+    key: 'app:maintenance-sign',
+    label: '养护单签字任务',
+    hint: '查看并签署指定给本人的填单人或修理人任务',
+  },
+  {
     key: 'app:maintenance-inspect',
     label: '养护单查验',
     hint: '勾中即可查看完整养护单、手写签名并提交查验',
@@ -194,13 +208,20 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
     label: '消息中心',
     hint: '派单通知、催办提醒',
   },
+  {
+    key: 'app:experience-notes',
+    label: '维修经验总结',
+    hint: '查看管理处与报修类别共享的图文经验；该类别默认维修工自动拥有查看权',
+    editLabel: '编辑笔记',
+    editHint: '新建、修改图文经验；该类别默认维修工自动拥有编辑权',
+  },
 ];
 
 /**
  * 不受 tenants.enabled_pages 裁剪的后台页面：公司自己的配置项（订阅消息模板、
  * 自动验收时限），平台「可用页面」勾不勾都得能进 —— 勾漏了整家公司就配不了通知。
  */
-export const ALWAYS_ENABLED_PAGES: string[] = ['settings', 'logs'];
+export const ALWAYS_ENABLED_PAGES: string[] = ['settings', 'logs', 'experience-notes'];
 
 export const STAFF_APP_PAGE_KEYS = STAFF_APP_PAGES.map((p) => p.key);
 
@@ -242,6 +263,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:stocktakes': 'e',
+      'app:maintenance-sign': 'v',
       'app:messages': 'v',
     },
   },
@@ -250,6 +272,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '派单、管材料与库存、提采购申请',
     appPages: {
       'app:dispatch': 'e',
+      'app:maintenance-sign': 'v',
       'app:inventory': 'e',
       'app:stocktakes': 'e',
       'app:materials': 'e',
@@ -261,6 +284,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       dashboard: 'v',
       'work-orders': 'e',
       'maintenance-orders': 'e',
+      'experience-notes': 'e',
       materials: 'e',
       inventory: 'e',
       stocktakes: 'e',
@@ -287,6 +311,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       reports: 'v',
       'work-orders': 'e',
       'maintenance-orders': 'e',
+      'experience-notes': 'e',
       'maintenance-inspect': 'v',
       business: 'e',
       fees: 'e',

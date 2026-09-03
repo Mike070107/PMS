@@ -20,6 +20,7 @@ import {
   CloudServerOutlined,
   MonitorOutlined,
   MenuOutlined,
+  ReadOutlined,
 } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -67,6 +68,7 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
         icon: <FileTextOutlined />,
         label: '养护单',
       },
+      { key: '/experience-notes', pageKey: 'experience-notes', icon: <ReadOutlined />, label: '维修经验总结' },
     ],
   },
   {
@@ -116,6 +118,7 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/reports': '工单、人员、库存与材料使用的统计与导出',
   '/work-orders': '登记、调度并跟踪每一张维修工单',
   '/maintenance-orders': '按工单开《房屋修理养护任务单》，签字后打印',
+  '/experience-notes': '按管理处和报修类别沉淀共享的图文维修经验',
   '/business': '办理停车、门禁与前台收费业务',
   '/fees': '物业费账单、收款登记与欠费催缴',
   '/materials': '维护标准材料、单位与基础价格',

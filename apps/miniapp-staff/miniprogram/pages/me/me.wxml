@@ -1,4 +1,26 @@
 <view class="container container--tabbar">
+  <block wx:if="{{mode === 'more'}}">
+    <view class="screen-head">
+      <view class="screen-head__title">更多应用</view>
+      <view class="screen-head__desc">常用功能会以图标放在这里，页面保持简单好找</view>
+    </view>
+    <view class="card more-panel">
+      <view class="more-panel__title">维修知识</view>
+      <view class="app-grid">
+        <view class="app-tile {{experienceAccess.canView ? '' : 'app-tile--disabled'}}" bindtap="onOpenExperience">
+          <view class="app-tile__icon"><view class="experience-glyph"></view></view>
+          <view class="app-tile__name">维修经验总结</view>
+          <view class="app-tile__desc">
+            {{experienceAccess.canView ? '图文记录经验和注意事项' : '暂无授权的类别笔记本'}}
+          </view>
+          <view wx:if="{{experienceAccess.canView}}" class="app-tile__badge">
+            {{experienceAccess.notebookCount}} 个笔记本
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+  <block wx:else>
   <view class="screen-head">
     <view class="screen-head__title">我的工作台</view>
     <view class="screen-head__desc">管理提醒、报修入口、意见反馈和当前账号</view>
@@ -98,4 +120,5 @@
   </button>
 
   <view class="build-info">{{buildText}}</view>
+  </block>
 </view>

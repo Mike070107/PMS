@@ -5,13 +5,15 @@ export interface MaintenanceListItem {
   orderNo: string;
   paperNo: string | null;
   workOrderNo: string | null;
-  status: 'draft' | 'inspected' | 'void';
+  status: 'filling' | 'waiting_filler' | 'waiting_repairer' | 'waiting_inspector' | 'pending_print' | 'completed' | 'void';
   addressText: string;
   repairItem: string | null;
   reporterName: string | null;
   repairerName: string | null;
   totalCents: number;
   createdAt: string;
+  slot?: 'filler' | 'repairer' | 'inspector';
+  slotLabel?: string;
 }
 
 export interface MaintenanceSignLink {
@@ -34,11 +36,12 @@ export interface MaintenanceSignSession {
   unitName: string | null;
   signed: boolean;
   signerName: string | null;
-  expiresAt: string;
+  expiresAt?: string | null;
+  external?: boolean;
   order: Record<string, any>;
 }
 
-export const list = (query: { status?: 'draft' | 'inspected' | 'all'; q?: string } = {}) =>
+export const list = (query: { status?: MaintenanceListItem['status'] | 'all'; q?: string } = {}) =>
   request<MaintenanceListItem[]>({ url: '/maintenance-orders', query });
 
 /** 物业经理从员工端打开一次性整单预览与查验签字链接。 */
@@ -60,4 +63,16 @@ export const submitSignature = (token: string, image: string) =>
     url: '/sign/submit',
     data: { token, image },
     anonymous: true,
+  });
+
+/** 登录员工的内部待签任务：永久有效，只按当前状态和指定人校验。 */
+export const signTasks = () =>
+  request<MaintenanceListItem[]>({ url: '/maintenance-orders/sign-tasks' });
+
+export const internalSignSession = (id: number | string) =>
+  request<MaintenanceSignSession>({ url: `/maintenance-orders/${id}/sign-task` });
+
+export const submitInternalSignature = (id: number | string, image: string) =>
+  request<{ ok: true; slotLabel: string; status: MaintenanceListItem['status'] }>({
+    method: 'POST', url: `/maintenance-orders/${id}/sign-task`, data: { image },
   });

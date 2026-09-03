@@ -14,6 +14,8 @@
     "pages/material-inbound/material-inbound",
     "pages/messages/messages",
     "pages/feedback/feedback",
+    "pages/experience-notes/experience-notes",
+    "pages/experience-note/experience-note",
     "pages/maintenance-sign/maintenance-sign",
     "pages/web-sign/web-sign",
     "pages/me/me",

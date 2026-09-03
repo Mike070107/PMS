@@ -1,0 +1,49 @@
+<view class="container note-page">
+  <view class="note-scope">
+    <text>{{officeName || '所属管理处'}}</text><text class="note-scope__dot">·</text><text>{{repairTypeLabel || repairType}}</text>
+  </view>
+
+  <block wx:if="{{editing}}">
+    <view class="card editor-card">
+      <view class="field-label">笔记标题</view>
+      <input class="title-input" maxlength="160" placeholder="例如：单元门门禁无响应的排查方法" value="{{title}}" bindinput="onTitleInput" />
+    </view>
+
+    <view wx:for="{{blocks}}" wx:key="id" class="card block-editor">
+      <view class="block-editor__top">
+        <text class="block-kind">{{item.type === 'heading' ? '小标题' : item.type === 'bullet' ? '步骤' : item.type === 'warning' ? '注意事项' : item.type === 'image' ? '图片' : '正文'}}</text>
+        <view class="block-actions">
+          <text data-index="{{index}}" data-delta="-1" bindtap="onMoveBlock">上移</text>
+          <text data-index="{{index}}" data-delta="1" bindtap="onMoveBlock">下移</text>
+          <text class="danger" data-index="{{index}}" bindtap="onRemoveBlock">删除</text>
+        </view>
+      </view>
+      <block wx:if="{{item.type === 'image'}}">
+        <image class="editor-image" src="{{item.url}}" mode="aspectFill" data-url="{{item.url}}" bindtap="onPreview" />
+        <input class="caption-input" placeholder="图片说明（可不填）" value="{{item.caption}}" data-index="{{index}}" bindinput="onCaptionInput" />
+      </block>
+      <block wx:else>
+        <textarea class="block-text block-text--{{item.type}}" auto-height maxlength="4000" placeholder="{{item.type === 'warning' ? '写容易忽略、安全风险或返工点' : item.type === 'bullet' ? '写一个操作步骤' : '写维修经验'}}" value="{{item.text}}" data-index="{{index}}" bindinput="onTextInput"></textarea>
+        <button wx:if="{{hasSpeech}}" class="voice-btn {{recording && speechIndex === index ? 'voice-btn--on' : ''}}" data-index="{{index}}" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord">{{recording && speechIndex === index ? '松开结束' : '按住说话，自动转文字'}}</button>
+      </block>
+    </view>
+
+    <view class="add-tools">
+      <view class="add-tools__title">继续添加</view>
+      <view class="add-tools__buttons">
+        <button data-type="paragraph" bindtap="onAddBlock">正文</button><button data-type="heading" bindtap="onAddBlock">小标题</button><button data-type="bullet" bindtap="onAddBlock">步骤</button><button data-type="warning" bindtap="onAddBlock">注意事项</button><button bindtap="onAddImage">图片</button>
+      </view>
+    </view>
+    <button class="save-btn" loading="{{saving}}" disabled="{{saving}}" bindtap="onSave">保存维修经验</button>
+  </block>
+
+  <block wx:else>
+    <view class="reader-title">{{title}}</view>
+    <view wx:for="{{blocks}}" wx:key="id" class="reader-block reader-block--{{item.type}}">
+      <image wx:if="{{item.type === 'image'}}" class="reader-image" src="{{item.url}}" mode="widthFix" data-url="{{item.url}}" bindtap="onPreview" />
+      <view wx:if="{{item.type === 'image' && item.caption}}" class="reader-caption">{{item.caption}}</view>
+      <view wx:else>{{item.type === 'bullet' ? '• ' : ''}}{{item.text}}</view>
+    </view>
+    <button wx:if="{{canEdit}}" class="edit-btn" bindtap="onEdit">编辑这篇经验</button>
+  </block>
+</view>

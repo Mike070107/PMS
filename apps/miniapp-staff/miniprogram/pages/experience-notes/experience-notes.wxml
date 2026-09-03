@@ -1,0 +1,30 @@
+<view class="container">
+  <view class="screen-head">
+    <view class="screen-head__title">维修经验总结</view>
+    <view class="screen-head__desc">同一管理处、同一报修类别共用一本，经验留给下一次维修</view>
+  </view>
+
+  <view wx:for="{{notebooks}}" wx:key="repairType" class="card notebook">
+    <view class="notebook__head">
+      <view class="notebook__heading">
+        <view class="notebook__type">{{item.repairTypeLabel}}</view>
+        <view class="notebook__office">{{item.officeName}}</view>
+      </view>
+      <button wx:if="{{item.canEdit}}" class="mini-btn" data-office-id="{{item.officeId}}" data-repair-type="{{item.repairType}}" data-office-name="{{item.officeName}}" data-type-label="{{item.repairTypeLabel}}" bindtap="onCreate">＋ 写经验</button>
+    </view>
+    <view wx:if="{{!item.notes.length}}" class="notebook__empty">还没有记录。修完一个典型问题后，把做法和注意事项写下来。</view>
+    <view wx:for="{{item.notes}}" wx:for-item="note" wx:key="id" class="note-row" data-id="{{note.id}}" bindtap="onOpen" hover-class="note-row--hover">
+      <view class="note-row__body">
+        <view class="note-row__title">{{note.title}}</view>
+        <view wx:if="{{note.preview}}" class="note-row__preview">{{note.preview}}</view>
+        <view class="note-row__meta">{{note.updatedByName}} 更新<text wx:if="{{note.imageCount}}"> · {{note.imageCount}} 张图片</text></view>
+      </view>
+      <view class="note-row__arrow">›</view>
+    </view>
+  </view>
+
+  <view wx:if="{{loaded && !notebooks.length}}" class="empty-state">
+    <view class="empty-state__title">暂无可查看的经验笔记本</view>
+    <view class="empty-state__desc">默认维修工会自动获得对应管理处和报修类别的查看、编辑权限；也可由管理员在业务角色里授权。</view>
+  </view>
+</view>

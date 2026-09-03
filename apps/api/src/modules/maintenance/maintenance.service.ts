@@ -2,7 +2,9 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -34,6 +36,8 @@ import {
   MaintenanceMaterial,
 } from '../../entities/maintenance-order.entity';
 import { ResolvedAccess } from '../access/access.service';
+import { AccessService } from '../access/access.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { extractSpot } from '../repairs/repair-suggestions.util';
 import { resolveRepairTypeLabel } from '../repairs/repair-type-labels';
@@ -118,7 +122,8 @@ interface SignTokenPayload {
 const ORDER_NO_ALPHABET = '34679ACDEFGHJKMNPQRTUVWXY';
 
 @Injectable()
-export class MaintenanceService {
+export class MaintenanceService implements OnModuleInit {
+  private readonly logger = new Logger(MaintenanceService.name);
   constructor(
     private readonly dataSource: DataSource,
     private readonly jwt: JwtService,
@@ -152,7 +157,28 @@ export class MaintenanceService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly storage: ObjectStorageService,
+    private readonly accessService: AccessService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  /** 生产环境依靠 synchronize，它不会改已有行里的旧状态，因此启动时幂等迁移。 */
+  async onModuleInit() {
+    try {
+      await this.orderRepo.query(`
+        UPDATE maintenance_orders
+           SET status = CASE
+             WHEN status = 'inspected' OR inspector_sign_url IS NOT NULL THEN 'pending_print'
+             WHEN repairer_sign_url IS NOT NULL THEN 'waiting_inspector'
+             WHEN filler_sign_url IS NOT NULL THEN 'waiting_repairer'
+             ELSE 'filling'
+           END,
+               updated_at = now()
+         WHERE status IN ('draft', 'inspected')
+      `);
+    } catch (error) {
+      this.logger.warn(`养护单旧状态迁移失败：${(error as Error).message}`);
+    }
+  }
 
   // ==================== 预算定额配置 ====================
 
@@ -290,13 +316,12 @@ export class MaintenanceService {
   /** 工单详情页「填养护单」用：这张工单有没有养护单，有就直接打开 */
   async findByWorkOrder(workOrderId: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const row = await this.orderRepo.findOne({
-      where: [
-        { tenantId, workOrderId, status: MAINTENANCE_STATUS.DRAFT },
-        { tenantId, workOrderId, status: MAINTENANCE_STATUS.INSPECTED },
-      ],
-      order: { id: 'DESC' },
-    });
+    const row = await this.orderRepo
+      .createQueryBuilder('mo')
+      .where('mo.tenant_id = :tenantId AND mo.work_order_id = :workOrderId', { tenantId, workOrderId })
+      .andWhere("mo.status <> 'void'")
+      .orderBy('mo.id', 'DESC')
+      .getOne();
     if (!row) return null;
     this.assertInScope(row.communityId, access);
     return this.toDetail(row);
@@ -319,12 +344,14 @@ export class MaintenanceService {
     if (!workOrder) throw new NotFoundException('工单不存在');
     this.assertInScope(workOrder.communityId, access);
 
-    const existing = await this.orderRepo.findOne({
-      where: [
-        { tenantId, workOrderId: workOrder.id, status: MAINTENANCE_STATUS.DRAFT },
-        { tenantId, workOrderId: workOrder.id, status: MAINTENANCE_STATUS.INSPECTED },
-      ],
-    });
+    const existing = await this.orderRepo
+      .createQueryBuilder('mo')
+      .where('mo.tenant_id = :tenantId AND mo.work_order_id = :workOrderId', {
+        tenantId, workOrderId: workOrder.id,
+      })
+      .andWhere("mo.status <> 'void'")
+      .orderBy('mo.id', 'DESC')
+      .getOne();
     if (existing) {
       return { ...this.toDetail(existing), suggestedPaperNo: await this.suggestPaperNo(tenantId) };
     }
@@ -350,9 +377,9 @@ export class MaintenanceService {
     if (row.status === MAINTENANCE_STATUS.VOID) {
       throw new BadRequestException('这张养护单已作废，不能再改');
     }
-    // 查验过的单不能再改内容：经理签的是他当时看到的那份。要改就先作废重开。
-    if (row.status === MAINTENANCE_STATUS.INSPECTED) {
-      throw new BadRequestException('已查验的养护单不能再修改，需要改请先作废后重新开单');
+    // 只有「填单中」允许改正文：一旦推送，后面每个人签的必须是同一份快照。
+    if (row.status !== MAINTENANCE_STATUS.FILLING) {
+      throw new BadRequestException('养护单已进入签字流程，如需改正文请先作废后重新开单');
     }
 
     const text = (v: string | undefined, cur: string | null) =>
@@ -414,6 +441,39 @@ export class MaintenanceService {
     return this.toDetail(saved);
   }
 
+  /** 办公室核对完成后发起三段式签字。 */
+  async publish(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const row = await this.orderRepo.findOne({ where: { id, tenantId } });
+    if (!row) throw new NotFoundException('养护单不存在');
+    this.assertInScope(row.communityId, access);
+    if (row.status !== MAINTENANCE_STATUS.FILLING) {
+      throw new BadRequestException('只有填单中的养护单可以推送签名');
+    }
+    if (!row.fillerId || !row.repairerId) {
+      throw new BadRequestException('请先确认填单人和修理人');
+    }
+    row.status = MAINTENANCE_STATUS.WAITING_FILLER;
+    row.updatedBy = user.id;
+    const saved = await this.orderRepo.save(row);
+    await this.notifyCurrentSigner(saved);
+    return this.toDetail(saved);
+  }
+
+  /** 真实打印完成后归档。 */
+  async markPrinted(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const row = await this.orderRepo.findOne({ where: { id, tenantId } });
+    if (!row) throw new NotFoundException('养护单不存在');
+    this.assertInScope(row.communityId, access);
+    if (row.status !== MAINTENANCE_STATUS.PENDING_PRINT) {
+      throw new BadRequestException('三方签字完成后才能标记打印完成');
+    }
+    row.status = MAINTENANCE_STATUS.COMPLETED;
+    row.updatedBy = user.id;
+    return this.toDetail(await this.orderRepo.save(row));
+  }
+
   /** 物业经理查验并签名 */
   async inspect(
     id: number,
@@ -425,9 +485,7 @@ export class MaintenanceService {
     const row = await this.orderRepo.findOne({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('养护单不存在');
     this.assertInScope(row.communityId, access);
-    if (row.status === MAINTENANCE_STATUS.VOID) {
-      throw new BadRequestException('这张养护单已作废');
-    }
+    this.assertExpectedSlot(row, 'inspector');
     if (!dto.signUrl?.trim()) {
       throw new BadRequestException('请先手写签名再查验');
     }
@@ -439,7 +497,7 @@ export class MaintenanceService {
     row.inspectorName = dto.name?.trim() || me?.name || row.inspectorName;
     row.inspectorSignUrl = dto.signUrl.trim();
     row.inspectedAt = dto.inspectedOn ? new Date(dto.inspectedOn) : new Date();
-    row.status = MAINTENANCE_STATUS.INSPECTED;
+    row.status = MAINTENANCE_STATUS.PENDING_PRINT;
     row.updatedBy = user.id;
     return this.toDetail(await this.orderRepo.save(row));
   }
@@ -477,11 +535,12 @@ export class MaintenanceService {
     const row = await this.orderRepo.findOne({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('养护单不存在');
     this.assertInScope(row.communityId, access);
-    if (row.status === MAINTENANCE_STATUS.VOID) {
-      throw new BadRequestException('这张养护单已作废');
-    }
-    if (slot !== 'inspector' && row.status !== MAINTENANCE_STATUS.DRAFT) {
-      throw new BadRequestException('已查验的养护单不能再改签名');
+    if (slot === 'owner') {
+      if (row.status !== MAINTENANCE_STATUS.FILLING) {
+        throw new BadRequestException('报修人验收签名只能在推送三方签字前补录');
+      }
+    } else {
+      this.assertExpectedSlot(row, slot);
     }
     const me = await this.userRepo.findOne({
       where: { id: user.id },
@@ -494,7 +553,10 @@ export class MaintenanceService {
         maintenanceOrderId: row.id,
         slot,
         requestedBy: user.id,
-        signerName: me?.name || null,
+      signerName:
+        slot === 'filler' ? row.fillerName
+          : slot === 'repairer' ? row.repairerName
+            : me?.name || null,
         expiresAt,
         openedAt: null,
         submittedAt: null,
@@ -507,8 +569,14 @@ export class MaintenanceService {
       moId: row.id,
       tenantId,
       slot,
-      uid: user.id,
-      name: me?.name || '',
+      uid:
+        slot === 'filler' ? row.fillerId || user.id
+          : slot === 'repairer' ? row.repairerId || user.id
+            : user.id,
+      name:
+        slot === 'filler' ? row.fillerName || me?.name || ''
+          : slot === 'repairer' ? row.repairerName || me?.name || ''
+            : me?.name || '',
       purpose: 'maintenance-sign',
     };
     const token = await this.jwt.signAsync(payload, {
@@ -545,6 +613,13 @@ export class MaintenanceService {
       where: { id: payload.moId, tenantId: payload.tenantId },
     });
     if (!row) throw new NotFoundException('养护单不存在');
+    if (payload.slot === 'owner') {
+      if (row.status !== MAINTENANCE_STATUS.FILLING) {
+        throw new BadRequestException('这个签名任务已结束');
+      }
+    } else {
+      this.assertExpectedSlot(row, payload.slot);
+    }
     const field = SIGN_SLOTS[payload.slot].field;
     return {
       slot: payload.slot,
@@ -572,6 +647,7 @@ export class MaintenanceService {
     const buffer = this.decodePngDataUrl(imageDataUrl);
     const stored = await this.storage.putBuffer(buffer, 'image/png', 'uploads', 'signature.png');
     const url = stored.fileUrl;
+    let savedOrder: MaintenanceOrder | null = null;
     await this.dataSource.transaction(async (manager) => {
       const session = await manager.findOne(MaintenanceSignSession, {
         where: { id: payload.sid, tenantId: payload.tenantId },
@@ -589,28 +665,114 @@ export class MaintenanceService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!row) throw new NotFoundException('养护单不存在');
-      if (row.status === MAINTENANCE_STATUS.VOID) {
-        throw new BadRequestException('这张养护单已作废');
-      }
-      if (payload.slot === 'inspector') {
-        row.inspectorId = payload.uid;
-        row.inspectorName = payload.name || row.inspectorName;
-        row.inspectorSignUrl = url;
-        row.inspectedAt = new Date();
-        row.status = MAINTENANCE_STATUS.INSPECTED;
-      } else {
-        if (row.status !== MAINTENANCE_STATUS.DRAFT) {
-          throw new BadRequestException('已查验的养护单不能再改签名');
+      if (payload.slot === 'owner') {
+        if (row.status !== MAINTENANCE_STATUS.FILLING) {
+          throw new BadRequestException('养护单已进入三方签字流程');
         }
-        row[SIGN_SLOTS[payload.slot].field] = url;
+        row.ownerSignUrl = url;
+      } else {
+        this.assertExpectedSlot(row, payload.slot);
+        this.applySignedSlot(row, payload.slot, url, payload.uid, payload.name);
       }
       row.updatedBy = payload.uid;
       session.submittedAt = new Date();
       session.updatedBy = payload.uid;
       await manager.save(MaintenanceOrder, row);
       await manager.save(MaintenanceSignSession, session);
+      savedOrder = row;
     });
+    if (savedOrder) await this.notifyCurrentSigner(savedOrder);
     return { ok: true, slotLabel: SIGN_SLOTS[payload.slot].label };
+  }
+
+  // ==================== 员工端内部待签任务（无时效） ====================
+
+  async listSignTasks(user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.length) return [];
+    const canInspect = !!access?.pages?.['app:maintenance-inspect']?.view;
+    const qb = this.orderRepo
+      .createQueryBuilder('mo')
+      .where('mo.tenant_id = :tenantId', { tenantId })
+      .andWhere(`(
+        (mo.status = :wf AND mo.filler_id = :uid)
+        OR (mo.status = :wr AND mo.repairer_id = :uid)
+        ${canInspect ? 'OR mo.status = :wi' : ''}
+      )`, {
+        wf: MAINTENANCE_STATUS.WAITING_FILLER,
+        wr: MAINTENANCE_STATUS.WAITING_REPAIRER,
+        wi: MAINTENANCE_STATUS.WAITING_INSPECTOR,
+        uid: user.id,
+      });
+    if (scope) qb.andWhere('mo.community_id IN (:...scope)', { scope });
+    const rows = await qb.orderBy('mo.updated_at', 'DESC').getMany();
+    return rows.map((row) => ({
+      ...this.toListRow(row),
+      slot: this.expectedSlot(row),
+      slotLabel: SIGN_SLOTS[this.expectedSlot(row)!]?.label || '',
+    }));
+  }
+
+  async getInternalSignTask(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const row = await this.orderRepo.findOne({ where: { id, tenantId } });
+    if (!row) throw new NotFoundException('养护单不存在');
+    this.assertInScope(row.communityId, access);
+    const slot = this.assertInternalSigner(row, user, access);
+    const field = SIGN_SLOTS[slot].field;
+    return {
+      slot,
+      slotLabel: SIGN_SLOTS[slot].label,
+      paperNo: row.paperNo,
+      orderNo: row.orderNo,
+      addressText: this.addressText(row),
+      repairItem: row.repairItem,
+      unitName: row.unitName,
+      signed: !!row[field],
+      signerName:
+        slot === 'filler' ? row.fillerName
+          : slot === 'repairer' ? row.repairerName
+            : null,
+      external: false,
+      expiresAt: null,
+      order: this.toDetail(row),
+    };
+  }
+
+  async submitInternalSignature(
+    id: number,
+    imageDataUrl: string,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const current = await this.orderRepo.findOne({ where: { id, tenantId } });
+    if (!current) throw new NotFoundException('养护单不存在');
+    this.assertInScope(current.communityId, access);
+    this.assertInternalSigner(current, user, access);
+    const buffer = this.decodePngDataUrl(imageDataUrl);
+    const stored = await this.storage.putBuffer(buffer, 'image/png', 'uploads', 'signature.png');
+    const me = await this.userRepo.findOne({ where: { id: user.id, tenantId }, select: ['name'] });
+    let resultStatus = MAINTENANCE_STATUS.WAITING_FILLER as MaintenanceOrder['status'];
+    let slotLabel = '';
+    let savedOrder: MaintenanceOrder | null = null;
+    await this.dataSource.transaction(async (manager) => {
+      const row = await manager.findOne(MaintenanceOrder, {
+        where: { id, tenantId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!row) throw new NotFoundException('养护单不存在');
+      this.assertInScope(row.communityId, access);
+      const slot = this.assertInternalSigner(row, user, access);
+      slotLabel = SIGN_SLOTS[slot].label;
+      this.applySignedSlot(row, slot, stored.fileUrl, user.id, me?.name || '');
+      row.updatedBy = user.id;
+      await manager.save(MaintenanceOrder, row);
+      resultStatus = row.status;
+      savedOrder = row;
+    });
+    if (savedOrder) await this.notifyCurrentSigner(savedOrder);
+    return { ok: true, slotLabel, status: resultStatus };
   }
 
   /**
@@ -722,7 +884,16 @@ export class MaintenanceService {
       ? await this.officeRepo.findOne({ where: { id: topCommunity.officeId, tenantId } })
       : null;
 
-    const materials = await this.buildMaterialRows(tenantId, workOrder);
+    const [materials, owner] = await Promise.all([
+      this.buildMaterialRows(tenantId, workOrder),
+      house
+        ? this.userRepo.findOne({
+            where: { tenantId, houseId: house.id, role: UserRole.OWNER },
+            order: { id: 'ASC' },
+            select: ['id', 'name'],
+          })
+        : Promise.resolve(null),
+    ]);
     const params = await this.loadQuotaParams(tenantId);
 
     // 公区报修没有门牌（监控室、水泵房这类点位另建档），地址五格留空，
@@ -764,9 +935,10 @@ export class MaintenanceService {
       workOrderNo: workOrder.orderNo,
       requestId: workOrder.requestId,
       communityId: workOrder.communityId,
-      status: MAINTENANCE_STATUS.DRAFT,
+      status: MAINTENANCE_STATUS.FILLING,
       unitName: office?.name || topCommunity?.name || null,
-      reporterName: request?.contactName || null,
+      // 按地址从业主档案取姓名，档案没有时才回退到报修联系人。
+      reporterName: owner?.name?.trim() || request?.contactName || null,
       // 有门牌的地址不写「村」：小区名在「管房单位」那一格已经有了，
       // 两处写同一个名字既重复，也会把纸上不到 1cm 的格子撑爆。
       // 公区没有门牌，才拿小区名占住这一格，否则地址整行是空的
@@ -937,6 +1109,102 @@ export class MaintenanceService {
       amountCents: amount === null ? null : Math.round(amount),
       note: str(dto.note),
     };
+  }
+
+  /** 当前唯一能签的人；后一位绝不能越过前一位。 */
+  private expectedSlot(row: MaintenanceOrder): Exclude<SignSlotKey, 'owner'> | null {
+    if (row.status === MAINTENANCE_STATUS.WAITING_FILLER) return 'filler';
+    if (row.status === MAINTENANCE_STATUS.WAITING_REPAIRER) return 'repairer';
+    if (row.status === MAINTENANCE_STATUS.WAITING_INSPECTOR) return 'inspector';
+    return null;
+  }
+
+  private assertExpectedSlot(row: MaintenanceOrder, slot: SignSlotKey) {
+    if (row.status === MAINTENANCE_STATUS.VOID) {
+      throw new BadRequestException('这张养护单已作废');
+    }
+    const expected = this.expectedSlot(row);
+    if (!expected) throw new BadRequestException('这张养护单当前没有待签任务');
+    if (expected !== slot) {
+      throw new BadRequestException(`请先完成${SIGN_SLOTS[expected].label}签字`);
+    }
+  }
+
+  private assertInternalSigner(
+    row: MaintenanceOrder,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ): Exclude<SignSlotKey, 'owner'> {
+    const slot = this.expectedSlot(row);
+    if (!slot) throw new BadRequestException('这张养护单当前没有待签任务');
+    if (slot === 'filler' && row.fillerId !== user.id) {
+      throw new ForbiddenException('这张养护单当前由填单人签字');
+    }
+    if (slot === 'repairer' && row.repairerId !== user.id) {
+      throw new ForbiddenException('这张养护单当前由指定修理人签字');
+    }
+    if (slot === 'inspector' && !access?.pages?.['app:maintenance-inspect']?.view) {
+      throw new ForbiddenException('你的角色没有养护单查验权限');
+    }
+    return slot;
+  }
+
+  private applySignedSlot(
+    row: MaintenanceOrder,
+    slot: Exclude<SignSlotKey, 'owner'>,
+    url: string,
+    signerId: number,
+    signerName: string,
+  ) {
+    this.assertExpectedSlot(row, slot);
+    if (slot === 'filler') {
+      row.fillerSignUrl = url;
+      row.fillerId = row.fillerId || signerId;
+      row.fillerName = row.fillerName || signerName || null;
+      row.status = MAINTENANCE_STATUS.WAITING_REPAIRER;
+      return;
+    }
+    if (slot === 'repairer') {
+      row.repairerSignUrl = url;
+      row.repairerId = row.repairerId || signerId;
+      row.repairerName = row.repairerName || signerName || null;
+      row.status = MAINTENANCE_STATUS.WAITING_INSPECTOR;
+      return;
+    }
+    row.inspectorSignUrl = url;
+    row.inspectorId = signerId;
+    row.inspectorName = signerName || row.inspectorName;
+    row.inspectedAt = new Date();
+    row.status = MAINTENANCE_STATUS.PENDING_PRINT;
+  }
+
+  /** 签字流转后把下一个人叫来；通知失败不影响主流程。 */
+  private async notifyCurrentSigner(row: MaintenanceOrder) {
+    try {
+      const slot = this.expectedSlot(row);
+      if (!slot) return;
+      let receiverIds: number[] = [];
+      if (slot === 'filler' && row.fillerId) receiverIds = [row.fillerId];
+      if (slot === 'repairer' && row.repairerId) receiverIds = [row.repairerId];
+      if (slot === 'inspector') {
+        const candidates = await this.accessService.userIdsWithPermission(
+          row.tenantId, 'app:maintenance-inspect', 'view',
+        );
+        const officeId = await this.accessService.officeIdOfCommunity(row.tenantId, row.communityId);
+        const covered = await this.accessService.filterUsersCoveringOffice(row.tenantId, candidates, officeId);
+        receiverIds = [...covered.keys()];
+      }
+      await Promise.all(receiverIds.map((receiverId) => this.notifications.notifyUser({
+        tenantId: row.tenantId,
+        receiverId,
+        eventKey: `maintenance_sign_${slot}`,
+        title: `养护单 ${row.paperNo || row.orderNo} 待您签字`,
+        payload: { maintenanceOrderId: row.id, slot },
+        page: `/pages/maintenance-sign/maintenance-sign?id=${row.id}`,
+      })));
+    } catch (error) {
+      this.logger.warn(`养护单待签通知失败：${(error as Error).message}`);
+    }
   }
 
   private toListRow(row: MaintenanceOrder) {

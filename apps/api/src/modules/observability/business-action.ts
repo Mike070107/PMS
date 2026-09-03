@@ -44,6 +44,8 @@ const RULES: Rule[] = [
   { method: 'DELETE', pattern: /^\/repair-type-rules\/(\d+)$/, code: 'repair_type_rule_delete', label: '删除报修类型', area: '报修配置', objectType: 'repair_type_rule' },
   { method: 'POST', pattern: /^\/repair-type-rules\/reorder$/, code: 'repair_type_rule_reorder', label: '调整报修类型排序', area: '报修配置', objectType: 'repair_type_rule' },
   { method: 'PATCH', pattern: /^\/repair-type-rules\/offices\/(\d+)\/suggestion-settings$/, code: 'repair_suggestion_settings_update', label: '修改报修联想设置', area: '报修配置', objectType: 'office' },
+  { method: 'POST', pattern: /^\/repair-experiences$/, code: 'repair_experience_create', label: '新增维修经验', area: '维修经验', objectType: 'repair_experience' },
+  { method: 'PUT', pattern: /^\/repair-experiences\/(\d+)$/, code: 'repair_experience_update', label: '编辑维修经验', area: '维修经验', objectType: 'repair_experience' },
   { method: 'PATCH', pattern: /^\/stocks\/(\d+)$/, code: 'stock_update', label: '修改库存', area: '库存', objectType: 'stock' },
   { method: 'POST', pattern: /^\/goods-receipts(?:\/general)?$/, code: 'stock_receive', label: '办理入库', area: '库存', objectType: 'goods_receipt' },
   { method: 'POST', pattern: /^\/transfer-orders$/, code: 'stock_transfer_create', label: '新建库存调拨', area: '库存', objectType: 'transfer_order' },
@@ -197,6 +199,7 @@ const FALLBACK_MODULE_LABELS: Record<string, string> = {
   auth: '账号', notifications: '消息通知', upload: '附件', sign: '电子签字',
   platform: '租户管理', settings: '系统设置', properties: '基础档案', qr: '二维码',
   repair: '报修', reports: '报表', business: '业务数据',
+  'repair-experiences': '维修经验',
 };
 
 export function normalizeBusinessPath(value: string) {

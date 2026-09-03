@@ -18,6 +18,7 @@ import {
   WorkOrderMaterial,
 } from '../../entities';
 import { UploadModule } from '../upload/upload.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { MaintenanceController } from './maintenance.controller';
 import { MaintenanceService } from './maintenance.service';
 import { SignController } from './sign.controller';
@@ -41,6 +42,7 @@ import { SignController } from './sign.controller';
       User,
     ]),
     UploadModule, // 手写签名存在私有桶里，读的时候要翻成代理地址
+    NotificationsModule,
     // 手机签名链接用的短期 token：每次签名都显式传另一把密钥，这里不设默认 secret，
     // 免得哪天有人不小心用它签出一个能当登录态使的 token
     JwtModule.register({}),

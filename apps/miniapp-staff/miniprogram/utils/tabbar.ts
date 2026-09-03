@@ -15,6 +15,7 @@ const TAB_PAGE_KEYS = [
   'app:pool',
   'app:dispatch',
   'app:my-orders',
+  'app:maintenance-sign',
   'app:my-repairs',
   'app:maintenance-inspect',
   'app:inventory',
@@ -24,6 +25,7 @@ const TAB_PAGE_KEYS = [
   'app:approve-purchaser',
   'app:repair-create',
   'app:messages',
+  'app:experience-notes',
 ];
 
 /**
@@ -44,6 +46,7 @@ export function readCachedAccess(): { pages: Record<string, boolean> | null } {
  */
 const POOL_MODE_KEY = 'pms.staff.poolMode';
 const APPROVAL_MODE_KEY = 'pms.staff.approvalMode';
+const ME_MODE_KEY = 'pms.staff.meMode';
 
 export type PoolMode = 'pool' | 'dispatch';
 
@@ -71,6 +74,15 @@ export function cachedApprovalMode(): ApprovalMode {
 }
 export function rememberApprovalMode(mode: ApprovalMode) {
   try { wx.setStorageSync(APPROVAL_MODE_KEY, mode); } catch { /* 页面会按权限纠正 */ }
+}
+
+export type MeMode = 'more' | 'me';
+export function cachedMeMode(): MeMode {
+  try { return wx.getStorageSync(ME_MODE_KEY) === 'more' ? 'more' : 'me'; }
+  catch { return 'me'; }
+}
+export function rememberMeMode(mode: MeMode) {
+  try { wx.setStorageSync(ME_MODE_KEY, mode); } catch { /* 页面会按“我的”兜底 */ }
 }
 
 function getTabBar(page: any) {
@@ -136,4 +148,5 @@ export function clearAccessCache() {
   wx.removeStorageSync(PAGES_KEY);
   wx.removeStorageSync(POOL_MODE_KEY);
   wx.removeStorageSync(APPROVAL_MODE_KEY);
+  wx.removeStorageSync(ME_MODE_KEY);
 }

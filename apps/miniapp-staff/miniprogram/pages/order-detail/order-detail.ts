@@ -1390,13 +1390,12 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         resultAttachments: this.data.resultAttachments,
       });
       const orderNo = this.data.detail?.workOrder.orderNo || '';
-      wx.setStorageSync('pms.staff.open_order', JSON.stringify({ mainTab: 'done', orderNo }));
       wx.showModal({
         title: '已提交完工',
-        content: `${orderNo || '该工单'}已进入待验收，可在工单池的「已完结」里回看刚填的内容。`,
+        content: `${orderNo || '该工单'}已进入待验收，返回「在手工单」继续处理下一项工作。`,
         showCancel: false,
-        confirmText: '去看工单',
-        success: () => wx.switchTab({ url: '/pages/pool/pool' }),
+        confirmText: '返回在手工单',
+        success: () => wx.switchTab({ url: '/pages/my-orders/my-orders' }),
       });
     } catch (e: any) {
       this.setData({ errorMsg: e?.message || '提交失败' });

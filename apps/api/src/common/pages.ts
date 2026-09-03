@@ -13,6 +13,7 @@ export const ADMIN_PAGE_KEYS = [
   'work-orders', // 工单管理
   'maintenance-orders', // 养护单（房屋修理养护任务单）：填单 / 打印
   'maintenance-inspect', // 养护单查验（物业经理签字），单独一格：填单的人不该能自己查验自己
+  'experience-notes', // 维修经验总结（按管理处 + 报修类型共享）
   'business', // 前台收费
   'fees', // 物业费（账单 / 收费标准 / 欠费）
   'materials', // 材料 SKU 库
@@ -39,6 +40,7 @@ export const STAFF_APP_PAGE_KEYS = [
   'app:dispatch', // 派单台（派单）
   'app:pool', // 工单池（接单）
   'app:my-orders', // 在手工单（派给本人、由本人处理）
+  'app:maintenance-sign', // 养护单内部签字任务（填单人 / 修理人）
   'app:maintenance-inspect', // 养护单查验（物业经理查看、签字）
   'app:my-repairs', // 我的报修（本人提交的报修进度）
   'app:repair-create', // 报修
@@ -48,6 +50,7 @@ export const STAFF_APP_PAGE_KEYS = [
   'app:approve-manager', // 采购审批（经理这一步）
   'app:approve-purchaser', // 采购审批（采购这一步）
   'app:messages', // 消息中心
+  'app:experience-notes', // 维修经验总结（查看/编辑；默认维修工无需额外授权）
 ] as const;
 
 export type StaffAppPageKey = (typeof STAFF_APP_PAGE_KEYS)[number];
@@ -57,7 +60,7 @@ export type StaffAppPageKey = (typeof STAFF_APP_PAGE_KEYS)[number];
  * 不受 tenants.enabled_pages 裁剪的后台页面：公司自己的配置项（订阅消息模板、
  * 自动验收时限），平台「可用页面」勾不勾都得能进 —— 勾漏了整家公司就配不了通知。
  */
-export const ALWAYS_ENABLED_PAGES: string[] = ['settings', 'logs'];
+export const ALWAYS_ENABLED_PAGES: string[] = ['settings', 'logs', 'experience-notes'];
 
 export const ALL_PAGE_KEYS = [...ADMIN_PAGE_KEYS, ...STAFF_APP_PAGE_KEYS] as const;
 
@@ -84,6 +87,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:stocktakes': 'e',
+      'app:maintenance-sign': 'v',
       'app:messages': 'v',
     },
   },
@@ -92,6 +96,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '派单、管材料与库存、提采购申请',
     appPages: {
       'app:dispatch': 'e',
+      'app:maintenance-sign': 'v',
       'app:inventory': 'e',
       'app:stocktakes': 'e',
       'app:materials': 'e',
@@ -103,6 +108,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       dashboard: 'v',
       'work-orders': 'e',
       'maintenance-orders': 'e',
+      'experience-notes': 'e',
       materials: 'e',
       inventory: 'e',
       stocktakes: 'e',
@@ -129,6 +135,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       reports: 'v',
       'work-orders': 'e',
       'maintenance-orders': 'e',
+      'experience-notes': 'e',
       'maintenance-inspect': 'v',
       business: 'e',
       fees: 'e',

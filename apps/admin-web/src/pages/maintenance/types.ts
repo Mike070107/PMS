@@ -27,7 +27,14 @@ export interface MaintenanceMaterial {
   note: string;
 }
 
-export type MaintenanceStatus = 'draft' | 'inspected' | 'void';
+export type MaintenanceStatus =
+  | 'filling'
+  | 'waiting_filler'
+  | 'waiting_repairer'
+  | 'waiting_inspector'
+  | 'pending_print'
+  | 'completed'
+  | 'void';
 
 export interface MaintenanceOrder {
   id: number;
@@ -128,8 +135,12 @@ export interface QuotaParams {
 export type SignSlot = 'filler' | 'repairer' | 'inspector' | 'owner';
 
 export const MAINTENANCE_STATUS_LABELS: Record<MaintenanceStatus, string> = {
-  draft: '待查验',
-  inspected: '已查验',
+  filling: '填单中',
+  waiting_filler: '待填单人签字',
+  waiting_repairer: '待修理人签字',
+  waiting_inspector: '待查验员签字',
+  pending_print: '待打印',
+  completed: '已完成',
   void: '已作废',
 };
 

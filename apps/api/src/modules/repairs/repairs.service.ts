@@ -1956,15 +1956,15 @@ export class RepairsService implements OnModuleInit {
       });
       if (!repairRequest) throw new NotFoundException('repair request not found');
 
-      const maintenanceOrder = await manager.findOne(MaintenanceOrder, {
-        where: [
-          { tenantId, workOrderId: id, status: MAINTENANCE_STATUS.DRAFT },
-          { tenantId, workOrderId: id, status: MAINTENANCE_STATUS.INSPECTED },
-        ],
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (maintenanceOrder?.status === MAINTENANCE_STATUS.INSPECTED) {
-        throw new BadRequestException('该工单已有查验签字的养护单，请先在养护单页面作废后再作废工单');
+      const maintenanceOrder = await manager
+        .createQueryBuilder(MaintenanceOrder, 'mo')
+        .setLock('pessimistic_write')
+        .where('mo.tenant_id = :tenantId AND mo.work_order_id = :id', { tenantId, id })
+        .andWhere("mo.status <> 'void'")
+        .orderBy('mo.id', 'DESC')
+        .getOne();
+      if (maintenanceOrder && maintenanceOrder.status !== MAINTENANCE_STATUS.FILLING) {
+        throw new BadRequestException('该工单的养护单已进入签字流程，请先在养护单页面作废');
       }
 
       const usages = await manager.find(WorkOrderMaterial, {
@@ -2073,7 +2073,7 @@ export class RepairsService implements OnModuleInit {
         await refreshMaterialReferenceCost(manager, tenantId, materialId, user.id);
       }
 
-      if (maintenanceOrder?.status === MAINTENANCE_STATUS.DRAFT) {
+      if (maintenanceOrder?.status === MAINTENANCE_STATUS.FILLING) {
         maintenanceOrder.status = MAINTENANCE_STATUS.VOID;
         maintenanceOrder.updatedBy = user.id;
         await manager.save(MaintenanceOrder, maintenanceOrder);
@@ -2510,18 +2510,17 @@ export class RepairsService implements OnModuleInit {
         fromStatus === WorkOrderStatus.DONE_PENDING_REVIEW ||
         fromStatus === WorkOrderStatus.COMPLETED
       ) {
-        const maintenanceOrder = await manager.findOne(MaintenanceOrder, {
-          where: [
-            { tenantId, workOrderId: id, status: MAINTENANCE_STATUS.DRAFT },
-            { tenantId, workOrderId: id, status: MAINTENANCE_STATUS.INSPECTED },
-          ],
-          order: { id: 'DESC' },
-        });
-        if (maintenanceOrder?.status === MAINTENANCE_STATUS.INSPECTED) {
-          throw new BadRequestException('该工单已有查验签字的养护单，请先作废养护单再撤回工单');
+        const maintenanceOrder = await manager
+          .createQueryBuilder(MaintenanceOrder, 'mo')
+          .where('mo.tenant_id = :tenantId AND mo.work_order_id = :id', { tenantId, id })
+          .andWhere("mo.status <> 'void'")
+          .orderBy('mo.id', 'DESC')
+          .getOne();
+        if (maintenanceOrder && maintenanceOrder.status !== MAINTENANCE_STATUS.FILLING) {
+          throw new BadRequestException('该工单的养护单已进入签字流程，请先作废养护单再撤回工单');
         }
         if (
-          maintenanceOrder?.status === MAINTENANCE_STATUS.DRAFT &&
+          maintenanceOrder?.status === MAINTENANCE_STATUS.FILLING &&
           fromStatus === WorkOrderStatus.DONE_PENDING_REVIEW
         ) {
           maintenanceOrder.status = MAINTENANCE_STATUS.VOID;
