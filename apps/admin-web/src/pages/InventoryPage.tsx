@@ -28,9 +28,12 @@ import {
 import type { UploadProps } from 'antd/es/upload/interface';
 import {
   AppstoreOutlined,
+  AudioOutlined,
   AuditOutlined,
   ColumnWidthOutlined,
   EditOutlined,
+  FileImageOutlined,
+  FilePdfOutlined,
   InboxOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -1658,9 +1661,11 @@ export default function InventoryPage() {
         form={generalReceiptForm}
         saving={saving}
         materialOptions={materialOptions}
+        materialCategoryOptions={materialCategoryOptions}
         warehouseOptions={warehouseOptions}
         locationOptionsByWarehouse={locationOptionsByWarehouse}
         defaultLocationByWarehouse={defaultLocationByWarehouse}
+        onMaterialCreated={loadAll}
         onCancel={() => setGeneralReceiptOpen(false)}
         onOk={submitGeneralReceipt}
       />
@@ -2705,14 +2710,16 @@ function ReceiptModal({ order, form, saving, materialById, warehouseOptions, loc
   );
 }
 
-function GeneralReceiptModal({ open, form, saving, materialOptions, warehouseOptions, locationOptionsByWarehouse, defaultLocationByWarehouse, onCancel, onOk }: {
+function GeneralReceiptModal({ open, form, saving, materialOptions, materialCategoryOptions, warehouseOptions, locationOptionsByWarehouse, defaultLocationByWarehouse, onMaterialCreated, onCancel, onOk }: {
   open: boolean;
   form: any;
   saving: boolean;
   materialOptions: Array<{ value: number; label: string }>;
+  materialCategoryOptions: Array<{ value: string; label: string }>;
   warehouseOptions: Array<{ value: number; label: string }>;
   locationOptionsByWarehouse: Map<number, Array<{ value: number; label: string }>>;
   defaultLocationByWarehouse: Map<number, number | null>;
+  onMaterialCreated: () => void;
   onCancel: () => void;
   onOk: () => void;
 }) {
@@ -2720,8 +2727,20 @@ function GeneralReceiptModal({ open, form, saving, materialOptions, warehouseOpt
   const locationOptions = warehouseId ? (locationOptionsByWarehouse.get(warehouseId) || []) : [];
   useApplyDefaultLocation(form, warehouseId, defaultLocationByWarehouse);
   return (
-    <Modal title="一般入库（无采购单）" open={open} onCancel={onCancel} onOk={onOk} confirmLoading={saving} width={860} destroyOnHidden>
-      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="零星采买（如五金店临时采购）走此入口：填写来源、上传凭证，逐项从材料库选择。实物照片选填，可事后补。材料只能从 SKU 库选择，没有请先到「材料 SKU 库」新增。" />
+    <Modal
+      title="一般入库（无采购单）"
+      open={open}
+      onCancel={onCancel}
+      onOk={onOk}
+      confirmLoading={saving}
+      width={860}
+      destroyOnHidden
+      // 来源 + 凭证 + 语音卡片 + 明细行叠起来远高于一屏，「确定」会被挤到视口外面点不到
+      // （1440×900 实测）。居中 + 内容区自己滚，按钮条永远留在屏幕里。
+      centered
+      styles={{ body: { maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' } }}
+    >
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="零星采买（如五金店临时采购）走此入口：填写来源、上传凭证，逐项从材料库选择。实物照片选填，可事后补。材料库里没有的，可以在下面识别结果里就地建档。" />
       <Form form={form} layout="vertical">
         <Row gutter={12}>
           <Col span={12}><Form.Item name="warehouseId" label="入库仓库" rules={[{ required: true, message: '请选择入库仓库' }]}><Select {...searchableWideSelectProps} options={warehouseOptions} /></Form.Item></Col>
@@ -2731,6 +2750,11 @@ function GeneralReceiptModal({ open, form, saving, materialOptions, warehouseOpt
           <AttachmentsUpload />
         </Form.Item>
         <Divider orientation="left">入库材料</Divider>
+        <ReceiptVoiceFill
+          form={form}
+          materialCategoryOptions={materialCategoryOptions}
+          onMaterialCreated={onMaterialCreated}
+        />
         <Form.List name="items">
           {(fields, { add, remove }) => (
             <Space direction="vertical" style={{ width: '100%' }} size={16}>
@@ -2754,6 +2778,318 @@ function GeneralReceiptModal({ open, form, saving, materialOptions, warehouseOpt
             </Space>
           )}
         </Form.List>
+      </Form>
+    </Modal>
+  );
+}
+
+/**
+ * 一次识别结果里的一行。后端 /ai/material-receipt-parse 给出来，
+ * 原样塞进表单行的 `_ai` 字段（提交时不会带上去，submitGeneralReceipt 只挑它认识的字段）。
+ */
+interface ReceiptAiRow {
+  spokenName: string;
+  spokenSpec: string;
+  qty: number | null;
+  unit: string;
+  unitPriceCents: number | null;
+  materialId: number | null;
+  materialCode: string;
+  materialName: string;
+  materialSpec: string;
+  materialUnit: string;
+  match: 'exact' | 'candidate' | 'none';
+  needsCreate: boolean;
+  candidates: Array<{ materialId: number; code: string; name: string; spec: string; unit: string }>;
+}
+
+/**
+ * 语音/整段文字 → 入库明细草稿。
+ *
+ * **只填表**：识别完把行铺到表单里，数量、单价、SKU 都要仓管自己核对再点「确定」入库；
+ * 匹配不到的 SKU 只给一个「建档」入口，类别仍要人选（类别决定材料编码前缀，
+ * 编码发出去就锁死了，不能让模型替人定）。
+ */
+function ReceiptVoiceFill({
+  form,
+  materialCategoryOptions,
+  onMaterialCreated,
+}: {
+  form: any;
+  materialCategoryOptions: Array<{ value: string; label: string }>;
+  onMaterialCreated: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [text, setText] = useState('');
+  const [parsing, setParsing] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [createFor, setCreateFor] = useState<{ index: number; row: ReceiptAiRow } | null>(null);
+
+  /**
+   * 浏览器自带的语音识别（Chrome/Edge 的 webkitSpeechRecognition）。
+   * 装不了插件的浏览器就退回打字 —— 识别结果一律落到**可编辑**的文本框里，
+   * 不直接提交，听错了当场能改。
+   */
+  const dictate = () => {
+    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!Recognition) {
+      message.info('当前浏览器不支持语音输入，可以直接把这句话打/粘到下面的框里');
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.lang = 'zh-CN';
+    recognition.interimResults = false;
+    recognition.onresult = (event: any) => {
+      const spoken = String(event.results?.[0]?.[0]?.transcript || '').trim();
+      if (spoken) setText((current) => (current.trim() ? `${current.trim()}；${spoken}` : spoken));
+    };
+    recognition.onerror = () => message.warning('语音识别失败，请重试或直接输入');
+    recognition.onend = () => setListening(false);
+    setListening(true);
+    recognition.start();
+  };
+
+  const parse = async () => {
+    const spoken = text.trim();
+    if (spoken.length < 4) {
+      message.warning('先说一句或写一句，例如：PPR弯头25的要10个，单价三块五');
+      return;
+    }
+    setParsing(true);
+    try {
+      const resp = await request<{ ok: boolean; reason?: string; items: ReceiptAiRow[] }>({
+        method: 'POST',
+        url: '/ai/material-receipt-parse',
+        data: { text: spoken },
+      });
+      if (!resp.ok) {
+        message.warning(
+          resp.reason === 'ai_unavailable'
+            ? '还没配置 AI 服务（系统设置 → AI 辅助），请先手工填写'
+            : '这次没能识别出材料，请手工填写',
+        );
+        return;
+      }
+      if (!resp.items.length) {
+        message.warning('没听出材料名称，换个说法试试：先说材料、再说数量和单价');
+        return;
+      }
+      // 整体替换明细：识别是「按这句话重新填一遍」，不是往后追加
+      form.setFieldsValue({
+        items: resp.items.map((row) => ({
+          materialId: row.materialId ?? undefined,
+          qty: row.qty ?? undefined,
+          unitCostYuan: row.unitPriceCents == null ? undefined : row.unitPriceCents / 100,
+          photoUrls: [],
+          _ai: row,
+        })),
+      });
+      const missing = resp.items.filter((row) => row.match !== 'exact').length;
+      message.success(
+        missing
+          ? `已填入 ${resp.items.length} 项，其中 ${missing} 项要你确认材料`
+          : `已填入 ${resp.items.length} 项，请核对数量和单价后提交`,
+      );
+    } catch (e: any) {
+      message.error(e?.message || '识别失败');
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const pickCandidate = (index: number, materialId: number) => {
+    const items = (form.getFieldValue('items') || []).slice();
+    if (!items[index]) return;
+    items[index] = { ...items[index], materialId, _ai: { ...items[index]._ai, match: 'exact' } };
+    form.setFieldsValue({ items });
+  };
+
+  return (
+    <>
+      <Card
+        size="small"
+        style={{ marginBottom: 12, background: '#f6f9fd', borderColor: '#d6e4f5' }}
+        title={<Space size={6}><AudioOutlined /><span>说一句，自动填明细</span></Space>}
+      >
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+          例如「PPR弯头25的要10个，单价三块五；再来两卷生料带，一卷两块」。
+          识别只负责填表，数量、单价和材料都由你核对后自己提交。
+        </Text>
+        <Input.TextArea
+          rows={2}
+          maxLength={1000}
+          value={text}
+          placeholder="按下「语音输入」说一句，或直接把这句话打在这里"
+          onChange={(e) => setText(e.target.value)}
+        />
+        <Space style={{ marginTop: 8 }} wrap>
+          <Button icon={<AudioOutlined />} loading={listening} onClick={dictate}>
+            {listening ? '正在听…' : '语音输入'}
+          </Button>
+          <Button type="primary" loading={parsing} onClick={() => void parse()}>识别并填表</Button>
+          {!!text && <Button type="text" onClick={() => setText('')}>清空</Button>}
+        </Space>
+      </Card>
+
+      {/* 每一行的识别提示：命中哪条 SKU、要不要人工挑、要不要建档 */}
+      <Form.Item noStyle shouldUpdate>
+        {() => {
+          const items: Array<{ _ai?: ReceiptAiRow }> = form.getFieldValue('items') || [];
+          const pending = items
+            .map((item, index) => ({ index, row: item?._ai }))
+            .filter((entry): entry is { index: number; row: ReceiptAiRow } => !!entry.row && entry.row.match !== 'exact');
+          if (!pending.length) return null;
+          return (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message={`有 ${pending.length} 项还没对上材料库，确认后才能入库`}
+              description={
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  {pending.map(({ index, row }) => (
+                    <div key={`${index}-${row.spokenName}`}>
+                      <Text strong>第 {index + 1} 项「{row.spokenName}{row.spokenSpec ? ` ${row.spokenSpec}` : ''}」</Text>
+                      {row.candidates.length ? (
+                        <Space wrap style={{ marginLeft: 8 }}>
+                          <Text type="secondary">可能是：</Text>
+                          {row.candidates.map((item) => (
+                            <Button key={item.materialId} size="small" onClick={() => pickCandidate(index, item.materialId)}>
+                              {item.code} · {item.name}{item.spec ? ` ${item.spec}` : ''}
+                            </Button>
+                          ))}
+                        </Space>
+                      ) : (
+                        <Space style={{ marginLeft: 8 }}>
+                          <Text type="secondary">材料库里没有</Text>
+                          <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => setCreateFor({ index, row })}>
+                            建档并选用
+                          </Button>
+                        </Space>
+                      )}
+                    </div>
+                  ))}
+                </Space>
+              }
+            />
+          );
+        }}
+      </Form.Item>
+
+      <QuickMaterialModal
+        target={createFor}
+        materialCategoryOptions={materialCategoryOptions}
+        onClose={() => setCreateFor(null)}
+        onCreated={(index, materialId) => {
+          pickCandidate(index, materialId);
+          setCreateFor(null);
+          onMaterialCreated();
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * 顺手建一条 SKU。名称/规格/单位按口述预填，**类别必须人选**：
+ * 类别决定材料编码前缀（见 InventoryService.buildMaterialCode），
+ * 编码发出去就锁死了，选错了没法回头。
+ */
+function QuickMaterialModal({
+  target,
+  materialCategoryOptions,
+  onClose,
+  onCreated,
+}: {
+  target: { index: number; row: ReceiptAiRow } | null;
+  materialCategoryOptions: Array<{ value: string; label: string }>;
+  onClose: () => void;
+  onCreated: (index: number, materialId: number) => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!target) return;
+    form.resetFields();
+    form.setFieldsValue({
+      name: target.row.spokenName,
+      spec: target.row.spokenSpec || undefined,
+      unit: target.row.unit || undefined,
+      defaultCostYuan: target.row.unitPriceCents == null ? undefined : target.row.unitPriceCents / 100,
+    });
+  }, [target, form]);
+
+  const submit = async () => {
+    if (!target) return;
+    const values = await form.validateFields();
+    setSaving(true);
+    try {
+      const created = await request<{ id: number; code: string; name: string }>({
+        method: 'POST',
+        url: '/materials',
+        data: {
+          name: values.name,
+          spec: values.spec || undefined,
+          category: values.category,
+          unit: values.unit || undefined,
+          defaultCostCents: values.defaultCostYuan != null ? Math.round(values.defaultCostYuan * 100) : 0,
+        },
+      });
+      message.success(`已建档 ${created.code} · ${created.name}`);
+      onCreated(target.index, created.id);
+    } catch (e: any) {
+      message.error(e?.message || '建档失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="给这项材料建档"
+      open={!!target}
+      onCancel={onClose}
+      onOk={() => void submit()}
+      confirmLoading={saving}
+      okText="建档并选用"
+      destroyOnHidden
+    >
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 12 }}
+        message="名称、规格、单位已按你说的预填，请核对。材料编码由所选类别自动生成，发出去后不能再改，类别要选准。"
+      />
+      <Form form={form} layout="vertical">
+        <Form.Item name="name" label="材料名称" rules={[{ required: true, message: '请填材料名称' }]}>
+          <Input maxLength={120} placeholder="例如：不锈钢法兰" />
+        </Form.Item>
+        <Row gutter={12}>
+          <Col span={12}>
+            <Form.Item name="spec" label="规格型号" extra="同名不同规格要建成两条，别并成一条">
+              <Input maxLength={120} placeholder="例如：DN50" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="unit" label="单位">
+              <Input maxLength={20} placeholder="个 / 卷 / 米" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={12}>
+          <Col span={12}>
+            <Form.Item name="category" label="材料类别" rules={[{ required: true, message: '请选择类别' }]}>
+              <Select {...searchableWideSelectProps} options={materialCategoryOptions} placeholder="选择类别（决定编码前缀）" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="defaultCostYuan" label="参考单价(元)" extra="只做展示与兜底，实际成本按入库批次算">
+              <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+        </Row>
       </Form>
     </Modal>
   );
@@ -2867,12 +3203,14 @@ function MultiPhotoUpload({ value, onChange }: { value?: string[]; onChange?: (u
             onClick={() => onChange?.(urls.filter((_, i) => i !== index))}>×</Button>
         </div>
       ))}
-      <Upload {...uploadProps}>
-        <div style={{ width: 72, height: 72, border: '1px dashed #bbb', borderRadius: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#888' }}>
+      {/* Dragger 才有 onDrop；普通 Upload 拖图上去没反应（见 components/MaterialPhotos.tsx 同一处注释） */}
+      {/* 宽度要放得下提示语：120px 时「拖到此处或点击」会折成三行挤成一团（实测截图） */}
+      <Upload.Dragger {...uploadProps} style={{ width: 156, height: 72, padding: 0, borderRadius: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#888', cursor: 'pointer' }}>
           <UploadOutlined />
-          <span style={{ fontSize: 12 }}>上传</span>
+          <span style={{ fontSize: 12, whiteSpace: 'nowrap' }}>拖到此处或点击</span>
         </div>
-      </Upload>
+      </Upload.Dragger>
     </Space>
   );
 }
@@ -2908,13 +3246,19 @@ function AttachmentsUpload({ value, onChange }: { value?: string[]; onChange?: (
     <Space direction="vertical" style={{ width: '100%' }}>
       {urls.map((url, index) => (
         <Space key={url}>
-          <Text style={{ maxWidth: 320 }} ellipsis>{url.toLowerCase().includes('.pdf') ? '📄 PDF 凭证' : '🖼 图片凭证'} {index + 1}</Text>
+          <Text style={{ maxWidth: 320 }} ellipsis>
+            {url.toLowerCase().includes('.pdf') ? <FilePdfOutlined /> : <FileImageOutlined />}
+            {' '}{url.toLowerCase().includes('.pdf') ? 'PDF 凭证' : '图片凭证'} {index + 1}
+          </Text>
           <Button size="small" danger type="link" onClick={() => onChange?.(urls.filter((_, i) => i !== index))}>移除</Button>
         </Space>
       ))}
-      <Upload {...uploadProps}>
-        <Button icon={<UploadOutlined />}>上传附件</Button>
-      </Upload>
+      <Upload.Dragger {...uploadProps} style={{ padding: '10px 12px', borderRadius: 6 }}>
+        <Space>
+          <UploadOutlined />
+          <Text type="secondary">把小票照片或发票 PDF 拖到这里，也可以点击选择</Text>
+        </Space>
+      </Upload.Dragger>
     </Space>
   );
 }

@@ -220,20 +220,28 @@ export function MaterialPhotosUpload({
         ))}
       </Image.PreviewGroup>
       {!full && (
-        <Upload {...uploadProps}>
+        /*
+          用 Upload.Dragger 而不是 Upload：**只有 type="drag" 的 Upload 才绑 onDrop**，
+          普通 Upload 把图片拖上去毫无反应（2026-09-03 反馈：想直接把图拖进图片框）。
+          Dragger 同时保留点击选文件，所以两种习惯都能用。
+        */
+        <Upload.Dragger
+          {...uploadProps}
+          style={{ width: 132, height: 88, padding: 0, borderRadius: 6 }}
+        >
           <div
             style={{
-              width: 88, height: 88, border: '1px dashed #bbb', borderRadius: 6,
               display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', cursor: 'pointer', color: '#888',
+              justifyContent: 'center', gap: 2, color: '#888', cursor: 'pointer',
             }}
           >
             <UploadOutlined />
-            <span style={{ fontSize: 12, marginTop: 4 }}>
-              {pending > 0 ? '上传中…' : `${urls.length}/${max}`}
+            <span style={{ fontSize: 12 }}>
+              {pending > 0 ? '上传中…' : '拖到此处或点击'}
             </span>
+            <span style={{ fontSize: 12, color: '#aaa' }}>{urls.length}/{max}</span>
           </div>
-        </Upload>
+        </Upload.Dragger>
       )}
     </div>
   );

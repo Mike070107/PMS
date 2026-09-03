@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AiAssistFeedback, AiExtractSample, RepairFeeRule, WorkOrder } from '../../entities';
+import { AiAssistFeedback, AiExtractSample, Material, RepairFeeRule, WorkOrder } from '../../entities';
 import { SettingsModule } from '../settings/settings.module';
 import { AiController } from './ai.controller';
 import { AiToolsController } from './ai-tools.controller';
+import { MaterialReceiptController } from './material-receipt.controller';
+import { MaterialReceiptAiService } from './material-receipt.ai';
 import { ExtractSamplesService } from './extract-samples.service';
 import { LlmService } from './llm.service';
 import { RepairTextAiService } from './repair-text.ai';
@@ -16,13 +18,14 @@ import { RepairFeeRulesService } from './repair-fee-rules.service';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AiExtractSample, AiAssistFeedback, RepairFeeRule, WorkOrder]),
+    TypeOrmModule.forFeature([AiExtractSample, AiAssistFeedback, Material, RepairFeeRule, WorkOrder]),
     SettingsModule,
   ],
-  controllers: [AiController, AiToolsController],
+  controllers: [AiController, AiToolsController, MaterialReceiptController],
   providers: [
     LlmService,
     RepairTextAiService,
+    MaterialReceiptAiService,
     ExtractSamplesService,
     AiFeedbackService,
     RepairFeeRulesService,
@@ -30,6 +33,7 @@ import { RepairFeeRulesService } from './repair-fee-rules.service';
   exports: [
     LlmService,
     RepairTextAiService,
+    MaterialReceiptAiService,
     ExtractSamplesService,
     AiFeedbackService,
     RepairFeeRulesService,

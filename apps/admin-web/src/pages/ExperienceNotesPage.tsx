@@ -1,5 +1,5 @@
 import {
-  App as AntdApp, Button, Card, Drawer, Empty, Image, Input, Space, Tag, Typography,
+  App as AntdApp, Button, Card, Collapse, Drawer, Empty, Image, Input, Space, Tag, Typography,
 } from 'antd';
 import {
   ArrowDownOutlined, ArrowUpOutlined, AudioOutlined, EditOutlined,
@@ -43,6 +43,30 @@ export default function ExperienceNotesPage() {
   }, [message]);
   useEffect(() => { void load(); }, [load]);
   const active = useMemo(() => notebooks.find((row) => `${row.officeId}:${row.repairType}` === activeKey) || null, [activeKey, notebooks]);
+  /**
+   * 按管理处分组：一屏平铺几十本笔记谁都扫不过来（2026-09-03 反馈）。
+   * 服务端下发的 notebooks 已经只含**本账号数据范围内**的管理处（见
+   * RepairExperiencesService.allowedNotebooks → scopedOffices，右上角管理处视角
+   * 会收窄 access.communityIds，所以这里天然跟着视角走），前端只负责分组和折叠。
+   */
+  const officeGroups = useMemo(() => {
+    const byOffice = new Map<number, { officeId: number; officeName: string; rows: RepairExperienceNotebookView[]; noteCount: number }>();
+    for (const row of notebooks) {
+      const group = byOffice.get(row.officeId)
+        || { officeId: row.officeId, officeName: row.officeName, rows: [], noteCount: 0 };
+      group.rows.push(row);
+      group.noteCount += row.notes.length;
+      byOffice.set(row.officeId, group);
+    }
+    return [...byOffice.values()];
+  }, [notebooks]);
+  // 默认只展开「当前选中的那本笔记所属的管理处」，其余折叠；用户手动展开后按他的选择走
+  const [openOffices, setOpenOffices] = useState<string[]>([]);
+  const activeOfficeKey = active ? String(active.officeId) : '';
+  useEffect(() => {
+    if (!activeOfficeKey) return;
+    setOpenOffices((current) => (current.includes(activeOfficeKey) ? current : [...current, activeOfficeKey]));
+  }, [activeOfficeKey]);
 
   const openNew = () => {
     if (!active?.canEdit) return;
@@ -101,7 +125,16 @@ export default function ExperienceNotesPage() {
     </div>
     <div className="experience-layout">
       <Card className="experience-notebooks" loading={loading} title="共享笔记本">
-        <div className="experience-notebook-list">{notebooks.map((row) => { const key = `${row.officeId}:${row.repairType}`; return <button key={key} className={`experience-notebook ${activeKey === key ? 'is-active' : ''}`} onClick={() => setActiveKey(key)}><strong>{row.repairTypeLabel}</strong><span>{row.officeName}</span><em>{row.notes.length} 篇</em></button>; })}</div>
+        {officeGroups.length > 1 ? <Collapse
+          className="experience-office-groups"
+          activeKey={openOffices}
+          onChange={(keys) => setOpenOffices(Array.isArray(keys) ? keys.map(String) : [String(keys)])}
+          items={officeGroups.map((group) => ({
+            key: String(group.officeId),
+            label: <Space size={8}><strong>{group.officeName}</strong><Tag>{group.rows.length} 本</Tag><Text type="secondary">{group.noteCount} 篇</Text></Space>,
+            children: <div className="experience-notebook-list">{group.rows.map((row) => { const key = `${row.officeId}:${row.repairType}`; return <button key={key} className={`experience-notebook ${activeKey === key ? 'is-active' : ''}`} onClick={() => setActiveKey(key)}><strong>{row.repairTypeLabel}</strong><em>{row.notes.length} 篇</em></button>; })}</div>,
+          }))}
+        /> : <div className="experience-notebook-list">{notebooks.map((row) => { const key = `${row.officeId}:${row.repairType}`; return <button key={key} className={`experience-notebook ${activeKey === key ? 'is-active' : ''}`} onClick={() => setActiveKey(key)}><strong>{row.repairTypeLabel}</strong><em>{row.notes.length} 篇</em></button>; })}</div>}
         {!loading && !notebooks.length && <Empty description="暂无可查看的类别笔记本" />}
       </Card>
       <Card className="experience-notes" title={active ? <Space wrap><span>{active.repairTypeLabel}</span><Tag>{active.officeName}</Tag></Space> : '经验笔记'}>
