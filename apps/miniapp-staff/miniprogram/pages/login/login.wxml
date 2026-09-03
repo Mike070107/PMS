@@ -67,8 +67,8 @@
         loading="{{loading}}"
         disabled="{{loading}}"
         bindtap="onTapAccountLogin"
-      ><view class="btn__icon icon-action--login-blue"></view><text>登录并绑定微信</text></button>
-      <view class="hint">维修工默认无账号密码，请用微信手机号登录</view>
+      ><view class="btn__icon icon-action--login-blue"></view><text>账号密码登录</text></button>
+      <view class="hint">审核账号可直接登录；其他员工首次登录会绑定当前微信</view>
     </view>
 
     <view class="tip">未开通账号？请联系物业管理员</view>

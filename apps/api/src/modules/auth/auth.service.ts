@@ -149,13 +149,28 @@ export class AuthService {
    * 员工端登录：账号由管理员预先开通，员工首次登录需验证身份并绑定微信。
    * - 已绑定过本微信：只传 code 即可静默登录
    * - 首次绑定：code + phoneCode（微信手机号）或 code + account/password
-   */
+  */
   async staffLogin(dto: StaffLoginDto) {
+    const byPhone = !!dto.phoneCode;
+    const byAccount = !!dto.account && !!dto.password;
+    let accountTarget: User | null = null;
+
+    // 审核员会轮换微信，不能把共享审核账号绑死在第一个审核员的 openid 上。
+    // 仍然完整校验账号、密码、员工端角色和启用状态，只跳过微信换码与绑定。
+    if (byAccount) {
+      accountTarget = await this.authenticateStaffAccount(
+        dto.account as string,
+        dto.password as string,
+      );
+      if (this.isMiniappReviewAccount(dto.account)) {
+        this.logger.log(`小程序审核账号「${dto.account}」使用账号密码直接登录（不绑定微信）`);
+        return this.issueStaffTokens(accountTarget);
+      }
+    }
+
     const session = await this.wechat.jscode2session(dto.code, 'staff');
     const bound = await this.userRepo.findOne({ where: { wxOpenid: session.openid } });
 
-    const byPhone = !!dto.phoneCode;
-    const byAccount = !!dto.account && !!dto.password;
     if (!byPhone && !byAccount) {
       if (!bound) {
         throw new UnauthorizedException('该微信尚未绑定员工账号，请用手机号验证登录');
@@ -199,20 +214,8 @@ export class AuthService {
       }
       target = usable[0];
     } else {
-      target = await this.userRepo.findOne({ where: { loginAccount: dto.account } });
-      if (!target?.passwordHash) {
-        throw new UnauthorizedException('账号或密码错误');
-      }
-      const matched = await bcrypt.compare(dto.password as string, target.passwordHash);
-      if (!matched) {
-        throw new UnauthorizedException('账号或密码错误');
-      }
-      if (!STAFF_ROLES.includes(target.role)) {
-        throw new ForbiddenException('该账号不能登录员工端');
-      }
-      if (target.status !== UserStatus.ACTIVE) {
-        throw new ForbiddenException('该员工账号已停用，请联系物业管理员');
-      }
+      // 账号密码已在微信换码前校验过；普通员工继续走下方绑定流程。
+      target = accountTarget as User;
     }
 
     if (bound && bound.id !== target.id) {
@@ -261,6 +264,39 @@ export class AuthService {
     }
 
     return this.issueStaffTokens(target);
+  }
+
+  private async authenticateStaffAccount(account: string, password: string): Promise<User> {
+    const target = await this.userRepo.findOne({ where: { loginAccount: account } });
+    if (!target?.passwordHash) {
+      throw new UnauthorizedException('账号或密码错误');
+    }
+    const matched = await bcrypt.compare(password, target.passwordHash);
+    if (!matched) {
+      throw new UnauthorizedException('账号或密码错误');
+    }
+    if (!STAFF_ROLES.includes(target.role)) {
+      throw new ForbiddenException('该账号不能登录员工端');
+    }
+    if (target.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException('该员工账号已停用，请联系物业管理员');
+    }
+    return target;
+  }
+
+  /**
+   * 仅给微信审核共用账号开放无绑定登录。默认只有 testadmin；生产可用逗号分隔的环境变量
+   * MINIAPP_REVIEW_ACCOUNTS 覆盖。白名单只免微信绑定，不免密码、角色和账号状态校验。
+   */
+  private isMiniappReviewAccount(account?: string | null): boolean {
+    const normalized = account?.trim().toLowerCase();
+    if (!normalized) return false;
+    const configured = this.config.get<string>('MINIAPP_REVIEW_ACCOUNTS', 'testadmin');
+    return configured
+      .split(',')
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+      .includes(normalized);
   }
 
   async refresh(dto: RefreshTokenDto) {
