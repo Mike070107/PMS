@@ -1892,3 +1892,12 @@
 - 自上次（05adce6）以来上线的相关提交：
   - 75d5335 feat(后台): 收件箱三条——笔记按管理处折叠、图片可拖拽、入库语音填表
 
+## 2026-09-03 23:45 · miniapp-staff · dedd5e7
+
+- 包：`1.0.20260903g`
+- 提交：dedd5e7 fix(工单): 幂等唯一索引改在实体上声明，线上才建得出来
+- 说明：从干净 worktree(dedd5e7) 打包上传，用户已在公众平台设为体验版；此后的提交只动 api/admin-web，小程序侧无变化
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M apps/miniapp-staff/miniprogram/pages/maintenance-sign/maintenance-sign.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（b1c6592）以来上线的相关提交：
+  - 68b5732 feat(工单): 撤回改造为「撤回上一笔业务操作」，完工撤回精确退料
+
