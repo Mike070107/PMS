@@ -75,18 +75,65 @@
       <view class="progress-head" bindtap="onToggleTimeline"><view class="content-card__title">工单进度</view><view wx:if="{{timeline.length > 1}}" class="progress-head__action">{{timelineOpen ? '收起' : '展开全部 ' + timeline.length + ' 步'}} ›</view></view>
       <view wx:for="{{timeline}}" wx:key="id" wx:if="{{timelineOpen || index === 0}}" class="timeline-item">
         <view class="dot"></view>
-        <view class="timeline-body"><view class="timeline-row"><text class="timeline-label">{{item.label}}</text><text class="timeline-at">{{item.at}}</text></view><view wx:if="{{item.stay}}" class="timeline-stay">{{item.stay}}</view><view wx:if="{{item.note}}" class="timeline-note">{{item.note}}</view></view>
+        <view class="timeline-body">
+          <view class="timeline-row"><text class="timeline-label">{{item.label}}</text><text class="timeline-at">{{item.at}}</text></view>
+          <view wx:if="{{item.stay}}" class="timeline-stay">{{item.stay}}</view>
+          <view wx:if="{{item.note}}" class="timeline-note">{{item.note}}</view>
+          <view wx:if="{{item.attachments.length}}" class="timeline-photos">
+            <image wx:for="{{item.attachments}}" wx:for-item="photo" wx:key="*this" class="timeline-photo" src="{{photo}}" mode="aspectFill" data-url="{{photo}}" data-urls="{{item.attachments}}" bindtap="onPreviewProgressImage"/>
+          </view>
+        </view>
       </view>
+    </view>
+
+    <view wx:if="{{canAddProgress || canTransfer}}" class="field-actions">
+      <button wx:if="{{canAddProgress}}" class="field-action field-action--progress" data-panel="progress" bindtap="onOpenPanel">＋ 添加维修进度</button>
+      <button wx:if="{{canTransfer}}" class="field-action field-action--transfer" data-panel="transfer" bindtap="onOpenPanel">转给其他人修</button>
+      <view wx:if="{{canTransfer}}" class="field-actions__hint">转单后由所属管理处重新选择工单类型和维修工</view>
     </view>
 
     <view class="detail-error" wx:if="{{errorMsg && !panel}}">{{errorMsg}}</view>
   </view>
 </view>
 
-<view wx:if="{{detail && (canAccept || canComplete)}}" class="site-action-bar">
+<view wx:if="{{detail && (canAccept || canComplete || canRedispatch)}}" class="site-action-bar">
   <button wx:if="{{canNeedMaterial}}" class="site-action site-action--secondary" data-panel="material" bindtap="onOpenPanel"><view class="btn__icon icon-action--box-blue"></view><text>记录用料{{materialRows.length || issuedMaterials.length ? ' ' + (materialRows.length + issuedMaterials.length) : ''}}</text></button>
   <button wx:if="{{canAccept}}" class="site-action site-action--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onAccept"><view class="btn__icon icon-action--check-white"></view><text>{{acceptText}}</text></button>
   <button wx:if="{{canComplete}}" class="site-action site-action--primary" data-panel="complete" bindtap="onOpenPanel"><view class="btn__icon icon-action--wrench-white"></view><text>去完工</text></button>
+  <button wx:if="{{canRedispatch}}" class="site-action site-action--primary" bindtap="onGoRedispatch"><view class="btn__icon icon-action--send-white"></view><text>去派单台重新派单</text></button>
+</view>
+
+<!-- ============ 维修过程记录 ============ -->
+<view wx:if="{{panel === 'progress'}}" class="sheet-mask" bindtap="onClosePanel" catchtouchmove="noop"/>
+<view wx:if="{{panel === 'progress'}}" class="sheet" catchtouchmove="noop">
+  <view class="sheet__head"><text class="sheet__title">添加维修进度</text><text class="sheet__close" bindtap="onClosePanel">关闭</text></view>
+  <scroll-view class="sheet__body" scroll-y>
+    <view class="label">进度说明<text class="label__opt">说明当前做到哪里、下一步做什么</text></view>
+    <textarea class="complete-textarea" maxlength="500" placeholder="例如：已拆开检查，确认主板损坏，正在联系办公室确认配件" value="{{progressNote}}" bindinput="onProgressNote"/>
+    <view class="label mt">现场照片<text class="label__opt">最多 6 张</text></view>
+    <view class="progress-photo-add" bindtap="onChooseProgressPhoto">{{uploading ? '上传中…' : '+ 拍照或从相册选择'}}</view>
+    <view wx:if="{{progressAttachments.length}}" class="complete-thumbs">
+      <view wx:for="{{progressAttachments}}" wx:key="*this" class="thumb-wrap">
+        <image class="thumb" src="{{item}}" mode="aspectFill"/>
+        <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveProgressPhoto"><view class="icon icon--close"></view></view>
+      </view>
+    </view>
+    <view class="complete-error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
+  </scroll-view>
+  <view class="sheet__foot"><button class="btn btn--primary" loading="{{busy}}" disabled="{{busy || uploading}}" bindtap="onSubmitProgress">保存进度</button></view>
+</view>
+
+<!-- ============ 转回办公室重新派单 ============ -->
+<view wx:if="{{panel === 'transfer'}}" class="sheet-mask" bindtap="onClosePanel" catchtouchmove="noop"/>
+<view wx:if="{{panel === 'transfer'}}" class="sheet" catchtouchmove="noop">
+  <view class="sheet__head"><text class="sheet__title">转给其他人修</text><text class="sheet__close" bindtap="onClosePanel">关闭</text></view>
+  <scroll-view class="sheet__body" scroll-y>
+    <view class="transfer-warning"><view class="transfer-warning__title">提交后会发生什么</view><view>1. 清空当前工单类型和维修工</view><view>2. 工单回到“待派单”</view><view>3. 所属管理处办公室收到微信和站内通知</view><view>4. 办公室重新选类型、维修工并派单</view></view>
+    <view class="label mt">转单原因<text class="label__opt">必填，方便办公室判断</text></view>
+    <textarea class="complete-textarea" maxlength="500" placeholder="例如：需要电工处理，我无法继续维修" value="{{transferNote}}" bindinput="onTransferNote"/>
+    <view class="complete-error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
+  </scroll-view>
+  <view class="sheet__foot"><button class="btn transfer-submit" loading="{{busy}}" disabled="{{busy}}" bindtap="onSubmitTransfer">确认交回办公室</button></view>
 </view>
 
 <!-- ============ 添加用料面板 ============ -->

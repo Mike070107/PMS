@@ -33,6 +33,19 @@
         </view>
         <view wx:if="{{item.stay}}" class="timeline-stay">{{item.stay}}</view>
         <view wx:if="{{item.note}}" class="timeline-note">{{item.note}}</view>
+        <view wx:if="{{item.attachments.length}}" class="timeline-photos">
+          <image
+            wx:for="{{item.attachments}}"
+            wx:for-item="photo"
+            wx:key="*this"
+            class="timeline-photo"
+            src="{{photo}}"
+            mode="aspectFill"
+            data-url="{{photo}}"
+            data-urls="{{item.attachments}}"
+            bindtap="onPreviewImage"
+          />
+        </view>
       </view>
     </view>
   </view>

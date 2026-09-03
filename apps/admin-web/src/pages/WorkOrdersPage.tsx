@@ -171,6 +171,7 @@ interface WorkOrderLog {
   action: string;
   operatorId: number | null;
   note: string | null;
+  attachments?: string[];
   createdAt: string;
 }
 interface WorkOrderDetail {
@@ -2188,6 +2189,8 @@ function WorkOrderDetailDrawer({
   const [cancelOpen, setCancelOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
   const [changeTypeOpen, setChangeTypeOpen] = useState(false);
+  const [progressOpen, setProgressOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) { setDetail(null); return; }
@@ -2239,12 +2242,18 @@ function WorkOrderDetailDrawer({
           <Button onClick={() => setAssignOpen(true)}>改派维修工</Button>
         )}
         {canEdit && status === WorkOrderStatus.IN_PROGRESS && <Button onClick={() => setNeedMaterialOpen(true)}>标记缺料</Button>}
+        {canEdit && status === WorkOrderStatus.IN_PROGRESS && (
+          <Button icon={<PlusOutlined />} onClick={() => setProgressOpen(true)}>添加进度</Button>
+        )}
         {canEdit && status === WorkOrderStatus.WAITING_MATERIAL && <Button onClick={() => setEditMissingOpen(true)}>修改缺料</Button>}
         {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
           <Button danger onClick={() => setCancelOpen(true)}>撤单</Button>
         )}
         {canDelete && (
           <Button danger icon={<DeleteOutlined />} onClick={() => setVoidOpen(true)}>删除工单</Button>
+        )}
+        {canEdit && status === WorkOrderStatus.IN_PROGRESS && (
+          <Button danger icon={<UndoOutlined />} onClick={() => setTransferOpen(true)}>转给其他人修</Button>
         )}
       </div>
       <div className="pms-workorder-detail-primary-actions">
@@ -2450,6 +2459,11 @@ function WorkOrderDetailDrawer({
                               </Text>
                             )}
                             {log.note && <div>{log.note}</div>}
+                            {!!log.attachments?.length && (
+                              <div className="pms-workorder-timeline-photos">
+                                <AttachmentPreview urls={log.attachments} />
+                              </div>
+                            )}
                           </div>
                         </div>
                       ),
@@ -2524,6 +2538,18 @@ function WorkOrderDetailDrawer({
         onClose={() => setChangeTypeOpen(false)}
         onDone={async () => { setChangeTypeOpen(false); await refresh(); }}
       />
+      <ProgressModal
+        open={progressOpen}
+        workOrderId={id}
+        onClose={() => setProgressOpen(false)}
+        onDone={async () => { setProgressOpen(false); await refresh(); }}
+      />
+      <TransferWorkOrderModal
+        open={transferOpen}
+        workOrderId={id}
+        onClose={() => setTransferOpen(false)}
+        onDone={async () => { setTransferOpen(false); await refresh(); }}
+      />
     </>
   );
 }
@@ -2544,6 +2570,8 @@ function actionLabel(a: string) {
     cancel: '撤单',
     urge_office: '业主催单（提醒办公室）',
     urge_manager: '业主催单（升级经理）',
+    progress: '维修进度更新',
+    transfer_request: '申请转给其他人维修',
   };
   return m[a] || a;
 }
@@ -3746,6 +3774,162 @@ function RepairTypeRuleModal({
   );
 }
 
+// ---------------- 维修进度 / 转单 Modal ----------------
+function ProgressModal({
+  open, workOrderId, onClose, onDone,
+}: {
+  open: boolean;
+  workOrderId: number | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [note, setNote] = useState('');
+  const [fileList, setFileList] = useState<UploadFile<UploadResponse>[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setNote('');
+      setFileList([]);
+    }
+  }, [open]);
+
+  const uploadProps = buildAttachmentUploadProps({
+    fileList,
+    setFileList,
+    message,
+    maxImages: 6,
+    maxVideos: 0,
+  });
+
+  const submit = async () => {
+    if (fileList.some((file) => file.status === 'uploading')) {
+      message.warning('照片还在上传，请稍候');
+      return;
+    }
+    const attachments = fileList
+      .map((file) => file.response?.publicUrl || file.url)
+      .filter((url): url is string => !!url);
+    if (!note.trim() && !attachments.length) {
+      message.warning('请填写进度说明或添加现场照片');
+      return;
+    }
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: `/work-orders/${workOrderId}/progress`,
+        data: { note: note.trim() || undefined, attachments },
+      });
+      message.success('维修进度已记录');
+      onDone();
+    } catch (e: any) {
+      message.error(e?.message || '保存进度失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="添加维修进度"
+      open={open}
+      onCancel={onClose}
+      onOk={submit}
+      okText="保存进度"
+      confirmLoading={saving}
+      destroyOnHidden
+    >
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <Alert type="info" showIcon message="进度会进入工单时间轴，不会改变当前“维修中”状态。" />
+        <TextArea
+          value={note}
+          maxLength={500}
+          showCount
+          rows={4}
+          placeholder="例如：已完成现场排查，确认需更换门口机电源，等待配件送达。"
+          onChange={(event) => setNote(event.target.value)}
+        />
+        <Upload.Dragger {...uploadProps} style={{ ...attachmentDropStyle, minHeight: 112 }}>
+          <p className="pms-repair-upload-icon"><UploadOutlined /></p>
+          <p>点击或拖入现场照片</p>
+          <Text type="secondary">最多 6 张；图片会随这条进度一起保存。</Text>
+          <AttachmentUploadPreview
+            files={fileList}
+            onRemove={(uid) => setFileList((files) => files.filter((file) => file.uid !== uid))}
+          />
+        </Upload.Dragger>
+      </Space>
+    </Modal>
+  );
+}
+
+function TransferWorkOrderModal({
+  open, workOrderId, onClose, onDone,
+}: {
+  open: boolean;
+  workOrderId: number | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { if (open) setReason(''); }, [open]);
+
+  const submit = async () => {
+    if (reason.trim().length < 2) {
+      message.warning('请填写转单原因，方便办公室判断新的工种和人员');
+      return;
+    }
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: `/work-orders/${workOrderId}/transfer-request`,
+        data: { note: reason.trim() },
+      });
+      message.success('已退回所属管理处，等待重新分类派单');
+      onDone();
+    } catch (e: any) {
+      message.error(e?.message || '转单失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="转给其他人维修"
+      open={open}
+      onCancel={onClose}
+      onOk={submit}
+      okText="确认退回办公室"
+      okButtonProps={{ danger: true }}
+      confirmLoading={saving}
+      destroyOnHidden
+    >
+      <Alert
+        type="warning"
+        showIcon
+        message="提交后将清空原工单类型和维修人员"
+        description="工单会回到“待派单”，所属管理处办公室收到微信及站内提醒，重新选择类型和该类型的维修工；新维修工收到通知后再到工单池接单。"
+        style={{ marginBottom: 16 }}
+      />
+      <TextArea
+        value={reason}
+        maxLength={500}
+        showCount
+        rows={4}
+        placeholder="请说明为什么需要转单，例如：现场故障属于弱电门禁，需要智能化维修人员处理。"
+        onChange={(event) => setReason(event.target.value)}
+      />
+    </Modal>
+  );
+}
+
 // ---------------- 派单 Modal ----------------
 function AssignModal({
   open, workOrderId, communityId, technicians, repairTypeRules, currentSkill, onClose, onDone,
@@ -3763,8 +3947,22 @@ function AssignModal({
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [availableTechnicians, setAvailableTechnicians] = useState<TechnicianOption[]>(technicians);
+  const selectedSkill = Form.useWatch('skill', form) as string | undefined;
+  const selectedAssigneeId = Form.useWatch('assigneeId', form) as number | undefined;
+  const selectedRule = repairTypeRules.find((rule) => rule.repairType === selectedSkill);
+  const eligibleTechnicians = (selectedSkill
+    ? availableTechnicians.filter((technician) =>
+        technician.skills?.includes(selectedSkill) || selectedRule?.assigneeIds?.includes(technician.id),
+      )
+    : availableTechnicians
+  ).slice().sort((a, b) => a.openCount - b.openCount || a.id - b.id);
+  const selectedTechnician = eligibleTechnicians.find((item) => item.id === selectedAssigneeId);
 
-  useEffect(() => { if (open) form.setFieldsValue({ skill: currentSkill, slaHours: 24 }); }, [open, currentSkill, form]);
+  useEffect(() => {
+    if (!open) return;
+    form.resetFields();
+    form.setFieldsValue({ skill: currentSkill, slaHours: 24 });
+  }, [open, currentSkill, form]);
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -3793,33 +3991,107 @@ function AssignModal({
   };
 
   return (
-    <Modal title="指派维修工" open={open} onCancel={onClose} onOk={onOk} confirmLoading={saving} destroyOnHidden>
-      <Form form={form} layout="vertical">
-        <Form.Item name="assigneeId" label="维修工" rules={[{ required: true }]}>
-          <Select
-            placeholder="选择维修工"
-            options={withOptionTitles(availableTechnicians.map((t) => ({
-              value: t.id,
-              label: `${t.name || '(未命名)'} · ${t.phone || ''}${t.skills?.length ? ' · ' + formatSkillList(t.skills, repairTypeRules) : ''}`,
-            })))}
-            {...searchableWideSelectProps}
-          />
-        </Form.Item>
-        <Row gutter={12}>
-          <Col span={12}>
-            <Form.Item name="skill" label="工种">
-              <Select {...searchableWideSelectProps} allowClear options={withOptionTitles(buildRepairTypeSelectOptions(repairTypeRules))} />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item name="slaHours" label="要求完成时限（小时）">
-              <InputNumber min={1} max={168} style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-        </Row>
-        <Form.Item name="note" label="备注">
-          <Input placeholder="如：业主下午在家，优先处理" />
-        </Form.Item>
+    <Modal
+      className="pms-assign-modal"
+      width={720}
+      title={(
+        <div className="pms-assign-modal__title">
+          <strong>指派维修人员</strong>
+          <span>先确定工种，系统再筛出该工种可派的人员</span>
+        </div>
+      )}
+      open={open}
+      onCancel={onClose}
+      onOk={onOk}
+      okText={selectedTechnician ? `确认派给${selectedTechnician.name}` : '确认派单'}
+      okButtonProps={{ disabled: !selectedSkill || !selectedAssigneeId }}
+      confirmLoading={saving}
+      destroyOnHidden
+    >
+      <Form form={form} layout="vertical" className="pms-assign-flow">
+        <section className={`pms-assign-step ${selectedSkill ? 'is-complete' : 'is-active'}`}>
+          <div className="pms-assign-step__head">
+            <span className="pms-assign-step__number">1</span>
+            <div>
+              <strong>选择维修工种</strong>
+              <span>用工种先缩小人员范围</span>
+            </div>
+            {selectedSkill && <Tag color="success">已选择</Tag>}
+          </div>
+          <Form.Item
+            name="skill"
+            rules={[{ required: true, message: '请先选择维修工种' }]}
+          >
+            <Select
+              {...searchableWideSelectProps}
+              size="large"
+              placeholder="请选择本次应由哪个工种处理"
+              options={withOptionTitles(buildRepairTypeSelectOptions(repairTypeRules))}
+              onChange={() => form.setFieldValue('assigneeId', undefined)}
+            />
+          </Form.Item>
+        </section>
+
+        <section className={`pms-assign-step ${!selectedSkill ? 'is-locked' : selectedAssigneeId ? 'is-complete' : 'is-active'}`}>
+          <div className="pms-assign-step__head">
+            <span className="pms-assign-step__number">2</span>
+            <div>
+              <strong>选择维修人员</strong>
+              <span>
+                {selectedSkill
+                  ? `已筛出 ${eligibleTechnicians.length} 人，在手工单少的优先排列`
+                  : '完成第 1 步后才能选人'}
+              </span>
+            </div>
+            {selectedAssigneeId && <Tag color="success">已选择</Tag>}
+          </div>
+          <Form.Item
+            name="assigneeId"
+            rules={[{ required: true, message: '请选择维修人员' }]}
+          >
+            <Select
+              size="large"
+              placeholder={selectedSkill ? '输入姓名或电话搜索' : '请先选择维修工种'}
+              disabled={!selectedSkill}
+              notFoundContent={selectedSkill ? '该工种暂未配置可用维修人员' : '请先选择工种'}
+              options={withOptionTitles(eligibleTechnicians.map((t) => ({
+                value: t.id,
+                label: `${t.name || '(未命名)'} · 在手 ${t.openCount} 单${t.phone ? ' · ' + t.phone : ''}${t.skills?.length ? ' · ' + formatSkillList(t.skills, repairTypeRules) : ''}`,
+              })))}
+              {...searchableWideSelectProps}
+            />
+          </Form.Item>
+          {selectedSkill && !eligibleTechnicians.length && (
+            <Alert
+              type="warning"
+              showIcon
+              message="该工种还没有可派人员"
+              description="请先在员工资料中配置工种，或在报修类型配置中指定默认维修人员。"
+            />
+          )}
+        </section>
+
+        <section className={`pms-assign-step ${selectedAssigneeId ? 'is-active' : 'is-locked'}`}>
+          <div className="pms-assign-step__head">
+            <span className="pms-assign-step__number">3</span>
+            <div>
+              <strong>设置派单要求</strong>
+              <span>补充完成时限和现场备注后提交</span>
+            </div>
+          </div>
+          <Row gutter={12}>
+            <Col xs={24} md={9}>
+              <Form.Item name="slaHours" label="要求完成时限（小时）">
+                <InputNumber min={1} max={168} disabled={!selectedAssigneeId} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={15}>
+              <Form.Item name="note" label="派单备注">
+                <Input disabled={!selectedAssigneeId} placeholder="如：业主下午在家，优先处理" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </section>
       </Form>
     </Modal>
   );

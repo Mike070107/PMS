@@ -302,6 +302,27 @@ export class AssignWorkOrderDto {
   note?: string;
 }
 
+/** 维修中的过程记录：文字、照片至少填一项。 */
+export class AddWorkOrderProgressDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @IsString({ each: true })
+  attachments?: string[];
+}
+
+/** 维修工无法继续处理时，退回所属管理处重新分类和派单。 */
+export class RequestWorkOrderTransferDto {
+  @IsString()
+  @MaxLength(500)
+  note: string;
+}
+
 export class MaterialUsageDto {
   @IsOptional()
   @Type(() => Number)

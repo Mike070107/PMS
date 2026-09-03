@@ -23,7 +23,10 @@ export interface PublicRepairType {
 }
 
 /** 租户配置的报修类型（启用中的），任意登录角色可读 */
-export const types = () => request<PublicRepairType[]>({ url: '/repair-types' });
+export const types = (communityId?: number) => request<PublicRepairType[]>({
+  url: '/repair-types',
+  query: communityId ? { communityId } : undefined,
+});
 
 export interface ActionSuggestion {
   text: string;
@@ -157,7 +160,7 @@ export interface ListQuery {
   q?: string;
 }
 
-/** 列表按角色收敛：业主只看自己提交的，维修工看 pool / mine */
+/** 列表按角色收敛：pool 含公开待接单及定向派给本人的待接单，mine 从接单后开始。 */
 export const list = (query: ListQuery = {}) =>
   request<WorkOrderListItem[]>({ url: '/work-orders', query: query as any });
 
@@ -177,14 +180,27 @@ export const assign = (id: number | string, data: AssignWorkOrderReq) =>
   request<void>({ method: 'POST', url: `/work-orders/${id}/assign`, data });
 
 /** 派单台可选的维修工（含在手单数）。走工单页权限，不是「用户管理」权限 */
-export const technicians = (communityId?: number) =>
+export const technicians = (communityId?: number, skill?: string) =>
   request<TechnicianOption[]>({
     url: '/work-orders/technicians',
-    query: communityId ? { communityId } : undefined,
+    query: {
+      ...(communityId ? { communityId } : {}),
+      ...(skill ? { skill } : {}),
+    },
   });
 
 export const complete = (id: number | string, data: CompleteWorkOrderReq) =>
   request<void>({ method: 'POST', url: `/work-orders/${id}/complete`, data });
+
+/** 维修中追加一条带照片的进度记录，不改变工单状态。 */
+export const addProgress = (
+  id: number | string,
+  data: { note?: string; attachments?: string[] },
+) => request<void>({ method: 'POST', url: `/work-orders/${id}/progress`, data });
+
+/** 当前维修工把工单退回所属管理处，清空类型后等待重新派单。 */
+export const requestTransfer = (id: number | string, data: { note: string }) =>
+  request<void>({ method: 'POST', url: `/work-orders/${id}/transfer-request`, data });
 
 export const review = (
   id: number | string,

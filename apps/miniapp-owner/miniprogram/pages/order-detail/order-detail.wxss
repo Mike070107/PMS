@@ -32,6 +32,8 @@
   color: var(--color-text-secondary);
   line-height: 1.6;
 }
+.timeline-photos { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 12rpx; }
+.timeline-photo { width: 132rpx; height: 132rpx; border-radius: 12rpx; background: var(--color-bg); }
 
 .stars { font-size: 56rpx; color: #d9d9d9; letter-spacing: 8rpx; }
 .stars .on { color: var(--color-warning); }

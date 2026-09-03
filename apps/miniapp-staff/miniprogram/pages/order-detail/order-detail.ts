@@ -1,6 +1,7 @@
 import { ai, repairs, upload } from '@pms/api-client';
 import { getSession } from '../../utils/session';
 import { askOrderSubscribe } from '../../utils/unread';
+import { rememberPoolMode } from '../../utils/tabbar';
 import {
   buildTimeline,
   createHoldToTalk,
@@ -185,6 +186,9 @@ interface PageData {
   canComplete: boolean;
   /** 缺料登记只在「维修中」开放：还没接单先接单，等待材料的单已经在池子里了 */
   canNeedMaterial: boolean;
+  canAddProgress: boolean;
+  canTransfer: boolean;
+  canRedispatch: boolean;
   /** 已提报的缺料清单，等待材料时给接单的人看 */
   missingText: string;
   acceptText: string;
@@ -201,6 +205,9 @@ interface PageData {
   assigneeText: string;
   contactPhone: string;
   resultAttachments: string[];
+  progressNote: string;
+  progressAttachments: string[];
+  transferNote: string;
   actionNote: string;
   /* ---- 完工小结：按住说一句，大模型理成规范的维修记录 ---- */
   /** 微信同声传译插件在不在。不在就整个隐藏「按住说话」，打字照常可用 */
@@ -278,12 +285,18 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     canAccept: false,
     canComplete: false,
     canNeedMaterial: false,
+    canAddProgress: false,
+    canTransfer: false,
+    canRedispatch: false,
     missingText: '',
     acceptText: '接单',
     panel: '',
     timelineOpen: false,
     contactPhone: '',
     resultAttachments: [],
+    progressNote: '',
+    progressAttachments: [],
+    transferNote: '',
     actionNote: '',
     /* ---- 完工小结：按住说一句，大模型理成规范的维修记录（2026-09-01 加） ----
        维修工是蹲在水管边单手拿手机，打字比说话慢十倍，「维修说明」常年只有「已修」两个字，
@@ -391,12 +404,12 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         // 和列表卡片同一口径：报单时说了「急修」，或者压了 7 天，都挂红标
         urgent: !!detail.request?.urgent || stayTone(stayedDays) === 'danger',
         timeline: buildTimeline(detail.logs, timelineLabels, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
-        // 工单池内未开工的单都可主动接：未派人、派给自己或派给别人都一样。
-        // 权限由 session.canAccept 管，小区范围和并发抢单由后端再兜底。
+        // 未指定人的公开池可以主动认领；定向派单只允许被派人确认接单。
+        // 这里和服务端保持同一口径，避免别人从分享链接点进来看到一个必然报错的按钮。
         canAccept:
           !!session?.canAccept &&
           (status === WorkOrderStatus.CREATED ||
-            status === WorkOrderStatus.DISPATCHED ||
+            (status === WorkOrderStatus.DISPATCHED && detail.workOrder.assigneeId === myId) ||
             waitingInPool),
         // 完工/缺料同理：只有这单真在自己手上才给表单
         canComplete:
@@ -408,6 +421,18 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           !!session?.canHandleOrders &&
           detail.workOrder.assigneeId === myId &&
           status === WorkOrderStatus.IN_PROGRESS,
+        canAddProgress:
+          !!session?.canHandleOrders &&
+          detail.workOrder.assigneeId === myId &&
+          status === WorkOrderStatus.IN_PROGRESS,
+        canTransfer:
+          !!session?.canHandleOrders &&
+          detail.workOrder.assigneeId === myId &&
+          status === WorkOrderStatus.IN_PROGRESS,
+        canRedispatch:
+          !!session?.canDispatch &&
+          status === WorkOrderStatus.CREATED &&
+          !(detail.workOrder.candidateIds || []).length,
         assigneeText: detail.workOrder.assigneeName || '未派单',
         ...this.buildResult(detail),
         missingText: missingMaterialsText(detail.workOrder.missingMaterials),
@@ -534,6 +559,90 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     const urls = this.data.detail?.request?.attachments || [];
     if (!urls.length) return;
     wx.previewImage({ current: e.currentTarget.dataset.url, urls });
+  },
+
+  onPreviewProgressImage(e: WechatMiniprogram.BaseEvent) {
+    const urls = (e.currentTarget.dataset.urls || []) as string[];
+    if (!urls.length) return;
+    wx.previewImage({ current: e.currentTarget.dataset.url || urls[0], urls });
+  },
+
+  onProgressNote(e: WechatMiniprogram.Input) {
+    this.setData({ progressNote: e.detail.value, errorMsg: '' });
+  },
+
+  onTransferNote(e: WechatMiniprogram.Input) {
+    this.setData({ transferNote: e.detail.value, errorMsg: '' });
+  },
+
+  async onChooseProgressPhoto() {
+    if (this.data.uploading || this.data.progressAttachments.length >= 6) return;
+    const res = await wx.chooseMedia({
+      count: 6 - this.data.progressAttachments.length,
+      mediaType: ['image'], sourceType: ['camera', 'album'], sizeType: ['compressed'],
+    }).catch(() => null);
+    if (!res?.tempFiles?.length) return;
+    this.setData({ uploading: true });
+    try {
+      const uploaded = await upload.uploadTempFiles(res.tempFiles.map((item) => item.tempFilePath));
+      this.setData({
+        progressAttachments: [...this.data.progressAttachments, ...uploaded.map((item) => item.publicUrl)].slice(0, 6),
+      });
+    } catch (e: any) {
+      this.setData({ errorMsg: e?.message || '照片上传失败' });
+    } finally {
+      this.setData({ uploading: false });
+    }
+  },
+
+  onRemoveProgressPhoto(e: WechatMiniprogram.BaseEvent) {
+    const next = this.data.progressAttachments.slice();
+    next.splice(Number(e.currentTarget.dataset.index), 1);
+    this.setData({ progressAttachments: next });
+  },
+
+  async onSubmitProgress() {
+    const note = this.data.progressNote.trim();
+    if (!note && !this.data.progressAttachments.length) {
+      return this.setData({ errorMsg: '请填写进度说明或添加照片' });
+    }
+    this.setData({ busy: true, errorMsg: '' });
+    try {
+      await repairs.addProgress(this.data.id, { note: note || undefined, attachments: this.data.progressAttachments });
+      this.setData({ panel: '', progressNote: '', progressAttachments: [] });
+      await this.load();
+      wx.showToast({ title: '进度已记录' });
+    } catch (e: any) {
+      this.setData({ errorMsg: e?.message || '进度保存失败' });
+    } finally { this.setData({ busy: false }); }
+  },
+
+  async onSubmitTransfer() {
+    const note = this.data.transferNote.trim();
+    if (note.length < 2) return this.setData({ errorMsg: '请说明为什么需要转给其他人修' });
+    this.setData({ busy: true, errorMsg: '' });
+    try {
+      await repairs.requestTransfer(this.data.id, { note });
+      this.setData({ panel: '', transferNote: '' });
+      wx.showModal({
+        title: '已交回办公室',
+        content: '工单类型和原维修工已清空，所属管理处会收到微信及站内提醒，重新分类派单。',
+        showCancel: false,
+        confirmText: '返回工单池',
+        success: () => wx.switchTab({ url: '/pages/pool/pool' }),
+      });
+    } catch (e: any) {
+      this.setData({ errorMsg: e?.message || '转单失败' });
+    } finally { this.setData({ busy: false }); }
+  },
+
+  onGoRedispatch() {
+    const orderNo = this.data.detail?.workOrder.orderNo || '';
+    rememberPoolMode('dispatch');
+    try {
+      wx.setStorageSync('pms.staff.open_order', JSON.stringify({ mainTab: 'pool', orderNo }));
+    } catch { /* 搜索标记失败也能进入派单台 */ }
+    wx.switchTab({ url: '/pages/pool/pool' });
   },
 
   async onChooseMedia() {

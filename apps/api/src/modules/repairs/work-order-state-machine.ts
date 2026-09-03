@@ -11,6 +11,7 @@ export type WorkOrderTransitionAction =
   | 'claim'
   | 'complete'
   | 'need_material'
+  | 'transfer'
   | 'review'
   | 'auto_review_complete'
   | 'cancel';
@@ -52,6 +53,10 @@ export const WORK_ORDER_TRANSITIONS: Record<
   need_material: {
     from: [WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS],
     to: WorkOrderStatus.WAITING_MATERIAL,
+  },
+  transfer: {
+    from: [WorkOrderStatus.IN_PROGRESS],
+    to: WorkOrderStatus.CREATED,
   },
   review: {
     from: [WorkOrderStatus.DONE_PENDING_REVIEW],

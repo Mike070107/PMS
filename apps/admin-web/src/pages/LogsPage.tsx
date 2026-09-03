@@ -267,5 +267,5 @@ function LogDetailDrawer({ row, onClose, canManageFeedback, onStatus }: { row: L
 }
 
 function detailLabel(key: string) {
-  return ({ objectType: '业务对象', objectId: '对象编号', businessNo: '业务单号', communityId: '小区编号', buildingId: '楼栋编号', houseId: '房屋编号', assigneeId: '维修工编号', warehouseId: '仓库编号', materialId: '材料编号', repairType: '报修类型', entryMode: '报修入口', urgent: '是否紧急', itemCount: '明细数', materialCount: '材料数', pageTitle: '页面名称', version: '端上版本', handlingNote: '处理备注' } as Record<string, string>)[key] || key;
+  return ({ objectType: '业务对象', objectId: '对象编号', businessNo: '业务单号', communityId: '小区编号', buildingId: '楼栋编号', houseId: '房屋编号', assigneeId: '维修工编号', warehouseId: '仓库编号', materialId: '材料编号', repairType: '报修类型', skill: '工单类型', entryMode: '报修入口', urgent: '是否紧急', itemCount: '明细数', materialCount: '材料数', pageTitle: '页面名称', version: '端上版本', handlingNote: '处理备注' } as Record<string, string>)[key] || key;
 }

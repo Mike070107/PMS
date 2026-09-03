@@ -353,7 +353,7 @@ test('「在手工单」不再隐式授予「我的报修」列表权限', async
   );
 });
 
-test('维修工的工单池只包含未派单和等待材料', async () => {
+test('维修工的工单池包含公开待接单和派给本人的待接单', async () => {
   const service = Object.create(RepairsService.prototype) as any;
   let capturedWhere: any;
   service.resolveTenantId = () => 1;
@@ -373,12 +373,15 @@ test('维修工的工单池只包含未派单和等待材料', async () => {
 
   await service.listWorkOrders({ scope: 'pool' }, user, access);
 
-  assert.equal(capturedWhere.assigneeId, undefined);
-  assert.equal(capturedWhere.candidateIds, undefined);
-  assert.deepEqual(capturedWhere.status._value, [
+  assert.equal(Array.isArray(capturedWhere), true);
+  assert.equal(capturedWhere[0].assigneeId, undefined);
+  assert.equal(capturedWhere[0].candidateIds, undefined);
+  assert.deepEqual(capturedWhere[0].status._value, [
     WorkOrderStatus.CREATED,
     WorkOrderStatus.WAITING_MATERIAL,
   ]);
+  assert.equal(capturedWhere[1].status, WorkOrderStatus.DISPATCHED);
+  assert.equal(capturedWhere[1].assigneeId, 7);
 
   assert.deepEqual(
     await service.listWorkOrders(
@@ -434,15 +437,18 @@ test('同时有派单权限的人打开工单池时仍按工单池范围取数',
 
   await service.listWorkOrders({ scope: 'pool' }, user, access);
 
-  assert.equal(capturedWhere.assigneeId, undefined);
-  assert.equal(capturedWhere.candidateIds, undefined);
-  assert.deepEqual(capturedWhere.status._value, [
+  assert.equal(Array.isArray(capturedWhere), true);
+  assert.equal(capturedWhere[0].assigneeId, undefined);
+  assert.equal(capturedWhere[0].candidateIds, undefined);
+  assert.deepEqual(capturedWhere[0].status._value, [
     WorkOrderStatus.CREATED,
     WorkOrderStatus.WAITING_MATERIAL,
   ]);
+  assert.equal(capturedWhere[1].status, WorkOrderStatus.DISPATCHED);
+  assert.equal(capturedWhere[1].assigneeId, 7);
 });
 
-test('定向已派单进入对应维修工的在手工单', async () => {
+test('在手工单排除尚未确认接单的定向派单', async () => {
   const service = Object.create(RepairsService.prototype) as any;
   let capturedWhere: any;
   service.resolveTenantId = () => 1;
@@ -464,7 +470,38 @@ test('定向已派单进入对应维修工的在手工单', async () => {
 
   assert.equal(capturedWhere.assigneeId, 7);
   assert.equal(capturedWhere.status._type, 'not');
-  assert.equal(capturedWhere.status._value, WorkOrderStatus.CREATED);
+  assert.equal(capturedWhere.status._value._type, 'in');
+  assert.deepEqual(capturedWhere.status._value._value, [
+    WorkOrderStatus.CREATED,
+    WorkOrderStatus.DISPATCHED,
+  ]);
+});
+
+test('定向已派单只进入对应维修工的工单池', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  let capturedWhere: any;
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => [10];
+  service.isSelfScoped = async () => false;
+  service.keywordWheres = async (_tenantId: number, where: any) => [where];
+  service.workOrderRepo = {
+    async find(options: any) {
+      capturedWhere = options.where;
+      return [];
+    },
+  };
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+  const access = appAccess({ 'app:pool': { view: true } });
+
+  await service.listWorkOrders(
+    { scope: 'pool', status: WorkOrderStatus.DISPATCHED },
+    user,
+    access,
+  );
+
+  assert.equal(capturedWhere.status, WorkOrderStatus.DISPATCHED);
+  assert.equal(capturedWhere.assigneeId, 7);
 });
 
 test('有工单池接单权时，可认领未推送给自己的未派单', async () => {

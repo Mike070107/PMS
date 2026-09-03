@@ -24,4 +24,8 @@ export class WorkOrderLog extends TenantEntity {
 
   @Column({ type: 'text', nullable: true })
   note: string | null;
+
+  /** 维修过程照片；与完工照片分开，按时间节点展示。 */
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  attachments: string[];
 }

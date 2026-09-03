@@ -6,6 +6,7 @@ import {
   Community,
   House,
   MaintenanceOrder,
+  MaintenanceSignSession,
   ManagementOffice,
   Material,
   QuotaItem,
@@ -25,6 +26,7 @@ import { SignController } from './sign.controller';
   imports: [
     TypeOrmModule.forFeature([
       MaintenanceOrder,
+      MaintenanceSignSession,
       QuotaItem,
       TenantConfig,
       WorkOrder,

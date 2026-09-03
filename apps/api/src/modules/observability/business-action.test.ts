@@ -20,6 +20,8 @@ test('工单、库存和盘点操作转成稳定业务事件', () => {
   assert.equal(assigned.detail?.assigneeId, 9);
   assert.equal(resolveBusinessAction('PATCH', '/stocks/12', { warehouseId: 2 }).label, '修改库存');
   assert.equal(resolveBusinessAction('POST', '/stocktakes/7/review').label, '复核盘点');
+  assert.equal(resolveBusinessAction('POST', '/work-orders/38/progress').label, '添加维修进度');
+  assert.equal(resolveBusinessAction('POST', '/work-orders/38/transfer-request').code, 'work_order_transfer_request');
   const voided = resolveBusinessAction('DELETE', '/api/v1/work-orders/38', {
     reason: '重复录入',
     confirmReversal: true,

@@ -40,6 +40,22 @@ test('allows the supported repair lifecycle transitions', () => {
     ),
     true,
   );
+  assert.equal(
+    canTransitionWorkOrder(
+      WorkOrderStatus.IN_PROGRESS,
+      WorkOrderStatus.CREATED,
+      'transfer',
+    ),
+    true,
+  );
+  assert.equal(
+    canTransitionWorkOrder(
+      WorkOrderStatus.DISPATCHED,
+      WorkOrderStatus.CREATED,
+      'transfer',
+    ),
+    false,
+  );
 });
 
 test('rejects a target state reached through the wrong action', () => {

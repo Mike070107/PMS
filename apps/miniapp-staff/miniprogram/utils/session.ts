@@ -26,6 +26,7 @@ export interface StaffSession {
   /** 在手工单：看得到 / 能完工报料 */
   canSeeMyOrders: boolean;
   canHandleOrders: boolean;
+  canInspectMaintenance: boolean;
   /** 我的报修：查看本人替住户或巡查提交的报修进度 */
   canSeeMyRepairs: boolean;
   /** 材料与库存（现场查存量、看采购进度） */
@@ -65,6 +66,7 @@ const emptySession = (): StaffSession => ({
   canDispatch: false,
   canSeeMyOrders: false,
   canHandleOrders: false,
+  canInspectMaintenance: false,
   canSeeMyRepairs: false,
   canViewMaterials: false,
   canEditMaterials: false,
@@ -104,6 +106,7 @@ export function buildSession(me: MeResp | null): StaffSession {
     canDispatch: can('app:dispatch', 'edit'),
     canSeeMyOrders,
     canHandleOrders: can('app:my-orders', 'edit'),
+    canInspectMaintenance: can('app:maintenance-inspect', 'view'),
     canSeeMyRepairs: can('app:my-repairs', 'view'),
     canViewMaterials: can('app:inventory', 'view'),
     canEditMaterials: can('app:inventory', 'edit'),

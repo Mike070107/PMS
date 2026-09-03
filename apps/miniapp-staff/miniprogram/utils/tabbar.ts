@@ -16,6 +16,7 @@ const TAB_PAGE_KEYS = [
   'app:dispatch',
   'app:my-orders',
   'app:my-repairs',
+  'app:maintenance-inspect',
   'app:inventory',
   'app:stocktakes',
   'app:materials',
@@ -42,6 +43,7 @@ export function readCachedAccess(): { pages: Record<string, boolean> | null } {
  * 三处任改其一就会对不上（表现为切了模式没生效、或退出登录没清干净）。统一收在这里。
  */
 const POOL_MODE_KEY = 'pms.staff.poolMode';
+const APPROVAL_MODE_KEY = 'pms.staff.approvalMode';
 
 export type PoolMode = 'pool' | 'dispatch';
 
@@ -60,6 +62,15 @@ export function rememberPoolMode(mode: PoolMode) {
   } catch {
     /* 存不下不影响跳转，页面会按权限自己判默认模式 */
   }
+}
+
+export type ApprovalMode = 'approvals' | 'maintenance';
+export function cachedApprovalMode(): ApprovalMode {
+  try { return wx.getStorageSync(APPROVAL_MODE_KEY) === 'maintenance' ? 'maintenance' : 'approvals'; }
+  catch { return 'approvals'; }
+}
+export function rememberApprovalMode(mode: ApprovalMode) {
+  try { wx.setStorageSync(APPROVAL_MODE_KEY, mode); } catch { /* 页面会按权限纠正 */ }
 }
 
 function getTabBar(page: any) {
@@ -124,4 +135,5 @@ export function rememberAccess(
 export function clearAccessCache() {
   wx.removeStorageSync(PAGES_KEY);
   wx.removeStorageSync(POOL_MODE_KEY);
+  wx.removeStorageSync(APPROVAL_MODE_KEY);
 }

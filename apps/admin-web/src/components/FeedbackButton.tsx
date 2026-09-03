@@ -26,7 +26,15 @@ function isImage(file: { type?: string; name?: string }) {
 }
 
 /** 全站反馈入口：用户只写现象，页面、版本和最近请求失败自动附带。 */
-export default function FeedbackButton({ pageTitle, compact = false }: { pageTitle: string; compact?: boolean }) {
+export default function FeedbackButton({
+  pageTitle,
+  compact = false,
+  onOpen,
+}: {
+  pageTitle: string;
+  compact?: boolean;
+  onOpen?: () => void;
+}) {
   const { message } = AntdApp.useApp();
   const location = useLocation();
   const [form] = Form.useForm<FeedbackForm>();
@@ -122,14 +130,15 @@ export default function FeedbackButton({ pageTitle, compact = false }: { pageTit
         className="pms-feedback-trigger"
         icon={<BugOutlined />}
         onClick={() => {
+          onOpen?.();
           form.setFieldsValue({ type: getLastApiFailure() ? 'error' : 'suggestion' });
           setOpen(true);
         }}
-      >{compact ? null : '反馈异常'}</Button>
+      >{compact ? null : '系统改进建议'}</Button>
       <Modal
-        title="反馈问题"
+        title="系统改进建议"
         open={open}
-        okText="提交反馈"
+        okText="提交建议"
         cancelText="取消"
         confirmLoading={submitting}
         onOk={() => void submit()}

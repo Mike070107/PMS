@@ -1,7 +1,7 @@
-import { purchases } from '@pms/api-client';
+import { maintenance, purchases } from '@pms/api-client';
 import { formatDateTimeCn } from '@pms/miniapp-ui';
 import { getSession } from '../../utils/session';
-import { setTabBadge, syncTabBar } from '../../utils/tabbar';
+import { cachedApprovalMode, setTabBadge, syncTabBar } from '../../utils/tabbar';
 import {
   PURCHASE_STATUS_LABELS,
   PurchaseRequestStatus,
@@ -28,6 +28,11 @@ interface ApprovalRow extends PurchaseRequestView {
 }
 
 const yuan = (cents: number) => `¥${((cents || 0) / 100).toFixed(2)}`;
+
+interface MaintenanceRow extends maintenance.MaintenanceListItem {
+  createdAtText: string;
+  amountText: string;
+}
 
 function toRow(item: PurchaseRequestView): ApprovalRow {
   return {
@@ -57,16 +62,18 @@ function toRow(item: PurchaseRequestView): ApprovalRow {
 
 Page({
   data: {
+    mode: 'approvals' as 'approvals' | 'maintenance',
     canApprove: false,
+    canInspectMaintenance: false,
     isPurchaserStage: false,
     roleHint: '',
     list: [] as ApprovalRow[],
     loaded: false,
     busyId: 0,
+    maintenanceList: [] as MaintenanceRow[],
   },
 
   onShow() {
-    syncTabBar(this, 'approvals');
     this.load();
   },
 
@@ -78,6 +85,31 @@ Page({
     try {
       // 权限走共用会话（一次登录只打一遍 /auth/me），别每页各调各的
       const session = await getSession(this);
+      const requestedMode = cachedApprovalMode();
+      const mode = requestedMode === 'maintenance' && session.canInspectMaintenance
+        ? 'maintenance'
+        : requestedMode === 'approvals' && session.canApprove
+          ? 'approvals'
+          : session.canInspectMaintenance ? 'maintenance' : 'approvals';
+      this.setData({ mode, canInspectMaintenance: session.canInspectMaintenance });
+      syncTabBar(this, mode === 'maintenance' ? 'maintenance' : 'approvals');
+
+      if (mode === 'maintenance') {
+        if (!session.canInspectMaintenance) {
+          this.setData({ maintenanceList: [], loaded: true });
+          setTabBadge(this, 'maintenance', 0);
+          return;
+        }
+        const list = await maintenance.list({ status: 'draft' });
+        const maintenanceList = list.map((item) => ({
+          ...item,
+          createdAtText: formatDateTimeCn(item.createdAt),
+          amountText: yuan(item.totalCents),
+        }));
+        this.setData({ maintenanceList, loaded: true });
+        setTabBadge(this, 'maintenance', maintenanceList.length);
+        return;
+      }
 
       if (!session.canApprove) {
         this.setData({
@@ -112,6 +144,18 @@ Page({
       this.setData({ loaded: true });
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     }
+  },
+
+  async onOpenMaintenance(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.id);
+    if (!id || this.data.busyId) return;
+    this.setData({ busyId: id });
+    try {
+      const link = await maintenance.inspectLink(id);
+      wx.navigateTo({ url: `/pages/web-sign/web-sign?url=${encodeURIComponent(link.url)}` });
+    } catch (err: any) {
+      wx.showToast({ icon: 'none', title: err?.message || '养护单打开失败' });
+    } finally { this.setData({ busyId: 0 }); }
   },
 
   async onApprove(e: WechatMiniprogram.BaseEvent) {

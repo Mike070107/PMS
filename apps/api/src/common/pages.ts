@@ -39,6 +39,7 @@ export const STAFF_APP_PAGE_KEYS = [
   'app:dispatch', // 派单台（派单）
   'app:pool', // 工单池（接单）
   'app:my-orders', // 在手工单（派给本人、由本人处理）
+  'app:maintenance-inspect', // 养护单查验（物业经理查看、签字）
   'app:my-repairs', // 我的报修（本人提交的报修进度）
   'app:repair-create', // 报修
   'app:inventory', // 材料与库存（现场查存量、看采购进度）
@@ -118,6 +119,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:stocktakes': 'e',
       'app:materials': 'e',
       'app:approve-manager': 'e',
+      'app:maintenance-inspect': 'v',
       'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',

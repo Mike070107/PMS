@@ -441,6 +441,8 @@ export interface WorkOrderLogItem {
   action: string;
   operatorId: number | null;
   note: string | null;
+  /** 这一进度节点的现场照片。 */
+  attachments?: string[];
   createdAt: string;
 }
 

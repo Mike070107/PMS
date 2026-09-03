@@ -12,7 +12,7 @@
  * 所以后台改完角色，用户下拉刷新一次底部就跟着变，不用杀掉小程序重进。
  */
 import { canSeeTab, type TabAccess, type TabKey } from '../utils/roles';
-import { readCachedAccess, rememberPoolMode } from '../utils/tabbar';
+import { readCachedAccess, rememberApprovalMode, rememberPoolMode } from '../utils/tabbar';
 import { topUpQuietly } from '../utils/unread';
 
 interface TabDef {
@@ -27,13 +27,14 @@ const ALL_TABS: TabDef[] = [
   { key: 'dispatch', pagePath: '/pages/pool/pool?mode=dispatch', text: '派单台' },
   { key: 'pool', pagePath: '/pages/pool/pool', text: '工单池' },
   { key: 'mine', pagePath: '/pages/my-orders/my-orders', text: '在手工单' },
+  { key: 'maintenance', pagePath: '/pages/approvals/approvals?mode=maintenance', text: '养护单' },
   { key: 'materials', pagePath: '/pages/inventory/inventory', text: '材料与库存' },
   { key: 'approvals', pagePath: '/pages/approvals/approvals', text: '审批' },
   { key: 'me', pagePath: '/pages/me/me', text: '我的' },
 ];
 
 function visibleTabs(access: TabAccess) {
-  return ALL_TABS.filter((tab) => canSeeTab(tab.key, access)).map((tab) => {
+  const tabs = ALL_TABS.filter((tab) => canSeeTab(tab.key, access)).map((tab) => {
     // 「我的报修」复用工单池这个 tab 页。如果员工只被授予我的报修、
     // 没有工单池权限，底部入口也必须叫「我的报修」，否则会误以为能看全部待接单。
     if (
@@ -46,6 +47,14 @@ function visibleTabs(access: TabAccess) {
     }
     return tab;
   });
+  // 企业管理员可能同时拥有全部 7 个入口。胶囊宽度固定，继续用五字标题会互相压住；
+  // 只在入口超过 6 个时用短标题，权限较少的普通岗位仍保留完整名称。
+  if (tabs.length <= 6) return tabs;
+  const compact: Record<TabKey, string> = {
+    dispatch: '派单', pool: '工单池', mine: '在手', maintenance: '养护',
+    materials: '库存', approvals: '审批', me: '我的',
+  };
+  return tabs.map((tab) => ({ ...tab, text: compact[tab.key] }));
 }
 
 Component({
@@ -103,6 +112,9 @@ Component({
       // 工单池和派单台是同一个页面的两种模式，switchTab 不接受参数，
       // 所以把「进来要看哪一屏」写进缓存，页面读它决定渲染哪一屏
       rememberPoolMode(tab.key === 'dispatch' ? 'dispatch' : 'pool');
+      if (tab.key === 'approvals' || tab.key === 'maintenance') {
+        rememberApprovalMode(tab.key === 'maintenance' ? 'maintenance' : 'approvals');
+      }
 
       const current = this.data.tabs.find((t: any) => t.key === this.data.selectedKey);
       const target = tab.pagePath.split('?')[0];

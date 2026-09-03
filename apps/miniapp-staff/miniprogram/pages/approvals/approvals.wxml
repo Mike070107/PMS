@@ -1,4 +1,21 @@
 <view class="container container--tabbar">
+  <block wx:if="{{mode === 'maintenance'}}">
+    <view class="screen-head">
+      <view class="screen-head__title">待查验养护单 {{maintenanceList.length}} 张</view>
+      <view class="screen-head__desc">点击查看完整单据，放大核对后手写签字</view>
+    </view>
+    <view wx:if="{{!maintenanceList.length && loaded}}"><pms-empty text="没有待查验的养护单"/></view>
+    <view wx:for="{{maintenanceList}}" wx:key="id" class="card wo-card maintenance-card" data-id="{{item.id}}" bindtap="onOpenMaintenance">
+      <view class="wo-card__head"><view class="wo-card__title"><text class="wo-card__type">{{item.addressText || '地址待补充'}}</text></view><text class="maintenance-card__status">待查验</text></view>
+      <view class="kv"><text class="kv__k">养护单号</text><text class="kv__v">{{item.paperNo || item.orderNo}}</text></view>
+      <view class="kv"><text class="kv__k">修理项目</text><text class="kv__v">{{item.repairItem || '未填写'}}</text></view>
+      <view class="kv"><text class="kv__k">修理人</text><text class="kv__v">{{item.repairerName || '未签名'}}</text></view>
+      <view class="kv"><text class="kv__k">工料费</text><text class="kv__v">{{item.amountText}}</text></view>
+      <view class="maintenance-card__foot"><text>{{item.createdAtText}}</text><button loading="{{busyId === item.id}}" disabled="{{busyId !== 0}}">查看并签字 ›</button></view>
+    </view>
+  </block>
+
+  <block wx:else>
   <view class="screen-head">
     <view class="screen-head__title">
       <block wx:if="{{canApprove}}">待我审批 {{list.length}} 条</block>
@@ -62,4 +79,5 @@
       ><view class="btn__icon icon-action--check-white"></view><text>通过</text></button>
     </view>
   </view>
+  </block>
 </view>

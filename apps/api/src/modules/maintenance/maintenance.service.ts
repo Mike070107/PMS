@@ -7,7 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import * as QRCode from 'qrcode';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -17,6 +17,7 @@ import {
   Community,
   House,
   MaintenanceOrder,
+  MaintenanceSignSession,
   ManagementOffice,
   Material,
   QuotaItem,
@@ -89,38 +90,8 @@ const SHARE_METHOD_LABELS: Record<string, string> = {
 const ITEMS_PER_SHEET = 4;
 const MATERIALS_PER_SHEET = 7;
 
-/** 手机签名二维码的有效期。够走到师傅跟前让他签个字，过期就重新点一次 */
-const SIGN_TOKEN_TTL_SEC = 5 * 60;
-
-/**
- * 这一张二维码走到哪一步了：手机打开过没有、签完没有。
- *
- * 只放内存、跟着 token 走，5 分钟自然过期 —— 它不是业务数据，只是给电脑那头
- * 「等待扫码 / 已打开 / 已签好」三个状态用的信号灯。进程重启就没了，
- * 那边会退回「关掉窗口自己刷新」的兜底路径，不影响签名本身（签名是落库的）。
- *
- * 为什么必须按 token 记、而不是看单据上那一格有没有签名：
- * 重签的时候那一格本来就有签名，按「有没有值」判会立刻当成刚签好，
- * 窗口一开就自己关了，人根本没机会重签（2026-08-31 用户实际遇到）。
- */
-interface SignProgress {
-  openedAt?: number;
-  submittedAt?: number;
-  expiresAt: number;
-}
-const signProgress = new Map<string, SignProgress>();
-
-function pruneSignProgress() {
-  const now = Date.now();
-  for (const [key, value] of signProgress) {
-    if (value.expiresAt <= now) signProgress.delete(key);
-  }
-}
-
-/** token 的指纹，不把整串 token 当 key 留在内存里 */
-function signKey(token: string): string {
-  return createHash('sha256').update(token).digest('hex').slice(0, 32);
-}
+/** 外发链接要留出微信转发和现场查看时间；提交一次后由数据库立即作废。 */
+const SIGN_TOKEN_TTL_SEC = 30 * 60;
 
 /** 四个签名位 → 库里的字段和中文名 */
 export const SIGN_SLOTS = {
@@ -133,6 +104,7 @@ export const SIGN_SLOTS = {
 export type SignSlotKey = keyof typeof SIGN_SLOTS;
 
 interface SignTokenPayload {
+  sid: number;
   moId: number;
   tenantId: number;
   slot: SignSlotKey;
@@ -153,6 +125,8 @@ export class MaintenanceService {
     private readonly config: ConfigService,
     @InjectRepository(MaintenanceOrder)
     private readonly orderRepo: Repository<MaintenanceOrder>,
+    @InjectRepository(MaintenanceSignSession)
+    private readonly signSessionRepo: Repository<MaintenanceSignSession>,
     @InjectRepository(QuotaItem)
     private readonly quotaRepo: Repository<QuotaItem>,
     @InjectRepository(TenantConfig)
@@ -486,10 +460,10 @@ export class MaintenanceService {
   // ==================== 手机签名（扫码到手机上签） ====================
 
   /**
-   * 生成一个 5 分钟有效的签名链接和二维码。
+   * 生成一个 30 分钟有效、只能提交一次的签名链接和二维码。
    *
    * 用的是**另一把密钥**（JWT_SECRET + ':maintenance-sign'）：这样它永远通不过登录态校验，
-   * 就算被截走也只能给这一张单的这一个签名位签个字，五分钟后作废。
+   * 就算被截走也只能给这一张单的这一个签名位签个字，提交后立即作废。
    * 谁点的这个按钮就把谁记在 token 里 —— 查验签名要落在他名下。
    */
   async createSignToken(
@@ -513,7 +487,23 @@ export class MaintenanceService {
       where: { id: user.id },
       select: ['id', 'name'],
     });
+    const expiresAt = new Date(Date.now() + SIGN_TOKEN_TTL_SEC * 1000);
+    const session = await this.signSessionRepo.save(
+      this.signSessionRepo.create({
+        tenantId,
+        maintenanceOrderId: row.id,
+        slot,
+        requestedBy: user.id,
+        signerName: me?.name || null,
+        expiresAt,
+        openedAt: null,
+        submittedAt: null,
+        createdBy: user.id,
+        updatedBy: user.id,
+      }),
+    );
     const payload: SignTokenPayload = {
+      sid: session.id,
       moId: row.id,
       tenantId,
       slot,
@@ -539,14 +529,18 @@ export class MaintenanceService {
       slot,
       slotLabel: SIGN_SLOTS[slot].label,
       expiresInSec: SIGN_TOKEN_TTL_SEC,
-      expiresAt: new Date(Date.now() + SIGN_TOKEN_TTL_SEC * 1000).toISOString(),
+      expiresAt: expiresAt.toISOString(),
     };
   }
 
   /** 手机打开签名页时先问一句：这是给哪张单、哪个位置签的（链接过期就直接说过期） */
   async getSignSession(token: string) {
-    const payload = await this.verifySignToken(token);
-    this.markSignProgress(token, 'opened');
+    const { payload, session } = await this.verifySignToken(token);
+    if (!session.openedAt) {
+      session.openedAt = new Date();
+      session.updatedBy = payload.uid;
+      await this.signSessionRepo.save(session);
+    }
     const row = await this.orderRepo.findOne({
       where: { id: payload.moId, tenantId: payload.tenantId },
     });
@@ -563,6 +557,9 @@ export class MaintenanceService {
       /** 已经签过就提示一句，允许重签（现场经常写歪了要重来） */
       signed: !!row[field],
       signerName: payload.name || null,
+      /** 公开页只返回这张养护单本身，不带住户手机号、账号等额外资料。 */
+      order: this.toDetail(row),
+      expiresAt: session.expiresAt,
     };
   }
 
@@ -571,33 +568,48 @@ export class MaintenanceService {
    * 查验位提交 = 查验通过，和后台点「查验并签名」等效。
    */
   async submitSignature(token: string, imageDataUrl: string) {
-    const payload = await this.verifySignToken(token);
+    const { payload } = await this.verifySignToken(token);
     const buffer = this.decodePngDataUrl(imageDataUrl);
-    const row = await this.orderRepo.findOne({
-      where: { id: payload.moId, tenantId: payload.tenantId },
-    });
-    if (!row) throw new NotFoundException('养护单不存在');
-    if (row.status === MAINTENANCE_STATUS.VOID) {
-      throw new BadRequestException('这张养护单已作废');
-    }
     const stored = await this.storage.putBuffer(buffer, 'image/png', 'uploads', 'signature.png');
     const url = stored.fileUrl;
-
-    if (payload.slot === 'inspector') {
-      row.inspectorId = payload.uid;
-      row.inspectorName = payload.name || row.inspectorName;
-      row.inspectorSignUrl = url;
-      row.inspectedAt = new Date();
-      row.status = MAINTENANCE_STATUS.INSPECTED;
-    } else {
-      if (row.status !== MAINTENANCE_STATUS.DRAFT) {
-        throw new BadRequestException('已查验的养护单不能再改签名');
+    await this.dataSource.transaction(async (manager) => {
+      const session = await manager.findOne(MaintenanceSignSession, {
+        where: { id: payload.sid, tenantId: payload.tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!session || session.maintenanceOrderId !== payload.moId || session.slot !== payload.slot) {
+        throw new BadRequestException('签名链接无效');
       }
-      row[SIGN_SLOTS[payload.slot].field] = url;
-    }
-    row.updatedBy = payload.uid;
-    await this.orderRepo.save(row);
-    this.markSignProgress(token, 'submitted');
+      if (session.submittedAt) throw new BadRequestException('这个签名链接已经使用过了');
+      if (session.expiresAt.getTime() <= Date.now()) {
+        throw new BadRequestException('签名链接已过期，请重新生成');
+      }
+      const row = await manager.findOne(MaintenanceOrder, {
+        where: { id: payload.moId, tenantId: payload.tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!row) throw new NotFoundException('养护单不存在');
+      if (row.status === MAINTENANCE_STATUS.VOID) {
+        throw new BadRequestException('这张养护单已作废');
+      }
+      if (payload.slot === 'inspector') {
+        row.inspectorId = payload.uid;
+        row.inspectorName = payload.name || row.inspectorName;
+        row.inspectorSignUrl = url;
+        row.inspectedAt = new Date();
+        row.status = MAINTENANCE_STATUS.INSPECTED;
+      } else {
+        if (row.status !== MAINTENANCE_STATUS.DRAFT) {
+          throw new BadRequestException('已查验的养护单不能再改签名');
+        }
+        row[SIGN_SLOTS[payload.slot].field] = url;
+      }
+      row.updatedBy = payload.uid;
+      session.submittedAt = new Date();
+      session.updatedBy = payload.uid;
+      await manager.save(MaintenanceOrder, row);
+      await manager.save(MaintenanceSignSession, session);
+    });
     return { ok: true, slotLabel: SIGN_SLOTS[payload.slot].label };
   }
 
@@ -606,27 +618,15 @@ export class MaintenanceService {
    * 按 token 判，不看单据上那一格有没有值 —— 重签时那一格本来就有签名。
    */
   async getSignStatus(token: string) {
-    const payload = await this.verifySignToken(token);
-    pruneSignProgress();
-    const progress = signProgress.get(signKey(token));
+    const { payload, session } = await this.verifySignToken(token, true);
     return {
       slot: payload.slot,
       slotLabel: SIGN_SLOTS[payload.slot].label,
       /** 手机已经打开签名页 */
-      opened: !!progress?.openedAt,
+      opened: !!session.openedAt,
       /** 这一轮签完了（电脑那头据此把签名取回去） */
-      submitted: !!progress?.submittedAt,
+      submitted: !!session.submittedAt,
     };
-  }
-
-  private markSignProgress(token: string, step: 'opened' | 'submitted') {
-    pruneSignProgress();
-    const key = signKey(token);
-    const now = Date.now();
-    const current = signProgress.get(key) ?? { expiresAt: now + SIGN_TOKEN_TTL_SEC * 1000 };
-    if (step === 'opened') current.openedAt = current.openedAt ?? now;
-    else current.submittedAt = now;
-    signProgress.set(key, current);
   }
 
   private signSecret(): string {
@@ -638,7 +638,10 @@ export class MaintenanceService {
     return (this.config.get<string>('APP_PUBLIC_BASE_URL', '') || '').replace(/\/+$/, '');
   }
 
-  private async verifySignToken(token: string): Promise<SignTokenPayload> {
+  private async verifySignToken(
+    token: string,
+    allowSubmitted = false,
+  ): Promise<{ payload: SignTokenPayload; session: MaintenanceSignSession }> {
     let payload: SignTokenPayload;
     try {
       payload = await this.jwt.verifyAsync<SignTokenPayload>(token, {
@@ -647,10 +650,26 @@ export class MaintenanceService {
     } catch {
       throw new BadRequestException('签名链接已过期，请回电脑上重新生成二维码');
     }
-    if (payload?.purpose !== 'maintenance-sign' || !SIGN_SLOTS[payload.slot]) {
+    if (payload?.purpose !== 'maintenance-sign' || !payload.sid || !SIGN_SLOTS[payload.slot]) {
       throw new BadRequestException('签名链接无效');
     }
-    return payload;
+    const session = await this.signSessionRepo.findOne({
+      where: { id: payload.sid, tenantId: payload.tenantId },
+    });
+    if (
+      !session ||
+      session.maintenanceOrderId !== payload.moId ||
+      session.slot !== payload.slot
+    ) {
+      throw new BadRequestException('签名链接无效');
+    }
+    if (session.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('签名链接已过期，请重新生成');
+    }
+    if (session.submittedAt && !allowSubmitted) {
+      throw new BadRequestException('这个签名链接已经使用过了');
+    }
+    return { payload, session };
   }
 
   /** data:image/png;base64,... → Buffer。只收 PNG，最大 2MB（签名撑死几十 KB） */

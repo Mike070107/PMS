@@ -246,6 +246,14 @@ export default function AppLayout() {
         onClick={() => setMobileNavOpen(false)}
         style={{ borderInlineEnd: 0 }}
       />
+      {isMobile && hasTenantScope && (
+        <div className="pms-sider-feedback">
+          <FeedbackButton
+            pageTitle={pageTitle}
+            onOpen={() => setMobileNavOpen(false)}
+          />
+        </div>
+      )}
       <div className="pms-sider-foot">
         <div className="pms-sider-foot-label">当前身份</div>
         <div className="pms-sider-foot-value">
@@ -266,11 +274,18 @@ export default function AppLayout() {
       )}
       <Drawer
         className="pms-mobile-drawer"
+        rootClassName="pms-mobile-drawer-root"
         placement="left"
         width={280}
         open={isMobile && mobileNavOpen}
         onClose={() => setMobileNavOpen(false)}
-        styles={{ body: { padding: 0 } }}
+        styles={{
+          body: { padding: 0, background: '#243f69' },
+          content: {
+            background: 'linear-gradient(180deg, #31558a 0%, #243f69 100%)',
+            borderRadius: '0 18px 18px 0',
+          },
+        }}
       >
         {sidebarContent}
       </Drawer>
@@ -302,7 +317,7 @@ export default function AppLayout() {
             </div>
           </div>
           <div className="pms-header-actions">
-            {hasTenantScope && <FeedbackButton pageTitle={pageTitle} compact={isMobile} />}
+            {hasTenantScope && !isMobile && <FeedbackButton pageTitle={pageTitle} />}
             {showOfficeSwitcher && (
               <Select
                 className="pms-office-switcher"

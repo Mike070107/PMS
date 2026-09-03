@@ -148,25 +148,70 @@ a,
   color: rgba(241, 245, 249, 0.38);
   font-size: 10px;
 }
-.pms-mobile-drawer .ant-drawer-content,
-.pms-mobile-drawer .ant-drawer-body {
-  background: var(--pms-sider-deep);
+.pms-mobile-drawer-root .ant-drawer-content,
+.pms-mobile-drawer-root .ant-drawer-body,
+.ant-drawer-content.pms-mobile-drawer,
+.ant-drawer-content.pms-mobile-drawer .ant-drawer-body {
+  background:
+    radial-gradient(circle at 22% 0%, rgba(255, 255, 255, 0.12), transparent 30%),
+    linear-gradient(180deg, var(--pms-sider) 0%, var(--pms-sider-deep) 100%) !important;
 }
+.pms-mobile-drawer-root .ant-drawer-content,
+.ant-drawer-content.pms-mobile-drawer {
+  border-radius: 0 18px 18px 0 !important;
+}
+.pms-mobile-drawer-root .ant-drawer-header,
 .pms-mobile-drawer .ant-drawer-header {
   display: none;
 }
+.pms-mobile-drawer-root .pms-sider-inner,
 .pms-mobile-drawer .pms-sider-inner {
   min-height: 100vh;
 }
+.pms-mobile-drawer-root .ant-menu,
 .pms-mobile-drawer .ant-menu {
   background: transparent;
-  color: rgba(233, 246, 244, 0.8);
+  color: rgba(241, 245, 249, 0.88);
   flex: 1;
   padding: 0 10px 20px;
 }
+.pms-mobile-drawer-root .ant-menu-item,
+.pms-mobile-drawer-root .ant-menu-item a,
+.pms-mobile-drawer-root .ant-menu-item .anticon,
+.pms-mobile-drawer .ant-menu-item,
+.pms-mobile-drawer .ant-menu-item a,
+.pms-mobile-drawer .ant-menu-item .anticon {
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+.pms-mobile-drawer-root .ant-menu-item-selected,
 .pms-mobile-drawer .ant-menu-item-selected {
   background: rgba(255, 255, 255, 0.14) !important;
   color: #fff !important;
+}
+.pms-mobile-drawer-root .ant-menu-item-selected a,
+.pms-mobile-drawer-root .ant-menu-item-selected .anticon,
+.pms-mobile-drawer .ant-menu-item-selected a,
+.pms-mobile-drawer .ant-menu-item-selected .anticon { color: #fff !important; }
+.pms-mobile-drawer-root .pms-sider-brand,
+.pms-mobile-drawer-root .pms-sider-nav-label,
+.pms-mobile-drawer-root .pms-sider-group,
+.pms-mobile-drawer-root .pms-sider-foot { color: rgba(255, 255, 255, .72); }
+.pms-sider-feedback {
+  padding: 12px 14px 4px;
+  border-top: 1px solid rgba(255, 255, 255, .12);
+}
+.pms-sider-feedback .pms-feedback-trigger {
+  width: 100%;
+  min-height: 44px;
+  justify-content: flex-start;
+  color: #fff;
+  background: rgba(255, 255, 255, .12);
+  border-color: rgba(255, 255, 255, .2);
+}
+.pms-sider-feedback .pms-feedback-trigger:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, .2) !important;
+  border-color: rgba(255, 255, 255, .34) !important;
 }
 
 /* 顶栏 */
@@ -1963,13 +2008,51 @@ body.pms-col-resizing * {
   width: 227mm;
 }
 
-/* ---------- 手机签名页（/sign/:token，不需要登录） ---------- */
+/* ---------- 手机养护单预览与签名页（/sign/:token，不需要登录） ---------- */
+.pms-sign-preview {
+  min-height: 100dvh;
+  padding-bottom: 104px;
+  background: #eef3f8;
+  color: #142b45;
+}
+.pms-sign-preview__head {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,.96);
+  border-bottom: 1px solid #dce5ef;
+  backdrop-filter: blur(10px);
+}
+.pms-sign-preview__head h1 { margin: 0; font-size: 19px; }
+.pms-sign-preview__head p { margin: 3px 0 0; max-width: 58vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #65778a; font-size: 12px; }
+.pms-sign-preview__zoom { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.pms-sign-preview__zoom button { width: 36px; height: 36px; border: 1px solid #cbd8e6; border-radius: 9px; background: #fff; color: #31558a; font-size: 22px; }
+.pms-sign-preview__zoom span { min-width: 44px; text-align: center; font-size: 12px; color: #65778a; }
+.pms-sign-preview__notice { margin: 10px; padding: 12px 14px; border: 1px solid #f2bf62; border-radius: 12px; background: #fff8e8; }
+.pms-sign-preview__notice strong, .pms-sign-preview__notice span { display: block; }
+.pms-sign-preview__notice strong { color: #9b5a00; font-size: 16px; }
+.pms-sign-preview__notice span { margin-top: 4px; color: #7c6848; font-size: 13px; line-height: 1.5; }
+.pms-sign-preview__viewport { margin: 0 10px; overflow: auto; border-radius: 12px; background: #dfe7ef; touch-action: pan-x pan-y pinch-zoom; }
+.pms-sign-preview__paper { width: max-content; min-height: 300px; padding: 10px; transform-origin: top left; }
+.pms-sign-preview__paper .mo-sheet { margin-bottom: 12px; box-shadow: 0 2px 12px rgba(18, 43, 68, .18); }
+.pms-sign-preview__actions { position: fixed; z-index: 8; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; padding: 10px max(12px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: rgba(255,255,255,.97); border-top: 1px solid #dce5ef; box-shadow: 0 -8px 24px rgba(31,59,88,.10); }
+.pms-sign-preview__actions button { min-height: 52px; border-radius: 12px; font-size: 17px; font-weight: 700; }
+.pms-sign-preview__sign { border: 1px solid #31558a; background: #fff; color: #31558a; }
+.pms-sign-preview__submit { border: 0; background: #31558a; color: #fff; }
+.pms-sign-preview__submit:disabled { opacity: .45; }
+.pms-sign-preview__error { position: fixed; z-index: 9; right: 12px; bottom: 86px; left: 12px; padding: 9px 12px; border-radius: 8px; background: #fff1f0; color: #cf1322; text-align: center; }
 .pms-sign {
   position: fixed;
   inset: 0;
   background: #f4f7f6;
   overflow: hidden;
 }
+.pms-sign--result { display: flex; }
 /*
  * 竖屏时把整块签名区转 90°：手机浏览器锁不了屏幕方向（微信里 screen.orientation.lock 无效），
  * 只能把界面转过来让人把手机横过来写。宽高对调 + 以左上角为原点右移一屏，正好铺满。
@@ -3144,6 +3227,55 @@ h2.ant-typography {
   box-shadow: 0 6px 15px rgba(49, 85, 138, .22);
 }
 
+/* 派单弹窗按真实决策顺序排布：工种 → 人员 → 派单要求。 */
+.pms-assign-modal__title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pms-assign-modal__title strong { color: #1f334a; font-size: 19px; }
+.pms-assign-modal__title span { color: #6a7f94; font-size: 13px; font-weight: 400; }
+.pms-assign-flow { display: grid; gap: 12px; }
+.pms-assign-step {
+  padding: 16px 18px 3px;
+  background: #fff;
+  border: 1px solid #dbe5ee;
+  border-radius: 13px;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, opacity .18s ease;
+}
+.pms-assign-step.is-active {
+  background: #f8fbff;
+  border-color: #7da6cf;
+  box-shadow: 0 0 0 3px rgba(49, 85, 138, .07);
+}
+.pms-assign-step.is-complete { background: #f8fcfa; border-color: #b9d8c5; }
+.pms-assign-step.is-locked { background: #f6f8fa; opacity: .68; }
+.pms-assign-step__head {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 13px;
+}
+.pms-assign-step__number {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  background: #31558a;
+  border-radius: 50%;
+}
+.pms-assign-step.is-complete .pms-assign-step__number { background: #43815a; }
+.pms-assign-step.is-locked .pms-assign-step__number { background: #9aa8b6; }
+.pms-assign-step__head > div { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.pms-assign-step__head strong { color: #243a52; font-size: 16px; }
+.pms-assign-step__head div span { color: #6c8094; font-size: 13px; line-height: 1.45; }
+.pms-assign-step > .ant-form-item:last-child { margin-bottom: 13px; }
+.pms-assign-step .ant-alert { margin-bottom: 13px; }
+
 @media (max-width: 900px) {
   .pms-workorder-detail-drawer .ant-drawer-body { padding: 16px 14px 24px; }
   .pms-workorder-detail-drawer .ant-drawer-footer { padding: 12px 14px; }
@@ -3168,4 +3300,85 @@ h2.ant-typography {
   .pms-workorder-report-descriptions .ant-descriptions-row { display: flex; flex-direction: column; }
   .pms-workorder-report-descriptions .ant-descriptions-item { display: flex; width: 100%; }
   .pms-workorder-detail-secondary-actions .ant-btn { flex: 1 1 42%; }
+}
+
+/* ---------- Web 后台手机适配基线 ----------
+   各业务页仍保留桌面表格密度；小屏统一把页头、筛选、表单和详情变成单列，
+   宽表允许横向滑动，避免为了“塞进一屏”把地址和业务单号压成看不清的碎字。 */
+@media (max-width: 760px) {
+  html,
+  body,
+  #root { min-width: 0; overflow-x: hidden; }
+
+  .pms-header { height: 58px !important; padding: 0 10px !important; }
+  .pms-header-title { max-width: 44vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+  .pms-header-actions { gap: 4px; }
+  .pms-office-switcher { max-width: 32vw; }
+  .pms-content { padding: 12px 10px 84px; }
+
+  .pms-content > .ant-space,
+  .pms-content > div > .ant-space { max-width: 100%; }
+  .pms-page-toolbar,
+  .pms-dispatch-header,
+  .pms-report-toolbar { align-items: stretch; flex-direction: column; }
+  .pms-page-toolbar > .ant-space,
+  .pms-dispatch-header > .ant-space { width: 100%; flex-wrap: wrap; }
+  .pms-page-toolbar > .ant-space .ant-btn,
+  .pms-dispatch-header > .ant-btn { flex: 1 1 auto; }
+
+  .ant-card { border-radius: 10px; }
+  .ant-card .ant-card-head { min-height: 54px; padding-inline: 14px; }
+  .ant-card .ant-card-head-wrapper { align-items: flex-start; flex-direction: column; padding-block: 10px; }
+  .ant-card .ant-card-extra { width: 100%; margin-top: 8px; }
+  .ant-card .ant-card-body { padding: 14px; }
+
+  .pms-filter-bar,
+  .pms-dispatch-toolbar,
+  .pms-report-filters { align-items: stretch; flex-direction: column; padding: 10px; }
+  .pms-filter-bar > *,
+  .pms-dispatch-toolbar > *,
+  .pms-report-filters > * { width: 100% !important; min-width: 0 !important; }
+  .pms-filter-bar .ant-space,
+  .pms-dispatch-toolbar .ant-space,
+  .pms-report-filters .ant-space { flex-wrap: wrap; }
+
+  .ant-table-wrapper { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .ant-table-wrapper .ant-table-content,
+  .ant-table-wrapper .ant-table-body { overflow-x: auto !important; }
+  .ant-table-wrapper .ant-table-cell { padding: 10px 9px; }
+  .ant-pagination { flex-wrap: wrap; justify-content: center; gap: 4px; }
+
+  .ant-modal { top: 8px; width: calc(100vw - 16px) !important; max-width: calc(100vw - 16px); margin: 0 auto; padding-bottom: 8px; }
+  .ant-modal:not(.ant-modal-confirm) .ant-modal-header { padding: 16px; }
+  .ant-modal:not(.ant-modal-confirm) .ant-modal-body { max-height: calc(100dvh - 150px); overflow-y: auto; padding: 14px 16px 20px; }
+  .ant-modal:not(.ant-modal-confirm) .ant-modal-footer { padding: 12px 16px; }
+  .ant-modal-footer .ant-btn { min-height: 42px; }
+  .ant-drawer:not(.pms-mobile-drawer) .ant-drawer-content-wrapper { width: 100vw !important; max-width: 100vw; }
+  .ant-drawer:not(.pms-mobile-drawer) .ant-drawer-header { padding: 12px 14px; }
+  .ant-drawer:not(.pms-mobile-drawer) .ant-drawer-body { padding: 14px 12px 24px; }
+
+  .ant-form-item { margin-bottom: 16px; }
+  .ant-form-item .ant-input,
+  .ant-form-item .ant-input-number,
+  .ant-form-item .ant-select-selector,
+  .ant-form-item .ant-picker { min-height: 42px; }
+  .ant-form-item .ant-input-number,
+  .ant-form-item .ant-picker,
+  .ant-form-item .ant-select { width: 100% !important; }
+
+  .pms-dispatch-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pms-dispatch-order__actions { align-items: stretch; flex-direction: column; }
+  .pms-dispatch-order__actions .ant-btn { width: 100%; }
+  .stocktake-metrics { grid-template-columns: 1fr; }
+  .stocktake-toolbar,
+  .stocktake-detail-toolbar { align-items: stretch; flex-direction: column; }
+  .stocktake-toolbar > *,
+  .stocktake-detail-toolbar > * { width: 100% !important; }
+
+  .pms-workorder-timeline-photos { margin-top: 8px; }
+
+  .pms-assign-modal__title span { white-space: normal; }
+  .pms-assign-step { padding: 14px 13px 1px; }
+  .pms-assign-step__head { grid-template-columns: 32px minmax(0, 1fr); }
+  .pms-assign-step__head > .ant-tag { grid-column: 2; width: max-content; margin-inline-end: 0; }
 }

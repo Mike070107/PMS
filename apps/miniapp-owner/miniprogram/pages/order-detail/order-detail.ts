@@ -97,7 +97,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   onPreviewImage(e: WechatMiniprogram.BaseEvent) {
-    const urls = this.data.detail?.request?.attachments || [];
+    const urls = (e.currentTarget.dataset.urls as string[] | undefined) || this.data.detail?.request?.attachments || [];
     if (!urls.length) return;
     wx.previewImage({ current: e.currentTarget.dataset.url, urls });
   },

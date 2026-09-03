@@ -137,6 +137,11 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
     editHint: '完工、报缺料、回填处理结果',
   },
   {
+    key: 'app:maintenance-inspect',
+    label: '养护单查验',
+    hint: '勾中即可查看完整养护单、手写签名并提交查验',
+  },
+  {
     key: 'app:my-repairs',
     label: '我的报修',
     hint: '查看自己替住户或巡查提交的报修进度',
@@ -275,6 +280,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',
+      'app:maintenance-inspect': 'v',
     },
     adminPages: {
       dashboard: 'v',

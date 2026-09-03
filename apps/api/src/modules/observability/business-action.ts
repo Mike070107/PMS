@@ -26,6 +26,8 @@ const RULES: Rule[] = [
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/assign$/, code: 'work_order_assign', label: '派单', area: '工单', objectType: 'work_order' },
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/accept$/, code: 'work_order_accept', label: '接单', area: '工单', objectType: 'work_order' },
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/complete$/, code: 'work_order_complete', label: '完工提交', area: '工单', objectType: 'work_order' },
+  { method: 'POST', pattern: /^\/work-orders\/(\d+)\/progress$/, code: 'work_order_progress_add', label: '添加维修进度', area: '工单', objectType: 'work_order' },
+  { method: 'POST', pattern: /^\/work-orders\/(\d+)\/transfer-request$/, code: 'work_order_transfer_request', label: '申请转给其他人维修', area: '工单', objectType: 'work_order' },
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/need-material$/, code: 'work_order_need_material', label: '提报缺料', area: '工单', objectType: 'work_order' },
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/missing-materials$/, code: 'work_order_missing_material_update', label: '更新工单缺料', area: '工单', objectType: 'work_order' },
   { method: 'DELETE', pattern: /^\/work-orders\/(\d+)\/materials\/\d+$/, code: 'work_order_material_delete', label: '删除工单用料', area: '工单', objectType: 'work_order' },
@@ -210,7 +212,7 @@ function safeBusinessDetail(body?: any, result?: any): Record<string, unknown> {
   };
   [
     'communityId', 'buildingId', 'houseId', 'assigneeId', 'warehouseId',
-    'materialId', 'repairType', 'entryMode', 'urgent', 'status',
+    'materialId', 'repairType', 'skill', 'entryMode', 'urgent', 'status',
   ].forEach(copy);
   if (Array.isArray(body?.items)) detail.itemCount = body.items.length;
   if (Array.isArray(body?.materials)) detail.materialCount = body.materials.length;

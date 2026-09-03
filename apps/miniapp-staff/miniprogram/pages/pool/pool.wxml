@@ -223,7 +223,12 @@
   </view>
 
   <scroll-view class="sheet__body" scroll-y>
-    <view class="label">选择维修工<text class="label__opt">手上单少的排前面</text></view>
+    <view class="label">工单类型<text class="label__opt">先定类型，再选该类型维修工</text></view>
+    <picker mode="selector" range="{{repairTypeNames}}" value="{{repairTypeIndex}}" bindchange="onPickRepairType">
+      <view class="picker">{{repairTypeNames[repairTypeIndex] || '请选择工单类型'}}</view>
+    </picker>
+
+    <view class="label mt">选择维修工<text class="label__opt">只显示该类型可接单人员，手上单少的排前面</text></view>
 
     <view wx:if="{{techLoading}}" class="center muted">加载中…</view>
     <block wx:elif="{{techError}}">
@@ -232,7 +237,7 @@
     </block>
     <block wx:else>
       <view wx:if="{{!technicians.length}}" class="muted">
-        本公司还没有启用中的维修工账号，请管理员先在后台「用户管理」里添加。
+        该类型还没有配置可用维修工，请先到后台“报修类型配置”补充默认维修工或员工工种。
       </view>
       <view
         wx:for="{{technicians}}"

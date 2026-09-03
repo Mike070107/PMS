@@ -129,6 +129,7 @@ export class AccessService implements OnModuleInit {
       const splits = [
         { source: 'app:inventory', target: 'app:materials', copyEdit: true },
         { source: 'app:my-orders', target: 'app:my-repairs', copyEdit: false },
+        { source: 'maintenance-inspect', target: 'app:maintenance-inspect', copyEdit: false },
       ];
       for (const split of splits) {
         const role = await this.rolePermRepo.query(

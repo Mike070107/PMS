@@ -88,6 +88,8 @@ interface PhoneSign {
   slot: SignSlot;
   status: 'loading' | 'waiting' | 'opened' | 'signed' | 'expired' | 'error';
   token?: string;
+  /** 可以直接发到微信的一次性签字页地址（与二维码内容相同） */
+  linkUrl?: string;
   qrDataUrl?: string;
   /** 毫秒时间戳 */
   expiresAt?: number;
@@ -968,6 +970,7 @@ function MaintenanceEditor({
           slot,
           status: 'waiting',
           token: data.token,
+          linkUrl: data.url,
           qrDataUrl: data.qrDataUrl,
           expiresAt: Date.now() + data.expiresInSec * 1000,
           /** 开二维码之前这一格是不是已经有签名了 —— 有的话要提醒「重签会覆盖」 */
@@ -1374,7 +1377,7 @@ function MaintenanceEditor({
 }
 
 /**
- * 「发到手机签」：显示一个 5 分钟有效的二维码，微信扫了直接进签名页。
+ * 「发到手机签」：显示一个 30 分钟有效、提交一次即失效的二维码。
  *
  * 这边一边显示倒计时，一边每 3 秒问一次服务端「那个签名位有没有回来」——
  * 手机上签完页面自己关掉，人不会再回电脑上点什么，只能这边自己发现。
@@ -1397,6 +1400,7 @@ function PhoneSignModal({
   onRetry: () => void;
   onClose: () => void;
 }) {
+  const { message } = AntdApp.useApp();
   const [now, setNow] = useState(() => Date.now());
   const status = state?.status;
   const counting = status === 'waiting' || status === 'opened';
@@ -1410,6 +1414,16 @@ function PhoneSignModal({
   const leftSec = Math.max(0, Math.ceil(((state?.expiresAt ?? 0) - now) / 1000));
   const leftText = `${Math.floor(leftSec / 60)}:${String(leftSec % 60).padStart(2, '0')}`;
   const slotLabel = state ? SIGN_SLOT_LABELS[state.slot] : '';
+
+  const copySignLink = async () => {
+    if (!state?.linkUrl) return;
+    try {
+      await navigator.clipboard.writeText(state.linkUrl);
+      message.success('一次性签字链接已复制，可以直接发到微信');
+    } catch {
+      message.error('复制失败，请使用二维码扫码');
+    }
+  };
 
   const footer =
     status === 'signed' ? (
@@ -1455,6 +1469,9 @@ function PhoneSignModal({
         {(status === 'waiting' || status === 'opened') && (
           <>
             <img className="pms-signqr__img" src={state?.qrDataUrl} alt="签名二维码" />
+            <Button onClick={copySignLink} disabled={!state?.linkUrl}>
+              复制一次性签字链接
+            </Button>
             <div
               className={`pms-signqr__status ${status === 'opened' ? 'is-opened' : ''}`}
               role="status"
@@ -1491,7 +1508,7 @@ function PhoneSignModal({
             <div className="pms-signqr__expired">⏱</div>
             <div className="pms-signqr__oktext">二维码已过期</div>
             <div className="pms-signqr__tip">
-              5 分钟内没人签。手机上那个链接现在也打不开了，重新生成一张就行。
+              30 分钟内没人签。手机上那个链接现在也打不开了，重新生成一张就行。
             </div>
           </div>
         )}

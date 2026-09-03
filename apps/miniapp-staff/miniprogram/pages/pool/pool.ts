@@ -12,7 +12,7 @@ import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unre
 
 /**
  * 这一屏对两种人是两件事，同一份数据、两套动作：
- *   · 维修工 = 工单池：管理处范围内的未派单 + 等待材料
+ *   · 维修工 = 工单池：公开待接单 + 派给本人的待接单 + 等待材料
  *   · 办公室一侧 = 派单台：还没派出去的单，动作是「派单」；另外要能按状态翻、
  *     按单号/地址/描述搜，进详情看修的结果
  * 报修入口两边都留 —— 巡查发现问题顺手提单和身份无关。
@@ -63,6 +63,7 @@ type OrderRow = WorkOrderListItem & {
 /** 这些状态还没开工，维修工可主动领；办公室也可派/改派 */
 const POOL_STATUSES: string[] = [
   WorkOrderStatus.CREATED,
+  WorkOrderStatus.DISPATCHED,
   WorkOrderStatus.WAITING_MATERIAL,
 ];
 
@@ -98,14 +99,16 @@ const DISPATCH_FILTERS: PoolFilter[] = [
 
 /**
  * 工单池（维修工）的状态筛选。scope 恒为 pool（管理处范围内的待接单），
- * 所以这里只按状态分档，档位就是 POOL_STATUSES 这两种：
+ * 所以这里只按状态分档：
  *   新报修   = 还没指定维修工的单
+ *   派给我的 = 办公室已指定本人、等待本人确认接单
  *   等待材料 = 缺料退回池子的，接回去要先确认料到没到
  * 第一项是「全部」—— 维修工进来先看有多少活，再决定挑哪种。
  */
 const POOL_FILTERS: PoolFilter[] = [
   { key: 'all', label: '全部', scope: 'pool' },
   { key: 'created', label: '新报修', scope: 'pool', status: WorkOrderStatus.CREATED },
+  { key: 'dispatched', label: '派给我的', scope: 'pool', status: WorkOrderStatus.DISPATCHED },
   { key: 'waiting', label: '等待材料', scope: 'pool', status: WorkOrderStatus.WAITING_MATERIAL },
 ];
 
@@ -210,6 +213,11 @@ Page({
     techLoading: false,
     techError: '',
     technicians: [] as TechnicianOption[],
+    repairTypes: [] as Array<{ repairType: string; label: string }>,
+    repairTypeNames: [] as string[],
+    pickedRepairType: '',
+    repairTypeIndex: 0,
+    techSkill: '',
     pickedTechId: 0,
     slaOptions: SLA_OPTIONS.map((item) => item.label),
     slaIndex: 3,
@@ -582,6 +590,7 @@ Page({
       assignCommunityId: row.communityId,
       assignOrderText: `${row.typeLabel} · ${row.summaryAddress || '未填地址'}`,
       assignCurrent: row.assigneeId ? `当前：${row.assigneeText}` : '',
+      pickedRepairType: row.repairType || row.skill || '',
       pickedTechId: row.assigneeId || 0,
       assignNote: '',
       assignError: '',
@@ -589,7 +598,7 @@ Page({
     });
     // 胶囊 tabBar 会盖住面板底部的「确认派单」，且它不吃页面里的 z-index —— 开着面板就藏起来
     setTabBarHidden(this, true);
-    this.loadTechnicians();
+    this.loadRepairTypes(row.repairType || row.skill || '');
   },
 
   onCloseAssign() {
@@ -600,15 +609,47 @@ Page({
   /** 面板内容区滚动时不要把底下的列表也带着滚 */
   noop() {},
 
+  async loadRepairTypes(currentType = '') {
+    try {
+      const list = await repairs.types(this.data.assignCommunityId || undefined);
+      const foundIndex = list.findIndex((item) => item.repairType === currentType);
+      const index = foundIndex >= 0 ? foundIndex : 0;
+      const pickedRepairType = list[index]?.repairType || '';
+      this.setData({
+        repairTypes: list,
+        repairTypeNames: list.map((item) => item.label),
+        repairTypeIndex: index,
+        pickedRepairType,
+        pickedTechId: 0,
+      });
+      this.loadTechnicians(true);
+    } catch (e: any) {
+      this.setData({ assignError: e?.message || '工单类型加载失败' });
+    }
+  },
+
+  onPickRepairType(e: WechatMiniprogram.PickerChange) {
+    const index = Number(e.detail.value);
+    const pickedRepairType = this.data.repairTypes[index]?.repairType || '';
+    this.setData({ repairTypeIndex: index, pickedRepairType, pickedTechId: 0, assignError: '' });
+    this.loadTechnicians(true);
+  },
+
   async loadTechnicians(force = false) {
     const communityId = this.data.assignCommunityId || 0;
-    if (this.data.technicians.length && this.data.techCommunityId === communityId && !force) return;
+    const skill = this.data.pickedRepairType;
+    if (
+      this.data.technicians.length &&
+      this.data.techCommunityId === communityId &&
+      this.data.techSkill === skill &&
+      !force
+    ) return;
     this.setData({ techLoading: true, techError: '' });
     try {
-      const list = await repairs.technicians(communityId || undefined);
+      const list = await repairs.technicians(communityId || undefined, skill || undefined);
       // 手上活少的排前面：派单台上最该先看见「谁现在闲着」
       list.sort((a, b) => a.openCount - b.openCount || a.id - b.id);
-      this.setData({ technicians: list, techCommunityId: communityId });
+      this.setData({ technicians: list, techCommunityId: communityId, techSkill: skill });
     } catch (e: any) {
       this.setData({ techError: e?.message || '维修工列表加载失败' });
     } finally {
@@ -633,6 +674,9 @@ Page({
   },
 
   async onSubmitAssign() {
+    if (!this.data.pickedRepairType) {
+      return this.setData({ assignError: '请先选择工单类型' });
+    }
     if (!this.data.pickedTechId) {
       return this.setData({ assignError: '先选一位维修工' });
     }
@@ -641,6 +685,7 @@ Page({
     try {
       await repairs.assign(this.data.assignOrderId, {
         assigneeId: this.data.pickedTechId,
+        skill: this.data.pickedRepairType,
         slaHours: hours || undefined,
         note: this.data.assignNote.trim() || undefined,
       });

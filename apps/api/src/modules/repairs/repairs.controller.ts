@@ -23,6 +23,7 @@ import { CurrentAccess } from '../access/current-access.decorator';
 import { RolesOrPermissionGuard } from '../access/roles-or-permission.guard';
 import {
   AssignWorkOrderDto,
+  AddWorkOrderProgressDto,
   CancelWorkOrderDto,
   CompleteWorkOrderDto,
   CreateRepairRequestDto,
@@ -30,6 +31,7 @@ import {
   ParseRepairAddressDto,
   ReorderRepairTypeRulesDto,
   ReviewWorkOrderDto,
+  RequestWorkOrderTransferDto,
   UpdateMissingMaterialsDto,
   UpdateOfficeSuggestionSettingsDto,
   UpdateWorkOrderRepairTypeDto,
@@ -268,6 +270,7 @@ export class RepairsController {
     @Query('officeId') officeId?: string,
     @Query('scope') scope?: string,
     @Query('communityId') communityId?: string,
+    @Query('skill') skill?: string,
   ) {
     // 报修类型配置用：scope=company 只列全公司范围的人；officeId=X 列范围覆盖 X 的人。都不传 = 全部能接单的人（派单用）
     const officeScope = scope === 'company' ? null : officeId ? Number(officeId) : undefined;
@@ -276,6 +279,7 @@ export class RepairsController {
       access,
       officeScope,
       communityId ? Number(communityId) : undefined,
+      skill?.trim() || undefined,
     );
   }
 
@@ -406,6 +410,28 @@ export class RepairsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.repairsService.markNeedMaterial(id, dto, user, access);
+  }
+
+  @Post('work-orders/:id/progress')
+  @RequirePermission(['work-orders', 'app:my-orders'], 'edit')
+  addWorkOrderProgress(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddWorkOrderProgressDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.addWorkOrderProgress(id, dto, user, access);
+  }
+
+  @Post('work-orders/:id/transfer-request')
+  @RequirePermission(['work-orders', 'app:my-orders'], 'edit')
+  requestWorkOrderTransfer(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RequestWorkOrderTransferDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.requestWorkOrderTransfer(id, dto, user, access);
   }
 
   @Delete('work-orders/:id/materials/:usageId')

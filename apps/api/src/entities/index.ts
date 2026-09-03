@@ -45,6 +45,7 @@ import { WebLoginTicket } from './web-login-ticket.entity';
 import { FeeStandard } from './fee-standard.entity';
 import { FeeBill } from './fee-bill.entity';
 import { MaintenanceOrder } from './maintenance-order.entity';
+import { MaintenanceSignSession } from './maintenance-sign-session.entity';
 import { QuotaItem } from './quota-item.entity';
 import { ManagementOffice } from './management-office.entity';
 import { Role } from './role.entity';
@@ -123,6 +124,7 @@ export const entities = [
   FeeStandard,
   FeeBill,
   MaintenanceOrder,
+  MaintenanceSignSession,
   QuotaItem,
 ];
 
@@ -188,6 +190,7 @@ export {
   FeeStandard,
   FeeBill,
   MaintenanceOrder,
+  MaintenanceSignSession,
   QuotaItem,
 };
 

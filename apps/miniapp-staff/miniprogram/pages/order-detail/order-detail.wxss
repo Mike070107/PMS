@@ -77,6 +77,19 @@ page { background: #f1f6fb; }
 .content-card .timeline-label { font-size: 32rpx; font-weight: 700; }
 .content-card .timeline-at { font-size: 27rpx; }
 .content-card .timeline-stay, .content-card .timeline-note { font-size: 29rpx; line-height: 1.55; }
+.timeline-photos { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 14rpx; }
+.timeline-photo { width: 136rpx; height: 112rpx; border-radius: 14rpx; background: #e5ecf2; }
+.field-actions { margin-top: 24rpx; padding: 24rpx; border-radius: 28rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(39,72,108,.055); }
+.field-action { width: 100%; min-height: 94rpx; margin: 0; border-radius: 18rpx; font-size: 32rpx; font-weight: 700; }
+.field-action + .field-action { margin-top: 16rpx; }
+.field-action::after { border: 0; }
+.field-action--progress { border: 2rpx solid #88a9c9; background: #edf5fb; color: #315f98; }
+.field-action--transfer { border: 2rpx solid #e3b5b5; background: #fff7f7; color: #a7383e; }
+.field-actions__hint { margin-top: 12rpx; color: #74879a; font-size: 26rpx; line-height: 1.5; text-align: center; }
+.progress-photo-add { min-height: 94rpx; display: flex; align-items: center; justify-content: center; border: 2rpx dashed #8cabc8; border-radius: 18rpx; background: #f5f9fc; color: #315f98; font-size: 30rpx; font-weight: 600; }
+.transfer-warning { padding: 22rpx; border: 2rpx solid #ecd1a3; border-radius: 18rpx; background: #fff8ec; color: #715127; font-size: 28rpx; line-height: 1.75; }
+.transfer-warning__title { margin-bottom: 6rpx; color: #8f5d18; font-size: 31rpx; font-weight: 700; }
+.transfer-submit { width: 100%; min-height: 96rpx; border: 0; border-radius: 18rpx; background: #a63b42; color: #fff; font-size: 33rpx; font-weight: 700; }
 .detail-error { margin-top: 20rpx; padding: 20rpx; border-radius: 16rpx; background: #fff0f0; color: #bd3f47; font-size: 30rpx; line-height: 1.55; }
 
 .site-action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; gap: 16rpx; padding: 20rpx 24rpx calc(20rpx + env(safe-area-inset-bottom)); border-top: 2rpx solid #d9e5ee; background: rgba(255,255,255,.98); box-shadow: 0 -8rpx 28rpx rgba(23,59,99,.1); }

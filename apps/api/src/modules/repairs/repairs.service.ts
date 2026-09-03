@@ -87,12 +87,14 @@ import {
 } from '../../entities';
 import {
   AssignWorkOrderDto,
+  AddWorkOrderProgressDto,
   CancelWorkOrderDto,
   CompleteWorkOrderDto,
   CreateRepairRequestDto,
   MaterialUsageDto,
   NeedMaterialDto,
   ParseRepairAddressDto,
+  RequestWorkOrderTransferDto,
   ReviewWorkOrderDto,
   UpdateMissingMaterialsDto,
   UpdateOfficeSuggestionSettingsDto,
@@ -968,17 +970,29 @@ export class RepairsService implements OnModuleInit {
       where.candidateIds = Raw((alias) => `jsonb_array_length(${alias}) = 0`);
       where.status = WorkOrderStatus.CREATED;
     } else if (query.scope === 'pool') {
-      // scope=pool 是一个待接池，不能通过手改 status 把别人已开工/已完成的单列出来。
+      // scope=pool 是一个待接池：公开待接单 + 定向派给当前人的待接单。
+      // 定向派单在本人点击“接单”之前不能提前进入“在手工单”。
       if (
         query.status &&
-        !CLAIMABLE_WORK_ORDER_STATUSES.includes(query.status as WorkOrderStatus)
+        ![
+          ...CLAIMABLE_WORK_ORDER_STATUSES,
+          WorkOrderStatus.DISPATCHED,
+        ].includes(query.status as WorkOrderStatus)
       ) {
         return [];
       }
       // 工单池和用户是否同时拥有派单权限无关；两格权限同时勾选时也不能串台。
       // 可见小区仍由 access 的 community scope 限制，不会跨管理处。
-      if (!query.status) {
-        where.status = In(CLAIMABLE_WORK_ORDER_STATUSES);
+      if (query.status === WorkOrderStatus.DISPATCHED) {
+        where.status = WorkOrderStatus.DISPATCHED;
+        where.assigneeId = user.id;
+      } else if (!query.status) {
+        // TypeORM 的 where 数组表达 OR：公开池不限制负责人；定向待接只允许本人看。
+        const base = { ...where };
+        whereVariants = [
+          { ...base, status: In(CLAIMABLE_WORK_ORDER_STATUSES) },
+          { ...base, status: WorkOrderStatus.DISPATCHED, assigneeId: user.id },
+        ];
       }
     } else if (query.scope === 'reported') {
       // 「我报的」= 我替住户/巡查提交的单，不管派给了谁。
@@ -998,10 +1012,10 @@ export class RepairsService implements OnModuleInit {
       // 把全公司的工单当成「我手上的」列出来。
       // 维修工不带 scope 时仍然默认只看自己的单 —— 这条不能丢，丢了就是越权看全公司。
       where.assigneeId = user.id;
-      // 办公室刚派过来、尚未接单的 dispatched 也属于这个人的待办，直接进入
-      // 「在手工单」等待本人接单；scope=mine 仍保留已完结状态，供“已完结”页复用。
+      // “在手工单”只放真正已经接下、正在处理或已处理过的单；尚未接的定向派单
+      // 留在工单池。scope=mine 仍保留已完结状态，供“已完结”页复用。
       if (!query.status) {
-        where.status = Not(WorkOrderStatus.CREATED);
+        where.status = Not(In([WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED]));
       }
     }
 
@@ -1160,6 +1174,7 @@ export class RepairsService implements OnModuleInit {
     access?: ResolvedAccess,
     officeScope?: number | null,
     communityScope?: number,
+    skillScope?: string,
   ) {
     const tenantId = this.resolveTenantId(user);
     if (officeScope === undefined && communityScope) {
@@ -1219,7 +1234,7 @@ export class RepairsService implements OnModuleInit {
     });
     const skillsByUser = new Map(profiles.map((item) => [item.userId, item.skills || []]));
 
-    return technicians.map((item) => ({
+    let result = technicians.map((item) => ({
       id: item.id,
       name: item.name || '未命名员工',
       phone: item.phone ?? null,
@@ -1228,6 +1243,14 @@ export class RepairsService implements OnModuleInit {
       /** 按管理处筛过时带上：all = 全公司范围，office = 只覆盖这个管理处 */
       scope: coverage?.get(item.id) ?? null,
     }));
+    if (skillScope) {
+      const rule = await this.findTypeRule(skillScope, tenantId, communityScope);
+      const configuredIds = new Set(rule ? ruleAssigneeIds(rule) : []);
+      result = result.filter(
+        (item) => item.skills.includes(skillScope) || configuredIds.has(item.id),
+      );
+    }
+    return result;
   }
 
   /**
@@ -1812,7 +1835,11 @@ export class RepairsService implements OnModuleInit {
             attachments: this.storage.toDisplayUrls(request.attachments),
           }
         : request,
-      logs: logs.map((log) => ({ ...log, note: withSubmitter(log) })),
+      logs: logs.map((log) => ({
+        ...log,
+        note: withSubmitter(log),
+        attachments: this.storage.toDisplayUrls(log.attachments || []),
+      })),
       materialUsages: (materialUsages as Array<Record<string, unknown>>).map((row) => ({
         ...row,
         id: Number(row.id),
@@ -2181,6 +2208,18 @@ export class RepairsService implements OnModuleInit {
         ? new Date(Date.now() + dto.slaHours * 60 * 60 * 1000)
         : workOrder.slaDueAt;
       workOrder.updatedBy = user.id;
+      // 转单会把原报修类型清空；办公室重新派单时，所选工种必须同时写回报修单，
+      // 否则列表、规则命中和类型统计仍会把它当成“未分类”。
+      if (dto.skill?.trim()) {
+        const repairRequest = await manager.findOne(RepairRequest, {
+          where: { id: workOrder.requestId, tenantId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!repairRequest) throw new NotFoundException('repair request not found');
+        repairRequest.repairType = dto.skill.trim();
+        repairRequest.updatedBy = user.id;
+        await manager.save(RepairRequest, repairRequest);
+      }
       const saved = await manager.save(WorkOrder, workOrder);
       await this.writeLog(manager, saved, fromStatus, 'assign', user.id, dto.note);
       return saved;
@@ -2246,6 +2285,100 @@ export class RepairsService implements OnModuleInit {
       );
       return saved;
     });
+  }
+
+  /** 维修中追加现场进度，不改变工单状态。 */
+  async addWorkOrderProgress(
+    id: number,
+    dto: AddWorkOrderProgressDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const note = dto.note?.trim() || '';
+    const attachments = (dto.attachments || []).map((item) => item.trim()).filter(Boolean);
+    if (!note && !attachments.length) {
+      throw new BadRequestException('请填写进度说明或至少添加一张照片');
+    }
+    const tenantId = this.resolveTenantId(user);
+    return this.dataSource.transaction(async (manager) => {
+      const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
+      if (workOrder.status !== WorkOrderStatus.IN_PROGRESS) {
+        throw new BadRequestException('只有维修中的工单可以添加进度');
+      }
+      await this.ensureAssigneeOrAdmin(workOrder, user);
+      return manager.save(
+        WorkOrderLog,
+        manager.create(WorkOrderLog, {
+          tenantId,
+          workOrderId: workOrder.id,
+          fromStatus: workOrder.status,
+          toStatus: workOrder.status,
+          action: 'progress',
+          operatorId: user.id,
+          note: note || null,
+          attachments,
+          createdBy: user.id,
+          updatedBy: user.id,
+        }),
+      );
+    });
+  }
+
+  /**
+   * 维修工申请转单：清掉旧类型和负责人，回到“待派单”。办公室收到通知后重新选类型、
+   * 选择该类型下的维修工并派出；新维修工仍需在工单池确认接单。
+   */
+  async requestWorkOrderTransfer(
+    id: number,
+    dto: RequestWorkOrderTransferDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const reason = dto.note?.trim();
+    if (!reason || reason.length < 2) throw new BadRequestException('请填写转单原因');
+    const tenantId = this.resolveTenantId(user);
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
+      assertWorkOrderTransition(
+        workOrder.status,
+        WorkOrderStatus.CREATED,
+        'transfer',
+        '只有维修中的工单可以申请转单',
+      );
+      if (workOrder.assigneeId !== user.id && !(await this.canDispatch(user, access))) {
+        throw new ForbiddenException('只能转出自己正在维修的工单');
+      }
+      const request = await manager.findOne(RepairRequest, {
+        where: { id: workOrder.requestId, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!request) throw new NotFoundException('repair request not found');
+      const fromStatus = workOrder.status;
+      request.repairType = null;
+      request.updatedBy = user.id;
+      workOrder.status = WorkOrderStatus.CREATED;
+      workOrder.assigneeId = null;
+      workOrder.candidateIds = [];
+      workOrder.skill = null;
+      workOrder.dispatchedAt = null;
+      workOrder.acceptedAt = null;
+      workOrder.slaDueAt = null;
+      workOrder.escalatedAt = null;
+      workOrder.updatedBy = user.id;
+      await manager.save(RepairRequest, request);
+      const result = await manager.save(WorkOrder, workOrder);
+      await this.writeLog(manager, result, fromStatus, 'transfer_request', user.id, `维修工申请转单：${reason}；已退回办公室重新分类派单`);
+      return result;
+    });
+    try {
+      await this.notifyOfficeOnTransfer(saved, reason, user.id);
+    } catch (error) {
+      // 工单已在事务内成功退回，通知链路抖动不能让前端误以为转单失败而重复提交。
+      this.logger.error(`转单 ${saved.orderNo} 已完成，但办公室通知发送失败：${(error as Error).message}`);
+    }
+    return saved;
   }
 
   /**
@@ -3159,6 +3292,63 @@ export class RepairsService implements OnModuleInit {
     ).filter((id) => id !== exceptUserId);
     if (!ids.length) return [];
     return this.userRepo.find({ where: { id: In(ids), tenantId, status: UserStatus.ACTIVE } });
+  }
+
+  /** 转单只通知工单所属管理处、且有派单权限的办公室人员。 */
+  private async notifyOfficeOnTransfer(
+    workOrder: WorkOrder,
+    reason: string,
+    requesterId: number,
+  ): Promise<void> {
+    const [request, requester, officeId] = await Promise.all([
+      this.repairRequestRepo.findOne({ where: { id: workOrder.requestId, tenantId: workOrder.tenantId } }),
+      this.userRepo.findOne({ where: { id: requesterId, tenantId: workOrder.tenantId }, select: ['id', 'name'] }),
+      this.accessService.officeIdOfCommunity(workOrder.tenantId, workOrder.communityId),
+    ]);
+    // 有些办公室人员只使用网页后台，没有勾员工端“派单台”。两种入口都是合法的
+    // 派单人，因此取并集，避免只有超级管理员收到转单提醒。
+    const [appDispatcherIds, webDispatcherIds] = await Promise.all([
+      this.accessService.userIdsWithPermission(workOrder.tenantId, 'app:dispatch', 'edit'),
+      this.accessService.userIdsWithPermission(workOrder.tenantId, 'work-orders', 'edit'),
+    ]);
+    const dispatcherIds = [...new Set([...appDispatcherIds, ...webDispatcherIds])];
+    const coverage = await this.accessService.filterUsersCoveringOffice(
+      workOrder.tenantId,
+      dispatcherIds,
+      officeId,
+    );
+    const receiverIds = dispatcherIds.filter((id) => id !== requesterId && coverage.has(id));
+    const address = request?.addressText?.trim() || '（未填地址）';
+    const content = request?.content?.trim() || '';
+    if (!receiverIds.length) {
+      this.logger.warn(
+        `转单 ${workOrder.orderNo} 没有可通知的办公室账号：请检查所属管理处范围及“派单/工单编辑”权限`,
+      );
+    }
+    for (const receiverId of receiverIds) {
+      await this.notifications.notifyUser({
+        tenantId: workOrder.tenantId,
+        receiverId,
+        eventKey: 'order_transfer_requested',
+        title: `待重新派单：${workOrder.orderNo} · ${address}`,
+        payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo, reason, requesterId },
+        page: `pages/order-detail/order-detail?id=${workOrder.id}`,
+        template: 'orderAssigned',
+        templateFields: {
+          orderNo: workOrder.orderNo,
+          type: '待重新分类',
+          status: `${requester?.name || '维修工'}申请转单`,
+          statusShort: '待转派',
+          content: reason || content,
+          assignee: '',
+          address,
+          reporter: request?.contactName?.trim() || '',
+          time: this.formatWhen(new Date()),
+          reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
+          dueAt: '',
+        },
+      });
+    }
   }
 
   private async notifyAssigneeOnDispatch(
@@ -4738,7 +4928,8 @@ export class RepairsService implements OnModuleInit {
       if (!scope.length) return { count: 0 };
       base.communityId = In(scope);
     }
-    if (await this.canDispatch(user, access)) {
+    const hasPool = !!access.pages['app:pool']?.view;
+    if ((await this.canDispatch(user, access)) && !hasPool) {
       return {
         count: await this.workOrderRepo.count({
           where: {
@@ -4751,10 +4942,10 @@ export class RepairsService implements OnModuleInit {
     }
     return {
       count: await this.workOrderRepo.count({
-        where: {
-          ...base,
-          status: In(CLAIMABLE_WORK_ORDER_STATUSES),
-        },
+        where: [
+          { ...base, status: In(CLAIMABLE_WORK_ORDER_STATUSES) },
+          { ...base, status: WorkOrderStatus.DISPATCHED, assigneeId: user.id },
+        ],
       }),
     };
   }
