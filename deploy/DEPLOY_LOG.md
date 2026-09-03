@@ -1872,3 +1872,14 @@
 - 自上次（40e7c0f）以来上线的相关提交：
   - 68b5732 feat(工单): 撤回改造为「撤回上一笔业务操作」，完工撤回精确退料
 
+## 2026-09-03 23:37 · api · 168c7a5
+
+- 包：`pms-api-20260903-2336.tar.gz`
+- 提交：168c7a5 fix(入库语音): 口述「50乘50」要能对上库里的「50*50」
+- 说明：从干净 worktree(168c7a5) 打包；含上一轮漏标的 0a41db4。不含另一会话未提交的 ai-tools/repair-text 改动
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（dedd5e7）以来上线的相关提交：
+  - 168c7a5 fix(入库语音): 口述「50乘50」要能对上库里的「50*50」
+  - 75d5335 feat(后台): 收件箱三条——笔记按管理处折叠、图片可拖拽、入库语音填表
+  - 0a41db4 fix(工单): 「猜你想输」接口在线上一直 500（distinctAlias.req_id 不存在）
+
