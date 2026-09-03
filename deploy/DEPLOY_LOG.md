@@ -1852,3 +1852,14 @@
   - d79bffe feat: 完善养护签字流程与维修经验库
   - 35ef83a feat: 完善工单治理与消息分类
 
+## 2026-09-03 22:23 · api · dedd5e7
+
+- 包：`pms-api-20260903-2222.tar.gz`
+- 提交：dedd5e7 fix(工单): 幂等唯一索引改在实体上声明，线上才建得出来
+- 说明：从干净 worktree(dedd5e7) 打包，不含另一会话未提交的 ai-tools/repair-text 改动
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（d79bffe）以来上线的相关提交：
+  - dedd5e7 fix(工单): 幂等唯一索引改在实体上声明，线上才建得出来
+  - 05adce6 fix(工单): 完工批次的存量搬迁也在服务启动时做一遍
+  - 68b5732 feat(工单): 撤回改造为「撤回上一笔业务操作」，完工撤回精确退料
+
