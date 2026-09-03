@@ -145,9 +145,14 @@ function nextVersion(appKey, at = new Date()) {
   const ymd = `${at.getFullYear()}${String(at.getMonth() + 1).padStart(2, '0')}${String(at.getDate()).padStart(2, '0')}`;
   const prefix = `1.0.${ymd}`;
   const used = new Set(
-    readShipLog()
-      .filter((row) => row.app === appKey && String(row.version).startsWith(prefix))
-      .map((row) => String(row.version).slice(prefix.length)),
+    [
+      ...readShipLog()
+        .filter((row) => row.app === appKey && String(row.version).startsWith(prefix))
+        .map((row) => String(row.version).slice(prefix.length)),
+      // .ship-log.json 是本机忽略文件，换工作树或合并目录后可能丢失。
+      // DEPLOY_LOG.md 会随主分支同步，用它补齐已经上传并登记过的版本，避免从 a 重新排号。
+      ...readDeployLogVersions(appKey, ymd),
+    ],
   );
   // a..z 然后 aa..az —— 一天发 26 次以上才会用到两位，够了
   const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
@@ -252,6 +257,20 @@ function printManifest(appDir, git) {
  * 让公众平台上的每条版本都能对回一个提交。
  */
 const SHIP_LOG = join(repoRoot, '.ship-log.json');
+const DEPLOY_LOG = join(repoRoot, 'deploy/DEPLOY_LOG.md');
+
+function readDeployLogVersions(appKey, ymd) {
+  try {
+    const sections = readFileSync(DEPLOY_LOG, 'utf8').split(/^## /m).slice(1);
+    const headingMarker = `· miniapp-${appKey} ·`;
+    const versionPattern = new RegExp(`1\\.0\\.${ymd}([a-z]{1,2})`, 'g');
+    return sections
+      .filter((section) => section.split('\n', 1)[0].includes(headingMarker))
+      .flatMap((section) => [...section.matchAll(versionPattern)].map((match) => match[1]));
+  } catch {
+    return [];
+  }
+}
 
 function gitInfo() {
   try {
