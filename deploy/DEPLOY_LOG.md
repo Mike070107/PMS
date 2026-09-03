@@ -1959,3 +1959,12 @@
 - 自上次（765b7e4）以来上线的相关提交：
   - d2146ec fix(员工端): 完工「点了没反应」、工单池默认档、反馈带工单号
 
+## 2026-09-04 01:40 · miniapp-staff · d2146ec
+
+- 包：`1.0.20260904b`
+- 提交：d2146ec fix(员工端): 完工「点了没反应」、工单池默认档、反馈带工单号
+- 说明：干净 worktree(d2146ec)
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M apps/miniapp-staff/miniprogram/pages/maintenance-sign/maintenance-sign.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（e797bf0）以来上线的相关提交：
+  - d2146ec fix(员工端): 完工「点了没反应」、工单池默认档、反馈带工单号
+
