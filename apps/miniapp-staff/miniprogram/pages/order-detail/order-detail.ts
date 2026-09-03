@@ -539,6 +539,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     });
     if (this.appliedDraftBatchId === draft.fromBatchId) return;
     this.appliedDraftBatchId = draft.fromBatchId;
+    // 这是撤回后的重新填写，是一次**新的**提交，换个令牌，别被上一次的结果挡住
+    this.completeIdempotencyKey = '';
 
     this.setData({
       faultLocation: draft.faultLocation || this.data.faultLocation,
@@ -1482,9 +1484,17 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         note: row.note,
       }));
 
-    // 刚干完一单，正等着下一单 —— 这时补订阅额度同意率最高。
-    // 必须在这次点击里同步发起，放到 complete 请求之后微信就不认了（见 utils/unread.ts）
-    askOrderSubscribe();
+    /*
+     * 刚干完一单，正等着下一单 —— 这时补订阅额度同意率最高。
+     * 必须在这次点击里同步发起，放到 complete 请求之后微信就不认了（见 utils/unread.ts）。
+     *
+     * **但要拿住这个 Promise**：它弹的是微信自己的授权框，而微信同一时刻只显示一个弹窗，
+     * 提交成功后紧接着 wx.showModal 会被它吞掉 —— 面板还开着、按钮又能按，
+     * 在维修工看来就是「点了没反应」，于是连点，第二第三次各挨一个 400
+     * （2026-09-04 线上日志：45 号单 01:18:01 成功、:07 与 :31 各一次 400）。
+     * 所以成功后先关面板给出可见反馈，再等授权框收场才弹结果。
+     */
+    const subscribeSettled = askOrderSubscribe().catch(() => false);
     // 同一次填写复用同一个令牌：连点两下、弱网自动重试时服务端只认第一次，
     // 不会再扣一遍库存（库存错账事后没人对得回来）
     if (!this.completeIdempotencyKey) {
@@ -1507,9 +1517,18 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         resultAttachments: this.data.resultAttachments,
       });
       const orderNo = this.data.detail?.workOrder.orderNo || '';
-      // 提交成功后作废令牌：下一张单/下一次填写要用新的
-      this.completeIdempotencyKey = '';
+      /**
+       * **令牌不能在这里清掉**：清了之后再点一次「提交完工」会生成新令牌，
+       * 服务端认不出是同一次提交，走到状态校验直接 400
+       * （2026-09-04 线上日志：45 号单 01:18:01 成功、:07 和 :31 各挨了一次 400）。
+       * 留着它，重复点只会原样返回上次结果。真正换单/撤回后重填时才换新的（见 load）。
+       * 同时立刻收起面板，让人看不到那个还能再按一次的按钮。
+       */
       this.appliedDraftBatchId = null;
+      // 先收面板 + 轻提示：哪怕后面的弹窗被订阅授权框吞掉，也一定看得出提交成功了
+      this.setData({ panel: '', busy: false });
+      wx.showToast({ title: '完工已提交', icon: 'success' });
+      await subscribeSettled;
       wx.showModal({
         title: '已提交完工',
         content: `${orderNo || '该工单'}已进入待验收，返回「在手工单」继续处理下一项工作。`,

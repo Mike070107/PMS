@@ -46,7 +46,16 @@ export async function openFeedback() {
 
   const last = getLastApiFailure();
   const pages = getCurrentPages();
-  const route = last?.route || `/${pages[pages.length - 1]?.route || ''}`;
+  const current: any = pages[pages.length - 1];
+  const route = last?.route || `/${current?.route || ''}`;
+  /**
+   * 带上工单号 —— 不带的话后台只看到一句报错和页面名，是哪一张单只能去翻服务器日志
+   * （2026-09-04 员工端就这么翻的）。员工端 utils/feedback.ts 是同一份口径，改一处记得改另一处。
+   */
+  const workOrderNo: string = current?.data?.detail?.workOrder?.orderNo || '';
+  const workOrderId =
+    Number(current?.data?.id) || Number(/\/work-orders\/(\d+)/.exec(last?.url || '')?.[1]) || 0;
+  const orderTag = workOrderNo || (workOrderId ? `#${workOrderId}` : '');
   let version = '';
   try { version = wx.getAccountInfoSync().miniProgram.version || ''; } catch {}
   wx.showLoading({ title: '提交中…', mask: true });
@@ -59,12 +68,16 @@ export async function openFeedback() {
     await observability.feedback({
       source: 'miniapp-owner',
       type: TYPES[picked.tapIndex]?.value || 'other',
-      message: description,
+      message: orderTag ? `[工单 ${orderTag}] ${description}` : description,
       route,
       pageTitle: route,
       version,
       errorMessage: last?.message,
-      context: last ? { ...last } : undefined,
+      context: {
+        ...(last || {}),
+        ...(workOrderId ? { workOrderId } : {}),
+        ...(workOrderNo ? { workOrderNo } : {}),
+      },
       attachments,
     });
     wx.showToast({ title: '已反馈给物业' });

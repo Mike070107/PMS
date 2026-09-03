@@ -13,7 +13,14 @@ import {
 } from '@pms/shared-types';
 import { isActiveOrder } from '../../utils/order-status';
 import { getSession } from '../../utils/session';
-import { cachedPoolMode, readCachedAccess, setTabBadge, setTabBarHidden, syncTabBar } from '../../utils/tabbar';
+import {
+  cachedPoolMode,
+  readCachedAccess,
+  setTabBadge,
+  setTabBarHidden,
+  syncTabBar,
+  takePoolTabTapped,
+} from '../../utils/tabbar';
 import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unread';
 
 /** 派单备注也允许按住说话；插件不可用时隐藏语音入口，手工输入照常可用。 */
@@ -313,8 +320,11 @@ Page({
 
       // 三档各自有独立权限。当前档被管理员取消后，刷新必须落到仍有权限的第一档，
       // 不能继续请求旧 scope（服务端也会按 scope 拒绝）。
+      // 底部刚点过「工单池」那一格：忘掉上次停在哪一档，回到工单池
+      const tappedPoolTab = takePoolTabTapped();
       const mainTab = (() => {
         if (dispatcher) return 'pool';
+        if (tappedPoolTab && session.canSeePool) return 'pool';
         if (this.data.mainTab === 'pool' && session.canSeePool) return 'pool';
         if (this.data.mainTab === 'reported' && session.canSeeMyRepairs) return 'reported';
         if (this.data.mainTab === 'done' && session.canSeeMyOrders) return 'done';

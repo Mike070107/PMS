@@ -12,7 +12,13 @@
  * 所以后台改完角色，用户下拉刷新一次底部就跟着变，不用杀掉小程序重进。
  */
 import { canSeeTab, type TabAccess, type TabKey } from '../utils/roles';
-import { readCachedAccess, rememberApprovalMode, rememberMeMode, rememberPoolMode } from '../utils/tabbar';
+import {
+  markPoolTabTapped,
+  readCachedAccess,
+  rememberApprovalMode,
+  rememberMeMode,
+  rememberPoolMode,
+} from '../utils/tabbar';
 import { topUpQuietly } from '../utils/unread';
 
 interface TabDef {
@@ -113,6 +119,8 @@ Component({
       // 工单池和派单台是同一个页面的两种模式，switchTab 不接受参数，
       // 所以把「进来要看哪一屏」写进缓存，页面读它决定渲染哪一屏
       rememberPoolMode(tab.key === 'dispatch' ? 'dispatch' : 'pool');
+      // 点「工单池」那一格就回到工单池那一档，别停在上次看的「已完结」
+      if (tab.key === 'pool' || tab.key === 'dispatch') markPoolTabTapped();
       if (tab.key === 'approvals' || tab.key === 'maintenance') {
         rememberApprovalMode(tab.key === 'maintenance' ? 'maintenance' : 'approvals');
       }

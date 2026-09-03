@@ -2356,6 +2356,9 @@ function WorkOrderDetailDrawer({
                 <Tag color="blue">{getRepairTypeLabel(detail.request.repairType, repairTypeRules)}</Tag>
               </>}
               meta={<>
+                {/* 工单编号排在第一位：抽屉头上那个是深蓝底白字，用户反馈说没看到；
+                    报错、对账、跟客服讲都要报这个号，必须在首屏就能看见并复制 */}
+                <span><strong>工单编号</strong><Text copyable={{ text: detail.workOrder.orderNo }}>{detail.workOrder.orderNo}</Text></span>
                 <span><strong>报修人</strong>{detail.request.contactName || '未填写'}{detail.request.reporterRoleLabel ? `（${detail.request.reporterRoleLabel}代报）` : ''}</span>
                 <span><strong>联系电话</strong>{detail.request.contactPhone || '未填写'}</span>
                 <span><strong>提交渠道</strong>{repairSourceText(detail.request.source)}</span>

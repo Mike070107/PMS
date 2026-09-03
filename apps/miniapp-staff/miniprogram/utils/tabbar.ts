@@ -59,6 +59,31 @@ export function cachedPoolMode(): PoolMode {
   }
 }
 
+/**
+ * 底部点了「工单池」那一格的一次性标记。
+ *
+ * 工单池是 tabBar 页、不会重建，页内「工单池 / 我报的 / 已完结」三档记在 page data 里：
+ * 上次切到「已完结」，之后从别的 tab 点回「工单池」，看到的还是已完结那一屏
+ * （2026-09-04 反馈）。tabBar 上那一格写着「工单池」，点它就该回到工单池那一档。
+ * 只在**点 tab** 时打标记，从工单详情返回不打 —— 那种情况要保留他原来看的那一档。
+ */
+const POOL_TAB_TAPPED_KEY = 'pms.staff.poolTabTapped';
+
+export function markPoolTabTapped() {
+  try { wx.setStorageSync(POOL_TAB_TAPPED_KEY, '1'); } catch { /* 存不下就退化成保留原档，不影响用 */ }
+}
+
+/** 读一次就清掉：只重置这一次进入，之后他在页内怎么切都算他自己的选择 */
+export function takePoolTabTapped(): boolean {
+  try {
+    const hit = wx.getStorageSync(POOL_TAB_TAPPED_KEY) === '1';
+    if (hit) wx.removeStorageSync(POOL_TAB_TAPPED_KEY);
+    return hit;
+  } catch {
+    return false;
+  }
+}
+
 export function rememberPoolMode(mode: PoolMode) {
   try {
     wx.setStorageSync(POOL_MODE_KEY, mode);

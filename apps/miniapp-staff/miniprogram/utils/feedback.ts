@@ -46,7 +46,19 @@ export async function openFeedback() {
 
   const last = getLastApiFailure();
   const pages = getCurrentPages();
-  const route = last?.route || `/${pages[pages.length - 1]?.route || ''}`;
+  const current: any = pages[pages.length - 1];
+  const route = last?.route || `/${current?.route || ''}`;
+  /**
+   * 带上工单号。
+   *
+   * 不带的话后台只看到「work order cannot be completed / 页面 order-detail」，
+   * 是哪一张单全靠去翻 nginx 日志（2026-09-04 就这么翻出来的 45 号单）。
+   * 优先取页面上正在看的那张单；页面没有就从失败请求的路径里抠 id（/work-orders/45/complete）。
+   */
+  const workOrderNo: string = current?.data?.detail?.workOrder?.orderNo || '';
+  const workOrderId =
+    Number(current?.data?.id) || Number(/\/work-orders\/(\d+)/.exec(last?.url || '')?.[1]) || 0;
+  const orderTag = workOrderNo || (workOrderId ? `#${workOrderId}` : '');
   let version = '';
   try { version = wx.getAccountInfoSync().miniProgram.version || ''; } catch {}
   wx.showLoading({ title: '提交中…', mask: true });
@@ -59,12 +71,17 @@ export async function openFeedback() {
     await observability.feedback({
       source: 'miniapp-staff',
       type: TYPES[picked.tapIndex]?.value || 'other',
-      message: description,
+      // 单号写进正文：后台的反馈列表、导出、转给谁看，都只保证这一段一定在
+      message: orderTag ? `[工单 ${orderTag}] ${description}` : description,
       route,
       pageTitle: route,
       version,
       errorMessage: last?.message,
-      context: last ? { ...last } : undefined,
+      context: {
+        ...(last || {}),
+        ...(workOrderId ? { workOrderId } : {}),
+        ...(workOrderNo ? { workOrderNo } : {}),
+      },
       attachments,
     });
     wx.showToast({ title: '已反馈给后台' });

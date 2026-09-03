@@ -2599,7 +2599,7 @@ export class RepairsService implements OnModuleInit {
         fromStatus,
         WorkOrderStatus.DISPATCHED,
         'assign',
-        'work order cannot be assigned',
+        '当前状态不能派单：已完工/已验收/已撤单的单请先撤回上一步',
       );
       // 派单可能发生在待派单/已派单/维修中/等待材料四种节点上，换人派单前后状态还一样。
       // 撤回要恢复的是「上一位维修工 + 上一个节点」，只能靠这张快照。
@@ -3318,14 +3318,14 @@ export class RepairsService implements OnModuleInit {
           workOrder.status,
           WorkOrderStatus.IN_PROGRESS,
           'claim',
-          'work order cannot be claimed',
+          '这张单现在不能接：它已经不在可接单的状态了，下拉刷新看看最新状态',
         );
       } else {
         assertWorkOrderTransition(
           workOrder.status,
           WorkOrderStatus.IN_PROGRESS,
           'accept',
-          'only dispatched work order can be accepted',
+          '只有派给你的待接单才能确认接单，下拉刷新看看最新状态',
         );
       }
 
@@ -3646,11 +3646,19 @@ export class RepairsService implements OnModuleInit {
         if (done) return { workOrder, batch: done, duplicated: true as const };
       }
 
+      /*
+       * 这句会原样弹到维修工手机上，所以要说人话、还要说清「现在是什么状态」。
+       * 最常见的是重复提交：第一次其实成功了（见幂等令牌），只是提示被微信订阅框吞了。
+       */
       assertWorkOrderTransition(
         workOrder.status,
         WorkOrderStatus.DONE_PENDING_REVIEW,
         'complete',
-        'work order cannot be completed',
+        workOrder.status === WorkOrderStatus.DONE_PENDING_REVIEW
+          ? '这张工单已经提交过完工，正在等业主验收，不用再提交一次'
+          : workOrder.status === WorkOrderStatus.COMPLETED
+            ? '这张工单已经验收完成，不能再提交完工'
+            : `当前状态（${workOrderStatusLabel(workOrder.status)}）不能提交完工：请先接单，或材料到位后从工单池接回`,
       );
       await this.ensureAssigneeOrAdmin(workOrder, user);
 
