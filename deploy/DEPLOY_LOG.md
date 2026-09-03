@@ -1901,3 +1901,12 @@
 - 自上次（b1c6592）以来上线的相关提交：
   - 68b5732 feat(工单): 撤回改造为「撤回上一笔业务操作」，完工撤回精确退料
 
+## 2026-09-04 01:09 · miniapp-staff · e797bf0
+
+- 包：`1.0.20260904a`
+- 提交：e797bf0 fix(维修经验): 工种收窄不能靠 canDispatch 口径判「办公室」
+- 说明：干净 worktree 打包上传开发版，待公众平台选体验版
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M apps/miniapp-staff/miniprogram/pages/maintenance-sign/maintenance-sign.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（dedd5e7）以来上线的相关提交：
+  - 765b7e4 fix(维修经验): 按角色收窄可见范围、小程序图片能预览、按钮文字垂直居中
+
