@@ -109,7 +109,7 @@ export class CreateRepairRequestDto {
   entryMode?: 'quick_ai' | 'form';
 }
 
-/** 管理员作废工单。确认字段防止前端误触或绕过二次确认。 */
+/** 办公室/管理员作废工单。确认字段防止前端误触或绕过二次确认。 */
 export class VoidWorkOrderDto {
   @IsString()
   @MaxLength(500)
@@ -117,6 +117,24 @@ export class VoidWorkOrderDto {
 
   @IsBoolean()
   confirmReversal: boolean;
+}
+
+/** 系统管理员永久删除工单。与作废分离，删除后业务记录不可恢复。 */
+export class DeleteWorkOrderDto {
+  @IsString()
+  @MaxLength(500)
+  reason: string;
+
+  @IsString()
+  @IsIn(['永久删除'])
+  confirmation: '永久删除';
+}
+
+/** 办公室/管理员把误操作的工单撤回一个处理节点。原因会原样进入时间轴。 */
+export class RollbackWorkOrderDto {
+  @IsString()
+  @MaxLength(500)
+  reason: string;
 }
 
 /** 随手拍：从描述文字里识别报修地址（「一期24号302」→ 库里真实的楼栋/房号） */

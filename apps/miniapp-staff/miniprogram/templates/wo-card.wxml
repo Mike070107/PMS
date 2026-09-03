@@ -16,17 +16,15 @@
 <template name="wo-card-body">
   <view class="wo-card__head">
     <view class="wo-card__main">
-      <!-- 第一行报修内容、第二行地址，两行都加粗，各占一行超出省略（2026-09-01 定的）。
-
-           「紧急」标挂在第一行行首，不放地址那一行：它占掉近 90rpx，
-           地址会被截成「枫桦景苑一期17号20…」——室号看不全，跟没写一样。
-           地址整行只留给它自己。 -->
+      <!-- 现场工作先决定「去哪」，再看「修什么」：地址放第一行并保留整行宽度。
+           紧急标跟故障内容放第二行，不挤压楼栋和室号。 -->
       <view class="wo-card__title">
-        <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>{{item.summaryContent || '未填描述'}}
-      </view>
-      <view class="wo-card__addr-line">
         <view class="icon icon--pin"></view>
         <view class="wo-card__addr">{{item.summaryAddress || '未填地址'}}</view>
+      </view>
+      <view class="wo-card__problem-line">
+        <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>
+        <view class="wo-card__problem">{{item.summaryContent || '未填描述'}}</view>
       </view>
       <!-- 报修照片：一眼看出坏成什么样，比读一句描述快得多。
            catchtap 拦住冒泡 —— 点图是看大图，点卡片才是进详情。

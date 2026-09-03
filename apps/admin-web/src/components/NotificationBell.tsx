@@ -1,7 +1,11 @@
 import { Badge, Button, Drawer, Empty, List, Tag, Typography } from 'antd';
 import { BellOutlined, CheckOutlined } from '@ant-design/icons';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  classifyNotification,
+  type NotificationCategory,
+} from '@pms/shared-types';
 import { request } from '../lib/api';
 
 const { Text } = Typography;
@@ -15,21 +19,47 @@ interface NotificationRow {
   createdAt: string;
 }
 
-// 事件 → 跳转目标 + 标签色
-const EVENT_META: Record<string, { label: string; color: string; to?: string }> = {
-  order_urged: { label: '工单催办', color: 'orange', to: '/work-orders' },
-  order_urged_escalated: { label: '催办升级', color: 'red', to: '/work-orders' },
-  transfer_pending_review: { label: '调拨待审批', color: 'gold', to: '/inventory' },
-  transfer_approved: { label: '调拨待接收', color: 'blue', to: '/inventory' },
-  transfer_rejected: { label: '调拨被驳回', color: 'red', to: '/inventory' },
-  transfer_received: { label: '调拨已接收', color: 'green', to: '/inventory' },
-  transfer_received_variance: { label: '调拨实收差异', color: 'volcano', to: '/inventory' },
-  receipt_qty_variance: { label: '入库数量差异', color: 'volcano', to: '/inventory' },
-  purchase_pending_office: { label: '采购待汇总', color: 'gold', to: '/inventory' },
-  purchase_pending_manager: { label: '采购待经理审批', color: 'gold', to: '/inventory' },
-  purchase_pending_purchaser: { label: '采购待采购审批', color: 'blue', to: '/inventory' },
-  user_feedback: { label: '异常反馈', color: 'purple', to: '/logs?mode=feedback' },
+// 点击后的网页落点与分类是两件事：分类由 shared-types 三端统一，这里只管路由。
+const EVENT_ROUTES: Record<string, string> = {
+  order_urged: '/work-orders',
+  order_urged_escalated: '/work-orders',
+  order_pool_unassigned: '/work-orders',
+  order_pool_new: '/work-orders',
+  order_transfer_requested: '/work-orders',
+  order_assigned: '/work-orders',
+  order_urge_repair: '/work-orders',
+  order_accept_overdue: '/work-orders',
+  order_accept_overdue_office: '/work-orders',
+  transfer_pending_review: '/inventory',
+  transfer_approved: '/inventory',
+  transfer_rejected: '/inventory',
+  transfer_received: '/inventory',
+  transfer_received_variance: '/inventory',
+  receipt_qty_variance: '/inventory',
+  purchase_pending_office: '/inventory',
+  purchase_pending_manager: '/inventory',
+  purchase_pending_purchaser: '/inventory',
+  system_alert: '/logs',
+  user_feedback: '/logs?mode=feedback',
 };
+
+type FilterKey = 'all' | 'important' | NotificationCategory;
+
+const CATEGORY_FILTERS: Array<{ key: NotificationCategory; label: string }> = [
+  { key: 'work_order', label: '工单' },
+  { key: 'approval', label: '审批' },
+  { key: 'inventory', label: '库存' },
+  { key: 'system', label: '系统' },
+  { key: 'other', label: '其他' },
+];
+
+const CATEGORY_COLORS = {
+  blue: 'blue',
+  purple: 'purple',
+  cyan: 'cyan',
+  red: 'red',
+  gray: 'default',
+} as const;
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -48,6 +78,28 @@ export default function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [rows, setRows] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
+
+  const decoratedRows = useMemo(
+    () => rows.map((row) => ({ ...row, presentation: classifyNotification(row.eventKey) })),
+    [rows],
+  );
+  const filters = useMemo(() => {
+    const result: Array<{ key: FilterKey; label: string; count: number }> = [
+      { key: 'all', label: '全部', count: decoratedRows.length },
+      { key: 'important', label: '重要', count: decoratedRows.filter((row) => row.presentation.important).length },
+    ];
+    CATEGORY_FILTERS.forEach((item) => {
+      const count = decoratedRows.filter((row) => row.presentation.category === item.key).length;
+      if (count) result.push({ ...item, count });
+    });
+    return result;
+  }, [decoratedRows]);
+  const visibleRows = useMemo(() => decoratedRows.filter((row) => {
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'important') return row.presentation.important;
+    return row.presentation.category === activeFilter;
+  }), [activeFilter, decoratedRows]);
 
   const loadUnread = useCallback(async () => {
     try {
@@ -91,7 +143,7 @@ export default function NotificationBell() {
         // 静默
       }
     }
-    const to = EVENT_META[row.eventKey]?.to;
+    const to = EVENT_ROUTES[row.eventKey];
     if (to) {
       setOpen(false);
       navigate(to);
@@ -122,7 +174,7 @@ export default function NotificationBell() {
       <Drawer
         title="通知中心"
         placement="right"
-        width={400}
+        width="min(420px, 100vw)"
         open={open}
         onClose={() => setOpen(false)}
         extra={
@@ -131,14 +183,30 @@ export default function NotificationBell() {
           </Button>
         }
       >
+        {!!rows.length && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+            {filters.map((filter) => (
+              <Tag.CheckableTag
+                key={filter.key}
+                checked={activeFilter === filter.key}
+                onChange={() => setActiveFilter(filter.key)}
+                style={{ margin: 0, padding: '4px 10px', fontSize: 14, border: '1px solid #d9e2ec' }}
+              >
+                {filter.label} {filter.count}
+              </Tag.CheckableTag>
+            ))}
+          </div>
+        )}
         {!rows.length && !loading ? (
           <Empty description="暂无通知" style={{ marginTop: 60 }} />
+        ) : !visibleRows.length && !loading ? (
+          <Empty description="这个分类暂时没有通知" style={{ marginTop: 60 }} />
         ) : (
           <List
             loading={loading}
-            dataSource={rows}
+            dataSource={visibleRows}
             renderItem={(row) => {
-              const meta = EVENT_META[row.eventKey];
+              const meta = row.presentation;
               return (
                 <List.Item
                   onClick={() => onItemClick(row)}
@@ -152,9 +220,15 @@ export default function NotificationBell() {
                 >
                   <List.Item.Meta
                     title={
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                         {!row.readAt && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#31558a', flex: 'none' }} />}
-                        {meta && <Tag color={meta.color} style={{ margin: 0 }}>{meta.label}</Tag>}
+                        <Tag color={CATEGORY_COLORS[meta.categoryTone]} style={{ margin: 0 }}>{meta.categoryLabel}</Tag>
+                        <Tag
+                          color={meta.priority === 'action' ? 'red' : meta.priority === 'important' ? 'orange' : undefined}
+                          style={{ margin: 0 }}
+                        >
+                          {meta.priorityLabel}
+                        </Tag>
                       </div>
                     }
                     description={

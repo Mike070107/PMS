@@ -31,6 +31,7 @@
           <text class="timeline-label">{{item.label}}</text>
           <text class="timeline-at">{{item.at}}</text>
         </view>
+        <view class="timeline-operator">操作人：{{item.operatorName}}</view>
         <view wx:if="{{item.stay}}" class="timeline-stay">{{item.stay}}</view>
         <view wx:if="{{item.note}}" class="timeline-note">{{item.note}}</view>
         <view wx:if="{{item.attachments.length}}" class="timeline-photos">

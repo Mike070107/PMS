@@ -27,10 +27,12 @@ import {
   CancelWorkOrderDto,
   CompleteWorkOrderDto,
   CreateRepairRequestDto,
+  DeleteWorkOrderDto,
   NeedMaterialDto,
   ParseRepairAddressDto,
   ReorderRepairTypeRulesDto,
   ReviewWorkOrderDto,
+  RollbackWorkOrderDto,
   RequestWorkOrderTransferDto,
   UpdateMissingMaterialsDto,
   UpdateOfficeSuggestionSettingsDto,
@@ -304,12 +306,9 @@ export class RepairsController {
     return this.repairsService.getWorkOrder(id, user, access);
   }
 
-  /**
-   * 管理员作废工单：退回已领用库存、冲销报表口径并保留完整审计快照。
-   * 必须是工单管理的独立“作废工单”权限，普通编辑权不能调用。
-   */
-  @Delete('work-orders/:id')
-  @RequirePermission('work-orders', 'delete')
+  /** 办公室/管理员作废：记录仍在，可在调度台筛选。 */
+  @Post('work-orders/:id/void')
+  @RequirePermission(['work-orders', 'app:dispatch'], 'edit')
   voidWorkOrder(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VoidWorkOrderDto,
@@ -317,6 +316,18 @@ export class RepairsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.repairsService.voidWorkOrder(id, dto, user, access);
+  }
+
+  /** 系统管理员永久删除：不可恢复。服务层还会再次核验管理员身份。 */
+  @Delete('work-orders/:id')
+  @RequirePermission('work-orders', 'delete')
+  deleteWorkOrder(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: DeleteWorkOrderDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.deleteWorkOrder(id, dto, user, access);
   }
 
   /** 更正类型弹窗用的关键词候选（从这单描述里挑「学进新类型」的词） */
@@ -380,6 +391,17 @@ export class RepairsController {
     return this.repairsService.assignWorkOrder(id, dto, user, access);
   }
 
+  @Post('work-orders/:id/rollback')
+  @RequirePermission(['work-orders', 'app:dispatch'], 'edit')
+  rollbackWorkOrder(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RollbackWorkOrderDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.rollbackWorkOrder(id, dto, user, access);
+  }
+
   @Post('work-orders/:id/accept')
   @RequirePermission('app:pool', 'edit')
   acceptWorkOrder(
@@ -413,7 +435,7 @@ export class RepairsController {
   }
 
   @Post('work-orders/:id/progress')
-  @RequirePermission(['work-orders', 'app:my-orders'], 'edit')
+  @RequirePermission(['work-orders', 'app:my-orders', 'app:dispatch'], 'edit')
   addWorkOrderProgress(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AddWorkOrderProgressDto,

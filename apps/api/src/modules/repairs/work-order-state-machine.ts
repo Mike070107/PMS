@@ -96,3 +96,39 @@ export function assertWorkOrderTransition(
     throw new BadRequestException(message);
   }
 }
+
+/**
+ * 办公室“撤回上一步”的目标状态。
+ *
+ * 等待材料、待验收和已撤单都是旁路节点，必须优先按真正进入该节点时的来源返回；
+ * 其余节点按标准主流程退一格。created 没有再早的可操作节点。
+ */
+export function workOrderRollbackTarget(
+  current: WorkOrderStatus,
+  previousFrom?: WorkOrderStatus | null,
+): WorkOrderStatus | null {
+  if (current === WorkOrderStatus.DISPATCHED) return WorkOrderStatus.CREATED;
+  if (current === WorkOrderStatus.IN_PROGRESS) return WorkOrderStatus.DISPATCHED;
+  if (current === WorkOrderStatus.WAITING_MATERIAL) {
+    return previousFrom === WorkOrderStatus.DISPATCHED || previousFrom === WorkOrderStatus.IN_PROGRESS
+      ? previousFrom
+      : null;
+  }
+  if (current === WorkOrderStatus.DONE_PENDING_REVIEW) {
+    return previousFrom === WorkOrderStatus.IN_PROGRESS || previousFrom === WorkOrderStatus.WAITING_MATERIAL
+      ? previousFrom
+      : null;
+  }
+  if (current === WorkOrderStatus.COMPLETED) return WorkOrderStatus.DONE_PENDING_REVIEW;
+  if (current === WorkOrderStatus.CANCELLED) {
+    return previousFrom && [
+      WorkOrderStatus.CREATED,
+      WorkOrderStatus.DISPATCHED,
+      WorkOrderStatus.IN_PROGRESS,
+      WorkOrderStatus.WAITING_MATERIAL,
+    ].includes(previousFrom)
+      ? previousFrom
+      : null;
+  }
+  return null;
+}

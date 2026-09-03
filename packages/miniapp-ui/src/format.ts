@@ -183,6 +183,7 @@ export interface TimelineRow {
   label: string;
   note: string;
   at: string;
+  operatorName: string;
   /** 这个节点停留了多久（到下一个节点；最后一个节点算到现在） */
   stay: string;
   attachments: string[];
@@ -203,7 +204,7 @@ export interface TimelineRow {
  * （已经结束的单再说「已停留」是误导）。
  */
 export function buildTimeline(
-  logs: Array<{ id: number; toStatus: string; action?: string; note?: string | null; attachments?: string[]; createdAt: string }>,
+  logs: Array<{ id: number; toStatus: string; action?: string; operatorId?: number | null; operatorName?: string | null; note?: string | null; attachments?: string[]; createdAt: string }>,
   labels: Record<string, string>,
   opts: { finished?: boolean } = {},
 ): TimelineRow[] {
@@ -224,9 +225,12 @@ export function buildTimeline(
             ? '维修进度更新'
             : log.action === 'transfer_request'
               ? '申请转给其他人维修'
+              : log.action === 'rollback'
+                ? '办公室撤回处理节点'
               : labels[log.toStatus] || log.toStatus,
         note: log.note || '',
         at: formatDateTimeCn(log.createdAt),
+        operatorName: log.operatorName || (log.operatorId ? '未知操作人' : '系统'),
         stay: stay ? `停留 ${stay}` : '',
         attachments: log.attachments || [],
       };

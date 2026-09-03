@@ -85,6 +85,42 @@ page { background: #f1f6fb; }
 .field-action::after { border: 0; }
 .field-action--progress { border: 2rpx solid #88a9c9; background: #edf5fb; color: #315f98; }
 .field-action--transfer { border: 2rpx solid #e3b5b5; background: #fff7f7; color: #a7383e; }
+.rollback-entry {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-top: 22rpx;
+  padding: 22rpx 24rpx;
+  border: 2rpx solid #d9e2ea;
+  border-radius: 22rpx;
+  background: #fff;
+}
+.rollback-entry > view { flex: 1; min-width: 0; }
+.rollback-entry__title { color: #3f5368; font-size: 29rpx; font-weight: 700; }
+.rollback-entry__desc { margin-top: 6rpx; color: var(--color-text-tertiary); font-size: 24rpx; line-height: 1.5; }
+.rollback-entry__button {
+  width: auto !important;
+  min-width: 174rpx;
+  min-height: 78rpx;
+  margin: 0 !important;
+  padding: 0 22rpx;
+  border: 2rpx solid #b7c9d9;
+  border-radius: 18rpx;
+  color: #315f98;
+  background: #f4f8fc;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+.rollback-entry__button::after { border: 0; }
+.rollback-warning {
+  padding: 22rpx 24rpx;
+  border-radius: 18rpx;
+  color: #72510a;
+  background: #fff7df;
+  font-size: 27rpx;
+  line-height: 1.65;
+}
+.rollback-warning__title { margin-bottom: 6rpx; color: #694600; font-size: 31rpx; font-weight: 700; }
 .field-actions__hint { margin-top: 12rpx; color: #74879a; font-size: 26rpx; line-height: 1.5; text-align: center; }
 .progress-photo-add { min-height: 94rpx; display: flex; align-items: center; justify-content: center; border: 2rpx dashed #8cabc8; border-radius: 18rpx; background: #f5f9fc; color: #315f98; font-size: 30rpx; font-weight: 600; }
 .transfer-warning { padding: 22rpx; border: 2rpx solid #ecd1a3; border-radius: 18rpx; background: #fff8ec; color: #715127; font-size: 28rpx; line-height: 1.75; }
@@ -267,6 +303,7 @@ page { background: #f1f6fb; }
 .timeline-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; }
 .timeline-label { font-size: var(--font-xl); font-weight: 500; }
 .timeline-at { flex-shrink: 0; font-size: var(--font-sm); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.timeline-operator { margin-top: 6rpx; font-size: var(--font-sm); color: var(--color-text-tertiary); }
 .timeline-note { margin-top: 10rpx; font-size: var(--font-md); color: var(--color-text-secondary); line-height: 1.6; }
 /* 每个节点停了多久：卡在哪一步、卡了多久，比绝对时间更好用 */
 .timeline-stay {
@@ -626,6 +663,48 @@ page { background: #f1f6fb; }
 .complete-speech__title { font-size: 35rpx; font-weight: 700; line-height: 1.35; }
 .complete-speech__desc { margin-top: 3rpx; color: rgba(255,255,255,.88); font-size: 29rpx; line-height: 1.45; }
 .complete-listening { margin: -10rpx 0 22rpx; padding: 18rpx 20rpx; border-radius: 16rpx; background: #e7f1fa; color: #315f98; font-size: 30rpx; line-height: 1.55; }
+.speech-field-button {
+  box-sizing: border-box;
+  width: 100% !important;
+  min-height: 96rpx;
+  margin: 0 0 18rpx !important;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 22rpx;
+  padding: 14rpx 24rpx;
+  border: 2rpx solid #9ebbd5;
+  border-radius: 18rpx;
+  background: #eef6fd;
+  color: #315f98;
+  text-align: left;
+}
+.speech-field-button::after, .speech-mini::after { border: 0; }
+.speech-field-button--compact { min-height: 84rpx; margin-top: 14rpx !important; }
+.speech-field-button--on, .speech-mini--on { border-color: #b33e45; background: #b33e45; color: #fff; }
+.speech-field-button__title { font-size: 31rpx; font-weight: 700; line-height: 1.35; }
+.speech-field-button__desc { margin-top: 2rpx; color: #6d8398; font-size: 25rpx; line-height: 1.4; }
+.speech-field-button--on .speech-field-button__desc { color: rgba(255,255,255,.88); }
+.speech-field-listening { margin: -6rpx 0 16rpx; padding: 14rpx 18rpx; border-radius: 14rpx; background: #e7f1fa; color: #315f98; font-size: 27rpx; line-height: 1.5; }
+.speech-field-listening--compact { margin-top: 10rpx; }
+.speech-mini {
+  flex-shrink: 0;
+  min-width: 142rpx;
+  min-height: 88rpx;
+  margin: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  padding: 10rpx 16rpx;
+  border: 2rpx solid #9ebbd5;
+  border-radius: 18rpx;
+  background: #eef6fd;
+  color: #315f98;
+  font-size: 27rpx;
+  font-weight: 700;
+}
+.speech-mini .complete-speech__mic { transform: scale(.86); }
 .complete-subtitle { margin-top: 24rpx; color: #5a7188; font-size: 30rpx; line-height: 1.5; }
 .complete-sheet .phrase { min-height: 76rpx; font-size: 30rpx; }
 .fee-input { height: 98rpx; display: flex; align-items: center; gap: 12rpx; padding: 0 24rpx; border: 2rpx solid #c6d7e7; border-radius: 18rpx; background: #fff; }

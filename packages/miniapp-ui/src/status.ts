@@ -8,6 +8,7 @@ export const statusLabel: Record<WorkOrderStatus, string> = {
   [WorkOrderStatus.DONE_PENDING_REVIEW]: '待验收',
   [WorkOrderStatus.COMPLETED]: '已完成',
   [WorkOrderStatus.CANCELLED]: '已撤单',
+  [WorkOrderStatus.VOIDED]: '已作废',
 };
 
 export const statusColor: Record<WorkOrderStatus, string> = {
@@ -18,4 +19,5 @@ export const statusColor: Record<WorkOrderStatus, string> = {
   [WorkOrderStatus.DONE_PENDING_REVIEW]: '#722ed1',
   [WorkOrderStatus.COMPLETED]: '#52c41a',
   [WorkOrderStatus.CANCELLED]: '#8c8c8c',
+  [WorkOrderStatus.VOIDED]: '#8c8c8c',
 };

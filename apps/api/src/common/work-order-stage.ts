@@ -18,7 +18,7 @@ export function canEditRepairTypeAndSla(status: WorkOrderStatus): boolean {
 /** 拦下来时给用户看的原因；可改时返回 null */
 export function repairTypeAndSlaLockReason(status: WorkOrderStatus): string | null {
   if (canEditRepairTypeAndSla(status)) return null;
-  return status === WorkOrderStatus.COMPLETED || status === WorkOrderStatus.CANCELLED
+  return status === WorkOrderStatus.COMPLETED || status === WorkOrderStatus.CANCELLED || status === WorkOrderStatus.VOIDED
     ? '工单已完结，不能再修改'
     : '已开始维修，不能再修改';
 }

@@ -71,6 +71,7 @@ export enum WorkOrderStatus {
   DONE_PENDING_REVIEW = 'done_pending_review',
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
+  VOIDED = 'voided',
 }
 
 export enum RepairSource {
@@ -440,6 +441,8 @@ export interface WorkOrderLogItem {
   toStatus: WorkOrderStatus;
   action: string;
   operatorId: number | null;
+  /** 操作人姓名；系统自动动作可能为 null。 */
+  operatorName?: string | null;
   note: string | null;
   /** 这一进度节点的现场照片。 */
   attachments?: string[];
@@ -557,6 +560,7 @@ export const WORK_ORDER_STATUS_LABELS: Record<WorkOrderStatus, string> = {
   [WorkOrderStatus.DONE_PENDING_REVIEW]: '待验收',
   [WorkOrderStatus.COMPLETED]: '已完成',
   [WorkOrderStatus.CANCELLED]: '已撤单',
+  [WorkOrderStatus.VOIDED]: '已作废',
 };
 
 /**
@@ -590,7 +594,7 @@ export function canEditRepairTypeAndSla(status: WorkOrderStatus): boolean {
 /** 置灰时给用户看的原因（别静默隐藏）；可改时返回 null */
 export function repairTypeAndSlaLockReason(status: WorkOrderStatus): string | null {
   if (canEditRepairTypeAndSla(status)) return null;
-  return status === WorkOrderStatus.COMPLETED || status === WorkOrderStatus.CANCELLED
+  return status === WorkOrderStatus.COMPLETED || status === WorkOrderStatus.CANCELLED || status === WorkOrderStatus.VOIDED
     ? '工单已完结，不能再修改'
     : '已开始维修，不能再修改';
 }
@@ -943,11 +947,13 @@ export interface DictItem {
 }
 
 export * from './address';
+export * from './work-order-sort';
 export * from './repair-classify';
 export * from './pages';
 export * from './fees';
 export * from './voice-extract';
 export * from './urgency';
+export * from './notification';
 
 // ---------- 停留时长 ----------
 

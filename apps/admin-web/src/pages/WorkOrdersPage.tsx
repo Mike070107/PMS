@@ -64,7 +64,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { ClassifiableType, TechnicianOption } from '@pms/shared-types';
-import { classifyRepairType } from '@pms/shared-types';
+import { classifyRepairType, compareWorkOrderRoutePriority } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -170,6 +170,7 @@ interface WorkOrderLog {
   toStatus: WorkOrderStatus;
   action: string;
   operatorId: number | null;
+  operatorName?: string | null;
   note: string | null;
   attachments?: string[];
   createdAt: string;
@@ -268,7 +269,18 @@ const statusMeta: Record<WorkOrderStatus, { label: string; color: string }> = {
   completed: { label: '已完成', color: 'success' },
   // 撤单是「不用办了」，不是出了错。红色会让人以为这单出了问题、还得去处理
   cancelled: { label: '已撤单', color: 'default' },
+  voided: { label: '已作废', color: 'default' },
 };
+
+function rollbackTargetLabel(status: WorkOrderStatus | null): string {
+  if (status === WorkOrderStatus.DISPATCHED) return '待派单/待接单';
+  if (status === WorkOrderStatus.IN_PROGRESS) return '已派单';
+  if (status === WorkOrderStatus.WAITING_MATERIAL) return '缺料前的处理节点';
+  if (status === WorkOrderStatus.DONE_PENDING_REVIEW) return '完工前的处理节点';
+  if (status === WorkOrderStatus.COMPLETED) return '待验收';
+  if (status === WorkOrderStatus.CANCELLED) return '撤单前的处理节点';
+  return '上一处理节点';
+}
 
 /** 距要求完成截止不足这个数就标红（含已超时） */
 const SLA_WARN_MS = 4 * 60 * 60 * 1000;
@@ -279,7 +291,7 @@ const SLA_WARN_MS = 4 * 60 * 60 * 1000;
  */
 function slaDanger(r: { slaDueAt?: string | null; status: WorkOrderStatus }): boolean {
   if (!r.slaDueAt) return false;
-  if (r.status === WorkOrderStatus.COMPLETED || r.status === WorkOrderStatus.CANCELLED) return false;
+  if ([WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED, WorkOrderStatus.VOIDED].includes(r.status)) return false;
   const due = new Date(r.slaDueAt).getTime();
   return !Number.isNaN(due) && due - Date.now() <= SLA_WARN_MS;
 }
@@ -333,6 +345,7 @@ const FILTER_TABS: Array<{ label: string; value: 'all' | WorkOrderStatus }> = [
   { label: '等待材料', value: WorkOrderStatus.WAITING_MATERIAL },
   { label: '待验收', value: WorkOrderStatus.DONE_PENDING_REVIEW },
   { label: '已完成', value: WorkOrderStatus.COMPLETED },
+  { label: '已作废', value: WorkOrderStatus.VOIDED },
 ];
 
 /**
@@ -350,7 +363,7 @@ function stayDaysOf(row: {
 }) {
   if (!row.createdAt) return 0;
   const closedAt =
-    row.completedAt || (row.status === WorkOrderStatus.CANCELLED ? row.updatedAt : null);
+    row.completedAt || ([WorkOrderStatus.CANCELLED, WorkOrderStatus.VOIDED].includes(row.status as WorkOrderStatus) ? row.updatedAt : null);
   const end = closedAt ? new Date(closedAt) : new Date();
   return stayDays(row.createdAt, Number.isNaN(end.getTime()) ? new Date() : end);
 }
@@ -360,7 +373,7 @@ function stayDaysOf(row: {
  * 单子都结束了还标红标橙，等于在催一件不用办的事；一屏红色，真正压着的那几单就淹了。
  */
 function stayTagColor(row: { status?: WorkOrderStatus }, days: number): string {
-  if (row.status === WorkOrderStatus.CANCELLED || row.status === WorkOrderStatus.COMPLETED) {
+  if ([WorkOrderStatus.CANCELLED, WorkOrderStatus.COMPLETED, WorkOrderStatus.VOIDED].includes(row.status as WorkOrderStatus)) {
     return 'default';
   }
   const tone = stayTone(days);
@@ -461,7 +474,7 @@ function DispatchOrderCard({
   row,
   repairTypeRules,
   recommended,
-  canDelete,
+  canVoid,
   quickAssigning,
   onOpen,
   onAssign,
@@ -471,7 +484,7 @@ function DispatchOrderCard({
   row: WorkOrderRow;
   repairTypeRules: RepairTypeRule[];
   recommended?: TechnicianOption;
-  canDelete: boolean;
+  canVoid: boolean;
   quickAssigning: boolean;
   onOpen: () => void;
   onAssign: () => void;
@@ -479,7 +492,12 @@ function DispatchOrderCard({
   onVoid: () => void;
 }) {
   const pendingAssign = row.status === WorkOrderStatus.CREATED;
+  const waitingOfficeDispatch = pendingAssign && !row.assigneeId && !row.candidateIds?.length;
+  const waitingCandidateAcceptance = pendingAssign && !!row.candidateIds?.length;
   const canReassign = row.status === WorkOrderStatus.DISPATCHED || row.status === WorkOrderStatus.IN_PROGRESS;
+  // “推荐”只服务于办公室尚未派单的决策。已经自动匹配进工单池、已定向派单或维修中的单，
+  // 再显示推荐人会让人误以为系统还没有确定处理路径。
+  const showRecommendation = waitingOfficeDispatch && !!recommended;
   const stateLabel = pendingAssign
     ? row.candidateIds?.length ? '待维修工接单' : '待办公室派单'
     : statusMeta[row.status].label;
@@ -512,7 +530,7 @@ function DispatchOrderCard({
           <ClockCircleOutlined />
           <strong>{row.slaDueAt && slaDanger(row) ? slaCountdownText(row.slaDueAt) : dispatchWaitingText(row.createdAt)}</strong>
         </div>
-        {recommended ? (
+        {showRecommendation && recommended ? (
           <div className="pms-dispatch-recommendation">
             <span>推荐维修工</span>
             <strong>{recommended.name}</strong>
@@ -521,15 +539,25 @@ function DispatchOrderCard({
             </small>
           </div>
         ) : (
-          <div className="pms-dispatch-recommendation is-empty">
-            <span>当前负责人</span>
-            <strong>{row.assigneeName || '尚未选择维修工'}</strong>
-            <small>{pendingAssign ? '请从有权限的维修人员中选择' : '点击详情查看处理进度'}</small>
+          <div className={`pms-dispatch-recommendation${waitingCandidateAcceptance ? '' : ' is-empty'}`}>
+            <span>{waitingCandidateAcceptance ? '自动派单结果' : '当前负责人'}</span>
+            <strong>
+              {waitingCandidateAcceptance
+                ? `已通知 ${row.candidateIds?.length || 0} 位默认维修工`
+                : row.assigneeName || '尚未选择维修工'}
+            </strong>
+            <small>
+              {waitingCandidateAcceptance
+                ? '等待其中一人接单，接单后显示实际负责人'
+                : waitingOfficeDispatch
+                  ? '请按工种筛选并选择维修人员'
+                  : '已接单，不再显示推荐维修工'}
+            </small>
           </div>
         )}
       </div>
       <div className="pms-dispatch-order__actions" onClick={(event) => event.stopPropagation()}>
-        {pendingAssign && recommended && (
+        {showRecommendation && recommended && (
           <Popconfirm
             title={`确认派给${recommended.name}？`}
             description={`该维修工当前有 ${recommended.openCount} 张在手工单`}
@@ -541,12 +569,16 @@ function DispatchOrderCard({
           </Popconfirm>
         )}
         {(pendingAssign || canReassign) && (
-          <Button size="large" onClick={onAssign}>{recommended ? '换维修工' : '选择维修工'}</Button>
+          <Button size="large" onClick={onAssign}>
+            {waitingOfficeDispatch ? '选择维修工' : '改派维修工'}
+          </Button>
         )}
         <Button type="link" size="large" onClick={onOpen}>查看详情 <RightOutlined /></Button>
-        <Tooltip title={canDelete ? '作废后从正常列表和统计中排除，并按规则退回库存' : '请在业务角色中授权：工单管理 · 作废工单'}>
-          <Button type="link" danger disabled={!canDelete} onClick={onVoid}>作废</Button>
-        </Tooltip>
+        {row.status !== WorkOrderStatus.VOIDED && (
+          <Tooltip title={canVoid ? '作废后记录仍可筛选查看，但不再参与统计，并按规则退回库存' : '只有办公室人员或管理员可以作废'}>
+            <Button type="link" danger disabled={!canVoid} onClick={onVoid}>作废</Button>
+          </Tooltip>
+        )}
       </div>
     </article>
   );
@@ -561,7 +593,7 @@ function formatSkillList(skills: string[] | undefined, rules: RepairTypeRule[] =
 export default function WorkOrdersPage() {
   const { message } = AntdApp.useApp();
   const { access } = useAuth();
-  const { canDelete, canEdit } = usePagePerm('work-orders');
+  const { canEdit } = usePagePerm('work-orders');
   const [addressTree, setAddressTree] = useState<AddressCommunity[]>([]);
   const [addressLoading, setAddressLoading] = useState(false);
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -681,32 +713,26 @@ export default function WorkOrdersPage() {
       render: (_, r) => (
         <Space size={0} onClick={(event) => event.stopPropagation()}>
           <Button type="link" onClick={() => setDetailId(r.id)}>详情</Button>
-          <Tooltip title={canDelete ? '作废后从正常列表和统计中排除，并按规则退回库存' : '请在「业务角色」中授权：工单管理 · 作废工单'}>
+          {r.status !== WorkOrderStatus.VOIDED && <Tooltip title={canEdit ? '作废后记录仍可筛选查看，但不再参与统计，并按规则退回库存' : '只有办公室人员或管理员可以作废'}>
             <span>
               <Button
                 type="link"
                 danger
-                icon={<DeleteOutlined />}
-                disabled={!canDelete}
+                icon={<StopOutlined />}
+                disabled={!canEdit}
                 onClick={() => setVoidTarget(r)}
               >
-                删除
+                作废
               </Button>
             </span>
-          </Tooltip>
+          </Tooltip>}
         </Space>
       ),
     },
   ];
   const poolPrefs = useTableColumnPrefs('work-orders.pool', poolColumns);
 
-  const sortedRows = useMemo(() => [...rows].sort((a, b) => {
-    const urgency = Number(Boolean(b.urgent)) - Number(Boolean(a.urgent));
-    if (urgency) return urgency;
-    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
-    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
-    return aTime - bTime;
-  }), [rows]);
+  const sortedRows = useMemo(() => [...rows].sort(compareWorkOrderRoutePriority), [rows]);
   const pageSize = 10;
   const pagedRows = sortedRows.slice((page - 1) * pageSize, page * pageSize);
   const urgentRows = pagedRows.filter((row) => row.urgent);
@@ -860,18 +886,20 @@ export default function WorkOrdersPage() {
       <section className="pms-dispatch-group">
         <div className={`pms-dispatch-group__head${urgent ? ' is-urgent' : ''}`}>
           <h2>{title} · {list.length} 单</h2>
-          <span>同组按报修时间从早到晚</span>
+          <span>同等优先级按日期和相邻地址编排</span>
         </div>
         <div className="pms-dispatch-order-list">
           {list.map((row) => {
-            const recommended = recommendTechnician(row);
+            const recommended = row.status === WorkOrderStatus.CREATED && !row.candidateIds?.length
+              ? recommendTechnician(row)
+              : undefined;
             return (
               <DispatchOrderCard
                 key={row.id}
                 row={row}
                 repairTypeRules={repairTypeRules}
                 recommended={recommended}
-                canDelete={canDelete}
+                canVoid={canEdit}
                 quickAssigning={quickAssigningId === row.id}
                 onOpen={() => setDetailId(row.id)}
                 onAssign={() => setDispatchTarget(row)}
@@ -2177,7 +2205,9 @@ function WorkOrderDetailDrawer({
 }) {
   const { message } = AntdApp.useApp();
   const nav = useNavigate();
-  const { canDelete, canEdit } = usePagePerm('work-orders');
+  const { access } = useAuth();
+  const { canEdit } = usePagePerm('work-orders');
+  const isSystemAdmin = !!access?.isTenantAdmin || !!access?.isPlatformAdmin;
   const canFillMaintenance = usePagePerm('maintenance-orders').canEdit;
   const [detail, setDetail] = useState<WorkOrderDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -2188,9 +2218,11 @@ function WorkOrderDetailDrawer({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [changeTypeOpen, setChangeTypeOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [rollbackOpen, setRollbackOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) { setDetail(null); return; }
@@ -2232,28 +2264,41 @@ function WorkOrderDetailDrawer({
       ? wo.candidateIds?.length ? '待维修工接单' : '等待办公室派单'
       : statusMeta[wo.status].label
     : '';
-  const actionBar = status && (canEdit || canDelete || canFillMaintenance) ? (
+  const timelineLogs = detail
+    ? [...detail.logs].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || b.id - a.id,
+      )
+    : [];
+  const actionBar = status && (canEdit || isSystemAdmin || canFillMaintenance) ? (
     <div className="pms-workorder-detail-actionbar">
       <div className="pms-workorder-detail-secondary-actions">
-        {canFillMaintenance && status !== WorkOrderStatus.CANCELLED && (
+        {canFillMaintenance && ![WorkOrderStatus.CANCELLED, WorkOrderStatus.VOIDED].includes(status) && (
           <Button icon={<FileTextOutlined />} onClick={() => nav(`/maintenance-orders?workOrderId=${id}`)}>填养护单</Button>
         )}
         {canEdit && [WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
           <Button onClick={() => setAssignOpen(true)}>改派维修工</Button>
         )}
         {canEdit && status === WorkOrderStatus.IN_PROGRESS && <Button onClick={() => setNeedMaterialOpen(true)}>标记缺料</Button>}
-        {canEdit && status === WorkOrderStatus.IN_PROGRESS && (
-          <Button icon={<PlusOutlined />} onClick={() => setProgressOpen(true)}>添加进度</Button>
+        {canEdit && [WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.DONE_PENDING_REVIEW, WorkOrderStatus.COMPLETED].includes(status) && (
+          <Button icon={<PlusOutlined />} onClick={() => setProgressOpen(true)}>
+            {status === WorkOrderStatus.COMPLETED ? '补充维修记录' : '添加进度'}
+          </Button>
         )}
         {canEdit && status === WorkOrderStatus.WAITING_MATERIAL && <Button onClick={() => setEditMissingOpen(true)}>修改缺料</Button>}
         {canEdit && [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(status) && (
           <Button danger onClick={() => setCancelOpen(true)}>撤单</Button>
         )}
-        {canDelete && (
-          <Button danger icon={<DeleteOutlined />} onClick={() => setVoidOpen(true)}>删除工单</Button>
+        {canEdit && status !== WorkOrderStatus.VOIDED && (
+          <Button danger icon={<StopOutlined />} onClick={() => setVoidOpen(true)}>作废工单</Button>
+        )}
+        {isSystemAdmin && (
+          <Button danger icon={<DeleteOutlined />} onClick={() => setDeleteOpen(true)}>永久删除</Button>
         )}
         {canEdit && status === WorkOrderStatus.IN_PROGRESS && (
           <Button danger icon={<UndoOutlined />} onClick={() => setTransferOpen(true)}>转给其他人修</Button>
+        )}
+        {canEdit && ![WorkOrderStatus.CREATED, WorkOrderStatus.VOIDED].includes(status) && (
+          <Button icon={<UndoOutlined />} onClick={() => setRollbackOpen(true)}>撤回上一步</Button>
         )}
       </div>
       <div className="pms-workorder-detail-primary-actions">
@@ -2432,20 +2477,21 @@ function WorkOrderDetailDrawer({
                 <DetailSection title="处理进度" description="从报修到当前节点的完整轨迹">
                   <Timeline
                     className="pms-detail-timeline"
-                    items={detail.logs.map((log, index) => ({
-                      color: log.toStatus === WorkOrderStatus.COMPLETED ? 'green' : 'blue',
+                    items={timelineLogs.map((log, index) => ({
+                      color: log.toStatus === WorkOrderStatus.COMPLETED ? 'green' : log.toStatus === WorkOrderStatus.VOIDED ? 'gray' : 'blue',
                       children: (
                         <div className="pms-workorder-timeline-entry">
                           <div className="pms-workorder-timeline-title">
                             <strong>{actionLabel(log.action)}</strong>
                             <Text type="secondary">{formatDateTimeCn(log.createdAt)}</Text>
                             {(() => {
-                              const next = detail.logs[index + 1];
+                              const newer = timelineLogs[index - 1];
                               const finished =
                                 detail.workOrder.status === WorkOrderStatus.COMPLETED ||
-                                detail.workOrder.status === WorkOrderStatus.CANCELLED;
-                              const stay = next
-                                ? formatDuration(log.createdAt, next.createdAt)
+                                detail.workOrder.status === WorkOrderStatus.CANCELLED ||
+                                detail.workOrder.status === WorkOrderStatus.VOIDED;
+                              const stay = newer
+                                ? formatDuration(log.createdAt, newer.createdAt)
                                 : finished
                                   ? ''
                                   : formatDuration(log.createdAt, null);
@@ -2453,6 +2499,7 @@ function WorkOrderDetailDrawer({
                             })()}
                           </div>
                           <div className="pms-workorder-timeline-note">
+                            <Text type="secondary">操作人：{log.operatorName || (log.operatorId ? '未知操作人' : '系统')}</Text>
                             {log.fromStatus && (
                               <Text type="secondary">
                                 {statusMeta[log.fromStatus].label} → {statusMeta[log.toStatus].label}
@@ -2519,6 +2566,16 @@ function WorkOrderDetailDrawer({
         onClose={() => setVoidOpen(false)}
         onDone={() => {
           setVoidOpen(false);
+          refresh();
+        }}
+      />
+      <DeleteWorkOrderModal
+        open={deleteOpen}
+        workOrder={detail?.workOrder ?? null}
+        materialLines={detail?.materialUsages?.length ?? 0}
+        onClose={() => setDeleteOpen(false)}
+        onDone={() => {
+          setDeleteOpen(false);
           onClose();
           onChanged();
         }}
@@ -2550,6 +2607,13 @@ function WorkOrderDetailDrawer({
         onClose={() => setTransferOpen(false)}
         onDone={async () => { setTransferOpen(false); await refresh(); }}
       />
+      <RollbackWorkOrderModal
+        open={rollbackOpen}
+        workOrderId={id}
+        status={detail?.workOrder.status ?? null}
+        onClose={() => setRollbackOpen(false)}
+        onDone={async () => { setRollbackOpen(false); await refresh(); }}
+      />
     </>
   );
 }
@@ -2572,6 +2636,8 @@ function actionLabel(a: string) {
     urge_manager: '业主催单（升级经理）',
     progress: '维修进度更新',
     transfer_request: '申请转给其他人维修',
+    rollback: '撤回处理节点',
+    void: '作废工单',
   };
   return m[a] || a;
 }
@@ -2593,7 +2659,7 @@ function UrgeRepairButton({
 }) {
   const { message } = AntdApp.useApp();
   const [sending, setSending] = useState(false);
-  const closed = status === WorkOrderStatus.COMPLETED || status === WorkOrderStatus.CANCELLED;
+  const closed = [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED, WorkOrderStatus.VOIDED].includes(status);
   if (!canEdit || closed) return null;
 
   const send = async () => {
@@ -2650,7 +2716,7 @@ function SlaDueEditor({
   const [saving, setSaving] = useState(false);
   /** 勾了但还没选时间的中间态 */
   const [picking, setPicking] = useState(false);
-  const closed = status === WorkOrderStatus.COMPLETED || status === WorkOrderStatus.CANCELLED;
+  const closed = [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED, WorkOrderStatus.VOIDED].includes(status);
   // 开工后置灰：截止时间是排班依据，中途改等于把排好的班打乱（服务端同样拦）
   const lockReason = repairTypeAndSlaLockReason(status);
   const danger = !!value && !closed && new Date(value).getTime() - Date.now() <= SLA_WARN_MS;
@@ -2836,10 +2902,7 @@ function ChangeTypeModal({
   );
 }
 
-/**
- * “删除工单”是后台的审计作废，不是数据库物理删除。
- * 把退料、收费统计和 AI 学习影响当场说清楚，避免管理员把“撤单”和“删除”混用。
- */
+/** 作废保留整张工单，和系统管理员的永久删除严格分开。 */
 function VoidWorkOrderModal({
   open, workOrder, materialLines, onClose, onDone,
 }: {
@@ -2878,8 +2941,8 @@ function VoidWorkOrderModal({
         excludedFeeCents: number;
         detachedPurchaseRequests: number;
       }>({
-        method: 'DELETE',
-        url: `/work-orders/${workOrder?.id}`,
+        method: 'POST',
+        url: `/work-orders/${workOrder?.id}/void`,
         data: { reason: value, confirmReversal: true },
       });
       const notes = ['工单已作废'];
@@ -2889,7 +2952,7 @@ function VoidWorkOrderModal({
       message.success(notes.join('，'));
       onDone();
     } catch (e: any) {
-      message.error(e?.message || '删除工单失败');
+      message.error(e?.message || '作废工单失败');
     } finally {
       setSubmitting(false);
     }
@@ -2899,8 +2962,8 @@ function VoidWorkOrderModal({
   return (
     <Modal
       open={open}
-      title={<Space><DeleteOutlined style={{ color: '#cf1322' }} />删除工单</Space>}
-      okText="确认删除并作废"
+      title={<Space><StopOutlined style={{ color: '#d46b08' }} />作废工单</Space>}
+      okText="确认作废"
       okButtonProps={{ danger: true, loading: submitting, disabled: !confirmed || reason.trim().length < 2 }}
       cancelButtonProps={{ disabled: submitting }}
       onOk={submit}
@@ -2912,8 +2975,8 @@ function VoidWorkOrderModal({
       <Alert
         type="warning"
         showIcon
-        message={`工单 ${workOrder?.orderNo || ''} 将从所有正常页面和统计中消失`}
-        description="这是可审计作废：不能在页面恢复，但原始报修、金额、用料和操作原因仍会保留在后台审计记录中。"
+        message={`工单 ${workOrder?.orderNo || ''} 将停止流转，但记录不会删除`}
+        description="作废后可在调度台“已作废”中筛选和查看；原始报修、金额、用料及操作原因完整保留，但不参与正常工单和经营统计。"
         style={{ marginBottom: 16 }}
       />
       <Descriptions
@@ -2961,6 +3024,112 @@ function VoidWorkOrderModal({
       >
         我已确认：已领用材料退回库存，收费从报表排除，工单不再参与统计和 AI 学习
       </Checkbox>
+    </Modal>
+  );
+}
+
+/** 系统管理员专用的不可逆永久删除。 */
+function DeleteWorkOrderModal({
+  open, workOrder, materialLines, onClose, onDone,
+}: {
+  open: boolean;
+  workOrder: WorkOrderRow | null;
+  materialLines: number;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [reason, setReason] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setReason('');
+    setConfirmation('');
+  }, [open, workOrder?.id]);
+
+  const submit = async () => {
+    const value = reason.trim();
+    if (value.length < 2) {
+      message.warning('请填写至少 2 个字的永久删除原因');
+      return;
+    }
+    if (confirmation.trim() !== '永久删除') {
+      message.warning('请输入“永久删除”完成确认');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await request({
+        method: 'DELETE',
+        url: `/work-orders/${workOrder?.id}`,
+        data: { reason: value, confirmation: '永久删除' },
+      });
+      message.success('工单已永久删除');
+      onDone();
+    } catch (e: any) {
+      message.error(e?.message || '永久删除工单失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title={<Space><WarningOutlined style={{ color: '#cf1322' }} />永久删除工单</Space>}
+      okText="永久删除"
+      okButtonProps={{
+        danger: true,
+        loading: submitting,
+        disabled: reason.trim().length < 2 || confirmation.trim() !== '永久删除',
+      }}
+      cancelButtonProps={{ disabled: submitting }}
+      onOk={submit}
+      onCancel={onClose}
+      closable={!submitting}
+      maskClosable={!submitting}
+      destroyOnHidden
+    >
+      <Alert
+        type="error"
+        showIcon
+        message={`工单 ${workOrder?.orderNo || ''} 删除后不可恢复`}
+        description="工单、报修信息、进度、验收和关联养护单会永久移除。未退用料会先退回库存；采购申请只解除关联，库存流水继续保留，避免库存账失真。"
+        style={{ marginBottom: 16 }}
+      />
+      <Descriptions
+        size="small"
+        bordered
+        column={1}
+        style={{ marginBottom: 16 }}
+        items={[
+          {
+            key: 'material',
+            label: '库存用料',
+            children: materialLines ? `${materialLines} 条未退用料会先按原批次退库` : '没有待退库存用料',
+          },
+          { key: 'scope', label: '权限范围', children: '只有系统管理员可以执行' },
+        ]}
+      />
+      <div style={{ marginBottom: 8 }}><Text strong>删除原因</Text></div>
+      <TextArea
+        rows={3}
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+        placeholder="必填，例如：测试数据、重复误建且确认不需留档"
+        maxLength={500}
+        showCount
+        disabled={submitting}
+      />
+      <div style={{ margin: '14px 0 8px' }}><Text strong>输入“永久删除”确认</Text></div>
+      <Input
+        value={confirmation}
+        onChange={(event) => setConfirmation(event.target.value)}
+        placeholder="永久删除"
+        disabled={submitting}
+      />
     </Modal>
   );
 }
@@ -3774,7 +3943,80 @@ function RepairTypeRuleModal({
   );
 }
 
-// ---------------- 维修进度 / 转单 Modal ----------------
+// ---------------- 撤回 / 维修进度 / 转单 Modal ----------------
+function RollbackWorkOrderModal({
+  open, workOrderId, status, onClose, onDone,
+}: {
+  open: boolean;
+  workOrderId: number | null;
+  status: WorkOrderStatus | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { if (open) setReason(''); }, [open]);
+
+  const submit = async () => {
+    if (reason.trim().length < 2) {
+      message.warning('请填写撤回原因，至少 2 个字');
+      return;
+    }
+    setSaving(true);
+    try {
+      await request({
+        method: 'POST',
+        url: `/work-orders/${workOrderId}/rollback`,
+        data: { reason: reason.trim() },
+      });
+      message.success(`已撤回到${rollbackTargetLabel(status)}`);
+      onDone();
+    } catch (e: any) {
+      message.error(e?.message || '撤回失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="撤回上一步"
+      open={open}
+      onCancel={onClose}
+      onOk={submit}
+      okText="确认撤回"
+      confirmLoading={saving}
+      destroyOnHidden
+    >
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <Alert
+          type="warning"
+          showIcon
+          message={`将撤回到：${rollbackTargetLabel(status)}`}
+          description="原操作不会消失；操作人、撤回前后状态和本次原因都会如实保留在工单进度中。"
+        />
+        <div>
+          <Text strong>撤回原因</Text>
+          <Text type="secondary" style={{ display: 'block', margin: '4px 0 8px' }}>
+            例如：误点完工，现场还有一项需要处理
+          </Text>
+          <TextArea
+            value={reason}
+            maxLength={500}
+            showCount
+            rows={4}
+            autoFocus
+            placeholder="请说明为什么撤回，方便后续人员查看"
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </div>
+      </Space>
+    </Modal>
+  );
+}
+
 function ProgressModal({
   open, workOrderId, onClose, onDone,
 }: {

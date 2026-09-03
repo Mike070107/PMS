@@ -74,6 +74,7 @@ const statusLabel: Record<WorkOrderStatus, string> = {
   done_pending_review: '待验收',
   completed: '已完成',
   cancelled: '已撤单',
+  voided: '已作废',
 };
 
 const statusColor: Record<WorkOrderStatus, string> = {
@@ -84,6 +85,7 @@ const statusColor: Record<WorkOrderStatus, string> = {
   done_pending_review: 'purple',
   completed: 'green',
   cancelled: 'default',
+  voided: 'default',
 };
 
 function getGreeting(): string {

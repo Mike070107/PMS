@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { UserRole, WorkOrderStatus } from '../common/enums';
+import { UserRole, UserStatus, WorkOrderStatus } from '../common/enums';
 import { InventoryService } from './inventory/inventory.service';
 import { AiFeedbackService } from './ai/ai-feedback.service';
 import { RepairFeeRulesService } from './ai/repair-fee-rules.service';
@@ -272,7 +272,7 @@ test('收费规则只能由完整覆盖对应管理处的角色维护', async ()
   );
 });
 
-function appAccess(pages: Record<string, { view: boolean }>) {
+function appAccess(pages: Record<string, { view: boolean; edit?: boolean; delete?: boolean }>) {
   return {
     isPlatformAdmin: false,
     isTenantAdmin: false,
@@ -418,6 +418,41 @@ test('派单台只列没有负责人且没有候选维修工的新单', async ()
   assert.equal(capturedWhere.status, WorkOrderStatus.CREATED);
 });
 
+test('无人自动匹配时只通知所属管理处的 Web 或小程序派单人员', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  let queriedIds: number[] = [];
+  service.accessService = {
+    async officeIdOfCommunity(tenantId: number, communityId: number) {
+      assert.equal(tenantId, 1);
+      assert.equal(communityId, 10);
+      return 3;
+    },
+    async userIdsWithPermission(_tenantId: number, pageKey: string) {
+      return pageKey === 'app:dispatch' ? [1, 2] : [2, 3, 4];
+    },
+    async filterUsersCoveringOffice(tenantId: number, ids: number[], officeId: number) {
+      assert.equal(tenantId, 1);
+      assert.equal(officeId, 3);
+      // 4 是本次报修提交人，必须在范围判断前排除；2 属于其它管理处。
+      assert.deepEqual(ids, [1, 2, 3]);
+      return new Map([[1, 'office'], [3, 'all']]);
+    },
+  };
+  service.userRepo = {
+    async find(options: any) {
+      queriedIds = options.where.id._value;
+      assert.equal(options.where.tenantId, 1);
+      assert.equal(options.where.status, UserStatus.ACTIVE);
+      return queriedIds.map((id) => ({ id, status: UserStatus.ACTIVE }));
+    },
+  };
+
+  const receivers = await service.dispatchersToNotify(1, 10, 4);
+
+  assert.deepEqual(queriedIds, [1, 3]);
+  assert.deepEqual(receivers.map((item: any) => item.id), [1, 3]);
+});
+
 test('同时有派单权限的人打开工单池时仍按工单池范围取数', async () => {
   const service = Object.create(RepairsService.prototype) as any;
   let capturedWhere: any;
@@ -474,7 +509,37 @@ test('在手工单排除尚未确认接单的定向派单', async () => {
   assert.deepEqual(capturedWhere.status._value._value, [
     WorkOrderStatus.CREATED,
     WorkOrderStatus.DISPATCHED,
+    WorkOrderStatus.VOIDED,
   ]);
+});
+
+test('同时拥有派单和后台管理权限，scope=mine 仍只返回本人在手工单', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  let capturedWhere: any;
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => [10];
+  service.isSelfScoped = async () => false;
+  service.canDispatch = async () => true;
+  service.keywordWheres = async (_tenantId: number, where: any) => [where];
+  service.workOrderRepo = {
+    async find(options: any) {
+      capturedWhere = options.where;
+      return [];
+    },
+  };
+  const user = { id: 7, role: UserRole.STAFF, tenantId: 1 } as any;
+  const access = appAccess({
+    'app:my-orders': { view: true },
+    'app:dispatch': { view: true, edit: true },
+    'work-orders': { view: true, edit: true },
+  });
+
+  await service.listWorkOrders({ scope: 'mine' }, user, access);
+
+  assert.equal(capturedWhere.assigneeId, 7);
+  assert.equal(capturedWhere.status._type, 'not');
+  assert.equal(capturedWhere.status._value._type, 'in');
 });
 
 test('定向已派单只进入对应维修工的工单池', async () => {
@@ -591,5 +656,22 @@ test('只有「我的报修」权限时，不能打开别人提交的工单详�
   await assert.rejects(
     () => service.getWorkOrder(5, user, appAccess({ 'app:my-repairs': { view: true } })),
     /work order not found/,
+  );
+});
+
+test('普通业务角色即使误配删除权限也不能永久删除工单', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  service.resolveTenantId = () => 1;
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+  const access = appAccess({ 'work-orders': { view: true, edit: true, delete: true } });
+
+  await assert.rejects(
+    () => service.deleteWorkOrder(
+      38,
+      { reason: '误建测试工单', confirmation: '永久删除' },
+      user,
+      access,
+    ),
+    /只有系统管理员可以永久删除工单/,
   );
 });

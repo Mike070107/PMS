@@ -1,6 +1,12 @@
 import { repairs } from '@pms/api-client';
-import { withOrderLabels } from '@pms/miniapp-ui';
 import {
+  createHoldToTalk,
+  speechErrorTip,
+  withOrderLabels,
+  type HoldToTalk,
+} from '@pms/miniapp-ui';
+import {
+  compareWorkOrderRoutePriority,
   WorkOrderStatus,
   type TechnicianOption,
   type WorkOrderListItem,
@@ -9,6 +15,24 @@ import { isActiveOrder } from '../../utils/order-status';
 import { getSession } from '../../utils/session';
 import { cachedPoolMode, readCachedAccess, setTabBadge, setTabBarHidden, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unread';
+
+/** 派单备注也允许按住说话；插件不可用时隐藏语音入口，手工输入照常可用。 */
+let speechManager: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  speechManager = requirePlugin('WechatSI').getRecordRecognitionManager();
+} catch {
+  speechManager = null;
+}
+let assignSpeechHold: HoldToTalk | null = null;
+
+function appendSpeech(existing: string, spoken: string): string {
+  const before = existing.trim().replace(/[，,；;。]+$/, '');
+  const after = spoken.trim();
+  if (!before) return after;
+  if (!after || before.includes(after)) return before;
+  return `${before}；${after}`;
+}
 
 /**
  * 这一屏对两种人是两件事，同一份数据、两套动作：
@@ -94,6 +118,7 @@ const DISPATCH_FILTERS: PoolFilter[] = [
   { key: 'waiting', label: '等待材料', scope: 'all', status: WorkOrderStatus.WAITING_MATERIAL },
   { key: 'review', label: '待验收', scope: 'all', status: WorkOrderStatus.DONE_PENDING_REVIEW },
   { key: 'completed', label: '已完成', scope: 'all', status: WorkOrderStatus.COMPLETED },
+  { key: 'voided', label: '已作废', scope: 'all', status: WorkOrderStatus.VOIDED },
   { key: 'all', label: '全部', scope: 'all' },
 ];
 
@@ -222,11 +247,16 @@ Page({
     slaOptions: SLA_OPTIONS.map((item) => item.label),
     slaIndex: 3,
     assignNote: '',
+    hasSpeech: !!speechManager,
+    assignRecording: false,
+    assignSpeechPartial: '',
     assignError: '',
     assigning: false,
   },
 
   onShow() {
+    // 语音插件的回调是全局单例，其他页面使用后会覆盖；每次回到派单台都重新绑定到本页。
+    this.bindAssignSpeech();
     /**
      * 先按缓存点亮对应的那一格。
      *
@@ -362,15 +392,10 @@ Page({
         };
       });
 
-      // 工单池默认分两组：紧急在前；同组严格按报修时间从早到晚。
-      // 服务端已按这条规则取前 100 条，这里再排一次，避免端上后续加工打乱稳定顺序。
+      // 现场处理顺序：紧急 / 超时优先；同一天再把相邻地址聚在一起，减少来回跑。
+      // 服务端和端上共用同一口径，这里重排是为了防止页面加工数据时打乱顺序。
       if (mainTab === 'pool' && (!dispatcher || filter.key === 'pool')) {
-        rows.sort(
-          (a, b) =>
-            Number(b.urgent) - Number(a.urgent)
-            || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-            || a.id - b.id,
-        );
+        rows.sort(compareWorkOrderRoutePriority);
       }
 
       const showPriorityGroups = mainTab === 'pool' && (!dispatcher || filter.key === 'pool');
@@ -602,8 +627,41 @@ Page({
   },
 
   onCloseAssign() {
-    this.setData({ assignOpen: false });
+    if (this.data.assignRecording) assignSpeechHold?.release();
+    this.setData({ assignOpen: false, assignRecording: false, assignSpeechPartial: '' });
     setTabBarHidden(this, false);
+  },
+
+  bindAssignSpeech() {
+    if (!speechManager) return;
+    assignSpeechHold = createHoldToTalk(speechManager);
+    speechManager.onStart = () => {
+      this.setData({ assignRecording: true, assignSpeechPartial: '' });
+      assignSpeechHold?.started();
+    };
+    speechManager.onRecognize = (res: { result: string }) => {
+      this.setData({ assignSpeechPartial: res.result || '' });
+    };
+    speechManager.onStop = (res: { result: string }) => {
+      assignSpeechHold?.ended();
+      const text = (res.result || this.data.assignSpeechPartial || '').trim();
+      this.setData({ assignRecording: false, assignSpeechPartial: '' });
+      if (text) this.setData({ assignNote: appendSpeech(this.data.assignNote, text) });
+    };
+    speechManager.onError = (err: { msg?: string; retcode?: number }) => {
+      assignSpeechHold?.ended();
+      this.setData({ assignRecording: false, assignSpeechPartial: '' });
+      speechErrorTip(err).then((tip) => wx.showToast({ icon: 'none', title: tip }));
+    };
+  },
+
+  onAssignSpeechStart() {
+    this.setData({ assignError: '' });
+    assignSpeechHold?.press();
+  },
+
+  onAssignSpeechEnd() {
+    assignSpeechHold?.release();
   },
 
   /** 面板内容区滚动时不要把底下的列表也带着滚 */

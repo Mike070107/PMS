@@ -202,6 +202,10 @@ export const addProgress = (
 export const requestTransfer = (id: number | string, data: { note: string }) =>
   request<void>({ method: 'POST', url: `/work-orders/${id}/transfer-request`, data });
 
+/** 办公室/管理员把工单撤回一个处理节点；原因会写入工单时间轴。 */
+export const rollback = (id: number | string, data: { reason: string }) =>
+  request<void>({ method: 'POST', url: `/work-orders/${id}/rollback`, data });
+
 export const review = (
   id: number | string,
   data: { rating: number; comment?: string; attachments?: string[] },

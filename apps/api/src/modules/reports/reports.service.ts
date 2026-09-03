@@ -56,6 +56,7 @@ const STATUS_LABELS: Record<string, string> = {
   [WorkOrderStatus.DONE_PENDING_REVIEW]: '待验收',
   [WorkOrderStatus.COMPLETED]: '已完成',
   [WorkOrderStatus.CANCELLED]: '已撤单',
+  [WorkOrderStatus.VOIDED]: '已作废',
 };
 
 interface DateRange {
@@ -171,6 +172,7 @@ export class ReportsService {
     const where: string[] = [
       `wo.tenant_id = ${p.add(tenantId)}`,
       `wo.deleted_at IS NULL`,
+      `wo.status <> 'voided'`,
       `wo.created_at >= ${p.add(range.fromTs)}`,
       `wo.created_at < ${p.add(range.toTs)}`,
     ];
@@ -361,6 +363,7 @@ export class ReportsService {
     const completedWhere = [
       `wo.tenant_id = ${p.add(tenantId)}`,
       `wo.deleted_at IS NULL`,
+      `wo.status <> 'voided'`,
       `wo.assignee_id IS NOT NULL`,
       `wo.completed_at >= ${p.add(range.fromTs)}`,
       `wo.completed_at < ${p.add(range.toTs)}`,
@@ -382,6 +385,7 @@ export class ReportsService {
     const activeWhere = [
       `wo.tenant_id = ${p2.add(tenantId)}`,
       `wo.deleted_at IS NULL`,
+      `wo.status <> 'voided'`,
       `wo.assignee_id IS NOT NULL`,
       `wo.status IN ('dispatched','in_progress')`,
     ];
@@ -632,6 +636,7 @@ export class ReportsService {
       const where = [
         `wm.tenant_id = ${p.add(tenantId)}`,
         `wo.deleted_at IS NULL`,
+        `wo.status <> 'voided'`,
         `wm.created_at >= ${p.add(range.fromTs)}`,
         `wm.created_at < ${p.add(range.toTs)}`,
       ];
@@ -796,7 +801,7 @@ export class ReportsService {
     ]);
     // 维修工 + 历史上被派过单的人（离职/改角色后名字还要能选出来看历史）
     const assigneeRows: Array<{ assignee_id: number }> = await this.dataSource.query(
-      `SELECT DISTINCT assignee_id FROM work_orders WHERE tenant_id = $1 AND deleted_at IS NULL AND assignee_id IS NOT NULL`,
+      `SELECT DISTINCT assignee_id FROM work_orders WHERE tenant_id = $1 AND deleted_at IS NULL AND status <> 'voided' AND assignee_id IS NOT NULL`,
       [tenantId],
     );
     const staffIds = [...new Set([...technicianIds, ...assigneeRows.map((r) => Number(r.assignee_id))])];

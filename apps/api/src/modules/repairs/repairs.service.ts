@@ -91,11 +91,13 @@ import {
   CancelWorkOrderDto,
   CompleteWorkOrderDto,
   CreateRepairRequestDto,
+  DeleteWorkOrderDto,
   MaterialUsageDto,
   NeedMaterialDto,
   ParseRepairAddressDto,
   RequestWorkOrderTransferDto,
   ReviewWorkOrderDto,
+  RollbackWorkOrderDto,
   UpdateMissingMaterialsDto,
   UpdateOfficeSuggestionSettingsDto,
   UpdateWorkOrderRepairTypeDto,
@@ -137,7 +139,10 @@ import {
 } from '../inventory/stock-ledger';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { buildTypeKeywords, classifyByKeywords } from './repair-classify.util';
-import { assertWorkOrderTransition } from './work-order-state-machine';
+import {
+  assertWorkOrderTransition,
+  workOrderRollbackTarget,
+} from './work-order-state-machine';
 import { nextPurchaseRequestNo } from '../inventory/purchase-request-no.util';
 import {
   DEFAULT_REPAIR_TYPES,
@@ -199,6 +204,7 @@ export class RepairsService implements OnModuleInit {
    */
   async onModuleInit() {
     try {
+      await this.recoverLegacyVoidedWorkOrders();
       await this.renumberLegacyOrderNos();
     } catch (error) {
       // 迁移失败不能拦住服务启动 —— 报修比单号好看重要
@@ -522,6 +528,32 @@ export class RepairsService implements OnModuleInit {
     return this.listRepairTypeRules(user, officeId, access);
   }
 
+  /**
+   * 旧版把“作废”实现成了软删除。新口径要求作废单仍能在调度台筛选，
+   * 因此启动时把历史软删除记录恢复为明确的 voided 状态。
+   */
+  private async recoverLegacyVoidedWorkOrders() {
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        `UPDATE repair_requests rr
+            SET deleted_at = NULL
+          WHERE rr.deleted_at IS NOT NULL
+            AND EXISTS (
+              SELECT 1 FROM work_orders wo
+               WHERE wo.request_id = rr.id
+                 AND wo.tenant_id = rr.tenant_id
+                 AND wo.deleted_at IS NOT NULL
+            )`,
+      );
+      await manager.query(
+        `UPDATE work_orders
+            SET status = $1, deleted_at = NULL
+          WHERE deleted_at IS NOT NULL`,
+        [WorkOrderStatus.VOIDED],
+      );
+    });
+  }
+
   private async assertRuleOfficeInScope(
     tenantId: number,
     officeId: number | null,
@@ -583,11 +615,15 @@ export class RepairsService implements OnModuleInit {
    * 这里管的是类型名切词、同义词这类「系统自己猜的」匹配。
    */
   private async buildNegativeKeywords(tenantId: number): Promise<Map<string, string[]>> {
-    const corrections = await this.dataSource.getRepository(RepairTypeCorrection).find({
-      where: { tenantId },
-      order: { id: 'DESC' },
-      take: 500,
-    });
+    const corrections = await this.dataSource
+      .getRepository(RepairTypeCorrection)
+      .createQueryBuilder('correction')
+      .innerJoin(WorkOrder, 'wo', 'wo.id = correction.work_order_id AND wo.tenant_id = correction.tenant_id')
+      .where('correction.tenant_id = :tenantId', { tenantId })
+      .andWhere('wo.status <> :voided', { voided: WorkOrderStatus.VOIDED })
+      .orderBy('correction.id', 'DESC')
+      .take(500)
+      .getMany();
     const wrongOnes = corrections.filter((row) => row.fromType && row.fromType !== row.toType);
     if (!wrongOnes.length) return new Map();
 
@@ -919,6 +955,9 @@ export class RepairsService implements OnModuleInit {
         throw new BadRequestException('invalid work order status');
       }
       where.status = query.status as WorkOrderStatus;
+    } else {
+      // 作废单只在明确选择“已作废”时出现，避免混入日常调度和各端默认列表。
+      where.status = Not(WorkOrderStatus.VOIDED);
     }
 
     // 列表接口被多个小程序页面复用，Guard 只能判断「拥有其中任意一格」，
@@ -953,7 +992,24 @@ export class RepairsService implements OnModuleInit {
     // 小程序角色按人收敛可见范围，后台角色维持全租户。
     // 业主端身份不止 OWNER：保安/居委/业委/物业工作人员也在业主端提单，
     // 漏了他们要么 403、要么（更糟）落到无过滤分支看到全租户的单
-    if (await this.isSelfScoped(user, access)) {
+    if (user.role === UserRole.OWNER) {
+      const myRequestIds = await this.repairRequestRepo.find({
+        where: { tenantId, submittedBy: user.id },
+        select: ['id'],
+        order: { id: 'DESC' },
+        take: 200,
+      });
+      if (!myRequestIds.length) return [];
+      where.requestId = In(myRequestIds.map((item) => item.id));
+    } else if (query.scope === 'mine') {
+      // 「在手工单」是一个明确的人身范围：无论这个人是否同时拥有派单台、后台工单管理、
+      // 企业管理员等更宽权限，只要请求 scope=mine，就只能返回 assignee_id=本人。
+      // 这档必须放在其它角色/权限分流之前，避免宽权限把“我的”解释成“我能管理的”。
+      where.assigneeId = user.id;
+      if (!query.status) {
+        where.status = Not(In([WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.VOIDED]));
+      }
+    } else if (await this.isSelfScoped(user, access)) {
       const myRequestIds = await this.repairRequestRepo.find({
         where: { tenantId, submittedBy: user.id },
         select: ['id'],
@@ -1006,7 +1062,7 @@ export class RepairsService implements OnModuleInit {
       });
       if (!myRequestIds.length) return [];
       where.requestId = In(myRequestIds.map((item) => item.id));
-    } else if (query.scope === 'mine' || !(await this.canDispatch(user, access))) {
+    } else if (!(await this.canDispatch(user, access))) {
       // 「在手工单」= 派到我头上的单，对谁都是这个意思。
       // 原来这一档只认 TECHNICIAN，办公室带 scope=mine 会掉进无过滤分支，
       // 把全公司的工单当成「我手上的」列出来。
@@ -1015,7 +1071,7 @@ export class RepairsService implements OnModuleInit {
       // “在手工单”只放真正已经接下、正在处理或已处理过的单；尚未接的定向派单
       // 留在工单池。scope=mine 仍保留已完结状态，供“已完结”页复用。
       if (!query.status) {
-        where.status = Not(In([WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED]));
+        where.status = Not(In([WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.VOIDED]));
       }
     }
 
@@ -1156,8 +1212,9 @@ export class RepairsService implements OnModuleInit {
         })(),
       };
     });
-    // 工单池、在手工单和 Web 调度台统一：紧急一组在前，两组内部都先到先处理。
-    // 数据库已按同样口径取前 100 条；这里再排一次，防止关联数据缺失时顺序漂移。
+    // 工单池、在手工单和 Web 调度台统一：紧急 / 超时风险优先，
+    // 同一天内再按完整地址自然排序，让同小区、同楼栋的工单相邻，减少往返。
+    // 数据库先保证紧急与老单进入前 100 条；地址和 SLA 需要关联数据齐全后在这里精排。
     rows.sort(compareWorkOrderPriority);
     return rows;
   }
@@ -1493,7 +1550,11 @@ export class RepairsService implements OnModuleInit {
       }
       byStatus[WorkOrderStatus.CREATED] = await pendingDispatch.getCount();
     }
-    const total = Object.values(byStatus).reduce((sum, count) => sum + (count || 0), 0);
+    // 已作废数量供单独筛选展示，但不计入正常工单总数和经营口径。
+    const total = Object.entries(byStatus).reduce(
+      (sum, [status, count]) => status === WorkOrderStatus.VOIDED ? sum : sum + (count || 0),
+      0,
+    );
     return { total, byStatus };
   }
 
@@ -1521,7 +1582,7 @@ export class RepairsService implements OnModuleInit {
 
     const requestIds = requests.map((item) => item.id);
     const workOrders = await this.workOrderRepo.find({
-      where: { tenantId, requestId: In(requestIds) },
+      where: { tenantId, requestId: In(requestIds), status: Not(WorkOrderStatus.VOIDED) },
       select: ['id', 'requestId', 'orderNo', 'status', 'createdAt', 'completedAt'],
     });
     const workOrderByRequestId = new Map(workOrders.map((item) => [item.requestId, item]));
@@ -1539,7 +1600,7 @@ export class RepairsService implements OnModuleInit {
     const houseById = new Map(houses.map((item) => [item.id, item]));
     const buildingById = new Map(building ? [[building.id, building]] : []);
 
-    return requests.map((request) => {
+    return requests.filter((request) => workOrderByRequestId.has(request.id)).map((request) => {
       const workOrder = workOrderByRequestId.get(request.id);
       return {
         requestId: request.id,
@@ -1732,6 +1793,18 @@ export class RepairsService implements OnModuleInit {
         order: { id: 'ASC' },
       }),
     ]);
+    const operatorIds = Array.from(
+      new Set(logs.map((log) => log.operatorId).filter((operatorId): operatorId is number => !!operatorId)),
+    );
+    const operators = operatorIds.length
+      ? await this.userRepo.find({
+          where: { tenantId, id: In(operatorIds) },
+          select: ['id', 'name', 'wxNickname'],
+        })
+      : [];
+    const operatorNameById = new Map(
+      operators.map((operator) => [operator.id, operator.name || operator.wxNickname || '未记录姓名']),
+    );
     // 详情权限按「这张单与本人是什么关系」校验：
     // - 我的报修：必须是本人提交；
     // - 在手工单：必须派给本人；
@@ -1837,6 +1910,7 @@ export class RepairsService implements OnModuleInit {
         : request,
       logs: logs.map((log) => ({
         ...log,
+        operatorName: log.operatorId ? operatorNameById.get(log.operatorId) ?? '未知操作人' : null,
         note: withSubmitter(log),
         attachments: this.storage.toDisplayUrls(log.attachments || []),
       })),
@@ -1850,13 +1924,7 @@ export class RepairsService implements OnModuleInit {
     };
   }
 
-  /**
-   * 管理员作废工单（页面叫“删除”）。
-   *
-   * 这里不能真的 DELETE work_orders：收费和领料一旦发生，物理删除会让历史报表失去依据。
-   * 所以在一个事务里完成四件事：原批次退料、保留原值快照、断开采购来源、软删除工单。
-   * TypeORM 的普通查询会自动排除软删除记录；原始行和操作日志仍可用于审计。
-   */
+  /** 办公室/管理员作废工单：退料、排除统计，但完整记录仍可筛选和查看。 */
   async voidWorkOrder(
     id: number,
     dto: VoidWorkOrderDto,
@@ -1870,11 +1938,18 @@ export class RepairsService implements OnModuleInit {
     if (dto.confirmReversal !== true) {
       throw new BadRequestException('请确认退回用料并从统计中排除该工单');
     }
+    if (!(await this.canDispatch(user, access))) {
+      throw new ForbiddenException('只有办公室人员或管理员可以作废工单');
+    }
 
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
       this.assertWorkOrderScope(workOrder, access);
+      if (workOrder.status === WorkOrderStatus.VOIDED) {
+        throw new BadRequestException('该工单已经作废');
+      }
+      const fromStatus = workOrder.status;
       const repairRequest = await manager.findOne(RepairRequest, {
         where: { tenantId, id: workOrder.requestId },
         lock: { mode: 'pessimistic_write' },
@@ -1889,7 +1964,7 @@ export class RepairsService implements OnModuleInit {
         lock: { mode: 'pessimistic_write' },
       });
       if (maintenanceOrder?.status === MAINTENANCE_STATUS.INSPECTED) {
-        throw new BadRequestException('该工单已有查验签字的养护单，请先在养护单页面作废后再删除工单');
+        throw new BadRequestException('该工单已有查验签字的养护单，请先在养护单页面作废后再作废工单');
       }
 
       const usages = await manager.find(WorkOrderMaterial, {
@@ -1965,6 +2040,7 @@ export class RepairsService implements OnModuleInit {
           })),
         })),
       };
+      workOrder.status = WorkOrderStatus.VOIDED;
       workOrder.updatedBy = user.id;
       await manager.save(WorkOrder, workOrder);
 
@@ -2028,6 +2104,15 @@ export class RepairsService implements OnModuleInit {
       }
       if (purchaseRequests.length) await manager.save(PurchaseRequest, purchaseRequests);
 
+      // 待审核/已确认的 AI 纠错不再进入后续学习；已正式采纳的样例保留人工审核结果。
+      await manager.query(
+        `UPDATE ai_assist_feedback
+            SET status = 'ignored', updated_by = $1, updated_at = NOW()
+          WHERE tenant_id = $2 AND work_order_id = $3
+            AND status IN ('pending', 'confirmed')`,
+        [user.id, tenantId, id],
+      );
+
       const note = [
         `管理员作废：${reason}`,
         usages.length ? `退回 ${usages.length} 条用料，共 ${Number(returnedQty.toFixed(2))}` : '无库存用料',
@@ -2035,10 +2120,7 @@ export class RepairsService implements OnModuleInit {
         maintenanceOrder?.status === MAINTENANCE_STATUS.VOID ? '草稿养护单已同步作废' : null,
         purchaseRequests.length ? `已解除 ${purchaseRequests.length} 张采购申请的工单关联` : null,
       ].filter(Boolean).join('；');
-      await this.writeLog(manager, workOrder, workOrder.status, 'void', user.id, note);
-      repairRequest.updatedBy = user.id;
-      await manager.softRemove(RepairRequest, repairRequest);
-      await manager.softRemove(WorkOrder, workOrder);
+      await this.writeLog(manager, workOrder, fromStatus, 'void', user.id, note);
 
       return {
         id: workOrder.id,
@@ -2048,6 +2130,147 @@ export class RepairsService implements OnModuleInit {
         excludedFeeCents: workOrder.feeCents,
         voidedMaintenanceOrder: !!maintenanceOrder,
         detachedPurchaseRequests: purchaseRequests.length,
+        status: WorkOrderStatus.VOIDED,
+      };
+    });
+  }
+
+  /**
+   * 系统管理员永久删除工单。业务记录不可恢复；若尚未作废则先原批次退料。
+   * 库存流水仍保留，避免删除工单后库存账出现无法解释的数量变化。
+   */
+  async deleteWorkOrder(
+    id: number,
+    dto: DeleteWorkOrderDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const reason = dto.reason?.trim();
+    if (!reason || reason.length < 2) {
+      throw new BadRequestException('请填写至少 2 个字的永久删除原因');
+    }
+    if (dto.confirmation !== '永久删除') {
+      throw new BadRequestException('请输入“永久删除”完成确认');
+    }
+    if (!access?.isTenantAdmin && !access?.isPlatformAdmin) {
+      throw new ForbiddenException('只有系统管理员可以永久删除工单');
+    }
+
+    const tenantId = this.resolveTenantId(user);
+    return this.dataSource.transaction(async (manager) => {
+      const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
+
+      const usages = await manager.find(WorkOrderMaterial, {
+        where: { tenantId, workOrderId: id },
+        order: { id: 'ASC' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const touchedMaterialIds = new Set<number>();
+      let returnedQty = 0;
+      for (const usage of usages) {
+        const allocations = await manager.find(WorkOrderMaterialAllocation, {
+          where: { tenantId, workOrderMaterialId: usage.id },
+          order: { id: 'ASC' },
+        });
+        const allocatedQty = allocations.reduce((sum, item) => sum + Number(item.qty), 0);
+        if (Math.abs(allocatedQty - Number(usage.qty)) > 0.005) {
+          throw new BadRequestException(
+            `用料 #${usage.id} 的批次记录不完整，已停止永久删除以免库存错账`,
+          );
+        }
+        const lotIds = [...new Set(allocations.map((item) => item.stockLotId))];
+        const lotCount = lotIds.length
+          ? await manager.count(StockLot, { where: { tenantId, id: In(lotIds) } })
+          : 0;
+        if (lotCount !== lotIds.length) {
+          throw new BadRequestException(
+            `用料 #${usage.id} 的原库存批次不存在，已停止永久删除以免库存错账`,
+          );
+        }
+        await restoreStockLots(manager, allocations, user.id);
+        await applyStockDelta(manager, {
+          tenantId,
+          warehouseId: usage.warehouseId,
+          materialId: usage.materialId,
+          deltaQty: Number(usage.qty),
+          type: StockMovementType.RETURN,
+          unitCostCents: usage.unitCostCents,
+          refType: 'work_order_delete_return',
+          refId: usage.id,
+          operatorId: user.id,
+          note: `永久删除工单退料：${workOrder.orderNo}`,
+        });
+        await manager.delete(WorkOrderMaterialAllocation, {
+          tenantId,
+          workOrderMaterialId: usage.id,
+        });
+        await manager.delete(WorkOrderMaterial, { tenantId, id: usage.id });
+        touchedMaterialIds.add(usage.materialId);
+        returnedQty += Number(usage.qty);
+      }
+      for (const materialId of touchedMaterialIds) {
+        await refreshMaterialReferenceCost(manager, tenantId, materialId, user.id);
+      }
+
+      const purchaseIdRows: Array<{ id: number }> = await manager.query(
+        `SELECT id FROM purchase_requests
+          WHERE tenant_id = $1
+            AND (work_order_id = $2 OR items @> $3::jsonb)`,
+        [tenantId, id, JSON.stringify([{ sourceWorkOrderId: id }])],
+      );
+      const purchaseRequests = purchaseIdRows.length
+        ? await manager.find(PurchaseRequest, {
+            where: { tenantId, id: In(purchaseIdRows.map((item) => Number(item.id))) },
+          })
+        : [];
+      for (const request of purchaseRequests) {
+        const direct = request.workOrderId === id;
+        request.workOrderId = direct ? null : request.workOrderId;
+        request.items = (request.items ?? []).map((item) =>
+          item.sourceWorkOrderId === id || (direct && item.sourceWorkOrderId == null)
+            ? { ...item, sourceWorkOrderId: null }
+            : item,
+        );
+        request.updatedBy = user.id;
+      }
+      if (purchaseRequests.length) await manager.save(PurchaseRequest, purchaseRequests);
+
+      const maintenanceRows: Array<{ id: number }> = await manager.query(
+        `SELECT id FROM maintenance_orders WHERE tenant_id = $1 AND work_order_id = $2`,
+        [tenantId, id],
+      );
+      if (maintenanceRows.length) {
+        await manager.query(
+          `DELETE FROM maintenance_sign_sessions
+            WHERE tenant_id = $1 AND maintenance_order_id = ANY($2::int[])`,
+          [tenantId, maintenanceRows.map((row) => Number(row.id))],
+        );
+        await manager.query(
+          `DELETE FROM maintenance_orders WHERE tenant_id = $1 AND work_order_id = $2`,
+          [tenantId, id],
+        );
+      }
+      await manager.delete(Review, { tenantId, workOrderId: id });
+      await manager.delete(RepairTypeCorrection, { tenantId, workOrderId: id });
+      await manager.query(
+        `DELETE FROM ai_assist_feedback WHERE tenant_id = $1 AND work_order_id = $2`,
+        [tenantId, id],
+      );
+      await manager.delete(WorkOrderLog, { tenantId, workOrderId: id });
+      await manager.delete(WorkOrder, { tenantId, id });
+      await manager.delete(RepairRequest, { tenantId, id: workOrder.requestId });
+
+      this.logger.warn(
+        `工单 ${workOrder.orderNo} 已由管理员 #${user.id} 永久删除；原因：${reason}`,
+      );
+      return {
+        id,
+        orderNo: workOrder.orderNo,
+        returnedMaterialLines: usages.length,
+        returnedQty: Number(returnedQty.toFixed(2)),
+        detachedPurchaseRequests: purchaseRequests.length,
+        permanentlyDeleted: true,
       };
     });
   }
@@ -2232,6 +2455,200 @@ export class RepairsService implements OnModuleInit {
     return saved;
   }
 
+  /**
+   * 办公室/管理员撤回一个处理节点。
+   *
+   * 这不是覆盖历史：当前状态退回，原动作和本次撤回都留在 work_order_logs。
+   * 对会产生关联数据的节点同步收尾：误报缺料会驳回尚未流转的采购申请；
+   * 误验收会把原评分、文字和照片转存到撤回日志后移除当前验收结果，避免报表继续计入。
+   */
+  async rollbackWorkOrder(
+    id: number,
+    dto: RollbackWorkOrderDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const reason = dto.reason?.trim();
+    if (!reason || reason.length < 2) {
+      throw new BadRequestException('请填写至少 2 个字的撤回原因');
+    }
+    if (!(await this.canDispatch(user, access))) {
+      throw new ForbiddenException('只有办公室人员或管理员可以撤回工单');
+    }
+
+    const tenantId = this.resolveTenantId(user);
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
+      const fromStatus = workOrder.status;
+      const logs = await manager.find(WorkOrderLog, {
+        where: { tenantId, workOrderId: id },
+        order: { id: 'DESC' },
+      });
+      // 连续撤回时不能把上一次 rollback 当成“上一节点”，否则会在两个状态之间来回跳。
+      const sourceLog = logs.find(
+        (log) =>
+          log.action !== 'rollback' &&
+          log.toStatus === fromStatus &&
+          !!log.fromStatus &&
+          log.fromStatus !== log.toStatus,
+      );
+      const targetStatus = workOrderRollbackTarget(fromStatus, sourceLog?.fromStatus);
+      if (!targetStatus) {
+        throw new BadRequestException(
+          fromStatus === WorkOrderStatus.CREATED
+            ? '当前已经是最早的待派单/待接单节点，不能继续撤回'
+            : '找不到可安全恢复的上一处理节点，请联系管理员核对工单轨迹',
+        );
+      }
+
+      let extraNote = '';
+      let logAttachments: string[] = [];
+
+      // 已签字养护单是正式业务凭据，不能让工单状态悄悄退到维修中而单据仍显示已查验。
+      if (
+        fromStatus === WorkOrderStatus.DONE_PENDING_REVIEW ||
+        fromStatus === WorkOrderStatus.COMPLETED
+      ) {
+        const maintenanceOrder = await manager.findOne(MaintenanceOrder, {
+          where: [
+            { tenantId, workOrderId: id, status: MAINTENANCE_STATUS.DRAFT },
+            { tenantId, workOrderId: id, status: MAINTENANCE_STATUS.INSPECTED },
+          ],
+          order: { id: 'DESC' },
+        });
+        if (maintenanceOrder?.status === MAINTENANCE_STATUS.INSPECTED) {
+          throw new BadRequestException('该工单已有查验签字的养护单，请先作废养护单再撤回工单');
+        }
+        if (
+          maintenanceOrder?.status === MAINTENANCE_STATUS.DRAFT &&
+          fromStatus === WorkOrderStatus.DONE_PENDING_REVIEW
+        ) {
+          maintenanceOrder.status = MAINTENANCE_STATUS.VOID;
+          maintenanceOrder.updatedBy = user.id;
+          await manager.save(MaintenanceOrder, maintenanceOrder);
+          extraNote = '原草稿养护单已同步作废';
+        }
+      }
+
+      if (fromStatus === WorkOrderStatus.DISPATCHED) {
+        // “已派单 → 待派单”：负责人和派单计时一起撤销，回到办公室调度台。
+        workOrder.assigneeId = null;
+        workOrder.candidateIds = [];
+        workOrder.dispatchedAt = null;
+        workOrder.acceptedAt = null;
+        workOrder.escalatedAt = null;
+      } else if (fromStatus === WorkOrderStatus.IN_PROGRESS) {
+        // 保留原负责人，只撤销接单动作，让他重新确认接单。
+        workOrder.acceptedAt = null;
+      } else if (fromStatus === WorkOrderStatus.WAITING_MATERIAL) {
+        const latestPurchase = await manager.findOne(PurchaseRequest, {
+          where: { tenantId, workOrderId: id },
+          order: { id: 'DESC' },
+        });
+        if (
+          latestPurchase &&
+          ![
+            PurchaseRequestStatus.DRAFT,
+            PurchaseRequestStatus.OFFICE_REVIEW,
+            PurchaseRequestStatus.REJECTED,
+          ].includes(latestPurchase.status)
+        ) {
+          throw new BadRequestException(
+            '关联采购申请已经进入经理审批、合并或采购环节，请先处理采购申请后再撤回',
+          );
+        }
+        if (latestPurchase && latestPurchase.status !== PurchaseRequestStatus.REJECTED) {
+          latestPurchase.status = PurchaseRequestStatus.REJECTED;
+          latestPurchase.rejectReason = `工单撤回：${reason}`.slice(0, 255);
+          latestPurchase.updatedBy = user.id;
+          await manager.save(PurchaseRequest, latestPurchase);
+          extraNote = `采购申请 ${latestPurchase.requestNo} 已同步驳回`;
+        }
+        const restoredAssigneeId = workOrder.assigneeId || workOrder.candidateIds?.[0];
+        if (!restoredAssigneeId) {
+          throw new BadRequestException('原维修工信息已缺失，无法安全撤回；请在派单台重新派单');
+        }
+        workOrder.assigneeId = restoredAssigneeId;
+        workOrder.candidateIds = [restoredAssigneeId];
+        workOrder.missingMaterials = [];
+        if (targetStatus === WorkOrderStatus.IN_PROGRESS) {
+          const acceptedLog = logs.find(
+            (log) =>
+              (!sourceLog || log.id < sourceLog.id) &&
+              log.toStatus === WorkOrderStatus.IN_PROGRESS &&
+              ['accept', 'claim'].includes(log.action),
+          );
+          workOrder.acceptedAt = acceptedLog ? new Date(acceptedLog.createdAt) : new Date();
+        } else {
+          workOrder.acceptedAt = null;
+        }
+      } else if (fromStatus === WorkOrderStatus.DONE_PENDING_REVIEW) {
+        // 完工填写内容和已领用材料保留为草稿，避免维修工返工后全部重填、重复扣库。
+        workOrder.completedAt = null;
+        extraNote = [extraNote, '原完工填写内容和已领用材料已保留，重新完工时请核对'].filter(Boolean).join('；');
+      } else if (fromStatus === WorkOrderStatus.COMPLETED) {
+        const reviews = await manager.find(Review, {
+          where: { tenantId, workOrderId: id },
+          order: { id: 'DESC' },
+        });
+        if (reviews.length) {
+          const latest = reviews[0];
+          logAttachments = reviews.flatMap((review) => review.attachments || []);
+          extraNote = [
+            `原验收记录已撤回（${latest.rating} 星${latest.comment ? `，${latest.comment}` : ''}）`,
+            logAttachments.length ? `原验收照片 ${logAttachments.length} 张已保留在本节点` : '',
+          ].filter(Boolean).join('；');
+          await manager.delete(Review, { tenantId, workOrderId: id });
+        } else {
+          extraNote = '原节点为系统自动完成，现已恢复待验收';
+        }
+        // 待验收的自动完成按 completedAt 计时。不重置的话，旧工单一撤回就会被下一次详情查询
+        // 立即自动完成，看起来像按钮没生效。
+        workOrder.completedAt = new Date();
+        extraNote = [extraNote, '待验收时限已从本次撤回重新计算'].filter(Boolean).join('；');
+      }
+
+      workOrder.status = targetStatus;
+      workOrder.updatedBy = user.id;
+      const saved = await manager.save(WorkOrder, workOrder);
+      const operator = await manager.findOne(User, {
+        where: { tenantId, id: user.id },
+        select: ['id', 'name'],
+      });
+      const statusName = (status: WorkOrderStatus) => ({
+        [WorkOrderStatus.CREATED]: '待派单/待接单',
+        [WorkOrderStatus.DISPATCHED]: '已派单',
+        [WorkOrderStatus.IN_PROGRESS]: '维修中',
+        [WorkOrderStatus.WAITING_MATERIAL]: '等待材料',
+        [WorkOrderStatus.DONE_PENDING_REVIEW]: '待验收',
+        [WorkOrderStatus.COMPLETED]: '已完成',
+        [WorkOrderStatus.CANCELLED]: '已撤单',
+      })[status];
+      await this.writeLog(
+        manager,
+        saved,
+        fromStatus,
+        'rollback',
+        user.id,
+        [
+          `${operator?.name || '办公室'}撤回：${statusName(fromStatus)} → ${statusName(targetStatus)}`,
+          `原因：${reason}`,
+          extraNote,
+        ].filter(Boolean).join('；'),
+        logAttachments,
+      );
+      return saved;
+    });
+    // 撤回后若重新变成“待接单/待验收”，相关人员也要重新收到待办，不能只在时间轴里变化。
+    if (saved.status === WorkOrderStatus.DISPATCHED) {
+      await this.notifyAssigneeOnDispatch(saved, `办公室撤回上一步：${reason}`);
+    } else if (saved.status === WorkOrderStatus.DONE_PENDING_REVIEW) {
+      await this.notifyOwnerOnStatus(saved, 'review');
+    }
+    return saved;
+  }
+
   async acceptWorkOrder(id: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     return this.dataSource.transaction(async (manager) => {
@@ -2287,7 +2704,7 @@ export class RepairsService implements OnModuleInit {
     });
   }
 
-  /** 维修中追加现场进度，不改变工单状态。 */
+  /** 追加现场/后续处理记录，不改变工单状态。已完工单仅办公室/管理员可补记。 */
   async addWorkOrderProgress(
     id: number,
     dto: AddWorkOrderProgressDto,
@@ -2303,10 +2720,18 @@ export class RepairsService implements OnModuleInit {
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
       this.assertWorkOrderScope(workOrder, access);
-      if (workOrder.status !== WorkOrderStatus.IN_PROGRESS) {
-        throw new BadRequestException('只有维修中的工单可以添加进度');
+      if (![WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.DONE_PENDING_REVIEW, WorkOrderStatus.COMPLETED].includes(workOrder.status)) {
+        throw new BadRequestException('只有维修中、待验收或已完成的工单可以添加进度记录');
       }
-      await this.ensureAssigneeOrAdmin(workOrder, user);
+      if (
+        workOrder.status !== WorkOrderStatus.IN_PROGRESS &&
+        !(await this.canDispatch(user, access))
+      ) {
+        throw new ForbiddenException('已完工单只有办公室人员或管理员可以补充进度记录');
+      }
+      if (workOrder.status === WorkOrderStatus.IN_PROGRESS) {
+        await this.ensureAssigneeOrAdmin(workOrder, user);
+      }
       return manager.save(
         WorkOrderLog,
         manager.create(WorkOrderLog, {
@@ -3236,7 +3661,11 @@ export class RepairsService implements OnModuleInit {
     // 否则每来一单办公室都跟着响一次，真正要盯的「没人接的单」反而淹了
     const unassigned = !candidates.length;
     const receivers = unassigned
-      ? await this.dispatchersToNotify(workOrder.tenantId, submittedBy)
+      ? await this.dispatchersToNotify(
+          workOrder.tenantId,
+          workOrder.communityId,
+          submittedBy,
+        )
       : candidates;
     if (!receivers.length) {
       // 兜底的兜底：连能派单的人都没有（角色没配全）。不出声的话，这单谁都不知道，
@@ -3265,11 +3694,15 @@ export class RepairsService implements OnModuleInit {
           orderNo: workOrder.orderNo,
           type: typeLabel,
           status: request?.urgent
-            ? '紧急，请优先处理'
+            ? unassigned
+              ? '紧急新工单，等待办公室派单'
+              : '紧急新工单，等待维修工接单'
             : unassigned
               ? '新工单待派单'
               : '新工单待接单',
-          statusShort: request?.urgent ? '紧急待派' : unassigned ? '待派单' : '待接单',
+          statusShort: request?.urgent
+            ? unassigned ? '紧急待派' : '紧急待接'
+            : unassigned ? '待派单' : '待接单',
           content,
           assignee: '',
           address,
@@ -3286,12 +3719,30 @@ export class RepairsService implements OnModuleInit {
    * 能派单、且现在还在职的人。报单的人自己排除掉 —— 他刚点完提交，
    * 屏幕上就是「提交成功」，再推一条「有新工单」纯属噪音。
    */
-  private async dispatchersToNotify(tenantId: number, exceptUserId: number | null): Promise<User[]> {
-    const ids = (
-      await this.accessService.userIdsWithPermission(tenantId, 'app:dispatch', 'edit')
-    ).filter((id) => id !== exceptUserId);
+  private async dispatchersToNotify(
+    tenantId: number,
+    communityId: number,
+    exceptUserId: number | null,
+  ): Promise<User[]> {
+    const officeId = await this.accessService.officeIdOfCommunity(tenantId, communityId);
+    // 没有关联管理处时不能把单广播给全公司办公室，避免跨管理处泄露报修地址与住户信息。
+    if (!officeId) return [];
+
+    // 办公室可能只使用 Web，也可能同时使用员工小程序；两种派单入口取并集。
+    // 最终再按工单所属管理处的数据范围收窄，超级管理员不再成为唯一兜底收件人。
+    const [appDispatcherIds, webDispatcherIds] = await Promise.all([
+      this.accessService.userIdsWithPermission(tenantId, 'app:dispatch', 'edit'),
+      this.accessService.userIdsWithPermission(tenantId, 'work-orders', 'edit'),
+    ]);
+    const ids = [...new Set([...appDispatcherIds, ...webDispatcherIds])]
+      .filter((id) => id !== exceptUserId);
     if (!ids.length) return [];
-    return this.userRepo.find({ where: { id: In(ids), tenantId, status: UserStatus.ACTIVE } });
+    const coverage = await this.accessService.filterUsersCoveringOffice(tenantId, ids, officeId);
+    const scopedIds = ids.filter((id) => coverage.has(id));
+    if (!scopedIds.length) return [];
+    return this.userRepo.find({
+      where: { id: In(scopedIds), tenantId, status: UserStatus.ACTIVE },
+    });
   }
 
   /** 转单只通知工单所属管理处、且有派单权限的办公室人员。 */
@@ -5155,14 +5606,21 @@ export class RepairsService implements OnModuleInit {
     limitPerType = 8,
     communityIds?: number[] | null,
   ) {
-    const rows = await this.repairRequestRepo.find({
-      where: communityIds
-        ? { tenantId, communityId: In(communityIds.length ? communityIds : [-1]) }
-        : { tenantId },
-      select: ['repairType', 'content', 'createdAt'],
-      order: { id: 'DESC' },
-      take: SUGGESTION_SCAN_LIMIT,
-    });
+    const repairContentQb = this.repairRequestRepo
+      .createQueryBuilder('req')
+      .innerJoin(WorkOrder, 'wo', 'wo.request_id = req.id AND wo.tenant_id = req.tenant_id')
+      .select(['req.repairType', 'req.content', 'req.createdAt'])
+      .where('req.tenant_id = :tenantId', { tenantId })
+      .andWhere('wo.status <> :voided', { voided: WorkOrderStatus.VOIDED });
+    if (communityIds) {
+      repairContentQb.andWhere('req.community_id IN (:...communityIds)', {
+        communityIds: communityIds.length ? communityIds : [-1],
+      });
+    }
+    const rows = await repairContentQb
+      .orderBy('req.id', 'DESC')
+      .take(SUGGESTION_SCAN_LIMIT)
+      .getMany();
 
     const byType = new Map<string, SuggestionBucket>();
     const general: SuggestionBucket = new Map();
@@ -5219,6 +5677,7 @@ export class RepairsService implements OnModuleInit {
       .addSelect('req.repair_type', 'type')
       .addSelect('wo.completed_at', 'at')
       .where('wo.tenant_id = :tenantId', { tenantId })
+      .andWhere('wo.status <> :voided', { voided: WorkOrderStatus.VOIDED })
       .andWhere(`${textExpr} IS NOT NULL`)
       .orderBy('wo.id', 'DESC')
       .limit(SUGGESTION_SCAN_LIMIT)
@@ -5263,14 +5722,21 @@ export class RepairsService implements OnModuleInit {
     limit: number,
     communityIds?: number[] | null,
   ) {
-    const rows = await this.repairRequestRepo.find({
-      where: communityIds
-        ? { tenantId, communityId: In(communityIds.length ? communityIds : [-1]) }
-        : { tenantId },
-      select: ['addressText', 'content', 'createdAt'],
-      order: { id: 'DESC' },
-      take: SUGGESTION_SCAN_LIMIT,
-    });
+    const spotQb = this.repairRequestRepo
+      .createQueryBuilder('req')
+      .innerJoin(WorkOrder, 'wo', 'wo.request_id = req.id AND wo.tenant_id = req.tenant_id')
+      .select(['req.addressText', 'req.content', 'req.createdAt'])
+      .where('req.tenant_id = :tenantId', { tenantId })
+      .andWhere('wo.status <> :voided', { voided: WorkOrderStatus.VOIDED });
+    if (communityIds) {
+      spotQb.andWhere('req.community_id IN (:...communityIds)', {
+        communityIds: communityIds.length ? communityIds : [-1],
+      });
+    }
+    const rows = await spotQb
+      .orderBy('req.id', 'DESC')
+      .take(SUGGESTION_SCAN_LIMIT)
+      .getMany();
     const bucket: SuggestionBucket = new Map();
     for (const row of rows) {
       const spot = extractSpot(String(row.addressText ?? ''), knownPlaces) || findSpotWord(String(row.content ?? ''));
@@ -5409,6 +5875,7 @@ export class RepairsService implements OnModuleInit {
     action: string,
     operatorId: number | null,
     note?: string | null,
+    attachments: string[] = [],
   ) {
     return manager.save(
       WorkOrderLog,
@@ -5420,6 +5887,7 @@ export class RepairsService implements OnModuleInit {
         action,
         operatorId,
         note: note ?? null,
+        attachments,
         createdBy: operatorId,
         updatedBy: operatorId,
       }),

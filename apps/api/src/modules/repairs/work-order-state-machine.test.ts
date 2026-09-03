@@ -5,6 +5,7 @@ import { WorkOrderStatus } from '../../common/enums';
 import {
   assertWorkOrderTransition,
   canTransitionWorkOrder,
+  workOrderRollbackTarget,
 } from './work-order-state-machine';
 
 test('allows the supported repair lifecycle transitions', () => {
@@ -80,4 +81,33 @@ test('shows created orders as pending dispatch or pending acceptance by routing 
   assert.equal(workOrderStatusText('created', []), '待派单');
   assert.equal(workOrderStatusText('created', [18]), '待接单');
   assert.equal(workOrderStatusText('in_progress', [18]), '维修中');
+});
+
+test('rolls work orders back one real business step, including branch states', () => {
+  assert.equal(
+    workOrderRollbackTarget(WorkOrderStatus.DISPATCHED),
+    WorkOrderStatus.CREATED,
+  );
+  assert.equal(
+    workOrderRollbackTarget(WorkOrderStatus.IN_PROGRESS),
+    WorkOrderStatus.DISPATCHED,
+  );
+  assert.equal(
+    workOrderRollbackTarget(WorkOrderStatus.WAITING_MATERIAL, WorkOrderStatus.IN_PROGRESS),
+    WorkOrderStatus.IN_PROGRESS,
+  );
+  assert.equal(
+    workOrderRollbackTarget(WorkOrderStatus.DONE_PENDING_REVIEW, WorkOrderStatus.WAITING_MATERIAL),
+    WorkOrderStatus.WAITING_MATERIAL,
+  );
+  assert.equal(
+    workOrderRollbackTarget(WorkOrderStatus.COMPLETED),
+    WorkOrderStatus.DONE_PENDING_REVIEW,
+  );
+  assert.equal(
+    workOrderRollbackTarget(WorkOrderStatus.CANCELLED, WorkOrderStatus.DISPATCHED),
+    WorkOrderStatus.DISPATCHED,
+  );
+  assert.equal(workOrderRollbackTarget(WorkOrderStatus.CREATED), null);
+  assert.equal(workOrderRollbackTarget(WorkOrderStatus.CANCELLED, WorkOrderStatus.COMPLETED), null);
 });

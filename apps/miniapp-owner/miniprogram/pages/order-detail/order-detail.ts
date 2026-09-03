@@ -86,7 +86,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           status === WorkOrderStatus.CREATED
             ? detail.workOrder.candidateIds?.length ? '待接单' : '待派单'
             : '',
-        timeline: buildTimeline(detail.logs, timelineLabels, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
+        timeline: buildTimeline(detail.logs, timelineLabels, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED, WorkOrderStatus.VOIDED].indexOf(status) >= 0 }),
         canReview: status === WorkOrderStatus.DONE_PENDING_REVIEW,
         canCancel: ACTIVE_STATUSES.indexOf(status) >= 0,
         canUrge: ACTIVE_STATUSES.indexOf(status) >= 0,

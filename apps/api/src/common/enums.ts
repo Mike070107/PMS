@@ -80,6 +80,7 @@ export enum WorkOrderStatus {
   DONE_PENDING_REVIEW = 'done_pending_review', // 待业主验收
   COMPLETED = 'completed', // 已完成
   CANCELLED = 'cancelled', // 已撤单
+  VOIDED = 'voided', // 已作废（记录保留，但不参与业务统计）
 }
 
 /** 报修来源 */

@@ -180,6 +180,67 @@
   color: var(--color-text-secondary);
 }
 
+/* 派单备注给大号按压区：办公室人员不需要先点输入框再找系统语音键。 */
+.assign-speech {
+  width: 100%;
+  min-height: 104rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20rpx;
+  padding: 18rpx 24rpx;
+  margin-top: 14rpx;
+  border: 2rpx solid #bfd2e4;
+  border-radius: 22rpx;
+  color: var(--color-brand);
+  background: #edf5fc;
+}
+.assign-speech::after { border: none; }
+.assign-speech--on { color: #fff; border-color: var(--color-brand); background: var(--color-brand); }
+.assign-speech__mic {
+  position: relative;
+  width: 26rpx;
+  height: 36rpx;
+  flex-shrink: 0;
+  border: 5rpx solid currentColor;
+  border-radius: 16rpx;
+}
+.assign-speech__mic::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -15rpx;
+  width: 28rpx;
+  height: 16rpx;
+  border: 5rpx solid currentColor;
+  border-top: 0;
+  border-radius: 0 0 18rpx 18rpx;
+  transform: translateX(-50%);
+}
+.assign-speech__title { font-size: 30rpx; font-weight: 700; line-height: 1.35; }
+.assign-speech__desc { margin-top: 4rpx; font-size: 24rpx; opacity: .78; line-height: 1.35; }
+.assign-speech__listening {
+  margin-top: 10rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 14rpx;
+  color: #9a5d00;
+  background: #fff5dd;
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+.assign-note {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 150rpx;
+  margin-top: 14rpx;
+  padding: 20rpx 22rpx;
+  border: 2rpx solid var(--color-border);
+  border-radius: 18rpx;
+  background: var(--color-card-bg);
+  font-size: var(--font-lg);
+  line-height: 1.6;
+}
+
 /* 维修工一行：整行可点。选中 = 品牌色实底 + 白字。
    原来是「描边 + 左侧色条、不填底」，理由写的是「填底在户外强光下反光」——
    2026-09-01 现场反馈正相反：户外屏幕不够亮时，描边式的选中和未选中几乎一样，

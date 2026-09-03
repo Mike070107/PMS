@@ -1,11 +1,26 @@
 <view class="container">
-  <view wx:if="{{list.length && unread}}" class="topbar">
+  <view wx:if="{{allList.length && unread}}" class="topbar">
     <text class="topbar__count">{{unread}} 条未读</text>
     <text class="topbar__action" bindtap="onReadAll">全部标为已读</text>
   </view>
 
+  <scroll-view wx:if="{{allList.length}}" class="filter-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+    <view class="filters">
+      <view
+        wx:for="{{filters}}"
+        wx:key="key"
+        class="filter-pill {{activeFilter === item.key ? 'filter-pill--active' : ''}}"
+        data-key="{{item.key}}"
+        bindtap="onFilter"
+      >
+        <text>{{item.label}}</text>
+        <text class="filter-pill__count">{{item.count}}</text>
+      </view>
+    </view>
+  </scroll-view>
+
   <view wx:if="{{!list.length && loaded}}" class="empty-wrap">
-    <pms-empty text="还没有消息"/>
+    <pms-empty text="{{allList.length ? '这个分类暂时没有消息' : '还没有消息'}}"/>
   </view>
 
   <view
@@ -18,6 +33,10 @@
     <!-- 未读用一个小圆点标出来，比整条变色克制，也不影响阅读 -->
     <view class="msg__dot {{item.readAt ? 'msg__dot--off' : ''}}"></view>
     <view class="msg__body">
+      <view class="msg__labels">
+        <text class="msg-tag msg-tag--{{item.categoryTone}}">{{item.categoryLabel}}</text>
+        <text class="msg-priority msg-priority--{{item.priority}}">{{item.priorityLabel}}</text>
+      </view>
       <view class="msg__title">{{item.title}}</view>
       <view class="msg__time">{{item.timeText}}</view>
     </view>

@@ -119,7 +119,7 @@
   >
     <view wx:if="{{showPriorityGroups && item.groupStart}}" class="priority-group {{item.urgent ? 'priority-group--urgent' : ''}}">
       <view class="priority-group__title">{{item.groupLabel}}</view>
-      <view class="priority-group__hint">同组按报修时间从早到晚</view>
+      <view class="priority-group__hint">超时优先，同一天按相邻地址排列</view>
     </view>
     <view
     id="pool-order-{{item.id}}"
@@ -266,8 +266,14 @@
     </picker>
 
     <view class="label mt">派单备注<text class="label__opt">选填，维修工能看到</text></view>
-    <input
-      class="input"
+    <button wx:if="{{hasSpeech}}" class="assign-speech {{assignRecording ? 'assign-speech--on' : ''}}" bindtouchstart="onAssignSpeechStart" bindtouchend="onAssignSpeechEnd" bindtouchcancel="onAssignSpeechEnd">
+      <view class="assign-speech__mic"></view>
+      <view><view class="assign-speech__title">{{assignRecording ? '松开结束' : '按住说派单备注'}}</view><view class="assign-speech__desc">说完自动变成文字，还可以修改</view></view>
+    </button>
+    <view wx:if="{{assignRecording}}" class="assign-speech__listening">正在听：{{assignSpeechPartial || '请继续说…'}}</view>
+    <textarea
+      class="assign-note"
+      maxlength="500"
       placeholder="如：业主下午在家，优先处理"
       value="{{assignNote}}"
       bindinput="onAssignNote"

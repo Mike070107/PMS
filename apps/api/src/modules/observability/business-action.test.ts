@@ -22,12 +22,17 @@ test('工单、库存和盘点操作转成稳定业务事件', () => {
   assert.equal(resolveBusinessAction('POST', '/stocktakes/7/review').label, '复核盘点');
   assert.equal(resolveBusinessAction('POST', '/work-orders/38/progress').label, '添加维修进度');
   assert.equal(resolveBusinessAction('POST', '/work-orders/38/transfer-request').code, 'work_order_transfer_request');
-  const voided = resolveBusinessAction('DELETE', '/api/v1/work-orders/38', {
+  assert.equal(resolveBusinessAction('POST', '/work-orders/38/rollback').label, '撤回工单处理节点');
+  const voided = resolveBusinessAction('POST', '/api/v1/work-orders/38/void', {
     reason: '重复录入',
     confirmReversal: true,
   });
   assert.equal(voided.code, 'work_order_void');
   assert.equal(voided.label, '作废工单');
+  assert.equal(
+    resolveBusinessAction('DELETE', '/api/v1/work-orders/38', { confirmation: '永久删除' }).label,
+    '永久删除工单',
+  );
   assert.equal(voided.objectId, 38);
 });
 

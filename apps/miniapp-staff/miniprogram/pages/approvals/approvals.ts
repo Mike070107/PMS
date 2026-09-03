@@ -152,7 +152,9 @@ Page({
     this.setData({ busyId: id });
     try {
       const link = await maintenance.inspectLink(id);
-      wx.navigateTo({ url: `/pages/web-sign/web-sign?url=${encodeURIComponent(link.url)}` });
+      // 员工端直接用原生页面预览和签名，不再通过 web-view 打开外部网址。
+      // web-view 依赖微信公众平台另配“业务域名”，漏配就会出现“不支持打开”。
+      wx.navigateTo({ url: `/pages/maintenance-sign/maintenance-sign?token=${encodeURIComponent(link.token)}` });
     } catch (err: any) {
       wx.showToast({ icon: 'none', title: err?.message || '养护单打开失败' });
     } finally { this.setData({ busyId: 0 }); }

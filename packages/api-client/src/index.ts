@@ -10,6 +10,7 @@ export * as address from './endpoints/address';
 export * as inventory from './endpoints/inventory';
 export * as stocktakes from './endpoints/stocktakes';
 export * as maintenance from './endpoints/maintenance';
+export type { MaintenanceSignLink, MaintenanceSignSession } from './endpoints/maintenance';
 export * as notifications from './endpoints/notifications';
 export * as observability from './endpoints/observability';
 export type { FeedbackType, FeedbackStatus, UserFeedbackReq } from './endpoints/observability';

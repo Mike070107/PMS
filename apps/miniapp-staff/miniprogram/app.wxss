@@ -729,31 +729,38 @@ textarea {
   margin-bottom: 0;
 }
 .wo-card__main { flex: 1; min-width: 0; }
-/* 卡片头两行（2026-09-01 定的）：第一行报修内容、第二行地址，**两行都加粗**，
-   各占一行、超出省略；下面那行小字地址和单号都去掉了（单号只在打电话核对时才念，
-   留给详情页）。两行都定高，一屏能扫过的卡片数才稳定。
-   两行同为主体档，靠字号差一级分主次，不靠灰色 —— 地址是要照着找门的，压成灰的读着费劲。
-   不能用 flex：flex 容器里的匿名文本节点和「紧急」标签基线对不齐，
-   改成 -webkit-box 截一行，badge 作为行内元素落在句首。 */
+/* 现场卡片的阅读顺序：地址是主标题，故障内容是第二行。 */
 .wo-card--data .wo-card__title {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
-  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: 10rpx;
   font-size: var(--font-2xl);
-  font-weight: 600;
-  line-height: 1.35;
 }
 .wo-card__addr {
-  margin-top: var(--space-xs);
+  flex: 1;
+  min-width: 0;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
   overflow: hidden;
+  color: #173a57;
+  font-size: var(--font-2xl);
+  font-weight: 700;
+  line-height: 1.45;
+}
+.wo-card--data .wo-card__title .icon { flex-shrink: 0; margin-top: 12rpx; }
+.wo-card__problem-line { display: flex; align-items: center; gap: 10rpx; margin-top: 10rpx; }
+.wo-card__problem {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+  color: #394b5d;
   font-size: var(--font-xl);
   font-weight: 600;
-  color: var(--color-text);
-  line-height: 1.45;
+  line-height: 1.5;
 }
 /* 报修照片：一行四张方图，够看清「坏成什么样」，又不至于把卡片撑成相册。
    宽度用 flex 等分而不是写死 rpx —— 屏幕宽度差一档就会掉行 */
@@ -1002,16 +1009,15 @@ textarea {
 .stat__value--success { color: var(--color-success); }
 .stat__hint { margin-top: var(--space-xs); font-size: 24rpx; color: var(--color-text-tertiary); line-height: 1.4; }
 
-/* 新工单卡：从三列表格改为“任务标题 → 地点 → 关键信息 → 行动”。 */
+/* 新工单卡：“去哪 → 修什么 → 关键信息 → 行动”。 */
 .wo-card--data {
   padding: 30rpx 28rpx 24rpx;
   border-left: 8rpx solid #7ea6c8;
 }
 .wo-card--data .wo-card__head { gap: 20rpx; }
 .wo-card--data .wo-card__title { font-size: 36rpx; line-height: 1.45; }
-.wo-card__addr-line { display: flex; align-items: center; gap: 10rpx; margin-top: 14rpx; }
-.wo-card__addr-line .icon { margin-top: 0; }
-.wo-card--data .wo-card__addr { margin-top: 0; font-size: 30rpx; font-weight: 500; color: #394b5d; }
+.wo-card--data .wo-card__addr { margin-top: 0; font-size: 36rpx; font-weight: 700; color: #173a57; }
+.wo-card--data .wo-card__problem { font-size: 30rpx; }
 .wo-card__chips { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 22rpx; }
 .wo-card__chip {
   padding: 7rpx 16rpx;

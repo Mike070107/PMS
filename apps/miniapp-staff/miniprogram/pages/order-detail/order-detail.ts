@@ -87,6 +87,25 @@ let hold: HoldToTalk | null = null;
 const DEFAULT_QTY = '1';
 const MAX_QTY = 999;
 
+/** 语音转文字追加到已有内容后面，保留维修工已经手工改过的字。 */
+function appendSpeech(existing: string, spoken: string, separator = '；'): string {
+  const before = existing.trim().replace(/[，,；;。]+$/, '');
+  const after = spoken.trim();
+  if (!before) return after;
+  if (!after || before.includes(after)) return before;
+  return `${before}${separator}${after}`;
+}
+
+function rollbackTargetText(status: WorkOrderStatus): string {
+  if (status === WorkOrderStatus.DISPATCHED) return '待派单/待接单';
+  if (status === WorkOrderStatus.IN_PROGRESS) return '已派单';
+  if (status === WorkOrderStatus.WAITING_MATERIAL) return '缺料前的处理节点';
+  if (status === WorkOrderStatus.DONE_PENDING_REVIEW) return '完工前的处理节点';
+  if (status === WorkOrderStatus.COMPLETED) return '待验收';
+  if (status === WorkOrderStatus.CANCELLED) return '撤单前的处理节点';
+  return '上一处理节点';
+}
+
 const compareStockOptionName = (a: WorkOrderStockOption, b: WorkOrderStockOption) =>
   a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
   || (a.spec || '').localeCompare(b.spec || '', 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
@@ -189,6 +208,8 @@ interface PageData {
   canAddProgress: boolean;
   canTransfer: boolean;
   canRedispatch: boolean;
+  canRollback: boolean;
+  rollbackTargetText: string;
   /** 已提报的缺料清单，等待材料时给接单的人看 */
   missingText: string;
   acceptText: string;
@@ -208,11 +229,15 @@ interface PageData {
   progressNote: string;
   progressAttachments: string[];
   transferNote: string;
+  rollbackNote: string;
   actionNote: string;
   /* ---- 完工小结：按住说一句，大模型理成规范的维修记录 ---- */
   /** 微信同声传译插件在不在。不在就整个隐藏「按住说话」，打字照常可用 */
   hasSpeech: boolean;
   recording: boolean;
+  /** 所有语音按钮共用一个录音器，用目标字段防止识别结果串到别的输入框。 */
+  speechTarget: string;
+  speechRowIndex: number;
   /** 识别中的实时文字，让人知道在听 */
   partial: string;
   /** 正在让模型整理 */
@@ -288,6 +313,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     canAddProgress: false,
     canTransfer: false,
     canRedispatch: false,
+    canRollback: false,
+    rollbackTargetText: '上一处理节点',
     missingText: '',
     acceptText: '接单',
     panel: '',
@@ -297,12 +324,16 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     progressNote: '',
     progressAttachments: [],
     transferNote: '',
+    rollbackNote: '',
     actionNote: '',
     /* ---- 完工小结：按住说一句，大模型理成规范的维修记录（2026-09-01 加） ----
        维修工是蹲在水管边单手拿手机，打字比说话慢十倍，「维修说明」常年只有「已修」两个字，
        回头对账、查保修全靠猜。语音走微信同声传译（只支持普通话），插件没装就隐藏按钮。 */
     hasSpeech: false,
     recording: false,
+    /** 当前是哪一格在听。所有长文本共用一个录音器，靠这个值把识别结果写回正确字段。 */
+    speechTarget: 'summary',
+    speechRowIndex: -1,
     /** 识别中的实时文字，让人知道在听 */
     partial: '',
     /** 正在让模型整理 */
@@ -403,7 +434,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         stayBadge: `已等 ${stayedDays} 天`,
         // 和列表卡片同一口径：报单时说了「急修」，或者压了 7 天，都挂红标
         urgent: !!detail.request?.urgent || stayTone(stayedDays) === 'danger',
-        timeline: buildTimeline(detail.logs, timelineLabels, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED].indexOf(status) >= 0 }),
+        timeline: buildTimeline(detail.logs, timelineLabels, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED, WorkOrderStatus.VOIDED].indexOf(status) >= 0 }),
         // 未指定人的公开池可以主动认领；定向派单只允许被派人确认接单。
         // 这里和服务端保持同一口径，避免别人从分享链接点进来看到一个必然报错的按钮。
         canAccept:
@@ -422,9 +453,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           detail.workOrder.assigneeId === myId &&
           status === WorkOrderStatus.IN_PROGRESS,
         canAddProgress:
-          !!session?.canHandleOrders &&
-          detail.workOrder.assigneeId === myId &&
-          status === WorkOrderStatus.IN_PROGRESS,
+          (!!session?.canHandleOrders &&
+            detail.workOrder.assigneeId === myId &&
+            status === WorkOrderStatus.IN_PROGRESS) ||
+          (!!session?.canDispatch &&
+            [WorkOrderStatus.DONE_PENDING_REVIEW, WorkOrderStatus.COMPLETED].includes(status)),
         canTransfer:
           !!session?.canHandleOrders &&
           detail.workOrder.assigneeId === myId &&
@@ -433,6 +466,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           !!session?.canDispatch &&
           status === WorkOrderStatus.CREATED &&
           !(detail.workOrder.candidateIds || []).length,
+        canRollback:
+          !!session?.canDispatch && status !== WorkOrderStatus.CREATED,
+        rollbackTargetText: rollbackTargetText(status),
         assigneeText: detail.workOrder.assigneeName || '未派单',
         ...this.buildResult(detail),
         missingText: missingMaterialsText(detail.workOrder.missingMaterials),
@@ -636,6 +672,26 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     } finally { this.setData({ busy: false }); }
   },
 
+  onRollbackNote(e: WechatMiniprogram.Input) {
+    this.setData({ rollbackNote: e.detail.value, errorMsg: '' });
+  },
+
+  async onSubmitRollback() {
+    const reason = this.data.rollbackNote.trim();
+    if (reason.length < 2) return this.setData({ errorMsg: '请填写至少 2 个字的撤回原因' });
+    this.setData({ busy: true, errorMsg: '' });
+    try {
+      await repairs.rollback(this.data.id, { reason });
+      this.setData({ panel: '', rollbackNote: '' });
+      wx.showToast({ title: '已撤回上一步', icon: 'success' });
+      await this.load();
+    } catch (e: any) {
+      this.setData({ errorMsg: e?.message || '撤回失败' });
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+
   onGoRedispatch() {
     const orderNo = this.data.detail?.workOrder.orderNo || '';
     rememberPoolMode('dispatch');
@@ -702,7 +758,12 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       hold?.ended();
       const text = (res.result || this.data.partial || '').trim();
       this.setData({ recording: false, partial: '' });
-      if (text) this.summarize(text);
+      if (!text) return;
+      if (this.data.speechTarget === 'summary') {
+        this.summarize(text);
+      } else {
+        this.applySpeechText(text);
+      }
     };
     speechManager.onError = (err: { msg?: string; retcode?: number }) => {
       hold?.ended();
@@ -711,13 +772,60 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     };
   },
 
-  onStartRecord() {
+  onStartRecord(event?: WechatMiniprogram.BaseEvent) {
+    const dataset = event?.currentTarget?.dataset || {};
+    this.setData({
+      speechTarget: String(dataset.speechTarget || 'summary'),
+      speechRowIndex: dataset.rowIndex === undefined ? -1 : Number(dataset.rowIndex),
+      errorMsg: '',
+      materialError: '',
+    });
+    // 立刻交给按压状态机记录“手指仍按着”，首次授权弹窗吞掉 touchend 时也能自动收尾。
     hold?.press();
   },
 
   /** touchend 和 touchcancel 都指到这里：手指滑出按钮、被来电打断也要收尾 */
   onStopRecord() {
     hold?.release();
+  },
+
+  /** 普通备注只做语音转文字；完工总述才交给大模型拆成位置、现象、收费和用料。 */
+  applySpeechText(spoken: string) {
+    const target = this.data.speechTarget;
+    if (target === 'progress') {
+      this.setData({ progressNote: appendSpeech(this.data.progressNote, spoken) });
+      return;
+    }
+    if (target === 'transfer') {
+      this.setData({ transferNote: appendSpeech(this.data.transferNote, spoken) });
+      return;
+    }
+    if (target === 'rollback') {
+      this.setData({ rollbackNote: appendSpeech(this.data.rollbackNote, spoken) });
+      return;
+    }
+    if (target === 'materialNote') {
+      this.setData({ materialNote: appendSpeech(this.data.materialNote, spoken) });
+      return;
+    }
+    if (target === 'faultLocation') {
+      this.setData({ faultLocation: appendSpeech(this.data.faultLocation, spoken, '，') });
+      return;
+    }
+    if (target === 'faultSymptom') {
+      this.setData({ faultSymptom: appendSpeech(this.data.faultSymptom, spoken) });
+      return;
+    }
+    if (target === 'materialRowNote') {
+      const index = this.data.speechRowIndex;
+      const rows = this.data.materialRows.slice();
+      if (!rows[index]) return;
+      rows[index] = { ...rows[index], note: appendSpeech(rows[index].note, spoken) };
+      this.setMaterialRows(rows);
+      return;
+    }
+    // 新增入口即使忘了补分支，也不能丢掉维修工刚说完的话。
+    this.setData({ actionNote: appendSpeech(this.data.actionNote, spoken) }, () => this.syncPhraseState());
   },
 
   /**
@@ -876,7 +984,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   onClosePanel() {
-    this.setData({ panel: '' });
+    // 维修工按着语音键时也可能直接点关闭。先结束录音，避免面板关了麦克风还在工作。
+    if (this.data.recording) hold?.release();
+    this.setData({ panel: '', recording: false, partial: '' });
   },
 
   /** 面板内容区滚动时不要把底下的页面也带着滚 */

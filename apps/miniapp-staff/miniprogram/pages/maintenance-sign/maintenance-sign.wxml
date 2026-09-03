@@ -1,0 +1,121 @@
+<view class="sign-page">
+  <view wx:if="{{loading}}" class="sign-state">正在打开养护单…</view>
+  <view wx:elif="{{error}}" class="sign-state sign-state--error">
+    <view class="sign-state__mark">!</view>
+    <view class="sign-state__title">养护单暂时无法打开</view>
+    <view class="sign-state__text">{{error}}</view>
+  </view>
+
+  <block wx:elif="{{order}}">
+    <view class="sign-toolbar">
+      <view>
+        <view class="sign-toolbar__title">养护单预览</view>
+        <view class="sign-toolbar__sub">{{order.no}} · {{order.addressText}}</view>
+      </view>
+      <view class="sign-zoom">
+        <button bindtap="zoomOut" disabled="{{zoomLevel === 0}}">－</button>
+        <text>{{zoomText}}</text>
+        <button bindtap="zoomIn" disabled="{{zoomLevel === 2}}">＋</button>
+      </view>
+    </view>
+
+    <view class="sign-notice {{draftImage ? 'sign-notice--ready' : ''}}">
+      <view class="sign-notice__title">
+        {{draftImage ? slotLabel + '已签，请核对后提交' : alreadySigned ? slotLabel + '已有签名，可重新签署' : '请签署：' + slotLabel}}
+      </view>
+      <view class="sign-notice__text">完整核对养护内容后签字；本次凭证提交一次立即失效</view>
+    </view>
+
+    <scroll-view class="sign-scroll" scroll-x enhanced show-scrollbar>
+      <view class="sign-preview {{zoomClass}}">
+        <view class="paper-title">房屋修理养护任务单</view>
+        <view class="paper-no">单号：{{order.no}}　工单：{{order.workOrderNo}}</view>
+
+        <view class="paper-section">
+          <view class="paper-section__title">报修与施工信息</view>
+          <view class="paper-grid">
+            <view><text>单位</text><strong>{{order.unitName}}</strong></view>
+            <view><text>报修人</text><strong>{{order.reporterName}}</strong></view>
+            <view class="paper-grid__wide"><text>地址</text><strong>{{order.addressText}}</strong></view>
+            <view><text>报修日期</text><strong>{{order.reportedOn}}</strong></view>
+            <view><text>约定日期</text><strong>{{order.appointOn}}</strong></view>
+            <view><text>开工日期</text><strong>{{order.startOn}}</strong></view>
+            <view><text>完工日期</text><strong>{{order.finishOn}}</strong></view>
+            <view><text>报修部位</text><strong>{{order.faultPart}}</strong></view>
+            <view><text>报修时间</text><strong>{{order.presentTime}}</strong></view>
+            <view class="paper-grid__wide"><text>修理项目</text><strong>{{order.repairItem}}</strong></view>
+            <view><text>部位类别</text><strong>{{order.partCategory}}</strong></view>
+            <view><text>费用类别</text><strong>{{order.feeCategory}}</strong></view>
+            <view><text>分摊方式</text><strong>{{order.shareMethod}}</strong></view>
+            <view><text>修理日期</text><strong>{{order.repairDateText}}</strong></view>
+          </view>
+        </view>
+
+        <view class="paper-section">
+          <view class="paper-section__title">查勘修理项目</view>
+          <view wx:if="{{!order.items.length}}" class="paper-empty">未填写修理明细</view>
+          <view wx:for="{{order.items}}" wx:key="index" class="paper-line">
+            <view class="paper-line__head"><strong>{{index + 1}}. {{item.name}}</strong><text>{{item.part}}</text></view>
+            <view class="paper-line__body">查勘 {{item.surveyQty}}　实做 {{item.actualQty}}　工时 {{item.actualHours}}　定额 {{item.quotaCode}}</view>
+            <view class="paper-line__body">人工费 {{item.laborFee}}　材料费 {{item.materialFee}}　质量 {{item.quality}}</view>
+            <view wx:if="{{item.note !== '—'}}" class="paper-line__note">备注：{{item.note}}</view>
+          </view>
+        </view>
+
+        <view class="paper-section">
+          <view class="paper-section__title">签名与费用</view>
+          <view class="paper-sign-grid">
+            <view><text>填单人</text><image wx:if="{{order.fillerSignUrl}}" src="{{order.fillerSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.fillerName}}</strong></view>
+            <view><text>修理人</text><image wx:if="{{order.repairerSignUrl}}" src="{{order.repairerSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.repairerName}}</strong></view>
+            <view class="paper-sign-grid__target"><text>查验员 · 本次签署</text><image wx:if="{{draftImage}}" src="{{draftImage}}" mode="aspectFit"/><image wx:elif="{{order.inspectorSignUrl}}" src="{{order.inspectorSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.inspectorName}}</strong><button bindtap="openPad">{{draftImage ? '重新签名' : '点击手写签名'}}</button></view>
+            <view><text>报修人验收</text><image wx:if="{{order.ownerSignUrl}}" src="{{order.ownerSignUrl}}" mode="aspectFit"/><strong wx:else>未签名</strong></view>
+          </view>
+          <view class="paper-total"><text>定额工料费合计</text><strong>{{order.totalText}}</strong></view>
+          <view class="paper-grid paper-grid--compact"><view><text>凭证发放</text><strong>{{order.voucherIssue}}</strong></view></view>
+        </view>
+
+        <view class="paper-section">
+          <view class="paper-section__title">材料领耗记录</view>
+          <view wx:if="{{!order.materials.length}}" class="paper-empty">未登记材料</view>
+          <view wx:for="{{order.materials}}" wx:key="index" class="paper-line">
+            <view class="paper-line__head"><strong>{{index + 1}}. {{item.name}}</strong><text>{{item.spec}} / {{item.unit}}</text></view>
+            <view class="paper-line__body">领料 {{item.pickQty}}　实耗 {{item.usedQty}}　退料 {{item.returnQty}}　金额 {{item.amount}}</view>
+            <view wx:if="{{item.note !== '—'}}" class="paper-line__note">备注：{{item.note}}</view>
+          </view>
+          <view class="paper-total"><text>材料合计</text><strong>{{order.materialTotalText}}</strong></view>
+          <view class="paper-record"><text>折旧料或整料记录</text><strong>{{order.scrapNote}}</strong></view>
+          <view class="paper-record"><text>服务记录</text><strong>{{order.serviceRecord}}</strong></view>
+          <view class="paper-record"><text>回访记录</text><strong>{{order.followUpRecord}}</strong></view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="sign-actions-safe"></view>
+    <view class="sign-actions">
+      <view class="sign-actions__hint">{{expiresText}}</view>
+      <view class="sign-actions__buttons">
+        <button class="sign-actions__write" bindtap="openPad">{{draftImage ? '重新签名' : '手写签名'}}</button>
+        <button class="sign-actions__submit" bindtap="submit" loading="{{submitting}}" disabled="{{!draftImage || submitting}}">确认无误并提交</button>
+      </view>
+    </view>
+  </block>
+
+  <view wx:if="{{padOpen}}" class="sign-pad-mask" catchtouchmove="noop">
+    <view class="sign-pad">
+      <view class="sign-pad__head"><view><strong>请手写：{{slotLabel}}</strong><text>建议横向书写，签名会落回养护单预览</text></view><button bindtap="closePad">关闭</button></view>
+      <canvas
+        class="sign-pad__canvas"
+        canvas-id="maintenanceSignature"
+        disable-scroll="true"
+        bindtouchstart="startStroke"
+        bindtouchmove="moveStroke"
+        bindtouchend="endStroke"
+        bindtouchcancel="endStroke"
+      ></canvas>
+      <view class="sign-pad__foot">
+        <button bindtap="clearPad" disabled="{{!hasInk}}">清空重写</button>
+        <button class="sign-pad__keep" bindtap="keepSignature" disabled="{{!hasInk}}">签好，返回养护单</button>
+      </view>
+    </view>
+  </view>
+</view>

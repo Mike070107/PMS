@@ -2,6 +2,7 @@ import { repairs } from '@pms/api-client';
 import { withOrderLabels } from '@pms/miniapp-ui';
 import { WorkOrderStatus, type WorkOrderListItem } from '@pms/shared-types';
 import { isActiveOrder } from '../../utils/order-status';
+import { getSession } from '../../utils/session';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
 import { refreshUnread, topUpQuietly } from '../../utils/unread';
 
@@ -75,9 +76,15 @@ Page({
 
   async load() {
     try {
-      const list = await repairs.list({ scope: 'mine' });
+      const [list, session] = await Promise.all([
+        repairs.list({ scope: 'mine' }),
+        getSession(this),
+      ]);
+      const myUserId = session.me?.id;
       const active: OrderRow[] = withOrderLabels(list)
-        .filter((item) => isActiveOrder(item.status))
+        // 后端 scope=mine 已经按本人过滤；端上再核一次 assigneeId，防止旧接口、缓存或
+        // 权限组合异常时把别人的地址和工单带进“在手工单”。取不到本人 id 时宁可不展示。
+        .filter((item) => !!myUserId && item.assigneeId === myUserId && isActiveOrder(item.status))
         .map((item) => ({
           ...item,
           // 接单成功后 acceptedAt 已落库，即使极端情况下列表状态缓存仍是 dispatched，

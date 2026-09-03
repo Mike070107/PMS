@@ -16,6 +16,47 @@
 }
 .topbar__action:active { opacity: 0.6; }
 
+.filter-scroll {
+  width: 100%;
+  margin-bottom: 22rpx;
+  white-space: nowrap;
+}
+.filters {
+  display: inline-flex;
+  gap: 14rpx;
+  padding: 2rpx 4rpx 8rpx;
+}
+.filter-pill {
+  min-height: 72rpx;
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
+  box-sizing: border-box;
+  padding: 0 24rpx;
+  border: 2rpx solid var(--color-border);
+  border-radius: 999rpx;
+  background: var(--color-card-bg);
+  color: var(--color-text-secondary);
+  font-size: var(--font-md);
+}
+.filter-pill--active {
+  border-color: var(--color-brand);
+  background: var(--color-brand);
+  color: #fff;
+  box-shadow: 0 6rpx 16rpx rgba(49,85,138,.18);
+}
+.filter-pill__count {
+  min-width: 34rpx;
+  height: 34rpx;
+  padding: 0 8rpx;
+  border-radius: 999rpx;
+  background: rgba(83,106,128,.12);
+  font-size: var(--font-xs);
+  line-height: 34rpx;
+  text-align: center;
+}
+.filter-pill--active .filter-pill__count { background: rgba(255,255,255,.2); }
+
 .msg {
   display: flex;
   align-items: flex-start;
@@ -40,6 +81,31 @@
 .msg__dot--off { background: transparent; }
 
 .msg__body { flex: 1; min-width: 0; }
+.msg__labels {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-bottom: 10rpx;
+}
+.msg-tag,
+.msg-priority {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42rpx;
+  padding: 0 14rpx;
+  border-radius: 8rpx;
+  font-size: var(--font-xs);
+  line-height: 1;
+}
+.msg-tag--blue { color: #31558a; background: #e8f1fa; }
+.msg-tag--purple { color: #6b4ba1; background: #f1eafb; }
+.msg-tag--cyan { color: #176b78; background: #e4f4f5; }
+.msg-tag--red { color: #aa3038; background: #fcebed; }
+.msg-tag--gray { color: #5f7183; background: #edf1f4; }
+.msg-priority--action { color: #fff; background: #c53d45; font-weight: 600; }
+.msg-priority--important { color: #8a4b00; background: #fff0d4; font-weight: 600; }
+.msg-priority--normal { color: #67798b; background: #f0f3f6; }
 .msg__title { font-size: var(--font-xl); line-height: 1.5; }
 .msg__time {
   margin-top: var(--space-xs);

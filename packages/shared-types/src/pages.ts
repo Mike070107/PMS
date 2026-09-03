@@ -39,12 +39,12 @@ export const ADMIN_PAGES: AdminPageDef[] = [
     key: 'work-orders',
     label: '工单管理',
     group: '报修工单',
+    hint: '办公室办理、派单、撤回与作废；永久删除仅系统管理员可用',
     actions: [
-      { field: 'canEdit', label: '编辑（含新增）' },
       {
-        field: 'canDelete',
-        label: '作废工单',
-        hint: '退回已领用库存，并从调度台、常用词学习和统计报表中排除；全程保留审计记录',
+        field: 'canEdit',
+        label: '办理与调度（含新增、派单、撤回、作废）',
+        hint: '作废会退回已领用库存并排除统计，但记录仍可筛选查看',
       },
     ],
   },
