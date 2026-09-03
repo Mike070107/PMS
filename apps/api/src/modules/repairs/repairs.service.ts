@@ -6466,7 +6466,10 @@ export class RepairsService implements OnModuleInit {
     const repairContentQb = this.repairRequestRepo
       .createQueryBuilder('req')
       .innerJoin(WorkOrder, 'wo', 'wo.request_id = req.id AND wo.tenant_id = req.tenant_id')
-      .select(['req.repairType', 'req.content', 'req.createdAt'])
+      // 必须带上主键：take() + join 会走 TypeORM 的 DISTINCT-alias 分页，
+      // 它生成的外层 SQL 引用 distinctAlias.req_id，主键不在 select 里就报
+      // 「column distinctAlias.req_id does not exist」——线上 /repair-suggestions 一直 500
+      .select(['req.id', 'req.repairType', 'req.content', 'req.createdAt'])
       .where('req.tenant_id = :tenantId', { tenantId })
       .andWhere('wo.status <> :voided', { voided: WorkOrderStatus.VOIDED });
     if (communityIds) {
@@ -6582,7 +6585,8 @@ export class RepairsService implements OnModuleInit {
     const spotQb = this.repairRequestRepo
       .createQueryBuilder('req')
       .innerJoin(WorkOrder, 'wo', 'wo.request_id = req.id AND wo.tenant_id = req.tenant_id')
-      .select(['req.addressText', 'req.content', 'req.createdAt'])
+      // 同上：take() + join 的分页 SQL 要用到主键
+      .select(['req.id', 'req.addressText', 'req.content', 'req.createdAt'])
       .where('req.tenant_id = :tenantId', { tenantId })
       .andWhere('wo.status <> :voided', { voided: WorkOrderStatus.VOIDED });
     if (communityIds) {
