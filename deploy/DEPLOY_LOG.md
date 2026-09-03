@@ -1802,3 +1802,16 @@
 - 自上次（14effde）以来上线的相关提交：
   - da6b84e feat: 完善养护签字、工单进度转单与移动端后台
 
+## 2026-09-03 16:46 · miniapp-owner · 3c7e829
+
+- 提交：3c7e829 deploy: miniapp-staff → 7df4d16
+- 自上次（dea7edb）以来上线的相关提交：
+  - da6b84e feat: 完善养护签字、工单进度转单与移动端后台
+  - 2f6668d fix: 区分待派单与待接单状态
+  - c7cb6e4 feat: 按仓库材料清单展示库存预警
+  - ce21c0f feat: 智能化维修工默认使用专属仓
+  - b146aa8 Merge remote-tracking branch 'origin/main' into codex/theme-deploy
+  - 099c75b fix: align dispatch scope across clients and API
+  - 0eccc7e feat: 展示工单提交人与调整导航顺序
+  - 63368c3 fix: 分离待派单与待接单并重做完工页
+
