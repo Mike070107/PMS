@@ -2040,3 +2040,12 @@
 - 自上次（6929fea）以来上线的相关提交：
   - ee9337b feat(业主端): 测试账号可跳过微信授权登录（默认关闭，需配环境变量）
 
+## 2026-09-04 10:51 · miniapp-staff · 4e355ee
+
+- 包：`1.0.20260904e`
+- 提交：4e355ee feat(员工端): 工单池加「我修的」档、页头数字可点筛选；网络报错说人话并自动重试
+- 说明：干净 worktree(4e355ee)
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M apps/miniapp-staff/miniprogram/pages/maintenance-sign/maintenance-sign.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（6929fea）以来上线的相关提交：
+  - 4e355ee feat(员工端): 工单池加「我修的」档、页头数字可点筛选；网络报错说人话并自动重试
+
