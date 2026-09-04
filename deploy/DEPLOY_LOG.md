@@ -2067,3 +2067,12 @@
 - 自上次（6929fea）以来上线的相关提交：
   - 4e355ee feat(员工端): 工单池加「我修的」档、页头数字可点筛选；网络报错说人话并自动重试
 
+## 2026-09-04 18:06 · api · bc3076f
+
+- 包：`pms-api-20260904-1804.tar.gz`
+- 提交：bc3076f fix(员工端): 已完结按人收敛范围、角标统一刷新、退无可退能返回、签字画板不再放射线
+- 说明：包从干净 worktree(bc3076f) 打的；工作区脏文件是另一会话的 AI 模块改动，不在包里
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（ee9337b）以来上线的相关提交：
+  - bc3076f fix(员工端): 已完结按人收敛范围、角标统一刷新、退无可退能返回、签字画板不再放射线
+
