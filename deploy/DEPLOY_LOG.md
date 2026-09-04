@@ -2094,3 +2094,13 @@
 - 自上次（bc3076f）以来上线的相关提交：
   - 74423dc feat(员工端): 养护单签字页按《房屋修理养护任务单》纸面还原正反面
 
+## 2026-09-04 22:46 · api · a05172e
+
+- 包：`pms-api-20260904-2244.tar.gz`
+- 提交：a05172e docs(inbox): 2026-09-04 第二批七条标记已修（5038942）
+- 说明：经验收藏/公共本/搜索 API
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（bc3076f）以来上线的相关提交：
+  - 5038942 feat(员工端): 说明收进「指导层」、工单池只留语音报修、经验帖收藏/公共本/搜索、养护单同款手写体
+  - 74423dc feat(员工端): 养护单签字页按《房屋修理养护任务单》纸面还原正反面
+
