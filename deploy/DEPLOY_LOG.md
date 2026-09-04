@@ -1986,3 +1986,12 @@
 - 自上次（d2146ec）以来上线的相关提交：
   - 3664c8d fix(员工端): 提交完工后自动回工单池，不用再点一下弹窗
 
+## 2026-09-04 08:26 · api · 6929fea
+
+- 包：`pms-api-20260904-0824.tar.gz`
+- 提交：6929fea feat(员工端): 新增材料入库三步都能语音填表
+- 说明：干净 worktree(6929fea)
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（d2146ec）以来上线的相关提交：
+  - 6929fea feat(员工端): 新增材料入库三步都能语音填表
+
