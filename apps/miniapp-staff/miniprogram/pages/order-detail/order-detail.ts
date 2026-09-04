@@ -1,7 +1,7 @@
 import { ai, repairs, upload } from '@pms/api-client';
 import { getSession } from '../../utils/session';
 import { askOrderSubscribe } from '../../utils/unread';
-import { rememberPoolMode } from '../../utils/tabbar';
+import { markPoolTabTapped, rememberPoolMode } from '../../utils/tabbar';
 import {
   buildTimeline,
   createHoldToTalk,
@@ -1525,16 +1525,20 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
        * 同时立刻收起面板，让人看不到那个还能再按一次的按钮。
        */
       this.appliedDraftBatchId = null;
-      // 先收面板 + 轻提示：哪怕后面的弹窗被订阅授权框吞掉，也一定看得出提交成功了
+      // 先收面板：哪怕后面所有提示都被订阅授权框吞掉，也一定看得出这一步结束了
       this.setData({ panel: '', busy: false });
-      wx.showToast({ title: '完工已提交', icon: 'success' });
+      /*
+       * 提交完就**自动**回工单池，不要再让人在弹窗上点一下「返回」
+       * （2026-09-04 反馈：提交完还停在完工界面）。缺料那条路早就是这么做的。
+       * 等订阅授权框收场再跳：微信同一时刻只显示一个弹窗，抢在它前面跳会两头都闪。
+       */
       await subscribeSettled;
-      wx.showModal({
-        title: '已提交完工',
-        content: `${orderNo || '该工单'}已进入待验收，返回「在手工单」继续处理下一项工作。`,
-        showCancel: false,
-        confirmText: '返回在手工单',
-        success: () => wx.switchTab({ url: '/pages/my-orders/my-orders' }),
+      rememberPoolMode('pool');
+      // 让工单池落在「工单池」那一档，而不是他上次停留的「已完结」
+      markPoolTabTapped();
+      wx.switchTab({
+        url: '/pages/pool/pool',
+        complete: () => wx.showToast({ title: '已提交完工', icon: 'success' }),
       });
     } catch (e: any) {
       const message = String(e?.message || '');
