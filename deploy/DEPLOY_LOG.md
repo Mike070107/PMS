@@ -2022,3 +2022,12 @@
 - 自上次（d2146ec）以来上线的相关提交：
   - 6929fea feat(员工端): 新增材料入库三步都能语音填表
 
+## 2026-09-04 09:06 · api · ee9337b
+
+- 包：`pms-api-20260904-0904.tar.gz`
+- 提交：ee9337b feat(业主端): 测试账号可跳过微信授权登录（默认关闭，需配环境变量）
+- 说明：干净 worktree(ee9337b)
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（6929fea）以来上线的相关提交：
+  - ee9337b feat(业主端): 测试账号可跳过微信授权登录（默认关闭，需配环境变量）
+
