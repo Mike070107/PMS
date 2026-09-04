@@ -2085,3 +2085,12 @@
 - 自上次（4e355ee）以来上线的相关提交：
   - bc3076f fix(员工端): 已完结按人收敛范围、角标统一刷新、退无可退能返回、签字画板不再放射线
 
+## 2026-09-04 18:38 · miniapp-staff · 74423dc
+
+- 包：`1.0.20260904g`
+- 提交：74423dc feat(员工端): 养护单签字页按《房屋修理养护任务单》纸面还原正反面
+- 说明：从干净 worktree(74423dc) 上传，体验版 1.0.20260904g；工作区脏的 wxss/ai 文件是另一会话的，不在包里
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（bc3076f）以来上线的相关提交：
+  - 74423dc feat(员工端): 养护单签字页按《房屋修理养护任务单》纸面还原正反面
+
