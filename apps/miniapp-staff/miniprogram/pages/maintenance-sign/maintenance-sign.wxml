@@ -1,3 +1,66 @@
+<!--
+  养护单查验签字：按《房屋修理养护任务单》纸上的格子画正反面（尺寸表与 Web 打印稿共用，
+  见 maintenance-sign.ts 头部说明）。所有 mm 尺寸在这里 × k 变成 rpx，缩放只改 k。
+
+  表格是数据驱动的：一行 = r，一格 = c，下面这一份 <template name="mo-cell"> 按 c.kind 分支。
+-->
+<template name="mo-cell">
+  <view
+    class="mo-cell {{c.w ? '' : 'mo-cell--grow'}} {{c.left ? 'mo-cell--left' : ''}} {{c.wrap ? 'mo-cell--top' : ''}} {{(c.kind === 'sign' || c.kind === 'inspector') && c.target ? 'mo-cell--target' : ''}}"
+    style="{{c.w ? 'width:' + (c.w * k) + 'rpx;' : ''}}padding:0 {{0.35 * k}}rpx;"
+    data-target="{{c.target}}"
+    bindtap="onCellTap"
+  >
+    <text wx:if="{{c.kind === 'lb'}}" class="mo-lb" style="font-size:{{(c.small ? 2.3 : 2.8) * k}}rpx">{{c.lb}}</text>
+
+    <text wx:elif="{{c.kind === 'txt'}}" class="mo-txt {{c.left ? 'mo-txt--left' : ''}} {{c.wrap ? 'mo-txt--wrap' : ''}}" style="font-size:{{fsOf[c.fs || 'txt'] * k}}rpx">{{c.txt}}</text>
+
+    <view wx:elif="{{c.kind === 'addr'}}" class="mo-addr" style="font-size:{{2.8 * k}}rpx">
+      <view class="mo-addr__row">
+        <view class="mo-addr__slot" style="flex:0 0 {{addr.road + addr.lane}}%"><text class="mo-addr__val">{{c.village}}</text><text class="mo-addr__unit">村</text></view>
+      </view>
+      <view class="mo-addr__row">
+        <view class="mo-addr__slot" style="flex:0 0 {{addr.road}}%"><text class="mo-addr__val">{{c.road}}</text><text class="mo-addr__unit">路</text></view>
+        <view class="mo-addr__slot" style="flex:0 0 {{addr.lane}}%"><text class="mo-addr__val">{{c.lane}}</text><text class="mo-addr__unit">弄</text></view>
+        <view class="mo-addr__slot" style="flex:0 0 {{addr.buildingNo}}%"><text class="mo-addr__val">{{c.building}}</text><text class="mo-addr__unit">号</text></view>
+        <view class="mo-addr__slot" style="flex:0 0 {{addr.room}}%"><text class="mo-addr__val">{{c.room}}</text><text class="mo-addr__unit">室</text></view>
+      </view>
+    </view>
+
+    <block wx:elif="{{c.kind === 'sign' || c.kind === 'inspector'}}">
+      <image wx:if="{{c.url}}" class="mo-sign" src="{{c.url}}" mode="aspectFit"/>
+      <text wx:elif="{{c.name}}" class="mo-txt" style="font-size:{{3.4 * k}}rpx">{{c.name}}</text>
+      <!-- 有打印姓名时黄底本身就是提示，再挤一句「点此签名」会和姓名、月日叠在一起 -->
+      <text wx:if="{{c.target && !c.url && !c.name}}" class="mo-signslot__hint" style="font-size:{{2.4 * k}}rpx">点此签名</text>
+      <view wx:if="{{c.kind === 'inspector'}}" class="mo-md" style="font-size:{{2.8 * k}}rpx;right:{{1.5 * k}}rpx;bottom:{{0.8 * k}}rpx"><text class="mo-md__n" style="padding:0 {{1.2 * k}}rpx">{{c.m}}</text>月<text class="mo-md__n" style="padding:0 {{1.2 * k}}rpx">{{c.d}}</text>日</view>
+    </block>
+
+    <view wx:elif="{{c.kind === 'quota'}}" class="mo-col2">
+      <view class="mo-sub" style="height:{{quotaSplit.top * k}}rpx"><text class="mo-lb" style="font-size:{{2.8 * k}}rpx">预 算 定 额</text></view>
+      <view class="mo-sub mo-sub--row" style="height:{{quotaSplit.bottom * k}}rpx">
+        <view class="mo-cell" style="width:{{c.quotaCode * k}}rpx"><text class="mo-lb" style="font-size:{{2.8 * k}}rpx">编号</text></view>
+        <view class="mo-cell" style="width:{{c.quotaHours * k}}rpx"><text class="mo-lb" style="font-size:{{2.8 * k}}rpx">工时</text></view>
+        <view class="mo-cell mo-cell--grow"><text class="mo-lb" style="font-size:{{2.8 * k}}rpx">人工费</text></view>
+      </view>
+    </view>
+
+    <view wx:elif="{{c.kind === 'voucher'}}" class="mo-col2">
+      <view class="mo-sub" style="height:{{voucherSplit.label * k}}rpx"><text class="mo-lb" style="font-size:{{2.8 * k}}rpx">凭证发放</text></view>
+      <view class="mo-sub" style="height:{{voucherSplit.value * k}}rpx"><text class="mo-txt" style="font-size:{{3.4 * k}}rpx">{{c.txt}}</text></view>
+    </view>
+
+    <view wx:elif="{{c.kind === 'total'}}" class="mo-total"><text class="mo-lb" style="font-size:{{2.8 * k}}rpx;padding-right:{{1 * k}}rpx">合计</text><text class="mo-total__v" style="font-size:{{3.2 * k}}rpx">{{c.txt}}</text></view>
+
+    <view wx:elif="{{c.kind === 'paren'}}" class="mo-paren"><text class="mo-lb" style="font-size:{{2.8 * k}}rpx">{{c.lb}}</text><text class="mo-txt mo-txt--paren" style="width:{{22 * k}}rpx;font-size:{{3.4 * k}}rpx">{{c.txt}}</text><text class="mo-lb" style="font-size:{{2.8 * k}}rpx">）</text></view>
+
+    <text wx:elif="{{c.kind === 'tick'}}" class="mo-tick" style="font-size:{{4 * k}}rpx">{{c.on ? '✓' : ''}}</text>
+
+    <view wx:elif="{{c.kind === 'ymd'}}" class="mo-ymd" style="font-size:{{2.8 * k}}rpx"><text class="mo-md__n" style="padding:0 {{1.2 * k}}rpx">{{c.y}}</text>年<text class="mo-md__n" style="padding:0 {{1.2 * k}}rpx">{{c.m}}</text>月<text class="mo-md__n" style="padding:0 {{1.2 * k}}rpx">{{c.d}}</text>日</view>
+
+    <view wx:elif="{{c.kind === 'vpair'}}" class="mo-vpair" style="gap:{{0.6 * k}}rpx"><text class="mo-lb" style="font-size:{{2.8 * k}}rpx">定\n额</text><text class="mo-lb" style="font-size:{{2.8 * k}}rpx">工\n料\n费</text></view>
+  </view>
+</template>
+
 <view class="sign-page">
   <view wx:if="{{loading}}" class="sign-state">正在打开养护单…</view>
   <view wx:elif="{{error}}" class="sign-state sign-state--error">
@@ -6,89 +69,99 @@
     <view class="sign-state__text">{{error}}</view>
   </view>
 
-  <block wx:elif="{{order}}">
+  <block wx:elif="{{pages.length}}">
     <view class="sign-toolbar">
-      <view>
-        <view class="sign-toolbar__title">养护单预览</view>
-        <view class="sign-toolbar__sub">{{order.no}} · {{order.addressText}}</view>
+      <view class="sign-toolbar__body">
+        <view class="sign-toolbar__title">{{draftImage ? slotLabel + '已签，核对后提交' : '请签署：' + slotLabel}}</view>
+        <view class="sign-toolbar__sub">{{draftImage ? '签名已落在纸上黄色格里' : alreadySigned ? '已有签名，可重签；点纸上黄色格或下方按钮' : '点纸上黄色格或下方按钮手写'}}</view>
       </view>
       <view class="sign-zoom">
-        <button bindtap="zoomOut" disabled="{{zoomLevel === 0}}">－</button>
+        <button bindtap="zoomOut" disabled="{{zoomIndex === 0}}">－</button>
         <text>{{zoomText}}</text>
-        <button bindtap="zoomIn" disabled="{{zoomLevel === 2}}">＋</button>
+        <button bindtap="zoomIn" disabled="{{zoomIndex === 4}}">＋</button>
       </view>
     </view>
 
-    <view class="sign-notice {{draftImage ? 'sign-notice--ready' : ''}}">
-      <view class="sign-notice__title">
-        {{draftImage ? slotLabel + '已签，请核对后提交' : alreadySigned ? slotLabel + '已有签名，可重新签署' : '请签署：' + slotLabel}}
-      </view>
-      <view class="sign-notice__text">
-        {{external ? '完整核对后签字；该临时链接提交一次立即失效' : '完整核对后签字；这是你的内部任务，不受链接时效限制'}}
-      </view>
-    </view>
+    <scroll-view class="sign-scroll" scroll-x scroll-y enhanced show-scrollbar="{{false}}">
+      <view class="sign-canvas" bindtouchstart="onPreviewTouchStart" bindtouchmove="onPreviewTouchMove" bindtouchend="onPreviewTouchEnd" bindtouchcancel="onPreviewTouchEnd">
+        <block wx:for="{{pages}}" wx:key="index" wx:for-item="p">
+          <!-- ============ 正面：任务单 + 报修凭证存根 ============ -->
+          <view class="mo-sheet" style="width:{{geo.pageW * k}}rpx;height:{{geo.pageH * k}}rpx;font-size:{{2.9 * k}}rpx">
+            <view class="mo-perf" style="left:{{geo.perfLeft * k}}rpx;top:{{4 * k}}rpx;height:{{108 * k}}rpx"></view>
 
-    <scroll-view class="sign-scroll" scroll-x scroll-y enhanced show-scrollbar>
-      <view class="sign-preview {{zoomClass}}" bindtouchstart="onPreviewTouchStart" bindtouchmove="onPreviewTouchMove" bindtouchend="onPreviewTouchEnd" bindtouchcancel="onPreviewTouchEnd">
-        <view class="paper-title">房屋修理养护任务单</view>
-        <view class="paper-no">单号：{{order.no}}　工单：{{order.workOrderNo}}</view>
+            <view class="mo-block" style="left:{{geo.mainLeft * k}}rpx;top:{{6 * k}}rpx;width:{{geo.tableW * k}}rpx">
+              <view class="mo-head" style="height:{{9 * k}}rpx">
+                <view class="mo-head__anchor">
+                  <text class="mo-title" style="font-size:{{5.2 * k}}rpx;letter-spacing:{{0.2 * k}}rpx">房屋修理养护任务单</text>
+                  <view wx:if="{{p.no || p.pageMark}}" class="mo-head__after" style="margin-left:{{1.8 * k}}rpx">
+                    <text wx:if="{{p.no}}" class="mo-no" style="font-size:{{(p.noLong ? 3.2 : 6.7) * k}}rpx">{{p.no}}</text>
+                    <text wx:if="{{p.pageMark}}" class="mo-no__page" style="font-size:{{2.6 * k}}rpx;margin-left:{{1 * k}}rpx">{{p.pageMark}}</text>
+                  </view>
+                </view>
+              </view>
+              <view class="mo-unitline" style="height:{{5 * k}}rpx;margin-bottom:{{1.5 * k}}rpx;padding-left:{{2 * k}}rpx">
+                <text class="mo-lb" style="font-size:{{3 * k}}rpx">管房单位</text>
+                <view class="mo-unitline__value" style="margin-left:{{geo.unitLeft * k}}rpx;width:{{geo.unitW * k}}rpx;height:{{4.6 * k}}rpx"><text class="mo-txt" style="font-size:{{3.4 * k}}rpx">{{p.unitName}}</text></view>
+              </view>
+              <view class="mo-tbl">
+                <view wx:for="{{p.front}}" wx:key="index" wx:for-item="r" class="mo-row" style="height:{{r.h * k}}rpx">
+                  <block wx:for="{{r.cells}}" wx:key="index" wx:for-item="c"><template is="mo-cell" data="{{c, k, fsOf, addr, quotaSplit, voucherSplit}}"/></block>
+                </view>
+              </view>
+            </view>
 
-        <view class="paper-section">
-          <view class="paper-section__title">报修与施工信息</view>
-          <view class="paper-grid">
-            <view><text>单位</text><strong>{{order.unitName}}</strong></view>
-            <view><text>报修人</text><strong>{{order.reporterName}}</strong></view>
-            <view class="paper-grid__wide"><text>地址</text><strong>{{order.addressText}}</strong></view>
-            <view><text>报修日期</text><strong>{{order.reportedOn}}</strong></view>
-            <view><text>约定日期</text><strong>{{order.appointOn}}</strong></view>
-            <view><text>开工日期</text><strong>{{order.startOn}}</strong></view>
-            <view><text>完工日期</text><strong>{{order.finishOn}}</strong></view>
-            <view><text>报修部位</text><strong>{{order.faultPart}}</strong></view>
-            <view><text>报修时间</text><strong>{{order.presentTime}}</strong></view>
-            <view class="paper-grid__wide"><text>修理项目</text><strong>{{order.repairItem}}</strong></view>
-            <view><text>部位类别</text><strong>{{order.partCategory}}</strong></view>
-            <view><text>费用类别</text><strong>{{order.feeCategory}}</strong></view>
-            <view><text>分摊方式</text><strong>{{order.shareMethod}}</strong></view>
-            <view><text>修理日期</text><strong>{{order.repairDateText}}</strong></view>
+            <view class="mo-block" style="left:{{geo.stubLeft * k}}rpx;top:{{6 * k}}rpx;width:{{geo.stubW * k}}rpx">
+              <view class="mo-head" style="height:{{6.5 * k}}rpx"><text wx:if="{{p.no}}" class="mo-no" style="font-size:{{(p.noLong ? 3.2 : 6.7) * k}}rpx">{{p.no}}</text></view>
+              <view class="mo-head" style="height:{{9 * k}}rpx"><text class="mo-title" style="font-size:{{5.2 * k}}rpx;letter-spacing:{{0.2 * k}}rpx">报修凭证</text></view>
+              <view class="mo-tbl">
+                <view wx:for="{{p.stub}}" wx:key="index" wx:for-item="r" class="mo-row" style="height:{{r.h * k}}rpx">
+                  <block wx:for="{{r.cells}}" wx:key="index" wx:for-item="c"><template is="mo-cell" data="{{c, k, fsOf, addr, quotaSplit, voucherSplit}}"/></block>
+                </view>
+              </view>
+            </view>
           </view>
-        </view>
 
-        <view class="paper-section">
-          <view class="paper-section__title">查勘修理项目</view>
-          <view wx:if="{{!order.items.length}}" class="paper-empty">未填写修理明细</view>
-          <view wx:for="{{order.items}}" wx:key="index" class="paper-line">
-            <view class="paper-line__head"><strong>{{index + 1}}. {{item.name}}</strong><text>{{item.part}}</text></view>
-            <view class="paper-line__body">查勘 {{item.surveyQty}}　实做 {{item.actualQty}}　工时 {{item.actualHours}}　定额 {{item.quotaCode}}</view>
-            <view class="paper-line__body">人工费 {{item.laborFee}}　材料费 {{item.materialFee}}　质量 {{item.quality}}</view>
-            <view wx:if="{{item.note !== '—'}}" class="paper-line__note">备注：{{item.note}}</view>
-          </view>
-        </view>
+          <!-- ============ 背面：材料领耗记录 + 存根背面「说明」（镜像，本体在右） ============ -->
+          <view class="mo-sheet" style="width:{{geo.pageW * k}}rpx;height:{{geo.pageH * k}}rpx;font-size:{{2.9 * k}}rpx">
+            <view class="mo-block" style="left:{{geo.backMainLeft * k}}rpx;top:{{6 * k}}rpx;width:{{geo.tableW * k}}rpx">
+              <view class="mo-head" style="height:{{9 * k}}rpx">
+                <view class="mo-head__anchor">
+                  <text class="mo-title" style="font-size:{{5.2 * k}}rpx;letter-spacing:{{2.4 * k}}rpx;padding-left:{{2.4 * k}}rpx">材料领耗记录</text>
+                  <view wx:if="{{p.pageMark}}" class="mo-head__after" style="margin-left:{{1.8 * k}}rpx">
+                    <text class="mo-no" style="font-size:{{(p.noLong ? 3.2 : 6.7) * k}}rpx">{{p.no}}</text>
+                    <text class="mo-no__page" style="font-size:{{2.6 * k}}rpx;margin-left:{{1 * k}}rpx">{{p.pageMark}}</text>
+                  </view>
+                </view>
+              </view>
+              <view class="mo-unitline" style="height:{{5 * k}}rpx;margin-bottom:{{1.5 * k}}rpx"></view>
+              <view class="mo-back-grid">
+                <view class="mo-back-grid__left" style="flex:0 0 {{geo.backLeftW * k}}rpx">
+                  <view class="mo-tbl mo-tbl--flush">
+                    <view wx:for="{{p.back}}" wx:key="index" wx:for-item="r" class="mo-row" style="height:{{r.h * k}}rpx">
+                      <block wx:for="{{r.cells}}" wx:key="index" wx:for-item="c"><template is="mo-cell" data="{{c, k, fsOf, addr, quotaSplit, voucherSplit}}"/></block>
+                    </view>
+                  </view>
+                </view>
+                <view class="mo-back-grid__right">
+                  <view class="mo-cell mo-cell--full" style="height:{{backRight.head * k}}rpx"><text class="mo-lb" style="font-size:{{2.8 * k}}rpx">折旧料或\n整料记录</text></view>
+                  <view class="mo-cell mo-cell--full mo-cell--top mo-cell--left" style="height:{{backRight.scrap * k}}rpx;padding-left:{{1.4 * k}}rpx"><text class="mo-txt mo-txt--left mo-txt--wrap" style="font-size:{{3.4 * k}}rpx">{{p.scrap}}</text></view>
+                  <view class="mo-cell mo-cell--full" style="height:{{backRight.totalLabel * k}}rpx"><text class="mo-lb" style="font-size:{{2.8 * k}}rpx">材料合计</text></view>
+                  <view class="mo-cell mo-cell--full mo-cell--grow"><text class="mo-total__v" style="font-size:{{3.2 * k}}rpx">{{p.materialTotal}}</text></view>
+                </view>
+              </view>
+            </view>
 
-        <view class="paper-section">
-          <view class="paper-section__title">签名与费用</view>
-          <view class="paper-sign-grid">
-            <view class="{{slotLabel === '填单人' ? 'paper-sign-grid__target' : ''}}"><text>填单人{{slotLabel === '填单人' ? ' · 本次签署' : ''}}</text><image wx:if="{{slotLabel === '填单人' && draftImage}}" src="{{draftImage}}" mode="aspectFit"/><image wx:elif="{{order.fillerSignUrl}}" src="{{order.fillerSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.fillerName}}</strong><button wx:if="{{slotLabel === '填单人'}}" catchtap="openPad">{{draftImage ? '重新签名' : '点击手写签名'}}</button></view>
-            <view class="{{slotLabel === '修理人' ? 'paper-sign-grid__target' : ''}}"><text>修理人{{slotLabel === '修理人' ? ' · 本次签署' : ''}}</text><image wx:if="{{slotLabel === '修理人' && draftImage}}" src="{{draftImage}}" mode="aspectFit"/><image wx:elif="{{order.repairerSignUrl}}" src="{{order.repairerSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.repairerName}}</strong><button wx:if="{{slotLabel === '修理人'}}" catchtap="openPad">{{draftImage ? '重新签名' : '点击手写签名'}}</button></view>
-            <view class="{{slotLabel === '查验员' ? 'paper-sign-grid__target' : ''}}"><text>查验员{{slotLabel === '查验员' ? ' · 本次签署' : ''}}</text><image wx:if="{{slotLabel === '查验员' && draftImage}}" src="{{draftImage}}" mode="aspectFit"/><image wx:elif="{{order.inspectorSignUrl}}" src="{{order.inspectorSignUrl}}" mode="aspectFit"/><strong wx:else>{{order.inspectorName}}</strong><button wx:if="{{slotLabel === '查验员'}}" catchtap="openPad">{{draftImage ? '重新签名' : '点击手写签名'}}</button></view>
-            <view><text>报修人验收</text><image wx:if="{{order.ownerSignUrl}}" src="{{order.ownerSignUrl}}" mode="aspectFit"/><strong wx:else>未签名</strong></view>
+            <view class="mo-block" style="left:{{geo.backStubLeft * k}}rpx;top:{{6 * k}}rpx;width:{{geo.stubW * k}}rpx">
+              <view class="mo-head" style="height:{{15 * k}}rpx"><text class="mo-title" style="font-size:{{5.2 * k}}rpx;letter-spacing:{{2.4 * k}}rpx;padding-left:{{2.4 * k}}rpx">说明</text></view>
+              <view class="mo-notes" style="font-size:{{3 * k}}rpx;padding:0 {{1 * k}}rpx">
+                <view class="mo-notes__item" style="margin-bottom:{{1 * k}}rpx">1、报修后如管房单位未按规定时间派员修理，可凭此证催修。</view>
+                <view class="mo-notes__item" style="margin-bottom:{{1 * k}}rpx">2、请报修人（户）妥善保存此证，以备查核。</view>
+                <view class="mo-notes__item" style="margin-bottom:{{1 * k}}rpx">3、报修项目修竣后，请报修人（户）验收、并在《任务单》上签字。</view>
+                <view class="mo-notes__item" style="margin-bottom:{{1 * k}}rpx">4、报修项目修竣后，此证即行作废。</view>
+              </view>
+            </view>
           </view>
-          <view class="paper-total"><text>定额工料费合计</text><strong>{{order.totalText}}</strong></view>
-          <view class="paper-grid paper-grid--compact"><view><text>凭证发放</text><strong>{{order.voucherIssue}}</strong></view></view>
-        </view>
-
-        <view class="paper-section">
-          <view class="paper-section__title">材料领耗记录</view>
-          <view wx:if="{{!order.materials.length}}" class="paper-empty">未登记材料</view>
-          <view wx:for="{{order.materials}}" wx:key="index" class="paper-line">
-            <view class="paper-line__head"><strong>{{index + 1}}. {{item.name}}</strong><text>{{item.spec}} / {{item.unit}}</text></view>
-            <view class="paper-line__body">领料 {{item.pickQty}}　实耗 {{item.usedQty}}　退料 {{item.returnQty}}　金额 {{item.amount}}</view>
-            <view wx:if="{{item.note !== '—'}}" class="paper-line__note">备注：{{item.note}}</view>
-          </view>
-          <view class="paper-total"><text>材料合计</text><strong>{{order.materialTotalText}}</strong></view>
-          <view class="paper-record"><text>折旧料或整料记录</text><strong>{{order.scrapNote}}</strong></view>
-          <view class="paper-record"><text>服务记录</text><strong>{{order.serviceRecord}}</strong></view>
-          <view class="paper-record"><text>回访记录</text><strong>{{order.followUpRecord}}</strong></view>
-        </view>
+        </block>
       </view>
     </scroll-view>
 
@@ -104,7 +177,7 @@
 
   <view wx:if="{{padOpen}}" class="sign-pad-mask" catchtouchmove="noop">
     <view class="sign-pad">
-      <view class="sign-pad__head"><view><strong>请手写：{{slotLabel}}</strong><text>建议横向书写，签名会落回养护单预览</text></view><button bindtap="closePad">关闭</button></view>
+      <view class="sign-pad__head"><view><strong>请手写：{{slotLabel}}</strong><text>横向书写，签名会落回养护单</text></view><button bindtap="closePad">关闭</button></view>
       <canvas
         class="sign-pad__canvas"
         canvas-id="maintenanceSignature"

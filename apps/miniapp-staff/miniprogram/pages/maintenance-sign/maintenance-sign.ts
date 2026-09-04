@@ -1,139 +1,39 @@
+/**
+ * 养护单查验签字：把《房屋修理养护任务单》正反面按**纸上的格子**画出来，签字落在纸上对应的格。
+ *
+ * 版面尺寸全部来自 @pms/shared-types 的 maintenance-sheet-geometry（和 Web 打印稿同一份，
+ * 单位 mm）；表格数据由 sheet-model.ts 摊成「行 × 格」，这里只做 mm → rpx 的换算
+ * （data.k = 1mm 等于多少 rpx），WXML 里 `{{w * k}}rpx`。缩放只改 k，不重算表格。
+ * 2026-09-04 前是一版「分区卡片」，Mike 要求做成和 Web 端一样的实体单。
+ */
 import { maintenance, type MaintenanceSignSession } from '@pms/api-client';
+import {
+  BACK_LEFT_W,
+  BACK_RIGHT,
+  MAIN_LEFT,
+  PAGE,
+  PERF_LEFT,
+  STUB_LEFT,
+  STUB_W,
+  TABLE_W,
+  UNIT_LINE,
+  VOUCHER_SPLIT,
+} from '@pms/shared-types';
+import { buildPages, parseDate, SHEET_CONSTANTS, type SheetPage, type SignSlot } from './sheet-model';
 
-type DisplayLine = Record<string, string>;
-
-interface DisplayOrder {
-  no: string;
-  workOrderNo: string;
-  unitName: string;
-  addressText: string;
-  reporterName: string;
-  reportedOn: string;
-  presentTime: string;
-  faultPart: string;
-  repairItem: string;
-  appointOn: string;
-  startOn: string;
-  finishOn: string;
-  partCategory: string;
-  feeCategory: string;
-  shareMethod: string;
-  repairDateText: string;
-  totalText: string;
-  materialTotalText: string;
-  voucherIssue: string;
-  fillerName: string;
-  fillerSignUrl: string;
-  repairerName: string;
-  repairerSignUrl: string;
-  inspectorName: string;
-  inspectorSignUrl: string;
-  ownerSignUrl: string;
-  items: DisplayLine[];
-  materials: DisplayLine[];
-  scrapNote: string;
-  serviceRecord: string;
-  followUpRecord: string;
-}
-
-const PART_LABELS: Record<string, string> = {
-  self: '自用部位', shared: '共用部位', public: '公共设施',
-};
-const FEE_LABELS: Record<string, string> = {
-  owner: '业主自理', repair_fund: '修缮基金', elevator_fund: '电梯水泵基金', public_fund: '公共设施基金',
-};
-const SHARE_LABELS: Record<string, string> = {
-  natural: '自然幢', door: '门牌幢', zone: '住宅区域',
-};
-
-function text(value: unknown, fallback = '—'): string {
-  const result = value === null || value === undefined ? '' : String(value).trim();
-  return result || fallback;
-}
-
-function numberText(value: unknown): string {
-  return value === null || value === undefined || value === '' ? '—' : String(value);
-}
-
-function money(value: unknown): string {
-  const cents = Number(value);
-  return Number.isFinite(cents) ? `¥${(cents / 100).toFixed(2)}` : '—';
-}
-
-function dateText(value: unknown): string {
-  if (!value) return '—';
-  const raw = String(value);
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return raw;
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
+/**
+ * 100% 时 1mm = 4.4rpx：主表 160mm 正好铺满 702rpx（屏宽 750 去掉两侧 24 边距）。
+ * 默认落在 1.8 倍：标签 22rpx、值 27rpx，站着也看得清；再小就要眯眼。存根和背面靠横向滚动。
+ */
+const BASE_K = 4.4;
+const ZOOMS = [1, 1.4, 1.8, 2.4, 3.2];
+const DEFAULT_ZOOM_INDEX = 2;
 
 function dateTimeText(value: unknown): string {
-  if (!value) return '有效期未知';
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return String(value);
-  return `${dateText(value)} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
-function toDisplay(session: MaintenanceSignSession): DisplayOrder {
-  const order = session.order || {};
-  return {
-    no: text(order.paperNo || session.paperNo || order.orderNo || session.orderNo),
-    workOrderNo: text(order.workOrderNo),
-    unitName: text(order.unitName || session.unitName),
-    addressText: text(order.addressText || session.addressText),
-    reporterName: text(order.reporterName),
-    reportedOn: dateText(order.reportedOn),
-    presentTime: text(order.presentTime),
-    faultPart: text(order.faultPart),
-    repairItem: text(order.repairItem || session.repairItem),
-    appointOn: dateText(order.appointOn),
-    startOn: dateText(order.startOn),
-    finishOn: dateText(order.finishOn),
-    partCategory: text(PART_LABELS[String(order.partCategory || '')]),
-    feeCategory: text(FEE_LABELS[String(order.feeCategory || '')]),
-    shareMethod: text(SHARE_LABELS[String(order.shareMethod || '')]),
-    repairDateText: text(order.repairDateText),
-    totalText: money(order.totalCents),
-    materialTotalText: money(order.materialTotalCents),
-    voucherIssue: text(order.voucherIssue),
-    fillerName: text(order.fillerName),
-    fillerSignUrl: String(order.fillerSignUrl || ''),
-    repairerName: text(order.repairerName),
-    repairerSignUrl: String(order.repairerSignUrl || ''),
-    inspectorName: text(order.inspectorName || session.signerName),
-    inspectorSignUrl: String(order.inspectorSignUrl || ''),
-    ownerSignUrl: String(order.ownerSignUrl || ''),
-    items: Array.isArray(order.items)
-      ? order.items.map((item: Record<string, unknown>) => ({
-          part: text(item.part),
-          name: text(item.name),
-          surveyQty: numberText(item.surveyQty),
-          actualQty: numberText(item.actualQty),
-          actualHours: numberText(item.actualHours),
-          quotaCode: text(item.quotaCode),
-          laborFee: money(item.laborFeeCents),
-          materialFee: money(item.materialFeeCents),
-          quality: text(item.quality),
-          note: text(item.note),
-        }))
-      : [],
-    materials: Array.isArray(order.materials)
-      ? order.materials.map((item: Record<string, unknown>) => ({
-          name: text(item.name),
-          spec: text(item.spec),
-          unit: text(item.unit),
-          pickQty: numberText(item.pickQty),
-          usedQty: numberText(item.usedQty),
-          returnQty: numberText(item.returnQty),
-          amount: money(item.amountCents),
-          note: text(item.note),
-        }))
-      : [],
-    scrapNote: text(order.scrapNote),
-    serviceRecord: text(order.serviceRecord),
-    followUpRecord: text(order.followUpRecord),
-  };
+  const date = parseDate(value);
+  if (!date) return '有效期未知';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}:${p(date.getMinutes())}`;
 }
 
 Page({
@@ -143,19 +43,43 @@ Page({
     external: false,
     loading: true,
     error: '',
+    slot: 'inspector' as SignSlot,
     slotLabel: '查验员',
     alreadySigned: false,
     expiresText: '',
-    order: null as DisplayOrder | null,
-    zoomClass: 'sign-preview--normal',
-    zoomText: '100%',
-    zoomLevel: 1,
+    /** 纸面数据（每张纸正反两面） */
+    pages: [] as SheetPage[],
+    /** 1mm = 多少 rpx；缩放只改它 */
+    k: BASE_K * ZOOMS[DEFAULT_ZOOM_INDEX],
+    zoomIndex: DEFAULT_ZOOM_INDEX,
+    zoomText: '180%',
+    /** 纸张与版心位置（mm），WXML 里乘 k */
+    geo: {
+      pageW: PAGE.w,
+      pageH: PAGE.h,
+      tableW: TABLE_W,
+      mainLeft: MAIN_LEFT,
+      perfLeft: PERF_LEFT,
+      stubLeft: STUB_LEFT,
+      stubW: STUB_W,
+      backMainLeft: PAGE.w - MAIN_LEFT - TABLE_W,
+      backStubLeft: PAGE.w - STUB_LEFT - STUB_W,
+      unitLeft: UNIT_LINE.left,
+      unitW: UNIT_LINE.width,
+      backLeftW: BACK_LEFT_W,
+    },
+    fsOf: SHEET_CONSTANTS.fsOf,
+    addr: SHEET_CONSTANTS.addr,
+    quotaSplit: SHEET_CONSTANTS.quotaSplit,
+    voucherSplit: VOUCHER_SPLIT,
+    backRight: BACK_RIGHT,
     padOpen: false,
     hasInk: false,
     draftImage: '',
     submitting: false,
   },
 
+  order: null as Record<string, any> | null,
   canvasContext: null as WechatMiniprogram.CanvasContext | null,
   drawing: false,
   /**
@@ -165,7 +89,7 @@ Page({
    */
   lastPoint: null as { x: number; y: number } | null,
   pinchStartDistance: 0,
-  pinchStartScale: 1,
+  pinchStartIndex: DEFAULT_ZOOM_INDEX,
 
   onLoad(query: Record<string, string>) {
     const token = decodeURIComponent(query.token || '');
@@ -180,38 +104,74 @@ Page({
 
   async loadSession() {
     try {
-      const session = this.data.external
+      const session: MaintenanceSignSession = this.data.external
         ? await maintenance.signSession(this.data.token)
         : await maintenance.internalSignSession(this.data.orderId);
+      this.order = session.order || {};
       this.setData({
         loading: false,
         error: '',
+        slot: session.slot,
         slotLabel: session.slotLabel,
         alreadySigned: session.signed,
         expiresText: this.data.external && session.expiresAt
           ? `${dateTimeText(session.expiresAt)} 前有效`
           : '',
-        order: toDisplay(session),
+        pages: buildPages(this.order, session.slot, this.data.draftImage),
       });
     } catch (error: any) {
       this.setData({ loading: false, error: error?.message || '签字凭证已过期，请返回重新打开' });
     }
   },
 
-  zoomOut() {
-    const next = Math.max(0, this.data.zoomLevel - 1);
-    this.applyZoom(next);
+  /** 草稿签名变了就重画一遍纸（只有目标格的图会变） */
+  refreshPages() {
+    if (!this.order) return;
+    this.setData({ pages: buildPages(this.order, this.data.slot, this.data.draftImage) });
   },
 
-  zoomIn() {
-    const next = Math.min(2, this.data.zoomLevel + 1);
-    this.applyZoom(next);
+  // ---------------- 缩放 ----------------
+
+  zoomOut() { this.applyZoom(this.data.zoomIndex - 1); },
+  zoomIn() { this.applyZoom(this.data.zoomIndex + 1); },
+
+  applyZoom(index: number) {
+    const next = Math.max(0, Math.min(ZOOMS.length - 1, index));
+    if (next === this.data.zoomIndex) return;
+    this.setData({
+      zoomIndex: next,
+      k: BASE_K * ZOOMS[next],
+      zoomText: `${Math.round(ZOOMS[next] * 100)}%`,
+    });
   },
 
-  applyZoom(level: number) {
-    const classes = ['sign-preview--small', 'sign-preview--normal', 'sign-preview--large'];
-    const labels = ['85%', '100%', '120%'];
-    this.setData({ zoomLevel: level, zoomClass: classes[level], zoomText: labels[level] });
+  onPreviewTouchStart(event: any) {
+    if (event.touches?.length !== 2) return;
+    const [a, b] = event.touches;
+    this.pinchStartDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    this.pinchStartIndex = this.data.zoomIndex;
+  },
+
+  onPreviewTouchMove(event: any) {
+    if (event.touches?.length !== 2 || !this.pinchStartDistance) return;
+    const [a, b] = event.touches;
+    const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const ratio = distance / this.pinchStartDistance;
+    // 两指拉开 25% 进一档、捏拢 25% 退一档
+    const steps = Math.round(Math.log(ratio) / Math.log(1.25));
+    this.applyZoom(this.pinchStartIndex + steps);
+  },
+
+  onPreviewTouchEnd() {
+    this.pinchStartDistance = 0;
+  },
+
+  // ---------------- 签字板 ----------------
+
+  /** 纸上点了哪一格：只有本次要签的那一格（黄底）会打开签字板 */
+  onCellTap(event: WechatMiniprogram.BaseEvent) {
+    if (!event.currentTarget.dataset.target) return;
+    this.openPad();
   },
 
   openPad() {
@@ -279,7 +239,6 @@ Page({
       wx.showToast({ icon: 'none', title: '请先手写签名' });
       return;
     }
-
     wx.canvasToTempFilePath({
       canvasId: 'maintenanceSignature',
       fileType: 'png',
@@ -294,36 +253,13 @@ Page({
               wx.showToast({ icon: 'none', title: '签名生成失败，请重试' });
               return;
             }
-            this.setData({
-              draftImage: `data:image/png;base64,${base64}`,
-              padOpen: false,
-            });
+            this.setData({ draftImage: `data:image/png;base64,${base64}`, padOpen: false }, () => this.refreshPages());
           },
           fail: () => wx.showToast({ icon: 'none', title: '签名读取失败，请重试' }),
         });
       },
       fail: () => wx.showToast({ icon: 'none', title: '签名生成失败，请重试' }),
     }, this);
-  },
-
-  onPreviewTouchStart(event: any) {
-    if (event.touches?.length !== 2) return;
-    const [a, b] = event.touches;
-    this.pinchStartDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-    this.pinchStartScale = [0.85, 1, 1.2][this.data.zoomLevel] || 1;
-  },
-
-  onPreviewTouchMove(event: any) {
-    if (event.touches?.length !== 2 || !this.pinchStartDistance) return;
-    const [a, b] = event.touches;
-    const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-    const scale = this.pinchStartScale * distance / this.pinchStartDistance;
-    const level = scale < 0.93 ? 0 : scale > 1.1 ? 2 : 1;
-    if (level !== this.data.zoomLevel) this.applyZoom(level);
-  },
-
-  onPreviewTouchEnd() {
-    this.pinchStartDistance = 0;
   },
 
   async submit() {
