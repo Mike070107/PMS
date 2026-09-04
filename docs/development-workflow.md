@@ -105,8 +105,17 @@ node <browser-automation skill 目录>/browser.mjs https://prsznh.cn/login --scr
 
 - 脚本只做**只读**操作（登录、翻页、点开抽屉和弹窗），不提交表单、不改数据 —— 它跑的是生产环境，
   测试数据一旦落库就得再花力气清理。
-- 小程序没有对应手段（本机跑不了开发者工具自动化，`tools/miniapp-shot.mjs` 在这台机器上用不了）。
-  所以小程序侧的改动要如实写「真机待复核」，**不许说成已验证**。
+- 小程序走开发者工具的 MCP（`.mcp.json` 里的 `wechat-devtools`，49 个工具：`simulator_open_page`、
+  `simulator_screenshot`、`automation_*`、`compile_wxml`、`upload`…）。它连不上时**先修它，别绕过去**：
+  - 启动器是 `tools/wechatide.cmd`，只负责找到 `Program Files (x86)\Tencent\微信web开发者工具\wechatide.cmd`
+    并转发，**文件必须纯 ASCII**（cmd 按 cp936 解析，UTF-8 中文会把行切碎，`chcp 65001` 也救不了）；
+  - 报 `Failed to connect to WechatIDE … rediscovering port` = IDE 服务端口没开，
+    跑 `tools\wechatide.cmd auth -c ClaudeCode`，回 `{"authorized":true,"port":…}` 就好了
+    （`mcp` 模式下启动器已自动先做这一步）；
+  - 开发者工具升级后（2026-09-03 升到 2.02 曾把旧启动器依赖的 node.exe 删掉）先用一个 node 脚本
+    spawn `cmd /c tools\wechatide.cmd mcp`、写 initialize + tools/list 探一下，正常回 49 个 tools；
+  - 改完 `.mcp.json` 或启动器，当前会话要在 `/mcp` 里重连才拿得到工具。
+  真机预览仍以体验版为准；模拟器截图能证明布局和文案，证明不了真机手势和字体加载。
 
 ## 5. 部署流程
 
