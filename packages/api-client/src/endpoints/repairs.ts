@@ -223,6 +223,9 @@ export const rollbackPreview = (id: number | string) =>
  */
 export const rollback = (id: number | string, data: { reason: string }) =>
   request<RollbackResult>({ method: 'POST', url: `/work-orders/${id}/rollback`, data });
+/** 作废工单：退回已领用料、排除统计；confirmReversal 必须为 true（服务端会拦） */
+export const voidWorkOrder = (id: number | string, data: { reason: string; confirmReversal: boolean }) =>
+  request<void>({ method: 'POST', url: `/work-orders/${id}/void`, data });
 
 /** 撤回接口的返回：工单本体之外，额外说明这次撤回实际做了什么 */
 export interface RollbackResult {

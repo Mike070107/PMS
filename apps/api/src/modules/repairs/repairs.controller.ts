@@ -313,9 +313,9 @@ export class RepairsController {
     return this.repairsService.getWorkOrder(id, user, access);
   }
 
-  /** 办公室/管理员作废：记录仍在，可在调度台筛选。 */
+  /** 作废：记录仍在，可在调度台筛选。后台走「工单管理·办理」，小程序走「作废工单」那一格（勾中即可） */
   @Post('work-orders/:id/void')
-  @RequirePermission(['work-orders', 'app:dispatch'], 'edit')
+  @RequirePermission(['work-orders', ['app:order-void', 'view']], 'edit')
   voidWorkOrder(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VoidWorkOrderDto,
@@ -403,7 +403,7 @@ export class RepairsController {
    * 前端只负责显示，不许再自己推导目标状态（旁路节点上必错）。
    */
   @Get('work-orders/:id/rollback-preview')
-  @RequirePermission(['work-orders', 'app:dispatch'], 'view')
+  @RequirePermission(['work-orders', 'app:dispatch', 'app:order-rollback'], 'view')
   previewRollback(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
@@ -412,8 +412,9 @@ export class RepairsController {
     return this.repairsService.previewRollback(id, user, access);
   }
 
+  /** 撤回：后台走「工单管理·办理」，小程序走「撤回工单」那一格（勾中即可），不再跟着派单权限 */
   @Post('work-orders/:id/rollback')
-  @RequirePermission(['work-orders', 'app:dispatch'], 'edit')
+  @RequirePermission(['work-orders', ['app:order-rollback', 'view']], 'edit')
   rollbackWorkOrder(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RollbackWorkOrderDto,

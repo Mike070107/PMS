@@ -2155,8 +2155,8 @@ export class RepairsService implements OnModuleInit {
     if (dto.confirmReversal !== true) {
       throw new BadRequestException('请确认退回用料并从统计中排除该工单');
     }
-    if (!(await this.canDispatch(user, access))) {
-      throw new ForbiddenException('只有办公室人员或管理员可以作废工单');
+    if (!(await this.canVoid(user, access))) {
+      throw new ForbiddenException('你的账号没有作废工单的权限，请管理员在「业务角色」里勾上「作废工单」');
     }
 
     const tenantId = this.resolveTenantId(user);
@@ -3000,10 +3000,10 @@ export class RepairsService implements OnModuleInit {
     const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
     if (!workOrder) throw new NotFoundException('work order not found');
     this.assertWorkOrderScope(workOrder, access);
-    if (!(await this.canDispatch(user, access))) {
+    if (!(await this.canRollback(user, access))) {
       return {
         allowed: false,
-        blockedReason: '只有办公室人员或管理员可以撤回工单',
+        blockedReason: '你的账号没有撤回工单的权限，请管理员在「业务角色」里勾上「撤回工单」',
         fromStatus: workOrder.status,
         fromStatusLabel: workOrderStatusLabel(workOrder.status),
         willReturnMaterials: false,
@@ -3049,8 +3049,8 @@ export class RepairsService implements OnModuleInit {
     if (!reason || reason.length < 2) {
       throw new BadRequestException('请填写至少 2 个字的撤回原因');
     }
-    if (!(await this.canDispatch(user, access))) {
-      throw new ForbiddenException('只有办公室人员或管理员可以撤回工单');
+    if (!(await this.canRollback(user, access))) {
+      throw new ForbiddenException('你的账号没有撤回工单的权限，请管理员在「业务角色」里勾上「撤回工单」');
     }
 
     const tenantId = this.resolveTenantId(user);
@@ -7041,6 +7041,25 @@ export class RepairsService implements OnModuleInit {
     const resolved = access ?? (await this.accessService.getAccess(user));
     if (resolved.isPlatformAdmin || resolved.isTenantAdmin) return true;
     return !!(resolved.pages['app:dispatch']?.edit || resolved.pages['work-orders']?.edit);
+  }
+
+  /**
+   * 撤回 / 作废 2026-09-05 从「派单」里拆出来单独授权（Mike：三者要能分别勾）。
+   * 后台「工单管理·办理」仍然一并包含；小程序那两格只有「勾中」一档，所以看 view。
+   * 存量角色由 AccessService.onModuleInit 按原来的派单权限补齐，不会有人突然撤不了。
+   */
+  private async canRollback(user: AuthUser, access?: ResolvedAccess): Promise<boolean> {
+    if (user.role === UserRole.OWNER) return false;
+    const resolved = access ?? (await this.accessService.getAccess(user));
+    if (resolved.isPlatformAdmin || resolved.isTenantAdmin) return true;
+    return !!(resolved.pages['app:order-rollback']?.view || resolved.pages['work-orders']?.edit);
+  }
+
+  private async canVoid(user: AuthUser, access?: ResolvedAccess): Promise<boolean> {
+    if (user.role === UserRole.OWNER) return false;
+    const resolved = access ?? (await this.accessService.getAccess(user));
+    if (resolved.isPlatformAdmin || resolved.isTenantAdmin) return true;
+    return !!(resolved.pages['app:order-void']?.view || resolved.pages['work-orders']?.edit);
   }
 
   private resolveTenantId(user: AuthUser, requestedTenantId?: number): number {

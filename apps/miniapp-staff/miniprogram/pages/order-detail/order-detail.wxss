@@ -125,6 +125,14 @@ page { background: #f1f6fb; }
   font-weight: 700;
 }
 .rollback-entry__button::after { border: 0; }
+/* 作废入口：和撤回并排出现，红色系提示这是不可逆一档的动作 */
+.rollback-entry--void { border-color: #ead4d4; }
+.rollback-entry__button--void { border-color: #e3b5b5; background: #fff7f7; color: #a7383e; }
+.void-confirm { display: flex; align-items: flex-start; gap: 16rpx; min-height: 88rpx; margin-top: 24rpx; padding: 18rpx 20rpx; border: 2rpx solid #d9e2ea; border-radius: 18rpx; background: #fff; color: #3f5368; font-size: 29rpx; line-height: 1.5; }
+.void-confirm__box { flex-shrink: 0; width: 40rpx; height: 40rpx; margin-top: 2rpx; border: 3rpx solid #9ebbd5; border-radius: 10rpx; background: #fff; }
+.void-confirm--on { border-color: #b53d44; }
+.void-confirm--on .void-confirm__box { border-color: #b53d44; background: #b53d44 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") no-repeat center / 28rpx; }
+.btn--danger-solid { background: #b53d44 !important; border-color: #b53d44 !important; color: #fff !important; }
 .rollback-warning {
   padding: 22rpx 24rpx;
   border-radius: 18rpx;

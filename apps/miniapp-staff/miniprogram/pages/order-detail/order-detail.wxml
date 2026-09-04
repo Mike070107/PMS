@@ -101,6 +101,12 @@
       <button class="rollback-entry__button" data-panel="rollback" bindtap="onOpenPanel">撤回上一步</button>
     </view>
 
+    <!-- 作废：和撤回是两格独立权限（2026-09-05） -->
+    <view wx:if="{{canVoid}}" class="rollback-entry rollback-entry--void">
+      <view><view class="rollback-entry__title">这单不用修了？</view><view wx:if="{{guide}}" class="rollback-entry__desc">作废会退回已领用的材料、不进统计；记录保留，仍能查到</view></view>
+      <button class="rollback-entry__button rollback-entry__button--void" data-panel="void" bindtap="onOpenPanel">作废工单</button>
+    </view>
+
     <view class="detail-error" wx:if="{{errorMsg && !panel}}">{{errorMsg}}</view>
   </view>
 </view>
@@ -137,6 +143,32 @@
     <view class="complete-error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
   </scroll-view>
   <view class="sheet__foot"><button class="btn btn--primary" loading="{{busy}}" disabled="{{busy || rollbackLoading || rollbackBlocked}}" bindtap="onSubmitRollback">确认撤回</button></view>
+</view>
+
+<!-- ============ 作废工单 ============ -->
+<view wx:if="{{panel === 'void'}}" class="sheet-mask" bindtap="onClosePanel" catchtouchmove="noop"/>
+<view wx:if="{{panel === 'void'}}" class="sheet" catchtouchmove="noop">
+  <view class="sheet__head"><text class="sheet__title">作废工单</text><text class="sheet__close" bindtap="onClosePanel">关闭</text></view>
+  <scroll-view class="sheet__body" scroll-y>
+    <view class="rollback-warning rollback-warning--blocked">
+      <view class="rollback-warning__title">作废后这张单不再处理</view>
+      <view class="rollback-warning__impact">本单已领用的材料会退回仓库</view>
+      <view class="rollback-warning__impact">不再计入完工、时效等统计</view>
+      <view>记录保留，办公室仍能在工单管理里筛到它。</view>
+    </view>
+    <view class="label mt">作废原因<text class="label__opt">必填</text></view>
+    <button wx:if="{{hasSpeech}}" class="speech-field-button {{recording && speechTarget === 'void' ? 'speech-field-button--on' : ''}}" data-speech-target="void" data-speech-label="作废原因" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord">
+      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'void' ? '松开结束' : '按住说作废原因'}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">说完自动填到下面，还可以修改</view></view>
+    </button>
+    <view wx:if="{{recording && speechTarget === 'void'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
+    <textarea class="complete-textarea" maxlength="500" placeholder="例如：业主重复报修，另一张单已在处理" value="{{voidNote}}" bindinput="onVoidNote"/>
+    <view class="void-confirm {{voidConfirmed ? 'void-confirm--on' : ''}}" bindtap="onToggleVoidConfirm">
+      <view class="void-confirm__box"></view>
+      <text>我确认：退回本单已领用的材料，并把它从统计中排除</text>
+    </view>
+    <view class="complete-error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
+  </scroll-view>
+  <view class="sheet__foot"><button class="btn btn--primary btn--danger-solid" loading="{{busy}}" disabled="{{busy}}" bindtap="onSubmitVoid">确认作废</button></view>
 </view>
 
 <!-- ============ 维修过程记录 ============ -->

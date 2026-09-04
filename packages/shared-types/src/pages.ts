@@ -44,7 +44,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
       {
         field: 'canEdit',
         label: '办理与调度（含新增、派单、撤回、作废）',
-        hint: '作废会退回已领用库存并排除统计，但记录仍可筛选查看',
+        hint: '作废会退回已领用库存并排除统计，但记录仍可筛选查看。小程序端的派单、撤回、作废在下面「邻修小程序页面权限」里分别勾',
       },
     ],
   },
@@ -130,6 +130,18 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
     hint: '看待派单的活',
     editLabel: '派单',
     editHint: '把单指派给维修工、改期限',
+  },
+  {
+    // 2026-09-05 Mike：派单、撤回、作废要能分别授权。原来撤回和作废都跟着「派单」走，
+    // 想让某人能撤回但不能派单（或反过来）做不到。这两格勾中即生效，不分查看/操作。
+    key: 'app:order-rollback',
+    label: '撤回工单',
+    hint: '勾中即可把处理错的工单退回上一步；退到哪一步、要不要退料由系统算好再确认',
+  },
+  {
+    key: 'app:order-void',
+    label: '作废工单',
+    hint: '勾中即可作废工单：退回已领用库存、排除统计，记录仍可查',
   },
   {
     key: 'app:pool',
@@ -269,9 +281,11 @@ export const DEFAULT_ROLE_TEMPLATES: {
   },
   {
     name: '物业办公室',
-    remark: '派单、管材料与库存、提采购申请',
+    remark: '派单、撤回、作废、管材料与库存、提采购申请',
     appPages: {
       'app:dispatch': 'e',
+      'app:order-rollback': 'v',
+      'app:order-void': 'v',
       'app:maintenance-sign': 'v',
       'app:inventory': 'e',
       'app:stocktakes': 'e',
@@ -297,6 +311,8 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '派单 + 采购审批（经理这一步）+ 后台各页',
     appPages: {
       'app:dispatch': 'e',
+      'app:order-rollback': 'v',
+      'app:order-void': 'v',
       'app:inventory': 'e',
       'app:stocktakes': 'e',
       'app:materials': 'e',

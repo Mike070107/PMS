@@ -210,6 +210,11 @@ interface PageData {
   canTransfer: boolean;
   canRedispatch: boolean;
   canRollback: boolean;
+  /** 作废工单：「作废工单」那一格勾中且单子还没作废 */
+  canVoid: boolean;
+  voidNote: string;
+  /** 作废前必须勾的确认：退回用料、从统计里排除 */
+  voidConfirmed: boolean;
   /** 以下几项全部来自后端撤回预览，端上不做推导 */
   rollbackTargetText: string;
   rollbackLoading: boolean;
@@ -330,6 +335,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     canTransfer: false,
     canRedispatch: false,
     canRollback: false,
+    canVoid: false,
+    voidNote: '',
+    voidConfirmed: false,
     rollbackTargetText: '上一处理节点',
     rollbackLoading: false,
     rollbackBlocked: false,
@@ -499,9 +507,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           !!session?.canDispatch &&
           status === WorkOrderStatus.CREATED &&
           !(detail.workOrder.candidateIds || []).length,
-        // 已作废的单不给撤回入口；待派单能不能撤（可能是误转单）由后端预览判定
+        // 撤回 / 作废是两格独立权限（2026-09-05 从派单里拆出来），已作废的单两个入口都不给；
+        // 待派单能不能撤（可能是误转单）由后端预览判定
         canRollback:
-          !!session?.canDispatch && status !== WorkOrderStatus.VOIDED,
+          !!session?.canRollback && status !== WorkOrderStatus.VOIDED,
+        canVoid: !!session?.canVoid && status !== WorkOrderStatus.VOIDED,
         assigneeText: detail.workOrder.assigneeName || '未派单',
         ...this.buildResult(detail),
         missingText: missingMaterialsText(detail.workOrder.missingMaterials),
@@ -808,6 +818,32 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     }
   },
 
+  onVoidNote(e: WechatMiniprogram.Input) {
+    this.setData({ voidNote: e.detail.value, errorMsg: '' });
+  },
+
+  onToggleVoidConfirm() {
+    this.setData({ voidConfirmed: !this.data.voidConfirmed, errorMsg: '' });
+  },
+
+  /** 作废：原因 + 明确勾过「退料、排除统计」才提交；服务端同样两道都拦 */
+  async onSubmitVoid() {
+    const reason = this.data.voidNote.trim();
+    if (reason.length < 2) return this.setData({ errorMsg: '请填写至少 2 个字的作废原因' });
+    if (!this.data.voidConfirmed) return this.setData({ errorMsg: '请先勾上「退回用料并从统计中排除」' });
+    this.setData({ busy: true, errorMsg: '' });
+    try {
+      await repairs.voidWorkOrder(this.data.id, { reason, confirmReversal: true });
+      this.setData({ panel: '', voidNote: '', voidConfirmed: false });
+      wx.showToast({ title: '工单已作废', icon: 'success' });
+      await this.load();
+    } catch (e: any) {
+      this.setData({ errorMsg: e?.message || '作废失败' });
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+
   onGoRedispatch() {
     const orderNo = this.data.detail?.workOrder.orderNo || '';
     rememberPoolMode('dispatch');
@@ -918,6 +954,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     }
     if (target === 'rollback') {
       this.setData({ rollbackNote: appendSpeech(this.data.rollbackNote, spoken) });
+      return;
+    }
+    if (target === 'void') {
+      this.setData({ voidNote: appendSpeech(this.data.voidNote, spoken) });
       return;
     }
     if (target === 'materialNote') {

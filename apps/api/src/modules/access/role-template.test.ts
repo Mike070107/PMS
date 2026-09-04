@@ -64,8 +64,17 @@ test('启动时把历史合并权限复制为新的独立页面权限', async ()
   const templateSignSql = templateSql.filter((sql) => sql.includes("'app:maintenance-sign'"));
   assert.equal(roleSignSql.length, 2, '在手工单和派单台两类老角色都要补养护单签字入口');
   assert.equal(templateSignSql.length, 2, '两类老模板都要补养护单签字入口');
-  assert.equal(roleSql.length, 6, '目前角色权限共有六组拆分回填');
-  assert.equal(templateSql.length, 6, '目前模板权限共有六组拆分回填');
+  // 撤回 / 作废从「派单」拆出来：目标只有勾中一档，拿源的 can_edit 当 can_view
+  for (const target of ['app:order-rollback', 'app:order-void']) {
+    const roleSplit = roleSql.find((sql) => sql.includes(`'${target}'`));
+    const tplSplit = templateSql.find((sql) => sql.includes(`'${target}'`));
+    assert.match(roleSplit || '', /src\.page_key = 'app:dispatch'/, `${target} 应从派单权限回填`);
+    assert.match(tplSplit || '', /src\.page_key = 'app:dispatch'/);
+    assert.match(roleSplit || '', /src\.can_edit, false, false/, `${target} 的可见性要取派单的「操作」档`);
+    assert.match(tplSplit || '', /src\.can_edit, false, false/);
+  }
+  assert.equal(roleSql.length, 8, '目前角色权限共有八组拆分回填');
+  assert.equal(templateSql.length, 8, '目前模板权限共有八组拆分回填');
 });
 
 test('跟随模板的角色读模板那份权限，自定义角色读自己的', async () => {

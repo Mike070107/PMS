@@ -146,6 +146,8 @@ localStorage key：`pms.admin.actingOffice`；切公司视角、退出登录、�
 |---|---|---|
 | `app:pool` | 工单池 | 接单 |
 | `app:dispatch` | 派单台 | 派单（指派、改期限） |
+| `app:order-rollback` | 撤回工单（无独立页面，勾中即可在工单页撤回上一步） | — |
+| `app:order-void` | 作废工单（无独立页面，勾中即可在工单页作废） | — |
 | `app:my-orders` | 在手工单 / 我的报修 | 处理工单（完工、报缺料） |
 | `app:repair-create` | 报修 | — |
 | `app:inventory` | 材料与库存 | 改材料 / 提采购 |

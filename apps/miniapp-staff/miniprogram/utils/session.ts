@@ -23,6 +23,9 @@ export interface StaffSession {
   /** 派单台那一格：看得到 / 能派单 */
   canSeeDispatch: boolean;
   canDispatch: boolean;
+  /** 撤回 / 作废工单：2026-09-05 从派单里拆出来的两格，勾中即有 */
+  canRollback: boolean;
+  canVoid: boolean;
   /** 在手工单：看得到 / 能完工报料 */
   canSeeMyOrders: boolean;
   /**
@@ -70,6 +73,8 @@ const emptySession = (): StaffSession => ({
   canAccept: false,
   canSeeDispatch: false,
   canDispatch: false,
+  canRollback: false,
+  canVoid: false,
   canSeeMyOrders: false,
   canSeeDone: false,
   canHandleOrders: false,
@@ -112,6 +117,8 @@ export function buildSession(me: MeResp | null): StaffSession {
     canAccept: can('app:pool', 'edit'),
     canSeeDispatch,
     canDispatch: can('app:dispatch', 'edit'),
+    canRollback: can('app:order-rollback', 'view'),
+    canVoid: can('app:order-void', 'view'),
     canSeeMyOrders,
     canSeeDone: canSeePool || canSeeDispatch || canSeeMyOrders,
     canHandleOrders: can('app:my-orders', 'edit'),

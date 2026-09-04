@@ -38,6 +38,8 @@ export type AdminPageKey = (typeof ADMIN_PAGE_KEYS)[number];
  */
 export const STAFF_APP_PAGE_KEYS = [
   'app:dispatch', // 派单台（派单）
+  'app:order-rollback', // 撤回工单（勾中即生效；2026-09-05 从「派单」里拆出来单独授权）
+  'app:order-void', // 作废工单（同上）
   'app:pool', // 工单池（接单）
   'app:my-orders', // 在手工单（派给本人、由本人处理）
   'app:maintenance-sign', // 养护单内部签字任务（填单人 / 修理人）
@@ -96,6 +98,8 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '派单、管材料与库存、提采购申请',
     appPages: {
       'app:dispatch': 'e',
+      'app:order-rollback': 'v',
+      'app:order-void': 'v',
       'app:maintenance-sign': 'v',
       'app:inventory': 'e',
       'app:stocktakes': 'e',
@@ -121,6 +125,8 @@ export const DEFAULT_ROLE_TEMPLATES: {
     remark: '派单 + 采购审批（经理这一步）+ 后台各页',
     appPages: {
       'app:dispatch': 'e',
+      'app:order-rollback': 'v',
+      'app:order-void': 'v',
       'app:inventory': 'e',
       'app:stocktakes': 'e',
       'app:materials': 'e',

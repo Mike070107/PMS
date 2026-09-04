@@ -105,7 +105,10 @@ export class AccessService implements OnModuleInit {
    *
    * 所以在这里做幂等补齐。已经有目标权限行的（管理员自己配置过的）一概不动：
    * - app:inventory → app:materials：原来同一页里的材料档案入口拆成独立页；
-   * - app:my-orders → app:my-repairs：原来的「在手工单 / 我的报修」拆成两格。
+   * - app:my-orders → app:my-repairs：原来的「在手工单 / 我的报修」拆成两格；
+   * - app:dispatch(派单) → app:order-rollback / app:order-void：撤回、作废原来跟着派单走，
+   *   2026-09-05 拆成独立两格。这两格只有「勾中」一档，所以拿源的 can_edit 当目标的 can_view
+   *   （viewFrom: 'edit'）：原来能派单的人照旧能撤回、作废，只看派单台的人不会平白多出权限。
    */
   async onModuleInit() {
     const SQL = (
@@ -114,9 +117,10 @@ export class AccessService implements OnModuleInit {
       sourceKey: string,
       targetKey: string,
       copyEdit: boolean,
+      viewFrom: 'view' | 'edit' = 'view',
     ) => `
       INSERT INTO ${table} (tenant_id, ${owner}, page_key, can_view, can_edit, can_delete, created_at, updated_at)
-      SELECT src.tenant_id, src.${owner}, '${targetKey}', src.can_view, ${copyEdit ? 'src.can_edit' : 'false'}, false, now(), now()
+      SELECT src.tenant_id, src.${owner}, '${targetKey}', src.can_${viewFrom}, ${copyEdit ? 'src.can_edit' : 'false'}, false, now(), now()
         FROM ${table} src
        WHERE src.page_key = '${sourceKey}'
          AND NOT EXISTS (
@@ -126,17 +130,19 @@ export class AccessService implements OnModuleInit {
     `;
     try {
       const n = (r: unknown) => (Array.isArray(r) && typeof r[1] === 'number' ? r[1] : 0);
-      const splits = [
+      const splits: Array<{ source: string; target: string; copyEdit: boolean; viewFrom?: 'view' | 'edit' }> = [
         { source: 'app:inventory', target: 'app:materials', copyEdit: true },
         { source: 'app:my-orders', target: 'app:my-repairs', copyEdit: false },
         { source: 'maintenance-inspect', target: 'app:maintenance-inspect', copyEdit: false },
         { source: 'app:my-orders', target: 'app:maintenance-sign', copyEdit: false },
         { source: 'app:dispatch', target: 'app:maintenance-sign', copyEdit: false },
         { source: 'work-orders', target: 'experience-notes', copyEdit: true },
+        { source: 'app:dispatch', target: 'app:order-rollback', copyEdit: false, viewFrom: 'edit' },
+        { source: 'app:dispatch', target: 'app:order-void', copyEdit: false, viewFrom: 'edit' },
       ];
       for (const split of splits) {
         const role = await this.rolePermRepo.query(
-          SQL('role_permissions', 'role_id', split.source, split.target, split.copyEdit),
+          SQL('role_permissions', 'role_id', split.source, split.target, split.copyEdit, split.viewFrom),
         );
         const tpl = await this.tplPermRepo.query(
           SQL(
@@ -145,6 +151,7 @@ export class AccessService implements OnModuleInit {
             split.source,
             split.target,
             split.copyEdit,
+            split.viewFrom,
           ),
         );
         if (n(role) || n(tpl)) {
