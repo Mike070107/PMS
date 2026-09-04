@@ -56,3 +56,6 @@ data-prep/
 # 字体转成 woff2 后进仓库（apps/admin-web/src/fonts/），源文件留在本机。
 # 重新生成：python tools/fonts/build-webfonts.py
 /src/
+
+# 后台冒烟测试的账号密码（tools/web-smoke.mjs 读它）——绝不入库
+.smoke-credentials
