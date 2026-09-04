@@ -2151,3 +2151,12 @@
 - 自上次（a05172e）以来上线的相关提交：
   - 7f619bb feat(权限): 派单、撤回、作废拆成三格独立授权，员工端工单页加「作废工单」
 
+## 2026-09-05 07:09 · miniapp-staff · 166f418
+
+- 包：`1.0.20260905a`
+- 提交：166f418 docs(inbox): 派单/撤回/作废独立授权已修（7f619bb）
+- 说明：作废入口/权限拆分/语音报修恢复，体验版待选
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（a712e04）以来上线的相关提交：
+  - 7f619bb feat(权限): 派单、撤回、作废拆成三格独立授权，员工端工单页加「作废工单」
+
