@@ -10,18 +10,31 @@
     <view class="work-hero__count">{{list.length}} {{leadText}}</view>
   </view>
   <view class="work-hero__hint">{{dispatcher ? '把待办准确派给合适的维修人员' : '紧急优先；同组按报修时间从早到晚'}}</view>
+  <!-- 三个数字可点：点了就在这一屏里只看那一类，再点一次取消（见 pool.ts onTapMetric） -->
   <view class="work-metrics">
-    <view class="work-metric work-metric--danger">
+    <view
+      class="work-metric work-metric--danger {{metricFilter === 'urgent' ? 'work-metric--on' : ''}}"
+      data-metric="urgent"
+      bindtap="onTapMetric"
+    >
       <view class="work-metric__value">{{urgentCount}}</view>
-      <view class="work-metric__label">紧急</view>
+      <view class="work-metric__label">紧急{{metricFilter === 'urgent' ? ' · 只看这些' : ''}}</view>
     </view>
-    <view class="work-metric work-metric--warning">
+    <view
+      class="work-metric work-metric--warning {{metricFilter === 'overdue' ? 'work-metric--on' : ''}}"
+      data-metric="overdue"
+      bindtap="onTapMetric"
+    >
       <view class="work-metric__value">{{overdueCount}}</view>
-      <view class="work-metric__label">压 3 天以上</view>
+      <view class="work-metric__label">压 3 天以上{{metricFilter === 'overdue' ? ' · 只看这些' : ''}}</view>
     </view>
-    <view class="work-metric">
+    <view
+      class="work-metric {{metricFilter === 'normal' ? 'work-metric--on' : ''}}"
+      data-metric="normal"
+      bindtap="onTapMetric"
+    >
       <view class="work-metric__value">{{normalCount}}</view>
-      <view class="work-metric__label">普通</view>
+      <view class="work-metric__label">普通{{metricFilter === 'normal' ? ' · 只看这些' : ''}}</view>
     </view>
   </view>
 </view>

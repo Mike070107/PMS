@@ -31,6 +31,8 @@ export class ApiError extends Error {
     public code: number,
     message: string,
     public httpStatus?: number,
+    /** 网络层失败（超时、断网、服务重启），不是服务端返回的业务错误。只读请求可以重试 */
+    public networkFailure = false,
   ) {
     super(message);
   }
@@ -99,6 +101,33 @@ function hasWxRequest(): boolean {
   return typeof wx !== 'undefined' && typeof wx.request === 'function';
 }
 
+/**
+ * 把微信的原始 errMsg 翻成人话。
+ *
+ * 不翻的话用户看到的就是 `request:fail fail:time out`（2026-09-04 反馈就是这一条），
+ * 既不知道发生了什么，也不知道下一步该干嘛。每条都要给出**下一步动作**。
+ */
+function networkMessage(errMsg?: string): string {
+  const raw = String(errMsg || '');
+  if (/time\s*out/i.test(raw)) return '网络超时，请检查网络后下拉刷新重试';
+  if (/abort/i.test(raw)) return '请求被中断，请重试';
+  if (/not in domain list|domain/i.test(raw)) return '小程序服务器域名没配好，请联系管理员在公众平台加白名单';
+  if (/ssl|certificate|cert/i.test(raw)) return '安全连接失败，请检查手机日期时间是否准确';
+  if (/fail/i.test(raw)) return '网络连接失败，请检查网络后重试';
+  return raw || '网络异常';
+}
+
+/**
+ * 只读请求（GET）失败时自动重试一次。
+ *
+ * 服务端每次发版 pm2 reload 有十几秒不可用，手机在电梯里、地库里也常断一下 ——
+ * 这种一次性抖动不该让人看到一屏报错。**只重试 GET**：POST 重试等于重复提交，
+ * 完工那条就是被重复提交坑过的（见 order-detail 的幂等令牌）。
+ */
+function shouldRetry(opts: RequestOptions): boolean {
+  return (opts.method ?? 'GET') === 'GET';
+}
+
 function requestViaWx<T>(
   url: string,
   opts: RequestOptions,
@@ -138,7 +167,8 @@ function requestViaWx<T>(
           reject(e);
         }
       },
-      fail: (err: any) => reject(new ApiError(-1, err.errMsg || '网络异常')),
+      fail: (err: any) =>
+        reject(new ApiError(-1, networkMessage(err?.errMsg), undefined, true)),
     });
   });
 }
@@ -257,9 +287,18 @@ export function request<T = unknown>(opts: RequestOptions): Promise<T> {
     if (token) header['Authorization'] = `Bearer ${token}`;
     Object.assign(header, config.getExtraHeaders?.() ?? {});
   }
-  const pending = hasWxRequest()
-    ? requestViaWx<T>(url, opts, header)
-    : requestViaFetch<T>(url, opts, header);
+  const send = () =>
+    hasWxRequest() ? requestViaWx<T>(url, opts, header) : requestViaFetch<T>(url, opts, header);
+  // 只读请求碰上网络抖动（超时、断网、服务端发版重启）自动重试一次；
+  // 写请求绝不重试 —— 那等于重复提交
+  const pending = shouldRetry(opts)
+    ? send().catch((error: any) => {
+        if (!error?.networkFailure) throw error;
+        return new Promise<T>((resolve, reject) => {
+          setTimeout(() => send().then(resolve, reject), 600);
+        });
+      })
+    : send();
   return pending.catch((error: any) => {
     lastApiFailure = {
       method: opts.method || 'GET',

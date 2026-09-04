@@ -283,3 +283,24 @@
   white-space: nowrap;
 }
 .tech__load--free { color: var(--color-success); }
+
+/* 页头三个数字可点：选中的那个加实底描边 + 勾。
+   写在页面样式里而不是 app.wxss —— 那个文件另一个会话正在改，避免撞车；
+   页面 wxss 在 app.wxss 之后加载，同特异度这边赢。 */
+.work-metric { position: relative; }
+.work-metric--on {
+  border-color: #31558a !important;
+  background: #e8f1fb !important;
+  box-shadow: 0 0 0 2rpx rgba(49,85,138,.25);
+}
+.work-metric--on .work-metric__label { color: #26527f; font-weight: 700; }
+.work-metric--on::after {
+  content: '';
+  position: absolute;
+  top: 10rpx;
+  right: 12rpx;
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #31558a;
+}

@@ -109,8 +109,10 @@ const DISPATCHABLE_STATUSES: string[] = [
 interface PoolFilter {
   key: string;
   label: string;
-  /** 服务端的取数范围：pool 待接 / dispatch 待派 / all 全部 / reported 我提交的 */
-  scope?: 'pool' | 'dispatch' | 'all' | 'reported';
+  /** 服务端的取数范围：pool 待接 / dispatch 待派 / all 全部 / reported 我提交的 / mine 派给我的 */
+  scope?: 'pool' | 'dispatch' | 'all' | 'reported' | 'mine';
+  /** 需要这个权限才显示这一档；不填 = 谁都能看 */
+  needs?: 'myOrders';
   status?: string;
 }
 
@@ -142,6 +144,11 @@ const POOL_FILTERS: PoolFilter[] = [
   { key: 'created', label: '新报修', scope: 'pool', status: WorkOrderStatus.CREATED },
   { key: 'dispatched', label: '派给我的', scope: 'pool', status: WorkOrderStatus.DISPATCHED },
   { key: 'waiting', label: '等待材料', scope: 'pool', status: WorkOrderStatus.WAITING_MATERIAL },
+  /* 「我修的」= 已经在我手上的活（scope=mine 只回 assignee_id 是本人的单，
+     且默认排除待派/已派/作废）。和上面几档不是一回事：那些是「还没人认领、我可以接」，
+     这一档是「已经归我了」，接单按钮不该出现在这里。
+     没有「在手工单」查看权的人（只报修的保安、居委）不显示这一档。 */
+  { key: 'mine', label: '我修的', scope: 'mine', needs: 'myOrders' },
 ];
 
 /**
@@ -215,6 +222,12 @@ Page({
     overdueCount: 0,
     urgentCount: 0,
     normalCount: 0,
+    /**
+     * 点了页头哪一个数字：'' 不筛 / urgent 紧急 / overdue 压 3 天以上 / normal 普通。
+     * 纯前端在**当前这一屏**里筛 —— 这三个数本来就是按这一屏算的（见 load 里的注释）。
+     * 数字本身不跟着筛选变：变了的话点「紧急」会把「普通」显示成 0，没人看得懂。
+     */
+    metricFilter: '',
     showPriorityGroups: false,
     list: [] as OrderRow[],
     loading: false,
@@ -260,6 +273,9 @@ Page({
     assignError: '',
     assigning: false,
   },
+
+  /** 当前这一屏的全量行；页头数字筛选在本地做，别每点一下就重新请求 */
+  allRows: [] as OrderRow[],
 
   onShow() {
     // 语音插件的回调是全局单例，其他页面使用后会覆盖；每次回到派单台都重新绑定到本页。
@@ -338,12 +354,15 @@ Page({
          报单的人最想知道的就是「修到哪一步了」；已完结那一档本身是终态，不给筛选条。
          切换时必须把选中项归零，否则从派单台的「已完成」切回工单池会落到一个
          越界的下标上，列表看着像空的。 */
-      const filters =
+      const filters = (
         mainTab === 'reported'
           ? REPORTED_FILTERS
           : dispatcher
             ? DISPATCH_FILTERS
-            : POOL_FILTERS;
+            : POOL_FILTERS
+      // 没有「在手工单」查看权的人（只报修的保安、居委）不显示「我修的」——
+      // 显示了点进去也是 403，不如不给
+      ).filter((item) => item.needs !== 'myOrders' || session.canSeeMyOrders);
       const modeChanged = this.data.dispatcher !== dispatcher || this.data.loaded === false;
       const filterIndex = modeChanged ? 0 : Math.min(this.data.filterIndex, filters.length - 1);
       const filter = filters[filterIndex] || filters[0];
@@ -367,7 +386,8 @@ Page({
       const rows: OrderRow[] = withOrderLabels(list).map((item) => {
         // 只有「工单池」那一档才画接单按钮：我报的 / 已完结里那张单未必轮得到我领
         const claimable =
-          mainTab === 'pool' && POOL_STATUSES.indexOf(item.status) >= 0;
+          // 「我修的」那一档里的单已经归自己了，不再画「接单」按钮
+          mainTab === 'pool' && filter.key !== 'mine' && POOL_STATUSES.indexOf(item.status) >= 0;
         const dispatchable = DISPATCHABLE_STATUSES.indexOf(item.status) >= 0;
         return {
           ...item,
@@ -404,11 +424,13 @@ Page({
 
       // 现场处理顺序：紧急 / 超时优先；同一天再把相邻地址聚在一起，减少来回跑。
       // 服务端和端上共用同一口径，这里重排是为了防止页面加工数据时打乱顺序。
-      if (mainTab === 'pool' && (!dispatcher || filter.key === 'pool')) {
+      // 「我修的」已经在自己手上，不参与「先接哪一单」的排序和分组
+      const claimable = mainTab === 'pool' && filter.key !== 'mine' && (!dispatcher || filter.key === 'pool');
+      if (claimable) {
         rows.sort(compareWorkOrderRoutePriority);
       }
 
-      const showPriorityGroups = mainTab === 'pool' && (!dispatcher || filter.key === 'pool');
+      const showPriorityGroups = claimable;
       if (showPriorityGroups) {
         rows.forEach((row, index) => {
           const previous = rows[index - 1];
@@ -446,7 +468,7 @@ Page({
                   ? '待派单'
                   : '待接单'
                 : filter.label,
-        list: rows,
+        list: this.applyMetric(rows),
         /* 页头那个红数字：压了 3 天以上的（stayTone 的 danger 档）。只在「待接 / 待派」这一档算 ——
            已完结的单再标「压了 3 天」是翻旧账，我报的那摞也不该用这个口径催自己。
            前端按当前这一屏算，不另开接口，换筛选档跟着变是对的，别理解成全局待办数。 */
@@ -814,6 +836,29 @@ Page({
     const index = this.data.list.findIndex((item) => item.id === id);
     if (index < 0) return;
     this.setData({ [`list[${index}].waitingCollapsed`]: true });
+  },
+
+  /** 按页头选中的那个数字筛当前这一屏；没选就原样返回 */
+  applyMetric(rows: OrderRow[]): OrderRow[] {
+    this.allRows = rows;
+    const metric = this.data.metricFilter;
+    if (metric === 'urgent') return rows.filter((row) => row.urgent);
+    if (metric === 'overdue') return rows.filter((row) => row.stayTone === 'danger');
+    if (metric === 'normal') return rows.filter((row) => !row.urgent);
+    return rows;
+  },
+
+  /**
+   * 点页头的数字就按它筛，再点一次取消。
+   *
+   * 不重新请求：这三个数就是从当前这一屏算出来的，本地筛既快又不会和数字对不上。
+   */
+  onTapMetric(e: WechatMiniprogram.BaseEvent) {
+    const metric = String(e.currentTarget.dataset.metric || '');
+    const next = this.data.metricFilter === metric ? '' : metric;
+    this.setData({ metricFilter: next }, () => {
+      this.setData({ list: this.applyMetric(this.allRows) });
+    });
   },
 });
 
