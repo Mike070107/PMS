@@ -2133,3 +2133,12 @@
 - 自上次（a05172e）以来上线的相关提交：
   - 44b6111 fix(员工端): 语音报修恢复完整说明版、按住时按钮不动；自定义导航按胶囊位置排
 
+## 2026-09-05 07:08 · api · 166f418
+
+- 包：`pms-api-20260905-0706.tar.gz`
+- 提交：166f418 docs(inbox): 派单/撤回/作废独立授权已修（7f619bb）
+- 说明：派单/撤回/作废独立授权 + 回填
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（a05172e）以来上线的相关提交：
+  - 7f619bb feat(权限): 派单、撤回、作废拆成三格独立授权，员工端工单页加「作废工单」
+
