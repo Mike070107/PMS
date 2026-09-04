@@ -2013,3 +2013,12 @@
 - 自上次（d2146ec）以来上线的相关提交：
   - 6929fea feat(员工端): 新增材料入库三步都能语音填表
 
+## 2026-09-04 08:28 · miniapp-owner · 6929fea
+
+- 包：`1.0.20260904c`
+- 提交：6929fea feat(员工端): 新增材料入库三步都能语音填表
+- 说明：干净 worktree(6929fea)
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M packages/api-client/src/endpoints/ai.ts
+- 自上次（d2146ec）以来上线的相关提交：
+  - 6929fea feat(员工端): 新增材料入库三步都能语音填表
+
