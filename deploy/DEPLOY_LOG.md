@@ -2076,3 +2076,12 @@
 - 自上次（ee9337b）以来上线的相关提交：
   - bc3076f fix(员工端): 已完结按人收敛范围、角标统一刷新、退无可退能返回、签字画板不再放射线
 
+## 2026-09-04 18:07 · miniapp-staff · bc3076f
+
+- 包：`1.0.20260904f`
+- 提交：bc3076f fix(员工端): 已完结按人收敛范围、角标统一刷新、退无可退能返回、签字画板不再放射线
+- 说明：从干净 worktree(bc3076f) 上传，体验版 1.0.20260904f；工作区脏的 wxss 是另一会话的按钮归一化改动，不在包里
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M apps/miniapp-staff/miniprogram/pages/maintenance-sign/maintenance-sign.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（4e355ee）以来上线的相关提交：
+  - bc3076f fix(员工端): 已完结按人收敛范围、角标统一刷新、退无可退能返回、签字画板不再放射线
+
