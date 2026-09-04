@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   matchReceiptMaterials,
   normalizeReceiptName,
+  parseMaterialProfile,
   parseReceiptMentions,
   type ReceiptCatalogItem,
 } from './material-receipt.ai';
@@ -99,4 +100,35 @@ test('口述的乘号要能对上库里的 *：50乘50 = 50*50，否则会建出
 test('比对前抹掉标点空格和「型号/规格」这类垫字', () => {
   assert.equal(normalizeReceiptName('PPR 弯头（25）'), 'ppr弯头25');
   assert.equal(normalizeReceiptName('规格 DN-50'), 'dn50');
+});
+
+
+test('建档草稿：类别只认清单里的原文，模型自创的一律丢掉', () => {
+  const cats = ['五金', '电器', '水工'];
+  // 清单里有 → 采用
+  assert.equal(parseMaterialProfile({ name: '门禁按键', category: '电器' }, cats).category, '电器');
+  // 模型自创「五金件」→ 丢掉，留空让人自己选（类别决定材料编码前缀，猜错就锁死了）
+  assert.equal(parseMaterialProfile({ name: '门禁按键', category: '五金件' }, cats).category, '');
+  assert.equal(parseMaterialProfile({ name: '门禁按键' }, cats).category, '');
+});
+
+test('建档草稿：别名去重去空、参数和长度收口，缺字段不炸', () => {
+  const draft = parseMaterialProfile(
+    {
+      name: '  门禁按键 ',
+      spec: '86*86',
+      unit: '个',
+      aliases: ['开门按钮', ' 开门按钮 ', '', '出门按钮'],
+      params: '亚克力面板，不锈钢外壳，带背光',
+    },
+    ['五金'],
+  );
+  assert.equal(draft.name, '门禁按键');
+  assert.equal(draft.spec, '86*86');
+  assert.deepEqual(draft.aliases, ['开门按钮', '出门按钮']);
+  assert.equal(draft.params, '亚克力面板，不锈钢外壳，带背光');
+  // 完全空的返回也要能收住，不能抛
+  assert.deepEqual(parseMaterialProfile(null, []), {
+    name: '', spec: '', unit: '', aliases: [], params: '', category: '',
+  });
 });

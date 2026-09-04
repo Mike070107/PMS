@@ -4,12 +4,19 @@ import { IsString, MaxLength } from 'class-validator';
 import { DataSource } from 'typeorm';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
-import { Material } from '../../entities';
+import { DictItem, Material } from '../../entities';
+import { DictType } from '../../common/enums';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { MaterialReceiptAiService, matchReceiptMaterials } from './material-receipt.ai';
 
 class ParseMaterialReceiptDto {
+  @IsString()
+  @MaxLength(1000)
+  text: string;
+}
+
+class ParseMaterialProfileDto {
   @IsString()
   @MaxLength(1000)
   text: string;
@@ -48,5 +55,26 @@ export class MaterialReceiptController {
       order: { id: 'ASC' },
     });
     return { ok: true as const, items: matchReceiptMaterials(mentions, catalog) };
+  }
+
+  /**
+   * 建档语音填表：口述一样材料 → 名称/型号/单位/别名/详细参数/类别 的草稿。
+   *
+   * 同样**只填表不落库**：真正建档仍走 POST /materials，由人在表单上核对后提交。
+   * 类别清单从本公司的材料类别档案取，模型只能从中挑一个 —— 类别决定材料编码前缀，
+   * 编码发出去就锁死，不能让模型自创。
+   */
+  @Post('material-profile-parse')
+  @RequirePermission('inventory', 'edit')
+  async parseProfile(@Body() dto: ParseMaterialProfileDto, @CurrentUser() user: AuthUser) {
+    const tenantId = user.tenantId as number;
+    const rows = await this.dataSource.getRepository(DictItem).find({
+      where: { tenantId, type: DictType.MATERIAL_CATEGORY, enabled: true },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    const categories = rows.map((row) => row.label).filter(Boolean);
+    const draft = await this.receiptAi.parseProfile(tenantId, dto.text, categories);
+    if (!draft) return { ok: false as const, reason: 'ai_unavailable' as const, draft: null };
+    return { ok: true as const, draft, categories };
   }
 }

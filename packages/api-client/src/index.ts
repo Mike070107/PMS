@@ -8,6 +8,9 @@ export * as qr from './endpoints/qr';
 export * as upload from './endpoints/upload';
 export * as address from './endpoints/address';
 export * as inventory from './endpoints/inventory';
+/** 材料入库的语音填表（只填表不落库）。和 endpoints/ai.ts 分开：那是工单权限，这是库存权限 */
+export * as materialAi from './endpoints/material-ai';
+export type { MaterialProfileDraft, ReceiptMaterialSuggestion } from './endpoints/material-ai';
 export * as stocktakes from './endpoints/stocktakes';
 export * as maintenance from './endpoints/maintenance';
 export type { MaintenanceSignLink, MaintenanceSignSession } from './endpoints/maintenance';

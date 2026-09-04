@@ -27,6 +27,24 @@
 
     <!-- ============ 1 先搜：有现成的就直接用，别重复建 ============ -->
     <block wx:if="{{mode === 'search'}}">
+    <!-- 说一句自动填表：AI 只填，填完由人核对再点下一步 -->
+    <view wx:if="{{hasSpeech}}" class="card speech-card">
+      <button
+        class="speech-btn {{recording ? 'speech-btn--on' : ''}}"
+        bindtouchstart="onStartRecord"
+        bindtouchend="onStopRecord"
+        bindtouchcancel="onStopRecord"
+      >
+        <view class="speech-btn__mic"></view>
+        <view class="speech-btn__text">
+          <view class="speech-btn__title">{{recording ? '松开结束' : '按住说要找什么（普通话）'}}</view>
+          <view class="speech-btn__desc">例如「找个门禁按键，要20个，一个3块5」——数量单价会记到入库那一步</view>
+        </view>
+      </button>
+      <view wx:if="{{recording}}" class="speech-listening">正在听：{{partial || '请继续说…'}}</view>
+      <view wx:elif="{{aiBusy}}" class="speech-listening">正在整理…</view>
+      <view wx:elif="{{aiHint}}" class="speech-hint">{{aiHint}}</view>
+    </view>
       <view class="card">
         <view class="field">
           <view class="label">先搜一下，看仓库里有没有这样东西</view>
@@ -82,6 +100,24 @@
 
     <!-- ============ 2 新建 SKU ============ -->
     <block wx:elif="{{mode === 'create'}}">
+    <!-- 说一句自动填表：AI 只填，填完由人核对再点下一步 -->
+    <view wx:if="{{hasSpeech}}" class="card speech-card">
+      <button
+        class="speech-btn {{recording ? 'speech-btn--on' : ''}}"
+        bindtouchstart="onStartRecord"
+        bindtouchend="onStopRecord"
+        bindtouchcancel="onStopRecord"
+      >
+        <view class="speech-btn__mic"></view>
+        <view class="speech-btn__text">
+          <view class="speech-btn__title">{{recording ? '松开结束' : '按住说这是什么东西（普通话）'}}</view>
+          <view class="speech-btn__desc">例如「门禁按键，86型，也叫开门按钮，亚克力面板不锈钢外壳带背光」</view>
+        </view>
+      </button>
+      <view wx:if="{{recording}}" class="speech-listening">正在听：{{partial || '请继续说…'}}</view>
+      <view wx:elif="{{aiBusy}}" class="speech-listening">正在整理…</view>
+      <view wx:elif="{{aiHint}}" class="speech-hint">{{aiHint}}</view>
+    </view>
       <view class="card">
         <view class="field">
           <view class="label">名称</view>
@@ -155,6 +191,24 @@
 
     <!-- ============ 3 入库 ============ -->
     <block wx:else>
+    <!-- 说一句自动填表：AI 只填，填完由人核对再提交 -->
+    <view wx:if="{{hasSpeech}}" class="card speech-card">
+      <button
+        class="speech-btn {{recording ? 'speech-btn--on' : ''}}"
+        bindtouchstart="onStartRecord"
+        bindtouchend="onStopRecord"
+        bindtouchcancel="onStopRecord"
+      >
+        <view class="speech-btn__mic"></view>
+        <view class="speech-btn__text">
+          <view class="speech-btn__title">{{recording ? '松开结束' : '按住说数量和单价（普通话）'}}</view>
+          <view class="speech-btn__desc">例如「20个，一个3块5」——填完自己核对再提交</view>
+        </view>
+      </button>
+      <view wx:if="{{recording}}" class="speech-listening">正在听：{{partial || '请继续说…'}}</view>
+      <view wx:elif="{{aiBusy}}" class="speech-listening">正在整理…</view>
+      <view wx:elif="{{aiHint}}" class="speech-hint">{{aiHint}}</view>
+    </view>
       <view class="card picked">
         <image
           wx:if="{{selected.photoUrl}}"

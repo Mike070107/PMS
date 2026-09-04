@@ -1,4 +1,5 @@
-import { inventory, upload } from '@pms/api-client';
+import { inventory, materialAi, upload } from '@pms/api-client';
+import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
 import {
   MATERIAL_UNITS,
   type MaterialView,
@@ -25,6 +26,19 @@ import { getSession, type StaffSession } from '../../utils/session';
 
 /** 一条 SKU 最多几张实物照片，和后端 MATERIAL_PHOTO_LIMIT 是一套账 */
 const PHOTO_LIMIT = 4;
+
+/**
+ * 语音走微信官方「同声传译」插件（**只支持普通话**，没有上海话等方言）。
+ * 插件没装时 speechManager 一直是 null，「按住说话」整个按钮不显示，打字照常可用。
+ */
+let speechManager: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  speechManager = requirePlugin('WechatSI').getRecordRecognitionManager();
+} catch {
+  speechManager = null;
+}
+let hold: HoldToTalk | null = null;
 
 interface SkuRow {
   materialId: number;
@@ -117,13 +131,27 @@ Page({
 
     uploading: false,
     saving: false,
+
+    // ---- 语音填表 ----
+    /** 同声传译插件在不在。不在就整个隐藏「按住说话」，打字照常可用 */
+    hasSpeech: false,
+    recording: false,
+    /** 识别中的实时文字，让人知道在听 */
+    partial: '',
+    /** 正在让模型整理 */
+    aiBusy: false,
+    /** 「听到：…」「已填：名称、型号」「类别没听准，请自己选」——一律说人话，别只转圈 */
+    aiHint: '',
   },
 
   /** 全量 SKU 和库存放实例上，搜索在本地做，边打字边请求既慢又费流量 */
   materials: [] as MaterialView[],
   stocks: [] as StockView[],
+  /** 第一步说话时顺带听到的数量/单价，选中 SKU 进第三步时补上 */
+  pendingInbound: null as { qty: number | null; priceYuan: number | null } | null,
 
   onLoad() {
+    this.bindSpeech();
     this.load();
   },
 
@@ -264,7 +292,11 @@ Page({
         'inboundForm.priceYuan': row.defaultCostCents ? String(row.defaultCostCents / 100) : '',
         inboundErrors: { qty: '', priceYuan: '', sourceText: '' },
       },
-      () => this.refreshAmount(),
+      () => {
+        this.refreshAmount();
+        // 第一步说话时顺带听到的数量/单价，到这一步补上（只补空着的）
+        this.applyPendingInbound();
+      },
     );
   },
 
@@ -353,6 +385,175 @@ Page({
     } finally {
       this.setData({ saving: false });
     }
+  },
+
+  // ---------------- 语音填表：说一句，AI 只负责填，每一步都由人确认 ----------------
+
+  /**
+   * 三步都能说：
+   * - 找材料：说「找个门禁按键」→ 抽出关键词填进搜索框并搜；顺带说了数量单价就先存着，
+   *   进到第三步自动带上，不用再说一遍。
+   * - 建档：说一段描述 → 名称/型号/单位/别名/详细参数/类别 一次填好。
+   * - 入库：说「20 个，一个 3 块 5」→ 填数量和单价。
+   *
+   * **AI 只填表**：不建档、不入库、不动库存，每一步都要人核对后自己点按钮。
+   * 识别文本也一定落在可编辑的输入框里，听错了当场能改（见全局约定：语音结果必须可编辑）。
+   */
+  bindSpeech() {
+    if (!speechManager) return;
+    this.setData({ hasSpeech: true });
+    hold = createHoldToTalk(speechManager);
+    speechManager.onStart = () => {
+      this.setData({ recording: true, partial: '' });
+      hold?.started();
+    };
+    speechManager.onRecognize = (res: { result: string }) => {
+      this.setData({ partial: res.result || '' });
+    };
+    speechManager.onStop = (res: { result: string }) => {
+      hold?.ended();
+      const text = (res.result || this.data.partial || '').trim();
+      this.setData({ recording: false, partial: '' });
+      if (!text) {
+        this.setData({ aiHint: '没听清，再按住说一次' });
+        return;
+      }
+      void this.applySpeechText(text);
+    };
+    speechManager.onError = (err: { retcode?: number; msg?: string }) => {
+      hold?.ended();
+      this.setData({ recording: false, partial: '' });
+      // speechErrorTip 会先查网络再给话术（没网就直说没网），是异步的
+      void speechErrorTip(err).then((tip) => this.setData({ aiHint: tip }));
+    };
+  },
+
+  onStartRecord() {
+    this.setData({ aiHint: '' });
+    hold?.press();
+  },
+
+  /** touchend 和 touchcancel 都指到这里：手指滑出按钮、被来电打断也要收尾 */
+  onStopRecord() {
+    hold?.release();
+  },
+
+  async applySpeechText(spoken: string) {
+    this.setData({ aiBusy: true, aiHint: `听到：${spoken}` });
+    try {
+      if (this.data.mode === 'create') await this.fillCreateFromSpeech(spoken);
+      else if (this.data.mode === 'inbound') await this.fillInboundFromSpeech(spoken);
+      else await this.fillSearchFromSpeech(spoken);
+    } catch (e: any) {
+      this.setData({ aiHint: e?.message || '识别服务暂时不可用，按原样手工填即可' });
+    } finally {
+      this.setData({ aiBusy: false });
+    }
+  },
+
+  /** 第一步：抽出材料关键词去搜；顺带听到的数量/单价存起来给第三步 */
+  async fillSearchFromSpeech(spoken: string) {
+    const resp = await materialAi.parseReceipt({ text: spoken });
+    if (!resp.ok || !resp.items.length) {
+      // 识别不出材料名就把原话填进搜索框，总比清空强 —— 人可以自己删两个字接着搜
+      this.setData({ keyword: spoken, aiHint: '没听出材料名，已把原话填进搜索框，可以自己改' });
+      this.applySearch();
+      return;
+    }
+    const first = resp.items[0];
+    const keyword = [first.spokenName, first.spokenSpec].filter(Boolean).join(' ').trim();
+    // 数量和单价先存着：选中/建档之后进第三步自动填上，不用再说一遍
+    this.pendingInbound = {
+      qty: first.qty,
+      priceYuan: first.unitPriceCents == null ? null : first.unitPriceCents / 100,
+    };
+    const extra = [
+      first.qty ? `数量 ${first.qty}` : '',
+      first.unitPriceCents == null ? '' : `单价 ¥${(first.unitPriceCents / 100).toFixed(2)}`,
+    ].filter(Boolean).join('、');
+    this.setData({
+      keyword,
+      aiHint: `按「${keyword}」搜索${extra ? `；${extra}已记下，入库那一步自动填上` : ''}`,
+    });
+    this.applySearch();
+  },
+
+  /** 第二步：一段描述 → 档案草稿。类别只会落在本公司已有的类别上 */
+  async fillCreateFromSpeech(spoken: string) {
+    const resp = await materialAi.parseProfile({ text: spoken });
+    if (!resp.ok || !resp.draft) {
+      this.setData({
+        aiHint: resp.reason === 'ai_unavailable'
+          ? '还没配 AI 服务（后台「系统设置 → AI 辅助」），请手工填'
+          : '这次没识别出来，请手工填',
+      });
+      return;
+    }
+    const draft = resp.draft;
+    const patch: Record<string, unknown> = {};
+    if (draft.name) patch['createForm.name'] = draft.name;
+    if (draft.spec) patch['createForm.spec'] = draft.spec;
+    if (draft.params) patch['createForm.params'] = draft.params;
+    if (draft.aliases.length) patch['createForm.aliases'] = draft.aliases.join('、');
+    const unitIndex = draft.unit ? MATERIAL_UNITS.indexOf(draft.unit) : -1;
+    if (unitIndex >= 0) {
+      patch.unitIndex = unitIndex;
+      patch['createForm.unit'] = MATERIAL_UNITS[unitIndex];
+    }
+    const categoryIndex = draft.category ? this.data.categories.indexOf(draft.category) : -1;
+    if (categoryIndex >= 0) {
+      patch.categoryIndex = categoryIndex;
+      patch['createForm.category'] = this.data.categories[categoryIndex];
+      patch['createErrors.category'] = '';
+    }
+    if (draft.name) patch['createErrors.name'] = '';
+    const filled = [
+      draft.name && '名称', draft.spec && '型号', unitIndex >= 0 && '单位',
+      categoryIndex >= 0 && '类别', draft.aliases.length && '别名', draft.params && '详细参数',
+    ].filter(Boolean).join('、');
+    this.setData({
+      ...patch,
+      aiHint: filled
+        // 类别没填上要说清为什么，别让人对着空下拉猜
+        ? `已填：${filled}。${categoryIndex >= 0 ? '' : '类别没听准，请自己选一个（它决定材料编码前缀）。'}核对无误再点建档`
+        : '这次没识别出可填的内容，请手工填',
+    });
+  },
+
+  /** 第三步：数量和单价 */
+  async fillInboundFromSpeech(spoken: string) {
+    const resp = await materialAi.parseReceipt({ text: spoken });
+    const first = resp.ok ? resp.items[0] : null;
+    if (!first || (first.qty == null && first.unitPriceCents == null)) {
+      this.setData({ aiHint: '没听出数量或单价，说法可以是「20 个，一个 3 块 5」' });
+      return;
+    }
+    const patch: Record<string, unknown> = {};
+    if (first.qty != null) { patch['inboundForm.qty'] = String(first.qty); patch['inboundErrors.qty'] = ''; }
+    if (first.unitPriceCents != null) {
+      patch['inboundForm.priceYuan'] = (first.unitPriceCents / 100).toFixed(2);
+      patch['inboundErrors.priceYuan'] = '';
+    }
+    this.setData({
+      ...patch,
+      aiHint: `已填：${[first.qty != null && '数量', first.unitPriceCents != null && '单价'].filter(Boolean).join('、')}。核对无误再提交`,
+    });
+    this.refreshAmount();
+  },
+
+  /** 第一步顺带听到的数量/单价，进到入库那一步补上（只补空着的，不覆盖人已经改过的） */
+  applyPendingInbound() {
+    const pending = this.pendingInbound;
+    if (!pending) return;
+    const patch: Record<string, unknown> = {};
+    if (pending.qty != null && !this.data.inboundForm.qty) patch['inboundForm.qty'] = String(pending.qty);
+    if (pending.priceYuan != null && !this.data.inboundForm.priceYuan) {
+      patch['inboundForm.priceYuan'] = pending.priceYuan.toFixed(2);
+    }
+    this.pendingInbound = null;
+    if (!Object.keys(patch).length) return;
+    this.setData({ ...patch, aiHint: '数量/单价按你刚才说的先填上了，核对无误再提交' });
+    this.refreshAmount();
   },
 
   // ---------------- 第三步：填入库 ----------------

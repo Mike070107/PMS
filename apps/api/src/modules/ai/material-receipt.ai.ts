@@ -33,6 +33,67 @@ const RECEIPT_PROMPT = `你是物业仓库的入库单助手。仓管会口述�
 - 一句话里有几样材料就给几条；同一样材料重复说到就合并成一条。
 - 一句都对不上（没提到任何材料）就返回 {"items":[]}。`;
 
+/**
+ * 建档口述 → 材料档案草稿。
+ *
+ * 仓管在「新建材料」那一步说一段话（「找一个门禁按键，亚克力面板的，86 型，
+ * 也叫开门按钮，不锈钢外壳带背光」），这里把它拆成档案字段填进表单。
+ * **只填表**：名称、型号、别名、参数都要人核对；类别更是只能从这家公司**已有的**
+ * 类别清单里选（类别决定材料编码前缀，编码发出去就锁死，模型不许自创）。
+ */
+const MATERIAL_PROFILE_PROMPT = `你是物业仓库的材料建档助手。仓管会口述一样材料，你要把它整理成材料档案。
+
+只输出 JSON，不要任何解释文字，格式：
+{"name":"材料名称","spec":"型号规格","unit":"个","aliases":["别名1"],"params":"详细参数","category":"类别"}
+
+规则：
+- name: **规范的材料名称**，去掉数量、型号、口语垫字（「找一个」「要个」「那种」）。
+  例：「找一个门禁开门按键」→「门禁按键」。名字里不要带型号。
+- spec: 型号/规格，规范化：尺寸的乘号统一写成星号（「86 乘 86」→「86*86」），
+  单位和数字之间不留空格（「DN 50」→「DN50」）。口述里没提就给空字符串，**绝不自己编型号**。
+- unit: 计量单位（个/卷/米/桶/套/张…），没说就给空字符串。
+- aliases: 同一样东西的其它叫法（「开门按钮」「出门按钮」），口述里明确说了「也叫/俗称」才填；
+  没有就给空数组。**不要把型号或参数塞进别名**。
+- params: 材质、尺寸、电压、颜色、接口这类技术参数，整理成一行短句，用「，」分隔。
+  没提就给空字符串。不要把名称和型号重复写进来。
+- category: **只能从下面用户消息里给出的「可选类别」中原样挑一个**。
+  拿不准、或一个都不像，就给空字符串 —— 宁可让人自己选，也不要猜错（类别决定材料编码前缀）。`;
+
+export interface MaterialProfileDraft {
+  name: string;
+  spec: string;
+  unit: string;
+  aliases: string[];
+  params: string;
+  /** 一定是传进来的类别清单里的原文，或空串 */
+  category: string;
+}
+
+/** 模型返回的建档草稿一样要洗：字段类型、长度、类别必须落在清单里 */
+export function parseMaterialProfile(
+  value: unknown,
+  allowedCategories: string[],
+): MaterialProfileDraft {
+  const item = (value ?? {}) as Record<string, unknown>;
+  const text = (key: string, max: number) => String(item[key] ?? '').trim().slice(0, max);
+  const picked = text('category', 60);
+  const aliases = Array.isArray(item.aliases)
+    ? item.aliases
+        .map((alias) => String(alias ?? '').trim().slice(0, 60))
+        .filter(Boolean)
+        .slice(0, 6)
+    : [];
+  return {
+    name: text('name', 120),
+    spec: text('spec', 120),
+    unit: text('unit', 20),
+    aliases: [...new Set(aliases)],
+    params: text('params', 500),
+    // 类别只认清单里的原文：模型自创一个「五金件」会让编码前缀落到「其它」
+    category: allowedCategories.includes(picked) ? picked : '',
+  };
+}
+
 export interface ReceiptMaterialMention {
   name: string;
   spec: string;
@@ -75,6 +136,28 @@ export class MaterialReceiptAiService {
   private readonly logger = new Logger(MaterialReceiptAiService.name);
 
   constructor(private readonly llm: LlmService) {}
+
+  /**
+   * 建档口述 → 档案草稿。类别清单随 user 消息一起给模型，限定它只能从中挑。
+   * 没配大模型 / 调不通时返回 null，端上提示手工填。
+   */
+  async parseProfile(
+    tenantId: number,
+    text: string,
+    categories: string[],
+  ): Promise<MaterialProfileDraft | null> {
+    const spoken = text.trim();
+    if (!spoken) return null;
+    const answer = await this.llm.askJson<Record<string, unknown>>(
+      tenantId,
+      MATERIAL_PROFILE_PROMPT,
+      `可选类别：${categories.join('、') || '（这家公司还没有类别，category 一律给空字符串）'}
+
+口述内容：${spoken}`,
+    );
+    if (!answer) return null;
+    return parseMaterialProfile(answer, categories);
+  }
 
   /** 没配大模型 / 调不通时返回 null，端上提示「按原样手工填」，不能因此卡住入库 */
   async parse(tenantId: number, text: string): Promise<ReceiptMaterialMention[] | null> {

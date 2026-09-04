@@ -110,3 +110,38 @@
 }
 .photo-grid__plus { font-size: 56rpx; line-height: 1; }
 .photo-grid__hint { font-size: var(--font-xs); font-variant-numeric: tabular-nums; }
+
+/* ---- 语音填表：三步共用一套 ---- */
+.speech-card { padding: 20rpx 24rpx; }
+.speech-btn {
+  width: 100% !important;
+  min-height: 112rpx;
+  margin: 0 !important;
+  padding: 16rpx 24rpx;
+  /* 居中写在类自己身上：只靠 app.wxss 的 button{} 文字会贴按钮上沿 */
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 20rpx;
+  line-height: 1.35;
+  text-align: left;
+  border: 2rpx solid #8cabc8;
+  border-radius: 18rpx;
+  background: #f2f8fd;
+  color: #26527f;
+}
+.speech-btn::after { border: 0; }
+.speech-btn--on { border-color: #31558a; background: #dceaf8; }
+.speech-btn__mic {
+  flex: 0 0 auto;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: #31558a;
+  box-shadow: inset 0 -10rpx 0 rgba(255,255,255,.35);
+}
+.speech-btn__text { min-width: 0; }
+.speech-btn__title { font-size: 30rpx; font-weight: 700; }
+.speech-btn__desc { margin-top: 4rpx; color: #6a819a; font-size: 24rpx; line-height: 1.5; }
+.speech-listening { margin-top: 14rpx; color: #31558a; font-size: 26rpx; line-height: 1.6; }
+.speech-hint { margin-top: 14rpx; color: #5c7a99; font-size: 26rpx; line-height: 1.6; }
