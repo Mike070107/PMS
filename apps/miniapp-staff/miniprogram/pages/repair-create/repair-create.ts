@@ -28,6 +28,7 @@ import {
 import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
 import { loadAddressBook } from '../../utils/address-picker';
 import { goBack, swipeBackHandlers } from '../../utils/navigation';
+import { customNavLayout } from '../../utils/custom-nav';
 import { guideHandlers } from '../../utils/guide';
 
 /**
@@ -90,6 +91,8 @@ Page({
   data: {
     /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
     guide: false,
+    /** 自定义导航按胶囊位置排（右侧留白 / 顶边 / 高度），见 utils/custom-nav.ts */
+    nav: { padRight: 0, top: 0, height: 0 },
     communityId: null as number | null,
     buildingId: null as number | null,
     houseId: null as number | null,
@@ -173,6 +176,7 @@ Page({
    * 不能让人从头再来一次。
    */
   onLoad(q: Record<string, string>) {
+    this.setData({ nav: customNavLayout() });
     this.bindSpeech();
     this.loadTypes();
     const handoff = decodeURIComponent(q?.content || '').trim();

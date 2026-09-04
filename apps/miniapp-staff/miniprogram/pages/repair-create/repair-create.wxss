@@ -2,13 +2,15 @@ page { background: #f1f6fb; }
 .repair-page { min-height: 100vh; background: #f1f6fb; color: #17314d; }
 .repair-nav { background: #355f96; color: #fff; }
 .repair-nav__safe { height: calc(env(safe-area-inset-top) + 16rpx); }
-.repair-nav__bar { min-height: 172rpx; display: flex; align-items: center; padding: 0 34rpx 12rpx; }
+/* 标题行：高度和顶边由页面按胶囊位置 inline 给（utils/custom-nav.ts），这里是拿不到时的默认值 */
+.repair-nav__bar { min-height: 88rpx; display: flex; align-items: center; padding: 0 34rpx; }
+.repair-nav { padding-bottom: 16rpx; }
 .repair-nav__back, .repair-nav__side { flex-shrink: 0; width: 68rpx; }
 /* 返回箭头点击区放大到 96×88rpx，负外边距保住箭头的视觉位置（同工单详情页） */
 .repair-nav__back { display: flex; align-items: center; justify-content: center; width: 96rpx; min-height: 88rpx; margin-left: -20rpx; font-size: 54rpx; font-weight: 300; }
 .repair-nav__center { flex: 1; min-width: 0; text-align: center; }
 .repair-nav__title { font-size: 41rpx; font-weight: 600; line-height: 1.35; }
-.repair-nav__subtitle { margin-top: 5rpx; color: rgba(255,255,255,.9); font-size: 30rpx; line-height: 1.45; }
+.repair-nav__subtitle { padding: 6rpx 34rpx 4rpx; text-align: center; color: rgba(255,255,255,.9); font-size: 30rpx; line-height: 1.45; }
 .repair-body { padding: 28rpx 26rpx 210rpx; }
 .step-progress { display: flex; align-items: center; padding: 0 8rpx 24rpx; }
 .step-progress__item { flex-shrink: 0; display: flex; align-items: center; gap: 10rpx; color: #71869a; font-size: 29rpx; }

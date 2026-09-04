@@ -3,6 +3,7 @@ import { getSession } from '../../utils/session';
 import { askOrderSubscribe } from '../../utils/unread';
 import { markPoolTabTapped, rememberPoolMode } from '../../utils/tabbar';
 import { goBack, swipeBackHandlers } from '../../utils/navigation';
+import { customNavLayout, type CustomNavLayout } from '../../utils/custom-nav';
 import {
   buildTimeline,
   createHoldToTalk,
@@ -186,6 +187,8 @@ function splitMaterialRows(rows: CollectedMaterialRow[]) {
 interface PageData {
   /** 指导层：说明文字默认收起，见 utils/guide.ts */
   guide: boolean;
+  /** 自定义导航按胶囊位置排（右侧留白 / 顶边 / 高度），见 utils/custom-nav.ts */
+  nav: CustomNavLayout;
   id: string;
   detail: WorkOrderDetail | null;
   currentStatusText: string;
@@ -304,6 +307,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   data: {
     /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
     guide: false,
+    nav: { padRight: 0, top: 0, height: 0 },
     id: '',
     detail: null,
     currentStatusText: '',
@@ -401,6 +405,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   completeIdempotencyKey: '',
 
   onLoad(q: Record<string, string>) {
+    this.setData({ nav: customNavLayout() });
     // Page 配置对象上的自定义字段可能跨页面实例残留，而 data 会恢复初始值。
     // 不清理就会出现「列表缓存还有、仓库 id 已空」的半旧状态，再打开选料只剩空面板。
     this.allSkus = [];

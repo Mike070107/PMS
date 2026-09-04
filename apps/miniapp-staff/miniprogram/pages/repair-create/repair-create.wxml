@@ -1,15 +1,14 @@
 <view class="repair-page" bindtouchstart="onSwipeBackStart" bindtouchmove="onSwipeBackMove" bindtouchend="onSwipeBackEnd" bindtouchcancel="onSwipeBackCancel">
   <view class="repair-nav">
-    <view class="repair-nav__safe"></view>
-    <view class="repair-nav__bar">
+    <!-- 标题行和微信胶囊同一条线、右侧按胶囊位置留空；副标题单独一行放胶囊下面（utils/custom-nav.ts） -->
+    <view class="repair-nav__safe" style="{{nav.top ? 'height:' + nav.top + 'px' : ''}}"></view>
+    <view class="repair-nav__bar" style="padding-right:{{nav.padRight}}px;{{nav.height ? 'min-height:' + nav.height + 'px' : ''}}">
       <view class="repair-nav__back" bindtap="onBack">‹</view>
-      <view class="repair-nav__center">
-        <view class="repair-nav__title">新建报修</view>
-        <view wx:if="{{guide}}" class="repair-nav__subtitle">按提示填写，提交前还能修改</view>
-      </view>
+      <view class="repair-nav__center"><view class="repair-nav__title">新建报修</view></view>
       <!-- 「?」= 指导层开关，见 utils/guide.ts -->
       <view class="repair-nav__side"><view class="nav-help {{guide ? 'nav-help--on' : ''}}" bindtap="onToggleGuide">?</view></view>
     </view>
+    <view wx:if="{{guide}}" class="repair-nav__subtitle">按提示填写，提交前还能修改</view>
   </view>
 
   <view class="repair-body">

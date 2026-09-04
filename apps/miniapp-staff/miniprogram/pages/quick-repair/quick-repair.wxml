@@ -1,19 +1,18 @@
 <view class="quick-page" bindtouchstart="onSwipeBackStart" bindtouchmove="onSwipeBackMove" bindtouchend="onSwipeBackEnd" bindtouchcancel="onSwipeBackCancel">
   <view class="quick-nav">
-    <view class="quick-nav__safe"></view>
-    <view class="quick-nav__bar">
+    <!-- 标题行和微信胶囊同一条线、右侧按胶囊位置留空；副标题单独一行放胶囊下面（utils/custom-nav.ts） -->
+    <view class="quick-nav__safe" style="{{nav.top ? 'height:' + nav.top + 'px' : ''}}"></view>
+    <view class="quick-nav__bar" style="padding-right:{{nav.padRight}}px;{{nav.height ? 'min-height:' + nav.height + 'px' : ''}}">
       <view class="quick-nav__side quick-nav__back" bindtap="onBack">‹</view>
-      <view class="quick-nav__center">
-        <view class="quick-nav__title">语音报修</view>
-        <view wx:if="{{guide}}" class="quick-nav__subtitle">说一句话，自动填好报修信息</view>
-      </view>
-      <!-- 「?」= 指导层开关：说明、示例句都收在里面，见 utils/guide.ts -->
-      <view class="quick-nav__side quick-nav__help {{guide ? 'quick-nav__help--on' : ''}}" bindtap="onToggleGuide">?</view>
+      <view class="quick-nav__center"><view class="quick-nav__title">语音报修</view></view>
+      <view class="quick-nav__side quick-nav__help" bindtap="onHelp">?</view>
     </view>
+    <view class="quick-nav__subtitle">说一句话，自动填好报修信息</view>
   </view>
 
   <view class="quick-body">
-    <view wx:if="{{guide}}" class="voice-guide">
+    <!-- 这一页的说明不进指导层：2026-09-04 Mike 看过收起版后要求恢复带完整说明的这版 -->
+    <view class="voice-guide">
       <view class="voice-guide__icon"><view class="voice-guide__bubble">•••</view></view>
       <view class="voice-guide__body">
         <view class="voice-guide__title">像微信发语音一样，按住说就行</view>
@@ -21,7 +20,9 @@
       </view>
     </view>
 
-    <block wx:if="{{guide && !content && !recording}}">
+    <!-- 录音中也保留这两块：原来一按住就把它们拿掉、再插一块「正在听」面板，
+         按钮跟着往上跳，人以为按钮跑了、没按住（2026-09-04 反馈） -->
+    <block wx:if="{{!content}}">
       <view class="say-checklist">
         <view class="say-checklist__title">一句话说清这 3 件事</view>
         <view class="say-checklist__row">
@@ -34,7 +35,7 @@
         </view>
         <view class="say-checklist__row">
           <view class="say-checklist__num">3</view>
-          <view><view class="say-checklist__name">找谁联系</view><view class="say-checklist__desc">替别人报修时，再说姓名和电话</view></view>
+          <view><view class="say-checklist__name">联系谁</view><view class="say-checklist__desc">替别人报修时，再说姓名和电话</view></view>
         </view>
       </view>
 
@@ -56,18 +57,18 @@
       </view>
     </block>
 
-    <view wx:if="{{recording}}" class="listening-panel">
+    <view wx:if="{{content && recording}}" class="listening-panel">
       <view class="listening-panel__pulse"><view class="listening-panel__mic">●</view></view>
       <view class="listening-panel__title">正在听，请继续说</view>
-      <view class="listening-panel__partial">{{partial || '在哪里、什么坏了、找谁联系…'}}</view>
-      <view wx:if="{{guide}}" class="listening-panel__hint">说完松手，立即停止并识别</view>
+      <view class="listening-panel__partial">{{partial || '在哪里、什么坏了、联系谁…'}}</view>
+      <view class="listening-panel__hint">说完松手，立即停止并识别</view>
     </view>
 
     <block wx:if="{{content && !recording}}">
       <view class="review-card">
         <view class="review-card__head">
           <view class="review-card__check">✓</view>
-          <view><view class="review-card__title">我听懂了，请核对</view><view wx:if="{{guide}}" class="review-card__desc">重点看地址、故障和联系电话</view></view>
+          <view><view class="review-card__title">我听懂了，请核对</view><view class="review-card__desc">重点看地址、故障和联系电话</view></view>
         </view>
         <textarea class="review-card__raw" value="{{content}}" bindinput="onInput" auto-height />
         <view wx:if="{{found.length}}" class="review-card__rows">
@@ -86,7 +87,7 @@
       <view class="photo-entry__camera"></view>
       <view class="photo-entry__body">
         <view class="photo-entry__title">{{attachments.length ? '继续补拍现场照片' : '先拍一张现场照片'}}</view>
-        <view class="photo-entry__desc">{{guide ? '选填，不拍也可以直接说' : '选填'}}</view>
+        <view class="photo-entry__desc">选填，不拍也可以直接说</view>
       </view>
       <view class="photo-entry__arrow">›</view>
     </view>
@@ -100,7 +101,9 @@
     </view>
 
     <view wx:if="{{!content}}" class="hold-area">
-      <view wx:if="{{guide}}" class="hold-area__prompt">↓ 按住下面蓝色按钮</view>
+      <!-- 按住时按钮不动、只变色；「正在听」和识别中的字就在按钮上下这两行里换，
+           不另插面板（插了按钮就被推走） -->
+      <view class="hold-area__prompt {{recording ? 'hold-area__prompt--on' : ''}}">{{recording ? '正在听，请继续说' : '↓ 按住下面蓝色按钮'}}</view>
       <button
         wx:if="{{hasSpeech}}"
         class="prototype-hold {{recording ? 'prototype-hold--on' : ''}}"
@@ -109,8 +112,8 @@
         bindtouchcancel="onStopRecord"
       ><view class="prototype-hold__mic"></view><text>{{recording ? '松开结束' : '按住说话'}}</text></button>
       <view wx:else class="speech-unavailable">当前微信环境不支持语音识别，请使用下方填表报修。</view>
-      <view wx:if="{{guide}}" class="hold-area__title">按住时说，说完松手</view>
-      <view wx:if="{{guide}}" class="hold-area__desc">最长 60 秒，松手后立即停止录音</view>
+      <view class="hold-area__title {{recording ? 'hold-area__title--partial' : ''}}">{{recording ? (partial || '在哪里、什么坏了、联系谁…') : '按住时说，说完松手'}}</view>
+      <view class="hold-area__desc">{{recording ? '说完松手，立即停止并识别' : '最长 60 秒，松手后立即停止录音'}}</view>
     </view>
 
     <view wx:if="{{content}}" class="after-recognize">
@@ -118,10 +121,10 @@
         <view class="urgency-simple__head">紧急程度</view>
         <view class="urgency-choice">
           <view class="urgency-choice__item {{!urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="0" bindtap="onPickUrgency">
-            <view class="urgency-choice__title">普通（默认）</view><view wx:if="{{guide}}" class="urgency-choice__desc">按正常顺序处理</view>
+            <view class="urgency-choice__title">普通（默认）</view><view class="urgency-choice__desc">按正常顺序处理</view>
           </view>
           <view class="urgency-choice__item urgency-choice__item--danger {{urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="1" bindtap="onPickUrgency">
-            <view class="urgency-choice__title">紧急</view><view wx:if="{{guide}}" class="urgency-choice__desc">进入优先处理组</view>
+            <view class="urgency-choice__title">紧急</view><view class="urgency-choice__desc">进入优先处理组</view>
           </view>
         </view>
       </view>

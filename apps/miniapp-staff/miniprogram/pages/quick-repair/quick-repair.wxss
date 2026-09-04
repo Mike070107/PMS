@@ -11,16 +11,17 @@ page { background: #f1f6fb; }
   background: #355f96;
 }
 .quick-nav__safe { height: calc(env(safe-area-inset-top) + 16rpx); }
+/* 标题行：高度和顶边由页面按胶囊位置 inline 给（utils/custom-nav.ts），这里是拿不到时的默认值 */
 .quick-nav__bar {
   position: relative;
-  min-height: 174rpx;
+  min-height: 88rpx;
   display: flex;
   align-items: center;
-  padding: 0 34rpx 14rpx;
+  padding: 0 34rpx;
 }
 .quick-nav__center { flex: 1; min-width: 0; text-align: center; }
 .quick-nav__title { font-size: 42rpx; font-weight: 600; line-height: 1.35; }
-.quick-nav__subtitle { margin-top: 6rpx; color: rgba(255,255,255,.92); font-size: 31rpx; line-height: 1.45; }
+.quick-nav__subtitle { padding: 8rpx 34rpx 22rpx; text-align: center; color: rgba(255,255,255,.92); font-size: 31rpx; line-height: 1.45; }
 .quick-nav__side {
   flex-shrink: 0;
   width: 68rpx;
@@ -152,7 +153,9 @@ page { background: #f1f6fb; }
 .quick-media { display: flex; flex-wrap: wrap; gap: 18rpx; margin-top: 20rpx; padding: 22rpx; border-radius: 22rpx; background: #fff; }
 
 .hold-area { padding: 0 40rpx; text-align: center; }
-.hold-area__prompt { margin: 42rpx 0 20rpx; color: #315f98; font-size: 31rpx; font-weight: 500; }
+/* 和上面的拍照入口拉开距离（2026-09-04 反馈挨太近）；录音中这一行变成「正在听」 */
+.hold-area__prompt { min-height: 46rpx; margin: 64rpx 0 20rpx; color: #315f98; font-size: 31rpx; font-weight: 500; line-height: 1.45; }
+.hold-area__prompt--on { color: #b53d44; }
 .prototype-hold {
   width: 100% !important;
   height: 116rpx;
@@ -169,7 +172,8 @@ page { background: #f1f6fb; }
   box-shadow: 0 18rpx 38rpx rgba(49, 95, 152, .24);
 }
 .prototype-hold::after { border: none; }
-.prototype-hold--on { background: #b53d44; transform: scale(.99); }
+/* 按住只变色，不缩放不位移：按钮一动人就以为没按住 */
+.prototype-hold--on { background: #b53d44; }
 .prototype-hold__mic {
   position: relative;
   width: 18rpx;
@@ -179,7 +183,9 @@ page { background: #f1f6fb; }
 }
 .prototype-hold__mic::before { content: ""; position: absolute; left: -9rpx; bottom: -9rpx; width: 30rpx; height: 22rpx; border: 3rpx solid #fff; border-top: 0; border-radius: 0 0 16rpx 16rpx; }
 .prototype-hold__mic::after { content: ""; position: absolute; left: 6rpx; bottom: -15rpx; width: 3rpx; height: 9rpx; background: #fff; }
-.hold-area__title { margin-top: 24rpx; color: #122c47; font-size: 35rpx; font-weight: 600; line-height: 1.45; }
+.hold-area__title { min-height: 50rpx; margin-top: 24rpx; color: #122c47; font-size: 35rpx; font-weight: 600; line-height: 1.45; }
+/* 录音中这一行显示识别到的字，字数多就往下长，按钮在它上面不受影响 */
+.hold-area__title--partial { color: #315f98; font-weight: 500; }
 .hold-area__desc { margin-top: 6rpx; color: #60778f; font-size: 29rpx; line-height: 1.5; }
 .speech-unavailable { padding: 26rpx; border-radius: 20rpx; background: #fff3e2; color: #8b5a16; font-size: 30rpx; line-height: 1.6; }
 
@@ -251,6 +257,5 @@ page { background: #f1f6fb; }
   .listening-panel__pulse { animation: none; }
 }
 
-/* 「?」现在是指导层开关（utils/guide.ts）：点亮 = 说明和示例句展开。原 36rpx 太小，点不准 */
+/* 「?」弹说明；原 36rpx 太小，点不准 */
 .quick-nav__help { width: 60rpx; height: 60rpx; font-size: 34rpx; }
-.quick-nav__help--on { background: #fff; color: #355f96; }

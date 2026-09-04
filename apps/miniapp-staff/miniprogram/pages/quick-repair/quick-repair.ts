@@ -15,7 +15,7 @@ import {
 } from '@pms/shared-types';
 import { composeDetectedAddress, detectRepairAddress } from '../../utils/address-detect';
 import { goBack, swipeBackHandlers } from '../../utils/navigation';
-import { guideHandlers } from '../../utils/guide';
+import { customNavLayout } from '../../utils/custom-nav';
 
 /**
  * 语音报修（员工端，2026-09-04 前叫「AI随手拍报修」）：拍一张 / 录 15 秒 + 按住说一句话，说完就能提交。
@@ -53,11 +53,9 @@ interface FoundRow {
 }
 
 Page({
-  onShow() { this.syncGuide(); },
-  ...guideHandlers(),
   data: {
-    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
-    guide: false,
+    /** 自定义导航按胶囊位置排（右侧留白 / 顶边 / 高度），见 utils/custom-nav.ts */
+    nav: { padRight: 0, top: 0, height: 0 },
     content: '',
     /** 剥掉地址/联系人/电话/语气词之后的故障描述 —— 提交的是它，不是整句原话 */
     description: '',
@@ -105,6 +103,7 @@ Page({
   exampleAudio: null as WechatMiniprogram.InnerAudioContext | null,
 
   onLoad() {
+    this.setData({ nav: customNavLayout() });
     this.bindSpeech();
     this.loadTypes();
   },
@@ -120,6 +119,15 @@ Page({
     goBack();
   },
   ...swipeBackHandlers(),
+
+  onHelp() {
+    wx.showModal({
+      title: '怎样说最容易识别',
+      content: '按住蓝色按钮，依次说清：在哪里、什么坏了、联系谁。说完松手，系统会立即整理成报修单。',
+      showCancel: false,
+      confirmText: '知道了',
+    });
+  },
 
   onPlayExample() {
     if (!speechPlugin?.textToSpeech) {
