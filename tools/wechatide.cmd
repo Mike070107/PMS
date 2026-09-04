@@ -16,10 +16,12 @@ rem so this file only locates the install dir and forwards to it. Do NOT run
 rem skill-index.js with the system node: the User Data hash is derived from the
 rem executable path and will not match the running IDE, so it never finds the port.
 rem
-rem In mcp mode we first run "auth -c ClaudeCode" (output discarded, stdout must
+rem In mcp mode we first run "auth -c <client>" (output discarded, stdout must
 rem stay clean for MCP): it starts the IDE service port if it is down and returns
-rem at once when the client is already trusted. First time ever, the IDE shows a
-rem trust dialog; click allow once.
+rem at once when the client is already trusted. The IDE trusts clients by the
+rem MCP clientInfo.name; Claude Code identifies itself as "claude-code" while the
+rem Skills CLI uses "ClaudeCode", so both are trusted. An untrusted name gets
+rem "Client authorization pending" on initialize and the MCP connection fails.
 rem
 rem If DevTools is installed elsewhere, set WECHAT_DEVTOOLS_DIR to the folder that
 rem contains wechatide.cmd. The default folder name is Chinese, hence the wildcard.
@@ -40,6 +42,9 @@ if not defined IDE_DIR (
 )
 
 :found
-if /i "%~1"=="mcp" call "%IDE_DIR%\wechatide.cmd" auth -c ClaudeCode >nul 2>&1
+if /i "%~1"=="mcp" (
+  call "%IDE_DIR%\wechatide.cmd" auth -c ClaudeCode >nul 2>&1
+  call "%IDE_DIR%\wechatide.cmd" auth -c claude-code >nul 2>&1
+)
 call "%IDE_DIR%\wechatide.cmd" %*
 exit /b %ERRORLEVEL%
