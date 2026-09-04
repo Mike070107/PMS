@@ -2124,3 +2124,12 @@
 - 自上次（74423dc）以来上线的相关提交：
   - 5038942 feat(员工端): 说明收进「指导层」、工单池只留语音报修、经验帖收藏/公共本/搜索、养护单同款手写体
 
+## 2026-09-04 23:48 · miniapp-staff · a712e04
+
+- 包：`1.0.20260904i`
+- 提交：a712e04 docs(inbox): 语音报修按钮跑位、导航「?」被胶囊压住已修（44b6111）
+- 说明：语音报修恢复说明版+按钮不动+导航胶囊对齐，体验版待选
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（a05172e）以来上线的相关提交：
+  - 44b6111 fix(员工端): 语音报修恢复完整说明版、按住时按钮不动；自定义导航按胶囊位置排
+
