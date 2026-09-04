@@ -7,6 +7,7 @@ import { askOrderSubscribe, getSubscribeState } from '../../utils/unread';
 import { refreshTabBadges } from '../../utils/badges';
 import { openFeedback } from '../../utils/feedback';
 import { repairExperiences } from '@pms/api-client';
+import { guideHandlers } from '../../utils/guide';
 
 // 版本号和 git hash 由发版脚本写入 utils/buildStamp.ts，别在这里手改（见那个文件的说明）
 
@@ -16,7 +17,10 @@ const OPEN_REPORTED_KEY = 'pms.staff.open_reported';
 const JUST_LOGGED_OUT_KEY = 'pms.staff.just_logged_out';
 
 Page({
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     mode: 'me' as 'me' | 'more',
     buildText: '',
     user: null as MeResp | null,
@@ -59,6 +63,7 @@ Page({
   },
 
   onShow() {
+    this.syncGuide();
     this.applyMode();
     this.showBuild();
     this.load();

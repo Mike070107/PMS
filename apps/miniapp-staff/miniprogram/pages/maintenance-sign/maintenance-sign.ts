@@ -36,6 +36,31 @@ function dateTimeText(value: unknown): string {
   return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}:${p(date.getMinutes())}`;
 }
 
+/**
+ * 养护单手写体：和 web 端保存养护单时用的同一款「宅在家自动笔」（web 默认字体，见
+ * apps/admin-web/src/pages/maintenance/handwriting.ts DEFAULT_FONT_ID）。字体文件由后台站点
+ * 提供（apps/admin-web/public/fonts/zhaizaijia-gb2312.woff2，GB2312 子集约 1.8MB；
+ * 老 iOS 不认 woff2 就退到 woff）。小程序用 wx.loadFontFace 全局装一次，装不上就退回
+ * 系统行楷/楷体（wxss 里 font-family 的后备），不影响看单和签字。
+ * 注意：字体域名要在小程序后台 downloadFile 合法域名里，且服务端要带 CORS 头。
+ */
+const HAND_FONT_FAMILY = 'MOZhaizaijia';
+const HAND_FONT_URLS = [
+  'https://prsznh.cn/fonts/zhaizaijia-gb2312.woff2',
+  'https://prsznh.cn/fonts/zhaizaijia-gb2312.woff',
+];
+let handFontLoaded = false;
+function loadHandFont(attempt = 0): void {
+  if (handFontLoaded || attempt >= HAND_FONT_URLS.length) return;
+  wx.loadFontFace({
+    family: HAND_FONT_FAMILY,
+    global: true,
+    source: `url("${HAND_FONT_URLS[attempt]}")`,
+    success: () => { handFontLoaded = true; },
+    fail: () => loadHandFont(attempt + 1),
+  });
+}
+
 Page({
   data: {
     token: '',
@@ -92,6 +117,7 @@ Page({
   pinchStartIndex: DEFAULT_ZOOM_INDEX,
 
   onLoad(query: Record<string, string>) {
+    loadHandFont();
     const token = decodeURIComponent(query.token || '');
     const orderId = Number(query.id || 0);
     if (!token && !orderId) {

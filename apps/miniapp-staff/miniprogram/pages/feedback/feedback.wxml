@@ -1,7 +1,8 @@
 <view class="container feedback-page">
-  <view class="screen-head">
+  <view class="screen-head screen-head--help">
     <view class="screen-head__title">意见与建议</view>
-    <view class="screen-head__desc">功能不好用、流程不顺或有新想法，都可以告诉我们</view>
+    <view wx:if="{{guide}}" class="screen-head__desc">功能不好用、流程不顺或有新想法，都可以告诉我们</view>
+    <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
   </view>
 
   <view class="card feedback-card">

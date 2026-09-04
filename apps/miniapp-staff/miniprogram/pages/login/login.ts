@@ -2,6 +2,7 @@ import { auth } from '@pms/api-client';
 import type { StaffLoginReq } from '@pms/shared-types';
 import { clearSession } from '../../utils/session';
 import { clearAccessCache } from '../../utils/tabbar';
+import { guideHandlers } from '../../utils/guide';
 
 /** 扫码登录票据的暂存位：web-login 页发现没登录时写入，登录成功后由这里送回去 */
 const PENDING_QR_KEY = 'pms.staff.pending_qr';
@@ -32,7 +33,11 @@ function explainPhoneFailure(detail: { errMsg?: string; encryptedData?: string }
 }
 
 Page({
+  onShow() { this.syncGuide(); },
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     checking: true,        // 进页面先尝试静默登录
     loading: false,        // 手机号登录中
     accountMode: false,    // 是否展开账号密码登录

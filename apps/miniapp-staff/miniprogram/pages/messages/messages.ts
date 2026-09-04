@@ -7,6 +7,7 @@ import {
   type NotificationPriority,
 } from '@pms/shared-types';
 import { refreshUnread } from '../../utils/unread';
+import { guideHandlers } from '../../utils/guide';
 
 /**
  * 员工端消息中心。目前主要是一件事：「有新工单派给你」。
@@ -57,7 +58,10 @@ function buildFilters(rows: Row[]): FilterOption[] {
 }
 
 Page({
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     allList: [] as Row[],
     list: [] as Row[],
     filters: [] as FilterOption[],
@@ -67,6 +71,7 @@ Page({
   },
 
   onShow() {
+    this.syncGuide();
     this.load();
   },
 

@@ -10,11 +10,20 @@ import { In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
   ManagementOffice,
+  RepairExperienceFavorite,
   RepairExperienceNote,
   RepairTypeRule,
   StaffProfile,
   User,
 } from '../../entities';
+
+/**
+ * 「本管理处公共」笔记本的 repairType 编码（与 packages/shared-types 的 OFFICE_PUBLIC_REPAIR_TYPE
+ * 同值；API 不依赖 shared-types，这里各写一份，改一处两边一起改）。
+ * 同一管理处数据范围内的人都能看、都能写，不按工种收窄 —— 2026-09-04 要求。
+ */
+export const OFFICE_PUBLIC_REPAIR_TYPE = '_office';
+export const OFFICE_PUBLIC_REPAIR_TYPE_LABEL = '本管理处公共';
 import { AccessService, ResolvedAccess } from '../access/access.service';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { ruleAssigneeIds } from '../repairs/repair-rule-template';
@@ -26,12 +35,15 @@ interface AllowedNotebook {
   repairType: string;
   repairTypeLabel: string;
   canEdit: boolean;
+  /** 本管理处公共笔记本：不对应报修类型，管理处范围内都能看、都能写 */
+  isPublic: boolean;
 }
 
 type ExperienceBlock = RepairExperienceNote['blocks'][number];
 type NoteSummary = {
   id: number; officeId: number; repairType: string; title: string; preview: string;
   imageCount: number; revision: number; updatedAt: string; updatedByName: string;
+  favorite: boolean;
 };
 
 @Injectable()
@@ -39,6 +51,8 @@ export class RepairExperiencesService {
   constructor(
     @InjectRepository(RepairExperienceNote)
     private readonly noteRepo: Repository<RepairExperienceNote>,
+    @InjectRepository(RepairExperienceFavorite)
+    private readonly favoriteRepo: Repository<RepairExperienceFavorite>,
     @InjectRepository(RepairTypeRule)
     private readonly ruleRepo: Repository<RepairTypeRule>,
     @InjectRepository(ManagementOffice)
@@ -123,7 +137,12 @@ export class RepairExperiencesService {
     return '你所在管理处这几个工种还没有建笔记本，等办公室配好报修类型后就会出现。';
   }
 
-  async list(user: AuthUser) {
+  /**
+   * q：关键词，搜标题和正文（不搜图片说明以外的 url）。只在自己看得到的笔记本里搜 ——
+   * 先按权限收窄再过滤，不是先全库搜再挑，否则 q 一带就成了绕过范围的口子。
+   * 笔记总量小（一个管理处几十篇），拿回来在内存里 includes 就够，不值得上全文索引。
+   */
+  async list(user: AuthUser, q?: string) {
     const allowed = await this.allowedNotebooks(user);
     if (!allowed.length) return [];
     const tenantId = this.tenantId(user);
@@ -132,13 +151,19 @@ export class RepairExperiencesService {
       order: { updatedAt: 'DESC', id: 'DESC' },
     });
     const visibleKeys = new Set(allowed.map((item) => this.key(item.officeId, item.repairType)));
-    const visibleNotes = notes.filter((note) => visibleKeys.has(this.key(note.officeId, note.repairType)));
+    const keyword = (q || '').trim().toLowerCase();
+    const visibleNotes = notes.filter(
+      (note) =>
+        visibleKeys.has(this.key(note.officeId, note.repairType)) &&
+        (!keyword || this.matches(note, keyword)),
+    );
     const names = await this.userNames(visibleNotes.flatMap((note) => [note.createdBy, note.updatedBy]));
+    const favorites = await this.favoriteIds(user);
     const byKey = new Map<string, NoteSummary[]>();
     for (const note of visibleNotes) {
       const key = this.key(note.officeId, note.repairType);
       const rows = byKey.get(key) || [];
-      rows.push(this.summary(note, names));
+      rows.push(this.summary(note, names, favorites));
       byKey.set(key, rows);
     }
     return allowed.map((item) => ({
@@ -147,12 +172,43 @@ export class RepairExperiencesService {
     }));
   }
 
+  private matches(note: RepairExperienceNote, keyword: string): boolean {
+    if (note.title.toLowerCase().includes(keyword)) return true;
+    return (note.blocks || []).some((block) =>
+      [block.text, block.caption].some((text) => !!text && text.toLowerCase().includes(keyword)),
+    );
+  }
+
+  /** 收藏 / 取消收藏。能看到那篇才能收藏，否则收藏列表就成了绕过范围的口子 */
+  async setFavorite(id: number, user: AuthUser, on: boolean) {
+    const note = await this.find(id, user);
+    await this.requireNotebook(user, note.officeId, note.repairType, false);
+    const tenantId = this.tenantId(user);
+    const where = { tenantId, userId: user.id, noteId: note.id };
+    const existing = await this.favoriteRepo.findOne({ where });
+    if (on && !existing) {
+      await this.favoriteRepo.save(this.favoriteRepo.create({ ...where, createdBy: user.id, updatedBy: user.id }));
+    } else if (!on && existing) {
+      await this.favoriteRepo.remove(existing);
+    }
+    return { favorite: on };
+  }
+
+  private async favoriteIds(user: AuthUser): Promise<Set<number>> {
+    const rows = await this.favoriteRepo.find({
+      where: { tenantId: this.tenantId(user), userId: user.id },
+      select: ['noteId'],
+    });
+    return new Set(rows.map((row) => row.noteId));
+  }
+
   async detail(id: number, user: AuthUser) {
     const note = await this.find(id, user);
     const allowed = await this.requireNotebook(user, note.officeId, note.repairType, false);
     const names = await this.userNames([note.createdBy, note.updatedBy]);
+    const favorites = await this.favoriteIds(user);
     return {
-      ...this.summary(note, names),
+      ...this.summary(note, names, favorites),
       blocks: this.withDisplayUrls(note.blocks),
       createdAt: note.createdAt.toISOString(),
       createdByName: note.createdBy ? names.get(note.createdBy) || '员工' : '系统',
@@ -265,10 +321,38 @@ export class RepairExperiencesService {
         repairType: rule.repairType,
         repairTypeLabel: rule.label,
         canEdit: !!(auto || (viaRole && explicitEdit) || existing?.canEdit),
+        isPublic: false,
       });
     }
+
+    /**
+     * 每个看得到任何一本的管理处，再给一本「本管理处公共」（2026-09-04 要求）：
+     * 不按工种收窄，管理处范围内的人都能看；范围内的维修工（任一类型规则里列了他的）
+     * 和带编辑权的角色都能写。跨管理处仍然看不到 —— 公共的是「这个管理处」的公共。
+     */
+    const visibleOffices = new Set([...result.values()].map((item) => item.officeId));
+    for (const officeId of officeIds) {
+      if (!officeNames.has(officeId)) continue;
+      const viaRole = explicitView && scopedOfficeIds.has(officeId);
+      const autoInOffice = officeRules.some(
+        (rule) => rule.officeId === officeId && ruleAssigneeIds(rule).includes(user.id),
+      );
+      if (!viaRole && !autoInOffice && !visibleOffices.has(officeId)) continue;
+      result.set(this.key(officeId, OFFICE_PUBLIC_REPAIR_TYPE), {
+        officeId,
+        officeName: officeNames.get(officeId) || `管理处 ${officeId}`,
+        repairType: OFFICE_PUBLIC_REPAIR_TYPE,
+        repairTypeLabel: OFFICE_PUBLIC_REPAIR_TYPE_LABEL,
+        canEdit: autoInOffice || (viaRole && explicitEdit),
+        isPublic: true,
+      });
+    }
+    // 同一管理处内公共本排最前，其余按类型名
     return [...result.values()].sort(
-      (a, b) => a.officeName.localeCompare(b.officeName, 'zh-Hans-CN') || a.repairTypeLabel.localeCompare(b.repairTypeLabel, 'zh-Hans-CN'),
+      (a, b) =>
+        a.officeName.localeCompare(b.officeName, 'zh-Hans-CN') ||
+        Number(b.isPublic) - Number(a.isPublic) ||
+        a.repairTypeLabel.localeCompare(b.repairTypeLabel, 'zh-Hans-CN'),
     );
   }
 
@@ -300,7 +384,11 @@ export class RepairExperiencesService {
     });
   }
 
-  private summary(note: RepairExperienceNote, names: Map<number, string>): NoteSummary {
+  private summary(
+    note: RepairExperienceNote,
+    names: Map<number, string>,
+    favorites: Set<number>,
+  ): NoteSummary {
     const preview = (note.blocks || [])
       .filter((block) => block.type !== 'image' && block.text)
       .map((block) => block.text)
@@ -316,6 +404,7 @@ export class RepairExperiencesService {
       revision: note.revision,
       updatedAt: note.updatedAt.toISOString(),
       updatedByName: note.updatedBy ? names.get(note.updatedBy) || '员工' : '系统',
+      favorite: favorites.has(note.id),
     };
   }
 

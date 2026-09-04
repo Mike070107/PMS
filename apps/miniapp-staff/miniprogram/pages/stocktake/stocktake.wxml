@@ -1,7 +1,8 @@
 <view class="container stocktake-page">
-  <view class="screen-head">
+  <view class="screen-head screen-head--help">
     <view class="screen-head__title">盘点任务</view>
-    <view class="screen-head__desc">带手机到仓库，边走边盘</view>
+    <view wx:if="{{guide}}" class="screen-head__desc">带手机到仓库，边走边盘</view>
+    <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
   </view>
 
   <view class="top-actions">
@@ -27,7 +28,7 @@
   <view wx:elif="{{errorMsg && !createOpen}}" class="error">{{errorMsg}}</view>
   <view wx:elif="{{!rows.length}}" class="card empty-card">
     <view class="empty-card__title">{{emptyText}}</view>
-    <view wx:if="{{tab === 'active' && canEdit}}" class="muted mt-sm">新建任务后会按当前账面库存生成盘点清单</view>
+    <view wx:if="{{guide && tab === 'active' && canEdit}}" class="muted mt-sm">新建任务后会按当前账面库存生成盘点清单</view>
   </view>
 
   <view wx:for="{{rows}}" wx:key="id" class="card task-card" data-id="{{item.id}}" bindtap="onOpenTask">

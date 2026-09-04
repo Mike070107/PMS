@@ -777,3 +777,8 @@ page { background: #f1f6fb; }
 
 .issued-item__body { flex: 1; min-width: 0; }
 .issued-item__name { color: #173b59; font-weight: 600; line-height: 1.5; }
+
+/* 底部「记录用料」按钮：名字下面一行小字「已记 N 项」（数字直接跟在名字后会被当成步骤号） */
+.site-action__text { display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.site-action__sub { margin-top: 4rpx; font-size: 24rpx; font-weight: 500; opacity: .85; }
+.detail-nav__side { display: flex; justify-content: flex-end; }

@@ -1,4 +1,5 @@
 import { feedback, upload } from '@pms/api-client';
+import { guideHandlers } from '../../utils/guide';
 
 const MAX_IMAGES = 4;
 const MAX_VIDEO_SECONDS = 15;
@@ -14,7 +15,11 @@ function videoDuration(path: string): Promise<number> {
 }
 
 Page({
+  onShow() { this.syncGuide(); },
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     content: '',
     imageUrls: [] as string[],
     videoUrl: '',

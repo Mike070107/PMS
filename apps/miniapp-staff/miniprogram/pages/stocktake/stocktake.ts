@@ -7,6 +7,7 @@ import {
   type WarehouseView,
 } from '@pms/shared-types';
 import { getSession } from '../../utils/session';
+import { guideHandlers } from '../../utils/guide';
 
 interface TaskRow extends StocktakeTaskView {
   statusLabel: string;
@@ -24,7 +25,10 @@ const tabs: Array<{ key: string; label: string; statuses?: StocktakeStatus[] }> 
 ];
 
 Page({
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     loading: true,
     canEdit: false,
     tab: 'active',
@@ -49,6 +53,7 @@ Page({
   },
 
   onShow() {
+    this.syncGuide();
     this.load();
   },
 

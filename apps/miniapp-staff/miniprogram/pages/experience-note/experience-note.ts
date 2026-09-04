@@ -21,6 +21,7 @@ Page({
     blocks: [] as RepairExperienceBlock[],
     revision: 1,
     canEdit: false,
+    favorite: false,
     editing: false,
     saving: false,
     hasSpeech: false,
@@ -60,6 +61,7 @@ Page({
         blocks: note.blocks,
         revision: note.revision,
         canEdit: note.canEdit,
+        favorite: note.favorite,
       });
     } catch (e: any) { wx.showToast({ icon: 'none', title: e?.message || '加载失败' }); }
   },
@@ -98,6 +100,15 @@ Page({
     const index = Number(e.currentTarget.dataset.index);
     this.setData({ [`blocks[${index}].caption`]: e.detail.value });
   },
+  async onToggleFavorite() {
+    const on = !this.data.favorite;
+    try {
+      await repairExperiences.setFavorite(this.data.noteId, on);
+      this.setData({ favorite: on });
+      wx.showToast({ icon: 'none', title: on ? '已收藏，列表里会放最上面' : '已取消收藏' });
+    } catch (e: any) { wx.showToast({ icon: 'none', title: e?.message || '操作失败' }); }
+  },
+
   onEdit() { if (this.data.canEdit) this.setData({ editing: true }); },
   onAddBlock(e: WechatMiniprogram.BaseEvent) {
     const type = String(e.currentTarget.dataset.type) as RepairExperienceBlockType;

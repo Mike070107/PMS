@@ -3,8 +3,9 @@
     <view class="detail-nav__safe"></view>
     <view class="detail-nav__bar">
       <view class="detail-nav__back" bindtap="onBack">‹</view>
-      <view class="detail-nav__center"><view class="detail-nav__title">工单现场处理</view><view class="detail-nav__desc">先核对现场，再记录用料和完工情况</view></view>
-      <view class="detail-nav__side"></view>
+      <view class="detail-nav__center"><view class="detail-nav__title">工单现场处理</view><view wx:if="{{guide}}" class="detail-nav__desc">先核对现场，再记录用料和完工情况</view></view>
+      <!-- 「?」= 指导层开关，见 utils/guide.ts -->
+      <view class="detail-nav__side"><view class="nav-help {{guide ? 'nav-help--on' : ''}}" bindtap="onToggleGuide">?</view></view>
     </view>
   </view>
 
@@ -41,8 +42,8 @@
     </view>
 
     <view wx:if="{{canComplete || canNeedMaterial}}" class="work-card">
-      <view class="work-card__head"><view><view class="work-card__title">现场处理顺序</view><view class="work-card__desc">按下面三步做，不容易漏填</view></view><view class="work-card__assignee">{{assigneeText}}</view></view>
-      <view class="work-steps">
+      <view class="work-card__head"><view><view class="work-card__title">{{guide ? '现场处理顺序' : '现场处理'}}</view><view wx:if="{{guide}}" class="work-card__desc">按下面三步做，不容易漏填</view></view><view class="work-card__assignee">{{assigneeText}}</view></view>
+      <view wx:if="{{guide}}" class="work-steps">
         <view class="work-step work-step--done"><text>✓</text><view>核对现场</view></view>
         <view class="work-step__line"></view>
         <view class="work-step {{materialRows.length || issuedMaterials.length ? 'work-step--done' : 'work-step--on'}}"><text>{{materialRows.length || issuedMaterials.length ? '✓' : '2'}}</text><view>记录用料</view></view>
@@ -88,13 +89,13 @@
     </view>
 
     <view wx:if="{{canAddProgress || canTransfer}}" class="field-actions {{canAddProgress && canTransfer ? 'field-actions--split' : ''}}">
-      <button wx:if="{{canAddProgress}}" class="field-action field-action--progress" data-panel="progress" bindtap="onOpenPanel">＋ 添加维修进度</button>
+      <button wx:if="{{canAddProgress}}" class="field-action field-action--progress" data-panel="progress" bindtap="onOpenPanel">添加维修备注</button>
       <button wx:if="{{canTransfer}}" class="field-action field-action--transfer" data-panel="transfer" bindtap="onOpenPanel">转给其他人修</button>
-      <view wx:if="{{canTransfer}}" class="field-actions__hint">转单后由所属管理处重新选择工单类型和维修工</view>
+      <view wx:if="{{guide && canTransfer}}" class="field-actions__hint">转单后由所属管理处重新选择工单类型和维修工</view>
     </view>
 
     <view wx:if="{{canRollback}}" class="rollback-entry">
-      <view><view class="rollback-entry__title">刚才处理错了？</view><view class="rollback-entry__desc">办公室可撤回上一笔操作，退回哪一步、要不要退料，点开后由系统告诉你</view></view>
+      <view><view class="rollback-entry__title">刚才处理错了？</view><view wx:if="{{guide}}" class="rollback-entry__desc">办公室可撤回上一笔操作，退回哪一步、要不要退料，点开后由系统告诉你</view></view>
       <button class="rollback-entry__button" data-panel="rollback" bindtap="onOpenPanel">撤回上一步</button>
     </view>
 
@@ -102,8 +103,9 @@
   </view>
 </view>
 
+<!-- 「记录用料 2」那个数字曾被当成步骤号（2026-09-04 Mike），改成按钮下一行明说「已记 N 项」 -->
 <view wx:if="{{detail && (canAccept || canComplete || canRedispatch)}}" class="site-action-bar">
-  <button wx:if="{{canNeedMaterial}}" class="site-action site-action--secondary" data-panel="material" bindtap="onOpenPanel"><view class="btn__icon icon-action--box-blue"></view><text>记录用料{{materialRows.length || issuedMaterials.length ? ' ' + (materialRows.length + issuedMaterials.length) : ''}}</text></button>
+  <button wx:if="{{canNeedMaterial}}" class="site-action site-action--secondary" data-panel="material" bindtap="onOpenPanel"><view class="btn__icon icon-action--box-blue"></view><view class="site-action__text"><text>记录用料</text><text wx:if="{{materialRows.length || issuedMaterials.length}}" class="site-action__sub">已记 {{materialRows.length + issuedMaterials.length}} 项</text></view></button>
   <button wx:if="{{canAccept}}" class="site-action site-action--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onAccept"><view class="btn__icon icon-action--check-white"></view><text>{{acceptText}}</text></button>
   <button wx:if="{{canComplete}}" class="site-action site-action--primary" data-panel="complete" bindtap="onOpenPanel"><view class="btn__icon icon-action--wrench-white"></view><text>去完工</text></button>
   <button wx:if="{{canRedispatch}}" class="site-action site-action--primary" bindtap="onGoRedispatch"><view class="btn__icon icon-action--send-white"></view><text>去派单台重新派单</text></button>
@@ -126,7 +128,7 @@
     </view>
     <view wx:if="{{!rollbackBlocked}}" class="label mt">撤回原因<text class="label__opt">必填</text></view>
     <button wx:if="{{hasSpeech && !rollbackBlocked}}" class="speech-field-button {{recording && speechTarget === 'rollback' ? 'speech-field-button--on' : ''}}" data-speech-target="rollback" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord">
-      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'rollback' ? '松开结束' : '按住说撤回原因'}}</view><view class="speech-field-button__desc">说完自动填到下面，还可以修改</view></view>
+      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'rollback' ? '松开结束' : '按住说撤回原因'}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">说完自动填到下面，还可以修改</view></view>
     </button>
     <view wx:if="{{recording && speechTarget === 'rollback'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
     <textarea wx:if="{{!rollbackBlocked}}" class="complete-textarea" maxlength="500" placeholder="例如：误点完工，现场还有一项需要处理" value="{{rollbackNote}}" bindinput="onRollbackNote"/>
@@ -138,11 +140,11 @@
 <!-- ============ 维修过程记录 ============ -->
 <view wx:if="{{panel === 'progress'}}" class="sheet-mask" bindtap="onClosePanel" catchtouchmove="noop"/>
 <view wx:if="{{panel === 'progress'}}" class="sheet" catchtouchmove="noop">
-  <view class="sheet__head"><text class="sheet__title">添加维修进度</text><text class="sheet__close" bindtap="onClosePanel">关闭</text></view>
+  <view class="sheet__head"><text class="sheet__title">添加维修备注</text><text class="sheet__close" bindtap="onClosePanel">关闭</text></view>
   <scroll-view class="sheet__body" scroll-y>
     <view class="label">进度说明<text class="label__opt">说明当前做到哪里、下一步做什么</text></view>
     <button wx:if="{{hasSpeech}}" class="speech-field-button {{recording && speechTarget === 'progress' ? 'speech-field-button--on' : ''}}" data-speech-target="progress" data-speech-label="进度说明" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord">
-      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'progress' ? '松开结束' : '按住说进度'}}</view><view class="speech-field-button__desc">说完自动填到下面，还可以修改</view></view>
+      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'progress' ? '松开结束' : '按住说备注'}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">说完自动填到下面，还可以修改</view></view>
     </button>
     <view wx:if="{{recording && speechTarget === 'progress'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
     <textarea class="complete-textarea" maxlength="500" placeholder="例如：已拆开检查，确认主板损坏，正在联系办公室确认配件" value="{{progressNote}}" bindinput="onProgressNote"/>
@@ -167,7 +169,7 @@
     <view class="transfer-warning"><view class="transfer-warning__title">提交后会发生什么</view><view>1. 清空当前工单类型和维修工</view><view>2. 工单回到“待派单”</view><view>3. 所属管理处办公室收到微信和站内通知</view><view>4. 办公室重新选类型、维修工并派单</view></view>
     <view class="label mt">转单原因<text class="label__opt">必填，方便办公室判断</text></view>
     <button wx:if="{{hasSpeech}}" class="speech-field-button {{recording && speechTarget === 'transfer' ? 'speech-field-button--on' : ''}}" data-speech-target="transfer" data-speech-label="转单原因" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord">
-      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'transfer' ? '松开结束' : '按住说原因'}}</view><view class="speech-field-button__desc">例如：需要电工处理</view></view>
+      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'transfer' ? '松开结束' : '按住说原因'}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">例如：需要电工处理</view></view>
     </button>
     <view wx:if="{{recording && speechTarget === 'transfer'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
     <textarea class="complete-textarea" maxlength="500" placeholder="例如：需要电工处理，我无法继续维修" value="{{transferNote}}" bindinput="onTransferNote"/>
@@ -289,7 +291,7 @@
     </view>
     <view class="label mt">补充说明<text class="label__opt">选填</text></view>
     <button wx:if="{{hasSpeech}}" class="speech-field-button speech-field-button--compact {{recording && speechTarget === 'materialNote' ? 'speech-field-button--on' : ''}}" data-speech-target="materialNote" data-speech-label="缺料补充说明" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord">
-      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'materialNote' ? '松开结束' : '按住说补充说明'}}</view><view class="speech-field-button__desc">型号、品牌或用途</view></view>
+      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'materialNote' ? '松开结束' : '按住说补充说明'}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">型号、品牌或用途</view></view>
     </button>
     <view wx:if="{{recording && speechTarget === 'materialNote'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
     <textarea class="complete-textarea complete-textarea--short" maxlength="500" placeholder="型号、品牌或用途" value="{{materialNote}}" bindinput="onMaterialNote"/>
@@ -314,7 +316,7 @@
     <view class="complete-head__close" bindtap="onClosePanel">‹</view>
     <view class="complete-head__body">
       <view class="complete-head__title">完工提交</view>
-      <view class="complete-head__desc">按现场实际填写，提交前还能修改</view>
+      <view wx:if="{{guide}}" class="complete-head__desc">按现场实际填写，提交前还能修改</view>
     </view>
     <view class="complete-head__side"></view>
   </view>
@@ -325,7 +327,7 @@
       <view class="complete-draft-note__title">{{completionDraftNotice}}</view>
       <view wx:if="{{completionDraftReason}}" class="complete-draft-note__desc">撤回原因：{{completionDraftReason}}</view>
     </view>
-    <view class="complete-guide">
+    <view wx:if="{{guide}}" class="complete-guide">
       <view class="complete-guide__badge">AI</view>
       <view><view class="complete-guide__title">可以按住说一句话</view><view class="complete-guide__desc">说清做了什么、实际故障、是否收费，系统会帮你整理</view></view>
     </view>
@@ -333,14 +335,27 @@
     <view class="complete-card">
       <view class="complete-card__head">
         <view class="complete-card__num">1</view>
-        <view><view class="complete-card__title">做了什么</view><view class="complete-card__desc">这段内容业主可以看到</view></view>
+        <view><view class="complete-card__title">完工照片和说明</view><view wx:if="{{guide}}" class="complete-card__desc">先拍维修后的样子，再写做了什么；说明业主看得到</view></view>
+      </view>
+      <!-- 2026-09-04 Mike：完工照片放第一步 -->
+      <view class="complete-label">完工照片 <text>{{guide ? '选填，建议拍维修结果' : '选填'}}</text></view>
+      <view class="complete-photo-entry" bindtap="onChooseMedia">
+        <view class="complete-photo-entry__camera"></view>
+        <view><view class="complete-photo-entry__title">{{resultAttachments.length ? '继续添加完工照片' : '添加完工照片'}}</view><view wx:if="{{guide}}" class="complete-photo-entry__desc">最多6张，拍清维修后的状态</view></view>
+        <view class="complete-photo-entry__plus">＋</view>
+      </view>
+      <view wx:if="{{resultAttachments.length}}" class="complete-thumbs">
+        <view wx:for="{{resultAttachments}}" wx:key="*this" class="thumb-wrap">
+          <image class="thumb" src="{{item}}" mode="aspectFill"/>
+          <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia"><view class="icon icon--close"></view></view>
+        </view>
       </view>
       <button wx:if="{{hasSpeech}}" class="complete-speech {{recording && speechTarget === 'summary' ? 'complete-speech--on' : ''}}" data-speech-target="summary" data-speech-label="完工情况" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord">
         <view class="complete-speech__mic"></view>
-        <view><view class="complete-speech__title">{{recording && speechTarget === 'summary' ? '松开结束' : summarizing ? '正在整理…' : '按住说完工情况'}}</view><view class="complete-speech__desc">一次说清做了什么、故障和收费，AI 自动整理</view></view>
+        <view><view class="complete-speech__title">{{recording && speechTarget === 'summary' ? '松开结束' : summarizing ? '正在整理…' : '按住说完工情况'}}</view><view wx:if="{{guide}}" class="complete-speech__desc">一次说清做了什么、故障和收费，AI 自动整理</view></view>
       </button>
       <view wx:if="{{recording && speechTarget === 'summary'}}" class="complete-listening">正在听：{{partial || '请继续说…'}}</view>
-      <view class="complete-label">维修说明 <text class="complete-required">必填</text></view>
+      <view class="complete-label complete-label--next">维修说明 <text class="complete-required">必填</text></view>
       <textarea class="complete-textarea" placeholder="例如：更换门铃电源并重新接线，测试后已能正常开门" bindinput="onNote" value="{{actionNote}}"/>
       <view wx:if="{{materialHints.length}}" class="mat-said">AI听到可能用了：{{materialHints}}。这只是提醒，不会自动加入用料；请按实际情况到用料记录中手动选择。</view>
       <block wx:if="{{phrases.length}}">
@@ -354,15 +369,15 @@
     <view class="complete-card">
       <view class="complete-card__head">
         <view class="complete-card__num">2</view>
-        <view><view class="complete-card__title">现场实际情况</view><view class="complete-card__desc">核对位置、故障和收费</view></view>
+        <view><view class="complete-card__title">现场实际情况</view><view wx:if="{{guide}}" class="complete-card__desc">核对位置、故障和收费</view></view>
       </view>
       <view class="complete-label">实际位置 <text>选填</text></view>
       <input class="complete-input" placeholder="例如：厨房水槽下方" value="{{faultLocation}}" data-field="faultLocation" bindinput="onFaultInput"/>
-      <button wx:if="{{hasSpeech}}" class="speech-field-button speech-field-button--compact {{recording && speechTarget === 'faultLocation' ? 'speech-field-button--on' : ''}}" data-speech-target="faultLocation" data-speech-label="实际位置" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord"><view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'faultLocation' ? '松开结束' : '按住说实际位置'}}</view><view class="speech-field-button__desc">识别后自动填入</view></view></button>
+      <button wx:if="{{hasSpeech}}" class="speech-field-button speech-field-button--compact {{recording && speechTarget === 'faultLocation' ? 'speech-field-button--on' : ''}}" data-speech-target="faultLocation" data-speech-label="实际位置" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord"><view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'faultLocation' ? '松开结束' : '按住说实际位置'}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">识别后自动填入</view></view></button>
       <view wx:if="{{recording && speechTarget === 'faultLocation'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
       <view class="complete-label complete-label--next">实际故障现象 <text>选填</text></view>
       <textarea class="complete-textarea complete-textarea--short" placeholder="例如：门铃电源老化，线路接触不良" value="{{faultSymptom}}" data-field="faultSymptom" bindinput="onFaultInput"/>
-      <button wx:if="{{hasSpeech}}" class="speech-field-button speech-field-button--compact {{recording && speechTarget === 'faultSymptom' ? 'speech-field-button--on' : ''}}" data-speech-target="faultSymptom" data-speech-label="实际故障现象" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord"><view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'faultSymptom' ? '松开结束' : '按住说故障现象'}}</view><view class="speech-field-button__desc">识别后自动填入</view></view></button>
+      <button wx:if="{{hasSpeech}}" class="speech-field-button speech-field-button--compact {{recording && speechTarget === 'faultSymptom' ? 'speech-field-button--on' : ''}}" data-speech-target="faultSymptom" data-speech-label="实际故障现象" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord"><view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'faultSymptom' ? '松开结束' : '按住说故障现象'}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">识别后自动填入</view></view></button>
       <view wx:if="{{recording && speechTarget === 'faultSymptom'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
       <view class="complete-label complete-label--next">收费金额（元） <text>不收费可留空</text></view>
       <view class="fee-input"><text>¥</text><input type="digit" placeholder="0.00" value="{{feeYuan}}" bindinput="onFeeInput"/></view>
@@ -372,7 +387,7 @@
     <view class="complete-card">
       <view class="complete-card__head">
         <view class="complete-card__num">3</view>
-        <view><view class="complete-card__title">用料和照片</view><view class="complete-card__desc">提交前核对本单已经记录的用料</view></view>
+        <view><view class="complete-card__title">本单用料</view><view wx:if="{{guide}}" class="complete-card__desc">提交前核对本单已经记录的用料</view></view>
       </view>
       <view class="complete-label">本单用料</view>
       <view wx:if="{{materialRows.length}}" class="used-list">
@@ -383,18 +398,6 @@
         </view>
       </view>
       <view wx:else class="complete-empty">还没有记录用料；如使用了材料，请先返回详情页添加用料</view>
-      <view class="complete-label complete-label--next">完工照片 <text>选填，建议拍维修结果</text></view>
-      <view class="complete-photo-entry" bindtap="onChooseMedia">
-        <view class="complete-photo-entry__camera"></view>
-        <view><view class="complete-photo-entry__title">{{resultAttachments.length ? '继续添加完工照片' : '添加完工照片'}}</view><view class="complete-photo-entry__desc">最多6张，拍清维修后的状态</view></view>
-        <view class="complete-photo-entry__plus">＋</view>
-      </view>
-      <view wx:if="{{resultAttachments.length}}" class="complete-thumbs">
-        <view wx:for="{{resultAttachments}}" wx:key="*this" class="thumb-wrap">
-          <image class="thumb" src="{{item}}" mode="aspectFill"/>
-          <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia"><view class="icon icon--close"></view></view>
-        </view>
-      </view>
     </view>
 
     <view class="complete-error" wx:if="{{errorMsg}}">{{errorMsg}}</view>

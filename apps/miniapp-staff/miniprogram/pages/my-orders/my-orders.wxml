@@ -6,9 +6,12 @@
       <view class="work-hero__eyebrow">我的现场任务</view>
       <view class="work-hero__title">在手工单</view>
     </view>
-    <view class="work-hero__count">{{active.length}} 单在手</view>
+    <view class="work-hero__right">
+      <view class="work-hero__count">{{active.length}} 单在手</view>
+      <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
+    </view>
   </view>
-  <view class="work-hero__hint">紧急优先；同组按报修时间从早到晚</view>
+  <view wx:if="{{guide}}" class="work-hero__hint">紧急优先；同组按报修时间从早到晚</view>
   <view class="work-metrics">
     <view class="work-metric work-metric--danger">
       <view class="work-metric__value">{{urgentCount}}</view>
@@ -39,7 +42,7 @@
   >
     <view wx:if="{{item.groupStart}}" class="priority-group {{item.urgent ? 'priority-group--urgent' : ''}}">
       <view class="priority-group__title">{{item.groupLabel}}</view>
-      <view class="priority-group__hint">同组按报修时间从早到晚</view>
+      <view wx:if="{{guide}}" class="priority-group__hint">同组按报修时间从早到晚</view>
     </view>
     <view
     class="card wo-card wo-card--data"

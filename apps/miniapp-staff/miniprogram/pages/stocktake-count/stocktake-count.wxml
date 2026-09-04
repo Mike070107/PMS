@@ -51,14 +51,14 @@
       <view class="book-row">
         <view>
           <view class="book-row__label">账面数量</view>
-          <view class="book-row__hint">系统快照，只读</view>
+          <view wx:if="{{guide}}" class="book-row__hint">系统快照，只读</view>
         </view>
         <view class="book-row__qty">{{current.bookQty}}<text>{{current.material.unit}}</text></view>
       </view>
     </view>
 
     <view class="card count-card">
-      <view class="label">实盘数量<text class="label__opt">现场实际数到多少就填多少</text></view>
+      <view class="label">实盘数量<text wx:if="{{guide}}" class="label__opt">现场实际数到多少就填多少</text></view>
       <view class="stepper">
         <button class="stepper__btn" data-delta="-1" bindtap="onStep">−</button>
         <input class="stepper__input" type="digit" value="{{actualQty}}" bindinput="onActual" focus="{{true}}" placeholder="0"/>
@@ -86,7 +86,7 @@
         <textarea class="note-input" value="{{note}}" bindinput="onNote" placeholder="破损、过期、库位异常等情况"/>
       </view>
 
-      <view class="label">现场照片<text class="label__opt">有差异时建议拍照</text></view>
+      <view class="label">现场照片<text wx:if="{{guide}}" class="label__opt">有差异时建议拍照</text></view>
       <view class="photos">
         <view wx:for="{{attachments}}" wx:key="*this" class="photo-wrap">
           <image class="photo" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="onPreviewPhoto"/>

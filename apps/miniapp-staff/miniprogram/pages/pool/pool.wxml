@@ -7,9 +7,13 @@
       <view class="work-hero__eyebrow">邻修现场工作台</view>
       <view class="work-hero__title">{{screenTitle}}</view>
     </view>
-    <view class="work-hero__count">{{list.length}} {{leadText}}</view>
+    <view class="work-hero__right">
+      <view class="work-hero__count">{{list.length}} {{leadText}}</view>
+      <!-- 指导层开关：说明文字默认收起，点亮才显示，见 utils/guide.ts -->
+      <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
+    </view>
   </view>
-  <view class="work-hero__hint">{{dispatcher ? '把待办准确派给合适的维修人员' : '紧急优先；同组按报修时间从早到晚'}}</view>
+  <view wx:if="{{guide}}" class="work-hero__hint">{{dispatcher ? '把待办准确派给合适的维修人员' : '紧急优先；同组按报修时间从早到晚'}}</view>
   <!-- 三个数字可点：点了就在这一屏里只看那一类，再点一次取消（见 pool.ts onTapMetric） -->
   <view class="work-metrics">
     <view
@@ -41,23 +45,14 @@
 
 <view class="hero-sheet hero-sheet--tabbar">
 
-  <!-- 巡查发现问题：先给最快的那条路（拍+说），填表放第二个。
-       间距由外层 .btn-row 给（gap + margin-bottom）——按钮自身的 margin
-       在 app.wxss 里被 !important 压过一次，别再写回按钮上。
-
-       2026-08-30 改：原来两个都是 btn--outline btn--sm，等于 30rpx 字 + 88rpx 高 +
-       只有描边没有底色 —— 在这一屏里几乎注意不到，用户直接反馈「不显眼」。
-       而且 30rpx 低于本项目对按钮的下限（36rpx，面向老人）。
-       现在去掉 btn--sm 走正常按钮规格，再由 pool.wxss 往上提一档；
-       「随手拍」是最短路径，提成实底主按钮，填表保持描边做次级，拉开主次。 -->
+  <!-- 巡查发现问题：只留一个入口「语音报修」。2026-09-04 Mike：去掉「填表报修」按钮，
+       要填表的人在语音页里点「不方便说话，改用填表报修」。
+       按钮比全局规格再大一档（pool.wxss .report-entry--row）：这一屏里报修是唯一的「录入」
+       动作，其余都是浏览和筛选，2026-08-30 用户反馈小一档的版本「看不见」，别再往回调小。 -->
   <view wx:if="{{canReport}}" class="btn-row report-entry report-entry--row">
     <button class="btn btn--primary" bindtap="onGoQuickRepair">
-      <view class="btn__icon icon-action--camera-white"></view>
-      <text>AI随手拍报修</text>
-    </button>
-    <button class="btn btn--outline" bindtap="onGoRepair">
-      <view class="btn__icon icon-action--form-blue"></view>
-      <text>填表报修</text>
+      <view class="btn__icon icon-action--mic-white"></view>
+      <text>语音报修</text>
     </button>
   </view>
 
@@ -132,7 +127,7 @@
   >
     <view wx:if="{{showPriorityGroups && item.groupStart}}" class="priority-group {{item.urgent ? 'priority-group--urgent' : ''}}">
       <view class="priority-group__title">{{item.groupLabel}}</view>
-      <view class="priority-group__hint">超时优先，同一天按相邻地址排列</view>
+      <view wx:if="{{guide}}" class="priority-group__hint">超时优先，同一天按相邻地址排列</view>
     </view>
     <view
     id="pool-order-{{item.id}}"
@@ -236,12 +231,12 @@
   </view>
 
   <scroll-view class="sheet__body" scroll-y>
-    <view class="label">工单类型<text class="label__opt">先定类型，再选该类型维修工</text></view>
+    <view class="label">工单类型<text wx:if="{{guide}}" class="label__opt">先定类型，再选该类型维修工</text></view>
     <picker mode="selector" range="{{repairTypeNames}}" value="{{repairTypeIndex}}" bindchange="onPickRepairType">
       <view class="picker">{{repairTypeNames[repairTypeIndex] || '请选择工单类型'}}</view>
     </picker>
 
-    <view class="label mt">选择维修工<text class="label__opt">只显示该类型可接单人员，手上单少的排前面</text></view>
+    <view class="label mt">选择维修工<text wx:if="{{guide}}" class="label__opt">只显示该类型可接单人员，手上单少的排前面</text></view>
 
     <view wx:if="{{techLoading}}" class="center muted">加载中…</view>
     <block wx:elif="{{techError}}">
@@ -281,7 +276,7 @@
     <view class="label mt">派单备注<text class="label__opt">选填，维修工能看到</text></view>
     <button wx:if="{{hasSpeech}}" class="assign-speech {{assignRecording ? 'assign-speech--on' : ''}}" bindtouchstart="onAssignSpeechStart" bindtouchend="onAssignSpeechEnd" bindtouchcancel="onAssignSpeechEnd">
       <view class="assign-speech__mic"></view>
-      <view><view class="assign-speech__title">{{assignRecording ? '松开结束' : '按住说派单备注'}}</view><view class="assign-speech__desc">说完自动变成文字，还可以修改</view></view>
+      <view><view class="assign-speech__title">{{assignRecording ? '松开结束' : '按住说派单备注'}}</view><view wx:if="{{guide}}" class="assign-speech__desc">说完自动变成文字，还可以修改</view></view>
     </button>
     <view wx:if="{{assignRecording}}" class="assign-speech__listening">正在听：{{assignSpeechPartial || '请继续说…'}}</view>
     <textarea

@@ -25,6 +25,7 @@ import {
   type WorkOrderDetail,
   type WorkOrderMaterialUsageView,
 } from '@pms/shared-types';
+import { guideHandlers } from '../../utils/guide';
 
 /**
  * 「维修结果」那张卡：维修工提交完工时填的东西，办公室和业主要能看到。
@@ -183,6 +184,8 @@ function splitMaterialRows(rows: CollectedMaterialRow[]) {
 }
 
 interface PageData {
+  /** 指导层：说明文字默认收起，见 utils/guide.ts */
+  guide: boolean;
   id: string;
   detail: WorkOrderDetail | null;
   currentStatusText: string;
@@ -296,7 +299,11 @@ interface PageData {
 }
 
 Page<PageData, WechatMiniprogram.IAnyObject>({
+  onShow() { this.syncGuide(); },
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     id: '',
     detail: null,
     currentStatusText: '',
@@ -740,16 +747,16 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   async onSubmitProgress() {
     const note = this.data.progressNote.trim();
     if (!note && !this.data.progressAttachments.length) {
-      return this.setData({ errorMsg: '请填写进度说明或添加照片' });
+      return this.setData({ errorMsg: '请填写备注或添加照片' });
     }
     this.setData({ busy: true, errorMsg: '' });
     try {
       await repairs.addProgress(this.data.id, { note: note || undefined, attachments: this.data.progressAttachments });
       this.setData({ panel: '', progressNote: '', progressAttachments: [] });
       await this.load();
-      wx.showToast({ title: '进度已记录' });
+      wx.showToast({ title: '备注已记录' });
     } catch (e: any) {
-      this.setData({ errorMsg: e?.message || '进度保存失败' });
+      this.setData({ errorMsg: e?.message || '备注保存失败' });
     } finally { this.setData({ busy: false }); }
   },
 

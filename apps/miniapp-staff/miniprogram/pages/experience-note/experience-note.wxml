@@ -1,6 +1,8 @@
 <view class="container note-page">
   <view class="note-scope">
-    <text>{{officeName || '所属管理处'}}</text><text class="note-scope__dot">·</text><text>{{repairTypeLabel || repairType}}</text>
+    <view class="note-scope__text"><text>{{officeName || '所属管理处'}}</text><text class="note-scope__dot">·</text><text>{{repairTypeLabel || repairType}}</text></view>
+    <!-- 收藏：列表页默认只摊开收藏过的帖子 -->
+    <view wx:if="{{noteId && !editing}}" class="star {{favorite ? 'star--on' : ''}}" bindtap="onToggleFavorite"></view>
   </view>
 
   <block wx:if="{{editing}}">

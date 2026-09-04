@@ -1,5 +1,6 @@
 .note-page { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
-.note-scope { margin-bottom: 24rpx; color: #527096; font-size: var(--font-sm); }
+.note-scope { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; min-height: 72rpx; margin-bottom: 24rpx; color: #527096; font-size: var(--font-sm); }
+.note-scope__text { flex: 1; min-width: 0; }
 .note-scope__dot { margin: 0 12rpx; }
 .editor-card, .block-editor { padding: 28rpx; }
 .field-label, .add-tools__title { font-size: var(--font-sm); font-weight: 700; color: var(--color-text-secondary); }

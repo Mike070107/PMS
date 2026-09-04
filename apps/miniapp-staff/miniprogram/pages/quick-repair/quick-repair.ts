@@ -15,9 +15,10 @@ import {
 } from '@pms/shared-types';
 import { composeDetectedAddress, detectRepairAddress } from '../../utils/address-detect';
 import { goBack, swipeBackHandlers } from '../../utils/navigation';
+import { guideHandlers } from '../../utils/guide';
 
 /**
- * 随手拍报修（员工端）：拍一张 / 录 15 秒 + 按住说一句话，说完就能提交。
+ * 语音报修（员工端，2026-09-04 前叫「AI随手拍报修」）：拍一张 / 录 15 秒 + 按住说一句话，说完就能提交。
  *
  * 和「我要报修」的分工：
  *   这里    = 现场巡查看到问题，手上不方便填表 —— 只做三件事（拍、说、提交），
@@ -52,7 +53,11 @@ interface FoundRow {
 }
 
 Page({
+  onShow() { this.syncGuide(); },
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     content: '',
     /** 剥掉地址/联系人/电话/语气词之后的故障描述 —— 提交的是它，不是整句原话 */
     description: '',
@@ -115,15 +120,6 @@ Page({
     goBack();
   },
   ...swipeBackHandlers(),
-
-  onHelp() {
-    wx.showModal({
-      title: '怎样说最容易识别',
-      content: '按住蓝色按钮，依次说清：在哪里、什么坏了、找谁联系。说完松手，系统会立即整理成报修单。',
-      showCancel: false,
-      confirmText: '知道了',
-    });
-  },
 
   onPlayExample() {
     if (!speechPlugin?.textToSpeech) {

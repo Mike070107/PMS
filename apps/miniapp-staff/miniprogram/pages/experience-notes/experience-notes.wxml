@@ -1,26 +1,53 @@
+<!-- 一行帖子：「我收藏的」和各本子共用。星用 catchtap，别把点击冒泡成打开帖子 -->
+<template name="exp-note-row">
+  <view class="note-row" data-id="{{note.id}}" bindtap="onOpen" hover-class="note-row--hover">
+    <view class="note-row__body">
+      <view class="note-row__title">{{note.title}}</view>
+      <view wx:if="{{note.preview}}" class="note-row__preview">{{note.preview}}</view>
+      <view class="note-row__meta"><text wx:if="{{scope}}">{{scope}} · </text>{{note.updatedByName}} 更新<text wx:if="{{note.imageCount}}"> · {{note.imageCount}} 张图片</text></view>
+    </view>
+    <view class="star {{note.favorite ? 'star--on' : ''}}" data-id="{{note.id}}" data-on="{{note.favorite ? 1 : 0}}" catchtap="onToggleFavorite"></view>
+  </view>
+</template>
+
 <view class="container">
-  <view class="screen-head">
+  <view class="screen-head screen-head--help">
     <view class="screen-head__title">维修经验总结</view>
-    <view class="screen-head__desc">同一管理处、同一报修类别共用一本，经验留给下一次维修</view>
+    <view wx:if="{{guide}}" class="screen-head__desc">只显示和你工种相关的本子；点星收藏的帖子一直摊开在最上面，其它本子点名字展开。「本管理处公共」这本同一管理处的人都能看、能写</view>
+    <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
   </view>
 
-  <view wx:for="{{notebooks}}" wx:key="repairType" class="card notebook">
+  <view class="search-row">
+    <input class="input" placeholder="搜标题、正文里的关键词" value="{{keyword}}" confirm-type="search" bindconfirm="onSearch" bindinput="onKeyword"/>
+    <button class="btn btn--outline btn--sm" bindtap="onSearch"><view class="btn__icon icon-action--search-blue"></view><text>搜索</text></button>
+    <button wx:if="{{keyword}}" class="btn btn--ghost btn--sm" bindtap="onClearKeyword">清空</button>
+  </view>
+
+  <!-- 收藏的帖子：一直摊开在最上面 -->
+  <view wx:if="{{favorites.length}}" class="card notebook notebook--fav">
     <view class="notebook__head">
       <view class="notebook__heading">
-        <view class="notebook__type">{{item.repairTypeLabel}}</view>
-        <view class="notebook__office">{{item.officeName}}</view>
+        <view class="notebook__type"><view class="star star--on star--inline"></view>我收藏的<text class="notebook__count">{{favorites.length}} 篇</text></view>
+        <view class="notebook__office">{{query ? '含「' + query + '」的收藏' : '点右边的星可以取消收藏'}}</view>
       </view>
-      <button wx:if="{{item.canEdit}}" class="mini-btn" data-office-id="{{item.officeId}}" data-repair-type="{{item.repairType}}" data-office-name="{{item.officeName}}" data-type-label="{{item.repairTypeLabel}}" bindtap="onCreate">＋ 写经验</button>
     </view>
-    <view wx:if="{{!item.notes.length}}" class="notebook__empty">还没有记录。修完一个典型问题后，把做法和注意事项写下来。</view>
-    <view wx:for="{{item.notes}}" wx:for-item="note" wx:key="id" class="note-row" data-id="{{note.id}}" bindtap="onOpen" hover-class="note-row--hover">
-      <view class="note-row__body">
-        <view class="note-row__title">{{note.title}}</view>
-        <view wx:if="{{note.preview}}" class="note-row__preview">{{note.preview}}</view>
-        <view class="note-row__meta">{{note.updatedByName}} 更新<text wx:if="{{note.imageCount}}"> · {{note.imageCount}} 张图片</text></view>
+    <block wx:for="{{favorites}}" wx:for-item="note" wx:key="id"><template is="exp-note-row" data="{{note: note, scope: note.scope}}"/></block>
+  </view>
+
+  <!-- 各本子默认收起，只露名字和篇数；点名字展开（搜索时全部展开，见 experience-notes.ts） -->
+  <view wx:for="{{notebooks}}" wx:key="key" class="card notebook {{item.isPublic ? 'notebook--public' : ''}}">
+    <view class="notebook__head" data-key="{{item.key}}" bindtap="onToggleNotebook">
+      <view class="notebook__heading">
+        <view class="notebook__type">{{item.repairTypeLabel}}<text class="notebook__count">{{item.notes.length}} 篇</text></view>
+        <view class="notebook__office">{{item.officeName}}{{item.isPublic ? ' · 本管理处的人都能看' : ''}}</view>
       </view>
-      <view class="note-row__arrow">›</view>
+      <button wx:if="{{item.canEdit}}" class="mini-btn" data-office-id="{{item.officeId}}" data-repair-type="{{item.repairType}}" data-office-name="{{item.officeName}}" data-type-label="{{item.repairTypeLabel}}" catchtap="onCreate">＋ 写经验</button>
+      <view class="chevron {{item.open ? 'chevron--open' : ''}}"></view>
     </view>
+    <block wx:if="{{item.open}}">
+      <view wx:if="{{!item.notes.length}}" class="notebook__empty">{{query ? '这本里没有含「' + query + '」的帖子' : '还没有记录。修完一个典型问题后，把做法和注意事项写下来。'}}</view>
+      <block wx:for="{{item.notes}}" wx:for-item="note" wx:key="id"><template is="exp-note-row" data="{{note: note, scope: ''}}"/></block>
+    </block>
   </view>
 
   <view wx:if="{{loaded && !notebooks.length}}" class="empty-state">

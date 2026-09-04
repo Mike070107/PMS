@@ -1,8 +1,9 @@
 <view class="container container--tabbar">
   <block wx:if="{{mode === 'more'}}">
-    <view class="screen-head">
+    <view class="screen-head screen-head--help">
       <view class="screen-head__title">更多应用</view>
-      <view class="screen-head__desc">常用功能会以图标放在这里，页面保持简单好找</view>
+      <view wx:if="{{guide}}" class="screen-head__desc">常用功能会以图标放在这里，页面保持简单好找</view>
+      <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
     </view>
     <view class="card more-panel">
       <view class="more-panel__title">维修知识</view>
@@ -21,9 +22,10 @@
     </view>
   </block>
   <block wx:else>
-  <view class="screen-head">
+  <view class="screen-head screen-head--help">
     <view class="screen-head__title">我的工作台</view>
-    <view class="screen-head__desc">管理提醒、报修入口、意见反馈和当前账号</view>
+    <view wx:if="{{guide}}" class="screen-head__desc">管理提醒、报修入口、意见反馈和当前账号</view>
+    <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
   </view>
   <!-- 身份先说清楚：不同角色能看到的功能不一样，别让人以为是「功能没了」 -->
   <view wx:if="{{user}}" class="card profile">
@@ -41,7 +43,7 @@
         <view class="entry__title">
           消息<text wx:if="{{unread}}" class="entry__badge">{{unread}}</text>
         </view>
-        <view class="entry__desc">派给你的工单、缺料进度都会在这里提醒</view>
+        <view wx:if="{{guide}}" class="entry__desc">派给你的工单、缺料进度都会在这里提醒</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -57,7 +59,7 @@
           工单微信提醒
           <text class="entry__state entry__state--{{notifyTone}}">{{notifyStateText}}</text>
         </view>
-        <view class="entry__desc">{{notifyDesc}}</view>
+        <view wx:if="{{guide}}" class="entry__desc">{{notifyDesc}}</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -66,7 +68,7 @@
       <view class="entry-icon"><view class="entry-icon__glyph icon-menu--feedback"></view></view>
       <view class="entry__body">
         <view class="entry__title">意见与建议</view>
-        <view class="entry__desc">告诉我们哪里不好用，也可以提出新的功能想法</view>
+        <view wx:if="{{guide}}" class="entry__desc">告诉我们哪里不好用，也可以提出新的功能想法</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -77,7 +79,7 @@
       <view class="entry-icon"><view class="entry-icon__glyph icon-menu--repair"></view></view>
       <view class="entry__body">
         <view class="entry__title">我要报修</view>
-        <view class="entry__desc">{{repairDesc}}</view>
+        <view wx:if="{{guide}}" class="entry__desc">{{repairDesc}}</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -88,7 +90,7 @@
       <view class="entry-icon"><view class="entry-icon__glyph icon-menu--clipboard"></view></view>
       <view class="entry__body">
         <view class="entry__title">我的报修</view>
-        <view class="entry__desc">我替住户和巡查提的单，派给谁了、修到哪一步了</view>
+        <view wx:if="{{guide}}" class="entry__desc">我替住户和巡查提的单，派给谁了、修到哪一步了</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -99,7 +101,7 @@
       <view class="entry-icon"><view class="entry-icon__glyph icon-menu--message"></view></view>
       <view class="entry__body">
         <view class="entry__title">反馈异常</view>
-        <view class="entry__desc">操作失败、数据不对或不好用，自动带上出错页面和最近错误</view>
+        <view wx:if="{{guide}}" class="entry__desc">操作失败、数据不对或不好用，自动带上出错页面和最近错误</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -110,8 +112,8 @@
 
   <view class="card">
     <view class="card__title">账号说明</view>
-    <view class="card__desc">账号由物业管理员开通，一个微信只能绑一个员工账号。</view>
-    <view class="card__desc mt-sm">要换一个手机号登录：先在下面退出，再用另一个手机号登录。如果提示「该微信已绑定员工 X」，说明这个微信还挂在原来那个账号上，请管理员在后台「用户管理」里给它解绑后再登。</view>
+    <view wx:if="{{guide}}" class="card__desc">账号由物业管理员开通，一个微信只能绑一个员工账号。</view>
+    <view wx:if="{{guide}}" class="card__desc mt-sm">要换一个手机号登录：先在下面退出，再用另一个手机号登录。如果提示「该微信已绑定员工 X」，说明这个微信还挂在原来那个账号上，请管理员在后台「用户管理」里给它解绑后再登。</view>
   </view>
 
   <button class="btn btn--ghost" bindtap="onLogout">

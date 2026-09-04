@@ -28,6 +28,7 @@ import {
 import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
 import { loadAddressBook } from '../../utils/address-picker';
 import { goBack, swipeBackHandlers } from '../../utils/navigation';
+import { guideHandlers } from '../../utils/guide';
 
 /**
  * 提交前把描述里的地址剥掉。地址已经单独放进 addressText，描述只该留故障本身。
@@ -84,7 +85,11 @@ interface PickedPlace {
 }
 
 Page({
+  onShow() { this.syncGuide(); },
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     communityId: null as number | null,
     buildingId: null as number | null,
     houseId: null as number | null,

@@ -6,6 +6,7 @@ import { getSession } from '../../utils/session';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
 import { topUpQuietly } from '../../utils/unread';
 import { refreshTabBadges } from '../../utils/badges';
+import { guideHandlers } from '../../utils/guide';
 
 /**
  * 这一页只列「手上真正要干的活」。
@@ -51,7 +52,10 @@ const ACTION_TEXT: Record<string, string> = {
 };
 
 Page({
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     active: [] as OrderRow[],
     /**
      * 页头那个红数字：在手的单里压了 3 天以上的（stayTone 的 danger 档）。
@@ -65,6 +69,7 @@ Page({
   },
 
   onShow() {
+    this.syncGuide();
     syncTabBar(this, 'mine');
     this.load();
     // 底部几格的角标一起对准：在详情页接了单、完了工回来，工单池 / 在手 / 我的的数才是新的

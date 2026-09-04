@@ -1,19 +1,27 @@
+/* 搜索行：输入框吃掉剩余宽度，按钮按自身内容宽（同工单池 pool.wxss 的写法） */
+.search-row { display: flex; align-items: center; gap: 12rpx; margin-bottom: 24rpx; }
+.search-row .input { flex: 1; min-width: 0; }
+
 .notebook { padding: 28rpx; }
-.notebook__head { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
-.notebook__heading { min-width: 0; }
+.notebook__head { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; min-height: 88rpx; }
+.notebook__heading { flex: 1; min-width: 0; }
 .notebook__type { font-size: var(--font-xl); font-weight: 700; color: var(--color-text); }
+.notebook__count { margin-left: 12rpx; color: var(--color-text-tertiary); font-size: var(--font-sm); font-weight: 500; }
 .notebook__office { margin-top: 6rpx; font-size: var(--font-sm); color: var(--color-text-tertiary); }
+/* 收藏区：暖底色，和普通本子一眼分开 */
+.notebook--fav { border-color: #f1d9a8; background: #fffbf1; }
+/* 本管理处公共本：说明行用品牌蓝，提示它是整处共用的 */
+.notebook--public .notebook__office { color: #315f98; }
 .mini-btn { flex-shrink: 0; margin: 0; padding: 0 22rpx; min-height: 72rpx; line-height: 72rpx; border: none; border-radius: 999rpx; background: #31558a; color: #fff; font-size: var(--font-sm); }
 .mini-btn::after { border: none; }
 .notebook__empty { margin-top: 24rpx; padding: 24rpx; border-radius: 16rpx; background: #f5f8fb; color: var(--color-text-tertiary); font-size: var(--font-sm); line-height: 1.7; }
-.note-row { display: flex; align-items: center; gap: 16rpx; min-height: 130rpx; padding: 24rpx 0; border-top: 2rpx solid #e5ecf2; }
-.notebook__head + .note-row { margin-top: 20rpx; }
+.note-row { display: flex; align-items: center; gap: 12rpx; min-height: 130rpx; padding: 24rpx 0; border-top: 2rpx solid #e5ecf2; }
+.notebook__head + .note-row, .notebook__head + .notebook__empty { margin-top: 20rpx; }
 .note-row--hover { background: #f5f8fb; }
 .note-row__body { flex: 1; min-width: 0; }
 .note-row__title { font-size: var(--font-lg); font-weight: 650; }
 .note-row__preview { margin-top: 8rpx; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--font-sm); color: var(--color-text-secondary); }
 .note-row__meta { margin-top: 10rpx; font-size: var(--font-xs); color: var(--color-text-tertiary); }
-.note-row__arrow { color: #a9b5c2; font-size: 46rpx; }
 .empty-state { margin-top: 120rpx; padding: 40rpx; text-align: center; }
 .empty-state__title { font-size: var(--font-xl); font-weight: 700; }
 .empty-state__desc { margin-top: 16rpx; color: var(--color-text-tertiary); line-height: 1.8; }

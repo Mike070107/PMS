@@ -63,6 +63,7 @@ import { SystemLog } from './system-log.entity';
 import { RequestMetric } from './request-metric.entity';
 import { UserFeedback } from './user-feedback.entity';
 import { RepairExperienceNote } from './repair-experience-note.entity';
+import { RepairExperienceFavorite } from './repair-experience-favorite.entity';
 
 export const entities = [
   Tenant,
@@ -81,6 +82,7 @@ export const entities = [
   RequestMetric,
   UserFeedback,
   RepairExperienceNote,
+  RepairExperienceFavorite,
   Community,
   Building,
   Unit,
@@ -149,6 +151,7 @@ export {
   RequestMetric,
   UserFeedback,
   RepairExperienceNote,
+  RepairExperienceFavorite,
   Community,
   Building,
   Unit,

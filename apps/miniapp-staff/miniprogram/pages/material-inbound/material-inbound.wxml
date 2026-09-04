@@ -7,9 +7,10 @@
   </view>
 
   <block wx:else>
-    <view class="screen-head">
+    <view class="screen-head screen-head--help">
       <view class="screen-head__title">材料入库</view>
-      <view class="screen-head__desc">先查重，再建档，最后登记入库数量</view>
+      <view wx:if="{{guide}}" class="screen-head__desc">先查重，再建档，最后登记入库数量</view>
+      <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
     </view>
     <view wx:if="{{noWarehouseHint}}" class="notice">
       <view class="notice__body">
@@ -38,7 +39,7 @@
         <view class="speech-btn__mic"></view>
         <view class="speech-btn__text">
           <view class="speech-btn__title">{{recording ? '松开结束' : '按住说要找什么（普通话）'}}</view>
-          <view class="speech-btn__desc">例如「找个门禁按键，要20个，一个3块5」——数量单价会记到入库那一步</view>
+          <view wx:if="{{guide}}" class="speech-btn__desc">例如「找个门禁按键，要20个，一个3块5」——数量单价会记到入库那一步</view>
         </view>
       </button>
       <view wx:if="{{recording}}" class="speech-listening">正在听：{{partial || '请继续说…'}}</view>
@@ -55,7 +56,7 @@
             confirm-type="search"
             bindinput="onKeyword"
           />
-          <view class="muted mt-sm">搜到就点它直接入库；确实没有，再新建一条。</view>
+          <view wx:if="{{guide}}" class="muted mt-sm">搜到就点它直接入库；确实没有，再新建一条。</view>
         </view>
       </view>
 
@@ -111,7 +112,7 @@
         <view class="speech-btn__mic"></view>
         <view class="speech-btn__text">
           <view class="speech-btn__title">{{recording ? '松开结束' : '按住说这是什么东西（普通话）'}}</view>
-          <view class="speech-btn__desc">例如「门禁按键，86型，也叫开门按钮，亚克力面板不锈钢外壳带背光」</view>
+          <view wx:if="{{guide}}" class="speech-btn__desc">例如「门禁按键，86型，也叫开门按钮，亚克力面板不锈钢外壳带背光」</view>
         </view>
       </button>
       <view wx:if="{{recording}}" class="speech-listening">正在听：{{partial || '请继续说…'}}</view>
@@ -202,7 +203,7 @@
         <view class="speech-btn__mic"></view>
         <view class="speech-btn__text">
           <view class="speech-btn__title">{{recording ? '松开结束' : '按住说数量和单价（普通话）'}}</view>
-          <view class="speech-btn__desc">例如「20个，一个3块5」——填完自己核对再提交</view>
+          <view wx:if="{{guide}}" class="speech-btn__desc">例如「20个，一个3块5」——填完自己核对再提交</view>
         </view>
       </button>
       <view wx:if="{{recording}}" class="speech-listening">正在听：{{partial || '请继续说…'}}</view>

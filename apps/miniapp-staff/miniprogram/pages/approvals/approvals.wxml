@@ -1,8 +1,9 @@
 <view class="container container--tabbar">
   <block wx:if="{{mode === 'maintenance'}}">
-    <view class="screen-head">
+    <view class="screen-head screen-head--help">
       <view class="screen-head__title">待我签字 {{maintenanceList.length}} 张</view>
-      <view class="screen-head__desc">只显示当前轮到你的单据，小程序内任务不过期</view>
+      <view wx:if="{{guide}}" class="screen-head__desc">只显示当前轮到你的单据，小程序内任务不过期</view>
+      <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
     </view>
     <view wx:if="{{!maintenanceList.length && loaded}}"><pms-empty text="没有待你签字的养护单"/></view>
     <view wx:for="{{maintenanceList}}" wx:key="id" class="card wo-card maintenance-card" data-id="{{item.id}}" bindtap="onOpenMaintenance">
@@ -16,12 +17,13 @@
   </block>
 
   <block wx:else>
-  <view class="screen-head">
+  <view class="screen-head screen-head--help">
     <view class="screen-head__title">
       <block wx:if="{{canApprove}}">待我审批 {{list.length}} 条</block>
       <block wx:else>采购审批</block>
     </view>
-    <view class="screen-head__desc">核对材料、数量和金额后完成审批</view>
+    <view wx:if="{{guide}}" class="screen-head__desc">核对材料、数量和金额后完成审批</view>
+    <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
   </view>
 
   <!-- 没权限时才需要解释「为什么这一屏是空的」；有权限的人不用被告知怎么审批 -->

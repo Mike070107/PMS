@@ -23,6 +23,7 @@ import {
 } from '../../utils/tabbar';
 import { askOrderSubscribe, topUpQuietly } from '../../utils/unread';
 import { refreshTabBadges } from '../../utils/badges';
+import { guideHandlers } from '../../utils/guide';
 
 /** 派单备注也允许按住说话；插件不可用时隐藏语音入口，手工输入照常可用。 */
 let speechManager: any = null;
@@ -200,7 +201,10 @@ const SLA_OPTIONS = [
 const PAGE_CAP = 100;
 
 Page({
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     /** 维修工视角 / 派单台视角，决定整屏的标题、按钮和筛选条 */
     dispatcher: false,
     screenTitle: '工单池',
@@ -281,6 +285,7 @@ Page({
   allRows: [] as OrderRow[],
 
   onShow() {
+    this.syncGuide();
     // 语音插件的回调是全局单例，其他页面使用后会覆盖；每次回到派单台都重新绑定到本页。
     this.bindAssignSpeech();
     /**
@@ -799,10 +804,6 @@ Page({
   },
 
   // ---------------- 报修入口（两种身份都保留） ----------------
-
-  onGoRepair() {
-    wx.navigateTo({ url: '/pages/repair-create/repair-create' });
-  },
 
   onGoQuickRepair() {
     wx.navigateTo({ url: '/pages/quick-repair/quick-repair' });

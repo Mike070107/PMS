@@ -250,3 +250,7 @@ page { background: #f1f6fb; }
 @media (prefers-reduced-motion: reduce) {
   .listening-panel__pulse { animation: none; }
 }
+
+/* 「?」现在是指导层开关（utils/guide.ts）：点亮 = 说明和示例句展开。原 36rpx 太小，点不准 */
+.quick-nav__help { width: 60rpx; height: 60rpx; font-size: 34rpx; }
+.quick-nav__help--on { background: #fff; color: #355f96; }

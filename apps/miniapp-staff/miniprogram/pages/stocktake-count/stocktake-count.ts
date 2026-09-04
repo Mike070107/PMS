@@ -4,6 +4,7 @@ import {
   type StocktakeDetailView,
   type StocktakeItemView,
 } from '@pms/shared-types';
+import { guideHandlers } from '../../utils/guide';
 
 interface CountRow extends StocktakeItemView {
   title: string;
@@ -20,7 +21,11 @@ const cleanQty = (value: number | null | undefined) => {
 };
 
 Page({
+  onShow() { this.syncGuide(); },
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     id: '',
     loading: true,
     saving: false,

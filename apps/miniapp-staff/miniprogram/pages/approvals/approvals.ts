@@ -10,6 +10,7 @@ import {
   type PurchaseRequestView,
   type PurchaseRequestItem,
 } from '@pms/shared-types';
+import { guideHandlers } from '../../utils/guide';
 
 interface ApprovalItem extends PurchaseRequestItem {
   lineId: string;
@@ -63,7 +64,10 @@ function toRow(item: PurchaseRequestView): ApprovalRow {
 }
 
 Page({
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     mode: 'approvals' as 'approvals' | 'maintenance',
     canApprove: false,
     canInspectMaintenance: false,
@@ -77,6 +81,7 @@ Page({
   },
 
   onShow() {
+    this.syncGuide();
     this.load();
     // 底部其它几格的角标一起对准（这一页自己那格由 load 按列表条数设）
     refreshTabBadges(this);

@@ -5,9 +5,10 @@
       <view class="repair-nav__back" bindtap="onBack">‹</view>
       <view class="repair-nav__center">
         <view class="repair-nav__title">新建报修</view>
-        <view class="repair-nav__subtitle">按提示填写，提交前还能修改</view>
+        <view wx:if="{{guide}}" class="repair-nav__subtitle">按提示填写，提交前还能修改</view>
       </view>
-      <view class="repair-nav__side"></view>
+      <!-- 「?」= 指导层开关，见 utils/guide.ts -->
+      <view class="repair-nav__side"><view class="nav-help {{guide ? 'nav-help--on' : ''}}" bindtap="onToggleGuide">?</view></view>
     </view>
   </view>
 
@@ -23,7 +24,7 @@
     <view class="form-card">
       <view class="section-head">
         <view class="section-head__num">1</view>
-        <view><view class="section-head__title">修哪里</view><view class="section-head__desc">先确认位置，避免维修工跑错</view></view>
+        <view><view class="section-head__title">修哪里</view><view wx:if="{{guide}}" class="section-head__desc">先确认位置，避免维修工跑错</view></view>
       </view>
 
       <view class="form-field">
@@ -54,7 +55,7 @@
     <view class="form-card">
       <view class="section-head">
         <view class="section-head__num">2</view>
-        <view><view class="section-head__title">什么问题</view><view class="section-head__desc">可以打字，也可以按住说话</view></view>
+        <view><view class="section-head__title">什么问题</view><view wx:if="{{guide}}" class="section-head__desc">可以打字，也可以按住说话</view></view>
       </view>
 
       <view class="form-field">
@@ -63,7 +64,7 @@
         <view wx:if="{{recording}}" class="listening">正在听…{{partial ? ' ' + partial : ''}}</view>
         <button wx:if="{{hasSpeech}}" class="speech-button {{recording ? 'speech-button--on' : ''}}" bindtouchstart="onSpeechStart" bindtouchend="onSpeechEnd" bindtouchcancel="onSpeechEnd">
           <view class="speech-button__mic"></view>
-          <view class="speech-button__body"><view class="speech-button__title">{{recording ? '松开结束' : '按住说话'}}</view><view class="speech-button__desc">普通话即可，会自动填写</view></view>
+          <view class="speech-button__body"><view class="speech-button__title">{{recording ? '松开结束' : '按住说话'}}</view><view wx:if="{{guide}}" class="speech-button__desc">普通话即可，会自动填写</view></view>
         </button>
         <view class="suggest-title">常见问题，点一下就能填</view>
         <view class="quick-tags"><text wx:for="{{contentSuggestions}}" wx:key="*this" class="quick-tag" data-text="{{item}}" bindtap="onPickContentTag">{{item}}</text></view>
@@ -80,7 +81,7 @@
       </view>
 
       <view class="urgency-block">
-        <view class="urgency-block__head"><view class="form-label">紧急程度</view><view class="urgency-block__tip">一般情况保持“普通”即可</view></view>
+        <view class="urgency-block__head"><view class="form-label">紧急程度</view><view wx:if="{{guide}}" class="urgency-block__tip">一般情况保持“普通”即可</view></view>
         <view class="urgency-choice">
           <view class="urgency-choice__item {{!urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="0" bindtap="onPickUrgency"><view class="urgency-choice__symbol">✓</view><view>普通</view></view>
           <view class="urgency-choice__item urgency-choice__item--danger {{urgent ? 'urgency-choice__item--on' : ''}}" data-urgent="1" bindtap="onPickUrgency"><view class="urgency-choice__symbol">△</view><view>紧急</view></view>
@@ -92,7 +93,7 @@
     <view class="form-card">
       <view class="section-head">
         <view class="section-head__num">3</view>
-        <view><view class="section-head__title">怎么联系</view><view class="section-head__desc">维修工上门前会先打电话</view></view>
+        <view><view class="section-head__title">怎么联系</view><view wx:if="{{guide}}" class="section-head__desc">维修工上门前会先打电话</view></view>
       </view>
       <view class="auto-hint auto-hint--block" wx:if="{{autoContactHint}}">{{autoContactHint}}</view>
       <view class="form-field"><view class="form-label">联系人</view><input class="large-input" placeholder="姓名" maxlength="20" value="{{contactName}}" bindinput="onContactName" /></view>
@@ -100,7 +101,7 @@
 
       <view class="media-entry" data-type="image" bindtap="onChooseMedia">
         <view class="media-entry__camera"></view>
-        <view class="media-entry__body"><view class="media-entry__title">{{attachments.length ? '继续添加现场照片' : '添加现场照片'}}</view><view class="media-entry__desc">选填，有照片更容易判断问题</view></view>
+        <view class="media-entry__body"><view class="media-entry__title">{{attachments.length ? '继续添加现场照片' : '添加现场照片'}}</view><view class="media-entry__desc">{{guide ? '选填，有照片更容易判断问题' : '选填'}}</view></view>
         <view class="media-entry__plus">＋</view>
       </view>
       <view wx:if="{{mediaList.length}}" class="media-list">

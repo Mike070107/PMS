@@ -8,6 +8,7 @@ import {
   type WarehouseView,
 } from '@pms/shared-types';
 import { getSession, type StaffSession } from '../../utils/session';
+import { guideHandlers } from '../../utils/guide';
 
 /**
  * 新增材料 → 当场入库。
@@ -78,7 +79,11 @@ function defaultWarehouseIndex(session: StaffSession, warehouses: WarehouseView[
 }
 
 Page({
+  onShow() { this.syncGuide(); },
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     loading: true,
     canEdit: false,
     roleHint: '',

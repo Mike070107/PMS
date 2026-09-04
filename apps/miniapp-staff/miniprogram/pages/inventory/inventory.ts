@@ -12,6 +12,7 @@ import {
 import { getSession, type StaffSession } from '../../utils/session';
 import { setTabBadge, setTabBarHidden, syncTabBar } from '../../utils/tabbar';
 import { refreshTabBadges } from '../../utils/badges';
+import { guideHandlers } from '../../utils/guide';
 
 /**
  * 材料与库存（办公室一侧的常驻一屏）。
@@ -166,7 +167,10 @@ function missingFields(item: MaterialView): string[] {
 }
 
 Page({
+  ...guideHandlers(),
   data: {
+    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
+    guide: false,
     canView: true,
     canEdit: false,
     roleHint: '',
@@ -244,6 +248,7 @@ Page({
   pageScrollTop: 0,
 
   onShow() {
+    this.syncGuide();
     syncTabBar(this, 'materials');
     this.load();
     // 底部其它几格的角标一起对准（这一页自己那格由 load 按「还有几条要补」设）

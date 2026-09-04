@@ -6,15 +6,16 @@
   </view>
 
   <block wx:else>
-    <view class="screen-head">
+    <view class="screen-head screen-head--help">
       <view class="screen-head__title">材料中心</view>
-      <view class="screen-head__desc">查库存、维护材料档案和跟进采购申请</view>
+      <view wx:if="{{guide}}" class="screen-head__desc">查库存、维护材料档案和跟进采购申请</view>
+      <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
     </view>
     <view wx:if="{{canViewStocktake}}" class="stocktake-entry" bindtap="onStocktake" hover-class="stocktake-entry--press">
       <view class="stocktake-entry__icon"><view class="entry-icon__glyph icon-action--scan-white"></view></view>
       <view class="stocktake-entry__body">
         <view class="stocktake-entry__title">库存盘点</view>
-        <view class="stocktake-entry__desc">手机扫码，现场逐项核对库存</view>
+        <view wx:if="{{guide}}" class="stocktake-entry__desc">手机扫码，现场逐项核对库存</view>
       </view>
       <view class="stocktake-entry__arrow">›</view>
     </view>
@@ -58,7 +59,7 @@
       <view wx:if="{{activeMetric}}" class="metric-focus">
         <view class="metric-focus__back" bindtap="onCloseMetric">‹ 返回库存</view>
         <view class="metric-focus__title">{{activeMetricTitle}} · {{rows.length}}项</view>
-        <view class="metric-focus__hint">{{activeMetricHint}}</view>
+        <view wx:if="{{guide}}" class="metric-focus__hint">{{activeMetricHint}}</view>
       </view>
 
       <!-- 只读账号看不到「编辑 SKU」和「+ 新增」。补照片、补资料正是办公室要干的活，
@@ -80,7 +81,7 @@
       </view>
       <view wx:if="{{!activeMetric}}" class="inventory-tools">
         <view class="inventory-tools__title">查找材料</view>
-        <view class="inventory-tools__hint">先选仓库，再搜索名称或编码</view>
+        <view wx:if="{{guide}}" class="inventory-tools__hint">先选仓库，再搜索名称或编码</view>
       <!-- 看哪个仓：原来是原生 picker，它弹出的滚轮是系统 UI（wxss 改不了），
            选中项和其它项几乎一样亮，户外光线不足时认不出现在看的是哪个仓
            （2026-09-01 现场反馈）。改成一排 chip：选中的实底品牌色，扫一眼就知道，
@@ -281,11 +282,11 @@
         </view>
         <view wx:if="{{item.rejectReason}}" class="reject">驳回原因：{{item.rejectReason}}</view>
       </view>
-      <view class="muted center tip">审批操作在「审批」页；下单、入库请在管理后台完成</view>
+      <view wx:if="{{guide}}" class="muted center tip">审批操作在「审批」页；下单、入库请在管理后台完成</view>
     </block>
   </block>
 
-  <view wx:if="{{tab === 'stock' && warehouseIndex === 0 && rows.length}}" class="muted center tip">
+  <view wx:if="{{guide && tab === 'stock' && warehouseIndex === 0 && rows.length}}" class="muted center tip">
     「全部仓库」按材料合并显示总量，选具体仓库可看分仓明细
   </view>
 </view>

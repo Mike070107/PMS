@@ -1,7 +1,8 @@
 <view class="container">
-  <view class="screen-head">
+  <view class="screen-head screen-head--help">
     <view class="screen-head__title">消息中心</view>
-    <view class="screen-head__desc">工单指派、缺料进度和系统提醒都在这里</view>
+    <view wx:if="{{guide}}" class="screen-head__desc">工单指派、缺料进度和系统提醒都在这里</view>
+    <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
   </view>
   <view wx:if="{{allList.length && unread}}" class="topbar">
     <text class="topbar__count">{{unread}} 条未读</text>
