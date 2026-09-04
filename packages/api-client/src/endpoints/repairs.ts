@@ -155,9 +155,10 @@ export interface ListQuery {
   communityId?: number;
   /**
    * mine=业主我提交的 / 维修工派给我的；pool=维修工待接池；dispatch=办公室待派单；
-   * reported=我提交的（员工替人报的单，不管派给了谁）
+   * reported=我提交的（员工替人报的单，不管派给了谁）；
+   * done=已完结（办公室看管理处范围内全部，维修工看自己类别的：类型规则里有他 / 派给他 / 候选有他）
    */
-  scope?: 'mine' | 'pool' | 'dispatch' | 'reported' | 'all';
+  scope?: 'mine' | 'pool' | 'dispatch' | 'reported' | 'all' | 'done';
   /** 关键词：单号 / 报修地址 / 故障描述 */
   q?: string;
 }
@@ -166,8 +167,13 @@ export interface ListQuery {
 export const list = (query: ListQuery = {}) =>
   request<WorkOrderListItem[]>({ url: '/work-orders', query: query as any });
 
-/** 管理处范围内有几条待接，底部 tab 角标用 */
-export const poolCount = () => request<{ count: number }>({ url: '/work-orders/pool-count' });
+/** 底部 tab 角标一次拿齐：工单池 / 派单台 / 在手工单各几件。没权限的格给 0 */
+export interface BadgeCounts {
+  pool: number;
+  dispatch: number;
+  mine: number;
+}
+export const badgeCounts = () => request<BadgeCounts>({ url: '/work-orders/badge-counts' });
 
 export const detail = (id: number | string) => request<WorkOrderDetail>({ url: `/work-orders/${id}` });
 

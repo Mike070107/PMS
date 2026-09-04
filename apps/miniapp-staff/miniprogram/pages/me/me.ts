@@ -3,7 +3,8 @@ import { buildStampText } from '../../utils/buildStamp';
 import { USER_ROLE_LABELS, type MeResp } from '@pms/shared-types';
 import { clearSession, getSession } from '../../utils/session';
 import { cachedMeMode, clearAccessCache, rememberPoolMode, syncTabBar } from '../../utils/tabbar';
-import { askOrderSubscribe, getSubscribeState, refreshUnread } from '../../utils/unread';
+import { askOrderSubscribe, getSubscribeState } from '../../utils/unread';
+import { refreshTabBadges } from '../../utils/badges';
 import { openFeedback } from '../../utils/feedback';
 import { repairExperiences } from '@pms/api-client';
 
@@ -62,7 +63,8 @@ Page({
     this.showBuild();
     this.load();
     // 未读数每次进来都重新拉：小程序没有推到端的长连接，角标只能主动拿
-    refreshUnread(this).then((unread) => this.setData({ unread }));
+    // 底部几格的角标一起对准；返回值是未读数，这一页要显示它
+    refreshTabBadges(this).then((unread) => this.setData({ unread }));
   },
 
   async load() {

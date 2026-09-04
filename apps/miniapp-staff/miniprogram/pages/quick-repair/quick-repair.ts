@@ -14,6 +14,7 @@ import {
   urgencyReason,
 } from '@pms/shared-types';
 import { composeDetectedAddress, detectRepairAddress } from '../../utils/address-detect';
+import { goBack, swipeBackHandlers } from '../../utils/navigation';
 
 /**
  * 随手拍报修（员工端）：拍一张 / 录 15 秒 + 按住说一句话，说完就能提交。
@@ -109,9 +110,11 @@ Page({
     this.exampleAudio = null;
   },
 
+  // 退无可退时回 tab 页 + 左边缘右滑返回，见 utils/navigation.ts
   onBack() {
-    wx.navigateBack();
+    goBack();
   },
+  ...swipeBackHandlers(),
 
   onHelp() {
     wx.showModal({
@@ -445,7 +448,7 @@ Page({
         attachments: this.data.attachments,
       });
       wx.showToast({ title: '已提交' });
-      setTimeout(() => wx.navigateBack(), 800);
+      setTimeout(() => goBack(), 800);
     } catch (e: any) {
       this.setData({ errorMsg: e?.message || '提交失败' });
     } finally {

@@ -11,6 +11,7 @@ import {
 } from '@pms/shared-types';
 import { getSession, type StaffSession } from '../../utils/session';
 import { setTabBadge, setTabBarHidden, syncTabBar } from '../../utils/tabbar';
+import { refreshTabBadges } from '../../utils/badges';
 
 /**
  * 材料与库存（办公室一侧的常驻一屏）。
@@ -245,6 +246,8 @@ Page({
   onShow() {
     syncTabBar(this, 'materials');
     this.load();
+    // 底部其它几格的角标一起对准（这一页自己那格由 load 按「还有几条要补」设）
+    refreshTabBadges(this);
   },
 
   /**

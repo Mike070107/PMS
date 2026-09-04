@@ -21,7 +21,8 @@ import {
   syncTabBar,
   takePoolTabTapped,
 } from '../../utils/tabbar';
-import { askOrderSubscribe, refreshUnread, topUpQuietly } from '../../utils/unread';
+import { askOrderSubscribe, topUpQuietly } from '../../utils/unread';
+import { refreshTabBadges } from '../../utils/badges';
 
 /** 派单备注也允许按住说话；插件不可用时隐藏语音入口，手工输入照常可用。 */
 let speechManager: any = null;
@@ -206,6 +207,8 @@ Page({
     canSeePool: false,
     canSeeMyRepairs: false,
     canSeeMyOrders: false,
+    /** 「已完结」这一档显不显示：工单池 / 派单台 / 在手工单任一格都行（范围由服务端按人收敛） */
+    canSeeDone: false,
     canDispatch: false,
     /** 报修入口：由角色矩阵的「报修」那一格决定 */
     canReport: false,
@@ -301,7 +304,8 @@ Page({
       });
     } else if (takeOpenReported()) this.setData({ mainTab: 'reported' });
     this.load();
-    refreshUnread(this);
+    // 底部几格的角标一起对准（不只是「我的」的未读数）：在别的页接了单回来，数才是新的
+    refreshTabBadges(this);
   },
 
   /**
@@ -343,10 +347,10 @@ Page({
         if (tappedPoolTab && session.canSeePool) return 'pool';
         if (this.data.mainTab === 'pool' && session.canSeePool) return 'pool';
         if (this.data.mainTab === 'reported' && session.canSeeMyRepairs) return 'reported';
-        if (this.data.mainTab === 'done' && session.canSeeMyOrders) return 'done';
+        if (this.data.mainTab === 'done' && session.canSeeDone) return 'done';
         if (session.canSeePool) return 'pool';
         if (session.canSeeMyRepairs) return 'reported';
-        if (session.canSeeMyOrders) return 'done';
+        if (session.canSeeDone) return 'done';
         return 'pool';
       })();
 
@@ -371,9 +375,11 @@ Page({
         mainTab === 'reported'
           ? { scope: 'reported', status: filter.status as any, q: keyword || undefined }
           : mainTab === 'done'
-            // 已完结走 scope=mine：这是「我经手的单」里已经结束的那些，和原来在手工单页那一档同口径。
-            // 服务端不按「完结与否」筛，拿回来再过一遍（判断只此一份，见 utils/order-status.ts）
-            ? { scope: 'mine', q: keyword || undefined }
+            // 已完结走 scope=done：服务端按人收敛 —— 办公室看管理处范围内全部已完结的，
+            // 维修工看自己类别的（类型规则里有他 / 派给他 / 候选有他）。原来走 scope=mine
+            // 只有「自己修的」，办公室连本管理处的已完工单都看不到（2026-09-04 反馈）。
+            // 服务端已只回终态；端上再过一遍是兜底（判断只此一份，见 utils/order-status.ts）
+            ? { scope: 'done', q: keyword || undefined }
             : {
                 scope: filter.scope || (dispatcher ? 'all' : 'pool'),
                 status: filter.status as any,
@@ -413,12 +419,13 @@ Page({
           /* 网格第三格：同一格在四种场合是四个意思 —— 派单台看「在谁手上」，
              工单池 / 已完结看「找谁开门」，我报的看「派给谁了」。
              算在这里而不写进 wxml：那份模板是四处共用的，条件堆进去就没人看得懂了 */
-          thirdLabel: dispatcher || mainTab === 'reported' ? '维修工' : '报修人',
+          // 已完结也看「谁修的」：办公室翻已完工单是为了知道这单是谁做的，维修工翻同类别的单是为了找人问经验
+          thirdLabel: dispatcher || mainTab === 'reported' || mainTab === 'done' ? '维修工' : '报修人',
           thirdValue:
-            dispatcher || mainTab === 'reported'
+            dispatcher || mainTab === 'reported' || mainTab === 'done'
               ? item.assigneeName || (mainTab === 'reported' ? '还没人接' : '未派单')
               : item.statReporter,
-          thirdHint: dispatcher || mainTab === 'reported' ? '' : item.statReporterHint,
+          thirdHint: dispatcher || mainTab === 'reported' || mainTab === 'done' ? '' : item.statReporterHint,
         };
       });
 
@@ -450,6 +457,7 @@ Page({
         canSeePool: session.canSeePool,
         canSeeMyRepairs: session.canSeeMyRepairs,
         canSeeMyOrders: session.canSeeMyOrders,
+        canSeeDone: session.canSeeDone,
         canDispatch: session.canDispatch,
         canReport: session.canReport,
         canAccept: session.canAccept,
@@ -528,7 +536,7 @@ Page({
     if (
       (tab === 'pool' && !this.data.canSeePool) ||
       (tab === 'reported' && !this.data.canSeeMyRepairs) ||
-      (tab === 'done' && !this.data.canSeeMyOrders)
+      (tab === 'done' && !this.data.canSeeDone)
     ) return;
     if (tab === this.data.mainTab) return;
     this.setData({ mainTab: tab, filterIndex: 0, keyword: '' }, () => this.load());
@@ -620,10 +628,8 @@ Page({
     if (this.data.mainTab === 'pool' && !this.data.keyword) {
       setTabBadge(this, this.data.dispatcher ? 'dispatch' : 'pool', next.length);
     }
-    // 收纳落点的角标立即同步，不用等用户真的点进「在手工单」才刷新。
-    repairs.list({ scope: 'mine' })
-      .then((rows) => setTabBadge(this, 'mine', rows.filter((row) => isActiveOrder(row.status)).length))
-      .catch(() => undefined);
+    // 收纳落点的角标立即同步，不用等用户真的点进「在手工单」才刷新（统一入口，各格一起对准）
+    refreshTabBadges(this);
     wx.showToast({ title: '已接单，正在打开在手工单', icon: 'none', duration: 900 });
     await new Promise<void>((resolve) => setTimeout(resolve, 300));
     await new Promise<void>((resolve) => {

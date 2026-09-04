@@ -292,6 +292,13 @@ export class RepairsController {
     return this.repairsService.poolCount(user, access);
   }
 
+  /** 底部 tab 角标一次拿齐（工单池 / 派单台 / 在手工单）。同样必须排在 :id 之前 */
+  @Get('work-orders/badge-counts')
+  @RequirePermission(['app:pool', 'app:dispatch', 'app:my-orders'], 'view')
+  badgeCounts(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.repairsService.badgeCounts(user, access);
+  }
+
   @Get('work-orders/:id')
   @Roles(...OWNER_APP_ROLES)
   @RequirePermission(

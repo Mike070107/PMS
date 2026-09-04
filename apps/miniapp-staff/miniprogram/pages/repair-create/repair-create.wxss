@@ -4,7 +4,8 @@ page { background: #f1f6fb; }
 .repair-nav__safe { height: calc(env(safe-area-inset-top) + 16rpx); }
 .repair-nav__bar { min-height: 172rpx; display: flex; align-items: center; padding: 0 34rpx 12rpx; }
 .repair-nav__back, .repair-nav__side { flex-shrink: 0; width: 68rpx; }
-.repair-nav__back { font-size: 54rpx; font-weight: 300; }
+/* 返回箭头点击区放大到 96×88rpx，负外边距保住箭头的视觉位置（同工单详情页） */
+.repair-nav__back { display: flex; align-items: center; justify-content: center; width: 96rpx; min-height: 88rpx; margin-left: -20rpx; font-size: 54rpx; font-weight: 300; }
 .repair-nav__center { flex: 1; min-width: 0; text-align: center; }
 .repair-nav__title { font-size: 41rpx; font-weight: 600; line-height: 1.35; }
 .repair-nav__subtitle { margin-top: 5rpx; color: rgba(255,255,255,.9); font-size: 30rpx; line-height: 1.45; }

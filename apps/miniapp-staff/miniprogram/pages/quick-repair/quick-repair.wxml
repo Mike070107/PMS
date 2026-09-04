@@ -1,4 +1,4 @@
-<view class="quick-page">
+<view class="quick-page" bindtouchstart="onSwipeBackStart" bindtouchmove="onSwipeBackMove" bindtouchend="onSwipeBackEnd" bindtouchcancel="onSwipeBackCancel">
   <view class="quick-nav">
     <view class="quick-nav__safe"></view>
     <view class="quick-nav__bar">

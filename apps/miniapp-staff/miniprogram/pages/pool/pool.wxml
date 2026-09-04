@@ -67,7 +67,7 @@
   <view wx:if="{{!dispatcher}}" class="tabs">
     <view wx:if="{{canSeePool}}" class="tab {{mainTab === 'pool' ? 'tab--on' : ''}}" data-tab="pool" bindtap="onSwitchMainTab">工单池</view>
     <view wx:if="{{canSeeMyRepairs}}" class="tab {{mainTab === 'reported' ? 'tab--on' : ''}}" data-tab="reported" bindtap="onSwitchMainTab">我报的</view>
-    <view wx:if="{{canSeeMyOrders}}" class="tab {{mainTab === 'done' ? 'tab--on' : ''}}" data-tab="done" bindtap="onSwitchMainTab">已完结</view>
+    <view wx:if="{{canSeeDone}}" class="tab {{mainTab === 'done' ? 'tab--on' : ''}}" data-tab="done" bindtap="onSwitchMainTab">已完结</view>
   </view>
 
   <!-- 维修工侧同理：卡片上不出现「接单」时，必须写清是权限收着，不是没活干 -->

@@ -27,6 +27,7 @@ import {
 } from '../../utils/address-detect';
 import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
 import { loadAddressBook } from '../../utils/address-picker';
+import { goBack, swipeBackHandlers } from '../../utils/navigation';
 
 /**
  * 提交前把描述里的地址剥掉。地址已经单独放进 addressText，描述只该留故障本身。
@@ -193,9 +194,11 @@ Page({
     if (this.detectTimer) clearTimeout(this.detectTimer);
   },
 
+  // 退无可退时回 tab 页 + 左边缘右滑返回，见 utils/navigation.ts
   onBack() {
-    wx.navigateBack();
+    goBack();
   },
+  ...swipeBackHandlers(),
 
   /**
    * 不再由端上逐个小区拼地址簿：后台根据当前业务角色的数据范围统一收窄，

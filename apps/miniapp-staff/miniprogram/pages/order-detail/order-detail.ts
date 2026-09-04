@@ -2,6 +2,7 @@ import { ai, repairs, upload } from '@pms/api-client';
 import { getSession } from '../../utils/session';
 import { askOrderSubscribe } from '../../utils/unread';
 import { markPoolTabTapped, rememberPoolMode } from '../../utils/tabbar';
+import { goBack, swipeBackHandlers } from '../../utils/navigation';
 import {
   buildTimeline,
   createHoldToTalk,
@@ -404,9 +405,12 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.load();
   },
 
+  // 从通知直接打开时页面栈只有这一页，navigateBack 无处可回；goBack 会退到该去的 tab 页。
+  // 四个 onSwipeBack* 是「从左边缘往右滑」的返回手势（Android 没有系统手势），见 utils/navigation.ts
   onBack() {
-    wx.navigateBack();
+    goBack();
   },
+  ...swipeBackHandlers(),
 
   async load() {
     if (!this.data.id) return;

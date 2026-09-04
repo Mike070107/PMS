@@ -418,6 +418,99 @@ test('派单台只列没有负责人且没有候选维修工的新单', async ()
   assert.equal(capturedWhere.status, WorkOrderStatus.CREATED);
 });
 
+const FINISHED = [
+  WorkOrderStatus.DONE_PENDING_REVIEW,
+  WorkOrderStatus.COMPLETED,
+  WorkOrderStatus.CANCELLED,
+];
+
+function doneService(rules: any[]) {
+  const service = Object.create(RepairsService.prototype) as any;
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => [10];
+  service.isSelfScoped = async () => false;
+  service.canDispatch = async () => false;
+  service.keywordWheres = async (_tenantId: number, where: any) => [where];
+  service.repairTypeRuleRepo = { async find() { return rules; } };
+  service.workOrderRepo = {
+    async find(options: any) {
+      service.capturedWhere = options.where;
+      service.capturedOrder = options.order;
+      return [];
+    },
+  };
+  return service;
+}
+
+test('「已完结」维修工看自己类别的单：派给我 / 候选有我 / 类型规则里有我', async () => {
+  const service = doneService([
+    { repairType: 'electric', assigneeId: null, assigneeIds: [7, 9] },
+    { repairType: 'water', assigneeId: 3, assigneeIds: [] },
+    { repairType: 'smart', assigneeId: 7, assigneeIds: [] },
+  ]);
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+  const access = appAccess({ 'app:pool': { view: true } });
+
+  await service.listWorkOrders({ scope: 'done' }, user, access);
+
+  const where = service.capturedWhere;
+  assert.equal(where.length, 3);
+  assert.equal(where[0].assigneeId, 7);
+  assert.deepEqual(where[0].status._value, FINISHED);
+  assert.deepEqual(where[0].communityId._value, [10]);
+  assert.equal(where[1].candidateIds._type, 'raw');
+  assert.match(where[1].candidateIds._getSql('candidate_ids'), /@>/);
+  // 兼容列 assignee_id 和新列 assignee_ids 两种写法都算他的类别
+  assert.deepEqual(where[2].skill._value, ['electric', 'smart']);
+  // 最近结束的排前面：升序会让 100 条截断只剩最老的一批
+  assert.deepEqual(service.capturedOrder, { id: 'DESC' });
+
+  // 传非终态直接空，不让人拿 done 绕过去看进行中的单
+  assert.deepEqual(
+    await service.listWorkOrders({ scope: 'done', status: WorkOrderStatus.IN_PROGRESS }, user, access),
+    [],
+  );
+});
+
+test('「已完结」类型规则里没有他时只剩派给我 / 候选有我两档', async () => {
+  const service = doneService([{ repairType: 'water', assigneeId: 3, assigneeIds: [] }]);
+  await service.listWorkOrders(
+    { scope: 'done' },
+    { id: 7, role: 'staff', tenantId: 1 } as any,
+    appAccess({ 'app:my-orders': { view: true } }),
+  );
+  assert.equal(service.capturedWhere.length, 2);
+});
+
+test('「已完结」办公室（派单台）看管理处范围内全部，不按人过滤', async () => {
+  const service = doneService([]);
+  await service.listWorkOrders(
+    { scope: 'done' },
+    { id: 7, role: 'staff', tenantId: 1 } as any,
+    appAccess({ 'app:dispatch': { view: true } }),
+  );
+  const where = service.capturedWhere;
+  assert.equal(Array.isArray(where), false);
+  assert.equal(where.assigneeId, undefined);
+  assert.equal(where.skill, undefined);
+  assert.deepEqual(where.status._value, FINISHED);
+  assert.deepEqual(where.communityId._value, [10]);
+});
+
+test('只报修的人没有「已完结」这一档', async () => {
+  const service = doneService([]);
+  await assert.rejects(
+    () =>
+      service.listWorkOrders(
+        { scope: 'done' },
+        { id: 7, role: 'staff', tenantId: 1 } as any,
+        appAccess({ 'app:my-repairs': { view: true } }),
+      ),
+    /没有查看这类工单的权限/,
+  );
+});
+
 test('无人自动匹配时只通知所属管理处的 Web 或小程序派单人员', async () => {
   const service = Object.create(RepairsService.prototype) as any;
   let queriedIds: number[] = [];

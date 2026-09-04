@@ -4,7 +4,8 @@ import { WorkOrderStatus, type WorkOrderListItem } from '@pms/shared-types';
 import { isActiveOrder } from '../../utils/order-status';
 import { getSession } from '../../utils/session';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
-import { refreshUnread, topUpQuietly } from '../../utils/unread';
+import { topUpQuietly } from '../../utils/unread';
+import { refreshTabBadges } from '../../utils/badges';
 
 /**
  * 这一页只列「手上真正要干的活」。
@@ -66,8 +67,8 @@ Page({
   onShow() {
     syncTabBar(this, 'mine');
     this.load();
-    // 「我的」那一格的未读角标：新工单派下来时，人得在这一屏就看见
-    refreshUnread(this);
+    // 底部几格的角标一起对准：在详情页接了单、完了工回来，工单池 / 在手 / 我的的数才是新的
+    refreshTabBadges(this);
   },
 
   onPullDownRefresh() {

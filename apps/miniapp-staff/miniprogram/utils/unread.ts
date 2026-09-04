@@ -8,7 +8,7 @@
  *   2. 模板 id 按端分：员工端可有新工单、催接单、办公室催修 3 个模板；
  *      业主端模板不属于本小程序，混进来会让整个授权弹窗失败。
  */
-import { notifications, repairs } from '@pms/api-client';
+import { notifications } from '@pms/api-client';
 import { getSession } from './session';
 import { readCachedAccess, setTabBadge } from './tabbar';
 
@@ -24,7 +24,7 @@ function canSeeMessages(): boolean {
  * 从业主端抄代码过来时照抄了那个 key，结果这里永远判成「没登录」，
  * 消息列表和角标一直是空的，而代码看上去完全正确。
  */
-function hasToken(): boolean {
+export function hasToken(): boolean {
   try {
     return !!getApp<{ getToken(): string | undefined }>()?.getToken();
   } catch {
@@ -55,7 +55,8 @@ export async function refreshUnread(page?: any): Promise<number> {
   // 顺手把订阅授权要用的东西预热好（见 primeSubscribeState）：
   // 每个页面 onShow 都会走到这里，等用户点「开启提醒」时缓存已经在了
   primeSubscribeState();
-  refreshPoolBadge(page);
+  // 工单池 / 派单台 / 在手工单那几格的角标由 utils/badges.ts 的 refreshTabBadges 统一刷，
+  // 这里只管「我的」那一格的未读数
   // 角色里没勾「消息中心」的人，「我的」页压根没有消息入口 ——
   // 这时候还挂个红点，他点进去找不到地方清，只能靠杀缓存
   if (!canSeeMessages()) {
@@ -72,25 +73,6 @@ export async function refreshUnread(page?: any): Promise<number> {
     // 拉不到就别乱标：宁可漏一个角标，也不要挂一个点不掉的红点
     return lastUnread;
   }
-}
-
-/**
- * 工单池那一格的角标：管理处范围内有几条待接的单。
- * 工单池页自己加载完会按列表条数设一次，这里是给别的页面 onShow 时也能看到最新数 ——
- * 不然人在「我的」页收到通知切回来，角标还是上次进池子时的数。
- */
-export function refreshPoolBadge(page?: any): void {
-  if (!page || !hasToken()) return;
-  const { pages } = readCachedAccess();
-  if (pages && !pages['app:pool']) return;
-  const route = String(page.route || page.__route__ || '');
-  if (route.indexOf('pages/pool/') === 0) return; // 池子页自己会设，别和它抢
-  repairs
-    .poolCount()
-    .then(({ count }) => setTabBadge(page, 'pool', count))
-    .catch(() => {
-      // 拉不到就保持原样
-    });
 }
 
 /**

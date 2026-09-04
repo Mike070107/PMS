@@ -1,5 +1,6 @@
 import { configure, request } from '@pms/api-client';
 import { setupAutoUpdate } from '@pms/miniapp-ui';
+import { refreshBadgesOnForeground } from './utils/badges';
 
 const TOKEN_KEY = 'pms.staff.access_token';
 const LOGIN_PAGE = 'pages/login/login';
@@ -28,6 +29,10 @@ App<AppData>({
   clearTokens() {
     wx.removeStorageSync(TOKEN_KEY);
     wx.removeStorageSync(REFRESH_KEY);
+  },
+  /** 切回前台立刻对一次角标：人在后台的这段时间可能派了新单、别人接走了单 */
+  onShow() {
+    refreshBadgesOnForeground();
   },
   onLaunch() {
     // 冷启动就把新包应用上，否则「关掉重开」看到的还是旧界面（见 setupAutoUpdate 注释）

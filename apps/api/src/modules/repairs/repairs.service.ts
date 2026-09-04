@@ -220,6 +220,17 @@ const CLAIMABLE_WORK_ORDER_STATUSES: WorkOrderStatus[] = [
   WorkOrderStatus.WAITING_MATERIAL,
 ];
 
+/**
+ * 「已完结」那一档的终态：待验收 / 已完成 / 已撤单。
+ * 作废单另有「已作废」入口，不混进来。和员工端 utils/order-status.ts 的
+ * ACTIVE_STATUSES 是同一条线的两边：那边列「还要动手的」，这边列「已经结束的」。
+ */
+const FINISHED_WORK_ORDER_STATUSES: WorkOrderStatus[] = [
+  WorkOrderStatus.DONE_PENDING_REVIEW,
+  WorkOrderStatus.COMPLETED,
+  WorkOrderStatus.CANCELLED,
+];
+
 /** 撤单快选原因 */
 const CANCEL_REASONS: Record<string, string> = {
   wrong_info: '填错了',
@@ -1116,7 +1127,15 @@ export class RepairsService implements OnModuleInit {
                 ? !!resolved.pages['app:my-orders']?.view
                 : query.scope === 'all'
                   ? !!resolved.pages['app:dispatch']?.view
-                  : true;
+                  : query.scope === 'done'
+                    // 已完结：有工单池 / 派单台 / 在手工单任一格的人都能看（范围在下面按人收敛）；
+                    // 只报修的人没有这一档，他看「我报的」
+                    ? !!(
+                        resolved.pages['app:pool']?.view ||
+                        resolved.pages['app:dispatch']?.view ||
+                        resolved.pages['app:my-orders']?.view
+                      )
+                    : true;
         if (!allowed) throw new ForbiddenException('没有查看这类工单的权限');
       }
     }
@@ -1140,6 +1159,35 @@ export class RepairsService implements OnModuleInit {
       where.assigneeId = user.id;
       if (!query.status) {
         where.status = Not(In([WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.VOIDED]));
+      }
+    } else if (query.scope === 'done') {
+      // 「已完结」= 已经结束的单（待验收 / 已完成 / 已撤单）。谁能看多宽（2026-09-04 定）：
+      //   · 办公室（派单台 / 后台工单管理 / 企业管理员）= 管理处数据范围内的全部；
+      //   · 维修工 = 自己这一类别的单：类型规则里把他列为默认维修工的那些类型（skill），
+      //     再加上派给他 / 候选里有他的单。不能只给「自己修的」—— 那样办公室看不到
+      //     本管理处的已完工单，电工也看不到别的电工修过的单，经验没法互通。
+      //   · 「在手工单」（scope=mine）仍然只认 assignee 本人，那是人身范围，不动。
+      if (
+        query.status &&
+        !FINISHED_WORK_ORDER_STATUSES.includes(query.status as WorkOrderStatus)
+      ) {
+        return [];
+      }
+      if (!query.status) where.status = In(FINISHED_WORK_ORDER_STATUSES);
+      const resolved = access ?? (await this.accessService.getAccess(user));
+      if (!this.canSeeWholeScope(resolved)) {
+        const myTypes = await this.repairTypesAssignedTo(tenantId, user.id);
+        const base = { ...where };
+        whereVariants = [
+          { ...base, assigneeId: user.id },
+          {
+            ...base,
+            candidateIds: Raw((alias) => `${alias} @> CAST(:me AS jsonb)`, {
+              me: JSON.stringify([user.id]),
+            }),
+          },
+          ...(myTypes.length ? [{ ...base, skill: In(myTypes) }] : []),
+        ];
       }
     } else if (await this.isSelfScoped(user, access)) {
       const myRequestIds = await this.repairRequestRepo.find({
@@ -1215,26 +1263,34 @@ export class RepairsService implements OnModuleInit {
     // 必须在数据库取前 100 条之前完成优先级排序。以前先拿最新 100 条、回来后才
     // 把急单提到前面，会漏掉更早的急单，也会让同组的新单排在老单前面。
     // 单测里的轻量仓库桩只有 find；生产仓库走带报修表联查的完整排序。
+    // 「已完结」是终态清单，最近结束的排前面 —— 沿用「先报先修」的升序会让 100 条截断
+    // 只剩最老的那批，最近修完的一张都看不到。
+    const finishedFirst = query.scope === 'done';
     const workOrders = typeof (this.workOrderRepo as any).createQueryBuilder === 'function'
-      ? await this.workOrderRepo
-          .createQueryBuilder('wo')
-          .innerJoin(
-            RepairRequest,
-            'request',
-            'request.id = wo.requestId AND request.tenantId = wo.tenantId',
-          )
-          .setFindOptions({ where: workOrderWhere })
-          // TypeORM 在 join + take 场景会包一层 DISTINCT 子查询。排序字段如果
-          // 没进入内层 SELECT，外层会引用不存在的 request_urgent / request_created_at。
-          .addSelect(['request.urgent', 'request.createdAt'])
-          .orderBy('request.urgent', 'DESC')
-          .addOrderBy('request.createdAt', 'ASC')
-          .addOrderBy('wo.id', 'ASC')
-          .take(100)
-          .getMany()
+      ? await (() => {
+          const qb = this.workOrderRepo
+            .createQueryBuilder('wo')
+            .innerJoin(
+              RepairRequest,
+              'request',
+              'request.id = wo.requestId AND request.tenantId = wo.tenantId',
+            )
+            .setFindOptions({ where: workOrderWhere })
+            // TypeORM 在 join + take 场景会包一层 DISTINCT 子查询。排序字段如果
+            // 没进入内层 SELECT，外层会引用不存在的 request_urgent / request_created_at。
+            .addSelect(['request.urgent', 'request.createdAt']);
+          if (finishedFirst) {
+            qb.orderBy('wo.completedAt', 'DESC', 'NULLS LAST').addOrderBy('wo.id', 'DESC');
+          } else {
+            qb.orderBy('request.urgent', 'DESC')
+              .addOrderBy('request.createdAt', 'ASC')
+              .addOrderBy('wo.id', 'ASC');
+          }
+          return qb.take(100).getMany();
+        })()
       : await this.workOrderRepo.find({
           where: workOrderWhere,
-          order: { id: 'ASC' },
+          order: { id: finishedFirst ? 'DESC' : 'ASC' },
           take: 100,
         });
     const requestIds = workOrders.map((item) => item.requestId);
@@ -6266,6 +6322,62 @@ export class RepairsService implements OnModuleInit {
     };
   }
 
+  /**
+   * 底部 tab 角标一次拿齐：工单池 / 派单台 / 在手工单各有几件事。
+   *
+   * 各格自己的页面加载完会按列表条数设一次；这里是给**任何** tab 页 onShow、
+   * 以及接单 / 完工之后立刻同步用的（2026-09-04 反馈：接完单角标还是旧数）。
+   * 口径必须和各列表一致，否则角标数和点进去看到的条数对不上：
+   *   pool     = scope=pool 默认视图（公开待接 + 派给我的待接）
+   *   dispatch = scope=dispatch（没负责人、没候选人的新单）
+   *   mine     = 在手工单页列的（派到我头上、正在修 / 等材料）
+   * 没权限的那格给 0，端上本来也不显示。
+   */
+  async badgeCounts(
+    user: AuthUser,
+    access: ResolvedAccess,
+  ): Promise<{ pool: number; dispatch: number; mine: number }> {
+    const tenantId = this.resolveTenantId(user);
+    const base: FindOptionsWhere<WorkOrder> = { tenantId };
+    const scope = this.scopeIds(access);
+    if (scope) {
+      if (!scope.length) return { pool: 0, dispatch: 0, mine: 0 };
+      base.communityId = In(scope);
+    }
+    const has = (key: string) =>
+      access.isPlatformAdmin || access.isTenantAdmin || !!access.pages[key]?.view;
+    const [pool, dispatch, mine] = await Promise.all([
+      has('app:pool')
+        ? this.workOrderRepo.count({
+            where: [
+              { ...base, status: In(CLAIMABLE_WORK_ORDER_STATUSES) },
+              { ...base, status: WorkOrderStatus.DISPATCHED, assigneeId: user.id },
+            ],
+          })
+        : 0,
+      has('app:dispatch')
+        ? this.workOrderRepo.count({
+            where: {
+              ...base,
+              status: WorkOrderStatus.CREATED,
+              assigneeId: IsNull(),
+              candidateIds: Raw((alias) => `jsonb_array_length(${alias}) = 0`),
+            },
+          })
+        : 0,
+      has('app:my-orders')
+        ? this.workOrderRepo.count({
+            where: {
+              ...base,
+              assigneeId: user.id,
+              status: In([WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL]),
+            },
+          })
+        : 0,
+    ]);
+    return { pool, dispatch, mine };
+  }
+
   private async ensureDefaultRepairTypeRules(tenantId: number, operatorId: number) {
     let existing = await this.repairTypeRuleRepo.find({ where: { tenantId } });
 
@@ -6889,6 +7001,37 @@ export class RepairsService implements OnModuleInit {
       pages['app:dispatch']?.view ||
       pages['app:my-orders']?.view ||
       pages['work-orders']?.view
+    );
+  }
+
+  /**
+   * 看得到管理处数据范围内**所有**工单的人：办公室（派单台）、后台工单管理、企业/平台管理员。
+   * 「已完结」那一档按这个判断决定是给整个范围，还是只给自己类别的单。
+   */
+  private canSeeWholeScope(resolved: ResolvedAccess): boolean {
+    return (
+      resolved.isPlatformAdmin ||
+      resolved.isTenantAdmin ||
+      !!resolved.pages['work-orders']?.view ||
+      !!resolved.pages['app:dispatch']?.view
+    );
+  }
+
+  /**
+   * 这个人的「工单类别」：类型规则里把他列为默认维修工的那些报修类型。
+   * 电工被列在「电相关」规则里，就该看到本管理处所有电相关的单（不止自己修的）。
+   */
+  private async repairTypesAssignedTo(tenantId: number, userId: number): Promise<string[]> {
+    const rules = await this.repairTypeRuleRepo.find({
+      where: { tenantId, enabled: true },
+      select: ['repairType', 'assigneeId', 'assigneeIds'],
+    });
+    return Array.from(
+      new Set(
+        rules
+          .filter((rule) => ruleAssigneeIds(rule).includes(userId))
+          .map((rule) => rule.repairType),
+      ),
     );
   }
 

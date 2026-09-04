@@ -1,4 +1,4 @@
-<view class="detail-page">
+<view class="detail-page" bindtouchstart="onSwipeBackStart" bindtouchmove="onSwipeBackMove" bindtouchend="onSwipeBackEnd" bindtouchcancel="onSwipeBackCancel">
   <view class="detail-nav">
     <view class="detail-nav__safe"></view>
     <view class="detail-nav__bar">

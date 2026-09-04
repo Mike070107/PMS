@@ -6,7 +6,9 @@ page { background: #f1f6fb; }
 .detail-nav__safe { height: calc(env(safe-area-inset-top) + 16rpx); }
 .detail-nav__bar { min-height: 172rpx; display: flex; align-items: center; padding: 0 34rpx 12rpx; }
 .detail-nav__back, .detail-nav__side { flex-shrink: 0; width: 68rpx; }
-.detail-nav__back { font-size: 56rpx; font-weight: 300; }
+/* 返回箭头的点击区放大到 96×88rpx（原来只有那个字形本身，戴着手套点不中）；
+   负外边距让箭头的视觉位置不变，右侧占位仍是 68rpx，标题居中只偏 8rpx，看不出来 */
+.detail-nav__back { display: flex; align-items: center; justify-content: center; width: 96rpx; min-height: 88rpx; margin-left: -20rpx; font-size: 56rpx; font-weight: 300; }
 .detail-nav__center { flex: 1; min-width: 0; text-align: center; }
 .detail-nav__title { font-size: 42rpx; font-weight: 700; line-height: 1.35; }
 .detail-nav__desc { margin-top: 5rpx; color: rgba(255,255,255,.9); font-size: 30rpx; line-height: 1.45; }

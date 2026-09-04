@@ -25,6 +25,11 @@ export interface StaffSession {
   canDispatch: boolean;
   /** 在手工单：看得到 / 能完工报料 */
   canSeeMyOrders: boolean;
+  /**
+   * 「已完结」那一档：有工单池 / 派单台 / 在手工单任一格的人都有。
+   * 服务端按人收敛范围（办公室看管理处全部，维修工看自己类别的），端上只管显不显示
+   */
+  canSeeDone: boolean;
   canHandleOrders: boolean;
   canInspectMaintenance: boolean;
   canSignMaintenance: boolean;
@@ -66,6 +71,7 @@ const emptySession = (): StaffSession => ({
   canSeeDispatch: false,
   canDispatch: false,
   canSeeMyOrders: false,
+  canSeeDone: false,
   canHandleOrders: false,
   canInspectMaintenance: false,
   canSignMaintenance: false,
@@ -107,6 +113,7 @@ export function buildSession(me: MeResp | null): StaffSession {
     canSeeDispatch,
     canDispatch: can('app:dispatch', 'edit'),
     canSeeMyOrders,
+    canSeeDone: canSeePool || canSeeDispatch || canSeeMyOrders,
     canHandleOrders: can('app:my-orders', 'edit'),
     canInspectMaintenance: can('app:maintenance-inspect', 'view'),
     canSignMaintenance: can('app:maintenance-sign', 'view'),

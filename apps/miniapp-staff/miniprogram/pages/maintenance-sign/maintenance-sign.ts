@@ -158,6 +158,12 @@ Page({
 
   canvasContext: null as WechatMiniprogram.CanvasContext | null,
   drawing: false,
+  /**
+   * 上一笔落点。旧版 canvas 每次 draw(true) 之后当前路径就被清空，下一段 lineTo 若没有
+   * 先 moveTo 到上一点，会从 (0,0) 起笔 —— 这就是 2026-09-04 反馈的「随便写哪里都是
+   * 从左上角放射出来的线」。所以每一小段都自己 moveTo(上一点) → lineTo(这一点)。
+   */
+  lastPoint: null as { x: number; y: number } | null,
   pinchStartDistance: 0,
   pinchStartScale: 1,
 
@@ -229,27 +235,40 @@ Page({
     const context = this.canvasContext;
     if (!point || !context) return;
     this.drawing = true;
+    this.lastPoint = { x: point.x, y: point.y };
+    // 点一下不拖也要留个点（签名里的「、」「丶」），否则只点不划什么都不出来
     context.beginPath();
     context.moveTo(point.x, point.y);
+    context.lineTo(point.x + 0.5, point.y + 0.5);
+    context.stroke();
+    context.draw(true);
+    if (!this.data.hasInk) this.setData({ hasInk: true });
   },
 
   moveStroke(event: any) {
-    if (!this.drawing || !this.canvasContext) return;
+    const context = this.canvasContext;
+    const last = this.lastPoint;
+    if (!this.drawing || !context || !last) return;
     const point = event.touches?.[0];
     if (!point) return;
-    this.canvasContext.lineTo(point.x, point.y);
-    this.canvasContext.stroke();
-    this.canvasContext.draw(true);
-    if (!this.data.hasInk) this.setData({ hasInk: true });
+    // 每一小段都从上一点起笔，见 lastPoint 的说明
+    context.beginPath();
+    context.moveTo(last.x, last.y);
+    context.lineTo(point.x, point.y);
+    context.stroke();
+    context.draw(true);
+    this.lastPoint = { x: point.x, y: point.y };
   },
 
   endStroke() {
     this.drawing = false;
+    this.lastPoint = null;
   },
 
   clearPad() {
     const context = this.canvasContext;
     if (!context) return;
+    this.lastPoint = null;
     context.clearRect(0, 0, 2000, 1000);
     context.draw();
     this.setData({ hasInk: false });

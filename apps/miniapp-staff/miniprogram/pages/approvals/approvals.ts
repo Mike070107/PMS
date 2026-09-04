@@ -2,6 +2,7 @@ import { maintenance, purchases } from '@pms/api-client';
 import { formatDateTimeCn } from '@pms/miniapp-ui';
 import { getSession } from '../../utils/session';
 import { cachedApprovalMode, setTabBadge, syncTabBar } from '../../utils/tabbar';
+import { refreshTabBadges } from '../../utils/badges';
 import {
   PURCHASE_STATUS_LABELS,
   PurchaseRequestStatus,
@@ -77,6 +78,8 @@ Page({
 
   onShow() {
     this.load();
+    // 底部其它几格的角标一起对准（这一页自己那格由 load 按列表条数设）
+    refreshTabBadges(this);
   },
 
   onPullDownRefresh() {

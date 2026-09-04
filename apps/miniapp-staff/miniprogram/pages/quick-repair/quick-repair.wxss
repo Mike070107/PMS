@@ -30,7 +30,8 @@ page { background: #f1f6fb; }
   justify-content: center;
   color: #fff;
 }
-.quick-nav__back { font-size: 54rpx; font-weight: 300; }
+/* 返回箭头点击区放大到 96×88rpx，负外边距保住箭头的视觉位置（同工单详情页） */
+.quick-nav__back { width: 96rpx; height: 88rpx; margin-left: -20rpx; font-size: 54rpx; font-weight: 300; }
 .quick-nav__help {
   width: 36rpx;
   height: 36rpx;
