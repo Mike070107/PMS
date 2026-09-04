@@ -4,6 +4,7 @@ import { maskPhone } from '@pms/miniapp-ui';
 import { buildStampText } from '../../utils/buildStamp';
 import { AuditStatus, type MeResp } from '@pms/shared-types';
 import { openFeedback } from '../../utils/feedback';
+import { getTestLoginCode, setTestLoginCode } from '../../utils/session';
 
 // 版本号和 git hash 由发版脚本写入 utils/buildStamp.ts，别在这里手改（见那个文件的说明）
 
@@ -12,6 +13,11 @@ const AUDIT_TEXT: Record<string, string> = {
   [AuditStatus.APPROVED]: '已认证',
   [AuditStatus.REJECTED]: '未通过',
 };
+
+/** 连点版本号几次才弹测试登录入口。藏起来是为了普通业主永远撞不到 */
+const TEST_ENTRY_TAPS = 5;
+let versionTaps = 0;
+let versionTapAt = 0;
 
 Page({
   data: {
@@ -106,5 +112,43 @@ Page({
     if (!res.confirm) return;
     getApp<{ clearTokens: () => void }>().clearTokens();
     wx.reLaunch({ url: '/pages/index/index' });
+  },
+
+  /**
+   * 隐蔽入口：连点版本号 5 次 → 填测试码，之后登录就跳过微信授权。
+   *
+   * 服务端 .env 里配了同一个 OWNER_TEST_LOGIN_CODE（≥24 位）才认；
+   * 线上不配 = 填了也没用。真机和开发者工具都能用，不需要第二个微信号。
+   */
+  onTapVersion() {
+    const now = Date.now();
+    // 两次点击间隔超过 1.5 秒就重新计数，避免平时误触攒够次数
+    versionTaps = now - versionTapAt > 1500 ? 1 : versionTaps + 1;
+    versionTapAt = now;
+    if (versionTaps < TEST_ENTRY_TAPS) return;
+    versionTaps = 0;
+    const current = getTestLoginCode();
+    wx.showModal({
+      title: '测试登录',
+      content: current ? '已设置测试码。清空即可恢复正常微信登录。' : '填入测试码后将跳过微信授权登录',
+      editable: true,
+      placeholderText: '粘贴测试码，留空表示清除',
+      confirmText: '保存',
+      success: (res) => {
+        if (!res.confirm) return;
+        const code = String(res.content || '').trim();
+        setTestLoginCode(code);
+        wx.showModal({
+          title: code ? '已设置测试码' : '已清除测试码',
+          content: '需要重新登录才生效：确定后会清掉本地登录态并回到首页。',
+          showCancel: false,
+          success: () => {
+            try { wx.clearStorageSync(); } catch { /* 清不掉也不影响下面重开 */ }
+            if (code) setTestLoginCode(code);
+            wx.reLaunch({ url: '/pages/index/index' });
+          },
+        });
+      },
+    });
   },
 });

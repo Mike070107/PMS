@@ -44,7 +44,7 @@ import {
   WxLoginDto,
 } from './dto';
 import { SettingsService } from '../settings/settings.service';
-import { WechatService } from './wechat.service';
+import { WechatService, type WxSession } from './wechat.service';
 
 /** 可登录员工端小程序的角色（定义收口到 enums，与报修放行共用一份） */
 const STAFF_ROLES: UserRole[] = STAFF_APP_ROLES;
@@ -80,8 +80,36 @@ export class AuthService {
   ) {}
 
   /** 小程序登录：code 换 openid → 找/建用户 → 发双 token */
+  /**
+   * 测试账号跳过微信授权登录。
+   *
+   * **默认完全不存在**：`OWNER_TEST_LOGIN_CODE` 没配（或短于 24 位）时这条路径直接关闭，
+   * 线上 .env 里不写就等于没有这个功能。要用时配一个长随机码，用完删掉即可。
+   *
+   * 三道约束：
+   * 1. 只对业主端（appType=owner）—— 员工端有账号密码/手机号登录，不需要后门；
+   * 2. 只把「换 openid」这一步替换掉，后面的角色校验、入驻审核、数据范围全部照常走，
+   *    所以它登进来就是一个**普通业主**，拿不到任何额外权限；
+   * 3. 每次使用都写告警日志，事后能查谁在什么时候用过。
+   *
+   * 对应的测试用户要事先在库里建好（wx_openid = OWNER_TEST_LOGIN_OPENID，role=owner）。
+   */
+  private async resolveWxSession(dto: WxLoginDto): Promise<WxSession> {
+    const testCode = (this.config.get<string>('OWNER_TEST_LOGIN_CODE') || '').trim();
+    // 24 位下限是防手滑：配一个「test」这种短码等于把业主端登录敞开
+    if (dto.appType === 'owner' && testCode.length >= 24 && dto.code === testCode) {
+      const openid = (this.config.get<string>('OWNER_TEST_LOGIN_OPENID') || '').trim();
+      if (!openid) {
+        throw new UnauthorizedException('测试登录未配置 OWNER_TEST_LOGIN_OPENID，请联系管理员');
+      }
+      this.logger.warn(`测试账号跳过微信授权登录：openid=${openid}`);
+      return { openid };
+    }
+    return this.wechat.jscode2session(dto.code, dto.appType);
+  }
+
   async wxLogin(dto: WxLoginDto) {
-    const session = await this.wechat.jscode2session(dto.code, dto.appType);
+    const session = await this.resolveWxSession(dto);
     let user = await this.userRepo.findOne({ where: { wxOpenid: session.openid } });
 
     if (!user && session.unionid) {

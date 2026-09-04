@@ -85,6 +85,7 @@
       </view>
     </view>
 
-    <view class="build-info">{{buildText}}</view>
+    <!-- 连点 5 次是测试登录的隐蔽入口，普通业主不会撞到（见 me.ts onTapVersion） -->
+    <view class="build-info" bindtap="onTapVersion">{{buildText}}</view>
   </view>
 </view>
