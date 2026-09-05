@@ -16,6 +16,26 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import AiSamplesPanel from '../components/AiSamplesPanel';
 import AiLearningPanel from '../components/AiLearningPanel';
 import AiUsagePanel from '../components/AiUsagePanel';
+
+/** 采购审批链表单（和服务端 PurchaseApprovalSetting 同形） */
+interface PurchaseApprovalForm {
+  office: 'summary' | 'approve' | 'off';
+  manager: boolean;
+  purchaser: boolean;
+  skipManagerBelowYuan: number;
+  skipPurchaserBelowYuan: number;
+}
+const DEFAULT_PURCHASE_FLOW: PurchaseApprovalForm = {
+  office: 'summary', manager: true, purchaser: true, skipManagerBelowYuan: 0, skipPurchaserBelowYuan: 0,
+};
+function purchaseFlowSummary(f: PurchaseApprovalForm): string {
+  const parts: string[] = [];
+  if (f.office === 'approve') parts.push('办公室审批');
+  else if (f.office === 'summary') parts.push('办公室汇总');
+  if (f.manager) parts.push(f.skipManagerBelowYuan > 0 ? `经理（低于 ¥${f.skipManagerBelowYuan} 跳过）` : '物业经理');
+  if (f.purchaser) parts.push(f.skipPurchaserBelowYuan > 0 ? `采购部（低于 ¥${f.skipPurchaserBelowYuan} 跳过）` : '采购部');
+  return parts.length ? `${parts.join(' → ')} → 通过下单` : '没有任何审批环节，缺料一提就可下单';
+}
 import { request } from '../lib/api';
 import { usePagePerm } from '../lib/auth';
 
@@ -34,6 +54,8 @@ interface TenantSettings {
     orderUrge: string;
   };
   autoReview: { hours: number };
+  /** 采购审批链：三环开关 + 金额阈值（元） */
+  purchaseApproval?: PurchaseApprovalForm;
   /** 超时催办：开关、时限、只在这个时段催 */
   dispatchEscalation: {
     enabled: boolean;
@@ -180,6 +202,8 @@ export default function SettingsPage() {
   const [tplResult, setTplResult] = useState<Record<string, TemplateResult | null>>({});
   const [tplBusy, setTplBusy] = useState<string>('');
   const [autoReviewHours, setAutoReviewHours] = useState(48);
+  const [purchaseFlow, setPurchaseFlow] = useState<PurchaseApprovalForm>(DEFAULT_PURCHASE_FLOW);
+  const [savingFlow, setSavingFlow] = useState(false);
   const [escalateMinutes, setEscalateMinutes] = useState(60);
   const [escalateEnabled, setEscalateEnabled] = useState(true);
   const [escalateStart, setEscalateStart] = useState('08:00');
@@ -222,6 +246,7 @@ export default function SettingsPage() {
       setTplOverdue(next.wxSubscribeTemplates?.orderOverdue || '');
       setTplUrge(next.wxSubscribeTemplates?.orderUrge || '');
       setAutoReviewHours(next.autoReview?.hours ?? 48);
+      setPurchaseFlow({ ...DEFAULT_PURCHASE_FLOW, ...(next.purchaseApproval || {}) });
       setEscalateMinutes(next.dispatchEscalation?.acceptMinutes ?? 60);
       setEscalateEnabled(next.dispatchEscalation?.enabled ?? true);
       setEscalateStart(next.dispatchEscalation?.startAt || '08:00');
@@ -463,6 +488,25 @@ export default function SettingsPage() {
     }
   };
 
+  /** 采购审批链：保存后立即生效，已在流转中的申请下一步按新配置走 */
+  const savePurchaseFlow = async () => {
+    setSavingFlow(true);
+    try {
+      const next = await request<TenantSettings>({
+        method: 'PATCH',
+        url: '/settings',
+        data: { purchaseApproval: purchaseFlow },
+      });
+      setSettings(next);
+      setPurchaseFlow({ ...DEFAULT_PURCHASE_FLOW, ...(next.purchaseApproval || {}) });
+      message.success('已保存');
+    } catch (e: any) {
+      message.error(e?.message || '保存失败');
+    } finally {
+      setSavingFlow(false);
+    }
+  };
+
   const saveAutoReview = async () => {
     setSavingAutoReview(true);
     try {
@@ -612,6 +656,76 @@ export default function SettingsPage() {
         </Space>
         <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 12, marginBottom: 0 }}>
           修改后立即生效；已经处于待验收状态的工单也会使用新的租户时限。
+        </Paragraph>
+      </SettingSection>
+
+      <SettingSection
+        title="采购审批链"
+        summary={purchaseFlowSummary(purchaseFlow)}
+      >
+        <Paragraph>
+          缺料申请的流转顺序固定为 <Text strong>办公室 → 物业经理 → 采购部 → 通过下单</Text>，
+          每一环可以关掉，经理和采购部还能按预估金额跳过。关掉或跳过的环节直接越过，不用等人。
+          派单、撤回、作废、审批各自在「业务角色」里授权。
+        </Paragraph>
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Space align="center" wrap>
+            <Text strong style={{ width: 96, display: 'inline-block' }}>办公室</Text>
+            <Select
+              value={purchaseFlow.office}
+              disabled={!canEdit}
+              style={{ width: 260 }}
+              onChange={(office) => setPurchaseFlow({ ...purchaseFlow, office })}
+              options={[
+                { value: 'summary', label: '只汇总合并，不算审批' },
+                { value: 'approve', label: '汇总并审批（记办公室审批人）' },
+                { value: 'off', label: '不经过办公室，直接进下一环' },
+              ]}
+            />
+          </Space>
+          <Space align="center" wrap>
+            <Text strong style={{ width: 96, display: 'inline-block' }}>物业经理</Text>
+            <Switch checked={purchaseFlow.manager} disabled={!canEdit} onChange={(manager) => setPurchaseFlow({ ...purchaseFlow, manager })} />
+            <Text type="secondary">预估金额低于</Text>
+            <InputNumber
+              min={0}
+              max={10000000}
+              precision={2}
+              value={purchaseFlow.skipManagerBelowYuan}
+              disabled={!canEdit || !purchaseFlow.manager}
+              onChange={(v) => setPurchaseFlow({ ...purchaseFlow, skipManagerBelowYuan: Number(v) || 0 })}
+              addonBefore="¥"
+              style={{ width: 170 }}
+            />
+            <Text type="secondary">元时跳过（0 = 不跳）</Text>
+          </Space>
+          <Space align="center" wrap>
+            <Text strong style={{ width: 96, display: 'inline-block' }}>采购部</Text>
+            <Switch checked={purchaseFlow.purchaser} disabled={!canEdit} onChange={(purchaser) => setPurchaseFlow({ ...purchaseFlow, purchaser })} />
+            <Text type="secondary">预估金额低于</Text>
+            <InputNumber
+              min={0}
+              max={10000000}
+              precision={2}
+              value={purchaseFlow.skipPurchaserBelowYuan}
+              disabled={!canEdit || !purchaseFlow.purchaser}
+              onChange={(v) => setPurchaseFlow({ ...purchaseFlow, skipPurchaserBelowYuan: Number(v) || 0 })}
+              addonBefore="¥"
+              style={{ width: 170 }}
+            />
+            <Text type="secondary">元时跳过（0 = 不跳）</Text>
+          </Space>
+          {!purchaseFlow.manager && !purchaseFlow.purchaser && purchaseFlow.office !== 'approve' ? (
+            <Alert type="warning" showIcon message="现在没有任何审批环节：缺料一提就直接通过、可下单。确认这是你要的再保存。" />
+          ) : null}
+          {canEdit && (
+            <Button type="primary" loading={savingFlow} onClick={savePurchaseFlow}>
+              保存审批链
+            </Button>
+          )}
+        </Space>
+        <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 12, marginBottom: 0 }}>
+          修改后立即生效：已经在流转中的申请，下一步按新配置走；小程序审批页和后台申请单上的进度条都会按它画。
         </Paragraph>
       </SettingSection>
 

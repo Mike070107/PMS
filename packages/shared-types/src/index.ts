@@ -977,9 +977,24 @@ export interface PurchaseRequestItem {
   rejectedAtStage?: 'manager' | 'purchaser';
 }
 
+/** 审批链上的一环（服务端按后台配置算好），Web / 小程序直接画 */
+export interface PurchaseStepView {
+  key: 'office' | 'manager' | 'purchaser' | 'order';
+  label: string;
+  state: 'done' | 'current' | 'pending' | 'skipped';
+  by?: string | null;
+  at?: string | null;
+  note?: string;
+}
+
 export interface PurchaseRequestView {
   id: number;
   requestNo: string;
+  /** 审批链视图；老接口没有时端上退回固定四步 */
+  steps?: PurchaseStepView[];
+  /** 待汇总的申请：提交后去哪一环（「物业经理审批」「直接通过，待下单」…） */
+  nextStepLabel?: string | null;
+  officeReviewerName?: string | null;
   workOrderId: number | null;
   /** 来源工单的工单号，服务端下发；界面上显示它而不是 workOrderId */
   workOrderNo?: string | null;

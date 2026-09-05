@@ -82,6 +82,8 @@ import {
   summarizeLots,
 } from './stock-ledger';
 import { nextPurchaseRequestNo } from './purchase-request-no.util';
+import { SettingsService } from '../settings/settings.service';
+import { nextPurchaseStatus, nextStepLabel, pendingStepFor, purchaseSteps } from './purchase-flow';
 
 interface NotifyInput {
   eventKey: string;
@@ -142,6 +144,7 @@ export class InventoryService {
     @InjectRepository(TransferOrder)
     private readonly transferOrderRepo: Repository<TransferOrder>,
     private readonly storage: ObjectStorageService,
+    private readonly settings: SettingsService,
   ) {}
 
   /**
@@ -1358,7 +1361,7 @@ export class InventoryService {
     const userIds = [
       ...new Set(
         rows
-          .flatMap((r) => [r.applicantId, r.managerId, r.purchaserId])
+          .flatMap((r) => [r.applicantId, r.managerId, r.purchaserId, r.officeReviewerId])
           .filter((id): id is number => !!id),
       ),
     ];
@@ -1404,6 +1407,7 @@ export class InventoryService {
       ? await this.materialRepo.find({ where: { tenantId, id: In(materialIds) } })
       : [];
     const materialById = new Map(materials.map((m) => [m.id, m]));
+    const flow = await this.purchaseFlowSetting(tenantId);
     return rows.map((row) => {
       const items = (row.items || []).map((item, index) => {
         const sourceWorkOrderId = item.sourceWorkOrderId ?? row.workOrderId;
@@ -1438,6 +1442,17 @@ export class InventoryService {
         managerName: nameOf(row.managerId),
         purchaserName: nameOf(row.purchaserId),
         workOrderNo: row.workOrderId ? orderNoById.get(row.workOrderId) ?? null : null,
+        officeReviewerName: nameOf(row.officeReviewerId ?? null),
+        // 审批链视图和「提交后去哪」由服务端按配置算好，Web / 小程序直接画
+        steps: purchaseSteps(flow, row, {
+          office: nameOf(row.officeReviewerId ?? null),
+          manager: nameOf(row.managerId),
+          purchaser: nameOf(row.purchaserId),
+        }),
+        nextStepLabel:
+          row.status === PurchaseRequestStatus.OFFICE_REVIEW
+            ? nextStepLabel(flow, 'office', row.estTotalCents)
+            : null,
         sourceRequestNos: [...new Set(items.map((item) => item.sourceRequestNo).filter(Boolean))],
         sourceWorkOrderNos: [...new Set(items.map((item) => item.sourceWorkOrderNo).filter(Boolean))],
       };
@@ -1471,12 +1486,45 @@ export class InventoryService {
             (sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty,
             0,
           ),
-          status: PurchaseRequestStatus.OFFICE_REVIEW,
+          // 初始环节按后台「采购审批链」算：办公室环节关了就直接进经理 / 采购 / 通过
+          status: nextPurchaseStatus(
+            await this.purchaseFlowSetting(tenantId),
+            'create',
+            dto.items.reduce((sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty, 0),
+          ),
           createdBy: user.id,
           updatedBy: user.id,
         }),
       );
+      await this.notifyPendingStep(manager, tenantId, request, user.id);
       return request;
+    });
+  }
+
+  /** 后台「采购审批链」配置 */
+  private async purchaseFlowSetting(tenantId: number) {
+    return (await this.settings.getSettingsByTenant(tenantId)).purchaseApproval;
+  }
+
+  /**
+   * 按当前状态通知下一环节的人。办公室汇总那一环的通知由发起方（缺料登记）自己发，
+   * 这里只管经理 / 采购 / 自动通过待下单。
+   */
+  private async notifyPendingStep(
+    manager: EntityManager,
+    tenantId: number,
+    saved: PurchaseRequest,
+    operatorId: number,
+  ) {
+    const step = pendingStepFor(saved.status);
+    if (!step || saved.status === PurchaseRequestStatus.OFFICE_REVIEW) return;
+    const officeId = await this.purchaseRequestOfficeId(tenantId, saved);
+    await this.notifyByPermission(manager, tenantId, step.pageKey, {
+      eventKey: step.eventKey,
+      title: `采购申请 ${saved.requestNo} ${step.title}`,
+      payload: { purchaseRequestId: saved.id, requestNo: saved.requestNo },
+      operatorId,
+      officeId,
     });
   }
 
@@ -1547,7 +1595,12 @@ export class InventoryService {
         rejectedAtStage: undefined,
       }));
 
-      primary.status = PurchaseRequestStatus.MANAGER_REVIEW;
+      // 下一环按后台「采购审批链」算：经理关了 / 金额低于阈值就直接到采购，都关了直接通过
+      const flow = await this.purchaseFlowSetting(tenantId);
+      primary.status = nextPurchaseStatus(flow, 'office', primary.estTotalCents);
+      // 办公室环节配成「汇总并审批」时，这一步就是办公室审批，记下是谁批的
+      primary.officeReviewerId = flow.office === 'approve' ? user.id : null;
+      primary.officeReviewedAt = flow.office === 'approve' ? new Date() : null;
       primary.rejectReason = null;
       primary.managerId = null;
       primary.managerAt = null;
@@ -1555,14 +1608,7 @@ export class InventoryService {
       primary.purchaserAt = null;
       primary.updatedBy = user.id;
       const saved = await manager.save(PurchaseRequest, primary);
-      const officeId = await this.purchaseRequestOfficeId(tenantId, saved);
-      await this.notifyByPermission(manager, tenantId, 'app:approve-manager', {
-        eventKey: 'purchase_pending_manager',
-        title: `采购申请 ${saved.requestNo} 待物业经理审批`,
-        payload: { purchaseRequestId: saved.id, requestNo: saved.requestNo },
-        operatorId: user.id,
-        officeId,
-      });
+      await this.notifyPendingStep(manager, tenantId, saved, user.id);
       return saved;
     });
   }
@@ -1575,19 +1621,14 @@ export class InventoryService {
       if (request.status !== PurchaseRequestStatus.MANAGER_REVIEW) {
         throw new BadRequestException('purchase request is not pending manager');
       }
-      request.status = PurchaseRequestStatus.PURCHASER_REVIEW;
+      // 采购部关了 / 金额低于阈值就直接通过
+      const flow = await this.purchaseFlowSetting(tenantId);
+      request.status = nextPurchaseStatus(flow, 'manager', request.estTotalCents);
       request.managerId = user.id;
       request.managerAt = new Date();
       request.updatedBy = user.id;
       const saved = await manager.save(PurchaseRequest, request);
-      const officeId = await this.purchaseRequestOfficeId(tenantId, saved);
-      await this.notifyByPermission(manager, tenantId, 'app:approve-purchaser', {
-        eventKey: 'purchase_pending_purchaser',
-        title: `采购申请 ${saved.requestNo} 待采购经理审批`,
-        payload: { purchaseRequestId: saved.id, requestNo: saved.requestNo },
-        operatorId: user.id,
-        officeId,
-      });
+      await this.notifyPendingStep(manager, tenantId, saved, user.id);
       return saved;
     });
   }
@@ -1779,9 +1820,30 @@ export class InventoryService {
         })
       : [];
     const requestNoById = new Map(requests.map((r) => [r.id, r.requestNo]));
+    // 小程序「按采购单入库」要看供应商叫什么、每行是什么材料，不能只给 id
+    const supplierIds = [...new Set(rows.map((r) => r.supplierId).filter((id): id is number => !!id))];
+    const materialIds = [
+      ...new Set(rows.flatMap((r) => (r.items || []).map((i) => i.materialId)).filter((id): id is number => !!id)),
+    ];
+    const [suppliers, materials] = await Promise.all([
+      supplierIds.length ? this.supplierRepo.find({ where: { tenantId, id: In(supplierIds) } }) : Promise.resolve([]),
+      materialIds.length ? this.materialRepo.find({ where: { tenantId, id: In(materialIds) } }) : Promise.resolve([]),
+    ]);
+    const supplierNameById = new Map(suppliers.map((s) => [s.id, s.name]));
+    const materialById = new Map(materials.map((m) => [m.id, m]));
     return rows.map((row) => ({
       ...row,
       requestNo: row.requestId ? requestNoById.get(row.requestId) ?? null : null,
+      supplierName: supplierNameById.get(row.supplierId) ?? null,
+      items: (row.items || []).map((item) => {
+        const material = materialById.get(item.materialId);
+        return {
+          ...item,
+          name: material?.name ?? null,
+          spec: material?.spec ?? null,
+          unit: material?.unit ?? null,
+        };
+      }),
     }));
   }
 
@@ -1816,8 +1878,9 @@ export class InventoryService {
         if (!items.length) {
           items = lockedRequest.items.map((item) => {
             if (!item.materialId) {
+              // 申购新材料的行还没有 SKU：先建档并在采购单里选中它，库存和入库都按 SKU 记
               throw new BadRequestException(
-                `missing materialId for purchase item: ${item.name}`,
+                `「${item.name}${item.spec ? ' ' + item.spec : ''}」还没有材料档案，请先在材料库建档，再在采购单里选中它`,
               );
             }
             return {

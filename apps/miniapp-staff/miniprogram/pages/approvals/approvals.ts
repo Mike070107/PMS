@@ -85,6 +85,9 @@ Page({
     canSummarize: false,
     stage: 'review' as 'review' | 'summary',
     summaryList: [] as ApprovalRow[],
+    /** 空态单独存布尔：wxml 里 !数组.length 在开发者工具 3.17 编译下不可靠（2026-09-05 实测） */
+    summaryEmpty: false,
+    reviewEmpty: false,
     selectedMap: {} as Record<number, boolean>,
     selectedCount: 0,
     summarizing: false,
@@ -181,6 +184,8 @@ Page({
         roleHint: PURCHASE_STATUS_LABELS[status],
         list: reviewList.map(toRow),
         summaryList: summaryRows,
+        reviewEmpty: session.canApprove && reviewList.length === 0,
+        summaryEmpty: canSummarize && summaryRows.length === 0,
         selectedMap,
         selectedCount: Object.keys(selectedMap).length,
         loaded: true,
@@ -212,16 +217,17 @@ Page({
   async onSubmitSummary() {
     const requestIds = Object.keys(this.data.selectedMap).map(Number).filter(Boolean);
     if (!requestIds.length) return wx.showToast({ icon: 'none', title: '先勾选要提交的申请' });
+    const nextLabel = this.data.summaryList.find((row) => this.data.selectedMap[row.id])?.nextStepLabel || '物业经理审批';
     const res = await wx.showModal({
-      title: requestIds.length > 1 ? `合并 ${requestIds.length} 张申请提交经理？` : '提交这张申请给经理审批？',
-      content: requestIds.length > 1 ? '合并后每行仍保留来源工单，经理可以单项驳回。' : '',
+      title: requestIds.length > 1 ? `合并 ${requestIds.length} 张申请，提交到「${nextLabel}」？` : `提交到「${nextLabel}」？`,
+      content: requestIds.length > 1 ? '合并后每行仍保留来源工单，审批人可以单项驳回。' : '',
       confirmText: '提交',
     });
     if (!res.confirm) return;
     this.setData({ summarizing: true });
     try {
       const saved = await purchases.submitToManager({ requestIds });
-      wx.showToast({ title: requestIds.length > 1 ? `已合并为 ${saved.requestNo}` : '已提交经理', icon: 'none' });
+      wx.showToast({ title: requestIds.length > 1 ? `已合并为 ${saved.requestNo}` : '已提交', icon: 'none' });
       this.setData({ selectedMap: {}, selectedCount: 0 });
       await this.load();
     } catch (err: any) {

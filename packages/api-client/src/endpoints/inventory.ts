@@ -104,6 +104,42 @@ export const createGeneralReceipt = (data: CreateGeneralReceiptReq) =>
     data,
   });
 
+// ---------------- 采购单 / 采购入库 ----------------
+
+export interface PurchaseOrderItemView {
+  materialId: number;
+  qty: number;
+  unitCostCents: number;
+  /** 服务端补的材料名称 / 规格 / 单位，端上直接显示 */
+  name?: string | null;
+  spec?: string | null;
+  unit?: string | null;
+}
+
+export interface PurchaseOrderView {
+  id: number;
+  orderNo: string;
+  requestId: number | null;
+  requestNo?: string | null;
+  supplierId: number;
+  supplierName?: string | null;
+  items: PurchaseOrderItemView[];
+  totalCents: number;
+  /** placed 待入库 / partial 部分到货 / received 已收齐 / closed 已关闭 */
+  status: 'placed' | 'partial' | 'received' | 'closed';
+  createdAt: string;
+}
+
+/** 采购单列表（员工端「按采购单入库」用；权限 app:inventory 查看） */
+export const listPurchaseOrders = () => request<PurchaseOrderView[]>({ url: '/purchase-orders' });
+
+/** 按采购单入库：选总仓或小区仓，实收数量和单价可改；服务端写入库单 + 批次 + 流水 */
+export const createGoodsReceipt = (data: {
+  purchaseOrderId: number;
+  warehouseId: number;
+  items: Array<{ materialId: number; qty: number; unitCostCents: number; locationId?: number }>;
+}) => request<{ id: number; receiptNo: string }>({ method: 'POST', url: '/goods-receipts', data });
+
 // ---------------- 采购 ----------------
 
 export const listPurchaseRequests = (query: { status?: string } = {}) =>

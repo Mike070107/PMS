@@ -9,6 +9,7 @@ import {
   Min,
   ValidateNested,
   IsNumber,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -160,6 +161,15 @@ class DispatchEscalationDto {
   endAt?: string;
 }
 
+/** 采购审批链：三环开关 + 两个金额阈值（元）。都可选，没传的保持原值 */
+class PurchaseApprovalDto {
+  @IsOptional() @IsIn(['summary', 'approve', 'off']) office?: 'summary' | 'approve' | 'off';
+  @IsOptional() @IsBoolean() manager?: boolean;
+  @IsOptional() @IsBoolean() purchaser?: boolean;
+  @IsOptional() @IsNumber() @Min(0) @Max(10000000) skipManagerBelowYuan?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(10000000) skipPurchaserBelowYuan?: number;
+}
+
 export class UpdateTenantSettingsDto {
   @IsOptional()
   @ValidateNested()
@@ -185,6 +195,11 @@ export class UpdateTenantSettingsDto {
   @ValidateNested()
   @Type(() => WxServiceAccountDto)
   wxServiceAccount?: WxServiceAccountDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PurchaseApprovalDto)
+  purchaseApproval?: PurchaseApprovalDto;
 
   @IsOptional()
   @ValidateNested()

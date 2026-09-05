@@ -145,3 +145,20 @@
 .speech-btn__desc { margin-top: 4rpx; color: #6a819a; font-size: 24rpx; line-height: 1.5; }
 .speech-listening { margin-top: 14rpx; color: #31558a; font-size: 26rpx; line-height: 1.6; }
 .speech-hint { margin-top: 14rpx; color: #5c7a99; font-size: 26rpx; line-height: 1.6; }
+
+/* ---- 按采购单入库（2026-09-05） ---- */
+.source-tabs { margin-bottom: 20rpx; }
+.po-card { padding: 24rpx 28rpx; }
+.po-card__head { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.po-card__no { font-size: var(--font-lg); font-weight: 700; color: var(--color-text); }
+.po-card__status { flex-shrink: 0; padding: 6rpx 16rpx; border-radius: 999rpx; background: #fff3d8; color: #9a650d; font-size: var(--font-xs); font-weight: 700; }
+.po-card__supplier { margin-top: 8rpx; color: var(--color-text-secondary); font-size: var(--font-md); }
+.po-card__items { margin-top: 8rpx; color: var(--color-text); font-size: var(--font-md); line-height: 1.6; }
+.po-head { background: #e5edf5; }
+.po-line { padding: 18rpx 0; border-top: 2rpx solid #e5ecf2; }
+.po-line:first-of-type { border-top: 0; }
+.po-line__title { color: var(--color-text); font-size: var(--font-lg); font-weight: 600; line-height: 1.45; }
+.po-line__ordered { margin-left: 12rpx; color: var(--color-text-tertiary); font-size: var(--font-sm); font-weight: 400; }
+.po-line__inputs { display: flex; gap: 16rpx; margin-top: 12rpx; }
+.po-line__field { flex: 1; min-width: 0; }
+.po-line__label { display: block; margin-bottom: 6rpx; color: var(--color-text-secondary); font-size: var(--font-sm); }

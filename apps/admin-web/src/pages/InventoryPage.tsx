@@ -160,6 +160,10 @@ interface PurchaseRequestItem {
 interface PurchaseRequestRow {
   /** 名字/单号由服务端随行下发（见 InventoryService.withRequestNames），端上不再自己查 */
   applicantName?: string | null;
+  /** 审批链视图（服务端按后台「采购审批链」配置算好）；老数据没有时退回固定四步 */
+  steps?: Array<{ key: string; label: string; state: 'done' | 'current' | 'pending' | 'skipped'; by?: string | null; at?: string | null; note?: string }>;
+  nextStepLabel?: string | null;
+  officeReviewerName?: string | null;
   managerName?: string | null;
   purchaserName?: string | null;
   workOrderNo?: string | null;
@@ -315,6 +319,21 @@ function requestStepCurrent(status: PurchaseRequestStatus) {
 
 function requestStepStatus(status: PurchaseRequestStatus): 'process' | 'error' {
   return status === PurchaseRequestStatus.REJECTED ? 'error' : 'process';
+}
+
+/** 指标卡上「经理审批 / 采购审批」那两格：按审批链视图，跳过的说跳过 */
+function stepMetric(
+  row: { steps?: Array<{ key: string; state: string }>; managerAt?: string | null; purchaserAt?: string | null },
+  key: 'manager' | 'purchaser',
+): { value: string; tone: 'success' | 'normal' } {
+  const step = row.steps?.find((s) => s.key === key);
+  if (step) {
+    if (step.state === 'done') return { value: '已完成', tone: 'success' };
+    if (step.state === 'skipped') return { value: '跳过', tone: 'normal' };
+    return { value: step.state === 'current' ? '进行中' : '待处理', tone: 'normal' };
+  }
+  const at = key === 'manager' ? row.managerAt : row.purchaserAt;
+  return at ? { value: '已完成', tone: 'success' } : { value: '待处理', tone: 'normal' };
 }
 
 export default function InventoryPage() {
@@ -1805,8 +1824,8 @@ export default function InventoryPage() {
             {requestDetail.status === PurchaseRequestStatus.OFFICE_REVIEW && (
               <>
                 <Button icon={<EditOutlined />} onClick={() => openEditRequest(requestDetail)}>修改明细</Button>
-                <Popconfirm title="提交给物业经理审批？" description="如需合并多条申请，请在列表勾选后批量提交。" onConfirm={() => submitRequestsToManager([requestDetail.id])}>
-                  <Button type="primary" loading={saving}>提交经理</Button>
+                <Popconfirm title={`提交后进入「${requestDetail.nextStepLabel || '物业经理审批'}」？`} description="如需合并多条申请，请在列表勾选后批量提交。" onConfirm={() => submitRequestsToManager([requestDetail.id])}>
+                  <Button type="primary" loading={saving}>提交</Button>
                 </Popconfirm>
               </>
             )}
@@ -1849,9 +1868,26 @@ export default function InventoryPage() {
             <DetailMetrics items={[
               { label: '预估总额', value: money(requestDetail.estTotalCents), tone: 'warning' },
               { label: '材料种类', value: `${requestDetail.items?.length || 0} 种` },
-              { label: '经理审批', value: requestDetail.managerAt ? '已完成' : '待处理', tone: requestDetail.managerAt ? 'success' : 'normal' },
-              { label: '采购审批', value: requestDetail.purchaserAt ? '已完成' : '待处理', tone: requestDetail.purchaserAt ? 'success' : 'normal' },
+              { label: '经理审批', value: stepMetric(requestDetail, 'manager').value, tone: stepMetric(requestDetail, 'manager').tone },
+              { label: '采购审批', value: stepMetric(requestDetail, 'purchaser').value, tone: stepMetric(requestDetail, 'purchaser').tone },
             ]} />
+            {/* 审批链按后台配置画：关掉 / 金额跳过的环节标「跳过」，不再画成一直待处理 */}
+            {requestDetail.steps?.length ? (
+              <Steps
+                size="small"
+                current={Math.max(0, requestDetail.steps.findIndex((s) => s.state === 'current'))}
+                status={requestStepStatus(requestDetail.status)}
+                items={requestDetail.steps.map((s) => ({
+                  title: s.label,
+                  status: s.state === 'done' ? 'finish' : s.state === 'current' ? (requestDetail.status === PurchaseRequestStatus.REJECTED ? 'error' : 'process') : 'wait',
+                  description: s.state === 'skipped'
+                    ? `跳过 · ${s.note || ''}`
+                    : s.state === 'done'
+                      ? (s.by || s.at ? `${nameOr(s.by, '审批人')}${s.at ? ` · ${formatDateTime(s.at)}` : ''}` : s.note || '已完成')
+                      : s.note || (s.state === 'current' ? '进行中' : '待处理'),
+                }))}
+              />
+            ) : (
             <Steps
               size="small"
               current={requestStepCurrent(requestDetail.status)}
@@ -1882,6 +1918,7 @@ export default function InventoryPage() {
                 },
               ]}
             />
+            )}
 
             {requestDetail.status === PurchaseRequestStatus.REJECTED && (
               <Alert type="error" showIcon message="采购申请已驳回" description={requestDetail.rejectReason || '未填写驳回原因'} />

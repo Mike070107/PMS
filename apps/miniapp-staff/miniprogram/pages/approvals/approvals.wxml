@@ -59,10 +59,10 @@
   <!-- ===== 办公室汇总：勾选合并提交经理 ===== -->
   <block wx:if="{{stage === 'summary' && canSummarize}}">
     <view wx:if="{{summaryList.length}}" class="summary-bar">
-      <text class="summary-bar__text">{{selectedCount ? '已勾选 ' + selectedCount + ' 张，合并成一张提交经理' : '点卡片勾选，可多张合并成一张'}}</text>
-      <button class="btn btn--primary btn--sm summary-bar__btn" disabled="{{!selectedCount || summarizing}}" loading="{{summarizing}}" bindtap="onSubmitSummary">提交经理{{selectedCount ? '（' + selectedCount + '）' : ''}}</button>
+      <text class="summary-bar__text">{{selectedCount ? '已勾选 ' + selectedCount + ' 张，合并成一张提交到「' + (summaryList[0].nextStepLabel || '物业经理审批') + '」' : '点卡片勾选，可多张合并成一张'}}</text>
+      <button class="btn btn--primary btn--sm summary-bar__btn" disabled="{{!selectedCount || summarizing}}" loading="{{summarizing}}" bindtap="onSubmitSummary">提交{{selectedCount ? '（' + selectedCount + '）' : ''}}</button>
     </view>
-    <view wx:if="{{!summaryList.length && loaded}}"><pms-empty text="没有待汇总的采购申请"/></view>
+    <view wx:if="{{summaryEmpty}}"><pms-empty text="没有待汇总的采购申请"/></view>
     <view wx:for="{{summaryList}}" wx:key="id" class="card wo-card summary-card {{selectedMap[item.id] ? 'summary-card--on' : ''}}" data-id="{{item.id}}" bindtap="onToggleSelect">
       <view class="wo-card__head summary-card__head">
         <view class="pick-box {{selectedMap[item.id] ? 'pick-box--on' : ''}}"></view>
@@ -76,7 +76,7 @@
 
   <!-- ===== 待我审批 ===== -->
   <block wx:if="{{stage === 'review' && canApprove}}">
-  <view wx:if="{{!list.length && loaded}}">
+  <view wx:if="{{reviewEmpty}}">
     <pms-empty text="没有待你审批的采购申请"/>
   </view>
 

@@ -148,6 +148,7 @@ import {
   type RollbackResolution,
 } from './work-order-state-machine';
 import { nextPurchaseRequestNo } from '../inventory/purchase-request-no.util';
+import { nextPurchaseStatus, pendingStepFor } from '../inventory/purchase-flow';
 import {
   DEFAULT_REPAIR_TYPES,
   LEGACY_REPAIR_TYPE_MAP,
@@ -3978,6 +3979,19 @@ export class RepairsService implements OnModuleInit {
         },
       );
 
+      // 审批链按后台「采购审批链」配置走：办公室环节关了，缺料申请直接进经理 / 采购 / 通过
+      const purchaseFlow = (await this.settings.getSettingsByTenant(tenantId)).purchaseApproval;
+      const purchaseStatus = nextPurchaseStatus(
+        purchaseFlow,
+        'create',
+        dto.missingMaterials.reduce((sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty, 0),
+      );
+      const pendingStep = pendingStepFor(purchaseStatus) ?? {
+        pageKey: 'app:dispatch',
+        action: 'edit' as const,
+        eventKey: 'purchase_pending_office',
+        title: '缺料申请待汇总',
+      };
       const purchaseRequest = await manager.save(
         PurchaseRequest,
         manager.create(PurchaseRequest, {
@@ -3990,8 +4004,8 @@ export class RepairsService implements OnModuleInit {
             (sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty,
             0,
           ),
-          // 维修工报缺料先进入物业办公室汇总合并环节
-          status: PurchaseRequestStatus.OFFICE_REVIEW,
+          // 默认先进物业办公室汇总合并环节；后台把办公室环节关掉时直接进下一环
+          status: purchaseStatus,
           managerId: null,
           managerAt: null,
           purchaserId: null,
@@ -4002,11 +4016,11 @@ export class RepairsService implements OnModuleInit {
         }),
       );
 
-      // 通知负责派单的人有新的缺料申请待汇总（谁能派单就通知谁）
+      // 通知下一环节的人：默认是负责派单的人（待汇总），办公室环节关了就是经理 / 采购
       const dispatcherIds = await this.accessService.userIdsWithPermission(
         tenantId,
-        'app:dispatch',
-        'edit',
+        pendingStep.pageKey,
+        pendingStep.action,
       );
       const requestOfficeId = await this.accessService.officeIdOfCommunity(
         tenantId,
@@ -4038,8 +4052,8 @@ export class RepairsService implements OnModuleInit {
               tenantId,
               receiverId: receiver.id,
               channel: NotifyChannel.IN_APP,
-              eventKey: 'purchase_pending_office',
-              title: `工单 ${saved.orderNo} 缺料申请待汇总（${purchaseRequest.requestNo}）`,
+              eventKey: pendingStep.eventKey,
+              title: `工单 ${saved.orderNo} ${pendingStep.title}（${purchaseRequest.requestNo}）`,
               // 带上 workOrderId：工单撤回缺料时要按它找到这条待办并标为已失效
               payload: {
                 purchaseRequestId: purchaseRequest.id,

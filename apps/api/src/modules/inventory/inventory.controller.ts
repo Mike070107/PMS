@@ -349,8 +349,9 @@ export class InventoryController {
     return this.inventoryService.rejectPurchaseRequestItem(id, dto, user, access);
   }
 
+  // 员工端「按采购单入库」要列待入库的采购单，所以带上 app:inventory
   @Get('purchase-orders')
-  @RequirePermission('inventory', 'view')
+  @RequirePermission(['inventory', 'app:inventory'], 'view')
   listPurchaseOrders(
     @Query() query: TenantQueryDto,
     @CurrentUser() user: AuthUser,

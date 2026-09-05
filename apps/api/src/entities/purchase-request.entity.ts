@@ -48,6 +48,13 @@ export class PurchaseRequest extends TenantEntity {
   @Column({ type: 'varchar', length: 24, default: PurchaseRequestStatus.DRAFT })
   status: PurchaseRequestStatus;
 
+  /** 办公室环节配成「汇总并审批」时，办公室这一步是谁批的、何时批的（只汇总不记） */
+  @Column({ name: 'office_reviewer_id', type: 'int', nullable: true })
+  officeReviewerId: number | null;
+
+  @Column({ name: 'office_reviewed_at', type: 'timestamptz', nullable: true })
+  officeReviewedAt: Date | null;
+
   @Column({ name: 'manager_id', type: 'int', nullable: true })
   managerId: number | null;
 

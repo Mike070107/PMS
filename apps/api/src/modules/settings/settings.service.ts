@@ -11,7 +11,7 @@ import {
   type AutoReviewSetting,
   type DispatchEscalationSetting,
   type OwnerPhoneAutoMatchSetting,
-  type AiAssistSetting,
+  type PurchaseApprovalSetting, AiAssistSetting,
   type WxServiceAccountSetting,
   type TenantSettings,
   type WxSubscribeTemplatesSetting,
@@ -75,6 +75,26 @@ export class SettingsService {
         ...DEFAULT_TENANT_SETTINGS.aiAssist,
         ...((byKey.get(TENANT_SETTING_KEYS.AI_ASSIST) ?? {}) as Partial<AiAssistSetting>),
       },
+      purchaseApproval: this.normalizePurchaseApproval(
+        byKey.get(TENANT_SETTING_KEYS.PURCHASE_APPROVAL),
+      ),
+    };
+  }
+
+  /** 审批链配置：脏值一律落回默认（默认 = 改造前的固定链路） */
+  private normalizePurchaseApproval(value: unknown): PurchaseApprovalSetting {
+    const raw = (value ?? {}) as Partial<PurchaseApprovalSetting>;
+    const base = DEFAULT_TENANT_SETTINGS.purchaseApproval;
+    const yuan = (v: unknown, fallback: number) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 && n <= 10_000_000 ? Math.round(n * 100) / 100 : fallback;
+    };
+    return {
+      office: raw.office === 'approve' || raw.office === 'off' || raw.office === 'summary' ? raw.office : base.office,
+      manager: typeof raw.manager === 'boolean' ? raw.manager : base.manager,
+      purchaser: typeof raw.purchaser === 'boolean' ? raw.purchaser : base.purchaser,
+      skipManagerBelowYuan: yuan(raw.skipManagerBelowYuan, base.skipManagerBelowYuan),
+      skipPurchaserBelowYuan: yuan(raw.skipPurchaserBelowYuan, base.skipPurchaserBelowYuan),
     };
   }
 
@@ -216,6 +236,17 @@ export class SettingsService {
         },
         user.id,
       );
+    }
+    if (dto.purchaseApproval) {
+      const current = (await this.getSettingsByTenant(tenantId)).purchaseApproval;
+      const next: PurchaseApprovalSetting = {
+        office: dto.purchaseApproval.office ?? current.office,
+        manager: dto.purchaseApproval.manager ?? current.manager,
+        purchaser: dto.purchaseApproval.purchaser ?? current.purchaser,
+        skipManagerBelowYuan: dto.purchaseApproval.skipManagerBelowYuan ?? current.skipManagerBelowYuan,
+        skipPurchaserBelowYuan: dto.purchaseApproval.skipPurchaserBelowYuan ?? current.skipPurchaserBelowYuan,
+      };
+      await this.upsert(tenantId, TENANT_SETTING_KEYS.PURCHASE_APPROVAL, { ...next }, user.id);
     }
     /**
      * 保存完回**脱敏**版，不能走 getSettingsByTenant。

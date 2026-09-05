@@ -9,6 +9,7 @@ import {
 } from '@pms/shared-types';
 import { getSession, type StaffSession } from '../../utils/session';
 import { guideHandlers } from '../../utils/guide';
+import { formatDateTimeCn } from '@pms/miniapp-ui';
 
 /**
  * 新增材料 → 当场入库。
@@ -68,6 +69,32 @@ function photoList(item: { photoUrl?: string | null; photoUrls?: string[] | null
  * 判据和库存页 defaultWarehouseIndex 一致（列表已由服务端按范围排好，
  * 第一个挂了管理处的就是自己的仓）；对不上就落到第一个仓，入库必须有个具体的仓。
  */
+/** 采购单列表行：金额、状态、明细摘要都在端上算好，wxml 直接用 */
+type PoRow = inventory.PurchaseOrderView & {
+  statusLabel: string;
+  totalText: string;
+  itemsText: string;
+  createdAtText: string;
+};
+/** 收货表单的一行：实收数量、单价默认按采购单，可改 */
+interface PoLine {
+  materialId: number;
+  title: string;
+  unit: string;
+  orderedQty: number;
+  qty: string;
+  priceYuan: string;
+}
+const PO_STATUS_LABELS: Record<string, string> = { placed: '待入库', partial: '部分到货', received: '已收齐', closed: '已关闭' };
+function toPoRow(row: inventory.PurchaseOrderView): PoRow {
+  return {
+    ...row,
+    statusLabel: PO_STATUS_LABELS[row.status] || row.status,
+    totalText: `¥${((row.totalCents || 0) / 100).toFixed(2)}`,
+    itemsText: (row.items || []).map((i) => `${i.name || '未知材料'} ×${i.qty}${i.unit || ''}`).join('、'),
+    createdAtText: formatDateTimeCn(row.createdAt),
+  };
+}
 function defaultWarehouseIndex(session: StaffSession, warehouses: WarehouseView[]): number {
   if (!warehouses.length) return -1;
   const access = session.me?.access;
@@ -89,6 +116,20 @@ Page({
     roleHint: '',
     /** search = 找有没有现成的；create = 建一条新的；inbound = 填入库信息 */
     mode: 'search' as 'search' | 'create' | 'inbound',
+    /**
+     * 入库来源两条路（2026-09-05 Mike 采购流程重设计 E 步）：
+     *   general = 零星采买，找材料 → 建档 → 入库（原有三步）；
+     *   po = 按采购单入库：选一张待入库的采购单，供应商和单价从单上带出来，选总仓或小区仓收货。
+     */
+    source: 'general' as 'general' | 'po',
+    purchaseOrders: [] as PoRow[],
+    /** 列表为空单独存一个布尔：wxml 里 !数组.length 在开发者工具 3.17 编译下不可靠 */
+    poEmpty: false,
+    poLoading: false,
+    /** 正在收货的采购单；null = 还在列表 */
+    poOrder: null as PoRow | null,
+    poRows: [] as PoLine[],
+    poError: '',
 
     keyword: '',
     results: [] as SkuRow[],
@@ -559,6 +600,95 @@ Page({
     if (!Object.keys(patch).length) return;
     this.setData({ ...patch, aiHint: '数量/单价按你刚才说的先填上了，核对无误再提交' });
     this.refreshAmount();
+  },
+
+  // ---------------- 按采购单入库 ----------------
+
+  onSwitchSource(e: WechatMiniprogram.BaseEvent) {
+    const source = e.currentTarget.dataset.source === 'po' ? 'po' : 'general';
+    if (source === this.data.source) return;
+    this.setData({ source, poOrder: null, poRows: [], poError: '' });
+    if (source === 'po') void this.loadPurchaseOrders();
+  },
+
+  async loadPurchaseOrders() {
+    this.setData({ poLoading: true });
+    try {
+      const rows = await inventory.listPurchaseOrders();
+      // 只列还能收货的：待入库、部分到货；收齐 / 关闭的不再出现
+      const purchaseOrders = rows
+        .filter((row) => row.status === 'placed' || row.status === 'partial')
+        .map(toPoRow);
+      this.setData({ purchaseOrders, poEmpty: purchaseOrders.length === 0, poLoading: false });
+    } catch (e: any) {
+      this.setData({ poLoading: false });
+      wx.showToast({ icon: 'none', title: e?.message || '采购单加载失败' });
+    }
+  },
+
+  onPickPurchaseOrder(e: WechatMiniprogram.BaseEvent) {
+    const order = this.data.purchaseOrders.find((row) => row.id === Number(e.currentTarget.dataset.id));
+    if (!order) return;
+    // 实收数量、单价默认按采购单，到货有出入再改
+    const poRows: PoLine[] = order.items.map((item) => ({
+      materialId: item.materialId,
+      title: [item.name || '未知材料', item.spec || ''].filter(Boolean).join(' · '),
+      unit: item.unit || '',
+      orderedQty: item.qty,
+      qty: String(item.qty),
+      priceYuan: (item.unitCostCents / 100).toFixed(2),
+    }));
+    this.setData({ poOrder: order, poRows, poError: '' });
+    this.loadLocations();
+  },
+
+  onBackToPoList() {
+    this.setData({ poOrder: null, poRows: [], poError: '' });
+  },
+
+  onPoLineInput(e: WechatMiniprogram.Input) {
+    const index = Number(e.currentTarget.dataset.index);
+    const field = e.currentTarget.dataset.field as 'qty' | 'priceYuan';
+    const poRows = this.data.poRows.slice();
+    if (!poRows[index]) return;
+    poRows[index] = { ...poRows[index], [field]: e.detail.value };
+    this.setData({ poRows, poError: '' });
+  },
+
+  /** 按采购单收货：整单进同一个仓（总仓或小区仓），每行实收和单价可改 */
+  async onSubmitPoReceipt() {
+    const order = this.data.poOrder;
+    const warehouse = this.data.warehouses[this.data.warehouseIndex];
+    if (!order) return;
+    if (!warehouse) return this.setData({ poError: '请先选择入库仓库（总仓或小区仓）' });
+    const items: Array<{ materialId: number; qty: number; unitCostCents: number; locationId?: number }> = [];
+    for (const row of this.data.poRows) {
+      const qty = Number(row.qty);
+      const price = Number(row.priceYuan);
+      if (!Number.isFinite(qty) || qty <= 0) continue; // 没到的行不收
+      if (!Number.isFinite(price) || price < 0) return this.setData({ poError: `「${row.title}」的单价不对` });
+      items.push({ materialId: row.materialId, qty, unitCostCents: Math.round(price * 100) });
+    }
+    if (!items.length) return this.setData({ poError: '至少填一行实收数量' });
+    const location = this.data.locationIndex > 0 ? this.data.locations[this.data.locationIndex - 1] : null;
+    if (location) for (const item of items) item.locationId = location.id;
+    const total = items.reduce((sum, item) => sum + item.qty * item.unitCostCents, 0);
+    this.setData({ saving: true, poError: '' });
+    try {
+      const receipt = await inventory.createGoodsReceipt({ purchaseOrderId: order.id, warehouseId: warehouse.id, items });
+      wx.showModal({
+        title: '入库完成',
+        content: `入库单 ${receipt.receiptNo}\n${order.orderNo}（${order.supplierName || '供应商'}）${items.length} 项、合计 ¥${(total / 100).toFixed(2)} 已入「${warehouse.name}」`,
+        showCancel: false,
+        confirmText: '知道了',
+      });
+      this.setData({ poOrder: null, poRows: [] });
+      void this.loadPurchaseOrders();
+    } catch (e: any) {
+      this.setData({ poError: e?.message || '入库失败' });
+    } finally {
+      this.setData({ saving: false });
+    }
   },
 
   // ---------------- 第三步：填入库 ----------------

@@ -13,6 +13,8 @@ export const TENANT_SETTING_KEYS = {
   DISPATCH_ESCALATION: 'dispatch_escalation',
   /** 微信服务号（公众号）模板消息，用来给维修工发派单通知 */
   WX_SERVICE_ACCOUNT: 'wx_service_account',
+  /** 采购审批链：办公室 / 经理 / 采购 各环节开关与金额阈值（2026-09-05） */
+  PURCHASE_APPROVAL: 'purchase_approval',
   /** 大模型辅助识别（一句话报修的语义整理） */
   AI_ASSIST: 'ai_assist',
 } as const;
@@ -56,6 +58,22 @@ export interface WxSubscribeTemplatesSetting {
 export interface AutoReviewSetting {
   /** 允许 1～720 小时；默认 48 小时 */
   hours: number;
+}
+
+/**
+ * 采购审批链（2026-09-05 Mike：派单、撤回、作废之后，审批链也要能配）。
+ * 顺序固定：办公室 → 物业经理 → 采购部 → 通过；每一环可关，经理 / 采购可按金额跳过。
+ * 默认值和改造前的行为完全一样：办公室只汇总、经理批、采购批、不按金额跳。
+ */
+export interface PurchaseApprovalSetting {
+  /** summary 只汇总合并；approve 汇总并审批（记办公室审批人）；off 不经过办公室 */
+  office: 'summary' | 'approve' | 'off';
+  manager: boolean;
+  purchaser: boolean;
+  /** 预估金额（元）低于此值跳过经理审批；0 = 不跳 */
+  skipManagerBelowYuan: number;
+  /** 预估金额（元）低于此值跳过采购部审批；0 = 不跳 */
+  skipPurchaserBelowYuan: number;
 }
 
 /**
@@ -153,6 +171,7 @@ export const DEFAULT_TENANT_SETTINGS: {
   dispatchEscalation: DispatchEscalationSetting;
   wxServiceAccount: WxServiceAccountSetting;
   aiAssist: AiAssistSetting;
+  purchaseApproval: PurchaseApprovalSetting;
 } = {
   // 默认关：业主档案没导手机号之前开着也匹配不到，反而让业主白点一次
   ownerPhoneAutoMatch: { enabled: false },
@@ -182,6 +201,13 @@ export const DEFAULT_TENANT_SETTINGS: {
     priceInputHitPerM: 0,
     priceOutputPerM: 0,
   },
+  purchaseApproval: {
+    office: 'summary',
+    manager: true,
+    purchaser: true,
+    skipManagerBelowYuan: 0,
+    skipPurchaserBelowYuan: 0,
+  },
 };
 
 export interface TenantSettings {
@@ -191,4 +217,5 @@ export interface TenantSettings {
   dispatchEscalation: DispatchEscalationSetting;
   wxServiceAccount: WxServiceAccountSetting;
   aiAssist: AiAssistSetting;
+  purchaseApproval: PurchaseApprovalSetting;
 }

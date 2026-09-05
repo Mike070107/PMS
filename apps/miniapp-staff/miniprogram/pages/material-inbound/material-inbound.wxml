@@ -19,15 +19,88 @@
       </view>
     </view>
 
+    <!-- 两条入库路：零星采买（找材料→建档→入库）/ 按采购单收货（2026-09-05） -->
+    <view class="tabs source-tabs">
+      <view class="tab {{source === 'general' ? 'tab--on' : ''}}" data-source="general" bindtap="onSwitchSource">零星采买入库</view>
+      <view class="tab {{source === 'po' ? 'tab--on' : ''}}" data-source="po" bindtap="onSwitchSource">按采购单入库</view>
+    </view>
+
     <!-- 三步一条线画出来，人知道自己在哪一步、后面还有什么 -->
-    <view class="steps">
+    <view wx:if="{{source !== 'po'}}" class="steps">
       <view class="step {{mode === 'search' ? 'step--on' : 'step--done'}}">1 找材料</view>
       <view class="step {{mode === 'create' ? 'step--on' : (mode === 'inbound' ? 'step--done' : '')}}">2 建档</view>
       <view class="step {{mode === 'inbound' ? 'step--on' : ''}}">3 入库</view>
     </view>
 
+    <!-- ============ 按采购单入库：选单 → 选仓 → 核实收 ============ -->
+    <block wx:if="{{source === 'po'}}">
+      <block wx:if="{{!poOrder}}">
+        <view wx:if="{{poLoading}}" class="muted center">加载中…</view>
+        <view wx:elif="{{poEmpty}}" class="card"><view class="muted">没有待入库的采购单。采购部下单后会出现在这里；零星采买请走左边「零星采买入库」。</view></view>
+        <view wx:for="{{purchaseOrders}}" wx:key="id" class="card po-card" data-id="{{item.id}}" bindtap="onPickPurchaseOrder" hover-class="wo-card--hover" hover-stay-time="80">
+          <view class="po-card__head">
+            <view class="po-card__no">{{item.orderNo}}</view>
+            <text class="po-card__status">{{item.statusLabel}}</text>
+          </view>
+          <view class="po-card__supplier">{{item.supplierName || '未填供应商'}} · {{item.totalText}}</view>
+          <view class="po-card__items">{{item.itemsText}}</view>
+          <view class="meta">{{item.requestNo ? '来源申请 ' + item.requestNo + ' · ' : ''}}{{item.createdAtText}}</view>
+        </view>
+      </block>
+
+      <block wx:else>
+        <view class="card po-head">
+          <view class="po-card__head">
+            <view class="po-card__no">{{poOrder.orderNo}}</view>
+            <view class="picked__change" catchtap="onBackToPoList">换一张</view>
+          </view>
+          <view class="po-card__supplier">供应商：{{poOrder.supplierName || '未填'}} · 采购金额 {{poOrder.totalText}}</view>
+        </view>
+
+        <view class="card">
+          <view class="field">
+            <view class="label">入库仓库<text class="label__opt">总仓或小区仓都可以</text></view>
+            <scroll-view class="chips chips--field" scroll-x enable-flex>
+              <view
+                wx:for="{{warehouseNames}}"
+                wx:key="index"
+                class="chip {{warehouseIndex === index ? 'chip--on' : ''}}"
+                data-index="{{index}}"
+                bindtap="onPickWarehouse"
+              >{{item}}</view>
+            </scroll-view>
+            <view wx:if="{{warehouseIndex < 0}}" class="muted mt-sm">先选一个入库仓库</view>
+          </view>
+          <view class="field">
+            <view class="label">入库库位<text class="label__opt">选填，整单放同一格</text></view>
+            <picker mode="selector" range="{{locationNames}}" value="{{locationIndex}}" bindchange="onPickLocation">
+              <view class="picker">{{locationNames[locationIndex] || '不指定库位'}}</view>
+            </picker>
+          </view>
+        </view>
+
+        <view class="card">
+          <view class="label">实收明细<text class="label__opt">没到的行数量填 0</text></view>
+          <view wx:for="{{poRows}}" wx:key="materialId" class="po-line">
+            <view class="po-line__title">{{item.title}}<text class="po-line__ordered">订 {{item.orderedQty}}{{item.unit}}</text></view>
+            <view class="po-line__inputs">
+              <view class="po-line__field">
+                <text class="po-line__label">实收（{{item.unit || '件'}}）</text>
+                <input class="input" type="digit" value="{{item.qty}}" data-index="{{index}}" data-field="qty" bindinput="onPoLineInput"/>
+              </view>
+              <view class="po-line__field">
+                <text class="po-line__label">单价（元）</text>
+                <input class="input" type="digit" value="{{item.priceYuan}}" data-index="{{index}}" data-field="priceYuan" bindinput="onPoLineInput"/>
+              </view>
+            </view>
+          </view>
+          <view class="field-error" wx:if="{{poError}}">{{poError}}</view>
+        </view>
+      </block>
+    </block>
+
     <!-- ============ 1 先搜：有现成的就直接用，别重复建 ============ -->
-    <block wx:if="{{mode === 'search'}}">
+    <block wx:elif="{{mode === 'search'}}">
     <!-- 说一句自动填表：AI 只填，填完由人核对再点下一步 -->
     <view wx:if="{{hasSpeech}}" class="card speech-card">
       <button
@@ -293,7 +366,16 @@
 
 <!-- 底部操作条：固定在屏幕底，不参与内容滚动，并让开安全区 -->
 <view wx:if="{{!loading && canEdit}}" class="action-bar">
-  <block wx:if="{{mode === 'search'}}">
+  <block wx:if="{{source === 'po'}}">
+    <button wx:if="{{poOrder}}" class="btn btn--primary" loading="{{saving}}" disabled="{{saving}}" bindtap="onSubmitPoReceipt">
+      <view class="btn__icon icon-action--check-white"></view><text>确认入库 {{poRows.length}} 项</text>
+    </button>
+    <button wx:else class="btn btn--outline" loading="{{poLoading}}" bindtap="loadPurchaseOrders">
+      <view class="btn__icon icon-action--box-blue"></view><text>刷新采购单</text>
+    </button>
+  </block>
+
+  <block wx:elif="{{mode === 'search'}}">
     <button class="btn btn--primary" bindtap="onStartCreate">
       <view class="btn__icon icon-action--plus-white"></view><text>找不到？新建材料</text>
     </button>
