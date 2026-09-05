@@ -2372,3 +2372,13 @@
 - 自上次（f43664f）以来上线的相关提交：
   - 10c3a93 fix(采购): 工单「看一眼」抽屉的类型名和现场照片改读报修单（request.repairTypeLabel / attachments）
 
+## 2026-09-06 06:46 · api · 349c51f
+
+- 包：`pms-api-20260906-0644.tar.gz`
+- 提交：349c51f chore: 还原 repairs.service.ts 的 CRLF 行尾（上一提交被编辑工具整文件改成 LF，实际只插了 3 行）；采购申请编辑层 sheet__body 补 border-box
+- 说明：站内信按单据自动已读；GET /purchase-requests/:id；脏文件是另一会话的 AI 改动，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（063497a）以来上线的相关提交：
+  - 349c51f chore: 还原 repairs.service.ts 的 CRLF 行尾（上一提交被编辑工具整文件改成 LF，实际只插了 3 行）；采购申请编辑层 sheet__body 补 border-box
+  - a0f2c6c feat(消息/采购): 别处已处理过的站内信自动变已读；员工端可点开采购申请看详情、改明细、补照片
+
