@@ -2418,3 +2418,12 @@
 - 自上次（2a83577）以来上线的相关提交：
   - 94f889f fix(deploy): srv-deploy-api/web.sh 认包路径参数 —— 原来永远装 /tmp 最新的包，回滚时把坏包又装了一遍（2026-09-06 502 事故）
 
+## 2026-09-06 06:57 · web · 94f889f
+
+- 包：`pms-web-20260905-2355.tar.gz`
+- 提交：94f889f fix(deploy): srv-deploy-api/web.sh 认包路径参数 —— 原来永远装 /tmp 最新的包，回滚时把坏包又装了一遍（2026-09-06 502 事故）
+- 说明：只改了 deploy/srv-deploy-web.sh（认参数），已 scp 到服务器 /tmp；线上包仍是 10c3a93 那份
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo，M packages/api-client/src/endpoints/ai.ts
+- 自上次（10c3a93）以来上线的相关提交：
+  - a0f2c6c feat(消息/采购): 别处已处理过的站内信自动变已读；员工端可点开采购申请看详情、改明细、补照片
+
