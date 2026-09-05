@@ -2363,3 +2363,12 @@
 - 自上次（063497a）以来上线的相关提交：
   - f43664f fix(采购): 工单「看一眼」抽屉的报修内容 / 类型退回报修单原文和内置类型表
 
+## 2026-09-05 23:56 · web · 10c3a93
+
+- 包：`pms-web-20260905-2355.tar.gz`
+- 提交：10c3a93 fix(采购): 工单「看一眼」抽屉的类型名和现场照片改读报修单（request.repairTypeLabel / attachments）
+- 说明：看一眼抽屉类型名/现场照片读报修单；脏文件是另一会话的 api-client/ai.ts，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo，M packages/api-client/src/endpoints/ai.ts
+- 自上次（f43664f）以来上线的相关提交：
+  - 10c3a93 fix(采购): 工单「看一眼」抽屉的类型名和现场照片改读报修单（request.repairTypeLabel / attachments）
+
