@@ -2327,3 +2327,12 @@
 - 自上次（098b8f7）以来上线的相关提交：
   - 182dcbc feat(员工端): 添加用料只留一个入口，先搜材料库再申购；样本照片改为选填
 
+## 2026-09-05 23:42 · api · 063497a
+
+- 包：`pms-api-20260905-2338.tar.gz`
+- 提交：063497a feat(采购): 后台「新建采购申请」重做——先搜材料库再申购、可关联工单、填申请原因、就地并入待汇总申请直接提交审批；来源工单改成「看一眼」抽屉
+- 说明：采购申请建单接口放开手填行/并入/关联工单/申请原因（reason 列 synchronize 自动加）；脏文件是另一会话的 AI 改动，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（098b8f7）以来上线的相关提交：
+  - 063497a feat(采购): 后台「新建采购申请」重做——先搜材料库再申购、可关联工单、填申请原因、就地并入待汇总申请直接提交审批；来源工单改成「看一眼」抽屉
+
