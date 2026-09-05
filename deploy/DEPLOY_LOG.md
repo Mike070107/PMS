@@ -2160,3 +2160,12 @@
 - 自上次（a712e04）以来上线的相关提交：
   - 7f619bb feat(权限): 派单、撤回、作废拆成三格独立授权，员工端工单页加「作废工单」
 
+## 2026-09-05 11:28 · api · 60e93cc
+
+- 包：`pms-api-20260905-1125.tar.gz`
+- 提交：60e93cc docs(inbox): AI 用量台账/结果缓存/省钱模式已做（def309a）
+- 说明：AI 用量台账/结果缓存/lite 解析
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（166f418）以来上线的相关提交：
+  - def309a feat(AI): 大模型用量台账、结果缓存、提示词静态前缀、填表报修省钱模式
+
