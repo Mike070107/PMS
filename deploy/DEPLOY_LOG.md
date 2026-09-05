@@ -2273,3 +2273,12 @@
 - 自上次（3e0efdd）以来上线的相关提交：
   - 9e5761d feat(采购): 审批链可配置；申请单转采购单错误说人话；员工端按采购单入库
 
+## 2026-09-05 18:41 · miniapp-staff · f073df2
+
+- 包：`1.0.20260905f`
+- 提交：f073df2 docs(inbox): 采购流程重设计 A~E 全部完成（9e5761d）
+- 说明：按采购单入库+审批链提示，体验版待选
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（3e0efdd）以来上线的相关提交：
+  - 9e5761d feat(采购): 审批链可配置；申请单转采购单错误说人话；员工端按采购单入库
+
