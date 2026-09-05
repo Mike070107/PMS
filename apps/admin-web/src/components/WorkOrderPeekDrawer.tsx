@@ -49,6 +49,10 @@ interface PeekDetail {
     content?: string | null;
     description?: string | null;
     repairType?: string | null;
+    /** 中文类型名由后端给（租户自建的编码端上认不出，会露 menjing 这种） */
+    repairTypeLabel?: string | null;
+    /** 报修时拍的现场照片（已转成可显示地址） */
+    attachments?: string[];
   } | null;
 }
 
@@ -83,7 +87,8 @@ export default function WorkOrderPeekDrawer({ workOrderId, onClose }: Props) {
 
   const wo = detail?.workOrder;
   const req = detail?.request;
-  const photos = wo?.photos || [];
+  // 详情接口里现场照片挂在报修单上（request.attachments），工单实体本身没有 photos
+  const photos = wo?.photos?.length ? wo.photos : req?.attachments || [];
   const content = wo?.summaryContent
     || [wo?.faultLocation, wo?.faultSymptom].filter(Boolean).join(' · ')
     || req?.content
@@ -91,7 +96,7 @@ export default function WorkOrderPeekDrawer({ workOrderId, onClose }: Props) {
     || '';
   // 详情接口不一定带中文类型名：先用后端给的，再查内置类型表，最后才露编码
   const typeCode = wo?.repairType || req?.repairType || '';
-  const typeLabel = wo?.repairTypeLabel || (typeCode ? REPAIR_TYPE_LABELS[typeCode] || typeCode : '');
+  const typeLabel = wo?.repairTypeLabel || req?.repairTypeLabel || (typeCode ? REPAIR_TYPE_LABELS[typeCode] || typeCode : '');
 
   return (
     <Drawer
