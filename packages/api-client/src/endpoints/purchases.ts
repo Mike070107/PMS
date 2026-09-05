@@ -4,6 +4,10 @@ import { request } from '../request';
 export const listRequests = (query: { status?: PurchaseRequestStatus } = {}) =>
   request<PurchaseRequestView[]>({ url: '/purchase-requests', query: query as any });
 
+/** 办公室汇总：把若干张待汇总的申请合并成一张提交经理（单张也走这里） */
+export const submitToManager = (data: { requestIds: number[] }) =>
+  request<PurchaseRequestView>({ method: 'POST', url: '/purchase-requests/submit-to-manager', data });
+
 /** 物业经理审批通过 → 流转到采购经理 */
 export const managerApprove = (id: number | string) =>
   request<PurchaseRequestView>({

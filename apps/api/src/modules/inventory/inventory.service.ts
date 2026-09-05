@@ -1391,11 +1391,37 @@ export class InventoryService {
       (workOrders as Array<{ id: number; order_no: string }>).map((w) => [w.id, w.order_no]),
     );
     const nameOf = (id: number | null) => (id ? nameById.get(id) || null : null);
+    // 明细行要能直接展示缩略图 / 规格 / 编码：有 SKU 的从材料库补，申购新材料的用维修工拍的样本照
+    // （2026-09-05 Mike：申请单要看到图、名称、型号、备注、来源工单）
+    const materialIds = [
+      ...new Set(
+        rows
+          .flatMap((r) => (r.items || []).map((item) => item.materialId))
+          .filter((id): id is number => !!id),
+      ),
+    ];
+    const materials = materialIds.length
+      ? await this.materialRepo.find({ where: { tenantId, id: In(materialIds) } })
+      : [];
+    const materialById = new Map(materials.map((m) => [m.id, m]));
     return rows.map((row) => {
       const items = (row.items || []).map((item, index) => {
         const sourceWorkOrderId = item.sourceWorkOrderId ?? row.workOrderId;
+        const material = item.materialId ? materialById.get(item.materialId) : undefined;
+        const materialPhotos = material
+          ? [...(material.photoUrls || []), material.photoUrl || '']
+              .map((url) => this.storage.toDisplayUrl(url) || '')
+              .filter(Boolean)
+          : [];
+        const photoUrls = item.photoUrls?.length ? item.photoUrls : [...new Set(materialPhotos)];
         return {
           ...item,
+          spec: item.spec || material?.spec || undefined,
+          unit: item.unit || material?.unit || undefined,
+          photoUrls,
+          photoUrl: photoUrls[0] || null,
+          materialCode: material?.code || null,
+          materialName: material?.name || null,
           lineId: item.lineId || `${row.id}-${index + 1}`,
           sourceRequestId: item.sourceRequestId ?? row.id,
           sourceRequestNo: item.sourceRequestNo || row.requestNo,

@@ -43,6 +43,7 @@ import {
   UploadOutlined,
 } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import UnitSelect from '../components/UnitSelect';
 import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumnPrefs';
 import { formatDateTimeCn } from '@pms/shared-types';
@@ -142,8 +143,15 @@ interface PurchaseRequestItem {
   name: string;
   qty: number;
   unit?: string;
+  /** 型号 / 备注 / 缩略图：服务端下发（有 SKU 的从材料库补，申购新材料的是维修工拍的样本照） */
+  spec?: string;
+  note?: string;
+  photoUrls?: string[];
+  photoUrl?: string | null;
+  materialCode?: string | null;
   estUnitCostCents?: number;
   sourceRequestNo?: string;
+  sourceWorkOrderId?: number | null;
   sourceWorkOrderNo?: string | null;
   rejectReason?: string;
   rejectedAtStage?: 'manager' | 'purchaser';
@@ -388,6 +396,27 @@ export default function InventoryPage() {
   const categoryOrder = useMemo(() => materialCategories.map((item) => item.label), [materialCategories]);
 
   const materialById = useMemo(() => new Map(materials.map((item) => [item.id, item])), [materials]);
+  const navigate = useNavigate();
+  /** 来源工单号可点：直达工单管理并打开那张单（2026-09-05 Mike 要求申请单上能点进工单） */
+  const sourceOrderLinks = (
+    items: Array<{ sourceWorkOrderId?: number | null; sourceWorkOrderNo?: string | null }> | undefined,
+    fallbackId?: number | null,
+    fallbackNo?: string | null,
+  ) => {
+    const seen = new Map<number, string>();
+    for (const item of items || []) {
+      if (item.sourceWorkOrderId && item.sourceWorkOrderNo) seen.set(item.sourceWorkOrderId, item.sourceWorkOrderNo);
+    }
+    if (!seen.size && fallbackId) seen.set(fallbackId, fallbackNo || unknown('工单'));
+    if (!seen.size) return <Text type="secondary">手工申请</Text>;
+    return (
+      <Space size={4} wrap>
+        {[...seen].map(([id, no]) => (
+          <a key={id} onClick={(e) => { e.stopPropagation(); navigate(`/work-orders?id=${id}`); }}>{no}</a>
+        ))}
+      </Space>
+    );
+  };
   const warehouseById = useMemo(() => new Map(warehouses.map((item) => [item.id, item])), [warehouses]);
   const supplierById = useMemo(() => new Map(suppliers.map((item) => [item.id, item])), [suppliers]);
   const editingStockMaterial = editingStock ? materialById.get(editingStock.materialId) : undefined;
@@ -1363,11 +1392,7 @@ export default function InventoryPage() {
                       key: 'source',
                       width: 210,
                       ellipsis: true,
-                      render: (_, row) => row.sourceWorkOrderNos?.length
-                        ? row.sourceWorkOrderNos.join('、')
-                        : row.workOrderId
-                          ? row.workOrderNo || unknown('工单')
-                          : '手工申请',
+                      render: (_, row) => sourceOrderLinks(row.items, row.workOrderId, row.workOrderNo),
                     },
                     { title: '材料摘要', dataIndex: 'items', width: 360, render: renderItems },
                     { title: '预估金额', dataIndex: 'estTotalCents', width: 120, render: money },
@@ -1890,7 +1915,15 @@ export default function InventoryPage() {
                 dataSource={(requestDetail.items || []).map((item, index) => ({ ...item, key: index }))}
                 columns={[
                   { title: '序号', dataIndex: 'key', width: 64, render: (v) => Number(v) + 1 },
-                  { title: '来源工单', dataIndex: 'sourceWorkOrderNo', width: 160, render: (v) => v || '手工申请' },
+                  {
+                    title: '图',
+                    key: 'photo',
+                    width: 64,
+                    render: (_, item) => item.photoUrl
+                      ? <Image src={item.photoUrl} width={40} height={40} style={{ objectFit: 'cover', borderRadius: 6 }} preview={{ src: item.photoUrl }} />
+                      : <Text type="secondary">—</Text>,
+                  },
+                  { title: '来源工单', key: 'sourceWorkOrder', width: 160, render: (_, item) => sourceOrderLinks([item]) },
                   {
                     title: '材料编码',
                     dataIndex: 'materialId',
@@ -1907,11 +1940,13 @@ export default function InventoryPage() {
                     },
                   },
                   {
-                    title: '规格',
+                    title: '型号 / 规格',
                     key: 'spec',
-                    width: 120,
-                    render: (_, item) => item.materialId ? materialById.get(item.materialId)?.spec || '-' : '-',
+                    width: 140,
+                    ellipsis: true,
+                    render: (_, item) => item.spec || (item.materialId ? materialById.get(item.materialId)?.spec : '') || '-',
                   },
+                  { title: '备注', dataIndex: 'note', width: 160, ellipsis: true, render: (v) => v || '-' },
                   {
                     title: '数量',
                     key: 'qty',

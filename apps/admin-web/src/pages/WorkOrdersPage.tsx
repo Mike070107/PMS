@@ -73,7 +73,7 @@ import type {
 import { classifyRepairType, compareWorkOrderRoutePriority } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { CSSProperties, ReactNode } from 'react';
 import { request } from '../lib/api';
 import { auth, useAuth, usePagePerm } from '../lib/auth';
@@ -612,6 +612,16 @@ export default function WorkOrdersPage() {
   const [searchInput, setSearchInput] = useState('');
   const [searchQ, setSearchQ] = useState('');
   const [detailId, setDetailId] = useState<number | null>(null);
+  // 采购申请明细里的来源工单号点过来带 ?id=：直接打开那张单的详情，用完把参数摘掉（2026-09-05）
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const id = Number(searchParams.get('id') || 0);
+    if (!id) return;
+    setDetailId(id);
+    const next = new URLSearchParams(searchParams);
+    next.delete('id');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   const [voidTarget, setVoidTarget] = useState<WorkOrderRow | null>(null);
   const [dispatchTarget, setDispatchTarget] = useState<WorkOrderRow | null>(null);
   const [quickAssigningId, setQuickAssigningId] = useState<number | null>(null);

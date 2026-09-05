@@ -960,6 +960,14 @@ export interface PurchaseRequestItem {
   qty: number;
   /** 单位随缺料登记一起带过来：「阀芯 ×2」和「阀芯 ×2 套」采购起来不是一回事 */
   unit?: string;
+  /** 型号 / 参数：申购新材料时维修工填的，有 SKU 的由服务端从材料库补 */
+  spec?: string;
+  note?: string;
+  /** 缩略图：有 SKU 的是材料库的图，申购新材料的是维修工拍的样本照（服务端已转成可访问地址） */
+  photoUrls?: string[];
+  photoUrl?: string | null;
+  materialCode?: string | null;
+  materialName?: string | null;
   estUnitCostCents?: number;
   sourceRequestId?: number;
   sourceRequestNo?: string;

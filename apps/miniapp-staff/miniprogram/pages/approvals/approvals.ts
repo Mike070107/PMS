@@ -78,6 +78,16 @@ Page({
     loaded: false,
     busyId: 0,
     maintenanceList: [] as MaintenanceRow[],
+    /**
+     * 办公室汇总（2026-09-05 从 Web 搬到小程序）：有「材料与库存·操作」权的人看到待汇总的申请，
+     * 勾选几张合并成一张提交经理。selectedMap 用对象存，wxml 里没法调 indexOf。
+     */
+    canSummarize: false,
+    stage: 'review' as 'review' | 'summary',
+    summaryList: [] as ApprovalRow[],
+    selectedMap: {} as Record<number, boolean>,
+    selectedCount: 0,
+    summarizing: false,
   },
 
   onShow() {
@@ -122,15 +132,20 @@ Page({
         return;
       }
 
-      if (!session.canApprove) {
+      // 办公室汇总用的是「材料与库存·操作」这一格 —— 和 Web 上合并提交是同一个权限
+      const canSummarize = session.canEditMaterials;
+      if (!session.canApprove && !canSummarize) {
         this.setData({
           canApprove: false,
+          canSummarize: false,
           // 说清楚去哪儿开，不然人对着一句「没权限」不知道找谁
           roleHint:
             '你的角色没有采购审批权限。请管理员在管理后台「业务角色」页，' +
             '把你的角色在「邻修小程序页面权限」里勾上「采购审批（经理这一步）」' +
-            '或「采购审批（采购这一步）」的「批 / 驳回」；改完在这一页下拉刷新即可。',
+            '或「采购审批（采购这一步）」的「批 / 驳回」；办公室汇总要勾「材料与库存」的「操作」。' +
+            '改完在这一页下拉刷新即可。',
           list: [],
+          summaryList: [],
           loaded: true,
         });
         setTabBadge(this, 'approvals', 0);
@@ -142,19 +157,93 @@ Page({
       const status = session.canApproveAsManager
         ? PurchaseRequestStatus.MANAGER_REVIEW
         : PurchaseRequestStatus.PURCHASER_REVIEW;
-      const list = await purchases.listRequests({ status });
+      const [reviewList, summaryList] = await Promise.all([
+        session.canApprove ? purchases.listRequests({ status }) : Promise.resolve([]),
+        canSummarize
+          ? purchases.listRequests({ status: PurchaseRequestStatus.OFFICE_REVIEW })
+          : Promise.resolve([]),
+      ]);
+      // 人切到哪一档就留在哪一档；只有一档权限的直接落到那档
+      const stage: 'review' | 'summary' =
+        this.data.stage === 'summary' && canSummarize
+          ? 'summary'
+          : session.canApprove
+            ? 'review'
+            : 'summary';
+      const summaryRows = summaryList.map(toRow);
+      const selectedMap: Record<number, boolean> = {};
+      for (const row of summaryRows) if (this.data.selectedMap[row.id]) selectedMap[row.id] = true;
       this.setData({
-        canApprove: true,
+        canApprove: session.canApprove,
+        canSummarize,
+        stage,
         isPurchaserStage: status === PurchaseRequestStatus.PURCHASER_REVIEW,
         roleHint: PURCHASE_STATUS_LABELS[status],
-        list: list.map(toRow),
+        list: reviewList.map(toRow),
+        summaryList: summaryRows,
+        selectedMap,
+        selectedCount: Object.keys(selectedMap).length,
         loaded: true,
       });
-      setTabBadge(this, 'approvals', list.length);
+      // 角标 = 轮到我审的 + 等我汇总的
+      setTabBadge(this, 'approvals', reviewList.length + summaryList.length);
     } catch (e: any) {
       this.setData({ loaded: true });
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     }
+  },
+
+  onSwitchStage(e: WechatMiniprogram.BaseEvent) {
+    const stage = e.currentTarget.dataset.stage === 'summary' ? 'summary' : 'review';
+    this.setData({ stage });
+  },
+
+  /** 勾选 / 取消勾选一张待汇总的申请 */
+  onToggleSelect(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.id);
+    if (!id) return;
+    const selectedMap = { ...this.data.selectedMap };
+    if (selectedMap[id]) delete selectedMap[id];
+    else selectedMap[id] = true;
+    this.setData({ selectedMap, selectedCount: Object.keys(selectedMap).length });
+  },
+
+  /** 把勾选的几张合并成一张提交经理；不同管理处的服务端会拦（同 Web） */
+  async onSubmitSummary() {
+    const requestIds = Object.keys(this.data.selectedMap).map(Number).filter(Boolean);
+    if (!requestIds.length) return wx.showToast({ icon: 'none', title: '先勾选要提交的申请' });
+    const res = await wx.showModal({
+      title: requestIds.length > 1 ? `合并 ${requestIds.length} 张申请提交经理？` : '提交这张申请给经理审批？',
+      content: requestIds.length > 1 ? '合并后每行仍保留来源工单，经理可以单项驳回。' : '',
+      confirmText: '提交',
+    });
+    if (!res.confirm) return;
+    this.setData({ summarizing: true });
+    try {
+      const saved = await purchases.submitToManager({ requestIds });
+      wx.showToast({ title: requestIds.length > 1 ? `已合并为 ${saved.requestNo}` : '已提交经理', icon: 'none' });
+      this.setData({ selectedMap: {}, selectedCount: 0 });
+      await this.load();
+    } catch (err: any) {
+      wx.showToast({ icon: 'none', title: err?.message || '提交失败' });
+    } finally {
+      this.setData({ summarizing: false });
+    }
+  },
+
+  /** 明细行上的来源工单号可点：直接进那张工单看现场情况 */
+  onOpenSourceOrder(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.orderId);
+    if (!id) return;
+    wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${id}` });
+  },
+
+  onPreviewPhoto(e: WechatMiniprogram.BaseEvent) {
+    const url = String(e.currentTarget.dataset.url || '');
+    const urls = ((e.currentTarget.dataset.urls || []) as string[]).filter(Boolean);
+    const list = urls.length ? urls : url ? [url] : [];
+    if (!list.length) return;
+    wx.previewImage({ current: url || list[0], urls: list });
   },
 
   async onOpenMaintenance(e: WechatMiniprogram.BaseEvent) {
