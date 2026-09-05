@@ -2255,3 +2255,12 @@
 - 自上次（4cb418f）以来上线的相关提交：
   - 551000f feat(采购): 申请单明细统一带图/型号/备注、来源工单可点；小程序办公室可勾选合并提交经理
 
+## 2026-09-05 18:40 · api · f073df2
+
+- 包：`pms-api-20260905-1838.tar.gz`
+- 提交：f073df2 docs(inbox): 采购流程重设计 A~E 全部完成（9e5761d）
+- 说明：审批链可配置 + 采购单列表补供应商/材料名
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（3e0efdd）以来上线的相关提交：
+  - 9e5761d feat(采购): 审批链可配置；申请单转采购单错误说人话；员工端按采购单入库
+
