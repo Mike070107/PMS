@@ -2227,3 +2227,12 @@
 - 自上次（bf9b337）以来上线的相关提交：
   - fe787a5 feat(员工端): 用料面板改成「申购」口径 —— 库存 0 直接加入采购申请，搜不到可申购新材料带样本照片
 
+## 2026-09-05 18:12 · api · 3e0efdd
+
+- 包：`pms-api-20260905-1810.tar.gz`
+- 提交：3e0efdd docs(inbox): 采购流程重设计 B 步已完成（551000f）
+- 说明：采购申请明细补图/规格/编码
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（4cb418f）以来上线的相关提交：
+  - 551000f feat(采购): 申请单明细统一带图/型号/备注、来源工单可点；小程序办公室可勾选合并提交经理
+
