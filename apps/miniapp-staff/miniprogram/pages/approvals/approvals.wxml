@@ -59,8 +59,11 @@
   <!-- ===== 办公室汇总：勾选合并提交经理 ===== -->
   <block wx:if="{{stage === 'summary' && canSummarize}}">
     <view wx:if="{{summaryList.length}}" class="summary-bar">
-      <text class="summary-bar__text">{{selectedCount ? '已勾选 ' + selectedCount + ' 张，合并成一张提交到「' + (summaryList[0].nextStepLabel || '物业经理审批') + '」' : '点卡片勾选，可多张合并成一张'}}</text>
-      <button class="btn btn--primary btn--sm summary-bar__btn" disabled="{{!selectedCount || summarizing}}" loading="{{summarizing}}" bindtap="onSubmitSummary">提交{{selectedCount ? '（' + selectedCount + '）' : ''}}</button>
+      <text class="summary-bar__text">{{selectedCount > 1 ? '已勾选 ' + selectedCount + ' 张：可先合并成一张（在后台改名称、型号、照片），或直接提交到「' + (summaryList[0].nextStepLabel || '物业经理审批') + '」' : selectedCount ? '已勾选 1 张，提交到「' + (summaryList[0].nextStepLabel || '物业经理审批') + '」' : '点卡片勾选；采购按批次走，多张可合并成一张'}}</text>
+      <view class="summary-bar__btns">
+        <button wx:if="{{selectedCount > 1}}" class="btn btn--outline btn--sm summary-bar__btn" disabled="{{summarizing}}" loading="{{summarizing}}" bindtap="onMergeSummary">合并成一张</button>
+        <button class="btn btn--primary btn--sm summary-bar__btn" disabled="{{!selectedCount || summarizing}}" loading="{{summarizing}}" bindtap="onSubmitSummary">提交{{selectedCount ? '（' + selectedCount + '）' : ''}}</button>
+      </view>
     </view>
     <view wx:if="{{summaryEmpty}}"><pms-empty text="没有待汇总的采购申请"/></view>
     <view wx:for="{{summaryList}}" wx:key="id" class="card wo-card summary-card {{selectedMap[item.id] ? 'summary-card--on' : ''}}" data-id="{{item.id}}" bindtap="onToggleSelect">

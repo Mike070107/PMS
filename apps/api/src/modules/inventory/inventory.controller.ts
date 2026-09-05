@@ -280,6 +280,17 @@ export class InventoryController {
   // ---------- 采购审批链：保留业务身份把关 ----------
 
   // 提交采购申请 = 管材料库存那格的「改材料 / 提采购」
+  /** 只合并不提交：多张待汇总申请合成一张（仍在办公室汇总，可继续编辑），采购按批次走 */
+  @Post('purchase-requests/merge')
+  @RequirePermission(['inventory', 'app:inventory'], 'edit')
+  mergePurchaseRequests(
+    @Body() dto: SubmitToManagerDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.mergePurchaseRequests(dto, user, access);
+  }
+
   @Post('purchase-requests/submit-to-manager')
   @RequirePermission(['inventory', 'app:inventory'], 'edit')
   submitToManager(

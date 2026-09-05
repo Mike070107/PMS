@@ -37,3 +37,4 @@
 .summary-card__no { flex-shrink: 0; color: var(--color-text-tertiary); font-size: var(--font-xs); }
 .pick-box { flex-shrink: 0; width: 44rpx; height: 44rpx; border: 3rpx solid #9ebbd5; border-radius: 10rpx; background: #fff; }
 .pick-box--on { border-color: var(--color-brand); background: var(--color-brand) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") no-repeat center / 30rpx; }
+.summary-bar__btns { display: flex; flex-shrink: 0; gap: 12rpx; }

@@ -1528,6 +1528,64 @@ export class InventoryService {
     });
   }
 
+  /**
+   * 只合并、不提交（2026-09-05 Mike：采购按批次走，办公室把多个维修工单的申请先合成一张，
+   * 再改名称 / 型号 / 照片，最后才提交）。合并后主单仍在「办公室汇总」，可以继续编辑、继续并入。
+   * 不同管理处的不能合并（和提交时同一条规矩）。
+   */
+  mergePurchaseRequests(dto: SubmitToManagerDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const ids = Array.from(new Set(dto.requestIds));
+    if (ids.length < 2) throw new BadRequestException('至少勾选两张申请才能合并');
+    return this.dataSource.transaction(async (manager) => {
+      const requests: PurchaseRequest[] = [];
+      for (const id of ids) {
+        const req = await this.lockPurchaseRequest(manager, id, tenantId);
+        await this.assertPurchaseRequestVisible(tenantId, req, user, access);
+        if (req.status !== PurchaseRequestStatus.OFFICE_REVIEW) {
+          throw new BadRequestException(`申请 ${req.requestNo} 不在办公室汇总环节，不能合并`);
+        }
+        requests.push(req);
+      }
+      const officeIds = new Set(
+        await Promise.all(
+          requests.map(async (request) =>
+            (await this.purchaseRequestOfficeId(tenantId, request)) ?? 'company',
+          ),
+        ),
+      );
+      if (officeIds.size > 1) {
+        throw new BadRequestException('不同管理处的采购申请不能合并到同一张');
+      }
+      const primary = requests[0];
+      // 每行保留来源申请 / 来源工单，不按 SKU 合行 —— 审批时要能单项驳回、能点回工单
+      primary.items = requests.flatMap((req) =>
+        (req.items || []).map((item, index) => ({
+          ...item,
+          lineId: item.lineId || `${req.id}-${index + 1}`,
+          sourceRequestId: item.sourceRequestId ?? req.id,
+          sourceRequestNo: item.sourceRequestNo || req.requestNo,
+          sourceWorkOrderId: item.sourceWorkOrderId ?? req.workOrderId,
+          rejectReason: undefined,
+          rejectedAtStage: undefined,
+        })),
+      );
+      primary.estTotalCents = primary.items.reduce(
+        (sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty,
+        0,
+      );
+      primary.rejectReason = null;
+      primary.updatedBy = user.id;
+      for (const req of requests.slice(1)) {
+        req.status = PurchaseRequestStatus.MERGED;
+        req.rejectReason = `已合并进 ${primary.requestNo}`;
+        req.updatedBy = user.id;
+        await manager.save(PurchaseRequest, req);
+      }
+      return manager.save(PurchaseRequest, primary);
+    });
+  }
+
   /** 办公室汇总提交：把若干条办公室待汇总申请合并成一条，提交给物业经理 */
   submitToManager(
     dto: SubmitToManagerDto,
@@ -1646,7 +1704,7 @@ export class InventoryService {
       if (request.status !== PurchaseRequestStatus.OFFICE_REVIEW) {
         throw new BadRequestException('只能修改办公室待汇总的申请');
       }
-      const existing = new Map(
+      const existing = new Map<string, PurchaseRequest['items'][number]>(
         (request.items || []).map((item, index) => [item.lineId || `${request.id}-${index + 1}`, item]),
       );
       if (dto.items.length !== existing.size) {
@@ -1665,6 +1723,13 @@ export class InventoryService {
           name: item.name.trim(),
           qty: item.qty,
           unit: item.unit?.trim() || undefined,
+          // 型号 / 备注 / 照片：没传就保留原来的，传了空就清掉
+          spec: item.spec !== undefined ? item.spec.trim() || undefined : old.spec,
+          note: item.note !== undefined ? item.note.trim() || undefined : old.note,
+          photoUrls:
+            item.photoUrls !== undefined
+              ? item.photoUrls.filter((url) => typeof url === 'string' && url.trim()).slice(0, 4)
+              : old.photoUrls,
           estUnitCostCents: item.estUnitCostCents ?? 0,
           rejectReason: undefined,
           rejectedAtStage: undefined,

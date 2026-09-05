@@ -4,6 +4,10 @@ import { request } from '../request';
 export const listRequests = (query: { status?: PurchaseRequestStatus } = {}) =>
   request<PurchaseRequestView[]>({ url: '/purchase-requests', query: query as any });
 
+/** 只合并不提交：多张待汇总申请合成一张，仍留在办公室汇总环节可继续编辑 */
+export const merge = (data: { requestIds: number[] }) =>
+  request<PurchaseRequestView>({ method: 'POST', url: '/purchase-requests/merge', data });
+
 /** 办公室汇总：把若干张待汇总的申请合并成一张提交经理（单张也走这里） */
 export const submitToManager = (data: { requestIds: number[] }) =>
   request<PurchaseRequestView>({ method: 'POST', url: '/purchase-requests/submit-to-manager', data });
@@ -41,7 +45,19 @@ export const rejectItem = (
 
 export const updateItems = (
   id: number | string,
-  data: { items: Array<{ lineId: string; materialId?: number; name: string; qty: number; unit?: string; estUnitCostCents?: number }> },
+  data: {
+    items: Array<{
+      lineId: string;
+      materialId?: number;
+      name: string;
+      qty: number;
+      unit?: string;
+      spec?: string;
+      note?: string;
+      photoUrls?: string[];
+      estUnitCostCents?: number;
+    }>;
+  },
 ) =>
   request<PurchaseRequestView>({
     method: 'PATCH',

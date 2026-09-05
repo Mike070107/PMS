@@ -213,6 +213,29 @@ Page({
     this.setData({ selectedMap, selectedCount: Object.keys(selectedMap).length });
   },
 
+  /** 只合并不提交：合成一张后仍在待汇总，办公室可以在后台改名称 / 型号 / 照片再提交 */
+  async onMergeSummary() {
+    const requestIds = Object.keys(this.data.selectedMap).map(Number).filter(Boolean);
+    if (requestIds.length < 2) return wx.showToast({ icon: 'none', title: '至少勾选两张才能合并' });
+    const res = await wx.showModal({
+      title: `把 ${requestIds.length} 张合并成一张？`,
+      content: '合并后仍在待汇总，可以继续勾选并入或提交；名称、型号、照片在管理后台改。',
+      confirmText: '合并',
+    });
+    if (!res.confirm) return;
+    this.setData({ summarizing: true });
+    try {
+      const merged = await purchases.merge({ requestIds });
+      wx.showToast({ title: `已合并成 ${merged.requestNo}`, icon: 'none' });
+      this.setData({ selectedMap: {}, selectedCount: 0 });
+      await this.load();
+    } catch (err: any) {
+      wx.showToast({ icon: 'none', title: err?.message || '合并失败' });
+    } finally {
+      this.setData({ summarizing: false });
+    }
+  },
+
   /** 把勾选的几张合并成一张提交经理；不同管理处的服务端会拦（同 Web） */
   async onSubmitSummary() {
     const requestIds = Object.keys(this.data.selectedMap).map(Number).filter(Boolean);

@@ -827,6 +827,22 @@ export default function InventoryPage() {
     }
   };
 
+  /** 只合并不提交：合成一张后仍在「办公室汇总」，可以继续改名称 / 型号 / 照片，最后再提交 */
+  const mergeRequests = async (ids: number[]) => {
+    if (ids.length < 2) return;
+    setSaving(true);
+    try {
+      const merged = await request<PurchaseRequestRow>({ method: 'POST', url: '/purchase-requests/merge', data: { requestIds: ids } });
+      message.success(`已合并成 ${merged.requestNo}，可继续编辑后再提交`);
+      setSelectedRequestKeys([]);
+      await loadAll();
+    } catch (e: any) {
+      message.error(e?.message || '合并失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const submitRequestsToManager = async (ids: number[]) => {
     if (!ids.length) return;
     setSaving(true);
@@ -932,6 +948,9 @@ export default function InventoryPage() {
       items: (row.items || []).map((item, index) => ({
         ...item,
         lineId: item.lineId || `${row.id}-${index + 1}`,
+        spec: item.spec || '',
+        note: item.note || '',
+        photoUrls: (item.photoUrls || []).map((url) => imageSrc(url)),
         estUnitCostYuan: item.estUnitCostCents != null ? item.estUnitCostCents / 100 : 0,
       })),
     });
@@ -953,11 +972,14 @@ export default function InventoryPage() {
             name: item.name,
             qty: item.qty,
             unit: item.unit || undefined,
+            spec: item.spec ?? '',
+            note: item.note ?? '',
+            photoUrls: (item.photoUrls || []).map((url: string) => normalizePhotoUrl(url)),
             estUnitCostCents: Math.round((item.estUnitCostYuan || 0) * 100),
           })),
         },
       });
-      message.success('明细已修改，可重新提交经理审批');
+      message.success('明细已修改，确认无误后再提交');
       setEditRequestTarget(null);
       setRequestDetail(null);
       await loadAll();
@@ -1263,7 +1285,11 @@ export default function InventoryPage() {
         const material = 'materialId' in item && item.materialId ? materialById.get(item.materialId) : null;
         const name = material ? materialDisplayName(material) : (('name' in item && item.name) ? item.name : unknown('材料'));
         const unit = material?.unit || '';
-        return <Tag key={`${name}-${index}`}>{name} x {item.qty}{unit}</Tag>;
+        return (
+          <Tag key={`${name}-${index}`} style={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${name} x ${item.qty}${unit}`}>
+            {name} x {item.qty}{unit}
+          </Tag>
+        );
       }) : <Text type="secondary">无明细</Text>}
     </Space>
   );
@@ -1378,17 +1404,28 @@ export default function InventoryPage() {
                     type="info"
                     showIcon
                     style={{ marginBottom: 12 }}
-                    message="办公室汇总：勾选多条同类缺料申请可合并成一张提交给物业经理；单条也可直接提交。"
+                    message="办公室汇总：采购按批次走。勾选多张申请先「合并成一张」，点开合并后的那张改名称、型号、照片，最后再「提交」；不同管理处的不能合并。"
                     action={
-                      <Popconfirm
-                        title={`将勾选的 ${selectedRequestKeys.length} 条合并提交经理？`}
-                        disabled={selectedRequestKeys.length === 0}
-                        onConfirm={() => submitRequestsToManager(selectedRequestKeys)}
-                      >
-                        <Button size="small" type="primary" disabled={selectedRequestKeys.length === 0} loading={saving}>
-                          合并提交经理（{selectedRequestKeys.length}）
-                        </Button>
-                      </Popconfirm>
+                      <Space size={8}>
+                        <Popconfirm
+                          title={`把勾选的 ${selectedRequestKeys.length} 张合并成一张（不提交，可继续编辑）？`}
+                          disabled={selectedRequestKeys.length < 2}
+                          onConfirm={() => mergeRequests(selectedRequestKeys)}
+                        >
+                          <Button size="small" disabled={selectedRequestKeys.length < 2} loading={saving}>
+                            合并成一张（{selectedRequestKeys.length}）
+                          </Button>
+                        </Popconfirm>
+                        <Popconfirm
+                          title={`将勾选的 ${selectedRequestKeys.length} 张提交到下一环节？`}
+                          disabled={selectedRequestKeys.length === 0}
+                          onConfirm={() => submitRequestsToManager(selectedRequestKeys)}
+                        >
+                          <Button size="small" type="primary" disabled={selectedRequestKeys.length === 0} loading={saving}>
+                            提交（{selectedRequestKeys.length}）
+                          </Button>
+                        </Popconfirm>
+                      </Space>
                     }
                   />
                 )}
@@ -1949,6 +1986,8 @@ export default function InventoryPage() {
                 rowKey="key"
                 size="small"
                 pagination={false}
+                scroll={{ x: 1180 }}
+                tableLayout="fixed"
                 dataSource={(requestDetail.items || []).map((item, index) => ({ ...item, key: index }))}
                 columns={[
                   { title: '序号', dataIndex: 'key', width: 64, render: (v) => Number(v) + 1 },
@@ -2029,7 +2068,7 @@ export default function InventoryPage() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="可修改材料描述、数量、单位和预估单价；保存后需重新提交物业经理审批。"
+          message="可修改材料描述、型号 / 参数、备注、照片、数量、单位和预估单价；维修工写的口语在这里改成采购看得懂的。保存后仍在办公室汇总，确认无误再提交。"
         />
         <Form form={editRequestForm} layout="vertical">
           <Form.List name="items">
@@ -2066,6 +2105,21 @@ export default function InventoryPage() {
                           </Form.Item>
                         </Col>
                       </Row>
+                      <Row gutter={12}>
+                        <Col span={10}>
+                          <Form.Item name={[field.name, 'spec']} label="型号 / 参数">
+                            <Input maxLength={120} placeholder="如 86型 二线 白色" />
+                          </Form.Item>
+                        </Col>
+                        <Col span={14}>
+                          <Form.Item name={[field.name, 'note']} label="备注（给采购看）">
+                            <Input maxLength={255} placeholder="品牌要求、用在哪里、急不急" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Form.Item name={[field.name, 'photoUrls']} label="照片（最多 4 张，第一张作缩略图；维修工拍的样本可以在这里换）">
+                        <MaterialPhotosUpload />
+                      </Form.Item>
                     </Card>
                   );
                 })}

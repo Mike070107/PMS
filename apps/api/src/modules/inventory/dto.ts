@@ -11,6 +11,7 @@ import {
   Min,
   MinLength,
   ValidateNested,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { WarehouseType } from '../../common/enums';
@@ -447,6 +448,24 @@ export class UpdatePurchaseRequestItemDto {
   @IsString()
   @MaxLength(20)
   unit?: string;
+
+  /** 型号 / 参数、备注、照片（最多 4 张）：办公室汇总时把维修工的口语更正成采购看得懂的（2026-09-05） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  spec?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  note?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(4)
+  @IsString({ each: true })
+  @MaxLength(500, { each: true })
+  photoUrls?: string[];
 
   @IsOptional()
   @Type(() => Number)
