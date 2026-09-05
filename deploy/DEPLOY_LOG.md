@@ -2178,3 +2178,12 @@
 - 自上次（166f418）以来上线的相关提交：
   - def309a feat(AI): 大模型用量台账、结果缓存、提示词静态前缀、填表报修省钱模式
 
+## 2026-09-05 11:29 · miniapp-staff · 60e93cc
+
+- 包：`1.0.20260905b`
+- 提交：60e93cc docs(inbox): AI 用量台账/结果缓存/省钱模式已做（def309a）
+- 说明：填表报修省钱模式，体验版待选
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（166f418）以来上线的相关提交：
+  - def309a feat(AI): 大模型用量台账、结果缓存、提示词静态前缀、填表报修省钱模式
+
