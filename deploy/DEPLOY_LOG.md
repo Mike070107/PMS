@@ -2218,3 +2218,12 @@
 - 自上次（60e93cc）以来上线的相关提交：
   - fe787a5 feat(员工端): 用料面板改成「申购」口径 —— 库存 0 直接加入采购申请，搜不到可申购新材料带样本照片
 
+## 2026-09-05 17:49 · miniapp-staff · 4cb418f
+
+- 包：`1.0.20260905d`
+- 提交：4cb418f docs(inbox): 采购流程重设计 A 步已完成（fe787a5）
+- 说明：用料面板申购口径，体验版待选
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（bf9b337）以来上线的相关提交：
+  - fe787a5 feat(员工端): 用料面板改成「申购」口径 —— 库存 0 直接加入采购申请，搜不到可申购新材料带样本照片
+
