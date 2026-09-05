@@ -1,0 +1,107 @@
+<!-- 采购申请详情 / 编辑（2026-09-06）。编辑层开着时系统返回 / 右滑先关层再退页：page-container 当拦截器用 -->
+<page-container
+  show="{{editOpen}}"
+  overlay="{{false}}"
+  duration="{{0}}"
+  custom-style="height: 2px; background: transparent;"
+  bind:afterleave="onOverlayLeave"
+/>
+
+<view class="container pr-page">
+  <view wx:if="{{loading && !row}}" class="pr-loading">正在读取申请单…</view>
+  <view wx:elif="{{error}}"><pms-empty text="{{error}}"/></view>
+  <block wx:elif="{{row}}">
+    <view class="card">
+      <view class="pr-head">
+        <text class="pr-head__no">{{row.requestNo}}</text>
+        <text class="pr-head__status">{{statusLabel}}</text>
+      </view>
+      <view class="pr-head__amount">{{amountText}}</view>
+      <view wx:if="{{flowText}}" class="pr-head__flow">{{flowText}}</view>
+      <view wx:if="{{row.reason}}" class="kv"><text class="kv__k">申请原因</text><text class="kv__v">{{row.reason}}</text></view>
+      <view class="kv"><text class="kv__k">来源</text><text class="kv__v">{{sourceText}}</text></view>
+      <view class="kv"><text class="kv__k">申请人</text><text class="kv__v">{{applicantText}} · {{createdAtText}}</text></view>
+      <view wx:if="{{row.status === 'rejected' && row.rejectReason}}" class="kv"><text class="kv__k">驳回原因</text><text class="kv__v pr-reject">{{row.rejectReason}}</text></view>
+    </view>
+
+    <view class="label mt">采购明细<text class="label__opt">{{canEdit ? '点「编辑」改名称、型号、数量、备注，补照片' : lines.length + ' 项'}}</text></view>
+    <view wx:for="{{lines}}" wx:key="lineId" class="card pr-item">
+      <view class="pr-item__top">
+        <view class="pr-item__name">{{item.name}}<text wx:if="{{item.spec}}" class="pr-item__spec">{{item.spec}}</text></view>
+        <button wx:if="{{canEdit}}" class="btn btn--outline btn--sm pr-item__edit" data-line-id="{{item.lineId}}" bindtap="onEditLine">编辑</button>
+      </view>
+      <view wx:if="{{item.note}}" class="pr-item__note">{{item.note}}</view>
+      <view class="pr-item__meta">
+        <text>×{{item.qty}}{{item.unit || ''}} · {{item.amountText}}</text>
+        <text wx:if="{{item.sourceWorkOrderId}}" class="pr-item__src" data-order-id="{{item.sourceWorkOrderId}}" catchtap="onOpenSourceOrder">{{item.sourceText}} ›</text>
+        <text wx:else class="pr-item__src pr-item__src--plain">{{item.sourceText}}</text>
+      </view>
+      <view wx:if="{{item.rejectReason}}" class="pr-item__reject">已单项驳回：{{item.rejectReason}}</view>
+      <view class="pr-photos">
+        <image
+          wx:for="{{item.photoUrls}}"
+          wx:for-item="url"
+          wx:for-index="pi"
+          wx:key="*this"
+          class="pr-photo"
+          src="{{url}}"
+          mode="aspectFill"
+          data-url="{{url}}"
+          data-urls="{{item.photoUrls}}"
+          catchtap="onPreviewPhoto"
+        />
+        <view wx:if="{{!item.photoUrls.length}}" class="pr-photo pr-photo--empty" data-line-id="{{item.lineId}}" bindtap="onEditLine">{{canEdit ? '没图，点这里补拍' : '无图'}}</view>
+      </view>
+    </view>
+    <view class="pr-bottom-space"></view>
+  </block>
+</view>
+
+<!-- 底部固定：办公室汇总阶段可直接提交到下一环 -->
+<view wx:if="{{canEdit}}" class="pr-actions">
+  <button class="btn btn--primary" disabled="{{submitting}}" loading="{{submitting}}" bindtap="onSubmit">提交到「{{nextStepLabel}}」</button>
+</view>
+
+<!-- ============ 编辑一行 ============ -->
+<view wx:if="{{editOpen}}" class="sheet-mask" bindtap="onCloseEdit" catchtouchmove="noop"/>
+<view wx:if="{{editOpen && edit}}" class="sheet" catchtouchmove="noop">
+  <view class="sheet__head"><text class="sheet__title">修改明细</text><text class="sheet__close" bindtap="onCloseEdit">关闭</text></view>
+  <scroll-view scroll-y class="sheet__body">
+    <view class="field">
+      <view class="label">名称</view>
+      <input class="input" value="{{edit.name}}" maxlength="120" data-field="name" bindinput="onEditInput" placeholder="写成采购看得懂的名称"/>
+    </view>
+    <view class="field">
+      <view class="label">型号 / 参数<text class="label__opt">选填</text></view>
+      <input class="input" value="{{edit.spec}}" maxlength="120" data-field="spec" bindinput="onEditInput" placeholder="如 86型 二线 白色"/>
+    </view>
+    <view class="pr-edit-row">
+      <view class="field pr-edit-row__qty">
+        <view class="label">数量</view>
+        <input class="input" type="digit" value="{{edit.qty}}" data-field="qty" bindinput="onEditInput"/>
+      </view>
+      <view class="field pr-edit-row__unit">
+        <view class="label">单位</view>
+        <input class="input" value="{{edit.unit}}" maxlength="20" data-field="unit" bindinput="onEditInput" placeholder="个"/>
+      </view>
+    </view>
+    <view class="field">
+      <view class="label">备注<text class="label__opt">给采购看，选填</text></view>
+      <input class="input" value="{{edit.note}}" maxlength="255" data-field="note" bindinput="onEditInput" placeholder="品牌要求、用在哪里、急不急"/>
+    </view>
+    <view class="field">
+      <view class="label">照片<text class="label__opt">最多 {{maxPhotos}} 张 · 没实物可不拍</text></view>
+      <view class="pr-photos">
+        <view wx:for="{{edit.photoUrls}}" wx:for-item="url" wx:key="*this" class="pr-photo-wrap">
+          <image class="pr-photo" src="{{url}}" mode="aspectFill" data-url="{{url}}" data-urls="{{edit.photoUrls}}" catchtap="onPreviewPhoto"/>
+          <view class="pr-photo__del" data-index="{{index}}" catchtap="onRemovePhoto">×</view>
+        </view>
+        <view wx:if="{{edit.photoUrls.length < maxPhotos}}" class="pr-photo pr-photo--add" bindtap="onAddPhoto">{{uploading ? '上传中…' : '+ 拍照 / 选图'}}</view>
+      </view>
+    </view>
+    <view wx:if="{{editError}}" class="field-error">{{editError}}</view>
+  </scroll-view>
+  <view class="sheet__foot">
+    <button class="btn btn--primary" disabled="{{saving || uploading}}" loading="{{saving}}" bindtap="onSaveEdit">保存</button>
+  </view>
+</view>

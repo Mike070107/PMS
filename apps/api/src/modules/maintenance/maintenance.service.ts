@@ -310,6 +310,8 @@ export class MaintenanceService implements OnModuleInit {
     const row = await this.orderRepo.findOne({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('养护单不存在');
     this.assertInScope(row.communityId, access);
+    // 点开了就算看过：指向这张养护单的未读站内信（待签字提醒）一并标已读（2026-09-06 Mike）
+    void this.notifications.markReadByRef(user, { maintenanceOrderId: id });
     return { ...this.toDetail(row), suggestedPaperNo: await this.suggestPaperNo(tenantId) };
   }
 

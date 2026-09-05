@@ -2016,6 +2016,9 @@ export class RepairsService implements OnModuleInit {
         throw new NotFoundException('work order not found');
       }
     }
+    // 他既然点开了这张单，指向它的未读站内信（新工单 / 派单 / 催单 / 缺料待办…）就算看过了，
+    // 消息中心不再显示未读（2026-09-06 Mike）。权限校验过了才标，失败不影响详情返回。
+    void this.notifications.markReadByRef(user, { workOrderId: id });
     // 先做完工单关系权限校验再读领料，不让无权用户借用料查询探测工单是否存在。
     const materialUsages = await this.dataSource.query(
       `SELECT wom.id,

@@ -71,6 +71,7 @@
         <view class="pick-box {{selectedMap[item.id] ? 'pick-box--on' : ''}}"></view>
         <view class="wo-card__title"><text class="wo-card__type">{{item.amountText}}</text></view>
         <text class="summary-card__no">{{item.requestNo}}</text>
+        <text class="pr-detail-link" data-id="{{item.id}}" catchtap="onOpenDetail">详情 / 编辑 ›</text>
       </view>
       <block wx:for="{{item.reviewItems}}" wx:for-item="line" wx:key="lineId"><template is="pr-line" data="{{line: line}}"/></block>
       <view wx:if="{{item.reason}}" class="kv"><text class="kv__k">申请原因</text><text class="kv__v">{{item.reason}}</text></view>
@@ -91,7 +92,7 @@
       </view>
     </view>
 
-    <view class="kv"><text class="kv__k">申请编号</text><text class="kv__v">{{item.requestNo}}</text></view>
+    <view class="kv"><text class="kv__k">申请编号</text><text class="kv__v">{{item.requestNo}}<text class="pr-detail-link" data-id="{{item.id}}" catchtap="onOpenDetail">详情 ›</text></text></view>
     <view class="label mt">采购明细<text class="label__opt">可单项驳回</text></view>
     <view wx:for="{{item.reviewItems}}" wx:for-item="line" wx:key="lineId" class="approval-line">
       <view class="approval-line__body"><template is="pr-line" data="{{line: line}}"/></view>

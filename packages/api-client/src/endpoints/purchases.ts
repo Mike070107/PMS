@@ -4,6 +4,10 @@ import { request } from '../request';
 export const listRequests = (query: { status?: PurchaseRequestStatus } = {}) =>
   request<PurchaseRequestView[]>({ url: '/purchase-requests', query: query as any });
 
+/** 单张申请（员工端详情 / 编辑页）；打开即把指向它的未读站内信标已读 */
+export const get = (id: number | string) =>
+  request<PurchaseRequestView>({ url: `/purchase-requests/${id}` });
+
 /** 只合并不提交：多张待汇总申请合成一张，仍留在办公室汇总环节可继续编辑 */
 export const merge = (data: { requestIds: number[] }) =>
   request<PurchaseRequestView>({ method: 'POST', url: '/purchase-requests/merge', data });

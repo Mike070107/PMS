@@ -38,3 +38,6 @@
 .pick-box { flex-shrink: 0; width: 44rpx; height: 44rpx; border: 3rpx solid #9ebbd5; border-radius: 10rpx; background: #fff; }
 .pick-box--on { border-color: var(--color-brand); background: var(--color-brand) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") no-repeat center / 30rpx; }
 .summary-bar__btns { display: flex; flex-shrink: 0; gap: 12rpx; }
+
+/* 卡片上的「详情 / 编辑 ›」：进申请单详情页看全部照片、改明细、补图（2026-09-06） */
+.pr-detail-link { flex-shrink: 0; margin-left: 16rpx; padding: 8rpx 0; color: var(--color-brand); font-size: var(--font-sm); font-weight: 600; }

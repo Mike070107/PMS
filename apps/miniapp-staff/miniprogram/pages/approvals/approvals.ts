@@ -267,6 +267,13 @@ Page({
     wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${id}` });
   },
 
+  /** 申请单详情页：看全部照片、改名称 / 型号 / 备注 / 数量、补图，再提交（2026-09-06 Mike） */
+  onOpenDetail(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.id);
+    if (!id) return;
+    wx.navigateTo({ url: `/pages/purchase-request/purchase-request?id=${id}` });
+  },
+
   onPreviewPhoto(e: WechatMiniprogram.BaseEvent) {
     const url = String(e.currentTarget.dataset.url || '');
     const urls = ((e.currentTarget.dataset.urls || []) as string[]).filter(Boolean);

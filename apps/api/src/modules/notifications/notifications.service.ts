@@ -29,6 +29,20 @@ const MAX_GRANT_PER_TEMPLATE = 20;
  */
 export type { SubscribeTemplateKey };
 
+/** 站内信 payload 里指向单据的键 → 单据 id（可一组），markReadByRef 用 */
+export type NotificationRef = Partial<
+  Record<
+    | 'workOrderId'
+    | 'purchaseRequestId'
+    | 'purchaseOrderId'
+    | 'transferId'
+    | 'maintenanceOrderId'
+    | 'feedbackId'
+    | 'alertId',
+    number | number[]
+  >
+>;
+
 /** 每个事件走哪个小程序发。模板 id 不能跨小程序用，token 也不能 —— 发错端一律 40037/43104 */
 export const TEMPLATE_APP: Record<SubscribeTemplateKey, WxAppType> = {
   orderDispatched: 'owner',
@@ -326,6 +340,51 @@ export class NotificationsService {
       { readAt: new Date() },
     );
     return { ok: true };
+  }
+
+  /**
+   * 用户在别处已经看过 / 处理过这件事：把他名下指向同一张单据的未读站内信一并标已读。
+   *
+   * 2026-09-06 Mike：新工单提醒出了角标，但他已经在工单池点开过那张单，消息里还是未读 ——
+   * 「说明我已经知道这条消息了，就不该还显示未读，其他同理」。
+   * 调用点：工单详情（GET /work-orders/:id）、采购申请的查看 / 合并 / 提交 / 审批 / 驳回 / 改明细、
+   * 采购单入库、调拨审批 / 收货、养护单详情。只标本人的、只标未读的；记录不删，历史消息里还能看到。
+   * 失败不影响主流程（调用方 void 掉），所以这里不抛。
+   */
+  async markReadByRef(user: AuthUser, ref: NotificationRef): Promise<number> {
+    const entries = Object.entries(ref).flatMap(([key, value]) => {
+      const ids = (Array.isArray(value) ? value : [value])
+        .map((v) => Number(v))
+        .filter((v) => Number.isInteger(v) && v > 0);
+      return ids.map((id) => [key, id] as const);
+    });
+    if (!entries.length || !user?.id) return 0;
+    let tenantId: number;
+    try {
+      tenantId = this.requireTenant(user);
+    } catch {
+      return 0;
+    }
+    // payload 是 jsonb，按文本比对：{"workOrderId":19} 里的 19 存的是数字，->> 取出来是 '19'
+    const params: unknown[] = [tenantId, user.id];
+    const clauses = entries.map(([key, id]) => {
+      params.push(String(id));
+      return `payload->>'${key}' = $${params.length}`;
+    });
+    try {
+      const result: unknown = await this.notificationRepo.query(
+        `UPDATE notifications
+            SET read_at = now(), status = '${NotifyStatus.SENT}'
+          WHERE tenant_id = $1 AND receiver_id = $2 AND read_at IS NULL
+            AND (${clauses.join(' OR ')})`,
+        params,
+      );
+      // pg 驱动返回 [rows, affected]
+      return Array.isArray(result) ? Number(result[1] ?? 0) : 0;
+    } catch (error) {
+      this.logger.warn(`markReadByRef failed: ${(error as Error).message}`);
+      return 0;
+    }
   }
 
   // ---------------- 微信订阅消息 ----------------

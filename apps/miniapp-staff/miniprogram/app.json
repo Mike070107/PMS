@@ -7,6 +7,7 @@
     "pages/repair-create/repair-create",
     "pages/quick-repair/quick-repair",
     "pages/approvals/approvals",
+    "pages/purchase-request/purchase-request",
     "pages/inventory/inventory",
     "pages/stocktake/stocktake",
     "pages/stocktake-count/stocktake-count",

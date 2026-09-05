@@ -1232,6 +1232,16 @@ export class InventoryService {
     );
   }
 
+  /** 单张采购申请（员工端详情 / 编辑页用），名字单号照列表同一口径补齐 */
+  async getPurchaseRequest(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const row = await this.purchaseRequestRepo.findOne({ where: { id, tenantId } });
+    if (!row) throw new NotFoundException('采购申请不存在');
+    await this.assertPurchaseRequestVisible(tenantId, row, user, access);
+    const [view] = await this.withRequestNames(tenantId, [row]);
+    return view;
+  }
+
   /**
    * 采购申请旧表没有 office_id：工单缺料按工单小区判断；办公室手工申请按申请人
    * 当前角色所属管理处判断。这样先把跨管理处读取和审批封住，后续即使补 office_id，

@@ -46,6 +46,7 @@ import {
   WarehouseLocationQueryDto,
 } from './dto';
 import { InventoryService } from './inventory.service';
+import { NotificationsService, type NotificationRef } from '../notifications/notifications.service';
 
 /**
  * 双轨鉴权：
@@ -57,7 +58,20 @@ import { InventoryService } from './inventory.service';
 @Controller()
 @UseGuards(JwtAuthGuard, RolesOrPermissionGuard)
 export class InventoryController {
-  constructor(private readonly inventoryService: InventoryService) {}
+  constructor(
+    private readonly inventoryService: InventoryService,
+    private readonly notifications: NotificationsService,
+  ) {}
+
+  /**
+   * 操作成功后把指向这张单的未读站内信标已读（2026-09-06 Mike：别处处理过的消息不该还是未读）。
+   * 只在成功后标 —— 失败的操作不算「看过」；标记本身失败不影响返回。
+   */
+  private async seen<T>(result: Promise<T>, user: AuthUser, ref: NotificationRef): Promise<T> {
+    const value = await result;
+    void this.notifications.markReadByRef(user, ref);
+    return value;
+  }
 
   // 员工端「材料与库存」那一格也调它：把 app:inventory 显式列出来，
   // 而不是在守卫里做「app:inventory 等价于 materials」的通用映射 ——
@@ -268,6 +282,22 @@ export class InventoryController {
     return this.inventoryService.listPurchaseRequests(query, user, access);
   }
 
+  /** 单张申请：员工端详情 / 编辑页。点开即把指向它的未读站内信标已读 */
+  @Get('purchase-requests/:id')
+  @RequirePermission(
+    ['inventory', 'app:inventory', 'app:approve-manager', 'app:approve-purchaser'],
+    'view',
+  )
+  getPurchaseRequest(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.seen(this.inventoryService.getPurchaseRequest(id, user, access), user, {
+      purchaseRequestId: id,
+    });
+  }
+
   @Post('purchase-requests')
   @RequirePermission('inventory', 'edit')
   createManualPurchaseRequest(
@@ -289,7 +319,9 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.mergePurchaseRequests(dto, user, access);
+    return this.seen(this.inventoryService.mergePurchaseRequests(dto, user, access), user, {
+      purchaseRequestId: dto.requestIds,
+    });
   }
 
   @Post('purchase-requests/submit-to-manager')
@@ -299,7 +331,9 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.submitToManager(dto, user, access);
+    return this.seen(this.inventoryService.submitToManager(dto, user, access), user, {
+      purchaseRequestId: dto.requestIds,
+    });
   }
 
   /** 办公室修改被单项驳回的描述/数量，之后可再次提交经理 */
@@ -311,7 +345,9 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.updatePurchaseRequestItems(id, dto, user, access);
+    return this.seen(this.inventoryService.updatePurchaseRequestItems(id, dto, user, access), user, {
+      purchaseRequestId: id,
+    });
   }
 
   // 审批链的两步各是一格勾选：谁批第一步、谁批第二步，由角色配置说了算
@@ -322,7 +358,9 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.approveByManager(id, user, access);
+    return this.seen(this.inventoryService.approveByManager(id, user, access), user, {
+      purchaseRequestId: id,
+    });
   }
 
   @Post('purchase-requests/:id/purchaser-approve')
@@ -332,7 +370,9 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.approveByPurchaser(id, user, access);
+    return this.seen(this.inventoryService.approveByPurchaser(id, user, access), user, {
+      purchaseRequestId: id,
+    });
   }
 
   // 驳回：两步审批人任一都能驳，提交人自己也能撤
@@ -347,7 +387,9 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.rejectPurchaseRequest(id, dto, user, access);
+    return this.seen(this.inventoryService.rejectPurchaseRequest(id, dto, user, access), user, {
+      purchaseRequestId: id,
+    });
   }
 
   @Post('purchase-requests/:id/reject-item')
@@ -358,7 +400,9 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.rejectPurchaseRequestItem(id, dto, user, access);
+    return this.seen(this.inventoryService.rejectPurchaseRequestItem(id, dto, user, access), user, {
+      purchaseRequestId: id,
+    });
   }
 
   // 员工端「按采购单入库」要列待入库的采购单，所以带上 app:inventory
@@ -400,7 +444,9 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.createGoodsReceipt(dto, user, access);
+    return this.seen(this.inventoryService.createGoodsReceipt(dto, user, access), user, {
+      purchaseOrderId: dto.purchaseOrderId,
+    });
   }
 
   @Post('goods-receipts/general')
@@ -474,7 +520,9 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.approveTransferOrder(id, user, access);
+    return this.seen(this.inventoryService.approveTransferOrder(id, user, access), user, {
+      transferId: id,
+    });
   }
 
   @Post('transfer-orders/:id/reject')
@@ -485,7 +533,9 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.rejectTransferOrder(id, dto.reason, user, access);
+    return this.seen(this.inventoryService.rejectTransferOrder(id, dto.reason, user, access), user, {
+      transferId: id,
+    });
   }
 
   @Post('transfer-orders/:id/receive')
@@ -496,6 +546,8 @@ export class InventoryController {
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.receiveTransferOrder(id, dto, user, access);
+    return this.seen(this.inventoryService.receiveTransferOrder(id, dto, user, access), user, {
+      transferId: id,
+    });
   }
 }

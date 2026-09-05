@@ -1,0 +1,41 @@
+/* 采购申请详情 / 编辑页。卡片、kv、label、input、sheet、btn 都是全局样式，这里只补页面自己的 */
+.pr-page { padding-bottom: 40rpx; }
+.pr-loading { padding: 80rpx 0; text-align: center; color: var(--color-text-tertiary); font-size: var(--font-md); }
+
+/* 头卡：单号 + 环节 + 金额 */
+.pr-head { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.pr-head__no { color: var(--color-text-secondary); font-size: var(--font-md); }
+.pr-head__status { flex-shrink: 0; padding: 4rpx 18rpx; border-radius: 999rpx; background: rgba(49, 95, 155, .1); color: var(--color-brand); font-size: var(--font-sm); font-weight: 600; }
+.pr-head__amount { margin-top: 12rpx; color: #243b4f; font-size: 44rpx; font-weight: 700; line-height: 1.3; }
+.pr-head__flow { margin: 8rpx 0 12rpx; color: var(--color-text-secondary); font-size: var(--font-sm); line-height: 1.6; }
+.pr-reject { color: var(--color-danger); }
+
+/* 明细行 */
+.pr-item { padding-top: 24rpx; padding-bottom: 24rpx; }
+.pr-item__top { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.pr-item__name { flex: 1; min-width: 0; color: #243b4f; font-size: var(--font-lg); font-weight: 600; line-height: 1.45; }
+.pr-item__spec { margin-left: 10rpx; padding: 2rpx 12rpx; border-radius: 999rpx; background: rgba(49, 95, 155, .1); color: var(--color-brand); font-size: var(--font-xs); font-weight: 600; }
+.pr-item__edit { flex-shrink: 0; height: 68rpx; padding: 0 28rpx; }
+.pr-item__note { margin-top: 6rpx; color: var(--color-text-secondary); font-size: var(--font-sm); line-height: 1.5; }
+.pr-item__meta { display: flex; flex-wrap: wrap; gap: 6rpx 16rpx; margin-top: 8rpx; color: var(--color-text-tertiary); font-size: var(--font-sm); }
+.pr-item__src { color: var(--color-brand); font-weight: 600; }
+.pr-item__src--plain { color: var(--color-text-tertiary); font-weight: 400; }
+.pr-item__reject { margin-top: 8rpx; color: var(--color-danger); font-size: var(--font-sm); }
+
+/* 照片：详情里可点预览；编辑层里可删可补 */
+.pr-photos { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 16rpx; }
+.pr-photo { width: 156rpx; height: 156rpx; border-radius: 16rpx; background: #e4e9ef; }
+.pr-photo--empty,
+.pr-photo--add { display: flex; align-items: center; justify-content: center; padding: 0 12rpx; border: 2rpx dashed #b8c9da; background: #f6f9fc; color: var(--color-text-tertiary); font-size: var(--font-xs); text-align: center; line-height: 1.5; }
+.pr-photo--add { color: var(--color-brand); font-weight: 600; }
+.pr-photo-wrap { position: relative; }
+.pr-photo__del { position: absolute; top: -12rpx; right: -12rpx; width: 44rpx; height: 44rpx; border-radius: 50%; background: rgba(0, 0, 0, .65); color: #fff; font-size: 30rpx; line-height: 44rpx; text-align: center; }
+
+/* 底部固定操作条：不参与滚动，留安全区（非 tab 页，没有 tabBar） */
+.pr-bottom-space { height: 180rpx; }
+.pr-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 20rpx 32rpx calc(20rpx + env(safe-area-inset-bottom)); background: rgba(255, 255, 255, .96); box-shadow: 0 -6rpx 20rpx rgba(36, 59, 79, .08); }
+
+/* 编辑层里数量 / 单位并排 */
+.pr-edit-row { display: flex; gap: 20rpx; }
+.pr-edit-row__qty { flex: 1 1 0; }
+.pr-edit-row__unit { flex: 1 1 0; }
