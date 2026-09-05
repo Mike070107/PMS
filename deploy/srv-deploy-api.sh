@@ -11,7 +11,9 @@ if ! flock -n 9; then
   exit 1
 fi
 
-PKG=$(ls -t /tmp/pms-api-*.tar.gz | head -1)
+# 传了包路径就部署那一个（回滚用）；不传才取 /tmp 里最新的。2026-09-06 回滚时才发现原来一直不看参数，把坏包又装了一遍
+PKG=${1:-$(ls -t /tmp/pms-api-*.tar.gz | head -1)}
+if [ ! -f "$PKG" ]; then echo "包不存在：$PKG" >&2; exit 1; fi
 echo "deploying: $PKG"
 
 cd /opt/pms-repair/apps

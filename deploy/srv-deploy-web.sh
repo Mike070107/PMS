@@ -2,7 +2,9 @@
 set -e
 
 WEB=/opt/pms-repair/web
-PKG=$(ls -t /tmp/pms-web-*.tar.gz | head -1)
+# 传了包路径就部署那一个（回滚用）；不传才取 /tmp 里最新的（同 srv-deploy-api.sh，2026-09-06）
+PKG=${1:-$(ls -t /tmp/pms-web-*.tar.gz | head -1)}
+if [ ! -f "$PKG" ]; then echo "包不存在：$PKG" >&2; exit 1; fi
 echo "deploying: $PKG"
 
 BAK=/opt/pms-repair/web.bak.$(date +%s)
