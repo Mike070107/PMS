@@ -2200,3 +2200,12 @@
   - 74423dc feat(员工端): 养护单签字页按《房屋修理养护任务单》纸面还原正反面
   - bc3076f fix(员工端): 已完结按人收敛范围、角标统一刷新、退无可退能返回、签字画板不再放射线
 
+## 2026-09-05 16:17 · miniapp-staff · bf9b337
+
+- 包：`1.0.20260905c`
+- 提交：bf9b337 docs(inbox): 边缘右滑按层退已修（0565115）
+- 说明：右滑按层退，体验版待选
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（60e93cc）以来上线的相关提交：
+  - 0565115 fix(员工端): 边缘右滑和返回箭头按层退 —— 先收弹层，再退页面
+
