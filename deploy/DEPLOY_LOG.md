@@ -2246,3 +2246,12 @@
   - 551000f feat(采购): 申请单明细统一带图/型号/备注、来源工单可点；小程序办公室可勾选合并提交经理
   - fe787a5 feat(员工端): 用料面板改成「申购」口径 —— 库存 0 直接加入采购申请，搜不到可申购新材料带样本照片
 
+## 2026-09-05 18:14 · miniapp-staff · 3e0efdd
+
+- 包：`1.0.20260905e`
+- 提交：3e0efdd docs(inbox): 采购流程重设计 B 步已完成（551000f）
+- 说明：审批页明细+办公室汇总，体验版待选
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（4cb418f）以来上线的相关提交：
+  - 551000f feat(采购): 申请单明细统一带图/型号/备注、来源工单可点；小程序办公室可勾选合并提交经理
+
