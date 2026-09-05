@@ -2291,3 +2291,12 @@
 - 自上次（f073df2）以来上线的相关提交：
   - 9f20aca fix(员工端): 用 page-container 拦系统级返回，iOS 右滑也按层退
 
+## 2026-09-05 22:00 · api · 098b8f7
+
+- 包：`pms-api-20260905-2158.tar.gz`
+- 提交：098b8f7 docs(inbox): 办公室合并后编辑再提交、明细表溢出已修（766b97c）
+- 说明：申请只合并不提交 + 明细可改型号/备注/照片
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（f073df2）以来上线的相关提交：
+  - 766b97c feat(采购): 办公室可先合并多张申请再编辑（照片/型号/备注）再提交；申请明细表不再溢出
+
