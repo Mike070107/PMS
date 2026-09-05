@@ -2318,3 +2318,12 @@
 - 自上次（0cafd3d）以来上线的相关提交：
   - 766b97c feat(采购): 办公室可先合并多张申请再编辑（照片/型号/备注）再提交；申请明细表不再溢出
 
+## 2026-09-05 22:43 · miniapp-staff · 182dcbc
+
+- 包：`1.0.20260905i`
+- 提交：182dcbc feat(员工端): 添加用料只留一个入口，先搜材料库再申购；样本照片改为选填
+- 说明：添加用料单入口先搜材料库；样本照片选填；工作区脏文件是另一会话的 AI/样式改动，未打进包（从干净 worktree 上传）
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（098b8f7）以来上线的相关提交：
+  - 182dcbc feat(员工端): 添加用料只留一个入口，先搜材料库再申购；样本照片改为选填
+
