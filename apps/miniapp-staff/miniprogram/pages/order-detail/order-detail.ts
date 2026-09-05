@@ -225,6 +225,8 @@ interface PageData {
   canRollback: boolean;
   /** 作废工单：「作废工单」那一格勾中且单子还没作废 */
   canVoid: boolean;
+  /** page-container 关过一次后要 show 假→真一次才会再拦返回，用这个脉冲一下 */
+  overlayPulse: boolean;
   voidNote: string;
   /** 作废前必须勾的确认：退回用料、从统计里排除 */
   voidConfirmed: boolean;
@@ -349,6 +351,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     canRedispatch: false,
     canRollback: false,
     canVoid: false,
+    overlayPulse: false,
     voidNote: '',
     voidConfirmed: false,
     rollbackTargetText: '上一处理节点',
@@ -458,6 +461,18 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       return;
     }
     goBack();
+  },
+
+  /**
+   * 系统级返回被 page-container 拦下（iOS 右滑、Android 物理返回、navigateBack）：
+   * 和左边缘手势一样按层退 —— 先收材料库，再收面板。退完还有弹层开着，就把拦截器
+   * 重新挂上（page-container 关过一次要 show 假→真一次才会再拦）。
+   * 2026-09-05 Mike 反馈右滑「没变」：之前只接了自己画的手势，iOS 的系统右滑根本不经过它。
+   */
+  onOverlayLeave() {
+    if (this.data.skuOpen) this.onCloseSku();
+    else if (this.data.panel) this.onClosePanel();
+    this.setData({ overlayPulse: true }, () => this.setData({ overlayPulse: false }));
   },
   ...swipeBackHandlers(),
 

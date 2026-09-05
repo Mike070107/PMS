@@ -1,4 +1,8 @@
 <view class="repair-page" bindtouchstart="onSwipeBackStart" bindtouchmove="onSwipeBackMove" bindtouchend="onSwipeBackEnd" bindtouchcancel="onSwipeBackCancel">
+  <!-- 系统级返回拦截器（2026-09-05）：iOS 右滑 / Android 物理返回 / 代码 navigateBack 都会先关掉
+       page-container 而不是退页面。这里不用它做视觉（overlay 关、高度 2px），弹层还是原来的 .sheet；
+       只借它把「返回」截下来交给 onOverlayLeave 按层退。一个页面只能有一个 page-container。 -->
+  <page-container show="{{pickerOpen && !overlayPulse}}" overlay="{{false}}" duration="{{0}}" custom-style="height: 2px; background: transparent;" bind:afterleave="onOverlayLeave"></page-container>
   <view class="repair-nav">
     <!-- 标题行和微信胶囊同一条线、右侧按胶囊位置留空；副标题单独一行放胶囊下面（utils/custom-nav.ts） -->
     <view class="repair-nav__safe" style="{{nav.top ? 'height:' + nav.top + 'px' : ''}}"></view>
@@ -37,7 +41,7 @@
           <view class="place-success"><text>✓</text> 已自动识别对应位置，点 × 可重新选择</view>
         </block>
         <block wx:else>
-          <place-picker id="placePicker" compact="{{true}}" valueText="{{placeText}}" loading="{{bookLoading}}" bind:picked="onPlacePicked" />
+          <place-picker id="placePicker" compact="{{true}}" valueText="{{placeText}}" loading="{{bookLoading}}" bind:picked="onPlacePicked" bind:openchange="onPickerOpenChange" />
           <view wx:if="{{placeText}}" class="place-success"><text>✓</text> 已找到对应房屋</view>
           <view class="field-error" wx:if="{{errors.place}}">{{errors.place}}</view>
           <view class="scope-hint" wx:if="{{scopeHint}}">{{scopeHint}}</view>

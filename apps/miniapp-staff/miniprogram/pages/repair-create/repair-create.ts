@@ -93,6 +93,10 @@ Page({
     guide: false,
     /** 自定义导航按胶囊位置排（右侧留白 / 顶边 / 高度），见 utils/custom-nav.ts */
     nav: { padRight: 0, top: 0, height: 0 },
+    /** 地址选择器开着没（组件 openchange 事件同步过来），系统返回要先关它 */
+    pickerOpen: false,
+    /** page-container 关过一次后要 show 假→真一次才会再拦返回，用这个脉冲一下 */
+    overlayPulse: false,
     communityId: null as number | null,
     buildingId: null as number | null,
     houseId: null as number | null,
@@ -211,6 +215,16 @@ Page({
    * 返回按层退：地址选择器开着就先在它里面退一级（房号 → 楼栋 → 小区），退到顶再关掉它；
    * 选择器没开才退页面（2026-09-05 反馈，见 utils/navigation.ts）。
    */
+  onPickerOpenChange(e: WechatMiniprogram.CustomEvent<{ open: boolean }>) {
+    this.setData({ pickerOpen: !!e.detail.open });
+  },
+
+  /** 系统级返回被 page-container 拦下：选择器开着就按层退（同 onEdgeBack），再把拦截器挂回去 */
+  onOverlayLeave() {
+    if (this.data.pickerOpen) this.onEdgeBack();
+    this.setData({ overlayPulse: true }, () => this.setData({ overlayPulse: false }));
+  },
+
   onEdgeBack() {
     const picker = this.selectComponent('#placePicker') as
       | (WechatMiniprogram.Component.TrivialInstance & { data: { open?: boolean; level?: string } })

@@ -167,11 +167,14 @@ Component<
 
     onOpen() {
       this.setData({ open: true });
+      // 页面要知道选择器开着没：系统返回（iOS 右滑）要先关它再退页，见 pages/repair-create
+      this.triggerEvent('openchange', { open: true });
       this.rebuild();
     },
 
     onClose() {
       this.setData({ open: false });
+      this.triggerEvent('openchange', { open: false });
     },
 
     onBack() {
@@ -258,6 +261,7 @@ Component<
         isPublicArea: !picked.houseId,
       } as PickedPlace);
       this.setData({ open: false, keyword: '', suggestions: [] });
+      this.triggerEvent('openchange', { open: false });
     },
 
     // ---------------- 提交 ----------------
@@ -282,6 +286,7 @@ Component<
         isPublicArea: !house && !opts.unknownRoom,
       } as PickedPlace);
       this.setData({ open: false, keyword: '', suggestions: [] });
+      this.triggerEvent('openchange', { open: false });
     },
   },
 });
