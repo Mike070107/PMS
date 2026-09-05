@@ -2282,3 +2282,12 @@
 - 自上次（3e0efdd）以来上线的相关提交：
   - 9e5761d feat(采购): 审批链可配置；申请单转采购单错误说人话；员工端按采购单入库
 
+## 2026-09-05 20:47 · miniapp-staff · 0cafd3d
+
+- 包：`1.0.20260905g`
+- 提交：0cafd3d docs(inbox): iOS 右滑按层退用 page-container 拦系统返回（9f20aca）
+- 说明：page-container 拦系统返回按层退，体验版待选
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（f073df2）以来上线的相关提交：
+  - 9f20aca fix(员工端): 用 page-container 拦系统级返回，iOS 右滑也按层退
+
