@@ -2409,3 +2409,12 @@
 - 自上次（349c51f）以来上线的相关提交：
   - 2a83577 fix(api): InventoryModule 补导入 NotificationsModule —— 控制器注入 NotificationsService 后 Nest 起不来，线上 502
 
+## 2026-09-06 06:57 · api · 94f889f
+
+- 包：`pms-api-20260906-0652.tar.gz`
+- 提交：94f889f fix(deploy): srv-deploy-api/web.sh 认包路径参数 —— 原来永远装 /tmp 最新的包，回滚时把坏包又装了一遍（2026-09-06 502 事故）
+- 说明：只改了 deploy/srv-deploy-api.sh（认参数），已 scp 到服务器 /tmp；线上包仍是 2a83577 那份
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（2a83577）以来上线的相关提交：
+  - 94f889f fix(deploy): srv-deploy-api/web.sh 认包路径参数 —— 原来永远装 /tmp 最新的包，回滚时把坏包又装了一遍（2026-09-06 502 事故）
+
