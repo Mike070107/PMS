@@ -2400,3 +2400,12 @@
 - ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
 - 自上次（76b3cc0）以来没有相关提交（重新部署）
 
+## 2026-09-06 06:53 · api · 2a83577
+
+- 包：`pms-api-20260906-0652.tar.gz`
+- 提交：2a83577 fix(api): InventoryModule 补导入 NotificationsModule —— 控制器注入 NotificationsService 后 Nest 起不来，线上 502
+- 说明：349c51f 那版 InventoryModule 缺 NotificationsModule，pm2 起不来 502 约 6 分钟，回滚到 2338 包后再上这版；脏文件是另一会话的 AI 改动
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（349c51f）以来上线的相关提交：
+  - 2a83577 fix(api): InventoryModule 补导入 NotificationsModule —— 控制器注入 NotificationsService 后 Nest 起不来，线上 502
+
