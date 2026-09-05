@@ -2382,3 +2382,13 @@
   - 349c51f chore: 还原 repairs.service.ts 的 CRLF 行尾（上一提交被编辑工具整文件改成 LF，实际只插了 3 行）；采购申请编辑层 sheet__body 补 border-box
   - a0f2c6c feat(消息/采购): 别处已处理过的站内信自动变已读；员工端可点开采购申请看详情、改明细、补照片
 
+## 2026-09-06 06:47 · miniapp-staff · 76b3cc0
+
+- 包：`--commit`
+- 提交：76b3cc0 deploy: api → 349c51f
+- 说明：采购申请详情/编辑页、审批卡详情入口；脏文件是另一会话的样式改动，从干净 worktree 上传
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（063497a）以来上线的相关提交：
+  - 349c51f chore: 还原 repairs.service.ts 的 CRLF 行尾（上一提交被编辑工具整文件改成 LF，实际只插了 3 行）；采购申请编辑层 sheet__body 补 border-box
+  - a0f2c6c feat(消息/采购): 别处已处理过的站内信自动变已读；员工端可点开采购申请看详情、改明细、补照片
+
