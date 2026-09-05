@@ -205,6 +205,21 @@ Page({
 
   // 退无可退时回 tab 页 + 左边缘右滑返回，见 utils/navigation.ts
   onBack() {
+    this.onEdgeBack();
+  },
+  /**
+   * 返回按层退：地址选择器开着就先在它里面退一级（房号 → 楼栋 → 小区），退到顶再关掉它；
+   * 选择器没开才退页面（2026-09-05 反馈，见 utils/navigation.ts）。
+   */
+  onEdgeBack() {
+    const picker = this.selectComponent('#placePicker') as
+      | (WechatMiniprogram.Component.TrivialInstance & { data: { open?: boolean; level?: string } })
+      | null;
+    if (picker?.data?.open) {
+      if (picker.data.level && picker.data.level !== 'community') picker.onBack();
+      else picker.onClose();
+      return;
+    }
     goBack();
   },
   ...swipeBackHandlers(),

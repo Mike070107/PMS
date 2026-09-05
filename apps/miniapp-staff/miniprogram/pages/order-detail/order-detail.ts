@@ -428,6 +428,22 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   // 从通知直接打开时页面栈只有这一页，navigateBack 无处可回；goBack 会退到该去的 tab 页。
   // 四个 onSwipeBack* 是「从左边缘往右滑」的返回手势（Android 没有系统手势），见 utils/navigation.ts
   onBack() {
+    this.onEdgeBack();
+  },
+  /**
+   * 返回按层退（2026-09-05 反馈：在材料库弹层里右滑直接退到了在手工单页）：
+   * 材料库弹层 → 添加用料 / 完工 / 备注 / 转单 / 撤回 / 作废面板 → 页面本身。
+   * 关面板不清草稿（和点「关闭」一样），再点开还在；只有完工提交成功才由业务代码跳回列表。
+   */
+  onEdgeBack() {
+    if (this.data.skuOpen) {
+      this.onCloseSku();
+      return;
+    }
+    if (this.data.panel) {
+      this.onClosePanel();
+      return;
+    }
     goBack();
   },
   ...swipeBackHandlers(),

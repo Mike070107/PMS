@@ -9,10 +9,15 @@
  * touch 事件自己判：起点贴左边缘、横向滑够、竖向没怎么动 → 返回。
  *
  * 用法（自定义导航的页面都这么接，别各写各的）：
- *   Page({ ...swipeBackHandlers(), onBack() { goBack(); } })
+ *   Page({ ...swipeBackHandlers(), onBack() { this.onEdgeBack(); }, onEdgeBack() { … } })
  *   <view class="page"
  *     bindtouchstart="onSwipeBackStart" bindtouchmove="onSwipeBackMove"
  *     bindtouchend="onSwipeBackEnd" bindtouchcancel="onSwipeBackCancel">
+ *
+ * **按层退，不是按页退**（2026-09-05 反馈）：工单详情 → 记录用料面板 → 材料库弹层，
+ * 这时右滑只该收掉材料库；再滑收面板；再滑才退页面。所以手势结束时先问页面有没有
+ * onEdgeBack —— 页面自己知道叠了几层弹层，先收最上面那层；一层都没开才 goBack()。
+ * 只有「完工提交成功」这类业务动作才直接跳回列表页，那是业务代码自己 navigateBack 的。
  */
 import { readCachedAccess } from './tabbar';
 
@@ -77,7 +82,9 @@ export function swipeBackHandlers() {
       // iOS 自带的右滑返回可能已经把这一页弹掉了：这时再退一次会多退一页
       const pages = getCurrentPages();
       if (pages[pages.length - 1] !== this) return;
-      goBack();
+      // 页面定义了 onEdgeBack 就按层退（先收弹层），否则直接退页面
+      if (typeof this.onEdgeBack === 'function') this.onEdgeBack();
+      else goBack();
     },
     onSwipeBackCancel(this: any) {
       this.__swipeBack = null;
