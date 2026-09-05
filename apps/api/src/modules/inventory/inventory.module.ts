@@ -18,6 +18,7 @@ import {
 } from '../../entities';
 import { UploadModule } from '../upload/upload.module';
 import { SettingsModule } from '../settings/settings.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
 
@@ -27,6 +28,9 @@ import { InventoryService } from './inventory.service';
     UploadModule,
     // 采购审批链配置（办公室 / 经理 / 采购 开关与阈值）
     SettingsModule,
+    // 控制器在操作成功后把指向这张单的站内信标已读（markReadByRef）。
+    // 2026-09-06 漏了这一行直接上线，Nest 起不来、线上 502 了几分钟 —— 加注入必看模块 imports。
+    NotificationsModule,
     TypeOrmModule.forFeature([
       Material,
       Warehouse,
