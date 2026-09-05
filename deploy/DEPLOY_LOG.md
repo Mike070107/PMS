@@ -2345,3 +2345,12 @@
 - 自上次（098b8f7）以来上线的相关提交：
   - 063497a feat(采购): 后台「新建采购申请」重做——先搜材料库再申购、可关联工单、填申请原因、就地并入待汇总申请直接提交审批；来源工单改成「看一眼」抽屉
 
+## 2026-09-05 23:43 · miniapp-staff · 063497a
+
+- 包：`1.0.20260905j`
+- 提交：063497a feat(采购): 后台「新建采购申请」重做——先搜材料库再申购、可关联工单、填申请原因、就地并入待汇总申请直接提交审批；来源工单改成「看一眼」抽屉
+- 说明：审批卡片显示申请原因；脏文件是另一会话的样式改动，从干净 worktree 上传
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（182dcbc）以来上线的相关提交：
+  - 063497a feat(采购): 后台「新建采购申请」重做——先搜材料库再申购、可关联工单、填申请原因、就地并入待汇总申请直接提交审批；来源工单改成「看一眼」抽屉
+
