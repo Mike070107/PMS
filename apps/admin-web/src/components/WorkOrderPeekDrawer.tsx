@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Descriptions, Drawer, Image, Space, Spin, Tag, Typography } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { WORK_ORDER_STATUS_LABELS, formatDateTimeCn } from '@pms/shared-types';
+import { REPAIR_TYPE_LABELS, WORK_ORDER_STATUS_LABELS, formatDateTimeCn } from '@pms/shared-types';
 import type { WorkOrderStatus } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { nameOr } from '../lib/displayName';
@@ -41,11 +41,14 @@ interface PeekWorkOrder {
 
 interface PeekDetail {
   workOrder: PeekWorkOrder;
+  /** 报修单原文：工单摘要为空时退回这里拿内容 / 类型 */
   request?: {
     addressText?: string | null;
     contactName?: string | null;
     contactPhone?: string | null;
+    content?: string | null;
     description?: string | null;
+    repairType?: string | null;
   } | null;
 }
 
@@ -83,8 +86,12 @@ export default function WorkOrderPeekDrawer({ workOrderId, onClose }: Props) {
   const photos = wo?.photos || [];
   const content = wo?.summaryContent
     || [wo?.faultLocation, wo?.faultSymptom].filter(Boolean).join(' · ')
+    || req?.content
     || req?.description
     || '';
+  // 详情接口不一定带中文类型名：先用后端给的，再查内置类型表，最后才露编码
+  const typeCode = wo?.repairType || req?.repairType || '';
+  const typeLabel = wo?.repairTypeLabel || (typeCode ? REPAIR_TYPE_LABELS[typeCode] || typeCode : '');
 
   return (
     <Drawer
@@ -121,7 +128,7 @@ export default function WorkOrderPeekDrawer({ workOrderId, onClose }: Props) {
             items={[
               { key: 'address', label: '地址', children: wo.summaryAddress || req?.addressText || <Text type="secondary">地址待补充</Text> },
               { key: 'content', label: '报修内容', children: content || <Text type="secondary">—</Text> },
-              { key: 'type', label: '报修类型', children: wo.repairTypeLabel || wo.repairType || '—' },
+              { key: 'type', label: '报修类型', children: typeLabel || '—' },
               { key: 'assignee', label: '维修工', children: wo.assigneeName || <Text type="secondary">未派单</Text> },
               {
                 key: 'contact',
