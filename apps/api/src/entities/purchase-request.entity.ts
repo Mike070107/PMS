@@ -29,6 +29,10 @@ export class PurchaseRequest extends TenantEntity {
     name: string;
     qty: number;
     unit?: string;
+    /** 型号 / 参数、备注、样本照片：从工单缺料行原样带过来（2026-09-05 申购新材料要能带图） */
+    spec?: string;
+    note?: string;
+    photoUrls?: string[];
     estUnitCostCents?: number;
     sourceRequestId?: number;
     sourceRequestNo?: string;

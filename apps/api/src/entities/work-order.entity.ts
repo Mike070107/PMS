@@ -97,6 +97,11 @@ export class WorkOrder extends TenantEntity {
     materialId?: number;
     warehouseId?: number;
     unit?: string;
+    /** 申购新材料（材料库里没有）时维修工填的型号 / 参数，办公室建档和采购都靠它 */
+    spec?: string;
+    note?: string;
+    /** 样本照片（最多 3 张）：拍下要买的那个东西，采购不用再打电话问长什么样 */
+    photoUrls?: string[];
   }>;
 
   /** 仅兼容旧版软删除；新版作废使用 status=voided，永久删除使用物理删除。 */

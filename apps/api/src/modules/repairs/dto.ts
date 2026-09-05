@@ -483,6 +483,25 @@ export class MissingMaterialDto {
   @MaxLength(20)
   unit?: string;
 
+  /** 型号 / 参数：申购材料库里没有的新材料时填，办公室建档、采购下单都靠它 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  spec?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  note?: string;
+
+  /** 样本照片，最多 3 张：拍下要买的那个东西，采购不用再打电话问长什么样 */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsString({ each: true })
+  @MaxLength(500, { each: true })
+  photoUrls?: string[];
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

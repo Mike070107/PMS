@@ -66,9 +66,11 @@ interface MaterialRow {
   warehouseName: string;
   /** 这一项的备注（「原件锈死一并换掉」），会原样印到养护单背面的备注格 */
   note: string;
-  /** 下面两个由 setMaterialRows 算好 —— wxml 里调不了函数 */
+  /** 下面几个由 setMaterialRows 算好 —— wxml 里调不了函数 */
   hintText: string;
   hintShort: boolean;
+  /** 这一行会进采购申请（无库存 / 不够 / 材料库里没有），卡片上打「申购」标 */
+  purchase: boolean;
 }
 
 /**
@@ -123,41 +125,52 @@ const emptyMaterialRow = (): MaterialRow => ({
   note: '',
   hintText: '',
   hintShort: false,
+  purchase: false,
 });
 
-/** 每行的库存提示：够 / 不够 / 仓里没有，直接写成一句话贴在行里 */
+/**
+ * 每行的库存提示：够 / 不够 / 材料库里没有，直接写成一句话贴在行里。
+ * 2026-09-05 Mike：库存为 0 或材料库里没有的，就是「加入采购申请」，话要说成这个，
+ * 不再说「走缺料登记」—— 维修工不知道那是同一件事。
+ */
 function decorateRow(row: MaterialRow): MaterialRow {
   const need = Number(row.qty) || 0;
   if (!row.materialId) {
     return row.name
-      ? { ...row, hintText: '仓库里没有这项，提报缺料后由办公室采购', hintShort: true }
-      : { ...row, hintText: '', hintShort: false };
+      ? { ...row, purchase: true, hintText: '材料库里没有 · 提交后作为新材料加入采购申请，办公室建档后关联', hintShort: true }
+      : { ...row, purchase: false, hintText: '', hintShort: false };
   }
   const warehouse = row.warehouseName || '所选仓库';
   if (row.stockQty <= 0) {
-    return { ...row, hintText: `${warehouse} · 无库存，需走缺料登记`, hintShort: true };
+    return { ...row, purchase: true, hintText: `${warehouse} · 库存 0 · 提交后加入采购申请`, hintShort: true };
   }
   if (need > row.stockQty) {
+    const short = Number((need - row.stockQty).toFixed(2));
     return {
       ...row,
-      hintText: `${warehouse} · 只剩 ${row.stockQty}${row.unit}，不够，需走缺料登记`,
+      purchase: true,
+      hintText: `${warehouse} · 只剩 ${row.stockQty}${row.unit}，缺 ${short}${row.unit} 加入采购申请`,
       hintShort: true,
     };
   }
-  return { ...row, hintText: `${warehouse} · 可用 ${row.stockQty}${row.unit}`, hintShort: false };
+  return { ...row, purchase: false, hintText: `${warehouse} · 可用 ${row.stockQty}${row.unit}`, hintShort: false };
 }
 
-/** 表单行 → 提交用的数组（去空行、数量转数字） */
+/** 表单行 → 提交用的数组（去空行、数量转数字）。name 是「名称 型号」拼好的展示名（养护单印它），plainName / spec 分开给采购申请 */
 function collectRows(rows: MaterialRow[]) {
   return rows
     .map((row) => ({
       materialId: row.materialId ?? undefined,
       name: [row.name.trim(), row.spec.trim()].filter(Boolean).join(' '),
+      plainName: row.name.trim(),
+      spec: row.spec.trim() || undefined,
       qty: Number(row.qty),
       unit: row.unit || undefined,
       stockQty: row.stockQty,
       warehouseId: row.warehouseId ?? undefined,
       note: row.note?.trim() || undefined,
+      // 样本照片只有申购新材料的手填行才有；SKU 行的 photoUrls 是材料库的图，不往采购申请里塞
+      photoUrls: row.materialId ? undefined : (row.photoUrls || []).filter(Boolean).slice(0, 3),
     }))
     .filter((row) => row.name);
 }
@@ -1185,9 +1198,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       hasStockUsage,
       materialActionText:
         hasStockUsage && hasShortage
-          ? '有库存记用料，没库存提报缺料'
+          ? `记录用料 + 申购 ${parts.missing.length} 项`
           : hasShortage
-            ? '提报缺料'
+            ? `提交申购 ${parts.missing.length} 项`
             : '记录用料',
       materialError: '',
     });
@@ -1195,12 +1208,13 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   onMaterialInput(e: WechatMiniprogram.Input) {
     const index = Number(e.currentTarget.dataset.index);
-    const field = e.currentTarget.dataset.field as 'name' | 'qty' | 'note';
+    const field = e.currentTarget.dataset.field as 'name' | 'qty' | 'note' | 'spec';
     const rows = this.data.materialRows.slice();
     rows[index] = { ...rows[index], [field]: e.detail.value };
-    // 名称一旦被手改，就不再是库存里那一项了：关联 id 必须跟着摘掉，
+    // 库存行的名称一旦被手改，就不再是库存里那一项了：关联 id 必须跟着摘掉，
     // 否则完工时按 id 扣的是另一样东西，而办公室看到的名字还是维修工写的这个。
-    if (field === 'name') {
+    // 申购新材料的手填行本来就没有 id，型号和样本照片是人填的，改名字不能清掉它们。
+    if (field === 'name' && rows[index].materialId) {
       rows[index].materialId = null;
       rows[index].spec = '';
       rows[index].unit = '';
@@ -1228,10 +1242,60 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.setMaterialRows(rows);
   },
 
-  /** 手填一行：仓库里根本没有这东西时用，只能走缺料登记 */
-  onAddMaterialRow() {
+  /** 申购新材料：材料库里根本没有这东西时手填一行，提交后作为新材料进采购申请 */
+  onAddMaterialRow(e?: WechatMiniprogram.BaseEvent) {
     if (this.data.materialRows.length >= 10) return;
-    this.setMaterialRows([...this.data.materialRows, emptyMaterialRow()]);
+    const name = String(e?.currentTarget?.dataset?.name || '').trim();
+    this.setMaterialRows([...this.data.materialRows, { ...emptyMaterialRow(), name }]);
+  },
+
+  /** 材料库里搜不到：从选料弹层直接带着搜索词新建一行申购，不用关掉再找按钮 */
+  onAddPurchaseFromSku(e: WechatMiniprogram.BaseEvent) {
+    this.setData({ skuOpen: false });
+    this.onAddMaterialRow(e);
+  },
+
+  /** 申购新材料的样本照片：拍下要买的那个东西，最多 3 张 */
+  async onChooseRowPhoto(e: WechatMiniprogram.BaseEvent) {
+    const index = Number(e.currentTarget.dataset.index);
+    const row = this.data.materialRows[index];
+    if (!row || row.materialId || this.data.uploading) return;
+    const have = (row.photoUrls || []).filter(Boolean);
+    if (have.length >= 3) return;
+    const res = await wx
+      .chooseMedia({
+        count: 3 - have.length,
+        mediaType: ['image'],
+        sourceType: ['camera', 'album'],
+        sizeType: ['compressed'],
+      })
+      .catch(() => null);
+    if (!res?.tempFiles?.length) return;
+    this.setData({ uploading: true, materialError: '' });
+    try {
+      const uploaded = await upload.uploadTempFiles(res.tempFiles.map((item) => item.tempFilePath));
+      const rows = this.data.materialRows.slice();
+      const current = rows[index];
+      if (!current) return;
+      const photoUrls = [...have, ...uploaded.map((item) => item.publicUrl)].slice(0, 3);
+      rows[index] = { ...current, photoUrls, photoUrl: photoUrls[0] || '' };
+      this.setMaterialRows(rows);
+    } catch (err: any) {
+      this.setData({ materialError: err?.message || '样本照片上传失败' });
+    } finally {
+      this.setData({ uploading: false });
+    }
+  },
+
+  onRemoveRowPhoto(e: WechatMiniprogram.BaseEvent) {
+    const index = Number(e.currentTarget.dataset.index);
+    const photoIndex = Number(e.currentTarget.dataset.photoIndex);
+    const rows = this.data.materialRows.slice();
+    const row = rows[index];
+    if (!row) return;
+    const photoUrls = (row.photoUrls || []).filter((_, i) => i !== photoIndex);
+    rows[index] = { ...row, photoUrls, photoUrl: photoUrls[0] || '' };
+    this.setMaterialRows(rows);
   },
 
   onRemoveMaterialRow(e: WechatMiniprogram.BaseEvent) {
@@ -1475,9 +1539,13 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         missingMaterials: shortage.map((row) => ({
           materialId: row.materialId,
           warehouseId: row.materialId ? row.warehouseId ?? undefined : undefined,
-          name: row.name,
+          // 申购行名称和型号分开给：办公室建档要分别落到 SKU 的名称和规格
+          name: row.materialId ? row.name : row.plainName,
+          spec: row.materialId ? undefined : row.spec,
           qty: row.qty,
           unit: row.unit,
+          note: row.note,
+          photoUrls: row.photoUrls,
         })),
         note: this.data.materialNote.trim() || undefined,
       });
@@ -1487,7 +1555,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       wx.setStorageSync('pms.staff.open_order', JSON.stringify({ mainTab: 'pool', status: 'waiting', orderNo }));
       wx.showModal({
         title: '已转等待材料',
-        content: `${orderNo || '该工单'}${used.length ? '的有库存用料已扣减，' : ''}缺料已生成采购申请。可在工单池的「等待材料」中找到。`,
+        content: `${orderNo || '该工单'}${used.length ? '的有库存用料已扣减，' : ''}申购的 ${shortage.length} 项已生成采购申请，办公室汇总后进入审批。可在工单池的「等待材料」中找到。`,
         showCancel: false,
         confirmText: '去看工单',
         success: () => wx.switchTab({ url: '/pages/pool/pool' }),

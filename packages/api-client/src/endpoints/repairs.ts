@@ -272,6 +272,11 @@ export interface MissingMaterialItem {
   name: string;
   qty: number;
   unit?: string;
+  /** 申购新材料（材料库里没有）时填的型号 / 参数 */
+  spec?: string;
+  note?: string;
+  /** 样本照片，最多 3 张 */
+  photoUrls?: string[];
 }
 
 /**

@@ -4146,6 +4146,9 @@ export class RepairsService implements OnModuleInit {
       name: string;
       qty: number;
       unit?: string;
+      spec?: string;
+      note?: string;
+      photoUrls?: string[];
       estUnitCostCents?: number;
     }>,
   ) {
@@ -4156,6 +4159,12 @@ export class RepairsService implements OnModuleInit {
         name: String(item.name ?? '').trim(),
         qty: Number(item.qty),
         unit: item.unit?.trim() || undefined,
+        // 申购新材料带的型号 / 备注 / 样本照片，原样进缺料清单和采购申请明细
+        spec: item.spec?.trim() || undefined,
+        note: item.note?.trim() || undefined,
+        photoUrls: Array.isArray(item.photoUrls)
+          ? item.photoUrls.filter((url) => typeof url === 'string' && url.trim()).slice(0, 3)
+          : undefined,
       }))
       .filter((item) => item.name && Number.isFinite(item.qty) && item.qty > 0);
     if (!normalized.length) {

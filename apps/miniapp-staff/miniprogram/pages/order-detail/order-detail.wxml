@@ -233,7 +233,7 @@
     </view>
 
     <view class="label {{issuedMaterials.length ? 'mt' : ''}}">本次新增<text class="label__opt">可连续添加多项</text></view>
-    <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加，下方选“仓库材料”或“库外/缺料”</view>
+    <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加。下方选「仓库材料」；材料库里没有的点「申购新材料」</view>
 
     <view class="mat-item" wx:for="{{materialRows}}" wx:key="index">
       <!-- 第一行：名称 + 规格。库存 SKU 固定展示，手填行仍允许输入名称。 -->
@@ -249,7 +249,20 @@
           bindinput="onMaterialInput"
         />
         <text wx:if="{{item.materialId && item.spec}}" class="mat-spec">{{item.spec}}</text>
+        <!-- 这一行会进采购申请：库存 0 / 不够 / 材料库里没有 -->
+        <text wx:if="{{item.purchase}}" class="mat-badge">申购</text>
         <view class="mat-del" data-index="{{index}}" bindtap="onRemoveMaterialRow">×</view>
+      </view>
+      <!-- 申购新材料：型号 / 参数单独一行，办公室建档时分别落到名称和规格 -->
+      <view wx:if="{{!item.materialId}}" class="mat-row">
+        <input
+          class="mat-name mat-spec-input"
+          placeholder="型号 / 参数（选填，如 86型 二线 白色）"
+          value="{{item.spec}}"
+          data-index="{{index}}"
+          data-field="spec"
+          bindinput="onMaterialInput"
+        />
       </view>
 
       <!-- 第二行：图片在左，数量/单位居中，「换一个」在右。 -->
@@ -263,6 +276,12 @@
           data-urls="{{item.photoUrls}}"
           catchtap="onPreviewSkuPhoto"
         />
+        <!-- 申购新材料：没图的位置就是「拍样本」入口，拍下要买的东西 -->
+        <view wx:elif="{{!item.materialId}}" class="mat-photo mat-photo--add" data-index="{{index}}" catchtap="onChooseRowPhoto">
+          <view class="mat-photo__camera"></view>
+          <text>{{uploading ? '上传中' : '拍样本'}}</text>
+          <text class="mat-photo__sub">最多 3 张</text>
+        </view>
         <view wx:else class="mat-photo mat-photo--empty">无图</view>
         <view class="mat-control">
           <text class="mat-qty-label">使用数量</text>
@@ -293,6 +312,15 @@
         </button>
       </view>
 
+      <!-- 申购新材料的样本照片条：可删可补，最多 3 张 -->
+      <view wx:if="{{!item.materialId && item.photoUrls.length}}" class="mat-samples">
+        <view wx:for="{{item.photoUrls}}" wx:for-item="url" wx:for-index="pi" wx:key="*this" class="mat-sample">
+          <image class="mat-sample__img" src="{{url}}" mode="aspectFill" data-url="{{url}}" data-urls="{{item.photoUrls}}" catchtap="onPreviewSkuPhoto"/>
+          <view class="mat-sample__remove" data-index="{{index}}" data-photo-index="{{pi}}" catchtap="onRemoveRowPhoto"><view class="icon icon--close"></view></view>
+        </view>
+        <view wx:if="{{item.photoUrls.length < 3}}" class="mat-sample mat-sample--add" data-index="{{index}}" catchtap="onChooseRowPhoto">＋</view>
+      </view>
+
       <!-- 用料备注：会原样印到养护单背面《材料领耗记录》的备注格 -->
       <view class="mat-row">
         <input
@@ -320,7 +348,7 @@
         <view class="btn__icon icon-action--box-blue"></view><text>+ 仓库材料</text>
       </button>
       <button class="btn btn--ghost" bindtap="onAddMaterialRow">
-        <view class="btn__icon icon-action--edit-blue"></view><text>+ 库外/缺料</text>
+        <view class="btn__icon icon-action--edit-blue"></view><text>+ 申购新材料</text>
       </button>
     </view>
     <view class="label mt">补充说明<text class="label__opt">选填</text></view>
@@ -496,7 +524,11 @@
 
       <block wx:if="{{skuWarehouseId}}">
         <view wx:if="{{!skuList.length}}" class="center muted sku-no-result">
-          {{skuKeyword ? '没有匹配的材料。关掉这里点「手填一项」，提报缺料后由办公室补进材料库。' : '默认只展示有库存的材料；输入名称可以搜索无库存 SKU 并提报缺料。'}}
+          <text>{{skuKeyword ? '材料库里没有匹配的材料' : '默认只展示有库存的材料；输入名称也能搜到库存为 0 的材料，选中后会加入采购申请'}}</text>
+          <!-- 搜不到就地申购：带着搜索词新建一行，不用关掉弹层再去找按钮 -->
+          <button wx:if="{{skuKeyword}}" class="btn btn--outline mt sku-purchase" data-name="{{skuKeyword}}" bindtap="onAddPurchaseFromSku">
+            <view class="btn__icon icon-action--edit-blue"></view><text>申购新材料「{{skuKeyword}}」</text>
+          </button>
         </view>
 
         <view
@@ -524,7 +556,7 @@
           </view>
           <!-- 有多少货是选料时最该看见的一列 -->
           <view class="sku__qty {{item.qty > 0 ? '' : 'sku__qty--none'}}">
-            {{item.qty > 0 ? item.qty + item.unit : '无货'}}
+            {{item.qty > 0 ? item.qty + item.unit : '无货 · 申购'}}
           </view>
         </view>
       </block>
