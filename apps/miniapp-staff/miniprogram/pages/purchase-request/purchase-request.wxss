@@ -39,3 +39,6 @@
 .pr-edit-row { display: flex; gap: 20rpx; }
 .pr-edit-row__qty { flex: 1 1 0; }
 .pr-edit-row__unit { flex: 1 1 0; }
+
+/* 全局 .sheet__body 是 width 100% + padding，不加 border-box 输入框会顶出右边（order-detail 同样补过） */
+.sheet__body { box-sizing: border-box; }
