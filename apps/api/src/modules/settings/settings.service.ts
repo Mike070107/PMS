@@ -209,6 +209,10 @@ export class SettingsService {
           model: dto.aiAssist.model?.trim() || current.model,
           apiKey: nextKey,
           timeoutMs: dto.aiAssist.timeoutMs ?? current.timeoutMs,
+          cacheDays: dto.aiAssist.cacheDays ?? current.cacheDays,
+          priceInputMissPerM: dto.aiAssist.priceInputMissPerM ?? current.priceInputMissPerM,
+          priceInputHitPerM: dto.aiAssist.priceInputHitPerM ?? current.priceInputHitPerM,
+          priceOutputPerM: dto.aiAssist.priceOutputPerM ?? current.priceOutputPerM,
         },
         user.id,
       );

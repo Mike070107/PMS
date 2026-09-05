@@ -532,11 +532,13 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       if (this.data.detected) this.setData({ detected: null });
       return;
     }
-    this.detectTimer = setTimeout(() => this.detectAddress(content), 400) as unknown as number;
+    // 停 1.2 秒再识别（原 400ms）：打字中途每停一下就调一次大模型太浪费（2026-09-05 查费用）
+    this.detectTimer = setTimeout(() => this.detectAddress(content), 1200) as unknown as number;
   },
 
   async detectAddress(content: string) {
-    const res = await detectRepairAddress(content, this.data.communityId ?? undefined);
+    // 打字的走省钱模式：规则先撞库，撞到楼栋/房号就不调大模型
+    const res = await detectRepairAddress(content, this.data.communityId ?? undefined, { lite: true });
     // 结果回来时文字可能已经变了，只认最新一次输入
     if (content !== this.data.content) return;
     if (!res) {

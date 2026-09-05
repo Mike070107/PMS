@@ -11,6 +11,8 @@ import { RepairTextAiService } from './repair-text.ai';
 import { LlmService } from './llm.service';
 import { AiFeedbackService } from './ai-feedback.service';
 import { RepairFeeRulesService } from './repair-fee-rules.service';
+import { AiUsageService } from './ai-usage.service';
+import { SettingsService } from '../settings/settings.service';
 
 /**
  * 「发送测试」用的入参：允许带上页面里**还没保存**的那几个值，
@@ -53,7 +55,18 @@ export class AiController {
     private readonly samples: ExtractSamplesService,
     private readonly feedback: AiFeedbackService,
     private readonly feeRules: RepairFeeRulesService,
+    private readonly usage: AiUsageService,
+    private readonly settings: SettingsService,
   ) {}
+
+  /** 本月用量：调用次数、token、两种缓存命中、估算费用（后台填了单价才有）。month=YYYY-MM，缺省当月 */
+  @Get('usage')
+  @RequirePermission('settings', 'view')
+  async usageSummary(@CurrentUser() user: AuthUser, @Query('month') month?: string) {
+    const tenantId = user.tenantId as number;
+    const cfg = await this.settings.getAiAssistRaw(tenantId);
+    return this.usage.summary(tenantId, month, cfg);
+  }
 
 
   /**

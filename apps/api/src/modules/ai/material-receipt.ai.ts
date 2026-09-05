@@ -154,6 +154,7 @@ export class MaterialReceiptAiService {
       `可选类别：${categories.join('、') || '（这家公司还没有类别，category 一律给空字符串）'}
 
 口述内容：${spoken}`,
+      { kind: 'material-profile', cacheable: true },
     );
     if (!answer) return null;
     return parseMaterialProfile(answer, categories);
@@ -163,7 +164,10 @@ export class MaterialReceiptAiService {
   async parse(tenantId: number, text: string): Promise<ReceiptMaterialMention[] | null> {
     const spoken = text.trim();
     if (!spoken) return [];
-    const answer = await this.llm.askJson<{ items?: unknown }>(tenantId, RECEIPT_PROMPT, spoken);
+    const answer = await this.llm.askJson<{ items?: unknown }>(tenantId, RECEIPT_PROMPT, spoken, {
+      kind: 'material-receipt',
+      cacheable: true,
+    });
     if (!answer) return null;
     return parseReceiptMentions(answer.items);
   }

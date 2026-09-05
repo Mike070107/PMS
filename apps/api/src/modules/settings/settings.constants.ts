@@ -135,6 +135,15 @@ export interface AiAssistSetting {
    * 宁可少整理一次，也不能因为模型慢就让人交不了单。
    */
   timeoutMs: number;
+  /**
+   * 结果缓存天数：同一份提示词 + 同一句话在这段时间内直接复用上次结果，不再打服务商。
+   * 0 = 关闭。默认 30 天（2026-09-05 为省费用加的，见 ai/ai-usage.service.ts）
+   */
+  cacheDays: number;
+  /** 单价，元 / 百万 token，三档：输入未命中缓存、输入命中缓存、输出。0 = 没填，不估算费用 */
+  priceInputMissPerM: number;
+  priceInputHitPerM: number;
+  priceOutputPerM: number;
 }
 
 export const DEFAULT_TENANT_SETTINGS: {
@@ -168,6 +177,10 @@ export const DEFAULT_TENANT_SETTINGS: {
     model: 'deepseek-v4-flash',
     apiKey: '',
     timeoutMs: 6000,
+    cacheDays: 30,
+    priceInputMissPerM: 0,
+    priceInputHitPerM: 0,
+    priceOutputPerM: 0,
   },
 };
 

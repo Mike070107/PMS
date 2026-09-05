@@ -240,17 +240,28 @@ export class RepairTextAiService {
             + `；系统辅助关键词=${JSON.stringify(item.keywords || [])}`
             + `；排除词=${JSON.stringify(item.negativeKeywords || [])}`,
           ),
-          keywordRepairType
-            ? `系统已先按物业配置关键词明确命中：${keywordRepairType}。repairType 必须采用这个编码；模型只负责整理其他字段。`
-            : '系统关键词未明确命中，请结合设备语义从上述类型中选择；不能确定就返回空字符串。',
         ].join('\n')
       : '本项目没有提供可用报修类型；repairType 返回空字符串。';
+    /**
+     * 关键词命中那一句每句话都不一样，必须放在提示词**最后**：DeepSeek 按前缀缓存输入 token，
+     * 前面的固定规则、类型清单、样例库完全相同就按折扣价计；原来这句夹在样例前面，
+     * 样例那一大段每次都按全价算（2026-09-05 查费用时发现）。
+     */
+    const keywordTail = repairTypes.length
+      ? keywordRepairType
+        ? `系统已先按物业配置关键词明确命中：${keywordRepairType}。repairType 必须采用这个编码；模型只负责整理其他字段。`
+        : '系统关键词未明确命中，请结合设备语义从上述类型中选择；不能确定就返回空字符串。'
+      : '';
     const system = await this.buildSystemPrompt(
       tenantId,
       `${tenantPrompt}\n\n${typeContext}`,
       'repair',
+      keywordTail,
     );
-    const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value);
+    const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value, {
+      kind: 'repair-parse',
+      cacheable: true,
+    });
     if (!raw) return null;
     const repairType = keywordRepairType || str(raw.repairType);
     return {
@@ -297,7 +308,10 @@ export class RepairTextAiService {
       `${COMPLETION_PROMPT}\n\n${feeContext}`,
       'completion',
     );
-    const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value);
+    const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value, {
+      kind: 'completion-summary',
+      cacheable: true,
+    });
     if (!raw) return null;
     return {
       actionNote: str(raw.actionNote),
@@ -311,7 +325,7 @@ export class RepairTextAiService {
   }
 
   /** 固定规则 + 样例库拼成的完整提示词。样例取不到就只用固定规则那半截 */
-  private async buildSystemPrompt(tenantId: number, base: string, kind: string): Promise<string> {
+  private async buildSystemPrompt(tenantId: number, base: string, kind: string, tail = ''): Promise<string> {
     let examples: string[] = [];
     try {
       const rows = await this.samples.forPrompt(tenantId, kind);
@@ -321,9 +335,12 @@ export class RepairTextAiService {
     } catch {
       // 样例是加分项，取不到就算了，别让识别整个失效
     }
-    if (!examples.length) return base;
-    const header = '下面是这家物业实际遇到过、并且已经确认过正确的例子，照着这个口径来：';
-    return [base, header, examples.join('\n\n')].join('\n\n');
+    const parts = examples.length
+      ? [base, '下面是这家物业实际遇到过、并且已经确认过正确的例子，照着这个口径来：', examples.join('\n\n')]
+      : [base];
+    // 每句话都不一样的部分（关键词命中提示）放最后，前面整段才能命中服务商的前缀缓存
+    if (tail) parts.push(tail);
+    return parts.join('\n\n');
   }
 }
 

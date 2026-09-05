@@ -8,6 +8,7 @@ import {
   MaxLength,
   Min,
   ValidateNested,
+  IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -105,6 +106,32 @@ class AiAssistDto {
   @Min(1000)
   @Max(30000)
   timeoutMs?: number;
+
+  /** 结果缓存天数，0 = 关闭 */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(3650)
+  cacheDays?: number;
+
+  /** 单价（元 / 百万 token），用来估算月账；0 = 不估算 */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100000)
+  priceInputMissPerM?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100000)
+  priceInputHitPerM?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100000)
+  priceOutputPerM?: number;
 }
 
 /** HH:mm，24 小时制 */

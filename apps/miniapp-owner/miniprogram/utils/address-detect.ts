@@ -33,9 +33,11 @@ export function shouldDetectAddress(text: string): boolean {
 export async function detectRepairAddress(
   text: string,
   communityId?: number,
+  /** lite：边打字边识别时传，服务端规则先撞库、撞到楼栋/房号就不调大模型（省费用） */
+  opts: { lite?: boolean } = {},
 ): Promise<ParsedRepairAddress | null> {
   try {
-    const res = await repairs.parseAddress({ text, communityId });
+    const res = await repairs.parseAddress({ text, communityId, lite: opts.lite });
     return res.matched || res.ai ? res : null;
   } catch {
     return null;

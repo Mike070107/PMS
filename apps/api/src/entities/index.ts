@@ -41,6 +41,8 @@ import { RepairTypeRule } from './repair-type-rule.entity';
 import { RepairTypeCorrection } from './repair-type-correction.entity';
 import { AiExtractSample } from './ai-extract-sample.entity';
 import { AiAssistFeedback } from './ai-assist-feedback.entity';
+import { AiUsageLog } from './ai-usage-log.entity';
+import { AiResultCache } from './ai-result-cache.entity';
 import { RepairFeeRule } from './repair-fee-rule.entity';
 import { WebLoginTicket } from './web-login-ticket.entity';
 import { FeeStandard } from './fee-standard.entity';
@@ -125,6 +127,8 @@ export const entities = [
   RepairTypeCorrection,
   AiExtractSample,
   AiAssistFeedback,
+  AiUsageLog,
+  AiResultCache,
   RepairFeeRule,
   WebLoginTicket,
   FeeStandard,
@@ -194,6 +198,8 @@ export {
   RepairTypeCorrection,
   AiExtractSample,
   AiAssistFeedback,
+  AiUsageLog,
+  AiResultCache,
   RepairFeeRule,
   WebLoginTicket,
   FeeStandard,

@@ -15,6 +15,7 @@ import { RightOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import AiSamplesPanel from '../components/AiSamplesPanel';
 import AiLearningPanel from '../components/AiLearningPanel';
+import AiUsagePanel from '../components/AiUsagePanel';
 import { request } from '../lib/api';
 import { usePagePerm } from '../lib/auth';
 
@@ -54,6 +55,12 @@ interface TenantSettings {
     model: string;
     apiKey: string;
     timeoutMs: number;
+    /** 结果缓存天数，0 = 关 */
+    cacheDays: number;
+    /** 单价（元 / 百万 token）：输入未命中缓存 / 输入命中缓存 / 输出，填了才估算费用 */
+    priceInputMissPerM: number;
+    priceInputHitPerM: number;
+    priceOutputPerM: number;
   };
 }
 
@@ -196,6 +203,10 @@ export default function SettingsPage() {
     model: 'deepseek-v4-flash',
     apiKey: '',
     timeoutMs: 6000,
+    cacheDays: 30,
+    priceInputMissPerM: 0,
+    priceInputHitPerM: 0,
+    priceOutputPerM: 0,
   });
   const [savingAi, setSavingAi] = useState(false);
   const [testingAi, setTestingAi] = useState(false);
@@ -230,6 +241,10 @@ export default function SettingsPage() {
         // 同上：脱敏串原样放回输入框，不动它就是不改
         apiKey: next.aiAssist?.apiKey ?? '',
         timeoutMs: next.aiAssist?.timeoutMs ?? 6000,
+        cacheDays: next.aiAssist?.cacheDays ?? 30,
+        priceInputMissPerM: next.aiAssist?.priceInputMissPerM ?? 0,
+        priceInputHitPerM: next.aiAssist?.priceInputHitPerM ?? 0,
+        priceOutputPerM: next.aiAssist?.priceOutputPerM ?? 0,
       });
     } catch (e: any) {
       message.error(e?.message || '加载设置失败');
@@ -403,6 +418,10 @@ export default function SettingsPage() {
         model: next.aiAssist?.model ?? '',
         apiKey: next.aiAssist?.apiKey ?? '',
         timeoutMs: next.aiAssist?.timeoutMs ?? 6000,
+        cacheDays: next.aiAssist?.cacheDays ?? 30,
+        priceInputMissPerM: next.aiAssist?.priceInputMissPerM ?? 0,
+        priceInputHitPerM: next.aiAssist?.priceInputHitPerM ?? 0,
+        priceOutputPerM: next.aiAssist?.priceOutputPerM ?? 0,
       });
       message.success('已保存');
     } catch (e: any) {
@@ -800,6 +819,51 @@ export default function SettingsPage() {
               <Text type="secondary">秒，超过就退回规则识别</Text>
             </Space>
           </div>
+          <div>
+            <Text strong>结果缓存</Text>
+            <Space>
+              <InputNumber
+                min={0}
+                max={3650}
+                value={ai.cacheDays}
+                onChange={(v) => setAi({ ...ai, cacheDays: Math.max(0, Math.round(v || 0)) })}
+                disabled={!canEdit}
+              />
+              <Text type="secondary">天内同一句话直接复用上次结果，不再调用服务商；0 = 关闭</Text>
+            </Space>
+          </div>
+          <div>
+            <Text strong>单价（元 / 百万 token，用来估算月账）</Text>
+            <Space wrap>
+              <InputNumber
+                min={0}
+                step={0.1}
+                value={ai.priceInputMissPerM}
+                onChange={(v) => setAi({ ...ai, priceInputMissPerM: Number(v) || 0 })}
+                disabled={!canEdit}
+                addonBefore="输入·未命中缓存"
+              />
+              <InputNumber
+                min={0}
+                step={0.1}
+                value={ai.priceInputHitPerM}
+                onChange={(v) => setAi({ ...ai, priceInputHitPerM: Number(v) || 0 })}
+                disabled={!canEdit}
+                addonBefore="输入·命中缓存"
+              />
+              <InputNumber
+                min={0}
+                step={0.1}
+                value={ai.priceOutputPerM}
+                onChange={(v) => setAi({ ...ai, priceOutputPerM: Number(v) || 0 })}
+                disabled={!canEdit}
+                addonBefore="输出"
+              />
+            </Space>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              照服务商官网价格页填，不填就只看 token 数不估钱。
+            </Text>
+          </div>
 
           {canEdit && (
             <Space wrap>
@@ -822,6 +886,7 @@ export default function SettingsPage() {
         </Space>
         <AiSamplesPanel canEdit={canEdit} />
         <AiLearningPanel canEdit={canEdit} />
+        <AiUsagePanel />
 
         <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 24, marginBottom: 0 }}>
           每次识别会调用一次模型，费用以服务商实时价格为准。报修原话可能包含住户姓名、电话和门牌，

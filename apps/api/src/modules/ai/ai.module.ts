@@ -1,6 +1,14 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AiAssistFeedback, AiExtractSample, Material, RepairFeeRule, WorkOrder } from '../../entities';
+import {
+  AiAssistFeedback,
+  AiExtractSample,
+  AiResultCache,
+  AiUsageLog,
+  Material,
+  RepairFeeRule,
+  WorkOrder,
+} from '../../entities';
 import { SettingsModule } from '../settings/settings.module';
 import { AiController } from './ai.controller';
 import { AiToolsController } from './ai-tools.controller';
@@ -11,6 +19,7 @@ import { LlmService } from './llm.service';
 import { RepairTextAiService } from './repair-text.ai';
 import { AiFeedbackService } from './ai-feedback.service';
 import { RepairFeeRulesService } from './repair-fee-rules.service';
+import { AiUsageService } from './ai-usage.service';
 
 /**
  * 大模型相关的东西都收在这里，别散到业务模块里去 ——
@@ -18,11 +27,20 @@ import { RepairFeeRulesService } from './repair-fee-rules.service';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AiExtractSample, AiAssistFeedback, Material, RepairFeeRule, WorkOrder]),
+    TypeOrmModule.forFeature([
+      AiExtractSample,
+      AiAssistFeedback,
+      AiUsageLog,
+      AiResultCache,
+      Material,
+      RepairFeeRule,
+      WorkOrder,
+    ]),
     SettingsModule,
   ],
   controllers: [AiController, AiToolsController, MaterialReceiptController],
   providers: [
+    AiUsageService,
     LlmService,
     RepairTextAiService,
     MaterialReceiptAiService,
@@ -31,6 +49,7 @@ import { RepairFeeRulesService } from './repair-fee-rules.service';
     RepairFeeRulesService,
   ],
   exports: [
+    AiUsageService,
     LlmService,
     RepairTextAiService,
     MaterialReceiptAiService,

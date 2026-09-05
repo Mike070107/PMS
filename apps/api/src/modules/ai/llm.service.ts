@@ -1,7 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import axios from 'axios';
 import { SettingsService } from '../settings/settings.service';
 import type { AiAssistSetting } from '../settings/settings.constants';
+import { AiUsageService, readUsage, type LlmUsage } from './ai-usage.service';
+
+/** askJson 的附加信息：kind 进用量台账；cacheable 的用途才查/写结果缓存 */
+export interface AskOptions {
+  kind?: string;
+  cacheable?: boolean;
+}
 
 /**
  * 大模型调用的唯一出口。
@@ -20,7 +27,11 @@ import type { AiAssistSetting } from '../settings/settings.constants';
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
 
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    // 可选：单测里 new LlmService(settings) 就够了；正式运行由 AiModule 注入，负责记账和结果缓存
+    @Optional() private readonly usage?: AiUsageService,
+  ) {}
 
   /** 配置齐了吗（开关开着 + 地址 + 模型 + key）。没配齐就别走 AI 那条路 */
   async isReady(tenantId: number): Promise<boolean> {
@@ -38,16 +49,46 @@ export class LlmService {
     tenantId: number,
     system: string,
     user: string,
+    opts: AskOptions = {},
   ): Promise<T | null> {
     const cfg = await this.settings.getAiAssistRaw(tenantId);
     if (!cfg.enabled || !cfg.baseUrl || !cfg.model || !cfg.apiKey) return null;
+    const kind = opts.kind || 'other';
+    /**
+     * 结果缓存（2026-09-05 省费用）：同一份提示词 + 同一句话，缓存天数内直接复用。
+     * key 里带完整系统提示词，样例/规则一变自然失效；temperature 本来就是 0，不改变行为。
+     */
+    const cacheDays = opts.cacheable ? Math.max(0, Number(cfg.cacheDays) || 0) : 0;
+    const keyHash = cacheDays > 0 && this.usage ? AiUsageService.cacheKey(cfg.model, system, user) : '';
+    const started = Date.now();
+    if (keyHash) {
+      const cached = await this.usage!.getCached(tenantId, keyHash);
+      if (cached) {
+        void this.usage!.record({ tenantId, kind, model: cfg.model, ok: true, cacheHit: true, latencyMs: Date.now() - started });
+        return cached as T;
+      }
+    }
     const raw = await this.chat(cfg, system, user);
+    const latencyMs = Date.now() - started;
     if (!raw.ok) {
       // 只记原文，不记 key。现场报「AI 没反应」时，这一行是唯一的线索
       this.logger.warn(`大模型调用失败（${cfg.baseUrl} ${cfg.model}）：${raw.error}`);
+      void this.usage?.record({ tenantId, kind, model: cfg.model, ok: false, latencyMs, error: raw.error });
       return null;
     }
-    return parseJsonLoose<T>(raw.content);
+    void this.usage?.record({ tenantId, kind, model: cfg.model, ok: true, usage: raw.usage, latencyMs });
+    const parsed = parseJsonLoose<T>(raw.content);
+    if (parsed && typeof parsed === 'object' && keyHash) {
+      void this.usage!.putCached({
+        tenantId,
+        kind,
+        keyHash,
+        model: cfg.model,
+        response: parsed as unknown as Record<string, unknown>,
+        days: cacheDays,
+      });
+    }
+    return parsed;
   }
 
   /**
@@ -77,7 +118,7 @@ export class LlmService {
     cfg: AiAssistSetting,
     system: string,
     user: string,
-  ): Promise<{ ok: true; content: string } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; content: string; usage: LlmUsage | null } | { ok: false; error: string }> {
     const url = `${cfg.baseUrl.replace(/\/+$/, '')}/v1/chat/completions`;
     const deepSeek = /(^|\.)deepseek\.com(?=\/|$)/i.test(
       cfg.baseUrl.replace(/^https?:\/\//i, '').split('/')[0],
@@ -115,7 +156,8 @@ export class LlmService {
       if (typeof content !== 'string' || !content.trim()) {
         return { ok: false, error: `返回里没有 choices[0].message.content：${JSON.stringify(res.data).slice(0, 200)}` };
       }
-      return { ok: true, content };
+      // usage 里有本次的 token 数；DeepSeek 还会多给 prompt_cache_hit_tokens（前缀缓存命中）
+      return { ok: true, content, usage: readUsage(res.data?.usage) };
     } catch (err: any) {
       // 服务商的报错正文最有用（余额不足、key 无效、模型不存在都在这儿）
       const body = err?.response?.data;

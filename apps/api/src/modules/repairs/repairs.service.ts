@@ -5610,10 +5610,26 @@ export class RepairsService implements OnModuleInit {
       dto.communityId ?? null,
       access,
     );
-    const [ai, byRule] = await Promise.all([
-      repairTypes.then((types) => this.repairTextAi.parse(tenantId, dto.text, types)),
-      this.parseAddressByRule(dto, user, access),
-    ]);
+    const rank = (level?: string) =>
+      level === 'house' ? 3 : level === 'building' ? 2 : level === 'community' ? 1 : 0;
+    let ai: Awaited<ReturnType<RepairTextAiService['parse']>> = null;
+    let byRule: Awaited<ReturnType<RepairsService['parseAddressByRule']>>;
+    if (dto.lite) {
+      /**
+       * 省钱模式（填表报修边打字边识别）：规则先撞库，撞到楼栋或房号就不调模型 ——
+       * 打字的人自己在写描述，用不着模型整理；只有地址没撞上或只到小区才请模型圈地址。
+       * 2026-09-05 查费用：这个接口占大模型调用的八成多，大头是打字每停顿一次就调一次。
+       */
+      byRule = await this.parseAddressByRule(dto, user, access);
+      if (!byRule.matched || rank(byRule.level) <= 1) {
+        ai = await this.repairTextAi.parse(tenantId, dto.text, await repairTypes);
+      }
+    } else {
+      [ai, byRule] = await Promise.all([
+        repairTypes.then((types) => this.repairTextAi.parse(tenantId, dto.text, types)),
+        this.parseAddressByRule(dto, user, access),
+      ]);
+    }
     let result = byRule;
     /**
      * 什么时候拿模型圈的那一段再撞一次：规则没撞上，**或者只撞到小区级**。
@@ -5624,8 +5640,6 @@ export class RepairsService implements OnModuleInit {
      * 那一段再走一遍规则就能定位到房号。
      * 重试只做一次，而且**只有撞出更细的粒度才采用** —— 撞不上或更粗就保持原判。
      */
-    const rank = (level?: string) =>
-      level === 'house' ? 3 : level === 'building' ? 2 : level === 'community' ? 1 : 0;
     if (
       (!result.matched || rank(result.level) <= 1) &&
       ai?.addressText &&

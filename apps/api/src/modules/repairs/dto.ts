@@ -148,6 +148,15 @@ export class ParseRepairAddressDto {
   @Type(() => Number)
   @IsInt()
   communityId?: number;
+
+  /**
+   * lite = 填表报修边打字边识别用：先按规则撞库，撞到楼栋/房号就不再调大模型；
+   * 撞不上或只到小区才调。语音报修不传，规则和模型并行（模型顺带整理描述、联系人）。
+   * 2026-09-05 查费用：parse-address 占大模型调用的八成多，大头就是打字每停顿一次触发一次。
+   */
+  @IsOptional()
+  @IsBoolean()
+  lite?: boolean;
 }
 
 /** 设定/取消工单的要求完成截止时间；不传 slaDueAt = 取消 */

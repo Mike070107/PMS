@@ -52,11 +52,14 @@ export class ExtractSamplesService {
   /** 拼提示词用：启用的、最近更新的若干条 */
   async forPrompt(tenantId: number, kind = 'repair'): Promise<AiExtractSample[]> {
     await this.ensureSeeded(tenantId, kind);
-    return this.repo.find({
+    const rows = await this.repo.find({
       where: { tenantId, kind, enabled: true },
       order: { updatedAt: 'DESC' },
       take: ExtractSamplesService.SAMPLE_LIMIT,
     });
+    // 进提示词前按 id 排稳：只是改了一下某条的备注，不该把顺序打乱 ——
+    // 顺序一变，DeepSeek 的前缀缓存整段失效（2026-09-05 查费用时定的）
+    return rows.sort((a, b) => a.id - b.id);
   }
 
   /**

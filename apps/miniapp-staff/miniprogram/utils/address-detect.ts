@@ -33,9 +33,11 @@ export function shouldDetectAddress(text: string): boolean {
 export async function detectRepairAddress(
   text: string,
   communityId?: number,
+  /** lite：边打字边识别时传，服务端规则先撞库、撞到楼栋/房号就不调大模型（省费用） */
+  opts: { lite?: boolean } = {},
 ): Promise<ParsedRepairAddress | null> {
   try {
-    const res = await repairs.parseAddress({ text, communityId });
+    const res = await repairs.parseAddress({ text, communityId, lite: opts.lite });
     // 地址没撞上库时也要把结果带回去 —— 后台开了 AI 辅助识别的话，
     // res.ai 里还有整理好的故障描述和联系人，那部分不依赖撞库。
     // 调用方自己看 matched 决定要不要显示地址（见 quick-repair 的 refreshFound）

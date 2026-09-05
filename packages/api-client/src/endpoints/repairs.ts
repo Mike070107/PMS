@@ -135,7 +135,8 @@ export function buildRepairAiAssist(sourceText: string, parsed?: ParsedRepairAdd
  * 从报修描述里识别地址（「一期24号302」→ 库里真实的楼栋/房号）。
  * 服务端只认撞上真实楼栋/房号的候选，端上拿到 matched=true 才展示。
  */
-export const parseAddress = (data: { text: string; communityId?: number }) =>
+/** lite：填表报修边打字边识别用，服务端规则先撞库、撞到楼栋/房号就不调大模型（省费用） */
+export const parseAddress = (data: { text: string; communityId?: number; lite?: boolean }) =>
   request<ParsedRepairAddress>({
     method: 'POST',
     url: '/repair-requests/parse-address',
