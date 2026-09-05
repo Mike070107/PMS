@@ -2209,3 +2209,12 @@
 - 自上次（60e93cc）以来上线的相关提交：
   - 0565115 fix(员工端): 边缘右滑和返回箭头按层退 —— 先收弹层，再退页面
 
+## 2026-09-05 17:49 · api · 4cb418f
+
+- 包：`pms-api-20260905-1747.tar.gz`
+- 提交：4cb418f docs(inbox): 采购流程重设计 A 步已完成（fe787a5）
+- 说明：缺料行/采购明细加型号备注样本照片
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（60e93cc）以来上线的相关提交：
+  - fe787a5 feat(员工端): 用料面板改成「申购」口径 —— 库存 0 直接加入采购申请，搜不到可申购新材料带样本照片
+
