@@ -1014,6 +1014,8 @@ export interface PurchaseRequestView {
   purchaserId: number | null;
   purchaserAt: string | null;
   rejectReason?: string | null;
+  /** 申请原因（办公室手工建单时填；工单缺料申请没有，原因就是那张工单） */
+  reason?: string | null;
   createdAt: string;
 }
 

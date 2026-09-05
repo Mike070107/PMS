@@ -69,4 +69,8 @@ export class PurchaseRequest extends TenantEntity {
 
   @Column({ name: 'reject_reason', type: 'varchar', length: 255, nullable: true })
   rejectReason: string | null;
+
+  /** 申请原因：办公室手工建单时填（为什么买、用在哪、急不急）；工单缺料申请为空，原因就是那张工单 */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  reason: string | null;
 }

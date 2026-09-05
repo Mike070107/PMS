@@ -1459,39 +1459,116 @@ export class InventoryService {
     });
   }
 
-  /** 办公室手工新建采购申请（直接进入办公室汇总环节，可继续合并或提交经理） */
-  createManualPurchaseRequest(dto: CreatePurchaseRequestDto, user: AuthUser) {
+  /**
+   * 办公室手工新建采购申请（2026-09-05 Mike：按小程序用料面板那套口径重做）。
+   * - 明细行两种：材料库里选的 SKU，或搜不到就「申购新材料」—— 只要名称，型号 / 样本照片 / 备注选填；
+   * - 可带 mergeRequestIds：把维修工还在「办公室汇总」的申请一起并进来合成一张（以第一张为主单，
+   *   新填的材料追加进去），不用先建一张再回列表勾选合并两步走；
+   * - 只勾了申请、没填材料 = 纯合并，至少两张。
+   * 建好 / 合好的单仍在办公室汇总环节，可以继续改名称、型号、照片，确认后再提交。
+   */
+  createManualPurchaseRequest(dto: CreatePurchaseRequestDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
-    if (!dto.items?.length) throw new BadRequestException('items is required');
+    const lines = (dto.items || []).filter((item) => item.materialId || item.name?.trim());
+    const mergeIds = Array.from(new Set(dto.mergeRequestIds || []));
+    if (!lines.length && mergeIds.length < 2) {
+      throw new BadRequestException('至少添加一种材料，或勾选两张以上待汇总的申请一起合并');
+    }
+    const total = (items: PurchaseRequest['items']) =>
+      items.reduce((sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty, 0);
     return this.dataSource.transaction(async (manager) => {
-      await this.ensureMaterials(manager, tenantId, dto.items.map((item) => item.materialId));
-      const materials = await manager.find(Material, {
-        where: { tenantId, id: In(dto.items.map((item) => item.materialId)) },
+      const skuIds = lines
+        .map((item) => item.materialId)
+        .filter((id): id is number => typeof id === 'number' && id > 0);
+      if (skuIds.length) await this.ensureMaterials(manager, tenantId, skuIds);
+      const materials = skuIds.length
+        ? await manager.find(Material, { where: { tenantId, id: In(skuIds) } })
+        : [];
+      const materialById = new Map(materials.map((m) => [m.id, m]));
+      // 关联工单选填：有就校验是本公司的，审批的人能从申请点回工单
+      const workOrder = dto.workOrderId
+        ? await manager.findOne(WorkOrder, {
+            where: { tenantId, id: dto.workOrderId },
+            select: ['id', 'orderNo'],
+          })
+        : null;
+      if (dto.workOrderId && !workOrder) throw new NotFoundException('关联的工单不存在');
+      const reason = dto.reason?.trim() || null;
+      const newLines: PurchaseRequest['items'] = lines.map((item) => {
+        const material = item.materialId ? materialById.get(item.materialId) : undefined;
+        // 照片两种行都收：SKU 行拍的是坏件 / 现场，帮采购认货；新材料行是样本照
+        const photoUrls = (item.photoUrls || [])
+          .filter((url) => typeof url === 'string' && url.trim())
+          .slice(0, 3);
+        return {
+          materialId: material?.id,
+          name: material ? this.materialLabel(material) : String(item.name ?? '').trim(),
+          unit: material?.unit || item.unit?.trim() || undefined,
+          spec: material ? undefined : item.spec?.trim() || undefined,
+          note: item.note?.trim() || undefined,
+          photoUrls: photoUrls.length ? photoUrls : undefined,
+          qty: item.qty,
+          estUnitCostCents: item.estUnitCostCents ?? 0,
+        };
       });
-      const nameById = new Map(materials.map((m) => [m.id, this.materialLabel(m)]));
+
+      if (mergeIds.length) {
+        const requests: PurchaseRequest[] = [];
+        for (const id of mergeIds) {
+          const req = await this.lockPurchaseRequest(manager, id, tenantId);
+          await this.assertPurchaseRequestVisible(tenantId, req, user, access);
+          if (req.status !== PurchaseRequestStatus.OFFICE_REVIEW) {
+            throw new BadRequestException(`申请 ${req.requestNo} 不在办公室汇总环节，不能并入`);
+          }
+          requests.push(req);
+        }
+        const officeIds = new Set(
+          await Promise.all(
+            requests.map(async (request) =>
+              (await this.purchaseRequestOfficeId(tenantId, request)) ?? 'company',
+            ),
+          ),
+        );
+        if (officeIds.size > 1) {
+          throw new BadRequestException('不同管理处的采购申请不能合并到同一张');
+        }
+        const primary = requests[0];
+        primary.items = [
+          ...this.foldRequestLines(requests),
+          // 办公室补的材料挂在主单名下；来源工单 = 弹窗里选的那张（多半没有）
+          ...newLines.map((line, index) => ({
+            ...line,
+            lineId: `${primary.id}-office-${Date.now()}-${index + 1}`,
+            sourceRequestId: primary.id,
+            sourceRequestNo: primary.requestNo,
+            sourceWorkOrderId: workOrder?.id ?? null,
+          })),
+        ];
+        primary.estTotalCents = total(primary.items);
+        primary.rejectReason = null;
+        if (reason) primary.reason = reason;
+        primary.updatedBy = user.id;
+        for (const req of requests.slice(1)) {
+          req.status = PurchaseRequestStatus.MERGED;
+          req.rejectReason = `已合并进 ${primary.requestNo}`;
+          req.updatedBy = user.id;
+          await manager.save(PurchaseRequest, req);
+        }
+        return manager.save(PurchaseRequest, primary);
+      }
+
       const request = await manager.save(
         PurchaseRequest,
         manager.create(PurchaseRequest, {
           tenantId,
           requestNo: await nextPurchaseRequestNo(manager, tenantId),
-          workOrderId: null,
+          workOrderId: workOrder?.id ?? null,
           applicantId: user.id,
-          items: dto.items.map((item) => ({
-            materialId: item.materialId,
-            name: nameById.get(item.materialId) ?? '未知材料',
-            qty: item.qty,
-            estUnitCostCents: item.estUnitCostCents ?? 0,
-          })),
-          estTotalCents: dto.items.reduce(
-            (sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty,
-            0,
-          ),
+          reason,
+          items: newLines,
+          estTotalCents: total(newLines),
           // 初始环节按后台「采购审批链」算：办公室环节关了就直接进经理 / 采购 / 通过
-          status: nextPurchaseStatus(
-            await this.purchaseFlowSetting(tenantId),
-            'create',
-            dto.items.reduce((sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty, 0),
-          ),
+          status: nextPurchaseStatus(await this.purchaseFlowSetting(tenantId), 'create', total(newLines)),
           createdBy: user.id,
           updatedBy: user.id,
         }),
@@ -1499,6 +1576,24 @@ export class InventoryService {
       await this.notifyPendingStep(manager, tenantId, request, user.id);
       return request;
     });
+  }
+
+  /**
+   * 把若干张申请的明细摊成一张：每行保留来源申请 / 来源工单，不按 SKU 合行 ——
+   * 审批时要能单项驳回、能点回工单。合并 / 汇总提交 / 手工建单并入三处共用。
+   */
+  private foldRequestLines(requests: PurchaseRequest[]): PurchaseRequest['items'] {
+    return requests.flatMap((req) =>
+      (req.items || []).map((item, index) => ({
+        ...item,
+        lineId: item.lineId || `${req.id}-${index + 1}`,
+        sourceRequestId: item.sourceRequestId ?? req.id,
+        sourceRequestNo: item.sourceRequestNo || req.requestNo,
+        sourceWorkOrderId: item.sourceWorkOrderId ?? req.workOrderId,
+        rejectReason: undefined,
+        rejectedAtStage: undefined,
+      })),
+    );
   }
 
   /** 后台「采购审批链」配置 */
@@ -1558,18 +1653,7 @@ export class InventoryService {
         throw new BadRequestException('不同管理处的采购申请不能合并到同一张');
       }
       const primary = requests[0];
-      // 每行保留来源申请 / 来源工单，不按 SKU 合行 —— 审批时要能单项驳回、能点回工单
-      primary.items = requests.flatMap((req) =>
-        (req.items || []).map((item, index) => ({
-          ...item,
-          lineId: item.lineId || `${req.id}-${index + 1}`,
-          sourceRequestId: item.sourceRequestId ?? req.id,
-          sourceRequestNo: item.sourceRequestNo || req.requestNo,
-          sourceWorkOrderId: item.sourceWorkOrderId ?? req.workOrderId,
-          rejectReason: undefined,
-          rejectedAtStage: undefined,
-        })),
-      );
+      primary.items = this.foldRequestLines(requests);
       primary.estTotalCents = primary.items.reduce(
         (sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty,
         0,
@@ -1620,17 +1704,7 @@ export class InventoryService {
       // 不再把同 SKU 合成一行：每行要保留来源工单，才能单项驳回。
       const primary = requests[0];
       if (requests.length > 1) {
-        primary.items = requests.flatMap((req) =>
-          (req.items || []).map((item, index) => ({
-            ...item,
-            lineId: item.lineId || `${req.id}-${index + 1}`,
-            sourceRequestId: item.sourceRequestId ?? req.id,
-            sourceRequestNo: item.sourceRequestNo || req.requestNo,
-            sourceWorkOrderId: item.sourceWorkOrderId ?? req.workOrderId,
-            rejectReason: undefined,
-            rejectedAtStage: undefined,
-          })),
-        );
+        primary.items = this.foldRequestLines(requests);
         primary.estTotalCents = primary.items.reduce(
           (sum, item) => sum + (item.estUnitCostCents ?? 0) * item.qty,
           0,

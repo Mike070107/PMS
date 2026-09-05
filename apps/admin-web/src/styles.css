@@ -3382,3 +3382,6 @@ h2.ant-typography {
   .pms-assign-step__head { grid-template-columns: 32px minmax(0, 1fr); }
   .pms-assign-step__head > .ant-tag { grid-column: 2; width: max-content; margin-inline-end: 0; }
 }
+
+/* 受控表单（不用 antd Form.Item）里的可见字段标签：新建采购申请弹窗等。和 Form.Item label 同一档字号颜色 */
+.pms-field-label { display: block; margin-bottom: 6px; color: rgba(0, 0, 0, 0.72); font-size: 13px; line-height: 1.5; }

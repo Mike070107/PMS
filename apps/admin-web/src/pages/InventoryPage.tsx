@@ -43,7 +43,6 @@ import {
   UploadOutlined,
 } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import UnitSelect from '../components/UnitSelect';
 import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumnPrefs';
 import { formatDateTimeCn } from '@pms/shared-types';
@@ -55,6 +54,8 @@ import { useTableSeq } from '../components/tableSeqColumn';
 import { nameOr, unknown } from '../lib/displayName';
 import { compressImageFile } from '../lib/compressImage';
 import StocktakePanel from '../components/StocktakePanel';
+import PurchaseRequestCreateModal from '../components/PurchaseRequestCreateModal';
+import WorkOrderPeekDrawer from '../components/WorkOrderPeekDrawer';
 import { DetailHero, DetailMetrics, DetailSection } from '../components/DetailPrimitives';
 import {
   MATERIAL_PHOTO_LIMIT,
@@ -181,6 +182,8 @@ interface PurchaseRequestRow {
   purchaserId?: number | null;
   purchaserAt?: string | null;
   rejectReason?: string | null;
+  /** 申请原因：办公室手工建单时填的；工单缺料申请没有 */
+  reason?: string | null;
   createdAt?: string;
 }
 
@@ -381,6 +384,8 @@ export default function InventoryPage() {
   const [editRequestTarget, setEditRequestTarget] = useState<PurchaseRequestRow | null>(null);
   const [requestDetail, setRequestDetail] = useState<PurchaseRequestRow | null>(null);
   const [manualRequestOpen, setManualRequestOpen] = useState(false);
+  /** 「看一眼」抽屉里打开的工单 */
+  const [peekWorkOrderId, setPeekWorkOrderId] = useState<number | null>(null);
   const [selectedRequestKeys, setSelectedRequestKeys] = useState<number[]>([]);
   const [requestFilter, setRequestFilter] = useState<RequestFilterKey>('all');
   const [editingStock, setEditingStock] = useState<StockRow | null>(null);
@@ -402,7 +407,6 @@ export default function InventoryPage() {
   const [rejectForm] = Form.useForm();
   const [itemRejectForm] = Form.useForm();
   const [editRequestForm] = Form.useForm();
-  const [manualRequestForm] = Form.useForm();
   const [stockForm] = Form.useForm();
 
   /** 新建/编辑 SKU 的类别下拉：只列启用中的（停用的选不到，但老材料照常显示） */
@@ -415,7 +419,6 @@ export default function InventoryPage() {
   const categoryOrder = useMemo(() => materialCategories.map((item) => item.label), [materialCategories]);
 
   const materialById = useMemo(() => new Map(materials.map((item) => [item.id, item])), [materials]);
-  const navigate = useNavigate();
   /** 来源工单号可点：直达工单管理并打开那张单（2026-09-05 Mike 要求申请单上能点进工单） */
   const sourceOrderLinks = (
     items: Array<{ sourceWorkOrderId?: number | null; sourceWorkOrderNo?: string | null }> | undefined,
@@ -431,7 +434,7 @@ export default function InventoryPage() {
     return (
       <Space size={4} wrap>
         {[...seen].map(([id, no]) => (
-          <a key={id} onClick={(e) => { e.stopPropagation(); navigate(`/work-orders?id=${id}`); }}>{no}</a>
+          <a key={id} title="看一眼这张工单（不跳走）" onClick={(e) => { e.stopPropagation(); setPeekWorkOrderId(id); }}>{no}</a>
         ))}
       </Space>
     );
@@ -645,6 +648,13 @@ export default function InventoryPage() {
   const filteredPurchaseRequests = requestFilter === 'all'
     ? purchaseRequests
     : purchaseRequests.filter((row) => row.status === requestFilter);
+
+  /** 还在「办公室汇总」的张数：列表默认「全部」页签看不到勾选框，靠这个数字把人引到汇总页 */
+  const pendingOfficeCount = requestCounts.get(PurchaseRequestStatus.OFFICE_REVIEW) || 0;
+  const pendingOfficeRequests = useMemo(
+    () => purchaseRequests.filter((row) => row.status === PurchaseRequestStatus.OFFICE_REVIEW),
+    [purchaseRequests],
+  );
 
   const requestFilterItems = requestFilterOrder.map((key) => ({
     key,
@@ -863,40 +873,26 @@ export default function InventoryPage() {
     }
   };
 
-  const openManualRequest = () => {
-    manualRequestForm.resetFields();
-    manualRequestForm.setFieldsValue({ items: [{}] });
-    setManualRequestOpen(true);
-  };
-
-  const submitManualRequest = async () => {
-    const values = await manualRequestForm.validateFields();
-    const items = (values.items || []).filter((item: any) => item?.materialId && item?.qty);
-    if (!items.length) {
-      message.warning('请至少添加一种材料');
-      return;
-    }
-    setSaving(true);
-    try {
-      await request({
-        method: 'POST',
-        url: '/purchase-requests',
-        data: {
-          items: items.map((item: any) => ({
-            materialId: item.materialId,
-            qty: item.qty,
-            estUnitCostCents: item.estUnitCostYuan != null ? Math.round(item.estUnitCostYuan * 100) : 0,
-          })),
-        },
-      });
-      message.success('采购申请已创建（进入办公室汇总）');
-      setManualRequestOpen(false);
-      await loadAll();
-    } catch (e: any) {
-      message.error(e?.message || '创建失败');
-    } finally {
-      setSaving(false);
-    }
+  /** 「新建采购申请」保存成功：刷新并切到「办公室汇总」页签，人接着改名称 / 型号 / 照片、再提交 */
+  const onManualRequestCreated = async (result: {
+    id: number;
+    requestNo: string;
+    merged: boolean;
+    submitted: boolean;
+    status: PurchaseRequestStatus;
+  }) => {
+    setManualRequestOpen(false);
+    const stage = requestStatusMeta[result.status]?.label || result.status;
+    message.success(
+      result.submitted
+        ? `${result.requestNo} 已提交，当前在「${stage}」`
+        : result.merged
+          ? `已合成 ${result.requestNo}，在「${stage}」里点开可继续改明细，确认后再提交`
+          : `${result.requestNo} 已保存到「${stage}」，确认后再提交`,
+    );
+    setRequestFilter(result.status);
+    setSelectedRequestKeys(result.status === PurchaseRequestStatus.OFFICE_REVIEW ? [result.id] : []);
+    await loadAll();
   };
 
   const submitReject = async () => {
@@ -1301,7 +1297,13 @@ export default function InventoryPage() {
         <Space>
           <Button icon={<ReloadOutlined />} loading={loading} onClick={loadAll}>刷新</Button>
           {canEdit && <Button icon={<InboxOutlined />} onClick={openGeneralReceipt}>一般入库</Button>}
-          {canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => openPurchaseOrder()}>新建采购单</Button>}
+          {/* 「采购申请」要审批，「采购单」是已经向供应商下的单。直接下单不走审批，只给公司级采购用（受限账号服务端也会拒） */}
+          {canEdit && companyWide && (
+            <Tooltip title="不走审批，直接向供应商下单：采购部零星采买、补库存用。维修缺料请走「采购申请」，审批通过后再转采购单。">
+              <Button icon={<ShoppingCartOutlined />} onClick={() => openPurchaseOrder()}>直接下采购单</Button>
+            </Tooltip>
+          )}
+          {canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setManualRequestOpen(true)}>新建采购申请</Button>}
         </Space>
       </Space>
 
@@ -1387,7 +1389,7 @@ export default function InventoryPage() {
                 title="采购申请单"
                 extra={
                   <Space>
-                    {canEdit && <Button icon={<PlusOutlined />} onClick={openManualRequest}>新建采购申请</Button>}
+                    {canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setManualRequestOpen(true)}>新建采购申请</Button>}
                     <Button onClick={loadAll} icon={<ReloadOutlined />}>刷新</Button>
                   </Space>
                 }
@@ -1399,6 +1401,21 @@ export default function InventoryPage() {
                   items={requestFilterItems}
                   style={{ marginBottom: 12 }}
                 />
+                {/* 默认「全部」页签没有勾选框，Mike 找不到合并入口（2026-09-05）：有待汇总的就把路指出来 */}
+                {canEdit && requestFilter !== PurchaseRequestStatus.OFFICE_REVIEW && pendingOfficeCount > 0 && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message={`${pendingOfficeCount} 张申请在等办公室汇总`}
+                    description="维修工在工单里提的缺料、办公室手工建的申请都先到这里。到「办公室汇总」页签勾选合并成一张、改好名称 / 型号 / 照片，再提交审批；也可以在「新建采购申请」里边加材料边把它们并进来。"
+                    action={
+                      <Button type="primary" onClick={() => { setRequestFilter(PurchaseRequestStatus.OFFICE_REVIEW); setSelectedRequestKeys([]); }}>
+                        去汇总
+                      </Button>
+                    }
+                  />
+                )}
                 {requestFilter === PurchaseRequestStatus.OFFICE_REVIEW && (
                   <Alert
                     type="info"
@@ -1493,7 +1510,20 @@ export default function InventoryPage() {
             key: 'orders',
             label: <span><ShoppingCartOutlined /> 采购单与入库</span>,
             children: (
-              <Card title="采购单" extra={canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => openPurchaseOrder()}>新建采购单</Button>}>
+              <Card
+                title="采购单"
+                extra={canEdit && companyWide && (
+                  <Tooltip title="不走审批，直接向供应商下单：采购部零星采买、补库存用。维修缺料请走「采购申请」，审批通过后再转采购单。">
+                    <Button icon={<ShoppingCartOutlined />} onClick={() => openPurchaseOrder()}>直接下采购单（不走审批）</Button>
+                  </Tooltip>
+                )}
+              >
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message="采购单 = 已经向供应商下的订单，记供应商、金额、到货入库。正常由「采购申请」审批通过后点「转采购单」生成；「直接下采购单」不走审批，只给采购部零星采买、补库存用。"
+                />
                 <Table
                   rowKey="id"
                   loading={loading}
@@ -1898,6 +1928,7 @@ export default function InventoryPage() {
               tags={<Tag color={requestStatusMeta[requestDetail.status]?.color}>{requestStatusMeta[requestDetail.status]?.label || requestDetail.status}</Tag>}
               meta={<>
                 <span><strong>申请人</strong>{nameOr(requestDetail.applicantName, '申请人')}</span>
+                {requestDetail.reason && <span><strong>申请原因</strong>{requestDetail.reason}</span>}
                 <span><strong>创建时间</strong>{formatDateTime(requestDetail.createdAt)}</span>
                 <span><strong>材料种类</strong>{requestDetail.items?.length || 0} 种</span>
               </>}
@@ -2162,34 +2193,16 @@ export default function InventoryPage() {
           </Form.Item>
         </Form>
       </Modal>
-      <Modal
-        title="新建采购申请"
+      <PurchaseRequestCreateModal
         open={manualRequestOpen}
-        onCancel={() => setManualRequestOpen(false)}
-        onOk={submitManualRequest}
-        confirmLoading={saving}
-        width={720}
-        destroyOnHidden
-      >
-        <Alert type="info" showIcon style={{ marginBottom: 12 }} message="办公室手工新建的采购申请进入「办公室汇总」环节，可与维修工缺料申请一起合并后提交经理。材料从 SKU 库选择。" />
-        <Form form={manualRequestForm} layout="vertical" initialValues={{ items: [{}] }}>
-          <Form.List name="items">
-            {(fields, { add, remove }) => (
-              <Space direction="vertical" style={{ width: '100%' }}>
-                {fields.map((field) => (
-                  <Row key={field.key} gutter={8} align="middle">
-                    <Col span={13}><Form.Item name={[field.name, 'materialId']} rules={[{ required: true, message: '请选择材料' }]} noStyle><Select {...searchableExtraWideSelectProps} placeholder="材料" options={materialOptions} /></Form.Item></Col>
-                    <Col span={5}><Form.Item name={[field.name, 'qty']} rules={[{ required: true, message: '数量' }]} noStyle><InputNumber min={0.01} placeholder="数量" style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={5}><Form.Item name={[field.name, 'estUnitCostYuan']} noStyle><InputNumber min={0} precision={2} placeholder="预估单价" style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={1}><Button danger size="small" onClick={() => remove(field.name)}>删</Button></Col>
-                  </Row>
-                ))}
-                <Button type="dashed" block onClick={() => add({})}>+ 增加材料</Button>
-              </Space>
-            )}
-          </Form.List>
-        </Form>
-      </Modal>
+        materials={materials}
+        stocks={stocks}
+        warehouses={warehouses}
+        pendingRequests={pendingOfficeRequests}
+        onClose={() => setManualRequestOpen(false)}
+        onCreated={onManualRequestCreated}
+      />
+      <WorkOrderPeekDrawer workOrderId={peekWorkOrderId} onClose={() => setPeekWorkOrderId(null)} />
       <Modal
         title={editingStock
           ? `编辑库存：${materialDisplayName(materialById.get(editingStock.materialId)) || unknown('材料')} · ${nameOr(warehouseById.get(editingStock.warehouseId)?.name, '仓库')}`

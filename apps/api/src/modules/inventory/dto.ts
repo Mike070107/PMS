@@ -384,10 +384,41 @@ export class PurchaseRequestQueryDto extends TenantQueryDto {
   status?: string;
 }
 
+/**
+ * 办公室手工建单的一行：材料库里选的 SKU（materialId），或搜不到就「申购新材料」（只填 name，
+ * 型号 / 照片 / 备注都选填 —— 和小程序用料面板同一套口径，2026-09-05）。
+ */
 export class ManualPurchaseItemDto {
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
-  materialId: number;
+  materialId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  unit?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  spec?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  note?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsString({ each: true })
+  photoUrls?: string[];
 
   @Type(() => Number)
   @IsPositive()
@@ -406,11 +437,29 @@ export class CreatePurchaseRequestDto {
   @IsInt()
   tenantId?: number;
 
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => ManualPurchaseItemDto)
-  items: ManualPurchaseItemDto[];
+  items?: ManualPurchaseItemDto[];
+
+  /** 一起并进来的「办公室汇总」申请：合成一张（以第一张为主单），新填的材料追加进去 */
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  mergeRequestIds?: number[];
+
+  /** 选填：关联的工单。办公室建单大多没有工单（补库存、公区耗材），有就挂上，审批的人能点回去看 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  workOrderId?: number;
+
+  /** 申请原因：为什么买、用在哪、急不急。审批的人先看这个 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
 }
 
 export class SubmitToManagerDto {

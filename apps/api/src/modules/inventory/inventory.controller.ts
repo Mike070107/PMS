@@ -273,8 +273,9 @@ export class InventoryController {
   createManualPurchaseRequest(
     @Body() dto: CreatePurchaseRequestDto,
     @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.inventoryService.createManualPurchaseRequest(dto, user);
+    return this.inventoryService.createManualPurchaseRequest(dto, user, access);
   }
 
   // ---------- 采购审批链：保留业务身份把关 ----------
