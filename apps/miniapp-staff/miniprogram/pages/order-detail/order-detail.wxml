@@ -237,7 +237,7 @@
     </view>
 
     <view class="label {{issuedMaterials.length ? 'mt' : ''}}">本次新增<text class="label__opt">可连续添加多项</text></view>
-    <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加。下方选「仓库材料」；材料库里没有的点「申购新材料」</view>
+    <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加。点下方「添加材料」先在材料库里搜：有库存直接领，没库存选中就进采购申请，搜不到再申购新材料</view>
 
     <view class="mat-item" wx:for="{{materialRows}}" wx:key="index">
       <!-- 第一行：名称 + 规格。库存 SKU 固定展示，手填行仍允许输入名称。 -->
@@ -256,6 +256,14 @@
         <!-- 这一行会进采购申请：库存 0 / 不够 / 材料库里没有 -->
         <text wx:if="{{item.purchase}}" class="mat-badge">申购</text>
         <view class="mat-del" data-index="{{index}}" bindtap="onRemoveMaterialRow">×</view>
+      </view>
+      <!-- 手填名称时在材料库里自动匹配：有现成 SKU 就点一下直接用，不用再填型号拍照 -->
+      <view wx:if="{{!item.materialId && item.suggestions.length}}" class="mat-suggest">
+        <text class="mat-suggest__label">材料库里有，点一下直接用：</text>
+        <view wx:for="{{item.suggestions}}" wx:for-item="s" wx:for-index="si" wx:key="materialId" class="mat-suggest__item" data-index="{{index}}" data-material-id="{{s.materialId}}" catchtap="onUseSuggestion">
+          <text class="mat-suggest__name">{{s.name}}{{s.spec ? ' · ' + s.spec : ''}}</text>
+          <text class="mat-suggest__qty {{s.qty > 0 ? '' : 'mat-suggest__qty--none'}}">{{s.qty > 0 ? '库存 ' + s.qty + s.unit : '无货 · 申购'}}</text>
+        </view>
       </view>
       <!-- 申购新材料：型号 / 参数单独一行，办公室建档时分别落到名称和规格 -->
       <view wx:if="{{!item.materialId}}" class="mat-row">
@@ -284,7 +292,7 @@
         <view wx:elif="{{!item.materialId}}" class="mat-photo mat-photo--add" data-index="{{index}}" catchtap="onChooseRowPhoto">
           <view class="mat-photo__camera"></view>
           <text>{{uploading ? '上传中' : '拍样本'}}</text>
-          <text class="mat-photo__sub">最多 3 张</text>
+          <text class="mat-photo__sub">选填 · 最多 3 张</text>
         </view>
         <view wx:else class="mat-photo mat-photo--empty">无图</view>
         <view class="mat-control">
@@ -347,12 +355,11 @@
 
     </view>
 
+    <!-- 一个入口（2026-09-05 Mike）：要申购的人不会先去查库存、查 SKU，原来两个按钮他直接点「申购新材料」，
+         材料库里明明有的东西又让他填型号拍照。现在统一先搜材料库（有货没货都搜得到），搜不到再申购。 -->
     <view class="btn-row mt">
-      <button class="btn btn--outline" bindtap="onOpenSku">
-        <view class="btn__icon icon-action--box-blue"></view><text>+ 仓库材料</text>
-      </button>
-      <button class="btn btn--ghost" bindtap="onAddMaterialRow">
-        <view class="btn__icon icon-action--edit-blue"></view><text>+ 申购新材料</text>
+      <button class="btn btn--primary" bindtap="onOpenSku">
+        <view class="btn__icon icon-action--plus-white"></view><text>添加材料</text>
       </button>
     </view>
     <view class="label mt">补充说明<text class="label__opt">选填</text></view>
@@ -528,7 +535,7 @@
 
       <block wx:if="{{skuWarehouseId}}">
         <view wx:if="{{!skuList.length}}" class="center muted sku-no-result">
-          <text>{{skuKeyword ? '材料库里没有匹配的材料' : '默认只展示有库存的材料；输入名称也能搜到库存为 0 的材料，选中后会加入采购申请'}}</text>
+          <text>{{skuKeyword ? '材料库里没有匹配的材料' : '先搜一下：有库存的直接领；库存 0 的选中就进采购申请；搜不到再申购新材料'}}</text>
           <!-- 搜不到就地申购：带着搜索词新建一行，不用关掉弹层再去找按钮 -->
           <button wx:if="{{skuKeyword}}" class="btn btn--outline mt sku-purchase" data-name="{{skuKeyword}}" bindtap="onAddPurchaseFromSku">
             <view class="btn__icon icon-action--edit-blue"></view><text>申购新材料「{{skuKeyword}}」</text>
@@ -565,12 +572,21 @@
         </view>
       </block>
 
+      <!-- 搜到了但都不是要的：不用关掉弹层再找按钮，就地申购 -->
+      <view wx:if="{{skuWarehouseId && skuKeyword && skuList.length}}" class="sku-footer">
+        <text>列表里没有要的？</text>
+        <text class="sku-footer__link" data-name="{{skuKeyword}}" bindtap="onAddPurchaseFromSku">申购新材料「{{skuKeyword}}」</text>
+      </view>
+
       <button
         wx:if="{{!skuWarehouseId}}"
         class="btn btn--outline mt"
         bindtap="onSwitchWarehouse"
         disabled="{{!warehouses.length}}"
       ><view class="btn__icon icon-action--box-blue"></view><text>选仓库</text></button>
+      <view wx:if="{{!skuWarehouseId}}" class="sku-footer">
+        <text class="sku-footer__link" bindtap="onAddPurchaseFromSku">不选仓库，直接申购新材料</text>
+      </view>
     </block>
   </scroll-view>
 </view>

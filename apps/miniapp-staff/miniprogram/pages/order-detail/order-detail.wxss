@@ -855,3 +855,15 @@ page { background: #f1f6fb; }
   font-size: 44rpx;
 }
 .sku-purchase { width: auto !important; margin: 20rpx auto 0 !important; }
+
+/* ---- 手填名称时的材料库候选（2026-09-05：要申购的人不会先查库存，系统替他查） ---- */
+.mat-suggest { margin-top: 12rpx; padding: 14rpx 18rpx; border-radius: 18rpx; background: rgba(255, 255, 255, .7); }
+.mat-suggest__label { display: block; margin-bottom: 6rpx; color: var(--color-text-secondary); font-size: var(--font-sm); }
+.mat-suggest__item { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; min-height: 76rpx; padding: 8rpx 0; border-top: 2rpx solid rgba(49, 95, 155, .12); }
+.mat-suggest__item:first-of-type { border-top: 0; }
+.mat-suggest__name { flex: 1; min-width: 0; color: var(--color-brand); font-size: var(--font-md); font-weight: 600; line-height: 1.4; }
+.mat-suggest__qty { flex-shrink: 0; color: var(--color-text-secondary); font-size: var(--font-sm); }
+.mat-suggest__qty--none { color: #ad6800; }
+/* 选料弹层底部：搜到了但都不是要的 / 没选仓库，也能就地申购 */
+.sku-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12rpx; padding: 28rpx 24rpx 40rpx; color: var(--color-text-secondary); font-size: var(--font-md); }
+.sku-footer__link { min-height: 72rpx; display: inline-flex; align-items: center; padding: 0 24rpx; border: 2rpx solid #9ebbd5; border-radius: 999rpx; color: var(--color-brand); font-weight: 600; }

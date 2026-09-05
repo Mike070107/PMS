@@ -71,6 +71,16 @@ interface MaterialRow {
   hintShort: boolean;
   /** 这一行会进采购申请（无库存 / 不够 / 材料库里没有），卡片上打「申购」标 */
   purchase: boolean;
+  /** 手填名称时从材料库匹配到的候选（最多 3 条），点一下直接换成 SKU 行 */
+  suggestions: SkuSuggestion[];
+}
+
+interface SkuSuggestion {
+  materialId: number;
+  name: string;
+  spec: string;
+  unit: string;
+  qty: number;
 }
 
 /**
@@ -126,6 +136,7 @@ const emptyMaterialRow = (): MaterialRow => ({
   hintText: '',
   hintShort: false,
   purchase: false,
+  suggestions: [],
 });
 
 /**
@@ -137,7 +148,7 @@ function decorateRow(row: MaterialRow): MaterialRow {
   const need = Number(row.qty) || 0;
   if (!row.materialId) {
     return row.name
-      ? { ...row, purchase: true, hintText: '材料库里没有 · 提交后作为新材料加入采购申请，办公室建档后关联', hintShort: true }
+      ? { ...row, purchase: true, hintText: '材料库里没有 · 提交后进采购申请；没实物可以不拍照，办公室后台补图建档', hintShort: true }
       : { ...row, purchase: false, hintText: '', hintShort: false };
   }
   const warehouse = row.warehouseName || '所选仓库';
@@ -1229,6 +1240,19 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     // 库存行的名称一旦被手改，就不再是库存里那一项了：关联 id 必须跟着摘掉，
     // 否则完工时按 id 扣的是另一样东西，而办公室看到的名字还是维修工写的这个。
     // 申购新材料的手填行本来就没有 id，型号和样本照片是人填的，改名字不能清掉它们。
+    if (field === 'name' && !rows[index].materialId) {
+      rows[index] = { ...rows[index], suggestions: this.suggestSkus(e.detail.value) };
+      // 材料库还没拉过（没点开过选料弹层）就拉一次，回来再算一遍候选
+      if (!this.allSkus.length && !this.data.skuLoading) {
+        void this.loadSkus().then(() => {
+          const current = this.data.materialRows[index];
+          if (!current || current.materialId) return;
+          const next = this.data.materialRows.slice();
+          next[index] = { ...current, suggestions: this.suggestSkus(current.name) };
+          this.setMaterialRows(next);
+        });
+      }
+    }
     if (field === 'name' && rows[index].materialId) {
       rows[index].materialId = null;
       rows[index].spec = '';
@@ -1254,6 +1278,55 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     // 小数是从材料库带出来的（0.5 米这种），步进只加整数，不把小数抹掉
     const next = Math.min(MAX_QTY, Math.max(1, Number((base + step).toFixed(2))));
     rows[index] = { ...rows[index], qty: String(next) };
+    this.setMaterialRows(rows);
+  },
+
+  /** 手填名称 → 材料库候选（名称 / 规格 / 编码 / 别名都匹配），有货的排前面，最多 3 条 */
+  suggestSkus(name: string): SkuSuggestion[] {
+    const kw = (name || '').trim().toLowerCase();
+    if (kw.length < 1) return [];
+    return (this.allSkus as WorkOrderStockOption[])
+      .filter((item) =>
+        [item.name, item.spec, item.code, ...(item.aliases || [])]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(kw),
+      )
+      .sort((a, b) => (b.qty > 0 ? 1 : 0) - (a.qty > 0 ? 1 : 0) || compareStockOptionName(a, b))
+      .slice(0, 3)
+      .map((item) => ({
+        materialId: item.materialId,
+        name: item.name,
+        spec: item.spec || '',
+        unit: item.unit,
+        qty: item.qty,
+      }));
+  },
+
+  /** 点候选：这一行换成材料库里那条 SKU（数量、备注保留），不用再填型号拍照 */
+  onUseSuggestion(e: WechatMiniprogram.BaseEvent) {
+    const index = Number(e.currentTarget.dataset.index);
+    const materialId = Number(e.currentTarget.dataset.materialId);
+    const sku = (this.allSkus as WorkOrderStockOption[]).find((item) => item.materialId === materialId);
+    const rows = this.data.materialRows.slice();
+    const row = rows[index];
+    if (!sku || !row) return;
+    rows[index] = {
+      ...emptyMaterialRow(),
+      materialId: sku.materialId,
+      name: sku.name,
+      spec: sku.spec || '',
+      unit: sku.unit,
+      photoUrl: sku.photoUrl || '',
+      photoUrls: (sku.photoUrls && sku.photoUrls.length ? sku.photoUrls : [sku.photoUrl || '']).filter(Boolean),
+      code: sku.code,
+      stockQty: sku.qty,
+      warehouseId: this.warehouseId,
+      warehouseName: this.data.warehouseName,
+      qty: row.qty,
+      note: row.note,
+    };
     this.setMaterialRows(rows);
   },
 
