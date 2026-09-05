@@ -2309,3 +2309,12 @@
 - 自上次（f073df2）以来上线的相关提交：
   - 766b97c feat(采购): 办公室可先合并多张申请再编辑（照片/型号/备注）再提交；申请明细表不再溢出
 
+## 2026-09-05 22:02 · miniapp-staff · 098b8f7
+
+- 包：`1.0.20260905h`
+- 提交：098b8f7 docs(inbox): 办公室合并后编辑再提交、明细表溢出已修（766b97c）
+- 说明：待汇总合并成一张，体验版待选
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（0cafd3d）以来上线的相关提交：
+  - 766b97c feat(采购): 办公室可先合并多张申请再编辑（照片/型号/备注）再提交；申请明细表不再溢出
+
