@@ -1168,10 +1168,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         });
         impacts.push('原完工内容会保留为草稿，重新提交完工时才会再次扣库');
       }
-      const rejects = (preview.purchaseRequests || []).filter((item) => item.willReject);
-      if (rejects.length) {
-        impacts.push(`采购申请 ${rejects.map((item) => item.requestNo).join('、')} 将同步驳回`);
-      }
+      // 采购申请按三档处理（整单驳回 / 只划掉本工单的行 / 不动），话由后端写好；老接口只有 willReject
+      (preview.purchaseRequests || [])
+        .filter((item) => (item.effect ? item.effect !== 'none' : item.willReject))
+        .forEach((item) => impacts.push(item.note || `采购申请 ${item.requestNo} 将同步驳回`));
       if (preview.maintenanceOrder?.willVoid) impacts.push('关联的草稿养护单将同步作废');
       if (preview.reviewWillReverse) {
         impacts.push('原验收评价将失效（不再计入评分统计），历史记录仍可查看');

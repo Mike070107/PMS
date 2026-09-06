@@ -155,7 +155,7 @@ interface PurchaseRequestItem {
   sourceWorkOrderId?: number | null;
   sourceWorkOrderNo?: string | null;
   rejectReason?: string;
-  rejectedAtStage?: 'manager' | 'purchaser';
+  rejectedAtStage?: 'manager' | 'purchaser' | 'rollback';
 }
 
 interface PurchaseRequestRow {

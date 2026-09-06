@@ -149,6 +149,7 @@ import {
 } from './work-order-state-machine';
 import { nextPurchaseRequestNo } from '../inventory/purchase-request-no.util';
 import { nextPurchaseStatus, pendingStepFor } from '../inventory/purchase-flow';
+import { planPurchaseRollback, type PurchaseRollbackEffect } from './rollback-purchase';
 import {
   DEFAULT_REPAIR_TYPES,
   LEGACY_REPAIR_TYPE_MAP,
@@ -193,7 +194,13 @@ export interface RollbackPlan {
     id: number;
     requestNo: string;
     status: PurchaseRequestStatus;
+    /** 兼容老端：= effect === 'reject' */
     willReject: boolean;
+    /** 三档处理（见 rollback-purchase.ts）：整单驳回 / 只划掉本工单的行 / 不动 / 无需处理 */
+    effect: PurchaseRollbackEffect;
+    lineIds: string[];
+    notifyStage: boolean;
+    note: string;
   }>;
   maintenanceOrder: { id: number; willVoid: boolean } | null;
   reviewWillReverse: boolean;
@@ -2827,31 +2834,19 @@ export class RepairsService implements OnModuleInit {
       }
     }
 
-    // ---- 撤回缺料：同步处理该工单**全部**还在流程里的采购申请 ----
+    // ---- 撤回缺料：该工单牵连的采购申请按阶段分三档处理（不再整单拦住，见 rollback-purchase.ts）----
     if (sourceLog.action === 'need_material') {
       const requests = await this.findWorkOrderPurchaseRequests(manager, tenantId, workOrder.id);
-      const handleable = [
-        PurchaseRequestStatus.DRAFT,
-        PurchaseRequestStatus.OFFICE_REVIEW,
-        PurchaseRequestStatus.REJECTED,
-      ];
-      const blocking = requests.filter((request) => !handleable.includes(request.status));
-      plan.purchaseRequests = requests.map((request) => ({
-        id: request.id,
-        requestNo: request.requestNo,
-        status: request.status,
-        willReject:
-          request.status === PurchaseRequestStatus.DRAFT ||
-          request.status === PurchaseRequestStatus.OFFICE_REVIEW,
+      plan.purchaseRequests = planPurchaseRollback(workOrder.id, requests).map((decision) => ({
+        id: decision.id,
+        requestNo: decision.requestNo,
+        status: decision.status,
+        willReject: decision.effect === 'reject',
+        effect: decision.effect,
+        lineIds: decision.lineIds,
+        notifyStage: decision.notifyStage,
+        note: decision.note,
       }));
-      if (blocking.length) {
-        return {
-          ...plan,
-          blockedReason: `采购申请 ${blocking
-            .map((request) => request.requestNo)
-            .join('、')} 已经进入经理审批、合并或采购环节，请先处理采购申请后再撤回`,
-        };
-      }
     }
 
     // ---- 撤回验收：原评价转为已失效，但永久保留 ----
@@ -2893,6 +2888,61 @@ export class RepairsService implements OnModuleInit {
   }
 
   /** 该工单发起的采购申请：直接挂在工单上的，以及被合并进别的申请单里的行 */
+  /**
+   * 撤回缺料后给采购申请**当前环节**的人一句提醒：划掉了几行 / 整单驳回了 / 已批准的请在下单前处理。
+   * 收件人 = 有该环节权限、且管得到这张工单所在管理处的人 —— 和缺料登记时通知办公室那段同一口径。
+   * 在事务里写站内信记录；撤回事务回滚时它也一起回滚，不会发出「假提醒」。
+   */
+  private async notifyPurchaseStageAfterRollback(
+    manager: EntityManager,
+    tenantId: number,
+    request: PurchaseRequest,
+    workOrder: WorkOrder,
+    title: string,
+    operatorId: number,
+  ): Promise<void> {
+    const step = pendingStepFor(request.status) ?? {
+      pageKey: 'app:dispatch',
+      action: 'edit' as const,
+      eventKey: 'purchase_pending_office',
+      title: '',
+    };
+    const userIds = await this.accessService.userIdsWithPermission(tenantId, step.pageKey, step.action);
+    if (!userIds.length) return;
+    const officeId = await this.accessService.officeIdOfCommunity(tenantId, workOrder.communityId);
+    const coverage = await this.accessService.filterUsersCoveringOffice(tenantId, userIds, officeId);
+    const scopedIds = userIds.filter((id) => coverage.has(id));
+    if (!scopedIds.length) return;
+    const receivers = await manager.find(User, {
+      where: { id: In(scopedIds), tenantId, status: UserStatus.ACTIVE },
+      select: ['id'],
+    });
+    if (!receivers.length) return;
+    await manager.save(
+      Notification,
+      receivers.map((receiver) =>
+        manager.create(Notification, {
+          tenantId,
+          receiverId: receiver.id,
+          channel: NotifyChannel.IN_APP,
+          eventKey: 'purchase_request_changed',
+          title,
+          payload: {
+            purchaseRequestId: request.id,
+            requestNo: request.requestNo,
+            workOrderId: workOrder.id,
+            orderNo: workOrder.orderNo,
+            page: 'pages/approvals/approvals',
+          },
+          status: NotifyStatus.SENT,
+          readAt: null,
+          createdBy: operatorId,
+          updatedBy: operatorId,
+        }),
+      ),
+    );
+  }
+
   private async findWorkOrderPurchaseRequests(
     manager: EntityManager,
     tenantId: number,
@@ -3155,24 +3205,86 @@ export class RepairsService implements OnModuleInit {
         notes.push('原草稿养护单已同步作废');
       }
 
-      // 2) 撤回缺料：把还在低阶段的采购申请一起驳回，并关掉它们的待办通知
+      // 2) 撤回缺料：采购申请按预览里算好的三档落库（整单驳回 / 只划掉本工单的行 / 不动），
+      //    当前环节的人收一句提醒；预览和这里用的是同一份判定
       if (sourceLog.action === 'need_material' && plan.purchaseRequests.length) {
         const rejected: string[] = [];
-        for (const item of plan.purchaseRequests.filter((request) => request.willReject)) {
+        const stripped: string[] = [];
+        const kept: string[] = [];
+        const rejectNote = `工单撤回：${reason}`.slice(0, 255);
+        for (const item of plan.purchaseRequests) {
+          if (item.effect === 'none') continue;
           const request = await manager.findOne(PurchaseRequest, {
             where: { tenantId, id: item.id },
             lock: { mode: 'pessimistic_write' },
           });
           if (!request) continue;
-          request.status = PurchaseRequestStatus.REJECTED;
-          request.rejectReason = `工单撤回：${reason}`.slice(0, 255);
+          if (item.effect === 'keep') {
+            kept.push(request.requestNo);
+            if (item.notifyStage) {
+              await this.notifyPurchaseStageAfterRollback(
+                manager,
+                tenantId,
+                request,
+                workOrder,
+                `工单 ${workOrder.orderNo} 已撤回缺料，采购申请 ${request.requestNo} 待下单：不再需要可在下单前处理`,
+                user.id,
+              );
+            }
+            continue;
+          }
+          if (item.effect === 'reject') {
+            request.status = PurchaseRequestStatus.REJECTED;
+            request.rejectReason = rejectNote;
+            request.updatedBy = user.id;
+            await manager.save(PurchaseRequest, request);
+            rejected.push(request.requestNo);
+            if (item.notifyStage) {
+              await this.notifyPurchaseStageAfterRollback(
+                manager,
+                tenantId,
+                request,
+                workOrder,
+                `采购申请 ${request.requestNo} 已随工单 ${workOrder.orderNo} 撤回而整单驳回，不用再审`,
+                user.id,
+              );
+            }
+            continue;
+          }
+          // strip：只划掉本工单的行（单行驳回，原因写清是工单撤回），其余行照常走；金额按剩下的行重算
+          const targets = new Set(item.lineIds);
+          request.items = (request.items || []).map((line, index) => {
+            const lineId = line.lineId || `${request.id}-${index + 1}`;
+            return targets.has(lineId) && !line.rejectReason
+              ? { ...line, lineId, rejectReason: rejectNote, rejectedAtStage: 'rollback' as const }
+              : line;
+          });
+          request.estTotalCents = request.items
+            .filter((line) => !line.rejectReason)
+            .reduce((sum, line) => sum + (line.estUnitCostCents ?? 0) * line.qty, 0);
           request.updatedBy = user.id;
           await manager.save(PurchaseRequest, request);
-          rejected.push(request.requestNo);
+          stripped.push(`${request.requestNo}（${item.lineIds.length} 行）`);
+          await this.notifyPurchaseStageAfterRollback(
+            manager,
+            tenantId,
+            request,
+            workOrder,
+            `采购申请 ${request.requestNo}：工单 ${workOrder.orderNo} 已撤回，其 ${item.lineIds.length} 行已划掉，其余照常审批`,
+            user.id,
+          );
         }
         if (rejected.length) {
           detail.rejectedPurchaseRequests = rejected;
           notes.push(`采购申请 ${rejected.join('、')} 已同步驳回`);
+        }
+        if (stripped.length) {
+          detail.strippedPurchaseRequests = stripped;
+          notes.push(`采购申请 ${stripped.join('、')} 已划掉本工单的材料，其余行不受影响`);
+        }
+        if (kept.length) {
+          detail.keptPurchaseRequests = kept;
+          notes.push(`采购申请 ${kept.join('、')} 已批准 / 已采购，不受影响，材料到货后照常入库`);
         }
       }
 
@@ -3332,12 +3444,22 @@ export class RepairsService implements OnModuleInit {
       // 失效的旧待办：派单、验收、采购审批的操作入口都不该继续可点
       const staleEvents = ['order_assigned', 'order_review', 'order_transfer_requested'];
       if (plan.action === 'need_material') staleEvents.push('purchase_pending_office');
+      const invalidReason = `工单已撤回${plan.actionLabel ? `「${plan.actionLabel}」` : ''}`;
       await this.notifications.invalidateWorkOrderNotifications(
         workOrder.tenantId,
         workOrder.id,
         staleEvents,
-        `工单已撤回${plan.actionLabel ? `「${plan.actionLabel}」` : ''}`,
+        invalidReason,
       );
+      // 整单驳回的采购申请：经理 / 采购那边挂着的「待审批」也不该还能点（它们的 payload 只带申请 id）
+      for (const item of plan.purchaseRequests.filter((request) => request.effect === 'reject')) {
+        await this.notifications.invalidateNotificationsByRef(
+          workOrder.tenantId,
+          { purchaseRequestId: item.id },
+          ['purchase_pending_office', 'purchase_pending_manager', 'purchase_pending_purchaser', 'purchase_approved'],
+          invalidReason,
+        );
+      }
 
       const note = `办公室撤回${plan.actionLabel ? `「${plan.actionLabel}」` : '上一步'}：${reason}`;
       switch (workOrder.status) {

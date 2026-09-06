@@ -4070,11 +4070,14 @@ function RollbackWorkOrderModal({
                       <Text type="secondary">原完工内容会保留为草稿，重新提交完工时才会再次扣库。</Text>
                     </>
                   ) : null}
-                  {preview?.purchaseRequests?.filter((item) => item.willReject).length ? (
-                    <Text>
-                      采购申请 {preview.purchaseRequests.filter((item) => item.willReject).map((item) => item.requestNo).join('、')} 将同步驳回。
-                    </Text>
-                  ) : null}
+                  {/* 采购申请三档处理（整单驳回 / 只划掉本工单的行 / 不动），话由后端写好；老接口只有 willReject */}
+                  {preview?.purchaseRequests
+                    ?.filter((item) => (item.effect ? item.effect !== 'none' : item.willReject))
+                    .map((item) => (
+                      <Text key={item.id} style={{ display: 'block' }}>
+                        {item.note || `采购申请 ${item.requestNo} 将同步驳回。`}
+                      </Text>
+                    ))}
                   {preview?.maintenanceOrder?.willVoid ? <Text>关联的草稿养护单将同步作废。</Text> : null}
                   {preview?.reviewWillReverse ? (
                     <Text>原验收评价将失效（不再计入评分统计），历史记录仍可查看。</Text>

@@ -523,7 +523,12 @@ export interface RollbackPreview {
     id: number;
     requestNo: string;
     status: string;
+    /** 兼容字段：= effect === 'reject' */
     willReject: boolean;
+    /** 三档处理：整单驳回 / 只划掉本工单的行 / 不动（已批准或已采购）/ 无需处理 */
+    effect?: 'reject' | 'strip' | 'keep' | 'none';
+    /** 后端写好的一句话，端上直接显示 */
+    note?: string;
   }>;
   maintenanceOrder: { id: number; willVoid: boolean } | null;
   reviewWillReverse: boolean;
@@ -974,7 +979,8 @@ export interface PurchaseRequestItem {
   sourceWorkOrderId?: number | null;
   sourceWorkOrderNo?: string | null;
   rejectReason?: string;
-  rejectedAtStage?: 'manager' | 'purchaser';
+  /** rollback = 来源工单撤回缺料时被划掉的行 */
+  rejectedAtStage?: 'manager' | 'purchaser' | 'rollback';
 }
 
 /** 审批链上的一环（服务端按后台配置算好），Web / 小程序直接画 */

@@ -315,14 +315,34 @@ export class NotificationsService {
     eventKeys: string[],
     reason: string,
   ): Promise<number> {
+    return this.invalidateNotificationsByRef(tenantId, { workOrderId }, eventKeys, reason);
+  }
+
+  /**
+   * 同上，但按任意单据 id 找：采购申请的「待经理审批」通知 payload 里只有 purchaseRequestId，
+   * 工单撤回把申请整单驳回后，要按申请 id 才能把它们标掉（2026-09-06）。
+   */
+  async invalidateNotificationsByRef(
+    tenantId: number,
+    ref: NotificationRef,
+    eventKeys: string[],
+    reason: string,
+  ): Promise<number> {
     if (!eventKeys.length) return 0;
+    const wanted = Object.entries(ref).flatMap(([key, value]) =>
+      (Array.isArray(value) ? value : [value])
+        .map((v) => Number(v))
+        .filter((v) => Number.isInteger(v) && v > 0)
+        .map((id) => [key, id] as const),
+    );
+    if (!wanted.length) return 0;
     const rows = await this.notificationRepo.find({
       where: { tenantId, eventKey: In(eventKeys), readAt: IsNull() },
       order: { id: 'DESC' },
       take: 500,
     });
-    const targets = rows.filter(
-      (row) => Number((row.payload ?? {}).workOrderId) === workOrderId,
+    const targets = rows.filter((row) =>
+      wanted.some(([key, id]) => Number((row.payload ?? {})[key]) === id),
     );
     if (!targets.length) return 0;
     for (const row of targets) {

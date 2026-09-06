@@ -38,7 +38,8 @@ export class PurchaseRequest extends TenantEntity {
     sourceRequestNo?: string;
     sourceWorkOrderId?: number | null;
     rejectReason?: string;
-    rejectedAtStage?: 'manager' | 'purchaser';
+    /** rollback = 来源工单撤回缺料时被划掉的行（不是审批人驳的） */
+    rejectedAtStage?: 'manager' | 'purchaser' | 'rollback';
   }>;
 
   // 预估总额（分），决定是否走采购经理审批
