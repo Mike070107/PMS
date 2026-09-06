@@ -67,6 +67,8 @@ Page({
     flowText: '',
     lines: [] as LineRow[],
     canEdit: false,
+    /** 已驳回 + 有材料编辑权：能「重新打开」回到办公室汇总改了再提 */
+    canReopen: false,
     nextStepLabel: '',
     maxPhotos: MAX_PHOTOS,
     editOpen: false,
@@ -102,6 +104,7 @@ Page({
       const row = await purchases.get(this.data.id);
       const session = await getSession();
       const canEdit = row.status === PurchaseRequestStatus.OFFICE_REVIEW && !!session.canEditMaterials;
+      const canReopen = row.status === PurchaseRequestStatus.REJECTED && !!session.canEditMaterials;
       const steps = row.steps || [];
       const current = steps.find((step) => step.state === 'current');
       const done = steps.filter((step) => step.state === 'done').map((step) => step.label);
@@ -121,6 +124,7 @@ Page({
           : '',
         lines: (row.items || []).map((item, index) => toLine(item, index, row.id)),
         canEdit,
+        canReopen,
         nextStepLabel: row.nextStepLabel || '物业经理审批',
         loading: false,
       });
@@ -267,6 +271,56 @@ Page({
       this.setData({ editError: (e as Error)?.message || '保存失败，请重试' });
     } finally {
       this.setData({ saving: false });
+    }
+  },
+
+  // ---------- 已驳回：重新打开 ----------
+
+  /** 已驳回 → 回到办公室汇总（审批人签字清掉），改明细、补图后再提交（2026-09-06 Mike） */
+  async onReopen() {
+    const { row } = this.data;
+    if (!row || this.data.submitting) return;
+    this.setData({ submitting: true });
+    try {
+      await purchases.reopen(row.id);
+      wx.showToast({ title: '已重新打开，改好后再提交', icon: 'none' });
+      await this.load();
+    } catch (e) {
+      wx.showToast({ title: (e as Error)?.message || '重新打开失败', icon: 'none' });
+    } finally {
+      this.setData({ submitting: false });
+    }
+  },
+
+  // ---------- 办公室汇总阶段：不买了 ----------
+
+  async onRejectRequest() {
+    const { row } = this.data;
+    if (!row || this.data.submitting) return;
+    const reason = await new Promise<string>((resolve) => {
+      wx.showModal({
+        title: '驳回这张申请',
+        editable: true,
+        placeholderText: '为什么不买了（必填，2 个字以上）',
+        confirmText: '驳回',
+        success: (res) => resolve(res.confirm ? String(res.content || '').trim() : ''),
+        fail: () => resolve(''),
+      });
+    });
+    if (!reason) return;
+    if (reason.length < 2) {
+      wx.showToast({ title: '请写清楚原因', icon: 'none' });
+      return;
+    }
+    this.setData({ submitting: true });
+    try {
+      await purchases.reject(row.id, { reason });
+      wx.showToast({ title: '已驳回', icon: 'success' });
+      await this.load();
+    } catch (e) {
+      wx.showToast({ title: (e as Error)?.message || '驳回失败', icon: 'none' });
+    } finally {
+      this.setData({ submitting: false });
     }
   },
 

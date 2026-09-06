@@ -939,6 +939,23 @@ export default function InventoryPage() {
     }
   };
 
+  /** 已驳回 → 回到办公室汇总，直接进编辑弹窗改明细，改完再「提交」（2026-09-06 Mike：驳回的怎么改了重提） */
+  const reopenRequest = async (row: PurchaseRequestRow) => {
+    setSaving(true);
+    try {
+      const reopened = await request<PurchaseRequestRow>({ method: 'POST', url: `/purchase-requests/${row.id}/reopen` });
+      message.success(`${reopened.requestNo} 已重新打开，改好明细后点「提交」`);
+      setRequestDetail(null);
+      setRequestFilter(PurchaseRequestStatus.OFFICE_REVIEW);
+      await loadAll();
+      openEditRequest({ ...row, ...reopened, items: reopened.items?.length ? reopened.items : row.items });
+    } catch (e: any) {
+      message.error(e?.message || '重新打开失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const openEditRequest = (row: PurchaseRequestRow) => {
     editRequestForm.setFieldsValue({
       items: (row.items || []).map((item, index) => ({
@@ -1909,6 +1926,11 @@ export default function InventoryPage() {
             {canEdit && requestDetail.status === PurchaseRequestStatus.APPROVED && (
               <Button type="primary" icon={<ShoppingCartOutlined />} onClick={() => openPurchaseOrder(requestDetail)}>转采购单</Button>
             )}
+            {canEdit && requestDetail.status === PurchaseRequestStatus.REJECTED && (
+              <Tooltip title="回到「办公室汇总」，改明细、补照片后再提交，审批链重新走一遍">
+                <Button type="primary" icon={<EditOutlined />} loading={saving} onClick={() => reopenRequest(requestDetail)}>重新打开，修改后再提交</Button>
+              </Tooltip>
+            )}
             {[PurchaseRequestStatus.OFFICE_REVIEW, PurchaseRequestStatus.MANAGER_REVIEW, PurchaseRequestStatus.PURCHASER_REVIEW, PurchaseRequestStatus.APPROVED].includes(requestDetail.status) && (
               <Button danger onClick={() => setRejectTarget(requestDetail)}>驳回</Button>
             )}
@@ -1991,6 +2013,10 @@ export default function InventoryPage() {
             {requestDetail.status === PurchaseRequestStatus.REJECTED && (
               <Alert type="error" showIcon message="采购申请已驳回" description={requestDetail.rejectReason || '未填写驳回原因'} />
             )}
+            {/* 重新打开的（上次驳回：…）和被经理单项驳回退回来的（单项驳回：…）都停在办公室汇总，改的人要知道为什么被打回 */}
+            {requestDetail.status === PurchaseRequestStatus.OFFICE_REVIEW && requestDetail.rejectReason && (
+              <Alert type="warning" showIcon message="这张申请被打回过，改好明细再提交" description={requestDetail.rejectReason} />
+            )}
 
             {/* 只放人看得懂的：单号、姓名、金额、时间。
                 申请的数据库 id 不显示 —— 那是程序定位用的，用户不关心（2026-09-01 反馈） */}
@@ -2017,7 +2043,8 @@ export default function InventoryPage() {
                 rowKey="key"
                 size="small"
                 pagination={false}
-                scroll={{ x: 1180 }}
+                // = 各列 width 之和（64+64+160+120+220+140+160+110+110+120+160），少了名称列就被挤没
+                scroll={{ x: 1428 }}
                 tableLayout="fixed"
                 dataSource={(requestDetail.items || []).map((item, index) => ({ ...item, key: index }))}
                 columns={[
@@ -2038,8 +2065,11 @@ export default function InventoryPage() {
                     render: (id) => id ? materialById.get(id)?.code || '-' : '-',
                   },
                   {
+                    // 必须给宽：tableLayout=fixed 下其它列宽度之和已超过 scroll.x，
+                    // 没写宽的这一列会被挤成 0 —— 2026-09-06 Mike「材料名称栏位怎么都没有」就是这个
                     title: '材料名称',
                     key: 'name',
+                    width: 220,
                     ellipsis: true,
                     render: (_, item) => {
                       const material = item.materialId ? materialById.get(item.materialId) : null;

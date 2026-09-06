@@ -1934,6 +1934,41 @@ export class InventoryService {
     });
   }
 
+  /**
+   * 已驳回的申请重新打开（2026-09-06 Mike：「已驳回的我怎样修改重新提交」）。
+   * 回到「办公室汇总」：办公室改明细、补图后再提交，审批链从头再走一遍，所以审批人的签字全部清掉。
+   * 上次的驳回原因换成「上次驳回：…」留在单上，改明细的人看得见为什么被打回；改明细 / 提交时会清掉。
+   * 谁能开：办公室（inventory / app:inventory 编辑权）或申请人本人。已合并进别的申请的不是「已驳回」，开不了。
+   */
+  reopenPurchaseRequest(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    return this.dataSource.transaction(async (manager) => {
+      const request = await this.lockPurchaseRequest(manager, id, tenantId);
+      await this.assertPurchaseRequestVisible(tenantId, request, user, access);
+      if (request.status !== PurchaseRequestStatus.REJECTED) {
+        throw new BadRequestException('只有已驳回的申请能重新打开');
+      }
+      const canEdit = (pageKey: string) =>
+        !!access?.isPlatformAdmin ||
+        !!access?.isTenantAdmin ||
+        access?.pages?.[pageKey]?.edit === true;
+      if (!(request.applicantId === user.id || canEdit('inventory') || canEdit('app:inventory'))) {
+        throw new ForbiddenException('只有办公室或申请人本人能重新打开已驳回的申请');
+      }
+      const previous = (request.rejectReason || '').replace(/^上次驳回：/, '').trim();
+      request.status = PurchaseRequestStatus.OFFICE_REVIEW;
+      request.rejectReason = previous ? `上次驳回：${previous}`.slice(0, 255) : null;
+      request.officeReviewerId = null;
+      request.officeReviewedAt = null;
+      request.managerId = null;
+      request.managerAt = null;
+      request.purchaserId = null;
+      request.purchaserAt = null;
+      request.updatedBy = user.id;
+      return manager.save(PurchaseRequest, request);
+    });
+  }
+
   /** 采购单列表。「关联申请」要给申请单号，不是申请的 id（同 withRequestNames 的口径） */
   async listPurchaseOrders(
     query: TenantQueryDto,

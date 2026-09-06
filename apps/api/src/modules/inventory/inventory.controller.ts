@@ -392,6 +392,19 @@ export class InventoryController {
     });
   }
 
+  /** 已驳回 → 回到办公室汇总，改完明细再提交；办公室或申请人本人能开 */
+  @Post('purchase-requests/:id/reopen')
+  @RequirePermission(['inventory', 'app:inventory', 'app:pool', 'app:my-orders'], 'view')
+  reopenPurchaseRequest(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.seen(this.inventoryService.reopenPurchaseRequest(id, user, access), user, {
+      purchaseRequestId: id,
+    });
+  }
+
   @Post('purchase-requests/:id/reject-item')
   @RequirePermission(['app:approve-manager', 'app:approve-purchaser'], 'edit')
   rejectPurchaseRequestItem(

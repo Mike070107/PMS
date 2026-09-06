@@ -21,7 +21,8 @@
       <view wx:if="{{row.reason}}" class="kv"><text class="kv__k">申请原因</text><text class="kv__v">{{row.reason}}</text></view>
       <view class="kv"><text class="kv__k">来源</text><text class="kv__v">{{sourceText}}</text></view>
       <view class="kv"><text class="kv__k">申请人</text><text class="kv__v">{{applicantText}} · {{createdAtText}}</text></view>
-      <view wx:if="{{row.status === 'rejected' && row.rejectReason}}" class="kv"><text class="kv__k">驳回原因</text><text class="kv__v pr-reject">{{row.rejectReason}}</text></view>
+      <!-- 已驳回显示原因；重新打开后原因带「上次驳回：」前缀留在单上，改明细的人要看得见 -->
+      <view wx:if="{{row.rejectReason}}" class="kv"><text class="kv__k">{{row.status === 'rejected' ? '驳回原因' : '驳回说明'}}</text><text class="kv__v pr-reject">{{row.rejectReason}}</text></view>
     </view>
 
     <view class="label mt">采购明细<text class="label__opt">{{canEdit ? '点「编辑」改名称、型号、数量、备注，补照片' : lines.length + ' 项'}}</text></view>
@@ -53,13 +54,19 @@
         <view wx:if="{{!item.photoUrls.length}}" class="pr-photo pr-photo--empty" data-line-id="{{item.lineId}}" bindtap="onEditLine">{{canEdit ? '没图，点这里补拍' : '无图'}}</view>
       </view>
     </view>
-    <view class="pr-bottom-space"></view>
+    <view wx:if="{{canEdit || canReopen}}" class="pr-bottom-space"></view>
   </block>
 </view>
 
-<!-- 底部固定：办公室汇总阶段可直接提交到下一环 -->
+<!-- 底部固定：办公室汇总阶段可驳回（不买了）或提交到下一环；已驳回的可重新打开改了再提 -->
 <view wx:if="{{canEdit}}" class="pr-actions">
-  <button class="btn btn--primary" disabled="{{submitting}}" loading="{{submitting}}" bindtap="onSubmit">提交到「{{nextStepLabel}}」</button>
+  <view class="btn-row">
+    <button class="btn btn--outline" disabled="{{submitting}}" bindtap="onRejectRequest">不买了，驳回</button>
+    <button class="btn btn--primary" disabled="{{submitting}}" loading="{{submitting}}" bindtap="onSubmit">提交到「{{nextStepLabel}}」</button>
+  </view>
+</view>
+<view wx:elif="{{canReopen}}" class="pr-actions">
+  <button class="btn btn--primary" disabled="{{submitting}}" loading="{{submitting}}" bindtap="onReopen">重新打开，修改后再提交</button>
 </view>
 
 <!-- ============ 编辑一行 ============ -->

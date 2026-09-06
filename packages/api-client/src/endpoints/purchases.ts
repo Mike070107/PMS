@@ -30,6 +30,10 @@ export const purchaserApprove = (id: number | string) =>
     url: `/purchase-requests/${id}/purchaser-approve`,
   });
 
+/** 已驳回的申请重新打开：回到「办公室汇总」，改完明细再提交（2026-09-06 Mike：驳回的怎么改了重提） */
+export const reopen = (id: number | string) =>
+  request<PurchaseRequestView>({ method: 'POST', url: `/purchase-requests/${id}/reopen` });
+
 export const reject = (id: number | string, data: { reason: string }) =>
   request<PurchaseRequestView>({
     method: 'POST',
