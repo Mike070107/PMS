@@ -2490,3 +2490,12 @@
 - 自上次（ae4bb9c）以来上线的相关提交：
   - d22b3aa feat(员工端): 材料与库存 → 采购申请 列表整卡可点进详情页，卡片补缩略图 / 原因 / 来源 / 申请人
 
+## 2026-09-06 09:03 · miniapp-staff · 01ad6b2
+
+- 包：`1.0.20260906e`
+- 提交：01ad6b2 fix(员工端): 「我的」页菜单说明常驻，不再跟指导层开关一起收起
+- 说明：我的页菜单说明常驻；脏文件是另一会话的样式改动，从干净 worktree 上传
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（d22b3aa）以来上线的相关提交：
+  - 01ad6b2 fix(员工端): 「我的」页菜单说明常驻，不再跟指导层开关一起收起
+
