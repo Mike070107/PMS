@@ -2427,3 +2427,12 @@
 - 自上次（10c3a93）以来上线的相关提交：
   - a0f2c6c feat(消息/采购): 别处已处理过的站内信自动变已读；员工端可点开采购申请看详情、改明细、补照片
 
+## 2026-09-06 08:20 · api · 0b973de
+
+- 包：`pms-api-20260906-0818.tar.gz`
+- 提交：0b973de feat(工单撤回): 撤回缺料不再被采购申请整单拦住——按阶段三档处理（整单驳回 / 只划掉本工单的行 / 采购不动）
+- 说明：撤回缺料三档处理；脏文件是另一会话的 AI 改动，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（94f889f）以来上线的相关提交：
+  - 0b973de feat(工单撤回): 撤回缺料不再被采购申请整单拦住——按阶段三档处理（整单驳回 / 只划掉本工单的行 / 采购不动）
+
