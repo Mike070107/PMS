@@ -72,6 +72,15 @@ import {
 
 const { Title, Text, Paragraph } = Typography;
 
+/** 打印按钮的悬浮说明：按单子走到哪一步说清打出来是什么、会不会归档 */
+function printHint(status: MaintenanceStatus | undefined, verb: '打印' | '套打'): string {
+  if (!status) return '';
+  if (status === 'void') return '已作废的单不能打印';
+  if (status === 'pending_print') return `${verb}后确认已打好，自动标记已完成`;
+  if (status === 'completed') return `已完成的单再${verb}一份，不改状态`;
+  return `签字还没齐：${verb}当前内容，签名栏留空可手签；不会标记完成，手机签完后仍可再${verb}`;
+}
+
 const STATUS_COLOR: Record<MaintenanceStatus, string> = {
   filling: 'processing',
   waiting_filler: 'gold',
@@ -223,7 +232,9 @@ export default function MaintenanceOrdersPage() {
 
   const [rows, setRows] = useState<MaintenanceListRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'all' | MaintenanceStatus>('filling');
+  // 默认「进行中」：填单中 + 三方签字中 + 待打印都在。以前默认「填单中」，办公室点了「推送签名」
+  // 单子进了待填单人，回到列表就不见了 —— Mike 2026-09-06「手机上能看到，电脑上看不到」
+  const [status, setStatus] = useState<'all' | 'active' | MaintenanceStatus>('active');
   const [searchInput, setSearchInput] = useState('');
   const [searchQ, setSearchQ] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
@@ -242,10 +253,17 @@ export default function MaintenanceOrdersPage() {
     try {
       const list = await request<MaintenanceListRow[]>({
         url: '/maintenance-orders',
-        query: { status: status === 'all' ? undefined : status, q: searchQ || undefined },
+        query: { status: status === 'all' || status === 'active' ? undefined : status, q: searchQ || undefined },
       });
       // “全部”表示全部有效养护单；已删除/作废有独立入口，不应继续混在日常列表中。
-      setRows(status === 'all' ? list.filter((row) => row.status !== 'void') : list);
+      // “进行中”再去掉已完成：日常要盯的就是还没走完的单。
+      setRows(
+        status === 'all'
+          ? list.filter((row) => row.status !== 'void')
+          : status === 'active'
+            ? list.filter((row) => row.status !== 'void' && row.status !== 'completed')
+            : list,
+      );
     } catch (e: any) {
       message.error(e?.message || '加载养护单失败');
     } finally {
@@ -483,6 +501,7 @@ export default function MaintenanceOrdersPage() {
               size="large"
               style={{ width: 190 }}
               options={[
+                { label: '进行中（未完成）', value: 'active' },
                 { label: '全部有效', value: 'all' },
                 { label: '填单中', value: 'filling' },
                 { label: '待填单人', value: 'waiting_filler' },
@@ -1305,13 +1324,15 @@ function MaintenanceEditor({
                 </Button>
               </Popconfirm>
             )}
-            <Tooltip title={draft?.status === 'pending_print' ? '打印后自动标记已完成' : '三方签字完成后才能正式打印'}>
-              <Button icon={<PrinterOutlined />} onClick={() => setPrintJob('normal')} disabled={!draft || draft.status !== 'pending_print'}>
+            {/* 任何没作废的单都能打：签字没齐就打当前内容（签名栏留空、纸上手签），只有待打印那一步打完才问要不要归档。
+                以前只有待打印能点，其它单按钮全灰 —— Mike 2026-09-06「打印按钮也是灰色的」 */}
+            <Tooltip title={printHint(draft?.status, '打印')}>
+              <Button icon={<PrinterOutlined />} onClick={() => setPrintJob('normal')} disabled={!draft || draft.status === 'void'}>
                 打印整单
               </Button>
             </Tooltip>
-            <Tooltip title={draft?.status === 'pending_print' ? '套打后自动标记已完成' : '三方签字完成后才能正式打印'}>
-              <Button icon={<PrinterOutlined />} onClick={() => setPrintJob('overlay')} disabled={!draft || draft.status !== 'pending_print'}>
+            <Tooltip title={printHint(draft?.status, '套打')}>
+              <Button icon={<PrinterOutlined />} onClick={() => setPrintJob('overlay')} disabled={!draft || draft.status === 'void'}>
                 套打（只打内容）
               </Button>
             </Tooltip>
