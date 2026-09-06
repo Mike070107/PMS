@@ -2481,3 +2481,12 @@
 - 自上次（0b973de）以来上线的相关提交：
   - ae4bb9c fix(采购): 申请详情「材料名称」列被挤没；已驳回的申请可「重新打开」改了再提交；员工端详情页办公室可驳回
 
+## 2026-09-06 08:57 · miniapp-staff · d22b3aa
+
+- 包：`1.0.20260906d`
+- 提交：d22b3aa feat(员工端): 材料与库存 → 采购申请 列表整卡可点进详情页，卡片补缩略图 / 原因 / 来源 / 申请人
+- 说明：材料与库存采购申请列表进详情；脏文件是另一会话的样式改动，从干净 worktree 上传
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（ae4bb9c）以来上线的相关提交：
+  - d22b3aa feat(员工端): 材料与库存 → 采购申请 列表整卡可点进详情页，卡片补缩略图 / 原因 / 来源 / 申请人
+
