@@ -2454,3 +2454,12 @@
 - 自上次（349c51f）以来上线的相关提交：
   - 0b973de feat(工单撤回): 撤回缺料不再被采购申请整单拦住——按阶段三档处理（整单驳回 / 只划掉本工单的行 / 采购不动）
 
+## 2026-09-06 08:49 · api · ae4bb9c
+
+- 包：`pms-api-20260906-0847.tar.gz`
+- 提交：ae4bb9c fix(采购): 申请详情「材料名称」列被挤没；已驳回的申请可「重新打开」改了再提交；员工端详情页办公室可驳回
+- 说明：采购申请 reopen 接口；脏文件是另一会话的 AI 改动，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（0b973de）以来上线的相关提交：
+  - ae4bb9c fix(采购): 申请详情「材料名称」列被挤没；已驳回的申请可「重新打开」改了再提交；员工端详情页办公室可驳回
+
