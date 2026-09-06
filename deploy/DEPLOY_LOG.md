@@ -2445,3 +2445,12 @@
 - 自上次（94f889f）以来上线的相关提交：
   - 0b973de feat(工单撤回): 撤回缺料不再被采购申请整单拦住——按阶段三档处理（整单驳回 / 只划掉本工单的行 / 采购不动）
 
+## 2026-09-06 08:21 · miniapp-staff · 0b973de
+
+- 包：`1.0.20260906b`
+- 提交：0b973de feat(工单撤回): 撤回缺料不再被采购申请整单拦住——按阶段三档处理（整单驳回 / 只划掉本工单的行 / 采购不动）
+- 说明：撤回预览显示每张采购申请的处理说明；脏文件是另一会话的样式改动
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（349c51f）以来上线的相关提交：
+  - 0b973de feat(工单撤回): 撤回缺料不再被采购申请整单拦住——按阶段三档处理（整单驳回 / 只划掉本工单的行 / 采购不动）
+
