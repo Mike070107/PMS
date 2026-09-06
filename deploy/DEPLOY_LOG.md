@@ -2526,3 +2526,12 @@
 - 自上次（946b475）以来上线的相关提交：
   - 0ee9bed fix(养护单): 状态列挪到单号旁边，笔记本宽度下不再被右侧固定的操作列盖住
 
+## 2026-09-06 12:11 · miniapp-staff · 305d4d6
+
+- 包：`1.0.20260906f`
+- 提交：305d4d6 feat(员工端): 工单池 / 在手工单老单在上新单在下；我报的 / 已完结倒序且只展示最近 30 条，更早的靠搜索并给提示
+- 说明：排序口径改版；脏文件是另一会话的样式改动，从干净 worktree 上传
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（01ad6b2）以来上线的相关提交：
+  - 305d4d6 feat(员工端): 工单池 / 在手工单老单在上新单在下；我报的 / 已完结倒序且只展示最近 30 条，更早的靠搜索并给提示
+
