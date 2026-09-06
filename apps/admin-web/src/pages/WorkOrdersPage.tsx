@@ -70,7 +70,20 @@ import type {
   TechnicianOption,
   UsedMaterialLine,
 } from '@pms/shared-types';
-import { classifyRepairType, compareWorkOrderRoutePriority } from '@pms/shared-types';
+import {
+  RECENT_LIST_LIMIT,
+  classifyRepairType,
+  compareWorkOrderNewestFirst,
+  compareWorkOrderOldestFirst,
+} from '@pms/shared-types';
+
+/** 还要人动手的四个状态；其余都算终态。和员工端 utils/order-status.ts 同一份口径 */
+const ACTIVE_WORK_ORDER_STATUSES: string[] = [
+  WorkOrderStatus.CREATED,
+  WorkOrderStatus.DISPATCHED,
+  WorkOrderStatus.IN_PROGRESS,
+  WorkOrderStatus.WAITING_MATERIAL,
+];
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -744,7 +757,18 @@ export default function WorkOrdersPage() {
   ];
   const poolPrefs = useTableColumnPrefs('work-orders.pool', poolColumns);
 
-  const sortedRows = useMemo(() => [...rows].sort(compareWorkOrderRoutePriority), [rows]);
+  /**
+   * 排序和员工端同一口径（2026-09-06 Mike「web 端也按同样的逻辑」）：
+   * 还要动手的单（待派 / 已派 / 维修中 / 等待材料、以及「全部」）紧急先、其余按报修时间从早到晚 —— 老单先修；
+   * 终态（已完成 / 已撤单 / 已作废 / 待验收）最近的在上面，不搜索时只列最近 30 条，更早的靠搜索。
+   */
+  const recentOnly = filter !== 'all' && !ACTIVE_WORK_ORDER_STATUSES.includes(filter);
+  const sortedAll = useMemo(
+    () => [...rows].sort(recentOnly ? compareWorkOrderNewestFirst : compareWorkOrderOldestFirst),
+    [rows, recentOnly],
+  );
+  const recentHiddenCount = recentOnly && !searchQ ? Math.max(0, sortedAll.length - RECENT_LIST_LIMIT) : 0;
+  const sortedRows = recentHiddenCount ? sortedAll.slice(0, RECENT_LIST_LIMIT) : sortedAll;
   const pageSize = 10;
   const pagedRows = sortedRows.slice((page - 1) * pageSize, page * pageSize);
   const urgentRows = pagedRows.filter((row) => row.urgent);
@@ -973,6 +997,16 @@ export default function WorkOrdersPage() {
           overdueCount={rows.filter(slaDanger).length}
           onChange={(next) => setFilter(next)}
         />
+
+        {/* 终态那几档不搜索时只列最近 30 条（和员工端一样）：必须说明，否则像丢了单 */}
+        {recentHiddenCount > 0 && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={`只显示最近 ${RECENT_LIST_LIMIT} 条，还有 ${recentHiddenCount} 条更早的没列出来；要找更早的，用上方搜索（单号 / 地址 / 报修人）`}
+          />
+        )}
 
         {viewMode === 'table' ? (
           <div className="pms-workorder-pool pms-workorder-pool-card">
