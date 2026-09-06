@@ -43,7 +43,8 @@
         <view class="entry__title">
           消息<text wx:if="{{unread}}" class="entry__badge">{{unread}}</text>
         </view>
-        <view wx:if="{{guide}}" class="entry__desc">派给你的工单、缺料进度都会在这里提醒</view>
+        <!-- 菜单项下这一行说明不归指导层：一句话说清这个入口是干嘛的，随时都要在（2026-09-06 Mike：一会有一会没有，加回来）-->
+        <view class="entry__desc">派给你的工单、缺料进度都会在这里提醒</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -59,7 +60,7 @@
           工单微信提醒
           <text class="entry__state entry__state--{{notifyTone}}">{{notifyStateText}}</text>
         </view>
-        <view wx:if="{{guide}}" class="entry__desc">{{notifyDesc}}</view>
+        <view class="entry__desc">{{notifyDesc}}</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -68,7 +69,7 @@
       <view class="entry-icon"><view class="entry-icon__glyph icon-menu--feedback"></view></view>
       <view class="entry__body">
         <view class="entry__title">意见与建议</view>
-        <view wx:if="{{guide}}" class="entry__desc">告诉我们哪里不好用，也可以提出新的功能想法</view>
+        <view class="entry__desc">告诉我们哪里不好用，也可以提出新的功能想法</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -79,7 +80,7 @@
       <view class="entry-icon"><view class="entry-icon__glyph icon-menu--repair"></view></view>
       <view class="entry__body">
         <view class="entry__title">我要报修</view>
-        <view wx:if="{{guide}}" class="entry__desc">{{repairDesc}}</view>
+        <view class="entry__desc">{{repairDesc}}</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -90,7 +91,7 @@
       <view class="entry-icon"><view class="entry-icon__glyph icon-menu--clipboard"></view></view>
       <view class="entry__body">
         <view class="entry__title">我的报修</view>
-        <view wx:if="{{guide}}" class="entry__desc">我替住户和巡查提的单，派给谁了、修到哪一步了</view>
+        <view class="entry__desc">我替住户和巡查提的单，派给谁了、修到哪一步了</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
@@ -101,7 +102,7 @@
       <view class="entry-icon"><view class="entry-icon__glyph icon-menu--message"></view></view>
       <view class="entry__body">
         <view class="entry__title">反馈异常</view>
-        <view wx:if="{{guide}}" class="entry__desc">操作失败、数据不对或不好用，自动带上出错页面和最近错误</view>
+        <view class="entry__desc">操作失败、数据不对或不好用，自动带上出错页面和最近错误</view>
       </view>
       <view class="entry__arrow"></view>
     </view>
