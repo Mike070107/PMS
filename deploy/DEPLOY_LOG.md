@@ -2535,3 +2535,13 @@
 - 自上次（01ad6b2）以来上线的相关提交：
   - 305d4d6 feat(员工端): 工单池 / 在手工单老单在上新单在下；我报的 / 已完结倒序且只展示最近 30 条，更早的靠搜索并给提示
 
+## 2026-09-06 12:25 · api · b7566cf
+
+- 包：`pms-api-20260906-1223.tar.gz`
+- 提交：b7566cf fix(采购): 员工端保存明细「没反应」——小程序不支持 PATCH，改明细接口加 POST 别名；报错移到按钮上方并弹 toast；Web 编辑弹窗校验没过给提示
+- 说明：改明细 POST 别名；脏文件是另一会话的 AI 改动，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（ae4bb9c）以来上线的相关提交：
+  - b7566cf fix(采购): 员工端保存明细「没反应」——小程序不支持 PATCH，改明细接口加 POST 别名；报错移到按钮上方并弹 toast；Web 编辑弹窗校验没过给提示
+  - 305d4d6 feat(员工端): 工单池 / 在手工单老单在上新单在下；我报的 / 已完结倒序且只展示最近 30 条，更早的靠搜索并给提示
+
