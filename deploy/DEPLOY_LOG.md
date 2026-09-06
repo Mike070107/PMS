@@ -2517,3 +2517,12 @@
 - 自上次（76864e6）以来上线的相关提交：
   - 946b475 fix(养护单): 列表状态列被右侧固定列盖住只剩一个字——列宽之和与 scroll.x 对齐，状态 / 操作列加宽
 
+## 2026-09-06 10:42 · web · 0ee9bed
+
+- 包：`pms-web-20260906-1042.tar.gz`
+- 提交：0ee9bed fix(养护单): 状态列挪到单号旁边，笔记本宽度下不再被右侧固定的操作列盖住
+- 说明：养护单状态列前移；脏文件是另一会话的 api-client/ai.ts，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo，M packages/api-client/src/endpoints/ai.ts
+- 自上次（946b475）以来上线的相关提交：
+  - 0ee9bed fix(养护单): 状态列挪到单号旁边，笔记本宽度下不再被右侧固定的操作列盖住
+
