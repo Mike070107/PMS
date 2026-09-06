@@ -2556,3 +2556,12 @@
   - 0b435cb feat(后台): 工单列表排序与员工端同口径——在办的老单在上，终态倒序且只列最近 30 条并提示
   - 305d4d6 feat(员工端): 工单池 / 在手工单老单在上新单在下；我报的 / 已完结倒序且只展示最近 30 条，更早的靠搜索并给提示
 
+## 2026-09-06 12:26 · miniapp-staff · b7566cf
+
+- 包：`1.0.20260906g`
+- 提交：b7566cf fix(采购): 员工端保存明细「没反应」——小程序不支持 PATCH，改明细接口加 POST 别名；报错移到按钮上方并弹 toast；Web 编辑弹窗校验没过给提示
+- 说明：改明细保存修复；脏文件是另一会话的样式改动
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（305d4d6）以来上线的相关提交：
+  - b7566cf fix(采购): 员工端保存明细「没反应」——小程序不支持 PATCH，改明细接口加 POST 别名；报错移到按钮上方并弹 toast；Web 编辑弹窗校验没过给提示
+
