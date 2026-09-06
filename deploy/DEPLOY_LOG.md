@@ -2499,3 +2499,12 @@
 - 自上次（d22b3aa）以来上线的相关提交：
   - 01ad6b2 fix(员工端): 「我的」页菜单说明常驻，不再跟指导层开关一起收起
 
+## 2026-09-06 10:35 · web · 76864e6
+
+- 包：`pms-web-20260906-1034.tar.gz`
+- 提交：76864e6 fix(养护单): 列表默认「进行中」把签字中的单也列出来；打印 / 套打不再只限待打印
+- 说明：养护单列表默认进行中、打印不限待打印；脏文件是另一会话的 api-client/ai.ts，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo，M packages/api-client/src/endpoints/ai.ts
+- 自上次（ae4bb9c）以来上线的相关提交：
+  - 76864e6 fix(养护单): 列表默认「进行中」把签字中的单也列出来；打印 / 套打不再只限待打印
+
