@@ -350,6 +350,22 @@ export class InventoryController {
     });
   }
 
+  /**
+   * 同上，POST 版：微信小程序的 wx.request 不支持 PATCH（端上请求层会直接拒掉，
+   * 「小程序不支持 PATCH 请求」），员工端改明细走这个。Nest 一个方法只能挂一个动词，所以单独一个方法。
+   * 2026-09-06 Mike「编辑后点保存没反应」就是这个。
+   */
+  @Post('purchase-requests/:id/items')
+  @RequirePermission(['inventory', 'app:inventory'], 'edit')
+  updatePurchaseRequestItemsPost(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdatePurchaseRequestItemsDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.updatePurchaseRequestItems(id, dto, user, access);
+  }
+
   // 审批链的两步各是一格勾选：谁批第一步、谁批第二步，由角色配置说了算
   @Post('purchase-requests/:id/manager-approve')
   @RequirePermission('app:approve-manager', 'edit')

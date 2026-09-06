@@ -972,7 +972,17 @@ export default function InventoryPage() {
 
   const submitEditRequest = async () => {
     if (!editRequestTarget) return;
-    const values = await editRequestForm.validateFields();
+    let values: any;
+    try {
+      values = await editRequestForm.validateFields();
+    } catch (err: any) {
+      // 校验没过时 antd 只在字段下面标红，字段在弹窗里滚出视野就像「点保存没反应」（2026-09-06 Mike）
+      const first = err?.errorFields?.[0];
+      const line = Array.isArray(first?.name) && typeof first.name[1] === 'number' ? `第 ${first.name[1] + 1} 行` : '';
+      message.error(`${line}${first?.errors?.[0] || '有必填项没填'}，请检查后再保存`);
+      if (first?.name) editRequestForm.scrollToField(first.name, { block: 'center' });
+      return;
+    }
     setSaving(true);
     try {
       await request({

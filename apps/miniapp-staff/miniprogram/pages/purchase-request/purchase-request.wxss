@@ -42,3 +42,6 @@
 
 /* 全局 .sheet__body 是 width 100% + padding，不加 border-box 输入框会顶出右边（order-detail 同样补过） */
 .sheet__body { box-sizing: border-box; }
+
+/* 编辑层的报错放按钮上方，滚动区里看不见 */
+.pr-edit-error { margin-bottom: 12rpx; }

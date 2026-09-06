@@ -106,9 +106,10 @@
         <view wx:if="{{edit.photoUrls.length < maxPhotos}}" class="pr-photo pr-photo--add" bindtap="onAddPhoto">{{uploading ? '上传中…' : '+ 拍照 / 选图'}}</view>
       </view>
     </view>
-    <view wx:if="{{editError}}" class="field-error">{{editError}}</view>
   </scroll-view>
   <view class="sheet__foot">
+    <!-- 错误放在按钮上方：放在滚动区底部的话，没滚到底就看不见，点保存像「没反应」（2026-09-06 Mike） -->
+    <view wx:if="{{editError}}" class="field-error pr-edit-error">{{editError}}</view>
     <button class="btn btn--primary" disabled="{{saving || uploading}}" loading="{{saving}}" bindtap="onSaveEdit">保存</button>
   </view>
 </view>

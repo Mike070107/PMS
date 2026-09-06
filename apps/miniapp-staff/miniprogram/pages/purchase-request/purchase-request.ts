@@ -268,7 +268,10 @@ Page({
       wx.showToast({ title: '已保存', icon: 'success' });
       await this.load();
     } catch (e) {
-      this.setData({ editError: (e as Error)?.message || '保存失败，请重试' });
+      // 既写在按钮上方，也弹一下：服务端拒绝（权限 / 校验）时不能让人觉得「点了没反应」
+      const msg = (e as Error)?.message || '保存失败，请重试';
+      this.setData({ editError: msg });
+      wx.showToast({ title: msg, icon: 'none', duration: 3000 });
     } finally {
       this.setData({ saving: false });
     }

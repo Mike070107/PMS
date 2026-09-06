@@ -67,8 +67,9 @@ export const updateItems = (
     }>;
   },
 ) =>
+  // POST 不是 PATCH：微信 wx.request 不支持 PATCH，端上请求层会直接拒掉（2026-09-06 员工端保存明细「没反应」）
   request<PurchaseRequestView>({
-    method: 'PATCH',
+    method: 'POST',
     url: `/purchase-requests/${id}/items`,
     data,
   });
