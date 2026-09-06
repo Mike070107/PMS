@@ -356,6 +356,17 @@ export default function MaintenanceOrdersPage() {
         ),
     },
     {
+      // 状态放第二列：这是办公室最先要看的东西。原来排在倒数第二，笔记本宽度下被右侧固定的操作列盖住，
+      // 要横向滚动才看得见（2026-09-06 核对截图时发现）
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 130,
+      render: (s: MaintenanceStatus) => (
+        <Tag color={STATUS_COLOR[s]}>{MAINTENANCE_STATUS_LABELS[s]}</Tag>
+      ),
+    },
+    {
       title: '报修地址 / 项目',
       key: 'address',
       width: 280,
@@ -400,20 +411,10 @@ export default function MaintenanceOrdersPage() {
       ),
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      // 「待修理人签字」六个字，100 不够；列宽之和要和下面 scroll.x 对上，否则被右侧固定列盖住只剩一个字
-      width: 130,
-      render: (s: MaintenanceStatus) => (
-        <Tag color={STATUS_COLOR[s]}>{MAINTENANCE_STATUS_LABELS[s]}</Tag>
-      ),
-    },
-    {
       title: '开单时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      width: 190,
+      width: 160,
       render: (v: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTimeCn(v) || '—'}</span>,
     },
     {
@@ -533,8 +534,8 @@ export default function MaintenanceOrdersPage() {
           tableLayout="fixed"
           // 列宽合计约 1180：窗口比它窄就横向滚，不让列被压到一个字宽、
           // 把「养护单号」挤成竖排（2026-08-31 反馈）
-          // = 各列 width 之和（140+280+170+200+120+130+190+170）；小于它时状态列会被右侧固定的操作列盖住
-          scroll={{ x: 1400 }}
+          // = 各列 width 之和（140+130+280+170+200+120+160+170）；小于它时最后几列会被右侧固定的操作列盖住
+          scroll={{ x: 1370 }}
           pagination={{ pageSize: 10, showSizeChanger: false }}
           onRow={(r) => ({ onClick: () => setOpenId(r.id), style: { cursor: 'pointer' } })}
           locale={{
