@@ -67,3 +67,37 @@ export function compareWorkOrderRoutePriority(
   if (Number.isFinite(timeDiff) && timeDiff) return timeDiff;
   return (a.id ?? 0) - (b.id ?? 0);
 }
+
+/**
+ * 员工端「工单池 / 派单台 / 在手工单 / 我修的」的排序（2026-09-06 Mike）：
+ * 紧急先；其余**只按报修时间从早到晚** —— 越老的越该先修，新单排在下面。
+ * 不再按超时插队、不再同日按地址聚拢：那套排法看着不是时间序，维修工反而找不到「最早那单」。
+ * 后台派单台仍用上面的 compareWorkOrderRoutePriority（办公室要看路线）。
+ */
+export function compareWorkOrderOldestFirst(
+  a: RouteSortableWorkOrder,
+  b: RouteSortableWorkOrder,
+): number {
+  const urgentDiff = Number(!!b.urgent) - Number(!!a.urgent);
+  if (urgentDiff) return urgentDiff;
+  const timeDiff = timeOf(a.createdAt) - timeOf(b.createdAt);
+  if (Number.isFinite(timeDiff) && timeDiff) return timeDiff;
+  return (a.id ?? 0) - (b.id ?? 0);
+}
+
+/** 「我报的 / 已完结」：最近的在上面，点进去先看到刚处理的 */
+export function compareWorkOrderNewestFirst(
+  a: RouteSortableWorkOrder,
+  b: RouteSortableWorkOrder,
+): number {
+  const timeDiff = timeOf(b.createdAt) - timeOf(a.createdAt);
+  if (Number.isFinite(timeDiff) && timeDiff) return timeDiff;
+  // 没有时间的（理论上不会有）排最后
+  const aMissing = !Number.isFinite(timeOf(a.createdAt));
+  const bMissing = !Number.isFinite(timeOf(b.createdAt));
+  if (aMissing !== bMissing) return aMissing ? 1 : -1;
+  return (b.id ?? 0) - (a.id ?? 0);
+}
+
+/** 「我报的 / 已完结」不搜索时只展示最近这么多条，更早的靠搜索 */
+export const RECENT_LIST_LIMIT = 30;

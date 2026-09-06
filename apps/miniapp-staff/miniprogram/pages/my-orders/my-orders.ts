@@ -1,6 +1,6 @@
 import { repairs } from '@pms/api-client';
 import { withOrderLabels } from '@pms/miniapp-ui';
-import { WorkOrderStatus, type WorkOrderListItem } from '@pms/shared-types';
+import { WorkOrderStatus, compareWorkOrderOldestFirst, type WorkOrderListItem } from '@pms/shared-types';
 import { isActiveOrder } from '../../utils/order-status';
 import { getSession } from '../../utils/session';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
@@ -97,13 +97,8 @@ Page({
           // 卡片也不能再误导用户去接第二次；有接单时间就只能进入完工流程。
           actionText: item.acceptedAt ? '去完工' : ACTION_TEXT[item.status] || '查看详情',
         }));
-      // 在手工单与工单池同一口径：紧急在前；同组按报修时间从早到晚。
-      active.sort(
-        (a, b) =>
-          Number(b.urgent) - Number(a.urgent)
-          || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          || a.id - b.id,
-      );
+      // 在手工单与工单池同一口径（shared-types 一份实现）：紧急在前；其余按报修时间从早到晚，越老越靠前
+      active.sort(compareWorkOrderOldestFirst);
       active.forEach((row, index) => {
         const previous = active[index - 1];
         row.groupStart = index === 0 || !!previous?.urgent !== !!row.urgent;

@@ -6,7 +6,9 @@ import {
   type HoldToTalk,
 } from '@pms/miniapp-ui';
 import {
-  compareWorkOrderRoutePriority,
+  RECENT_LIST_LIMIT,
+  compareWorkOrderNewestFirst,
+  compareWorkOrderOldestFirst,
   WorkOrderStatus,
   type TechnicianOption,
   type WorkOrderListItem,
@@ -247,6 +249,9 @@ Page({
     closingId: 0,
     settling: false,
     capped: false,
+    /** 我报的 / 已完结：不搜索时只展示最近 recentLimit 条，这里记被藏起来的条数，>0 就在列表底部说明 */
+    recentHiddenCount: 0,
+    recentLimit: RECENT_LIST_LIMIT,
     emptyText: '',
 
     // ---- 状态筛选 + 搜索（两种模式都有，档位不同）----
@@ -434,15 +439,19 @@ Page({
         };
       });
 
-      // 现场处理顺序：紧急 / 超时优先；同一天再把相邻地址聚在一起，减少来回跑。
-      // 服务端和端上共用同一口径，这里重排是为了防止页面加工数据时打乱顺序。
-      // 「我修的」已经在自己手上，不参与「先接哪一单」的排序和分组
-      const claimable = mainTab === 'pool' && filter.key !== 'mine' && (!dispatcher || filter.key === 'pool');
-      if (claimable) {
-        rows.sort(compareWorkOrderRoutePriority);
-      }
+      // 排序口径（2026-09-06 Mike）：
+      //   工单池 / 派单台 / 我修的：紧急先，其余按报修时间从早到晚 —— 越老的越该先修，新单在下面；
+      //   我报的 / 已完结：最近的在上面，不搜索时只展示最近 30 条，更早的靠搜索。
+      // 服务端给的是 id 倒序，这里必须重排，不然四档看起来各是各的顺序。
+      const recentList = mainTab === 'reported' || mainTab === 'done';
+      rows.sort(recentList ? compareWorkOrderNewestFirst : compareWorkOrderOldestFirst);
+      const recentHiddenCount =
+        recentList && !keyword ? Math.max(0, rows.length - RECENT_LIST_LIMIT) : 0;
+      if (recentHiddenCount) rows.splice(RECENT_LIST_LIMIT);
 
-      const showPriorityGroups = claimable;
+      // 「紧急 / 普通」分组标题只在「先接哪一单」的池子里画；「我修的」已在自己手上，不参与
+      const showPriorityGroups =
+        mainTab === 'pool' && filter.key !== 'mine' && (!dispatcher || filter.key === 'pool');
       if (showPriorityGroups) {
         rows.forEach((row, index) => {
           const previous = rows[index - 1];
@@ -492,6 +501,8 @@ Page({
         showPriorityGroups,
         loaded: true,
         capped: rows.length >= PAGE_CAP,
+        recentHiddenCount,
+        recentLimit: RECENT_LIST_LIMIT,
         /* 空态要说清「空在哪一层」：搜的没有 / 这一档没有 / 真的没活。
            三种情况给同一句话，人会以为是坏了或者搜索没生效 */
         emptyText: keyword

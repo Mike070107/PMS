@@ -127,7 +127,7 @@
   >
     <view wx:if="{{showPriorityGroups && item.groupStart}}" class="priority-group {{item.urgent ? 'priority-group--urgent' : ''}}">
       <view class="priority-group__title">{{item.groupLabel}}</view>
-      <view wx:if="{{guide}}" class="priority-group__hint">超时优先，同一天按相邻地址排列</view>
+      <view wx:if="{{guide}}" class="priority-group__hint">紧急先处理；其余按报修时间，越早报的越靠前</view>
     </view>
     <view
     id="pool-order-{{item.id}}"
@@ -205,8 +205,12 @@
     </view>
   </block>
 
+  <!-- 我报的 / 已完结不搜索时只展示最近 30 条（2026-09-06 Mike）：更早的靠搜索，必须说清，不然像丢了单 -->
+  <view wx:if="{{recentHiddenCount}}" class="muted center cap-tip">
+    只显示最近 {{recentLimit}} 条，还有 {{recentHiddenCount}} 条更早的没列出来；要找更早的，用上面的搜索（单号 / 地址 / 描述）
+  </view>
   <!-- 服务端一次最多给 100 条：到顶了必须说明，否则看着就是「搜索漏了单」 -->
-  <view wx:if="{{capped}}" class="muted center cap-tip">
+  <view wx:elif="{{capped}}" class="muted center cap-tip">
     只显示最近 100 条，用上面的搜索或状态筛选缩小范围
   </view>
 </view>
