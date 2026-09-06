@@ -339,3 +339,17 @@
   box-shadow: 0 12rpx 28rpx rgba(23, 59, 99, 0.28);
 }
 .fab::after { border: none; }
+
+/* 采购申请卡片（2026-09-06）：整卡可点进详情，前 3 行带缩略图 */
+.req-card:active { opacity: .85; }
+.req-lines { margin-top: 12rpx; }
+.req-line { display: flex; align-items: center; gap: 14rpx; padding: 10rpx 0; }
+.req-line__thumb { flex-shrink: 0; width: 80rpx; height: 80rpx; border-radius: 12rpx; background: #e4e9ef; }
+.req-line__thumb--empty { display: flex; align-items: center; justify-content: center; color: var(--color-text-tertiary); font-size: var(--font-xs); }
+.req-line__body { flex: 1; min-width: 0; }
+.req-line__name { color: #243b4f; font-size: var(--font-md); font-weight: 600; line-height: 1.45; }
+.req-line__spec { margin-left: 10rpx; padding: 2rpx 12rpx; border-radius: 999rpx; background: rgba(49, 95, 155, .1); color: var(--color-brand); font-size: var(--font-xs); font-weight: 600; }
+.req-line__meta { color: var(--color-text-tertiary); font-size: var(--font-sm); line-height: 1.5; }
+.req-more { padding: 6rpx 0 0 94rpx; font-size: var(--font-sm); }
+.req-reason { margin-top: 8rpx; color: var(--color-text-secondary); font-size: var(--font-sm); line-height: 1.5; }
+.req-link { margin-top: 12rpx; text-align: right; color: var(--color-brand); font-size: var(--font-sm); font-weight: 600; }

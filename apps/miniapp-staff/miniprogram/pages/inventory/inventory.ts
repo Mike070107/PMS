@@ -63,6 +63,42 @@ interface RequestRow extends PurchaseRequestView {
   amountText: string;
   itemsText: string;
   createdAtText: string;
+  /** 卡片上先给前 3 行（带缩略图），全部明细进详情页看 */
+  lines: Array<{ lineId: string; name: string; spec: string; qty: number; unit: string; note: string; photoUrl: string }>;
+  moreCount: number;
+  sourceText: string;
+  applicantText: string;
+  /** 还在办公室汇总且本人有材料编辑权：详情页里能改能补图 */
+  editable: boolean;
+}
+
+/** 列表卡片上的明细摘要：最多 3 行，缩略图优先用维修工拍的样本 / 材料库主图 */
+function toRequestRow(item: PurchaseRequestView, canEditMaterials: boolean): RequestRow {
+  const items = item.items || [];
+  return {
+    ...item,
+    statusLabel: PURCHASE_STATUS_LABELS[item.status] || item.status,
+    amountText: yuan(item.estTotalCents),
+    itemsText: items.map((i) => `${i.name} ×${i.qty}`).join('、'),
+    createdAtText: formatDateTimeCn(item.createdAt),
+    lines: items.slice(0, 3).map((line, index) => ({
+      lineId: line.lineId || `${item.id}-${index + 1}`,
+      name: line.name,
+      spec: line.spec || '',
+      qty: line.qty,
+      unit: line.unit || '',
+      note: line.note || '',
+      photoUrl: line.photoUrl || (line.photoUrls && line.photoUrls[0]) || '',
+    })),
+    moreCount: Math.max(0, items.length - 3),
+    sourceText: item.sourceWorkOrderNos?.length
+      ? `来自工单 ${item.sourceWorkOrderNos.join('、')}`
+      : item.workOrderId
+        ? `来自工单 ${item.workOrderNo || '未知工单'}`
+        : '办公室手工申请',
+    applicantText: item.applicantName || '未知申请人',
+    editable: item.status === PurchaseRequestStatus.OFFICE_REVIEW && canEditMaterials,
+  };
 }
 
 interface FormState {
@@ -338,13 +374,7 @@ Page({
         loaded: true,
         noWarehouseHint,
         incompleteCount,
-        requests: requests.map((item) => ({
-          ...item,
-          statusLabel: PURCHASE_STATUS_LABELS[item.status] || item.status,
-          amountText: yuan(item.estTotalCents),
-          itemsText: (item.items || []).map((i) => `${i.name} ×${i.qty}`).join('、'),
-          createdAtText: formatDateTimeCn(item.createdAt),
-        })),
+        requests: requests.map((item) => toRequestRow(item, !!session.canEditMaterials)),
       });
       // 角标 = 还有几条要补：办公室不用点进来才知道有没有活
       setTabBadge(this, 'materials', session.canEditMaterials ? incompleteCount : 0);
@@ -355,6 +385,13 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  /** 采购申请卡片 → 详情页（全部照片、改明细、补图、提交 / 重新打开） */
+  onOpenRequest(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.id);
+    if (!id) return;
+    wx.navigateTo({ url: `/pages/purchase-request/purchase-request?id=${id}` });
   },
 
   /** 某条 SKU 在某个仓（warehouseId 为空 = 全部仓合计）的存量 */

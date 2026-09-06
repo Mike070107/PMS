@@ -270,19 +270,33 @@
       <view wx:if="{{loading}}" class="muted center">加载中…</view>
       <view wx:elif="{{requests.length === 0}}" class="muted center">暂无采购申请</view>
 
-      <view class="card" wx:for="{{requests}}" wx:key="id">
+      <!-- 整张卡可点：进申请详情看全部照片、改名称型号备注、补图、提交（2026-09-06 Mike：这里的列表太简陋，看不了详情改不了） -->
+      <view class="card req-card" wx:for="{{requests}}" wx:key="id" data-id="{{item.id}}" bindtap="onOpenRequest">
         <view class="row">
           <text class="muted">{{item.requestNo}}</text>
           <text class="status">{{item.statusLabel}}</text>
         </view>
-        <view class="items">{{item.itemsText || '（无明细）'}}</view>
+        <view class="req-lines">
+          <view wx:for="{{item.lines}}" wx:for-item="line" wx:key="lineId" class="req-line">
+            <image wx:if="{{line.photoUrl}}" class="req-line__thumb" src="{{line.photoUrl}}" mode="aspectFill"/>
+            <view wx:else class="req-line__thumb req-line__thumb--empty">无图</view>
+            <view class="req-line__body">
+              <view class="req-line__name">{{line.name}}<text wx:if="{{line.spec}}" class="req-line__spec">{{line.spec}}</text></view>
+              <view class="req-line__meta">×{{line.qty}}{{line.unit || ''}}<text wx:if="{{line.note}}"> · {{line.note}}</text></view>
+            </view>
+          </view>
+          <view wx:if="{{item.moreCount}}" class="muted req-more">还有 {{item.moreCount}} 项…</view>
+          <view wx:if="{{!item.lines.length}}" class="muted">（无明细）</view>
+        </view>
+        <view wx:if="{{item.reason}}" class="req-reason">申请原因：{{item.reason}}</view>
+        <view wx:if="{{item.rejectReason}}" class="reject">{{item.status === 'rejected' ? '驳回原因' : '驳回说明'}}：{{item.rejectReason}}</view>
         <view class="row mt-sm">
-          <text class="muted">{{item.createdAtText}}</text>
+          <text class="muted">{{item.sourceText}} · {{item.applicantText}} · {{item.createdAtText}}</text>
           <text class="amount">{{item.amountText}}</text>
         </view>
-        <view wx:if="{{item.rejectReason}}" class="reject">驳回原因：{{item.rejectReason}}</view>
+        <view class="req-link">{{item.editable ? '详情 / 编辑 / 补照片 ›' : '查看详情 ›'}}</view>
       </view>
-      <view wx:if="{{guide}}" class="muted center tip">审批操作在「审批」页；下单、入库请在管理后台完成</view>
+      <view wx:if="{{guide}}" class="muted center tip">点卡片进详情：看全部照片、改名称型号、补图、提交；审批在「审批」页，下单、入库在管理后台</view>
     </block>
   </block>
 
