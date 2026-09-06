@@ -403,7 +403,8 @@ export default function MaintenanceOrdersPage() {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 100,
+      // 「待修理人签字」六个字，100 不够；列宽之和要和下面 scroll.x 对上，否则被右侧固定列盖住只剩一个字
+      width: 130,
       render: (s: MaintenanceStatus) => (
         <Tag color={STATUS_COLOR[s]}>{MAINTENANCE_STATUS_LABELS[s]}</Tag>
       ),
@@ -418,7 +419,7 @@ export default function MaintenanceOrdersPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 150,
+      width: 170,
       fixed: 'right' as const,
       render: (_: unknown, r: MaintenanceListRow) => (
         <Space size={0} onClick={(event) => event.stopPropagation()}>
@@ -532,7 +533,8 @@ export default function MaintenanceOrdersPage() {
           tableLayout="fixed"
           // 列宽合计约 1180：窗口比它窄就横向滚，不让列被压到一个字宽、
           // 把「养护单号」挤成竖排（2026-08-31 反馈）
-          scroll={{ x: 1270 }}
+          // = 各列 width 之和（140+280+170+200+120+130+190+170）；小于它时状态列会被右侧固定的操作列盖住
+          scroll={{ x: 1400 }}
           pagination={{ pageSize: 10, showSizeChanger: false }}
           onRow={(r) => ({ onClick: () => setOpenId(r.id), style: { cursor: 'pointer' } })}
           locale={{
