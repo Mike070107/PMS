@@ -2583,3 +2583,12 @@
 - 自上次（b7566cf）以来上线的相关提交：
   - ced109f fix(报修识别): 智能化类型把门铃/门禁/对讲/监控/道闸五组同义词全锚进来；监控组补摄像/没图像等说法；省钱模式下类型没撞上也请模型判
 
+## 2026-09-07 11:49 · miniapp-staff · 30eb7fc
+
+- 包：`1.0.20260907b`
+- 提交：30eb7fc fix(语音): 新用户按住说话前先弹隐私协议和麦克风授权，插件错误码译成人话；员工端声明 scope.record
+- 说明：语音授权前置；脏文件是另一会话的样式改动，从干净 worktree 上传
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（e76fc79）以来上线的相关提交：
+  - 30eb7fc fix(语音): 新用户按住说话前先弹隐私协议和麦克风授权，插件错误码译成人话；员工端声明 scope.record
+
