@@ -129,38 +129,21 @@
       <view class="priority-group__title">{{item.groupLabel}}</view>
       <view wx:if="{{guide}}" class="priority-group__hint">紧急先处理；其余按报修时间，越早报的越靠前</view>
     </view>
+    <!-- 等待材料收成一组（2026-09-07 Mike）：一行文字 + 张数，点开才铺出卡片；这些单眼下没活可干 -->
+    <view wx:if="{{item.waitingGroupStart}}" class="waiting-group {{waitingExpanded ? 'waiting-group--open' : ''}}" bindtap="onToggleWaitingGroup">
+      <view class="waiting-group__title">
+        <text>等待材料 {{waitingCount}} 张</text>
+        <text class="waiting-group__sub">到料后再接回</text>
+      </view>
+      <text class="waiting-group__toggle">{{waitingExpanded ? '收起 ⌃' : '展开 ⌄'}}</text>
+    </view>
     <view
+    wx:if="{{!item.inWaitingGroup || waitingExpanded}}"
     id="pool-order-{{item.id}}"
     class="order-slot {{collectingId === item.id ? 'order-slot--collecting' : ''}} {{closingId === item.id ? 'order-slot--closing' : ''}} {{settling && index > collectingIndex ? 'order-slot--following' : ''}}"
     style="{{collectingId === item.id || closingId === item.id ? 'height:' + collectingHeight + 'px' : ''}}"
   >
     <view
-      wx:if="{{item.waitingCollapsed}}"
-      class="card order-card waiting-fold"
-      hover-class="waiting-fold--hover"
-      hover-stay-time="80"
-      bindtap="onExpandWaiting"
-      data-id="{{item.id}}"
-    >
-      <view class="waiting-fold__head">
-        <view class="waiting-fold__title">
-          <text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text>
-          <text>等待材料</text>
-        </view>
-        <pms-tag status="{{item.status}}" label="{{item.statusText}}"/>
-      </view>
-      <view class="waiting-fold__addr">
-        <view class="icon icon--pin"></view>
-        <text>{{item.summaryAddress || '未填地址'}}</text>
-      </view>
-      <view class="waiting-fold__material">{{item.missingText || '待补充缺料明细'}}</view>
-      <view class="waiting-fold__foot">
-        <text>{{item.orderNo}} · {{item.timeText}}</text>
-        <text class="waiting-fold__expand">展开详情⌄</text>
-      </view>
-    </view>
-    <view
-      wx:else
       class="card wo-card wo-card--data order-card"
       hover-class="wo-card--hover"
       hover-stay-time="80"
@@ -172,12 +155,6 @@
       <template is="wo-card-body" data="{{item: item, thirdLabel: item.thirdLabel, thirdValue: item.thirdValue, thirdHint: item.thirdHint}}"/>
 
       <view class="wo-card__foot">
-        <text
-          wx:if="{{!dispatcher && mainTab === 'pool' && item.status === 'waiting_material'}}"
-          class="waiting-collapse"
-          catchtap="onCollapseWaiting"
-          data-id="{{item.id}}"
-        >收起⌃</text>
         <!-- 派单台 -->
         <block wx:if="{{dispatcher}}">
           <button

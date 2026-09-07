@@ -304,3 +304,10 @@
   border-radius: 50%;
   background: #31558a;
 }
+
+/* 等待材料一组（2026-09-07）：一行标题，点开铺出下面的卡片；放在普通工单后面 */
+.waiting-group { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin: 24rpx 0 12rpx; padding: 22rpx 28rpx; border-radius: 20rpx; background: #f1f6fb; border: 2rpx dashed #b8c9da; }
+.waiting-group--open { border-style: solid; background: #eaf2fa; }
+.waiting-group__title { display: flex; align-items: baseline; gap: 14rpx; color: #243b4f; font-size: var(--font-lg); font-weight: 600; }
+.waiting-group__sub { color: var(--color-text-tertiary); font-size: var(--font-sm); font-weight: 400; }
+.waiting-group__toggle { flex-shrink: 0; color: var(--color-brand); font-size: var(--font-md); font-weight: 600; }

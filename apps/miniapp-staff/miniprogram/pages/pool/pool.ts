@@ -76,8 +76,9 @@ type OrderRow = WorkOrderListItem & {
   actionText: string;
   /** 「王师傅」/「未派单」，派单台专用 */
   assigneeText: string;
-  /** 工单池里的等待材料卡默认只露出摘要，点开后再展示完整信息 */
-  waitingCollapsed: boolean;
+  /** 工单池里等待材料的单收成一组（一行「等待材料 N 张」），点开才展开；这两个标记驱动 wxml */
+  inWaitingGroup: boolean;
+  waitingGroupStart: boolean;
 
   /* ---- 卡片数据网格用的四个短值（data-first-ui）：由 withOrderLabels 一并算好 ----
      在手工单页用的是同一份，改口径去 packages/miniapp-ui/src/format.ts，别在页面里再算一遍。
@@ -249,6 +250,9 @@ Page({
     closingId: 0,
     settling: false,
     capped: false,
+    /** 等待材料那一组：几张、展开没。展开状态跨刷新保留，别刷一下又收起来 */
+    waitingCount: 0,
+    waitingExpanded: false,
     /** 我报的 / 已完结：不搜索时只展示最近 recentLimit 条，这里记被藏起来的条数，>0 就在列表底部说明 */
     recentHiddenCount: 0,
     recentLimit: RECENT_LIST_LIMIT,
@@ -409,8 +413,13 @@ Page({
           ...item,
           claimable,
           dispatchable,
-          waitingCollapsed:
-            mainTab === 'pool' && !dispatcher && item.status === WorkOrderStatus.WAITING_MATERIAL,
+          // 「等待材料」那一档本身就在看它们，不折；其它档把它们收成一组放在列表最后
+          inWaitingGroup:
+            mainTab === 'pool' &&
+            !dispatcher &&
+            filter.key !== 'waiting' &&
+            item.status === WorkOrderStatus.WAITING_MATERIAL,
+          waitingGroupStart: false,
           actionText:
             mainTab === 'reported'
               ? '看进度'
@@ -449,11 +458,26 @@ Page({
         recentList && !keyword ? Math.max(0, rows.length - RECENT_LIST_LIMIT) : 0;
       if (recentHiddenCount) rows.splice(RECENT_LIST_LIMIT);
 
-      // 「紧急 / 普通」分组标题只在「先接哪一单」的池子里画；「我修的」已在自己手上，不参与
+      // 等待材料的单收成一组挂在列表最后（2026-09-07 Mike：折叠成一行文字，要看再展开）：
+      // 它们眼下没活可干，散在中间只会把「先接哪一单」的顺序搅乱
+      const waitingRows = rows.filter((row) => row.inWaitingGroup);
+      if (waitingRows.length) {
+        const mainRows = rows.filter((row) => !row.inWaitingGroup);
+        rows.length = 0;
+        rows.push(...mainRows, ...waitingRows);
+        waitingRows[0].waitingGroupStart = true;
+      }
+
+      // 「紧急 / 普通」分组标题只在「先接哪一单」的池子里画；「我修的」已在自己手上，不参与；
+      // 等待材料那一组有自己的标题行，不参与
       const showPriorityGroups =
         mainTab === 'pool' && filter.key !== 'mine' && (!dispatcher || filter.key === 'pool');
       if (showPriorityGroups) {
         rows.forEach((row, index) => {
+          if (row.inWaitingGroup) {
+            row.groupStart = false;
+            return;
+          }
           const previous = rows[index - 1];
           row.groupStart = index === 0 || !!previous?.urgent !== !!row.urgent;
           row.groupLabel = row.urgent ? '紧急工单 · 先处理' : '普通工单';
@@ -499,6 +523,7 @@ Page({
         urgentCount: rows.filter((row) => row.urgent).length,
         normalCount: rows.filter((row) => !row.urgent).length,
         showPriorityGroups,
+        waitingCount: rows.filter((row) => row.inWaitingGroup).length,
         loaded: true,
         capped: rows.length >= PAGE_CAP,
         recentHiddenCount,
@@ -840,20 +865,9 @@ Page({
     wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${e.currentTarget.dataset.id}` });
   },
 
-  /** 等待材料默认折叠：第一次点只展开，不直接跳详情，避免误触。 */
-  onExpandWaiting(e: WechatMiniprogram.BaseEvent) {
-    const id = Number(e.currentTarget.dataset.id);
-    const index = this.data.list.findIndex((item) => item.id === id);
-    if (index < 0) return;
-    this.setData({ [`list[${index}].waitingCollapsed`]: false });
-  },
-
-  /** 展开后可随时收回摘要态，且不触发整卡的详情跳转。 */
-  onCollapseWaiting(e: WechatMiniprogram.BaseEvent) {
-    const id = Number(e.currentTarget.dataset.id);
-    const index = this.data.list.findIndex((item) => item.id === id);
-    if (index < 0) return;
-    this.setData({ [`list[${index}].waitingCollapsed`]: true });
+  /** 「等待材料 N 张」那一行：点一下展开这一组的卡片，再点收回 */
+  onToggleWaitingGroup() {
+    this.setData({ waitingExpanded: !this.data.waitingExpanded });
   },
 
   /** 按页头选中的那个数字筛当前这一屏；没选就原样返回 */

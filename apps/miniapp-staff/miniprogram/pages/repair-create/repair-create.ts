@@ -304,15 +304,24 @@ Page({
       this.addressCacheScope = `staff:${me.id}:${
         this.reportCommunityIds === null ? 'all' : this.reportCommunityIds.join(',') || 'none'
       }`;
-      // 只填还空着的：描述里已经认出的人（「张先生报，电话138…」）比登录人更准，不能被盖掉
+      // 登录人的姓名和电话是**一对**，只在两项都还空着（或都还是默认值）、且没人动过时一起带入。
+      // 描述可能先于这里认出了别人（语音报修转过来的话一进页面就识别，账号信息这时还没回来）：
+      // 那时名字已经是别人的，绝不能再把登录人的电话补到那个名字后面 ——
+      // 2026-09-07 Mike 第 N 次反馈「报修人是描述里认出来的，电话却还是登录人的」，就是这条竞态。
       const patch: Record<string, string> = {};
-      if (!this.suppressContactDefaults && !this.data.contactName && !this.contactTouched && me.name) {
-        patch.contactName = me.name;
-        this.contactIsDefault = true;
-      }
-      if (!this.suppressContactDefaults && !this.data.contactPhone && !this.phoneTouched && me.phone) {
-        patch.contactPhone = me.phone;
-        this.phoneIsDefault = true;
+      const nobodyTouched = !this.contactTouched && !this.phoneTouched;
+      const bothEmptyOrDefault =
+        (!this.data.contactName || this.contactIsDefault) &&
+        (!this.data.contactPhone || this.phoneIsDefault);
+      if (!this.suppressContactDefaults && nobodyTouched && bothEmptyOrDefault) {
+        if (!this.data.contactName && me.name) {
+          patch.contactName = me.name;
+          this.contactIsDefault = true;
+        }
+        if (!this.data.contactPhone && me.phone) {
+          patch.contactPhone = me.phone;
+          this.phoneIsDefault = true;
+        }
       }
       this.setData({
         ...patch,
@@ -489,10 +498,30 @@ Page({
         ? '已按原话填写联系人信息；没说的项目已清空，避免混用登录人资料'
         : `公共区域报修未留联系人，已用房号 ${roomLabel} 作为联系人标识`;
     } else {
-      if (!this.data.contactName && res.ai?.contactName) patch.contactName = res.ai.contactName;
-      if (!this.data.contactPhone && /^1\d{10}$/.test(res.ai?.phone || '')) {
-        patch.contactPhone = res.ai?.phone;
+      // 模型认出的联系人 / 电话也走同一份合并规则（和正则识别那条路一样）：手改过的不动、
+      // 登录人默认值可被顶掉、只认出姓名就把默认电话一起清掉 —— 姓名和电话必须是同一个人的。
+      // 原来这里只填「空着的」，默认名占着位就填不进去、默认电话却留着，成对规则被绕开了。
+      const aiPhone = /^1\d{10}$/.test(res.ai?.phone || '') ? res.ai?.phone || '' : '';
+      const merged = mergeExtractedContact(
+        { ...extractContact(''), name: (res.ai?.contactName || '').trim(), phone: aiPhone },
+        {
+          name: this.data.contactName,
+          phone: this.data.contactPhone,
+          nameIsDefault: this.contactIsDefault,
+          phoneIsDefault: this.phoneIsDefault,
+          nameTouched: this.contactTouched,
+          phoneTouched: this.phoneTouched,
+        },
+      );
+      this.contactIsDefault = merged.nameIsDefault;
+      this.phoneIsDefault = merged.phoneIsDefault;
+      if (merged.name !== undefined) patch.contactName = merged.name;
+      if (merged.phone !== undefined) {
+        patch.contactPhone = merged.phone;
+        patch['errors.phone'] = '';
       }
+      const hint = contactFillHint(merged);
+      if (hint) patch.autoContactHint = hint;
     }
     this.setData(patch);
   },
