@@ -2574,3 +2574,12 @@
 - 自上次（b7566cf）以来上线的相关提交：
   - e76fc79 fix(员工端): 报修人与电话必须成对——登录人默认值成对带入、模型识别也走共用合并规则；工单池等待材料收成一组一行
 
+## 2026-09-07 10:05 · api · ced109f
+
+- 包：`pms-api-20260907-1004.tar.gz`
+- 提交：ced109f fix(报修识别): 智能化类型把门铃/门禁/对讲/监控/道闸五组同义词全锚进来；监控组补摄像/没图像等说法；省钱模式下类型没撞上也请模型判
+- 说明：智能化类型同义词锚点、省钱模式类型兜底；脏文件是另一会话的 AI 改动，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（b7566cf）以来上线的相关提交：
+  - ced109f fix(报修识别): 智能化类型把门铃/门禁/对讲/监控/道闸五组同义词全锚进来；监控组补摄像/没图像等说法；省钱模式下类型没撞上也请模型判
+
