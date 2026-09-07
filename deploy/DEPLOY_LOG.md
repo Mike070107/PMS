@@ -2565,3 +2565,12 @@
 - 自上次（305d4d6）以来上线的相关提交：
   - b7566cf fix(采购): 员工端保存明细「没反应」——小程序不支持 PATCH，改明细接口加 POST 别名；报错移到按钮上方并弹 toast；Web 编辑弹窗校验没过给提示
 
+## 2026-09-07 09:34 · miniapp-staff · e76fc79
+
+- 包：`1.0.20260907a`
+- 提交：e76fc79 fix(员工端): 报修人与电话必须成对——登录人默认值成对带入、模型识别也走共用合并规则；工单池等待材料收成一组一行
+- 说明：联系人成对、等待材料分组；脏文件是另一会话的样式改动，从干净 worktree 上传
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（b7566cf）以来上线的相关提交：
+  - e76fc79 fix(员工端): 报修人与电话必须成对——登录人默认值成对带入、模型识别也走共用合并规则；工单池等待材料收成一组一行
+
