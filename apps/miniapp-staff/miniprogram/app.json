@@ -57,6 +57,11 @@
       }
     ]
   },
+  "permission": {
+    "scope.record": {
+      "desc": "用于按住说话报修、记用料、写维修备注，把语音转成文字"
+    }
+  },
   "style": "v2",
   "sitemapLocation": "sitemap.json",
   "plugins": {
