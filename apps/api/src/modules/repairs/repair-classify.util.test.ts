@@ -48,3 +48,18 @@ test('加了电控门的词之后，家里门窗那几类没被抢走', () => {
   assert.equal(classify('电梯困人'), 'elevator');
   assert.equal(classify('厨房水龙头漏水'), 'water');
 });
+
+test('租户自己的「智能化相关」：常用短语里一个监控词都没有，摄像头 / 对讲 / 道闸 也要归智能化（2026-09-07）', () => {
+  // 吴泾线上的真实配置：类型名只有「智能化相关」，常用短语全是门的说法
+  const tenantTypes = [
+    { repairType: 'menjing', label: '智能化相关', keywords: buildTypeKeywords({ label: '智能化相关', contentSuggestions: ['门坏', '大门坏', '大门', '楼下刷卡不灵', '门锁打不开', '大门关不上'] }) },
+    { repairType: 'public', label: '公共设施相关', keywords: buildTypeKeywords({ label: '公共设施相关', contentSuggestions: SEED_CONTENT_SUGGESTIONS.public ?? [] }) },
+    { repairType: 'other', label: '其它', keywords: buildTypeKeywords({ label: '其它', contentSuggestions: SEED_CONTENT_SUGGESTIONS.other ?? [] }) },
+  ];
+  assert.equal(classifyByKeywords('有5个摄像头图像没有', tenantTypes), 'menjing');
+  assert.equal(classifyByKeywords('监控室的画面黑了', tenantTypes), 'menjing');
+  assert.equal(classifyByKeywords('楼宇对讲叫不通', tenantTypes), 'menjing');
+  assert.equal(classifyByKeywords('道闸不抬杆', tenantTypes), 'menjing');
+  // 端上那套模糊匹配同样要判对
+  assert.equal(classifyRepairType('有5个摄像头图像没有', tenantTypes)?.repairType, 'menjing');
+});

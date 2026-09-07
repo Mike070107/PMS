@@ -41,7 +41,7 @@ import {
   WarehouseType,
   WorkOrderStatus,
 } from '../../common/enums';
-import { RepairTextAiService } from '../ai/repair-text.ai';
+import { RepairTextAiService, matchRepairTypeKeywords } from '../ai/repair-text.ai';
 import { AiFeedbackService } from '../ai/ai-feedback.service';
 import { classifyPublicAreaText } from './repair-public-area.util';
 import { formatAddressLine } from '../../common/address-line.util';
@@ -5772,8 +5772,13 @@ export class RepairsService implements OnModuleInit {
        * 2026-09-05 查费用：这个接口占大模型调用的八成多，大头是打字每停顿一次就调一次。
        */
       byRule = await this.parseAddressByRule(dto, user, access);
-      if (!byRule.matched || rank(byRule.level) <= 1) {
-        ai = await this.repairTextAi.parse(tenantId, dto.text, await repairTypes);
+      // 地址撞上了、但类型一个关键词都没撞上（「有 5 个摄像头图像没有」）也请模型判一下类型，
+      // 否则这单一路躺到「其它」（2026-09-07 Mike）。只对写得够长的话问，边打字的半句不问；
+      // 同一句话有结果缓存，不会每停一下就花一次钱。
+      const types = await repairTypes;
+      const typeUnknown = dto.text.trim().length >= 8 && !matchRepairTypeKeywords(dto.text, types);
+      if (!byRule.matched || rank(byRule.level) <= 1 || typeUnknown) {
+        ai = await this.repairTextAi.parse(tenantId, dto.text, types);
       }
     } else {
       [ai, byRule] = await Promise.all([
