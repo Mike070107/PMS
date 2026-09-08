@@ -150,6 +150,7 @@ import {
 import { nextPurchaseRequestNo } from '../inventory/purchase-request-no.util';
 import { nextPurchaseStatus, pendingStepFor } from '../inventory/purchase-flow';
 import { planPurchaseRollback, type PurchaseRollbackEffect } from './rollback-purchase';
+import { poolTypeScopes } from './pool-visibility';
 import {
   DEFAULT_REPAIR_TYPES,
   LEGACY_REPAIR_TYPE_MAP,
@@ -1230,13 +1231,19 @@ export class RepairsService implements OnModuleInit {
       if (query.status === WorkOrderStatus.DISPATCHED) {
         where.status = WorkOrderStatus.DISPATCHED;
         where.assigneeId = user.id;
-      } else if (!query.status) {
-        // TypeORM 的 where 数组表达 OR：公开池不限制负责人；定向待接只允许本人看。
+      } else {
+        // TypeORM 的 where 数组表达 OR。待接那部分按「这一单和我有没有关系」收敛，
+        // 口径只此一份（见 poolClaimableWheres），角标和筛选档都走它；
+        // 定向待接只允许本人看。
         const base = { ...where };
-        whereVariants = [
-          { ...base, status: In(CLAIMABLE_WORK_ORDER_STATUSES) },
-          { ...base, status: WorkOrderStatus.DISPATCHED, assigneeId: user.id },
-        ];
+        delete base.status;
+        const statuses = query.status
+          ? [query.status as WorkOrderStatus]
+          : CLAIMABLE_WORK_ORDER_STATUSES;
+        const claimable = await this.poolClaimableWheres(tenantId, user, access, base, statuses);
+        whereVariants = query.status
+          ? claimable
+          : [...claimable, { ...base, status: WorkOrderStatus.DISPATCHED, assigneeId: user.id }];
       }
     } else if (query.scope === 'reported') {
       // 「我报的」= 我替住户/巡查提交的单，不管派给了谁。
@@ -6459,6 +6466,53 @@ export class RepairsService implements OnModuleInit {
     return Array.from(new Set(raw.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
   }
 
+  /**
+   * 工单池里「待接单」那部分的可见口径（2026-09-08 Mike 定）——**只此一份**，
+   * 列表、角标、筛选档都调它，不然会出现「角标 3、点进去 1 条」。
+   *
+   * 原来是「本人数据范围内所有待接单」。总公司维修工的数据范围是全公司，于是他能看到、
+   * 也能抢走每个管理处的水 / 电 / 木工单；而按分工，那几类默认只由本管理处的维修工修，
+   * 总公司的人只修智能化 / 防水，其余疑难杂症等办公室指派。
+   *
+   * 维修工现在只看到三种：
+   *   1. 建单时按类型规则推给我的（candidate_ids 含我 —— 微信通知发的也正是这批人）；
+   *   2. 在这单所属管理处、我被列为该类型默认维修工的（同类别互相顶班，不用等派单）；
+   *   3. 一个候选都没有的单（类型没配默认维修工 / 判不出类型）：公开池，谁都能接 ——
+   *      不给这一条的话，这种单在维修工那儿彻底不可见，只能干等办公室。
+   * 办公室（派单台 / 后台工单管理 / 管理员）不受限制，照旧看全部。
+   */
+  private async poolClaimableWheres(
+    tenantId: number,
+    user: AuthUser,
+    access: ResolvedAccess | undefined,
+    base: FindOptionsWhere<WorkOrder>,
+    statuses: WorkOrderStatus[],
+  ): Promise<FindOptionsWhere<WorkOrder>[]> {
+    const claimable: FindOptionsWhere<WorkOrder> = { ...base, status: In(statuses) };
+    const resolved = access ?? (await this.accessService.getAccess(user));
+    if (this.canSeeWholeScope(resolved)) return [claimable];
+    const variants: FindOptionsWhere<WorkOrder>[] = [
+      {
+        ...claimable,
+        candidateIds: Raw((alias) => `${alias} @> CAST(:poolMe AS jsonb)`, {
+          poolMe: JSON.stringify([user.id]),
+        }),
+      },
+      { ...claimable, candidateIds: Raw((alias) => `jsonb_array_length(${alias}) = 0`) },
+    ];
+    const [rules, communities] = await Promise.all([
+      this.repairTypeRuleRepo.find({
+        where: { tenantId },
+        select: ['repairType', 'officeId', 'enabled', 'assigneeId', 'assigneeIds'],
+      }),
+      this.communityRepo.find({ where: { tenantId }, select: ['id', 'officeId', 'parentId'] }),
+    ]);
+    for (const scope of poolTypeScopes(user.id, rules, communities, this.scopeIds(resolved))) {
+      variants.push({ ...claimable, communityId: In(scope.communityIds), skill: In(scope.types) });
+    }
+    return variants;
+  }
+
   /** 工单池角标：管理处范围内所有尚可主动接单的工单。 */
   async poolCount(user: AuthUser, access: ResolvedAccess): Promise<{ count: number }> {
     const tenantId = this.resolveTenantId(user);
@@ -6485,7 +6539,7 @@ export class RepairsService implements OnModuleInit {
     return {
       count: await this.workOrderRepo.count({
         where: [
-          { ...base, status: In(CLAIMABLE_WORK_ORDER_STATUSES) },
+          ...(await this.poolClaimableWheres(tenantId, user, access, base, CLAIMABLE_WORK_ORDER_STATUSES)),
           { ...base, status: WorkOrderStatus.DISPATCHED, assigneeId: user.id },
         ],
       }),
@@ -6516,15 +6570,15 @@ export class RepairsService implements OnModuleInit {
     }
     const has = (key: string) =>
       access.isPlatformAdmin || access.isTenantAdmin || !!access.pages[key]?.view;
+    // 角标和工单池列表必须同一套口径，否则「角标 3、点进去 1 条」（见 poolClaimableWheres）
+    const poolWheres = has('app:pool')
+      ? [
+          ...(await this.poolClaimableWheres(tenantId, user, access, base, CLAIMABLE_WORK_ORDER_STATUSES)),
+          { ...base, status: WorkOrderStatus.DISPATCHED, assigneeId: user.id },
+        ]
+      : [];
     const [pool, dispatch, mine] = await Promise.all([
-      has('app:pool')
-        ? this.workOrderRepo.count({
-            where: [
-              { ...base, status: In(CLAIMABLE_WORK_ORDER_STATUSES) },
-              { ...base, status: WorkOrderStatus.DISPATCHED, assigneeId: user.id },
-            ],
-          })
-        : 0,
+      has('app:pool') ? this.workOrderRepo.count({ where: poolWheres }) : 0,
       has('app:dispatch')
         ? this.workOrderRepo.count({
             where: {

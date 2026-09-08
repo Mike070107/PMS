@@ -13,7 +13,7 @@
       <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
     </view>
   </view>
-  <view wx:if="{{guide}}" class="work-hero__hint">{{dispatcher ? '把待办准确派给合适的维修人员' : '紧急优先；同组按报修时间从早到晚'}}</view>
+  <view wx:if="{{guide}}" class="work-hero__hint">{{dispatcher ? '把待办准确派给合适的维修人员' : '这里只列跟你有关的：按报修类型推给你的、你负责那一类的，以及还没定人的单。紧急优先；同组按报修时间从早到晚'}}</view>
   <!-- 三个数字可点：点了就在这一屏里只看那一类，再点一次取消（见 pool.ts onTapMetric） -->
   <view class="work-metrics">
     <view

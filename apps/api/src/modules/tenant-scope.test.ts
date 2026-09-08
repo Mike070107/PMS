@@ -353,35 +353,72 @@ test('「在手工单」不再隐式授予「我的报修」列表权限', async
   );
 });
 
-test('维修工的工单池包含公开待接单和派给本人的待接单', async () => {
+/**
+ * 2026-09-08 Mike：工单池原来列的是「本人数据范围内所有待接单」，总公司维修工（范围=全公司）
+ * 因此能抢走每个管理处的水电木单。现在只列三种：推给我的、我在这个管理处负责那一类的、
+ * 一个候选都没有的公开单。判定见 RepairsService.poolClaimableWheres + pool-visibility.ts。
+ */
+function poolService(capture: (where: any) => void) {
   const service = Object.create(RepairsService.prototype) as any;
-  let capturedWhere: any;
   service.resolveTenantId = () => 1;
   service.autoCompleteExpiredReviews = async () => {};
   service.scopeIds = () => [10];
   service.isSelfScoped = async () => false;
   service.canDispatch = async () => false;
   service.keywordWheres = async (_tenantId: number, where: any) => [where];
+  service.repairTypeRuleRepo = {
+    async find() {
+      return [
+        // 10 号小区挂在 1 号管理处；这个处把「电相关」配给了本人
+        { repairType: 'electric', officeId: 1, enabled: true, assigneeId: null, assigneeIds: [7] },
+        // 另一个管理处的电相关不是本人，不该带出来
+        { repairType: 'electric', officeId: 2, enabled: true, assigneeId: null, assigneeIds: [8] },
+      ];
+    },
+  };
+  service.communityRepo = {
+    async find() {
+      return [
+        { id: 10, officeId: 1, parentId: null },
+        { id: 20, officeId: 2, parentId: null },
+      ];
+    },
+  };
   service.workOrderRepo = {
     async find(options: any) {
-      capturedWhere = options.where;
+      capture(options.where);
       return [];
     },
   };
+  return service;
+}
+
+test('维修工的工单池只列推给我的、我负责类别的、以及没有候选的公开单', async () => {
+  let capturedWhere: any;
+  const service = poolService((where) => {
+    capturedWhere = where;
+  });
   const user = { id: 7, role: 'staff', tenantId: 1 } as any;
   const access = appAccess({ 'app:pool': { view: true } });
 
   await service.listWorkOrders({ scope: 'pool' }, user, access);
 
   assert.equal(Array.isArray(capturedWhere), true);
-  assert.equal(capturedWhere[0].assigneeId, undefined);
-  assert.equal(capturedWhere[0].candidateIds, undefined);
-  assert.deepEqual(capturedWhere[0].status._value, [
-    WorkOrderStatus.CREATED,
-    WorkOrderStatus.WAITING_MATERIAL,
-  ]);
-  assert.equal(capturedWhere[1].status, WorkOrderStatus.DISPATCHED);
-  assert.equal(capturedWhere[1].assigneeId, 7);
+  assert.equal(capturedWhere.length, 4);
+  const claimStatuses = [WorkOrderStatus.CREATED, WorkOrderStatus.WAITING_MATERIAL];
+  // 1) 推给我的：candidate_ids 含我
+  assert.deepEqual(capturedWhere[0].status._value, claimStatuses);
+  assert.notEqual(capturedWhere[0].candidateIds, undefined);
+  assert.equal(capturedWhere[0].candidateIds._getSql?.('wo.candidate_ids')?.includes('poolMe'), true);
+  // 2) 谁都没通知到的公开单
+  assert.equal(capturedWhere[1].candidateIds._getSql?.('wo.candidate_ids'), 'jsonb_array_length(wo.candidate_ids) = 0');
+  // 3) 本管理处、我负责的类别：只带 10 号小区和 electric
+  assert.deepEqual(capturedWhere[2].communityId._value, [10]);
+  assert.deepEqual(capturedWhere[2].skill._value, ['electric']);
+  assert.deepEqual(capturedWhere[2].status._value, claimStatuses);
+  // 4) 定向派给我、还没接的
+  assert.equal(capturedWhere[3].status, WorkOrderStatus.DISPATCHED);
+  assert.equal(capturedWhere[3].assigneeId, 7);
 
   assert.deepEqual(
     await service.listWorkOrders(
@@ -391,6 +428,48 @@ test('维修工的工单池包含公开待接单和派给本人的待接单', as
     ),
     [],
   );
+});
+
+test('工单池按「等待材料」筛也要收敛，不能借筛选档看到全公司的单', async () => {
+  let capturedWhere: any;
+  const service = poolService((where) => {
+    capturedWhere = where;
+  });
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+
+  await service.listWorkOrders(
+    { scope: 'pool', status: WorkOrderStatus.WAITING_MATERIAL },
+    user,
+    appAccess({ 'app:pool': { view: true } }),
+  );
+
+  assert.equal(capturedWhere.length, 3);
+  capturedWhere.forEach((variant: any) => {
+    assert.deepEqual(variant.status._value, [WorkOrderStatus.WAITING_MATERIAL]);
+  });
+  assert.notEqual(capturedWhere[0].candidateIds, undefined);
+});
+
+test('办公室（后台工单管理 / 派单台）的工单池不收敛，照旧看范围内全部待接单', async () => {
+  let capturedWhere: any;
+  const service = poolService((where) => {
+    capturedWhere = where;
+  });
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+
+  await service.listWorkOrders(
+    { scope: 'pool' },
+    user,
+    appAccess({ 'app:pool': { view: true }, 'app:dispatch': { view: true } }),
+  );
+
+  assert.equal(capturedWhere.length, 2);
+  assert.equal(capturedWhere[0].candidateIds, undefined);
+  assert.equal(capturedWhere[0].skill, undefined);
+  assert.deepEqual(capturedWhere[0].status._value, [
+    WorkOrderStatus.CREATED,
+    WorkOrderStatus.WAITING_MATERIAL,
+  ]);
 });
 
 test('派单台只列没有负责人且没有候选维修工的新单', async () => {
