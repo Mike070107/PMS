@@ -2637,3 +2637,12 @@
 - 自上次（e0a74e1）以来上线的相关提交：
   - 5f04b7e fix(工单池): 收敛闸门只认「派单台」，不认后台工单管理——否则对真维修工不生效
 
+## 2026-09-08 12:21 · api · 0813d57
+
+- 包：`pms-api-20260908-1220.tar.gz`
+- 提交：0813d57 feat(养护单): 按《便民小修修理项目汇总表》补齐预算定额（144 条），编号不再唯一、按编号+项目+规格
+- 说明：预算定额种子144条+spec列；脏文件是另一会话的 AI 改动，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（5f04b7e）以来上线的相关提交：
+  - 0813d57 feat(养护单): 按《便民小修修理项目汇总表》补齐预算定额（144 条），编号不再唯一、按编号+项目+规格
+
