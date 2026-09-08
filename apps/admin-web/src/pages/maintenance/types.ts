@@ -118,6 +118,8 @@ export interface QuotaItemRow {
   id: number;
   code: string;
   name: string;
+  /** 规格（管径 50 / 25mm）：同编号同项目按规格分条，工时不一样 */
+  spec: string;
   unit: string;
   hours: string;
   materialFeeCents: number;

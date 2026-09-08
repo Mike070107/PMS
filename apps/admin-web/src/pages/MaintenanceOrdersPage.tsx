@@ -814,10 +814,32 @@ function MaintenanceEditor({
   /** 打印偏移：这台电脑 + 这台打印机的属性，存本机 */
   const [offset, setOffset] = useState<PrintOffset>(readPrintOffset);
 
-  const quotaByCode = useMemo(
-    () => new Map(quotaItems.map((item) => [item.code, item])),
-    [quotaItems],
-  );
+  /**
+   * 定额编号不唯一：012-219 这种兜底号下面挂着十来个项目，工时各不相同
+   * （拆装污水管还按管径 50/75/110/160 分四条）。所以先按「编号 + 项目名」对，
+   * 名字还没填时才退回按编号取第一条。
+   */
+  const quotaByCode = useMemo(() => {
+    const byCode = new Map<string, QuotaItemRow>();
+    const byCodeName = new Map<string, QuotaItemRow>();
+    for (const item of quotaItems) {
+      if (!byCode.has(item.code)) byCode.set(item.code, item);
+      byCodeName.set(`${item.code}||${item.name}`, item);
+    }
+    return {
+      /** 这个编号下有几个项目：>1 时界面要提示人顺手核对项目名 */
+      countOf: (code: string) => quotaItems.filter((item) => item.code === code).length,
+      pick: (code: string, name?: string | null) =>
+        (name ? byCodeName.get(`${code}||${name.trim()}`) : undefined) ?? byCode.get(code),
+    };
+  }, [quotaItems]);
+
+  /** 反查：办公室习惯先想「修马桶」再找编号，项目名填进去也能带出定额 */
+  const quotaByName = useMemo(() => {
+    const map = new Map<string, QuotaItemRow>();
+    for (const item of quotaItems) if (!map.has(item.name)) map.set(item.name, item);
+    return map;
+  }, [quotaItems]);
 
   useEffect(() => {
     if (!id) {
@@ -894,9 +916,14 @@ function MaintenanceEditor({
       const items = [...prev.items];
       while (items.length <= index) items.push(emptyItem());
       let next = { ...items[index], ...p };
-      // 选了定额编号或改了实做数量 → 工时和人工费自动算，人工费手改后不再被覆盖
-      if ('quotaCode' in p || 'actualQty' in p) {
-        const quota = quotaByCode.get(next.quotaCode);
+      // 填了项目名但还没编号：按名字反查定额，把编号带出来（办公室先想「修马桶」再想编号）
+      if ('name' in p && !next.quotaCode && next.name) {
+        const byName = quotaByName.get(next.name.trim());
+        if (byName) next.quotaCode = byName.code;
+      }
+      // 选了定额编号、改了项目名或实做数量 → 工时和人工费自动算，人工费手改后不再被覆盖
+      if ('quotaCode' in p || 'actualQty' in p || 'name' in p) {
+        const quota = quotaByCode.pick(next.quotaCode, next.name);
         if (quota) {
           const qty = next.actualQty ?? next.surveyQty ?? 1;
           const { hours, laborFeeCents } = quotaLabor(
@@ -1387,6 +1414,7 @@ function MaintenanceEditor({
                   editable={editable}
                   fontId={fontId}
                   quotaListId="mo-quota-codes"
+                  quotaNameListId="mo-quota-names"
                   onPatch={patch}
                   onItemPatch={patchItem}
                   onMaterialPatch={patchMaterial}
@@ -1395,11 +1423,27 @@ function MaintenanceEditor({
                 />
               </div>
             </div>
+            {/* 编号和项目名两个下拉：填哪个都能把定额带出来（一个编号挂多个项目时按项目名区分） */}
             <datalist id="mo-quota-codes">
               {quotaItems
                 .filter((item) => item.enabled)
                 .map((item) => (
-                  <option key={item.id} value={item.code} label={`${item.name}（${item.hours} 工时/${item.unit}）`} />
+                  <option
+                    key={item.id}
+                    value={item.code}
+                    label={`${item.name}${item.spec ? ` ${item.spec}` : ''}（${item.hours} 工时/${item.unit}）`}
+                  />
+                ))}
+            </datalist>
+            <datalist id="mo-quota-names">
+              {quotaItems
+                .filter((item) => item.enabled)
+                .map((item) => (
+                  <option
+                    key={item.id}
+                    value={item.name}
+                    label={`${item.code}${item.spec ? ` ${item.spec}` : ''}（${item.hours} 工时/${item.unit}）`}
+                  />
                 ))}
             </datalist>
             {missing.length > 0 && (
@@ -1681,6 +1725,7 @@ function QuotaConfigModal({
       const data = {
         code: values.code,
         name: values.name,
+        spec: values.spec || '',
         unit: values.unit || '项',
         hours: Number(values.hours || 0),
         materialFeeCents: Math.round(Number(values.materialFeeYuan || 0) * 100),
@@ -1718,6 +1763,10 @@ function QuotaConfigModal({
         养护单上「预算定额」三格就是从这里来的：填单时选一个<b>编号</b>，工时 = 定额工时 × 实做数量，
         人工费 = 工时 × 人工单价；纸下方的<b>定额工料费合计</b> =（人工费 + 材料费）× 取费系数。
         样单口径：0.34 工时 × 17.50 元 = 5.95 元；（5.95 + 6.00）× 1.0341 = 12.36 元。
+        <br />
+        表里已经按《便民小修修理项目汇总表》种好了在用的那本定额（144 条，电 → 水 → 木 → 泥 的顺序）。
+        <b>一个编号可以挂多个项目</b>：012-219 是零星兜底号，「拆装污水管」还按管径分成四条，
+        所以查重看的是 <b>编号 + 项目 + 规格</b>。填单时编号和项目名两格都能选，选哪个都会把另一个带出来。
       </Paragraph>
 
       <Card size="small" title="取费参数" style={{ marginBottom: 16 }}>
@@ -1754,6 +1803,8 @@ function QuotaConfigModal({
         columns={[
           { title: '编号', dataIndex: 'code', width: 120 },
           { title: '项目名称', dataIndex: 'name', width: 200 },
+          // 同编号同项目按规格分条（拆装污水管 50/75/110/160 工时各不相同），这一列不能省
+          { title: '规格', dataIndex: 'spec', width: 90, render: (v: string) => v || '—' },
           { title: '单位', dataIndex: 'unit', width: 70 },
           {
             title: '工时定额',
@@ -1783,6 +1834,7 @@ function QuotaConfigModal({
                     itemForm.setFieldsValue({
                       code: row.code,
                       name: row.name,
+                      spec: row.spec || '',
                       unit: row.unit,
                       hours: Number(row.hours),
                       materialFeeYuan: row.materialFeeCents / 100,
@@ -1810,6 +1862,9 @@ function QuotaConfigModal({
           </Form.Item>
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '填名称' }]}>
             <Input placeholder="修换声控灯" style={{ width: 180 }} />
+          </Form.Item>
+          <Form.Item name="spec" label="规格" tooltip="管径 50 / 25mm 这类；同编号同项目按规格分成几条，工时不一样">
+            <Input placeholder="选填，如 110" style={{ width: 110 }} />
           </Form.Item>
           <Form.Item name="unit" label="单位">
             <Input placeholder="只" style={{ width: 80 }} />

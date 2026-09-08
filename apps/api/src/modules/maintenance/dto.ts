@@ -164,6 +164,8 @@ export class MaintenanceQueryDto {
 export class SaveQuotaItemDto {
   @IsString() @MaxLength(40) code: string;
   @IsString() @MaxLength(120) name: string;
+  /** 规格（管径 50 / 25mm）：同编号同项目按规格分条，工时不一样 */
+  @IsOptional() @IsString() @MaxLength(60) spec?: string;
   @IsOptional() @IsString() @MaxLength(20) unit?: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) hours?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) materialFeeCents?: number;

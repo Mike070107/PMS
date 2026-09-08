@@ -44,6 +44,7 @@ import { resolveRepairTypeLabel } from '../repairs/repair-type-labels';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { stripAddrUnit } from './maintenance-address.util';
 import { materialTotalCents, totalFeeCents } from './maintenance-money.util';
+import { QUOTA_SEED_ITEMS } from './quota-seed';
 import {
   CreateMaintenanceOrderDto,
   InspectMaintenanceOrderDto,
@@ -222,20 +223,53 @@ export class MaintenanceService implements OnModuleInit {
 
   async listQuotaItems(user: AuthUser) {
     const tenantId = this.requireTenant(user);
+    await this.ensureDefaultQuotaItems(tenantId, user.id);
     return this.quotaRepo.find({
       where: { tenantId },
       order: { sortOrder: 'ASC', code: 'ASC' },
     });
   }
 
+  /**
+   * 一条定额都没有的租户，第一次打开配置页时把在用的那本定额种下去（QUOTA_SEED_ITEMS，144 条）。
+   *
+   * 只在**完全为空**时种：办公室改过一次之后（哪怕只剩一条）都不再插手，
+   * 不然人家删掉的条目下次打开又回来了。和报修类型规则的懒种子同一个做法。
+   * 种子里同一个编号可能挂多个项目，唯一键是 编号 + 项目 + 规格。
+   */
+  private async ensureDefaultQuotaItems(tenantId: number, operatorId: number | null) {
+    const existing = await this.quotaRepo.count({ where: { tenantId } });
+    if (existing > 0) return;
+    await this.quotaRepo.save(
+      QUOTA_SEED_ITEMS.map((seed, index) =>
+        this.quotaRepo.create({
+          tenantId,
+          code: seed.code,
+          name: seed.name,
+          spec: seed.spec,
+          unit: seed.unit,
+          hours: String(seed.hours),
+          materialFeeCents: 0,
+          remark: null,
+          enabled: true,
+          // 照抄纸面顺序：电 → 水 → 木/门窗 → 水泥 → 泥
+          sortOrder: (index + 1) * 10,
+          createdBy: operatorId,
+          updatedBy: operatorId,
+        }),
+      ),
+    );
+  }
+
   async createQuotaItem(dto: SaveQuotaItemDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
-    await this.ensureQuotaCodeFree(tenantId, dto.code, null);
+    await this.ensureQuotaCodeFree(tenantId, dto, null);
     return this.quotaRepo.save(
       this.quotaRepo.create({
         tenantId,
         code: dto.code.trim(),
         name: dto.name.trim(),
+        spec: dto.spec?.trim() || '',
         unit: dto.unit?.trim() || '项',
         hours: String(dto.hours ?? 0),
         materialFeeCents: dto.materialFeeCents ?? 0,
@@ -252,9 +286,10 @@ export class MaintenanceService implements OnModuleInit {
     const tenantId = this.requireTenant(user);
     const item = await this.quotaRepo.findOne({ where: { id, tenantId } });
     if (!item) throw new NotFoundException('定额条目不存在');
-    await this.ensureQuotaCodeFree(tenantId, dto.code, id);
+    await this.ensureQuotaCodeFree(tenantId, dto, id);
     item.code = dto.code.trim();
     item.name = dto.name.trim();
+    item.spec = dto.spec?.trim() || '';
     item.unit = dto.unit?.trim() || '项';
     item.hours = String(dto.hours ?? 0);
     item.materialFeeCents = dto.materialFeeCents ?? 0;
@@ -1298,13 +1333,25 @@ export class MaintenanceService implements OnModuleInit {
     };
   }
 
-  private async ensureQuotaCodeFree(tenantId: number, code: string, selfId: number | null) {
+  /**
+   * 查重按 编号 + 项目 + 规格，**不是只看编号**：真实定额本里 012-219 这种兜底号
+   * 下面挂着十来个项目，只看编号会把第二条起全部拒掉（2026-09-08 补种子数据时发现）。
+   */
+  private async ensureQuotaCodeFree(
+    tenantId: number,
+    dto: Pick<SaveQuotaItemDto, 'code' | 'name' | 'spec'>,
+    selfId: number | null,
+  ) {
+    const code = dto.code.trim();
+    const name = dto.name.trim();
+    const spec = dto.spec?.trim() || '';
     const hit = await this.quotaRepo.findOne({
-      where: { tenantId, code: code.trim() },
+      where: { tenantId, code, name, spec },
       select: ['id'],
     });
     if (hit && hit.id !== selfId) {
-      throw new BadRequestException(`定额编号「${code}」已经有了`);
+      const label = spec ? `${code} ${name}（${spec}）` : `${code} ${name}`;
+      throw new BadRequestException(`定额「${label}」已经有了；同一个编号下不同项目 / 规格可以各建一条`);
     }
   }
 

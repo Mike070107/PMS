@@ -75,6 +75,8 @@ export interface SheetProps extends SheetHandlers {
   overlay?: boolean;
   /** 定额编号候选（datalist id） */
   quotaListId?: string;
+  /** 项目名那一格的定额下拉（按项目名找编号），见 MaintenanceOrdersPage 的两个 datalist */
+  quotaNameListId?: string;
   /** 填写内容用哪款手写体（handwriting.ts 的 id）；不给就用 CSS 里的本机回退 */
   fontId?: string;
 }
@@ -717,8 +719,10 @@ export function MaintenanceFront(props: SheetProps) {
                   />
                 </Cell>
                 <Cell w={DETAIL_COLS.name}>
+                  {/* 项目名也挂定额下拉：办公室先想「修马桶」再想编号，填完名字编号和工时自动带出来 */}
                   <Field
                     editable={editable}
+                    list={props.quotaNameListId}
                     className="mo-in--left"
                     value={item?.name || ''}
                     onChange={patchItem && ((v) => patchItem(index, { name: v }))}
