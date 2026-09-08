@@ -2628,3 +2628,12 @@
 - 自上次（30eb7fc）以来上线的相关提交：
   - e0a74e1 feat(工单池): 待接单只列跟本人有关的——推给我的 / 我在本管理处负责那一类的 / 还没定人的
 
+## 2026-09-08 11:36 · api · 5f04b7e
+
+- 包：`pms-api-20260908-1135.tar.gz`
+- 提交：5f04b7e fix(工单池): 收敛闸门只认「派单台」，不认后台工单管理——否则对真维修工不生效
+- 说明：工单池收敛闸门只认派单台；脏文件是另一会话的 AI 改动，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（e0a74e1）以来上线的相关提交：
+  - 5f04b7e fix(工单池): 收敛闸门只认「派单台」，不认后台工单管理——否则对真维修工不生效
+
