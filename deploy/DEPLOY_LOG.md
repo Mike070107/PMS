@@ -2610,3 +2610,12 @@
   - 551000f feat(采购): 申请单明细统一带图/型号/备注、来源工单可点；小程序办公室可勾选合并提交经理
   - fe787a5 feat(员工端): 用料面板改成「申购」口径 —— 库存 0 直接加入采购申请，搜不到可申购新材料带样本照片
 
+## 2026-09-08 11:29 · api · e0a74e1
+
+- 包：`pms-api-20260908-1127.tar.gz`
+- 提交：e0a74e1 feat(工单池): 待接单只列跟本人有关的——推给我的 / 我在本管理处负责那一类的 / 还没定人的
+- 说明：工单池按人收敛；脏文件是另一会话的 AI 改动，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（ced109f）以来上线的相关提交：
+  - e0a74e1 feat(工单池): 待接单只列跟本人有关的——推给我的 / 我在本管理处负责那一类的 / 还没定人的
+
