@@ -450,7 +450,7 @@ test('工单池按「等待材料」筛也要收敛，不能借筛选档看到�
   assert.notEqual(capturedWhere[0].candidateIds, undefined);
 });
 
-test('办公室（后台工单管理 / 派单台）的工单池不收敛，照旧看范围内全部待接单', async () => {
+test('派单台那格的人（办公室）不收敛，照旧看范围内全部待接单', async () => {
   let capturedWhere: any;
   const service = poolService((where) => {
     capturedWhere = where;
@@ -470,6 +470,32 @@ test('办公室（后台工单管理 / 派单台）的工单池不收敛，照�
     WorkOrderStatus.CREATED,
     WorkOrderStatus.WAITING_MATERIAL,
   ]);
+});
+
+/**
+ * 2026-09-08 线上实测：真维修工徐余平的业务角色里带着「后台工单管理·办理」，
+ * 却没有派单台。闸门若按 canSeeWholeScope（含 work-orders）判，他照样看到全部，
+ * 等于这条规则对真正的维修工不生效 —— 所以只认 app:dispatch。
+ */
+test('只有后台工单管理权限、没有派单台的维修工仍然收敛', async () => {
+  let capturedWhere: any;
+  const service = poolService((where) => {
+    capturedWhere = where;
+  });
+  const user = { id: 7, role: 'staff', tenantId: 1 } as any;
+
+  await service.listWorkOrders(
+    { scope: 'pool' },
+    user,
+    appAccess({
+      'app:pool': { view: true },
+      'work-orders': { view: true, edit: true },
+    }),
+  );
+
+  assert.equal(capturedWhere.length, 4);
+  assert.notEqual(capturedWhere[0].candidateIds, undefined);
+  assert.deepEqual(capturedWhere[2].skill._value, ['electric']);
 });
 
 test('派单台只列没有负责人且没有候选维修工的新单', async () => {

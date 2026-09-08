@@ -6490,7 +6490,16 @@ export class RepairsService implements OnModuleInit {
   ): Promise<FindOptionsWhere<WorkOrder>[]> {
     const claimable: FindOptionsWhere<WorkOrder> = { ...base, status: In(statuses) };
     const resolved = access ?? (await this.accessService.getAccess(user));
-    if (this.canSeeWholeScope(resolved)) return [claimable];
+    // 谁不收敛：派单台那格的人（= 办公室）和管理员。**不能用 canSeeWholeScope** ——
+    // 它把「后台工单管理」也算进去，而线上真维修工的业务角色里就带着这一格
+    // （徐余平 2026-09-08 实测：work-orders view+edit，却没有 app:dispatch），
+    // 用它当闸门等于对真正的维修工不生效。工单池是维修工那一格，口径跟小程序自己判
+    // 「是不是派单台」保持一致（utils/session.ts canSeeDispatch = app:dispatch view）。
+    const isDispatcher =
+      resolved.isPlatformAdmin ||
+      resolved.isTenantAdmin ||
+      !!resolved.pages['app:dispatch']?.view;
+    if (isDispatcher) return [claimable];
     const variants: FindOptionsWhere<WorkOrder>[] = [
       {
         ...claimable,
