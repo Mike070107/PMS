@@ -2619,3 +2619,12 @@
 - 自上次（ced109f）以来上线的相关提交：
   - e0a74e1 feat(工单池): 待接单只列跟本人有关的——推给我的 / 我在本管理处负责那一类的 / 还没定人的
 
+## 2026-09-08 11:29 · miniapp-staff · e0a74e1
+
+- 包：`1.0.20260908a`
+- 提交：e0a74e1 feat(工单池): 待接单只列跟本人有关的——推给我的 / 我在本管理处负责那一类的 / 还没定人的
+- 说明：工单池文案；脏文件是另一会话的样式改动
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（30eb7fc）以来上线的相关提交：
+  - e0a74e1 feat(工单池): 待接单只列跟本人有关的——推给我的 / 我在本管理处负责那一类的 / 还没定人的
+
