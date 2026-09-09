@@ -2674,3 +2674,12 @@
 - 自上次（0813d57）以来上线的相关提交：
   - fdf5e56 feat(催单): 员工端工单详情加「催一下」，催单可写备注，消息里直接显示这句话
 
+## 2026-09-09 15:17 · miniapp-staff · 2b4157e
+
+- 包：`1.0.20260909a`
+- 提交：2b4157e chore: 还原 repairs.controller.ts 的混合行尾（上一提交被编辑工具整成全 CRLF，实际只改了 3 行）
+- 说明：工单详情催单入口
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（e0a74e1）以来上线的相关提交：
+  - fdf5e56 feat(催单): 员工端工单详情加「催一下」，催单可写备注，消息里直接显示这句话
+
