@@ -98,6 +98,7 @@ import {
   NeedMaterialDto,
   ParseRepairAddressDto,
   RequestWorkOrderTransferDto,
+  UrgeRepairDto,
   ReviewWorkOrderDto,
   RollbackWorkOrderDto,
   UpdateMissingMaterialsDto,
@@ -5024,7 +5025,12 @@ export class RepairsService implements OnModuleInit {
    *
    * 5 分钟内不重复发：连点会把维修工的微信订阅额度烧光（一次同意只能推一条）。
    */
-  async urgeRepair(id: number, user: AuthUser, access: ResolvedAccess) {
+  async urgeRepair(
+    id: number,
+    dto: UrgeRepairDto,
+    user: AuthUser,
+    access: ResolvedAccess,
+  ) {
     const tenantId = this.resolveTenantId(user);
     const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
     if (!workOrder) throw new NotFoundException('work order not found');
@@ -5074,14 +5080,29 @@ export class RepairsService implements OnModuleInit {
           ? '等材料'
           : '待接单';
 
+    /**
+     * 办公室写的催单备注（2026-09-09 Mike）。这是这条催单里最要紧的一句话
+     * （「业主等着用水，今天务必修完」），所以站内信标题和微信正文都以它为准；
+     * 没写才退回原来的「报修类型 + 报修内容」。
+     * 标题列只有 160 字符，备注拼进去要留出前半段的位置。
+     */
+    const urgeNote = dto?.note?.trim() || '';
+    const baseTitle = `办公室催单：${typeLabel} · ${address}${due}`;
+    const title = urgeNote ? `${baseTitle} · ${urgeNote}`.slice(0, 160) : baseTitle;
+
     const receivers = await this.urgeReceivers(workOrder, request?.repairType ?? null);
     for (const receiverId of receivers) {
       await this.notifications.notifyUser({
         tenantId,
         receiverId,
         eventKey: 'order_urge_repair',
-        title: `办公室催单：${typeLabel} · ${address}${due}`,
-        payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo },
+        title,
+        payload: {
+          workOrderId: workOrder.id,
+          orderNo: workOrder.orderNo,
+          // 备注单独给一份：消息列表按 payload.note 单独渲染一行，不用从标题里抠
+          note: urgeNote || undefined,
+        },
         page,
         template: 'orderUrge',
         templateFields: {
@@ -5089,7 +5110,9 @@ export class RepairsService implements OnModuleInit {
           type: typeLabel,
           status: '办公室催单',
           statusShort,
-          content: `办公室催单：${request?.content?.trim() || typeLabel}`,
+          content: urgeNote
+            ? `办公室催单：${urgeNote}`
+            : `办公室催单：${request?.content?.trim() || typeLabel}`,
           assignee: '',
           address,
           reporter: request?.contactName?.trim() || '',
@@ -5108,9 +5131,10 @@ export class RepairsService implements OnModuleInit {
         toStatus: workOrder.status,
         action: 'urge_repair',
         operatorId: user.id,
-        note: receivers.length
+        note: (receivers.length
           ? `办公室催单，已提醒 ${receivers.length} 人${due ? `（要求${due.replace('，', '')}）` : ''}`
-          : '办公室催单，但这单还没有人可催（没派单、类型也没配默认维修工）',
+          : '办公室催单，但这单还没有人可催（没派单、类型也没配默认维修工）') +
+          (urgeNote ? `；备注：${urgeNote}` : ''),
         createdBy: user.id,
         updatedBy: user.id,
       }),

@@ -100,6 +100,12 @@
       <view wx:if="{{guide && canTransfer}}" class="field-actions__hint">转单后由所属管理处重新选择工单类型和维修工</view>
     </view>
 
+    <!-- 催单：后台一直有，小程序上没有，办公室在外面就催不了（2026-09-09 Mike） -->
+    <view wx:if="{{canUrge}}" class="rollback-entry rollback-entry--urge">
+      <view><view class="rollback-entry__title">修得太慢？</view><view wx:if="{{guide}}" class="rollback-entry__desc">给维修工发一条催单：微信和站内信各一条，可以写一句话说明急在哪里</view></view>
+      <button class="rollback-entry__button rollback-entry__button--urge" data-panel="urge" bindtap="onOpenPanel">催一下</button>
+    </view>
+
     <view wx:if="{{canRollback}}" class="rollback-entry">
       <view><view class="rollback-entry__title">刚才处理错了？</view><view wx:if="{{guide}}" class="rollback-entry__desc">办公室可撤回上一笔操作，退回哪一步、要不要退料，点开后由系统告诉你</view></view>
       <button class="rollback-entry__button" data-panel="rollback" bindtap="onOpenPanel">撤回上一步</button>
@@ -121,6 +127,27 @@
   <button wx:if="{{canAccept}}" class="site-action site-action--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onAccept"><view class="btn__icon icon-action--check-white"></view><text>{{acceptText}}</text></button>
   <button wx:if="{{canComplete}}" class="site-action site-action--primary" data-panel="complete" bindtap="onOpenPanel"><view class="btn__icon icon-action--wrench-white"></view><text>去完工</text></button>
   <button wx:if="{{canRedispatch}}" class="site-action site-action--primary" bindtap="onGoRedispatch"><view class="btn__icon icon-action--send-white"></view><text>去派单台重新派单</text></button>
+</view>
+
+<!-- ============ 办公室催单 ============ -->
+<view wx:if="{{panel === 'urge'}}" class="sheet-mask" bindtap="onClosePanel" catchtouchmove="noop"/>
+<view wx:if="{{panel === 'urge'}}" class="sheet" catchtouchmove="noop">
+  <view class="sheet__head"><text class="sheet__title">催一下</text><text class="sheet__close" bindtap="onClosePanel">关闭</text></view>
+  <scroll-view class="sheet__body" scroll-y>
+    <view class="urge-tip">
+      <view class="urge-tip__title">这条催单会发给谁</view>
+      <view>{{assigneeText === '未派单' ? '还没派单：发给这个报修类型配的每一位维修工' : '发给 ' + assigneeText}}</view>
+      <view>微信和站内信各一条；5 分钟内只能发一次，别把维修工的微信提醒额度用光</view>
+    </view>
+    <view class="label mt">催单备注<text class="label__opt">选填，写了维修工就直接看到这句话</text></view>
+    <button wx:if="{{hasSpeech}}" class="speech-field-button {{recording && speechTarget === 'urge' ? 'speech-field-button--on' : ''}}" data-speech-target="urge" data-speech-label="催单备注" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord">
+      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'urge' ? '松开结束' : '按住说备注'}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">说完自动填到下面，还可以修改</view></view>
+    </button>
+    <view wx:if="{{recording && speechTarget === 'urge'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
+    <textarea class="complete-textarea" maxlength="200" placeholder="例如：业主家里没水了，今天下班前务必修完" value="{{urgeNote}}" bindinput="onUrgeNote"/>
+    <view class="complete-error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
+  </scroll-view>
+  <view class="sheet__foot"><button class="btn btn--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onSubmitUrge">发送催单</button></view>
 </view>
 
 <!-- ============ 办公室撤回处理节点 ============ -->

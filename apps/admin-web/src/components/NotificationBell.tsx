@@ -234,6 +234,12 @@ export default function NotificationBell() {
                     description={
                       <div>
                         <div style={{ color: 'rgba(0,0,0,0.82)', marginBottom: 2 }}>{row.title}</div>
+                        {/* 发通知的人写的那句话（催单备注、派单备注）：标题只说「什么事」，这一行说「急在哪」 */}
+                        {typeof row.payload?.note === 'string' && row.payload.note.trim() && (
+                          <div style={{ color: 'rgba(0,0,0,0.62)', marginBottom: 2 }}>
+                            {row.payload.note.trim()}
+                          </div>
+                        )}
                         <Text type="secondary" style={{ fontSize: 12 }}>{timeAgo(row.createdAt)}</Text>
                       </div>
                     }

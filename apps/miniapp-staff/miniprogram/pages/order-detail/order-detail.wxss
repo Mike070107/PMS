@@ -867,3 +867,10 @@ page { background: #f1f6fb; }
 /* 选料弹层底部：搜到了但都不是要的 / 没选仓库，也能就地申购 */
 .sku-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12rpx; padding: 28rpx 24rpx 40rpx; color: var(--color-text-secondary); font-size: var(--font-md); }
 .sku-footer__link { min-height: 72rpx; display: inline-flex; align-items: center; padding: 0 24rpx; border: 2rpx solid #9ebbd5; border-radius: 999rpx; color: var(--color-brand); font-weight: 600; }
+
+/* 催单入口（2026-09-09）：和撤回 / 作废同一排样式，用琥珀色区分「催」不是「改数据」 */
+.rollback-entry--urge { border-color: #e6d7b4; }
+.rollback-entry__button--urge { border-color: #dcc389; background: #fffaf0; color: #8a6216; }
+.urge-tip { padding: 20rpx 24rpx; border-radius: 16rpx; background: #fffaf0; border: 2rpx solid #ecdcb8; }
+.urge-tip__title { color: #8a6216; font-size: var(--font-md); font-weight: 700; margin-bottom: 6rpx; }
+.urge-tip view { color: var(--color-text-secondary); font-size: var(--font-sm); line-height: 1.6; }

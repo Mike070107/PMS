@@ -34,6 +34,7 @@ import {
   ReviewWorkOrderDto,
   RollbackWorkOrderDto,
   RequestWorkOrderTransferDto,
+  UrgeRepairDto,
   UpdateMissingMaterialsDto,
   UpdateOfficeSuggestionSettingsDto,
   UpdateWorkOrderRepairTypeDto,
@@ -356,11 +357,11 @@ export class RepairsController {
   @RequirePermission(['work-orders', 'app:dispatch'], 'edit')
   urgeRepair(
     @Param('id', ParseIntPipe) id: number,
-    @Body() _body: unknown,
+    @Body() dto: UrgeRepairDto,
     @CurrentUser() user: AuthUser,
     @CurrentAccess() access: ResolvedAccess,
   ) {
-    return this.repairsService.urgeRepair(id, user, access);
+    return this.repairsService.urgeRepair(id, dto, user, access);
   }
 
   /** 设定/取消工单的要求完成截止时间（body 不带 slaDueAt = 取消） */

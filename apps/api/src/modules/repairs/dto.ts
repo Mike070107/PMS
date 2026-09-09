@@ -352,6 +352,17 @@ export class RequestWorkOrderTransferDto {
   note: string;
 }
 
+/**
+ * 办公室催单。备注选填，但填了就是这条催单里最要紧的一句话 ——
+ * 维修工收到的微信和站内信正文都换成它（2026-09-09 Mike：催单要能写备注、消息里要看得到）。
+ */
+export class UrgeRepairDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  note?: string;
+}
+
 export class MaterialUsageDto {
   @IsOptional()
   @Type(() => Number)

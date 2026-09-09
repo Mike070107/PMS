@@ -236,6 +236,8 @@ interface PageData {
   canRollback: boolean;
   /** 作废工单：「作废工单」那一格勾中且单子还没作废 */
   canVoid: boolean;
+  /** 办公室能不能催这单（派单台那格权限，且单子还没结束） */
+  canUrge: boolean;
   /** page-container 关过一次后要 show 假→真一次才会再拦返回，用这个脉冲一下 */
   overlayPulse: boolean;
   voidNote: string;
@@ -269,6 +271,8 @@ interface PageData {
   progressAttachments: string[];
   transferNote: string;
   rollbackNote: string;
+  /** 办公室催单的备注：维修工收到的微信和站内信正文就是它 */
+  urgeNote: string;
   actionNote: string;
   /* ---- 完工小结：按住说一句，大模型理成规范的维修记录 ---- */
   /** 微信同声传译插件在不在。不在就整个隐藏「按住说话」，打字照常可用 */
@@ -362,6 +366,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     canRedispatch: false,
     canRollback: false,
     canVoid: false,
+    canUrge: false,
     overlayPulse: false,
     voidNote: '',
     voidConfirmed: false,
@@ -381,6 +386,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     progressAttachments: [],
     transferNote: '',
     rollbackNote: '',
+    urgeNote: '',
     actionNote: '',
     /* ---- 完工小结：按住说一句，大模型理成规范的维修记录（2026-09-01 加） ----
        维修工是蹲在水管边单手拿手机，打字比说话慢十倍，「维修说明」常年只有「已修」两个字，
@@ -567,6 +573,14 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         canRollback:
           !!session?.canRollback && status !== WorkOrderStatus.VOIDED,
         canVoid: !!session?.canVoid && status !== WorkOrderStatus.VOIDED,
+        // 催单：办公室（派单台那格）催维修工在截止日期前修完；已经结束的单不用催
+        canUrge:
+          !!session?.canDispatch &&
+          ![
+            WorkOrderStatus.COMPLETED,
+            WorkOrderStatus.CANCELLED,
+            WorkOrderStatus.VOIDED,
+          ].includes(status),
         assigneeText: detail.workOrder.assigneeName || '未派单',
         ...this.buildResult(detail),
         missingText: missingMaterialsText(detail.workOrder.missingMaterials),
@@ -853,6 +867,39 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.setData({ rollbackNote: e.detail.value, errorMsg: '' });
   },
 
+  onUrgeNote(e: WechatMiniprogram.Input) {
+    this.setData({ urgeNote: e.detail.value, errorMsg: '' });
+  },
+
+  /**
+   * 办公室催维修工在截止日期前修完（2026-09-09 Mike：后台有，小程序上没有）。
+   * 备注选填，填了就是维修工收到的微信和站内信正文。服务端 5 分钟内只发一条，
+   * 一个人都没催到也要说清为什么，不然办公室以为发出去了一直等。
+   */
+  async onSubmitUrge() {
+    const note = this.data.urgeNote.trim();
+    this.setData({ busy: true, errorMsg: '' });
+    try {
+      const res = await repairs.urgeRepair(this.data.id, { note: note || undefined });
+      this.setData({ panel: '', urgeNote: '' });
+      if (res?.notified > 0) {
+        wx.showToast({ title: `已催单，通知 ${res.notified} 人`, icon: 'none' });
+      } else {
+        wx.showModal({
+          title: '这单还没人可催',
+          content: '既没派单，报修类型也没配默认维修工。先去派单台派给具体的人，再催。',
+          showCancel: false,
+          confirmText: '知道了',
+        });
+      }
+      await this.load();
+    } catch (e: any) {
+      this.setData({ errorMsg: e?.message || '催单失败' });
+    } finally {
+      this.setData({ busy: false });
+    }
+  },
+
   async onSubmitRollback() {
     const reason = this.data.rollbackNote.trim();
     if (reason.length < 2) return this.setData({ errorMsg: '请填写至少 2 个字的撤回原因' });
@@ -1009,6 +1056,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     }
     if (target === 'rollback') {
       this.setData({ rollbackNote: appendSpeech(this.data.rollbackNote, spoken) });
+      return;
+    }
+    if (target === 'urge') {
+      this.setData({ urgeNote: appendSpeech(this.data.urgeNote, spoken) });
       return;
     }
     if (target === 'void') {

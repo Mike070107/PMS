@@ -2707,6 +2707,8 @@ function UrgeRepairButton({
 }) {
   const { message } = AntdApp.useApp();
   const [sending, setSending] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState('');
   const closed = [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED, WorkOrderStatus.VOIDED].includes(status);
   if (!canEdit || closed) return null;
 
@@ -2716,7 +2718,8 @@ function UrgeRepairButton({
       const res = await request<{ ok: true; notified: number }>({
         method: 'POST',
         url: `/work-orders/${workOrderId}/urge-repair`,
-        data: {},
+        // 备注选填；填了就是维修工收到的微信和站内信正文（2026-09-09 Mike）
+        data: { note: note.trim() || undefined },
       });
       // 一个人都没催到要说清楚为什么，不然办公室以为发出去了，一直等
       if (res.notified > 0) {
@@ -2724,6 +2727,8 @@ function UrgeRepairButton({
       } else {
         message.warning('这单还没人可催：既没派单，报修类型也没配默认维修工');
       }
+      setOpen(false);
+      setNote('');
       onDone();
     } catch (e: any) {
       message.error(e?.message || '催单失败');
@@ -2733,17 +2738,35 @@ function UrgeRepairButton({
   };
 
   return (
-    <Popconfirm
-      title="给维修工发一条催单通知？"
-      description="微信 + 站内信各一条，5 分钟内只能发一次。"
-      okText="发送"
-      cancelText="取消"
-      onConfirm={send}
-    >
-      <Button size="small" icon={<BellOutlined />} loading={sending}>
+    <>
+      <Button size="small" icon={<BellOutlined />} onClick={() => setOpen(true)}>
         发送催单通知
       </Button>
-    </Popconfirm>
+      <Modal
+        open={open}
+        title="给维修工发一条催单通知"
+        okText="发送催单"
+        cancelText="取消"
+        confirmLoading={sending}
+        onOk={send}
+        onCancel={() => setOpen(false)}
+        destroyOnHidden
+      >
+        <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+          派出去了就发给那位维修工，还在池子里就发给这个报修类型配的每一位。
+          微信 + 站内信各一条，5 分钟内只能发一次。
+        </Text>
+        <div className="pms-field-label">催单备注（选填，写了维修工就直接看到这句话）</div>
+        <TextArea
+          rows={3}
+          maxLength={200}
+          showCount
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="例如：业主家里没水了，今天下班前务必修完"
+        />
+      </Modal>
+    </>
   );
 }
 

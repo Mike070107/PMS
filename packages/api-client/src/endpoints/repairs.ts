@@ -308,3 +308,14 @@ export const updateMissingMaterials = (
 
 export const urge = (id: number | string) =>
   request<void>({ method: 'POST', url: `/work-orders/${id}/urge` });
+
+/**
+ * 办公室催维修工在截止日期前修完（业主催单是上面那个 urge，两回事）。
+ * note 选填，填了就是维修工收到的微信和站内信正文。服务端 5 分钟内只发一条。
+ */
+export const urgeRepair = (id: number | string, data: { note?: string } = {}) =>
+  request<{ ok: true; notified: number }>({
+    method: 'POST',
+    url: `/work-orders/${id}/urge-repair`,
+    data,
+  });
