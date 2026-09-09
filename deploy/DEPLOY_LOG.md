@@ -2655,3 +2655,13 @@
 - 自上次（b7566cf）以来上线的相关提交：
   - 0813d57 feat(养护单): 按《便民小修修理项目汇总表》补齐预算定额（144 条），编号不再唯一、按编号+项目+规格
 
+## 2026-09-09 15:15 · api · 2b4157e
+
+- 包：`pms-api-20260909-1513.tar.gz`
+- 提交：2b4157e chore: 还原 repairs.controller.ts 的混合行尾（上一提交被编辑工具整成全 CRLF，实际只改了 3 行）
+- 说明：催单备注；脏文件是另一会话的 AI 改动，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（0813d57）以来上线的相关提交：
+  - 2b4157e chore: 还原 repairs.controller.ts 的混合行尾（上一提交被编辑工具整成全 CRLF，实际只改了 3 行）
+  - fdf5e56 feat(催单): 员工端工单详情加「催一下」，催单可写备注，消息里直接显示这句话
+
