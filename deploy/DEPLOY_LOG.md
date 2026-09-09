@@ -2665,3 +2665,12 @@
   - 2b4157e chore: 还原 repairs.controller.ts 的混合行尾（上一提交被编辑工具整成全 CRLF，实际只改了 3 行）
   - fdf5e56 feat(催单): 员工端工单详情加「催一下」，催单可写备注，消息里直接显示这句话
 
+## 2026-09-09 15:16 · web · 2b4157e
+
+- 包：`pms-web-20260909-1513.tar.gz`
+- 提交：2b4157e chore: 还原 repairs.controller.ts 的混合行尾（上一提交被编辑工具整成全 CRLF，实际只改了 3 行）
+- 说明：催单弹窗带备注、通知中心显示备注
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo，M packages/api-client/src/endpoints/ai.ts
+- 自上次（0813d57）以来上线的相关提交：
+  - fdf5e56 feat(催单): 员工端工单详情加「催一下」，催单可写备注，消息里直接显示这句话
+
