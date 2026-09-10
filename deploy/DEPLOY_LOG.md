@@ -2683,3 +2683,12 @@
 - 自上次（e0a74e1）以来上线的相关提交：
   - fdf5e56 feat(催单): 员工端工单详情加「催一下」，催单可写备注，消息里直接显示这句话
 
+## 2026-09-10 22:55 · api · 784c040
+
+- 包：`pms-api-20260910-2253.tar.gz`
+- 提交：784c040 fix(工单管理): 「全部」改成最新报修在最前面；筛选条拆出「待接单」，已推送给维修工的新单不再无处可见
+- 说明：stats 加 pendingAccept；脏文件是另一会话的 AI 改动，从干净 worktree 打包
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（2b4157e）以来上线的相关提交：
+  - 784c040 fix(工单管理): 「全部」改成最新报修在最前面；筛选条拆出「待接单」，已推送给维修工的新单不再无处可见
+
