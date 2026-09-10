@@ -1717,6 +1717,8 @@ export class RepairsService implements OnModuleInit {
     // 带关键词时看板只数命中的单：和列表同一套匹配（见 keywordWheres），
     // 否则搜「198」列表两条、看板还是全公司的数，用的人会以为搜索没生效
     let byStatus: Partial<Record<WorkOrderStatus, number>>;
+    /** 已推送给维修工、还没人接的新单数；byStatus.created 只数「办公室还要派的」 */
+    let pendingAccept = 0;
     if (query.q?.trim()) {
       const where: FindOptionsWhere<WorkOrder> = { tenantId };
       if (scope) where.communityId = In(scope);
@@ -1735,6 +1737,12 @@ export class RepairsService implements OnModuleInit {
         acc[item.status] = (acc[item.status] ?? 0) + 1;
         return acc;
       }, {} as Partial<Record<WorkOrderStatus, number>>);
+      pendingAccept = matched.filter(
+        (item) =>
+          item.status === WorkOrderStatus.CREATED &&
+          !item.assigneeId &&
+          !!item.candidateIds?.length,
+      ).length;
     } else {
       const rows = await qb.groupBy('wo.status').getRawMany<{ status: WorkOrderStatus; count: string }>();
       byStatus = rows.reduce((acc, item) => {
@@ -1753,13 +1761,32 @@ export class RepairsService implements OnModuleInit {
         pendingDispatch.andWhere('wo.community_id = :communityId', { communityId: query.communityId });
       }
       byStatus[WorkOrderStatus.CREATED] = await pendingDispatch.getCount();
+
+      /**
+       * 「已推送给维修工、还没人接」的新单（2026-09-10 Mike）。
+       * 它们状态还是 CREATED，但按 2026-08-28 的口径不算办公室待派事项，
+       * 于是既不在「待派单」的数里、也不在那一档的列表里 —— 办公室除了「全部」哪儿都看不到，
+       * 报了一天没人接也没人知道。单独给一个数，后台开一格「待接单」专门盯它。
+       */
+      const pendingAcceptQb = this.workOrderRepo
+        .createQueryBuilder('wo')
+        .where('wo.tenant_id = :tenantId', { tenantId })
+        .andWhere('wo.status = :created', { created: WorkOrderStatus.CREATED })
+        .andWhere('wo.assignee_id IS NULL')
+        .andWhere("jsonb_array_length(wo.candidate_ids) > 0");
+      if (scope) pendingAcceptQb.andWhere('wo.community_id IN (:...scope)', { scope });
+      if (query.communityId) {
+        pendingAcceptQb.andWhere('wo.community_id = :communityId', { communityId: query.communityId });
+      }
+      pendingAccept = await pendingAcceptQb.getCount();
     }
     // 已作废数量供单独筛选展示，但不计入正常工单总数和经营口径。
     const total = Object.entries(byStatus).reduce(
       (sum, [status, count]) => status === WorkOrderStatus.VOIDED ? sum : sum + (count || 0),
       0,
     );
-    return { total, byStatus };
+    // total 里 created 只算了「待派」那部分，待接单的也是真实在办的单，要加回去
+    return { total: total + pendingAccept, byStatus, pendingAccept };
   }
 
   async listRepairHistory(query: WorkOrdersQueryDto, user: AuthUser, access?: ResolvedAccess) {

@@ -274,6 +274,8 @@ interface RepairHistoryRow {
 interface WorkOrderStats {
   total: number;
   byStatus: Partial<Record<WorkOrderStatus, number>>;
+  /** 已推送给维修工、还没人接的新单；byStatus.created 只数「办公室还要派的」 */
+  pendingAccept?: number;
 }
 interface UploadResponse {
   publicUrl: string;
@@ -352,9 +354,20 @@ const WORK_ORDER_TABLE_MIN_WIDTH = 920;
 /** 要求完成截止时间只到半小时：办公室口头约的都是「上午十点半」这种，不需要精确到分钟 */
 const SLA_MINUTE_STEP = 30;
 
-const FILTER_TABS: Array<{ label: string; value: 'all' | WorkOrderStatus }> = [
+/**
+ * 「待派单」和「待接单」必须分成两格（2026-09-10 Mike）。
+ * 两者数据库状态都是 CREATED，业务上完全不同：
+ *   · 待派单 = 没候选也没负责人，等办公室派；
+ *   · 待接单 = 系统已经按报修类型推给维修工了，等他们抢单。
+ * 以前只有一格、而且只装前者，于是「上海新家 门卫室」这种已推送的新单
+ * 除了「全部」哪一格都进不去，办公室根本看不见它在等人接。
+ */
+type FilterValue = 'all' | 'pending_accept' | WorkOrderStatus;
+
+const FILTER_TABS: Array<{ label: string; value: FilterValue }> = [
   { label: '全部', value: 'all' },
-  { label: '待派单/待接单', value: WorkOrderStatus.CREATED },
+  { label: '待派单', value: WorkOrderStatus.CREATED },
+  { label: '待接单', value: 'pending_accept' },
   { label: '已派单', value: WorkOrderStatus.DISPATCHED },
   { label: '维修中', value: WorkOrderStatus.IN_PROGRESS },
   { label: '等待材料', value: WorkOrderStatus.WAITING_MATERIAL },
@@ -407,11 +420,11 @@ function StatusBoard({
   overdueCount,
   onChange,
 }: {
-  value: 'all' | WorkOrderStatus;
+  value: FilterValue;
   counts: WorkOrderStats;
   urgentCount: number;
   overdueCount: number;
-  onChange: (next: 'all' | WorkOrderStatus) => void;
+  onChange: (next: FilterValue) => void;
 }) {
   return (
     <div className="pms-dispatch-board">
@@ -446,7 +459,9 @@ function StatusBoard({
           const active = value === tab.value;
           const count = tab.value === 'all'
             ? counts.total
-            : counts.byStatus[tab.value as WorkOrderStatus] || 0;
+            : tab.value === 'pending_accept'
+              ? counts.pendingAccept || 0
+              : counts.byStatus[tab.value as WorkOrderStatus] || 0;
           return (
             <button
               type="button"
@@ -620,7 +635,7 @@ export default function WorkOrdersPage() {
   const [statusCounts, setStatusCounts] = useState<WorkOrderStats>({ total: 0, byStatus: {} });
   const [loading, setLoading] = useState(false);
   // 调度人员进来先处理还没人负责的单；查历史时再自动切到“全部”。
-  const [filter, setFilter] = useState<'all' | WorkOrderStatus>(WorkOrderStatus.CREATED);
+  const [filter, setFilter] = useState<FilterValue>(WorkOrderStatus.CREATED);
   // 搜索框：输入即查，敲字停 300ms 再发请求；地址「198/47/201」/「198」、维修工姓名、单号都走同一个 q
   const [searchInput, setSearchInput] = useState('');
   const [searchQ, setSearchQ] = useState('');
@@ -758,11 +773,16 @@ export default function WorkOrdersPage() {
   const poolPrefs = useTableColumnPrefs('work-orders.pool', poolColumns);
 
   /**
-   * 排序和员工端同一口径（2026-09-06 Mike「web 端也按同样的逻辑」）：
-   * 还要动手的单（待派 / 已派 / 维修中 / 等待材料、以及「全部」）紧急先、其余按报修时间从早到晚 —— 老单先修；
-   * 终态（已完成 / 已撤单 / 已作废 / 待验收）最近的在上面，不搜索时只列最近 30 条，更早的靠搜索。
+   * 排序（2026-09-06 定，2026-09-10 按 Mike 反馈修「全部」那一档）：
+   *   · 具体某个在办状态（待派 / 待接 / 已派 / 维修中 / 等待材料）：紧急先，其余按报修时间从早到晚 ——
+   *     这几档是「该先办哪一单」，老单先修；
+   *   · 「全部」和所有终态：最近报修的在最前面 —— 「全部」是办公室扫一眼最近发生了什么，
+   *     老单在前会把当天新报的两单压到列表最底下（Mike：新报修的很难找到）；
+   *   · 终态不搜索时只列最近 30 条，更早的靠搜索。
    */
-  const recentOnly = filter !== 'all' && !ACTIVE_WORK_ORDER_STATUSES.includes(filter);
+  // 「待接单」也是在办的一档（数据库里是 CREATED），按老单先接排，也不该被 30 条截断
+  const activeFilter = filter === 'pending_accept' || ACTIVE_WORK_ORDER_STATUSES.includes(filter);
+  const recentOnly = filter === 'all' || !activeFilter;
   const sortedAll = useMemo(
     () => [...rows].sort(recentOnly ? compareWorkOrderNewestFirst : compareWorkOrderOldestFirst),
     [rows, recentOnly],
@@ -850,16 +870,21 @@ export default function WorkOrdersPage() {
     setLoading(true);
     try {
       const query: any = {};
-      if (filter !== 'all') query.status = filter;
-      // 已按类型匹配到候选维修工并推送的 CREATED 工单是在等维修工接单，
-      // 不属于办公室待派事项；默认“待派单”只取真正没有去向的单。
+      // 「待接单」也是 CREATED，只是已经推给维修工了；两格都拉 CREATED，在下面按候选人分开
+      if (filter !== 'all') query.status = filter === 'pending_accept' ? WorkOrderStatus.CREATED : filter;
+      // 「待派单」= 真正没有去向的单（没候选、没负责人），口径和派单台一致
       if (filter === WorkOrderStatus.CREATED) query.scope = 'dispatch';
       if (searchQ) query.q = searchQ;
       const r = await request<WorkOrderRow[] | { list: WorkOrderRow[] }>({
         url: '/work-orders',
         query,
       });
-      setRows(Array.isArray(r) ? r : r.list || []);
+      const list = Array.isArray(r) ? r : r.list || [];
+      setRows(
+        filter === 'pending_accept'
+          ? list.filter((row) => !row.assigneeId && !!row.candidateIds?.length)
+          : list,
+      );
     } catch (e: any) {
       message.error(e?.message || '加载工单失败');
     } finally {
