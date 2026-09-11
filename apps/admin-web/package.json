@@ -15,6 +15,7 @@
     "@pms/shared-types": "workspace:*",
     "antd": "^5.21.0",
     "dayjs": "^1.11.13",
+    "exceljs": "^4.4.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0",

@@ -31,6 +31,7 @@ import {
   AudioOutlined,
   AuditOutlined,
   ColumnWidthOutlined,
+  DownloadOutlined,
   EditOutlined,
   FileImageOutlined,
   FilePdfOutlined,
@@ -873,6 +874,45 @@ export default function InventoryPage() {
     }
   };
 
+  /**
+   * 下载传统的《XX 区材料申购单》（2026-09-11 Mike：办公室现在手填这张纸，
+   * 系统里的申请要能一键下成同一张表）。标题里那个「区」取当前管理处视角，
+   * 没切视角又挂多个管理处时留空 —— 纸面上本来就是一条下划线，让人手填。
+   */
+  const downloadRequestForm = async (row: PurchaseRequestRow) => {
+    try {
+      const { downloadPurchaseRequestForm } = await import('../lib/purchaseRequestForm');
+      await downloadPurchaseRequestForm({
+        areaName:
+          actingOffice?.name ?? (access?.offices?.length === 1 ? access.offices[0].name : ''),
+        requestNo: row.requestNo,
+        applicantName: nameOr(row.applicantName, '申请人'),
+        dateText: row.createdAt
+          ? new Date(row.createdAt).toLocaleDateString('zh-CN', {
+              year: 'numeric',
+              month: 'numeric',
+              day: 'numeric',
+            })
+          : '',
+        reason: row.reason || '',
+        items: (row.items || []).map((item) => {
+          const material = item.materialId ? materialById.get(item.materialId) : null;
+          return {
+            name: material ? material.name : item.name || '',
+            spec: item.spec || material?.spec || '',
+            qty: item.qty,
+            unit: item.unit || material?.unit || '',
+            note: item.note || '',
+            sourceOrderNo: item.sourceWorkOrderNo || '',
+          };
+        }),
+      });
+      message.success('申购单已下载，可直接打印或改完再用');
+    } catch (e: any) {
+      message.error(e?.message || '申购单导出失败');
+    }
+  };
+
   /** 「新建采购申请」保存成功：刷新并切到「办公室汇总」页签，人接着改名称 / 型号 / 照片、再提交 */
   const onManualRequestCreated = async (result: {
     id: number;
@@ -1522,6 +1562,15 @@ export default function InventoryPage() {
                               PurchaseRequestStatus.PURCHASER_REVIEW,
                             ].includes(row.status) ? '审批' : '查看'}
                           </Button>
+                          {/* 不用先点开详情：列表这一行就能把纸面申购单下下来 */}
+                          <Tooltip title="下载《材料申购单》">
+                            <Button
+                              size="small"
+                              type="link"
+                              icon={<DownloadOutlined />}
+                              onClick={(event) => { event.stopPropagation(); void downloadRequestForm(row); }}
+                            />
+                          </Tooltip>
                           {canEdit && row.status === PurchaseRequestStatus.APPROVED && (
                             <Button size="small" type="link" onClick={() => openPurchaseOrder(row)}>下单</Button>
                           )}
@@ -1915,6 +1964,12 @@ export default function InventoryPage() {
         width="min(940px, 96vw)"
         extra={requestDetail ? (
           <Space>
+            {/* 下载纸面那张《XX 区材料申购单》：任何环节都能下，采购拿着去买、去签字 */}
+            <Tooltip title="下成办公室现在手填的那张《材料申购单》，可直接打印">
+              <Button icon={<DownloadOutlined />} onClick={() => downloadRequestForm(requestDetail)}>
+                下载申购单
+              </Button>
+            </Tooltip>
             {requestDetail.status === PurchaseRequestStatus.OFFICE_REVIEW && (
               <>
                 <Button icon={<EditOutlined />} onClick={() => openEditRequest(requestDetail)}>修改明细</Button>
