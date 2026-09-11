@@ -2719,3 +2719,13 @@
 - 自上次（58ff3b9）以来上线的相关提交：
   - 2502fc9 fix(采购): 申购单标题取不到管理处名时留一条待填的空白，别印成「　区材料申购单」
 
+## 2026-09-11 17:49 · api · e6588a8
+
+- 包：`pms-api-20260911-1748.tar.gz`
+- 提交：e6588a8 fix(报修识别): 说出口的小区名优先于点位名，别把公区单认到隔壁小区
+- 说明：从干净 worktree 打包；含小区名优先于点位名的地址识别修复
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（784c040）以来上线的相关提交：
+  - e6588a8 fix(报修识别): 说出口的小区名优先于点位名，别把公区单认到隔壁小区
+  - 58ff3b9 feat(采购): 一键下载传统《材料申购单》；扫码登录二维码改用正式版
+
