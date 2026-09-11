@@ -268,6 +268,35 @@ export function matchCommunityByName<T extends { id: number; name: string }>(
   return hit;
 }
 
+/**
+ * 整句话里直接出现了哪个小区名。
+ *
+ * 为什么不能只有 matchCommunityByName：那一条是拿 extractAddressCandidate 圈出来的
+ * namePrefix 去撞的，而 extractAddressCandidate **没有「期」也没有「号」就直接返回 null**
+ * （见函数里 `if (!phase && !buildingNo) return null`）。纯公区报修一个门牌数字都没有：
+ *
+ *   「上海新家门卫室的道闸没有网络」
+ *
+ * 小区名根本没机会参与匹配，点位于是在全公司范围里找「门卫室」，撞到别人家去了 ——
+ * 2026-09-11 线上实测返回的是「永南5511弄 门卫室」，单子直接派到了另一个管理处。
+ * 说出口的小区名必须比点位名优先，这是这个函数存在的全部理由。
+ *
+ * 口径和 matchCommunityByName 一致：只做包含、不做同音、不做分词，宁可不认；
+ * 区别是名字最长的独赢（「吴泾新村二期」压过「吴泾新村」），因为这里拿到的是整句话，
+ * 短名字必然被长名字一起命中。
+ */
+export function matchCommunityInText<T extends { id: number; name: string }>(
+  text: string | null | undefined,
+  communities: T[],
+): T[] {
+  const value = String(text || '');
+  if (!value.trim()) return [];
+  const hits = communities.filter((c) => c.name.length >= 2 && value.includes(c.name));
+  if (!hits.length) return [];
+  const longest = Math.max(...hits.map((c) => c.name.length));
+  return hits.filter((c) => c.name.length === longest);
+}
+
 /** 公区点位（community_spots）匹配时只需要这几个字段 */
 export interface SpotLike {
   id: number;

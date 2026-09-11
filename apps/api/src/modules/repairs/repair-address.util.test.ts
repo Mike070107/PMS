@@ -4,6 +4,7 @@ import {
   correctCommunityNameInText,
   extractAddressCandidate,
   matchCommunityByName,
+  matchCommunityInText,
   matchSpotsInText,
   phaseToCn,
   sameNo,
@@ -66,6 +67,34 @@ test('撞库：说对了小区名能对上，同音字一律撞不上', () => {
   assert.deepEqual(matchCommunityByName('风华', communities), []);
   // 一个字判不出来，不认
   assert.deepEqual(matchCommunityByName('枫', communities), []);
+});
+
+test('整句里念出来的小区名：一个门牌数字都没有也认得出来', () => {
+  const communities = [
+    { id: 2, name: '枫桦景苑二期' },
+    { id: 9, name: '永南5511弄' },
+    { id: 16, name: '上海新家' },
+  ];
+  // 这一句 extractAddressCandidate 返回 null（没期没号），小区名只能靠这条认
+  assert.deepEqual(
+    matchCommunityInText('上海新家门卫室的道闸没有网络', communities).map((c) => c.id),
+    [16],
+  );
+  assert.deepEqual(
+    matchCommunityInText('永南5511弄门卫室的道闸没有网络', communities).map((c) => c.id),
+    [9],
+  );
+  // 名字最长的独赢：整句话里短名字必然被长名字一起命中
+  assert.deepEqual(
+    matchCommunityInText('枫桦景苑二期48号楼道灯不亮', [
+      { id: 1, name: '枫桦景苑' },
+      { id: 2, name: '枫桦景苑二期' },
+    ]).map((c) => c.id),
+    [2],
+  );
+  // 没念小区名的一律不认，不猜
+  assert.deepEqual(matchCommunityInText('门卫室的灯不亮', communities), []);
+  assert.deepEqual(matchCommunityInText('', communities), []);
 });
 
 test('原有行为不变：车位号不当门牌、裸数字不当室号', () => {

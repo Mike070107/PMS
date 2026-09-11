@@ -65,6 +65,33 @@ export function isPublicAreaText(text: string): boolean {
 }
 
 /**
+ * 公区里**人能走到的那个地方**，不是坏掉的那个东西。
+ *
+ * 上面那张表是用来判「是不是公区」的，里面设施和场所混在一起，长词优先：
+ * 「监控室摄像头坏了」它先撞上「摄像头」。判公区没问题，但拿去写地址就荒唐了 ——
+ * 维修工看到的会是「上海新家 摄像头」，等于没说地址。这张表只留场所，
+ * 供「小区名 + 公区地点」这种没有门牌的报修拼地址用（2026-09-11）。
+ *
+ * 「监控室」「电梯机房」上面那张表里没有（它有「监控」「电梯」，判公区已经够），
+ * 这里补上 —— 它们是实打实的地点。
+ */
+const PUBLIC_AREA_PLACES: string[] = [
+  '垃圾箱房', '消防通道', '电梯机房', '地下车库', '楼梯间', '水泵房', '配电房', '配电间',
+  '门卫室', '传达室', '监控室', '值班室', '垃圾房', '垃圾站', '停车场', '地下室',
+  '车库', '车棚', '岗亭', '门岗', '楼道', '走廊', '过道', '天井', '大门',
+  '广场', '天台', '楼顶', '屋顶', '外立面', '外墙', '围墙', '绿化带', '人行道',
+].sort((a, b) => b.length - a.length);
+
+/** 句子里说的是哪个公区地点；没说地点（只说坏了什么）返回空串 */
+export function detectPublicAreaPlace(text: string): string {
+  const value = String(text || '');
+  if (!value) return '';
+  if (INDOOR_MARKERS.some((w) => value.includes(w))) return '';
+  if (INDOOR_WORDS.some((w) => value.includes(w))) return '';
+  return PUBLIC_AREA_PLACES.find((w) => value.includes(w)) ?? '';
+}
+
+/**
  * 规则能明确判断时返回 true / false，文字本身没说清时返回 null 交给 AI。
  * 确定性的“楼下门”和“家里”都不能再被模型的偶发误判反向覆盖。
  */

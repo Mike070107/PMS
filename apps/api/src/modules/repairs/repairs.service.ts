@@ -43,7 +43,11 @@ import {
 } from '../../common/enums';
 import { RepairTextAiService, matchRepairTypeKeywords } from '../ai/repair-text.ai';
 import { AiFeedbackService } from '../ai/ai-feedback.service';
-import { classifyPublicAreaText } from './repair-public-area.util';
+import {
+  classifyPublicAreaText,
+  detectPublicAreaPlace,
+  isPublicAreaText,
+} from './repair-public-area.util';
 import { formatAddressLine } from '../../common/address-line.util';
 import { detectUrgency } from '../../common/repair-urgency.util';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
@@ -113,6 +117,7 @@ import {
   correctCommunityNameInText,
   extractAddressCandidate,
   matchCommunityByName,
+  matchCommunityInText,
   matchSpotsInText,
   extractKeywordCandidates,
   sameNo,
@@ -5961,6 +5966,16 @@ export class RepairsService implements OnModuleInit {
     // 撞不上库里的名字（语音把「枫桦」听成「风华」）就当没说过，退回按分期/号定位 ——
     // 名字是锦上添花，绝不能因为名字没对上就认不出地址。
     const nameLeaves = matchCommunityByName(candidate?.namePrefix, leaves);
+    /**
+     * 整句话里直接念出来的小区名。
+     *
+     * 上面那条只在 extractAddressCandidate 认出「期」或「号」时才有值。纯公区报修
+     * 一个门牌数字都没有，candidate 是 null，两条都收不住，pool 就是全公司的小区 ——
+     * 接着点位匹配在别人家找到同名的「门卫室」，把这单悄悄改派到那个管理处去。
+     * 2026-09-11 线上实测：「上海新家门卫室的道闸没有网络」认成了「永南5511弄 门卫室」。
+     * 所以报修人念出口的小区名必须参与收敛，而且优先级在点位名之上。
+     */
+    const textLeaves = matchCommunityInText(dto.text, leaves);
     let pool: Community[];
     if (nameLeaves.length && phaseLeaves.length) {
       const phaseIds = new Set(phaseLeaves.map((c) => c.id));
@@ -5970,23 +5985,25 @@ export class RepairsService implements OnModuleInit {
       pool = both.length ? both : phaseLeaves;
     } else if (nameLeaves.length) {
       pool = nameLeaves;
+    } else if (phaseLeaves.length) {
+      pool = phaseLeaves;
     } else {
-      pool = phaseLeaves.length ? phaseLeaves : leaves;
+      pool = textLeaves.length ? textLeaves : leaves;
     }
-    const ranked = [...pool].sort((a, b) => {
-      const rank = (c: Community) =>
-        c.id === context?.id
-          ? 0
-          : contextGroupId !== null && c.parentId === contextGroupId
-            ? 1
-            : 2;
-      return rank(a) - rank(b) || a.id - b.id;
-    });
+    /** 离报修人多远：0 = 就是他所在的小区，1 = 同一分组的兄弟分期，2 = 其它 */
+    const tier = (c: Community) =>
+      c.id === context?.id
+        ? 0
+        : contextGroupId !== null && c.parentId === contextGroupId
+          ? 1
+          : 2;
+    const tierOf = new Map(pool.map((c) => [c.id, tier(c)] as const));
+    const ranked = [...pool].sort((a, b) => tier(a) - tier(b) || a.id - b.id);
 
     // ---- 公区点位优先 ----
     // 监控室、门卫室、水泵房这些地方没有房号，靠数字永远认不出来；点位名是人自己
     // 在后台登记的，比「2号」这种数字可靠，所以先按名字认，认到就不再走门牌号那条路。
-    const spot = await this.pickCommunitySpot(tenantId, dto.text, ranked);
+    const spot = await this.pickCommunitySpot(tenantId, dto.text, ranked, tierOf);
     if (spot) {
       const community = ranked.find((c) => c.id === spot.communityId)!;
       const building = spot.buildingId
@@ -6012,6 +6029,37 @@ export class RepairsService implements OnModuleInit {
           .filter(Boolean)
           .join(' '),
         matchedText: spot.name,
+        correctedText: null,
+      };
+    }
+
+    /**
+     * 说了小区名、也说了公区设施，但这个小区一个点位都没建档（上海新家就是零点位）：
+     * 认到小区级，并把设施名当位置写进地址，派单够用了。
+     *
+     * 不兜这一层的话整句认不出来 —— 报修人明明把地点说得清清楚楚
+     * （「上海新家门卫室的道闸没有网络」），系统还要他自己再选一遍位置。
+     * 必须命中公区词表才走这条：只报了小区名没说地点的（「上海新家302室漏水」）仍旧
+     * 返回未匹配，让人自己填房号 —— 绝不能把户内单写成「公共区域」。
+     */
+    if (!candidate && textLeaves.length === 1 && isPublicAreaText(dto.text)) {
+      const community = textLeaves[0];
+      const place = detectPublicAreaPlace(dto.text);
+      return {
+        matched: true as const,
+        level: 'community' as const,
+        communityId: community.id,
+        communityName: community.name,
+        buildingId: null,
+        buildingText: '',
+        houseId: null,
+        roomNo: null,
+        spotName: place || null,
+        // 说了具体地点就写地点（「上海新家 门卫室」），只说坏了什么就落到小区级
+        addressText: place
+          ? `${community.name} ${place}`
+          : `${community.name} 公共区域`,
+        matchedText: place || community.name,
         correctedText: null,
       };
     }
@@ -6163,23 +6211,37 @@ export class RepairsService implements OnModuleInit {
     tenantId: number,
     text: string,
     ranked: Community[],
+    tierOf: Map<number, number>,
   ): Promise<CommunitySpot | null> {
     if (!ranked.length) return null;
     const spots = await this.spotRepo.find({
       where: { tenantId, communityId: In(ranked.map((c) => c.id)), enabled: true },
     });
     if (!spots.length) return null;
-    const hits = matchSpotsInText(text, spots);
-    if (!hits.length) return null;
     const rankOf = new Map(ranked.map((c, index) => [c.id, index] as const));
+    /**
+     * 只认 ranked 里那几个小区的点位。查询本来就带了 communityId 条件，这里再挡一道：
+     * 漏进来一个范围外的点位，下面 ranked.find 会拿到 undefined 直接崩，
+     * 而它代表的错误是「把单认到收敛范围外的小区」—— 宁可当没认出来。
+     */
+    const hits = matchSpotsInText(text, spots).filter((s) => rankOf.has(s.communityId));
+    if (!hits.length) return null;
     const sorted = [...hits].sort(
       (a, b) =>
         (rankOf.get(a.communityId) ?? 0) - (rankOf.get(b.communityId) ?? 0) ||
         a.id - b.id,
     );
     if (sorted.length === 1) return sorted[0];
-    const first = rankOf.get(sorted[0].communityId) ?? 0;
-    const second = rankOf.get(sorted[1].communityId) ?? 0;
+    // 同一个小区里撞到几个同名点位，是建档重复，不是歧义
+    if (sorted[0].communityId === sorted[1].communityId) return sorted[0];
+    /**
+     * 前两名不在同一档才算收敛得掉。原来比的是 ranked 里的下标 —— 下标每个小区都不同，
+     * first < second 永远成立，于是「并列就放弃」这条从来没生效过：谁 id 小谁赢。
+     * 后果就是没说小区名的一句「垃圾房满了」固定认成 id 最小的那个小区
+     * （2026-09-11 查出来的）。认错小区等于派错管理处，宁可不认、让人自己选位置。
+     */
+    const first = tierOf.get(sorted[0].communityId) ?? 2;
+    const second = tierOf.get(sorted[1].communityId) ?? 2;
     return first < second ? sorted[0] : null;
   }
 
