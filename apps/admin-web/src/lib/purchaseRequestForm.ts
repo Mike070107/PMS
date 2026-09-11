@@ -60,7 +60,8 @@ export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promi
   // ---- 标题 ----
   ws.mergeCells('A1:E1');
   const title = ws.getCell('A1');
-  title.value = `${data.areaName || ''}　区材料申购单`;
+  // 没取到管理处名就留一段空白，和纸面上那条待填的下划线一个意思，别印成「　区材料申购单」
+  title.value = data.areaName ? `${data.areaName}　区材料申购单` : '＿＿＿＿＿　区材料申购单';
   title.font = { name: '宋体', size: 18, bold: true };
   title.alignment = { horizontal: 'center', vertical: 'middle' };
   ws.getRow(1).height = 38;
