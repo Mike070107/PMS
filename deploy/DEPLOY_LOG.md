@@ -2802,3 +2802,11 @@
 - 自上次（387761c）以来上线的相关提交：
   - 06a59c3 fix(按住说话): 去掉按下的震动，别让人以为屏幕在抖
 
+## 2026-09-14 22:57 · miniapp-staff · 91af866
+
+- 包：`1.0.20260914c`
+- 提交：91af866 docs(inbox): 其余语音入口的按下反馈已修（f6053fb）
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（06a59c3）以来上线的相关提交：
+  - f6053fb fix(按住说话): 其余 15 个语音入口也做到「按下立刻有反馈」
+
