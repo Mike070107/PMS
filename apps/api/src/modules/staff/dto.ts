@@ -124,3 +124,18 @@ export class UpdateStaffDto {
   @Type(() => Number)
   roleIds?: number[];
 }
+
+/**
+ * 「自动生成账号密码」的入参。只拿姓名去拟，不落库。
+ * 编辑已有用户时带上 excludeUserId，否则他自己占着的账号会让系统白白跳到 01。
+ */
+export class SuggestCredentialsDto {
+  @IsString()
+  @MaxLength(60)
+  name!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  excludeUserId?: number;
+}

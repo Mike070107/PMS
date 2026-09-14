@@ -301,9 +301,10 @@ function StaffFormModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const { message } = AntdApp.useApp();
+  const { message, modal } = AntdApp.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [communities, setCommunities] = useState<CommunityOption[]>([]);
   // 选中的角色 → 业务身份。2026-08-26 合并后这里不再单独选身份：
   // 身份跟着角色走，否则「后台显示维修工、小程序还按办公室渲染」的老毛病还会回来
@@ -367,6 +368,61 @@ function StaffFormModal({
   const reporterOnly =
     !!pickedRoles.length && !appKeys.has('app:pool') && !appKeys.has('app:dispatch');
 
+  /**
+   * 让系统拟一组账号密码填进来。账号按姓名拼音首字母、重名加 01/02，服务端算，
+   * 因为要在全库范围内查重名 —— 前端算一个再保存时撞车，等于没帮上忙。
+   */
+  const onGenerate = async () => {
+    const name = String(form.getFieldValue('name') || '').trim();
+    if (!name) {
+      message.warning('先填姓名，账号按姓名的拼音首字母生成');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const res = await request<{ loginAccount: string; password: string }>({
+        method: 'POST',
+        url: '/staff/suggest-credentials',
+        data: { name, excludeUserId: target?.id },
+      });
+      form.setFieldsValue({ loginAccount: res.loginAccount, password: res.password });
+      message.success('已生成，保存后会给你一段可以直接转发的开通信息');
+    } catch (e: any) {
+      message.error(e?.message || '生成失败');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  /**
+   * 保存成功后把开通信息摆出来让他复制 —— 密码只有这一次看得到（库里存的是哈希），
+   * 关掉就再也查不出来，只能重新生成一个。所以弹窗里写明白这一点。
+   */
+  const showHandoff = (account: string, password: string, name: string) => {
+    const text = [
+      `${name}你好，物业管理后台的账号开好了：`,
+      `网址：${window.location.origin}`,
+      `账号：${account}`,
+      `密码：${password}`,
+      '也可以在手机上打开员工端小程序，用微信绑定手机号后扫码登录，不用记密码。',
+    ].join('\n');
+    modal.success({
+      title: '账号已开通，复制发给本人',
+      width: 520,
+      okText: '知道了',
+      content: (
+        <div>
+          <Paragraph copyable={{ text }} style={{ whiteSpace: 'pre-wrap', marginBottom: 8 }}>
+            {text}
+          </Paragraph>
+          <Text type="warning">
+            密码只在这里显示这一次，关掉就查不回来了（系统只存加密后的结果）。忘了就回来重新生成一个。
+          </Text>
+        </div>
+      ),
+    });
+  };
+
   const onOk = async () => {
     const v = await form.validateFields();
     setSaving(true);
@@ -405,6 +461,9 @@ function StaffFormModal({
             ? '已登记。他在小程序注册过就已直接转为该身份；还没注册的，等他验证微信手机号时自动认领'
             : '员工已创建',
         );
+      }
+      if (v.loginAccount && v.password) {
+        showHandoff(v.loginAccount, v.password, String(v.name || '').trim());
       }
       onDone();
     } catch (e: any) {
@@ -467,7 +526,9 @@ function StaffFormModal({
           extra={
             pickedRoles.length
               ? `他在小程序里看到哪几格、在网站上能进哪些页面，都在「业务角色」页改这些角色即可。${
-                  needsLogin ? '这个角色能进网站后台，记得一并设置下面的登录账号和密码。' : ''
+                  needsLogin
+                    ? '这个角色能进网站后台。他可以直接用微信扫码登录，不配账号密码也能进；需要账号密码时在下面点「自动生成」。'
+                    : ''
                 }`
               : '选一个角色，他就继承这个角色勾好的页面权限和数据范围。角色在「业务角色」页配置。'
           }
@@ -512,29 +573,28 @@ function StaffFormModal({
           <Col span={12}>
             <Form.Item
               name="loginAccount"
-              label={needsLogin ? '登录账号' : '登录账号（选填）'}
-              rules={[{ required: needsLogin && !target, message: '该角色必须登录后台' }]}
-              extra={needsLogin
-                ? undefined
-                : '选填。这个角色只用小程序，他用微信手机号登录即可；填了账号密码则多一种登录方式'}
+              label="登录账号（选填）"
             >
-              <Input placeholder="用于后台 / 员工端登录" />
+              <Input placeholder="留空即可，他扫码就能进" />
             </Form.Item>
           </Col>
           <Col span={12}>
             <Form.Item
               name="password"
-              label={target ? '重置密码（留空不改）' : '初始密码'}
-              rules={
-                needsLogin && !target
-                  ? [{ required: true, min: 6, message: '至少 6 位' }]
-                  : [{ min: 6, message: '至少 6 位' }]
-              }
+              label={target ? '重置密码（留空不改）' : '初始密码（选填）'}
+              rules={[{ min: 6, message: '至少 6 位' }]}
             >
               <Input.Password autoComplete="new-password" />
             </Form.Item>
           </Col>
         </Row>
+        <Button size="small" onClick={onGenerate} loading={generating} style={{ marginBottom: 12 }}>
+          自动生成账号密码
+        </Button>
+        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          账号密码都可以不填。本人在员工端小程序用微信绑定手机号就能干活，进网站后台用扫码登录即可。
+          只有换电脑、手边没微信这种情况才需要账号密码，点上面那个按钮生成一组，保存后会给你一段可以直接转发的开通信息。
+        </Paragraph>
       </Form>
     </Modal>
   );

@@ -15,7 +15,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ResolvedAccess } from '../access/access.service';
 import { CurrentAccess } from '../access/current-access.decorator';
 import { PermissionsGuard } from '../access/permissions.guard';
-import { CreateStaffDto, ListStaffQueryDto, UpdateStaffDto } from './dto';
+import {
+  CreateStaffDto,
+  ListStaffQueryDto,
+  SuggestCredentialsDto,
+  UpdateStaffDto,
+} from './dto';
 import { StaffService } from './staff.service';
 
 /**
@@ -45,6 +50,19 @@ export class StaffController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.staffService.create(dto, user, access);
+  }
+
+  /**
+   * 拟一组登录账号和初始密码给管理员看。只是建议，不落库、不改任何人的密码 ——
+   * 真正生效在下面的创建 / 修改里。放 POST 是因为要带姓名，不该进 URL 和访问日志。
+   */
+  @Post('suggest-credentials')
+  @RequirePermission('users', 'edit')
+  suggestCredentials(
+    @Body() dto: SuggestCredentialsDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.staffService.suggestCredentials(dto, user);
   }
 
   @Post(':id/unbind-wx')

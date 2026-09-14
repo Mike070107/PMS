@@ -6,8 +6,14 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
-import { Brackets, In, Repository } from 'typeorm';
+import { Brackets, In, Like, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
+import { nameToInitials } from '../../common/pinyin-initials';
+import {
+  generatePassword,
+  normalizeAccountBase,
+  pickAvailableAccount,
+} from './credentials.util';
 import {
   ASSIGNABLE_STAFF_ROLES,
   STAFF_APP_ROLES,
@@ -24,7 +30,12 @@ import {
 } from '../../entities';
 import { AccessService, ResolvedAccess } from '../access/access.service';
 import { RolesService } from '../roles/roles.service';
-import { CreateStaffDto, ListStaffQueryDto, UpdateStaffDto } from './dto';
+import {
+  CreateStaffDto,
+  ListStaffQueryDto,
+  SuggestCredentialsDto,
+  UpdateStaffDto,
+} from './dto';
 
 // 名单只此一份（common/enums.ts）：这里和 dto.ts、角色表 business_role 的取值域
 // 必须是同一份，否则会出现「后台能选、保存报 invalid role」这种自相矛盾
@@ -163,13 +174,21 @@ export class StaffService {
     // 员工统一是 staff，能干什么全看他绑的角色 —— 这里不再有「业务身份」这回事
     const role = UserRole.STAFF;
 
-    // 只有角色里勾了网站页面的人才需要账号密码；只上小程序的（维修工、保安…）
-    // 走微信登录，账号密码留空即可
-    const needsLogin = await this.roleGrantsAdminPages(tenantId, dto.roleIds);
-    if (needsLogin && (!dto.loginAccount || !dto.password)) {
-      throw new BadRequestException(
-        '这个角色能进网站后台，请一并设置登录账号和密码',
-      );
+    /**
+     * 账号密码一律选填（2026-09-14 Mike）。
+     *
+     * 以前「角色能进网站后台」就强制填一组，管理员每建一个办公室的人都得自己想账号、
+     * 编一个密码。可进后台本来就有第二条路：本人在员工端小程序用手机号登录，网页扫码
+     * 确认就进去了 —— 姓名 + 手机号足够他把活干起来。真需要账号密码时（换电脑、手边
+     * 没有微信），再来用户管理里点「自动生成」，账号按姓名拼音首字母、重名加 01/02。
+     *
+     * 但**不许只给一半**：只有账号没有密码同样登不进去，还让人以为配好了。
+     */
+    if (dto.loginAccount && !dto.password) {
+      throw new BadRequestException('设了登录账号就要一起设密码，否则他还是登不进去');
+    }
+    if (dto.password && !dto.loginAccount) {
+      throw new BadRequestException('设了密码就要一起设登录账号，否则他不知道用什么登录');
     }
     if (dto.loginAccount) {
       const existing = await this.userRepo.findOne({
@@ -286,6 +305,13 @@ export class StaffService {
     }
 
     if (dto.status !== undefined) target.status = dto.status;
+    /**
+     * 只设密码、却没有登录账号 = 白设一个他用不上的密码。
+     * 这里看的是**改完之后**的状态：上面刚把账号清空的情况也要拦住。
+     */
+    if (dto.password && !target.loginAccount) {
+      throw new BadRequestException('这个人还没有登录账号，先设账号再设密码');
+    }
     if (dto.password) target.passwordHash = await bcrypt.hash(dto.password, 10);
     target.updatedBy = user.id;
     await this.userRepo.save(target);
@@ -455,16 +481,27 @@ export class StaffService {
   }
 
   /**
-   * 角色里有没有网站后台页面（决定要不要账号密码）。判断口径与「能不能登后台」
-   * 完全一致，所以直接引 AccessService 那一份 —— 跟随权限模板的角色自己不存
-   * role_permissions，在这里另查一次那张表会把它们判成「只上小程序」，
-   * 建档时不要账号密码，人建完了也登不进后台。
+   * 给这个人拟一组登录账号和初始密码，**只返回建议、不落库** ——
+   * 管理员看一眼、需要的话还能改，点保存才算数。
+   *
+   * 账号 = 姓名拼音首字母，重名依次加 01、02（口径见 credentials.util）。
+   * 重名要在**全库**范围内查：login_account 的唯一性本来就不分公司，
+   * 只在本公司里查的话，建出来的账号保存时才撞上，等于没帮上忙。
    */
-  private async roleGrantsAdminPages(tenantId: number, roleIds: number[]) {
-    const roles = await this.roleRepo.find({
-      where: { id: In([...new Set(roleIds)]), tenantId },
+  async suggestCredentials(dto: SuggestCredentialsDto, user: AuthUser) {
+    this.requireTenant(user);
+    const base = normalizeAccountBase(nameToInitials(dto.name));
+    const rows = await this.userRepo.find({
+      where: { loginAccount: Like(`${base}%`) },
+      select: ['id', 'loginAccount'],
     });
-    return this.accessService.rolesGrantAdminPages(roles);
+    const taken = rows
+      .filter((row) => row.id !== dto.excludeUserId)
+      .map((row) => row.loginAccount ?? '');
+    return {
+      loginAccount: pickAvailableAccount(base, taken),
+      password: generatePassword(),
+    };
   }
 
   /**
