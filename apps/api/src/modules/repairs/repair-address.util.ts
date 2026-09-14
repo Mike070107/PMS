@@ -103,6 +103,9 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
 
   let buildingNo: string | null = null;
   let gluedNo: string | null = null;
+  /** 门牌那一段在原话里的起点。粘住时（「19814号」）要从数字串的**头**算起，
+      否则剥描述只剥掉正则捕到的「9814号」，前面那个「1」会留在故障描述里 */
+  let buildingFrom = -1;
   let roomNo: string | null = null;
   let buildingMatch: RegExpExecArray | null = null;
   BUILDING_RE.lastIndex = 0;
@@ -117,6 +120,7 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
     let digitsFrom = m.index;
     while (digitsFrom > 0 && /\d/.test(value[digitsFrom - 1])) digitsFrom -= 1;
     gluedNo = value.slice(digitsFrom, m.index + m[1].length);
+    buildingFrom = digitsFrom;
     /**
      * 跟在「Y号」后面的 3-4 位数字当室号：「24号302」「236号，502」。
      *
@@ -158,6 +162,7 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
       phaseMatch,
       laneMatch,
       buildingMatch,
+      buildingFrom,
       roomNo,
     }),
     lane,
@@ -219,6 +224,8 @@ function sliceMatchedRaw(
     phaseMatch: RegExpExecArray | null;
     laneMatch: RegExpExecArray | null;
     buildingMatch: RegExpExecArray | null;
+    /** 门牌数字串的真正起点（粘住时比 buildingMatch.index 更靠左）；-1 = 没有 */
+    buildingFrom: number;
     roomNo: string | null;
   },
 ): string {
@@ -231,7 +238,10 @@ function sliceMatchedRaw(
   if (parts.namePrefix) push(value.indexOf(parts.namePrefix), parts.namePrefix.length);
   push(parts.phaseMatch?.index, parts.phaseMatch?.[0].length ?? 0);
   push(parts.laneMatch?.index, parts.laneMatch?.[0].length ?? 0);
-  push(parts.buildingMatch?.index, parts.buildingMatch?.[0].length ?? 0);
+  if (parts.buildingMatch) {
+    const from = parts.buildingFrom >= 0 ? parts.buildingFrom : parts.buildingMatch.index;
+    push(from, parts.buildingMatch.index + parts.buildingMatch[0].length - from);
+  }
   // 室号可能是「号」后面紧跟的裸数字，也可能带「室」，一律按它在原文的位置算
   if (parts.roomNo) {
     const from = parts.buildingMatch ? parts.buildingMatch.index : 0;

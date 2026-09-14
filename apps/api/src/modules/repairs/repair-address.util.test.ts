@@ -277,3 +277,12 @@ test('拆粘住的数字：只按库里真实存在的弄号拆，余数要像�
     { lane: '19', buildingNo: '884' },
   ]);
 });
+
+test('matchedRaw 要圈住粘在一起的完整数字，别在描述里剩个「1」', () => {
+  // 正则只捕到「9814号」，剥描述时必须按完整的「19814号」剥
+  const c = extractAddressCandidate('19814号监控黑屏')!;
+  assert.equal(c.matchedRaw, '19814号');
+  assert.equal('19814号监控黑屏'.replace(c.matchedRaw, '').trim(), '监控黑屏');
+  const c2 = extractAddressCandidate('1984号门口监控黑屏')!;
+  assert.equal(c2.matchedRaw, '1984号');
+});
