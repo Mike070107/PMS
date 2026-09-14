@@ -2757,3 +2757,12 @@
   - 07b2104 feat(语音报修): 二次说话按「最后说的算」归纳成一句；拍照/填表入口一起常驻底栏
   - 8ca302f fix(语音报修): 弄字被识别吞掉也能认出地址；按住说话按钮常驻底栏、按下就有反应
 
+## 2026-09-14 21:28 · miniapp-staff · 387761c
+
+- 包：`1.0.20260914a`
+- 提交：387761c fix(语音报修): 粘在一起的门牌数字要整段剥掉，别在故障描述里剩个「1」
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（2b4157e）以来上线的相关提交：
+  - 07b2104 feat(语音报修): 二次说话按「最后说的算」归纳成一句；拍照/填表入口一起常驻底栏
+  - 8ca302f fix(语音报修): 弄字被识别吞掉也能认出地址；按住说话按钮常驻底栏、按下就有反应
+
