@@ -2729,3 +2729,12 @@
   - e6588a8 fix(报修识别): 说出口的小区名优先于点位名，别把公区单认到隔壁小区
   - 58ff3b9 feat(采购): 一键下载传统《材料申购单》；扫码登录二维码改用正式版
 
+## 2026-09-14 13:32 · api · e4bdebc
+
+- 包：`pms-api-20260914-1331.tar.gz`
+- 提交：e4bdebc feat(用户管理): 账号密码改成选填并能一键生成，新建用户只要姓名手机号
+- 说明：用户管理账号密码选填+自动生成
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts，M apps/api/src/modules/ai/repair-text.ai.ts
+- 自上次（e6588a8）以来上线的相关提交：
+  - e4bdebc feat(用户管理): 账号密码改成选填并能一键生成，新建用户只要姓名手机号
+
