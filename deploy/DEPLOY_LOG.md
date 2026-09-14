@@ -2738,3 +2738,12 @@
 - 自上次（e6588a8）以来上线的相关提交：
   - e4bdebc feat(用户管理): 账号密码改成选填并能一键生成，新建用户只要姓名手机号
 
+## 2026-09-14 13:32 · web · e4bdebc
+
+- 包：`pms-web-20260914-1331.tar.gz`
+- 提交：e4bdebc feat(用户管理): 账号密码改成选填并能一键生成，新建用户只要姓名手机号
+- 说明：用户管理账号密码选填+自动生成
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo，M packages/api-client/src/endpoints/ai.ts
+- 自上次（2502fc9）以来上线的相关提交：
+  - e4bdebc feat(用户管理): 账号密码改成选填并能一键生成，新建用户只要姓名手机号
+
