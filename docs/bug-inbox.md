@@ -11,6 +11,7 @@
 ## 待处理
 
 <!-- 新条目追加在这一行下面 -->
+- [ ] 2026-09-14 | staff+owner | 其余「按住说话」入口还没接上「按下立刻有反馈」：工单现场处理（催单/转单/作废/进度/完工小结/用料备注等 10 个字段按钮，各自有 speechTarget，需要按目标分别置 pressing）、材料入库 3 处、维修经验、工单池派单备注。共用的 createHoldToTalk 已经带 onPressing 回调和「按太早松手」提示，页面只要接 onPressing + 加 catchtouchmove | 参照 pages/quick-repair 的改法
 
 ## 已修复
 

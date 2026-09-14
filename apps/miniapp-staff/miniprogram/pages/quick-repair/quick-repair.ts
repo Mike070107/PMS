@@ -277,8 +277,6 @@ Page({
   },
 
   onStartRecord() {
-    // 震一下 = 「我收到了」。录音器起来还要几百毫秒，这一下让人知道按上了
-    wx.vibrateShort({ type: 'light', fail: () => undefined });
     hold?.press();
   },
 

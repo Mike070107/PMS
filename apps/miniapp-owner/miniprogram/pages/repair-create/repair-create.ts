@@ -656,8 +656,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   onSpeechStart() {
     // 插件的 lang 只有 zh_CN / en_US / zh_HK，没有上海话，只能按普通话识别
     // （lang 现在由 createHoldToTalk 统一传，默认就是 zh_CN）
-    // 震一下 = 「我收到了」：录音器起来还要几百毫秒
-    wx.vibrateShort({ type: 'light', fail: () => undefined });
     hold?.press();
   },
 

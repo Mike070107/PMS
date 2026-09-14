@@ -353,8 +353,6 @@ Page({
   },
 
   onSpeechStart() {
-    // 震一下 = 「我收到了」：录音器起来还要几百毫秒
-    wx.vibrateShort({ type: 'light', fail: () => undefined });
     hold?.press();
   },
 
