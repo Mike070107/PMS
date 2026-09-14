@@ -19,6 +19,8 @@ declare const wx: {
   authorize(opts: { scope: string; success?: () => void; fail?: (err?: { errMsg?: string }) => void }): void;
   openSetting(opts?: { success?: () => void; fail?: () => void }): void;
   showToast(opts: { title: string; icon?: string; duration?: number }): void;
+  /** 按下震一下的触感反馈；老机型/关了系统震动时会 fail，带 ? 是因为基础库很早才有 */
+  vibrateShort?(opts: { type?: string; fail?: () => void }): void;
   showModal(opts: {
     title?: string;
     content?: string;
@@ -219,6 +221,14 @@ export interface HoldToTalkOptions {
   lang?: string;
   duration?: number;
   /**
+   * 按下时震一下（默认开）。
+   *
+   * 这不是装饰：按住说话的人经常一边看现场一边按，眼睛不在屏幕上，
+   * 震动是「我收到了」最直接的确认 —— 视觉那条（按下变色）他可能根本没看见。
+   * 真要关掉传 false，别再去各个页面里删。
+   */
+  haptic?: boolean;
+  /**
    * 手指按下 / 松开时立刻回调（true = 按着）。
    *
    * 为什么必须有它（2026-09-14 Mike：「有时候按了没反应」）：页面原来只在插件的
@@ -265,6 +275,15 @@ export function createHoldToTalk(
       }
       if (recording || checking) return;
       setPressing(true);
+      // 震一下 = 「我收到了」。录音器起来还要几百毫秒，这一下让人知道按上了；
+      // 系统关了震动、老机型不支持一律静默跳过，绝不因此影响录音
+      if (opts.haptic !== false) {
+        try {
+          wx.vibrateShort?.({ type: 'light', fail: () => undefined });
+        } catch {
+          // 基础库太老没有这个接口
+        }
+      }
       if (recordPermissionReady) {
         start();
         return;
