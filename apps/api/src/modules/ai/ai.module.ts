@@ -17,6 +17,7 @@ import { MaterialReceiptAiService } from './material-receipt.ai';
 import { ExtractSamplesService } from './extract-samples.service';
 import { LlmService } from './llm.service';
 import { RepairTextAiService } from './repair-text.ai';
+import { RepairSpeechMergeService } from './repair-speech-merge.ai';
 import { AiFeedbackService } from './ai-feedback.service';
 import { RepairFeeRulesService } from './repair-fee-rules.service';
 import { AiUsageService } from './ai-usage.service';
@@ -43,6 +44,7 @@ import { AiUsageService } from './ai-usage.service';
     AiUsageService,
     LlmService,
     RepairTextAiService,
+    RepairSpeechMergeService,
     MaterialReceiptAiService,
     ExtractSamplesService,
     AiFeedbackService,
@@ -52,6 +54,7 @@ import { AiUsageService } from './ai-usage.service';
     AiUsageService,
     LlmService,
     RepairTextAiService,
+    RepairSpeechMergeService,
     MaterialReceiptAiService,
     ExtractSamplesService,
     AiFeedbackService,

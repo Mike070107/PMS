@@ -46,8 +46,8 @@ page { background: #f1f6fb; }
 /* 底部操作栏是 fixed 的，正文必须自己留出这段高度（两种状态栏高不同），
    否则最后一行永远被压在栏下面 —— 设计规范「固定底栏不会遮挡最后一项内容」那一条 */
 .quick-body { padding: 28rpx 26rpx 0; }
-.quick-body--hold { padding-bottom: calc(330rpx + env(safe-area-inset-bottom)); }
-.quick-body--review { padding-bottom: calc(240rpx + env(safe-area-inset-bottom)); }
+.quick-body--hold { padding-bottom: calc(440rpx + env(safe-area-inset-bottom)); }
+.quick-body--review { padding-bottom: calc(350rpx + env(safe-area-inset-bottom)); }
 
 .voice-guide {
   display: flex;
@@ -159,8 +159,9 @@ page { background: #f1f6fb; }
 /*
   底部常驻操作栏（2026-09-14）。整条、整宽、不透明 —— 局部的悬浮小按钮会把正文
   压在身底下，整条栏不会：内容从它后面滚过去，观感就是 App 的底栏。
-  bottom 的内边距 = 安全区 + 22px：按住说话按钮不能落在系统上滑手势区里，
-  否则一按就把任务栏带出来（Mike 实测，以为是小程序的 bug）。
+  bottom 的内边距 = 安全区 + 32px：按住说话按钮不能落在系统上滑手势区里，
+  否则一按就把任务栏带出来（Mike 实测，以为是小程序的 bug）；
+  2026-09-14 他看了截图又要求再往上抬一点，下边缘要留白，所以这一档比手势区还宽一些。
 */
 .action-dock {
   position: fixed;
@@ -168,7 +169,7 @@ page { background: #f1f6fb; }
   right: 0;
   bottom: 0;
   z-index: 20;
-  padding: 18rpx 34rpx calc(44rpx + env(safe-area-inset-bottom));
+  padding: 18rpx 34rpx calc(64rpx + env(safe-area-inset-bottom));
   border-top: 2rpx solid #dbe5ef;
   background: #fff;
   box-shadow: 0 -8rpx 28rpx rgba(23, 59, 99, .1);
@@ -197,9 +198,25 @@ page { background: #f1f6fb; }
   最下面那道留白**不吃**，那里是系统上滑手势区，不跟它抢触摸。
 */
 .hold-zone {
-  margin: -18rpx -34rpx -22rpx;
-  padding: 18rpx 34rpx 22rpx;
+  margin: 0 -34rpx -22rpx;
+  padding: 0 34rpx 22rpx;
 }
+/* 底栏里的次级入口：拍照 / 填表报修。压低视觉重量，不和主按钮抢 */
+.dock-entries { display: flex; gap: 16rpx; margin-bottom: 16rpx; }
+.dock-entry {
+  flex: 1;
+  min-height: 78rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  border: 2rpx solid #c9d9e8;
+  border-radius: 18rpx;
+  background: #f4f9fd;
+  color: #315f98;
+  font-size: 29rpx;
+}
+.dock-entry__icon { font-size: 26rpx; }
 .action-dock__error { margin-bottom: 14rpx; color: #b53d44; font-size: 29rpx; line-height: 1.5; }
 .prototype-hold {
   width: 100% !important;

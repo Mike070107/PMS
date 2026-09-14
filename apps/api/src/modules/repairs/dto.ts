@@ -159,6 +159,17 @@ export class ParseRepairAddressDto {
   lite?: boolean;
 }
 
+/**
+ * 「按住说话」按了好几次：把这几段合成最终要提交的一句。
+ * segments 按说话顺序排，后面的可能是在更正前面的（见 RepairSpeechMergeService）。
+ */
+export class MergeRepairSpeechDto {
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(8)
+  segments: string[];
+}
+
 /** 设定/取消工单的要求完成截止时间；不传 slaDueAt = 取消 */
 export class UpdateWorkOrderSlaDto {
   @IsOptional()

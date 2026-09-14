@@ -84,15 +84,6 @@
       </view>
     </block>
 
-    <view class="photo-entry" data-type="image" bindtap="onCapture">
-      <view class="photo-entry__camera"></view>
-      <view class="photo-entry__body">
-        <view class="photo-entry__title">{{attachments.length ? '继续补拍现场照片' : '先拍一张现场照片'}}</view>
-        <view class="photo-entry__desc">选填，不拍也可以直接说</view>
-      </view>
-      <view class="photo-entry__arrow">›</view>
-    </view>
-
     <view wx:if="{{mediaList.length}}" class="quick-media">
       <view wx:for="{{mediaList}}" wx:key="url" class="thumb-wrap">
         <video wx:if="{{item.video}}" class="thumb" src="{{item.url}}" object-fit="cover" show-center-play-btn="{{true}}" />
@@ -123,7 +114,6 @@
       ><view class="prototype-hold__mic"></view><text>{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住补充一句')}}</text></button>
     </view>
 
-    <view class="form-link" bindtap="onEditInFull"><text class="form-link__icon">▦</text> 不方便说话，改用填表报修</view>
   </view>
 
   <!--
@@ -136,6 +126,22 @@
   -->
   <view class="action-dock">
     <block wx:if="{{!content}}">
+      <!--
+        拍照和填表也一起常驻（2026-09-14 Mike）：原来这两个入口在正文里、排在说明后面，
+        小屏手机上和按住说话一样要翻一屏才看得到。底栏里它们是次级样式，
+        不和主按钮抢视觉重量，但随时点得到。
+        注意必须放在 hold-zone **外面** —— 放里面一点就开始录音了。
+      -->
+      <view class="dock-entries">
+        <view class="dock-entry" data-type="image" bindtap="onCapture">
+          <view class="photo-entry__camera"></view>
+          <text>{{attachments.length ? '补拍照片 ' + attachments.length : '拍现场照片'}}</text>
+        </view>
+        <view class="dock-entry" bindtap="onEditInFull">
+          <text class="dock-entry__icon">▦</text>
+          <text>改用填表报修</text>
+        </view>
+      </view>
       <!--
         整块都能按（2026-09-14 Mike：「有时候按了没反应，应该整个按钮区域都能按住说话」）：
         touch 绑在这层，提示行和按钮周围的留白一起算按压区，手指落在哪儿都算数。
@@ -163,6 +169,12 @@
       <view wx:else class="speech-unavailable">当前微信环境不支持语音识别，请用上面的「改用填表报修」。</view>
     </block>
     <block wx:else>
+      <view class="dock-entries">
+        <view class="dock-entry" data-type="image" bindtap="onCapture">
+          <view class="photo-entry__camera"></view>
+          <text>{{attachments.length ? '补拍照片 ' + attachments.length : '拍现场照片'}}</text>
+        </view>
+      </view>
       <!-- 报错放按钮上方，手指不会挡住（同工单详情页口径） -->
       <view wx:if="{{errorMsg}}" class="action-dock__error">{{errorMsg}}</view>
       <view class="review-actions">

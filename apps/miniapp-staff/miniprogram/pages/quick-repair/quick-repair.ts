@@ -105,6 +105,13 @@ Page({
   predictedType: '',
   /** 人自己点过「紧急」那一行之后，就别再被自动判定覆盖 */
   urgentTouched: false,
+  /**
+   * 按住说话说了哪几段，按顺序排。第二段起要请服务端归纳成一句
+   * （后面说的往往是改口，见 appendSpeech）。自己动手改过字就从改完的那句重新起算。
+   */
+  segments: [] as string[],
+  /** 第几次归纳。回来时对不上就说明人又说了一段或自己改了字，那一次的结果作废 */
+  speechSeq: 0,
   detectTimer: 0,
   exampleAudio: null as WechatMiniprogram.InnerAudioContext | null,
 
@@ -260,9 +267,7 @@ Page({
       const text = (res.result || this.data.partial || '').trim();
       this.setData({ recording: false, partial: '' });
       if (!text) return;
-      // 接着上一段说：一次没说完可以按第二次
-      const next = [this.data.content.trim(), text].filter(Boolean).join('，');
-      this.onContentChanged(next);
+      this.appendSpeech(text);
     };
     speechManager.onError = (err: { msg?: string; retcode?: number }) => {
       hold?.ended();
@@ -283,6 +288,43 @@ Page({
   },
 
   /**
+   * 又按了一次说话：先把新的一段接上去（立刻能看见，不丢话），
+   * 再请服务端把几段**归纳成一句**。
+   *
+   * 为什么不能只是拼在后面（2026-09-14 Mike）：第二、三次说的往往是**改口**——
+   * 「一期43号大门坏了」→「198弄44号202大门坏了」→「说错了是一期40号大门坏」。
+   * 拼起来是一句带三个门牌的话：派单的人不知道去哪儿，地址识别还会撞上最先出现的
+   * 那个门牌，恰恰是他不要的那个。
+   *
+   * 合并在服务端（模型在那边）。合不出来、没配大模型、网络不好 —— 一律保持拼接的结果，
+   * 绝不让人白说一遍。
+   */
+  appendSpeech(text: string) {
+    const base = this.data.content.trim();
+    const joined = [base, text].filter(Boolean).join('，');
+    // 先按老办法显示，慢一点的合并回来再替换：这一步不能等网络
+    this.onContentChanged(joined);
+    // 框里原来那句（自己打的、或上一次归纳的结果）就是第一段 —— 漏了它，
+    // 归纳会把它整段丢掉
+    const prior = this.segments.length ? this.segments : base ? [base] : [];
+    this.segments = prior.concat(text).slice(-8);
+    if (this.segments.length < 2) return;
+    const seq = ++this.speechSeq;
+    repairs
+      .mergeSpeech({ segments: this.segments.slice() })
+      .then((res) => {
+        // 回来时人可能又说了一段或自己改了字，只认最新那一次
+        if (seq !== this.speechSeq || !res?.merged || !res.text) return;
+        if (res.text.trim() === this.data.content.trim()) return;
+        // 合并结果成为新的起点：下一段接着它改，不用把矛盾的老话再翻一遍
+        this.segments = [res.text];
+        this.onContentChanged(res.text);
+        wx.showToast({ icon: 'none', title: '已按你最后说的整理成一句' });
+      })
+      .catch(() => undefined);
+  },
+
+  /**
    * 按住时手指微动不算翻页。
    * 空实现就够了 —— WXML 上用的是 catchtouchmove，事件被截住、页面就不会滚，
    * 也就不会派 touchcancel 把这一段静默作废（2026-09-14「按了没反应」的另一半原因）。
@@ -290,6 +332,10 @@ Page({
   onHoldMove() {},
 
   onInput(e: WechatMiniprogram.Input) {
+    // 自己动手改过之后，前面那几段口述作废：以框里这句为准重新起算，
+    // 在飞的那次归纳也一并作废，免得它把人刚改的字盖回去
+    this.segments = [];
+    this.speechSeq += 1;
     this.onContentChanged(e.detail.value);
   },
 

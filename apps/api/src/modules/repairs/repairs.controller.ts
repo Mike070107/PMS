@@ -29,6 +29,7 @@ import {
   CreateRepairRequestDto,
   DeleteWorkOrderDto,
   NeedMaterialDto,
+  MergeRepairSpeechDto,
   ParseRepairAddressDto,
   ReorderRepairTypeRulesDto,
   ReviewWorkOrderDto,
@@ -212,6 +213,19 @@ export class RepairsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.repairsService.parseRepairAddress(dto, user, access);
+  }
+
+  /**
+   * 「按住说话」按了第二次、第三次：把几段口述合成最终要提交的一句，
+   * 而不是把新的一段拼在后面 —— 后面说的往往是改口（「说错了是一期40号」），
+   * 拼起来就是一句带好几个门牌、自相矛盾的话。合并口径见 RepairSpeechMergeService。
+   * 鉴权和识别地址同一套：能报修的人才用得上。
+   */
+  @Post('repair-requests/merge-speech')
+  @Roles(...OWNER_APP_ROLES)
+  @RequirePermission([['work-orders', 'edit'], ['app:repair-create', 'view']], 'edit')
+  mergeRepairSpeech(@Body() dto: MergeRepairSpeechDto, @CurrentUser() user: AuthUser) {
+    return this.repairsService.mergeRepairSpeech(dto, user);
   }
 
   /** 两个小程序共用：业主端各身份 + 员工端（维修工/办公室巡查顺手报修） */

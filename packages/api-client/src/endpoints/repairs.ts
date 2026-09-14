@@ -143,6 +143,19 @@ export const parseAddress = (data: { text: string; communityId?: number; lite?: 
     data,
   });
 
+/**
+ * 「按住说话」按了好几次时，把这几段合成最终要提交的一句。
+ *
+ * 后面几段常常是**改口**（「说错了是一期40号」），直接拼在后面会得到一句带好几个门牌、
+ * 自相矛盾的话。合不出来时服务端返回 merged=false + 原样拼接，端上照常能用。
+ */
+export const mergeSpeech = (data: { segments: string[] }) =>
+  request<{ merged: boolean; text: string }>({
+    method: 'POST',
+    url: '/repair-requests/merge-speech',
+    data,
+  });
+
 /** 业主端提交报修（后端同时建 repair_request 与 work_order） */
 export const create = (data: RepairCreateReq) =>
   request<{ request: { id: number }; workOrder: { id: number; orderNo: string } }>({

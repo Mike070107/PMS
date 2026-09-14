@@ -42,6 +42,7 @@ import {
   WorkOrderStatus,
 } from '../../common/enums';
 import { RepairTextAiService, matchRepairTypeKeywords } from '../ai/repair-text.ai';
+import { RepairSpeechMergeService } from '../ai/repair-speech-merge.ai';
 import { AiFeedbackService } from '../ai/ai-feedback.service';
 import {
   classifyPublicAreaText,
@@ -100,6 +101,7 @@ import {
   DeleteWorkOrderDto,
   MaterialUsageDto,
   NeedMaterialDto,
+  MergeRepairSpeechDto,
   ParseRepairAddressDto,
   RequestWorkOrderTransferDto,
   UrgeRepairDto,
@@ -285,6 +287,7 @@ export class RepairsService implements OnModuleInit {
     private readonly settings: SettingsService,
     /** 一句话报修的语义整理。没配大模型时它一律返回 null，整条链路退回规则 */
     private readonly repairTextAi: RepairTextAiService,
+    private readonly speechMerge: RepairSpeechMergeService,
     private readonly aiFeedback: AiFeedbackService,
   ) {}
 
@@ -5935,6 +5938,26 @@ export class RepairsService implements OnModuleInit {
           }
         : undefined,
     };
+  }
+
+  /**
+   * 「按住说话」按了第二次、第三次时，把几段话合成最终要提交的一句。
+   *
+   * 为什么不能直接拼在后面（2026-09-14 Mike）：后面几段常常是**改口**——
+   * 「一期43号大门坏了」→「198弄44号202大门坏了」→「说错了是一期40号大门坏」。
+   * 拼起来是一句带三个门牌的话：派单的人不知道去哪儿，地址识别还会撞上最先出现的
+   * 那个门牌，正好是他不要的那个。
+   *
+   * 合不出来就返回 merged=false，端上退回原来的拼接 —— 绝不能让人白说一遍。
+   */
+  async mergeRepairSpeech(dto: MergeRepairSpeechDto, user: AuthUser) {
+    const tenantId = this.resolveTenantId(user);
+    const segments = (dto.segments || []).map((item) => String(item || '').trim()).filter(Boolean);
+    if (segments.length < 2) {
+      return { merged: false as const, text: segments.join('，') };
+    }
+    const text = await this.speechMerge.merge(tenantId, segments);
+    return text ? { merged: true as const, text } : { merged: false as const, text: segments.join('，') };
   }
 
   private async parseAddressByRule(
