@@ -2786,3 +2786,11 @@
   - 8ca302f fix(语音报修): 弄字被识别吞掉也能认出地址；按住说话按钮常驻底栏、按下就有反应
   - fdf5e56 feat(催单): 员工端工单详情加「催一下」，催单可写备注，消息里直接显示这句话
 
+## 2026-09-14 21:41 · miniapp-staff · 06a59c3
+
+- 包：`1.0.20260914b`
+- 提交：06a59c3 fix(按住说话): 去掉按下的震动，别让人以为屏幕在抖
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（387761c）以来上线的相关提交：
+  - 06a59c3 fix(按住说话): 去掉按下的震动，别让人以为屏幕在抖
+
