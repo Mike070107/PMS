@@ -26,7 +26,7 @@
       </block>
       <block wx:else>
         <textarea class="block-text block-text--{{item.type}}" auto-height maxlength="4000" placeholder="{{item.type === 'warning' ? '写容易忽略、安全风险或返工点' : item.type === 'bullet' ? '写一个操作步骤' : '写维修经验'}}" value="{{item.text}}" data-index="{{index}}" bindinput="onTextInput"></textarea>
-        <button wx:if="{{hasSpeech}}" class="voice-btn {{recording && speechIndex === index ? 'voice-btn--on' : ''}}" data-index="{{index}}" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord">{{recording && speechIndex === index ? '松开结束' : '按住说话，自动转文字'}}</button>
+        <button wx:if="{{hasSpeech}}" class="voice-btn {{(recording || pressing) && speechIndex === index ? 'voice-btn--on' : ''}}" data-index="{{index}}" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove">{{recording && speechIndex === index ? '松开结束' : (pressing && speechIndex === index ? '正在准备…' : '按住说话，自动转文字')}}</button>
       </block>
     </view>
 

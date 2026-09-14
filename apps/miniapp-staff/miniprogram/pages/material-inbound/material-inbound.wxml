@@ -104,14 +104,14 @@
     <!-- 说一句自动填表：AI 只填，填完由人核对再点下一步 -->
     <view wx:if="{{hasSpeech}}" class="card speech-card">
       <button
-        class="speech-btn {{recording ? 'speech-btn--on' : ''}}"
+        class="speech-btn {{recording || pressing ? 'speech-btn--on' : ''}}"
         bindtouchstart="onStartRecord"
         bindtouchend="onStopRecord"
-        bindtouchcancel="onStopRecord"
+        bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove"
       >
         <view class="speech-btn__mic"></view>
         <view class="speech-btn__text">
-          <view class="speech-btn__title">{{recording ? '松开结束' : '按住说要找什么（普通话）'}}</view>
+          <view class="speech-btn__title">{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住说要找什么（普通话）')}}</view>
           <view wx:if="{{guide}}" class="speech-btn__desc">例如「找个门禁按键，要20个，一个3块5」——数量单价会记到入库那一步</view>
         </view>
       </button>
@@ -177,14 +177,14 @@
     <!-- 说一句自动填表：AI 只填，填完由人核对再点下一步 -->
     <view wx:if="{{hasSpeech}}" class="card speech-card">
       <button
-        class="speech-btn {{recording ? 'speech-btn--on' : ''}}"
+        class="speech-btn {{recording || pressing ? 'speech-btn--on' : ''}}"
         bindtouchstart="onStartRecord"
         bindtouchend="onStopRecord"
-        bindtouchcancel="onStopRecord"
+        bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove"
       >
         <view class="speech-btn__mic"></view>
         <view class="speech-btn__text">
-          <view class="speech-btn__title">{{recording ? '松开结束' : '按住说这是什么东西（普通话）'}}</view>
+          <view class="speech-btn__title">{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住说这是什么东西（普通话）')}}</view>
           <view wx:if="{{guide}}" class="speech-btn__desc">例如「门禁按键，86型，也叫开门按钮，亚克力面板不锈钢外壳带背光」</view>
         </view>
       </button>
@@ -268,14 +268,14 @@
     <!-- 说一句自动填表：AI 只填，填完由人核对再提交 -->
     <view wx:if="{{hasSpeech}}" class="card speech-card">
       <button
-        class="speech-btn {{recording ? 'speech-btn--on' : ''}}"
+        class="speech-btn {{recording || pressing ? 'speech-btn--on' : ''}}"
         bindtouchstart="onStartRecord"
         bindtouchend="onStopRecord"
-        bindtouchcancel="onStopRecord"
+        bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove"
       >
         <view class="speech-btn__mic"></view>
         <view class="speech-btn__text">
-          <view class="speech-btn__title">{{recording ? '松开结束' : '按住说数量和单价（普通话）'}}</view>
+          <view class="speech-btn__title">{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住说数量和单价（普通话）')}}</view>
           <view wx:if="{{guide}}" class="speech-btn__desc">例如「20个，一个3块5」——填完自己核对再提交</view>
         </view>
       </button>

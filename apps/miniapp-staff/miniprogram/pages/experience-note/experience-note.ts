@@ -26,6 +26,9 @@ Page({
     saving: false,
     hasSpeech: false,
     recording: false,
+    /** 手指按着、插件 onStart 还没回来的那一段：按下就变色，不然人以为没按上
+        （2026-09-14「按了没反应」，判定都在 createHoldToTalk 里） */
+    pressing: false,
     speechIndex: -1,
   },
 
@@ -68,7 +71,10 @@ Page({
 
   bindSpeech() {
     if (!speechManager) return;
-    hold = createHoldToTalk(speechManager);
+    hold = createHoldToTalk(speechManager, {
+      // 按下 / 松开立刻反映到界面，不等插件的 onStart
+      onPressing: (pressing) => this.setData({ pressing }),
+    });
     this.setData({ hasSpeech: true });
     speechManager.onStart = () => { this.setData({ recording: true }); hold?.started(); };
     speechManager.onRecognize = () => undefined;
@@ -91,6 +97,9 @@ Page({
 
   onStartRecord(e: WechatMiniprogram.BaseEvent) { this.setData({ speechIndex: Number(e.currentTarget.dataset.index) }); hold?.press(); },
   onStopRecord() { hold?.release(); },
+
+  /** 按住时手指微动不算翻页：WXML 用 catchtouchmove 截住，页面不滚就不会派 touchcancel 把这一段作废 */
+  onHoldMove() {},
   onTitleInput(e: WechatMiniprogram.Input) { this.setData({ title: e.detail.value }); },
   onTextInput(e: WechatMiniprogram.Input) {
     const index = Number(e.currentTarget.dataset.index);

@@ -278,6 +278,8 @@ interface PageData {
   /** 微信同声传译插件在不在。不在就整个隐藏「按住说话」，打字照常可用 */
   hasSpeech: boolean;
   recording: boolean;
+  /** 手指按着、插件 onStart 还没回来的那一段（按下就变色，见 createHoldToTalk 的 onPressing） */
+  pressing: boolean;
   /** 所有语音按钮共用一个录音器，用目标字段防止识别结果串到别的输入框。 */
   speechTarget: string;
   speechRowIndex: number;
@@ -393,6 +395,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
        回头对账、查保修全靠猜。语音走微信同声传译（只支持普通话），插件没装就隐藏按钮。 */
     hasSpeech: false,
     recording: false,
+    /** 手指按着、插件 onStart 还没回来的那一段：按下就变色，不然人以为没按上 */
+    pressing: false,
     /** 当前是哪一格在听。所有长文本共用一个录音器，靠这个值把识别结果写回正确字段。 */
     speechTarget: 'summary',
     speechRowIndex: -1,
@@ -999,7 +1003,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   bindSpeech() {
     if (!speechManager) return;
     this.setData({ hasSpeech: true });
-    hold = createHoldToTalk(speechManager);
+    hold = createHoldToTalk(speechManager, {
+      // 按下 / 松开立刻反映到界面，不等插件的 onStart（那一步要起录音器，首次还要等授权）
+      onPressing: (pressing) => this.setData({ pressing }),
+    });
     speechManager.onStart = () => {
       this.setData({ recording: true, partial: '' });
       // 首次授权时 touchend 被授权框吃掉，这里替它补 stop（见 createHoldToTalk 的注释）
@@ -1042,6 +1049,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   onStopRecord() {
     hold?.release();
   },
+
+  /** 按住时手指微动不算翻页：WXML 用 catchtouchmove 截住，页面不滚就不会派 touchcancel 把这一段作废 */
+  onHoldMove() {},
 
   /** 普通备注只做语音转文字；完工总述才交给大模型拆成位置、现象、收费和用料。 */
   applySpeechText(spoken: string) {

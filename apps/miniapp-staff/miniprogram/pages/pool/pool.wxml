@@ -255,9 +255,9 @@
     </picker>
 
     <view class="label mt">派单备注<text class="label__opt">选填，维修工能看到</text></view>
-    <button wx:if="{{hasSpeech}}" class="assign-speech {{assignRecording ? 'assign-speech--on' : ''}}" bindtouchstart="onAssignSpeechStart" bindtouchend="onAssignSpeechEnd" bindtouchcancel="onAssignSpeechEnd">
+    <button wx:if="{{hasSpeech}}" class="assign-speech {{assignRecording || assignPressing ? 'assign-speech--on' : ''}}" bindtouchstart="onAssignSpeechStart" bindtouchend="onAssignSpeechEnd" bindtouchcancel="onAssignSpeechEnd" catchtouchmove="onHoldMove">
       <view class="assign-speech__mic"></view>
-      <view><view class="assign-speech__title">{{assignRecording ? '松开结束' : '按住说派单备注'}}</view><view wx:if="{{guide}}" class="assign-speech__desc">说完自动变成文字，还可以修改</view></view>
+      <view><view class="assign-speech__title">{{assignRecording ? '松开结束' : (assignPressing ? '正在准备…' : '按住说派单备注')}}</view><view wx:if="{{guide}}" class="assign-speech__desc">说完自动变成文字，还可以修改</view></view>
     </button>
     <view wx:if="{{assignRecording}}" class="assign-speech__listening">正在听：{{assignSpeechPartial || '请继续说…'}}</view>
     <textarea

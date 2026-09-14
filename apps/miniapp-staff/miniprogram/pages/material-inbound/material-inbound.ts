@@ -182,6 +182,9 @@ Page({
     /** 同声传译插件在不在。不在就整个隐藏「按住说话」，打字照常可用 */
     hasSpeech: false,
     recording: false,
+    /** 手指按着、插件 onStart 还没回来的那一段：按下就变色，不然人以为没按上
+        （2026-09-14「按了没反应」，判定都在 createHoldToTalk 里） */
+    pressing: false,
     /** 识别中的实时文字，让人知道在听 */
     partial: '',
     /** 正在让模型整理 */
@@ -448,7 +451,10 @@ Page({
   bindSpeech() {
     if (!speechManager) return;
     this.setData({ hasSpeech: true });
-    hold = createHoldToTalk(speechManager);
+    hold = createHoldToTalk(speechManager, {
+      // 按下 / 松开立刻反映到界面，不等插件的 onStart
+      onPressing: (pressing) => this.setData({ pressing }),
+    });
     speechManager.onStart = () => {
       this.setData({ recording: true, partial: '' });
       hold?.started();
@@ -483,6 +489,9 @@ Page({
   onStopRecord() {
     hold?.release();
   },
+
+  /** 按住时手指微动不算翻页：WXML 用 catchtouchmove 截住，页面不滚就不会派 touchcancel 把这一段作废 */
+  onHoldMove() {},
 
   async applySpeechText(spoken: string) {
     this.setData({ aiBusy: true, aiHint: `听到：${spoken}` });

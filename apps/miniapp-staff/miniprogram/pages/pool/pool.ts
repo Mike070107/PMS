@@ -285,6 +285,9 @@ Page({
     assignNote: '',
     hasSpeech: !!speechManager,
     assignRecording: false,
+    /** 手指按着、插件 onStart 还没回来的那一段：按下就变色，不然人以为没按上
+        （2026-09-14「按了没反应」，判定都在 createHoldToTalk 里） */
+    assignPressing: false,
     assignSpeechPartial: '',
     assignError: '',
     assigning: false,
@@ -714,7 +717,10 @@ Page({
 
   bindAssignSpeech() {
     if (!speechManager) return;
-    assignSpeechHold = createHoldToTalk(speechManager);
+    assignSpeechHold = createHoldToTalk(speechManager, {
+      // 按下 / 松开立刻反映到界面，不等插件的 onStart
+      onPressing: (assignPressing) => this.setData({ assignPressing }),
+    });
     speechManager.onStart = () => {
       this.setData({ assignRecording: true, assignSpeechPartial: '' });
       assignSpeechHold?.started();
@@ -743,6 +749,9 @@ Page({
   onAssignSpeechEnd() {
     assignSpeechHold?.release();
   },
+
+  /** 按住时手指微动不算翻页：WXML 用 catchtouchmove 截住，页面不滚就不会派 touchcancel 把这一段作废 */
+  onHoldMove() {},
 
   /** 面板内容区滚动时不要把底下的列表也带着滚 */
   noop() {},
