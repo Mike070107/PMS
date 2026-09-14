@@ -215,24 +215,56 @@ export interface HoldToTalk {
   ended(): void;
 }
 
+export interface HoldToTalkOptions {
+  lang?: string;
+  duration?: number;
+  /**
+   * 手指按下 / 松开时立刻回调（true = 按着）。
+   *
+   * 为什么必须有它（2026-09-14 Mike：「有时候按了没反应」）：页面原来只在插件的
+   * onStart 回调里才把按钮变成录音态，而 onStart 要等录音器起来、首次还要等授权，
+   * 中间这几百毫秒**界面一点动静都没有** —— 人以为没按上，手一松，
+   * 这一段就废了（started() 会替它补 stop，结果是空的，连个提示都没有）。
+   * 按下就变色是「我收到了」，哪怕录音还没真的开始。
+   */
+  onPressing?: (pressing: boolean) => void;
+}
+
 /** 权限过一次就记住（整个小程序生命周期内），别每次按住都去问一遍 */
 let recordPermissionReady = false;
 
 export function createHoldToTalk(
   manager: { start(opts: { lang: string; duration: number }): void; stop(): void } | null,
-  opts: { lang?: string; duration?: number } = {},
+  opts: HoldToTalkOptions = {},
 ): HoldToTalk {
   let pressing = false;
   let recording = false;
   let checking = false;
+  /** 这一段录音是什么时候开始的，用来发现「卡住不还回来」的状态（见 press） */
+  let startedAt = 0;
+  const duration = opts.duration ?? 30000;
+  const setPressing = (value: boolean) => {
+    if (pressing === value) return;
+    pressing = value;
+    opts.onPressing?.(value);
+  };
   const start = () => {
     if (!manager) return;
-    manager.start({ lang: opts.lang || 'zh_CN', duration: opts.duration ?? 30000 });
+    manager.start({ lang: opts.lang || 'zh_CN', duration });
   };
   return {
     press() {
-      if (!manager || recording || checking) return;
-      pressing = true;
+      if (!manager) return;
+      /*
+        录音态卡住了：插件的 onStop / onError 有时候一个都不回来（弱网、被系统打断），
+        recording 就永远停在 true，之后**按多少次都没反应**，只能退出页面重进。
+        超过这一段录音的最长时长还没还回来，就当它已经死了，自己复位重开。
+      */
+      if (recording && Date.now() - startedAt > duration + 5000) {
+        recording = false;
+      }
+      if (recording || checking) return;
+      setPressing(true);
       if (recordPermissionReady) {
         start();
         return;
@@ -241,7 +273,7 @@ export function createHoldToTalk(
       ensureRecordPermission().then((state) => {
         checking = false;
         if (state !== 'ok') {
-          pressing = false;
+          setPressing(false);
           explainPermission(state);
           return;
         }
@@ -256,20 +288,34 @@ export function createHoldToTalk(
       });
     },
     release() {
-      pressing = false;
+      const wasPressing = pressing;
+      setPressing(false);
+      if (!manager) return;
       /* 还没真正开始录（授权框还开着、或 start 尚未回调）时去 stop，插件会报错，
          所以这里只放行「已经在录」的情况；另一种情况交给 started() 收尾。 */
-      if (!manager || !recording) return;
+      if (!recording) {
+        /*
+          按一下就松：录音还没起来，这一段必然是空的。原来什么都不说 ——
+          用户看到的就是「按了没反应」（2026-09-14 Mike）。说清楚要按住不放。
+          checking 期间不提示：那条路自己会弹权限说明。
+        */
+        if (wasPressing && !checking) {
+          wx.showToast({ title: '要按住不放说完，再松手', icon: 'none', duration: 2000 });
+        }
+        return;
+      }
       manager.stop();
     },
     started() {
       recording = true;
+      startedAt = Date.now();
       // 走到这儿还发现手指早松了 = 授权框吃掉了 touchend，替它补一次
       if (!pressing && manager) manager.stop();
     },
     ended() {
       recording = false;
-      pressing = false;
+      startedAt = 0;
+      setPressing(false);
     },
   };
 }

@@ -71,6 +71,9 @@ Page({
     canSubmit: false,
     hasSpeech: !!speechManager,
     recording: false,
+    /** 手指按着、插件的 onStart 还没回来的那几百毫秒：按下就变色，不然人以为没按上
+        （2026-09-14 反馈「按了没反应」，判定和提示都在 createHoldToTalk 里） */
+    pressing: false,
     /** 语音识别的实时中间结果，让用户知道在听 */
     partial: '',
     content: '',
@@ -313,7 +316,10 @@ Page({
 
   bindSpeech() {
     if (!speechManager) return;
-    hold = createHoldToTalk(speechManager);
+    hold = createHoldToTalk(speechManager, {
+      // 按下 / 松开立刻反映到界面，不等插件回调
+      onPressing: (pressing) => this.setData({ pressing }),
+    });
     speechManager.onStart = () => {
       this.setData({ recording: true, partial: '' });
       // 首次授权时 touchend 被授权框吃掉，这里替它补 stop（见 createHoldToTalk 注释）
@@ -347,8 +353,13 @@ Page({
   },
 
   onSpeechStart() {
+    // 震一下 = 「我收到了」：录音器起来还要几百毫秒
+    wx.vibrateShort({ type: 'light', fail: () => undefined });
     hold?.press();
   },
+
+  /** 按住时手指微动不算翻页：WXML 上用 catchtouchmove 截住，页面不滚就不会派 touchcancel 把这一段作废 */
+  onHoldMove() {},
 
   /** touchend 和 touchcancel 都指到这里：手指滑出按钮、被来电打断也要收尾 */
   onSpeechEnd() {

@@ -65,9 +65,9 @@
         <view class="form-label">故障描述 <text class="required">必填</text></view>
         <textarea class="fault-input" placeholder="例如：门铃按了以后，楼下单元门打不开" value="{{content}}" bindinput="onContent" />
         <view wx:if="{{recording}}" class="listening">正在听…{{partial ? ' ' + partial : ''}}</view>
-        <button wx:if="{{hasSpeech}}" class="speech-button {{recording ? 'speech-button--on' : ''}}" bindtouchstart="onSpeechStart" bindtouchend="onSpeechEnd" bindtouchcancel="onSpeechEnd">
+        <button wx:if="{{hasSpeech}}" class="speech-button {{recording || pressing ? 'speech-button--on' : ''}}" bindtouchstart="onSpeechStart" bindtouchend="onSpeechEnd" bindtouchcancel="onSpeechEnd" catchtouchmove="onHoldMove">
           <view class="speech-button__mic"></view>
-          <view class="speech-button__body"><view class="speech-button__title">{{recording ? '松开结束' : '按住说话'}}</view><view wx:if="{{guide}}" class="speech-button__desc">普通话即可，会自动填写</view></view>
+          <view class="speech-button__body"><view class="speech-button__title">{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住说话')}}</view><view wx:if="{{guide}}" class="speech-button__desc">普通话即可，会自动填写</view></view>
         </button>
         <view class="suggest-title">常见问题，点一下就能填</view>
         <view class="quick-tags"><text wx:for="{{contentSuggestions}}" wx:key="*this" class="quick-tag" data-text="{{item}}" bindtap="onPickContentTag">{{item}}</text></view>

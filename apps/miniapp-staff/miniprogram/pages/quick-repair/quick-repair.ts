@@ -62,6 +62,12 @@ Page({
     /** 语音识别的实时中间结果，让人知道在听 */
     partial: '',
     recording: false,
+    /**
+     * 手指按着（还没等到插件的 onStart）。按下就变色靠它 ——
+     * 只看 recording 的话，起录音器那几百毫秒界面一点动静都没有，
+     * 人以为没按上就松手，这一段白说（2026-09-14 反馈「按了没反应」）。
+     */
+    pressing: false,
     hasSpeech: !!speechManager,
 
     attachments: [] as string[],
@@ -237,7 +243,10 @@ Page({
 
   bindSpeech() {
     if (!speechManager) return;
-    hold = createHoldToTalk(speechManager);
+    hold = createHoldToTalk(speechManager, {
+      // 按下 / 松开立刻反映到界面，不等插件回调
+      onPressing: (pressing) => this.setData({ pressing }),
+    });
     speechManager.onStart = () => {
       this.setData({ recording: true, partial: '' });
       // 首次授权时 touchend 被授权框吃掉，这里会替它补 stop（见 createHoldToTalk 注释）
@@ -263,6 +272,8 @@ Page({
   },
 
   onStartRecord() {
+    // 震一下 = 「我收到了」。录音器起来还要几百毫秒，这一下让人知道按上了
+    wx.vibrateShort({ type: 'light', fail: () => undefined });
     hold?.press();
   },
 
@@ -270,6 +281,13 @@ Page({
   onStopRecord() {
     hold?.release();
   },
+
+  /**
+   * 按住时手指微动不算翻页。
+   * 空实现就够了 —— WXML 上用的是 catchtouchmove，事件被截住、页面就不会滚，
+   * 也就不会派 touchcancel 把这一段静默作废（2026-09-14「按了没反应」的另一半原因）。
+   */
+  onHoldMove() {},
 
   onInput(e: WechatMiniprogram.Input) {
     this.onContentChanged(e.detail.value);

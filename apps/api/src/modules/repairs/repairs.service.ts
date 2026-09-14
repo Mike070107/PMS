@@ -121,6 +121,7 @@ import {
   matchSpotsInText,
   extractKeywordCandidates,
   sameNo,
+  splitGluedLaneNo,
   tokenizeAddress,
 } from './repair-address.util';
 import {
@@ -5865,7 +5866,26 @@ export class RepairsService implements OnModuleInit {
       ai.addressText !== dto.text
     ) {
       const retry = await this.parseAddressByRule({ ...dto, text: ai.addressText }, user, access);
-      if (retry.matched && rank(retry.level) > rank(result.matched ? result.level : undefined)) {
+      /**
+       * 原话里说了「N弄」的，retry 撞出来的楼必须在同一个弄里。
+       *
+       * 模型整理地址时常把「弄」写成「号」（「228弄25号301」→「228号25号301」，
+       * 2026-09-14 线上缓存里就有）。拿这种文字再撞库，「228号」会在**别的小区**
+       * 撞上一栋真实存在的 228 号楼（永南5511弄正好有），结果是一个看着像模像样、
+       * 却在另一个管理处的地址 —— 那比「没认出来」糟得多：师傅按它出门就是白跑。
+       */
+      const spokenLane = extractAddressCandidate(dto.text)?.lane ?? null;
+      const retryLane =
+        retry.matched && retry.buildingText
+          ? /^(\d+)弄/.exec(retry.buildingText)?.[1] ?? null
+          : null;
+      const laneOk =
+        !spokenLane || !(retry.matched && retry.buildingId) || retryLane === spokenLane;
+      if (
+        retry.matched &&
+        laneOk &&
+        rank(retry.level) > rank(result.matched ? result.level : undefined)
+      ) {
         result = retry;
       }
     }
@@ -6130,6 +6150,40 @@ export class RepairsService implements OnModuleInit {
       pickedCommunity = community;
       break;
     }
+    /**
+     * 一栋都没撞上，而门牌号又是个「过长的数字」：多半是语音把「弄」吞掉了，
+     * 弄号和门牌粘成了一个数字（「198弄4号」→「1984号」）。拿库里真实存在的弄号拆回去。
+     *
+     * 2026-09-14 线上实测：说「198弄4号门口监控黑屏」识别成「1984号门口监控黑屏」，
+     * 规则找不到 1984 号楼 → 整句没地址，报修人只能改口说「枫桦一期14号」。
+     *
+     * 拆法可能有好几种，所以**只认唯一解**：同一个小区里拆出不止一栋就当没认出来。
+     * 拆错等于把师傅派到另一栋楼，比不认更糟。
+     */
+    let gluedSplit: { lane: string; buildingNo: string } | null = null;
+    if (!picked && !candidate.lane && candidate.gluedNo) {
+      const lanes = [...new Set(buildings.map((b) => b.lane).filter(Boolean))];
+      const splits = splitGluedLaneNo(candidate.gluedNo, lanes);
+      for (const community of ranked) {
+        const hits = buildings.filter((b) =>
+          splits.some(
+            (s) =>
+              b.communityId === community.id &&
+              sameNo(b.lane, s.lane) &&
+              sameNo(b.buildingNo, s.buildingNo),
+          ),
+        );
+        if (!hits.length) continue;
+        if (hits.length === 1) {
+          picked = hits[0];
+          pickedCommunity = community;
+          gluedSplit =
+            splits.find((s) => sameNo(hits[0].lane, s.lane) && sameNo(hits[0].buildingNo, s.buildingNo)) ??
+            null;
+        }
+        break;
+      }
+    }
     if (!picked || !pickedCommunity) return { matched: false as const };
 
     let house: House | null = null;
@@ -6178,7 +6232,11 @@ export class RepairsService implements OnModuleInit {
       spotName: null,
       // 连楼里哪个位置都没说的按公区单写，派单的人一眼看出不是入户维修
       addressText: roomText ? communityLine : `${communityLine} 公共区域`,
-      matchedText: candidate.matchedText,
+      // 粘在一起的数字拆开之后，给用户看的是拆开的写法（「1984号」→「198弄4号」），
+      // 让他一眼看出系统把那串数字理解成了什么
+      matchedText: gluedSplit
+        ? `${gluedSplit.lane}弄${gluedSplit.buildingNo}号${candidate.roomNo ? candidate.roomNo + '室' : ''}`
+        : candidate.matchedText,
       /**
        * 地址在原话里占的那一段。端上剥故障描述要用它 ——
        * 用归一化的 matchedText 剥，小区名会剩在描述里
@@ -6194,7 +6252,8 @@ export class RepairsService implements OnModuleInit {
         dto.text,
         candidate,
         pickedCommunity.name,
-        !!(candidate.phase || candidate.lane),
+        // 拆出来的弄号同样是「靠数字定位」，和原话里直接说了弄是一回事
+        !!(candidate.phase || candidate.lane || gluedSplit),
       ),
     };
   }

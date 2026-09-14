@@ -10,7 +10,8 @@
     <view class="quick-nav__subtitle">说一句话，自动填好报修信息</view>
   </view>
 
-  <view class="quick-body">
+  <!-- 底部常驻操作栏是固定的，正文要留出同样高度，最后一行才不会被压住 -->
+  <view class="quick-body {{content ? 'quick-body--review' : 'quick-body--hold'}}">
     <!-- 这一页的说明不进指导层：2026-09-04 Mike 看过收起版后要求恢复带完整说明的这版 -->
     <view class="voice-guide">
       <view class="voice-guide__icon"><view class="voice-guide__bubble">•••</view></view>
@@ -100,22 +101,6 @@
       </view>
     </view>
 
-    <view wx:if="{{!content}}" class="hold-area">
-      <!-- 按住时按钮不动、只变色；「正在听」和识别中的字就在按钮上下这两行里换，
-           不另插面板（插了按钮就被推走） -->
-      <view class="hold-area__prompt {{recording ? 'hold-area__prompt--on' : ''}}">{{recording ? '正在听，请继续说' : '↓ 按住下面蓝色按钮'}}</view>
-      <button
-        wx:if="{{hasSpeech}}"
-        class="prototype-hold {{recording ? 'prototype-hold--on' : ''}}"
-        bindtouchstart="onStartRecord"
-        bindtouchend="onStopRecord"
-        bindtouchcancel="onStopRecord"
-      ><view class="prototype-hold__mic"></view><text>{{recording ? '松开结束' : '按住说话'}}</text></button>
-      <view wx:else class="speech-unavailable">当前微信环境不支持语音识别，请使用下方填表报修。</view>
-      <view class="hold-area__title {{recording ? 'hold-area__title--partial' : ''}}">{{recording ? (partial || '在哪里、什么坏了、联系谁…') : '按住时说，说完松手'}}</view>
-      <view class="hold-area__desc">{{recording ? '说完松手，立即停止并识别' : '最长 60 秒，松手后立即停止录音'}}</view>
-    </view>
-
     <view wx:if="{{content}}" class="after-recognize">
       <view class="urgency-simple">
         <view class="urgency-simple__head">紧急程度</view>
@@ -130,18 +115,60 @@
       </view>
       <button
         wx:if="{{hasSpeech}}"
-        class="prototype-hold prototype-hold--secondary"
+        class="prototype-hold prototype-hold--secondary {{recording || pressing ? 'prototype-hold--on' : ''}}"
         bindtouchstart="onStartRecord"
         bindtouchend="onStopRecord"
         bindtouchcancel="onStopRecord"
-      ><view class="prototype-hold__mic"></view><text>按住补充一句</text></button>
-      <view wx:if="{{errorMsg}}" class="error">{{errorMsg}}</view>
+        catchtouchmove="onHoldMove"
+      ><view class="prototype-hold__mic"></view><text>{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住补充一句')}}</text></button>
+    </view>
+
+    <view class="form-link" bindtap="onEditInFull"><text class="form-link__icon">▦</text> 不方便说话，改用填表报修</view>
+  </view>
+
+  <!--
+    底部常驻操作栏。为什么不放在正文流里（2026-09-14 Mike 反馈）：
+    说明 + 三件事 + 示例句 + 拍照入口一共一千多 rpx，按住说话按钮被挤到第二屏，
+    小屏手机上开屏根本看不见；勉强够得着的机型上它又正好贴在屏幕下边缘，
+    一按就把系统的上滑手势（任务栏）带出来，看着像小程序坏了。
+    做成横跨整宽的不透明底栏：内容从它后面滚过去，按钮始终在手边，
+    底部内边距把按钮抬离手势区（safe-area 之外再加一档）。
+  -->
+  <view class="action-dock">
+    <block wx:if="{{!content}}">
+      <!--
+        整块都能按（2026-09-14 Mike：「有时候按了没反应，应该整个按钮区域都能按住说话」）：
+        touch 绑在这层，提示行和按钮周围的留白一起算按压区，手指落在哪儿都算数。
+        catchtouchmove 是关键的一条：手指按住时稍微动一下，原来会被当成翻页，
+        页面一滚就派 touchcancel、这一段静默作废 —— 那正是「按了没反应」的另一半原因。
+      -->
+      <view
+        wx:if="{{hasSpeech}}"
+        class="hold-zone"
+        bindtouchstart="onStartRecord"
+        bindtouchend="onStopRecord"
+        bindtouchcancel="onStopRecord"
+        catchtouchmove="onHoldMove"
+      >
+        <!-- 「正在听」和识别到的字都放在按钮**上方**：底栏贴着屏幕底，
+             往下加字会把按钮顶上去，一动人就以为没按住（2026-09-04 反馈） -->
+        <view class="action-dock__status {{recording || pressing ? 'action-dock__status--on' : ''}}">
+          <text>{{recording ? (partial || '正在听，请继续说…') : (pressing ? '正在打开麦克风，按住别松手…' : '↓ 按住下面蓝色按钮说，说完松手（最长 60 秒）')}}</text>
+        </view>
+        <!-- 按下就变色，不等插件的 onStart：那一步要起录音器、首次还要等授权，
+             中间几百毫秒没反馈就会被当成没按上（createHoldToTalk 的 onPressing） -->
+        <button class="prototype-hold {{recording || pressing ? 'prototype-hold--on' : ''}}"
+        ><view class="prototype-hold__mic"></view><text>{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住说话')}}</text></button>
+      </view>
+      <view wx:else class="speech-unavailable">当前微信环境不支持语音识别，请用上面的「改用填表报修」。</view>
+    </block>
+    <block wx:else>
+      <!-- 报错放按钮上方，手指不会挡住（同工单详情页口径） -->
+      <view wx:if="{{errorMsg}}" class="action-dock__error">{{errorMsg}}</view>
       <view class="review-actions">
         <button class="btn btn--outline" bindtap="onEditInFull">打开填表修改</button>
         <button class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting || uploading}}" bindtap="onSubmit">确认提交报修</button>
       </view>
-    </view>
-
-    <view class="form-link" bindtap="onEditInFull"><text class="form-link__icon">▦</text> 不方便说话，改用填表报修</view>
+    </block>
   </view>
 </view>

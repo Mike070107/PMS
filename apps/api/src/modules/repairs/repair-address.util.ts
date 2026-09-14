@@ -24,6 +24,15 @@ export interface RepairAddressCandidate {
   lane: string | null;
   /** 号的数字部分，如「24」 */
   buildingNo: string | null;
+  /**
+   * 「号」字前面**连着的完整数字串**，如「19814号」→「19814」。
+   *
+   * 为什么不能只看 buildingNo：正则只捕 4 位（`\d{1,4}`），「19814号」捕到的是后四位
+   * 「9814」，而真相是「198弄14号」—— 语音把「弄」吞了，弄号和门牌粘成了一个数字。
+   * 要拆回去必须拿完整数字串，怎么拆由服务端按库里真实存在的弄号定
+   * （splitGluedLaneNo + 撞库）。没粘的时候它就等于 buildingNo。
+   */
+  gluedNo: string | null;
   /** 室号数字部分，如「302」 */
   roomNo: string | null;
   /** 归一化后的命中内容，如「一期24号302室」，给用户看、也用来做「忽略」去重 */
@@ -93,6 +102,7 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
   const lane = laneMatch ? laneMatch[1] : null;
 
   let buildingNo: string | null = null;
+  let gluedNo: string | null = null;
   let roomNo: string | null = null;
   let buildingMatch: RegExpExecArray | null = null;
   BUILDING_RE.lastIndex = 0;
@@ -103,6 +113,10 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
     if (PLACE_CHAR_BEFORE_NO.test(value.slice(Math.max(0, m.index - 1), m.index))) continue;
     buildingNo = m[1];
     buildingMatch = m;
+    // 「号」前面连着的数字一直往左吃到底：正则最多捕 4 位，粘在一起的弄号要靠这一段才拆得回来
+    let digitsFrom = m.index;
+    while (digitsFrom > 0 && /\d/.test(value[digitsFrom - 1])) digitsFrom -= 1;
+    gluedNo = value.slice(digitsFrom, m.index + m[1].length);
     /**
      * 跟在「Y号」后面的 3-4 位数字当室号：「24号302」「236号，502」。
      *
@@ -148,9 +162,46 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
     }),
     lane,
     buildingNo,
+    gluedNo,
     roomNo,
     matchedText,
   };
+}
+
+/**
+ * 语音把「弄」吞掉、弄号和门牌粘成一个数字时，按库里**真实存在的弄号**把它拆回去：
+ * 「1984号」+ 库里有 198 弄 → 拆成「198弄4号」。
+ *
+ * 2026-09-14 线上实测的那条：说「198弄4号门口监控黑屏」，识别出来是
+ * 「1984号门口监控黑屏」，规则拿 1984 去找楼栋，一栋都找不到 —— 报修人只好改口说
+ * 「枫桦一期14号」才认得出，等于「说弄就不行」。「弄」在口语里读 lòng、前后都是数字，
+ * 是最容易被识别丢掉的一个字，这条兜底不能少。
+ *
+ * 这里**只出候选，不做判断**：拆出来的「弄+号」还要去撞真实楼栋，撞不上、
+ * 或者撞出好几栋，一律当没认出来（见 repairs.service 的 parseAddressByRule）。
+ * 口径和这个文件里其它函数一致 —— 宁可不认，也不能猜一个地址让师傅白跑一趟。
+ */
+export function splitGluedLaneNo(
+  digits: string | null | undefined,
+  lanes: Array<string | null | undefined>,
+): Array<{ lane: string; buildingNo: string }> {
+  const value = String(digits ?? '').trim();
+  // 最短也要「两位弄 + 一位号」；太长的不是门牌，是电话或卡号
+  if (!/^\d{3,8}$/.test(value)) return [];
+  const seen = new Set<string>();
+  const out: Array<{ lane: string; buildingNo: string }> = [];
+  for (const raw of lanes) {
+    const lane = String(raw ?? '').trim();
+    if (!/^\d{2,4}$/.test(lane) || !value.startsWith(lane)) continue;
+    const rest = value.slice(lane.length);
+    // 门牌号 1-3 位，且不以 0 开头 —— 「1980号」拆成「198弄0号」是凑出来的，没有 0 号楼
+    if (!/^[1-9]\d{0,2}$/.test(rest)) continue;
+    const key = `${lane}|${rest}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ lane, buildingNo: rest });
+  }
+  return out;
 }
 
 /**

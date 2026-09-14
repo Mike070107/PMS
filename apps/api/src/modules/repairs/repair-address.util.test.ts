@@ -6,6 +6,7 @@ import {
   matchCommunityByName,
   matchCommunityInText,
   matchSpotsInText,
+  splitGluedLaneNo,
   phaseToCn,
   sameNo,
 } from './repair-address.util';
@@ -242,4 +243,37 @@ test('停顿后面跟的不是房号就别认：年份、量词都不算', () =>
   assert.equal(extractAddressCandidate('3号，200个灯泡要换')?.roomNo, null);
   // 隔太远的数字也不算：中间还有别的话，说的多半不是这栋楼的房号
   assert.equal(extractAddressCandidate('24号楼下的 302 路公交站牌歪了')?.roomNo, null);
+});
+
+/**
+ * 「弄」被语音吞掉之后的兜底（2026-09-14 线上反馈）。
+ * 这里只锁纯函数的口径：完整数字串要抓得到、拆法要保守；
+ * 拆出来的「弄+号」是否算数，由 repair-address-glued.test.ts 连着真实楼栋一起测。
+ */
+test('号字前面的完整数字串（gluedNo）：正则只捕 4 位，它要抓全', () => {
+  assert.equal(extractAddressCandidate('1984号门口监控黑屏')?.gluedNo, '1984');
+  // 「19814号」正则捕到的是后四位 9814，拆回「198弄14号」只能靠完整数字串
+  assert.equal(extractAddressCandidate('19814号监控黑屏')?.buildingNo, '9814');
+  assert.equal(extractAddressCandidate('19814号监控黑屏')?.gluedNo, '19814');
+  // 没粘住的时候它就等于 buildingNo
+  assert.equal(extractAddressCandidate('198弄14号监控黑屏')?.gluedNo, '14');
+});
+
+test('拆粘住的数字：只按库里真实存在的弄号拆，余数要像门牌', () => {
+  const lanes = ['198', '228', '5511', null, '', '0'];
+  assert.deepEqual(splitGluedLaneNo('1984', lanes), [{ lane: '198', buildingNo: '4' }]);
+  assert.deepEqual(splitGluedLaneNo('19814', lanes), [{ lane: '198', buildingNo: '14' }]);
+  assert.deepEqual(splitGluedLaneNo('5511228', lanes), [{ lane: '5511', buildingNo: '228' }]);
+  // 库里没有这个弄 → 不拆
+  assert.deepEqual(splitGluedLaneNo('1234', lanes), []);
+  // 余数以 0 开头（没有 0 号楼）、余数为空、位数太多太少 → 不拆
+  assert.deepEqual(splitGluedLaneNo('1980', lanes), []);
+  assert.deepEqual(splitGluedLaneNo('198', lanes), []);
+  assert.deepEqual(splitGluedLaneNo('1981234', lanes), []);
+  assert.deepEqual(splitGluedLaneNo('', lanes), []);
+  // 一个数字能拆出好几种读法时全给出来，由撞库那一层收敛
+  assert.deepEqual(splitGluedLaneNo('19884', ['198', '19']), [
+    { lane: '198', buildingNo: '84' },
+    { lane: '19', buildingNo: '884' },
+  ]);
 });

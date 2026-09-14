@@ -43,7 +43,11 @@ page { background: #f1f6fb; }
   font-weight: 600;
 }
 
-.quick-body { padding: 28rpx 26rpx calc(42rpx + env(safe-area-inset-bottom)); }
+/* 底部操作栏是 fixed 的，正文必须自己留出这段高度（两种状态栏高不同），
+   否则最后一行永远被压在栏下面 —— 设计规范「固定底栏不会遮挡最后一项内容」那一条 */
+.quick-body { padding: 28rpx 26rpx 0; }
+.quick-body--hold { padding-bottom: calc(330rpx + env(safe-area-inset-bottom)); }
+.quick-body--review { padding-bottom: calc(240rpx + env(safe-area-inset-bottom)); }
 
 .voice-guide {
   display: flex;
@@ -152,10 +156,51 @@ page { background: #f1f6fb; }
 .photo-entry__arrow { color: #315f98; font-size: 42rpx; font-weight: 300; }
 .quick-media { display: flex; flex-wrap: wrap; gap: 18rpx; margin-top: 20rpx; padding: 22rpx; border-radius: 22rpx; background: #fff; }
 
-.hold-area { padding: 0 40rpx; text-align: center; }
-/* 和上面的拍照入口拉开距离（2026-09-04 反馈挨太近）；录音中这一行变成「正在听」 */
-.hold-area__prompt { min-height: 46rpx; margin: 64rpx 0 20rpx; color: #315f98; font-size: 31rpx; font-weight: 500; line-height: 1.45; }
-.hold-area__prompt--on { color: #b53d44; }
+/*
+  底部常驻操作栏（2026-09-14）。整条、整宽、不透明 —— 局部的悬浮小按钮会把正文
+  压在身底下，整条栏不会：内容从它后面滚过去，观感就是 App 的底栏。
+  bottom 的内边距 = 安全区 + 22px：按住说话按钮不能落在系统上滑手势区里，
+  否则一按就把任务栏带出来（Mike 实测，以为是小程序的 bug）。
+*/
+.action-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  padding: 18rpx 34rpx calc(44rpx + env(safe-area-inset-bottom));
+  border-top: 2rpx solid #dbe5ef;
+  background: #fff;
+  box-shadow: 0 -8rpx 28rpx rgba(23, 59, 99, .1);
+  text-align: center;
+}
+/*
+  固定两行高、内容底对齐：识别出来的字再多也只往上挤、露出最新的两行，
+  按钮位置纹丝不动（按钮一动人就以为没按住）。
+  高度必须是行高的整数倍，否则上面那行会被拦腰截断、露出半截字，像渲染坏了。
+*/
+.action-dock__status {
+  height: 88rpx;
+  margin-bottom: 14rpx;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  color: #315f98;
+  font-size: 30rpx;
+  line-height: 44rpx;
+}
+.action-dock__status--on { color: #b53d44; font-weight: 500; }
+/*
+  整块按压区：提示行、按钮、按钮周围的留白都算数，手指落在哪儿都能说话。
+  负外边距把底栏自己的内边距吃进来（位置不变，只是变得可按）；
+  最下面那道留白**不吃**，那里是系统上滑手势区，不跟它抢触摸。
+*/
+.hold-zone {
+  margin: -18rpx -34rpx -22rpx;
+  padding: 18rpx 34rpx 22rpx;
+}
+.action-dock__error { margin-bottom: 14rpx; color: #b53d44; font-size: 29rpx; line-height: 1.5; }
 .prototype-hold {
   width: 100% !important;
   height: 116rpx;
@@ -183,10 +228,6 @@ page { background: #f1f6fb; }
 }
 .prototype-hold__mic::before { content: ""; position: absolute; left: -9rpx; bottom: -9rpx; width: 30rpx; height: 22rpx; border: 3rpx solid #fff; border-top: 0; border-radius: 0 0 16rpx 16rpx; }
 .prototype-hold__mic::after { content: ""; position: absolute; left: 6rpx; bottom: -15rpx; width: 3rpx; height: 9rpx; background: #fff; }
-.hold-area__title { min-height: 50rpx; margin-top: 24rpx; color: #122c47; font-size: 35rpx; font-weight: 600; line-height: 1.45; }
-/* 录音中这一行显示识别到的字，字数多就往下长，按钮在它上面不受影响 */
-.hold-area__title--partial { color: #315f98; font-weight: 500; }
-.hold-area__desc { margin-top: 6rpx; color: #60778f; font-size: 29rpx; line-height: 1.5; }
 .speech-unavailable { padding: 26rpx; border-radius: 20rpx; background: #fff3e2; color: #8b5a16; font-size: 30rpx; line-height: 1.6; }
 
 .form-link {
@@ -250,7 +291,7 @@ page { background: #f1f6fb; }
 .urgency-simple { padding: 24rpx; border: 2rpx solid #dbe5ee; border-radius: 24rpx; background: #fff; }
 .urgency-simple__head { color: #203f5c; font-size: 30rpx; font-weight: 600; }
 .prototype-hold--secondary { height: 94rpx; margin-top: 20rpx !important; border-radius: 22rpx; font-size: 30rpx; box-shadow: none; }
-.review-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 16rpx; margin-top: 20rpx; }
+.review-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 16rpx; }
 .review-actions .btn { min-height: 96rpx; padding: 0 18rpx; font-size: 33rpx; font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {

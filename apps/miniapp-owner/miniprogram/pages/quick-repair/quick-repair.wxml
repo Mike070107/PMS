@@ -128,13 +128,14 @@
 
       <button
         wx:if="{{hasSpeech}}"
-        class="btn btn--outline mt speech {{recording ? 'speech--on' : ''}}"
+        class="btn btn--outline mt speech {{recording || pressing ? 'speech--on' : ''}}"
         bindtouchstart="onSpeechStart"
         bindtouchend="onSpeechEnd"
         bindtouchcancel="onSpeechEnd"
+        catchtouchmove="onHoldMove"
       >
-        <view class="icon {{recording ? 'icon--mic-on' : 'icon--mic'}}"></view>
-        <text class="speech__text">{{recording ? '松开结束' : '按住说话'}}</text>
+        <view class="icon {{recording || pressing ? 'icon--mic-on' : 'icon--mic'}}"></view>
+        <text class="speech__text">{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住说话')}}</text>
       </button>
 
       <!-- 用法说明。业主端**没有联系人/电话字段**（业主本人就是联系人），位置在上面选，

@@ -158,6 +158,8 @@ interface PageData {
 
   hasSpeech: boolean;
   recording: boolean;
+  /** 手指按着、插件 onStart 还没回来的那一段（按下就变色，见 createHoldToTalk 的 onPressing） */
+  pressing: boolean;
   partial: string;
 
   attachments: string[];
@@ -213,6 +215,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
     hasSpeech: !!speechManager,
     recording: false,
+    /** 手指按着、插件的 onStart 还没回来的那几百毫秒：按下就变色，不然人以为没按上
+        （2026-09-14 反馈「按了没反应」，判定和提示都在 createHoldToTalk 里） */
+    pressing: false,
     partial: '',
 
     attachments: [],
@@ -614,7 +619,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   bindSpeech() {
     if (!speechManager) return;
-    hold = createHoldToTalk(speechManager);
+    hold = createHoldToTalk(speechManager, {
+      // 按下 / 松开立刻反映到界面，不等插件回调
+      onPressing: (pressing) => this.setData({ pressing }),
+    });
     speechManager.onStart = () => {
       this.setData({ recording: true, partial: '' });
       // 首次授权时 touchend 被授权框吃掉，这里替它补 stop（见 createHoldToTalk 注释）
@@ -648,8 +656,13 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   onSpeechStart() {
     // 插件的 lang 只有 zh_CN / en_US / zh_HK，没有上海话，只能按普通话识别
     // （lang 现在由 createHoldToTalk 统一传，默认就是 zh_CN）
+    // 震一下 = 「我收到了」：录音器起来还要几百毫秒
+    wx.vibrateShort({ type: 'light', fail: () => undefined });
     hold?.press();
   },
+
+  /** 按住时手指微动不算翻页：WXML 上用 catchtouchmove 截住，页面不滚就不会派 touchcancel 把这一段作废 */
+  onHoldMove() {},
 
   /** touchend 和 touchcancel 都指到这里：手指滑出按钮、被来电打断也要收尾 */
   onSpeechEnd() {
