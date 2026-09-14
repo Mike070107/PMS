@@ -2817,3 +2817,10 @@
 - ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
 - 自上次（91af866）以来没有相关提交（重新部署）
 
+## 2026-09-14 23:01 · miniapp-owner · b95b220
+
+- 包：`1.0.20260914c`
+- 提交：b95b220 feat(按住说话): 震动加回来，改放进共用状态机
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M packages/api-client/src/endpoints/ai.ts
+- 自上次（06a59c3）以来没有相关提交（重新部署）
+
