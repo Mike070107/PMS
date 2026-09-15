@@ -2889,3 +2889,11 @@
 - 自上次（fdd82d4）以来上线的相关提交：
   - e6aeb9f feat(工单): 维修中也能更正报修地址，新旧地址进轨迹并通知维修工
 
+## 2026-09-15 21:38 · web · e6aeb9f
+
+- 包：`pms-web-20260915-2134.tar.gz`
+- 提交：e6aeb9f feat(工单): 维修中也能更正报修地址，新旧地址进轨迹并通知维修工
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo，M packages/api-client/src/endpoints/ai.ts
+- 自上次（fdd82d4）以来上线的相关提交：
+  - e6aeb9f feat(工单): 维修中也能更正报修地址，新旧地址进轨迹并通知维修工
+
