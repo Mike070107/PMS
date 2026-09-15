@@ -2873,3 +2873,11 @@
 - 自上次（d99d2f6）以来上线的相关提交：
   - fdd82d4 fix(房产管理): 一套房只列一行 —— 绑了两个业主不该被列成两条
 
+## 2026-09-15 19:49 · web · fdd82d4
+
+- 包：`pms-web-20260915-1944.tar.gz`
+- 提交：fdd82d4 fix(房产管理): 一套房只列一行 —— 绑了两个业主不该被列成两条
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo，M packages/api-client/src/endpoints/ai.ts
+- 自上次（d99d2f6）以来上线的相关提交：
+  - fdd82d4 fix(房产管理): 一套房只列一行 —— 绑了两个业主不该被列成两条
+
