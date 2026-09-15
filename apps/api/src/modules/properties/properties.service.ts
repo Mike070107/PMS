@@ -27,6 +27,7 @@ import {
   CommunitySpot,
   House,
   ManagementOffice,
+  RepairRequest,
   Unit,
   User,
   WorkOrder,
@@ -985,9 +986,18 @@ export class PropertiesService {
     if (ownerCount > 0) {
       throw new BadRequestException('该房产已绑定业主，请先解绑业主');
     }
+    /**
+     * 这一户有没有历史工单。
+     *
+     * **不能写 `leftJoin('w.request')`**：WorkOrder 上的 request_id 只是一个普通列，
+     * 没有声明 @ManyToOne 关系，TypeORM 在**拼查询时**就抛
+     * 「Relation with property path request in entity was not found」——
+     * 表现是后台删除房产一律 500，而 typecheck 和 build 都发现不了
+     * （2026-09-15 线上实测；同类写法全仓就这一处）。按表显式 join。
+     */
     const workOrderCount = await this.workOrderRepo
       .createQueryBuilder('w')
-      .leftJoin('w.request', 'r')
+      .innerJoin(RepairRequest, 'r', 'r.id = w.request_id AND r.tenant_id = w.tenant_id')
       .where('w.tenant_id = :tenantId', { tenantId })
       .andWhere('r.house_id = :id', { id })
       .getCount();
