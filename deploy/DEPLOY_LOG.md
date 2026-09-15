@@ -2865,3 +2865,11 @@
 - 自上次（98f84e8）以来上线的相关提交：
   - d99d2f6 feat(地址): 没有弄的楼栋带上路名 —— 显示「宝秀路858号」而不是光秃秃的「858号」
 
+## 2026-09-15 19:48 · api · fdd82d4
+
+- 包：`pms-api-20260915-1944.tar.gz`
+- 提交：fdd82d4 fix(房产管理): 一套房只列一行 —— 绑了两个业主不该被列成两条
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts
+- 自上次（d99d2f6）以来上线的相关提交：
+  - fdd82d4 fix(房产管理): 一套房只列一行 —— 绑了两个业主不该被列成两条
+
