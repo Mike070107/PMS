@@ -37,6 +37,22 @@ export function isLaneRedundant(
 }
 
 /**
+ * 楼栋那一段怎么显示：有弄写「198弄24号」，没有弄的写「宝秀路858号」。
+ *
+ * 办公楼、沿街商铺没有弄，只写「858号」看不出在哪条路上（2026-09-15 Mike 点名）；
+ * 有弄的小区反过来不带路名 —— 弄号已经够定位，带上只会更长。
+ * 路名存在楼栋上（Building.roadName），一栋楼一份。
+ */
+export function formatBuildingText(
+  building?: AddressBuildingInfo | null,
+): string {
+  if (!building?.buildingNo) return '';
+  const lane = building.lane || '';
+  const road = !lane && building.roadName ? building.roadName : '';
+  return `${lane ? `${lane}弄` : ''}${road}${building.buildingNo}号`;
+}
+
+/**
  * 房号那一段怎么显示：`302` → `302室`，`工程部` → `工程部`。
  *
  * 办公楼、商业体没有「几0几」，房产管理里「室」直接填的就是名字

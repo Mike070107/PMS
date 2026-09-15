@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatAddressLine, isLaneRedundant, formatRoomText } from './address-line.util';
+import { formatAddressLine, isLaneRedundant, formatRoomText, formatBuildingText } from './address-line.util';
 
 /**
  * 和 packages/shared-types/src/address.test.ts 是同一批用例 —— 那份是两个小程序和后台用的，
@@ -66,4 +66,14 @@ test('地址行里的名字房号也不缀「室」', () => {
     formatAddressLine({ name: '吴泾物业总公司', laneCount: 0 }, { lane: null, buildingNo: '858' }, '工程部'),
     '吴泾物业总公司858号工程部',
   );
+});
+
+test('楼栋那一段：有弄写弄号，没弄的带上路名', () => {
+  assert.equal(formatBuildingText({ lane: '198', buildingNo: '24' }), '198弄24号');
+  // 办公楼没有弄，只写「858号」看不出在哪条路上
+  assert.equal(formatBuildingText({ lane: null, buildingNo: '858', roadName: '宝秀路' }), '宝秀路858号');
+  // 有弄就不再带路名，够定位了
+  assert.equal(formatBuildingText({ lane: '198', buildingNo: '24', roadName: '剑川路' }), '198弄24号');
+  assert.equal(formatBuildingText(null), '');
+  assert.equal(formatBuildingText({ lane: null, buildingNo: '' }), '');
 });

@@ -45,7 +45,7 @@ import {
 } from './dto';
 import { SettingsService } from '../settings/settings.service';
 import { WechatService, type WxSession } from './wechat.service';
-import { formatRoomText } from '../../common/address-line.util';
+import { formatBuildingText, formatRoomText } from '../../common/address-line.util';
 
 /** 可登录员工端小程序的角色（定义收口到 enums，与报修放行共用一份） */
 const STAFF_ROLES: UserRole[] = STAFF_APP_ROLES;
@@ -803,7 +803,7 @@ export class AuthService {
 
     // 「228弄26号」而不是「228 26」：空格拼出来的地址业主根本看不懂门牌在哪
     const buildingText = building
-      ? `${building.lane ? building.lane + '弄' : ''}${building.buildingNo}号`
+      ? formatBuildingText(building)
       : '';
     // 审核期间房还没绑，房号只存在申请里（rawAddress 写的就是业主填的房号）
     const roomNo = house?.roomNo ?? audit.rawAddress ?? '';

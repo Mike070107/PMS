@@ -134,6 +134,12 @@ export class CreateBuildingDto {
   @IsString()
   @MaxLength(60)
   zone?: string;
+
+  /** 路名（宝秀路）。没有弄的地址靠它说清在哪条路上；有弄的小区不显示 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  roadName?: string;
 }
 
 export class UpdateBuildingDto {
@@ -151,6 +157,12 @@ export class UpdateBuildingDto {
   @IsString()
   @MaxLength(60)
   zone?: string;
+
+  /** 路名（宝秀路）。没有弄的地址靠它说清在哪条路上；有弄的小区不显示 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  roadName?: string;
 }
 
 // ---------------- Houses ----------------

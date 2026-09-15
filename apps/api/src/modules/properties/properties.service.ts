@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -21,6 +22,7 @@ import {
   addNaturalOrderBy,
   compareBuildingLike,
 } from '../../common/natural-order';
+import { formatBuildingText } from '../../common/address-line.util';
 import {
   Building,
   Community,
@@ -64,6 +66,8 @@ const OFFICE_WORD = /管理处|物业处|项目部/;
 
 @Injectable()
 export class PropertiesService {
+  private readonly logger = new Logger(PropertiesService.name);
+
   constructor(
     @InjectRepository(Community)
     private readonly communityRepo: Repository<Community>,
@@ -418,6 +422,7 @@ export class PropertiesService {
       dto.buildingNo,
       dto.zone ?? null,
       user.id,
+      dto.roadName ?? null,
     );
     // 新建楼栋即出码。ensureBuildingQr 内部吞掉所有异常，微信/COS 挂了也不影响建楼栋
     const qr = await this.qrService.ensureBuildingQr(tenantId, building.id, user.id);
@@ -461,6 +466,7 @@ export class PropertiesService {
     if (dto.lane !== undefined) building.lane = dto.lane || null;
     if (dto.buildingNo !== undefined) building.buildingNo = dto.buildingNo;
     if (dto.zone !== undefined) building.zone = dto.zone || null;
+    if (dto.roadName !== undefined) building.roadName = dto.roadName || null;
     building.updatedBy = user.id;
     return this.buildingRepo.save(building);
   }
@@ -525,7 +531,7 @@ export class PropertiesService {
         return {
           ...row,
           buildingText: building
-            ? `${building.lane ? building.lane + '弄' : ''}${building.buildingNo}号`
+            ? formatBuildingText(building)
             : '',
         };
       });
@@ -889,6 +895,8 @@ export class PropertiesService {
         dto.buildingNo,
         null,
         user.id,
+        // 路名跟着楼栋走：没有弄的地址（宝秀路858号）只能靠它显示出在哪条路上
+        dto.roadName ?? null,
       );
       buildingId = building.id;
       // 批量导入房产会顺带建出很多楼栋：这里只落码记录，图片留给「批量补齐」统一生成，
@@ -1260,6 +1268,41 @@ export class PropertiesService {
     return parentId;
   }
 
+  /**
+   * 启动时把楼栋的路名从房产回填一次。
+   *
+   * 路名原来只存在 houses 上，楼栋级地址（公区报修、只说到楼栋的工单）显示不出来 ——
+   * 办公楼「宝秀路858号」在界面上只剩「858号」（2026-09-15 Mike 点名）。
+   *
+   * 为什么写在启动里而不是只写 migration：线上 DB_SYNCHRONIZE=true、`migrations` 表
+   * 根本不存在，**migration 一句都不会跑** —— 新列会被 synchronize 建出来，
+   * 但里面永远是空的（CLAUDE.md 里记着的同类坑）。
+   * 只补空的、一栋楼取一条房产的路名，幂等，重启多少次都一样。
+   */
+  async onModuleInit() {
+    try {
+      const result = await this.buildingRepo.query(`
+        UPDATE buildings b
+           SET road_name = sub.road_name
+          FROM (
+            SELECT DISTINCT ON (h.building_id) h.building_id, h.road_name
+              FROM houses h
+             WHERE COALESCE(h.road_name, '') <> ''
+             ORDER BY h.building_id, h.id
+          ) sub
+         WHERE b.id = sub.building_id
+           AND COALESCE(b.road_name, '') = ''
+      `);
+      const count = Array.isArray(result) ? result.length : 0;
+      if (count) this.logger.log(`楼栋路名回填：${count} 栋`);
+    } catch (error) {
+      // 回填失败不能拦住服务启动：地址少个路名，比服务起不来轻得多
+      this.logger.error(
+        `楼栋路名回填失败：${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
   private async upsertBuilding(
     tenantId: number,
     communityId: number,
@@ -1267,6 +1310,7 @@ export class PropertiesService {
     buildingNo: string,
     zone: string | null,
     operatorId: number,
+    roadName: string | null = null,
   ): Promise<Building> {
     const existing = await this.buildingRepo.findOne({
       where: {
@@ -1277,8 +1321,11 @@ export class PropertiesService {
       },
     });
     if (existing) {
-      if (zone && zone !== existing.zone) {
-        existing.zone = zone;
+      // 路名只补空的，不覆盖：楼栋上已经写了就以那份为准（有人手工改过）
+      const fillRoad = !!roadName && !existing.roadName;
+      if ((zone && zone !== existing.zone) || fillRoad) {
+        if (zone && zone !== existing.zone) existing.zone = zone;
+        if (fillRoad) existing.roadName = roadName;
         existing.updatedBy = operatorId;
         return this.buildingRepo.save(existing);
       }
@@ -1291,6 +1338,7 @@ export class PropertiesService {
         lane: lane || null,
         buildingNo,
         zone: zone || null,
+        roadName: roadName || null,
         createdBy: operatorId,
         updatedBy: operatorId,
       }),

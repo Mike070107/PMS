@@ -23,7 +23,7 @@ import {
   RegisterOwnerDto,
   RejectAuditDto,
 } from './dto';
-import { formatRoomText } from '../../common/address-line.util';
+import { formatBuildingText, formatRoomText } from '../../common/address-line.util';
 
 /** 去重且过滤空值，用于批量查关联表 */
 function unique(ids: Array<number | null | undefined>): number[] {
@@ -154,7 +154,7 @@ export class OwnersService {
       const house = audit.houseId ? houseById.get(audit.houseId) : null;
       const owner = userById.get(audit.userId);
       const buildingText = building
-        ? `${building.lane ? building.lane + '弄' : ''}${building.buildingNo}号`
+        ? formatBuildingText(building)
         : '';
       // 房号：审核通过后以正式房产为准，审核中用业主自填的原始文本
       const roomNo = house?.roomNo ?? audit.rawAddress ?? '';

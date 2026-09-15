@@ -49,7 +49,11 @@ import {
   detectPublicAreaPlace,
   isPublicAreaText,
 } from './repair-public-area.util';
-import { formatAddressLine, formatRoomText } from '../../common/address-line.util';
+import {
+  formatAddressLine,
+  formatBuildingText,
+  formatRoomText,
+} from '../../common/address-line.util';
 import { detectUrgency } from '../../common/repair-urgency.util';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
 import {
@@ -2660,7 +2664,7 @@ export class RepairsService implements OnModuleInit {
       : null;
     // 门牌连写、段间空格，与 auth.me 同口径：枫桦景苑一期 198弄24号302室
     const buildingText = building
-      ? `${building.lane ? building.lane + '弄' : ''}${building.buildingNo}号`
+      ? formatBuildingText(building)
       : '';
     const text = [
       community?.name,
@@ -6056,9 +6060,7 @@ export class RepairsService implements OnModuleInit {
             where: { tenantId, id: spot.buildingId },
           })
         : null;
-      const spotBuildingText = building
-        ? `${building.lane ? building.lane + '弄' : ''}${building.buildingNo}号`
-        : '';
+      const spotBuildingText = formatBuildingText(building);
       return {
         matched: true as const,
         level: building ? ('building' as const) : ('community' as const),
@@ -6115,9 +6117,7 @@ export class RepairsService implements OnModuleInit {
         communityName: community.name,
         // 房产必然挂在楼栋下，buildingId 直接取房产上的那个（findOne 只是为了拼显示文字）
         buildingId: namedRoom.buildingId,
-        buildingText: building
-          ? `${building.lane ? building.lane + '弄' : ''}${building.buildingNo}号`
-          : '',
+        buildingText: formatBuildingText(building),
         houseId: namedRoom.id,
         roomNo: namedRoom.roomNo,
         spotName: null,
@@ -6290,7 +6290,7 @@ export class RepairsService implements OnModuleInit {
       if (self?.houseId !== houseId) houseId = null;
     }
 
-    const buildingText = `${picked.lane ? picked.lane + '弄' : ''}${picked.buildingNo}号`;
+    const buildingText = formatBuildingText(picked);
     const roomText = house ? formatRoomText(house.roomNo) : '';
     /**
      * 这一行地址要走和工单卡片同一套去重：小区名叫「永北5511弄」时，

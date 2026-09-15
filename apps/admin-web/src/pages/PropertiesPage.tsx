@@ -745,7 +745,9 @@ function HouseFormModal({
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item name="roadName" label="路名">
+            {/* 没有弄的地址（办公楼、沿街商铺）全靠路名说清在哪条路上：
+                楼栋会把它记下来，工单地址才会显示「宝秀路858号」而不是光秃秃的「858号」 */}
+            <Form.Item name="roadName" label="路名" extra="没有弄时务必填，地址才显示得出「宝秀路858号」">
               <Input placeholder="如：剑川路" />
             </Form.Item>
           </Col>
@@ -763,7 +765,7 @@ function HouseFormModal({
         </Form.Item>
         <Row gutter={12}>
           <Col span={8}>
-            <Form.Item name="lane" label="弄">
+            <Form.Item name="lane" label="弄" extra="办公楼、沿街商铺没有弄就留空">
               <Input placeholder="如：1（无可留空）" disabled={!!target} />
             </Form.Item>
           </Col>
@@ -773,8 +775,15 @@ function HouseFormModal({
             </Form.Item>
           </Col>
           <Col span={8}>
-            <Form.Item name="roomNo" label="室" rules={[{ required: true }]}>
-              <Input placeholder="如：502" />
+            {/* 办公楼没有「几0几」，房间就叫工程部、财务部 —— 直接填名字，
+                语音报修说「宝秀路858号工程部空调坏了」或直接说「工程部空调坏了」都认得到 */}
+            <Form.Item
+              name="roomNo"
+              label="室"
+              rules={[{ required: true }]}
+              extra="办公楼没有房号就填房间名，如「工程部」"
+            >
+              <Input placeholder="如：502 / 工程部" />
             </Form.Item>
           </Col>
         </Row>
