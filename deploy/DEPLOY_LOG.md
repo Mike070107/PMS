@@ -2832,3 +2832,11 @@
 - 自上次（387761c）以来上线的相关提交：
   - 587d9c7 fix(房产管理): 删除房产不再 500 —— 按表 join，别用不存在的关系路径
 
+## 2026-09-15 17:08 · api · 98f84e8
+
+- 包：`pms-api-20260915-1705.tar.gz`
+- 提交：98f84e8 feat(报修识别): 办公楼的「工程部」「财务部」也能认出来；「室」只缀数字房号
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts
+- 自上次（587d9c7）以来上线的相关提交：
+  - 98f84e8 feat(报修识别): 办公楼的「工程部」「财务部」也能认出来；「室」只缀数字房号
+
