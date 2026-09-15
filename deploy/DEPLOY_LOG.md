@@ -2824,3 +2824,11 @@
 - ⚠ 标记时工作区有未提交改动（--allow-dirty）：M packages/api-client/src/endpoints/ai.ts
 - 自上次（06a59c3）以来没有相关提交（重新部署）
 
+## 2026-09-15 16:49 · api · 587d9c7
+
+- 包：`pms-api-20260915-1646.tar.gz`
+- 提交：587d9c7 fix(房产管理): 删除房产不再 500 —— 按表 join，别用不存在的关系路径
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts
+- 自上次（387761c）以来上线的相关提交：
+  - 587d9c7 fix(房产管理): 删除房产不再 500 —— 按表 join，别用不存在的关系路径
+
