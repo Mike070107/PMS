@@ -658,12 +658,13 @@ export class PropertiesService {
         'c',
         'c.id = b.community_id AND c.tenant_id = b.tenant_id',
       )
-      .leftJoin(
-        User,
-        'u',
-        'u.house_id = h.id AND u.tenant_id = h.tenant_id AND u.role = :role',
-        { role: UserRole.OWNER },
-      )
+      /*
+        这里**不能 join users**：一套房可以绑好几个业主（夫妻、父子都认证过），
+        join 之后同一套房被列成好几行，看着像重复数据（2026-09-15 Mike 报的就是这个）；
+        分页更糟 —— getCount 数的是 join 之后的行数，总数和页码全是虚的。
+        业主改成列表出来之后单独查一次挂上去（ownersByHouse）；
+        按业主姓名/电话搜房产仍然支持，走 applyHouseKeyword 里的 EXISTS 子查询。
+      */
       .where('h.tenant_id = :tenantId', { tenantId })
       .select([
         'h.id AS id',
@@ -679,9 +680,6 @@ export class PropertiesService {
         'b.lane AS lane',
         'b.building_no AS "buildingNo"',
         'c.name AS "communityName"',
-        'u.id AS "ownerId"',
-        'u.name AS "ownerName"',
-        'u.phone AS "ownerPhone"',
       ])
       .orderBy('c.id', 'ASC');
 
@@ -721,6 +719,10 @@ export class PropertiesService {
     }
 
     const rows = await qb.getRawMany<any>();
+    const ownersByHouse = await this.ownersByHouse(
+      tenantId,
+      rows.map((r) => Number(r.id)),
+    );
     const mapped = rows.map((r) => ({
       id: Number(r.id),
       communityId: Number(r.communityId),
@@ -735,9 +737,10 @@ export class PropertiesService {
       lane: r.lane,
       buildingNo: r.buildingNo,
       communityName: r.communityName,
-      owner: r.ownerId
-        ? { id: Number(r.ownerId), name: r.ownerName, phone: r.ownerPhone }
-        : null,
+      // 原来的字段保持不变：绑了好几个业主时给第一个（按 id，稳定）
+      owner: ownersByHouse.get(Number(r.id))?.[0] ?? null,
+      /** 这套房绑着的全部业主。原来靠「同一套房出现好几行」表达，那是 bug 不是设计 */
+      owners: ownersByHouse.get(Number(r.id)) ?? [],
     }));
     if (!paged) return mapped;
     return {
@@ -769,8 +772,20 @@ export class PropertiesService {
           .orWhere('h.road_name ILIKE :kw', { kw: `%${rawQ}%` })
           .orWhere('h.full_address ILIKE :kw', { kw: `%${rawQ}%` })
           .orWhere('h.shop_name ILIKE :kw', { kw: `%${rawQ}%` })
-          .orWhere('u.name ILIKE :kw', { kw: `%${rawQ}%` })
-          .orWhere('u.phone ILIKE :kw', { kw: `%${rawQ}%` })
+          /*
+            按业主姓名/电话搜房产。用 EXISTS 而不是 join users：
+            join 会把一套房绑多个业主的房子列成多行（2026-09-15 的「多了两行」）。
+          */
+          .orWhere(
+            `EXISTS (
+              SELECT 1 FROM users u
+               WHERE u.house_id = h.id
+                 AND u.tenant_id = h.tenant_id
+                 AND u.role = '${UserRole.OWNER}'
+                 AND (u.name ILIKE :kw OR u.phone ILIKE :kw)
+            )`,
+            { kw: `%${rawQ}%` },
+          )
           .orWhere(
             "concat(coalesce(b.lane, ''), '/', b.building_no, '/', h.room_no) ILIKE :kw",
             { kw: `%${rawQ}%` },
@@ -821,12 +836,7 @@ export class PropertiesService {
     const qb = this.houseRepo
       .createQueryBuilder('h')
       .innerJoin(Building, 'b', 'b.id = h.building_id AND b.tenant_id = h.tenant_id')
-      .leftJoin(
-        User,
-        'u',
-        'u.house_id = h.id AND u.tenant_id = h.tenant_id AND u.role = :role',
-        { role: UserRole.OWNER },
-      )
+      // 同上：join users 会让绑了两个业主的房子被 COUNT 数两遍，角标和列表对不上
       .where('h.tenant_id = :tenantId', { tenantId });
     if (scope) qb.andWhere('b.community_id IN (:...scopeIds)', { scopeIds: scope });
     if (query.q) this.applyHouseKeyword(qb, query.q);
@@ -1301,6 +1311,33 @@ export class PropertiesService {
         `楼栋路名回填失败：${error instanceof Error ? error.message : error}`,
       );
     }
+  }
+
+  /**
+   * 这些房产各自绑了哪些业主（一套房可能有好几个：夫妻、父子都认证过同一套）。
+   *
+   * 单独查一次、在内存里挂回去，房产列表才是「一套房一行」；
+   * 放进 SQL join 会把房产本身列成多行，分页总数也跟着虚高。
+   */
+  private async ownersByHouse(
+    tenantId: number,
+    houseIds: number[],
+  ): Promise<Map<number, Array<{ id: number; name: string | null; phone: string | null }>>> {
+    const map = new Map<number, Array<{ id: number; name: string | null; phone: string | null }>>();
+    const ids = Array.from(new Set(houseIds.filter((id) => !!id)));
+    if (!ids.length) return map;
+    const owners = await this.userRepo.find({
+      where: { tenantId, role: UserRole.OWNER, houseId: In(ids) },
+      select: ['id', 'name', 'phone', 'houseId'],
+      order: { id: 'ASC' },
+    });
+    for (const item of owners) {
+      if (!item.houseId) continue;
+      const list = map.get(item.houseId) ?? [];
+      list.push({ id: item.id, name: item.name, phone: item.phone });
+      map.set(item.houseId, list);
+    }
+    return map;
   }
 
   private async upsertBuilding(

@@ -78,6 +78,9 @@ interface HouseRow {
   buildingNo: string;
   communityName: string;
   owner: { id: number; name: string | null; phone: string | null } | null;
+  /** 这套房绑着的全部业主（夫妻、父子都认证过同一套房是常事）。
+      以前后端 join 业主，一套房会被列成好几行，看着像重复数据 —— 现在一行，人列在这里 */
+  owners?: Array<{ id: number; name: string | null; phone: string | null }>;
 }
 
 // 业主档案只管普通小程序用户。保安/居委会/业委会/物业工作人员是「工作人员」，
@@ -486,9 +489,21 @@ function HousesTab() {
               },
               {
                 title: '业主', key: 'owner', width: 180,
-                render: (_, r) => r.owner
-                  ? <span>{r.owner.name || '-'} <Text type="secondary" style={{ fontSize: 12 }}>{r.owner.phone}</Text></span>
-                  : <Text type="secondary">未绑定</Text>,
+                render: (_, r) => {
+                  const list = r.owners?.length ? r.owners : r.owner ? [r.owner] : [];
+                  if (!list.length) return <Text type="secondary">未绑定</Text>;
+                  // 绑了好几个业主时列第一个 + 「等 N 人」，鼠标悬停看全部
+                  const title = list.map((o) => `${o.name || '-'} ${o.phone || ''}`.trim()).join('、');
+                  return (
+                    <span title={title}>
+                      {list[0].name || '-'}{' '}
+                      <Text type="secondary" style={{ fontSize: 12 }}>{list[0].phone}</Text>
+                      {list.length > 1 && (
+                        <Text type="secondary" style={{ fontSize: 12 }}> 等 {list.length} 人</Text>
+                      )}
+                    </span>
+                  );
+                },
               },
               {
                 title: '操作', key: 'op', width: 130, fixed: 'right',
