@@ -2881,3 +2881,11 @@
 - 自上次（d99d2f6）以来上线的相关提交：
   - fdd82d4 fix(房产管理): 一套房只列一行 —— 绑了两个业主不该被列成两条
 
+## 2026-09-15 21:37 · api · e6aeb9f
+
+- 包：`pms-api-20260915-2134.tar.gz`
+- 提交：e6aeb9f feat(工单): 维修中也能更正报修地址，新旧地址进轨迹并通知维修工
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts
+- 自上次（fdd82d4）以来上线的相关提交：
+  - e6aeb9f feat(工单): 维修中也能更正报修地址，新旧地址进轨迹并通知维修工
+
