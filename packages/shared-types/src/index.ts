@@ -673,6 +673,24 @@ export const REPAIR_TYPE_AND_SLA_EDITABLE_STATUSES: WorkOrderStatus[] = [
 export function canEditRepairTypeAndSla(status: WorkOrderStatus): boolean {
   return REPAIR_TYPE_AND_SLA_EDITABLE_STATUSES.includes(status);
 }
+/**
+ * 报修地址允许改到什么时候。**和后端 apps/api/src/common/work-order-stage.ts 同源**，
+ * 两边一起改（同这个文件里的 repairTypeAndSlaLockReason 一样的约定）。
+ *
+ * 开工之后也允许改：地址认错往往是维修工到现场才发现的，这时不给改就只能作废重报，
+ * 之前的进度、用料、照片全白做。完工之后不给改 —— 那是在改已经发生过的事实。
+ */
+export function canEditWorkOrderAddress(status: string): boolean {
+  return ['created', 'dispatched', 'in_progress', 'waiting_material'].includes(status);
+}
+
+export function workOrderAddressLockReason(status: string): string | null {
+  if (canEditWorkOrderAddress(status)) return null;
+  if (status === 'voided') return '工单已作废，不能再改地址';
+  if (status === 'cancelled') return '工单已撤单，不能再改地址';
+  return '工单已完工，不能再改地址；地址确实报错了请作废后重报';
+}
+
 /** 置灰时给用户看的原因（别静默隐藏）；可改时返回 null */
 export function repairTypeAndSlaLockReason(status: WorkOrderStatus): string | null {
   if (canEditRepairTypeAndSla(status)) return null;

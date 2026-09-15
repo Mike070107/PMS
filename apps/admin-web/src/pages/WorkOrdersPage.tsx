@@ -75,6 +75,7 @@ import {
   classifyRepairType,
   compareWorkOrderNewestFirst,
   compareWorkOrderOldestFirst,
+  workOrderAddressLockReason,
 } from '@pms/shared-types';
 
 /** 还要人动手的四个状态；其余都算终态。和员工端 utils/order-status.ts 同一份口径 */
@@ -2291,6 +2292,7 @@ function WorkOrderDetailDrawer({
   const [voidOpen, setVoidOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [changeTypeOpen, setChangeTypeOpen] = useState(false);
+  const [changeAddressOpen, setChangeAddressOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [rollbackOpen, setRollbackOpen] = useState(false);
@@ -2453,7 +2455,31 @@ function WorkOrderDetailDrawer({
                     labelStyle={compactDescriptionLabelStyle}
                     contentStyle={compactDescriptionContentStyle}
                     items={[
-                      { key: 'addr', label: '报修地址', children: detail.request.addressText || '-', span: 2 },
+                      {
+                        key: 'addr',
+                        label: '报修地址',
+                        span: 2,
+                        children: (() => {
+                          const text = detail.request.addressText || '-';
+                          const lockReason = workOrderAddressLockReason(detail.workOrder.status);
+                          if (!canEdit) return text;
+                          // 改不了的时候要说清为什么，不要把按钮静默藏掉（同「更正类型」那一行）
+                          if (lockReason) {
+                            return (
+                              <Space size={6} wrap>
+                                <Text type="secondary">{text}</Text>
+                                <Text type="secondary" className="pms-workorder-lock-reason">（{lockReason}）</Text>
+                              </Space>
+                            );
+                          }
+                          return (
+                            <Space size={6} wrap>
+                              {text}
+                              <Button type="link" size="small" onClick={() => setChangeAddressOpen(true)}>更正地址</Button>
+                            </Space>
+                          );
+                        })(),
+                      },
                       { key: 'content', label: '故障描述', children: detail.request.content, span: 2 },
                       {
                         key: 'name',
@@ -2659,6 +2685,13 @@ function WorkOrderDetailDrawer({
         workOrderId={id}
         onClose={() => setReviewOpen(false)}
         onDone={async () => { setReviewOpen(false); await refresh(); }}
+      />
+      <ChangeAddressModal
+        open={changeAddressOpen}
+        workOrderId={id}
+        currentText={detail?.request.addressText ?? ''}
+        onClose={() => setChangeAddressOpen(false)}
+        onDone={async () => { setChangeAddressOpen(false); await refresh(); }}
       />
       <ChangeTypeModal
         open={changeTypeOpen}
@@ -2889,6 +2922,124 @@ function SlaDueEditor({
  * 「报修类型配置」的关键词列表（原类型里的同名词同时摘掉），下次同样的描述就判对了。
  * 学了哪些词随时可以在类型配置页里删，不是黑盒。
  */
+/**
+ * 更正工单的报修地址（2026-09-15 Mike 要的）。
+ *
+ * 地址认错（语音听岔、报修人说错门牌）往往是维修工到现场才发现的，原来只能作废重报。
+ * 这里复用报修录入那套地址簿联想（输入「228/2/802」直接定位），选完写明原因，
+ * 新旧地址会原样进工单进度；已经派了人的，服务端会立刻通知他。
+ */
+function ChangeAddressModal({
+  open,
+  workOrderId,
+  currentText,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  workOrderId?: number;
+  currentText: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [picked, setPicked] = useState<PickedAddress | null>(null);
+  const [placeDetail, setPlaceDetail] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [addressTree, setAddressTree] = useState<AddressCommunity[]>([]);
+  const [treeLoading, setTreeLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setPicked(null);
+    setPlaceDetail('');
+    setReason('');
+    setTreeLoading(true);
+    request<AddressCommunity[]>({ url: '/address-tree' })
+      .then((rows) => setAddressTree(rows || []))
+      .catch(() => setAddressTree([]))
+      .finally(() => setTreeLoading(false));
+  }, [open]);
+
+  const submit = async () => {
+    if (!picked?.communityId) {
+      message.warning('先选新的报修地址');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await request<{ addressText: string; notified: boolean }>({
+        method: 'PATCH',
+        url: `/work-orders/${workOrderId}/address`,
+        data: {
+          communityId: picked.communityId,
+          buildingId: picked.buildingId,
+          houseId: picked.houseId,
+          placeDetail: placeDetail.trim() || undefined,
+          reason: reason.trim() || undefined,
+        },
+      });
+      message.success(
+        res.notified
+          ? `已改为「${res.addressText}」，并通知了当前负责人`
+          : `已改为「${res.addressText}」`,
+      );
+      onDone();
+    } catch (e: any) {
+      message.error(e?.message || '更正失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title="更正报修地址"
+      okText="确认更正"
+      okButtonProps={{ loading: submitting }}
+      onOk={submit}
+      onCancel={onClose}
+      destroyOnClose
+      width={640}
+    >
+      <Space direction="vertical" size={14} style={{ width: '100%' }}>
+        <div>
+          <Text type="secondary">当前地址</Text>
+          <div><Text strong>{currentText || '未填写'}</Text></div>
+        </div>
+        <div>
+          <Text type="secondary">改为</Text>
+          <HouseAddressPicker
+            communities={addressTree}
+            loading={treeLoading}
+            onPicked={setPicked}
+          />
+        </div>
+        <div>
+          <Text type="secondary">具体位置（没有房号时填，如大门、楼道）</Text>
+          <Input
+            value={placeDetail}
+            onChange={(e) => setPlaceDetail(e.target.value)}
+            maxLength={60}
+            placeholder="例如：大门、4楼电梯口"
+          />
+        </div>
+        <div>
+          <Text type="secondary">为什么改（会写进工单进度，维修工和业主都看得到）</Text>
+          <Input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            maxLength={200}
+            placeholder="例如：语音识别把 24 号听成了 4 号"
+          />
+        </div>
+      </Space>
+    </Modal>
+  );
+}
+
 function ChangeTypeModal({
   open, workOrderId, currentType, content, rules, onClose, onDone,
 }: {

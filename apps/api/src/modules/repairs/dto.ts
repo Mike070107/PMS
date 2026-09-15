@@ -170,6 +170,41 @@ export class MergeRepairSpeechDto {
   segments: string[];
 }
 
+/**
+ * 更正工单的报修地址（2026-09-15 Mike 要的）。
+ *
+ * 语音听岔、报修人说错门牌，往往是维修工到了现场才发现。原来只能作废重报 ——
+ * 之前的进度、用料、照片全白做。改地址会连着工单所属小区一起换，
+ * 所以要走完整的校验：楼栋必须属于这个小区、房号必须属于这栋楼。
+ */
+export class UpdateWorkOrderAddressDto {
+  @Type(() => Number)
+  @IsInt()
+  communityId: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  buildingId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  houseId?: number;
+
+  /** 公区位置（大门、楼道、门卫室）：没有房号时靠它说清具体在哪儿 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  placeDetail?: string;
+
+  /** 为什么改。会原样写进工单进度，维修工和业主都看得到 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+}
+
 /** 设定/取消工单的要求完成截止时间；不传 slaDueAt = 取消 */
 export class UpdateWorkOrderSlaDto {
   @IsOptional()

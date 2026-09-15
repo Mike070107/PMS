@@ -33,6 +33,8 @@ const EVENT_CATEGORY: Record<string, NotificationCategory> = {
   order_transfer_requested: 'work_order',
   order_assigned: 'work_order',
   order_urge_repair: 'work_order',
+  // 地址被更正：维修工可能正拿着旧地址在路上，必须当场告诉他
+  order_address_changed: 'work_order',
   order_accept_overdue: 'work_order',
   order_accept_overdue_office: 'work_order',
   order_urged: 'work_order',
@@ -61,6 +63,7 @@ const ACTION_EVENTS = new Set([
   'order_transfer_requested',
   'order_assigned',
   'order_urge_repair',
+  'order_address_changed',
   'order_accept_overdue',
   'order_accept_overdue_office',
   'order_urged',

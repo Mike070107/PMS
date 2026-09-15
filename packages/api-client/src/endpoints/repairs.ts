@@ -156,6 +156,26 @@ export const mergeSpeech = (data: { segments: string[] }) =>
     data,
   });
 
+/**
+ * 更正工单的报修地址。开工之后也能改 —— 地址认错常常是维修工到现场才发现的，
+ * 不给改就只能作废重报。完工后服务端会拦下并说明原因。
+ */
+export const updateWorkOrderAddress = (
+  id: number,
+  data: {
+    communityId: number;
+    buildingId?: number;
+    houseId?: number;
+    placeDetail?: string;
+    reason?: string;
+  },
+) =>
+  request<{ ok: true; addressText: string; notified: boolean }>({
+    method: 'PATCH',
+    url: `/work-orders/${id}/address`,
+    data,
+  });
+
 /** 业主端提交报修（后端同时建 repair_request 与 work_order） */
 export const create = (data: RepairCreateReq) =>
   request<{ request: { id: number }; workOrder: { id: number; orderNo: string } }>({

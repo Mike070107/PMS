@@ -39,6 +39,7 @@ import {
   UpdateMissingMaterialsDto,
   UpdateOfficeSuggestionSettingsDto,
   UpdateWorkOrderRepairTypeDto,
+  UpdateWorkOrderAddressDto,
   UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
   WorkOrdersQueryDto,
@@ -388,6 +389,21 @@ export class RepairsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.repairsService.updateWorkOrderSlaDue(id, dto, user, access);
+  }
+
+  /**
+   * 更正工单的报修地址。开工之后也允许改 —— 地址认错常常是维修工到现场才发现的，
+   * 不给改就只能作废重报。完工后由服务端拦下（workOrderAddressLockReason）。
+   */
+  @Patch('work-orders/:id/address')
+  @RequirePermission(['work-orders', 'app:dispatch'], 'edit')
+  updateWorkOrderAddress(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateWorkOrderAddressDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.updateWorkOrderAddress(id, dto, user, access);
   }
 
   /** 后台更正工单类型；learnKeywords 同时写进新类型的判定关键词（自学习） */

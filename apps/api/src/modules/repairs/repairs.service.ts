@@ -55,7 +55,10 @@ import {
   formatRoomText,
 } from '../../common/address-line.util';
 import { detectUrgency } from '../../common/repair-urgency.util';
-import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
+import {
+  repairTypeAndSlaLockReason,
+  workOrderAddressLockReason,
+} from '../../common/work-order-stage';
 import {
   compareNameAlphabetically,
   compareWorkOrderPriority,
@@ -114,6 +117,7 @@ import {
   UpdateMissingMaterialsDto,
   UpdateOfficeSuggestionSettingsDto,
   UpdateWorkOrderRepairTypeDto,
+  UpdateWorkOrderAddressDto,
   UpdateWorkOrderSlaDto,
   UpsertRepairTypeRuleDto,
   WorkOrdersQueryDto,
@@ -6487,6 +6491,151 @@ export class RepairsService implements OnModuleInit {
    * 否则下次两边照旧五五开），同时落一条 RepairTypeCorrection 供复盘和
    * 后续全自动学习攒数据。状态机不动，只在轨迹里记一条。
    */
+  /**
+   * 更正工单的报修地址（2026-09-15 Mike 要的）。
+   *
+   * 为什么开工之后也要允许改：地址认错（语音听岔、报修人说错门牌）往往是维修工
+   * **到了现场才发现**的。原来只能作废重报，之前的进度、用料、照片全白做；
+   * 完工之后才锁死 —— 那时候改的是已经发生过的事实，业主验收和统计都会对不上。
+   *
+   * 改地址会连着工单所属小区一起换，所以：
+   * - 楼栋必须属于新小区、房号必须属于那栋楼，一层层验，不接受前端传来的组合；
+   * - 还没派人时顺手把候选维修工按新小区重算 —— 不然这单会一直推给原小区的人；
+   * - 新旧地址原样写进工单进度（谁改的、为什么改），业主和维修工都看得到；
+   * - 已经有人接单的，立刻通知他 —— 他可能正在去原地址的路上。
+   */
+  async updateWorkOrderAddress(
+    id: number,
+    dto: UpdateWorkOrderAddressDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
+    if (!workOrder) throw new NotFoundException('work order not found');
+    const scope = this.scopeIds(access);
+    if (scope && !scope.includes(workOrder.communityId)) {
+      throw new NotFoundException('work order not found');
+    }
+    const lockReason = workOrderAddressLockReason(workOrder.status);
+    if (lockReason) throw new BadRequestException(lockReason);
+    // 改到自己管不着的小区去，等于把单子甩出可见范围
+    if (scope && !scope.includes(dto.communityId)) {
+      throw new ForbiddenException('没有该小区的权限，不能把工单改到这个小区');
+    }
+
+    const community = await this.communityRepo.findOne({
+      where: { id: dto.communityId, tenantId, enabled: true },
+    });
+    if (!community) throw new BadRequestException('小区不存在或已停用');
+
+    let building: Building | null = null;
+    if (dto.buildingId) {
+      building = await this.buildingRepo.findOne({
+        where: { id: dto.buildingId, tenantId },
+      });
+      if (!building) throw new BadRequestException('楼栋不存在');
+      if (building.communityId !== community.id) {
+        throw new BadRequestException('这栋楼不属于所选小区');
+      }
+    }
+
+    let house: House | null = null;
+    if (dto.houseId) {
+      if (!building) throw new BadRequestException('选了房号就必须同时选楼栋');
+      house = await this.houseRepo.findOne({ where: { id: dto.houseId, tenantId } });
+      if (!house) throw new BadRequestException('房号不存在');
+      if (house.buildingId !== building.id) {
+        throw new BadRequestException('这个房号不属于所选楼栋');
+      }
+    }
+
+    const place = (dto.placeDetail || '').trim();
+    const line = formatAddressLine(
+      (await this.communityAddressInfo(tenantId, [community.id])).get(community.id) ?? {
+        name: community.name,
+        laneCount: 0,
+      },
+      building,
+      house?.roomNo,
+    );
+    // 没有房号就是公区单：把具体位置写进去（说了大门就写大门，没说才留「公共区域」占位）
+    const addressText = house ? line : `${line} ${place || '公共区域'}`.trim();
+
+    const request = await this.repairRequestRepo.findOne({
+      where: { id: workOrder.requestId, tenantId },
+    });
+    const fromText = (request?.addressText || '').trim();
+    const sameAddress =
+      request &&
+      request.communityId === community.id &&
+      (request.buildingId ?? null) === (building?.id ?? null) &&
+      (request.houseId ?? null) === (house?.id ?? null) &&
+      fromText === addressText;
+    if (sameAddress) throw new BadRequestException('地址没有变化');
+
+    const reason = (dto.reason || '').trim();
+    const note =
+      `报修地址由「${fromText || '未填写'}」改为「${addressText}」` +
+      (reason ? `；原因：${reason}` : '');
+
+    await this.dataSource.transaction(async (manager) => {
+      if (request) {
+        request.communityId = community.id;
+        request.buildingId = building?.id ?? null;
+        request.houseId = house?.id ?? null;
+        request.addressText = addressText;
+        request.updatedBy = user.id;
+        await manager.save(RepairRequest, request);
+      }
+      if (workOrder.communityId !== community.id) {
+        workOrder.communityId = community.id;
+        // 还没定人时，候选要按新小区重算，否则这单一直推给原小区的维修工
+        if (!workOrder.assigneeId) {
+          const rules = await this.rulesForCommunity(tenantId, community.id);
+          const rule = rules.find((item) => item.repairType === workOrder.skill);
+          if (rule) {
+            const candidates = await this.ruleCandidates(tenantId, rule, community.id);
+            workOrder.candidateIds = candidates.map((candidate) => candidate.id);
+          }
+        }
+      }
+      workOrder.updatedBy = user.id;
+      await manager.save(WorkOrder, workOrder);
+      await this.writeLog(manager, workOrder, null, 'change_address', user.id, note);
+    });
+
+    /**
+     * 已经派了人就必须告诉他：他可能正拿着原地址在路上。
+     * 通知失败只记日志，绝不影响改地址本身（全局约定）。
+     */
+    let notified = false;
+    if (workOrder.assigneeId) {
+      try {
+        await this.notifications.notifyUser({
+          tenantId,
+          receiverId: workOrder.assigneeId,
+          eventKey: 'order_address_changed',
+          title: `报修地址已更正：${addressText}`,
+          payload: {
+            workOrderId: workOrder.id,
+            orderNo: workOrder.orderNo,
+            note,
+          },
+          page: `pages/order-detail/order-detail?id=${workOrder.id}`,
+        });
+        notified = true;
+      } catch (error) {
+        this.logger.warn(
+          `改地址后通知维修工失败（工单 ${workOrder.orderNo}）：${
+            error instanceof Error ? error.message : error
+          }`,
+        );
+      }
+    }
+    return { ok: true as const, addressText, notified };
+  }
+
   async updateWorkOrderRepairType(
     id: number,
     dto: UpdateWorkOrderRepairTypeDto,
