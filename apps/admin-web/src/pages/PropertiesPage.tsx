@@ -33,6 +33,7 @@ import { handleGone } from '../lib/gone';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import PropertiesImportModal from './PropertiesImportModal';
+import { formatRoomText } from '@pms/shared-types';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -119,9 +120,11 @@ function buildFullAddress(values: {
   const buildingNo = String(values.buildingNo || '').trim();
   const roomNo = String(values.roomNo || '').trim();
   if (!roadName || !buildingNo) return '';
-  const roomSuffix = values.propertyType === '商铺'
-    ? (roomNo && roomNo !== '商铺' ? `${roomNo}室` : '')
-    : (roomNo ? `${roomNo}室` : '');
+  // 「室」只缀纯数字房号：办公楼的房间名字就是房号（工程部/财务部），
+  // 缀上去成了「财务部室」。口径来自 @pms/shared-types 的 formatRoomText，两端一致
+  const roomSuffix = values.propertyType === '商铺' && roomNo === '商铺'
+    ? ''
+    : formatRoomText(roomNo);
   return `${roadName}${lane ? `${lane}弄` : ''}${buildingNo}号${roomSuffix}`;
 }
 

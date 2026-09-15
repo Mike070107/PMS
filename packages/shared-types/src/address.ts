@@ -96,6 +96,19 @@ export function isLaneRedundant(
 }
 
 /**
+ * 房号那一段怎么显示：`302` → `302室`，`工程部` → `工程部`。
+ *
+ * 办公楼、商业体没有「几0几」，房产管理里「室」直接填的就是名字
+ * （物业总公司宝秀路858号里是工程部、采购部、财务部，2026-09-15 Mike）。
+ * 无脑缀「室」会拼出「财务部室」——所以只有**纯数字**才缀。
+ */
+export function formatRoomText(roomNo?: string | null): string {
+  const value = String(roomNo ?? '').trim();
+  if (!value) return '';
+  return /^\d+$/.test(value) ? `${value}室` : value;
+}
+
+/**
  * 一行展示的完整地址：`枫桦景苑一期17号201室`。
  *
  * 工单卡片、消息标题、通知文案这些「给人看一眼就知道去哪」的地方都用它，
@@ -112,7 +125,7 @@ export function formatAddressLine(
   const buildingText = building
     ? `${keepLane ? `${lane}弄` : ''}${!lane && building.roadName ? building.roadName : ''}${building.buildingNo ? `${building.buildingNo}号` : ''}`
     : '';
-  return `${community.name}${buildingText}${roomNo ? `${roomNo}室` : ''}`;
+  return `${community.name}${buildingText}${formatRoomText(roomNo)}`;
 }
 
 /** 最终填进表单、可复制的地址：枫桦景苑二期/228弄4号/201 */

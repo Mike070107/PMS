@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatAddressLine, isLaneRedundant } from './address-line.util';
+import { formatAddressLine, isLaneRedundant, formatRoomText } from './address-line.util';
 
 /**
  * 和 packages/shared-types/src/address.test.ts 是同一批用例 —— 那份是两个小程序和后台用的，
@@ -45,4 +45,25 @@ test('只到楼栋 / 只到小区也要拼得出来', () => {
   const c = { name: '吴泾新村', laneCount: 1 };
   assert.equal(formatAddressLine(c, b('5530', '12')), '吴泾新村12号');
   assert.equal(formatAddressLine(c), '吴泾新村');
+});
+
+/**
+ * 办公楼的房号就是名字（2026-09-15）：物业总公司宝秀路858号里是工程部、采购部、财务部，
+ * 房产管理里「室」直接填的就是这三个字。无脑缀「室」会拼出「财务部室」。
+ */
+test('「室」只缀纯数字房号，名字房号原样显示', () => {
+  assert.equal(formatRoomText('302'), '302室');
+  assert.equal(formatRoomText('0302'), '0302室');
+  assert.equal(formatRoomText('工程部'), '工程部');
+  assert.equal(formatRoomText('218-01'), '218-01');
+  assert.equal(formatRoomText(''), '');
+  assert.equal(formatRoomText(null), '');
+  assert.equal(formatRoomText(undefined), '');
+});
+
+test('地址行里的名字房号也不缀「室」', () => {
+  assert.equal(
+    formatAddressLine({ name: '吴泾物业总公司', laneCount: 0 }, { lane: null, buildingNo: '858' }, '工程部'),
+    '吴泾物业总公司858号工程部',
+  );
 });

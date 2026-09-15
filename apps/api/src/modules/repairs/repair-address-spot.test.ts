@@ -39,6 +39,16 @@ function makeService() {
   // 故意不按 communityId 过滤：查询条件之外还要有一道收敛，漏进来的点位不能算数
   service.spotRepo = { async find() { return SPOTS; } };
   service.buildingRepo = { async find() { return []; }, async findOne() { return null; } };
+  /** 办公楼的「名字房号」这条路会查一次房产表；这两个用例里没有这种房产，给个空实现 */
+  service.houseRepo = {
+    async find() { return []; },
+    createQueryBuilder() {
+      const qb: Record<string, unknown> = {};
+      for (const name of ['innerJoin', 'where', 'andWhere', 'select', 'addSelect']) qb[name] = () => qb;
+      qb.getRawMany = async () => [];
+      return qb;
+    },
+  };
   return service;
 }
 

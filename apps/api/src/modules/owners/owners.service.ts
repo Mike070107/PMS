@@ -23,6 +23,7 @@ import {
   RegisterOwnerDto,
   RejectAuditDto,
 } from './dto';
+import { formatRoomText } from '../../common/address-line.util';
 
 /** 去重且过滤空值，用于批量查关联表 */
 function unique(ids: Array<number | null | undefined>): number[] {
@@ -165,7 +166,7 @@ export class OwnersService {
         name: audit.applicantName || owner?.name || owner?.wxNickname || '',
         phone: audit.applicantPhone || owner?.phone || '',
         // 门牌各段连写不留空格：枫桦景苑二期 228弄26号101室
-        address: [community?.name, `${buildingText}${roomNo ? `${roomNo}室` : ''}`]
+        address: [community?.name, `${buildingText}${formatRoomText(roomNo)}`]
           .filter(Boolean)
           .join(' '),
         communityId: audit.communityId,

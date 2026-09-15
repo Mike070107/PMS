@@ -49,7 +49,7 @@ import {
   detectPublicAreaPlace,
   isPublicAreaText,
 } from './repair-public-area.util';
-import { formatAddressLine } from '../../common/address-line.util';
+import { formatAddressLine, formatRoomText } from '../../common/address-line.util';
 import { detectUrgency } from '../../common/repair-urgency.util';
 import { repairTypeAndSlaLockReason } from '../../common/work-order-stage';
 import {
@@ -121,6 +121,8 @@ import {
   matchCommunityByName,
   matchCommunityInText,
   matchSpotsInText,
+  matchNamedRoomsInText,
+  pickNamedRoomFromTail,
   extractKeywordCandidates,
   sameNo,
   splitGluedLaneNo,
@@ -1976,7 +1978,7 @@ export class RepairsService implements OnModuleInit {
     const parts = [
       building?.lane ? `${building.lane}弄` : '',
       building?.buildingNo ? `${building.buildingNo}号` : '',
-      house?.roomNo ? `${house.roomNo}室` : '',
+      formatRoomText(house?.roomNo),
     ];
     return parts.filter(Boolean).join('') || request.addressText || community?.name || '';
   }
@@ -2662,7 +2664,7 @@ export class RepairsService implements OnModuleInit {
       : '';
     const text = [
       community?.name,
-      `${buildingText}${house.roomNo ? house.roomNo + '室' : ''}`,
+      `${buildingText}${formatRoomText(house.roomNo)}`,
     ]
       .filter(Boolean)
       .join(' ');
@@ -6077,6 +6079,56 @@ export class RepairsService implements OnModuleInit {
     }
 
     /**
+     * 整句话里直接念出来的**房间名**：「财务部空调不制冷」。
+     *
+     * 办公楼没有「几0几」—— 物业总公司在宝秀路858号，里面是工程部、采购部、财务部
+     * （2026-09-15 Mike）。一个门牌数字都不说时 extractAddressCandidate 返回 null，
+     * 房号根本没机会参与匹配，报修人明明说清楚了地方，系统还要他自己再选一遍位置。
+     *
+     * 放在点位之后：监控室这种公区点位优先（它本来就不是某一户）。
+     * 撞出多个同名房间时按报修人所在小区收敛，收敛不掉就当没认出来。
+     *
+     * **只在一个门牌数字都没说时才走这条**：说了「858号工程部」的那种交给下面的门牌
+     * 那条路 —— 那边知道地址在原话里占到哪儿（matchedRaw 要连部门名一起剥），
+     * 这条整句匹配只知道「工程部」三个字，按它剥描述会把「宝秀路858号」留在故障里。
+     */
+    const namedRoom = candidate
+      ? null
+      : await this.pickNamedRoom(tenantId, dto.text, ranked, tierOf);
+    if (namedRoom) {
+      const community = ranked.find((c) => c.id === namedRoom.communityId)!;
+      const building = await this.buildingRepo.findOne({
+        where: { tenantId, id: namedRoom.buildingId },
+      });
+      const line = formatAddressLine(
+        (await this.communityAddressInfo(tenantId, [community.id])).get(community.id) ?? {
+          name: community.name,
+          laneCount: 0,
+        },
+        building,
+        namedRoom.roomNo,
+      );
+      return {
+        matched: true as const,
+        level: 'house' as const,
+        communityId: community.id,
+        communityName: community.name,
+        // 房产必然挂在楼栋下，buildingId 直接取房产上的那个（findOne 只是为了拼显示文字）
+        buildingId: namedRoom.buildingId,
+        buildingText: building
+          ? `${building.lane ? building.lane + '弄' : ''}${building.buildingNo}号`
+          : '',
+        houseId: namedRoom.id,
+        roomNo: namedRoom.roomNo,
+        spotName: null,
+        addressText: line,
+        matchedText: namedRoom.roomNo,
+        matchedRaw: namedRoom.roomNo,
+        correctedText: null,
+      };
+    }
+
+    /**
      * 说了小区名、也说了公区设施，但这个小区一个点位都没建档（上海新家就是零点位）：
      * 认到小区级，并把设施名当位置写进地址，派单够用了。
      *
@@ -6215,6 +6267,16 @@ export class RepairsService implements OnModuleInit {
         where: { tenantId, buildingId: picked.id },
       });
       house = houses.find((h) => sameNo(h.roomNo, candidate.roomNo)) ?? null;
+    } else if (candidate.roomNameTail) {
+      /**
+       * 说的是名字不是房号：「宝秀路858号工程部空调不制冷」。
+       * 名字有多长只有房产库知道，所以拿这栋楼下真实的房号去对尾巴的开头，最长的赢；
+       * 对不上（「858号漏水了」）就当没说过房号，照旧落到楼栋级。
+       */
+      const houses = await this.houseRepo.find({
+        where: { tenantId, buildingId: picked.id },
+      });
+      house = pickNamedRoomFromTail(candidate.roomNameTail, houses);
     }
 
     // 业主只能把单挂到自己认证的房号上（assertCanReportAt 的同一条口径）。
@@ -6229,7 +6291,7 @@ export class RepairsService implements OnModuleInit {
     }
 
     const buildingText = `${picked.lane ? picked.lane + '弄' : ''}${picked.buildingNo}号`;
-    const roomText = house ? `${house.roomNo}室` : '';
+    const roomText = house ? formatRoomText(house.roomNo) : '';
     /**
      * 这一行地址要走和工单卡片同一套去重：小区名叫「永北5511弄」时，
      * 再拼一遍 buildingText 就成了「永北5511弄 5511弄236号」（2026-09-01 反馈）。
@@ -6258,13 +6320,19 @@ export class RepairsService implements OnModuleInit {
       // 粘在一起的数字拆开之后，给用户看的是拆开的写法（「1984号」→「198弄4号」），
       // 让他一眼看出系统把那串数字理解成了什么
       matchedText: gluedSplit
-        ? `${gluedSplit.lane}弄${gluedSplit.buildingNo}号${candidate.roomNo ? candidate.roomNo + '室' : ''}`
+        ? `${gluedSplit.lane}弄${gluedSplit.buildingNo}号${formatRoomText(candidate.roomNo)}`
         : candidate.matchedText,
       /**
        * 地址在原话里占的那一段。端上剥故障描述要用它 ——
        * 用归一化的 matchedText 剥，小区名会剩在描述里
+       *
+       * 非数字房号撞上时，剥描述要连名字一起剥：「宝秀路858号工程部空调不制冷」
+       * 只按「宝秀路858号」剥，描述会剩下「工程部空调不制冷」，等于把地址写进了故障里。
        */
-      matchedRaw: candidate.matchedRaw,
+      matchedRaw:
+        house && candidate.roomNameTail && !candidate.roomNo
+          ? this.extendMatchedRaw(dto.text, candidate.matchedRaw, house.roomNo)
+          : candidate.matchedRaw,
       /**
        * 语音把小区名听成同音字时的正名版本（「风华一期17号」→「枫桦景苑一期17号」）；
        * 没什么好改的就是 null。端上拿它替换描述框里的文字。
@@ -6279,6 +6347,66 @@ export class RepairsService implements OnModuleInit {
         !!(candidate.phase || candidate.lane || gluedSplit),
       ),
     };
+  }
+
+  /**
+   * 把地址那一段延长到房号名的末尾（剥故障描述时用）。
+   * 名字必须**紧跟在**地址后面才延长，中间隔着别的话就不动 —— 宁可少剥，不能乱剥。
+   */
+  private extendMatchedRaw(text: string, matchedRaw: string, roomNo: string): string {
+    if (!matchedRaw || !roomNo) return matchedRaw;
+    const start = text.indexOf(matchedRaw);
+    if (start < 0) return matchedRaw;
+    const after = start + matchedRaw.length;
+    const at = text.indexOf(roomNo, after);
+    // 中间只允许隔一两个分隔符
+    if (at < 0 || at - after > 2) return matchedRaw;
+    return text.slice(start, at + roomNo.length);
+  }
+
+  /**
+   * 整句话里念到的房间名是哪一间（办公楼的「工程部」「财务部」）。
+   *
+   * 只查**非数字房号**的房产：住宅的 302、1003 交给原来的门牌那条路，
+   * 这里要的是「名字就是房号」的那种（房产管理里把「室」直接填成工程部）。
+   * 同名房间在多个小区时按 ranked（报修人所在小区优先）收敛，
+   * 前两名一样近就放弃 —— 认成另一个管理处的「财务部」比不认更糟，
+   * 口径和 pickCommunitySpot 完全一致。
+   */
+  private async pickNamedRoom(
+    tenantId: number,
+    text: string,
+    ranked: Community[],
+    tierOf: Map<number, number>,
+  ): Promise<{ id: number; roomNo: string; buildingId: number; communityId: number } | null> {
+    if (!ranked.length) return null;
+    const rows = await this.houseRepo
+      .createQueryBuilder('h')
+      .innerJoin(Building, 'b', 'b.id = h.building_id')
+      .where('h.tenant_id = :tenantId', { tenantId })
+      .andWhere('b.community_id IN (:...ids)', { ids: ranked.map((c) => c.id) })
+      // 纯数字房号走门牌那条路；这里只要「名字就是房号」的
+      .andWhere("h.room_no ~ '[^0-9]'")
+      .andWhere('LENGTH(h.room_no) >= 2')
+      .select('h.id', 'id')
+      .addSelect('h.room_no', 'roomNo')
+      .addSelect('h.building_id', 'buildingId')
+      .addSelect('b.community_id', 'communityId')
+      .getRawMany<{ id: number; roomNo: string; buildingId: number; communityId: number }>();
+    if (!rows.length) return null;
+    const hits = matchNamedRoomsInText(text, rows).filter((r) => tierOf.has(r.communityId));
+    if (!hits.length) return null;
+    const rankOf = new Map(ranked.map((c, index) => [c.id, index] as const));
+    const sorted = [...hits].sort(
+      (a, b) =>
+        (rankOf.get(a.communityId) ?? 0) - (rankOf.get(b.communityId) ?? 0) || a.id - b.id,
+    );
+    if (sorted.length === 1) return sorted[0];
+    // 同一个小区里撞到几个同名房间，是建档重复，不是歧义
+    if (sorted[0].communityId === sorted[1].communityId) return sorted[0];
+    const first = tierOf.get(sorted[0].communityId) ?? 2;
+    const second = tierOf.get(sorted[1].communityId) ?? 2;
+    return first < second ? sorted[0] : null;
   }
 
   /**

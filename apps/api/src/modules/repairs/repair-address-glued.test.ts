@@ -45,9 +45,16 @@ function makeService(buildings = BUILDINGS) {
     async find() { return buildings; },
     async findOne() { return null; },
   };
-  service.houseRepo = { async find({ where }: any) {
-    return HOUSES.filter((h) => h.buildingId === where.buildingId);
-  } };
+  service.houseRepo = {
+    async find({ where }: any) { return HOUSES.filter((h) => h.buildingId === where.buildingId); },
+    /** 办公楼的「名字房号」那条路会查一次房产表；这里全是数字房号，给个空实现 */
+    createQueryBuilder() {
+      const qb: Record<string, unknown> = {};
+      for (const name of ['innerJoin', 'where', 'andWhere', 'select', 'addSelect']) qb[name] = () => qb;
+      qb.getRawMany = async () => [];
+      return qb;
+    },
+  };
   service.communityAddressInfo = async () =>
     new Map(COMMUNITIES.map((c) => [c.id, { name: c.name, laneCount: 1 }]));
   return service;

@@ -55,6 +55,7 @@ import {
   SaveQuotaParamsDto,
   UpdateMaintenanceOrderDto,
 } from './dto';
+import { formatRoomText } from '../../common/address-line.util';
 
 /** 定额取费参数存在 tenant_configs 里，改完立刻生效，不用改环境变量重部署 */
 const QUOTA_PARAMS_KEY = 'quota_params';
@@ -1313,7 +1314,7 @@ export class MaintenanceService implements OnModuleInit {
       row.addrRoad ? `${row.addrRoad}路` : '',
       row.addrLane ? `${row.addrLane}弄` : '',
       row.addrBuildingNo ? `${row.addrBuildingNo}号` : '',
-      row.addrRoom ? `${row.addrRoom}室` : '',
+      formatRoomText(row.addrRoom),
     ]
       .filter(Boolean)
       .join('');

@@ -35,6 +35,17 @@ export interface RepairAddressCandidate {
   gluedNo: string | null;
   /** 室号数字部分，如「302」 */
   roomNo: string | null;
+  /**
+   * 「号」后面紧跟的那一小段原话，如「858号工程部空调不制冷」→「工程部空调不制冷」。
+   *
+   * 为什么交出一段而不是「抽出名字」：办公楼、商业体没有「几0几」，房间就叫工程部、
+   * 采购部、财务部（2026-09-15 Mike：物业总公司在宝秀路858号）。名字有多长、
+   * 到哪里为止，**只有房产库知道** —— 正则去猜必然连着故障描述一起抓走
+   * （「858号工程部空调不制冷」抓成「工程部空调不」）。
+   * 所以这里只负责把尾巴原样交出去，由服务端拿这栋楼下真实的房号去比对
+   * （谁能对上这段开头、就取最长的那个），撞不上一律当没说过。
+   */
+  roomNameTail: string | null;
   /** 归一化后的命中内容，如「一期24号302室」，给用户看、也用来做「忽略」去重 */
   matchedText: string;
   /**
@@ -102,6 +113,7 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
   const lane = laneMatch ? laneMatch[1] : null;
 
   let buildingNo: string | null = null;
+  let roomNameTail: string | null = null;
   let gluedNo: string | null = null;
   /** 门牌那一段在原话里的起点。粘住时（「19814号」）要从数字串的**头**算起，
       否则剥描述只剥掉正则捕到的「9814号」，前面那个「1」会留在故障描述里 */
@@ -134,6 +146,16 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
     const rest = value.slice(m.index + m[0].length);
     const bareRoom = /^[\s、,，]{0,2}(\d{3,4})(?![\d年月日号元个台只条根米])/.exec(rest);
     if (bareRoom) roomNo = bareRoom[1];
+    /**
+     * 没有数字房号时，把「号」后面紧跟的 2-6 个汉字当**名字**候选：
+     * 「858号工程部空调不制冷」→「工程部」。办公楼没有「几0几」，房间就叫这个名字。
+     * 这里不做任何判断 —— 撞不上这栋楼下真实的房号一律丢掉，
+     * 所以「858号漏水了」抽出来的「漏水了」不会有任何副作用。
+     */
+    if (!bareRoom) {
+      const tail = /^[\s、,，]{0,2}([一-龥]{2,12})/.exec(rest);
+      if (tail) roomNameTail = tail[1];
+    }
     break;
   }
   if (!roomNo) {
@@ -152,11 +174,7 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
     roomNo ? `${roomNo}室` : '',
   ].join('');
   const namePrefix = extractNamePrefix(value, roadName);
-  return {
-    phase,
-    roadName,
-    namePrefix,
-    matchedRaw: sliceMatchedRaw(value, {
+  const matchedRaw = sliceMatchedRaw(value, {
       namePrefix,
       roadName,
       phaseMatch,
@@ -164,11 +182,17 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
       buildingMatch,
       buildingFrom,
       roomNo,
-    }),
+  });
+  return {
+    phase,
+    roadName,
+    namePrefix,
+    matchedRaw,
     lane,
     buildingNo,
     gluedNo,
     roomNo,
+    roomNameTail,
     matchedText,
   };
 }
@@ -356,6 +380,59 @@ export function matchCommunityInText<T extends { id: number; name: string }>(
   if (!hits.length) return [];
   const longest = Math.max(...hits.map((c) => c.name.length));
   return hits.filter((c) => c.name.length === longest);
+}
+
+/** 非数字房号的房产（办公楼的「工程部」），整句匹配时只需要这几个字段 */
+export interface NamedRoomLike {
+  id: number;
+  roomNo: string;
+  buildingId: number;
+  communityId: number;
+}
+
+/**
+ * 整句话里直接念出来的**房间名**：「财务部空调不制冷」→ 财务部。
+ *
+ * 为什么要单独一条：办公楼的房间没有「几0几」，一个门牌数字都不说的时候
+ * extractAddressCandidate 直接返回 null（`if (!phase && !buildingNo) return null`），
+ * 房号根本没机会参与匹配 —— 报修人明明把地方说清楚了，系统还要他自己再选一遍位置
+ * （2026-09-15 Mike：物业总公司在宝秀路858号，里面是工程部、采购部、财务部）。
+ *
+ * 口径和 matchSpotsInText 一模一样：只做包含、不做同音、不做分词；名字最长的赢；
+ * 同名房间可能在好几个小区，这里全部返回，由调用方按报修人所在小区收敛，
+ * 收敛不掉就当没认出来 —— 认成隔壁小区的「财务部」比不认更糟。
+ */
+export function matchNamedRoomsInText<T extends NamedRoomLike>(
+  text: string,
+  rooms: T[],
+): T[] {
+  const value = String(text || '');
+  if (!value.trim()) return [];
+  const hits = rooms.filter(
+    (r) => r.roomNo && r.roomNo.length >= 2 && !/^\d+$/.test(r.roomNo) && value.includes(r.roomNo),
+  );
+  if (!hits.length) return [];
+  const longest = Math.max(...hits.map((r) => r.roomNo.length));
+  return hits.filter((r) => r.roomNo.length === longest);
+}
+
+/**
+ * 「N号」后面那段尾巴是哪个真实房号：「工程部空调不制冷」+ 这栋楼有「工程部」→ 工程部。
+ *
+ * 只认**从头对上**的（房号名必然紧跟在门牌后面说），最长的赢；
+ * 对不上就返回 null —— 「858号漏水了」的尾巴谁也对不上，自然就当没说过房号。
+ */
+export function pickNamedRoomFromTail<T extends { roomNo: string }>(
+  tail: string | null | undefined,
+  rooms: T[],
+): T | null {
+  const value = String(tail || '').trim();
+  if (value.length < 2) return null;
+  const hits = rooms.filter(
+    (r) => r.roomNo && r.roomNo.length >= 2 && !/^\d+$/.test(r.roomNo) && value.startsWith(r.roomNo),
+  );
+  if (!hits.length) return null;
+  return hits.reduce((best, item) => (item.roomNo.length > best.roomNo.length ? item : best));
 }
 
 /** 公区点位（community_spots）匹配时只需要这几个字段 */

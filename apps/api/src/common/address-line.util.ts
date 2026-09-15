@@ -36,6 +36,19 @@ export function isLaneRedundant(
   return community.laneCount === 1;
 }
 
+/**
+ * 房号那一段怎么显示：`302` → `302室`，`工程部` → `工程部`。
+ *
+ * 办公楼、商业体没有「几0几」，房产管理里「室」直接填的就是名字
+ * （物业总公司宝秀路858号里是工程部、采购部、财务部，2026-09-15 Mike）。
+ * 无脑缀「室」会拼出「财务部室」——所以只有**纯数字**才缀。
+ */
+export function formatRoomText(roomNo?: string | null): string {
+  const value = String(roomNo ?? '').trim();
+  if (!value) return '';
+  return /^\d+$/.test(value) ? `${value}室` : value;
+}
+
 export function formatAddressLine(
   community: AddressCommunityInfo,
   building?: AddressBuildingInfo | null,
@@ -47,5 +60,5 @@ export function formatAddressLine(
   const buildingText = building
     ? `${keepLane ? `${lane}弄` : ''}${road}${building.buildingNo ? `${building.buildingNo}号` : ''}`
     : '';
-  return `${community.name}${buildingText}${roomNo ? `${roomNo}室` : ''}`;
+  return `${community.name}${buildingText}${formatRoomText(roomNo)}`;
 }
