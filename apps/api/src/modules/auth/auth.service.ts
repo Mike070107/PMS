@@ -524,7 +524,7 @@ export class AuthService {
     const community = building
       ? await this.communityRepo.findOne({ where: { id: building.communityId, tenantId } })
       : null;
-    const buildingText = building
+    const buildingText = building?.buildingNo
       ? `${building.lane ? building.lane + "弄" : ""}${building.buildingNo}号`
       : "";
     return {

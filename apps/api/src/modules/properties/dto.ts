@@ -194,6 +194,11 @@ export class CreateHouseDto {
   @MaxLength(30)
   buildingNo?: string;
 
+  /** 仅办公楼：单栋且无楼号，系统维护一栋无编号楼，不伪造「1号楼」。 */
+  @IsOptional()
+  @IsBoolean()
+  singleBuilding?: boolean;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

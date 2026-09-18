@@ -17,6 +17,7 @@ import {
   extractContact,
   extractFaultDescription,
   formatReporterRoomLabel,
+  formatBuildingFull,
   urgencyReason,
 } from '@pms/shared-types';
 import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
@@ -356,7 +357,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     try {
       const info = await qr.resolve(token);
       const building = info.building
-        ? `${info.building.lane ? info.building.lane + '弄' : ''}${info.building.buildingNo}号`
+        ? formatBuildingFull({ ...info.building, roadName: null })
         : '';
       this.setData({
         token,

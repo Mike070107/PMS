@@ -473,6 +473,7 @@ export class QrService {
 
   /** 「228弄3号」/ 无弄时「3号」 */
   private buildingText(building: Building): string {
+    if (!building.buildingNo) return '本栋（无楼号）';
     return building.lane
       ? `${building.lane}弄${building.buildingNo}号`
       : `${building.buildingNo}号`;

@@ -10,6 +10,7 @@ import {
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { request } from '../lib/api';
+import { formatAddressLine } from '@pms/shared-types';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 
 // 业主档案的新增/编辑弹窗。抽成单独文件是因为「业主用户」页和房产页都要用到
@@ -51,7 +52,7 @@ export function formatOwnerLocation(h: {
   buildingNo: string;
   roomNo: string;
 }) {
-  return `${h.communityName} · ${h.lane ? h.lane + ' 弄 ' : ''}${h.buildingNo} 号 ${h.roomNo} 室`;
+  return formatAddressLine({ name: h.communityName }, { ...h, roadName: null }, h.roomNo);
 }
 
 export default function OwnerFormModal({

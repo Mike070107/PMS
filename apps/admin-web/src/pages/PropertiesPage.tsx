@@ -10,6 +10,7 @@ import {
   Modal,
   Popconfirm,
   Row,
+  Radio,
   Select,
   Space,
   Switch,
@@ -33,7 +34,7 @@ import { handleGone } from '../lib/gone';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import PropertiesImportModal from './PropertiesImportModal';
-import { formatRoomText } from '@pms/shared-types';
+import { composePropertyRoom, formatAddressLine, formatBuildingFull, formatRoomText, PROPERTY_TYPES, splitOfficeRoom } from '@pms/shared-types';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -88,7 +89,7 @@ interface HouseRow {
 // 那边配可代报小区与网页登录 —— 两页各管一类人，同一个人不会出现两条档案。
 
 function formatLocation(h: { communityName: string; lane: string | null; buildingNo: string; roomNo: string }) {
-  return `${h.communityName} · ${h.lane ? h.lane + ' 弄 ' : ''}${h.buildingNo} 号 ${h.roomNo} 室`;
+  return formatAddressLine({ name: h.communityName }, { ...h, roadName: null }, h.roomNo);
 }
 
 /** 「枫桦景苑」+「枫桦景苑二期」→「二期」，避免上下级名字整段重复 */
@@ -106,6 +107,7 @@ function formatBuildingNode(
   roadName: string | null,
   mainLane: string | null,
 ) {
+  if (!buildingNo) return '本栋（无楼号）';
   if (lane && lane !== mainLane) return `${lane}弄${buildingNo}号`;
   if (!lane && roadName) return `${roadName}${buildingNo}号`;
   return `${buildingNo}号楼`;
@@ -117,18 +119,27 @@ function buildFullAddress(values: {
   buildingNo?: string;
   roomNo?: string;
   propertyType?: string;
+  floorNo?: number | null;
+  singleBuilding?: boolean;
+  communityName?: string;
 }) {
   const roadName = String(values.roadName || '').trim();
   const lane = String(values.lane || '').trim();
-  const buildingNo = String(values.buildingNo || '').trim();
-  const roomNo = String(values.roomNo || '').trim();
-  if (!roadName || !buildingNo) return '';
+  const buildingNo = values.propertyType === '办公楼' && values.singleBuilding
+    ? '' : String(values.buildingNo || '').trim();
+  const roomNo = composePropertyRoom(values);
+  if (!values.communityName && !roadName) return '';
   // 「室」只缀纯数字房号：办公楼的房间名字就是房号（工程部/财务部），
   // 缀上去成了「财务部室」。口径来自 @pms/shared-types 的 formatRoomText，两端一致
   const roomSuffix = values.propertyType === '商铺' && roomNo === '商铺'
     ? ''
     : formatRoomText(roomNo);
-  return `${roadName}${lane ? `${lane}弄` : ''}${buildingNo}号${roomSuffix}`;
+  if (values.propertyType === '办公楼' || values.propertyType === '公寓' || !roadName) {
+    return formatAddressLine({ name: values.communityName || roadName }, {
+      lane: buildingNo ? lane : null, buildingNo, roadName: null,
+    }, roomSuffix);
+  }
+  return `${roadName}${lane ? `${lane}弄` : ''}${buildingNo ? `${buildingNo}号` : ''}${roomSuffix}`;
 }
 
 export default function PropertiesPage() {
@@ -479,8 +490,8 @@ function HousesTab() {
               },
               { title: '路名', dataIndex: 'roadName', width: 100, render: (v) => v || '-' },
               { title: '弄', dataIndex: 'lane', width: 80, render: (v) => v || '-' },
-              { title: '号', dataIndex: 'buildingNo', width: 80 },
-              { title: '室', dataIndex: 'roomNo', width: 100 },
+              { title: '楼栋 / 门牌', dataIndex: 'buildingNo', width: 110, render: (v) => v || '单栋无楼号' },
+              { title: '房号 / 楼层部门', dataIndex: 'roomNo', width: 150 },
               { title: '完整地址', dataIndex: 'fullAddress', width: 220, ellipsis: true, render: (v) => v || '-' },
               { title: '商铺名称', dataIndex: 'shopName', width: 140, render: (v) => v || '-' },
               {
@@ -578,6 +589,14 @@ function HouseFormModal({
   const [fullAddressTouched, setFullAddressTouched] = useState(false);
   const [quickAddress, setQuickAddress] = useState('');
   const [parsing, setParsing] = useState(false);
+  const propertyType = Form.useWatch('propertyType', form) || '住宅';
+  const isOffice = propertyType === '办公楼';
+  const singleBuilding = Form.useWatch('singleBuilding', form) !== false;
+
+  const addressValues = () => {
+    const values = form.getFieldsValue(true);
+    return { ...values, communityName: communities.find((c) => c.id === values.communityId)?.name };
+  };
 
   /**
    * 一句话地址 → 逐个字段。解析在服务端，和小程序语音报修**共用同一套**
@@ -608,7 +627,8 @@ function HouseFormModal({
       if (r.communityId) patch.communityId = r.communityId;
       if (r.lane) patch.lane = r.lane;
       if (r.buildingNo) patch.buildingNo = r.buildingNo;
-      if (r.roomNo) patch.roomNo = r.roomNo;
+      if (r.roomNo) Object.assign(patch, isOffice ? splitOfficeRoom(r.roomNo) : { roomNo: r.roomNo });
+      if (isOffice && r.buildingNo) patch.singleBuilding = false;
       form.setFieldsValue(patch);
       setTimeout(syncFullAddress, 0);
       const filled = [
@@ -616,7 +636,7 @@ function HouseFormModal({
         r.communityName && `小区 ${r.communityName}`,
         r.lane && `${r.lane} 弄`,
         r.buildingNo && `${r.buildingNo} 号`,
-        r.roomNo && `${r.roomNo} 室`,
+        r.roomNo && formatRoomText(r.roomNo),
       ].filter(Boolean).join('、');
       message.success(`已填：${filled || '（没认出可填的字段）'}`);
       // 认出一堆小区 = 等于没认出，明说是哪几个，让人自己选
@@ -634,35 +654,41 @@ function HouseFormModal({
 
   const syncFullAddress = () => {
     if (fullAddressTouched) return;
-    const next = buildFullAddress(form.getFieldsValue(['roadName', 'lane', 'buildingNo', 'roomNo', 'propertyType']));
+    const next = buildFullAddress(addressValues());
     form.setFieldValue('fullAddress', next || undefined);
   };
 
   useEffect(() => {
     if (!open) return;
     setFullAddressTouched(false);
+    setQuickAddress('');
     if (target) {
-      form.setFieldsValue({
+      form.resetFields();
+      const values = {
         communityId: target.communityId,
         lane: target.lane || undefined,
         buildingNo: target.buildingNo,
-        roomNo: target.roomNo,
+        ...(target.propertyType === '办公楼' ? splitOfficeRoom(target.roomNo) : { roomNo: target.roomNo }),
+        singleBuilding: !target.buildingNo,
         propertyType: target.propertyType || '住宅',
         roadName: target.roadName || undefined,
         fullAddress: target.fullAddress || undefined,
         shopName: target.shopName || undefined,
         areaSqm: target.areaSqm ? Number(target.areaSqm) : undefined,
-      });
-      setFullAddressTouched(!!target.fullAddress);
+      };
+      form.setFieldsValue(values);
+      setFullAddressTouched(!!target.fullAddress && target.fullAddress !== buildFullAddress({ ...values, communityName: target.communityName }));
     } else {
       form.resetFields();
-      form.setFieldsValue({ propertyType: '住宅' });
+      form.setFieldsValue({ propertyType: '住宅', singleBuilding: true });
       if (defaultCommunityId) form.setFieldsValue({ communityId: defaultCommunityId });
     }
   }, [open, target, defaultCommunityId, form]);
 
   const onOk = async () => {
-    const v = await form.validateFields();
+    let v;
+    try { v = await form.validateFields(); } catch { return; }
+    const roomNo = composePropertyRoom(v);
     setSaving(true);
     try {
       if (target) {
@@ -670,7 +696,7 @@ function HouseFormModal({
           method: 'PATCH',
           url: `/houses/${target.id}`,
           data: {
-            roomNo: v.roomNo,
+            roomNo,
             propertyType: v.propertyType,
             roadName: v.roadName || undefined,
             fullAddress: v.fullAddress || undefined,
@@ -685,9 +711,10 @@ function HouseFormModal({
           url: '/houses',
           data: {
             communityId: v.communityId,
-            lane: v.lane || undefined,
-            buildingNo: v.buildingNo,
-            roomNo: v.roomNo,
+            lane: isOffice && singleBuilding ? undefined : v.lane || undefined,
+            buildingNo: isOffice && singleBuilding ? undefined : v.buildingNo,
+            singleBuilding: isOffice && singleBuilding,
+            roomNo,
             propertyType: v.propertyType,
             roadName: v.roadName || undefined,
             fullAddress: v.fullAddress || undefined,
@@ -700,7 +727,9 @@ function HouseFormModal({
       onDone();
     } catch (e: any) {
       if (target && handleGone(e, message, '这套房产', onDone)) return;
-      message.error(e?.message || '保存失败');
+      const errorText = e?.message || '保存失败';
+      if (errorText.includes('已存在')) form.setFields([{ name: 'roomNo', errors: [errorText] }]);
+      message.error(errorText);
     } finally {
       setSaving(false);
     }
@@ -715,16 +744,23 @@ function HouseFormModal({
       confirmLoading={saving}
       destroyOnHidden
       width={520}
+      style={{ top: 24 }}
+      styles={{ body: { maxHeight: 'calc(100dvh - 220px)', overflowY: 'auto', paddingRight: 4 } }}
     >
       <Form
         form={form}
         layout="vertical"
+        style={{ paddingInline: 6 }}
         onValuesChange={(changed) => {
           if ('fullAddress' in changed) {
             setFullAddressTouched(true);
             return;
           }
-          if (['roadName', 'lane', 'buildingNo', 'roomNo', 'propertyType'].some((key) => key in changed)) {
+          if ('propertyType' in changed) {
+            if (changed.propertyType === '办公楼') form.setFieldsValue(splitOfficeRoom(form.getFieldValue('roomNo') || ''));
+            else form.setFieldValue('floorNo', undefined);
+          }
+          if (['communityId', 'roadName', 'lane', 'buildingNo', 'roomNo', 'propertyType', 'singleBuilding', 'floorNo'].some((key) => key in changed)) {
             setTimeout(syncFullAddress, 0);
           }
         }}
@@ -734,7 +770,7 @@ function HouseFormModal({
         {!target && (
           <Form.Item
             label="一句话地址"
-            extra="把整句地址粘进来点「拆分」，自动填下面的路名 / 小区 / 弄 / 号 / 室。和小程序语音报修用的是同一套识别"
+            extra="数字门牌地址可自动拆分；首次录入无楼号的办公楼，请选择办公楼类型后填楼层和部门。"
           >
             <Space.Compact style={{ width: '100%' }}>
               <Input
@@ -752,24 +788,22 @@ function HouseFormModal({
           <Col span={12}>
             <Form.Item name="propertyType" label="房产类型" initialValue="住宅">
               <Select
-                options={[
-                  { value: '住宅', label: '住宅' },
-                  { value: '商铺', label: '商铺' },
-                ]}
+                options={PROPERTY_TYPES.map((value) => ({ value, label: value }))}
+                disabled={!!target && !target.buildingNo}
               />
             </Form.Item>
           </Col>
           <Col span={12}>
             {/* 没有弄的地址（办公楼、沿街商铺）全靠路名说清在哪条路上：
                 楼栋会把它记下来，工单地址才会显示「宝秀路858号」而不是光秃秃的「858号」 */}
-            <Form.Item name="roadName" label="路名" extra="没有弄时务必填，地址才显示得出「宝秀路858号」">
+            <Form.Item name="roadName" label="路名（选填）" extra="沿街门牌可填路名；已选公寓或办公楼名称时无需重复填写">
               <Input placeholder="如：剑川路" />
             </Form.Item>
           </Col>
         </Row>
-        <Form.Item name="communityId" label="小区 / 分期" rules={[{ required: true }]}>
+        <Form.Item name="communityId" label="所属小区 / 公寓 / 办公楼" rules={[{ required: true, message: '请选择房产所属的小区、公寓或办公楼' }]}>
           <Select
-            placeholder="选择小区或分期"
+            placeholder="选择小区、公寓或办公楼"
             options={withOptionTitles(
               // 分组节点（如「枫桦景苑」）不挂房产，只有分期能选
               communities.filter((c) => !c.isGroup).map((c) => ({ value: c.id, label: c.name })),
@@ -778,27 +812,46 @@ function HouseFormModal({
             {...searchableWideSelectProps}
           />
         </Form.Item>
+        {isOffice && (
+          <Form.Item name="singleBuilding" label="楼栋情况" initialValue={true}>
+            <Radio.Group disabled={!!target}>
+              <Space direction="vertical">
+                <Radio value={true}>单栋（无楼号，不需要填写号）</Radio>
+                <Radio value={false}>有楼栋号／门牌号</Radio>
+              </Space>
+            </Radio.Group>
+          </Form.Item>
+        )}
         <Row gutter={12}>
-          <Col span={8}>
+          {(!isOffice || !singleBuilding) && <Col xs={12} sm={8}>
             <Form.Item name="lane" label="弄" extra="办公楼、沿街商铺没有弄就留空">
               <Input placeholder="如：1（无可留空）" disabled={!!target} />
             </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item name="buildingNo" label="号" rules={[{ required: true }]}>
-              <Input placeholder="如：12" disabled={!!target} />
+          </Col>}
+          {(!isOffice || !singleBuilding) && <Col xs={12} sm={8}>
+            <Form.Item name="buildingNo" label={propertyType === '商铺' ? '门牌号' : '楼栋号 / 门牌号'} rules={[{ required: true, whitespace: true, message: '请填写楼栋号或门牌号；单栋无楼号请选办公楼类型' }]}>
+              <Input placeholder="如：1（1号楼）" maxLength={30} disabled={!!target} />
             </Form.Item>
-          </Col>
-          <Col span={8}>
-            {/* 办公楼没有「几0几」，房间就叫工程部、财务部 —— 直接填名字，
-                语音报修说「宝秀路858号工程部空调坏了」或直接说「工程部空调坏了」都认得到 */}
+          </Col>}
+          {isOffice && <Col xs={12} sm={8}>
+            <Form.Item name="floorNo" label="楼层（选填）" rules={[{ type: 'integer', min: 1, max: 999, message: '楼层请填写 1 至 999 的整数，如三楼填 3' }]}>
+              <InputNumber min={1} max={999} precision={0} placeholder="如：3（三楼）" style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>}
+          <Col xs={isOffice ? 24 : 12} sm={isOffice ? 16 : 8}>
             <Form.Item
               name="roomNo"
-              label="室"
-              rules={[{ required: true }]}
-              extra="办公楼没有房号就填房间名，如「工程部」"
+              label={isOffice ? '房间 / 部门名称' : propertyType === '商铺' ? '铺位号 / 位置名称' : '房号'}
+              rules={[
+                { required: true, whitespace: true, message: isOffice ? '请填写房间或部门名称，如财务部' : '请填写房号或铺位／位置名称' },
+                { validator: async (_, value) => {
+                  if (composePropertyRoom({ ...form.getFieldsValue(true), roomNo: value }).length > 30) throw new Error('楼层与房间名称合计不能超过 30 个字，请缩短名称');
+                } },
+              ]}
+              dependencies={['floorNo', 'propertyType']}
+              extra={isOffice ? '填「财务部」，楼层单独填 3；不用编造室号' : propertyType === '商铺' ? '没有铺位号可填「沿街商铺」，商铺名称在下方填写' : '如 101，保存时自动按 101室显示'}
             >
-              <Input placeholder="如：502 / 工程部" />
+              <Input placeholder={isOffice ? '如：财务部 / 工程部 / 301' : '如：101'} maxLength={30} />
             </Form.Item>
           </Col>
         </Row>
@@ -814,7 +867,7 @@ function HouseFormModal({
                 size="small"
                 onClick={() => {
                   setFullAddressTouched(false);
-                  const next = buildFullAddress(form.getFieldsValue(['roadName', 'lane', 'buildingNo', 'roomNo', 'propertyType']));
+                  const next = buildFullAddress(addressValues());
                   form.setFieldValue('fullAddress', next || undefined);
                 }}
               >
@@ -823,9 +876,9 @@ function HouseFormModal({
             }
           />
         </Form.Item>
-        <Form.Item name="shopName" label="商铺名称">
+        {propertyType === '商铺' && <Form.Item name="shopName" label="商铺名称">
           <Input placeholder="商铺可填写，住宅留空" />
-        </Form.Item>
+        </Form.Item>}
         {target && (
           <Text type="secondary" style={{ fontSize: 12 }}>
             提示：小区/弄/号 不在此处修改。需要时去「管理小区」或新建房产并删除旧的。
@@ -935,7 +988,7 @@ function CommunityManagerModal({
 
   return (
     <Modal
-      title="小区管理"
+      title="小区 / 公寓 / 办公楼管理"
       open={open}
       onCancel={onClose}
       footer={null}
@@ -997,10 +1050,10 @@ function CommunityManagerModal({
         </Col>
         {canEdit && (
         <Col span={8}>
-          <Card size="small" title={editing ? `编辑「${editing.name}」` : '新建小区'}>
+          <Card size="small" title={editing ? `编辑「${editing.name}」` : '新建小区 / 公寓 / 办公楼'}>
             <Form form={form} layout="vertical">
-              <Form.Item name="name" label="小区名称" rules={[{ required: true }]}>
-                <Input placeholder="如：阳光花园" />
+              <Form.Item name="name" label="小区 / 公寓 / 办公楼名称" rules={[{ required: true, whitespace: true, message: '请填写小区、公寓或办公楼名称；管理处在管理处页面建立' }]}>
+                <Input placeholder="如：馨香公寓吴泾店 / 吴泾物业总公司" />
               </Form.Item>
               <Form.Item
                 name="parentId"
@@ -1128,7 +1181,7 @@ function CommunitySpotsModal({
 
   const buildingOptions = buildings.map((b) => ({
     value: b.id,
-    label: `${b.lane ? b.lane + '弄' : ''}${b.buildingNo}号`,
+    label: formatBuildingFull({ ...b, roadName: null }) || '本栋（无楼号）',
   }));
 
   const startEdit = (row: CommunitySpot) => {

@@ -388,6 +388,53 @@ export interface NamedRoomLike {
   roomNo: string;
   buildingId: number;
   communityId: number;
+  shopName?: string | null;
+}
+
+/** 只归一化楼层单位，不改部门名、不把三楼误当三号楼。保留原文区间供剥离地址。 */
+function normalizedLocation(text: string): { value: string; spans: Array<[number, number]> } {
+  const spans: Array<[number, number]> = [];
+  let value = '';
+  let cursor = 0;
+  const append = (part: string, start: number, end?: number) => {
+    value += part;
+    for (let i = 0; i < part.length; i += 1) spans.push([end == null ? start + i : start, end ?? start + i + 1]);
+  };
+  const floorRe = /(?:第\s*)?([一二三四五六七八九十百两零〇\d]{1,5})\s*(?:楼(?![栋座])|层)\s*(?:的\s*)?/g;
+  for (const match of text.matchAll(floorRe)) {
+    const start = match.index!;
+    append(text.slice(cursor, start), cursor);
+    const raw = match[1].replace(/两/g, '二').replace(/〇/g, '零');
+    let number = 0;
+    if (/^\d+$/.test(raw)) number = Number(raw);
+    else if (!/[十百]/.test(raw)) number = Number([...raw].map((char) => CN_DIGITS.indexOf(char)).join(''));
+    else {
+      let digit = 0;
+      for (const char of raw) {
+        if (char === '十' || char === '百') {
+          number += (digit || 1) * (char === '十' ? 10 : 100);
+          digit = 0;
+        } else digit = CN_DIGITS.indexOf(char);
+      }
+      number += digit;
+    }
+    append(`${number}楼`, start, start + match[0].length);
+    cursor = start + match[0].length;
+  }
+  append(text.slice(cursor), cursor);
+  return { value, spans };
+}
+
+/** 返回用户实际说的「三层的财务部」，不是数据库里的「3楼财务部」。 */
+export function findLocationMention(text: string, name: string): string | null {
+  if (!name || name.length < 2) return null;
+  const source = normalizedLocation(String(text || ''));
+  const needle = normalizedLocation(name).value;
+  const at = source.value.indexOf(needle);
+  if (at < 0) return null;
+  // 防止 3楼匹配到 13楼、地下3楼；有楼层时必须完整命中。
+  if (/^\d+楼/.test(needle) && (/[\d负-]/.test(source.value[at - 1] || '') || source.value.slice(Math.max(0, at - 2), at) === '地下')) return null;
+  return text.slice(source.spans[at][0], source.spans[at + needle.length - 1][1]);
 }
 
 /**
@@ -398,7 +445,7 @@ export interface NamedRoomLike {
  * 房号根本没机会参与匹配 —— 报修人明明把地方说清楚了，系统还要他自己再选一遍位置
  * （2026-09-15 Mike：物业总公司在宝秀路858号，里面是工程部、采购部、财务部）。
  *
- * 口径和 matchSpotsInText 一模一样：只做包含、不做同音、不做分词；名字最长的赢；
+ * 口径和 matchSpotsInText 一样：只归一化楼层，其他只做包含，不做同音；名字最长的赢；
  * 同名房间可能在好几个小区，这里全部返回，由调用方按报修人所在小区收敛，
  * 收敛不掉就当没认出来 —— 认成隔壁小区的「财务部」比不认更糟。
  */
@@ -408,12 +455,14 @@ export function matchNamedRoomsInText<T extends NamedRoomLike>(
 ): T[] {
   const value = String(text || '');
   if (!value.trim()) return [];
-  const hits = rooms.filter(
-    (r) => r.roomNo && r.roomNo.length >= 2 && !/^\d+$/.test(r.roomNo) && value.includes(r.roomNo),
-  );
-  if (!hits.length) return [];
-  const longest = Math.max(...hits.map((r) => r.roomNo.length));
-  return hits.filter((r) => r.roomNo.length === longest);
+  const hasFloor = /\d+楼/.test(normalizedLocation(value).value);
+  const scored = rooms.map((room) => ({ room, length: Math.max(0, ...[room.roomNo, room.shopName,
+    !hasFloor ? room.roomNo.replace(/^\d+楼/, '') : null]
+    .filter((name): name is string => !!name && !/^\d+$/.test(name))
+    .filter((name) => findLocationMention(value, name) !== null)
+    .map((name) => normalizedLocation(name).value.length)) }));
+  const longest = Math.max(0, ...scored.map((item) => item.length));
+  return longest ? scored.filter((item) => item.length === longest).map((item) => item.room) : [];
 }
 
 /**
@@ -429,7 +478,7 @@ export function pickNamedRoomFromTail<T extends { roomNo: string }>(
   const value = String(tail || '').trim();
   if (value.length < 2) return null;
   const hits = rooms.filter(
-    (r) => r.roomNo && r.roomNo.length >= 2 && !/^\d+$/.test(r.roomNo) && value.startsWith(r.roomNo),
+    (r) => r.roomNo && r.roomNo.length >= 2 && !/^\d+$/.test(r.roomNo) && normalizedLocation(value).value.startsWith(normalizedLocation(r.roomNo).value),
   );
   if (!hits.length) return null;
   return hits.reduce((best, item) => (item.roomNo.length > best.roomNo.length ? item : best));
@@ -463,7 +512,7 @@ export function matchSpotsInText<T extends SpotLike>(
 ): T[] {
   const value = String(text || '');
   if (!value.trim()) return [];
-  const hits = spots.filter((s) => s.name && s.name.length >= 2 && value.includes(s.name));
+  const hits = spots.filter((s) => findLocationMention(value, s.name) !== null);
   if (!hits.length) return [];
   const longest = Math.max(...hits.map((s) => s.name.length));
   return hits.filter((s) => s.name.length === longest);

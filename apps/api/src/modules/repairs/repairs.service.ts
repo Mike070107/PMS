@@ -130,6 +130,7 @@ import {
   matchCommunityInText,
   matchSpotsInText,
   matchNamedRoomsInText,
+  findLocationMention,
   pickNamedRoomFromTail,
   extractKeywordCandidates,
   sameNo,
@@ -6127,7 +6128,7 @@ export class RepairsService implements OnModuleInit {
         spotName: null,
         addressText: line,
         matchedText: namedRoom.roomNo,
-        matchedRaw: namedRoom.roomNo,
+        matchedRaw: findLocationMention(dto.text, namedRoom.roomNo) || findLocationMention(dto.text, namedRoom.shopName || '') || findLocationMention(dto.text, namedRoom.roomNo.replace(/^\d+楼/, '')) || namedRoom.roomNo,
         correctedText: null,
       };
     }
@@ -6362,10 +6363,12 @@ export class RepairsService implements OnModuleInit {
     const start = text.indexOf(matchedRaw);
     if (start < 0) return matchedRaw;
     const after = start + matchedRaw.length;
-    const at = text.indexOf(roomNo, after);
+    const mention = findLocationMention(text.slice(after), roomNo);
+    if (!mention) return matchedRaw;
+    const at = text.indexOf(mention, after);
     // 中间只允许隔一两个分隔符
     if (at < 0 || at - after > 2) return matchedRaw;
-    return text.slice(start, at + roomNo.length);
+    return text.slice(start, at + mention.length);
   }
 
   /**
@@ -6382,7 +6385,7 @@ export class RepairsService implements OnModuleInit {
     text: string,
     ranked: Community[],
     tierOf: Map<number, number>,
-  ): Promise<{ id: number; roomNo: string; buildingId: number; communityId: number } | null> {
+  ): Promise<{ id: number; roomNo: string; shopName?: string | null; buildingId: number; communityId: number } | null> {
     if (!ranked.length) return null;
     const rows = await this.houseRepo
       .createQueryBuilder('h')
@@ -6390,13 +6393,13 @@ export class RepairsService implements OnModuleInit {
       .where('h.tenant_id = :tenantId', { tenantId })
       .andWhere('b.community_id IN (:...ids)', { ids: ranked.map((c) => c.id) })
       // 纯数字房号走门牌那条路；这里只要「名字就是房号」的
-      .andWhere("h.room_no ~ '[^0-9]'")
-      .andWhere('LENGTH(h.room_no) >= 2')
+      .andWhere("((h.room_no ~ '[^0-9]' AND LENGTH(h.room_no) >= 2) OR LENGTH(h.shop_name) >= 2)")
       .select('h.id', 'id')
       .addSelect('h.room_no', 'roomNo')
+      .addSelect('h.shop_name', 'shopName')
       .addSelect('h.building_id', 'buildingId')
       .addSelect('b.community_id', 'communityId')
-      .getRawMany<{ id: number; roomNo: string; buildingId: number; communityId: number }>();
+      .getRawMany<{ id: number; roomNo: string; shopName?: string | null; buildingId: number; communityId: number }>();
     if (!rows.length) return null;
     const hits = matchNamedRoomsInText(text, rows).filter((r) => tierOf.has(r.communityId));
     if (!hits.length) return null;
@@ -6406,8 +6409,8 @@ export class RepairsService implements OnModuleInit {
         (rankOf.get(a.communityId) ?? 0) - (rankOf.get(b.communityId) ?? 0) || a.id - b.id,
     );
     if (sorted.length === 1) return sorted[0];
-    // 同一个小区里撞到几个同名房间，是建档重复，不是歧义
-    if (sorted[0].communityId === sorted[1].communityId) return sorted[0];
+    // 同一办公楼的不同楼层也可能有同名部门；仅凭名称不能随便选第一间。
+    if (sorted[0].communityId === sorted[1].communityId) return null;
     const first = tierOf.get(sorted[0].communityId) ?? 2;
     const second = tierOf.get(sorted[1].communityId) ?? 2;
     return first < second ? sorted[0] : null;

@@ -101,7 +101,7 @@ export class HouseIndex {
     // 那是他文件里的值、找得回去；不要写 `#123`，看着像系统内部编号（2026-09-01）
     if (loc.houseId) return `房产编号 ${loc.houseId}`;
     const lane = norm(loc.lane) ? `${norm(loc.lane)}弄` : '';
-    return `${norm(loc.communityName)} ${lane}${norm(loc.buildingNo)}号 ${norm(loc.roomNo)}`.trim();
+    return `${norm(loc.communityName)} ${lane}${norm(loc.buildingNo) ? `${norm(loc.buildingNo)}号` : ''} ${norm(loc.roomNo)}`.trim();
   }
 
   resolve(loc: HouseLocator): IndexedHouse | null {

@@ -30,7 +30,7 @@ import { request } from '../lib/api';
 import { useAuth, usePagePerm } from '../lib/auth';
 import { nameOr } from '../lib/displayName';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
-import { formatRoomText } from '@pms/shared-types';
+import { formatAddressLine } from '@pms/shared-types';
 
 const { Title, Text } = Typography;
 
@@ -112,7 +112,7 @@ function money(cents?: number | null) {
 
 function houseLabel(h: HouseHit) {
   // 「室」只缀纯数字房号（办公楼的房号就是名字），口径见 @pms/shared-types 的 formatRoomText
-  return `${h.communityName} · ${h.lane ? `${h.lane}弄` : ''}${h.buildingNo}号 ${formatRoomText(h.roomNo)}`;
+  return formatAddressLine({ name: h.communityName }, { ...h, roadName: null }, h.roomNo);
 }
 
 export default function BusinessPage() {

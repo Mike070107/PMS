@@ -64,6 +64,64 @@ function makeService(houses = HOUSES) {
   return service;
 }
 
+test('单栋办公楼：3楼／三楼／三层的财务部都匹配真实房产，不误当三号楼', async () => {
+  const houses = [{ id: 9002, buildingId: 563, roomNo: '3楼财务部' }];
+  const service = makeService(houses);
+  service.buildingRepo.findOne = async () => ({ ...BUILDINGS[0], buildingNo: '' });
+  for (const mention of ['3楼财务部', '三楼财务部', '三层的财务部', '第三楼的财务部']) {
+    const r = await service.parseAddressByRule({ text: `吴泾物业总公司${mention}空调坏了` }, { id: 7, role: UserRole.STAFF, tenantId: 1 });
+    assert.equal(r.houseId, 9002, mention);
+    assert.equal(r.addressText, '吴泾物业总公司3楼财务部');
+    assert.equal(r.buildingText, '');
+    assert.equal(r.matchedRaw, mention);
+    assert.equal(`吴泾物业总公司${mention}空调坏了`.replace(r.matchedRaw, ''), '吴泾物业总公司空调坏了');
+  }
+  for (const floor of ['13楼', '十三楼', '一三楼', '地下3楼', '负三楼']) {
+    const wrong = await service.parseAddressByRule({ text: `吴泾物业总公司${floor}财务部空调坏了` }, { id: 7, role: UserRole.STAFF, tenantId: 1 });
+    assert.equal(wrong.matched, false, floor);
+  }
+  const unique = await service.parseAddressByRule({ text: '吴泾物业总公司财务部空调坏了' }, { id: 7, role: UserRole.STAFF, tenantId: 1 });
+  assert.equal(unique.houseId, 9002);
+  assert.equal(unique.matchedRaw, '财务部');
+  const twins = makeService([...houses, { id: 9003, buildingId: 563, roomNo: '4楼财务部' }]);
+  const ambiguous = await twins.parseAddressByRule({ text: '吴泾物业总公司财务部空调坏了' }, { id: 7, role: UserRole.STAFF, tenantId: 1 });
+  assert.equal(ambiguous.matched, false);
+});
+
+test('馨香公寓吴泾店1号楼101室精确命中，不受办公楼无楼号适配影响', async () => {
+  const apartment = { id: 19, parentId: null, tenantId: 1, enabled: true, name: '馨香公寓吴泾店' };
+  const building = { id: 564, communityId: 19, lane: null, buildingNo: '1' };
+  const service = makeService([...HOUSES, { id: 10004, buildingId: 564, roomNo: '101' }]);
+  service.communityRepo.find = async () => [...COMMUNITIES, apartment];
+  service.buildingRepo.find = async () => [...BUILDINGS, building];
+  service.communityAddressInfo = async () => new Map([...COMMUNITIES, apartment].map((c) => [c.id, { name: c.name, laneCount: 0 }]));
+  const r = await service.parseAddressByRule({ text: '馨香公寓吴泾店1号楼101室漏水' }, { id: 7, role: UserRole.STAFF, tenantId: 1 });
+  assert.equal(r.houseId, 10004);
+  assert.equal(r.communityId, 19);
+  assert.equal(r.buildingId, 564);
+  assert.equal(r.roomNo, '101');
+});
+
+test('同一小区不同楼栋有同名部门，没说楼栋不能随意选第一间', async () => {
+  const service = makeService();
+  service.houseRepo.createQueryBuilder = () => chainableQb([
+    { id: 10001, buildingId: 563, communityId: 18, roomNo: '工程部' },
+    { id: 10002, buildingId: 564, communityId: 18, roomNo: '工程部' },
+  ]);
+  const r = await service.parseAddressByRule({ text: '吴泾物业总公司工程部空调坏了' }, { id: 7, role: UserRole.STAFF, tenantId: 1 });
+  assert.equal(r.matched, false);
+});
+
+test('商铺可以按真实店名识别，不必念数字铺位号', async () => {
+  const service = makeService();
+  service.houseRepo.createQueryBuilder = () => chainableQb([
+    { id: 10003, buildingId: 563, communityId: 18, roomNo: '101', shopName: '便民水果店' },
+  ]);
+  const r = await service.parseAddressByRule({ text: '吴泾物业总公司便民水果店漏水' }, { id: 7, role: UserRole.STAFF, tenantId: 1 });
+  assert.equal(r.houseId, 10003);
+  assert.equal(r.matchedRaw, '便民水果店');
+});
+
 const parse = (text: string, houses = HOUSES) =>
   makeService(houses).parseAddressByRule({ text }, { id: 7, role: UserRole.STAFF, tenantId: 1 });
 

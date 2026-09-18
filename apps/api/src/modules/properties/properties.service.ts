@@ -886,11 +886,23 @@ export class PropertiesService {
   ) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
 
+    const roomNo = String(dto.roomNo ?? '').trim();
+    if (!roomNo) throw new BadRequestException('请填写房号或房间／部门名称');
+    if (dto.singleBuilding && dto.propertyType !== '办公楼') {
+      throw new BadRequestException('只有办公楼可以选择单栋无楼号，其他房产请填写楼栋／门牌号');
+    }
+    if (dto.singleBuilding && (dto.buildingId || dto.buildingNo?.trim() || dto.lane?.trim())) {
+      throw new BadRequestException('单栋无楼号的办公楼不需要楼栋号或弄号，请清空后保存');
+    }
+    const buildingNo = dto.singleBuilding ? '' : String(dto.buildingNo ?? '').trim();
     let buildingId = dto.buildingId;
     if (!buildingId) {
-      if (!dto.communityId || !dto.buildingNo) {
+      if (!dto.communityId) {
+        throw new BadRequestException('请选择房产所属的小区／公寓／办公楼');
+      }
+      if (!buildingNo && !dto.singleBuilding) {
         throw new BadRequestException(
-          '需要传 buildingId 或 (communityId + buildingNo)',
+          '请填写楼栋／门牌号；无楼号的单栋办公楼请选择「单栋（无楼号）」',
         );
       }
       const community = await this.communityRepo.findOne({
@@ -901,8 +913,8 @@ export class PropertiesService {
       const building = await this.upsertBuilding(
         tenantId,
         dto.communityId,
-        dto.lane ?? null,
-        dto.buildingNo,
+        dto.singleBuilding ? null : dto.lane?.trim() || null,
+        buildingNo,
         null,
         user.id,
         // 路名跟着楼栋走：没有弄的地址（宝秀路858号）只能靠它显示出在哪条路上
@@ -920,6 +932,9 @@ export class PropertiesService {
       });
       if (!building) throw new NotFoundException('building not found');
       this.assertCommunityInScope(access, building.communityId);
+      if (!building.buildingNo && dto.propertyType !== '办公楼') {
+        throw new BadRequestException('无楼号的楼栋仅用于单栋办公楼，请选择办公楼类型');
+      }
     }
 
     if (dto.unitId) {
@@ -934,18 +949,18 @@ export class PropertiesService {
         tenantId,
         buildingId,
         unitId: dto.unitId ?? IsNull(),
-        roomNo: dto.roomNo,
+        roomNo,
       },
     });
     if (existing) {
-      throw new BadRequestException('同楼栋下已存在该房号');
+      throw new BadRequestException(`本栋已存在「${roomNo}」，请核对${dto.propertyType === '办公楼' ? '楼层和房间／部门名称' : '房号'}，或编辑现有房产`);
     }
 
     const house = this.houseRepo.create({
       tenantId,
       buildingId,
       unitId: dto.unitId ?? null,
-      roomNo: dto.roomNo,
+      roomNo,
       propertyType: dto.propertyType || '住宅',
       roadName: dto.roadName || null,
       fullAddress: dto.fullAddress || null,
@@ -968,19 +983,27 @@ export class PropertiesService {
     if (!house) throw new NotFoundException('house not found');
     await this.assertBuildingInScope(access, tenantId, house.buildingId);
 
-    if (dto.roomNo !== undefined && dto.roomNo !== house.roomNo) {
+    const roomNo = dto.roomNo !== undefined ? dto.roomNo.trim() : undefined;
+    if (roomNo !== undefined && !roomNo) throw new BadRequestException('请填写房号或房间／部门名称');
+    if (dto.propertyType !== undefined && dto.propertyType !== '办公楼') {
+      const building = await this.buildingRepo.findOne({ where: { tenantId, id: house.buildingId } });
+      if (building && !building.buildingNo) {
+        throw new BadRequestException('无楼号的房产属于单栋办公楼，不能直接改为其他类型；请先建立有楼号的房产');
+      }
+    }
+    if (roomNo !== undefined && roomNo !== house.roomNo) {
       const dup = await this.houseRepo.findOne({
         where: {
           tenantId,
           buildingId: house.buildingId,
           unitId: house.unitId ?? IsNull(),
-          roomNo: dto.roomNo,
+          roomNo,
         },
       });
       if (dup && dup.id !== id) {
-        throw new BadRequestException('同楼栋下已存在该房号');
+        throw new BadRequestException(`本栋已存在「${roomNo}」，请核对${house.propertyType === '办公楼' ? '楼层和房间／部门名称' : '房号'}，或编辑现有房产`);
       }
-      house.roomNo = dto.roomNo;
+      house.roomNo = roomNo;
     }
     if (dto.areaSqm !== undefined) house.areaSqm = dto.areaSqm || null;
     if (dto.propertyType !== undefined) house.propertyType = dto.propertyType || '住宅';

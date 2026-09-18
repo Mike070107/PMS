@@ -41,6 +41,7 @@ import {
   FeeStandardStatus,
   formatFeeMoney,
   formatFeePeriod,
+  formatAddressLine,
 } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { handleGone } from '../lib/gone';
@@ -167,7 +168,7 @@ function placeText(r: {
   buildingNo: string;
   roomNo: string;
 }) {
-  return `${r.communityName} · ${r.lane ? `${r.lane}弄` : ''}${r.buildingNo}号 ${r.roomNo}`;
+  return formatAddressLine({ name: r.communityName }, { ...r, roadName: null }, r.roomNo);
 }
 
 export default function FeesPage() {
@@ -893,7 +894,7 @@ function useHouseSearch() {
 }
 
 function houseOptionLabel(h: HouseOption) {
-  const base = `${h.communityName} · ${h.lane ? `${h.lane}弄` : ''}${h.buildingNo}号 ${h.roomNo}`;
+  const base = placeText(h);
   return h.owner?.name ? `${base} · ${h.owner.name}` : base;
 }
 

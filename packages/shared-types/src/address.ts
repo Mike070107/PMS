@@ -59,6 +59,7 @@ export function formatBuildingLabel(
   community: Pick<AddressCommunity, 'mainLane'>,
   building: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName'>,
 ): string {
+  if (!building.buildingNo) return '本栋（无楼号）';
   if (building.lane && building.lane !== community.mainLane) {
     return `${building.lane}弄${building.buildingNo}号`;
   }
@@ -72,6 +73,7 @@ export function formatBuildingLabel(
 export function formatBuildingFull(
   building: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName'>,
 ): string {
+  if (!building.buildingNo) return building.roadName || '';
   if (building.lane) return `${building.lane}弄${building.buildingNo}号`;
   if (building.roadName) return `${building.roadName}${building.buildingNo}号`;
   return `${building.buildingNo}号`;
@@ -226,6 +228,8 @@ const PREFIX_ALIGNED_BONUS = 1000;
  * 各种房号里含 228 的结果前面。
  */
 export function scoreAddressPath(tokens: string[], levels: MatchKeys[]): number {
+  // 单栋无楼号是内部关联层，搜索允许直接「办公楼 / 楼层部门」。
+  levels = levels.filter((keys) => [...keys.exact, ...keys.prefix, ...keys.loose].some(Boolean));
   let best = 0;
   for (let skip = 0; skip < levels.length; skip += 1) {
     const score = alignScore(tokens, levels.slice(skip));
@@ -251,6 +255,7 @@ export function communityMatchKeys(community: AddressCommunity): MatchKeys {
 }
 
 export function buildingMatchKeys(building: AddressBuilding): MatchKeys {
+  if (!building.buildingNo) return { exact: [], prefix: [], loose: [] };
   const exact = [building.buildingNo];
   const prefix = [building.buildingNo];
   const loose = [building.buildingNo];
@@ -269,6 +274,13 @@ export function houseMatchKeys(house: AddressHouse): MatchKeys {
   const exact = [house.roomNo];
   const prefix = [house.roomNo];
   const loose = [house.roomNo];
+  const floorRoom = /^(\d+)楼(.+)$/.exec(house.roomNo);
+  if (floorRoom) {
+    const room = floorRoom[2].replace(/^(\d+)室$/, '$1');
+    exact.push(floorRoom[1], room);
+    prefix.push(floorRoom[1], room);
+    loose.push(room);
+  }
   if (house.ownerName) {
     exact.push(house.ownerName);
     prefix.push(house.ownerName);
