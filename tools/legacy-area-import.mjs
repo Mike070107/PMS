@@ -18,7 +18,7 @@
  *     用 3217 条车位登记的地址反推出门牌归属（见 YONGDE_RULES，多数票极其干净）。
  *
  * 用法：
- *   node tools/legacy-area-import.mjs --area yongde|wujing|jinchuan|xinjia --tenant 1 --token <JWT> --mysql-password <pwd> [--dry-run]
+ *   node tools/legacy-area-import.mjs --area yongde|wujing|wujing-yicun|jinchuan|xinjia --tenant 1 --token <JWT> --mysql-password <pwd> [--dry-run]
  *
  * 幂等：房产按 (小区,弄,号,室) 查重，业主按 legacyRef `wjwy:zh:<ZH_ID>` upsert，可重跑。
  */
@@ -118,6 +118,15 @@ const AREAS = {
     // 「吴泾段」同理，最后收款停在 2007-01-01
     archiveOffices: ['06'],
     rules: [{ lane: '5530', community: '吴泾新村', road: '龙吴路' }],
+  },
+  'wujing-yicun': {
+    label: '吴泾一村',
+    // 老库把“吴泾一村”放在「路」字段，弄为空；只取精确名称，
+    // 不把管理处 48 的“吴泾一村宿舍内”混进来。
+    sources: [{ roadLike: '吴泾一村', lane: null, office: '06' }],
+    // 该片区只有 06 这份存量档案，没有另一份分公司副本可替换。
+    archiveOffices: ['06'],
+    rules: [{ lane: null, community: '吴泾一村', road: '吴泾一村' }],
   },
   jinchuan: {
     label: '锦川公寓（剑川路139弄）',
