@@ -19,6 +19,7 @@ const COMMUNITIES = [
   { id: 1, parentId: null, tenantId: 1, enabled: true, name: '枫桦景苑一期' },
   { id: 2, parentId: null, tenantId: 1, enabled: true, name: '枫桦景苑二期' },
   { id: 9, parentId: null, tenantId: 1, enabled: true, name: '永南5511弄' },
+  { id: 13, parentId: null, tenantId: 1, enabled: true, name: '吴泾新村' },
 ];
 
 /** 和线上一致的分布：一期在 198 弄、二期在 228 弄、永南在 5511 弄（那里正好有 228 号楼） */
@@ -31,6 +32,7 @@ const BUILDINGS = [
   { id: 103, communityId: 2, lane: '228', buildingNo: '25' },
   { id: 250, communityId: 9, lane: '5511', buildingNo: '228' },
   { id: 251, communityId: 9, lane: '5511', buildingNo: '236' },
+  { id: 401, communityId: 13, lane: '5530', buildingNo: '12' },
 ];
 
 const HOUSES = [{ id: 237, buildingId: 21, roomNo: '501' }];
@@ -87,6 +89,31 @@ test('好好说了「弄」的照旧认得出（不回归）', async () => {
   const r = await parse('198弄4号门口监控黑屏');
   assert.equal(r.buildingId, 3);
   assert.equal(r.matchedText, '198弄4号');
+});
+
+test('只说「5530弄」：库里唯一时识别到吴泾新村小区级', async () => {
+  const r = await parse('5530弄楼道灯坏了');
+  assert.equal(r.matched, true);
+  assert.equal(r.level, 'community');
+  assert.equal(r.communityId, 13);
+  assert.equal(r.addressText, '吴泾新村 公共区域');
+  assert.equal(r.matchedText, '5530弄');
+});
+
+test('只说弄号在多小区重复时不猜；有当前小区上下文才收敛', async () => {
+  const duplicated = [
+    ...BUILDINGS,
+    { id: 402, communityId: 2, lane: '5530', buildingNo: '8' },
+  ];
+  assert.equal((await parse('5530弄楼道灯坏了', duplicated)).matched, false);
+
+  const service = makeService(duplicated);
+  const withContext = await service.parseAddressByRule(
+    { text: '5530弄楼道灯坏了', communityId: 13 },
+    { id: 7, role: UserRole.STAFF, tenantId: 1 },
+  );
+  assert.equal(withContext.matched, true);
+  assert.equal(withContext.communityId, 13);
 });
 
 test('粘住的数字带室号时，室号照样落到拆出来的楼里', async () => {

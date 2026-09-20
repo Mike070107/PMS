@@ -33,6 +33,14 @@ test('路名后面直接跟号也认得出来', () => {
   assert.equal(c?.roomNo, '101');
 });
 
+test('只说弄号也保留为地址候选，交给真实房产库收敛小区', () => {
+  const c = extractAddressCandidate('5530弄楼道灯坏了');
+  assert.equal(c?.lane, '5530');
+  assert.equal(c?.buildingNo, null);
+  assert.equal(c?.matchedText, '5530弄');
+  assert.equal(c?.matchedRaw, '5530弄');
+});
+
 test('小区名候选：数字前面那段中文切出来当候选', () => {
   assert.equal(extractAddressCandidate('枫桦一期17号201家里灯不亮')?.namePrefix, '枫桦');
   assert.equal(extractAddressCandidate('吴泾新村3号102漏水')?.namePrefix, '吴泾新村');

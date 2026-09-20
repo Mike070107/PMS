@@ -128,6 +128,7 @@ import {
   extractAddressCandidate,
   matchCommunityByName,
   matchCommunityInText,
+  matchCommunityPrefixInText,
   matchSpotsInText,
   matchNamedRoomsInText,
   findLocationMention,
@@ -6030,6 +6031,11 @@ export class RepairsService implements OnModuleInit {
      * 所以报修人念出口的小区名必须参与收敛，而且优先级在点位名之上。
      */
     const textLeaves = matchCommunityInText(dto.text, leaves);
+    // 公区报修常只念小区简称：「永南门卫室」。完整小区名命中时不走这条；
+    // 否则先用最长名称前缀收窄，再由已建的点位名继续收窄。
+    const abbreviatedLeaves = textLeaves.length
+      ? []
+      : matchCommunityPrefixInText(dto.text, leaves);
     let pool: Community[];
     if (nameLeaves.length && phaseLeaves.length) {
       const phaseIds = new Set(phaseLeaves.map((c) => c.id));
@@ -6042,7 +6048,42 @@ export class RepairsService implements OnModuleInit {
     } else if (phaseLeaves.length) {
       pool = phaseLeaves;
     } else {
-      pool = textLeaves.length ? textLeaves : leaves;
+      pool = textLeaves.length
+        ? textLeaves
+        : abbreviatedLeaves.length
+          ? abbreviatedLeaves
+          : leaves;
+    }
+    /**
+     * 只说弄号也能定位：「5530弄楼道灯坏了」。
+     *
+     * extractAddressCandidate 已经把弄号抽出来，这里必须拿库里真实楼栋收窄小区；
+     * 不能像以前一样因为没说「几号」就整段丢掉。同一弄在多个小区都存在时，
+     * 后面仍按报修人当前小区收敛；收不到唯一结果就不认，不猜。
+     */
+    if (candidate?.lane) {
+      // 小区名本身就是「永南5511弄」时，已经是经过名称撞库的唯一结果，
+      // 不要再强迫它必须建过楼栋才能识别小区公区点位。
+      const explicitlyNamedIds = new Set(
+        [...nameLeaves, ...textLeaves]
+          .filter((c) => c.name.includes(`${candidate.lane}弄`))
+          .map((c) => c.id),
+      );
+      if (explicitlyNamedIds.size === 1) {
+        pool = pool.filter((c) => explicitlyNamedIds.has(c.id));
+      } else {
+        const laneBuildings = await this.buildingRepo.find({
+          where: { tenantId, communityId: In(pool.map((c) => c.id)) },
+        });
+        const laneCommunityIds = new Set(
+          laneBuildings
+            .filter((b) => sameNo(b.lane, candidate.lane))
+            .map((b) => b.communityId),
+        );
+        pool = pool.filter((c) => laneCommunityIds.has(c.id));
+      }
+      // 说出的弄号在房产库里不存在：宁可让人选，不能退回全公司乱挑一个小区。
+      if (!pool.length) return { matched: false as const };
     }
     /** 离报修人多远：0 = 就是他所在的小区，1 = 同一分组的兄弟分期，2 = 其它 */
     const tier = (c: Community) =>
@@ -6057,7 +6098,15 @@ export class RepairsService implements OnModuleInit {
     // ---- 公区点位优先 ----
     // 监控室、门卫室、水泵房这些地方没有房号，靠数字永远认不出来；点位名是人自己
     // 在后台登记的，比「2号」这种数字可靠，所以先按名字认，认到就不再走门牌号那条路。
-    const spot = await this.pickCommunitySpot(tenantId, dto.text, ranked, tierOf);
+    const spot = await this.pickCommunitySpot(
+      tenantId,
+      dto.text,
+      ranked,
+      tierOf,
+      // 用户已经念出小区简称和点位名时，业务口径是多个同名点位按
+      // 小区列表顺序（id 升序）预填第一个，识别结果仍可由用户手工改。
+      abbreviatedLeaves.length > 0 && textLeaves.length === 0,
+    );
     if (spot) {
       const community = ranked.find((c) => c.id === spot.communityId)!;
       const building = spot.buildingId
@@ -6169,8 +6218,13 @@ export class RepairsService implements OnModuleInit {
     // 只说了分期没说楼栋：定位到小区级就够了（「二期大门坏了」）
     if (!candidate.buildingNo) {
       // 只说位置不说楼栋（「二期大门坏了」「吴泾新村门口路灯不亮」）：
-      // 分期或小区名认出唯一一个才算数，认出一堆等于没认出来
-      if (!phaseLeaves.length && nameLeaves.length !== 1) {
+      // 分期、小区名或弄号认出唯一一个才算数，认出一堆等于没认出来。
+      // 有当前小区上下文时，最近一档只有一个也算唯一。
+      const laneUniquelyRanks =
+        !!candidate.lane &&
+        ranked.length > 0 &&
+        (ranked.length === 1 || tier(ranked[1]) > tier(ranked[0]));
+      if (!phaseLeaves.length && nameLeaves.length !== 1 && !laneUniquelyRanks) {
         return { matched: false as const };
       }
       const community = ranked[0];
@@ -6429,6 +6483,7 @@ export class RepairsService implements OnModuleInit {
     text: string,
     ranked: Community[],
     tierOf: Map<number, number>,
+    allowFirstAmbiguous = false,
   ): Promise<CommunitySpot | null> {
     if (!ranked.length) return null;
     const spots = await this.spotRepo.find({
@@ -6451,6 +6506,9 @@ export class RepairsService implements OnModuleInit {
     if (sorted.length === 1) return sorted[0];
     // 同一个小区里撞到几个同名点位，是建档重复，不是歧义
     if (sorted[0].communityId === sorted[1].communityId) return sorted[0];
+    // 已听到「小区简称 + 点位」时按稳定列表顺序预填；这个开关不用于
+    // 单独的「门卫室」，所以没念小区时的跨小区歧义仍然会放弃。
+    if (allowFirstAmbiguous) return sorted[0];
     /**
      * 前两名不在同一档才算收敛得掉。原来比的是 ranked 里的下标 —— 下标每个小区都不同，
      * first < second 永远成立，于是「并列就放弃」这条从来没生效过：谁 id 小谁赢。

@@ -20,13 +20,17 @@ import { RepairsService } from './repairs.service';
 
 const COMMUNITIES = [
   { id: 2, parentId: null, tenantId: 1, enabled: true, name: '枫桦景苑二期' },
+  { id: 6, parentId: null, tenantId: 1, enabled: true, name: '永南140弄' },
+  { id: 8, parentId: null, tenantId: 1, enabled: true, name: '永南150弄' },
   { id: 9, parentId: null, tenantId: 1, enabled: true, name: '永南5511弄' },
   { id: 16, parentId: null, tenantId: 1, enabled: true, name: '上海新家' },
 ];
 
-/** 线上就是这个分布：只有 2 和 9 建了点位，上海新家一个都没有 */
+/** 两个「永南」都建了门卫室，用来锁住简称重名时的预填顺序 */
 const SPOTS = [
   { id: 31, name: '监控室', communityId: 2, buildingId: null },
+  { id: 35, name: '监控室', communityId: 8, buildingId: null },
+  { id: 36, name: '门卫室', communityId: 8, buildingId: null },
   { id: 41, name: '监控室', communityId: 9, buildingId: null },
   { id: 42, name: '门卫室', communityId: 9, buildingId: null },
 ];
@@ -83,10 +87,23 @@ test('本来就建了点位的小区，走原来的点位那条路', async () =>
   assert.equal(r.addressText, '永南5511弄 门卫室');
 });
 
-test('没说小区名时的既有行为不变：全公司只有一个门卫室就认它', async () => {
-  const r = await parse('门卫室的灯不亮');
+test('小区简称 + 公区点位重名时，按小区列表顺序预填第一个', async () => {
+  const r = await parse('闵经理报永南门卫室3个监控黑屏');
   assert.equal(r.matched, true);
-  assert.equal(r.communityId, 9);
+  assert.equal(r.communityId, 8);
+  assert.equal(r.spotName, '门卫室');
+  assert.equal(r.addressText, '永南150弄 门卫室');
+});
+
+test('语音把「个」转成「各」也不影响简称和点位匹配', async () => {
+  const r = await parse('闵经理报永南门卫室3各监控黑屏');
+  assert.equal(r.communityId, 8);
+  assert.equal(r.addressText, '永南150弄 门卫室');
+});
+
+test('没说小区名、同名门卫室有两个：仍然不猜', async () => {
+  const r = await parse('门卫室的灯不亮');
+  assert.equal(r.matched, false);
 });
 
 test('没说小区名、同名点位又有两个：宁可不认', async () => {

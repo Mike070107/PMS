@@ -98,7 +98,7 @@ const PLACE_CHAR_BEFORE_NO = /[室房间厅库]/;
 const ROOM_EXPLICIT_RE = /(\d{1,5})\s*[室房](?![屋子])/;
 
 /**
- * 抽出地址候选。至少要有「N期」或「Y号」之一才算候选；
+ * 抽出地址候选。至少要有「N期」「X弄」或「Y号」之一才算候选；
  * 只有一个孤零零的数字（「3个灯泡」）不算。
  */
 export function extractAddressCandidate(text: string): RepairAddressCandidate | null {
@@ -163,7 +163,9 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
     if (explicit) roomNo = explicit[1];
   }
 
-  if (!phase && !buildingNo) return null;
+  // 只说弄号也是上海老式地址的完整定位线索。是否唯一对应某个小区
+  // 交给服务层拿真实楼栋数据撞库；这里提前丢掉会让「5530弄」永远识别不到。
+  if (!phase && !lane && !buildingNo) return null;
   // 室号必须挂在楼栋号下面才有意义；只说「302室」没法定位到哪栋楼
   if (!buildingNo) roomNo = null;
 
@@ -380,6 +382,41 @@ export function matchCommunityInText<T extends { id: number; name: string }>(
   if (!hits.length) return [];
   const longest = Math.max(...hits.map((c) => c.name.length));
   return hits.filter((c) => c.name.length === longest);
+}
+
+/**
+ * 整句话只念了小区名的开头简称时，找出同样匹配的小区。
+ *
+ * 例如「永南门卫室」并没有完整念出「永南150弄」，但「永南」会同时收窄到
+ * 永南140弄、永南150弄、永南5511弄。后面再由真实建档的公区点位二次收窄。
+ *
+ * 只取每个小区从第一个字开始、至少两个字的最长命中前缀，并且只保留全局
+ * 最长的那一档，避免「上海新家」已经命中时又被更短的「上海」抢走。
+ * 这一层不做同音和中间字匹配；多个小区打平时必须由点位或上下文继续收窄。
+ */
+export function matchCommunityPrefixInText<T extends { id: number; name: string }>(
+  text: string | null | undefined,
+  communities: T[],
+): T[] {
+  const value = String(text || '').replace(/\s+/g, '');
+  if (value.length < 2) return [];
+
+  const scored = communities
+    .map((community) => {
+      const name = String(community.name || '').replace(/\s+/g, '');
+      let length = 0;
+      for (let size = name.length; size >= 2; size -= 1) {
+        if (value.includes(name.slice(0, size))) {
+          length = size;
+          break;
+        }
+      }
+      return { community, length };
+    })
+    .filter((item) => item.length >= 2);
+  if (!scored.length) return [];
+  const longest = Math.max(...scored.map((item) => item.length));
+  return scored.filter((item) => item.length === longest).map((item) => item.community);
 }
 
 /** 非数字房号的房产（办公楼的「工程部」），整句匹配时只需要这几个字段 */

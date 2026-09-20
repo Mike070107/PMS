@@ -971,7 +971,7 @@ function CommunityManagerModal({
   const onDelete = (c: Community) => {
     modal.confirm({
       title: `确认删除小区「${c.name}」?`,
-      content: '小区下若有楼栋/房产将无法删除。',
+      content: '无房产的空楼栋和废二维码会一起清理；仍有房产或历史工单时不能删除。',
       okType: 'danger',
       onOk: async () => {
         try {
@@ -1038,9 +1038,7 @@ function CommunityManagerModal({
                       <Button type="link" size="small" onClick={() => startEdit(r)}>改</Button>
                     )}
                     {canDelete && (
-                      <Popconfirm title="确认删除？" onConfirm={() => onDelete(r)} okType="danger">
-                        <Button type="link" size="small" danger>删</Button>
-                      </Popconfirm>
+                      <Button type="link" size="small" danger onClick={() => onDelete(r)}>删</Button>
                     )}
                   </Space>
                 ),

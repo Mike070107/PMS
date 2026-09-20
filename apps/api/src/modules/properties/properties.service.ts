@@ -29,6 +29,7 @@ import {
   CommunitySpot,
   House,
   ManagementOffice,
+  QrCode,
   RepairRequest,
   Unit,
   User,
@@ -219,16 +220,71 @@ export class PropertiesService {
         `该小区下还有 ${childCount} 个分期，请先移出或删除分期`,
       );
     }
-    const buildingCount = await this.buildingRepo.count({
+    const buildings = await this.buildingRepo.find({
       where: { tenantId, communityId: id },
+      select: ['id'],
     });
-    if (buildingCount > 0) {
+    const buildingIds = buildings.map((item) => item.id);
+    const houseCount = buildingIds.length
+      ? await this.houseRepo.count({
+          where: { tenantId, buildingId: In(buildingIds) },
+        })
+      : 0;
+    if (houseCount > 0) {
       throw new BadRequestException(
-        `该小区下还有 ${buildingCount} 栋楼，请先删除房产`,
+        `该小区下还有 ${houseCount} 户房产，请先删除房产`,
       );
     }
-    await this.communityRepo.remove(community);
-    return { ok: true };
+
+    // 历史工单要保留它的地址档案。先报出可搜索的工单号，别再用「还有楼栋」
+    // 把真正的阻塞原因藏起来。系统管理员若确认这是测试单，可在工单详情执行「永久删除」后重试。
+    const [workOrderCount, sampleOrders] = await Promise.all([
+      this.workOrderRepo.count({
+        where: { tenantId, communityId: id },
+        withDeleted: true,
+      }),
+      this.workOrderRepo.find({
+        where: { tenantId, communityId: id },
+        select: ['id', 'orderNo'],
+        order: { id: 'ASC' },
+        take: 3,
+        withDeleted: true,
+      }),
+    ]);
+    if (workOrderCount > 0) {
+      const examples = sampleOrders.map((item) => item.orderNo).filter(Boolean).join('、');
+      throw new BadRequestException(
+        `该小区有 ${workOrderCount} 条历史工单${examples ? `（${examples}）` : ''}，不能删除地址档案；如确认是测试单，请先在工单详情由系统管理员执行「永久删除」`,
+      );
+    }
+
+    const orphanRequestCount = await this.communityRepo.manager.count(RepairRequest, {
+      where: { tenantId, communityId: id },
+      withDeleted: true,
+    });
+    if (orphanRequestCount > 0) {
+      throw new BadRequestException(
+        `该小区还有 ${orphanRequestCount} 条报修记录，不能删除地址档案`,
+      );
+    }
+
+    /**
+     * 房产创建时会自动建楼栋和楼栋二维码，但删掉最后一户时原先不会收掉它们。
+     * 结果是页面上已经没房产，删小区却还报「请先删房产」。确认无房产、无历史
+     * 业务后，这些都是小区的从属档案，在同一事务里一起清理。
+     */
+    await this.communityRepo.manager.transaction(async (manager) => {
+      if (buildingIds.length) {
+        await manager.delete(Unit, { tenantId, buildingId: In(buildingIds) });
+      }
+      await manager.delete(CommunitySpot, { tenantId, communityId: id });
+      await manager.delete(QrCode, { tenantId, communityId: id });
+      if (buildingIds.length) {
+        await manager.delete(Building, { tenantId, id: In(buildingIds) });
+      }
+      await manager.delete(Community, { tenantId, id });
+    });
+    return { ok: true, removedEmptyBuildings: buildingIds.length };
   }
 
   /**
