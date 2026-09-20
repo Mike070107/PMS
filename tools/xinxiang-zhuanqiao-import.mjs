@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 用户提供的「馨香臣寓颏桥店」房间清单→生产房产。
+ * 用户提供的 Xinxiang Chenyu Zhuanqiao 房间清单→生产房产。
  *
  * 数字房间：1-101 = 1 号楼 101 室，类型为公寓。
  * 中文房间：没有楼层的独立商铺，收在「单层商铺」这个楼栋分组下，
@@ -14,8 +14,8 @@
  * 避免楼栋 upsert 的「先查后建」在并发时造成重复楼栋。
  */
 
-const COMMUNITY_NAME = '馨香臣寓颏桥店';
-const EXPECTED_OFFICE_NAME = '馨香臣寓颏桥店管理处';
+const COMMUNITY_NAME = '\u99a8\u9999\u81e3\u5bd3\u989b\u6865\u5e97';
+const EXPECTED_OFFICE_NAME = '\u99a8\u9999\u81e3\u5bd3\u989b\u6865\u5e97\u7ba1\u7406\u5904';
 const SHOP_BUILDING = '单层商铺';
 const SHOP_NAMES = ['物业办公室', '建信办公室', '超市', '棋牌室'];
 
