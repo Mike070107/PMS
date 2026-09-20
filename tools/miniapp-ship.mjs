@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const CLI_PORT_PRELOAD = join(repoRoot, 'tools/wechat-cli-port-workaround.cjs');
 
 /** 开发者工具 CLI；换了安装路径就在这里加一条 */
 const CLI_CANDIDATES = [
@@ -85,11 +86,19 @@ function quoteWin(value) {
  */
 function runCli(args) {
   const command = [cli, ...args].map(quoteWin).join(' ');
+  const preloadOption = `--require="${CLI_PORT_PRELOAD.replace(/\\/g, '/')}"`;
+  const cliEnv =
+    process.platform === 'win32'
+      ? {
+          ...process.env,
+          NODE_OPTIONS: [process.env.NODE_OPTIONS, preloadOption].filter(Boolean).join(' '),
+        }
+      : process.env;
   let output = '';
   try {
     output =
       process.platform === 'win32'
-        ? execSync(command, { encoding: 'utf8', shell: 'cmd.exe' })
+        ? execSync(command, { encoding: 'utf8', shell: 'cmd.exe', env: cliEnv })
         : execFileSync(cli, args, { encoding: 'utf8' });
   } catch (err) {
     output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
@@ -97,7 +106,7 @@ function runCli(args) {
     fail(`开发者工具 CLI 执行失败：${args[0]}`);
   }
   process.stdout.write(output);
-  if (/\[error\]|✖/.test(output)) {
+  if (/\[error\]|[✖×]|initialize error|listen EACCES/i.test(output)) {
     fail(explainCliError(output, args[0]));
   }
   return output;
