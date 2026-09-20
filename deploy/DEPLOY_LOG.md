@@ -2897,3 +2897,12 @@
 - 自上次（fdd82d4）以来上线的相关提交：
   - e6aeb9f feat(工单): 维修中也能更正报修地址，新旧地址进轨迹并通知维修工
 
+## 2026-09-20 11:08 · api · b1045b6
+
+- 包：`pms-api-20260920-1049.tar.gz`
+- 提交：b1045b6 fix(properties): resolve abbreviated public-area addresses
+- 说明：生产 API：房产层级适配及语音公区地址识别修复，健康检查与真实地址解析已通过
+- 自上次（e6aeb9f）以来上线的相关提交：
+  - b1045b6 fix(properties): resolve abbreviated public-area addresses
+  - 0f71bcc feat(properties): let single-building offices use real floor and department addresses
+
