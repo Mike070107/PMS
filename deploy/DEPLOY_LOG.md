@@ -2906,3 +2906,12 @@
   - b1045b6 fix(properties): resolve abbreviated public-area addresses
   - 0f71bcc feat(properties): let single-building offices use real floor and department addresses
 
+## 2026-09-20 11:09 · web · b1045b6
+
+- 包：`pms-web-20260920-1049.tar.gz`
+- 提交：b1045b6 fix(properties): resolve abbreviated public-area addresses
+- 说明：生产管理后台：房产管理支持办公楼、公寓及单栋办公楼地址；静态制品哈希与构建产物一致
+- 自上次（e6aeb9f）以来上线的相关提交：
+  - b1045b6 fix(properties): resolve abbreviated public-area addresses
+  - 0f71bcc feat(properties): let single-building offices use real floor and department addresses
+
