@@ -2915,3 +2915,12 @@
   - b1045b6 fix(properties): resolve abbreviated public-area addresses
   - 0f71bcc feat(properties): let single-building offices use real floor and department addresses
 
+## 2026-09-20 11:09 · miniapp-staff · b1045b6
+
+- 提交：b1045b6 fix(properties): resolve abbreviated public-area addresses
+- 说明：已上传开发版本 1.0.20260920a（b1045b6）；当前浏览器安全策略禁止访问公众平台，待手工选为体验版并核对我的页版本号
+- 自上次（b95b220）以来上线的相关提交：
+  - 0f71bcc feat(properties): let single-building offices use real floor and department addresses
+  - e6aeb9f feat(工单): 维修中也能更正报修地址，新旧地址进轨迹并通知维修工
+  - 98f84e8 feat(报修识别): 办公楼的「工程部」「财务部」也能认出来；「室」只缀数字房号
+
