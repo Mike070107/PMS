@@ -2958,3 +2958,12 @@
   - b40dffa feat(finance): add voice input for entry reasons
   - a762c64 feat: add isolated finance ledger and invoice inbox
 
+## 2026-09-24 18:23 · api · 3c3b279
+
+- 包：`pms-api-20260924-1819.tar.gz`
+- 提交：3c3b279 fix(finance): only import PDF attachments from QQ mail
+- 说明：Clean worktree build; production PDF-only mail filter verified
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts
+- 自上次（b40dffa）以来上线的相关提交：
+  - 3c3b279 fix(finance): only import PDF attachments from QQ mail
+
