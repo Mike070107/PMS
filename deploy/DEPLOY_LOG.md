@@ -2941,3 +2941,11 @@
 - 自上次（b1045b6）以来上线的相关提交：
   - a762c64 feat: add isolated finance ledger and invoice inbox
 
+## 2026-09-24 17:59 · web · 06979f3
+
+- 包：`pms-web-20260924-1751.tar.gz`
+- 提交：06979f3 deploy: api → b40dffa
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo，M packages/api-client/src/endpoints/ai.ts
+- 自上次（b1045b6）以来上线的相关提交：
+  - a762c64 feat: add isolated finance ledger and invoice inbox
+
