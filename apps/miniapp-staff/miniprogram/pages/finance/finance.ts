@@ -1,4 +1,9 @@
 import { finance, type FinanceEntry, type FinanceProject } from '@pms/api-client';
+import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
+
+let speechManager: any = null;
+try { speechManager = requirePlugin('WechatSI').getRecordRecognitionManager(); } catch { speechManager = null; }
+let hold: HoldToTalk | null = null;
 
 const today = () => {
   const d = new Date();
@@ -8,13 +13,14 @@ const today = () => {
 Page({
   data: {
     loading: true, saving: false, showForm: false,
+    hasSpeech: false, recording: false, pressing: false,
     entries: [] as Array<FinanceEntry & { amountText:string; flowText:string; flowClass:string; reimbursementText:string }>,
     projects: [] as FinanceProject[],
     projectOptions: ['暂不选择项目'] as string[],
     selectedProjectName: '暂不选择项目',
     form: { businessDate: today(), flowType:'expense', owner:'pruis', reason:'', amount:'', paymentMethod:'wechat', projectId:null as number|null, reimbursementRequired:true },
   },
-  onLoad(){ this.load(); },
+  onLoad(){ this.bindSpeech(); this.load(); },
   onPullDownRefresh(){ this.load().finally(()=>wx.stopPullDownRefresh()); },
   async load(){
     this.setData({loading:true});
@@ -29,6 +35,16 @@ Page({
     finally{this.setData({loading:false});}
   },
   openForm(){this.setData({showForm:true});}, closeForm(){if(!this.data.saving)this.setData({showForm:false});},
+  bindSpeech(){
+    if(!speechManager)return;
+    hold=createHoldToTalk(speechManager,{onPressing:(pressing)=>this.setData({pressing})});
+    this.setData({hasSpeech:true});
+    speechManager.onStart=()=>{this.setData({recording:true});hold?.started();};
+    speechManager.onRecognize=()=>undefined;
+    speechManager.onStop=(res:{result?:string})=>{hold?.ended();const text=String(res.result||'').trim();const before=this.data.form.reason.trim();this.setData({recording:false,'form.reason':text?(before?`${before}；${text}`:text):before});};
+    speechManager.onError=(err:any)=>{hold?.ended();this.setData({recording:false});speechErrorTip(err).then((title)=>wx.showToast({icon:'none',title}));};
+  },
+  onStartRecord(){hold?.press();}, onStopRecord(){hold?.release();}, onHoldMove(){},
   setFlow(e:any){this.setData({'form.flowType':e.currentTarget.dataset.value});},
   setOwner(e:any){this.setData({'form.owner':e.currentTarget.dataset.value});},
   setPayment(e:any){this.setData({'form.paymentMethod':e.currentTarget.dataset.value});},
