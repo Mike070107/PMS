@@ -2967,3 +2967,12 @@
 - 自上次（b40dffa）以来上线的相关提交：
   - 3c3b279 fix(finance): only import PDF attachments from QQ mail
 
+## 2026-09-24 18:24 · web · 3c3b279
+
+- 包：`pms-web-20260924-1819.tar.gz`
+- 提交：3c3b279 fix(finance): only import PDF attachments from QQ mail
+- 说明：Clean worktree build; production finance copy verified
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo，M packages/api-client/src/endpoints/ai.ts
+- 自上次（06979f3）以来上线的相关提交：
+  - 3c3b279 fix(finance): only import PDF attachments from QQ mail
+
