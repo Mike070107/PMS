@@ -26,6 +26,7 @@ const ExperienceNotesPage = lazy(() => import('./pages/ExperienceNotesPage'));
 const RolesPage = lazy(() => import('./pages/RolesPage'));
 const OfficesPage = lazy(() => import('./pages/OfficesPage'));
 const PlatformTenantsPage = lazy(() => import('./pages/PlatformTenantsPage'));
+const FinancePage = lazy(() => import('./pages/FinancePage'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -133,6 +134,7 @@ export default function App() {
         <Route path="reports" element={<RequireTenantScope><RequirePage pageKey="reports"><ReportsPage /></RequirePage></RequireTenantScope>} />
         <Route path="business" element={<RequireTenantScope><RequirePage pageKey="business"><BusinessPage /></RequirePage></RequireTenantScope>} />
         <Route path="fees" element={<RequireTenantScope><RequirePage pageKey="fees"><FeesPage /></RequirePage></RequireTenantScope>} />
+        <Route path="finance" element={<RequireTenantScope><FinancePage /></RequireTenantScope>} />
         <Route path="properties" element={<RequireTenantScope><RequirePage pageKey="properties"><PropertiesPage /></RequirePage></RequireTenantScope>} />
         <Route path="owners" element={<RequireTenantScope><RequirePage pageKey="owners"><OwnerAuditPage /></RequirePage></RequireTenantScope>} />
         <Route path="work-orders" element={<RequireTenantScope><RequirePage pageKey="work-orders"><WorkOrdersPage /></RequirePage></RequireTenantScope>} />

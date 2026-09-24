@@ -8,6 +8,12 @@
     <view class="card more-panel">
       <view class="more-panel__title">维修知识</view>
       <view class="app-grid">
+        <view wx:if="{{financeAccess.allowed}}" class="app-tile app-tile--finance" bindtap="onOpenFinance">
+          <view class="app-tile__icon app-tile__icon--finance"><image class="app-tile__svg" src="/assets/finance-ledger.svg" mode="aspectFit" /></view>
+          <view class="app-tile__name">财务记账</view>
+          <view class="app-tile__desc">登记收入支出、发票和报销</view>
+          <view class="app-tile__badge app-tile__badge--finance">仅财务人员</view>
+        </view>
         <view class="app-tile {{experienceAccess.canView ? '' : 'app-tile--disabled'}}" bindtap="onOpenExperience">
           <view class="app-tile__icon"><view class="experience-glyph"></view></view>
           <view class="app-tile__name">维修经验总结</view>

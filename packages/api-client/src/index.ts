@@ -19,3 +19,5 @@ export * as observability from './endpoints/observability';
 export type { FeedbackType, FeedbackStatus, UserFeedbackReq } from './endpoints/observability';
 export * as feedback from './endpoints/feedback';
 export * as repairExperiences from './endpoints/repair-experiences';
+export * as finance from './endpoints/finance';
+export type { FinanceAccess, FinanceEntry, FinanceProject } from './endpoints/finance';

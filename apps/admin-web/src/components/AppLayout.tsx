@@ -21,6 +21,7 @@ import {
   MonitorOutlined,
   MenuOutlined,
   ReadOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -44,6 +45,7 @@ interface NavItem {
   pageKey: string | null;
   icon: React.ReactNode;
   label: string;
+  financeOnly?: boolean;
 }
 
 /**
@@ -76,6 +78,7 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
     items: [
       { key: '/business', pageKey: 'business', icon: <CreditCardOutlined />, label: '前台收费' },
       { key: '/fees', pageKey: 'fees', icon: <AccountBookOutlined />, label: '物业费' },
+      { key: '/finance', pageKey: null, financeOnly: true, icon: <WalletOutlined />, label: '财务记账' },
     ],
   },
   {
@@ -121,6 +124,7 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/experience-notes': '按管理处和报修类别沉淀共享的图文维修经验',
   '/business': '办理停车、门禁与前台收费业务',
   '/fees': '物业费账单、收款登记与欠费催缴',
+  '/finance': '项目、流水、发票与报销集中管理',
   '/materials': '维护标准材料、单位与基础价格',
   '/inventory': '管理库存、盘点、采购、收货与仓库调拨',
   '/stocktakes': '发起盘点、办公室复核并查看盘点报告',
@@ -135,7 +139,7 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/platform/tenants': '管理平台上的物业公司与功能授权',
 };
 
-function visibleGroups(access: AdminAccess | null, isPlatform: boolean, hasTenantScope: boolean) {
+function visibleGroups(access: AdminAccess | null, isPlatform: boolean, hasTenantScope: boolean, financeAllowed: boolean) {
   return NAV_GROUPS.map((group) => ({
     ...group,
     items: group.platformOnly
@@ -144,7 +148,7 @@ function visibleGroups(access: AdminAccess | null, isPlatform: boolean, hasTenan
         : []
       : hasTenantScope
         ? group.items.filter(
-            (item) => !item.pageKey || pagePerm(access, item.pageKey).canView,
+            (item) => item.financeOnly ? financeAllowed : (!item.pageKey || pagePerm(access, item.pageKey).canView),
           )
         : [],
   })).filter((group) => group.items.length > 0);
@@ -156,6 +160,7 @@ export default function AppLayout() {
   const { user, access, actingTenant, actingOffice } = useAuth();
   const [isMobile, setIsMobile] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [financeAllowed, setFinanceAllowed] = useState(false);
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 900px)');
@@ -185,6 +190,11 @@ export default function AppLayout() {
     })();
   }, [actingTenant?.id, actingOffice?.id]);
 
+  useEffect(() => {
+    if (!hasAuthToken()) return;
+    void request({ url: '/finance/access' }).then((value: any) => setFinanceAllowed(Boolean(value?.allowed))).catch(() => setFinanceAllowed(false));
+  }, [actingTenant?.id]);
+
   // 页面访问只记业务路由，不含筛选条件；统计失败不影响页面正常使用。
   useEffect(() => {
     if (!hasAuthToken()) return;
@@ -201,7 +211,7 @@ export default function AppLayout() {
   const offices = access?.offices ?? [];
   const showOfficeSwitcher =
     hasTenantScope && (offices.length >= 2 || (offices.length >= 1 && !!access?.scopeAll));
-  const groups = visibleGroups(access, isPlatform, hasTenantScope);
+  const groups = visibleGroups(access, isPlatform, hasTenantScope, financeAllowed);
   const allItems = groups.flatMap((g) => g.items);
   const selected =
     allItems.map((i) => i.key).find((key) => loc.pathname.startsWith(key)) || '/dashboard';

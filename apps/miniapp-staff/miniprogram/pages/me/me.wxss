@@ -122,3 +122,6 @@
 .app-tile__name { margin-top: 22rpx; font-size: var(--font-xl); font-weight: 700; line-height: 1.35; }
 .app-tile__desc { margin-top: 10rpx; font-size: var(--font-sm); color: var(--color-text-tertiary); line-height: 1.55; }
 .app-tile__badge { display: inline-block; margin-top: 16rpx; padding: 4rpx 14rpx; border-radius: 999rpx; background: #e7f0fb; color: #31558a; font-size: var(--font-xs); }
+.app-tile__svg { width: 64rpx; height: 64rpx; }
+.app-tile__icon--finance { background: #edf4fc; }
+.app-tile__badge--finance { color: #2e638f; background: #e7f0fb; }

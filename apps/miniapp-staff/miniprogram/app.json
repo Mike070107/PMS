@@ -20,6 +20,7 @@
     "pages/maintenance-sign/maintenance-sign",
     "pages/web-sign/web-sign",
     "pages/me/me",
+    "pages/finance/finance",
     "pages/web-login/web-login",
     "pages/index/index"
   ],

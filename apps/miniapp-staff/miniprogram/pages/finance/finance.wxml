@@ -1,0 +1,31 @@
+<view class="page">
+  <view class="hero">
+    <view><view class="hero__eyebrow">独立财务账套</view><view class="hero__title">记账流水</view><view class="hero__desc">项目可稍后补充，先把每笔收入支出记清楚</view></view>
+    <button class="hero__button" bindtap="openForm">＋ 记一笔</button>
+  </view>
+  <view wx:if="{{loading}}" class="empty">正在加载…</view>
+  <view wx:elif="{{!entries.length}}" class="empty"><view class="empty__title">还没有流水</view><view>点击“记一笔”登记第一笔收入或支出</view></view>
+  <view wx:else class="list">
+    <view wx:for="{{entries}}" wx:key="id" class="entry-card">
+      <view class="entry-card__top"><view class="entry-card__reason">{{item.reason}}</view><view class="entry-card__amount entry-card__amount--{{item.flowClass}}">{{item.flowType === 'income' ? '+' : '-'}}¥{{item.amountText}}</view></view>
+      <view class="entry-card__meta"><text>{{item.businessDate}}</text><text class="dot">·</text><text>{{item.flowText}}</text><text class="status status--{{item.reimbursementStatus}}">{{item.reimbursementText}}</text></view>
+    </view>
+  </view>
+
+  <view wx:if="{{showForm}}" class="mask" catchtouchmove="noop" bindtap="closeForm"></view>
+  <view wx:if="{{showForm}}" class="sheet">
+    <view class="sheet__head"><view class="sheet__title">新增流水</view><view class="sheet__close" bindtap="closeForm">×</view></view>
+    <scroll-view scroll-y class="sheet__body">
+      <view class="field"><view class="label">收入 / 支出</view><view class="segmented"><view class="segment {{form.flowType === 'expense' ? 'segment--active expense' : ''}}" data-value="expense" bindtap="setFlow">支出</view><view class="segment {{form.flowType === 'income' ? 'segment--active income' : ''}}" data-value="income" bindtap="setFlow">收入</view></view></view>
+      <view class="field"><view class="label">金额</view><view class="money-input"><text>¥</text><input type="digit" value="{{form.amount}}" placeholder="0.00" bindinput="onAmount"/></view></view>
+      <view class="field"><view class="label">事由</view><textarea class="textarea" maxlength="500" value="{{form.reason}}" placeholder="例如：购买项目现场用的照明材料" bindinput="onReason"/></view>
+      <view class="field"><view class="label">日期</view><picker mode="date" value="{{form.businessDate}}" bindchange="onDate"><view class="picker">{{form.businessDate}}<text>›</text></view></picker></view>
+      <view class="field"><view class="label">归属</view><view class="choices"><view class="choice {{form.owner === 'osiris' ? 'choice--active' : ''}}" data-value="osiris" bindtap="setOwner">OsirisList</view><view class="choice {{form.owner === 'pruis' ? 'choice--active' : ''}}" data-value="pruis" bindtap="setOwner">普睿斯</view><view class="choice {{form.owner === 'personal' ? 'choice--active' : ''}}" data-value="personal" bindtap="setOwner">个人</view></view></view>
+      <view class="field"><view class="label">支付方式</view><view class="choices"><view class="choice {{form.paymentMethod === 'wechat' ? 'choice--active' : ''}}" data-value="wechat" bindtap="setPayment">微信</view><view class="choice {{form.paymentMethod === 'alipay' ? 'choice--active' : ''}}" data-value="alipay" bindtap="setPayment">支付宝</view><view class="choice {{form.paymentMethod === 'bank' ? 'choice--active' : ''}}" data-value="bank" bindtap="setPayment">对公转账</view><view class="choice {{form.paymentMethod === 'cash' ? 'choice--active' : ''}}" data-value="cash" bindtap="setPayment">现金</view></view></view>
+      <view class="field"><view class="label">项目（可后补）</view><picker range="{{projectOptions}}" bindchange="onProject"><view class="picker">{{selectedProjectName}}<text>›</text></view></picker></view>
+      <view class="field switch-row"><view><view class="label">需要报销</view><view class="hint">开启后自动进入待报销清单</view></view><switch checked="{{form.reimbursementRequired}}" color="#31558a" bindchange="onReimbursement"/></view>
+      <view class="sheet__spacer"></view>
+    </scroll-view>
+    <view class="sheet__footer"><button class="save" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存流水</button></view>
+  </view>
+</view>

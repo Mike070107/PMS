@@ -6,7 +6,7 @@ import { cachedMeMode, clearAccessCache, rememberPoolMode, syncTabBar } from '..
 import { askOrderSubscribe, getSubscribeState } from '../../utils/unread';
 import { refreshTabBadges } from '../../utils/badges';
 import { openFeedback } from '../../utils/feedback';
-import { repairExperiences } from '@pms/api-client';
+import { finance, repairExperiences } from '@pms/api-client';
 import { guideHandlers } from '../../utils/guide';
 
 // 版本号和 git hash 由发版脚本写入 utils/buildStamp.ts，别在这里手改（见那个文件的说明）
@@ -49,6 +49,7 @@ Page({
     /** 代报角色：报修范围是授权小区，不是全公司，文案得说准 */
     repairDesc: '巡查发现的问题直接提单，地址可选全公司任意楼栋房号',
     experienceAccess: { canView: false, canEdit: false, notebookCount: 0 },
+    financeAccess: { allowed: false },
   },
 
   /** 显示当前跑的是哪个包：改完重新上传后，忘记「选为体验版本」一眼就能看出来 */
@@ -78,9 +79,10 @@ Page({
     this.applyMode();
     try {
       // 身份和权限都从这一份会话来（utils/session.ts），页面里不再各写角色白名单
-      const [session, experienceAccess] = await Promise.all([
+      const [session, experienceAccess, financeAccess] = await Promise.all([
         getSession(this, true),
         repairExperiences.access().catch(() => ({ canView: false, canEdit: false, notebookCount: 0 })),
+        finance.access().catch(() => ({ allowed: false, canConfigureMailbox: false })),
       ]);
       const user = session.me as MeResp;
       // 显示他绑的角色名 —— 现在没有「身份」这回事，角色名就是他的称呼
@@ -102,6 +104,7 @@ Page({
           ? (scope ? `可报 ${scope} 内任意楼栋房号` : '还没有可代报的小区，请联系物业管理员开通')
           : '巡查发现的问题直接提单，地址可选全公司任意楼栋房号',
         experienceAccess,
+        financeAccess,
       });
       if (session.canAccept) this.refreshNotifyState();
     } catch {
@@ -122,6 +125,11 @@ Page({
       return;
     }
     wx.navigateTo({ url: '/pages/experience-notes/experience-notes' });
+  },
+
+  onOpenFinance() {
+    if (!this.data.financeAccess.allowed) return;
+    wx.navigateTo({ url: '/pages/finance/finance' });
   },
 
   onGoRepair() {
