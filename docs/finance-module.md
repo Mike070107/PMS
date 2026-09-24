@@ -23,7 +23,7 @@ FINANCE_SECRET_KEY=replace-with-a-long-random-secret
 
 - 固定使用 `imap.qq.com:993` 与 TLS，仅以只读方式打开 `INBOX`。
 - 首次同步最近 7 天；之后按 `UIDVALIDITY + UID` 增量拉取。
-- 支持 PDF、OFD、XML、JPG、PNG、WebP、ZIP 附件，按 SHA-256 去重。
+- QQ 邮箱同步仅接收 PDF 附件，按 SHA-256 去重；后台手工上传仍支持 PDF、OFD、XML、JPG、PNG、WebP、ZIP。
 - 同步不会标记已读、移动或删除邮件；页面“丢弃”仅改变财务收件箱状态，可恢复。
 - 金额或日期相同只用于候选排序，不自动建立关联；用户确认后才匹配流水。
 

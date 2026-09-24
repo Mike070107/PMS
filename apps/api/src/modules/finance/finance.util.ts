@@ -7,6 +7,10 @@ export function isInvoiceAttachment(filename: string, contentType = ''): boolean
   return ALLOWED_INVOICE_EXTENSIONS.some((ext) => lower.endsWith(ext)) || /pdf|xml|image\//i.test(contentType);
 }
 
+export function isPdfAttachment(filename: string, contentType = ''): boolean {
+  return filename.toLowerCase().endsWith('.pdf') || /^application\/pdf(?:\s*;|$)/i.test(contentType);
+}
+
 export function sha256(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex');
 }

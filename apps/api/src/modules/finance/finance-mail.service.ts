@@ -9,7 +9,7 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { decryptFinanceSecret, encryptFinanceSecret, resolveFinanceKey } from './finance.crypto';
 import { FinanceInvoice, FinanceMailConnection, FinanceMailMessage } from './finance.entities';
-import { extractInvoiceHints, isInvoiceAttachment, maskEmail, sha256 } from './finance.util';
+import { extractInvoiceHints, isPdfAttachment, maskEmail, sha256 } from './finance.util';
 import { FinanceService } from './finance.service';
 
 @Injectable()
@@ -106,7 +106,7 @@ export class FinanceMailService {
             const parsed = await simpleParser(message.source as Buffer);
             const mailRow = await this.messageRepo.save(this.messageRepo.create({ tenantId, connectionId: connection.id, folder: 'INBOX', uidValidity, uid, messageId: parsed.messageId ?? null, subject: parsed.subject?.slice(0, 500) ?? null, sender: parsed.from?.text?.slice(0, 300) ?? null, receivedAt: message.internalDate ?? parsed.date ?? null, status: 'processed', error: null, createdBy: actorId, updatedBy: actorId }));
             for (const attachment of parsed.attachments) {
-              if (!isInvoiceAttachment(attachment.filename ?? '', attachment.contentType)) continue;
+              if (!isPdfAttachment(attachment.filename ?? '', attachment.contentType)) continue;
               const hash = sha256(attachment.content);
               if (await this.invoiceRepo.findOne({ where: { tenantId, sha256: hash } })) continue;
               const hints = extractInvoiceHints(attachment.filename ?? 'invoice', attachment.content);
