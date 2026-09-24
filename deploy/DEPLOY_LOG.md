@@ -2949,3 +2949,12 @@
 - 自上次（b1045b6）以来上线的相关提交：
   - a762c64 feat: add isolated finance ledger and invoice inbox
 
+## 2026-09-24 18:00 · miniapp-staff · bd14468
+
+- 包：`1.0.20260924a`
+- 提交：bd14468 deploy: web → 06979f3
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（b1045b6）以来上线的相关提交：
+  - b40dffa feat(finance): add voice input for entry reasons
+  - a762c64 feat: add isolated finance ledger and invoice inbox
+
