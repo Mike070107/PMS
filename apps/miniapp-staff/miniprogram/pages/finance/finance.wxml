@@ -1,31 +1,118 @@
-<view class="page">
-  <view class="hero">
-    <view><view class="hero__eyebrow">独立财务账套</view><view class="hero__title">记账流水</view><view class="hero__desc">项目可稍后补充，先把每笔收入支出记清楚</view></view>
-    <button class="hero__button" bindtap="openForm">＋ 记一笔</button>
-  </view>
-  <view wx:if="{{loading}}" class="empty">正在加载…</view>
-  <view wx:elif="{{!entries.length}}" class="empty"><view class="empty__title">还没有流水</view><view>点击“记一笔”登记第一笔收入或支出</view></view>
-  <view wx:else class="list">
-    <view wx:for="{{entries}}" wx:key="id" class="entry-card">
-      <view class="entry-card__top"><view class="entry-card__reason">{{item.reason}}</view><view class="entry-card__amount entry-card__amount--{{item.flowClass}}">{{item.flowType === 'income' ? '+' : '-'}}¥{{item.amountText}}</view></view>
-      <view class="entry-card__meta"><text>{{item.businessDate}}</text><text class="dot">·</text><text>{{item.flowText}}</text><text class="status status--{{item.reimbursementStatus}}">{{item.reimbursementText}}</text></view>
+<view class="finance-page">
+  <view class="finance-hero">
+    <view class="finance-hero__top">
+      <view><view class="finance-hero__eyebrow">独立财务账套</view><view class="finance-hero__title">财务工作台</view></view>
+      <view class="finance-hero__month">本月</view>
+    </view>
+    <view class="balance-label">收支结余</view><view class="balance-value">¥{{dashboard.balanceText}}</view>
+    <view class="hero-metrics">
+      <view class="hero-metric"><view class="hero-metric__dot hero-metric__dot--income"></view><view><text>收入</text><strong>¥{{dashboard.incomeText}}</strong></view></view>
+      <view class="hero-metric"><view class="hero-metric__dot hero-metric__dot--expense"></view><view><text>支出</text><strong>¥{{dashboard.expenseText}}</strong></view></view>
     </view>
   </view>
 
-  <view wx:if="{{showForm}}" class="mask" catchtouchmove="noop" bindtap="closeForm"></view>
-  <view wx:if="{{showForm}}" class="sheet">
-    <view class="sheet__head"><view class="sheet__title">新增流水</view><view class="sheet__close" bindtap="closeForm">×</view></view>
-    <scroll-view scroll-y class="sheet__body">
-      <view class="field"><view class="label">收入 / 支出</view><view class="segmented"><view class="segment {{form.flowType === 'expense' ? 'segment--active expense' : ''}}" data-value="expense" bindtap="setFlow">支出</view><view class="segment {{form.flowType === 'income' ? 'segment--active income' : ''}}" data-value="income" bindtap="setFlow">收入</view></view></view>
-      <view class="field"><view class="label">金额</view><view class="money-input"><text>¥</text><input type="digit" value="{{form.amount}}" placeholder="0.00" bindinput="onAmount"/></view></view>
-      <view class="field"><view class="label">事由</view><textarea class="textarea" maxlength="500" value="{{form.reason}}" placeholder="例如：购买项目现场用的照明材料" bindinput="onReason"/><button wx:if="{{hasSpeech}}" class="voice {{recording || pressing ? 'voice--on' : ''}}" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove">{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住说话（普通话）')}}</button></view>
-      <view class="field"><view class="label">日期</view><picker mode="date" value="{{form.businessDate}}" bindchange="onDate"><view class="picker">{{form.businessDate}}<text>›</text></view></picker></view>
-      <view class="field"><view class="label">归属</view><view class="choices"><view class="choice {{form.owner === 'osiris' ? 'choice--active' : ''}}" data-value="osiris" bindtap="setOwner">OsirisList</view><view class="choice {{form.owner === 'pruis' ? 'choice--active' : ''}}" data-value="pruis" bindtap="setOwner">普睿斯</view><view class="choice {{form.owner === 'personal' ? 'choice--active' : ''}}" data-value="personal" bindtap="setOwner">个人</view></view></view>
-      <view class="field"><view class="label">支付方式</view><view class="choices"><view class="choice {{form.paymentMethod === 'wechat' ? 'choice--active' : ''}}" data-value="wechat" bindtap="setPayment">微信</view><view class="choice {{form.paymentMethod === 'alipay' ? 'choice--active' : ''}}" data-value="alipay" bindtap="setPayment">支付宝</view><view class="choice {{form.paymentMethod === 'bank' ? 'choice--active' : ''}}" data-value="bank" bindtap="setPayment">对公转账</view><view class="choice {{form.paymentMethod === 'cash' ? 'choice--active' : ''}}" data-value="cash" bindtap="setPayment">现金</view></view></view>
-      <view class="field"><view class="label">项目（可后补）</view><picker range="{{projectOptions}}" bindchange="onProject"><view class="picker">{{selectedProjectName}}<text>›</text></view></picker></view>
-      <view class="field switch-row"><view><view class="label">需要报销</view><view class="hint">开启后自动进入待报销清单</view></view><switch checked="{{form.reimbursementRequired}}" color="#31558a" bindchange="onReimbursement"/></view>
-      <view class="sheet__spacer"></view>
+  <button class="record-button" bindtap="openEntryForm"><view class="record-button__icon icon icon--plus"></view><text>记一笔</text></button>
+
+  <view class="finance-tabs">
+    <view wx:for="{{tabs}}" wx:key="key" class="finance-tab {{activeTab === item.key ? 'finance-tab--active' : ''}}" data-key="{{item.key}}" bindtap="setTab">
+      <view class="icon icon--{{item.icon}}"></view><text>{{item.label}}</text><view wx:if="{{item.badge}}" class="finance-tab__badge">{{item.badge}}</view>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="state-card"><view class="state-card__pulse"></view><text>正在整理财务数据…</text></view>
+
+  <block wx:elif="{{activeTab === 'overview'}}">
+    <view class="section-head"><view><view class="section-head__eyebrow">需要关注</view><view class="section-head__title">今天先处理这些</view></view></view>
+    <view class="attention-grid">
+      <view class="attention-card attention-card--invoice" data-key="invoices" bindtap="setTab"><view class="attention-card__icon icon icon--invoice"></view><view class="attention-card__value">{{dashboard.invoiceInbox}}</view><view class="attention-card__label">待匹配发票</view><view class="attention-card__link">去处理</view></view>
+      <view class="attention-card attention-card--claim" data-key="reimbursements" bindtap="setTab"><view class="attention-card__icon icon icon--wallet"></view><view class="attention-card__value">{{dashboard.pendingReimbursement}}</view><view class="attention-card__label">待报销流水</view><view class="attention-card__link">去报销</view></view>
+    </view>
+    <view class="section-head section-head--compact"><view><view class="section-head__eyebrow">最近动态</view><view class="section-head__title">最新流水</view></view><view class="section-head__action" data-key="entries" bindtap="setTab">查看全部</view></view>
+    <view wx:if="{{recentEntries.length}}" class="entry-list">
+      <view wx:for="{{recentEntries}}" wx:key="id" class="entry-card">
+        <view class="entry-card__mark entry-card__mark--{{item.flowClass}}"><view class="icon icon--{{item.flowIcon}}"></view></view>
+        <view class="entry-card__body"><view class="entry-card__reason">{{item.reason}}</view><view class="entry-card__meta">{{item.businessDate}} · {{item.projectText}}</view></view>
+        <view class="entry-card__side"><view class="entry-card__amount entry-card__amount--{{item.flowClass}}">{{item.sign}}¥{{item.amountText}}</view><view class="mini-status mini-status--{{item.reimbursementStatus}}">{{item.reimbursementText}}</view></view>
+      </view>
+    </view>
+    <view wx:else class="empty-card"><view class="empty-card__icon icon icon--ledger"></view><view class="empty-card__title">还没有流水</view><view class="empty-card__desc">点击上方“记一笔”，登记第一笔收入或支出</view></view>
+  </block>
+
+  <block wx:elif="{{activeTab === 'entries'}}">
+    <view class="section-head"><view><view class="section-head__eyebrow">收入与支出</view><view class="section-head__title">流水台账</view></view><view class="count-pill">{{entries.length}} 笔</view></view>
+    <view wx:if="{{entries.length}}" class="entry-list">
+      <view wx:for="{{entries}}" wx:key="id" class="entry-card entry-card--ledger">
+        <view class="entry-card__mark entry-card__mark--{{item.flowClass}}"><view class="icon icon--{{item.flowIcon}}"></view></view>
+        <view class="entry-card__body"><view class="entry-card__reason">{{item.reason}}</view><view class="entry-card__meta">{{item.businessDate}} · {{item.ownerText}} · {{item.paymentText}}</view><view class="entry-card__project">{{item.projectText}}</view></view>
+        <view class="entry-card__side"><view class="entry-card__amount entry-card__amount--{{item.flowClass}}">{{item.sign}}¥{{item.amountText}}</view><view class="mini-status mini-status--{{item.reimbursementStatus}}">{{item.reimbursementText}}</view></view>
+      </view>
+    </view>
+    <view wx:else class="empty-card"><view class="empty-card__icon icon icon--ledger"></view><view class="empty-card__title">还没有流水</view><view class="empty-card__desc">每笔消费发生后立即登记，项目可以稍后补充</view></view>
+  </block>
+
+  <block wx:elif="{{activeTab === 'projects'}}">
+    <view class="section-head"><view><view class="section-head__eyebrow">项目归集</view><view class="section-head__title">项目管理</view></view><button class="small-primary" bindtap="openProjectForm"><view class="icon icon--plus"></view><text>新建</text></button></view>
+    <view wx:if="{{projectGroups.length}}" class="project-list">
+      <view wx:for="{{projectGroups}}" wx:key="id" class="project-card">
+        <view class="project-card__head"><view class="project-card__icon icon icon--folder"></view><view class="project-card__main"><view class="project-card__name">{{item.name}}</view><view class="project-card__desc">{{item.descriptionText}}</view></view><view class="project-card__count">{{item.children.length}} 个子项目</view></view>
+        <view wx:if="{{item.children.length}}" class="subproject-list"><view wx:for="{{item.children}}" wx:for-item="child" wx:key="id" class="subproject"><view class="subproject__dot"></view><text>{{child.name}}</text></view></view>
+        <button class="project-card__add" data-parent="{{item.id}}" bindtap="openProjectForm"><view class="icon icon--plus"></view><text>添加子项目</text></button>
+      </view>
+    </view>
+    <view wx:else class="empty-card"><view class="empty-card__icon icon icon--folder"></view><view class="empty-card__title">建立第一个项目</view><view class="empty-card__desc">项目和子项目能让费用归集、发票匹配更清晰</view><button class="empty-card__button" bindtap="openProjectForm">新建项目</button></view>
+  </block>
+
+  <block wx:elif="{{activeTab === 'invoices'}}">
+    <view class="section-head"><view><view class="section-head__eyebrow">PDF 发票</view><view class="section-head__title">发票台账</view></view><button class="small-primary" bindtap="chooseInvoice"><view class="icon icon--upload"></view><text>上传</text></button></view>
+    <view class="info-strip"><view class="icon icon--mail"></view><text>QQ 邮箱仅同步 PDF 发票；无法自动匹配时可手工选择流水。</text></view>
+    <view wx:if="{{invoices.length}}" class="invoice-list">
+      <view wx:for="{{invoices}}" wx:key="id" class="invoice-card">
+        <view class="invoice-card__top"><view class="invoice-card__file"><view class="pdf-mark">PDF</view><view class="invoice-card__file-main"><view class="invoice-card__name">{{item.originalName}}</view><view class="invoice-card__meta">{{item.createdText}} · {{item.sourceText}}</view></view></view><view class="invoice-status invoice-status--{{item.status}}">{{item.statusText}}</view></view>
+        <view class="invoice-card__amount">{{item.amountText}}</view>
+        <view class="invoice-card__actions">
+          <button wx:if="{{item.status === 'inbox'}}" class="card-action card-action--primary" data-id="{{item.id}}" bindtap="openInvoiceMatch">匹配流水</button><button wx:if="{{item.status === 'inbox'}}" class="card-action" data-id="{{item.id}}" bindtap="discardInvoice">丢弃</button>
+          <button wx:if="{{item.status === 'discarded'}}" class="card-action card-action--primary" data-id="{{item.id}}" bindtap="restoreInvoice">恢复</button><view wx:if="{{item.status === 'matched'}}" class="matched-note"><view class="icon icon--check"></view><text>已关联流水</text></view>
+        </view>
+      </view>
+    </view>
+    <view wx:else class="empty-card"><view class="empty-card__icon icon icon--invoice"></view><view class="empty-card__title">发票收件箱为空</view><view class="empty-card__desc">可从 QQ 邮箱自动同步，也可以手工上传 PDF</view></view>
+  </block>
+
+  <block wx:elif="{{activeTab === 'reimbursements'}}">
+    <view class="section-head"><view><view class="section-head__eyebrow">申请与付款</view><view class="section-head__title">报销管理</view></view><button class="small-primary" disabled="{{!pendingEntries.length}}" bindtap="openReimburseForm"><view class="icon icon--plus"></view><text>发起</text></button></view>
+    <view wx:if="{{reimbursements.length}}" class="claim-list">
+      <view wx:for="{{reimbursements}}" wx:key="id" class="claim-card"><view class="claim-card__head"><view><view class="claim-card__no">{{item.applicationNo}}</view><view class="claim-card__name">{{item.claimantName}} · {{item.applicationDate}}</view></view><view class="claim-status claim-status--{{item.status}}">{{item.statusText}}</view></view><view class="claim-card__amount">¥{{item.amountText}}</view><view class="claim-card__reason">{{item.reason}}</view><button wx:if="{{item.status === 'submitted'}}" class="card-action card-action--primary claim-card__paid" data-id="{{item.id}}" bindtap="markPaid">标记已报销</button></view>
+    </view>
+    <view wx:else class="empty-card"><view class="empty-card__icon icon icon--wallet"></view><view class="empty-card__title">暂无报销申请</view><view class="empty-card__desc">有待报销流水后，可以在这里集中发起申请</view></view>
+  </block>
+
+  <view class="page-safe-space"></view>
+  <view wx:if="{{sheet}}" class="sheet-mask" catchtouchmove="noop" bindtap="closeSheet"></view>
+  <view wx:if="{{sheet}}" class="finance-sheet">
+    <view class="sheet-head"><view><view class="sheet-head__eyebrow">{{sheetEyebrow}}</view><view class="sheet-head__title">{{sheetTitle}}</view></view><view class="sheet-close" bindtap="closeSheet"><view class="icon icon--close-dark"></view></view></view>
+    <scroll-view wx:if="{{sheet === 'entry'}}" scroll-y class="sheet-body">
+      <view class="field"><view class="field__label">收入 / 支出</view><view class="two-choice"><view class="choice-tile choice-tile--expense {{entryForm.flowType === 'expense' ? 'choice-tile--active' : ''}}" data-value="expense" bindtap="setFlow"><view class="icon icon--expense"></view><text>支出</text></view><view class="choice-tile choice-tile--income {{entryForm.flowType === 'income' ? 'choice-tile--active' : ''}}" data-value="income" bindtap="setFlow"><view class="icon icon--income"></view><text>收入</text></view></view></view>
+      <view class="field"><view class="field__label">金额</view><view class="amount-field"><text>¥</text><input type="digit" value="{{entryForm.amount}}" placeholder="0.00" bindinput="onAmount"/></view></view>
+      <view class="field"><view class="field__label">事由</view><textarea class="reason-input" maxlength="500" value="{{entryForm.reason}}" placeholder="例如：购买项目现场用的照明材料" bindinput="onReason"/><button wx:if="{{hasSpeech}}" class="voice-button {{recording || pressing ? 'voice-button--active' : ''}}" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove"><view class="icon icon--mic"></view><text>{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住说话（普通话）')}}</text></button></view>
+      <view class="field-grid"><view class="field"><view class="field__label">日期</view><picker mode="date" value="{{entryForm.businessDate}}" bindchange="onDate"><view class="picker-field"><text>{{entryForm.businessDate}}</text><view class="icon icon--chevron"></view></view></picker></view><view class="field"><view class="field__label">项目</view><picker range="{{projectOptions}}" bindchange="onProject"><view class="picker-field"><text>{{selectedProjectName}}</text><view class="icon icon--chevron"></view></view></picker></view></view>
+      <view class="field"><view class="field__label">归属</view><view class="wrap-choices"><view class="pill-choice {{entryForm.owner === 'osiris' ? 'pill-choice--active' : ''}}" data-value="osiris" bindtap="setOwner">OsirisList</view><view class="pill-choice {{entryForm.owner === 'pruis' ? 'pill-choice--active' : ''}}" data-value="pruis" bindtap="setOwner">普睿斯</view><view class="pill-choice {{entryForm.owner === 'personal' ? 'pill-choice--active' : ''}}" data-value="personal" bindtap="setOwner">个人</view></view></view>
+      <view class="field"><view class="field__label">支付方式</view><view class="wrap-choices"><view wx:for="{{paymentOptions}}" wx:key="value" class="pill-choice {{entryForm.paymentMethod === item.value ? 'pill-choice--active' : ''}}" data-value="{{item.value}}" bindtap="setPayment">{{item.label}}</view></view></view>
+      <view class="switch-card"><view><view class="switch-card__title">需要报销</view><view class="switch-card__desc">保存后进入待报销清单</view></view><switch checked="{{entryForm.reimbursementRequired}}" color="#31558a" bindchange="onReimbursement"/></view><view class="sheet-body__space"></view>
     </scroll-view>
-    <view class="sheet__footer"><button class="save" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存流水</button></view>
+    <scroll-view wx:elif="{{sheet === 'project'}}" scroll-y class="sheet-body">
+      <view class="field"><view class="field__label">上级项目</view><picker range="{{parentProjectOptions}}" value="{{projectParentIndex}}" bindchange="onParentProject"><view class="picker-field"><text>{{selectedParentName}}</text><view class="icon icon--chevron"></view></view></picker><view class="field__hint">不选择时创建一级项目</view></view>
+      <view class="field"><view class="field__label">项目名称</view><input class="text-field" maxlength="120" value="{{projectForm.name}}" placeholder="填写清晰、便于搜索的名称" data-field="name" bindinput="onProjectInput"/></view><view class="field"><view class="field__label">项目说明</view><textarea class="reason-input" maxlength="1000" value="{{projectForm.description}}" placeholder="选填：范围、负责人或注意事项" data-field="description" bindinput="onProjectInput"/></view><view class="sheet-body__space"></view>
+    </scroll-view>
+    <scroll-view wx:elif="{{sheet === 'match'}}" scroll-y class="sheet-body">
+      <view class="match-file"><view class="pdf-mark">PDF</view><view><view class="match-file__name">{{matchingInvoice.originalName}}</view><view class="match-file__amount">{{matchingInvoice.amountText}}</view></view></view>
+      <view wx:for="{{candidates}}" wx:key="id" class="candidate-card"><view class="candidate-card__score">{{item.score}}<text>分</text></view><view class="candidate-card__main"><view class="candidate-card__reason">{{item.reason}}</view><view class="candidate-card__meta">{{item.businessDate}} · {{item.projectText}}</view></view><view class="candidate-card__side"><view>¥{{item.amountText}}</view><button data-id="{{item.id}}" bindtap="matchInvoice">选择</button></view></view>
+      <view wx:if="{{!candidates.length}}" class="empty-card empty-card--plain"><view class="empty-card__title">没有可匹配的支出流水</view><view class="empty-card__desc">先补记流水，再回来匹配这张发票</view></view><view class="sheet-body__space"></view>
+    </scroll-view>
+    <scroll-view wx:elif="{{sheet === 'reimburse'}}" scroll-y class="sheet-body">
+      <view class="field-grid"><view class="field"><view class="field__label">报销人</view><input class="text-field" value="{{reimburseForm.claimantName}}" data-field="claimantName" bindinput="onReimburseInput"/></view><view class="field"><view class="field__label">电话</view><input class="text-field" type="number" value="{{reimburseForm.phone}}" data-field="phone" bindinput="onReimburseInput"/></view></view>
+      <view class="field"><view class="field__label">申请日期</view><picker mode="date" value="{{reimburseForm.applicationDate}}" bindchange="onReimburseDate"><view class="picker-field"><text>{{reimburseForm.applicationDate}}</text><view class="icon icon--chevron"></view></view></picker></view><view class="field"><view class="field__label">开户行</view><input class="text-field" value="{{reimburseForm.bankName}}" data-field="bankName" bindinput="onReimburseInput"/></view><view class="field"><view class="field__label">银行账号</view><input class="text-field" type="number" value="{{reimburseForm.bankAccount}}" data-field="bankAccount" bindinput="onReimburseInput"/></view><view class="field"><view class="field__label">报销事由</view><textarea class="reason-input reason-input--short" value="{{reimburseForm.reason}}" data-field="reason" bindinput="onReimburseInput"/></view>
+      <view class="field"><view class="field__label">选择待报销流水</view><checkbox-group bindchange="onReimburseEntries"><label wx:for="{{pendingEntries}}" wx:key="id" class="claim-entry"><checkbox value="{{item.id}}" color="#31558a"/><view class="claim-entry__body"><view>{{item.reason}}</view><text>{{item.businessDate}}</text></view><strong>¥{{item.amountText}}</strong></label></checkbox-group></view><view class="sheet-body__space"></view>
+    </scroll-view>
+    <view wx:if="{{sheet !== 'match'}}" class="sheet-footer"><button class="sheet-submit" loading="{{saving}}" disabled="{{saving}}" bindtap="submitSheet">{{sheetSubmitText}}</button></view>
   </view>
 </view>

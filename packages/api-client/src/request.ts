@@ -278,6 +278,44 @@ function uploadTempFile(tempFilePath: string, timeout: number): Promise<UploadFi
   });
 }
 
+/** 小程序向指定业务接口上传原始文件，不做图片压缩。 */
+export function uploadFileTo<T = unknown>(
+  tempFilePath: string,
+  endpoint: string,
+  timeout = 60000,
+): Promise<T> {
+  if (!config) throw new Error('[api-client] configure() must be called before uploadFileTo()');
+  if (!hasWxRequest()) return Promise.reject(new ApiError(-1, 'uploadFileTo 仅在小程序环境可用'));
+  const url = buildUrl(config.baseURL, endpoint);
+  const header: Record<string, string> = { ...config.getExtraHeaders?.() };
+  const token = config.getToken();
+  if (token) header.Authorization = `Bearer ${token}`;
+  return new Promise<T>((resolve, reject) => {
+    // @ts-ignore — 小程序运行时注入
+    wx.uploadFile({
+      url,
+      filePath: tempFilePath,
+      name: 'file',
+      header,
+      timeout,
+      success: (res: any) => {
+        const { statusCode, data } = res;
+        if (statusCode === 401) {
+          config?.onUnauthorized?.();
+          return reject(new ApiError(401, serverMessage(data) || '未登录或登录已过期', statusCode));
+        }
+        if (statusCode < 200 || statusCode >= 300) {
+          return reject(new ApiError(statusCode, serverMessage(data) || `上传失败 HTTP ${statusCode}`, statusCode));
+        }
+        const parsed = tryParseJson(data);
+        if (!parsed) return reject(new ApiError(-1, '上传返回格式异常'));
+        try { resolve(unwrap(parsed)); } catch (error) { reject(error); }
+      },
+      fail: (error: any) => reject(new ApiError(-1, networkMessage(error?.errMsg))),
+    });
+  });
+}
+
 export function request<T = unknown>(opts: RequestOptions): Promise<T> {
   if (!config) throw new Error('[api-client] configure() must be called before request()');
   const url = buildUrl(config.baseURL, opts.url, opts.query);
