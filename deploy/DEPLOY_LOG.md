@@ -2933,3 +2933,11 @@
   - e6aeb9f feat(工单): 维修中也能更正报修地址，新旧地址进轨迹并通知维修工
   - 98f84e8 feat(报修识别): 办公楼的「工程部」「财务部」也能认出来；「室」只缀数字房号
 
+## 2026-09-24 17:58 · api · b40dffa
+
+- 包：`pms-api-20260924-1751.tar.gz`
+- 提交：b40dffa feat(finance): add voice input for entry reasons
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts
+- 自上次（b1045b6）以来上线的相关提交：
+  - a762c64 feat: add isolated finance ledger and invoice inbox
+
