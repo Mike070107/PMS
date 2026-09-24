@@ -2985,3 +2985,12 @@
 - 自上次（06979f3）以来上线的相关提交：
   - 3c3b279 fix(finance): only import PDF attachments from QQ mail
 
+## 2026-09-24 18:58 · miniapp-staff · debf2cf
+
+- 包：`1.0.20260924b`
+- 提交：debf2cf feat(finance): redesign staff miniapp workspace
+- 说明：Clean worktree upload; WeChat preview compile passed; finance workspace redesigned
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/miniapp-staff/miniprogram/app.wxss，M apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss，M apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss，M packages/api-client/src/endpoints/ai.ts
+- 自上次（bd14468）以来上线的相关提交：
+  - debf2cf feat(finance): redesign staff miniapp workspace
+
