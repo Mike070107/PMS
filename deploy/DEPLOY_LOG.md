@@ -2994,3 +2994,13 @@
 - 自上次（bd14468）以来上线的相关提交：
   - debf2cf feat(finance): redesign staff miniapp workspace
 
+## 2026-09-26 21:56 · web · 67dde18
+
+- 包：`pms-web-20260926-2148.tar.gz`
+- 提交：67dde18 fix(finance): keep voucher previews inside drop zone
+- 说明：凭证截图在虚线上传框内显示大缩略图，点击可预览
+- 自上次（3c3b279）以来上线的相关提交：
+  - 67dde18 fix(finance): keep voucher previews inside drop zone
+  - 095b184 fix(finance): preview voucher images in upload zone
+  - debf2cf feat(finance): redesign staff miniapp workspace
+
