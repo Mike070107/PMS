@@ -3028,3 +3028,12 @@
   - 3da3a57 feat(finance): add accounting core and Shanghai reporting profile
   - 5fb6863 feat(finance): add invoice recognition and verification imports
 
+## 2026-09-27 00:22 · api · 799a790
+
+- 包：`pms-api-20260927-0011.tar.gz`
+- 提交：799a790 fix(finance): make account initialization concurrency-safe
+- 说明：财务账套初始化改为数据库幂等写入，修复并发首次访问唯一键冲突
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts
+- 自上次（7f509c5）以来上线的相关提交：
+  - 799a790 fix(finance): make account initialization concurrency-safe
+
