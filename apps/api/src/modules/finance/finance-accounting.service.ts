@@ -34,20 +34,28 @@ export class FinanceAccountingService {
     let accountSet = await this.setRepo.findOne({ where: { tenantId } });
     if (!accountSet) {
       const period = new Date().toISOString().slice(0, 7);
-      accountSet = await this.setRepo.save(this.setRepo.create({
+      const seed = this.setRepo.create({
         tenantId, name: '上海企业账套', accountingStandard: 'small_enterprise', taxJurisdiction: 'shanghai',
         reportingProfile: 'shanghai_small_enterprise', taxFilingFrequency: 'quarterly_annual',
         requiredReports: ['balance_sheet','profit_statement','cash_flow_statement'], currentPeriod: period, closedThrough: null, currency: 'CNY',
         createdBy: user.id, updatedBy: user.id,
-      }));
+      });
+      // The finance page loads several panels in parallel. Let PostgreSQL arbitrate
+      // first-time initialization so concurrent requests cannot both insert the tenant row.
+      await this.setRepo.createQueryBuilder().insert().into(FinanceAccountSet).values(seed).orIgnore().execute();
+      accountSet = await this.setRepo.findOne({ where: { tenantId } });
+      if (!accountSet) throw new Error('账套初始化失败');
     }
     const existing = new Set((await this.accountRepo.find({ where: { tenantId } })).map((a) => a.code));
     const missing = SMALL_ENTERPRISE_ACCOUNTS.filter((a) => !existing.has(a.code));
-    if (missing.length) await this.accountRepo.save(missing.map((a) => this.accountRepo.create({
-      tenantId, code: a.code, name: a.name, level: 1, parentId: null, category: a.category,
-      balanceDirection: a.direction, isSystem: true, allowPosting: true, isActive: true,
-      statementMapping: a.mapping || {}, createdBy: user.id, updatedBy: user.id,
-    })));
+    if (missing.length) {
+      const seeds = missing.map((a) => this.accountRepo.create({
+        tenantId, code: a.code, name: a.name, level: 1, parentId: null, category: a.category,
+        balanceDirection: a.direction, isSystem: true, allowPosting: true, isActive: true,
+        statementMapping: a.mapping || {}, createdBy: user.id, updatedBy: user.id,
+      }));
+      await this.accountRepo.createQueryBuilder().insert().into(FinanceAccount).values(seeds).orIgnore().execute();
+    }
     return accountSet;
   }
 
