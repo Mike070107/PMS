@@ -3037,3 +3037,11 @@
 - 自上次（7f509c5）以来上线的相关提交：
   - 799a790 fix(finance): make account initialization concurrency-safe
 
+## 2026-09-27 04:56 · api · 4ebaf61
+
+- 包：`pms-api-20260927-0449.tar.gz`
+- 提交：4ebaf61 feat(finance): add mobile accounting workspace
+- 说明：完整小企业财务报表、现金流量表、校验与 Excel 导出上线；干净工作树构建，健康检查和生产产物核对通过
+- 自上次（799a790）以来上线的相关提交：
+  - 062748a feat(finance): build complete small-enterprise statements
+
