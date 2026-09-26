@@ -190,6 +190,10 @@ importers:
       typescript:
         specifier: ^5.6.2
         version: 5.6.2
+    optionalDependencies:
+      '@napi-rs/canvas-linux-x64-gnu':
+        specifier: 0.1.80
+        version: 0.1.80
 
   apps/miniapp-owner:
     dependencies:
