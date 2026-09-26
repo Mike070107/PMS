@@ -13,6 +13,8 @@ export default new DataSource({
   password: process.env.FINANCE_DB_PASS ?? process.env.DB_PASS ?? '',
   database: process.env.FINANCE_DB_NAME ?? process.env.DB_NAME ?? 'pms_repair',
   entities: financeEntities,
-  migrations: ['src/finance-migrations/*.ts'],
+  // Resolve from this file so the CLI loads TypeScript migrations in development
+  // and compiled JavaScript migrations from dist in production packages.
+  migrations: [`${__dirname}/finance-migrations/*{.ts,.js}`],
   synchronize: false,
 });
