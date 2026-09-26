@@ -4,7 +4,7 @@ import { In, LessThanOrEqual, Repository } from 'typeorm';
 import * as XLSX from 'xlsx';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
-  FinanceAccount, FinanceAccountingPeriod, FinanceAccountSet, FinanceEntry, FinanceOpeningBalance, FinanceOpeningImport,
+  FinanceAccount, FinanceAccountingPeriod, FinanceAccountSet, FinanceEntry, FinanceOpeningBalance, FinanceOpeningImport, FinanceProject,
   FinanceVoucher, FinanceVoucherAudit, FinanceVoucherLine,
 } from './finance.entities';
 import { SMALL_ENTERPRISE_ACCOUNTS, round2, validateBalanced, validateOpeningEquation } from './finance-accounting.util';
@@ -21,6 +21,7 @@ export class FinanceAccountingService {
     @InjectRepository(FinanceVoucherAudit, 'finance') private readonly auditRepo: Repository<FinanceVoucherAudit>,
     @InjectRepository(FinanceAccountingPeriod, 'finance') private readonly periodRepo: Repository<FinanceAccountingPeriod>,
     @InjectRepository(FinanceEntry, 'finance') private readonly entryRepo: Repository<FinanceEntry>,
+    @InjectRepository(FinanceProject, 'finance') private readonly projectRepo: Repository<FinanceProject>,
   ) {}
 
   private tenant(user: AuthUser) {
@@ -216,6 +217,24 @@ export class FinanceAccountingService {
     return { period, rows, validation: { debit: round2(rows.reduce((s,r)=>s+Number(r.debit),0)), credit: round2(rows.reduce((s,r)=>s+Number(r.credit),0)) } };
   }
 
+  async ledgerEntries(user: AuthUser, period: string) {
+    const tenantId = this.tenant(user); await this.ensureAccountSet(user);
+    const vouchers = await this.voucherRepo.find({ where: { tenantId, period, status: 'posted' }, order: { voucherDate: 'ASC', voucherNo: 'ASC' } });
+    if (!vouchers.length) return { period, entries: [], projectSummary: [], counterpartySummary: [] };
+    const [lines, accounts, projects] = await Promise.all([
+      this.lineRepo.find({ where: { tenantId, voucherId: In(vouchers.map((v) => v.id)) }, order: { voucherId: 'ASC', lineNo: 'ASC' } }),
+      this.accountRepo.find({ where: { tenantId } }), this.projectRepo.find({ where: { tenantId } }),
+    ]);
+    const voucherMap = new Map(vouchers.map((v) => [v.id,v])); const accountMap = new Map(accounts.map((a)=>[a.id,a])); const projectMap = new Map(projects.map((p)=>[p.id,p]));
+    const entries = lines.map((line) => ({ ...line, voucher: voucherMap.get(line.voucherId), account: accountMap.get(line.accountId), projectName: line.projectId ? projectMap.get(line.projectId)?.name || `项目 #${line.projectId}` : null }));
+    const summarize = (key: 'projectName'|'counterpartyName') => {
+      const groups = new Map<string,{name:string;debit:number;credit:number;entries:number}>();
+      for (const row of entries) { const name = row[key]; if (!name) continue; const old=groups.get(name)||{name,debit:0,credit:0,entries:0}; old.debit=round2(old.debit+Number(row.debit)); old.credit=round2(old.credit+Number(row.credit)); old.entries+=1; groups.set(name,old); }
+      return [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name,'zh-CN'));
+    };
+    return { period, entries, projectSummary: summarize('projectName'), counterpartySummary: summarize('counterpartyName') };
+  }
+
   async reports(user: AuthUser, period: string) {
     const ledger = await this.ledger(user, period);
     const get = (category: string, direction: 'debit'|'credit') => round2(ledger.rows.filter((r) => r.account.category === category).reduce((s,r) => s + Number(direction === 'debit' ? r.closingDebit : r.closingCredit),0));
@@ -223,6 +242,16 @@ export class FinanceAccountingService {
     const item = (name: string) => ledger.rows.filter((r) => r.account.statementMapping?.item === name).reduce((s,r)=>s + Number(r.credit) - Number(r.debit),0);
     const revenue = item('operatingRevenue') + item('otherRevenue'); const costs = -(item('operatingCost') + item('otherCost') + item('taxAndSurcharges') + item('sellingExpenses') + item('administrativeExpenses') + item('financialExpenses')); const profit = round2(revenue - costs + item('investmentIncome') + item('nonOperatingIncome') + item('nonOperatingExpense') + item('incomeTaxExpense'));
     return { period, balanceSheet: { assets: round2(assets), liabilities: round2(liabilities), equity: round2(equity), liabilitiesAndEquity: round2(liabilities+equity), balanced: round2(assets) === round2(liabilities+equity) }, profitStatement: { operatingRevenue: round2(revenue), operatingCosts: round2(costs), netProfit: profit }, traceable: true, cashFlowReconciled: null };
+  }
+
+  async reportWorkbook(user: AuthUser, period: string) {
+    const [reports, ledger] = await Promise.all([this.reports(user,period),this.ledger(user,period)]); const book=XLSX.utils.book_new();
+    const balance=XLSX.utils.aoa_to_sheet([['资产负债表（小企业会计准则）',period],['项目','期末余额'],['资产合计',reports.balanceSheet.assets],['负债合计',reports.balanceSheet.liabilities],['所有者权益合计',reports.balanceSheet.equity],['负债和所有者权益合计',reports.balanceSheet.liabilitiesAndEquity],['校验',reports.balanceSheet.balanced?'平衡':'不平衡']]);
+    const profit=XLSX.utils.aoa_to_sheet([['利润表（小企业会计准则）',period],['项目','本期金额'],['营业收入',reports.profitStatement.operatingRevenue],['营业成本及费用',reports.profitStatement.operatingCosts],['净利润',reports.profitStatement.netProfit]]);
+    const balanceList=XLSX.utils.json_to_sheet(ledger.rows.map((r)=>({科目编码:r.account.code,科目名称:r.account.name,期初借方:Number(r.openingDebit),期初贷方:Number(r.openingCredit),本期借方:Number(r.debit),本期贷方:Number(r.credit),期末借方:Number(r.closingDebit),期末贷方:Number(r.closingCredit)})));
+    for(const sheet of [balance,profit,balanceList]) sheet['!cols']=[{wch:28},{wch:18},{wch:18},{wch:18},{wch:18},{wch:18},{wch:18},{wch:18}];
+    XLSX.utils.book_append_sheet(book,balance,'资产负债表');XLSX.utils.book_append_sheet(book,profit,'利润表');XLSX.utils.book_append_sheet(book,balanceList,'科目余额表');
+    return XLSX.write(book,{type:'buffer',bookType:'xlsx'}) as Buffer;
   }
 
   async generateProfitClosingVoucher(user: AuthUser, period: string) {

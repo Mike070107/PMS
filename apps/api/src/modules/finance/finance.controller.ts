@@ -60,7 +60,15 @@ export class FinanceController {
   @Post('accounting/vouchers/:id/status') voucherStatus(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body('action') action: 'review'|'post'|'unpost') { return this.finance.withAccountingAccess(user, () => this.accounting.changeVoucherStatus(user, id, action)); }
   @Get('accounting/vouchers/:id/history') voucherHistory(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) { return this.finance.withAccountingAccess(user, () => this.accounting.voucherHistory(user, id)); }
   @Get('accounting/ledger') ledger(@CurrentUser() user: AuthUser, @Query('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.ledger(user, period)); }
+  @Get('accounting/ledger-entries') ledgerEntries(@CurrentUser() user: AuthUser, @Query('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.ledgerEntries(user, period)); }
   @Get('accounting/reports') accountingReports(@CurrentUser() user: AuthUser, @Query('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.reports(user, period)); }
+  @Get('accounting/reports/export')
+  async exportAccountingReports(@CurrentUser() user: AuthUser, @Query('period') period: string, @Res({ passthrough: true }) response: Response) {
+    const buffer=await this.finance.withAccountingAccess(user,()=>this.accounting.reportWorkbook(user,period));
+    response.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    response.setHeader('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(`上海小企业财务报表-${period}.xlsx`)}`);
+    return new StreamableFile(buffer);
+  }
   @Post('accounting/periods/:period/profit-closing') profitClosing(@CurrentUser() user: AuthUser, @Param('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.generateProfitClosingVoucher(user, period)); }
   @Post('accounting/periods/:period/close') closePeriod(@CurrentUser() user: AuthUser, @Param('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.closePeriod(user, period)); }
   @Post('accounting/periods/:period/reverse') reverseClose(@CurrentUser() user: AuthUser, @Param('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.reverseClose(user, period)); }
