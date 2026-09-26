@@ -2,7 +2,7 @@
   <view class="finance-hero">
     <view class="finance-hero__top">
       <view><view class="finance-hero__eyebrow">独立财务账套</view><view class="finance-hero__title">财务工作台</view></view>
-      <view class="finance-hero__month">本月</view>
+      <button class="accounting-entry" bindtap="openAccounting"><text>专业账务</text><view class="icon icon--chevron"></view></button>
     </view>
     <view class="balance-label">收支结余</view><view class="balance-value">¥{{dashboard.balanceText}}</view>
     <view class="hero-metrics">
@@ -43,7 +43,7 @@
     <view wx:if="{{entries.length}}" class="entry-list">
       <view wx:for="{{entries}}" wx:key="id" class="entry-card entry-card--ledger">
         <view class="entry-card__mark entry-card__mark--{{item.flowClass}}"><view class="icon icon--{{item.flowIcon}}"></view></view>
-        <view class="entry-card__body"><view class="entry-card__reason">{{item.reason}}</view><view class="entry-card__meta">{{item.businessDate}} · {{item.ownerText}} · {{item.paymentText}}</view><view class="entry-card__project">{{item.projectText}}</view></view>
+        <view class="entry-card__body"><view class="entry-card__reason">{{item.reason}}</view><view class="entry-card__meta">{{item.businessDate}} · {{item.ownerText}} · {{item.paymentText}}</view><view class="entry-card__project">{{item.projectText}}</view><view wx:if="{{item.voucherAttachments.length}}" class="saved-attachments"><button wx:for="{{item.voucherAttachments}}" wx:for-item="file" wx:key="objectKey" data-attachment="{{file}}" catchtap="openAttachment">{{file.name}}</button></view></view>
         <view class="entry-card__side"><view class="entry-card__amount entry-card__amount--{{item.flowClass}}">{{item.sign}}¥{{item.amountText}}</view><view class="mini-status mini-status--{{item.reimbursementStatus}}">{{item.reimbursementText}}</view></view>
       </view>
     </view>
@@ -54,8 +54,8 @@
     <view class="section-head"><view><view class="section-head__eyebrow">项目归集</view><view class="section-head__title">项目管理</view></view><button class="small-primary" bindtap="openProjectForm"><view class="icon icon--plus"></view><text>新建</text></button></view>
     <view wx:if="{{projectGroups.length}}" class="project-list">
       <view wx:for="{{projectGroups}}" wx:key="id" class="project-card">
-        <view class="project-card__head"><view class="project-card__icon icon icon--folder"></view><view class="project-card__main"><view class="project-card__name">{{item.name}}</view><view class="project-card__desc">{{item.descriptionText}}</view></view><view class="project-card__count">{{item.children.length}} 个子项目</view></view>
-        <view wx:if="{{item.children.length}}" class="subproject-list"><view wx:for="{{item.children}}" wx:for-item="child" wx:key="id" class="subproject"><view class="subproject__dot"></view><text>{{child.name}}</text></view></view>
+        <view class="project-card__head"><view class="project-card__icon icon icon--folder"></view><view class="project-card__main"><view class="project-card__name">{{item.name}}</view><view class="project-card__desc">{{item.descriptionText}}</view><view wx:if="{{item.attachments.length}}" class="saved-attachments"><button wx:for="{{item.attachments}}" wx:for-item="file" wx:key="objectKey" data-attachment="{{file}}" catchtap="openAttachment">{{file.name}}</button></view></view><view class="project-card__count">{{item.children.length}} 个子项目</view></view>
+        <view wx:if="{{item.children.length}}" class="subproject-list"><view wx:for="{{item.children}}" wx:for-item="child" wx:key="id" class="subproject"><view class="subproject__dot"></view><view class="subproject__main"><text>{{child.name}}</text><view wx:if="{{child.attachments.length}}" class="saved-attachments"><button wx:for="{{child.attachments}}" wx:for-item="file" wx:key="objectKey" data-attachment="{{file}}" catchtap="openAttachment">{{file.name}}</button></view></view></view></view>
         <button class="project-card__add" data-parent="{{item.id}}" bindtap="openProjectForm"><view class="icon icon--plus"></view><text>添加子项目</text></button>
       </view>
     </view>
@@ -97,11 +97,12 @@
       <view class="field-grid"><view class="field"><view class="field__label">日期</view><picker mode="date" value="{{entryForm.businessDate}}" bindchange="onDate"><view class="picker-field"><text>{{entryForm.businessDate}}</text><view class="icon icon--chevron"></view></view></picker></view><view class="field"><view class="field__label">项目</view><picker range="{{projectOptions}}" bindchange="onProject"><view class="picker-field"><text>{{selectedProjectName}}</text><view class="icon icon--chevron"></view></view></picker></view></view>
       <view class="field"><view class="field__label">归属</view><view class="wrap-choices"><view class="pill-choice {{entryForm.owner === 'osiris' ? 'pill-choice--active' : ''}}" data-value="osiris" bindtap="setOwner">OsirisList</view><view class="pill-choice {{entryForm.owner === 'pruis' ? 'pill-choice--active' : ''}}" data-value="pruis" bindtap="setOwner">普睿斯</view><view class="pill-choice {{entryForm.owner === 'personal' ? 'pill-choice--active' : ''}}" data-value="personal" bindtap="setOwner">个人</view></view></view>
       <view class="field"><view class="field__label">支付方式</view><view class="wrap-choices"><view wx:for="{{paymentOptions}}" wx:key="value" class="pill-choice {{entryForm.paymentMethod === item.value ? 'pill-choice--active' : ''}}" data-value="{{item.value}}" bindtap="setPayment">{{item.label}}</view></view></view>
+      <view class="field"><view class="field__label">凭证附件</view><button class="attachment-picker" data-target="entry" loading="{{uploadingAttachment}}" bindtap="chooseAttachment"><view class="icon icon--upload"></view><text>上传图片或文档</text></button><view class="attachment-list"><view wx:for="{{entryForm.voucherAttachments}}" wx:key="objectKey" class="attachment-item"><text>{{item.name}}</text><button data-target="entry" data-index="{{index}}" bindtap="removeAttachment">删除</button></view></view></view>
       <view class="switch-card"><view><view class="switch-card__title">需要报销</view><view class="switch-card__desc">保存后进入待报销清单</view></view><switch checked="{{entryForm.reimbursementRequired}}" color="#31558a" bindchange="onReimbursement"/></view><view class="sheet-body__space"></view>
     </scroll-view>
     <scroll-view wx:elif="{{sheet === 'project'}}" scroll-y class="sheet-body">
       <view class="field"><view class="field__label">上级项目</view><picker range="{{parentProjectOptions}}" value="{{projectParentIndex}}" bindchange="onParentProject"><view class="picker-field"><text>{{selectedParentName}}</text><view class="icon icon--chevron"></view></view></picker><view class="field__hint">不选择时创建一级项目</view></view>
-      <view class="field"><view class="field__label">项目名称</view><input class="text-field" maxlength="120" value="{{projectForm.name}}" placeholder="填写清晰、便于搜索的名称" data-field="name" bindinput="onProjectInput"/></view><view class="field"><view class="field__label">项目说明</view><textarea class="reason-input" maxlength="1000" value="{{projectForm.description}}" placeholder="选填：范围、负责人或注意事项" data-field="description" bindinput="onProjectInput"/></view><view class="sheet-body__space"></view>
+      <view class="field"><view class="field__label">项目名称</view><input class="text-field" maxlength="120" value="{{projectForm.name}}" placeholder="填写清晰、便于搜索的名称" data-field="name" bindinput="onProjectInput"/></view><view class="field"><view class="field__label">项目说明</view><textarea class="reason-input" maxlength="1000" value="{{projectForm.description}}" placeholder="选填：范围、负责人或注意事项" data-field="description" bindinput="onProjectInput"/></view><view class="field"><view class="field__label">项目附件</view><button class="attachment-picker" data-target="project" loading="{{uploadingAttachment}}" bindtap="chooseAttachment"><view class="icon icon--upload"></view><text>上传图片或文档</text></button><view class="attachment-list"><view wx:for="{{projectForm.attachments}}" wx:key="objectKey" class="attachment-item"><text>{{item.name}}</text><button data-target="project" data-index="{{index}}" bindtap="removeAttachment">删除</button></view></view></view><view class="sheet-body__space"></view>
     </scroll-view>
     <scroll-view wx:elif="{{sheet === 'match'}}" scroll-y class="sheet-body">
       <view class="match-file"><view class="pdf-mark">PDF</view><view><view class="match-file__name">{{matchingInvoice.originalName}}</view><view class="match-file__amount">{{matchingInvoice.amountText}}</view></view></view>

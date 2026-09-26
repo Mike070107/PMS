@@ -1,5 +1,6 @@
 import {
   finance,
+  type FinanceAttachment,
   type FinanceDashboard,
   type FinanceEntry,
   type FinanceInvoice,
@@ -37,6 +38,7 @@ Page({
     loading: true,
     saving: false,
     uploading: false,
+    uploadingAttachment: false,
     activeTab: 'overview',
     tabs: [
       { key: 'overview', label: '总览', icon: 'overview', badge: 0 },
@@ -67,8 +69,8 @@ Page({
       { value: 'wechat', label: '微信' }, { value: 'alipay', label: '支付宝' },
       { value: 'bank', label: '对公转账' }, { value: 'cash', label: '现金' },
     ],
-    entryForm: { businessDate: today(), flowType: 'expense', owner: 'pruis', reason: '', amount: '', paymentMethod: 'wechat', projectId: null as number | null, reimbursementRequired: true },
-    projectForm: { parentId: null as number | null, name: '', description: '' },
+    entryForm: { businessDate: today(), flowType: 'expense', owner: 'pruis', reason: '', amount: '', paymentMethod: 'wechat', projectId: null as number | null, reimbursementRequired: true, voucherAttachments: [] as FinanceAttachment[] },
+    projectForm: { parentId: null as number | null, name: '', description: '', attachments: [] as FinanceAttachment[] },
     reimburseForm: { claimantName: '', phone: '', applicationDate: today(), bankName: '', bankAccount: '', reason: '', entryIds: [] as number[] },
   },
 
@@ -125,12 +127,13 @@ Page({
   },
 
   setTab(event: any) { this.setData({ activeTab: event.currentTarget.dataset.key }); },
+  openAccounting() { wx.navigateTo({ url: '/pages/finance-accounting/finance-accounting' }); },
   openEntryForm() { this.openSheet('entry', '快速登记', '记一笔收入或支出', '保存流水'); },
   openProjectForm(event?: any) {
     const parentId = Number(event?.currentTarget?.dataset?.parent || 0) || null;
     const roots = this.data.projects.filter((project) => !project.parentId);
     const index = parentId ? roots.findIndex((project) => project.id === parentId) + 1 : 0;
-    this.setData({ projectParentIndex: index, selectedParentName: this.data.parentProjectOptions[index], projectForm: { parentId, name: '', description: '' } });
+    this.setData({ projectParentIndex: index, selectedParentName: this.data.parentProjectOptions[index], projectForm: { parentId, name: '', description: '', attachments: [] } });
     this.openSheet('project', parentId ? '项目管理 · 子项目' : '项目管理', parentId ? '新建子项目' : '新建项目', '创建项目');
   },
   openReimburseForm() {
@@ -167,6 +170,35 @@ Page({
   onReimburseInput(event: any) { this.setData({ [`reimburseForm.${event.currentTarget.dataset.field}`]: event.detail.value }); },
   onReimburseDate(event: any) { this.setData({ 'reimburseForm.applicationDate': event.detail.value }); },
   onReimburseEntries(event: any) { this.setData({ 'reimburseForm.entryIds': event.detail.value.map(Number) }); },
+  async chooseAttachment(event: any) {
+    const target = event.currentTarget.dataset.target as 'entry'|'project';
+    const current = target === 'entry' ? this.data.entryForm.voucherAttachments : this.data.projectForm.attachments;
+    if (this.data.uploadingAttachment || current.length >= 8) return;
+    try {
+      const picked = await wx.chooseMessageFile({ count: Math.min(8 - current.length, 5), type: 'all' });
+      this.setData({ uploadingAttachment: true }); wx.showLoading({ title: '正在上传附件' });
+      const uploaded: FinanceAttachment[] = [];
+      for (const file of picked.tempFiles) uploaded.push(await finance.uploadAttachment(file.path));
+      if (target === 'entry') this.setData({ 'entryForm.voucherAttachments': [...current, ...uploaded] });
+      else this.setData({ 'projectForm.attachments': [...current, ...uploaded] });
+    } catch (error: any) { if (!/cancel/i.test(String(error?.errMsg || error?.message || ''))) wx.showToast({ icon:'none', title:error?.message || '附件上传失败' }); }
+    finally { wx.hideLoading(); this.setData({ uploadingAttachment:false }); }
+  },
+  removeAttachment(event: any) {
+    const target=event.currentTarget.dataset.target as 'entry'|'project'; const index=Number(event.currentTarget.dataset.index);
+    if(target==='entry'){const next=this.data.entryForm.voucherAttachments.slice();next.splice(index,1);this.setData({'entryForm.voucherAttachments':next});}
+    else{const next=this.data.projectForm.attachments.slice();next.splice(index,1);this.setData({'projectForm.attachments':next});}
+  },
+  async openAttachment(event:any) {
+    const attachment = event.currentTarget.dataset.attachment as FinanceAttachment;
+    if(!attachment?.objectKey)return;
+    wx.showLoading({title:'正在打开附件'});
+    try{
+      const path=await finance.downloadAttachment(attachment.objectKey); wx.hideLoading();
+      if(/^image\//.test(attachment.contentType||'') || /\.(png|jpe?g|gif|webp)$/i.test(attachment.name)) wx.previewImage({current:path,urls:[path]});
+      else await wx.openDocument({filePath:path,showMenu:true});
+    }catch(error:any){wx.hideLoading();wx.showToast({icon:'none',title:error?.message||'附件打开失败'});}
+  },
 
   async submitSheet() {
     if (this.data.sheet === 'entry') return this.saveEntry();
@@ -178,7 +210,7 @@ Page({
     if (!form.reason.trim()) return wx.showToast({ icon: 'none', title: '请填写事由' });
     if (!Number(form.amount) || Number(form.amount) <= 0) return wx.showToast({ icon: 'none', title: '金额必须大于 0' });
     this.setData({ saving: true });
-    try { await finance.createEntry(form as any); wx.showToast({ icon: 'success', title: '已记账' }); this.setData({ sheet: '', entryForm: { ...form, reason: '', amount: '', projectId: null }, selectedProjectName: '暂不选择' }); await this.load(); }
+    try { await finance.createEntry(form as any); wx.showToast({ icon: 'success', title: '已记账' }); this.setData({ sheet: '', entryForm: { ...form, reason: '', amount: '', projectId: null, voucherAttachments: [] }, selectedProjectName: '暂不选择' }); await this.load(); }
     catch (error: any) { wx.showToast({ icon: 'none', title: error?.message || '保存失败' }); }
     finally { this.setData({ saving: false }); }
   },

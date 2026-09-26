@@ -316,6 +316,28 @@ export function uploadFileTo<T = unknown>(
   });
 }
 
+/** 小程序下载需要登录态的业务文件，返回微信临时文件路径。 */
+export function downloadFileFrom(endpoint: string, timeout = 60000): Promise<string> {
+  if (!config) throw new Error('[api-client] configure() must be called before downloadFileFrom()');
+  if (!hasWxRequest()) return Promise.reject(new ApiError(-1, 'downloadFileFrom 仅在小程序环境可用'));
+  const url = buildUrl(config.baseURL, endpoint);
+  const header: Record<string, string> = { ...config.getExtraHeaders?.() };
+  const token = config.getToken();
+  if (token) header.Authorization = `Bearer ${token}`;
+  return new Promise<string>((resolve, reject) => {
+    // @ts-ignore — 小程序运行时注入
+    wx.downloadFile({
+      url, header, timeout,
+      success: (response: any) => {
+        if (response.statusCode === 401) { config?.onUnauthorized?.(); return reject(new ApiError(401, '登录已过期，请重新登录', 401)); }
+        if (response.statusCode < 200 || response.statusCode >= 300) return reject(new ApiError(response.statusCode, `文件下载失败 HTTP ${response.statusCode}`, response.statusCode));
+        resolve(response.tempFilePath);
+      },
+      fail: (error: any) => reject(new ApiError(-1, networkMessage(error?.errMsg))),
+    });
+  });
+}
+
 export function request<T = unknown>(opts: RequestOptions): Promise<T> {
   if (!config) throw new Error('[api-client] configure() must be called before request()');
   const url = buildUrl(config.baseURL, opts.url, opts.query);

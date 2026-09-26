@@ -20,4 +20,8 @@ export type { FeedbackType, FeedbackStatus, UserFeedbackReq } from './endpoints/
 export * as feedback from './endpoints/feedback';
 export * as repairExperiences from './endpoints/repair-experiences';
 export * as finance from './endpoints/finance';
-export type { FinanceAccess, FinanceDashboard, FinanceEntry, FinanceInvoice, FinanceProject, FinanceReimbursement } from './endpoints/finance';
+export type {
+  FinanceAccess, FinanceAccountingOverview, FinanceAccount, FinanceAttachment, FinanceDashboard, FinanceEntry,
+  FinanceInvoice, FinanceLedger, FinanceLedgerDetail, FinanceProject, FinanceReports, FinanceReimbursement,
+  FinanceStatementRow, FinanceVoucher, FinanceVoucherLine,
+} from './endpoints/finance';

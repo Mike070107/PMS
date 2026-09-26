@@ -1,0 +1,66 @@
+<view class="accounting-page">
+  <view class="accounting-hero">
+    <view class="hero-head"><view><view class="hero-eyebrow">小企业会计准则 · 上海</view><view class="hero-title">专业账务中心</view></view><picker mode="date" fields="month" value="{{period}}" bindchange="onPeriod"><view class="period-picker">{{period}} <text>⌄</text></view></picker></view>
+    <view class="hero-entity">{{entityName}} · 单位：元</view>
+    <view class="hero-metrics"><view><text>资产总计</text><strong>¥{{assetTotalText}}</strong></view><view><text>本年净利润</text><strong>¥{{netProfitText}}</strong></view></view>
+  </view>
+
+  <view class="main-tabs">
+    <view class="main-tab {{activeTab==='reports'?'is-active':''}}" data-key="reports" bindtap="setTab"><view class="tab-icon">表</view><text>财务报表</text></view>
+    <view class="main-tab {{activeTab==='vouchers'?'is-active':''}}" data-key="vouchers" bindtap="setTab"><view class="tab-icon">凭</view><text>智能凭证</text><view wx:if="{{draftCount}}" class="tab-badge">{{draftCount}}</view></view>
+    <view class="main-tab {{activeTab==='ledger'?'is-active':''}}" data-key="ledger" bindtap="setTab"><view class="tab-icon">账</view><text>账簿</text></view>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading-card"><view class="loading-dot"></view><text>正在核算账务数据…</text></view>
+  <view wx:elif="{{!reports}}" class="empty-card"><strong>账务数据暂时无法加载</strong><text>下拉刷新后重试，已填写的数据不会丢失。</text></view>
+
+  <block wx:elif="{{activeTab==='reports'}}">
+    <scroll-view scroll-x class="subtabs"><view class="subtab {{reportTab==='balance'?'is-active':''}}" data-key="balance" bindtap="setReportTab">资产负债表</view><view class="subtab {{reportTab==='profit'?'is-active':''}}" data-key="profit" bindtap="setReportTab">利润表</view><view class="subtab {{reportTab==='cash'?'is-active':''}}" data-key="cash" bindtap="setReportTab">现金流量表</view><view class="subtab {{reportTab==='checks'?'is-active':''}}" data-key="checks" bindtap="setReportTab">报表校验</view></scroll-view>
+    <view wx:if="{{reportTab==='balance'}}" class="statement-card">
+      <view class="statement-head"><view><text>{{reports.balanceSheet.formCode}}</text><strong>资产负债表</strong></view><view class="status-pill {{reports.balanceSheet.balanced?'is-ok':'is-error'}}">{{reports.balanceSheet.balanced?'勾稽通过':'报表不平'}}</view></view>
+      <view class="statement-section">资产</view><scroll-view scroll-x class="statement-scroll"><view class="statement-table"><view class="statement-row statement-row--head"><text>项目</text><text>行次</text><text>期末余额</text><text>年初余额</text></view><view wx:for="{{assetRows}}" wx:key="index" class="statement-row statement-row--{{item.kind}}"><text>{{item.label}}</text><text>{{item.line}}</text><text>{{item.closingText}}</text><text>{{item.openingText}}</text></view></view></scroll-view>
+      <view class="statement-section">负债和所有者权益</view><scroll-view scroll-x class="statement-scroll"><view class="statement-table"><view class="statement-row statement-row--head"><text>项目</text><text>行次</text><text>期末余额</text><text>年初余额</text></view><view wx:for="{{liabilityRows}}" wx:key="index" class="statement-row statement-row--{{item.kind}}"><text>{{item.label}}</text><text>{{item.line}}</text><text>{{item.closingText}}</text><text>{{item.openingText}}</text></view></view></scroll-view>
+    </view>
+    <view wx:elif="{{reportTab==='profit' || reportTab==='cash'}}" class="statement-card">
+      <view class="statement-head"><view><text>{{reportTab==='profit'?reports.profitStatement.formCode:reports.cashFlowStatement.formCode}}</text><strong>{{reportTab==='profit'?'利润表':'现金流量表'}}</strong></view><view wx:if="{{reportTab==='cash' && reports.cashFlowStatement.classification.pending}}" class="status-pill is-warning">{{reports.cashFlowStatement.classification.pending}} 笔待确认</view></view>
+      <scroll-view scroll-x class="statement-scroll"><view class="statement-table statement-table--vertical"><view class="statement-row statement-row--head"><text>项目</text><text>行次</text><text>本年累计</text><text>本月金额</text></view><view wx:for="{{reportTab==='profit'?profitRows:cashRows}}" wx:key="index" class="statement-row statement-row--{{item.kind}}"><text>{{item.label}}</text><text>{{item.line}}</text><text>{{item.ytdText}}</text><text>{{item.currentText}}</text></view></view></scroll-view>
+    </view>
+    <view wx:else class="checks-list"><view wx:for="{{reports.validations}}" wx:key="key" class="check-card {{item.ok?'is-ok':(item.warning?'is-warning':'is-error')}}"><view class="check-mark">{{item.ok?'✓':(item.warning?'!':'×')}}</view><view><strong>{{item.label}}</strong><text>{{item.detail}}</text></view></view></view>
+  </block>
+
+  <block wx:elif="{{activeTab==='vouchers'}}">
+    <view class="section-toolbar"><view><text>本期凭证</text><strong>{{vouchers.length}} 张</strong></view><button bindtap="openVoucher">＋ 新增凭证</button></view>
+    <view wx:for="{{vouchers}}" wx:key="id" class="voucher-card">
+      <view class="voucher-top"><view><text>{{item.voucherNo}}</text><strong>{{item.summary}}</strong></view><view class="voucher-status voucher-status--{{item.status}}">{{item.statusText}}</view></view>
+      <view class="voucher-meta"><text>{{item.voucherDate}}</text><text>借 ¥{{item.debitText}}</text><text>贷 ¥{{item.creditText}}</text></view>
+      <view class="voucher-lines"><view wx:for="{{item.lines}}" wx:for-item="line" wx:key="id"><text>{{line.account.code}} {{line.account.name}}</text><strong>{{line.debit>0?'借':'贷'}} ¥{{line.debit>0?line.debit:line.credit}}</strong></view></view>
+      <view class="voucher-actions"><button wx:if="{{item.status!=='posted'}}" data-id="{{item.id}}" bindtap="openVoucher">编辑</button><button wx:if="{{item.status==='draft'}}" class="is-primary" data-id="{{item.id}}" data-action="review" bindtap="changeStatus">复核</button><button wx:if="{{item.status==='reviewed'}}" class="is-primary" data-id="{{item.id}}" data-action="post" bindtap="changeStatus">过账</button><button wx:if="{{item.status==='posted'}}" data-id="{{item.id}}" data-action="unpost" bindtap="changeStatus">取消过账</button></view>
+    </view>
+    <view wx:if="{{!vouchers.length}}" class="empty-card"><strong>本期还没有凭证</strong><text>流水同步后会自动形成草稿，也可以手工新增。</text></view>
+  </block>
+
+  <block wx:else>
+    <view class="ledger-switch"><view class="{{ledgerTab==='balance'?'is-active':''}}" data-key="balance" bindtap="setLedgerTab">科目余额表</view><view class="{{ledgerTab==='journal'?'is-active':''}}" data-key="journal" bindtap="setLedgerTab">序时账</view></view>
+    <view wx:if="{{ledgerTab==='balance'}}" class="ledger-list"><view wx:for="{{ledger.rows}}" wx:key="index" class="ledger-card"><view><text>{{item.account.code}}</text><strong>{{item.account.name}}</strong></view><view class="ledger-grid"><view><text>期初借</text><strong>{{item.openingDebit}}</strong></view><view><text>本期借</text><strong>{{item.debit}}</strong></view><view><text>本期贷</text><strong>{{item.credit}}</strong></view><view><text>期末余额</text><strong>{{item.closingDebit>0?item.closingDebit:item.closingCredit}}</strong></view></view></view></view>
+    <view wx:else class="journal-list"><view wx:for="{{ledgerDetail.entries}}" wx:key="id" class="journal-card"><view class="journal-date"><strong>{{item.voucher.voucherDate}}</strong><text>{{item.voucher.voucherNo}}</text></view><view class="journal-main"><strong>{{item.account.code}} {{item.account.name}}</strong><text>{{item.summary}}</text><view><text wx:if="{{item.debit>0}}">借 ¥{{item.debit}}</text><text wx:else>贷 ¥{{item.credit}}</text></view></view></view></view>
+  </block>
+  <view class="page-safe-space"></view>
+
+  <view wx:if="{{voucherSheet}}" class="sheet-mask" catchtouchmove="noop" bindtap="closeVoucher"></view>
+  <view wx:if="{{voucherSheet}}" class="voucher-sheet">
+    <view class="sheet-head"><view><text>手工凭证</text><strong>{{editingId?'修改记账凭证':'新增记账凭证'}}</strong></view><view bindtap="closeVoucher">×</view></view>
+    <scroll-view scroll-y class="sheet-body">
+      <view class="field"><text>凭证日期</text><picker mode="date" value="{{voucherDate}}" bindchange="onVoucherDate"><view class="field-control">{{voucherDate}}</view></picker></view>
+      <view class="field"><text>凭证摘要</text><input value="{{voucherSummary}}" maxlength="500" placeholder="填写本笔业务内容" bindinput="onVoucherSummary"/></view>
+      <view wx:for="{{voucherLines}}" wx:key="index" class="line-editor">
+        <view class="line-editor__head"><strong>分录 {{index+1}}</strong><button data-index="{{index}}" bindtap="removeVoucherLine">删除</button></view>
+        <view class="field"><text>会计科目</text><picker range="{{accountOptions}}" value="{{item.accountIndex}}" data-index="{{index}}" bindchange="onLineAccount"><view class="field-control">{{item.accountText}}</view></picker></view>
+        <view class="field"><text>摘要</text><input value="{{item.summary}}" data-index="{{index}}" data-field="summary" placeholder="默认使用凭证摘要" bindinput="onLineInput"/></view>
+        <view class="amount-pair"><view class="field"><text>借方金额</text><input type="digit" value="{{item.debit}}" data-index="{{index}}" data-field="debit" placeholder="0.00" bindinput="onLineInput"/></view><view class="field"><text>贷方金额</text><input type="digit" value="{{item.credit}}" data-index="{{index}}" data-field="credit" placeholder="0.00" bindinput="onLineInput"/></view></view>
+        <view class="field"><text>现金流项目</text><picker range="{{cashFlowOptionLabels}}" value="{{item.cashFlowIndex}}" data-index="{{index}}" bindchange="onLineCashFlow"><view class="field-control">{{item.cashFlowText}}</view></picker></view>
+      </view>
+      <button class="add-line" bindtap="addVoucherLine">＋ 增加分录</button><view class="sheet-space"></view>
+    </scroll-view>
+    <view class="sheet-footer"><button loading="{{saving}}" disabled="{{saving}}" bindtap="saveVoucher">{{editingId?'保存修改':'创建凭证'}}</button></view>
+  </view>
+</view>
