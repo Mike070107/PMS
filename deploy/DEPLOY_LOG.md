@@ -3017,3 +3017,14 @@
   - 3da3a57 feat(finance): add accounting core and Shanghai reporting profile
   - 5fb6863 feat(finance): add invoice recognition and verification imports
 
+## 2026-09-27 00:04 · web · ac1a37d
+
+- 包：`pms-web-20260926-2333.tar.gz`
+- 提交：ac1a37d feat(finance): add detailed ledgers and report export
+- 说明：财务会计工作台、科目余额表、总账明细账、资产负债表和利润表界面上线；桌面及390px权限页无横向溢出。发布包来自独立干净工作树，主工作区脏文件未进入包。
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo，M packages/api-client/src/endpoints/ai.ts
+- 自上次（67dde18）以来上线的相关提交：
+  - ac1a37d feat(finance): add detailed ledgers and report export
+  - 3da3a57 feat(finance): add accounting core and Shanghai reporting profile
+  - 5fb6863 feat(finance): add invoice recognition and verification imports
+
