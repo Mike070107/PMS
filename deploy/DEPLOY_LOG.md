@@ -3004,3 +3004,16 @@
   - 095b184 fix(finance): preview voucher images in upload zone
   - debf2cf feat(finance): redesign staff miniapp workspace
 
+## 2026-09-27 00:04 · api · 7f509c5
+
+- 包：`pms-api-20260926-2354.tar.gz`
+- 提交：7f509c5 fix(deploy): include Linux PDF rendering binary
+- 说明：财务会计核心、发票识别验真及上海报送配置上线；迁移完成，健康检查与权限隔离通过。发布包来自独立干净工作树，主工作区脏文件未进入包。
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/api/src/modules/ai/ai-tools.controller.ts，M apps/api/src/modules/ai/repair-text.ai.test.ts
+- 自上次（3c3b279）以来上线的相关提交：
+  - 7f509c5 fix(deploy): include Linux PDF rendering binary
+  - e124aae fix(finance): load compiled migrations in release packages
+  - ac1a37d feat(finance): add detailed ledgers and report export
+  - 3da3a57 feat(finance): add accounting core and Shanghai reporting profile
+  - 5fb6863 feat(finance): add invoice recognition and verification imports
+
