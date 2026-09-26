@@ -3045,3 +3045,12 @@
 - 自上次（799a790）以来上线的相关提交：
   - 062748a feat(finance): build complete small-enterprise statements
 
+## 2026-09-27 04:57 · web · 4ebaf61
+
+- 包：`pms-web-20260927-0449.tar.gz`
+- 提交：4ebaf61 feat(finance): add mobile accounting workspace
+- 说明：完整财务报表工作台上线；干净工作树构建，生产页面与静态资源 200
+- 自上次（ac1a37d）以来上线的相关提交：
+  - 4ebaf61 feat(finance): add mobile accounting workspace
+  - 062748a feat(finance): build complete small-enterprise statements
+
