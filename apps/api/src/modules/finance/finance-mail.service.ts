@@ -9,7 +9,8 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { decryptFinanceSecret, encryptFinanceSecret, resolveFinanceKey } from './finance.crypto';
 import { FinanceInvoice, FinanceMailConnection, FinanceMailMessage } from './finance.entities';
-import { extractInvoiceHints, isPdfAttachment, maskEmail, sha256 } from './finance.util';
+import { FinanceRecognitionService } from './finance-recognition.service';
+import { isPdfAttachment, maskEmail, sha256 } from './finance.util';
 import { FinanceService } from './finance.service';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class FinanceMailService {
     private readonly finance: FinanceService,
     private readonly config: ConfigService,
     private readonly storage: ObjectStorageService,
+    private readonly recognition: FinanceRecognitionService,
   ) {}
 
   async getConnection(user: AuthUser) {
@@ -109,12 +111,14 @@ export class FinanceMailService {
               if (!isPdfAttachment(attachment.filename ?? '', attachment.contentType)) continue;
               const hash = sha256(attachment.content);
               if (await this.invoiceRepo.findOne({ where: { tenantId, sha256: hash } })) continue;
-              const hints = extractInvoiceHints(attachment.filename ?? 'invoice', attachment.content);
-              const sameIdentity = hints.invoiceCode && hints.invoiceNo
-                ? await this.invoiceRepo.findOne({ where: { tenantId, invoiceCode: hints.invoiceCode, invoiceNo: hints.invoiceNo } })
+              const filename = attachment.filename ?? 'invoice.pdf';
+              const recognized = await this.recognition.recognize(tenantId, filename, attachment.contentType, attachment.content);
+              const sameIdentity = recognized.invoiceCode && recognized.invoiceNo
+                ? await this.invoiceRepo.findOne({ where: { tenantId, invoiceCode: recognized.invoiceCode, invoiceNo: recognized.invoiceNo } })
                 : null;
               const stored = await this.storage.putBuffer(attachment.content, attachment.contentType || 'application/octet-stream', `finance-invoices/t${tenantId}`, attachment.filename);
-              await this.invoiceRepo.save(this.invoiceRepo.create({ tenantId, source: 'email', originalName: (attachment.filename ?? 'invoice').slice(0, 255), objectKey: stored.objectKey, sha256: hash, status: sameIdentity ? 'duplicate' : 'inbox', ...hints, sellerName: null, buyerName: null, entryId: null, sourceMessageId: mailRow.id, matchReason: sameIdentity ? `与发票 #${sameIdentity.id} 的代码和号码重复` : null, discardReason: null, recognitionRaw: { subject: parsed.subject ?? null }, createdBy: actorId, updatedBy: actorId }));
+              const { status: recognitionStatus, source: recognitionSource, confidence: recognitionConfidence, raw, ...fields } = recognized;
+              await this.invoiceRepo.save(this.invoiceRepo.create({ tenantId, source: 'email', originalName: filename.slice(0, 255), objectKey: stored.objectKey, sha256: hash, status: sameIdentity ? 'duplicate' : 'inbox', ...fields, entryId: null, sourceMessageId: mailRow.id, matchReason: sameIdentity ? `与发票 #${sameIdentity.id} 的代码和号码重复` : null, discardReason: null, recognitionRaw: { ...raw, subject: parsed.subject ?? null }, recognitionStatus, recognitionSource, recognitionConfidence, verificationStatus: 'unverified', verifiedAt: null, verificationSource: null, verificationMessage: null, createdBy: actorId, updatedBy: actorId }));
               imported++;
             }
             connection.lastUid = Math.max(connection.lastUid ?? 0, uid);

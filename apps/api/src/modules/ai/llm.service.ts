@@ -10,6 +10,11 @@ export interface AskOptions {
   cacheable?: boolean;
 }
 
+type ChatUserContent = string | Array<
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' } }
+>;
+
 /**
  * 大模型调用的唯一出口。
  *
@@ -92,6 +97,34 @@ export class LlmService {
   }
 
   /**
+   * 图片结构化识别。仍复用租户现有的 OpenAI 兼容配置；模型不支持视觉时返回 null，
+   * 调用方必须保留文件并转人工处理，不能把识别失败当作业务失败。
+   */
+  async askImageJson<T = Record<string, unknown>>(
+    tenantId: number,
+    system: string,
+    prompt: string,
+    image: { contentType: string; buffer: Buffer },
+    opts: AskOptions = {},
+  ): Promise<T | null> {
+    const cfg = await this.settings.getAiAssistRaw(tenantId);
+    if (!cfg.enabled || !cfg.baseUrl || !cfg.model || !cfg.apiKey) return null;
+    const started = Date.now();
+    const raw = await this.chat(cfg, system, [
+      { type: 'text', text: prompt },
+      { type: 'image_url', image_url: { url: `data:${image.contentType};base64,${image.buffer.toString('base64')}`, detail: 'high' } },
+    ]);
+    const latencyMs = Date.now() - started;
+    if (!raw.ok) {
+      this.logger.warn(`图片识别调用失败（${cfg.baseUrl} ${cfg.model}）：${raw.error}`);
+      void this.usage?.record({ tenantId, kind: opts.kind || 'other', model: cfg.model, ok: false, latencyMs, error: raw.error });
+      return null;
+    }
+    void this.usage?.record({ tenantId, kind: opts.kind || 'other', model: cfg.model, ok: true, usage: raw.usage, latencyMs });
+    return parseJsonLoose<T>(raw.content);
+  }
+
+  /**
    * 后台「发送测试」用：把服务商返回的**真实**错误原样带回去。
    * 「调用失败」四个字帮不了任何人 —— 是 key 错了、余额没了还是模型名写错了，
    * 只有原文说得清。
@@ -117,7 +150,7 @@ export class LlmService {
   private async chat(
     cfg: AiAssistSetting,
     system: string,
-    user: string,
+    user: ChatUserContent,
   ): Promise<{ ok: true; content: string; usage: LlmUsage | null } | { ok: false; error: string }> {
     const url = `${cfg.baseUrl.replace(/\/+$/, '')}/v1/chat/completions`;
     const deepSeek = /(^|\.)deepseek\.com(?=\/|$)/i.test(

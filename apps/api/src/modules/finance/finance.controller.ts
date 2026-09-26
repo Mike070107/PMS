@@ -6,11 +6,19 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { FinanceFilesService } from './finance-files.service';
 import { FinanceMailService } from './finance-mail.service';
 import { FinanceService } from './finance.service';
+import { FinanceTaxImportService } from './finance-tax-import.service';
+import { FinanceVerificationService } from './finance-verification.service';
 
 @Controller('finance')
 @UseGuards(JwtAuthGuard)
 export class FinanceController {
-  constructor(private readonly finance: FinanceService, private readonly mail: FinanceMailService, private readonly files: FinanceFilesService) {}
+  constructor(
+    private readonly finance: FinanceService,
+    private readonly mail: FinanceMailService,
+    private readonly files: FinanceFilesService,
+    private readonly taxImport: FinanceTaxImportService,
+    private readonly verification: FinanceVerificationService,
+  ) {}
 
   @Get('access') access(@CurrentUser() user: AuthUser) { return this.finance.access(user); }
   @Get('dashboard') dashboard(@CurrentUser() user: AuthUser) { return this.finance.dashboard(user); }
@@ -24,6 +32,8 @@ export class FinanceController {
   @Post('invoices/:id/match') match(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body('entryId', ParseIntPipe) entryId: number) { return this.finance.matchInvoice(user, id, entryId); }
   @Post('invoices/:id/discard') discard(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body('reason') reason?: string) { return this.finance.discardInvoice(user, id, reason); }
   @Post('invoices/:id/restore') restore(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) { return this.finance.restoreInvoice(user, id); }
+  @Get('invoices/:id/verification-history') verificationHistory(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) { return this.verification.history(user, id); }
+  @Post('invoices/:id/verify') verifyInvoice(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body('provider') provider?: string) { return this.verification.verify(user, id, provider || 'default'); }
   @Get('reimbursements') reimbursements(@CurrentUser() user: AuthUser) { return this.finance.listReimbursements(user); }
   @Post('reimbursements') createReimbursement(@CurrentUser() user: AuthUser, @Body() dto: any) { return this.finance.createReimbursement(user, dto); }
   @Post('reimbursements/:id/paid') markPaid(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) { return this.finance.markReimbursementPaid(user, id); }
@@ -40,6 +50,12 @@ export class FinanceController {
   @Post('invoices/upload')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 30 * 1024 * 1024 } }))
   uploadInvoice(@CurrentUser() user: AuthUser, @UploadedFile() file?: Express.Multer.File) { return this.files.uploadInvoice(user, file); }
+
+  @Get('tax-account-imports') taxAccountImports(@CurrentUser() user: AuthUser) { return this.taxImport.listBatches(user); }
+
+  @Post('tax-account-imports')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 30 * 1024 * 1024 } }))
+  importTaxAccount(@CurrentUser() user: AuthUser, @UploadedFile() file?: Express.Multer.File) { return this.taxImport.importExport(user, file); }
 
   @Get('files')
   async readFile(@CurrentUser() user: AuthUser, @Query('key') key: string, @Res({ passthrough: true }) response: Response) {
