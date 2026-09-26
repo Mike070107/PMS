@@ -8,6 +8,7 @@ import { FinanceMailService } from './finance-mail.service';
 import { FinanceService } from './finance.service';
 import { FinanceTaxImportService } from './finance-tax-import.service';
 import { FinanceVerificationService } from './finance-verification.service';
+import { FinanceAccountingService } from './finance-accounting.service';
 
 @Controller('finance')
 @UseGuards(JwtAuthGuard)
@@ -18,6 +19,7 @@ export class FinanceController {
     private readonly files: FinanceFilesService,
     private readonly taxImport: FinanceTaxImportService,
     private readonly verification: FinanceVerificationService,
+    private readonly accounting: FinanceAccountingService,
   ) {}
 
   @Get('access') access(@CurrentUser() user: AuthUser) { return this.finance.access(user); }
@@ -37,6 +39,31 @@ export class FinanceController {
   @Get('reimbursements') reimbursements(@CurrentUser() user: AuthUser) { return this.finance.listReimbursements(user); }
   @Post('reimbursements') createReimbursement(@CurrentUser() user: AuthUser, @Body() dto: any) { return this.finance.createReimbursement(user, dto); }
   @Post('reimbursements/:id/paid') markPaid(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) { return this.finance.markReimbursementPaid(user, id); }
+
+  @Get('accounting/overview') accountingOverview(@CurrentUser() user: AuthUser, @Query('period') period?: string) { return this.finance.withAccountingAccess(user, () => this.accounting.overview(user, period)); }
+  @Post('accounting/accounts') createDetailAccount(@CurrentUser() user: AuthUser, @Body() dto: any) { return this.finance.withAccountingAccess(user, () => this.accounting.createDetailAccount(user, dto)); }
+  @Get('accounting/opening-balances') openingBalances(@CurrentUser() user: AuthUser, @Query('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.openingBalances(user, period)); }
+  @Get('accounting/opening-template')
+  async openingTemplate(@CurrentUser() user: AuthUser, @Res({ passthrough: true }) response: Response) {
+    const buffer = await this.finance.withAccountingAccess(user, () => this.accounting.openingTemplate(user));
+    response.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    response.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('小企业会计准则-期初余额模板.xlsx')}`);
+    return new StreamableFile(buffer);
+  }
+  @Post('accounting/opening-import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  importOpening(@CurrentUser() user: AuthUser, @Query('period') period: string, @UploadedFile() file?: Express.Multer.File) { return this.finance.withAccountingAccess(user, () => this.accounting.importOpening(user, period, file)); }
+  @Get('accounting/vouchers') vouchers(@CurrentUser() user: AuthUser, @Query('period') period?: string) { return this.finance.withAccountingAccess(user, () => this.accounting.listVouchers(user, period)); }
+  @Post('accounting/sources/sync') syncAccountingSources(@CurrentUser() user: AuthUser) { return this.finance.withAccountingAccess(user, () => this.accounting.syncBusinessSources(user)); }
+  @Post('accounting/vouchers') createVoucher(@CurrentUser() user: AuthUser, @Body() dto: any) { return this.finance.withAccountingAccess(user, () => this.accounting.saveVoucher(user, null, dto)); }
+  @Put('accounting/vouchers/:id') updateVoucher(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: any) { return this.finance.withAccountingAccess(user, () => this.accounting.saveVoucher(user, id, dto)); }
+  @Post('accounting/vouchers/:id/status') voucherStatus(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body('action') action: 'review'|'post'|'unpost') { return this.finance.withAccountingAccess(user, () => this.accounting.changeVoucherStatus(user, id, action)); }
+  @Get('accounting/vouchers/:id/history') voucherHistory(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) { return this.finance.withAccountingAccess(user, () => this.accounting.voucherHistory(user, id)); }
+  @Get('accounting/ledger') ledger(@CurrentUser() user: AuthUser, @Query('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.ledger(user, period)); }
+  @Get('accounting/reports') accountingReports(@CurrentUser() user: AuthUser, @Query('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.reports(user, period)); }
+  @Post('accounting/periods/:period/profit-closing') profitClosing(@CurrentUser() user: AuthUser, @Param('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.generateProfitClosingVoucher(user, period)); }
+  @Post('accounting/periods/:period/close') closePeriod(@CurrentUser() user: AuthUser, @Param('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.closePeriod(user, period)); }
+  @Post('accounting/periods/:period/reverse') reverseClose(@CurrentUser() user: AuthUser, @Param('period') period: string) { return this.finance.withAccountingAccess(user, () => this.accounting.reverseClose(user, period)); }
 
   @Get('mail-connection') mailConnection(@CurrentUser() user: AuthUser) { return this.mail.getConnection(user); }
   @Put('mail-connection') saveMailConnection(@CurrentUser() user: AuthUser, @Body() dto: any) { return this.mail.saveConnection(user, dto); }

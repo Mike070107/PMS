@@ -149,4 +149,112 @@ export class FinanceReimbursement extends FinanceTenantEntity {
   @Column({ name: 'paid_at', type: 'timestamptz', nullable: true }) paidAt: Date | null;
 }
 
-export const financeEntities = [FinanceProject, FinanceEntry, FinanceInvoice, FinanceInvoiceVerification, FinanceTaxImportBatch, FinanceMailConnection, FinanceMailMessage, FinanceReimbursement];
+@Entity('finance_account_sets')
+@Index(['tenantId'], { unique: true })
+export class FinanceAccountSet extends FinanceTenantEntity {
+  @Column({ type: 'varchar', length: 120 }) name: string;
+  @Column({ name: 'accounting_standard', type: 'varchar', length: 40, default: 'small_enterprise' }) accountingStandard: 'small_enterprise';
+  @Column({ name: 'tax_jurisdiction', type: 'varchar', length: 40, default: 'shanghai' }) taxJurisdiction: 'shanghai';
+  @Column({ name: 'reporting_profile', type: 'varchar', length: 40, default: 'shanghai_small_enterprise' }) reportingProfile: string;
+  @Column({ name: 'tax_filing_frequency', type: 'varchar', length: 30, default: 'quarterly_annual' }) taxFilingFrequency: 'quarterly_annual';
+  @Column({ name: 'required_reports', type: 'jsonb', default: () => "'[\"balance_sheet\",\"profit_statement\",\"cash_flow_statement\"]'::jsonb" }) requiredReports: string[];
+  @Column({ name: 'current_period', type: 'varchar', length: 7 }) currentPeriod: string;
+  @Column({ name: 'closed_through', type: 'varchar', length: 7, nullable: true }) closedThrough: string | null;
+  @Column({ type: 'varchar', length: 3, default: 'CNY' }) currency: string;
+}
+
+@Entity('finance_accounts')
+@Index(['tenantId', 'code'], { unique: true })
+@Index(['tenantId', 'parentId'])
+export class FinanceAccount extends FinanceTenantEntity {
+  @Column({ type: 'varchar', length: 32 }) code: string;
+  @Column({ type: 'varchar', length: 120 }) name: string;
+  @Column({ type: 'int', default: 1 }) level: number;
+  @Column({ name: 'parent_id', type: 'int', nullable: true }) parentId: number | null;
+  @Column({ type: 'varchar', length: 20 }) category: 'asset' | 'liability' | 'equity' | 'cost' | 'profit_loss';
+  @Column({ name: 'balance_direction', type: 'varchar', length: 10 }) balanceDirection: 'debit' | 'credit';
+  @Column({ name: 'is_system', type: 'boolean', default: false }) isSystem: boolean;
+  @Column({ name: 'allow_posting', type: 'boolean', default: true }) allowPosting: boolean;
+  @Column({ name: 'is_active', type: 'boolean', default: true }) isActive: boolean;
+  @Column({ name: 'statement_mapping', type: 'jsonb', default: () => "'{}'::jsonb" }) statementMapping: Record<string, string>;
+}
+
+@Entity('finance_opening_imports')
+@Index(['tenantId', 'createdAt'])
+export class FinanceOpeningImport extends FinanceTenantEntity {
+  @Column({ type: 'varchar', length: 7 }) period: string;
+  @Column({ name: 'original_name', type: 'varchar', length: 255 }) originalName: string;
+  @Column({ type: 'varchar', length: 20 }) status: 'valid' | 'invalid';
+  @Column({ name: 'total_rows', type: 'int', default: 0 }) totalRows: number;
+  @Column({ name: 'imported_rows', type: 'int', default: 0 }) importedRows: number;
+  @Column({ name: 'debit_total', type: 'decimal', precision: 16, scale: 2, default: 0 }) debitTotal: string;
+  @Column({ name: 'credit_total', type: 'decimal', precision: 16, scale: 2, default: 0 }) creditTotal: string;
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" }) errors: string[];
+}
+
+@Entity('finance_opening_balances')
+@Index(['tenantId', 'period', 'accountId'], { unique: true })
+export class FinanceOpeningBalance extends FinanceTenantEntity {
+  @Column({ type: 'varchar', length: 7 }) period: string;
+  @Column({ name: 'account_id', type: 'int' }) accountId: number;
+  @Column({ name: 'debit_amount', type: 'decimal', precision: 16, scale: 2, default: 0 }) debitAmount: string;
+  @Column({ name: 'credit_amount', type: 'decimal', precision: 16, scale: 2, default: 0 }) creditAmount: string;
+  @Column({ name: 'import_id', type: 'int', nullable: true }) importId: number | null;
+}
+
+@Entity('finance_vouchers')
+@Index(['tenantId', 'period', 'voucherNo'], { unique: true })
+@Index(['tenantId', 'sourceType', 'sourceId'])
+export class FinanceVoucher extends FinanceTenantEntity {
+  @Column({ name: 'voucher_no', type: 'varchar', length: 40 }) voucherNo: string;
+  @Column({ name: 'voucher_date', type: 'date' }) voucherDate: string;
+  @Column({ type: 'varchar', length: 7 }) period: string;
+  @Column({ type: 'varchar', length: 500 }) summary: string;
+  @Column({ type: 'varchar', length: 20, default: 'draft' }) status: 'draft' | 'reviewed' | 'posted' | 'void';
+  @Column({ name: 'source_type', type: 'varchar', length: 30, nullable: true }) sourceType: string | null;
+  @Column({ name: 'source_id', type: 'int', nullable: true }) sourceId: number | null;
+  @Column({ name: 'total_debit', type: 'decimal', precision: 16, scale: 2, default: 0 }) totalDebit: string;
+  @Column({ name: 'total_credit', type: 'decimal', precision: 16, scale: 2, default: 0 }) totalCredit: string;
+  @Column({ type: 'int', default: 1 }) revision: number;
+  @Column({ name: 'reviewed_by', type: 'int', nullable: true }) reviewedBy: number | null;
+  @Column({ name: 'reviewed_at', type: 'timestamptz', nullable: true }) reviewedAt: Date | null;
+  @Column({ name: 'posted_by', type: 'int', nullable: true }) postedBy: number | null;
+  @Column({ name: 'posted_at', type: 'timestamptz', nullable: true }) postedAt: Date | null;
+}
+
+@Entity('finance_voucher_lines')
+@Index(['tenantId', 'voucherId', 'lineNo'], { unique: true })
+@Index(['tenantId', 'accountId'])
+export class FinanceVoucherLine extends FinanceTenantEntity {
+  @Column({ name: 'voucher_id', type: 'int' }) voucherId: number;
+  @Column({ name: 'line_no', type: 'int' }) lineNo: number;
+  @Column({ name: 'account_id', type: 'int' }) accountId: number;
+  @Column({ type: 'varchar', length: 500 }) summary: string;
+  @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 }) debit: string;
+  @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 }) credit: string;
+  @Column({ name: 'project_id', type: 'int', nullable: true }) projectId: number | null;
+  @Column({ name: 'counterparty_name', type: 'varchar', length: 200, nullable: true }) counterpartyName: string | null;
+  @Column({ name: 'cash_flow_item', type: 'varchar', length: 80, nullable: true }) cashFlowItem: string | null;
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" }) attachments: FinanceAttachment[];
+}
+
+@Entity('finance_voucher_audits')
+@Index(['tenantId', 'voucherId', 'createdAt'])
+export class FinanceVoucherAudit extends FinanceTenantEntity {
+  @Column({ name: 'voucher_id', type: 'int' }) voucherId: number;
+  @Column({ type: 'varchar', length: 30 }) action: string;
+  @Column({ type: 'varchar', length: 500 }) description: string;
+  @Column({ type: 'jsonb', nullable: true }) snapshot: Record<string, unknown> | null;
+}
+
+@Entity('finance_accounting_periods')
+@Index(['tenantId', 'period'], { unique: true })
+export class FinanceAccountingPeriod extends FinanceTenantEntity {
+  @Column({ type: 'varchar', length: 7 }) period: string;
+  @Column({ type: 'varchar', length: 20, default: 'open' }) status: 'open' | 'closed';
+  @Column({ name: 'closed_at', type: 'timestamptz', nullable: true }) closedAt: Date | null;
+  @Column({ name: 'closed_by', type: 'int', nullable: true }) closedBy: number | null;
+  @Column({ name: 'validation_snapshot', type: 'jsonb', nullable: true }) validationSnapshot: Record<string, unknown> | null;
+}
+
+export const financeEntities = [FinanceProject, FinanceEntry, FinanceInvoice, FinanceInvoiceVerification, FinanceTaxImportBatch, FinanceMailConnection, FinanceMailMessage, FinanceReimbursement, FinanceAccountSet, FinanceAccount, FinanceOpeningImport, FinanceOpeningBalance, FinanceVoucher, FinanceVoucherLine, FinanceVoucherAudit, FinanceAccountingPeriod];

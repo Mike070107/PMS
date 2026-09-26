@@ -11,10 +11,11 @@ import { FinanceService } from './finance.service';
 import { FinanceRecognitionService } from './finance-recognition.service';
 import { FinanceTaxImportService } from './finance-tax-import.service';
 import { FinanceVerificationService } from './finance-verification.service';
+import { FinanceAccountingService } from './finance-accounting.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature(financeEntities, 'finance'), TypeOrmModule.forFeature([User]), UploadModule, AiModule],
   controllers: [FinanceController],
-  providers: [FinanceService, FinanceMailService, FinanceFilesService, FinanceRecognitionService, FinanceTaxImportService, FinanceVerificationService],
+  providers: [FinanceAccountingService, FinanceService, FinanceMailService, FinanceFilesService, FinanceRecognitionService, FinanceTaxImportService, FinanceVerificationService],
 })
 export class FinanceModule {}

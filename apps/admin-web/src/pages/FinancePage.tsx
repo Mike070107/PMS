@@ -1,7 +1,7 @@
 import {
   BankOutlined, CloudSyncOutlined, DeleteOutlined, FileAddOutlined, FileDoneOutlined, FileOutlined, FolderAddOutlined,
   HistoryOutlined, InboxOutlined, PlusOutlined, ReloadOutlined, SafetyCertificateOutlined, SettingOutlined, FileExcelOutlined,
-  SwapOutlined, WalletOutlined,
+  SwapOutlined, WalletOutlined, CalculatorOutlined,
 } from '@ant-design/icons';
 import { Alert, Button, Card, Checkbox, DatePicker, Empty, Form, Image, Input, InputNumber, Modal, Radio, Select, Space, Spin, Statistic, Table, Tabs, Tag, Upload, message } from 'antd';
 import dayjs from 'dayjs';
@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, request } from '../lib/api';
 import { auth } from '../lib/auth';
 import './FinancePage.css';
+import FinanceAccountingCenter from './FinanceAccountingCenter';
 
 type Project = { id:number; parentId:number|null; name:string; description?:string; status:string };
 type Entry = { id:number; entryNo:string; businessDate:string; owner:string; reason:string; amount:string; flowType:'income'|'expense'; paymentMethod:string; projectId:number|null; subProjectId:number|null; reimbursementStatus:string };
@@ -109,6 +110,7 @@ export default function FinancePage() {
       <Card><div className="attention-title"><InboxOutlined/> 待处理</div><div className="attention-grid"><span><b>{dashboard?.invoiceInbox||0}</b> 张发票</span><span><b>{dashboard?.pendingReimbursement||0}</b> 笔待报销</span></div></Card>
     </div>
     <Tabs className="finance-tabs" items={[
+      {key:'accounting',label:<span><CalculatorOutlined/> 会计核算</span>,children:<FinanceAccountingCenter/>},
       {key:'entries',label:<span><SwapOutlined/> 流水账</span>,children:<Card className="finance-panel" title="记账流水" extra={<Button type="primary" icon={<PlusOutlined/>} onClick={()=>{entryForm.setFieldsValue({businessDate:dayjs(),flowType:'expense',owner:'pruis',paymentMethod:'wechat',reimbursementRequired:true});setEntryOpen(true)}}>新增流水</Button>}><Table rowKey="id" columns={entryColumns} dataSource={entries} scroll={{x:1080}} pagination={{pageSize:20}} locale={{emptyText:<Empty description="还没有流水，先记第一笔"/>}}/></Card>},
       {key:'projects',label:<span><FolderAddOutlined/> 项目</span>,children:<Card className="finance-panel" title="项目与子项目" extra={<Button type="primary" icon={<FolderAddOutlined/>} onClick={()=>setProjectOpen(true)}>新建项目</Button>}><div className="project-grid">{roots.map(root=><Card key={root.id} size="small" title={root.name} extra={<Button type="link" onClick={()=>{projectForm.setFieldValue('parentId',root.id);setProjectOpen(true)}}>+ 子项目</Button>}><p>{root.description||'暂无项目说明'}</p><div className="subproject-list">{projects.filter(p=>p.parentId===root.id).map(p=><Tag key={p.id} icon={<FileDoneOutlined/>}>{p.name}</Tag>)}</div></Card>)}{!roots.length&&<Empty description="新建项目后，可继续添加子项目和附件"/>}</div></Card>},
       {key:'invoices',label:<span><InboxOutlined/> 发票收件箱 <Tag color="blue">{dashboard?.invoiceInbox||0}</Tag></span>,children:<Card className="finance-panel" title="发票收件箱" extra={<Space wrap><Button icon={<FileExcelOutlined/>} onClick={openTaxImport}>税务数字账户导入</Button><Upload accept=".pdf,.ofd,.xml,.jpg,.jpeg,.png,.webp" showUploadList={false} customRequest={async({file,onSuccess,onError})=>{try{await uploadObject(file as File,'/finance/invoices/upload');onSuccess?.({});message.success('发票已导入并完成识别');await load();}catch(e){onError?.(e as Error);message.error(errorText(e));}}}><Button icon={<FileAddOutlined/>}>上传发票</Button></Upload><Button icon={<CloudSyncOutlined/>} disabled={!mailStatus} onClick={syncMail}>同步 QQ 邮箱</Button></Space>}>

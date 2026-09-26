@@ -6,6 +6,7 @@ import { UserRole } from '../../common/enums';
 import { User } from '../../entities';
 import { AccessService } from '../access/access.service';
 import { FinanceEntry, FinanceInvoice, FinanceProject, FinanceReimbursement } from './finance.entities';
+import { FinanceAccountingService } from './finance-accounting.service';
 
 const NAME_ALLOWLIST = new Set(['叶双']);
 
@@ -18,6 +19,7 @@ export class FinanceService {
     @InjectRepository(FinanceInvoice, 'finance') private readonly invoiceRepo: Repository<FinanceInvoice>,
     @InjectRepository(FinanceReimbursement, 'finance') private readonly reimbursementRepo: Repository<FinanceReimbursement>,
     private readonly accessService: AccessService,
+    private readonly accounting: FinanceAccountingService,
   ) {}
 
   async access(user: AuthUser) {
@@ -29,6 +31,11 @@ export class FinanceService {
     if (!(await this.isAllowed(user))) throw new ForbiddenException('仅管理员或指定财务人员可使用财务记账');
     if (!user.tenantId) throw new BadRequestException('请先选择要管理的公司');
     return user.tenantId;
+  }
+
+  async withAccountingAccess<T>(user: AuthUser, operation: () => Promise<T>): Promise<T> {
+    await this.assertAllowed(user);
+    return operation();
   }
 
   private async isAllowed(user: AuthUser): Promise<boolean> {
@@ -100,10 +107,12 @@ export class FinanceService {
     const paymentMethod = ['wechat', 'alipay', 'bank', 'cash'].includes(dto.paymentMethod) ? dto.paymentMethod : null;
     if (!paymentMethod) throw new BadRequestException('请选择支付方式');
     const today = new Date().toISOString().slice(0, 10);
+    const businessDate = /^20\d{2}-\d{2}-\d{2}$/.test(dto.businessDate) ? dto.businessDate : today;
+    await this.accounting.assertBusinessDateOpen(user, businessDate);
     const entry = this.entryRepo.create({
       tenantId,
       entryNo: `LS${today.replace(/-/g, '')}${String(Date.now()).slice(-7)}${String(Math.floor(Math.random() * 100)).padStart(2, '0')}`,
-      businessDate: /^20\d{2}-\d{2}-\d{2}$/.test(dto.businessDate) ? dto.businessDate : today,
+      businessDate,
       owner, reason: reason.slice(0, 500), amount: amount.toFixed(2), flowType, paymentMethod,
       projectId: dto.projectId ? Number(dto.projectId) : null, subProjectId: dto.subProjectId ? Number(dto.subProjectId) : null,
       voucherAttachments: Array.isArray(dto.voucherAttachments) ? dto.voucherAttachments : [],
@@ -111,7 +120,9 @@ export class FinanceService {
       reimbursementStatus: dto.reimbursementRequired ? 'pending' : 'not_required',
       reimbursedAt: null, createdBy: user.id, updatedBy: user.id,
     });
-    return this.entryRepo.save(entry);
+    const saved = await this.entryRepo.save(entry);
+    await this.accounting.autoVoucherFromEntry(user, saved);
+    return saved;
   }
 
   async updateEntry(user: AuthUser, id: number, dto: any) {
