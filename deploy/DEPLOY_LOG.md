@@ -3054,3 +3054,12 @@
   - 4ebaf61 feat(finance): add mobile accounting workspace
   - 062748a feat(finance): build complete small-enterprise statements
 
+## 2026-09-27 04:57 · miniapp-staff · 4ebaf61
+
+- 包：`1.0.20260927a`
+- 提交：4ebaf61 feat(finance): add mobile accounting workspace
+- 说明：专业账务、凭证、账簿和附件查看上传；微信 build-npm 零警告
+- 自上次（debf2cf）以来上线的相关提交：
+  - 4ebaf61 feat(finance): add mobile accounting workspace
+  - 5fb6863 feat(finance): add invoice recognition and verification imports
+
