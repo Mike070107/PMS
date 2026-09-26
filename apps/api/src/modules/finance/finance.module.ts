@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { User } from '../../entities';
+import { Tenant, User } from '../../entities';
 import { UploadModule } from '../upload/upload.module';
 import { AiModule } from '../ai/ai.module';
 import { financeEntities } from './finance.entities';
@@ -14,7 +14,7 @@ import { FinanceVerificationService } from './finance-verification.service';
 import { FinanceAccountingService } from './finance-accounting.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature(financeEntities, 'finance'), TypeOrmModule.forFeature([User]), UploadModule, AiModule],
+  imports: [TypeOrmModule.forFeature(financeEntities, 'finance'), TypeOrmModule.forFeature([Tenant, User]), UploadModule, AiModule],
   controllers: [FinanceController],
   providers: [FinanceAccountingService, FinanceService, FinanceMailService, FinanceFilesService, FinanceRecognitionService, FinanceTaxImportService, FinanceVerificationService],
 })

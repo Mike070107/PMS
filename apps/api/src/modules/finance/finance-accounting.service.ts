@@ -1,17 +1,24 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThanOrEqual, Repository } from 'typeorm';
+import * as ExcelJS from 'exceljs';
 import * as XLSX from 'xlsx';
 import { AuthUser } from '../../common/current-user.decorator';
+import { Tenant } from '../../entities/tenant.entity';
 import {
   FinanceAccount, FinanceAccountingPeriod, FinanceAccountSet, FinanceEntry, FinanceOpeningBalance, FinanceOpeningImport, FinanceProject,
   FinanceVoucher, FinanceVoucherAudit, FinanceVoucherLine,
 } from './finance.entities';
 import { SMALL_ENTERPRISE_ACCOUNTS, round2, validateBalanced, validateOpeningEquation } from './finance-accounting.util';
+import {
+  BalanceSourceRow, buildBalanceSheet, buildCashFlowStatement, buildProfitStatement, CashFlowAmounts,
+  classifyCashFlow, ProfitSourceRow, StatementRow,
+} from './finance-reporting.util';
 
 @Injectable()
 export class FinanceAccountingService {
   constructor(
+    @InjectRepository(Tenant) private readonly tenantRepo: Repository<Tenant>,
     @InjectRepository(FinanceAccountSet, 'finance') private readonly setRepo: Repository<FinanceAccountSet>,
     @InjectRepository(FinanceAccount, 'finance') private readonly accountRepo: Repository<FinanceAccount>,
     @InjectRepository(FinanceOpeningImport, 'finance') private readonly openingImportRepo: Repository<FinanceOpeningImport>,
@@ -216,9 +223,14 @@ export class FinanceAccountingService {
     const openings = await this.openingRepo.find({ where: { tenantId, period: LessThanOrEqual(period) } });
     const vouchers = await this.voucherRepo.find({ where: { tenantId, status: 'posted', period: LessThanOrEqual(period) } });
     const lines = vouchers.length ? await this.lineRepo.find({ where: { tenantId, voucherId: In(vouchers.map((v) => v.id)) } }) : [];
+    const voucherMap = new Map(vouchers.map((voucher) => [voucher.id, voucher]));
     const rows = accounts.map((account) => {
-      const opening = openings.filter((o) => o.accountId === account.id).reduce((s,o) => s + Number(o.debitAmount) - Number(o.creditAmount), 0);
-      const own = lines.filter((l) => l.accountId === account.id); const debit = round2(own.reduce((s,l)=>s+Number(l.debit),0)); const credit = round2(own.reduce((s,l)=>s+Number(l.credit),0));
+      const latestOpening = openings.filter((item) => item.accountId === account.id).sort((a,b) => b.period.localeCompare(a.period))[0];
+      const priorLines = lines.filter((entry) => {
+        const voucher = voucherMap.get(entry.voucherId); return entry.accountId === account.id && !!voucher && voucher.period < period && (!latestOpening || voucher.period >= latestOpening.period);
+      });
+      const opening = (latestOpening ? Number(latestOpening.debitAmount) - Number(latestOpening.creditAmount) : 0) + priorLines.reduce((amount, entry) => amount + Number(entry.debit) - Number(entry.credit), 0);
+      const own = lines.filter((entry) => entry.accountId === account.id && voucherMap.get(entry.voucherId)?.period === period); const debit = round2(own.reduce((s,l)=>s+Number(l.debit),0)); const credit = round2(own.reduce((s,l)=>s+Number(l.credit),0));
       const rawClosing = round2(opening + debit - credit); const closingDebit = rawClosing > 0 ? rawClosing : 0; const closingCredit = rawClosing < 0 ? -rawClosing : 0;
       return { account, openingDebit: opening > 0 ? opening.toFixed(2) : '0.00', openingCredit: opening < 0 ? (-opening).toFixed(2) : '0.00', debit: debit.toFixed(2), credit: credit.toFixed(2), closingDebit: closingDebit.toFixed(2), closingCredit: closingCredit.toFixed(2) };
     }).filter((r) => [r.openingDebit,r.openingCredit,r.debit,r.credit].some((v)=>Number(v)!==0));
@@ -244,22 +256,134 @@ export class FinanceAccountingService {
   }
 
   async reports(user: AuthUser, period: string) {
-    const ledger = await this.ledger(user, period);
-    const get = (category: string, direction: 'debit'|'credit') => round2(ledger.rows.filter((r) => r.account.category === category).reduce((s,r) => s + Number(direction === 'debit' ? r.closingDebit : r.closingCredit),0));
-    const assets = get('asset','debit') - get('asset','credit'); const liabilities = get('liability','credit') - get('liability','debit'); const equity = get('equity','credit') - get('equity','debit');
-    const item = (name: string) => ledger.rows.filter((r) => r.account.statementMapping?.item === name).reduce((s,r)=>s + Number(r.credit) - Number(r.debit),0);
-    const revenue = item('operatingRevenue') + item('otherRevenue'); const costs = -(item('operatingCost') + item('otherCost') + item('taxAndSurcharges') + item('sellingExpenses') + item('administrativeExpenses') + item('financialExpenses')); const profit = round2(revenue - costs + item('investmentIncome') + item('nonOperatingIncome') + item('nonOperatingExpense') + item('incomeTaxExpense'));
-    return { period, balanceSheet: { assets: round2(assets), liabilities: round2(liabilities), equity: round2(equity), liabilitiesAndEquity: round2(liabilities+equity), balanced: round2(assets) === round2(liabilities+equity) }, profitStatement: { operatingRevenue: round2(revenue), operatingCosts: round2(costs), netProfit: profit }, traceable: true, cashFlowReconciled: null };
+    if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(period)) throw new BadRequestException('报表期间格式应为 YYYY-MM');
+    const tenantId = this.tenant(user); const accountSet = await this.ensureAccountSet(user);
+    const yearStart = `${period.slice(0, 4)}-01`;
+    const [tenant, accounts, openings, vouchers] = await Promise.all([
+      this.tenantRepo.findOne({ where: { id: tenantId } }),
+      this.accountRepo.find({ where: { tenantId, isActive: true }, order: { code: 'ASC' } }),
+      this.openingRepo.find({ where: { tenantId, period: LessThanOrEqual(period) } }),
+      this.voucherRepo.find({ where: { tenantId, status: 'posted', period: LessThanOrEqual(period) }, order: { voucherDate: 'ASC', id: 'ASC' } }),
+    ]);
+    const lines = vouchers.length ? await this.lineRepo.find({ where: { tenantId, voucherId: In(vouchers.map((voucher) => voucher.id)) }, order: { voucherId: 'ASC', lineNo: 'ASC' } }) : [];
+    const accountMap = new Map(accounts.map((account) => [account.id, account]));
+    const voucherMap = new Map(vouchers.map((voucher) => [voucher.id, voucher]));
+    const snapshot = (boundary: string, includeBoundary: boolean) => {
+      const result = new Map<number, number>();
+      for (const account of accounts) {
+        const available = openings.filter((opening) => opening.accountId === account.id && opening.period <= boundary).sort((a, b) => b.period.localeCompare(a.period));
+        const opening = available[0]; let value = opening ? Number(opening.debitAmount) - Number(opening.creditAmount) : 0;
+        for (const entry of lines.filter((entry) => entry.accountId === account.id)) {
+          const voucher = voucherMap.get(entry.voucherId); if (!voucher) continue;
+          if (opening && voucher.period < opening.period) continue;
+          if (voucher.period < boundary || includeBoundary && voucher.period === boundary) value += Number(entry.debit) - Number(entry.credit);
+        }
+        result.set(account.id, round2(value));
+      }
+      return result;
+    };
+    const yearOpening = snapshot(yearStart, false); const currentOpening = snapshot(period, false); const closing = snapshot(period, true);
+    const balanceRows: BalanceSourceRow[] = accounts.map((account) => ({
+      code: account.code, name: account.name, category: account.category, item: account.statementMapping?.item || null,
+      opening: yearOpening.get(account.id) || 0, closing: closing.get(account.id) || 0,
+    }));
+    const balanceSheet = buildBalanceSheet(balanceRows);
+    const operatingVouchers = vouchers.filter((voucher) => voucher.sourceType !== 'profit_close');
+    const operatingVoucherIds = new Set(operatingVouchers.map((voucher) => voucher.id));
+    const profitRows: ProfitSourceRow[] = accounts.map((account) => {
+      const own = lines.filter((entry) => entry.accountId === account.id && operatingVoucherIds.has(entry.voucherId));
+      const total = (from: string, to: string, direction: 'debit' | 'credit') => round2(own.reduce((amount, entry) => {
+        const voucher = voucherMap.get(entry.voucherId); if (!voucher || voucher.period < from || voucher.period > to) return amount;
+        return amount + Number(entry[direction]);
+      }, 0));
+      return {
+        code: account.code, name: account.name, item: account.statementMapping?.item || null,
+        currentDebit: total(period, period, 'debit'), currentCredit: total(period, period, 'credit'),
+        ytdDebit: total(yearStart, period, 'debit'), ytdCredit: total(yearStart, period, 'credit'),
+      };
+    });
+    const profitStatement = buildProfitStatement(profitRows);
+    const cashAmounts: CashFlowAmounts = {}; const classification = { explicit: 0, inferred: 0, pending: 0, pendingAmount: 0 };
+    for (const voucher of operatingVouchers.filter((item) => item.period >= yearStart && item.period <= period)) {
+      const voucherLines = lines.filter((entry) => entry.voucherId === voucher.id);
+      const cashLines = voucherLines.filter((entry) => accountMap.get(entry.accountId)?.statementMapping?.item === 'cash');
+      const cashDelta = round2(cashLines.reduce((amount, entry) => amount + Number(entry.debit) - Number(entry.credit), 0));
+      if (!cashDelta) continue;
+      const counterpart = voucherLines.filter((entry) => accountMap.get(entry.accountId)?.statementMapping?.item !== 'cash');
+      const explicit = voucherLines.map((entry) => entry.cashFlowItem).find(Boolean) || null;
+      const classified = classifyCashFlow(counterpart.map((entry) => accountMap.get(entry.accountId)?.code || ''), counterpart.map((entry) => accountMap.get(entry.accountId)?.statementMapping?.item || null), cashDelta, explicit);
+      const amount = Math.abs(cashDelta); const target = cashAmounts[classified.line] || { current: 0, ytd: 0 };
+      target.ytd = round2(target.ytd + amount); if (voucher.period === period) target.current = round2(target.current + amount); cashAmounts[classified.line] = target;
+      classification[classified.source] += 1; if (classified.source === 'pending') classification.pendingAmount = round2(classification.pendingAmount + amount);
+    }
+    const cashBalance = (values: Map<number, number>) => round2(accounts.filter((account) => account.statementMapping?.item === 'cash').reduce((amount, account) => amount + (values.get(account.id) || 0), 0));
+    const cashFlowStatement = buildCashFlowStatement(cashAmounts, cashBalance(currentOpening), cashBalance(yearOpening), classification);
+    const ledgerValidation = validateBalanced(lines.filter((entry) => voucherMap.has(entry.voucherId)).map((entry) => ({ debit: Number(entry.debit), credit: Number(entry.credit) })));
+    const cashFlowReconciled = round2(cashFlowStatement.endingCash) === round2(cashBalance(closing));
+    const validations = [
+      { key: 'voucher_balance', label: '已过账凭证借贷平衡', ok: ledgerValidation.balanced || !lines.length, detail: `借方 ${ledgerValidation.debit.toFixed(2)} / 贷方 ${ledgerValidation.credit.toFixed(2)}` },
+      { key: 'opening_equation', label: '年初资产负债平衡', ok: balanceSheet.openingBalanced, detail: balanceSheet.openingBalanced ? '资产等于负债和所有者权益' : '年初余额不平，请核对期初余额导入' },
+      { key: 'closing_equation', label: '期末资产负债平衡', ok: balanceSheet.balanced, detail: balanceSheet.balanced ? '资产等于负债和所有者权益' : '期末报表不平，请检查凭证和科目映射' },
+      { key: 'cash_reconciliation', label: '现金流量表与货币资金衔接', ok: cashFlowReconciled, detail: `现金流量表期末 ${cashFlowStatement.endingCash.toFixed(2)} / 货币资金 ${cashBalance(closing).toFixed(2)}` },
+      { key: 'cash_classification', label: '现金流分类完整', ok: classification.pending === 0, warning: true, detail: classification.pending ? `${classification.pending} 笔、${classification.pendingAmount.toFixed(2)} 元暂归“其他经营活动”，需在凭证中确认现金流项目` : '全部现金收支已明确或自动匹配现金流项目' },
+    ];
+    return {
+      period, entityName: tenant?.name || accountSet.name, accountingStandard: '小企业会计准则', currency: 'CNY', unit: '元',
+      balanceSheet, profitStatement, cashFlowStatement, validations, traceable: true, cashFlowReconciled,
+    };
   }
 
   async reportWorkbook(user: AuthUser, period: string) {
-    const [reports, ledger] = await Promise.all([this.reports(user,period),this.ledger(user,period)]); const book=XLSX.utils.book_new();
-    const balance=XLSX.utils.aoa_to_sheet([['资产负债表（小企业会计准则）',period],['项目','期末余额'],['资产合计',reports.balanceSheet.assets],['负债合计',reports.balanceSheet.liabilities],['所有者权益合计',reports.balanceSheet.equity],['负债和所有者权益合计',reports.balanceSheet.liabilitiesAndEquity],['校验',reports.balanceSheet.balanced?'平衡':'不平衡']]);
-    const profit=XLSX.utils.aoa_to_sheet([['利润表（小企业会计准则）',period],['项目','本期金额'],['营业收入',reports.profitStatement.operatingRevenue],['营业成本及费用',reports.profitStatement.operatingCosts],['净利润',reports.profitStatement.netProfit]]);
-    const balanceList=XLSX.utils.json_to_sheet(ledger.rows.map((r)=>({科目编码:r.account.code,科目名称:r.account.name,期初借方:Number(r.openingDebit),期初贷方:Number(r.openingCredit),本期借方:Number(r.debit),本期贷方:Number(r.credit),期末借方:Number(r.closingDebit),期末贷方:Number(r.closingCredit)})));
-    for(const sheet of [balance,profit,balanceList]) sheet['!cols']=[{wch:28},{wch:18},{wch:18},{wch:18},{wch:18},{wch:18},{wch:18},{wch:18}];
-    XLSX.utils.book_append_sheet(book,balance,'资产负债表');XLSX.utils.book_append_sheet(book,profit,'利润表');XLSX.utils.book_append_sheet(book,balanceList,'科目余额表');
-    return XLSX.write(book,{type:'buffer',bookType:'xlsx'}) as Buffer;
+    const [reports, ledger] = await Promise.all([this.reports(user, period), this.ledger(user, period)]);
+    const book = new ExcelJS.Workbook(); book.creator = 'PMS 财务系统'; book.created = new Date(); book.modified = new Date();
+    const colors = { navy: '173F67', blue: '2B6F9F', pale: 'EAF2F8', section: 'EFF6F4', total: 'DDECF5', border: 'AEBECD', white: 'FFFFFF', warning: 'FFF4D6' };
+    const moneyFormat = '#,##0.00;[Red]-#,##0.00';
+    const border = { top: { style: 'thin', color: { argb: colors.border } }, left: { style: 'thin', color: { argb: colors.border } }, bottom: { style: 'thin', color: { argb: colors.border } }, right: { style: 'thin', color: { argb: colors.border } } } as ExcelJS.Borders;
+    const styleTitle = (sheet: ExcelJS.Worksheet, lastColumn: number, title: string, code: string) => {
+      sheet.mergeCells(1, 1, 1, lastColumn); const titleCell = sheet.getCell(1, 1); titleCell.value = title; titleCell.font = { name: 'Microsoft YaHei', size: 18, bold: true, color: { argb: colors.navy } }; titleCell.alignment = { horizontal: 'center', vertical: 'middle' }; sheet.getRow(1).height = 32;
+      sheet.mergeCells(2, 1, 2, Math.floor(lastColumn / 2)); sheet.getCell(2, 1).value = `编制单位：${reports.entityName}`;
+      sheet.mergeCells(2, Math.floor(lastColumn / 2) + 1, 2, lastColumn); sheet.getCell(2, Math.floor(lastColumn / 2) + 1).value = code; sheet.getCell(2, Math.floor(lastColumn / 2) + 1).alignment = { horizontal: 'right' };
+      sheet.mergeCells(3, 1, 3, Math.floor(lastColumn / 2)); sheet.getCell(3, 1).value = `报表期间：${period}`;
+      sheet.mergeCells(3, Math.floor(lastColumn / 2) + 1, 3, lastColumn); sheet.getCell(3, Math.floor(lastColumn / 2) + 1).value = '单位：元'; sheet.getCell(3, Math.floor(lastColumn / 2) + 1).alignment = { horizontal: 'right' };
+      for (let row = 1; row <= 3; row += 1) sheet.getRow(row).font = { ...sheet.getRow(row).font, name: 'Microsoft YaHei' };
+    };
+    const styleDataRow = (row: ExcelJS.Row, kind: StatementRow['kind'], amountColumns: number[]) => {
+      row.eachCell((cell) => { cell.border = border; cell.font = { name: 'Microsoft YaHei', size: 10, bold: kind === 'subtotal' || kind === 'total' || kind === 'section' }; cell.alignment = { vertical: 'middle', wrapText: true }; });
+      if (kind === 'section') row.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.section } }; });
+      if (kind === 'subtotal' || kind === 'total') row.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: kind === 'total' ? colors.total : colors.pale } }; });
+      for (const column of amountColumns) { row.getCell(column).numFmt = moneyFormat; row.getCell(column).alignment = { horizontal: 'right', vertical: 'middle' }; }
+      row.height = kind === 'section' ? 23 : 26;
+    };
+    const balance = book.addWorksheet('资产负债表', { pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 1, margins: { left: 0.25, right: 0.25, top: 0.35, bottom: 0.35, header: 0.15, footer: 0.15 } } });
+    styleTitle(balance, 8, '资产负债表（小企业会计准则）', reports.balanceSheet.formCode);
+    balance.addRow(['资产','行次','期末余额','年初余额','负债和所有者权益','行次','期末余额','年初余额']);
+    const balanceHeader = balance.getRow(4); balanceHeader.height = 30; balanceHeader.eachCell((cell) => { cell.font = { name: 'Microsoft YaHei', bold: true, color: { argb: colors.white } }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.navy } }; cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; cell.border = border; });
+    const maxRows = Math.max(reports.balanceSheet.assetRows.length, reports.balanceSheet.liabilityEquityRows.length);
+    for (let index = 0; index < maxRows; index += 1) {
+      const left = reports.balanceSheet.assetRows[index]; const right = reports.balanceSheet.liabilityEquityRows[index];
+      const row = balance.addRow([left?.label || '', left?.line ?? '', left?.closing ?? null, left?.opening ?? null, right?.label || '', right?.line ?? '', right?.closing ?? null, right?.opening ?? null]);
+      styleDataRow(row, left?.kind === 'total' || right?.kind === 'total' ? 'total' : left?.kind === 'subtotal' || right?.kind === 'subtotal' ? 'subtotal' : left?.kind === 'section' || right?.kind === 'section' ? 'section' : 'item', [3,4,7,8]);
+      if (left?.kind === 'detail') row.getCell(1).alignment = { indent: 1, vertical: 'middle' }; if (right?.kind === 'detail') row.getCell(5).alignment = { indent: 1, vertical: 'middle' };
+    }
+    balance.columns = [{ width: 25 }, { width: 7 }, { width: 15 }, { width: 15 }, { width: 30 }, { width: 7 }, { width: 15 }, { width: 15 }]; balance.views = [{ state: 'frozen', ySplit: 4 }];
+    const addVerticalStatement = (name: string, title: string, statement: { formCode: string; rows: StatementRow[] }) => {
+      const sheet = book.addWorksheet(name, { pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 1, margins: { left: 0.35, right: 0.35, top: 0.4, bottom: 0.4, header: 0.15, footer: 0.15 } } });
+      styleTitle(sheet, 4, title, statement.formCode); sheet.addRow(['项目','行次','本年累计金额','本月金额']);
+      const header = sheet.getRow(4); header.height = 30; header.eachCell((cell) => { cell.font = { name: 'Microsoft YaHei', bold: true, color: { argb: colors.white } }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.navy } }; cell.alignment = { horizontal: 'center', vertical: 'middle' }; cell.border = border; });
+      for (const item of statement.rows) { const row = sheet.addRow([item.label, item.line ?? '', item.ytd ?? null, item.current ?? null]); styleDataRow(row, item.kind, [3,4]); if (item.kind === 'detail') row.getCell(1).alignment = { indent: 1, vertical: 'middle' }; }
+      sheet.columns = [{ width: 48 }, { width: 8 }, { width: 18 }, { width: 18 }]; sheet.views = [{ state: 'frozen', ySplit: 4 }]; return sheet;
+    };
+    addVerticalStatement('利润表', '利润表（小企业会计准则）', reports.profitStatement);
+    addVerticalStatement('现金流量表', '现金流量表（小企业会计准则）', reports.cashFlowStatement);
+    const checks = book.addWorksheet('报表校验'); checks.addRow(['校验项目','结果','说明']);
+    checks.getRow(1).eachCell((cell) => { cell.font = { name: 'Microsoft YaHei', bold: true, color: { argb: colors.white } }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.navy } }; cell.border = border; });
+    for (const check of reports.validations) { const row = checks.addRow([check.label, check.ok ? '通过' : check.warning ? '需确认' : '不通过', check.detail]); row.eachCell((cell) => { cell.font = { name: 'Microsoft YaHei' }; cell.border = border; cell.alignment = { vertical: 'middle', wrapText: true }; }); if (!check.ok) row.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.warning } }; }); }
+    checks.columns = [{ width: 32 }, { width: 12 }, { width: 72 }]; checks.views = [{ state: 'frozen', ySplit: 1 }];
+    const balanceList = book.addWorksheet('科目余额表'); balanceList.addRow(['科目编码','科目名称','期初借方','期初贷方','本期借方','本期贷方','期末借方','期末贷方']);
+    balanceList.getRow(1).eachCell((cell) => { cell.font = { name: 'Microsoft YaHei', bold: true, color: { argb: colors.white } }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.navy } }; cell.border = border; cell.alignment = { horizontal: 'center' }; });
+    for (const item of ledger.rows) { const row = balanceList.addRow([item.account.code,item.account.name,Number(item.openingDebit),Number(item.openingCredit),Number(item.debit),Number(item.credit),Number(item.closingDebit),Number(item.closingCredit)]); row.eachCell((cell, column) => { cell.font = { name: 'Microsoft YaHei' }; cell.border = border; if (column >= 3) cell.numFmt = moneyFormat; }); }
+    balanceList.columns = [{ width: 14 },{ width: 28 },{ width: 16 },{ width: 16 },{ width: 16 },{ width: 16 },{ width: 16 },{ width: 16 }]; balanceList.views = [{ state: 'frozen', ySplit: 1 }]; balanceList.autoFilter = 'A1:H1';
+    const output = await book.xlsx.writeBuffer(); return Buffer.from(output);
   }
 
   async generateProfitClosingVoucher(user: AuthUser, period: string) {
