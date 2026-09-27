@@ -3063,3 +3063,11 @@
   - 4ebaf61 feat(finance): add mobile accounting workspace
   - 5fb6863 feat(finance): add invoice recognition and verification imports
 
+## 2026-09-27 18:00 · api · 666a6e2
+
+- 包：`pms-api-20260927-1747.tar.gz`
+- 提交：666a6e2 feat(finance): seed common detail accounts
+- 说明：补齐小企业常用明细科目并切换自动凭证到末级科目；干净工作树构建，健康检查、数据库和生产制品核对通过
+- 自上次（4ebaf61）以来上线的相关提交：
+  - 666a6e2 feat(finance): seed common detail accounts
+
