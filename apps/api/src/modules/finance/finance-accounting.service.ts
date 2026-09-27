@@ -9,7 +9,7 @@ import {
   FinanceAccount, FinanceAccountingPeriod, FinanceAccountSet, FinanceEntry, FinanceOpeningBalance, FinanceOpeningImport, FinanceProject,
   FinanceVoucher, FinanceVoucherAudit, FinanceVoucherLine,
 } from './finance.entities';
-import { SMALL_ENTERPRISE_ACCOUNTS, round2, validateBalanced, validateOpeningEquation } from './finance-accounting.util';
+import { SMALL_ENTERPRISE_ACCOUNTS, SMALL_ENTERPRISE_DETAIL_ACCOUNTS, round2, validateBalanced, validateOpeningEquation } from './finance-accounting.util';
 import {
   BalanceSourceRow, buildBalanceSheet, buildCashFlowStatement, buildProfitStatement, CashFlowAmounts,
   classifyCashFlow, ProfitSourceRow, StatementRow,
@@ -53,15 +53,44 @@ export class FinanceAccountingService {
       accountSet = await this.setRepo.findOne({ where: { tenantId } });
       if (!accountSet) throw new Error('账套初始化失败');
     }
-    const existing = new Set((await this.accountRepo.find({ where: { tenantId } })).map((a) => a.code));
+    let accounts = await this.accountRepo.find({ where: { tenantId } });
+    const existing = new Set(accounts.map((a) => a.code));
+    const predefinedParents = new Set(SMALL_ENTERPRISE_DETAIL_ACCOUNTS.map((a) => a.parentCode));
     const missing = SMALL_ENTERPRISE_ACCOUNTS.filter((a) => !existing.has(a.code));
     if (missing.length) {
       const seeds = missing.map((a) => this.accountRepo.create({
         tenantId, code: a.code, name: a.name, level: 1, parentId: null, category: a.category,
-        balanceDirection: a.direction, isSystem: true, allowPosting: true, isActive: true,
+        balanceDirection: a.direction, isSystem: true, allowPosting: !predefinedParents.has(a.code), isActive: true,
         statementMapping: a.mapping || {}, createdBy: user.id, updatedBy: user.id,
       }));
       await this.accountRepo.createQueryBuilder().insert().into(FinanceAccount).values(seeds).orIgnore().execute();
+      accounts = await this.accountRepo.find({ where: { tenantId } });
+    }
+    // Insert one level at a time because the VAT details include a third level whose
+    // parent may have been created by the preceding pass. Existing custom accounts win
+    // on code conflicts and can still act as the parent of deeper predefined details.
+    for (const level of [2, 3]) {
+      const byCode = new Map(accounts.map((a) => [a.code, a]));
+      const details = SMALL_ENTERPRISE_DETAIL_ACCOUNTS.filter((detail) => {
+        const parent = byCode.get(detail.parentCode);
+        return parent?.level === level - 1 && !byCode.has(detail.code);
+      });
+      if (!details.length) continue;
+      const seeds = details.map((detail) => {
+        const parent = byCode.get(detail.parentCode)!;
+        return this.accountRepo.create({
+          tenantId, code: detail.code, name: detail.name, level, parentId: parent.id,
+          category: parent.category, balanceDirection: parent.balanceDirection, isSystem: true,
+          allowPosting: !predefinedParents.has(detail.code), isActive: true,
+          statementMapping: parent.statementMapping || {}, createdBy: user.id, updatedBy: user.id,
+        });
+      });
+      await this.accountRepo.createQueryBuilder().insert().into(FinanceAccount).values(seeds).orIgnore().execute();
+      accounts = await this.accountRepo.find({ where: { tenantId } });
+    }
+    const parentIds = [...new Set(accounts.map((a) => a.parentId).filter((id): id is number => id != null))];
+    if (parentIds.length) {
+      await this.accountRepo.update({ tenantId, id: In(parentIds) }, { allowPosting: false, updatedBy: user.id });
     }
     return accountSet;
   }
@@ -149,8 +178,8 @@ export class FinanceAccountingService {
     const old = await this.voucherRepo.findOne({ where: { tenantId, sourceType: 'entry', sourceId: entry.id } });
     if (old) return old;
     const codes = entry.flowType === 'income'
-      ? [entry.paymentMethod === 'cash' ? '1001' : '1002', '5051']
-      : ['5602', entry.reimbursementRequired ? '2241' : entry.paymentMethod === 'cash' ? '1001' : '1002'];
+      ? [entry.paymentMethod === 'cash' ? '100101' : '100201', '505199']
+      : ['560299', entry.reimbursementRequired ? '224101' : entry.paymentMethod === 'cash' ? '100101' : '100201'];
     const accounts = await this.accountRepo.find({ where: { tenantId, code: In(codes) } }); const map = new Map(accounts.map((a) => [a.code, a]));
     const amount = Number(entry.amount); const lines = entry.flowType === 'income'
       ? [{ accountId: map.get(codes[0])!.id, debit: amount, credit: 0 }, { accountId: map.get(codes[1])!.id, debit: 0, credit: amount }]

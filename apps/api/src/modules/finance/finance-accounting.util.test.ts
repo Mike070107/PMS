@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { FinanceAccountingService } from './finance-accounting.service';
-import { validateBalanced, validateOpeningEquation } from './finance-accounting.util';
+import { SMALL_ENTERPRISE_ACCOUNTS, SMALL_ENTERPRISE_DETAIL_ACCOUNTS, validateBalanced, validateOpeningEquation } from './finance-accounting.util';
 
 test('voucher must balance and contain a positive amount', () => {
   assert.deepEqual(validateBalanced([{ debit: 100, credit: 0 }, { debit: 0, credit: 100 }]), { debit: 100, credit: 100, balanced: true });
@@ -29,6 +29,16 @@ function insertOnlyRepo(uniqueKey: (row: any) => string) {
     create: (value: any) => ({ ...value }),
     findOne: async ({ where }: any) => rows.find((row) => Object.entries(where).every(([key, value]) => row[key] === value)) ?? null,
     find: async ({ where }: any) => rows.filter((row) => Object.entries(where).every(([key, value]) => row[key] === value)),
+    update: async (where: any, patch: any) => {
+      for (const row of rows) {
+        const matches = Object.entries(where).every(([key, value]: [string, any]) => {
+          if (value && typeof value === 'object' && value._type === 'in') return value._value.includes(row[key]);
+          return row[key] === value;
+        });
+        if (matches) Object.assign(row, patch);
+      }
+      return { affected: rows.length };
+    },
     createQueryBuilder: () => {
       let values: any[] = [];
       const builder: any = {
@@ -55,7 +65,7 @@ test('first accounting requests initialize one account set and one copy of every
   const accountRepo = insertOnlyRepo((row) => `${row.tenantId}:${row.code}`);
   const unused = {} as any;
   const service = new FinanceAccountingService(
-    setRepo as any, accountRepo as any, unused, unused, unused, unused, unused, unused, unused, unused,
+    unused, setRepo as any, accountRepo as any, unused, unused, unused, unused, unused, unused, unused, unused,
   );
   const user = { id: 7, tenantId: 3, role: 'superadmin' };
 
@@ -67,6 +77,16 @@ test('first accounting requests initialize one account set and one copy of every
 
   assert.equal(setRepo.rows.length, 1);
   assert.equal(new Set(accountRepo.rows.map((row) => `${row.tenantId}:${row.code}`)).size, accountRepo.rows.length);
-  assert.ok(accountRepo.rows.length > 20);
+  assert.equal(accountRepo.rows.length, SMALL_ENTERPRISE_ACCOUNTS.length + SMALL_ENTERPRISE_DETAIL_ACCOUNTS.length);
+  const byCode = new Map(accountRepo.rows.map((row) => [row.code, row]));
+  for (const detail of SMALL_ENTERPRISE_DETAIL_ACCOUNTS) {
+    const row = byCode.get(detail.code);
+    const parent = byCode.get(detail.parentCode);
+    assert.ok(row, `missing predefined detail ${detail.code}`);
+    assert.ok(parent, `missing parent ${detail.parentCode}`);
+    assert.equal(row.parentId, parent.id);
+    assert.equal(parent.allowPosting, false);
+    assert.deepEqual(row.statementMapping, parent.statementMapping);
+  }
   assert.deepEqual(initialized.map((row) => row.id), [1, 1, 1]);
 });
