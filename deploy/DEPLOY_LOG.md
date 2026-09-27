@@ -3071,3 +3071,11 @@
 - 自上次（4ebaf61）以来上线的相关提交：
   - 666a6e2 feat(finance): seed common detail accounts
 
+## 2026-09-27 18:01 · web · 666a6e2
+
+- 包：`pms-web-20260927-1747.tar.gz`
+- 提交：666a6e2 feat(finance): seed common detail accounts
+- 说明：科目表展示预置明细科目标识和企业专属明细说明；生产静态资源与本地制品 SHA256 一致，页面 200
+- 自上次（4ebaf61）以来上线的相关提交：
+  - 666a6e2 feat(finance): seed common detail accounts
+
