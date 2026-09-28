@@ -3197,3 +3197,11 @@
 - 自上次（5ddd795）以来上线的相关提交：
   - b564dff fix(repairs): strengthen history card boundary
 
+## 2026-09-29 01:12 · api · 79e67e7
+
+- 包：`pms-api-20260929-0102.tar.gz`
+- 提交：79e67e7 docs: record rich experience editor decision
+- 说明：Clean worktree build; production health db=up
+- 自上次（56d527a）以来上线的相关提交：
+  - 313fa81 feat(experiences): replace markdown with rich documents
+
