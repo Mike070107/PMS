@@ -3174,3 +3174,10 @@
 - 自上次（02ddcf4）以来上线的相关提交：
   - 5ddd795 feat(repairs): show building history as separate card
 
+## 2026-09-28 23:42 · miniapp-staff · 5ddd795
+
+- 包：`开发版本 1.0.20260928d`
+- 提交：5ddd795 feat(repairs): show building history as separate card
+- 说明：从干净 worktree 上传；描述含 5ddd795。公众平台当前浏览器登录的是另一 AppID，尚未切换体验版或提交审核
+- 自上次（5ddd795）以来没有相关提交（重新部署）
+
