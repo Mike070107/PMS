@@ -3181,3 +3181,11 @@
 - 说明：从干净 worktree 上传；描述含 5ddd795。公众平台当前浏览器登录的是另一 AppID，尚未切换体验版或提交审核
 - 自上次（5ddd795）以来没有相关提交（重新部署）
 
+## 2026-09-28 23:59 · web · b564dff
+
+- 包：`pms-web-20260928-2357.tar.gz`
+- 提交：b564dff fix(repairs): strengthen history card boundary
+- 说明：增强同楼栋历史报修卡片边界；生产健康检查通过
+- 自上次（5ddd795）以来上线的相关提交：
+  - b564dff fix(repairs): strengthen history card boundary
+
