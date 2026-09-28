@@ -3097,3 +3097,11 @@
   - b1d47c1 fix: keep AI material suggestions advisory only
   - abf3b67 fix: preserve precise voice repair details
 
+## 2026-09-28 17:08 · api · 1844d6c
+
+- 包：`pms-api-20260928-1704.tar.gz`
+- 提交：1844d6c feat: add markdown repair experience editor
+- 说明：生产健康检查通过，API 包 SHA256 5025018c...
+- 自上次（b1d47c1）以来上线的相关提交：
+  - 1844d6c feat: add markdown repair experience editor
+
