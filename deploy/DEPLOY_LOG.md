@@ -3166,3 +3166,11 @@
 - 自上次（02ddcf4）以来上线的相关提交：
   - 5ddd795 feat(repairs): show building history as separate card
 
+## 2026-09-28 23:38 · web · 5ddd795
+
+- 包：`pms-web-20260928-2329.tar.gz`
+- 提交：5ddd795 feat(repairs): show building history as separate card
+- 说明：同楼栋历史报修独立折叠卡片；生产页面与资源检查通过
+- 自上次（02ddcf4）以来上线的相关提交：
+  - 5ddd795 feat(repairs): show building history as separate card
+
