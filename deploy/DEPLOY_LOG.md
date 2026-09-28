@@ -3158,3 +3158,11 @@
 - 自上次（02ddcf4）以来上线的相关提交：
   - 56d527a fix: repair building history ordering
 
+## 2026-09-28 23:37 · miniapp-staff · 5ddd795
+
+- 包：`开发版本 1.0.20260928b`
+- 提交：5ddd795 feat(repairs): show building history as separate card
+- 说明：从干净 worktree 上传，描述含 5ddd795；待公众平台选为体验版并核对版本号
+- 自上次（02ddcf4）以来上线的相关提交：
+  - 5ddd795 feat(repairs): show building history as separate card
+
