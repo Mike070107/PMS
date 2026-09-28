@@ -56,8 +56,17 @@ page {
 
 /* ---------- 按钮体系（与业主端同一套） ----------
    微信 <button> 自带 margin、::after 边框和 2.55 倍行高，各页面再各写各的高度，
-   就会出现「偏一点 / 文字不居中 / 大小不一」。统一用 flex 居中，尺寸只在这里定义。 */
-button { margin: 0; }
+   就会出现「偏一点 / 文字不居中 / 大小不一」。所有 button 先做布局归一化，
+   即使页面使用的是业务专用按钮类、没有套 .btn，也必须默认上下居中。 */
+button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: 0;
+  line-height: 1.2;
+  text-align: center;
+}
 button::after { border: none; }
 
 .btn {

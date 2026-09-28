@@ -10,21 +10,8 @@ import { request } from '../request';
  * 完工小结：维修工口述一句「换了个角阀，原来那个锈死了」，
  * 服务端交给大模型理成规范的维修记录。
  *
- * materials 保留给老版本显示；新版本读 materialSuggestions。
- * 只有名称/别名唯一精确命中且数量明确时才形成草稿行，真正扣库存仍在人工提交之后。
+ * materials 只用于提醒维修工核对；AI 绝不能自动形成用料行或触发库存扣减。
  */
-export interface CompletionMaterialSuggestion {
-  spokenName: string;
-  qty: number | null;
-  unit: string;
-  materialId: number | null;
-  materialName: string;
-  spec: string;
-  catalogUnit: string;
-  match: 'exact' | 'candidate' | 'none';
-  needsConfirmation: boolean;
-}
-
 export const completionSummary = (data: { text: string; workOrderId?: number }) =>
   request<{
     ok: boolean;
@@ -32,7 +19,6 @@ export const completionSummary = (data: { text: string; workOrderId?: number }) 
     faultLocation?: string;
     faultSymptom?: string;
     materials?: string[];
-    materialSuggestions?: CompletionMaterialSuggestion[];
     feeSuggestion?: {
       ruleCode: string;
       ruleName: string;

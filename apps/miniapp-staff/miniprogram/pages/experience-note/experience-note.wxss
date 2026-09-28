@@ -19,9 +19,9 @@
 .caption-input { margin-top: 14rpx; min-height: 70rpx; border-bottom: 2rpx solid #dce6ef; }
 .add-tools { margin: 30rpx 0; }
 .add-tools__buttons { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 18rpx; }
-.add-tools__buttons button { margin: 0; padding: 0 22rpx; min-height: 74rpx; line-height: 74rpx; border-radius: 999rpx; background: #fff; border: 2rpx solid #b9cada; color: #31558a; font-size: var(--font-sm); }
+.add-tools__buttons button { margin: 0; padding: 0 22rpx; min-height: 74rpx; line-height: 1.2; border-radius: 999rpx; background: #fff; border: 2rpx solid #b9cada; color: #31558a; font-size: var(--font-sm); }
 .add-tools__buttons button::after { border: none; }
-.save-btn, .edit-btn { margin-top: 30rpx; min-height: 92rpx; line-height: 92rpx; border: none; border-radius: 18rpx; background: #31558a; color: #fff; font-size: var(--font-lg); font-weight: 700; }
+.save-btn, .edit-btn { margin-top: 30rpx; min-height: 92rpx; line-height: 1.2; border: none; border-radius: 18rpx; background: #31558a; color: #fff; font-size: var(--font-lg); font-weight: 700; }
 .reader-title { margin: 20rpx 0 36rpx; font-size: 46rpx; font-weight: 750; line-height: 1.35; color: var(--color-text); }
 .reader-block { margin: 24rpx 0; font-size: var(--font-lg); line-height: 1.85; color: var(--color-text); }
 .reader-block--heading { margin-top: 40rpx; font-size: var(--font-2xl); font-weight: 750; }

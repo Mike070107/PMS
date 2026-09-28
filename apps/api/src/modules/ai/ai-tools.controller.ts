@@ -5,14 +5,10 @@ import { IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 import { DataSource } from 'typeorm';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
-import { Community, Material, WorkOrder } from '../../entities';
+import { Community, WorkOrder } from '../../entities';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../access/permissions.guard';
-import {
-  matchCompletionMaterials,
-  RepairTextAiService,
-  validateCompletionFeeRule,
-} from './repair-text.ai';
+import { RepairTextAiService, validateCompletionFeeRule } from './repair-text.ai';
 import { RepairFeeRulesService } from './repair-fee-rules.service';
 
 class CompletionSummaryDto {
@@ -96,12 +92,6 @@ export class AiToolsController {
     );
     if (!summary) return { ok: false as const };
 
-    const catalog = workOrder
-      ? await this.dataSource.getRepository(Material).find({
-          where: { tenantId, enabled: true },
-          order: { id: 'ASC' },
-        })
-      : [];
     const feeRule = validateCompletionFeeRule(
       summary.feeRuleCode,
       rules,
@@ -112,9 +102,9 @@ export class AiToolsController {
       actionNote: summary.actionNote,
       faultLocation: summary.faultLocation,
       faultSymptom: summary.faultSymptom,
-      // 老版本小程序仍把它当字符串数组展示，保持兼容；新版本读 materialSuggestions。
+      // 只下发口述材料名作为醒目提醒。绝不替维修工匹配 SKU 或生成用料行；
+      // 这里也不能再返回 materialSuggestions，否则尚未更新的旧小程序会自动加料。
       materials: summary.materials.map((item) => item.name),
-      materialSuggestions: matchCompletionMaterials(summary.materials, catalog),
       feeSuggestion: feeRule
         ? {
             ruleCode: feeRule.code,
