@@ -3150,3 +3150,11 @@
   - b1d47c1 fix: keep AI material suggestions advisory only
   - abf3b67 fix: preserve precise voice repair details
 
+## 2026-09-28 22:39 · api · 56d527a
+
+- 包：`pms-api-20260928-2234.tar.gz`
+- 提交：56d527a fix: repair building history ordering
+- 说明：修复同楼栋历史报修分页排序触发 TypeORM 500
+- 自上次（02ddcf4）以来上线的相关提交：
+  - 56d527a fix: repair building history ordering
+
