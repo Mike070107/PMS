@@ -3135,3 +3135,18 @@
   - a80cdd0 refactor: move finance module out of PMS
   - 557172d feat: allow staff to correct unaccepted work orders
 
+## 2026-09-28 22:28 · miniapp-staff · 02ddcf4
+
+- 包：`1.0.20260928a`
+- 提交：02ddcf4 feat: prioritize same-room repair history
+- 说明：员工端工单可修改、原始报修内容、同房号历史报修；公众平台体验版已由截图确认
+- 自上次（4ebaf61）以来上线的相关提交：
+  - 02ddcf4 feat: prioritize same-room repair history
+  - 6a1045c feat: show building repair history on staff orders
+  - a80cdd0 refactor: move finance module out of PMS
+  - 557172d feat: allow staff to correct unaccepted work orders
+  - 1844d6c feat: add markdown repair experience editor
+  - abad06c fix: space completion photo and speech actions
+  - b1d47c1 fix: keep AI material suggestions advisory only
+  - abf3b67 fix: preserve precise voice repair details
+
