@@ -3097,3 +3097,11 @@
   - b1d47c1 fix: keep AI material suggestions advisory only
   - abf3b67 fix: preserve precise voice repair details
 
+## 2026-09-28 19:16 · api · 702c116
+
+- 包：`pms-api-20260928-1905.tar.gz`
+- 提交：702c116 refactor: move finance module out of PMS
+- 说明：从生产基线仅移除财务模块；独立财务库保留
+- 自上次（1844d6c）以来上线的相关提交：
+  - 702c116 refactor: move finance module out of PMS
+
