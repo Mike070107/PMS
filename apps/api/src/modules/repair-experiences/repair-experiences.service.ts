@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import sanitizeHtml from 'sanitize-html';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
   ManagementOffice,
@@ -75,9 +76,13 @@ export class RepairExperiencesService {
    * 经验笔记漏了这一道。在读取时补，存量数据不用改。
    */
   private withDisplayUrls(blocks: ExperienceBlock[] | null | undefined): ExperienceBlock[] {
-    return (blocks || []).map((block) =>
-      block.type === 'image' ? { ...block, url: this.storage.toDisplayUrl(block.url) } : block,
-    );
+    return (blocks || []).map((block) => {
+      if (block.type === 'image') return { ...block, url: this.storage.toDisplayUrl(block.url) };
+      if (block.type === 'document' && block.html) {
+        return { ...block, html: block.html.replace(/(<img\b[^>]*\bsrc=["'])([^"']+)(["'])/gi, (_match, before, url, after) => `${before}${this.storage.toDisplayUrl(url)}${after}`) };
+      }
+      return block;
+    });
   }
 
   async access(user: AuthUser) {
@@ -175,7 +180,8 @@ export class RepairExperiencesService {
   private matches(note: RepairExperienceNote, keyword: string): boolean {
     if (note.title.toLowerCase().includes(keyword)) return true;
     return (note.blocks || []).some((block) =>
-      [block.text, block.caption].some((text) => !!text && text.toLowerCase().includes(keyword)),
+      [block.text, block.caption, block.type === 'document' ? this.documentText(block.html) : '']
+        .some((text) => !!text && text.toLowerCase().includes(keyword)),
     );
   }
 
@@ -378,6 +384,11 @@ export class RepairExperiencesService {
         }
         return { id, type: 'image', url, caption: String(block.caption || '').trim().slice(0, 300) };
       }
+      if (block.type === 'document') {
+        const html = this.cleanDocumentHtml(String(block.html || ''));
+        if (!this.documentText(html)) throw new BadRequestException('文档正文还是空的');
+        return { id, type: 'document', html };
+      }
       if (block.type === 'divider') return { id, type: 'divider' };
       const text = String(block.text || '').trim();
       if (!text) throw new BadRequestException(`第 ${index + 1} 个内容块还是空的`);
@@ -396,8 +407,8 @@ export class RepairExperiencesService {
     favorites: Set<number>,
   ): NoteSummary {
     const preview = (note.blocks || [])
-      .filter((block) => block.type !== 'image' && block.text)
-      .map((block) => block.text)
+      .filter((block) => block.type === 'document' ? !!block.html : block.type !== 'image' && !!block.text)
+      .map((block) => block.type === 'document' ? this.documentText(block.html) : block.text)
       .join(' ')
       .slice(0, 100);
     return {
@@ -406,7 +417,7 @@ export class RepairExperiencesService {
       repairType: note.repairType,
       title: note.title,
       preview,
-      imageCount: (note.blocks || []).filter((block) => block.type === 'image').length,
+      imageCount: (note.blocks || []).reduce((count, block) => count + (block.type === 'image' ? 1 : block.type === 'document' ? (block.html?.match(/<img\b/gi)?.length || 0) : 0), 0),
       revision: note.revision,
       updatedAt: note.updatedAt.toISOString(),
       updatedByName: note.updatedBy ? names.get(note.updatedBy) || '员工' : '系统',
@@ -423,6 +434,31 @@ export class RepairExperiencesService {
 
   private key(officeId: number, repairType: string) {
     return `${officeId}:${repairType}`;
+  }
+
+  private cleanDocumentHtml(value: string) {
+    return sanitizeHtml(value, {
+      allowedTags: ['p', 'br', 'h2', 'h3', 'strong', 'em', 's', 'code', 'pre', 'blockquote', 'aside', 'ul', 'ol', 'li', 'label', 'input', 'div', 'hr', 'figure', 'figcaption', 'img', 'a'],
+      allowedAttributes: {
+        a: ['href', 'target', 'rel'],
+        img: ['src', 'alt', 'title'],
+        input: ['type', 'checked', 'disabled'],
+        ul: ['data-type'],
+        li: ['data-type', 'data-checked'],
+      },
+      allowedSchemes: ['http', 'https'],
+      allowedSchemesByTag: { img: ['http', 'https'] },
+      transformTags: {
+        a: sanitizeHtml.simpleTransform('a', { target: '_blank', rel: 'noopener noreferrer' }),
+        input: sanitizeHtml.simpleTransform('input', { type: 'checkbox', disabled: 'disabled' }),
+      },
+    }).trim();
+  }
+
+  private documentText(html?: string) {
+    return sanitizeHtml(String(html || ''), { allowedTags: [], allowedAttributes: {} })
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private tenantId(user: AuthUser) {

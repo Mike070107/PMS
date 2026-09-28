@@ -18,11 +18,12 @@ export class RepairExperienceNote extends TenantEntity {
   @Column({ type: 'jsonb', default: () => "'[]'" })
   blocks: Array<{
     id: string;
-    type: 'heading' | 'paragraph' | 'bullet' | 'ordered' | 'checklist' | 'quote' | 'warning' | 'divider' | 'image';
+    type: 'heading' | 'paragraph' | 'bullet' | 'ordered' | 'checklist' | 'quote' | 'warning' | 'divider' | 'image' | 'document';
     text?: string;
     url?: string;
     caption?: string;
     checked?: boolean;
+    html?: string;
   }>;
 
   /** 乐观锁版本，防止两个人同时编辑时后保存的人覆盖前一个人的内容。 */

@@ -18,8 +18,8 @@ export class RepairExperienceBlockDto {
   @MaxLength(80)
   id: string;
 
-  @IsIn(['heading', 'paragraph', 'bullet', 'ordered', 'checklist', 'quote', 'warning', 'divider', 'image'])
-  type: 'heading' | 'paragraph' | 'bullet' | 'ordered' | 'checklist' | 'quote' | 'warning' | 'divider' | 'image';
+  @IsIn(['heading', 'paragraph', 'bullet', 'ordered', 'checklist', 'quote', 'warning', 'divider', 'image', 'document'])
+  type: 'heading' | 'paragraph' | 'bullet' | 'ordered' | 'checklist' | 'quote' | 'warning' | 'divider' | 'image' | 'document';
 
   @IsOptional()
   @IsString()
@@ -39,6 +39,11 @@ export class RepairExperienceBlockDto {
   @IsOptional()
   @IsBoolean()
   checked?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120000)
+  html?: string;
 }
 
 export class SaveRepairExperienceNoteDto {

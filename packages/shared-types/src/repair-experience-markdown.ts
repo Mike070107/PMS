@@ -25,6 +25,7 @@ export function repairExperienceBlocksToMarkdown(blocks: RepairExperienceBlock[]
       case 'warning': return `> [!WARNING]\n${text.split('\n').map((line) => `> ${line}`).join('\n')}`;
       case 'divider': return '---';
       case 'image': return `![${escapeImageCaption(String(block.caption || '图片'))}](${String(block.url || '').trim()})`;
+      case 'document': return repairExperienceDocumentPlainText(String(block.html || ''));
       default: return text;
     }
   }).filter(Boolean).join('\n\n');
@@ -106,6 +107,59 @@ function escapeHtml(value: string): string {
   })[char] as string);
 }
 
+/** 把旧版结构化内容转换成新富文本编辑器可直接继续编辑的安全 HTML。 */
+export function repairExperienceBlocksToDocumentHtml(blocks: RepairExperienceBlock[]): string {
+  const documentBlock = blocks.find((block) => block.type === 'document' && block.html);
+  if (documentBlock?.html) return documentBlock.html;
+  let orderedOpen = false;
+  let bulletOpen = false;
+  const output: string[] = [];
+  const closeLists = () => {
+    if (orderedOpen) output.push('</ol>');
+    if (bulletOpen) output.push('</ul>');
+    orderedOpen = false;
+    bulletOpen = false;
+  };
+  for (const block of blocks) {
+    const inline = repairExperienceInlineHtml(block.text || '');
+    if (block.type === 'ordered') {
+      if (!orderedOpen) { closeLists(); output.push('<ol>'); orderedOpen = true; }
+      output.push(`<li>${inline}</li>`);
+      continue;
+    }
+    if (block.type === 'bullet') {
+      if (!bulletOpen) { closeLists(); output.push('<ul>'); bulletOpen = true; }
+      output.push(`<li>${inline}</li>`);
+      continue;
+    }
+    closeLists();
+    if (block.type === 'heading') output.push(`<h2>${inline}</h2>`);
+    else if (block.type === 'paragraph') output.push(`<p>${inline}</p>`);
+    else if (block.type === 'quote') output.push(`<blockquote>${inline}</blockquote>`);
+    else if (block.type === 'warning') output.push(`<aside>${inline}</aside>`);
+    else if (block.type === 'checklist') output.push(`<ul data-type="taskList"><li data-type="taskItem" data-checked="${!!block.checked}"><label><input type="checkbox"${block.checked ? ' checked' : ''}></label><div><p>${inline}</p></div></li></ul>`);
+    else if (block.type === 'divider') output.push('<hr>');
+    else if (block.type === 'image' && block.url) output.push(`<figure><img src="${escapeHtml(block.url)}" alt="${escapeHtml(block.caption || '')}">${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ''}</figure>`);
+  }
+  closeLists();
+  return output.join('');
+}
+
+/** 用于搜索、卡片摘要与空内容判断；不把 HTML 标签暴露给用户。 */
+export function repairExperienceDocumentPlainText(html: string): string {
+  return String(html || '')
+    .replace(/<(br|\/p|\/div|\/h[1-6]|\/li|\/blockquote|\/aside|\/figcaption)>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** 只渲染明确支持的行内 Markdown；其余字符全部转义，供 Web 与小程序 rich-text 安全复用。 */
 export function repairExperienceInlineHtml(value: string): string {
   const source = String(value || '');
@@ -141,7 +195,7 @@ export function repairExperienceRenderBlocks(blocks: RepairExperienceBlock[]): R
     ordered = block.type === 'ordered' ? ordered + 1 : 0;
     return {
       ...block,
-      ...(TEXT_BLOCK_TYPES.has(block.type) ? { html: repairExperienceInlineHtml(block.text || '') } : {}),
+      ...(block.type === 'document' ? { html: block.html || '' } : TEXT_BLOCK_TYPES.has(block.type) ? { html: repairExperienceInlineHtml(block.text || '') } : {}),
       ...(block.type === 'ordered' ? { order: ordered } : {}),
     };
   });

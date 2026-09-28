@@ -107,3 +107,15 @@ test('Markdown 新内容块保存时保留待办状态，分隔线不要求正�
     { id: 'quote', type: 'quote', text: '业主反馈偶发' },
   ]);
 });
+
+test('富文本文档保留排版并清除脚本和危险链接', () => {
+  const service = Object.create(RepairExperiencesService.prototype) as any;
+  const [document] = service.cleanBlocks([{
+    id: 'doc', type: 'document',
+    html: '<h2>排查步骤</h2><p><strong>先断电</strong><script>alert(1)</script></p><a href="javascript:alert(2)">危险链接</a><img src="https://img.example.com/a.jpg" onerror="alert(3)">',
+  }]);
+  assert.match(document.html, /<h2>排查步骤<\/h2>/);
+  assert.match(document.html, /<strong>先断电<\/strong>/);
+  assert.match(document.html, /https:\/\/img\.example\.com\/a\.jpg/);
+  assert.doesNotMatch(document.html, /script|javascript:|onerror/i);
+});

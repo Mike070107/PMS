@@ -1,11 +1,25 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  repairExperienceBlocksToDocumentHtml,
   repairExperienceBlocksToMarkdown,
+  repairExperienceDocumentPlainText,
   repairExperienceInlineHtml,
   repairExperienceMarkdownToBlocks,
   repairExperienceRenderBlocks,
 } from './repair-experience-markdown';
+
+test('旧内容块可转换为富文本文档继续编辑', () => {
+  const html = repairExperienceBlocksToDocumentHtml([
+    { id: 'h', type: 'heading', text: '排查方法' },
+    { id: 'p', type: 'paragraph', text: '先检查 **电源**' },
+    { id: 'l', type: 'bullet', text: '查看指示灯' },
+  ]);
+  assert.match(html, /<h2>排查方法<\/h2>/);
+  assert.match(html, /<strong>电源<\/strong>/);
+  assert.match(html, /<ul><li>查看指示灯<\/li><\/ul>/);
+  assert.equal(repairExperienceDocumentPlainText(html), '排查方法 先检查 电源 查看指示灯');
+});
 
 test('维修经验 Markdown 可在结构化内容间往返', () => {
   const source = [

@@ -7,7 +7,8 @@ export type RepairExperienceBlockType =
   | 'quote'
   | 'warning'
   | 'divider'
-  | 'image';
+  | 'image'
+  | 'document';
 
 export interface RepairExperienceBlock {
   id: string;
@@ -16,6 +17,8 @@ export interface RepairExperienceBlock {
   url?: string;
   caption?: string;
   checked?: boolean;
+  /** 服务端清洗后的富文本文档 HTML。新编辑器使用；旧内容块继续兼容。 */
+  html?: string;
 }
 
 /**

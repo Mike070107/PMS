@@ -40,6 +40,18 @@
 .markdown-editor { display: grid; gap: 18rpx; }
 .markdown-editor__tip { padding: 20rpx 22rpx; border-radius: 16rpx; background: #edf5fc; color: #506d88; font-size: var(--font-sm); line-height: 1.65; }
 .markdown-source { box-sizing: border-box; width: 100%; min-height: 760rpx; padding: 24rpx; border: 2rpx solid #b9cada; border-radius: 18rpx; background: #fff; color: var(--color-text); font-family: monospace; font-size: var(--font-sm); line-height: 1.75; }
+.document-editor { overflow: hidden; margin-top: 24rpx; border: 2rpx solid #c7d5e2; border-radius: 16rpx; background: #fff; }
+.document-toolbar { width: 100%; border-bottom: 2rpx solid #e1e8ef; background: #f6f8fa; white-space: nowrap; }
+.document-toolbar__inner { display: flex; width: max-content; gap: 8rpx; padding: 10rpx 12rpx; }
+.document-toolbar button { flex: none; min-width: 76rpx; min-height: 72rpx; margin: 0; padding: 0 18rpx; border: 0; border-radius: 10rpx; background: transparent; color: #34526d; font-size: var(--font-sm); line-height: 72rpx; }
+.document-toolbar button::after { border: 0; }
+.format-bold { font-weight: 800; }.format-italic { font-style: italic; }
+.document-editor__body { box-sizing: border-box; min-height: 720rpx; padding: 30rpx 28rpx 80rpx; color: var(--color-text); font-size: var(--font-lg); line-height: 1.8; }
+.reader-block--document { margin-top: 0; }
+.reader-document { display: block; color: var(--color-text); font-size: var(--font-lg); line-height: 1.85; }
+.reader-document h2 { margin: 42rpx 0 18rpx; font-size: var(--font-2xl); line-height: 1.45; }
+.reader-document h3 { margin: 34rpx 0 14rpx; font-size: var(--font-xl); line-height: 1.5; }
+.reader-document img { max-width: 100%; background: #edf1f5; }
 .save-btn, .edit-btn { margin-top: 30rpx; min-height: 92rpx; line-height: 1.2; border: none; border-radius: 18rpx; background: #31558a; color: #fff; font-size: var(--font-lg); font-weight: 700; }
 .reader-title { margin: 20rpx 0 36rpx; font-size: 46rpx; font-weight: 750; line-height: 1.35; color: var(--color-text); }
 .reader-block { margin: 24rpx 0; font-size: var(--font-lg); line-height: 1.85; color: var(--color-text); }

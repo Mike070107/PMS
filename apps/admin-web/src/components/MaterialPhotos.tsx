@@ -117,11 +117,14 @@ export function MaterialPhotosUpload({
   onChange,
   onUploadingChange,
   max = MATERIAL_PHOTO_LIMIT,
+  compact = false,
 }: {
   value?: string[];
   onChange?: (urls: string[]) => void;
   onUploadingChange?: (uploading: boolean) => void;
   max?: number;
+  /** 富文本工具栏等紧凑场景只显示一个上传按钮，不渲染缩略图卡片。 */
+  compact?: boolean;
 }) {
   const { message } = AntdApp.useApp();
   const [pending, setPending] = useState(0);
@@ -179,6 +182,10 @@ export function MaterialPhotosUpload({
       }
     },
   };
+
+  if (compact) {
+    return <Upload {...uploadProps}><Button type="text" icon={<UploadOutlined />}>{pending > 0 ? '上传中' : '图片'}</Button></Upload>;
+  }
 
   return (
     /*
