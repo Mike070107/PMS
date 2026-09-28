@@ -3189,3 +3189,11 @@
 - 自上次（5ddd795）以来上线的相关提交：
   - b564dff fix(repairs): strengthen history card boundary
 
+## 2026-09-28 23:59 · miniapp-staff · b564dff
+
+- 包：`开发版本 1.0.20260928e`
+- 提交：b564dff fix(repairs): strengthen history card boundary
+- 说明：从干净 worktree 上传；待正确 AppID 公众平台账号选择体验版
+- 自上次（5ddd795）以来上线的相关提交：
+  - b564dff fix(repairs): strengthen history card boundary
+
