@@ -316,6 +316,17 @@ export class RepairsController {
     return this.repairsService.badgeCounts(user, access);
   }
 
+  /** 工单详情卡片：同小区、同楼栋的历史报修数量和最近记录。必须声明在 :id 之前。 */
+  @Get('work-orders/:id/building-history')
+  @RequirePermission(['work-orders', 'app:pool', 'app:dispatch', 'app:my-orders'], 'view')
+  getWorkOrderBuildingHistory(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.getWorkOrderBuildingHistory(id, user, access);
+  }
+
   @Get('work-orders/:id')
   @Roles(...OWNER_APP_ROLES)
   @RequirePermission(

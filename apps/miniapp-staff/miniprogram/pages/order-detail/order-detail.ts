@@ -16,6 +16,7 @@ import {
 } from '@pms/miniapp-ui';
 import {
   formatDateTimeCn,
+  type BuildingRepairHistoryItem,
   REPAIR_TYPE_LABELS,
   stayDaysText,
   stayTone,
@@ -50,6 +51,12 @@ interface PickedPlace {
 interface ResultRow {
   label: string;
   value: string;
+}
+
+interface BuildingHistoryRow extends BuildingRepairHistoryItem {
+  createdAtText: string;
+  statusText: string;
+  typeLabel: string;
 }
 
 /**
@@ -290,6 +297,12 @@ interface PageData {
   panel: string;
   /** 进度默认只露最新一条，点开看全部。倒序，第 0 条就是最新的 */
   timelineOpen: boolean;
+  buildingHistoryVisible: boolean;
+  buildingHistoryOpen: boolean;
+  buildingHistoryLoading: boolean;
+  buildingHistoryTotal: number;
+  buildingHistoryRows: BuildingHistoryRow[];
+  buildingHistoryError: string;
   /** 原始语音/一句话是否展开。 */
   originalContentOpen: boolean;
   /** 维修结果（完工后才有）：故障位置/现象、维修说明、用料、收费、完修时间 */
@@ -433,6 +446,12 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     acceptText: '接单',
     panel: '',
     timelineOpen: false,
+    buildingHistoryVisible: false,
+    buildingHistoryOpen: false,
+    buildingHistoryLoading: false,
+    buildingHistoryTotal: 0,
+    buildingHistoryRows: [],
+    buildingHistoryError: '',
     /** 原始语音/一句话默认折叠，避免抢掉地址和故障描述的主层级。 */
     originalContentOpen: false,
     contactPhone: '',
@@ -570,6 +589,13 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         [WorkOrderStatus.CREATED]: detail.workOrder.candidateIds?.length ? '待接单' : '待派单',
       };
       const myId = session?.me?.id ?? 0;
+      const previousBuildingId = this.data.detail?.request?.buildingId ?? null;
+      const buildingId = detail.request?.buildingId ?? null;
+      const buildingChanged = previousBuildingId !== buildingId;
+      const buildingHistoryVisible =
+        !!buildingId &&
+        !!session &&
+        (session.canSeePool || session.canSeeDispatch || session.canSeeMyOrders);
       // 缺料提报后工单会退回工单池（assigneeId 置空），所以「等待材料 + 没人认领」
       // 要给的是接单按钮而不是完工表单。存量数据里还有挂着人的等待材料单，那种仍按在手工单处理。
       const waitingInPool =
@@ -599,6 +625,16 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         // 和列表卡片同一口径：报单时说了「急修」，或者压了 7 天，都挂红标
         urgent: !!detail.request?.urgent || stayTone(stayedDays) === 'danger',
         timeline: buildTimeline(detail.logs, timelineLabels, { finished: [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED, WorkOrderStatus.VOIDED].indexOf(status) >= 0 }),
+        buildingHistoryVisible,
+        buildingHistoryOpen: buildingChanged ? false : this.data.buildingHistoryOpen,
+        ...(buildingHistoryVisible
+          ? {}
+          : {
+              buildingHistoryLoading: false,
+              buildingHistoryTotal: 0,
+              buildingHistoryRows: [],
+              buildingHistoryError: '',
+            }),
         // 未指定人的公开池可以主动认领；定向派单只允许被派人确认接单。
         // 这里和服务端保持同一口径，避免别人从分享链接点进来看到一个必然报错的按钮。
         canAccept:
@@ -673,6 +709,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           this.data.feeYuan || (detail.workOrder.feeCents ? String(detail.workOrder.feeCents / 100) : ''),
       });
       await this.applyCompletionDraft(detail);
+      if (buildingHistoryVisible) void this.loadBuildingHistory();
       if (this.data.canComplete) this.loadPhrases(detail.request?.repairType || '');
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
@@ -835,6 +872,50 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     } catch {
       // 类型列表拿不到时仍可看详情；打开编辑会提示刷新
     }
+  },
+
+  async loadBuildingHistory() {
+    this.setData({ buildingHistoryLoading: true, buildingHistoryError: '' });
+    try {
+      const result = await repairs.buildingHistory(this.data.id);
+      this.setData({
+        buildingHistoryTotal: result.total,
+        buildingHistoryRows: result.items.map((item) => ({
+          ...item,
+          createdAtText: formatDateTimeCn(item.createdAt),
+          statusText: workOrderStatusText(item.status),
+          typeLabel:
+            item.repairTypeLabel ||
+            REPAIR_TYPE_LABELS[item.repairType || ''] ||
+            item.repairType ||
+            '其它',
+        })),
+      });
+    } catch (e: any) {
+      this.setData({
+        buildingHistoryTotal: 0,
+        buildingHistoryRows: [],
+        buildingHistoryError: e?.message || '历史报修加载失败',
+      });
+    } finally {
+      this.setData({ buildingHistoryLoading: false });
+    }
+  },
+
+  onToggleBuildingHistory() {
+    if (this.data.buildingHistoryLoading) return;
+    if (this.data.buildingHistoryError) {
+      void this.loadBuildingHistory();
+      return;
+    }
+    if (!this.data.buildingHistoryTotal) return;
+    this.setData({ buildingHistoryOpen: !this.data.buildingHistoryOpen });
+  },
+
+  onOpenHistoryOrder(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.id);
+    if (!id || String(id) === String(this.data.id)) return;
+    wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${id}` });
   },
 
   async loadEditBook() {

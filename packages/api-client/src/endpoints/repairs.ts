@@ -1,5 +1,6 @@
 import type {
   AssignWorkOrderReq,
+  BuildingRepairHistoryResp,
   CompleteWorkOrderReq,
   RepairCreateReq,
   RollbackMaterialLine,
@@ -221,6 +222,10 @@ export interface BadgeCounts {
 export const badgeCounts = () => request<BadgeCounts>({ url: '/work-orders/badge-counts' });
 
 export const detail = (id: number | string) => request<WorkOrderDetail>({ url: `/work-orders/${id}` });
+
+/** 当前工单所在楼栋的历史报修；总数与最近 12 条分开返回。 */
+export const buildingHistory = (id: number | string) =>
+  request<BuildingRepairHistoryResp>({ url: `/work-orders/${id}/building-history` });
 
 export const accept = (id: number | string) =>
   request<void>({ method: 'POST', url: `/work-orders/${id}/accept` });

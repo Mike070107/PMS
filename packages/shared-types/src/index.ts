@@ -482,6 +482,26 @@ export interface WorkOrderDetail {
   completionDraft?: CompletionDraft | null;
 }
 
+export interface BuildingRepairHistoryItem {
+  requestId: number;
+  workOrderId: number;
+  orderNo: string;
+  status: WorkOrderStatus;
+  repairType: string | null;
+  repairTypeLabel: string | null;
+  summaryAddress: string | null;
+  summaryContent: string;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface BuildingRepairHistoryResp {
+  /** 同小区、同楼栋的历史工单总数；不含当前工单和已作废工单。 */
+  total: number;
+  /** 最近的 12 条，供展开后快速查看。 */
+  items: BuildingRepairHistoryItem[];
+}
+
 /** 撤回完工后回填完工表单用的草稿 */
 export interface CompletionDraft {
   fromBatchId: number;

@@ -1827,13 +1827,66 @@ export class RepairsService implements OnModuleInit {
       if (!scopedBuilding || !scope.includes(scopedBuilding.communityId)) return [];
     }
 
-    const requests = await this.repairRequestRepo.find({
-      where: { tenantId, buildingId: query.buildingId },
-      order: { id: 'DESC' },
-      take: 12,
-      select: ['id', 'repairType', 'houseId', 'buildingId', 'addressText', 'content', 'createdAt'],
+    return (await this.loadBuildingRepairHistory(tenantId, query.buildingId)).items;
+  }
+
+  async getWorkOrderBuildingHistory(
+    id: number,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
+    if (!workOrder) throw new NotFoundException('work order not found');
+    this.assertWorkOrderScope(workOrder, access);
+
+    const resolved = access ?? (await this.accessService.getAccess(user));
+    const broad =
+      resolved.isPlatformAdmin ||
+      resolved.isTenantAdmin ||
+      !!resolved.pages['work-orders']?.view ||
+      !!resolved.pages['app:pool']?.view ||
+      !!resolved.pages['app:dispatch']?.view;
+    const assignedToMe =
+      !!resolved.pages['app:my-orders']?.view && workOrder.assigneeId === user.id;
+    if (!broad && !assignedToMe) throw new NotFoundException('work order not found');
+
+    const request = await this.repairRequestRepo.findOne({
+      where: { id: workOrder.requestId, tenantId },
+      select: ['id', 'buildingId'],
     });
-    if (!requests.length) return [];
+    if (!request?.buildingId) return { total: 0, items: [] };
+    return this.loadBuildingRepairHistory(tenantId, request.buildingId, request.id);
+  }
+
+  private async loadBuildingRepairHistory(
+    tenantId: number,
+    buildingId: number,
+    excludeRequestId?: number,
+  ) {
+    const query = () => {
+      const qb = this.repairRequestRepo
+        .createQueryBuilder('request')
+        .innerJoin(
+          WorkOrder,
+          'workOrder',
+          'workOrder.request_id = request.id AND workOrder.tenant_id = request.tenant_id',
+        )
+        .where('request.tenant_id = :tenantId', { tenantId })
+        .andWhere('request.building_id = :buildingId', { buildingId })
+        .andWhere('workOrder.deleted_at IS NULL')
+        .andWhere('workOrder.status <> :voided', { voided: WorkOrderStatus.VOIDED });
+      if (excludeRequestId) {
+        qb.andWhere('request.id <> :excludeRequestId', { excludeRequestId });
+      }
+      return qb;
+    };
+
+    const [total, requests] = await Promise.all([
+      query().getCount(),
+      query().orderBy('request.id', 'DESC').take(12).getMany(),
+    ]);
+    if (!requests.length) return { total, items: [] };
 
     const requestIds = requests.map((item) => item.id);
     const workOrders = await this.workOrderRepo.find({
@@ -1849,26 +1902,29 @@ export class RepairsService implements OnModuleInit {
         })
       : [];
     const building = await this.dataSource.getRepository(Building).findOne({
-      where: { tenantId, id: query.buildingId },
+      where: { tenantId, id: buildingId },
       select: ['id', 'lane', 'buildingNo'],
     });
     const houseById = new Map(houses.map((item) => [item.id, item]));
     const buildingById = new Map(building ? [[building.id, building]] : []);
+    const labels = await this.repairTypeLabels(tenantId);
 
-    return requests.filter((request) => workOrderByRequestId.has(request.id)).map((request) => {
+    const items = requests.filter((request) => workOrderByRequestId.has(request.id)).map((request) => {
       const workOrder = workOrderByRequestId.get(request.id);
       return {
         requestId: request.id,
-        workOrderId: workOrder?.id ?? null,
-        orderNo: workOrder?.orderNo ?? null,
-        status: workOrder?.status ?? null,
+        workOrderId: workOrder!.id,
+        orderNo: workOrder!.orderNo,
+        status: workOrder!.status,
         repairType: request.repairType,
+        repairTypeLabel: this.repairTypeLabel(request.repairType, labels),
         summaryAddress: this.buildRequestAddressSummary(request, houseById, buildingById),
         summaryContent: request.content,
         createdAt: request.createdAt,
-        completedAt: workOrder?.completedAt ?? null,
+        completedAt: workOrder!.completedAt ?? null,
       };
     });
+    return { total, items };
   }
 
   /**
