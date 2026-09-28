@@ -211,6 +211,60 @@ export class UpdateWorkOrderAddressDto {
   reason?: string;
 }
 
+/** 未接单前更正报修录入信息。地址、描述、类型、联系人等一起保存，避免只改了一半。 */
+export class UpdateWorkOrderIntakeDto {
+  @Type(() => Number)
+  @IsInt()
+  communityId: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  buildingId?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  houseId?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  placeDetail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  addressText?: string;
+
+  @IsString()
+  content: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  contactName?: string;
+
+  @IsOptional()
+  @IsPhoneNumber('CN')
+  contactPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  repairType?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  urgent?: boolean;
+
+  /** 为什么改。会写进时间轴；小程序可留空，服务端给默认文案。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+}
+
 /** 设定/取消工单的要求完成截止时间；不传 slaDueAt = 取消 */
 export class UpdateWorkOrderSlaDto {
   @IsOptional()

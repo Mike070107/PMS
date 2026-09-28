@@ -223,6 +223,10 @@ export function buildTimeline(
         label:
           log.action === 'progress'
             ? '维修进度更新'
+            : log.action === 'accept' || log.action === 'claim'
+              ? '维修工接单'
+            : log.action === 'update_intake'
+              ? '修改报修信息'
             : log.action === 'transfer_request'
               ? '申请转给其他人维修'
               : log.action === 'rollback'

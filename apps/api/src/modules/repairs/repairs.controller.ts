@@ -38,6 +38,7 @@ import {
   UrgeRepairDto,
   UpdateMissingMaterialsDto,
   UpdateOfficeSuggestionSettingsDto,
+  UpdateWorkOrderIntakeDto,
   UpdateWorkOrderRepairTypeDto,
   UpdateWorkOrderAddressDto,
   UpdateWorkOrderSlaDto,
@@ -404,6 +405,25 @@ export class RepairsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.repairsService.updateWorkOrderAddress(id, dto, user, access);
+  }
+
+  /** 员工端未接单前更正报修录入信息：地址、类型、描述、联系人、紧急标记。 */
+  @Patch('work-orders/:id/intake')
+  @RequirePermission(
+    [
+      ['work-orders', 'edit'],
+      ['app:dispatch', 'edit'],
+      ['app:repair-create', 'view'],
+    ],
+    'edit',
+  )
+  updateWorkOrderIntake(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateWorkOrderIntakeDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.updateWorkOrderIntake(id, dto, user, access);
   }
 
   /** 后台更正工单类型；learnKeywords 同时写进新类型的判定关键词（自学习） */

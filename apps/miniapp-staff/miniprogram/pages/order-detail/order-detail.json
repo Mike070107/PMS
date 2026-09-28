@@ -2,6 +2,7 @@
   "navigationBarTitleText": "工单详情",
   "navigationStyle": "custom",
   "usingComponents": {
+    "place-picker": "/components/place-picker/index",
     "pms-tag": "@pms/miniapp-ui/components/status-tag/index"
   }
 }

@@ -5,6 +5,7 @@ import type {
   RollbackMaterialLine,
   RollbackPreview,
   TechnicianOption,
+  UpdateWorkOrderIntakeReq,
   UsedMaterialLine,
   WorkOrderDetail,
   WorkOrderListItem,
@@ -175,6 +176,14 @@ export const updateWorkOrderAddress = (
   request<{ ok: true; addressText: string; notified: boolean }>({
     method: 'PATCH',
     url: `/work-orders/${id}/address`,
+    data,
+  });
+
+/** 未接单前更正报修录入信息：地址、类型、描述、联系人、紧急标记。 */
+export const updateWorkOrderIntake = (id: number | string, data: UpdateWorkOrderIntakeReq) =>
+  request<{ ok: true; addressText: string; repairType: string | null; candidateCount: number }>({
+    method: 'PATCH',
+    url: `/work-orders/${id}/intake`,
     data,
   });
 

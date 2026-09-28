@@ -116,6 +116,7 @@ import {
   RollbackWorkOrderDto,
   UpdateMissingMaterialsDto,
   UpdateOfficeSuggestionSettingsDto,
+  UpdateWorkOrderIntakeDto,
   UpdateWorkOrderRepairTypeDto,
   UpdateWorkOrderAddressDto,
   UpdateWorkOrderSlaDto,
@@ -5380,7 +5381,11 @@ export class RepairsService implements OnModuleInit {
           reporterRole,
           repairType: repairType ?? null,
           content: dto.content,
-          originalContent: dto.originalContent?.trim() || dto.aiAssist?.sourceText?.trim() || null,
+          originalContent:
+            dto.originalContent?.trim() ||
+            dto.aiAssist?.sourceText?.trim() ||
+            dto.content?.trim() ||
+            null,
           urgent,
           attachments: dto.attachments ?? [],
           submittedBy,
@@ -6702,6 +6707,142 @@ export class RepairsService implements OnModuleInit {
       }
     }
     return { ok: true as const, addressText, notified };
+  }
+
+  async updateWorkOrderIntake(
+    id: number,
+    dto: UpdateWorkOrderIntakeDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
+    if (!workOrder) throw new NotFoundException('work order not found');
+    this.assertWorkOrderScope(workOrder, access);
+    const request = await this.repairRequestRepo.findOne({
+      where: { id: workOrder.requestId, tenantId },
+    });
+    if (!request) throw new NotFoundException('repair request not found');
+    const canEditAny = await this.canDispatch(user, access);
+    if (!canEditAny && request.submittedBy !== user.id) {
+      throw new ForbiddenException('只能修改本人提交的未接单工单');
+    }
+    const lockReason = repairTypeAndSlaLockReason(workOrder.status);
+    if (lockReason) throw new BadRequestException(`${lockReason}报修信息`);
+
+    const content = dto.content?.trim();
+    if (!content || content.length < 2) throw new BadRequestException('请填写至少 2 个字的故障描述');
+
+    const community = await this.communityRepo.findOne({
+      where: { id: dto.communityId, tenantId, enabled: true },
+    });
+    if (!community) throw new BadRequestException('小区不存在或已停用');
+    const scope = this.scopeIds(access);
+    if (scope && !scope.includes(community.id)) {
+      throw new ForbiddenException('没有该小区的权限，不能把工单改到这个小区');
+    }
+
+    let building: Building | null = null;
+    if (dto.buildingId) {
+      building = await this.buildingRepo.findOne({ where: { id: dto.buildingId, tenantId } });
+      if (!building) throw new BadRequestException('楼栋不存在');
+      if (building.communityId !== community.id) throw new BadRequestException('这栋楼不属于所选小区');
+    }
+
+    let house: House | null = null;
+    if (dto.houseId) {
+      if (!building) throw new BadRequestException('选了房号就必须同时选楼栋');
+      house = await this.houseRepo.findOne({ where: { id: dto.houseId, tenantId } });
+      if (!house) throw new BadRequestException('房号不存在');
+      if (house.buildingId !== building.id) throw new BadRequestException('这个房号不属于所选楼栋');
+    }
+
+    const repairType = dto.repairType?.trim() || null;
+    const rules = await this.rulesForCommunity(tenantId, community.id);
+    const typeRule = repairType
+      ? rules.find((rule) => rule.repairType === repairType && rule.enabled)
+      : null;
+    if (repairType && !typeRule) throw new BadRequestException('报修类型不存在或已停用');
+    const candidates = typeRule ? await this.ruleCandidates(tenantId, typeRule, community.id) : [];
+
+    const place = (dto.placeDetail || '').trim();
+    const line = formatAddressLine(
+      (await this.communityAddressInfo(tenantId, [community.id])).get(community.id) ?? {
+        name: community.name,
+        laneCount: 0,
+      },
+      building,
+      house?.roomNo,
+    );
+    const addressText = (dto.addressText?.trim() || (house ? line : `${line} ${place || '公共区域'}`)).trim();
+
+    const contactName = dto.contactName?.trim() || null;
+    const contactPhone = dto.contactPhone?.trim() || null;
+    const urgent = dto.urgent ?? detectUrgency(content).urgent;
+    const changes: string[] = [];
+    const pushChange = (label: string, before?: string | null, after?: string | null) => {
+      const from = (before || '').trim();
+      const to = (after || '').trim();
+      if (from !== to) changes.push(`${label}「${from || '未填写'}」→「${to || '未填写'}」`);
+    };
+    pushChange('地址', request.addressText, addressText);
+    pushChange('故障描述', request.content, content);
+    pushChange('联系人', request.contactName, contactName);
+    pushChange('联系电话', request.contactPhone, contactPhone);
+    pushChange('报修类型', request.repairType, repairType);
+    if (!!request.urgent !== urgent) changes.push(`紧急程度「${request.urgent ? '紧急' : '普通'}」→「${urgent ? '紧急' : '普通'}」`);
+    const placeChanged =
+      request.communityId !== community.id ||
+      (request.buildingId ?? null) !== (building?.id ?? null) ||
+      (request.houseId ?? null) !== (house?.id ?? null);
+    const routingChanged =
+      request.communityId !== community.id || request.repairType !== repairType;
+    if (!changes.length && !placeChanged) throw new BadRequestException('报修信息没有变化');
+
+    await this.dataSource.transaction(async (manager) => {
+      request.communityId = community.id;
+      request.buildingId = building?.id ?? null;
+      request.houseId = house?.id ?? null;
+      request.addressText = addressText;
+      if (!request.originalContent) request.originalContent = request.content;
+      request.content = content;
+      request.contactName = contactName;
+      request.contactPhone = contactPhone;
+      request.repairType = repairType;
+      request.urgent = urgent;
+      request.updatedBy = user.id;
+      await manager.save(RepairRequest, request);
+
+      workOrder.communityId = community.id;
+      workOrder.skill = repairType;
+      // 已经定向派给某人但尚未接单时保留派单关系；公开池才随小区/类型重新匹配候选人。
+      if (!workOrder.assigneeId && routingChanged) {
+        workOrder.candidateIds = candidates.map((candidate) => candidate.id);
+      }
+      // 改联系人或修正文案不能顺手把截止时间往后延；只有路由规则变了才重算。
+      if (routingChanged) {
+        workOrder.slaDueAt = typeRule?.slaHours
+          ? new Date(Date.now() + typeRule.slaHours * 60 * 60 * 1000)
+          : null;
+      }
+      workOrder.updatedBy = user.id;
+      await manager.save(WorkOrder, workOrder);
+
+      const reason = dto.reason?.trim();
+      const note = [
+        '未接单前更正报修信息',
+        changes.length ? changes.join('；') : '',
+        reason ? `原因：${reason}` : '',
+      ].filter(Boolean).join('；');
+      await this.writeLog(manager, workOrder, workOrder.status, 'update_intake', user.id, note);
+    });
+
+    return {
+      ok: true as const,
+      addressText,
+      repairType,
+      candidateCount: candidates.length,
+    };
   }
 
   async updateWorkOrderRepairType(

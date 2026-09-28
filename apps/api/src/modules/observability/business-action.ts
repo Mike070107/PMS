@@ -37,6 +37,7 @@ const RULES: Rule[] = [
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/review$/, code: 'work_order_review', label: '验收工单', area: '工单', objectType: 'work_order' },
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/cancel$/, code: 'work_order_cancel', label: '撤销工单', area: '工单', objectType: 'work_order' },
   { method: 'POST', pattern: /^\/work-orders\/(\d+)\/urge(?:-repair)?$/, code: 'work_order_urge', label: '催修', area: '工单', objectType: 'work_order' },
+  { method: 'PATCH', pattern: /^\/work-orders\/(\d+)\/intake$/, code: 'work_order_intake_update', label: '修改报修信息', area: '工单', objectType: 'work_order' },
   { method: 'PATCH', pattern: /^\/work-orders\/(\d+)\/sla-due$/, code: 'work_order_sla_update', label: '修改工单时限', area: '工单', objectType: 'work_order' },
   { method: 'PATCH', pattern: /^\/work-orders\/(\d+)\/repair-type$/, code: 'work_order_type_update', label: '修改报修类型', area: '工单', objectType: 'work_order' },
   { method: 'POST', pattern: /^\/repair-type-rules$/, code: 'repair_type_rule_create', label: '新增报修类型', area: '报修配置', objectType: 'repair_type_rule' },

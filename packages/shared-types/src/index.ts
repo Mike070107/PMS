@@ -586,6 +586,20 @@ export interface AssignWorkOrderReq {
   note?: string;
 }
 
+export interface UpdateWorkOrderIntakeReq {
+  communityId: number;
+  buildingId?: number | null;
+  houseId?: number | null;
+  placeDetail?: string;
+  addressText?: string;
+  content: string;
+  contactName?: string;
+  contactPhone?: string;
+  repairType?: string;
+  urgent?: boolean;
+  reason?: string;
+}
+
 /** 完工时的用料一行。带 warehouseId = 从库存领的，后端会真的扣库存并记出库流水 */
 export interface UsedMaterialLine {
   materialId?: number;

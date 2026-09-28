@@ -30,12 +30,12 @@
       <view class="site-block">
         <view class="site-block__label"><text>2</text> 什么问题</view>
         <view class="site-block__problem">{{detail.request.content || '未填写故障描述'}}</view>
-        <view wx:if="{{detail.request.originalContent}}" class="original-entry" bindtap="onToggleOriginalContent">
+        <view wx:if="{{detail.request.originalContent || detail.request.content}}" class="original-entry" bindtap="onToggleOriginalContent">
           <view class="original-entry__icon"></view>
           <text>{{originalContentOpen ? '收起原始报修内容' : '查看原始报修内容'}}</text>
           <view class="original-entry__chevron {{originalContentOpen ? 'original-entry__chevron--open' : ''}}"></view>
         </view>
-        <view wx:if="{{detail.request.originalContent && originalContentOpen}}" class="original-content">{{detail.request.originalContent}}</view>
+        <view wx:if="{{(detail.request.originalContent || detail.request.content) && originalContentOpen}}" class="original-content">{{detail.request.originalContent || detail.request.content}}</view>
       </view>
       <view class="site-block site-block--contact">
         <view class="site-block__label"><text>3</text> 联系谁</view>
@@ -51,6 +51,14 @@
           <image wx:for="{{detail.request.attachments}}" wx:key="*this" class="site-photo" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="onPreviewRequestImage"/>
         </scroll-view>
       </view>
+    </view>
+
+    <view wx:if="{{canEditIntake}}" class="edit-intake-entry">
+      <view>
+        <view class="edit-intake-entry__title">报修信息填错了？</view>
+        <view wx:if="{{guide}}" class="edit-intake-entry__desc">未接单前可修改地址、类型、描述和联系方式；接单后会锁定这些录入信息</view>
+      </view>
+      <button class="edit-intake-entry__button" data-panel="editIntake" bindtap="onOpenPanel">修改工单</button>
     </view>
 
     <view wx:if="{{canComplete || canNeedMaterial}}" class="work-card">
@@ -133,6 +141,44 @@
   <button wx:if="{{canAccept}}" class="site-action site-action--primary" loading="{{busy}}" disabled="{{busy}}" bindtap="onAccept"><view class="btn__icon icon-action--check-white"></view><text>{{acceptText}}</text></button>
   <button wx:if="{{canComplete}}" class="site-action site-action--primary" data-panel="complete" bindtap="onOpenPanel"><view class="btn__icon icon-action--wrench-white"></view><text>去完工</text></button>
   <button wx:if="{{canRedispatch}}" class="site-action site-action--primary" bindtap="onGoRedispatch"><view class="btn__icon icon-action--send-white"></view><text>去派单台重新派单</text></button>
+</view>
+
+<!-- ============ 未接单前修改报修信息 ============ -->
+<view wx:if="{{panel === 'editIntake'}}" class="sheet-mask" bindtap="onClosePanel" catchtouchmove="noop"/>
+<view wx:if="{{panel === 'editIntake'}}" class="sheet" catchtouchmove="noop">
+  <view class="sheet__head"><text class="sheet__title">修改工单</text><text class="sheet__close" bindtap="onClosePanel">关闭</text></view>
+  <scroll-view class="sheet__body" scroll-y>
+    <view class="edit-warning">
+      <view class="edit-warning__title">仅限未接单前修改</view>
+      <view>保存后会重新计算这张单该进入哪个工单池，修改记录会写入工单进度。</view>
+    </view>
+    <view class="label mt">报修位置<text class="label__opt">必填</text></view>
+    <place-picker id="editPlacePicker" compact="{{true}}" valueText="{{editPlaceText}}" loading="{{editBookLoading}}" bind:picked="onEditPlacePicked" bind:openchange="onEditPickerOpenChange" />
+    <view wx:if="{{editShowSpot}}" class="label mt">具体位置</view>
+    <input wx:if="{{editShowSpot}}" class="complete-input" maxlength="60" placeholder="例如：大门、4楼电梯口" value="{{editSpotText}}" bindinput="onEditSpotText" />
+
+    <view class="label mt">报修类型<text class="label__opt">必填</text></view>
+    <picker mode="selector" range="{{editTypeLabels}}" value="{{editTypeIndex}}" bindchange="onEditType">
+      <view class="complete-picker {{editTypeIndex < 0 ? 'complete-picker--placeholder' : ''}}">{{editTypeIndex < 0 ? '请选择报修类型' : editTypeOptions[editTypeIndex].label}}</view>
+    </picker>
+
+    <view class="label mt">故障描述<text class="label__opt">必填</text></view>
+    <textarea class="complete-textarea" maxlength="1000" placeholder="请填写现场问题" value="{{editContent}}" bindinput="onEditContent"/>
+
+    <view class="urgency-choice urgency-choice--sheet">
+      <view class="urgency-choice__item {{!editUrgent ? 'urgency-choice__item--on' : ''}}" data-urgent="0" bindtap="onEditUrgent"><view class="urgency-choice__symbol">✓</view><view>普通</view></view>
+      <view class="urgency-choice__item urgency-choice__item--danger {{editUrgent ? 'urgency-choice__item--on' : ''}}" data-urgent="1" bindtap="onEditUrgent"><view class="urgency-choice__symbol">△</view><view>紧急</view></view>
+    </view>
+
+    <view class="label mt">联系人</view>
+    <input class="complete-input" maxlength="30" placeholder="姓名" value="{{editContactName}}" bindinput="onEditContactName" />
+    <view class="label mt">联系电话</view>
+    <input class="complete-input" type="number" maxlength="11" placeholder="11 位手机号" value="{{editContactPhone}}" bindinput="onEditContactPhone" />
+    <view class="label mt">修改原因<text class="label__opt">选填，会写入进度</text></view>
+    <textarea class="complete-textarea complete-textarea--short" maxlength="200" placeholder="例如：报修人说错楼栋，办公室核对后更正" value="{{editReason}}" bindinput="onEditReason"/>
+    <view class="complete-error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
+  </scroll-view>
+  <view class="sheet__foot"><button class="btn btn--primary" loading="{{busy}}" disabled="{{busy || editBookLoading}}" bindtap="onSubmitEditIntake">保存修改</button></view>
 </view>
 
 <!-- ============ 办公室催单 ============ -->

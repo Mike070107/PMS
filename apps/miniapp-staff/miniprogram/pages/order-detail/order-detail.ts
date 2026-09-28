@@ -1,4 +1,5 @@
-import { ai, repairs, upload } from '@pms/api-client';
+import { address, ai, repairs, upload } from '@pms/api-client';
+import type { PublicRepairType } from '@pms/api-client/src/endpoints/repairs';
 import { getSession } from '../../utils/session';
 import { askOrderSubscribe } from '../../utils/unread';
 import { markPoolTabTapped, rememberPoolMode } from '../../utils/tabbar';
@@ -27,6 +28,19 @@ import {
   type WorkOrderMaterialUsageView,
 } from '@pms/shared-types';
 import { guideHandlers } from '../../utils/guide';
+import { loadAddressBook } from '../../utils/address-picker';
+
+interface PickedPlace {
+  communityId: number;
+  communityName: string;
+  buildingId: number | null;
+  buildingText: string;
+  houseId: number | null;
+  roomNo: string;
+  fullText: string;
+  isPublicArea: boolean;
+  spotName?: string;
+}
 
 /**
  * 「维修结果」那张卡：维修工提交完工时填的东西，办公室和业主要能看到。
@@ -238,6 +252,24 @@ interface PageData {
   canVoid: boolean;
   /** 办公室能不能催这单（派单台那格权限，且单子还没结束） */
   canUrge: boolean;
+  /** 未接单前允许办公室在员工端修正报修信息 */
+  canEditIntake: boolean;
+  editPickerOpen: boolean;
+  editBookLoading: boolean;
+  editCommunityId: number | null;
+  editBuildingId: number | null;
+  editHouseId: number | null;
+  editPlaceText: string;
+  editShowSpot: boolean;
+  editSpotText: string;
+  editContent: string;
+  editContactName: string;
+  editContactPhone: string;
+  editTypeIndex: number;
+  editTypeLabels: string[];
+  editTypeOptions: Array<{ value: string; label: string }>;
+  editUrgent: boolean;
+  editReason: string;
   /** page-container 关过一次后要 show 假→真一次才会再拦返回，用这个脉冲一下 */
   overlayPulse: boolean;
   voidNote: string;
@@ -371,6 +403,23 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     canRollback: false,
     canVoid: false,
     canUrge: false,
+    canEditIntake: false,
+    editPickerOpen: false,
+    editBookLoading: true,
+    editCommunityId: null,
+    editBuildingId: null,
+    editHouseId: null,
+    editPlaceText: '',
+    editShowSpot: false,
+    editSpotText: '',
+    editContent: '',
+    editContactName: '',
+    editContactPhone: '',
+    editTypeIndex: -1,
+    editTypeLabels: [],
+    editTypeOptions: [],
+    editUrgent: false,
+    editReason: '',
     overlayPulse: false,
     voidNote: '',
     voidConfirmed: false,
@@ -452,6 +501,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   appliedDraftBatchId: null as number | null,
   /** 本次完工提交的幂等令牌：连点两下或弱网重试都只扣一次库存 */
   completeIdempotencyKey: '',
+  repairTypes: [] as PublicRepairType[],
+  addressBook: [] as Awaited<ReturnType<typeof loadAddressBook>>,
+  addressSpots: [] as Awaited<ReturnType<typeof address.communitySpots>>,
 
   onLoad(q: Record<string, string>) {
     this.setData({ nav: customNavLayout() });
@@ -463,6 +515,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.completeIdempotencyKey = '';
     this.setData({ id: q.id || '' });
     this.bindSpeech();
+    void this.loadEditBook();
+    void this.loadEditTypes();
     this.load();
   },
 
@@ -589,6 +643,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
             WorkOrderStatus.CANCELLED,
             WorkOrderStatus.VOIDED,
           ].includes(status),
+        canEditIntake:
+          (!!session?.canDispatch ||
+            (!!session?.canReport && detail.request?.submittedBy === myId)) &&
+          [WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED].includes(status),
         assigneeText: detail.workOrder.assigneeName || '未派单',
         ...this.buildResult(detail),
         missingText: missingMaterialsText(detail.workOrder.missingMaterials),
@@ -759,6 +817,159 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       });
     } catch {
       this.setData({ phrases: [] });
+    }
+  },
+
+  async loadEditTypes() {
+    try {
+      const types = await repairs.types();
+      this.repairTypes = types;
+      const currentType = this.data.detail?.request?.repairType;
+      this.setData({
+        editTypeOptions: types.map((item) => ({ value: item.repairType, label: item.label })),
+        editTypeLabels: types.map((item) => item.label),
+        editTypeIndex: currentType
+          ? types.findIndex((item) => item.repairType === currentType)
+          : -1,
+      });
+    } catch {
+      // 类型列表拿不到时仍可看详情；打开编辑会提示刷新
+    }
+  },
+
+  async loadEditBook() {
+    this.setData({ editBookLoading: true });
+    try {
+      const [book, spots] = await Promise.all([loadAddressBook(undefined, 'staff:order-detail-edit'), address.communitySpots()]);
+      this.addressBook = book;
+      this.addressSpots = spots;
+      this.setData({ editBookLoading: false }, () => this.syncEditPlacePicker());
+    } catch {
+      this.setData({ editBookLoading: false });
+    }
+  },
+
+  syncEditPlacePicker() {
+    const picker = this.selectComponent('#editPlacePicker') as
+      | (WechatMiniprogram.Component.TrivialInstance & { setBook?: (book: unknown[], spots: unknown[]) => void })
+      | null;
+    picker?.setBook?.(this.addressBook, this.addressSpots);
+  },
+
+  seedEditForm() {
+    const request = this.data.detail?.request;
+    if (!request) return;
+    const typeIndex = this.data.editTypeOptions.findIndex((item) => item.value === request.repairType);
+    const unknownRoom = !request.houseId && /未提供房号/.test(request.addressText || '');
+    const isPublicArea = !request.houseId && !unknownRoom;
+    const spotText = isPublicArea ? this.stripEditBaseAddress(request.addressText || '') : '';
+    const placeText = spotText
+      ? (request.addressText || '').slice(0, -(spotText.length)).trim()
+      : request.addressText || '';
+    this.setData({
+      editCommunityId: request.communityId,
+      editBuildingId: request.buildingId,
+      editHouseId: request.houseId,
+      editPlaceText: placeText,
+      editShowSpot: isPublicArea,
+      editSpotText: spotText,
+      editContent: request.content || '',
+      editContactName: request.contactName || '',
+      editContactPhone: request.contactPhone || '',
+      editTypeIndex: typeIndex,
+      editUrgent: !!request.urgent,
+      editReason: '',
+      errorMsg: '',
+    }, () => this.syncEditPlacePicker());
+  },
+
+  stripEditBaseAddress(addressText: string) {
+    const text = addressText.trim();
+    const place = text.split(/\s+/).pop() || '';
+    return place && place !== text && place !== '公共区域' ? place : '';
+  },
+
+  onEditPlacePicked(e: WechatMiniprogram.CustomEvent<PickedPlace>) {
+    const picked = e.detail;
+    this.setData({
+      editCommunityId: picked.communityId,
+      editBuildingId: picked.buildingId,
+      editHouseId: picked.houseId,
+      editPlaceText: picked.fullText,
+      editShowSpot: picked.isPublicArea,
+      editSpotText: picked.isPublicArea ? picked.spotName || '' : '',
+      errorMsg: '',
+    });
+  },
+
+  onEditPickerOpenChange(e: WechatMiniprogram.CustomEvent<{ open: boolean }>) {
+    this.setData({ editPickerOpen: !!e.detail.open });
+  },
+
+  onEditSpotText(e: WechatMiniprogram.Input) {
+    this.setData({ editSpotText: e.detail.value, errorMsg: '' });
+  },
+
+  onEditContent(e: WechatMiniprogram.Input) {
+    this.setData({ editContent: e.detail.value, errorMsg: '' });
+  },
+
+  onEditContactName(e: WechatMiniprogram.Input) {
+    this.setData({ editContactName: e.detail.value, errorMsg: '' });
+  },
+
+  onEditContactPhone(e: WechatMiniprogram.Input) {
+    this.setData({ editContactPhone: e.detail.value, errorMsg: '' });
+  },
+
+  onEditType(e: WechatMiniprogram.PickerChange) {
+    this.setData({ editTypeIndex: Number(e.detail.value), errorMsg: '' });
+  },
+
+  onEditUrgent(e: WechatMiniprogram.BaseEvent) {
+    this.setData({ editUrgent: e.currentTarget.dataset.urgent === '1', errorMsg: '' });
+  },
+
+  onEditReason(e: WechatMiniprogram.Input) {
+    this.setData({ editReason: e.detail.value, errorMsg: '' });
+  },
+
+  async onSubmitEditIntake() {
+    const communityId = this.data.editCommunityId;
+    const content = this.data.editContent.trim();
+    const phone = this.data.editContactPhone.trim();
+    if (!communityId) return this.setData({ errorMsg: '请先选择报修位置' });
+    if (content.length < 2) return this.setData({ errorMsg: '请填写至少 2 个字的故障描述' });
+    if (phone && !/^1[3-9]\d{9}$/.test(phone)) return this.setData({ errorMsg: '联系电话请填写 11 位手机号' });
+    if (this.data.editTypeIndex < 0 || !this.data.editTypeOptions[this.data.editTypeIndex]) {
+      return this.setData({ errorMsg: '请选择报修类型' });
+    }
+    this.setData({ busy: true, errorMsg: '' });
+    try {
+      const addressText = [
+        this.data.editPlaceText,
+        this.data.editShowSpot ? this.data.editSpotText.trim() : '',
+      ].filter(Boolean).join(' ');
+      await repairs.updateWorkOrderIntake(this.data.id, {
+        communityId,
+        buildingId: this.data.editBuildingId,
+        houseId: this.data.editHouseId,
+        placeDetail: this.data.editShowSpot ? this.data.editSpotText.trim() || undefined : undefined,
+        addressText: addressText || undefined,
+        content,
+        contactName: this.data.editContactName.trim() || undefined,
+        contactPhone: phone || undefined,
+        repairType: this.data.editTypeOptions[this.data.editTypeIndex].value,
+        urgent: this.data.editUrgent,
+        reason: this.data.editReason.trim() || undefined,
+      });
+      this.setData({ panel: '' });
+      await this.load();
+      wx.showToast({ title: '报修信息已更新', icon: 'none' });
+    } catch (e: any) {
+      this.setData({ errorMsg: e?.message || '保存失败' });
+    } finally {
+      this.setData({ busy: false });
     }
   },
 
@@ -1211,6 +1422,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     const panel = String(e.currentTarget.dataset.panel || '');
     this.setData({ panel, materialError: '', errorMsg: '' });
     if (panel === 'rollback') void this.loadRollbackPreview();
+    if (panel === 'editIntake') {
+      if (!this.data.editTypeOptions.length) void this.loadEditTypes();
+      if (!this.addressBook.length) void this.loadEditBook();
+      this.seedEditForm();
+    }
   },
 
   /**
