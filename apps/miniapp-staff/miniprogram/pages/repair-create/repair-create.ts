@@ -1,4 +1,4 @@
-import { auth, repairs, upload } from '@pms/api-client';
+import { address, auth, repairs, upload } from '@pms/api-client';
 import type {
   ParsedRepairAddress,
   PublicRepairType,
@@ -30,6 +30,7 @@ import { loadAddressBook } from '../../utils/address-picker';
 import { goBack, swipeBackHandlers } from '../../utils/navigation';
 import { customNavLayout } from '../../utils/custom-nav';
 import { guideHandlers } from '../../utils/guide';
+import { consumeRepairFormHandoff } from '../../utils/repair-form-handoff';
 
 /**
  * 提交前把描述里的地址剥掉。地址已经单独放进 addressText，描述只该留故障本身。
@@ -83,6 +84,7 @@ interface PickedPlace {
   roomNo: string;
   fullText: string;
   isPublicArea: boolean;
+  spotName?: string;
 }
 
 Page({
@@ -173,6 +175,12 @@ Page({
   detectTimer: 0 as number,
   /** 人自己点过「紧急」那一行之后，就别再被自动判定覆盖 */
   urgentTouched: false,
+  /** 人改过具体位置后，后续语音识别不能再覆盖。 */
+  spotTouched: false,
+  /** 完整表单里直接口述的原始分段；提交时单独留档，不塞回故障描述。 */
+  sourceSegments: [] as string[],
+  /** 随手拍已经判出的类型，等类型词表加载完后再安全映射到下拉框。 */
+  handoffRepairType: '' as string,
   /** 随手拍转过来的原话。它和「问题描述」框里的文字不是同一份，识别守卫要认它 */
   handoffRaw: '' as string,
   dismissedMatch: '' as string,
@@ -186,20 +194,43 @@ Page({
     this.setData({ nav: customNavLayout() });
     this.bindSpeech();
     this.loadTypes();
-    const handoff = decodeURIComponent(q?.content || '').trim();
+    const storedHandoff = q?.handoff === '1' ? consumeRepairFormHandoff() : null;
+    const handoff = storedHandoff?.content || decodeURIComponent(q?.content || '').trim();
     // 随手拍那边剥干净的描述进「问题描述」框，原话只用来做识别 ——
     // 剥过的话里已经没有联系人和电话了，拿它去抽只会抽出个空
-    const rawSpeech = decodeURIComponent(q?.raw || '').trim();
+    const rawSpeech = storedHandoff?.sourceText || decodeURIComponent(q?.raw || '').trim();
     this.handoffRaw = rawSpeech;
-    const media = decodeURIComponent(q?.attachments || '')
+    const media = storedHandoff?.attachments || decodeURIComponent(q?.attachments || '')
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean);
     if (media.length) this.setAttachments(media);
+    if (storedHandoff) {
+      const detected = storedHandoff.detected;
+      this.suppressContactDefaults = true;
+      this.contactIsDefault = false;
+      this.phoneIsDefault = false;
+      this.handoffRepairType = storedHandoff.repairType;
+      this.predictedType = storedHandoff.repairType;
+      this.setData({
+        content: storedHandoff.content,
+        detected,
+        communityId: detected?.communityId ?? null,
+        buildingId: detected?.buildingId ?? null,
+        houseId: detected?.houseId ?? null,
+        placeText: detected?.addressText || '',
+        showSpot: !!detected?.matched && detected.level !== 'house',
+        spotText: storedHandoff.specificLocation,
+        contactName: storedHandoff.contactName,
+        contactPhone: storedHandoff.contactPhone,
+        urgent: storedHandoff.urgent,
+      });
+    }
     if (handoff) {
-      this.setData({ content: handoff });
+      if (!storedHandoff) this.setData({ content: handoff });
       // 有原话就用原话认（地址/联系人/电话/类型都在里面），没有就退回描述本身
-      this.scheduleDetect(rawSpeech || handoff);
+      // 新版交接已携带同一次识别的完整字段，不再异步重跑后覆盖它；旧链接继续兼容。
+      if (!storedHandoff) this.scheduleDetect(rawSpeech || handoff);
     }
     // 地址簿范围取决于身份（代报角色只能报授权小区），所以先 me() 再拉地址簿，
     // 别并行 —— 并行的话保安会先看到全公司地址簿，选完提交才被后端拦下
@@ -248,26 +279,24 @@ Page({
   async loadBook() {
     try {
       const scope = this.reportCommunityIds;
-      const book = scope === null
-        ? await loadAddressBook(undefined, this.addressCacheScope)
+      const bookPromise = scope === null
+        ? loadAddressBook(undefined, this.addressCacheScope)
         : scope.length
-          ? Array.from(
-              new Map(
-                (await Promise.all(
-                  scope.map((id) => loadAddressBook(id, this.addressCacheScope).catch(() => [])),
-                ))
-                  .flat()
-                  // 兼容后台尚未更新时「选一个分期顺带返回同组其它分期」的旧行为，
-                  // 端上仍按角色的精确范围做最后一道过滤和去重。
-                  .filter((item) => scope.includes(item.id))
-                  .map((item) => [item.id, item] as const),
-              ).values(),
-            )
-          : [];
+          ? Promise.all(scope.map((id) => loadAddressBook(id, this.addressCacheScope).catch(() => [])))
+              .then((groups) => Array.from(
+                new Map(
+                  groups.flat()
+                    // 兼容后台尚未更新时「选一个分期顺带返回同组其它分期」的旧行为。
+                    .filter((item) => scope.includes(item.id))
+                    .map((item) => [item.id, item] as const),
+                ).values(),
+              ))
+          : Promise.resolve([]);
+      const [book, spots] = await Promise.all([bookPromise, address.communitySpots()]);
       this.setData({ bookReady: book.length > 0, bookLoading: false }, () => {
         // 组件是 wx:if 出来的，setData 回调里才拿得到实例
         const picker = this.selectComponent('#placePicker');
-        if (picker) picker.setBook(book);
+        if (picker) picker.setBook(book, spots);
       });
     } catch (e: any) {
       this.setData({ bookLoading: false });
@@ -284,8 +313,19 @@ Page({
         typeOptions: types.map((item) => ({ value: item.repairType, label: item.label })),
         typeLabels: types.map((item) => item.label),
       });
+      if (this.handoffRepairType) {
+        const index = types.findIndex((item) => item.repairType === this.handoffRepairType);
+        if (index >= 0) {
+          this.setData({
+            typeIndex: index,
+            contentSuggestions: (types[index].keywords || []).slice(0, 8),
+            contentSuggestTitle: `${types[index].label}·猜你想输`,
+            autoTypeHint: '已带入语音识别结果，可手动修改',
+          });
+        }
+      }
       // 从随手拍带描述进来时，首次识别跑在词表加载完之前，判不出类型；这里补判一次
-      if (this.data.content) this.autoFillFromText(this.data.content);
+      if (this.data.content && !this.handoffRepairType) this.autoFillFromText(this.data.content);
     } catch {
       // 拉不到就用内置类型，别挡住报修
     }
@@ -355,16 +395,19 @@ Page({
       houseId: picked.houseId,
       placeText: picked.fullText,
       showSpot: picked.isPublicArea,
-      ...(picked.isPublicArea ? {} : { spotText: '' }),
+      spotText: picked.isPublicArea ? picked.spotName || '' : '',
       'errors.place': '',
     });
+    this.spotTouched = !!picked.spotName;
   },
 
   onSpotText(e: WechatMiniprogram.Input) {
+    this.spotTouched = true;
     this.setData({ spotText: e.detail.value });
   },
 
   onPickSpot(e: WechatMiniprogram.BaseEvent) {
+    this.spotTouched = true;
     this.setData({ spotText: String(e.currentTarget.dataset.text || '') });
   },
 
@@ -462,6 +505,9 @@ Page({
     }
     if (res.matchedText && res.matchedText === this.dismissedMatch) return;
     const patch: Record<string, unknown> = { detected: res };
+    if (!this.spotTouched && res.matched && res.level !== 'house') {
+      patch.spotText = res.specificLocation || res.spotName || '';
+    }
     const aiType = res.ai?.repairType;
     if (aiType && !this.typePickedByUser) {
       const local = classifyRepairType(content, this.types);
@@ -531,7 +577,10 @@ Page({
 
   onDismissDetected() {
     this.dismissedMatch = this.data.detected?.matchedText || '';
-    this.setData({ detected: null });
+    this.setData({
+      detected: null,
+      ...(!this.spotTouched ? { spotText: '' } : {}),
+    });
   },
 
   // ---------------- 类型与描述 ----------------
@@ -617,6 +666,7 @@ Page({
         wx.showToast({ icon: 'none', title: '没听清，再说一次或直接打字' });
         return;
       }
+      this.sourceSegments = [...this.sourceSegments, text].slice(-8);
       // 联系人和电话由下面的字段单独接住（autoFillFromText），说的这一段里就别再留着；
       // 语气词一并剥掉。地址先留在文字里 —— 识别要靠它撞库，提交时再从描述里去掉
       const contact = extractContact(text);
@@ -785,7 +835,11 @@ Page({
         // 把「系统当初判的是什么」一并带上：和最终选的不一致时，
         // 后端记一条负样本，下次这个词就不会再往错的类型上撞
         predictedRepairType: this.predictedType || undefined,
-        aiAssist: repairs.buildRepairAiAssist(this.handoffRaw || content, detected),
+        originalContent: this.handoffRaw || this.sourceSegments.join('；') || content,
+        aiAssist: repairs.buildRepairAiAssist(
+          this.handoffRaw || this.sourceSegments.join('；') || content,
+          detected,
+        ),
         // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
         urgent: this.data.urgent,
         // 地址在描述里留到这一刻是为了让识别撞库（见 onSpeech 那段注释），
@@ -793,7 +847,9 @@ Page({
         // 用 matchedRaw（原话里的那一整段，含小区名），不是归一化的 matchedText ——
         // 后者剥完会剩个「枫桦景苑」在描述开头（2026-08-31 实际现象）。
         // 剥空了就退回原文：宁可带点地址，也不能提交一条空描述
-        content: (detected?.ai?.description || '').trim() || stripAddress(content, detected?.matchedRaw),
+        // 逐字剥掉已确认的地址，保留设备编号与故障现象。AI 的概括只做分类辅助，
+        // 不能覆盖用户原话（“11号显示屏图像卡顿”不能变成“显示屏坏”）。
+        content: stripAddress(content, detected?.matchedRaw),
         attachments: this.data.attachments,
       });
       wx.showToast({ title: '报修已提交' });

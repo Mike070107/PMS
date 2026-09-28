@@ -258,6 +258,8 @@ interface PageData {
   panel: string;
   /** 进度默认只露最新一条，点开看全部。倒序，第 0 条就是最新的 */
   timelineOpen: boolean;
+  /** 原始语音/一句话是否展开。 */
+  originalContentOpen: boolean;
   /** 维修结果（完工后才有）：故障位置/现象、维修说明、用料、收费、完修时间 */
   resultRows: ResultRow[];
   resultMaterials: string[];
@@ -382,6 +384,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     acceptText: '接单',
     panel: '',
     timelineOpen: false,
+    /** 原始语音/一句话默认折叠，避免抢掉地址和故障描述的主层级。 */
+    originalContentOpen: false,
     contactPhone: '',
     resultAttachments: [],
     progressNote: '',
@@ -784,6 +788,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       return wx.showToast({ icon: 'none', title: '该报修没有留联系电话' });
     }
     wx.makePhoneCall({ phoneNumber: phone });
+  },
+
+  onToggleOriginalContent() {
+    this.setData({ originalContentOpen: !this.data.originalContentOpen });
   },
 
   onPreviewRequestImage(e: WechatMiniprogram.BaseEvent) {

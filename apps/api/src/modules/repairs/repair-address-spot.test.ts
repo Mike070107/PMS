@@ -87,6 +87,14 @@ test('本来就建了点位的小区，走原来的点位那条路', async () =>
   assert.equal(r.addressText, '永南5511弄 门卫室');
 });
 
+test('监控室后的显示屏编号进入具体位置，原始故障描述仍可完整剥离', async () => {
+  const r = await parse('枫桦景苑二期监控室11号显示屏图像卡顿');
+  assert.equal(r.communityId, 2);
+  assert.equal(r.spotName, '监控室');
+  assert.equal(r.specificLocation, '监控室11号显示屏');
+  assert.equal(r.matchedRaw, '枫桦景苑二期监控室');
+});
+
 test('小区简称 + 公区点位重名时，按小区列表顺序预填第一个', async () => {
   const r = await parse('闵经理报永南门卫室3个监控黑屏');
   assert.equal(r.matched, true);

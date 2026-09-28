@@ -180,6 +180,7 @@ interface RepairRequestDetail {
   reporterAddressText?: string | null;
   repairType: string | null;
   content: string;
+  originalContent?: string | null;
   /** 报修时就说了「急修」：详情和列表挂红色「紧急」标 */
   urgent?: boolean;
   attachments: string[];
@@ -2296,6 +2297,7 @@ function WorkOrderDetailDrawer({
   const [progressOpen, setProgressOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [rollbackOpen, setRollbackOpen] = useState(false);
+  const [originalContentOpen, setOriginalContentOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) { setDetail(null); return; }
@@ -2310,7 +2312,10 @@ function WorkOrderDetailDrawer({
     }
   }, [id, message]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    setOriginalContentOpen(false);
+    load();
+  }, [load]);
 
   const refresh = async () => { await load(); onChanged(); };
 
@@ -2480,7 +2485,34 @@ function WorkOrderDetailDrawer({
                           );
                         })(),
                       },
-                      { key: 'content', label: '故障描述', children: detail.request.content, span: 2 },
+                      {
+                        key: 'content',
+                        label: '故障描述',
+                        span: 2,
+                        children: (
+                          <Space direction="vertical" size={4}>
+                            <span>{detail.request.content}</span>
+                            {detail.request.originalContent ? (
+                              <>
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  icon={<FileTextOutlined />}
+                                  style={{ paddingInline: 0, width: 'fit-content' }}
+                                  onClick={() => setOriginalContentOpen((value) => !value)}
+                                >
+                                  {originalContentOpen ? '收起原始报修内容' : '查看原始报修内容'}
+                                </Button>
+                                {originalContentOpen ? (
+                                  <Text type="secondary" style={{ whiteSpace: 'pre-wrap' }}>
+                                    {detail.request.originalContent}
+                                  </Text>
+                                ) : null}
+                              </>
+                            ) : null}
+                          </Space>
+                        ),
+                      },
                       {
                         key: 'name',
                         label: '联系人',

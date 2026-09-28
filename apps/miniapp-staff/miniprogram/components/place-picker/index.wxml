@@ -42,6 +42,21 @@
   </scroll-view>
 
   <block wx:if="{{!suggestions.length}}">
+    <view wx:if="{{spotRows.length}}" class="spot-section">
+      <view class="spot-section__title">公共区域</view>
+      <view
+        wx:for="{{spotRows}}"
+        wx:key="key"
+        class="spot-row"
+        data-index="{{index}}"
+        catchtap="onPickSpotRow"
+      >
+        <view class="spot-row__pin"></view>
+        <text class="spot-row__label">{{item.label}}</text>
+        <text class="spot-row__note">{{item.note}}</text>
+      </view>
+    </view>
+
     <!-- 停在当前这一级 = 公共区域单 -->
     <view wx:if="{{stayLabel}}" class="stay-here" catchtap="onStayHere">
       <text class="stay-here__main">{{stayLabel}}</text>

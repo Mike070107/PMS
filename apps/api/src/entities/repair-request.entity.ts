@@ -44,6 +44,13 @@ export class RepairRequest extends TenantEntity {
   content: string;
 
   /**
+   * AI/规则拆字段前的原始一句话。故障描述可以整理，但这份原话永久保留，
+   * 现场人员发现信息被概括时可在工单详情展开核对。
+   */
+  @Column({ name: 'original_content', type: 'text', nullable: true })
+  originalContent: string | null;
+
+  /**
    * 报修时就要求当紧急处理。来源有二：描述里说了「急修 / 加急 / 抢修」
    * （见 shared-types 的 detectUrgency，端上和服务端同一份口径），
    * 或者报单的人自己勾了。工单池、在手工单、后台列表都靠它挂红色「紧急」标。

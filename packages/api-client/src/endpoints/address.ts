@@ -1,4 +1,4 @@
-import type { AddressCommunity } from '@pms/shared-types';
+import type { AddressCommunity, AddressCommunitySpot } from '@pms/shared-types';
 import { request } from '../request';
 
 /**
@@ -7,6 +7,13 @@ import { request } from '../request';
  */
 export const book = (communityId?: number) =>
   request<AddressCommunity[]>({ url: '/address-book', query: { communityId } });
+
+/** 小程序报修位置选择器使用的公区点位，权限与地址簿一样由服务端按角色范围收窄。 */
+export const communitySpots = (communityId?: number) =>
+  request<AddressCommunitySpot[]>({
+    url: '/community-spots',
+    query: communityId ? { communityId } : undefined,
+  });
 
 export interface PublicCommunity {
   id: number;

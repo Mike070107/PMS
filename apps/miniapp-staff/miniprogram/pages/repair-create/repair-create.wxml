@@ -48,7 +48,7 @@
         </block>
       </view>
 
-      <view class="form-field form-field--spot" wx:if="{{detected && detected.matched ? (detected.level !== 'house' && !detected.spotName) : showSpot}}">
+      <view class="form-field form-field--spot" wx:if="{{detected && detected.matched ? detected.level !== 'house' : showSpot}}">
         <view class="form-label">具体位置</view>
         <input class="large-input" placeholder="例如：大门、4楼电梯口" maxlength="40" value="{{spotText}}" bindinput="onSpotText" />
         <view class="quick-tags"><text wx:for="{{spotSuggestions}}" wx:key="*this" class="quick-tag" data-text="{{item}}" bindtap="onPickSpot">{{item}}</text></view>

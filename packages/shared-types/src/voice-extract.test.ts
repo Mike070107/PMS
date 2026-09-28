@@ -178,3 +178,12 @@ test('「急修」是要办的事，不能跟着催促语一起剥掉', () => {
   const desc = extractFaultDescription('水管爆了要急修', {});
   assert.ok(desc.includes('急修'), desc);
 });
+
+test('公区点位剥掉后，设备编号和具体故障现象必须完整保留', () => {
+  assert.equal(
+    extractFaultDescription('枫桦景苑二期监控室11号显示屏图像卡顿', {
+      addressText: '枫桦景苑二期监控室',
+    }),
+    '11号显示屏图像卡顿',
+  );
+});

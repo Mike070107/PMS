@@ -87,7 +87,7 @@ const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很
 
 字段：
 - addressText: 这句话里表示"在哪儿"的原话片段（小区名、几弄、几号、几室、楼道、大门等）。不要补全、不要猜测没说过的信息。唯一允许的改写是把中文数字换成阿拉伯数字："十七号二零一" 写成 "17号201"、"五千五百十一弄" 写成 "5511弄"。没有就给空字符串。
-- description: 故障本身，理成一句通顺的话。必须去掉门牌号、人名、电话、催促语（急急急）、客套话（麻烦、谢谢）。保留故障现象和影响（如"居民出不去"）。不要编造原话里没有的细节。
+- description: 故障本身，理成一句通顺的话。必须去掉门牌号、人名、电话、催促语（急急急）、客套话（麻烦、谢谢）。保留故障现象和影响（如"居民出不去"）。设备编号、设备名称、故障现象必须逐字保留："11号显示屏图像卡顿"不能概括成"显示屏坏"。不要编造原话里没有的细节，也不要用“坏了”替换更具体的现象。
 - contactName: 联系人姓名。只有明确说了人名才填（张先生、李阿姨、王师傅）。没说就给空字符串，绝对不要把地址或数字当成姓名。
 - phone: 手机号，11位数字。没有就给空字符串。
 - urgent: 说话人是否表达了很急（急急急、十万火急、马上、等着用）。布尔值。
@@ -119,7 +119,10 @@ const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很
 输出：{"addressText":"枫桦一期17号201","description":"家里灯不亮","contactName":"张先生","phone":"13800138000","urgent":false,"publicArea":false,"repairType":"__ELECTRIC_TYPE__"}
 
 输入：枫桦景苑二期25号303家里门铃打不开门
-输出：{"addressText":"枫桦景苑二期25号303","description":"家里门铃打不开门","contactName":"","phone":"","urgent":false,"publicArea":false,"repairType":"__SMART_TYPE__"}`;
+输出：{"addressText":"枫桦景苑二期25号303","description":"家里门铃打不开门","contactName":"","phone":"","urgent":false,"publicArea":false,"repairType":"__SMART_TYPE__"}
+
+输入：枫桦景苑二期监控室11号显示屏图像卡顿
+输出：{"addressText":"枫桦景苑二期监控室","description":"11号显示屏图像卡顿","contactName":"","phone":"","urgent":false,"publicArea":true,"repairType":"__SMART_TYPE__"}`;
 
 const COMPLETION_PROMPT = `你是物业维修的完工记录助手。维修工刚干完活，站在现场口述做了什么，话很随意、有口头禅。
 把它整理成办公室和业主都看得懂的记录，只输出 JSON，不要解释、不要代码围栏。

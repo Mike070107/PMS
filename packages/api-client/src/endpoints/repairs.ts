@@ -62,6 +62,8 @@ export interface ParsedRepairAddress {
    * 端上也不用再追问「具体在哪」。
    */
   spotName?: string | null;
+  /** 点位 + 紧跟的设备编号，如“监控室11号显示屏”；用于完整表单的具体位置。 */
+  specificLocation?: string | null;
   /** 可直接展示/提交的完整地址文案，如「枫桦景苑一期 198弄24号302室」 */
   addressText?: string;
   /** 描述里命中的片段（归一化），如「一期24号」，用于展示与「忽略」去重 */

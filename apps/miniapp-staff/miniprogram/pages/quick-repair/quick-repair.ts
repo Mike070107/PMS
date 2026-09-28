@@ -16,6 +16,7 @@ import {
 import { composeDetectedAddress, detectRepairAddress } from '../../utils/address-detect';
 import { goBack, swipeBackHandlers } from '../../utils/navigation';
 import { customNavLayout } from '../../utils/custom-nav';
+import { saveRepairFormHandoff } from '../../utils/repair-form-handoff';
 
 /**
  * 语音报修（员工端，2026-09-04 前叫「AI随手拍报修」）：拍一张 / 录 15 秒 + 按住说一句话，说完就能提交。
@@ -84,6 +85,8 @@ Page({
     typeLabel: '',
     contactName: '',
     contactPhone: '',
+    /** 点位 + 设备编号，如“监控室11号显示屏”。 */
+    specificLocation: '',
     /**
      * 说了「急修 / 加急 / 抢修」就把这单标成紧急（判定见 shared-types 的 detectUrgency，
      * 所有报修入口共用一份）。认出来才显示那一行，点一下取消、再点标回来 ——
@@ -110,6 +113,8 @@ Page({
    * （后面说的往往是改口，见 appendSpeech）。自己动手改过字就从改完的那句重新起算。
    */
   segments: [] as string[],
+  /** 同声传译逐段返回的原文，地址正名/AI 合并都不能覆盖；随工单留档用于追溯。 */
+  originalSpeechSegments: [] as string[],
   /** 第几次归纳。回来时对不上就说明人又说了一段或自己改了字，那一次的结果作废 */
   speechSeq: 0,
   detectTimer: 0,
@@ -298,6 +303,7 @@ Page({
    * 绝不让人白说一遍。
    */
   appendSpeech(text: string) {
+    this.originalSpeechSegments = [...this.originalSpeechSegments, text].slice(-8);
     const base = this.data.content.trim();
     const joined = [base, text].filter(Boolean).join('，');
     // 先按老办法显示，慢一点的合并回来再替换：这一步不能等网络
@@ -414,12 +420,18 @@ Page({
       phoneText: contact.phoneText,
       nameText: contact.nameText,
     });
-    const description = (detected?.ai?.description || '').trim() || ruleDescription;
+    // 规则只剥已经确认的地址/联系人/电话，一个字都不改；AI 只能在规则确实抽不出内容时兜底。
+    // 不能让“11号显示屏图像卡顿”被概括成“显示屏坏”，设备编号和故障现象都会丢。
+    const description = ruleDescription || (detected?.ai?.description || '').trim();
     const found: FoundRow[] = [];
     // 地址只在真撞上库时才显示：模型给的地址服务端已经拿去撞过一遍了，
     // 撞不上就是 matched=false —— 那种情况下宁可不填，也不能让师傅按一个编出来的门牌去找
     if (detected?.matched) {
-      found.push({ key: 'addr', label: '报修地址', value: composeDetectedAddress(detected) });
+      found.push({
+        key: 'addr',
+        label: '报修地址',
+        value: composeDetectedAddress(detected, detected.specificLocation || detected.spotName || ''),
+      });
     }
     if (description && description !== content.trim()) {
       found.push({ key: 'desc', label: '故障描述', value: description });
@@ -451,6 +463,7 @@ Page({
       found,
       description,
       contactName: name,
+      specificLocation: detected?.specificLocation || detected?.spotName || '',
       needManual: !!this.data.content.trim() && !detected?.matched,
     });
   },
@@ -468,16 +481,18 @@ Page({
 
   /** 认错了就整单改到「我要报修」去逐项改，别在这一屏里堆一套表单 */
   onEditInFull() {
-    // content 给「问题描述」框（已经剥掉地址/人名/电话，只剩故障本身），
-    // raw 是原话 —— 完整表单要拿它重新认地址、联系人、电话、类型。
-    // 2026-08-31 之前只传剥干净的那份，等于把信息删掉再让下一页去猜：
-    // 联系人电话抽不出来，就被登录人的默认值顶上了，转过去一看全是自己。
-    const q = [
-      `content=${encodeURIComponent(this.data.description || this.data.content)}`,
-      `raw=${encodeURIComponent(this.data.content)}`,
-      `attachments=${encodeURIComponent(this.data.attachments.join(','))}`,
-    ].join('&');
-    wx.redirectTo({ url: `/pages/repair-create/repair-create?${q}` });
+    saveRepairFormHandoff({
+      content: this.data.description || this.data.content,
+      sourceText: this.originalSpeechSegments.join('；') || this.data.content,
+      attachments: this.data.attachments,
+      detected: this.data.detected,
+      specificLocation: this.data.specificLocation,
+      contactName: this.data.contactName,
+      contactPhone: this.data.contactPhone,
+      repairType: this.predictedType,
+      urgent: this.data.urgent,
+    });
+    wx.redirectTo({ url: '/pages/repair-create/repair-create?handoff=1' });
   },
 
   // ---------------- 提交 ----------------
@@ -501,12 +516,16 @@ Page({
         communityId: detected.communityId!,
         buildingId: detected.buildingId ?? undefined,
         houseId: detected.houseId ?? undefined,
-        addressText: composeDetectedAddress(detected),
+        addressText: composeDetectedAddress(detected, this.data.specificLocation),
         contactName: this.data.contactName || undefined,
         contactPhone: this.data.contactPhone || undefined,
         repairType: this.predictedType || undefined,
         predictedRepairType: this.predictedType || undefined,
-        aiAssist: repairs.buildRepairAiAssist(content, detected),
+        originalContent: this.originalSpeechSegments.join('；') || content,
+        aiAssist: repairs.buildRepairAiAssist(
+          this.originalSpeechSegments.join('；') || content,
+          detected,
+        ),
         // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
         urgent: this.data.urgent,
         // 提交剥干净的描述；剥过头（空了）就退回原话

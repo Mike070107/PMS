@@ -30,6 +30,12 @@
       <view class="site-block">
         <view class="site-block__label"><text>2</text> 什么问题</view>
         <view class="site-block__problem">{{detail.request.content || '未填写故障描述'}}</view>
+        <view wx:if="{{detail.request.originalContent}}" class="original-entry" bindtap="onToggleOriginalContent">
+          <view class="original-entry__icon"></view>
+          <text>{{originalContentOpen ? '收起原始报修内容' : '查看原始报修内容'}}</text>
+          <view class="original-entry__chevron {{originalContentOpen ? 'original-entry__chevron--open' : ''}}"></view>
+        </view>
+        <view wx:if="{{detail.request.originalContent && originalContentOpen}}" class="original-content">{{detail.request.originalContent}}</view>
       </view>
       <view class="site-block site-block--contact">
         <view class="site-block__label"><text>3</text> 联系谁</view>

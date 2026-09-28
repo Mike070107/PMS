@@ -348,6 +348,8 @@ export interface RepairCreateReq {
   predictedRepairType?: string;
   /** AI 草稿随最终提交带回，仅用于记录人工纠错 */
   aiAssist?: { sourceText: string; draft: Record<string, unknown> };
+  /** 语音/一句话拆字段前的原始文本；只用于工单追溯，不参与覆盖最终表单。 */
+  originalContent?: string;
   /** 报修入口：AI 随手拍 / 完整表单，用于功能使用统计 */
   entryMode?: 'quick_ai' | 'form';
   content: string;
@@ -433,6 +435,8 @@ export interface RepairRequestView {
   /** 中文类型名，由后端按租户配置给出 */
   repairTypeLabel?: string | null;
   content: string;
+  /** 语音/一句话报修提交前的原始文本；详情页默认折叠，供追溯识别删改。 */
+  originalContent?: string | null;
   attachments: string[];
   /** 报修时标的紧急（描述里说了「急修」，或报单的人自己勾的） */
   urgent?: boolean;

@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   correctCommunityNameInText,
   extractAddressCandidate,
+  extractSpotSpecificLocation,
+  extractSpotMatchedRaw,
   matchCommunityByName,
   matchCommunityInText,
   matchSpotsInText,
@@ -180,6 +182,19 @@ test('点位按名字认，最长的那个赢', () => {
     [3],
   );
   assert.deepEqual(matchSpotsInText('楼道灯不亮', spots), []);
+});
+
+test('公区点位后的设备编号保留为具体位置，不吞掉故障现象', () => {
+  assert.equal(
+    extractSpotSpecificLocation('枫桦景苑二期监控室11号显示屏图像卡顿', '监控室'),
+    '监控室11号显示屏',
+  );
+  assert.equal(extractSpotSpecificLocation('门卫室门禁没有反应', '门卫室'), '门卫室门禁');
+  assert.equal(extractSpotSpecificLocation('水泵房漏水', '水泵房'), '水泵房');
+  assert.equal(
+    extractSpotMatchedRaw('联系人张先生，枫桦景苑二期监控室11号显示屏图像卡顿', '监控室'),
+    '枫桦景苑二期监控室',
+  );
 });
 
 test('同名点位在多个小区：全部返回，交给调用方按所在小区收敛', () => {

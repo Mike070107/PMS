@@ -59,5 +59,12 @@ export function composeDetectedAddress(
   const base = detected.addressText || '';
   const spot = spotText.trim();
   if (!spot) return base;
+  if (base.trim().endsWith(spot)) return base;
+  const detectedSpot = String(detected.spotName || '').trim();
+  // 服务端基础地址已含“监控室”，具体位置是“监控室11号显示屏”时替换尾巴，
+  // 不能拼成“监控室 监控室11号显示屏”。
+  if (detectedSpot && spot.startsWith(detectedSpot) && base.trim().endsWith(detectedSpot)) {
+    return `${base.trim().slice(0, -detectedSpot.length)}${spot}`.trim();
+  }
   return `${base.replace(/ ?公共区域$/, '')} ${spot}`;
 }

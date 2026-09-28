@@ -68,6 +68,12 @@ export class CreateRepairRequestDto {
   @IsString()
   content: string;
 
+  /** 语音/一句话拆字段前的原文，供工单详情折叠查看。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  originalContent?: string;
+
   @IsOptional()
   @IsArray()
   attachments?: string[];

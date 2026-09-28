@@ -555,6 +555,42 @@ export function matchSpotsInText<T extends SpotLike>(
   return hits.filter((s) => s.name.length === longest);
 }
 
+/**
+ * 把公区点位后面紧跟的设备编号一起保留成“具体位置”。
+ *
+ * `监控室11号显示屏图像卡顿` 里，点位档案只能告诉我们“监控室”；11号显示屏不是楼栋，
+ * 却是维修工到现场后最需要的定位信息。这里只认紧跟点位名的“编号 + 常见设备名”，
+ * 不把后面的故障现象一起吞进去；认不准就只返回点位名。
+ */
+export function extractSpotSpecificLocation(text: string, spotName: string): string {
+  const source = String(text || '');
+  const spot = String(spotName || '').trim();
+  if (!source || !spot) return spot;
+  const at = source.indexOf(spot);
+  if (at < 0) return spot;
+  const tail = source.slice(at + spot.length);
+  const equipment =
+    /^(?:[\s，,、]*)(([0-9０-９一二三四五六七八九十两]+号)?\s*(?:显示屏|监视器|摄像头|摄像机|门口机|对讲机|门禁|道闸|闸机|主机|分机|机柜|配电箱|控制箱|水泵|电梯|空调|风机|阀门|灯具|路灯|设备))/;
+  const matched = equipment.exec(tail)?.[1]?.replace(/\s+/g, '') || '';
+  return matched ? `${spot}${matched}` : spot;
+}
+
+/** 点位地址在原话里的完整片段：从本句开头取到点位名，避免只剥“监控室”后剩下小区名。 */
+export function extractSpotMatchedRaw(text: string, spotName: string): string {
+  const source = String(text || '');
+  const spot = String(spotName || '').trim();
+  const at = source.indexOf(spot);
+  if (at < 0) return spot;
+  const sentenceStart = Math.max(
+    source.lastIndexOf('，', at),
+    source.lastIndexOf(',', at),
+    source.lastIndexOf('。', at),
+    source.lastIndexOf('；', at),
+    source.lastIndexOf(';', at),
+  ) + 1;
+  return source.slice(sentenceStart, at + spot.length).trim() || spot;
+}
+
 /** 「024」和「24」当同一个号；楼栋表里存的是数字串，这里统一成十进制比较 */
 export function sameNo(a: string | null | undefined, b: string | null | undefined): boolean {
   const left = String(a ?? '').replace(/[号栋楼弄室房]/g, '').trim();

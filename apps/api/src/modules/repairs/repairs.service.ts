@@ -126,6 +126,8 @@ import {
 import {
   correctCommunityNameInText,
   extractAddressCandidate,
+  extractSpotSpecificLocation,
+  extractSpotMatchedRaw,
   matchCommunityByName,
   matchCommunityInText,
   matchCommunityPrefixInText,
@@ -5378,6 +5380,7 @@ export class RepairsService implements OnModuleInit {
           reporterRole,
           repairType: repairType ?? null,
           content: dto.content,
+          originalContent: dto.originalContent?.trim() || dto.aiAssist?.sourceText?.trim() || null,
           urgent,
           attachments: dto.attachments ?? [],
           submittedBy,
@@ -6125,11 +6128,15 @@ export class RepairsService implements OnModuleInit {
         houseId: null,
         roomNo: null,
         spotName: spot.name,
+        // 点位之后紧跟的设备编号属于现场定位，不是门牌，也不能被 AI 概括掉。
+        // 例：监控室11号显示屏图像卡顿 → 具体位置“监控室11号显示屏”。
+        specificLocation: extractSpotSpecificLocation(dto.text, spot.name),
         // 点位名本身就是「具体在哪」，不再缀「公共区域」占位
         addressText: [community.name, spotBuildingText, spot.name]
           .filter(Boolean)
           .join(' '),
         matchedText: spot.name,
+        matchedRaw: extractSpotMatchedRaw(dto.text, spot.name),
         correctedText: null,
       };
     }

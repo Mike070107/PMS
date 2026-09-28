@@ -39,6 +39,20 @@ export interface AddressCommunity {
   buildings: AddressBuilding[];
 }
 
+/**
+ * 公区点位：没有房号、但维修工必须能直接找到的地方（监控室、门卫室、水泵房等）。
+ * 小程序位置选择器与后台点位档案共用这一形状。
+ */
+export interface AddressCommunitySpot {
+  id: number;
+  communityId: number;
+  buildingId: number | null;
+  buildingText: string;
+  name: string;
+  sortOrder: number;
+  enabled: boolean;
+}
+
 /** 中文单位字与各种分隔符统一按 / 切开 */
 const SEPARATOR = /[/\\\-—－_·,，、。:：;；#＃\s]+/;
 const UNIT_CHARS = /[弄号室栋幢座楼单元]/g;
