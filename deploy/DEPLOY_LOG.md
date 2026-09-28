@@ -3105,3 +3105,11 @@
 - 自上次（b1d47c1）以来上线的相关提交：
   - 1844d6c feat: add markdown repair experience editor
 
+## 2026-09-28 17:09 · web · 1844d6c
+
+- 包：`pms-web-20260928-1704.tar.gz`
+- 提交：1844d6c feat: add markdown repair experience editor
+- 说明：首页、SPA、登录、静态资源均返回 200，Markdown 新产物已核验
+- 自上次（b1d47c1）以来上线的相关提交：
+  - 1844d6c feat: add markdown repair experience editor
+
