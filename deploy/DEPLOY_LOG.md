@@ -3213,3 +3213,11 @@
 - 自上次（b564dff）以来上线的相关提交：
   - 313fa81 feat(experiences): replace markdown with rich documents
 
+## 2026-09-29 01:14 · miniapp-staff · 79e67e7
+
+- 包：`1.0.20260929a experience`
+- 提交：79e67e7 docs: record rich experience editor decision
+- 说明：Uploaded and selected as experience version; WeChat audit intentionally not submitted per user workflow
+- 自上次（b564dff）以来上线的相关提交：
+  - 313fa81 feat(experiences): replace markdown with rich documents
+
