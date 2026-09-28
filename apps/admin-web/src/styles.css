@@ -3141,6 +3141,10 @@ h2.ant-typography {
 }
 .pms-workorder-side-descriptions .ant-btn-link { min-height: 36px; padding-inline: 4px; }
 .pms-workorder-lock-reason { font-size: 13px; }
+.pms-workorder-detail-drawer .pms-workorder-building-history {
+  border-color: #bfd0df;
+  box-shadow: 0 8px 22px rgba(31, 81, 128, .14);
+}
 .pms-workorder-detail-drawer .pms-workorder-building-history:not(.is-open) > .pms-detail-section-heading {
   margin-bottom: 0;
   padding-bottom: 0;

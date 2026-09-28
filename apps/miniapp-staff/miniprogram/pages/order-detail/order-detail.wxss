@@ -36,7 +36,7 @@ page { background: #f1f6fb; }
 .original-entry__chevron--open { transform: rotate(180deg); }
 .original-content { padding: 18rpx 20rpx; border-radius: 14rpx; background: #f3f7fa; color: #526b82; font-size: 29rpx; line-height: 1.65; }
 .site-block--contact { background: #f8fbfe; }
-.building-history { overflow: hidden; margin-top: 24rpx; border-radius: 28rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(39,72,108,.055); }
+.building-history { overflow: hidden; margin-top: 24rpx; border: 2rpx solid #c3d4e4; border-radius: 28rpx; background: #fff; box-shadow: 0 12rpx 30rpx rgba(39,72,108,.14); }
 .building-history__head { min-height: 96rpx; padding: 20rpx 28rpx; display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
 .building-history__head--disabled { opacity: .72; }
 .building-history__title { color: #17314d; font-size: 36rpx; font-weight: 700; line-height: 1.4; }
