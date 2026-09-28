@@ -52,24 +52,25 @@
         </scroll-view>
       </view>
 
-      <view wx:if="{{buildingHistoryVisible}}" class="building-history">
-        <view class="building-history__head {{buildingHistoryTotal ? '' : 'building-history__head--disabled'}}" bindtap="onToggleBuildingHistory">
-          <view class="building-history__title">同楼栋历史报修</view>
-          <view class="building-history__summary">
-            <text>{{buildingHistoryLoading ? '读取中' : buildingHistoryTotal + ' 条'}}</text>
-            <view wx:if="{{buildingHistoryTotal}}" class="building-history__chevron {{buildingHistoryOpen ? 'building-history__chevron--open' : ''}}"></view>
-          </view>
+    </view>
+
+    <view wx:if="{{buildingHistoryVisible}}" class="building-history">
+      <view class="building-history__head {{buildingHistoryTotal ? '' : 'building-history__head--disabled'}}" bindtap="onToggleBuildingHistory">
+        <view class="building-history__title">同楼栋历史报修</view>
+        <view class="building-history__summary">
+          <text>{{buildingHistoryLoading ? '读取中' : buildingHistoryTotal + ' 条'}}</text>
+          <view wx:if="{{buildingHistoryTotal}}" class="building-history__chevron {{buildingHistoryOpen ? 'building-history__chevron--open' : ''}}"></view>
         </view>
-        <view wx:if="{{buildingHistoryError}}" class="building-history__error">{{buildingHistoryError}}</view>
-        <view wx:if="{{buildingHistoryOpen}}" class="building-history__list">
-          <view class="building-history__scope">同房号优先，其余按报修时间从新到旧；不含本单和已作废工单</view>
-          <view wx:for="{{buildingHistoryRows}}" wx:key="workOrderId" class="building-history__row {{item.sameHouse ? 'building-history__row--same-house' : ''}}" data-id="{{item.workOrderId}}" bindtap="onOpenHistoryOrder">
-            <view class="building-history__row-head"><text>{{item.createdAtText}}</text><text>{{item.statusText}}</text></view>
-            <view class="building-history__address"><text wx:if="{{item.sameHouse}}" class="building-history__same-house">同房号</text>{{item.summaryAddress || '未记录具体房号'}}</view>
-            <view class="building-history__content"><text>{{item.typeLabel}}</text>{{item.summaryContent || '未填写故障描述'}}</view>
-          </view>
-          <view wx:if="{{buildingHistoryTotal > buildingHistoryRows.length}}" class="building-history__more">显示最近 {{buildingHistoryRows.length}} 条，共 {{buildingHistoryTotal}} 条</view>
+      </view>
+      <view wx:if="{{buildingHistoryError}}" class="building-history__error">{{buildingHistoryError}}</view>
+      <view wx:if="{{buildingHistoryOpen}}" class="building-history__list">
+        <view class="building-history__scope">同房号优先，其余按报修时间从新到旧；不含本单和已作废工单</view>
+        <view wx:for="{{buildingHistoryRows}}" wx:key="workOrderId" class="building-history__row {{item.sameHouse ? 'building-history__row--same-house' : ''}}" data-id="{{item.workOrderId}}" bindtap="onOpenHistoryOrder">
+          <view class="building-history__row-head"><text>{{item.createdAtText}}</text><text>{{item.statusText}}</text></view>
+          <view class="building-history__address"><text wx:if="{{item.sameHouse}}" class="building-history__same-house">同房号</text>{{item.summaryAddress || '未记录具体房号'}}</view>
+          <view class="building-history__content"><text>{{item.typeLabel}}</text>{{item.summaryContent || '未填写故障描述'}}</view>
         </view>
+        <view wx:if="{{buildingHistoryTotal > buildingHistoryRows.length}}" class="building-history__more">显示最近 {{buildingHistoryRows.length}} 条，共 {{buildingHistoryTotal}} 条</view>
       </view>
     </view>
 

@@ -55,15 +55,17 @@ export function DetailSection({
   title,
   description,
   extra,
+  className,
   children,
 }: {
   title: ReactNode;
   description?: ReactNode;
   extra?: ReactNode;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="pms-detail-section">
+    <section className={`pms-detail-section${className ? ` ${className}` : ''}`}>
       <div className="pms-detail-section-heading">
         <div><strong>{title}</strong>{description && <span>{description}</span>}</div>
         {extra}

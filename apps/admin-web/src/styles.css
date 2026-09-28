@@ -3141,28 +3141,34 @@ h2.ant-typography {
 }
 .pms-workorder-side-descriptions .ant-btn-link { min-height: 36px; padding-inline: 4px; }
 .pms-workorder-lock-reason { font-size: 13px; }
-.pms-workorder-building-history { margin-top: 14px; border-top: 1px solid #dbe5ee; }
+.pms-workorder-detail-drawer .pms-workorder-building-history:not(.is-open) > .pms-detail-section-heading {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
 .pms-workorder-building-history__toggle {
-  display: flex;
-  width: 100%;
-  min-height: 52px;
+  display: inline-flex;
+  min-height: 40px;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 2px;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 10px;
   border: 0;
-  color: #294760;
+  border-radius: 6px;
+  color: #31558a;
   font: inherit;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
-  text-align: left;
   background: transparent;
   cursor: pointer;
+  transition: background .2s ease;
 }
+.pms-workorder-building-history__toggle:hover { background: #edf4fa; }
 .pms-workorder-building-history__toggle:focus-visible { outline: 2px solid #31558a; outline-offset: 3px; }
-.pms-workorder-building-history__count { display: inline-flex; flex-shrink: 0; align-items: center; gap: 10px; color: #31558a; font-variant-numeric: tabular-nums; }
-.pms-workorder-building-history__count .anticon { transition: transform .2s ease; }
-.pms-workorder-building-history__count .anticon.is-open { transform: rotate(180deg); }
+.pms-workorder-detail-drawer .pms-detail-section-heading .pms-workorder-building-history__toggle span { padding-left: 0; }
+.pms-workorder-building-history__toggle { font-variant-numeric: tabular-nums; }
+.pms-workorder-building-history__toggle .anticon { transition: transform .2s ease; }
+.pms-workorder-building-history__toggle .anticon.is-open { transform: rotate(180deg); }
 .pms-workorder-building-history__list { overflow: hidden; border: 1px solid #dbe5ee; border-radius: 8px; background: #f8fbfe; }
 .pms-workorder-building-history__scope { display: block; padding: 9px 12px; border-bottom: 1px solid #e2eaf2; font-size: 13px; line-height: 1.5; }
 .pms-workorder-building-history__item {

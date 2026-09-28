@@ -36,10 +36,10 @@ page { background: #f1f6fb; }
 .original-entry__chevron--open { transform: rotate(180deg); }
 .original-content { padding: 18rpx 20rpx; border-radius: 14rpx; background: #f3f7fa; color: #526b82; font-size: 29rpx; line-height: 1.65; }
 .site-block--contact { background: #f8fbfe; }
-.building-history { border-top: 2rpx solid #e3ebf2; }
-.building-history__head { min-height: 92rpx; padding: 16rpx 26rpx; display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
+.building-history { overflow: hidden; margin-top: 24rpx; border-radius: 28rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(39,72,108,.055); }
+.building-history__head { min-height: 96rpx; padding: 20rpx 28rpx; display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
 .building-history__head--disabled { opacity: .72; }
-.building-history__title { color: #294760; font-size: 31rpx; font-weight: 700; line-height: 1.45; }
+.building-history__title { color: #17314d; font-size: 36rpx; font-weight: 700; line-height: 1.4; }
 .building-history__summary { flex-shrink: 0; display: flex; align-items: center; gap: 14rpx; color: #315f98; font-size: 30rpx; font-weight: 700; }
 .building-history__chevron { width: 16rpx; height: 16rpx; border-right: 3rpx solid #6786a3; border-bottom: 3rpx solid #6786a3; transform: rotate(45deg); transition: transform .2s ease; }
 .building-history__chevron--open { transform: rotate(225deg); }

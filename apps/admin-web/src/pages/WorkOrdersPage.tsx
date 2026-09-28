@@ -2298,27 +2298,31 @@ function WorkOrderBuildingHistory({
   useEffect(() => setOpen(false), [workOrderId]);
   const canOpen = history.total > 0 && !loading;
   return (
-    <div className="pms-workorder-building-history">
-      <button
-        type="button"
-        className="pms-workorder-building-history__toggle"
-        aria-expanded={open}
-        onClick={() => {
-          if (error) return onRetry();
-          if (canOpen) setOpen((value) => !value);
-        }}
-      >
-        <span>同楼栋历史报修</span>
-        <span className="pms-workorder-building-history__count">
+    <DetailSection
+      title="同楼栋历史报修"
+      description="同房号优先，最近报修排在前面"
+      className={`pms-workorder-building-history${open || error ? ' is-open' : ''}`}
+      extra={(
+        <button
+          type="button"
+          className="pms-workorder-building-history__toggle"
+          aria-expanded={open}
+          aria-label={error ? '重新读取同楼栋历史报修' : `${open ? '收起' : '展开'}同楼栋历史报修`}
+          onClick={() => {
+            if (error) return onRetry();
+            if (canOpen) setOpen((value) => !value);
+          }}
+        >
           {loading ? <Spin size="small" /> : `${history.total} 条`}
           {history.total > 0 ? <DownOutlined className={open ? 'is-open' : ''} /> : null}
-        </span>
-      </button>
+        </button>
+      )}
+    >
       {error ? <Alert type="error" showIcon message={error} action={<Button size="small" onClick={onRetry}>重试</Button>} /> : null}
       {open ? (
         <div className="pms-workorder-building-history__list">
           <Text type="secondary" className="pms-workorder-building-history__scope">
-            同房号优先，其余按报修时间从新到旧；不含当前工单和已作废工单
+            不含当前工单和已作废工单
           </Text>
           {history.items.map((item: BuildingRepairHistoryItem) => (
             <button
@@ -2348,7 +2352,7 @@ function WorkOrderBuildingHistory({
           ) : null}
         </div>
       ) : null}
-    </div>
+    </DetailSection>
   );
 }
 
@@ -2643,17 +2647,18 @@ function WorkOrderDetailDrawer({
                       },
                     ]}
                   />
-                  {detail.request.buildingId ? (
-                    <WorkOrderBuildingHistory
-                      workOrderId={detail.workOrder.id}
-                      history={buildingHistory}
-                      loading={buildingHistoryLoading}
-                      error={buildingHistoryError}
-                      onRetry={loadBuildingHistory}
-                      onOpenWorkOrder={onOpenWorkOrder}
-                    />
-                  ) : null}
                 </DetailSection>
+
+                {detail.request.buildingId ? (
+                  <WorkOrderBuildingHistory
+                    workOrderId={detail.workOrder.id}
+                    history={buildingHistory}
+                    loading={buildingHistoryLoading}
+                    error={buildingHistoryError}
+                    onRetry={loadBuildingHistory}
+                    onOpenWorkOrder={onOpenWorkOrder}
+                  />
+                ) : null}
 
                 <DetailSection title="维修结果" description="维修工实际填写的故障、处理、用料与费用">
                   <CompactRepairRecord detail={detail} />
@@ -2881,6 +2886,7 @@ function actionLabel(a: string) {
     create_auto_assign: '创建并自动派单',
     assign: '派单',
     accept: '维修工接单',
+    claim: '维修工接单',
     complete: '维修完工',
     need_material: '标记缺料',
     review: '业主验收',
