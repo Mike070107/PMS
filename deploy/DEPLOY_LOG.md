@@ -3124,3 +3124,14 @@
   - a80cdd0 refactor: move finance module out of PMS
   - 557172d feat: allow staff to correct unaccepted work orders
 
+## 2026-09-28 22:16 · web · 02ddcf4
+
+- 包：`pms-web-20260928-2205.tar.gz`
+- 提交：02ddcf4 feat: prioritize same-room repair history
+- 说明：工单卡片展示同楼栋历史报修，同房号优先
+- 自上次（702c116）以来上线的相关提交：
+  - 02ddcf4 feat: prioritize same-room repair history
+  - 6a1045c feat: show building repair history on staff orders
+  - a80cdd0 refactor: move finance module out of PMS
+  - 557172d feat: allow staff to correct unaccepted work orders
+
