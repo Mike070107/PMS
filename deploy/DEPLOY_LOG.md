@@ -3088,3 +3088,12 @@
   - b1d47c1 fix: keep AI material suggestions advisory only
   - abf3b67 fix: preserve precise voice repair details
 
+## 2026-09-28 14:01 · web · b1d47c1
+
+- 包：`pms-web-20260928-1351.tar.gz`
+- 提交：b1d47c1 fix: keep AI material suggestions advisory only
+- 说明：工单详情可折叠查看原始报修内容；生产页面和静态资源200，制品包含新文案
+- 自上次（666a6e2）以来上线的相关提交：
+  - b1d47c1 fix: keep AI material suggestions advisory only
+  - abf3b67 fix: preserve precise voice repair details
+
