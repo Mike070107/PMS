@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { buildFinanceTypeOrmOptions, buildTypeOrmOptions } from './config/typeorm.config';
+import { buildTypeOrmOptions } from './config/typeorm.config';
 import { AccessModule } from './modules/access/access.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -29,7 +29,6 @@ import { StocktakeModule } from './modules/stocktake/stocktake.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { RepairExperiencesModule } from './modules/repair-experiences/repair-experiences.module';
-import { FinanceModule } from './modules/finance/finance.module';
 
 @Module({
   imports: [
@@ -37,11 +36,6 @@ import { FinanceModule } from './modules/finance/finance.module';
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => buildTypeOrmOptions(config),
-    }),
-    TypeOrmModule.forRootAsync({
-      name: 'finance',
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => buildFinanceTypeOrmOptions(config),
     }),
     AccessModule,
     AiModule,
@@ -61,7 +55,6 @@ import { FinanceModule } from './modules/finance/finance.module';
     ObservabilityModule,
     FeedbackModule,
     RepairExperiencesModule,
-    FinanceModule,
     PropertiesModule,
     QrModule,
     OwnersModule,
