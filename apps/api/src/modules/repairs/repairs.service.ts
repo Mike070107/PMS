@@ -1827,7 +1827,7 @@ export class RepairsService implements OnModuleInit {
       if (!scopedBuilding || !scope.includes(scopedBuilding.communityId)) return [];
     }
 
-    return (await this.loadBuildingRepairHistory(tenantId, query.buildingId)).items;
+    return (await this.loadBuildingRepairHistory(tenantId, query.buildingId, undefined, query.houseId)).items;
   }
 
   async getWorkOrderBuildingHistory(
@@ -1853,16 +1853,22 @@ export class RepairsService implements OnModuleInit {
 
     const request = await this.repairRequestRepo.findOne({
       where: { id: workOrder.requestId, tenantId },
-      select: ['id', 'buildingId'],
+      select: ['id', 'buildingId', 'houseId'],
     });
     if (!request?.buildingId) return { total: 0, items: [] };
-    return this.loadBuildingRepairHistory(tenantId, request.buildingId, request.id);
+    return this.loadBuildingRepairHistory(
+      tenantId,
+      request.buildingId,
+      request.id,
+      request.houseId ?? undefined,
+    );
   }
 
   private async loadBuildingRepairHistory(
     tenantId: number,
     buildingId: number,
     excludeRequestId?: number,
+    priorityHouseId?: number,
   ) {
     const query = () => {
       const qb = this.repairRequestRepo
@@ -1882,9 +1888,20 @@ export class RepairsService implements OnModuleInit {
       return qb;
     };
 
+    const rowsQuery = query();
+    if (priorityHouseId) {
+      rowsQuery
+        .addSelect(
+          'CASE WHEN request.house_id = :priorityHouseId THEN 0 ELSE 1 END',
+          'same_house_rank',
+        )
+        .setParameter('priorityHouseId', priorityHouseId)
+        .orderBy('same_house_rank', 'ASC');
+    }
+    rowsQuery.addOrderBy('request.created_at', 'DESC').addOrderBy('request.id', 'DESC');
     const [total, requests] = await Promise.all([
       query().getCount(),
-      query().orderBy('request.id', 'DESC').take(12).getMany(),
+      rowsQuery.take(12).getMany(),
     ]);
     if (!requests.length) return { total, items: [] };
 
@@ -1918,6 +1935,7 @@ export class RepairsService implements OnModuleInit {
         status: workOrder!.status,
         repairType: request.repairType,
         repairTypeLabel: this.repairTypeLabel(request.repairType, labels),
+        sameHouse: !!priorityHouseId && request.houseId === priorityHouseId,
         summaryAddress: this.buildRequestAddressSummary(request, houseById, buildingById),
         summaryContent: request.content,
         createdAt: request.createdAt,

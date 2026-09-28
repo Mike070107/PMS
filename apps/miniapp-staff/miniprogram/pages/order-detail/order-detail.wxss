@@ -47,10 +47,12 @@ page { background: #f1f6fb; }
 .building-history__list { border-top: 2rpx solid #e7eef4; background: #f8fbfe; }
 .building-history__scope { padding: 16rpx 26rpx; border-bottom: 2rpx solid #e4ecf3; color: #71869a; font-size: 25rpx; line-height: 1.45; }
 .building-history__row { padding: 22rpx 26rpx; border-bottom: 2rpx solid #e4ecf3; }
+.building-history__row--same-house { background: #f0f6fc; }
 .building-history__row:active { background: #edf4fa; }
 .building-history__row-head { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; color: #71869a; font-size: 26rpx; line-height: 1.4; }
 .building-history__row-head text:last-child { flex-shrink: 0; color: #315f98; font-weight: 600; }
 .building-history__address { margin-top: 10rpx; color: #24445f; font-size: 30rpx; font-weight: 700; line-height: 1.45; }
+.building-history__same-house { display: inline-flex; margin-right: 10rpx; padding: 2rpx 10rpx; border: 2rpx solid #9cb9d5; border-radius: 8rpx; color: #315f98; font-size: 24rpx; line-height: 1.35; vertical-align: 3rpx; }
 .building-history__content { margin-top: 7rpx; color: #526a7f; font-size: 28rpx; line-height: 1.55; }
 .building-history__content text { margin-right: 12rpx; color: #315f98; }
 .building-history__more { padding: 18rpx 26rpx; color: #71869a; font-size: 26rpx; text-align: center; }

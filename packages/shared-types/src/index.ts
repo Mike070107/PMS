@@ -489,6 +489,8 @@ export interface BuildingRepairHistoryItem {
   status: WorkOrderStatus;
   repairType: string | null;
   repairTypeLabel: string | null;
+  /** 是否和当前工单（或正在录入的地址）为同一房号。 */
+  sameHouse: boolean;
   summaryAddress: string | null;
   summaryContent: string;
   createdAt: string;

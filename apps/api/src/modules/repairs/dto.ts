@@ -304,6 +304,12 @@ export class WorkOrdersQueryDto {
   @IsInt()
   buildingId?: number;
 
+  /** 同楼栋历史报修排序基准：同房号置顶，其余仍按报修时间倒序。 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  houseId?: number;
+
   /**
    * 小程序端取数范围：
    * - mine：业主=我提交的报修；维修工=派给我的工单

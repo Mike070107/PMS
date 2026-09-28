@@ -64,6 +64,8 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type {
+  BuildingRepairHistoryItem,
+  BuildingRepairHistoryResp,
   ClassifiableType,
   CompletionDraft,
   RollbackPreview,
@@ -268,6 +270,8 @@ interface RepairHistoryRow {
   orderNo: string | null;
   status: WorkOrderStatus | null;
   repairType: string | null;
+  repairTypeLabel?: string | null;
+  sameHouse?: boolean;
   summaryAddress: string | null;
   summaryContent: string;
   createdAt?: string;
@@ -1111,6 +1115,7 @@ export default function WorkOrdersPage() {
         staffList={staffList}
         dispatchTechnicians={dispatchTechnicians}
         repairTypeRules={repairTypeRules}
+        onOpenWorkOrder={(workOrderId) => setDetailId(workOrderId)}
         onClose={() => setDetailId(null)}
         onChanged={() => { loadOrders(); loadOrderStats(); }}
       />
@@ -1198,6 +1203,7 @@ function RepairHistoryInline({
               style: { cursor: r.workOrderId ? 'pointer' : 'default' },
               title: r.workOrderId ? '点击查看工单详情' : '还没建工单',
             })}
+            rowClassName={(r) => r.sameHouse ? 'pms-repair-dock__history-row--same-house' : ''}
             columns={[
               {
                 title: '时间', dataIndex: 'createdAt', width: 92,
@@ -1212,7 +1218,12 @@ function RepairHistoryInline({
               },
               {
                 title: '地址', dataIndex: 'summaryAddress', width: 110, ellipsis: true,
-                render: (v: string | null) => v || '-',
+                render: (v: string | null, r) => (
+                  <Space size={4}>
+                    {r.sameHouse ? <Tag color="blue" style={{ marginInlineEnd: 0 }}>同房号</Tag> : null}
+                    <span>{v || '-'}</span>
+                  </Space>
+                ),
               },
               {
                 title: '报修内容', key: 'content', ellipsis: true,
@@ -1346,7 +1357,7 @@ function RepairSubmitDock({
     return () => window.clearTimeout(timer);
   }, [open]);
 
-  const loadBuildingHistory = useCallback(async (buildingId?: number, title?: string) => {
+  const loadBuildingHistory = useCallback(async (buildingId?: number, title?: string, houseId?: number | null) => {
     const seq = ++historySeqRef.current;
     if (!buildingId) {
       setHistoryRows([]);
@@ -1357,7 +1368,10 @@ function RepairSubmitDock({
     setHistoryTitle(title || '同楼栋历史报修');
     setHistoryLoading(true);
     try {
-      const list = await request<RepairHistoryRow[]>({ url: '/repair-history', query: { buildingId } });
+      const list = await request<RepairHistoryRow[]>({
+        url: '/repair-history',
+        query: { buildingId, ...(houseId ? { houseId } : {}) },
+      });
       if (seq === historySeqRef.current) setHistoryRows(list);
     } catch (e: any) {
       if (seq === historySeqRef.current) message.error(e?.message || '加载历史报修失败');
@@ -1452,7 +1466,7 @@ function RepairSubmitDock({
       loadBuildingHistory(undefined);
       return;
     }
-    loadBuildingHistory(picked.buildingId, picked.fullText);
+    loadBuildingHistory(picked.buildingId, picked.fullText, picked.houseId);
     if (picked.ownerName || picked.ownerPhone) {
       form.setFieldsValue({
         contactName: picked.ownerName || undefined,
@@ -2265,14 +2279,88 @@ function repairSourceText(source?: string | null) {
         : source || '来源未记录';
 }
 
+function WorkOrderBuildingHistory({
+  workOrderId,
+  history,
+  loading,
+  error,
+  onRetry,
+  onOpenWorkOrder,
+}: {
+  workOrderId: number;
+  history: BuildingRepairHistoryResp;
+  loading: boolean;
+  error: string;
+  onRetry: () => void;
+  onOpenWorkOrder: (id: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => setOpen(false), [workOrderId]);
+  const canOpen = history.total > 0 && !loading;
+  return (
+    <div className="pms-workorder-building-history">
+      <button
+        type="button"
+        className="pms-workorder-building-history__toggle"
+        aria-expanded={open}
+        onClick={() => {
+          if (error) return onRetry();
+          if (canOpen) setOpen((value) => !value);
+        }}
+      >
+        <span>同楼栋历史报修</span>
+        <span className="pms-workorder-building-history__count">
+          {loading ? <Spin size="small" /> : `${history.total} 条`}
+          {history.total > 0 ? <DownOutlined className={open ? 'is-open' : ''} /> : null}
+        </span>
+      </button>
+      {error ? <Alert type="error" showIcon message={error} action={<Button size="small" onClick={onRetry}>重试</Button>} /> : null}
+      {open ? (
+        <div className="pms-workorder-building-history__list">
+          <Text type="secondary" className="pms-workorder-building-history__scope">
+            同房号优先，其余按报修时间从新到旧；不含当前工单和已作废工单
+          </Text>
+          {history.items.map((item: BuildingRepairHistoryItem) => (
+            <button
+              type="button"
+              key={item.workOrderId}
+              className={`pms-workorder-building-history__item${item.sameHouse ? ' is-same-house' : ''}`}
+              onClick={() => onOpenWorkOrder(item.workOrderId)}
+            >
+              <span className="pms-workorder-building-history__item-top">
+                <span>{formatDateTimeCn(item.createdAt)}</span>
+                <Tag color={statusMeta[item.status].color}>{statusMeta[item.status].label}</Tag>
+              </span>
+              <span className="pms-workorder-building-history__address">
+                {item.sameHouse ? <Tag color="blue">同房号</Tag> : null}
+                {item.summaryAddress || '未记录具体房号'}
+              </span>
+              <span className="pms-workorder-building-history__content">
+                <Text type="secondary">{item.repairTypeLabel || item.repairType || '其它'} · </Text>
+                {item.summaryContent || '未填写故障描述'}
+              </span>
+            </button>
+          ))}
+          {history.total > history.items.length ? (
+            <Text type="secondary" className="pms-workorder-building-history__more">
+              显示最近 {history.items.length} 条，共 {history.total} 条
+            </Text>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ---------------- 工单详情抽屉 ----------------
 function WorkOrderDetailDrawer({
-  id, staffList, dispatchTechnicians, repairTypeRules, onClose, onChanged,
+  id, staffList, dispatchTechnicians, repairTypeRules, onOpenWorkOrder, onClose, onChanged,
 }: {
   id: number | null;
   staffList: Staff[];
   dispatchTechnicians: TechnicianOption[];
   repairTypeRules: RepairTypeRule[];
+  onOpenWorkOrder: (id: number) => void;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -2298,6 +2386,9 @@ function WorkOrderDetailDrawer({
   const [transferOpen, setTransferOpen] = useState(false);
   const [rollbackOpen, setRollbackOpen] = useState(false);
   const [originalContentOpen, setOriginalContentOpen] = useState(false);
+  const [buildingHistory, setBuildingHistory] = useState<BuildingRepairHistoryResp>({ total: 0, items: [] });
+  const [buildingHistoryLoading, setBuildingHistoryLoading] = useState(false);
+  const [buildingHistoryError, setBuildingHistoryError] = useState('');
 
   const load = useCallback(async () => {
     if (!id) { setDetail(null); return; }
@@ -2312,12 +2403,30 @@ function WorkOrderDetailDrawer({
     }
   }, [id, message]);
 
+  const loadBuildingHistory = useCallback(async () => {
+    if (!id) {
+      setBuildingHistory({ total: 0, items: [] });
+      return;
+    }
+    setBuildingHistoryLoading(true);
+    setBuildingHistoryError('');
+    try {
+      setBuildingHistory(await request<BuildingRepairHistoryResp>({ url: `/work-orders/${id}/building-history` }));
+    } catch (e: any) {
+      setBuildingHistory({ total: 0, items: [] });
+      setBuildingHistoryError(e?.message || '历史报修加载失败，点击重试');
+    } finally {
+      setBuildingHistoryLoading(false);
+    }
+  }, [id]);
+
   useEffect(() => {
     setOriginalContentOpen(false);
     load();
-  }, [load]);
+    loadBuildingHistory();
+  }, [load, loadBuildingHistory]);
 
-  const refresh = async () => { await load(); onChanged(); };
+  const refresh = async () => { await Promise.all([load(), loadBuildingHistory()]); onChanged(); };
 
   const onAccept = async () => {
     try {
@@ -2534,6 +2643,16 @@ function WorkOrderDetailDrawer({
                       },
                     ]}
                   />
+                  {detail.request.buildingId ? (
+                    <WorkOrderBuildingHistory
+                      workOrderId={detail.workOrder.id}
+                      history={buildingHistory}
+                      loading={buildingHistoryLoading}
+                      error={buildingHistoryError}
+                      onRetry={loadBuildingHistory}
+                      onOpenWorkOrder={onOpenWorkOrder}
+                    />
+                  ) : null}
                 </DetailSection>
 
                 <DetailSection title="维修结果" description="维修工实际填写的故障、处理、用料与费用">

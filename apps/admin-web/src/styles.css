@@ -3141,6 +3141,55 @@ h2.ant-typography {
 }
 .pms-workorder-side-descriptions .ant-btn-link { min-height: 36px; padding-inline: 4px; }
 .pms-workorder-lock-reason { font-size: 13px; }
+.pms-workorder-building-history { margin-top: 14px; border-top: 1px solid #dbe5ee; }
+.pms-workorder-building-history__toggle {
+  display: flex;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 2px;
+  border: 0;
+  color: #294760;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+.pms-workorder-building-history__toggle:focus-visible { outline: 2px solid #31558a; outline-offset: 3px; }
+.pms-workorder-building-history__count { display: inline-flex; flex-shrink: 0; align-items: center; gap: 10px; color: #31558a; font-variant-numeric: tabular-nums; }
+.pms-workorder-building-history__count .anticon { transition: transform .2s ease; }
+.pms-workorder-building-history__count .anticon.is-open { transform: rotate(180deg); }
+.pms-workorder-building-history__list { overflow: hidden; border: 1px solid #dbe5ee; border-radius: 8px; background: #f8fbfe; }
+.pms-workorder-building-history__scope { display: block; padding: 9px 12px; border-bottom: 1px solid #e2eaf2; font-size: 13px; line-height: 1.5; }
+.pms-workorder-building-history__item {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 0;
+  border-bottom: 1px solid #e2eaf2;
+  color: #263d57;
+  font: inherit;
+  text-align: left;
+  background: #fff;
+  cursor: pointer;
+  transition: background .2s ease;
+}
+.pms-workorder-building-history__item:hover { background: #edf4fa; }
+.pms-workorder-building-history__item:focus-visible { position: relative; outline: 2px solid #31558a; outline-offset: -2px; }
+.pms-workorder-building-history__item.is-same-house { background: #f0f6fc; }
+.pms-workorder-building-history__item-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #6c8094; font-size: 13px; font-variant-numeric: tabular-nums; }
+.pms-workorder-building-history__item-top .ant-tag,
+.pms-workorder-building-history__address .ant-tag { margin-inline-end: 0; }
+.pms-workorder-building-history__address { display: flex; align-items: center; gap: 7px; color: #294760; font-size: 15px; font-weight: 600; }
+.pms-workorder-building-history__content { overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; }
+.pms-workorder-building-history__more { display: block; padding: 9px 12px; text-align: center; }
+.pms-repair-dock__history-row--same-house > td { background: #f0f6fc !important; }
 .pms-workorder-repair-record {
   overflow: hidden;
   border: 1px solid #d9e4ee;
