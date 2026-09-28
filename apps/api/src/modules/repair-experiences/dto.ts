@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -17,8 +18,8 @@ export class RepairExperienceBlockDto {
   @MaxLength(80)
   id: string;
 
-  @IsIn(['heading', 'paragraph', 'bullet', 'warning', 'image'])
-  type: 'heading' | 'paragraph' | 'bullet' | 'warning' | 'image';
+  @IsIn(['heading', 'paragraph', 'bullet', 'ordered', 'checklist', 'quote', 'warning', 'divider', 'image'])
+  type: 'heading' | 'paragraph' | 'bullet' | 'ordered' | 'checklist' | 'quote' | 'warning' | 'divider' | 'image';
 
   @IsOptional()
   @IsString()
@@ -34,6 +35,10 @@ export class RepairExperienceBlockDto {
   @IsString()
   @MaxLength(300)
   caption?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  checked?: boolean;
 }
 
 export class SaveRepairExperienceNoteDto {

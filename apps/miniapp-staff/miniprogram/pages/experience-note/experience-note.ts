@@ -1,14 +1,24 @@
 import { repairExperiences, upload } from '@pms/api-client';
 import { createHoldToTalk, speechErrorTip, type HoldToTalk } from '@pms/miniapp-ui';
-import type { RepairExperienceBlock, RepairExperienceBlockType } from '@pms/shared-types';
+import {
+  repairExperienceBlocksToMarkdown,
+  repairExperienceMarkdownToBlocks,
+  repairExperienceRenderBlocks,
+} from '@pms/shared-types';
+import type { RepairExperienceBlock, RepairExperienceBlockType, RepairExperienceRenderBlock } from '@pms/shared-types';
 
 let speechManager: any = null;
 try { speechManager = requirePlugin('WechatSI').getRecordRecognitionManager(); } catch { speechManager = null; }
 let hold: HoldToTalk | null = null;
 
-const textTypes: RepairExperienceBlockType[] = ['paragraph', 'heading', 'bullet', 'warning'];
+const textTypes: RepairExperienceBlockType[] = ['paragraph', 'heading', 'bullet', 'ordered', 'checklist', 'quote', 'warning'];
 const newId = () => `b-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-const newTextBlock = (type: RepairExperienceBlockType = 'paragraph'): RepairExperienceBlock => ({ id: newId(), type, text: '' });
+const newTextBlock = (type: RepairExperienceBlockType = 'paragraph'): RepairExperienceBlock => ({
+  id: newId(),
+  type,
+  ...(type === 'divider' ? {} : { text: '' }),
+  ...(type === 'checklist' ? { checked: false } : {}),
+});
 
 Page({
   data: {
@@ -19,6 +29,9 @@ Page({
     repairTypeLabel: '',
     title: '',
     blocks: [] as RepairExperienceBlock[],
+    readerBlocks: [] as RepairExperienceRenderBlock[],
+    editorMode: 'visual' as 'visual' | 'markdown',
+    markdownSource: '',
     revision: 1,
     canEdit: false,
     favorite: false,
@@ -47,6 +60,9 @@ Page({
       repairTypeLabel: decodeURIComponent(query.typeLabel || ''),
       title: '',
       blocks: [newTextBlock('heading'), newTextBlock('paragraph')],
+      readerBlocks: [],
+      editorMode: 'visual',
+      markdownSource: '',
       canEdit: true,
       editing: true,
     });
@@ -62,6 +78,8 @@ Page({
         repairTypeLabel: note.repairTypeLabel,
         title: note.title,
         blocks: note.blocks,
+        readerBlocks: repairExperienceRenderBlocks(note.blocks),
+        markdownSource: repairExperienceBlocksToMarkdown(note.blocks),
         revision: note.revision,
         canEdit: note.canEdit,
         favorite: note.favorite,
@@ -103,6 +121,15 @@ Page({
   onTitleInput(e: WechatMiniprogram.Input) { this.setData({ title: e.detail.value }); },
   onTextInput(e: WechatMiniprogram.Input) {
     const index = Number(e.currentTarget.dataset.index);
+    const current = this.data.blocks[index];
+    if (!current) return;
+    const shortcut = markdownShortcut(String(e.detail.value));
+    if (shortcut) {
+      const block = { ...current, ...shortcut };
+      if (block.type === 'divider') delete block.text;
+      this.setData({ [`blocks[${index}]`]: block });
+      return;
+    }
     this.setData({ [`blocks[${index}].text`]: e.detail.value });
   },
   onCaptionInput(e: WechatMiniprogram.Input) {
@@ -118,10 +145,17 @@ Page({
     } catch (e: any) { wx.showToast({ icon: 'none', title: e?.message || '操作失败' }); }
   },
 
-  onEdit() { if (this.data.canEdit) this.setData({ editing: true }); },
+  onEdit() {
+    if (this.data.canEdit) this.setData({
+      editing: true,
+      editorMode: 'visual',
+      markdownSource: repairExperienceBlocksToMarkdown(this.data.blocks),
+    });
+  },
   onAddBlock(e: WechatMiniprogram.BaseEvent) {
     const type = String(e.currentTarget.dataset.type) as RepairExperienceBlockType;
-    this.setData({ blocks: [...this.data.blocks, newTextBlock(textTypes.includes(type) ? type : 'paragraph')] });
+    const safeType = textTypes.includes(type) || type === 'divider' ? type : 'paragraph';
+    this.setData({ blocks: [...this.data.blocks, newTextBlock(safeType)] });
   },
   onRemoveBlock(e: WechatMiniprogram.BaseEvent) {
     const index = Number(e.currentTarget.dataset.index);
@@ -134,6 +168,26 @@ Page({
     const blocks = this.data.blocks.slice();
     [blocks[index], blocks[to]] = [blocks[to], blocks[index]];
     this.setData({ blocks });
+  },
+  onToggleCheck(e: WechatMiniprogram.BaseEvent) {
+    const index = Number(e.currentTarget.dataset.index);
+    const block = this.data.blocks[index];
+    if (!block || block.type !== 'checklist') return;
+    this.setData({ [`blocks[${index}].checked`]: !block.checked });
+  },
+  onSwitchEditorMode(e: WechatMiniprogram.BaseEvent) {
+    const mode = String(e.currentTarget.dataset.mode) as 'visual' | 'markdown';
+    if (mode === this.data.editorMode) return;
+    if (mode === 'markdown') {
+      this.setData({ editorMode: mode, markdownSource: repairExperienceBlocksToMarkdown(this.data.blocks) });
+      return;
+    }
+    this.setData({ editorMode: mode, blocks: repairExperienceMarkdownToBlocks(this.data.markdownSource) });
+  },
+  onMarkdownInput(e: WechatMiniprogram.Input) { this.setData({ markdownSource: e.detail.value }); },
+  onCopyMarkdown() {
+    const body = repairExperienceBlocksToMarkdown(this.data.blocks);
+    wx.setClipboardData({ data: `# ${this.data.title || '维修经验'}\n\n${body}` });
   },
   async onAddImage() {
     try {
@@ -154,7 +208,10 @@ Page({
   },
   async onSave() {
     const title = this.data.title.trim();
-    const blocks = this.data.blocks.filter((block) => block.type === 'image' ? !!block.url : !!block.text?.trim());
+    const sourceBlocks = this.data.editorMode === 'markdown'
+      ? repairExperienceMarkdownToBlocks(this.data.markdownSource)
+      : this.data.blocks;
+    const blocks = sourceBlocks.filter((block) => block.type === 'image' ? !!block.url : block.type === 'divider' || !!block.text?.trim());
     if (!title) { wx.showToast({ icon: 'none', title: '请填写笔记标题' }); return; }
     if (!blocks.length) { wx.showToast({ icon: 'none', title: '请至少写一段内容' }); return; }
     this.setData({ saving: true });
@@ -163,9 +220,36 @@ Page({
       const note = this.data.noteId
         ? await repairExperiences.update(this.data.noteId, payload)
         : await repairExperiences.create(payload);
-      this.setData({ noteId: note.id, revision: note.revision, blocks: note.blocks, editing: false, canEdit: note.canEdit });
+      this.setData({
+        noteId: note.id,
+        revision: note.revision,
+        blocks: note.blocks,
+        readerBlocks: repairExperienceRenderBlocks(note.blocks),
+        markdownSource: repairExperienceBlocksToMarkdown(note.blocks),
+        editorMode: 'visual',
+        editing: false,
+        canEdit: note.canEdit,
+      });
       wx.showToast({ icon: 'success', title: '已保存' });
     } catch (e: any) { wx.showModal({ title: '保存失败', content: e?.message || '请稍后重试', showCancel: false }); }
     finally { this.setData({ saving: false }); }
   },
 });
+
+function markdownShortcut(value: string): Partial<RepairExperienceBlock> | null {
+  const rules: Array<[RegExp, RepairExperienceBlockType, boolean?]> = [
+    [/^#{1,6}\s+/, 'heading'],
+    [/^-\s+\[x\]\s+/i, 'checklist', true],
+    [/^-\s+\[\s\]\s+/, 'checklist', false],
+    [/^\d+[.)]\s+/, 'ordered'],
+    [/^[-+*]\s+/, 'bullet'],
+    [/^>\s+/, 'quote'],
+  ];
+  if (/^[-*_]{3,}\s*$/.test(value)) return { type: 'divider' };
+  for (const [pattern, type, checked] of rules) {
+    if (pattern.test(value)) {
+      return { type, text: value.replace(pattern, ''), ...(type === 'checklist' ? { checked: !!checked } : {}) };
+    }
+  }
+  return null;
+}

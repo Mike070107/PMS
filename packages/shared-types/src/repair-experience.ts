@@ -1,4 +1,13 @@
-export type RepairExperienceBlockType = 'heading' | 'paragraph' | 'bullet' | 'warning' | 'image';
+export type RepairExperienceBlockType =
+  | 'heading'
+  | 'paragraph'
+  | 'bullet'
+  | 'ordered'
+  | 'checklist'
+  | 'quote'
+  | 'warning'
+  | 'divider'
+  | 'image';
 
 export interface RepairExperienceBlock {
   id: string;
@@ -6,6 +15,7 @@ export interface RepairExperienceBlock {
   text?: string;
   url?: string;
   caption?: string;
+  checked?: boolean;
 }
 
 /**

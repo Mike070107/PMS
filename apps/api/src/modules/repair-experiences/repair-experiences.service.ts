@@ -378,9 +378,15 @@ export class RepairExperiencesService {
         }
         return { id, type: 'image', url, caption: String(block.caption || '').trim().slice(0, 300) };
       }
+      if (block.type === 'divider') return { id, type: 'divider' };
       const text = String(block.text || '').trim();
       if (!text) throw new BadRequestException(`第 ${index + 1} 个内容块还是空的`);
-      return { id, type: block.type, text };
+      return {
+        id,
+        type: block.type,
+        text,
+        ...(block.type === 'checklist' ? { checked: !!block.checked } : {}),
+      };
     });
   }
 

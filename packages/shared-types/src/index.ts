@@ -1085,6 +1085,7 @@ export * from './voice-extract';
 export * from './urgency';
 export * from './notification';
 export * from './repair-experience';
+export * from './repair-experience-markdown';
 
 // ---------- 停留时长 ----------
 

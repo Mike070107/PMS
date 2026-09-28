@@ -93,3 +93,17 @@ test('关键词只在看得到的笔记本里搜标题和正文，并带上收�
   const none = await service.list(user, '电梯');
   assert.deepEqual(none[0].notes, []);
 });
+
+test('Markdown 新内容块保存时保留待办状态，分隔线不要求正文', () => {
+  const service = Object.create(RepairExperiencesService.prototype) as any;
+  const cleaned = service.cleanBlocks([
+    { id: 'todo', type: 'checklist', text: '  已测试通电  ', checked: true },
+    { id: 'line', type: 'divider' },
+    { id: 'quote', type: 'quote', text: '  业主反馈偶发  ' },
+  ]);
+  assert.deepEqual(cleaned, [
+    { id: 'todo', type: 'checklist', text: '已测试通电', checked: true },
+    { id: 'line', type: 'divider' },
+    { id: 'quote', type: 'quote', text: '业主反馈偶发' },
+  ]);
+});
