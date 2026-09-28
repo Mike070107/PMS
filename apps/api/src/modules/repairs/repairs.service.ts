@@ -1898,7 +1898,9 @@ export class RepairsService implements OnModuleInit {
         .setParameter('priorityHouseId', priorityHouseId)
         .orderBy('same_house_rank', 'ASC');
     }
-    rowsQuery.addOrderBy('request.created_at', 'DESC').addOrderBy('request.id', 'DESC');
+    // 分页查询带 join 时，TypeORM 会按实体元数据重写 ORDER BY；这里必须使用属性名，
+    // 写数据库列名 request.created_at 会让它找不到列元数据并在运行时抛 500。
+    rowsQuery.addOrderBy('request.createdAt', 'DESC').addOrderBy('request.id', 'DESC');
     const [total, requests] = await Promise.all([
       query().getCount(),
       rowsQuery.take(12).getMany(),
