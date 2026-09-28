@@ -3079,3 +3079,12 @@
 - 自上次（4ebaf61）以来上线的相关提交：
   - 666a6e2 feat(finance): seed common detail accounts
 
+## 2026-09-28 14:00 · api · b1d47c1
+
+- 包：`pms-api-20260928-1351.tar.gz`
+- 提交：b1d47c1 fix: keep AI material suggestions advisory only
+- 说明：公共区域语音报修保真、原始内容留存、AI用料仅提醒；生产健康检查及original_content字段确认通过
+- 自上次（666a6e2）以来上线的相关提交：
+  - b1d47c1 fix: keep AI material suggestions advisory only
+  - abf3b67 fix: preserve precise voice repair details
+
