@@ -761,6 +761,8 @@ page { background: #f1f6fb; }
 .used-item__qty { flex-shrink: 0; color: #315f98; font-size: 32rpx; font-weight: 700; }
 .complete-sheet .used-item__tag { flex-shrink: 0; font-size: 27rpx; }
 .complete-empty { padding: 22rpx; border-radius: 16rpx; background: #fff5e7; color: #85591f; font-size: 29rpx; line-height: 1.6; }
+.complete-photo-speech-stack { display: flex; flex-direction: column; gap: 20rpx; }
+.complete-photo-block, .complete-speech-block { min-width: 0; }
 .complete-photo-entry { min-height: 106rpx; display: flex; align-items: center; gap: 18rpx; padding: 12rpx 22rpx; border: 2rpx dashed #8eafd0; border-radius: 18rpx; background: #f8fbfe; }
 .complete-photo-entry > view:nth-child(2) { flex: 1; min-width: 0; }
 .complete-photo-entry__camera { position: relative; flex-shrink: 0; width: 28rpx; height: 22rpx; border: 3rpx solid #315f98; border-radius: 4rpx; }
