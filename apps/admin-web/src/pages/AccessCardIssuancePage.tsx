@@ -75,7 +75,7 @@ const PREVIEW_CONTEXT: AccessCardHouseContext = {
 
 const PREVIEW_READINESS: AccessCardReadiness = {
   simulationEnabled: true,
-  features: { cardWrite: false, legacyDbWrite: false, accessDbWrite: false, controllerUpload: false },
+  features: { cardWrite: false, legacyDbWrite: false, accessDbWrite: false, parkingDbRead: true, parkingDbWrite: false, controllerUpload: false },
   agents: [],
 };
 
@@ -708,7 +708,9 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                 value={agentKind}
                 onChange={(value) => {
                   setAgentKind(value);
-                  setAgentName(value === 'issuer' ? '前台发卡电脑' : value === 'access_gateway' ? '192.168.1.88 门禁网关' : '192.168.1.80 旧库同步');
+                  setAgentName(value === 'issuer' ? '前台发卡电脑'
+                    : value === 'access_gateway' ? '192.168.1.88 门禁网关'
+                    : '192.168.1.80 旧库同步');
                 }}
                 options={[
                   { value: 'issuer', label: 'ACR122U 发卡电脑' },

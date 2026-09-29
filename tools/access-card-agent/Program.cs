@@ -19,6 +19,7 @@ namespace Pms.AccessCardAgent
                 var tokenPath = Path.Combine(root, "agent.token.dat");
                 var databasePasswordPath = Path.Combine(root, "legacy-db-password.dat");
                 var icCardPasswordPath = Path.Combine(root, "iccard-db-password.dat");
+                var parkingPasswordPath = Path.Combine(root, "parking-db-password.dat");
                 if (!Environment.UserInteractive)
                 {
                     ServiceBase.Run(new AccessCardWindowsService(AgentConfig.Load(configPath), tokenPath));
@@ -26,17 +27,29 @@ namespace Pms.AccessCardAgent
                 }
                 if (args.Length > 0 && args[0] == "--tray")
                 {
-                    TrayApplication.HideConsoleWindow();
-                    Application.EnableVisualStyles();
-                    Application.SetCompatibleTextRenderingDefault(false);
-                    Application.Run(new AgentTrayContext(AgentConfig.Load(configPath)));
+                    using (var instance = SingleInstance.TryEnter("Tray"))
+                    {
+                        if (instance == null) return 0;
+                        TrayApplication.HideConsoleWindow();
+                        Application.EnableVisualStyles();
+                        Application.SetCompatibleTextRenderingDefault(false);
+                        Application.Run(new AgentTrayContext(AgentConfig.Load(configPath)));
+                    }
                     return 0;
                 }
                 if (args.Length == 0)
                 {
-                    Application.EnableVisualStyles();
-                    Application.SetCompatibleTextRenderingDefault(false);
-                    Application.Run(new AgentManagerForm(root));
+                    using (var instance = SingleInstance.TryEnter("Settings"))
+                    {
+                        if (instance == null)
+                        {
+                            MessageBox.Show("设置窗口已经打开，请在任务栏中查看。", "PMS 数据同步助手", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            return 0;
+                        }
+                        Application.EnableVisualStyles();
+                        Application.SetCompatibleTextRenderingDefault(false);
+                        Application.Run(new AgentManagerForm(root));
+                    }
                     return 0;
                 }
                 if (args.Length > 0 && args[0] == "--self-test")
@@ -48,6 +61,14 @@ namespace Pms.AccessCardAgent
                         throw new InvalidOperationException("相似房号隔离测试失败");
                     if (AgentConfig.NormalizeAgentId("legacy_sync-legacy_sync-a8c6fe8239867d2e") != "legacy_sync-a8c6fe8239867d2e")
                         throw new InvalidOperationException("代理 ID 粘贴容错测试失败");
+                    if (AgentConfig.NormalizeAgentId("parking_gateway-parking_gateway-a8c6fe8239867d2e") != "parking_gateway-a8c6fe8239867d2e")
+                        throw new InvalidOperationException("停车网关代理 ID 粘贴容错测试失败");
+                    using (var first = SingleInstance.TryEnter("SelfTest"))
+                    using (var second = SingleInstance.TryEnter("SelfTest"))
+                    {
+                        if (first == null || second != null)
+                            throw new InvalidOperationException("单实例锁测试失败");
+                    }
                     Console.WriteLine("自检通过：房号累计序号解析和相似房号隔离正常");
                     return 0;
                 }
@@ -81,6 +102,13 @@ namespace Pms.AccessCardAgent
                     Console.WriteLine("iCCard MDB 密码已使用 Windows DPAPI 加密保存。");
                     return 0;
                 }
+                if (args.Length > 0 && args[0] == "--install-parking-db-password")
+                {
+                    Console.Write("粘贴停车 SQL Server 密码（输入不会显示）：");
+                    SecretStore.Save(parkingPasswordPath, SecretStore.ReadHidden());
+                    Console.WriteLine("停车数据库密码已使用 Windows DPAPI 加密保存。");
+                    return 0;
+                }
                 if (args.Length > 0 && args[0] == "--readers")
                 {
                     var readers = CardReader.ListReaders();
@@ -104,6 +132,11 @@ namespace Pms.AccessCardAgent
                     new AgentApiClient(config, SecretStore.Load(tokenPath)).Heartbeat(
                         AgentLoop.BuildCapabilities(config, hasReader));
                     AgentStatus.MarkConnected();
+                    if (config.Kind == "parking_gateway")
+                    {
+                        var probes = ParkingDatabase.ProbeBoth(config, SecretStore.Load(parkingPasswordPath));
+                        foreach (var probe in probes) PrintParkingProbe(probe);
+                    }
                     Console.WriteLine("连接成功：PMS 已接受 " + config.Name + " 的心跳（版本 " + AgentApiClient.Version + "）。");
                     return 0;
                 }
@@ -113,6 +146,12 @@ namespace Pms.AccessCardAgent
                     PrintProbe(AccessGatewayDatabase.ProbeIcCard(
                         config,
                         File.Exists(icCardPasswordPath) ? SecretStore.Load(icCardPasswordPath) : null));
+                    return 0;
+                }
+                if (args.Length > 0 && args[0] == "--parking-probe")
+                {
+                    var probes = ParkingDatabase.ProbeBoth(config, SecretStore.Load(parkingPasswordPath));
+                    foreach (var probe in probes) PrintParkingProbe(probe);
                     return 0;
                 }
                 if (args.Length > 1 && args[0] == "--legacy-count")
@@ -158,6 +197,15 @@ namespace Pms.AccessCardAgent
             Console.WriteLine("文件大小：" + result.Length + " bytes");
             foreach (var pair in result.Counts)
                 Console.WriteLine(pair.Key + "：" + pair.Value);
+        }
+
+        private static void PrintParkingProbe(ParkingDatabaseProbeResult result)
+        {
+            Console.WriteLine("[" + result.Database + "] 只读连接成功");
+            Console.WriteLine("Car_Issue 记录数：" + (result.VehicleCount < 0 ? "表不存在" : result.VehicleCount.ToString()));
+            Console.WriteLine("Car_Download 记录数：" + (result.DownloadCount < 0 ? "表不存在" : result.DownloadCount.ToString()));
+            foreach (var pair in result.Procedures)
+                Console.WriteLine(pair.Key + "：" + (pair.Value ? "已找到" : "未找到"));
         }
     }
 }

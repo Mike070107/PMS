@@ -14,12 +14,21 @@ namespace Pms.AccessCardAgent
         private readonly string _tokenPath;
         private readonly string _legacyPasswordPath;
         private readonly string _icCardPasswordPath;
+        private readonly string _parkingPasswordPath;
         private readonly ComboBox _kind = new ComboBox();
         private readonly TextBox _name = new TextBox();
         private readonly TextBox _agentId = new TextBox();
         private readonly TextBox _token = new TextBox();
         private readonly Label _databasePasswordLabel = new Label();
         private readonly TextBox _databasePassword = new TextBox();
+        private readonly Label _parkingServerLabel;
+        private readonly TextBox _parkingServer = new TextBox();
+        private readonly Label _parkingPhase1Label;
+        private readonly TextBox _parkingPhase1 = new TextBox();
+        private readonly Label _parkingPhase2Label;
+        private readonly TextBox _parkingPhase2 = new TextBox();
+        private readonly Label _parkingUserLabel;
+        private readonly TextBox _parkingUser = new TextBox();
         private readonly Label _status = new Label();
         private readonly Button _testButton = new Button();
         private readonly Button _installButton = new Button();
@@ -32,13 +41,14 @@ namespace Pms.AccessCardAgent
             _tokenPath = Path.Combine(root, "agent.token.dat");
             _legacyPasswordPath = Path.Combine(root, "legacy-db-password.dat");
             _icCardPasswordPath = Path.Combine(root, "iccard-db-password.dat");
+            _parkingPasswordPath = Path.Combine(root, "parking-db-password.dat");
 
             Text = "PMS 数据同步助手";
             Font = new Font("Microsoft YaHei UI", 10F);
             AutoScaleMode = AutoScaleMode.Dpi;
             StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(600, 560);
-            ClientSize = new Size(640, 600);
+            MinimumSize = new Size(600, 680);
+            ClientSize = new Size(640, 720);
             Icon = SystemIcons.Application;
 
             var rootPanel = new TableLayoutPanel
@@ -79,6 +89,7 @@ namespace Pms.AccessCardAgent
             _kind.DropDownStyle = ComboBoxStyle.DropDownList;
             _kind.Items.Add(new KindItem("legacy_sync", "192.168.1.80 旧库同步"));
             _kind.Items.Add(new KindItem("access_gateway", "192.168.1.88 门禁网关"));
+            _kind.Items.Add(new KindItem("parking_gateway", "停车系统网关（parking1 / parking2）"));
             _kind.Items.Add(new KindItem("issuer", "ACR122U 发卡电脑"));
             _kind.SelectedIndexChanged += delegate { ApplyKindDefaults(); };
             AddField(fields, "电脑用途", _kind);
@@ -86,6 +97,10 @@ namespace Pms.AccessCardAgent
             AddField(fields, "代理 ID", _agentId);
             _token.UseSystemPasswordChar = true;
             AddField(fields, "一次性密钥", _token);
+            _parkingServerLabel = AddField(fields, "SQL Server", _parkingServer);
+            _parkingPhase1Label = AddField(fields, "一期数据库", _parkingPhase1);
+            _parkingPhase2Label = AddField(fields, "二期数据库", _parkingPhase2);
+            _parkingUserLabel = AddField(fields, "数据库用户", _parkingUser);
             _databasePassword.AutoSize = true;
             _databasePasswordLabel.AutoSize = true;
             _databasePasswordLabel.Anchor = AnchorStyles.Left;
@@ -127,14 +142,16 @@ namespace Pms.AccessCardAgent
             LoadExisting();
         }
 
-        private static void AddField(TableLayoutPanel panel, string label, Control control)
+        private static Label AddField(TableLayoutPanel panel, string label, Control control)
         {
             var row = panel.RowCount++;
             panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            panel.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 10, 4) }, 0, row);
+            var labelControl = new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 10, 4) };
+            panel.Controls.Add(labelControl, 0, row);
             control.Dock = DockStyle.Fill;
             control.Margin = new Padding(0, 3, 0, 3);
             panel.Controls.Add(control, 1, row);
+            return labelControl;
         }
 
         private void LoadExisting()
@@ -148,6 +165,10 @@ namespace Pms.AccessCardAgent
             {
                 _name.Text = _existing.Name;
                 _agentId.Text = _existing.AgentId;
+                _parkingServer.Text = _existing.ParkingSqlServer;
+                _parkingPhase1.Text = _existing.ParkingPhase1Database;
+                _parkingPhase2.Text = _existing.ParkingPhase2Database;
+                _parkingUser.Text = _existing.ParkingUser;
             }
             _token.PlaceholderTextCompat(File.Exists(_tokenPath) ? "已保存，留空保持不变" : "请粘贴一次性密钥");
             SetStatus(File.Exists(_tokenPath) ? "已找到本机密钥，可直接测试或安装后台服务。" : "请完成配置。", false);
@@ -159,9 +180,22 @@ namespace Pms.AccessCardAgent
             if (item == null) return;
             if (_existing == null || _existing.Kind != item.Value) _name.Text = AgentConfig.CreateDefaults(item.Value).Name;
             var needsPassword = item.Value != "issuer";
+            var isParking = item.Value == "parking_gateway";
+            _parkingServerLabel.Visible = _parkingServer.Visible = isParking;
+            _parkingPhase1Label.Visible = _parkingPhase1.Visible = isParking;
+            _parkingPhase2Label.Visible = _parkingPhase2.Visible = isParking;
+            _parkingUserLabel.Visible = _parkingUser.Visible = isParking;
+            if (isParking)
+            {
+                var defaults = AgentConfig.CreateDefaults(item.Value);
+                if (String.IsNullOrWhiteSpace(_parkingServer.Text)) _parkingServer.Text = defaults.ParkingSqlServer;
+                if (String.IsNullOrWhiteSpace(_parkingPhase1.Text)) _parkingPhase1.Text = defaults.ParkingPhase1Database;
+                if (String.IsNullOrWhiteSpace(_parkingPhase2.Text)) _parkingPhase2.Text = defaults.ParkingPhase2Database;
+            }
             _databasePasswordLabel.Visible = needsPassword;
             _databasePassword.Visible = needsPassword;
-            _databasePasswordLabel.Text = item.Value == "legacy_sync" ? ".80 旧库密码" : ".88 iCCard 密码";
+            _databasePasswordLabel.Text = item.Value == "legacy_sync" ? ".80 旧库密码"
+                : item.Value == "access_gateway" ? ".88 iCCard 密码" : "停车数据库密码";
             _databasePassword.PlaceholderTextCompat("已保存可留空");
         }
 
@@ -173,17 +207,27 @@ namespace Pms.AccessCardAgent
             config.Kind = item.Value;
             config.Name = _name.Text.Trim();
             config.AgentId = _agentId.Text;
+            if (item.Value == "parking_gateway")
+            {
+                config.ParkingSqlServer = _parkingServer.Text.Trim();
+                config.ParkingPhase1Database = _parkingPhase1.Text.Trim();
+                config.ParkingPhase2Database = _parkingPhase2.Text.Trim();
+                config.ParkingUser = _parkingUser.Text.Trim();
+            }
             AgentConfig.Save(_configPath, config);
             if (!String.IsNullOrWhiteSpace(_token.Text)) SecretStore.Save(_tokenPath, _token.Text);
             if (!File.Exists(_tokenPath)) throw new InvalidOperationException("请粘贴一次性代理密钥");
             if (!String.IsNullOrWhiteSpace(_databasePassword.Text))
-                SecretStore.Save(item.Value == "legacy_sync" ? _legacyPasswordPath : _icCardPasswordPath, _databasePassword.Text);
+                SecretStore.Save(item.Value == "legacy_sync" ? _legacyPasswordPath
+                    : item.Value == "access_gateway" ? _icCardPasswordPath : _parkingPasswordPath, _databasePassword.Text);
             var requiredPasswordPath = item.Value == "legacy_sync" ? _legacyPasswordPath
-                : item.Value == "access_gateway" ? _icCardPasswordPath : null;
+                : item.Value == "access_gateway" ? _icCardPasswordPath
+                : item.Value == "parking_gateway" ? _parkingPasswordPath : null;
             if (requiredPasswordPath != null && !File.Exists(requiredPasswordPath))
                 throw new InvalidOperationException(item.Value == "legacy_sync"
                     ? "请输入 .80 旧发卡数据库密码"
-                    : "请输入 .88 iCCard Access 数据库密码");
+                    : item.Value == "access_gateway" ? "请输入 .88 iCCard Access 数据库密码"
+                    : "请输入停车 SQL Server 数据库密码");
             _existing = config;
             _agentId.Text = config.AgentId;
             _token.Clear();
@@ -198,14 +242,10 @@ namespace Pms.AccessCardAgent
             catch (Exception exception) { SetStatus(exception.Message, true); return; }
             SetBusy(true);
             SetStatus("正在连接 PMS…", false);
-            Task.Factory.StartNew(delegate
-            {
-                new AgentApiClient(config, SecretStore.Load(_tokenPath)).Heartbeat(AgentLoop.BuildCapabilities(config, config.Kind != "issuer" || CardReader.HasAcr122()));
-                AgentStatus.MarkConnected();
-            }).ContinueWith(task => BeginInvoke((Action)delegate
+            Task.Factory.StartNew(delegate { return TestConnections(config); }).ContinueWith(task => BeginInvoke((Action)delegate
             {
                 SetBusy(false);
-                SetStatus(task.IsFaulted ? FriendlyError(task.Exception) : "连接成功，PMS 已接受这台电脑的心跳。", task.IsFaulted);
+                SetStatus(task.IsFaulted ? FriendlyError(task.Exception) : task.Result, task.IsFaulted);
             }));
         }
 
@@ -216,11 +256,7 @@ namespace Pms.AccessCardAgent
             catch (Exception exception) { SetStatus(exception.Message, true); return; }
             SetBusy(true);
             SetStatus("正在测试 PMS 连接…", false);
-            Task.Factory.StartNew(delegate
-            {
-                new AgentApiClient(config, SecretStore.Load(_tokenPath)).Heartbeat(AgentLoop.BuildCapabilities(config, config.Kind != "issuer" || CardReader.HasAcr122()));
-                AgentStatus.MarkConnected();
-            }).ContinueWith(task => BeginInvoke((Action)delegate
+            Task.Factory.StartNew(delegate { return TestConnections(config); }).ContinueWith(task => BeginInvoke((Action)delegate
             {
                 if (task.IsFaulted)
                 {
@@ -230,6 +266,17 @@ namespace Pms.AccessCardAgent
                 }
                 InstallServiceWithElevation();
             }));
+        }
+
+        private string TestConnections(AgentConfig config)
+        {
+            new AgentApiClient(config, SecretStore.Load(_tokenPath)).Heartbeat(
+                AgentLoop.BuildCapabilities(config, config.Kind != "issuer" || CardReader.HasAcr122()));
+            AgentStatus.MarkConnected();
+            if (config.Kind != "parking_gateway")
+                return "连接成功，PMS 已接受这台电脑的心跳。";
+            var probes = ParkingDatabase.ProbeBoth(config, SecretStore.Load(_parkingPasswordPath));
+            return "连接成功：PMS 心跳正常，" + probes[0].Database + " 和 " + probes[1].Database + " 均可只读访问。";
         }
 
         private void InstallServiceWithElevation()

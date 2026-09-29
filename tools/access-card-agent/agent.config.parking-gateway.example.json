@@ -1,0 +1,12 @@
+{
+  "BaseUrl": "https://prsznh.cn/api/v1",
+  "AgentId": "parking_gateway-replace-with-enrolled-id",
+  "Kind": "parking_gateway",
+  "Name": "枫桦景苑停车系统网关",
+  "PollIntervalMs": 2500,
+  "AllowSimulation": false,
+  "ParkingSqlServer": "192.168.6.3",
+  "ParkingPhase1Database": "parking1",
+  "ParkingPhase2Database": "parking2",
+  "ParkingUser": "replace-with-readonly-user"
+}

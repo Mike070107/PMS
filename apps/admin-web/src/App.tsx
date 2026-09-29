@@ -10,6 +10,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const BusinessPage = lazy(() => import('./pages/BusinessPage'));
 const AccessCardIssuancePage = lazy(() => import('./pages/AccessCardIssuancePage'));
+const ParkingManagementPage = lazy(() => import('./pages/ParkingManagementPage'));
 const FeesPage = lazy(() => import('./pages/FeesPage'));
 const PropertiesPage = lazy(() => import('./pages/PropertiesPage'));
 const OwnerAuditPage = lazy(() => import('./pages/OwnerAuditPage'));
@@ -120,7 +121,10 @@ export default function App() {
       <Routes>
       <Route path="/login" element={<LoginPage />} />
       {import.meta.env.DEV && (
-        <Route path="/dev/access-card-preview" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f4f1eb' }}><AccessCardIssuancePage preview /></div>} />
+        <>
+          <Route path="/dev/access-card-preview" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f4f1eb' }}><AccessCardIssuancePage preview /></div>} />
+          <Route path="/dev/parking-preview" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ParkingManagementPage preview /></div>} />
+        </>
       )}
       {/* 手机扫码签名页：不需要登录，凭据是链接里那串 5 分钟有效的 token */}
       <Route path="/sign/:token" element={<SignPage />} />
@@ -136,6 +140,7 @@ export default function App() {
         <Route path="dashboard" element={<RequireTenantScope><RequirePage pageKey="dashboard"><DashboardPage /></RequirePage></RequireTenantScope>} />
         <Route path="reports" element={<RequireTenantScope><RequirePage pageKey="reports"><ReportsPage /></RequirePage></RequireTenantScope>} />
         <Route path="business" element={<RequireTenantScope><RequirePage pageKey="business"><BusinessPage /></RequirePage></RequireTenantScope>} />
+        <Route path="parking" element={<RequireTenantScope><RequirePage pageKey="business"><ParkingManagementPage /></RequirePage></RequireTenantScope>} />
         <Route path="access-cards" element={<RequireTenantScope><RequirePage pageKey="business"><AccessCardIssuancePage /></RequirePage></RequireTenantScope>} />
         <Route path="fees" element={<RequireTenantScope><RequirePage pageKey="fees"><FeesPage /></RequirePage></RequireTenantScope>} />
         <Route path="properties" element={<RequireTenantScope><RequirePage pageKey="properties"><PropertiesPage /></RequirePage></RequireTenantScope>} />

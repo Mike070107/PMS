@@ -18,6 +18,10 @@ namespace Pms.AccessCardAgent
         public string LegacyUser { get; set; }
         public string MjSystemDatabasePath { get; set; }
         public string IcCardDatabasePath { get; set; }
+        public string ParkingSqlServer { get; set; }
+        public string ParkingPhase1Database { get; set; }
+        public string ParkingPhase2Database { get; set; }
+        public string ParkingUser { get; set; }
 
         public static AgentConfig Load(string path)
         {
@@ -50,7 +54,8 @@ namespace Pms.AccessCardAgent
                 AgentId = "",
                 Kind = kind,
                 Name = kind == "legacy_sync" ? "192.168.1.80 旧库同步"
-                    : kind == "access_gateway" ? "192.168.1.88 门禁网关" : "前台发卡电脑",
+                    : kind == "access_gateway" ? "192.168.1.88 门禁网关"
+                    : kind == "parking_gateway" ? "枫桦景苑停车系统网关" : "前台发卡电脑",
                 PollIntervalMs = 2500,
                 AllowSimulation = false,
                 LegacySqlServer = kind == "legacy_sync" ? "192.168.1.80" : "",
@@ -59,14 +64,18 @@ namespace Pms.AccessCardAgent
                 MjSystemDatabasePath = kind == "access_gateway"
                     ? "C:\\Users\\Port1\\AppData\\Local\\VirtualStore\\Program Files (x86)\\MjSystem\\Database\\ChineseSimple\\MJDataBase.mdb" : "",
                 IcCardDatabasePath = kind == "access_gateway"
-                    ? "C:\\Users\\Port1\\AppData\\Local\\VirtualStore\\Program Files (x86)\\iCCard\\iCCard.mdb" : ""
+                    ? "C:\\Users\\Port1\\AppData\\Local\\VirtualStore\\Program Files (x86)\\iCCard\\iCCard.mdb" : "",
+                ParkingSqlServer = kind == "parking_gateway" ? "192.168.6.3" : "",
+                ParkingPhase1Database = kind == "parking_gateway" ? "parking1" : "",
+                ParkingPhase2Database = kind == "parking_gateway" ? "parking2" : "",
+                ParkingUser = ""
             };
         }
 
         public static string NormalizeAgentId(string input)
         {
             if (String.IsNullOrWhiteSpace(input)) return "";
-            var match = Regex.Match(input, "(?:issuer|access_gateway|legacy_sync)-[a-fA-F0-9]{16}");
+            var match = Regex.Match(input, "(?:issuer|access_gateway|legacy_sync|parking_gateway)-[a-fA-F0-9]{16}");
             return match.Success ? match.Value : input.Trim();
         }
 
@@ -79,6 +88,12 @@ namespace Pms.AccessCardAgent
                 throw new InvalidOperationException("代理 ID 与当前服务类型不匹配，请从 PMS 页面重新复制对应电脑的代理 ID");
             if (String.IsNullOrWhiteSpace(value.Name))
                 throw new InvalidOperationException("电脑名称不能为空");
+            if (value.Kind == "parking_gateway" &&
+                (String.IsNullOrWhiteSpace(value.ParkingSqlServer) ||
+                 String.IsNullOrWhiteSpace(value.ParkingPhase1Database) ||
+                 String.IsNullOrWhiteSpace(value.ParkingPhase2Database) ||
+                 String.IsNullOrWhiteSpace(value.ParkingUser)))
+                throw new InvalidOperationException("停车网关必须填写 SQL Server、一期库、二期库和数据库用户");
             value.BaseUrl = "https://prsznh.cn/api/v1";
             if (value.PollIntervalMs < 1000) value.PollIntervalMs = 2500;
             File.WriteAllText(path, new JavaScriptSerializer().Serialize(value));

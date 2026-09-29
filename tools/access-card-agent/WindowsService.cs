@@ -46,6 +46,7 @@ namespace Pms.AccessCardAgent
         {
             if (config.Kind == "legacy_sync") return "PmsDataSyncLegacy";
             if (config.Kind == "access_gateway") return "PmsDataSyncAccess";
+            if (config.Kind == "parking_gateway") return "PmsDataSyncParking";
             return "PmsDataSyncIssuer";
         }
 

@@ -126,6 +126,8 @@ export class AccessCardIssuanceService {
         cardWrite: false,
         legacyDbWrite: false,
         accessDbWrite: false,
+        parkingDbRead: true,
+        parkingDbWrite: false,
         controllerUpload: false,
       },
       agents: agents.map((agent) => ({
@@ -180,6 +182,9 @@ export class AccessCardIssuanceService {
 
   async claimAgentTask(agentKey: string, token: string) {
     const agent = await this.authenticateAgent(agentKey, token);
+    // 停车网关使用独立的停车任务队列。在该队列落地前必须返回空，
+    // 绝不能落入门禁的 legacy_sync 分支而误领发卡任务。
+    if (agent.kind === 'parking_gateway') return { task: null, retryAfterMs: 2500 };
     const now = new Date();
     const leaseExpiresAt = new Date(now.getTime() + 60_000);
     return this.itemRepo.manager.transaction(async (manager) => {
@@ -307,6 +312,9 @@ export class AccessCardIssuanceService {
 
   async reportAgentTask(agentKey: string, token: string, dto: AgentReportDto) {
     const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind === 'parking_gateway') {
+      throw new ForbiddenException('停车网关不能上报门禁发卡任务');
+    }
     const item = await this.itemRepo.findOne({
       where: { id: dto.itemId, tenantId: agent.tenantId },
       relations: ['batch'],

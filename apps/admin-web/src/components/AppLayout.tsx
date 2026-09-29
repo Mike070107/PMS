@@ -13,6 +13,7 @@ import {
   SettingOutlined,
   LogoutOutlined,
   CreditCardOutlined,
+  CarOutlined,
   IdcardOutlined,
   TeamOutlined,
   UserOutlined,
@@ -77,6 +78,7 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
     items: [
       { key: '/business', pageKey: 'business', icon: <CreditCardOutlined />, label: '前台收费' },
       { key: '/access-cards', pageKey: 'business', icon: <IdcardOutlined />, label: '门禁发卡' },
+      { key: '/parking', pageKey: 'business', icon: <CarOutlined />, label: '停车管理' },
       { key: '/fees', pageKey: 'fees', icon: <AccountBookOutlined />, label: '物业费' },
     ],
   },
@@ -122,6 +124,7 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/maintenance-orders': '按工单开《房屋修理养护任务单》，签字后打印',
   '/experience-notes': '按管理处和报修类别沉淀共享的图文维修经验',
   '/business': '办理停车、门禁与前台收费业务',
+  '/parking': '统一管理住户车辆、车位和四个停车区权限',
   '/access-cards': '选房号并跟踪写卡、门禁入库与主板上传',
   '/fees': '物业费账单、收款登记与欠费催缴',
   '/materials': '维护标准材料、单位与基础价格',

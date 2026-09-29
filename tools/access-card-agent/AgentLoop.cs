@@ -72,6 +72,8 @@ namespace Pms.AccessCardAgent
                 { "legacyDbWrite", false },
                 { "accessDbRead", config.Kind == "access_gateway" },
                 { "accessDbWrite", false },
+                { "parkingDbRead", config.Kind == "parking_gateway" },
+                { "parkingDbWrite", false },
                 { "controllerUpload", false }
             };
         }

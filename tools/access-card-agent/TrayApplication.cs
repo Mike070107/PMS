@@ -30,6 +30,7 @@ namespace Pms.AccessCardAgent
         private readonly ToolStripMenuItem _statusItem;
         private readonly Timer _timer;
         private bool? _wasRunning;
+        private bool _disposed;
 
         public AgentTrayContext(AgentConfig config)
         {
@@ -133,10 +134,23 @@ namespace Pms.AccessCardAgent
 
         private void ExitTray()
         {
+            ExitThread();
+        }
+
+        protected override void ExitThreadCore()
+        {
+            DisposeTrayIcon();
+            base.ExitThreadCore();
+        }
+
+        private void DisposeTrayIcon()
+        {
+            if (_disposed) return;
+            _disposed = true;
             _timer.Stop();
+            _timer.Dispose();
             _icon.Visible = false;
             _icon.Dispose();
-            ExitThread();
         }
     }
 }

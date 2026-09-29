@@ -45,7 +45,7 @@ export class CreateAccessCardIssueDto {
 }
 
 export class EnrollAccessCardAgentDto {
-  @IsIn(['issuer', 'access_gateway', 'legacy_sync'])
+  @IsIn(['issuer', 'access_gateway', 'legacy_sync', 'parking_gateway'])
   @IsString()
   @MaxLength(30)
   kind: AccessCardAgentKind;

@@ -74,11 +74,13 @@ export interface AccessCardReadiness {
     cardWrite: boolean;
     legacyDbWrite: boolean;
     accessDbWrite: boolean;
+    parkingDbRead: boolean;
+    parkingDbWrite: boolean;
     controllerUpload: boolean;
   };
   agents: Array<{
     id: string;
-    kind: 'issuer' | 'access_gateway' | 'legacy_sync';
+    kind: 'issuer' | 'access_gateway' | 'legacy_sync' | 'parking_gateway';
     name: string;
     version: string;
     status: 'online' | 'offline' | 'degraded';
@@ -91,7 +93,7 @@ export const readiness = () =>
   request<AccessCardReadiness>({ url: '/access-card-issuance/readiness' });
 
 export const enrollAgent = (data: {
-  kind: 'issuer' | 'access_gateway' | 'legacy_sync';
+  kind: 'issuer' | 'access_gateway' | 'legacy_sync' | 'parking_gateway';
   name: string;
 }) => request<{
   id: string;

@@ -40,8 +40,10 @@
     <Compile Include="AccessGatewayDatabase.cs" />
     <Compile Include="CardReader.cs" />
     <Compile Include="LegacyDatabase.cs" />
+    <Compile Include="ParkingDatabase.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="SecretStore.cs" />
+    <Compile Include="SingleInstance.cs" />
     <Compile Include="TrayApplication.cs" />
     <Compile Include="WindowsService.cs" />
   </ItemGroup>

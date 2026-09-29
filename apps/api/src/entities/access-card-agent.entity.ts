@@ -1,9 +1,9 @@
 import { Column, Entity, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
 
-export type AccessCardAgentKind = 'issuer' | 'access_gateway' | 'legacy_sync';
+export type AccessCardAgentKind = 'issuer' | 'access_gateway' | 'legacy_sync' | 'parking_gateway';
 
-/** 任意发卡电脑、.88 门禁网关和 .80 旧库同步服务的注册信息。 */
+/** 发卡电脑、门禁网关、旧库同步和停车双库网关的注册信息。 */
 @Entity('access_card_agents')
 @Index(['tenantId', 'agentKey'], { unique: true })
 export class AccessCardAgent extends TenantEntity {
