@@ -3349,3 +3349,11 @@
 - 自上次（170dd4c）以来上线的相关提交：
   - 21a3e44 fix(parking): refresh gateway status automatically
 
+## 2026-09-29 15:51 · web · ba9ce99
+
+- 包：`pms-web-20260929-1551.tar.gz`
+- 提交：ba9ce99 fix(parking): clarify database connection badges
+- 说明：parking1和parking2已连接时显示绿色勾选，未就绪时明确显示未验证
+- 自上次（21a3e44）以来上线的相关提交：
+  - ba9ce99 fix(parking): clarify database connection badges
+
