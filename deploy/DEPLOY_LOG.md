@@ -3237,3 +3237,11 @@
 - 自上次（79e67e7）以来上线的相关提交：
   - b8015bf feat(access-cards): add local-agent issuance workflow
 
+## 2026-09-29 10:50 · api · 419deb0
+
+- 包：`pms-api-20260929-1039.tar.gz`
+- 提交：419deb0 fix(access-cards): scope buildings and stop background polling
+- 说明：门禁额外楼栋限定同小区同弄号并自然排序；历史改为手动刷新；生产真实 228/5/301 返回 1,2,3…10,11 且 db=up
+- 自上次（b8015bf）以来上线的相关提交：
+  - 419deb0 fix(access-cards): scope buildings and stop background polling
+
