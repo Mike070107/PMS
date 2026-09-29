@@ -3270,3 +3270,11 @@
 - ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
 - 自上次（419deb0）以来上线的相关提交：
   - f51475e fix(access-cards): prefer online replacement agent
+## 2026-09-29 11:06 · web · 0541d48
+
+- 包：`pms-web-20260929-1106.tar.gz`
+- 提交：0541d48 fix(access-cards): await legacy history snapshot
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
+- 自上次（f51475e）以来上线的相关提交：
+  - 0541d48 fix(access-cards): await legacy history snapshot
+
