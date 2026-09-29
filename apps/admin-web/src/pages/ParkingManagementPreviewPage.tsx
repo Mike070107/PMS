@@ -81,8 +81,8 @@ interface Vehicle {
 }
 
 const TARGET_META: Record<TargetCode, { short: string; full: string; billing: string }> = {
-  phase1_parking: { short: '一期停车', full: '枫桦景苑一期停车', billing: '按车辆收费' },
-  phase2_parking: { short: '二期停车', full: '枫桦景苑二期停车', billing: '按车辆收费' },
+  phase1_parking: { short: '一期地面车库', full: '枫桦景苑一期地面车库', billing: '按车辆收费' },
+  phase2_parking: { short: '二期地面车库', full: '枫桦景苑二期地面车库', billing: '按车辆收费' },
   phase2_main_garage: { short: '二期大车库', full: '枫桦景苑二期大车库', billing: '按车位收费' },
   phase2_civil_defense_garage: { short: '二期人防车库', full: '枫桦景苑二期人防车库', billing: '收费规则待确认' },
 };

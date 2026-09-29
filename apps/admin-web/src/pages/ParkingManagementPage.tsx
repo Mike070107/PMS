@@ -380,11 +380,15 @@ function enabledBitPositions(value: string | null): number[] {
   return Array.from(value).flatMap((bit, index) => bit === '1' ? [index + 1] : []);
 }
 
-function downloadState(fields: ParkingQueryRow['fields']) {
+function downloadState(database: string, fields: ParkingQueryRow['fields']) {
   const effective = fieldValue(fields, fieldAliases.effective);
   const downloaded = fieldValue(fields, fieldAliases.download);
-  const required = enabledBitPositions(effective);
-  if (required.length === 0) return { ready: false, label: '旧库未设置授权位' };
+  const activePositions = database.toLowerCase() === 'parking1'
+    ? new Set([5, 7])
+    : new Set([9, 11, 13, 15, 17, 19, 21]);
+  // parking2 的 23/25 是已被德立云替代的人防旧通道，不能再参与旧系统生效判断。
+  const required = enabledBitPositions(effective).filter((position) => activePositions.has(position));
+  if (required.length === 0) return { ready: false, label: '旧系统未设置现行授权' };
   if (!downloaded) return { ready: false, label: '尚无设备下载记录' };
   const missing = required.filter((position) => downloaded[position - 1] !== '1');
   return missing.length === 0
@@ -396,13 +400,12 @@ function authorizationLabels(database: string, fields: ParkingQueryRow['fields']
   const bits = enabledBitPositions(fieldValue(fields, fieldAliases.effective));
   const labels: string[] = [];
   if (database.toLowerCase() === 'parking1') {
-    if (bits.some((item) => item === 5 || item === 7)) labels.push('一期出入口');
+    if (bits.some((item) => item === 5 || item === 7)) labels.push('一期地面车库');
   } else if (database.toLowerCase() === 'parking2') {
-    if (bits.some((item) => [9, 11, 13].includes(item))) labels.push('二期大门出入口');
-    if (bits.some((item) => [15, 17, 19, 21].includes(item))) labels.push('大车库');
+    if (bits.some((item) => [9, 11, 13].includes(item))) labels.push('二期地面车库');
+    if (bits.some((item) => [15, 17, 19, 21].includes(item))) labels.push('二期大车库');
+    labels.push('二期人防车库：以德立云为准');
   }
-  const known = new Set([5, 7, 9, 11, 13, 15, 17, 19, 21]);
-  if (bits.some((item) => !known.has(item))) labels.push('其他授权位待确认');
   return labels.length > 0 ? labels : ['未识别授权区域'];
 }
 
@@ -415,7 +418,7 @@ function ParkingResultCard({ row, onCreateProof, proofLoading }: { row: ParkingQ
   const expiry = fieldValue(row.fields, fieldAliases.expiry);
   const identity = vehicleIdentity(row.fields);
   const note = fieldValue(row.fields, fieldAliases.note);
-  const deviceState = downloadState(row.fields);
+  const deviceState = downloadState(row.database, row.fields);
   const authorization = authorizationLabels(row.database, row.fields);
   const ownerId = fieldValue(row.fields, fieldAliases.ownerId);
   const details = Object.entries(row.fields).filter(([, value]) => value !== null && String(value).trim() !== '').slice(0, 24);
@@ -434,7 +437,7 @@ function ParkingResultCard({ row, onCreateProof, proofLoading }: { row: ParkingQ
       <Space wrap size={[6, 6]}>
         <Tag color="blue">{databaseLabel(row.database)}</Tag>
         {identity && <Tag color="purple">{identity}</Tag>}
-        {authorization.map((label) => <Tag color={label === '大车库' ? 'cyan' : 'geekblue'} key={label}>{label}</Tag>)}
+        {authorization.map((label) => <Tag color={label.includes('德立云') ? 'gold' : label === '二期大车库' ? 'cyan' : 'geekblue'} key={label}>{label}</Tag>)}
         <Tag color={deviceState.ready ? 'success' : 'warning'} icon={deviceState.ready ? <CheckCircleOutlined /> : <WarningOutlined />}>
           {deviceState.label}
         </Tag>
