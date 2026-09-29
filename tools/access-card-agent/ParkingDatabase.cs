@@ -84,6 +84,43 @@ namespace Pms.AccessCardAgent
             }
         }
 
+        public static Dictionary<string, string> DescribeProcedures(AgentConfig config, string password, string database)
+        {
+            Validate(config, password, database);
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            using (var connection = new SqlConnection(ConnectionString(config, password, database)))
+            {
+                connection.Open();
+                foreach (var procedure in RequiredProcedures)
+                {
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = @"
+SELECT p.[name], TYPE_NAME(p.user_type_id), p.max_length, p.[precision], p.scale, p.is_output
+FROM sys.parameters p
+WHERE p.object_id = OBJECT_ID(@qualified)
+ORDER BY p.parameter_id;";
+                        command.Parameters.Add("@qualified", SqlDbType.NVarChar, 300).Value = "dbo." + procedure;
+                        command.CommandTimeout = 10;
+                        var parameters = new List<string>();
+                        using (var reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                var value = reader.GetString(0) + " " + reader.GetString(1);
+                                var length = reader.GetInt16(2);
+                                if (length > 0) value += "(" + length + ")";
+                                if (reader.GetBoolean(5)) value += " OUTPUT";
+                                parameters.Add(value);
+                            }
+                        }
+                        result[procedure] = parameters.Count == 0 ? "无参数，或当前账号无权查看定义" : String.Join(", ", parameters.ToArray());
+                    }
+                }
+            }
+            return result;
+        }
+
         public static List<ParkingSearchRow> SearchBoth(AgentConfig config, string password, string term)
         {
             if (String.IsNullOrWhiteSpace(term) || term.Trim().Length < 2)
@@ -208,23 +245,75 @@ namespace Pms.AccessCardAgent
 
         private static ParkingOwnerSource FindOwnerSource(SqlConnection connection)
         {
+            var foreignKeySource = FindOwnerSourceFromForeignKey(connection);
+            if (foreignKeySource != null) return foreignKeySource;
+
+            var candidates = new List<ParkingOwnerCandidate>();
             using (var command = connection.CreateCommand())
             {
                 command.CommandText = @"
-SELECT TOP 1 s.[name], t.[name], c.[name]
+SELECT s.[name], t.[name], c.[name]
 FROM sys.tables t
 JOIN sys.schemas s ON s.schema_id = t.schema_id
 JOIN sys.columns c ON c.object_id = t.object_id
 WHERE t.object_id <> OBJECT_ID(N'[dbo].[Car_Issue]')
-  AND LOWER(REPLACE(c.[name], '_', '')) = 'ownerid'
-ORDER BY
-  CASE WHEN EXISTS (
-    SELECT 1 FROM sys.foreign_key_columns fkc
-    WHERE fkc.parent_object_id = OBJECT_ID(N'[dbo].[Car_Issue]')
-      AND fkc.referenced_object_id = t.object_id
-  ) THEN 0 ELSE 1 END,
-  CASE WHEN LOWER(t.[name]) LIKE '%owner%' THEN 0 WHEN LOWER(t.[name]) LIKE '%user%' THEN 1 ELSE 2 END,
-  t.[name];";
+  AND LOWER(REPLACE(REPLACE(c.[name], '_', ''), '-', '')) IN
+      ('ownerid', 'userid', 'customerid', 'personid', 'id')
+ORDER BY s.[name], t.[name], c.column_id;";
+                command.CommandTimeout = 10;
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        candidates.Add(new ParkingOwnerCandidate
+                        {
+                            Schema = reader.GetString(0),
+                            Table = reader.GetString(1),
+                            KeyColumn = reader.GetString(2)
+                        });
+                    }
+                }
+            }
+
+            ParkingOwnerSource best = null;
+            var bestScore = Int32.MinValue;
+            foreach (var candidate in candidates)
+            {
+                var columns = LoadColumns(connection, candidate.Schema, candidate.Table);
+                var score = OwnerCandidateScore(candidate, columns);
+                if (score < 3 || score <= bestScore || !HasOwnerOverlap(connection, candidate)) continue;
+                bestScore = score;
+                best = new ParkingOwnerSource
+                {
+                    Schema = candidate.Schema,
+                    Table = candidate.Table,
+                    KeyColumn = candidate.KeyColumn,
+                    Columns = columns
+                };
+            }
+            return best;
+        }
+
+        private sealed class ParkingOwnerCandidate
+        {
+            public string Schema { get; set; }
+            public string Table { get; set; }
+            public string KeyColumn { get; set; }
+        }
+
+        private static ParkingOwnerSource FindOwnerSourceFromForeignKey(SqlConnection connection)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = @"
+SELECT TOP 1 rs.[name], rt.[name], rc.[name]
+FROM sys.foreign_key_columns fkc
+JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+JOIN sys.tables rt ON rt.object_id = fkc.referenced_object_id
+JOIN sys.schemas rs ON rs.schema_id = rt.schema_id
+JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+WHERE fkc.parent_object_id = OBJECT_ID(N'[dbo].[Car_Issue]')
+  AND LOWER(REPLACE(REPLACE(pc.[name], '_', ''), '-', '')) = 'ownerid';";
                 command.CommandTimeout = 10;
                 using (var reader = command.ExecuteReader())
                 {
@@ -242,6 +331,42 @@ ORDER BY
                     };
                 }
             }
+        }
+
+        private static int OwnerCandidateScore(ParkingOwnerCandidate candidate, List<ParkingColumn> columns)
+        {
+            var table = NormalizeName(candidate.Table);
+            var key = NormalizeName(candidate.KeyColumn);
+            var score = table.Contains("owner") || table.Contains("user") || table.Contains("customer") ||
+                table.Contains("person") || table.Contains("业主") || table.Contains("住户") ? 4 : 0;
+            if (key == "ownerid") score += 4;
+            foreach (var column in columns)
+            {
+                var name = NormalizeName(column.Name);
+                if (name.Contains("name") || name.Contains("姓名") || name.Contains("业主")) score += 2;
+                if (name.Contains("phone") || name.Contains("mobile") || name.Contains("tel") || name.Contains("电话") || name.Contains("手机")) score += 2;
+                if (name.Contains("room") || name.Contains("house") || name.Contains("address") || name.Contains("房号") || name.Contains("地址")) score += 2;
+                if (name.Contains("note") || name.Contains("remark") || name.Contains("备注")) score += 1;
+            }
+            return score;
+        }
+
+        private static bool HasOwnerOverlap(SqlConnection connection, ParkingOwnerCandidate candidate)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT TOP 1 1 FROM [dbo].[Car_Issue] c WITH (NOLOCK) INNER JOIN " +
+                    QuoteName(candidate.Schema, candidate.Table) + " o WITH (NOLOCK) ON " +
+                    "CONVERT(NVARCHAR(200), c.[Owner_ID]) = CONVERT(NVARCHAR(200), o." + QuoteColumn(candidate.KeyColumn) + ") " +
+                    "WHERE c.[Owner_ID] IS NOT NULL;";
+                command.CommandTimeout = 5;
+                return command.ExecuteScalar() != null;
+            }
+        }
+
+        private static string NormalizeName(string value)
+        {
+            return (value ?? "").ToLowerInvariant().Replace("_", "").Replace("-", "").Replace(" ", "");
         }
 
         private static List<ParkingColumn> LoadColumns(SqlConnection connection, string schema, string table)

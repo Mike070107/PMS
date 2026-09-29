@@ -294,18 +294,42 @@ export class AccessCardIssuanceService {
     const byPhone = new Map(users
       .filter((user) => user.phone)
       .map((user) => [normalizeParkingPhone(user.phone), user] as const));
+    const houseIds = Array.from(new Set(users.map((user) => user.houseId).filter((id): id is number => id !== null)));
+    const houses = houseIds.length ? await this.houseRepo.find({ where: { tenantId, id: In(houseIds) } }) : [];
+    const buildingIds = Array.from(new Set(houses.map((house) => house.buildingId)));
+    const buildings = buildingIds.length ? await this.buildingRepo.find({ where: { tenantId, id: In(buildingIds) } }) : [];
+    const communityIds = Array.from(new Set(buildings.map((building) => building.communityId)));
+    const communities = communityIds.length ? await this.communityRepo.find({ where: { tenantId, id: In(communityIds) } }) : [];
+    const houseById = new Map(houses.map((house) => [house.id, house]));
+    const buildingById = new Map(buildings.map((building) => [building.id, building]));
+    const communityById = new Map(communities.map((community) => [community.id, community]));
     return rows.map((row) => {
       const rawPhone = parkingFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', '手机', '电话']);
       const user = rawPhone ? byPhone.get(normalizeParkingPhone(rawPhone) ?? '') : undefined;
       return {
         ...row,
-        pmsMatch: user ? {
+        pmsMatch: user ? (() => {
+          const house = user.houseId ? houseById.get(user.houseId) : undefined;
+          const building = house ? buildingById.get(house.buildingId) : undefined;
+          const community = building ? communityById.get(building.communityId) : undefined;
+          return {
           userId: user.id,
           houseId: user.houseId,
           name: user.name,
           phone: user.phone,
+          contactNote: user.contactNote,
+          house: house && building ? {
+            id: house.id,
+            roomNo: house.roomNo,
+            areaSqm: house.areaSqm,
+            lane: building.lane,
+            buildingNo: building.buildingNo,
+            communityId: community?.id ?? null,
+            communityName: community?.name ?? null,
+          } : null,
           matchedBy: 'phone' as const,
-        } : null,
+          };
+        })() : null,
       };
     });
   }

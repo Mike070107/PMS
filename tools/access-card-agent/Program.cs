@@ -164,6 +164,17 @@ namespace Pms.AccessCardAgent
                     foreach (var probe in probes) PrintParkingProbe(probe);
                     return 0;
                 }
+                if (args.Length > 0 && args[0] == "--parking-procedure-info")
+                {
+                    var password = SecretStore.Load(parkingPasswordPath);
+                    foreach (var database in new[] { config.ParkingPhase1Database, config.ParkingPhase2Database })
+                    {
+                        Console.WriteLine("[" + database + "]");
+                        foreach (var item in ParkingDatabase.DescribeProcedures(config, password, database))
+                            Console.WriteLine(item.Key + ": " + item.Value);
+                    }
+                    return 0;
+                }
                 if (args.Length > 1 && args[0] == "--legacy-count")
                 {
                     var result = LegacyDatabase.GetNextSequence(config, SecretStore.Load(databasePasswordPath), args[1]);

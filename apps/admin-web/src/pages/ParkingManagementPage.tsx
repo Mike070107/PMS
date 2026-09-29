@@ -3,6 +3,7 @@ import {
   App as AntdApp,
   Button,
   Card,
+  Checkbox,
   Empty,
   Input,
   Modal,
@@ -16,6 +17,8 @@ import {
   CalendarOutlined,
   CarOutlined,
   DatabaseOutlined,
+  CopyOutlined,
+  EditOutlined,
   HomeOutlined,
   PhoneOutlined,
   PlusOutlined,
@@ -24,13 +27,13 @@ import {
   SafetyCertificateOutlined,
   SearchOutlined,
   UserOutlined,
-  WarningOutlined,
 } from '@ant-design/icons';
 import {
   accessCardIssuance,
   type AccessCardReadiness,
 } from '@pms/api-client';
 import { useCallback, useEffect, useState } from 'react';
+import OwnerFormModal, { type OwnerRow } from './OwnerFormModal';
 import './ParkingManagementPage.css';
 
 const { Text, Title } = Typography;
@@ -56,6 +59,7 @@ export default function ParkingManagementPage({
   const [searchedTerm, setSearchedTerm] = useState('');
   const [proofUpload, setProofUpload] = useState<accessCardIssuance.ParkingProofUpload | null>(null);
   const [proofLoading, setProofLoading] = useState(false);
+  const [editingPmsOwner, setEditingPmsOwner] = useState<OwnerRow | undefined>();
 
   const loadReadiness = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -269,7 +273,14 @@ export default function ParkingManagementPage({
             <div className="parking-query-summary">
               <CheckCircleOutlined /> 找到 {rows.length} 条真实记录，其中 {rows.filter((row) => row.pmsMatch).length} 条已关联 PMS 用户
             </div>
-            {rows.map((row, index) => <ParkingResultCard key={`${row.database}-${index}`} row={row} proofLoading={proofLoading} onCreateProof={() => void createProofUpload(row)} />)}
+            {rows.map((row, index) => <ParkingResultCard
+              key={`${row.database}-${index}`}
+              row={row}
+              canWriteLocal={canWriteLocal}
+              proofLoading={proofLoading}
+              onCreateProof={() => void createProofUpload(row)}
+              onEditPms={(owner) => setEditingPmsOwner(owner)}
+            />)}
           </div>
         ) : (
           <Empty
@@ -307,6 +318,12 @@ export default function ParkingManagementPage({
           </div>
         )}
       </Modal>
+      <OwnerFormModal
+        open={!!editingPmsOwner}
+        target={editingPmsOwner}
+        onClose={() => setEditingPmsOwner(undefined)}
+        onDone={() => { setEditingPmsOwner(undefined); void searchParking(); }}
+      />
 
       <Modal
         title={`亲情车证明材料 · ${proofUpload?.plate || ''}`}
@@ -373,12 +390,6 @@ function plateValue(fields: ParkingQueryRow['fields']): string {
   return detected ? String(detected) : '车牌字段待识别';
 }
 
-function databaseLabel(database: string): string {
-  if (database.toLowerCase() === 'parking1') return '枫桦景苑一期';
-  if (database.toLowerCase() === 'parking2') return '枫桦景苑二期';
-  return database;
-}
-
 function vehicleIdentity(fields: ParkingQueryRow['fields']): string | null {
   const raw = fieldValue(fields, fieldAliases.identity);
   if (!raw) return null;
@@ -394,36 +405,28 @@ function enabledChannelNumbers(value: string | null): number[] {
   return Array.from(value).flatMap((bit, index) => bit === '1' ? [index + 1] : []);
 }
 
-function downloadState(database: string, fields: ParkingQueryRow['fields']) {
-  const effective = fieldValue(fields, fieldAliases.effective);
-  const downloaded = fieldValue(fields, fieldAliases.download);
-  const activeChannels = database.toLowerCase() === 'parking1'
-    ? new Set([5, 7])
-    : new Set([9, 11, 13, 15, 17, 19, 21]);
-  // parking2 的 23/25 是已被德立云替代的人防旧通道号，不能再参与旧系统生效判断。
-  const required = enabledChannelNumbers(effective).filter((channel) => activeChannels.has(channel));
-  if (required.length === 0) return { ready: false, label: '旧系统未设置现行授权' };
-  if (!downloaded) return { ready: false, label: '尚无设备下载记录' };
-  const missingChannels = required.filter((channel) => downloaded[channel - 1] !== '1');
-  return missingChannels.length === 0
-    ? { ready: true, label: '设备下载成功 · 授权已生效' }
-    : { ready: false, label: `尚未全部下载 · 缺少 ${missingChannels.length} 个授权通道` };
+function garageRows(database: string, fields: ParkingQueryRow['fields']) {
+  const effective = enabledChannelNumbers(fieldValue(fields, fieldAliases.effective));
+  const downloaded = enabledChannelNumbers(fieldValue(fields, fieldAliases.download));
+  const state = (channels: number[]) => ({
+    authorized: database.toLowerCase() === (channels[0] === 5 ? 'parking1' : 'parking2') && channels.some((item) => effective.includes(item)),
+    downloaded: database.toLowerCase() === (channels[0] === 5 ? 'parking1' : 'parking2') && channels.filter((item) => effective.includes(item)).every((item) => downloaded.includes(item)),
+  });
+  return [
+    { key: 'phase1', label: '一期地面车库', source: 'parking1', ...state([5, 7]) },
+    { key: 'phase2', label: '二期地面车库', source: 'parking2', ...state([9, 11, 13]) },
+    { key: 'main', label: '二期大车库', source: 'parking2', ...state([15, 17, 19, 21]) },
+    { key: 'civil', label: '二期人防车库', source: '德立云', authorized: false, downloaded: false, cloud: true },
+  ];
 }
 
-function authorizationLabels(database: string, fields: ParkingQueryRow['fields']): string[] {
-  const channels = enabledChannelNumbers(fieldValue(fields, fieldAliases.effective));
-  const labels: string[] = [];
-  if (database.toLowerCase() === 'parking1') {
-    if (channels.some((item) => item === 5 || item === 7)) labels.push('一期地面车库');
-  } else if (database.toLowerCase() === 'parking2') {
-    if (channels.some((item) => [9, 11, 13].includes(item))) labels.push('二期地面车库');
-    if (channels.some((item) => [15, 17, 19, 21].includes(item))) labels.push('二期大车库');
-    labels.push('二期人防车库：以德立云为准');
-  }
-  return labels.length > 0 ? labels : ['未识别授权区域'];
-}
-
-function ParkingResultCard({ row, onCreateProof, proofLoading }: { row: ParkingQueryRow; onCreateProof: () => void; proofLoading: boolean }) {
+function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, proofLoading }: {
+  row: ParkingQueryRow;
+  canWriteLocal: boolean;
+  onCreateProof: () => void;
+  onEditPms: (owner: OwnerRow) => void;
+  proofLoading: boolean;
+}) {
   const plate = plateValue(row.fields);
   const owner = fieldValue(row.fields, fieldAliases.owner) || '未记录住户姓名';
   const room = fieldValue(row.fields, fieldAliases.room) || '未识别房号';
@@ -432,8 +435,7 @@ function ParkingResultCard({ row, onCreateProof, proofLoading }: { row: ParkingQ
   const expiry = fieldValue(row.fields, fieldAliases.expiry);
   const identity = vehicleIdentity(row.fields);
   const note = fieldValue(row.fields, fieldAliases.note);
-  const deviceState = downloadState(row.database, row.fields);
-  const authorization = authorizationLabels(row.database, row.fields);
+  const garages = garageRows(row.database, row.fields);
   const ownerId = fieldValue(row.fields, fieldAliases.ownerId);
   const details = Object.entries(row.fields).filter(([, value]) => value !== null && String(value).trim() !== '').slice(0, 24);
   return (
@@ -442,25 +444,32 @@ function ParkingResultCard({ row, onCreateProof, proofLoading }: { row: ParkingQ
       <div className="parking-query-primary">
         <strong><HomeOutlined /> {room}</strong>
         <span><UserOutlined /> {owner}</span>
+        <Tag color="blue">{row.database.toLowerCase() === 'parking1' ? '枫桦景苑一期旧库' : '枫桦景苑二期旧库'}</Tag>
       </div>
       <div className="parking-query-meta">
         {phone && <span><PhoneOutlined /> {phone}</span>}
         {space && <span><CarOutlined /> {space}</span>}
         {expiry && <span><CalendarOutlined /> 到期：{expiry}</span>}
       </div>
-      <Space wrap size={[6, 6]}>
-        <Tag color="blue">{databaseLabel(row.database)}</Tag>
-        {identity && <Tag color="purple">{identity}</Tag>}
-        {authorization.map((label) => <Tag color={label.includes('德立云') ? 'gold' : label === '二期大车库' ? 'cyan' : 'geekblue'} key={label}>{label}</Tag>)}
-        <Tag color={deviceState.ready ? 'success' : 'warning'} icon={deviceState.ready ? <CheckCircleOutlined /> : <WarningOutlined />}>
-          {deviceState.label}
-        </Tag>
-        {ownerId && <Tag>旧库住户 #{ownerId}</Tag>}
-        <Tag color={row.pmsMatch ? 'success' : 'warning'}>
-          {row.pmsMatch ? `已关联 PMS：${row.pmsMatch.name || row.pmsMatch.phone || `用户 #${row.pmsMatch.userId}`}` : '尚未关联 PMS 用户'}
-        </Tag>
-      </Space>
-      {note && <div className="parking-query-note"><strong>旧库备注</strong><span>{note}</span></div>}
+      <div className="parking-vehicle-type"><span>车辆授权类型</span><strong>{identity || '旧库未设置'}</strong><small>该类型决定续期价格，不代表车库权限</small></div>
+      <div className="parking-garage-table" role="table" aria-label="车库授权和设备下载状态">
+        <div className="parking-garage-head" role="row"><span>授权</span><span>车库</span><span>数据源</span><span>设备状态</span></div>
+        {garages.map((garage) => <div className="parking-garage-row" role="row" key={garage.key}>
+          <Checkbox checked={garage.authorized} disabled aria-label={`${garage.label}授权`} />
+          <strong>{garage.label}</strong><span>{garage.source}</span>
+          <Tag color={garage.cloud ? 'gold' : garage.authorized && garage.downloaded ? 'success' : garage.authorized ? 'warning' : 'default'}>
+            {garage.cloud ? '以德立云车牌为准' : garage.authorized ? (garage.downloaded ? '已下载生效' : '待下载') : '未授权'}
+          </Tag>
+        </div>)}
+      </div>
+      <div className="parking-owner-compare">
+        <OwnerDataPanel title={`旧停车系统${ownerId ? ` · 住户 #${ownerId}` : ''}`} name={owner} phone={phone} room={room} note={note}
+          editable={false} editHint={canWriteLocal ? '旧库住户更新任务待对接' : '本地写入权限未通过'} />
+        <OwnerDataPanel title="PMS 用户系统" name={row.pmsMatch?.name || '未关联'} phone={row.pmsMatch?.phone || null}
+          room={row.pmsMatch?.house ? `${row.pmsMatch.house.communityName || ''} ${row.pmsMatch.house.lane || ''}弄 ${row.pmsMatch.house.buildingNo}号 ${row.pmsMatch.house.roomNo}室` : null}
+          note={row.pmsMatch?.contactNote || null} editable={!!row.pmsMatch}
+          onEdit={row.pmsMatch ? () => onEditPms({ id: row.pmsMatch!.userId, name: row.pmsMatch!.name, phone: row.pmsMatch!.phone, status: 'active', source: null, contactNote: row.pmsMatch!.contactNote, houseId: row.pmsMatch!.houseId, house: row.pmsMatch!.house }) : undefined} />
+      </div>
       {identity === '亲情车' && (
         <div className="parking-family-actions">
           <div><strong>亲情车办理</strong><span>办公室不收费；门岗按优惠临时车计费。新增时必须收取证明材料。</span></div>
@@ -473,4 +482,19 @@ function ParkingResultCard({ row, onCreateProof, proofLoading }: { row: ParkingQ
       </details>
     </article>
   );
+}
+
+function OwnerDataPanel({ title, name, phone, room, note, editable, editHint, onEdit }: {
+  title: string; name: string; phone: string | null; room: string | null; note: string | null;
+  editable: boolean; editHint?: string; onEdit?: () => void;
+}) {
+  const text = [`姓名：${name}`, `电话：${phone || '未记录'}`, `房号：${room || '未记录'}`, `备注：${note || '无'}`].join('\n');
+  return <section className="parking-owner-panel">
+    <header><strong>{title}</strong><Space size={4}>
+      <Button size="small" icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(text)}>复制</Button>
+      <Button size="small" icon={<EditOutlined />} disabled={!editable} title={editHint} onClick={onEdit}>编辑</Button>
+    </Space></header>
+    <dl><div><dt>姓名</dt><dd>{name}</dd></div><div><dt>电话</dt><dd>{phone || '未记录'}</dd></div><div><dt>房号</dt><dd>{room || '未记录'}</dd></div><div><dt>备注</dt><dd>{note || '无'}</dd></div></dl>
+    {!editable && editHint && <small>{editHint}</small>}
+  </section>;
 }

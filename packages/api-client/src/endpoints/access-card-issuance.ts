@@ -105,6 +105,16 @@ export interface ParkingQueryRow {
     houseId: number | null;
     name: string | null;
     phone: string | null;
+    contactNote: string | null;
+    house: {
+      id: number;
+      roomNo: string;
+      areaSqm: string | null;
+      lane: string | null;
+      buildingNo: string;
+      communityId: number | null;
+      communityName: string | null;
+    } | null;
     matchedBy: 'phone';
   } | null;
 }

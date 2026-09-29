@@ -63,9 +63,11 @@ Web 选中房号后，`legacy_sync` 代理会自动领取只读历史查询，�
 ```powershell
 Get-Clipboard | .\Pms.DataSyncAssistant.exe --install-parking-db-password
 .\Pms.DataSyncAssistant.exe --parking-probe
+.\Pms.DataSyncAssistant.exe --parking-procedure-info
 ```
 
 `--parking-probe` 读取 `Car_Issue` / `Car_Download` 记录数，并检查停车存储过程是否存在。网关会另外验证两个库的存储过程执行权限，网页显示“受控写入测试已开放”后，才允许下一步用指定测试车牌验证登记、续期、换牌、注销和设备下载。
+`--parking-procedure-info` 只读取一期、二期各个存储过程的参数名和类型，用于核对新增车辆时是否同时维护授权和下载队列，不执行写入。
 
 0.4.1 起，停车网关会从 `Car_Issue.Owner_ID` 自动识别并联查旧库住户主表；车牌查询可同时返回住户字段，房号、姓名和电话也可反向查到车辆。查询使用参数化 SQL，一期、二期各最多返回 50 条；`228/5/301` 与 `198-5-201` 会同时尝试斜杠和横线形式，整个过程不执行写入语句。
 
