@@ -167,7 +167,7 @@ export class AccessCardIssuanceService {
       agent.capabilities?.parkingDbRead === true &&
       supportsParkingQueries(agent.version));
     if (!gateway) {
-      throw new ServiceUnavailableException('停车网关尚未连接，或 Windows 数据同步助手需要升级到 0.4.1');
+      throw new ServiceUnavailableException('停车网关尚未连接，或 Windows 数据同步助手需要升级到 0.4.0');
     }
 
     const query = this.parkingQueryRepo.create({
@@ -882,7 +882,7 @@ function supportsParkingQueries(version: string): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
   if (!match) return false;
   const [major, minor, patch] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  return major > 0 || minor > 4 || (minor === 4 && patch >= 1);
+  return major > 0 || minor > 4 || (minor === 4 && patch >= 0);
 }
 
 function normalizeParkingFieldName(value: string): string {
