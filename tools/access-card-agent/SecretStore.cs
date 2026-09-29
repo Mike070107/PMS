@@ -25,6 +25,14 @@ namespace Pms.AccessCardAgent
 
         public static string ReadHidden()
         {
+            // Console.ReadKey cannot receive pasted text reliably in older Windows
+            // PowerShell consoles. Piping Get-Clipboard redirects stdin and keeps the
+            // credential out of both the screen and command history.
+            if (Console.IsInputRedirected)
+            {
+                return Console.In.ReadToEnd().Trim();
+            }
+
             var value = new StringBuilder();
             ConsoleKeyInfo key;
             while ((key = Console.ReadKey(true)).Key != ConsoleKey.Enter)

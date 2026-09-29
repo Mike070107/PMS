@@ -18,7 +18,7 @@ C:\Windows\Microsoft.NET\Framework\v4.0.30319\MSBuild.exe .\AccessCardAgent.cspr
 
 1. 在 PMS 后台为对应电脑注册代理，复制只显示一次的代理 ID 和密钥。
 2. 使用对应电脑的专用包；包内 `agent.config.json` 已包含服务地址、类型和电脑名称。
-3. 运行 `Pms.AccessCardAgent.exe --install-agent <后台显示的代理ID>`，粘贴一次性密钥。程序会写入代理 ID，并把密钥保存为本机 DPAPI 密文 `agent.token.dat`。
+3. 在网页复制一次性密钥，然后运行 `Get-Clipboard | .\Pms.AccessCardAgent.exe --install-agent <后台显示的代理ID>`。管道输入可兼容旧版 PowerShell，密钥不会显示或进入命令历史。程序会写入代理 ID，并把密钥保存为本机 DPAPI 密文 `agent.token.dat`。
 4. 运行 `Pms.AccessCardAgent.exe --connect-test`。它只向 PMS 发送一次心跳，成功后立即退出，不会领取任务。
 5. 发卡电脑可再运行 `Pms.AccessCardAgent.exe --readers`，确认输出包含 `ACR122`。
 6. 正常启动程序后，PMS 页面应显示对应代理在线。
