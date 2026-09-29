@@ -34,7 +34,7 @@ import {
 import { CreateAccessCardIssueDto } from './dto';
 import { AgentHeartbeatDto, AgentReportDto, EnrollAccessCardAgentDto, LegacyHistoryReportDto } from './dto';
 import { agentTokenMatches, issueAgentSecret } from './agent-auth';
-import { effectiveAgentStatus } from './agent-status';
+import { effectiveAgentStatus, orderAgentsByAvailability } from './agent-status';
 
 type HouseContext = {
   house: House;
@@ -130,7 +130,7 @@ export class AccessCardIssuanceService {
         parkingDbWrite: false,
         controllerUpload: false,
       },
-      agents: agents.map((agent) => ({
+      agents: orderAgentsByAvailability(agents).map((agent) => ({
         id: agent.agentKey,
         kind: agent.kind,
         name: agent.name,

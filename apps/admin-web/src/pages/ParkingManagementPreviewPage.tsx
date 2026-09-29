@@ -236,7 +236,10 @@ export default function ParkingManagementPage({ preview = false }: { preview?: b
     { key: 'reconciliation', label: <Badge count={3} size="small" offset={[9, 0]}>异常对账</Badge>, children: <ReconciliationPanel /> },
     { key: 'audit', label: '操作记录', children: <AuditPanel /> },
   ];
-  const parkingGateway = readiness?.agents.find((item) => item.kind === 'parking_gateway');
+  const parkingGateways = readiness?.agents.filter((item) => item.kind === 'parking_gateway') ?? [];
+  const parkingGateway = parkingGateways.find((item) => item.status === 'online')
+    ?? [...parkingGateways].sort((left, right) =>
+      new Date(right.lastSeenAt ?? 0).getTime() - new Date(left.lastSeenAt ?? 0).getTime())[0];
 
   return (
     <div className={`parking-page${preview ? ' is-preview' : ''}`}>

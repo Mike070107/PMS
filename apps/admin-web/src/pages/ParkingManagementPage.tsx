@@ -63,7 +63,10 @@ export default function ParkingManagementPage() {
     }
   };
 
-  const gateway = readiness?.agents.find((item) => item.kind === 'parking_gateway');
+  const parkingGateways = readiness?.agents.filter((item) => item.kind === 'parking_gateway') ?? [];
+  const gateway = parkingGateways.find((item) => item.status === 'online')
+    ?? [...parkingGateways].sort((left, right) =>
+      new Date(right.lastSeenAt ?? 0).getTime() - new Date(left.lastSeenAt ?? 0).getTime())[0];
   const online = gateway?.status === 'online';
   const canRead = online && readiness?.features.parkingDbRead === true;
 
