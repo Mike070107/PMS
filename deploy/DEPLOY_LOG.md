@@ -3398,3 +3398,11 @@
 - 自上次（15fa6a5）以来上线的相关提交：
   - c63c0b3 feat(parking): decode legacy authorization and collect family proof
 
+## 2026-09-29 18:28 · web · c63c0b3
+
+- 包：`pms-web-20260929-1825.tar.gz`
+- 提交：c63c0b3 feat(parking): decode legacy authorization and collect family proof
+- 说明：生产停车卡片展示车型、备注、授权状态与亲情车材料二维码
+- 自上次（ad00c72）以来上线的相关提交：
+  - c63c0b3 feat(parking): decode legacy authorization and collect family proof
+
