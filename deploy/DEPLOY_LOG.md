@@ -3326,3 +3326,10 @@
 - 自上次（ae8691f）以来上线的相关提交：
   - cbefc3d fix(parking): prefer the active gateway registration
 
+## 2026-09-29 15:25 · api · cc23836
+
+- 包：`pms-api-20260929-1515.tar.gz`
+- 提交：cc23836 fix(parking): exclude live-query fixtures from production
+- 自上次（cbefc3d）以来上线的相关提交：
+  - 139752b feat(parking): connect live legacy database search
+
