@@ -3390,3 +3390,11 @@
   - 15fa6a5 fix(parking): keep raw queries compatible with agent 0.4.0
   - ad00c72 feat(parking): join legacy owners and match PMS users
 
+## 2026-09-29 18:27 · api · c63c0b3
+
+- 包：`pms-api-20260929-1825.tar.gz`
+- 提交：c63c0b3 feat(parking): decode legacy authorization and collect family proof
+- 说明：旧库车型/授权/下载生效识别与亲情车证明上传接口
+- 自上次（15fa6a5）以来上线的相关提交：
+  - c63c0b3 feat(parking): decode legacy authorization and collect family proof
+
