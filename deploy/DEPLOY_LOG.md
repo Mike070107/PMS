@@ -3381,3 +3381,12 @@
 - 自上次（ba9ce99）以来上线的相关提交：
   - ad00c72 feat(parking): join legacy owners and match PMS users
 
+## 2026-09-29 18:15 · api · 15fa6a5
+
+- 包：`pms-api-20260929-1815.tar.gz`
+- 提交：15fa6a5 fix(parking): keep raw queries compatible with agent 0.4.0
+- 说明：保留0.4.0旧库原始查询兼容，页面仍提示升级0.4.1以关联住户
+- 自上次（cc23836）以来上线的相关提交：
+  - 15fa6a5 fix(parking): keep raw queries compatible with agent 0.4.0
+  - ad00c72 feat(parking): join legacy owners and match PMS users
+
