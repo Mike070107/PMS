@@ -92,6 +92,13 @@ export interface AccessCardReadiness {
 export interface ParkingQueryRow {
   database: string;
   fields: Record<string, string | number | boolean | null>;
+  pmsMatch?: {
+    userId: number;
+    houseId: number | null;
+    name: string | null;
+    phone: string | null;
+    matchedBy: 'phone';
+  } | null;
 }
 
 export interface ParkingQuery {

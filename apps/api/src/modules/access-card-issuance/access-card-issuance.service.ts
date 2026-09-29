@@ -20,6 +20,7 @@ import {
   Community,
   House,
   ParkingQuery,
+  User,
 } from '../../entities';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
@@ -74,6 +75,8 @@ export class AccessCardIssuanceService {
     private readonly communityRepo: Repository<Community>,
     @InjectRepository(ParkingQuery)
     private readonly parkingQueryRepo: Repository<ParkingQuery>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly config: ConfigService,
   ) {}
 
@@ -164,7 +167,7 @@ export class AccessCardIssuanceService {
       agent.capabilities?.parkingDbRead === true &&
       supportsParkingQueries(agent.version));
     if (!gateway) {
-      throw new ServiceUnavailableException('停车网关尚未连接，或 Windows 数据同步助手需要升级到 0.4.0');
+      throw new ServiceUnavailableException('停车网关尚未连接，或 Windows 数据同步助手需要升级到 0.4.1');
     }
 
     const query = this.parkingQueryRepo.create({
@@ -257,16 +260,46 @@ export class AccessCardIssuanceService {
     return { ok: true };
   }
 
-  private parkingQueryResponse(query: ParkingQuery) {
+  private async parkingQueryResponse(query: ParkingQuery) {
+    const rows = query.status === 'completed'
+      ? await this.matchParkingRowsToPms(query.tenantId, query.rows)
+      : [];
     return {
       id: query.id,
       term: query.term,
       status: query.status,
-      rows: query.status === 'completed' ? query.rows : [],
+      rows,
       error: query.status === 'failed' ? query.lastError : null,
       requestedAt: query.requestedAt,
       completedAt: query.completedAt,
     };
+  }
+
+  private async matchParkingRowsToPms(tenantId: number, rows: ParkingQuery['rows']) {
+    const phones = Array.from(new Set(rows
+      .map((row) => parkingFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', '手机', '电话']))
+      .map((value) => normalizeParkingPhone(value))
+      .filter((value): value is string => Boolean(value))));
+    const users = phones.length
+      ? await this.userRepo.find({ where: { tenantId, phone: In(phones) } })
+      : [];
+    const byPhone = new Map(users
+      .filter((user) => user.phone)
+      .map((user) => [normalizeParkingPhone(user.phone), user] as const));
+    return rows.map((row) => {
+      const rawPhone = parkingFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', '手机', '电话']);
+      const user = rawPhone ? byPhone.get(normalizeParkingPhone(rawPhone) ?? '') : undefined;
+      return {
+        ...row,
+        pmsMatch: user ? {
+          userId: user.id,
+          houseId: user.houseId,
+          name: user.name,
+          phone: user.phone,
+          matchedBy: 'phone' as const,
+        } : null,
+      };
+    });
   }
 
   async enrollAgent(dto: EnrollAccessCardAgentDto, user: AuthUser) {
@@ -848,8 +881,31 @@ export class AccessCardIssuanceService {
 function supportsParkingQueries(version: string): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
   if (!match) return false;
-  const [major, minor] = [Number(match[1]), Number(match[2])];
-  return major > 0 || minor >= 4;
+  const [major, minor, patch] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  return major > 0 || minor > 4 || (minor === 4 && patch >= 1);
+}
+
+function normalizeParkingFieldName(value: string): string {
+  return value.toLowerCase().replace(/[\s_\-./]/g, '');
+}
+
+function parkingFieldValue(
+  fields: Record<string, string | number | boolean | null>,
+  aliases: readonly string[],
+): string | null {
+  const entries = Object.entries(fields).filter(([, value]) => value !== null && String(value).trim() !== '');
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeParkingFieldName(alias);
+    const match = entries.find(([key]) => normalizeParkingFieldName(key).includes(normalizedAlias));
+    if (match) return String(match[1]).trim();
+  }
+  return null;
+}
+
+function normalizeParkingPhone(value: string | null): string | null {
+  if (!value) return null;
+  const digits = value.replace(/\D/g, '');
+  return /^1\d{10}$/.test(digits) ? digits : null;
 }
 
 function sanitizeParkingRows(rows: ParkingQueryReportDto['rows']): ParkingQuery['rows'] {

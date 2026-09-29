@@ -67,6 +67,6 @@ Get-Clipboard | .\Pms.DataSyncAssistant.exe --install-parking-db-password
 
 `--parking-probe` 只读取 `Car_Issue` / `Car_Download` 记录数，并检查停车存储过程是否存在。当前 `parkingDbWrite=false`，不会登记、续期、换牌、注销或创建设备下载任务。
 
-0.4.0 起，停车网关还会自动领取网页发起的只读查询。查询使用参数化 SQL，在 `Car_Issue` 的文本字段中匹配房号、住户、电话或车牌；一期、二期各最多返回 50 条。`228/5/301` 与 `198-5-201` 会同时尝试斜杠和横线形式，整个过程不执行写入语句。
+0.4.1 起，停车网关会从 `Car_Issue.Owner_ID` 自动识别并联查旧库住户主表；车牌查询可同时返回住户字段，房号、姓名和电话也可反向查到车辆。查询使用参数化 SQL，一期、二期各最多返回 50 条；`228/5/301` 与 `198-5-201` 会同时尝试斜杠和横线形式，整个过程不执行写入语句。
 
 `agent.config.json`、`agent.token.dat`、`legacy-db-password.dat`、`parking-db-password.dat`、卡片密钥、完整卡镜像和数据库密码均不得进入 Git 或普通日志。

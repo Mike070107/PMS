@@ -74,10 +74,19 @@ namespace Pms.AccessCardAgent
                 connection.Open();
                 if (!ObjectExists(connection, "Car_Issue", "U"))
                     throw new InvalidOperationException(database + " 中不存在 Car_Issue 表");
-                var columns = LoadColumns(connection);
+                var columns = LoadColumns(connection, "dbo", "Car_Issue");
                 var searchable = columns.FindAll(delegate(ParkingColumn column) { return column.Searchable; });
-                if (searchable.Count > 40) searchable.RemoveRange(40, searchable.Count - 40);
-                if (searchable.Count == 0)
+                var ownerSource = FindOwnerSource(connection);
+                var ownerSearchable = ownerSource == null
+                    ? new List<ParkingColumn>()
+                    : ownerSource.Columns.FindAll(delegate(ParkingColumn column) { return column.Searchable; });
+                if (searchable.Count + ownerSearchable.Count > 40)
+                {
+                    var ownerLimit = Math.Max(0, 40 - searchable.Count);
+                    if (ownerSearchable.Count > ownerLimit)
+                        ownerSearchable.RemoveRange(ownerLimit, ownerSearchable.Count - ownerLimit);
+                }
+                if (searchable.Count == 0 && ownerSearchable.Count == 0)
                     throw new InvalidOperationException(database + " 的 Car_Issue 没有可查询的文本字段");
 
                 var variants = SearchVariants(term);
@@ -89,9 +98,26 @@ namespace Pms.AccessCardAgent
                         var parameterName = "@term" + valueIndex;
                         command.Parameters.Add(parameterName, SqlDbType.NVarChar, 200).Value = "%" + EscapeLike(variants[valueIndex]) + "%";
                         foreach (var column in searchable)
-                            predicates.Add("CONVERT(NVARCHAR(4000), " + QuoteColumn(column.Name) + ") LIKE " + parameterName + " ESCAPE N'~'");
+                            predicates.Add("CONVERT(NVARCHAR(4000), c." + QuoteColumn(column.Name) + ") LIKE " + parameterName + " ESCAPE N'~'");
+                        foreach (var column in ownerSearchable)
+                            predicates.Add("CONVERT(NVARCHAR(4000), o." + QuoteColumn(column.Name) + ") LIKE " + parameterName + " ESCAPE N'~'");
                     }
-                    command.CommandText = "SELECT TOP 50 * FROM [dbo].[Car_Issue] WITH (NOLOCK) WHERE " + String.Join(" OR ", predicates.ToArray()) + ";";
+                    var select = "c.*";
+                    var join = "";
+                    if (ownerSource != null)
+                    {
+                        var ownerFields = new List<string>();
+                        foreach (var column in ownerSource.Columns)
+                        {
+                            if (ownerFields.Count >= 35) break;
+                            ownerFields.Add("o." + QuoteColumn(column.Name) + " AS " + QuoteColumn("Owner__" + column.Name));
+                        }
+                        if (ownerFields.Count > 0) select += ", " + String.Join(", ", ownerFields.ToArray());
+                        join = " LEFT JOIN " + QuoteName(ownerSource.Schema, ownerSource.Table) + " o WITH (NOLOCK) ON " +
+                            "CONVERT(NVARCHAR(200), c.[Owner_ID]) = CONVERT(NVARCHAR(200), o." + QuoteColumn(ownerSource.KeyColumn) + ")";
+                    }
+                    command.CommandText = "SELECT TOP 50 " + select + " FROM [dbo].[Car_Issue] c WITH (NOLOCK)" + join +
+                        " WHERE " + String.Join(" OR ", predicates.ToArray()) + ";";
                     command.CommandTimeout = 15;
                     var rows = new List<ParkingSearchRow>();
                     using (var reader = command.ExecuteReader(CommandBehavior.SequentialAccess))
@@ -144,7 +170,53 @@ namespace Pms.AccessCardAgent
             public bool Searchable { get; set; }
         }
 
-        private static List<ParkingColumn> LoadColumns(SqlConnection connection)
+        private sealed class ParkingOwnerSource
+        {
+            public string Schema { get; set; }
+            public string Table { get; set; }
+            public string KeyColumn { get; set; }
+            public List<ParkingColumn> Columns { get; set; }
+        }
+
+        private static ParkingOwnerSource FindOwnerSource(SqlConnection connection)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = @"
+SELECT TOP 1 s.[name], t.[name], c.[name]
+FROM sys.tables t
+JOIN sys.schemas s ON s.schema_id = t.schema_id
+JOIN sys.columns c ON c.object_id = t.object_id
+WHERE t.object_id <> OBJECT_ID(N'[dbo].[Car_Issue]')
+  AND LOWER(REPLACE(c.[name], '_', '')) = 'ownerid'
+ORDER BY
+  CASE WHEN EXISTS (
+    SELECT 1 FROM sys.foreign_key_columns fkc
+    WHERE fkc.parent_object_id = OBJECT_ID(N'[dbo].[Car_Issue]')
+      AND fkc.referenced_object_id = t.object_id
+  ) THEN 0 ELSE 1 END,
+  CASE WHEN LOWER(t.[name]) LIKE '%owner%' THEN 0 WHEN LOWER(t.[name]) LIKE '%user%' THEN 1 ELSE 2 END,
+  t.[name];";
+                command.CommandTimeout = 10;
+                using (var reader = command.ExecuteReader())
+                {
+                    if (!reader.Read()) return null;
+                    var schema = reader.GetString(0);
+                    var table = reader.GetString(1);
+                    var keyColumn = reader.GetString(2);
+                    reader.Close();
+                    return new ParkingOwnerSource
+                    {
+                        Schema = schema,
+                        Table = table,
+                        KeyColumn = keyColumn,
+                        Columns = LoadColumns(connection, schema, table)
+                    };
+                }
+            }
+        }
+
+        private static List<ParkingColumn> LoadColumns(SqlConnection connection, string schema, string table)
         {
             var columns = new List<ParkingColumn>();
             using (var command = connection.CreateCommand())
@@ -153,8 +225,9 @@ namespace Pms.AccessCardAgent
 SELECT c.[name], t.[name]
 FROM sys.columns c
 JOIN sys.types t ON c.user_type_id = t.user_type_id
-WHERE c.object_id = OBJECT_ID(N'[dbo].[Car_Issue]')
+WHERE c.object_id = OBJECT_ID(@qualified)
 ORDER BY c.column_id;";
+                command.Parameters.Add("@qualified", SqlDbType.NVarChar, 300).Value = QuoteName(schema, table);
                 command.CommandTimeout = 10;
                 using (var reader = command.ExecuteReader())
                 {
@@ -248,6 +321,11 @@ SELECT CASE WHEN EXISTS (
         private static string QuoteName(string value)
         {
             return "[dbo].[" + value.Replace("]", "]]" ) + "]";
+        }
+
+        private static string QuoteName(string schema, string table)
+        {
+            return "[" + schema.Replace("]", "]]" ) + "].[" + table.Replace("]", "]]" ) + "]";
         }
     }
 }

@@ -161,7 +161,7 @@ export default function ParkingManagementPage({
         description={canQuery
           ? '查询会实时读取现场 parking1、parking2 的 Car_Issue 表；当前仍为只读，不会修改旧系统。'
           : online
-            ? `现场网关版本为 ${gateway?.version || '未知'}，升级 Windows 数据同步助手到 0.4.0 后即可查询。`
+            ? `现场网关版本为 ${gateway?.version || '未知'}，升级 Windows 数据同步助手到 0.4.1 后即可联查住户。`
             : '请先在下方注册并安装 Windows 本地停车网关。连接完成前不会显示任何模拟住户、车牌、车位或收费记录。'}
       />
 
@@ -188,10 +188,10 @@ export default function ParkingManagementPage({
           <Tag color={online ? 'success' : 'default'}>{online ? '在线' : '未连接'}</Tag>
           <div className="parking-device-databases">
             <Tag color={canQuery ? 'success' : 'default'} icon={canQuery ? <CheckCircleOutlined /> : <DatabaseOutlined />}>
-              parking1 {canQuery ? '已连接' : '未验证'}
+              枫桦景苑一期 {canQuery ? '已连接' : '未验证'}
             </Tag>
             <Tag color={canQuery ? 'success' : 'default'} icon={canQuery ? <CheckCircleOutlined /> : <DatabaseOutlined />}>
-              parking2 {canQuery ? '已连接' : '未验证'}
+              枫桦景苑二期 {canQuery ? '已连接' : '未验证'}
             </Tag>
             <Tag color={canQuery ? 'success' : canRead ? 'gold' : 'default'}>{canQuery ? '查询已就绪' : canRead ? '需升级助手' : '尚未验证'}</Tag>
             <Tag>写入未开放</Tag>
@@ -222,7 +222,9 @@ export default function ParkingManagementPage({
           <div className="parking-query-loading"><Spin /><span>正在查询一期、二期停车数据库…</span></div>
         ) : rows.length > 0 ? (
           <div className="parking-query-results">
-            <div className="parking-query-summary"><CheckCircleOutlined /> 找到 {rows.length} 条与“{searchedTerm}”匹配的真实记录</div>
+            <div className="parking-query-summary">
+              <CheckCircleOutlined /> 找到 {rows.length} 条真实记录，其中 {rows.filter((row) => row.pmsMatch).length} 条已关联 PMS 用户
+            </div>
             {rows.map((row, index) => <ParkingResultCard key={`${row.database}-${index}`} row={row} />)}
           </div>
         ) : (
@@ -230,7 +232,7 @@ export default function ParkingManagementPage({
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={searchedTerm
               ? `没有查到与“${searchedTerm}”匹配的停车记录`
-              : canQuery ? '输入房号、住户、电话或车牌开始查询' : online ? '网关已连接，请升级 Windows 助手到 0.4.0' : '未连接真实停车数据库，不显示模拟数据'}
+              : canQuery ? '输入房号、住户、电话或车牌开始查询' : online ? '网关已连接，请升级 Windows 助手到 0.4.1' : '未连接真实停车数据库，不显示模拟数据'}
           />
         )}
       </Card>
@@ -267,7 +269,7 @@ export default function ParkingManagementPage({
 
 function supportsParkingQueries(version?: string): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
-  return Boolean(match && (Number(match[1]) > 0 || Number(match[2]) >= 4));
+  return Boolean(match && (Number(match[1]) > 0 || Number(match[2]) > 4 || (Number(match[2]) === 4 && Number(match[3]) >= 1)));
 }
 
 const fieldAliases = {
@@ -277,6 +279,8 @@ const fieldAliases = {
   phone: ['mobile', 'telephone', 'phone', 'tel', '手机', '电话'],
   space: ['parkno', 'parkingno', 'spaceno', 'berth', 'garage', '车位', '地库'],
   expiry: ['enddate', 'expiredate', 'expirydate', 'validto', 'deadline', 'overdate', 'endtime', '到期', '有效期'],
+  identity: ['vehicleidentity', 'caridentity', 'ownertype', 'usertype', 'relationtype', 'carlei', '车辆身份', '车辆类型', '车类', '身份', '性质'],
+  ownerId: ['ownerid', '住户编号', '业主编号'],
 } as const;
 
 function normalizeFieldName(value: string) {
@@ -303,6 +307,21 @@ function plateValue(fields: ParkingQueryRow['fields']): string {
   return detected ? String(detected) : '车牌字段待识别';
 }
 
+function databaseLabel(database: string): string {
+  if (database.toLowerCase() === 'parking1') return '枫桦景苑一期';
+  if (database.toLowerCase() === 'parking2') return '枫桦景苑二期';
+  return database;
+}
+
+function vehicleIdentity(fields: ParkingQueryRow['fields']): string | null {
+  const raw = fieldValue(fields, fieldAliases.identity);
+  if (!raw) return null;
+  if (raw.includes('亲情')) return '亲情车';
+  if (raw.includes('租')) return '租户车';
+  if (raw.includes('业主') || raw.includes('住户')) return '业主车';
+  return `旧库车辆类型 ${raw}`;
+}
+
 function ParkingResultCard({ row }: { row: ParkingQueryRow }) {
   const plate = plateValue(row.fields);
   const owner = fieldValue(row.fields, fieldAliases.owner) || '未记录住户姓名';
@@ -310,6 +329,8 @@ function ParkingResultCard({ row }: { row: ParkingQueryRow }) {
   const phone = fieldValue(row.fields, fieldAliases.phone);
   const space = fieldValue(row.fields, fieldAliases.space);
   const expiry = fieldValue(row.fields, fieldAliases.expiry);
+  const identity = vehicleIdentity(row.fields);
+  const ownerId = fieldValue(row.fields, fieldAliases.ownerId);
   const details = Object.entries(row.fields).filter(([, value]) => value !== null && String(value).trim() !== '').slice(0, 24);
   return (
     <article className="parking-query-card">
@@ -323,7 +344,14 @@ function ParkingResultCard({ row }: { row: ParkingQueryRow }) {
         {space && <span><CarOutlined /> {space}</span>}
         {expiry && <span><CalendarOutlined /> 到期：{expiry}</span>}
       </div>
-      <Tag color="blue">{row.database}</Tag>
+      <Space wrap size={[6, 6]}>
+        <Tag color="blue">{databaseLabel(row.database)}</Tag>
+        {identity && <Tag color="purple">{identity}</Tag>}
+        {ownerId && <Tag>旧库住户 #{ownerId}</Tag>}
+        <Tag color={row.pmsMatch ? 'success' : 'warning'}>
+          {row.pmsMatch ? `已关联 PMS：${row.pmsMatch.name || row.pmsMatch.phone || `用户 #${row.pmsMatch.userId}`}` : '尚未关联 PMS 用户'}
+        </Tag>
+      </Space>
       <details className="parking-query-details">
         <summary>查看旧库原始字段</summary>
         <dl>{details.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>

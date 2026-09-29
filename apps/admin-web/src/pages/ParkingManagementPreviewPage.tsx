@@ -283,10 +283,10 @@ export default function ParkingManagementPage({ preview = false }: { preview?: b
           <Tag color={parkingGateway?.status === 'online' ? 'success' : 'default'}>{parkingGateway?.status === 'online' ? '在线' : '未连接'}</Tag>
           <div className="parking-device-databases">
             <Tag color={parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? 'success' : 'default'} icon={parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? <CheckCircleOutlined /> : <DatabaseOutlined />}>
-              parking1 {parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? '已连接' : '未验证'}
+              枫桦景苑一期 {parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? '已连接' : '未验证'}
             </Tag>
             <Tag color={parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? 'success' : 'default'} icon={parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? <CheckCircleOutlined /> : <DatabaseOutlined />}>
-              parking2 {parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? '已连接' : '未验证'}
+              枫桦景苑二期 {parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? '已连接' : '未验证'}
             </Tag>
             <Tag color={readiness?.features.parkingDbRead ? 'blue' : 'default'}>只读探测</Tag><Tag>写入未开放</Tag>
           </div>
