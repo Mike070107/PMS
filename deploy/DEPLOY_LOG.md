@@ -3245,3 +3245,12 @@
 - 自上次（b8015bf）以来上线的相关提交：
   - 419deb0 fix(access-cards): scope buildings and stop background polling
 
+## 2026-09-29 10:52 · web · 419deb0
+
+- 包：`pms-web-20260929-1039.tar.gz`
+- 提交：419deb0 fix(access-cards): scope buildings and stop background polling
+- 说明：门禁额外楼栋显示完整弄号、自然排序并增加手动刷新；通知中心取消 60 秒轮询；生产首页、SPA、登录页和静态资源均 200（工作区仅构建缓存 tsbuildinfo 变化，未进入制品）
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
+- 自上次（b8015bf）以来上线的相关提交：
+  - 419deb0 fix(access-cards): scope buildings and stop background polling
+
