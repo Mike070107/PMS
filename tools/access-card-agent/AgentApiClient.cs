@@ -9,7 +9,7 @@ namespace Pms.AccessCardAgent
 {
     internal sealed class AgentApiClient
     {
-        public const string Version = "0.3.0";
+        public const string Version = "0.4.0";
         private readonly AgentConfig _config;
         private readonly string _token;
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer();
@@ -43,6 +43,13 @@ namespace Pms.AccessCardAgent
             return _json.ConvertToType<LegacyHistoryTask>(result["task"]);
         }
 
+        public ParkingQueryTask ClaimParkingQuery()
+        {
+            var result = Post("/access-card-agent/parking/queries/claim", new Dictionary<string, object>());
+            if (!result.ContainsKey("task") || result["task"] == null) return null;
+            return _json.ConvertToType<ParkingQueryTask>(result["task"]);
+        }
+
         public void Report(AgentReport report)
         {
             Post("/access-card-agent/report", report);
@@ -51,6 +58,11 @@ namespace Pms.AccessCardAgent
         public void ReportLegacyHistory(LegacyHistoryReport report)
         {
             Post("/access-card-agent/legacy-history/report", report);
+        }
+
+        public void ReportParkingQuery(ParkingQueryReport report)
+        {
+            Post("/access-card-agent/parking/queries/report", report);
         }
 
         private Dictionary<string, object> Post(string path, object body)
@@ -126,6 +138,20 @@ namespace Pms.AccessCardAgent
         public int issuedCount { get; set; }
         public int nextSequence { get; set; }
         public List<LegacyHistoryEntry> history { get; set; }
+        public string errorMessage { get; set; }
+    }
+
+    internal sealed class ParkingQueryTask
+    {
+        public int queryId { get; set; }
+        public string term { get; set; }
+    }
+
+    internal sealed class ParkingQueryReport
+    {
+        public int queryId { get; set; }
+        public string result { get; set; }
+        public List<ParkingSearchRow> rows { get; set; }
         public string errorMessage { get; set; }
     }
 }

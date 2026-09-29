@@ -63,13 +63,21 @@ namespace Pms.AccessCardAgent
                         throw new InvalidOperationException("代理 ID 粘贴容错测试失败");
                     if (AgentConfig.NormalizeAgentId("parking_gateway-parking_gateway-a8c6fe8239867d2e") != "parking_gateway-a8c6fe8239867d2e")
                         throw new InvalidOperationException("停车网关代理 ID 粘贴容错测试失败");
+                    var slashVariants = ParkingDatabase.SearchVariantsForTest("228/5/301");
+                    if (!slashVariants.Contains("228/5/301") || !slashVariants.Contains("228-5-301"))
+                        throw new InvalidOperationException("停车房号斜杠转横线测试失败");
+                    var dashVariants = ParkingDatabase.SearchVariantsForTest("198-5-201");
+                    if (!dashVariants.Contains("198-5-201") || !dashVariants.Contains("198/5/201"))
+                        throw new InvalidOperationException("停车房号横线转斜杠测试失败");
+                    if (ParkingDatabase.EscapeLikeForTest("A%_~[") != "A~%~_~~~[")
+                        throw new InvalidOperationException("停车查询通配符转义测试失败");
                     using (var first = SingleInstance.TryEnter("SelfTest"))
                     using (var second = SingleInstance.TryEnter("SelfTest"))
                     {
                         if (first == null || second != null)
                             throw new InvalidOperationException("单实例锁测试失败");
                     }
-                    Console.WriteLine("自检通过：房号累计序号解析和相似房号隔离正常");
+                    Console.WriteLine("自检通过：门禁房号隔离、停车房号格式和查询通配符转义正常");
                     return 0;
                 }
                 if (args.Length > 0 && args[0] == "--install-token")

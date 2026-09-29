@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -18,6 +19,7 @@ import {
   Building,
   Community,
   House,
+  ParkingQuery,
 } from '../../entities';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
@@ -32,7 +34,14 @@ import {
   projectPhaseOf,
 } from './access-card-routing';
 import { CreateAccessCardIssueDto } from './dto';
-import { AgentHeartbeatDto, AgentReportDto, EnrollAccessCardAgentDto, LegacyHistoryReportDto } from './dto';
+import {
+  AgentHeartbeatDto,
+  AgentReportDto,
+  CreateParkingQueryDto,
+  EnrollAccessCardAgentDto,
+  LegacyHistoryReportDto,
+  ParkingQueryReportDto,
+} from './dto';
 import { agentTokenMatches, issueAgentSecret } from './agent-auth';
 import { effectiveAgentStatus, orderAgentsByAvailability } from './agent-status';
 
@@ -63,6 +72,8 @@ export class AccessCardIssuanceService {
     private readonly buildingRepo: Repository<Building>,
     @InjectRepository(Community)
     private readonly communityRepo: Repository<Community>,
+    @InjectRepository(ParkingQuery)
+    private readonly parkingQueryRepo: Repository<ParkingQuery>,
     private readonly config: ConfigService,
   ) {}
 
@@ -139,6 +150,122 @@ export class AccessCardIssuanceService {
         capabilities: agent.capabilities,
         lastSeenAt: agent.lastSeenAt,
       })),
+    };
+  }
+
+  async createParkingQuery(dto: CreateParkingQueryDto, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const term = dto.term.trim().replace(/\s+/g, ' ');
+    if (term.length < 2) throw new BadRequestException('请输入至少 2 个字符，可输入房号、住户或车牌');
+
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
+    const gateway = orderAgentsByAvailability(agents).find((agent) =>
+      effectiveAgentStatus(agent) === 'online' &&
+      agent.capabilities?.parkingDbRead === true &&
+      supportsParkingQueries(agent.version));
+    if (!gateway) {
+      throw new ServiceUnavailableException('停车网关尚未连接，或 Windows 数据同步助手需要升级到 0.4.0');
+    }
+
+    const query = this.parkingQueryRepo.create({
+      tenantId,
+      term,
+      status: 'pending',
+      rows: [],
+      attempt: 0,
+      requestedAt: new Date(),
+      completedAt: null,
+      leaseAgentKey: null,
+      leaseExpiresAt: null,
+      lastError: null,
+      createdBy: user.id,
+      updatedBy: user.id,
+    });
+    return this.parkingQueryResponse(await this.parkingQueryRepo.save(query));
+  }
+
+  async getParkingQuery(id: number, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const query = await this.parkingQueryRepo.findOne({ where: { id, tenantId } });
+    if (!query) throw new NotFoundException('停车查询不存在或已失效');
+    return this.parkingQueryResponse(query);
+  }
+
+  async claimParkingQuery(agentKey: string, token: string) {
+    const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind !== 'parking_gateway') throw new ForbiddenException('当前代理不是停车系统网关');
+    if (!supportsParkingQueries(agent.version)) return { task: null };
+
+    const task = await this.parkingQueryRepo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(ParkingQuery);
+      const now = new Date();
+      const query = await repo.createQueryBuilder('query')
+        .where('query.tenant_id = :tenantId', { tenantId: agent.tenantId })
+        .andWhere("(query.status = 'pending' OR (query.status = 'running' AND query.lease_expires_at < :now))", { now })
+        .orderBy('query.created_at', 'ASC')
+        .setLock('pessimistic_write')
+        .setOnLocked('skip_locked')
+        .getOne();
+      if (!query) return null;
+      if (query.attempt >= 3) {
+        query.status = 'failed';
+        query.lastError = query.lastError || '停车网关连续查询失败，请重新查询';
+        query.completedAt = now;
+        query.leaseAgentKey = null;
+        query.leaseExpiresAt = null;
+        await repo.save(query);
+        return null;
+      }
+      query.status = 'running';
+      query.attempt += 1;
+      query.leaseAgentKey = agent.agentKey;
+      query.leaseExpiresAt = new Date(now.getTime() + 90_000);
+      query.updatedBy = null;
+      await repo.save(query);
+      return { queryId: query.id, term: query.term };
+    });
+    return { task };
+  }
+
+  async reportParkingQuery(agentKey: string, token: string, dto: ParkingQueryReportDto) {
+    const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind !== 'parking_gateway') throw new ForbiddenException('当前代理不是停车系统网关');
+    const query = await this.parkingQueryRepo.findOne({ where: { id: dto.queryId, tenantId: agent.tenantId } });
+    if (!query) throw new NotFoundException('停车查询任务不存在');
+    if (query.status !== 'running' || query.leaseAgentKey !== agent.agentKey) {
+      throw new BadRequestException('停车查询任务不属于当前网关或已经结束');
+    }
+
+    const now = new Date();
+    if (dto.result === 'success') {
+      query.status = 'completed';
+      query.rows = sanitizeParkingRows(dto.rows ?? []);
+      query.lastError = null;
+      query.completedAt = now;
+    } else if (dto.result === 'retry' && query.attempt < 3) {
+      query.status = 'pending';
+      query.lastError = dto.errorMessage?.trim() || '停车数据库暂时无法查询，正在重试';
+    } else {
+      query.status = 'failed';
+      query.lastError = dto.errorMessage?.trim() || '停车数据库查询失败';
+      query.completedAt = now;
+    }
+    query.leaseAgentKey = null;
+    query.leaseExpiresAt = null;
+    query.updatedBy = null;
+    await this.parkingQueryRepo.save(query);
+    return { ok: true };
+  }
+
+  private parkingQueryResponse(query: ParkingQuery) {
+    return {
+      id: query.id,
+      term: query.term,
+      status: query.status,
+      rows: query.status === 'completed' ? query.rows : [],
+      error: query.status === 'failed' ? query.lastError : null,
+      requestedAt: query.requestedAt,
+      completedAt: query.completedAt,
     };
   }
 
@@ -716,4 +843,25 @@ export class AccessCardIssuanceService {
     if (!user.tenantId) throw new ForbiddenException('tenant scope is required');
     return user.tenantId;
   }
+}
+
+function supportsParkingQueries(version: string): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
+  if (!match) return false;
+  const [major, minor] = [Number(match[1]), Number(match[2])];
+  return major > 0 || minor >= 4;
+}
+
+function sanitizeParkingRows(rows: ParkingQueryReportDto['rows']): ParkingQuery['rows'] {
+  return (rows ?? []).slice(0, 100).map((row) => {
+    const fields: Record<string, string | number | boolean | null> = {};
+    for (const [rawKey, rawValue] of Object.entries(row.fields ?? {}).slice(0, 60)) {
+      const key = rawKey.trim().slice(0, 128);
+      if (!key || Object.prototype.hasOwnProperty.call(fields, key)) continue;
+      if (rawValue === null || typeof rawValue === 'boolean') fields[key] = rawValue;
+      else if (typeof rawValue === 'number' && Number.isFinite(rawValue)) fields[key] = rawValue;
+      else if (typeof rawValue === 'string') fields[key] = rawValue.slice(0, 500);
+    }
+    return { database: row.database.trim().slice(0, 80), fields };
+  });
 }

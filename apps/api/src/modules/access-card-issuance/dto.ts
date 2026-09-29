@@ -12,6 +12,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 import type { AccessCardAgentKind } from '../../entities/access-card-agent.entity';
 
@@ -156,6 +157,43 @@ export class LegacyHistoryReportDto {
   @IsInt()
   @Min(1)
   nextSequence?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  errorMessage?: string;
+}
+
+export class CreateParkingQueryDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(80)
+  term: string;
+}
+
+export class ParkingQueryRowDto {
+  @IsString()
+  @MaxLength(80)
+  database: string;
+
+  @IsObject()
+  fields: Record<string, string | number | boolean | null>;
+}
+
+export class ParkingQueryReportDto {
+  @Type(() => Number)
+  @IsInt()
+  queryId: number;
+
+  @IsIn(['success', 'retry', 'failed'])
+  result: 'success' | 'retry' | 'failed';
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => ParkingQueryRowDto)
+  rows?: ParkingQueryRowDto[];
 
   @IsOptional()
   @IsString()

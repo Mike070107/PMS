@@ -89,6 +89,21 @@ export interface AccessCardReadiness {
   }>;
 }
 
+export interface ParkingQueryRow {
+  database: string;
+  fields: Record<string, string | number | boolean | null>;
+}
+
+export interface ParkingQuery {
+  id: number;
+  term: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  rows: ParkingQueryRow[];
+  error: string | null;
+  requestedAt: string;
+  completedAt: string | null;
+}
+
 export const readiness = () =>
   request<AccessCardReadiness>({ url: '/access-card-issuance/readiness' });
 
@@ -106,6 +121,18 @@ export const enrollAgent = (data: {
   method: 'POST',
   data,
 });
+
+export const createParkingQuery = (term: string) =>
+  request<ParkingQuery>({
+    url: '/access-card-issuance/parking/queries',
+    method: 'POST',
+    data: { term },
+  });
+
+export const parkingQuery = (id: number) =>
+  request<ParkingQuery>({
+    url: `/access-card-issuance/parking/queries/${id}`,
+  });
 
 export const houseContext = (houseId: number) =>
   request<AccessCardHouseContext>({

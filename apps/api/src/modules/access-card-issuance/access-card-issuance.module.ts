@@ -8,6 +8,7 @@ import {
   Building,
   Community,
   House,
+  ParkingQuery,
 } from '../../entities';
 import { AccessCardAgentController, AccessCardIssuanceController } from './access-card-issuance.controller';
 import { AccessCardIssuanceService } from './access-card-issuance.service';
@@ -22,6 +23,7 @@ import { AccessCardIssuanceService } from './access-card-issuance.service';
       Building,
       Community,
       House,
+      ParkingQuery,
     ]),
   ],
   controllers: [AccessCardIssuanceController, AccessCardAgentController],

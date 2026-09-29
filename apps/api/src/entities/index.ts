@@ -34,6 +34,7 @@ import { Notification } from './notification.entity';
 import { SubscriptionGrant } from './subscription-grant.entity';
 import { BusinessRule } from './business-rule.entity';
 import { ParkingVehicle } from './parking-vehicle.entity';
+import { ParkingQuery } from './parking-query.entity';
 import { AccessCard } from './access-card.entity';
 import { AccessCardAgent } from './access-card-agent.entity';
 import { AccessCardIssueBatch } from './access-card-issue-batch.entity';
@@ -124,6 +125,7 @@ export const entities = [
   SubscriptionGrant,
   BusinessRule,
   ParkingVehicle,
+  ParkingQuery,
   AccessCard,
   AccessCardAgent,
   AccessCardIssueBatch,
@@ -199,6 +201,7 @@ export {
   SubscriptionGrant,
   BusinessRule,
   ParkingVehicle,
+  ParkingQuery,
   AccessCard,
   AccessCardAgent,
   AccessCardIssueBatch,

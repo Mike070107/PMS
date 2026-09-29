@@ -126,6 +126,8 @@ export default function App() {
       {import.meta.env.DEV && (
         <>
           <Route path="/dev/access-card-preview" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f4f1eb' }}><AccessCardIssuancePage preview /></div>} />
+          <Route path="/dev/parking-live" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ParkingManagementPage preview="upgrade" /></div>} />
+          <Route path="/dev/parking-live-ready" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ParkingManagementPage preview="ready" /></div>} />
           {ParkingManagementPreviewPage && (
             <Route path="/dev/parking-preview" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ParkingManagementPreviewPage preview /></div>} />
           )}

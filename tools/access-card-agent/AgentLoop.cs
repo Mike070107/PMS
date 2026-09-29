@@ -41,6 +41,16 @@ namespace Pms.AccessCardAgent
                             continue;
                         }
                     }
+                    if (_config.Kind == "parking_gateway")
+                    {
+                        var parkingTask = _api.ClaimParkingQuery();
+                        if (parkingTask != null)
+                        {
+                            HandleParkingQuery(parkingTask);
+                            if (Wait(stopSignal, _config.PollIntervalMs)) return;
+                            continue;
+                        }
+                    }
                     var task = _api.Claim();
                     if (task != null) Handle(task, hasReader);
                 }
@@ -98,6 +108,30 @@ namespace Pms.AccessCardAgent
                 _api.ReportLegacyHistory(new LegacyHistoryReport
                 {
                     snapshotId = task.snapshotId,
+                    result = "retry",
+                    errorMessage = exception.Message
+                });
+            }
+        }
+
+        private void HandleParkingQuery(ParkingQueryTask task)
+        {
+            try
+            {
+                var passwordPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "parking-db-password.dat");
+                var rows = ParkingDatabase.SearchBoth(_config, SecretStore.Load(passwordPath), task.term);
+                _api.ReportParkingQuery(new ParkingQueryReport
+                {
+                    queryId = task.queryId,
+                    result = "success",
+                    rows = rows
+                });
+            }
+            catch (Exception exception)
+            {
+                _api.ReportParkingQuery(new ParkingQueryReport
+                {
+                    queryId = task.queryId,
                     result = "retry",
                     errorMessage = exception.Message
                 });

@@ -9,7 +9,7 @@
 - `legacy_sync`：`192.168.1.80`，后续连接旧 SQL 发卡数据库。
 - `parking_gateway`：连接 `192.168.6.3` 上的 `parking1` / `parking2` 停车数据库。
 
-当前版本已经实现代理凭据、DPAPI 加密、心跳、带租约任务领取、结果回报和 ACR122U/PCSC 设备枚举。所有真实写入能力仍为关闭状态，代理只会报告“等待验收”，不会修改卡片、数据库或控制器。
+当前版本已经实现代理凭据、DPAPI 加密、心跳、带租约任务领取、结果回报、ACR122U/PCSC 设备枚举，以及停车双库的实时只读查询。所有真实写入能力仍为关闭状态，不会修改卡片、数据库或控制器。
 
 ## 构建
 
@@ -66,5 +66,7 @@ Get-Clipboard | .\Pms.DataSyncAssistant.exe --install-parking-db-password
 ```
 
 `--parking-probe` 只读取 `Car_Issue` / `Car_Download` 记录数，并检查停车存储过程是否存在。当前 `parkingDbWrite=false`，不会登记、续期、换牌、注销或创建设备下载任务。
+
+0.4.0 起，停车网关还会自动领取网页发起的只读查询。查询使用参数化 SQL，在 `Car_Issue` 的文本字段中匹配房号、住户、电话或车牌；一期、二期各最多返回 50 条。`228/5/301` 与 `198-5-201` 会同时尝试斜杠和横线形式，整个过程不执行写入语句。
 
 `agent.config.json`、`agent.token.dat`、`legacy-db-password.dat`、`parking-db-password.dat`、卡片密钥、完整卡镜像和数据库密码均不得进入 Git 或普通日志。
