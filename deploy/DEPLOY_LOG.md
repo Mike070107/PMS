@@ -3415,3 +3415,11 @@
   - d796802 fix(parking): map active garages and retire legacy shelter bits
   - c86053d chore(web): refresh TypeScript build metadata
 
+## 2026-09-29 21:32 · web · 188eed3
+
+- 包：`pms-web-20260929-2132.tar.gz`
+- 提交：188eed3 fix(parking): call legacy bit positions channel numbers
+- 说明：纠正P_Effective/P_Download位置含义：通道号，不是库位
+- 自上次（d796802）以来上线的相关提交：
+  - 188eed3 fix(parking): call legacy bit positions channel numbers
+
