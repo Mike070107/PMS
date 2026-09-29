@@ -16,7 +16,8 @@
 - `MC.CardInfo` 已核对 20 个字段与历史常量；但 `ICNO` 是卡内的另一个编号，不能从 UID/`IDNO` 稳定推导。在 ACR122U 实卡读出该字段并用旧软件反查前，`legacyDbWrite` 保持关闭，不冒险写真库。
 - 2026-09-29 已在 `192.168.1.80` 的 D 盘实际运行 `PMS-LegacySync-0.1.1`：DPAPI 数据库密码安装成功，`--legacy-history 228/5/301` 返回人员尾号数 4、下一序号 9，并读出 `/7`、`/8` 的捷顺编号、IC 卡号与发卡时间；`/5`、`/6` 无卡记录。该验证为真库只读，未修改任何数据。
 - 2026-09-29 已在 `192.168.1.88` 的 D 盘实际运行 `PMS-AccessGateway-0.1.2`：自检和 iCCard MDB 密码的 DPAPI 安装成功；`--access-probe` 只读打开真实 `MJDataBase.mdb` 与 `iCCard.mdb`。现场计数为 `Employee=3209`、`MJ_MacPower=10541`、`MJ_MacInfo=20`、`MJ_DoorInfo=20`、`t_b_Consumer=7300`、`t_b_IDCard=7431`、`t_d_Privilege=11768`，与前期调研一致；未写入 MDB，未上传控制器。
-- 已构建代理更新包 `PMS-AccessCardAgent-Update-0.1.4.zip`：新增 `--install-agent <代理ID>`（同时写入 ID、用 DPAPI 保存密钥）和只发一次心跳、不领取任务的 `--connect-test`，并为旧版 .NET 4 显式启用 TLS 1.2；PMS 页面按 15 秒心跳有效期判定在线，避免电脑退出后永久显示在线。公网 PMS 尚未部署本模块，生产接口和迁移发布前不能执行两台电脑的联网验收。
+- 已构建代理更新包 `PMS-AccessCardAgent-Update-0.1.4.zip`：新增 `--install-agent <代理ID>`（同时写入 ID、用 DPAPI 保存密钥）和只发一次心跳、不领取任务的 `--connect-test`，并为旧版 .NET 4 显式启用 TLS 1.2；PMS 页面按 15 秒心跳有效期判定在线，避免电脑退出后永久显示在线。
+- 2026-09-29 已将提交 `b8015bf` 的 API 与 Web 发布到 `https://prsznh.cn`，生产包分别为 `pms-api-20260929-0902.tar.gz`、`pms-web-20260929-0902.tar.gz`。生产数据库已创建 `access_card_agents`、`access_card_issue_batches`、`access_card_issue_items`、`access_card_legacy_snapshots` 四张表；健康检查为 `ok/db up`，无凭据代理心跳返回 401，`/access-cards` SPA 入口返回 200。下一步是在生产页面分别注册 `.80`、`.88`，把一次性凭据直接装到对应电脑后执行 `--connect-test`。
 
 ## 1. 最终业务目标
 
