@@ -20,9 +20,11 @@ import {
   PhoneOutlined,
   PlusOutlined,
   ReloadOutlined,
+  QrcodeOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
   UserOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import {
   accessCardIssuance,
@@ -52,6 +54,8 @@ export default function ParkingManagementPage({
   const [searching, setSearching] = useState(false);
   const [rows, setRows] = useState<ParkingQueryRow[]>([]);
   const [searchedTerm, setSearchedTerm] = useState('');
+  const [proofUpload, setProofUpload] = useState<accessCardIssuance.ParkingProofUpload | null>(null);
+  const [proofLoading, setProofLoading] = useState(false);
 
   const loadReadiness = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -104,7 +108,9 @@ export default function ParkingManagementPage({
       new Date(right.lastSeenAt ?? 0).getTime() - new Date(left.lastSeenAt ?? 0).getTime())[0];
   const online = gateway?.status === 'online';
   const canRead = online && readiness?.features.parkingDbRead === true;
-  const canQuery = canRead && supportsParkingQueries(gateway?.version);
+  // 0.4.0 已能查询 Car_Issue；0.4.1 增加住户表联查，不能因为住户增强尚未升级就把整条查询锁死。
+  const canQuery = canRead;
+  const canJoinOwners = supportsParkingQueries(gateway?.version);
 
   const searchParking = async () => {
     const queryTerm = term.trim();
@@ -140,6 +146,32 @@ export default function ParkingManagementPage({
     }
   };
 
+  const createProofUpload = async (row: ParkingQueryRow) => {
+    setProofLoading(true);
+    try {
+      const upload = await accessCardIssuance.createParkingProofUpload({
+        plate: plateValue(row.fields),
+        ownerId: fieldValue(row.fields, fieldAliases.ownerId) || undefined,
+      });
+      setProofUpload(upload);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '临时上传二维码生成失败');
+    } finally {
+      setProofLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!proofUpload || proofUpload.status === 'submitted') return undefined;
+    const timer = window.setInterval(async () => {
+      try {
+        const next = await accessCardIssuance.parkingProofUpload(proofUpload.id);
+        setProofUpload((current) => current?.id === next.id ? { ...current, ...next } : current);
+      } catch { /* 二维码弹窗仍可使用；短暂轮询失败不打断现场操作。 */ }
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [proofUpload?.id, proofUpload?.status]);
+
   return (
     <div className="parking-page parking-live-page">
       <section className="parking-hero parking-live-hero">
@@ -157,12 +189,10 @@ export default function ParkingManagementPage({
       <Alert
         type={canQuery ? 'success' : 'warning'}
         showIcon
-        message={canQuery ? '停车数据库真实查询已就绪' : online ? '停车网关需要升级' : '尚未接通真实停车数据'}
+        message={canQuery ? '停车数据库真实查询已就绪' : '尚未接通真实停车数据'}
         description={canQuery
-          ? '查询会实时读取现场 parking1、parking2 的 Car_Issue 表；当前仍为只读，不会修改旧系统。'
-          : online
-            ? `现场网关版本为 ${gateway?.version || '未知'}，升级 Windows 数据同步助手到 0.4.1 后即可联查住户。`
-            : '请先在下方注册并安装 Windows 本地停车网关。连接完成前不会显示任何模拟住户、车牌、车位或收费记录。'}
+          ? `查询会实时读取现场一期、二期 Car_Issue 表；当前仍为只读，不会修改旧系统。${canJoinOwners ? '住户表联查已启用。' : `当前助手 ${gateway?.version || '未知版本'} 可查车辆，升级 0.4.1 后还能按住户姓名、电话和房号联查。`}`
+          : '请先在下方注册并安装 Windows 本地停车网关。连接完成前不会显示任何模拟住户、车牌、车位或收费记录。'}
       />
 
       <Card className="parking-device-card" variant="borderless">
@@ -193,7 +223,8 @@ export default function ParkingManagementPage({
             <Tag color={canQuery ? 'success' : 'default'} icon={canQuery ? <CheckCircleOutlined /> : <DatabaseOutlined />}>
               枫桦景苑二期 {canQuery ? '已连接' : '未验证'}
             </Tag>
-            <Tag color={canQuery ? 'success' : canRead ? 'gold' : 'default'}>{canQuery ? '查询已就绪' : canRead ? '需升级助手' : '尚未验证'}</Tag>
+            <Tag color={canQuery ? 'success' : 'default'}>{canQuery ? '车辆查询已就绪' : '尚未验证'}</Tag>
+            <Tag color={canJoinOwners ? 'success' : 'gold'}>{canJoinOwners ? '住户联查已启用' : '升级后联查住户'}</Tag>
             <Tag>写入未开放</Tag>
           </div>
         </div>
@@ -225,14 +256,14 @@ export default function ParkingManagementPage({
             <div className="parking-query-summary">
               <CheckCircleOutlined /> 找到 {rows.length} 条真实记录，其中 {rows.filter((row) => row.pmsMatch).length} 条已关联 PMS 用户
             </div>
-            {rows.map((row, index) => <ParkingResultCard key={`${row.database}-${index}`} row={row} />)}
+            {rows.map((row, index) => <ParkingResultCard key={`${row.database}-${index}`} row={row} proofLoading={proofLoading} onCreateProof={() => void createProofUpload(row)} />)}
           </div>
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={searchedTerm
               ? `没有查到与“${searchedTerm}”匹配的停车记录`
-              : canQuery ? '输入房号、住户、电话或车牌开始查询' : online ? '网关已连接，请升级 Windows 助手到 0.4.1' : '未连接真实停车数据库，不显示模拟数据'}
+              : canQuery ? '输入房号、住户、电话或车牌开始查询' : '未连接真实停车数据库，不显示模拟数据'}
           />
         )}
       </Card>
@@ -263,6 +294,25 @@ export default function ParkingManagementPage({
           </div>
         )}
       </Modal>
+
+      <Modal
+        title={`亲情车证明材料 · ${proofUpload?.plate || ''}`}
+        open={!!proofUpload}
+        footer={<Button type="primary" onClick={() => setProofUpload(null)}>关闭</Button>}
+        onCancel={() => setProofUpload(null)}
+      >
+        {proofUpload && (
+          <div className="parking-proof-modal">
+            {proofUpload.status === 'submitted' ? (
+              <Alert type="success" showIcon message="证明材料已上传" description={proofUpload.fileName || '手机端已经提交，办公室可以继续办理亲情车。'} />
+            ) : (
+              <Alert type={proofUpload.status === 'opened' ? 'info' : 'warning'} showIcon message={proofUpload.status === 'opened' ? '用户已打开上传页面' : '等待用户扫码'} description="二维码 30 分钟有效，只能为当前车牌提交一次图片或 PDF。" />
+            )}
+            {proofUpload.qrDataUrl && <img src={proofUpload.qrDataUrl} alt="亲情车证明材料临时上传二维码" />}
+            <Text type="secondary">{new Date(proofUpload.expiresAt).toLocaleString('zh-CN', { hour12: false })} 前有效</Text>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -279,7 +329,10 @@ const fieldAliases = {
   phone: ['mobile', 'telephone', 'phone', 'tel', '手机', '电话'],
   space: ['parkno', 'parkingno', 'spaceno', 'berth', 'garage', '车位', '地库'],
   expiry: ['enddate', 'expiredate', 'expirydate', 'validto', 'deadline', 'overdate', 'endtime', '到期', '有效期'],
-  identity: ['vehicleidentity', 'caridentity', 'ownertype', 'usertype', 'relationtype', 'carlei', '车辆身份', '车辆类型', '车类', '身份', '性质'],
+  identity: ['carbrand', 'carbeand', 'vehicleidentity', 'caridentity', 'ownertype', 'usertype', 'relationtype', 'carlei', '车辆身份', '车辆类型', '车类', '身份', '性质'],
+  note: ['pnote', 'remark', 'remarks', 'note', '备注'],
+  effective: ['peffective'],
+  download: ['pdownload'],
   ownerId: ['ownerid', '住户编号', '业主编号'],
 } as const;
 
@@ -318,11 +371,42 @@ function vehicleIdentity(fields: ParkingQueryRow['fields']): string | null {
   if (!raw) return null;
   if (raw.includes('亲情')) return '亲情车';
   if (raw.includes('租')) return '租户车';
-  if (raw.includes('业主') || raw.includes('住户')) return '业主车';
+  if (raw.includes('业主') || raw.includes('住户')) return '住户车';
   return `旧库车辆类型 ${raw}`;
 }
 
-function ParkingResultCard({ row }: { row: ParkingQueryRow }) {
+function enabledBitPositions(value: string | null): number[] {
+  if (!value) return [];
+  return Array.from(value).flatMap((bit, index) => bit === '1' ? [index + 1] : []);
+}
+
+function downloadState(fields: ParkingQueryRow['fields']) {
+  const effective = fieldValue(fields, fieldAliases.effective);
+  const downloaded = fieldValue(fields, fieldAliases.download);
+  const required = enabledBitPositions(effective);
+  if (required.length === 0) return { ready: false, label: '旧库未设置授权位' };
+  if (!downloaded) return { ready: false, label: '尚无设备下载记录' };
+  const missing = required.filter((position) => downloaded[position - 1] !== '1');
+  return missing.length === 0
+    ? { ready: true, label: '设备下载成功 · 授权已生效' }
+    : { ready: false, label: `尚未全部下载 · 缺少 ${missing.length} 个授权位` };
+}
+
+function authorizationLabels(database: string, fields: ParkingQueryRow['fields']): string[] {
+  const bits = enabledBitPositions(fieldValue(fields, fieldAliases.effective));
+  const labels: string[] = [];
+  if (database.toLowerCase() === 'parking1') {
+    if (bits.some((item) => item === 5 || item === 7)) labels.push('一期出入口');
+  } else if (database.toLowerCase() === 'parking2') {
+    if (bits.some((item) => [9, 11, 13].includes(item))) labels.push('二期大门出入口');
+    if (bits.some((item) => [15, 17, 19, 21].includes(item))) labels.push('大车库');
+  }
+  const known = new Set([5, 7, 9, 11, 13, 15, 17, 19, 21]);
+  if (bits.some((item) => !known.has(item))) labels.push('其他授权位待确认');
+  return labels.length > 0 ? labels : ['未识别授权区域'];
+}
+
+function ParkingResultCard({ row, onCreateProof, proofLoading }: { row: ParkingQueryRow; onCreateProof: () => void; proofLoading: boolean }) {
   const plate = plateValue(row.fields);
   const owner = fieldValue(row.fields, fieldAliases.owner) || '未记录住户姓名';
   const room = fieldValue(row.fields, fieldAliases.room) || '未识别房号';
@@ -330,6 +414,9 @@ function ParkingResultCard({ row }: { row: ParkingQueryRow }) {
   const space = fieldValue(row.fields, fieldAliases.space);
   const expiry = fieldValue(row.fields, fieldAliases.expiry);
   const identity = vehicleIdentity(row.fields);
+  const note = fieldValue(row.fields, fieldAliases.note);
+  const deviceState = downloadState(row.fields);
+  const authorization = authorizationLabels(row.database, row.fields);
   const ownerId = fieldValue(row.fields, fieldAliases.ownerId);
   const details = Object.entries(row.fields).filter(([, value]) => value !== null && String(value).trim() !== '').slice(0, 24);
   return (
@@ -347,11 +434,22 @@ function ParkingResultCard({ row }: { row: ParkingQueryRow }) {
       <Space wrap size={[6, 6]}>
         <Tag color="blue">{databaseLabel(row.database)}</Tag>
         {identity && <Tag color="purple">{identity}</Tag>}
+        {authorization.map((label) => <Tag color={label === '大车库' ? 'cyan' : 'geekblue'} key={label}>{label}</Tag>)}
+        <Tag color={deviceState.ready ? 'success' : 'warning'} icon={deviceState.ready ? <CheckCircleOutlined /> : <WarningOutlined />}>
+          {deviceState.label}
+        </Tag>
         {ownerId && <Tag>旧库住户 #{ownerId}</Tag>}
         <Tag color={row.pmsMatch ? 'success' : 'warning'}>
           {row.pmsMatch ? `已关联 PMS：${row.pmsMatch.name || row.pmsMatch.phone || `用户 #${row.pmsMatch.userId}`}` : '尚未关联 PMS 用户'}
         </Tag>
       </Space>
+      {note && <div className="parking-query-note"><strong>旧库备注</strong><span>{note}</span></div>}
+      {identity === '亲情车' && (
+        <div className="parking-family-actions">
+          <div><strong>亲情车办理</strong><span>办公室不收费；门岗按优惠临时车计费。新增时必须收取证明材料。</span></div>
+          <Button icon={<QrcodeOutlined />} loading={proofLoading} onClick={onCreateProof}>生成材料上传二维码</Button>
+        </div>
+      )}
       <details className="parking-query-details">
         <summary>查看旧库原始字段</summary>
         <dl>{details.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>

@@ -23,6 +23,7 @@ const OwnerAuditPage = lazy(() => import('./pages/OwnerAuditPage'));
 const WorkOrdersPage = lazy(() => import('./pages/WorkOrdersPage'));
 const MaintenanceOrdersPage = lazy(() => import('./pages/MaintenanceOrdersPage'));
 const SignPage = lazy(() => import('./pages/SignPage'));
+const ParkingProofUploadPage = lazy(() => import('./pages/ParkingProofUploadPage'));
 const StaffPage = lazy(() => import('./pages/StaffPage'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
 const StocktakePage = lazy(() => import('./pages/StocktakePage'));
@@ -142,6 +143,7 @@ export default function App() {
       )}
       {/* 手机扫码签名页：不需要登录，凭据是链接里那串 5 分钟有效的 token */}
       <Route path="/sign/:token" element={<SignPage />} />
+      <Route path="/parking-proof/:token" element={<ParkingProofUploadPage />} />
       <Route
         path="/"
         element={

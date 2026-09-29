@@ -111,6 +111,19 @@ export interface ParkingQuery {
   completedAt: string | null;
 }
 
+export interface ParkingProofUpload {
+  id: number;
+  plate: string;
+  url?: string;
+  qrDataUrl?: string;
+  expiresAt: string;
+  openedAt?: string | null;
+  submittedAt?: string | null;
+  status: 'waiting' | 'opened' | 'submitted';
+  fileName?: string | null;
+  fileUrl?: string | null;
+}
+
 export const readiness = () =>
   request<AccessCardReadiness>({ url: '/access-card-issuance/readiness' });
 
@@ -139,6 +152,18 @@ export const createParkingQuery = (term: string) =>
 export const parkingQuery = (id: number) =>
   request<ParkingQuery>({
     url: `/access-card-issuance/parking/queries/${id}`,
+  });
+
+export const createParkingProofUpload = (data: { plate: string; ownerId?: string }) =>
+  request<ParkingProofUpload>({
+    url: '/access-card-issuance/parking/proof-uploads',
+    method: 'POST',
+    data,
+  });
+
+export const parkingProofUpload = (id: number) =>
+  request<ParkingProofUpload>({
+    url: `/access-card-issuance/parking/proof-uploads/${id}`,
   });
 
 export const houseContext = (houseId: number) =>

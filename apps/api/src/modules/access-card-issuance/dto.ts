@@ -171,6 +171,18 @@ export class CreateParkingQueryDto {
   term: string;
 }
 
+export class CreateParkingProofUploadDto {
+  @IsString()
+  @MinLength(5)
+  @MaxLength(20)
+  plate: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  ownerId?: string;
+}
+
 export class ParkingQueryRowDto {
   @IsString()
   @MaxLength(80)

@@ -9,13 +9,17 @@ import {
   Community,
   House,
   ParkingQuery,
+  ParkingProofUpload,
   User,
 } from '../../entities';
-import { AccessCardAgentController, AccessCardIssuanceController } from './access-card-issuance.controller';
+import { AccessCardAgentController, AccessCardIssuanceController, ParkingProofController } from './access-card-issuance.controller';
 import { AccessCardIssuanceService } from './access-card-issuance.service';
+import { ParkingProofService } from './parking-proof.service';
+import { UploadModule } from '../upload/upload.module';
 
 @Module({
   imports: [
+    UploadModule,
     TypeOrmModule.forFeature([
       AccessCardAgent,
       AccessCardIssueBatch,
@@ -25,10 +29,11 @@ import { AccessCardIssuanceService } from './access-card-issuance.service';
       Community,
       House,
       ParkingQuery,
+      ParkingProofUpload,
       User,
     ]),
   ],
-  controllers: [AccessCardIssuanceController, AccessCardAgentController],
-  providers: [AccessCardIssuanceService],
+  controllers: [AccessCardIssuanceController, AccessCardAgentController, ParkingProofController],
+  providers: [AccessCardIssuanceService, ParkingProofService],
 })
 export class AccessCardIssuanceModule {}

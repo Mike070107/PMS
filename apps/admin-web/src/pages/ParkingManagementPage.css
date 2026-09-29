@@ -18,6 +18,16 @@
 .parking-query-primary, .parking-query-meta { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .parking-query-primary strong { color: #263c55; font-size: 16px; }
 .parking-query-primary span, .parking-query-meta span { display: flex; align-items: center; gap: 7px; overflow-wrap: anywhere; color: #68798b; font-size: 13px; }
+.parking-query-note { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0,1fr); gap: 10px; padding: 10px 12px; color: #5c4931; border: 1px solid #eadbbd; border-radius: 9px; background: #fffaf0; font-size: 13px; }
+.parking-query-note strong { color: #7a5a2a; white-space: nowrap; }
+.parking-query-note span { min-width: 0; overflow-wrap: anywhere; }
+.parking-family-actions { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 12px; border: 1px solid #d9e5ef; border-radius: 9px; background: #f7fafc; }
+.parking-family-actions > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.parking-family-actions span { color: #66798c; font-size: 12px; line-height: 1.6; }
+.parking-family-actions .ant-btn { min-height: 44px; flex: 0 0 auto; }
+.parking-proof-modal { display: grid; justify-items: center; gap: 16px; padding-top: 8px; text-align: center; }
+.parking-proof-modal .ant-alert { width: 100%; text-align: left; }
+.parking-proof-modal img { width: min(320px, 80vw); height: auto; border-radius: 12px; }
 .parking-query-details { grid-column: 1 / -1; padding-top: 9px; border-top: 1px solid #edf0f4; }
 .parking-query-details summary { width: max-content; color: #31558a; cursor: pointer; font-size: 13px; }
 .parking-query-details summary:focus-visible { outline: 2px solid #31558a; outline-offset: 3px; }
@@ -203,6 +213,7 @@
   .parking-query-card .parking-license-plate { width: min(100%, 238px); }
   .parking-query-details { grid-column: 1; }
   .parking-query-details dl { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .parking-family-actions { align-items: stretch; flex-direction: column; }
   .parking-household-option { grid-template-columns: 36px minmax(0,1fr); align-items: start; }
   .parking-house-resident, .parking-house-assets { grid-column: 2; }
   .parking-house-assets > span { flex-wrap: wrap; white-space: normal; }
