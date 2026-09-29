@@ -236,8 +236,12 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
 
   const issuerAgents = readiness?.agents.filter((item) => item.kind === 'issuer') ?? [];
   const onlineIssuer = issuerAgents.find((item) => item.status === 'online');
-  const accessGateway = readiness?.agents.find((item) => item.kind === 'access_gateway');
-  const legacyAgent = readiness?.agents.find((item) => item.kind === 'legacy_sync');
+  // A computer can be re-registered after replacement or credential rotation.
+  // Prefer the currently-online record instead of the oldest record of that kind.
+  const accessGateway = readiness?.agents.find((item) => item.kind === 'access_gateway' && item.status === 'online')
+    ?? readiness?.agents.find((item) => item.kind === 'access_gateway');
+  const legacyAgent = readiness?.agents.find((item) => item.kind === 'legacy_sync' && item.status === 'online')
+    ?? readiness?.agents.find((item) => item.kind === 'legacy_sync');
   const canStart = !!context?.routeReady && (!!onlineIssuer || !!readiness?.simulationEnabled);
 
   const extraOptions = useMemo(
