@@ -3278,3 +3278,11 @@
 - 自上次（f51475e）以来上线的相关提交：
   - 0541d48 fix(access-cards): await legacy history snapshot
 
+## 2026-09-29 11:15 · web · 3fb333b
+
+- 包：`pms-web-20260929-1114.tar.gz`
+- 提交：3fb333b fix(access-cards): show displayed card count
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
+- 自上次（0541d48）以来上线的相关提交：
+  - 3fb333b fix(access-cards): show displayed card count
+
