@@ -3286,3 +3286,11 @@
 - 自上次（0541d48）以来上线的相关提交：
   - 3fb333b fix(access-cards): show displayed card count
 
+## 2026-09-29 12:37 · api · e114eb3
+
+- 包：`pms-api-20260929-1228.tar.gz`
+- 提交：e114eb3 feat(parking): add management page and local gateway
+- 说明：停车管理本地网关注册与停车数据库能力
+- 自上次（419deb0）以来上线的相关提交：
+  - e114eb3 feat(parking): add management page and local gateway
+
