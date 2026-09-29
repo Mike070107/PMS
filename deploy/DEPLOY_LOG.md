@@ -3302,3 +3302,11 @@
 - 自上次（3fb333b）以来上线的相关提交：
   - e114eb3 feat(parking): add management page and local gateway
 
+## 2026-09-29 14:26 · web · ae8691f
+
+- 包：`pms-web-20260929-1425.tar.gz`
+- 提交：ae8691f fix(parking): keep preview data out of production
+- 说明：生产停车页移除全部演示住户车辆车位与收费数据；预览组件仅开发环境加载
+- 自上次（e114eb3）以来上线的相关提交：
+  - ae8691f fix(parking): keep preview data out of production
+
