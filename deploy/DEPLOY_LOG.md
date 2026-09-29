@@ -3221,3 +3221,11 @@
 - 自上次（b564dff）以来上线的相关提交：
   - 313fa81 feat(experiences): replace markdown with rich documents
 
+## 2026-09-29 09:17 · api · b8015bf
+
+- 包：`pms-api-20260929-0902.tar.gz`
+- 提交：b8015bf feat(access-cards): add local-agent issuance workflow
+- 说明：门禁代理注册、心跳、任务编排与只读历史链路
+- 自上次（79e67e7）以来上线的相关提交：
+  - b8015bf feat(access-cards): add local-agent issuance workflow
+
