@@ -3237,3 +3237,11 @@
 - 自上次（79e67e7）以来上线的相关提交：
   - b8015bf feat(access-cards): add local-agent issuance workflow
 
+## 2026-09-29 10:53 · web · f51475e
+
+- 包：`pms-web-20260929-1052.tar.gz`
+- 提交：f51475e fix(access-cards): prefer online replacement agent
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
+- 自上次（419deb0）以来上线的相关提交：
+  - f51475e fix(access-cards): prefer online replacement agent
+
