@@ -13,9 +13,9 @@ test('德立云签名不包含空参数', () => {
   assert.equal(legacyDeliyunSign({ accessKeyID: 'id', optional: '' }, 'secret'), legacyDeliyunSign({ accessKeyID: 'id' }, 'secret'));
 });
 
-test('德立云签名在排序参数串末尾直接追加 Secret', () => {
+test('德立云签名按文档示例追加 accessKeySecret 键值', () => {
   assert.equal(
     legacyDeliyunSign({ version: '1.0', accessKeyID: 'id' }, 'secret'),
-    'cc153ead79814d45d11fe1e74ad35fab',
+    'b8ea5ec91c37c1364f1386715aa804f9',
   );
 });

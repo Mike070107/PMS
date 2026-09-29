@@ -76,9 +76,9 @@ export function legacyDeliyunSign(params: Record<string, string>, secret: string
     .sort(([left], [right]) => left.localeCompare(right, 'en'))
     .map(([key, value]) => `${key}=${value}`)
     .join('&');
-  // 德立云文档 3.9：排序后的 key=value&... 字符串末尾直接追加 Secret，
-  // 不增加字段名、等号或 &，MD5 结果转小写。
-  return createHash('md5').update(`${canonical}${secret}`, 'utf8').digest('hex');
+  // 文档第 6 页的可运行示例比第 5 页概述更具体：Secret 作为最后一个
+  // accessKeySecret=... 键值拼入签名原文，MD5 结果转小写。
+  return createHash('md5').update(`${canonical}&accessKeySecret=${secret}`, 'utf8').digest('hex');
 }
 
 function deliyunErrorMessage(status: number, payload: DeliyunResponse | undefined) {
