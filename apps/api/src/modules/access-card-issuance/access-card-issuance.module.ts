@@ -16,6 +16,7 @@ import { AccessCardAgentController, AccessCardIssuanceController, ParkingProofCo
 import { AccessCardIssuanceService } from './access-card-issuance.service';
 import { ParkingProofService } from './parking-proof.service';
 import { UploadModule } from '../upload/upload.module';
+import { DeliyunParkingService } from './deliyun-parking.service';
 
 @Module({
   imports: [
@@ -34,6 +35,6 @@ import { UploadModule } from '../upload/upload.module';
     ]),
   ],
   controllers: [AccessCardIssuanceController, AccessCardAgentController, ParkingProofController],
-  providers: [AccessCardIssuanceService, ParkingProofService],
+  providers: [AccessCardIssuanceService, ParkingProofService, DeliyunParkingService],
 })
 export class AccessCardIssuanceModule {}

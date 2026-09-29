@@ -87,6 +87,14 @@ export interface AccessCardReadiness {
     capabilities: Record<string, boolean>;
     lastSeenAt: string | null;
   }>;
+  deliyun?: {
+    configured: boolean;
+    connected: boolean;
+    readEnabled: boolean;
+    writeEnabled: false;
+    message: string;
+    checkedAt: string | null;
+  };
 }
 
 export interface ParkingQueryRow {

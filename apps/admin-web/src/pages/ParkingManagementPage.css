@@ -55,6 +55,11 @@
 .parking-device-status small { color: #718095; overflow-wrap: anywhere; }
 .parking-device-status .parking-device-databases { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; }
 .parking-device-databases .ant-tag { margin: 0; }
+.parking-cloud-status { display: grid; grid-template-columns: 44px minmax(0,1fr) auto auto; align-items: center; gap: 14px; margin-top: 12px; padding: 14px 16px; border: 1px solid #dde5ed; border-radius: 12px; background: #f8fafc; }
+.parking-cloud-status.is-online { border-color: #b7dfc3; background: #f3fbf5; }
+.parking-cloud-status > div { min-width: 0; display: grid; gap: 3px; }
+.parking-cloud-status small { color: #718095; overflow-wrap: anywhere; }
+.parking-cloud-status .ant-tag { margin: 0; }
 .parking-gateway-form, .parking-gateway-secret { display: grid; gap: 10px; }
 .parking-gateway-form label, .parking-gateway-secret label { margin-top: 8px; color: #344a61; font-weight: 650; }
 .parking-gateway-secret pre { margin: 0; padding: 11px 13px; overflow-x: auto; border: 1px solid #d9e1e9; border-radius: 8px; background: #f5f7fa; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -204,6 +209,7 @@
   .parking-device-heading { align-items: stretch; flex-direction: column; }
   .parking-device-status { grid-template-columns: 40px minmax(0,1fr) auto; }
   .parking-device-status .parking-device-databases { grid-column: 1 / -1; justify-content: flex-start; }
+  .parking-cloud-status { grid-template-columns: 40px minmax(0,1fr); }
   .parking-integration-alert { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: start; }
   .parking-integration-alert .ant-alert-icon { grid-column: 1; }
   .parking-integration-alert .ant-alert-content { min-width: 0; grid-column: 2; }

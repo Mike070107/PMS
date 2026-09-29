@@ -45,6 +45,7 @@ import {
 } from './dto';
 import { agentTokenMatches, issueAgentSecret } from './agent-auth';
 import { effectiveAgentStatus, orderAgentsByAvailability } from './agent-status';
+import { DeliyunParkingService } from './deliyun-parking.service';
 
 type HouseContext = {
   house: House;
@@ -78,6 +79,7 @@ export class AccessCardIssuanceService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly config: ConfigService,
+    private readonly deliyun: DeliyunParkingService,
   ) {}
 
   async getHouseContext(houseId: number, user: AuthUser, access?: ResolvedAccess) {
@@ -134,6 +136,7 @@ export class AccessCardIssuanceService {
     const tenantId = this.requireTenant(user);
     const agents = await this.agentRepo.find({ where: { tenantId }, order: { id: 'ASC' } });
     const simulationEnabled = this.simulationEnabled();
+    const deliyun = await this.deliyun.status();
     return {
       simulationEnabled,
       features: {
@@ -153,6 +156,7 @@ export class AccessCardIssuanceService {
         capabilities: agent.capabilities,
         lastSeenAt: agent.lastSeenAt,
       })),
+      deliyun,
     };
   }
 

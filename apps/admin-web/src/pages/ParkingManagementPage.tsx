@@ -111,6 +111,7 @@ export default function ParkingManagementPage({
   // 0.4.0 已能查询 Car_Issue；0.4.1 增加住户表联查，不能因为住户增强尚未升级就把整条查询锁死。
   const canQuery = canRead;
   const canJoinOwners = supportsParkingQueries(gateway?.version);
+  const deliyun = readiness?.deliyun;
 
   const searchParking = async () => {
     const queryTerm = term.trim();
@@ -227,6 +228,17 @@ export default function ParkingManagementPage({
             <Tag color={canJoinOwners ? 'success' : 'gold'}>{canJoinOwners ? '住户联查已启用' : '升级后联查住户'}</Tag>
             <Tag>写入未开放</Tag>
           </div>
+        </div>
+        <div className={`parking-cloud-status is-${deliyun?.connected ? 'online' : 'pending'}`}>
+          <span className="parking-device-icon"><SafetyCertificateOutlined /></span>
+          <div>
+            <strong>德立云 · 二期人防车库</strong>
+            <small>{deliyun?.message || '正在读取德立云连接状态'}</small>
+          </div>
+          <Tag color={deliyun?.connected ? 'success' : deliyun?.configured ? 'gold' : 'default'}>
+            {deliyun?.connected ? '只读已连接' : deliyun?.configured ? '配置待补充' : '未配置'}
+          </Tag>
+          <Tag>写入未开放</Tag>
         </div>
       </Card>
 
