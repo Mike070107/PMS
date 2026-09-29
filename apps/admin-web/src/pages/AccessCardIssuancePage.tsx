@@ -416,11 +416,14 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
 
   const completedCount = batch?.items.filter((item) => item.cardStatus === 'card_completed').length ?? 0;
   const currentSequence = Math.min(completedCount + 1, batch?.quantity ?? 1);
-  const history = context?.history ?? [];
+  const history = (context?.history ?? []).map((item, index, items) => ({
+    ...item,
+    displayOrdinal: items.length - index,
+  }));
 
   const columns = [
-    { title: '序号', dataIndex: 'sequence', width: 76, fixed: 'left' as const, render: (value: number) => <strong>#{value}</strong> },
-    { title: '捷顺编号', dataIndex: 'legacyPersonNo', width: 112, render: (value: string | null) => value || <Tag>同步中</Tag> },
+    { title: '序号', dataIndex: 'displayOrdinal', width: 76, fixed: 'left' as const, render: (value: number) => <strong>{value}</strong> },
+    { title: '捷顺系统编号', dataIndex: 'legacyPersonNo', width: 136, render: (value: string | null) => value || <Tag>同步中</Tag> },
     { title: 'IC 卡号', dataIndex: 'icCardNo', width: 150, render: (value: string | null) => value || '—' },
     { title: 'WG 卡号', dataIndex: 'wgCardNo', width: 130, render: (value: string | null) => value || <Text type="secondary">不适用</Text> },
     { title: '发卡时间', dataIndex: 'issuedAt', width: 180, render: formatTime },
@@ -530,8 +533,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
             extra={(
               <Space wrap>
                 <Text type="secondary">{context.historySources.legacy80
-                  ? `最新在前，已发 ${context.issuedCount} 张 · 下一张 #${context.nextSequence}`
-                  : `新系统已记录 ${context.issuedCount} 张 · 暂无旧库记录`}</Text>
+                  ? `最新在前，已发 ${history.length} 张`
+                  : `正在读取旧库历史，当前显示 ${history.length} 张`}</Text>
                 <Button
                   icon={<ReloadOutlined />}
                   loading={contextLoading}
@@ -550,7 +553,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                 message={context.historySources.message}
               />
             )}
-            <Table<AccessCardHistoryRow>
+            <Table<AccessCardHistoryRow & { displayOrdinal: number }>
               rowKey="id"
               columns={columns}
               dataSource={history}
