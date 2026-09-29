@@ -3341,3 +3341,11 @@
   - cc23836 fix(parking): exclude live-query fixtures from production
   - 139752b feat(parking): connect live legacy database search
 
+## 2026-09-29 15:45 · web · 21a3e44
+
+- 包：`pms-web-20260929-1544.tar.gz`
+- 提交：21a3e44 fix(parking): refresh gateway status automatically
+- 说明：停车网关状态每5秒自动刷新，窗口回到前台立即复查
+- 自上次（170dd4c）以来上线的相关提交：
+  - 21a3e44 fix(parking): refresh gateway status automatically
+
