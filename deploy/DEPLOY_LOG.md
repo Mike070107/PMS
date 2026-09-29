@@ -3318,3 +3318,11 @@
 - 自上次（e114eb3）以来上线的相关提交：
   - cbefc3d fix(parking): prefer the active gateway registration
 
+## 2026-09-29 14:57 · web · cbefc3d
+
+- 包：`pms-web-20260929-1449.tar.gz`
+- 提交：cbefc3d fix(parking): prefer the active gateway registration
+- 说明：停车页面优先显示在线网关，避免旧离线注册遮挡
+- 自上次（ae8691f）以来上线的相关提交：
+  - cbefc3d fix(parking): prefer the active gateway registration
+
