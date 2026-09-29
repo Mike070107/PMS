@@ -3229,3 +3229,11 @@
 - 自上次（79e67e7）以来上线的相关提交：
   - b8015bf feat(access-cards): add local-agent issuance workflow
 
+## 2026-09-29 09:18 · web · b8015bf
+
+- 包：`pms-web-20260929-0902.tar.gz`
+- 提交：b8015bf feat(access-cards): add local-agent issuance workflow
+- 说明：门禁发卡页面、代理注册指引与在线状态展示
+- 自上次（79e67e7）以来上线的相关提交：
+  - b8015bf feat(access-cards): add local-agent issuance workflow
+
