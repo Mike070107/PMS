@@ -3406,3 +3406,12 @@
 - 自上次（ad00c72）以来上线的相关提交：
   - c63c0b3 feat(parking): decode legacy authorization and collect family proof
 
+## 2026-09-29 21:25 · web · d796802
+
+- 包：`pms-web-20260929-2125.tar.gz`
+- 提交：d796802 fix(parking): map active garages and retire legacy shelter bits
+- 说明：确认四个授权项，忽略旧人防23/25位，二期人防改由德立云判断
+- 自上次（c63c0b3）以来上线的相关提交：
+  - d796802 fix(parking): map active garages and retire legacy shelter bits
+  - c86053d chore(web): refresh TypeScript build metadata
+
