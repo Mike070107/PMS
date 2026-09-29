@@ -3237,6 +3237,32 @@
 - 自上次（79e67e7）以来上线的相关提交：
   - b8015bf feat(access-cards): add local-agent issuance workflow
 
+## 2026-09-29 10:50 · api · 419deb0
+
+- 包：`pms-api-20260929-1039.tar.gz`
+- 提交：419deb0 fix(access-cards): scope buildings and stop background polling
+- 说明：门禁额外楼栋限定同小区同弄号并自然排序；历史改为手动刷新；生产真实 228/5/301 返回 1,2,3…10,11 且 db=up
+- 自上次（b8015bf）以来上线的相关提交：
+  - 419deb0 fix(access-cards): scope buildings and stop background polling
+
+## 2026-09-29 10:52 · web · 419deb0
+
+- 包：`pms-web-20260929-1039.tar.gz`
+- 提交：419deb0 fix(access-cards): scope buildings and stop background polling
+- 说明：门禁额外楼栋显示完整弄号、自然排序并增加手动刷新；通知中心取消 60 秒轮询；生产首页、SPA、登录页和静态资源均 200（工作区仅构建缓存 tsbuildinfo 变化，未进入制品）
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
+- 自上次（b8015bf）以来上线的相关提交：
+  - 419deb0 fix(access-cards): scope buildings and stop background polling
+
+## 2026-09-29 10:52 · miniapp-staff · 419deb0
+
+- 包：`微信开发版本 1.0.20260929b`
+- 提交：419deb0 fix(access-cards): scope buildings and stop background polling
+- 说明：员工端取消 60 秒后台角标轮询，改为前台恢复、页面展示和业务动作刷新；已上传开发版本，尚待公众平台选为体验版
+- 自上次（79e67e7）以来上线的相关提交：
+  - 419deb0 fix(access-cards): scope buildings and stop background polling
+  - b8015bf feat(access-cards): add local-agent issuance workflow
+
 ## 2026-09-29 10:53 · web · f51475e
 
 - 包：`pms-web-20260929-1052.tar.gz`
@@ -3244,4 +3270,3 @@
 - ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
 - 自上次（419deb0）以来上线的相关提交：
   - f51475e fix(access-cards): prefer online replacement agent
-
