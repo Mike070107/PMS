@@ -186,6 +186,24 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     void loadReadiness();
   }, [loadReadiness, preview]);
 
+  useEffect(() => {
+    if (preview || !batch || batch.status === 'completed' || batch.status === 'needs_operator') return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const next = await accessCardIssuance.batch(batch.id);
+        if (!cancelled) setBatch(next);
+      } catch {
+        // 主动任务轮询失败不清空当前进度，下一轮继续。
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 1_250);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [batch?.id, batch?.status, preview]);
+
   const loadContext = useCallback(async (
     houseId: number,
     preserveSelection = false,
@@ -308,6 +326,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
           wgCardNo: null,
           legacyPersonNo: null,
           cardCompletedAt: null,
+          lastErrorRef: null,
+          lastErrorMessage: null,
           controllerResults: [],
         })),
       });
@@ -416,6 +436,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
 
   const completedCount = batch?.items.filter((item) => item.cardStatus === 'card_completed').length ?? 0;
   const currentSequence = Math.min(completedCount + 1, batch?.quantity ?? 1);
+  const duplicateItem = batch?.items.find((item) => item.cardStatus === 'duplicate_card');
+  const activeErrorItem = batch?.items.find((item) => item.cardStatus !== 'card_completed' && item.lastErrorMessage);
   const history = (context?.history ?? []).map((item, index, items) => ({
     ...item,
     displayOrdinal: items.length - index,
@@ -624,7 +646,14 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                   </div>
                 ) : (
                   <div className="access-card-live-task">
-                    {batch.deliverable ? (
+                    {duplicateItem ? (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message="检测到已经发过的卡，本次发卡已停止"
+                        description={duplicateItem.lastErrorMessage || `IC 卡号 ${duplicateItem.icCardNo || '未知'} 已存在，不能重复发卡。`}
+                      />
+                    ) : batch.deliverable ? (
                       <Alert
                         type="success"
                         showIcon
@@ -643,6 +672,15 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                       </div>
                     )}
 
+                    {!duplicateItem && activeErrorItem?.lastErrorMessage && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message="本张卡暂未完成"
+                        description={activeErrorItem.lastErrorMessage}
+                      />
+                    )}
+
                     <Descriptions size="small" column={{ xs: 1, md: 2 }}>
                       <Descriptions.Item label="房号">{batch.addressSnapshot}</Descriptions.Item>
                       <Descriptions.Item label="处理方式">{batch.projectPhase === 'phase1' ? '一期 · 只写卡' : `二期 · ${systemLabel(batch.accessSystem)}`}</Descriptions.Item>
@@ -652,7 +690,9 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                       {batch.items.map((item) => (
                         <div key={item.id} className={item.cardStatus === 'card_completed' ? 'is-complete' : 'is-waiting'}>
                           <span>{item.cardStatus === 'card_completed' ? <CheckCircleOutlined /> : item.sequence}</span>
-                          <small>{item.cardStatus === 'card_completed' ? item.icCardNo : '等待放卡'}</small>
+                          <small>{item.cardStatus === 'card_completed'
+                            ? item.icCardNo
+                            : item.cardStatus === 'duplicate_card' ? '重复卡，已停止' : '等待放卡'}</small>
                         </div>
                       ))}
                     </div>

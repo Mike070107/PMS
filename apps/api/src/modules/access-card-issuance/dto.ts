@@ -105,6 +105,60 @@ export class AgentReportDto {
   errorMessage?: string;
 }
 
+export class CardPreflightDto {
+  @Type(() => Number)
+  @IsInt()
+  itemId: number;
+
+  @IsString()
+  @MaxLength(40)
+  icCardNo: string;
+}
+
+export class LegacyCardMatchDto {
+  @Type(() => Number)
+  @IsInt()
+  personId: number;
+
+  @IsString()
+  @MaxLength(40)
+  personNo: string;
+
+  @IsString()
+  @MaxLength(120)
+  personName: string;
+
+  @IsString()
+  @MaxLength(40)
+  icCardNo: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  issuedAt?: string;
+}
+
+export class LegacyCardCheckReportDto {
+  @Type(() => Number)
+  @IsInt()
+  checkId: number;
+
+  @IsIn(['success', 'retry', 'failed'])
+  result: 'success' | 'retry' | 'failed';
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => LegacyCardMatchDto)
+  matches?: LegacyCardMatchDto[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  errorMessage?: string;
+}
+
 export class LegacyHistoryEntryDto {
   @Type(() => Number)
   @IsInt()

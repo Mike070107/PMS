@@ -136,6 +136,20 @@ namespace Pms.AccessCardAgent
                     }
                     return 0;
                 }
+                if (args.Length > 1 && args[0] == "--legacy-card-check")
+                {
+                    var matches = LegacyDatabase.FindCard(config, SecretStore.Load(databasePasswordPath), args[1]);
+                    if (matches.Count == 0)
+                    {
+                        Console.WriteLine("未在捷顺系统查到该 IC 卡号。");
+                        return 0;
+                    }
+                    Console.WriteLine("该卡已在捷顺系统发过，共 " + matches.Count + " 条记录：");
+                    Console.WriteLine("原用户\t捷顺系统编号\tIC 卡号\t发卡时间");
+                    foreach (var match in matches)
+                        Console.WriteLine(match.personName + "\t" + match.personNo + "\t" + match.icCardNo + "\t" + (match.issuedAt ?? "-"));
+                    return 3;
+                }
                 if (args.Length > 0 && args[0] == "--console")
                 {
                     var token = SecretStore.Load(tokenPath);

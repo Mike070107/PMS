@@ -39,6 +39,7 @@ import { AccessCardAgent } from './access-card-agent.entity';
 import { AccessCardIssueBatch } from './access-card-issue-batch.entity';
 import { AccessCardIssueItem } from './access-card-issue-item.entity';
 import { AccessCardLegacySnapshot } from './access-card-legacy-snapshot.entity';
+import { AccessCardLegacyCardCheck } from './access-card-legacy-card-check.entity';
 import { BusinessTransaction } from './business-transaction.entity';
 import { BusinessLog } from './business-log.entity';
 import { RepairTypeRule } from './repair-type-rule.entity';
@@ -129,6 +130,7 @@ export const entities = [
   AccessCardIssueBatch,
   AccessCardIssueItem,
   AccessCardLegacySnapshot,
+  AccessCardLegacyCardCheck,
   BusinessTransaction,
   BusinessLog,
   RepairTypeRule,
@@ -204,6 +206,7 @@ export {
   AccessCardIssueBatch,
   AccessCardIssueItem,
   AccessCardLegacySnapshot,
+  AccessCardLegacyCardCheck,
   BusinessTransaction,
   BusinessLog,
   RepairTypeRule,

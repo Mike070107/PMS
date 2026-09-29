@@ -52,6 +52,8 @@ export interface AccessCardIssueItem {
   wgCardNo: string | null;
   legacyPersonNo: string | null;
   cardCompletedAt: string | null;
+  lastErrorRef: string | null;
+  lastErrorMessage: string | null;
   controllerResults: Array<Record<string, unknown>>;
 }
 

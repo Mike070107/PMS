@@ -9,6 +9,7 @@ export type AccessCardWriteStatus =
   | 'authorization_verified'
   | 'writing'
   | 'readback_verified'
+  | 'duplicate_card'
   | 'card_completed';
 export type AccessCardActivationStatus =
   | 'not_required'

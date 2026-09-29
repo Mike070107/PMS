@@ -7,6 +7,7 @@ import {
   icToWg,
   legacyRoomKey,
   legacyDatabaseRoomKey,
+  legacyDuplicateCardMessage,
   nextLegacyUserSequence,
   projectPhaseOf,
 } from './access-card-routing';
@@ -30,6 +31,24 @@ test('额外授权只列同一门禁区域，并按楼栋数字自然排序', ()
   assert.equal(belongsToSameAccessArea(current, buildings[5]), false);
   assert.equal(belongsToSameAccessArea(current, buildings[6]), false);
   assert.deepEqual(accessBuildingsForHouse('phase1', current, buildings), []);
+});
+
+test('捷顺旧卡提示包含原用户、系统编号和发卡时间', () => {
+  assert.equal(
+    legacyDuplicateCardMessage([{
+      personNo: '11251',
+      personName: '228/05/301/8',
+      issuedAt: '2026-09-22T02:20:00.0000000',
+    }]),
+    '这张卡已在捷顺系统发过：228/05/301/8，捷顺系统编号 11251，原发卡时间 2026-09-22 02:20:00。本次已停止，不会重复写卡。',
+  );
+  assert.match(
+    legacyDuplicateCardMessage([
+      { personNo: '1', personName: '228/05/301/1', issuedAt: null },
+      { personNo: '2', personName: '228/06/201/2', issuedAt: null },
+    ]),
+    /共查到 2 条重复记录/,
+  );
 });
 
 test('识别枫桦景苑期数并按二期楼栋选择门禁系统', () => {
