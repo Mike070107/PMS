@@ -3373,3 +3373,11 @@
 - 自上次（ba9ce99）以来上线的相关提交：
   - ad00c72 feat(parking): join legacy owners and match PMS users
 
+## 2026-09-29 16:19 · web · ad00c72
+
+- 包：`pms-web-20260929-1613.tar.gz`
+- 提交：ad00c72 feat(parking): join legacy owners and match PMS users
+- 说明：显示一期二期业务名称、车辆类别、旧库住户编号和PMS关联状态
+- 自上次（ba9ce99）以来上线的相关提交：
+  - ad00c72 feat(parking): join legacy owners and match PMS users
+
