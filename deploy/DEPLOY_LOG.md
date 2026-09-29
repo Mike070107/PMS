@@ -3294,3 +3294,11 @@
 - 自上次（419deb0）以来上线的相关提交：
   - e114eb3 feat(parking): add management page and local gateway
 
+## 2026-09-29 12:37 · web · e114eb3
+
+- 包：`pms-web-20260929-1228.tar.gz`
+- 提交：e114eb3 feat(parking): add management page and local gateway
+- 说明：停车管理页面、左侧菜单与设备服务卡片
+- 自上次（3fb333b）以来上线的相关提交：
+  - e114eb3 feat(parking): add management page and local gateway
+
