@@ -200,15 +200,6 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     }
   }, []);
 
-  useEffect(() => {
-    if (preview || !picked?.houseId || context?.historySources.legacy80) return;
-    const houseId = picked.houseId;
-    const timer = window.setInterval(() => {
-      void loadContext(houseId, true);
-    }, 2500);
-    return () => window.clearInterval(timer);
-  }, [context?.historySources.legacy80, loadContext, picked?.houseId, preview]);
-
   const enrollAgent = async () => {
     if (!agentName.trim()) {
       message.error('请填写这台电脑或网关的名称');
@@ -254,7 +245,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       .filter((item) => item.id !== context.house.buildingId)
       .map((item) => ({
         value: item.id,
-        label: `${item.buildingNo}号楼 · ${systemLabel(item.accessSystem)}${item.routeReady ? '' : '（未配置）'}`,
+        label: `${context.house.lane ? `${context.house.lane}弄` : ''}${item.buildingNo}号楼 · ${systemLabel(item.accessSystem)}${item.routeReady ? '' : '（未配置）'}`,
         disabled: !item.routeReady,
       })) ?? [],
     [context],
@@ -506,9 +497,20 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
           <Card
             className="access-card-history-card"
             title={`历史卡片 · ${context.house.roomKey}`}
-            extra={<Text type="secondary">{context.historySources.legacy80
-              ? `最新在前，已发 ${context.issuedCount} 张 · 下一张 #${context.nextSequence}`
-              : `新系统已记录 ${context.issuedCount} 张 · 旧库数量待接入`}</Text>}
+            extra={(
+              <Space wrap>
+                <Text type="secondary">{context.historySources.legacy80
+                  ? `最新在前，已发 ${context.issuedCount} 张 · 下一张 #${context.nextSequence}`
+                  : `新系统已记录 ${context.issuedCount} 张 · 暂无旧库记录`}</Text>
+                <Button
+                  icon={<ReloadOutlined />}
+                  loading={contextLoading}
+                  onClick={() => void refreshContext()}
+                >
+                  刷新历史
+                </Button>
+              </Space>
+            )}
           >
             {!context.historySources.legacy80 && (
               <Alert

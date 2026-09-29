@@ -22,7 +22,9 @@ import {
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import {
+  accessBuildingsForHouse,
   accessSystemOf,
+  belongsToSameAccessArea,
   icToWg,
   legacyRoomKey,
   legacyDatabaseRoomKey,
@@ -70,7 +72,6 @@ export class AccessCardIssuanceService {
     const [buildings, pmsHistory, legacySnapshot] = await Promise.all([
       this.buildingRepo.find({
         where: { tenantId, communityId: context.community.id },
-        order: { buildingNo: 'ASC' },
       }),
       this.historyForHouse(houseId, tenantId),
       this.requestLegacyHistory(tenantId, context.legacyStorageRoomKey, user.id),
@@ -93,14 +94,13 @@ export class AccessCardIssuanceService {
       projectPhase: context.phase,
       accessSystem: context.accessSystem,
       routeReady: context.phase === 'phase1' || context.accessSystem !== null,
-      availableBuildings: context.phase === 'phase2'
-        ? buildings.map((building) => ({
+      availableBuildings: accessBuildingsForHouse(context.phase, context.building, buildings)
+        .map((building) => ({
             id: building.id,
             buildingNo: building.buildingNo,
             accessSystem: accessSystemOf(context.phase, building.buildingNo),
-            routeReady: accessSystemOf(context.phase, building.buildingNo) !== null,
-          }))
-        : [],
+            routeReady: true,
+          })),
       issuedCount: legacyReady ? legacySnapshot.issuedCount : history.length,
       nextSequence: legacyReady
         ? legacySnapshot.nextSequence
@@ -111,7 +111,7 @@ export class AccessCardIssuanceService {
         legacy80: legacyReady,
         message: legacyReady
           ? `已合并 192.168.1.80 历史记录，旧库下一序号 #${legacySnapshot.nextSequence}`
-          : legacySnapshot.lastError || '正在向 192.168.1.80 查询该房号的已发卡数量和历史记录',
+          : legacySnapshot.lastError || '暂未取得 192.168.1.80 的历史记录，如需重新查询，请点击“刷新历史”',
       },
     };
   }
@@ -388,8 +388,9 @@ export class AccessCardIssuanceService {
     const extras = extraIds.length
       ? await this.buildingRepo.find({ where: { id: In(extraIds), tenantId } })
       : [];
-    if (extras.length !== extraIds.length || extras.some((item) => item.communityId !== context.community.id)) {
-      throw new BadRequestException('额外楼栋必须属于当前小区');
+    if (extras.length !== extraIds.length || extras.some((item) => !belongsToSameAccessArea(context.building, item))) {
+      const area = context.building.lane ? `${context.building.lane}弄` : context.community.name;
+      throw new BadRequestException(`额外楼栋必须属于当前小区的 ${area} 门禁区域`);
     }
     const unmapped = extras.find((item) => !accessSystemOf(context.phase, item.buildingNo));
     if (unmapped) throw new BadRequestException(`${unmapped.buildingNo} 号楼尚未配置门禁路由`);

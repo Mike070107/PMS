@@ -1,5 +1,5 @@
-import { Badge, Button, Drawer, Empty, List, Tag, Typography } from 'antd';
-import { BellOutlined, CheckOutlined } from '@ant-design/icons';
+import { Badge, Button, Drawer, Empty, List, Space, Tag, Typography } from 'antd';
+import { BellOutlined, CheckOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -123,14 +123,16 @@ export default function NotificationBell() {
   }, []);
 
   useEffect(() => {
-    loadUnread();
-    const timer = setInterval(loadUnread, 60000);
-    return () => clearInterval(timer);
+    void loadUnread();
   }, [loadUnread]);
 
   const openDrawer = () => {
     setOpen(true);
-    loadList();
+    void Promise.all([loadList(), loadUnread()]);
+  };
+
+  const refreshNotifications = () => {
+    void Promise.all([loadList(), loadUnread()]);
   };
 
   const onItemClick = async (row: NotificationRow) => {
@@ -178,9 +180,14 @@ export default function NotificationBell() {
         open={open}
         onClose={() => setOpen(false)}
         extra={
-          <Button size="small" icon={<CheckOutlined />} onClick={markAllRead} disabled={!unread}>
-            全部已读
-          </Button>
+          <Space>
+            <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={refreshNotifications}>
+              刷新
+            </Button>
+            <Button size="small" icon={<CheckOutlined />} onClick={markAllRead} disabled={!unread}>
+              全部已读
+            </Button>
+          </Space>
         }
       >
         {!!rows.length && (

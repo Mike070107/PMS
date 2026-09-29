@@ -1,5 +1,14 @@
+import { compareBuildingLike } from '../../common/natural-order';
+
 export type ProjectPhase = 'phase1' | 'phase2';
 export type DoorAccessSystem = 'mjsystem' | 'iccard' | null;
+
+type AccessBuildingCandidate = {
+  id: number;
+  communityId: number;
+  lane?: string | null;
+  buildingNo: string;
+};
 
 const MJSYSTEM_BUILDINGS = new Set([
   '01', '02', '03', '05', '06', '07', '08', '09', '10', '18', '19', '20',
@@ -27,6 +36,32 @@ export function accessSystemOf(phase: ProjectPhase, buildingNo: string): DoorAcc
   if (MJSYSTEM_BUILDINGS.has(normalized)) return 'mjsystem';
   if (ICCARD_BUILDINGS.has(normalized)) return 'iccard';
   return null;
+}
+
+function normalizeAreaPart(value?: string | null): string {
+  return (value ?? '').trim();
+}
+
+/** 额外授权只能选择同一小区、同一弄号（即同一实际门禁区域）的楼栋。 */
+export function belongsToSameAccessArea(
+  current: Pick<AccessBuildingCandidate, 'communityId' | 'lane'>,
+  candidate: Pick<AccessBuildingCandidate, 'communityId' | 'lane'>,
+): boolean {
+  return candidate.communityId === current.communityId
+    && normalizeAreaPart(candidate.lane) === normalizeAreaPart(current.lane);
+}
+
+/** 返回当前门禁区域内已配置路由的楼栋，并按人类理解的数字顺序排列。 */
+export function accessBuildingsForHouse<T extends AccessBuildingCandidate>(
+  phase: ProjectPhase,
+  current: Pick<AccessBuildingCandidate, 'communityId' | 'lane'>,
+  buildings: T[],
+): T[] {
+  if (phase === 'phase1') return [];
+  return buildings
+    .filter((building) => belongsToSameAccessArea(current, building))
+    .filter((building) => accessSystemOf(phase, building.buildingNo) !== null)
+    .sort(compareBuildingLike);
 }
 
 export function legacyRoomKey(lane: string | null, buildingNo: string, roomNo: string): string {
