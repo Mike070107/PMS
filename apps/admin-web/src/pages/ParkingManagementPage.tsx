@@ -375,7 +375,8 @@ function vehicleIdentity(fields: ParkingQueryRow['fields']): string | null {
   return `旧库车辆类型 ${raw}`;
 }
 
-function enabledBitPositions(value: string | null): number[] {
+/** 256 位字符串中字符所在的位置就是旧停车系统的通道号，不是车位或库位。 */
+function enabledChannelNumbers(value: string | null): number[] {
   if (!value) return [];
   return Array.from(value).flatMap((bit, index) => bit === '1' ? [index + 1] : []);
 }
@@ -383,27 +384,27 @@ function enabledBitPositions(value: string | null): number[] {
 function downloadState(database: string, fields: ParkingQueryRow['fields']) {
   const effective = fieldValue(fields, fieldAliases.effective);
   const downloaded = fieldValue(fields, fieldAliases.download);
-  const activePositions = database.toLowerCase() === 'parking1'
+  const activeChannels = database.toLowerCase() === 'parking1'
     ? new Set([5, 7])
     : new Set([9, 11, 13, 15, 17, 19, 21]);
-  // parking2 的 23/25 是已被德立云替代的人防旧通道，不能再参与旧系统生效判断。
-  const required = enabledBitPositions(effective).filter((position) => activePositions.has(position));
+  // parking2 的 23/25 是已被德立云替代的人防旧通道号，不能再参与旧系统生效判断。
+  const required = enabledChannelNumbers(effective).filter((channel) => activeChannels.has(channel));
   if (required.length === 0) return { ready: false, label: '旧系统未设置现行授权' };
   if (!downloaded) return { ready: false, label: '尚无设备下载记录' };
-  const missing = required.filter((position) => downloaded[position - 1] !== '1');
-  return missing.length === 0
+  const missingChannels = required.filter((channel) => downloaded[channel - 1] !== '1');
+  return missingChannels.length === 0
     ? { ready: true, label: '设备下载成功 · 授权已生效' }
-    : { ready: false, label: `尚未全部下载 · 缺少 ${missing.length} 个授权位` };
+    : { ready: false, label: `尚未全部下载 · 缺少 ${missingChannels.length} 个授权通道` };
 }
 
 function authorizationLabels(database: string, fields: ParkingQueryRow['fields']): string[] {
-  const bits = enabledBitPositions(fieldValue(fields, fieldAliases.effective));
+  const channels = enabledChannelNumbers(fieldValue(fields, fieldAliases.effective));
   const labels: string[] = [];
   if (database.toLowerCase() === 'parking1') {
-    if (bits.some((item) => item === 5 || item === 7)) labels.push('一期地面车库');
+    if (channels.some((item) => item === 5 || item === 7)) labels.push('一期地面车库');
   } else if (database.toLowerCase() === 'parking2') {
-    if (bits.some((item) => [9, 11, 13].includes(item))) labels.push('二期地面车库');
-    if (bits.some((item) => [15, 17, 19, 21].includes(item))) labels.push('二期大车库');
+    if (channels.some((item) => [9, 11, 13].includes(item))) labels.push('二期地面车库');
+    if (channels.some((item) => [15, 17, 19, 21].includes(item))) labels.push('二期大车库');
     labels.push('二期人防车库：以德立云为准');
   }
   return labels.length > 0 ? labels : ['未识别授权区域'];
