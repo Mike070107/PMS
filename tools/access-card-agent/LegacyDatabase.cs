@@ -28,6 +28,15 @@ namespace Pms.AccessCardAgent
         public List<LegacyHistoryEntry> history { get; set; }
     }
 
+    internal sealed class LegacyCardMatch
+    {
+        public long personId { get; set; }
+        public string personNo { get; set; }
+        public string personName { get; set; }
+        public string icCardNo { get; set; }
+        public string issuedAt { get; set; }
+    }
+
     /** .80 旧库只读诊断；正式同步会复用同一事务锁后再写 Person/CardInfo。 */
     internal static class LegacyDatabase
     {
@@ -127,6 +136,43 @@ ORDER BY p.[ID] DESC;";
                 }
             }
             return result;
+        }
+
+        /** 写卡前全库查重；不能只查当前房号，否则旧卡换房会被漏掉。 */
+        public static List<LegacyCardMatch> FindCard(AgentConfig config, string password, string icCardNo)
+        {
+            var normalized = (icCardNo ?? "").Replace(" ", "").Trim().ToUpperInvariant();
+            if (normalized.Length < 6) throw new InvalidOperationException("IC 卡号无效");
+            var matches = new List<LegacyCardMatch>();
+            using (var connection = new SqlConnection(ConnectionString(config, password)))
+            using (var command = connection.CreateCommand())
+            {
+                connection.Open();
+                command.CommandText = @"
+SELECT TOP (20) c.[ID], c.[PersonID], p.[NO], p.[Name], c.[IDNO], c.[IssueDate]
+FROM [MC].[CardInfo] c
+LEFT JOIN [HR].[Person] p ON p.[ID] = c.[PersonID]
+WHERE UPPER(LTRIM(RTRIM(c.[IDNO]))) = @cardNo
+ORDER BY c.[IssueDate] DESC, p.[ID] DESC;";
+                command.Parameters.Add("@cardNo", SqlDbType.NVarChar, 40).Value = normalized;
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        matches.Add(new LegacyCardMatch
+                        {
+                            personId = reader.IsDBNull(1) ? -Convert.ToInt64(reader.GetValue(0), CultureInfo.InvariantCulture) : Convert.ToInt64(reader.GetValue(1), CultureInfo.InvariantCulture),
+                            personNo = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim(),
+                            personName = reader.IsDBNull(3)
+                                ? "原用户记录已删除（CardInfo ID " + Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture) + "）"
+                                : reader.GetString(3).Trim(),
+                            icCardNo = reader.IsDBNull(4) ? normalized : reader.GetString(4).Trim().ToUpperInvariant(),
+                            issuedAt = reader.IsDBNull(5) ? null : reader.GetDateTime(5).ToString("o", CultureInfo.InvariantCulture)
+                        });
+                    }
+                }
+            }
+            return matches;
         }
 
         private static string ConnectionString(AgentConfig config, string password)

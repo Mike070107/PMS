@@ -56,6 +56,13 @@ namespace Pms.AccessCardAgent
             return _json.ConvertToType<ParkingQueryTask>(result["task"]);
         }
 
+        public LegacyCardCheckTask ClaimLegacyCardCheck()
+        {
+            var result = Post("/access-card-agent/legacy-card-check/claim", new Dictionary<string, object>());
+            if (!result.ContainsKey("task") || result["task"] == null) return null;
+            return _json.ConvertToType<LegacyCardCheckTask>(result["task"]);
+        }
+
         public void Report(AgentReport report)
         {
             Post("/access-card-agent/report", report);
@@ -69,6 +76,20 @@ namespace Pms.AccessCardAgent
         public void ReportParkingQuery(ParkingQueryReport report)
         {
             Post("/access-card-agent/parking/queries/report", report);
+        }
+
+        public void ReportLegacyCardCheck(LegacyCardCheckReport report)
+        {
+            Post("/access-card-agent/legacy-card-check/report", report);
+        }
+
+        public Dictionary<string, object> CardPreflight(int itemId, string icCardNo)
+        {
+            return Post("/access-card-agent/card-preflight", new Dictionary<string, object>
+            {
+                { "itemId", itemId },
+                { "icCardNo", icCardNo }
+            });
         }
 
         private Dictionary<string, object> Post(string path, object body)
@@ -158,6 +179,20 @@ namespace Pms.AccessCardAgent
         public int queryId { get; set; }
         public string result { get; set; }
         public List<ParkingSearchRow> rows { get; set; }
+        public string errorMessage { get; set; }
+    }
+
+    internal sealed class LegacyCardCheckTask
+    {
+        public int checkId { get; set; }
+        public string icCardNo { get; set; }
+    }
+
+    internal sealed class LegacyCardCheckReport
+    {
+        public int checkId { get; set; }
+        public string result { get; set; }
+        public List<LegacyCardMatch> matches { get; set; }
         public string errorMessage { get; set; }
     }
 }

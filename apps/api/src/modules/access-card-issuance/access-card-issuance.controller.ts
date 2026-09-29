@@ -22,8 +22,10 @@ import { AccessCardIssuanceService } from './access-card-issuance.service';
 import {
   AgentHeartbeatDto,
   AgentReportDto,
+  CardPreflightDto,
   CreateAccessCardIssueDto,
   EnrollAccessCardAgentDto,
+  LegacyCardCheckReportDto,
   LegacyHistoryReportDto,
   CreateParkingQueryDto,
   CreateParkingProofUploadDto,
@@ -161,6 +163,32 @@ export class AccessCardAgentController {
     @Body() dto: AgentReportDto,
   ) {
     return this.service.reportAgentTask(agentKey, bearerToken(authorization), dto);
+  }
+
+  @Post('card-preflight')
+  cardPreflight(
+    @Headers('x-agent-id') agentKey: string,
+    @Headers('authorization') authorization: string,
+    @Body() dto: CardPreflightDto,
+  ) {
+    return this.service.cardPreflight(agentKey, bearerToken(authorization), dto);
+  }
+
+  @Post('legacy-card-check/claim')
+  claimLegacyCardCheck(
+    @Headers('x-agent-id') agentKey: string,
+    @Headers('authorization') authorization: string,
+  ) {
+    return this.service.claimLegacyCardCheck(agentKey, bearerToken(authorization));
+  }
+
+  @Post('legacy-card-check/report')
+  reportLegacyCardCheck(
+    @Headers('x-agent-id') agentKey: string,
+    @Headers('authorization') authorization: string,
+    @Body() dto: LegacyCardCheckReportDto,
+  ) {
+    return this.service.reportLegacyCardCheck(agentKey, bearerToken(authorization), dto);
   }
 
   @Post('legacy-history/claim')

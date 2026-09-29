@@ -47,6 +47,13 @@ namespace Pms.AccessCardAgent
                     SetConnectionState(true, "PMS 心跳正常");
                     if (_config.Kind == "legacy_sync")
                     {
+                        var cardCheckTask = _api.ClaimLegacyCardCheck();
+                        if (cardCheckTask != null)
+                        {
+                            HandleLegacyCardCheck(cardCheckTask);
+                            if (Wait(stopSignal, _config.PollIntervalMs)) return;
+                            continue;
+                        }
                         var historyTask = _api.ClaimLegacyHistory();
                         if (historyTask != null)
                         {
@@ -156,6 +163,29 @@ namespace Pms.AccessCardAgent
             }
         }
 
+        private void HandleLegacyCardCheck(LegacyCardCheckTask task)
+        {
+            try
+            {
+                var matches = LegacyDatabase.FindCard(_config, LoadSecret("legacy-db-password.dat"), task.icCardNo);
+                _api.ReportLegacyCardCheck(new LegacyCardCheckReport
+                {
+                    checkId = task.checkId,
+                    result = "success",
+                    matches = matches
+                });
+            }
+            catch (Exception exception)
+            {
+                _api.ReportLegacyCardCheck(new LegacyCardCheckReport
+                {
+                    checkId = task.checkId,
+                    result = "retry",
+                    errorMessage = exception.Message
+                });
+            }
+        }
+
         private void Handle(AgentTask task, bool hasReader)
         {
             if (_config.Kind == "issuer" && !hasReader)
@@ -167,6 +197,27 @@ namespace Pms.AccessCardAgent
                     errorMessage = "未检测到 ACR122U，请检查 USB 和 PC/SC 驱动"
                 });
                 return;
+            }
+            if (_config.Kind == "issuer")
+            {
+                try
+                {
+                    var icCardNo = CardReader.ReadUid();
+                    var preflight = _api.CardPreflight(task.itemId, icCardNo);
+                    var status = preflight.ContainsKey("status") ? Convert.ToString(preflight["status"]) : "error";
+                    var detail = preflight.ContainsKey("message") ? Convert.ToString(preflight["message"]) : "卡片查重未返回结果";
+                    if (status == "duplicate") return; // API 已将任务标记为重复卡并释放租约。
+                    if (status != "clear")
+                    {
+                        _api.Report(new AgentReport { itemId = task.itemId, result = "retry", errorMessage = detail });
+                        return;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    _api.Report(new AgentReport { itemId = task.itemId, result = "retry", errorMessage = exception.Message });
+                    return;
+                }
             }
             // 默认拒绝产生真实副作用；硬件和旧库适配器通过验收后逐项替换此分支。
             _api.Report(new AgentReport

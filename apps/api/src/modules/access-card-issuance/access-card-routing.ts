@@ -107,3 +107,16 @@ export function icToWg(icCardNo: string): string {
     .padStart(5, '0');
   return `${facility}${card}`;
 }
+
+export function legacyDuplicateCardMessage(matches: Array<{
+  personNo: string;
+  personName: string;
+  issuedAt: string | null;
+}>): string {
+  const match = matches[0];
+  const issuedAt = match?.issuedAt
+    ? `，原发卡时间 ${match.issuedAt.replace('T', ' ').slice(0, 19)}`
+    : '';
+  const duplicateCount = matches.length > 1 ? `（共查到 ${matches.length} 条重复记录）` : '';
+  return `这张卡已在捷顺系统发过：${match?.personName || '原用户未知'}，捷顺系统编号 ${match?.personNo || '未知'}${issuedAt}${duplicateCount}。本次已停止，不会重复写卡。`;
+}
