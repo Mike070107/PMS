@@ -34,7 +34,13 @@ import './ParkingManagementPage.css';
 const { Text, Title } = Typography;
 type ParkingQueryRow = accessCardIssuance.ParkingQueryRow;
 
-export default function ParkingManagementPage({ preview }: { preview?: 'upgrade' | 'ready' }) {
+export default function ParkingManagementPage({
+  readinessOverride,
+  rowsOverride,
+}: {
+  readinessOverride?: AccessCardReadiness;
+  rowsOverride?: ParkingQueryRow[];
+} = {}) {
   const { message } = AntdApp.useApp();
   const [readiness, setReadiness] = useState<AccessCardReadiness | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,13 +56,13 @@ export default function ParkingManagementPage({ preview }: { preview?: 'upgrade'
   const loadReadiness = useCallback(async () => {
     setLoading(true);
     try {
-      setReadiness(preview ? makePreviewReadiness(preview) : await accessCardIssuance.readiness());
+      setReadiness(readinessOverride ?? await accessCardIssuance.readiness());
     } catch (error) {
       message.error(error instanceof Error ? error.message : '停车网关状态加载失败');
     } finally {
       setLoading(false);
     }
-  }, [message, preview]);
+  }, [message, readinessOverride]);
 
   useEffect(() => { void loadReadiness(); }, [loadReadiness]);
 
@@ -95,8 +101,8 @@ export default function ParkingManagementPage({ preview }: { preview?: 'upgrade'
     setRows([]);
     setSearchedTerm(queryTerm);
     try {
-      if (preview === 'ready') {
-        setRows(previewRows);
+      if (rowsOverride) {
+        setRows(rowsOverride);
         return;
       }
       let query = await accessCardIssuance.createParkingQuery(queryTerm);
@@ -239,35 +245,6 @@ export default function ParkingManagementPage({ preview }: { preview?: 'upgrade'
     </div>
   );
 }
-
-function makePreviewReadiness(mode: 'upgrade' | 'ready'): AccessCardReadiness {
-  return {
-    simulationEnabled: false,
-    features: { cardWrite: false, legacyDbWrite: false, accessDbWrite: false, parkingDbRead: true, parkingDbWrite: false, controllerUpload: false },
-    agents: [{
-      id: 'parking_gateway-preview',
-      kind: 'parking_gateway',
-      name: '枫桦景苑停车系统网关',
-      version: mode === 'ready' ? '0.4.0' : '0.3.0',
-      status: 'online',
-      capabilities: { parkingDbRead: true, parkingDbWrite: false },
-      lastSeenAt: new Date().toISOString(),
-    }],
-  };
-}
-
-const previewRows: ParkingQueryRow[] = [{
-  database: 'parking2',
-  fields: {
-    Car_No: '沪A12345',
-    Room_No: '228/5/301',
-    User_Name: '张某某',
-    Mobile: '13800006421',
-    Park_No: 'DK23',
-    End_Date: '2026-12-31 23:59:59',
-    Car_Zt: '正常',
-  },
-}];
 
 function supportsParkingQueries(version?: string): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');

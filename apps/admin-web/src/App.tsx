@@ -14,6 +14,9 @@ const ParkingManagementPage = lazy(() => import('./pages/ParkingManagementPage')
 const ParkingManagementPreviewPage = import.meta.env.DEV
   ? lazy(() => import('./pages/ParkingManagementPreviewPage'))
   : null;
+const ParkingManagementLivePreviewPage = import.meta.env.DEV
+  ? lazy(() => import('./pages/ParkingManagementLivePreviewPage'))
+  : null;
 const FeesPage = lazy(() => import('./pages/FeesPage'));
 const PropertiesPage = lazy(() => import('./pages/PropertiesPage'));
 const OwnerAuditPage = lazy(() => import('./pages/OwnerAuditPage'));
@@ -126,8 +129,12 @@ export default function App() {
       {import.meta.env.DEV && (
         <>
           <Route path="/dev/access-card-preview" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f4f1eb' }}><AccessCardIssuancePage preview /></div>} />
-          <Route path="/dev/parking-live" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ParkingManagementPage preview="upgrade" /></div>} />
-          <Route path="/dev/parking-live-ready" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ParkingManagementPage preview="ready" /></div>} />
+          {ParkingManagementLivePreviewPage && (
+            <>
+              <Route path="/dev/parking-live" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ParkingManagementLivePreviewPage mode="upgrade" /></div>} />
+              <Route path="/dev/parking-live-ready" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ParkingManagementLivePreviewPage mode="ready" /></div>} />
+            </>
+          )}
           {ParkingManagementPreviewPage && (
             <Route path="/dev/parking-preview" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ParkingManagementPreviewPage preview /></div>} />
           )}
