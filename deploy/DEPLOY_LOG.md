@@ -3310,3 +3310,11 @@
 - 自上次（e114eb3）以来上线的相关提交：
   - ae8691f fix(parking): keep preview data out of production
 
+## 2026-09-29 14:57 · api · cbefc3d
+
+- 包：`pms-api-20260929-1449.tar.gz`
+- 提交：cbefc3d fix(parking): prefer the active gateway registration
+- 说明：重复注册时优先在线且最新心跳的停车网关
+- 自上次（e114eb3）以来上线的相关提交：
+  - cbefc3d fix(parking): prefer the active gateway registration
+
