@@ -187,8 +187,12 @@ export default function ParkingManagementPage({
           </div>
           <Tag color={online ? 'success' : 'default'}>{online ? '在线' : '未连接'}</Tag>
           <div className="parking-device-databases">
-            <Tag icon={<DatabaseOutlined />}>parking1</Tag>
-            <Tag icon={<DatabaseOutlined />}>parking2</Tag>
+            <Tag color={canQuery ? 'success' : 'default'} icon={canQuery ? <CheckCircleOutlined /> : <DatabaseOutlined />}>
+              parking1 {canQuery ? '已连接' : '未验证'}
+            </Tag>
+            <Tag color={canQuery ? 'success' : 'default'} icon={canQuery ? <CheckCircleOutlined /> : <DatabaseOutlined />}>
+              parking2 {canQuery ? '已连接' : '未验证'}
+            </Tag>
             <Tag color={canQuery ? 'success' : canRead ? 'gold' : 'default'}>{canQuery ? '查询已就绪' : canRead ? '需升级助手' : '尚未验证'}</Tag>
             <Tag>写入未开放</Tag>
           </div>

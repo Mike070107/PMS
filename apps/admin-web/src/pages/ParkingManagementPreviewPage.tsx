@@ -281,7 +281,15 @@ export default function ParkingManagementPage({ preview = false }: { preview?: b
           <span className={`parking-device-icon is-${parkingGateway?.status === 'online' ? 'online' : 'offline'}`}><DatabaseOutlined /></span>
           <div><strong>{parkingGateway?.name || '尚未连接停车网关'}</strong><small>{parkingGateway ? `版本 ${parkingGateway.version} · 最近心跳 ${parkingGateway.lastSeenAt ? new Date(parkingGateway.lastSeenAt).toLocaleString('zh-CN', { hour12: false }) : '暂无'}` : '在停车系统所在电脑安装数据同步助手后即可连接'}</small></div>
           <Tag color={parkingGateway?.status === 'online' ? 'success' : 'default'}>{parkingGateway?.status === 'online' ? '在线' : '未连接'}</Tag>
-          <div className="parking-device-databases"><Tag icon={<DatabaseOutlined />}>parking1</Tag><Tag icon={<DatabaseOutlined />}>parking2</Tag><Tag color={readiness?.features.parkingDbRead ? 'blue' : 'default'}>只读探测</Tag><Tag>写入未开放</Tag></div>
+          <div className="parking-device-databases">
+            <Tag color={parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? 'success' : 'default'} icon={parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? <CheckCircleOutlined /> : <DatabaseOutlined />}>
+              parking1 {parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? '已连接' : '未验证'}
+            </Tag>
+            <Tag color={parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? 'success' : 'default'} icon={parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? <CheckCircleOutlined /> : <DatabaseOutlined />}>
+              parking2 {parkingGateway?.status === 'online' && readiness?.features.parkingDbRead ? '已连接' : '未验证'}
+            </Tag>
+            <Tag color={readiness?.features.parkingDbRead ? 'blue' : 'default'}>只读探测</Tag><Tag>写入未开放</Tag>
+          </div>
         </div>
       </Card>
 
