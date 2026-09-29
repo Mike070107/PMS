@@ -3357,3 +3357,11 @@
 - 自上次（21a3e44）以来上线的相关提交：
   - ba9ce99 fix(parking): clarify database connection badges
 
+## 2026-09-29 16:18 · api · ad00c72
+
+- 包：`pms-api-20260929-1613.tar.gz`
+- 提交：ad00c72 feat(parking): join legacy owners and match PMS users
+- 说明：停车旧库Owner_ID联查住户并按手机号精确匹配PMS用户
+- 自上次（cc23836）以来上线的相关提交：
+  - ad00c72 feat(parking): join legacy owners and match PMS users
+
