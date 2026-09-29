@@ -3254,3 +3254,12 @@
 - 自上次（b8015bf）以来上线的相关提交：
   - 419deb0 fix(access-cards): scope buildings and stop background polling
 
+## 2026-09-29 10:52 · miniapp-staff · 419deb0
+
+- 包：`微信开发版本 1.0.20260929b`
+- 提交：419deb0 fix(access-cards): scope buildings and stop background polling
+- 说明：员工端取消 60 秒后台角标轮询，改为前台恢复、页面展示和业务动作刷新；已上传开发版本，尚待公众平台选为体验版
+- 自上次（79e67e7）以来上线的相关提交：
+  - 419deb0 fix(access-cards): scope buildings and stop background polling
+  - b8015bf feat(access-cards): add local-agent issuance workflow
+
