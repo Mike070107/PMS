@@ -19,3 +19,11 @@ export * as observability from './endpoints/observability';
 export type { FeedbackType, FeedbackStatus, UserFeedbackReq } from './endpoints/observability';
 export * as feedback from './endpoints/feedback';
 export * as repairExperiences from './endpoints/repair-experiences';
+export * as accessCardIssuance from './endpoints/access-card-issuance';
+export type {
+  AccessCardHistoryRow,
+  AccessCardHouseContext,
+  AccessCardIssueBatch,
+  AccessCardIssueItem,
+  AccessCardReadiness,
+} from './endpoints/access-card-issuance';

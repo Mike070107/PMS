@@ -29,6 +29,7 @@ import { StocktakeModule } from './modules/stocktake/stocktake.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { RepairExperiencesModule } from './modules/repair-experiences/repair-experiences.module';
+import { AccessCardIssuanceModule } from './modules/access-card-issuance/access-card-issuance.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { RepairExperiencesModule } from './modules/repair-experiences/repair-exp
     ObservabilityModule,
     FeedbackModule,
     RepairExperiencesModule,
+    AccessCardIssuanceModule,
     PropertiesModule,
     QrModule,
     OwnersModule,

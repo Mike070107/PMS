@@ -61,7 +61,7 @@ export class PropertiesController {
 
   /** 小区 → 楼栋 → 房号 全量地址树（报修录入的即时联想用） */
   @Get('address-tree')
-  @RequirePermission(['work-orders', 'properties'], 'view')
+  @RequirePermission(['work-orders', 'properties', 'business'], 'view')
   getAddressTree(
     @Query() query: TenantScopedQueryDto,
     @CurrentUser() user: AuthUser,

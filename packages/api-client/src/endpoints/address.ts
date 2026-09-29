@@ -8,6 +8,10 @@ import { request } from '../request';
 export const book = (communityId?: number) =>
   request<AddressCommunity[]>({ url: '/address-book', query: { communityId } });
 
+/** 管理后台地址树：含业主姓名和电话，供收费、门禁发卡等已授权页面搜索。 */
+export const tree = () =>
+  request<AddressCommunity[]>({ url: '/address-tree' });
+
 /** 小程序报修位置选择器使用的公区点位，权限与地址簿一样由服务端按角色范围收窄。 */
 export const communitySpots = (communityId?: number) =>
   request<AddressCommunitySpot[]>({

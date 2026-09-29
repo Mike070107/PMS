@@ -3444,3 +3444,136 @@ h2.ant-typography {
 
 /* 受控表单（不用 antd Form.Item）里的可见字段标签：新建采购申请弹窗等。和 Form.Item label 同一档字号颜色 */
 .pms-field-label { display: block; margin-bottom: 6px; color: rgba(0, 0, 0, 0.72); font-size: 13px; line-height: 1.5; }
+
+/* ---------- 门禁发卡：任意 ACR122U 工作站 + .80 旧库归档 + .88 二期门禁 ---------- */
+.access-card-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.access-card-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  align-items: center;
+  gap: 28px;
+  min-height: 190px;
+  padding: 30px 34px;
+  color: #fff;
+  background: linear-gradient(135deg, #243f69 0%, #31558a 72%, #3f6a9e 100%);
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(36, 63, 105, .18);
+}
+.access-card-hero > div { min-width: 0; }
+.access-card-hero h1 { margin: 10px 0 8px; color: #fff; font-size: 31px; line-height: 1.2; }
+.access-card-hero p { max-width: 100%; margin: 0; color: rgba(255,255,255,.82); font-size: 16px; line-height: 1.75; overflow-wrap: anywhere; }
+.access-card-hero-stat {
+  display: grid;
+  min-height: 128px;
+  place-content: center;
+  text-align: center;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 16px;
+}
+.access-card-hero-stat span,
+.access-card-hero-stat small { color: rgba(255,255,255,.7); }
+.access-card-hero-stat strong { margin: 2px 0; font-size: 42px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.access-card-bridge-card,
+.access-card-house-card,
+.access-card-history-card,
+.access-card-form-card,
+.access-card-progress-card { height: 100%; border: 1px solid #dbe5ee; box-shadow: 0 4px 18px rgba(36,63,105,.06); }
+.access-card-health {
+  display: grid;
+  grid-template-columns: 42px minmax(0,1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 82px;
+  padding: 12px 14px;
+  background: #f7f9fc;
+  border: 1px solid transparent;
+  border-radius: 12px;
+}
+.access-card-health > span { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 50%; font-size: 18px; }
+.access-card-health.is-ready { background: #f2faf5; border-color: #cce7d5; }
+.access-card-health.is-ready > span { color: #267547; background: #dff3e7; }
+.access-card-health.is-pending { background: #fffaf0; border-color: #eedfb7; }
+.access-card-health.is-pending > span { color: #94651d; background: #fff0c5; }
+.access-card-health.is-disabled > span { color: #8b98a5; background: #e8edf2; }
+.access-card-health > div { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.access-card-health strong { color: #243a52; font-size: 15px; }
+.access-card-health small { overflow: hidden; color: #65798c; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.access-card-observe-alert { margin-top: 14px; }
+.access-card-inline-alert,
+.access-card-history-source { margin-top: 16px; }
+.access-card-address-summary {
+  display: flex;
+  min-height: 80px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  background: #f6f8fb;
+  border: 1px solid #dfe7ef;
+  border-radius: 12px;
+}
+.access-card-address-summary h3 { margin: 0 0 5px; color: #213b59; font-variant-numeric: tabular-nums; }
+.access-card-history-card .ant-table-wrapper { margin-top: 14px; }
+.access-card-history-card .ant-table-cell { white-space: nowrap; }
+.access-card-field { display: grid; gap: 8px; margin-bottom: 22px; }
+.access-card-field > label { color: #273d54; font-size: 16px; font-weight: 600; }
+.access-card-field .ant-cascader,
+.access-card-field .ant-select { width: 100%; }
+.access-card-stepper { display: flex; min-height: 48px; align-items: center; gap: 12px; }
+.access-card-stepper .ant-btn { width: 46px; height: 46px; }
+.access-card-stepper strong { min-width: 52px; color: #223d5d; font-size: 30px; font-variant-numeric: tabular-nums; text-align: center; }
+.access-card-stepper span { color: #65798c; font-size: 16px; }
+.access-card-empty {
+  display: grid;
+  min-height: 280px;
+  place-items: center;
+  place-content: center;
+  gap: 10px;
+  color: #789;
+  text-align: center;
+}
+.access-card-empty .anticon { color: #8ba3bb; font-size: 42px; }
+.access-card-empty strong { color: #344b64; font-size: 18px; }
+.access-card-live-task { display: grid; gap: 20px; }
+.access-card-place-card {
+  display: grid;
+  grid-template-columns: 66px minmax(0,1fr);
+  align-items: center;
+  gap: 18px;
+  min-height: 132px;
+  padding: 20px;
+  background: #f1f6fc;
+  border: 1px solid #ccdaea;
+  border-radius: 14px;
+}
+.access-card-place-card > span { display: grid; width: 60px; height: 60px; place-items: center; color: #315b87; background: #fff; border-radius: 50%; font-size: 27px; box-shadow: 0 5px 18px rgba(36,63,105,.12); }
+.access-card-place-card h3 { margin: 4px 0; color: #203a59; }
+.access-card-item-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 10px; }
+.access-card-item-strip > div { display: flex; min-height: 76px; align-items: center; gap: 9px; padding: 12px; background: #f7f9fb; border: 1px solid #e0e6ec; border-radius: 11px; }
+.access-card-item-strip > div > span { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; color: #65798c; background: #e9eef3; border-radius: 50%; font-weight: 700; }
+.access-card-item-strip > div small { overflow: hidden; color: #687b8e; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.access-card-item-strip > div.is-complete { background: #f0f9f4; border-color: #c7e6d3; }
+.access-card-item-strip > div.is-complete > span { color: #267547; background: #d9f0e2; }
+.access-card-agent-form,
+.access-card-agent-secret { display: grid; gap: 16px; padding-top: 8px; }
+.access-card-agent-secret label { color: #273d54; font-size: 15px; font-weight: 600; }
+.access-card-agent-secret pre {
+  overflow-x: auto;
+  margin: -8px 0 0;
+  padding: 12px 14px;
+  color: #203a59;
+  background: #f2f5f8;
+  border: 1px solid #dce4ec;
+  border-radius: 8px;
+  font: 14px/1.6 Consolas, monospace;
+  user-select: text;
+}
+
+@media (max-width: 760px) {
+  .access-card-hero { grid-template-columns: minmax(0,1fr); padding: 24px 20px; }
+  .access-card-hero h1 { font-size: 27px; }
+  .access-card-hero-stat { min-height: 98px; }
+  .access-card-address-summary { align-items: flex-start; flex-direction: column; }
+  .access-card-place-card { grid-template-columns: minmax(0,1fr); }
+}

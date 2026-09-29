@@ -1,4 +1,10 @@
 node_modules
+tools/access-card-agent/agent.config.json
+tools/access-card-agent/agent.token.dat
+tools/access-card-agent/legacy-db-password.dat
+tools/access-card-agent/iccard-db-password.dat
+tools/access-card-agent/bin/
+tools/access-card-agent/obj/
 dist
 build
 .next

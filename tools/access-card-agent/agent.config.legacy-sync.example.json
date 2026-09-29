@@ -1,0 +1,11 @@
+{
+  "BaseUrl": "https://prsznh.cn/api/v1",
+  "AgentId": "legacy-sync-replace-after-enrollment",
+  "Kind": "legacy_sync",
+  "Name": "192.168.1.80 旧库同步",
+  "PollIntervalMs": 2500,
+  "AllowSimulation": false,
+  "LegacySqlServer": "192.168.1.80",
+  "LegacyDatabase": "JS0131625",
+  "LegacyUser": "SA"
+}

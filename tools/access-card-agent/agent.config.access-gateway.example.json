@@ -1,0 +1,13 @@
+{
+  "BaseUrl": "https://prsznh.cn/api/v1",
+  "AgentId": "access-gateway-replace-after-enrollment",
+  "Kind": "access_gateway",
+  "Name": "192.168.1.88 门禁网关",
+  "PollIntervalMs": 2500,
+  "AllowSimulation": false,
+  "LegacySqlServer": "",
+  "LegacyDatabase": "",
+  "LegacyUser": "",
+  "MjSystemDatabasePath": "C:\\Users\\Port1\\AppData\\Local\\VirtualStore\\Program Files (x86)\\MjSystem\\Database\\ChineseSimple\\MJDataBase.mdb",
+  "IcCardDatabasePath": "C:\\Users\\Port1\\AppData\\Local\\VirtualStore\\Program Files (x86)\\iCCard\\iCCard.mdb"
+}

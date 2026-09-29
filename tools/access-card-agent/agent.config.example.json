@@ -1,0 +1,11 @@
+{
+  "BaseUrl": "https://example.invalid/api/v1",
+  "AgentId": "issuer-replace-with-enrolled-id",
+  "Kind": "issuer",
+  "Name": "前台发卡电脑",
+  "PollIntervalMs": 2500,
+  "AllowSimulation": false,
+  "LegacySqlServer": "192.168.1.80",
+  "LegacyDatabase": "JS0131625",
+  "LegacyUser": "replace-locally"
+}

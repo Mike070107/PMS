@@ -1,0 +1,139 @@
+import { request } from '../request';
+
+export type AccessSystem = 'mjsystem' | 'iccard' | null;
+export type ProjectPhase = 'phase1' | 'phase2';
+
+export interface AccessCardHistoryRow {
+  id: number;
+  sequence: number;
+  legacyPersonNo: string | null;
+  icCardNo: string | null;
+  wgCardNo: string | null;
+  issuedAt: string | null;
+  accessStatus: string;
+  legacySyncStatus: string;
+  controllerResults: Array<Record<string, unknown>>;
+}
+
+export interface AccessCardHouseContext {
+  house: {
+    id: number;
+    roomNo: string;
+    communityId: number;
+    communityName: string;
+    buildingId: number;
+    buildingNo: string;
+    lane: string | null;
+    roomKey: string;
+    displayAddress: string;
+  };
+  projectPhase: ProjectPhase;
+  accessSystem: AccessSystem;
+  routeReady: boolean;
+  availableBuildings: Array<{
+    id: number;
+    buildingNo: string;
+    accessSystem: AccessSystem;
+    routeReady: boolean;
+  }>;
+  issuedCount: number;
+  nextSequence: number;
+  history: AccessCardHistoryRow[];
+  historySources: { pms: boolean; legacy80: boolean; message: string };
+}
+
+export interface AccessCardIssueItem {
+  id: number;
+  sequence: number;
+  cardStatus: string;
+  accessStatus: string;
+  legacySyncStatus: string;
+  icCardNo: string | null;
+  wgCardNo: string | null;
+  legacyPersonNo: string | null;
+  cardCompletedAt: string | null;
+  controllerResults: Array<Record<string, unknown>>;
+}
+
+export interface AccessCardIssueBatch {
+  id: number;
+  houseId: number;
+  addressSnapshot: string;
+  projectPhase: ProjectPhase;
+  accessSystem: AccessSystem;
+  quantity: number;
+  status: string;
+  currentSequence: number;
+  deliverable: boolean;
+  items: AccessCardIssueItem[];
+}
+
+export interface AccessCardReadiness {
+  simulationEnabled: boolean;
+  features: {
+    cardWrite: boolean;
+    legacyDbWrite: boolean;
+    accessDbWrite: boolean;
+    controllerUpload: boolean;
+  };
+  agents: Array<{
+    id: string;
+    kind: 'issuer' | 'access_gateway' | 'legacy_sync';
+    name: string;
+    version: string;
+    status: 'online' | 'offline' | 'degraded';
+    capabilities: Record<string, boolean>;
+    lastSeenAt: string | null;
+  }>;
+}
+
+export const readiness = () =>
+  request<AccessCardReadiness>({ url: '/access-card-issuance/readiness' });
+
+export const enrollAgent = (data: {
+  kind: 'issuer' | 'access_gateway' | 'legacy_sync';
+  name: string;
+}) => request<{
+  id: string;
+  kind: string;
+  name: string;
+  token: string;
+  message: string;
+}>({
+  url: '/access-card-issuance/agents',
+  method: 'POST',
+  data,
+});
+
+export const houseContext = (houseId: number) =>
+  request<AccessCardHouseContext>({
+    url: `/access-card-issuance/houses/${houseId}/context`,
+  });
+
+export const createBatch = (data: {
+  houseId: number;
+  quantity: number;
+  extraBuildingIds: number[];
+  workstationId?: string;
+  idempotencyKey: string;
+}) =>
+  request<AccessCardIssueBatch>({
+    url: '/access-card-issuance/batches',
+    method: 'POST',
+    data,
+  });
+
+export const batch = (id: number) =>
+  request<AccessCardIssueBatch>({ url: `/access-card-issuance/batches/${id}` });
+
+export const simulateNext = (id: number) =>
+  request<AccessCardIssueBatch>({
+    url: `/access-card-issuance/batches/${id}/simulate-next`,
+    method: 'POST',
+  });
+
+export const simulateLegacySync = (id: number) =>
+  request<AccessCardIssueBatch>({
+    url: `/access-card-issuance/batches/${id}/simulate-legacy-sync`,
+    method: 'POST',
+  });

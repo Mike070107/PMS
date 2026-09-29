@@ -1,0 +1,694 @@
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  Descriptions,
+  Empty,
+  Flex,
+  Input,
+  Modal,
+  Row,
+  Select,
+  Skeleton,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
+import {
+  CheckCircleOutlined,
+  CreditCardOutlined,
+  DatabaseOutlined,
+  ExperimentOutlined,
+  MinusOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SafetyCertificateOutlined,
+  UsbOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
+import {
+  accessCardIssuance,
+  address as addressApi,
+  type AccessCardHistoryRow,
+  type AccessCardHouseContext,
+  type AccessCardIssueBatch,
+  type AccessCardReadiness,
+} from '@pms/api-client';
+import type { AddressCommunity } from '@pms/shared-types';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import HouseAddressPicker, { type PickedAddress } from '../components/HouseAddressPicker';
+
+const { Text, Title } = Typography;
+
+const PREVIEW_CONTEXT: AccessCardHouseContext = {
+  house: {
+    id: 1,
+    roomNo: '301',
+    communityId: 228,
+    communityName: '枫桦景苑二期',
+    buildingId: 5,
+    buildingNo: '5',
+    lane: '228',
+    roomKey: '228/5/301',
+    displayAddress: '枫桦景苑二期 · 5号楼 · 301室',
+  },
+  projectPhase: 'phase2',
+  accessSystem: 'mjsystem',
+  routeReady: true,
+  availableBuildings: [
+    { id: 5, buildingNo: '5', accessSystem: 'mjsystem', routeReady: true },
+    { id: 9, buildingNo: '9', accessSystem: 'mjsystem', routeReady: true },
+    { id: 11, buildingNo: '11', accessSystem: 'iccard', routeReady: true },
+  ],
+  issuedCount: 3,
+  nextSequence: 4,
+  history: [
+    { id: 3, sequence: 3, legacyPersonNo: null, icCardNo: 'A1B2C3D4', wgCardNo: '19545729', issuedAt: new Date().toISOString(), accessStatus: 'controller_uploaded', legacySyncStatus: 'pending', controllerResults: [] },
+    { id: 2, sequence: 2, legacyPersonNo: '11251', icCardNo: '11223344', wgCardNo: '05108721', issuedAt: '2026-09-22T02:20:00.000Z', accessStatus: 'controller_uploaded', legacySyncStatus: 'synced', controllerResults: [] },
+    { id: 1, sequence: 1, legacyPersonNo: '10982', icCardNo: '0A1B2C3D', wgCardNo: '04406922', issuedAt: '2025-12-16T01:08:00.000Z', accessStatus: 'controller_uploaded', legacySyncStatus: 'synced', controllerResults: [] },
+  ],
+  historySources: { pms: true, legacy80: true, message: '已合并 192.168.1.80 历史记录' },
+};
+
+const PREVIEW_READINESS: AccessCardReadiness = {
+  simulationEnabled: true,
+  features: { cardWrite: false, legacyDbWrite: false, accessDbWrite: false, controllerUpload: false },
+  agents: [],
+};
+
+function newIdempotencyKey(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `access-card-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function formatTime(value: string | null): string {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString('zh-CN', { hour12: false });
+}
+
+function systemLabel(value: AccessCardHouseContext['accessSystem']): string {
+  if (value === 'mjsystem') return 'MjSystem';
+  if (value === 'iccard') return 'iCCard';
+  return '只写卡';
+}
+
+function accessStatus(value: string) {
+  if (value === 'not_required') return <Tag>不适用</Tag>;
+  if (value === 'controller_uploaded') return <Tag color="success">已上传</Tag>;
+  if (value === 'waiting_retry') return <Tag color="warning">等待重试</Tag>;
+  if (value === 'needs_operator') return <Tag color="error">需要处理</Tag>;
+  return <Tag color="processing">处理中</Tag>;
+}
+
+function legacyStatus(value: string) {
+  if (value === 'synced') return <Tag color="success">已同步</Tag>;
+  if (value === 'conflict') return <Tag color="error">数据冲突</Tag>;
+  if (value === 'waiting_retry') return <Tag color="warning">等待重试</Tag>;
+  return <Tag>同步中</Tag>;
+}
+
+function HealthTile({
+  icon,
+  label,
+  state,
+  detail,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  state: 'ready' | 'pending' | 'disabled';
+  detail: string;
+}) {
+  return (
+    <div className={`access-card-health is-${state}`}>
+      <span>{icon}</span>
+      <div>
+        <strong>{label}</strong>
+        <small>{detail}</small>
+      </div>
+    </div>
+  );
+}
+
+export default function AccessCardIssuancePage({ preview = false }: { preview?: boolean }) {
+  const [communities, setCommunities] = useState<AddressCommunity[]>([]);
+  const [addressValue, setAddressValue] = useState<Array<number | string>>([]);
+  const [picked, setPicked] = useState<PickedAddress | null>(preview ? {
+    communityId: 228,
+    communityName: '枫桦景苑二期',
+    buildingId: 5,
+    buildingText: '228弄5号',
+    houseId: 1,
+    roomNo: '301',
+    ownerName: '预览住户',
+    ownerPhone: null,
+    fullText: '枫桦景苑二期/228弄5号/301',
+  } : null);
+  const [context, setContext] = useState<AccessCardHouseContext | null>(preview ? PREVIEW_CONTEXT : null);
+  const [contextLoading, setContextLoading] = useState(false);
+  const [contextError, setContextError] = useState('');
+  const [readiness, setReadiness] = useState<AccessCardReadiness | null>(preview ? PREVIEW_READINESS : null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
+  const [quantity, setQuantity] = useState(1);
+  const [extraBuildingIds, setExtraBuildingIds] = useState<number[]>([]);
+  const [batch, setBatch] = useState<AccessCardIssueBatch | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [simulating, setSimulating] = useState(false);
+  const [agentModalOpen, setAgentModalOpen] = useState(false);
+  const [agentKind, setAgentKind] = useState<'issuer' | 'access_gateway' | 'legacy_sync'>('issuer');
+  const [agentName, setAgentName] = useState('前台发卡电脑');
+  const [agentEnrolling, setAgentEnrolling] = useState(false);
+  const [agentCredential, setAgentCredential] = useState<{ id: string; token: string; message: string } | null>(null);
+
+  const loadReadiness = useCallback(async () => {
+    setReadinessLoading(true);
+    try {
+      setReadiness(await accessCardIssuance.readiness());
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '设备状态加载失败');
+    } finally {
+      setReadinessLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (preview) return;
+    addressApi.tree().then(setCommunities).catch((error) => {
+      message.error(error?.message || '房产地址加载失败');
+    });
+    void loadReadiness();
+  }, [loadReadiness, preview]);
+
+  const loadContext = useCallback(async (houseId: number, preserveSelection = false) => {
+    setContextLoading(true);
+    setContextError('');
+    try {
+      const next = await accessCardIssuance.houseContext(houseId);
+      setContext(next);
+      if (!preserveSelection) setExtraBuildingIds([]);
+    } catch (error) {
+      setContext(null);
+      setContextError(error instanceof Error ? error.message : '房号信息加载失败');
+    } finally {
+      setContextLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (preview || !picked?.houseId || context?.historySources.legacy80) return;
+    const houseId = picked.houseId;
+    const timer = window.setInterval(() => {
+      void loadContext(houseId, true);
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [context?.historySources.legacy80, loadContext, picked?.houseId, preview]);
+
+  const enrollAgent = async () => {
+    if (!agentName.trim()) {
+      message.error('请填写这台电脑或网关的名称');
+      return;
+    }
+    setAgentEnrolling(true);
+    try {
+      if (preview) {
+        setAgentCredential({
+          id: `${agentKind}-preview12345678`,
+          token: '预览环境不会生成真实密钥',
+          message: '预览凭据仅用于检查安装说明，不可连接 PMS',
+        });
+        return;
+      }
+      const result = await accessCardIssuance.enrollAgent({ kind: agentKind, name: agentName.trim() });
+      setAgentCredential({ id: result.id, token: result.token, message: result.message });
+      await loadReadiness();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '代理注册失败');
+    } finally {
+      setAgentEnrolling(false);
+    }
+  };
+
+  const onPicked = (next: PickedAddress | null) => {
+    setPicked(next);
+    setBatch(null);
+    setContext(null);
+    setContextError('');
+    setExtraBuildingIds([]);
+    if (next?.houseId) void loadContext(next.houseId);
+  };
+
+  const issuerAgents = readiness?.agents.filter((item) => item.kind === 'issuer') ?? [];
+  const onlineIssuer = issuerAgents.find((item) => item.status === 'online');
+  const accessGateway = readiness?.agents.find((item) => item.kind === 'access_gateway');
+  const legacyAgent = readiness?.agents.find((item) => item.kind === 'legacy_sync');
+  const canStart = !!context?.routeReady && (!!onlineIssuer || !!readiness?.simulationEnabled);
+
+  const extraOptions = useMemo(
+    () => context?.availableBuildings
+      .filter((item) => item.id !== context.house.buildingId)
+      .map((item) => ({
+        value: item.id,
+        label: `${item.buildingNo}号楼 · ${systemLabel(item.accessSystem)}${item.routeReady ? '' : '（未配置）'}`,
+        disabled: !item.routeReady,
+      })) ?? [],
+    [context],
+  );
+
+  const refreshContext = async () => {
+    if (picked?.houseId) await loadContext(picked.houseId, true);
+  };
+
+  const start = async () => {
+    if (!picked?.houseId || !context) return;
+    if (preview) {
+      setBatch({
+        id: 9001,
+        houseId: picked.houseId,
+        addressSnapshot: context.house.roomKey,
+        projectPhase: context.projectPhase,
+        accessSystem: context.accessSystem,
+        quantity,
+        status: 'waiting_for_card',
+        currentSequence: 1,
+        deliverable: false,
+        items: Array.from({ length: quantity }, (_, index) => ({
+          id: 9100 + index,
+          sequence: index + 1,
+          cardStatus: 'waiting_for_card',
+          accessStatus: context.projectPhase === 'phase1' ? 'not_required' : 'pending',
+          legacySyncStatus: 'pending',
+          icCardNo: null,
+          wgCardNo: null,
+          legacyPersonNo: null,
+          cardCompletedAt: null,
+          controllerResults: [],
+        })),
+      });
+      message.success('预览任务已建立，请模拟放入第 1 张卡');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const created = await accessCardIssuance.createBatch({
+        houseId: picked.houseId,
+        quantity,
+        extraBuildingIds,
+        workstationId: onlineIssuer?.id,
+        idempotencyKey: newIdempotencyKey(),
+      });
+      setBatch(created);
+      message.success(`发卡任务已建立，请放第 1 张卡`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '发卡任务创建失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const simulateNext = async () => {
+    if (!batch) return;
+    if (preview) {
+      const target = batch.items.find((item) => item.cardStatus !== 'card_completed');
+      if (!target) return;
+      const icCardNo = `A1B2C3${String(target.sequence).padStart(2, '0')}`;
+      const completedAt = new Date().toISOString();
+      const items = batch.items.map((item) => item.id === target.id ? {
+        ...item,
+        cardStatus: 'card_completed',
+        accessStatus: batch.projectPhase === 'phase1' ? 'not_required' : 'controller_uploaded',
+        icCardNo,
+        wgCardNo: batch.projectPhase === 'phase1' ? null : `19545${String(720 + target.sequence).padStart(3, '0')}`,
+        cardCompletedAt: completedAt,
+      } : item);
+      const allDone = items.every((item) => item.cardStatus === 'card_completed');
+      setBatch({ ...batch, items, status: allDone ? 'completed' : 'waiting_for_card', deliverable: allDone });
+      setContext((current) => current ? {
+        ...current,
+        issuedCount: current.issuedCount + 1,
+        nextSequence: current.nextSequence + 1,
+        history: [{
+          id: target.id,
+          sequence: current.history.length + 1,
+          legacyPersonNo: null,
+          icCardNo,
+          wgCardNo: batch.projectPhase === 'phase1' ? null : `19545${String(720 + target.sequence).padStart(3, '0')}`,
+          issuedAt: completedAt,
+          accessStatus: batch.projectPhase === 'phase1' ? 'not_required' : 'controller_uploaded',
+          legacySyncStatus: 'pending',
+          controllerResults: [],
+        }, ...current.history],
+      } : current);
+      message.success(`第 ${target.sequence} 张卡已完成`);
+      return;
+    }
+    setSimulating(true);
+    try {
+      const next = await accessCardIssuance.simulateNext(batch.id);
+      setBatch(next);
+      await refreshContext();
+      message.success(`第 ${next.items.filter((item) => item.cardStatus === 'card_completed').length} 张卡已完成`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '模拟写卡失败');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  const simulateLegacySync = async () => {
+    if (!batch) return;
+    if (preview) {
+      const items = batch.items.map((item) => item.cardStatus === 'card_completed' ? {
+        ...item,
+        legacyPersonNo: item.legacyPersonNo || String(11251 + item.sequence),
+        legacySyncStatus: 'synced',
+      } : item);
+      setBatch({ ...batch, items });
+      setContext((current) => current ? {
+        ...current,
+        history: current.history.map((item) => item.legacySyncStatus === 'pending' ? {
+          ...item,
+          legacyPersonNo: item.legacyPersonNo || String(11251 + item.sequence),
+          legacySyncStatus: 'synced',
+        } : item),
+      } : current);
+      message.success('已模拟完成 .80 旧库增量同步');
+      return;
+    }
+    setSimulating(true);
+    try {
+      const next = await accessCardIssuance.simulateLegacySync(batch.id);
+      setBatch(next);
+      await refreshContext();
+      message.success('已模拟完成 .80 旧库增量同步');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '模拟旧库同步失败');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  const completedCount = batch?.items.filter((item) => item.cardStatus === 'card_completed').length ?? 0;
+  const currentSequence = Math.min(completedCount + 1, batch?.quantity ?? 1);
+  const history = context?.history ?? [];
+
+  const columns = [
+    { title: '序号', dataIndex: 'sequence', width: 76, fixed: 'left' as const, render: (value: number) => <strong>#{value}</strong> },
+    { title: '捷顺编号', dataIndex: 'legacyPersonNo', width: 112, render: (value: string | null) => value || <Tag>同步中</Tag> },
+    { title: 'IC 卡号', dataIndex: 'icCardNo', width: 150, render: (value: string | null) => value || '—' },
+    { title: 'WG 卡号', dataIndex: 'wgCardNo', width: 130, render: (value: string | null) => value || <Text type="secondary">不适用</Text> },
+    { title: '发卡时间', dataIndex: 'issuedAt', width: 180, render: formatTime },
+    { title: '控制器上传', dataIndex: 'accessStatus', width: 130, render: accessStatus },
+    { title: '旧库同步', dataIndex: 'legacySyncStatus', width: 120, render: legacyStatus },
+  ];
+
+  return (
+    <div className="access-card-page">
+      <section className="access-card-hero">
+        <div>
+          <Tag color="blue">ACR122U 任意工作站发卡</Tag>
+          <h1>门禁发卡</h1>
+          <p>选择房号后，系统自动区分枫桦景苑一期与二期；一期只写卡，二期自动同步门禁并上传控制器。</p>
+        </div>
+        <div className="access-card-hero-stat">
+          <span>{batch ? '本次进度' : '默认数量'}</span>
+          <strong>{batch ? `${completedCount}/${batch.quantity}` : quantity}</strong>
+          <small>{batch ? '已完成' : '张'}</small>
+        </div>
+      </section>
+
+      <Card
+        className="access-card-bridge-card"
+        title={<Space><SafetyCertificateOutlined />设备与服务</Space>}
+        extra={<Space wrap>
+          <Button onClick={() => { setAgentCredential(null); setAgentModalOpen(true); }}>注册本地服务</Button>
+          <Button icon={<ReloadOutlined />} loading={readinessLoading} onClick={() => void loadReadiness()}>重新检测</Button>
+        </Space>}
+      >
+        <Row gutter={[12, 12]}>
+          <Col xs={24} md={8}>
+            <HealthTile
+              icon={<UsbOutlined />}
+              label="本机 ACR122U"
+              state={onlineIssuer ? 'ready' : readiness?.simulationEnabled ? 'pending' : 'disabled'}
+              detail={onlineIssuer ? `${onlineIssuer.name} 已连接` : readiness?.simulationEnabled ? '尚未接入，当前可用模拟模式' : '未检测到发卡助手'}
+            />
+          </Col>
+          <Col xs={24} md={8}>
+            <HealthTile
+              icon={<DatabaseOutlined />}
+              label=".80 旧库同步"
+              state={legacyAgent?.status === 'online' ? 'ready' : 'pending'}
+              detail={legacyAgent?.status === 'online' ? '增量同步服务在线' : '未接入，发卡后将显示待同步'}
+            />
+          </Col>
+          <Col xs={24} md={8}>
+            <HealthTile
+              icon={<SafetyCertificateOutlined />}
+              label=".88 二期门禁"
+              state={accessGateway?.status === 'online' ? 'ready' : 'pending'}
+              detail={accessGateway?.status === 'online' ? '门禁网关在线' : '未接入，模拟模式不修改现场数据'}
+            />
+          </Col>
+        </Row>
+        {readiness?.simulationEnabled && (
+          <Alert
+            className="access-card-observe-alert"
+            type="info"
+            showIcon
+            icon={<ExperimentOutlined />}
+            message="当前为安全模拟模式"
+            description="页面和任务状态会真实保存，但不会写实体卡、旧 SQL、两套 MDB 或现场控制器。"
+          />
+        )}
+      </Card>
+
+      <Card className="access-card-house-card" title="1. 选择房号">
+        <Row gutter={[18, 18]} align="middle">
+          <Col xs={24} lg={11}>
+            <label className="pms-field-label" htmlFor="access-card-house">房号</label>
+            <HouseAddressPicker
+              id="access-card-house"
+              communities={communities}
+              value={addressValue}
+              onChange={setAddressValue}
+              onPicked={onPicked}
+              loading={!communities.length}
+            />
+          </Col>
+          <Col xs={24} lg={13}>
+            {contextLoading ? <Skeleton active paragraph={{ rows: 2 }} /> : context ? (
+              <div className="access-card-address-summary">
+                <div>
+                  <Title level={3}>{context.house.roomKey}</Title>
+                  <Text>{context.house.displayAddress}</Text>
+                </div>
+                <Space wrap>
+                  <Tag color={context.projectPhase === 'phase2' ? 'blue' : 'default'}>
+                    {context.projectPhase === 'phase2' ? '枫桦景苑二期' : '枫桦景苑一期'}
+                  </Tag>
+                  <Tag color={context.routeReady ? 'success' : 'error'}>{systemLabel(context.accessSystem)}</Tag>
+                </Space>
+              </div>
+            ) : <Text type="secondary">选择到具体室号后，系统会加载历史卡片和门禁路由。</Text>}
+          </Col>
+        </Row>
+        {contextError && <Alert className="access-card-inline-alert" type="error" showIcon message={contextError} />}
+      </Card>
+
+      {context && (
+        <>
+          <Card
+            className="access-card-history-card"
+            title={`历史卡片 · ${context.house.roomKey}`}
+            extra={<Text type="secondary">{context.historySources.legacy80
+              ? `最新在前，已发 ${context.issuedCount} 张 · 下一张 #${context.nextSequence}`
+              : `新系统已记录 ${context.issuedCount} 张 · 旧库数量待接入`}</Text>}
+          >
+            {!context.historySources.legacy80 && (
+              <Alert
+                className="access-card-history-source"
+                type="warning"
+                showIcon
+                message={context.historySources.message}
+              />
+            )}
+            <Table<AccessCardHistoryRow>
+              rowKey="id"
+              columns={columns}
+              dataSource={history}
+              pagination={{ pageSize: 8, hideOnSinglePage: true }}
+              scroll={{ x: 900 }}
+              locale={{ emptyText: <Empty description="这个房号还没有新系统发卡记录" /> }}
+            />
+          </Card>
+
+          <Row gutter={[18, 18]} align="stretch">
+            <Col xs={24} xl={10}>
+              <Card className="access-card-form-card" title="2. 发卡设置">
+                <div className="access-card-field">
+                  <label>发卡数量</label>
+                  <div className="access-card-stepper">
+                    <Button aria-label="减少一张" icon={<MinusOutlined />} disabled={quantity <= 1 || !!batch} onClick={() => setQuantity((value) => Math.max(1, value - 1))} />
+                    <strong>{quantity}</strong>
+                    <Button aria-label="增加一张" icon={<PlusOutlined />} disabled={quantity >= 6 || !!batch} onClick={() => setQuantity((value) => Math.min(6, value + 1))} />
+                    <span>张</span>
+                  </div>
+                </div>
+
+                {context.projectPhase === 'phase2' && (
+                  <div className="access-card-field">
+                    <label htmlFor="access-card-extra-buildings">额外授权楼栋</label>
+                    <Select
+                      id="access-card-extra-buildings"
+                      mode="multiple"
+                      allowClear
+                      value={extraBuildingIds}
+                      options={extraOptions}
+                      disabled={!!batch}
+                      placeholder="默认只授权本楼栋，可按需增加"
+                      onChange={setExtraBuildingIds}
+                    />
+                    <Text type="secondary">本楼栋 {context.house.buildingNo} 号楼已默认授权，无需重复选择。</Text>
+                  </div>
+                )}
+
+                {!batch ? (
+                  <Button
+                    type="primary"
+                    size="large"
+                    block
+                    icon={<CreditCardOutlined />}
+                    disabled={!canStart}
+                    loading={submitting}
+                    onClick={() => void start()}
+                  >
+                    开始发 {quantity} 张卡
+                  </Button>
+                ) : (
+                  <Button block onClick={() => { setBatch(null); setQuantity(1); }} disabled={!batch.deliverable}>
+                    开始下一次发卡
+                  </Button>
+                )}
+                {!canStart && <Alert className="access-card-inline-alert" type="error" showIcon message="当前没有可用发卡工作站，或该楼栋路由尚未配置。" />}
+              </Card>
+            </Col>
+
+            <Col xs={24} xl={14}>
+              <Card className="access-card-progress-card" title="3. 放卡与执行进度">
+                {!batch ? (
+                  <div className="access-card-empty">
+                    <CreditCardOutlined />
+                    <strong>等待开始发卡</strong>
+                    <span>确认房号、数量和额外楼栋后，点击左侧按钮。</span>
+                  </div>
+                ) : (
+                  <div className="access-card-live-task">
+                    {batch.deliverable ? (
+                      <Alert
+                        type="success"
+                        showIcon
+                        icon={<CheckCircleOutlined />}
+                        message="发卡完成，可以交付"
+                        description={batch.items.some((item) => item.legacySyncStatus !== 'synced') ? '旧发卡记录仍在同步中，不影响本卡使用。' : '卡片、门禁与旧库记录均已完成。'}
+                      />
+                    ) : (
+                      <div className="access-card-place-card">
+                        <span><UsbOutlined /></span>
+                        <div>
+                          <Text type="secondary">正在制作第 {currentSequence} / {batch.quantity} 张</Text>
+                          <Title level={3}>请放一张已加密初始化的门禁卡</Title>
+                          <Text>完成后请拿走卡片，系统检测移开后才会等待下一张。</Text>
+                        </div>
+                      </div>
+                    )}
+
+                    <Descriptions size="small" column={{ xs: 1, md: 2 }}>
+                      <Descriptions.Item label="房号">{batch.addressSnapshot}</Descriptions.Item>
+                      <Descriptions.Item label="处理方式">{batch.projectPhase === 'phase1' ? '一期 · 只写卡' : `二期 · ${systemLabel(batch.accessSystem)}`}</Descriptions.Item>
+                    </Descriptions>
+
+                    <div className="access-card-item-strip">
+                      {batch.items.map((item) => (
+                        <div key={item.id} className={item.cardStatus === 'card_completed' ? 'is-complete' : 'is-waiting'}>
+                          <span>{item.cardStatus === 'card_completed' ? <CheckCircleOutlined /> : item.sequence}</span>
+                          <small>{item.cardStatus === 'card_completed' ? item.icCardNo : '等待放卡'}</small>
+                        </div>
+                      ))}
+                    </div>
+
+                    {readiness?.simulationEnabled && (
+                      <Flex gap={10} wrap="wrap">
+                        {!batch.deliverable && (
+                          <Button type="primary" icon={<ExperimentOutlined />} loading={simulating} onClick={() => void simulateNext()}>
+                            模拟放入第 {currentSequence} 张卡
+                          </Button>
+                        )}
+                        {completedCount > 0 && batch.items.some((item) => item.legacySyncStatus !== 'synced') && (
+                          <Button icon={<DatabaseOutlined />} loading={simulating} onClick={() => void simulateLegacySync()}>
+                            模拟同步到 .80
+                          </Button>
+                        )}
+                      </Flex>
+                    )}
+                  </div>
+                )}
+              </Card>
+            </Col>
+          </Row>
+        </>
+      )}
+
+      <Modal
+        title="注册门禁本地服务"
+        open={agentModalOpen}
+        width={620}
+        onCancel={() => setAgentModalOpen(false)}
+        footer={agentCredential
+          ? <Button type="primary" onClick={() => setAgentModalOpen(false)}>我已保存安装信息</Button>
+          : <Space><Button onClick={() => setAgentModalOpen(false)}>取消</Button><Button type="primary" loading={agentEnrolling} onClick={() => void enrollAgent()}>生成代理密钥</Button></Space>}
+      >
+        {agentCredential ? (
+          <div className="access-card-agent-secret">
+            <Alert type="warning" showIcon message="密钥只显示这一次" description={agentCredential.message} />
+            <label>代理 ID</label>
+            <pre>{agentCredential.id}</pre>
+            <label>一次性代理密钥</label>
+            <pre>{agentCredential.token}</pre>
+            <Text type="secondary">在对应电脑运行下面的命令，再粘贴上方密钥：</Text>
+            <pre>{`.\\Pms.AccessCardAgent.exe --install-agent ${agentCredential.id}`}</pre>
+            <Text type="secondary">随后运行 <code>.\Pms.AccessCardAgent.exe --connect-test</code> 验证连接；不要把密钥发到聊天、截图或配置仓库。</Text>
+          </div>
+        ) : (
+          <div className="access-card-agent-form">
+            <div className="access-card-field">
+              <label htmlFor="access-card-agent-kind">服务类型</label>
+              <Select
+                id="access-card-agent-kind"
+                value={agentKind}
+                onChange={(value) => {
+                  setAgentKind(value);
+                  setAgentName(value === 'issuer' ? '前台发卡电脑' : value === 'access_gateway' ? '192.168.1.88 门禁网关' : '192.168.1.80 旧库同步');
+                }}
+                options={[
+                  { value: 'issuer', label: 'ACR122U 发卡电脑' },
+                  { value: 'access_gateway', label: '192.168.1.88 门禁网关' },
+                  { value: 'legacy_sync', label: '192.168.1.80 旧库同步' },
+                ]}
+              />
+            </div>
+            <div className="access-card-field">
+              <label htmlFor="access-card-agent-name">电脑名称</label>
+              <Input id="access-card-agent-name" value={agentName} maxLength={100} onChange={(event) => setAgentName(event.target.value)} />
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}

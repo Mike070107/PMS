@@ -35,6 +35,10 @@ import { SubscriptionGrant } from './subscription-grant.entity';
 import { BusinessRule } from './business-rule.entity';
 import { ParkingVehicle } from './parking-vehicle.entity';
 import { AccessCard } from './access-card.entity';
+import { AccessCardAgent } from './access-card-agent.entity';
+import { AccessCardIssueBatch } from './access-card-issue-batch.entity';
+import { AccessCardIssueItem } from './access-card-issue-item.entity';
+import { AccessCardLegacySnapshot } from './access-card-legacy-snapshot.entity';
 import { BusinessTransaction } from './business-transaction.entity';
 import { BusinessLog } from './business-log.entity';
 import { RepairTypeRule } from './repair-type-rule.entity';
@@ -121,6 +125,10 @@ export const entities = [
   BusinessRule,
   ParkingVehicle,
   AccessCard,
+  AccessCardAgent,
+  AccessCardIssueBatch,
+  AccessCardIssueItem,
+  AccessCardLegacySnapshot,
   BusinessTransaction,
   BusinessLog,
   RepairTypeRule,
@@ -192,6 +200,10 @@ export {
   BusinessRule,
   ParkingVehicle,
   AccessCard,
+  AccessCardAgent,
+  AccessCardIssueBatch,
+  AccessCardIssueItem,
+  AccessCardLegacySnapshot,
   BusinessTransaction,
   BusinessLog,
   RepairTypeRule,
