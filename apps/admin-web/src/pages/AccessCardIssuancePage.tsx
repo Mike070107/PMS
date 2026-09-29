@@ -38,7 +38,7 @@ import {
   type AccessCardReadiness,
 } from '@pms/api-client';
 import type { AddressCommunity } from '@pms/shared-types';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import HouseAddressPicker, { type PickedAddress } from '../components/HouseAddressPicker';
 
 const { Text, Title } = Typography;
@@ -165,6 +165,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const [agentName, setAgentName] = useState('前台发卡电脑');
   const [agentEnrolling, setAgentEnrolling] = useState(false);
   const [agentCredential, setAgentCredential] = useState<{ id: string; token: string; message: string } | null>(null);
+  const contextRequestRef = useRef(0);
 
   const loadReadiness = useCallback(async () => {
     setReadinessLoading(true);
@@ -185,20 +186,44 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     void loadReadiness();
   }, [loadReadiness, preview]);
 
-  const loadContext = useCallback(async (houseId: number, preserveSelection = false) => {
-    setContextLoading(true);
+  const loadContext = useCallback(async (
+    houseId: number,
+    preserveSelection = false,
+    silent = false,
+    requestId?: number,
+  ) => {
+    if (!silent) setContextLoading(true);
     setContextError('');
     try {
       const next = await accessCardIssuance.houseContext(houseId);
+      if (requestId !== undefined && contextRequestRef.current !== requestId) return null;
       setContext(next);
       if (!preserveSelection) setExtraBuildingIds([]);
+      return next;
     } catch (error) {
-      setContext(null);
+      if (requestId !== undefined && contextRequestRef.current !== requestId) return null;
+      if (!silent) setContext(null);
       setContextError(error instanceof Error ? error.message : '房号信息加载失败');
+      return null;
     } finally {
-      setContextLoading(false);
+      if (!silent && (requestId === undefined || contextRequestRef.current === requestId)) {
+        setContextLoading(false);
+      }
     }
   }, []);
+
+  const loadContextUntilLegacyReady = useCallback(async (houseId: number, preserveSelection = false) => {
+    const requestId = ++contextRequestRef.current;
+    let next = await loadContext(houseId, preserveSelection, false, requestId);
+    if (preview) return;
+    // The first request creates a local-agent task. Poll only this active selection
+    // for a few seconds so the operator does not have to click refresh manually.
+    for (let attempt = 0; attempt < 5 && next && !next.historySources.legacy80; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1_250));
+      if (contextRequestRef.current !== requestId) return;
+      next = await loadContext(houseId, true, true, requestId);
+    }
+  }, [loadContext, preview]);
 
   const enrollAgent = async () => {
     if (!agentName.trim()) {
@@ -226,12 +251,13 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   };
 
   const onPicked = (next: PickedAddress | null) => {
+    contextRequestRef.current += 1;
     setPicked(next);
     setBatch(null);
     setContext(null);
     setContextError('');
     setExtraBuildingIds([]);
-    if (next?.houseId) void loadContext(next.houseId);
+    if (next?.houseId) void loadContextUntilLegacyReady(next.houseId);
   };
 
   const issuerAgents = readiness?.agents.filter((item) => item.kind === 'issuer') ?? [];
@@ -256,7 +282,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   );
 
   const refreshContext = async () => {
-    if (picked?.houseId) await loadContext(picked.houseId, true);
+    if (picked?.houseId) await loadContextUntilLegacyReady(picked.houseId, true);
   };
 
   const start = async () => {
