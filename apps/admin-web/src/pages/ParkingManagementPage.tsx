@@ -111,6 +111,7 @@ export default function ParkingManagementPage({
   // 0.4.0 已能查询 Car_Issue；0.4.1 增加住户表联查，不能因为住户增强尚未升级就把整条查询锁死。
   const canQuery = canRead;
   const canJoinOwners = supportsParkingQueries(gateway?.version);
+  const canWriteLocal = online && gateway?.capabilities?.parkingDbWrite === true;
   const deliyun = readiness?.deliyun;
 
   const searchParking = async () => {
@@ -226,7 +227,7 @@ export default function ParkingManagementPage({
             </Tag>
             <Tag color={canQuery ? 'success' : 'default'}>{canQuery ? '车辆查询已就绪' : '尚未验证'}</Tag>
             <Tag color={canJoinOwners ? 'success' : 'gold'}>{canJoinOwners ? '住户联查已启用' : '升级后联查住户'}</Tag>
-            <Tag>写入未开放</Tag>
+            <Tag color={canWriteLocal ? 'success' : 'gold'}>{canWriteLocal ? '受控写入测试已开放' : '写入权限未通过'}</Tag>
           </div>
         </div>
         <div className={`parking-cloud-status is-${deliyun?.connected ? 'online' : 'pending'}`}>

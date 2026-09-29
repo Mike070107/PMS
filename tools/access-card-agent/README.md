@@ -9,7 +9,7 @@
 - `legacy_sync`：`192.168.1.80`，后续连接旧 SQL 发卡数据库。
 - `parking_gateway`：连接 `192.168.6.3` 上的 `parking1` / `parking2` 停车数据库。
 
-当前版本已经实现代理凭据、DPAPI 加密、心跳、带租约任务领取、结果回报、ACR122U/PCSC 设备枚举，以及停车双库的实时只读查询。所有真实写入能力仍为关闭状态，不会修改卡片、数据库或控制器。
+当前版本已经实现代理凭据、DPAPI 加密、心跳、带租约任务领取、结果回报、ACR122U/PCSC 设备枚举，以及停车双库的实时查询。0.5.0 起会检查停车专用账号是否同时具有一期、二期所需存储过程的执行权限；只有全部通过时才向 PMS 上报 `parkingDbWrite=true`。
 
 ## 构建
 
@@ -65,7 +65,7 @@ Get-Clipboard | .\Pms.DataSyncAssistant.exe --install-parking-db-password
 .\Pms.DataSyncAssistant.exe --parking-probe
 ```
 
-`--parking-probe` 只读取 `Car_Issue` / `Car_Download` 记录数，并检查停车存储过程是否存在。当前 `parkingDbWrite=false`，不会登记、续期、换牌、注销或创建设备下载任务。
+`--parking-probe` 读取 `Car_Issue` / `Car_Download` 记录数，并检查停车存储过程是否存在。网关会另外验证两个库的存储过程执行权限，网页显示“受控写入测试已开放”后，才允许下一步用指定测试车牌验证登记、续期、换牌、注销和设备下载。
 
 0.4.1 起，停车网关会从 `Car_Issue.Owner_ID` 自动识别并联查旧库住户主表；车牌查询可同时返回住户字段，房号、姓名和电话也可反向查到车辆。查询使用参数化 SQL，一期、二期各最多返回 50 条；`228/5/301` 与 `198-5-201` 会同时尝试斜杠和横线形式，整个过程不执行写入语句。
 

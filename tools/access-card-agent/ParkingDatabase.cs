@@ -19,7 +19,7 @@ namespace Pms.AccessCardAgent
         public Dictionary<string, object> fields { get; set; }
     }
 
-    /** 停车双库只读探测。真实写入必须通过现场验收后另行开启。 */
+    /** 停车双库读取与受控写入能力探测。 */
     internal static class ParkingDatabase
     {
         private static readonly string[] RequiredProcedures =
@@ -54,6 +54,34 @@ namespace Pms.AccessCardAgent
                 Probe(config, password, config.ParkingPhase1Database),
                 Probe(config, password, config.ParkingPhase2Database)
             };
+        }
+
+        public static bool CanWriteBoth(AgentConfig config, string password)
+        {
+            return CanWrite(config, password, config.ParkingPhase1Database) &&
+                CanWrite(config, password, config.ParkingPhase2Database);
+        }
+
+        public static bool CanWrite(AgentConfig config, string password, string database)
+        {
+            Validate(config, password, database);
+            using (var connection = new SqlConnection(ConnectionString(config, password, database)))
+            {
+                connection.Open();
+                // 不通过对表的直接 UPDATE 开放写入：旧系统必须走已有存储过程，
+                // 以便同时维护 Car_Issue、下载队列和设备状态。
+                var procedures = new[] { "AddIssue", "Palte_extend", "Up_PakIssue", "Add_Del_Plate", "Add_DownloadCard" };
+                foreach (var procedure in procedures)
+                {
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = "SELECT HAS_PERMS_BY_NAME(@object, 'OBJECT', 'EXECUTE');";
+                        command.Parameters.Add("@object", SqlDbType.NVarChar, 300).Value = "dbo." + procedure;
+                        if (Convert.ToInt32(command.ExecuteScalar()) != 1) return false;
+                    }
+                }
+                return true;
+            }
         }
 
         public static List<ParkingSearchRow> SearchBoth(AgentConfig config, string password, string term)
@@ -160,7 +188,7 @@ namespace Pms.AccessCardAgent
                 ConnectTimeout = 5,
                 Encrypt = false,
                 TrustServerCertificate = true,
-                ApplicationName = "PMS Parking Gateway ReadOnly Probe"
+                ApplicationName = "PMS Parking Gateway"
             }.ConnectionString;
         }
 

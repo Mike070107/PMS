@@ -137,8 +137,10 @@ namespace Pms.AccessCardAgent
                 if (args.Length > 0 && args[0] == "--connect-test")
                 {
                     var hasReader = config.Kind != "issuer" || CardReader.HasAcr122();
+                    var parkingWrite = config.Kind == "parking_gateway" &&
+                        ParkingDatabase.CanWriteBoth(config, SecretStore.Load(parkingPasswordPath));
                     new AgentApiClient(config, SecretStore.Load(tokenPath)).Heartbeat(
-                        AgentLoop.BuildCapabilities(config, hasReader));
+                        AgentLoop.BuildCapabilities(config, hasReader, parkingWrite));
                     AgentStatus.MarkConnected();
                     if (config.Kind == "parking_gateway")
                     {
@@ -209,7 +211,7 @@ namespace Pms.AccessCardAgent
 
         private static void PrintParkingProbe(ParkingDatabaseProbeResult result)
         {
-            Console.WriteLine("[" + result.Database + "] 只读连接成功");
+            Console.WriteLine("[" + result.Database + "] 数据库连接成功");
             Console.WriteLine("Car_Issue 记录数：" + (result.VehicleCount < 0 ? "表不存在" : result.VehicleCount.ToString()));
             Console.WriteLine("Car_Download 记录数：" + (result.DownloadCount < 0 ? "表不存在" : result.DownloadCount.ToString()));
             foreach (var pair in result.Procedures)

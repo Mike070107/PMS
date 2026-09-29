@@ -29,7 +29,13 @@ namespace Pms.AccessCardAgent
                 try
                 {
                     var hasReader = _config.Kind != "issuer" || CardReader.HasAcr122();
-                    _api.Heartbeat(BuildCapabilities(_config, hasReader));
+                    var parkingWrite = false;
+                    if (_config.Kind == "parking_gateway")
+                    {
+                        var passwordPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "parking-db-password.dat");
+                        parkingWrite = ParkingDatabase.CanWriteBoth(_config, SecretStore.Load(passwordPath));
+                    }
+                    _api.Heartbeat(BuildCapabilities(_config, hasReader, parkingWrite));
                     AgentStatus.MarkConnected();
                     if (_config.Kind == "legacy_sync")
                     {
@@ -74,6 +80,11 @@ namespace Pms.AccessCardAgent
 
         internal static Dictionary<string, bool> BuildCapabilities(AgentConfig config, bool hasReader)
         {
+            return BuildCapabilities(config, hasReader, false);
+        }
+
+        internal static Dictionary<string, bool> BuildCapabilities(AgentConfig config, bool hasReader, bool parkingWrite)
+        {
             return new Dictionary<string, bool>
             {
                 { "pcscReader", hasReader },
@@ -83,7 +94,7 @@ namespace Pms.AccessCardAgent
                 { "accessDbRead", config.Kind == "access_gateway" },
                 { "accessDbWrite", false },
                 { "parkingDbRead", config.Kind == "parking_gateway" },
-                { "parkingDbWrite", false },
+                { "parkingDbWrite", config.Kind == "parking_gateway" && parkingWrite },
                 { "controllerUpload", false }
             };
         }

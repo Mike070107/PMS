@@ -137,6 +137,10 @@ export class AccessCardIssuanceService {
     const agents = await this.agentRepo.find({ where: { tenantId }, order: { id: 'ASC' } });
     const simulationEnabled = this.simulationEnabled();
     const deliyun = await this.deliyun.status();
+    const parkingDbWrite = agents.some((agent) =>
+      agent.kind === 'parking_gateway' &&
+      effectiveAgentStatus(agent) === 'online' &&
+      agent.capabilities?.parkingDbWrite === true);
     return {
       simulationEnabled,
       features: {
@@ -144,7 +148,7 @@ export class AccessCardIssuanceService {
         legacyDbWrite: false,
         accessDbWrite: false,
         parkingDbRead: true,
-        parkingDbWrite: false,
+        parkingDbWrite,
         controllerUpload: false,
       },
       agents: orderAgentsByAvailability(agents).map((agent) => ({
