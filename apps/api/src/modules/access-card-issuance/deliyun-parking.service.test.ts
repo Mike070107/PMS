@@ -12,3 +12,10 @@ test('德立云旧协议签名与参数传入顺序无关', () => {
 test('德立云签名不包含空参数', () => {
   assert.equal(legacyDeliyunSign({ accessKeyID: 'id', optional: '' }, 'secret'), legacyDeliyunSign({ accessKeyID: 'id' }, 'secret'));
 });
+
+test('德立云签名在排序参数串末尾直接追加 Secret', () => {
+  assert.equal(
+    legacyDeliyunSign({ version: '1.0', accessKeyID: 'id' }, 'secret'),
+    'cc153ead79814d45d11fe1e74ad35fab',
+  );
+});
