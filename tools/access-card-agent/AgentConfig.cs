@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 
 namespace Pms.AccessCardAgent
@@ -38,6 +39,48 @@ namespace Pms.AccessCardAgent
             if (!agentId.StartsWith(value.Kind + "-", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("代理 ID 与当前服务类型 " + value.Kind + " 不匹配");
             value.AgentId = agentId;
+            File.WriteAllText(path, new JavaScriptSerializer().Serialize(value));
+        }
+
+        public static AgentConfig CreateDefaults(string kind)
+        {
+            return new AgentConfig
+            {
+                BaseUrl = "https://prsznh.cn/api/v1",
+                AgentId = "",
+                Kind = kind,
+                Name = kind == "legacy_sync" ? "192.168.1.80 旧库同步"
+                    : kind == "access_gateway" ? "192.168.1.88 门禁网关" : "前台发卡电脑",
+                PollIntervalMs = 2500,
+                AllowSimulation = false,
+                LegacySqlServer = kind == "legacy_sync" ? "192.168.1.80" : "",
+                LegacyDatabase = kind == "legacy_sync" ? "JS0131625" : "",
+                LegacyUser = kind == "legacy_sync" ? "SA" : "",
+                MjSystemDatabasePath = kind == "access_gateway"
+                    ? "C:\\Users\\Port1\\AppData\\Local\\VirtualStore\\Program Files (x86)\\MjSystem\\Database\\ChineseSimple\\MJDataBase.mdb" : "",
+                IcCardDatabasePath = kind == "access_gateway"
+                    ? "C:\\Users\\Port1\\AppData\\Local\\VirtualStore\\Program Files (x86)\\iCCard\\iCCard.mdb" : ""
+            };
+        }
+
+        public static string NormalizeAgentId(string input)
+        {
+            if (String.IsNullOrWhiteSpace(input)) return "";
+            var match = Regex.Match(input, "(?:issuer|access_gateway|legacy_sync)-[a-fA-F0-9]{16}");
+            return match.Success ? match.Value : input.Trim();
+        }
+
+        public static void Save(string path, AgentConfig value)
+        {
+            if (value == null || String.IsNullOrWhiteSpace(value.Kind))
+                throw new InvalidOperationException("请选择服务类型");
+            value.AgentId = NormalizeAgentId(value.AgentId);
+            if (!value.AgentId.StartsWith(value.Kind + "-", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("代理 ID 与当前服务类型不匹配，请从 PMS 页面重新复制对应电脑的代理 ID");
+            if (String.IsNullOrWhiteSpace(value.Name))
+                throw new InvalidOperationException("电脑名称不能为空");
+            value.BaseUrl = "https://prsznh.cn/api/v1";
+            if (value.PollIntervalMs < 1000) value.PollIntervalMs = 2500;
             File.WriteAllText(path, new JavaScriptSerializer().Serialize(value));
         }
     }

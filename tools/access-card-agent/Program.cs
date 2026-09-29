@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Net;
+using System.ServiceProcess;
+using System.Windows.Forms;
 
 namespace Pms.AccessCardAgent
 {
@@ -17,6 +19,26 @@ namespace Pms.AccessCardAgent
                 var tokenPath = Path.Combine(root, "agent.token.dat");
                 var databasePasswordPath = Path.Combine(root, "legacy-db-password.dat");
                 var icCardPasswordPath = Path.Combine(root, "iccard-db-password.dat");
+                if (!Environment.UserInteractive)
+                {
+                    ServiceBase.Run(new AccessCardWindowsService(AgentConfig.Load(configPath), tokenPath));
+                    return 0;
+                }
+                if (args.Length > 0 && args[0] == "--tray")
+                {
+                    TrayApplication.HideConsoleWindow();
+                    Application.EnableVisualStyles();
+                    Application.SetCompatibleTextRenderingDefault(false);
+                    Application.Run(new AgentTrayContext(AgentConfig.Load(configPath)));
+                    return 0;
+                }
+                if (args.Length == 0)
+                {
+                    Application.EnableVisualStyles();
+                    Application.SetCompatibleTextRenderingDefault(false);
+                    Application.Run(new AgentManagerForm(root));
+                    return 0;
+                }
                 if (args.Length > 0 && args[0] == "--self-test")
                 {
                     int sequence;
@@ -24,6 +46,8 @@ namespace Pms.AccessCardAgent
                         throw new InvalidOperationException("旧库房号序号解析测试失败");
                     if (LegacyDatabase.TrySequence("228/5/301", "228/5/30/6", out sequence))
                         throw new InvalidOperationException("相似房号隔离测试失败");
+                    if (AgentConfig.NormalizeAgentId("legacy_sync-legacy_sync-a8c6fe8239867d2e") != "legacy_sync-a8c6fe8239867d2e")
+                        throw new InvalidOperationException("代理 ID 粘贴容错测试失败");
                     Console.WriteLine("自检通过：房号累计序号解析和相似房号隔离正常");
                     return 0;
                 }
@@ -64,11 +88,22 @@ namespace Pms.AccessCardAgent
                     return readers.Length == 0 ? 2 : 0;
                 }
                 var config = AgentConfig.Load(configPath);
+                if (args.Length > 0 && args[0] == "--install-service")
+                {
+                    WindowsServiceInstaller.Install(config);
+                    return 0;
+                }
+                if (args.Length > 0 && args[0] == "--uninstall-service")
+                {
+                    WindowsServiceInstaller.Uninstall(config);
+                    return 0;
+                }
                 if (args.Length > 0 && args[0] == "--connect-test")
                 {
                     var hasReader = config.Kind != "issuer" || CardReader.HasAcr122();
                     new AgentApiClient(config, SecretStore.Load(tokenPath)).Heartbeat(
                         AgentLoop.BuildCapabilities(config, hasReader));
+                    AgentStatus.MarkConnected();
                     Console.WriteLine("连接成功：PMS 已接受 " + config.Name + " 的心跳（版本 " + AgentApiClient.Version + "）。");
                     return 0;
                 }
@@ -101,9 +136,14 @@ namespace Pms.AccessCardAgent
                     }
                     return 0;
                 }
-                var token = SecretStore.Load(tokenPath);
-                new AgentLoop(config, new AgentApiClient(config, token)).Run();
-                return 0;
+                if (args.Length > 0 && args[0] == "--console")
+                {
+                    var token = SecretStore.Load(tokenPath);
+                    new AgentLoop(config, new AgentApiClient(config, token)).Run();
+                    return 0;
+                }
+                Console.Error.WriteLine("未知参数。双击程序可打开设置界面。");
+                return 2;
             }
             catch (Exception exception)
             {

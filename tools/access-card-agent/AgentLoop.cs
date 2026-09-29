@@ -18,20 +18,26 @@ namespace Pms.AccessCardAgent
 
         public void Run()
         {
-            Console.WriteLine("PMS 门禁代理已启动：" + _config.Name + " / " + _config.Kind);
-            while (true)
+            Run(null);
+        }
+
+        public void Run(WaitHandle stopSignal)
+        {
+            Console.WriteLine("PMS 数据同步助手已启动：" + _config.Name + " / " + _config.Kind);
+            while (stopSignal == null || !stopSignal.WaitOne(0))
             {
                 try
                 {
                     var hasReader = _config.Kind != "issuer" || CardReader.HasAcr122();
                     _api.Heartbeat(BuildCapabilities(_config, hasReader));
+                    AgentStatus.MarkConnected();
                     if (_config.Kind == "legacy_sync")
                     {
                         var historyTask = _api.ClaimLegacyHistory();
                         if (historyTask != null)
                         {
                             HandleLegacyHistory(historyTask);
-                            Thread.Sleep(_config.PollIntervalMs);
+                            if (Wait(stopSignal, _config.PollIntervalMs)) return;
                             continue;
                         }
                     }
@@ -42,8 +48,18 @@ namespace Pms.AccessCardAgent
                 {
                     Console.Error.WriteLine(DateTime.Now.ToString("s") + " " + exception.Message);
                 }
-                Thread.Sleep(_config.PollIntervalMs);
+                if (Wait(stopSignal, _config.PollIntervalMs)) return;
             }
+        }
+
+        private static bool Wait(WaitHandle stopSignal, int milliseconds)
+        {
+            if (stopSignal == null)
+            {
+                Thread.Sleep(milliseconds);
+                return false;
+            }
+            return stopSignal.WaitOne(milliseconds);
         }
 
         internal static Dictionary<string, bool> BuildCapabilities(AgentConfig config, bool hasReader)

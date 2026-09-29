@@ -18,6 +18,8 @@
 - 2026-09-29 已在 `192.168.1.88` 的 D 盘实际运行 `PMS-AccessGateway-0.1.2`：自检和 iCCard MDB 密码的 DPAPI 安装成功；`--access-probe` 只读打开真实 `MJDataBase.mdb` 与 `iCCard.mdb`。现场计数为 `Employee=3209`、`MJ_MacPower=10541`、`MJ_MacInfo=20`、`MJ_DoorInfo=20`、`t_b_Consumer=7300`、`t_b_IDCard=7431`、`t_d_Privilege=11768`，与前期调研一致；未写入 MDB，未上传控制器。
 - 已构建代理更新包 `PMS-AccessCardAgent-Update-0.1.4.zip`：新增 `--install-agent <代理ID>`（同时写入 ID、用 DPAPI 保存密钥）和只发一次心跳、不领取任务的 `--connect-test`，并为旧版 .NET 4 显式启用 TLS 1.2；PMS 页面按 15 秒心跳有效期判定在线，避免电脑退出后永久显示在线。
 - 2026-09-29 现场发现旧版 Windows PowerShell 不会将右键/`Ctrl+V` 粘贴作为逐键字符交给 `Console.ReadKey`，结果报“代理密钥为空”。已在 0.1.5 增加标准输入管道，现场统一使用 `Get-Clipboard | .\Pms.AccessCardAgent.exe --install-agent <代理ID>`；已实测长密钥可写入 DPAPI 文件，且不回显、不进入 PowerShell 历史。更新包为 `PMS-AccessCardAgent-Update-0.1.5.zip`。
+- 2026-09-29 代理 0.1.6 改为 Windows 后台服务：开机自启、异常 60 秒自动重启，不依赖 PowerShell 窗口。同时增加当前用户的托盘状态图标，根据 Windows 服务状态和本地最近成功心跳区分“已连接 PMS / 服务运行但连接异常 / 服务已停止”。
+- 用户随后明确要求做成可换电脑使用的 Windows 小应用，并命名为“PMS 数据同步助手”，为未来连接其他数据库保留扩展。0.2.0 已实现图形化配置：选择电脑用途、粘贴代理 ID/一次性密钥、保存与连接测试、一键安装 Windows 后台服务；托盘图标显示服务与 PMS 心跳状态。安装包不再预置某台电脑的 config，首次启动由界面生成。
 - 2026-09-29 已将提交 `b8015bf` 的 API 与 Web 发布到 `https://prsznh.cn`，生产包分别为 `pms-api-20260929-0902.tar.gz`、`pms-web-20260929-0902.tar.gz`。生产数据库已创建 `access_card_agents`、`access_card_issue_batches`、`access_card_issue_items`、`access_card_legacy_snapshots` 四张表；健康检查为 `ok/db up`，无凭据代理心跳返回 401，`/access-cards` SPA 入口返回 200。下一步是在生产页面分别注册 `.80`、`.88`，把一次性凭据直接装到对应电脑后执行 `--connect-test`。
 
 ## 1. 最终业务目标
