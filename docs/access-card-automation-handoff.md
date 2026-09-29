@@ -20,6 +20,7 @@
 - 2026-09-29 现场发现旧版 Windows PowerShell 不会将右键/`Ctrl+V` 粘贴作为逐键字符交给 `Console.ReadKey`，结果报“代理密钥为空”。已在 0.1.5 增加标准输入管道，现场统一使用 `Get-Clipboard | .\Pms.AccessCardAgent.exe --install-agent <代理ID>`；已实测长密钥可写入 DPAPI 文件，且不回显、不进入 PowerShell 历史。更新包为 `PMS-AccessCardAgent-Update-0.1.5.zip`。
 - 2026-09-29 代理 0.1.6 改为 Windows 后台服务：开机自启、异常 60 秒自动重启，不依赖 PowerShell 窗口。同时增加当前用户的托盘状态图标，根据 Windows 服务状态和本地最近成功心跳区分“已连接 PMS / 服务运行但连接异常 / 服务已停止”。
 - 用户随后明确要求做成可换电脑使用的 Windows 小应用，并命名为“PMS 数据同步助手”，为未来连接其他数据库保留扩展。0.2.0 已实现图形化配置：选择电脑用途、粘贴代理 ID/一次性密钥、保存与连接测试、一键安装 Windows 后台服务；托盘图标显示服务与 PMS 心跳状态。安装包不再预置某台电脑的 config，首次启动由界面生成。
+- 2026-09-29 现场发现选房后首屏显示“暂无旧库记录”，但生产快照稍后已有数据。已证实原因：首次 house-context 请求只创建 `.80` 查询任务并立即返回空快照，代理在 1–3 秒后回传，而页面不会再取。现在仅对当前选中房号做最多 5 次、每次 1.25 秒的有界等待；换房立即取消旧请求，不恢复全局定时轮询，手动“刷新历史”仍保留兜底。
 - 2026-09-29 已将提交 `b8015bf` 的 API 与 Web 发布到 `https://prsznh.cn`，生产包分别为 `pms-api-20260929-0902.tar.gz`、`pms-web-20260929-0902.tar.gz`。生产数据库已创建 `access_card_agents`、`access_card_issue_batches`、`access_card_issue_items`、`access_card_legacy_snapshots` 四张表；健康检查为 `ok/db up`，无凭据代理心跳返回 401，`/access-cards` SPA 入口返回 200。下一步是在生产页面分别注册 `.80`、`.88`，把一次性凭据直接装到对应电脑后执行 `--connect-test`。
 
 ## 1. 最终业务目标
