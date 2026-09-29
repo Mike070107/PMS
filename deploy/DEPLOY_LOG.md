@@ -3447,3 +3447,11 @@
 - 自上次（188eed3）以来上线的相关提交：
   - e6866b2 feat(parking): add Deliyun read-only connection status
 
+## 2026-09-29 23:27 · web · e6866b2
+
+- 包：`pms-web-20260929-2316.tar.gz`
+- 提交：e6866b2 feat(parking): add Deliyun read-only connection status
+- 说明：停车页独立显示德立云真实连接与具体配置缺项
+- 自上次（188eed3）以来上线的相关提交：
+  - e6866b2 feat(parking): add Deliyun read-only connection status
+
