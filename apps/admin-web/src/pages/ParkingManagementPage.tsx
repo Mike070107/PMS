@@ -53,18 +53,33 @@ export default function ParkingManagementPage({
   const [rows, setRows] = useState<ParkingQueryRow[]>([]);
   const [searchedTerm, setSearchedTerm] = useState('');
 
-  const loadReadiness = useCallback(async () => {
-    setLoading(true);
+  const loadReadiness = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       setReadiness(readinessOverride ?? await accessCardIssuance.readiness());
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '停车网关状态加载失败');
+      if (!silent) message.error(error instanceof Error ? error.message : '停车网关状态加载失败');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [message, readinessOverride]);
 
   useEffect(() => { void loadReadiness(); }, [loadReadiness]);
+
+  useEffect(() => {
+    if (readinessOverride) return undefined;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadReadiness(true);
+    };
+    const timer = window.setInterval(refreshWhenVisible, 5_000);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [loadReadiness, readinessOverride]);
 
   const enrollGateway = async () => {
     if (!gatewayName.trim()) {
