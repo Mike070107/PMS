@@ -3333,3 +3333,11 @@
 - 自上次（cbefc3d）以来上线的相关提交：
   - 139752b feat(parking): connect live legacy database search
 
+## 2026-09-29 15:26 · web · 170dd4c
+
+- 包：`pms-web-20260929-1523.tar.gz`
+- 提交：170dd4c deploy: api → cc23836
+- 自上次（cbefc3d）以来上线的相关提交：
+  - cc23836 fix(parking): exclude live-query fixtures from production
+  - 139752b feat(parking): connect live legacy database search
+
