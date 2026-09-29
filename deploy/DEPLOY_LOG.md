@@ -3423,3 +3423,11 @@
 - 自上次（d796802）以来上线的相关提交：
   - 188eed3 fix(parking): call legacy bit positions channel numbers
 
+## 2026-09-29 23:25 · api · e6866b2
+
+- 包：`pms-api-20260929-2316.tar.gz`
+- 提交：e6866b2 feat(parking): add Deliyun read-only connection status
+- 说明：德立云只读连接状态，生产运行配置已保存AK/SK与commKey，等待官方version
+- 自上次（c63c0b3）以来上线的相关提交：
+  - e6866b2 feat(parking): add Deliyun read-only connection status
+
