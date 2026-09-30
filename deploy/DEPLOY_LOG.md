@@ -3509,3 +3509,10 @@
 - 自上次（2d6845f）以来上线的相关提交：
   - cb37da1 feat(access-cards): block previously issued cards
 
+## 2026-09-30 12:30 · web · 2c0c901
+
+- 包：`pms-web-20260930-1219.tar.gz`
+- 提交：2c0c901 deploy: api → 8bc3656
+- 自上次（07312ce）以来上线的相关提交：
+  - cb37da1 feat(access-cards): block previously issued cards
+
