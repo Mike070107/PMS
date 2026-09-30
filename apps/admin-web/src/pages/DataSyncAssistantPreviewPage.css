@@ -121,6 +121,12 @@
 .dsa-info-card dt { color: #788985; }
 .dsa-info-card dd { margin: 0; color: #294e49; font-weight: 600; }
 .dsa-info-card dd .anticon { margin-right: 5px; color: #35a875; }
+.dsa-maintenance-actions { display: flex; gap: 7px; padding-top: 12px; margin-top: 5px; border-top: 1px solid #edf1f0; }
+.dsa-maintenance-actions button { flex: 1; min-height: 34px; padding: 0 8px; color: #576f6b; background: #fff; border: 1px solid #d5e0de; border-radius: 8px; font-size: 10px; cursor: pointer; }
+.dsa-maintenance-actions button:hover { color: #176f65; border-color: #83afa8; background: #f5faf9; }
+.dsa-maintenance-actions button.danger { color: #a64b50; }
+.dsa-maintenance-actions button.danger:hover { color: #963a40; border-color: #dba9ac; background: #fff7f7; }
+.dsa-maintenance-actions .anticon { margin-right: 5px; }
 
 .dsa-modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 30px; background: rgba(16, 36, 33, .48); backdrop-filter: blur(5px); }
 .dsa-wizard { width: min(680px, calc(100vw - 60px)); min-height: 570px; display: flex; flex-direction: column; overflow: hidden; background: #fff; border: 1px solid #d9e4e1; border-radius: 16px; box-shadow: 0 30px 90px rgba(15, 42, 38, .32); }
@@ -163,6 +169,22 @@
 .dsa-test-result li { padding: 6px 0; color: #496863; font-size: 11px; }
 .dsa-test-result li .anticon { margin-right: 8px; color: #35a875; }
 .dsa-wizard footer { margin-top: auto; display: flex; justify-content: flex-end; gap: 9px; padding: 14px 25px; border-top: 1px solid #e5ecea; background: #fbfcfc; }
+
+.dsa-confirm { width: min(470px, calc(100vw - 48px)); padding: 28px; background: #fff; border: 1px solid #d9e4e1; border-radius: 16px; box-shadow: 0 30px 90px rgba(15, 42, 38, .32); }
+.dsa-confirm-icon { width: 50px; height: 50px; display: grid; place-items: center; color: #a9701f; background: #fff3de; border-radius: 12px; font-size: 23px; }
+.dsa-confirm-icon.danger { color: #ad4047; background: #fdebec; }
+.dsa-confirm h2 { margin: 17px 0 7px; font-size: 19px; }
+.dsa-confirm > p { margin: 0; color: #677d79; font-size: 12px; line-height: 1.75; }
+.dsa-confirm-note { display: flex; gap: 9px; padding: 11px 12px; margin-top: 17px; color: #3d6b63; background: #edf7f4; border-radius: 9px; font-size: 11px; line-height: 1.5; }
+.dsa-confirm-note .anticon { margin-top: 2px; color: #2c8b70; }
+.dsa-delete-data-option { display: flex; gap: 10px; padding: 12px; margin-top: 17px; border: 1px solid #edd1d3; border-radius: 9px; background: #fffafa; cursor: pointer; }
+.dsa-delete-data-option input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: #b1444b; }
+.dsa-delete-data-option span { display: flex; flex-direction: column; }
+.dsa-delete-data-option strong { color: #824247; font-size: 11px; }
+.dsa-delete-data-option small { margin-top: 3px; color: #897274; font-size: 10px; line-height: 1.5; }
+.dsa-confirm footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.dsa-danger-button { min-height: 42px; padding: 0 18px; color: #fff; background: #b1444b; border: 1px solid #b1444b; border-radius: 9px; font-weight: 650; cursor: pointer; }
+.dsa-danger-button:hover { background: #963940; }
 
 @media (max-width: 800px) {
   .dsa-preview-stage { padding: 12px; }

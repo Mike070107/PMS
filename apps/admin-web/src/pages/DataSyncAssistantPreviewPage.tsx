@@ -10,6 +10,8 @@ import {
   ReloadOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
+  StopOutlined,
+  DeleteOutlined,
   UsbOutlined,
   WifiOutlined,
 } from '@ant-design/icons';
@@ -80,6 +82,8 @@ export default function DataSyncAssistantPreviewPage() {
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<ConnectionKind>('parking');
   const [step, setStep] = useState(1);
+  const [maintenance, setMaintenance] = useState<'service' | 'software' | null>(null);
+  const [removeData, setRemoveData] = useState(false);
 
   const closeWizard = () => {
     setAdding(false);
@@ -173,6 +177,10 @@ export default function DataSyncAssistantPreviewPage() {
                 <div><dt>配置保存</dt><dd><CheckCircleFilled /> 已自动保存</dd></div>
                 <div><dt>下次检查更新</dt><dd>今天 18:00</dd></div>
               </dl>
+              <div className="dsa-maintenance-actions">
+                <button onClick={() => setMaintenance('service')}><StopOutlined />卸载本机连接服务</button>
+                <button className="danger" onClick={() => setMaintenance('software')}><DeleteOutlined />卸载此软件</button>
+              </div>
             </div>
           </section>
         </main>
@@ -219,6 +227,34 @@ export default function DataSyncAssistantPreviewPage() {
             <footer>
               <button className="dsa-secondary" onClick={step === 1 ? closeWizard : () => setStep(step - 1)}>{step === 1 ? '取消' : '上一步'}</button>
               <button className="dsa-primary" onClick={step === 3 ? closeWizard : () => setStep(step + 1)}>{step === 1 ? '继续' : step === 2 ? '测试连接' : '完成'}</button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {maintenance && (
+        <div className="dsa-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setMaintenance(null)}>
+          <section className="dsa-confirm" role="dialog" aria-modal="true" aria-label={maintenance === 'service' ? '卸载本机连接服务' : '卸载此软件'}>
+            <div className={`dsa-confirm-icon ${maintenance === 'software' ? 'danger' : ''}`}>
+              {maintenance === 'service' ? <StopOutlined /> : <DeleteOutlined />}
+            </div>
+            <h2>{maintenance === 'service' ? '卸载本机连接服务？' : '卸载 PMS 数据同步助手？'}</h2>
+            <p>{maintenance === 'service'
+              ? '卸载后，这台电脑将停止响应 PMS 的查询和写入任务。软件、所有连接参数和加密密码都会保留。'
+              : '将删除本机程序和后台连接服务。这台电脑上的所有数据连接会立即离线。'}</p>
+            {maintenance === 'service' ? (
+              <div className="dsa-confirm-note"><SafetyCertificateOutlined />保留 4 个连接及全部加密配置，之后可以一键重新安装服务。</div>
+            ) : (
+              <label className="dsa-delete-data-option">
+                <input type="checkbox" checked={removeData} onChange={(event) => setRemoveData(event.target.checked)} />
+                <span><strong>同时删除已保存的配置和密码</strong><small>不勾选则保留，重新安装后可以继续使用。</small></span>
+              </label>
+            )}
+            <footer>
+              <button className="dsa-secondary" onClick={() => setMaintenance(null)}>取消</button>
+              <button className={maintenance === 'software' ? 'dsa-danger-button' : 'dsa-primary'} onClick={() => setMaintenance(null)}>
+                {maintenance === 'service' ? '确认卸载服务' : '确认卸载软件'}
+              </button>
             </footer>
           </section>
         </div>
