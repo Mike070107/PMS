@@ -3543,3 +3543,11 @@
 - 自上次（29f7103）以来上线的相关提交：
   - 10d0b07 feat(access): verify card permissions and surface assistant activity
 
+## 2026-09-30 20:43 · web · 10d0b07
+
+- 包：`pms-web-20260930-2029.tar.gz`
+- 提交：10d0b07 feat(access): verify card permissions and surface assistant activity
+- 说明：公网访问 200；生产资源已核对到 AccessCardIssuancePage 新构建
+- 自上次（29f7103）以来上线的相关提交：
+  - 10d0b07 feat(access): verify card permissions and surface assistant activity
+
