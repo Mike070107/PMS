@@ -3502,3 +3502,10 @@
   - 3d5349c fix(agent-preview): use business system names
   - 2ca13f9 feat(agent): add interactive V2 design preview
 
+## 2026-09-30 12:29 · api · 8bc3656
+
+- 包：`pms-api-20260930-1219.tar.gz`
+- 提交：8bc3656 fix(agent-v2): start service and tray after setup
+- 自上次（2d6845f）以来上线的相关提交：
+  - cb37da1 feat(access-cards): block previously issued cards
+
