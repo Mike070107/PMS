@@ -119,7 +119,7 @@ export default function DataSyncAssistantPreviewPage() {
               />
               <ConnectionCard
                 icon={<HistoryOutlined />}
-                title=".80 旧库同步"
+                title="枫桦一二期小区大门门禁系统接入"
                 subtitle="SQL Server · 本机服务"
                 details={['住户资料 可读取', '发卡历史 可读取', '最近同步 10:39']}
                 state="运行正常"
@@ -133,7 +133,7 @@ export default function DataSyncAssistantPreviewPage() {
               />
               <ConnectionCard
                 icon={<CloudServerOutlined />}
-                title="门禁数据库"
+                title="枫桦二期楼栋门禁系统接入"
                 subtitle="MjSystem / iCCard"
                 details={['数据库 可读取', '控制器 8 台', '写入尚未开放']}
                 state="待写入验收"
