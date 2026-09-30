@@ -18,6 +18,7 @@ import {
   CarOutlined,
   DatabaseOutlined,
   CopyOutlined,
+  DownOutlined,
   EditOutlined,
   HomeOutlined,
   HistoryOutlined,
@@ -511,13 +512,23 @@ function ParkingHistoryCard({ rows, ownerRow, vehicleRow, history, loading, erro
   const ownerName = ownerRow.pmsMatch?.name || fieldValue(ownerRow.fields, fieldAliases.owner) || '未记录姓名';
   return (
     <section className="parking-history-card" aria-labelledby="parking-history-title">
-      <header className="parking-history-heading">
-        <div>
-          <span className="parking-section-kicker">历史记录</span>
-          <Title id="parking-history-title" level={4}><HistoryOutlined /> {ownerName}的变更历史</Title>
+      <details className="parking-history-disclosure">
+        <summary className="parking-history-summary">
+          <div>
+            <span className="parking-section-kicker">历史记录</span>
+            <Title id="parking-history-title" level={4}><HistoryOutlined /> {ownerName}的变更历史</Title>
+            <Text type="secondary">默认收起，展开后可查看用户、换牌和车牌绑定变更。</Text>
+          </div>
+          <span className="parking-history-toggle" aria-hidden="true">
+            <span className="parking-history-toggle-collapsed">展开历史</span>
+            <span className="parking-history-toggle-expanded">收起历史</span>
+            <DownOutlined />
+          </span>
+        </summary>
+
+        <div className="parking-history-body">
           <Text type="secondary">记录从本功能启用后开始保留；首次查询只建立基线，不会伪造为一次修改。</Text>
-        </div>
-        {ownerRows.length > 1 && (
+          {ownerRows.length > 1 && (
           <div className="parking-history-owner-switch" aria-label="切换要查看历史的用户">
             {ownerRows.map((row) => {
               const key = parkingOwnerKey(row);
@@ -525,28 +536,29 @@ function ParkingHistoryCard({ rows, ownerRow, vehicleRow, history, loading, erro
               return <Button key={key} type={key === ownerKey ? 'primary' : 'default'} onClick={() => onSelectOwner(row)}>{name}</Button>;
             })}
           </div>
-        )}
-      </header>
+          )}
 
-      <div className="parking-history-vehicle-switch" aria-label="选择车牌历史">
-        <Button type={vehicleRow ? 'default' : 'primary'} onClick={() => onSelectVehicle(null)}>只看用户历史</Button>
-        {ownerVehicles.map((row) => {
-          const ref = parkingHistoryRef(row);
-          const selected = !!vehicleRow && parkingHistoryRef(vehicleRow).sourceRecordId === ref.sourceRecordId && vehicleRow.database === row.database;
-          return (
-            <Button key={`${row.database}-${ref.sourceRecordId || ref.plate}`} type={selected ? 'primary' : 'default'} onClick={() => onSelectVehicle(row)}>
-              <CarOutlined /> {ref.plate || '未识别车牌'}
-            </Button>
-          );
-        })}
-      </div>
+          <div className="parking-history-vehicle-switch" aria-label="选择车牌历史">
+            <Button type={vehicleRow ? 'default' : 'primary'} onClick={() => onSelectVehicle(null)}>只看用户历史</Button>
+            {ownerVehicles.map((row) => {
+              const ref = parkingHistoryRef(row);
+              const selected = !!vehicleRow && parkingHistoryRef(vehicleRow).sourceRecordId === ref.sourceRecordId && vehicleRow.database === row.database;
+              return (
+                <Button key={`${row.database}-${ref.sourceRecordId || ref.plate}`} type={selected ? 'primary' : 'default'} onClick={() => onSelectVehicle(row)}>
+                  <CarOutlined /> {ref.plate || '未识别车牌'}
+                </Button>
+              );
+            })}
+          </div>
 
-      {loading ? <div className="parking-history-loading"><Spin /><span>正在读取历史记录…</span></div>
-        : error ? <Alert type="error" showIcon message="历史记录加载失败" description={error} action={<Button onClick={onRetry}>重试</Button>} />
-          : <div className={`parking-history-columns${vehicleRow ? ' has-vehicle' : ''}`}>
-            <HistoryEntryList title="用户历史" entries={history?.userHistory ?? []} empty="这个用户还没有换牌、转绑或资料修改记录" />
-            {vehicleRow && <HistoryEntryList title={`${parkingHistoryRef(vehicleRow).plate || '所选车牌'}历史`} entries={history?.vehicleHistory ?? []} empty="这个车牌还没有换牌、转绑或绑定资料修改记录" />}
-          </div>}
+          {loading ? <div className="parking-history-loading"><Spin /><span>正在读取历史记录…</span></div>
+            : error ? <Alert type="error" showIcon message="历史记录加载失败" description={error} action={<Button onClick={onRetry}>重试</Button>} />
+              : <div className={`parking-history-columns${vehicleRow ? ' has-vehicle' : ''}`}>
+                <HistoryEntryList title="用户历史" entries={history?.userHistory ?? []} empty="这个用户还没有换牌、转绑或资料修改记录" />
+                {vehicleRow && <HistoryEntryList title={`${parkingHistoryRef(vehicleRow).plate || '所选车牌'}历史`} entries={history?.vehicleHistory ?? []} empty="这个车牌还没有换牌、转绑或绑定资料修改记录" />}
+              </div>}
+        </div>
+      </details>
     </section>
   );
 }

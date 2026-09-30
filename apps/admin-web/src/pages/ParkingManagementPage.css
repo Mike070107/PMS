@@ -13,11 +13,24 @@
 .parking-query-loading { min-height: 150px; display: grid; place-items: center; align-content: center; gap: 12px; color: #60758a; }
 .parking-query-results { display: grid; gap: 10px; margin-top: 16px; }
 .parking-query-summary { display: flex; align-items: center; gap: 8px; padding: 9px 12px; color: #287246; border-radius: 9px; background: #edf8f1; font-size: 13px; }
-.parking-history-card { min-width: 0; display: grid; gap: 16px; padding: 18px; border: 1px solid #cfdbe8; border-radius: 14px; background: #f8fafc; }
-.parking-history-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
-.parking-history-heading > div:first-child { min-width: 0; }
-.parking-history-heading h4.ant-typography { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; color: #223750; }
-.parking-history-heading .ant-typography { line-height: 1.6; }
+.parking-history-card { min-width: 0; border: 1px solid #cfdbe8; border-radius: 14px; background: #f8fafc; }
+.parking-history-disclosure { min-width: 0; }
+.parking-history-summary { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px; border-radius: 13px; cursor: pointer; list-style: none; transition: background-color 180ms ease; }
+.parking-history-summary::-webkit-details-marker { display: none; }
+.parking-history-summary:hover { background: #f0f5f9; }
+.parking-history-summary:focus-visible { outline: 3px solid rgba(49,85,138,.32); outline-offset: 3px; }
+.parking-history-summary > div:first-child { min-width: 0; }
+.parking-history-summary h4.ant-typography { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; color: #223750; }
+.parking-history-summary .ant-typography { line-height: 1.6; }
+.parking-history-toggle { min-height: 44px; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; color: #31558a; border: 1px solid #bdcce0; border-radius: 8px; background: #fff; font-size: 14px; font-weight: 600; }
+.parking-history-toggle-expanded { display: none; }
+.parking-history-toggle .anticon { transition: transform 180ms ease; }
+.parking-history-disclosure[open] .parking-history-summary { border-bottom: 1px solid #dce4ec; border-radius: 13px 13px 0 0; }
+.parking-history-disclosure[open] .parking-history-toggle-collapsed { display: none; }
+.parking-history-disclosure[open] .parking-history-toggle-expanded { display: inline; }
+.parking-history-disclosure[open] .parking-history-toggle .anticon { transform: rotate(180deg); }
+.parking-history-body { display: grid; gap: 16px; padding: 16px 18px 18px; }
+.parking-history-body > .ant-typography { line-height: 1.6; }
 .parking-history-owner-switch, .parking-history-vehicle-switch { display: flex; flex-wrap: wrap; gap: 8px; }
 .parking-history-owner-switch { justify-content: flex-end; }
 .parking-history-owner-switch .ant-btn, .parking-history-vehicle-switch .ant-btn { min-height: 44px; }
@@ -263,7 +276,8 @@
   .parking-integration-alert .ant-alert-action { grid-column: 2; justify-self: start; margin: 12px 0 0; }
   .parking-resident-search { grid-template-columns: minmax(0,1fr); gap: 16px; }
   .parking-query-card { grid-template-columns: minmax(0,1fr); align-items: start; }
-  .parking-history-heading { align-items: stretch; flex-direction: column; }
+  .parking-history-summary { align-items: stretch; flex-direction: column; }
+  .parking-history-toggle { width: 100%; justify-content: center; }
   .parking-history-owner-switch { justify-content: flex-start; }
   .parking-history-columns.has-vehicle { grid-template-columns: minmax(0,1fr); }
   .parking-history-list dl > div { grid-template-columns: minmax(0,1fr); }
