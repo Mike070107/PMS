@@ -30,6 +30,7 @@ import {
   CreateParkingQueryDto,
   CreateParkingProofUploadDto,
   ParkingQueryReportDto,
+  ParkingHistoryQueryDto,
 } from './dto';
 import { ParkingProofService } from './parking-proof.service';
 import { bearerToken } from './agent-auth';
@@ -64,6 +65,12 @@ export class AccessCardIssuanceController {
   @RequirePermission('business', 'view')
   getParkingQuery(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.service.getParkingQuery(id, user);
+  }
+
+  @Get('parking/history')
+  @RequirePermission('business', 'view')
+  getParkingHistory(@Query() query: ParkingHistoryQueryDto, @CurrentUser() user: AuthUser) {
+    return this.service.getParkingHistory(query, user);
   }
 
   @Post('parking/proof-uploads')

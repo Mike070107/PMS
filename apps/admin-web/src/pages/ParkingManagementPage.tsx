@@ -20,6 +20,7 @@ import {
   CopyOutlined,
   EditOutlined,
   HomeOutlined,
+  HistoryOutlined,
   PhoneOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -38,13 +39,16 @@ import './ParkingManagementPage.css';
 
 const { Text, Title } = Typography;
 type ParkingQueryRow = accessCardIssuance.ParkingQueryRow;
+type ParkingHistoryResponse = accessCardIssuance.ParkingHistoryResponse;
 
 export default function ParkingManagementPage({
   readinessOverride,
   rowsOverride,
+  historyOverride,
 }: {
   readinessOverride?: AccessCardReadiness;
   rowsOverride?: ParkingQueryRow[];
+  historyOverride?: ParkingHistoryResponse;
 } = {}) {
   const { message } = AntdApp.useApp();
   const [readiness, setReadiness] = useState<AccessCardReadiness | null>(null);
@@ -60,6 +64,11 @@ export default function ParkingManagementPage({
   const [proofUpload, setProofUpload] = useState<accessCardIssuance.ParkingProofUpload | null>(null);
   const [proofLoading, setProofLoading] = useState(false);
   const [editingPmsOwner, setEditingPmsOwner] = useState<OwnerRow | undefined>();
+  const [historyOwnerRow, setHistoryOwnerRow] = useState<ParkingQueryRow | null>(null);
+  const [historyVehicleRow, setHistoryVehicleRow] = useState<ParkingQueryRow | null>(null);
+  const [history, setHistory] = useState<ParkingHistoryResponse | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const loadReadiness = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -126,10 +135,14 @@ export default function ParkingManagementPage({
     }
     setSearching(true);
     setRows([]);
+    setHistoryOwnerRow(null);
+    setHistoryVehicleRow(null);
+    setHistory(null);
     setSearchedTerm(queryTerm);
     try {
       if (rowsOverride) {
         setRows(rowsOverride);
+        setHistoryOwnerRow(rowsOverride[0] ?? null);
         return;
       }
       let query = await accessCardIssuance.createParkingQuery(queryTerm);
@@ -139,6 +152,7 @@ export default function ParkingManagementPage({
       }
       if (query.status === 'completed') {
         setRows(query.rows);
+        setHistoryOwnerRow(query.rows[0] ?? null);
         if (query.rows.length === 0) message.info(`没有查到与“${queryTerm}”匹配的停车记录`);
       } else if (query.status === 'failed') {
         throw new Error(query.error || '停车数据库查询失败');
@@ -151,6 +165,34 @@ export default function ParkingManagementPage({
       setSearching(false);
     }
   };
+
+  const loadHistory = useCallback(async () => {
+    if (!historyOwnerRow) return;
+    const ownerRef = parkingHistoryRef(historyOwnerRow);
+    const vehicleRef = historyVehicleRow ? parkingHistoryRef(historyVehicleRow) : null;
+    if (!ownerRef.pmsUserId && !ownerRef.externalOwnerId && !vehicleRef?.sourceRecordId && !vehicleRef?.plate) {
+      setHistory({ userHistory: [], vehicleHistory: [] });
+      setHistoryError(null);
+      return;
+    }
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      setHistory(historyOverride ?? await accessCardIssuance.parkingHistory({
+        pmsUserId: ownerRef.pmsUserId,
+        database: ownerRef.database,
+        externalOwnerId: ownerRef.externalOwnerId,
+        sourceRecordId: vehicleRef?.sourceRecordId,
+        plate: vehicleRef?.plate,
+      }));
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : '历史记录加载失败');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyOwnerRow, historyVehicleRow, historyOverride]);
+
+  useEffect(() => { void loadHistory(); }, [loadHistory]);
 
   const createProofUpload = async (row: ParkingQueryRow) => {
     setProofLoading(true);
@@ -273,6 +315,19 @@ export default function ParkingManagementPage({
             <div className="parking-query-summary">
               <CheckCircleOutlined /> 找到 {rows.length} 条真实记录，其中 {rows.filter((row) => row.pmsMatch).length} 条已关联 PMS 用户
             </div>
+            {historyOwnerRow && (
+              <ParkingHistoryCard
+                rows={rows}
+                ownerRow={historyOwnerRow}
+                vehicleRow={historyVehicleRow}
+                history={history}
+                loading={historyLoading}
+                error={historyError}
+                onRetry={() => void loadHistory()}
+                onSelectOwner={(row) => { setHistoryOwnerRow(row); setHistoryVehicleRow(null); }}
+                onSelectVehicle={setHistoryVehicleRow}
+              />
+            )}
             {rows.map((row, index) => <ParkingResultCard
               key={`${row.database}-${index}`}
               row={row}
@@ -415,6 +470,108 @@ function garageRows(database: string, fields: ParkingQueryRow['fields']) {
     { key: 'main', label: '二期大车库', source: 'parking2', ...state([15, 17, 19, 21]) },
     { key: 'civil', label: '二期人防车库', source: '德立云', authorized: false, downloaded: false, cloud: true },
   ];
+}
+
+function parkingExactFieldValue(fields: ParkingQueryRow['fields'], aliases: readonly string[]): string | null {
+  const normalized = new Set(aliases.map(normalizeFieldName));
+  const match = Object.entries(fields).find(([key, value]) =>
+    value !== null && String(value).trim() !== '' && normalized.has(normalizeFieldName(key)));
+  return match ? String(match[1]).trim() : null;
+}
+
+function parkingHistoryRef(row: ParkingQueryRow) {
+  return row.historyRef ?? {
+    database: row.database,
+    sourceRecordId: parkingExactFieldValue(row.fields, ['p_id', 'pid', 'car_id', 'carid', 'issue_id', 'issueid']),
+    externalOwnerId: parkingExactFieldValue(row.fields, fieldAliases.ownerId),
+    plate: plateValue(row.fields) === '车牌字段待识别' ? null : plateValue(row.fields),
+    pmsUserId: row.pmsMatch?.userId ?? null,
+  };
+}
+
+function parkingOwnerKey(row: ParkingQueryRow): string {
+  const ref = parkingHistoryRef(row);
+  return ref.pmsUserId ? `pms:${ref.pmsUserId}` : `${ref.database}:external:${ref.externalOwnerId || 'unknown'}`;
+}
+
+function ParkingHistoryCard({ rows, ownerRow, vehicleRow, history, loading, error, onRetry, onSelectOwner, onSelectVehicle }: {
+  rows: ParkingQueryRow[];
+  ownerRow: ParkingQueryRow;
+  vehicleRow: ParkingQueryRow | null;
+  history: ParkingHistoryResponse | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onSelectOwner: (row: ParkingQueryRow) => void;
+  onSelectVehicle: (row: ParkingQueryRow | null) => void;
+}) {
+  const ownerKey = parkingOwnerKey(ownerRow);
+  const ownerRows = Array.from(new Map(rows.map((row) => [parkingOwnerKey(row), row])).values());
+  const ownerVehicles = rows.filter((row) => parkingOwnerKey(row) === ownerKey);
+  const ownerName = ownerRow.pmsMatch?.name || fieldValue(ownerRow.fields, fieldAliases.owner) || '未记录姓名';
+  return (
+    <section className="parking-history-card" aria-labelledby="parking-history-title">
+      <header className="parking-history-heading">
+        <div>
+          <span className="parking-section-kicker">历史记录</span>
+          <Title id="parking-history-title" level={4}><HistoryOutlined /> {ownerName}的变更历史</Title>
+          <Text type="secondary">记录从本功能启用后开始保留；首次查询只建立基线，不会伪造为一次修改。</Text>
+        </div>
+        {ownerRows.length > 1 && (
+          <div className="parking-history-owner-switch" aria-label="切换要查看历史的用户">
+            {ownerRows.map((row) => {
+              const key = parkingOwnerKey(row);
+              const name = row.pmsMatch?.name || fieldValue(row.fields, fieldAliases.owner) || '未记录姓名';
+              return <Button key={key} type={key === ownerKey ? 'primary' : 'default'} onClick={() => onSelectOwner(row)}>{name}</Button>;
+            })}
+          </div>
+        )}
+      </header>
+
+      <div className="parking-history-vehicle-switch" aria-label="选择车牌历史">
+        <Button type={vehicleRow ? 'default' : 'primary'} onClick={() => onSelectVehicle(null)}>只看用户历史</Button>
+        {ownerVehicles.map((row) => {
+          const ref = parkingHistoryRef(row);
+          const selected = !!vehicleRow && parkingHistoryRef(vehicleRow).sourceRecordId === ref.sourceRecordId && vehicleRow.database === row.database;
+          return (
+            <Button key={`${row.database}-${ref.sourceRecordId || ref.plate}`} type={selected ? 'primary' : 'default'} onClick={() => onSelectVehicle(row)}>
+              <CarOutlined /> {ref.plate || '未识别车牌'}
+            </Button>
+          );
+        })}
+      </div>
+
+      {loading ? <div className="parking-history-loading"><Spin /><span>正在读取历史记录…</span></div>
+        : error ? <Alert type="error" showIcon message="历史记录加载失败" description={error} action={<Button onClick={onRetry}>重试</Button>} />
+          : <div className={`parking-history-columns${vehicleRow ? ' has-vehicle' : ''}`}>
+            <HistoryEntryList title="用户历史" entries={history?.userHistory ?? []} empty="这个用户还没有换牌、转绑或资料修改记录" />
+            {vehicleRow && <HistoryEntryList title={`${parkingHistoryRef(vehicleRow).plate || '所选车牌'}历史`} entries={history?.vehicleHistory ?? []} empty="这个车牌还没有换牌、转绑或绑定资料修改记录" />}
+          </div>}
+    </section>
+  );
+}
+
+function HistoryEntryList({ title, entries, empty }: {
+  title: string;
+  entries: accessCardIssuance.ParkingHistoryEntry[];
+  empty: string;
+}) {
+  return <section className="parking-history-list">
+    <h5>{title}<span>{entries.length} 条</span></h5>
+    {entries.length ? <ol>{entries.map((entry) => <li key={entry.id}>
+      <div className="parking-history-event-head">
+        <Tag color={entry.eventType === 'plate_change' ? 'blue' : entry.eventType === 'owner_rebind' ? 'gold' : 'default'}>
+          {entry.eventType === 'plate_change' ? '换牌' : entry.eventType === 'owner_rebind' ? '变更绑定用户' : '修改用户资料'}
+        </Tag>
+        <time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString('zh-CN', { hour12: false })}</time>
+      </div>
+      <strong>{entry.summary}</strong>
+      <dl>{entry.changes.map((change) => <div key={`${entry.id}-${change.field}`}>
+        <dt>{change.label}</dt><dd><span>{change.before || '未记录'}</span><b aria-hidden="true">→</b><span>{change.after || '未记录'}</span></dd>
+      </div>)}</dl>
+      <small>{entry.operator} · {entry.source === 'pms' ? 'PMS' : entry.database || '旧停车库'}</small>
+    </li>)}</ol> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={empty} />}
+  </section>;
 }
 
 function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, proofLoading }: {

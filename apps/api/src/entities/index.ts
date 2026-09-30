@@ -36,6 +36,8 @@ import { BusinessRule } from './business-rule.entity';
 import { ParkingVehicle } from './parking-vehicle.entity';
 import { ParkingQuery } from './parking-query.entity';
 import { ParkingProofUpload } from './parking-proof-upload.entity';
+import { ParkingHistory } from './parking-history.entity';
+import { ParkingRecordSnapshot } from './parking-record-snapshot.entity';
 import { AccessCard } from './access-card.entity';
 import { AccessCardAgent } from './access-card-agent.entity';
 import { AccessCardIssueBatch } from './access-card-issue-batch.entity';
@@ -129,6 +131,8 @@ export const entities = [
   ParkingVehicle,
   ParkingQuery,
   ParkingProofUpload,
+  ParkingHistory,
+  ParkingRecordSnapshot,
   AccessCard,
   AccessCardAgent,
   AccessCardIssueBatch,
@@ -207,6 +211,8 @@ export {
   ParkingVehicle,
   ParkingQuery,
   ParkingProofUpload,
+  ParkingHistory,
+  ParkingRecordSnapshot,
   AccessCard,
   AccessCardAgent,
   AccessCardIssueBatch,

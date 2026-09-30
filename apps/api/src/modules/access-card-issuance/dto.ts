@@ -7,6 +7,7 @@ import {
   IsIn,
   IsOptional,
   IsObject,
+  IsNumberString,
   IsString,
   ValidateNested,
   Max,
@@ -265,4 +266,30 @@ export class ParkingQueryReportDto {
   @IsString()
   @MaxLength(500)
   errorMessage?: string;
+}
+
+export class ParkingHistoryQueryDto {
+  @IsOptional()
+  @IsNumberString()
+  pmsUserId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  database?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  externalOwnerId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  sourceRecordId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  plate?: string;
 }

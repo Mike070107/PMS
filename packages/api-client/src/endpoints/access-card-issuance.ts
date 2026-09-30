@@ -119,6 +119,41 @@ export interface ParkingQueryRow {
     } | null;
     matchedBy: 'phone';
   } | null;
+  historyRef?: {
+    database: string;
+    sourceRecordId: string | null;
+    externalOwnerId: string | null;
+    plate: string | null;
+    pmsUserId: number | null;
+  };
+}
+
+export interface ParkingHistoryChange {
+  field: string;
+  label: string;
+  before: string | null;
+  after: string | null;
+}
+
+export interface ParkingHistoryEntry {
+  id: number;
+  eventType: 'plate_change' | 'owner_rebind' | 'owner_info_update';
+  source: 'pms' | 'parking_gateway';
+  database: string | null;
+  sourceRecordId: string | null;
+  pmsUserId: number | null;
+  externalOwnerId: string | null;
+  plateBefore: string | null;
+  plateAfter: string | null;
+  summary: string;
+  changes: ParkingHistoryChange[];
+  operator: string;
+  occurredAt: string;
+}
+
+export interface ParkingHistoryResponse {
+  userHistory: ParkingHistoryEntry[];
+  vehicleHistory: ParkingHistoryEntry[];
 }
 
 export interface ParkingQuery {
@@ -173,6 +208,17 @@ export const parkingQuery = (id: number) =>
   request<ParkingQuery>({
     url: `/access-card-issuance/parking/queries/${id}`,
   });
+
+export const parkingHistory = (params: {
+  pmsUserId?: number | null;
+  database?: string | null;
+  externalOwnerId?: string | null;
+  sourceRecordId?: string | null;
+  plate?: string | null;
+}) => request<ParkingHistoryResponse>({
+  url: '/access-card-issuance/parking/history',
+  query: Object.fromEntries(Object.entries(params).filter(([, value]) => value !== null && value !== undefined && value !== '')) as Record<string, string | number>,
+});
 
 export const createParkingProofUpload = (data: { plate: string; ownerId?: string }) =>
   request<ParkingProofUpload>({

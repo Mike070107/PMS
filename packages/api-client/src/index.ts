@@ -26,4 +26,7 @@ export type {
   AccessCardIssueBatch,
   AccessCardIssueItem,
   AccessCardReadiness,
+  ParkingQueryRow,
+  ParkingHistoryEntry,
+  ParkingHistoryResponse,
 } from './endpoints/access-card-issuance';

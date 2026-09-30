@@ -11,7 +11,7 @@ import { OwnerSource, UserRole, UserStatus } from '../../common/enums';
 import { HouseIndex } from '../../common/house-index';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
-import { Building, Community, House, User } from '../../entities';
+import { Building, Community, House, ParkingHistory, User } from '../../entities';
 import {
   CreateOwnerDto,
   ImportOwnersDto,
@@ -169,6 +169,13 @@ export class OwnersMgmtService {
     });
     if (!owner) throw new NotFoundException('owner not found');
     await this.assertHouseInScope(tenantId, owner.houseId, access);
+    const before = {
+      name: owner.name,
+      phone: owner.phone,
+      contactNote: owner.contactNote,
+      houseId: owner.houseId,
+      status: owner.status,
+    };
 
     if (dto.phone && dto.phone !== owner.phone) {
       const dup = await this.userRepo.findOne({
@@ -198,7 +205,40 @@ export class OwnersMgmtService {
     // 去「用户管理」新增工作人员并填同一手机号，会就地转换、不建重复档案。
     // 这里改身份曾直接把账号踢出所有业主端接口（当时接口只放行 OWNER），已废弃。
     owner.updatedBy = user.id;
-    await this.userRepo.save(owner);
+    const labels: Record<keyof typeof before, string> = {
+      name: '姓名', phone: '电话', contactNote: '其他联系方式', houseId: '绑定房产', status: '状态',
+    };
+    const changes = (Object.keys(before) as Array<keyof typeof before>)
+      .filter((field) => before[field] !== owner[field])
+      .map((field) => ({
+        field,
+        label: labels[field],
+        before: before[field] === null ? null : String(before[field]),
+        after: owner[field] === null ? null : String(owner[field]),
+      }));
+    await this.dataSource.transaction(async (manager) => {
+      await manager.save(User, owner);
+      if (changes.length) {
+        await manager.save(ParkingHistory, manager.create(ParkingHistory, {
+          tenantId,
+          eventType: 'owner_info_update',
+          source: 'pms',
+          database: null,
+          sourceRecordId: null,
+          pmsUserId: owner.id,
+          externalOwnerId: null,
+          plateBefore: null,
+          plateAfter: null,
+          summary: `更新业主资料：${changes.map((item) => item.label).join('、')}`,
+          changes,
+          operatorUserId: user.id,
+          detectedByQueryId: null,
+          occurredAt: new Date(),
+          createdBy: user.id,
+          updatedBy: user.id,
+        }));
+      }
+    });
     return this.fetchOne(id, tenantId);
   }
 
