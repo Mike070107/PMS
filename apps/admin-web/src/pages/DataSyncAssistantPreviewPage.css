@@ -108,7 +108,15 @@
 
 .dsa-bottom-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 13px; margin-top: 18px; }
 .dsa-activity-card, .dsa-info-card { padding: 17px 18px; background: #fff; border: 1px solid #dfe8e6; border-radius: 12px; }
+.dsa-activity-card.collapsed, .dsa-info-card.collapsed { padding: 0; }
 .dsa-card-heading button { color: #176f65; background: transparent; border: 0; font-size: 12px; cursor: pointer; }
+.dsa-collapse-heading { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 2px; color: #244b46; background: transparent; border: 0; cursor: pointer; }
+.collapsed .dsa-collapse-heading { padding: 0 17px; }
+.dsa-collapse-heading > span { display: flex; align-items: center; gap: 8px; }
+.dsa-collapse-heading .anticon { color: #6d8581; font-size: 11px; }
+.dsa-collapse-heading strong { font-size: 15px; }
+.dsa-collapse-heading small { padding: 3px 7px; color: #6e837f; background: #f0f5f4; border-radius: 999px; font-size: 10px; font-weight: 500; }
+.dsa-collapse-heading em { color: #176f65; font-size: 11px; font-style: normal; font-weight: 600; }
 .dsa-activity-card ol { list-style: none; padding: 0; margin: 13px 0 0; }
 .dsa-activity-card li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #edf1f0; }
 .dsa-event-dot { width: 8px; height: 8px; border-radius: 50%; background: #91a19e; }

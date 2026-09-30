@@ -4,6 +4,8 @@ import {
   CheckCircleFilled,
   CloudServerOutlined,
   DatabaseOutlined,
+  DownOutlined,
+  RightOutlined,
   DesktopOutlined,
   HistoryOutlined,
   PlusOutlined,
@@ -84,6 +86,8 @@ export default function DataSyncAssistantPreviewPage() {
   const [step, setStep] = useState(1);
   const [maintenance, setMaintenance] = useState<'service' | 'software' | null>(null);
   const [removeData, setRemoveData] = useState(false);
+  const [activityExpanded, setActivityExpanded] = useState(false);
+  const [infoExpanded, setInfoExpanded] = useState(false);
 
   const closeWizard = () => {
     setAdding(false);
@@ -161,17 +165,23 @@ export default function DataSyncAssistantPreviewPage() {
           </section>
 
           <section className="dsa-bottom-grid">
-            <div className="dsa-activity-card">
-              <div className="dsa-card-heading"><h2>最近活动</h2><button>查看全部</button></div>
-              <ol>
+            <div className={`dsa-activity-card ${activityExpanded ? 'expanded' : 'collapsed'}`}>
+              <button className="dsa-collapse-heading" onClick={() => setActivityExpanded(!activityExpanded)}>
+                <span>{activityExpanded ? <DownOutlined /> : <RightOutlined />}<strong>最近活动</strong><small>3 条</small></span>
+                <em>{activityExpanded ? '收起' : '展开'}</em>
+              </button>
+              {activityExpanded && <ol>
                 <li><span className="dsa-event-dot ok" /><div><strong>停车系统查询成功</strong><small>车牌 沪BDQ8839 · 10:42:18</small></div></li>
                 <li><span className="dsa-event-dot ok" /><div><strong>PMS 心跳正常</strong><small>4 个连接已上报 · 10:42:05</small></div></li>
                 <li><span className="dsa-event-dot neutral" /><div><strong>发卡器等待任务</strong><small>办公室发卡器 · 10:41:52</small></div></li>
-              </ol>
+              </ol>}
             </div>
-            <div className="dsa-info-card">
-              <div className="dsa-card-heading"><h2>助手信息</h2><button>诊断</button></div>
-              <dl>
+            <div className={`dsa-info-card ${infoExpanded ? 'expanded' : 'collapsed'}`}>
+              <button className="dsa-collapse-heading" onClick={() => setInfoExpanded(!infoExpanded)}>
+                <span>{infoExpanded ? <DownOutlined /> : <RightOutlined />}<strong>助手信息</strong><small>版本 2.0.0</small></span>
+                <em>{infoExpanded ? '收起' : '展开'}</em>
+              </button>
+              {infoExpanded && <><dl>
                 <div><dt>电脑名称</dt><dd>物业办公室-01</dd></div>
                 <div><dt>当前版本</dt><dd>2.0.0 设计预览</dd></div>
                 <div><dt>配置保存</dt><dd><CheckCircleFilled /> 已自动保存</dd></div>
@@ -181,6 +191,7 @@ export default function DataSyncAssistantPreviewPage() {
                 <button onClick={() => setMaintenance('service')}><StopOutlined />卸载本机连接服务</button>
                 <button className="danger" onClick={() => setMaintenance('software')}><DeleteOutlined />卸载此软件</button>
               </div>
+              </>}
             </div>
           </section>
         </main>
