@@ -93,9 +93,12 @@
 .dsa-connection-title-row { display: flex; justify-content: space-between; gap: 10px; }
 .dsa-connection-title-row h3 { margin: 0; font-size: 15px; }
 .dsa-connection-title-row p { margin: 3px 0 0; color: #728481; font-size: 11px; }
+.dsa-location-line { display: flex; align-items: center; gap: 5px; margin-top: 9px; color: #426d67; font-size: 11px; font-weight: 650; }
+.dsa-location-line .anticon { color: #176f65; }
+.dsa-location-line span { color: #b4c2bf; }
 .dsa-status-pill { align-self: flex-start; display: flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; color: #24775f; background: #e8f6ef; font-size: 11px; font-weight: 650; }
 .dsa-status-pill.warn { color: #9b6517; background: #fff2d9; }
-.dsa-detail-row { display: flex; flex-wrap: wrap; gap: 4px 13px; margin-top: 13px; color: #506965; font-size: 11px; }
+.dsa-detail-row { display: flex; flex-wrap: wrap; gap: 4px 13px; margin-top: 8px; color: #506965; font-size: 11px; }
 .dsa-detail-row span::before { content: ""; display: inline-block; width: 4px; height: 4px; margin: 0 6px 2px 0; border-radius: 50%; background: #8fb0aa; }
 .dsa-icon-button { align-self: flex-end; width: 34px; height: 34px; border: 0; border-radius: 8px; color: #78908c; background: transparent; cursor: pointer; }
 .dsa-icon-button:hover { color: #176f65; background: #edf5f3; }
