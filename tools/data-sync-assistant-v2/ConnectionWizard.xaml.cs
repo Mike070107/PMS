@@ -111,8 +111,8 @@ namespace Pms.DataSyncAssistant
                     Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
                     var test = ConnectionTester.Test(item, password);
                     if (!test.Success) throw new InvalidOperationException(test.Summary);
-                    item.Status = "连接正常";
-                    item.StatusTone = "ok";
+                    item.Status = "本地检测通过，等待 PMS 上线";
+                    item.StatusTone = "warning";
                     item.Summary = test.Summary;
                     if (!String.IsNullOrWhiteSpace(PasswordInput.Password)) _store.SetSecret(secretKey, PasswordInput.Password);
                     if (newAgentToken != null) _store.SetSecret(ConnectionAgentRuntime.TokenKey(item), newAgentToken);

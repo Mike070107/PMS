@@ -16,23 +16,15 @@ namespace Pms.DataSyncAssistant
         private readonly ConfigurationStore _store;
         private readonly AssistantConfiguration _configuration;
         private readonly DispatcherTimer _statusTimer;
+        private bool _pmsConnected;
+        private bool _backgroundStartAttempted;
         public ObservableCollection<ConnectionViewModel> Connections { get; private set; }
         public string HostName { get { return _configuration.Host.Name; } }
         public string HostIp { get { return _configuration.Host.IpAddress; } }
         public string HostDisplay { get { return HostName + " · " + HostIp; } }
         public int ConnectionCount { get { return Connections.Count; } }
         public string ConnectionCountDisplay { get { return HostName + " 上已启用 " + ConnectionCount + " 个连接"; } }
-        public bool IsPaired
-        {
-            get
-            {
-                return _configuration.Connections.Any(delegate(ConnectionConfiguration item)
-                {
-                    string error;
-                    return item.Enabled && ConnectionAgentRuntime.CanStart(item, _store, out error);
-                });
-            }
-        }
+        public bool IsPaired { get { return _pmsConnected && IsServiceRunning; } }
         public bool IsServiceRunning { get { return GetServiceRunning(); } }
         public bool AllConnectionsHealthy { get { return Connections.Count > 0 && Connections.All(item => item.IsHealthy); } }
         public string HeaderStatus { get { return IsPaired ? "PMS 已连接" : "PMS 尚未配对"; } }
@@ -67,6 +59,7 @@ namespace Pms.DataSyncAssistant
             _statusTimer.Start();
             Closed += delegate { _statusTimer.Stop(); };
             RefreshRuntimeStatus();
+            Loaded += delegate { EnsureBackgroundRunning(false); };
         }
 
         private void AddConnection_Click(object sender, RoutedEventArgs e)
@@ -79,6 +72,7 @@ namespace Pms.DataSyncAssistant
             Raise("ConnectionCount");
             Raise("ConnectionCountDisplay");
             RaiseStatus();
+            EnsureBackgroundRunning(true);
         }
 
         private void EditConnection_Click(object sender, RoutedEventArgs e)
@@ -93,6 +87,7 @@ namespace Pms.DataSyncAssistant
             var view = Connections.FirstOrDefault(item => item.Id == id);
             if (view != null) view.Refresh();
             RaiseStatus();
+            EnsureBackgroundRunning(true);
         }
 
         private void CheckUpdate_Click(object sender, RoutedEventArgs e)
@@ -118,6 +113,32 @@ namespace Pms.DataSyncAssistant
             catch (Exception exception) { MessageBox.Show(exception.Message, "安装失败", MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
+        private void EnsureBackgroundRunning(bool forceRestart)
+        {
+            if (_backgroundStartAttempted && !forceRestart)
+            {
+                UnifiedServiceManager.StartTray();
+                return;
+            }
+            var ready = _configuration.Connections.Any(delegate(ConnectionConfiguration item)
+            {
+                string error;
+                return item.Enabled && ConnectionAgentRuntime.CanStart(item, _store, out error);
+            });
+            if (!ready) return;
+            _backgroundStartAttempted = true;
+            try
+            {
+                if (forceRestart || !IsServiceRunning) UnifiedServiceManager.RunElevated("--install-service");
+                else UnifiedServiceManager.StartTray();
+                RefreshRuntimeStatus();
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show("连接参数已经保存，但后台服务尚未启动，因此网页仍会显示未接入，右下角也不会出现状态图标。\n\n" + exception.Message + "\n\n请重新打开助手并允许 Windows 管理员授权。", "还差一步：启动后台服务", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         private void UninstallSoftware_Click(object sender, RoutedEventArgs e)
         {
             MessageBox.Show("正式卸载器尚未接入。本操作默认保留 ProgramData 中的连接和加密配置。", "卸载此软件", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -137,6 +158,7 @@ namespace Pms.DataSyncAssistant
 
         private void RefreshRuntimeStatus()
         {
+            var anyPmsConnected = false;
             try
             {
                 var path = Path.Combine(_store.RootPath, "health.json");
@@ -144,7 +166,10 @@ namespace Pms.DataSyncAssistant
                 {
                     var root = new JavaScriptSerializer().DeserializeObject(File.ReadAllText(path)) as System.Collections.Generic.Dictionary<string, object>;
                     var values = root == null || !root.ContainsKey("connections") ? null : root["connections"] as object[];
-                    if (values != null)
+                    DateTimeOffset checkedAt;
+                    var fresh = root.ContainsKey("checkedAt") && DateTimeOffset.TryParse(Convert.ToString(root["checkedAt"]), out checkedAt)
+                        && DateTimeOffset.Now.Subtract(checkedAt).Duration() < TimeSpan.FromMinutes(2);
+                    if (values != null && fresh && IsServiceRunning)
                     {
                         foreach (var value in values)
                         {
@@ -154,6 +179,7 @@ namespace Pms.DataSyncAssistant
                             if (model == null) continue;
                             var local = state.ContainsKey("localHealthy") && Convert.ToBoolean(state["localHealthy"]);
                             var online = state.ContainsKey("pmsConnected") && Convert.ToBoolean(state["pmsConnected"]);
+                            if (online) anyPmsConnected = true;
                             model.Status = online && local ? "在线" : local ? "PMS 未连接" : "连接异常";
                             model.StatusTone = online && local ? "ok" : local ? "warning" : "error";
                             if (state.ContainsKey("message")) model.Summary = Convert.ToString(state["message"]);
@@ -164,6 +190,7 @@ namespace Pms.DataSyncAssistant
                 }
             }
             catch { }
+            _pmsConnected = anyPmsConnected;
             RaiseStatus();
         }
 

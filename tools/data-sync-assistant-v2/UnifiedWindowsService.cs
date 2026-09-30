@@ -106,9 +106,35 @@ namespace Pms.DataSyncAssistant
                 RequireSc("config \"" + ServiceName + "\" binPath= \"" + command + "\" start= auto DisplayName= \"PMS 数据同步助手\"");
             RequireSc("description \"" + ServiceName + "\" \"连接 PMS 与本机数据库、门禁和发卡设备\"");
             RequireSc("failure \"" + ServiceName + "\" reset= 86400 actions= restart/60000/restart/60000/restart/60000");
-            RunSc("start \"" + ServiceName + "\"");
+            if (ServiceExists(ServiceName))
+            {
+                RunSc("stop \"" + ServiceName + "\"");
+                try
+                {
+                    using (var service = new ServiceController(ServiceName))
+                    {
+                        service.Refresh();
+                        if (service.Status != ServiceControllerStatus.Stopped)
+                            service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(20));
+                    }
+                }
+                catch { }
+            }
+            RequireSc("start \"" + ServiceName + "\"");
+            using (var service = new ServiceController(ServiceName))
+                service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
             InstallTrayStartup(executable);
-            Process.Start(new ProcessStartInfo { FileName = executable, Arguments = "--tray", UseShellExecute = true });
+            StartTray();
+        }
+
+        public static void StartTray()
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = Process.GetCurrentProcess().MainModule.FileName,
+                Arguments = "--tray",
+                UseShellExecute = true
+            });
         }
 
         public static void Uninstall()
