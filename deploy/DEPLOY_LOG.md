@@ -3477,3 +3477,12 @@
   - 48d2a8d docs(parking): follow Deliyun signed request example
   - 6cf6ab7 fix(parking): match documented Deliyun signature suffix
 
+## 2026-09-30 10:36 · web · 2df94a6
+
+- 包：`pms-web-20260930-1022.tar.gz`
+- 提交：2df94a6 deploy: api → 2d6845f
+- 自上次（e6866b2）以来上线的相关提交：
+  - f9bd495 fix(agent): preserve encrypted settings across upgrades
+  - e1be65f fix(parking): resolve legacy owners and separate authorization status
+  - acbf112 feat(parking): open controlled local write testing
+
