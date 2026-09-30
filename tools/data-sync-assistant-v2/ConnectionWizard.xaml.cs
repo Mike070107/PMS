@@ -49,9 +49,12 @@ namespace Pms.DataSyncAssistant
                 UserInput.Text = Get(existing, "user");
                 DatabaseOneInput.Text = Get(existing, "database1");
                 DatabaseTwoInput.Text = Get(existing, "database2");
-                FilePathInput.Text = Get(existing, "path");
+                MjSystemPathInput.Text = Get(existing, "mjSystemPath");
+                IcCardPathInput.Text = Get(existing, "icCardPath");
                 PasswordHint.Text = _store.HasSecret("connection:" + existing.Id + ":password")
                     ? "密码已安全保存，留空保持不变。" : "请输入数据库密码。";
+                AgentCredentialHint.Text = _store.HasSecret(ConnectionAgentRuntime.TokenKey(existing))
+                    ? "PMS 连接密钥已安全保存，留空保持不变。" : "请粘贴 PMS 页面生成的一次性连接密钥。";
                 return;
             }
             if (_type == ConnectionTypes.Parking)
@@ -64,7 +67,9 @@ namespace Pms.DataSyncAssistant
             }
             else if (_type == ConnectionTypes.BuildingAccess)
             {
-                NameInput.Text = "枫桦二期楼栋门禁系统接入"; FilePathInput.Text = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                NameInput.Text = "枫桦二期楼栋门禁系统接入";
+                MjSystemPathInput.Text = @"C:\Users\Port1\AppData\Local\VirtualStore\Program Files (x86)\MjSystem\Database\ChineseSimple\MJDataBase.mdb";
+                IcCardPathInput.Text = @"C:\Users\Port1\AppData\Local\VirtualStore\Program Files (x86)\iCCard\iCCard.mdb";
             }
             else
             {
@@ -98,6 +103,7 @@ namespace Pms.DataSyncAssistant
                     var secretKey = "connection:" + item.Id + ":password";
                     var password = !String.IsNullOrWhiteSpace(PasswordInput.Password)
                         ? PasswordInput.Password : _store.GetSecret(secretKey);
+                    var newAgentToken = PrepareAgentCredential(item);
                     Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
                     var test = ConnectionTester.Test(item, password);
                     if (!test.Success) throw new InvalidOperationException(test.Summary);
@@ -105,6 +111,7 @@ namespace Pms.DataSyncAssistant
                     item.StatusTone = "ok";
                     item.Summary = test.Summary;
                     if (!String.IsNullOrWhiteSpace(PasswordInput.Password)) _store.SetSecret(secretKey, PasswordInput.Password);
+                    if (newAgentToken != null) _store.SetSecret(ConnectionAgentRuntime.TokenKey(item), newAgentToken);
                     Result = item;
                     ResultChecksText.Text = String.Join("\n", test.Checks.Select(check => "✓  " + check).Concat(new[] { "✓  凭据已在本机加密保存" }).ToArray());
                 }
@@ -154,11 +161,33 @@ namespace Pms.DataSyncAssistant
             item.Parameters["user"] = UserInput.Text.Trim();
             item.Parameters["database1"] = DatabaseOneInput.Text.Trim();
             item.Parameters["database2"] = DatabaseTwoInput.Text.Trim();
-            item.Parameters["path"] = FilePathInput.Text.Trim();
+            item.Parameters["mjSystemPath"] = MjSystemPathInput.Text.Trim();
+            item.Parameters["icCardPath"] = IcCardPathInput.Text.Trim();
             item.DataLocation = _type == ConnectionTypes.CardReader ? "本机 USB 端口"
-                : _type == ConnectionTypes.BuildingAccess ? "本机 MDB 文件"
+                : _type == ConnectionTypes.BuildingAccess ? "本机 MjSystem / iCCard MDB"
                 : String.IsNullOrWhiteSpace(ServerInput.Text) ? "尚未配置" : "SQL Server " + ServerInput.Text.Trim();
             return item;
+        }
+
+        private string PrepareAgentCredential(ConnectionConfiguration item)
+        {
+            var input = AgentCredentialInput.Password;
+            if (String.IsNullOrWhiteSpace(input))
+            {
+                string error;
+                if (!ConnectionAgentRuntime.CanStart(item, _store, out error))
+                    throw new InvalidOperationException(error + "，请从 PMS 注册页面重新生成并粘贴整段密钥");
+                return null;
+            }
+            string agentId;
+            string token;
+            if (!Pms.AccessCardAgent.AgentConfig.TryParseConnectionKey(input, out agentId, out token))
+                throw new InvalidOperationException("一次性连接密钥格式不正确，请完整复制，不要只复制代理 ID");
+            var expected = ConnectionAgentRuntime.KindFor(item.Type);
+            if (!agentId.StartsWith(expected + "-", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("一次性连接密钥属于 " + agentId.Split('-')[0] + "，与当前连接类型不匹配");
+            item.Parameters["agentId"] = agentId;
+            return token;
         }
 
         private static string Get(ConnectionConfiguration item, string key)

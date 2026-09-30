@@ -46,11 +46,17 @@
             <StackPanel><TextBlock Text="主数据库" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="DatabaseOneInput" /></StackPanel>
             <StackPanel Grid.Column="2"><TextBlock Text="第二数据库（可选）" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="DatabaseTwoInput" /></StackPanel>
           </Grid>
-          <StackPanel x:Name="FileFields" Visibility="Collapsed" Margin="0,10,0,0"><TextBlock Text="数据库文件目录" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="FilePathInput" /></StackPanel>
+          <StackPanel x:Name="FileFields" Visibility="Collapsed" Margin="0,10,0,0">
+            <TextBlock Text="MjSystem 数据库文件" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="MjSystemPathInput" />
+            <TextBlock Text="iCCard 数据库文件" Foreground="{StaticResource PmsMuted}" Margin="0,10,0,5" /><TextBox x:Name="IcCardPathInput" />
+          </StackPanel>
           <StackPanel x:Name="ReaderFields" Visibility="Collapsed" Margin="0,10,0,0"><TextBlock Text="检测到的读卡器" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="ReaderInput" IsReadOnly="True" Text="等待设备检测" /></StackPanel>
           <TextBlock x:Name="PasswordLabel" Text="数据库密码" Foreground="{StaticResource PmsMuted}" Margin="0,10,0,5" />
           <PasswordBox x:Name="PasswordInput" MinHeight="38" Padding="10,7" BorderBrush="{StaticResource PmsBorder}" />
           <TextBlock x:Name="PasswordHint" Text="密码会使用 Windows 本机加密保存；已保存时留空保持不变。" Foreground="#7A8EA4" FontSize="10" Margin="0,5,0,0" />
+          <TextBlock Text="PMS 一次性连接密钥" Foreground="{StaticResource PmsMuted}" Margin="0,10,0,5" />
+          <PasswordBox x:Name="AgentCredentialInput" MinHeight="38" Padding="10,7" BorderBrush="{StaticResource PmsBorder}" />
+          <TextBlock x:Name="AgentCredentialHint" Text="从 PMS 注册页面复制整段密钥；已保存时留空保持不变。" Foreground="#7A8EA4" FontSize="10" Margin="0,5,0,0" />
         </StackPanel>
       </ScrollViewer>
 

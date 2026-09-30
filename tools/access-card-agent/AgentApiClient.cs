@@ -12,19 +12,25 @@ namespace Pms.AccessCardAgent
         public const string Version = "0.5.3";
         private readonly AgentConfig _config;
         private readonly string _token;
+        private readonly string _version;
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer();
 
-        public AgentApiClient(AgentConfig config, string token)
+        public AgentApiClient(AgentConfig config, string token) : this(config, token, Version)
+        {
+        }
+
+        public AgentApiClient(AgentConfig config, string token, string version)
         {
             _config = config;
             _token = token;
+            _version = String.IsNullOrWhiteSpace(version) ? Version : version;
         }
 
         public void Heartbeat(Dictionary<string, bool> capabilities)
         {
             Post("/access-card-agent/heartbeat", new Dictionary<string, object>
             {
-                { "version", Version },
+                { "version", _version },
                 { "capabilities", capabilities }
             });
         }

@@ -8,6 +8,7 @@ namespace Pms.DataSyncAssistant
     public partial class App : Application
     {
         private Mutex _instance;
+        private TrayApplication _tray;
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -29,10 +30,25 @@ namespace Pms.DataSyncAssistant
                 catch (Exception exception) { MessageBox.Show(exception.Message, "卸载后台服务", MessageBoxButton.OK, MessageBoxImage.Error); Shutdown(1); }
                 return;
             }
+            if (e.Args.Length > 0 && e.Args[0] == "--upgrade-from-legacy")
+            {
+                try { UnifiedServiceManager.UpgradeFromLegacy(); MessageBox.Show("新版后台服务已验证在线，旧版服务已经卸载。", "升级完成", MessageBoxButton.OK, MessageBoxImage.Information); Shutdown(0); }
+                catch (Exception exception) { MessageBox.Show(exception.Message, "升级未完成", MessageBoxButton.OK, MessageBoxImage.Error); Shutdown(1); }
+                return;
+            }
             if (e.Args.Length > 0 && e.Args[0] == "--self-test")
             {
                 try { SelfTest.Run(); Shutdown(0); }
                 catch { Shutdown(1); }
+                return;
+            }
+            if (e.Args.Length > 0 && e.Args[0] == "--tray")
+            {
+                bool trayCreated;
+                _instance = new Mutex(true, "Local\\Pms.DataSyncAssistant.V2.Tray", out trayCreated);
+                if (!trayCreated) { Shutdown(); return; }
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                _tray = new TrayApplication();
                 return;
             }
             bool created;
@@ -61,6 +77,7 @@ namespace Pms.DataSyncAssistant
         protected override void OnExit(ExitEventArgs e)
         {
             if (_instance != null) _instance.Dispose();
+            if (_tray != null) _tray.Dispose();
             base.OnExit(e);
         }
     }

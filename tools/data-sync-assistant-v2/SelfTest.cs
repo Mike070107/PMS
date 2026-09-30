@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Pms.DataSyncAssistant
 {
@@ -36,6 +38,9 @@ namespace Pms.DataSyncAssistant
                     throw new InvalidOperationException("DPAPI 加密存储失败");
                 if (!File.Exists(Path.Combine(root, "connections.json.previous")))
                     throw new InvalidOperationException("配置备份未生成");
+
+                VerifyRuntimeMapping(store, config);
+                VerifyAccessGatewayMigration(root);
             }
             finally
             {
@@ -44,6 +49,67 @@ namespace Pms.DataSyncAssistant
                 if (full.StartsWith(temp, StringComparison.OrdinalIgnoreCase) && Directory.Exists(full))
                     Directory.Delete(full, true);
             }
+        }
+
+        private static void VerifyRuntimeMapping(ConfigurationStore store, AssistantConfiguration config)
+        {
+            var access = new ConnectionConfiguration { Type = ConnectionTypes.BuildingAccess, Name = "门禁测试" };
+            access.Parameters["agentId"] = "access_gateway-0123456789abcdef";
+            access.Parameters["mjSystemPath"] = @"D:\data\MJDataBase.mdb";
+            access.Parameters["icCardPath"] = @"D:\data\iCCard.mdb";
+            config.Host.BaseUrl = "https://example.invalid/api/v1/";
+            var mapped = ConnectionAgentRuntime.BuildAgentConfig(access, config.Host);
+            if (mapped.Kind != "access_gateway" || mapped.BaseUrl != "https://example.invalid/api/v1" ||
+                mapped.MjSystemDatabasePath != @"D:\data\MJDataBase.mdb" || mapped.IcCardDatabasePath != @"D:\data\iCCard.mdb")
+                throw new InvalidOperationException("楼栋门禁运行参数映射失败");
+
+            string error;
+            if (ConnectionAgentRuntime.CanStart(access, store, out error) || error.IndexOf("连接密钥") < 0)
+                throw new InvalidOperationException("缺少代理密钥时未被阻止");
+            store.SetSecret(ConnectionAgentRuntime.TokenKey(access), "test-agent-token-1234567890");
+            if (!ConnectionAgentRuntime.CanStart(access, store, out error))
+                throw new InvalidOperationException("完整代理配置未通过运行校验：" + error);
+        }
+
+        private static void VerifyAccessGatewayMigration(string root)
+        {
+            var legacyRoot = Path.Combine(root, "legacy-access");
+            var targetRoot = Path.Combine(root, "migrated");
+            Directory.CreateDirectory(legacyRoot);
+            File.WriteAllText(Path.Combine(legacyRoot, "agent.config.json"),
+                "{\"BaseUrl\":\"https://prsznh.cn/api/v1\",\"AgentId\":\"access_gateway-0123456789abcdef\",\"Kind\":\"access_gateway\",\"Name\":\"192.168.1.88 门禁网关\",\"MjSystemDatabasePath\":\"D:\\\\MDB\\\\MJDataBase.mdb\",\"IcCardDatabasePath\":\"D:\\\\MDB\\\\iCCard.mdb\"}", Encoding.UTF8);
+            WriteLegacySecret(Path.Combine(legacyRoot, "agent.token.dat"), "agent-secret-value");
+            WriteLegacySecret(Path.Combine(legacyRoot, "iccard-db-password.dat"), "iccard-password-value");
+
+            var store = new ConfigurationStore(targetRoot);
+            var target = store.Load();
+            var result = new LegacyMigrationResult();
+            new LegacyConfigurationMigrator(store).ImportDirectory(legacyRoot, target, result);
+            if (result.Imported != 1 || target.Connections.Count != 1)
+                throw new InvalidOperationException("旧版 .88 配置迁移失败");
+            var imported = target.Connections[0];
+            if (imported.Parameters["mjSystemPath"] != @"D:\MDB\MJDataBase.mdb" ||
+                imported.Parameters["icCardPath"] != @"D:\MDB\iCCard.mdb")
+                throw new InvalidOperationException("旧版 MDB 路径迁移失败");
+            if (store.GetSecret(ConnectionAgentRuntime.TokenKey(imported)) != "agent-secret-value" ||
+                store.GetSecret(ConnectionAgentRuntime.PasswordKey(imported)) != "iccard-password-value")
+                throw new InvalidOperationException("旧版 .88 密钥迁移失败");
+
+            imported.Parameters["mjSystemPath"] = "";
+            imported.Parameters["icCardPath"] = "";
+            store.SetSecret(ConnectionAgentRuntime.TokenKey(imported), "");
+            store.SetSecret(ConnectionAgentRuntime.PasswordKey(imported), "");
+            var repair = new LegacyMigrationResult();
+            new LegacyConfigurationMigrator(store).ImportDirectory(legacyRoot, target, repair);
+            if (repair.Updated != 1 || imported.Parameters["mjSystemPath"] != @"D:\MDB\MJDataBase.mdb" ||
+                store.GetSecret(ConnectionAgentRuntime.PasswordKey(imported)) != "iccard-password-value")
+                throw new InvalidOperationException("预览版残缺配置未能自动修复");
+        }
+
+        private static void WriteLegacySecret(string path, string value)
+        {
+            var entropy = Encoding.UTF8.GetBytes("PMS.AccessCardAgent.v1");
+            File.WriteAllBytes(path, ProtectedData.Protect(Encoding.UTF8.GetBytes(value), entropy, DataProtectionScope.LocalMachine));
         }
     }
 }

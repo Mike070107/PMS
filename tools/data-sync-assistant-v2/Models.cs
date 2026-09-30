@@ -78,6 +78,7 @@ namespace Pms.DataSyncAssistant
                 if (_model.StatusTone == "ok") return "#E8F6EF";
                 if (_model.StatusTone == "error") return "#FCEBEC";
                 if (_model.StatusTone == "working") return "#EAF0F9";
+                if (_model.StatusTone == "warning") return "#FFF4D6";
                 return "#EEF1F4";
             }
         }
@@ -88,6 +89,7 @@ namespace Pms.DataSyncAssistant
                 if (_model.StatusTone == "ok") return "#24775F";
                 if (_model.StatusTone == "error") return "#A43C45";
                 if (_model.StatusTone == "working") return "#31558A";
+                if (_model.StatusTone == "warning") return "#8A6418";
                 return "#65778A";
             }
         }

@@ -11,6 +11,7 @@ namespace Pms.DataSyncAssistant
     public sealed class LegacyMigrationResult
     {
         public int Imported { get; set; }
+        public int Updated { get; set; }
         public int Skipped { get; set; }
         public List<string> Warnings { get; private set; }
         public LegacyMigrationResult() { Warnings = new List<string>(); }
@@ -29,7 +30,7 @@ namespace Pms.DataSyncAssistant
             var result = new LegacyMigrationResult();
             foreach (var directory in CandidateDirectories())
                 ImportDirectory(directory, target, result);
-            if (result.Imported > 0) _store.Save(target);
+            if (result.Imported > 0 || result.Updated > 0) _store.Save(target);
             return result;
         }
 
@@ -47,7 +48,12 @@ namespace Pms.DataSyncAssistant
                 var database1 = kind == "parking_gateway" ? Value(source, "ParkingPhase1Database") : Value(source, "LegacyDatabase");
                 var database2 = kind == "parking_gateway" ? Value(source, "ParkingPhase2Database") : "";
                 var fingerprint = type + "|" + server + "|" + database1 + "|" + database2;
-                if (target.Connections.Any(existingConnection => Get(existingConnection, "legacyFingerprint") == fingerprint)) { result.Skipped++; return; }
+                var existing = target.Connections.FirstOrDefault(existingConnection => Get(existingConnection, "legacyFingerprint") == fingerprint);
+                if (existing != null)
+                {
+                    MergeExisting(existing, source, kind, directory, result);
+                    return;
+                }
 
                 var item = new ConnectionConfiguration
                 {
@@ -65,11 +71,16 @@ namespace Pms.DataSyncAssistant
                 item.Parameters["database2"] = database2;
                 item.Parameters["user"] = kind == "parking_gateway" ? Value(source, "ParkingUser") : Value(source, "LegacyUser");
                 item.Parameters["agentId"] = Value(source, "AgentId");
+                item.Parameters["mjSystemPath"] = Value(source, "MjSystemDatabasePath");
+                item.Parameters["icCardPath"] = Value(source, "IcCardDatabasePath");
                 item.Parameters["legacyFingerprint"] = fingerprint;
                 target.Connections.Add(item);
 
                 ImportSecret(directory, "agent.token.dat", "connection:" + item.Id + ":agentToken", result);
-                ImportSecret(directory, kind == "parking_gateway" ? "parking-db-password.dat" : "legacy-db-password.dat", "connection:" + item.Id + ":password", result);
+                var passwordFile = kind == "parking_gateway" ? "parking-db-password.dat"
+                    : kind == "access_gateway" ? "iccard-db-password.dat"
+                    : "legacy-db-password.dat";
+                ImportSecret(directory, passwordFile, "connection:" + item.Id + ":password", result);
                 result.Imported++;
             }
             catch (Exception exception)
@@ -82,6 +93,7 @@ namespace Pms.DataSyncAssistant
         {
             var path = Path.Combine(directory, fileName);
             if (!File.Exists(path)) return;
+            if (_store.HasSecret(targetKey)) return;
             try
             {
                 var plain = ProtectedData.Unprotect(File.ReadAllBytes(path), LegacyEntropy, DataProtectionScope.LocalMachine);
@@ -91,6 +103,32 @@ namespace Pms.DataSyncAssistant
             {
                 result.Warnings.Add(fileName + " 无法迁移：" + exception.Message);
             }
+        }
+
+        private void MergeExisting(ConnectionConfiguration item, Dictionary<string, object> source, string kind, string directory, LegacyMigrationResult result)
+        {
+            var changed = SetIfMissing(item, "agentId", Value(source, "AgentId"));
+            changed = SetIfMissing(item, "mjSystemPath", Value(source, "MjSystemDatabasePath")) || changed;
+            changed = SetIfMissing(item, "icCardPath", Value(source, "IcCardDatabasePath")) || changed;
+            ImportSecret(directory, "agent.token.dat", "connection:" + item.Id + ":agentToken", result);
+            var passwordFile = kind == "parking_gateway" ? "parking-db-password.dat"
+                : kind == "access_gateway" ? "iccard-db-password.dat"
+                : "legacy-db-password.dat";
+            ImportSecret(directory, passwordFile, "connection:" + item.Id + ":password", result);
+            if (changed)
+            {
+                item.Status = "配置已从旧版补全，等待测试";
+                item.StatusTone = "warning";
+                item.Summary = "已自动补全旧版代理参数";
+            }
+            result.Updated++;
+        }
+
+        private static bool SetIfMissing(ConnectionConfiguration item, string key, string value)
+        {
+            if (String.IsNullOrWhiteSpace(value) || !String.IsNullOrWhiteSpace(Get(item, key))) return false;
+            item.Parameters[key] = value;
+            return true;
         }
 
         private static IEnumerable<string> CandidateDirectories()

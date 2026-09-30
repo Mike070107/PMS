@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
+using Pms.AccessCardAgent;
 
 namespace Pms.DataSyncAssistant
 {
@@ -21,7 +22,7 @@ namespace Pms.DataSyncAssistant
             if (item.Type == ConnectionTypes.Parking || item.Type == ConnectionTypes.LegacyAccess)
                 return TestSql(item, password);
             if (item.Type == ConnectionTypes.BuildingAccess)
-                return TestFiles(item);
+                return TestAccessDatabases(item, password);
             if (item.Type == ConnectionTypes.CardReader)
                 return TestReader();
             throw new InvalidOperationException("尚不支持这种连接类型");
@@ -70,22 +71,22 @@ namespace Pms.DataSyncAssistant
             return result;
         }
 
-        private static ConnectionTestResult TestFiles(ConnectionConfiguration item)
+        private static ConnectionTestResult TestAccessDatabases(ConnectionConfiguration item, string password)
         {
-            var path = Get(item, "path");
-            if (String.IsNullOrWhiteSpace(path)) throw new InvalidOperationException("数据库文件路径为空");
+            var config = ConnectionAgentRuntime.BuildAgentConfig(item, new HostConfiguration());
             var result = new ConnectionTestResult();
-            if (File.Exists(path)) result.Checks.Add(Path.GetFileName(path) + " 文件存在");
-            else if (Directory.Exists(path))
-            {
-                var files = Directory.GetFiles(path, "*.mdb", SearchOption.TopDirectoryOnly);
-                if (files.Length == 0) throw new InvalidOperationException("指定目录中没有找到 MDB 数据库文件");
-                result.Checks.Add("找到 " + files.Length + " 个 MDB 数据库文件");
-            }
-            else throw new InvalidOperationException("数据库文件或目录不存在：" + path);
+            var mj = AccessGatewayDatabase.ProbeMjSystem(config);
+            result.Checks.Add("MjSystem 已读取：" + SummarizeCounts(mj.Counts));
+            var ic = AccessGatewayDatabase.ProbeIcCard(config, password);
+            result.Checks.Add("iCCard 已读取：" + SummarizeCounts(ic.Counts));
             result.Success = true;
             result.Summary = String.Join("；", result.Checks.ToArray());
             return result;
+        }
+
+        private static string SummarizeCounts(Dictionary<string, int> counts)
+        {
+            return String.Join("，", counts.Select(value => value.Key + " " + value.Value).ToArray());
         }
 
         private static ConnectionTestResult TestReader()

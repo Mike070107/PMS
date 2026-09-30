@@ -2,9 +2,12 @@ using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.IO;
 using System.ServiceProcess;
+using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 
 namespace Pms.DataSyncAssistant
 {
@@ -12,11 +15,22 @@ namespace Pms.DataSyncAssistant
     {
         private readonly ConfigurationStore _store;
         private readonly AssistantConfiguration _configuration;
+        private readonly DispatcherTimer _statusTimer;
         public ObservableCollection<ConnectionViewModel> Connections { get; private set; }
         public string HostName { get { return _configuration.Host.Name; } }
         public string HostIp { get { return _configuration.Host.IpAddress; } }
         public int ConnectionCount { get { return Connections.Count; } }
-        public bool IsPaired { get { return _configuration.Host.Paired && _store.HasSecret("host:token"); } }
+        public bool IsPaired
+        {
+            get
+            {
+                return _configuration.Connections.Any(delegate(ConnectionConfiguration item)
+                {
+                    string error;
+                    return item.Enabled && ConnectionAgentRuntime.CanStart(item, _store, out error);
+                });
+            }
+        }
         public bool IsServiceRunning { get { return GetServiceRunning(); } }
         public bool AllConnectionsHealthy { get { return Connections.Count > 0 && Connections.All(item => item.IsHealthy); } }
         public string HeaderStatus { get { return IsPaired ? "PMS 已连接" : "PMS 尚未配对"; } }
@@ -40,12 +54,17 @@ namespace Pms.DataSyncAssistant
         {
             _store = store;
             _configuration = store.Load();
-            if (_configuration.Connections.Count == 0)
-                new LegacyConfigurationMigrator(store).ImportKnownLocations(_configuration);
+            // Every launch also repairs incomplete configuration left by an earlier preview build.
+            new LegacyConfigurationMigrator(store).ImportKnownLocations(_configuration);
             Connections = new ObservableCollection<ConnectionViewModel>(
                 _configuration.Connections.Select(item => new ConnectionViewModel(item)));
             DataContext = this;
             InitializeComponent();
+            _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            _statusTimer.Tick += delegate { RefreshRuntimeStatus(); };
+            _statusTimer.Start();
+            Closed += delegate { _statusTimer.Stop(); };
+            RefreshRuntimeStatus();
         }
 
         private void AddConnection_Click(object sender, RoutedEventArgs e)
@@ -75,7 +94,7 @@ namespace Pms.DataSyncAssistant
 
         private void CheckUpdate_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("当前已经是最新设计预览版本。正式版会在这里显示下载、校验、停止服务、替换、重启和验证进度。", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("当前版本 2.0.0 已包含 PMS 心跳、任务领取和旧版配置迁移。自动在线更新将在后续版本开放。", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void UninstallService_Click(object sender, RoutedEventArgs e)
@@ -92,7 +111,7 @@ namespace Pms.DataSyncAssistant
 
         private void InstallService_Click(object sender, RoutedEventArgs e)
         {
-            try { UnifiedServiceManager.RunElevated("--install-service"); RaiseStatus(); MessageBox.Show("后台服务已安装并启动。", "安装完成", MessageBoxButton.OK, MessageBoxImage.Information); }
+            try { UnifiedServiceManager.RunElevated("--upgrade-from-legacy"); RaiseStatus(); }
             catch (Exception exception) { MessageBox.Show(exception.Message, "安装失败", MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
@@ -111,6 +130,38 @@ namespace Pms.DataSyncAssistant
             Raise("IsPaired"); Raise("IsServiceRunning"); Raise("AllConnectionsHealthy");
             Raise("HeaderStatus"); Raise("HeaderStatusColor"); Raise("OverviewTitle");
             Raise("PmsState"); Raise("CredentialState"); Raise("ServiceState");
+        }
+
+        private void RefreshRuntimeStatus()
+        {
+            try
+            {
+                var path = Path.Combine(_store.RootPath, "health.json");
+                if (File.Exists(path))
+                {
+                    var root = new JavaScriptSerializer().DeserializeObject(File.ReadAllText(path)) as System.Collections.Generic.Dictionary<string, object>;
+                    var values = root == null || !root.ContainsKey("connections") ? null : root["connections"] as object[];
+                    if (values != null)
+                    {
+                        foreach (var value in values)
+                        {
+                            var state = value as System.Collections.Generic.Dictionary<string, object>;
+                            if (state == null || !state.ContainsKey("id")) continue;
+                            var model = _configuration.Connections.FirstOrDefault(item => item.Id == Convert.ToString(state["id"]));
+                            if (model == null) continue;
+                            var local = state.ContainsKey("localHealthy") && Convert.ToBoolean(state["localHealthy"]);
+                            var online = state.ContainsKey("pmsConnected") && Convert.ToBoolean(state["pmsConnected"]);
+                            model.Status = online && local ? "在线" : local ? "PMS 未连接" : "连接异常";
+                            model.StatusTone = online && local ? "ok" : local ? "warning" : "error";
+                            if (state.ContainsKey("message")) model.Summary = Convert.ToString(state["message"]);
+                            var view = Connections.FirstOrDefault(item => item.Id == model.Id);
+                            if (view != null) view.Refresh();
+                        }
+                    }
+                }
+            }
+            catch { }
+            RaiseStatus();
         }
 
         private static bool GetServiceRunning()

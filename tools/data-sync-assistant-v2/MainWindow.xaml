@@ -101,7 +101,7 @@
             <StackPanel Margin="8">
               <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions><TextBlock Text="配置保存" Foreground="{StaticResource PmsMuted}" /><TextBlock Grid.Column="1" Text="已自动保存" HorizontalAlignment="Right" /></Grid>
               <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions><TextBlock Text="配置目录" Foreground="{StaticResource PmsMuted}" /><TextBlock Grid.Column="1" Text="ProgramData\PMS" HorizontalAlignment="Right" /></Grid>
-              <WrapPanel Margin="0,12,0,0"><Button Content="安装 / 修复后台服务" Margin="0,0,8,8" Click="InstallService_Click" /><Button Style="{StaticResource SecondaryButton}" Content="卸载本机连接服务" Margin="0,0,8,8" Click="UninstallService_Click" /><Button Background="#B1444B" Content="卸载此软件" Margin="0,0,0,8" Click="UninstallSoftware_Click" /></WrapPanel>
+              <WrapPanel Margin="0,12,0,0"><Button Content="安装 / 安全升级后台服务" Margin="0,0,8,8" Click="InstallService_Click" /><Button Style="{StaticResource SecondaryButton}" Content="卸载本机连接服务" Margin="0,0,8,8" Click="UninstallService_Click" /><Button Background="#B1444B" Content="卸载此软件" Margin="0,0,0,8" Click="UninstallSoftware_Click" /></WrapPanel>
             </StackPanel>
           </Expander>
         </Grid>

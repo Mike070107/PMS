@@ -9,11 +9,19 @@ namespace Pms.AccessCardAgent
     {
         private readonly AgentConfig _config;
         private readonly AgentApiClient _api;
+        private readonly Func<string, string> _secretProvider;
+        private readonly Action<bool, string> _connectionState;
 
-        public AgentLoop(AgentConfig config, AgentApiClient api)
+        public AgentLoop(AgentConfig config, AgentApiClient api) : this(config, api, null, null)
+        {
+        }
+
+        public AgentLoop(AgentConfig config, AgentApiClient api, Func<string, string> secretProvider, Action<bool, string> connectionState)
         {
             _config = config;
             _api = api;
+            _secretProvider = secretProvider;
+            _connectionState = connectionState;
         }
 
         public void Run()
@@ -32,11 +40,11 @@ namespace Pms.AccessCardAgent
                     var parkingWrite = false;
                     if (_config.Kind == "parking_gateway")
                     {
-                        var passwordPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "parking-db-password.dat");
-                        parkingWrite = ParkingDatabase.CanWriteBoth(_config, SecretStore.Load(passwordPath));
+                        parkingWrite = ParkingDatabase.CanWriteBoth(_config, LoadSecret("parking-db-password.dat"));
                     }
                     _api.Heartbeat(BuildCapabilities(_config, hasReader, parkingWrite));
                     AgentStatus.MarkConnected();
+                    SetConnectionState(true, "PMS 心跳正常");
                     if (_config.Kind == "legacy_sync")
                     {
                         var historyTask = _api.ClaimLegacyHistory();
@@ -63,6 +71,7 @@ namespace Pms.AccessCardAgent
                 catch (Exception exception)
                 {
                     Console.Error.WriteLine(DateTime.Now.ToString("s") + " " + exception.Message);
+                    SetConnectionState(false, exception.Message);
                 }
                 if (Wait(stopSignal, _config.PollIntervalMs)) return;
             }
@@ -103,8 +112,7 @@ namespace Pms.AccessCardAgent
         {
             try
             {
-                var passwordPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "legacy-db-password.dat");
-                var result = LegacyDatabase.GetHistory(_config, SecretStore.Load(passwordPath), task.roomKey);
+                var result = LegacyDatabase.GetHistory(_config, LoadSecret("legacy-db-password.dat"), task.roomKey);
                 _api.ReportLegacyHistory(new LegacyHistoryReport
                 {
                     snapshotId = task.snapshotId,
@@ -129,8 +137,7 @@ namespace Pms.AccessCardAgent
         {
             try
             {
-                var passwordPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "parking-db-password.dat");
-                var rows = ParkingDatabase.SearchBoth(_config, SecretStore.Load(passwordPath), task.term);
+                var rows = ParkingDatabase.SearchBoth(_config, LoadSecret("parking-db-password.dat"), task.term);
                 _api.ReportParkingQuery(new ParkingQueryReport
                 {
                     queryId = task.queryId,
@@ -168,6 +175,17 @@ namespace Pms.AccessCardAgent
                 result = "retry",
                 errorMessage = "代理已连通，但该写入适配器尚未通过现场验收"
             });
+        }
+
+        private string LoadSecret(string legacyFileName)
+        {
+            if (_secretProvider != null) return _secretProvider(legacyFileName);
+            return SecretStore.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, legacyFileName));
+        }
+
+        private void SetConnectionState(bool connected, string message)
+        {
+            if (_connectionState != null) _connectionState(connected, message);
         }
     }
 }
