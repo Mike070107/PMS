@@ -3526,3 +3526,12 @@
   - 30e4786 feat(access): write verified door databases through assistant
   - 16a7aa8 test(access): verify real access database write lifecycle
 
+## 2026-09-30 15:17 · web · 29f7103
+
+- 包：`pms-web-20260930-1456.tar.gz`
+- 提交：29f7103 fix(parking): 默认收起历史记录
+- 说明：停车历史记录默认收起；生产首页、SPA 路由与资源均返回 200
+- 自上次（2c0c901）以来上线的相关提交：
+  - 29f7103 fix(parking): 默认收起历史记录
+  - 34fbc88 feat(parking): 记录用户与车牌变更历史
+
