@@ -70,10 +70,10 @@ export class AgentReportDto {
   @IsInt()
   itemId: number;
 
-  @IsIn(['success', 'retry', 'failed'])
+  @IsIn(['success', 'access_db_written', 'retry', 'failed'])
   @IsString()
   @MaxLength(30)
-  result: 'success' | 'retry' | 'failed';
+  result: 'success' | 'access_db_written' | 'retry' | 'failed';
 
   @IsOptional()
   @IsString()

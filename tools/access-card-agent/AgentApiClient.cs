@@ -9,7 +9,7 @@ namespace Pms.AccessCardAgent
 {
     internal sealed class AgentApiClient
     {
-        public const string Version = "0.5.3";
+        public const string Version = "0.6.0";
         private readonly AgentConfig _config;
         private readonly string _token;
         private readonly string _version;
@@ -138,6 +138,14 @@ namespace Pms.AccessCardAgent
         public string wgCardNo { get; set; }
         public string cardTemplateVersion { get; set; }
         public object[] targetBuildingIds { get; set; }
+        public AccessTargetBuilding[] targetBuildings { get; set; }
+    }
+
+    internal sealed class AccessTargetBuilding
+    {
+        public int id { get; set; }
+        public string buildingNo { get; set; }
+        public string accessSystem { get; set; }
     }
 
     internal sealed class AgentReport

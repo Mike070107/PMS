@@ -147,12 +147,16 @@ export class AccessCardIssuanceService {
       agent.kind === 'parking_gateway' &&
       effectiveAgentStatus(agent) === 'online' &&
       agent.capabilities?.parkingDbWrite === true);
+    const accessDbWrite = agents.some((agent) =>
+      agent.kind === 'access_gateway' &&
+      effectiveAgentStatus(agent) === 'online' &&
+      agent.capabilities?.accessDbWrite === true);
     return {
       simulationEnabled,
       features: {
         cardWrite: false,
         legacyDbWrite: false,
-        accessDbWrite: false,
+        accessDbWrite,
         parkingDbRead: true,
         parkingDbWrite,
         controllerUpload: false,
@@ -393,6 +397,9 @@ export class AccessCardIssuanceService {
     // 停车网关使用独立的停车任务队列。在该队列落地前必须返回空，
     // 绝不能落入门禁的 legacy_sync 分支而误领发卡任务。
     if (agent.kind === 'parking_gateway') return { task: null, retryAfterMs: 2500 };
+    if (agent.kind === 'access_gateway' && agent.capabilities?.accessDbWrite !== true) {
+      return { task: null, retryAfterMs: 2500 };
+    }
     const now = new Date();
     const leaseExpiresAt = new Date(now.getTime() + 60_000);
     return this.itemRepo.manager.transaction(async (manager) => {
@@ -429,6 +436,9 @@ export class AccessCardIssuanceService {
       item.attempts += 1;
       await repo.save(item);
       const batch = item.batch;
+      const targetBuildings = batch.targetBuildingIds.length
+        ? await this.buildingRepo.find({ where: { id: In(batch.targetBuildingIds), tenantId: agent.tenantId } })
+        : [];
       const action = agent.kind === 'issuer'
         ? 'write_card'
         : agent.kind === 'access_gateway'
@@ -449,6 +459,15 @@ export class AccessCardIssuanceService {
           icCardNo: item.icCardNo,
           wgCardNo: item.wgCardNo,
           targetBuildingIds: batch.targetBuildingIds,
+          targetBuildings: batch.targetBuildingIds.map((buildingId) => {
+            const building = targetBuildings.find((candidate) => candidate.id === buildingId);
+            if (!building) throw new BadRequestException(`门禁目标楼栋 ${buildingId} 不存在`);
+            return {
+              id: building.id,
+              buildingNo: building.buildingNo,
+              accessSystem: accessSystemOf(batch.projectPhase, building.buildingNo),
+            };
+          }),
           cardTemplateVersion: this.config.get<string>('ACCESS_CARD_TEMPLATE_VERSION', 'pending-validation'),
         },
       };
@@ -651,7 +670,15 @@ export class AccessCardIssuanceService {
     if (!item) throw new NotFoundException('代理任务不存在');
     if (item.leaseAgentKey !== agent.agentKey) throw new ForbiddenException('任务租约不属于当前代理');
 
-    if (dto.result === 'success') {
+    if (dto.result === 'access_db_written') {
+      if (agent.kind !== 'access_gateway') {
+        throw new BadRequestException('只有楼栋门禁助手可以上报门禁数据库写入');
+      }
+      item.accessStatus = 'access_db_written';
+      item.controllerResults = dto.controllerResults ?? [];
+      item.lastErrorRef = null;
+      item.lastErrorMessage = '门禁数据库已写入，等待控制器上传';
+    } else if (dto.result === 'success') {
       if (agent.kind === 'issuer') {
         const icCardNo = this.normalizeIcCardNo(dto.icCardNo || '');
         const duplicate = await this.itemRepo

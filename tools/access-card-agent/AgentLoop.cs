@@ -38,11 +38,18 @@ namespace Pms.AccessCardAgent
                 {
                     var hasReader = _config.Kind != "issuer" || CardReader.HasAcr122();
                     var parkingWrite = false;
+                    var accessWrite = false;
                     if (_config.Kind == "parking_gateway")
                     {
                         parkingWrite = ParkingDatabase.CanWriteBoth(_config, LoadSecret("parking-db-password.dat"));
                     }
-                    _api.Heartbeat(BuildCapabilities(_config, hasReader, parkingWrite));
+                    if (_config.Kind == "access_gateway")
+                    {
+                        AccessGatewayDatabase.ProbeMjSystem(_config);
+                        AccessGatewayDatabase.ProbeIcCard(_config, LoadSecret("iccard-db-password.dat"));
+                        accessWrite = true;
+                    }
+                    _api.Heartbeat(BuildCapabilities(_config, hasReader, parkingWrite, accessWrite));
                     AgentStatus.MarkConnected();
                     SetConnectionState(true, "PMS 心跳正常");
                     if (_config.Kind == "legacy_sync")
@@ -101,6 +108,11 @@ namespace Pms.AccessCardAgent
 
         internal static Dictionary<string, bool> BuildCapabilities(AgentConfig config, bool hasReader, bool parkingWrite)
         {
+            return BuildCapabilities(config, hasReader, parkingWrite, false);
+        }
+
+        internal static Dictionary<string, bool> BuildCapabilities(AgentConfig config, bool hasReader, bool parkingWrite, bool accessWrite)
+        {
             return new Dictionary<string, bool>
             {
                 { "pcscReader", hasReader },
@@ -108,7 +120,7 @@ namespace Pms.AccessCardAgent
                 { "legacyDbRead", config.Kind == "legacy_sync" },
                 { "legacyDbWrite", false },
                 { "accessDbRead", config.Kind == "access_gateway" },
-                { "accessDbWrite", false },
+                { "accessDbWrite", config.Kind == "access_gateway" && accessWrite },
                 { "parkingDbRead", config.Kind == "parking_gateway" },
                 { "parkingDbWrite", config.Kind == "parking_gateway" && parkingWrite },
                 { "controllerUpload", false }
@@ -218,6 +230,32 @@ namespace Pms.AccessCardAgent
                     _api.Report(new AgentReport { itemId = task.itemId, result = "retry", errorMessage = exception.Message });
                     return;
                 }
+            }
+            if (_config.Kind == "access_gateway" && task.action == "activate_access")
+            {
+                try
+                {
+                    var results = AccessGatewayDatabase.Activate(
+                        _config,
+                        LoadSecret("iccard-db-password.dat"),
+                        task);
+                    _api.Report(new AgentReport
+                    {
+                        itemId = task.itemId,
+                        result = "access_db_written",
+                        controllerResults = results
+                    });
+                }
+                catch (Exception exception)
+                {
+                    _api.Report(new AgentReport
+                    {
+                        itemId = task.itemId,
+                        result = "retry",
+                        errorMessage = exception.Message
+                    });
+                }
+                return;
             }
             // 默认拒绝产生真实副作用；硬件和旧库适配器通过验收后逐项替换此分支。
             _api.Report(new AgentReport

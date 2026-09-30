@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Web.Script.Serialization;
+using Pms.AccessCardAgent;
 
 namespace Pms.DataSyncAssistant
 {
@@ -91,6 +93,16 @@ namespace Pms.DataSyncAssistant
             store.SetSecret(ConnectionAgentRuntime.TokenKey(access), "test-agent-token-1234567890");
             if (!ConnectionAgentRuntime.CanStart(access, store, out error))
                 throw new InvalidOperationException("完整代理配置未通过运行校验：" + error);
+
+            var capabilities = AgentLoop.BuildCapabilities(mapped, true, false, true);
+            if (!capabilities["accessDbWrite"] || capabilities["controllerUpload"])
+                throw new InvalidOperationException("门禁数据库与控制器能力没有独立上报");
+
+            var json = "{\"action\":\"activate_access\",\"itemId\":8,\"wgCardNo\":\"22355403\",\"targetBuildings\":[{\"id\":11,\"buildingNo\":\"11\",\"accessSystem\":\"iccard\"}]}";
+            var task = new JavaScriptSerializer().Deserialize<AgentTask>(json);
+            if (task.targetBuildings == null || task.targetBuildings.Length != 1 ||
+                task.targetBuildings[0].buildingNo != "11" || task.targetBuildings[0].accessSystem != "iccard")
+                throw new InvalidOperationException("门禁任务楼栋快照解析失败");
         }
 
         private static void VerifyAccessGatewayMigration(string root)
