@@ -23,7 +23,7 @@ namespace Pms.DataSyncAssistant
             menu.Items.Add("退出状态图标", null, delegate { System.Windows.Application.Current.Shutdown(); });
             _icon = new Forms.NotifyIcon
             {
-                Icon = SystemIcons.Application,
+                Icon = Icon.ExtractAssociatedIcon(Process.GetCurrentProcess().MainModule.FileName) ?? SystemIcons.Application,
                 Text = "PMS 数据同步助手",
                 Visible = true,
                 ContextMenuStrip = menu

@@ -42,6 +42,16 @@ namespace Pms.DataSyncAssistant
                 catch { Shutdown(1); }
                 return;
             }
+            if (e.Args.Length > 0 && e.Args[0] == "--wizard-self-test")
+            {
+                try { SelfTest.RunWizardSmokeTest(); Shutdown(0); }
+                catch (Exception exception)
+                {
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PmsDataSyncAssistant-wizard-test.log"), exception.ToString());
+                    Shutdown(1);
+                }
+                return;
+            }
             if (e.Args.Length > 0 && e.Args[0] == "--tray")
             {
                 bool trayCreated;

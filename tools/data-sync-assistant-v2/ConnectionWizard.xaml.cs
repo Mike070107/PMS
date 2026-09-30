@@ -24,9 +24,12 @@ namespace Pms.DataSyncAssistant
             InitializeComponent();
             if (editing != null)
             {
+                Title = "设置数据连接";
                 _type = editing.Type;
-                foreach (var radio in FindVisualChildren<RadioButton>(TypePanel))
-                    radio.IsChecked = String.Equals(radio.Tag as string, _type, StringComparison.OrdinalIgnoreCase);
+                ParkingType.IsChecked = _type == ConnectionTypes.Parking;
+                LegacyAccessType.IsChecked = _type == ConnectionTypes.LegacyAccess;
+                BuildingAccessType.IsChecked = _type == ConnectionTypes.BuildingAccess;
+                CardReaderType.IsChecked = _type == ConnectionTypes.CardReader;
             }
             ApplyDefaults();
         }
@@ -55,6 +58,7 @@ namespace Pms.DataSyncAssistant
                     ? "密码已安全保存，留空保持不变。" : "请输入数据库密码。";
                 AgentCredentialHint.Text = _store.HasSecret(ConnectionAgentRuntime.TokenKey(existing))
                     ? "PMS 连接密钥已安全保存，留空保持不变。" : "请粘贴 PMS 页面生成的一次性连接密钥。";
+                UpdateFieldVisibility();
                 return;
             }
             if (_type == ConnectionTypes.Parking)
@@ -195,15 +199,5 @@ namespace Pms.DataSyncAssistant
             string value; return item.Parameters.TryGetValue(key, out value) ? value : "";
         }
 
-        private static System.Collections.Generic.IEnumerable<T> FindVisualChildren<T>(System.Windows.DependencyObject root) where T : System.Windows.DependencyObject
-        {
-            if (root == null) yield break;
-            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-            {
-                var child = VisualTreeHelper.GetChild(root, i);
-                var typed = child as T; if (typed != null) yield return typed;
-                foreach (var nested in FindVisualChildren<T>(child)) yield return nested;
-            }
-        }
     }
 }

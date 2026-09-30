@@ -9,7 +9,7 @@
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <PlatformTarget>x86</PlatformTarget>
     <LangVersion>5</LangVersion>
-    <ApplicationIcon />
+    <ApplicationIcon>PmsDataSyncAssistant.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
     <OutputPath>bin\Debug\</OutputPath>
@@ -37,6 +37,8 @@
     <Reference Include="PresentationFramework" />
   </ItemGroup>
   <ItemGroup>
+    <Resource Include="PmsDataSyncAssistant.ico" />
+    <Resource Include="PmsDataSyncAssistant.png" />
     <ApplicationDefinition Include="App.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>

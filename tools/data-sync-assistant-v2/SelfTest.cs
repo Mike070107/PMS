@@ -51,6 +51,28 @@ namespace Pms.DataSyncAssistant
             }
         }
 
+        public static void RunWizardSmokeTest()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "PmsDataSyncAssistantWizardTest-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                var store = new ConfigurationStore(root);
+                var host = new HostConfiguration();
+                foreach (var type in new[] { ConnectionTypes.Parking, ConnectionTypes.LegacyAccess, ConnectionTypes.BuildingAccess, ConnectionTypes.CardReader })
+                {
+                    var item = new ConnectionConfiguration { Type = type, Name = ConnectionTypes.Label(type), HostName = host.Name, HostIp = host.IpAddress };
+                    var window = new ConnectionWizard(host, store, item) { ShowInTaskbar = false, Opacity = 0 };
+                    window.Loaded += delegate { window.Close(); };
+                    window.ShowDialog();
+                }
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
         private static void VerifyRuntimeMapping(ConfigurationStore store, AssistantConfiguration config)
         {
             var access = new ConnectionConfiguration { Type = ConnectionTypes.BuildingAccess, Name = "门禁测试" };
