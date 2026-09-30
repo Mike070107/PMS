@@ -17,6 +17,9 @@ const ParkingManagementPreviewPage = import.meta.env.DEV
 const ParkingManagementLivePreviewPage = import.meta.env.DEV
   ? lazy(() => import('./pages/ParkingManagementLivePreviewPage'))
   : null;
+const DataSyncAssistantPreviewPage = import.meta.env.DEV
+  ? lazy(() => import('./pages/DataSyncAssistantPreviewPage'))
+  : null;
 const FeesPage = lazy(() => import('./pages/FeesPage'));
 const PropertiesPage = lazy(() => import('./pages/PropertiesPage'));
 const OwnerAuditPage = lazy(() => import('./pages/OwnerAuditPage'));
@@ -138,6 +141,9 @@ export default function App() {
           )}
           {ParkingManagementPreviewPage && (
             <Route path="/dev/parking-preview" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ParkingManagementPreviewPage preview /></div>} />
+          )}
+          {DataSyncAssistantPreviewPage && (
+            <Route path="/dev/data-sync-assistant" element={<DataSyncAssistantPreviewPage />} />
           )}
         </>
       )}
