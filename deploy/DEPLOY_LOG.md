@@ -3455,3 +3455,14 @@
 - 自上次（188eed3）以来上线的相关提交：
   - e6866b2 feat(parking): add Deliyun read-only connection status
 
+## 2026-09-30 10:35 · api · f9bd495
+
+- 包：`pms-api-20260930-1022.tar.gz`
+- 提交：f9bd495 fix(agent): preserve encrypted settings across upgrades
+- 自上次（e6866b2）以来上线的相关提交：
+  - f9bd495 fix(agent): preserve encrypted settings across upgrades
+  - e1be65f fix(parking): resolve legacy owners and separate authorization status
+  - acbf112 feat(parking): open controlled local write testing
+  - 48d2a8d docs(parking): follow Deliyun signed request example
+  - 6cf6ab7 fix(parking): match documented Deliyun signature suffix
+
