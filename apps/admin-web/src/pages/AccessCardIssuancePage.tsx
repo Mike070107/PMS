@@ -162,7 +162,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const [simulating, setSimulating] = useState(false);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [agentKind, setAgentKind] = useState<'issuer' | 'access_gateway' | 'legacy_sync'>('issuer');
-  const [agentName, setAgentName] = useState('前台发卡电脑');
+  const [agentName, setAgentName] = useState('办公室发卡器接入');
   const [agentEnrolling, setAgentEnrolling] = useState(false);
   const [agentCredential, setAgentCredential] = useState<{ id: string; token: string; message: string } | null>(null);
   const contextRequestRef = useRef(0);
@@ -458,7 +458,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
           <Col xs={24} md={8}>
             <HealthTile
               icon={<UsbOutlined />}
-              label="本机 ACR122U"
+              label="办公室发卡器接入"
               state={onlineIssuer ? 'ready' : readiness?.simulationEnabled ? 'pending' : 'disabled'}
               detail={onlineIssuer ? `${onlineIssuer.name} 已连接` : readiness?.simulationEnabled ? '尚未接入，当前可用模拟模式' : '未检测到发卡助手'}
             />
@@ -466,7 +466,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
           <Col xs={24} md={8}>
             <HealthTile
               icon={<DatabaseOutlined />}
-              label=".80 旧库同步"
+              label="枫桦一二期小区大门门禁系统接入"
               state={legacyAgent?.status === 'online' ? 'ready' : 'pending'}
               detail={legacyAgent?.status === 'online' ? '增量同步服务在线' : '未接入，发卡后将显示待同步'}
             />
@@ -474,7 +474,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
           <Col xs={24} md={8}>
             <HealthTile
               icon={<SafetyCertificateOutlined />}
-              label=".88 二期门禁"
+              label="枫桦二期楼栋门禁系统接入"
               state={accessGateway?.status === 'online' ? 'ready' : 'pending'}
               detail={accessGateway?.status === 'online' ? '门禁网关在线' : '未接入，模拟模式不修改现场数据'}
             />
@@ -704,14 +704,14 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                 value={agentKind}
                 onChange={(value) => {
                   setAgentKind(value);
-                  setAgentName(value === 'issuer' ? '前台发卡电脑'
-                    : value === 'access_gateway' ? '192.168.1.88 门禁网关'
-                    : '192.168.1.80 旧库同步');
+                  setAgentName(value === 'issuer' ? '办公室发卡器接入'
+                    : value === 'access_gateway' ? '枫桦二期楼栋门禁系统接入'
+                    : '枫桦一二期小区大门门禁系统接入');
                 }}
                 options={[
-                  { value: 'issuer', label: 'ACR122U 发卡电脑' },
-                  { value: 'access_gateway', label: '192.168.1.88 门禁网关' },
-                  { value: 'legacy_sync', label: '192.168.1.80 旧库同步' },
+                  { value: 'issuer', label: '办公室发卡器接入' },
+                  { value: 'access_gateway', label: '枫桦二期楼栋门禁系统接入' },
+                  { value: 'legacy_sync', label: '枫桦一二期小区大门门禁系统接入' },
                 ]}
               />
             </div>
