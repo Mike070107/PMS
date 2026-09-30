@@ -45,7 +45,7 @@ namespace Pms.AccessCardAgent
                     }
                     return 0;
                 }
-                if (args.Length == 0)
+                if (args.Length == 0 || (args.Length > 0 && args[0] == "--updated"))
                 {
                     using (var instance = SingleInstance.TryEnter("Settings"))
                     {
@@ -56,7 +56,7 @@ namespace Pms.AccessCardAgent
                         }
                         Application.EnableVisualStyles();
                         Application.SetCompatibleTextRenderingDefault(false);
-                        Application.Run(new AgentManagerForm(root));
+                        Application.Run(new AgentManagerForm(root, args.Length > 0 && args[0] == "--updated"));
                     }
                     return 0;
                 }
@@ -230,6 +230,8 @@ namespace Pms.AccessCardAgent
             }
             catch (Exception exception)
             {
+                if (args.Length > 0 && args[0] == "--apply-update")
+                    MessageBox.Show("更新失败：" + exception.Message, "PMS 数据同步助手", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Console.Error.WriteLine(exception.Message);
                 return 1;
             }

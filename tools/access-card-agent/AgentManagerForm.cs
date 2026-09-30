@@ -33,7 +33,7 @@ namespace Pms.AccessCardAgent
         private readonly Button _installButton = new Button();
         private AgentConfig _existing;
 
-        public AgentManagerForm(string root)
+        public AgentManagerForm(string root, bool updateCompleted = false)
         {
             _root = root;
             _configPath = Path.Combine(root, "agent.config.json");
@@ -142,6 +142,8 @@ namespace Pms.AccessCardAgent
             rootPanel.Controls.Add(buttons);
 
             LoadExisting();
+            if (updateCompleted)
+                Shown += delegate { SetStatus("更新完成，后台服务已重新启动。原代理身份、连接密钥和数据库密码均已保留。", false); };
         }
 
         private static Label AddField(TableLayoutPanel panel, string label, Control control)

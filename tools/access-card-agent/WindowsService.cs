@@ -133,7 +133,11 @@ namespace Pms.AccessCardAgent
                 UseShellExecute = false,
                 CreateNoWindow = true
             });
-            process.WaitForExit();
+            if (!process.WaitForExit(15000))
+            {
+                try { process.Kill(); } catch { }
+                throw new InvalidOperationException("Windows 服务操作超时，请稍后重试");
+            }
             return process.ExitCode;
         }
     }
