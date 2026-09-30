@@ -3516,3 +3516,13 @@
 - 自上次（07312ce）以来上线的相关提交：
   - cb37da1 feat(access-cards): block previously issued cards
 
+## 2026-09-30 15:15 · api · 29f7103
+
+- 包：`pms-api-20260930-1456.tar.gz`
+- 提交：29f7103 fix(parking): 默认收起历史记录
+- 说明：停车用户与车牌历史记录；新表已创建，公网健康检查通过
+- 自上次（8bc3656）以来上线的相关提交：
+  - 34fbc88 feat(parking): 记录用户与车牌变更历史
+  - 30e4786 feat(access): write verified door databases through assistant
+  - 16a7aa8 test(access): verify real access database write lifecycle
+
