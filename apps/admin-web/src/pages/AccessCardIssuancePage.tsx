@@ -527,42 +527,6 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
 
       {context && (
         <>
-          <Card
-            className="access-card-history-card"
-            title={`历史卡片 · ${context.house.roomKey}`}
-            extra={(
-              <Space wrap>
-                <Text type="secondary">{context.historySources.legacy80
-                  ? `最新在前，已发 ${history.length} 张`
-                  : `正在读取旧库历史，当前显示 ${history.length} 张`}</Text>
-                <Button
-                  icon={<ReloadOutlined />}
-                  loading={contextLoading}
-                  onClick={() => void refreshContext()}
-                >
-                  刷新历史
-                </Button>
-              </Space>
-            )}
-          >
-            {!context.historySources.legacy80 && (
-              <Alert
-                className="access-card-history-source"
-                type="warning"
-                showIcon
-                message={context.historySources.message}
-              />
-            )}
-            <Table<AccessCardHistoryRow & { displayOrdinal: number }>
-              rowKey="id"
-              columns={columns}
-              dataSource={history}
-              pagination={{ pageSize: 8, hideOnSinglePage: true }}
-              scroll={{ x: 900 }}
-              locale={{ emptyText: <Empty description="这个房号还没有新系统发卡记录" /> }}
-            />
-          </Card>
-
           <Row gutter={[18, 18]} align="stretch">
             <Col xs={24} xl={10}>
               <Card className="access-card-form-card" title="2. 发卡设置">
@@ -676,6 +640,42 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
               </Card>
             </Col>
           </Row>
+
+          <Card
+            className="access-card-history-card"
+            title={`历史卡片 · ${context.house.roomKey}`}
+            extra={(
+              <Space wrap>
+                <Text type="secondary">{context.historySources.legacy80
+                  ? `最新在前，已发 ${history.length} 张`
+                  : `正在读取旧库历史，当前显示 ${history.length} 张`}</Text>
+                <Button
+                  icon={<ReloadOutlined />}
+                  loading={contextLoading}
+                  onClick={() => void refreshContext()}
+                >
+                  刷新历史
+                </Button>
+              </Space>
+            )}
+          >
+            {!context.historySources.legacy80 && (
+              <Alert
+                className="access-card-history-source"
+                type="warning"
+                showIcon
+                message={context.historySources.message}
+              />
+            )}
+            <Table<AccessCardHistoryRow & { displayOrdinal: number }>
+              rowKey="id"
+              columns={columns}
+              dataSource={history}
+              pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
+              scroll={{ x: 900 }}
+              locale={{ emptyText: <Empty description="这个房号还没有新系统发卡记录" /> }}
+            />
+          </Card>
         </>
       )}
 
