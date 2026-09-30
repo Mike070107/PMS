@@ -19,7 +19,9 @@ namespace Pms.DataSyncAssistant
         public ObservableCollection<ConnectionViewModel> Connections { get; private set; }
         public string HostName { get { return _configuration.Host.Name; } }
         public string HostIp { get { return _configuration.Host.IpAddress; } }
+        public string HostDisplay { get { return HostName + " · " + HostIp; } }
         public int ConnectionCount { get { return Connections.Count; } }
+        public string ConnectionCountDisplay { get { return HostName + " 上已启用 " + ConnectionCount + " 个连接"; } }
         public bool IsPaired
         {
             get
@@ -75,6 +77,7 @@ namespace Pms.DataSyncAssistant
             Connections.Add(new ConnectionViewModel(wizard.Result));
             _store.Save(_configuration);
             Raise("ConnectionCount");
+            Raise("ConnectionCountDisplay");
             RaiseStatus();
         }
 

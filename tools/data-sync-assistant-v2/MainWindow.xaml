@@ -23,7 +23,7 @@
         </Border>
         <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
           <TextBlock Text="PMS 数据同步助手" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource PmsInk}" />
-          <TextBlock FontSize="11" Foreground="{StaticResource PmsMuted}"><Run Text="{Binding HostName}" /><Run Text=" · " /><Run Text="{Binding HostIp}" /></TextBlock>
+          <TextBlock Text="{Binding HostDisplay}" FontSize="11" Foreground="{StaticResource PmsMuted}" />
         </StackPanel>
         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,18,0">
           <Ellipse Width="8" Height="8" Fill="{Binding HeaderStatusColor}" Margin="0,0,8,0" />
@@ -60,7 +60,7 @@
           <Grid>
             <StackPanel>
               <TextBlock Text="本机负责的连接" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource PmsInk}" />
-              <TextBlock FontSize="11" Foreground="{StaticResource PmsMuted}" Margin="0,3,0,0"><Run Text="{Binding HostName}" /><Run Text=" 上已启用 " /><Run Text="{Binding ConnectionCount}" /><Run Text=" 个连接" /></TextBlock>
+              <TextBlock Text="{Binding ConnectionCountDisplay}" FontSize="11" Foreground="{StaticResource PmsMuted}" Margin="0,3,0,0" />
             </StackPanel>
             <Button HorizontalAlignment="Right" Content="＋  添加连接" Click="AddConnection_Click" />
           </Grid>
