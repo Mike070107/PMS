@@ -17,7 +17,6 @@ namespace Pms.AccessCardAgent
         private readonly string _parkingPasswordPath;
         private readonly ComboBox _kind = new ComboBox();
         private readonly TextBox _name = new TextBox();
-        private readonly TextBox _agentId = new TextBox();
         private readonly TextBox _token = new TextBox();
         private readonly Label _databasePasswordLabel = new Label();
         private readonly TextBox _databasePassword = new TextBox();
@@ -74,7 +73,7 @@ namespace Pms.AccessCardAgent
             });
             rootPanel.Controls.Add(new Label
             {
-                Text = "选择这台电脑的用途，然后粘贴 PMS 网页生成的代理 ID 和一次性密钥。完成后会自动后台运行。",
+                Text = "选择这台电脑的用途，然后粘贴 PMS 网页生成的一次性连接密钥。代理 ID 会自动识别并固定保存。",
                 AutoSize = true,
                 MaximumSize = new Size(570, 0),
                 ForeColor = Color.DimGray,
@@ -94,9 +93,8 @@ namespace Pms.AccessCardAgent
             _kind.SelectedIndexChanged += delegate { ApplyKindDefaults(); };
             AddField(fields, "电脑用途", _kind);
             AddField(fields, "电脑名称", _name);
-            AddField(fields, "代理 ID", _agentId);
             _token.UseSystemPasswordChar = true;
-            AddField(fields, "一次性密钥", _token);
+            AddField(fields, "一次性连接密钥", _token);
             _parkingServerLabel = AddField(fields, "SQL Server", _parkingServer);
             _parkingPhase1Label = AddField(fields, "一期数据库", _parkingPhase1);
             _parkingPhase2Label = AddField(fields, "二期数据库", _parkingPhase2);
@@ -119,10 +117,11 @@ namespace Pms.AccessCardAgent
             _status.Dock = DockStyle.Fill;
             rootPanel.Controls.Add(_status);
 
-            var buttons = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = false, Height = 54, ColumnCount = 3, RowCount = 1, Margin = new Padding(0, 10, 0, 0) };
+            var buttons = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = false, Height = 54, ColumnCount = 4, RowCount = 1, Margin = new Padding(0, 10, 0, 0) };
+            buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22));
+            buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24));
+            buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24));
             buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
-            buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
-            buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
             buttons.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
             _installButton.Text = "保存并安装后台服务";
             _installButton.Dock = DockStyle.Fill;
@@ -134,9 +133,12 @@ namespace Pms.AccessCardAgent
             _testButton.Click += delegate { SaveAndTest(); };
             var openWeb = new Button { Text = "打开 PMS 注册页面", Dock = DockStyle.Fill, Height = 46 };
             openWeb.Click += delegate { Process.Start(new ProcessStartInfo { FileName = "https://prsznh.cn/access-cards", UseShellExecute = true }); };
+            var updateButton = new Button { Text = "安装更新", Dock = DockStyle.Fill, Height = 46 };
+            updateButton.Click += delegate { InstallUpdate(); };
             buttons.Controls.Add(openWeb, 0, 0);
-            buttons.Controls.Add(_testButton, 1, 0);
-            buttons.Controls.Add(_installButton, 2, 0);
+            buttons.Controls.Add(updateButton, 1, 0);
+            buttons.Controls.Add(_testButton, 2, 0);
+            buttons.Controls.Add(_installButton, 3, 0);
             rootPanel.Controls.Add(buttons);
 
             LoadExisting();
@@ -163,8 +165,10 @@ namespace Pms.AccessCardAgent
                 if (((KindItem)_kind.Items[i]).Value == selectedKind) _kind.SelectedIndex = i;
             if (_existing != null)
             {
+                // 一个安装目录只属于一个后台服务。禁止在原目录切换用途，避免另一服务的
+                // agent.config.json / DPAPI 密钥被覆盖。
+                _kind.Enabled = false;
                 _name.Text = _existing.Name;
-                _agentId.Text = _existing.AgentId;
                 _parkingServer.Text = _existing.ParkingSqlServer;
                 _parkingPhase1.Text = _existing.ParkingPhase1Database;
                 _parkingPhase2.Text = _existing.ParkingPhase2Database;
@@ -172,6 +176,34 @@ namespace Pms.AccessCardAgent
             }
             _token.PlaceholderTextCompat(File.Exists(_tokenPath) ? "已保存，留空保持不变" : "请粘贴一次性密钥");
             SetStatus(File.Exists(_tokenPath) ? "已找到本机密钥，可直接测试或安装后台服务。" : "请完成配置。", false);
+        }
+
+        private void InstallUpdate()
+        {
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Title = "选择新版 PMS 数据同步助手";
+                dialog.Filter = "PMS 数据同步助手 (Pms.DataSyncAssistant.exe)|Pms.DataSyncAssistant.exe";
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                var current = Process.GetCurrentProcess().MainModule.FileName;
+                if (String.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(current), StringComparison.OrdinalIgnoreCase))
+                {
+                    SetStatus("请选择解压到其他位置的新版程序。", true);
+                    return;
+                }
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = dialog.FileName,
+                        Arguments = "--apply-update \"" + current + "\" " + Process.GetCurrentProcess().Id,
+                        UseShellExecute = true,
+                        Verb = "runas"
+                    });
+                    Close();
+                }
+                catch (Exception exception) { SetStatus("更新未开始：" + exception.Message, true); }
+            }
         }
 
         private void ApplyKindDefaults()
@@ -206,7 +238,23 @@ namespace Pms.AccessCardAgent
             var config = _existing != null && _existing.Kind == item.Value ? _existing : AgentConfig.CreateDefaults(item.Value);
             config.Kind = item.Value;
             config.Name = _name.Text.Trim();
-            config.AgentId = _agentId.Text;
+            var savedToken = "";
+            if (!String.IsNullOrWhiteSpace(_token.Text))
+            {
+                string parsedAgentId;
+                if (AgentConfig.TryParseConnectionKey(_token.Text, out parsedAgentId, out savedToken))
+                {
+                    if (!parsedAgentId.StartsWith(item.Value + "-", StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("连接密钥与所选服务类型不匹配");
+                    config.AgentId = parsedAgentId;
+                }
+                else if (_existing != null && _existing.Kind == item.Value)
+                {
+                    // 兼容旧版网页单独生成的原始 token。
+                    savedToken = _token.Text.Trim();
+                }
+                else throw new InvalidOperationException("请粘贴 PMS 网页生成的完整连接密钥");
+            }
             if (item.Value == "parking_gateway")
             {
                 config.ParkingSqlServer = _parkingServer.Text.Trim();
@@ -215,8 +263,8 @@ namespace Pms.AccessCardAgent
                 config.ParkingUser = _parkingUser.Text.Trim();
             }
             AgentConfig.Save(_configPath, config);
-            if (!String.IsNullOrWhiteSpace(_token.Text)) SecretStore.Save(_tokenPath, _token.Text);
-            if (!File.Exists(_tokenPath)) throw new InvalidOperationException("请粘贴一次性代理密钥");
+            if (!String.IsNullOrWhiteSpace(savedToken)) SecretStore.Save(_tokenPath, savedToken);
+            if (!File.Exists(_tokenPath)) throw new InvalidOperationException("请粘贴一次性连接密钥");
             if (!String.IsNullOrWhiteSpace(_databasePassword.Text))
                 SecretStore.Save(item.Value == "legacy_sync" ? _legacyPasswordPath
                     : item.Value == "access_gateway" ? _icCardPasswordPath : _parkingPasswordPath, _databasePassword.Text);
@@ -229,7 +277,6 @@ namespace Pms.AccessCardAgent
                     : item.Value == "access_gateway" ? "请输入 .88 iCCard Access 数据库密码"
                     : "请输入停车 SQL Server 数据库密码");
             _existing = config;
-            _agentId.Text = config.AgentId;
             _token.Clear();
             _databasePassword.Clear();
             return config;

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.ServiceProcess;
 using System.Threading;
 using Microsoft.Win32;
@@ -78,6 +79,31 @@ namespace Pms.AccessCardAgent
             RequireSc("delete \"" + serviceName + "\"");
             RemoveTrayStartup();
             Console.WriteLine("后台服务已删除：" + serviceName);
+        }
+
+        public static bool StopForUpdate(string serviceName)
+        {
+            if (!ServiceController.GetServices().Any(service =>
+                String.Equals(service.ServiceName, serviceName, StringComparison.OrdinalIgnoreCase))) return false;
+            RunSc("stop \"" + serviceName + "\"");
+            WaitForService(serviceName, ServiceControllerStatus.Stopped, 20000);
+            return true;
+        }
+
+        public static void StartAfterUpdate(string serviceName)
+        {
+            RequireSc("start \"" + serviceName + "\"");
+            WaitForService(serviceName, ServiceControllerStatus.Running, 20000);
+        }
+
+        private static void WaitForService(string serviceName, ServiceControllerStatus status, int timeoutMs)
+        {
+            using (var service = new ServiceController(serviceName))
+            {
+                service.Refresh();
+                if (service.Status == status) return;
+                service.WaitForStatus(status, TimeSpan.FromMilliseconds(timeoutMs));
+            }
         }
 
         private static void InstallTrayStartup(string executable)

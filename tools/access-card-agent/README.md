@@ -1,6 +1,6 @@
 # PMS 数据同步助手
 
-可复制到任意 Windows 电脑的 x86 .NET Framework 4.0 小应用。双击 `Pms.DataSyncAssistant.exe` 后可在图形界面选择连接类型、配置代理 ID 和密钥、测试连接并安装后台服务。门禁是当前首组适配器，后续可继续增加其他数据库。
+可复制到任意 Windows 电脑的 x86 .NET Framework 4.0 小应用。双击 `Pms.DataSyncAssistant.exe` 后可在图形界面选择连接类型、粘贴一次性连接密钥、测试连接并安装后台服务。
 
 当前支持四种部署身份：
 
@@ -19,12 +19,19 @@ C:\Windows\Microsoft.NET\Framework\v4.0.30319\MSBuild.exe .\AccessCardAgent.cspr
 
 ## 安装
 
-1. 在 PMS 后台为对应电脑注册代理，复制只显示一次的代理 ID 和密钥。
+1. 在 PMS 后台为对应电脑注册代理，复制只显示一次的连接密钥。固定服务再次生成密钥时会沿用原代理 ID。
 2. 使用对应电脑的专用包；包内 `agent.config.json` 已包含服务地址、类型和电脑名称。
-3. 双击 `Pms.DataSyncAssistant.exe`，直接粘贴代理 ID 和一次性密钥。密钥会保存为本机 DPAPI 密文 `agent.token.dat`。
+3. 双击 `Pms.DataSyncAssistant.exe`，只需粘贴一次性连接密钥。代理 ID 会自动识别，密钥保存为仅本机可解密的 DPAPI 密文 `agent.token.dat`。
 4. 点击“保存并测试连接”。
 5. 点击“保存并安装后台服务”，在 Windows 授权框点“是”。
 6. 正常启动程序后，PMS 页面应显示对应代理在线。
+
+## 配置保存与升级
+
+- 一个目录只绑定一种服务；`.80旧库同步` 与 `枫桦景苑停车系统网关` 必须放在两个独立目录，设置完成后用途会锁定，防止互相覆盖。
+- `agent.config.json` 保存固定代理 ID 和非敏感连接参数；`agent.token.dat`、`legacy-db-password.dat`、`parking-db-password.dat` 使用 Windows DPAPI 加密，只能在保存它们的同一台电脑上解密。
+- 日常升级不要删除上述文件。双击现有助手，点“安装更新”并选择新版程序；助手会自动停止对应服务、备份旧程序、替换并重启，所有参数保持不变。
+- 增加新功能不会要求重新填写旧服务参数。只有首次安装、主动轮换密钥，或加密文件已经丢失/被覆盖时才需要重新输入。
 
 ## 后台服务与托盘状态
 

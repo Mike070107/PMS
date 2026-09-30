@@ -45,6 +45,7 @@
     <Compile Include="SecretStore.cs" />
     <Compile Include="SingleInstance.cs" />
     <Compile Include="TrayApplication.cs" />
+    <Compile Include="UpdateInstaller.cs" />
     <Compile Include="WindowsService.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

@@ -337,27 +337,37 @@ export class AccessCardIssuanceService {
   async enrollAgent(dto: EnrollAccessCardAgentDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const issued = issueAgentSecret();
-    const agentKey = `${dto.kind}-${randomBytes(8).toString('hex')}`;
-    const agent = await this.agentRepo.save(this.agentRepo.create({
+    // 固定服务重新生成密钥时复用原代理 ID；ID 是服务身份，不应因为密钥轮换而变化。
+    // 发卡工作站允许同租户多台，因此按名称复用对应工作站。
+    const existing = await this.agentRepo.findOne({
+      where: dto.kind === 'issuer'
+        ? { tenantId, kind: dto.kind, name: dto.name.trim() }
+        : { tenantId, kind: dto.kind },
+      // 历史版本曾重复注册同类服务；优先接管最近真正心跳过的身份，避免轮换密钥时
+      // 又退回早已离线的旧 ID。
+      order: { lastSeenAt: 'DESC', id: 'DESC' },
+    });
+    const agent = existing ?? this.agentRepo.create({
       tenantId,
-      agentKey,
+      agentKey: `${dto.kind}-${randomBytes(8).toString('hex')}`,
       kind: dto.kind,
-      name: dto.name.trim(),
       version: 'pending',
-      tokenHash: issued.tokenHash,
-      enabled: true,
-      status: 'offline',
-      capabilities: {},
       lastSeenAt: null,
       createdBy: user.id,
-      updatedBy: user.id,
-    }));
+    });
+    agent.name = dto.name.trim();
+    agent.tokenHash = issued.tokenHash;
+    agent.enabled = true;
+    agent.status = 'offline';
+    agent.capabilities = {};
+    agent.updatedBy = user.id;
+    const saved = await this.agentRepo.save(agent);
     return {
-      id: agent.agentKey,
-      kind: agent.kind,
-      name: agent.name,
-      token: issued.token,
-      message: '代理密钥只显示这一次，请立即保存到对应电脑的 DPAPI 配置中',
+      id: saved.agentKey,
+      kind: saved.kind,
+      name: saved.name,
+      token: `${saved.agentKey}.${issued.token}`,
+      message: '连接密钥只显示这一次；代理 ID 已固定在密钥中，只需粘贴这一项',
     };
   }
 

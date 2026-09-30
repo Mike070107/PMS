@@ -79,6 +79,21 @@ namespace Pms.AccessCardAgent
             return match.Success ? match.Value : input.Trim();
         }
 
+        public static bool TryParseConnectionKey(string input, out string agentId, out string token)
+        {
+            agentId = "";
+            token = "";
+            if (String.IsNullOrWhiteSpace(input)) return false;
+            input = input.Trim();
+            var separator = input.IndexOf('.');
+            if (separator <= 0 || separator >= input.Length - 1) return false;
+            var candidate = NormalizeAgentId(input.Substring(0, separator));
+            if (!Regex.IsMatch(candidate, "^(?:issuer|access_gateway|legacy_sync|parking_gateway)-[a-fA-F0-9]{16}$")) return false;
+            agentId = candidate;
+            token = input.Substring(separator + 1);
+            return token.Length >= 20;
+        }
+
         public static void Save(string path, AgentConfig value)
         {
             if (value == null || String.IsNullOrWhiteSpace(value.Kind))

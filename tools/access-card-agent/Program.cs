@@ -20,6 +20,14 @@ namespace Pms.AccessCardAgent
                 var databasePasswordPath = Path.Combine(root, "legacy-db-password.dat");
                 var icCardPasswordPath = Path.Combine(root, "iccard-db-password.dat");
                 var parkingPasswordPath = Path.Combine(root, "parking-db-password.dat");
+                if (args.Length > 2 && args[0] == "--apply-update")
+                {
+                    int previousProcessId;
+                    if (!Int32.TryParse(args[2], out previousProcessId))
+                        throw new InvalidOperationException("更新参数无效");
+                    UpdateInstaller.Apply(args[1], previousProcessId);
+                    return 0;
+                }
                 if (!Environment.UserInteractive)
                 {
                     ServiceBase.Run(new AccessCardWindowsService(AgentConfig.Load(configPath), tokenPath));
@@ -63,6 +71,11 @@ namespace Pms.AccessCardAgent
                         throw new InvalidOperationException("代理 ID 粘贴容错测试失败");
                     if (AgentConfig.NormalizeAgentId("parking_gateway-parking_gateway-a8c6fe8239867d2e") != "parking_gateway-a8c6fe8239867d2e")
                         throw new InvalidOperationException("停车网关代理 ID 粘贴容错测试失败");
+                    string parsedAgentId;
+                    string parsedToken;
+                    if (!AgentConfig.TryParseConnectionKey("parking_gateway-a8c6fe8239867d2e.12345678901234567890", out parsedAgentId, out parsedToken) ||
+                        parsedAgentId != "parking_gateway-a8c6fe8239867d2e" || parsedToken != "12345678901234567890")
+                        throw new InvalidOperationException("一次性连接密钥解析测试失败");
                     var slashVariants = ParkingDatabase.SearchVariantsForTest("228/5/301");
                     if (!slashVariants.Contains("228/5/301") || !slashVariants.Contains("228-5-301"))
                         throw new InvalidOperationException("停车房号斜杠转横线测试失败");
@@ -91,8 +104,18 @@ namespace Pms.AccessCardAgent
                 {
                     Console.Write("粘贴一次性代理密钥（输入不会显示）：");
                     var credential = SecretStore.ReadHidden();
-                    AgentConfig.InstallAgentId(configPath, args[1]);
-                    SecretStore.Save(tokenPath, credential);
+                    string connectionAgentId;
+                    string connectionToken;
+                    if (AgentConfig.TryParseConnectionKey(credential, out connectionAgentId, out connectionToken))
+                    {
+                        AgentConfig.InstallAgentId(configPath, connectionAgentId);
+                        SecretStore.Save(tokenPath, connectionToken);
+                    }
+                    else
+                    {
+                        AgentConfig.InstallAgentId(configPath, args[1]);
+                        SecretStore.Save(tokenPath, credential);
+                    }
                     Console.WriteLine("代理 ID 已写入配置，密钥已使用 Windows DPAPI 加密保存。");
                     return 0;
                 }

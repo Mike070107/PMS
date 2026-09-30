@@ -304,11 +304,8 @@ export default function ParkingManagementPage({
         {credential ? (
           <div className="parking-gateway-secret">
             <Alert type="warning" showIcon message="密钥只显示这一次" description={credential.message} />
-            <label>代理 ID</label><pre>{credential.id}</pre>
-            <label>一次性代理密钥</label><pre>{credential.token}</pre>
-            <Text type="secondary">在停车系统电脑运行：</Text>
-            <pre>{`.\\Pms.AccessCardAgent.exe --install-agent ${credential.id}`}</pre>
-            <Text type="secondary">粘贴密钥后，再运行 <code>.\Pms.AccessCardAgent.exe --parking-probe</code> 检查 parking1、parking2。</Text>
+            <label>一次性连接密钥</label><pre>{credential.token}</pre>
+            <Text type="secondary">在停车电脑双击数据同步助手，只需粘贴上方连接密钥。代理 ID 已包含在密钥中，无需另行输入。</Text>
           </div>
         ) : (
           <div className="parking-gateway-form">

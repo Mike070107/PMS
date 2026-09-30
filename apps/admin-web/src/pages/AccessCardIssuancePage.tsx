@@ -691,13 +691,9 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         {agentCredential ? (
           <div className="access-card-agent-secret">
             <Alert type="warning" showIcon message="密钥只显示这一次" description={agentCredential.message} />
-            <label>代理 ID</label>
-            <pre>{agentCredential.id}</pre>
-            <label>一次性代理密钥</label>
+            <label>一次性连接密钥</label>
             <pre>{agentCredential.token}</pre>
-            <Text type="secondary">在对应电脑运行下面的命令，再粘贴上方密钥：</Text>
-            <pre>{`.\\Pms.AccessCardAgent.exe --install-agent ${agentCredential.id}`}</pre>
-            <Text type="secondary">随后运行 <code>.\Pms.AccessCardAgent.exe --connect-test</code> 验证连接；不要把密钥发到聊天、截图或配置仓库。</Text>
+            <Text type="secondary">在对应电脑双击数据同步助手，只需粘贴上方连接密钥。代理 ID 会自动识别并固定保存；不要把密钥发到聊天、截图或配置仓库。</Text>
           </div>
         ) : (
           <div className="access-card-agent-form">
