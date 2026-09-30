@@ -92,7 +92,7 @@ namespace Pms.DataSyncAssistant
 
         private void CheckUpdate_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("当前版本 2.0.0 已包含 PMS 心跳、任务领取和旧版配置迁移。自动在线更新将在后续版本开放。", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("当前版本 2.1.2 已包含 PMS 心跳、任务领取、旧版配置迁移和 TLS 1.2 安全连接。", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void UninstallService_Click(object sender, RoutedEventArgs e)

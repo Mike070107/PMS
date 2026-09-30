@@ -97,7 +97,7 @@
           <Expander Header="最近活动    0 条" IsExpanded="False" Background="White" BorderBrush="#DCE5EF" BorderThickness="1" Padding="16,10">
             <TextBlock Text="暂无活动。连接开始运行后，查询、写入和异常会显示在这里。" Foreground="{StaticResource PmsMuted}" Margin="8" />
           </Expander>
-          <Expander Grid.Column="2" Header="助手信息    版本 2.0.0" IsExpanded="False" Background="White" BorderBrush="#DCE5EF" BorderThickness="1" Padding="16,10">
+          <Expander Grid.Column="2" Header="助手信息    版本 2.1.2" IsExpanded="False" Background="White" BorderBrush="#DCE5EF" BorderThickness="1" Padding="16,10">
             <StackPanel Margin="8">
               <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions><TextBlock Text="配置保存" Foreground="{StaticResource PmsMuted}" /><TextBlock Grid.Column="1" Text="已自动保存" HorizontalAlignment="Right" /></Grid>
               <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions><TextBlock Text="配置目录" Foreground="{StaticResource PmsMuted}" /><TextBlock Grid.Column="1" Text="ProgramData\PMS" HorizontalAlignment="Right" /></Grid>

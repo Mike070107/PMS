@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Threading;
 using System.Windows;
 using System.ServiceProcess;
@@ -12,6 +13,11 @@ namespace Pms.DataSyncAssistant
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            // The PMS production endpoint only accepts modern TLS.  .NET Framework 4.0
+            // otherwise negotiates TLS 1.0 on older Windows installations, which makes
+            // the local database test pass while every heartbeat fails before HTTP starts.
+            ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072; // TLS 1.2
+
             if (e.Args.Length > 0 && e.Args[0] == "--service")
             {
                 ServiceBase.Run(new UnifiedWindowsService());
@@ -28,6 +34,12 @@ namespace Pms.DataSyncAssistant
             {
                 try { UnifiedServiceManager.Uninstall(); Shutdown(0); }
                 catch (Exception exception) { MessageBox.Show(exception.Message, "卸载后台服务", MessageBoxButton.OK, MessageBoxImage.Error); Shutdown(1); }
+                return;
+            }
+            if (e.Args.Length > 0 && e.Args[0] == "--stop-service")
+            {
+                try { UnifiedServiceManager.Stop(); Shutdown(0); }
+                catch (Exception exception) { MessageBox.Show(exception.Message, "退出助手", MessageBoxButton.OK, MessageBoxImage.Error); Shutdown(1); }
                 return;
             }
             if (e.Args.Length > 0 && e.Args[0] == "--upgrade-from-legacy")

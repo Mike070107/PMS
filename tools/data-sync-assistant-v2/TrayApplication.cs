@@ -13,6 +13,8 @@ namespace Pms.DataSyncAssistant
     {
         private readonly Forms.NotifyIcon _icon;
         private readonly Forms.Timer _timer;
+        private bool _exiting;
+        private bool _disposed;
 
         public TrayApplication()
         {
@@ -20,7 +22,8 @@ namespace Pms.DataSyncAssistant
             menu.Items.Add("打开 PMS 数据同步助手", null, delegate { OpenSettings(); });
             menu.Items.Add(new Forms.ToolStripSeparator());
             menu.Items.Add("刷新运行状态", null, delegate { Refresh(); });
-            menu.Items.Add("退出状态图标", null, delegate { System.Windows.Application.Current.Shutdown(); });
+            menu.Items.Add("隐藏状态图标（后台继续同步）", null, delegate { ExitTrayOnly(); });
+            menu.Items.Add("退出助手（停止后台同步）", null, delegate { ExitCompletely(); });
             _icon = new Forms.NotifyIcon
             {
                 Icon = Icon.ExtractAssociatedIcon(Process.GetCurrentProcess().MainModule.FileName) ?? SystemIcons.Application,
@@ -82,8 +85,36 @@ namespace Pms.DataSyncAssistant
             });
         }
 
+        private void ExitTrayOnly()
+        {
+            if (_exiting) return;
+            _exiting = true;
+            Dispose();
+            System.Windows.Application.Current.Shutdown();
+        }
+
+        private void ExitCompletely()
+        {
+            if (_exiting) return;
+            _exiting = true;
+            try
+            {
+                UnifiedServiceManager.RunElevated("--stop-service");
+                Dispose();
+                System.Windows.Application.Current.Shutdown();
+            }
+            catch (Exception exception)
+            {
+                _exiting = false;
+                Forms.MessageBox.Show("后台服务没有停止，助手仍在运行。\n\n" + exception.Message,
+                    "退出未完成", Forms.MessageBoxButtons.OK, Forms.MessageBoxIcon.Warning);
+            }
+        }
+
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
             _timer.Stop();
             _timer.Dispose();
             _icon.Visible = false;

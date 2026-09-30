@@ -145,6 +145,19 @@ namespace Pms.DataSyncAssistant
             RemoveTrayStartup();
         }
 
+        public static void Stop()
+        {
+            if (!Exists()) return;
+            using (var service = new ServiceController(ServiceName))
+            {
+                service.Refresh();
+                if (service.Status == ServiceControllerStatus.Stopped) return;
+            }
+            RequireSc("stop \"" + ServiceName + "\"");
+            using (var service = new ServiceController(ServiceName))
+                service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(20));
+        }
+
         public static void UpgradeFromLegacy()
         {
             var store = new ConfigurationStore();
