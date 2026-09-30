@@ -3486,3 +3486,19 @@
   - e1be65f fix(parking): resolve legacy owners and separate authorization status
   - acbf112 feat(parking): open controlled local write testing
 
+## 2026-09-30 12:07 · web · 07312ce
+
+- 包：`pms-web-20260930-1206.tar.gz`
+- 提交：07312ce fix(agent-v2): refresh host summary bindings
+- 自上次（2df94a6）以来上线的相关提交：
+  - 77fe0d9 chore(web): refresh TypeScript build metadata
+  - b0e34f0 fix(access-cards): use property service names
+  - 50a8189 fix(access-cards): move history below issuance controls
+  - 1c97c5c fix(agent-preview): align colors with PMS theme
+  - 986ddbd fix(agent-preview): collapse secondary panels by default
+  - dfb7e51 feat(agent-preview): add service and software uninstall flows
+  - 25ea1ce fix(agent-preview): identify connection host and IP
+  - a796990 fix(agent-preview): show host and data locations
+  - 3d5349c fix(agent-preview): use business system names
+  - 2ca13f9 feat(agent): add interactive V2 design preview
+
