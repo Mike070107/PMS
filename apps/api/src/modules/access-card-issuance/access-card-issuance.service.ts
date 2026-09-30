@@ -15,6 +15,7 @@ import {
   AccessCardAgent,
   AccessCardIssueBatch,
   AccessCardIssueItem,
+  AccessCardLegacyCardCheck,
   AccessCardLegacySnapshot,
   Building,
   Community,
@@ -31,6 +32,7 @@ import {
   icToWg,
   legacyRoomKey,
   legacyDatabaseRoomKey,
+  legacyDuplicateCardMessage,
   normalizeBuildingNo,
   projectPhaseOf,
 } from './access-card-routing';
@@ -38,8 +40,10 @@ import { CreateAccessCardIssueDto } from './dto';
 import {
   AgentHeartbeatDto,
   AgentReportDto,
+  CardPreflightDto,
   CreateParkingQueryDto,
   EnrollAccessCardAgentDto,
+  LegacyCardCheckReportDto,
   LegacyHistoryReportDto,
   ParkingQueryReportDto,
 } from './dto';
@@ -68,6 +72,8 @@ export class AccessCardIssuanceService {
     private readonly agentRepo: Repository<AccessCardAgent>,
     @InjectRepository(AccessCardLegacySnapshot)
     private readonly legacySnapshotRepo: Repository<AccessCardLegacySnapshot>,
+    @InjectRepository(AccessCardLegacyCardCheck)
+    private readonly legacyCardCheckRepo: Repository<AccessCardLegacyCardCheck>,
     @InjectRepository(House)
     private readonly houseRepo: Repository<House>,
     @InjectRepository(Building)
@@ -479,6 +485,127 @@ export class AccessCardIssuanceService {
     });
   }
 
+  async cardPreflight(agentKey: string, token: string, dto: CardPreflightDto) {
+    const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind !== 'issuer') throw new ForbiddenException('只有发卡助手可以执行卡片预检');
+    const icCardNo = this.normalizeIcCardNo(dto.icCardNo);
+    const item = await this.itemRepo.findOne({
+      where: { id: dto.itemId, tenantId: agent.tenantId },
+      relations: ['batch'],
+    });
+    if (!item) throw new NotFoundException('发卡任务不存在');
+    if (item.leaseAgentKey !== agent.agentKey) throw new ForbiddenException('任务租约不属于当前发卡助手');
+    if (item.cardStatus === 'duplicate_card') {
+      return { status: 'duplicate', message: item.lastErrorMessage };
+    }
+
+    const pmsDuplicate = await this.itemRepo
+      .createQueryBuilder('other')
+      .innerJoinAndSelect('other.batch', 'batch')
+      .where('other.tenant_id = :tenantId', { tenantId: agent.tenantId })
+      .andWhere('other.ic_card_no = :icCardNo', { icCardNo })
+      .andWhere('other.id <> :itemId', { itemId: item.id })
+      .getOne();
+    if (pmsDuplicate) {
+      const message = `这张卡已在 PMS 发过：${pmsDuplicate.batch.addressSnapshot}，IC 卡号 ${icCardNo}，不能重复发卡。`;
+      await this.blockDuplicateCard(item, message);
+      return { status: 'duplicate', message };
+    }
+
+    let check = await this.legacyCardCheckRepo.findOne({ where: { itemId: item.id } });
+    if (!check) {
+      check = await this.legacyCardCheckRepo.save(this.legacyCardCheckRepo.create({
+        tenantId: agent.tenantId,
+        itemId: item.id,
+        icCardNo,
+        status: 'pending',
+        matches: [],
+        requestedAt: new Date(),
+        checkedAt: null,
+        leaseAgentKey: null,
+        leaseExpiresAt: null,
+        lastError: null,
+        createdBy: null,
+        updatedBy: null,
+      }));
+      return { status: 'pending', message: '正在查询捷顺系统是否已登记这张卡' };
+    }
+    if (check.icCardNo !== icCardNo) {
+      check.icCardNo = icCardNo;
+      check.status = 'pending';
+      check.matches = [];
+      check.requestedAt = new Date();
+      check.checkedAt = null;
+      check.leaseAgentKey = null;
+      check.leaseExpiresAt = null;
+      check.lastError = null;
+      await this.legacyCardCheckRepo.save(check);
+      return { status: 'pending', message: '正在查询捷顺系统是否已登记这张卡' };
+    }
+    if (check.status === 'pending') {
+      return { status: 'pending', message: '正在查询捷顺系统是否已登记这张卡' };
+    }
+    if (check.status === 'error') {
+      return { status: 'error', message: check.lastError || '捷顺系统查重失败，已停止写卡' };
+    }
+    if (check.status === 'duplicate') {
+      const message = legacyDuplicateCardMessage(check.matches);
+      await this.blockDuplicateCard(item, message);
+      return { status: 'duplicate', message, matches: check.matches };
+    }
+    return { status: 'clear', message: '卡号未在 PMS 或捷顺系统登记，可以继续写卡' };
+  }
+
+  async claimLegacyCardCheck(agentKey: string, token: string) {
+    const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind !== 'legacy_sync') throw new ForbiddenException('只有 .80 旧库同步代理可以查询捷顺卡号');
+    const now = new Date();
+    const leaseExpiresAt = new Date(now.getTime() + 60_000);
+    return this.legacyCardCheckRepo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(AccessCardLegacyCardCheck);
+      const check = await repo.createQueryBuilder('check')
+        .where('check.tenant_id = :tenantId', { tenantId: agent.tenantId })
+        .andWhere('check.status = :status', { status: 'pending' })
+        .andWhere('(check.lease_expires_at IS NULL OR check.lease_expires_at < :now)', { now })
+        .orderBy('check.requested_at', 'ASC')
+        .setLock('pessimistic_write')
+        .setOnLocked('skip_locked')
+        .getOne();
+      if (!check) return { task: null, retryAfterMs: 1000 };
+      check.leaseAgentKey = agent.agentKey;
+      check.leaseExpiresAt = leaseExpiresAt;
+      await repo.save(check);
+      return { task: { checkId: check.id, icCardNo: check.icCardNo, leaseExpiresAt: leaseExpiresAt.toISOString() } };
+    });
+  }
+
+  async reportLegacyCardCheck(agentKey: string, token: string, dto: LegacyCardCheckReportDto) {
+    const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind !== 'legacy_sync') throw new ForbiddenException('只有 .80 旧库同步代理可以上报捷顺卡号查询');
+    const check = await this.legacyCardCheckRepo.findOne({ where: { id: dto.checkId, tenantId: agent.tenantId } });
+    if (!check) throw new NotFoundException('捷顺卡号查询任务不存在');
+    if (check.leaseAgentKey !== agent.agentKey) throw new ForbiddenException('查询任务租约不属于当前代理');
+    if (dto.result === 'success') {
+      check.matches = (dto.matches ?? []).map((match) => ({
+        personId: match.personId,
+        personNo: match.personNo.trim(),
+        personName: match.personName.trim(),
+        icCardNo: this.normalizeIcCardNo(match.icCardNo),
+        issuedAt: match.issuedAt || null,
+      }));
+      check.status = check.matches.length ? 'duplicate' : 'clear';
+      check.lastError = null;
+    } else {
+      check.status = dto.result === 'retry' ? 'pending' : 'error';
+      check.lastError = dto.errorMessage || '捷顺系统卡号查询失败';
+    }
+    check.checkedAt = new Date();
+    check.leaseAgentKey = null;
+    check.leaseExpiresAt = null;
+    await this.legacyCardCheckRepo.save(check);
+    return { ok: true, checkId: check.id, status: check.status };
+  }
+
   async reportLegacyHistory(agentKey: string, token: string, dto: LegacyHistoryReportDto) {
     const agent = await this.authenticateAgent(agentKey, token);
     if (agent.kind !== 'legacy_sync') throw new ForbiddenException('只有 .80 旧库同步代理可以上报历史');
@@ -526,15 +653,17 @@ export class AccessCardIssuanceService {
 
     if (dto.result === 'success') {
       if (agent.kind === 'issuer') {
-        const icCardNo = (dto.icCardNo || '').replace(/\s+/g, '').toUpperCase();
-        if (!/^[0-9A-F]{6,}$/.test(icCardNo)) throw new BadRequestException('发卡助手未返回有效 IC 卡号');
+        const icCardNo = this.normalizeIcCardNo(dto.icCardNo || '');
         const duplicate = await this.itemRepo
           .createQueryBuilder('item')
           .where('item.tenant_id = :tenantId', { tenantId: agent.tenantId })
           .andWhere('item.ic_card_no = :icCardNo', { icCardNo })
           .andWhere('item.id <> :itemId', { itemId: item.id })
           .getExists();
-        if (duplicate) throw new BadRequestException('该 IC 卡已经登记，不能重复发卡');
+        if (duplicate) {
+          await this.blockDuplicateCard(item, `这张卡已在 PMS 登记：IC 卡号 ${icCardNo}，本次已停止，不会重复写卡。`);
+          return { ok: false, itemId: item.id, status: 'duplicate_card', message: item.lastErrorMessage };
+        }
         item.icCardNo = icCardNo;
         item.wgCardNo = item.batch.projectPhase === 'phase2' ? icToWg(icCardNo) : null;
         item.cardStatus = 'card_completed';
@@ -846,7 +975,7 @@ export class AccessCardIssuanceService {
 
   private async refreshBatchStatus(batch: AccessCardIssueBatch, tenantId: number) {
     const items = await this.itemRepo.find({ where: { batchId: batch.id, tenantId } });
-    if (items.some((item) => item.accessStatus === 'needs_operator')) {
+    if (items.some((item) => item.cardStatus === 'duplicate_card' || item.accessStatus === 'needs_operator')) {
       batch.status = 'needs_operator';
     } else if (this.isDeliverable(batch, items)) {
       batch.status = 'completed';
@@ -894,6 +1023,27 @@ export class AccessCardIssuanceService {
     if (items.length !== batch.quantity) return false;
     return items.every((item) => item.cardStatus === 'card_completed'
       && (batch.projectPhase === 'phase1' || item.accessStatus === 'controller_uploaded'));
+  }
+
+  private normalizeIcCardNo(value: string): string {
+    const icCardNo = value.replace(/\s+/g, '').toUpperCase();
+    if (!/^[0-9A-F]{6,}$/.test(icCardNo)) {
+      throw new BadRequestException('发卡助手未返回有效 IC 卡号');
+    }
+    return icCardNo;
+  }
+
+  private async blockDuplicateCard(item: AccessCardIssueItem, message: string): Promise<void> {
+    item.cardStatus = 'duplicate_card';
+    item.lastErrorRef = randomBytes(4).toString('hex').toUpperCase();
+    item.lastErrorMessage = message;
+    item.leaseAgentKey = null;
+    item.leaseExpiresAt = null;
+    item.updatedBy = null;
+    await this.itemRepo.save(item);
+    item.batch.status = 'needs_operator';
+    item.batch.updatedBy = null;
+    await this.batchRepo.save(item.batch);
   }
 
   private async nextSimulationIc(tenantId: number): Promise<string> {
