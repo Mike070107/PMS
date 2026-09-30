@@ -1,0 +1,126 @@
+using System;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Linq;
+using System.ServiceProcess;
+using System.Windows;
+using System.Windows.Controls;
+
+namespace Pms.DataSyncAssistant
+{
+    public partial class MainWindow : Window, INotifyPropertyChanged
+    {
+        private readonly ConfigurationStore _store;
+        private readonly AssistantConfiguration _configuration;
+        public ObservableCollection<ConnectionViewModel> Connections { get; private set; }
+        public string HostName { get { return _configuration.Host.Name; } }
+        public string HostIp { get { return _configuration.Host.IpAddress; } }
+        public int ConnectionCount { get { return Connections.Count; } }
+        public bool IsPaired { get { return _configuration.Host.Paired && _store.HasSecret("host:token"); } }
+        public bool IsServiceRunning { get { return GetServiceRunning(); } }
+        public bool AllConnectionsHealthy { get { return Connections.Count > 0 && Connections.All(item => item.IsHealthy); } }
+        public string HeaderStatus { get { return IsPaired ? "PMS 已连接" : "PMS 尚未配对"; } }
+        public string HeaderStatusColor { get { return IsPaired ? "#35A875" : "#8B98A6"; } }
+        public string OverviewTitle
+        {
+            get
+            {
+                if (!IsPaired) return "请先连接 PMS";
+                if (!IsServiceRunning) return "后台服务尚未运行";
+                if (Connections.Count == 0) return "请添加第一个数据连接";
+                return AllConnectionsHealthy ? "所有数据连接都正常" : "有连接需要检查";
+            }
+        }
+        public string PmsState { get { return IsPaired ? "已连接" : "未配对"; } }
+        public string CredentialState { get { return _store.HasAnySecrets ? "已加密" : "尚未保存"; } }
+        public string ServiceState { get { return IsServiceRunning ? "运行中" : "未运行"; } }
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        public MainWindow(ConfigurationStore store)
+        {
+            _store = store;
+            _configuration = store.Load();
+            if (_configuration.Connections.Count == 0)
+                new LegacyConfigurationMigrator(store).ImportKnownLocations(_configuration);
+            Connections = new ObservableCollection<ConnectionViewModel>(
+                _configuration.Connections.Select(item => new ConnectionViewModel(item)));
+            DataContext = this;
+            InitializeComponent();
+        }
+
+        private void AddConnection_Click(object sender, RoutedEventArgs e)
+        {
+            var wizard = new ConnectionWizard(_configuration.Host, _store) { Owner = this };
+            if (wizard.ShowDialog() != true || wizard.Result == null) return;
+            _configuration.Connections.Add(wizard.Result);
+            Connections.Add(new ConnectionViewModel(wizard.Result));
+            _store.Save(_configuration);
+            Raise("ConnectionCount");
+            RaiseStatus();
+        }
+
+        private void EditConnection_Click(object sender, RoutedEventArgs e)
+        {
+            var button = sender as Button;
+            var id = button == null ? null : button.Tag as string;
+            var existing = _configuration.Connections.FirstOrDefault(item => item.Id == id);
+            if (existing == null) return;
+            var wizard = new ConnectionWizard(_configuration.Host, _store, existing) { Owner = this };
+            if (wizard.ShowDialog() != true) return;
+            _store.Save(_configuration);
+            var view = Connections.FirstOrDefault(item => item.Id == id);
+            if (view != null) view.Refresh();
+            RaiseStatus();
+        }
+
+        private void CheckUpdate_Click(object sender, RoutedEventArgs e)
+        {
+            MessageBox.Show("当前已经是最新设计预览版本。正式版会在这里显示下载、校验、停止服务、替换、重启和验证进度。", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void UninstallService_Click(object sender, RoutedEventArgs e)
+        {
+            if (!UnifiedServiceManager.Exists())
+            {
+                MessageBox.Show("本机没有安装 PMS 数据连接后台服务。保存的连接和密码未受影响。", "卸载本机连接服务", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (MessageBox.Show("将停止并卸载本机唯一的数据连接服务。保存的连接和加密密码会保留，之后可以重新安装。", "确认卸载本机连接服务", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            try { UnifiedServiceManager.RunElevated("--uninstall-service"); RaiseStatus(); MessageBox.Show("本机连接服务已卸载，配置和密码仍然保留。", "卸载完成", MessageBoxButton.OK, MessageBoxImage.Information); }
+            catch (Exception exception) { MessageBox.Show(exception.Message, "卸载失败", MessageBoxButton.OK, MessageBoxImage.Error); }
+        }
+
+        private void InstallService_Click(object sender, RoutedEventArgs e)
+        {
+            try { UnifiedServiceManager.RunElevated("--install-service"); RaiseStatus(); MessageBox.Show("后台服务已安装并启动。", "安装完成", MessageBoxButton.OK, MessageBoxImage.Information); }
+            catch (Exception exception) { MessageBox.Show(exception.Message, "安装失败", MessageBoxButton.OK, MessageBoxImage.Error); }
+        }
+
+        private void UninstallSoftware_Click(object sender, RoutedEventArgs e)
+        {
+            MessageBox.Show("正式卸载器尚未接入。本操作默认保留 ProgramData 中的连接和加密配置。", "卸载此软件", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        private void Raise(string name)
+        {
+            if (PropertyChanged != null) PropertyChanged(this, new PropertyChangedEventArgs(name));
+        }
+
+        private void RaiseStatus()
+        {
+            Raise("IsPaired"); Raise("IsServiceRunning"); Raise("AllConnectionsHealthy");
+            Raise("HeaderStatus"); Raise("HeaderStatusColor"); Raise("OverviewTitle");
+            Raise("PmsState"); Raise("CredentialState"); Raise("ServiceState");
+        }
+
+        private static bool GetServiceRunning()
+        {
+            try
+            {
+                using (var service = new ServiceController("PmsDataSyncAssistant"))
+                    return service.Status == ServiceControllerStatus.Running;
+            }
+            catch { return false; }
+        }
+    }
+}

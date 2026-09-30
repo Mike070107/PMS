@@ -1,0 +1,111 @@
+<Window x:Class="Pms.DataSyncAssistant.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Pms.DataSyncAssistant"
+        Title="PMS 数据同步助手" Width="1080" Height="790" MinWidth="900" MinHeight="680"
+        WindowStartupLocation="CenterScreen" Background="#EEF3F8" FontFamily="Microsoft YaHei UI">
+  <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="BoolVisibility" />
+    <Style x:Key="CardBorder" TargetType="Border">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#DCE5EF" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="11" />
+    </Style>
+  </Window.Resources>
+  <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="66" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+    <Border Grid.Row="0" Background="White" BorderBrush="#D6E1EC" BorderThickness="0,0,0,1">
+      <Grid Margin="22,0">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <Border Width="38" Height="38" CornerRadius="10" Background="{StaticResource PmsPrimary}" VerticalAlignment="Center">
+          <TextBlock Text="P" Foreground="White" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+          <TextBlock Text="PMS 数据同步助手" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource PmsInk}" />
+          <TextBlock FontSize="11" Foreground="{StaticResource PmsMuted}"><Run Text="{Binding HostName}" /><Run Text=" · " /><Run Text="{Binding HostIp}" /></TextBlock>
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,18,0">
+          <Ellipse Width="8" Height="8" Fill="{Binding HeaderStatusColor}" Margin="0,0,8,0" />
+          <TextBlock Text="{Binding HeaderStatus}" FontSize="12" FontWeight="SemiBold" Foreground="#405A73" VerticalAlignment="Center" />
+        </StackPanel>
+        <Button Grid.Column="3" Style="{StaticResource SecondaryButton}" Content="检查更新" Click="CheckUpdate_Click" />
+      </Grid>
+    </Border>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <Grid Margin="30,24,30,30">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <Border CornerRadius="14" Padding="25" Background="{StaticResource PmsPrimaryStrong}">
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="520" /></Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center">
+              <TextBlock Text="本机服务概览" Foreground="#BDD0E6" FontSize="11" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding OverviewTitle}" Foreground="White" FontSize="24" FontWeight="Bold" Margin="0,6,0,3" />
+              <TextBlock Text="配置会自动保存；后台服务运行后，关闭此窗口不会停止数据同步。" Foreground="#D5E1EF" FontSize="12" />
+            </StackPanel>
+            <Border Grid.Column="1" CornerRadius="11" Background="#22FFFFFF" BorderBrush="#30FFFFFF" BorderThickness="1">
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="{Binding PmsState}" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" /><TextBlock Text="PMS 服务" Foreground="#C4D4E6" FontSize="10" /></StackPanel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="{Binding CredentialState}" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" /><TextBlock Text="本机凭据" Foreground="#C4D4E6" FontSize="10" /></StackPanel>
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="{Binding ServiceState}" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" /><TextBlock Text="后台服务" Foreground="#C4D4E6" FontSize="10" /></StackPanel>
+              </Grid>
+            </Border>
+          </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="0,24,0,0">
+          <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+          <Grid>
+            <StackPanel>
+              <TextBlock Text="本机负责的连接" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource PmsInk}" />
+              <TextBlock FontSize="11" Foreground="{StaticResource PmsMuted}" Margin="0,3,0,0"><Run Text="{Binding HostName}" /><Run Text=" 上已启用 " /><Run Text="{Binding ConnectionCount}" /><Run Text=" 个连接" /></TextBlock>
+            </StackPanel>
+            <Button HorizontalAlignment="Right" Content="＋  添加连接" Click="AddConnection_Click" />
+          </Grid>
+          <ItemsControl Grid.Row="1" ItemsSource="{Binding Connections}" Margin="0,14,0,0">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="{x:Type local:ConnectionViewModel}">
+                <Border Style="{StaticResource CardBorder}" Margin="0,0,12,12" Padding="16" MinHeight="168">
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="44" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Border Width="40" Height="40" CornerRadius="10" Background="#EAF0F9" VerticalAlignment="Top">
+                      <TextBlock Text="D" Foreground="{StaticResource PmsPrimary}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="11,0,8,0">
+                      <TextBlock Text="{Binding Name}" Foreground="{StaticResource PmsInk}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding TypeLabel}" Foreground="{StaticResource PmsMuted}" FontSize="10" Margin="0,3,0,8" />
+                      <Grid Margin="0,0,0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="62" /><ColumnDefinition /></Grid.ColumnDefinitions><TextBlock Text="运行电脑" Foreground="#7A8EA4" FontSize="10" /><TextBlock Grid.Column="1" Text="{Binding HostDisplay}" Foreground="#405D79" FontSize="10" /></Grid>
+                      <Grid Margin="0,0,0,7"><Grid.ColumnDefinitions><ColumnDefinition Width="62" /><ColumnDefinition /></Grid.ColumnDefinitions><TextBlock Text="数据位置" Foreground="#7A8EA4" FontSize="10" /><TextBlock Grid.Column="1" Text="{Binding DataLocation}" Foreground="#405D79" FontSize="10" /></Grid>
+                      <TextBlock Text="{Binding Summary}" Foreground="#667B90" FontSize="10" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                      <Border CornerRadius="10" Background="{Binding StatusBackground}" Padding="8,4"><TextBlock Text="{Binding Status}" Foreground="{Binding StatusForeground}" FontSize="10" FontWeight="SemiBold" /></Border>
+                      <Button Style="{StaticResource SecondaryButton}" Content="设置" MinHeight="30" Padding="10,0" Margin="0,62,0,0" Click="EditConnection_Click" Tag="{Binding Id}" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Grid>
+
+        <Grid Grid.Row="2" Margin="0,4,0,0">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="1.4*" /><ColumnDefinition Width="12" /><ColumnDefinition /></Grid.ColumnDefinitions>
+          <Expander Header="最近活动    0 条" IsExpanded="False" Background="White" BorderBrush="#DCE5EF" BorderThickness="1" Padding="16,10">
+            <TextBlock Text="暂无活动。连接开始运行后，查询、写入和异常会显示在这里。" Foreground="{StaticResource PmsMuted}" Margin="8" />
+          </Expander>
+          <Expander Grid.Column="2" Header="助手信息    版本 2.0.0" IsExpanded="False" Background="White" BorderBrush="#DCE5EF" BorderThickness="1" Padding="16,10">
+            <StackPanel Margin="8">
+              <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions><TextBlock Text="配置保存" Foreground="{StaticResource PmsMuted}" /><TextBlock Grid.Column="1" Text="已自动保存" HorizontalAlignment="Right" /></Grid>
+              <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions><TextBlock Text="配置目录" Foreground="{StaticResource PmsMuted}" /><TextBlock Grid.Column="1" Text="ProgramData\PMS" HorizontalAlignment="Right" /></Grid>
+              <WrapPanel Margin="0,12,0,0"><Button Content="安装 / 修复后台服务" Margin="0,0,8,8" Click="InstallService_Click" /><Button Style="{StaticResource SecondaryButton}" Content="卸载本机连接服务" Margin="0,0,8,8" Click="UninstallService_Click" /><Button Background="#B1444B" Content="卸载此软件" Margin="0,0,0,8" Click="UninstallSoftware_Click" /></WrapPanel>
+            </StackPanel>
+          </Expander>
+        </Grid>
+      </Grid>
+    </ScrollViewer>
+  </Grid>
+</Window>

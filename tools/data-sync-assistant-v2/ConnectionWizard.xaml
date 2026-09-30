@@ -1,0 +1,80 @@
+<Window x:Class="Pms.DataSyncAssistant.ConnectionWizard"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="添加数据连接" Width="700" Height="600" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" Background="White" FontFamily="Microsoft YaHei UI">
+  <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="68" /></Grid.RowDefinitions>
+    <StackPanel Margin="26,22,26,15">
+      <TextBlock Text="添加数据连接" Foreground="{StaticResource PmsAccent}" FontSize="11" FontWeight="SemiBold" />
+      <TextBlock x:Name="TitleText" Text="要连接什么？" Foreground="{StaticResource PmsInk}" FontSize="22" FontWeight="Bold" Margin="0,5,0,0" />
+    </StackPanel>
+    <Grid Grid.Row="1" Margin="26,0,26,18">
+      <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+      <StackPanel Orientation="Horizontal"><Border x:Name="StepOneCircle" Width="27" Height="27" CornerRadius="14" Background="{StaticResource PmsPrimary}"><TextBlock Text="1" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><TextBlock Text="选择类型" Margin="8,0,0,0" VerticalAlignment="Center" /></StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal"><Border x:Name="StepTwoCircle" Width="27" Height="27" CornerRadius="14" BorderBrush="{StaticResource PmsBorder}" BorderThickness="1"><TextBlock Text="2" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><TextBlock Text="检查参数" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource PmsMuted}" /></StackPanel>
+      <StackPanel Grid.Column="2" Orientation="Horizontal"><Border x:Name="StepThreeCircle" Width="27" Height="27" CornerRadius="14" BorderBrush="{StaticResource PmsBorder}" BorderThickness="1"><TextBlock Text="3" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><TextBlock Text="完成" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource PmsMuted}" /></StackPanel>
+    </Grid>
+
+    <Grid Grid.Row="2" Margin="26,0,26,18">
+      <UniformGrid x:Name="TypePanel" Columns="2" Rows="2">
+        <RadioButton x:Name="ParkingType" GroupName="type" Tag="parking_sql" IsChecked="True" Checked="Type_Checked" Margin="0,0,10,10">
+          <Border Style="{StaticResource WizardTypeCard}"><StackPanel><TextBlock Text="停车系统" FontSize="15" FontWeight="SemiBold" /><TextBlock Text="连接 SQL Server 停车数据库" Foreground="{StaticResource PmsMuted}" FontSize="11" Margin="0,7,0,0" /></StackPanel></Border>
+        </RadioButton>
+        <RadioButton GroupName="type" Tag="legacy_access_sql" Checked="Type_Checked" Margin="0,0,0,10">
+          <Border Style="{StaticResource WizardTypeCard}"><StackPanel><TextBlock Text="小区大门门禁系统" FontSize="15" FontWeight="SemiBold" /><TextBlock Text="查询住户和历史发卡记录" Foreground="{StaticResource PmsMuted}" FontSize="11" Margin="0,7,0,0" /></StackPanel></Border>
+        </RadioButton>
+        <RadioButton GroupName="type" Tag="building_access_mdb" Checked="Type_Checked" Margin="0,0,10,0">
+          <Border Style="{StaticResource WizardTypeCard}"><StackPanel><TextBlock Text="楼栋门禁系统" FontSize="15" FontWeight="SemiBold" /><TextBlock Text="连接 MjSystem / iCCard 数据" Foreground="{StaticResource PmsMuted}" FontSize="11" Margin="0,7,0,0" /></StackPanel></Border>
+        </RadioButton>
+        <RadioButton GroupName="type" Tag="pcsc_reader" Checked="Type_Checked">
+          <Border Style="{StaticResource WizardTypeCard}"><StackPanel><TextBlock Text="USB 发卡器" FontSize="15" FontWeight="SemiBold" /><TextBlock Text="自动发现本机 PC/SC 读卡器" Foreground="{StaticResource PmsMuted}" FontSize="11" Margin="0,7,0,0" /></StackPanel></Border>
+        </RadioButton>
+      </UniformGrid>
+
+      <ScrollViewer x:Name="ParameterPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <Border Background="#EDF4FA" CornerRadius="9" Padding="13" Margin="0,0,0,12"><TextBlock x:Name="DetectionText" Text="已带出建议参数。请确认后测试连接。" Foreground="#405D79" /></Border>
+          <TextBlock Text="连接名称" Foreground="{StaticResource PmsMuted}" Margin="0,6,0,5" /><TextBox x:Name="NameInput" />
+          <Grid x:Name="SqlFields" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="12" /><ColumnDefinition /></Grid.ColumnDefinitions>
+            <StackPanel><TextBlock Text="SQL Server" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="ServerInput" /></StackPanel>
+            <StackPanel Grid.Column="2"><TextBlock Text="数据库用户" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="UserInput" /></StackPanel>
+          </Grid>
+          <Grid x:Name="DatabaseFields" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="12" /><ColumnDefinition /></Grid.ColumnDefinitions>
+            <StackPanel><TextBlock Text="主数据库" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="DatabaseOneInput" /></StackPanel>
+            <StackPanel Grid.Column="2"><TextBlock Text="第二数据库（可选）" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="DatabaseTwoInput" /></StackPanel>
+          </Grid>
+          <StackPanel x:Name="FileFields" Visibility="Collapsed" Margin="0,10,0,0"><TextBlock Text="数据库文件目录" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="FilePathInput" /></StackPanel>
+          <StackPanel x:Name="ReaderFields" Visibility="Collapsed" Margin="0,10,0,0"><TextBlock Text="检测到的读卡器" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="ReaderInput" IsReadOnly="True" Text="等待设备检测" /></StackPanel>
+          <TextBlock x:Name="PasswordLabel" Text="数据库密码" Foreground="{StaticResource PmsMuted}" Margin="0,10,0,5" />
+          <PasswordBox x:Name="PasswordInput" MinHeight="38" Padding="10,7" BorderBrush="{StaticResource PmsBorder}" />
+          <TextBlock x:Name="PasswordHint" Text="密码会使用 Windows 本机加密保存；已保存时留空保持不变。" Foreground="#7A8EA4" FontSize="10" Margin="0,5,0,0" />
+        </StackPanel>
+      </ScrollViewer>
+
+      <StackPanel x:Name="ResultPanel" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Width="410">
+        <Border Width="70" Height="70" CornerRadius="35" Background="#E8F6EF"><TextBlock Text="✓" Foreground="#35A875" FontSize="34" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+        <TextBlock Text="连接测试通过" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,16,0,5" />
+        <TextBlock Text="真实检测已经完成，参数和凭据已安全保存。" Foreground="{StaticResource PmsMuted}" HorizontalAlignment="Center" />
+        <Border Background="#F5F8FB" CornerRadius="9" Padding="16" Margin="0,20,0,0"><StackPanel><TextBlock x:Name="ResultChecksText" TextWrapping="Wrap" LineHeight="25" /></StackPanel></Border>
+      </StackPanel>
+    </Grid>
+
+    <Border Grid.Row="3" BorderBrush="#E4EBF2" BorderThickness="0,1,0,0" Background="#FBFCFD">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="25,0">
+        <Button x:Name="BackButton" Style="{StaticResource SecondaryButton}" Content="取消" Margin="0,0,8,0" Click="Back_Click" />
+        <Button x:Name="NextButton" Content="继续" Click="Next_Click" />
+      </StackPanel>
+    </Border>
+  </Grid>
+  <Window.Resources>
+    <Style x:Key="WizardTypeCard" TargetType="Border">
+      <Setter Property="Background" Value="White" /><Setter Property="BorderBrush" Value="#D6E1EC" /><Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="11" /><Setter Property="Padding" Value="20" /><Setter Property="MinHeight" Value="115" />
+    </Style>
+    <Style TargetType="RadioButton">
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton"><Border x:Name="selection" BorderThickness="0" CornerRadius="11"><ContentPresenter /></Border><ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="selection" Property="BorderBrush" Value="{StaticResource PmsPrimary}" /><Setter TargetName="selection" Property="BorderThickness" Value="2" /></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+    </Style>
+  </Window.Resources>
+</Window>

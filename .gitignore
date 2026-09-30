@@ -5,6 +5,8 @@ tools/access-card-agent/legacy-db-password.dat
 tools/access-card-agent/iccard-db-password.dat
 tools/access-card-agent/bin/
 tools/access-card-agent/obj/
+tools/data-sync-assistant-v2/bin/
+tools/data-sync-assistant-v2/obj/
 dist
 build
 .next
