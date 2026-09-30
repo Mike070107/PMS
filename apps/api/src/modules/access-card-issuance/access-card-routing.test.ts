@@ -68,6 +68,8 @@ test('房号展示不强制给楼栋补零', () => {
 
 test('IC 转 WG 与旧 PHP 字节顺序一致', () => {
   assert.equal(icToWg('112233'), '05108721');
+  assert.equal(icToWg('07B2DF06'), '22345575');
+  assert.equal(icToWg('6BD8DF06'), '22355403');
   assert.throws(() => icToWg('XYZ'));
 });
 
