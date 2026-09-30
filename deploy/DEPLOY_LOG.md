@@ -3535,3 +3535,11 @@
   - 29f7103 fix(parking): 默认收起历史记录
   - 34fbc88 feat(parking): 记录用户与车牌变更历史
 
+## 2026-09-30 20:42 · api · 10d0b07
+
+- 包：`pms-api-20260930-2029.tar.gz`
+- 提交：10d0b07 feat(access): verify card permissions and surface assistant activity
+- 说明：生产健康检查通过；门禁权限任务路由已注册并正确鉴权
+- 自上次（29f7103）以来上线的相关提交：
+  - 10d0b07 feat(access): verify card permissions and surface assistant activity
+
