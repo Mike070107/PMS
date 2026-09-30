@@ -35,6 +35,8 @@ function ConnectionCard({
   subtitle,
   details,
   location,
+  hostName = '物业办公室-01',
+  hostIp = '192.168.1.80',
   state,
   tone = 'ok',
 }: {
@@ -43,6 +45,8 @@ function ConnectionCard({
   subtitle: string;
   details: string[];
   location: string;
+  hostName?: string;
+  hostIp?: string;
   state: string;
   tone?: 'ok' | 'warn';
 }) {
@@ -59,7 +63,10 @@ function ConnectionCard({
             {tone === 'ok' && <CheckCircleFilled />}{state}
           </span>
         </div>
-        <div className="dsa-location-line"><DesktopOutlined />运行于本机<span>·</span>{location}</div>
+        <div className="dsa-location-lines">
+          <div><DesktopOutlined /><b>运行电脑</b>{hostName}<span>·</span><code>{hostIp}</code></div>
+          <div><DatabaseOutlined /><b>数据位置</b>{location}</div>
+        </div>
         <div className="dsa-detail-row">
           {details.map((detail) => <span key={detail}>{detail}</span>)}
         </div>
@@ -86,7 +93,7 @@ export default function DataSyncAssistantPreviewPage() {
           <div className="dsa-brand-mark"><ApiOutlined /></div>
           <div className="dsa-title-copy">
             <strong>PMS 数据同步助手</strong>
-            <span>物业办公室-01</span>
+            <span>物业办公室-01 · 192.168.1.80</span>
           </div>
           <div className="dsa-title-status"><span className="dsa-live-dot" />PMS 已连接</div>
           <button className="dsa-title-action"><ReloadOutlined /> 检查更新</button>
@@ -117,7 +124,7 @@ export default function DataSyncAssistantPreviewPage() {
                 icon={<DatabaseOutlined />}
                 title="枫桦景苑停车系统"
                 subtitle="SQL Server · 192.168.6.3"
-                location="数据位于 192.168.6.3"
+                location="SQL Server 192.168.6.3"
                 details={['一期数据库 已连接', '二期数据库 已连接', '最近查询 10:42']}
                 state="查询正常"
               />
@@ -125,7 +132,7 @@ export default function DataSyncAssistantPreviewPage() {
                 icon={<HistoryOutlined />}
                 title="枫桦一二期小区大门门禁系统接入"
                 subtitle="SQL Server · 本机服务"
-                location="数据库位于本机"
+                location="本机 SQL Server"
                 details={['住户资料 可读取', '发卡历史 可读取', '最近同步 10:39']}
                 state="运行正常"
               />
@@ -133,7 +140,7 @@ export default function DataSyncAssistantPreviewPage() {
                 icon={<UsbOutlined />}
                 title="办公室发卡器"
                 subtitle="ACS ACR122U PICC Interface"
-                location="USB 设备连接本机"
+                location="本机 USB 端口"
                 details={['设备已识别', '工作站可接任务', '当前无待处理卡片']}
                 state="设备在线"
               />
@@ -141,7 +148,7 @@ export default function DataSyncAssistantPreviewPage() {
                 icon={<CloudServerOutlined />}
                 title="枫桦二期楼栋门禁系统接入"
                 subtitle="MjSystem / iCCard"
-                location="数据库文件位于本机"
+                location="本机 MDB 文件"
                 details={['数据库 可读取', '控制器 8 台', '写入尚未开放']}
                 state="待写入验收"
                 tone="warn"

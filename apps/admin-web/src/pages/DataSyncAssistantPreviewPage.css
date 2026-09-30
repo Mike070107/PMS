@@ -93,9 +93,12 @@
 .dsa-connection-title-row { display: flex; justify-content: space-between; gap: 10px; }
 .dsa-connection-title-row h3 { margin: 0; font-size: 15px; }
 .dsa-connection-title-row p { margin: 3px 0 0; color: #728481; font-size: 11px; }
-.dsa-location-line { display: flex; align-items: center; gap: 5px; margin-top: 9px; color: #426d67; font-size: 11px; font-weight: 650; }
-.dsa-location-line .anticon { color: #176f65; }
-.dsa-location-line span { color: #b4c2bf; }
+.dsa-location-lines { display: grid; gap: 4px; margin-top: 9px; color: #426d67; font-size: 11px; }
+.dsa-location-lines > div { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.dsa-location-lines .anticon { width: 13px; color: #176f65; }
+.dsa-location-lines b { min-width: 50px; color: #78908c; font-weight: 500; }
+.dsa-location-lines span { color: #b4c2bf; }
+.dsa-location-lines code { color: #315f59; font-family: "Cascadia Mono", Consolas, monospace; font-size: 10px; }
 .dsa-status-pill { align-self: flex-start; display: flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; color: #24775f; background: #e8f6ef; font-size: 11px; font-weight: 650; }
 .dsa-status-pill.warn { color: #9b6517; background: #fff2d9; }
 .dsa-detail-row { display: flex; flex-wrap: wrap; gap: 4px 13px; margin-top: 8px; color: #506965; font-size: 11px; }
