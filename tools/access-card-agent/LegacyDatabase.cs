@@ -3,6 +3,7 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace Pms.AccessCardAgent
 {
@@ -67,12 +68,13 @@ namespace Pms.AccessCardAgent
                 using (var command = connection.CreateCommand())
                 {
                     command.Transaction = transaction;
-                    // 只取精确 `房号/数字`，不能沿用旧 PHP 的 `%房号%` 模糊匹配。
+                    // 旧库同一房号存在楼号前导零和“已隐藏”等前缀。
+                    // SQL 先宽松取候选，随后 TrySequence 再逐段核对弄/楼/室，防止串户。
                     command.CommandText = @"
 SELECT [Name]
 FROM [HR].[Person] WITH (UPDLOCK, HOLDLOCK)
-WHERE [Name] LIKE @prefix ESCAPE '\';";
-                    command.Parameters.Add("@prefix", SqlDbType.NVarChar, 120).Value = EscapeLike(roomKey + "/") + "%";
+WHERE [Name] LIKE @candidate ESCAPE '\';";
+                    command.Parameters.Add("@candidate", SqlDbType.NVarChar, 120).Value = CandidateLike(roomKey);
                     var count = 0;
                     var max = 0;
                     using (var reader = command.ExecuteReader())
@@ -114,9 +116,9 @@ WHERE [Name] LIKE @prefix ESCAPE '\';";
 SELECT p.[ID], p.[NO], p.[Name], c.[IDNO], c.[IssueDate]
 FROM [HR].[Person] p
 LEFT JOIN [MC].[CardInfo] c ON c.[PersonID] = p.[ID]
-WHERE p.[Name] LIKE @prefix ESCAPE '\'
+WHERE p.[Name] LIKE @candidate ESCAPE '\'
 ORDER BY p.[ID] DESC;";
-                command.Parameters.Add("@prefix", SqlDbType.NVarChar, 120).Value = EscapeLike(roomKey + "/") + "%";
+                command.Parameters.Add("@candidate", SqlDbType.NVarChar, 120).Value = CandidateLike(roomKey);
                 using (var reader = command.ExecuteReader())
                 {
                     while (reader.Read())
@@ -198,9 +200,20 @@ ORDER BY c.[IssueDate] DESC, p.[ID] DESC;";
         {
             sequence = 0;
             roomKey = NormalizeRoomKey(roomKey);
-            var prefix = roomKey + "/";
-            if (!name.StartsWith(prefix, StringComparison.Ordinal)) return false;
-            return Int32.TryParse(name.Substring(prefix.Length), out sequence) && sequence > 0;
+            string lane;
+            string building;
+            string room;
+            if (!TryRoomParts(roomKey, out lane, out building, out room)) return false;
+            foreach (Match match in Regex.Matches(name ?? "", @"(?<!\d)(\d+)\s*[/／\\-]\s*(\d+)\s*[/／\\-]\s*(\d+)\s*[/／\\-]\s*(\d+)(?!\d)"))
+            {
+                if (!SameNumber(match.Groups[1].Value, lane) ||
+                    !SameNumber(match.Groups[2].Value, building) ||
+                    !SameNumber(match.Groups[3].Value, room)) continue;
+                if (Int32.TryParse(match.Groups[4].Value, NumberStyles.None, CultureInfo.InvariantCulture, out sequence) && sequence > 0)
+                    return true;
+            }
+            sequence = 0;
+            return false;
         }
 
         internal static string NormalizeRoomKey(string roomKey)
@@ -215,6 +228,37 @@ ORDER BY c.[IssueDate] DESC, p.[ID] DESC;";
         private static string EscapeLike(string value)
         {
             return value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[");
+        }
+
+        private static string CandidateLike(string roomKey)
+        {
+            string lane;
+            string building;
+            string room;
+            if (!TryRoomParts(roomKey, out lane, out building, out room))
+                throw new InvalidOperationException("房号格式无法识别：" + roomKey);
+            // `%228/%/102/%` 同时覆盖 228/2/102、228/02/102 和前缀了“已隐藏”的历史名称。
+            return "%" + EscapeLike(lane + "/") + "%" + EscapeLike("/" + room + "/") + "%";
+        }
+
+        private static bool TryRoomParts(string roomKey, out string lane, out string building, out string room)
+        {
+            lane = building = room = null;
+            var parts = (roomKey ?? "").Split('/');
+            if (parts.Length != 3) return false;
+            lane = parts[0].Trim();
+            building = parts[1].Trim();
+            room = parts[2].Trim();
+            return lane.Length > 0 && building.Length > 0 && room.Length > 0;
+        }
+
+        private static bool SameNumber(string left, string right)
+        {
+            long leftNumber;
+            long rightNumber;
+            return Int64.TryParse(left, NumberStyles.None, CultureInfo.InvariantCulture, out leftNumber) &&
+                   Int64.TryParse(right, NumberStyles.None, CultureInfo.InvariantCulture, out rightNumber) &&
+                   leftNumber == rightNumber;
         }
     }
 }

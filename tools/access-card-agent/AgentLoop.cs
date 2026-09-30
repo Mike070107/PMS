@@ -5,23 +5,39 @@ using System.Threading;
 
 namespace Pms.AccessCardAgent
 {
+    internal sealed class AgentActivity
+    {
+        public DateTimeOffset OccurredAt { get; set; }
+        public string Operation { get; set; }
+        public string Target { get; set; }
+        public bool Success { get; set; }
+        public string Message { get; set; }
+    }
+
     internal sealed class AgentLoop
     {
         private readonly AgentConfig _config;
         private readonly AgentApiClient _api;
         private readonly Func<string, string> _secretProvider;
         private readonly Action<bool, string> _connectionState;
+        private readonly Action<AgentActivity> _activity;
 
-        public AgentLoop(AgentConfig config, AgentApiClient api) : this(config, api, null, null)
+        public AgentLoop(AgentConfig config, AgentApiClient api) : this(config, api, null, null, null)
         {
         }
 
         public AgentLoop(AgentConfig config, AgentApiClient api, Func<string, string> secretProvider, Action<bool, string> connectionState)
+            : this(config, api, secretProvider, connectionState, null)
+        {
+        }
+
+        public AgentLoop(AgentConfig config, AgentApiClient api, Func<string, string> secretProvider, Action<bool, string> connectionState, Action<AgentActivity> activity)
         {
             _config = config;
             _api = api;
             _secretProvider = secretProvider;
             _connectionState = connectionState;
+            _activity = activity;
         }
 
         public void Run()
@@ -39,6 +55,7 @@ namespace Pms.AccessCardAgent
                     var hasReader = _config.Kind != "issuer" || CardReader.HasAcr122();
                     var parkingWrite = false;
                     var accessWrite = false;
+                    var controllerUpload = false;
                     if (_config.Kind == "parking_gateway")
                     {
                         parkingWrite = ParkingDatabase.CanWriteBoth(_config, LoadSecret("parking-db-password.dat"));
@@ -48,8 +65,9 @@ namespace Pms.AccessCardAgent
                         AccessGatewayDatabase.ProbeMjSystem(_config);
                         AccessGatewayDatabase.ProbeIcCard(_config, LoadSecret("iccard-db-password.dat"));
                         accessWrite = true;
+                        controllerUpload = AccessControllerUploader.CanUpload(_config);
                     }
-                    _api.Heartbeat(BuildCapabilities(_config, hasReader, parkingWrite, accessWrite));
+                    _api.Heartbeat(BuildCapabilities(_config, hasReader, parkingWrite, accessWrite, controllerUpload));
                     AgentStatus.MarkConnected();
                     SetConnectionState(true, "PMS 心跳正常");
                     if (_config.Kind == "legacy_sync")
@@ -75,6 +93,16 @@ namespace Pms.AccessCardAgent
                         if (parkingTask != null)
                         {
                             HandleParkingQuery(parkingTask);
+                            if (Wait(stopSignal, _config.PollIntervalMs)) return;
+                            continue;
+                        }
+                    }
+                    if (_config.Kind == "access_gateway")
+                    {
+                        var permissionTask = _api.ClaimAccessPermissions();
+                        if (permissionTask != null)
+                        {
+                            HandleAccessPermissions(permissionTask);
                             if (Wait(stopSignal, _config.PollIntervalMs)) return;
                             continue;
                         }
@@ -113,6 +141,11 @@ namespace Pms.AccessCardAgent
 
         internal static Dictionary<string, bool> BuildCapabilities(AgentConfig config, bool hasReader, bool parkingWrite, bool accessWrite)
         {
+            return BuildCapabilities(config, hasReader, parkingWrite, accessWrite, false);
+        }
+
+        internal static Dictionary<string, bool> BuildCapabilities(AgentConfig config, bool hasReader, bool parkingWrite, bool accessWrite, bool controllerUpload)
+        {
             return new Dictionary<string, bool>
             {
                 { "pcscReader", hasReader },
@@ -123,7 +156,7 @@ namespace Pms.AccessCardAgent
                 { "accessDbWrite", config.Kind == "access_gateway" && accessWrite },
                 { "parkingDbRead", config.Kind == "parking_gateway" },
                 { "parkingDbWrite", config.Kind == "parking_gateway" && parkingWrite },
-                { "controllerUpload", false }
+                { "controllerUpload", config.Kind == "access_gateway" && controllerUpload }
             };
         }
 
@@ -140,6 +173,7 @@ namespace Pms.AccessCardAgent
                     nextSequence = result.nextSequence,
                     history = result.history
                 });
+                RecordActivity("查询门禁卡", task.roomKey, true, "查到 " + result.history.Count + " 张历史卡");
             }
             catch (Exception exception)
             {
@@ -149,6 +183,7 @@ namespace Pms.AccessCardAgent
                     result = "retry",
                     errorMessage = exception.Message
                 });
+                RecordActivity("查询门禁卡", task.roomKey, false, exception.Message);
             }
         }
 
@@ -163,6 +198,7 @@ namespace Pms.AccessCardAgent
                     result = "success",
                     rows = rows
                 });
+                RecordActivity("查询停车记录", task.term, true, "查到 " + rows.Count + " 条记录");
             }
             catch (Exception exception)
             {
@@ -172,6 +208,7 @@ namespace Pms.AccessCardAgent
                     result = "retry",
                     errorMessage = exception.Message
                 });
+                RecordActivity("查询停车记录", task.term, false, exception.Message);
             }
         }
 
@@ -186,6 +223,7 @@ namespace Pms.AccessCardAgent
                     result = "success",
                     matches = matches
                 });
+                RecordActivity("检查卡号", task.icCardNo, true, matches.Count == 0 ? "未发现重复卡" : "发现 " + matches.Count + " 条已有记录");
             }
             catch (Exception exception)
             {
@@ -195,7 +233,43 @@ namespace Pms.AccessCardAgent
                     result = "retry",
                     errorMessage = exception.Message
                 });
+                RecordActivity("检查卡号", task.icCardNo, false, exception.Message);
             }
+        }
+
+        private void HandleAccessPermissions(AccessPermissionTask task)
+        {
+            try
+            {
+                var permissions = AccessGatewayDatabase.FindPermissions(
+                    _config,
+                    LoadSecret("iccard-db-password.dat"),
+                    task.cards);
+                _api.ReportAccessPermissions(new AccessPermissionReport
+                {
+                    snapshotId = task.snapshotId,
+                    result = "success",
+                    permissions = permissions
+                });
+                RecordActivity("查询门禁权限", DescribeCards(task.cards), true, "已核对 " + permissions.Length + " 张卡的设备权限");
+            }
+            catch (Exception exception)
+            {
+                _api.ReportAccessPermissions(new AccessPermissionReport
+                {
+                    snapshotId = task.snapshotId,
+                    result = "retry",
+                    errorMessage = exception.Message
+                });
+                RecordActivity("查询门禁权限", DescribeCards(task.cards), false, exception.Message);
+            }
+        }
+
+        private static string DescribeCards(AccessPermissionTaskCard[] cards)
+        {
+            if (cards == null || cards.Length == 0) return "未提供卡号";
+            var first = !String.IsNullOrWhiteSpace(cards[0].wgCardNo) ? cards[0].wgCardNo : cards[0].icCardNo;
+            return cards.Length == 1 ? first : first + " 等 " + cards.Length + " 张卡";
         }
 
         private void Handle(AgentTask task, bool hasReader)
@@ -239,12 +313,17 @@ namespace Pms.AccessCardAgent
                         _config,
                         LoadSecret("iccard-db-password.dat"),
                         task);
+                    var controllerResults = AccessControllerUploader.Upload(
+                        _config,
+                        LoadSecret("iccard-db-password.dat"),
+                        task);
                     _api.Report(new AgentReport
                     {
                         itemId = task.itemId,
-                        result = "access_db_written",
-                        controllerResults = results
+                        result = "success",
+                        controllerResults = controllerResults
                     });
+                    RecordActivity("下发门禁权限", task.wgCardNo, true, "数据库写入和控制器下发完成");
                 }
                 catch (Exception exception)
                 {
@@ -254,6 +333,7 @@ namespace Pms.AccessCardAgent
                         result = "retry",
                         errorMessage = exception.Message
                     });
+                    RecordActivity("下发门禁权限", task.wgCardNo, false, exception.Message);
                 }
                 return;
             }
@@ -275,6 +355,19 @@ namespace Pms.AccessCardAgent
         private void SetConnectionState(bool connected, string message)
         {
             if (_connectionState != null) _connectionState(connected, message);
+        }
+
+        private void RecordActivity(string operation, string target, bool success, string message)
+        {
+            if (_activity == null) return;
+            _activity(new AgentActivity
+            {
+                OccurredAt = DateTimeOffset.Now,
+                Operation = operation,
+                Target = target,
+                Success = success,
+                Message = message
+            });
         }
     }
 }

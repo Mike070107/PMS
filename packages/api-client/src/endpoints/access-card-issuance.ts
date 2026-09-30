@@ -3,6 +3,15 @@ import { request } from '../request';
 export type AccessSystem = 'mjsystem' | 'iccard' | null;
 export type ProjectPhase = 'phase1' | 'phase2';
 
+export interface AccessCardPermissionResult {
+  wgCardNo: string;
+  accessSystem: 'mjsystem' | 'iccard';
+  buildingNo: string | null;
+  controller: string | null;
+  door: string;
+  sourceTable: 'MJ_MacPower' | 't_d_Privilege';
+}
+
 export interface AccessCardHistoryRow {
   id: number;
   sequence: number;
@@ -12,7 +21,7 @@ export interface AccessCardHistoryRow {
   issuedAt: string | null;
   accessStatus: string;
   legacySyncStatus: string;
-  controllerResults: Array<Record<string, unknown>>;
+  controllerResults: AccessCardPermissionResult[];
 }
 
 export interface AccessCardHouseContext {
@@ -39,7 +48,13 @@ export interface AccessCardHouseContext {
   issuedCount: number;
   nextSequence: number;
   history: AccessCardHistoryRow[];
-  historySources: { pms: boolean; legacy80: boolean; message: string };
+  historySources: {
+    pms: boolean;
+    legacy80: boolean;
+    accessPermissions: boolean;
+    accessPermissionsMessage: string;
+    message: string;
+  };
 }
 
 export interface AccessCardIssueItem {
@@ -252,6 +267,12 @@ export const createBatch = (data: {
 
 export const batch = (id: number) =>
   request<AccessCardIssueBatch>({ url: `/access-card-issuance/batches/${id}` });
+
+export const retryAccessUpload = (batchId: number, itemId: number) =>
+  request<AccessCardIssueBatch>({
+    url: `/access-card-issuance/batches/${batchId}/items/${itemId}/retry-access`,
+    method: 'POST',
+  });
 
 export const simulateNext = (id: number) =>
   request<AccessCardIssueBatch>({

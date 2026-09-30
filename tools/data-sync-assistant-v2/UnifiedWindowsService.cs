@@ -10,6 +10,14 @@ using Microsoft.Win32;
 
 namespace Pms.DataSyncAssistant
 {
+    internal sealed class UpgradeProgressState
+    {
+        public int Percent { get; set; }
+        public string Message { get; set; }
+        public bool Failed { get; set; }
+        public string UpdatedAt { get; set; }
+    }
+
     internal sealed class UnifiedWindowsService : ServiceBase
     {
         private readonly ManualResetEvent _stop = new ManualResetEvent(false);
@@ -97,6 +105,14 @@ namespace Pms.DataSyncAssistant
     internal static class UnifiedServiceManager
     {
         public const string ServiceName = "PmsDataSyncAssistant";
+        private static string UpgradeProgressPath
+        {
+            get
+            {
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "PMS", "DataSyncAssistant", "upgrade-progress.json");
+            }
+        }
 
         public static void Install()
         {
@@ -160,39 +176,87 @@ namespace Pms.DataSyncAssistant
 
         public static void UpgradeFromLegacy()
         {
-            var store = new ConfigurationStore();
-            var configuration = store.Load();
-            new LegacyConfigurationMigrator(store).ImportKnownLocations(configuration);
-            configuration = store.Load();
-            var enabled = configuration.Connections.Where(item => item.Enabled).ToList();
-            if (enabled.Count == 0) throw new InvalidOperationException("没有找到可升级的旧版连接配置，请先打开助手完成连接设置");
-
-            foreach (var item in enabled)
-            {
-                var password = store.GetSecret(ConnectionAgentRuntime.PasswordKey(item));
-                var local = ConnectionTester.Test(item, password);
-                if (!local.Success) throw new InvalidOperationException(item.Name + "：" + local.Summary);
-                ConnectionAgentRuntime.TestPms(item, configuration.Host, store);
-            }
-
-            var legacyServices = enabled.Select(item => LegacyServiceName(item.Type))
-                .Where(name => name != null && ServiceExists(name)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            foreach (var service in legacyServices) StopService(service);
+            WriteUpgradeProgress(5, "正在读取并备份现有连接配置…", false);
             try
             {
-                var healthPath = Path.Combine(store.RootPath, "health.json");
-                if (File.Exists(healthPath)) File.Delete(healthPath);
-                Install();
-                if (!WaitForHealthy(store, enabled.Select(item => item.Id).ToArray(), TimeSpan.FromSeconds(55)))
-                    throw new InvalidOperationException("新版服务启动后未能在规定时间内同时通过本地检测和 PMS 心跳");
-                foreach (var service in legacyServices) RunSc("delete \"" + service + "\"");
+                var store = new ConfigurationStore();
+                var configuration = store.Load();
+                new LegacyConfigurationMigrator(store).ImportKnownLocations(configuration);
+                configuration = store.Load();
+                var enabled = configuration.Connections.Where(item => item.Enabled).ToList();
+                if (enabled.Count == 0) throw new InvalidOperationException("没有找到可升级的旧版连接配置，请先打开助手完成连接设置");
+
+                WriteUpgradeProgress(20, "正在测试本机数据连接…", false);
+                foreach (var item in enabled)
+                {
+                    var password = store.GetSecret(ConnectionAgentRuntime.PasswordKey(item));
+                    var local = ConnectionTester.Test(item, password);
+                    if (!local.Success) throw new InvalidOperationException(item.Name + "：" + local.Summary);
+                    ConnectionAgentRuntime.TestPms(item, configuration.Host, store);
+                }
+
+                WriteUpgradeProgress(42, "连接测试通过，正在停止旧版后台服务…", false);
+                var legacyServices = enabled.Select(item => LegacyServiceName(item.Type))
+                    .Where(name => name != null && ServiceExists(name)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                foreach (var service in legacyServices) StopService(service);
+                try
+                {
+                    WriteUpgradeProgress(60, "正在安装并启动新版后台服务…", false);
+                    var healthPath = Path.Combine(store.RootPath, "health.json");
+                    if (File.Exists(healthPath)) File.Delete(healthPath);
+                    Install();
+                    WriteUpgradeProgress(78, "新版服务已启动，正在验证 PMS 心跳和本机数据…", false);
+                    if (!WaitForHealthy(store, enabled.Select(item => item.Id).ToArray(), TimeSpan.FromSeconds(55)))
+                        throw new InvalidOperationException("新版服务启动后未能在规定时间内同时通过本地检测和 PMS 心跳");
+                    WriteUpgradeProgress(94, "验证通过，正在清理旧版服务…", false);
+                    foreach (var service in legacyServices) RunSc("delete \"" + service + "\"");
+                    WriteUpgradeProgress(100, "后台服务已更新并验证在线", false);
+                }
+                catch (Exception exception)
+                {
+                    try { Uninstall(); } catch { }
+                    foreach (var service in legacyServices) RunSc("start \"" + service + "\"");
+                    throw new InvalidOperationException("新版验证失败，已恢复旧版服务。原因：" + exception.Message, exception);
+                }
             }
             catch (Exception exception)
             {
-                try { Uninstall(); } catch { }
-                foreach (var service in legacyServices) RunSc("start \"" + service + "\"");
-                throw new InvalidOperationException("新版验证失败，已恢复旧版服务。原因：" + exception.Message, exception);
+                WriteUpgradeProgress(0, "更新未完成：" + exception.Message, true);
+                throw;
             }
+        }
+
+        public static void ResetUpgradeProgress()
+        {
+            try { if (File.Exists(UpgradeProgressPath)) File.Delete(UpgradeProgressPath); }
+            catch { }
+        }
+
+        public static UpgradeProgressState GetUpgradeProgress()
+        {
+            try
+            {
+                if (!File.Exists(UpgradeProgressPath)) return null;
+                return new JavaScriptSerializer().Deserialize<UpgradeProgressState>(File.ReadAllText(UpgradeProgressPath));
+            }
+            catch { return null; }
+        }
+
+        private static void WriteUpgradeProgress(int percent, string message, bool failed)
+        {
+            var path = UpgradeProgressPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var temporary = path + ".new";
+            var value = new UpgradeProgressState
+            {
+                Percent = Math.Max(0, Math.Min(100, percent)),
+                Message = message,
+                Failed = failed,
+                UpdatedAt = DateTimeOffset.Now.ToString("o")
+            };
+            File.WriteAllText(temporary, new JavaScriptSerializer().Serialize(value));
+            if (File.Exists(path)) File.Replace(temporary, path, path + ".previous", true);
+            else File.Move(temporary, path);
         }
 
         public static bool Exists()
@@ -270,7 +334,13 @@ namespace Pms.DataSyncAssistant
                 Verb = "runas"
             });
             process.WaitForExit();
-            if (process.ExitCode != 0) throw new InvalidOperationException("操作未完成，请确认管理员授权提示");
+            if (process.ExitCode != 0)
+            {
+                var progress = GetUpgradeProgress();
+                throw new InvalidOperationException(progress != null && progress.Failed
+                    ? progress.Message
+                    : "操作未完成，请确认管理员授权提示");
+            }
         }
 
         private static void RequireSc(string arguments)

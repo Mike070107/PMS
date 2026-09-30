@@ -65,8 +65,14 @@ namespace Pms.AccessCardAgent
                     int sequence;
                     if (!LegacyDatabase.TrySequence("228/5/301", "228/05/301/6", out sequence) || sequence != 6)
                         throw new InvalidOperationException("旧库房号序号解析测试失败");
+                    if (!LegacyDatabase.TrySequence("228/2/102", "已隐藏228/02/102/5", out sequence) || sequence != 5)
+                        throw new InvalidOperationException("旧库已隐藏房号解析测试失败");
+                    if (!LegacyDatabase.TrySequence("228/02/102", "228/2/102/4", out sequence) || sequence != 4)
+                        throw new InvalidOperationException("旧库楼号前导零兼容测试失败");
                     if (LegacyDatabase.TrySequence("228/5/301", "228/5/30/6", out sequence))
                         throw new InvalidOperationException("相似房号隔离测试失败");
+                    if (LegacyDatabase.TrySequence("228/2/102", "已隐藏228/02/101/5", out sequence))
+                        throw new InvalidOperationException("不同室号隔离测试失败");
                     if (AgentConfig.NormalizeAgentId("legacy_sync-legacy_sync-a8c6fe8239867d2e") != "legacy_sync-a8c6fe8239867d2e")
                         throw new InvalidOperationException("代理 ID 粘贴容错测试失败");
                     if (AgentConfig.NormalizeAgentId("parking_gateway-parking_gateway-a8c6fe8239867d2e") != "parking_gateway-a8c6fe8239867d2e")

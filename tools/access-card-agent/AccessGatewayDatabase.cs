@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data.OleDb;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Pms.AccessCardAgent
 {
@@ -22,6 +23,16 @@ namespace Pms.AccessCardAgent
         public string status { get; set; }
         public string databaseRecord { get; set; }
         public string[] doors { get; set; }
+    }
+
+    internal sealed class AccessPermissionResult
+    {
+        public string wgCardNo { get; set; }
+        public string accessSystem { get; set; }
+        public string buildingNo { get; set; }
+        public string controller { get; set; }
+        public string door { get; set; }
+        public string sourceTable { get; set; }
     }
 
     /** .88 门禁数据库探测和受控幂等写入。 */
@@ -61,6 +72,132 @@ namespace Pms.AccessCardAgent
             if (results.Count != task.targetBuildings.Length)
                 throw new InvalidOperationException("存在未配置门禁系统的目标楼栋");
             return results.ToArray();
+        }
+
+        /** 只读核验历史卡在两套楼栋门禁数据库中的实际门权限。 */
+        public static AccessPermissionResult[] FindPermissions(
+            AgentConfig config,
+            string password,
+            AccessPermissionTaskCard[] cards)
+        {
+            var results = new List<AccessPermissionResult>();
+            var requested = (cards ?? new AccessPermissionTaskCard[0])
+                .Where(item => item != null && !String.IsNullOrWhiteSpace(item.wgCardNo))
+                .Select(item => item.wgCardNo.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (requested.Length == 0) return results.ToArray();
+
+            using (var connection = Open(config.MjSystemDatabasePath, null, "MjSystem"))
+            {
+                foreach (var cardNo in requested)
+                    ReadMjPermissions(connection, cardNo, results);
+            }
+            using (var connection = Open(config.IcCardDatabasePath, password, "iCCard"))
+            {
+                foreach (var cardNo in requested)
+                    ReadIcCardPermissions(connection, cardNo, results);
+            }
+            return results
+                .GroupBy(item => String.Join("\u0000", new[] {
+                    item.wgCardNo, item.accessSystem, item.controller, item.door
+                }), StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToArray();
+        }
+
+        private static void ReadMjPermissions(
+            OleDbConnection connection,
+            string cardNo,
+            List<AccessPermissionResult> output)
+        {
+            const string sql =
+                "SELECT P.cCardNo,P.cDoorId,D.vDoorName,M.vExposition " +
+                "FROM (MJ_MacPower AS P LEFT JOIN MJ_DoorInfo AS D ON P.cDoorId=D.cDoorId) " +
+                "LEFT JOIN MJ_MacInfo AS M ON D.cMacId=M.cMacId WHERE P.cCardNo=?";
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = sql;
+                command.Parameters.AddWithValue("@card", cardNo);
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var doorId = Text(reader, "cDoorId");
+                        var doorName = Text(reader, "vDoorName");
+                        var controller = Text(reader, "vExposition");
+                        output.Add(new AccessPermissionResult
+                        {
+                            wgCardNo = cardNo,
+                            accessSystem = "mjsystem",
+                            buildingNo = ExtractBuildingNo(doorName, controller),
+                            controller = EmptyToNull(controller),
+                            door = String.IsNullOrWhiteSpace(doorName) ? doorId : doorName,
+                            sourceTable = "MJ_MacPower"
+                        });
+                    }
+                }
+            }
+        }
+
+        private static void ReadIcCardPermissions(
+            OleDbConnection connection,
+            string cardNo,
+            List<AccessPermissionResult> output)
+        {
+            const string sql =
+                "SELECT I.f_CardNO,D.f_DoorName,C.f_ControllerName " +
+                "FROM (((t_b_IDCard AS I INNER JOIN t_b_Consumer AS U ON I.f_ConsumerID=U.f_ConsumerID) " +
+                "INNER JOIN t_d_Privilege AS P ON U.f_ConsumerID=P.f_ConsumerID) " +
+                "INNER JOIN t_b_Door AS D ON P.f_DoorID=D.f_DoorID) " +
+                "INNER JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID " +
+                "WHERE I.f_CardNO=?";
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = sql;
+                command.Parameters.AddWithValue("@card", cardNo);
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var doorName = Text(reader, "f_DoorName");
+                        var controller = Text(reader, "f_ControllerName");
+                        output.Add(new AccessPermissionResult
+                        {
+                            wgCardNo = cardNo,
+                            accessSystem = "iccard",
+                            buildingNo = ExtractBuildingNo(doorName, controller),
+                            controller = EmptyToNull(controller),
+                            door = doorName,
+                            sourceTable = "t_d_Privilege"
+                        });
+                    }
+                }
+            }
+        }
+
+        private static string Text(OleDbDataReader reader, string field)
+        {
+            var value = reader[field];
+            return value == null || value == DBNull.Value ? "" : Convert.ToString(value).Trim();
+        }
+
+        private static string EmptyToNull(string value)
+        {
+            return String.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        private static string ExtractBuildingNo(params string[] values)
+        {
+            foreach (var value in values)
+            {
+                if (String.IsNullOrWhiteSpace(value)) continue;
+                var match = Regex.Match(value, @"(?<!\d)(\d{1,3})\s*(?:号|#)?(?:楼|幢|栋|大门)", RegexOptions.IgnoreCase);
+                if (!match.Success) continue;
+                var normalized = match.Groups[1].Value.TrimStart('0');
+                return normalized.Length == 0 ? "0" : normalized;
+            }
+            return null;
         }
 
         private static IEnumerable<object> ActivateMjSystem(AgentConfig config, AgentTask task, AccessTargetBuilding[] targets)
@@ -188,6 +325,7 @@ namespace Pms.AccessCardAgent
         // 目前只开放已在真实库写入并读回验证的两条路由。
         private static string[] MjDoors(string buildingNo)
         {
+            if (NormalizeBuilding(buildingNo) == "3") return new[] { "M0041-1" };
             if (NormalizeBuilding(buildingNo) == "26") return new[] { "M0038-1", "M0003-1", "M0030-1" };
             throw new InvalidOperationException(buildingNo + " 号楼 MjSystem 实体门映射尚未验收");
         }

@@ -38,6 +38,7 @@
     <Compile Include="AgentManagerForm.cs" />
     <Compile Include="AgentStatus.cs" />
     <Compile Include="AccessGatewayDatabase.cs" />
+    <Compile Include="AccessControllerUploader.cs" />
     <Compile Include="CardReader.cs" />
     <Compile Include="LegacyDatabase.cs" />
     <Compile Include="ParkingDatabase.cs" />

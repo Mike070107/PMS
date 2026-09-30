@@ -44,8 +44,8 @@ namespace Pms.DataSyncAssistant
             }
             if (e.Args.Length > 0 && e.Args[0] == "--upgrade-from-legacy")
             {
-                try { UnifiedServiceManager.UpgradeFromLegacy(); MessageBox.Show("新版后台服务已验证在线，旧版服务已经卸载。", "升级完成", MessageBoxButton.OK, MessageBoxImage.Information); Shutdown(0); }
-                catch (Exception exception) { MessageBox.Show(exception.Message, "升级未完成", MessageBoxButton.OK, MessageBoxImage.Error); Shutdown(1); }
+                try { UnifiedServiceManager.UpgradeFromLegacy(); Shutdown(0); }
+                catch { Shutdown(1); }
                 return;
             }
             if (e.Args.Length > 0 && e.Args[0] == "--self-test")
@@ -60,6 +60,20 @@ namespace Pms.DataSyncAssistant
                 catch (Exception exception)
                 {
                     System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PmsDataSyncAssistant-wizard-test.log"), exception.ToString());
+                    Shutdown(1);
+                }
+                return;
+            }
+            if (e.Args.Length > 0 && e.Args[0] == "--test-building3-controller")
+            {
+                try
+                {
+                    MessageBox.Show(Building3ControllerTest.Run(), "3号楼门禁验收成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                    Shutdown(0);
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(exception.Message, "3号楼门禁验收未完成", MessageBoxButton.OK, MessageBoxImage.Error);
                     Shutdown(1);
                 }
                 return;

@@ -43,6 +43,8 @@ namespace Pms.DataSyncAssistant
 
                 VerifyRuntimeMapping(store, config);
                 VerifyAccessGatewayMigration(root);
+                VerifyLegacyRoomMatching();
+                VerifyActivityHistory(root);
             }
             finally
             {
@@ -94,9 +96,12 @@ namespace Pms.DataSyncAssistant
             if (!ConnectionAgentRuntime.CanStart(access, store, out error))
                 throw new InvalidOperationException("完整代理配置未通过运行校验：" + error);
 
-            var capabilities = AgentLoop.BuildCapabilities(mapped, true, false, true);
+            var capabilities = AgentLoop.BuildCapabilities(mapped, true, false, true, false);
             if (!capabilities["accessDbWrite"] || capabilities["controllerUpload"])
                 throw new InvalidOperationException("门禁数据库与控制器能力没有独立上报");
+            capabilities = AgentLoop.BuildCapabilities(mapped, true, false, true, true);
+            if (!capabilities["controllerUpload"])
+                throw new InvalidOperationException("控制器通信组件就绪后未上报下发能力");
 
             var json = "{\"action\":\"activate_access\",\"itemId\":8,\"wgCardNo\":\"22355403\",\"targetBuildings\":[{\"id\":11,\"buildingNo\":\"11\",\"accessSystem\":\"iccard\"}]}";
             var task = new JavaScriptSerializer().Deserialize<AgentTask>(json);
@@ -144,6 +149,42 @@ namespace Pms.DataSyncAssistant
         {
             var entropy = Encoding.UTF8.GetBytes("PMS.AccessCardAgent.v1");
             File.WriteAllBytes(path, ProtectedData.Protect(Encoding.UTF8.GetBytes(value), entropy, DataProtectionScope.LocalMachine));
+        }
+
+        private static void VerifyLegacyRoomMatching()
+        {
+            int sequence;
+            if (!LegacyDatabase.TrySequence("228/2/102", "已隐藏228/02/102/5", out sequence) || sequence != 5)
+                throw new InvalidOperationException("已隐藏的旧库房号未被识别");
+            if (!LegacyDatabase.TrySequence("228/02/102", "228/2/102/4", out sequence) || sequence != 4)
+                throw new InvalidOperationException("旧库楼号前导零兼容失败");
+            if (LegacyDatabase.TrySequence("228/2/102", "已隐藏228/02/101/5", out sequence))
+                throw new InvalidOperationException("旧库模糊查询把不同室号合并了");
+        }
+
+        private static void VerifyActivityHistory(string root)
+        {
+            var activityRoot = Path.Combine(root, "activities");
+            ActivityStore.Record(activityRoot, "legacy-1", "枫桦一二期小区大门门禁系统接入", new AgentActivity
+            {
+                OccurredAt = DateTimeOffset.Now.AddSeconds(-1),
+                Operation = "查询门禁卡",
+                Target = "228/2/102",
+                Success = true,
+                Message = "查到 5 张历史卡"
+            });
+            ActivityStore.Record(activityRoot, "legacy-1", "枫桦一二期小区大门门禁系统接入", new AgentActivity
+            {
+                OccurredAt = DateTimeOffset.Now,
+                Operation = "查询门禁卡",
+                Target = "228/2/103",
+                Success = false,
+                Message = "数据库连接失败"
+            });
+            var activities = ActivityStore.Load(activityRoot);
+            if (activities.Count != 2 || activities[0].Target != "228/2/103" || activities[0].Success ||
+                activities[1].Target != "228/2/102" || !activities[1].Success)
+                throw new InvalidOperationException("最近活动没有按时间保存查询成功和失败状态");
         }
     }
 }

@@ -3,7 +3,9 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.IO;
+using System.Reflection;
 using System.ServiceProcess;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Controls;
@@ -19,6 +21,12 @@ namespace Pms.DataSyncAssistant
         private bool _pmsConnected;
         private bool _backgroundStartAttempted;
         public ObservableCollection<ConnectionViewModel> Connections { get; private set; }
+        public ObservableCollection<ActivityViewModel> Activities { get; private set; }
+        public string AppVersion { get { return Assembly.GetExecutingAssembly().GetName().Version.ToString(3); } }
+        public string AssistantInfoHeader { get { return "助手信息    版本 " + AppVersion; } }
+        public string ActivityHeader { get { return "最近活动    " + Activities.Count + " 条"; } }
+        public bool HasActivities { get { return Activities.Count > 0; } }
+        public bool HasNoActivities { get { return Activities.Count == 0; } }
         public string HostName { get { return _configuration.Host.Name; } }
         public string HostIp { get { return _configuration.Host.IpAddress; } }
         public string HostDisplay { get { return HostName + " · " + HostIp; } }
@@ -52,6 +60,7 @@ namespace Pms.DataSyncAssistant
             new LegacyConfigurationMigrator(store).ImportKnownLocations(_configuration);
             Connections = new ObservableCollection<ConnectionViewModel>(
                 _configuration.Connections.Select(item => new ConnectionViewModel(item)));
+            Activities = new ObservableCollection<ActivityViewModel>();
             DataContext = this;
             InitializeComponent();
             _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
@@ -59,6 +68,7 @@ namespace Pms.DataSyncAssistant
             _statusTimer.Start();
             Closed += delegate { _statusTimer.Stop(); };
             RefreshRuntimeStatus();
+            RefreshActivities();
             Loaded += delegate { EnsureBackgroundRunning(false); };
         }
 
@@ -92,7 +102,7 @@ namespace Pms.DataSyncAssistant
 
         private void CheckUpdate_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("当前版本 2.1.2 已包含 PMS 心跳、任务领取、旧版配置迁移和 TLS 1.2 安全连接。", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("当前助手版本：" + AppVersion + "\n\n“安装 / 更新后台服务”只会让后台服务使用当前助手版本，不会把版本号写成固定文字。要升级助手程序，请先下载新版程序再运行。", "版本信息", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void UninstallService_Click(object sender, RoutedEventArgs e)
@@ -109,8 +119,42 @@ namespace Pms.DataSyncAssistant
 
         private void InstallService_Click(object sender, RoutedEventArgs e)
         {
-            try { UnifiedServiceManager.RunElevated("--upgrade-from-legacy"); RaiseStatus(); }
-            catch (Exception exception) { MessageBox.Show(exception.Message, "安装失败", MessageBoxButton.OK, MessageBoxImage.Error); }
+            InstallServiceButton.IsEnabled = false;
+            InstallServiceButton.Content = "正在更新…";
+            UpgradeProgressPanel.Visibility = Visibility.Visible;
+            UpgradeProgressBar.Value = 2;
+            UpgradePercentText.Text = "2%";
+            UpgradeStatusText.Text = "正在请求 Windows 管理员授权…";
+            UnifiedServiceManager.ResetUpgradeProgress();
+            var operation = Task.Factory.StartNew(delegate { UnifiedServiceManager.RunElevated("--upgrade-from-legacy"); });
+            var progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
+            progressTimer.Tick += delegate
+            {
+                var progress = UnifiedServiceManager.GetUpgradeProgress();
+                if (progress != null)
+                {
+                    UpgradeProgressBar.Value = progress.Percent;
+                    UpgradePercentText.Text = progress.Percent + "%";
+                    UpgradeStatusText.Text = progress.Message;
+                }
+                if (!operation.IsCompleted) return;
+                progressTimer.Stop();
+                InstallServiceButton.IsEnabled = true;
+                InstallServiceButton.Content = "安装 / 更新后台服务";
+                if (operation.IsFaulted)
+                {
+                    var exception = operation.Exception == null ? new InvalidOperationException("未知错误") : operation.Exception.GetBaseException();
+                    UpgradeStatusText.Text = "更新未完成：" + exception.Message;
+                    UpgradePercentText.Text = "失败";
+                    MessageBox.Show("后台服务更新未完成，现有配置不会丢失。\n\n" + exception.Message, "更新未完成", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+                UpgradeProgressBar.Value = 100;
+                UpgradePercentText.Text = "100%";
+                UpgradeStatusText.Text = "后台服务已更新并验证在线";
+                RefreshRuntimeStatus();
+            };
+            progressTimer.Start();
         }
 
         private void EnsureBackgroundRunning(bool forceRestart)
@@ -192,6 +236,17 @@ namespace Pms.DataSyncAssistant
             catch { }
             _pmsConnected = anyPmsConnected;
             RaiseStatus();
+            RefreshActivities();
+        }
+
+        private void RefreshActivities()
+        {
+            var records = ActivityStore.Load(_store.RootPath).Take(20).ToList();
+            Activities.Clear();
+            foreach (var record in records) Activities.Add(new ActivityViewModel(record));
+            Raise("ActivityHeader");
+            Raise("HasActivities");
+            Raise("HasNoActivities");
         }
 
         private static bool GetServiceRunning()

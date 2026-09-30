@@ -54,6 +54,12 @@ import { agentTokenMatches, issueAgentSecret } from './agent-auth';
 import { effectiveAgentStatus, orderAgentsByAvailability } from './agent-status';
 import { DeliyunParkingService } from './deliyun-parking.service';
 import { diffParkingSnapshot, type ParkingSnapshotValues } from './parking-history.util';
+import type {
+  AccessCardPermissionEntry,
+  AccessCardPermissionSubject,
+} from '../../entities/access-card-legacy-snapshot.entity';
+import type { AccessPermissionReportDto } from './dto';
+import { sortAccessCardHistoryNewestFirst, verifiedHistoryAccessStatus } from './access-card-history.util';
 
 type HouseContext = {
   house: House;
@@ -105,7 +111,19 @@ export class AccessCardIssuanceService {
       this.requestLegacyHistory(tenantId, context.legacyStorageRoomKey, user.id),
     ]);
     const legacyReady = legacySnapshot.refreshedAt !== null;
-    const history = this.mergeHistory(pmsHistory, legacyReady ? legacySnapshot.history : [], context.phase);
+    const permissionSubjects = context.phase === 'phase2'
+      ? this.permissionSubjects(pmsHistory, legacyReady ? legacySnapshot.history : [])
+      : [];
+    const permissionSnapshot = context.phase === 'phase2'
+      ? await this.requestAccessPermissions(legacySnapshot, permissionSubjects, user.id)
+      : legacySnapshot;
+    const history = this.mergeHistory(
+      pmsHistory,
+      legacyReady ? legacySnapshot.history : [],
+      context.phase,
+      permissionSnapshot.permissionStatus,
+      permissionSnapshot.permissions,
+    );
 
     return {
       house: {
@@ -137,6 +155,12 @@ export class AccessCardIssuanceService {
       historySources: {
         pms: true,
         legacy80: legacyReady,
+        accessPermissions: context.phase === 'phase1' || permissionSnapshot.permissionStatus === 'ready',
+        accessPermissionsMessage: context.phase === 'phase1'
+          ? '一期楼栋门禁不需要核验'
+          : permissionSnapshot.permissionStatus === 'ready'
+            ? `已按门禁权限表核验 ${permissionSubjects.length} 张卡`
+            : permissionSnapshot.permissionLastError || '正在从 MjSystem / iCCard 权限表核验控制器权限',
         message: legacyReady
           ? `已合并 192.168.1.80 历史记录，旧库下一序号 #${legacySnapshot.nextSequence}`
           : legacySnapshot.lastError || '暂未取得 192.168.1.80 的历史记录，如需重新查询，请点击“刷新历史”',
@@ -157,6 +181,10 @@ export class AccessCardIssuanceService {
       agent.kind === 'access_gateway' &&
       effectiveAgentStatus(agent) === 'online' &&
       agent.capabilities?.accessDbWrite === true);
+    const controllerUpload = agents.some((agent) =>
+      agent.kind === 'access_gateway' &&
+      effectiveAgentStatus(agent) === 'online' &&
+      agent.capabilities?.controllerUpload === true);
     return {
       simulationEnabled,
       features: {
@@ -165,7 +193,7 @@ export class AccessCardIssuanceService {
         accessDbWrite,
         parkingDbRead: true,
         parkingDbWrite,
-        controllerUpload: false,
+        controllerUpload,
       },
       agents: orderAgentsByAvailability(agents).map((agent) => ({
         id: agent.agentKey,
@@ -555,7 +583,8 @@ export class AccessCardIssuanceService {
     // 停车网关使用独立的停车任务队列。在该队列落地前必须返回空，
     // 绝不能落入门禁的 legacy_sync 分支而误领发卡任务。
     if (agent.kind === 'parking_gateway') return { task: null, retryAfterMs: 2500 };
-    if (agent.kind === 'access_gateway' && agent.capabilities?.accessDbWrite !== true) {
+    if (agent.kind === 'access_gateway' &&
+        (agent.capabilities?.accessDbWrite !== true || agent.capabilities?.controllerUpload !== true)) {
       return { task: null, retryAfterMs: 2500 };
     }
     const now = new Date();
@@ -816,6 +845,73 @@ export class AccessCardIssuanceService {
     return { ok: true, snapshotId: snapshot.id };
   }
 
+  async claimAccessPermissions(agentKey: string, token: string) {
+    const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind !== 'access_gateway') throw new ForbiddenException('只有楼栋门禁网关可以查询卡片权限');
+    const now = new Date();
+    const leaseExpiresAt = new Date(now.getTime() + 60_000);
+    return this.legacySnapshotRepo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(AccessCardLegacySnapshot);
+      const snapshot = await repo.createQueryBuilder('snapshot')
+        .where('snapshot.tenant_id = :tenantId', { tenantId: agent.tenantId })
+        .andWhere('snapshot.permission_status = :status', { status: 'pending' })
+        .andWhere('(snapshot.permission_lease_expires_at IS NULL OR snapshot.permission_lease_expires_at < :now)', { now })
+        .orderBy('snapshot.permission_requested_at', 'ASC')
+        .setLock('pessimistic_write')
+        .setOnLocked('skip_locked')
+        .getOne();
+      if (!snapshot) return { task: null, retryAfterMs: 2500 };
+      snapshot.permissionStatus = 'running';
+      snapshot.permissionLeaseAgentKey = agent.agentKey;
+      snapshot.permissionLeaseExpiresAt = leaseExpiresAt;
+      await repo.save(snapshot);
+      return {
+        task: {
+          action: 'query_access_permissions',
+          snapshotId: snapshot.id,
+          cards: snapshot.permissionSubjects,
+          leaseExpiresAt: leaseExpiresAt.toISOString(),
+        },
+      };
+    });
+  }
+
+  async reportAccessPermissions(agentKey: string, token: string, dto: AccessPermissionReportDto) {
+    const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind !== 'access_gateway') throw new ForbiddenException('只有楼栋门禁网关可以上报卡片权限');
+    const snapshot = await this.legacySnapshotRepo.findOne({
+      where: { id: dto.snapshotId, tenantId: agent.tenantId },
+    });
+    if (!snapshot) throw new NotFoundException('卡片权限查询任务不存在');
+    if (snapshot.permissionLeaseAgentKey !== agent.agentKey) {
+      throw new ForbiddenException('卡片权限查询租约不属于当前代理');
+    }
+    if (dto.result === 'success') {
+      const requestedCards = new Set(snapshot.permissionSubjects.map((item) => item.wgCardNo));
+      snapshot.permissions = (dto.permissions ?? [])
+        .map((row) => ({
+          wgCardNo: row.wgCardNo.trim(),
+          accessSystem: row.accessSystem,
+          buildingNo: row.buildingNo?.trim() || null,
+          controller: row.controller?.trim() || null,
+          door: row.door.trim(),
+          sourceTable: row.sourceTable,
+        }))
+        .filter((row) => requestedCards.has(row.wgCardNo) && row.door.length > 0);
+      snapshot.permissionStatus = 'ready';
+      snapshot.permissionRefreshedAt = new Date();
+      snapshot.permissionLastError = null;
+    } else {
+      snapshot.permissionStatus = dto.result === 'retry' ? 'pending' : 'error';
+      snapshot.permissionLastError = dto.errorMessage?.trim() || '楼栋门禁权限查询失败';
+    }
+    snapshot.permissionLeaseAgentKey = null;
+    snapshot.permissionLeaseExpiresAt = null;
+    snapshot.updatedBy = null;
+    await this.legacySnapshotRepo.save(snapshot);
+    return { ok: true, snapshotId: snapshot.id, status: snapshot.permissionStatus };
+  }
+
   async reportAgentTask(agentKey: string, token: string, dto: AgentReportDto) {
     const agent = await this.authenticateAgent(agentKey, token);
     if (agent.kind === 'parking_gateway') {
@@ -983,6 +1079,24 @@ export class AccessCardIssuanceService {
     return { ...batch, items, deliverable: this.isDeliverable(batch, items) };
   }
 
+  /** 只重试楼栋门禁控制器下发，不重复写实体卡或旧库人员数据。 */
+  async retryAccessUpload(batchId: number, itemId: number, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const item = await this.itemRepo.findOne({ where: { id: itemId, batchId, tenantId } });
+    if (!item) throw new NotFoundException('发卡记录不存在');
+    if (!['waiting_retry', 'needs_operator'].includes(item.accessStatus)) {
+      throw new BadRequestException('当前门禁下载状态不需要重试');
+    }
+    item.accessStatus = 'waiting_retry';
+    item.lastErrorRef = null;
+    item.lastErrorMessage = null;
+    item.leaseAgentKey = null;
+    item.leaseExpiresAt = null;
+    item.updatedBy = user.id;
+    await this.itemRepo.save(item);
+    return this.getBatch(batchId, user);
+  }
+
   /** 开发/验收环境模拟实体卡、二期数据库和控制器全部成功。生产环境不可调用。 */
   async simulateNext(id: number, user: AuthUser) {
     this.assertSimulation();
@@ -1084,6 +1198,14 @@ export class AccessCardIssuanceService {
         leaseAgentKey: null,
         leaseExpiresAt: null,
         lastError: null,
+        permissionStatus: 'idle',
+        permissionSubjects: [],
+        permissions: [],
+        permissionRequestedAt: null,
+        permissionRefreshedAt: null,
+        permissionLeaseAgentKey: null,
+        permissionLeaseExpiresAt: null,
+        permissionLastError: null,
         createdBy: userId,
         updatedBy: userId,
       }));
@@ -1096,6 +1218,66 @@ export class AccessCardIssuanceService {
       snapshot.lastError = null;
       snapshot.updatedBy = userId;
       await this.legacySnapshotRepo.save(snapshot);
+    }
+    return snapshot;
+  }
+
+  private permissionSubjects(
+    pmsHistory: Array<{ icCardNo: string | null; wgCardNo: string | null }>,
+    legacyHistory: AccessCardLegacySnapshot['history'],
+  ): AccessCardPermissionSubject[] {
+    const subjects = new Map<string, AccessCardPermissionSubject>();
+    const add = (icCardNo: string | null, wgCardNo: string | null) => {
+      const normalizedIc = icCardNo?.trim().toUpperCase() || '';
+      let normalizedWg = wgCardNo?.trim() || '';
+      if (!normalizedWg && /^[0-9A-F]{8}$/.test(normalizedIc)) normalizedWg = icToWg(normalizedIc);
+      if (!normalizedWg) return;
+      subjects.set(normalizedWg, { icCardNo: normalizedIc, wgCardNo: normalizedWg });
+    };
+    pmsHistory.forEach((row) => add(row.icCardNo, row.wgCardNo));
+    legacyHistory.forEach((row) => add(row.icCardNo, null));
+    return Array.from(subjects.values()).sort((a, b) =>
+      a.wgCardNo.localeCompare(b.wgCardNo, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
+  }
+
+  private async requestAccessPermissions(
+    snapshot: AccessCardLegacySnapshot,
+    subjects: AccessCardPermissionSubject[],
+    userId: number,
+  ) {
+    const now = new Date();
+    const subjectSignature = JSON.stringify(subjects);
+    const storedSignature = JSON.stringify(snapshot.permissionSubjects ?? []);
+    const subjectsChanged = subjectSignature !== storedSignature;
+    const stale = !snapshot.permissionRefreshedAt
+      || now.getTime() - snapshot.permissionRefreshedAt.getTime() > 30_000;
+
+    if (!subjects.length) {
+      if (snapshot.permissionStatus !== 'ready' || snapshot.permissions.length) {
+        snapshot.permissionStatus = 'ready';
+        snapshot.permissionSubjects = [];
+        snapshot.permissions = [];
+        snapshot.permissionRequestedAt = now;
+        snapshot.permissionRefreshedAt = now;
+        snapshot.permissionLeaseAgentKey = null;
+        snapshot.permissionLeaseExpiresAt = null;
+        snapshot.permissionLastError = null;
+        snapshot.updatedBy = userId;
+        return this.legacySnapshotRepo.save(snapshot);
+      }
+      return snapshot;
+    }
+
+    if (subjectsChanged || (stale && !['pending', 'running'].includes(snapshot.permissionStatus))) {
+      snapshot.permissionStatus = 'pending';
+      snapshot.permissionSubjects = subjects;
+      if (subjectsChanged) snapshot.permissions = [];
+      snapshot.permissionRequestedAt = now;
+      snapshot.permissionLeaseAgentKey = null;
+      snapshot.permissionLeaseExpiresAt = null;
+      snapshot.permissionLastError = null;
+      snapshot.updatedBy = userId;
+      return this.legacySnapshotRepo.save(snapshot);
     }
     return snapshot;
   }
@@ -1114,7 +1296,25 @@ export class AccessCardIssuanceService {
     }>,
     legacyHistory: AccessCardLegacySnapshot['history'],
     phase: 'phase1' | 'phase2',
+    permissionStatus: AccessCardLegacySnapshot['permissionStatus'],
+    permissions: AccessCardPermissionEntry[],
   ) {
+    const permissionsByCard = new Map<string, AccessCardPermissionEntry[]>();
+    for (const permission of permissions) {
+      const key = permission.wgCardNo.trim();
+      const rows = permissionsByCard.get(key) ?? [];
+      rows.push(permission);
+      permissionsByCard.set(key, rows);
+    }
+    const withVerifiedPermissions = (row: (typeof pmsHistory)[number]) => {
+      if (phase === 'phase1') return row;
+      const cardPermissions = row.wgCardNo ? permissionsByCard.get(row.wgCardNo.trim()) ?? [] : [];
+      return {
+        ...row,
+        accessStatus: verifiedHistoryAccessStatus(phase, permissionStatus, cardPermissions.length),
+        controllerResults: cardPermissions,
+      };
+    };
     const byIc = new Map<string, (typeof pmsHistory)[number]>();
     for (const row of pmsHistory) {
       if (row.icCardNo) byIc.set(row.icCardNo.toUpperCase(), row);
@@ -1125,28 +1325,28 @@ export class AccessCardIssuanceService {
         const existing = row.icCardNo ? byIc.get(row.icCardNo.toUpperCase()) : undefined;
         if (existing) {
           byIc.delete(row.icCardNo!.toUpperCase());
-          return {
+          return withVerifiedPermissions({
             ...existing,
             sequence: row.sequence,
             legacyPersonNo: row.personNo,
             issuedAt: row.issuedAt || existing.issuedAt,
             legacySyncStatus: 'synced',
-          };
+          });
         }
-        return {
+        return withVerifiedPermissions({
           id: -row.personId,
           sequence: row.sequence,
           legacyPersonNo: row.personNo,
           icCardNo: row.icCardNo,
           wgCardNo: phase === 'phase2' && row.icCardNo ? icToWg(row.icCardNo) : null,
           issuedAt: row.issuedAt,
-          accessStatus: phase === 'phase1' ? 'not_required' : 'controller_uploaded',
+          accessStatus: phase === 'phase1' ? 'not_required' : 'permission_check_pending',
           legacySyncStatus: 'synced',
           controllerResults: [],
-        };
+        });
       });
-    merged.push(...Array.from(byIc.values()));
-    return merged.sort((a, b) => b.sequence - a.sequence || Number(b.id) - Number(a.id));
+    merged.push(...Array.from(byIc.values()).map(withVerifiedPermissions));
+    return sortAccessCardHistoryNewestFirst(merged);
   }
 
   private async authenticateAgent(agentKey: string, token: string): Promise<AccessCardAgent> {

@@ -17,7 +17,7 @@ namespace Pms.DataSyncAssistant
     /** Runs one existing PMS agent protocol session for one configured connection. */
     internal sealed class ConnectionAgentRuntime : IDisposable
     {
-        public const string RuntimeVersion = "2.1.2";
+        public const string RuntimeVersion = "2.2.2";
         private readonly ConnectionConfiguration _connection;
         private readonly ConfigurationStore _store;
         private readonly HostConfiguration _host;
@@ -78,7 +78,10 @@ namespace Pms.DataSyncAssistant
                 var loop = new AgentLoop(config, api, delegate(string ignored)
                 {
                     return _store.GetSecret(PasswordKey(_connection));
-                }, SetState);
+                }, SetState, delegate(AgentActivity activity)
+                {
+                    ActivityStore.Record(_store.RootPath, _connection.Id, _connection.Name, activity);
+                });
                 loop.Run(_stop);
             }
             catch (Exception exception)

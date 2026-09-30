@@ -22,6 +22,7 @@ import { AccessCardIssuanceService } from './access-card-issuance.service';
 import {
   AgentHeartbeatDto,
   AgentReportDto,
+  AccessPermissionReportDto,
   CardPreflightDto,
   CreateAccessCardIssueDto,
   EnrollAccessCardAgentDto,
@@ -109,6 +110,16 @@ export class AccessCardIssuanceController {
   @RequirePermission('business', 'view')
   getBatch(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.service.getBatch(id, user);
+  }
+
+  @Post('batches/:batchId/items/:itemId/retry-access')
+  @RequirePermission('business', 'edit')
+  retryAccessUpload(
+    @Param('batchId', ParseIntPipe) batchId: number,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.retryAccessUpload(batchId, itemId, user);
   }
 
   @Post('batches/:id/simulate-next')
@@ -213,6 +224,23 @@ export class AccessCardAgentController {
     @Body() dto: LegacyHistoryReportDto,
   ) {
     return this.service.reportLegacyHistory(agentKey, bearerToken(authorization), dto);
+  }
+
+  @Post('access-permissions/claim')
+  claimAccessPermissions(
+    @Headers('x-agent-id') agentKey: string,
+    @Headers('authorization') authorization: string,
+  ) {
+    return this.service.claimAccessPermissions(agentKey, bearerToken(authorization));
+  }
+
+  @Post('access-permissions/report')
+  reportAccessPermissions(
+    @Headers('x-agent-id') agentKey: string,
+    @Headers('authorization') authorization: string,
+    @Body() dto: AccessPermissionReportDto,
+  ) {
+    return this.service.reportAccessPermissions(agentKey, bearerToken(authorization), dto);
   }
 
   @Post('parking/queries/claim')

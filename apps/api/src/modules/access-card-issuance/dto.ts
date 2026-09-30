@@ -219,6 +219,53 @@ export class LegacyHistoryReportDto {
   errorMessage?: string;
 }
 
+export class AccessPermissionEntryDto {
+  @IsString()
+  @MaxLength(20)
+  wgCardNo: string;
+
+  @IsIn(['mjsystem', 'iccard'])
+  accessSystem: 'mjsystem' | 'iccard';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  buildingNo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  controller?: string;
+
+  @IsString()
+  @MaxLength(120)
+  door: string;
+
+  @IsIn(['MJ_MacPower', 't_d_Privilege'])
+  sourceTable: 'MJ_MacPower' | 't_d_Privilege';
+}
+
+export class AccessPermissionReportDto {
+  @Type(() => Number)
+  @IsInt()
+  snapshotId: number;
+
+  @IsIn(['success', 'retry', 'failed'])
+  result: 'success' | 'retry' | 'failed';
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5000)
+  @ValidateNested({ each: true })
+  @Type(() => AccessPermissionEntryDto)
+  permissions?: AccessPermissionEntryDto[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  errorMessage?: string;
+}
+
 export class CreateParkingQueryDto {
   @IsString()
   @MinLength(2)

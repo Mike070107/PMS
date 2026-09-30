@@ -57,11 +57,13 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Models.cs" />
     <Compile Include="ConfigurationStore.cs" />
+    <Compile Include="ActivityStore.cs" />
     <Compile Include="LegacyConfigurationMigrator.cs" />
     <Compile Include="SelfTest.cs" />
     <Compile Include="ConnectionTester.cs" />
     <Compile Include="UnifiedWindowsService.cs" />
     <Compile Include="ConnectionAgentRuntime.cs" />
+    <Compile Include="Building3ControllerTest.cs" />
     <Compile Include="TrayApplication.cs" />
     <Compile Include="..\access-card-agent\AgentConfig.cs"><Link>Adapters\AgentConfig.cs</Link></Compile>
     <Compile Include="..\access-card-agent\AgentApiClient.cs"><Link>Adapters\AgentApiClient.cs</Link></Compile>
@@ -70,6 +72,7 @@
     <Compile Include="..\access-card-agent\SecretStore.cs"><Link>Adapters\SecretStore.cs</Link></Compile>
     <Compile Include="..\access-card-agent\LegacyDatabase.cs"><Link>Adapters\LegacyDatabase.cs</Link></Compile>
     <Compile Include="..\access-card-agent\AccessGatewayDatabase.cs"><Link>Adapters\AccessGatewayDatabase.cs</Link></Compile>
+    <Compile Include="..\access-card-agent\AccessControllerUploader.cs"><Link>Adapters\AccessControllerUploader.cs</Link></Compile>
     <Compile Include="..\access-card-agent\ParkingDatabase.cs"><Link>Adapters\ParkingDatabase.cs</Link></Compile>
     <Compile Include="..\access-card-agent\CardReader.cs">
       <Link>Adapters\CardReader.cs</Link>

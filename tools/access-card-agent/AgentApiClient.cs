@@ -9,7 +9,7 @@ namespace Pms.AccessCardAgent
 {
     internal sealed class AgentApiClient
     {
-        public const string Version = "0.6.0";
+        public const string Version = "0.6.2";
         private readonly AgentConfig _config;
         private readonly string _token;
         private readonly string _version;
@@ -63,6 +63,13 @@ namespace Pms.AccessCardAgent
             return _json.ConvertToType<LegacyCardCheckTask>(result["task"]);
         }
 
+        public AccessPermissionTask ClaimAccessPermissions()
+        {
+            var result = Post("/access-card-agent/access-permissions/claim", new Dictionary<string, object>());
+            if (!result.ContainsKey("task") || result["task"] == null) return null;
+            return _json.ConvertToType<AccessPermissionTask>(result["task"]);
+        }
+
         public void Report(AgentReport report)
         {
             Post("/access-card-agent/report", report);
@@ -81,6 +88,11 @@ namespace Pms.AccessCardAgent
         public void ReportLegacyCardCheck(LegacyCardCheckReport report)
         {
             Post("/access-card-agent/legacy-card-check/report", report);
+        }
+
+        public void ReportAccessPermissions(AccessPermissionReport report)
+        {
+            Post("/access-card-agent/access-permissions/report", report);
         }
 
         public Dictionary<string, object> CardPreflight(int itemId, string icCardNo)
@@ -201,6 +213,26 @@ namespace Pms.AccessCardAgent
         public int checkId { get; set; }
         public string result { get; set; }
         public List<LegacyCardMatch> matches { get; set; }
+        public string errorMessage { get; set; }
+    }
+
+    internal sealed class AccessPermissionTask
+    {
+        public int snapshotId { get; set; }
+        public AccessPermissionTaskCard[] cards { get; set; }
+    }
+
+    internal sealed class AccessPermissionTaskCard
+    {
+        public string icCardNo { get; set; }
+        public string wgCardNo { get; set; }
+    }
+
+    internal sealed class AccessPermissionReport
+    {
+        public int snapshotId { get; set; }
+        public string result { get; set; }
+        public AccessPermissionResult[] permissions { get; set; }
         public string errorMessage { get; set; }
     }
 }

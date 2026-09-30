@@ -21,7 +21,9 @@ import {
   CheckCircleOutlined,
   CreditCardOutlined,
   DatabaseOutlined,
+  EllipsisOutlined,
   ExperimentOutlined,
+  LeftOutlined,
   MinusOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -35,10 +37,12 @@ import {
   type AccessCardHistoryRow,
   type AccessCardHouseContext,
   type AccessCardIssueBatch,
+  type AccessCardPermissionResult,
   type AccessCardReadiness,
 } from '@pms/api-client';
 import type { AddressCommunity } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import CopyableSecret from '../components/CopyableSecret';
 import HouseAddressPicker, { type PickedAddress } from '../components/HouseAddressPicker';
 
 const { Text, Title } = Typography;
@@ -66,11 +70,16 @@ const PREVIEW_CONTEXT: AccessCardHouseContext = {
   issuedCount: 3,
   nextSequence: 4,
   history: [
-    { id: 3, sequence: 3, legacyPersonNo: null, icCardNo: 'A1B2C3D4', wgCardNo: '19545729', issuedAt: new Date().toISOString(), accessStatus: 'controller_uploaded', legacySyncStatus: 'pending', controllerResults: [] },
-    { id: 2, sequence: 2, legacyPersonNo: '11251', icCardNo: '11223344', wgCardNo: '05108721', issuedAt: '2026-09-22T02:20:00.000Z', accessStatus: 'controller_uploaded', legacySyncStatus: 'synced', controllerResults: [] },
-    { id: 1, sequence: 1, legacyPersonNo: '10982', icCardNo: '0A1B2C3D', wgCardNo: '04406922', issuedAt: '2025-12-16T01:08:00.000Z', accessStatus: 'controller_uploaded', legacySyncStatus: 'synced', controllerResults: [] },
+    { id: 3, sequence: 3, legacyPersonNo: null, icCardNo: 'A1B2C3D4', wgCardNo: '19545729', issuedAt: new Date().toISOString(), accessStatus: 'controller_uploaded', legacySyncStatus: 'pending', controllerResults: [
+      { wgCardNo: '19545729', accessSystem: 'iccard', buildingNo: '4', controller: '4号楼控制器', door: '4号大门', sourceTable: 't_d_Privilege' },
+      { wgCardNo: '19545729', accessSystem: 'iccard', buildingNo: '11', controller: '11号楼控制器', door: '11号大门', sourceTable: 't_d_Privilege' },
+      { wgCardNo: '19545729', accessSystem: 'iccard', buildingNo: '41', controller: '41号楼控制器', door: '41号大门', sourceTable: 't_d_Privilege' },
+      { wgCardNo: '19545729', accessSystem: 'iccard', buildingNo: '53', controller: '53号楼控制器', door: '53号大门', sourceTable: 't_d_Privilege' },
+    ] },
+    { id: 2, sequence: 2, legacyPersonNo: '11251', icCardNo: '11223344', wgCardNo: '05108721', issuedAt: '2026-09-22T02:20:00.000Z', accessStatus: 'not_uploaded', legacySyncStatus: 'synced', controllerResults: [] },
+    { id: 1, sequence: 1, legacyPersonNo: '10982', icCardNo: '0A1B2C3D', wgCardNo: '04406922', issuedAt: '2025-12-16T01:08:00.000Z', accessStatus: 'controller_uploaded', legacySyncStatus: 'synced', controllerResults: [{ wgCardNo: '04406922', accessSystem: 'mjsystem', buildingNo: '3', controller: '3号楼控制器', door: '3号楼大门', sourceTable: 'MJ_MacPower' }] },
   ],
-  historySources: { pms: true, legacy80: true, message: '已合并 192.168.1.80 历史记录' },
+  historySources: { pms: true, legacy80: true, accessPermissions: true, accessPermissionsMessage: '已按门禁权限表核验 3 张卡', message: '已合并 192.168.1.80 历史记录' },
 };
 
 const PREVIEW_READINESS: AccessCardReadiness = {
@@ -102,9 +111,73 @@ function systemLabel(value: AccessCardHouseContext['accessSystem']): string {
 function accessStatus(value: string) {
   if (value === 'not_required') return <Tag>不适用</Tag>;
   if (value === 'controller_uploaded') return <Tag color="success">已上传</Tag>;
-  if (value === 'waiting_retry') return <Tag color="warning">等待重试</Tag>;
-  if (value === 'needs_operator') return <Tag color="error">需要处理</Tag>;
+  if (value === 'not_uploaded') return <Tag color="error">未上传</Tag>;
+  if (value === 'permission_check_pending') return <Tag color="processing">权限核验中</Tag>;
+  if (value === 'permission_check_failed') return <Tag color="error">权限核验失败</Tag>;
+  if (value === 'waiting_retry') return <Tag color="error">下载失败 · 门禁控制器离线</Tag>;
+  if (value === 'needs_operator') return <Tag color="error">下载失败 · 需要处理</Tag>;
   return <Tag color="processing">处理中</Tag>;
+}
+
+function permissionLabel(item: AccessCardPermissionResult): string {
+  if (item.buildingNo) return `${item.buildingNo}号楼`;
+  return item.door || item.controller || '未命名门禁';
+}
+
+function ControllerPermissionCell({ row }: { row: AccessCardHistoryRow }) {
+  const [expanded, setExpanded] = useState(false);
+  const permissions = useMemo(() => {
+    const unique = new Map<string, AccessCardPermissionResult>();
+    for (const item of row.controllerResults ?? []) {
+      const label = permissionLabel(item);
+      if (!unique.has(label)) unique.set(label, item);
+    }
+    return Array.from(unique.values()).sort((a, b) =>
+      permissionLabel(a).localeCompare(permissionLabel(b), 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }));
+  }, [row.controllerResults]);
+  const visible = expanded ? permissions : permissions.slice(0, 2);
+
+  return (
+    <Space direction="vertical" size={4}>
+      {accessStatus(row.accessStatus)}
+      {permissions.length > 0 && (
+        <Flex gap={4} wrap="wrap" align="center">
+          {visible.map((item) => (
+            <Tag
+              key={`${item.accessSystem}-${item.buildingNo ?? item.door}`}
+              title={`${item.accessSystem === 'iccard' ? 'iCCard' : 'MjSystem'} · ${item.controller || '未记录控制器'} · ${item.door}`}
+            >
+              {permissionLabel(item)}
+            </Tag>
+          ))}
+          {!expanded && permissions.length > 2 && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EllipsisOutlined aria-hidden="true" />}
+              aria-label={`展开其余 ${permissions.length - 2} 个门栋权限`}
+              aria-expanded={false}
+              onClick={() => setExpanded(true)}
+            >
+              +{permissions.length - 2}
+            </Button>
+          )}
+          {expanded && permissions.length > 2 && (
+            <Button
+              type="link"
+              size="small"
+              icon={<LeftOutlined aria-hidden="true" />}
+              aria-label="收起门栋权限"
+              aria-expanded={true}
+              onClick={() => setExpanded(false)}
+            >
+              收起
+            </Button>
+          )}
+        </Flex>
+      )}
+    </Space>
+  );
 }
 
 function legacyStatus(value: string) {
@@ -160,6 +233,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const [batch, setBatch] = useState<AccessCardIssueBatch | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [simulating, setSimulating] = useState(false);
+  const [retryingItemId, setRetryingItemId] = useState<number | null>(null);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [agentKind, setAgentKind] = useState<'issuer' | 'access_gateway' | 'legacy_sync'>('issuer');
   const [agentName, setAgentName] = useState('办公室发卡器接入');
@@ -236,7 +310,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     if (preview) return;
     // The first request creates a local-agent task. Poll only this active selection
     // for a few seconds so the operator does not have to click refresh manually.
-    for (let attempt = 0; attempt < 5 && next && !next.historySources.legacy80; attempt += 1) {
+    for (let attempt = 0; attempt < 8 && next
+      && (!next.historySources.legacy80 || !next.historySources.accessPermissions); attempt += 1) {
       await new Promise((resolve) => window.setTimeout(resolve, 1_250));
       if (contextRequestRef.current !== requestId) return;
       next = await loadContext(houseId, true, true, requestId);
@@ -438,18 +513,48 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const currentSequence = Math.min(completedCount + 1, batch?.quantity ?? 1);
   const duplicateItem = batch?.items.find((item) => item.cardStatus === 'duplicate_card');
   const activeErrorItem = batch?.items.find((item) => item.cardStatus !== 'card_completed' && item.lastErrorMessage);
-  const history = (context?.history ?? []).map((item, index, items) => ({
-    ...item,
-    displayOrdinal: items.length - index,
-  }));
+  const accessFailedItem = batch?.items.find((item) => ['waiting_retry', 'needs_operator'].includes(item.accessStatus));
+
+  const retryAccessUpload = async (itemId: number) => {
+    if (!batch) return;
+    setRetryingItemId(itemId);
+    try {
+      const updated = await accessCardIssuance.retryAccessUpload(batch.id, itemId);
+      setBatch(updated);
+      message.success('已重新提交门禁控制器下载');
+    } catch (error: any) {
+      message.error(error?.message || '重新提交失败，请稍后重试');
+    } finally {
+      setRetryingItemId(null);
+    }
+  };
+  const history = (context?.history ?? [])
+    .slice()
+    .sort((a, b) => {
+      const aTime = a.issuedAt ? new Date(a.issuedAt).getTime() : Number.NEGATIVE_INFINITY;
+      const bTime = b.issuedAt ? new Date(b.issuedAt).getTime() : Number.NEGATIVE_INFINITY;
+      return (Number.isFinite(bTime) ? bTime : Number.NEGATIVE_INFINITY)
+        - (Number.isFinite(aTime) ? aTime : Number.NEGATIVE_INFINITY)
+        || b.sequence - a.sequence;
+    });
+  const accessGatewayReady = accessGateway?.status === 'online'
+    && accessGateway.capabilities?.accessDbWrite === true
+    && accessGateway.capabilities?.controllerUpload === true;
+  const accessGatewayDetail = accessGateway?.status !== 'online'
+    ? '未接入，不能修改现场数据'
+    : accessGateway.capabilities?.accessDbWrite !== true
+      ? '网关在线，但门禁数据库不可写'
+      : accessGateway.capabilities?.controllerUpload !== true
+        ? '数据库已连接，但控制器下发组件未就绪'
+        : '数据库和控制器下发均已就绪';
 
   const columns = [
-    { title: '序号', dataIndex: 'displayOrdinal', width: 76, fixed: 'left' as const, render: (value: number) => <strong>{value}</strong> },
+    { title: '发卡序号', dataIndex: 'sequence', width: 92, fixed: 'left' as const, render: (value: number) => <strong>{value}</strong> },
     { title: '捷顺系统编号', dataIndex: 'legacyPersonNo', width: 136, render: (value: string | null) => value || <Tag>同步中</Tag> },
     { title: 'IC 卡号', dataIndex: 'icCardNo', width: 150, render: (value: string | null) => value || '—' },
     { title: 'WG 卡号', dataIndex: 'wgCardNo', width: 130, render: (value: string | null) => value || <Text type="secondary">不适用</Text> },
     { title: '发卡时间', dataIndex: 'issuedAt', width: 180, render: formatTime },
-    { title: '控制器上传', dataIndex: 'accessStatus', width: 130, render: accessStatus },
+    { title: '控制器上传 / 门栋权限', key: 'controllerPermissions', width: 300, render: (_: unknown, row: AccessCardHistoryRow) => <ControllerPermissionCell row={row} /> },
     { title: '旧库同步', dataIndex: 'legacySyncStatus', width: 120, render: legacyStatus },
   ];
 
@@ -497,8 +602,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
             <HealthTile
               icon={<SafetyCertificateOutlined />}
               label="枫桦二期楼栋门禁系统接入"
-              state={accessGateway?.status === 'online' ? 'ready' : 'pending'}
-              detail={accessGateway?.status === 'online' ? '门禁网关在线' : '未接入，模拟模式不修改现场数据'}
+              state={accessGatewayReady ? 'ready' : 'pending'}
+              detail={accessGatewayDetail}
             />
           </Col>
         </Row>
@@ -645,6 +750,24 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                       />
                     )}
 
+                    {accessFailedItem && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message="下载失败，门禁控制器离线"
+                        description={accessFailedItem.lastErrorMessage || '未收到门禁控制器响应，请检查控制器供电、网络或串口连接后重试。'}
+                        action={(
+                          <Button
+                            icon={<ReloadOutlined />}
+                            loading={retryingItemId === accessFailedItem.id}
+                            onClick={() => void retryAccessUpload(accessFailedItem.id)}
+                          >
+                            重试
+                          </Button>
+                        )}
+                      />
+                    )}
+
                     <Descriptions size="small" column={{ xs: 1, md: 2 }}>
                       <Descriptions.Item label="房号">{batch.addressSnapshot}</Descriptions.Item>
                       <Descriptions.Item label="处理方式">{batch.projectPhase === 'phase1' ? '一期 · 只写卡' : `二期 · ${systemLabel(batch.accessSystem)}`}</Descriptions.Item>
@@ -707,12 +830,20 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                 message={context.historySources.message}
               />
             )}
-            <Table<AccessCardHistoryRow & { displayOrdinal: number }>
+            {context.historySources.legacy80 && !context.historySources.accessPermissions && (
+              <Alert
+                className="access-card-history-source"
+                type="info"
+                showIcon
+                message={context.historySources.accessPermissionsMessage}
+              />
+            )}
+            <Table<AccessCardHistoryRow>
               rowKey="id"
               columns={columns}
               dataSource={history}
               pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
-              scroll={{ x: 900 }}
+              scroll={{ x: 1080 }}
               locale={{ emptyText: <Empty description="这个房号还没有新系统发卡记录" /> }}
             />
           </Card>
@@ -731,8 +862,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         {agentCredential ? (
           <div className="access-card-agent-secret">
             <Alert type="warning" showIcon message="密钥只显示这一次" description={agentCredential.message} />
-            <label>一次性连接密钥</label>
-            <pre>{agentCredential.token}</pre>
+            <CopyableSecret label="一次性连接密钥" value={agentCredential.token} />
             <Text type="secondary">在对应电脑双击数据同步助手，只需粘贴上方连接密钥。代理 ID 会自动识别并固定保存；不要把密钥发到聊天、截图或配置仓库。</Text>
           </div>
         ) : (
