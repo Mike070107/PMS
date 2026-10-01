@@ -3768,3 +3768,11 @@
   - acc7aaf fix: accept Cloudflare OIDC state payloads
   - 3d2b5fe fix: sync reusable Cloudflare Access policies
 
+## 2026-10-01 22:55 · api · 96709b4
+
+- 包：`pms-api-20261001-2248.tar.gz`
+- 提交：96709b4 chore(web): refresh TypeScript build metadata
+- 自上次（34f0da9）以来上线的相关提交：
+  - 009e801 fix: protect domestic gateway from Cloudflare resync
+  - bc7c561 fix: expose OIDC user information to Cloudflare
+
