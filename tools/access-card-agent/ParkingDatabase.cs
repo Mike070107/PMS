@@ -849,6 +849,7 @@ ORDER BY s.[name], t.[name], c.column_id;";
 
         private static ParkingOwnerSource FindOwnerSourceFromForeignKey(SqlConnection connection)
         {
+            var candidates = new List<ParkingOwnerCandidate>();
             ParkingOwnerSource best = null;
             var bestScore = Int32.MinValue;
             using (var command = connection.CreateCommand())
@@ -868,28 +869,31 @@ ORDER BY rs.[name], rt.[name], rc.column_id;";
                 {
                     while (reader.Read())
                     {
-                        var candidate = new ParkingOwnerCandidate
+                        candidates.Add(new ParkingOwnerCandidate
                         {
                             Schema = reader.GetString(0),
                             Table = reader.GetString(1),
                             KeyColumn = reader.GetString(2)
-                        };
-                        var columns = LoadColumns(connection, candidate.Schema, candidate.Table);
-                        // 一个数据库可能给 Car_Issue.Owner_ID 建了多个外键；不能再用 TOP 1
-                        // 随机选表。住户更新必须选到包含备注列的完整住户表，否则会误报“备注列不存在”。
-                        var noteColumn = ResolveOwnerColumn(columns, "note", null);
-                        var score = OwnerCandidateScore(candidate, columns) + (noteColumn == null ? 0 : 1000);
-                        if (!HasOwnerOverlap(connection, candidate) || score <= bestScore) continue;
-                        bestScore = score;
-                        best = new ParkingOwnerSource
-                        {
-                            Schema = candidate.Schema,
-                            Table = candidate.Table,
-                            KeyColumn = candidate.KeyColumn,
-                            Columns = columns
-                        };
+                        });
                     }
                 }
+            }
+            foreach (var candidate in candidates)
+            {
+                var columns = LoadColumns(connection, candidate.Schema, candidate.Table);
+                // 一个数据库可能给 Car_Issue.Owner_ID 建了多个外键；不能再用 TOP 1
+                // 随机选表。住户更新必须选到包含备注列的完整住户表，否则会误报“备注列不存在”。
+                var noteColumn = ResolveOwnerColumn(columns, "note", null);
+                var score = OwnerCandidateScore(candidate, columns) + (noteColumn == null ? 0 : 1000);
+                if (!HasOwnerOverlap(connection, candidate) || score <= bestScore) continue;
+                bestScore = score;
+                best = new ParkingOwnerSource
+                {
+                    Schema = candidate.Schema,
+                    Table = candidate.Table,
+                    KeyColumn = candidate.KeyColumn,
+                    Columns = columns
+                };
             }
             return best;
         }
