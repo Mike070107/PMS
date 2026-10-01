@@ -49,6 +49,24 @@ function ChangedFiles([string] $target, [string[]] $paths) {
     return @(GitLines (@('diff', '--name-only', "$tag..HEAD", '--') + $paths))
 }
 
+function Test-DependencyChanges([string] $target, [string[]] $changedFiles) {
+    if (@($changedFiles | Where-Object { $_ -eq 'pnpm-lock.yaml' }).Count -gt 0) { return $true }
+    $tag = "refs/tags/deployed/$target"
+    $base = & git.exe -C $RepoRoot rev-parse --verify --quiet $tag 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $base) { return $false }
+    $dependencyFields = @('dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies', 'overrides', 'resolutions', 'engines', 'packageManager')
+    foreach ($path in @($changedFiles | Where-Object { $_ -match '(^|/)package\.json$' })) {
+        $before = (Git @('show', ($tag + ':' + $path))) | ConvertFrom-Json
+        $after = (Get-Content -LiteralPath (Join-Path $RepoRoot ($path -replace '/', '\')) -Raw) | ConvertFrom-Json
+        foreach ($field in $dependencyFields) {
+            $beforeValue = ConvertTo-Json $before.$field -Depth 30 -Compress
+            $afterValue = ConvertTo-Json $after.$field -Depth 30 -Compress
+            if ($beforeValue -ne $afterValue) { return $true }
+        }
+    }
+    return $false
+}
+
 function Make-WebPackage([string] $stamp) {
     Run '构建管理后台' { pnpm --filter '@pms/admin-web' build }
     $dist = Join-Path $RepoRoot 'apps\admin-web\dist'
@@ -59,9 +77,7 @@ function Make-WebPackage([string] $stamp) {
 }
 
 function Make-ApiPackage([string] $stamp, [string[]] $pending, [string[]] $changedFiles) {
-    $dependencyChanged = @($changedFiles | Where-Object {
-        $_ -match '(^|/)(pnpm-lock\.yaml|apps/api/package\.json|packages/[^/]+/package\.json)$'
-    }).Count -gt 0
+    $dependencyChanged = Test-DependencyChanges 'api' $changedFiles
 
     if ($dependencyChanged) {
         Write-Host '检测到依赖文件变化，使用完整 API 包（仅此类发布才重新携带 node_modules）。' -ForegroundColor Yellow
