@@ -42,8 +42,8 @@ try {
   Set-Content -LiteralPath (Join-Path $package 'frp-token') -Value $token -NoNewline -Encoding ascii
 
   $config = @'
-serverAddr = "124.223.179.214"
-serverPort = 7000
+serverAddr = "gateway.prsznh.cn"
+serverPort = 443
 loginFailExit = false
 
 auth.method = "token"
@@ -51,7 +51,10 @@ auth.additionalScopes = ["HeartBeats", "NewWorkConns"]
 auth.tokenSource.type = "file"
 auth.tokenSource.file.path = "C:/ProgramData/PMSGateway/frp-token"
 
-transport.protocol = "tcp"
+# Use WSS on 443 so the agent also works on LANs that block non-standard
+# outbound ports. Nginx terminates the public TLS connection and forwards the
+# WebSocket stream to frps on localhost:7000.
+transport.protocol = "wss"
 transport.tls.enable = true
 transport.tcpMux = true
 transport.poolCount = 10

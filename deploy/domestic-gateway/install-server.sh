@@ -85,9 +85,5 @@ install -m 0644 "$SCRIPT_DIR/oauth2-proxy-caiwu.service" /etc/systemd/system/oau
 systemctl daemon-reload
 systemctl enable --now frps.service oauth2-proxy-caiwu.service
 
-if command -v ufw >/dev/null 2>&1; then
-  ufw allow 7000/tcp comment 'PMS domestic gateway FRP' >/dev/null
-fi
-
 echo "installed frps ${FRP_VERSION} and oauth2-proxy ${OAUTH_VERSION}"
 systemctl --no-pager --full status frps.service oauth2-proxy-caiwu.service | sed -n '1,36p'

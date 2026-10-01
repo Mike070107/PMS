@@ -3,8 +3,12 @@
 ## 生产目标架构
 
 `https://<子域名>.prsznh.cn` 先由腾讯云 Nginx + oauth2-proxy 执行 PMS OIDC
-小程序扫码授权，再通过 FRP TLS 长连接转发到局域网网站。局域网代理只主动
+小程序扫码授权，再通过 FRP WSS 长连接转发到局域网网站。局域网代理只主动
 出站连接腾讯云，无需在路由器开放入站端口。
+
+代理固定连接 `gateway.prsznh.cn:443`。腾讯云 Nginx 终止 TLS 后把 WebSocket
+连接交给仅监听回环地址的 `frps`，因此也适用于禁止向外连接 7000 等非标准端口
+的企业网络。
 
 这是国内日常使用的正式链路，避免 Cloudflare Global Network 将国内请求路由到
 美国或欧洲节点。生产配置、安装脚本和验收门槛见

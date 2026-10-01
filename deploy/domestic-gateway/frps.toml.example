@@ -1,4 +1,6 @@
-bindAddr = "0.0.0.0"
+# frps is reached only through the local Nginx WSS endpoint on public 443.
+# Keeping 7000 loopback-only prevents bypassing TLS termination and egress-policy compatibility.
+bindAddr = "127.0.0.1"
 bindPort = 7000
 proxyBindAddr = "127.0.0.1"
 
@@ -7,7 +9,7 @@ auth.additionalScopes = ["HeartBeats", "NewWorkConns"]
 auth.tokenSource.type = "file"
 auth.tokenSource.file.path = "/etc/pms-gateway/frp-token"
 
-transport.tls.force = true
+transport.tls.force = false
 allowPorts = [
   { start = 18050, end = 18149 }
 ]
