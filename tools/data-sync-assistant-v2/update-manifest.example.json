@@ -1,5 +1,5 @@
 {
-  "version": "2.5.0",
+  "version": "2.5.1",
   "downloadUrl": "https://prsznh.cn/downloads/pms-data-sync-assistant/Pms.DataSyncAssistant.V2.exe",
   "sha256": "REPLACE_WITH_RELEASE_EXE_SHA256",
   "releaseNotes": "停车业务操作、失败重试与安全回滚；一键更新不修改本机配置和密钥。"

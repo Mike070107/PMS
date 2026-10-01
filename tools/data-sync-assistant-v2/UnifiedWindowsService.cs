@@ -18,6 +18,13 @@ namespace Pms.DataSyncAssistant
         public string UpdatedAt { get; set; }
     }
 
+    internal enum UpgradeFailureAction
+    {
+        KeepUnifiedRunning,
+        RestoreVerifiedLegacy,
+        RetryUnifiedWithoutFallback
+    }
+
     internal sealed class UnifiedWindowsService : ServiceBase
     {
         private readonly ManualResetEvent _stop = new ManualResetEvent(false);
@@ -53,6 +60,7 @@ namespace Pms.DataSyncAssistant
                 _runtimes.Add(runtime);
                 runtime.Start();
             }
+            var startupHealthDeadline = DateTime.UtcNow.AddMinutes(2);
             var nextUpdateCheck = DateTime.UtcNow.AddSeconds(45);
             while (!_stop.WaitOne(0))
             {
@@ -66,7 +74,13 @@ namespace Pms.DataSyncAssistant
                         catch { }
                     });
                 }
-                if (_stop.WaitOne(TimeSpan.FromSeconds(30))) break;
+                // During startup the agent heartbeat may become ready just after the first
+                // health snapshot.  Refresh quickly so an upgrade is never rolled back only
+                // because the next 30-second snapshot has not been written yet.
+                var healthInterval = DateTime.UtcNow < startupHealthDeadline
+                    ? TimeSpan.FromSeconds(3)
+                    : TimeSpan.FromSeconds(30);
+                if (_stop.WaitOne(healthInterval)) break;
             }
             foreach (var runtime in _runtimes) runtime.Stop(10000);
         }
@@ -274,9 +288,38 @@ namespace Pms.DataSyncAssistant
                 }
                 catch (Exception exception)
                 {
-                    try { Uninstall(); } catch { }
-                    foreach (var service in legacyServices) RunSc("start \"" + service + "\"");
-                    throw new InvalidOperationException("新版验证失败，已恢复旧版服务。原因：" + exception.Message, exception);
+                    var failureAction = ChooseFailureAction(IsRunningSafe(), legacyServices.Count);
+                    if (failureAction == UpgradeFailureAction.KeepUnifiedRunning)
+                    {
+                        // The service is alive and every connection passed the preflight PMS
+                        // heartbeat above.  A late/stale health.json must not take a working
+                        // machine offline.
+                        WriteUpgradeProgress(100, "新版服务已保持运行，连接状态仍在后台确认", false);
+                        return;
+                    }
+
+                    if (failureAction == UpgradeFailureAction.RestoreVerifiedLegacy)
+                    {
+                        foreach (var service in legacyServices) RunSc("start \"" + service + "\"");
+                        if (legacyServices.All(IsServiceRunning))
+                        {
+                            // Only remove the failed unified registration after the previous
+                            // services have actually been restored and verified as running.
+                            try { Uninstall(); } catch { }
+                            throw new InvalidOperationException("新版服务未能启动，已确认旧版服务恢复运行。原因：" + exception.Message, exception);
+                        }
+                    }
+
+                    // There is no verified legacy fallback.  Preserve the unified service
+                    // registration and retry it instead of leaving the machine with no
+                    // background service at all.
+                    try { Install(); } catch { }
+                    if (IsRunningSafe())
+                    {
+                        WriteUpgradeProgress(100, "旧版服务无法恢复，已重新启动新版服务", false);
+                        return;
+                    }
+                    throw new InvalidOperationException("新版服务未能启动，且没有可验证的旧版服务可恢复。新版服务配置和连接资料已保留，可直接重试启动。原因：" + exception.Message, exception);
                 }
             }
             catch (Exception exception)
@@ -322,6 +365,32 @@ namespace Pms.DataSyncAssistant
         public static bool Exists()
         {
             return ServiceController.GetServices().Any(item => String.Equals(item.ServiceName, ServiceName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsRunningSafe()
+        {
+            try { return IsRunning(); }
+            catch { return false; }
+        }
+
+        internal static UpgradeFailureAction ChooseFailureAction(bool unifiedServiceRunning, int legacyServiceCount)
+        {
+            if (unifiedServiceRunning) return UpgradeFailureAction.KeepUnifiedRunning;
+            if (legacyServiceCount > 0) return UpgradeFailureAction.RestoreVerifiedLegacy;
+            return UpgradeFailureAction.RetryUnifiedWithoutFallback;
+        }
+
+        private static bool IsServiceRunning(string serviceName)
+        {
+            try
+            {
+                using (var service = new ServiceController(serviceName))
+                {
+                    service.Refresh();
+                    return service.Status == ServiceControllerStatus.Running;
+                }
+            }
+            catch { return false; }
         }
 
         private static bool WaitForHealthy(ConfigurationStore store, string[] expectedIds, TimeSpan timeout)

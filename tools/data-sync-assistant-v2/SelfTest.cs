@@ -51,6 +51,7 @@ namespace Pms.DataSyncAssistant
                 VerifyActivityHistory(root);
                 VerifyAssistantUpdater(root);
                 VerifyProductUpdater();
+                VerifySafeUpgradeRecovery();
             }
             finally
             {
@@ -271,9 +272,9 @@ namespace Pms.DataSyncAssistant
             var updates = Path.Combine(root, "updates");
             Directory.CreateDirectory(updates);
             File.WriteAllText(Path.Combine(updates, "latest.json"),
-                "{\"version\":\"2.5.0\",\"releaseNotes\":\"本地清单测试\"}", Encoding.UTF8);
-            var result = AssistantUpdateService.CheckAndDownload("2.5.0", root);
-            if (result.HasUpdate || result.CurrentVersion != "2.5.0")
+                "{\"version\":\"2.5.1\",\"releaseNotes\":\"本地清单测试\"}", Encoding.UTF8);
+            var result = AssistantUpdateService.CheckAndDownload("2.5.1", root);
+            if (result.HasUpdate || result.CurrentVersion != "2.5.1")
                 throw new InvalidOperationException("助手更新清单版本比较失败");
         }
 
@@ -293,6 +294,17 @@ namespace Pms.DataSyncAssistant
             if (!Version.TryParse(UpdateManager.CurrentVersion, out current) || !Version.TryParse("99.0.0", out newer) ||
                 newer.CompareTo(current) <= 0)
                 throw new InvalidOperationException("版本比较逻辑失效");
+        }
+
+        private static void VerifySafeUpgradeRecovery()
+        {
+            if (UnifiedServiceManager.ChooseFailureAction(true, 0) != UpgradeFailureAction.KeepUnifiedRunning ||
+                UnifiedServiceManager.ChooseFailureAction(true, 2) != UpgradeFailureAction.KeepUnifiedRunning)
+                throw new InvalidOperationException("健康状态延迟会误停正在运行的新版服务");
+            if (UnifiedServiceManager.ChooseFailureAction(false, 2) != UpgradeFailureAction.RestoreVerifiedLegacy)
+                throw new InvalidOperationException("新版启动失败时未选择已存在的旧版回退路径");
+            if (UnifiedServiceManager.ChooseFailureAction(false, 0) != UpgradeFailureAction.RetryUnifiedWithoutFallback)
+                throw new InvalidOperationException("没有旧服务时仍可能卸载唯一的新版服务");
         }
     }
 }
