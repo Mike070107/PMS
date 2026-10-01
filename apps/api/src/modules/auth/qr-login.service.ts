@@ -12,8 +12,13 @@ import { LessThan, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { STAFF_APP_ROLES, UserRole, USER_ROLE_LABELS } from '../../common/enums';
 import { User, WebLoginTicket } from '../../entities';
-import { WebLoginTicketStatus } from '../../entities/web-login-ticket.entity';
+import {
+  OidcLoginRequest,
+  WebLoginTicketPurpose,
+  WebLoginTicketStatus,
+} from '../../entities/web-login-ticket.entity';
 import { AuthService } from './auth.service';
+import { OidcService } from './oidc.service';
 import { WechatService, type WxEnvVersion } from './wechat.service';
 
 /** 票据有效期。太长会让一张被拍走的码一直可用，太短又赶不上掏手机的时间 */
@@ -61,10 +66,18 @@ export class QrLoginService {
     private readonly wechat: WechatService,
     private readonly config: ConfigService,
     private readonly authService: AuthService,
+    private readonly oidcService: OidcService,
   ) {}
 
   /** 出码。返回 base64 图片，省掉为一张两分钟就作废的图走一趟对象存储 */
-  async createTicket(clientIp?: string, userAgent?: string) {
+  async createTicket(
+    clientIp?: string,
+    userAgent?: string,
+    options?: {
+      purpose: WebLoginTicketPurpose;
+      oidcRequest: OidcLoginRequest;
+    },
+  ) {
     const ticket = randomScene();
     const expiresAt = new Date(Date.now() + TICKET_TTL_SEC * 1000);
 
@@ -82,6 +95,8 @@ export class QrLoginService {
       this.ticketRepo.create({
         ticket,
         status: WebLoginTicketStatus.PENDING,
+        purpose: options?.purpose ?? WebLoginTicketPurpose.ADMIN,
+        oidcRequest: options?.oidcRequest ?? null,
         userId: null,
         expiresAt,
         confirmedAt: null,
@@ -106,6 +121,9 @@ export class QrLoginService {
   async pollStatus(ticketCode: string) {
     const row = await this.findTicket(ticketCode);
     if (!row) return { status: 'expired' as const };
+    if (row.purpose !== WebLoginTicketPurpose.ADMIN) {
+      return { status: 'expired' as const };
+    }
 
     if (this.isExpired(row)) {
       return { status: 'expired' as const };
@@ -133,6 +151,38 @@ export class QrLoginService {
     return { status: 'confirmed' as const, ...tokens };
   }
 
+  /** Cloudflare OIDC 授权页轮询；只返回一次性授权码跳转地址，不发 PMS JWT。 */
+  async pollExternalOidcStatus(ticketCode: string) {
+    const row = await this.findTicket(ticketCode);
+    if (!row || row.purpose !== WebLoginTicketPurpose.EXTERNAL_ACCESS_OIDC) {
+      return { status: 'expired' as const };
+    }
+    if (this.isExpired(row)) return { status: 'expired' as const };
+    if (row.status === WebLoginTicketStatus.CANCELLED) {
+      return { status: 'cancelled' as const };
+    }
+    if (row.status === WebLoginTicketStatus.CONSUMED) {
+      return { status: 'expired' as const };
+    }
+    if (row.status !== WebLoginTicketStatus.CONFIRMED || !row.userId || !row.oidcRequest) {
+      return { status: row.status as 'pending' | 'scanned' };
+    }
+
+    const claimed = await this.ticketRepo.update(
+      { id: row.id, status: WebLoginTicketStatus.CONFIRMED },
+      { status: WebLoginTicketStatus.CONSUMED, updatedBy: row.userId },
+    );
+    if (!claimed.affected) return { status: 'expired' as const };
+
+    await this.authService.requireExternalAccessUser(row.userId);
+    const redirectTo = await this.oidcService.createAuthorizationCode(
+      row.userId,
+      row.oidcRequest,
+    );
+    this.logger.log(`内网应用扫码授权成功：用户 #${row.userId}`);
+    return { status: 'confirmed' as const, redirectTo };
+  }
+
   /**
    * 小程序扫开后调这个，把「谁在哪台机器上要登录」告诉本人。
    * 只标记状态，不发任何令牌 —— 确认动作必须是本人再点一次。
@@ -155,6 +205,10 @@ export class QrLoginService {
       userAgent: row.userAgent,
       requestedAt: row.createdAt,
       expiresAt: row.expiresAt,
+      applicationName:
+        row.purpose === WebLoginTicketPurpose.EXTERNAL_ACCESS_OIDC
+          ? '内网应用访问'
+          : 'PMS 物业管理后台',
       me: {
         name: me?.name ?? null,
         roleLabel: me ? USER_ROLE_LABELS[me.role] ?? me.role : null,
@@ -175,7 +229,11 @@ export class QrLoginService {
 
     // 没有后台权限的人（没绑角色的维修工、保安等）在手机上就要看到原因，
     // 别让他点完确认、网页那边再报一句他看不见的错
-    await this.authService.issueWebTokensForUser(user.id);
+    if (row.purpose === WebLoginTicketPurpose.EXTERNAL_ACCESS_OIDC) {
+      await this.authService.requireExternalAccessUser(user.id);
+    } else {
+      await this.authService.issueWebTokensForUser(user.id);
+    }
 
     row.status = WebLoginTicketStatus.CONFIRMED;
     row.userId = user.id;

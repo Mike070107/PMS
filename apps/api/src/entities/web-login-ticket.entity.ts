@@ -10,6 +10,20 @@ export enum WebLoginTicketStatus {
   CANCELLED = 'cancelled', // 本人在手机上点了「不是我」
 }
 
+export enum WebLoginTicketPurpose {
+  ADMIN = 'admin',
+  EXTERNAL_ACCESS_OIDC = 'external_access_oidc',
+}
+
+export interface OidcLoginRequest {
+  clientId: string;
+  redirectUri: string;
+  state: string;
+  nonce?: string;
+  codeChallenge?: string;
+  codeChallengeMethod?: 'S256';
+}
+
 /**
  * 后台网页的微信扫码登录票据。
  *
@@ -32,6 +46,13 @@ export class WebLoginTicket extends BaseEntity {
 
   @Column({ type: 'varchar', length: 20, default: WebLoginTicketStatus.PENDING })
   status: WebLoginTicketStatus;
+
+  @Column({ type: 'varchar', length: 30, default: WebLoginTicketPurpose.ADMIN })
+  purpose: WebLoginTicketPurpose;
+
+  /** 仅内网应用 OIDC 登录使用；普通 PMS 后台扫码保持 null。 */
+  @Column({ name: 'oidc_request', type: 'jsonb', nullable: true })
+  oidcRequest: OidcLoginRequest | null;
 
   /** 确认授权的员工；确认前为 null */
   @Column({ name: 'user_id', type: 'int', nullable: true })

@@ -106,6 +106,8 @@ export const qrLoginStatus = (ticket: string) =>
 export interface QrLoginScanInfo {
   ticket: string;
   status: string;
+  /** 本次确认将登录的目标，如 PMS 后台或内网应用。 */
+  applicationName: string;
   /** 出码那台机器的 IP 和浏览器，本人据此判断是不是自己 */
   clientIp: string | null;
   userAgent: string | null;

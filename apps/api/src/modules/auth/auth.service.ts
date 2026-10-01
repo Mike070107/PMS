@@ -31,6 +31,8 @@ import {
   UserAudit,
   UserReportCommunity,
   UserRoleAssignment,
+  ExternalAccessApp,
+  ExternalAccessGrant,
 } from '../../entities';
 import { AccessService } from '../access/access.service';
 import { RbacSeedService } from '../access/rbac-seed.service';
@@ -72,6 +74,10 @@ export class AuthService {
     private readonly userRoleRepo: Repository<UserRoleAssignment>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
+    @InjectRepository(ExternalAccessGrant)
+    private readonly externalGrantRepo: Repository<ExternalAccessGrant>,
+    @InjectRepository(ExternalAccessApp)
+    private readonly externalAppRepo: Repository<ExternalAccessApp>,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly wechat: WechatService,
@@ -617,6 +623,37 @@ export class AuthService {
     await this.assertWebAdminAccess(user);
     await this.assertTenantActive(user);
     return this.issueTokens(user);
+  }
+
+  /** 通用内网应用准入：不要求 PMS 后台角色，只认独立的应用授权名单。 */
+  async requireExternalAccessUser(userId: number) {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('用户不存在');
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException('该账号已停用，请联系管理员');
+    }
+    if (!STAFF_APP_ROLES.includes(user.role as UserRole) || !user.wxOpenid) {
+      throw new ForbiddenException('请先在「邻修管理」小程序用登记的手机号完成登录绑定');
+    }
+    const grants = user.tenantId
+      ? await this.externalGrantRepo.find({ where: { tenantId: user.tenantId, userId } })
+      : [];
+    const apps = grants.length
+      ? await this.externalAppRepo.find({
+          where: {
+            id: In(grants.map((grant) => grant.appId)),
+            tenantId: user.tenantId!,
+            enabled: true,
+          },
+        })
+      : [];
+    if (!apps.length) {
+      throw new ForbiddenException(
+        '你还没有任何内网应用访问权限，请联系管理员授权',
+      );
+    }
+    await this.assertTenantActive(user);
+    return { user, appSlugs: apps.map((app) => app.slug) };
   }
 
   private async assertTenantActive(user: User) {

@@ -20,6 +20,7 @@ import {
   SafetyCertificateOutlined,
   ApartmentOutlined,
   CloudServerOutlined,
+  GlobalOutlined,
   MonitorOutlined,
   MenuOutlined,
   ReadOutlined,
@@ -105,6 +106,7 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
     title: '系统',
     items: [
       { key: '/settings', pageKey: 'settings', icon: <SettingOutlined />, label: '系统设置' },
+      { key: '/external-access', pageKey: 'settings', icon: <GlobalOutlined />, label: '内网应用发布' },
       { key: '/logs', pageKey: 'logs', icon: <MonitorOutlined />, label: '日志管理' },
     ],
   },
@@ -137,6 +139,7 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/offices': '划分管理处及其负责的小区范围',
   '/qr': '生成、下载并管理楼栋报修二维码',
   '/settings': '配置通知、识别与工单处理规则',
+  '/external-access': '发布内网网站、配置外网域名并管理扫码授权名单',
   '/logs': '查看登录与重要操作，分析使用情况、负载和异常告警',
   '/platform/tenants': '管理平台上的物业公司与功能授权',
 };
