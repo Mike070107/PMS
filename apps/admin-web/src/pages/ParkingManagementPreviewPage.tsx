@@ -351,7 +351,15 @@ export default function ParkingManagementPage({ preview = false }: { preview?: b
         <Tabs activeKey={tab} onChange={setTab} items={items} />
       </Card>
 
-      <NewVehicleDrawer open={newVehicleOpen} onClose={() => setNewVehicleOpen(false)} />
+      <NewVehicleDrawer
+        open={newVehicleOpen}
+        onClose={() => setNewVehicleOpen(false)}
+        onQueryPlate={(plate) => {
+          setNewVehicleOpen(false);
+          setQuery(plate);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+      />
       <VehicleDetailDrawer vehicle={detailVehicle} onClose={() => setDetailVehicle(null)} />
       <Modal
         title="注册停车系统本地网关"
@@ -454,7 +462,7 @@ function VehicleCard({ vehicle, onToggle, onDetail }: { vehicle: Vehicle; onTogg
   );
 }
 
-function NewVehicleDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+function NewVehicleDrawer({ open, onClose, onQueryPlate }: { open: boolean; onClose: () => void; onQueryPlate: (plate: string) => void }) {
   const [plate, setPlate] = useState('沪A');
   const [step, setStep] = useState<'plate' | 'details'>('plate');
   const [householdKey, setHouseholdKey] = useState(SEARCH_RESULTS[0].key);
@@ -514,7 +522,7 @@ function NewVehicleDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         <PlateKeyboard onKey={append} onBackspace={() => setPlate((value) => value.slice(0, -1))} onClear={() => setPlate('')} />
         <div className="parking-duplicate-result" aria-live="polite">
           {checking ? <div className="parking-checking"><SyncOutlined spin /> 正在跨系统查询…</div> : isExisting ? (
-            <Alert type="warning" showIcon message="该车牌已属于当前住户" description="不重复创建车辆。可直接打开现有车辆，为它增加其他停车区权限。" action={<Button type="primary" onClick={onClose}>打开现有车辆</Button>} />
+            <Alert type="warning" showIcon message="该车牌已属于当前住户" description="不重复创建车辆。可直接查询现有车辆，为它增加其他停车区权限。" action={<Button type="primary" icon={<SearchOutlined />} onClick={() => onQueryPlate(normalized)}>查询此车牌</Button>} />
           ) : normalized.length >= 7 ? (
             <Alert type="success" showIcon message="四个来源均未发现精确重复" description="最终提交时服务端会再次精确查重。" />
           ) : <Text type="secondary">继续输入完整车牌，系统会自动开始查重。</Text>}
