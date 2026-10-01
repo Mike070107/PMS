@@ -3860,3 +3860,12 @@
 - 自上次（55c80c8）以来上线的相关提交：
   - 73fac6a fix(parking): deduplicate joined vehicle results
 
+## 2026-10-02 05:24 · api · fc5706d
+
+- 包：`pms-api-fast-20261002-052333.tar.gz`
+- 提交：fc5706d deploy: ignore script-only package changes
+- 自上次（73fac6a）以来上线的相关提交：
+  - e15cdd5 feat(gateway): productize managed intranet publishing
+  - 0c953ab deploy: add incremental production publisher
+  - 4c45aa8 fix(parking): map legacy owner name to room
+
