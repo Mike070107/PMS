@@ -3751,3 +3751,11 @@
 - 自上次（bd2b03a）以来上线的相关提交：
   - d61f4f8 feat(parking): verify duplicate plate before registration
 
+## 2026-10-01 19:18 · api · acc7aaf
+
+- 包：`pms-api-20261001-1914.tar.gz`
+- 提交：acc7aaf fix: accept Cloudflare OIDC state payloads
+- 自上次（5f82814）以来上线的相关提交：
+  - acc7aaf fix: accept Cloudflare OIDC state payloads
+  - 3d2b5fe fix: sync reusable Cloudflare Access policies
+
