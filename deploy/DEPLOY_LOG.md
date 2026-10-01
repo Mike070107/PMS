@@ -3579,3 +3579,14 @@
   - 4de9227 feat(access): publish intranet apps through Cloudflare
   - 54d3c78 feat(parking): update legacy owner records through assistant
 
+## 2026-10-01 18:55 · web · 8955444
+
+- 包：`pms-web-20261001-1844.tar.gz`
+- 提交：8955444 chore: ignore local test artifacts
+- 说明：全部提交上线：停车管理、房号查询与助手入口
+- 自上次（f60cec9）以来上线的相关提交：
+  - cd2be96 feat: complete parking operations and assistant updates
+  - a6a87ff fix: clarify system alert notifications
+  - 4de9227 feat(access): publish intranet apps through Cloudflare
+  - 54d3c78 feat(parking): update legacy owner records through assistant
+
