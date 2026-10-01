@@ -122,6 +122,15 @@ test('authorization code is one-time and the signed token carries app grants', a
     ),
     true,
   );
+  assert.deepEqual(service.userinfo(`Bearer ${token.access_token}`), {
+    sub: 'pms:user:42',
+    email: 'pms-u42@auth.prsznh.cn',
+    email_verified: true,
+    name: '财务人员',
+    external_apps: ['caiwu', 'warehouse-report'],
+    tenant_id: 7,
+  });
+  assert.throws(() => service.userinfo('Bearer not-a-jwt'), /access token/);
   await assert.rejects(
     service.exchangeToken({
       grant_type: 'authorization_code',
@@ -131,6 +140,14 @@ test('authorization code is one-time and the signed token carries app grants', a
       client_secret: 'test-secret',
     }),
     /无效或已使用/,
+  );
+});
+
+test('discovery advertises the standards-compatible userinfo endpoint', () => {
+  const { service } = fixture();
+  assert.equal(
+    service.metadata().userinfo_endpoint,
+    'https://prsznh.cn/api/v1/auth/oidc/userinfo',
   );
 });
 

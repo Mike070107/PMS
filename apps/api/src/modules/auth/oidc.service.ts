@@ -13,6 +13,7 @@ import {
   randomBytes,
   sign,
   timingSafeEqual,
+  verify,
 } from 'node:crypto';
 import { IsNull, Repository } from 'typeorm';
 import { OidcAuthorizationCode } from '../../entities';
@@ -54,6 +55,7 @@ export class OidcService {
       issuer,
       authorization_endpoint: `${issuer}/authorize`,
       token_endpoint: `${issuer}/token`,
+      userinfo_endpoint: `${issuer}/userinfo`,
       jwks_uri: `${issuer}/jwks`,
       response_types_supported: ['code'],
       subject_types_supported: ['public'],
@@ -205,6 +207,65 @@ export class OidcService {
       id_token: idToken,
       scope: 'openid email profile',
     };
+  }
+
+  userinfo(authorizationHeader?: string) {
+    if (!authorizationHeader?.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Bearer access token required');
+    }
+    const cfg = this.requireEnabled();
+    const token = authorizationHeader.slice(7).trim();
+    const parts = token.split('.');
+    if (parts.length !== 3) throw new UnauthorizedException('access token 无效');
+
+    try {
+      const [encodedHeader, encodedPayload, encodedSignature] = parts;
+      const header = JSON.parse(Buffer.from(encodedHeader, 'base64url').toString('utf8')) as {
+        alg?: string;
+        kid?: string;
+      };
+      const claims = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as {
+        iss?: string;
+        aud?: string | string[];
+        sub?: string;
+        email?: string;
+        email_verified?: boolean;
+        name?: string;
+        external_apps?: string[];
+        tenant_id?: number;
+        exp?: number;
+      };
+      const audience = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+      const validSignature = verify(
+        'RSA-SHA256',
+        Buffer.from(`${encodedHeader}.${encodedPayload}`),
+        createPublicKey(cfg.privateKey),
+        Buffer.from(encodedSignature, 'base64url'),
+      );
+      if (
+        header.alg !== 'RS256' ||
+        header.kid !== cfg.keyId ||
+        !validSignature ||
+        claims.iss !== cfg.issuer ||
+        !audience.includes(cfg.clientId) ||
+        !claims.sub ||
+        !claims.email ||
+        typeof claims.exp !== 'number' ||
+        claims.exp <= Math.floor(Date.now() / 1000)
+      ) {
+        throw new Error('invalid claims');
+      }
+      return {
+        sub: claims.sub,
+        email: claims.email,
+        email_verified: claims.email_verified === true,
+        name: claims.name || claims.email,
+        external_apps: Array.isArray(claims.external_apps) ? claims.external_apps : [],
+        tenant_id: claims.tenant_id,
+      };
+    } catch {
+      throw new UnauthorizedException('access token 无效或已过期');
+    }
   }
 
   private signJwt(payload: object, privateKey: ReturnType<typeof createPrivateKey>, keyId: string) {

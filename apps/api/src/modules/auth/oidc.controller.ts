@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Header, Headers, Post, Query, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Headers,
+  HttpCode,
+  Post,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { randomBytes } from 'node:crypto';
 import { WebLoginTicketPurpose } from '../../entities/web-login-ticket.entity';
@@ -52,6 +63,7 @@ export class OidcController {
   }
 
   @Post('token')
+  @HttpCode(200)
   @Header('Cache-Control', 'no-store')
   @Header('Pragma', 'no-cache')
   token(
@@ -59,6 +71,21 @@ export class OidcController {
     @Headers('authorization') authorization?: string,
   ) {
     return this.oidc.exchangeToken(body, authorization);
+  }
+
+  @Get('userinfo')
+  @Header('Cache-Control', 'no-store')
+  @Header('Pragma', 'no-cache')
+  userinfo(@Headers('authorization') authorization?: string) {
+    return this.oidc.userinfo(authorization);
+  }
+
+  @Post('userinfo')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @Header('Pragma', 'no-cache')
+  userinfoPost(@Headers('authorization') authorization?: string) {
+    return this.oidc.userinfo(authorization);
   }
 
   private renderLoginPage(ticket: string, qrImage: string, nonce: string) {
