@@ -157,6 +157,32 @@ nginx -t && systemctl restart nginx
 
 ## 每次发布
 
+### 快速发布（推荐）
+
+日常只需要执行一个命令：
+
+```powershell
+.\deploy\publish-production.ps1 -Target auto  # 只构建并发布有待提交的 API / Web
+```
+
+脚本会先读取 `deployed/api`、`deployed/web` 标签并检查工作区。相关路径有未提交改动时会立即停止，避免把另一条会话的半成品带入生产。API 在依赖没有变化时只上传 `dist` 和运行元数据的快速包；只有 `pnpm-lock.yaml`、API `package.json` 或共享包依赖变化时才退回完整包，因此不会每次重复上传约 87MB 的 `node_modules`。也可以只发布一个目标：
+
+```powershell
+.\deploy\publish-production.ps1 -Target api
+.\deploy\publish-production.ps1 -Target web
+# 已确认本地标签与远端一致时可省略一次 fetch：
+.\deploy\publish-production.ps1 -Target web -NoFetch
+```
+
+发布完成后脚本会自动移动部署标记、追加 `DEPLOY_LOG.md`、推送提交和标签，并将本地每类历史包保留最近 3 份。服务器端 API 临时包保留最近 2 份，Web 回滚目录保留最近 3 份；这些是回滚保护，不是每次发布都重新上传的运行文件。需要手工整理本地历史包时可先预览，再执行：
+
+```powershell
+.\deploy\prune-local-packages.ps1 -WhatIf
+.\deploy\prune-local-packages.ps1
+```
+
+不要手动删除服务器正在使用的 `/opt/pms-repair/apps/api`、`/opt/pms-repair/web` 或 `web.bak.*`；临时包和回滚目录由部署脚本按保留数量清理。
+
 ### 本机打包（不本地运行服务）
 
 > 一键脚本：[deploy/pack.ps1](./pack.ps1)，等价于下方手工步骤，同时打 api 和 web。

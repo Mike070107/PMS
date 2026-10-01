@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# 同一时间只允许一个 Web 部署，避免两个发布同时移动当前目录、互相覆盖备份。
+exec 9>/tmp/pms-deploy-web.lock
+if ! flock -n 9; then
+  echo "另一个 Web 部署正在进行，先等它跑完再来" >&2
+  exit 1
+fi
+
 WEB=/opt/pms-repair/web
 # 传了包路径就部署那一个（回滚用）；不传才取 /tmp 里最新的（同 srv-deploy-api.sh，2026-09-06）
 PKG=${1:-$(ls -t /tmp/pms-web-*.tar.gz | head -1)}
@@ -33,3 +40,6 @@ head -5 "$WEB/index.html"
 echo '--- 保留最近 3 份 web 备份 ---'
 ls -dt /opt/pms-repair/web.bak.* 2>/dev/null | tail -n +4 | xargs -r sudo rm -rf
 ls -d /opt/pms-repair/web.bak.* 2>/dev/null
+
+echo '--- 清理旧临时包（各类型保留最近 2 份） ---'
+ls -t /tmp/pms-web-*.tar.gz 2>/dev/null | tail -n +3 | xargs -r rm -f
