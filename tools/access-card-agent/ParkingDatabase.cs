@@ -345,16 +345,29 @@ ORDER BY p.parameter_id;";
                 }
                 if (task.kind == "renew_vehicle")
                 {
+                    // Palte_extend 会把续期流水写入旧库 P_moneyKeep（“最近的充值延期车辆”）。
+                    // 该表的操作员必须使用旧库中预先建立的 PMS 账号，不能接受网页随意传入的名称。
+                    const string renewalOperator = "PMS";
+                    var renewalType = Number(payload, "feeType", 5);
                     using (var command = Procedure(connection, "Palte_extend"))
                     {
                         Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
-                        Add(command, "@type", SqlDbType.Int, 0, Number(payload, "feeType", 5));
+                        Add(command, "@type", SqlDbType.Int, 0, renewalType);
                         Add(command, "@P_money", SqlDbType.Float, 0, NumberDecimal(payload, "amount", 0));
                         Add(command, "@End_Time", SqlDbType.DateTime, 0, DateValue(payload, "endDate", DateTime.Today));
-                        Add(command, "@P_Admin", SqlDbType.VarChar, 20, admin);
+                        Add(command, "@P_Admin", SqlDbType.VarChar, 20, renewalOperator);
                         command.ExecuteNonQuery();
                     }
-                    return VerifyVehicle(connection, plate, "续期车牌");
+                    var result = VerifyVehicle(connection, plate, "续期车牌");
+                    var audit = VerifyRenewalAudit(connection, plate, renewalOperator, renewalType, Convert.ToInt32(result["issueId"], CultureInfo.InvariantCulture));
+                    if (audit == null)
+                        throw new InvalidOperationException("续期已更新车辆，但未在旧库最近的充值延期车辆中读到 PMS 操作记录");
+                    result["legacyOperator"] = renewalOperator;
+                    result["legacyAuditTable"] = "P_moneyKeep";
+                    result["legacyAuditId"] = audit["id"];
+                    result["legacyAuditType"] = renewalType;
+                    result["legacyAuditVerified"] = true;
+                    return result;
                 }
                 if (task.kind == "change_plate" || task.kind == "rebind_owner" || task.kind == "update_garages")
                 {
@@ -451,6 +464,34 @@ ORDER BY p.parameter_id;";
                     if (!reader.IsDBNull(reader.GetOrdinal("P_Effective"))) result["effective"] = Convert.ToString(reader["P_Effective"]);
                     if (!reader.IsDBNull(reader.GetOrdinal("P_Download"))) result["download"] = Convert.ToString(reader["P_Download"]);
                     return result;
+                }
+            }
+        }
+
+        private static Dictionary<string, object> VerifyRenewalAudit(SqlConnection connection, string plate, string operatorName, int renewalType, int issueId)
+        {
+            using (var check = connection.CreateCommand())
+            {
+                // Palte_extend 的 type=5 是月租车延期；按本次类型和流水 ID 倒序取刚写入的一条。
+                check.CommandText = @"SELECT TOP 1 ID, P_Admin, P_plate, type
+FROM P_moneyKeep
+WHERE P_plate=@plate AND type=@type AND P_Admin=@operator
+  AND Issue_ID=@issueId
+ORDER BY ID DESC";
+                Add(check, "@plate", SqlDbType.VarChar, 50, plate);
+                Add(check, "@type", SqlDbType.Int, 0, renewalType);
+                Add(check, "@operator", SqlDbType.VarChar, 20, operatorName);
+                Add(check, "@issueId", SqlDbType.Int, 0, issueId);
+                using (var reader = check.ExecuteReader())
+                {
+                    if (!reader.Read()) return null;
+                    return new Dictionary<string, object>
+                    {
+                        { "id", Convert.ToString(reader["ID"]) },
+                        { "operator", Convert.ToString(reader["P_Admin"]) },
+                        { "plate", Convert.ToString(reader["P_plate"]) },
+                        { "type", Convert.ToString(reader["type"]) },
+                    };
                 }
             }
         }
