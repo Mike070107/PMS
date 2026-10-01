@@ -8,7 +8,9 @@ Type=simple
 User=pms-gateway
 Group=pms-gateway
 EnvironmentFile=-/etc/pms-gateway/router.env
-ExecStart=/usr/bin/node /opt/pms-gateway-router/server.mjs
+# Keep MemoryDenyWriteExecute enabled and run V8 without JIT executable pages.
+# This router is I/O-bound, so JIT compilation is not required.
+ExecStart=/usr/bin/node --jitless /opt/pms-gateway-router/server.mjs
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
