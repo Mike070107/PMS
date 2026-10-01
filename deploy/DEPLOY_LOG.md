@@ -3590,3 +3590,23 @@
   - 4de9227 feat(access): publish intranet apps through Cloudflare
   - 54d3c78 feat(parking): update legacy owner records through assistant
 
+## 2026-10-01 18:57 · miniapp-staff · d8e40bb
+
+- 包：`1.0.20261001a 体验版`
+- 提交：d8e40bb deploy: web → 8955444
+- 说明：上传员工端体验版，待微信后台选为体验版
+- 自上次（419deb0）以来上线的相关提交：
+  - cd2be96 feat: complete parking operations and assistant updates
+  - a6a87ff fix: clarify system alert notifications
+  - 4de9227 feat(access): publish intranet apps through Cloudflare
+  - 54d3c78 feat(parking): update legacy owner records through assistant
+  - 10d0b07 feat(access): verify card permissions and surface assistant activity
+  - 34fbc88 feat(parking): 记录用户与车牌变更历史
+  - cb37da1 feat(access-cards): block previously issued cards
+  - e1be65f fix(parking): resolve legacy owners and separate authorization status
+  - e6866b2 feat(parking): add Deliyun read-only connection status
+  - c63c0b3 feat(parking): decode legacy authorization and collect family proof
+  - ad00c72 feat(parking): join legacy owners and match PMS users
+  - 139752b feat(parking): connect live legacy database search
+  - e114eb3 feat(parking): add management page and local gateway
+
