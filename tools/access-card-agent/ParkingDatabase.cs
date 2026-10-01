@@ -849,34 +849,49 @@ ORDER BY s.[name], t.[name], c.column_id;";
 
         private static ParkingOwnerSource FindOwnerSourceFromForeignKey(SqlConnection connection)
         {
+            ParkingOwnerSource best = null;
+            var bestScore = Int32.MinValue;
             using (var command = connection.CreateCommand())
             {
                 command.CommandText = @"
-SELECT TOP 1 rs.[name], rt.[name], rc.[name]
+SELECT rs.[name], rt.[name], rc.[name]
 FROM sys.foreign_key_columns fkc
 JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
 JOIN sys.tables rt ON rt.object_id = fkc.referenced_object_id
 JOIN sys.schemas rs ON rs.schema_id = rt.schema_id
 JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
 WHERE fkc.parent_object_id = OBJECT_ID(N'[dbo].[Car_Issue]')
-  AND LOWER(REPLACE(REPLACE(pc.[name], '_', ''), '-', '')) = 'ownerid';";
+  AND LOWER(REPLACE(REPLACE(pc.[name], '_', ''), '-', '')) = 'ownerid'
+ORDER BY rs.[name], rt.[name], rc.column_id;";
                 command.CommandTimeout = 10;
                 using (var reader = command.ExecuteReader())
                 {
-                    if (!reader.Read()) return null;
-                    var schema = reader.GetString(0);
-                    var table = reader.GetString(1);
-                    var keyColumn = reader.GetString(2);
-                    reader.Close();
-                    return new ParkingOwnerSource
+                    while (reader.Read())
                     {
-                        Schema = schema,
-                        Table = table,
-                        KeyColumn = keyColumn,
-                        Columns = LoadColumns(connection, schema, table)
-                    };
+                        var candidate = new ParkingOwnerCandidate
+                        {
+                            Schema = reader.GetString(0),
+                            Table = reader.GetString(1),
+                            KeyColumn = reader.GetString(2)
+                        };
+                        var columns = LoadColumns(connection, candidate.Schema, candidate.Table);
+                        // 一个数据库可能给 Car_Issue.Owner_ID 建了多个外键；不能再用 TOP 1
+                        // 随机选表。住户更新必须选到包含备注列的完整住户表，否则会误报“备注列不存在”。
+                        var noteColumn = ResolveOwnerColumn(columns, "note", null);
+                        var score = OwnerCandidateScore(candidate, columns) + (noteColumn == null ? 0 : 1000);
+                        if (!HasOwnerOverlap(connection, candidate) || score <= bestScore) continue;
+                        bestScore = score;
+                        best = new ParkingOwnerSource
+                        {
+                            Schema = candidate.Schema,
+                            Table = candidate.Table,
+                            KeyColumn = candidate.KeyColumn,
+                            Columns = columns
+                        };
+                    }
                 }
             }
+            return best;
         }
 
         private static int OwnerCandidateScore(ParkingOwnerCandidate candidate, List<ParkingColumn> columns)
