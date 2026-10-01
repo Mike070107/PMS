@@ -3,6 +3,7 @@ import type { NotificationItem } from '@pms/api-client/src/endpoints/notificatio
 import {
   classifyNotification,
   formatDateTimeCn,
+  notificationDescription,
   type NotificationCategory,
   type NotificationPriority,
 } from '@pms/shared-types';
@@ -12,6 +13,7 @@ type FilterKey = 'all' | 'important' | NotificationCategory;
 type Row = NotificationItem & {
   timeText: string;
   page: string;
+  desc: string;
   category: NotificationCategory;
   categoryLabel: string;
   categoryTone: string;
@@ -73,6 +75,7 @@ Page({
         ...classifyNotification(item.eventKey),
         timeText: formatDateTimeCn(item.createdAt),
         page: String(item.payload?.page || ''),
+        desc: notificationDescription(item.eventKey, item.payload),
       }));
       const activeFilter = this.data.activeFilter;
       this.setData({

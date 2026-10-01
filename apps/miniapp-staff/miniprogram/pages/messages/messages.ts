@@ -3,6 +3,7 @@ import type { NotificationItem } from '@pms/api-client/src/endpoints/notificatio
 import {
   classifyNotification,
   formatDateTimeCn,
+  notificationDescription,
   type NotificationCategory,
   type NotificationPriority,
 } from '@pms/shared-types';
@@ -95,10 +96,7 @@ Page({
         page: String(item.payload?.page || ''),
         // 派单备注和故障描述都在 payload 里，直接铺在标题下面——
         // 「有新工单」四个字没法让人判断要不要现在去
-        desc: [item.payload?.note, item.payload?.content]
-          .map((value) => String(value || '').trim())
-          .filter(Boolean)
-          .join('；'),
+        desc: notificationDescription(item.eventKey, item.payload),
       }));
       const activeFilter = this.data.activeFilter;
       this.setData({

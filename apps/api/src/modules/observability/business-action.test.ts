@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { resolveBusinessAction } from './business-action';
+import { apiEndpointLabel, buildApiErrorAlert } from './alert-presentation';
 
 test('区分 AI 随手拍报修与普通填表报修', () => {
   assert.equal(
@@ -53,4 +54,22 @@ test('暂未配置中文名的接口也按路由分别统计，不再全部混�
   const notice = resolveBusinessAction('POST', '/api/v1/notifications/templates/test');
   assert.equal(upload.label, '新增/提交附件');
   assert.notEqual(upload.code, notice.code);
+});
+
+test('接口告警直接说明业务动作、失败次数、状态码和原因', () => {
+  assert.equal(
+    apiEndpointLabel('/api/v1/external-access/apps/1/sync'),
+    '外部访问应用同步',
+  );
+  assert.deepEqual(buildApiErrorAlert({
+    source: 'admin-web',
+    errors: 5,
+    requests: 32,
+    path: '/api/v1/external-access/apps/1/sync',
+    statusCode: 503,
+    reason: 'Cloudflare 自动发布尚未配置完整，请补充服务器环境变量',
+  }), {
+    title: '外部访问应用同步失败',
+    message: '最近10分钟，管理后台的“外部访问应用同步”失败 5 次（HTTP 503，共 32 次请求）。原因：Cloudflare 自动发布尚未配置完整，请补充服务器环境变量。请到日志管理查看并处理。',
+  });
 });

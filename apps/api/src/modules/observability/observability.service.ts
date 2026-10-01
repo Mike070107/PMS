@@ -8,6 +8,7 @@ import { RequestMetric, SystemLog, User } from '../../entities';
 import { AccessService } from '../access/access.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { resolveBusinessAction } from './business-action';
+import { buildApiErrorAlert } from './alert-presentation';
 import { safeFeedbackAttachments } from './feedback-attachment';
 import {
   ClientErrorDto,
@@ -24,6 +25,9 @@ export interface DetectedAlert {
   title: string;
   message: string;
   source: string;
+  requestPath?: string | null;
+  statusCode?: number | null;
+  reason?: string | null;
 }
 
 interface RequestCapture {
@@ -436,6 +440,20 @@ export class ObservabilityService {
       .select('log.tenant_id', 'tenantId').addSelect('log.source', 'source').addSelect('COUNT(*)', 'errors')
       .where("log.tenant_id IS NOT NULL AND log.category = 'error' AND log.action = 'client_exception' AND log.created_at >= :since", { since })
       .groupBy('log.tenant_id').addGroupBy('log.source').getRawMany();
+    const apiErrorDetails = await this.logRepo.createQueryBuilder('log')
+      .select('log.tenant_id', 'tenantId').addSelect('log.source', 'source')
+      .addSelect('log.request_path', 'requestPath').addSelect('log.status_code', 'statusCode')
+      .addSelect('log.message', 'reason').addSelect('COUNT(*)', 'errors')
+      .where("log.tenant_id IS NOT NULL AND log.category = 'error' AND log.action = 'api_error' AND log.created_at >= :since", { since })
+      .groupBy('log.tenant_id').addGroupBy('log.source').addGroupBy('log.request_path')
+      .addGroupBy('log.status_code').addGroupBy('log.message')
+      .orderBy('COUNT(*)', 'DESC').addOrderBy('MAX(log.created_at)', 'DESC')
+      .getRawMany();
+    const apiErrorDetailBySource = new Map<string, any>();
+    for (const detail of apiErrorDetails) {
+      const key = `${detail.tenantId}:${detail.source}`;
+      if (!apiErrorDetailBySource.has(key)) apiErrorDetailBySource.set(key, detail);
+    }
 
     const candidates: Array<Omit<DetectedAlert, 'id'>> = [];
     for (const row of metricGroups) {
@@ -444,7 +462,26 @@ export class ObservabilityService {
       const errors = Number(row.errors || 0);
       const slow = Number(row.slowRequests || 0);
       const avg = Number(row.avgDurationMs || 0);
-      if (errors >= 3) candidates.push({ tenantId, source: row.source, fingerprint: `api-errors:${tenantId}:${row.source}`, title: '接口异常率升高', message: `最近10分钟 ${row.source} 出现 ${errors} 次服务异常（共 ${requests} 次请求）` });
+      if (errors >= 3) {
+        const detail = apiErrorDetailBySource.get(`${tenantId}:${row.source}`);
+        const presentation = buildApiErrorAlert({
+          source: row.source,
+          errors,
+          requests,
+          path: detail?.requestPath,
+          statusCode: Number(detail?.statusCode) || null,
+          reason: detail?.reason,
+        });
+        candidates.push({
+          tenantId,
+          source: row.source,
+          fingerprint: `api-errors:${tenantId}:${row.source}`,
+          ...presentation,
+          requestPath: detail?.requestPath ?? null,
+          statusCode: Number(detail?.statusCode) || null,
+          reason: detail?.reason ?? null,
+        });
+      }
       if ((slow >= 5 || avg >= 2000) && requests >= 10) candidates.push({ tenantId, source: row.source, fingerprint: `slow:${tenantId}:${row.source}`, title: '访问响应明显变慢', message: `最近10分钟 ${row.source} 平均响应 ${avg}ms，慢请求 ${slow} 次` });
     }
     for (const row of clientGroups) {
@@ -462,7 +499,13 @@ export class ObservabilityService {
         tenantId: item.tenantId, category: 'alert', level: 'error', source: item.source,
         action: 'system_alert', success: false, actorUserId: null, requestMethod: null,
         requestPath: null, statusCode: null, durationMs: null, message: item.message,
-        detail: { title: item.title }, fingerprint: item.fingerprint,
+        detail: {
+          title: item.title,
+          requestPath: item.requestPath ?? null,
+          statusCode: item.statusCode ?? null,
+          reason: item.reason ?? null,
+        },
+        fingerprint: item.fingerprint,
       });
       emitted.push({ ...item, id: saved.id });
     }

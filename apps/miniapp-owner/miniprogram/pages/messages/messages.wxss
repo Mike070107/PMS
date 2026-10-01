@@ -107,6 +107,12 @@
 .msg-priority--important { color: #8a4b00; background: #fff0d4; font-weight: 600; }
 .msg-priority--normal { color: #67798b; background: #f0f3f6; }
 .msg__title { font-size: var(--font-xl); line-height: 1.5; }
+.msg__desc {
+  margin-top: 8rpx;
+  font-size: var(--font-md);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
 .msg__time {
   margin-top: var(--space-xs);
   font-size: var(--font-sm);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyNotification } from './notification';
+import { classifyNotification, notificationDescription } from './notification';
 
 test('新工单待接归为需处理的工单消息', () => {
   assert.deepEqual(classifyNotification('order_assigned'), {
@@ -33,3 +33,10 @@ test('新事件可按前缀归类，但不擅自标成待处理', () => {
   assert.equal(result.priority, 'normal');
 });
 
+test('告警优先展示具体原因，旧告警也有明确查看出口', () => {
+  assert.equal(
+    notificationDescription('system_alert', { content: 'Cloudflare 配置未完成' }),
+    'Cloudflare 配置未完成',
+  );
+  assert.match(notificationDescription('system_alert', {}), /日志管理/);
+});

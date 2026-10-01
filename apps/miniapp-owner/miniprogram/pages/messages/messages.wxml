@@ -38,6 +38,7 @@
         <text class="msg-priority msg-priority--{{item.priority}}">{{item.priorityLabel}}</text>
       </view>
       <view class="msg__title">{{item.title}}</view>
+      <view wx:if="{{item.desc}}" class="msg__desc">{{item.desc}}</view>
       <view class="msg__time">{{item.timeText}}</view>
     </view>
     <view wx:if="{{item.page}}" class="icon icon--chevron"></view>

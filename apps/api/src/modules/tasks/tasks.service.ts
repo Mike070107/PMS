@@ -33,7 +33,13 @@ export class TasksService {
             receiverId,
             eventKey: 'system_alert',
             title: alert.title,
-            payload: { alertId: alert.id, source: alert.source },
+            payload: {
+              alertId: alert.id,
+              source: alert.source,
+              content: alert.message,
+              requestPath: alert.requestPath ?? '',
+              statusCode: alert.statusCode ?? null,
+            },
             page: '/pages/messages/messages',
             // 先走服务号；未关注时复用员工端的催接单模板及其授权额度。
             template: 'orderOverdue',

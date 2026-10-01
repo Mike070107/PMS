@@ -119,3 +119,18 @@ export function classifyNotification(eventKey?: string | null): NotificationPres
   };
 }
 
+/** 两个小程序共用的消息摘要，旧系统告警没有 content 时也给出处理出口。 */
+export function notificationDescription(
+  eventKey?: string | null,
+  payload?: Record<string, unknown> | null,
+): string {
+  const explicit = [payload?.note, payload?.content]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join('；');
+  if (explicit) return explicit;
+  if (eventKey === 'system_alert') {
+    return '系统监控检测到服务异常，请到管理后台“日志管理”查看具体接口、原因和处理建议。';
+  }
+  return '';
+}
