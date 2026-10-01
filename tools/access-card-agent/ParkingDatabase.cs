@@ -826,7 +826,11 @@ ORDER BY s.[name], t.[name], c.column_id;";
             foreach (var candidate in candidates)
             {
                 var columns = LoadColumns(connection, candidate.Schema, candidate.Table);
-                var score = OwnerCandidateScore(candidate, columns);
+                // 住户资料更新必须能保留 PMS 操作来源。外键指向的摘要/映射表
+                // 可能没有备注列，不能因为它分数更高就提前选中。
+                var noteColumn = ResolveOwnerColumn(columns, "note", null);
+                if (noteColumn == null) continue;
+                var score = OwnerCandidateScore(candidate, columns) + 1000;
                 if (score < 3 || score <= bestScore || !HasOwnerOverlap(connection, candidate)) continue;
                 bestScore = score;
                 best = new ParkingOwnerSource
@@ -884,7 +888,8 @@ ORDER BY rs.[name], rt.[name], rc.column_id;";
                 // 一个数据库可能给 Car_Issue.Owner_ID 建了多个外键；不能再用 TOP 1
                 // 随机选表。住户更新必须选到包含备注列的完整住户表，否则会误报“备注列不存在”。
                 var noteColumn = ResolveOwnerColumn(columns, "note", null);
-                var score = OwnerCandidateScore(candidate, columns) + (noteColumn == null ? 0 : 1000);
+                if (noteColumn == null) continue;
+                var score = OwnerCandidateScore(candidate, columns) + 1000;
                 if (!HasOwnerOverlap(connection, candidate) || score <= bestScore) continue;
                 bestScore = score;
                 best = new ParkingOwnerSource
