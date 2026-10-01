@@ -62,7 +62,7 @@ import {
 import { agentTokenMatches, issueAgentSecret } from './agent-auth';
 import { effectiveAgentStatus, orderAgentsByAvailability } from './agent-status';
 import { DeliyunParkingService } from './deliyun-parking.service';
-import { diffParkingSnapshot, type ParkingSnapshotValues } from './parking-history.util';
+import { diffParkingSnapshot, normalizeParkingSourceRecordId, type ParkingSnapshotValues } from './parking-history.util';
 import type {
   AccessCardPermissionEntry,
   AccessCardPermissionSubject,
@@ -480,7 +480,7 @@ export class AccessCardIssuanceService {
     const pmsUserId = dto.pmsUserId ? Number(dto.pmsUserId) : null;
     const database = dto.database?.trim() || null;
     const externalOwnerId = dto.externalOwnerId?.trim() || null;
-    const sourceRecordId = dto.sourceRecordId?.trim() || null;
+    const sourceRecordId = normalizeParkingSourceRecordId(dto.sourceRecordId);
     const plate = normalizeParkingText(dto.plate);
     if (!pmsUserId && !(database && externalOwnerId) && !sourceRecordId && !plate) {
       throw new BadRequestException('请选择用户或车牌后再查看历史记录');
@@ -501,6 +501,7 @@ export class AccessCardIssuanceService {
       ? await this.parkingHistoryRepo.createQueryBuilder('history')
         .where('history.tenant_id = :tenantId', { tenantId })
         .andWhere(subject)
+        .andWhere("(history.source <> 'parking_gateway' OR history.source_record_id IS NULL OR history.source_record_id <> :invalidSourceRecordId)", { invalidSourceRecordId: '0000000000' })
         .orderBy('history.occurred_at', 'DESC')
         .addOrderBy('history.id', 'DESC')
         .take(100)
@@ -510,14 +511,13 @@ export class AccessCardIssuanceService {
     const vehicleHistory = (sourceRecordId || plate)
       ? await this.parkingHistoryRepo.createQueryBuilder('history')
         .where('history.tenant_id = :tenantId', { tenantId })
+        .andWhere("(history.source <> 'parking_gateway' OR history.source_record_id IS NULL OR history.source_record_id <> :invalidSourceRecordId)", { invalidSourceRecordId: '0000000000' })
         .andWhere(new Brackets((qb) => {
           if (sourceRecordId) qb.where('history.source_record_id = :sourceRecordId', { sourceRecordId });
           if (plate) {
             const method = sourceRecordId ? 'orWhere' : 'where';
             qb[method]('(history.plate_before = :plate OR history.plate_after = :plate)', { plate });
           }
-          if (pmsUserId) qb.orWhere("(history.event_type = 'owner_info_update' AND history.pms_user_id = :vehicleUserId)", { vehicleUserId: pmsUserId });
-          if (database && externalOwnerId) qb.orWhere("(history.event_type = 'owner_info_update' AND history.database = :vehicleDatabase AND history.external_owner_id = :vehicleOwnerId)", { vehicleDatabase: database, vehicleOwnerId: externalOwnerId });
         }))
         .orderBy('history.occurred_at', 'DESC')
         .addOrderBy('history.id', 'DESC')
@@ -788,14 +788,24 @@ export class AccessCardIssuanceService {
   }
 
   private async captureParkingHistory(manager: EntityManager, query: ParkingQuery, observedAt: Date) {
-    const facts = query.rows.flatMap((row) => {
+    const factsByKey = new Map<string, {
+      database: string;
+      sourceRecordId: string;
+      values: ParkingSnapshotValues;
+    }>();
+    for (const row of query.rows) {
       const sourceRecordId = parkingSourceRecordId(row.fields);
-      return sourceRecordId ? [{
+      if (sourceRecordId) {
+        const fact = {
         database: row.database,
         sourceRecordId,
         values: parkingSnapshotValues(row.fields),
-      }] : [];
-    });
+        };
+        // 同一批结果若重复返回同一主键，只保留最后一份快照，避免一次查询生成多条伪变更。
+        factsByKey.set(`${fact.database}\u0000${fact.sourceRecordId}`, fact);
+      }
+    }
+    const facts = Array.from(factsByKey.values());
     if (!facts.length) return;
     const snapshotRepo = manager.getRepository(ParkingRecordSnapshot);
     const historyRepo = manager.getRepository(ParkingHistory);
@@ -850,6 +860,7 @@ export class AccessCardIssuanceService {
       snapshot.observedAt = observedAt;
       snapshot.updatedBy = null;
       snapshots.push(snapshot);
+      byKey.set(key, snapshot);
 
       const knownPlateChangeAt = parkingOperationTime(fact.values.plateChangedAt);
       if (knownPlateChangeAt && fact.values.plate) {
@@ -2049,14 +2060,21 @@ function parkingExactFieldValue(
   fields: Record<string, string | number | boolean | null>,
   aliases: readonly string[],
 ): string | null {
-  const normalized = new Set(aliases.map(normalizeParkingFieldName));
-  const match = Object.entries(fields).find(([key, value]) =>
-    value !== null && String(value).trim() !== '' && normalized.has(normalizeParkingFieldName(key)));
-  return match ? String(match[1]).trim() : null;
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeParkingFieldName(alias);
+    const match = Object.entries(fields).find(([key, value]) =>
+      value !== null && String(value).trim() !== '' && normalizeParkingFieldName(key) === normalizedAlias);
+    if (match) return String(match[1]).trim();
+  }
+  return null;
 }
 
 function parkingSourceRecordId(fields: Record<string, string | number | boolean | null>): string | null {
-  return parkingExactFieldValue(fields, ['p_id', 'pid', 'car_id', 'carid', 'issue_id', 'issueid']);
+  for (const alias of ['p_id', 'pid', 'issue_id', 'issueid', 'car_id', 'carid']) {
+    const value = normalizeParkingSourceRecordId(parkingExactFieldValue(fields, [alias]));
+    if (value) return value;
+  }
+  return null;
 }
 
 function parkingExternalOwnerId(fields: Record<string, string | number | boolean | null>): string | null {

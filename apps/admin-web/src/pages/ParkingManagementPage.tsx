@@ -623,16 +623,24 @@ function garageRows(database: string, fields: ParkingQueryRow['fields']) {
 }
 
 function parkingExactFieldValue(fields: ParkingQueryRow['fields'], aliases: readonly string[]): string | null {
-  const normalized = new Set(aliases.map(normalizeFieldName));
-  const match = Object.entries(fields).find(([key, value]) =>
-    value !== null && String(value).trim() !== '' && normalized.has(normalizeFieldName(key)));
-  return match ? String(match[1]).trim() : null;
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeFieldName(alias);
+    const match = Object.entries(fields).find(([key, value]) =>
+      value !== null && String(value).trim() !== '' && normalizeFieldName(key) === normalizedAlias);
+    if (match) return String(match[1]).trim();
+  }
+  return null;
+}
+
+function normalizeParkingSourceRecordId(value: string | null): string | null {
+  const result = value?.trim() || '';
+  return result && !/^0+$/.test(result) ? result : null;
 }
 
 function parkingHistoryRef(row: ParkingQueryRow) {
   return row.historyRef ?? {
     database: row.database,
-    sourceRecordId: parkingExactFieldValue(row.fields, ['p_id', 'pid', 'car_id', 'carid', 'issue_id', 'issueid']),
+    sourceRecordId: normalizeParkingSourceRecordId(parkingExactFieldValue(row.fields, ['p_id', 'pid', 'issue_id', 'issueid', 'car_id', 'carid'])),
     externalOwnerId: parkingExactFieldValue(row.fields, fieldAliases.ownerId),
     plate: plateValue(row.fields) === '车牌字段待识别' ? null : plateValue(row.fields),
     pmsUserId: row.pmsMatch?.userId ?? null,

@@ -17,6 +17,15 @@ export interface ParkingHistoryDraft {
   occurredAt?: string | null;
 }
 
+/**
+ * 旧停车库有些版本会把 Car_ID 填成全 0 的占位值。它不是车辆记录主键，
+ * 不能拿来建立快照，否则一次查询里的不同车辆会被串成同一条换牌链。
+ */
+export function normalizeParkingSourceRecordId(value: unknown): string | null {
+  const result = value === null || value === undefined ? '' : String(value).trim();
+  return result && !/^0+$/.test(result) ? result : null;
+}
+
 const OWNER_FIELDS: Array<{ key: keyof ParkingSnapshotValues; label: string }> = [
   { key: 'ownerName', label: '姓名' },
   { key: 'phone', label: '电话' },
@@ -31,38 +40,37 @@ export function diffParkingSnapshot(
 ): ParkingHistoryDraft[] {
   if (!before) return [];
   const events: ParkingHistoryDraft[] = [];
-  if (before.plate !== after.plate && (before.plate || after.plate)) {
+  const plateChanged = before.plate !== after.plate && (before.plate || after.plate);
+  const ownerRebound = before.ownerId !== after.ownerId && (before.ownerId || after.ownerId);
+  const ownerChanges = OWNER_FIELDS
+    .filter((field) => before[field.key] !== after[field.key])
+    .map((field) => change(String(field.key), field.label, before[field.key], after[field.key]));
+
+  // 一次旧库更新可能同时换牌和换绑，只记录一条“换牌”事件，避免同一操作在历史里出现两条。
+  if (plateChanged) {
+    const changes = [change('plate', '车牌', before.plate, after.plate)];
+    if (ownerRebound) changes.push(change('ownerId', '绑定用户编号', before.ownerId, after.ownerId), ...ownerChanges);
     events.push({
       eventType: 'plate_change',
-      summary: `车牌由 ${before.plate || '未记录'} 换为 ${after.plate || '未记录'}`,
-      changes: [change('plate', '车牌', before.plate, after.plate)],
+      summary: ownerRebound
+        ? `车牌由 ${before.plate || '未记录'} 换为 ${after.plate || '未记录'}，绑定用户同时变更`
+        : `车牌由 ${before.plate || '未记录'} 换为 ${after.plate || '未记录'}`,
+      changes,
       occurredAt: after.plateChangedAt ?? null,
     });
-  }
-
-  if (before.ownerId !== after.ownerId && (before.ownerId || after.ownerId)) {
-    const changes = [change('ownerId', '绑定用户编号', before.ownerId, after.ownerId)];
-    for (const field of OWNER_FIELDS) {
-      if (before[field.key] !== after[field.key]) {
-        changes.push(change(String(field.key), field.label, before[field.key], after[field.key]));
-      }
-    }
+  } else if (ownerRebound) {
+    const changes = [change('ownerId', '绑定用户编号', before.ownerId, after.ownerId), ...ownerChanges];
     events.push({
       eventType: 'owner_rebind',
       summary: `车牌 ${after.plate || before.plate || '未记录'} 的绑定用户已变更`,
       changes,
     });
-  } else {
-    const changes = OWNER_FIELDS
-      .filter((field) => before[field.key] !== after[field.key])
-      .map((field) => change(String(field.key), field.label, before[field.key], after[field.key]));
-    if (changes.length) {
-      events.push({
-        eventType: 'owner_info_update',
-        summary: `更新了${changes.map((item) => item.label).join('、')}`,
-        changes,
-      });
-    }
+  } else if (ownerChanges.length) {
+    events.push({
+      eventType: 'owner_info_update',
+      summary: `更新了${ownerChanges.map((item) => item.label).join('、')}`,
+      changes: ownerChanges,
+    });
   }
   return events;
 }

@@ -27,3 +27,25 @@ test('绑定用户变更与普通电话修改分成不同事件', () => {
   assert.equal(phone[0].eventType, 'owner_info_update');
   assert.deepEqual(phone[0].changes[0], { field: 'phone', label: '电话', before: '13800000000', after: '13700000000' });
 });
+
+test('同一次换牌并换绑只生成一条合并记录', () => {
+  const events = diffParkingSnapshot(original, {
+    ...original,
+    plate: '沪B67890',
+    ownerId: '29',
+    ownerName: '李四',
+    phone: '13900000000',
+    plateChangedAt: '2026-09-29T15:42:00+08:00',
+  });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].eventType, 'plate_change');
+  assert.match(events[0].summary, /绑定用户同时变更/);
+  assert.deepEqual(events[0].changes.map((item) => item.label), ['车牌', '绑定用户编号', '姓名', '电话']);
+});
+
+test('全零旧库编号视为无效主键', async () => {
+  const { normalizeParkingSourceRecordId } = await import('./parking-history.util');
+  assert.equal(normalizeParkingSourceRecordId('0000000000'), null);
+  assert.equal(normalizeParkingSourceRecordId(0), null);
+  assert.equal(normalizeParkingSourceRecordId('5097'), '5097');
+});
