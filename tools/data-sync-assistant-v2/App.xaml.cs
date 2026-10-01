@@ -56,7 +56,7 @@ namespace Pms.DataSyncAssistant
                     if (e.Args.Length < 3) throw new InvalidOperationException("更新参数不完整");
                     int processId;
                     if (!Int32.TryParse(e.Args[2], out processId)) throw new InvalidOperationException("旧助手进程号无效");
-                    AssistantUpdateService.Apply(e.Args[1], processId);
+                    AssistantUpdateService.Apply(e.Args[1], processId, e.Args.Length > 3 ? e.Args[3] : null);
                     Shutdown(0);
                 }
                 catch (Exception exception)

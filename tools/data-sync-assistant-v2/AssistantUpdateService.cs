@@ -74,20 +74,27 @@ namespace Pms.DataSyncAssistant
             var target = Path.GetFullPath(targetExecutable);
             if (String.Equals(source, target, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("更新包不能与当前程序是同一个文件");
             if (!File.Exists(source)) throw new FileNotFoundException("更新包不存在", source);
+            foreach (var staleRunner in Directory.GetFiles(Path.GetDirectoryName(source), "*.runner-*.exe")) TryDelete(staleRunner);
+            var runner = source + ".runner-" + Guid.NewGuid().ToString("N") + ".exe";
+            CopyFileWithRetry(source, runner, true);
             Process.Start(new ProcessStartInfo
             {
-                FileName = source,
-                Arguments = "--apply-update \"" + target + "\" " + previousProcessId,
+                FileName = runner,
+                // The runner is a temporary copy; the original downloaded file is not
+                // running and can therefore be copied over the installed EXE safely.
+                Arguments = "--apply-update \"" + target + "\" " + previousProcessId + " \"" + source + "\"",
                 UseShellExecute = true,
                 Verb = "runas"
             });
         }
 
-        public static void Apply(string targetExecutable, int previousProcessId)
+        public static void Apply(string targetExecutable, int previousProcessId, string payloadPath)
         {
-            var source = Path.GetFullPath(Process.GetCurrentProcess().MainModule.FileName);
+            var runner = Path.GetFullPath(Process.GetCurrentProcess().MainModule.FileName);
+            var source = String.IsNullOrWhiteSpace(payloadPath) ? runner : Path.GetFullPath(payloadPath);
             var target = Path.GetFullPath(targetExecutable);
             if (String.Equals(source, target, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("更新源和目标不能相同");
+            if (!File.Exists(source)) throw new FileNotFoundException("更新源文件不存在", source);
             WaitForProcess(previousProcessId);
             var backup = target + ".previous";
             var serviceWasRunning = UnifiedServiceManager.IsRunning();
