@@ -3886,3 +3886,11 @@
 - 自上次（fab9e98）以来上线的相关提交：
   - 1759e12 feat(version): show dated build versions across clients
 
+## 2026-10-02 05:34 · miniapp-owner · 0330f4a
+
+- 包：`体验版 1.0.20261002b · 94e7738`
+- 提交：0330f4a deploy: miniapp-staff → 94e7738
+- 说明：微信开发者工具上传体验版；需在公众平台选为体验版
+- 自上次（3a2222d）以来上线的相关提交：
+  - 1759e12 feat(version): show dated build versions across clients
+
