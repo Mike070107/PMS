@@ -3743,3 +3743,11 @@
 - 自上次（bd2b03a）以来上线的相关提交：
   - 34f0da9 fix(parking): enforce fresh duplicate plate checks
 
+## 2026-10-01 22:31 · web · d61f4f8
+
+- 包：`pms-web-20261001-2224.tar.gz`
+- 提交：d61f4f8 feat(parking): verify duplicate plate before registration
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
+- 自上次（bd2b03a）以来上线的相关提交：
+  - d61f4f8 feat(parking): verify duplicate plate before registration
+
