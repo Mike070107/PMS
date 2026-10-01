@@ -3560,3 +3560,11 @@
   - f67e00f test(access): include OIDC and tunnel route coverage
   - f60cec9 feat(access): publish intranet apps through Cloudflare
 
+## 2026-10-01 17:45 · web · f60cec9
+
+- 包：`pms-web-20261001-1735.tar.gz`
+- 提交：f60cec9 feat(access): publish intranet apps through Cloudflare
+- 说明：内网应用发布管理页面
+- 自上次（10d0b07）以来上线的相关提交：
+  - f60cec9 feat(access): publish intranet apps through Cloudflare
+
