@@ -3658,3 +3658,12 @@
 - 自上次（5f82814）以来上线的相关提交：
   - 2514480 fix(auth): accept Cloudflare Access OIDC state
 
+## 2026-10-01 20:32 · api · fe19c76
+
+- 包：`pms-api-20261001-2024.tar.gz`
+- 提交：fe19c76 fix(parking): keep history keyed by real vehicle records
+- 说明：修复停车历史使用占位编号导致串车，并合并同一次换牌与换绑
+- 自上次（1998f9f）以来上线的相关提交：
+  - fe19c76 fix(parking): keep history keyed by real vehicle records
+  - e2351d3 feat(access-card): authorize historical cards for extra buildings
+
