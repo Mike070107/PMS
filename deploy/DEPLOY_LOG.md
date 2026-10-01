@@ -3727,3 +3727,12 @@
   - 40ba977 fix(access-card): add retry for failed authorization
   - e2351d3 feat(access-card): authorize historical cards for extra buildings
 
+## 2026-10-01 22:22 · miniapp-owner · bd2b03a
+
+- 提交：bd2b03a fix(parking): make vehicle actions prominent
+- 说明：已上传微信体验版 1.0.20261001b；请在公众平台选为体验版
+- 自上次（d8e40bb）以来上线的相关提交：
+  - a83d1d1 feat(parking): complete vehicle registration and family-car proof flow
+  - 40ba977 fix(access-card): add retry for failed authorization
+  - e2351d3 feat(access-card): authorize historical cards for extra buildings
+
