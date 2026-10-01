@@ -1,0 +1,17 @@
+[Unit]
+Description=PMS domestic gateway authentication for caiwu.prsznh.cn
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/oauth2-proxy --config=/etc/pms-gateway/oauth2-proxy-caiwu.cfg
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

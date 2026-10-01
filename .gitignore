@@ -73,3 +73,6 @@ data-prep/
 artifacts/
 tmp/
 *.tsbuildinfo
+
+# 内网网关构建时下载的第三方二进制和临时 token；生产安装包也不入库。
+deploy/.gateway-downloads/

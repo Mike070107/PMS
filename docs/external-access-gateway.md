@@ -1,6 +1,16 @@
 # 内网应用发布网关
 
-## 目标架构
+## 生产目标架构
+
+`https://<子域名>.prsznh.cn` 先由腾讯云 Nginx + oauth2-proxy 执行 PMS OIDC
+小程序扫码授权，再通过 FRP TLS 长连接转发到局域网网站。局域网代理只主动
+出站连接腾讯云，无需在路由器开放入站端口。
+
+这是国内日常使用的正式链路，避免 Cloudflare Global Network 将国内请求路由到
+美国或欧洲节点。生产配置、安装脚本和验收门槛见
+`deploy/domestic-gateway/README.md`。
+
+## Cloudflare 验证/回退架构
 
 `https://<子域名>.prsznh.cn` 先经过 Cloudflare Access，再由 Cloudflare Tunnel 转发到目标局域网的 HTTP/HTTPS 网站。访问者只会看到独立微信扫码页，在「邻修管理」小程序确认后直接回到目标内网站点，不进入 PMS 后台框架。
 

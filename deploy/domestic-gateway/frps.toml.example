@@ -1,0 +1,17 @@
+bindAddr = "0.0.0.0"
+bindPort = 7000
+proxyBindAddr = "127.0.0.1"
+
+auth.method = "token"
+auth.additionalScopes = ["HeartBeats", "NewWorkConns"]
+auth.tokenSource.type = "file"
+auth.tokenSource.file.path = "/etc/pms-gateway/frp-token"
+
+transport.tls.force = true
+allowPorts = [
+  { start = 18050, end = 18149 }
+]
+
+log.to = "/var/log/pms-gateway/frps.log"
+log.level = "info"
+log.maxDays = 14

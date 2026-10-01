@@ -1,0 +1,30 @@
+http_address = "127.0.0.1:4180"
+provider = "oidc"
+provider_display_name = "PMS 微信扫码"
+oidc_issuer_url = "https://prsznh.cn/api/v1/auth/oidc"
+oidc_groups_claim = "external_apps"
+allowed_groups = ["caiwu"]
+scope = "openid email profile"
+code_challenge_method = "S256"
+
+client_id = "__OIDC_CLIENT_ID__"
+client_secret_file = "/etc/pms-gateway/oidc-client-secret"
+redirect_url = "https://caiwu.prsznh.cn/oauth2/callback"
+
+cookie_name = "_pms_caiwu"
+cookie_secret_file = "/etc/pms-gateway/oauth-cookie-secret"
+cookie_secure = true
+cookie_httponly = true
+cookie_samesite = "lax"
+cookie_expire = "8h"
+cookie_refresh = "1h"
+
+email_domains = ["*"]
+whitelist_domains = ["caiwu.prsznh.cn"]
+reverse_proxy = true
+skip_provider_button = true
+set_xauthrequest = true
+pass_access_token = false
+pass_authorization_header = false
+upstreams = ["static://202"]
+trusted_proxy_ips = ["127.0.0.1/32"]
