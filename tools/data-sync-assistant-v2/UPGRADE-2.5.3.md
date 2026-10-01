@@ -8,3 +8,7 @@
 - 如果车辆到期日已更新但旧库流水没有读回，任务明确失败，便于重试和审计，不会误报为完成。
 
 本版本只更新助手程序和运行时版本；配置、代理 ID、数据库密码仍保留在 `ProgramData\\PMS\\DataSyncAssistant`。
+
+## 生产发布记录
+
+2026-10-01 已发布到 `https://prsznh.cn/downloads/pms-data-sync-assistant/`。线上清单为 2.5.3，更新程序 SHA-256 为 `3b7fc088907aaf84a9cac0877a7e14d8defd8c184ece99ca0ef9b5475290a255`；清单和公网下载文件已按相同哈希回读校验。
