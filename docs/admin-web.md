@@ -55,9 +55,9 @@ pnpm web:build
 
 # 2. 打包并上传到线上服务器
 .\deploy\pack.ps1 -Only web
-scp -i $HOME\.ssh\pms_repair_key.pem .\deploy\pms-web-*.tar.gz ubuntu@1.15.172.131:/tmp/
-scp -i $HOME\.ssh\pms_repair_key.pem .\deploy\srv-deploy-web.sh ubuntu@1.15.172.131:/tmp/
-ssh -i $HOME\.ssh\pms_repair_key.pem ubuntu@1.15.172.131 "bash /tmp/srv-deploy-web.sh"
+scp -i $HOME\.ssh\pms_repair_key.pem .\deploy\pms-web-*.tar.gz ubuntu@124.223.179.214:/tmp/
+scp -i $HOME\.ssh\pms_repair_key.pem .\deploy\srv-deploy-web.sh ubuntu@124.223.179.214:/tmp/
+ssh -i $HOME\.ssh\pms_repair_key.pem ubuntu@124.223.179.214 "bash /tmp/srv-deploy-web.sh"
 ```
 
 本地不作为开发入口。修改页面后以线上地址 `https://prsznh.cn/` 验证：
