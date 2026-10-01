@@ -21,7 +21,7 @@ export class ExternalAccessApp extends TenantEntity {
   @Column({ name: 'entry_path', type: 'varchar', length: 1000, default: '/' })
   entryPath: string;
 
-  @Column({ name: 'session_duration', type: 'varchar', length: 20, default: '8h' })
+  @Column({ name: 'session_duration', type: 'varchar', length: 20, default: '1h' })
   sessionDuration: string;
 
   @Column({ type: 'boolean', default: true })

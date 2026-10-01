@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -34,6 +34,7 @@ export class AuthController {
    * 客户端 IP / UA 原样带给手机确认页展示，是本人判断该不该确认的依据。
    */
   @Post('qr-login/ticket')
+  @Header('Cache-Control', 'no-store')
   async createQrTicket(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const ticket = await this.qrLoginService.createTicket(req.ip, req.headers['user-agent']);
     setQrBrowserCookie(req, res, ticket.ticket, ticket.browserSecret, ticket.expiresIn);
@@ -43,6 +44,7 @@ export class AuthController {
 
   /** 网页轮询。确认过就连 token 一起返回，票据随即作废 */
   @Get('qr-login/status')
+  @Header('Cache-Control', 'no-store')
   async qrLoginStatus(
     @Query('ticket') ticket: string,
     @Req() req: Request,

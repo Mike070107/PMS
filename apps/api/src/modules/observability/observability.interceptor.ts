@@ -6,6 +6,7 @@ import { ObservabilityService, clientIp, sourceFromRequest } from './observabili
 const LOGIN_ACTIONS: Record<string, string> = {
   '/api/v1/auth/admin-login': 'web_password_login',
   '/api/v1/auth/qr-login/status': 'web_qr_login',
+  '/api/v1/auth/oidc/status': 'external_access_login',
   '/api/v1/auth/staff-login': 'staff_miniapp_login',
   '/api/v1/auth/wx-login': 'owner_miniapp_login',
 };
@@ -64,6 +65,7 @@ export class ObservabilityInterceptor implements NestInterceptor {
 function loginActionOf(url: string, result?: any) {
   const path = String(url || '').split('?')[0];
   if (path.endsWith('/auth/qr-login/status')) return result?.status === 'confirmed' ? 'web_qr_login' : null;
+  if (path.endsWith('/auth/oidc/status')) return result?.status === 'confirmed' ? 'external_access_login' : null;
   return Object.entries(LOGIN_ACTIONS).find(([suffix]) => path.endsWith(suffix.replace('/api/v1', '')) || path.endsWith(suffix))?.[1] || null;
 }
 

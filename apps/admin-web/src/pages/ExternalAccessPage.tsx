@@ -78,7 +78,7 @@ const previewApps: ExternalApp[] = [
     publicHostname: 'caiwu.prsznh.cn',
     originUrl: 'http://192.168.10.20:8080',
     entryPath: '/tplus/view/login.html',
-    sessionDuration: '8h',
+    sessionDuration: '1h',
     enabled: true,
     userIds: [101, 102, 103],
     lastSyncedAt: new Date().toISOString(),
@@ -340,7 +340,7 @@ function ExternalAppModal({ open, target, users, preview, provider, onClose, onD
     if (target) form.setFieldsValue({ ...target, originUrl: originEntryUrl(target) });
     else {
       form.resetFields();
-      form.setFieldsValue({ enabled: true, sessionDuration: '8h', userIds: [] });
+      form.setFieldsValue({ enabled: true, sessionDuration: '1h', userIds: [] });
     }
   }, [open, target, form]);
 
@@ -398,7 +398,7 @@ function ExternalAppModal({ open, target, users, preview, provider, onClose, onD
             <Select mode="multiple" showSearch optionFilterProp="label" maxTagCount="responsive" placeholder="按姓名或手机号选择" options={users.map((user) => ({ value: user.id, label: `${user.name || '未命名用户'} · ${maskPhone(user.phone)}${user.wxBound ? ' · 微信已绑定' : ' · 尚未绑定微信'}`, disabled: user.status !== 'active' }))} />
           </Form.Item>
           <div className="external-access-form-grid external-access-form-grid--settings">
-            <Form.Item name="sessionDuration" label="登录有效期"><Select suffixIcon={<ClockCircleOutlined aria-hidden="true" />} options={[{ value: '1h', label: '1 小时' }, { value: '4h', label: '4 小时' }, { value: '8h', label: '8 小时' }, { value: '12h', label: '12 小时' }, { value: '24h', label: '24 小时' }]} /></Form.Item>
+            <Form.Item name="sessionDuration" label="登录有效期"><Select suffixIcon={<ClockCircleOutlined aria-hidden="true" />} options={[{ value: '30m', label: '30 分钟（财务推荐）' }, { value: '1h', label: '1 小时' }, { value: '4h', label: '4 小时（最长）' }]} /></Form.Item>
             <Form.Item className="external-access-switch-field" name="enabled" label="访问状态" valuePropName="checked" extra="关闭后立即停止新访问"><Switch checkedChildren="开放" unCheckedChildren="停用" /></Form.Item>
           </div>
         </section>

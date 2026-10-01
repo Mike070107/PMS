@@ -10,7 +10,7 @@ import {
   MaxLength,
 } from 'class-validator';
 
-const SESSION_DURATIONS = ['1h', '4h', '8h', '12h', '24h'] as const;
+const SESSION_DURATIONS = ['30m', '1h', '4h'] as const;
 
 export class CreateExternalAccessAppDto {
   @IsString()

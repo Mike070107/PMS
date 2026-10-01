@@ -69,7 +69,7 @@ export class ExternalAccessService {
         slug: await this.deriveUniqueSlug(tenantId, normalized.publicHostname),
         name: dto.name.trim(),
         ...normalized,
-        sessionDuration: dto.sessionDuration ?? '8h',
+        sessionDuration: dto.sessionDuration ?? '1h',
         enabled: dto.enabled ?? true,
         cloudflareAppId: null,
         cloudflarePolicyId: null,

@@ -68,6 +68,7 @@ export class OidcController {
   }
 
   @Get('status')
+  @Header('Cache-Control', 'no-store')
   async status(
     @Query('ticket') ticket: string,
     @Req() req: Request,
