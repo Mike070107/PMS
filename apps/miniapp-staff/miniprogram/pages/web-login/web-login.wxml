@@ -20,7 +20,7 @@
       <view class="state__title">{{done === 'confirmed' ? '已确认，请回到电脑' : '已拒绝这次登录'}}</view>
       <view class="state__text">
         {{done === 'confirmed'
-          ? '网页会自动进入后台，这个页面可以关掉了。'
+          ? '网页会自动进入目标系统，这个页面可以关掉了。'
           : '网页那边不会登录。如果这次登录不是你发起的，建议把后台密码改一下。'}}
       </view>
     </view>
@@ -30,11 +30,15 @@
   <!-- 确认 -->
   <block wx:else>
     <view class="lead">
-      <view class="lead__title">确认在电脑上登录后台？</view>
-      <view class="lead__sub">确认后，那台电脑就能用你的身份进入邻修管理后台。</view>
+      <view class="lead__title">确认登录{{info.applicationName}}？</view>
+      <view class="lead__sub">确认后，那台电脑将使用你的身份进入{{info.applicationName}}。</view>
     </view>
 
     <view class="card">
+      <view class="row">
+        <text class="row__label">目标应用</text>
+        <text class="row__value">{{info.applicationName}}</text>
+      </view>
       <view class="row">
         <text class="row__label">登录身份</text>
         <text class="row__value">{{info.me.name || '本人'}}<text wx:if="{{info.me.roleLabel}}"> · {{info.me.roleLabel}}</text></text>

@@ -54,6 +54,9 @@ import { AiUsageLog } from './ai-usage-log.entity';
 import { AiResultCache } from './ai-result-cache.entity';
 import { RepairFeeRule } from './repair-fee-rule.entity';
 import { WebLoginTicket } from './web-login-ticket.entity';
+import { OidcAuthorizationCode } from './oidc-authorization-code.entity';
+import { ExternalAccessApp } from './external-access-app.entity';
+import { ExternalAccessGrant } from './external-access-grant.entity';
 import { FeeStandard } from './fee-standard.entity';
 import { FeeBill } from './fee-bill.entity';
 import { MaintenanceOrder } from './maintenance-order.entity';
@@ -149,6 +152,9 @@ export const entities = [
   AiResultCache,
   RepairFeeRule,
   WebLoginTicket,
+  OidcAuthorizationCode,
+  ExternalAccessApp,
+  ExternalAccessGrant,
   FeeStandard,
   FeeBill,
   MaintenanceOrder,
@@ -229,6 +235,9 @@ export {
   AiResultCache,
   RepairFeeRule,
   WebLoginTicket,
+  OidcAuthorizationCode,
+  ExternalAccessApp,
+  ExternalAccessGrant,
   FeeStandard,
   FeeBill,
   MaintenanceOrder,

@@ -15,12 +15,17 @@ import {
   UserReportCommunity,
   UserRoleAssignment,
   WebLoginTicket,
+  OidcAuthorizationCode,
+  ExternalAccessApp,
+  ExternalAccessGrant,
 } from '../../entities';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { WechatService } from './wechat.service';
 import { QrLoginService } from './qr-login.service';
+import { OidcController } from './oidc.controller';
+import { OidcService } from './oidc.service';
 
 @Module({
   imports: [
@@ -37,6 +42,9 @@ import { QrLoginService } from './qr-login.service';
       UserRoleAssignment,
       Role,
       WebLoginTicket,
+      OidcAuthorizationCode,
+      ExternalAccessApp,
+      ExternalAccessGrant,
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -49,8 +57,8 @@ import { QrLoginService } from './qr-login.service';
       }),
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, WechatService, QrLoginService],
+  controllers: [AuthController, OidcController],
+  providers: [AuthService, JwtStrategy, WechatService, OidcService, QrLoginService],
   exports: [JwtModule, PassportModule, WechatService, QrLoginService],
 })
 export class AuthModule {}

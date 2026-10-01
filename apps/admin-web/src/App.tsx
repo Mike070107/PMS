@@ -33,6 +33,7 @@ const StocktakePage = lazy(() => import('./pages/StocktakePage'));
 const MaterialsPage = lazy(() => import('./pages/MaterialsPage'));
 const QrPage = lazy(() => import('./pages/QrPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const ExternalAccessPage = lazy(() => import('./pages/ExternalAccessPage'));
 const LogsPage = lazy(() => import('./pages/LogsPage'));
 const ExperienceNotesPage = lazy(() => import('./pages/ExperienceNotesPage'));
 const RolesPage = lazy(() => import('./pages/RolesPage'));
@@ -145,6 +146,10 @@ export default function App() {
           {DataSyncAssistantPreviewPage && (
             <Route path="/dev/data-sync-assistant" element={<DataSyncAssistantPreviewPage />} />
           )}
+          <Route
+            path="/dev/external-access"
+            element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ExternalAccessPage preview /></div>}
+          />
         </>
       )}
       {/* 手机扫码签名页：不需要登录，凭据是链接里那串 5 分钟有效的 token */}
@@ -179,6 +184,7 @@ export default function App() {
         <Route path="materials" element={<RequireTenantScope><RequirePage pageKey="materials"><MaterialsPage /></RequirePage></RequireTenantScope>} />
         <Route path="qr" element={<RequireTenantScope><RequirePage pageKey="qr"><QrPage /></RequirePage></RequireTenantScope>} />
         <Route path="settings" element={<RequireTenantScope><RequirePage pageKey="settings"><SettingsPage /></RequirePage></RequireTenantScope>} />
+        <Route path="external-access" element={<RequireTenantScope><RequirePage pageKey="settings"><ExternalAccessPage /></RequirePage></RequireTenantScope>} />
         <Route path="logs" element={<RequireTenantScope><RequirePage pageKey="logs"><LogsPage /></RequirePage></RequireTenantScope>} />
         <Route path="*" element={<HomeRedirect />} />
       </Route>

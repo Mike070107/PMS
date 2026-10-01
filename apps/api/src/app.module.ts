@@ -30,6 +30,7 @@ import { ObservabilityModule } from './modules/observability/observability.modul
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { RepairExperiencesModule } from './modules/repair-experiences/repair-experiences.module';
 import { AccessCardIssuanceModule } from './modules/access-card-issuance/access-card-issuance.module';
+import { ExternalAccessModule } from './modules/external-access/external-access.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { AccessCardIssuanceModule } from './modules/access-card-issuance/access-
     FeedbackModule,
     RepairExperiencesModule,
     AccessCardIssuanceModule,
+    ExternalAccessModule,
     PropertiesModule,
     QrModule,
     OwnersModule,
