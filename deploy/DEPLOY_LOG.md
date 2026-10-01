@@ -3909,3 +3909,15 @@
 - 自上次（af3096f）以来上线的相关提交：
   - fbee333 feat(gateway): secure client pairing experience
 
+## 2026-10-02 06:28 · windows-lan-gateway-assistant · ab6ae1d
+
+- 包：`Pms.LanGatewayAssistant.exe` 1.2.1
+- 地址：`https://prsznh.cn/downloads/pms-lan-gateway-assistant/1.2.1/Pms.LanGatewayAssistant.exe`
+- SHA-256：`3352ad3d429a0d7f395851a7e9b916aeb6dd1041646ac48b7482006a24f03104`
+- 公网更新清单与下载文件已回读校验一致；本版复用数据同步助手的超时、可信下载路径、哈希、文件版本和失败回滚基线。
+
+## 2026-10-02 06:32 · domestic-gateway-infrastructure · ff21aac
+
+- 生产 API 已配置受限的设备配对、会话签名和 FRP 准入密钥，并通过 PM2 热重载后健康检查。
+- `pms-gateway-router.service` 已启用，仅监听 `127.0.0.1:4190`；保留 `MemoryDenyWriteExecute=yes`，Node 以 `--jitless` 运行，健康接口返回 200。
+- 尚未切换 `caiwu.prsznh.cn` 公网流量；等待财务室电脑完成一次性配对并上报在线后再启用 FRP 准入插件与动态路由。
