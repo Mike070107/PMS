@@ -196,6 +196,14 @@ export default function ParkingManagementPage({
     }
   };
 
+  const queryExistingPlate = (plate: string) => {
+    setOperationTarget(null);
+    setOperationError(null);
+    setTerm(plate);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    void searchParking(plate);
+  };
+
   const checkParkingPlate = useCallback(async (plate: string): Promise<ParkingPlateCheckResult> => {
     const normalizedPlate = plate.replace(/[\s·]/g, '').toUpperCase();
     if (rowsOverride) {
@@ -521,6 +529,7 @@ export default function ParkingManagementPage({
         onRollback={async () => { if (!lastOperation) return; try { await accessCardIssuance.rollbackParkingOperation(lastOperation.id); message.success('已创建反向回滚任务'); } catch (error) { message.error(error instanceof Error ? error.message : '回滚任务创建失败'); } }}
         onCreateProofUpload={createProofUploadForPlate}
         onCheckPlate={checkParkingPlate}
+        onQueryPlate={queryExistingPlate}
         onSubmit={(payload) => operationTarget && void runParkingOperation(operationTarget.kind, operationTarget.row, payload)}
       />
 
@@ -929,13 +938,14 @@ function parkingRenewalEndDate(currentEndDate: string, months: number): string {
   return parsed.isValid() ? parsed.add(months, 'month').format('YYYY-MM-DD') : '';
 }
 
-function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, task, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate }: {
+function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, task, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
   open: boolean;
   kind: accessCardIssuance.ParkingOperationKind;
   row: ParkingQueryRow | null;
   roomOptions: ParkingQueryRow[];
   onCreateProofUpload: (plate: string, ownerId?: string) => Promise<accessCardIssuance.ParkingProofUpload>;
   onCheckPlate: (plate: string) => Promise<ParkingPlateCheckResult>;
+  onQueryPlate: (plate: string) => void;
   loading: boolean;
   error: string | null;
   task: accessCardIssuance.ParkingOperation | null;
@@ -988,7 +998,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
     if (kind === 'add_vehicle' || kind === 'update_garages') payload.effective = garageBitString(selectedGarages);
     onSubmit(payload);
   };
-  if (kind === 'add_vehicle') return <AddVehicleOperationModal open={open} loading={loading} error={error} task={task} roomOptions={roomOptions} onClose={onClose} onSubmit={onSubmit} onRetry={onRetry} onRollback={onRollback} onCreateProofUpload={onCreateProofUpload} onCheckPlate={onCheckPlate} />;
+  if (kind === 'add_vehicle') return <AddVehicleOperationModal open={open} loading={loading} error={error} task={task} roomOptions={roomOptions} onClose={onClose} onSubmit={onSubmit} onRetry={onRetry} onRollback={onRollback} onCreateProofUpload={onCreateProofUpload} onCheckPlate={onCheckPlate} onQueryPlate={onQueryPlate} />;
   return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle' }} onOk={submit}>
     {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space><Button size="small" onClick={onRetry}>重试</Button>{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
     <div className="parking-operation-form">
@@ -1053,7 +1063,7 @@ function parkingDuplicateDescription(row: ParkingQueryRow): string {
   return `${database} · ${room} · ${owner}`;
 }
 
-function AddVehicleOperationModal({ open, loading, error, task, roomOptions, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate }: {
+function AddVehicleOperationModal({ open, loading, error, task, roomOptions, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
   open: boolean;
   loading: boolean;
   error: string | null;
@@ -1065,6 +1075,7 @@ function AddVehicleOperationModal({ open, loading, error, task, roomOptions, onC
   onRollback: () => void;
   onCreateProofUpload: (plate: string, ownerId?: string) => Promise<accessCardIssuance.ParkingProofUpload>;
   onCheckPlate: (plate: string) => Promise<ParkingPlateCheckResult>;
+  onQueryPlate: (plate: string) => void;
 }) {
   const [plate, setPlate] = useState('');
   const [step, setStep] = useState<'plate' | 'details'>('plate');
@@ -1224,7 +1235,7 @@ function AddVehicleOperationModal({ open, loading, error, task, roomOptions, onC
       </div>
       <div className="parking-duplicate-result" role="status" aria-live="polite">
         {checking ? <div className="parking-checking"><SyncOutlined spin /> 正在真实查询一期、二期停车旧库…</div>
-          : duplicateMatches.length > 0 && checkedPlate === normalized ? <Alert type="error" showIcon message={`车牌 ${normalized} 已在旧停车系统中登记，不能新增`} description={<div className="parking-duplicate-matches">{duplicateMatches.map((row, index) => <span key={`${row.database}-${parkingHistoryRef(row).sourceRecordId || index}`}><StopOutlined /> {parkingDuplicateDescription(row)}</span>)}<b>请关闭新增窗口，从查询结果办理续期、变更车牌或调整车库授权。</b></div>} />
+          : duplicateMatches.length > 0 && checkedPlate === normalized ? <Alert type="error" showIcon message={`车牌 ${normalized} 已在旧停车系统中登记，不能新增`} action={<Button size="small" type="primary" icon={<SearchOutlined />} onClick={() => onQueryPlate(normalized)}>查询此车牌</Button>} description={<div className="parking-duplicate-matches">{duplicateMatches.map((row, index) => <span key={`${row.database}-${parkingHistoryRef(row).sourceRecordId || index}`}><StopOutlined /> {parkingDuplicateDescription(row)}</span>)}<b>点击“查询此车牌”后可直接办理续期、换牌或调整车库授权。</b></div>} />
             : duplicateCheckError && checkedPlate === normalized ? <Alert type="error" showIcon message="车牌查重失败，暂时不能继续" description={duplicateCheckError} action={<Button onClick={() => setDuplicateCheckNonce((value) => value + 1)}>重新查重</Button>} />
               : duplicateCheckPassed ? <Alert type="success" showIcon message="一期、二期旧库均未发现该车牌" description="进入登记资料后，正式提交前还会再次查询，避免重复新增。" />
                 : normalized.length >= 7 && !plateFormatValid ? <Alert type="warning" showIcon message="车牌格式不正确" description="请先选择省市简称，第二位输入字母，再输入 5 至 6 位字母或数字；字母 I、O 不用于普通车牌。" />
