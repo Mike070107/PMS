@@ -45,8 +45,13 @@ else
   curl -fsSL "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_amd64.tar.gz" -o "$tmp/frp.tar.gz"
 fi
 echo "${FRP_SHA256}  $tmp/frp.tar.gz" | sha256sum -c -
-tar -xzf "$tmp/frp.tar.gz" -C "$tmp"
-install -m 0755 "$tmp/frp_${FRP_VERSION}_linux_amd64/frps" /usr/local/bin/frps
+# The upstream archive also contains frpc. The public server only needs frps;
+# avoid materializing frpc in /tmp because host-security products correctly
+# classify generic tunnelling clients as risk tools even when the signed
+# upstream archive is authentic.
+tar -xOf "$tmp/frp.tar.gz" "frp_${FRP_VERSION}_linux_amd64/frps" > "$tmp/frps"
+test -s "$tmp/frps"
+install -m 0755 "$tmp/frps" /usr/local/bin/frps
 
 if [[ -n "$DOWNLOAD_DIR" && -f "$DOWNLOAD_DIR/oauth-linux.tar.gz" ]]; then
   cp "$DOWNLOAD_DIR/oauth-linux.tar.gz" "$tmp/oauth.tar.gz"
