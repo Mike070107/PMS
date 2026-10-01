@@ -3878,3 +3878,11 @@
   - 4c45aa8 fix(parking): map legacy owner name to room
   - 1759e12 feat(version): show dated build versions across clients
 
+## 2026-10-02 05:33 · miniapp-staff · 94e7738
+
+- 包：`体验版 1.0.20261002b · 94e7738`
+- 提交：94e7738 deploy: web → af3096f
+- 说明：微信开发者工具上传体验版；需在公众平台选为体验版
+- 自上次（fab9e98）以来上线的相关提交：
+  - 1759e12 feat(version): show dated build versions across clients
+
