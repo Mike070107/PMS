@@ -112,3 +112,60 @@ export function parseParkingSearch(input: string): ParsedParkingSearch {
   }
   throw new Error('无法识别查询内容：请输入房号（如 6/502）、住户姓名、7 位以上电话、完整车牌或至少 4 位车牌尾号');
 }
+
+type ParkingQueryFieldValue = string | number | boolean | null;
+
+export interface ParkingPlateDuplicateQuery {
+  term: string;
+  status: string;
+  rows: Array<{ database: string; fields: Record<string, ParkingQueryFieldValue> }>;
+  completedAt: Date | string | null;
+}
+
+export function normalizeParkingPlate(value: unknown): string {
+  return String(value ?? '').trim().replace(/[\s·]/g, '').toUpperCase();
+}
+
+export function parkingPlateFromFields(fields: Record<string, ParkingQueryFieldValue>): string {
+  const aliases = new Set(['pplate', 'carno', 'carcode', 'carnumber', 'plateno', 'plate', 'license', '车牌']);
+  for (const [key, value] of Object.entries(fields)) {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+    if (aliases.has(normalizedKey)) return normalizeParkingPlate(value);
+  }
+  return '';
+}
+
+export function exactParkingPlateMatches(
+  rows: ParkingPlateDuplicateQuery['rows'],
+  plate: string,
+): ParkingPlateDuplicateQuery['rows'] {
+  const expected = normalizeParkingPlate(plate);
+  return rows.filter((row) => parkingPlateFromFields(row.fields) === expected);
+}
+
+/**
+ * 新增车牌必须引用一次刚完成的真实旧库查询，不能只信任前端的“未重复”状态。
+ * 最终提交前再次校验查询词、完成时间和精确车牌结果，避免旧页面或并发操作绕过查重。
+ */
+export function assertFreshParkingPlateCheck(
+  query: ParkingPlateDuplicateQuery,
+  plate: string,
+  now = new Date(),
+  maxAgeMs = 5 * 60 * 1000,
+): void {
+  const expected = normalizeParkingPlate(plate);
+  if (!expected) throw new Error('车牌不能为空');
+  if (query.status !== 'completed' || !query.completedAt) throw new Error('车牌查重尚未完成，请重新查重');
+  if (normalizeParkingPlate(query.term) !== expected) throw new Error('查重结果与当前车牌不一致，请重新查重');
+  const completedAt = new Date(query.completedAt);
+  if (!Number.isFinite(completedAt.getTime()) || now.getTime() - completedAt.getTime() > maxAgeMs) {
+    throw new Error('车牌查重结果已超过 5 分钟，请重新查重');
+  }
+  const matches = exactParkingPlateMatches(query.rows, expected);
+  if (matches.length) {
+    const sources = Array.from(new Set(matches.map((row) => row.database.toLowerCase() === 'parking1'
+      ? '枫桦景苑一期停车系统'
+      : row.database.toLowerCase() === 'parking2' ? '枫桦景苑二期停车系统' : row.database)));
+    throw new Error(`车牌 ${expected} 已存在于${sources.join('、')}，不能重复新增；请从查询结果办理续期、换牌或授权调整`);
+  }
+}

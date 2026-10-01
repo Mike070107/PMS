@@ -82,6 +82,7 @@ import {
   parkingPmsHouseKey,
   parkingRoomAddress,
   parseParkingSearch,
+  assertFreshParkingPlateCheck,
   supportsStructuredParkingQueries,
 } from './parking-query.util';
 import {
@@ -481,6 +482,21 @@ export class AccessCardIssuanceService {
     const payload = normalizeParkingOperationPayload(dto.payload);
     const expected = normalizeParkingOperationPayload(dto.expected ?? {});
     validateParkingOperation(dto.kind, payload);
+    if (dto.kind === 'add_vehicle') {
+      const duplicateCheckQueryId = Number(payload.duplicateCheckQueryId);
+      if (!Number.isInteger(duplicateCheckQueryId) || duplicateCheckQueryId <= 0) {
+        throw new BadRequestException('新增车牌前必须完成一期、二期停车旧库的真实查重');
+      }
+      const duplicateCheck = await this.parkingQueryRepo.findOne({ where: { id: duplicateCheckQueryId, tenantId } });
+      if (!duplicateCheck) throw new BadRequestException('车牌查重记录不存在或不属于当前物业，请重新查重');
+      try {
+        assertFreshParkingPlateCheck(duplicateCheck, textValue(payload.plate) || '');
+      } catch (error) {
+        throw new BadRequestException(error instanceof Error ? error.message : '车牌查重未通过');
+      }
+      // 查重任务编号只用于 PMS 服务端校验，不传给现场助手的旧库存储过程。
+      delete payload.duplicateCheckQueryId;
+    }
     const now = new Date();
     const task = this.parkingOperationRepo.create({
       tenantId, kind: dto.kind, database: dto.database, idempotencyKey,
