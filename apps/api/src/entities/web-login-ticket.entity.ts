@@ -22,6 +22,11 @@ export interface OidcLoginRequest {
   nonce?: string;
   codeChallenge?: string;
   codeChallengeMethod?: 'S256';
+  /** 服务端根据已登记回调域名解析，绝不接受浏览器自报。 */
+  requiredAppId?: number;
+  requiredAppSlug?: string;
+  requiredAppName?: string;
+  requiredAppHostname?: string;
 }
 
 /**
@@ -57,6 +62,18 @@ export class WebLoginTicket extends BaseEntity {
   /** 确认授权的员工；确认前为 null */
   @Column({ name: 'user_id', type: 'int', nullable: true })
   userId: number | null;
+
+  /** 首次扫码者。后续确认/取消只能由同一个员工完成。 */
+  @Column({ name: 'scanned_by_user_id', type: 'int', nullable: true })
+  scannedByUserId: number | null;
+
+  /** 只保存浏览器秘密的哈希；二维码本身不包含这份秘密。 */
+  @Column({ name: 'browser_secret_hash', type: 'char', length: 64, nullable: true })
+  browserSecretHash: string | null;
+
+  /** 电脑和手机同屏显示，帮助本人发现二维码转发/钓鱼。 */
+  @Column({ name: 'confirmation_code', type: 'char', length: 4, nullable: true })
+  confirmationCode: string | null;
 
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt: Date;

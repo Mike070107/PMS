@@ -1,9 +1,14 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
+import { Body, Controller, Get, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthService } from './auth.service';
 import { QrLoginService } from './qr-login.service';
+import {
+  clearQrBrowserCookie,
+  readQrBrowserSecret,
+  setQrBrowserCookie,
+} from './qr-login-security';
 import {
   AdminLoginDto,
   BootstrapAdminDto,
@@ -29,17 +34,29 @@ export class AuthController {
    * 客户端 IP / UA 原样带给手机确认页展示，是本人判断该不该确认的依据。
    */
   @Post('qr-login/ticket')
-  createQrTicket(@Req() req: Request) {
-    const ip =
-      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-      req.ip;
-    return this.qrLoginService.createTicket(ip, req.headers['user-agent']);
+  async createQrTicket(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const ticket = await this.qrLoginService.createTicket(req.ip, req.headers['user-agent']);
+    setQrBrowserCookie(req, res, ticket.ticket, ticket.browserSecret, ticket.expiresIn);
+    const { browserSecret: _secret, ...publicTicket } = ticket;
+    return publicTicket;
   }
 
   /** 网页轮询。确认过就连 token 一起返回，票据随即作废 */
   @Get('qr-login/status')
-  qrLoginStatus(@Query('ticket') ticket: string) {
-    return this.qrLoginService.pollStatus(ticket);
+  async qrLoginStatus(
+    @Query('ticket') ticket: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.qrLoginService.pollStatus(
+      ticket,
+      readQrBrowserSecret(req, ticket),
+      req.ip,
+    );
+    if (['confirmed', 'cancelled', 'expired'].includes(result.status)) {
+      clearQrBrowserCookie(req, res, ticket);
+    }
+    return result;
   }
 
   /** 小程序扫开后调：告诉本人「谁在哪台机器上要登录」，不发令牌 */

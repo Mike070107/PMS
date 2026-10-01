@@ -37,7 +37,14 @@
     <view class="card">
       <view class="row">
         <text class="row__label">目标应用</text>
-        <text class="row__value">{{info.applicationName}}</text>
+        <view class="row__value">
+          <view>{{info.applicationName}}</view>
+          <view wx:if="{{info.applicationHostname}}" class="row__hint">{{info.applicationHostname}}</view>
+        </view>
+      </view>
+      <view class="row row--match">
+        <text class="row__label">电脑核对码</text>
+        <text class="match-code">{{info.confirmationCode}}</text>
       </view>
       <view class="row">
         <text class="row__label">登录身份</text>
@@ -57,7 +64,7 @@
       </view>
     </view>
 
-    <view class="warn">不是你本人在电脑上操作？请点「不是我」，并联系管理员。</view>
+    <view class="warn">请确认电脑与手机显示相同的应用、域名和四位核对码。不一致或不是你本人操作，请点「不是我」。</view>
 
     <view class="btn-group">
       <button class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onConfirm">

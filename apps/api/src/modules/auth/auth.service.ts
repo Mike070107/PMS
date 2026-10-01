@@ -625,8 +625,14 @@ export class AuthService {
     return this.issueTokens(user);
   }
 
-  /** 通用内网应用准入：不要求 PMS 后台角色，只认独立的应用授权名单。 */
-  async requireExternalAccessUser(userId: number) {
+  /**
+   * 通用内网应用准入：不要求 PMS 后台角色，只认独立的应用授权名单。
+   * requiredAppId 存在时必须精确命中该应用，不能用“有任意应用权限”代替。
+   */
+  async requireExternalAccessUser(
+    userId: number,
+    required?: { appId: number; appSlug?: string },
+  ) {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('用户不存在');
     if (user.status !== UserStatus.ACTIVE) {
@@ -636,7 +642,13 @@ export class AuthService {
       throw new ForbiddenException('请先在「邻修管理」小程序用登记的手机号完成登录绑定');
     }
     const grants = user.tenantId
-      ? await this.externalGrantRepo.find({ where: { tenantId: user.tenantId, userId } })
+      ? await this.externalGrantRepo.find({
+          where: {
+            tenantId: user.tenantId,
+            userId,
+            ...(required ? { appId: required.appId } : {}),
+          },
+        })
       : [];
     const apps = grants.length
       ? await this.externalAppRepo.find({
@@ -649,8 +661,13 @@ export class AuthService {
       : [];
     if (!apps.length) {
       throw new ForbiddenException(
-        '你还没有任何内网应用访问权限，请联系管理员授权',
+        required?.appSlug
+          ? `你没有「${required.appSlug}」的访问权限，请联系管理员授权`
+          : '你还没有任何内网应用访问权限，请联系管理员授权',
       );
+    }
+    if (required && !apps.some((app) => app.id === required.appId)) {
+      throw new ForbiddenException('目标内网应用已停用或授权已撤销，请联系管理员');
     }
     await this.assertTenantActive(user);
     return { user, appSlugs: apps.map((app) => app.slug) };

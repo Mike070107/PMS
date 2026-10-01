@@ -32,14 +32,18 @@ function fixture() {
     },
   };
   const config = { get: (key: string, fallback = '') => values[key] ?? fallback } as ConfigService;
+  const checkedApps: any[] = [];
   const auth = {
-    requireExternalAccessUser: async () => ({
+    requireExternalAccessUser: async (_userId: number, required?: any) => {
+      checkedApps.push(required);
+      return ({
       user: { id: 42, tenantId: 7, name: '财务人员' },
       appSlugs: ['caiwu', 'warehouse-report'],
-    }),
+      });
+    },
   };
   const service = new OidcService(repo as any, config, auth as any);
-  return { service };
+  return { service, checkedApps };
 }
 
 test('authorize only accepts the registered client, callback and openid scope', () => {
@@ -88,8 +92,8 @@ test('authorize accepts Cloudflare Access long opaque state while keeping a size
   );
 });
 
-test('authorization code is one-time and the signed token carries app grants', async () => {
-  const { service } = fixture();
+test('authorization code is one-time, app-bound and the signed token carries app grants', async () => {
+  const { service, checkedApps } = fixture();
   const request = service.validateAuthorizeQuery({
     response_type: 'code',
     client_id: 'cloudflare-access',
@@ -98,6 +102,10 @@ test('authorization code is one-time and the signed token carries app grants', a
     state: 'opaque-state',
     nonce: 'nonce-1',
   });
+  request.requiredAppId = 8;
+  request.requiredAppSlug = 'caiwu';
+  request.requiredAppName = '用友财务系统';
+  request.requiredAppHostname = 'caiwu.prsznh.cn';
   const redirect = new URL(await service.createAuthorizationCode(42, request));
   const code = redirect.searchParams.get('code')!;
   const token = await service.exchangeToken({
@@ -111,6 +119,10 @@ test('authorization code is one-time and the signed token carries app grants', a
   const [encodedHeader, encodedBody, signature] = token.id_token.split('.');
   const claims = JSON.parse(Buffer.from(encodedBody, 'base64url').toString('utf8'));
   assert.deepEqual(claims.external_apps, ['caiwu', 'warehouse-report']);
+  assert.deepEqual(checkedApps, [
+    { appId: 8, appSlug: '用友财务系统' },
+    { appId: 8, appSlug: 'caiwu' },
+  ]);
   assert.equal(claims.nonce, 'nonce-1');
   const jwk = service.jwks().keys[0];
   assert.equal(
@@ -157,8 +169,13 @@ test('external login is a standalone QR page and redirects directly to the targe
     'one-time-ticket',
     'data:image/png;base64,AA==',
     'csp-nonce',
+    '用友财务系统',
+    'caiwu.prsznh.cn',
+    '4821',
   ) as string;
-  assert.match(html, /内网应用安全登录/);
+  assert.match(html, /用友财务系统/);
+  assert.match(html, /caiwu\.prsznh\.cn/);
+  assert.match(html, /4821/);
   assert.match(html, /location\.replace\(d\.redirectTo\)/);
   assert.doesNotMatch(html, /管理后台登录|系统设置|工单管理/);
 });

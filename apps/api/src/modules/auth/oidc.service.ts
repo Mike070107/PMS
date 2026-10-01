@@ -122,6 +122,13 @@ export class OidcService {
     if (request.clientId !== cfg.clientId || !cfg.redirectUris.has(request.redirectUri)) {
       throw new BadRequestException('OIDC 请求已失效，请重新打开目标系统');
     }
+    if (!request.requiredAppId || !request.requiredAppSlug) {
+      throw new BadRequestException('OIDC 请求没有绑定目标应用，请重新打开目标系统');
+    }
+    await this.authService.requireExternalAccessUser(userId, {
+      appId: request.requiredAppId,
+      appSlug: request.requiredAppName || request.requiredAppSlug,
+    });
     const code = randomBytes(32).toString('base64url');
     await this.codeRepo.save(
       this.codeRepo.create({
@@ -131,6 +138,8 @@ export class OidcService {
         redirectUri: request.redirectUri,
         nonce: request.nonce ?? null,
         codeChallenge: request.codeChallenge ?? null,
+        requiredAppId: request.requiredAppId,
+        requiredAppSlug: request.requiredAppSlug,
         expiresAt: new Date(Date.now() + CODE_TTL_MS),
         consumedAt: null,
         createdBy: userId,
@@ -184,7 +193,13 @@ export class OidcService {
     );
     if (!claimed.affected) throw new BadRequestException('authorization code 已使用');
 
-    const { user, appSlugs } = await this.authService.requireExternalAccessUser(row.userId);
+    if (!row.requiredAppId || !row.requiredAppSlug) {
+      throw new BadRequestException('authorization code 未绑定目标应用');
+    }
+    const { user, appSlugs } = await this.authService.requireExternalAccessUser(row.userId, {
+      appId: row.requiredAppId,
+      appSlug: row.requiredAppSlug,
+    });
     const now = Math.floor(Date.now() / 1000);
     const claims = {
       iss: cfg.issuer,

@@ -190,6 +190,7 @@ async function requestViaFetch<T>(
           ? JSON.stringify(opts.data)
           : undefined,
       signal: controller.signal,
+      credentials: 'include',
     });
   } catch (e: any) {
     clearTimeout(t);

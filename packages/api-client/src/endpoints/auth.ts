@@ -77,6 +77,9 @@ export interface QrLoginTicketResp {
   ticket: string;
   qrImage: string;
   expiresIn: number;
+  confirmationCode: string;
+  applicationName: string;
+  applicationHostname: string | null;
 }
 
 /** 网页轮询的结果。confirmed 时带上 token，且这张票据当场作废 */
@@ -108,6 +111,8 @@ export interface QrLoginScanInfo {
   status: string;
   /** 本次确认将登录的目标，如 PMS 后台或内网应用。 */
   applicationName: string;
+  applicationHostname: string | null;
+  confirmationCode: string | null;
   /** 出码那台机器的 IP 和浏览器，本人据此判断是不是自己 */
   clientIp: string | null;
   userAgent: string | null;

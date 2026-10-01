@@ -4,14 +4,16 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
+  HttpException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
-import { LessThan, Repository } from 'typeorm';
+import { IsNull, LessThan, MoreThan, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { STAFF_APP_ROLES, UserRole, USER_ROLE_LABELS } from '../../common/enums';
-import { User, WebLoginTicket } from '../../entities';
+import { ExternalAccessApp, User, WebLoginTicket } from '../../entities';
 import {
   OidcLoginRequest,
   WebLoginTicketPurpose,
@@ -20,6 +22,11 @@ import {
 import { AuthService } from './auth.service';
 import { OidcService } from './oidc.service';
 import { WechatService, type WxEnvVersion } from './wechat.service';
+import {
+  browserSecretMatches,
+  confirmationCode,
+  createBrowserBinding,
+} from './qr-login-security';
 
 /** 票据有效期。太长会让一张被拍走的码一直可用，太短又赶不上掏手机的时间 */
 const TICKET_TTL_SEC = 120;
@@ -57,12 +64,15 @@ function randomScene(length = 24): string {
 @Injectable()
 export class QrLoginService {
   private readonly logger = new Logger(QrLoginService.name);
+  private readonly rateWindows = new Map<string, { count: number; resetAt: number }>();
 
   constructor(
     @InjectRepository(WebLoginTicket)
     private readonly ticketRepo: Repository<WebLoginTicket>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(ExternalAccessApp)
+    private readonly externalAppRepo: Repository<ExternalAccessApp>,
     private readonly wechat: WechatService,
     private readonly config: ConfigService,
     private readonly authService: AuthService,
@@ -78,8 +88,20 @@ export class QrLoginService {
       oidcRequest: OidcLoginRequest;
     },
   ) {
+    this.assertRateLimit('create', clientIp || 'unknown', 6, 60_000);
+    if (clientIp) {
+      const recent = await this.ticketRepo.count({
+        where: { clientIp, createdAt: MoreThan(new Date(Date.now() - 60_000)) },
+      });
+      if (recent >= 6) throw new HttpException('二维码生成过于频繁，请一分钟后再试', 429);
+    }
     const ticket = randomScene();
     const expiresAt = new Date(Date.now() + TICKET_TTL_SEC * 1000);
+    const browser = createBrowserBinding();
+    const matchCode = confirmationCode();
+    const oidcRequest = options?.oidcRequest
+      ? await this.bindOidcRequestToApplication(options.oidcRequest)
+      : null;
 
     const png = await this.wechat.getUnlimitedWxaCode(
       {
@@ -96,8 +118,11 @@ export class QrLoginService {
         ticket,
         status: WebLoginTicketStatus.PENDING,
         purpose: options?.purpose ?? WebLoginTicketPurpose.ADMIN,
-        oidcRequest: options?.oidcRequest ?? null,
+        oidcRequest,
         userId: null,
+        scannedByUserId: null,
+        browserSecretHash: browser.hash,
+        confirmationCode: matchCode,
         expiresAt,
         confirmedAt: null,
         clientIp: clientIp?.slice(0, 64) ?? null,
@@ -111,6 +136,10 @@ export class QrLoginService {
       ticket,
       qrImage: `data:image/png;base64,${png.toString('base64')}`,
       expiresIn: TICKET_TTL_SEC,
+      browserSecret: browser.secret,
+      confirmationCode: matchCode,
+      applicationName: oidcRequest?.requiredAppName ?? 'PMS 物业管理后台',
+      applicationHostname: oidcRequest?.requiredAppHostname ?? null,
     };
   }
 
@@ -118,7 +147,8 @@ export class QrLoginService {
    * 网页轮询。确认过就把 token 一起给出去，并立刻把票据标成已消费 ——
    * 一张码只能换一次 token，被人拍照转发也没用。
    */
-  async pollStatus(ticketCode: string) {
+  async pollStatus(ticketCode: string, browserSecret?: string, clientIp?: string) {
+    this.assertRateLimit('poll', clientIp || 'unknown', 120, 60_000);
     const row = await this.findTicket(ticketCode);
     if (!row) return { status: 'expired' as const };
     if (row.purpose !== WebLoginTicketPurpose.ADMIN) {
@@ -128,6 +158,7 @@ export class QrLoginService {
     if (this.isExpired(row)) {
       return { status: 'expired' as const };
     }
+    this.assertBrowserBinding(row, browserSecret);
     if (row.status === WebLoginTicketStatus.CANCELLED) {
       return { status: 'cancelled' as const };
     }
@@ -152,12 +183,14 @@ export class QrLoginService {
   }
 
   /** Cloudflare OIDC 授权页轮询；只返回一次性授权码跳转地址，不发 PMS JWT。 */
-  async pollExternalOidcStatus(ticketCode: string) {
+  async pollExternalOidcStatus(ticketCode: string, browserSecret?: string, clientIp?: string) {
+    this.assertRateLimit('oidc-poll', clientIp || 'unknown', 120, 60_000);
     const row = await this.findTicket(ticketCode);
     if (!row || row.purpose !== WebLoginTicketPurpose.EXTERNAL_ACCESS_OIDC) {
       return { status: 'expired' as const };
     }
     if (this.isExpired(row)) return { status: 'expired' as const };
+    this.assertBrowserBinding(row, browserSecret);
     if (row.status === WebLoginTicketStatus.CANCELLED) {
       return { status: 'cancelled' as const };
     }
@@ -174,7 +207,8 @@ export class QrLoginService {
     );
     if (!claimed.affected) return { status: 'expired' as const };
 
-    await this.authService.requireExternalAccessUser(row.userId);
+    const required = this.requiredApplication(row);
+    await this.authService.requireExternalAccessUser(row.userId, required);
     const redirectTo = await this.oidcService.createAuthorizationCode(
       row.userId,
       row.oidcRequest,
@@ -188,13 +222,30 @@ export class QrLoginService {
    * 只标记状态，不发任何令牌 —— 确认动作必须是本人再点一次。
    */
   async markScanned(ticketCode: string, user: AuthUser) {
+    this.assertRateLimit('scan', String(user.id), 20, 5 * 60_000);
     const row = await this.requireUsableTicket(ticketCode);
     this.assertStaffApp(user);
+    if (row.status === WebLoginTicketStatus.CANCELLED || row.status === WebLoginTicketStatus.CONSUMED) {
+      throw new BadRequestException('这个二维码已经用过或已取消，请让网页刷新一张');
+    }
 
     if (row.status === WebLoginTicketStatus.PENDING) {
-      row.status = WebLoginTicketStatus.SCANNED;
-      row.updatedBy = user.id;
-      await this.ticketRepo.save(row);
+      const claimed = await this.ticketRepo.update(
+        { id: row.id, status: WebLoginTicketStatus.PENDING, scannedByUserId: IsNull() },
+        { status: WebLoginTicketStatus.SCANNED, scannedByUserId: user.id, updatedBy: user.id },
+      );
+      if (claimed.affected) {
+        row.status = WebLoginTicketStatus.SCANNED;
+        row.scannedByUserId = user.id;
+      } else {
+        const current = await this.findTicket(ticketCode);
+        if (!current) throw new NotFoundException('二维码无效，请让网页刷新一张');
+        row.status = current.status;
+        row.scannedByUserId = current.scannedByUserId;
+      }
+    }
+    if (row.scannedByUserId !== user.id) {
+      throw new ForbiddenException('这个二维码已由另一位员工扫描，请让电脑刷新二维码');
     }
 
     const me = await this.userRepo.findOne({ where: { id: user.id } });
@@ -206,9 +257,9 @@ export class QrLoginService {
       requestedAt: row.createdAt,
       expiresAt: row.expiresAt,
       applicationName:
-        row.purpose === WebLoginTicketPurpose.EXTERNAL_ACCESS_OIDC
-          ? '内网应用访问'
-          : 'PMS 物业管理后台',
+        row.oidcRequest?.requiredAppName ?? 'PMS 物业管理后台',
+      applicationHostname: row.oidcRequest?.requiredAppHostname ?? null,
+      confirmationCode: row.confirmationCode,
       me: {
         name: me?.name ?? null,
         roleLabel: me ? USER_ROLE_LABELS[me.role] ?? me.role : null,
@@ -218,41 +269,64 @@ export class QrLoginService {
 
   /** 本人点「确认登录」 */
   async confirm(ticketCode: string, user: AuthUser) {
+    this.assertRateLimit('confirm', String(user.id), 12, 5 * 60_000);
     const row = await this.requireUsableTicket(ticketCode);
     this.assertStaffApp(user);
     if (row.status === WebLoginTicketStatus.CONFIRMED) {
-      return { ok: true as const };
+      if (row.userId === user.id) return { ok: true as const };
+      throw new ForbiddenException('这次登录已由另一位员工确认');
     }
-    if (row.status !== WebLoginTicketStatus.PENDING && row.status !== WebLoginTicketStatus.SCANNED) {
+    if (row.status !== WebLoginTicketStatus.SCANNED || row.scannedByUserId !== user.id) {
       throw new BadRequestException('这个二维码已经用过或已取消，请让网页刷新一张');
     }
 
     // 没有后台权限的人（没绑角色的维修工、保安等）在手机上就要看到原因，
     // 别让他点完确认、网页那边再报一句他看不见的错
     if (row.purpose === WebLoginTicketPurpose.EXTERNAL_ACCESS_OIDC) {
-      await this.authService.requireExternalAccessUser(user.id);
+      await this.authService.requireExternalAccessUser(user.id, this.requiredApplication(row));
     } else {
       await this.authService.issueWebTokensForUser(user.id);
     }
 
-    row.status = WebLoginTicketStatus.CONFIRMED;
-    row.userId = user.id;
-    row.confirmedAt = new Date();
-    row.updatedBy = user.id;
-    await this.ticketRepo.save(row);
+    const confirmedAt = new Date();
+    const claimed = await this.ticketRepo.update(
+      {
+        id: row.id,
+        status: WebLoginTicketStatus.SCANNED,
+        scannedByUserId: user.id,
+      },
+      {
+        status: WebLoginTicketStatus.CONFIRMED,
+        userId: user.id,
+        confirmedAt,
+        updatedBy: user.id,
+      },
+    );
+    if (!claimed.affected) {
+      throw new BadRequestException('二维码状态已变化，请返回电脑刷新后重试');
+    }
     return { ok: true as const };
   }
 
   /** 本人点「不是我」：立刻作废，网页那边会提示已取消 */
   async cancel(ticketCode: string, user: AuthUser) {
+    this.assertRateLimit('cancel', String(user.id), 12, 5 * 60_000);
     const row = await this.findTicket(ticketCode);
     if (!row) return { ok: true as const };
+    this.assertStaffApp(user);
     if (row.status === WebLoginTicketStatus.CONSUMED) {
       throw new BadRequestException('这次登录已经完成，如需退出请在网页里退出登录');
     }
-    row.status = WebLoginTicketStatus.CANCELLED;
-    row.updatedBy = user.id;
-    await this.ticketRepo.save(row);
+    if (row.scannedByUserId !== user.id) {
+      throw new ForbiddenException('只能由扫描这个二维码的员工取消');
+    }
+    const cancelled = await this.ticketRepo.update(
+      { id: row.id, status: WebLoginTicketStatus.SCANNED, scannedByUserId: user.id },
+      { status: WebLoginTicketStatus.CANCELLED, updatedBy: user.id },
+    );
+    if (!cancelled.affected && row.status !== WebLoginTicketStatus.CANCELLED) {
+      throw new BadRequestException('二维码状态已变化，请返回电脑刷新后重试');
+    }
     return { ok: true as const };
   }
 
@@ -281,6 +355,68 @@ export class QrLoginService {
 
   private isExpired(row: WebLoginTicket) {
     return row.expiresAt.getTime() < Date.now();
+  }
+
+  private assertBrowserBinding(row: WebLoginTicket, secret?: string) {
+    if (!browserSecretMatches(secret, row.browserSecretHash)) {
+      throw new UnauthorizedException('登录会话与当前浏览器不匹配，请刷新页面重新扫码');
+    }
+  }
+
+  private requiredApplication(row: WebLoginTicket) {
+    const request = row.oidcRequest;
+    if (!request?.requiredAppId || !request.requiredAppSlug) {
+      throw new BadRequestException('登录票据没有绑定目标应用，请重新打开目标系统');
+    }
+    return {
+      appId: request.requiredAppId,
+      appSlug: request.requiredAppName || request.requiredAppSlug,
+    };
+  }
+
+  private async bindOidcRequestToApplication(request: OidcLoginRequest): Promise<OidcLoginRequest> {
+    let hostname = '';
+    try {
+      hostname = new URL(request.redirectUri).hostname.toLowerCase();
+    } catch {
+      throw new BadRequestException('OIDC 回调地址无效');
+    }
+    const app = await this.externalAppRepo.findOne({
+      where: { publicHostname: hostname, enabled: true },
+    });
+    if (!app) {
+      throw new ForbiddenException('该回调域名没有对应的已启用内网应用');
+    }
+    return {
+      ...request,
+      requiredAppId: app.id,
+      requiredAppSlug: app.slug,
+      requiredAppName: app.name,
+      requiredAppHostname: app.publicHostname,
+    };
+  }
+
+  /** 轻量进程级限流；数据库侧另限制每个来源一分钟内最多创建六张票据。 */
+  private assertRateLimit(bucket: string, identity: string, limit: number, windowMs: number) {
+    const key = `${bucket}:${identity}`;
+    const now = Date.now();
+    const current = this.rateWindows.get(key);
+    if (!current || current.resetAt <= now) {
+      this.rateWindows.set(key, { count: 1, resetAt: now + windowMs });
+      if (this.rateWindows.size > 10_000) {
+        for (const [entryKey, value] of this.rateWindows) {
+          if (value.resetAt <= now) this.rateWindows.delete(entryKey);
+        }
+        while (this.rateWindows.size > 9_000) {
+          const oldest = this.rateWindows.keys().next().value as string | undefined;
+          if (!oldest) break;
+          this.rateWindows.delete(oldest);
+        }
+      }
+      return;
+    }
+    current.count += 1;
+    if (current.count > limit) throw new HttpException('请求过于频繁，请稍后再试', 429);
   }
 
   /**

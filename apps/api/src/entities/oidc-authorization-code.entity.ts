@@ -24,6 +24,12 @@ export class OidcAuthorizationCode extends BaseEntity {
   @Column({ name: 'code_challenge', type: 'varchar', length: 128, nullable: true })
   codeChallenge: string | null;
 
+  @Column({ name: 'required_app_id', type: 'int', nullable: true })
+  requiredAppId: number | null;
+
+  @Column({ name: 'required_app_slug', type: 'varchar', length: 60, nullable: true })
+  requiredAppSlug: string | null;
+
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt: Date;
 

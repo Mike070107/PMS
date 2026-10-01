@@ -163,6 +163,7 @@ function QrLoginPanel({
   onSuccess: (accessToken: string, user: AdminLoginResp['user']) => Promise<void>;
 }) {
   const [qrImage, setQrImage] = useState('');
+  const [confirmationCode, setConfirmationCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<'pending' | 'scanned' | 'expired' | 'cancelled'>('pending');
   const [errorMsg, setErrorMsg] = useState('');
@@ -186,6 +187,7 @@ function QrLoginPanel({
       const t = await authApi.qrLoginTicket();
       if (!aliveRef.current) return;
       setQrImage(t.qrImage);
+      setConfirmationCode(t.confirmationCode);
       setLoading(false);
 
       timerRef.current = window.setInterval(async () => {
@@ -298,6 +300,11 @@ function QrLoginPanel({
           </>
         )}
       </div>
+      {!loading && !dead && confirmationCode ? (
+        <div style={{ marginTop: 12, color: '#1849a9', fontSize: 14 }}>
+          手机核对码 <strong style={{ fontSize: 22, letterSpacing: '0.16em', fontVariantNumeric: 'tabular-nums' }}>{confirmationCode}</strong>
+        </div>
+      ) : null}
       <Text
         type={status === 'scanned' ? undefined : 'secondary'}
         style={{ display: 'block', marginTop: 16, lineHeight: 1.7 }}

@@ -16,8 +16,8 @@ cookie_secret_file = "/etc/pms-gateway/oauth-cookie-secret"
 cookie_secure = true
 cookie_httponly = true
 cookie_samesite = "lax"
-cookie_expire = "8h"
-cookie_refresh = "1h"
+cookie_expire = "30m"
+cookie_refresh = "5m"
 
 email_domains = ["*"]
 whitelist_domains = ["caiwu.prsznh.cn"]

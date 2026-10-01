@@ -8,6 +8,11 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
 
+  // 只信任紧邻 API 的反向代理。业务代码统一使用 req.ip，不直接采信客户端可伪造的
+  // X-Forwarded-For 第一段。直连开发环境仍会得到真实 socket 地址。
+  const trustProxyHops = Math.max(0, parseInt(config.get<string>('TRUST_PROXY_HOPS', '1'), 10) || 0);
+  if (trustProxyHops > 0) app.set('trust proxy', trustProxyHops);
+
   // Express 默认只收 100kb 的 JSON。存量数据导入（老收费系统的账单一次几千行）
   // 会直接被顶回 413，而且报错信息里看不出是体积问题。附件走 multipart，不受这里影响。
   //

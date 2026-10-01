@@ -38,6 +38,22 @@
   color: var(--color-text);
   word-break: break-all;
 }
+.row__hint {
+  margin-top: 4rpx;
+  font-size: var(--font-sm);
+  color: var(--color-text-tertiary);
+  word-break: break-all;
+}
+.row--match { align-items: center; }
+.match-code {
+  flex: 1 1 auto;
+  color: #1849a9;
+  font-size: 48rpx;
+  font-weight: 700;
+  letter-spacing: 12rpx;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
 
 .warn {
   margin: var(--space-lg) var(--space-xs);
