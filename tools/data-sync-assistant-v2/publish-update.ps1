@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch] $Upload
 )
 
@@ -60,14 +60,14 @@ if ($LASTEXITCODE -ne 0) { throw "生产更新包发布失败" }
 
 # HTTP 200 不代表发布生效：Nginx 可能仍从 Web 目录返回旧清单。
 # 必须同时核对公网清单版本、哈希以及实际下载文件。
-$ManifestUri = "https://prsznh.cn/downloads/pms-data-sync-assistant/latest.json?verify=" + [Uri]::EscapeDataString((Get-Date).ToUniversalTime().ToString("o"))
-$OnlineManifest = Invoke-RestMethod -Uri $ManifestUri -Headers @{ "Cache-Control" = "no-cache" }
+$ManifestUri = 'https://prsznh.cn/downloads/pms-data-sync-assistant/latest.json?verify=' + [Uri]::EscapeDataString((Get-Date).ToUniversalTime().ToString('o'))
+$OnlineManifest = Invoke-RestMethod -Uri $ManifestUri -Headers @{'Cache-Control' = 'no-cache'}
 if ($OnlineManifest.version -ne $ShortVersion -or $OnlineManifest.sha256 -ne $Hash) {
     throw "线上更新清单仍不是本次版本：期望 $ShortVersion / $Hash，实际 $($OnlineManifest.version) / $($OnlineManifest.sha256)"
 }
 $PublicExecutable = [IO.Path]::GetTempFileName()
 try {
-    Invoke-WebRequest -Uri $OnlineManifest.url -OutFile $PublicExecutable -Headers @{ "Cache-Control" = "no-cache" }
+    Invoke-WebRequest -Uri $OnlineManifest.url -OutFile $PublicExecutable -Headers @{'Cache-Control' = 'no-cache'}
     $PublicHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $PublicExecutable).Hash.ToLowerInvariant()
     if ($PublicHash -ne $Hash) { throw "公网下载文件校验失败：$PublicHash" }
 }
