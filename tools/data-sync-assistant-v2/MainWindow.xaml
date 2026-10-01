@@ -58,7 +58,8 @@
           </Grid>
         </Border>
 
-        <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0,16,0,0" Padding="18,15">
+        <!-- 更新状态已移入“助手信息”中的操作进度面板，主界面不再常驻占用空间。 -->
+        <Border Grid.Row="1" Visibility="Collapsed" Style="{StaticResource CardBorder}" Margin="0,16,0,0" Padding="18,15">
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="44" /><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
             <Border Width="38" Height="38" CornerRadius="19" Background="#E9F6EF" VerticalAlignment="Center">
