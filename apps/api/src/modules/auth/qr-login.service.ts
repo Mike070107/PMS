@@ -85,7 +85,8 @@ export class QrLoginService {
     userAgent?: string,
     options?: {
       purpose: WebLoginTicketPurpose;
-      oidcRequest: OidcLoginRequest;
+      oidcRequest?: OidcLoginRequest;
+      requiredApp?: ExternalAccessApp;
     },
   ) {
     this.assertRateLimit('create', clientIp || 'unknown', 6, 60_000);
@@ -99,7 +100,17 @@ export class QrLoginService {
     const expiresAt = new Date(Date.now() + TICKET_TTL_SEC * 1000);
     const browser = createBrowserBinding();
     const matchCode = confirmationCode();
-    const oidcRequest = options?.oidcRequest
+    const oidcRequest = options?.requiredApp
+      ? {
+          clientId: 'pms-gateway',
+          redirectUri: `https://${options.requiredApp.publicHostname}/`,
+          state: randomBytes(16).toString('base64url'),
+          requiredAppId: options.requiredApp.id,
+          requiredAppSlug: options.requiredApp.slug,
+          requiredAppName: options.requiredApp.name,
+          requiredAppHostname: options.requiredApp.publicHostname,
+        }
+      : options?.oidcRequest
       ? await this.bindOidcRequestToApplication(options.oidcRequest)
       : null;
 
@@ -217,6 +228,28 @@ export class QrLoginService {
     return { status: 'confirmed' as const, redirectTo };
   }
 
+  /** 国内动态网关轮询：消费一次性票据并返回服务端签发会话所需的最小信息。 */
+  async pollExternalGatewayStatus(ticketCode: string, browserSecret?: string, clientIp?: string) {
+    this.assertRateLimit('gateway-poll', clientIp || 'unknown', 120, 60_000);
+    const row = await this.findTicket(ticketCode);
+    if (!row || row.purpose !== WebLoginTicketPurpose.EXTERNAL_GATEWAY) return { status: 'expired' as const };
+    if (this.isExpired(row)) return { status: 'expired' as const };
+    this.assertBrowserBinding(row, browserSecret);
+    if (row.status === WebLoginTicketStatus.CANCELLED) return { status: 'cancelled' as const };
+    if (row.status === WebLoginTicketStatus.CONSUMED) return { status: 'expired' as const };
+    if (row.status !== WebLoginTicketStatus.CONFIRMED || !row.userId) {
+      return { status: row.status as 'pending' | 'scanned' };
+    }
+    const claimed = await this.ticketRepo.update(
+      { id: row.id, status: WebLoginTicketStatus.CONFIRMED },
+      { status: WebLoginTicketStatus.CONSUMED, updatedBy: row.userId },
+    );
+    if (!claimed.affected) return { status: 'expired' as const };
+    const required = this.requiredApplication(row);
+    await this.authService.requireExternalAccessUser(row.userId, required);
+    return { status: 'confirmed' as const, userId: row.userId, appId: required.appId };
+  }
+
   /**
    * 小程序扫开后调这个，把「谁在哪台机器上要登录」告诉本人。
    * 只标记状态，不发任何令牌 —— 确认动作必须是本人再点一次。
@@ -282,7 +315,7 @@ export class QrLoginService {
 
     // 没有后台权限的人（没绑角色的维修工、保安等）在手机上就要看到原因，
     // 别让他点完确认、网页那边再报一句他看不见的错
-    if (row.purpose === WebLoginTicketPurpose.EXTERNAL_ACCESS_OIDC) {
+    if ([WebLoginTicketPurpose.EXTERNAL_ACCESS_OIDC, WebLoginTicketPurpose.EXTERNAL_GATEWAY].includes(row.purpose)) {
       await this.authService.requireExternalAccessUser(user.id, this.requiredApplication(row));
     } else {
       await this.authService.issueWebTokensForUser(user.id);

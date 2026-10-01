@@ -1,0 +1,27 @@
+[Unit]
+Description=PMS dynamic LAN application gateway router
+After=network-online.target frps.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pms-gateway
+Group=pms-gateway
+EnvironmentFile=-/etc/pms-gateway/router.env
+ExecStart=/usr/bin/node /opt/pms-gateway-router/server.mjs
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

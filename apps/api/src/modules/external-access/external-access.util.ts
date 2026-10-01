@@ -32,9 +32,14 @@ export function normalizeExternalRoute(
     .replace(/\/$/, '');
   const normalizedZone = zone.trim().toLowerCase();
   const label = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?';
-  const hostnamePattern = new RegExp(`^(?:${label}\\.)+${normalizedZone.replace(/\./g, '\\.')}$`);
+  const hostnamePattern = new RegExp(`^${label}\\.${normalizedZone.replace(/\./g, '\\.')}$`);
   if (hostname.length > 253 || !hostnamePattern.test(hostname)) {
-    throw new BadRequestException(`外网域名必须是 ${normalizedZone} 的有效子域名`);
+    throw new BadRequestException(`外网域名必须是 ${normalizedZone} 的有效一级子域名`);
+  }
+  const reservedLabels = new Set(['api', 'app', 'auth', 'cdn', 'download', 'downloads', 'fire', 'gateway', 'imap', 'mail', 'minio', 'pms', 'pop', 's3', 'smtp', 'static', 'vpn', 'www']);
+  const hostnameLabel = hostname.slice(0, -(normalizedZone.length + 1));
+  if (reservedLabels.has(hostnameLabel)) {
+    throw new BadRequestException(`子域名 ${hostnameLabel} 为平台保留名称，请更换`);
   }
 
   let origin: URL;
@@ -43,8 +48,8 @@ export function normalizeExternalRoute(
   } catch {
     throw new BadRequestException('内网地址格式错误，例如 http://192.168.1.20:8080');
   }
-  if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password) {
-    throw new BadRequestException('内网地址只支持不含账号密码的 HTTP/HTTPS URL');
+  if (origin.protocol !== 'http:' || origin.username || origin.password) {
+    throw new BadRequestException('内网地址只支持不含账号密码的 http:// URL；公网入口会统一使用 HTTPS');
   }
   if (origin.hash) {
     throw new BadRequestException('内网入口地址不能包含 # 锚点');

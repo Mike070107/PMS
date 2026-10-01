@@ -2,26 +2,26 @@
 
 面向财务室、仓库和物业机房等 Windows 电脑的图形化内网代理。它把 `frpc` 作为受管代理核心运行，用户不再需要编辑 TOML 或执行 PowerShell 命令。
 
-当前 1.0 版用于安全迁移现有用友代理。标准产品的最终配置源必须是 PMS 控制台：代理通过一次性安装码注册并自动领取应用配置，不能要求用户在本机和服务器各维护一份路由。完整产品边界与验收见 [`../../docs/lan-gateway-product.md`](../../docs/lan-gateway-product.md)。
+1.1 版起 PMS 控制台是唯一配置源：代理通过 10 分钟有效、仅可使用一次的安装码注册，自动领取整份应用配置、检查内网站点并原子替换运行修订。失败时保留上一版可用配置并向 PMS 回报具体原因。完整产品边界与验收见 [`../../docs/lan-gateway-product.md`](../../docs/lan-gateway-product.md)。
 
 ## 使用方式
 
 1. 解压发布包，双击 `Pms.LanGatewayAssistant.exe`。安装后台服务时，程序会把正式运行副本放到 `%ProgramData%\PMS\LanGatewayAssistant\bin`，解压目录之后可以删除。
-2. 旧电脑会自动识别并导入 `C:\ProgramData\PMSGateway` 中的用友配置和连接凭据。
-3. 点击“安装后台服务”。管理员确认一次后，代理随电脑开机启动，异常退出会自动恢复。
-4. 在“内网应用”中添加名称、外网域名和局域网网址；保存前会验证域名格式、内网地址和 HTTP 连通性。
+2. 在 PMS 后台添加「代理设备」，复制安装码。
+3. 在助手顶部输入安装码，点击「连接并安装」，在 Windows 授权框点「是」。
+4. 以后在 PMS 新增、修改或停用应用；助手自动下发，不在本机维护路由。
 
 程序数据位于 `%ProgramData%\PMS\LanGatewayAssistant`。连接凭据使用 Windows DPAPI 本机加密；运行时明文文件只允许 SYSTEM 和管理员读取。
 
 ## 新电脑复用
 
-新电脑发布包由 `build-package.ps1` 生成，包内可以携带 `frpc.exe` 与一次性下发的 `frp-token`。首次启动后凭据会被加密导入。不要通过聊天、源码仓库或日志传递 token。
+新电脑发布包由 `build-package.ps1` 生成，包内只携带经过 SHA-256 校验的 `frpc.exe`，不再分发长期连接凭据。首次输入 PMS 安装码后，设备凭据和代理凭据才由控制面下发并使用 Windows DPAPI 本机加密。不要通过聊天、源码仓库或日志传递 token。
 
 ```powershell
-.\build-package.ps1 -FrpcArchive C:\secure\frp_0.71.0_windows_amd64.zip -TokenFile C:\secure\frp-token
+.\build-package.ps1 -FrpcArchive C:\secure\frp_0.71.0_windows_amd64.zip
 ```
 
-如果只是构建和自检界面程序，可不传这两个参数；此时生成的包适合升级现有电脑，不适合空白电脑首次连接。
+如果只是构建和自检界面程序，可不传参数；此时生成的包适合升级现有电脑，不适合空白电脑首次连接。
 
 ## 更新
 

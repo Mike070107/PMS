@@ -60,6 +60,7 @@ import { WebLoginTicket } from './web-login-ticket.entity';
 import { OidcAuthorizationCode } from './oidc-authorization-code.entity';
 import { ExternalAccessApp } from './external-access-app.entity';
 import { ExternalAccessGrant } from './external-access-grant.entity';
+import { LanGatewayAgent } from './lan-gateway-agent.entity';
 import { FeeStandard } from './fee-standard.entity';
 import { FeeBill } from './fee-bill.entity';
 import { MaintenanceOrder } from './maintenance-order.entity';
@@ -161,6 +162,7 @@ export const entities = [
   OidcAuthorizationCode,
   ExternalAccessApp,
   ExternalAccessGrant,
+  LanGatewayAgent,
   FeeStandard,
   FeeBill,
   MaintenanceOrder,
@@ -247,6 +249,7 @@ export {
   OidcAuthorizationCode,
   ExternalAccessApp,
   ExternalAccessGrant,
+  LanGatewayAgent,
   FeeStandard,
   FeeBill,
   MaintenanceOrder,

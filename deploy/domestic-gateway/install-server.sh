@@ -20,6 +20,19 @@ read_env() {
   sed -n "s/^${key}=//p" "$API_ENV" | head -n 1
 }
 
+upsert_env() {
+  local key=$1 value=$2
+  awk -v key="$key" -v value="$value" '
+    BEGIN { done=0 }
+    index($0, key "=") == 1 { print key "=" value; done=1; next }
+    { print }
+    END { if (!done) print key "=" value }
+  ' "$API_ENV" > "${API_ENV}.tmp"
+  chown --reference="$API_ENV" "${API_ENV}.tmp"
+  chmod --reference="$API_ENV" "${API_ENV}.tmp"
+  mv "${API_ENV}.tmp" "$API_ENV"
+}
+
 OIDC_CLIENT_ID=$(read_env EXTERNAL_OIDC_CLIENT_ID)
 OIDC_CLIENT_SECRET=$(read_env EXTERNAL_OIDC_CLIENT_SECRET)
 if [[ -z "$OIDC_CLIENT_ID" || -z "$OIDC_CLIENT_SECRET" ]]; then
@@ -28,14 +41,26 @@ if [[ -z "$OIDC_CLIENT_ID" || -z "$OIDC_CLIENT_SECRET" ]]; then
 fi
 
 install -d -m 0750 /etc/pms-gateway /var/log/pms-gateway
+if ! id -u pms-gateway >/dev/null 2>&1; then
+  useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin pms-gateway
+fi
 if [[ ! -s /etc/pms-gateway/frp-token ]]; then
   openssl rand -hex 32 > /etc/pms-gateway/frp-token
 fi
 if [[ ! -s /etc/pms-gateway/oauth-cookie-secret ]]; then
   openssl rand 32 > /etc/pms-gateway/oauth-cookie-secret
 fi
+if [[ ! -s /etc/pms-gateway/session-secret ]]; then
+  openssl rand -hex 32 > /etc/pms-gateway/session-secret
+fi
+if [[ ! -s /etc/pms-gateway/frp-plugin-secret ]]; then
+  openssl rand -hex 32 > /etc/pms-gateway/frp-plugin-secret
+fi
 printf '%s' "$OIDC_CLIENT_SECRET" > /etc/pms-gateway/oidc-client-secret
-chmod 0600 /etc/pms-gateway/frp-token /etc/pms-gateway/oauth-cookie-secret /etc/pms-gateway/oidc-client-secret
+chmod 0600 /etc/pms-gateway/frp-token /etc/pms-gateway/oauth-cookie-secret /etc/pms-gateway/oidc-client-secret /etc/pms-gateway/session-secret /etc/pms-gateway/frp-plugin-secret
+upsert_env LAN_GATEWAY_FRP_TOKEN "$(tr -d '\r\n' < /etc/pms-gateway/frp-token)"
+upsert_env LAN_GATEWAY_SESSION_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/session-secret)"
+upsert_env LAN_GATEWAY_FRP_PLUGIN_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/frp-plugin-secret)"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -62,7 +87,7 @@ echo "${OAUTH_SHA256}  $tmp/oauth.tar.gz" | sha256sum -c -
 tar -xzf "$tmp/oauth.tar.gz" -C "$tmp"
 install -m 0755 "$tmp/oauth2-proxy-v${OAUTH_VERSION}.linux-amd64/oauth2-proxy" /usr/local/bin/oauth2-proxy
 
-install -m 0640 "$SCRIPT_DIR/frps.toml.example" /etc/pms-gateway/frps.toml
+sed "s/__FRP_PLUGIN_SECRET__/$(tr -d '\r\n' < /etc/pms-gateway/frp-plugin-secret)/g" "$SCRIPT_DIR/frps.toml.example" > /etc/pms-gateway/frps.toml
 sed "s/__OIDC_CLIENT_ID__/${OIDC_CLIENT_ID//\//\\/}/g" "$SCRIPT_DIR/oauth2-proxy.cfg.example" \
   > /etc/pms-gateway/oauth2-proxy-caiwu.cfg
 chmod 0640 /etc/pms-gateway/frps.toml /etc/pms-gateway/oauth2-proxy-caiwu.cfg
@@ -87,6 +112,18 @@ esac
 
 install -m 0644 "$SCRIPT_DIR/frps.service" /etc/systemd/system/frps.service
 install -m 0644 "$SCRIPT_DIR/oauth2-proxy-caiwu.service" /etc/systemd/system/oauth2-proxy-caiwu.service
+install -d -o root -g root -m 0755 /opt/pms-gateway-router
+install -m 0644 "$SCRIPT_DIR/../../tools/pms-gateway-router/server.mjs" /opt/pms-gateway-router/server.mjs
+install -m 0644 "$SCRIPT_DIR/pms-gateway-router.service" /etc/systemd/system/pms-gateway-router.service
+if [[ ! -f /etc/pms-gateway/router.env ]]; then
+  cat > /etc/pms-gateway/router.env <<'EOF'
+GATEWAY_ROUTER_HOST=127.0.0.1
+GATEWAY_ROUTER_PORT=4190
+PMS_API_INTERNAL_URL=http://127.0.0.1:3000/api/v1
+PMS_PUBLIC_API_URL=https://prsznh.cn/api/v1
+EOF
+  chmod 0640 /etc/pms-gateway/router.env
+fi
 
 # Certificates are renewed independently by certbot. Reload Nginx after a
 # successful renewal so the new certificate is served without a reboot.
@@ -94,7 +131,8 @@ install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
 install -m 0755 "$SCRIPT_DIR/reload-nginx.sh" /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 
 systemctl daemon-reload
-systemctl enable --now frps.service oauth2-proxy-caiwu.service
+systemctl enable --now frps.service oauth2-proxy-caiwu.service pms-gateway-router.service
 
-echo "installed frps ${FRP_VERSION} and oauth2-proxy ${OAUTH_VERSION}"
-systemctl --no-pager --full status frps.service oauth2-proxy-caiwu.service | sed -n '1,36p'
+echo "installed frps ${FRP_VERSION}, oauth2-proxy ${OAUTH_VERSION} and the dynamic gateway router"
+echo "after the wildcard certificate is issued once, run: sudo $SCRIPT_DIR/install-wildcard-entry.sh"
+systemctl --no-pager --full status frps.service oauth2-proxy-caiwu.service pms-gateway-router.service | sed -n '1,54p'

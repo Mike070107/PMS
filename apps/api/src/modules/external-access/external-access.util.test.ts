@@ -42,11 +42,19 @@ test('separates the launch path from the tunnel origin', () => {
 test('rejects invalid hostnames and credential-bearing origins', () => {
   assert.throws(
     () => normalizeExternalRoute('bad..prsznh.cn', 'http://192.168.1.20', 'prsznh.cn'),
-    /有效子域名/,
+    /有效一级子域名/,
   );
   assert.throws(
     () => normalizeExternalRoute('caiwu.prsznh.cn', 'http://user:pass@192.168.1.20', 'prsznh.cn'),
     /不含账号密码/,
+  );
+  assert.throws(
+    () => normalizeExternalRoute('second.caiwu.prsznh.cn', 'http://192.168.1.20', 'prsznh.cn'),
+    /一级子域名/,
+  );
+  assert.throws(
+    () => normalizeExternalRoute('api.prsznh.cn', 'http://192.168.1.20', 'prsznh.cn'),
+    /平台保留名称/,
   );
 });
 

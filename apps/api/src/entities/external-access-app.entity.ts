@@ -27,6 +27,24 @@ export class ExternalAccessApp extends TenantEntity {
   @Column({ type: 'boolean', default: true })
   enabled: boolean;
 
+  @Column({ name: 'agent_id', type: 'integer', nullable: true })
+  agentId: number | null;
+
+  @Column({ name: 'gateway_port', type: 'integer', nullable: true, unique: true })
+  gatewayPort: number | null;
+
+  @Column({ name: 'publish_status', type: 'varchar', length: 30, default: 'draft' })
+  publishStatus: 'draft' | 'waiting_agent' | 'publishing' | 'online' | 'error' | 'disabled';
+
+  @Column({ name: 'desired_revision', type: 'integer', default: 0 })
+  desiredRevision: number;
+
+  @Column({ name: 'applied_revision', type: 'integer', default: 0 })
+  appliedRevision: number;
+
+  @Column({ name: 'origin_checked_at', type: 'timestamptz', nullable: true })
+  originCheckedAt: Date | null;
+
   @Column({ name: 'cloudflare_app_id', type: 'varchar', length: 64, nullable: true })
   cloudflareAppId: string | null;
 

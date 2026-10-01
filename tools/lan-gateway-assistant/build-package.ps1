@@ -1,6 +1,5 @@
 param(
-    [string] $FrpcArchive,
-    [string] $TokenFile
+    [string] $FrpcArchive
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,13 +36,8 @@ if ($FrpcArchive) {
     finally { Remove-Item -Recurse -Force -LiteralPath $Expand -ErrorAction SilentlyContinue }
 }
 
-if ($TokenFile) {
-    if (-not (Test-Path -LiteralPath $TokenFile)) { throw "找不到连接凭据：$TokenFile" }
-    Copy-Item -LiteralPath $TokenFile -Destination (Join-Path $Stage "frp-token")
-}
-
 $Zip = Join-Path $ReleaseRoot ("PMS内网发布助手-$Version.zip")
 if (Test-Path -LiteralPath $Zip) { Remove-Item -Force -LiteralPath $Zip }
 Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $Zip
 Write-Host "构建、自检与打包完成：$Zip" -ForegroundColor Green
-if (-not $FrpcArchive -or -not $TokenFile) { Write-Host "当前包未同时包含代理核心和连接凭据，仅适合升级或现有电脑迁移。" -ForegroundColor Yellow }
+if (-not $FrpcArchive) { Write-Host "当前包未包含代理核心，仅适合升级现有电脑。新电脑首次安装请传入官方 frpc 压缩包。" -ForegroundColor Yellow }

@@ -23,11 +23,15 @@ namespace Pms.LanGatewayAssistant
         public string ComputerDisplay { get { return Environment.MachineName + " · " + _configuration.ServerAddress + ":" + _configuration.ServerPort; } }
         public string HeaderStatus { get { return GatewayServiceManager.IsRunning() && _processRunning ? "代理运行中" : "需要检查"; } }
         public string StatusBrush { get { return GatewayServiceManager.IsRunning() && _processRunning ? "#35A875" : "#B7832B"; } }
-        public string OverviewTitle { get { if (!_store.HasToken) return "请导入连接凭据"; if (!GatewayServiceManager.Exists()) return "请安装后台服务"; if (!_processRunning) return "隧道正在恢复连接"; return Routes.Count == 0 ? "请添加第一个内网应用" : "内网应用正在安全转发"; } }
+        public string OverviewTitle { get { if (!_store.IsManaged) return "请输入 PMS 安装码"; if (!_store.HasToken) return "代理连接凭据需要修复"; if (!GatewayServiceManager.Exists()) return "请安装后台服务"; if (!_processRunning) return "隧道正在恢复连接"; return Routes.Count == 0 ? "等待 PMS 下发内网应用" : "内网应用正在安全转发"; } }
         public string ServiceState { get { return GatewayServiceManager.IsRunning() ? "运行中" : GatewayServiceManager.Exists() ? "已停止" : "未安装"; } }
         public string TunnelState { get { return _processRunning ? "已连接" : "未连接"; } }
         public int RouteCount { get { return Routes.Count(item => item.Enabled); } }
         public Visibility NoRoutesVisibility { get { return Routes.Count == 0 ? Visibility.Visible : Visibility.Collapsed; } }
+        public Visibility EnrollmentVisibility { get { return _store.IsManaged ? Visibility.Collapsed : Visibility.Visible; } }
+        public Visibility ManualConfigurationVisibility { get { return _store.IsManaged ? Visibility.Collapsed : Visibility.Visible; } }
+        public Visibility ServiceActionVisibility { get { return _store.IsManaged && !GatewayServiceManager.IsRunning() ? Visibility.Visible : Visibility.Collapsed; } }
+        public string ServiceActionText { get { return GatewayServiceManager.Exists() ? "启动 / 修复代理" : "安装后台服务"; } }
         public string HealthMessage { get { return _healthMessage; } }
         public string LogPreview { get { return _logPreview; } }
         public event PropertyChangedEventHandler PropertyChanged;
@@ -61,6 +65,21 @@ namespace Pms.LanGatewayAssistant
             var dialog = new OpenFileDialog { Title = "选择 PMS 代理连接凭据", Filter = "PMS 连接凭据|frp-token;*.token;*.txt|All files|*.*" }; if (dialog.ShowDialog() != true) return;
             try { _store.SaveToken(File.ReadAllText(dialog.FileName).Trim()); RefreshStatus(); MessageBox.Show("连接凭据已使用 Windows 本机加密保存。", "导入成功", MessageBoxButton.OK, MessageBoxImage.Information); } catch (Exception ex) { MessageBox.Show(ex.Message, "导入失败", MessageBoxButton.OK, MessageBoxImage.Error); }
         }
+        private async void Enroll_Click(object sender, RoutedEventArgs e)
+        {
+            var code = InstallCodeBox.Text.Trim();
+            if (String.IsNullOrWhiteSpace(code)) { MessageBox.Show("请输入 PMS 生成的安装码。", "缺少安装码", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+            EnrollButton.IsEnabled = false; EnrollButton.Content = "正在连接…";
+            try
+            {
+                await Task.Factory.StartNew(delegate { return new GatewayControlPlaneClient(_store).Enroll(code, Assembly.GetExecutingAssembly().GetName().Version.ToString(3)); });
+                InstallCodeBox.Clear(); RaiseAll();
+                GatewayServiceManager.RunElevated(GatewayServiceManager.Exists() ? "--restart-service" : "--install-service");
+                MessageBox.Show("这台电脑已受 PMS 管理。后续新增或修改内网应用时，助手会自动领取配置。", "连接完成", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception exception) { MessageBox.Show(exception.GetBaseException().Message, "连接未完成", MessageBoxButton.OK, MessageBoxImage.Error); }
+            finally { EnrollButton.IsEnabled = true; EnrollButton.Content = "连接并安装"; RefreshStatus(); }
+        }
         private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
         {
             UpdateButton.IsEnabled = false; UpdateButton.Content = "正在检查…";
@@ -77,6 +96,6 @@ namespace Pms.LanGatewayAssistant
             RaiseAll();
         }
         private void Raise(string name) { if (PropertyChanged != null) PropertyChanged(this, new PropertyChangedEventArgs(name)); }
-        private void RaiseAll() { foreach (var name in new[] { "HeaderStatus", "StatusBrush", "OverviewTitle", "ServiceState", "TunnelState", "RouteCount", "NoRoutesVisibility", "HealthMessage", "LogPreview" }) Raise(name); }
+        private void RaiseAll() { foreach (var name in new[] { "HeaderStatus", "StatusBrush", "OverviewTitle", "ServiceState", "TunnelState", "RouteCount", "NoRoutesVisibility", "EnrollmentVisibility", "ManualConfigurationVisibility", "ServiceActionVisibility", "ServiceActionText", "HealthMessage", "LogPreview" }) Raise(name); }
     }
 }

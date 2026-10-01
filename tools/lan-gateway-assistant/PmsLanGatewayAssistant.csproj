@@ -31,6 +31,7 @@
     <Compile Include="RouteDialog.xaml.cs"><DependentUpon>RouteDialog.xaml</DependentUpon></Compile>
     <Compile Include="Models.cs" /><Compile Include="GatewayConfigurationStore.cs" />
     <Compile Include="FrpConfiguration.cs" /><Compile Include="GatewayRuntime.cs" />
+    <Compile Include="GatewayControlPlaneClient.cs" />
     <Compile Include="GatewayWindowsService.cs" /><Compile Include="GatewayUpdateService.cs" />
     <Compile Include="SelfTest.cs" /><Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

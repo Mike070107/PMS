@@ -15,6 +15,11 @@ namespace Pms.LanGatewayAssistant
             if (enabled.GroupBy(item => item.RemotePort).Any(group => group.Count() > 1)) throw new InvalidOperationException("云端转发端口不能重复");
             var text = new StringBuilder();
             text.AppendLine("serverAddr = \"" + Escape(value.ServerAddress) + "\""); text.AppendLine("serverPort = " + value.ServerPort.ToString(CultureInfo.InvariantCulture)); text.AppendLine("loginFailExit = false"); text.AppendLine();
+            if (store.IsManaged)
+            {
+                text.AppendLine("user = \"" + Escape(value.DeviceId) + "\"");
+                text.AppendLine("metadatas.deviceToken = \"" + Escape(store.ReadDeviceToken()) + "\"");
+            }
             text.AppendLine("auth.method = \"token\""); text.AppendLine("auth.additionalScopes = [\"HeartBeats\", \"NewWorkConns\"]");
             text.AppendLine("auth.tokenSource.type = \"file\""); text.AppendLine("auth.tokenSource.file.path = \"" + Escape(store.RuntimeTokenPath.Replace('\\', '/')) + "\""); text.AppendLine();
             text.AppendLine("transport.protocol = \"wss\""); text.AppendLine("transport.tls.enable = true"); text.AppendLine("transport.tcpMux = true"); text.AppendLine("transport.poolCount = 10"); text.AppendLine();

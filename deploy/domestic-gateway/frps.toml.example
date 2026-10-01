@@ -11,9 +11,15 @@ auth.tokenSource.file.path = "/etc/pms-gateway/frp-token"
 
 transport.tls.force = false
 allowPorts = [
-  { start = 18050, end = 18149 }
+  { start = 18050, end = 18999 }
 ]
 
 log.to = "/var/log/pms-gateway/frps.log"
 log.level = "info"
 log.maxDays = 14
+
+[[httpPlugins]]
+name = "pms-device-admission"
+addr = "127.0.0.1:4000"
+path = "/api/v1/external-access-agent/frp-plugin/__FRP_PLUGIN_SECRET__"
+ops = ["Login", "NewProxy"]

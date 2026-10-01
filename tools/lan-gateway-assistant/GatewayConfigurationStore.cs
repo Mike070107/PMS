@@ -15,6 +15,7 @@ namespace Pms.LanGatewayAssistant
         public string RootPath { get; private set; }
         public string ConfigPath { get { return Path.Combine(RootPath, "gateway.json"); } }
         public string TokenPath { get { return Path.Combine(RootPath, "gateway-token.dat"); } }
+        public string DeviceTokenPath { get { return Path.Combine(RootPath, "device-token.dat"); } }
         public string RuntimeTokenPath { get { return Path.Combine(RootPath, "frp-token.runtime"); } }
         public string FrpcPath { get { return Path.Combine(RootPath, "bin", "frpc.exe"); } }
         public string InstalledExecutablePath { get { return Path.Combine(RootPath, "bin", "Pms.LanGatewayAssistant.exe"); } }
@@ -38,6 +39,7 @@ namespace Pms.LanGatewayAssistant
             try { if (File.Exists(ConfigPath)) value = _json.Deserialize<GatewayConfiguration>(File.ReadAllText(ConfigPath)); } catch { }
             if (value == null) value = new GatewayConfiguration();
             if (String.IsNullOrWhiteSpace(value.ComputerName)) value.ComputerName = Environment.MachineName;
+            if (String.IsNullOrWhiteSpace(value.ApiBaseUrl)) value.ApiBaseUrl = "https://prsznh.cn/api/v1";
             if (String.IsNullOrWhiteSpace(value.ServerAddress)) value.ServerAddress = "gateway.prsznh.cn";
             if (value.ServerPort <= 0) value.ServerPort = 443;
             if (value.Routes == null) value.Routes = new System.Collections.Generic.List<GatewayRoute>();
@@ -52,6 +54,7 @@ namespace Pms.LanGatewayAssistant
         }
 
         public bool HasToken { get { return File.Exists(TokenPath) && new FileInfo(TokenPath).Length > 0; } }
+        public bool IsManaged { get { return File.Exists(DeviceTokenPath) && !String.IsNullOrWhiteSpace(Load().DeviceId); } }
         public void SaveToken(string token)
         {
             if (String.IsNullOrWhiteSpace(token)) throw new InvalidOperationException("代理连接密钥不能为空");
@@ -63,10 +66,37 @@ namespace Pms.LanGatewayAssistant
             if (!HasToken) throw new InvalidOperationException("本机还没有导入代理连接凭据");
             return Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(TokenPath), null, DataProtectionScope.LocalMachine));
         }
+        public void SaveDeviceToken(string token)
+        {
+            if (String.IsNullOrWhiteSpace(token)) throw new InvalidOperationException("设备凭据不能为空");
+            var protectedValue = ProtectedData.Protect(Encoding.UTF8.GetBytes(token.Trim()), null, DataProtectionScope.LocalMachine);
+            File.WriteAllBytes(DeviceTokenPath, protectedValue); RestrictFile(DeviceTokenPath);
+        }
+        public string ReadDeviceToken()
+        {
+            if (!File.Exists(DeviceTokenPath)) throw new InvalidOperationException("本机尚未使用安装码注册");
+            return Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(DeviceTokenPath), null, DataProtectionScope.LocalMachine));
+        }
+
+        public void SaveEnrollment(GatewayEnrollmentResponse response)
+        {
+            if (response == null || String.IsNullOrWhiteSpace(response.DeviceId) || String.IsNullOrWhiteSpace(response.DeviceToken))
+                throw new InvalidOperationException("服务器返回的设备凭据不完整");
+            Uri api;
+            if (!Uri.TryCreate(response.ApiBaseUrl, UriKind.Absolute, out api) || api.Scheme != Uri.UriSchemeHttps || !(api.Host.Equals("prsznh.cn", StringComparison.OrdinalIgnoreCase) || api.Host.EndsWith(".prsznh.cn", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("服务器返回的控制面地址不安全，已拒绝保存");
+            var value = Load(); value.DeviceId = response.DeviceId; value.ApiBaseUrl = response.ApiBaseUrl; value.ComputerName = Environment.MachineName;
+            Save(value); SaveDeviceToken(response.DeviceToken); SaveToken(response.FrpToken);
+        }
         public void WriteRuntimeToken()
         {
             File.WriteAllText(RuntimeTokenPath, ReadToken(), Encoding.ASCII);
             RestrictFile(RuntimeTokenPath);
+        }
+        public void WriteFrpcConfiguration(string content)
+        {
+            File.WriteAllText(FrpcConfigPath, content, new UTF8Encoding(false));
+            RestrictFile(FrpcConfigPath);
         }
 
         public void InstallFrpc(string source)
