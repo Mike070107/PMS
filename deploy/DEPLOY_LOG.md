@@ -3736,3 +3736,10 @@
   - 40ba977 fix(access-card): add retry for failed authorization
   - e2351d3 feat(access-card): authorize historical cards for extra buildings
 
+## 2026-10-01 22:30 · api · 34f0da9
+
+- 包：`pms-api-20261001-2224.tar.gz`
+- 提交：34f0da9 fix(parking): enforce fresh duplicate plate checks
+- 自上次（bd2b03a）以来上线的相关提交：
+  - 34f0da9 fix(parking): enforce fresh duplicate plate checks
+
