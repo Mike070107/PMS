@@ -28,8 +28,17 @@ try {
   if (-not $frpc) { throw 'frpc.exe not found in archive' }
 
   Copy-Item -LiteralPath $frpc.FullName -Destination (Join-Path $package 'frpc.exe')
-  Copy-Item -LiteralPath (Join-Path $root 'windows\install.ps1') -Destination $package
-  Copy-Item -LiteralPath (Join-Path $root 'windows\uninstall.ps1') -Destination $package
+  # Windows PowerShell 5 treats UTF-8 without BOM as the system ANSI code page.
+  # Re-encode the user-facing scripts with BOM so Chinese messages cannot corrupt parsing.
+  $utf8Bom = [System.Text.UTF8Encoding]::new($true)
+  foreach ($scriptName in @('install.ps1', 'uninstall.ps1')) {
+    $sourceScript = Join-Path $root "windows\$scriptName"
+    $scriptText = [System.IO.File]::ReadAllText(
+      $sourceScript,
+      [System.Text.UTF8Encoding]::new($false)
+    )
+    [System.IO.File]::WriteAllText((Join-Path $package $scriptName), $scriptText, $utf8Bom)
+  }
   Set-Content -LiteralPath (Join-Path $package 'frp-token') -Value $token -NoNewline -Encoding ascii
 
   $config = @'
