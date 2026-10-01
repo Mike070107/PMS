@@ -17,6 +17,12 @@ export class ExternalAccessController {
     return this.service.list(user);
   }
 
+  @Get('config')
+  @RequirePermission('settings', 'view')
+  configuration() {
+    return this.service.configuration();
+  }
+
   @Get('users')
   @RequirePermission('settings', 'view')
   users(@CurrentUser() user: AuthUser) {

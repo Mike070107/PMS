@@ -1,5 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 
+export type ExternalAccessProvider = 'cloudflare' | 'domestic';
+
+/** Cloudflare remains the compatibility default; production opts into the domestic WSS gateway. */
+export function resolveExternalAccessProvider(value = process.env.EXTERNAL_ACCESS_PROVIDER): ExternalAccessProvider {
+  return value?.trim().toLowerCase() === 'domestic' ? 'domestic' : 'cloudflare';
+}
+
 export type ExternalIngressRule = {
   hostname?: string;
   service: string;

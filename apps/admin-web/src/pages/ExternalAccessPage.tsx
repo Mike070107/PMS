@@ -57,6 +57,16 @@ interface UserOption {
   wxBound: boolean;
 }
 
+interface GatewayConfig {
+  provider: 'domestic' | 'cloudflare';
+  providerLabel: string;
+}
+
+const previewGateway: GatewayConfig = {
+  provider: 'domestic',
+  providerLabel: '腾讯云 WSS 网关',
+};
+
 const maskPhone = (phone?: string | null) =>
   phone && phone.length >= 7 ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : phone || '未登记手机号';
 
@@ -83,7 +93,7 @@ const previewApps: ExternalApp[] = [
     sessionDuration: '4h',
     enabled: true,
     userIds: [101],
-    lastSyncError: 'Cloudflare Tunnel 当前没有在线连接器，请在目标局域网启动 cloudflared 后再同步。',
+    lastSyncError: '局域网代理尚未在线，请在目标局域网启动 PMS 内网代理。',
   },
 ];
 
@@ -120,6 +130,7 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
   const { canEdit } = usePagePerm('settings');
   const [apps, setApps] = useState<ExternalApp[]>(preview ? previewApps : []);
   const [users, setUsers] = useState<UserOption[]>(preview ? previewUsers : []);
+  const [gateway, setGateway] = useState<GatewayConfig>(previewGateway);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<ExternalApp | null>(null);
   const [creating, setCreating] = useState(false);
@@ -129,12 +140,14 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
     if (preview) return;
     setLoading(true);
     try {
-      const [appRows, userRows] = await Promise.all([
+      const [appRows, userRows, gatewayConfig] = await Promise.all([
         request<ExternalApp[]>({ url: '/external-access/apps' }),
         request<UserOption[]>({ url: '/external-access/users' }),
+        request<GatewayConfig>({ url: '/external-access/config' }),
       ]);
       setApps(appRows);
       setUsers(userRows);
+      setGateway(gatewayConfig);
     } catch (error: any) {
       message.error(error?.message || '加载内网应用失败');
     } finally {
@@ -156,13 +169,13 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
 
   const sync = async (app: ExternalApp) => {
     if (preview) {
-      message.info('视觉预览不会修改 Cloudflare 配置');
+      message.info('视觉预览不会修改网关配置');
       return;
     }
     setSyncingId(app.id);
     try {
       await request({ method: 'POST', url: `/external-access/apps/${app.id}/sync` });
-      message.success(`「${app.name}」已同步到 Cloudflare`);
+      message.success(`「${app.name}」已同步到 ${gateway.providerLabel}`);
       load();
     } catch (error: any) {
       message.error(error?.message || '同步失败');
@@ -180,7 +193,7 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
           type="info"
           showIcon
           message="视觉预览 · 演示数据"
-          description="页面不会连接 PMS API，也不会修改 Cloudflare。"
+          description="页面不会连接 PMS API，也不会修改生产网关。"
         />
       )}
 
@@ -230,7 +243,7 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
         <div className="external-access-section__head">
           <div>
             <span className="external-access-section__icon"><ApiOutlined aria-hidden="true" /></span>
-            <div><h2 id="external-access-apps-title">发布清单</h2><p>Cloudflare Access · Tunnel · DNS</p></div>
+            <div><h2 id="external-access-apps-title">发布清单</h2><p>{gateway.providerLabel} · PMS 授权 · 加密隧道</p></div>
           </div>
           <span className="external-access-section__count">{apps.length}</span>
         </div>
@@ -252,6 +265,7 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
                 app={app}
                 index={index}
                 canEdit={canEdit}
+                provider={gateway.provider}
                 syncing={syncingId === app.id}
                 onEdit={() => setEditing(app)}
                 onSync={() => sync(app)}
@@ -261,8 +275,8 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
         )}
       </section>
 
-      <ExternalAppModal open={creating} users={users} preview={preview} onClose={() => setCreating(false)} onDone={() => { setCreating(false); load(); }} />
-      <ExternalAppModal open={!!editing} target={editing} users={users} preview={preview} onClose={() => setEditing(null)} onDone={() => { setEditing(null); load(); }} />
+      <ExternalAppModal open={creating} users={users} preview={preview} provider={gateway.provider} onClose={() => setCreating(false)} onDone={() => { setCreating(false); load(); }} />
+      <ExternalAppModal open={!!editing} target={editing} users={users} preview={preview} provider={gateway.provider} onClose={() => setEditing(null)} onDone={() => { setEditing(null); load(); }} />
     </main>
   );
 }
@@ -271,7 +285,7 @@ function Metric({ icon, value, label, tone }: { icon: React.ReactNode; value: nu
   return <div className={`external-access-metric external-access-metric--${tone}`}><span className="external-access-metric__icon" aria-hidden="true">{icon}</span><strong>{value}</strong><small>{label}</small></div>;
 }
 
-function ExternalAppCard({ app, index, canEdit, syncing, onEdit, onSync }: { app: ExternalApp; index: number; canEdit: boolean; syncing: boolean; onEdit: () => void; onSync: () => void }) {
+function ExternalAppCard({ app, index, canEdit, provider, syncing, onEdit, onSync }: { app: ExternalApp; index: number; canEdit: boolean; provider: GatewayConfig['provider']; syncing: boolean; onEdit: () => void; onSync: () => void }) {
   const state = getAppState(app);
   const status = stateMeta[state];
   const isFinanceApp = /财务|用友|会计|资金/.test(app.name);
@@ -305,7 +319,7 @@ function ExternalAppCard({ app, index, canEdit, syncing, onEdit, onSync }: { app
         <div className="external-app-actions">
           <Tooltip title={`打开 ${app.name}`}><Button type="text" shape="circle" icon={<ExportOutlined />} href={launchUrl(app)} target="_blank" disabled={!app.enabled} aria-label={`打开 ${app.name}`} /></Tooltip>
           {canEdit && <Tooltip title="编辑配置"><Button type="text" shape="circle" icon={<EditOutlined />} onClick={onEdit} aria-label={`编辑 ${app.name}`} /></Tooltip>}
-          {canEdit && <Tooltip title="同步 Cloudflare"><Button className="external-app-actions__sync" type="primary" shape="circle" icon={<CloudSyncOutlined />} loading={syncing} onClick={onSync} aria-label={`同步 ${app.name} 到 Cloudflare`} /></Tooltip>}
+          {canEdit && provider === 'cloudflare' && <Tooltip title="同步 Cloudflare"><Button className="external-app-actions__sync" type="primary" shape="circle" icon={<CloudSyncOutlined />} loading={syncing} onClick={onSync} aria-label={`同步 ${app.name} 到 Cloudflare`} /></Tooltip>}
         </div>
       </footer>
     </article>
@@ -316,7 +330,7 @@ function SkeletonCard() {
   return <div className="external-app-card external-app-card--skeleton"><Skeleton active avatar paragraph={{ rows: 3 }} /></div>;
 }
 
-function ExternalAppModal({ open, target, users, preview, onClose, onDone }: { open: boolean; target?: ExternalApp | null; users: UserOption[]; preview: boolean; onClose: () => void; onDone: () => void }) {
+function ExternalAppModal({ open, target, users, preview, provider, onClose, onDone }: { open: boolean; target?: ExternalApp | null; users: UserOption[]; preview: boolean; provider: GatewayConfig['provider']; onClose: () => void; onDone: () => void }) {
   const { message } = AntdApp.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -339,7 +353,7 @@ function ExternalAppModal({ open, target, users, preview, onClose, onDone }: { o
     setSaving(true);
     try {
       const saved = await request<ExternalApp>({ method: target ? 'PATCH' : 'POST', url: target ? `/external-access/apps/${target.id}` : '/external-access/apps', data: values });
-      if (saved.lastSyncError) message.warning(`配置已保存，但 Cloudflare 同步失败：${saved.lastSyncError}`);
+      if (saved.lastSyncError) message.warning(`配置已保存，但网关同步失败：${saved.lastSyncError}`);
       else message.success(target ? '应用配置和授权已更新' : '内网应用已发布');
       onDone();
     } catch (error: any) {
@@ -360,7 +374,7 @@ function ExternalAppModal({ open, target, users, preview, onClose, onDone }: { o
       width={680}
       footer={[
         <Button key="cancel" onClick={onClose}>取消</Button>,
-        <Button key="submit" type="primary" icon={<CloudSyncOutlined />} loading={saving} onClick={() => form.submit()}>{target ? '保存并同步' : '发布并同步'}</Button>,
+        <Button key="submit" type="primary" icon={<CloudSyncOutlined />} loading={saving} onClick={() => form.submit()}>{provider === 'domestic' ? (target ? '保存配置' : '发布应用') : (target ? '保存并同步' : '发布并同步')}</Button>,
       ]}
     >
       {target?.lastSyncError && <Alert className="external-access-modal__alert" type="error" showIcon message="上次同步失败" description={target.lastSyncError} />}
@@ -372,7 +386,7 @@ function ExternalAppModal({ open, target, users, preview, onClose, onDone }: { o
             <Form.Item name="publicHostname" label="外网域名" extra="使用 prsznh.cn 的一级子域名" rules={[{ required: true, message: '请填写外网域名' }, { pattern: /^[a-z0-9][a-z0-9-]*\.prsznh\.cn$/i, message: '例如 caiwu.prsznh.cn' }]}>
               <Input prefix={<GlobalOutlined aria-hidden="true" />} placeholder="caiwu.prsznh.cn" />
             </Form.Item>
-            <Form.Item name="originUrl" label="内网网站地址" extra="cloudflared 所在电脑必须能访问" rules={[{ required: true, message: '请填写内网网站地址' }, { type: 'url', message: '例如 http://192.168.1.20:8080' }]}>
+            <Form.Item name="originUrl" label="内网网站地址" extra="内网代理所在电脑必须能访问" rules={[{ required: true, message: '请填写内网网站地址' }, { type: 'url', message: '例如 http://192.168.1.20:8080' }]}>
               <Input prefix={<CloudServerOutlined aria-hidden="true" />} placeholder="http://192.168.1.20:8080" />
             </Form.Item>
           </div>

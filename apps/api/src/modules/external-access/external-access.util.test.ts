@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mergeIngressRules, normalizeExternalRoute } from './external-access.util';
+import {
+  mergeIngressRules,
+  normalizeExternalRoute,
+  resolveExternalAccessProvider,
+} from './external-access.util';
+
+test('selects domestic gateway only when explicitly configured', () => {
+  assert.equal(resolveExternalAccessProvider('domestic'), 'domestic');
+  assert.equal(resolveExternalAccessProvider(' DOMESTIC '), 'domestic');
+  assert.equal(resolveExternalAccessProvider('cloudflare'), 'cloudflare');
+  assert.equal(resolveExternalAccessProvider(undefined), 'cloudflare');
+});
 
 test('normalizes a valid external route', () => {
   assert.deepEqual(

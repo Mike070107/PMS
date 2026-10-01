@@ -6,7 +6,7 @@ import { STAFF_APP_ROLES, UserStatus } from '../../common/enums';
 import { ExternalAccessApp, ExternalAccessGrant, User } from '../../entities';
 import { CloudflareGatewayService } from './cloudflare-gateway.service';
 import { CreateExternalAccessAppDto, UpdateExternalAccessAppDto } from './dto';
-import { normalizeExternalRoute } from './external-access.util';
+import { normalizeExternalRoute, resolveExternalAccessProvider } from './external-access.util';
 
 @Injectable()
 export class ExternalAccessService {
@@ -48,6 +48,14 @@ export class ExternalAccessService {
       status: row.status,
       wxBound: !!row.wxOpenid,
     }));
+  }
+
+  configuration() {
+    const provider = resolveExternalAccessProvider();
+    return {
+      provider,
+      providerLabel: provider === 'domestic' ? '腾讯云 WSS 网关' : 'Cloudflare Tunnel',
+    };
   }
 
   async create(dto: CreateExternalAccessAppDto, user: AuthUser) {
@@ -119,6 +127,14 @@ export class ExternalAccessService {
     oldHostname?: string,
     throwOnError = false,
   ) {
+    if (resolveExternalAccessProvider() === 'domestic') {
+      // DNS, Nginx and agent routing are managed by the domestic gateway deployment.
+      // Never call the Cloudflare writer in this mode: doing so could revert a live DNS route.
+      app.lastSyncedAt = new Date();
+      app.lastSyncError = null;
+      await this.appRepo.save(app);
+      return;
+    }
     try {
       const allApps = await this.appRepo.find({ where: { tenantId: app.tenantId } });
       await this.cloudflare.syncApp(app, allApps, oldHostname);
