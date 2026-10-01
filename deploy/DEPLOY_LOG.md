@@ -3813,3 +3813,12 @@
   - fed8b50 fix(parking-owner): update Car_Issue note through owner link
   - 3596148 fix(parking-preview): query duplicate plate directly
 
+## 2026-10-02 00:46 · api · 4e48686
+
+- 包：`pms-api-20261002-0035.tar.gz`
+- 提交：4e48686 deploy: web → 55c80c8
+- 自上次（3bf1366）以来上线的相关提交：
+  - 845e625 fix(external-access): tighten session lifetime and cache controls
+  - 066dac8 feat(auth): harden browser QR login and application binding
+  - fed8b50 fix(parking-owner): update Car_Issue note through owner link
+
