@@ -27,7 +27,9 @@ function GitLines([string[]] $gitArgs) {
 
 function Run([string] $label, [scriptblock] $body) {
     Write-Host ("==> " + $label) -ForegroundColor Cyan
-    & $body
+    # 子命令输出直接写到主机，不能回流到函数返回值；否则 Make-WebPackage 的
+    # 构建日志会和 tar 路径一起被 scp 当成多个参数，触发 ambiguous target。
+    & $body | Out-Host
     if ($LASTEXITCODE -ne 0) { Die ("步骤失败：" + $label) }
 }
 
