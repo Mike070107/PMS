@@ -3667,3 +3667,12 @@
   - fe19c76 fix(parking): keep history keyed by real vehicle records
   - e2351d3 feat(access-card): authorize historical cards for extra buildings
 
+## 2026-10-01 20:33 · web · fe19c76
+
+- 包：`pms-web-20261001-2024.tar.gz`
+- 提交：fe19c76 fix(parking): keep history keyed by real vehicle records
+- 说明：同步停车历史修复后的后台查询展示
+- 自上次（8955444）以来上线的相关提交：
+  - fe19c76 fix(parking): keep history keyed by real vehicle records
+  - e2351d3 feat(access-card): authorize historical cards for extra buildings
+
