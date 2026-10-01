@@ -5,7 +5,7 @@
  * supplied through process environment variables and are only persisted when present.
  */
 import { chmodSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
-import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { createPrivateKey, generateKeyPairSync, randomBytes } from 'node:crypto';
 
 const envPath = process.argv[2] || '/opt/pms-repair/apps/api/.env';
 const redirectUri = process.argv[3] || '';
@@ -26,10 +26,16 @@ const setIfProvided = (key, value) => {
 values.set('EXTERNAL_OIDC_ISSUER', 'https://prsznh.cn/api/v1/auth/oidc');
 setIfMissing('EXTERNAL_OIDC_CLIENT_ID', () => `pms-cloudflare-${randomBytes(12).toString('hex')}`);
 setIfMissing('EXTERNAL_OIDC_CLIENT_SECRET', () => randomBytes(32).toString('base64url'));
-setIfMissing('EXTERNAL_OIDC_PRIVATE_KEY_B64', () => {
+const generatePrivateKey = () => {
   const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-  return privateKey.export({ type: 'pkcs8', format: 'pem' }).toString('base64');
-});
+  const pem = privateKey.export({ type: 'pkcs8', format: 'pem' });
+  return Buffer.from(pem).toString('base64');
+};
+try {
+  createPrivateKey(Buffer.from(values.get('EXTERNAL_OIDC_PRIVATE_KEY_B64') || '', 'base64'));
+} catch {
+  values.set('EXTERNAL_OIDC_PRIVATE_KEY_B64', generatePrivateKey());
+}
 setIfProvided('EXTERNAL_OIDC_REDIRECT_URIS', redirectUri);
 values.set('CLOUDFLARE_ZONE_NAME', 'prsznh.cn');
 for (const key of [
