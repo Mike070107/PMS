@@ -88,7 +88,7 @@ export class ExternalAccessController {
   }
 }
 
-/** Windows 内网发布助手入口：仅接受短期安装码或设备凭据。 */
+/** Windows 内网应用连接助手入口：仅接受短期一次性配对密钥或设备凭据。 */
 @Controller('external-access-agent')
 export class ExternalAccessAgentController {
   constructor(private readonly service: ExternalAccessService) {}

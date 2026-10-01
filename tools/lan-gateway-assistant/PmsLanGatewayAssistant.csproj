@@ -6,6 +6,7 @@
     <OutputType>WinExe</OutputType>
     <RootNamespace>Pms.LanGatewayAssistant</RootNamespace>
     <AssemblyName>Pms.LanGatewayAssistant</AssemblyName>
+    <ApplicationIcon>Resources\AppIcon.ico</ApplicationIcon>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <PlatformTarget>x86</PlatformTarget>
     <LangVersion>5</LangVersion>
@@ -23,6 +24,7 @@
     <Reference Include="WindowsBase" /><Reference Include="PresentationCore" /><Reference Include="PresentationFramework" />
   </ItemGroup>
   <ItemGroup>
+    <Resource Include="Resources\AppIcon.ico" />
     <ApplicationDefinition Include="App.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></ApplicationDefinition>
     <Page Include="MainWindow.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
     <Page Include="RouteDialog.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>

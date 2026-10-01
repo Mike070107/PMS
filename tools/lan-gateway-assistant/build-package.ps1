@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string] $FrpcArchive
 )
 
@@ -10,16 +10,16 @@ $MsBuild = Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319\MSBuild.exe
 $ExpectedFrpcHash = "9E5062E3E5CF07E67144A3A4ACF175EF6A2486F3605DD6CF288BAE34AB39819F"
 
 & $MsBuild $ProjectFile /t:Rebuild /p:Configuration=Release /p:Platform=x86
-if ($LASTEXITCODE -ne 0) { throw "PMS 内网发布助手构建失败" }
+if ($LASTEXITCODE -ne 0) { throw "PMS 内网应用连接助手构建失败" }
 $SelfTest = Start-Process -FilePath $Executable -ArgumentList "--self-test" -Wait -PassThru
-if ($SelfTest.ExitCode -ne 0) { throw "PMS 内网发布助手自检失败" }
+if ($SelfTest.ExitCode -ne 0) { throw "PMS 内网应用连接助手自检失败" }
 
 $Version = ([Version][Diagnostics.FileVersionInfo]::GetVersionInfo($Executable).FileVersion).ToString(3)
 $ReleaseRoot = Join-Path $ProjectDir "release"
 $Stage = Join-Path $ReleaseRoot ("package-" + $Version)
 if (Test-Path -LiteralPath $Stage) { Remove-Item -Recurse -Force -LiteralPath $Stage }
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
-Copy-Item -LiteralPath $Executable -Destination (Join-Path $Stage "Pms.LanGatewayAssistant.exe")
+Copy-Item -LiteralPath $Executable -Destination (Join-Path $Stage "PMS内网应用连接助手.exe")
 Copy-Item -LiteralPath (Join-Path $ProjectDir "README.md") -Destination (Join-Path $Stage "使用说明.md")
 
 if ($FrpcArchive) {
@@ -36,7 +36,7 @@ if ($FrpcArchive) {
     finally { Remove-Item -Recurse -Force -LiteralPath $Expand -ErrorAction SilentlyContinue }
 }
 
-$Zip = Join-Path $ReleaseRoot ("PMS内网发布助手-$Version.zip")
+$Zip = Join-Path $ReleaseRoot ("PMS内网应用连接助手-$Version.zip")
 if (Test-Path -LiteralPath $Zip) { Remove-Item -Force -LiteralPath $Zip }
 Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $Zip
 Write-Host "构建、自检与打包完成：$Zip" -ForegroundColor Green

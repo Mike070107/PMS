@@ -40,9 +40,9 @@ namespace Pms.LanGatewayAssistant
                 if (!System.IO.File.Exists(store.FrpcPath)) store.InstallFrpc(sibling);
                 if (!String.Equals(System.IO.Path.GetFullPath(current), System.IO.Path.GetFullPath(installedExecutable), StringComparison.OrdinalIgnoreCase))
                     System.IO.File.Copy(current, installedExecutable, true);
-                if (!Exists()) RequireSc("create \"" + ServiceName + "\" binPath= \"\\\"" + installedExecutable + "\\\" --service\" start= auto DisplayName= \"PMS 内网代理助手\"");
+                if (!Exists()) RequireSc("create \"" + ServiceName + "\" binPath= \"\\\"" + installedExecutable + "\\\" --service\" start= auto DisplayName= \"PMS 内网应用连接助手\"");
                 else RequireSc("config \"" + ServiceName + "\" binPath= \"\\\"" + installedExecutable + "\\\" --service\" start= auto");
-                RequireSc("description \"" + ServiceName + "\" \"PMS 内网应用安全转发服务\"");
+                RequireSc("description \"" + ServiceName + "\" \"PMS 内网应用安全连接与转发服务\"");
                 RequireSc("failure \"" + ServiceName + "\" reset= 86400 actions= restart/60000/restart/60000/restart/60000");
                 RequireSc("failureflag \"" + ServiceName + "\" 1"); Start();
                 if (legacyTaskExists) RunSchtasks("/Change /TN \"" + LegacyTaskName + "\" /Disable");

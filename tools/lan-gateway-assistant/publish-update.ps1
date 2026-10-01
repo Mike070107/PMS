@@ -1,4 +1,4 @@
-param([switch] $Upload)
+﻿param([switch] $Upload)
 
 $ErrorActionPreference = "Stop"
 $ProjectDir = $PSScriptRoot
@@ -7,9 +7,9 @@ $Executable = Join-Path $ProjectDir "bin\Release\Pms.LanGatewayAssistant.exe"
 $MsBuild = Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319\MSBuild.exe"
 
 & $MsBuild $ProjectFile /t:Rebuild /p:Configuration=Release /p:Platform=x86
-if ($LASTEXITCODE -ne 0) { throw "PMS 内网发布助手构建失败" }
+if ($LASTEXITCODE -ne 0) { throw "PMS 内网应用连接助手构建失败" }
 $SelfTest = Start-Process -FilePath $Executable -ArgumentList "--self-test" -Wait -PassThru
-if ($SelfTest.ExitCode -ne 0) { throw "PMS 内网发布助手自检失败" }
+if ($SelfTest.ExitCode -ne 0) { throw "PMS 内网应用连接助手自检失败" }
 
 $Version = ([Version][Diagnostics.FileVersionInfo]::GetVersionInfo($Executable).FileVersion).ToString(3)
 $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Executable).Hash.ToLowerInvariant()
@@ -22,7 +22,7 @@ $Manifest = [ordered]@{
     version = $Version
     url = "https://prsznh.cn/downloads/pms-lan-gateway-assistant/$Version/Pms.LanGatewayAssistant.exe"
     sha256 = $Hash
-    notes = "PMS 内网发布助手 $Version"
+    notes = "PMS 内网应用连接助手 $Version：一次性配对密钥与正式应用图标"
     publishedAt = (Get-Date).ToUniversalTime().ToString("o")
 } | ConvertTo-Json
 $Utf8WithoutBom = New-Object Text.UTF8Encoding($false)
@@ -52,4 +52,4 @@ try {
     if ((Get-FileHash -Algorithm SHA256 -LiteralPath $Download).Hash.ToLowerInvariant() -ne $Hash) { throw "公网下载文件校验失败" }
 }
 finally { Remove-Item -Force -LiteralPath $Download -ErrorAction SilentlyContinue }
-Write-Host "PMS 内网发布助手 $Version 已发布。" -ForegroundColor Green
+Write-Host "PMS 内网应用连接助手 $Version 已发布。" -ForegroundColor Green

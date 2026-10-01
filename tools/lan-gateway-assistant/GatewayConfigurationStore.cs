@@ -74,7 +74,7 @@ namespace Pms.LanGatewayAssistant
         }
         public string ReadDeviceToken()
         {
-            if (!File.Exists(DeviceTokenPath)) throw new InvalidOperationException("本机尚未使用安装码注册");
+            if (!File.Exists(DeviceTokenPath)) throw new InvalidOperationException("本机尚未使用一次性配对密钥注册");
             return Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(DeviceTokenPath), null, DataProtectionScope.LocalMachine));
         }
 

@@ -23,7 +23,7 @@ namespace Pms.LanGatewayAssistant
         public string ComputerDisplay { get { return Environment.MachineName + " · " + _configuration.ServerAddress + ":" + _configuration.ServerPort; } }
         public string HeaderStatus { get { return GatewayServiceManager.IsRunning() && _processRunning ? "代理运行中" : "需要检查"; } }
         public string StatusBrush { get { return GatewayServiceManager.IsRunning() && _processRunning ? "#35A875" : "#B7832B"; } }
-        public string OverviewTitle { get { if (!_store.IsManaged) return "请输入 PMS 安装码"; if (!_store.HasToken) return "代理连接凭据需要修复"; if (!GatewayServiceManager.Exists()) return "请安装后台服务"; if (!_processRunning) return "隧道正在恢复连接"; return Routes.Count == 0 ? "等待 PMS 下发内网应用" : "内网应用正在安全转发"; } }
+        public string OverviewTitle { get { if (!_store.IsManaged) return "请输入 PMS 一次性配对密钥"; if (!_store.HasToken) return "代理连接凭据需要修复"; if (!GatewayServiceManager.Exists()) return "请安装后台服务"; if (!_processRunning) return "隧道正在恢复连接"; return Routes.Count == 0 ? "等待 PMS 下发内网应用" : "内网应用正在安全转发"; } }
         public string ServiceState { get { return GatewayServiceManager.IsRunning() ? "运行中" : GatewayServiceManager.Exists() ? "已停止" : "未安装"; } }
         public string TunnelState { get { return _processRunning ? "已连接" : "未连接"; } }
         public int RouteCount { get { return Routes.Count(item => item.Enabled); } }
@@ -68,7 +68,7 @@ namespace Pms.LanGatewayAssistant
         private async void Enroll_Click(object sender, RoutedEventArgs e)
         {
             var code = InstallCodeBox.Text.Trim();
-            if (String.IsNullOrWhiteSpace(code)) { MessageBox.Show("请输入 PMS 生成的安装码。", "缺少安装码", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+            if (String.IsNullOrWhiteSpace(code)) { MessageBox.Show("请输入 PMS 生成的一次性配对密钥。", "缺少配对密钥", MessageBoxButton.OK, MessageBoxImage.Information); return; }
             EnrollButton.IsEnabled = false; EnrollButton.Content = "正在连接…";
             try
             {

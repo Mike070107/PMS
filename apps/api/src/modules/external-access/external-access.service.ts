@@ -150,7 +150,7 @@ export class ExternalAccessService {
     const normalizedCode = dto.installCode.trim().toUpperCase();
     const agent = await this.agentRepo.findOne({ where: { installCodeHash: hashGatewaySecret(normalizedCode) } });
     if (!agent || !agent.installCodeExpiresAt || agent.installCodeExpiresAt.getTime() <= Date.now()) {
-      throw new UnauthorizedException('安装码无效或已过期，请在 PMS 重新生成');
+      throw new UnauthorizedException('一次性配对密钥无效或已过期，请在 PMS 重新生成');
     }
     if (!agent.enabled) throw new ForbiddenException('这台代理设备已停用');
     const frpToken = process.env.LAN_GATEWAY_FRP_TOKEN?.trim();
@@ -530,7 +530,7 @@ export class ExternalAccessService {
     for (const app of apps) {
       app.desiredRevision = agent.desiredRevision;
       app.publishStatus = app.enabled ? 'waiting_agent' : 'disabled';
-      app.lastSyncError = app.enabled && !agent.tokenHash ? '代理尚未安装，请输入 PMS 生成的安装码' : null;
+      app.lastSyncError = app.enabled && !agent.tokenHash ? '代理尚未配对，请输入 PMS 生成的一次性配对密钥' : null;
       await this.appRepo.save(app);
     }
   }
@@ -577,7 +577,7 @@ export class ExternalAccessService {
       return;
     }
     current.count += 1;
-    if (current.count > 20) throw new UnauthorizedException('安装码尝试过于频繁，请十分钟后再试');
+    if (current.count > 20) throw new UnauthorizedException('配对密钥尝试过于频繁，请十分钟后再试');
   }
 
   private requireTenant(user: AuthUser) {

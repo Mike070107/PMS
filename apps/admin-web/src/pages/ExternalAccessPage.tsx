@@ -161,7 +161,7 @@ const stateMeta: Record<AppState, { label: string; icon: React.ReactNode }> = {
 
 const appErrorMessage = (app: ExternalApp) => {
   if (app.lastSyncError) return app.lastSyncError;
-  if (app.agentStatus === 'offline') return '代理电脑已离线，请启动 PMS 内网发布助手并检查网络。';
+  if (app.agentStatus === 'offline') return '代理电脑已离线，请启动 PMS 内网应用连接助手并检查网络。';
   if (app.agentStatus === 'degraded') return '代理运行异常，请在代理电脑打开发布助手查看具体原因。';
   if (app.agentStatus === 'disabled') return '代理设备已停用，请在 PMS 重新启用或更换代理。';
   return null;
@@ -263,7 +263,7 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
               </Button>
             )}
             {canEdit && gateway.provider === 'domestic' && (
-              <Button size="large" icon={<LaptopOutlined />} onClick={() => setCreatingAgent(true)}>添加代理</Button>
+              <Button size="large" icon={<LaptopOutlined />} onClick={() => setCreatingAgent(true)}>添加内网应用客户端</Button>
             )}
             <Tooltip title="刷新应用状态">
               <Button
@@ -299,7 +299,7 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
           <div className="external-access-section__head">
             <div>
               <span className="external-access-section__icon"><LaptopOutlined aria-hidden="true" /></span>
-              <div><h2 id="external-access-agents-title">代理设备</h2><p>新电脑只需输入一次性安装码</p></div>
+              <div><h2 id="external-access-agents-title">代理设备</h2><p>新电脑使用一次性配对密钥连接</p></div>
             </div>
             <span className="external-access-section__count">{agents.length}</span>
           </div>
@@ -309,8 +309,8 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
             </div>
           ) : (
             <div className="external-access-empty external-access-empty--compact">
-              <span><LaptopOutlined aria-hidden="true" /></span><h3>还没有代理设备</h3><p>先添加代理，再把内网应用发布到该电脑。</p>
-              {canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreatingAgent(true)}>添加代理</Button>}
+              <span><LaptopOutlined aria-hidden="true" /></span><h3>还没有内网应用客户端</h3><p>先添加客户端，再把内网应用发布到该电脑。</p>
+              {canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreatingAgent(true)}>添加内网应用客户端</Button>}
             </div>
           )}
         </section>
@@ -436,13 +436,13 @@ function GatewayAgentCard({ agent, preview, canEdit, onChanged }: { agent: Gatew
     try {
       const result = await request<{ installCode: string }>({ method: 'POST', url: `/external-access/agents/${agent.id}/install-code` });
       setInstallCode(result.installCode);
-    } catch (error: any) { message.error(error?.message || '生成安装码失败'); }
+    } catch (error: any) { message.error(error?.message || '生成一次性配对密钥失败'); }
     finally { setIssuing(false); }
   };
   const copyCode = async () => {
     if (!installCode) return;
     await navigator.clipboard.writeText(installCode);
-    message.success('安装码已复制');
+    message.success('一次性配对密钥已复制');
   };
   const setEnabled = async (enabled: boolean) => {
     if (!enabled) {
@@ -465,9 +465,25 @@ function GatewayAgentCard({ agent, preview, canEdit, onChanged }: { agent: Gatew
       <p>{agent.computerName || '尚未绑定电脑'}{agent.version ? ` · v${agent.version}` : ''}</p>
       <div className="external-access-agent-card__facts"><span>{agent.appCount} 个应用</span><span>修订 {agent.appliedRevision}/{agent.desiredRevision}</span></div>
       {agent.lastError && <div className="external-app-error"><ExclamationCircleFilled aria-hidden="true" /><span>{agent.lastError}</span></div>}
-      {installCode && <button type="button" className="external-access-install-code" onClick={copyCode} aria-label="复制安装码"><code>{installCode}</code><CopyOutlined aria-hidden="true" /></button>}
     </div>
-    {canEdit && <div className="external-access-agent-card__actions"><Switch checked={agent.enabled} loading={toggling} checkedChildren="启用" unCheckedChildren="停用" onChange={setEnabled} aria-label={`${agent.enabled ? '停用' : '启用'} ${agent.name}`} /><Button loading={issuing} onClick={issueCode}>{agent.enrolled ? '重新绑定' : '获取安装码'}</Button></div>}
+    {canEdit && <div className="external-access-agent-card__actions"><Switch checked={agent.enabled} loading={toggling} checkedChildren="启用" unCheckedChildren="停用" onChange={setEnabled} aria-label={`${agent.enabled ? '停用' : '启用'} ${agent.name}`} /><Button loading={issuing} onClick={issueCode}>{agent.enrolled ? '重新配对' : '获取配对密钥'}</Button></div>}
+    <Modal
+      title="一次性配对密钥"
+      open={Boolean(installCode)}
+      onCancel={() => setInstallCode(null)}
+      destroyOnHidden
+      maskClosable={false}
+      footer={[
+        <Button key="close" onClick={() => setInstallCode(null)}>关闭</Button>,
+        <Button key="copy" type="primary" icon={<CopyOutlined />} onClick={copyCode}>复制密钥</Button>,
+      ]}
+    >
+      <div className="external-access-pairing-secret">
+        <SafetyCertificateFilled aria-hidden="true" />
+        <p>请立即输入目标电脑的「PMS 内网应用连接助手」。密钥 10 分钟内有效、只能成功使用一次；关闭后不再显示。</p>
+        <code>{installCode}</code>
+      </div>
+    </Modal>
   </article>;
 }
 
@@ -484,8 +500,13 @@ function GatewayAgentModal({ open, preview, onClose, onDone }: { open: boolean; 
     catch (error: any) { message.error(error?.message || '创建代理失败'); }
     finally { setSaving(false); }
   };
-  return <Modal title="添加内网代理" open={open} onCancel={onClose} destroyOnHidden footer={result ? <Button type="primary" onClick={onDone}>完成</Button> : [<Button key="cancel" onClick={onClose}>取消</Button>, <Button key="create" type="primary" loading={saving} onClick={() => form.submit()}>生成安装码</Button>]}>
-    {result ? <div className="external-access-enroll-result"><CheckCircleFilled aria-hidden="true" /><h3>代理已创建</h3><p>在目标电脑打开「PMS 内网发布助手」，输入下面的安装码。安装码 10 分钟内有效且只能使用一次。</p><button type="button" className="external-access-install-code" onClick={() => navigator.clipboard.writeText(result.installCode)}><code>{result.installCode}</code><CopyOutlined aria-hidden="true" /></button></div> : <Form form={form} layout="vertical" onFinish={save}><Form.Item name="name" label="代理名称" extra="使用安装位置或用途，便于后续选择。" rules={[{ required: true, message: '请填写代理名称' }]}><Input prefix={<LaptopOutlined />} placeholder="例如：财务室代理" autoFocus /></Form.Item></Form>}
+  const copyAndFinish = async () => {
+    if (!result) return;
+    await navigator.clipboard.writeText(result.installCode);
+    message.success('一次性配对密钥已复制');
+  };
+  return <Modal title="添加内网应用客户端" open={open} onCancel={onClose} maskClosable={!result} destroyOnHidden footer={result ? [<Button key="done" onClick={onDone}>关闭</Button>, <Button key="copy" type="primary" icon={<CopyOutlined />} onClick={copyAndFinish}>复制密钥</Button>] : [<Button key="cancel" onClick={onClose}>取消</Button>, <Button key="create" type="primary" loading={saving} onClick={() => form.submit()}>创建并生成密钥</Button>]}>
+    {result ? <div className="external-access-enroll-result"><CheckCircleFilled aria-hidden="true" /><h3>内网应用客户端已创建</h3><p>请立即在目标电脑打开「PMS 内网应用连接助手」并输入下方密钥。密钥 10 分钟内有效、只能成功使用一次；关闭后不再显示。</p><code className="external-access-secret-value">{result.installCode}</code></div> : <Form form={form} layout="vertical" onFinish={save}><Form.Item name="name" label="客户端名称" extra="使用安装位置或用途，便于后续选择。" rules={[{ required: true, message: '请填写客户端名称' }]}><Input prefix={<LaptopOutlined />} placeholder="例如：财务室客户端" autoFocus /></Form.Item></Form>}
   </Modal>;
 }
 
