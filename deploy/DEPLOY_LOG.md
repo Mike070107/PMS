@@ -3784,3 +3784,12 @@
   - 616a213 fix: protect domestic gateway from Cloudflare resync
   - 3bea7e7 fix: expose OIDC user information to Cloudflare
 
+## 2026-10-01 23:19 · web · 3bf1366
+
+- 包：`pms-web-20261001-2313.tar.gz`
+- 提交：3bf1366 deploy: api → 96709b4
+- 自上次（d61f4f8）以来上线的相关提交：
+  - 01274d2 chore(web): refresh TypeScript build metadata
+  - 616a213 fix: protect domestic gateway from Cloudflare resync
+  - cdaaa3d feat(parking): query duplicate plate from add flow
+
