@@ -1,0 +1,13 @@
+<Window x:Class="Pms.LanGatewayAssistant.RouteDialog" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="内网应用设置" Width="560" Height="560" ResizeMode="NoResize" WindowStartupLocation="CenterOwner" Background="#F5F8FB" FontFamily="Microsoft YaHei UI">
+  <Grid Margin="24"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <StackPanel><TextBlock Text="内网应用" FontSize="23" FontWeight="Bold" Foreground="{StaticResource Ink}"/><TextBlock Text="助手只要能从这台电脑打开内网地址，就可以接入加密隧道。公网发布仍由 PMS 统一完成。" Foreground="{StaticResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap"/></StackPanel>
+    <Border Grid.Row="1" Background="White" BorderBrush="#DCE5EF" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,20,0,18"><StackPanel>
+      <TextBlock Text="应用名称" Foreground="{StaticResource Ink}" FontWeight="SemiBold"/><TextBox x:Name="NameBox" Margin="0,7,0,4"/><TextBlock Text="例如：用友财务系统" Foreground="{StaticResource Muted}" FontSize="10"/>
+      <TextBlock Text="外网域名" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Margin="0,17,0,0"/><TextBox x:Name="HostnameBox" Margin="0,7,0,4"/><TextBlock Text="使用 prsznh.cn 的一级子域名；再到 PMS 发布页完成授权与公网发布。" Foreground="{StaticResource Muted}" FontSize="10"/>
+      <TextBlock Text="内网网站地址" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Margin="0,17,0,0"/><TextBox x:Name="LocalUrlBox" Margin="0,7,0,4"/><TextBlock Text="例如：http://192.168.110.251:8050" Foreground="{StaticResource Muted}" FontSize="10"/>
+      <CheckBox x:Name="EnabledBox" Content="启用这个内网应用" IsChecked="True" Margin="0,18,0,0"/>
+      <TextBlock x:Name="ErrorText" Foreground="{StaticResource Danger}" Margin="0,12,0,0" TextWrapping="Wrap"/>
+    </StackPanel></Border>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"><Button Style="{StaticResource SecondaryButton}" Content="取消" Width="96" Click="Cancel_Click"/><Button Content="测试并保存" Width="130" Margin="10,0,0,0" Click="Save_Click"/></StackPanel>
+  </Grid>
+</Window>

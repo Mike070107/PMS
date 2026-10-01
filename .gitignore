@@ -8,6 +8,9 @@ tools/access-card-agent/obj/
 tools/data-sync-assistant-v2/bin/
 tools/data-sync-assistant-v2/obj/
 tools/data-sync-assistant-v2/release/
+tools/lan-gateway-assistant/bin/
+tools/lan-gateway-assistant/obj/
+tools/lan-gateway-assistant/release/
 dist
 build
 .next
