@@ -3793,3 +3793,12 @@
   - 616a213 fix: protect domestic gateway from Cloudflare resync
   - cdaaa3d feat(parking): query duplicate plate from add flow
 
+## 2026-10-02 00:44 · api · 94857ef
+
+- 包：`pms-api-20261002-0035.tar.gz`
+- 提交：94857ef fix(gateway): avoid staging frpc on cloud server
+- 自上次（3bf1366）以来上线的相关提交：
+  - 845e625 fix(external-access): tighten session lifetime and cache controls
+  - 066dac8 feat(auth): harden browser QR login and application binding
+  - fed8b50 fix(parking-owner): update Car_Issue note through owner link
+
