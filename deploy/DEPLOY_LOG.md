@@ -3894,3 +3894,10 @@
 - 自上次（3a2222d）以来上线的相关提交：
   - 1759e12 feat(version): show dated build versions across clients
 
+## 2026-10-02 06:14 · api · fbee333
+
+- 包：`pms-api-fast-20261002-061414.tar.gz`
+- 提交：fbee333 feat(gateway): secure client pairing experience
+- 自上次（fc5706d）以来上线的相关提交：
+  - fbee333 feat(gateway): secure client pairing experience
+
