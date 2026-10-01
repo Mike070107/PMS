@@ -63,7 +63,12 @@ import {
 import { agentTokenMatches, issueAgentSecret } from './agent-auth';
 import { effectiveAgentStatus, orderAgentsByAvailability } from './agent-status';
 import { DeliyunParkingService } from './deliyun-parking.service';
-import { diffParkingSnapshot, normalizeParkingSourceRecordId, type ParkingSnapshotValues } from './parking-history.util';
+import {
+  diffParkingSnapshot,
+  formatParkingGarageAuthorization,
+  normalizeParkingSourceRecordId,
+  type ParkingSnapshotValues,
+} from './parking-history.util';
 import type {
   AccessCardPermissionEntry,
   AccessCardPermissionSubject,
@@ -587,7 +592,13 @@ export class AccessCardIssuanceService {
       plateBefore: item.plateBefore,
       plateAfter: item.plateAfter,
       summary: item.summary,
-      changes: item.changes,
+      changes: item.changes.map((change) => change.field === 'effective' || change.label === '车库授权'
+        ? {
+          ...change,
+          before: formatParkingGarageAuthorization(change.before, item.database),
+          after: formatParkingGarageAuthorization(change.after, item.database),
+        }
+        : change),
       operator: item.operatorUserId ? actorById.get(item.operatorUserId) || `用户 #${item.operatorUserId}` : '系统从旧停车库检测',
       occurredAt: item.occurredAt,
       // 生产加列由 synchronize 完成时，既有 PMS 记录也会得到保守默认值；PMS 写入时间本身就是操作时间。

@@ -17,6 +17,33 @@ export interface ParkingHistoryDraft {
   occurredAt?: string | null;
 }
 
+const PARKING_GARAGE_CHANNELS = [
+  { database: 'parking1', label: '一期地面车库', channels: [5, 7] },
+  { database: 'parking2', label: '二期地面车库', channels: [9, 11, 13] },
+  { database: 'parking2', label: '二期大车库', channels: [15, 17, 19, 21] },
+] as const;
+
+/**
+ * 历史表保留旧停车系统原始 256 位通道串，接口展示时再翻译为车库名称。
+ * 旧系统中已经停用的人防通道不参与解释；二期人防权限只以德立云车牌数据为准。
+ */
+export function formatParkingGarageAuthorization(
+  value: string | null,
+  database?: string | null,
+): string | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  if (!/^[01]{16,}$/.test(normalized)) return normalized;
+  const enabledChannels = new Set(Array.from(normalized).flatMap((bit, index) => bit === '1' ? [index + 1] : []));
+  if (enabledChannels.size === 0) return '未授权任何车库';
+  const normalizedDatabase = database?.trim().toLowerCase() || null;
+  const garages = PARKING_GARAGE_CHANNELS
+    .filter((garage) => !normalizedDatabase || garage.database === normalizedDatabase)
+    .filter((garage) => garage.channels.some((channel) => enabledChannels.has(channel)))
+    .map((garage) => garage.label);
+  return garages.length ? garages.join('、') : '其他旧系统通道（已忽略）';
+}
+
 /**
  * 旧停车库有些版本会把 Car_ID 填成全 0 的占位值。它不是车辆记录主键，
  * 不能拿来建立快照，否则一次查询里的不同车辆会被串成同一条换牌链。

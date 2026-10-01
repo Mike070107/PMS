@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { diffParkingSnapshot, type ParkingSnapshotValues } from './parking-history.util';
+import {
+  diffParkingSnapshot,
+  formatParkingGarageAuthorization,
+  type ParkingSnapshotValues,
+} from './parking-history.util';
 
 const original: ParkingSnapshotValues = {
   plate: '沪A12345', ownerId: '18', ownerName: '张三', phone: '13800000000', room: '228/5/301', note: null,
@@ -48,4 +52,15 @@ test('全零旧库编号视为无效主键', async () => {
   assert.equal(normalizeParkingSourceRecordId('0000000000'), null);
   assert.equal(normalizeParkingSourceRecordId(0), null);
   assert.equal(normalizeParkingSourceRecordId('5097'), '5097');
+});
+
+test('车库授权历史把旧库位串翻译为一个或多个车库名称', () => {
+  const bits = Array.from({ length: 256 }, () => '0');
+  for (const channel of [9, 15, 17]) bits[channel - 1] = '1';
+  assert.equal(formatParkingGarageAuthorization(bits.join(''), 'parking2'), '二期地面车库、二期大车库');
+
+  const phaseOneBits = Array.from({ length: 256 }, () => '0');
+  for (const channel of [5, 7]) phaseOneBits[channel - 1] = '1';
+  assert.equal(formatParkingGarageAuthorization(phaseOneBits.join(''), 'parking1'), '一期地面车库');
+  assert.equal(formatParkingGarageAuthorization('0'.repeat(256), 'parking2'), '未授权任何车库');
 });

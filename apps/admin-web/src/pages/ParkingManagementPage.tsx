@@ -855,7 +855,19 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onViewProof, onE
           {expiryView.days !== null && <b className={expiryView.days < 0 ? 'is-expired' : 'is-valid'}>有效期 {expiryView.days} 天</b>}
         </span>}
       </div>
-      <div className="parking-vehicle-type"><span>车辆授权类型</span><Tag className="parking-vehicle-type-tag" color={vehicleIdentityColor(identity)}>{identity || '旧库未设置'}</Tag><small>该类型决定续期价格，不代表车库权限</small></div>
+      <div className="parking-vehicle-type">
+        <span>车辆授权类型</span>
+        <Tag className="parking-vehicle-type-tag" color={vehicleIdentityColor(identity)}>{identity || '旧库未设置'}</Tag>
+        {identity === '亲情车' && (
+          <div className="parking-family-actions">
+            <div className="parking-family-action-copy"><strong>亲情车办理</strong><span>办公室不收费；门岗按优惠临时车计费。新增时必须收取证明材料。</span></div>
+            <div className="parking-family-action-buttons">
+              <Button icon={<QrcodeOutlined />} loading={proofLoading} onClick={onCreateProof}>生成材料上传二维码</Button>
+              <Button icon={<SearchOutlined />} loading={proofLoading} onClick={onViewProof}>查看已上传资料</Button>
+            </div>
+          </div>
+        )}
+      </div>
       <div className="parking-garage-table" role="table" aria-label="车库授权和设备下载状态">
         <div className="parking-garage-head" role="row"><span>授权</span><span>车库</span><span>数据源</span><span>设备状态</span></div>
         {garages.map((garage) => <div className="parking-garage-row" role="row" key={garage.key}>
@@ -879,12 +891,6 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onViewProof, onE
           editHint={!row.pmsMatch ? '没有找到该房号或电话号码对应的 PMS 业主档案' : undefined}
           onEdit={row.pmsMatch ? () => onEditPms({ id: row.pmsMatch!.userId, name: row.pmsMatch!.name, phone: row.pmsMatch!.phone, status: row.pmsMatch!.status || 'active', source: row.pmsMatch!.source ?? null, contactNote: row.pmsMatch!.contactNote, houseId: row.pmsMatch!.houseId, house: row.pmsMatch!.house }) : undefined} />
       </div>
-      {identity === '亲情车' && (
-        <div className="parking-family-actions">
-          <div><strong>亲情车办理</strong><span>办公室不收费；门岗按优惠临时车计费。新增时必须收取证明材料。</span></div>
-          <Space wrap><Button icon={<QrcodeOutlined />} loading={proofLoading} onClick={onCreateProof}>生成材料上传二维码</Button><Button loading={proofLoading} onClick={onViewProof}>查看已上传资料</Button></Space>
-        </div>
-      )}
       <div className="parking-operation-actions" aria-label="停车业务操作">
         <Button size="small" disabled={!canWriteLocal} icon={<CalendarOutlined />} onClick={() => onOperation('renew_vehicle')}>续期收费</Button>
         <Button size="small" disabled={!canWriteLocal} icon={<SwapOutlined />} onClick={() => onOperation('change_plate')}>变更车牌</Button>
