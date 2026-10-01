@@ -3759,3 +3759,12 @@
   - acc7aaf fix: accept Cloudflare OIDC state payloads
   - 3d2b5fe fix: sync reusable Cloudflare Access policies
 
+## 2026-10-01 21:25 · api · 21d928c
+
+- 包：`pms-api-20261001-2120.tar.gz`
+- 提交：21d928c fix: expose OIDC user information to Cloudflare
+- 自上次（fe19c76）以来上线的相关提交：
+  - 21d928c fix: expose OIDC user information to Cloudflare
+  - acc7aaf fix: accept Cloudflare OIDC state payloads
+  - 3d2b5fe fix: sync reusable Cloudflare Access policies
+
