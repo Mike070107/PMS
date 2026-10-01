@@ -226,8 +226,9 @@
 .parking-new-flow > i { width: 68px; height: 1px; background: #d8e1ea; }
 .parking-new-flow small { color: inherit; font-size: 12px; font-weight: 600; }
 .parking-plate-entry-design { margin-top: 20px; }
-.parking-plate-entry-design .ant-input-affix-wrapper { height: 62px; border-color: #9db6d3; border-radius: 12px; box-shadow: 0 0 0 3px rgba(49,85,138,.07); }
-.parking-plate-entry-design .ant-input { font-size: 25px; font-weight: 750; letter-spacing: .1em; }
+.parking-plate-entry-design .ant-input-affix-wrapper { height: 66px; border-color: #9db6d3; border-radius: 12px; box-shadow: 0 0 0 3px rgba(49,85,138,.07); }
+.parking-plate-entry-design .ant-input { font-size: 28px; font-weight: 750; letter-spacing: .1em; }
+.parking-plate-check-ok { color: #25884f; font-size: 20px; }
 .parking-plate-entry-design > .ant-typography { display: block; margin-top: 2px; }
 .parking-new-drawer-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid #e3e9ef; }
 .parking-new-plate-summary { display: flex; align-items: center; gap: 18px; padding: 14px 16px; border: 1px solid #d8e4ef; border-radius: 14px; background: #f6f9fc; }
@@ -264,13 +265,25 @@
 .parking-family-proof-qr { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; padding-top: 10px; border-top: 1px dashed #e7c97e; }
 .parking-family-proof-qr img { width: 144px; height: 144px; padding: 7px; border: 1px solid #e0d0a9; border-radius: 8px; background: #fff; }
 .parking-family-proof-qr .ant-typography { color: #876c3b; }
-.parking-plate-keyboard { margin-top: 18px; padding: 14px; border: 1px solid #dce3eb; border-radius: 14px; background: #f5f7fa; }
-.parking-key-grid { display: grid; grid-template-columns: repeat(9, minmax(0,1fr)); gap: 6px; }
-.parking-key-grid button { min-width: 0; min-height: 42px; padding: 0; color: #263c55; border: 1px solid #ccd6e0; border-radius: 7px; background: #fff; cursor: pointer; transition: color .18s ease, border-color .18s ease, background .18s ease; }
-.parking-key-grid button:hover, .parking-key-grid button:focus-visible { color: #fff; border-color: #31558a; background: #31558a; outline: none; }
-.parking-key-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.parking-plate-keyboard { margin-top: 18px; padding: 16px; border: 1px solid #d5e0ec; border-radius: 14px; background: #f5f8fb; }
+.parking-keyboard-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.parking-keyboard-heading > div { min-width: 0; display: grid; gap: 3px; }
+.parking-keyboard-heading strong { color: #263c55; font-size: 18px; }
+.parking-keyboard-heading span { color: #66798d; font-size: 14px; line-height: 1.5; }
+.parking-keyboard-heading .ant-btn { min-height: 44px; flex: 0 0 auto; font-weight: 600; }
+.parking-key-grid { display: grid; grid-template-columns: repeat(8, minmax(0,1fr)); gap: 8px; }
+.parking-key-grid button { min-width: 0; min-height: 50px; padding: 0; color: #263c55; border: 1px solid #bfcddd; border-radius: 9px; background: #fff; box-shadow: 0 1px 2px rgba(36,63,105,.06); font-family: inherit; font-size: 18px; font-weight: 700; cursor: pointer; touch-action: manipulation; transition: color .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+.parking-plate-keyboard.is-province .parking-key-grid button { font-size: 20px; }
+.parking-key-grid button:hover { color: #fff; border-color: #31558a; background: #31558a; box-shadow: 0 3px 8px rgba(49,85,138,.18); }
+.parking-key-grid button:focus-visible { color: #fff; border-color: #31558a; background: #31558a; outline: 3px solid rgba(49,85,138,.28); outline-offset: 2px; }
+.parking-key-grid button:active { color: #fff; border-color: #274873; background: #274873; }
+.parking-key-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.parking-key-actions .ant-btn { min-width: 88px; min-height: 44px; }
 .parking-duplicate-result { min-height: 90px; margin-top: 18px; }
 .parking-checking { min-height: 88px; display: grid; place-items: center; align-content: center; gap: 8px; color: #60758a; }
+.parking-duplicate-matches { display: grid; gap: 6px; }
+.parking-duplicate-matches span { color: #8e2f2f; font-weight: 650; }
+.parking-duplicate-matches b { margin-top: 2px; color: #5f2730; }
 .parking-detail-list, .parking-space-list, .parking-renewal-list, .parking-reconcile-list { display: grid; gap: 10px; }
 .parking-detail-list article { padding: 18px; border: 1px solid #dfe5eb; border-radius: 12px; }
 .parking-detail-list article > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -378,7 +391,9 @@
   .parking-vehicle-footer { flex-wrap: wrap; justify-content: flex-start; }
   .parking-vehicle-footer > span { width: 100%; margin-right: 0; }
   .parking-key-grid { grid-template-columns: repeat(6, minmax(0,1fr)); }
-  .parking-key-grid button { min-height: 44px; }
+  .parking-key-grid button { min-height: 48px; font-size: 17px; }
+  .parking-keyboard-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .parking-keyboard-heading .ant-btn { padding-inline: 0; }
   .parking-pms-resident-card { grid-template-columns: 42px minmax(0,1fr); }
   .parking-pms-resident-card > div:nth-child(3), .parking-pms-resident-card > div:nth-child(4) { grid-column: 2; }
   .parking-payment-row { align-items: stretch; flex-direction: column; }
