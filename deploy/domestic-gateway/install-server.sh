@@ -119,7 +119,7 @@ if [[ ! -f /etc/pms-gateway/router.env ]]; then
   cat > /etc/pms-gateway/router.env <<'EOF'
 GATEWAY_ROUTER_HOST=127.0.0.1
 GATEWAY_ROUTER_PORT=4190
-PMS_API_INTERNAL_URL=http://127.0.0.1:3000/api/v1
+PMS_API_INTERNAL_URL=http://127.0.0.1:4000/api/v1
 PMS_PUBLIC_API_URL=https://prsznh.cn/api/v1
 EOF
   chmod 0640 /etc/pms-gateway/router.env

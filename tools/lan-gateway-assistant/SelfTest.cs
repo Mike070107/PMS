@@ -20,6 +20,12 @@ namespace Pms.LanGatewayAssistant
                 var text = FrpConfiguration.Build(config, store);
                 Require(text.Contains("serverPort = 443"), "server port"); Require(text.Contains("transport.protocol = \"wss\""), "wss"); Require(text.Contains("user = \"lan-self-test\""), "device identity"); Require(text.Contains("metadatas.deviceToken = \"self-test-device-token\""), "device admission token"); Require(text.Contains("localIP = \"192.168.1.20\""), "local ip"); Require(text.Contains("localPort = 8050"), "local port"); Require(text.Contains("remotePort = 18050"), "remote port");
                 var sample = new byte[] { 1, 2, 3, 4 }; var protectedValue = ProtectedData.Protect(sample, null, DataProtectionScope.LocalMachine); var roundTrip = ProtectedData.Unprotect(protectedValue, null, DataProtectionScope.LocalMachine); Require(roundTrip.Length == sample.Length, "dpapi");
+                Require(GatewayUpdateService.IsTrustedDownloadUrl(new Uri("https://prsznh.cn/downloads/pms-lan-gateway-assistant/1.2.1/Pms.LanGatewayAssistant.exe")), "trusted update URL");
+                Require(!GatewayUpdateService.IsTrustedDownloadUrl(new Uri("http://prsznh.cn/downloads/pms-lan-gateway-assistant/x.exe")), "reject HTTP update URL");
+                Require(!GatewayUpdateService.IsTrustedDownloadUrl(new Uri("https://prsznh.cn.evil.example/downloads/pms-lan-gateway-assistant/x.exe")), "reject lookalike update host");
+                Require(!GatewayUpdateService.IsTrustedDownloadUrl(new Uri("https://prsznh.cn/downloads/other/x.exe")), "reject unrelated update path");
+                Require(GatewayUpdateService.IsSha256(new string('a', 64)), "valid sha256");
+                Require(!GatewayUpdateService.IsSha256(new string('z', 64)), "reject non-hex sha256");
             }
             finally { try { Directory.Delete(root, true); } catch { } }
         }
