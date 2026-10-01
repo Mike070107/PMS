@@ -3700,3 +3700,12 @@
 - 自上次（a83d1d1）以来上线的相关提交：
   - e39ecaa fix(parking): clarify garage history and family-car actions
 
+## 2026-10-01 22:17 · web · bd2b03a
+
+- 包：`pms-web-20261001-2211.tar.gz`
+- 提交：bd2b03a fix(parking): make vehicle actions prominent
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
+- 自上次（a83d1d1）以来上线的相关提交：
+  - bd2b03a fix(parking): make vehicle actions prominent
+  - e39ecaa fix(parking): clarify garage history and family-car actions
+
