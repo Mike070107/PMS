@@ -3684,3 +3684,12 @@
   - a83d1d1 feat(parking): complete vehicle registration and family-car proof flow
   - 40ba977 fix(access-card): add retry for failed authorization
 
+## 2026-10-01 21:54 · web · a83d1d1
+
+- 包：`pms-web-20261001-2147.tar.gz`
+- 提交：a83d1d1 feat(parking): complete vehicle registration and family-car proof flow
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
+- 自上次（fe19c76）以来上线的相关提交：
+  - a83d1d1 feat(parking): complete vehicle registration and family-car proof flow
+  - 40ba977 fix(access-card): add retry for failed authorization
+
