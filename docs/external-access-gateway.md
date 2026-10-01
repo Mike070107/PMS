@@ -31,6 +31,13 @@ PMS 管理员在「内网应用发布」页配置：
 
 服务器变量模板见 `apps/api/.env.production.example`。密钥、API Token 和 Tunnel Token 不得进 Git。
 
+### OIDC `state` 兼容性
+
+Cloudflare Access 发送的 `state` 是包含签名和登录上下文的不透明字符串，实际长度可能超过
+500 字符。PMS 必须原样保存并在回调时返回，不解析或改写；当前服务端允许最多 4096 字符，
+同时用单元测试覆盖 Cloudflare 长 `state` 和超限拒绝。出现 `state 无效` 时，先从网关访问日志
+核对实际长度，不能把有效的长 `state` 误判成配置错误。
+
 ## 自动发布顺序
 
 保存一条应用时，API 按以下顺序同步：

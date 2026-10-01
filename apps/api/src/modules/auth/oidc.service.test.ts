@@ -64,6 +64,30 @@ test('authorize only accepts the registered client, callback and openid scope', 
   );
 });
 
+test('authorize accepts Cloudflare Access long opaque state while keeping a size bound', () => {
+  const { service } = fixture();
+  const cloudflareState = `signature.${'x'.repeat(1800)}`;
+  const request = service.validateAuthorizeQuery({
+    response_type: 'code',
+    client_id: 'cloudflare-access',
+    redirect_uri: 'https://team.cloudflareaccess.com/cdn-cgi/access/callback',
+    scope: 'openid email profile',
+    state: cloudflareState,
+  });
+  assert.equal(request.state, cloudflareState);
+
+  assert.throws(
+    () => service.validateAuthorizeQuery({
+      response_type: 'code',
+      client_id: 'cloudflare-access',
+      redirect_uri: 'https://team.cloudflareaccess.com/cdn-cgi/access/callback',
+      scope: 'openid',
+      state: 'x'.repeat(4097),
+    }),
+    /state/,
+  );
+});
+
 test('authorization code is one-time and the signed token carries app grants', async () => {
   const { service } = fixture();
   const request = service.validateAuthorizeQuery({

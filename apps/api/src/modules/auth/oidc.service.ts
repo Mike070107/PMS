@@ -21,6 +21,9 @@ import { AuthService } from './auth.service';
 
 const CODE_TTL_MS = 2 * 60 * 1000;
 const TOKEN_TTL_SEC = 5 * 60;
+// Cloudflare Access uses an opaque, signed state value that is commonly well
+// above 500 characters. Keep a bounded limit without rejecting valid IdP flows.
+const MAX_OIDC_STATE_LENGTH = 4096;
 
 type AuthorizeQuery = Record<string, string | string[] | undefined>;
 
@@ -91,7 +94,9 @@ export class OidcService {
       throw new BadRequestException('OIDC redirect_uri 未登记');
     }
     if (!scope.includes('openid')) throw new BadRequestException('scope 必须包含 openid');
-    if (!state || state.length > 500) throw new BadRequestException('state 无效');
+    if (!state || state.length > MAX_OIDC_STATE_LENGTH) {
+      throw new BadRequestException('state 无效');
+    }
     if (nonce && nonce.length > 200) throw new BadRequestException('nonce 过长');
     if (codeChallenge && codeChallengeMethod !== 'S256') {
       throw new BadRequestException('PKCE 只支持 S256');
