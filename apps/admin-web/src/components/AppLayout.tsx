@@ -31,6 +31,7 @@ import { auth as authApi } from '@pms/api-client';
 import type { AdminAccess } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { auth, pagePerm, useAuth } from '../lib/auth';
+import { BUILD_COMMIT, BUILD_LABEL } from '../buildInfo';
 import BrandLogo from './BrandLogo';
 import NotificationBell from './NotificationBell';
 import FeedbackButton from './FeedbackButton';
@@ -271,6 +272,9 @@ export default function AppLayout() {
           {user?.roleNames?.join(' · ') || '物业管理人员'}
         </div>
         <div className="pms-sider-foot-meta">邻修物业管理平台 · {new Date().getFullYear()}</div>
+        <div className="pms-sider-foot-version" title={BUILD_COMMIT ? `构建提交 ${BUILD_COMMIT}` : undefined}>
+          {BUILD_LABEL}
+        </div>
       </div>
     </div>
   );

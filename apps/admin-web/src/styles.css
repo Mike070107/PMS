@@ -148,6 +148,13 @@ a,
   color: rgba(241, 245, 249, 0.38);
   font-size: 10px;
 }
+.pms-sider-foot-version {
+  margin-top: 6px;
+  color: rgba(241, 245, 249, 0.56);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
 .pms-mobile-drawer-root .ant-drawer-content,
 .pms-mobile-drawer-root .ant-drawer-body,
 .ant-drawer-content.pms-mobile-drawer,

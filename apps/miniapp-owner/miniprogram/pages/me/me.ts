@@ -1,7 +1,7 @@
 import { auth } from '@pms/api-client';
 import { refreshUnreadBadge } from '../../utils/unread';
 import { maskPhone } from '@pms/miniapp-ui';
-import { buildStampText } from '../../utils/buildStamp';
+import { buildDateText, buildStampText } from '../../utils/buildStamp';
 import { AuditStatus, type MeResp } from '@pms/shared-types';
 import { openFeedback } from '../../utils/feedback';
 import { getTestLoginCode, setTestLoginCode } from '../../utils/session';
@@ -40,9 +40,9 @@ Page({
       const envText =
         { develop: '开发版', trial: '体验版', release: '正式版' }[info.envVersion] ||
         info.envVersion;
-      this.setData({
-        buildText: [envText, info.version || buildStampText()].filter(Boolean).join(' '),
-      });
+      const version = info.version || buildStampText();
+      const buildDate = buildDateText(version);
+      this.setData({ buildText: [envText, version, buildDate ? `更新于 ${buildDate}` : ''].filter(Boolean).join(' · ') });
     } catch {
       this.setData({ buildText: '' });
     }

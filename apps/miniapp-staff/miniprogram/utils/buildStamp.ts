@@ -14,6 +14,14 @@
 export const BUILD_VERSION = 'dev';
 export const BUILD_COMMIT = '';
 
+/** 从微信自动提供的版本号（如 1.0.20261002a）提取构建日期。 */
+export function buildDateText(version: string = BUILD_VERSION): string {
+  const match = /(?:^|\.)(20\d{6})/.exec(version);
+  if (!match) return '';
+  const digits = match[1];
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+}
+
 /** 「1.0.20260826i · b3454a2」；开发版没上传过就只有 dev */
 export function buildStampText(): string {
   return BUILD_COMMIT ? `${BUILD_VERSION} · ${BUILD_COMMIT}` : BUILD_VERSION;
