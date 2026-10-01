@@ -266,6 +266,39 @@ export class AccessPermissionReportDto {
   errorMessage?: string;
 }
 
+export class CreateAccessCardAuthorizationDto {
+  @IsArray()
+  @ArrayMaxSize(12)
+  @ArrayUnique()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  targetBuildingIds: number[];
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
+  idempotencyKey: string;
+}
+
+export class AccessCardAuthorizationReportDto {
+  @Type(() => Number)
+  @IsInt()
+  taskId: number;
+
+  @IsIn(['success', 'retry', 'failed'])
+  result: 'success' | 'retry' | 'failed';
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  controllerResults?: Array<Record<string, unknown>>;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  errorMessage?: string;
+}
+
 export class CreateParkingQueryDto {
   @IsString()
   @MinLength(2)

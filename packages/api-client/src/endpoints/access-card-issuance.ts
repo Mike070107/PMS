@@ -85,6 +85,22 @@ export interface AccessCardIssueBatch {
   items: AccessCardIssueItem[];
 }
 
+export interface AccessCardAuthorization {
+  id: number;
+  houseId: number;
+  historyRowId: number;
+  roomKey: string;
+  icCardNo: string | null;
+  wgCardNo: string;
+  targetBuildings: Array<{ id: number; buildingNo: string; accessSystem: Exclude<AccessSystem, null> }>;
+  controllerResults: Array<Record<string, unknown>>;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  attempt: number;
+  error: string | null;
+  requestedAt: string;
+  completedAt: string | null;
+}
+
 export interface AccessCardReadiness {
   simulationEnabled: boolean;
   features: {
@@ -94,6 +110,7 @@ export interface AccessCardReadiness {
     parkingDbRead: boolean;
     parkingDbWrite: boolean;
     controllerUpload: boolean;
+    historicalAccessGrant?: boolean;
   };
   agents: Array<{
     id: string;
@@ -326,6 +343,19 @@ export const houseContext = (houseId: number) =>
   request<AccessCardHouseContext>({
     url: `/access-card-issuance/houses/${houseId}/context`,
   });
+
+export const createHistoryAuthorization = (houseId: number, historyId: number, data: {
+  targetBuildingIds: number[];
+  idempotencyKey: string;
+}) => request<AccessCardAuthorization>({
+  url: `/access-card-issuance/houses/${houseId}/history/${historyId}/authorizations`,
+  method: 'POST',
+  data,
+});
+
+export const historyAuthorization = (id: number) => request<AccessCardAuthorization>({
+  url: `/access-card-issuance/history-authorizations/${id}`,
+});
 
 export const createBatch = (data: {
   houseId: number;

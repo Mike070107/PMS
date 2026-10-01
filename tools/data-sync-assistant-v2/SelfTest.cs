@@ -137,7 +137,7 @@ namespace Pms.DataSyncAssistant
             if (!capabilities["accessDbWrite"] || capabilities["controllerUpload"])
                 throw new InvalidOperationException("门禁数据库与控制器能力没有独立上报");
             capabilities = AgentLoop.BuildCapabilities(mapped, true, false, true, true);
-            if (!capabilities["controllerUpload"])
+            if (!capabilities["controllerUpload"] || !capabilities["historicalAccessGrant"])
                 throw new InvalidOperationException("控制器通信组件就绪后未上报下发能力");
 
             var json = "{\"action\":\"activate_access\",\"itemId\":8,\"wgCardNo\":\"22355403\",\"targetBuildings\":[{\"id\":11,\"buildingNo\":\"11\",\"accessSystem\":\"iccard\"}]}";
@@ -145,6 +145,11 @@ namespace Pms.DataSyncAssistant
             if (task.targetBuildings == null || task.targetBuildings.Length != 1 ||
                 task.targetBuildings[0].buildingNo != "11" || task.targetBuildings[0].accessSystem != "iccard")
                 throw new InvalidOperationException("门禁任务楼栋快照解析失败");
+
+            var grantJson = "{\"action\":\"authorize_existing_card\",\"taskId\":19,\"wgCardNo\":\"22355403\",\"targetBuildings\":[{\"id\":11,\"buildingNo\":\"11\",\"accessSystem\":\"iccard\"}]}";
+            var grant = new JavaScriptSerializer().Deserialize<AgentTask>(grantJson);
+            if (grant.taskId != 19 || grant.action != "authorize_existing_card" || grant.targetBuildings.Length != 1)
+                throw new InvalidOperationException("历史卡追加楼栋权限任务解析失败");
         }
 
         private static void VerifyAccessGatewayMigration(string root)

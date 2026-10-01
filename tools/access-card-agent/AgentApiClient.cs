@@ -84,6 +84,13 @@ namespace Pms.AccessCardAgent
             return _json.ConvertToType<AccessPermissionTask>(result["task"]);
         }
 
+        public AgentTask ClaimHistoryAuthorization()
+        {
+            var result = Post("/access-card-agent/history-authorizations/claim", new Dictionary<string, object>());
+            if (!result.ContainsKey("task") || result["task"] == null) return null;
+            return _json.ConvertToType<AgentTask>(result["task"]);
+        }
+
         public void Report(AgentReport report)
         {
             Post("/access-card-agent/report", report);
@@ -117,6 +124,11 @@ namespace Pms.AccessCardAgent
         public void ReportAccessPermissions(AccessPermissionReport report)
         {
             Post("/access-card-agent/access-permissions/report", report);
+        }
+
+        public void ReportHistoryAuthorization(AccessCardAuthorizationReport report)
+        {
+            Post("/access-card-agent/history-authorizations/report", report);
         }
 
         public Dictionary<string, object> CardPreflight(int itemId, string icCardNo)
@@ -161,6 +173,7 @@ namespace Pms.AccessCardAgent
 
     internal sealed class AgentTask
     {
+        public int taskId { get; set; }
         public string action { get; set; }
         public int itemId { get; set; }
         public int batchId { get; set; }
@@ -175,6 +188,14 @@ namespace Pms.AccessCardAgent
         public string cardTemplateVersion { get; set; }
         public object[] targetBuildingIds { get; set; }
         public AccessTargetBuilding[] targetBuildings { get; set; }
+    }
+
+    internal sealed class AccessCardAuthorizationReport
+    {
+        public int taskId { get; set; }
+        public string result { get; set; }
+        public object[] controllerResults { get; set; }
+        public string errorMessage { get; set; }
     }
 
     internal sealed class AccessTargetBuilding

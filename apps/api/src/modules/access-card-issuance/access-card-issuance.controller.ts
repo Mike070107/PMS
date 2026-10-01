@@ -23,8 +23,10 @@ import {
   AgentHeartbeatDto,
   AgentReportDto,
   AccessPermissionReportDto,
+  AccessCardAuthorizationReportDto,
   CardPreflightDto,
   CreateAccessCardIssueDto,
+  CreateAccessCardAuthorizationDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
   LegacyHistoryReportDto,
@@ -138,6 +140,24 @@ export class AccessCardIssuanceController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.service.create(dto, user, access);
+  }
+
+  @Post('houses/:houseId/history/:historyId/authorizations')
+  @RequirePermission('business', 'edit')
+  createHistoryAuthorization(
+    @Param('houseId', ParseIntPipe) houseId: number,
+    @Param('historyId', ParseIntPipe) historyId: number,
+    @Body() dto: CreateAccessCardAuthorizationDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.createHistoryAuthorization(houseId, historyId, dto, user, access);
+  }
+
+  @Get('history-authorizations/:id')
+  @RequirePermission('business', 'view')
+  historyAuthorization(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.getHistoryAuthorization(id, user);
   }
 
   @Get('batches/:id')
@@ -275,6 +295,23 @@ export class AccessCardAgentController {
     @Body() dto: AccessPermissionReportDto,
   ) {
     return this.service.reportAccessPermissions(agentKey, bearerToken(authorization), dto);
+  }
+
+  @Post('history-authorizations/claim')
+  claimHistoryAuthorization(
+    @Headers('x-agent-id') agentKey: string,
+    @Headers('authorization') authorization: string,
+  ) {
+    return this.service.claimHistoryAuthorization(agentKey, bearerToken(authorization));
+  }
+
+  @Post('history-authorizations/report')
+  reportHistoryAuthorization(
+    @Headers('x-agent-id') agentKey: string,
+    @Headers('authorization') authorization: string,
+    @Body() dto: AccessCardAuthorizationReportDto,
+  ) {
+    return this.service.reportHistoryAuthorization(agentKey, bearerToken(authorization), dto);
   }
 
   @Post('parking/queries/claim')

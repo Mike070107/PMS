@@ -13,6 +13,7 @@ import { Brackets, EntityManager, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
   AccessCardAgent,
+  AccessCardAuthorization,
   AccessCardIssueBatch,
   AccessCardIssueItem,
   AccessCardLegacyCardCheck,
@@ -53,6 +54,8 @@ import {
   ParkingQueryReportDto,
   ParkingOwnerUpdateReportDto,
   CreateParkingOperationDto,
+  CreateAccessCardAuthorizationDto,
+  AccessCardAuthorizationReportDto,
   ParkingOperationReportDto,
   ParkingHistoryQueryDto,
 } from './dto';
@@ -93,6 +96,8 @@ export class AccessCardIssuanceService {
     private readonly batchRepo: Repository<AccessCardIssueBatch>,
     @InjectRepository(AccessCardIssueItem)
     private readonly itemRepo: Repository<AccessCardIssueItem>,
+    @InjectRepository(AccessCardAuthorization)
+    private readonly authorizationRepo: Repository<AccessCardAuthorization>,
     @InjectRepository(AccessCardAgent)
     private readonly agentRepo: Repository<AccessCardAgent>,
     @InjectRepository(AccessCardLegacySnapshot)
@@ -187,6 +192,96 @@ export class AccessCardIssuanceService {
     };
   }
 
+  async createHistoryAuthorization(
+    houseId: number,
+    historyId: number,
+    dto: CreateAccessCardAuthorizationDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const idempotencyKey = dto.idempotencyKey.trim();
+    const existing = await this.authorizationRepo.findOne({ where: { tenantId, idempotencyKey } });
+    if (existing) return this.historyAuthorizationResponse(existing);
+
+    const context = await this.getHouseContext(houseId, user, access);
+    if (context.projectPhase !== 'phase2') {
+      throw new BadRequestException('枫桦景苑一期卡片只写卡，不需要追加楼栋门禁权限');
+    }
+    const historyRow = context.history.find((row) => row.id === historyId);
+    if (!historyRow?.wgCardNo) throw new NotFoundException('没有找到这张历史卡片，或卡片缺少 WG 卡号');
+    if (!dto.targetBuildingIds.length) throw new BadRequestException('请至少选择一个要追加授权的楼栋');
+
+    const availableById = new Map(context.availableBuildings.map((building) => [building.id, building]));
+    const selected = dto.targetBuildingIds.map((id) => availableById.get(id));
+    if (selected.some((building) => !building || !building.routeReady || !building.accessSystem)) {
+      throw new BadRequestException('所选楼栋不属于当前门禁区域，或门禁路由尚未配置');
+    }
+    if (selected.some((building) => building!.id === context.house.buildingId)) {
+      throw new BadRequestException(`本楼栋 ${context.house.buildingNo} 号楼不属于额外授权范围`);
+    }
+
+    const authorized = new Set((historyRow.controllerResults ?? [])
+      .map((row) => normalizeBuildingNo(typeof row.buildingNo === 'string' ? row.buildingNo : ''))
+      .filter(Boolean));
+    const duplicate = selected.filter((building) => authorized.has(normalizeBuildingNo(building!.buildingNo)));
+    if (duplicate.length) {
+      throw new BadRequestException(`这张卡已拥有 ${duplicate.map((item) => `${item!.buildingNo}号楼`).join('、')} 权限，无需重复授权`);
+    }
+
+    const running = await this.authorizationRepo.find({
+      where: { tenantId, wgCardNo: historyRow.wgCardNo, status: In(['pending', 'running']) },
+    });
+    const requestedIds = new Set(dto.targetBuildingIds);
+    if (running.some((task) => task.targetBuildings.some((building) => requestedIds.has(building.id)))) {
+      throw new BadRequestException('这张卡选择的楼栋已有授权任务正在执行，请等待完成后刷新历史');
+    }
+
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
+    const gateway = orderAgentsByAvailability(agents).find((agent) =>
+      effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.accessDbWrite === true
+      && agent.capabilities?.controllerUpload === true
+      && agent.capabilities?.historicalAccessGrant === true);
+    if (!gateway) {
+      throw new ServiceUnavailableException('楼栋门禁网关尚未支持历史卡追加授权，请在 .88 电脑更新 PMS 数据同步助手后重试');
+    }
+
+    const now = new Date();
+    const task = this.authorizationRepo.create({
+      tenantId,
+      houseId,
+      historyRowId: historyId,
+      roomKey: context.house.roomKey,
+      icCardNo: historyRow.icCardNo,
+      wgCardNo: historyRow.wgCardNo,
+      targetBuildings: selected.map((building) => ({
+        id: building!.id,
+        buildingNo: building!.buildingNo,
+        accessSystem: building!.accessSystem!,
+      })),
+      controllerResults: [],
+      idempotencyKey,
+      status: 'pending',
+      attempt: 0,
+      requestedAt: now,
+      completedAt: null,
+      leaseAgentKey: null,
+      leaseExpiresAt: null,
+      lastError: null,
+      createdBy: user.id,
+      updatedBy: user.id,
+    });
+    return this.historyAuthorizationResponse(await this.authorizationRepo.save(task));
+  }
+
+  async getHistoryAuthorization(id: number, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const task = await this.authorizationRepo.findOne({ where: { id, tenantId } });
+    if (!task) throw new NotFoundException('历史卡片授权任务不存在');
+    return this.historyAuthorizationResponse(task);
+  }
+
   async readiness(user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const agents = await this.agentRepo.find({ where: { tenantId }, order: { id: 'ASC' } });
@@ -204,6 +299,9 @@ export class AccessCardIssuanceService {
       agent.kind === 'access_gateway' &&
       effectiveAgentStatus(agent) === 'online' &&
       agent.capabilities?.controllerUpload === true);
+    const historicalAccessGrant = agents.some((agent) =>
+      agent.kind === 'access_gateway' && effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.historicalAccessGrant === true);
     return {
       simulationEnabled,
       features: {
@@ -213,6 +311,7 @@ export class AccessCardIssuanceService {
         parkingDbRead: true,
         parkingDbWrite,
         controllerUpload,
+        historicalAccessGrant,
       },
       agents: orderAgentsByAvailability(agents).map((agent) => ({
         id: agent.agentKey,
@@ -808,6 +907,24 @@ export class AccessCardIssuanceService {
     };
   }
 
+  private historyAuthorizationResponse(task: AccessCardAuthorization) {
+    return {
+      id: task.id,
+      houseId: task.houseId,
+      historyRowId: task.historyRowId,
+      roomKey: task.roomKey,
+      icCardNo: task.icCardNo,
+      wgCardNo: task.wgCardNo,
+      targetBuildings: task.targetBuildings,
+      controllerResults: task.controllerResults,
+      status: task.status,
+      attempt: task.attempt,
+      error: task.status === 'failed' ? task.lastError : null,
+      requestedAt: task.requestedAt,
+      completedAt: task.completedAt,
+    };
+  }
+
   private async matchParkingRowsToPms(tenantId: number, rows: ParkingQuery['rows']) {
     const phones = Array.from(new Set(rows
       .map((row) => parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', '手机', '电话']))
@@ -1179,6 +1296,115 @@ export class AccessCardIssuanceService {
     snapshot.updatedBy = null;
     await this.legacySnapshotRepo.save(snapshot);
     return { ok: true, snapshotId: snapshot.id };
+  }
+
+  async claimHistoryAuthorization(agentKey: string, token: string) {
+    const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind !== 'access_gateway') throw new ForbiddenException('只有楼栋门禁网关可以执行历史卡片授权');
+    if (agent.capabilities?.historicalAccessGrant !== true) return { task: null };
+    const task = await this.authorizationRepo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(AccessCardAuthorization);
+      const now = new Date();
+      const item = await repo.createQueryBuilder('task')
+        .where('task.tenant_id = :tenantId', { tenantId: agent.tenantId })
+        .andWhere("task.status = 'pending' OR (task.status = 'running' AND task.lease_expires_at < :now)", { now })
+        .orderBy('task.created_at', 'ASC')
+        .setLock('pessimistic_write')
+        .setOnLocked('skip_locked')
+        .getOne();
+      if (!item) return null;
+      if (item.attempt >= 3) {
+        item.status = 'failed';
+        item.lastError = item.lastError || '历史卡片追加权限连续失败，请检查门禁数据库和控制器连接';
+        item.completedAt = now;
+        item.leaseAgentKey = null;
+        item.leaseExpiresAt = null;
+        await repo.save(item);
+        return null;
+      }
+      item.status = 'running';
+      item.attempt += 1;
+      item.leaseAgentKey = agent.agentKey;
+      item.leaseExpiresAt = new Date(now.getTime() + 90_000);
+      item.updatedBy = null;
+      await repo.save(item);
+      return {
+        taskId: item.id,
+        action: 'authorize_existing_card',
+        address: item.roomKey,
+        roomKey: item.roomKey,
+        projectPhase: 'phase2',
+        icCardNo: item.icCardNo,
+        wgCardNo: item.wgCardNo,
+        targetBuildingIds: item.targetBuildings.map((building) => building.id),
+        targetBuildings: item.targetBuildings,
+      };
+    });
+    return { task };
+  }
+
+  async reportHistoryAuthorization(agentKey: string, token: string, dto: AccessCardAuthorizationReportDto) {
+    const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind !== 'access_gateway') throw new ForbiddenException('只有楼栋门禁网关可以上报历史卡片授权');
+    await this.authorizationRepo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(AccessCardAuthorization);
+      const task = await repo.findOne({ where: { id: dto.taskId, tenantId: agent.tenantId } });
+      if (!task) throw new NotFoundException('历史卡片授权任务不存在');
+      if (task.status !== 'running' || task.leaseAgentKey !== agent.agentKey) {
+        throw new BadRequestException('历史卡片授权任务不属于当前网关或已经结束');
+      }
+      const now = new Date();
+      if (dto.result === 'success') {
+        const reportedBuildings = new Set((dto.controllerResults ?? [])
+          .map((row) => normalizeBuildingNo(typeof row.buildingNo === 'string' ? row.buildingNo : ''))
+          .filter(Boolean));
+        const missing = task.targetBuildings.filter((building) =>
+          !reportedBuildings.has(normalizeBuildingNo(building.buildingNo)));
+        if (missing.length) {
+          throw new BadRequestException(`控制器结果缺少 ${missing.map((item) => `${item.buildingNo}号楼`).join('、')}，任务不能标记完成`);
+        }
+        task.status = 'completed';
+        task.controllerResults = dto.controllerResults ?? [];
+        task.lastError = null;
+        task.completedAt = now;
+
+        const snapshotRepo = manager.getRepository(AccessCardLegacySnapshot);
+        const snapshot = await snapshotRepo.findOne({ where: { tenantId: task.tenantId, roomKey: task.roomKey } });
+        if (snapshot) {
+          const targetNos = new Set(task.targetBuildings.map((item) => normalizeBuildingNo(item.buildingNo)));
+          const kept = snapshot.permissions.filter((row) =>
+            row.wgCardNo !== task.wgCardNo || !targetNos.has(normalizeBuildingNo(row.buildingNo || '')));
+          const additions: AccessCardPermissionEntry[] = task.controllerResults
+            .map((row) => ({
+              wgCardNo: task.wgCardNo,
+              accessSystem: row.accessSystem === 'iccard' ? 'iccard' as const : 'mjsystem' as const,
+              buildingNo: typeof row.buildingNo === 'string' ? row.buildingNo : null,
+              controller: typeof row.controller === 'string' ? row.controller : null,
+              door: typeof row.door === 'string' ? row.door : '楼栋门禁',
+              sourceTable: row.accessSystem === 'iccard' ? 't_d_Privilege' as const : 'MJ_MacPower' as const,
+            }))
+            .filter((row) => row.buildingNo && targetNos.has(normalizeBuildingNo(row.buildingNo)));
+          snapshot.permissions = [...kept, ...additions];
+          snapshot.permissionStatus = 'ready';
+          snapshot.permissionRefreshedAt = now;
+          snapshot.permissionLastError = null;
+          snapshot.updatedBy = null;
+          await snapshotRepo.save(snapshot);
+        }
+      } else if (dto.result === 'retry' && task.attempt < 3) {
+        task.status = 'pending';
+        task.lastError = dto.errorMessage?.trim() || '门禁网关暂时无法追加权限，正在重试';
+      } else {
+        task.status = 'failed';
+        task.lastError = dto.errorMessage?.trim() || '历史卡片追加权限失败';
+        task.completedAt = now;
+      }
+      task.leaseAgentKey = null;
+      task.leaseExpiresAt = null;
+      task.updatedBy = null;
+      await repo.save(task);
+    });
+    return { ok: true };
   }
 
   async claimAccessPermissions(agentKey: string, token: string) {

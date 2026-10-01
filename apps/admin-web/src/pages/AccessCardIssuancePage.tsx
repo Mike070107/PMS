@@ -35,6 +35,7 @@ import {
   accessCardIssuance,
   address as addressApi,
   type AccessCardHistoryRow,
+  type AccessCardAuthorization,
   type AccessCardHouseContext,
   type AccessCardIssueBatch,
   type AccessCardPermissionResult,
@@ -84,7 +85,7 @@ const PREVIEW_CONTEXT: AccessCardHouseContext = {
 
 const PREVIEW_READINESS: AccessCardReadiness = {
   simulationEnabled: true,
-  features: { cardWrite: false, legacyDbWrite: false, accessDbWrite: false, parkingDbRead: true, parkingDbWrite: false, controllerUpload: false },
+  features: { cardWrite: false, legacyDbWrite: false, accessDbWrite: false, parkingDbRead: true, parkingDbWrite: false, controllerUpload: false, historicalAccessGrant: true },
   agents: [],
 };
 
@@ -239,6 +240,10 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const [agentName, setAgentName] = useState('办公室发卡器接入');
   const [agentEnrolling, setAgentEnrolling] = useState(false);
   const [agentCredential, setAgentCredential] = useState<{ id: string; token: string; message: string } | null>(null);
+  const [authorizationRow, setAuthorizationRow] = useState<AccessCardHistoryRow | null>(null);
+  const [authorizationBuildingIds, setAuthorizationBuildingIds] = useState<number[]>([]);
+  const [authorizationTask, setAuthorizationTask] = useState<AccessCardAuthorization | null>(null);
+  const [authorizationSubmitting, setAuthorizationSubmitting] = useState(false);
   const contextRequestRef = useRef(0);
 
   const loadReadiness = useCallback(async () => {
@@ -540,6 +545,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const accessGatewayReady = accessGateway?.status === 'online'
     && accessGateway.capabilities?.accessDbWrite === true
     && accessGateway.capabilities?.controllerUpload === true;
+  const historicalAuthorizationReady = preview || (accessGatewayReady
+    && accessGateway?.capabilities?.historicalAccessGrant === true);
   const accessGatewayDetail = accessGateway?.status !== 'online'
     ? '未接入，不能修改现场数据'
     : accessGateway.capabilities?.accessDbWrite !== true
@@ -547,6 +554,80 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       : accessGateway.capabilities?.controllerUpload !== true
         ? '数据库已连接，但控制器下发组件未就绪'
         : '数据库和控制器下发均已就绪';
+
+  const authorizationOptions = useMemo(() => {
+    if (!context || !authorizationRow) return [];
+    const authorized = new Set((authorizationRow.controllerResults ?? [])
+      .map((item) => item.buildingNo?.replace(/\s*号楼\s*$/, '').trim())
+      .filter(Boolean));
+    return context.availableBuildings
+      .filter((item) => item.id !== context.house.buildingId && !authorized.has(item.buildingNo.trim()))
+      .map((item) => ({
+        value: item.id,
+        label: `${context.house.lane ? `${context.house.lane}弄` : ''}${item.buildingNo}号楼 · ${systemLabel(item.accessSystem)}`,
+        disabled: !item.routeReady,
+      }));
+  }, [authorizationRow, context]);
+
+  const openHistoryAuthorization = (row: AccessCardHistoryRow) => {
+    setAuthorizationRow(row);
+    setAuthorizationBuildingIds([]);
+    setAuthorizationTask(null);
+  };
+
+  const submitHistoryAuthorization = async () => {
+    if (!context || !authorizationRow || !authorizationBuildingIds.length) return;
+    setAuthorizationSubmitting(true);
+    try {
+      if (preview) {
+        const targets = context.availableBuildings.filter((item) => authorizationBuildingIds.includes(item.id));
+        setAuthorizationTask({
+          id: 9901, houseId: context.house.id, historyRowId: authorizationRow.id,
+          roomKey: context.house.roomKey, icCardNo: authorizationRow.icCardNo,
+          wgCardNo: authorizationRow.wgCardNo || '', targetBuildings: targets.map((item) => ({
+            id: item.id, buildingNo: item.buildingNo, accessSystem: item.accessSystem || 'mjsystem',
+          })), controllerResults: [], status: 'completed', attempt: 1, error: null,
+          requestedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+        });
+        setContext((current) => current ? ({
+          ...current,
+          history: current.history.map((row) => row.id !== authorizationRow.id ? row : ({
+            ...row,
+            accessStatus: 'controller_uploaded',
+            controllerResults: [...row.controllerResults, ...targets.map((item) => ({
+              wgCardNo: row.wgCardNo || '', accessSystem: item.accessSystem || 'mjsystem',
+              buildingNo: item.buildingNo, controller: `${item.buildingNo}号楼控制器`,
+              door: `${item.buildingNo}号楼大门`, sourceTable: item.accessSystem === 'iccard' ? 't_d_Privilege' as const : 'MJ_MacPower' as const,
+            }))],
+          })),
+        }) : current);
+        message.success('额外楼栋权限已完成');
+        return;
+      }
+      let task = await accessCardIssuance.createHistoryAuthorization(context.house.id, authorizationRow.id, {
+        targetBuildingIds: authorizationBuildingIds,
+        idempotencyKey: newIdempotencyKey(),
+      });
+      setAuthorizationTask(task);
+      for (let attempt = 0; attempt < 72 && ['pending', 'running'].includes(task.status); attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_250));
+        task = await accessCardIssuance.historyAuthorization(task.id);
+        setAuthorizationTask(task);
+      }
+      if (task.status === 'completed') {
+        await refreshContext();
+        message.success('额外楼栋权限已写入并上传控制器');
+      } else if (task.status === 'failed') {
+        message.error(task.error || '额外楼栋授权失败，请检查门禁网关');
+      } else {
+        message.warning('授权仍在后台执行，可稍后刷新历史查看结果');
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '额外楼栋授权失败');
+    } finally {
+      setAuthorizationSubmitting(false);
+    }
+  };
 
   const columns = [
     { title: '发卡序号', dataIndex: 'sequence', width: 92, fixed: 'left' as const, render: (value: number) => <strong>{value}</strong> },
@@ -556,6 +637,12 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     { title: '发卡时间', dataIndex: 'issuedAt', width: 180, render: formatTime },
     { title: '控制器上传 / 门栋权限', key: 'controllerPermissions', width: 300, render: (_: unknown, row: AccessCardHistoryRow) => <ControllerPermissionCell row={row} /> },
     { title: '旧库同步', dataIndex: 'legacySyncStatus', width: 120, render: legacyStatus },
+    {
+      title: '操作', key: 'actions', width: 126, fixed: 'right' as const,
+      render: (_: unknown, row: AccessCardHistoryRow) => context?.projectPhase === 'phase2' && row.wgCardNo
+        ? <Button size="small" onClick={() => openHistoryAuthorization(row)}>额外授权</Button>
+        : <Text type="secondary">不适用</Text>,
+    },
   ];
 
   return (
@@ -843,12 +930,80 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
               columns={columns}
               dataSource={history}
               pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
-              scroll={{ x: 1080 }}
+              scroll={{ x: 1210 }}
               locale={{ emptyText: <Empty description="这个房号还没有新系统发卡记录" /> }}
             />
           </Card>
         </>
       )}
+
+      <Modal
+        title="给已发卡片追加门栋权限"
+        open={!!authorizationRow}
+        width={600}
+        destroyOnClose
+        maskClosable={!authorizationSubmitting}
+        closable={!authorizationSubmitting}
+        onCancel={() => !authorizationSubmitting && setAuthorizationRow(null)}
+        footer={(
+          <Space>
+            <Button disabled={authorizationSubmitting} onClick={() => setAuthorizationRow(null)}>
+              {authorizationTask?.status === 'completed' ? '关闭' : '取消'}
+            </Button>
+            <Button
+              type="primary"
+              loading={authorizationSubmitting}
+              disabled={!authorizationBuildingIds.length || !historicalAuthorizationReady || authorizationTask?.status === 'completed'}
+              onClick={() => void submitHistoryAuthorization()}
+            >
+              确认追加授权
+            </Button>
+          </Space>
+        )}
+      >
+        {authorizationRow && (
+          <Space direction="vertical" size={18} style={{ width: '100%' }}>
+            <Descriptions size="small" column={2} bordered>
+              <Descriptions.Item label="房号">{context?.house.roomKey}</Descriptions.Item>
+              <Descriptions.Item label="发卡序号">{authorizationRow.sequence}</Descriptions.Item>
+              <Descriptions.Item label="IC 卡号">{authorizationRow.icCardNo || '—'}</Descriptions.Item>
+              <Descriptions.Item label="WG 卡号">{authorizationRow.wgCardNo || '—'}</Descriptions.Item>
+            </Descriptions>
+            {!historicalAuthorizationReady && (
+              <Alert type="warning" showIcon message="请先更新并连接 .88 电脑上的 PMS 数据同步助手" description="新版助手负责写入门禁数据库并把权限上传到现场控制器。" />
+            )}
+            {authorizationOptions.length ? (
+              <div className="access-card-field">
+                <label htmlFor="history-card-extra-buildings">选择额外授权楼栋</label>
+                <Select
+                  id="history-card-extra-buildings"
+                  mode="multiple"
+                  allowClear
+                  showSearch={false}
+                  value={authorizationBuildingIds}
+                  options={authorizationOptions}
+                  disabled={authorizationSubmitting}
+                  placeholder="可选择一个或多个其他楼栋"
+                  onChange={setAuthorizationBuildingIds}
+                />
+                <Text type="secondary">列表已排除本楼栋和这张卡已有权限的楼栋。</Text>
+              </div>
+            ) : (
+              <Alert type="info" showIcon message="没有可追加的楼栋" description="当前门禁区域内的其他楼栋均已授权，或尚未配置门禁路由。" />
+            )}
+            {authorizationTask && (
+              <Alert
+                type={authorizationTask.status === 'completed' ? 'success' : authorizationTask.status === 'failed' ? 'error' : 'info'}
+                showIcon
+                message={authorizationTask.status === 'completed' ? '授权完成'
+                  : authorizationTask.status === 'failed' ? '授权失败'
+                    : authorizationTask.status === 'running' ? '正在写入并上传控制器' : '任务已提交，等待门禁网关'}
+                description={authorizationTask.error || (authorizationTask.status === 'completed' ? '历史卡片权限列表已经刷新。' : '请保持窗口打开，完成后会自动刷新历史记录。')}
+              />
+            )}
+          </Space>
+        )}
+      </Modal>
 
       <Modal
         title="注册门禁本地服务"

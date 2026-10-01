@@ -208,21 +208,23 @@ namespace Pms.AccessCardAgent
             {
                 try
                 {
-                    var marker = "PMS_ITEM_" + task.itemId;
+                    var isExistingCardGrant = String.Equals(task.action, "authorize_existing_card", StringComparison.OrdinalIgnoreCase);
+                    var marker = isExistingCardGrant ? "PMS_AUTH_" + task.taskId : "PMS_ITEM_" + task.itemId;
                     var employeeId = ScalarInt(connection, transaction,
                         "SELECT EId FROM Employee WHERE vCardNo=?", task.wgCardNo);
                     if (employeeId.HasValue)
                     {
                         var memo = ScalarString(connection, transaction,
                             "SELECT EmpMemo FROM Employee WHERE EId=?", employeeId.Value);
-                        if (!String.Equals(memo, marker, StringComparison.OrdinalIgnoreCase))
+                        if (!isExistingCardGrant && !String.Equals(memo, marker, StringComparison.OrdinalIgnoreCase))
                             throw new InvalidOperationException("WG 卡号已存在 MjSystem，但不属于当前 PMS 任务");
                     }
                     else
                     {
                         Execute(connection, transaction,
                             "INSERT INTO Employee (vEmp_id,vEmp_name,vCardNo,vDepart,vDoorPassword,dBeginDate,dEndDate,EmpMemo,bWorkAttend) VALUES (?,?,?,?,?,?,?,?,?)",
-                            "P" + task.itemId, Limit(task.address, 50), task.wgCardNo, "PMS 门禁发卡", "000000",
+                            isExistingCardGrant ? "A" + task.taskId : "P" + task.itemId,
+                            Limit(task.address, 50), task.wgCardNo, "PMS 门禁发卡", "000000",
                             DateTime.Today, new DateTime(2099, 12, 31), marker, true);
                         employeeId = Convert.ToInt32(Scalar(connection, transaction, "SELECT @@IDENTITY"));
                     }
@@ -267,14 +269,15 @@ namespace Pms.AccessCardAgent
             {
                 try
                 {
-                    var marker = "PMS_ITEM_" + task.itemId;
+                    var isExistingCardGrant = String.Equals(task.action, "authorize_existing_card", StringComparison.OrdinalIgnoreCase);
+                    var marker = isExistingCardGrant ? "PMS_AUTH_" + task.taskId : "PMS_ITEM_" + task.itemId;
                     var consumerId = ScalarInt(connection, transaction,
                         "SELECT f_ConsumerID FROM t_b_IDCard WHERE f_CardNO=?", task.wgCardNo);
                     if (consumerId.HasValue)
                     {
                         var note = ScalarString(connection, transaction,
                             "SELECT f_Note FROM t_b_Consumer WHERE f_ConsumerID=?", consumerId.Value);
-                        if (!String.Equals(note, marker, StringComparison.OrdinalIgnoreCase))
+                        if (!isExistingCardGrant && !String.Equals(note, marker, StringComparison.OrdinalIgnoreCase))
                             throw new InvalidOperationException("WG 卡号已存在 iCCard，但不属于当前 PMS 任务");
                     }
                     else

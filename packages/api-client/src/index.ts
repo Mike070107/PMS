@@ -25,6 +25,7 @@ export type {
   AccessCardHouseContext,
   AccessCardIssueBatch,
   AccessCardIssueItem,
+  AccessCardAuthorization,
   AccessCardPermissionResult,
   AccessCardReadiness,
   ParkingQueryRow,

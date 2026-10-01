@@ -120,6 +120,13 @@ namespace Pms.AccessCardAgent
                             if (Wait(stopSignal, _config.PollIntervalMs)) return;
                             continue;
                         }
+                        var authorizationTask = _api.ClaimHistoryAuthorization();
+                        if (authorizationTask != null)
+                        {
+                            HandleHistoryAuthorization(authorizationTask);
+                            if (Wait(stopSignal, _config.PollIntervalMs)) return;
+                            continue;
+                        }
                     }
                     var task = _api.Claim();
                     if (task != null) Handle(task, hasReader);
@@ -170,7 +177,8 @@ namespace Pms.AccessCardAgent
                 { "accessDbWrite", config.Kind == "access_gateway" && accessWrite },
                 { "parkingDbRead", config.Kind == "parking_gateway" },
                 { "parkingDbWrite", config.Kind == "parking_gateway" && parkingWrite },
-                { "controllerUpload", config.Kind == "access_gateway" && controllerUpload }
+                { "controllerUpload", config.Kind == "access_gateway" && controllerUpload },
+                { "historicalAccessGrant", config.Kind == "access_gateway" && accessWrite && controllerUpload }
             };
         }
 
@@ -351,6 +359,38 @@ namespace Pms.AccessCardAgent
                     errorMessage = exception.Message
                 });
                 RecordActivity("查询门禁权限", DescribeCards(task.cards), false, exception.Message);
+            }
+        }
+
+        private void HandleHistoryAuthorization(AgentTask task)
+        {
+            try
+            {
+                AccessGatewayDatabase.Activate(
+                    _config,
+                    LoadSecret("iccard-db-password.dat"),
+                    task);
+                var controllerResults = AccessControllerUploader.Upload(
+                    _config,
+                    LoadSecret("iccard-db-password.dat"),
+                    task);
+                _api.ReportHistoryAuthorization(new AccessCardAuthorizationReport
+                {
+                    taskId = task.taskId,
+                    result = "success",
+                    controllerResults = controllerResults
+                });
+                RecordActivity("追加门栋权限", task.wgCardNo, true, "数据库写入和控制器下发完成");
+            }
+            catch (Exception exception)
+            {
+                _api.ReportHistoryAuthorization(new AccessCardAuthorizationReport
+                {
+                    taskId = task.taskId,
+                    result = "retry",
+                    errorMessage = exception.Message
+                });
+                RecordActivity("追加门栋权限", task.wgCardNo, false, exception.Message);
             }
         }
 
