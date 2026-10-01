@@ -1,5 +1,6 @@
 using System;
 using System.Net;
+using System.Diagnostics;
 using System.Threading;
 using System.Windows;
 using System.ServiceProcess;
@@ -48,6 +49,27 @@ namespace Pms.DataSyncAssistant
                 catch { Shutdown(1); }
                 return;
             }
+            if (e.Args.Length > 0 && e.Args[0] == "--apply-product-update")
+            {
+                try
+                {
+                    UpdateManager.ApplyDownloadedUpdate(e.Args.Length > 1 ? e.Args[1] : null);
+                    Shutdown(0);
+                }
+                catch { Shutdown(1); }
+                return;
+            }
+            if (e.Args.Length > 0 && e.Args[0] == "--tray-after")
+            {
+                int previousProcessId;
+                if (e.Args.Length > 1 && Int32.TryParse(e.Args[1], out previousProcessId))
+                {
+                    try { Process.GetProcessById(previousProcessId).WaitForExit(15000); }
+                    catch { }
+                }
+                StartTrayOrExit();
+                return;
+            }
             if (e.Args.Length > 0 && e.Args[0] == "--self-test")
             {
                 try { SelfTest.Run(); Shutdown(0); }
@@ -62,6 +84,12 @@ namespace Pms.DataSyncAssistant
                     System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PmsDataSyncAssistant-wizard-test.log"), exception.ToString());
                     Shutdown(1);
                 }
+                return;
+            }
+            if (e.Args.Length > 1 && e.Args[0] == "--render-main-window")
+            {
+                try { SelfTest.RenderMainWindow(e.Args[1]); Shutdown(0); }
+                catch { Shutdown(1); }
                 return;
             }
             if (e.Args.Length > 0 && e.Args[0] == "--test-building3-controller")
@@ -80,11 +108,7 @@ namespace Pms.DataSyncAssistant
             }
             if (e.Args.Length > 0 && e.Args[0] == "--tray")
             {
-                bool trayCreated;
-                _instance = new Mutex(true, "Local\\Pms.DataSyncAssistant.V2.Tray", out trayCreated);
-                if (!trayCreated) { Shutdown(); return; }
-                ShutdownMode = ShutdownMode.OnExplicitShutdown;
-                _tray = new TrayApplication();
+                StartTrayOrExit();
                 return;
             }
             bool created;
@@ -108,6 +132,15 @@ namespace Pms.DataSyncAssistant
                 MessageBox.Show("助手启动失败：" + exception.Message, "PMS 数据同步助手", MessageBoxButton.OK, MessageBoxImage.Error);
                 Shutdown(1);
             }
+        }
+
+        private void StartTrayOrExit()
+        {
+            bool trayCreated;
+            _instance = new Mutex(true, "Local\\Pms.DataSyncAssistant.V2.Tray", out trayCreated);
+            if (!trayCreated) { Shutdown(); return; }
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            _tray = new TrayApplication();
         }
 
         protected override void OnExit(ExitEventArgs e)

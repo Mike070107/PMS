@@ -3,6 +3,8 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Web.Script.Serialization;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Pms.AccessCardAgent;
 
 namespace Pms.DataSyncAssistant
@@ -45,6 +47,7 @@ namespace Pms.DataSyncAssistant
                 VerifyAccessGatewayMigration(root);
                 VerifyLegacyRoomMatching();
                 VerifyActivityHistory(root);
+                VerifyProductUpdater();
             }
             finally
             {
@@ -70,6 +73,36 @@ namespace Pms.DataSyncAssistant
                     window.Loaded += delegate { window.Close(); };
                     window.ShowDialog();
                 }
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
+        public static void RenderMainWindow(string outputPath)
+        {
+            var root = Path.Combine(Path.GetTempPath(), "PmsDataSyncAssistantRender-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                var window = new MainWindow(new ConfigurationStore(root))
+                {
+                    ShowInTaskbar = false,
+                    WindowStartupLocation = System.Windows.WindowStartupLocation.Manual,
+                    Left = -12000,
+                    Top = -12000
+                };
+                window.Show();
+                window.UpdateLayout();
+                var width = Math.Max(1, (int)Math.Ceiling(window.ActualWidth));
+                var height = Math.Max(1, (int)Math.Ceiling(window.ActualHeight));
+                var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+                bitmap.Render(window);
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                using (var stream = File.Create(outputPath)) encoder.Save(stream);
+                window.Close();
             }
             finally
             {
@@ -185,6 +218,24 @@ namespace Pms.DataSyncAssistant
             if (activities.Count != 2 || activities[0].Target != "228/2/103" || activities[0].Success ||
                 activities[1].Target != "228/2/102" || !activities[1].Success)
                 throw new InvalidOperationException("最近活动没有按时间保存查询成功和失败状态");
+        }
+
+        private static void VerifyProductUpdater()
+        {
+            if (!UpdateManager.IsTrustedDownloadUrl("https://prsznh.cn/downloads/pms-data-sync-assistant/2.3.0/Pms.DataSyncAssistant.V2.exe"))
+                throw new InvalidOperationException("合法的更新地址被拒绝");
+            if (UpdateManager.IsTrustedDownloadUrl("http://prsznh.cn/downloads/pms-data-sync-assistant/latest.json") ||
+                UpdateManager.IsTrustedDownloadUrl("https://example.com/downloads/pms-data-sync-assistant/latest.json") ||
+                UpdateManager.IsTrustedDownloadUrl("https://prsznh.cn.evil.example/downloads/pms-data-sync-assistant/latest.json"))
+                throw new InvalidOperationException("非 HTTPS 或非 PMS 主机的更新地址未被拦截");
+            if (!UpdateManager.IsVersionAtLeast("2.3.0", "2.2.9") || UpdateManager.IsVersionAtLeast("2.2.9", "2.3.0") ||
+                UpdateManager.IsVersionAtLeast("不是版本", "2.3.0"))
+                throw new InvalidOperationException("已安装版本判定失效");
+            Version current;
+            Version newer;
+            if (!Version.TryParse(UpdateManager.CurrentVersion, out current) || !Version.TryParse("99.0.0", out newer) ||
+                newer.CompareTo(current) <= 0)
+                throw new InvalidOperationException("版本比较逻辑失效");
         }
     }
 }

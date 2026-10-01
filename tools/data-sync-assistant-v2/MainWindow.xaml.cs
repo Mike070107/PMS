@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.IO;
 using System.Reflection;
+using System.Diagnostics;
 using System.ServiceProcess;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -18,11 +19,13 @@ namespace Pms.DataSyncAssistant
         private readonly ConfigurationStore _store;
         private readonly AssistantConfiguration _configuration;
         private readonly DispatcherTimer _statusTimer;
+        private readonly DispatcherTimer _updateTimer;
         private bool _pmsConnected;
         private bool _backgroundStartAttempted;
         public ObservableCollection<ConnectionViewModel> Connections { get; private set; }
         public ObservableCollection<ActivityViewModel> Activities { get; private set; }
         public string AppVersion { get { return Assembly.GetExecutingAssembly().GetName().Version.ToString(3); } }
+        public string AppVersionDisplay { get { return "v" + AppVersion; } }
         public string AssistantInfoHeader { get { return "助手信息    版本 " + AppVersion; } }
         public string ActivityHeader { get { return "最近活动    " + Activities.Count + " 条"; } }
         public bool HasActivities { get { return Activities.Count > 0; } }
@@ -66,9 +69,13 @@ namespace Pms.DataSyncAssistant
             _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
             _statusTimer.Tick += delegate { RefreshRuntimeStatus(); };
             _statusTimer.Start();
-            Closed += delegate { _statusTimer.Stop(); };
+            _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _updateTimer.Tick += delegate { RefreshProductUpdateStatus(); };
+            _updateTimer.Start();
+            Closed += delegate { _statusTimer.Stop(); _updateTimer.Stop(); };
             RefreshRuntimeStatus();
             RefreshActivities();
+            RefreshProductUpdateStatus();
             Loaded += delegate { EnsureBackgroundRunning(false); };
         }
 
@@ -102,7 +109,88 @@ namespace Pms.DataSyncAssistant
 
         private void CheckUpdate_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("当前助手版本：" + AppVersion + "\n\n“安装 / 更新后台服务”只会让后台服务使用当前助手版本，不会把版本号写成固定文字。要升级助手程序，请先下载新版程序再运行。", "版本信息", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (!CheckUpdateButton.IsEnabled) return;
+            CheckUpdateButton.IsEnabled = false;
+            CheckUpdateButton.Content = "正在检查…";
+            ProductUpdateProgress.IsIndeterminate = true;
+            ProductUpdateTitle.Text = "正在检查更新";
+            ProductUpdateDetail.Text = "正在与 PMS 更新服务器连接。";
+            var operation = Task.Factory.StartNew(delegate { UpdateManager.CheckAndInstall(false); });
+            operation.ContinueWith(delegate
+            {
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    CheckUpdateButton.IsEnabled = true;
+                    ProductUpdateProgress.IsIndeterminate = false;
+                    RefreshProductUpdateStatus();
+                }));
+            });
+        }
+
+        private void OpenNewVersion_Click(object sender, RoutedEventArgs e)
+        {
+            var state = UpdateManager.GetState();
+            if (state == null || String.IsNullOrWhiteSpace(state.InstalledExecutable) || !File.Exists(state.InstalledExecutable))
+            {
+                RefreshProductUpdateStatus();
+                return;
+            }
+            UnifiedServiceManager.InstallTrayStartupForCurrentUser(state.InstalledExecutable);
+            Process.Start(new ProcessStartInfo { FileName = state.InstalledExecutable, UseShellExecute = true });
+            Close();
+        }
+
+        private void RefreshProductUpdateStatus()
+        {
+            var state = UpdateManager.GetState();
+            if (state == null)
+            {
+                ProductUpdateTitle.Text = "自动更新已开启";
+                ProductUpdateDetail.Text = "后台服务每 6 小时自动检查；更新时这个窗口可继续使用。";
+                ProductUpdateStage.Text = "等待后台首次检查 · v" + AppVersion;
+                ProductUpdatePercent.Text = "";
+                ProductUpdateProgress.Value = 0;
+                CheckUpdateButton.Content = "检查更新";
+                OpenNewVersionButton.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            ProductUpdateProgress.IsIndeterminate = false;
+            ProductUpdateProgress.Value = state.Percent;
+            ProductUpdatePercent.Text = state.Phase == "failed" ? "未完成" : state.Percent + "%";
+            ProductUpdateStage.Text = StateLabel(state.Phase);
+            ProductUpdateTitle.Text = String.IsNullOrWhiteSpace(state.Message) ? "自动更新" : state.Message;
+            ProductUpdateDetail.Text = state.Phase == "failed" && !String.IsNullOrWhiteSpace(state.Error)
+                ? state.Error + "；已保留现有版本，可点击右上角重试。"
+                : VersionDetail(state);
+            CheckUpdateButton.Content = state.Phase == "failed" ? "重试更新" : state.Phase == "current" ? "已是最新" : "检查更新";
+
+            var canOpen = state.Phase == "installed" && !String.IsNullOrWhiteSpace(state.InstalledExecutable) &&
+                UpdateManager.IsVersionAtLeast(state.InstalledVersion, AppVersion) && File.Exists(state.InstalledExecutable) &&
+                !String.Equals(Path.GetFullPath(state.InstalledExecutable),
+                    Path.GetFullPath(Process.GetCurrentProcess().MainModule.FileName), StringComparison.OrdinalIgnoreCase);
+            OpenNewVersionButton.Visibility = canOpen ? Visibility.Visible : Visibility.Collapsed;
+            if (canOpen) UnifiedServiceManager.InstallTrayStartupForCurrentUser(state.InstalledExecutable);
+        }
+
+        private static string StateLabel(string phase)
+        {
+            if (phase == "checking") return "正在检查";
+            if (phase == "downloading") return "正在下载";
+            if (phase == "verifying") return "安全校验";
+            if (phase == "installing") return "正在切换";
+            if (phase == "installed") return "更新完成";
+            if (phase == "failed") return "更新未完成";
+            return "已是最新";
+        }
+
+        private string VersionDetail(ProductUpdateState state)
+        {
+            if (state.Phase == "installed" && !String.IsNullOrWhiteSpace(state.InstalledVersion))
+                return "后台服务已升级到 v" + state.InstalledVersion + "。当前窗口仍是 v" + AppVersion + "，不影响同步。";
+            if (!String.IsNullOrWhiteSpace(state.TargetVersion))
+                return "当前 v" + AppVersion + " · 目标 v" + state.TargetVersion + "；下载、校验和切换都在后台完成。";
+            return "当前窗口 v" + AppVersion + "；后台会按时自动检查新版。";
         }
 
         private void UninstallService_Click(object sender, RoutedEventArgs e)

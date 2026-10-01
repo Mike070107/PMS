@@ -62,6 +62,7 @@
     <Compile Include="SelfTest.cs" />
     <Compile Include="ConnectionTester.cs" />
     <Compile Include="UnifiedWindowsService.cs" />
+    <Compile Include="UpdateManager.cs" />
     <Compile Include="ConnectionAgentRuntime.cs" />
     <Compile Include="Building3ControllerTest.cs" />
     <Compile Include="TrayApplication.cs" />
