@@ -268,6 +268,7 @@ namespace Pms.AccessCardAgent
         public int taskId { get; set; }
         public string database { get; set; }
         public string externalOwnerId { get; set; }
+        public string plate { get; set; }
         public ParkingOwnerValues expected { get; set; }
         public ParkingOwnerValues values { get; set; }
         public ParkingOwnerFieldHints fieldHints { get; set; }

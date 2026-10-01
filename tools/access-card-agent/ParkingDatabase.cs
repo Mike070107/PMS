@@ -248,14 +248,21 @@ ORDER BY p.parameter_id;";
                     { "name", ResolveOwnerColumn(source.Columns, "name", hints.name) },
                     { "phone", ResolveOwnerColumn(source.Columns, "phone", hints.phone) },
                     { "room", ResolveOwnerColumn(source.Columns, "room", hints.room) },
-                    { "note", ResolveOwnerColumn(source.Columns, "note", hints.note) }
+                    // P_note 属于 Car_Issue，不是 P_Owner；住户基本资料和车辆备注是两张表。
+                    { "note", null }
                 };
-                if (columns["note"] == null)
-                    throw new InvalidOperationException(task.database + " 的住户表未识别到备注列，已停止更新，防止丢失 PMS 操作来源");
+                var issueColumns = LoadColumns(connection, "dbo", "Car_Issue");
+                var issueNote = ResolveOwnerColumn(issueColumns, "note", hints.note);
+                if (issueNote == null)
+                    throw new InvalidOperationException(task.database + " 的 Car_Issue 表未识别到 P_note 备注列，已停止更新，防止丢失 PMS 操作来源");
+                var plate = Clean(task.plate);
+                if (String.IsNullOrWhiteSpace(plate))
+                    throw new InvalidOperationException("住户资料更新缺少车牌，无法定位 Car_Issue.P_note");
 
                 using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
                 {
                     var current = ReadOwner(connection, transaction, source, columns, task.externalOwnerId, true);
+                    current.note = ReadIssueNote(connection, transaction, task.externalOwnerId, plate, issueNote, true);
                     var requested = task.values ?? new ParkingOwnerValues();
                     var desired = new ParkingOwnerValues
                     {
@@ -266,12 +273,14 @@ ORDER BY p.parameter_id;";
                     };
                     // 数据库已成功提交但首次回报遇到断网时，同一任务会再次领取。
                     // 读到目标值即按幂等成功返回，不能把已经完成的写入误报成并发冲突。
-                    if (OwnerMatches(desired, current, columns))
+                    if (OwnerMatchesWithIssueNote(desired, current, columns, issueNote))
                     {
                         transaction.Commit();
                         return current;
                     }
                     AssertExpectedOwner(task.expected ?? new ParkingOwnerValues(), current, columns);
+                    if (!String.Equals(CleanMultiline(GetOwnerValue((task.expected ?? new ParkingOwnerValues()), "note")), CleanMultiline(current.note), StringComparison.Ordinal))
+                        throw new ParkingOwnerConflictException("旧系统的备注已被其他操作修改，请重新查询后再保存");
 
                     var assignments = new List<string>();
                     using (var update = connection.CreateCommand())
@@ -280,20 +289,28 @@ ORDER BY p.parameter_id;";
                         AddOwnerAssignment(update, assignments, columns["name"], "name", current.name, desired.name);
                         AddOwnerAssignment(update, assignments, columns["phone"], "phone", current.phone, desired.phone);
                         AddOwnerAssignment(update, assignments, columns["room"], "room", current.room, desired.room);
-                        AddOwnerAssignment(update, assignments, columns["note"], "note", current.note, desired.note);
                         if (assignments.Count == 0)
-                            throw new InvalidOperationException("住户资料没有发生变化");
-                        update.CommandText = "UPDATE " + QuoteName(source.Schema, source.Table) + " SET " +
-                            String.Join(", ", assignments.ToArray()) + " WHERE CONVERT(NVARCHAR(200), " +
-                            QuoteColumn(source.KeyColumn) + ") = @ownerId;";
-                        update.Parameters.Add("@ownerId", SqlDbType.NVarChar, 200).Value = task.externalOwnerId.Trim();
-                        update.CommandTimeout = 15;
-                        var affected = update.ExecuteNonQuery();
-                        if (affected != 1) throw new InvalidOperationException("住户更新影响了 " + affected + " 条记录，已回滚");
+                        {
+                            if (String.Equals(CleanMultiline(current.note), CleanMultiline(desired.note), StringComparison.Ordinal))
+                                throw new InvalidOperationException("住户资料没有发生变化");
+                        }
+                        if (assignments.Count > 0)
+                        {
+                            update.CommandText = "UPDATE " + QuoteName(source.Schema, source.Table) + " SET " +
+                                String.Join(", ", assignments.ToArray()) + " WHERE CONVERT(NVARCHAR(200), " +
+                                QuoteColumn(source.KeyColumn) + ") = @ownerId;";
+                            update.Parameters.Add("@ownerId", SqlDbType.NVarChar, 200).Value = task.externalOwnerId.Trim();
+                            update.CommandTimeout = 15;
+                            var affected = update.ExecuteNonQuery();
+                            if (affected != 1) throw new InvalidOperationException("住户更新影响了 " + affected + " 条记录，已回滚");
+                        }
+                        if (!String.Equals(CleanMultiline(current.note), CleanMultiline(desired.note), StringComparison.Ordinal))
+                            UpdateIssueNote(connection, transaction, task.externalOwnerId, plate, issueNote, current.note, desired.note);
                     }
 
                     var result = ReadOwner(connection, transaction, source, columns, task.externalOwnerId, false);
-                    AssertOwnerWritten(desired, result, columns);
+                    result.note = ReadIssueNote(connection, transaction, task.externalOwnerId, plate, issueNote, false);
+                    AssertOwnerWrittenWithIssueNote(desired, result, columns, issueNote);
                     transaction.Commit();
                     return result;
                 }
@@ -588,6 +605,43 @@ ORDER BY ID DESC";
             }
         }
 
+        private static string ReadIssueNote(SqlConnection connection, SqlTransaction transaction, string ownerId,
+            string plate, ParkingColumn noteColumn, bool lockRow)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "SELECT TOP 1 " + QuoteColumn(noteColumn.Name) + " FROM [dbo].[Car_Issue]" +
+                    (lockRow ? " WITH (UPDLOCK, HOLDLOCK)" : "") +
+                    " WHERE CONVERT(NVARCHAR(200), [Owner_ID])=@ownerId AND CONVERT(NVARCHAR(100), [P_plate])=@plate;";
+                command.Parameters.Add("@ownerId", SqlDbType.NVarChar, 200).Value = ownerId.Trim();
+                command.Parameters.Add("@plate", SqlDbType.NVarChar, 100).Value = plate.Trim();
+                var value = command.ExecuteScalar();
+                if (value == null || value == DBNull.Value) throw new InvalidOperationException("旧停车系统中找不到住户对应的车牌 " + plate);
+                return Convert.ToString(value);
+            }
+        }
+
+        private static void UpdateIssueNote(SqlConnection connection, SqlTransaction transaction, string ownerId,
+            string plate, ParkingColumn noteColumn, string before, string after)
+        {
+            if (after != null && noteColumn.CharacterLimit > 0 && after.Length > noteColumn.CharacterLimit)
+                throw new InvalidOperationException("备注最多 " + noteColumn.CharacterLimit + " 个字");
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "UPDATE [dbo].[Car_Issue] SET " + QuoteColumn(noteColumn.Name) + "=@note" +
+                    " WHERE CONVERT(NVARCHAR(200), [Owner_ID])=@ownerId AND CONVERT(NVARCHAR(100), [P_plate])=@plate AND " +
+                    "ISNULL(CONVERT(NVARCHAR(4000), " + QuoteColumn(noteColumn.Name) + "), N'')=@before;";
+                command.Parameters.Add("@note", SqlDbType.NVarChar, Math.Max(1, noteColumn.CharacterLimit > 0 ? noteColumn.CharacterLimit : 4000)).Value =
+                    after == null ? (object)DBNull.Value : after;
+                command.Parameters.Add("@ownerId", SqlDbType.NVarChar, 200).Value = ownerId.Trim();
+                command.Parameters.Add("@plate", SqlDbType.NVarChar, 100).Value = plate.Trim();
+                command.Parameters.Add("@before", SqlDbType.NVarChar, 4000).Value = CleanMultiline(before) ?? "";
+                if (command.ExecuteNonQuery() != 1) throw new InvalidOperationException("车辆备注已被其他操作修改，请重新查询后再保存");
+            }
+        }
+
         private static void AssertExpectedOwner(ParkingOwnerValues expected, ParkingOwnerValues current,
             Dictionary<string, ParkingColumn> columns)
         {
@@ -624,6 +678,29 @@ ORDER BY ID DESC";
                     CleanMultiline(GetOwnerValue(actual, field)), StringComparison.Ordinal)) return false;
             }
             return true;
+        }
+
+        private static bool OwnerMatchesWithIssueNote(ParkingOwnerValues desired, ParkingOwnerValues actual,
+            Dictionary<string, ParkingColumn> columns, ParkingColumn issueNote)
+        {
+            return OwnerMatches(desired, actual, columns) ||
+                (String.Equals(CleanMultiline(desired.name), CleanMultiline(actual.name), StringComparison.Ordinal) &&
+                 String.Equals(CleanMultiline(desired.phone), CleanMultiline(actual.phone), StringComparison.Ordinal) &&
+                 String.Equals(CleanMultiline(desired.room), CleanMultiline(actual.room), StringComparison.Ordinal) &&
+                 String.Equals(CleanMultiline(desired.note), CleanMultiline(actual.note), StringComparison.Ordinal));
+        }
+
+        private static void AssertOwnerWrittenWithIssueNote(ParkingOwnerValues desired, ParkingOwnerValues actual,
+            Dictionary<string, ParkingColumn> columns, ParkingColumn issueNote)
+        {
+            foreach (var field in new[] { "name", "phone", "room" })
+            {
+                if (columns[field] != null && !String.Equals(CleanMultiline(GetOwnerValue(desired, field)),
+                    CleanMultiline(GetOwnerValue(actual, field)), StringComparison.Ordinal))
+                    throw new InvalidOperationException("旧系统的" + OwnerFieldLabel(field) + "写入后读回不一致，已回滚");
+            }
+            if (!String.Equals(CleanMultiline(desired.note), CleanMultiline(actual.note), StringComparison.Ordinal))
+                throw new InvalidOperationException("旧系统的备注写入后读回不一致，已回滚");
         }
 
         private static void AddOwnerAssignment(SqlCommand command, List<string> assignments, ParkingColumn column,
@@ -826,11 +903,8 @@ ORDER BY s.[name], t.[name], c.column_id;";
             foreach (var candidate in candidates)
             {
                 var columns = LoadColumns(connection, candidate.Schema, candidate.Table);
-                // 住户资料更新必须能保留 PMS 操作来源。外键指向的摘要/映射表
-                // 可能没有备注列，不能因为它分数更高就提前选中。
                 var noteColumn = ResolveOwnerColumn(columns, "note", null);
-                if (noteColumn == null) continue;
-                var score = OwnerCandidateScore(candidate, columns) + 1000;
+                var score = OwnerCandidateScore(candidate, columns) + (noteColumn == null ? 0 : 1000);
                 if (score < 3 || score <= bestScore || !HasOwnerOverlap(connection, candidate)) continue;
                 bestScore = score;
                 best = new ParkingOwnerSource
@@ -888,8 +962,7 @@ ORDER BY rs.[name], rt.[name], rc.column_id;";
                 // 一个数据库可能给 Car_Issue.Owner_ID 建了多个外键；不能再用 TOP 1
                 // 随机选表。住户更新必须选到包含备注列的完整住户表，否则会误报“备注列不存在”。
                 var noteColumn = ResolveOwnerColumn(columns, "note", null);
-                if (noteColumn == null) continue;
-                var score = OwnerCandidateScore(candidate, columns) + 1000;
+                var score = OwnerCandidateScore(candidate, columns) + (noteColumn == null ? 0 : 1000);
                 if (!HasOwnerOverlap(connection, candidate) || score <= bestScore) continue;
                 bestScore = score;
                 best = new ParkingOwnerSource

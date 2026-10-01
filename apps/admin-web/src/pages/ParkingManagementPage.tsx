@@ -227,6 +227,7 @@ export default function ParkingManagementPage({
       let task = await accessCardIssuance.createParkingOwnerUpdate({
         database: editingLegacyOwner.database,
         externalOwnerId: editingLegacyOwner.externalOwnerId,
+        plate: editingLegacyOwner.plate,
         pmsUserId: editingLegacyOwner.pmsUserId,
         idempotencyKey: createIdempotencyKey(),
         expected: editingLegacyOwner.values,

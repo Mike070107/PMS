@@ -360,6 +360,11 @@ export class CreateParkingOwnerUpdateDto {
   externalOwnerId: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  plate?: string | null;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   pmsUserId?: number | null;

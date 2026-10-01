@@ -14,6 +14,7 @@ export class ParkingOwnerUpdates1789527600000 implements MigrationInterface {
         "tenant_id" integer NOT NULL,
         "database" varchar(80) NOT NULL,
         "external_owner_id" varchar(100) NOT NULL,
+        "plate" varchar(100),
         "pms_user_id" integer,
         "idempotency_key" varchar(80) NOT NULL,
         "expected_values" jsonb NOT NULL,

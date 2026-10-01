@@ -28,6 +28,9 @@ export class ParkingOwnerUpdate extends TenantEntity {
   @Column({ name: 'external_owner_id', type: 'varchar', length: 100 })
   externalOwnerId: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  plate: string | null;
+
   @Column({ name: 'pms_user_id', type: 'int', nullable: true })
   pmsUserId: number | null;
 
