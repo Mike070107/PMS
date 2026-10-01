@@ -68,3 +68,8 @@ data-prep/
 
 # 后台冒烟测试的账号密码（tools/web-smoke.mjs 读它）——绝不入库
 .smoke-credentials
+
+# 本机验收产生的截图、安装包和调研临时文件，不属于源码或发布制品
+artifacts/
+tmp/
+*.tsbuildinfo
