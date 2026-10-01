@@ -22,3 +22,9 @@
 ```
 
 连接配置和密码仍保存在 `ProgramData\PMS`，更新不会覆盖。
+
+## 生产发布记录
+
+2026-10-01 已发布到 `https://prsznh.cn/downloads/pms-data-sync-assistant/`。线上清单为 2.5.1，清单响应使用 `no-store`，公网下载文件 SHA-256 为 `cfa1664c5c20759330f40c739c2da5898c3885cb92f0c42c59dca8b4277891fa`。
+
+本次发现仅校验 HTTP 200 会在 Nginx 未加载持久下载目录时误报发布成功。发布脚本现在必须核对公网清单的版本与哈希，并实际下载 EXE 再次计算哈希；任一不一致就中止发布。
