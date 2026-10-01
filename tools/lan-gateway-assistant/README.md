@@ -2,6 +2,8 @@
 
 面向财务室、仓库和物业机房等 Windows 电脑的图形化内网代理。它把 `frpc` 作为受管代理核心运行，用户不再需要编辑 TOML 或执行 PowerShell 命令。
 
+当前 1.0 版用于安全迁移现有用友代理。标准产品的最终配置源必须是 PMS 控制台：代理通过一次性安装码注册并自动领取应用配置，不能要求用户在本机和服务器各维护一份路由。完整产品边界与验收见 [`../../docs/lan-gateway-product.md`](../../docs/lan-gateway-product.md)。
+
 ## 使用方式
 
 1. 解压发布包，双击 `Pms.LanGatewayAssistant.exe`。安装后台服务时，程序会把正式运行副本放到 `%ProgramData%\PMS\LanGatewayAssistant\bin`，解压目录之后可以删除。
