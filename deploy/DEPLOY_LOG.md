@@ -3693,3 +3693,10 @@
   - a83d1d1 feat(parking): complete vehicle registration and family-car proof flow
   - 40ba977 fix(access-card): add retry for failed authorization
 
+## 2026-10-01 22:16 · api · bd2b03a
+
+- 包：`pms-api-20261001-2211.tar.gz`
+- 提交：bd2b03a fix(parking): make vehicle actions prominent
+- 自上次（a83d1d1）以来上线的相关提交：
+  - e39ecaa fix(parking): clarify garage history and family-car actions
+
