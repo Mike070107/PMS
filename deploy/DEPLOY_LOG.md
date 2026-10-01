@@ -3830,3 +3830,11 @@
 - 自上次（bd2b03a）以来上线的相关提交：
   - 066dac8 feat(auth): harden browser QR login and application binding
 
+## 2026-10-02 00:49 · miniapp-owner · 3a2222d
+
+- 包：`1.0.20261002a`
+- 提交：3a2222d deploy: miniapp-staff → fab9e98
+- 说明：微信开发者工具上传成功；请在公众平台将描述含 3a2222d 的版本选为体验版
+- 自上次（bd2b03a）以来上线的相关提交：
+  - 066dac8 feat(auth): harden browser QR login and application binding
+
