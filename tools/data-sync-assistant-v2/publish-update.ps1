@@ -51,7 +51,24 @@ if ($LASTEXITCODE -ne 0) { throw "新版程序上传失败" }
 & scp -i $Key (Join-Path $ReleaseRoot "latest.json") "${Remote}:$RemoteTemporary/latest.json"
 if ($LASTEXITCODE -ne 0) { throw "更新清单上传失败" }
 
-$RemoteCommand = "set -e; base=/opt/pms-repair/downloads/pms-data-sync-assistant; sudo mkdir -p `$base/$ShortVersion; sudo install -m 0644 '$RemoteTemporary/Pms.DataSyncAssistant.V2.exe' `$base/$ShortVersion/Pms.DataSyncAssistant.V2.exe; sudo install -m 0644 '$RemoteTemporary/latest.json' `$base/latest.json; curl -fsS https://prsznh.cn/downloads/pms-data-sync-assistant/latest.json"
+$RemoteCommand = "set -e; base=/opt/pms-repair/downloads/pms-data-sync-assistant; sudo mkdir -p `$base/$ShortVersion; sudo install -m 0644 '$RemoteTemporary/Pms.DataSyncAssistant.V2.exe' `$base/$ShortVersion/Pms.DataSyncAssistant.V2.exe; sudo install -m 0644 '$RemoteTemporary/latest.json' `$base/latest.json"
 & ssh -i $Key $Remote $RemoteCommand
-if ($LASTEXITCODE -ne 0) { throw "生产更新包发布或线上验证失败" }
+if ($LASTEXITCODE -ne 0) { throw "生产更新包发布失败" }
+
+# HTTP 200 不代表发布生效：Nginx 可能仍从 Web 目录返回旧清单。
+# 必须同时核对公网清单版本、哈希以及实际下载文件。
+$ManifestUri = "https://prsznh.cn/downloads/pms-data-sync-assistant/latest.json?verify=" + [Uri]::EscapeDataString((Get-Date).ToUniversalTime().ToString("o"))
+$OnlineManifest = Invoke-RestMethod -Uri $ManifestUri -Headers @{ "Cache-Control" = "no-cache" }
+if ($OnlineManifest.version -ne $ShortVersion -or $OnlineManifest.sha256 -ne $Hash) {
+    throw "线上更新清单仍不是本次版本：期望 $ShortVersion / $Hash，实际 $($OnlineManifest.version) / $($OnlineManifest.sha256)"
+}
+$PublicExecutable = [IO.Path]::GetTempFileName()
+try {
+    Invoke-WebRequest -Uri $OnlineManifest.url -OutFile $PublicExecutable -Headers @{ "Cache-Control" = "no-cache" }
+    $PublicHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $PublicExecutable).Hash.ToLowerInvariant()
+    if ($PublicHash -ne $Hash) { throw "公网下载文件校验失败：$PublicHash" }
+}
+finally {
+    Remove-Item -Force -LiteralPath $PublicExecutable -ErrorAction SilentlyContinue
+}
 Write-Host "PMS 数据同步助手 $ShortVersion 已发布。" -ForegroundColor Green
