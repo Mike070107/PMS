@@ -157,7 +157,9 @@ namespace Pms.DataSyncAssistant
                         var target = Assembly.GetExecutingAssembly().Location;
                         AssistantUpdateService.StartApply(result.DownloadedFile, target, Process.GetCurrentProcess().Id);
                         UpgradeStatusText.Text = "正在退出并替换程序，请稍候…";
-                        Close();
+                        // Close the WPF window and terminate this process explicitly. The
+                        // elevated updater waits for this PID before touching the EXE.
+                        Application.Current.Shutdown();
                     }
                     catch (Exception exception)
                     {

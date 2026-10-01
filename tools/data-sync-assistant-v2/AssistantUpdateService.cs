@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Web.Script.Serialization;
 
 namespace Pms.DataSyncAssistant
@@ -93,8 +94,8 @@ namespace Pms.DataSyncAssistant
             try
             {
                 if (serviceWasRunning) UnifiedServiceManager.Stop();
-                File.Copy(target, backup, true);
-                File.Copy(source, target, true);
+                CopyFileWithRetry(target, backup, true);
+                CopyFileWithRetry(source, target, true);
                 if (serviceWasRunning) UnifiedServiceManager.StartExisting();
                 Process.Start(new ProcessStartInfo { FileName = target, Arguments = "--updated", UseShellExecute = true });
             }
@@ -212,6 +213,30 @@ namespace Pms.DataSyncAssistant
         private static void TryDelete(string path)
         {
             try { if (File.Exists(path)) File.Delete(path); } catch { }
+        }
+
+        private static void CopyFileWithRetry(string source, string destination, bool overwrite)
+        {
+            Exception last = null;
+            for (var attempt = 0; attempt < 40; attempt++)
+            {
+                try
+                {
+                    File.Copy(source, destination, overwrite);
+                    return;
+                }
+                catch (IOException exception)
+                {
+                    last = exception;
+                    Thread.Sleep(500);
+                }
+                catch (UnauthorizedAccessException exception)
+                {
+                    last = exception;
+                    Thread.Sleep(500);
+                }
+            }
+            throw new IOException("旧版助手文件在停止后台服务后仍被占用，无法完成替换。请关闭所有助手窗口后重试。", last);
         }
     }
 }
