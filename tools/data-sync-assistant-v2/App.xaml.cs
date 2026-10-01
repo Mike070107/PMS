@@ -48,6 +48,23 @@ namespace Pms.DataSyncAssistant
                 catch { Shutdown(1); }
                 return;
             }
+            if (e.Args.Length > 0 && e.Args[0] == "--apply-update")
+            {
+                try
+                {
+                    if (e.Args.Length < 3) throw new InvalidOperationException("更新参数不完整");
+                    int processId;
+                    if (!Int32.TryParse(e.Args[2], out processId)) throw new InvalidOperationException("旧助手进程号无效");
+                    AssistantUpdateService.Apply(e.Args[1], processId);
+                    Shutdown(0);
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(exception.Message, "助手更新失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                    Shutdown(1);
+                }
+                return;
+            }
             if (e.Args.Length > 0 && e.Args[0] == "--self-test")
             {
                 try { SelfTest.Run(); Shutdown(0); }

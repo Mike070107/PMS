@@ -39,6 +39,7 @@ import { ParkingOwnerUpdate } from './parking-owner-update.entity';
 import { ParkingProofUpload } from './parking-proof-upload.entity';
 import { ParkingHistory } from './parking-history.entity';
 import { ParkingRecordSnapshot } from './parking-record-snapshot.entity';
+import { ParkingOperation } from './parking-operation.entity';
 import { AccessCard } from './access-card.entity';
 import { AccessCardAgent } from './access-card-agent.entity';
 import { AccessCardIssueBatch } from './access-card-issue-batch.entity';
@@ -138,6 +139,7 @@ export const entities = [
   ParkingProofUpload,
   ParkingHistory,
   ParkingRecordSnapshot,
+  ParkingOperation,
   AccessCard,
   AccessCardAgent,
   AccessCardIssueBatch,
@@ -222,6 +224,7 @@ export {
   ParkingProofUpload,
   ParkingHistory,
   ParkingRecordSnapshot,
+  ParkingOperation,
   AccessCard,
   AccessCardAgent,
   AccessCardIssueBatch,

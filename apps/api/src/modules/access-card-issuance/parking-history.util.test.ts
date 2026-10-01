@@ -11,10 +11,11 @@ test('首次观察只建立基线，不伪造历史事件', () => {
 });
 
 test('同一旧库车辆记录换牌时保留换牌前后值', () => {
-  const events = diffParkingSnapshot(original, { ...original, plate: '沪B67890' });
+  const events = diffParkingSnapshot(original, { ...original, plate: '沪B67890', plateChangedAt: '2026-09-29T15:42:00+08:00' });
   assert.equal(events.length, 1);
   assert.equal(events[0].eventType, 'plate_change');
   assert.deepEqual(events[0].changes[0], { field: 'plate', label: '车牌', before: '沪A12345', after: '沪B67890' });
+  assert.equal(events[0].occurredAt, '2026-09-29T15:42:00+08:00');
 });
 
 test('绑定用户变更与普通电话修改分成不同事件', () => {

@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Pms.AccessCardAgent
 {
@@ -75,7 +77,7 @@ namespace Pms.AccessCardAgent
             {
                 connection.Open();
                 // 车辆登记、续期和注销仍走旧系统存储过程，以便维护下载队列和设备状态。
-                var procedures = new[] { "AddIssue", "Palte_extend", "Up_PakIssue", "Add_Del_Plate", "Add_DownloadCard" };
+                var procedures = new[] { "AddIssue", "Palte_extend", "Up_PakIssue", "Add_Del_Plate", "Add_DownloadCard", "Add_Release", "Get_Download" };
                 foreach (var procedure in procedures)
                 {
                     using (var command = connection.CreateCommand())
@@ -138,15 +140,19 @@ ORDER BY p.parameter_id;";
 
         public static List<ParkingSearchRow> SearchBoth(AgentConfig config, string password, string term)
         {
-            if (String.IsNullOrWhiteSpace(term) || term.Trim().Length < 2)
-                throw new InvalidOperationException("请输入至少 2 个字符查询停车数据");
+            var plan = BuildSearchPlan(term);
             var rows = new List<ParkingSearchRow>();
-            rows.AddRange(Search(config, password, config.ParkingPhase1Database, term.Trim()));
-            rows.AddRange(Search(config, password, config.ParkingPhase2Database, term.Trim()));
+            rows.AddRange(Search(config, password, config.ParkingPhase1Database, plan));
+            rows.AddRange(Search(config, password, config.ParkingPhase2Database, plan));
             return rows;
         }
 
         public static List<ParkingSearchRow> Search(AgentConfig config, string password, string database, string term)
+        {
+            return Search(config, password, database, BuildSearchPlan(term));
+        }
+
+        private static List<ParkingSearchRow> Search(AgentConfig config, string password, string database, ParkingSearchPlan plan)
         {
             Validate(config, password, database);
             using (var connection = new SqlConnection(ConnectionString(config, password, database)))
@@ -169,18 +175,18 @@ ORDER BY p.parameter_id;";
                 if (searchable.Count == 0 && ownerSearchable.Count == 0)
                     throw new InvalidOperationException(database + " 的 Car_Issue 没有可查询的文本字段");
 
-                var variants = SearchVariants(term);
+                var targetColumns = SearchColumns(plan.Kind, searchable, ownerSearchable);
+                if (targetColumns.Count == 0)
+                    throw new InvalidOperationException(database + " 没有适合“" + SearchKindLabel(plan.Kind) + "”查询的字段");
                 using (var command = connection.CreateCommand())
                 {
                     var predicates = new List<string>();
-                    for (var valueIndex = 0; valueIndex < variants.Count; valueIndex++)
+                    for (var valueIndex = 0; valueIndex < plan.Patterns.Count; valueIndex++)
                     {
                         var parameterName = "@term" + valueIndex;
-                        command.Parameters.Add(parameterName, SqlDbType.NVarChar, 200).Value = "%" + EscapeLike(variants[valueIndex]) + "%";
-                        foreach (var column in searchable)
-                            predicates.Add("CONVERT(NVARCHAR(4000), c." + QuoteColumn(column.Name) + ") LIKE " + parameterName + " ESCAPE N'~'");
-                        foreach (var column in ownerSearchable)
-                            predicates.Add("CONVERT(NVARCHAR(4000), o." + QuoteColumn(column.Name) + ") LIKE " + parameterName + " ESCAPE N'~'");
+                        command.Parameters.Add(parameterName, SqlDbType.NVarChar, 200).Value = plan.Patterns[valueIndex];
+                        foreach (var target in targetColumns)
+                            predicates.Add("CONVERT(NVARCHAR(4000), " + target.Alias + "." + QuoteColumn(target.Column.Name) + ") LIKE " + parameterName + " ESCAPE N'~'");
                     }
                     var select = "c.*";
                     var join = "";
@@ -214,6 +220,7 @@ ORDER BY p.parameter_id;";
                             rows.Add(new ParkingSearchRow { database = database, fields = fields });
                         }
                     }
+                    AttachPlateChangeTimes(connection, rows);
                     return rows;
                 }
             }
@@ -291,6 +298,221 @@ ORDER BY p.parameter_id;";
                     return result;
                 }
             }
+        }
+
+        /** 执行网页提交的停车业务。所有车辆变化均通过旧系统存储过程，绝不直接 UPDATE Car_Issue。 */
+        public static Dictionary<string, object> ExecuteOperation(AgentConfig config, string password, ParkingOperationTask task)
+        {
+            if (task == null || String.IsNullOrWhiteSpace(task.kind)) throw new InvalidOperationException("停车操作任务为空");
+            Validate(config, password, task.database);
+            var payload = task.payload ?? new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            var plate = Value(payload, "plate");
+            var newPlate = Value(payload, "newPlate");
+            var admin = Value(payload, "admin") ?? "PMS";
+            using (var connection = new SqlConnection(ConnectionString(config, password, task.database)))
+            {
+                connection.Open();
+                if (task.kind == "add_vehicle")
+                {
+                    var effective = Value(payload, "effective") ?? ZeroBits();
+                    var download = Value(payload, "download") ?? ZeroBits();
+                    using (var command = Procedure(connection, "AddIssue"))
+                    {
+                        Add(command, "@owner_Name", SqlDbType.VarChar, 20, Value(payload, "ownerName") ?? "PMS");
+                        Add(command, "@owner_Add", SqlDbType.VarChar, 80, Value(payload, "ownerAddress") ?? "");
+                        Add(command, "@owner_Tel", SqlDbType.VarChar, 80, Value(payload, "ownerPhone") ?? "");
+                        Add(command, "@owner_Sex", SqlDbType.Int, 0, Number(payload, "ownerSex", 0));
+                        Add(command, "@owner_depa", SqlDbType.VarChar, 50, Value(payload, "ownerDepartment") ?? "PMS");
+                        Add(command, "@Owner_Image", SqlDbType.VarChar, 80, Value(payload, "ownerImage") ?? "");
+                        Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
+                        Add(command, "@P_Color", SqlDbType.VarChar, 10, Value(payload, "color") ?? "蓝");
+                        Add(command, "@Car_Lei", SqlDbType.Int, 0, Number(payload, "carType", 1));
+                        Add(command, "@Sart_Time", SqlDbType.DateTime, 0, DateValue(payload, "startDate", DateTime.Today));
+                        Add(command, "@End_Time", SqlDbType.DateTime, 0, DateValue(payload, "endDate", DateTime.Today));
+                        Add(command, "@Car_ID", SqlDbType.VarChar, 20, Value(payload, "carId") ?? "0000000000");
+                        Add(command, "@Car_Brand", SqlDbType.VarChar, 20, Value(payload, "identity") ?? "住户车");
+                        Add(command, "@Car_Money", SqlDbType.Float, 0, NumberDecimal(payload, "amount", 0));
+                        Add(command, "@Car_Deposit", SqlDbType.Float, 0, NumberDecimal(payload, "deposit", 0));
+                        Add(command, "@Car_Zt", SqlDbType.Int, 0, Number(payload, "state", 1));
+                        Add(command, "@P_note", SqlDbType.VarChar, 200, Value(payload, "note") ?? "操作来源：PMS系统");
+                        Add(command, "@P_Admin", SqlDbType.VarChar, 20, admin);
+                        Add(command, "@P_Spaces", SqlDbType.VarChar, 20, Value(payload, "spaces") ?? "");
+                        Add(command, "@P_Effective", SqlDbType.VarChar, 256, effective);
+                        Add(command, "@P_Download", SqlDbType.VarChar, 256, download);
+                        command.ExecuteNonQuery();
+                    }
+                    return VerifyVehicle(connection, plate, "新增车牌");
+                }
+                if (task.kind == "renew_vehicle")
+                {
+                    using (var command = Procedure(connection, "Palte_extend"))
+                    {
+                        Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
+                        Add(command, "@type", SqlDbType.Int, 0, Number(payload, "feeType", 5));
+                        Add(command, "@P_money", SqlDbType.Float, 0, NumberDecimal(payload, "amount", 0));
+                        Add(command, "@End_Time", SqlDbType.DateTime, 0, DateValue(payload, "endDate", DateTime.Today));
+                        Add(command, "@P_Admin", SqlDbType.VarChar, 20, admin);
+                        command.ExecuteNonQuery();
+                    }
+                    return VerifyVehicle(connection, plate, "续期车牌");
+                }
+                if (task.kind == "change_plate" || task.kind == "rebind_owner" || task.kind == "update_garages")
+                {
+                    var targetPlate = task.kind == "change_plate" ? newPlate : plate;
+                    using (var command = Procedure(connection, "Up_PakIssue"))
+                    {
+                        Add(command, "@Pak_plate", SqlDbType.VarChar, 50, targetPlate);
+                        Add(command, "@y_Pak_plate", SqlDbType.VarChar, 50, plate);
+                        Add(command, "@P_Color", SqlDbType.VarChar, 10, Value(payload, "color") ?? "蓝");
+                        Add(command, "@Car_Lei", SqlDbType.Int, 0, Number(payload, "carType", 1));
+                        Add(command, "@owner_Name", SqlDbType.VarChar, 20, Value(payload, "ownerName") ?? "PMS");
+                        Add(command, "@Car_Brand", SqlDbType.VarChar, 20, Value(payload, "identity") ?? "住户车");
+                        Add(command, "@P_note", SqlDbType.VarChar, 200, Value(payload, "note") ?? "操作来源：PMS系统");
+                        Add(command, "@admin", SqlDbType.VarChar, 20, admin);
+                        Add(command, "@P_Spaces", SqlDbType.VarChar, 20, Value(payload, "spaces") ?? "");
+                        Add(command, "@P_Effective", SqlDbType.VarChar, 256, Value(payload, "effective") ?? ZeroBits());
+                        Add(command, "@P_Download", SqlDbType.VarChar, 256, Value(payload, "download") ?? ZeroBits());
+                        command.ExecuteNonQuery();
+                    }
+                    return VerifyVehicle(connection, targetPlate, task.kind == "change_plate" ? "变更车牌" : task.kind == "rebind_owner" ? "变更绑定用户" : "调整车库授权");
+                }
+                if (task.kind == "delete_vehicle")
+                {
+                    using (var command = Procedure(connection, "Add_Del_Plate"))
+                    {
+                        Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
+                        Add(command, "@Up_moey", SqlDbType.Int, 0, Number(payload, "refund", 0));
+                        Add(command, "@Up_Yajin", SqlDbType.Int, 0, Number(payload, "depositRefund", 0));
+                        Add(command, "@Admin", SqlDbType.VarChar, 20, admin);
+                        command.ExecuteNonQuery();
+                    }
+                    using (var check = connection.CreateCommand())
+                    {
+                        check.CommandText = "SELECT COUNT(*) FROM Car_Issue WHERE P_plate=@plate";
+                        Add(check, "@plate", SqlDbType.VarChar, 50, plate);
+                        var count = Convert.ToInt32(check.ExecuteScalar());
+                        if (count != 0) throw new InvalidOperationException("注销存储过程执行后旧库仍存在该车牌");
+                        return new Dictionary<string, object> { { "verified", true }, { "remaining", count } };
+                    }
+                }
+                if (task.kind == "download_vehicle")
+                {
+                    ExecuteMappedProcedure(connection, "Add_DownloadCard", payload, plate, admin, "设备下载任务");
+                    return VerifyDownloadQueue(connection, plate);
+                }
+                throw new InvalidOperationException("不支持的停车操作：" + task.kind);
+            }
+        }
+
+        private static SqlCommand Procedure(SqlConnection connection, string name)
+        {
+            var command = connection.CreateCommand(); command.CommandType = CommandType.StoredProcedure; command.CommandText = "dbo." + name; command.CommandTimeout = 30; return command;
+        }
+
+        private static void Add(SqlCommand command, string name, SqlDbType type, int size, object value)
+        {
+            var parameter = size > 0 ? command.Parameters.Add(name, type, size) : command.Parameters.Add(name, type);
+            parameter.Value = value ?? DBNull.Value;
+        }
+
+        private static string Value(Dictionary<string, object> values, string key)
+        {
+            object value; return values != null && values.TryGetValue(key, out value) && value != null ? Convert.ToString(value, CultureInfo.InvariantCulture) : null;
+        }
+
+        private static int Number(Dictionary<string, object> values, string key, int fallback)
+        {
+            int value; return Int32.TryParse(Value(values, key), out value) ? value : fallback;
+        }
+
+        private static double NumberDecimal(Dictionary<string, object> values, string key, double fallback)
+        {
+            double value; return Double.TryParse(Value(values, key), NumberStyles.Any, CultureInfo.InvariantCulture, out value) ? value : fallback;
+        }
+
+        private static DateTime DateValue(Dictionary<string, object> values, string key, DateTime fallback)
+        {
+            DateTime value; return DateTime.TryParse(Value(values, key), CultureInfo.InvariantCulture, DateTimeStyles.None, out value) ? value : fallback;
+        }
+
+        private static string ZeroBits() { return new String('0', 256); }
+
+        private static Dictionary<string, object> VerifyVehicle(SqlConnection connection, string plate, string label)
+        {
+            using (var check = connection.CreateCommand())
+            {
+                check.CommandText = "SELECT TOP 1 P_id, P_plate, End_Time, P_Effective, P_Download FROM Car_Issue WHERE P_plate=@plate ORDER BY P_id DESC";
+                Add(check, "@plate", SqlDbType.VarChar, 50, plate);
+                using (var reader = check.ExecuteReader())
+                {
+                    if (!reader.Read()) throw new InvalidOperationException(label + "存储过程执行后未读回车牌");
+                    var result = new Dictionary<string, object> { { "verified", true }, { "plate", Convert.ToString(reader["P_plate"]) }, { "issueId", Convert.ToString(reader["P_id"]) } };
+                    if (!reader.IsDBNull(reader.GetOrdinal("End_Time"))) result["endDate"] = Convert.ToDateTime(reader["End_Time"]).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                    if (!reader.IsDBNull(reader.GetOrdinal("P_Effective"))) result["effective"] = Convert.ToString(reader["P_Effective"]);
+                    if (!reader.IsDBNull(reader.GetOrdinal("P_Download"))) result["download"] = Convert.ToString(reader["P_Download"]);
+                    return result;
+                }
+            }
+        }
+
+        private static Dictionary<string, object> ExecuteMappedProcedure(SqlConnection connection, string procedure, Dictionary<string, object> payload, string plate, string admin, string label)
+        {
+            using (var command = Procedure(connection, procedure))
+            {
+                var parameters = ProcedureParameters(connection, procedure);
+                foreach (var item in parameters)
+                {
+                    var key = ParameterKey(item.Name);
+                    var value = Value(payload, key) ?? (key == "plate" ? plate : key == "admin" ? admin : key == "effective" ? Value(payload, "effective") : null);
+                    if (value == null && !item.IsOutput && !item.IsNullable) throw new InvalidOperationException(procedure + " 参数 " + item.Name + " 无法从操作字段映射，已停止执行");
+                    if (item.IsOutput) { var output = command.Parameters.Add(item.Name, item.Type); output.Direction = ParameterDirection.Output; continue; }
+                    Add(command, item.Name, item.Type, item.Size, value);
+                }
+                command.ExecuteNonQuery();
+            }
+            return new Dictionary<string, object> { { "verified", true }, { "procedure", procedure }, { "message", label + "已提交，等待设备回执" } };
+        }
+
+        private static Dictionary<string, object> VerifyDownloadQueue(SqlConnection connection, string plate)
+        {
+            if (!ObjectExists(connection, "Car_Download", "U")) throw new InvalidOperationException("设备下载存储过程已执行，但未找到 Car_Download 队列表，无法核验");
+            var columns = LoadColumns(connection, "dbo", "Car_Download");
+            var plateColumn = columns.Select(delegate(ParkingColumn item) { return item.Name; }).FirstOrDefault(delegate(string name) { return IsPlateColumn(name); });
+            if (String.IsNullOrWhiteSpace(plateColumn)) throw new InvalidOperationException("Car_Download 未识别到车牌列，无法核验设备下载任务");
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT COUNT(*) FROM [dbo].[Car_Download] WITH (NOLOCK) WHERE CONVERT(NVARCHAR(100), " + QuoteColumn(plateColumn) + ")=@plate";
+                Add(command, "@plate", SqlDbType.VarChar, 50, plate);
+                var count = Convert.ToInt32(command.ExecuteScalar());
+                if (count <= 0) throw new InvalidOperationException("设备下载存储过程执行后未在 Car_Download 找到该车牌任务");
+                return new Dictionary<string, object> { { "verified", true }, { "deviceVerification", "queued" }, { "downloadRows", count }, { "message", "下载任务已写入 Car_Download，现场控制器回执需由设备状态继续核验" } };
+            }
+        }
+
+        private sealed class ProcedureParameter { public string Name; public SqlDbType Type; public int Size; public bool IsOutput; public bool IsNullable; }
+
+        private static List<ProcedureParameter> ProcedureParameters(SqlConnection connection, string procedure)
+        {
+            var result = new List<ProcedureParameter>();
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT p.name, t.name, p.max_length, p.is_output, p.is_nullable FROM sys.parameters p JOIN sys.types t ON p.user_type_id=t.user_type_id WHERE p.object_id=OBJECT_ID(@name) ORDER BY p.parameter_id";
+                Add(command, "@name", SqlDbType.NVarChar, 300, "dbo." + procedure);
+                using (var reader = command.ExecuteReader()) while (reader.Read()) result.Add(new ProcedureParameter { Name = reader.GetString(0), Type = SqlType(reader.GetString(1)), Size = Math.Max(0, (int)reader.GetInt16(2)), IsOutput = reader.GetBoolean(3), IsNullable = reader.GetBoolean(4) });
+            }
+            if (result.Count == 0) throw new InvalidOperationException("找不到存储过程 " + procedure + " 的参数定义");
+            return result;
+        }
+
+        private static SqlDbType SqlType(string type)
+        {
+            type = type.ToLowerInvariant(); if (type.Contains("int")) return SqlDbType.Int; if (type.Contains("date") || type.Contains("time")) return SqlDbType.DateTime; if (type.Contains("float") || type.Contains("real")) return SqlDbType.Float; if (type.Contains("decimal") || type.Contains("numeric")) return SqlDbType.Decimal; return SqlDbType.VarChar;
+        }
+
+        private static string ParameterKey(string name)
+        {
+            var value = NormalizeName(name); if (value.Contains("plate")) return value.Contains("y") || value.Contains("old") ? "oldPlate" : value.Contains("pak") || value.Contains("new") || value.Contains("n_p") ? "newPlate" : "plate";
+            if (value.Contains("effective") || value.Contains("release")) return "effective"; if (value.Contains("download")) return "download"; if (value.Contains("admin")) return "admin"; return value;
         }
 
         private static ParkingOwnerValues ReadOwner(SqlConnection connection, SqlTransaction transaction,
@@ -690,6 +912,246 @@ ORDER BY c.column_id;";
             if (type == "nvarchar" || type == "nchar") return maxLength / 2;
             if (type == "varchar" || type == "char") return maxLength;
             return 0;
+        }
+
+        private enum ParkingSearchKind
+        {
+            House,
+            Plate,
+            PlateTail,
+            Phone,
+            Resident
+        }
+
+        private sealed class ParkingSearchPlan
+        {
+            public ParkingSearchKind Kind { get; set; }
+            public List<string> Patterns { get; set; }
+        }
+
+        private sealed class ParkingSearchColumn
+        {
+            public string Alias { get; set; }
+            public ParkingColumn Column { get; set; }
+        }
+
+        private sealed class ParkingHistoryColumns
+        {
+            public string IssueId { get; set; }
+            public string NewPlate { get; set; }
+            public string RowId { get; set; }
+            public string OccurredAt { get; set; }
+        }
+
+        private static ParkingSearchPlan BuildSearchPlan(string input)
+        {
+            var term = String.IsNullOrWhiteSpace(input) ? "" : input.Trim();
+            var address = Regex.Replace(term, @"\s+", "")
+                .Replace("弄", "/").Replace("幢", "/").Replace("栋", "/").Replace("号", "/")
+                .Replace("室", "").Replace('\\', '/');
+            var house = Regex.Match(address, @"^(?:(198|228)[/-])?(\d{1,2})[/-](\d{2,4})(?:[/-]\d+)?$");
+            if (house.Success)
+            {
+                var lane = house.Groups[1].Success ? house.Groups[1].Value : null;
+                var buildings = NumericForms(house.Groups[2].Value, 2);
+                var rooms = NumericForms(house.Groups[3].Value, house.Groups[3].Value.Length);
+                var patterns = new List<string>();
+                foreach (var building in buildings)
+                foreach (var room in rooms)
+                foreach (var firstSeparator in new[] { "/", "-" })
+                foreach (var secondSeparator in new[] { "/", "-" })
+                {
+                    var body = building + secondSeparator + room;
+                    var basePattern = lane == null
+                        ? "%" + firstSeparator + EscapeLike(body)
+                        : "%" + EscapeLike(lane + firstSeparator + body);
+                    // 房号必须在两端都有边界。结尾可以是记录结尾，也可以继续跟“/第几张卡”序号。
+                    // 禁止直接追加通配符，否则 6/502 会再次命中 36/502 或 6/5021。
+                    AddVariant(patterns, basePattern);
+                    AddVariant(patterns, basePattern + "/%");
+                    AddVariant(patterns, basePattern + "-%");
+                }
+                return new ParkingSearchPlan { Kind = ParkingSearchKind.House, Patterns = patterns };
+            }
+
+            var compact = Regex.Replace(term, @"\s+", "").ToUpperInvariant();
+            if (Regex.IsMatch(compact, @"^[\u4e00-\u9fff][A-Z][A-Z0-9挂学警港澳]{5,6}$"))
+                return SinglePattern(ParkingSearchKind.Plate, "%" + EscapeLike(compact) + "%");
+            if (Regex.IsMatch(compact, @"^[A-Z0-9]{4,6}$"))
+                return SinglePattern(ParkingSearchKind.PlateTail, "%" + EscapeLike(compact));
+
+            var digits = Regex.Replace(term, @"[\s-]", "");
+            if (Regex.IsMatch(digits, @"^\d{7,11}$"))
+                return SinglePattern(ParkingSearchKind.Phone, "%" + EscapeLike(digits) + "%");
+            if (Regex.IsMatch(term, @"^[\u4e00-\u9fff·]{2,20}$"))
+                return SinglePattern(ParkingSearchKind.Resident, "%" + EscapeLike(term) + "%");
+            if (Regex.IsMatch(digits, @"^\d{1,6}$"))
+                throw new InvalidOperationException("数字信息太少：查房号请输入“楼栋/室”，如 6/502；查车牌尾号至少输入 4 位；查电话至少输入 7 位");
+            throw new InvalidOperationException("无法识别查询内容：请输入房号、住户姓名、7 位以上电话、完整车牌或至少 4 位车牌尾号");
+        }
+
+        private static ParkingSearchPlan SinglePattern(ParkingSearchKind kind, string pattern)
+        {
+            return new ParkingSearchPlan { Kind = kind, Patterns = new List<string> { pattern } };
+        }
+
+        private static List<string> NumericForms(string value, int paddedLength)
+        {
+            var result = new List<string>();
+            AddVariant(result, value);
+            int number;
+            if (Int32.TryParse(value, out number))
+            {
+                AddVariant(result, number.ToString(CultureInfo.InvariantCulture));
+                if (paddedLength > 1) AddVariant(result, number.ToString(new string('0', paddedLength), CultureInfo.InvariantCulture));
+            }
+            return result;
+        }
+
+        private static List<ParkingSearchColumn> SearchColumns(ParkingSearchKind kind, List<ParkingColumn> vehicle, List<ParkingColumn> owner)
+        {
+            var result = new List<ParkingSearchColumn>();
+            if (kind == ParkingSearchKind.Plate || kind == ParkingSearchKind.PlateTail)
+            {
+                foreach (var column in vehicle.Where(delegate(ParkingColumn item) { return IsPlateColumn(item.Name); }))
+                    result.Add(new ParkingSearchColumn { Alias = "c", Column = column });
+            }
+            else if (kind == ParkingSearchKind.Phone)
+            {
+                foreach (var column in owner.Where(delegate(ParkingColumn item) { return OwnerColumnScore(item.Name, "phone") > 0; }))
+                    result.Add(new ParkingSearchColumn { Alias = "o", Column = column });
+            }
+            else if (kind == ParkingSearchKind.House)
+            {
+                // 部分旧库把“198-6-402”放在人员姓名栏，因此房号只在住户表的姓名/房号字段中查。
+                foreach (var column in owner.Where(delegate(ParkingColumn item)
+                {
+                    return OwnerColumnScore(item.Name, "room") > 0 || OwnerColumnScore(item.Name, "name") > 0;
+                })) result.Add(new ParkingSearchColumn { Alias = "o", Column = column });
+            }
+            else
+            {
+                foreach (var column in owner.Where(delegate(ParkingColumn item)
+                {
+                    return OwnerColumnScore(item.Name, "name") > 0 || OwnerColumnScore(item.Name, "room") > 0;
+                })) result.Add(new ParkingSearchColumn { Alias = "o", Column = column });
+            }
+            return result;
+        }
+
+        private static bool IsPlateColumn(string name)
+        {
+            var normalized = NormalizeName(name);
+            return normalized == "pplate" || normalized == "plate" || normalized.Contains("plateno") ||
+                normalized.Contains("carno") || normalized.Contains("carnumber") || normalized.Contains("license");
+        }
+
+        private static string SearchKindLabel(ParkingSearchKind kind)
+        {
+            if (kind == ParkingSearchKind.House) return "房号";
+            if (kind == ParkingSearchKind.Phone) return "电话";
+            if (kind == ParkingSearchKind.Resident) return "住户姓名";
+            return "车牌";
+        }
+
+        private static void AttachPlateChangeTimes(SqlConnection connection, List<ParkingSearchRow> rows)
+        {
+            if (!ObjectExists(connection, "Up_Issue", "U") || rows.Count == 0) return;
+            var columns = LoadHistoryColumns(connection);
+            if (columns == null) return;
+            foreach (var row in rows)
+            {
+                object issueValue;
+                object plateValue;
+                if (!TryField(row.fields, new[] { "p_id", "pid", "issueid" }, out issueValue) ||
+                    !TryField(row.fields, new[] { "p_plate", "pplate", "plate" }, out plateValue)) continue;
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT TOP 1 " + QuoteColumn(columns.OccurredAt) + " FROM [dbo].[Up_Issue] WITH (NOLOCK) " +
+                        "WHERE CONVERT(NVARCHAR(100), " + QuoteColumn(columns.IssueId) + ") = @issueId " +
+                        "AND CONVERT(NVARCHAR(100), " + QuoteColumn(columns.NewPlate) + ") = @plate " +
+                        "ORDER BY " + QuoteColumn(columns.OccurredAt) + " DESC" +
+                        (String.IsNullOrWhiteSpace(columns.RowId) ? "" : ", " + QuoteColumn(columns.RowId) + " DESC") + ";";
+                    command.Parameters.Add("@issueId", SqlDbType.NVarChar, 100).Value = Convert.ToString(issueValue, CultureInfo.InvariantCulture);
+                    command.Parameters.Add("@plate", SqlDbType.NVarChar, 100).Value = Convert.ToString(plateValue, CultureInfo.InvariantCulture);
+                    command.CommandTimeout = 5;
+                    var value = command.ExecuteScalar();
+                    if (value == null || value == DBNull.Value) continue;
+                    DateTime occurredAt;
+                    if (!DateTime.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, DateTimeStyles.None, out occurredAt)) continue;
+                    row.fields["PmsMeta__PlateChangedAt"] = new DateTimeOffset(DateTime.SpecifyKind(occurredAt, DateTimeKind.Unspecified), TimeSpan.FromHours(8)).ToString("o", CultureInfo.InvariantCulture);
+                }
+            }
+        }
+
+        private static ParkingHistoryColumns LoadHistoryColumns(SqlConnection connection)
+        {
+            var columns = new List<KeyValuePair<string, string>>();
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = @"
+SELECT c.[name], t.[name]
+FROM sys.columns c
+JOIN sys.types t ON c.user_type_id = t.user_type_id
+WHERE c.object_id = OBJECT_ID(N'[dbo].[Up_Issue]')
+ORDER BY c.column_id;";
+                command.CommandTimeout = 5;
+                using (var reader = command.ExecuteReader())
+                    while (reader.Read()) columns.Add(new KeyValuePair<string, string>(reader.GetString(0), reader.GetString(1).ToLowerInvariant()));
+            }
+            var issue = FindNamedColumn(columns, new[] { "issueid", "issue_id" });
+            var newPlate = FindNamedColumn(columns, new[] { "n_p_plate", "npplate", "newplate", "new_plate" });
+            var rowId = FindNamedColumn(columns, new[] { "p_id", "pid", "id" });
+            var occurred = columns
+                .Where(delegate(KeyValuePair<string, string> item)
+                {
+                    return (item.Value == "datetime" || item.Value == "datetime2" || item.Value == "smalldatetime" || item.Value == "date") &&
+                        HistoryTimeColumnScore(item.Key) >= 80;
+                })
+                .OrderByDescending(delegate(KeyValuePair<string, string> item) { return HistoryTimeColumnScore(item.Key); })
+                .Select(delegate(KeyValuePair<string, string> item) { return item.Key; })
+                .FirstOrDefault();
+            return String.IsNullOrWhiteSpace(issue) || String.IsNullOrWhiteSpace(newPlate) || String.IsNullOrWhiteSpace(occurred)
+                ? null : new ParkingHistoryColumns { IssueId = issue, NewPlate = newPlate, RowId = rowId, OccurredAt = occurred };
+        }
+
+        private static string FindNamedColumn(IEnumerable<KeyValuePair<string, string>> columns, IEnumerable<string> aliases)
+        {
+            var normalized = new HashSet<string>(aliases.Select(NormalizeName), StringComparer.OrdinalIgnoreCase);
+            var match = columns.FirstOrDefault(delegate(KeyValuePair<string, string> item) { return normalized.Contains(NormalizeName(item.Key)); });
+            return match.Key;
+        }
+
+        private static int HistoryTimeColumnScore(string name)
+        {
+            var normalized = NormalizeName(name);
+            if (normalized.Contains("uptime") || normalized.Contains("updatetime") || normalized.Contains("changetime")) return 100;
+            if (normalized.Contains("update") || normalized.Contains("change") || normalized.StartsWith("up")) return 80;
+            if (normalized.Contains("time") || normalized.Contains("date")) return 40;
+            return 0;
+        }
+
+        private static bool TryField(Dictionary<string, object> fields, IEnumerable<string> aliases, out object value)
+        {
+            var normalized = new HashSet<string>(aliases.Select(NormalizeName), StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in fields)
+            {
+                if (!normalized.Contains(NormalizeName(entry.Key))) continue;
+                value = entry.Value;
+                return true;
+            }
+            value = null;
+            return false;
+        }
+
+        internal static string SearchKindForTest(string term)
+        {
+            return BuildSearchPlan(term).Kind.ToString();
+        }
+
+        internal static List<string> SearchPatternsForTest(string term)
+        {
+            return BuildSearchPlan(term).Patterns;
         }
 
         private static List<string> SearchVariants(string term)

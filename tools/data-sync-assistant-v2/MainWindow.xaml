@@ -29,7 +29,7 @@
           <Ellipse Width="8" Height="8" Fill="{Binding HeaderStatusColor}" Margin="0,0,8,0" />
           <TextBlock Text="{Binding HeaderStatus}" FontSize="12" FontWeight="SemiBold" Foreground="#405A73" VerticalAlignment="Center" />
         </StackPanel>
-        <Button Grid.Column="3" Style="{StaticResource SecondaryButton}" Content="检查更新" MinHeight="34" Height="34" Padding="14,0" Margin="0,0,2,0" VerticalAlignment="Center" Click="CheckUpdate_Click" />
+        <Button x:Name="CheckUpdateButton" Grid.Column="3" Style="{StaticResource SecondaryButton}" Content="检查更新" MinHeight="34" Height="34" Padding="14,0" Margin="0,0,2,0" VerticalAlignment="Center" Click="CheckUpdate_Click" />
       </Grid>
     </Border>
 
@@ -116,7 +116,7 @@
               </ItemsControl>
             </Grid>
           </Expander>
-          <Expander Grid.Column="2" Header="{Binding AssistantInfoHeader}" IsExpanded="False" Background="White" BorderBrush="#DCE5EF" BorderThickness="1" Padding="16,10">
+          <Expander x:Name="AssistantInfoExpander" Grid.Column="2" Header="{Binding AssistantInfoHeader}" IsExpanded="False" Background="White" BorderBrush="#DCE5EF" BorderThickness="1" Padding="16,10">
             <StackPanel Margin="8">
               <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions><TextBlock Text="配置保存" Foreground="{StaticResource PmsMuted}" /><TextBlock Grid.Column="1" Text="已自动保存" HorizontalAlignment="Right" /></Grid>
               <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions><TextBlock Text="配置目录" Foreground="{StaticResource PmsMuted}" /><TextBlock Grid.Column="1" Text="ProgramData\PMS" HorizontalAlignment="Right" /></Grid>
@@ -125,7 +125,7 @@
                 <StackPanel>
                   <Grid><TextBlock x:Name="UpgradeStatusText" Text="准备更新后台服务…" Foreground="{StaticResource PmsInk}" FontWeight="SemiBold" /><TextBlock x:Name="UpgradePercentText" Text="0%" HorizontalAlignment="Right" Foreground="{StaticResource PmsPrimary}" FontWeight="SemiBold" /></Grid>
                   <ProgressBar x:Name="UpgradeProgressBar" Minimum="0" Maximum="100" Value="0" Height="8" Margin="0,9,0,7" Foreground="#35A875" Background="#DFE7F0" />
-                  <TextBlock Text="更新期间请保持助手打开。完成后会自动刷新服务状态；助手程序版本不会被写死或伪造。" Foreground="{StaticResource PmsMuted}" FontSize="10" TextWrapping="Wrap" />
+                  <TextBlock Text="更新期间请保持助手打开。配置、代理 ID 和数据库密码保存在 ProgramData，不会被更新覆盖。" Foreground="{StaticResource PmsMuted}" FontSize="10" TextWrapping="Wrap" />
                 </StackPanel>
               </Border>
             </StackPanel>

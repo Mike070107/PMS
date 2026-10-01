@@ -174,6 +174,28 @@ namespace Pms.DataSyncAssistant
                 service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(20));
         }
 
+        public static bool IsRunning()
+        {
+            if (!Exists()) return false;
+            using (var service = new ServiceController(ServiceName))
+            {
+                service.Refresh();
+                return service.Status == ServiceControllerStatus.Running;
+            }
+        }
+
+        public static void StartExisting()
+        {
+            if (!Exists()) return;
+            using (var service = new ServiceController(ServiceName))
+            {
+                service.Refresh();
+                if (service.Status == ServiceControllerStatus.Running) return;
+                service.Start();
+                service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
+            }
+        }
+
         public static void UpgradeFromLegacy()
         {
             WriteUpgradeProgress(5, "正在读取并备份现有连接配置…", false);

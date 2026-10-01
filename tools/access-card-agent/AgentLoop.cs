@@ -89,6 +89,13 @@ namespace Pms.AccessCardAgent
                     }
                     if (_config.Kind == "parking_gateway")
                     {
+                        var parkingOperationTask = _api.ClaimParkingOperation();
+                        if (parkingOperationTask != null)
+                        {
+                            HandleParkingOperation(parkingOperationTask);
+                            if (Wait(stopSignal, _config.PollIntervalMs)) return;
+                            continue;
+                        }
                         var ownerUpdateTask = _api.ClaimParkingOwnerUpdate();
                         if (ownerUpdateTask != null)
                         {
@@ -253,6 +260,33 @@ namespace Pms.AccessCardAgent
                 });
                 RecordActivity("更新停车住户资料", target, false, exception.Message);
             }
+        }
+
+        private void HandleParkingOperation(ParkingOperationTask task)
+        {
+            var target = task.database + " " + task.kind + " " + (Value(task.payload, "plate") ?? Value(task.payload, "newPlate") ?? "车牌");
+            try
+            {
+                var result = ParkingDatabase.ExecuteOperation(_config, LoadSecret("parking-db-password.dat"), task);
+                _api.ReportParkingOperation(new ParkingOperationReport { taskId = task.taskId, result = "success", values = result });
+                RecordActivity("停车业务操作", target, true, "已调用旧系统存储过程并读回验证");
+            }
+            catch (Exception exception)
+            {
+                _api.ReportParkingOperation(new ParkingOperationReport
+                {
+                    taskId = task.taskId,
+                    result = IsTransientParkingFailure(exception) ? "retry" : "failed",
+                    errorMessage = exception.Message
+                });
+                RecordActivity("停车业务操作", target, false, exception.Message);
+            }
+        }
+
+        private static string Value(Dictionary<string, object> values, string key)
+        {
+            if (values == null || !values.ContainsKey(key) || values[key] == null) return null;
+            return Convert.ToString(values[key]);
         }
 
         private static bool IsTransientParkingFailure(Exception exception)

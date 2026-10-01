@@ -45,6 +45,7 @@ import {
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { accessCardIssuance, type AccessCardReadiness } from '@pms/api-client';
+import CopyableSecret from '../components/CopyableSecret';
 import './ParkingManagementPage.css';
 
 const { Text, Title } = Typography;
@@ -360,7 +361,7 @@ export default function ParkingManagementPage({ preview = false }: { preview?: b
         {gatewayCredential ? (
           <div className="parking-gateway-secret">
             <Alert type="warning" showIcon message="密钥只显示这一次" description={gatewayCredential.message} />
-            <label>一次性连接密钥</label><pre>{gatewayCredential.token}</pre>
+            <CopyableSecret label="一次性连接密钥" value={gatewayCredential.token} />
             <Text type="secondary">在停车电脑双击数据同步助手，只需粘贴上方连接密钥。代理 ID 已包含在密钥中，不要截图或转发。</Text>
           </div>
         ) : (

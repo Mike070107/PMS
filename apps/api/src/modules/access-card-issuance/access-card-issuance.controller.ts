@@ -34,6 +34,8 @@ import {
   ParkingQueryReportDto,
   ParkingOwnerUpdateReportDto,
   ParkingHistoryQueryDto,
+  CreateParkingOperationDto,
+  ParkingOperationReportDto,
 } from './dto';
 import { ParkingProofService } from './parking-proof.service';
 import { bearerToken } from './agent-auth';
@@ -80,6 +82,24 @@ export class AccessCardIssuanceController {
   @RequirePermission('business', 'view')
   getParkingOwnerUpdate(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.service.getParkingOwnerUpdate(id, user);
+  }
+
+  @Post('parking/operations')
+  @RequirePermission('business', 'edit')
+  createParkingOperation(@Body() dto: CreateParkingOperationDto, @CurrentUser() user: AuthUser) {
+    return this.service.createParkingOperation(dto, user);
+  }
+
+  @Get('parking/operations/:id')
+  @RequirePermission('business', 'view')
+  getParkingOperation(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.getParkingOperation(id, user);
+  }
+
+  @Post('parking/operations/:id/rollback')
+  @RequirePermission('business', 'edit')
+  rollbackParkingOperation(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.rollbackParkingOperation(id, user);
   }
 
   @Get('parking/history')
@@ -289,5 +309,22 @@ export class AccessCardAgentController {
     @Body() dto: ParkingOwnerUpdateReportDto,
   ) {
     return this.service.reportParkingOwnerUpdate(agentKey, bearerToken(authorization), dto);
+  }
+
+  @Post('parking/operations/claim')
+  claimParkingOperation(
+    @Headers('x-agent-id') agentKey: string,
+    @Headers('authorization') authorization: string,
+  ) {
+    return this.service.claimParkingOperation(agentKey, bearerToken(authorization));
+  }
+
+  @Post('parking/operations/report')
+  reportParkingOperation(
+    @Headers('x-agent-id') agentKey: string,
+    @Headers('authorization') authorization: string,
+    @Body() dto: ParkingOperationReportDto,
+  ) {
+    return this.service.reportParkingOperation(agentKey, bearerToken(authorization), dto);
   }
 }

@@ -7,12 +7,14 @@ export interface ParkingSnapshotValues {
   phone: string | null;
   room: string | null;
   note: string | null;
+  plateChangedAt?: string | null;
 }
 
 export interface ParkingHistoryDraft {
   eventType: ParkingHistoryEventType;
   summary: string;
   changes: ParkingHistoryChange[];
+  occurredAt?: string | null;
 }
 
 const OWNER_FIELDS: Array<{ key: keyof ParkingSnapshotValues; label: string }> = [
@@ -34,6 +36,7 @@ export function diffParkingSnapshot(
       eventType: 'plate_change',
       summary: `车牌由 ${before.plate || '未记录'} 换为 ${after.plate || '未记录'}`,
       changes: [change('plate', '车牌', before.plate, after.plate)],
+      occurredAt: after.plateChangedAt ?? null,
     });
   }
 

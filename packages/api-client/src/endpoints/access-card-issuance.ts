@@ -152,7 +152,7 @@ export interface ParkingHistoryChange {
 
 export interface ParkingHistoryEntry {
   id: number;
-  eventType: 'plate_change' | 'owner_rebind' | 'owner_info_update';
+  eventType: 'plate_change' | 'owner_rebind' | 'owner_info_update' | 'vehicle_added' | 'vehicle_renewed' | 'garage_authorization' | 'vehicle_deleted' | 'vehicle_download';
   source: 'pms' | 'parking_gateway';
   database: string | null;
   sourceRecordId: string | null;
@@ -164,6 +164,7 @@ export interface ParkingHistoryEntry {
   changes: ParkingHistoryChange[];
   operator: string;
   occurredAt: string;
+  timeBasis: 'operation' | 'detected';
 }
 
 export interface ParkingHistoryResponse {
@@ -197,6 +198,23 @@ export interface ParkingOwnerUpdate {
   error: string | null;
   requestedAt: string;
   completedAt: string | null;
+}
+
+export type ParkingOperationKind = 'add_vehicle' | 'renew_vehicle' | 'change_plate' | 'rebind_owner' | 'update_garages' | 'download_vehicle' | 'delete_vehicle';
+export interface ParkingOperation {
+  id: number;
+  kind: ParkingOperationKind;
+  database: 'parking1' | 'parking2';
+  sourceRecordId: string | null;
+  pmsUserId: number | null;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  attempt: number;
+  payload: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  requestedAt: string;
+  completedAt: string | null;
+  rollbackOfOperationId: number | null;
 }
 
 export interface ParkingProofUpload {
@@ -260,6 +278,26 @@ export const parkingOwnerUpdate = (id: number) =>
   request<ParkingOwnerUpdate>({
     url: `/access-card-issuance/parking/owners/updates/${id}`,
   });
+
+export const createParkingOperation = (data: {
+  database: 'parking1' | 'parking2';
+  kind: ParkingOperationKind;
+  idempotencyKey: string;
+  sourceRecordId?: string | null;
+  pmsUserId?: number | null;
+  payload: Record<string, unknown>;
+  expected?: Record<string, unknown>;
+}) => request<ParkingOperation>({
+  url: '/access-card-issuance/parking/operations', method: 'POST', data,
+});
+
+export const parkingOperation = (id: number) => request<ParkingOperation>({
+  url: `/access-card-issuance/parking/operations/${id}`,
+});
+
+export const rollbackParkingOperation = (id: number) => request<ParkingOperation>({
+  url: `/access-card-issuance/parking/operations/${id}/rollback`, method: 'POST',
+});
 
 export const parkingHistory = (params: {
   pmsUserId?: number | null;

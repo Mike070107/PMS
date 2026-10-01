@@ -14,6 +14,7 @@ import {
   ParkingProofUpload,
   ParkingHistory,
   ParkingRecordSnapshot,
+  ParkingOperation,
   User,
 } from '../../entities';
 import { AccessCardAgentController, AccessCardIssuanceController, ParkingProofController } from './access-card-issuance.controller';
@@ -39,6 +40,7 @@ import { DeliyunParkingService } from './deliyun-parking.service';
       ParkingProofUpload,
       ParkingHistory,
       ParkingRecordSnapshot,
+      ParkingOperation,
       User,
     ]),
   ],

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.IO;
 using System.Reflection;
@@ -20,6 +21,7 @@ namespace Pms.DataSyncAssistant
         private readonly DispatcherTimer _statusTimer;
         private bool _pmsConnected;
         private bool _backgroundStartAttempted;
+        private bool _updateInProgress;
         public ObservableCollection<ConnectionViewModel> Connections { get; private set; }
         public ObservableCollection<ActivityViewModel> Activities { get; private set; }
         public string AppVersion { get { return Assembly.GetExecutingAssembly().GetName().Version.ToString(3); } }
@@ -102,7 +104,60 @@ namespace Pms.DataSyncAssistant
 
         private void CheckUpdate_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("当前助手版本：" + AppVersion + "\n\n“安装 / 更新后台服务”只会让后台服务使用当前助手版本，不会把版本号写成固定文字。要升级助手程序，请先下载新版程序再运行。", "版本信息", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (_updateInProgress) return;
+            _updateInProgress = true;
+            CheckUpdateButton.IsEnabled = false;
+            CheckUpdateButton.Content = "检查中…";
+            AssistantInfoExpander.IsExpanded = true;
+            UpgradeProgressPanel.Visibility = Visibility.Visible;
+            UpgradeProgressBar.IsIndeterminate = true;
+            UpgradePercentText.Text = "";
+            UpgradeStatusText.Text = "正在检查可用版本…";
+            var currentVersion = AppVersion;
+            var rootPath = _store.RootPath;
+            Task.Factory.StartNew(delegate { return AssistantUpdateService.CheckAndDownload(currentVersion, rootPath); })
+                .ContinueWith(task => Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    _updateInProgress = false;
+                    CheckUpdateButton.IsEnabled = true;
+                    CheckUpdateButton.Content = "检查更新";
+                    UpgradeProgressBar.IsIndeterminate = false;
+                    if (task.IsFaulted)
+                    {
+                        var error = task.Exception == null ? "未知错误" : task.Exception.GetBaseException().Message;
+                        UpgradeStatusText.Text = "检查失败：" + error;
+                        UpgradePercentText.Text = "失败";
+                        MessageBox.Show("没有完成更新检查，当前助手和配置没有改变。\n\n" + error + "\n\n请确认电脑可以访问更新服务，或联系管理员发布更新清单。", "检查更新失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+                    var result = task.Result;
+                    if (!result.HasUpdate)
+                    {
+                        UpgradeProgressBar.Value = 100;
+                        UpgradePercentText.Text = "最新";
+                        UpgradeStatusText.Text = "当前已经是最新版本 " + result.CurrentVersion;
+                        MessageBox.Show("当前助手已经是最新版本：" + result.CurrentVersion, "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
+                        return;
+                    }
+                    UpgradeProgressBar.Value = 100;
+                    UpgradePercentText.Text = "完成";
+                    UpgradeStatusText.Text = "已下载版本 " + result.Manifest.Version + "，等待确认安装";
+                    var notes = String.IsNullOrWhiteSpace(result.Manifest.ReleaseNotes) ? "" : "\n\n更新内容：" + result.Manifest.ReleaseNotes;
+                    if (MessageBox.Show("发现新版本 " + result.Manifest.Version + "（当前 " + result.CurrentVersion + "）。\n\n现在重启助手并完成安全更新吗？" + notes, "发现新版本", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
+                        return;
+                    try
+                    {
+                        var target = Assembly.GetExecutingAssembly().Location;
+                        AssistantUpdateService.StartApply(result.DownloadedFile, target, Process.GetCurrentProcess().Id);
+                        UpgradeStatusText.Text = "正在退出并替换程序，请稍候…";
+                        Close();
+                    }
+                    catch (Exception exception)
+                    {
+                        UpgradeStatusText.Text = "安装失败：" + exception.Message;
+                        MessageBox.Show("更新包已经下载，但没有开始替换程序。\n\n" + exception.Message, "安装更新失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                })), System.Threading.Tasks.TaskScheduler.Default);
         }
 
         private void UninstallService_Click(object sender, RoutedEventArgs e)

@@ -1,0 +1,23 @@
+.house-address-picker {
+  width: 100%;
+  min-width: 0;
+}
+
+.house-address-picker-control {
+  width: 100%;
+}
+
+/*
+ * Ant Design Cascader 默认只给菜单 180px 高度，在当前适老化字号下约等于 4 条。
+ * 桌面端尽量展示更多房号，小窗口则按视口高度收缩，避免上下超出屏幕。
+ */
+.house-address-picker-popup .ant-cascader-menu {
+  height: clamp(300px, 62vh, 520px);
+}
+
+@media (max-height: 560px) {
+  .house-address-picker-popup .ant-cascader-menu {
+    height: calc(100vh - 160px);
+    min-height: 220px;
+  }
+}

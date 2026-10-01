@@ -6,9 +6,11 @@ import {
   Checkbox,
   Empty,
   Input,
+  InputNumber,
   Modal,
   Space,
   Spin,
+  Select,
   Tag,
   Typography,
 } from 'antd';
@@ -26,6 +28,10 @@ import {
   PlusOutlined,
   ReloadOutlined,
   QrcodeOutlined,
+  CloudUploadOutlined,
+  SwapOutlined,
+  UserSwitchOutlined,
+  StopOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
   UserOutlined,
@@ -35,6 +41,7 @@ import {
   type AccessCardReadiness,
 } from '@pms/api-client';
 import { useCallback, useEffect, useState } from 'react';
+import CopyableSecret from '../components/CopyableSecret';
 import OwnerFormModal, { type OwnerRow } from './OwnerFormModal';
 import ParkingLegacyOwnerModal, { type ParkingLegacyOwnerTarget } from './ParkingLegacyOwnerModal';
 import './ParkingManagementPage.css';
@@ -74,6 +81,10 @@ export default function ParkingManagementPage({
   const [history, setHistory] = useState<ParkingHistoryResponse | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [operationTarget, setOperationTarget] = useState<{ kind: accessCardIssuance.ParkingOperationKind; row: ParkingQueryRow | null } | null>(null);
+  const [operationBusy, setOperationBusy] = useState(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const [lastOperation, setLastOperation] = useState<accessCardIssuance.ParkingOperation | null>(null);
 
   const loadReadiness = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -126,16 +137,17 @@ export default function ParkingManagementPage({
       new Date(right.lastSeenAt ?? 0).getTime() - new Date(left.lastSeenAt ?? 0).getTime())[0];
   const online = gateway?.status === 'online';
   const canRead = online && readiness?.features.parkingDbRead === true;
-  // 0.4.0 已能查询 Car_Issue；0.4.1 增加住户表联查，不能因为住户增强尚未升级就把整条查询锁死。
-  const canQuery = canRead;
-  const canJoinOwners = supportsParkingQueries(gateway?.version);
+  // 2.4.0 / 0.8.0 才按房号、车牌、电话和姓名选择字段并限制边界；旧版宽泛 LIKE 查询不再放行。
+  const canQuery = canRead && supportsStructuredParkingQueries(gateway?.version);
+  const canJoinOwners = canQuery;
   const canWriteLocal = online && gateway?.capabilities?.parkingDbWrite === true && supportsParkingOwnerUpdates(gateway?.version);
   const deliyun = readiness?.deliyun;
 
   const searchParking = async (requestedTerm?: string) => {
     const queryTerm = (requestedTerm ?? term).trim();
-    if (queryTerm.length < 2) {
-      message.error('请输入至少 2 个字符，可输入房号、住户或车牌');
+    const searchError = parkingSearchError(queryTerm);
+    if (searchError) {
+      message.error(searchError);
       return;
     }
     setSearching(true);
@@ -249,6 +261,32 @@ export default function ParkingManagementPage({
     }
   };
 
+  const runParkingOperation = async (kind: accessCardIssuance.ParkingOperationKind, row: ParkingQueryRow | null, payload: Record<string, unknown>) => {
+    setOperationBusy(true); setOperationError(null);
+    try {
+      let task = await accessCardIssuance.createParkingOperation({
+        database: row ? (row.database.toLowerCase() === 'parking1' ? 'parking1' : 'parking2') : ((payload.database as 'parking1' | 'parking2') || 'parking2'),
+        kind, sourceRecordId: row ? parkingHistoryRef(row).sourceRecordId : null, pmsUserId: row?.pmsMatch?.userId ?? null,
+        idempotencyKey: createIdempotencyKey(), payload,
+      });
+      setLastOperation(task);
+      for (let attempt = 0; attempt < 112 && (task.status === 'pending' || task.status === 'running'); attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        task = await accessCardIssuance.parkingOperation(task.id);
+        setLastOperation(task);
+      }
+      if (task.status === 'completed') {
+        message.success(`${operationLabel(kind)}已执行，旧库已读回验证`);
+        setOperationTarget(null);
+        await searchParking(searchedTerm || term);
+      } else if (task.status === 'failed') throw new Error(task.error || `${operationLabel(kind)}失败，可修正后重试`);
+      else throw new Error('现场助手响应超时，任务仍保留，可稍后刷新状态');
+    } catch (error) {
+      const text = error instanceof Error ? error.message : `${operationLabel(kind)}失败`;
+      setOperationError(text); message.error(text);
+    } finally { setOperationBusy(false); }
+  };
+
   useEffect(() => {
     if (!proofUpload || proofUpload.status === 'submitted') return undefined;
     const timer = window.setInterval(async () => {
@@ -279,8 +317,10 @@ export default function ParkingManagementPage({
         showIcon
         message={canQuery ? '停车数据库真实查询已就绪' : '尚未接通真实停车数据'}
         description={canQuery
-          ? `查询会实时读取现场一期、二期 Car_Issue 表。${canJoinOwners ? '住户表联查已启用。' : `当前助手 ${gateway?.version || '未知版本'} 可查车辆，升级 0.4.1 后还能按住户姓名、电话和房号联查。`}${canWriteLocal ? '旧库住户资料可直接编辑，保存后由现场助手写入并读回验证。' : '旧库住户资料写入需要将现场助手升级到 2.3.0 并确认数据库账号具备写权限。'}`
-          : '请先在下方注册并安装 Windows 本地停车网关。连接完成前不会显示任何模拟住户、车牌、车位或收费记录。'}
+          ? `查询会按输入类型实时读取现场一期、二期停车库，并限制房号、车牌尾号、电话和姓名的匹配范围。${canJoinOwners ? '住户表联查已启用。' : ''}${canWriteLocal ? '旧库住户资料可直接编辑，保存后由现场助手写入并读回验证。' : '旧库住户资料写入需要数据库账号具备写权限。'}`
+          : canRead
+            ? `现场助手 ${gateway?.version || '未知版本'} 仍使用旧的宽泛查询规则，请升级到 2.4.0 后再查询，避免少量输入扫描过多数据。`
+            : '请先在下方注册并安装 Windows 本地停车网关。连接完成前不会显示任何模拟住户、车牌、车位或收费记录。'}
       />
 
       <Card className="parking-device-card" variant="borderless">
@@ -334,7 +374,7 @@ export default function ParkingManagementPage({
           <div>
             <span className="parking-section-kicker">真实数据查询</span>
             <Title level={3}>查找房号、住户或车牌</Title>
-            <Text type="secondary">支持 228/5/301、198-5-201、住户姓名、电话或完整车牌。</Text>
+            <Text type="secondary">房号可输入 6/502 或 228/6/502；也支持住户姓名、7 位以上电话、完整车牌或至少 4 位车牌尾号。</Text>
           </div>
           <Input.Search
             value={term}
@@ -376,6 +416,7 @@ export default function ParkingManagementPage({
               onCreateProof={() => void createProofUpload(row)}
               onEditPms={(owner) => setEditingPmsOwner(owner)}
               onEditLegacy={(target) => { setLegacyOwnerError(null); setEditingLegacyOwner(target); }}
+              onOperation={(kind) => { setOperationError(null); setLastOperation(null); setOperationTarget({ kind, row }); }}
             />)}
           </div>
         ) : (
@@ -386,6 +427,7 @@ export default function ParkingManagementPage({
               : canQuery ? '输入房号、住户、电话或车牌开始查询' : '未连接真实停车数据库，不显示模拟数据'}
           />
         )}
+        {canWriteLocal && <Button className="parking-add-vehicle-button" type="primary" icon={<PlusOutlined />} onClick={() => { setOperationError(null); setLastOperation(null); setOperationTarget({ kind: 'add_vehicle', row: null }); }}>新增车牌</Button>}
       </Card>
 
       <Modal
@@ -400,7 +442,7 @@ export default function ParkingManagementPage({
         {credential ? (
           <div className="parking-gateway-secret">
             <Alert type="warning" showIcon message="密钥只显示这一次" description={credential.message} />
-            <label>一次性连接密钥</label><pre>{credential.token}</pre>
+            <CopyableSecret label="一次性连接密钥" value={credential.token} />
             <Text type="secondary">在停车电脑双击数据同步助手，只需粘贴上方连接密钥。代理 ID 已包含在密钥中，无需另行输入。</Text>
           </div>
         ) : (
@@ -425,6 +467,19 @@ export default function ParkingManagementPage({
         onSubmit={saveLegacyOwner}
       />
 
+      <ParkingOperationModal
+        open={!!operationTarget}
+        kind={operationTarget?.kind ?? 'add_vehicle'}
+        row={operationTarget?.row ?? null}
+        loading={operationBusy}
+        error={operationError}
+        task={lastOperation}
+        onClose={() => { if (!operationBusy) setOperationTarget(null); }}
+        onRetry={() => { if (lastOperation) void runParkingOperation(operationTarget?.kind ?? 'add_vehicle', operationTarget?.row ?? null, lastOperation.payload); }}
+        onRollback={async () => { if (!lastOperation) return; try { await accessCardIssuance.rollbackParkingOperation(lastOperation.id); message.success('已创建反向回滚任务'); } catch (error) { message.error(error instanceof Error ? error.message : '回滚任务创建失败'); } }}
+        onSubmit={(payload) => operationTarget && void runParkingOperation(operationTarget.kind, operationTarget.row, payload)}
+      />
+
       <Modal
         title={`亲情车证明材料 · ${proofUpload?.plate || ''}`}
         open={!!proofUpload}
@@ -447,9 +502,14 @@ export default function ParkingManagementPage({
   );
 }
 
-function supportsParkingQueries(version?: string): boolean {
+function supportsStructuredParkingQueries(version?: string): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
-  return Boolean(match && (Number(match[1]) > 0 || Number(match[2]) > 4 || (Number(match[2]) === 4 && Number(match[3]) >= 1)));
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  if (major > 2) return true;
+  if (major === 2) return minor >= 4;
+  return major === 0 && minor >= 8;
 }
 
 function supportsParkingOwnerUpdates(version?: string): boolean {
@@ -657,14 +717,20 @@ function HistoryEntryList({ title, entries, empty }: {
   entries: accessCardIssuance.ParkingHistoryEntry[];
   empty: string;
 }) {
+  const orderedEntries = [...entries].sort((left, right) => {
+    const time = new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime();
+    return time || right.id - left.id;
+  });
   return <section className="parking-history-list">
-    <h5>{title}<span>{entries.length} 条</span></h5>
-    {entries.length ? <ol>{entries.map((entry) => <li key={entry.id}>
+    <h5>{title}<span>{orderedEntries.length} 条 · 最新在前</span></h5>
+    {orderedEntries.length ? <ol>{orderedEntries.map((entry) => <li key={entry.id}>
       <div className="parking-history-event-head">
-        <Tag color={entry.eventType === 'plate_change' ? 'blue' : entry.eventType === 'owner_rebind' ? 'gold' : 'default'}>
-          {entry.eventType === 'plate_change' ? '换牌' : entry.eventType === 'owner_rebind' ? '变更绑定用户' : '修改用户资料'}
+        <Tag color={entry.eventType === 'plate_change' ? 'blue' : entry.eventType === 'owner_rebind' ? 'gold' : entry.eventType === 'vehicle_deleted' ? 'red' : entry.eventType === 'vehicle_renewed' ? 'green' : 'default'}>
+          {entry.eventType === 'plate_change' ? '换牌' : entry.eventType === 'owner_rebind' ? '变更绑定用户' : entry.eventType === 'owner_info_update' ? '修改用户资料' : entry.eventType === 'vehicle_added' ? '新增车牌' : entry.eventType === 'vehicle_renewed' ? '续期收费' : entry.eventType === 'garage_authorization' ? '车库授权' : entry.eventType === 'vehicle_download' ? '设备下发' : '注销车辆'}
         </Tag>
-        <time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString('zh-CN', { hour12: false })}</time>
+        {entry.timeBasis === 'operation' || entry.source === 'pms'
+          ? <time dateTime={entry.occurredAt}>操作时间：{new Date(entry.occurredAt).toLocaleString('zh-CN', { hour12: false })}</time>
+          : <span className="parking-history-time-pending">操作时间待旧库回传</span>}
       </div>
       <strong>{entry.summary}</strong>
       <dl>{entry.changes.map((change) => <div key={`${entry.id}-${change.field}`}>
@@ -675,22 +741,26 @@ function HistoryEntryList({ title, entries, empty }: {
   </section>;
 }
 
-function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, onEditLegacy, proofLoading }: {
+function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, onEditLegacy, proofLoading, onOperation }: {
   row: ParkingQueryRow;
   canWriteLocal: boolean;
   onCreateProof: () => void;
   onEditPms: (owner: OwnerRow) => void;
   onEditLegacy: (target: ParkingLegacyOwnerTarget) => void;
   proofLoading: boolean;
+  onOperation: (kind: accessCardIssuance.ParkingOperationKind) => void;
 }) {
   const plate = plateValue(row.fields);
-  const ownerValue = ownerFieldValue(row.fields, fieldAliases.owner);
-  const roomValue = ownerFieldValue(row.fields, fieldAliases.room);
+  const rawOwnerValue = ownerFieldValue(row.fields, fieldAliases.owner);
+  const roomInName = legacyRoomFromName(rawOwnerValue);
+  const ownerValue = roomInName ? null : rawOwnerValue;
+  const roomValue = ownerFieldValue(row.fields, fieldAliases.room) || roomInName;
   const phone = ownerFieldValue(row.fields, fieldAliases.phone);
   const owner = ownerValue || '未记录住户姓名';
   const room = roomValue || '未识别房号';
   const space = fieldValue(row.fields, fieldAliases.space);
   const expiry = fieldValue(row.fields, fieldAliases.expiry);
+  const expiryView = parkingExpiryView(expiry);
   const identity = vehicleIdentity(row.fields);
   const note = ownerFieldValue(row.fields, fieldAliases.note);
   const garages = garageRows(row.database, row.fields);
@@ -718,19 +788,23 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, onEdi
       note: ownerFieldHint(row.fields, fieldAliases.note),
     },
   } : null;
-  const details = Object.entries(row.fields).filter(([, value]) => value !== null && String(value).trim() !== '').slice(0, 24);
+  const details = Object.entries(row.fields)
+    .filter(([key, value]) => !key.startsWith('PmsMeta__') && value !== null && String(value).trim() !== '')
+    .slice(0, 24);
   return (
     <article className="parking-query-card">
       <div className={`parking-license-plate ${plate.length > 7 ? 'is-green' : 'is-blue'}`}><span>{plate}</span></div>
       <div className="parking-query-primary">
         <strong><HomeOutlined /> {room}</strong>
-        <span><UserOutlined /> {owner}</span>
+        <span className="parking-important-value"><UserOutlined /> {owner}</span>
         <Tag color="blue">{row.database.toLowerCase() === 'parking1' ? '枫桦景苑一期旧库' : '枫桦景苑二期旧库'}</Tag>
       </div>
       <div className="parking-query-meta">
-        {phone && <span><PhoneOutlined /> {phone}</span>}
+        {phone && <span className="parking-important-value"><PhoneOutlined /> {phone}</span>}
         {space && <span><CarOutlined /> {space}</span>}
-        {expiry && <span><CalendarOutlined /> 到期：{expiry}</span>}
+        {expiryView && <span className="parking-expiry-line"><CalendarOutlined /> 到期：{expiryView.date}
+          {expiryView.days !== null && <b className={expiryView.days < 0 ? 'is-expired' : 'is-valid'}>有效期 {expiryView.days} 天</b>}
+        </span>}
       </div>
       <div className="parking-vehicle-type"><span>车辆授权类型</span><strong>{identity || '旧库未设置'}</strong><small>该类型决定续期价格，不代表车库权限</small></div>
       <div className="parking-garage-table" role="table" aria-label="车库授权和设备下载状态">
@@ -744,11 +818,11 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, onEdi
         </div>)}
       </div>
       <div className="parking-owner-compare">
-        <OwnerDataPanel title={`旧停车系统${ownerId ? ` · 住户 #${ownerId}` : ''}`} name={owner} phone={phone} room={room} note={note}
+        <OwnerDataPanel title="旧停车系统住户信息" name={owner} phone={phone} room={room} note={note}
           editable={canWriteLocal && !!legacyTarget}
-          editHint={!ownerId ? '旧停车系统没有返回住户编号，无法定位要更新的住户' : !canWriteLocal ? '请将现场数据同步助手升级到 2.3.0，并确认停车数据库账号具备写入权限' : undefined}
+          editHint={!ownerId ? '旧停车系统没有返回住户编号，无法定位要更新的住户' : !canWriteLocal ? '请确认现场数据同步助手为 2.4.0，并检查停车数据库账号的写入权限' : undefined}
           onEdit={legacyTarget ? () => onEditLegacy(legacyTarget) : undefined} />
-        <OwnerDataPanel title="PMS 用户系统" name={row.pmsMatch?.name || '未关联'} phone={row.pmsMatch?.phone || null}
+        <OwnerDataPanel title="PMS系统业主信息" name={row.pmsMatch?.name || '未关联'} phone={row.pmsMatch?.phone || null}
           room={row.pmsMatch?.house ? `${row.pmsMatch.house.communityName || ''} ${row.pmsMatch.house.lane || ''}弄 ${row.pmsMatch.house.buildingNo}号 ${row.pmsMatch.house.roomNo}室` : null}
           note={row.pmsMatch?.contactNote || null} editable={!!row.pmsMatch}
           onEdit={row.pmsMatch ? () => onEditPms({ id: row.pmsMatch!.userId, name: row.pmsMatch!.name, phone: row.pmsMatch!.phone, status: 'active', source: null, contactNote: row.pmsMatch!.contactNote, houseId: row.pmsMatch!.houseId, house: row.pmsMatch!.house }) : undefined} />
@@ -759,12 +833,95 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, onEdi
           <Button icon={<QrcodeOutlined />} loading={proofLoading} onClick={onCreateProof}>生成材料上传二维码</Button>
         </div>
       )}
+      <div className="parking-operation-actions" aria-label="停车业务操作">
+        <Button size="small" disabled={!canWriteLocal} icon={<CalendarOutlined />} onClick={() => onOperation('renew_vehicle')}>续期收费</Button>
+        <Button size="small" disabled={!canWriteLocal} icon={<SwapOutlined />} onClick={() => onOperation('change_plate')}>变更车牌</Button>
+        <Button size="small" disabled={!canWriteLocal} icon={<UserSwitchOutlined />} onClick={() => onOperation('rebind_owner')}>变更绑定用户</Button>
+        <Button size="small" disabled={!canWriteLocal} icon={<SafetyCertificateOutlined />} onClick={() => onOperation('update_garages')}>调整车库授权</Button>
+        <Button size="small" disabled={!canWriteLocal} icon={<CloudUploadOutlined />} onClick={() => onOperation('download_vehicle')}>下发设备</Button>
+        <Button size="small" danger disabled={!canWriteLocal} icon={<StopOutlined />} onClick={() => onOperation('delete_vehicle')}>注销车辆</Button>
+      </div>
       <details className="parking-query-details">
         <summary>查看旧库原始字段</summary>
         <dl>{details.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>
       </details>
     </article>
   );
+}
+
+function ParkingOperationModal({ open, kind, row, loading, error, task, onClose, onSubmit, onRetry, onRollback }: {
+  open: boolean;
+  kind: accessCardIssuance.ParkingOperationKind;
+  row: ParkingQueryRow | null;
+  loading: boolean;
+  error: string | null;
+  task: accessCardIssuance.ParkingOperation | null;
+  onClose: () => void;
+  onSubmit: (payload: Record<string, unknown>) => void;
+  onRetry: () => void;
+  onRollback: () => void;
+}) {
+  const [plate, setPlate] = useState('');
+  const [newPlate, setNewPlate] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerId, setOwnerId] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [previousEndDate, setPreviousEndDate] = useState('');
+  const [identity, setIdentity] = useState('住户车');
+  const [amount, setAmount] = useState<number | null>(null);
+  const [months, setMonths] = useState(1);
+  const [selectedGarages, setSelectedGarages] = useState<string[]>([]);
+  const [effective, setEffective] = useState('');
+  const [download, setDownload] = useState('');
+  const [note, setNote] = useState('');
+  useEffect(() => {
+    const fields = row?.fields || {};
+    const currentPlate = row ? plateValue(fields) : '';
+    setPlate(currentPlate === '车牌字段待识别' ? '' : currentPlate);
+    setNewPlate(''); setOwnerName(row ? ownerFieldValue(fields, fieldAliases.owner) || '' : '');
+    setOwnerId(row ? parkingHistoryRef(row).externalOwnerId || '' : '');
+    setEndDate(row ? (fieldValue(fields, fieldAliases.expiry) || '').slice(0, 10) : '');
+    setPreviousEndDate(row ? (fieldValue(fields, fieldAliases.expiry) || '').slice(0, 10) : '');
+    setIdentity(row ? vehicleIdentity(fields) || '住户车' : '住户车'); setAmount(null); setMonths(1);
+    setEffective(row ? fieldValue(fields, fieldAliases.effective) || '' : '');
+    setDownload(row ? fieldValue(fields, fieldAliases.download) || '' : '');
+    setNote(row ? fieldValue(fields, fieldAliases.note) || '' : '');
+    const garages = row ? garageRows(row.database, fields).filter((item) => item.authorized && !item.cloud).map((item) => item.key) : [];
+    setSelectedGarages(garages);
+  }, [open, row, kind]);
+  const title = operationLabel(kind);
+  const submit = () => {
+    const monthly = identity === '租户车' ? 260 : identity === '亲情车' ? 0 : 180;
+    const annual = identity === '租户车' ? 2760 : identity === '亲情车' ? 0 : 1800;
+    const calculatedAmount = amount ?? (months >= 12 ? annual * Math.floor(months / 12) + monthly * (months % 12) : monthly * months);
+    const payload: Record<string, unknown> = { plate, newPlate, ownerName, ownerId, endDate, previousEndDate, identity, amount: calculatedAmount, months, effective, download, note };
+    if (kind === 'add_vehicle' || kind === 'update_garages') payload.effective = garageBitString(selectedGarages);
+    onSubmit(payload);
+  };
+  return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle' }} onOk={submit}>
+    {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space><Button size="small" onClick={onRetry}>重试</Button>{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
+    <div className="parking-operation-form">
+      {kind === 'add_vehicle' && <label>数据库<select value={row?.database || 'parking2'} disabled={!!row} onChange={() => undefined}><option value="parking1">枫桦景苑一期</option><option value="parking2">枫桦景苑二期</option></select></label>}
+      <label>车牌<Input value={plate} disabled={kind === 'add_vehicle' ? false : !row} onChange={(e) => setPlate(e.target.value.toUpperCase())} /></label>
+      {kind === 'change_plate' && <label>新车牌<Input value={newPlate} onChange={(e) => setNewPlate(e.target.value.toUpperCase())} /></label>}
+      {(kind === 'add_vehicle' || kind === 'change_plate' || kind === 'rebind_owner') && <><label>绑定用户姓名<Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label><label>旧系统住户编号<Input value={ownerId} onChange={(e) => setOwnerId(e.target.value)} /></label></>}
+      {(kind === 'add_vehicle' || kind === 'renew_vehicle') && <><label>快捷期限<Select value={months} options={[1, 2, 3, 6, 12].map((value: number) => ({ value, label: `${value}个月` }))} onChange={(value: number) => setMonths(value)} /><InputNumber min={0} value={amount} onChange={setAmount} addonAfter="元" /><Text type="secondary">留空按收费规则验算：业主车月价 ¥180、12个月 ¥1800；租户车月价 ¥260、12个月 ¥2760。可在提交前覆盖本次金额。</Text></label><label>到期日期<Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label></>}
+      {(kind === 'add_vehicle' || kind === 'update_garages') && <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }]} /></label>}
+      {(kind === 'add_vehicle' || kind === 'change_plate' || kind === 'rebind_owner') && <label>车辆授权类型<Select value={identity} options={['住户车', '租户车', '亲情车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>}
+      {kind === 'download_vehicle' && <Alert type="info" showIcon message="将创建旧库设备下载任务" description="任务完成只代表旧系统已接受并回读下载队列；现场控制器回执会在状态中单独显示。" />}
+      {kind === 'delete_vehicle' && <Alert type="warning" showIcon message="注销会调用旧系统 Add_Del_Plate" description="车辆从旧库移除并写入注销流水，网页不会直接删除 Car_Issue。" />}
+      {task?.status === 'completed' && <Button danger onClick={onRollback}>为本次操作创建反向回滚任务</Button>}
+    </div>
+  </Modal>;
+}
+
+function operationLabel(kind: accessCardIssuance.ParkingOperationKind): string {
+  return ({ add_vehicle: '新增车牌', renew_vehicle: '车牌续期与收费', change_plate: '变更车牌', rebind_owner: '变更绑定用户', update_garages: '调整车库授权', download_vehicle: '下发停车设备', delete_vehicle: '注销车辆' } as Record<string, string>)[kind];
+}
+
+function garageBitString(keys: string[]): string {
+  const channels: Record<string, number[]> = { phase1: [5, 7], phase2: [9, 11, 13], main: [15, 17, 19, 21] };
+  const bits = Array.from({ length: 256 }, () => '0'); keys.forEach((key) => (channels[key] || []).forEach((channel) => { bits[channel - 1] = '1'; })); return bits.join('');
 }
 
 function OwnerDataPanel({ title, name, phone, room, note, editable, editHint, onEdit }: {
@@ -777,7 +934,41 @@ function OwnerDataPanel({ title, name, phone, room, note, editable, editHint, on
       <Button size="small" icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(text)}>复制</Button>
       <Button size="small" icon={<EditOutlined />} disabled={!editable} title={editHint} onClick={onEdit}>编辑</Button>
     </Space></header>
-    <dl><div><dt>姓名</dt><dd>{name}</dd></div><div><dt>电话</dt><dd>{phone || '未记录'}</dd></div><div><dt>房号</dt><dd>{room || '未记录'}</dd></div><div><dt>备注</dt><dd>{note || '无'}</dd></div></dl>
+    <dl><div><dt>姓名</dt><dd className="parking-owner-important">{name}</dd></div><div><dt>电话</dt><dd className="parking-owner-important">{phone || '未记录'}</dd></div><div><dt>房号</dt><dd>{room || '未记录'}</dd></div><div><dt>备注</dt><dd>{note || '无'}</dd></div></dl>
     {!editable && editHint && <small>{editHint}</small>}
   </section>;
+}
+
+function legacyRoomFromName(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim().replace(/^已隐藏\s*/, '');
+  const match = /^(198|228)[/-](\d{1,2})[/-](\d{2,4})(?:[/-]\d+)?$/.exec(normalized);
+  if (!match) return null;
+  return `${match[1]}/${Number(match[2])}/${Number(match[3])}`;
+}
+
+function parkingExpiryView(value: string | null): { date: string; days: number | null } | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+  if (!match) return { date: value.replace(/\s+23:59:59$/, ''), days: null };
+  const [year, month, day] = match.slice(1).map(Number);
+  const expiryDate = new Date(year, month - 1, day);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((expiryDate.getTime() - today.getTime()) / 86_400_000);
+  return { date: `${match[1]}-${match[2]}-${match[3]}`, days };
+}
+
+function parkingSearchError(input: string): string | null {
+  const term = input.trim();
+  if (!term) return '请输入房号、住户姓名、电话或车牌';
+  const address = term.replace(/\s+/g, '').replace(/[弄幢栋号]/g, '/').replace(/室$/g, '').replace(/\\/g, '/');
+  if (/^(?:(?:198|228)[/-])?\d{1,2}[/-]\d{2,4}(?:[/-]\d+)?$/.test(address)) return null;
+  const compact = term.replace(/\s+/g, '').toUpperCase();
+  if (/^[\u4e00-\u9fff][A-Z][A-Z0-9挂学警港澳]{5,6}$/.test(compact)) return null;
+  if (/^[A-Z0-9]{4,6}$/.test(compact)) return null;
+  const digits = term.replace(/[\s-]/g, '');
+  if (/^\d{7,11}$/.test(digits) || /^[\u4e00-\u9fff·]{2,20}$/.test(term)) return null;
+  if (/^\d{1,6}$/.test(digits)) return '数字信息太少：查房号请输入“楼栋/室”，如 6/502；查车牌尾号至少输入 4 位；查电话至少输入 7 位';
+  return '无法识别查询内容：请输入房号、住户姓名、7 位以上电话、完整车牌或至少 4 位车牌尾号';
 }

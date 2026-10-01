@@ -234,6 +234,7 @@ export class OwnersMgmtService {
           operatorUserId: user.id,
           detectedByQueryId: null,
           occurredAt: new Date(),
+          timeBasis: 'operation',
           createdBy: user.id,
           updatedBy: user.id,
         }));

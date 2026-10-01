@@ -9,7 +9,7 @@ namespace Pms.AccessCardAgent
 {
     internal sealed class AgentApiClient
     {
-        public const string Version = "0.7.0";
+        public const string Version = "0.8.0";
         private readonly AgentConfig _config;
         private readonly string _token;
         private readonly string _version;
@@ -63,6 +63,13 @@ namespace Pms.AccessCardAgent
             return _json.ConvertToType<ParkingOwnerUpdateTask>(result["task"]);
         }
 
+        public ParkingOperationTask ClaimParkingOperation()
+        {
+            var result = Post("/access-card-agent/parking/operations/claim", new Dictionary<string, object>());
+            if (!result.ContainsKey("task") || result["task"] == null) return null;
+            return _json.ConvertToType<ParkingOperationTask>(result["task"]);
+        }
+
         public LegacyCardCheckTask ClaimLegacyCardCheck()
         {
             var result = Post("/access-card-agent/legacy-card-check/claim", new Dictionary<string, object>());
@@ -95,6 +102,11 @@ namespace Pms.AccessCardAgent
         public void ReportParkingOwnerUpdate(ParkingOwnerUpdateReport report)
         {
             Post("/access-card-agent/parking/owners/updates/report", report);
+        }
+
+        public void ReportParkingOperation(ParkingOperationReport report)
+        {
+            Post("/access-card-agent/parking/operations/report", report);
         }
 
         public void ReportLegacyCardCheck(LegacyCardCheckReport report)
@@ -245,6 +257,24 @@ namespace Pms.AccessCardAgent
         public int taskId { get; set; }
         public string result { get; set; }
         public ParkingOwnerValues values { get; set; }
+        public string errorMessage { get; set; }
+    }
+
+    internal sealed class ParkingOperationTask
+    {
+        public int taskId { get; set; }
+        public string kind { get; set; }
+        public string database { get; set; }
+        public string sourceRecordId { get; set; }
+        public Dictionary<string, object> payload { get; set; }
+        public Dictionary<string, object> expected { get; set; }
+    }
+
+    internal sealed class ParkingOperationReport
+    {
+        public int taskId { get; set; }
+        public string result { get; set; }
+        public Dictionary<string, object> values { get; set; }
         public string errorMessage { get; set; }
     }
 

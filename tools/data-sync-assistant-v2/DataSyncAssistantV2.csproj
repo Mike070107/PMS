@@ -61,6 +61,7 @@
     <Compile Include="LegacyConfigurationMigrator.cs" />
     <Compile Include="SelfTest.cs" />
     <Compile Include="ConnectionTester.cs" />
+    <Compile Include="AssistantUpdateService.cs" />
     <Compile Include="UnifiedWindowsService.cs" />
     <Compile Include="ConnectionAgentRuntime.cs" />
     <Compile Include="Building3ControllerTest.cs" />

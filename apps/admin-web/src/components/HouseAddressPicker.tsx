@@ -16,6 +16,7 @@ import {
   type AddressHouse,
   type MatchKeys,
 } from '@pms/shared-types';
+import './HouseAddressPicker.css';
 
 const { Text } = Typography;
 
@@ -222,16 +223,18 @@ export default function HouseAddressPicker({
   }, [value, options]);
 
   return (
-    <div>
+    <div className="house-address-picker">
       <Cascader
         id={id}
+        className="house-address-picker-control"
+        popupClassName="house-address-picker-popup"
         options={options}
         value={value}
         loading={loading}
         changeOnSelect
         allowClear
         placeholder="输入 228/4/201，或点选 小区 → 楼栋 → 室号"
-        dropdownStyle={{ minWidth: 480, maxWidth: 760 }}
+        dropdownStyle={{ width: 720, maxWidth: 'calc(100vw - 32px)' }}
         displayRender={() => currentText}
         open={open}
         onDropdownVisibleChange={setOpen}

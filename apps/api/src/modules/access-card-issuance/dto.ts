@@ -369,6 +369,54 @@ export class ParkingOwnerUpdateReportDto {
   errorMessage?: string;
 }
 
+export class CreateParkingOperationDto {
+  @IsIn(['parking1', 'parking2'])
+  database: 'parking1' | 'parking2';
+
+  @IsIn(['add_vehicle', 'renew_vehicle', 'change_plate', 'rebind_owner', 'update_garages', 'download_vehicle', 'delete_vehicle'])
+  kind: 'add_vehicle' | 'renew_vehicle' | 'change_plate' | 'rebind_owner' | 'update_garages' | 'download_vehicle' | 'delete_vehicle';
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
+  idempotencyKey: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  sourceRecordId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  pmsUserId?: number | null;
+
+  @IsObject()
+  payload: Record<string, unknown>;
+
+  @IsOptional()
+  @IsObject()
+  expected?: Record<string, unknown>;
+}
+
+export class ParkingOperationReportDto {
+  @Type(() => Number)
+  @IsInt()
+  taskId: number;
+
+  @IsIn(['success', 'retry', 'failed'])
+  result: 'success' | 'retry' | 'failed';
+
+  @IsOptional()
+  @IsObject()
+  values?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  errorMessage?: string;
+}
+
 export class CreateParkingProofUploadDto {
   @IsString()
   @MinLength(5)

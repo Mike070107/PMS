@@ -1,7 +1,8 @@
 import { Column, Entity, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
 
-export type ParkingHistoryEventType = 'plate_change' | 'owner_rebind' | 'owner_info_update';
+export type ParkingHistoryEventType = 'plate_change' | 'owner_rebind' | 'owner_info_update' | 'vehicle_added' | 'vehicle_renewed' | 'garage_authorization' | 'vehicle_deleted' | 'vehicle_download';
+export type ParkingHistoryTimeBasis = 'operation' | 'detected';
 
 export interface ParkingHistoryChange {
   field: string;
@@ -13,8 +14,8 @@ export interface ParkingHistoryChange {
 /**
  * 停车档案的不可变变更流水。
  *
- * 旧停车库没有可供 PMS 查询的完整审计表，因此网关每次查询后会用稳定的 Car_Issue
- * 记录号与上次快照比较；PMS 自己的业主资料修改则在保存事务里直接写入这里。
+ * 网关每次查询后用稳定的 Car_Issue 记录号与上次快照比较；换牌事件再从 Up_Issue
+ * 补真实业务时间。PMS 自己的业主资料修改则在保存事务里直接写入这里。
  */
 @Entity('parking_history')
 @Index(['tenantId', 'pmsUserId', 'occurredAt'])
@@ -60,4 +61,10 @@ export class ParkingHistory extends TenantEntity {
 
   @Column({ name: 'occurred_at', type: 'timestamptz' })
   occurredAt: Date;
+
+  /** 旧库有真实业务流水时间时为 operation；否则只能说明 PMS 何时发现变化。 */
+  // 默认必须保守地视为“检测时间”：生产使用 schema synchronize，旧网关历史加列时会取得默认值。
+  // PMS 与新版网关产生的记录都会在写入时显式声明 operation。
+  @Column({ name: 'time_basis', type: 'varchar', length: 20, default: 'detected' })
+  timeBasis: ParkingHistoryTimeBasis;
 }

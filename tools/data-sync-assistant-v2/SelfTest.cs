@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Web.Script.Serialization;
@@ -46,6 +47,7 @@ namespace Pms.DataSyncAssistant
                 VerifyLegacyRoomMatching();
                 VerifyParkingOwnerColumnMapping();
                 VerifyActivityHistory(root);
+                VerifyAssistantUpdater(root);
             }
             finally
             {
@@ -176,6 +178,25 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("停车住户备注栏位映射失败");
             if (ParkingDatabase.ResolveOwnerColumnForTest("phone", "P_note", columns) != "P_Tel")
                 throw new InvalidOperationException("停车住户栏位提示越权覆盖了语义匹配");
+            if (ParkingDatabase.SearchKindForTest("6/502") != "House")
+                throw new InvalidOperationException("停车房号查询类型识别失败");
+            var housePatterns = ParkingDatabase.SearchPatternsForTest("6/502");
+            if (!housePatterns.Contains("%/6/502") || !housePatterns.Contains("%/6/502/%") ||
+                housePatterns.Contains("%/6/502%") || housePatterns.Any(delegate(string value) { return value.Contains("36/502"); }))
+                throw new InvalidOperationException("停车房号查询边界错误");
+            if (ParkingDatabase.SearchKindForTest("DQ8839") != "PlateTail")
+                throw new InvalidOperationException("停车车牌尾号识别失败");
+            if (ParkingDatabase.SearchKindForTest("8839") != "PlateTail")
+                throw new InvalidOperationException("停车纯数字车牌尾号识别失败");
+            try
+            {
+                ParkingDatabase.SearchKindForTest("502");
+                throw new InvalidOperationException("停车短数字查询未被拦截");
+            }
+            catch (InvalidOperationException exception)
+            {
+                if (!exception.Message.Contains("数字信息太少")) throw;
+            }
             var marked = ParkingDatabase.AppendPmsSourceForTest("原备注");
             if (marked != "原备注" + Environment.NewLine + "操作来源：PMS系统" ||
                 ParkingDatabase.AppendPmsSourceForTest(marked) != marked)
@@ -210,6 +231,17 @@ namespace Pms.DataSyncAssistant
             if (activities.Count != 2 || activities[0].Target != "228/2/103" || activities[0].Success ||
                 activities[1].Target != "228/2/102" || !activities[1].Success)
                 throw new InvalidOperationException("最近活动没有按时间保存查询成功和失败状态");
+        }
+
+        private static void VerifyAssistantUpdater(string root)
+        {
+            var updates = Path.Combine(root, "updates");
+            Directory.CreateDirectory(updates);
+            File.WriteAllText(Path.Combine(updates, "latest.json"),
+                "{\"version\":\"2.5.0\",\"releaseNotes\":\"本地清单测试\"}", Encoding.UTF8);
+            var result = AssistantUpdateService.CheckAndDownload("2.5.0", root);
+            if (result.HasUpdate || result.CurrentVersion != "2.5.0")
+                throw new InvalidOperationException("助手更新清单版本比较失败");
         }
     }
 }
