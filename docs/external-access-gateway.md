@@ -42,6 +42,10 @@ PMS 管理员在「内网应用发布」页配置：
 
 先建 Access 保护，再建 DNS/Tunnel 路由，避免发布过程中出现短暂裸露。如果同名 DNS 已指向其他目标，系统会拒绝覆盖并显示具体原因。
 
+### 策略更新入口
+
+Cloudflare 应用策略列表会同时返回应用专属策略和账号级可复用策略。同步时必须先按策略 ID 判断类型：应用专属策略使用 `/accounts/{account}/access/apps/{app}/policies/{id}`，可复用策略使用 `/accounts/{account}/access/policies/{id}`。把可复用策略误用应用级入口会返回 `can not update reusable policies through this endpoint`，页面应保留具体错误并允许重试。
+
 ## 局域网连接器
 
 每个目标局域网至少需有一台能访问内网站点的常开主机运行 `cloudflared` 守护进程。这个守护进程只建立出站连接，无需在路由器开入站端口。
