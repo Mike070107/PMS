@@ -82,6 +82,12 @@ esac
 
 install -m 0644 "$SCRIPT_DIR/frps.service" /etc/systemd/system/frps.service
 install -m 0644 "$SCRIPT_DIR/oauth2-proxy-caiwu.service" /etc/systemd/system/oauth2-proxy-caiwu.service
+
+# Certificates are renewed independently by certbot. Reload Nginx after a
+# successful renewal so the new certificate is served without a reboot.
+install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+install -m 0755 "$SCRIPT_DIR/reload-nginx.sh" /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+
 systemctl daemon-reload
 systemctl enable --now frps.service oauth2-proxy-caiwu.service
 

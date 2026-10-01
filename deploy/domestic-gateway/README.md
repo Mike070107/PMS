@@ -34,4 +34,7 @@ DNS 从 Cloudflare Tunnel 切换到腾讯云前必须同时满足：
 4. `caiwu.prsznh.cn` 证书已签发，`nginx -t` 通过。
 5. 未授权请求会 302 到 PMS 扫码页，授权用户可直接进入用友。
 
+安装脚本会同时配置 certbot 部署钩子：证书续期成功后先执行
+`nginx -t`，再热加载 Nginx，无需重启服务器。
+
 生产实际配置使用同目录的 `.example` 作为模板，不回填密钥。
