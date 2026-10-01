@@ -3651,3 +3651,10 @@
 - 自上次（8955444）以来上线的相关提交：
   - 5f82814 fix(external-access): update reusable Cloudflare policies
 
+## 2026-10-01 19:48 · api · 1998f9f
+
+- 包：`pms-api-20261001-1942.tar.gz`
+- 提交：1998f9f fix(data-sync): verify published updater artifacts
+- 自上次（5f82814）以来上线的相关提交：
+  - 2514480 fix(auth): accept Cloudflare Access OIDC state
+
