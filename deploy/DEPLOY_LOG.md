@@ -3869,3 +3869,12 @@
   - 0c953ab deploy: add incremental production publisher
   - 4c45aa8 fix(parking): map legacy owner name to room
 
+## 2026-10-02 05:29 · web · af3096f
+
+- 包：`pms-web-20261002-052831.tar.gz`
+- 提交：af3096f deploy: keep build logs out of package paths
+- 自上次（54daa78）以来上线的相关提交：
+  - e15cdd5 feat(gateway): productize managed intranet publishing
+  - 4c45aa8 fix(parking): map legacy owner name to room
+  - 1759e12 feat(version): show dated build versions across clients
+
