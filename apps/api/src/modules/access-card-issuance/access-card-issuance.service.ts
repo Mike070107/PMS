@@ -1024,7 +1024,7 @@ export class AccessCardIssuanceService {
 
   private async matchParkingRowsToPms(tenantId: number, rows: ParkingQuery['rows']) {
     const phones = Array.from(new Set(rows
-      .map((row) => parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', '手机', '电话']))
+      .map((row) => parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话']))
       .map((value) => normalizeParkingPhone(value))
       .filter((value): value is string => Boolean(value))));
     const rowRooms = rows.map((row) => parkingRoomAddress(parkingSnapshotValues(row.fields).room));
@@ -1124,7 +1124,7 @@ export class AccessCardIssuanceService {
     const buildingById = new Map(buildings.map((building) => [building.id, building]));
     const communityById = new Map(communities.map((community) => [community.id, community]));
     return rows.map((row) => {
-      const rawPhone = parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', '手机', '电话']);
+      const rawPhone = parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话']);
       const roomAddress = parkingRoomAddress(parkingSnapshotValues(row.fields).room);
       const matchedHouse = roomAddress ? roomHouseByKey.get(roomAddress.key) : undefined;
       const phoneUser = rawPhone ? byPhone.get(normalizeParkingPhone(rawPhone) ?? '') : undefined;
@@ -2256,16 +2256,17 @@ function parkingExternalOwnerId(fields: Record<string, string | number | boolean
 }
 
 function parkingSnapshotValues(fields: Record<string, string | number | boolean | null>): ParkingSnapshotValues {
-  const rawOwnerName = normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['ownername', 'username', 'pname', 'name', 'carname', 'customername', 'personname', '姓名', '车主', '住户']));
-  const rawRoom = normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['roomno', 'houseno', 'address', 'proom', 'roomnumber', 'addr', 'room', '房号', '地址']));
+  const rawOwnerName = normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['ownername', 'owner_name', 'username', 'pname', 'name', 'carname', 'customername', 'personname', '姓名', '车主', '住户']));
+  const rawRoom = normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['roomno', 'houseno', 'owneradd', 'owneraddress', 'address', 'proom', 'roomnumber', 'addr', 'room', '房号', '地址']));
   const roomFromName = parkingLegacyRoomFromName(rawOwnerName);
   return {
     plate: normalizeParkingText(parkingFieldValue(fields, ['p_plate', 'carno', 'carcode', 'carnumber', 'plateno', 'plate', 'license', '车牌'])),
     ownerId: parkingExternalOwnerId(fields),
     ownerName: roomFromName ? null : rawOwnerName,
-    phone: normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['mobile', 'telephone', 'phone', 'tel', 'ptel', '手机', '电话'])),
+    phone: normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['mobile', 'telephone', 'phone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话'])),
     room: rawRoom ?? roomFromName,
-    note: normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['remark', 'remarks', 'note', 'pnote', '备注'])),
+    // P_note 属于 Car_Issue 车辆记录，不应因存在 Owner__ 字段而被住户表联查逻辑遮掉。
+    note: normalizeParkingText(parkingFieldValue(fields, ['remark', 'remarks', 'note', 'pnote', '备注'])),
     plateChangedAt: normalizeParkingText(parkingExactFieldValue(fields, ['pmsmeta__platechangedat'])),
   };
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -240,6 +241,15 @@ namespace Pms.DataSyncAssistant
             if (marked != "原备注" + Environment.NewLine + "操作来源：PMS系统" ||
                 ParkingDatabase.AppendPmsSourceForTest(marked) != marked)
                 throw new InvalidOperationException("停车住户备注来源标识未保持幂等");
+
+            var duplicateRows = new List<ParkingSearchRow>
+            {
+                new ParkingSearchRow { database = "parking2", fields = new Dictionary<string, object> { { "P_ID", 41 }, { "P_plate", "鄂QQ3632" }, { "Owner_ID", 414 } } },
+                new ParkingSearchRow { database = "parking2", fields = new Dictionary<string, object> { { "P_ID", 41 }, { "Owner__owner_Tel", "13402178801" }, { "Owner__owner_Add", "228-31-702" } } },
+            };
+            var deduplicated = ParkingDatabase.DeduplicateRowsForTest(duplicateRows);
+            if (deduplicated.Count != 1 || !deduplicated[0].fields.ContainsKey("Owner__owner_Tel"))
+                throw new InvalidOperationException("停车重复车牌记录未正确合并");
 
             var json = "{\"taskId\":9,\"database\":\"parking2\",\"externalOwnerId\":\"668\",\"expected\":{\"name\":\"张三\",\"phone\":\"13800000000\",\"room\":\"228/2/102\",\"note\":\"地库91号\"},\"values\":{\"name\":\"张三\",\"phone\":\"13900000000\",\"room\":\"228/2/102\",\"note\":\"地库91号\"},\"fieldHints\":{\"name\":\"P_Name\",\"phone\":\"P_Tel\",\"room\":\"P_Room\",\"note\":\"P_note\"}}";
             var task = new JavaScriptSerializer().Deserialize<ParkingOwnerUpdateTask>(json);

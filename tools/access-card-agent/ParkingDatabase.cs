@@ -220,10 +220,74 @@ ORDER BY p.parameter_id;";
                             rows.Add(new ParkingSearchRow { database = database, fields = fields });
                         }
                     }
+                    // 住户表偶尔存在同一 UserID 的历史重复行，LEFT JOIN 会把同一辆车展开成多张完全相同的卡片。
+                    // 以旧库车辆主键去重，并合并重复行里各自不为空的住户字段，既不丢真实多卡记录，也不重复展示同一条车牌。
+                    rows = DeduplicateRows(rows);
                     AttachPlateChangeTimes(connection, rows);
                     return rows;
                 }
             }
+        }
+
+        private static List<ParkingSearchRow> DeduplicateRows(List<ParkingSearchRow> rows)
+        {
+            var result = new List<ParkingSearchRow>();
+            var byKey = new Dictionary<string, ParkingSearchRow>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in rows)
+            {
+                var key = RowIdentity(row);
+                ParkingSearchRow existing;
+                if (!byKey.TryGetValue(key, out existing))
+                {
+                    byKey[key] = row;
+                    result.Add(row);
+                    continue;
+                }
+
+                foreach (var pair in row.fields)
+                {
+                    object current;
+                    if (!existing.fields.TryGetValue(pair.Key, out current) ||
+                        current == null || String.IsNullOrWhiteSpace(Convert.ToString(current, CultureInfo.InvariantCulture)))
+                        existing.fields[pair.Key] = pair.Value;
+                }
+            }
+            return result;
+        }
+
+        internal static List<ParkingSearchRow> DeduplicateRowsForTest(List<ParkingSearchRow> rows)
+        {
+            return DeduplicateRows(rows);
+        }
+
+        private static string RowIdentity(ParkingSearchRow row)
+        {
+            object value;
+            if (TryField(row.fields, new[] { "p_id", "pid", "issue_id", "issueid", "car_id", "carid" }, out value) && value != null)
+            {
+                var id = Convert.ToString(value, CultureInfo.InvariantCulture);
+                if (!String.IsNullOrWhiteSpace(id) && !Regex.IsMatch(id, "^0+$"))
+                    return row.database + ":id:" + id.Trim();
+            }
+
+            var parts = new[] {
+                FieldForIdentity(row.fields, new[] { "p_plate", "pplate", "plate", "carno", "carcode", "carnumber" }),
+                FieldForIdentity(row.fields, new[] { "owner_id", "ownerid" }),
+                FieldForIdentity(row.fields, new[] { "start_time", "starttime", "sart_time", "p_start" }),
+                FieldForIdentity(row.fields, new[] { "end_time", "endtime", "enddate", "expiredate" }),
+                FieldForIdentity(row.fields, new[] { "p_effective", "peffective" }),
+                FieldForIdentity(row.fields, new[] { "p_download", "pdownload" }),
+                FieldForIdentity(row.fields, new[] { "car_id", "carid", "card_id", "cardid" }),
+            };
+            return row.database + ":snapshot:" + String.Join("|", parts);
+        }
+
+        private static string FieldForIdentity(Dictionary<string, object> fields, string[] aliases)
+        {
+            object value;
+            return TryField(fields, aliases, out value) && value != null
+                ? Convert.ToString(value, CultureInfo.InvariantCulture).Trim().ToUpperInvariant()
+                : "";
         }
 
         public static ParkingOwnerValues UpdateOwner(AgentConfig config, string password, ParkingOwnerUpdateTask task)

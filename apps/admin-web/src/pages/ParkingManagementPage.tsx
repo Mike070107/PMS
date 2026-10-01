@@ -588,9 +588,9 @@ function normalizeOwnerValues(values: accessCardIssuance.ParkingOwnerValues): ac
 
 const fieldAliases = {
   plate: ['carno', 'carcode', 'carnumber', 'plateno', 'plate', 'license', '车牌'],
-  owner: ['ownername', 'carname', 'username', 'customername', 'personname', '姓名', '车主', '住户'],
-  room: ['roomno', 'roomnumber', 'houseno', 'address', 'addr', 'room', '房号', '地址'],
-  phone: ['mobile', 'telephone', 'phone', 'tel', '手机', '电话'],
+  owner: ['ownername', 'owner_name', 'carname', 'username', 'customername', 'personname', '姓名', '车主', '住户'],
+  room: ['roomno', 'roomnumber', 'houseno', 'owneradd', 'owneraddress', 'address', 'addr', 'room', '房号', '地址'],
+  phone: ['mobile', 'telephone', 'phone', 'tel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话'],
   space: ['parkno', 'parkingno', 'spaceno', 'berth', 'garage', '车位', '地库'],
   expiry: ['enddate', 'expiredate', 'expirydate', 'validto', 'deadline', 'overdate', 'endtime', '到期', '有效期'],
   identity: ['carbrand', 'carbeand', 'vehicleidentity', 'caridentity', 'ownertype', 'usertype', 'relationtype', 'carlei', '车辆身份', '车辆类型', '车类', '身份', '性质'],
@@ -639,6 +639,19 @@ function ownerFieldValue(fields: ParkingQueryRow['fields'], aliases: readonly st
 
 function ownerFieldHint(fields: ParkingQueryRow['fields'], aliases: readonly string[]): string | null {
   return ownerFieldEntry(fields, aliases)?.[0] ?? null;
+}
+
+function vehicleFieldHint(fields: ParkingQueryRow['fields'], aliases: readonly string[]): string | null {
+  const entries = Object.entries(fields).filter(([, value]) => value !== null && String(value).trim() !== '');
+  for (const alias of aliases) {
+    const exact = entries.find(([key]) => normalizeFieldName(key) === normalizeFieldName(alias));
+    if (exact) return exact[0];
+  }
+  for (const alias of aliases) {
+    const partial = entries.find(([key]) => normalizeFieldName(key).includes(normalizeFieldName(alias)));
+    if (partial) return partial[0];
+  }
+  return null;
 }
 
 function plateValue(fields: ParkingQueryRow['fields']): string {
@@ -847,7 +860,8 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onViewProof, onE
   const expiry = fieldValue(row.fields, fieldAliases.expiry);
   const expiryView = parkingExpiryView(expiry);
   const identity = vehicleIdentity(row.fields);
-  const note = ownerFieldValue(row.fields, fieldAliases.note);
+  // P_note 属于 Car_Issue 车辆记录，不属于 Owner__ 住户字段。
+  const note = fieldValue(row.fields, fieldAliases.note);
   const garages = garageRows(row.database, row.fields);
   const ownerId = row.historyRef?.externalOwnerId || ownerFieldValue(row.fields, fieldAliases.ownerId) || fieldValue(row.fields, fieldAliases.ownerId);
   const database = row.database.toLowerCase() === 'parking1' ? 'parking1' : 'parking2';
@@ -870,7 +884,7 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onViewProof, onE
       name: ownerFieldHint(row.fields, fieldAliases.owner),
       phone: ownerFieldHint(row.fields, fieldAliases.phone),
       room: ownerFieldHint(row.fields, fieldAliases.room),
-      note: ownerFieldHint(row.fields, fieldAliases.note),
+      note: vehicleFieldHint(row.fields, fieldAliases.note),
     },
   } : null;
   return (
