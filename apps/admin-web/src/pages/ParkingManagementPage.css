@@ -153,9 +153,11 @@
 .parking-gateway-form label, .parking-gateway-secret label { margin-top: 8px; color: #344a61; font-weight: 650; }
 .parking-gateway-secret pre { margin: 0; padding: 11px 13px; overflow-x: auto; border: 1px solid #d9e1e9; border-radius: 8px; background: #f5f7fa; white-space: pre-wrap; overflow-wrap: anywhere; }
 .parking-resident-search { display: grid; grid-template-columns: minmax(280px,.75fr) minmax(360px,1.25fr); align-items: end; gap: 28px; }
+.parking-search-control { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: stretch; gap: 10px; min-width: 0; }
+.parking-search-control .ant-input-affix-wrapper { min-width: 0; min-height: 48px; border-radius: 10px; }
+.parking-search-control .ant-btn { min-width: 76px; min-height: 48px; border-radius: 10px; }
 .parking-section-kicker { display: block; margin-bottom: 4px; color: #31558a; font-size: 12px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
 .parking-resident-search h3, .parking-panel-heading h3 { margin: 0 0 2px; color: #223750; }
-.parking-resident-search .ant-input-affix-wrapper { min-height: 48px; }
 .parking-household-results { display: grid; gap: 6px; margin-top: 16px; }
 .parking-household-option { width: 100%; min-height: 62px; display: grid; grid-template-columns: 38px minmax(190px,.9fr) minmax(145px,.55fr) minmax(280px,1.2fr); align-items: center; gap: 10px; padding: 8px 12px; color: #2f4054; text-align: left; border: 1px solid #e0e6ed; border-radius: 10px; background: #f8fafc; cursor: pointer; transition: border-color .2s ease, background .2s ease, box-shadow .2s ease; }
 .parking-household-option:hover, .parking-household-option:focus-visible { border-color: #8ba6cc; background: #f4f7fb; box-shadow: 0 0 0 3px rgba(49,85,138,.1); outline: none; }

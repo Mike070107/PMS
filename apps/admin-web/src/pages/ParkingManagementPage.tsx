@@ -227,7 +227,6 @@ export default function ParkingManagementPage({
       let task = await accessCardIssuance.createParkingOwnerUpdate({
         database: editingLegacyOwner.database,
         externalOwnerId: editingLegacyOwner.externalOwnerId,
-        plate: editingLegacyOwner.plate,
         pmsUserId: editingLegacyOwner.pmsUserId,
         idempotencyKey: createIdempotencyKey(),
         expected: editingLegacyOwner.values,
@@ -425,17 +424,20 @@ export default function ParkingManagementPage({
             <Title level={3}>查找房号、住户或车牌</Title>
             <Text type="secondary">房号可输入 6/502 或 228/6/502；也支持住户姓名、7 位以上电话、完整车牌或至少 4 位车牌尾号。</Text>
           </div>
-          <Input.Search
-            value={term}
-            disabled={!canQuery}
-            loading={searching}
-            enterButton="查询"
-            prefix={<SearchOutlined />}
-            placeholder={canQuery ? '输入房号、住户、电话或车牌' : '升级并连接网关后开放查询'}
-            aria-label="查找房号、住户、电话或车牌"
-            onChange={(event) => setTerm(event.target.value)}
-            onSearch={() => void searchParking()}
-          />
+          <div className="parking-search-control">
+            <Input
+              value={term}
+              disabled={!canQuery}
+              prefix={<SearchOutlined />}
+              placeholder={canQuery ? '输入房号、住户、电话或车牌' : '升级并连接网关后开放查询'}
+              aria-label="查找房号、住户、电话或车牌"
+              onChange={(event) => setTerm(event.target.value)}
+              onPressEnter={() => void searchParking()}
+            />
+            <Button type="primary" loading={searching} disabled={!canQuery} onClick={() => void searchParking()}>
+              查询
+            </Button>
+          </div>
         </div>
         {searching ? (
           <div className="parking-query-loading"><Spin /><span>正在查询一期、二期停车数据库…</span></div>
