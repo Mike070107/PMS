@@ -3901,3 +3901,11 @@
 - 自上次（fc5706d）以来上线的相关提交：
   - fbee333 feat(gateway): secure client pairing experience
 
+## 2026-10-02 06:15 · web · fbee333
+
+- 包：`pms-web-20261002-061414.tar.gz`
+- 提交：fbee333 feat(gateway): secure client pairing experience
+- ⚠ 标记时工作区有未提交改动（--allow-dirty）：M apps/admin-web/tsconfig.tsbuildinfo
+- 自上次（af3096f）以来上线的相关提交：
+  - fbee333 feat(gateway): secure client pairing experience
+
