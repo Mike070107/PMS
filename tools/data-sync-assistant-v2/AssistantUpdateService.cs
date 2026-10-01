@@ -212,7 +212,16 @@ namespace Pms.DataSyncAssistant
             try
             {
                 var process = Process.GetProcessById(processId);
-                if (!process.WaitForExit(10000)) throw new InvalidOperationException("旧助手窗口没有在 10 秒内退出");
+                if (process.WaitForExit(10000)) return;
+                // The old UI can be stuck in a dispatcher/tray callback. This PID
+                // was supplied by the old assistant itself, so it is safe for the
+                // elevated updater to request a graceful close and then terminate
+                // only that process before replacing the locked executable.
+                try { process.CloseMainWindow(); } catch { }
+                if (process.WaitForExit(3000)) return;
+                try { process.Kill(); } catch { }
+                if (!process.WaitForExit(5000))
+                    throw new InvalidOperationException("旧助手窗口无法退出，无法完成替换");
             }
             catch (ArgumentException) { }
         }

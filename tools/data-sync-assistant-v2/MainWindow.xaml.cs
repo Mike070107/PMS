@@ -160,6 +160,10 @@ namespace Pms.DataSyncAssistant
                         // Close the WPF window and terminate this process explicitly. The
                         // elevated updater waits for this PID before touching the EXE.
                         Application.Current.Shutdown();
+                        // WPF may keep the dispatcher alive because of a tray/timer
+                        // callback. The updater owns this exact PID, so release the
+                        // executable lock immediately after scheduling shutdown.
+                        Environment.Exit(0);
                     }
                     catch (Exception exception)
                     {
