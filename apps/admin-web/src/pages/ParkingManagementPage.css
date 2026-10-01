@@ -75,8 +75,11 @@
 .parking-garage-row + .parking-garage-row { border-top: 1px solid #edf0f3; }
 .parking-garage-row > span { color: #6b7b8d; }
 .parking-garage-row .ant-tag { width: max-content; margin: 0; }
-.parking-operation-actions { grid-column: 1 / -1; padding-top: 6px; border-top: 1px solid #edf0f3; }
-.parking-operation-actions .ant-btn { font-size: 12px; }
+.parking-operation-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; padding-top: 12px; border-top: 1px solid #edf0f3; }
+.parking-operation-actions .ant-btn { flex: 1 1 145px; min-height: 48px; padding-inline: 18px; border-color: #b9c9dc; border-radius: 10px; background: #f8fbff; box-shadow: 0 2px 6px rgba(36,63,105,.06); font-size: 15px; font-weight: 650; }
+.parking-operation-actions .ant-btn .anticon { font-size: 17px; }
+.parking-operation-actions .ant-btn-primary { border-color: #31558a; background: #31558a; box-shadow: 0 4px 10px rgba(49,85,138,.2); }
+.parking-operation-actions .ant-btn-dangerous:not(.ant-btn-primary) { border-color: #ef9a9a; background: #fff8f7; }
 .parking-add-vehicle-button { margin-top: 14px; }
 .parking-operation-form { display: grid; gap: 14px; margin-top: 14px; }
 .parking-operation-form > label { display: grid; gap: 6px; color: #334e68; font-weight: 600; }
@@ -354,14 +357,12 @@
   .parking-history-columns.has-vehicle { grid-template-columns: minmax(0,1fr); }
   .parking-history-list dl > div { grid-template-columns: minmax(0,1fr); }
   .parking-query-card .parking-license-plate { width: min(100%, 238px); }
-  .parking-query-details { grid-column: 1; }
-  .parking-query-details dl { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .parking-owner-compare { grid-template-columns: minmax(0,1fr); }
   .parking-owner-panel dl { grid-template-columns: minmax(0,1fr); }
   .parking-owner-editor-context { grid-template-columns: minmax(0,1fr); }
   .parking-owner-editor-copy { align-items: stretch; flex-direction: column; }
   .parking-owner-editor-copy .ant-btn { min-height: 44px; }
-  .parking-family-actions { align-items: stretch; flex-direction: column; }
+  .parking-family-actions { align-items: stretch; }
   .parking-household-option { grid-template-columns: 36px minmax(0,1fr); align-items: start; }
   .parking-house-resident, .parking-house-assets { grid-column: 2; }
   .parking-house-assets > span { flex-wrap: wrap; white-space: normal; }

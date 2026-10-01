@@ -892,12 +892,12 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onViewProof, onE
           onEdit={row.pmsMatch ? () => onEditPms({ id: row.pmsMatch!.userId, name: row.pmsMatch!.name, phone: row.pmsMatch!.phone, status: row.pmsMatch!.status || 'active', source: row.pmsMatch!.source ?? null, contactNote: row.pmsMatch!.contactNote, houseId: row.pmsMatch!.houseId, house: row.pmsMatch!.house }) : undefined} />
       </div>
       <div className="parking-operation-actions" aria-label="停车业务操作">
-        <Button size="small" disabled={!canWriteLocal} icon={<CalendarOutlined />} onClick={() => onOperation('renew_vehicle')}>续期收费</Button>
-        <Button size="small" disabled={!canWriteLocal} icon={<SwapOutlined />} onClick={() => onOperation('change_plate')}>变更车牌</Button>
-        <Button size="small" disabled={!canWriteLocal} icon={<UserSwitchOutlined />} onClick={() => onOperation('rebind_owner')}>变更绑定用户</Button>
-        <Button size="small" disabled={!canWriteLocal} icon={<SafetyCertificateOutlined />} onClick={() => onOperation('update_garages')}>调整车库授权</Button>
-        <Button size="small" disabled={!canWriteLocal} icon={<CloudUploadOutlined />} onClick={() => onOperation('download_vehicle')}>下发设备</Button>
-        <Button size="small" danger disabled={!canWriteLocal} icon={<StopOutlined />} onClick={() => onOperation('delete_vehicle')}>注销车辆</Button>
+        <Button type="primary" disabled={!canWriteLocal} icon={<CalendarOutlined />} onClick={() => onOperation('renew_vehicle')}>续期收费</Button>
+        <Button disabled={!canWriteLocal} icon={<SwapOutlined />} onClick={() => onOperation('change_plate')}>变更车牌</Button>
+        <Button disabled={!canWriteLocal} icon={<UserSwitchOutlined />} onClick={() => onOperation('rebind_owner')}>变更绑定用户</Button>
+        <Button disabled={!canWriteLocal} icon={<SafetyCertificateOutlined />} onClick={() => onOperation('update_garages')}>调整车库授权</Button>
+        <Button disabled={!canWriteLocal} icon={<CloudUploadOutlined />} onClick={() => onOperation('download_vehicle')}>下发设备</Button>
+        <Button danger disabled={!canWriteLocal} icon={<StopOutlined />} onClick={() => onOperation('delete_vehicle')}>注销车辆</Button>
       </div>
     </article>
   );
