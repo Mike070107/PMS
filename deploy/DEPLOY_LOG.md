@@ -3802,3 +3802,14 @@
   - 066dac8 feat(auth): harden browser QR login and application binding
   - fed8b50 fix(parking-owner): update Car_Issue note through owner link
 
+## 2026-10-02 00:45 · web · 55c80c8
+
+- 包：`pms-web-20261002-0035.tar.gz`
+- 提交：55c80c8 deploy: api → 94857ef
+- 自上次（3bf1366）以来上线的相关提交：
+  - 845e625 fix(external-access): tighten session lifetime and cache controls
+  - 066dac8 feat(auth): harden browser QR login and application binding
+  - 51e9510 fix(parking): separate search input and button
+  - fed8b50 fix(parking-owner): update Car_Issue note through owner link
+  - 3596148 fix(parking-preview): query duplicate plate directly
+
