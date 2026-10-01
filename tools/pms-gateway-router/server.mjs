@@ -3,7 +3,7 @@ import net from 'node:net';
 
 const listenHost = process.env.GATEWAY_ROUTER_HOST || '127.0.0.1';
 const listenPort = Number(process.env.GATEWAY_ROUTER_PORT || 4190);
-const apiBase = (process.env.PMS_API_INTERNAL_URL || 'http://127.0.0.1:3000/api/v1').replace(/\/$/, '');
+const apiBase = (process.env.PMS_API_INTERNAL_URL || 'http://127.0.0.1:4000/api/v1').replace(/\/$/, '');
 const publicApiBase = (process.env.PMS_PUBLIC_API_URL || 'https://prsznh.cn/api/v1').replace(/\/$/, '');
 const sessionCookie = '__Secure-pms_gateway';
 
