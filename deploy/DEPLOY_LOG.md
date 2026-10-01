@@ -3776,3 +3776,11 @@
   - 009e801 fix: protect domestic gateway from Cloudflare resync
   - bc7c561 fix: expose OIDC user information to Cloudflare
 
+## 2026-10-01 23:18 · api · 3bf1366
+
+- 包：`pms-api-20261001-2313.tar.gz`
+- 提交：3bf1366 deploy: api → 96709b4
+- 自上次（34f0da9）以来上线的相关提交：
+  - 616a213 fix: protect domestic gateway from Cloudflare resync
+  - 3bea7e7 fix: expose OIDC user information to Cloudflare
+
