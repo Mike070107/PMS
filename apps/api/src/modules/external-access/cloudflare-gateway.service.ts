@@ -91,19 +91,29 @@ export class CloudflareGatewayService {
         },
       ],
     };
-    const policyResult = existingPolicyId
-      ? await this.cf<any>(
-          `accounts/${cfg.accountId}/access/apps/${appId}/policies/${existingPolicyId}`,
-          'PUT',
-          policyBody,
-          cfg.token,
-        )
-      : await this.cf<any>(
-          `accounts/${cfg.accountId}/access/apps/${appId}/policies`,
-          'POST',
-          policyBody,
-          cfg.token,
-        );
+    let policyResult: any;
+    if (!existingPolicyId) {
+      policyResult = await this.cf<any>(
+        `accounts/${cfg.accountId}/access/apps/${appId}/policies`,
+        'POST',
+        policyBody,
+        cfg.token,
+      );
+    } else {
+      // Cloudflare 的应用策略列表同时返回“应用专属策略”和“可复用策略”。
+      // 可复用策略不能通过 /access/apps/{app}/policies/{id} 更新，必须走账号级接口。
+      const reusablePolicies = await this.cf<Array<{ id?: string }>>(
+        `accounts/${cfg.accountId}/access/policies?per_page=100`,
+        'GET',
+        undefined,
+        cfg.token,
+      );
+      const isReusable = reusablePolicies.some((policy) => policy.id === existingPolicyId);
+      const policyPath = isReusable
+        ? `accounts/${cfg.accountId}/access/policies/${existingPolicyId}`
+        : `accounts/${cfg.accountId}/access/apps/${appId}/policies/${existingPolicyId}`;
+      policyResult = await this.cf<any>(policyPath, 'PUT', policyBody, cfg.token);
+    }
     return { appId, policyId: String(policyResult.id || existingPolicyId || '') };
   }
 
