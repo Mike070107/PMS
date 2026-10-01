@@ -3610,3 +3610,36 @@
   - 139752b feat(parking): connect live legacy database search
   - e114eb3 feat(parking): add management page and local gateway
 
+## 2026-10-01 18:58 · miniapp-owner · d8e40bb
+
+- 包：`1.0.20261001a 体验版`
+- 提交：d8e40bb deploy: web → 8955444
+- 说明：上传业主端体验版，待微信后台选为体验版
+- 自上次（b1045b6）以来上线的相关提交：
+  - cd2be96 feat: complete parking operations and assistant updates
+  - a6a87ff fix: clarify system alert notifications
+  - 4de9227 feat(access): publish intranet apps through Cloudflare
+  - 54d3c78 feat(parking): update legacy owner records through assistant
+  - 10d0b07 feat(access): verify card permissions and surface assistant activity
+  - 34fbc88 feat(parking): 记录用户与车牌变更历史
+  - cb37da1 feat(access-cards): block previously issued cards
+  - e1be65f fix(parking): resolve legacy owners and separate authorization status
+  - e6866b2 feat(parking): add Deliyun read-only connection status
+  - c63c0b3 feat(parking): decode legacy authorization and collect family proof
+  - ad00c72 feat(parking): join legacy owners and match PMS users
+  - 139752b feat(parking): connect live legacy database search
+  - e114eb3 feat(parking): add management page and local gateway
+  - b8015bf feat(access-cards): add local-agent issuance workflow
+  - 313fa81 feat(experiences): replace markdown with rich documents
+  - 02ddcf4 feat: prioritize same-room repair history
+  - 6a1045c feat: show building repair history on staff orders
+  - a80cdd0 refactor: move finance module out of PMS
+  - 557172d feat: allow staff to correct unaccepted work orders
+  - 1844d6c feat: add markdown repair experience editor
+  - b1d47c1 fix: keep AI material suggestions advisory only
+  - abf3b67 fix: preserve precise voice repair details
+  - 4ebaf61 feat(finance): add mobile accounting workspace
+  - 5fb6863 feat(finance): add invoice recognition and verification imports
+  - debf2cf feat(finance): redesign staff miniapp workspace
+  - a762c64 feat: add isolated finance ledger and invoice inbox
+
