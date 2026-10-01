@@ -3535,3 +3535,36 @@
   - 29f7103 fix(parking): 默认收起历史记录
   - 34fbc88 feat(parking): 记录用户与车牌变更历史
 
+## 2026-09-30 20:42 · api · 10d0b07
+
+- 包：`pms-api-20260930-2029.tar.gz`
+- 提交：10d0b07 feat(access): verify card permissions and surface assistant activity
+- 说明：生产健康检查通过；门禁权限任务路由已注册并正确鉴权
+- 自上次（29f7103）以来上线的相关提交：
+  - 10d0b07 feat(access): verify card permissions and surface assistant activity
+
+## 2026-09-30 20:43 · web · 10d0b07
+
+- 包：`pms-web-20260930-2029.tar.gz`
+- 提交：10d0b07 feat(access): verify card permissions and surface assistant activity
+- 说明：公网访问 200；生产资源已核对到 AccessCardIssuancePage 新构建
+- 自上次（29f7103）以来上线的相关提交：
+  - 10d0b07 feat(access): verify card permissions and surface assistant activity
+
+## 2026-10-01 17:44 · api · f67e00f
+
+- 包：`pms-api-20261001-1735.tar.gz`
+- 提交：f67e00f test(access): include OIDC and tunnel route coverage
+- 说明：通用内网应用发布与 Cloudflare OIDC
+- 自上次（10d0b07）以来上线的相关提交：
+  - f67e00f test(access): include OIDC and tunnel route coverage
+  - f60cec9 feat(access): publish intranet apps through Cloudflare
+
+## 2026-10-01 17:45 · web · f60cec9
+
+- 包：`pms-web-20261001-1735.tar.gz`
+- 提交：f60cec9 feat(access): publish intranet apps through Cloudflare
+- 说明：内网应用发布管理页面
+- 自上次（10d0b07）以来上线的相关提交：
+  - f60cec9 feat(access): publish intranet apps through Cloudflare
+

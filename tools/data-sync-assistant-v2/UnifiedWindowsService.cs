@@ -53,9 +53,19 @@ namespace Pms.DataSyncAssistant
                 _runtimes.Add(runtime);
                 runtime.Start();
             }
+            var nextUpdateCheck = DateTime.UtcNow.AddSeconds(45);
             while (!_stop.WaitOne(0))
             {
                 WriteHealth(CheckConnections(store, configuration, _runtimes));
+                if (DateTime.UtcNow >= nextUpdateCheck)
+                {
+                    nextUpdateCheck = DateTime.UtcNow.AddHours(6);
+                    ThreadPool.QueueUserWorkItem(delegate
+                    {
+                        try { UpdateManager.CheckAndInstall(true); }
+                        catch { }
+                    });
+                }
                 if (_stop.WaitOne(TimeSpan.FromSeconds(30))) break;
             }
             foreach (var runtime in _runtimes) runtime.Stop(10000);
@@ -151,6 +161,34 @@ namespace Pms.DataSyncAssistant
                 Arguments = "--tray",
                 UseShellExecute = true
             });
+        }
+
+        public static void SwitchServiceExecutable(string executable)
+        {
+            if (String.IsNullOrWhiteSpace(executable) || !File.Exists(executable))
+                throw new InvalidOperationException("新版程序文件不存在");
+            var command = "\\\"" + executable + "\\\" --service";
+            RunSc("stop \"" + ServiceName + "\"");
+            try
+            {
+                using (var service = new ServiceController(ServiceName))
+                {
+                    service.Refresh();
+                    if (service.Status != ServiceControllerStatus.Stopped)
+                        service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(25));
+                }
+            }
+            catch { }
+            RequireSc("config \"" + ServiceName + "\" binPath= \"" + command + "\" start= auto DisplayName= \"PMS 数据同步助手\"");
+            RequireSc("start \"" + ServiceName + "\"");
+            using (var service = new ServiceController(ServiceName))
+                service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(25));
+        }
+
+        public static void InstallTrayStartupForCurrentUser(string executable)
+        {
+            if (String.IsNullOrWhiteSpace(executable) || !File.Exists(executable)) return;
+            InstallTrayStartup(executable);
         }
 
         public static void Uninstall()

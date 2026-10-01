@@ -15,6 +15,7 @@ namespace Pms.DataSyncAssistant
         private readonly Forms.Timer _timer;
         private bool _exiting;
         private bool _disposed;
+        private bool _handoffStarted;
 
         public TrayApplication()
         {
@@ -40,11 +41,34 @@ namespace Pms.DataSyncAssistant
 
         private void Refresh()
         {
+            if (TryHandoffToInstalledVersion()) return;
             var service = ServiceState();
             var detail = HealthState();
             var text = "PMS 数据同步助手：" + service;
             if (!String.IsNullOrWhiteSpace(detail)) text += "，" + detail;
             _icon.Text = text.Length > 63 ? text.Substring(0, 63) : text;
+        }
+
+        private bool TryHandoffToInstalledVersion()
+        {
+            if (_handoffStarted) return true;
+            var state = UpdateManager.GetState();
+            if (state == null || state.Phase != "installed" || String.IsNullOrWhiteSpace(state.InstalledExecutable) ||
+                !UpdateManager.IsVersionAtLeast(state.InstalledVersion, UpdateManager.CurrentVersion) ||
+                !File.Exists(state.InstalledExecutable)) return false;
+            var current = Path.GetFullPath(Process.GetCurrentProcess().MainModule.FileName);
+            var installed = Path.GetFullPath(state.InstalledExecutable);
+            UnifiedServiceManager.InstallTrayStartupForCurrentUser(installed);
+            if (String.Equals(current, installed, StringComparison.OrdinalIgnoreCase)) return false;
+            _handoffStarted = true;
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = installed,
+                Arguments = "--tray-after " + Process.GetCurrentProcess().Id,
+                UseShellExecute = true
+            });
+            ExitTrayOnly();
+            return true;
         }
 
         private static string ServiceState()
