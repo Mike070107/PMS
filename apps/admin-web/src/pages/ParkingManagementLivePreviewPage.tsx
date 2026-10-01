@@ -4,14 +4,14 @@ import ParkingManagementPage from './ParkingManagementPage';
 export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgrade' | 'ready' }) {
   const readiness: AccessCardReadiness = {
     simulationEnabled: false,
-    features: { cardWrite: false, legacyDbWrite: false, accessDbWrite: false, parkingDbRead: true, parkingDbWrite: false, controllerUpload: false },
+    features: { cardWrite: false, legacyDbWrite: false, accessDbWrite: false, parkingDbRead: true, parkingDbWrite: mode === 'ready', controllerUpload: false },
     agents: [{
       id: 'parking_gateway-preview',
       kind: 'parking_gateway',
       name: '枫桦景苑停车系统网关',
-      version: mode === 'ready' ? '0.4.1' : '0.4.0',
+      version: mode === 'ready' ? '2.3.0' : '0.4.0',
       status: 'online',
-      capabilities: { parkingDbRead: true, parkingDbWrite: false },
+      capabilities: { parkingDbRead: true, parkingDbWrite: mode === 'ready' },
       lastSeenAt: new Date().toISOString(),
     }],
   };
@@ -25,6 +25,7 @@ export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgr
       Owner__Room_No: '228/5/301',
       Owner__User_Name: '张某某',
       Owner__Mobile: '13800006421',
+      Owner__P_note: '白天联系本人',
       P_Spaces: 'DK23',
       End_Time: '2026-12-31 23:59:59',
       Car_Zt: 0,
@@ -46,7 +47,7 @@ export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgr
     database: 'parking2',
     fields: {
       P_id: 9016, P_plate: '沪B67890', Owner_ID: 1264, Car_Brand: '亲情车',
-      Owner__Room_No: '228/5/301', Owner__User_Name: '张某某', Owner__Mobile: '13800006421',
+      Owner__Room_No: '228/5/301', Owner__User_Name: '张某某', Owner__Mobile: '13800006421', Owner__P_note: '白天联系本人',
       End_Time: '2026-12-31 23:59:59', P_Effective: '000000000000001010101', P_Download: '000000000000001010101',
     },
     historyRef: { database: 'parking2', sourceRecordId: '9016', externalOwnerId: '1264', plate: '沪B67890', pmsUserId: 1264 },

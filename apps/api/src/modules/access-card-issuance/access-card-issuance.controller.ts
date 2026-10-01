@@ -29,8 +29,10 @@ import {
   LegacyCardCheckReportDto,
   LegacyHistoryReportDto,
   CreateParkingQueryDto,
+  CreateParkingOwnerUpdateDto,
   CreateParkingProofUploadDto,
   ParkingQueryReportDto,
+  ParkingOwnerUpdateReportDto,
   ParkingHistoryQueryDto,
 } from './dto';
 import { ParkingProofService } from './parking-proof.service';
@@ -66,6 +68,18 @@ export class AccessCardIssuanceController {
   @RequirePermission('business', 'view')
   getParkingQuery(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.service.getParkingQuery(id, user);
+  }
+
+  @Post('parking/owners/updates')
+  @RequirePermission('business', 'edit')
+  createParkingOwnerUpdate(@Body() dto: CreateParkingOwnerUpdateDto, @CurrentUser() user: AuthUser) {
+    return this.service.createParkingOwnerUpdate(dto, user);
+  }
+
+  @Get('parking/owners/updates/:id')
+  @RequirePermission('business', 'view')
+  getParkingOwnerUpdate(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.getParkingOwnerUpdate(id, user);
   }
 
   @Get('parking/history')
@@ -258,5 +272,22 @@ export class AccessCardAgentController {
     @Body() dto: ParkingQueryReportDto,
   ) {
     return this.service.reportParkingQuery(agentKey, bearerToken(authorization), dto);
+  }
+
+  @Post('parking/owners/updates/claim')
+  claimParkingOwnerUpdate(
+    @Headers('x-agent-id') agentKey: string,
+    @Headers('authorization') authorization: string,
+  ) {
+    return this.service.claimParkingOwnerUpdate(agentKey, bearerToken(authorization));
+  }
+
+  @Post('parking/owners/updates/report')
+  reportParkingOwnerUpdate(
+    @Headers('x-agent-id') agentKey: string,
+    @Headers('authorization') authorization: string,
+    @Body() dto: ParkingOwnerUpdateReportDto,
+  ) {
+    return this.service.reportParkingOwnerUpdate(agentKey, bearerToken(authorization), dto);
   }
 }

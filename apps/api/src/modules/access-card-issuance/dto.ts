@@ -273,6 +273,102 @@ export class CreateParkingQueryDto {
   term: string;
 }
 
+export class ParkingOwnerValuesDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  name?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  phone?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  room?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  note?: string | null;
+}
+
+export class ParkingOwnerFieldHintsDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  name?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  phone?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  room?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  note?: string | null;
+}
+
+export class CreateParkingOwnerUpdateDto {
+  @IsIn(['parking1', 'parking2'])
+  database: 'parking1' | 'parking2';
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  externalOwnerId: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  pmsUserId?: number | null;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(80)
+  idempotencyKey: string;
+
+  @ValidateNested()
+  @Type(() => ParkingOwnerValuesDto)
+  expected: ParkingOwnerValuesDto;
+
+  @ValidateNested()
+  @Type(() => ParkingOwnerValuesDto)
+  values: ParkingOwnerValuesDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ParkingOwnerFieldHintsDto)
+  fieldHints?: ParkingOwnerFieldHintsDto;
+}
+
+export class ParkingOwnerUpdateReportDto {
+  @Type(() => Number)
+  @IsInt()
+  taskId: number;
+
+  @IsIn(['success', 'retry', 'failed'])
+  result: 'success' | 'retry' | 'failed';
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ParkingOwnerValuesDto)
+  values?: ParkingOwnerValuesDto;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  errorMessage?: string;
+}
+
 export class CreateParkingProofUploadDto {
   @IsString()
   @MinLength(5)

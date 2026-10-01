@@ -21,6 +21,7 @@ import {
   Community,
   House,
   ParkingQuery,
+  ParkingOwnerUpdate,
   ParkingHistory,
   ParkingRecordSnapshot,
   User,
@@ -44,10 +45,12 @@ import {
   AgentReportDto,
   CardPreflightDto,
   CreateParkingQueryDto,
+  CreateParkingOwnerUpdateDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
   LegacyHistoryReportDto,
   ParkingQueryReportDto,
+  ParkingOwnerUpdateReportDto,
   ParkingHistoryQueryDto,
 } from './dto';
 import { agentTokenMatches, issueAgentSecret } from './agent-auth';
@@ -60,6 +63,13 @@ import type {
 } from '../../entities/access-card-legacy-snapshot.entity';
 import type { AccessPermissionReportDto } from './dto';
 import { sortAccessCardHistoryNewestFirst, verifiedHistoryAccessStatus } from './access-card-history.util';
+import {
+  normalizeParkingOwnerFieldHints,
+  normalizeParkingOwnerValues,
+  parkingOwnerJoinedFieldValue,
+  parkingOwnerChanges,
+  supportsParkingOwnerUpdates,
+} from './parking-owner-update.util';
 
 type HouseContext = {
   house: House;
@@ -92,6 +102,8 @@ export class AccessCardIssuanceService {
     private readonly communityRepo: Repository<Community>,
     @InjectRepository(ParkingQuery)
     private readonly parkingQueryRepo: Repository<ParkingQuery>,
+    @InjectRepository(ParkingOwnerUpdate)
+    private readonly parkingOwnerUpdateRepo: Repository<ParkingOwnerUpdate>,
     @InjectRepository(ParkingHistory)
     private readonly parkingHistoryRepo: Repository<ParkingHistory>,
     @InjectRepository(User)
@@ -246,6 +258,58 @@ export class AccessCardIssuanceService {
     return this.parkingQueryResponse(query);
   }
 
+  async createParkingOwnerUpdate(dto: CreateParkingOwnerUpdateDto, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const idempotencyKey = dto.idempotencyKey.trim();
+    const existing = await this.parkingOwnerUpdateRepo.findOne({ where: { tenantId, idempotencyKey } });
+    if (existing) return this.parkingOwnerUpdateResponse(existing);
+
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
+    const gateway = orderAgentsByAvailability(agents).find((agent) =>
+      effectiveAgentStatus(agent) === 'online' &&
+      agent.capabilities?.parkingDbWrite === true &&
+      supportsParkingOwnerUpdates(agent.version));
+    if (!gateway) {
+      throw new ServiceUnavailableException('停车网关尚未就绪：请确认 Windows 数据同步助手已升级到 2.3.0 且旧库账号具备写入权限');
+    }
+
+    const expectedValues = normalizeParkingOwnerValues(dto.expected);
+    const requestedValues = normalizeParkingOwnerValues(dto.values);
+    const changes = parkingOwnerChanges(expectedValues, requestedValues);
+    if (!changes.length) throw new BadRequestException('住户资料没有发生变化');
+    if (!dto.externalOwnerId.trim()) throw new BadRequestException('旧停车系统没有可用的住户编号，无法安全更新');
+
+    const now = new Date();
+    const task = this.parkingOwnerUpdateRepo.create({
+      tenantId,
+      database: dto.database,
+      externalOwnerId: dto.externalOwnerId.trim(),
+      pmsUserId: dto.pmsUserId ?? null,
+      idempotencyKey,
+      expectedValues,
+      requestedValues,
+      fieldHints: normalizeParkingOwnerFieldHints(dto.fieldHints),
+      resultValues: null,
+      status: 'pending',
+      attempt: 0,
+      requestedAt: now,
+      completedAt: null,
+      leaseAgentKey: null,
+      leaseExpiresAt: null,
+      lastError: null,
+      createdBy: user.id,
+      updatedBy: user.id,
+    });
+    return this.parkingOwnerUpdateResponse(await this.parkingOwnerUpdateRepo.save(task));
+  }
+
+  async getParkingOwnerUpdate(id: number, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const task = await this.parkingOwnerUpdateRepo.findOne({ where: { id, tenantId } });
+    if (!task) throw new NotFoundException('住户资料更新任务不存在');
+    return this.parkingOwnerUpdateResponse(task);
+  }
+
   async getParkingHistory(dto: ParkingHistoryQueryDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const pmsUserId = dto.pmsUserId ? Number(dto.pmsUserId) : null;
@@ -391,6 +455,117 @@ export class AccessCardIssuanceService {
     return { ok: true };
   }
 
+  async claimParkingOwnerUpdate(agentKey: string, token: string) {
+    const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind !== 'parking_gateway') throw new ForbiddenException('当前代理不是停车系统网关');
+    if (!supportsParkingOwnerUpdates(agent.version) || agent.capabilities?.parkingDbWrite !== true) return { task: null };
+
+    const task = await this.parkingOwnerUpdateRepo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(ParkingOwnerUpdate);
+      const now = new Date();
+      const update = await repo.createQueryBuilder('task')
+        .where('task.tenant_id = :tenantId', { tenantId: agent.tenantId })
+        .andWhere("(task.status = 'pending' OR (task.status = 'running' AND task.lease_expires_at < :now))", { now })
+        .orderBy('task.created_at', 'ASC')
+        .setLock('pessimistic_write')
+        .setOnLocked('skip_locked')
+        .getOne();
+      if (!update) return null;
+      if (update.attempt >= 3) {
+        update.status = 'failed';
+        update.lastError = update.lastError || '停车网关连续更新失败，请重新保存';
+        update.completedAt = now;
+        update.leaseAgentKey = null;
+        update.leaseExpiresAt = null;
+        await repo.save(update);
+        return null;
+      }
+      update.status = 'running';
+      update.attempt += 1;
+      update.leaseAgentKey = agent.agentKey;
+      update.leaseExpiresAt = new Date(now.getTime() + 90_000);
+      update.updatedBy = null;
+      await repo.save(update);
+      return {
+        taskId: update.id,
+        database: update.database,
+        externalOwnerId: update.externalOwnerId,
+        expected: update.expectedValues,
+        values: update.requestedValues,
+        fieldHints: update.fieldHints,
+      };
+    });
+    return { task };
+  }
+
+  async reportParkingOwnerUpdate(agentKey: string, token: string, dto: ParkingOwnerUpdateReportDto) {
+    const agent = await this.authenticateAgent(agentKey, token);
+    if (agent.kind !== 'parking_gateway') throw new ForbiddenException('当前代理不是停车系统网关');
+    await this.parkingOwnerUpdateRepo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(ParkingOwnerUpdate);
+      const task = await repo.findOne({ where: { id: dto.taskId, tenantId: agent.tenantId } });
+      if (!task) throw new NotFoundException('住户资料更新任务不存在');
+      if (task.status !== 'running' || task.leaseAgentKey !== agent.agentKey) {
+        throw new BadRequestException('住户资料更新任务不属于当前网关或已经结束');
+      }
+
+      const now = new Date();
+      if (dto.result === 'success') {
+        const resultValues = normalizeParkingOwnerValues(dto.values);
+        const changes = parkingOwnerChanges(task.expectedValues, resultValues);
+        if (!changes.length) throw new BadRequestException('停车网关未返回已更新的住户资料');
+        task.status = 'completed';
+        task.resultValues = resultValues;
+        task.lastError = null;
+        task.completedAt = now;
+
+        const labels = changes.map((item) => item.label).join('、');
+        await manager.getRepository(ParkingHistory).save(manager.getRepository(ParkingHistory).create({
+          tenantId: task.tenantId,
+          eventType: 'owner_info_update',
+          source: 'pms',
+          database: task.database,
+          sourceRecordId: null,
+          pmsUserId: task.pmsUserId,
+          externalOwnerId: task.externalOwnerId,
+          plateBefore: null,
+          plateAfter: null,
+          summary: `更新旧停车系统住户${labels}`,
+          changes,
+          operatorUserId: task.createdBy,
+          detectedByQueryId: null,
+          occurredAt: now,
+          createdBy: task.createdBy,
+          updatedBy: task.createdBy,
+        }));
+
+        const snapshots = await manager.getRepository(ParkingRecordSnapshot).createQueryBuilder('snapshot')
+          .where('snapshot.tenant_id = :tenantId', { tenantId: task.tenantId })
+          .andWhere('snapshot.database = :database', { database: task.database })
+          .andWhere("snapshot.values ->> 'ownerId' = :ownerId", { ownerId: task.externalOwnerId })
+          .getMany();
+        for (const snapshot of snapshots) {
+          snapshot.values = { ...snapshot.values, ...resultValues };
+          snapshot.observedAt = now;
+          snapshot.updatedBy = task.createdBy;
+        }
+        if (snapshots.length) await manager.getRepository(ParkingRecordSnapshot).save(snapshots);
+      } else if (dto.result === 'retry' && task.attempt < 3) {
+        task.status = 'pending';
+        task.lastError = dto.errorMessage?.trim() || '停车数据库暂时无法更新，正在重试';
+      } else {
+        task.status = 'failed';
+        task.lastError = dto.errorMessage?.trim() || '旧停车系统住户资料更新失败';
+        task.completedAt = now;
+      }
+      task.leaseAgentKey = null;
+      task.leaseExpiresAt = null;
+      task.updatedBy = null;
+      await repo.save(task);
+    });
+    return { ok: true };
+  }
+
   private async captureParkingHistory(manager: EntityManager, query: ParkingQuery, observedAt: Date) {
     const facts = query.rows.flatMap((row) => {
       const sourceRecordId = parkingSourceRecordId(row.fields);
@@ -472,9 +647,22 @@ export class AccessCardIssuanceService {
     };
   }
 
+  private parkingOwnerUpdateResponse(task: ParkingOwnerUpdate) {
+    return {
+      id: task.id,
+      database: task.database,
+      externalOwnerId: task.externalOwnerId,
+      status: task.status,
+      values: task.status === 'completed' ? task.resultValues : null,
+      error: task.status === 'failed' ? task.lastError : null,
+      requestedAt: task.requestedAt,
+      completedAt: task.completedAt,
+    };
+  }
+
   private async matchParkingRowsToPms(tenantId: number, rows: ParkingQuery['rows']) {
     const phones = Array.from(new Set(rows
-      .map((row) => parkingFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', '手机', '电话']))
+      .map((row) => parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', '手机', '电话']))
       .map((value) => normalizeParkingPhone(value))
       .filter((value): value is string => Boolean(value))));
     const users = phones.length
@@ -493,7 +681,7 @@ export class AccessCardIssuanceService {
     const buildingById = new Map(buildings.map((building) => [building.id, building]));
     const communityById = new Map(communities.map((community) => [community.id, community]));
     return rows.map((row) => {
-      const rawPhone = parkingFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', '手机', '电话']);
+      const rawPhone = parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', '手机', '电话']);
       const user = rawPhone ? byPhone.get(normalizeParkingPhone(rawPhone) ?? '') : undefined;
       return {
         ...row,
@@ -1512,10 +1700,10 @@ function parkingSnapshotValues(fields: Record<string, string | number | boolean 
   return {
     plate: normalizeParkingText(parkingFieldValue(fields, ['p_plate', 'carno', 'carcode', 'carnumber', 'plateno', 'plate', 'license', '车牌'])),
     ownerId: parkingExternalOwnerId(fields),
-    ownerName: normalizeParkingText(parkingFieldValue(fields, ['owner__owner_name', 'owner__username', 'ownername', 'carname', 'customername', 'personname', '姓名', '车主', '住户'])),
-    phone: normalizeParkingText(parkingFieldValue(fields, ['owner__mobile', 'owner__telephone', 'owner__phone', 'mobile', 'telephone', 'phone', 'tel', '手机', '电话'])),
-    room: normalizeParkingText(parkingFieldValue(fields, ['owner__roomno', 'owner__houseno', 'owner__address', 'roomno', 'roomnumber', 'houseno', 'address', 'addr', 'room', '房号', '地址'])),
-    note: normalizeParkingText(parkingFieldValue(fields, ['owner__remark', 'owner__note', 'p_note', 'remark', 'remarks', 'note', '备注'])),
+    ownerName: normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['ownername', 'username', 'pname', 'name', 'carname', 'customername', 'personname', '姓名', '车主', '住户'])),
+    phone: normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['mobile', 'telephone', 'phone', 'tel', 'ptel', '手机', '电话'])),
+    room: normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['roomno', 'houseno', 'address', 'proom', 'roomnumber', 'addr', 'room', '房号', '地址'])),
+    note: normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['remark', 'remarks', 'note', 'pnote', '备注'])),
   };
 }
 

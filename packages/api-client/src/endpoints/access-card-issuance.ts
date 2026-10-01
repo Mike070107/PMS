@@ -181,6 +181,24 @@ export interface ParkingQuery {
   completedAt: string | null;
 }
 
+export interface ParkingOwnerValues {
+  name: string | null;
+  phone: string | null;
+  room: string | null;
+  note: string | null;
+}
+
+export interface ParkingOwnerUpdate {
+  id: number;
+  database: 'parking1' | 'parking2';
+  externalOwnerId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  values: ParkingOwnerValues | null;
+  error: string | null;
+  requestedAt: string;
+  completedAt: string | null;
+}
+
 export interface ParkingProofUpload {
   id: number;
   plate: string;
@@ -222,6 +240,25 @@ export const createParkingQuery = (term: string) =>
 export const parkingQuery = (id: number) =>
   request<ParkingQuery>({
     url: `/access-card-issuance/parking/queries/${id}`,
+  });
+
+export const createParkingOwnerUpdate = (data: {
+  database: 'parking1' | 'parking2';
+  externalOwnerId: string;
+  pmsUserId?: number | null;
+  idempotencyKey: string;
+  expected: ParkingOwnerValues;
+  values: ParkingOwnerValues;
+  fieldHints?: Partial<Record<keyof ParkingOwnerValues, string | null>>;
+}) => request<ParkingOwnerUpdate>({
+  url: '/access-card-issuance/parking/owners/updates',
+  method: 'POST',
+  data,
+});
+
+export const parkingOwnerUpdate = (id: number) =>
+  request<ParkingOwnerUpdate>({
+    url: `/access-card-issuance/parking/owners/updates/${id}`,
   });
 
 export const parkingHistory = (params: {

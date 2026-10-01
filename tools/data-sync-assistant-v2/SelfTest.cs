@@ -44,6 +44,7 @@ namespace Pms.DataSyncAssistant
                 VerifyRuntimeMapping(store, config);
                 VerifyAccessGatewayMigration(root);
                 VerifyLegacyRoomMatching();
+                VerifyParkingOwnerColumnMapping();
                 VerifyActivityHistory(root);
             }
             finally
@@ -160,6 +161,30 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("旧库楼号前导零兼容失败");
             if (LegacyDatabase.TrySequence("228/2/102", "已隐藏228/02/101/5", out sequence))
                 throw new InvalidOperationException("旧库模糊查询把不同室号合并了");
+        }
+
+        private static void VerifyParkingOwnerColumnMapping()
+        {
+            var columns = new[] { "Owner_ID", "P_Name", "P_Tel", "P_Room", "P_note" };
+            if (ParkingDatabase.ResolveOwnerColumnForTest("name", "P_Name", columns) != "P_Name")
+                throw new InvalidOperationException("停车住户姓名栏位映射失败");
+            if (ParkingDatabase.ResolveOwnerColumnForTest("phone", "P_Tel", columns) != "P_Tel")
+                throw new InvalidOperationException("停车住户电话栏位映射失败");
+            if (ParkingDatabase.ResolveOwnerColumnForTest("room", "P_Room", columns) != "P_Room")
+                throw new InvalidOperationException("停车住户房号栏位映射失败");
+            if (ParkingDatabase.ResolveOwnerColumnForTest("note", "P_note", columns) != "P_note")
+                throw new InvalidOperationException("停车住户备注栏位映射失败");
+            if (ParkingDatabase.ResolveOwnerColumnForTest("phone", "P_note", columns) != "P_Tel")
+                throw new InvalidOperationException("停车住户栏位提示越权覆盖了语义匹配");
+            var marked = ParkingDatabase.AppendPmsSourceForTest("原备注");
+            if (marked != "原备注" + Environment.NewLine + "操作来源：PMS系统" ||
+                ParkingDatabase.AppendPmsSourceForTest(marked) != marked)
+                throw new InvalidOperationException("停车住户备注来源标识未保持幂等");
+
+            var json = "{\"taskId\":9,\"database\":\"parking2\",\"externalOwnerId\":\"668\",\"expected\":{\"name\":\"张三\",\"phone\":\"13800000000\",\"room\":\"228/2/102\",\"note\":\"地库91号\"},\"values\":{\"name\":\"张三\",\"phone\":\"13900000000\",\"room\":\"228/2/102\",\"note\":\"地库91号\"},\"fieldHints\":{\"name\":\"P_Name\",\"phone\":\"P_Tel\",\"room\":\"P_Room\",\"note\":\"P_note\"}}";
+            var task = new JavaScriptSerializer().Deserialize<ParkingOwnerUpdateTask>(json);
+            if (task == null || task.taskId != 9 || task.database != "parking2" || task.fieldHints.phone != "P_Tel")
+                throw new InvalidOperationException("停车住户更新任务解析失败");
         }
 
         private static void VerifyActivityHistory(string root)

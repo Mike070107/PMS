@@ -35,6 +35,7 @@ import { SubscriptionGrant } from './subscription-grant.entity';
 import { BusinessRule } from './business-rule.entity';
 import { ParkingVehicle } from './parking-vehicle.entity';
 import { ParkingQuery } from './parking-query.entity';
+import { ParkingOwnerUpdate } from './parking-owner-update.entity';
 import { ParkingProofUpload } from './parking-proof-upload.entity';
 import { ParkingHistory } from './parking-history.entity';
 import { ParkingRecordSnapshot } from './parking-record-snapshot.entity';
@@ -130,6 +131,7 @@ export const entities = [
   BusinessRule,
   ParkingVehicle,
   ParkingQuery,
+  ParkingOwnerUpdate,
   ParkingProofUpload,
   ParkingHistory,
   ParkingRecordSnapshot,
@@ -210,6 +212,7 @@ export {
   BusinessRule,
   ParkingVehicle,
   ParkingQuery,
+  ParkingOwnerUpdate,
   ParkingProofUpload,
   ParkingHistory,
   ParkingRecordSnapshot,

@@ -9,7 +9,7 @@ namespace Pms.AccessCardAgent
 {
     internal sealed class AgentApiClient
     {
-        public const string Version = "0.6.2";
+        public const string Version = "0.7.0";
         private readonly AgentConfig _config;
         private readonly string _token;
         private readonly string _version;
@@ -56,6 +56,13 @@ namespace Pms.AccessCardAgent
             return _json.ConvertToType<ParkingQueryTask>(result["task"]);
         }
 
+        public ParkingOwnerUpdateTask ClaimParkingOwnerUpdate()
+        {
+            var result = Post("/access-card-agent/parking/owners/updates/claim", new Dictionary<string, object>());
+            if (!result.ContainsKey("task") || result["task"] == null) return null;
+            return _json.ConvertToType<ParkingOwnerUpdateTask>(result["task"]);
+        }
+
         public LegacyCardCheckTask ClaimLegacyCardCheck()
         {
             var result = Post("/access-card-agent/legacy-card-check/claim", new Dictionary<string, object>());
@@ -83,6 +90,11 @@ namespace Pms.AccessCardAgent
         public void ReportParkingQuery(ParkingQueryReport report)
         {
             Post("/access-card-agent/parking/queries/report", report);
+        }
+
+        public void ReportParkingOwnerUpdate(ParkingOwnerUpdateReport report)
+        {
+            Post("/access-card-agent/parking/owners/updates/report", report);
         }
 
         public void ReportLegacyCardCheck(LegacyCardCheckReport report)
@@ -199,6 +211,40 @@ namespace Pms.AccessCardAgent
         public int queryId { get; set; }
         public string result { get; set; }
         public List<ParkingSearchRow> rows { get; set; }
+        public string errorMessage { get; set; }
+    }
+
+    internal sealed class ParkingOwnerValues
+    {
+        public string name { get; set; }
+        public string phone { get; set; }
+        public string room { get; set; }
+        public string note { get; set; }
+    }
+
+    internal sealed class ParkingOwnerFieldHints
+    {
+        public string name { get; set; }
+        public string phone { get; set; }
+        public string room { get; set; }
+        public string note { get; set; }
+    }
+
+    internal sealed class ParkingOwnerUpdateTask
+    {
+        public int taskId { get; set; }
+        public string database { get; set; }
+        public string externalOwnerId { get; set; }
+        public ParkingOwnerValues expected { get; set; }
+        public ParkingOwnerValues values { get; set; }
+        public ParkingOwnerFieldHints fieldHints { get; set; }
+    }
+
+    internal sealed class ParkingOwnerUpdateReport
+    {
+        public int taskId { get; set; }
+        public string result { get; set; }
+        public ParkingOwnerValues values { get; set; }
         public string errorMessage { get; set; }
     }
 

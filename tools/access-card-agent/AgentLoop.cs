@@ -89,6 +89,13 @@ namespace Pms.AccessCardAgent
                     }
                     if (_config.Kind == "parking_gateway")
                     {
+                        var ownerUpdateTask = _api.ClaimParkingOwnerUpdate();
+                        if (ownerUpdateTask != null)
+                        {
+                            HandleParkingOwnerUpdate(ownerUpdateTask);
+                            if (Wait(stopSignal, _config.PollIntervalMs)) return;
+                            continue;
+                        }
                         var parkingTask = _api.ClaimParkingQuery();
                         if (parkingTask != null)
                         {
@@ -210,6 +217,54 @@ namespace Pms.AccessCardAgent
                 });
                 RecordActivity("查询停车记录", task.term, false, exception.Message);
             }
+        }
+
+        private void HandleParkingOwnerUpdate(ParkingOwnerUpdateTask task)
+        {
+            var target = task.database + " 住户 #" + task.externalOwnerId;
+            try
+            {
+                var values = ParkingDatabase.UpdateOwner(_config, LoadSecret("parking-db-password.dat"), task);
+                _api.ReportParkingOwnerUpdate(new ParkingOwnerUpdateReport
+                {
+                    taskId = task.taskId,
+                    result = "success",
+                    values = values
+                });
+                RecordActivity("更新停车住户资料", target, true, "已写入旧系统并读回验证");
+            }
+            catch (ParkingOwnerConflictException exception)
+            {
+                _api.ReportParkingOwnerUpdate(new ParkingOwnerUpdateReport
+                {
+                    taskId = task.taskId,
+                    result = "failed",
+                    errorMessage = exception.Message
+                });
+                RecordActivity("更新停车住户资料", target, false, exception.Message);
+            }
+            catch (Exception exception)
+            {
+                _api.ReportParkingOwnerUpdate(new ParkingOwnerUpdateReport
+                {
+                    taskId = task.taskId,
+                    result = IsTransientParkingFailure(exception) ? "retry" : "failed",
+                    errorMessage = exception.Message
+                });
+                RecordActivity("更新停车住户资料", target, false, exception.Message);
+            }
+        }
+
+        private static bool IsTransientParkingFailure(Exception exception)
+        {
+            var sql = exception as System.Data.SqlClient.SqlException;
+            if (sql == null) return exception is TimeoutException;
+            foreach (System.Data.SqlClient.SqlError error in sql.Errors)
+            {
+                if (error.Number == -2 || error.Number == 1205 || error.Number == 233 || error.Number == 10053 ||
+                    error.Number == 10054 || error.Number == 10060) return true;
+            }
+            return false;
         }
 
         private void HandleLegacyCardCheck(LegacyCardCheckTask task)

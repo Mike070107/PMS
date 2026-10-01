@@ -73,9 +73,11 @@ Get-Clipboard | .\Pms.DataSyncAssistant.exe --install-parking-db-password
 .\Pms.DataSyncAssistant.exe --parking-procedure-info
 ```
 
-`--parking-probe` 读取 `Car_Issue` / `Car_Download` 记录数，并检查停车存储过程是否存在。网关会另外验证两个库的存储过程执行权限，网页显示“受控写入测试已开放”后，才允许下一步用指定测试车牌验证登记、续期、换牌、注销和设备下载。
+`--parking-probe` 读取 `Car_Issue` / `Car_Download` 记录数，并检查停车存储过程是否存在。网关会验证两个库的车辆存储过程执行权限以及住户表更新权限；独立停车代理 0.7.0 或数据同步助手 2.3.0 在线后，网页会直接显示“住户资料可编辑”。车辆登记、续期、换牌、注销和设备下载仍通过旧系统存储过程执行。
 `--parking-procedure-info` 只读取一期、二期各个存储过程的参数名和类型，用于核对新增车辆时是否同时维护授权和下载队列，不执行写入。
 
 0.4.1 起，停车网关会从 `Car_Issue.Owner_ID` 自动识别并联查旧库住户主表；车牌查询可同时返回住户字段，房号、姓名和电话也可反向查到车辆。查询使用参数化 SQL，一期、二期各最多返回 50 条；`228/5/301` 与 `198-5-201` 会同时尝试斜杠和横线形式，整个过程不执行写入语句。
+
+0.7.0 起，管理员可从 PMS 编辑联查到的旧库住户资料。代理只更新自动识别的住户主表，使用参数化 SQL、串行化事务、旧值并发校验、严格单行更新和写后读回；备注会保留原内容并追加“操作来源：PMS系统”。
 
 `agent.config.json`、`agent.token.dat`、`legacy-db-password.dat`、`parking-db-password.dat`、卡片密钥、完整卡镜像和数据库密码均不得进入 Git 或普通日志。

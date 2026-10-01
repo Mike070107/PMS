@@ -78,6 +78,16 @@
 .parking-owner-panel dt { color: #788797; font-size: 12px; }
 .parking-owner-panel dd { margin: 3px 0 0; overflow-wrap: anywhere; color: #2f465e; }
 .parking-owner-panel > small { display: block; margin-top: 9px; color: #9a6b22; }
+.parking-owner-editor { display: grid; gap: 16px; padding-top: 4px; }
+.parking-owner-editor-context { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.parking-owner-editor-context > div { min-width: 0; display: grid; gap: 3px; padding: 11px 12px; border: 1px solid #dde5ed; border-radius: 9px; background: #f7f9fc; }
+.parking-owner-editor-context span { color: #718095; font-size: 12px; }
+.parking-owner-editor-context strong { overflow-wrap: anywhere; color: #29435f; }
+.parking-owner-editor-copy { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid #d7e2ef; border-radius: 10px; background: #f4f8fc; }
+.parking-owner-editor-copy .ant-typography { min-width: 0; line-height: 1.6; }
+.parking-owner-editor .ant-form-item { margin-bottom: 14px; }
+.parking-owner-editor .ant-input { min-height: 44px; }
+.parking-owner-editor textarea.ant-input { min-height: 104px; }
 .parking-query-note { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0,1fr); gap: 10px; padding: 10px 12px; color: #5c4931; border: 1px solid #eadbbd; border-radius: 9px; background: #fffaf0; font-size: 13px; }
 .parking-query-note strong { color: #7a5a2a; white-space: nowrap; }
 .parking-query-note span { min-width: 0; overflow-wrap: anywhere; }
@@ -286,6 +296,9 @@
   .parking-query-details dl { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .parking-owner-compare { grid-template-columns: minmax(0,1fr); }
   .parking-owner-panel dl { grid-template-columns: minmax(0,1fr); }
+  .parking-owner-editor-context { grid-template-columns: minmax(0,1fr); }
+  .parking-owner-editor-copy { align-items: stretch; flex-direction: column; }
+  .parking-owner-editor-copy .ant-btn { min-height: 44px; }
   .parking-family-actions { align-items: stretch; flex-direction: column; }
   .parking-household-option { grid-template-columns: 36px minmax(0,1fr); align-items: start; }
   .parking-house-resident, .parking-house-assets { grid-column: 2; }

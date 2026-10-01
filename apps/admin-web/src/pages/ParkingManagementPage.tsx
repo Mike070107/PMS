@@ -36,6 +36,7 @@ import {
 } from '@pms/api-client';
 import { useCallback, useEffect, useState } from 'react';
 import OwnerFormModal, { type OwnerRow } from './OwnerFormModal';
+import ParkingLegacyOwnerModal, { type ParkingLegacyOwnerTarget } from './ParkingLegacyOwnerModal';
 import './ParkingManagementPage.css';
 
 const { Text, Title } = Typography;
@@ -65,6 +66,9 @@ export default function ParkingManagementPage({
   const [proofUpload, setProofUpload] = useState<accessCardIssuance.ParkingProofUpload | null>(null);
   const [proofLoading, setProofLoading] = useState(false);
   const [editingPmsOwner, setEditingPmsOwner] = useState<OwnerRow | undefined>();
+  const [editingLegacyOwner, setEditingLegacyOwner] = useState<ParkingLegacyOwnerTarget | undefined>();
+  const [legacyOwnerSaving, setLegacyOwnerSaving] = useState(false);
+  const [legacyOwnerError, setLegacyOwnerError] = useState<string | null>(null);
   const [historyOwnerRow, setHistoryOwnerRow] = useState<ParkingQueryRow | null>(null);
   const [historyVehicleRow, setHistoryVehicleRow] = useState<ParkingQueryRow | null>(null);
   const [history, setHistory] = useState<ParkingHistoryResponse | null>(null);
@@ -125,11 +129,11 @@ export default function ParkingManagementPage({
   // 0.4.0 已能查询 Car_Issue；0.4.1 增加住户表联查，不能因为住户增强尚未升级就把整条查询锁死。
   const canQuery = canRead;
   const canJoinOwners = supportsParkingQueries(gateway?.version);
-  const canWriteLocal = online && gateway?.capabilities?.parkingDbWrite === true;
+  const canWriteLocal = online && gateway?.capabilities?.parkingDbWrite === true && supportsParkingOwnerUpdates(gateway?.version);
   const deliyun = readiness?.deliyun;
 
-  const searchParking = async () => {
-    const queryTerm = term.trim();
+  const searchParking = async (requestedTerm?: string) => {
+    const queryTerm = (requestedTerm ?? term).trim();
     if (queryTerm.length < 2) {
       message.error('请输入至少 2 个字符，可输入房号、住户或车牌');
       return;
@@ -164,6 +168,41 @@ export default function ParkingManagementPage({
       message.error(error instanceof Error ? error.message : '停车数据查询失败');
     } finally {
       setSearching(false);
+    }
+  };
+
+  const saveLegacyOwner = async (values: accessCardIssuance.ParkingOwnerValues) => {
+    if (!editingLegacyOwner) return;
+    setLegacyOwnerSaving(true);
+    setLegacyOwnerError(null);
+    try {
+      let task = await accessCardIssuance.createParkingOwnerUpdate({
+        database: editingLegacyOwner.database,
+        externalOwnerId: editingLegacyOwner.externalOwnerId,
+        pmsUserId: editingLegacyOwner.pmsUserId,
+        idempotencyKey: createIdempotencyKey(),
+        expected: editingLegacyOwner.values,
+        values: normalizeOwnerValues(values),
+        fieldHints: editingLegacyOwner.fieldHints,
+      });
+      for (let attempt = 0; attempt < 112 && (task.status === 'pending' || task.status === 'running'); attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        task = await accessCardIssuance.parkingOwnerUpdate(task.id);
+      }
+      if (task.status === 'completed') {
+        setEditingLegacyOwner(undefined);
+        message.success('旧停车系统住户资料已更新并读回验证');
+        await searchParking(searchedTerm || term);
+        return;
+      }
+      if (task.status === 'failed') throw new Error(task.error || '旧停车系统拒绝了本次更新');
+      throw new Error('现场数据同步助手响应超时，本次任务仍保留，请稍后重新查询状态');
+    } catch (error) {
+      const text = error instanceof Error ? error.message : '旧停车系统住户资料更新失败';
+      setLegacyOwnerError(text);
+      message.error(text);
+    } finally {
+      setLegacyOwnerSaving(false);
     }
   };
 
@@ -240,7 +279,7 @@ export default function ParkingManagementPage({
         showIcon
         message={canQuery ? '停车数据库真实查询已就绪' : '尚未接通真实停车数据'}
         description={canQuery
-          ? `查询会实时读取现场一期、二期 Car_Issue 表；当前仍为只读，不会修改旧系统。${canJoinOwners ? '住户表联查已启用。' : `当前助手 ${gateway?.version || '未知版本'} 可查车辆，升级 0.4.1 后还能按住户姓名、电话和房号联查。`}`
+          ? `查询会实时读取现场一期、二期 Car_Issue 表。${canJoinOwners ? '住户表联查已启用。' : `当前助手 ${gateway?.version || '未知版本'} 可查车辆，升级 0.4.1 后还能按住户姓名、电话和房号联查。`}${canWriteLocal ? '旧库住户资料可直接编辑，保存后由现场助手写入并读回验证。' : '旧库住户资料写入需要将现场助手升级到 2.3.0 并确认数据库账号具备写权限。'}`
           : '请先在下方注册并安装 Windows 本地停车网关。连接完成前不会显示任何模拟住户、车牌、车位或收费记录。'}
       />
 
@@ -274,7 +313,7 @@ export default function ParkingManagementPage({
             </Tag>
             <Tag color={canQuery ? 'success' : 'default'}>{canQuery ? '车辆查询已就绪' : '尚未验证'}</Tag>
             <Tag color={canJoinOwners ? 'success' : 'gold'}>{canJoinOwners ? '住户联查已启用' : '升级后联查住户'}</Tag>
-            <Tag color={canWriteLocal ? 'success' : 'gold'}>{canWriteLocal ? '受控写入测试已开放' : '写入权限未通过'}</Tag>
+            <Tag color={canWriteLocal ? 'success' : 'gold'}>{canWriteLocal ? '住户资料可编辑' : '住户写入未就绪'}</Tag>
           </div>
         </div>
         <div className={`parking-cloud-status is-${deliyun?.connected ? 'online' : 'pending'}`}>
@@ -336,6 +375,7 @@ export default function ParkingManagementPage({
               proofLoading={proofLoading}
               onCreateProof={() => void createProofUpload(row)}
               onEditPms={(owner) => setEditingPmsOwner(owner)}
+              onEditLegacy={(target) => { setLegacyOwnerError(null); setEditingLegacyOwner(target); }}
             />)}
           </div>
         ) : (
@@ -377,6 +417,13 @@ export default function ParkingManagementPage({
         onClose={() => setEditingPmsOwner(undefined)}
         onDone={() => { setEditingPmsOwner(undefined); void searchParking(); }}
       />
+      <ParkingLegacyOwnerModal
+        target={editingLegacyOwner}
+        saving={legacyOwnerSaving}
+        error={legacyOwnerError}
+        onClose={() => { if (!legacyOwnerSaving) setEditingLegacyOwner(undefined); }}
+        onSubmit={saveLegacyOwner}
+      />
 
       <Modal
         title={`亲情车证明材料 · ${proofUpload?.plate || ''}`}
@@ -403,6 +450,24 @@ export default function ParkingManagementPage({
 function supportsParkingQueries(version?: string): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
   return Boolean(match && (Number(match[1]) > 0 || Number(match[2]) > 4 || (Number(match[2]) === 4 && Number(match[3]) >= 1)));
+}
+
+function supportsParkingOwnerUpdates(version?: string): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major >= 2 ? (major > 2 || minor >= 3) : (major === 0 && minor >= 7);
+}
+
+function createIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `parking-owner-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeOwnerValues(values: accessCardIssuance.ParkingOwnerValues): accessCardIssuance.ParkingOwnerValues {
+  const clean = (value: string | null | undefined) => value?.trim() || null;
+  return { name: clean(values.name), phone: clean(values.phone), room: clean(values.room), note: clean(values.note) };
 }
 
 const fieldAliases = {
@@ -434,6 +499,30 @@ function fieldValue(fields: ParkingQueryRow['fields'], aliases: readonly string[
     if (partial) return String(partial[1]);
   }
   return null;
+}
+
+function ownerFieldEntry(fields: ParkingQueryRow['fields'], aliases: readonly string[]): [string, string] | null {
+  const entries = Object.entries(fields)
+    .filter(([key, value]) => key.startsWith('Owner__') && value !== null && String(value).trim() !== '')
+    .map(([key, value]) => [key.slice('Owner__'.length), String(value).trim()] as [string, string]);
+  for (const alias of aliases) {
+    const exact = entries.find(([key]) => normalizeFieldName(key) === alias);
+    if (exact) return exact;
+  }
+  for (const alias of aliases) {
+    const partial = entries.find(([key]) => normalizeFieldName(key).includes(alias));
+    if (partial) return partial;
+  }
+  return null;
+}
+
+function ownerFieldValue(fields: ParkingQueryRow['fields'], aliases: readonly string[]): string | null {
+  const joinedOwnerFields = Object.keys(fields).some((key) => key.startsWith('Owner__'));
+  return ownerFieldEntry(fields, aliases)?.[1] ?? (joinedOwnerFields ? null : fieldValue(fields, aliases));
+}
+
+function ownerFieldHint(fields: ParkingQueryRow['fields'], aliases: readonly string[]): string | null {
+  return ownerFieldEntry(fields, aliases)?.[0] ?? null;
 }
 
 function plateValue(fields: ParkingQueryRow['fields']): string {
@@ -586,23 +675,49 @@ function HistoryEntryList({ title, entries, empty }: {
   </section>;
 }
 
-function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, proofLoading }: {
+function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, onEditLegacy, proofLoading }: {
   row: ParkingQueryRow;
   canWriteLocal: boolean;
   onCreateProof: () => void;
   onEditPms: (owner: OwnerRow) => void;
+  onEditLegacy: (target: ParkingLegacyOwnerTarget) => void;
   proofLoading: boolean;
 }) {
   const plate = plateValue(row.fields);
-  const owner = fieldValue(row.fields, fieldAliases.owner) || '未记录住户姓名';
-  const room = fieldValue(row.fields, fieldAliases.room) || '未识别房号';
-  const phone = fieldValue(row.fields, fieldAliases.phone);
+  const ownerValue = ownerFieldValue(row.fields, fieldAliases.owner);
+  const roomValue = ownerFieldValue(row.fields, fieldAliases.room);
+  const phone = ownerFieldValue(row.fields, fieldAliases.phone);
+  const owner = ownerValue || '未记录住户姓名';
+  const room = roomValue || '未识别房号';
   const space = fieldValue(row.fields, fieldAliases.space);
   const expiry = fieldValue(row.fields, fieldAliases.expiry);
   const identity = vehicleIdentity(row.fields);
-  const note = fieldValue(row.fields, fieldAliases.note);
+  const note = ownerFieldValue(row.fields, fieldAliases.note);
   const garages = garageRows(row.database, row.fields);
-  const ownerId = fieldValue(row.fields, fieldAliases.ownerId);
+  const ownerId = row.historyRef?.externalOwnerId || ownerFieldValue(row.fields, fieldAliases.ownerId) || fieldValue(row.fields, fieldAliases.ownerId);
+  const database = row.database.toLowerCase() === 'parking1' ? 'parking1' : 'parking2';
+  const pmsRoom = row.pmsMatch?.house
+    ? `${row.pmsMatch.house.lane || ''}/${row.pmsMatch.house.buildingNo}/${row.pmsMatch.house.roomNo}`.replace(/^\//, '')
+    : null;
+  const legacyTarget: ParkingLegacyOwnerTarget | null = ownerId ? {
+    database,
+    externalOwnerId: ownerId,
+    pmsUserId: row.pmsMatch?.userId ?? null,
+    plate,
+    values: normalizeOwnerValues({ name: ownerValue, phone, room: roomValue, note }),
+    pmsValues: row.pmsMatch ? normalizeOwnerValues({
+      name: row.pmsMatch.name,
+      phone: row.pmsMatch.phone,
+      room: pmsRoom,
+      note: row.pmsMatch.contactNote,
+    }) : null,
+    fieldHints: {
+      name: ownerFieldHint(row.fields, fieldAliases.owner),
+      phone: ownerFieldHint(row.fields, fieldAliases.phone),
+      room: ownerFieldHint(row.fields, fieldAliases.room),
+      note: ownerFieldHint(row.fields, fieldAliases.note),
+    },
+  } : null;
   const details = Object.entries(row.fields).filter(([, value]) => value !== null && String(value).trim() !== '').slice(0, 24);
   return (
     <article className="parking-query-card">
@@ -630,7 +745,9 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, proof
       </div>
       <div className="parking-owner-compare">
         <OwnerDataPanel title={`旧停车系统${ownerId ? ` · 住户 #${ownerId}` : ''}`} name={owner} phone={phone} room={room} note={note}
-          editable={false} editHint={canWriteLocal ? '旧库住户更新任务待对接' : '本地写入权限未通过'} />
+          editable={canWriteLocal && !!legacyTarget}
+          editHint={!ownerId ? '旧停车系统没有返回住户编号，无法定位要更新的住户' : !canWriteLocal ? '请将现场数据同步助手升级到 2.3.0，并确认停车数据库账号具备写入权限' : undefined}
+          onEdit={legacyTarget ? () => onEditLegacy(legacyTarget) : undefined} />
         <OwnerDataPanel title="PMS 用户系统" name={row.pmsMatch?.name || '未关联'} phone={row.pmsMatch?.phone || null}
           room={row.pmsMatch?.house ? `${row.pmsMatch.house.communityName || ''} ${row.pmsMatch.house.lane || ''}弄 ${row.pmsMatch.house.buildingNo}号 ${row.pmsMatch.house.roomNo}室` : null}
           note={row.pmsMatch?.contactNote || null} editable={!!row.pmsMatch}
