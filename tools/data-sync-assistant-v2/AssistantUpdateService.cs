@@ -13,8 +13,11 @@ namespace Pms.DataSyncAssistant
     {
         public string Version { get; set; }
         public string DownloadUrl { get; set; }
+        // 新版发布脚本使用 url；保留 DownloadUrl 兼容旧清单。
+        public string Url { get; set; }
         public string Sha256 { get; set; }
         public string ReleaseNotes { get; set; }
+        public string Notes { get; set; }
     }
 
     internal sealed class AssistantUpdateResult
@@ -42,9 +45,11 @@ namespace Pms.DataSyncAssistant
             {
                 return new AssistantUpdateResult { CurrentVersion = currentVersion, Manifest = manifest, HasUpdate = false };
             }
-            if (String.IsNullOrWhiteSpace(manifest.DownloadUrl)) throw new InvalidOperationException("更新清单缺少下载地址");
+            var downloadUrl = manifest.DownloadUrl;
+            if (String.IsNullOrWhiteSpace(downloadUrl)) downloadUrl = manifest.Url;
+            if (String.IsNullOrWhiteSpace(downloadUrl)) throw new InvalidOperationException("更新清单缺少下载地址");
             Uri packageUri;
-            if (!Uri.TryCreate(manifest.DownloadUrl, UriKind.Absolute, out packageUri) || packageUri.Scheme != Uri.UriSchemeHttps)
+            if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out packageUri) || packageUri.Scheme != Uri.UriSchemeHttps)
                 throw new InvalidOperationException("更新下载地址不是 HTTPS，已停止更新以保护助手和配置");
             if (!IsSha256(manifest.Sha256)) throw new InvalidOperationException("更新清单缺少有效的 SHA-256 校验值");
 
@@ -135,6 +140,8 @@ namespace Pms.DataSyncAssistant
             {
                 var value = new JavaScriptSerializer().Deserialize<AssistantUpdateManifest>(json);
                 if (value == null || String.IsNullOrWhiteSpace(value.Version)) throw new InvalidOperationException("版本号为空");
+                if (String.IsNullOrWhiteSpace(value.DownloadUrl)) value.DownloadUrl = value.Url;
+                if (String.IsNullOrWhiteSpace(value.ReleaseNotes)) value.ReleaseNotes = value.Notes;
                 return value;
             }
             catch (Exception exception) { throw new InvalidOperationException("无法读取" + source + "：" + exception.Message, exception); }

@@ -25,8 +25,11 @@ Copy-Item -Force -LiteralPath $Executable -Destination $ReleaseExecutable
 
 $Manifest = [ordered]@{
     version = $ShortVersion
+    # 同时写入新旧字段，保证 2.5.1/2.5.3 均能一键升级。
+    downloadUrl = "https://prsznh.cn/downloads/pms-data-sync-assistant/$ShortVersion/Pms.DataSyncAssistant.V2.exe"
     url = "https://prsznh.cn/downloads/pms-data-sync-assistant/$ShortVersion/Pms.DataSyncAssistant.V2.exe"
     sha256 = $Hash
+    releaseNotes = "PMS 数据同步助手 $ShortVersion"
     notes = "PMS 数据同步助手 $ShortVersion"
     publishedAt = (Get-Date).ToUniversalTime().ToString("o")
 } | ConvertTo-Json

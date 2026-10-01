@@ -277,10 +277,12 @@ namespace Pms.DataSyncAssistant
             var updates = Path.Combine(root, "updates");
             Directory.CreateDirectory(updates);
             File.WriteAllText(Path.Combine(updates, "latest.json"),
-                "{\"version\":\"2.5.1\",\"releaseNotes\":\"本地清单测试\"}", Encoding.UTF8);
+                "{\"version\":\"2.5.1\",\"url\":\"https://prsznh.cn/downloads/pms-data-sync-assistant/2.5.1/Pms.DataSyncAssistant.V2.exe\",\"releaseNotes\":\"本地清单测试\"}", Encoding.UTF8);
             var result = AssistantUpdateService.CheckAndDownload("2.5.1", root);
             if (result.HasUpdate || result.CurrentVersion != "2.5.1")
                 throw new InvalidOperationException("助手更新清单版本比较失败");
+            if (result.Manifest == null || result.Manifest.DownloadUrl != "https://prsznh.cn/downloads/pms-data-sync-assistant/2.5.1/Pms.DataSyncAssistant.V2.exe")
+                throw new InvalidOperationException("新版 url 字段未兼容为下载地址");
         }
 
         private static void VerifyProductUpdater()
