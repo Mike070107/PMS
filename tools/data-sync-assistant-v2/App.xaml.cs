@@ -56,6 +56,17 @@ namespace Pms.DataSyncAssistant
                     if (e.Args.Length < 3) throw new InvalidOperationException("更新参数不完整");
                     int processId;
                     if (!Int32.TryParse(e.Args[2], out processId)) throw new InvalidOperationException("旧助手进程号无效");
+                    // 兼容 2.5.1 及更早版本：旧版会直接启动下载包，下载包
+                    // 不能再覆盖自身，先复制到临时 runner 再执行替换。
+                    if (e.Args.Length < 4)
+                    {
+                        AssistantUpdateService.StartApply(
+                            Process.GetCurrentProcess().MainModule.FileName,
+                            e.Args[1],
+                            processId);
+                        Shutdown(0);
+                        return;
+                    }
                     AssistantUpdateService.Apply(e.Args[1], processId, e.Args.Length > 3 ? e.Args[3] : null);
                     Shutdown(0);
                 }
