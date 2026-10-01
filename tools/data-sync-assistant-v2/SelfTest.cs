@@ -208,16 +208,16 @@ namespace Pms.DataSyncAssistant
 
         private static void VerifyParkingOwnerColumnMapping()
         {
-            var columns = new[] { "Owner_ID", "P_Name", "P_Tel", "P_Room", "P_note" };
-            if (ParkingDatabase.ResolveOwnerColumnForTest("name", "P_Name", columns) != "P_Name")
-                throw new InvalidOperationException("停车住户姓名栏位映射失败");
-            if (ParkingDatabase.ResolveOwnerColumnForTest("phone", "P_Tel", columns) != "P_Tel")
+            var columns = new[] { "UserID", "owner_Name", "owner_Tel", "owner_Add" };
+            if (ParkingDatabase.ResolveOwnerColumnForTest("name", "owner_Name", columns) != null)
+                throw new InvalidOperationException("停车旧库把房号 owner_Name 误识别成了姓名");
+            if (ParkingDatabase.ResolveOwnerColumnForTest("phone", "owner_Tel", columns) != "owner_Tel")
                 throw new InvalidOperationException("停车住户电话栏位映射失败");
-            if (ParkingDatabase.ResolveOwnerColumnForTest("room", "P_Room", columns) != "P_Room")
-                throw new InvalidOperationException("停车住户房号栏位映射失败");
-            if (ParkingDatabase.ResolveOwnerColumnForTest("note", "P_note", columns) != "P_note")
+            if (ParkingDatabase.ResolveOwnerColumnForTest("room", "owner_Name", columns) != "owner_Name")
+                throw new InvalidOperationException("停车住户房号未映射到 owner_Name");
+            if (ParkingDatabase.ResolveOwnerColumnForTest("note", "P_note", "P_ID", "P_note") != "P_note")
                 throw new InvalidOperationException("停车住户备注栏位映射失败");
-            if (ParkingDatabase.ResolveOwnerColumnForTest("phone", "P_note", columns) != "P_Tel")
+            if (ParkingDatabase.ResolveOwnerColumnForTest("phone", "P_note", columns) != "owner_Tel")
                 throw new InvalidOperationException("停车住户栏位提示越权覆盖了语义匹配");
             if (ParkingDatabase.SearchKindForTest("6/502") != "House")
                 throw new InvalidOperationException("停车房号查询类型识别失败");

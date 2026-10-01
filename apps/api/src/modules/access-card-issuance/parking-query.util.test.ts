@@ -43,7 +43,7 @@ test('只有带结构化查询边界的现场助手才能领取查询', () => {
   assert.equal(supportsStructuredParkingQueries('0.8.0'), true);
 });
 
-test('人员姓名栏中的旧库标准地址按房号解释', () => {
+test('P_Owner.owner_Name 中的旧库标准地址按房号解释', () => {
   assert.equal(parkingLegacyRoomFromName('198-6-402'), '198/6/402');
   assert.equal(parkingLegacyRoomFromName('已隐藏228/02/102/5'), '228/2/102');
   assert.equal(parkingLegacyRoomFromName('张三'), null);

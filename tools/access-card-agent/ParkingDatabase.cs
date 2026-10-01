@@ -330,7 +330,9 @@ ORDER BY p.parameter_id;";
                     var requested = task.values ?? new ParkingOwnerValues();
                     var desired = new ParkingOwnerValues
                     {
-                        name = Clean(requested.name),
+                        // 枫桦旧停车库的 P_Owner 没有姓名列；owner_Name 实际保存房号。
+                        // 没有真实姓名列时忽略网页随 PMS 用户一并带来的姓名，绝不能写进房号。
+                        name = columns["name"] == null ? null : Clean(requested.name),
                         phone = Clean(requested.phone),
                         room = Clean(requested.room),
                         note = AppendPmsSource(CleanMultiline(requested.note))
@@ -399,7 +401,7 @@ ORDER BY p.parameter_id;";
                     var download = Value(payload, "download") ?? ZeroBits();
                     using (var command = Procedure(connection, "AddIssue"))
                     {
-                        Add(command, "@owner_Name", SqlDbType.VarChar, 20, Value(payload, "ownerName") ?? "PMS");
+                        Add(command, "@owner_Name", SqlDbType.VarChar, 20, LegacyOwnerRoom(payload));
                         Add(command, "@owner_Add", SqlDbType.VarChar, 80, Value(payload, "ownerAddress") ?? "");
                         Add(command, "@owner_Tel", SqlDbType.VarChar, 80, Value(payload, "ownerPhone") ?? "");
                         Add(command, "@owner_Sex", SqlDbType.Int, 0, Number(payload, "ownerSex", 0));
@@ -459,7 +461,7 @@ ORDER BY p.parameter_id;";
                         Add(command, "@y_Pak_plate", SqlDbType.VarChar, 50, plate);
                         Add(command, "@P_Color", SqlDbType.VarChar, 10, Value(payload, "color") ?? "蓝");
                         Add(command, "@Car_Lei", SqlDbType.Int, 0, Number(payload, "carType", 1));
-                        Add(command, "@owner_Name", SqlDbType.VarChar, 20, Value(payload, "ownerName") ?? "PMS");
+                        Add(command, "@owner_Name", SqlDbType.VarChar, 20, LegacyOwnerRoom(payload));
                         Add(command, "@Car_Brand", SqlDbType.VarChar, 20, Value(payload, "identity") ?? "住户车");
                         Add(command, "@P_note", SqlDbType.VarChar, 200, Value(payload, "note") ?? "操作来源：PMS系统");
                         Add(command, "@admin", SqlDbType.VarChar, 20, admin);
@@ -512,6 +514,14 @@ ORDER BY p.parameter_id;";
         private static string Value(Dictionary<string, object> values, string key)
         {
             object value; return values != null && values.TryGetValue(key, out value) && value != null ? Convert.ToString(value, CultureInfo.InvariantCulture) : null;
+        }
+
+        private static string LegacyOwnerRoom(Dictionary<string, object> values)
+        {
+            var room = Clean(Value(values, "ownerRoom")) ?? Clean(Value(values, "ownerAddress"));
+            if (room == null)
+                throw new InvalidOperationException("旧停车系统的 owner_Name 保存房号，本次操作缺少房号，已停止写入");
+            return room;
         }
 
         private static int Number(Dictionary<string, object> values, string key, int fallback)
@@ -828,9 +838,11 @@ ORDER BY ID DESC";
         {
             var normalized = NormalizeName(column);
             string[] aliases;
-            if (semantic == "name") aliases = new[] { "ownername", "username", "customername", "personname", "residentname", "name", "pname", "姓名", "业主姓名", "住户姓名" };
+            // P_Owner.owner_Name 是房号，不是姓名。姓名只接受明确的人名列，避免把
+            // 228-31-702 之类房号显示或回写为住户姓名。
+            if (semantic == "name") aliases = new[] { "username", "customername", "personname", "residentname", "pname", "姓名", "业主姓名", "住户姓名" };
             else if (semantic == "phone") aliases = new[] { "mobilephone", "mobile", "telephone", "phone", "tel", "ptel", "手机", "电话", "联系电话" };
-            else if (semantic == "room") aliases = new[] { "roomnumber", "roomno", "houseno", "house", "address", "addr", "room", "proom", "房号", "地址", "住址" };
+            else if (semantic == "room") aliases = new[] { "ownername", "roomnumber", "roomno", "houseno", "house", "address", "addr", "room", "proom", "房号", "地址", "住址" };
             else aliases = new[] { "remarks", "remark", "note", "memo", "comment", "pnote", "备注" };
             var best = 0;
             foreach (var alias in aliases)
@@ -967,8 +979,7 @@ ORDER BY s.[name], t.[name], c.column_id;";
             foreach (var candidate in candidates)
             {
                 var columns = LoadColumns(connection, candidate.Schema, candidate.Table);
-                var noteColumn = ResolveOwnerColumn(columns, "note", null);
-                var score = OwnerCandidateScore(candidate, columns) + (noteColumn == null ? 0 : 1000);
+                var score = OwnerCandidateScore(candidate, columns);
                 if (score < 3 || score <= bestScore || !HasOwnerOverlap(connection, candidate)) continue;
                 bestScore = score;
                 best = new ParkingOwnerSource
@@ -1024,9 +1035,8 @@ ORDER BY rs.[name], rt.[name], rc.column_id;";
             {
                 var columns = LoadColumns(connection, candidate.Schema, candidate.Table);
                 // 一个数据库可能给 Car_Issue.Owner_ID 建了多个外键；不能再用 TOP 1
-                // 随机选表。住户更新必须选到包含备注列的完整住户表，否则会误报“备注列不存在”。
-                var noteColumn = ResolveOwnerColumn(columns, "note", null);
-                var score = OwnerCandidateScore(candidate, columns) + (noteColumn == null ? 0 : 1000);
+                // 随机选表。P_note 在 Car_Issue，本处只按 P_Owner/UserID 及住户字段选表。
+                var score = OwnerCandidateScore(candidate, columns);
                 if (!HasOwnerOverlap(connection, candidate) || score <= bestScore) continue;
                 bestScore = score;
                 best = new ParkingOwnerSource
@@ -1046,11 +1056,14 @@ ORDER BY rs.[name], rt.[name], rc.column_id;";
             var key = NormalizeName(candidate.KeyColumn);
             var score = table.Contains("owner") || table.Contains("user") || table.Contains("customer") ||
                 table.Contains("person") || table.Contains("业主") || table.Contains("住户") ? 4 : 0;
+            if (table == "powner") score += 100;
             if (key == "ownerid") score += 4;
+            if (key == "userid") score += 40;
             foreach (var column in columns)
             {
                 var name = NormalizeName(column.Name);
-                if (name.Contains("name") || name.Contains("姓名") || name.Contains("业主")) score += 2;
+                if (name == "ownername") score += 20;
+                else if (name.Contains("name") || name.Contains("姓名") || name.Contains("业主")) score += 2;
                 if (name.Contains("phone") || name.Contains("mobile") || name.Contains("tel") || name.Contains("电话") || name.Contains("手机")) score += 2;
                 if (name.Contains("room") || name.Contains("house") || name.Contains("address") || name.Contains("房号") || name.Contains("地址")) score += 2;
                 if (name.Contains("note") || name.Contains("remark") || name.Contains("备注")) score += 1;
@@ -1225,7 +1238,7 @@ ORDER BY c.column_id;";
             }
             else if (kind == ParkingSearchKind.House)
             {
-                // 部分旧库把“198-6-402”放在人员姓名栏，因此房号只在住户表的姓名/房号字段中查。
+                // 旧库把“198-6-402”放在 P_Owner.owner_Name，因此按房号语义选择住户列。
                 foreach (var column in owner.Where(delegate(ParkingColumn item)
                 {
                     return OwnerColumnScore(item.Name, "room") > 0 || OwnerColumnScore(item.Name, "name") > 0;

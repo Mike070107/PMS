@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   normalizeParkingOwnerFieldHints,
   normalizeParkingOwnerValues,
+  parkingLegacyOwnerValuesFromFields,
   parkingOwnerChanges,
   parkingOwnerJoinedFieldValue,
   supportsParkingOwnerUpdates,
@@ -20,6 +21,19 @@ test('住户联查优先使用 Owner 字段，不把车辆备注和电话当成�
   const fields = { P_Tel: '021-vehicle', P_note: '车辆备注', Owner__P_Tel: '13800000000', Owner__P_note: '住户备注' };
   assert.equal(parkingOwnerJoinedFieldValue(fields, ['phone', 'tel', 'ptel']), '13800000000');
   assert.equal(parkingOwnerJoinedFieldValue(fields, ['remark', 'note', 'pnote']), '住户备注');
+});
+
+test('P_Owner.owner_Name 固定解释为房号且旧库姓名为空', () => {
+  assert.deepEqual(parkingLegacyOwnerValuesFromFields({
+    Owner__UserID: 414,
+    Owner__owner_Name: '228-31-702',
+    Owner__owner_Tel: '13402178801',
+    P_note: '俞李文',
+  }), {
+    name: null,
+    phone: '13402178801',
+    room: '228-31-702',
+  });
 });
 
 test('只记录真正改动的住户字段', () => {

@@ -88,6 +88,7 @@ import {
 import {
   normalizeParkingOwnerFieldHints,
   normalizeParkingOwnerValues,
+  parkingLegacyOwnerValuesFromFields,
   parkingOwnerJoinedFieldValue,
   parkingOwnerChanges,
   supportsParkingOwnerUpdates,
@@ -2256,15 +2257,14 @@ function parkingExternalOwnerId(fields: Record<string, string | number | boolean
 }
 
 function parkingSnapshotValues(fields: Record<string, string | number | boolean | null>): ParkingSnapshotValues {
-  const rawOwnerName = normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['ownername', 'owner_name', 'username', 'pname', 'name', 'carname', 'customername', 'personname', '姓名', '车主', '住户']));
-  const rawRoom = normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['roomno', 'houseno', 'owneradd', 'owneraddress', 'address', 'proom', 'roomnumber', 'addr', 'room', '房号', '地址']));
-  const roomFromName = parkingLegacyRoomFromName(rawOwnerName);
+  const owner = parkingLegacyOwnerValuesFromFields(fields);
+  const room = parkingLegacyRoomFromName(owner.room) ?? owner.room;
   return {
     plate: normalizeParkingText(parkingFieldValue(fields, ['p_plate', 'carno', 'carcode', 'carnumber', 'plateno', 'plate', 'license', '车牌'])),
     ownerId: parkingExternalOwnerId(fields),
-    ownerName: roomFromName ? null : rawOwnerName,
-    phone: normalizeParkingText(parkingOwnerJoinedFieldValue(fields, ['mobile', 'telephone', 'phone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话'])),
-    room: rawRoom ?? roomFromName,
+    ownerName: owner.name,
+    phone: owner.phone,
+    room,
     // P_note 属于 Car_Issue 车辆记录，不应因存在 Owner__ 字段而被住户表联查逻辑遮掉。
     note: normalizeParkingText(parkingFieldValue(fields, ['remark', 'remarks', 'note', 'pnote', '备注'])),
     plateChangedAt: normalizeParkingText(parkingExactFieldValue(fields, ['pmsmeta__platechangedat'])),

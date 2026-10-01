@@ -36,7 +36,12 @@ export default function ParkingLegacyOwnerModal({
   }, [form, target]);
 
   const copyPmsValues = () => {
-    if (target?.pmsValues) form.setFieldsValue(target.pmsValues);
+    if (target?.pmsValues) form.setFieldsValue({
+      name: null,
+      phone: target.pmsValues.phone,
+      room: target.pmsValues.room,
+      note: target.pmsValues.note,
+    });
   };
 
   return (
@@ -65,22 +70,19 @@ export default function ParkingLegacyOwnerModal({
           type="info"
           showIcon
           message="保存后由现场数据同步助手直接更新旧停车数据库"
-          description="系统会核对当前值、写入后立即读回验证，并在备注末尾保留“操作来源：PMS系统”。若现场资料已被其他人修改，本次保存会停止并提示冲突。"
+          description="旧停车库不保存姓名：P_Owner.owner_Name 是房号，owner_Tel 是电话，Car_Issue.P_note 是车辆备注。系统会核对当前值、写入后立即读回验证，并在备注末尾保留“操作来源：PMS系统”。"
         />
         {error && <Alert type="error" showIcon message="没有保存" description={error} />}
         {target.pmsValues && <div className="parking-owner-editor-copy">
-          <Text type="secondary">已关联 PMS 用户，可先复制 PMS 中的姓名、电话、房号和备注，再核对后保存。</Text>
-          <Button icon={<CopyOutlined />} onClick={copyPmsValues}>填入 PMS 资料</Button>
+          <Text type="secondary">已关联 PMS 用户，可复制 PMS 中的电话、房号和备注；姓名只保留在 PMS，不写入旧停车库。</Text>
+          <Button icon={<CopyOutlined />} onClick={copyPmsValues}>填入 PMS 电话、房号和备注</Button>
         </div>}
         <Form<ParkingOwnerValues>
           form={form}
           layout="vertical"
           requiredMark={false}
-          onFinish={(values) => void onSubmit(values)}
+          onFinish={(values) => void onSubmit({ ...values, name: null })}
         >
-          <Form.Item label="姓名" name="name">
-            <Input maxLength={80} placeholder="旧停车系统住户姓名" autoComplete="off" />
-          </Form.Item>
           <Form.Item
             label="电话"
             name="phone"

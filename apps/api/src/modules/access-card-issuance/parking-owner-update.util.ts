@@ -67,6 +67,22 @@ export function parkingOwnerJoinedFieldValue(
   return null;
 }
 
+/**
+ * 枫桦旧停车库字段语义：P_Owner.owner_Name 保存房号，不保存姓名。
+ * 姓名只接受明确的人名列，避免把 228-31-702 当成姓名。
+ */
+export function parkingLegacyOwnerValuesFromFields(
+  fields: Record<string, string | number | boolean | null>,
+): Pick<ParkingOwnerValues, 'name' | 'phone' | 'room'> {
+  return {
+    name: null,
+    phone: clean(parkingOwnerJoinedFieldValue(fields,
+      ['mobile', 'telephone', 'phone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话'])),
+    room: clean(parkingOwnerJoinedFieldValue(fields,
+      ['ownername', 'owner_name', 'roomno', 'houseno', 'owneradd', 'owneraddress', 'address', 'proom', 'roomnumber', 'addr', 'room', '房号', '地址'])),
+  };
+}
+
 function clean(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();

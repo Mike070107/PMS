@@ -72,7 +72,7 @@ export function supportsStructuredParkingQueries(version: string | null | undefi
   return major === 0 && minor >= 8;
 }
 
-/** 部分旧停车库把标准房号写进了人员姓名栏，例如 `198-6-402/2`。 */
+/** 旧停车库把标准房号写进 P_Owner.owner_Name，例如 `198-6-402/2`。 */
 export function parkingLegacyRoomFromName(value: string | null | undefined): string | null {
   const address = parkingRoomAddress(value);
   return address ? address.key : null;

@@ -588,8 +588,9 @@ function normalizeOwnerValues(values: accessCardIssuance.ParkingOwnerValues): ac
 
 const fieldAliases = {
   plate: ['carno', 'carcode', 'carnumber', 'plateno', 'plate', 'license', '车牌'],
-  owner: ['ownername', 'owner_name', 'carname', 'username', 'customername', 'personname', '姓名', '车主', '住户'],
-  room: ['roomno', 'roomnumber', 'houseno', 'owneradd', 'owneraddress', 'address', 'addr', 'room', '房号', '地址'],
+  // P_Owner.owner_Name 实际保存房号；旧停车库没有姓名列。
+  owner: [],
+  room: ['ownername', 'owner_name', 'roomno', 'roomnumber', 'houseno', 'owneradd', 'owneraddress', 'address', 'addr', 'room', '房号', '地址'],
   phone: ['mobile', 'telephone', 'phone', 'tel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话'],
   space: ['parkno', 'parkingno', 'spaceno', 'berth', 'garage', '车位', '地库'],
   expiry: ['enddate', 'expiredate', 'expirydate', 'validto', 'deadline', 'overdate', 'endtime', '到期', '有效期'],
@@ -849,12 +850,11 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onViewProof, onE
   onOperation: (kind: accessCardIssuance.ParkingOperationKind) => void;
 }) {
   const plate = plateValue(row.fields);
-  const rawOwnerValue = ownerFieldValue(row.fields, fieldAliases.owner);
-  const roomInName = legacyRoomFromName(rawOwnerValue);
-  const ownerValue = roomInName ? null : rawOwnerValue;
-  const roomValue = ownerFieldValue(row.fields, fieldAliases.room) || roomInName;
+  const ownerValue = ownerFieldValue(row.fields, fieldAliases.owner);
+  const roomValue = ownerFieldValue(row.fields, fieldAliases.room);
   const phone = ownerFieldValue(row.fields, fieldAliases.phone);
-  const owner = ownerValue || '未记录住户姓名';
+  const legacyOwnerName = ownerValue || '旧库不保存姓名';
+  const owner = row.pmsMatch?.name || legacyOwnerName;
   const room = roomValue || '未识别房号';
   const space = fieldValue(row.fields, fieldAliases.space);
   const expiry = fieldValue(row.fields, fieldAliases.expiry);
@@ -926,7 +926,7 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onViewProof, onE
         </div>)}
       </div>
       <div className="parking-owner-compare">
-        <OwnerDataPanel title="旧停车系统住户信息" name={owner} phone={phone} room={room} note={note}
+        <OwnerDataPanel title="旧停车系统住户信息" name={legacyOwnerName} phone={phone} room={room} note={note}
           editable={canWriteLocal && !!legacyTarget}
           editHint={!ownerId ? '旧停车系统没有返回住户编号，无法定位要更新的住户' : !canWriteLocal ? '请确认现场数据同步助手为 2.4.0，并检查停车数据库账号的写入权限' : undefined}
           onEdit={legacyTarget ? () => onEditLegacy(legacyTarget) : undefined} />
@@ -974,6 +974,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
   const [plate, setPlate] = useState('');
   const [newPlate, setNewPlate] = useState('');
   const [ownerName, setOwnerName] = useState('');
+  const [ownerRoom, setOwnerRoom] = useState('');
   const [ownerId, setOwnerId] = useState('');
   const [endDate, setEndDate] = useState('');
   const [previousEndDate, setPreviousEndDate] = useState('');
@@ -989,7 +990,8 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
     const currentPlate = row ? plateValue(fields) : '';
     const currentEndDate = row ? (fieldValue(fields, fieldAliases.expiry) || '').slice(0, 10) : '';
     setPlate(currentPlate === '车牌字段待识别' ? '' : currentPlate);
-    setNewPlate(''); setOwnerName(row ? ownerFieldValue(fields, fieldAliases.owner) || '' : '');
+    setNewPlate(''); setOwnerName(row?.pmsMatch?.name || '');
+    setOwnerRoom(row ? ownerFieldValue(fields, fieldAliases.room) || '' : '');
     setOwnerId(row ? parkingHistoryRef(row).externalOwnerId || '' : '');
     setEndDate(kind === 'renew_vehicle' ? parkingRenewalEndDate(currentEndDate, 1) : currentEndDate);
     setPreviousEndDate(currentEndDate);
@@ -1011,7 +1013,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
     const monthly = identity === '租户车' ? 260 : identity === '亲情车' ? 0 : 180;
     const annual = identity === '租户车' ? 2760 : identity === '亲情车' ? 0 : 1800;
     const calculatedAmount = amount ?? (months >= 12 ? annual * Math.floor(months / 12) + monthly * (months % 12) : monthly * months);
-    const payload: Record<string, unknown> = { plate, newPlate, ownerName, ownerId, endDate, previousEndDate, identity, amount: calculatedAmount, months, effective, download, note };
+    const payload: Record<string, unknown> = { plate, newPlate, ownerName, ownerRoom, ownerId, endDate, previousEndDate, identity, amount: calculatedAmount, months, effective, download, note };
     if (kind === 'add_vehicle' || kind === 'update_garages') payload.effective = garageBitString(selectedGarages);
     onSubmit(payload);
   };
@@ -1074,9 +1076,8 @@ const parkingPlateAlphaNumeric = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789'.split('');
 
 function parkingDuplicateDescription(row: ParkingQueryRow): string {
   const database = row.database.toLowerCase() === 'parking1' ? '枫桦景苑一期停车系统' : '枫桦景苑二期停车系统';
-  const rawOwner = ownerFieldValue(row.fields, fieldAliases.owner);
-  const room = ownerFieldValue(row.fields, fieldAliases.room) || legacyRoomFromName(rawOwner) || '房号未记录';
-  const owner = legacyRoomFromName(rawOwner) ? '姓名未记录' : rawOwner || '姓名未记录';
+  const room = ownerFieldValue(row.fields, fieldAliases.room) || '房号未记录';
+  const owner = row.pmsMatch?.name || ownerFieldValue(row.fields, fieldAliases.owner) || '旧库不保存姓名';
   return `${database} · ${room} · ${owner}`;
 }
 
@@ -1306,14 +1307,6 @@ function OwnerDataPanel({ title, name, phone, room, note, editable, editHint, up
     </dl>
     {!editable && editHint && <small>{editHint}</small>}
   </section>;
-}
-
-function legacyRoomFromName(value: string | null): string | null {
-  if (!value) return null;
-  const normalized = value.trim().replace(/^已隐藏\s*/, '');
-  const match = /^(198|228)[/-](\d{1,2})[/-](\d{2,4})(?:[/-]\d+)?$/.exec(normalized);
-  if (!match) return null;
-  return `${match[1]}/${Number(match[2])}/${Number(match[3])}`;
 }
 
 function parkingExpiryView(value: string | null): { date: string; days: number | null } | null {
