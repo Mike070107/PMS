@@ -3676,3 +3676,11 @@
   - fe19c76 fix(parking): keep history keyed by real vehicle records
   - e2351d3 feat(access-card): authorize historical cards for extra buildings
 
+## 2026-10-01 21:52 · api · a83d1d1
+
+- 包：`pms-api-20261001-2147.tar.gz`
+- 提交：a83d1d1 feat(parking): complete vehicle registration and family-car proof flow
+- 自上次（fe19c76）以来上线的相关提交：
+  - a83d1d1 feat(parking): complete vehicle registration and family-car proof flow
+  - 40ba977 fix(access-card): add retry for failed authorization
+
