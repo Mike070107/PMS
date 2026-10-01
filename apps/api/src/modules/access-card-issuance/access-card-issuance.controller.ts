@@ -160,6 +160,16 @@ export class AccessCardIssuanceController {
     return this.service.getHistoryAuthorization(id, user);
   }
 
+  @Post('history-authorizations/:id/retry')
+  @RequirePermission('business', 'edit')
+  retryHistoryAuthorization(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.retryHistoryAuthorization(id, user, access);
+  }
+
   @Get('batches/:id')
   @RequirePermission('business', 'view')
   getBatch(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {

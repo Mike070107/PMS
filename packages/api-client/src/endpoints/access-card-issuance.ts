@@ -22,6 +22,7 @@ export interface AccessCardHistoryRow {
   accessStatus: string;
   legacySyncStatus: string;
   controllerResults: AccessCardPermissionResult[];
+  latestAuthorization?: AccessCardAuthorization | null;
 }
 
 export interface AccessCardHouseContext {
@@ -355,6 +356,11 @@ export const createHistoryAuthorization = (houseId: number, historyId: number, d
 
 export const historyAuthorization = (id: number) => request<AccessCardAuthorization>({
   url: `/access-card-issuance/history-authorizations/${id}`,
+});
+
+export const retryHistoryAuthorization = (id: number) => request<AccessCardAuthorization>({
+  url: `/access-card-issuance/history-authorizations/${id}/retry`,
+  method: 'POST',
 });
 
 export const createBatch = (data: {

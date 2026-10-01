@@ -77,7 +77,32 @@ const PREVIEW_CONTEXT: AccessCardHouseContext = {
       { wgCardNo: '19545729', accessSystem: 'iccard', buildingNo: '41', controller: '41号楼控制器', door: '41号大门', sourceTable: 't_d_Privilege' },
       { wgCardNo: '19545729', accessSystem: 'iccard', buildingNo: '53', controller: '53号楼控制器', door: '53号大门', sourceTable: 't_d_Privilege' },
     ] },
-    { id: 2, sequence: 2, legacyPersonNo: '11251', icCardNo: '11223344', wgCardNo: '05108721', issuedAt: '2026-09-22T02:20:00.000Z', accessStatus: 'not_uploaded', legacySyncStatus: 'synced', controllerResults: [] },
+    {
+      id: 2,
+      sequence: 2,
+      legacyPersonNo: '11251',
+      icCardNo: '11223344',
+      wgCardNo: '05108721',
+      issuedAt: '2026-09-22T02:20:00.000Z',
+      accessStatus: 'not_uploaded',
+      legacySyncStatus: 'synced',
+      controllerResults: [],
+      latestAuthorization: {
+        id: 8802,
+        houseId: 1,
+        historyRowId: 2,
+        roomKey: '228/5/301',
+        icCardNo: '11223344',
+        wgCardNo: '05108721',
+        targetBuildings: [{ id: 9, buildingNo: '9', accessSystem: 'mjsystem' }],
+        controllerResults: [],
+        status: 'failed',
+        attempt: 3,
+        error: '9号楼控制器未确认接收，请检查控制器供电和串口连接',
+        requestedAt: '2026-09-22T02:25:00.000Z',
+        completedAt: '2026-09-22T02:26:00.000Z',
+      },
+    },
     { id: 1, sequence: 1, legacyPersonNo: '10982', icCardNo: '0A1B2C3D', wgCardNo: '04406922', issuedAt: '2025-12-16T01:08:00.000Z', accessStatus: 'controller_uploaded', legacySyncStatus: 'synced', controllerResults: [{ wgCardNo: '04406922', accessSystem: 'mjsystem', buildingNo: '3', controller: '3号楼控制器', door: '3号楼大门', sourceTable: 'MJ_MacPower' }] },
   ],
   historySources: { pms: true, legacy80: true, accessPermissions: true, accessPermissionsMessage: '已按门禁权限表核验 3 张卡', message: '已合并 192.168.1.80 历史记录' },
@@ -244,6 +269,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const [authorizationBuildingIds, setAuthorizationBuildingIds] = useState<number[]>([]);
   const [authorizationTask, setAuthorizationTask] = useState<AccessCardAuthorization | null>(null);
   const [authorizationSubmitting, setAuthorizationSubmitting] = useState(false);
+  const [retryingAuthorizationId, setRetryingAuthorizationId] = useState<number | null>(null);
   const contextRequestRef = useRef(0);
 
   const loadReadiness = useCallback(async () => {
@@ -629,6 +655,62 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     }
   };
 
+  const retryHistoryAuthorization = async (row: AccessCardHistoryRow) => {
+    const failedTask = row.latestAuthorization;
+    if (!failedTask || failedTask.status !== 'failed') return;
+    setRetryingAuthorizationId(failedTask.id);
+    try {
+      if (preview) {
+        const completedTask: AccessCardAuthorization = {
+          ...failedTask,
+          status: 'completed',
+          attempt: 1,
+          error: null,
+          completedAt: new Date().toISOString(),
+          controllerResults: [{ buildingNo: '9', status: 'uploaded' }],
+        };
+        setContext((current) => current ? ({
+          ...current,
+          history: current.history.map((item) => item.id === row.id ? ({
+            ...item,
+            accessStatus: 'controller_uploaded',
+            controllerResults: [
+              ...(item.controllerResults ?? []),
+              { wgCardNo: row.wgCardNo!, accessSystem: 'mjsystem', buildingNo: '9', controller: '9号楼控制器', door: '9号楼大门', sourceTable: 'MJ_MacPower' },
+            ],
+            latestAuthorization: completedTask,
+          }) : item),
+        }) : current);
+        message.success(`卡号 ${row.wgCardNo} 的门栋权限已重新下发成功`);
+        return;
+      }
+      let task = await accessCardIssuance.retryHistoryAuthorization(failedTask.id);
+      setContext((current) => current ? ({
+        ...current,
+        history: current.history.map((item) => item.id === row.id
+          ? { ...item, latestAuthorization: task }
+          : item),
+      }) : current);
+      for (let attempt = 0; attempt < 72 && ['pending', 'running'].includes(task.status); attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_250));
+        task = await accessCardIssuance.historyAuthorization(task.id);
+      }
+      await refreshContext();
+      if (task.status === 'completed') {
+        message.success(`卡号 ${row.wgCardNo} 的门栋权限已重新下发成功`);
+      } else if (task.status === 'failed') {
+        message.error(task.error || '重新下发失败，请按提示检查门禁网关后再重试');
+      } else {
+        message.warning('重试任务仍在后台执行，可稍后刷新历史查看结果');
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '重新下发失败');
+      await refreshContext();
+    } finally {
+      setRetryingAuthorizationId(null);
+    }
+  };
+
   const columns = [
     { title: '发卡序号', dataIndex: 'sequence', width: 92, fixed: 'left' as const, render: (value: number) => <strong>{value}</strong> },
     { title: '捷顺系统编号', dataIndex: 'legacyPersonNo', width: 136, render: (value: string | null) => value || <Tag>同步中</Tag> },
@@ -638,10 +720,37 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     { title: '控制器上传 / 门栋权限', key: 'controllerPermissions', width: 300, render: (_: unknown, row: AccessCardHistoryRow) => <ControllerPermissionCell row={row} /> },
     { title: '旧库同步', dataIndex: 'legacySyncStatus', width: 120, render: legacyStatus },
     {
-      title: '操作', key: 'actions', width: 126, fixed: 'right' as const,
-      render: (_: unknown, row: AccessCardHistoryRow) => context?.projectPhase === 'phase2' && row.wgCardNo
-        ? <Button size="small" onClick={() => openHistoryAuthorization(row)}>额外授权</Button>
-        : <Text type="secondary">不适用</Text>,
+      title: '操作', key: 'actions', width: 196, fixed: 'right' as const,
+      render: (_: unknown, row: AccessCardHistoryRow) => {
+        if (context?.projectPhase !== 'phase2' || !row.wgCardNo) return <Text type="secondary">不适用</Text>;
+        if (row.latestAuthorization?.status === 'failed') {
+          return (
+            <Space direction="vertical" size={4} align="start">
+              <Tag color="error">下发失败</Tag>
+              <Button
+                danger
+                size="small"
+                icon={<ReloadOutlined aria-hidden="true" />}
+                loading={retryingAuthorizationId === row.latestAuthorization.id}
+                aria-label={`重试下发 WG 卡号 ${row.wgCardNo} 的门栋权限`}
+                title={row.latestAuthorization.error || '重新下发原目标楼栋权限'}
+                onClick={() => void retryHistoryAuthorization(row)}
+              >
+                重试下发
+              </Button>
+              {row.latestAuthorization.error && (
+                <Text type="danger" style={{ maxWidth: 180 }} ellipsis={{ tooltip: row.latestAuthorization.error }}>
+                  {row.latestAuthorization.error}
+                </Text>
+              )}
+            </Space>
+          );
+        }
+        if (row.latestAuthorization && ['pending', 'running'].includes(row.latestAuthorization.status)) {
+          return <Tag color="processing">授权处理中</Tag>;
+        }
+        return <Button size="small" onClick={() => openHistoryAuthorization(row)}>额外授权</Button>;
+      },
     },
   ];
 
@@ -930,7 +1039,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
               columns={columns}
               dataSource={history}
               pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
-              scroll={{ x: 1210 }}
+              scroll={{ x: 1280 }}
               locale={{ emptyText: <Empty description="这个房号还没有新系统发卡记录" /> }}
             />
           </Card>

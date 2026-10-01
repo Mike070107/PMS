@@ -127,12 +127,17 @@ export class AccessCardIssuanceService {
   async getHouseContext(houseId: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const context = await this.resolveHouse(houseId, tenantId, access);
-    const [buildings, pmsHistory, legacySnapshot] = await Promise.all([
+    const [buildings, pmsHistory, legacySnapshot, authorizationTasks] = await Promise.all([
       this.buildingRepo.find({
         where: { tenantId, communityId: context.community.id },
       }),
       this.historyForHouse(houseId, tenantId),
       this.requestLegacyHistory(tenantId, context.legacyStorageRoomKey, user.id),
+      this.authorizationRepo.find({
+        where: { tenantId, houseId },
+        order: { createdAt: 'DESC' },
+        take: 100,
+      }),
     ]);
     const legacyReady = legacySnapshot.refreshedAt !== null;
     const permissionSubjects = context.phase === 'phase2'
@@ -141,13 +146,23 @@ export class AccessCardIssuanceService {
     const permissionSnapshot = context.phase === 'phase2'
       ? await this.requestAccessPermissions(legacySnapshot, permissionSubjects, user.id)
       : legacySnapshot;
-    const history = this.mergeHistory(
+    const mergedHistory = this.mergeHistory(
       pmsHistory,
       legacyReady ? legacySnapshot.history : [],
       context.phase,
       permissionSnapshot.permissionStatus,
       permissionSnapshot.permissions,
     );
+    const latestAuthorizationByRow = new Map<number, AccessCardAuthorization>();
+    for (const task of authorizationTasks) {
+      if (!latestAuthorizationByRow.has(task.historyRowId)) latestAuthorizationByRow.set(task.historyRowId, task);
+    }
+    const history = mergedHistory.map((row) => ({
+      ...row,
+      latestAuthorization: latestAuthorizationByRow.has(row.id)
+        ? this.historyAuthorizationResponse(latestAuthorizationByRow.get(row.id)!)
+        : null,
+    }));
 
     return {
       house: {
@@ -237,15 +252,7 @@ export class AccessCardIssuanceService {
       throw new BadRequestException('这张卡选择的楼栋已有授权任务正在执行，请等待完成后刷新历史');
     }
 
-    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
-    const gateway = orderAgentsByAvailability(agents).find((agent) =>
-      effectiveAgentStatus(agent) === 'online'
-      && agent.capabilities?.accessDbWrite === true
-      && agent.capabilities?.controllerUpload === true
-      && agent.capabilities?.historicalAccessGrant === true);
-    if (!gateway) {
-      throw new ServiceUnavailableException('楼栋门禁网关尚未支持历史卡追加授权，请在 .88 电脑更新 PMS 数据同步助手后重试');
-    }
+    await this.requireHistoryAuthorizationGateway(tenantId);
 
     const now = new Date();
     const task = this.authorizationRepo.create({
@@ -280,6 +287,35 @@ export class AccessCardIssuanceService {
     const task = await this.authorizationRepo.findOne({ where: { id, tenantId } });
     if (!task) throw new NotFoundException('历史卡片授权任务不存在');
     return this.historyAuthorizationResponse(task);
+  }
+
+  async retryHistoryAuthorization(
+    id: number,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const task = await this.authorizationRepo.findOne({ where: { id, tenantId } });
+    if (!task) throw new NotFoundException('历史卡片授权任务不存在');
+    await this.resolveHouse(task.houseId, tenantId, access);
+    if (task.status !== 'failed') throw new BadRequestException('只有下发失败的历史卡片授权任务可以重试');
+    const activeTask = await this.authorizationRepo.createQueryBuilder('authorization')
+      .where('authorization.tenant_id = :tenantId', { tenantId })
+      .andWhere('authorization.history_row_id = :historyRowId', { historyRowId: task.historyRowId })
+      .andWhere('authorization.id <> :id', { id: task.id })
+      .andWhere('authorization.status IN (:...statuses)', { statuses: ['pending', 'running'] })
+      .getOne();
+    if (activeTask) throw new BadRequestException('这张卡已有其他门栋权限任务正在执行，请等待完成后刷新历史');
+    await this.requireHistoryAuthorizationGateway(tenantId);
+    task.status = 'pending';
+    task.attempt = 0;
+    task.controllerResults = [];
+    task.completedAt = null;
+    task.leaseAgentKey = null;
+    task.leaseExpiresAt = null;
+    task.lastError = null;
+    task.updatedBy = user.id;
+    return this.historyAuthorizationResponse(await this.authorizationRepo.save(task));
   }
 
   async readiness(user: AuthUser) {
@@ -934,6 +970,18 @@ export class AccessCardIssuanceService {
       requestedAt: task.requestedAt,
       completedAt: task.completedAt,
     };
+  }
+
+  private async requireHistoryAuthorizationGateway(tenantId: number): Promise<void> {
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
+    const gateway = orderAgentsByAvailability(agents).find((agent) =>
+      effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.accessDbWrite === true
+      && agent.capabilities?.controllerUpload === true
+      && agent.capabilities?.historicalAccessGrant === true);
+    if (!gateway) {
+      throw new ServiceUnavailableException('楼栋门禁网关尚未支持历史卡追加授权，请在 .88 电脑更新 PMS 数据同步助手后重试');
+    }
   }
 
   private async matchParkingRowsToPms(tenantId: number, rows: ParkingQuery['rows']) {
