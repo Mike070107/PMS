@@ -11,6 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
 import { Brackets, EntityManager, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
+import { UserRole, UserStatus } from '../../common/enums';
 import {
   AccessCardAgent,
   AccessCardAuthorization,
@@ -70,7 +71,14 @@ import type {
 import type { ParkingHistoryChange, ParkingHistoryEventType } from '../../entities/parking-history.entity';
 import type { AccessPermissionReportDto } from './dto';
 import { sortAccessCardHistoryNewestFirst, verifiedHistoryAccessStatus } from './access-card-history.util';
-import { parkingLegacyRoomFromName, parseParkingSearch, supportsStructuredParkingQueries } from './parking-query.util';
+import {
+  parkingLegacyRoomFromName,
+  parkingPmsBuildingKey,
+  parkingPmsHouseKey,
+  parkingRoomAddress,
+  parseParkingSearch,
+  supportsStructuredParkingQueries,
+} from './parking-query.util';
 import {
   normalizeParkingOwnerFieldHints,
   normalizeParkingOwnerValues,
@@ -989,24 +997,108 @@ export class AccessCardIssuanceService {
       .map((row) => parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', '手机', '电话']))
       .map((value) => normalizeParkingPhone(value))
       .filter((value): value is string => Boolean(value))));
-    const users = phones.length
-      ? await this.userRepo.find({ where: { tenantId, phone: In(phones) } })
+    const rowRooms = rows.map((row) => parkingRoomAddress(parkingSnapshotValues(row.fields).room));
+    const roomKeys = new Set(rowRooms.flatMap((address) => address ? [address.key] : []));
+    const buildingKeys = new Set(rowRooms.flatMap((address) => address ? [`${address.lane}/${address.buildingNo}`] : []));
+
+    // 房号查询量很小，但旧库与 PMS 的前导零写法不一致，不能依赖数据库字符串等值比较。
+    // 先把当前租户楼栋收窄到目标弄号/楼号，再在内存里用统一房号键精确匹配。
+    const tenantBuildings = roomKeys.size
+      ? await this.buildingRepo.find({ where: { tenantId } })
       : [];
-    const byPhone = new Map(users
-      .filter((user) => user.phone)
-      .map((user) => [normalizeParkingPhone(user.phone), user] as const));
-    const houseIds = Array.from(new Set(users.map((user) => user.houseId).filter((id): id is number => id !== null)));
-    const houses = houseIds.length ? await this.houseRepo.find({ where: { tenantId, id: In(houseIds) } }) : [];
+    const roomBuildings = tenantBuildings.filter((building) => {
+      const key = parkingPmsBuildingKey(building.lane, building.buildingNo);
+      return key ? buildingKeys.has(key) : false;
+    });
+    const roomBuildingIds = roomBuildings.map((building) => building.id);
+    const roomHouses = roomBuildingIds.length
+      ? await this.houseRepo.find({ where: { tenantId, buildingId: In(roomBuildingIds) } })
+      : [];
+    const roomCommunityIds = Array.from(new Set(roomBuildings.map((building) => building.communityId)));
+    const roomCommunities = roomCommunityIds.length
+      ? await this.communityRepo.find({ where: { tenantId, id: In(roomCommunityIds) } })
+      : [];
+    const initialBuildingById = new Map(roomBuildings.map((building) => [building.id, building]));
+    const initialCommunityById = new Map(roomCommunities.map((community) => [community.id, community]));
+    const housesByRoomKey = new Map<string, House[]>();
+    for (const house of roomHouses) {
+      const building = initialBuildingById.get(house.buildingId);
+      const key = building ? parkingPmsHouseKey(building.lane, building.buildingNo, house.roomNo) : null;
+      if (!key || !roomKeys.has(key)) continue;
+      housesByRoomKey.set(key, [...(housesByRoomKey.get(key) ?? []), house]);
+    }
+    const roomHouseByKey = new Map<string, House>();
+    for (const [key, candidates] of housesByRoomKey) {
+      const lane = key.split('/')[0];
+      const expectedPhase = lane === '198' ? '一期' : lane === '228' ? '二期' : null;
+      const preferred = expectedPhase
+        ? candidates.find((house) => {
+          const building = initialBuildingById.get(house.buildingId);
+          const community = building ? initialCommunityById.get(building.communityId) : undefined;
+          return community?.name.includes(expectedPhase);
+        })
+        : undefined;
+      roomHouseByKey.set(key, preferred ?? candidates[0]);
+    }
+    const roomHouseIds = Array.from(new Set(Array.from(roomHouseByKey.values()).map((house) => house.id)));
+
+    const [phoneUsers, roomUsers] = await Promise.all([
+      phones.length
+        ? this.userRepo.find({ where: { tenantId, phone: In(phones), role: UserRole.OWNER } })
+        : Promise.resolve([]),
+      roomHouseIds.length
+        ? this.userRepo.find({ where: { tenantId, houseId: In(roomHouseIds), role: UserRole.OWNER } })
+        : Promise.resolve([]),
+    ]);
+    const users = Array.from(new Map([...phoneUsers, ...roomUsers].map((user) => [user.id, user])).values())
+      .sort((left, right) => {
+        const statusOrder = Number(right.status === UserStatus.ACTIVE) - Number(left.status === UserStatus.ACTIVE);
+        return statusOrder || right.updatedAt.getTime() - left.updatedAt.getTime() || right.id - left.id;
+      });
+    const byPhone = new Map<string, User>();
+    const byHouse = new Map<number, User>();
+    for (const user of users) {
+      const phone = normalizeParkingPhone(user.phone);
+      if (phone && !byPhone.has(phone)) byPhone.set(phone, user);
+      if (user.houseId && !byHouse.has(user.houseId)) byHouse.set(user.houseId, user);
+    }
+
+    const houseIds = Array.from(new Set([
+      ...roomHouseIds,
+      ...users.map((user) => user.houseId).filter((id): id is number => id !== null),
+    ]));
+    const knownRoomHouseIds = new Set(roomHouses.map((house) => house.id));
+    const missingHouseIds = houseIds.filter((id) => !knownRoomHouseIds.has(id));
+    const missingHouses = missingHouseIds.length
+      ? await this.houseRepo.find({ where: { tenantId, id: In(missingHouseIds) } })
+      : [];
+    const houses = [...roomHouses, ...missingHouses];
     const buildingIds = Array.from(new Set(houses.map((house) => house.buildingId)));
-    const buildings = buildingIds.length ? await this.buildingRepo.find({ where: { tenantId, id: In(buildingIds) } }) : [];
+    const knownBuildingIds = new Set(roomBuildings.map((building) => building.id));
+    const missingBuildingIds = buildingIds.filter((id) => !knownBuildingIds.has(id));
+    const missingBuildings = missingBuildingIds.length
+      ? await this.buildingRepo.find({ where: { tenantId, id: In(missingBuildingIds) } })
+      : [];
+    const buildings = [...roomBuildings, ...missingBuildings];
     const communityIds = Array.from(new Set(buildings.map((building) => building.communityId)));
-    const communities = communityIds.length ? await this.communityRepo.find({ where: { tenantId, id: In(communityIds) } }) : [];
+    const knownCommunityIds = new Set(roomCommunities.map((community) => community.id));
+    const missingCommunityIds = communityIds.filter((id) => !knownCommunityIds.has(id));
+    const missingCommunities = missingCommunityIds.length
+      ? await this.communityRepo.find({ where: { tenantId, id: In(missingCommunityIds) } })
+      : [];
+    const communities = [...roomCommunities, ...missingCommunities];
+    const updaterIds = Array.from(new Set(users.map((user) => user.updatedBy).filter((id): id is number => id !== null)));
+    const updaters = updaterIds.length ? await this.userRepo.find({ where: { id: In(updaterIds) } }) : [];
+    const updaterNameById = new Map(updaters.map((user) => [user.id, user.name || user.loginAccount || `用户 #${user.id}`]));
     const houseById = new Map(houses.map((house) => [house.id, house]));
     const buildingById = new Map(buildings.map((building) => [building.id, building]));
     const communityById = new Map(communities.map((community) => [community.id, community]));
     return rows.map((row) => {
       const rawPhone = parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', '手机', '电话']);
-      const user = rawPhone ? byPhone.get(normalizeParkingPhone(rawPhone) ?? '') : undefined;
+      const roomAddress = parkingRoomAddress(parkingSnapshotValues(row.fields).room);
+      const matchedHouse = roomAddress ? roomHouseByKey.get(roomAddress.key) : undefined;
+      const phoneUser = rawPhone ? byPhone.get(normalizeParkingPhone(rawPhone) ?? '') : undefined;
+      const user = phoneUser ?? (matchedHouse ? byHouse.get(matchedHouse.id) : undefined);
       return {
         ...row,
         pmsMatch: user ? (() => {
@@ -1019,6 +1111,10 @@ export class AccessCardIssuanceService {
           name: user.name,
           phone: user.phone,
           contactNote: user.contactNote,
+          status: user.status,
+          source: user.source,
+          updatedAt: user.updatedAt.toISOString(),
+          updatedByName: user.updatedBy ? updaterNameById.get(user.updatedBy) ?? null : null,
           house: house && building ? {
             id: house.id,
             roomNo: house.roomNo,
@@ -1028,7 +1124,7 @@ export class AccessCardIssuanceService {
             communityId: community?.id ?? null,
             communityName: community?.name ?? null,
           } : null,
-          matchedBy: 'phone' as const,
+          matchedBy: phoneUser ? 'phone' as const : 'room' as const,
           };
         })() : null,
         historyRef: {

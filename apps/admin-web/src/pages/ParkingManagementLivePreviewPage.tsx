@@ -40,7 +40,8 @@ export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgr
       name: '张某某',
       phone: '13800006421',
       contactNote: '白天联系本人',
-      house: { id: 301, roomNo: '301', areaSqm: '89.50', lane: '228', buildingNo: '5', communityId: 1, communityName: '枫桦景苑' },
+      status: 'active', source: 'manual', updatedAt: '2026-09-30T02:15:00.000Z', updatedByName: '王管理员',
+      house: { id: 301, roomNo: '301', areaSqm: '89.50', lane: '228', buildingNo: '5', communityId: 1, communityName: '枫桦景苑二期' },
       matchedBy: 'phone' as const,
     },
   }, {
@@ -53,7 +54,8 @@ export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgr
     historyRef: { database: 'parking2', sourceRecordId: '9016', externalOwnerId: '1264', plate: '沪B67890', pmsUserId: 1264 },
     pmsMatch: {
       userId: 1264, houseId: 301, name: '张某某', phone: '13800006421', contactNote: '白天联系本人',
-      house: { id: 301, roomNo: '301', areaSqm: '89.50', lane: '228', buildingNo: '5', communityId: 1, communityName: '枫桦景苑' }, matchedBy: 'phone' as const,
+      status: 'active', source: 'manual', updatedAt: '2026-09-30T02:15:00.000Z', updatedByName: '王管理员',
+      house: { id: 301, roomNo: '301', areaSqm: '89.50', lane: '228', buildingNo: '5', communityId: 1, communityName: '枫桦景苑二期' }, matchedBy: 'phone' as const,
     },
   }] : undefined;
   const history = mode === 'ready' ? {

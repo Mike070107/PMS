@@ -68,7 +68,7 @@
 .parking-query-primary .ant-tag { width: max-content; margin: 2px 0 0; }
 .parking-vehicle-type { min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 9px; background: #f5f1fb; }
 .parking-vehicle-type span, .parking-vehicle-type small { color: #75698a; font-size: 12px; }
-.parking-vehicle-type strong { color: #513c72; font-size: 17px; }
+.parking-vehicle-type .parking-vehicle-type-tag { width: max-content; margin: 2px 0; padding: 2px 10px; font-size: 15px; font-weight: 750; line-height: 1.6; }
 .parking-garage-table { grid-column: 1 / -1; overflow-x: auto; overflow-y: hidden; border: 1px solid #dfe5eb; border-radius: 10px; }
 .parking-garage-head, .parking-garage-row { min-width: 650px; display: grid; grid-template-columns: 72px minmax(180px,1fr) minmax(120px,.6fr) minmax(170px,.8fr); align-items: center; gap: 12px; padding: 10px 14px; }
 .parking-garage-head { color: #69798b; background: #f3f6f9; font-size: 12px; font-weight: 700; }
@@ -82,6 +82,12 @@
 .parking-operation-form > label { display: grid; gap: 6px; color: #334e68; font-weight: 600; }
 .parking-operation-form select { min-height: 32px; border: 1px solid #d9e2ec; border-radius: 6px; padding: 4px 8px; background: #fff; }
 .parking-operation-form .ant-checkbox-group { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+@media (max-width: 600px) {
+  .parking-date-picker-popup .ant-picker-panel-container,
+  .parking-date-picker-popup .ant-picker-panel,
+  .parking-date-picker-popup .ant-picker-date-panel { width: calc(100vw - 32px); max-width: calc(100vw - 32px); }
+  .parking-date-picker-popup .ant-picker-body { padding-inline: 12px; }
+}
 .parking-owner-compare { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
 .parking-owner-panel { min-width: 0; padding: 14px; border: 1px solid #dde4eb; border-radius: 10px; background: #fafbfd; }
 .parking-owner-panel header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid #e8edf2; }
@@ -91,6 +97,7 @@
 .parking-owner-panel dt { color: #788797; font-size: 12px; }
 .parking-owner-panel dd { margin: 3px 0 0; overflow-wrap: anywhere; color: #2f465e; }
 .parking-owner-panel dd.parking-owner-important { color: #253d57; font-size: 16px; font-weight: 700; }
+.parking-owner-panel dd.parking-owner-metadata { color: #526a82; font-size: 13px; font-variant-numeric: tabular-nums; }
 .parking-owner-panel > small { display: block; margin-top: 9px; color: #9a6b22; }
 .parking-owner-editor { display: grid; gap: 16px; padding-top: 4px; }
 .parking-owner-editor-context { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
@@ -112,13 +119,6 @@
 .parking-proof-modal { display: grid; justify-items: center; gap: 16px; padding-top: 8px; text-align: center; }
 .parking-proof-modal .ant-alert { width: 100%; text-align: left; }
 .parking-proof-modal img { width: min(320px, 80vw); height: auto; border-radius: 12px; }
-.parking-query-details { grid-column: 1 / -1; padding-top: 9px; border-top: 1px solid #edf0f4; }
-.parking-query-details summary { width: max-content; color: #31558a; cursor: pointer; font-size: 13px; }
-.parking-query-details summary:focus-visible { outline: 2px solid #31558a; outline-offset: 3px; }
-.parking-query-details dl { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin: 12px 0 0; }
-.parking-query-details dl div { min-width: 0; padding: 8px 10px; border-radius: 8px; background: #f6f8fa; }
-.parking-query-details dt { overflow-wrap: anywhere; color: #7b8999; font-size: 11px; }
-.parking-query-details dd { margin: 3px 0 0; overflow-wrap: anywhere; color: #334a62; font-size: 12px; font-variant-numeric: tabular-nums; }
 .parking-hero { min-height: 210px; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 36px; padding: 34px 38px; overflow: hidden; color: #fff; border-radius: 20px; background: radial-gradient(circle at 82% 10%, rgba(145,168,208,.24), transparent 28%), linear-gradient(135deg, #1f3559, #31558a 72%, #426a9b); box-shadow: 0 16px 40px rgba(36,63,105,.18); }
 .parking-hero h1.ant-typography { margin: 9px 0 10px; color: #fff; font-size: 34px; line-height: 1.15; }
 .parking-hero .ant-typography { max-width: 760px; color: rgba(255,255,255,.82); font-size: 16px; line-height: 1.8; }
@@ -213,6 +213,52 @@
 .parking-confirm-copy { color: #526275; line-height: 1.7; }
 .parking-plate-entry { display: grid; gap: 9px; margin-top: 24px; }
 .parking-plate-entry > label { color: #273d54; font-weight: 650; }
+.parking-new-flow { display: flex; align-items: center; gap: 10px; margin: 2px 0 20px; color: #98a6b5; font-size: 12px; }
+.parking-new-flow > span { display: inline-flex; align-items: center; gap: 6px; }
+.parking-new-flow > span:not(.is-current):not(.is-done) { opacity: .62; }
+.parking-new-flow > span.is-current, .parking-new-flow > span.is-done { color: #31558a; font-weight: 700; }
+.parking-new-flow > span::first-letter { display: grid; place-items: center; }
+.parking-new-flow > i { width: 68px; height: 1px; background: #d8e1ea; }
+.parking-new-flow small { color: inherit; font-size: 12px; font-weight: 600; }
+.parking-plate-entry-design { margin-top: 20px; }
+.parking-plate-entry-design .ant-input-affix-wrapper { height: 62px; border-color: #9db6d3; border-radius: 12px; box-shadow: 0 0 0 3px rgba(49,85,138,.07); }
+.parking-plate-entry-design .ant-input { font-size: 25px; font-weight: 750; letter-spacing: .1em; }
+.parking-plate-entry-design > .ant-typography { display: block; margin-top: 2px; }
+.parking-new-drawer-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid #e3e9ef; }
+.parking-new-plate-summary { display: flex; align-items: center; gap: 18px; padding: 14px 16px; border: 1px solid #d8e4ef; border-radius: 14px; background: #f6f9fc; }
+.parking-new-plate-summary .parking-license-plate { width: 184px; min-height: 54px; }
+.parking-new-plate-summary .parking-license-plate span { font-size: 22px; }
+.parking-new-plate-summary > div:last-child { display: grid; gap: 5px; }
+.parking-new-plate-summary strong { color: #243c57; font-size: 18px; }
+.parking-new-form-section { display: grid; gap: 12px; }
+.parking-new-form-section > label { display: grid; gap: 7px; color: #3a526c; font-weight: 650; }
+.parking-pms-resident-card { display: grid; grid-template-columns: 42px minmax(0,1fr) 110px 150px; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid #dbe6ef; border-radius: 12px; background: #fbfdff; }
+.parking-pms-resident-icon { width: 38px; height: 38px; display: grid; place-items: center; color: #315f8f; border-radius: 11px; background: #e7f0fa; font-size: 18px; }
+.parking-pms-resident-card > div:not(.parking-pms-resident-icon) { display: grid; gap: 3px; min-width: 0; }
+.parking-pms-resident-card strong { color: #253e59; }
+.parking-pms-resident-card small { color: #8391a1; font-size: 11px; }
+.parking-phone-override { display: grid; gap: 7px; padding: 12px 14px; border: 1px solid #efc987; border-radius: 10px; background: #fffaf0; }
+.parking-phone-override label { display: grid; grid-template-columns: 130px minmax(0,1fr); align-items: center; gap: 10px; color: #755520; font-weight: 650; }
+.parking-horizontal-options { display: flex; flex-wrap: wrap; gap: 10px; }
+.parking-horizontal-options.ant-radio-group { width: 100%; }
+.parking-horizontal-options .ant-radio-button-wrapper { min-width: 106px; text-align: center; }
+.parking-garage-options .ant-checkbox-wrapper { min-width: 160px; padding: 10px 13px; border: 1px solid #d7e1eb; border-radius: 9px; background: #fff; }
+.parking-garage-options .ant-checkbox-wrapper-checked { border-color: #7ea5d2; background: #f2f7fd; }
+.parking-payment-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.parking-payment-row > div:first-child { display: grid; gap: 8px; }
+.parking-new-amount { min-width: 176px; display: grid; gap: 3px; padding: 12px 16px; border-radius: 11px; background: #edf5ff; text-align: right; }
+.parking-new-amount small, .parking-new-amount span { color: #6c7f94; font-size: 12px; }
+.parking-new-amount strong { color: #1e5fa5; font-size: 27px; font-variant-numeric: tabular-nums; }
+.parking-rate-hint { display: flex; align-items: center; gap: 8px; padding: 10px 12px; color: #62768c; border: 1px dashed #c6d7e8; border-radius: 9px; background: #f8fbfe; font-size: 12px; }
+.parking-rate-hint > span { flex: 1; }
+.parking-family-proof-box { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 14px; padding: 14px 16px; border: 1px solid #efd49b; border-radius: 12px; background: #fffaf0; }
+.parking-family-proof-box > div:first-child { display: grid; gap: 4px; }
+.parking-family-proof-box > div:first-child strong { color: #744d13; }
+.parking-family-proof-box > div:first-child .ant-typography { color: #876c3b; font-size: 12px; }
+.parking-family-proof-box > a { grid-column: 1 / -1; color: #315f8f; font-weight: 650; }
+.parking-family-proof-qr { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; padding-top: 10px; border-top: 1px dashed #e7c97e; }
+.parking-family-proof-qr img { width: 144px; height: 144px; padding: 7px; border: 1px solid #e0d0a9; border-radius: 8px; background: #fff; }
+.parking-family-proof-qr .ant-typography { color: #876c3b; }
 .parking-plate-keyboard { margin-top: 18px; padding: 14px; border: 1px solid #dce3eb; border-radius: 14px; background: #f5f7fa; }
 .parking-key-grid { display: grid; grid-template-columns: repeat(9, minmax(0,1fr)); gap: 6px; }
 .parking-key-grid button { min-width: 0; min-height: 42px; padding: 0; color: #263c55; border: 1px solid #ccd6e0; border-radius: 7px; background: #fff; cursor: pointer; transition: color .18s ease, border-color .18s ease, background .18s ease; }
@@ -330,6 +376,18 @@
   .parking-vehicle-footer > span { width: 100%; margin-right: 0; }
   .parking-key-grid { grid-template-columns: repeat(6, minmax(0,1fr)); }
   .parking-key-grid button { min-height: 44px; }
+  .parking-pms-resident-card { grid-template-columns: 42px minmax(0,1fr); }
+  .parking-pms-resident-card > div:nth-child(3), .parking-pms-resident-card > div:nth-child(4) { grid-column: 2; }
+  .parking-payment-row { align-items: stretch; flex-direction: column; }
+  .parking-new-amount { text-align: left; }
+  .parking-phone-override label { grid-template-columns: minmax(0,1fr); }
+  .parking-rate-hint { align-items: flex-start; flex-wrap: wrap; }
+  .parking-rate-hint > span { flex-basis: calc(100% - 30px); }
+  .parking-family-proof-box { grid-template-columns: minmax(0,1fr); }
+  .parking-family-proof-box > .ant-btn { justify-self: start; }
+  .parking-family-proof-qr { align-items: flex-start; flex-direction: column; }
+  .parking-new-drawer-actions { align-items: stretch; flex-direction: column; }
+  .parking-new-drawer-actions > .ant-space { justify-content: flex-end; }
   .parking-detail-list dl { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .parking-space-list article, .parking-renewal-list article, .parking-reconcile-list article { grid-template-columns: minmax(0,1fr); align-items: start; }
   .parking-space-list dl { grid-template-columns: minmax(0,1fr); }

@@ -4,6 +4,9 @@ import {
   Button,
   Card,
   Checkbox,
+  DatePicker,
+  Divider,
+  Drawer,
   Empty,
   Input,
   InputNumber,
@@ -11,6 +14,7 @@ import {
   Space,
   Spin,
   Select,
+  Radio,
   Tag,
   Typography,
 } from 'antd';
@@ -35,11 +39,15 @@ import {
   SafetyCertificateOutlined,
   SearchOutlined,
   UserOutlined,
+  InfoCircleOutlined,
+  SyncOutlined,
+  DollarOutlined,
 } from '@ant-design/icons';
 import {
   accessCardIssuance,
   type AccessCardReadiness,
 } from '@pms/api-client';
+import dayjs from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 import CopyableSecret from '../components/CopyableSecret';
 import OwnerFormModal, { type OwnerRow } from './OwnerFormModal';
@@ -261,12 +269,24 @@ export default function ParkingManagementPage({
     }
   };
 
+  const createProofUploadForPlate = async (plate: string, ownerId?: string) => accessCardIssuance.createParkingProofUpload({ plate, ownerId });
+  const viewProofForPlate = async (plate: string) => {
+    setProofLoading(true);
+    try {
+      const upload = await accessCardIssuance.parkingProofByPlate(plate);
+      if (!upload) { message.info('这个车牌还没有已提交的亲情车证明材料'); return; }
+      setProofUpload(upload);
+    } catch (error) { message.error(error instanceof Error ? error.message : '读取亲情车证明材料失败'); }
+    finally { setProofLoading(false); }
+  };
+
   const runParkingOperation = async (kind: accessCardIssuance.ParkingOperationKind, row: ParkingQueryRow | null, payload: Record<string, unknown>) => {
     setOperationBusy(true); setOperationError(null);
     try {
       let task = await accessCardIssuance.createParkingOperation({
         database: row ? (row.database.toLowerCase() === 'parking1' ? 'parking1' : 'parking2') : ((payload.database as 'parking1' | 'parking2') || 'parking2'),
-        kind, sourceRecordId: row ? parkingHistoryRef(row).sourceRecordId : null, pmsUserId: row?.pmsMatch?.userId ?? null,
+        kind, sourceRecordId: row ? parkingHistoryRef(row).sourceRecordId : null,
+        pmsUserId: row?.pmsMatch?.userId ?? (kind === 'add_vehicle' && Number.isFinite(Number(payload.pmsUserId)) ? Number(payload.pmsUserId) : null),
         idempotencyKey: createIdempotencyKey(), payload,
       });
       setLastOperation(task);
@@ -414,6 +434,7 @@ export default function ParkingManagementPage({
               canWriteLocal={canWriteLocal}
               proofLoading={proofLoading}
               onCreateProof={() => void createProofUpload(row)}
+              onViewProof={() => void viewProofForPlate(plateValue(row.fields))}
               onEditPms={(owner) => setEditingPmsOwner(owner)}
               onEditLegacy={(target) => { setLegacyOwnerError(null); setEditingLegacyOwner(target); }}
               onOperation={(kind) => { setOperationError(null); setLastOperation(null); setOperationTarget({ kind, row }); }}
@@ -471,12 +492,14 @@ export default function ParkingManagementPage({
         open={!!operationTarget}
         kind={operationTarget?.kind ?? 'add_vehicle'}
         row={operationTarget?.row ?? null}
+        roomOptions={rows}
         loading={operationBusy}
         error={operationError}
         task={lastOperation}
         onClose={() => { if (!operationBusy) setOperationTarget(null); }}
         onRetry={() => { if (lastOperation) void runParkingOperation(operationTarget?.kind ?? 'add_vehicle', operationTarget?.row ?? null, lastOperation.payload); }}
         onRollback={async () => { if (!lastOperation) return; try { await accessCardIssuance.rollbackParkingOperation(lastOperation.id); message.success('已创建反向回滚任务'); } catch (error) { message.error(error instanceof Error ? error.message : '回滚任务创建失败'); } }}
+        onCreateProofUpload={createProofUploadForPlate}
         onSubmit={(payload) => operationTarget && void runParkingOperation(operationTarget.kind, operationTarget.row, payload)}
       />
 
@@ -489,9 +512,9 @@ export default function ParkingManagementPage({
         {proofUpload && (
           <div className="parking-proof-modal">
             {proofUpload.status === 'submitted' ? (
-              <Alert type="success" showIcon message="证明材料已上传" description={proofUpload.fileName || '手机端已经提交，办公室可以继续办理亲情车。'} />
+              <><Alert type="success" showIcon message="证明材料已上传" description={proofUpload.fileName || '手机端已经提交，办公室可以继续办理亲情车。'} />{proofUpload.fileUrl && <a href={proofUpload.fileUrl} target="_blank" rel="noreferrer">查看已上传资料</a>}</>
             ) : (
-              <Alert type={proofUpload.status === 'opened' ? 'info' : 'warning'} showIcon message={proofUpload.status === 'opened' ? '用户已打开上传页面' : '等待用户扫码'} description="二维码 30 分钟有效，只能为当前车牌提交一次图片或 PDF。" />
+              <Alert type={proofUpload.status === 'opened' ? 'info' : 'warning'} showIcon message={proofUpload.status === 'opened' ? '用户已打开上传页面' : '等待用户扫码'} description="二维码 1 小时有效，只能为当前车牌提交一次图片或 PDF。" />
             )}
             {proofUpload.qrDataUrl && <img src={proofUpload.qrDataUrl} alt="亲情车证明材料临时上传二维码" />}
             <Text type="secondary">{new Date(proofUpload.expiresAt).toLocaleString('zh-CN', { hour12: false })} 前有效</Text>
@@ -601,6 +624,26 @@ function vehicleIdentity(fields: ParkingQueryRow['fields']): string | null {
   return `旧库车辆类型 ${raw}`;
 }
 
+function vehicleIdentityColor(identity: string | null): string {
+  return ({
+    住户车: 'blue',
+    租户车: 'orange',
+    亲情车: 'purple',
+    小区服务车: 'cyan',
+    小区工作车: 'green',
+  } as Record<string, string>)[identity || ''] || 'default';
+}
+
+function ownerUpdateSource(source: string | null | undefined, updatedByName: string | null | undefined): string {
+  if (updatedByName) return `PMS系统 · ${updatedByName}`;
+  return ({
+    manual: 'PMS后台建档',
+    self: '业主自行认证',
+    repair_intake: '报修登记',
+    legacy_import: '旧系统导入',
+  } as Record<string, string>)[source || ''] || 'PMS系统存量数据';
+}
+
 /** 256 位字符串中字符所在的位置就是旧停车系统的通道号，不是车位或库位。 */
 function enabledChannelNumbers(value: string | null): number[] {
   if (!value) return [];
@@ -615,10 +658,10 @@ function garageRows(database: string, fields: ParkingQueryRow['fields']) {
     downloaded: database.toLowerCase() === (channels[0] === 5 ? 'parking1' : 'parking2') && channels.filter((item) => effective.includes(item)).every((item) => downloaded.includes(item)),
   });
   return [
-    { key: 'phase1', label: '一期地面车库', source: 'parking1', ...state([5, 7]) },
-    { key: 'phase2', label: '二期地面车库', source: 'parking2', ...state([9, 11, 13]) },
-    { key: 'main', label: '二期大车库', source: 'parking2', ...state([15, 17, 19, 21]) },
-    { key: 'civil', label: '二期人防车库', source: '德立云', authorized: false, downloaded: false, cloud: true },
+    { key: 'phase1', label: '一期地面车库', source: '来源：枫桦景苑一期停车系统', ...state([5, 7]) },
+    { key: 'phase2', label: '二期地面车库', source: '来源：枫桦景苑二期停车系统', ...state([9, 11, 13]) },
+    { key: 'main', label: '二期大车库', source: '来源：枫桦景苑二期停车系统', ...state([15, 17, 19, 21]) },
+    { key: 'civil', label: '二期人防车库', source: '来源：德立云停车系统', authorized: false, downloaded: false, cloud: true },
   ];
 }
 
@@ -749,10 +792,11 @@ function HistoryEntryList({ title, entries, empty }: {
   </section>;
 }
 
-function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, onEditLegacy, proofLoading, onOperation }: {
+function ParkingResultCard({ row, canWriteLocal, onCreateProof, onViewProof, onEditPms, onEditLegacy, proofLoading, onOperation }: {
   row: ParkingQueryRow;
   canWriteLocal: boolean;
   onCreateProof: () => void;
+  onViewProof: () => void;
   onEditPms: (owner: OwnerRow) => void;
   onEditLegacy: (target: ParkingLegacyOwnerTarget) => void;
   proofLoading: boolean;
@@ -796,16 +840,13 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, onEdi
       note: ownerFieldHint(row.fields, fieldAliases.note),
     },
   } : null;
-  const details = Object.entries(row.fields)
-    .filter(([key, value]) => !key.startsWith('PmsMeta__') && value !== null && String(value).trim() !== '')
-    .slice(0, 24);
   return (
     <article className="parking-query-card">
       <div className={`parking-license-plate ${plate.length > 7 ? 'is-green' : 'is-blue'}`}><span>{plate}</span></div>
       <div className="parking-query-primary">
         <strong><HomeOutlined /> {room}</strong>
         <span className="parking-important-value"><UserOutlined /> {owner}</span>
-        <Tag color="blue">{row.database.toLowerCase() === 'parking1' ? '枫桦景苑一期旧库' : '枫桦景苑二期旧库'}</Tag>
+        <Tag color="blue">{row.database.toLowerCase() === 'parking1' ? '来源：枫桦景苑一期停车系统' : '来源：枫桦景苑二期停车系统'}</Tag>
       </div>
       <div className="parking-query-meta">
         {phone && <span className="parking-important-value"><PhoneOutlined /> {phone}</span>}
@@ -814,7 +855,7 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, onEdi
           {expiryView.days !== null && <b className={expiryView.days < 0 ? 'is-expired' : 'is-valid'}>有效期 {expiryView.days} 天</b>}
         </span>}
       </div>
-      <div className="parking-vehicle-type"><span>车辆授权类型</span><strong>{identity || '旧库未设置'}</strong><small>该类型决定续期价格，不代表车库权限</small></div>
+      <div className="parking-vehicle-type"><span>车辆授权类型</span><Tag className="parking-vehicle-type-tag" color={vehicleIdentityColor(identity)}>{identity || '旧库未设置'}</Tag><small>该类型决定续期价格，不代表车库权限</small></div>
       <div className="parking-garage-table" role="table" aria-label="车库授权和设备下载状态">
         <div className="parking-garage-head" role="row"><span>授权</span><span>车库</span><span>数据源</span><span>设备状态</span></div>
         {garages.map((garage) => <div className="parking-garage-row" role="row" key={garage.key}>
@@ -833,12 +874,15 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, onEdi
         <OwnerDataPanel title="PMS系统业主信息" name={row.pmsMatch?.name || '未关联'} phone={row.pmsMatch?.phone || null}
           room={row.pmsMatch?.house ? `${row.pmsMatch.house.communityName || ''} ${row.pmsMatch.house.lane || ''}弄 ${row.pmsMatch.house.buildingNo}号 ${row.pmsMatch.house.roomNo}室` : null}
           note={row.pmsMatch?.contactNote || null} editable={!!row.pmsMatch}
-          onEdit={row.pmsMatch ? () => onEditPms({ id: row.pmsMatch!.userId, name: row.pmsMatch!.name, phone: row.pmsMatch!.phone, status: 'active', source: null, contactNote: row.pmsMatch!.contactNote, houseId: row.pmsMatch!.houseId, house: row.pmsMatch!.house }) : undefined} />
+          updatedAt={row.pmsMatch?.updatedAt || null}
+          updateSource={row.pmsMatch ? ownerUpdateSource(row.pmsMatch.source, row.pmsMatch.updatedByName) : null}
+          editHint={!row.pmsMatch ? '没有找到该房号或电话号码对应的 PMS 业主档案' : undefined}
+          onEdit={row.pmsMatch ? () => onEditPms({ id: row.pmsMatch!.userId, name: row.pmsMatch!.name, phone: row.pmsMatch!.phone, status: row.pmsMatch!.status || 'active', source: row.pmsMatch!.source ?? null, contactNote: row.pmsMatch!.contactNote, houseId: row.pmsMatch!.houseId, house: row.pmsMatch!.house }) : undefined} />
       </div>
       {identity === '亲情车' && (
         <div className="parking-family-actions">
           <div><strong>亲情车办理</strong><span>办公室不收费；门岗按优惠临时车计费。新增时必须收取证明材料。</span></div>
-          <Button icon={<QrcodeOutlined />} loading={proofLoading} onClick={onCreateProof}>生成材料上传二维码</Button>
+          <Space wrap><Button icon={<QrcodeOutlined />} loading={proofLoading} onClick={onCreateProof}>生成材料上传二维码</Button><Button loading={proofLoading} onClick={onViewProof}>查看已上传资料</Button></Space>
         </div>
       )}
       <div className="parking-operation-actions" aria-label="停车业务操作">
@@ -849,18 +893,21 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onEditPms, onEdi
         <Button size="small" disabled={!canWriteLocal} icon={<CloudUploadOutlined />} onClick={() => onOperation('download_vehicle')}>下发设备</Button>
         <Button size="small" danger disabled={!canWriteLocal} icon={<StopOutlined />} onClick={() => onOperation('delete_vehicle')}>注销车辆</Button>
       </div>
-      <details className="parking-query-details">
-        <summary>查看旧库原始字段</summary>
-        <dl>{details.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>
-      </details>
     </article>
   );
 }
 
-function ParkingOperationModal({ open, kind, row, loading, error, task, onClose, onSubmit, onRetry, onRollback }: {
+function parkingRenewalEndDate(currentEndDate: string, months: number): string {
+  const parsed = dayjs(currentEndDate);
+  return parsed.isValid() ? parsed.add(months, 'month').format('YYYY-MM-DD') : '';
+}
+
+function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, task, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload }: {
   open: boolean;
   kind: accessCardIssuance.ParkingOperationKind;
   row: ParkingQueryRow | null;
+  roomOptions: ParkingQueryRow[];
+  onCreateProofUpload: (plate: string, ownerId?: string) => Promise<accessCardIssuance.ParkingProofUpload>;
   loading: boolean;
   error: string | null;
   task: accessCardIssuance.ParkingOperation | null;
@@ -885,11 +932,12 @@ function ParkingOperationModal({ open, kind, row, loading, error, task, onClose,
   useEffect(() => {
     const fields = row?.fields || {};
     const currentPlate = row ? plateValue(fields) : '';
+    const currentEndDate = row ? (fieldValue(fields, fieldAliases.expiry) || '').slice(0, 10) : '';
     setPlate(currentPlate === '车牌字段待识别' ? '' : currentPlate);
     setNewPlate(''); setOwnerName(row ? ownerFieldValue(fields, fieldAliases.owner) || '' : '');
     setOwnerId(row ? parkingHistoryRef(row).externalOwnerId || '' : '');
-    setEndDate(row ? (fieldValue(fields, fieldAliases.expiry) || '').slice(0, 10) : '');
-    setPreviousEndDate(row ? (fieldValue(fields, fieldAliases.expiry) || '').slice(0, 10) : '');
+    setEndDate(kind === 'renew_vehicle' ? parkingRenewalEndDate(currentEndDate, 1) : currentEndDate);
+    setPreviousEndDate(currentEndDate);
     setIdentity(row ? vehicleIdentity(fields) || '住户车' : '住户车'); setAmount(null); setMonths(1);
     setEffective(row ? fieldValue(fields, fieldAliases.effective) || '' : '');
     setDownload(row ? fieldValue(fields, fieldAliases.download) || '' : '');
@@ -897,6 +945,12 @@ function ParkingOperationModal({ open, kind, row, loading, error, task, onClose,
     const garages = row ? garageRows(row.database, fields).filter((item) => item.authorized && !item.cloud).map((item) => item.key) : [];
     setSelectedGarages(garages);
   }, [open, row, kind]);
+  const changeMonths = (value: number) => {
+    setMonths(value);
+    if (kind === 'renew_vehicle' && previousEndDate) {
+      setEndDate(parkingRenewalEndDate(previousEndDate, value));
+    }
+  };
   const title = operationLabel(kind);
   const submit = () => {
     const monthly = identity === '租户车' ? 260 : identity === '亲情车' ? 0 : 180;
@@ -906,21 +960,182 @@ function ParkingOperationModal({ open, kind, row, loading, error, task, onClose,
     if (kind === 'add_vehicle' || kind === 'update_garages') payload.effective = garageBitString(selectedGarages);
     onSubmit(payload);
   };
+  if (kind === 'add_vehicle') return <AddVehicleOperationModal open={open} loading={loading} error={error} task={task} roomOptions={roomOptions} onClose={onClose} onSubmit={onSubmit} onRetry={onRetry} onRollback={onRollback} onCreateProofUpload={onCreateProofUpload} />;
   return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle' }} onOk={submit}>
     {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space><Button size="small" onClick={onRetry}>重试</Button>{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
     <div className="parking-operation-form">
-      {kind === 'add_vehicle' && <label>数据库<select value={row?.database || 'parking2'} disabled={!!row} onChange={() => undefined}><option value="parking1">枫桦景苑一期</option><option value="parking2">枫桦景苑二期</option></select></label>}
-      <label>车牌<Input value={plate} disabled={kind === 'add_vehicle' ? false : !row} onChange={(e) => setPlate(e.target.value.toUpperCase())} /></label>
+      <label>车牌<Input value={plate} disabled={!row} onChange={(e) => setPlate(e.target.value.toUpperCase())} /></label>
       {kind === 'change_plate' && <label>新车牌<Input value={newPlate} onChange={(e) => setNewPlate(e.target.value.toUpperCase())} /></label>}
-      {(kind === 'add_vehicle' || kind === 'change_plate' || kind === 'rebind_owner') && <><label>绑定用户姓名<Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label><label>旧系统住户编号<Input value={ownerId} onChange={(e) => setOwnerId(e.target.value)} /></label></>}
-      {(kind === 'add_vehicle' || kind === 'renew_vehicle') && <><label>快捷期限<Select value={months} options={[1, 2, 3, 6, 12].map((value: number) => ({ value, label: `${value}个月` }))} onChange={(value: number) => setMonths(value)} /><InputNumber min={0} value={amount} onChange={setAmount} addonAfter="元" /><Text type="secondary">留空按收费规则验算：业主车月价 ¥180、12个月 ¥1800；租户车月价 ¥260、12个月 ¥2760。可在提交前覆盖本次金额。</Text></label><label>到期日期<Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label></>}
-      {(kind === 'add_vehicle' || kind === 'update_garages') && <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }]} /></label>}
-      {(kind === 'add_vehicle' || kind === 'change_plate' || kind === 'rebind_owner') && <label>车辆授权类型<Select value={identity} options={['住户车', '租户车', '亲情车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>}
+      {(kind === 'change_plate' || kind === 'rebind_owner') && <label>绑定用户姓名<Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label>}
+      {kind === 'renew_vehicle' && <><label>快捷期限<Select value={months} options={[1, 2, 3, 6, 12].map((value: number) => ({ value, label: `${value}个月` }))} onChange={changeMonths} /><InputNumber min={0} value={amount} onChange={setAmount} addonAfter="元" /><Text type="secondary">留空按收费规则验算：业主车月价 ¥180、12个月 ¥1800；租户车月价 ¥260、12个月 ¥2760。可在提交前覆盖本次金额。</Text></label><label>到期日期<DatePicker value={endDate ? dayjs(endDate) : null} format="YYYY-MM-DD" placeholder="选择到期日期" allowClear placement="bottomLeft" popupClassName="parking-date-picker-popup" onChange={(value) => setEndDate(value ? value.format('YYYY-MM-DD') : '')} style={{ width: '100%' }} />{kind === 'renew_vehicle' && <Text type="secondary">选择快捷期限会从当前到期日往后顺延。</Text>}</label></>}
+      {kind === 'update_garages' && <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }]} /></label>}
+      {(kind === 'change_plate' || kind === 'rebind_owner') && <label>车辆授权类型<Select value={identity} options={['住户车', '租户车', '亲情车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>}
       {kind === 'download_vehicle' && <Alert type="info" showIcon message="将创建旧库设备下载任务" description="任务完成只代表旧系统已接受并回读下载队列；现场控制器回执会在状态中单独显示。" />}
       {kind === 'delete_vehicle' && <Alert type="warning" showIcon message="注销会调用旧系统 Add_Del_Plate" description="车辆从旧库移除并写入注销流水，网页不会直接删除 Car_Issue。" />}
       {task?.status === 'completed' && <Button danger onClick={onRollback}>为本次操作创建反向回滚任务</Button>}
     </div>
   </Modal>;
+}
+
+type AddVehicleRoomOption = {
+  key: string;
+  database: 'parking1' | 'parking2';
+  pmsUserId: number;
+  roomKey: string;
+  communityName: string;
+  buildingNo: string;
+  roomNo: string;
+  name: string;
+  phone: string;
+};
+
+function buildAddVehicleRoomOptions(rows: ParkingQueryRow[]): AddVehicleRoomOption[] {
+  const seen = new Map<string, AddVehicleRoomOption>();
+  rows.forEach((row) => {
+    const match = row.pmsMatch;
+    const house = match?.house;
+    if (!match || !house) return;
+    const database = row.database.toLowerCase() === 'parking1' ? 'parking1' : 'parking2';
+    const roomKey = [house.lane, house.buildingNo, house.roomNo].filter(Boolean).join('/');
+    const key = `${database}:${match.userId}:${house.id}`;
+    if (!seen.has(key)) seen.set(key, {
+      key,
+      database,
+      pmsUserId: match.userId,
+      roomKey,
+      communityName: house.communityName || (database === 'parking1' ? '枫桦景苑一期' : '枫桦景苑二期'),
+      buildingNo: house.buildingNo,
+      roomNo: house.roomNo,
+      name: match.name || '未填写姓名',
+      phone: match.phone || '未记录电话',
+    });
+  });
+  return Array.from(seen.values());
+}
+
+function AddVehicleOperationModal({ open, loading, error, task, roomOptions, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload }: {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  task: accessCardIssuance.ParkingOperation | null;
+  roomOptions: ParkingQueryRow[];
+  onClose: () => void;
+  onSubmit: (payload: Record<string, unknown>) => void;
+  onRetry: () => void;
+  onRollback: () => void;
+  onCreateProofUpload: (plate: string, ownerId?: string) => Promise<accessCardIssuance.ParkingProofUpload>;
+}) {
+  const [plate, setPlate] = useState('');
+  const [step, setStep] = useState<'plate' | 'details'>('plate');
+  const [roomKey, setRoomKey] = useState('');
+  const [identity, setIdentity] = useState('住户车');
+  const [months, setMonths] = useState(1);
+  const [garages, setGarages] = useState<string[]>([]);
+  const [fieldPhone, setFieldPhone] = useState('');
+  const [phoneOverride, setPhoneOverride] = useState(false);
+  const [proofUpload, setProofUpload] = useState<accessCardIssuance.ParkingProofUpload | null>(null);
+  const [proofApproved, setProofApproved] = useState(false);
+  const [proofLoading, setProofLoading] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const normalized = plate.replace(/[\s·]/g, '').toUpperCase().slice(0, 8);
+  const isGreen = normalized.length === 8;
+  const rooms = buildAddVehicleRoomOptions(roomOptions);
+  const selectedRoom = rooms.find((item) => item.key === roomKey) || null;
+  const monthly = identity === '租户车' ? 260 : identity === '亲情车' ? 0 : 180;
+  const annual = identity === '租户车' ? 2760 : identity === '亲情车' ? 0 : 1800;
+  const amount = identity === '亲情车' ? 0 : months === 12 ? annual : monthly * months;
+  const isFamily = identity === '亲情车';
+
+  useEffect(() => {
+    if (!open) return;
+    setStep('plate'); setPlate(''); setRoomKey(''); setIdentity('住户车'); setMonths(1); setGarages([]); setFieldPhone(''); setPhoneOverride(false); setProofUpload(null); setProofApproved(false); setValidationError(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !rooms.length || roomKey) return;
+    const first = rooms[0];
+    setRoomKey(first.key);
+    setGarages(first.roomKey.startsWith('198/') ? ['phase1'] : ['phase2']);
+  }, [open, roomKey, rooms]);
+
+  useEffect(() => {
+    if (normalized.length < 2) return;
+    setChecking(true);
+    const timer = window.setTimeout(() => setChecking(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [normalized]);
+
+  useEffect(() => {
+    if (!proofUpload || proofUpload.status === 'submitted') return undefined;
+    const timer = window.setInterval(async () => {
+      try {
+        const next = await accessCardIssuance.parkingProofUpload(proofUpload.id);
+        setProofUpload((current) => current?.id === next.id ? { ...current, ...next } : current);
+      } catch { /* 二维码轮询短暂失败不影响当前登记窗口。 */ }
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [proofUpload?.id, proofUpload?.status]);
+
+  const appendPlate = (char: string) => setPlate((value) => `${value}${char}`.replace(/[\s·]/g, '').toUpperCase().slice(0, 8));
+  const chooseRoom = (key: string) => {
+    const next = rooms.find((item) => item.key === key);
+    setRoomKey(key);
+    setGarages(next?.roomKey.startsWith('198/') ? ['phase1'] : ['phase2']);
+  };
+  const createProof = async () => {
+    if (normalized.length < 7) { setValidationError('请先输入完整车牌，再生成亲情车证明材料二维码'); return; }
+    setProofLoading(true); setValidationError(null);
+    try { setProofUpload(await onCreateProofUpload(normalized)); setProofApproved(false); }
+    catch (createError) { setValidationError(createError instanceof Error ? createError.message : '亲情车二维码生成失败'); }
+    finally { setProofLoading(false); }
+  };
+  const submit = () => {
+    if (normalized.length < 7) return setValidationError('车牌号码不足，请输入完整车牌');
+    if (!selectedRoom) return setValidationError(rooms.length ? '请选择 PMS 房号' : '当前没有可选择的 PMS 房号，请先查询一个已关联 PMS 用户的房号');
+    const pendingFamilyReview = isFamily && (!proofUpload || proofUpload.status !== 'submitted' || !proofApproved);
+    const note = phoneOverride && fieldPhone.trim() ? `${dayjs().format('YYYY-MM-DD HH:mm')} 停车登记电话；操作来源：PMS系统` : '操作来源：PMS系统';
+    onSubmit({
+      database: selectedRoom.database,
+      pmsUserId: selectedRoom.pmsUserId,
+      plate: normalized,
+      ownerName: selectedRoom.name,
+      ownerPhone: fieldPhone.trim() || selectedRoom.phone,
+      ownerAddress: selectedRoom.roomKey,
+      identity,
+      amount: pendingFamilyReview ? 0 : amount,
+      months,
+      startDate: dayjs().format('YYYY-MM-DD'),
+      endDate: dayjs().add(months, 'month').format('YYYY-MM-DD'),
+      effective: pendingFamilyReview ? new Array(256).fill('0').join('') : garageBitString(garages.filter((value) => value !== 'civil')),
+      state: pendingFamilyReview ? 0 : 1,
+      requiresProofReview: pendingFamilyReview,
+      note,
+    });
+  };
+  const keys = '沪苏浙皖京粤鲁豫ABCDEFGHIJKLMNPQRSTUVWXYZ0123456789'.split('');
+  return <Drawer className="parking-new-drawer" width={760} open={open} onClose={onClose} title="新增车牌" destroyOnClose={false} extra={<Tag color="blue">{step === 'plate' ? '1 / 2 车牌查重' : '2 / 2 登记资料'}</Tag>}>
+    {error && <Alert type="error" showIcon message="新增车牌未完成" description={error} action={<Space><Button size="small" onClick={onRetry}>重试</Button>{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
+    {validationError && <Alert type="warning" showIcon closable message={validationError} onClose={() => setValidationError(null)} />}
+    <div className="parking-new-flow"><span className={step === 'plate' ? 'is-current' : 'is-done'}>1 <small>车牌查重</small></span><i /><span className={step === 'details' ? 'is-current' : ''}>2 <small>登记资料</small></span></div>
+    {step === 'plate' ? <>
+      <Alert type="info" showIcon message="先输入车牌，再补充登记资料" description="系统会同时查询 PMS、一期和二期旧库，确认没有精确重复后才能继续。" />
+      <div className="parking-plate-entry parking-plate-entry-design"><label htmlFor="parking-add-plate-input">车牌号码</label><Input id="parking-add-plate-input" size="large" value={normalized} onChange={(event) => setPlate(event.target.value.replace(/[\s·]/g, '').toUpperCase().slice(0, 8))} suffix={checking ? <SyncOutlined spin /> : <CheckCircleOutlined />} placeholder="请输入车牌，例如 沪A12345" /><div className={`parking-license-plate is-${isGreen ? 'green' : 'blue'} is-large`}><span>{normalized ? `${normalized.slice(0, 1)} ${normalized.slice(1, 2)}·${normalized.slice(2)}` : '沪 A·'}</span></div><Text type="secondary"><InfoCircleOutlined /> 支持鼠标点击下方键盘，也支持电脑键盘直接输入。</Text></div>
+      <div className="parking-plate-keyboard"><div className="parking-key-grid">{keys.map((key) => <button type="button" key={key} onClick={() => appendPlate(key)}>{key}</button>)}</div><div className="parking-key-actions"><Button onClick={() => setPlate((value) => value.slice(0, -1))}>退格</Button><Button danger onClick={() => setPlate('')}>清空</Button></div></div>
+      <div className="parking-duplicate-result">{checking ? <div className="parking-checking"><SyncOutlined spin /> 正在跨系统查询…</div> : normalized.length >= 7 ? <Alert type="success" showIcon message="当前未发现精确重复" description="最终提交时服务端会再次查重。" /> : <Text type="secondary">继续输入完整车牌，系统会自动开始查重。</Text>}</div>
+      <div className="parking-new-drawer-actions"><Button onClick={onClose}>取消</Button><Button type="primary" disabled={normalized.length < 7 || checking} onClick={() => setStep('details')}>继续登记资料</Button></div>
+    </> : <>
+      <div className="parking-new-plate-summary"><div className={`parking-license-plate is-${isGreen ? 'green' : 'blue'}`}><span>{normalized.slice(0, 1)} {normalized.slice(1, 2)}·{normalized.slice(2)}</span></div><div><strong>新车登记</strong><Text type="secondary">车牌已通过精确查重，可继续填写授权与收费信息。</Text></div></div>
+      <Divider orientation="left">1 · PMS 房号与住户</Divider>
+      <div className="parking-new-form-section"><label>PMS 房号<Select showSearch value={roomKey || undefined} disabled={!rooms.length} optionFilterProp="label" onChange={chooseRoom} placeholder={rooms.length ? '选择 PMS 房号' : '请先查询并关联 PMS 房号'} options={rooms.map((item) => ({ value: item.key, label: `${item.roomKey} · ${item.name}` }))} /></label>{selectedRoom ? <div className="parking-pms-resident-card"><span className="parking-pms-resident-icon"><HomeOutlined /></span><div><strong>{selectedRoom.roomKey}</strong><Text>{selectedRoom.communityName} · {selectedRoom.buildingNo}号楼 · {selectedRoom.roomNo}室</Text></div><div><small>姓名</small><strong>{selectedRoom.name}</strong></div><div><small>电话</small><strong>{selectedRoom.phone}</strong></div></div> : <Alert type="info" showIcon message="请选择已关联 PMS 用户的房号" description="新增车牌不会让操作员手工输入旧系统住户编号。" />}{!phoneOverride ? <Button type="link" icon={<PhoneOutlined />} onClick={() => setPhoneOverride(true)}>现场电话不一致？填写停车登记电话</Button> : <div className="parking-phone-override"><label>现场登记电话<Input value={fieldPhone} onChange={(event) => setFieldPhone(event.target.value)} placeholder="输入现场提供的新电话" /></label><Text type="secondary">将记录为“{dayjs().format('YYYY-MM-DD HH:mm')} 停车登记电话”；写入旧库时房号统一规范为 {selectedRoom?.roomKey || '198/6/501'}。</Text></div>}</div>
+      <Divider orientation="left">2 · 车辆授权类型</Divider><div className="parking-new-form-section"><Text type="secondary">授权类型决定收费规则，默认按住户车计价。</Text><Radio.Group className="parking-horizontal-options" value={identity} onChange={(event) => { setIdentity(event.target.value); if (event.target.value === '亲情车') { setProofUpload(null); setProofApproved(false); } }} optionType="button" buttonStyle="solid" options={['住户车', '亲情车', '租户车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} /></div>
+      {isFamily && <div className="parking-family-proof-box"><div><strong>亲情车证明材料</strong><Text type="secondary">有效期 1 小时，用户扫码上传图片或 PDF；资料提交后由管理员审核。</Text></div>{proofUpload?.status === 'submitted' ? <><Alert type="success" showIcon message="资料已上传，等待管理员审核" description={proofUpload.fileName || '已收到用户上传的证明材料。'} />{proofUpload.fileUrl && <a href={proofUpload.fileUrl} target="_blank" rel="noreferrer">查看已上传资料</a>}<Checkbox checked={proofApproved} onChange={(event) => setProofApproved(event.target.checked)}>管理员已审核证明材料，确认开通亲情车</Checkbox></> : <><Button type="primary" loading={proofLoading} disabled={normalized.length < 7} onClick={() => void createProof()} icon={<QrcodeOutlined />}>{proofUpload ? '重新生成二维码' : '生成 1 小时上传二维码'}</Button>{proofUpload?.qrDataUrl && <div className="parking-family-proof-qr"><img src={proofUpload.qrDataUrl} alt="亲情车证明材料上传二维码" /><Text type="secondary">请用户扫码上传，{new Date(proofUpload.expiresAt).toLocaleString('zh-CN', { hour12: false })} 前有效</Text></div>}</>}</div>}
+      <Divider orientation="left">3 · 授权车库</Divider><div className="parking-new-form-section"><Text type="secondary">可多选。根据 PMS 房号已自动预选对应小区车库。</Text><Checkbox.Group className="parking-horizontal-options parking-garage-options" value={garages} onChange={(values) => setGarages(values as string[])} options={[{ value: 'phase1', label: '一期地面车库' }, { value: 'phase2', label: '二期地面车库' }, { value: 'main', label: '二期大车库' }, { value: 'civil', label: '二期人防车库' }]} /></div>
+      <Divider orientation="left">4 · 缴费期限</Divider><div className="parking-new-form-section"><div className="parking-payment-row"><div><Text type="secondary">选择期限</Text><div className="parking-month-buttons">{[1, 2, 3, 6, 12].map((value) => <Button key={value} type={months === value ? 'primary' : 'default'} disabled={isFamily} onClick={() => setMonths(value)}>{value} 个月</Button>)}</div></div><div className="parking-new-amount"><small>按当前收费规则应收</small><strong>¥{amount.toFixed(2)}</strong><span>{isFamily ? '亲情车资料审核通过后再计费' : months === 12 ? '已按年付优惠价计算' : `${identity} · ¥${monthly}/月`}</span></div></div><div className="parking-rate-hint"><DollarOutlined /><span>收费规则：住户车 ¥180/月、¥1800/年；租户车 ¥260/月、¥2760/年。</span><Text type="secondary">请到续期页“收费规则”配置</Text></div></div>
+      <div className="parking-new-drawer-actions"><Button onClick={() => setStep('plate')}>上一步</Button><Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={loading} onClick={submit}>{isFamily && (!proofUpload || proofUpload.status !== 'submitted' || !proofApproved) ? '暂存车牌，等待审核' : isFamily ? '审核通过并确认开通' : `确认登记并收费 ¥${amount.toFixed(2)}`}</Button></Space></div>
+    </>}
+    {task?.status === 'completed' && <Alert type="success" showIcon message={isFamily && task.payload.requiresProofReview ? '车牌已暂存，等待亲情车资料审核' : '新增车牌已完成'} description="车辆写入旧库后已读回验证。亲情车资料审核通过后，再调整授权车库使其正式开通。" />}
+  </Drawer>;
 }
 
 function operationLabel(kind: accessCardIssuance.ParkingOperationKind): string {
@@ -932,17 +1147,28 @@ function garageBitString(keys: string[]): string {
   const bits = Array.from({ length: 256 }, () => '0'); keys.forEach((key) => (channels[key] || []).forEach((channel) => { bits[channel - 1] = '1'; })); return bits.join('');
 }
 
-function OwnerDataPanel({ title, name, phone, room, note, editable, editHint, onEdit }: {
+function OwnerDataPanel({ title, name, phone, room, note, editable, editHint, updatedAt, updateSource, onEdit }: {
   title: string; name: string; phone: string | null; room: string | null; note: string | null;
-  editable: boolean; editHint?: string; onEdit?: () => void;
+  editable: boolean; editHint?: string; updatedAt?: string | null; updateSource?: string | null; onEdit?: () => void;
 }) {
-  const text = [`姓名：${name}`, `电话：${phone || '未记录'}`, `房号：${room || '未记录'}`, `备注：${note || '无'}`].join('\n');
+  const updatedAtText = updatedAt && dayjs(updatedAt).isValid() ? dayjs(updatedAt).format('YYYY-MM-DD HH:mm') : null;
+  const text = [
+    `姓名：${name}`,
+    `电话：${phone || '未记录'}`,
+    `房号：${room || '未记录'}`,
+    `备注：${note || '无'}`,
+    ...(updatedAtText ? [`最后更新时间：${updatedAtText}`] : []),
+    ...(updateSource ? [`更新来源：${updateSource}`] : []),
+  ].join('\n');
   return <section className="parking-owner-panel">
     <header><strong>{title}</strong><Space size={4}>
       <Button size="small" icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(text)}>复制</Button>
       <Button size="small" icon={<EditOutlined />} disabled={!editable} title={editHint} onClick={onEdit}>编辑</Button>
     </Space></header>
-    <dl><div><dt>姓名</dt><dd className="parking-owner-important">{name}</dd></div><div><dt>电话</dt><dd className="parking-owner-important">{phone || '未记录'}</dd></div><div><dt>房号</dt><dd>{room || '未记录'}</dd></div><div><dt>备注</dt><dd>{note || '无'}</dd></div></dl>
+    <dl><div><dt>姓名</dt><dd className="parking-owner-important">{name}</dd></div><div><dt>电话</dt><dd className="parking-owner-important">{phone || '未记录'}</dd></div><div><dt>房号</dt><dd>{room || '未记录'}</dd></div><div><dt>备注</dt><dd>{note || '无'}</dd></div>
+      {updatedAtText && <div><dt>最后更新时间</dt><dd className="parking-owner-metadata">{updatedAtText}</dd></div>}
+      {updateSource && <div><dt>更新来源</dt><dd className="parking-owner-metadata">{updateSource}</dd></div>}
+    </dl>
     {!editable && editHint && <small>{editHint}</small>}
   </section>;
 }

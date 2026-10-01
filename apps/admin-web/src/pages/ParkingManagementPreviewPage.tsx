@@ -5,12 +5,14 @@ import {
   Button,
   Card,
   Checkbox,
+  Divider,
   Drawer,
   Empty,
   Input,
   InputNumber,
   Modal,
   Progress,
+  Radio,
   Select,
   Space,
   Tabs,
@@ -32,7 +34,9 @@ import {
   EditOutlined,
   ExclamationCircleOutlined,
   HomeOutlined,
+  InfoCircleOutlined,
   PlusOutlined,
+  PhoneOutlined,
   ReloadOutlined,
   RetweetOutlined,
   SafetyCertificateOutlined,
@@ -452,9 +456,35 @@ function VehicleCard({ vehicle, onToggle, onDetail }: { vehicle: Vehicle; onTogg
 
 function NewVehicleDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [plate, setPlate] = useState('沪A');
+  const [step, setStep] = useState<'plate' | 'details'>('plate');
+  const [householdKey, setHouseholdKey] = useState(SEARCH_RESULTS[0].key);
+  const [identity, setIdentity] = useState('住户车');
+  const [months, setMonths] = useState(1);
+  const [garages, setGarages] = useState<string[]>(['phase2_parking']);
+  const [fieldPhone, setFieldPhone] = useState('');
+  const [phoneOverride, setPhoneOverride] = useState(false);
+  const [rateOpen, setRateOpen] = useState(false);
+  const [rules, setRules] = useState({ ownerMonthly: 180, ownerAnnual: 1800, tenantMonthly: 260, tenantAnnual: 2760 });
   const [checking, setChecking] = useState(false);
   const normalized = plate.replace(/[\s·]/g, '').toUpperCase().slice(0, 8);
   const isGreen = normalized.length === 8;
+  const household = SEARCH_RESULTS.find((item) => item.key === householdKey) || SEARCH_RESULTS[0];
+  const monthly = identity === '租户车' ? rules.tenantMonthly : identity === '亲情车' ? 0 : rules.ownerMonthly;
+  const annual = identity === '租户车' ? rules.tenantAnnual : identity === '亲情车' ? 0 : rules.ownerAnnual;
+  const amount = months === 12 ? annual : monthly * months;
+
+  useEffect(() => {
+    if (!open) return;
+    setStep('plate');
+    setPlate('沪A');
+    setHouseholdKey(SEARCH_RESULTS[0].key);
+    setIdentity('住户车');
+    setMonths(1);
+    setGarages(['phase2_parking']);
+    setFieldPhone('');
+    setPhoneOverride(false);
+    setRateOpen(false);
+  }, [open]);
 
   useEffect(() => {
     if (normalized.length < 2) return;
@@ -465,23 +495,54 @@ function NewVehicleDrawer({ open, onClose }: { open: boolean; onClose: () => voi
 
   const append = (char: string) => setPlate((value) => `${value}${char}`.replace(/[\s·]/g, '').toUpperCase().slice(0, 8));
   const isExisting = normalized === '沪A12345' || normalized === '沪AD86231';
+  const chooseHousehold = (key: string) => {
+    setHouseholdKey(key);
+    setGarages(key.startsWith('198/') ? ['phase1_parking'] : ['phase2_parking']);
+  };
 
   return (
-    <Drawer className="parking-new-drawer" width={620} open={open} onClose={onClose} title="登记新车 · 先查车牌" destroyOnClose={false} extra={<Tag color="blue">1 / 2</Tag>}>
-      <Alert type="info" showIcon message="只需先输入车牌" description="输入 2 至 3 个有效字符后，同时查询 PMS、一期、二期和德立云。确认没有重复后才展开完整资料。" />
-      <div className="parking-plate-entry">
-        <label htmlFor="parking-plate-input">车牌号</label>
-        <Input id="parking-plate-input" size="large" value={normalized} onChange={(event) => setPlate(event.target.value.replace(/[\s·]/g, '').toUpperCase().slice(0, 8))} suffix={checking ? <SyncOutlined spin /> : <CheckCircleOutlined />} />
-        <div className={`parking-license-plate is-${isGreen ? 'green' : 'blue'} is-large`}><span>{formatPlate(normalized || '沪A')}</span></div>
-      </div>
-      <PlateKeyboard onKey={append} onBackspace={() => setPlate((value) => value.slice(0, -1))} onClear={() => setPlate('')} />
-      <div className="parking-duplicate-result" aria-live="polite">
-        {checking ? <div className="parking-checking"><SyncOutlined spin /> 正在跨系统查询…</div> : isExisting ? (
-          <Alert type="warning" showIcon message="该车牌已属于当前住户" description="不重复创建车辆。可直接打开现有车辆，为它增加其他停车区权限。" action={<Button type="primary" onClick={onClose}>打开现有车辆</Button>} />
-        ) : normalized.length >= 7 ? (
-          <Alert type="success" showIcon message="四个来源均未发现精确重复" description="还需在最终提交前由服务端再做一次精确查重。相似车牌：沪A12B45（B/8 易混淆）。" action={<Button type="primary">继续补充资料</Button>} />
-        ) : <Text type="secondary">继续输入完整车牌，系统会自动开始查重。</Text>}
-      </div>
+    <Drawer className="parking-new-drawer" width={760} open={open} onClose={onClose} title="新增车牌" destroyOnClose={false} extra={<Tag color="blue">{step === 'plate' ? '1 / 2 车牌查重' : '2 / 2 登记资料'}</Tag>}>
+      <div className="parking-new-flow"><span className={step === 'plate' ? 'is-current' : 'is-done'}>1 <small>车牌查重</small></span><i /><span className={step === 'details' ? 'is-current' : ''}>2 <small>登记资料</small></span></div>
+      {step === 'plate' ? <>
+        <Alert type="info" showIcon message="先输入车牌，再补充登记资料" description="系统会同时查询 PMS、一期和二期旧库，确认没有精确重复后才能继续。" />
+        <div className="parking-plate-entry parking-plate-entry-design">
+          <label htmlFor="parking-plate-input">车牌号码</label>
+          <Input id="parking-plate-input" size="large" value={normalized} onChange={(event) => setPlate(event.target.value.replace(/[\s·]/g, '').toUpperCase().slice(0, 8))} suffix={checking ? <SyncOutlined spin /> : <CheckCircleOutlined />} placeholder="请输入车牌，例如 沪A12345" />
+          <div className={`parking-license-plate is-${isGreen ? 'green' : 'blue'} is-large`}><span>{formatPlate(normalized || '沪A')}</span></div>
+          <Text type="secondary"><InfoCircleOutlined /> 支持鼠标点击下方键盘，也支持电脑键盘直接输入。</Text>
+        </div>
+        <PlateKeyboard onKey={append} onBackspace={() => setPlate((value) => value.slice(0, -1))} onClear={() => setPlate('')} />
+        <div className="parking-duplicate-result" aria-live="polite">
+          {checking ? <div className="parking-checking"><SyncOutlined spin /> 正在跨系统查询…</div> : isExisting ? (
+            <Alert type="warning" showIcon message="该车牌已属于当前住户" description="不重复创建车辆。可直接打开现有车辆，为它增加其他停车区权限。" action={<Button type="primary" onClick={onClose}>打开现有车辆</Button>} />
+          ) : normalized.length >= 7 ? (
+            <Alert type="success" showIcon message="四个来源均未发现精确重复" description="最终提交时服务端会再次精确查重。" />
+          ) : <Text type="secondary">继续输入完整车牌，系统会自动开始查重。</Text>}
+        </div>
+        <div className="parking-new-drawer-actions"><Button onClick={onClose}>取消</Button><Button type="primary" disabled={normalized.length < 7 || isExisting} onClick={() => setStep('details')}>继续登记资料</Button></div>
+      </> : <>
+        <div className="parking-new-plate-summary"><div className={`parking-license-plate is-${isGreen ? 'green' : 'blue'}`}><span>{formatPlate(normalized)}</span></div><div><strong>新车登记</strong><Text type="secondary">车牌已通过精确查重，可继续填写授权与收费信息。</Text></div></div>
+        <Divider orientation="left">1 · PMS 房号与住户</Divider>
+        <div className="parking-new-form-section">
+          <label>PMS 房号<Select showSearch value={householdKey} optionFilterProp="label" onChange={chooseHousehold} options={SEARCH_RESULTS.map((item) => ({ value: item.key, label: `${item.title} · ${item.resident}` }))} /></label>
+          <div className="parking-pms-resident-card"><span className="parking-pms-resident-icon"><HomeOutlined /></span><div><strong>{household.title}</strong><Text>{household.subtitle}</Text></div><div><small>姓名</small><strong>{household.resident}</strong></div><div><small>电话</small><strong>{household.phone}</strong></div></div>
+          {!phoneOverride ? <Button type="link" icon={<PhoneOutlined />} onClick={() => setPhoneOverride(true)}>现场电话不一致？填写停车登记电话</Button> : <div className="parking-phone-override"><label>现场登记电话<Input value={fieldPhone} onChange={(event) => setFieldPhone(event.target.value)} placeholder="输入现场提供的新电话" /></label><Text type="secondary">将记录为“{dayjs().format('YYYY-MM-DD HH:mm')} 停车登记电话”；写入旧库时房号统一规范为 {household.title}。</Text></div>}
+        </div>
+        <Divider orientation="left">2 · 车辆授权类型</Divider>
+        <div className="parking-new-form-section"><Text type="secondary">授权类型决定收费规则，默认按住户车计价。</Text><Radio.Group className="parking-horizontal-options" value={identity} onChange={(event) => setIdentity(event.target.value)} optionType="button" buttonStyle="solid" options={['住户车', '亲情车', '租户车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} /></div>
+        <Divider orientation="left">3 · 授权车库</Divider>
+        <div className="parking-new-form-section"><Text type="secondary">可多选。根据 PMS 房号已自动预选对应小区车库，二期大车库和人防车库可另外开通。</Text><Checkbox.Group className="parking-horizontal-options parking-garage-options" value={garages} onChange={(values) => setGarages(values as string[])} options={[{ value: 'phase1_parking', label: '一期地面车库' }, { value: 'phase2_parking', label: '二期地面车库' }, { value: 'phase2_main_garage', label: '二期大车库' }, { value: 'phase2_civil_defense_garage', label: '二期人防车库' }]} /></div>
+        <Divider orientation="left">4 · 缴费期限</Divider>
+        <div className="parking-new-form-section"><div className="parking-payment-row"><div><Text type="secondary">选择期限</Text><div className="parking-month-buttons">{[1, 2, 3, 6, 12].map((value) => <Button key={value} type={months === value ? 'primary' : 'default'} onClick={() => setMonths(value)}>{value} 个月</Button>)}</div></div><div className="parking-new-amount"><small>按当前收费规则应收</small><strong>¥{amount.toFixed(2)}</strong><span>{months === 12 ? '已按年付优惠价计算' : `${identity} · ¥${monthly}/月`}</span></div></div><div className="parking-rate-hint"><DollarOutlined /><span>收费规则：住户车 ¥{rules.ownerMonthly}/月、¥{rules.ownerAnnual}/年；租户车 ¥{rules.tenantMonthly}/月、¥{rules.tenantAnnual}/年。</span><Button type="link" size="small" onClick={() => setRateOpen(true)}>查看 / 配置收费规则</Button></div></div>
+        <div className="parking-new-drawer-actions"><Button onClick={() => setStep('plate')}>上一步</Button><Space><Button onClick={onClose}>取消</Button><Button type="primary" onClick={onClose}>确认登记并收费 ¥{amount.toFixed(2)}</Button></Space></div>
+      </>}
+      <Modal title="停车收费规则配置" open={rateOpen} onCancel={() => setRateOpen(false)} onOk={() => setRateOpen(false)} okText="保存规则" cancelText="取消" width={620}>
+        <Alert type="info" showIcon message="按车辆授权类型分别计价" description="缴费期限选择 12 个月时使用年付价；其他期限按月单价计算。" />
+        <div className="parking-rate-grid">
+          <section><div className="parking-rate-title"><HomeOutlined /> <strong>住户车</strong></div><label>月单价（元）<InputNumber min={0} precision={2} value={rules.ownerMonthly} onChange={(value) => setRules((current) => ({ ...current, ownerMonthly: Number(value || 0) }))} /></label><label>12 个月年付价（元）<InputNumber min={0} precision={2} value={rules.ownerAnnual} onChange={(value) => setRules((current) => ({ ...current, ownerAnnual: Number(value || 0) }))} /></label></section>
+          <section><div className="parking-rate-title"><UserOutlined /> <strong>租户车</strong></div><label>月单价（元）<InputNumber min={0} precision={2} value={rules.tenantMonthly} onChange={(value) => setRules((current) => ({ ...current, tenantMonthly: Number(value || 0) }))} /></label><label>12 个月年付价（元）<InputNumber min={0} precision={2} value={rules.tenantAnnual} onChange={(value) => setRules((current) => ({ ...current, tenantAnnual: Number(value || 0) }))} /></label></section>
+        </div>
+      </Modal>
     </Drawer>
   );
 }

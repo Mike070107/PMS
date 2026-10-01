@@ -10,7 +10,8 @@ import { detectUploadContentType } from '../upload/upload.controller';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { CreateParkingProofUploadDto } from './dto';
 
-const TTL_MS = 30 * 60 * 1000;
+// 亲情车资料二维码给住户留出完整的一小时上传窗口；状态接口仍会在提交后继续保留审核凭证。
+const TTL_MS = 60 * 60 * 1000;
 
 @Injectable()
 export class ParkingProofService {
@@ -58,6 +59,17 @@ export class ParkingProofService {
     const row = await this.repo.findOne({ where: { id, tenantId: user.tenantId } });
     if (!row) throw new NotFoundException('证明材料上传任务不存在');
     return this.view(row);
+  }
+
+  async latestByPlate(plateValue: string, user: AuthUser) {
+    if (!user.tenantId) throw new BadRequestException('当前账号没有物业公司范围');
+    const plate = plateValue.trim().toUpperCase().replace(/\s+/g, '');
+    if (!plate) throw new BadRequestException('车牌不能为空');
+    const row = await this.repo.findOne({
+      where: { tenantId: user.tenantId, plate },
+      order: { createdAt: 'DESC' },
+    });
+    return row ? this.view(row) : null;
   }
 
   async session(token: string) {

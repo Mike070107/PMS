@@ -116,6 +116,12 @@ export class AccessCardIssuanceController {
     return this.parkingProof.create(dto, user);
   }
 
+  @Get('parking/proof-uploads/by-plate')
+  @RequirePermission('business', 'view')
+  parkingProofByPlate(@Query('plate') plate: string, @CurrentUser() user: AuthUser) {
+    return this.parkingProof.latestByPlate(plate || '', user);
+  }
+
   @Get('parking/proof-uploads/:id')
   @RequirePermission('business', 'view')
   parkingProofStatus(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {

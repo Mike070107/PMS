@@ -5,6 +5,60 @@ export interface ParsedParkingSearch {
   term: string;
 }
 
+export interface ParkingRoomAddress {
+  lane: string;
+  buildingNo: string;
+  roomNo: string;
+  key: string;
+}
+
+function normalizeParkingAddressPart(value: string): string {
+  const trimmed = value.trim();
+  return /^\d+$/.test(trimmed) ? String(Number(trimmed)) : trimmed.toUpperCase();
+}
+
+/**
+ * 把旧停车库的房号统一成 PMS 房产可比较的键。
+ * `198/6/402`、`198/06/402`、`198-6-402` 和中文地址写法均视为同一房产；
+ * 末尾 `/5` 是旧库为同一住户多张卡追加的序号，不参与房产匹配。
+ */
+export function parkingRoomAddress(value: string | null | undefined): ParkingRoomAddress | null {
+  if (!value) return null;
+  const normalized = value
+    .trim()
+    .replace(/^已隐藏\s*/, '')
+    .replace(/\s+/g, '')
+    .replace(/[弄幢栋号]/g, '/')
+    .replace(/室$/g, '')
+    .replace(/\\/g, '/')
+    .replace(/-/g, '/');
+  const match = /^(198|228)\/(\d{1,2})\/(\d{2,4})(?:\/\d+)?$/.exec(normalized);
+  if (!match) return null;
+  const lane = normalizeParkingAddressPart(match[1]);
+  const buildingNo = normalizeParkingAddressPart(match[2]);
+  const roomNo = normalizeParkingAddressPart(match[3]);
+  return { lane, buildingNo, roomNo, key: `${lane}/${buildingNo}/${roomNo}` };
+}
+
+/** PMS 房产表的弄、楼栋、房号使用同一套数字规范化，避免前导零造成漏联。 */
+export function parkingPmsBuildingKey(
+  lane: string | null | undefined,
+  buildingNo: string | null | undefined,
+): string | null {
+  if (!lane || !buildingNo) return null;
+  return [lane, buildingNo].map(normalizeParkingAddressPart).join('/');
+}
+
+export function parkingPmsHouseKey(
+  lane: string | null | undefined,
+  buildingNo: string | null | undefined,
+  roomNo: string | null | undefined,
+): string | null {
+  const buildingKey = parkingPmsBuildingKey(lane, buildingNo);
+  if (!buildingKey || !roomNo) return null;
+  return `${buildingKey}/${normalizeParkingAddressPart(roomNo)}`;
+}
+
 /**
  * 2.4.0 / 0.8.0 起，现场助手才会按房号、车牌尾号等类别选择字段并保留分隔符边界。
  * 更早版本仍会把查询词对大量文本列做 `%关键词%`，不能领取新的结构化查询任务。
@@ -20,10 +74,8 @@ export function supportsStructuredParkingQueries(version: string | null | undefi
 
 /** 部分旧停车库把标准房号写进了人员姓名栏，例如 `198-6-402/2`。 */
 export function parkingLegacyRoomFromName(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const normalized = value.trim().replace(/^已隐藏\s*/, '');
-  const match = /^(198|228)[/-](\d{1,2})[/-](\d{2,4})(?:[/-]\d+)?$/.exec(normalized);
-  return match ? `${match[1]}/${Number(match[2])}/${Number(match[3])}` : null;
+  const address = parkingRoomAddress(value);
+  return address ? address.key : null;
 }
 
 /**

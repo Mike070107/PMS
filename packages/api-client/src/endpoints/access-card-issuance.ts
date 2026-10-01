@@ -141,6 +141,10 @@ export interface ParkingQueryRow {
     name: string | null;
     phone: string | null;
     contactNote: string | null;
+    status?: 'active' | 'disabled';
+    source?: 'manual' | 'self' | 'repair_intake' | 'legacy_import' | null;
+    updatedAt?: string;
+    updatedByName?: string | null;
     house: {
       id: number;
       roomNo: string;
@@ -150,7 +154,7 @@ export interface ParkingQueryRow {
       communityId: number | null;
       communityName: string | null;
     } | null;
-    matchedBy: 'phone';
+    matchedBy: 'phone' | 'room';
   } | null;
   historyRef?: {
     database: string;
@@ -338,6 +342,12 @@ export const createParkingProofUpload = (data: { plate: string; ownerId?: string
 export const parkingProofUpload = (id: number) =>
   request<ParkingProofUpload>({
     url: `/access-card-issuance/parking/proof-uploads/${id}`,
+  });
+
+export const parkingProofByPlate = (plate: string) =>
+  request<ParkingProofUpload | null>({
+    url: '/access-card-issuance/parking/proof-uploads/by-plate',
+    query: { plate },
   });
 
 export const houseContext = (houseId: number) =>
