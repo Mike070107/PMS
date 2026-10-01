@@ -3838,3 +3838,9 @@
 - 自上次（bd2b03a）以来上线的相关提交：
   - 066dac8 feat(auth): harden browser QR login and application binding
 
+## 2026-10-02 00:52 · windows-assistant · 85d704d
+
+- 包：`Pms.DataSyncAssistant.V2.exe` 2.5.12
+- 地址：`https://prsznh.cn/downloads/pms-data-sync-assistant/2.5.12/Pms.DataSyncAssistant.V2.exe`
+- SHA-256：`ac634f5755c5f015c0354050b476240188573ec1e78eebfc5805d12b13b2c5c1`
+- 公网更新清单与下载文件已回读校验一致；发布脚本随后在 `03deeb6` 修复为 Windows PowerShell 可执行格式。
