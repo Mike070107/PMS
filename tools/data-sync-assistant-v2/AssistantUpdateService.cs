@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -101,9 +102,16 @@ namespace Pms.DataSyncAssistant
             try
             {
                 if (serviceWasRunning) UnifiedServiceManager.Stop();
+                // The settings window and the tray icon intentionally run in separate
+                // processes. Waiting for the settings PID alone leaves the tray process
+                // holding the installed EXE open. Stop every remaining process whose
+                // executable path is exactly the file being replaced; never terminate
+                // another assistant copy installed in a different directory.
+                StopProcessesUsingTargetExecutable(target);
                 CopyFileWithRetry(target, backup, true);
                 CopyFileWithRetry(source, target, true);
                 if (serviceWasRunning) UnifiedServiceManager.StartExisting();
+                Process.Start(new ProcessStartInfo { FileName = target, Arguments = "--tray", UseShellExecute = true });
                 Process.Start(new ProcessStartInfo { FileName = target, Arguments = "--updated", UseShellExecute = true });
             }
             catch (Exception exception)
@@ -224,6 +232,76 @@ namespace Pms.DataSyncAssistant
                     throw new InvalidOperationException("旧助手窗口无法退出，无法完成替换");
             }
             catch (ArgumentException) { }
+        }
+
+        internal static void StopProcessesUsingTargetExecutable(string targetExecutable)
+        {
+            var target = Path.GetFullPath(targetExecutable);
+            var currentProcessId = Process.GetCurrentProcess().Id;
+            var matches = new List<Process>();
+            foreach (var process in Process.GetProcesses())
+            {
+                if (process.Id != currentProcessId && IsSameExecutable(process, target)) matches.Add(process);
+                else process.Dispose();
+            }
+
+            try
+            {
+                foreach (var process in matches)
+                {
+                    try { process.CloseMainWindow(); } catch { }
+                }
+
+                var gracefulDeadline = DateTime.UtcNow.AddMilliseconds(1500);
+                foreach (var process in matches)
+                {
+                    var exited = false;
+                    try
+                    {
+                        var remaining = gracefulDeadline - DateTime.UtcNow;
+                        if (remaining > TimeSpan.Zero) exited = process.WaitForExit((int)remaining.TotalMilliseconds);
+                        if (!exited)
+                        {
+                            process.Kill();
+                            exited = process.WaitForExit(5000);
+                        }
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // The process already exited between enumeration and inspection.
+                        exited = true;
+                    }
+                    if (!exited) throw new InvalidOperationException("托盘助手进程无法退出，无法完成替换");
+                }
+            }
+            finally
+            {
+                foreach (var process in matches) process.Dispose();
+            }
+        }
+
+        private static bool IsSameExecutable(Process process, string targetExecutable)
+        {
+            try
+            {
+                return IsSameExecutablePath(process.MainModule.FileName, targetExecutable);
+            }
+            catch
+            {
+                // A process may exit while being inspected. It cannot keep the target
+                // locked once it has exited, so it does not need to be selected.
+                return false;
+            }
+        }
+
+        internal static bool IsSameExecutablePath(string candidate, string target)
+        {
+            if (String.IsNullOrWhiteSpace(candidate) || String.IsNullOrWhiteSpace(target)) return false;
+            try
+            {
+                return String.Equals(Path.GetFullPath(candidate), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
         }
 
         private static void TryDelete(string path)

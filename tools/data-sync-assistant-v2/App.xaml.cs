@@ -19,6 +19,12 @@ namespace Pms.DataSyncAssistant
             // the local database test pass while every heartbeat fails before HTTP starts.
             ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072; // TLS 1.2
 
+            if (e.Args.Length > 0 && e.Args[0] == "--update-lock-test-worker")
+            {
+                Thread.Sleep(30000);
+                Shutdown(0);
+                return;
+            }
             if (e.Args.Length > 0 && e.Args[0] == "--service")
             {
                 ServiceBase.Run(new UnifiedWindowsService());

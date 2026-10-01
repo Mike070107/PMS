@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -284,6 +285,50 @@ namespace Pms.DataSyncAssistant
 
         private static void VerifyAssistantUpdater(string root)
         {
+            var target = Path.Combine(root, "installed", "Pms.DataSyncAssistant.V2.exe");
+            var sameTargetWithDifferentCase = target.ToUpperInvariant();
+            var otherDirectory = Path.Combine(root, "other", "Pms.DataSyncAssistant.V2.exe");
+            if (!AssistantUpdateService.IsSameExecutablePath(sameTargetWithDifferentCase, target) ||
+                AssistantUpdateService.IsSameExecutablePath(otherDirectory, target))
+                throw new InvalidOperationException("助手更新器没有按完整路径限定待退出进程");
+
+            Directory.CreateDirectory(Path.GetDirectoryName(target));
+            Directory.CreateDirectory(Path.GetDirectoryName(otherDirectory));
+            var currentExecutable = Process.GetCurrentProcess().MainModule.FileName;
+            if (!String.IsNullOrWhiteSpace(currentExecutable) && File.Exists(currentExecutable))
+            {
+                File.Copy(currentExecutable, target, true);
+                File.Copy(currentExecutable, otherDirectory, true);
+                Process targetProcess = null;
+                Process otherProcess = null;
+                try
+                {
+                    const string waitArguments = "--update-lock-test-worker";
+                    targetProcess = Process.Start(new ProcessStartInfo { FileName = target, Arguments = waitArguments, UseShellExecute = false, CreateNoWindow = true });
+                    otherProcess = Process.Start(new ProcessStartInfo { FileName = otherDirectory, Arguments = waitArguments, UseShellExecute = false, CreateNoWindow = true });
+                    System.Threading.Thread.Sleep(250);
+                    AssistantUpdateService.StopProcessesUsingTargetExecutable(target);
+                    if (!targetProcess.WaitForExit(2000))
+                        throw new InvalidOperationException("助手更新器未能退出占用目标文件的托盘进程");
+                    if (otherProcess.HasExited)
+                        throw new InvalidOperationException("助手更新器误退出了其他目录中的助手进程");
+                    File.Copy(currentExecutable, target, true);
+                }
+                finally
+                {
+                    if (targetProcess != null)
+                    {
+                        try { if (!targetProcess.HasExited) targetProcess.Kill(); } catch { }
+                        targetProcess.Dispose();
+                    }
+                    if (otherProcess != null)
+                    {
+                        try { if (!otherProcess.HasExited) otherProcess.Kill(); } catch { }
+                        otherProcess.Dispose();
+                    }
+                }
+            }
+
             var updates = Path.Combine(root, "updates");
             Directory.CreateDirectory(updates);
             File.WriteAllText(Path.Combine(updates, "latest.json"),
