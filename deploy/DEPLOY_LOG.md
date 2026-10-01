@@ -3643,3 +3643,11 @@
   - debf2cf feat(finance): redesign staff miniapp workspace
   - a762c64 feat: add isolated finance ledger and invoice inbox
 
+## 2026-10-01 19:10 · api · 5f82814
+
+- 包：`pms-api-20261001-1906.tar.gz`
+- 提交：5f82814 fix(external-access): update reusable Cloudflare policies
+- 说明：修复 Cloudflare 可复用 Access Policy 同步
+- 自上次（8955444）以来上线的相关提交：
+  - 5f82814 fix(external-access): update reusable Cloudflare policies
+
