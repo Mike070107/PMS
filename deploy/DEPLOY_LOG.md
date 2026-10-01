@@ -3551,3 +3551,12 @@
 - 自上次（29f7103）以来上线的相关提交：
   - 10d0b07 feat(access): verify card permissions and surface assistant activity
 
+## 2026-10-01 17:44 · api · f67e00f
+
+- 包：`pms-api-20261001-1735.tar.gz`
+- 提交：f67e00f test(access): include OIDC and tunnel route coverage
+- 说明：通用内网应用发布与 Cloudflare OIDC
+- 自上次（10d0b07）以来上线的相关提交：
+  - f67e00f test(access): include OIDC and tunnel route coverage
+  - f60cec9 feat(access): publish intranet apps through Cloudflare
+
