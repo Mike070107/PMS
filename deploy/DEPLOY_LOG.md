@@ -3844,3 +3844,11 @@
 - 地址：`https://prsznh.cn/downloads/pms-data-sync-assistant/2.5.12/Pms.DataSyncAssistant.V2.exe`
 - SHA-256：`ac634f5755c5f015c0354050b476240188573ec1e78eebfc5805d12b13b2c5c1`
 - 公网更新清单与下载文件已回读校验一致；发布脚本随后在 `03deeb6` 修复为 Windows PowerShell 可执行格式。
+## 2026-10-02 01:32 · api · 73fac6a
+
+- 包：`pms-api-20261002-0100.tar.gz`
+- 提交：73fac6a fix(parking): deduplicate joined vehicle results
+- 说明：停车查询去重、旧库住户字段与 P_note 显示修复
+- 自上次（4e48686）以来上线的相关提交：
+  - 73fac6a fix(parking): deduplicate joined vehicle results
+
