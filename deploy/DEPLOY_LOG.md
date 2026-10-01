@@ -3852,3 +3852,11 @@
 - 自上次（4e48686）以来上线的相关提交：
   - 73fac6a fix(parking): deduplicate joined vehicle results
 
+## 2026-10-02 01:33 · web · 4c2e737
+
+- 包：`pms-web-20261002-0100.tar.gz`
+- 提交：4c2e737 deploy: api → 73fac6a
+- 说明：停车查询结果与旧库住户信息展示修复
+- 自上次（55c80c8）以来上线的相关提交：
+  - 73fac6a fix(parking): deduplicate joined vehicle results
+
