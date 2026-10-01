@@ -34,7 +34,7 @@ function parseArgs(argv) {
     spec: '',
     category: '',
     unit: '',
-    sshHost: 'ubuntu@1.15.172.131',
+    sshHost: 'ubuntu@124.223.179.214',
     sshKey: `${process.env.HOME || process.env.USERPROFILE}/.ssh/pms_repair_key.pem`,
     pgContainer: 'pms-postgres',
     pgUser: 'pms',

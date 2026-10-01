@@ -1,10 +1,20 @@
 # Deploy Runbook · pms-repair
 
-目标：腾讯云轻量 2C2G **Ubuntu**，单机跑 NestJS API + Postgres + Redis；对象存储用腾讯云 COS（托管，不本地部署）。
+目标：腾讯云轻量 2C4G **Ubuntu**，单机跑 NestJS API + Postgres + Redis；对象存储用腾讯云 COS（托管，不本地部署）。
 
 **生产入口**：`https://prsznh.cn/`
-**生产实例**：`ubuntu@1.15.172.131`（使用 `~/.ssh/pms_repair_key.pem`）
+**生产实例**：`ubuntu@124.223.179.214`（私网 `10.0.4.8`，使用 `~/.ssh/pms_repair_key.pem`）
 **安装路径**：`/opt/pms-repair/`
+
+> 2026-10-01 已从 `1.15.172.131`（私网 `10.0.0.3`）完成迁移。旧机已永久退出 PMS，不再作为回退、备份或数据来源，将重装后专用于新项目“钱有账”。PMS 后续所有部署、排查、备份与恢复都只针对 `124.223.179.214`。
+
+### 国标视频平台迁移要点
+
+- WVP/ZLM 部署在 `/opt/gb28181/`；对外 SIP 端口为 `5060/TCP+UDP`，收流端口为 `30000-30500/TCP+UDP`，对讲发流端口为 `50000-50100/UDP`。
+- 公网 IP 变更时，除了 `application.yml` 和 ZLM `externIP`，还必须核对数据库 `wvp_media_server.sdp_ip/stream_ip`；否则设备会显示在线，但点播 SDP 仍会让摄像头把视频发往旧 IP。
+- ZLM 使用 `network_mode: service:wvp` 共享 WVP 网络命名空间；重启 WVP 后需再重启 ZLM，并在日志中确认“媒体节点上线”。
+- 现场公网 IP 可变，`sip-autoheal.py` 会从实际注册地址更新主机防火墙白名单；不要把某个现场公网 IP 写死在云防火墙里。
+- 2026-10-01 验收：设备 `44010200491320000001` 在线，目录 `2/2`；视频通道 `44010200491320000002` 点播成功，SDP 指向 `124.223.179.214`，H.264 媒体流已在 ZLM 注册。
 
 ## 拓扑
 
@@ -26,7 +36,7 @@
 本项目现在直接按线上真实服务器开发、部署和验收，不再使用本地 API、MinIO 或本地前端作为开发入口。
 
 - 代码修改后在本机只做类型检查和构建。
-- 产物通过 `scp -i ~/.ssh/pms_repair_key.pem` 上传到 `ubuntu@1.15.172.131:/tmp/`。
+- 产物通过 `scp -i ~/.ssh/pms_repair_key.pem` 上传到 `ubuntu@124.223.179.214:/tmp/`。
 - 线上执行 `deploy/srv-deploy-api.sh` / `deploy/srv-deploy-web.sh`。
 - 验证统一使用 `https://prsznh.cn/` 和 `https://prsznh.cn/api/v1/health`。
 
@@ -185,9 +195,9 @@ cd ..\..
 ### 推送到服务器
 
 ```bash
-scp -i ~/.ssh/pms_repair_key.pem ./deploy/pms-api-*.tar.gz ubuntu@1.15.172.131:/tmp/
-scp -i ~/.ssh/pms_repair_key.pem ./deploy/srv-deploy-api.sh ubuntu@1.15.172.131:/tmp/
-ssh -i ~/.ssh/pms_repair_key.pem ubuntu@1.15.172.131 'bash /tmp/srv-deploy-api.sh'
+scp -i ~/.ssh/pms_repair_key.pem ./deploy/pms-api-*.tar.gz ubuntu@124.223.179.214:/tmp/
+scp -i ~/.ssh/pms_repair_key.pem ./deploy/srv-deploy-api.sh ubuntu@124.223.179.214:/tmp/
+ssh -i ~/.ssh/pms_repair_key.pem ubuntu@124.223.179.214 'bash /tmp/srv-deploy-api.sh'
 ```
 
 ### 服务器端首次启动
@@ -266,7 +276,7 @@ pm2 startup systemd -u root --hp /root   # 输出一行 systemd 命令；以 roo
 curl http://127.0.0.1:4000/api/v1/health     # 直连 node
 curl http://127.0.0.1/api/v1/health          # 经 nginx
 curl https://prsznh.cn/api/v1/health         # 域名公网入口
-curl http://1.15.172.131/api/v1/health       # IP 直连排障备用
+curl http://124.223.179.214/api/v1/health     # IP 直连排障备用
 # 期望 {"status":"ok","db":"up",...}
 ```
 
@@ -328,8 +338,8 @@ mkdir -p /opt/pms-repair/web
 echo '<h1>pms-repair admin-web placeholder</h1>' > /opt/pms-repair/web/index.html
 
 # 推 conf
-scp -i ~/.ssh/pms_repair_key.pem deploy/nginx-pms-api.conf ubuntu@1.15.172.131:/tmp/pms-api.conf
-ssh -i ~/.ssh/pms_repair_key.pem ubuntu@1.15.172.131 'sudo mv /tmp/pms-api.conf /etc/nginx/conf.d/pms-api.conf && sudo nginx -t && sudo systemctl reload nginx'
+scp -i ~/.ssh/pms_repair_key.pem deploy/nginx-pms-api.conf ubuntu@124.223.179.214:/tmp/pms-api.conf
+ssh -i ~/.ssh/pms_repair_key.pem ubuntu@124.223.179.214 'sudo mv /tmp/pms-api.conf /etc/nginx/conf.d/pms-api.conf && sudo nginx -t && sudo systemctl reload nginx'
 ```
 
 ### 本机构建 + 打包
@@ -347,11 +357,11 @@ tar -czf ".\deploy\pms-web-$ts.tar.gz" -C .\apps\admin-web\dist .
 
 ```bash
 # 上传
-scp -i ~/.ssh/pms_repair_key.pem ./deploy/pms-web-*.tar.gz ubuntu@1.15.172.131:/tmp/
-scp -i ~/.ssh/pms_repair_key.pem ./deploy/srv-deploy-web.sh ubuntu@1.15.172.131:/tmp/
+scp -i ~/.ssh/pms_repair_key.pem ./deploy/pms-web-*.tar.gz ubuntu@124.223.179.214:/tmp/
+scp -i ~/.ssh/pms_repair_key.pem ./deploy/srv-deploy-web.sh ubuntu@124.223.179.214:/tmp/
 
 # 服务器
-ssh -i ~/.ssh/pms_repair_key.pem ubuntu@1.15.172.131 << 'EOF'
+ssh -i ~/.ssh/pms_repair_key.pem ubuntu@124.223.179.214 << 'EOF'
 set -e
 WEB=/opt/pms-repair/web
 BAK=/opt/pms-repair/web.bak.$(date +%s)
