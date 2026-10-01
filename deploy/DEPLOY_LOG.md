@@ -3822,3 +3822,11 @@
   - 066dac8 feat(auth): harden browser QR login and application binding
   - fed8b50 fix(parking-owner): update Car_Issue note through owner link
 
+## 2026-10-02 00:48 · miniapp-staff · fab9e98
+
+- 包：`1.0.20261002a`
+- 提交：fab9e98 deploy: api → 4e48686
+- 说明：微信开发者工具上传成功；请在公众平台将描述含 fab9e98 的版本选为体验版
+- 自上次（bd2b03a）以来上线的相关提交：
+  - 066dac8 feat(auth): harden browser QR login and application binding
+
