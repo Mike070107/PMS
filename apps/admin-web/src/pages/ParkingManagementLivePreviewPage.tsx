@@ -9,13 +9,27 @@ export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgr
       id: 'parking_gateway-preview',
       kind: 'parking_gateway',
       name: '枫桦景苑停车系统网关',
-      version: mode === 'ready' ? '2.4.0' : '2.3.0',
+      version: mode === 'ready' ? '2.5.19' : '2.3.0',
       status: 'online',
       capabilities: { parkingDbRead: true, parkingDbWrite: mode === 'ready' },
       lastSeenAt: new Date().toISOString(),
     }],
   };
   const rows: ParkingQueryRow[] | undefined = mode === 'ready' ? [{
+    database: 'parking1',
+    fields: {
+      P_id: 7701, P_plate: '沪a12345', Owner_ID: 982, Car_Brand: '住户车',
+      Owner__Room_No: '198/5/301', Owner__Mobile: '13800006421',
+      End_Time: '2026-10-31 23:59:59', P_Effective: '000010100000000000000', P_Download: '000010100000000000000',
+      P_note: '一期旧备注',
+    },
+    historyRef: { database: 'parking1', sourceRecordId: '7701', externalOwnerId: '982', plate: '沪a12345', pmsUserId: 1264 },
+    pmsMatch: {
+      userId: 1264, houseId: 301, name: '张某某', phone: '13800006421', contactNote: '白天联系本人',
+      status: 'active', source: 'manual', updatedAt: '2026-09-30T02:15:00.000Z', updatedByName: '王管理员',
+      house: { id: 301, roomNo: '301', areaSqm: '89.50', lane: '228', buildingNo: '5', communityId: 1, communityName: '枫桦景苑二期' }, matchedBy: 'phone' as const,
+    },
+  }, {
     database: 'parking2',
     fields: {
       P_id: 8842,
