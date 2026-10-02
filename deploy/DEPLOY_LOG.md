@@ -4022,3 +4022,10 @@
   - a899fa38 fix(parking): match bare legacy room numbers by database
   - 3bcc8f3b fix(release): verify parking fixes against immutable production versions
 
+## 2026-10-02 14:01 · api · 514d5e7a
+
+- 包：`pms-api-fast-20261002-140036.tar.gz`
+- 提交：514d5e7a fix: harden parking authorization operations
+- 自上次（c20488bf）以来上线的相关提交：
+  - 514d5e7a fix: harden parking authorization operations
+
