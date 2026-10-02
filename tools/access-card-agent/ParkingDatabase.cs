@@ -1569,6 +1569,8 @@ ORDER BY ID DESC";
         private static string ParameterKey(string name)
         {
             var value = NormalizeName(name); if (value.Contains("plate")) return value.Contains("y") || value.Contains("old") ? "oldPlate" : value.Contains("pak") || value.Contains("new") || value.Contains("n_p") ? "newPlate" : "plate";
+            if (value == "carid") return "carId";
+            if (value == "pid" || value == "issueid") return "issueId";
             if (value.Contains("effective") || value.Contains("release")) return "effective"; if (value.Contains("download")) return "download"; if (value.Contains("admin")) return "admin"; return value;
         }
 
@@ -2023,7 +2025,7 @@ ORDER BY rs.[name], rt.[name], rc.column_id;";
 
         private static string NormalizeName(string value)
         {
-            return (value ?? "").ToLowerInvariant().Replace("_", "").Replace("-", "").Replace(" ", "");
+            return (value ?? "").ToLowerInvariant().Replace("@", "").Replace("_", "").Replace("-", "").Replace(" ", "");
         }
 
         private static List<ParkingColumn> LoadColumns(SqlConnection connection, string schema, string table)

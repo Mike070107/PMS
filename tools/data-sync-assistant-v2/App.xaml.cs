@@ -107,7 +107,17 @@ namespace Pms.DataSyncAssistant
             if (e.Args.Length > 0 && e.Args[0] == "--self-test")
             {
                 try { SelfTest.Run(); Shutdown(0); }
-                catch { Shutdown(1); }
+                catch (Exception exception)
+                {
+                    try
+                    {
+                        System.IO.File.WriteAllText(
+                            System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PmsDataSyncAssistant-self-test.log"),
+                            exception.ToString());
+                    }
+                    catch { }
+                    Shutdown(1);
+                }
                 return;
             }
             if (e.Args.Length > 0 && e.Args[0] == "--wizard-self-test")
