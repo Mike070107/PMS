@@ -3928,3 +3928,11 @@
 - 自上次（fbee333）以来上线的相关提交：
   - f3323ff fix(parking): preserve linked owner fields in query results
 
+## 2026-10-02 09:04 · api · fd7fe23
+
+- 包：`pms-api-fast-20261002-085908.tar.gz`
+- 提交：fd7fe23 fix(deploy): declare updater manifest charset
+- 说明：网关心跳字段与16位一次性密钥已上线
+- 自上次（f3323ff）以来上线的相关提交：
+  - b426204 fix(gateway): complete managed client status flow
+
