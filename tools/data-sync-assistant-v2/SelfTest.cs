@@ -225,8 +225,16 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("停车房号查询类型识别失败");
             var housePatterns = ParkingDatabase.SearchPatternsForTest("6/502");
             if (!housePatterns.Contains("%/6/502") || !housePatterns.Contains("%/6/502/%") ||
+                !housePatterns.Contains("6/502") || !housePatterns.Contains("6/502/%") ||
                 housePatterns.Contains("%/6/502%") || housePatterns.Any(delegate(string value) { return value.Contains("36/502"); }))
                 throw new InvalidOperationException("停车房号查询边界错误");
+            var fullHousePatterns = ParkingDatabase.SearchPatternsForTest("198/12/101");
+            if (!fullHousePatterns.Contains("12/101") || !fullHousePatterns.Contains("%198/12/101") ||
+                !ParkingDatabase.SearchAppliesToDatabaseForTest("198/12/101", "parking1", "parking1", "parking2") ||
+                ParkingDatabase.SearchAppliesToDatabaseForTest("198/12/101", "parking2", "parking1", "parking2") ||
+                !ParkingDatabase.SearchAppliesToDatabaseForTest("12/101", "parking1", "parking1", "parking2") ||
+                !ParkingDatabase.SearchAppliesToDatabaseForTest("12/101", "parking2", "parking1", "parking2"))
+                throw new InvalidOperationException("停车裸房号与所属数据库映射失败");
             if (ParkingDatabase.SearchKindForTest("DQ8839") != "PlateTail")
                 throw new InvalidOperationException("停车车牌尾号识别失败");
             if (ParkingDatabase.SearchKindForTest("8839") != "PlateTail")
@@ -239,6 +247,15 @@ namespace Pms.DataSyncAssistant
             catch (InvalidOperationException exception)
             {
                 if (!exception.Message.Contains("数字信息太少")) throw;
+            }
+            try
+            {
+                ParkingDatabase.SearchKindForTest("28/49/1202");
+                throw new InvalidOperationException("歧义三段地址被误识别成裸房号");
+            }
+            catch (InvalidOperationException exception)
+            {
+                if (!exception.Message.Contains("无法识别查询内容")) throw;
             }
             var marked = ParkingDatabase.AppendPmsSourceForTest("原备注");
             if (marked != "原备注" + Environment.NewLine + "操作来源：PMS系统" ||

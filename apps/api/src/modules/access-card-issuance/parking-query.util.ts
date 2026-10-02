@@ -23,7 +23,17 @@ function normalizeParkingAddressPart(value: string): string {
  * 末尾 `/5` 是旧库为同一住户多张卡追加的序号，不参与房产匹配。
  * 旧库名称末尾的“换车牌”是已确认的操作说明，只在生成匹配键时忽略，原字段保持不变。
  */
-export function parkingRoomAddress(value: string | null | undefined): ParkingRoomAddress | null {
+function parkingLaneForDatabase(database: string | null | undefined): '198' | '228' | null {
+  const normalized = database?.trim().toLowerCase();
+  if (normalized === 'parking1') return '198';
+  if (normalized === 'parking2') return '228';
+  return null;
+}
+
+export function parkingRoomAddress(
+  value: string | null | undefined,
+  database?: string | null,
+): ParkingRoomAddress | null {
   if (!value) return null;
   const normalized = value
     .trim()
@@ -34,11 +44,15 @@ export function parkingRoomAddress(value: string | null | undefined): ParkingRoo
     .replace(/室$/g, '')
     .replace(/\\/g, '/')
     .replace(/-/g, '/');
-  const match = /^(198|228)\/(\d{1,2})\/(\d{2,4})(?:\/\d+)?$/.exec(normalized);
-  if (!match) return null;
-  const lane = normalizeParkingAddressPart(match[1]);
-  const buildingNo = normalizeParkingAddressPart(match[2]);
-  const roomNo = normalizeParkingAddressPart(match[3]);
+  const fullMatch = /^(198|228)\/(\d{1,2})\/(\d{2,4})(?:\/\d+)?$/.exec(normalized);
+  // 省略弄号时第三段存在歧义（例如 28/49/1202 可能是另一套地址体系），
+  // 只接受两段房号，或末尾 1–2 位的已确认卡序号。
+  const shortMatch = /^(\d{1,2})\/(\d{2,4})(?:\/\d{1,2})?$/.exec(normalized);
+  const inferredLane = parkingLaneForDatabase(database);
+  if (!fullMatch && (!shortMatch || !inferredLane)) return null;
+  const lane = normalizeParkingAddressPart(fullMatch?.[1] ?? inferredLane!);
+  const buildingNo = normalizeParkingAddressPart(fullMatch?.[2] ?? shortMatch![1]);
+  const roomNo = normalizeParkingAddressPart(fullMatch?.[3] ?? shortMatch![2]);
   return { lane, buildingNo, roomNo, key: `${lane}/${buildingNo}/${roomNo}` };
 }
 
@@ -75,8 +89,11 @@ export function supportsStructuredParkingQueries(version: string | null | undefi
 }
 
 /** 旧停车库把标准房号写进 P_Owner.owner_Name，例如 `198-6-402/2`。 */
-export function parkingLegacyRoomFromName(value: string | null | undefined): string | null {
-  const address = parkingRoomAddress(value);
+export function parkingLegacyRoomFromName(
+  value: string | null | undefined,
+  database?: string | null,
+): string | null {
+  const address = parkingRoomAddress(value, database);
   return address ? address.key : null;
 }
 
@@ -93,7 +110,8 @@ export function parseParkingSearch(input: string): ParsedParkingSearch {
     .replace(/[弄幢栋号]/g, '/')
     .replace(/室$/g, '')
     .replace(/\\/g, '/');
-  if (/^(?:(?:198|228)[/-])?\d{1,2}[/-]\d{2,4}(?:[/-]\d+)?$/.test(address)) {
+  if (/^(?:198|228)[/-]\d{1,2}[/-]\d{2,4}(?:[/-]\d+)?$/.test(address)
+      || /^\d{1,2}[/-]\d{2,4}(?:[/-]\d{1,2})?$/.test(address)) {
     return { kind: 'house', term: address.replace(/-/g, '/') };
   }
 

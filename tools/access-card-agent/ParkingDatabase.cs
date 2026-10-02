@@ -155,6 +155,10 @@ ORDER BY p.parameter_id;";
         private static List<ParkingSearchRow> Search(AgentConfig config, string password, string database, ParkingSearchPlan plan)
         {
             Validate(config, password, database);
+            // 用户输入完整弄号时，只查询对应停车库；同时允许该库的 P_Owner.owner_Name
+            // 省略弄号（例如 parking1 的 12/101 等同于 198/12/101）。
+            if (!SearchAppliesToDatabase(plan, database, config.ParkingPhase1Database, config.ParkingPhase2Database))
+                return new List<ParkingSearchRow>();
             using (var connection = new SqlConnection(ConnectionString(config, password, database)))
             {
                 connection.Open();
@@ -1210,6 +1214,7 @@ ORDER BY c.column_id;";
         {
             public ParkingSearchKind Kind { get; set; }
             public List<string> Patterns { get; set; }
+            public string HouseLane { get; set; }
         }
 
         private sealed class ParkingSearchColumn
@@ -1232,12 +1237,17 @@ ORDER BY c.column_id;";
             var address = Regex.Replace(term, @"\s+", "")
                 .Replace("弄", "/").Replace("幢", "/").Replace("栋", "/").Replace("号", "/")
                 .Replace("室", "").Replace('\\', '/');
-            var house = Regex.Match(address, @"^(?:(198|228)[/-])?(\d{1,2})[/-](\d{2,4})(?:[/-]\d+)?$");
-            if (house.Success)
+            var fullHouse = Regex.Match(address, @"^(198|228)[/-](\d{1,2})[/-](\d{2,4})(?:[/-]\d+)?$");
+            var shortHouse = fullHouse.Success
+                ? Match.Empty
+                : Regex.Match(address, @"^(\d{1,2})[/-](\d{2,4})(?:[/-]\d{1,2})?$");
+            if (fullHouse.Success || shortHouse.Success)
             {
-                var lane = house.Groups[1].Success ? house.Groups[1].Value : null;
-                var buildings = NumericForms(house.Groups[2].Value, 2);
-                var rooms = NumericForms(house.Groups[3].Value, house.Groups[3].Value.Length);
+                var lane = fullHouse.Success ? fullHouse.Groups[1].Value : null;
+                var buildingValue = fullHouse.Success ? fullHouse.Groups[2].Value : shortHouse.Groups[1].Value;
+                var roomValue = fullHouse.Success ? fullHouse.Groups[3].Value : shortHouse.Groups[2].Value;
+                var buildings = NumericForms(buildingValue, 2);
+                var rooms = NumericForms(roomValue, roomValue.Length);
                 var patterns = new List<string>();
                 foreach (var building in buildings)
                 foreach (var room in rooms)
@@ -1245,16 +1255,20 @@ ORDER BY c.column_id;";
                 foreach (var secondSeparator in new[] { "/", "-" })
                 {
                     var body = building + secondSeparator + room;
-                    var basePattern = lane == null
-                        ? "%" + firstSeparator + EscapeLike(body)
+                    var escapedBody = EscapeLike(body);
+
+                    // 裸房号必须从字段开头匹配，不能用前置通配符，否则 12/101 会误中 112/101。
+                    // “已隐藏”是旧库已经确认存在的固定前缀，因此单独列出，不放宽成任意文字。
+                    AddBoundedHousePatterns(patterns, escapedBody);
+                    AddBoundedHousePatterns(patterns, EscapeLike("已隐藏") + escapedBody);
+
+                    // 完整弄号允许前面存在“已隐藏”等旧系统标记，但楼栋前必须有分隔符边界。
+                    var prefixedPattern = lane == null
+                        ? "%" + firstSeparator + escapedBody
                         : "%" + EscapeLike(lane + firstSeparator + body);
-                    // 房号必须在两端都有边界。结尾可以是记录结尾，也可以继续跟“/第几张卡”序号。
-                    // 禁止直接追加通配符，否则 6/502 会再次命中 36/502 或 6/5021。
-                    AddVariant(patterns, basePattern);
-                    AddVariant(patterns, basePattern + "/%");
-                    AddVariant(patterns, basePattern + "-%");
+                    AddBoundedHousePatterns(patterns, prefixedPattern);
                 }
-                return new ParkingSearchPlan { Kind = ParkingSearchKind.House, Patterns = patterns };
+                return new ParkingSearchPlan { Kind = ParkingSearchKind.House, Patterns = patterns, HouseLane = lane };
             }
 
             var compact = Regex.Replace(term, @"\s+", "").ToUpperInvariant();
@@ -1276,6 +1290,30 @@ ORDER BY c.column_id;";
         private static ParkingSearchPlan SinglePattern(ParkingSearchKind kind, string pattern)
         {
             return new ParkingSearchPlan { Kind = kind, Patterns = new List<string> { pattern } };
+        }
+
+        private static void AddBoundedHousePatterns(List<string> patterns, string basePattern)
+        {
+            // 结尾只能是记录结尾、卡序号，或旧库已确认的“换车牌”操作说明。
+            // 禁止直接追加 `%`，否则 6/502 会再次命中 6/5021。
+            AddVariant(patterns, basePattern);
+            AddVariant(patterns, basePattern + "/%");
+            AddVariant(patterns, basePattern + "-%");
+            AddVariant(patterns, basePattern + EscapeLike("换车牌"));
+        }
+
+        private static bool SearchAppliesToDatabase(
+            ParkingSearchPlan plan,
+            string database,
+            string phase1Database,
+            string phase2Database)
+        {
+            if (plan.Kind != ParkingSearchKind.House || String.IsNullOrWhiteSpace(plan.HouseLane)) return true;
+            if (plan.HouseLane == "198")
+                return String.Equals(database, phase1Database, StringComparison.OrdinalIgnoreCase);
+            if (plan.HouseLane == "228")
+                return String.Equals(database, phase2Database, StringComparison.OrdinalIgnoreCase);
+            return false;
         }
 
         private static List<string> NumericForms(string value, int paddedLength)
@@ -1435,6 +1473,11 @@ ORDER BY c.column_id;";
         internal static List<string> SearchPatternsForTest(string term)
         {
             return BuildSearchPlan(term).Patterns;
+        }
+
+        internal static bool SearchAppliesToDatabaseForTest(string term, string database, string phase1Database, string phase2Database)
+        {
+            return SearchAppliesToDatabase(BuildSearchPlan(term), database, phase1Database, phase2Database);
         }
 
         private static List<string> SearchVariants(string term)

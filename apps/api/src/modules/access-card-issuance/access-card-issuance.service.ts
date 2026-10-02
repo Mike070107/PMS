@@ -1132,7 +1132,7 @@ export class AccessCardIssuanceService {
       .map((row) => parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话']))
       .map((value) => normalizeParkingPhone(value))
       .filter((value): value is string => Boolean(value))));
-    const rowRooms = rows.map((row) => parkingRoomAddress(parkingSnapshotValues(row.fields).room));
+    const rowRooms = rows.map((row) => parkingRoomAddress(parkingSnapshotValues(row.fields).room, row.database));
     const roomKeys = new Set(rowRooms.flatMap((address) => address ? [address.key] : []));
     const buildingKeys = new Set(rowRooms.flatMap((address) => address ? [`${address.lane}/${address.buildingNo}`] : []));
 
@@ -1230,10 +1230,13 @@ export class AccessCardIssuanceService {
     const communityById = new Map(communities.map((community) => [community.id, community]));
     return rows.map((row) => {
       const rawPhone = parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话']);
-      const roomAddress = parkingRoomAddress(parkingSnapshotValues(row.fields).room);
+      const roomAddress = parkingRoomAddress(parkingSnapshotValues(row.fields).room, row.database);
       const matchedHouse = roomAddress ? roomHouseByKey.get(roomAddress.key) : undefined;
       const phoneUser = rawPhone ? byPhone.get(normalizeParkingPhone(rawPhone) ?? '') : undefined;
-      const user = phoneUser ?? (matchedHouse ? byHouse.get(matchedHouse.id) : undefined);
+      const roomUser = matchedHouse ? byHouse.get(matchedHouse.id) : undefined;
+      // 旧停车库电话可能多年未更新；完整房号或由数据库确定弄号的两段房号更能定位房产。
+      // 房号和电话冲突时优先房号，防止把车辆资料挂到同号码的其他业主名下。
+      const user = roomUser ?? phoneUser;
       return {
         ...row,
         pmsMatch: user ? (() => {
@@ -1259,7 +1262,7 @@ export class AccessCardIssuanceService {
             communityId: community?.id ?? null,
             communityName: community?.name ?? null,
           } : null,
-          matchedBy: phoneUser ? 'phone' as const : 'room' as const,
+          matchedBy: roomUser ? 'room' as const : 'phone' as const,
           };
         })() : null,
         historyRef: {

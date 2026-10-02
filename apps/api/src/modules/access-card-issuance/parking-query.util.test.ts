@@ -34,6 +34,7 @@ test('区分完整车牌、车牌尾号、电话和姓名', () => {
 test('拒绝会造成大范围扫描的短数字', () => {
   assert.throws(() => parseParkingSearch('502'), /数字信息太少/);
   assert.throws(() => parseParkingSearch('12'), /数字信息太少/);
+  assert.throws(() => parseParkingSearch('28/49/1202'), /无法识别查询内容/);
 });
 
 test('只有带结构化查询边界的现场助手才能领取查询', () => {
@@ -47,6 +48,15 @@ test('P_Owner.owner_Name 中的旧库标准地址按房号解释', () => {
   assert.equal(parkingLegacyRoomFromName('198-6-402'), '198/6/402');
   assert.equal(parkingLegacyRoomFromName('已隐藏228/02/102/5'), '228/2/102');
   assert.equal(parkingLegacyRoomFromName('张三'), null);
+});
+
+test('P_Owner.owner_Name 裸房号按停车库补全所属弄号但不猜未知库', () => {
+  assert.equal(parkingLegacyRoomFromName('12/101', 'parking1'), '198/12/101');
+  assert.equal(parkingLegacyRoomFromName('12/101', 'parking2'), '228/12/101');
+  assert.equal(parkingLegacyRoomFromName('已隐藏12/0101/3换车牌', 'parking2'), '228/12/101');
+  assert.equal(parkingLegacyRoomFromName('28/49/1202', 'parking2'), null);
+  assert.equal(parkingLegacyRoomFromName('12/101'), null);
+  assert.equal(parkingLegacyRoomFromName('12/101', 'unknown'), null);
 });
 
 test('同户多卡的隐藏标识、前导零及卡序号不改变房号', () => {
@@ -110,6 +120,49 @@ test('真实住户匹配方法将三种旧库名称关联到同一 PMS 二期房
     assert.equal(row.pmsMatch?.house?.roomNo, '201');
     assert.equal(row.fields.Owner__owner_Name, names[index]);
   }
+});
+
+test('真实住户匹配方法按数据库把裸房号关联到对应弄号，并优先房号而非过期电话', async () => {
+  const { AccessCardIssuanceService } = await import('./access-card-issuance.service');
+  const service = Object.create(AccessCardIssuanceService.prototype) as InstanceType<typeof AccessCardIssuanceService>;
+  const buildings = [
+    { id: 112, tenantId: 1, communityId: 1, lane: '198', buildingNo: '12' },
+    { id: 212, tenantId: 1, communityId: 2, lane: '228', buildingNo: '12' },
+  ];
+  const houses = [
+    { id: 10198, tenantId: 1, buildingId: 112, roomNo: '101', areaSqm: '80' },
+    { id: 10228, tenantId: 1, buildingId: 212, roomNo: '101', areaSqm: '90' },
+  ];
+  const owners = [
+    { id: 19801, tenantId: 1, houseId: 10198, name: '一期业主', phone: '13800000001', role: 'owner',
+      status: 'active', updatedAt: new Date('2026-10-02T00:00:00Z'), updatedBy: null },
+    { id: 22801, tenantId: 1, houseId: 10228, name: '二期业主', phone: '13800000002', role: 'owner',
+      status: 'active', updatedAt: new Date('2026-10-02T00:00:00Z'), updatedBy: null },
+  ];
+  Object.assign(service, {
+    buildingRepo: { find: async () => buildings },
+    houseRepo: { find: async () => houses },
+    communityRepo: { find: async () => [
+      { id: 1, tenantId: 1, name: '枫桦景苑一期' },
+      { id: 2, tenantId: 1, name: '枫桦景苑二期' },
+    ] },
+    userRepo: { find: async ({ where }: any) => {
+      if (where.phone) return [owners[1]];
+      if (where.houseId) return owners;
+      return [];
+    } },
+  });
+  const rows = [
+    { database: 'parking1', fields: { Owner__owner_Name: '12/101', Owner__owner_Tel: '13800000002', Owner_ID: 1, P_plate: '沪A11111' } },
+    { database: 'parking2', fields: { Owner__owner_Name: '12/101', Owner__owner_Tel: null, Owner_ID: 2, P_plate: '沪A22222' } },
+  ];
+  const result = await service['matchParkingRowsToPms'](1, rows);
+  assert.equal(result[0].pmsMatch?.userId, 19801);
+  assert.equal(result[0].pmsMatch?.matchedBy, 'room');
+  assert.equal(result[0].pmsMatch?.house?.lane, '198');
+  assert.equal(result[1].pmsMatch?.userId, 22801);
+  assert.equal(result[1].pmsMatch?.matchedBy, 'room');
+  assert.equal(result[1].pmsMatch?.house?.lane, '228');
 });
 
 test('新增车牌查重按旧库车牌字段做精确匹配', () => {
