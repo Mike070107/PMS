@@ -65,6 +65,14 @@ export function supportsParkingOwnerUpdates(version?: string | null): boolean {
   return major === 0 && minor >= 7;
 }
 
+/** 房号选择、旧库重名编号和原车辆读回保护必须同时由新版助手执行。 */
+export function supportsParkingOwnerRebind(version?: string | null): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:\.|$)/.exec(version ?? '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 20)));
+}
+
 /** 联查结果存在 Owner__ 列时只从住户表取值，防止误把 Car_Issue 同名栏位当成住户资料。 */
 export function parkingOwnerJoinedFieldValue(
   fields: Record<string, string | number | boolean | null>,

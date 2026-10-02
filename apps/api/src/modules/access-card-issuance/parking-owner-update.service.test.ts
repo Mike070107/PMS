@@ -11,6 +11,8 @@ import { ParkingOwnerUpdate } from '../../entities/parking-owner-update.entity';
 import { ParkingHistory } from '../../entities/parking-history.entity';
 import { ParkingRecordSnapshot } from '../../entities/parking-record-snapshot.entity';
 import { issueAgentSecret } from './agent-auth';
+import { UserRole, UserStatus } from '../../common/enums';
+import { supportsParkingOwnerRebind } from './parking-owner-update.util';
 
 const before = { name: null, phone: null, room: '228/53/301', note: null };
 const after = { ...before, phone: '02112345678', note: '测试备注\n第二行' };
@@ -19,6 +21,57 @@ const input = (): CreateParkingOwnerUpdateDto => ({
   idempotencyKey: 'owner-test-request-001', expected: { ...before }, values: { ...after },
 });
 const user = { id: 1, tenantId: 1 } as any;
+
+test('换绑仅接受 PMS 房号及该房号有效业主，服务端重建房号/电话而非信任自由输入', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  let saved: any;
+  let ownerWhere: any;
+  const now = new Date();
+  Object.assign(service, {
+    parkingOperationRepo: { findOne: async () => null, create: (data: any) => data, save: async (data: any) => { saved = { id: 1, ...data }; return saved; } },
+    agentRepo: { find: async () => [{ status: 'online', lastSeenAt: now, version: '2.5.20', capabilities: { parkingDbWrite: true } }] },
+    resolveHouse: async (houseId: number, tenantId: number) => {
+      assert.equal(houseId, 102); assert.equal(tenantId, 1);
+      return { house: { roomNo: '0102' }, building: { lane: '198', buildingNo: '08' } };
+    },
+    userRepo: { findOne: async ({ where }: any) => { ownerWhere = where; return where.id === 20 ? { id: 20, name: 'PMS业主', phone: '13800000001' } : null; } },
+  });
+  const dto: any = { kind: 'rebind_owner', database: 'parking1', pmsUserId: 20, idempotencyKey: 'binding-test-001',
+    payload: { plate: '沪TEST01', houseId: 102, ownerName: '伪造姓名', ownerRoom: '张先生', ownerPhone: '伪造电话', previousOwnerId: '42', ownerId: '999', restoreOwnerId: '999' } };
+  await service.createParkingOperation(dto, user);
+  assert.deepEqual(ownerWhere, { id: 20, tenantId: 1, houseId: 102, role: UserRole.OWNER, status: UserStatus.ACTIVE });
+  assert.equal(saved.payload.ownerRoom, '198/8/102'); assert.equal(saved.payload.ownerName, 'PMS业主');
+  assert.equal(saved.payload.ownerPhone, '13800000001'); assert.equal(saved.payload.bindingContract, 1);
+  assert.equal(saved.payload.ownerId, undefined); assert.equal(saved.payload.restoreOwnerId, undefined);
+  await assert.rejects(service.createParkingOperation({ ...dto, pmsUserId: 21 }, user), /不匹配或已停用/);
+  await assert.rejects(service.createParkingOperation({ ...dto, payload: { ...dto.payload, houseId: undefined } }, user), /选择要绑定的业主/);
+  await assert.rejects(service.createParkingOperation({ ...dto, payload: { ...dto.payload, previousOwnerId: '' } }, user), /当前旧库住户编号/);
+});
+
+test('房号换绑隔离旧版助手，避免新版页面被旧助手当成改姓名', () => {
+  for (const version of ['2.5.18', '2.5.19.0', null, 'unknown']) assert.equal(supportsParkingOwnerRebind(version), false);
+  for (const version of ['2.5.20', '2.5.20.0', '2.6.0', '3.0.0']) assert.equal(supportsParkingOwnerRebind(version), true);
+});
+
+test('换绑回报必须读回所选房号/电话/原住户，历史使用实际分配的 /2 房号和新住户编号', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const task: any = { id: 51, tenantId: 1, kind: 'rebind_owner', database: 'parking1', status: 'running', leaseAgentKey: 'gateway',
+    pmsUserId: 20, payload: { plate: '沪TEST01', ownerRoom: '198/8/102', ownerPhone: '13800000001', previousOwnerId: '42' } };
+  const histories: any[] = [];
+  const operationRepo = { findOne: async () => task, save: async (value: any) => value };
+  Object.assign(service, { authenticateAgent: async () => ({ kind: 'parking_gateway', tenantId: 1, agentKey: 'gateway' }),
+    parkingOperationRepo: { manager: { transaction: async (fn: any) => fn({ getRepository: (entity: any) => entity === ParkingHistory
+      ? { create: (value: any) => value, save: async (value: any) => histories.push(value) } : operationRepo }) } },
+  });
+  const values = { verified: true, targetOwnerId: '43', previousOwnerId: '42', previousRoom: '198/7/201', targetRoom: '198/8/102/2', targetPhone: '13800000001' };
+  for (const invalid of [{ targetRoom: '198/18/102/2' }, { targetPhone: '13800000002' }, { verified: false }, { previousOwnerId: '99' }]) {
+    await assert.rejects(service.reportParkingOperation('gateway', '', { taskId: 51, result: 'success', values: { ...values, ...invalid } }), /不能标为成功/);
+    assert.equal(task.status, 'running'); assert.equal(histories.length, 0);
+  }
+  await service.reportParkingOperation('gateway', '', { taskId: 51, result: 'success', values });
+  assert.equal(task.status, 'completed'); assert.equal(histories[0].externalOwnerId, '43');
+  assert.deepEqual(histories[0].changes, [{ field: 'owner', label: '绑定房号', before: '198/7/201', after: '198/8/102/2' }]);
+});
 
 function harness() {
   const secret = issueAgentSecret();

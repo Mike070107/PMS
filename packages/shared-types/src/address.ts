@@ -18,6 +18,8 @@ export interface AddressHouse {
   /** 仅后台返回；小程序端拿不到业主信息 */
   ownerName?: string | null;
   ownerPhone?: string | null;
+  /** 仅后台返回，用于明确选择同一房号下的具体业主。 */
+  ownerId?: number | null;
 }
 
 export interface AddressBuilding {

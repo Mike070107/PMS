@@ -89,8 +89,8 @@ export class AccessCardIssuanceController {
 
   @Post('parking/operations')
   @RequirePermission('business', 'edit')
-  createParkingOperation(@Body() dto: CreateParkingOperationDto, @CurrentUser() user: AuthUser) {
-    return this.service.createParkingOperation(dto, user);
+  createParkingOperation(@Body() dto: CreateParkingOperationDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.createParkingOperation(dto, user, access);
   }
 
   @Get('parking/operations/:id')

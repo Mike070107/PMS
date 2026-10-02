@@ -1237,6 +1237,7 @@ export class PropertiesService {
         'h.road_name AS "roadName"',
         'h.shop_name AS "shopName"',
         'u.name AS "ownerName"',
+        'u.id AS "ownerId"',
         'u.phone AS "ownerPhone"',
       ])
       .orderBy('h.building_id', 'ASC');
@@ -1257,6 +1258,7 @@ export class PropertiesService {
           propertyType: string;
           shopName: string | null;
           ownerName: string | null;
+          ownerId: number | null;
           ownerPhone: string | null;
         }>;
       }
@@ -1282,6 +1284,7 @@ export class PropertiesService {
         shopName: row.shopName || null,
         // 业主姓名/电话只给后台，小程序端一律不下发
         ownerName: opts.withOwners ? row.ownerName || null : null,
+        ownerId: opts.withOwners && row.ownerId ? Number(row.ownerId) : null,
         ownerPhone: opts.withOwners ? row.ownerPhone || null : null,
       });
     }

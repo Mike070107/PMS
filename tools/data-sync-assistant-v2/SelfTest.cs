@@ -51,6 +51,7 @@ namespace Pms.DataSyncAssistant
                 VerifyLegacyRoomMatching();
                 VerifyParkingOwnerColumnMapping();
                 VerifyParkingDownloadParameters();
+                VerifyParkingOwnerRebind();
                 VerifyActivityHistory(root);
                 VerifyAssistantUpdater(root);
                 VerifyProductUpdater();
@@ -62,6 +63,30 @@ namespace Pms.DataSyncAssistant
                 var temp = Path.GetFullPath(Path.GetTempPath());
                 if (full.StartsWith(temp, StringComparison.OrdinalIgnoreCase) && Directory.Exists(full))
                     Directory.Delete(full, true);
+            }
+        }
+
+        private static void VerifyParkingOwnerRebind()
+        {
+            if (ParkingDatabase.CanonicalBindingRoom("198-08-0102") != "198/8/102") throw new InvalidOperationException("绑定房号规范化失败");
+            if (ParkingDatabase.NextBindingRoom("198/8/102", new string[0]) != "198/8/102") throw new InvalidOperationException("空房号分配失败");
+            if (ParkingDatabase.NextBindingRoom("198/8/102", new[] { "198/8/102" }) != "198/8/102/2") throw new InvalidOperationException("房号重名编号失败");
+            if (ParkingDatabase.NextBindingRoom("198/8/102", new[] { "198/8/102", "198/8/102/2", "198/8/102/5", "198/18/102/9" }) != "198/8/102/6") throw new InvalidOperationException("编号没有按本房号最大值递增");
+            try { ParkingDatabase.CanonicalBindingRoom("张先生"); throw new Exception("姓名被当作房号接受"); }
+            catch (InvalidOperationException) { }
+            var current = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) {
+                { "P_plate", "沪TEST01" }, { "P_Color", "绿" }, { "Car_Lei", 3 }, { "Car_Beand", "亲情车" },
+                { "P_note", "原备注" }, { "P_Spaces", "车位A" }, { "P_Effective", "001001" }, { "P_Download", "001000" }
+            };
+            using (var command = new System.Data.SqlClient.SqlCommand())
+            {
+                ParkingDatabase.AddBindingProcedureParameters(command, current, "198/8/102/2");
+                if ((string)command.Parameters["@owner_Name"].Value != "198/8/102/2" ||
+                    (string)command.Parameters["@Car_Brand"].Value != "亲情车" ||
+                    (string)command.Parameters["@P_Effective"].Value != "001001" ||
+                    (string)command.Parameters["@P_Download"].Value != "001000" ||
+                    (string)command.Parameters["@P_note"].Value != "原备注" || command.Parameters.Contains("@End_Time"))
+                    throw new InvalidOperationException("换绑错误覆盖了车辆原值");
             }
         }
 

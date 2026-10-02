@@ -512,7 +512,8 @@ ORDER BY p.parameter_id;";
                     result["legacyAuditVerified"] = true;
                     return result;
                 }
-                if (task.kind == "change_plate" || task.kind == "rebind_owner" || task.kind == "update_garages")
+                if (task.kind == "rebind_owner") return RebindParkingOwner(connection, task, payload);
+                if (task.kind == "change_plate" || task.kind == "update_garages")
                 {
                     var targetPlate = task.kind == "change_plate" ? newPlate : plate;
                     using (var command = Procedure(connection, "Up_PakIssue"))
@@ -558,6 +559,176 @@ ORDER BY p.parameter_id;";
                 }
                 throw new InvalidOperationException("不支持的停车操作：" + task.kind);
             }
+        }
+
+        internal static string CanonicalBindingRoom(string room)
+        {
+            var match = Regex.Match((room ?? "").Trim(), @"^(198|228)[/-](\d{1,2})[/-](\d{2,4})(?:/\d+)?$");
+            if (!match.Success || Int32.Parse(match.Groups[2].Value) <= 0 || Int32.Parse(match.Groups[3].Value) <= 0)
+                throw new InvalidOperationException("绑定房号必须来自 PMS 房产，例如 198/8/102");
+            return match.Groups[1].Value + "/" + Int32.Parse(match.Groups[2].Value) + "/" + Int32.Parse(match.Groups[3].Value);
+        }
+
+        internal static string NextBindingRoom(string room, IEnumerable<string> existing)
+        {
+            var canonical = CanonicalBindingRoom(room);
+            var used = new HashSet<string>(existing.Select(delegate(string name) { return (name ?? "").Trim(); }), StringComparer.OrdinalIgnoreCase);
+            if (!used.Contains(canonical)) return canonical;
+            var highest = 1;
+            foreach (var name in used)
+            {
+                if (!name.StartsWith(canonical + "/", StringComparison.OrdinalIgnoreCase)) continue;
+                int suffix;
+                if (Int32.TryParse(name.Substring(canonical.Length + 1), out suffix)) highest = Math.Max(highest, suffix);
+            }
+            if (highest == Int32.MaxValue) throw new InvalidOperationException("房号编号超出范围，已停止写入");
+            var result = canonical + "/" + (highest + 1).ToString(CultureInfo.InvariantCulture);
+            if (result.Length > 20) throw new InvalidOperationException("旧停车系统房号超过 20 字符，已停止写入");
+            return result;
+        }
+
+        // 仅住户建档插入 P_Owner；车辆关联仍由原 Up_PakIssue 维护。整个动作失败即回滚。
+        private static Dictionary<string, object> RebindParkingOwner(SqlConnection connection, ParkingOperationTask task, Dictionary<string, object> payload)
+        {
+            if (Number(payload, "bindingContract", 0) != 1) throw new InvalidOperationException("旧版变更绑定任务缺少 PMS 房号，请重新选择房号提交");
+            var plate = Value(payload, "plate");
+            var room = CanonicalBindingRoom(Value(payload, "ownerRoom"));
+            var phone = Value(payload, "ownerPhone") ?? "";
+            if (phone.Length > 80) throw new InvalidOperationException("业主电话超过旧停车系统 80 字符上限");
+            using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
+            {
+                // 旧软件也可能并发建档；表锁保护编号分配+插入，不能先查后在另一个事务中插入。
+                var existing = new List<string>();
+                using (var names = connection.CreateCommand())
+                {
+                    names.Transaction = transaction;
+                    names.CommandText = "SELECT owner_Name FROM dbo.P_Owner WITH (TABLOCKX,HOLDLOCK) WHERE owner_Name=@room OR owner_Name LIKE @prefix";
+                    Add(names, "@room", SqlDbType.VarChar, 20, room);
+                    Add(names, "@prefix", SqlDbType.VarChar, 24, room + "/%");
+                    using (var reader = names.ExecuteReader()) while (reader.Read()) existing.Add(Convert.ToString(reader[0]));
+                }
+                var before = ReadBindingVehicle(connection, transaction, plate);
+                if (!String.IsNullOrEmpty(task.sourceRecordId) && task.sourceRecordId != Value(before, "P_id"))
+                    throw new InvalidOperationException("车牌的车辆记录已变化，请重新查询再绑定");
+                var oldId = Value(before, "Owner_ID");
+                var oldOwner = ReadBindingOwner(connection, transaction, oldId);
+                var expectedId = Value(payload, "previousOwnerId");
+                var restoreId = Value(payload, "restoreOwnerId");
+                var marker = "PMS绑定:" + task.taskId.ToString(CultureInfo.InvariantCulture);
+                // 只有本任务的专属建档标记才允许作为丢失回执后的幂等重放依据。
+                if ((Value(oldOwner, "owner_depa") == marker || (!String.IsNullOrEmpty(restoreId) && oldId == restoreId)) && CanonicalBindingRoom(Value(oldOwner, "owner_Name")) == room &&
+                    (Value(oldOwner, "owner_Tel") ?? "") == phone)
+                {
+                    var original = ReadBindingOwner(connection, transaction, expectedId);
+                    transaction.Commit();
+                    return BindingResult(before, original, oldOwner, expectedId, oldId);
+                }
+                if (String.IsNullOrEmpty(expectedId) || oldId != expectedId)
+                    throw new InvalidOperationException("车辆绑定住户已改变，请重新查询后提交；没有修改旧库");
+                var targetId = restoreId;
+                Dictionary<string, object> target;
+                if (!String.IsNullOrEmpty(restoreId))
+                {
+                    target = ReadBindingOwner(connection, transaction, restoreId);
+                    if (CanonicalBindingRoom(Value(target, "owner_Name")) != room || (Value(target, "owner_Tel") ?? "") != phone)
+                        throw new InvalidOperationException("原住户资料已变化，不能自动恢复，请重新选择房号");
+                }
+                else
+                {
+                    var targetRoom = NextBindingRoom(room, existing);
+                    using (var insert = connection.CreateCommand())
+                    {
+                        insert.Transaction = transaction;
+                        insert.CommandText = @"
+DECLARE @created TABLE (id NVARCHAR(30));
+IF COLUMNPROPERTY(OBJECT_ID(N'dbo.P_Owner'), 'UserID', 'IsIdentity') = 1
+ INSERT INTO dbo.P_Owner(owner_Name,owner_Add,owner_Tel,owner_Sex,owner_depa,Owner_Image)
+ OUTPUT INSERTED.UserID INTO @created VALUES(@room,@address,@phone,0,@marker,'');
+ELSE
+ INSERT INTO dbo.P_Owner(UserID,owner_Name,owner_Add,owner_Tel,owner_Sex,owner_depa,Owner_Image)
+ OUTPUT INSERTED.UserID INTO @created SELECT ISNULL(MAX(CONVERT(BIGINT,UserID)),0)+1,@room,@address,@phone,0,@marker,'' FROM dbo.P_Owner;
+SELECT id FROM @created;";
+                        Add(insert, "@room", SqlDbType.VarChar, 20, targetRoom);
+                        Add(insert, "@address", SqlDbType.VarChar, 80, room);
+                        Add(insert, "@phone", SqlDbType.VarChar, 80, phone);
+                        Add(insert, "@marker", SqlDbType.VarChar, 50, marker);
+                        targetId = Convert.ToString(insert.ExecuteScalar(), CultureInfo.InvariantCulture);
+                    }
+                    target = ReadBindingOwner(connection, transaction, targetId);
+                    if (Value(target, "owner_Name") != targetRoom || (Value(target, "owner_Tel") ?? "") != phone)
+                        throw new InvalidOperationException("旧库住户建档读回不一致，已撤销本次操作");
+                }
+                using (var command = Procedure(connection, "Up_PakIssue"))
+                {
+                    command.Transaction = transaction;
+                    AddBindingProcedureParameters(command, before, Value(target, "owner_Name"));
+                    command.ExecuteNonQuery();
+                }
+                var after = ReadBindingVehicle(connection, transaction, plate);
+                if (Value(after, "Owner_ID") != targetId) throw new InvalidOperationException("Up_PakIssue 未绑定到所选住户，已撤销本次操作");
+                foreach (var key in new[] { "P_id", "P_plate", "End_Time", "Sart_Time", "Car_Money", "Car_Deposit", "Car_Zt", "Car_ID", "P_Color", "Car_Lei", "Car_Beand", "Car_Brand", "P_note", "P_Spaces", "P_Effective", "P_Download" })
+                {
+                    if (Value(before, key) != Value(after, key)) throw new InvalidOperationException("绑定过程意外改变车辆字段 " + key + "，已撤销本次操作");
+                }
+                transaction.Commit();
+                return BindingResult(after, oldOwner, target, oldId, targetId);
+            }
+        }
+
+        internal static void AddBindingProcedureParameters(SqlCommand command, Dictionary<string, object> current, string targetRoom)
+        {
+            Add(command, "@Pak_plate", SqlDbType.VarChar, 50, current["P_plate"]);
+            Add(command, "@y_Pak_plate", SqlDbType.VarChar, 50, current["P_plate"]);
+            Add(command, "@P_Color", SqlDbType.VarChar, 10, current["P_Color"]);
+            Add(command, "@Car_Lei", SqlDbType.Int, 0, current["Car_Lei"]);
+            Add(command, "@owner_Name", SqlDbType.VarChar, 20, targetRoom);
+            Add(command, "@Car_Brand", SqlDbType.VarChar, 20, current.ContainsKey("Car_Beand") ? current["Car_Beand"] : current["Car_Brand"]);
+            Add(command, "@P_note", SqlDbType.VarChar, 200, current["P_note"]);
+            Add(command, "@admin", SqlDbType.VarChar, 20, "PMS");
+            Add(command, "@P_Spaces", SqlDbType.VarChar, 20, current["P_Spaces"]);
+            Add(command, "@P_Effective", SqlDbType.VarChar, 256, current["P_Effective"]);
+            Add(command, "@P_Download", SqlDbType.VarChar, 256, current["P_Download"]);
+        }
+
+        private static Dictionary<string, object> ReadBindingVehicle(SqlConnection connection, SqlTransaction transaction, string plate)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "SELECT * FROM dbo.Car_Issue WITH (UPDLOCK,HOLDLOCK) WHERE P_plate=@plate";
+                Add(command, "@plate", SqlDbType.VarChar, 50, plate);
+                return ReadSingleBindingRow(command, "车辆");
+            }
+        }
+
+        private static Dictionary<string, object> ReadBindingOwner(SqlConnection connection, SqlTransaction transaction, string id)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "SELECT UserID,owner_Name,owner_Tel,owner_depa FROM dbo.P_Owner WHERE UserID=@id";
+                Add(command, "@id", SqlDbType.VarChar, 30, id);
+                return ReadSingleBindingRow(command, "旧库住户");
+            }
+        }
+
+        private static Dictionary<string, object> ReadSingleBindingRow(SqlCommand command, string label)
+        {
+            using (var reader = command.ExecuteReader())
+            {
+                if (!reader.Read()) throw new InvalidOperationException(label + "不存在，请重新查询");
+                var row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                for (var i = 0; i < reader.FieldCount; i++) row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                if (reader.Read()) throw new InvalidOperationException(label + "不唯一，已停止操作");
+                return row;
+            }
+        }
+
+        private static Dictionary<string, object> BindingResult(Dictionary<string, object> vehicle, Dictionary<string, object> previous, Dictionary<string, object> target, string previousId, string targetId)
+        {
+            return new Dictionary<string, object> { { "verified", true }, { "plate", Value(vehicle, "P_plate") }, { "issueId", Value(vehicle, "P_id") },
+                { "previousOwnerId", previousId }, { "targetOwnerId", targetId }, { "previousRoom", Value(previous, "owner_Name") },
+                { "previousPhone", Value(previous, "owner_Tel") }, { "targetRoom", Value(target, "owner_Name") }, { "targetPhone", Value(target, "owner_Tel") } };
         }
 
         private static SqlCommand Procedure(SqlConnection connection, string name)

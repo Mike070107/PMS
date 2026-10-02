@@ -45,12 +45,14 @@ import {
 } from '@ant-design/icons';
 import {
   accessCardIssuance,
+  address as addressApi,
   ApiError,
   type AccessCardReadiness,
 } from '@pms/api-client';
 import dayjs from 'dayjs';
+import { type AddressCommunity, buildingMatchKeys, communityMatchKeys, houseMatchKeys, scoreAddressPath, tokenizeAddress } from '@pms/shared-types';
 import { parkingRenewalEndDate } from '../lib/parkingRenewal';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CopyableSecret from '../components/CopyableSecret';
 import OwnerFormModal, { type OwnerRow } from './OwnerFormModal';
 import ParkingLegacyOwnerModal, { type ParkingLegacyOwnerTarget } from './ParkingLegacyOwnerModal';
@@ -350,7 +352,7 @@ export default function ParkingManagementPage({
       let task = await accessCardIssuance.createParkingOperation({
         database: row ? (row.database.toLowerCase() === 'parking1' ? 'parking1' : 'parking2') : ((payload.database as 'parking1' | 'parking2') || 'parking2'),
         kind, sourceRecordId: row ? parkingHistoryRef(row).sourceRecordId : null,
-        pmsUserId: row?.pmsMatch?.userId ?? (kind === 'add_vehicle' && Number.isFinite(Number(payload.pmsUserId)) ? Number(payload.pmsUserId) : null),
+        pmsUserId: kind === 'rebind_owner' ? Number(payload.pmsUserId) : row?.pmsMatch?.userId ?? (kind === 'add_vehicle' && Number.isFinite(Number(payload.pmsUserId)) ? Number(payload.pmsUserId) : null),
         idempotencyKey: createIdempotencyKey(), payload,
       });
       setLastOperation(task);
@@ -1016,6 +1018,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
   const [ownerName, setOwnerName] = useState('');
   const [ownerRoom, setOwnerRoom] = useState('');
   const [ownerId, setOwnerId] = useState('');
+  const [binding, setBinding] = useState<ParkingOwnerSelection | null>(null);
   const [endDate, setEndDate] = useState('');
   const [previousEndDate, setPreviousEndDate] = useState('');
   const [identity, setIdentity] = useState('住户车');
@@ -1031,6 +1034,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
     const currentEndDate = row ? (fieldValue(fields, fieldAliases.expiry) || '').slice(0, 10) : '';
     setPlate(currentPlate === '车牌字段待识别' ? '' : currentPlate);
     setNewPlate(''); setOwnerName(row?.pmsMatch?.name || '');
+    setBinding(null);
     setOwnerRoom(row ? ownerFieldValue(fields, fieldAliases.room) || '' : '');
     setOwnerId(row ? parkingHistoryRef(row).externalOwnerId || '' : '');
     setEndDate(kind === 'renew_vehicle' ? parkingRenewalEndDate(currentEndDate, 1) : currentEndDate);
@@ -1050,6 +1054,11 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
   };
   const title = operationLabel(kind);
   const submit = () => {
+    if (kind === 'rebind_owner') {
+      if (!binding) return;
+      onSubmit({ plate, ...binding, previousOwnerId: ownerId, previousPmsUserId: row?.pmsMatch?.userId ?? null });
+      return;
+    }
     const monthly = identity === '租户车' ? 260 : identity === '亲情车' ? 0 : 180;
     const annual = identity === '租户车' ? 2760 : identity === '亲情车' ? 0 : 1800;
     const calculatedAmount = amount ?? (months >= 12 ? annual * Math.floor(months / 12) + monthly * (months % 12) : monthly * months);
@@ -1058,20 +1067,59 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
     onSubmit(payload);
   };
   if (kind === 'add_vehicle') return <AddVehicleOperationModal open={open} loading={loading} error={error} task={task} roomOptions={roomOptions} onClose={onClose} onSubmit={onSubmit} onRetry={onRetry} onRollback={onRollback} onCreateProofUpload={onCreateProofUpload} onCheckPlate={onCheckPlate} onQueryPlate={onQueryPlate} />;
-  return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle' }} onOk={submit}>
+  return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle', disabled: kind === 'rebind_owner' && !binding }} onOk={submit}>
     {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space><Button size="small" onClick={onRetry}>重试</Button>{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
     <div className="parking-operation-form">
-      <label>车牌<Input value={plate} disabled={!row} onChange={(e) => setPlate(e.target.value.toUpperCase())} /></label>
+      <label>车牌<Input value={plate} disabled={!row} readOnly={kind === 'rebind_owner'} onChange={(e) => setPlate(e.target.value.toUpperCase())} /></label>
       {kind === 'change_plate' && <label>新车牌<Input value={newPlate} onChange={(e) => setNewPlate(e.target.value.toUpperCase())} /></label>}
-      {(kind === 'change_plate' || kind === 'rebind_owner') && <label>绑定用户姓名<Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label>}
+      {kind === 'change_plate' && <label>绑定用户姓名<Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label>}
+      {kind === 'rebind_owner' && <ParkingOwnerPicker open={open} value={binding} onChange={setBinding} />}
       {kind === 'renew_vehicle' && <><label>快捷期限<Select value={months} options={[1, 2, 3, 6, 12].map((value: number) => ({ value, label: `${value}个月` }))} onChange={changeMonths} /><InputNumber min={0} value={amount} onChange={setAmount} addonAfter="元" /><Text type="secondary">留空按收费规则验算：业主车月价 ¥180、12个月 ¥1800；租户车月价 ¥260、12个月 ¥2760。可在提交前覆盖本次金额。</Text></label><label>到期日期<DatePicker value={endDate ? dayjs(endDate) : null} format="YYYY-MM-DD" placeholder="选择到期日期" allowClear placement="bottomLeft" popupClassName="parking-date-picker-popup" onChange={(value) => setEndDate(value ? value.format('YYYY-MM-DD') : '')} style={{ width: '100%' }} />{kind === 'renew_vehicle' && <Text type="secondary">从当前到期日顺延所选月数，自动取目标自然月的最后一天；也可手动调整日期。</Text>}</label></>}
       {kind === 'update_garages' && <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }]} /></label>}
-      {(kind === 'change_plate' || kind === 'rebind_owner') && <label>车辆授权类型<Select value={identity} options={['住户车', '租户车', '亲情车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>}
+      {kind === 'change_plate' && <label>车辆授权类型<Select value={identity} options={['住户车', '租户车', '亲情车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>}
       {kind === 'download_vehicle' && <Alert type="info" showIcon message="将创建旧库设备下载任务" description="任务完成只代表旧系统已接受并回读下载队列；现场控制器回执会在状态中单独显示。" />}
       {kind === 'delete_vehicle' && <Alert type="warning" showIcon message="注销会调用旧系统 Add_Del_Plate" description="车辆从旧库移除并写入注销流水，网页不会直接删除 Car_Issue。" />}
       {task?.status === 'completed' && <Button danger onClick={onRollback}>为本次操作创建反向回滚任务</Button>}
     </div>
   </Modal>;
+}
+
+type ParkingOwnerSelection = { pmsUserId: number; houseId: number; ownerRoom: string; ownerName: string; ownerPhone: string };
+
+function ParkingOwnerPicker({ open, value, onChange }: { open: boolean; value: ParkingOwnerSelection | null; onChange: (value: ParkingOwnerSelection | null) => void }) {
+  const [communities, setCommunities] = useState<AddressCommunity[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setBusy(true); setError(''); setCommunities([]);
+    addressApi.tree().then((data) => { if (active) setCommunities(data); })
+      .catch((error) => { if (active) setError(error instanceof Error ? error.message : 'PMS 房号读取失败'); })
+      .finally(() => { if (active) setBusy(false); });
+    return () => { active = false; };
+  }, [open, reload]);
+  const options = useMemo(() => communities.filter((community) => !community.isGroup).flatMap((community) =>
+    community.buildings.filter((building) => /^(198|228)$/.test(building.lane || '')).flatMap((building) =>
+      building.houses.filter((house) => house.ownerId && /^\d+$/.test(building.buildingNo) && /^\d+$/.test(house.roomNo)).map((house) => {
+        const ownerRoom = `${building.lane}/${Number(building.buildingNo)}/${Number(house.roomNo)}`;
+        const selection: ParkingOwnerSelection = { pmsUserId: house.ownerId!, houseId: house.id, ownerRoom, ownerName: house.ownerName || '', ownerPhone: house.ownerPhone || '' };
+        return { value: `${house.id}:${house.ownerId}`, label: `${ownerRoom} · ${house.ownerName || '姓名未登记'} · ${house.ownerPhone || '电话未登记'}`, selection,
+          keys: [communityMatchKeys(community), buildingMatchKeys(building), houseMatchKeys(house)] };
+      }))), [communities]);
+  return <>
+    <label htmlFor="parking-binding-owner">选择房号或搜索业主姓名</label>
+    <Select id="parking-binding-owner" showSearch allowClear loading={busy} disabled={busy || !!error}
+      value={value ? `${value.houseId}:${value.pmsUserId}` : undefined} options={options}
+      placeholder="输入 198/8/102 或业主姓名，再选择匹配记录"
+      filterOption={(input, option) => !!option && scoreAddressPath(tokenizeAddress(input), option.keys) > 0}
+      onChange={(key) => onChange(options.find((option) => option.value === key)?.selection ?? null)}
+      notFoundContent={busy ? '正在读取 PMS 房号…' : '没有匹配的业主，请核对房号或姓名，并确认 PMS 已登记业主'} />
+    {error && <Alert type="error" showIcon message="PMS 房号读取失败" description={error} action={<Button onClick={() => setReload((n) => n + 1)}>重新读取</Button>} />}
+    {value && <div className="parking-binding-resident"><div><small>绑定房号</small><strong>{value.ownerRoom}</strong></div><div><small>业主姓名</small><strong>{value.ownerName || '未登记'}</strong></div><div><small>电话</small><strong>{value.ownerPhone || '未登记'}</strong></div></div>}
+    <Text type="secondary">房号和电话从 PMS 业主档案带出。旧库重名时自动添加 /2、/3 等编号；不会覆盖原住户或修改到期日、收费类型、车库授权和车辆备注。</Text>
+  </>;
 }
 
 type AddVehicleRoomOption = {
