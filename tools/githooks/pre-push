@@ -18,6 +18,8 @@ files=""
 while read -r local_ref local_sha remote_ref remote_sha; do
   # 删远端分支：没有内容要校验
   if [ "$local_sha" = "$ZERO" ]; then continue; fi
+  # 移动部署标记不引入新源码；main 推送仍完整执行受影响检查。
+  case "$local_ref" in refs/tags/deployed/*) continue ;; esac
 
   if [ "$remote_sha" = "$ZERO" ]; then
     # 新分支：和 main 的共同祖先比，只校验这条分支自己带来的改动

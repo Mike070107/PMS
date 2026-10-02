@@ -49,12 +49,67 @@ test('P_Owner.owner_Name 中的旧库标准地址按房号解释', () => {
   assert.equal(parkingLegacyRoomFromName('张三'), null);
 });
 
+test('同户多卡的隐藏标识、前导零及卡序号不改变房号', () => {
+  for (const value of ['228/2/102', '228/02/102', '已隐藏228/02/102', '已隐藏228/02/102/5']) {
+    assert.equal(parkingRoomAddress(value)?.key, '228/2/102', value);
+  }
+  assert.notEqual(parkingRoomAddress('228/02/101')?.key, '228/2/102');
+});
+
 test('停车旧库的多种房号格式统一匹配同一套 PMS 房产', () => {
   const expected = '198/6/402';
   for (const value of ['198/6/402', '198/06/402', '198-6-402', '198-06-402', '198弄6号402室']) {
     assert.equal(parkingRoomAddress(value)?.key, expected);
   }
   assert.equal(parkingPmsHouseKey('198', '06', '0402'), expected);
+});
+
+test('换车牌是旧库名称的操作说明，不参与 PMS 房产匹配', () => {
+  const expected = parkingPmsHouseKey('228', '16', '201');
+  for (const value of [
+    '228-16-201换车牌', '228/16/201', '228-16-201',
+    '228/16/201换车牌', '228弄16号201室换车牌', '已隐藏228/16/201/5换车牌',
+  ]) {
+    assert.equal(parkingRoomAddress(value)?.key, expected, value);
+    assert.equal(parkingLegacyRoomFromName(value), '228/16/201', value);
+  }
+});
+
+test('带说明的房号仍按完整弄号、楼栋、室号匹配，不截断数字或猜测多个地址', () => {
+  assert.equal(parkingRoomAddress('228-16-2010换车牌')?.key, '228/16/2010');
+  assert.equal(parkingRoomAddress('198-16-201换车牌')?.key, '198/16/201');
+  for (const value of ['228-116-201换车牌', '228-16-20101换车牌', '228-16-201换车牌228-16-202', '车牌228-16-201']) {
+    assert.equal(parkingRoomAddress(value), null, value);
+  }
+});
+
+test('真实住户匹配方法将三种旧库名称关联到同一 PMS 二期房产业主，保留原名称', async () => {
+  const { AccessCardIssuanceService } = await import('./access-card-issuance.service');
+  const service = Object.create(AccessCardIssuanceService.prototype) as InstanceType<typeof AccessCardIssuanceService>;
+  const building = { id: 16, tenantId: 1, communityId: 2, lane: '228', buildingNo: '16' };
+  const house = { id: 16201, tenantId: 1, buildingId: 16, roomNo: '201', areaSqm: '90' };
+  const owner = { id: 321, tenantId: 1, houseId: house.id, name: '测试业主', phone: null,
+    status: 'active', updatedAt: new Date('2026-10-02T00:00:00Z'), updatedBy: null };
+  Object.assign(service, {
+    buildingRepo: { find: async ({ where }: any) => { assert.equal(where.tenantId, 1); return [building]; } },
+    houseRepo: { find: async () => [house] },
+    communityRepo: { find: async () => [{ id: 2, tenantId: 1, name: '枫桦景苑二期' }] },
+    userRepo: { find: async ({ where }: any) => { assert.equal(where.tenantId, 1); return [owner]; } },
+  });
+  const names = ['228-16-201换车牌', '228/16/201', '228-16-201'];
+  const rows = names.map((name) => ({ database: 'parking2', fields: {
+    Owner__owner_Name: name, Owner__owner_Tel: null, Owner_ID: 1851, P_plate: '沪A12345',
+  } }));
+  const result = await service['matchParkingRowsToPms'](1, rows);
+  for (const [index, row] of result.entries()) {
+    assert.equal(row.pmsMatch?.userId, owner.id);
+    assert.equal(row.pmsMatch?.matchedBy, 'room');
+    assert.equal(row.pmsMatch?.house?.communityName, '枫桦景苑二期');
+    assert.equal(row.pmsMatch?.house?.lane, '228');
+    assert.equal(row.pmsMatch?.house?.buildingNo, '16');
+    assert.equal(row.pmsMatch?.house?.roomNo, '201');
+    assert.equal(row.fields.Owner__owner_Name, names[index]);
+  }
 });
 
 test('新增车牌查重按旧库车牌字段做精确匹配', () => {

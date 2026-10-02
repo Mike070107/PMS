@@ -21,6 +21,7 @@ function normalizeParkingAddressPart(value: string): string {
  * 把旧停车库的房号统一成 PMS 房产可比较的键。
  * `198/6/402`、`198/06/402`、`198-6-402` 和中文地址写法均视为同一房产；
  * 末尾 `/5` 是旧库为同一住户多张卡追加的序号，不参与房产匹配。
+ * 旧库名称末尾的“换车牌”是已确认的操作说明，只在生成匹配键时忽略，原字段保持不变。
  */
 export function parkingRoomAddress(value: string | null | undefined): ParkingRoomAddress | null {
   if (!value) return null;
@@ -28,6 +29,7 @@ export function parkingRoomAddress(value: string | null | undefined): ParkingRoo
     .trim()
     .replace(/^已隐藏\s*/, '')
     .replace(/\s+/g, '')
+    .replace(/换车牌$/, '')
     .replace(/[弄幢栋号]/g, '/')
     .replace(/室$/g, '')
     .replace(/\\/g, '/')

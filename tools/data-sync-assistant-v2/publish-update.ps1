@@ -1,5 +1,6 @@
 ﻿param(
-    [switch] $Upload
+    [switch] $Upload,
+    [string] $SourceCommit = ''
 )
 
 $ErrorActionPreference = "Stop"
@@ -7,6 +8,13 @@ $ProjectDir = $PSScriptRoot
 $ProjectFile = Join-Path $ProjectDir "DataSyncAssistantV2.csproj"
 $Executable = Join-Path $ProjectDir "bin\Release\Pms.DataSyncAssistant.V2.exe"
 $MsBuild = Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319\MSBuild.exe"
+$RepoRoot = Split-Path -Parent (Split-Path -Parent $ProjectDir)
+$ReleaseCheck = Join-Path $RepoRoot 'deploy/release-check.mjs'
+if ($Upload) {
+    if (-not $SourceCommit) { $SourceCommit = (& git -C $RepoRoot rev-parse HEAD).Trim() }
+    & node $ReleaseCheck check assistant $SourceCommit
+    if ($LASTEXITCODE -ne 0) { throw '助手发布预检失败，尚未上传' }
+}
 
 & $MsBuild $ProjectFile /t:Rebuild /p:Configuration=Release /p:Platform=x86
 if ($LASTEXITCODE -ne 0) { throw "PMS 数据同步助手构建失败" }
@@ -32,6 +40,7 @@ $Manifest = [ordered]@{
     releaseNotes = "PMS 数据同步助手 $ShortVersion"
     notes = "PMS 数据同步助手 $ShortVersion"
     publishedAt = (Get-Date).ToUniversalTime().ToString("o")
+    sourceCommit = $SourceCommit
 } | ConvertTo-Json
 $Utf8WithoutBom = New-Object Text.UTF8Encoding($false)
 [IO.File]::WriteAllText((Join-Path $ReleaseRoot "latest.json"), $Manifest, $Utf8WithoutBom)
@@ -45,6 +54,8 @@ if (-not $Upload) {
 }
 
 $Remote = "ubuntu@124.223.179.214"
+& node $ReleaseCheck verify-source assistant $SourceCommit
+if ($LASTEXITCODE -ne 0) { throw '构建期间源码改变，停止上传' }
 $Key = Join-Path $env:USERPROFILE ".ssh\pms_repair_key.pem"
 $RemoteTemporary = "/tmp/pms-data-sync-assistant-$ShortVersion"
 & ssh -i $Key $Remote "mkdir -p '$RemoteTemporary'"

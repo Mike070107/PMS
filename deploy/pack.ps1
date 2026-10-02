@@ -1,4 +1,4 @@
-﻿param([ValidateSet("all","api","web")] [string] $Only = "all")
+﻿param([ValidateSet("all","api","web")] [string] $Only = "all", [string] $SourceCommit = '')
 
 # don't set ErrorActionPreference Stop -- pwsh 5.1 turns pnpm stderr into ErrorRecord
 # we check $LASTEXITCODE explicitly.
@@ -18,6 +18,7 @@ function Run([string] $name, [scriptblock] $body) {
 }
 
 function Remove-Tree([string] $path) {
+    if ([IO.Path]::GetFullPath($path) -ne [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'dist\api'))) { throw '拒绝清理非 API 打包目录' }
     if (-not (Test-Path -LiteralPath $path)) { return }
     for ($i = 1; $i -le 3; $i++) {
         try {
@@ -27,7 +28,6 @@ function Remove-Tree([string] $path) {
             Start-Sleep -Milliseconds 800
         }
     }
-    cmd /c ("rmdir /s /q " + ('"' + $path + '"')) 2>&1 | Out-Null
     if (Test-Path -LiteralPath $path) { Die ("cannot delete " + $path + " (locked)") }
 }
 
@@ -49,6 +49,7 @@ try {
 
     if ($Only -eq "all" -or $Only -eq "api") {
         Run "build api" { pnpm --filter "@pms/api" build }
+        if ($SourceCommit) { Run 'stamp API release' { node deploy/release-check.mjs stamp api $SourceCommit } }
 
         $ApiDist = Join-Path $DeployDir "dist\api"
         Write-Host ("==> clean " + $ApiDist) -ForegroundColor Cyan

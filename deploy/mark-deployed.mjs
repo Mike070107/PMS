@@ -18,18 +18,11 @@ import { execSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TARGETS, changed } from './release-check.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG = resolve(ROOT, 'deploy', 'DEPLOY_LOG.md');
 
-/** 每个目标「改了哪些路径算需要重新部署」；共享包改了三个端都要重发 */
-const TARGETS = {
-  assistant: { label: 'Windows 数据同步助手', paths: ['tools/data-sync-assistant-v2', 'tools/access-card-agent'] },
-  api: { label: '线上 API', paths: ['apps/api', 'packages/shared-types', 'deploy/srv-deploy-api.sh'] },
-  web: { label: '管理后台', paths: ['apps/admin-web', 'packages/shared-types', 'packages/api-client'] },
-  'miniapp-staff': { label: '员工端小程序', paths: ['apps/miniapp-staff', 'packages/shared-types', 'packages/api-client'] },
-  'miniapp-owner': { label: '业主端小程序', paths: ['apps/miniapp-owner', 'packages/shared-types', 'packages/api-client'] },
-};
 
 const git = (args, opts = {}) =>
   execSync(`git ${args}`, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }).trim();
@@ -83,7 +76,7 @@ function status() {
     } else {
       const baseShort = git(`rev-parse --short ${base}`);
       const when = git(`log -1 --format=%cd --date=format:"%m-%d %H:%M" ${base}`);
-      if (!commits.length) console.log(`✓ ${title}\n    线上 = ${baseShort}（${when}），之后没有相关提交，已是最新`);
+      if (!changed(target).length) console.log(`✓ ${title}\n    线上标记 = ${baseShort}（${when}），运行源码无差异；不代表现场已升级`);
       else {
         console.log(`✗ ${title}\n    线上 = ${baseShort}（${when}），还有 ${commits.length} 个相关提交没上线：`);
         commits.forEach((c) => console.log(`      ${c}`));

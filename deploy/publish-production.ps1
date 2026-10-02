@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet('auto', 'api', 'web')]
+    [ValidateSet('auto', 'api', 'web', 'assistant')]
     [string] $Target = 'auto',
     [switch] $NoFetch
 )
@@ -37,19 +37,6 @@ function Dirty([string[]] $paths) {
     return @(GitLines (@('status', '--porcelain', '--') + $paths))
 }
 
-function Pending([string] $target, [string[]] $paths) {
-    $tag = "refs/tags/deployed/$target"
-    $base = & git.exe -C $RepoRoot rev-parse --verify --quiet $tag 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $base) { return @() }
-    return @(GitLines (@('log', '--oneline', "$tag..HEAD", '--') + $paths))
-}
-
-function ChangedFiles([string] $target, [string[]] $paths) {
-    $tag = "refs/tags/deployed/$target"
-    $base = & git.exe -C $RepoRoot rev-parse --verify --quiet $tag 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $base) { return @() }
-    return @(GitLines (@('diff', '--name-only', "$tag..HEAD", '--') + $paths))
-}
 
 function Test-DependencyChanges([string] $target, [string[]] $changedFiles) {
     if (@($changedFiles | Where-Object { $_ -eq 'pnpm-lock.yaml' }).Count -gt 0) { return $true }
@@ -71,6 +58,7 @@ function Test-DependencyChanges([string] $target, [string[]] $changedFiles) {
 
 function Make-WebPackage([string] $stamp) {
     Run '构建管理后台' { pnpm --filter '@pms/admin-web' build }
+    Run '记录 Web 制品身份' { node deploy/release-check.mjs stamp web $SourceCommit }
     $dist = Join-Path $RepoRoot 'apps\admin-web\dist'
     if (-not (Test-Path (Join-Path $dist 'index.html'))) { Die 'Web 构建没有生成 dist/index.html' }
     $package = Join-Path $RepoRoot ("deploy\pms-web-" + $stamp + '.tar.gz')
@@ -83,12 +71,13 @@ function Make-ApiPackage([string] $stamp, [string[]] $pending, [string[]] $chang
 
     if ($dependencyChanged) {
         Write-Host '检测到依赖文件变化，使用完整 API 包（仅此类发布才重新携带 node_modules）。' -ForegroundColor Yellow
-        Run '完整构建 API 包' { & (Join-Path $RepoRoot 'deploy\pack.ps1') -Only api }
+        Run '完整构建 API 包' { & (Join-Path $RepoRoot 'deploy\pack.ps1') -Only api -SourceCommit $SourceCommit }
         return (Get-ChildItem (Join-Path $RepoRoot 'deploy\pms-api-*.tar.gz') |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
     }
 
     Run '构建 API dist' { pnpm --filter '@pms/api' build }
+    Run '记录 API 制品身份' { node deploy/release-check.mjs stamp api $SourceCommit }
     $stage = Join-Path $RepoRoot ("deploy\.quick-api-" + $stamp)
     $apiStage = Join-Path $stage 'api'
     New-Item -ItemType Directory -Force -Path $apiStage | Out-Null
@@ -102,7 +91,9 @@ function Make-ApiPackage([string] $stamp, [string[]] $pending, [string[]] $chang
         return $package
     }
     finally {
-        if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+        $expectedStage = [IO.Path]::GetFullPath((Join-Path $RepoRoot ("deploy\.quick-api-" + $stamp)))
+        if ([IO.Path]::GetFullPath($stage) -ne $expectedStage -or $stamp -notmatch '^\d{8}-\d{6}$') { Die '临时目录身份异常，拒绝清理' }
+        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
     }
 }
 
@@ -119,7 +110,13 @@ function Prune-LocalPackages([int] $keep = 3) {
 }
 
 Push-Location $RepoRoot
+$releaseLock = $null
+$previousBuildCommit = $env:VITE_BUILD_COMMIT
+$previousApiBase = $env:VITE_API_BASE_URL
 try {
+    $gitDirectory = Git @('rev-parse', '--path-format=absolute', '--git-common-dir')
+    try { $releaseLock = [IO.File]::Open((Join-Path $gitDirectory 'pms-production.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
+    catch { Die '另一个任务正在发布生产，本次不重复执行。' }
     if (-not (Test-Path -LiteralPath $Key)) { Die "找不到 SSH 密钥：$Key" }
     if ($NoFetch) {
         Write-Host '==> 跳过远端标签同步（使用本地部署标记）' -ForegroundColor Yellow
@@ -128,39 +125,49 @@ try {
         Git @('fetch', '-q', 'origin', '--tags', '--force') | Out-Null
     }
 
-    $targets = if ($Target -eq 'auto') { @('api', 'web') } else { @($Target) }
-    $definitions = @{
-        api = @('apps/api', 'packages/shared-types', 'pnpm-lock.yaml', 'deploy/srv-deploy-api.sh')
-        web = @('apps/admin-web', 'packages/shared-types', 'packages/api-client', 'pnpm-lock.yaml')
-    }
+    $SourceCommit = Git @('rev-parse', 'HEAD')
+    $env:VITE_BUILD_COMMIT = $SourceCommit
+    $env:VITE_API_BASE_URL = '/api/v1'
+    Run '发布检查自测' { node --test deploy/release-check.test.mjs }
+    $targets = if ($Target -eq 'auto') { @('api', 'web', 'assistant') } else { @($Target) }
+    $definitions = (& node deploy/release-check.mjs definitions) | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) { Die '无法读取发布目标定义' }
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
     foreach ($targetName in $targets) {
-        $paths = [string[]]$definitions[$targetName]
+        $paths = [string[]]$definitions.$targetName.paths
         $dirty = Dirty $paths
         if ($dirty.Count -gt 0) {
             Die ("$targetName 相关路径有未提交改动，已停止，避免把半成品带入生产：`n" + ($dirty -join "`n"))
         }
-        $pending = Pending $targetName $paths
-        if ($pending.Count -eq 0) {
-            Write-Host "✓ $targetName 没有待发布提交，跳过构建和上传。" -ForegroundColor Green
+        $changedFiles = @(& node deploy/release-check.mjs changed $targetName $SourceCommit | Where-Object { $_ })
+        if ($LASTEXITCODE -ne 0) { Die '无法读取目标差异' }
+        if ($changedFiles.Count -eq 0) {
+            Write-Host "✓ $targetName 没有运行源码差异，跳过构建和上传。" -ForegroundColor Green
             continue
         }
-        $changedFiles = ChangedFiles $targetName $paths
+        Run "$targetName 源码与相关回归" { node deploy/release-check.mjs check $targetName $SourceCommit }
+        if ($targetName -eq 'assistant') {
+            Run '发布数据同步助手' { & (Join-Path $RepoRoot 'tools/data-sync-assistant-v2/publish-update.ps1') -Upload -SourceCommit $SourceCommit }
+            Run '标记助手已发布（不代表现场已安装）' { node deploy/mark-deployed.mjs assistant --commit $SourceCommit }
+            continue
+        }
 
-        Write-Host ("`n==> 发布 $targetName（待发布 " + $pending.Count + " 个提交）") -ForegroundColor Magenta
+        Write-Host ("`n==> 发布 $targetName，源码 " + $SourceCommit.Substring(0, 7)) -ForegroundColor Magenta
         $package = if ($targetName -eq 'web') {
             Make-WebPackage $stamp
         } else {
-            Make-ApiPackage $stamp $pending $changedFiles
+            Make-ApiPackage $stamp @() $changedFiles
         }
         $packageName = Split-Path -Leaf $package
         $remotePackage = "/tmp/$packageName"
+        Run '上传前确认源码未变' { node deploy/release-check.mjs verify-source $targetName $SourceCommit }
         Run "上传 $packageName" { scp -q -i $Key $package ("$Remote`:$remotePackage") }
         $remoteScript = Join-Path $RepoRoot ("deploy\srv-deploy-$targetName.sh")
         Run "上传部署脚本 $targetName" { scp -q -i $Key $remoteScript ("$Remote`:/tmp/srv-deploy-$targetName.sh") }
         Run "服务器部署 $targetName" { ssh -q -i $Key $Remote "bash /tmp/srv-deploy-$targetName.sh '$remotePackage'" }
-        Run "记录 $targetName 已上线" { node (Join-Path $RepoRoot 'deploy\mark-deployed.mjs') $targetName '--pkg' $packageName }
+        Run '核对公网运行版本和制品' { node deploy/release-check.mjs verify-live $targetName }
+        Run "记录 $targetName 已上线" { node (Join-Path $RepoRoot 'deploy\mark-deployed.mjs') $targetName '--pkg' $packageName '--commit' $SourceCommit }
         Prune-LocalPackages
         Write-Host "✓ $targetName 已发布：$packageName" -ForegroundColor Green
     }
@@ -168,5 +175,8 @@ try {
     Write-Host "`n完成。之后的 API 纯代码发布只上传快速包，不再重复上传 node_modules。" -ForegroundColor Green
 }
 finally {
+    if ($releaseLock) { $releaseLock.Dispose() }
+    $env:VITE_BUILD_COMMIT = $previousBuildCommit
+    $env:VITE_API_BASE_URL = $previousApiBase
     Pop-Location
 }
