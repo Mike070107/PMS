@@ -7,6 +7,7 @@ export type ParkingOperationKind =
   | 'change_plate'
   | 'rebind_owner'
   | 'update_garages'
+  | 'update_vehicle_type'
   | 'download_vehicle'
   | 'sync_vehicle_info'
   | 'delete_vehicle';

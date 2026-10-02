@@ -359,21 +359,24 @@ namespace Pms.DataSyncAssistant
             table.Columns.Add("max_length", typeof(short));
             table.Columns.Add("is_output", typeof(bool));
             table.Rows.Add("@P_plate", "nvarchar", (short)100, false);
+            table.Rows.Add("@Car_ID", "varchar", (short)20, false);
             table.Rows.Add("@P_Effective", "varchar", (short)256, false);
             table.Rows.Add("@P_Admin", "varchar", (short)20, false);
             table.Rows.Add("@result", "nvarchar", (short)-1, true);
             List<ParkingDatabase.ProcedureParameter> parameters;
             using (var reader = table.CreateDataReader()) parameters = ParkingDatabase.ReadProcedureParameters(reader);
-            var payload = new Dictionary<string, object> { { "effective", "00000011" } };
+            var payload = new Dictionary<string, object> { { "effective", "00000011" }, { "carId", "0000000007" } };
+            var vehicle = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) { { "Car_ID", "0000000007" }, { "P_Effective", "00000011" } };
             using (var command = new System.Data.SqlClient.SqlCommand("dbo.Add_DownloadCard"))
             {
-                ParkingDatabase.AddMappedProcedureParameters(command, parameters, payload, "沪ATEST1", "PMS");
-                if (command.Parameters.Count != 4 || (string)command.Parameters["@P_plate"].Value != "沪ATEST1" ||
+                ParkingDatabase.AddDownloadProcedureParameters(command, parameters, vehicle, payload, "沪ATEST1", "PMS");
+                if (command.Parameters.Count != 5 || (string)command.Parameters["@P_plate"].Value != "沪ATEST1" ||
                     command.Parameters["@P_plate"].SqlDbType != System.Data.SqlDbType.NVarChar || command.Parameters["@P_plate"].Size != 50 ||
+                    (string)command.Parameters["@Car_ID"].Value != "0000000007" ||
                     (string)command.Parameters["@P_Effective"].Value != "00000011" ||
                     (string)command.Parameters["@P_Admin"].Value != "PMS" ||
                     command.Parameters["@result"].Direction != System.Data.ParameterDirection.Output || command.Parameters["@result"].Size != -1)
-                    throw new InvalidOperationException("旧版下载参数绑定、Unicode 长度或输出 MAX 参数失败");
+                    throw new InvalidOperationException("下载参数绑定、真实 Car_ID、Unicode 长度或输出 MAX 参数失败");
             }
             parameters.Add(new ParkingDatabase.ProcedureParameter { Name = "@unknown_required", Type = System.Data.SqlDbType.Int });
             try
@@ -390,6 +393,13 @@ namespace Pms.DataSyncAssistant
             using (var reader = table.CreateDataReader()) parameters = ParkingDatabase.ReadProcedureParameters(reader);
             if (parameters[0].Type != System.Data.SqlDbType.Bit || parameters[1].Type != System.Data.SqlDbType.BigInt || parameters[2].Type != System.Data.SqlDbType.SmallInt)
                 throw new InvalidOperationException("下载参数不能把不同整数/位类型全部当作 int/varchar");
+            var garages = ParkingDatabase.RequestedGarageKeys(new Dictionary<string, object> { { "garages", new object[] { "phase1", "phase2", "main", "civil" } } });
+            var phase1 = ParkingDatabase.ApplyGarageSelectionForTest("1".PadRight(256, '0'), garages, "parking1");
+            var phase2 = ParkingDatabase.ApplyGarageSelectionForTest("1".PadRight(256, '0'), garages, "parking2");
+            if (phase1[4] != '1' || phase1[6] != '1' || phase1[8] != '0' || phase1[14] != '0')
+                throw new InvalidOperationException("一期车库授权不能写入二期通道");
+            if (phase2[4] != '0' || phase2[8] != '1' || phase2[14] != '1')
+                throw new InvalidOperationException("二期车库授权不能写入一期通道");
         }
 
         private static void VerifyActivityHistory(string root)

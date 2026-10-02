@@ -96,6 +96,7 @@ import {
   supportsParkingOwnerRebind,
   applyParkingOwnerSnapshot,
   parkingOwnerWriteMismatches,
+  supportsParkingAuthorizationFixes,
   supportsParkingVehicleSync,
 } from './parking-owner-update.util';
 
@@ -536,10 +537,12 @@ export class AccessCardIssuanceService {
     const gateway = orderAgentsByAvailability(agents).find((agent) =>
       effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbWrite === true && supportsParkingOwnerUpdates(agent.version) &&
       (dto.kind !== 'rebind_owner' || supportsParkingOwnerRebind(agent.version)) &&
-      (dto.kind !== 'sync_vehicle_info' || supportsParkingVehicleSync(agent.version)));
+      (dto.kind !== 'sync_vehicle_info' || supportsParkingVehicleSync(agent.version)) &&
+      (!['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) || supportsParkingAuthorizationFixes(agent.version)));
     if (!gateway) throw new ServiceUnavailableException(dto.kind === 'rebind_owner'
       ? '变更绑定用户需要 PMS 数据同步助手 2.5.20 及以上版本，请先更新现场助手'
       : dto.kind === 'sync_vehicle_info' ? '车辆资料对齐需要 PMS 数据同步助手 2.5.19 及以上版本，请先在现场电脑升级'
+      : ['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) ? '车库授权、车辆类型修改和设备下发需要 PMS 数据同步助手 2.5.21 及以上版本，请先更新现场助手'
       : '停车网关尚未就绪：请安装 2.4.0 及以上助手并确认旧库存储过程写入权限');
     const payload = normalizeParkingOperationPayload(dto.payload);
     const expected = normalizeParkingOperationPayload(dto.expected ?? {});
@@ -757,6 +760,7 @@ export class AccessCardIssuanceService {
     if (agent.kind !== 'parking_gateway') throw new ForbiddenException('当前代理不是停车系统网关');
     if (!supportsParkingOwnerUpdates(agent.version) || agent.capabilities?.parkingDbWrite !== true) return { task: null };
     const canSyncVehicleInfo = supportsParkingVehicleSync(agent.version);
+    const canUseAuthorizationFixes = supportsParkingAuthorizationFixes(agent.version);
     const task = await this.parkingOperationRepo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(ParkingOperation);
       const now = new Date();
@@ -765,6 +769,7 @@ export class AccessCardIssuanceService {
         .andWhere("(task.status = 'pending' OR (task.status = 'running' AND task.lease_expires_at < :now))", { now })
         .andWhere("(task.kind <> 'rebind_owner' OR :canRebind = true)", { canRebind: supportsParkingOwnerRebind(agent.version) })
         .andWhere(canSyncVehicleInfo ? '1=1' : "task.kind <> 'sync_vehicle_info'")
+        .andWhere(canUseAuthorizationFixes ? '1=1' : "task.kind NOT IN ('update_garages', 'update_vehicle_type', 'download_vehicle')")
         .orderBy('task.created_at', 'ASC').setLock('pessimistic_write').setOnLocked('skip_locked').getOne();
       if (!item) return null;
       if (item.attempt >= 3) {
@@ -797,6 +802,32 @@ export class AccessCardIssuanceService {
               textValue(values.targetPhone) !== textValue(task.payload.ownerPhone) ||
               textValue(values.previousOwnerId) !== textValue(task.payload.previousOwnerId)) {
             throw new BadRequestException('助手没有返回与所选房号、电话和原住户一致的换绑结果，不能标为成功');
+          }
+        }
+        if (task.kind === 'update_garages') {
+          const requested = parkingGarageKeys(task.payload.garages);
+          const values = dto.values ?? {};
+          if (values.verified !== true || !Array.isArray(values.databases) || values.databases.length < 2) {
+            throw new BadRequestException('助手没有返回一期、二期车库授权读回结果，不能标为成功');
+          }
+          const readable = new Map(values.databases.map((item: any) => [textValue(item.database), item]));
+          for (const database of ['parking1', 'parking2']) {
+            const row = readable.get(database);
+            if (!row || !garageBitsMatch(textValue(row.effective), requested, database)) {
+              throw new BadRequestException(`${database === 'parking1' ? '一期' : '二期'}车库授权读回结果与本次勾选不一致，不能标为成功`);
+            }
+          }
+        }
+        if (task.kind === 'update_vehicle_type') {
+          const values = dto.values ?? {};
+          if (values.verified !== true || textValue(values.identity) !== textValue(task.payload.identity)) {
+            throw new BadRequestException('助手没有返回与本次选择一致的车辆授权类型，不能标为成功');
+          }
+        }
+        if (task.kind === 'download_vehicle') {
+          const values = dto.values ?? {};
+          if (values.verified !== true || textValue(values.deviceVerification) !== 'queued' || Number(values.downloadRows) <= 0) {
+            throw new BadRequestException('助手没有核验到旧库设备下载队列，不能标为成功');
           }
         }
         task.status = 'completed'; task.result = dto.values ?? { verified: true }; task.lastError = null; task.completedAt = now;
@@ -2449,6 +2480,19 @@ function textValue(value: unknown): string | null {
   return value === null || value === undefined || String(value).trim() === '' ? null : String(value).trim();
 }
 
+function parkingGarageKeys(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : String(textValue(value) || '').split(',');
+  return Array.from(new Set(raw.map((item) => textValue(item)).filter((item): item is string => !!item && ['phase1', 'phase2', 'main'].includes(item))));
+}
+
+function garageBitsMatch(effective: string | null, garages: string[], database: string): boolean {
+  if (!effective || !/^[01]{16,}$/.test(effective)) return false;
+  const selected = new Set(garages);
+  const hasAny = (channels: number[]) => channels.some((channel) => effective[channel - 1] === '1');
+  if (database === 'parking1') return hasAny([5, 7]) === selected.has('phase1');
+  return hasAny([9, 11, 13]) === selected.has('phase2') && hasAny([15, 17, 19, 21]) === selected.has('main');
+}
+
 function validateParkingOperation(
   kind: string,
   payload: Record<string, unknown>,
@@ -2460,7 +2504,16 @@ function validateParkingOperation(
   if (kind === 'renew_vehicle') { requireValue('plate', '车牌'); requireValue('endDate', '到期日期'); }
   if (kind === 'change_plate') { requireValue('plate', '原车牌'); requireValue('newPlate', '新车牌'); requireValue('ownerName', '住户姓名'); }
   if (kind === 'rebind_owner') { requireValue('plate', '车牌'); requireValue('ownerRoom', '新绑定房号'); requireValue('previousOwnerId', '当前旧库住户编号，请重新查询车辆'); }
-  if (kind === 'update_garages') { requireValue('plate', '车牌'); requireValue('ownerName', '住户姓名'); if (!Object.prototype.hasOwnProperty.call(payload, 'effective')) throw new BadRequestException('请至少选择一个车库授权状态'); }
+  if (kind === 'update_garages') {
+    requireValue('plate', '车牌'); requireValue('ownerRoom', '房号');
+    const garages = Array.isArray(payload.garages) ? payload.garages.map((item) => textValue(item)).filter(Boolean) : String(textValue(payload.garages) || '').split(',').map((item) => textValue(item)).filter(Boolean);
+    if (!garages.length) throw new BadRequestException('请至少选择一个车库授权状态');
+    const invalid = garages.find((item) => !['phase1', 'phase2', 'main'].includes(item!));
+    if (invalid) throw new BadRequestException(`不支持的车库授权：${invalid}；二期人防车库以德立云系统为准`);
+    payload.garages = garages;
+    delete payload.effective;
+  }
+  if (kind === 'update_vehicle_type') { requireValue('plate', '车牌'); requireValue('ownerRoom', '房号'); requireValue('identity', '车辆授权类型'); }
   if (kind === 'download_vehicle' || kind === 'delete_vehicle') requireValue('plate', '车牌');
   if (kind === 'sync_vehicle_info') {
     requireValue('plate', '车牌');
@@ -2487,6 +2540,7 @@ function operationHistoryType(kind: ParkingOperation['kind']): ParkingHistoryEve
   if (kind === 'rebind_owner') return 'owner_rebind';
   if (kind === 'renew_vehicle') return 'vehicle_renewed';
   if (kind === 'update_garages') return 'garage_authorization';
+  if (kind === 'update_vehicle_type') return 'vehicle_type_update';
   if (kind === 'delete_vehicle') return 'vehicle_deleted';
   if (kind === 'download_vehicle') return 'vehicle_download';
   if (kind === 'sync_vehicle_info') return 'vehicle_sync';
@@ -2495,7 +2549,7 @@ function operationHistoryType(kind: ParkingOperation['kind']): ParkingHistoryEve
 
 function operationSummary(task: ParkingOperation): string {
   const plate = textValue(task.payload.newPlate || task.payload.plate) || '未识别车牌';
-  const labels: Record<string, string> = { add_vehicle: '新增车牌', renew_vehicle: '续期车牌', change_plate: '变更车牌', rebind_owner: '变更绑定用户', update_garages: '调整车库授权', download_vehicle: '下发停车设备', sync_vehicle_info: '同步一期二期停车资料', delete_vehicle: '注销车牌' };
+  const labels: Record<string, string> = { add_vehicle: '新增车牌', renew_vehicle: '续期车牌', change_plate: '变更车牌', rebind_owner: '变更绑定用户', update_garages: '调整车库授权', update_vehicle_type: '修改车辆授权类型', download_vehicle: '下发停车设备', sync_vehicle_info: '同步一期二期停车资料', delete_vehicle: '注销车牌' };
   return `${labels[task.kind] || '停车操作'}：${plate}`;
 }
 
@@ -2513,11 +2567,15 @@ function operationChanges(task: ParkingOperation): ParkingHistoryChange[] {
       .filter(([, , before, after]) => String(before ?? '') !== String(after ?? ''))
       .map(([field, label, before, after]) => ({ field: String(field), label: String(label), before: textValue(before), after: textValue(after) }));
   }
+  if (task.kind === 'update_vehicle_type') {
+    return [{ field: 'identity', label: '车辆授权类型',
+      before: textValue(task.result?.previousIdentity), after: textValue(task.result?.identity || task.payload.identity) }];
+  }
   const pairs: Array<[string, string, unknown, unknown]> = [
     ['plate', '车牌', p.plate, p.newPlate || p.plate],
     ['owner', '绑定用户', p.previousOwnerName || p.previousOwnerId, p.ownerName || p.ownerId],
     ['endDate', '到期日期', p.previousEndDate, p.endDate],
-    ['effective', '车库授权', p.previousEffective, p.effective],
+    ['effective', '车库授权', p.previousGarages, p.garages || p.effective],
   ];
   return pairs.filter(([, , before, after]) => textValue(before) !== null || textValue(after) !== null)
     .filter(([, , before, after]) => String(before ?? '') !== String(after ?? ''))

@@ -1,7 +1,7 @@
 import { Column, Entity, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
 
-export type ParkingHistoryEventType = 'plate_change' | 'owner_rebind' | 'owner_info_update' | 'vehicle_added' | 'vehicle_renewed' | 'garage_authorization' | 'vehicle_deleted' | 'vehicle_download' | 'vehicle_sync';
+export type ParkingHistoryEventType = 'plate_change' | 'owner_rebind' | 'owner_info_update' | 'vehicle_added' | 'vehicle_renewed' | 'garage_authorization' | 'vehicle_type_update' | 'vehicle_deleted' | 'vehicle_download' | 'vehicle_sync';
 export type ParkingHistoryTimeBasis = 'operation' | 'detected';
 
 export interface ParkingHistoryChange {

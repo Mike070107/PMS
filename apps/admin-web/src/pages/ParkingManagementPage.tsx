@@ -972,7 +972,7 @@ function HistoryEntryList({ title, entries, empty }: {
     {orderedEntries.length ? <ol>{orderedEntries.map((entry) => <li key={entry.id}>
       <div className="parking-history-event-head">
         <Tag color={entry.eventType === 'plate_change' ? 'blue' : entry.eventType === 'owner_rebind' ? 'gold' : entry.eventType === 'vehicle_deleted' ? 'red' : entry.eventType === 'vehicle_renewed' ? 'green' : 'default'}>
-          {entry.eventType === 'plate_change' ? '换牌' : entry.eventType === 'owner_rebind' ? '变更绑定用户' : entry.eventType === 'owner_info_update' ? '修改用户资料' : entry.eventType === 'vehicle_added' ? '新增车牌' : entry.eventType === 'vehicle_renewed' ? '续期收费' : entry.eventType === 'garage_authorization' ? '车库授权' : entry.eventType === 'vehicle_download' ? '设备下发' : entry.eventType === 'vehicle_sync' ? '两库资料同步' : '注销车辆'}
+          {entry.eventType === 'plate_change' ? '换牌' : entry.eventType === 'owner_rebind' ? '变更绑定用户' : entry.eventType === 'owner_info_update' ? '修改用户资料' : entry.eventType === 'vehicle_added' ? '新增车牌' : entry.eventType === 'vehicle_renewed' ? '续期收费' : entry.eventType === 'garage_authorization' ? '车库授权' : entry.eventType === 'vehicle_type_update' ? '车辆类型' : entry.eventType === 'vehicle_download' ? '设备下发' : entry.eventType === 'vehicle_sync' ? '两库资料同步' : '注销车辆'}
         </Tag>
         {entry.timeBasis === 'operation' || entry.source === 'pms'
           ? <time dateTime={entry.occurredAt}>操作时间：{new Date(entry.occurredAt).toLocaleString('zh-CN', { hour12: false })}</time>
@@ -1122,6 +1122,7 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
       <div className="parking-vehicle-type">
         <span>车辆授权类型</span>
         <Tag className="parking-vehicle-type-tag" color={vehicleIdentityColor(identity)}>{identity || '旧库未设置'}</Tag>
+        <Button size="small" type="link" disabled={!canWriteLocal} icon={<EditOutlined />} onClick={() => onOperation('update_vehicle_type', row)}>修改</Button>
         {identities.length > 1 && <small><ExclamationCircleOutlined /> 一期、二期车辆类型不一致：{identities.join(' / ')}，本次资料同步不修改车辆类型。</small>}
         {identity === '亲情车' && (
           <div className="parking-family-actions">
@@ -1243,9 +1244,11 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
     setEffective(row ? fieldValue(fields, fieldAliases.effective) || '' : '');
     setDownload(row ? fieldValue(fields, fieldAliases.download) || '' : '');
     setNote(row ? fieldValue(fields, fieldAliases.note) || '' : '');
-    const garages = row ? garageRows(row.database, fields).filter((item) => item.authorized && !item.cloud).map((item) => item.key) : [];
+    const currentPlateKey = row ? normalizeParkingPlate(currentPlate) : '';
+    const sourceRows = row && currentPlateKey ? roomOptions.filter((item) => normalizeParkingPlate(plateValue(item.fields)) === currentPlateKey) : row ? [row] : [];
+    const garages = sourceRows.flatMap((item) => garageRows(item.database, item.fields)).filter((item) => item.authorized && !item.cloud).map((item) => item.key);
     setSelectedGarages(garages);
-  }, [open, row, kind]);
+  }, [open, row, kind, roomOptions]);
   const changeMonths = (value: number) => {
     setMonths(value);
     if (kind === 'renew_vehicle' && previousEndDate) {
@@ -1263,7 +1266,11 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
     const annual = identity === '租户车' ? 2760 : identity === '亲情车' ? 0 : 1800;
     const calculatedAmount = amount ?? (months >= 12 ? annual * Math.floor(months / 12) + monthly * (months % 12) : monthly * months);
     const payload: Record<string, unknown> = { plate, newPlate, ownerName, ownerRoom, ownerId, endDate, previousEndDate, identity, amount: calculatedAmount, months, effective, download, note };
-    if (kind === 'add_vehicle' || kind === 'update_garages') payload.effective = garageBitString(selectedGarages);
+    if (kind === 'add_vehicle') payload.effective = garageBitString(selectedGarages);
+    if (kind === 'update_garages') {
+      payload.garages = selectedGarages;
+      payload.previousGarages = sourceGarageSummary(roomOptions, plate);
+    }
     onSubmit(payload);
   };
   if (kind === 'add_vehicle') return <AddVehicleOperationModal open={open} loading={loading} error={error} task={task} roomOptions={roomOptions} onClose={onClose} onSubmit={onSubmit} onRetry={onRetry} onRollback={onRollback} onCreateProofUpload={onCreateProofUpload} onCheckPlate={onCheckPlate} onQueryPlate={onQueryPlate} />;
@@ -1276,7 +1283,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
       {kind === 'rebind_owner' && <ParkingOwnerPicker open={open} value={binding} onChange={setBinding} />}
       {kind === 'renew_vehicle' && <><label>快捷期限<Select value={months} options={[1, 2, 3, 6, 12].map((value: number) => ({ value, label: `${value}个月` }))} onChange={changeMonths} /><InputNumber min={0} value={amount} onChange={setAmount} addonAfter="元" /><Text type="secondary">留空按收费规则验算：业主车月价 ¥180、12个月 ¥1800；租户车月价 ¥260、12个月 ¥2760。可在提交前覆盖本次金额。</Text></label><label>到期日期<DatePicker value={endDate ? dayjs(endDate) : null} format="YYYY-MM-DD" placeholder="选择到期日期" allowClear placement="bottomLeft" popupClassName="parking-date-picker-popup" onChange={(value) => setEndDate(value ? value.format('YYYY-MM-DD') : '')} style={{ width: '100%' }} />{kind === 'renew_vehicle' && <Text type="secondary">从当前到期日顺延所选月数，自动取目标自然月的最后一天；也可手动调整日期。</Text>}</label></>}
       {kind === 'update_garages' && <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }]} /></label>}
-      {kind === 'change_plate' && <label>车辆授权类型<Select value={identity} options={['住户车', '租户车', '亲情车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>}
+      {(kind === 'change_plate' || kind === 'update_vehicle_type') && <label>车辆授权类型<Select value={identity} options={['住户车', '租户车', '亲情车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>}
       {kind === 'download_vehicle' && <Alert type="info" showIcon message="将创建旧库设备下载任务" description="任务完成只代表旧系统已接受并回读下载队列；现场控制器回执会在状态中单独显示。" />}
       {kind === 'delete_vehicle' && <Alert type="warning" showIcon message="注销会调用旧系统 Add_Del_Plate" description="车辆从旧库移除并写入注销流水，网页不会直接删除 Car_Issue。" />}
       {task?.status === 'completed' && <Button danger onClick={onRollback}>为本次操作创建反向回滚任务</Button>}
@@ -1563,7 +1570,16 @@ function AddVehicleOperationModal({ open, loading, error, task, roomOptions, onC
 }
 
 function operationLabel(kind: accessCardIssuance.ParkingOperationKind): string {
-  return ({ add_vehicle: '新增车牌', renew_vehicle: '车牌续期与收费', change_plate: '变更车牌', rebind_owner: '变更绑定用户', update_garages: '调整车库授权', download_vehicle: '下发停车设备', sync_vehicle_info: '同步一期二期停车资料', delete_vehicle: '注销车辆' } as Record<string, string>)[kind];
+  return ({ add_vehicle: '新增车牌', renew_vehicle: '车牌续期与收费', change_plate: '变更车牌', rebind_owner: '变更绑定用户', update_garages: '调整车库授权', update_vehicle_type: '修改车辆授权类型', download_vehicle: '下发停车设备', sync_vehicle_info: '同步一期二期停车资料', delete_vehicle: '注销车辆' } as Record<string, string>)[kind];
+}
+
+function sourceGarageSummary(rows: ParkingQueryRow[], plate: string): string {
+  const target = normalizeParkingPlate(plate);
+  return Array.from(new Set(rows
+    .filter((item) => normalizeParkingPlate(plateValue(item.fields)) === target)
+    .flatMap((item) => garageRows(item.database, item.fields))
+    .filter((item) => item.authorized && !item.cloud)
+    .map((item) => item.key))).join(',');
 }
 
 function garageBitString(keys: string[]): string {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
@@ -515,7 +516,9 @@ ORDER BY p.parameter_id;";
                     return result;
                 }
                 if (task.kind == "rebind_owner") return RebindParkingOwner(connection, task, payload);
-                if (task.kind == "change_plate" || task.kind == "update_garages")
+                if (task.kind == "update_garages") return UpdateGarageAuthorizations(config, password, task, payload, plate, admin);
+                if (task.kind == "update_vehicle_type") return UpdateVehicleType(connection, task, payload, plate, admin);
+                if (task.kind == "change_plate")
                 {
                     var targetPlate = task.kind == "change_plate" ? newPlate : plate;
                     using (var command = Procedure(connection, "Up_PakIssue"))
@@ -533,7 +536,7 @@ ORDER BY p.parameter_id;";
                         Add(command, "@P_Download", SqlDbType.VarChar, 256, Value(payload, "download") ?? ZeroBits());
                         command.ExecuteNonQuery();
                     }
-                    return VerifyVehicle(connection, targetPlate, task.kind == "change_plate" ? "变更车牌" : task.kind == "rebind_owner" ? "变更绑定用户" : "调整车库授权");
+                    return VerifyVehicle(connection, targetPlate, "变更车牌");
                 }
                 if (task.kind == "delete_vehicle")
                 {
@@ -556,7 +559,7 @@ ORDER BY p.parameter_id;";
                 }
                 if (task.kind == "download_vehicle")
                 {
-                    ExecuteMappedProcedure(connection, "Add_DownloadCard", payload, plate, admin, "设备下载任务");
+                    ExecuteDownloadVehicle(connection, payload, plate, admin);
                     return VerifyDownloadQueue(connection, plate);
                 }
                 throw new InvalidOperationException("不支持的停车操作：" + task.kind);
@@ -1008,12 +1011,156 @@ SELECT id FROM @created;";
             Add(command, "@P_Color", SqlDbType.VarChar, 10, current["P_Color"]);
             Add(command, "@Car_Lei", SqlDbType.Int, 0, current["Car_Lei"]);
             Add(command, "@owner_Name", SqlDbType.VarChar, 20, targetRoom);
-            Add(command, "@Car_Brand", SqlDbType.VarChar, 20, current.ContainsKey("Car_Beand") ? current["Car_Beand"] : current["Car_Brand"]);
+            Add(command, "@Car_Brand", SqlDbType.VarChar, 20, Value(current, "Car_Beand") ?? Value(current, "Car_Brand"));
             Add(command, "@P_note", SqlDbType.VarChar, 200, current["P_note"]);
             Add(command, "@admin", SqlDbType.VarChar, 20, "PMS");
             Add(command, "@P_Spaces", SqlDbType.VarChar, 20, current["P_Spaces"]);
             Add(command, "@P_Effective", SqlDbType.VarChar, 256, current["P_Effective"]);
             Add(command, "@P_Download", SqlDbType.VarChar, 256, current["P_Download"]);
+        }
+
+        private static Dictionary<string, object> UpdateVehicleType(SqlConnection connection, ParkingOperationTask task,
+            Dictionary<string, object> payload, string plate, string admin)
+        {
+            var identity = Clean(Value(payload, "identity"));
+            if (identity == null) throw new InvalidOperationException("车辆授权类型不能为空");
+            using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
+            {
+                var before = ReadBindingVehicle(connection, transaction, plate);
+                using (var command = Procedure(connection, transaction, "Up_PakIssue"))
+                {
+                    AddBindingProcedureParameters(command, before, LegacyOwnerRoom(payload));
+                    command.Parameters["@Car_Brand"].Value = identity;
+                    command.Parameters["@admin"].Value = admin;
+                    command.ExecuteNonQuery();
+                }
+                var after = ReadBindingVehicle(connection, transaction, plate);
+                var afterIdentity = Value(after, "Car_Beand") ?? Value(after, "Car_Brand");
+                if (!String.Equals(afterIdentity, identity, StringComparison.Ordinal))
+                    throw new InvalidOperationException("车辆授权类型写入后读回不一致，已撤销本次操作");
+                transaction.Commit();
+                return new Dictionary<string, object> {
+                    { "verified", true }, { "plate", Value(after, "P_plate") }, { "issueId", Value(after, "P_id") },
+                    { "previousIdentity", Value(before, "Car_Beand") ?? Value(before, "Car_Brand") },
+                    { "identity", afterIdentity }
+                };
+            }
+        }
+
+        private static Dictionary<string, object> UpdateGarageAuthorizations(AgentConfig config, string password, ParkingOperationTask task,
+            Dictionary<string, object> payload, string plate, string admin)
+        {
+            var requested = RequestedGarageKeys(payload);
+            var results = new List<Dictionary<string, object>>();
+            Dictionary<string, object> source = null;
+            using (var sourceConnection = new SqlConnection(ConnectionString(config, password, task.database)))
+            {
+                sourceConnection.Open();
+                using (var sourceTransaction = sourceConnection.BeginTransaction(IsolationLevel.Serializable))
+                {
+                    source = ReadBindingVehicle(sourceConnection, sourceTransaction, plate);
+                    sourceTransaction.Commit();
+                }
+            }
+            foreach (var database in new[] { "parking1", "parking2" })
+            {
+                Validate(config, password, database);
+                using (var connection = new SqlConnection(ConnectionString(config, password, database)))
+                {
+                    connection.Open();
+                    using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
+                    {
+                        var before = TryReadBindingVehicle(connection, transaction, plate);
+                        var wants = RequestedGaragesForDatabase(requested, database).ToArray();
+                        if (before == null && wants.Length == 0)
+                        {
+                            transaction.Commit();
+                            results.Add(new Dictionary<string, object> {
+                                { "database", database }, { "existed", false }, { "changed", false },
+                                { "effective", ZeroBits() }, { "download", ZeroBits() }
+                            });
+                            continue;
+                        }
+                        if (before == null)
+                        {
+                            InsertVehicleCopy(connection, transaction, source, payload, database, requested, admin);
+                        }
+                        else
+                        {
+                            var nextEffective = ApplyGarageSelection(Value(before, "P_Effective"), requested, database);
+                            var nextDownload = ClearManagedDownload(Value(before, "P_Download"), database);
+                            using (var command = Procedure(connection, transaction, "Up_PakIssue"))
+                            {
+                                AddBindingProcedureParameters(command, before, Value(before, "owner_Name") ?? LegacyOwnerRoom(payload));
+                                command.Parameters["@P_Effective"].Value = nextEffective;
+                                command.Parameters["@P_Download"].Value = nextDownload;
+                                command.Parameters["@admin"].Value = admin;
+                                command.ExecuteNonQuery();
+                            }
+                        }
+                        var after = ReadBindingVehicle(connection, transaction, plate);
+                        AssertGarageSelection(after, requested, database);
+                        transaction.Commit();
+                        results.Add(new Dictionary<string, object> {
+                            { "database", database },
+                            { "existed", before != null },
+                            { "changed", before == null || Value(before, "P_Effective") != Value(after, "P_Effective") },
+                            { "issueId", Value(after, "P_id") },
+                            { "effective", Value(after, "P_Effective") },
+                            { "download", Value(after, "P_Download") }
+                        });
+                    }
+                }
+            }
+            return new Dictionary<string, object> { { "verified", true }, { "plate", plate }, { "garages", String.Join(",", requested.ToArray()) }, { "databases", results } };
+        }
+
+        private static void InsertVehicleCopy(SqlConnection connection, SqlTransaction transaction, Dictionary<string, object> source,
+            Dictionary<string, object> payload, string database, ISet<string> requested, string admin)
+        {
+            using (var command = Procedure(connection, transaction, "AddIssue"))
+            {
+                Add(command, "@owner_Name", SqlDbType.VarChar, 20, LegacyOwnerRoom(payload));
+                Add(command, "@owner_Add", SqlDbType.VarChar, 80, Value(payload, "ownerAddress") ?? LegacyOwnerRoom(payload));
+                Add(command, "@owner_Tel", SqlDbType.VarChar, 80, Value(payload, "ownerPhone") ?? "");
+                Add(command, "@owner_Sex", SqlDbType.Int, 0, 0);
+                Add(command, "@owner_depa", SqlDbType.VarChar, 50, "PMS");
+                Add(command, "@Owner_Image", SqlDbType.VarChar, 80, "");
+                Add(command, "@P_plate", SqlDbType.VarChar, 50, Value(source, "P_plate"));
+                Add(command, "@P_Color", SqlDbType.VarChar, 10, Value(source, "P_Color") ?? "蓝");
+                Add(command, "@Car_Lei", SqlDbType.Int, 0, NumberFromObject(source.ContainsKey("Car_Lei") ? source["Car_Lei"] : null, 1));
+                Add(command, "@Sart_Time", SqlDbType.DateTime, 0, DateFromObject(source.ContainsKey("Sart_Time") ? source["Sart_Time"] : null, DateTime.Today));
+                Add(command, "@End_Time", SqlDbType.DateTime, 0, DateFromObject(source.ContainsKey("End_Time") ? source["End_Time"] : null, DateTime.Today));
+                Add(command, "@Car_ID", SqlDbType.VarChar, 20, Value(source, "Car_ID") ?? "0000000000");
+                Add(command, "@Car_Brand", SqlDbType.VarChar, 20, Value(source, "Car_Beand") ?? Value(source, "Car_Brand") ?? Value(payload, "identity") ?? "住户车");
+                Add(command, "@Car_Money", SqlDbType.Float, 0, 0);
+                Add(command, "@Car_Deposit", SqlDbType.Float, 0, 0);
+                Add(command, "@Car_Zt", SqlDbType.Int, 0, NumberFromObject(source.ContainsKey("Car_Zt") ? source["Car_Zt"] : null, 1));
+                Add(command, "@P_note", SqlDbType.VarChar, 200, Value(source, "P_note") ?? AppendPmsSource(null));
+                Add(command, "@P_Admin", SqlDbType.VarChar, 20, admin);
+                Add(command, "@P_Spaces", SqlDbType.VarChar, 20, Value(source, "P_Spaces") ?? "");
+                Add(command, "@P_Effective", SqlDbType.VarChar, 256, ApplyGarageSelection(ZeroBits(), requested, database));
+                Add(command, "@P_Download", SqlDbType.VarChar, 256, ZeroBits());
+                command.ExecuteNonQuery();
+            }
+        }
+
+        private static Dictionary<string, object> TryReadBindingVehicle(SqlConnection connection, SqlTransaction transaction, string plate)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "SELECT * FROM dbo.Car_Issue WITH (UPDLOCK,HOLDLOCK) WHERE P_plate=@plate";
+                Add(command, "@plate", SqlDbType.VarChar, 50, plate);
+                using (var reader = command.ExecuteReader())
+                {
+                    if (!reader.Read()) return null;
+                    var row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                    for (var i = 0; i < reader.FieldCount; i++) row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                    if (reader.Read()) throw new InvalidOperationException("车辆不唯一，已停止操作");
+                    return row;
+                }
+            }
         }
 
         private static Dictionary<string, object> ReadBindingVehicle(SqlConnection connection, SqlTransaction transaction, string plate)
@@ -1105,6 +1252,115 @@ SELECT id FROM @created;";
 
         private static string ZeroBits() { return new String('0', 256); }
 
+        internal static ISet<string> RequestedGarageKeys(Dictionary<string, object> payload)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            object raw;
+            if (payload != null && payload.TryGetValue("garages", out raw) && raw is IEnumerable && !(raw is string))
+                foreach (var item in (IEnumerable)raw) AddGarageKey(result, Convert.ToString(item, CultureInfo.InvariantCulture));
+            if (payload != null && payload.TryGetValue("garageKeys", out raw) && raw is IEnumerable && !(raw is string))
+                foreach (var item in (IEnumerable)raw) AddGarageKey(result, Convert.ToString(item, CultureInfo.InvariantCulture));
+            var text = Value(payload, "garages") ?? Value(payload, "garageKeys");
+            if (!String.IsNullOrWhiteSpace(text) && text.IndexOf("System.", StringComparison.OrdinalIgnoreCase) < 0)
+                foreach (var item in text.Split(new[] { ',', ';', '|', ' ' }, StringSplitOptions.RemoveEmptyEntries)) AddGarageKey(result, item);
+            return result;
+        }
+
+        private static void AddGarageKey(ISet<string> result, string value)
+        {
+            var key = Clean(value);
+            if (key == null || String.Equals(key, "civil", StringComparison.OrdinalIgnoreCase)) return;
+            if (!String.Equals(key, "phase1", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(key, "phase2", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(key, "main", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("不支持的车库授权：" + key);
+            result.Add(key.ToLowerInvariant());
+        }
+
+        internal static string ApplyGarageSelectionForTest(string current, IEnumerable<string> selected, string database)
+        {
+            return ApplyGarageSelection(current, new HashSet<string>(selected, StringComparer.OrdinalIgnoreCase), database);
+        }
+
+        private static string ApplyGarageSelection(string current, ISet<string> selected, string database)
+        {
+            var bits = NormalizeBits(current);
+            foreach (var channel in ManagedGarageChannels(database)) bits[channel - 1] = '0';
+            foreach (var key in RequestedGaragesForDatabase(selected, database))
+                foreach (var channel in GarageChannels(key)) bits[channel - 1] = '1';
+            return new String(bits);
+        }
+
+        private static string ClearManagedDownload(string current, string database)
+        {
+            var bits = NormalizeBits(current);
+            foreach (var channel in ManagedGarageChannels(database)) bits[channel - 1] = '0';
+            return new String(bits);
+        }
+
+        private static char[] NormalizeBits(string value)
+        {
+            var bits = ZeroBits().ToCharArray();
+            if (!String.IsNullOrEmpty(value))
+            {
+                for (var i = 0; i < value.Length && i < bits.Length; i++)
+                    bits[i] = value[i] == '1' ? '1' : '0';
+            }
+            return bits;
+        }
+
+        private static IEnumerable<string> RequestedGaragesForDatabase(ISet<string> selected, string database)
+        {
+            if (String.Equals(database, "parking1", StringComparison.OrdinalIgnoreCase))
+            {
+                if (selected.Contains("phase1")) yield return "phase1";
+                yield break;
+            }
+            if (selected.Contains("phase2")) yield return "phase2";
+            if (selected.Contains("main")) yield return "main";
+        }
+
+        private static IEnumerable<int> ManagedGarageChannels(string database)
+        {
+            if (String.Equals(database, "parking1", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var channel in GarageChannels("phase1")) yield return channel;
+                yield break;
+            }
+            foreach (var channel in GarageChannels("phase2")) yield return channel;
+            foreach (var channel in GarageChannels("main")) yield return channel;
+        }
+
+        private static IEnumerable<int> GarageChannels(string key)
+        {
+            if (String.Equals(key, "phase1", StringComparison.OrdinalIgnoreCase)) return new[] { 5, 7 };
+            if (String.Equals(key, "phase2", StringComparison.OrdinalIgnoreCase)) return new[] { 9, 11, 13 };
+            if (String.Equals(key, "main", StringComparison.OrdinalIgnoreCase)) return new[] { 15, 17, 19, 21 };
+            return new int[0];
+        }
+
+        private static void AssertGarageSelection(Dictionary<string, object> vehicle, ISet<string> selected, string database)
+        {
+            var effective = new String(NormalizeBits(Value(vehicle, "P_Effective")));
+            foreach (var key in RequestedGaragesForDatabase(new HashSet<string>(new[] { "phase1", "phase2", "main" }, StringComparer.OrdinalIgnoreCase), database))
+            {
+                var hasAny = GarageChannels(key).Any(delegate(int channel) { return effective[channel - 1] == '1'; });
+                var expected = selected.Contains(key);
+                if (hasAny != expected) throw new InvalidOperationException(database + " 车库授权 " + key + " 写入后读回不一致，已回滚");
+            }
+        }
+
+        private static int NumberFromObject(object value, int fallback)
+        {
+            int result; return value != null && Int32.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), out result) ? result : fallback;
+        }
+
+        private static DateTime DateFromObject(object value, DateTime fallback)
+        {
+            if (value is DateTime) return (DateTime)value;
+            DateTime result; return value != null && DateTime.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, DateTimeStyles.None, out result) ? result : fallback;
+        }
+
         private static Dictionary<string, object> VerifyVehicle(SqlConnection connection, string plate, string label)
         {
             using (var check = connection.CreateCommand())
@@ -1160,6 +1416,64 @@ ORDER BY ID DESC";
                 command.ExecuteNonQuery();
             }
             return new Dictionary<string, object> { { "verified", true }, { "procedure", procedure }, { "message", label + "已提交，等待设备回执" } };
+        }
+
+        private static void ExecuteDownloadVehicle(SqlConnection connection, Dictionary<string, object> payload, string plate, string admin)
+        {
+            using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
+            {
+                var vehicle = ReadBindingVehicle(connection, transaction, plate);
+                using (var command = Procedure(connection, transaction, "Add_DownloadCard"))
+                {
+                    var parameters = ProcedureParameters(connection, transaction, "Add_DownloadCard");
+                    AddDownloadProcedureParameters(command, parameters, vehicle, payload, plate, admin);
+                    command.ExecuteNonQuery();
+                }
+                transaction.Commit();
+            }
+        }
+
+        internal static void AddDownloadProcedureParameters(SqlCommand command, IEnumerable<ProcedureParameter> parameters,
+            Dictionary<string, object> vehicle, Dictionary<string, object> payload, string plate, string admin)
+        {
+            foreach (var item in parameters)
+            {
+                var parameter = new SqlParameter(item.Name, item.Type);
+                if (item.Size != 0) parameter.Size = item.Size;
+                if (item.IsOutput) parameter.Direction = ParameterDirection.Output;
+                else
+                {
+                    var value = DownloadParameterValue(item.Name, vehicle, payload, plate, admin);
+                    if (value == null) throw new InvalidOperationException(command.CommandText + " 参数 " + item.Name + " 无法从旧库车辆记录映射，已停止执行");
+                    parameter.Value = value;
+                }
+                command.Parameters.Add(parameter);
+            }
+        }
+
+        private static object DownloadParameterValue(string parameterName, Dictionary<string, object> vehicle,
+            Dictionary<string, object> payload, string plate, string admin)
+        {
+            var key = NormalizeName(parameterName);
+            if (key == "carid" || key == "car_id") return RawVehicleValue(vehicle, "Car_ID");
+            if (key == "pid" || key == "p_id" || key == "issueid" || key == "issue_id") return RawVehicleValue(vehicle, "P_id");
+            if (key.Contains("plate")) return plate;
+            if (key.Contains("effective") || key.Contains("release")) return RawVehicleValue(vehicle, "P_Effective") ?? Value(payload, "effective");
+            if (key.Contains("download")) return RawVehicleValue(vehicle, "P_Download") ?? Value(payload, "download");
+            if (key.Contains("admin")) return admin;
+            if (key.Contains("color")) return RawVehicleValue(vehicle, "P_Color");
+            if (key.Contains("brand") || key.Contains("beand")) return RawVehicleValue(vehicle, "Car_Beand") ?? RawVehicleValue(vehicle, "Car_Brand");
+            if (key.Contains("lei") || key.Contains("type")) return RawVehicleValue(vehicle, "Car_Lei");
+            if (key.Contains("owner")) return RawVehicleValue(vehicle, "Owner_ID") ?? Value(payload, "ownerId");
+            if (key.Contains("space")) return RawVehicleValue(vehicle, "P_Spaces");
+            if (key.Contains("note")) return RawVehicleValue(vehicle, "P_note");
+            return Value(payload, key);
+        }
+
+        private static object RawVehicleValue(Dictionary<string, object> vehicle, string key)
+        {
+            object value;
+            return vehicle != null && vehicle.TryGetValue(key, out value) && value != null && value != DBNull.Value ? value : null;
         }
 
         private static Dictionary<string, object> VerifyDownloadQueue(SqlConnection connection, string plate)
@@ -1222,6 +1536,20 @@ ORDER BY ID DESC";
             var result = new List<ProcedureParameter>();
             using (var command = connection.CreateCommand())
             {
+                command.CommandText = ProcedureParametersSql;
+                Add(command, "@name", SqlDbType.NVarChar, 300, "dbo." + procedure);
+                using (var reader = command.ExecuteReader()) result = ReadProcedureParameters(reader);
+            }
+            if (result.Count == 0) throw new InvalidOperationException("找不到存储过程 " + procedure + " 的参数定义");
+            return result;
+        }
+
+        private static List<ProcedureParameter> ProcedureParameters(SqlConnection connection, SqlTransaction transaction, string procedure)
+        {
+            var result = new List<ProcedureParameter>();
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
                 command.CommandText = ProcedureParametersSql;
                 Add(command, "@name", SqlDbType.NVarChar, 300, "dbo." + procedure);
                 using (var reader = command.ExecuteReader()) result = ReadProcedureParameters(reader);

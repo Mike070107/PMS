@@ -174,7 +174,7 @@ export interface ParkingHistoryChange {
 
 export interface ParkingHistoryEntry {
   id: number;
-  eventType: 'plate_change' | 'owner_rebind' | 'owner_info_update' | 'vehicle_added' | 'vehicle_renewed' | 'garage_authorization' | 'vehicle_deleted' | 'vehicle_download' | 'vehicle_sync';
+  eventType: 'plate_change' | 'owner_rebind' | 'owner_info_update' | 'vehicle_added' | 'vehicle_renewed' | 'garage_authorization' | 'vehicle_type_update' | 'vehicle_deleted' | 'vehicle_download' | 'vehicle_sync';
   source: 'pms' | 'parking_gateway';
   database: string | null;
   sourceRecordId: string | null;
@@ -223,7 +223,7 @@ export interface ParkingOwnerUpdate {
   completedAt: string | null;
 }
 
-export type ParkingOperationKind = 'add_vehicle' | 'renew_vehicle' | 'change_plate' | 'rebind_owner' | 'update_garages' | 'download_vehicle' | 'sync_vehicle_info' | 'delete_vehicle';
+export type ParkingOperationKind = 'add_vehicle' | 'renew_vehicle' | 'change_plate' | 'rebind_owner' | 'update_garages' | 'update_vehicle_type' | 'download_vehicle' | 'sync_vehicle_info' | 'delete_vehicle';
 export interface ParkingOperation {
   id: number;
   kind: ParkingOperationKind;

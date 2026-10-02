@@ -83,6 +83,16 @@ export function supportsParkingVehicleSync(version?: string | null): boolean {
   return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 19)));
 }
 
+/** 跨库车库授权、车辆类型修改和真实 Car_ID 下发需要 2.5.21 起的新停车操作协议。 */
+export function supportsParkingAuthorizationFixes(version?: string | null): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version ?? '');
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  const patch = Number(match[3]);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 21)));
+}
+
 /** 联查结果存在 Owner__ 列时只从住户表取值，防止误把 Car_Issue 同名栏位当成住户资料。 */
 export function parkingOwnerJoinedFieldValue(
   fields: Record<string, string | number | boolean | null>,

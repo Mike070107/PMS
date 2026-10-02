@@ -9,6 +9,7 @@ import {
   supportsParkingOwnerUpdates,
   applyParkingOwnerSnapshot,
   parkingOwnerWriteMismatches,
+  supportsParkingAuthorizationFixes,
   supportsParkingVehicleSync,
 } from './parking-owner-update.util';
 
@@ -59,6 +60,14 @@ test('跨库车辆资料对齐只交给 2.5.19 及以上助手', () => {
   assert.equal(supportsParkingVehicleSync('2.6.0'), true);
   assert.equal(supportsParkingVehicleSync('3.0.0'), true);
   assert.equal(supportsParkingVehicleSync('0.9.0'), false);
+});
+
+test('车库授权、车辆类型和下载下发只交给 2.5.21 及以上助手', () => {
+  assert.equal(supportsParkingAuthorizationFixes('2.5.20'), false);
+  assert.equal(supportsParkingAuthorizationFixes('2.5.21'), true);
+  assert.equal(supportsParkingAuthorizationFixes('2.6.0'), true);
+  assert.equal(supportsParkingAuthorizationFixes('3.0.0'), true);
+  assert.equal(supportsParkingAuthorizationFixes('0.9.0'), false);
 });
 
 test('网页提示的列名必须去掉 Owner 前缀', () => {
