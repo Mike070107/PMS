@@ -36,3 +36,20 @@ test('FRP admission binds every proxy name and port to the authenticated device'
   assert.deepEqual(await service.authorizeFrpOperation('plugin-secret-for-test', 'NewProxy', { content: { user: metadata, proxy_name: 'lan-test.finance', proxy_type: 'tcp', remote_port: 18050, use_encryption: true } }), { reject: false, unchange: true });
   assert.equal((await service.authorizeFrpOperation('plugin-secret-for-test', 'NewProxy', { content: { user: metadata, proxy_name: 'lan-test.finance', proxy_type: 'tcp', remote_port: 18051, use_encryption: true } })).reject, true);
 });
+
+test('dynamic gateway can bootstrap a freshly verified route before public health turns online', async () => {
+  const now = new Date();
+  const app = {
+    id: 9, tenantId: 1, publicHostname: 'finance.prsznh.cn', publishStatus: 'publishing',
+    agentId: 7, gatewayPort: 18050, desiredRevision: 3, appliedRevision: 3, originCheckedAt: now,
+    lastSyncError: '内网代理已就绪，公网 HTTPS 检查返回 302', enabled: true,
+  };
+  const agent = { id: 7, tenantId: 1, enabled: true, desiredRevision: 3, appliedRevision: 3, lastSeenAt: now };
+  const appRepo = { findOne: async () => app };
+  const agentRepo = { findOne: async () => agent };
+  const service = new ExternalAccessService(appRepo as any, {} as any, {} as any, agentRepo as any, {} as any);
+  assert.equal((await service.resolveGatewayApplication('finance.prsznh.cn')).id, 9);
+
+  app.originCheckedAt = new Date(Date.now() - 91_000);
+  await assert.rejects(() => service.resolveGatewayApplication('finance.prsznh.cn'), /公网 HTTPS 检查返回 302/);
+});

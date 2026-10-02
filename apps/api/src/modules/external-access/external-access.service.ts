@@ -270,7 +270,18 @@ export class ExternalAccessService {
     if (!agent || !agent.enabled || !agent.lastSeenAt || Date.now() - agent.lastSeenAt.getTime() > 90_000) {
       throw new ServiceUnavailableException('内网代理设备离线或已停用');
     }
-    if (app.publishStatus !== 'online' || !app.gatewayPort) {
+    // The public health check itself is served by the dynamic router. During a
+    // first publish, requiring `online` here creates a deadlock: Nginx cannot
+    // switch to the router until the check passes, while the check cannot pass
+    // until Nginx has switched. A fresh, fully-applied healthy LAN report is a
+    // bounded bootstrap state; authentication and grant checks still run.
+    const bootstrapReady = app.publishStatus === 'publishing'
+      && agent.appliedRevision >= app.desiredRevision
+      && app.appliedRevision >= app.desiredRevision
+      && !!app.originCheckedAt
+      && Date.now() - app.originCheckedAt.getTime() < 90_000
+      && !!app.lastSyncError?.startsWith('内网代理已就绪');
+    if ((app.publishStatus !== 'online' && !bootstrapReady) || !app.gatewayPort) {
       throw new ServiceUnavailableException(app.lastSyncError || '内网应用尚未完成发布');
     }
     return app;
