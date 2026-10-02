@@ -45,10 +45,11 @@ import {
 } from '@ant-design/icons';
 import {
   accessCardIssuance,
+  ApiError,
   type AccessCardReadiness,
 } from '@pms/api-client';
 import dayjs from 'dayjs';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import CopyableSecret from '../components/CopyableSecret';
 import OwnerFormModal, { type OwnerRow } from './OwnerFormModal';
 import ParkingLegacyOwnerModal, { type ParkingLegacyOwnerTarget } from './ParkingLegacyOwnerModal';
@@ -99,6 +100,12 @@ export default function ParkingManagementPage({
   const [editingLegacyOwner, setEditingLegacyOwner] = useState<ParkingLegacyOwnerTarget | undefined>();
   const [legacyOwnerSaving, setLegacyOwnerSaving] = useState(false);
   const [legacyOwnerError, setLegacyOwnerError] = useState<string | null>(null);
+  const [legacyOwnerPending, setLegacyOwnerPending] = useState(false);
+  // 超时/关弹窗后仍保留原请求；确认终态前只查原任务，不生成新的写入。
+  const legacyOwnerAttempts = useRef(new Map<string, {
+    request: Parameters<typeof accessCardIssuance.createParkingOwnerUpdate>[0]; taskId?: number;
+  }>());
+  const legacyOwnerSubmitting = useRef(false);
   const [historyOwnerRow, setHistoryOwnerRow] = useState<ParkingQueryRow | null>(null);
   const [historyVehicleRow, setHistoryVehicleRow] = useState<ParkingQueryRow | null>(null);
   const [history, setHistory] = useState<ParkingHistoryResponse | null>(null);
@@ -220,36 +227,64 @@ export default function ParkingManagementPage({
   }, [rowsOverride]);
 
   const saveLegacyOwner = async (values: accessCardIssuance.ParkingOwnerValues) => {
-    if (!editingLegacyOwner) return;
-    setLegacyOwnerSaving(true);
-    setLegacyOwnerError(null);
-    try {
-      let task = await accessCardIssuance.createParkingOwnerUpdate({
+    if (!editingLegacyOwner || legacyOwnerSubmitting.current) return;
+    const key = legacyOwnerTargetKey(editingLegacyOwner);
+    const attempt = legacyOwnerAttempts.current.get(key) ?? {
+      request: {
         database: editingLegacyOwner.database,
         externalOwnerId: editingLegacyOwner.externalOwnerId,
+        plate: editingLegacyOwner.plate,
         pmsUserId: editingLegacyOwner.pmsUserId,
         idempotencyKey: createIdempotencyKey(),
         expected: editingLegacyOwner.values,
         values: normalizeOwnerValues(values),
         fieldHints: editingLegacyOwner.fieldHints,
-      });
+      },
+    };
+    legacyOwnerAttempts.current.set(key, attempt);
+    legacyOwnerSubmitting.current = true;
+    setLegacyOwnerSaving(true);
+    setLegacyOwnerPending(true);
+    setLegacyOwnerError(null);
+    try {
+      let task = attempt.taskId
+        ? await accessCardIssuance.parkingOwnerUpdate(attempt.taskId)
+        : await accessCardIssuance.createParkingOwnerUpdate(attempt.request);
+      attempt.taskId = task.id;
       for (let attempt = 0; attempt < 112 && (task.status === 'pending' || task.status === 'running'); attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 800));
         task = await accessCardIssuance.parkingOwnerUpdate(task.id);
       }
       if (task.status === 'completed') {
+        legacyOwnerAttempts.current.delete(key);
+        setLegacyOwnerPending(false);
         setEditingLegacyOwner(undefined);
         message.success('旧停车系统住户资料已更新并读回验证');
         await searchParking(searchedTerm || term);
         return;
       }
-      if (task.status === 'failed') throw new Error(task.error || '旧停车系统拒绝了本次更新');
-      throw new Error('现场数据同步助手响应超时，本次任务仍保留，请稍后重新查询状态');
+      if (task.status === 'failed') {
+        legacyOwnerAttempts.current.delete(key);
+        setLegacyOwnerPending(false);
+        throw new Error(task.error || '旧停车系统拒绝了本次更新');
+      }
+      throw new Error('现场助手仍在处理。请点击“查询本次保存结果”，不会重复创建更新任务。');
     } catch (error) {
-      const text = error instanceof Error ? error.message : '旧停车系统住户资料更新失败';
+      // 创建接口明确拒绝（4xx）才能解除锁定；断网/5xx 可能已经入队，不可当作未保存。
+      if (!attempt.taskId && error instanceof ApiError && error.httpStatus &&
+          error.httpStatus >= 400 && error.httpStatus < 500) {
+        legacyOwnerAttempts.current.delete(key);
+        setLegacyOwnerPending(false);
+      }
+      const detail = error instanceof Error ? error.message : '旧停车系统住户资料更新失败';
+      const text = legacyOwnerAttempts.current.has(key)
+        ? `${detail} 当前保存结果尚未确认，可查询本次保存结果；请勿重复发起其他更新。`
+        : detail;
       setLegacyOwnerError(text);
-      message.error(text);
+      if (legacyOwnerAttempts.current.has(key)) message.warning(text);
+      else message.error(text);
     } finally {
+      legacyOwnerSubmitting.current = false;
       setLegacyOwnerSaving(false);
     }
   };
@@ -467,7 +502,12 @@ export default function ParkingManagementPage({
               onCreateProof={() => void createProofUpload(row)}
               onViewProof={() => void viewProofForPlate(plateValue(row.fields))}
               onEditPms={(owner) => setEditingPmsOwner(owner)}
-              onEditLegacy={(target) => { setLegacyOwnerError(null); setEditingLegacyOwner(target); }}
+              onEditLegacy={(target) => {
+                const pending = legacyOwnerAttempts.current.get(legacyOwnerTargetKey(target));
+                setLegacyOwnerPending(!!pending);
+                setLegacyOwnerError(pending ? '上一次保存尚未确认，请查询原任务结果。' : null);
+                setEditingLegacyOwner(pending ? { ...target, values: pending.request.values } : target);
+              }}
               onOperation={(kind) => { setOperationError(null); setLastOperation(null); setOperationTarget({ kind, row }); }}
             />)}
           </div>
@@ -515,6 +555,7 @@ export default function ParkingManagementPage({
         target={editingLegacyOwner}
         saving={legacyOwnerSaving}
         error={legacyOwnerError}
+        pending={legacyOwnerPending}
         onClose={() => { if (!legacyOwnerSaving) setEditingLegacyOwner(undefined); }}
         onSubmit={saveLegacyOwner}
       />
@@ -579,6 +620,10 @@ function supportsParkingOwnerUpdates(version?: string): boolean {
 function createIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
   return `parking-owner-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function legacyOwnerTargetKey(target: ParkingLegacyOwnerTarget): string {
+  return `${target.database}:${target.externalOwnerId}:${target.plate.trim().toUpperCase()}`;
 }
 
 function normalizeOwnerValues(values: accessCardIssuance.ParkingOwnerValues): accessCardIssuance.ParkingOwnerValues {
@@ -861,7 +906,7 @@ function ParkingResultCard({ row, canWriteLocal, onCreateProof, onViewProof, onE
   const expiryView = parkingExpiryView(expiry);
   const identity = vehicleIdentity(row.fields);
   // P_note 属于 Car_Issue 车辆记录，不属于 Owner__ 住户字段。
-  const note = fieldValue(row.fields, fieldAliases.note);
+  const note = fieldValue(Object.fromEntries(Object.entries(row.fields).filter(([key]) => !key.startsWith('Owner__'))), fieldAliases.note);
   const garages = garageRows(row.database, row.fields);
   const ownerId = row.historyRef?.externalOwnerId || ownerFieldValue(row.fields, fieldAliases.ownerId) || fieldValue(row.fields, fieldAliases.ownerId);
   const database = row.database.toLowerCase() === 'parking1' ? 'parking1' : 'parking2';

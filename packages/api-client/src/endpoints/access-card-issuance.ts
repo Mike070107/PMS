@@ -215,6 +215,7 @@ export interface ParkingOwnerUpdate {
   id: number;
   database: 'parking1' | 'parking2';
   externalOwnerId: string;
+  plate: string | null;
   status: 'pending' | 'running' | 'completed' | 'failed';
   values: ParkingOwnerValues | null;
   error: string | null;
@@ -285,6 +286,7 @@ export const parkingQuery = (id: number) =>
 export const createParkingOwnerUpdate = (data: {
   database: 'parking1' | 'parking2';
   externalOwnerId: string;
+  plate: string;
   pmsUserId?: number | null;
   idempotencyKey: string;
   expected: ParkingOwnerValues;

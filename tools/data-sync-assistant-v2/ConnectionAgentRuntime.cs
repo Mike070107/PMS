@@ -17,7 +17,7 @@ namespace Pms.DataSyncAssistant
     /** Runs one existing PMS agent protocol session for one configured connection. */
     internal sealed class ConnectionAgentRuntime : IDisposable
     {
-        public const string RuntimeVersion = "2.5.3";
+        public static readonly string RuntimeVersion = typeof(ConnectionAgentRuntime).Assembly.GetName().Version.ToString(3);
         private readonly ConnectionConfiguration _connection;
         private readonly ConfigurationStore _store;
         private readonly HostConfiguration _host;

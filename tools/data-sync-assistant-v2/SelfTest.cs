@@ -118,6 +118,8 @@ namespace Pms.DataSyncAssistant
 
         private static void VerifyRuntimeMapping(ConfigurationStore store, AssistantConfiguration config)
         {
+            if (ConnectionAgentRuntime.RuntimeVersion != typeof(SelfTest).Assembly.GetName().Version.ToString(3))
+                throw new InvalidOperationException("心跳版本必须与当前助手程序集版本一致");
             var access = new ConnectionConfiguration { Type = ConnectionTypes.BuildingAccess, Name = "门禁测试" };
             access.Parameters["agentId"] = "access_gateway-0123456789abcdef";
             access.Parameters["mjSystemPath"] = @"D:\data\MJDataBase.mdb";
@@ -252,10 +254,43 @@ namespace Pms.DataSyncAssistant
             if (deduplicated.Count != 1 || !deduplicated[0].fields.ContainsKey("Owner__owner_Tel"))
                 throw new InvalidOperationException("停车重复车牌记录未正确合并");
 
-            var json = "{\"taskId\":9,\"database\":\"parking2\",\"externalOwnerId\":\"668\",\"expected\":{\"name\":\"张三\",\"phone\":\"13800000000\",\"room\":\"228/2/102\",\"note\":\"地库91号\"},\"values\":{\"name\":\"张三\",\"phone\":\"13900000000\",\"room\":\"228/2/102\",\"note\":\"地库91号\"},\"fieldHints\":{\"name\":\"P_Name\",\"phone\":\"P_Tel\",\"room\":\"P_Room\",\"note\":\"P_note\"}}";
+            var json = "{\"taskId\":9,\"database\":\"parking2\",\"externalOwnerId\":\"668\",\"plate\":\"苏K163SM\",\"expected\":{\"name\":null,\"phone\":\"13800000000\",\"room\":\"228/2/102\",\"note\":\"地库91号\"},\"values\":{\"name\":null,\"phone\":\"13900000000\",\"room\":\"228/2/102\",\"note\":\"地库91号\"},\"fieldHints\":{\"phone\":\"P_Tel\",\"room\":\"P_Room\",\"note\":\"P_note\"}}";
             var task = new JavaScriptSerializer().Deserialize<ParkingOwnerUpdateTask>(json);
-            if (task == null || task.taskId != 9 || task.database != "parking2" || task.fieldHints.phone != "P_Tel")
+            if (task == null || task.taskId != 9 || task.database != "parking2" || task.fieldHints.phone != "P_Tel" || task.plate != "苏K163SM")
                 throw new InvalidOperationException("停车住户更新任务解析失败");
+            var contractPath = Environment.GetEnvironmentVariable("PMS_PARKING_OWNER_CONTRACT");
+            if (!String.IsNullOrWhiteSpace(contractPath))
+            {
+                var apiTask = new JavaScriptSerializer().Deserialize<ParkingOwnerUpdateTask>(File.ReadAllText(contractPath));
+                if (apiTask.plate != "苏K163SM" || apiTask.database != "parking2" || apiTask.externalOwnerId != "1851" ||
+                    apiTask.values.room != "228/53/301" || apiTask.values.phone != "02112345678" || apiTask.expected.note != null)
+                    throw new InvalidOperationException("API 实际领取报文与 Windows 写库协议不一致");
+            }
+
+            var notes = new System.Data.DataTable();
+            notes.Columns.Add("P_note", typeof(string));
+            notes.Rows.Add(DBNull.Value);
+            using (var reader = notes.CreateDataReader())
+                if (ParkingDatabase.ReadUniqueIssueNote(reader, task.plate) != null)
+                    throw new InvalidOperationException("空备注应保留为 null，不能误判车牌不存在");
+            notes.Rows[0][0] = " 第一行\r\n 第二行 ";
+            using (var reader = notes.CreateDataReader())
+                if (ParkingDatabase.ReadUniqueIssueNote(reader, task.plate) != " 第一行\r\n 第二行 ")
+                    throw new InvalidOperationException("并发比对必须保留数据库原始空格与换行");
+            notes.Rows.Add("重复记录");
+            try
+            {
+                using (var reader = notes.CreateDataReader()) ParkingDatabase.ReadUniqueIssueNote(reader, task.plate);
+                throw new InvalidOperationException("重复车牌未被拦截");
+            }
+            catch (InvalidOperationException exception) { if (!exception.Message.Contains("存在重复记录")) throw; }
+            notes.Rows.Clear();
+            try
+            {
+                using (var reader = notes.CreateDataReader()) ParkingDatabase.ReadUniqueIssueNote(reader, task.plate);
+                throw new InvalidOperationException("不存在的车牌未被拦截");
+            }
+            catch (InvalidOperationException exception) { if (!exception.Message.Contains("找不到")) throw; }
         }
 
         private static void VerifyActivityHistory(string root)

@@ -741,15 +741,26 @@ ORDER BY ID DESC";
             using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
-                command.CommandText = "SELECT TOP 1 " + QuoteColumn(noteColumn.Name) + " FROM [dbo].[Car_Issue]" +
+                command.CommandText = "SELECT TOP 2 " + QuoteColumn(noteColumn.Name) + " FROM [dbo].[Car_Issue]" +
                     (lockRow ? " WITH (UPDLOCK, HOLDLOCK)" : "") +
                     " WHERE CONVERT(NVARCHAR(200), [Owner_ID])=@ownerId AND CONVERT(NVARCHAR(100), [P_plate])=@plate;";
                 command.Parameters.Add("@ownerId", SqlDbType.NVarChar, 200).Value = ownerId.Trim();
                 command.Parameters.Add("@plate", SqlDbType.NVarChar, 100).Value = plate.Trim();
-                var value = command.ExecuteScalar();
-                if (value == null || value == DBNull.Value) throw new InvalidOperationException("旧停车系统中找不到住户对应的车牌 " + plate);
-                return Convert.ToString(value);
+                command.CommandTimeout = 15;
+                using (var reader = command.ExecuteReader())
+                {
+                    return ReadUniqueIssueNote(reader, plate);
+                }
             }
+        }
+
+        internal static string ReadUniqueIssueNote(System.Data.IDataReader reader, string plate)
+        {
+            if (!reader.Read()) throw new InvalidOperationException("旧停车系统中找不到住户对应的车牌 " + plate);
+            // SQL NULL 表示这辆车尚无备注，不表示车牌不存在。保留原始换行供并发比较。
+            var note = reader.IsDBNull(0) ? null : Convert.ToString(reader.GetValue(0));
+            if (reader.Read()) throw new InvalidOperationException("旧停车系统中该住户的车牌 " + plate + " 存在重复记录，已停止更新，请先核对旧库");
+            return note;
         }
 
         private static void UpdateIssueNote(SqlConnection connection, SqlTransaction transaction, string ownerId,
@@ -767,7 +778,8 @@ ORDER BY ID DESC";
                     after == null ? (object)DBNull.Value : after;
                 command.Parameters.Add("@ownerId", SqlDbType.NVarChar, 200).Value = ownerId.Trim();
                 command.Parameters.Add("@plate", SqlDbType.NVarChar, 100).Value = plate.Trim();
-                command.Parameters.Add("@before", SqlDbType.NVarChar, 4000).Value = CleanMultiline(before) ?? "";
+                command.Parameters.Add("@before", SqlDbType.NVarChar, 4000).Value = before ?? "";
+                command.CommandTimeout = 15;
                 if (command.ExecuteNonQuery() != 1) throw new InvalidOperationException("车辆备注已被其他操作修改，请重新查询后再保存");
             }
         }

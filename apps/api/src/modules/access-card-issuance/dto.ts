@@ -359,10 +359,10 @@ export class CreateParkingOwnerUpdateDto {
   @MaxLength(100)
   externalOwnerId: string;
 
-  @IsOptional()
   @IsString()
+  @MinLength(1, { message: '住户资料更新必须携带当前车辆的车牌，请刷新页面后重试' })
   @MaxLength(100)
-  plate?: string | null;
+  plate: string;
 
   @IsOptional()
   @Type(() => Number)

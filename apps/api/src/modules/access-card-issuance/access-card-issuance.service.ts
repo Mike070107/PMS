@@ -92,6 +92,8 @@ import {
   parkingOwnerJoinedFieldValue,
   parkingOwnerChanges,
   supportsParkingOwnerUpdates,
+  applyParkingOwnerSnapshot,
+  parkingOwnerWriteMismatches,
 } from './parking-owner-update.util';
 
 type HouseContext = {
@@ -421,9 +423,28 @@ export class AccessCardIssuanceService {
 
   async createParkingOwnerUpdate(dto: CreateParkingOwnerUpdateDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
+    const plate = dto.plate?.trim().toUpperCase();
+    if (!plate) throw new BadRequestException('住户资料更新必须携带当前车辆的车牌，请刷新页面后重试');
+    // 不能将缺失的整个表单/字段归一化为 null 后提交清空旧库。
+    for (const field of ['phone', 'room', 'note'] as const) {
+      if (dto.expected?.[field] === undefined || dto.values?.[field] === undefined) {
+        throw new BadRequestException(`住户资料缺少 ${field} 字段，请重新查询后再保存`);
+      }
+    }
     const idempotencyKey = dto.idempotencyKey.trim();
+    const expectedValues = normalizeParkingOwnerValues({ ...dto.expected, name: null });
+    const requestedValues = normalizeParkingOwnerValues({ ...dto.values, name: null });
     const existing = await this.parkingOwnerUpdateRepo.findOne({ where: { tenantId, idempotencyKey } });
-    if (existing) return this.parkingOwnerUpdateResponse(existing);
+    const existingResponse = (task: ParkingOwnerUpdate) => {
+      if (task.database !== dto.database || task.externalOwnerId !== dto.externalOwnerId.trim() ||
+          task.plate !== plate || task.pmsUserId !== (dto.pmsUserId ?? null) ||
+          parkingOwnerChanges(task.expectedValues, expectedValues).length ||
+          parkingOwnerChanges(task.requestedValues, requestedValues).length) {
+        throw new BadRequestException('该提交编号已有其他更新内容，请先确认原任务结果');
+      }
+      return this.parkingOwnerUpdateResponse(task);
+    };
+    if (existing) return existingResponse(existing);
 
     const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
     const gateway = orderAgentsByAvailability(agents).find((agent) =>
@@ -434,8 +455,6 @@ export class AccessCardIssuanceService {
       throw new ServiceUnavailableException('停车网关尚未就绪：请确认 Windows 数据同步助手已升级到 2.3.0 且旧库账号具备写入权限');
     }
 
-    const expectedValues = normalizeParkingOwnerValues(dto.expected);
-    const requestedValues = normalizeParkingOwnerValues(dto.values);
     const changes = parkingOwnerChanges(expectedValues, requestedValues);
     if (!changes.length) throw new BadRequestException('住户资料没有发生变化');
     if (!dto.externalOwnerId.trim()) throw new BadRequestException('旧停车系统没有可用的住户编号，无法安全更新');
@@ -445,7 +464,7 @@ export class AccessCardIssuanceService {
       tenantId,
       database: dto.database,
       externalOwnerId: dto.externalOwnerId.trim(),
-      plate: dto.plate?.trim() || null,
+      plate,
       pmsUserId: dto.pmsUserId ?? null,
       idempotencyKey,
       expectedValues,
@@ -462,7 +481,14 @@ export class AccessCardIssuanceService {
       createdBy: user.id,
       updatedBy: user.id,
     });
-    return this.parkingOwnerUpdateResponse(await this.parkingOwnerUpdateRepo.save(task));
+    try {
+      return this.parkingOwnerUpdateResponse(await this.parkingOwnerUpdateRepo.save(task));
+    } catch (error) {
+      if ((error as { code?: string }).code !== '23505') throw error;
+      const duplicate = await this.parkingOwnerUpdateRepo.findOne({ where: { tenantId, idempotencyKey } });
+      if (!duplicate) throw error;
+      return existingResponse(duplicate);
+    }
   }
 
   async getParkingOwnerUpdate(id: number, user: AuthUser) {
@@ -797,8 +823,13 @@ export class AccessCardIssuanceService {
     if (agent.kind !== 'parking_gateway') throw new ForbiddenException('当前代理不是停车系统网关');
     await this.parkingOwnerUpdateRepo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(ParkingOwnerUpdate);
-      const task = await repo.findOne({ where: { id: dto.taskId, tenantId: agent.tenantId } });
+      const task = await repo.findOne({
+        where: { id: dto.taskId, tenantId: agent.tenantId }, lock: { mode: 'pessimistic_write' },
+      });
       if (!task) throw new NotFoundException('住户资料更新任务不存在');
+      // 回报响应丢失后的重复确认不产生第二条审计，也不把已完成任务判为失败。
+      if (task.status === 'completed' && dto.result === 'success' && task.resultValues &&
+          !parkingOwnerChanges(task.resultValues, normalizeParkingOwnerValues(dto.values)).length) return;
       if (task.status !== 'running' || task.leaseAgentKey !== agent.agentKey) {
         throw new BadRequestException('住户资料更新任务不属于当前网关或已经结束');
       }
@@ -806,6 +837,8 @@ export class AccessCardIssuanceService {
       const now = new Date();
       if (dto.result === 'success') {
         const resultValues = normalizeParkingOwnerValues(dto.values);
+        const mismatches = parkingOwnerWriteMismatches(task.requestedValues, resultValues);
+        if (mismatches.length) throw new BadRequestException(`停车网关读回的${mismatches.join('、')}与提交内容不一致，请重新查询核对`);
         const changes = parkingOwnerChanges(task.expectedValues, resultValues);
         if (!changes.length) throw new BadRequestException('停车网关未返回已更新的住户资料');
         task.status = 'completed';
@@ -822,8 +855,8 @@ export class AccessCardIssuanceService {
           sourceRecordId: null,
           pmsUserId: task.pmsUserId,
           externalOwnerId: task.externalOwnerId,
-          plateBefore: null,
-          plateAfter: null,
+          plateBefore: task.plate,
+          plateAfter: task.plate,
           summary: `更新旧停车系统住户${labels}`,
           changes,
           operatorUserId: task.createdBy,
@@ -840,7 +873,7 @@ export class AccessCardIssuanceService {
           .andWhere("snapshot.values ->> 'ownerId' = :ownerId", { ownerId: task.externalOwnerId })
           .getMany();
         for (const snapshot of snapshots) {
-          snapshot.values = { ...snapshot.values, ...resultValues };
+          snapshot.values = applyParkingOwnerSnapshot(snapshot.values, resultValues, task.plate!);
           snapshot.observedAt = now;
           snapshot.updatedBy = task.createdBy;
         }

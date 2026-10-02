@@ -25,7 +25,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api/v1': {
-        target: 'https://prsznh.cn',
+        target: env.PMS_DEV_API_TARGET || 'https://prsznh.cn',
         changeOrigin: true,
       },
     },

@@ -6,6 +6,7 @@
     "build": "nest build",
     "test:qr-security": "node -r ts-node/register --test src/modules/auth/qr-login-security.test.ts src/modules/auth/qr-login.service.test.ts src/modules/auth/oidc.service.test.ts",
     "test:gateway": "node -r ts-node/register --test src/modules/external-access/lan-gateway-security.test.ts src/modules/external-access/external-access.util.test.ts",
+    "test:parking-owner": "node -r ts-node/register --test src/modules/access-card-issuance/parking-owner-update.util.test.ts src/modules/access-card-issuance/parking-owner-update.service.test.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",

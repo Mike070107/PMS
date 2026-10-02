@@ -1,5 +1,6 @@
 import type { ParkingHistoryChange } from '../../entities/parking-history.entity';
 import type { ParkingOwnerFieldHints, ParkingOwnerValues } from '../../entities/parking-owner-update.entity';
+import type { ParkingSnapshotValues } from './parking-history.util';
 
 const labels: Record<keyof ParkingOwnerValues, string> = {
   name: '姓名',
@@ -34,6 +35,27 @@ export function parkingOwnerChanges(before: ParkingOwnerValues, after: ParkingOw
     }]);
 }
 
+/** 与助手 AppendPmsSource 保持一致：只有备注允许补 PMS 来源，其他读回值必须逐项一致。 */
+export function parkingOwnerWriteMismatches(requested: ParkingOwnerValues, actual: ParkingOwnerValues): string[] {
+  const expected = normalizeParkingOwnerValues(requested);
+  const marker = '操作来源：PMS系统';
+  if (!expected.note?.includes(marker)) expected.note = expected.note ? `${expected.note}\n${marker}` : marker;
+  return parkingOwnerChanges(expected, normalizeParkingOwnerValues(actual)).map((change) => change.label);
+}
+
+/** P_Owner 电话/房号属于住户；Car_Issue.P_note 只属于目标车牌，不能扩散给同户其他车。 */
+export function applyParkingOwnerSnapshot(
+  snapshot: ParkingSnapshotValues, result: ParkingOwnerValues, plate: string,
+): ParkingSnapshotValues {
+  return {
+    ...snapshot,
+    ownerName: result.name,
+    phone: result.phone,
+    room: result.room,
+    note: snapshot.plate?.trim().toUpperCase() === plate.trim().toUpperCase() ? result.note : snapshot.note,
+  };
+}
+
 export function supportsParkingOwnerUpdates(version?: string | null): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version ?? '');
   if (!match) return false;
@@ -48,8 +70,7 @@ export function parkingOwnerJoinedFieldValue(
   fields: Record<string, string | number | boolean | null>,
   aliases: readonly string[],
 ): string | null {
-  const ownerEntries = Object.entries(fields).filter(([key, value]) =>
-    key.startsWith('Owner__') && value !== null && String(value).trim() !== '');
+  const ownerEntries = Object.entries(fields).filter(([key]) => key.startsWith('Owner__'));
   const entries = ownerEntries.length
     ? ownerEntries.map(([key, value]) => [key.slice('Owner__'.length), value] as const)
     : Object.entries(fields).filter(([, value]) => value !== null && String(value).trim() !== '');
@@ -57,12 +78,12 @@ export function parkingOwnerJoinedFieldValue(
   for (const alias of aliases) {
     const normalizedAlias = normalize(alias.replace(/^Owner__/, ''));
     const exact = entries.find(([key]) => normalize(key) === normalizedAlias);
-    if (exact) return String(exact[1]).trim();
+    if (exact) return clean(exact[1]);
   }
   for (const alias of aliases) {
     const normalizedAlias = normalize(alias.replace(/^Owner__/, ''));
     const partial = entries.find(([key]) => normalize(key).includes(normalizedAlias));
-    if (partial) return String(partial[1]).trim();
+    if (partial) return clean(partial[1]);
   }
   return null;
 }

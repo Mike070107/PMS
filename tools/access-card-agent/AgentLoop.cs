@@ -237,16 +237,10 @@ namespace Pms.AccessCardAgent
         private void HandleParkingOwnerUpdate(ParkingOwnerUpdateTask task)
         {
             var target = task.database + " 住户 #" + task.externalOwnerId;
+            ParkingOwnerValues values;
             try
             {
-                var values = ParkingDatabase.UpdateOwner(_config, LoadSecret("parking-db-password.dat"), task);
-                _api.ReportParkingOwnerUpdate(new ParkingOwnerUpdateReport
-                {
-                    taskId = task.taskId,
-                    result = "success",
-                    values = values
-                });
-                RecordActivity("更新停车住户资料", target, true, "已写入旧系统并读回验证");
+                values = ParkingDatabase.UpdateOwner(_config, LoadSecret("parking-db-password.dat"), task);
             }
             catch (ParkingOwnerConflictException exception)
             {
@@ -257,6 +251,7 @@ namespace Pms.AccessCardAgent
                     errorMessage = exception.Message
                 });
                 RecordActivity("更新停车住户资料", target, false, exception.Message);
+                return;
             }
             catch (Exception exception)
             {
@@ -267,7 +262,11 @@ namespace Pms.AccessCardAgent
                     errorMessage = exception.Message
                 });
                 RecordActivity("更新停车住户资料", target, false, exception.Message);
+                return;
             }
+            // 写库已提交后，回报网络失败不等于写入失败。由租约重领和读回幂等确认，不能再发 failed。
+            _api.ReportParkingOwnerUpdate(new ParkingOwnerUpdateReport { taskId = task.taskId, result = "success", values = values });
+            RecordActivity("更新停车住户资料", target, true, "已写入旧系统并读回验证");
         }
 
         private void HandleParkingOperation(ParkingOperationTask task)

@@ -11,7 +11,7 @@ $MsBuild = Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319\MSBuild.exe
 & $MsBuild $ProjectFile /t:Rebuild /p:Configuration=Release /p:Platform=x86
 if ($LASTEXITCODE -ne 0) { throw "PMS 数据同步助手构建失败" }
 
-$SelfTest = Start-Process -FilePath $Executable -ArgumentList "--self-test" -Wait -PassThru
+$SelfTest = Start-Process -FilePath $Executable -ArgumentList "--self-test" -WindowStyle Hidden -Wait -PassThru
 if ($SelfTest.ExitCode -ne 0) { throw "PMS 数据同步助手自检失败" }
 
 $Version = [Diagnostics.FileVersionInfo]::GetVersionInfo($Executable).FileVersion

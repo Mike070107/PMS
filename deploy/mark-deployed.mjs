@@ -24,6 +24,7 @@ const LOG = resolve(ROOT, 'deploy', 'DEPLOY_LOG.md');
 
 /** 每个目标「改了哪些路径算需要重新部署」；共享包改了三个端都要重发 */
 const TARGETS = {
+  assistant: { label: 'Windows 数据同步助手', paths: ['tools/data-sync-assistant-v2', 'tools/access-card-agent'] },
   api: { label: '线上 API', paths: ['apps/api', 'packages/shared-types', 'deploy/srv-deploy-api.sh'] },
   web: { label: '管理后台', paths: ['apps/admin-web', 'packages/shared-types', 'packages/api-client'] },
   'miniapp-staff': { label: '员工端小程序', paths: ['apps/miniapp-staff', 'packages/shared-types', 'packages/api-client'] },

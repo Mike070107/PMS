@@ -7,6 +7,8 @@ import {
   parkingOwnerChanges,
   parkingOwnerJoinedFieldValue,
   supportsParkingOwnerUpdates,
+  applyParkingOwnerSnapshot,
+  parkingOwnerWriteMismatches,
 } from './parking-owner-update.util';
 
 test('住户更新值只去首尾空格并保留原始姓名间距和备注换行', () => {
@@ -53,4 +55,28 @@ test('网页提示的列名必须去掉 Owner 前缀', () => {
   assert.deepEqual(normalizeParkingOwnerFieldHints({ name: 'Owner__Owner_Name', phone: 'Owner__P_Tel' }), {
     name: 'Owner_Name', phone: 'P_Tel',
   });
+});
+
+test('联查住户值为空时不能借用车辆或其他同名字段', () => {
+  assert.equal(parkingOwnerJoinedFieldValue({ Owner__owner_Tel: null, P_Tel: '错误号码' }, ['ownertel', 'ptel']), null);
+});
+
+test('同住户两辆车只共享电话房号，不共享车辆备注', () => {
+  const before = { plate: '苏K163SM', ownerId: '1851', ownerName: null, phone: null, room: '228/53/301', note: 'A' };
+  const result = { name: null, phone: '02112345678', room: '228/53/302', note: 'B\n操作来源：PMS系统' };
+  assert.equal(applyParkingOwnerSnapshot(before, result, '苏K163SM').note, result.note);
+  const sibling = applyParkingOwnerSnapshot({ ...before, plate: '沪A007U0' }, result, '苏K163SM');
+  assert.equal(sibling.note, 'A');
+  assert.equal(sibling.phone, result.phone);
+  assert.equal(sibling.room, result.room);
+  assert.equal('name' in sibling, false);
+});
+
+test('成功回报必须逐项等于请求值，备注允许补来源标记并统一换行', () => {
+  const request = { name: null, phone: '02112345678', room: '228/53/301', note: '第一行\n第二行' };
+  const result = { ...request, note: '第一行\r\n第二行\r\n操作来源：PMS系统' };
+  assert.deepEqual(parkingOwnerWriteMismatches(request, result), []);
+  assert.deepEqual(parkingOwnerWriteMismatches(request, { ...result, phone: null }), ['电话']);
+  assert.deepEqual(parkingOwnerWriteMismatches(request, { ...result, note: '其他备注' }), ['备注']);
+  assert.deepEqual(parkingOwnerWriteMismatches({ ...request, note: null }, { ...result, note: '操作来源：PMS系统' }), []);
 });
