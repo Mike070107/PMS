@@ -56,6 +56,7 @@ import {
   ParkingOwnerUpdateReportDto,
   CreateParkingOperationDto,
   CreateAccessCardAuthorizationDto,
+  CreateAccessCardControllerUploadDto,
   AccessCardAuthorizationReportDto,
   ParkingOperationReportDto,
   ParkingHistoryQueryDto,
@@ -261,21 +262,10 @@ export class AccessCardIssuanceService {
       throw new BadRequestException(`这张卡已拥有 ${duplicate.map((item) => `${item!.buildingNo}号楼`).join('、')} 权限，无需重复授权`);
     }
 
-    const running = await this.authorizationRepo.find({
-      where: { tenantId, wgCardNo: historyRow.wgCardNo, status: In(['pending', 'running']) },
-    });
-    const requestedIds = new Set(dto.targetBuildingIds);
-    if (running.some((task) => task.targetBuildings.some((building) => requestedIds.has(building.id)))) {
-      throw new BadRequestException('这张卡选择的楼栋已有授权任务正在执行，请等待完成后刷新历史');
-    }
-
-    await this.requireHistoryAuthorizationGateway(tenantId);
-
-    const now = new Date();
-    const task = this.authorizationRepo.create({
+    return this.enqueueHistoryAuthorization({
       tenantId,
       houseId,
-      historyRowId: historyId,
+      historyId,
       roomKey: context.house.roomKey,
       icCardNo: historyRow.icCardNo,
       wgCardNo: historyRow.wgCardNo,
@@ -284,19 +274,56 @@ export class AccessCardIssuanceService {
         buildingNo: building!.buildingNo,
         accessSystem: building!.accessSystem!,
       })),
-      controllerResults: [],
       idempotencyKey,
-      status: 'pending',
-      attempt: 0,
-      requestedAt: now,
-      completedAt: null,
-      leaseAgentKey: null,
-      leaseExpiresAt: null,
-      lastError: null,
-      createdBy: user.id,
-      updatedBy: user.id,
+      userId: user.id,
     });
-    return this.historyAuthorizationResponse(await this.authorizationRepo.save(task));
+  }
+
+  async uploadHistoryCardToController(
+    houseId: number,
+    historyId: number,
+    dto: CreateAccessCardControllerUploadDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const idempotencyKey = dto.idempotencyKey.trim();
+    const existing = await this.authorizationRepo.findOne({ where: { tenantId, idempotencyKey } });
+    if (existing) return this.historyAuthorizationResponse(existing);
+
+    const context = await this.getHouseContext(houseId, user, access);
+    if (context.projectPhase !== 'phase2') {
+      throw new BadRequestException('枫桦景苑一期卡片不需要上传门禁控制器');
+    }
+    const historyRow = context.history.find((row) => row.id === historyId);
+    if (!historyRow?.wgCardNo) throw new NotFoundException('没有找到这张历史卡片，或卡片缺少 WG 卡号');
+    if (historyRow.accessStatus === 'controller_uploaded') {
+      throw new BadRequestException('这张卡已上传控制器，无需重复上传');
+    }
+    if (historyRow.accessStatus !== 'not_uploaded') {
+      throw new BadRequestException('这张卡的门禁权限尚未核验完成，请刷新历史后再试');
+    }
+
+    const homeBuilding = context.availableBuildings.find((building) => building.id === context.house.buildingId);
+    if (!homeBuilding?.routeReady || !homeBuilding.accessSystem) {
+      throw new BadRequestException(`本楼栋 ${context.house.buildingNo} 号楼的门禁路由尚未配置`);
+    }
+
+    return this.enqueueHistoryAuthorization({
+      tenantId,
+      houseId,
+      historyId,
+      roomKey: context.house.roomKey,
+      icCardNo: historyRow.icCardNo,
+      wgCardNo: historyRow.wgCardNo,
+      targetBuildings: [{
+        id: homeBuilding.id,
+        buildingNo: homeBuilding.buildingNo,
+        accessSystem: homeBuilding.accessSystem,
+      }],
+      idempotencyKey,
+      userId: user.id,
+    });
   }
 
   async getHistoryAuthorization(id: number, user: AuthUser) {
@@ -1042,6 +1069,50 @@ export class AccessCardIssuanceService {
       requestedAt: task.requestedAt,
       completedAt: task.completedAt,
     };
+  }
+
+  private async enqueueHistoryAuthorization(input: {
+    tenantId: number;
+    houseId: number;
+    historyId: number;
+    roomKey: string;
+    icCardNo: string | null;
+    wgCardNo: string;
+    targetBuildings: AccessCardAuthorization['targetBuildings'];
+    idempotencyKey: string;
+    userId: number;
+  }) {
+    const running = await this.authorizationRepo.find({
+      where: { tenantId: input.tenantId, wgCardNo: input.wgCardNo, status: In(['pending', 'running']) },
+    });
+    const requestedIds = new Set(input.targetBuildings.map((building) => building.id));
+    if (running.some((task) => task.targetBuildings.some((building) => requestedIds.has(building.id)))) {
+      throw new BadRequestException('这张卡选择的楼栋已有上传任务正在执行，请等待完成后刷新历史');
+    }
+
+    await this.requireHistoryAuthorizationGateway(input.tenantId);
+    const now = new Date();
+    const task = this.authorizationRepo.create({
+      tenantId: input.tenantId,
+      houseId: input.houseId,
+      historyRowId: input.historyId,
+      roomKey: input.roomKey,
+      icCardNo: input.icCardNo,
+      wgCardNo: input.wgCardNo,
+      targetBuildings: input.targetBuildings,
+      controllerResults: [],
+      idempotencyKey: input.idempotencyKey,
+      status: 'pending',
+      attempt: 0,
+      requestedAt: now,
+      completedAt: null,
+      leaseAgentKey: null,
+      leaseExpiresAt: null,
+      lastError: null,
+      createdBy: input.userId,
+      updatedBy: input.userId,
+    });
+    return this.historyAuthorizationResponse(await this.authorizationRepo.save(task));
   }
 
   private async requireHistoryAuthorizationGateway(tenantId: number): Promise<void> {

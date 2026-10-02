@@ -280,6 +280,13 @@ export class CreateAccessCardAuthorizationDto {
   idempotencyKey: string;
 }
 
+export class CreateAccessCardControllerUploadDto {
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
+  idempotencyKey: string;
+}
+
 export class AccessCardAuthorizationReportDto {
   @Type(() => Number)
   @IsInt()

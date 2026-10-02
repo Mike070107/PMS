@@ -366,6 +366,14 @@ export const createHistoryAuthorization = (houseId: number, historyId: number, d
   data,
 });
 
+export const uploadHistoryCardToController = (houseId: number, historyId: number, data: {
+  idempotencyKey: string;
+}) => request<AccessCardAuthorization>({
+  url: `/access-card-issuance/houses/${houseId}/history/${historyId}/upload-controller`,
+  method: 'POST',
+  data,
+});
+
 export const historyAuthorization = (id: number) => request<AccessCardAuthorization>({
   url: `/access-card-issuance/history-authorizations/${id}`,
 });

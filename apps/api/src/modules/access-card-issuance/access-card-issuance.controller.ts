@@ -27,6 +27,7 @@ import {
   CardPreflightDto,
   CreateAccessCardIssueDto,
   CreateAccessCardAuthorizationDto,
+  CreateAccessCardControllerUploadDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
   LegacyHistoryReportDto,
@@ -158,6 +159,18 @@ export class AccessCardIssuanceController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.service.createHistoryAuthorization(houseId, historyId, dto, user, access);
+  }
+
+  @Post('houses/:houseId/history/:historyId/upload-controller')
+  @RequirePermission('business', 'edit')
+  uploadHistoryCardToController(
+    @Param('houseId', ParseIntPipe) houseId: number,
+    @Param('historyId', ParseIntPipe) historyId: number,
+    @Body() dto: CreateAccessCardControllerUploadDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.uploadHistoryCardToController(houseId, historyId, dto, user, access);
   }
 
   @Get('history-authorizations/:id')
