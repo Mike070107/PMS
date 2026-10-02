@@ -2331,10 +2331,14 @@ function operationChanges(task: ParkingOperation): ParkingHistoryChange[] {
 function sanitizeParkingRows(rows: ParkingQueryReportDto['rows']): ParkingQuery['rows'] {
   return (rows ?? []).slice(0, 100).map((row) => {
     const fields: Record<string, string | number | boolean | null> = {};
-    const entries = Object.entries(row.fields ?? {});
+    // 旧助手曾把 Car_Issue 全部字段上传到这里，再按出现顺序截 60 个。
+    // 住户联表字段排在后面时会在助手端或这里被截掉；接口只保留停车页面和
+    // 住户匹配实际需要的白名单字段，且 Owner__ 字段永远优先于其它原始列。
+    const entries = Object.entries(row.fields ?? {}).filter(([key]) => isParkingQueryFieldAllowed(key));
     const prioritized = [
       ...entries.filter(([key]) => key.startsWith('PmsMeta__')),
-      ...entries.filter(([key]) => !key.startsWith('PmsMeta__')),
+      ...entries.filter(([key]) => key.startsWith('Owner__')),
+      ...entries.filter(([key]) => !key.startsWith('PmsMeta__') && !key.startsWith('Owner__')),
     ].slice(0, 60);
     for (const [rawKey, rawValue] of prioritized) {
       const key = rawKey.trim().slice(0, 128);
@@ -2344,5 +2348,34 @@ function sanitizeParkingRows(rows: ParkingQueryReportDto['rows']): ParkingQuery[
       else if (typeof rawValue === 'string') fields[key] = rawValue.slice(0, 500);
     }
     return { database: row.database.trim().slice(0, 80), fields };
+  });
+}
+
+const parkingVehicleOutputAliases = [
+  'p_id', 'pid', 'issue_id', 'issueid', 'car_id', 'carid', 'owner_id', 'ownerid',
+  'p_plate', 'pplate', 'carno', 'carcode', 'carnumber', 'plateno', 'plate', 'license', '车牌',
+  'p_effective', 'peffective', 'p_download', 'pdownload', 'p_note', 'pnote', 'remark', 'remarks', 'note', '备注',
+  'carbrand', 'carbeand', 'vehicleidentity', 'caridentity', 'ownertype', 'usertype', 'relationtype', 'carlei', '车辆类型', '车辆身份', '性质',
+  'enddate', 'expiredate', 'expirydate', 'validto', 'deadline', 'overdate', 'endtime', '到期', '有效期',
+  'parkno', 'parkingno', 'spaceno', 'berth', 'garage', '车位', '地库',
+  'starttime', 'startdate', 'begintime', 'begindate', 'updatetime', 'updatedate',
+] as const;
+
+const parkingOwnerOutputAliases = [
+  'userid', 'ownerid', 'customerid', 'personid', 'owner_name', 'ownername', 'owner_add', 'owneradd',
+  'owner_address', 'owneraddress', 'roomno', 'roomnumber', 'houseno', 'house', 'address', 'addr', 'room', '房号', '地址',
+  'mobile', 'mobilephone', 'telephone', 'phone', 'tel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话', '联系电话',
+  'name', 'username', 'customername', 'personname', 'residentname', '姓名', '业主姓名', '住户姓名',
+  'remarks', 'remark', 'note', 'memo', 'comment', '备注',
+] as const;
+
+function isParkingQueryFieldAllowed(key: string): boolean {
+  if (key.startsWith('PmsMeta__')) return true;
+  const isOwner = key.startsWith('Owner__');
+  const candidate = normalizeParkingFieldName(isOwner ? key.slice('Owner__'.length) : key);
+  const aliases = isOwner ? parkingOwnerOutputAliases : parkingVehicleOutputAliases;
+  return aliases.some((alias) => {
+    const normalizedAlias = normalizeParkingFieldName(alias);
+    return candidate === normalizedAlias || candidate.includes(normalizedAlias);
   });
 }

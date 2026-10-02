@@ -188,17 +188,13 @@ ORDER BY p.parameter_id;";
                         foreach (var target in targetColumns)
                             predicates.Add("CONVERT(NVARCHAR(4000), " + target.Alias + "." + QuoteColumn(target.Column.Name) + ") LIKE " + parameterName + " ESCAPE N'~'");
                     }
-                    var select = "c.*";
+                    // 只返回停车页面真正需要的字段。旧版使用 `c.*` 后再追加住户字段，
+                    // 读结果时的字段上限会把 Owner__owner_Name / Owner__owner_Tel 截掉，
+                    // 于是明明能联表的房号和电话在上传前就丢了。
+                    var select = BuildParkingSelect(columns, ownerSource);
                     var join = "";
                     if (ownerSource != null)
                     {
-                        var ownerFields = new List<string>();
-                        foreach (var column in ownerSource.Columns)
-                        {
-                            if (ownerFields.Count >= 35) break;
-                            ownerFields.Add("o." + QuoteColumn(column.Name) + " AS " + QuoteColumn("Owner__" + column.Name));
-                        }
-                        if (ownerFields.Count > 0) select += ", " + String.Join(", ", ownerFields.ToArray());
                         join = " LEFT JOIN " + QuoteName(ownerSource.Schema, ownerSource.Table) + " o WITH (NOLOCK) ON " +
                             "CONVERT(NVARCHAR(200), c.[Owner_ID]) = CONVERT(NVARCHAR(200), o." + QuoteColumn(ownerSource.KeyColumn) + ")";
                     }
@@ -227,6 +223,66 @@ ORDER BY p.parameter_id;";
                     return rows;
                 }
             }
+        }
+
+        private static string BuildParkingSelect(List<ParkingColumn> issueColumns, ParkingOwnerSource ownerSource)
+        {
+            var parts = new List<string>();
+
+            // 住户字段排在最前，且只带能用于房号、电话和关联的字段。
+            if (ownerSource != null)
+            {
+                var ownerColumns = ownerSource.Columns
+                    .OrderByDescending(delegate(ParkingColumn column) { return ParkingOwnerOutputScore(column.Name, ownerSource.KeyColumn); })
+                    .ThenBy(delegate(ParkingColumn column) { return column.Name; }, StringComparer.OrdinalIgnoreCase)
+                    .Take(20);
+                foreach (var column in ownerColumns)
+                    parts.Add("o." + QuoteColumn(column.Name) + " AS " + QuoteColumn("Owner__" + column.Name));
+            }
+
+            // 车辆字段也按页面用途排序，避免旧库 Car_Issue 增加无关字段后再次挤掉关键值。
+            var issueOutput = issueColumns
+                .OrderByDescending(delegate(ParkingColumn column) { return ParkingVehicleOutputScore(column.Name); })
+                .ThenBy(delegate(ParkingColumn column) { return column.Name; }, StringComparer.OrdinalIgnoreCase)
+                .Take(25);
+            foreach (var column in issueOutput)
+                parts.Add("c." + QuoteColumn(column.Name));
+
+            if (parts.Count == 0) throw new InvalidOperationException("Car_Issue 没有可返回的字段");
+            return String.Join(", ", parts.ToArray());
+        }
+
+        private static int ParkingVehicleOutputScore(string column)
+        {
+            var normalized = NormalizeName(column);
+            if (normalized == "pid" || normalized == "issueid" || normalized == "carid") return 200;
+            if (normalized == "ownerid" || normalized == "userid") return 190;
+            if (normalized == "pplate" || normalized == "plate" || normalized.Contains("plateno") ||
+                normalized.Contains("carno") || normalized.Contains("carnumber") || normalized.Contains("license")) return 180;
+            if (normalized == "peffective" || normalized == "pdownload") return 170;
+            if (normalized == "pnote" || normalized.Contains("remark") || normalized.Contains("note") || normalized.Contains("备注")) return 160;
+            if (normalized.Contains("carbeand") || normalized.Contains("carbrand") || normalized.Contains("identity") ||
+                normalized.Contains("usertype") || normalized.Contains("carlei") || normalized.Contains("车辆") || normalized.Contains("性质")) return 150;
+            if (normalized.Contains("enddate") || normalized.Contains("expire") || normalized.Contains("expiry") ||
+                normalized.Contains("validto") || normalized.Contains("deadline") || normalized.Contains("overdate") || normalized.Contains("到期")) return 140;
+            if (normalized.Contains("parkno") || normalized.Contains("parking") || normalized.Contains("space") ||
+                normalized.Contains("berth") || normalized.Contains("garage") || normalized.Contains("车位") || normalized.Contains("地库")) return 130;
+            if (normalized.Contains("start") || normalized.Contains("begin") || normalized.Contains("time") || normalized.Contains("date")) return 100;
+            return 0;
+        }
+
+        private static int ParkingOwnerOutputScore(string column, string keyColumn)
+        {
+            var normalized = NormalizeName(column);
+            if (String.Equals(normalized, NormalizeName(keyColumn), StringComparison.OrdinalIgnoreCase)) return 220;
+            if (normalized == "ownername" || normalized.Contains("owneradd") || normalized.Contains("owneraddress") ||
+                normalized.Contains("room") || normalized.Contains("house") || normalized.Contains("address") ||
+                normalized.Contains("房号") || normalized.Contains("地址")) return 200;
+            if (normalized.Contains("tel") || normalized.Contains("phone") || normalized.Contains("mobile") ||
+                normalized.Contains("电话") || normalized.Contains("手机")) return 190;
+            if (normalized.Contains("name") || normalized.Contains("姓名") || normalized.Contains("业主")) return 150;
+            if (normalized.Contains("note") || normalized.Contains("remark") || normalized.Contains("备注")) return 120;
+            return 0;
         }
 
         private static List<ParkingSearchRow> DeduplicateRows(List<ParkingSearchRow> rows)
