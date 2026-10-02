@@ -4000,3 +4000,14 @@
   - a899fa38 fix(parking): match bare legacy room numbers by database
   - 8b8e1411 fix(access-card): expose controller upload for pending cards
 
+## 2026-10-02 12:37 · web · c20488bf
+
+- 包：`pms-web-20261002-123553.tar.gz`
+- 提交：c20488bf merge: preserve vehicle sync while integrating verified PMS owner rebinding
+- 自上次（462fbe7e）以来上线的相关提交：
+  - c20488bf merge: preserve vehicle sync while integrating verified PMS owner rebinding
+  - bce48bdb fix(parking): rebind vehicles using verified PMS rooms and unique legacy owners
+  - 0b41955b feat(parking): reconcile duplicate plates across legacy databases
+  - e1e50fba fix(parking): end shortcut renewals on the target calendar month end
+  - 8b8e1411 fix(access-card): expose controller upload for pending cards
+
