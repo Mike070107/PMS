@@ -142,10 +142,7 @@ namespace Pms.AccessCardAgent
             {
                 foreach (var target in targets)
                 {
-                    if (NormalizeBuilding(target.buildingNo) != "11")
-                        throw new InvalidOperationException(target.buildingNo + "号楼 iCCard 控制器路由尚未验收");
-
-                    foreach (var doorId in new[] { 26 })
+                    foreach (var doorId in IcCardDoors(connection, target.buildingNo))
                     {
                         var record = ReadIcCardUploadRecord(connection, task.wgCardNo, doorId);
                         var frame = vendor.BuildOldAddFrame(record, 1);
@@ -154,7 +151,7 @@ namespace Pms.AccessCardAgent
                         if (result != 0)
                         {
                             throw new InvalidOperationException(
-                                "11号楼控制器未确认接收（" + record.IpAddress + ":" + record.Port +
+                                target.buildingNo + "号楼控制器未确认接收（" + record.IpAddress + ":" + record.Port +
                                 "，返回码 " + result.ToString(CultureInfo.InvariantCulture) + "）。请检查控制器供电和网络后重试");
                         }
 
@@ -335,7 +332,45 @@ namespace Pms.AccessCardAgent
             var normalized = NormalizeBuilding(buildingNo);
             if (normalized == "3") return new[] { "M0041-1" };
             if (normalized == "26") return new[] { "M0038-1", "M0003-1", "M0030-1" };
-            throw new InvalidOperationException(buildingNo + "号楼 MjSystem 控制器路由尚未验收");
+            throw new InvalidOperationException(buildingNo + "号楼 MjSystem 控制器路由无法自动确认，请先核对门名称");
+        }
+
+        private static int[] IcCardDoors(OleDbConnection connection, string buildingNo)
+        {
+            var normalized = NormalizeBuilding(buildingNo);
+            var matches = new List<int>();
+            const string sql =
+                "SELECT D.f_DoorID,D.f_DoorName,C.f_ControllerName " +
+                "FROM t_b_Door AS D LEFT JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID";
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = sql;
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var doorName = Convert.ToString(reader["f_DoorName"], CultureInfo.InvariantCulture);
+                        var controller = Convert.ToString(reader["f_ControllerName"], CultureInfo.InvariantCulture);
+                        if (NormalizeBuilding(ExtractBuildingNo(doorName, controller)) == normalized)
+                            matches.Add(Convert.ToInt32(reader["f_DoorID"], CultureInfo.InvariantCulture));
+                    }
+                }
+            }
+            var doors = matches.Distinct().ToArray();
+            if (doors.Length == 0) throw new InvalidOperationException(buildingNo + "号楼在 iCCard 未找到可唯一识别的实体门，请先核对门名称");
+            return doors;
+        }
+
+        private static string ExtractBuildingNo(params string[] values)
+        {
+            foreach (var value in values)
+            {
+                if (String.IsNullOrWhiteSpace(value)) continue;
+                var match = System.Text.RegularExpressions.Regex.Match(value, @"(?<!\d)(\d{1,3})\s*(?:号|#)?(?:楼|幢|栋|大门)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (!match.Success) continue;
+                return NormalizeBuilding(match.Groups[1].Value);
+            }
+            return null;
         }
 
         private static string Limit(string value, int length)

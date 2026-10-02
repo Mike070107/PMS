@@ -232,7 +232,7 @@ namespace Pms.AccessCardAgent
                     var output = new List<object>();
                     foreach (var target in targets)
                     {
-                        var doors = MjDoors(target.buildingNo);
+                        var doors = MjDoors(connection, transaction, target.buildingNo);
                         foreach (var door in doors)
                         {
                             if (!ScalarInt(connection, transaction,
@@ -297,7 +297,7 @@ namespace Pms.AccessCardAgent
                     var output = new List<object>();
                     foreach (var target in targets)
                     {
-                        var doors = IcCardDoors(target.buildingNo);
+                        var doors = IcCardDoors(connection, transaction, target.buildingNo);
                         foreach (var door in doors)
                         {
                             var count = Convert.ToInt32(Scalar(connection, transaction,
@@ -325,18 +325,73 @@ namespace Pms.AccessCardAgent
             }
         }
 
-        // 目前只开放已在真实库写入并读回验证的两条路由。
-        private static string[] MjDoors(string buildingNo)
+        // 已知现场验证过的门保留为兜底；其它楼栋从现场数据库按门名/控制器名唯一解析。
+        private static string[] MjDoors(OleDbConnection connection, OleDbTransaction transaction, string buildingNo)
         {
             if (NormalizeBuilding(buildingNo) == "3") return new[] { "M0041-1" };
             if (NormalizeBuilding(buildingNo) == "26") return new[] { "M0038-1", "M0003-1", "M0030-1" };
-            throw new InvalidOperationException(buildingNo + " 号楼 MjSystem 实体门映射尚未验收");
+            var doors = ResolveMjDoors(connection, transaction, buildingNo);
+            if (doors.Length == 0) throw new InvalidOperationException(buildingNo + "号楼在 MjSystem 未找到可唯一识别的实体门，请先核对门名称");
+            return doors;
         }
 
-        private static int[] IcCardDoors(string buildingNo)
+        private static int[] IcCardDoors(OleDbConnection connection, OleDbTransaction transaction, string buildingNo)
         {
             if (NormalizeBuilding(buildingNo) == "11") return new[] { 26 };
-            throw new InvalidOperationException(buildingNo + " 号楼 iCCard 实体门映射尚未验收");
+            var doors = ResolveIcCardDoors(connection, transaction, buildingNo);
+            if (doors.Length == 0) throw new InvalidOperationException(buildingNo + "号楼在 iCCard 未找到可唯一识别的实体门，请先核对门名称");
+            return doors;
+        }
+
+        private static string[] ResolveMjDoors(OleDbConnection connection, OleDbTransaction transaction, string buildingNo)
+        {
+            var normalized = NormalizeBuilding(buildingNo);
+            var matches = new List<string>();
+            const string sql =
+                "SELECT D.cDoorId,D.vDoorName,M.vExposition " +
+                "FROM MJ_DoorInfo AS D LEFT JOIN MJ_MacInfo AS M ON D.cMacId=M.cMacId";
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = sql;
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var doorId = Text(reader, "cDoorId");
+                        var doorName = Text(reader, "vDoorName");
+                        var controller = Text(reader, "vExposition");
+                        if (NormalizeBuilding(ExtractBuildingNo(doorName, controller)) == normalized)
+                            matches.Add(doorId);
+                    }
+                }
+            }
+            return matches.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+
+        private static int[] ResolveIcCardDoors(OleDbConnection connection, OleDbTransaction transaction, string buildingNo)
+        {
+            var normalized = NormalizeBuilding(buildingNo);
+            var matches = new List<int>();
+            const string sql =
+                "SELECT D.f_DoorID,D.f_DoorName,C.f_ControllerName " +
+                "FROM t_b_Door AS D LEFT JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID";
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = sql;
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var doorName = Text(reader, "f_DoorName");
+                        var controller = Text(reader, "f_ControllerName");
+                        if (NormalizeBuilding(ExtractBuildingNo(doorName, controller)) == normalized)
+                            matches.Add(Convert.ToInt32(reader["f_DoorID"]));
+                    }
+                }
+            }
+            return matches.Distinct().ToArray();
         }
 
         private static string NormalizeBuilding(string value)
