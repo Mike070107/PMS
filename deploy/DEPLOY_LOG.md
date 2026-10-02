@@ -3989,3 +3989,14 @@
 - 自上次（f47120d）以来上线的相关提交：
   - 3bcc8f3 fix(release): verify parking fixes against immutable production versions
 
+## 2026-10-02 12:36 · api · c20488bf
+
+- 包：`pms-api-fast-20261002-123553.tar.gz`
+- 提交：c20488bf merge: preserve vehicle sync while integrating verified PMS owner rebinding
+- 自上次（462fbe7e）以来上线的相关提交：
+  - c20488bf merge: preserve vehicle sync while integrating verified PMS owner rebinding
+  - bce48bdb fix(parking): rebind vehicles using verified PMS rooms and unique legacy owners
+  - 0b41955b feat(parking): reconcile duplicate plates across legacy databases
+  - a899fa38 fix(parking): match bare legacy room numbers by database
+  - 8b8e1411 fix(access-card): expose controller upload for pending cards
+
