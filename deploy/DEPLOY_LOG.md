@@ -3952,3 +3952,11 @@
   - 209f718 fix(parking): preserve vehicle identity and verify owner update outcomes
   - d853d2a fix(gateway): break first-publish health deadlock
 
+## 2026-10-02 09:42 · web · f47120d
+
+- 包：`pms-web-20261002-094104.tar.gz`
+- 提交：f47120d deploy: api → 4482c1c
+- 自上次（156fd69）以来上线的相关提交：
+  - 4482c1c fix(web): avoid repeated release date and stop tracking build cache
+  - 209f718 fix(parking): preserve vehicle identity and verify owner update outcomes
+
