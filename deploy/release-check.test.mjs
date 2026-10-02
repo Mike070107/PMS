@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertRelease, assertVersionIncrease, evidenceMatches, parkingChanges, productionInput, assistantInput } from './release-check.mjs';
+import { assertRelease, assertVersionIncrease, evidenceMatches, parkingChanges, productionInput, assistantInput, deploymentCommit } from './release-check.mjs';
 
 test('验收记录必须通过且匹配输入哈希，不能以旧记录放行新源码', () => {
   assert.equal(evidenceMatches({ passed: true, inputHash: 'A' }, 'A'), true);
@@ -24,4 +24,10 @@ test('按相关路径选择回归；纯文档不制造助手新版本', () => {
   assert.equal(productionInput('docs/file.md'), false);
   assert.equal(assistantInput('tools/data-sync-assistant-v2/publish-update.ps1'), false);
   assert.equal(assistantInput('tools/data-sync-assistant-v2/SelfTest.cs'), true);
+});
+
+test('无法读取 Git 不是首次部署，权限/进程失败必须停止', () => {
+  assert.equal(deploymentCommit('api', () => { throw { status: 1 }; }), null);
+  assert.throws(() => deploymentCommit('api', () => { throw new Error('spawn EPERM'); }), /EPERM/);
+  assert.equal(deploymentCommit('api', (command) => command === 'show-ref' ? '' : 'known-commit'), 'known-commit');
 });

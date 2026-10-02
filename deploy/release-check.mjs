@@ -22,9 +22,14 @@ const paths = target => {
   if (!TARGETS[target]) throw new Error(`Unknown release target: ${target}`);
   return TARGETS[target].paths;
 };
+export function deploymentCommit(target, read = git) {
+  try { read('show-ref', '--verify', '--quiet', `refs/tags/deployed/${target}`); }
+  catch (error) { if (error.status === 1) return null; throw error; }
+  return read('rev-parse', '--verify', `refs/tags/deployed/${target}`);
+}
 export function changed(target, commit = 'HEAD') {
-  let base;
-  try { base = git('rev-parse', '--verify', `refs/tags/deployed/${target}`); } catch { return ['unmarked']; }
+  const base = deploymentCommit(target);
+  if (!base) return ['unmarked'];
   return git('diff', '--name-only', base, commit, '--', ...paths(target)).split('\n').filter(Boolean)
     .filter(target === 'assistant' ? assistantInput : productionInput);
 }
@@ -40,8 +45,7 @@ export function assertSource(target, commit) {
   if (dirty) throw new Error(`发布目标有未提交改动：\n${dirty}`);
   git('merge-base', '--is-ancestor', commit, 'origin/main');
   // 不能从一个较旧但已推送的 main 提交覆盖另一任务刚上线的版本。
-  let deployed;
-  try { deployed = git('rev-parse', '--verify', `refs/tags/deployed/${target}`); } catch { /* 首次发布 */ }
+  const deployed = deploymentCommit(target);
   if (deployed) git('merge-base', '--is-ancestor', deployed, commit);
   if (git('diff', '--name-only', commit, 'origin/main', '--', ...paths(target)).split('\n').some(file => file && productionInput(file))) {
     throw new Error('发布来源落后于远端受影响源码，先合并并验证，禁止覆盖新版本');
