@@ -418,8 +418,8 @@ export class CreateParkingOperationDto {
   @IsIn(['parking1', 'parking2'])
   database: 'parking1' | 'parking2';
 
-  @IsIn(['add_vehicle', 'renew_vehicle', 'change_plate', 'rebind_owner', 'update_garages', 'download_vehicle', 'delete_vehicle'])
-  kind: 'add_vehicle' | 'renew_vehicle' | 'change_plate' | 'rebind_owner' | 'update_garages' | 'download_vehicle' | 'delete_vehicle';
+  @IsIn(['add_vehicle', 'renew_vehicle', 'change_plate', 'rebind_owner', 'update_garages', 'download_vehicle', 'sync_vehicle_info', 'delete_vehicle'])
+  kind: 'add_vehicle' | 'renew_vehicle' | 'change_plate' | 'rebind_owner' | 'update_garages' | 'download_vehicle' | 'sync_vehicle_info' | 'delete_vehicle';
 
   @IsString()
   @MinLength(8)

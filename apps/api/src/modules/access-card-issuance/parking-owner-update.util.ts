@@ -73,6 +73,16 @@ export function supportsParkingOwnerRebind(version?: string | null): boolean {
   return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 20)));
 }
 
+/** 跨库车辆资料对齐需要助手 2.5.19 开始提供的双库锁行、冲突房号和回读核验。 */
+export function supportsParkingVehicleSync(version?: string | null): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version ?? '');
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  const patch = Number(match[3]);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 19)));
+}
+
 /** 联查结果存在 Owner__ 列时只从住户表取值，防止误把 Car_Issue 同名栏位当成住户资料。 */
 export function parkingOwnerJoinedFieldValue(
   fields: Record<string, string | number | boolean | null>,

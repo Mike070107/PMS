@@ -247,6 +247,16 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("停车住户备注栏位映射失败");
             if (ParkingDatabase.ResolveOwnerColumnForTest("phone", "P_note", columns) != "owner_Tel")
                 throw new InvalidOperationException("停车住户栏位提示越权覆盖了语义匹配");
+            if (ParkingDatabase.ResolveAvailableOwnerRoomForTest("198/5/102", 20) != "198/5/102" ||
+                ParkingDatabase.ResolveAvailableOwnerRoomForTest("198/5/102", 20, "198/5/102") != "198/5/102/2" ||
+                ParkingDatabase.ResolveAvailableOwnerRoomForTest("198/5/102", 20, "198/5/102", "198/5/102/2") != "198/5/102/3")
+                throw new InvalidOperationException("跨库同步房号冲突没有按 /2、/3 自增");
+            try
+            {
+                ParkingDatabase.ResolveAvailableOwnerRoomForTest("198/5/102", 10, "198/5/102");
+                throw new InvalidOperationException("跨库同步未拦截超长的冲突房号");
+            }
+            catch (InvalidOperationException exception) { if (!exception.Message.Contains("超长")) throw; }
             if (ParkingDatabase.SearchKindForTest("6/502") != "House")
                 throw new InvalidOperationException("停车房号查询类型识别失败");
             var housePatterns = ParkingDatabase.SearchPatternsForTest("6/502");

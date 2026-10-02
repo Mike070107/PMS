@@ -443,7 +443,7 @@ ORDER BY p.parameter_id;";
             }
         }
 
-        /** 执行网页提交的停车业务。所有车辆变化均通过旧系统存储过程，绝不直接 UPDATE Car_Issue。 */
+        /** 执行网页提交的停车业务。续期及车辆结构性变化均调用旧系统存储过程。 */
         public static Dictionary<string, object> ExecuteOperation(AgentConfig config, string password, ParkingOperationTask task)
         {
             if (task == null || String.IsNullOrWhiteSpace(task.kind)) throw new InvalidOperationException("停车操作任务为空");
@@ -452,6 +452,8 @@ ORDER BY p.parameter_id;";
             var plate = Value(payload, "plate");
             var newPlate = Value(payload, "newPlate");
             var admin = Value(payload, "admin") ?? "PMS";
+            if (task.kind == "sync_vehicle_info")
+                return SyncVehicleInfo(config, password, task, payload, plate);
             using (var connection = new SqlConnection(ConnectionString(config, password, task.database)))
             {
                 connection.Open();
@@ -559,6 +561,330 @@ ORDER BY p.parameter_id;";
                 }
                 throw new InvalidOperationException("不支持的停车操作：" + task.kind);
             }
+        }
+
+        private sealed class ParkingVehicleSyncSnapshot
+        {
+            public string IssueId { get; set; }
+            public string Plate { get; set; }
+            public string OwnerId { get; set; }
+            public string Room { get; set; }
+            public DateTime? EndDate { get; set; }
+            public string Note { get; set; }
+        }
+
+        /**
+         * 一期、二期同车牌资料对齐：源库只读锁定，目标库串行化写入。
+         * 到期日仍通过 Palte_extend；房号和备注按目标车辆/住户精确更新，
+         * 每个 UPDATE 都带原值条件并在同一事务内回读，不允许宽泛按车牌改多条数据。
+         */
+        private static Dictionary<string, object> SyncVehicleInfo(AgentConfig config, string password,
+            ParkingOperationTask task, Dictionary<string, object> payload, string plate)
+        {
+            var sourceDatabase = Clean(Value(payload, "sourceDatabase"));
+            var sourceRecordId = Clean(Value(payload, "sourceRecordId"));
+            var targetRecordId = Clean(task.sourceRecordId);
+            var sourcePlate = Clean(Value(payload, "sourcePlate")) ?? Clean(plate);
+            var targetPlate = Clean(Value(payload, "targetPlate")) ?? Clean(plate);
+            if (sourceDatabase == null || sourceRecordId == null || targetRecordId == null || sourcePlate == null || targetPlate == null)
+                throw new InvalidOperationException("车辆资料同步缺少源库、源记录、目标记录或车牌");
+            if (!String.Equals(NormalizePlate(sourcePlate), NormalizePlate(targetPlate), StringComparison.Ordinal))
+                throw new InvalidOperationException("只能同步一期、二期中的同一车牌");
+            EnsureConfiguredParkingDatabase(config, sourceDatabase);
+            EnsureConfiguredParkingDatabase(config, task.database);
+            if (String.Equals(sourceDatabase, task.database, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("源停车库和目标停车库不能相同");
+
+            using (var sourceConnection = new SqlConnection(ConnectionString(config, password, sourceDatabase)))
+            using (var targetConnection = new SqlConnection(ConnectionString(config, password, task.database)))
+            {
+                sourceConnection.Open();
+                targetConnection.Open();
+                var sourceOwner = FindOwnerSource(sourceConnection);
+                var targetOwner = FindOwnerSource(targetConnection);
+                if (sourceOwner == null || targetOwner == null)
+                    throw new InvalidOperationException("一期或二期停车库未识别到 P_Owner 住户表");
+                var sourceRoomColumn = ResolveOwnerColumn(sourceOwner.Columns, "room", null);
+                var targetRoomColumn = ResolveOwnerColumn(targetOwner.Columns, "room", null);
+                var sourceNoteColumn = ResolveOwnerColumn(LoadColumns(sourceConnection, "dbo", "Car_Issue"), "note", "P_note");
+                var targetNoteColumn = ResolveOwnerColumn(LoadColumns(targetConnection, "dbo", "Car_Issue"), "note", "P_note");
+                if (sourceRoomColumn == null || targetRoomColumn == null || sourceNoteColumn == null || targetNoteColumn == null)
+                    throw new InvalidOperationException("一期或二期停车库缺少 owner_Name/P_note 必要字段，已停止同步");
+
+                using (var sourceTransaction = sourceConnection.BeginTransaction(IsolationLevel.Serializable))
+                using (var targetTransaction = targetConnection.BeginTransaction(IsolationLevel.Serializable))
+                {
+                    var source = ReadVehicleSyncSnapshot(sourceConnection, sourceTransaction, sourceOwner,
+                        sourceRoomColumn, sourceNoteColumn, sourceRecordId, sourcePlate, true);
+                    var target = ReadVehicleSyncSnapshot(targetConnection, targetTransaction, targetOwner,
+                        targetRoomColumn, targetNoteColumn, targetRecordId, targetPlate, true);
+                    if (source.Room == null)
+                        throw new InvalidOperationException("源停车库房号为空，不会清空目标库房号");
+                    if (!source.EndDate.HasValue)
+                        throw new InvalidOperationException("源停车库到期日期为空，不会清空目标库到期日期");
+
+                    var desiredRoom = ResolveAvailableOwnerRoom(targetConnection, targetTransaction, targetOwner,
+                        targetRoomColumn, target.OwnerId, source.Room);
+                    if (VehicleSyncMatches(target, source, desiredRoom))
+                    {
+                        var already = VehicleSyncResult(sourceDatabase, task.database, target, target,
+                            !String.Equals(source.Room, desiredRoom, StringComparison.Ordinal), true);
+                        targetTransaction.Commit();
+                        sourceTransaction.Commit();
+                        return already;
+                    }
+                    AssertExpectedVehicleSync(task.expected, target);
+
+                    if (!SameDate(target.EndDate, source.EndDate))
+                    {
+                        AssertUniqueVehiclePlate(targetConnection, targetTransaction, target.IssueId, targetPlate);
+                        using (var command = Procedure(targetConnection, targetTransaction, "Palte_extend"))
+                        {
+                            Add(command, "@P_plate", SqlDbType.VarChar, 50, targetPlate);
+                            Add(command, "@type", SqlDbType.Int, 0, 5);
+                            Add(command, "@P_money", SqlDbType.Float, 0, 0d);
+                            Add(command, "@End_Time", SqlDbType.DateTime, 0, source.EndDate.Value);
+                            Add(command, "@P_Admin", SqlDbType.VarChar, 20, "PMS");
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                    if (!String.Equals(Clean(target.Room), Clean(desiredRoom), StringComparison.Ordinal))
+                        UpdateOwnerRoomForSync(targetConnection, targetTransaction, targetOwner, targetRoomColumn,
+                            target.OwnerId, target.Room, desiredRoom);
+                    if (!String.Equals(CleanMultiline(target.Note), CleanMultiline(source.Note), StringComparison.Ordinal))
+                        UpdateIssueNoteForSync(targetConnection, targetTransaction, targetNoteColumn,
+                            target.IssueId, targetPlate, target.Note, source.Note);
+
+                    var written = ReadVehicleSyncSnapshot(targetConnection, targetTransaction, targetOwner,
+                        targetRoomColumn, targetNoteColumn, targetRecordId, targetPlate, false);
+                    AssertVehicleSyncWritten(source, desiredRoom, written);
+                    var result = VehicleSyncResult(sourceDatabase, task.database, target, written,
+                        !String.Equals(source.Room, desiredRoom, StringComparison.Ordinal), false);
+                    targetTransaction.Commit();
+                    sourceTransaction.Commit();
+                    return result;
+                }
+            }
+        }
+
+        private static ParkingVehicleSyncSnapshot ReadVehicleSyncSnapshot(SqlConnection connection,
+            SqlTransaction transaction, ParkingOwnerSource ownerSource, ParkingColumn roomColumn,
+            ParkingColumn noteColumn, string issueId, string plate, bool lockRow)
+        {
+            string ownerId;
+            DateTime? endDate;
+            string note;
+            string actualIssueId;
+            string actualPlate;
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "SELECT TOP 2 [P_id], [P_plate], [Owner_ID], [End_Time], " +
+                    QuoteColumn(noteColumn.Name) + " FROM [dbo].[Car_Issue]" +
+                    (lockRow ? " WITH (UPDLOCK, HOLDLOCK)" : "") +
+                    " WHERE CONVERT(NVARCHAR(100), [P_id])=@issueId AND CONVERT(NVARCHAR(100), [P_plate])=@plate;";
+                command.Parameters.Add("@issueId", SqlDbType.NVarChar, 100).Value = issueId;
+                command.Parameters.Add("@plate", SqlDbType.NVarChar, 100).Value = plate;
+                command.CommandTimeout = 15;
+                using (var reader = command.ExecuteReader())
+                {
+                    if (!reader.Read()) throw new InvalidOperationException("停车库中找不到指定记录 #" + issueId + " 车牌 " + plate);
+                    ownerId = reader["Owner_ID"] == DBNull.Value ? null : Convert.ToString(reader["Owner_ID"], CultureInfo.InvariantCulture);
+                    endDate = reader["End_Time"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(reader["End_Time"], CultureInfo.InvariantCulture);
+                    note = reader[noteColumn.Name] == DBNull.Value ? null : Convert.ToString(reader[noteColumn.Name]);
+                    actualIssueId = Convert.ToString(reader["P_id"], CultureInfo.InvariantCulture);
+                    actualPlate = Convert.ToString(reader["P_plate"]);
+                    if (reader.Read()) throw new InvalidOperationException("指定停车记录 #" + issueId + " 对应多条数据，已停止同步");
+                }
+            }
+            if (String.IsNullOrWhiteSpace(ownerId)) throw new InvalidOperationException("停车记录 #" + issueId + " 没有绑定住户");
+            var columns = new Dictionary<string, ParkingColumn>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "name", null }, { "phone", null }, { "room", roomColumn }, { "note", null }
+            };
+            var owner = ReadOwner(connection, transaction, ownerSource, columns, ownerId, lockRow);
+            return new ParkingVehicleSyncSnapshot
+            {
+                IssueId = actualIssueId,
+                Plate = actualPlate,
+                OwnerId = ownerId,
+                Room = owner.room,
+                EndDate = endDate,
+                Note = note
+            };
+        }
+
+        private static void AssertExpectedVehicleSync(Dictionary<string, object> expected, ParkingVehicleSyncSnapshot target)
+        {
+            expected = expected ?? new Dictionary<string, object>();
+            var expectedRoom = Clean(Value(expected, "room"));
+            var expectedDate = Clean(Value(expected, "endDate"));
+            var expectedNote = CleanMultiline(Value(expected, "note"));
+            if (!String.Equals(expectedRoom, Clean(target.Room), StringComparison.Ordinal))
+                throw new InvalidOperationException("目标库房号已被其他操作修改，请重新查询后再同步");
+            if (!String.Equals(expectedDate, DateText(target.EndDate), StringComparison.Ordinal))
+                throw new InvalidOperationException("目标库到期日期已被其他操作修改，请重新查询后再同步");
+            if (!String.Equals(expectedNote, CleanMultiline(target.Note), StringComparison.Ordinal))
+                throw new InvalidOperationException("目标库备注已被其他操作修改，请重新查询后再同步");
+        }
+
+        private static string ResolveAvailableOwnerRoom(SqlConnection connection, SqlTransaction transaction,
+            ParkingOwnerSource source, ParkingColumn roomColumn, string ownerId, string requestedRoom)
+        {
+            requestedRoom = Clean(requestedRoom);
+            if (requestedRoom == null) throw new InvalidOperationException("源停车库房号为空");
+            for (var suffix = 1; suffix <= 999; suffix++)
+            {
+                var candidate = suffix == 1 ? requestedRoom : requestedRoom + "/" + suffix.ToString(CultureInfo.InvariantCulture);
+                if (roomColumn.CharacterLimit > 0 && candidate.Length > roomColumn.CharacterLimit)
+                    throw new InvalidOperationException("房号“" + requestedRoom + "”遇到重名，但加自增后缀后超过旧库 " + roomColumn.CharacterLimit + " 字限制");
+                using (var command = connection.CreateCommand())
+                {
+                    command.Transaction = transaction;
+                    command.CommandText = "SELECT COUNT_BIG(1) FROM " + QuoteName(source.Schema, source.Table) +
+                        " WITH (UPDLOCK, HOLDLOCK) WHERE CONVERT(NVARCHAR(4000), " + QuoteColumn(roomColumn.Name) +
+                        ")=@room AND CONVERT(NVARCHAR(200), " + QuoteColumn(source.KeyColumn) + ")<>@ownerId;";
+                    command.Parameters.Add("@room", SqlDbType.NVarChar, Math.Max(1, roomColumn.CharacterLimit > 0 ? roomColumn.CharacterLimit : 4000)).Value = candidate;
+                    command.Parameters.Add("@ownerId", SqlDbType.NVarChar, 200).Value = ownerId;
+                    command.CommandTimeout = 15;
+                    if (Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture) == 0) return candidate;
+                }
+            }
+            throw new InvalidOperationException("房号“" + requestedRoom + "”重名过多，已停止同步");
+        }
+
+        internal static string ResolveAvailableOwnerRoomForTest(string requestedRoom, int characterLimit, params string[] occupied)
+        {
+            requestedRoom = Clean(requestedRoom);
+            var used = new HashSet<string>(occupied ?? new string[0], StringComparer.Ordinal);
+            for (var suffix = 1; suffix <= 999; suffix++)
+            {
+                var candidate = suffix == 1 ? requestedRoom : requestedRoom + "/" + suffix.ToString(CultureInfo.InvariantCulture);
+                if (characterLimit > 0 && candidate.Length > characterLimit) throw new InvalidOperationException("房号加后缀后超长");
+                if (!used.Contains(candidate)) return candidate;
+            }
+            throw new InvalidOperationException("房号重名过多");
+        }
+
+        private static void UpdateOwnerRoomForSync(SqlConnection connection, SqlTransaction transaction,
+            ParkingOwnerSource source, ParkingColumn roomColumn, string ownerId, string before, string after)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "UPDATE " + QuoteName(source.Schema, source.Table) + " SET " +
+                    QuoteColumn(roomColumn.Name) + "=@after WHERE CONVERT(NVARCHAR(200), " + QuoteColumn(source.KeyColumn) +
+                    ")=@ownerId AND ISNULL(CONVERT(NVARCHAR(4000), " + QuoteColumn(roomColumn.Name) + "), N'')=@before;";
+                command.Parameters.Add("@after", SqlDbType.NVarChar, Math.Max(1, roomColumn.CharacterLimit > 0 ? roomColumn.CharacterLimit : 4000)).Value = after;
+                command.Parameters.Add("@ownerId", SqlDbType.NVarChar, 200).Value = ownerId;
+                command.Parameters.Add("@before", SqlDbType.NVarChar, 4000).Value = before ?? "";
+                command.CommandTimeout = 15;
+                if (command.ExecuteNonQuery() != 1) throw new InvalidOperationException("目标库房号已被其他操作修改，本次同步已回滚");
+            }
+        }
+
+        private static void UpdateIssueNoteForSync(SqlConnection connection, SqlTransaction transaction,
+            ParkingColumn noteColumn, string issueId, string plate, string before, string after)
+        {
+            if (after != null && noteColumn.CharacterLimit > 0 && after.Length > noteColumn.CharacterLimit)
+                throw new InvalidOperationException("源库备注超过目标库 " + noteColumn.CharacterLimit + " 字限制");
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "UPDATE [dbo].[Car_Issue] SET " + QuoteColumn(noteColumn.Name) +
+                    "=@after WHERE CONVERT(NVARCHAR(100), [P_id])=@issueId AND CONVERT(NVARCHAR(100), [P_plate])=@plate" +
+                    " AND ISNULL(CONVERT(NVARCHAR(4000), " + QuoteColumn(noteColumn.Name) + "), N'')=@before;";
+                command.Parameters.Add("@after", SqlDbType.NVarChar, Math.Max(1, noteColumn.CharacterLimit > 0 ? noteColumn.CharacterLimit : 4000)).Value =
+                    after == null ? (object)DBNull.Value : after;
+                command.Parameters.Add("@issueId", SqlDbType.NVarChar, 100).Value = issueId;
+                command.Parameters.Add("@plate", SqlDbType.NVarChar, 100).Value = plate;
+                command.Parameters.Add("@before", SqlDbType.NVarChar, 4000).Value = before ?? "";
+                command.CommandTimeout = 15;
+                if (command.ExecuteNonQuery() != 1) throw new InvalidOperationException("目标库备注已被其他操作修改，本次同步已回滚");
+            }
+        }
+
+        private static void AssertUniqueVehiclePlate(SqlConnection connection, SqlTransaction transaction,
+            string issueId, string plate)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "SELECT COUNT_BIG(1) FROM [dbo].[Car_Issue] WITH (UPDLOCK, HOLDLOCK)" +
+                    " WHERE CONVERT(NVARCHAR(100), [P_plate])=@plate;";
+                command.Parameters.Add("@plate", SqlDbType.NVarChar, 100).Value = plate;
+                command.CommandTimeout = 15;
+                var count = Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+                if (count != 1) throw new InvalidOperationException("目标库车牌 " + plate + " 存在 " + count + " 条记录，Palte_extend 无法精确定位单条，已停止同步");
+            }
+        }
+
+        private static bool VehicleSyncMatches(ParkingVehicleSyncSnapshot target,
+            ParkingVehicleSyncSnapshot source, string desiredRoom)
+        {
+            var sameRoom = String.Equals(Clean(target.Room), Clean(desiredRoom), StringComparison.Ordinal) ||
+                String.Equals(NormalizeRoomIdentity(target.Room), NormalizeRoomIdentity(source.Room), StringComparison.Ordinal);
+            return sameRoom && SameDate(target.EndDate, source.EndDate) &&
+                String.Equals(CleanMultiline(target.Note), CleanMultiline(source.Note), StringComparison.Ordinal);
+        }
+
+        private static void AssertVehicleSyncWritten(ParkingVehicleSyncSnapshot source, string desiredRoom,
+            ParkingVehicleSyncSnapshot written)
+        {
+            if (!String.Equals(Clean(desiredRoom), Clean(written.Room), StringComparison.Ordinal))
+                throw new InvalidOperationException("房号写入后读回不一致，本次同步已回滚");
+            if (!SameDate(source.EndDate, written.EndDate))
+                throw new InvalidOperationException("到期日期写入后读回不一致，本次同步已回滚");
+            if (!String.Equals(CleanMultiline(source.Note), CleanMultiline(written.Note), StringComparison.Ordinal))
+                throw new InvalidOperationException("备注写入后读回不一致，本次同步已回滚");
+        }
+
+        private static Dictionary<string, object> VehicleSyncResult(string sourceDatabase, string targetDatabase,
+            ParkingVehicleSyncSnapshot before, ParkingVehicleSyncSnapshot after, bool roomConflictAdjusted, bool alreadySynced)
+        {
+            return new Dictionary<string, object>
+            {
+                { "verified", true }, { "alreadySynced", alreadySynced },
+                { "sourceDatabase", sourceDatabase }, { "targetDatabase", targetDatabase },
+                { "plate", after.Plate }, { "targetOwnerId", after.OwnerId },
+                { "beforeRoom", before.Room }, { "afterRoom", after.Room },
+                { "beforeEndDate", DateText(before.EndDate) }, { "afterEndDate", DateText(after.EndDate) },
+                { "beforeNote", before.Note }, { "afterNote", after.Note },
+                { "roomConflictAdjusted", roomConflictAdjusted }
+            };
+        }
+
+        private static bool SameDate(DateTime? left, DateTime? right)
+        {
+            return left.HasValue == right.HasValue && (!left.HasValue || left.Value.Date == right.Value.Date);
+        }
+
+        private static string DateText(DateTime? value)
+        {
+            return value.HasValue ? value.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null;
+        }
+
+        private static string NormalizeRoomIdentity(string value)
+        {
+            value = Clean(value);
+            if (value == null) return null;
+            var parts = value.Replace('\\', '/').Replace('-', '/').Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(delegate(string item) { return item.Trim(); }).ToArray();
+            if (parts.Length >= 4 && parts.All(delegate(string item) { int number; return Int32.TryParse(item, out number); }))
+                return String.Join("/", parts.Take(3).ToArray());
+            return String.Join("/", parts);
+        }
+
+        private static string NormalizePlate(string value)
+        {
+            return (value ?? "").Replace(" ", "").Replace("·", "").Trim().ToUpperInvariant();
+        }
+
+        private static void EnsureConfiguredParkingDatabase(AgentConfig config, string database)
+        {
+            if (!String.Equals(database, config.ParkingPhase1Database, StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(database, config.ParkingPhase2Database, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("任务指定的停车数据库不在本机配置中：" + database);
         }
 
         internal static string CanonicalBindingRoom(string room)
@@ -734,6 +1060,13 @@ SELECT id FROM @created;";
         private static SqlCommand Procedure(SqlConnection connection, string name)
         {
             var command = connection.CreateCommand(); command.CommandType = CommandType.StoredProcedure; command.CommandText = "dbo." + name; command.CommandTimeout = 30; return command;
+        }
+
+        private static SqlCommand Procedure(SqlConnection connection, SqlTransaction transaction, string name)
+        {
+            var command = Procedure(connection, name);
+            command.Transaction = transaction;
+            return command;
         }
 
         private static void Add(SqlCommand command, string name, SqlDbType type, int size, object value)

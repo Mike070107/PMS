@@ -73,6 +73,22 @@ test('换绑回报必须读回所选房号/电话/原住户，历史使用实际
   assert.deepEqual(histories[0].changes, [{ field: 'owner', label: '绑定房号', before: '198/7/201', after: '198/8/102/2' }]);
 });
 
+test('旧助手领取查询的 OR 条件必须括起，不能绕过租户或换绑版本限制', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const conditions: string[] = [];
+  const qb: any = { getOne: async () => null };
+  for (const method of ['where', 'andWhere', 'orderBy', 'setLock', 'setOnLocked']) {
+    qb[method] = (sql: string, values?: any) => { conditions.push(sql); if (values?.canRebind !== undefined) assert.equal(values.canRebind, false); return qb; };
+  }
+  Object.assign(service, { authenticateAgent: async () => ({ kind: 'parking_gateway', tenantId: 1, agentKey: 'old', version: '2.5.19', capabilities: { parkingDbWrite: true } }),
+    parkingOperationRepo: { manager: { transaction: async (fn: any) => fn({ getRepository: () => ({ createQueryBuilder: () => qb }) }) } },
+  });
+  assert.deepEqual(await service.claimParkingOperation('old', ''), { task: null });
+  const orConditions = conditions.filter((sql) => sql.includes(' OR '));
+  assert.equal(orConditions.length, 2);
+  for (const sql of orConditions) assert.ok(sql.startsWith('(') && sql.endsWith(')'), sql);
+});
+
 function harness() {
   const secret = issueAgentSecret();
   const agent = { tenantId: 1, agentKey: 'test-gateway', enabled: true, kind: 'parking_gateway',

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "pnpm test:parking-renewal && tsc -b && vite build",
-    "test:parking-renewal": "node --experimental-strip-types --test test/parking-renewal.test.mjs",
+    "test:parking-renewal": "node --experimental-strip-types --test test/parking-renewal.test.mjs test/parking-vehicle-merge.test.mjs",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit"
   },

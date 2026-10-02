@@ -9,6 +9,7 @@ import {
   supportsParkingOwnerUpdates,
   applyParkingOwnerSnapshot,
   parkingOwnerWriteMismatches,
+  supportsParkingVehicleSync,
 } from './parking-owner-update.util';
 
 test('住户更新值只去首尾空格并保留原始姓名间距和备注换行', () => {
@@ -49,6 +50,15 @@ test('只有新版助手可领取住户更新任务', () => {
   assert.equal(supportsParkingOwnerUpdates('2.3.0'), true);
   assert.equal(supportsParkingOwnerUpdates('0.6.2'), false);
   assert.equal(supportsParkingOwnerUpdates('0.7.0'), true);
+});
+
+test('跨库车辆资料对齐只交给 2.5.19 及以上助手', () => {
+  assert.equal(supportsParkingVehicleSync('2.5.17'), false);
+  assert.equal(supportsParkingVehicleSync('2.5.18'), false);
+  assert.equal(supportsParkingVehicleSync('2.5.19'), true);
+  assert.equal(supportsParkingVehicleSync('2.6.0'), true);
+  assert.equal(supportsParkingVehicleSync('3.0.0'), true);
+  assert.equal(supportsParkingVehicleSync('0.9.0'), false);
 });
 
 test('网页提示的列名必须去掉 Owner 前缀', () => {

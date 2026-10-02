@@ -8,6 +8,7 @@ export type ParkingOperationKind =
   | 'rebind_owner'
   | 'update_garages'
   | 'download_vehicle'
+  | 'sync_vehicle_info'
   | 'delete_vehicle';
 export type ParkingOperationStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
