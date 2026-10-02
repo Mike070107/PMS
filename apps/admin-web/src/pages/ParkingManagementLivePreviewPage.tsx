@@ -27,7 +27,8 @@ export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgr
       Owner__Mobile: '13800006421',
       Owner__P_note: '白天联系本人',
       P_Spaces: 'DK23',
-      End_Time: '2026-12-31 23:59:59',
+      // 续期回归：9 月 30 日选择 1 个月必须显示 10 月 31 日。
+      End_Time: '2026-09-30 23:59:59',
       Car_Zt: 0,
       P_Effective: '000000000000001010101',
       P_Download: '000000000000001010101',

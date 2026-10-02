@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "pnpm test:parking-renewal && tsc -b && vite build",
+    "test:parking-renewal": "node --experimental-strip-types --test test/parking-renewal.test.mjs",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit"
   },

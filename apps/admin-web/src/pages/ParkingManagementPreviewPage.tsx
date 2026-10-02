@@ -47,6 +47,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { parkingRenewalEndDate } from '../lib/parkingRenewal';
 import { useEffect, useMemo, useState } from 'react';
 import { accessCardIssuance, type AccessCardReadiness } from '@pms/api-client';
 import CopyableSecret from '../components/CopyableSecret';
@@ -650,7 +651,7 @@ function RenewalsPanel({ vehicles, onSubmit }: { vehicles: Vehicle[]; onSubmit: 
         {vehicles.map((vehicle) => {
           const role = vehicle.role === '租户车' ? 'tenant' : 'owner';
           const checked = selected.includes(vehicle.id);
-          const nextDate = dayjs(vehicle.validUntil).add(months, 'month').format('YYYY-MM-DD');
+          const nextDate = parkingRenewalEndDate(vehicle.validUntil, months);
           return (
             <article key={vehicle.id} className={checked ? 'is-selected' : ''}>
               <Checkbox checked={checked} onChange={(event) => setSelected((current) => event.target.checked ? [...current, vehicle.id] : current.filter((id) => id !== vehicle.id))} />
