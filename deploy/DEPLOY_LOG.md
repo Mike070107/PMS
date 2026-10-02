@@ -3921,3 +3921,10 @@
 - 生产 API 已配置受限的设备配对、会话签名和 FRP 准入密钥，并通过 PM2 热重载后健康检查。
 - `pms-gateway-router.service` 已启用，仅监听 `127.0.0.1:4190`；保留 `MemoryDenyWriteExecute=yes`，Node 以 `--jitless` 运行，健康接口返回 200。
 - 尚未切换 `caiwu.prsznh.cn` 公网流量；等待财务室电脑完成一次性配对并上报在线后再启用 FRP 准入插件与动态路由。
+## 2026-10-02 08:45 · api · f3323ff
+
+- 包：`pms-api-fast-20261002-084451.tar.gz`
+- 提交：f3323ff fix(parking): preserve linked owner fields in query results
+- 自上次（fbee333）以来上线的相关提交：
+  - f3323ff fix(parking): preserve linked owner fields in query results
+
