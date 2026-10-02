@@ -4036,3 +4036,11 @@
 - 自上次（c20488bf）以来上线的相关提交：
   - 514d5e7a fix: harden parking authorization operations
 
+## 2026-10-02 14:07 · assistant · 72683f54
+
+- 提交：72683f54 fix: map parking download car id parameters
+- 自上次（c20488bf）以来上线的相关提交：
+  - 72683f54 fix: map parking download car id parameters
+  - d4c7321e chore: bump data sync assistant version
+  - 514d5e7a fix: harden parking authorization operations
+
