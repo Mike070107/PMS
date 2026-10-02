@@ -3982,3 +3982,10 @@
 - 自上次（2b5a981）以来上线的相关提交：
   - 3bcc8f3 fix(release): verify parking fixes against immutable production versions
 
+## 2026-10-02 10:39 · web · 462fbe7
+
+- 包：`pms-web-20261002-103654.tar.gz`
+- 提交：462fbe7 fix(release): fail closed when deployment tags cannot be read
+- 自上次（f47120d）以来上线的相关提交：
+  - 3bcc8f3 fix(release): verify parking fixes against immutable production versions
+
