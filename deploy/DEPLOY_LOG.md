@@ -4044,3 +4044,9 @@
   - d4c7321e chore: bump data sync assistant version
   - 514d5e7a fix: harden parking authorization operations
 
+## 2026-10-02 14:23 · assistant · 74c7fba5
+
+- 提交：74c7fba5 fix: resolve access doors from legacy databases
+- 自上次（72683f54）以来上线的相关提交：
+  - 74c7fba5 fix: resolve access doors from legacy databases
+
