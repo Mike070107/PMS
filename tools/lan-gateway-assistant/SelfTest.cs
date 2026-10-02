@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
+using System.Diagnostics;
+using System.Drawing;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -26,6 +28,13 @@ namespace Pms.LanGatewayAssistant
                 Require(!GatewayUpdateService.IsTrustedDownloadUrl(new Uri("https://prsznh.cn/downloads/other/x.exe")), "reject unrelated update path");
                 Require(GatewayUpdateService.IsSha256(new string('a', 64)), "valid sha256");
                 Require(!GatewayUpdateService.IsSha256(new string('z', 64)), "reject non-hex sha256");
+                var heartbeat = GatewayControlPlaneClient.BuildHeartbeatJson("1.2.2", true, 3, new[] { new GatewayRouteReport { AppId = 9, Healthy = true, Message = "ok" } }, null);
+                Require(heartbeat.Contains("\"appId\":9"), "heartbeat lower camel app id");
+                Require(heartbeat.Contains("\"healthy\":true"), "heartbeat lower camel health");
+                Require(!heartbeat.Contains("\"AppId\""), "heartbeat rejects PascalCase route fields");
+                var executableIcon = Icon.ExtractAssociatedIcon(Process.GetCurrentProcess().MainModule.FileName);
+                Require(executableIcon != null, "embedded tray icon");
+                executableIcon.Dispose();
             }
             finally { try { Directory.Delete(root, true); } catch { } }
         }

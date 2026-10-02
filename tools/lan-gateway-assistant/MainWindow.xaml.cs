@@ -16,7 +16,7 @@ namespace Pms.LanGatewayAssistant
 {
     public partial class MainWindow : Window, INotifyPropertyChanged
     {
-        private readonly GatewayConfigurationStore _store; private readonly GatewayConfiguration _configuration; private readonly DispatcherTimer _timer;
+        private readonly GatewayConfigurationStore _store; private GatewayConfiguration _configuration; private readonly DispatcherTimer _timer;
         private bool _processRunning; private string _healthMessage = "正在读取代理状态…"; private string _logPreview = "";
         public ObservableCollection<RouteViewModel> Routes { get; private set; }
         public string VersionDisplay { get { return "v" + Assembly.GetExecutingAssembly().GetName().Version.ToString(3); } }
@@ -83,13 +83,21 @@ namespace Pms.LanGatewayAssistant
         private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
         {
             UpdateButton.IsEnabled = false; UpdateButton.Content = "正在检查…";
-            try { var result = await Task.Factory.StartNew(delegate { return GatewayUpdateService.CheckAndDownload(Assembly.GetExecutingAssembly().GetName().Version.ToString(3), _store.RootPath); }); if (!result.HasUpdate) { MessageBox.Show("当前已是最新版。", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information); return; } if (MessageBox.Show("已下载 v" + result.Manifest.Version + "。\n\n" + result.Manifest.Notes + "\n\n现在安全更新吗？", "发现新版", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes) GatewayUpdateService.StartApply(result.DownloadedFile, Process.GetCurrentProcess().MainModule.FileName, Process.GetCurrentProcess().Id); }
+            try { var result = await Task.Factory.StartNew(delegate { return GatewayUpdateService.CheckAndDownload(Assembly.GetExecutingAssembly().GetName().Version.ToString(3), _store.RootPath); }); if (!result.HasUpdate) { MessageBox.Show("当前已是最新版。", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information); return; } if (MessageBox.Show("已下载 v" + result.Manifest.Version + "。\n\n" + result.Manifest.Notes + "\n\n现在安全更新吗？", "发现新版", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes) { GatewayUpdateService.StartApply(result.DownloadedFile, Process.GetCurrentProcess().MainModule.FileName, Process.GetCurrentProcess().Id); var app = Application.Current as App; if (app != null) app.ExitApplication(); } }
             catch (Exception ex) { MessageBox.Show(ex.Message, "更新未完成", MessageBoxButton.OK, MessageBoxImage.Error); }
             finally { UpdateButton.IsEnabled = true; UpdateButton.Content = "检查更新"; }
         }
         private void OpenLogs_Click(object sender, RoutedEventArgs e) { Directory.CreateDirectory(Path.GetDirectoryName(_store.LogPath)); Process.Start("explorer.exe", "/select,\"" + _store.LogPath + "\""); }
         private void RefreshStatus()
         {
+            try
+            {
+                var latest = _store.Load();
+                var currentRoutes = String.Join("|", _configuration.Routes.Select(item => item.Id + ":" + item.LocalUrl + ":" + item.RemotePort + ":" + item.Enabled));
+                var latestRoutes = String.Join("|", latest.Routes.Select(item => item.Id + ":" + item.LocalUrl + ":" + item.RemotePort + ":" + item.Enabled));
+                if (latest.AppliedRevision != _configuration.AppliedRevision || !String.Equals(currentRoutes, latestRoutes, StringComparison.Ordinal)) { _configuration = latest; ReloadRoutes(); }
+            }
+            catch { }
             _processRunning = false; _healthMessage = GatewayServiceManager.Exists() ? "等待后台服务回报…" : "后台服务尚未安装";
             try { if (File.Exists(_store.HealthPath)) { var health = new JavaScriptSerializer().Deserialize<GatewayHealth>(File.ReadAllText(_store.HealthPath)); DateTimeOffset checkedAt; var fresh = DateTimeOffset.TryParse(health.CheckedAt, out checkedAt) && DateTimeOffset.Now.Subtract(checkedAt).Duration() < TimeSpan.FromMinutes(2); _processRunning = fresh && health.ProcessRunning && GatewayServiceManager.IsRunning(); _healthMessage = health.Message + (fresh ? "" : "（状态已过期）"); } } catch { }
             try { if (File.Exists(_store.LogPath)) _logPreview = String.Join(Environment.NewLine, File.ReadAllLines(_store.LogPath).Reverse().Take(4).Reverse()); else _logPreview = "还没有运行日志。"; } catch { _logPreview = "无法读取运行日志。"; }

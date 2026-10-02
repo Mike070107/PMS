@@ -28,8 +28,8 @@
           <StackPanel>
             <Border Margin="18,18,18,0" Padding="18" CornerRadius="12" Background="#EDF7F5" BorderBrush="#B8DED5" BorderThickness="1" Visibility="{Binding EnrollmentVisibility}">
               <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="220"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center"><TextBlock Text="使用一次性密钥连接 PMS" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource Ink}"/><TextBlock Text="在 PMS「内网应用发布」页创建代理，把 10 位配对密钥输入右侧；成功连接后密钥立即失效。" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,4,18,0" TextWrapping="Wrap"/></StackPanel>
-                <TextBox x:Name="InstallCodeBox" Grid.Column="1" Height="42" VerticalContentAlignment="Center" FontFamily="Consolas" FontSize="17" MaxLength="11" Margin="0,0,10,0" ToolTip="一次性配对密钥，例如 ABCDE-23456"/>
+                <StackPanel VerticalAlignment="Center"><TextBlock Text="使用一次性密钥连接 PMS" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource Ink}"/><TextBlock Text="在 PMS「内网应用发布」页创建客户端，把 16 位配对密钥输入右侧；成功连接后密钥立即失效。" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,4,18,0" TextWrapping="Wrap"/></StackPanel>
+                <TextBox x:Name="InstallCodeBox" Grid.Column="1" Height="42" VerticalContentAlignment="Center" FontFamily="Consolas" FontSize="16" MaxLength="19" Margin="0,0,10,0" ToolTip="一次性配对密钥，例如 ABCD-EFGH-JKLM-2345"/>
                 <Button x:Name="EnrollButton" Grid.Column="2" Content="连接并安装" Click="Enroll_Click" MinWidth="118"/>
               </Grid>
             </Border>

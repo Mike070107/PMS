@@ -14,9 +14,9 @@ export const createGatewayDeviceToken = () => randomBytes(32).toString('hex');
 
 export const createGatewayInstallCode = () => {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const bytes = randomBytes(10);
+  const bytes = randomBytes(16);
   const body = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
-  return `${body.slice(0, 5)}-${body.slice(5)}`;
+  return body.match(/.{4}/g)!.join('-');
 };
 
 export const signGatewayConfiguration = (payload: string, token: string) =>

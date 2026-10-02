@@ -106,7 +106,7 @@ namespace Pms.LanGatewayAssistant
             var request = NewRequest(uri);
             using (var response = (HttpWebResponse)request.GetResponse())
             using (var stream = response.GetResponseStream())
-            using (var reader = new StreamReader(stream))
+            using (var reader = new StreamReader(stream, System.Text.Encoding.UTF8, true))
             {
                 try
                 {

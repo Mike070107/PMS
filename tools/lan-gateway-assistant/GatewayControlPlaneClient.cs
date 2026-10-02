@@ -83,19 +83,38 @@ namespace Pms.LanGatewayAssistant
         {
             if (!_store.IsManaged) return;
             var current = _store.Load();
-            var request = _json.Serialize(new
-            {
-                version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(3),
-                appliedRevision = appliedRevision,
-                processRunning = processRunning,
-                error = String.IsNullOrWhiteSpace(error) ? null : error,
-                routes = routes ?? new List<GatewayRouteReport>()
-            });
+            var request = BuildHeartbeatJson(
+                System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(3),
+                processRunning,
+                appliedRevision,
+                routes,
+                error);
             using (var client = NewClient(true))
             {
                 client.Headers[HttpRequestHeader.ContentType] = "application/json";
                 client.UploadString(current.ApiBaseUrl.TrimEnd('/') + "/external-access-agent/heartbeat", "POST", request);
             }
+        }
+
+        internal static string BuildHeartbeatJson(string version, bool processRunning, int appliedRevision, IEnumerable<GatewayRouteReport> routes, string error)
+        {
+            // JavaScriptSerializer writes C# class properties as PascalCase. The PMS
+            // DTO is strict and expects lower camelCase, so project every route into
+            // an anonymous wire object instead of serializing GatewayRouteReport.
+            var wireRoutes = (routes ?? Enumerable.Empty<GatewayRouteReport>()).Select(route => new
+            {
+                appId = route.AppId,
+                healthy = route.Healthy,
+                message = String.IsNullOrWhiteSpace(route.Message) ? null : route.Message
+            }).ToArray();
+            return new JavaScriptSerializer().Serialize(new
+            {
+                version = version,
+                appliedRevision = appliedRevision,
+                processRunning = processRunning,
+                error = String.IsNullOrWhiteSpace(error) ? null : error,
+                routes = wireRoutes
+            });
         }
 
         private WebClient NewClient(bool authenticated)

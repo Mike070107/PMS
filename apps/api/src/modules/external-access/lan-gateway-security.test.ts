@@ -11,7 +11,8 @@ import { ExternalAccessService } from './external-access.service';
 
 test('gateway enrollment codes are human-readable and secrets compare by hash', () => {
   const code = createGatewayInstallCode();
-  assert.match(code, /^[A-Z2-9]{5}-[A-Z2-9]{5}$/);
+  assert.match(code, /^[A-Z2-9]{4}(?:-[A-Z2-9]{4}){3}$/);
+  assert.equal(code.length, 19);
   assert.equal(gatewaySecretMatches(code, hashGatewaySecret(code)), true);
   assert.equal(gatewaySecretMatches(`${code}X`, hashGatewaySecret(code)), false);
 });

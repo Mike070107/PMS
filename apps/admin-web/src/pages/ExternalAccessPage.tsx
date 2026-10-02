@@ -431,7 +431,7 @@ function GatewayAgentCard({ agent, preview, canEdit, onChanged }: { agent: Gatew
   const [installCode, setInstallCode] = useState<string | null>(null);
   const statusLabel = { pending: '待安装', online: '在线', offline: '离线', degraded: '异常', disabled: '已停用' }[agent.status];
   const issueCode = async () => {
-    if (preview) { setInstallCode('ABCDE-23456'); return; }
+    if (preview) { setInstallCode('ABCD-EFGH-JKLM-2345'); return; }
     setIssuing(true);
     try {
       const result = await request<{ installCode: string }>({ method: 'POST', url: `/external-access/agents/${agent.id}/install-code` });
@@ -494,7 +494,7 @@ function GatewayAgentModal({ open, preview, onClose, onDone }: { open: boolean; 
   const [result, setResult] = useState<{ installCode: string; installCodeExpiresAt?: string } | null>(null);
   useEffect(() => { if (open) { form.resetFields(); setResult(null); } }, [open, form]);
   const save = async ({ name }: { name: string }) => {
-    if (preview) { setResult({ installCode: 'ABCDE-23456' }); return; }
+    if (preview) { setResult({ installCode: 'ABCD-EFGH-JKLM-2345' }); return; }
     setSaving(true);
     try { setResult(await request({ method: 'POST', url: '/external-access/agents', data: { name } })); }
     catch (error: any) { message.error(error?.message || '创建代理失败'); }

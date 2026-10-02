@@ -83,7 +83,7 @@ namespace Pms.LanGatewayAssistant
             }
             catch { return -1; }
         }
-        private static void InstallStartup(string executable) { using (var key = Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")) key.SetValue("PmsLanGatewayAssistant", "\"" + executable + "\""); }
+        private static void InstallStartup(string executable) { using (var key = Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")) key.SetValue("PmsLanGatewayAssistant", "\"" + executable + "\" --tray"); }
         private static void RemoveStartup() { using (var key = Registry.CurrentUser.OpenSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run", true)) if (key != null) key.DeleteValue("PmsLanGatewayAssistant", false); }
     }
 }
