@@ -3967,3 +3967,11 @@
 - 说明：Public manifest 2.5.16 and executable SHA256 360202ee84623d6dbcd8fc59c72516da84d72bb9f2af3af5ec519f1dbb482db0 verified; field installation not confirmed
 - 首次标记；之前的发布没有记录，此前的提交视为已上线
 
+## 2026-10-02 10:28 · api · 2b5a981
+
+- 包：`pms-api-fast-20261002-1018.tar.gz`
+- 提交：2b5a981 fix-gateway-frp-http-200
+- 说明：FRPS-admission-HTTP-200-and-dynamic-gateway
+- 自上次（4482c1c）以来上线的相关提交：
+  - 2b5a981 fix-gateway-frp-http-200
+
