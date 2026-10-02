@@ -3975,3 +3975,10 @@
 - 自上次（4482c1c）以来上线的相关提交：
   - 2b5a981 fix-gateway-frp-http-200
 
+## 2026-10-02 10:37 · api · 462fbe7
+
+- 包：`pms-api-fast-20261002-103654.tar.gz`
+- 提交：462fbe7 fix(release): fail closed when deployment tags cannot be read
+- 自上次（2b5a981）以来上线的相关提交：
+  - 3bcc8f3 fix(release): verify parking fixes against immutable production versions
+
