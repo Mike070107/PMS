@@ -652,14 +652,7 @@ ORDER BY ID DESC";
             using (var command = Procedure(connection, procedure))
             {
                 var parameters = ProcedureParameters(connection, procedure);
-                foreach (var item in parameters)
-                {
-                    var key = ParameterKey(item.Name);
-                    var value = Value(payload, key) ?? (key == "plate" ? plate : key == "admin" ? admin : key == "effective" ? Value(payload, "effective") : null);
-                    if (value == null && !item.IsOutput && !item.IsNullable) throw new InvalidOperationException(procedure + " 参数 " + item.Name + " 无法从操作字段映射，已停止执行");
-                    if (item.IsOutput) { var output = command.Parameters.Add(item.Name, item.Type); output.Direction = ParameterDirection.Output; continue; }
-                    Add(command, item.Name, item.Type, item.Size, value);
-                }
+                AddMappedProcedureParameters(command, parameters, payload, plate, admin);
                 command.ExecuteNonQuery();
             }
             return new Dictionary<string, object> { { "verified", true }, { "procedure", procedure }, { "message", label + "已提交，等待设备回执" } };
@@ -681,16 +674,53 @@ ORDER BY ID DESC";
             }
         }
 
-        private sealed class ProcedureParameter { public string Name; public SqlDbType Type; public int Size; public bool IsOutput; public bool IsNullable; }
+        internal sealed class ProcedureParameter { public string Name; public SqlDbType Type; public int Size; public bool IsOutput; }
+
+        // SQL Server 2008 R2 的 sys.parameters 没有 is_nullable。
+        // 可为 NULL 也不代表可省略参数；无法映射的输入必须停止，不能默认传 NULL 执行。
+        internal const string ProcedureParametersSql = "SELECT p.name, t.name, p.max_length, p.is_output FROM sys.parameters p JOIN sys.types t ON p.user_type_id=t.user_type_id WHERE p.object_id=OBJECT_ID(@name) AND p.parameter_id>0 ORDER BY p.parameter_id";
+
+        internal static List<ProcedureParameter> ReadProcedureParameters(IDataReader reader)
+        {
+            var result = new List<ProcedureParameter>();
+            while (reader.Read())
+            {
+                var type = SqlType(reader.GetString(1));
+                var size = (int)reader.GetInt16(2);
+                // 目录中的长度是字节；SqlParameter 的 Unicode 长度按字符，MAX 保留 -1。
+                if (size > 0 && (type == SqlDbType.NVarChar || type == SqlDbType.NChar)) size /= 2;
+                result.Add(new ProcedureParameter { Name = reader.GetString(0), Type = type, Size = size, IsOutput = reader.GetBoolean(3) });
+            }
+            return result;
+        }
+
+        internal static void AddMappedProcedureParameters(SqlCommand command, IEnumerable<ProcedureParameter> parameters,
+            Dictionary<string, object> payload, string plate, string admin)
+        {
+            foreach (var item in parameters)
+            {
+                var parameter = new SqlParameter(item.Name, item.Type);
+                if (item.Size != 0) parameter.Size = item.Size;
+                if (item.IsOutput) parameter.Direction = ParameterDirection.Output;
+                else
+                {
+                    var key = ParameterKey(item.Name);
+                    var value = Value(payload, key) ?? (key == "plate" ? plate : key == "admin" ? admin : null);
+                    if (value == null) throw new InvalidOperationException(command.CommandText + " 参数 " + item.Name + " 无法从操作字段映射，已停止执行");
+                    parameter.Value = value;
+                }
+                command.Parameters.Add(parameter);
+            }
+        }
 
         private static List<ProcedureParameter> ProcedureParameters(SqlConnection connection, string procedure)
         {
             var result = new List<ProcedureParameter>();
             using (var command = connection.CreateCommand())
             {
-                command.CommandText = "SELECT p.name, t.name, p.max_length, p.is_output, p.is_nullable FROM sys.parameters p JOIN sys.types t ON p.user_type_id=t.user_type_id WHERE p.object_id=OBJECT_ID(@name) ORDER BY p.parameter_id";
+                command.CommandText = ProcedureParametersSql;
                 Add(command, "@name", SqlDbType.NVarChar, 300, "dbo." + procedure);
-                using (var reader = command.ExecuteReader()) while (reader.Read()) result.Add(new ProcedureParameter { Name = reader.GetString(0), Type = SqlType(reader.GetString(1)), Size = Math.Max(0, (int)reader.GetInt16(2)), IsOutput = reader.GetBoolean(3), IsNullable = reader.GetBoolean(4) });
+                using (var reader = command.ExecuteReader()) result = ReadProcedureParameters(reader);
             }
             if (result.Count == 0) throw new InvalidOperationException("找不到存储过程 " + procedure + " 的参数定义");
             return result;
@@ -698,7 +728,10 @@ ORDER BY ID DESC";
 
         private static SqlDbType SqlType(string type)
         {
-            type = type.ToLowerInvariant(); if (type.Contains("int")) return SqlDbType.Int; if (type.Contains("date") || type.Contains("time")) return SqlDbType.DateTime; if (type.Contains("float") || type.Contains("real")) return SqlDbType.Float; if (type.Contains("decimal") || type.Contains("numeric")) return SqlDbType.Decimal; return SqlDbType.VarChar;
+            SqlDbType result;
+            if (String.Equals(type, "numeric", StringComparison.OrdinalIgnoreCase)) return SqlDbType.Decimal;
+            if (Enum.TryParse<SqlDbType>(type, true, out result) && Enum.IsDefined(typeof(SqlDbType), result)) return result;
+            throw new InvalidOperationException("下载存储过程使用了尚未支持的参数类型 " + type + "，已停止执行");
         }
 
         private static string ParameterKey(string name)

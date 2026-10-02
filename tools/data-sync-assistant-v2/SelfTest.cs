@@ -50,6 +50,7 @@ namespace Pms.DataSyncAssistant
                 VerifyAccessGatewayMigration(root);
                 VerifyLegacyRoomMatching();
                 VerifyParkingOwnerColumnMapping();
+                VerifyParkingDownloadParameters();
                 VerifyActivityHistory(root);
                 VerifyAssistantUpdater(root);
                 VerifyProductUpdater();
@@ -308,6 +309,52 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("不存在的车牌未被拦截");
             }
             catch (InvalidOperationException exception) { if (!exception.Message.Contains("找不到")) throw; }
+        }
+
+        private static void VerifyParkingDownloadParameters()
+        {
+            if (ParkingDatabase.ProcedureParametersSql.IndexOf("is_nullable", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                !ParkingDatabase.ProcedureParametersSql.Contains("@name"))
+                throw new InvalidOperationException("下载参数查询必须兼容 SQL Server 2008，且参数化定位过程");
+
+            // 模拟旧版目录，仅有四列；读取第五列会直接让自检失败。
+            var table = new System.Data.DataTable();
+            table.Columns.Add("name", typeof(string));
+            table.Columns.Add("type", typeof(string));
+            table.Columns.Add("max_length", typeof(short));
+            table.Columns.Add("is_output", typeof(bool));
+            table.Rows.Add("@P_plate", "nvarchar", (short)100, false);
+            table.Rows.Add("@P_Effective", "varchar", (short)256, false);
+            table.Rows.Add("@P_Admin", "varchar", (short)20, false);
+            table.Rows.Add("@result", "nvarchar", (short)-1, true);
+            List<ParkingDatabase.ProcedureParameter> parameters;
+            using (var reader = table.CreateDataReader()) parameters = ParkingDatabase.ReadProcedureParameters(reader);
+            var payload = new Dictionary<string, object> { { "effective", "00000011" } };
+            using (var command = new System.Data.SqlClient.SqlCommand("dbo.Add_DownloadCard"))
+            {
+                ParkingDatabase.AddMappedProcedureParameters(command, parameters, payload, "沪ATEST1", "PMS");
+                if (command.Parameters.Count != 4 || (string)command.Parameters["@P_plate"].Value != "沪ATEST1" ||
+                    command.Parameters["@P_plate"].SqlDbType != System.Data.SqlDbType.NVarChar || command.Parameters["@P_plate"].Size != 50 ||
+                    (string)command.Parameters["@P_Effective"].Value != "00000011" ||
+                    (string)command.Parameters["@P_Admin"].Value != "PMS" ||
+                    command.Parameters["@result"].Direction != System.Data.ParameterDirection.Output || command.Parameters["@result"].Size != -1)
+                    throw new InvalidOperationException("旧版下载参数绑定、Unicode 长度或输出 MAX 参数失败");
+            }
+            parameters.Add(new ParkingDatabase.ProcedureParameter { Name = "@unknown_required", Type = System.Data.SqlDbType.Int });
+            try
+            {
+                using (var command = new System.Data.SqlClient.SqlCommand("dbo.Add_DownloadCard"))
+                    ParkingDatabase.AddMappedProcedureParameters(command, parameters, payload, "沪ATEST1", "PMS");
+                throw new InvalidOperationException("未映射输入参数没有阻止执行");
+            }
+            catch (InvalidOperationException exception) { if (!exception.Message.Contains("@unknown_required") || !exception.Message.Contains("已停止执行")) throw; }
+            table.Rows.Clear();
+            table.Rows.Add("@flag", "bit", (short)1, false);
+            table.Rows.Add("@id", "bigint", (short)8, false);
+            table.Rows.Add("@small", "smallint", (short)2, false);
+            using (var reader = table.CreateDataReader()) parameters = ParkingDatabase.ReadProcedureParameters(reader);
+            if (parameters[0].Type != System.Data.SqlDbType.Bit || parameters[1].Type != System.Data.SqlDbType.BigInt || parameters[2].Type != System.Data.SqlDbType.SmallInt)
+                throw new InvalidOperationException("下载参数不能把不同整数/位类型全部当作 int/varchar");
         }
 
         private static void VerifyActivityHistory(string root)

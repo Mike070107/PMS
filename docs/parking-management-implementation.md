@@ -25,6 +25,8 @@
 
 ### 固定回归与证据边界
 
+- 2026-10-02 “下发设备”报 `列名 is_nullable 无效`：已定位助手 `ProcedureParameters` 读取 `sys.parameters.is_nullable`，与已记录的现场 SQL Server 2008 R2 不兼容，失败在 `Add_DownloadCard` 执行前。2.5.18 改读旧版共有的四列参数元数据；不修改数据库结构，也不更改 `sys.columns.is_nullable` 的正常查询。可为 NULL 不等于输入参数可省略（[微软参数目录说明](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-parameters-transact-sql)），因此未知输入明确停止，不能靠默认 NULL 执行；同步修正类型、Unicode 字符长度和输出长度保留。自检用仅四列的 DataTable 验证解析和真实 SqlCommand 绑定、缺参拒绝。构建/自检通过不等于现场 SQL/设备回执通过；本机未取得现场连接凭据、共享路径不可访问，未执行真实下发。生产发布和现场升级另行记录。
+
 - `parking-query.util.test.ts`：三种同户房号/隐藏卡序号、6 与 36 楼边界解析、换牌后缀、PMS 实际服务层匹配；`parking-history.util.test.ts`：历史关联。
 - `test:parking-owner`：漏车牌、同户多车定位、任务幂等/重试、回执证据等；`SelfTest.cs`：助手解析/数据库更新结构及升级基础用例。它们不等于真实 SQL/硬件成功。
 - `deploy/release-check.test.mjs`：输入变化使旧证据失效、版本不一致拒绝、助手同号覆盖拒绝。`publish-production.ps1` 实际调用这些检查，不只写文档。
