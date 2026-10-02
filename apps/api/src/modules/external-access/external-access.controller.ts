@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
@@ -117,6 +117,7 @@ export class ExternalAccessAgentController {
 
   /** frps 仅从本机调用；路径密钥防止公网对设备令牌进行探测。 */
   @Post('frp-plugin/:pluginSecret')
+  @HttpCode(200)
   frpPlugin(
     @Param('pluginSecret') pluginSecret: string,
     @Query('op') operation: string,

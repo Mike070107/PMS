@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import {
   createGatewayDeviceToken,
   createGatewayInstallCode,
@@ -8,6 +9,15 @@ import {
   signGatewayConfiguration,
 } from './lan-gateway-security';
 import { ExternalAccessService } from './external-access.service';
+import { ExternalAccessAgentController } from './external-access.controller';
+
+test('FRP admission endpoint returns the protocol-required HTTP 200', () => {
+  const status = Reflect.getMetadata(
+    HTTP_CODE_METADATA,
+    ExternalAccessAgentController.prototype.frpPlugin,
+  );
+  assert.equal(status, 200);
+});
 
 test('gateway enrollment codes are human-readable and secrets compare by hash', () => {
   const code = createGatewayInstallCode();
