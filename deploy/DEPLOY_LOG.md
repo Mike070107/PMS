@@ -3936,3 +3936,11 @@
 - 自上次（f3323ff）以来上线的相关提交：
   - b426204 fix(gateway): complete managed client status flow
 
+## 2026-10-02 09:06 · web · 156fd69
+
+- 包：`pms-web-20261002-085908.tar.gz`
+- 提交：156fd69 deploy: api → fd7fe23
+- 说明：内网应用客户端密钥展示已上线
+- 自上次（fbee333）以来上线的相关提交：
+  - b426204 fix(gateway): complete managed client status flow
+
