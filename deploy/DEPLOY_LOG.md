@@ -4011,3 +4011,14 @@
   - e1e50fba fix(parking): end shortcut renewals on the target calendar month end
   - 8b8e1411 fix(access-card): expose controller upload for pending cards
 
+## 2026-10-02 12:37 · assistant · c20488bf
+
+- 提交：c20488bf merge: preserve vehicle sync while integrating verified PMS owner rebinding
+- 自上次（4482c1c4）以来上线的相关提交：
+  - c20488bf merge: preserve vehicle sync while integrating verified PMS owner rebinding
+  - bce48bdb fix(parking): rebind vehicles using verified PMS rooms and unique legacy owners
+  - 0b41955b feat(parking): reconcile duplicate plates across legacy databases
+  - 98c7e7a7 fix(assistant): support legacy SQL Server download parameter metadata
+  - a899fa38 fix(parking): match bare legacy room numbers by database
+  - 3bcc8f3b fix(release): verify parking fixes against immutable production versions
+
