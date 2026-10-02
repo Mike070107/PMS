@@ -3960,3 +3960,10 @@
   - 4482c1c fix(web): avoid repeated release date and stop tracking build cache
   - 209f718 fix(parking): preserve vehicle identity and verify owner update outcomes
 
+## 2026-10-02 09:44 · assistant · 4482c1c
+
+- 包：`Pms.DataSyncAssistant.V2-2.5.16.exe`
+- 提交：4482c1c fix(web): avoid repeated release date and stop tracking build cache
+- 说明：Public manifest 2.5.16 and executable SHA256 360202ee84623d6dbcd8fc59c72516da84d72bb9f2af3af5ec519f1dbb482db0 verified; field installation not confirmed
+- 首次标记；之前的发布没有记录，此前的提交视为已上线
+
