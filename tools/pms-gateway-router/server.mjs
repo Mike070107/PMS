@@ -1,4 +1,5 @@
 import http from 'node:http';
+import https from 'node:https';
 import net from 'node:net';
 
 const listenHost = process.env.GATEWAY_ROUTER_HOST || '127.0.0.1';
@@ -41,14 +42,33 @@ if (process.env.NODE_ENV !== 'test') {
 
 async function authorize(hostname, cookie) {
   const url = `${apiBase}/gateway-access/verify?hostname=${encodeURIComponent(hostname)}`;
-  const response = await fetch(url, { headers: cookie ? { cookie } : {}, signal: AbortSignal.timeout(5000) });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
+  const { status, body } = await requestJson(url, cookie ? { cookie } : {}, 5000);
+  if (status < 200 || status >= 300) {
     const error = new Error(body.message || '网关授权失败');
-    error.status = response.status;
+    error.status = status;
     throw error;
   }
   return body;
+}
+
+function requestJson(value, headers = {}, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(value);
+    const transport = url.protocol === 'https:' ? https : http;
+    const request = transport.request(url, { method: 'GET', headers }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        let body = {};
+        try { body = text ? JSON.parse(text) : {}; } catch { /* API errors still retain the HTTP status. */ }
+        resolve({ status: response.statusCode || 502, body });
+      });
+    });
+    request.setTimeout(timeoutMs, () => request.destroy(new Error('PMS 授权服务响应超时')));
+    request.on('error', reject);
+    request.end();
+  });
 }
 
 function proxyHttp(request, response, hostname, route) {
@@ -149,4 +169,4 @@ function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char);
 }
 
-export { normalizeHostname, rewriteCookies, rewriteLocation, stripGatewayCookie };
+export { normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie };

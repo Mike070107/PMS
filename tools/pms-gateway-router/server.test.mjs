@@ -1,8 +1,35 @@
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import test from 'node:test';
 
 process.env.NODE_ENV = 'test';
-const { normalizeHostname, rewriteCookies, rewriteLocation, stripGatewayCookie } = await import('./server.mjs');
+const { normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie } = await import('./server.mjs');
+
+test('requestJson works without fetch or WebAssembly', async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalWebAssembly = globalThis.WebAssembly;
+  globalThis.fetch = undefined;
+  globalThis.WebAssembly = undefined;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    globalThis.WebAssembly = originalWebAssembly;
+  });
+
+  const server = http.createServer((request, response) => {
+    assert.equal(request.headers.cookie, '__Secure-pms_gateway=session');
+    response.writeHead(401, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ message: '请先扫码授权' }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+
+  const address = server.address();
+  const result = await requestJson(
+    `http://127.0.0.1:${address.port}/verify`,
+    { cookie: '__Secure-pms_gateway=session' },
+  );
+  assert.deepEqual(result, { status: 401, body: { message: '请先扫码授权' } });
+});
 
 test('only registered zone-shaped hostnames reach routing', () => {
   assert.equal(normalizeHostname('CaiWu.prsznh.cn:443'), 'caiwu.prsznh.cn');
