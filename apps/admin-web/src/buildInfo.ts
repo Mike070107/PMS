@@ -12,4 +12,4 @@ export const BUILD_COMMIT = env.VITE_BUILD_COMMIT || '';
 export const BUILD_LABEL =
   APP_VERSION === 'dev'
     ? '开发版'
-    : `版本 ${APP_VERSION}${BUILD_DATE ? ` · ${BUILD_DATE}` : ''}`;
+    : `版本 ${APP_VERSION}`;
