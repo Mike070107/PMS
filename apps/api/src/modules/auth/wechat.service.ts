@@ -67,6 +67,22 @@ export interface WxaCodeOptions {
   checkPath?: boolean;
 }
 
+export interface WxaUrlSchemeOptions {
+  /** 已发布的小程序页面路径，不带参数。 */
+  path: string;
+  /** 页面 query，不包含开头的 ?。 */
+  query?: string;
+  envVersion?: WxEnvVersion;
+  /** 临时 Scheme 的到期时间。 */
+  expiresAt: Date;
+}
+
+interface WxUrlSchemeResp {
+  errcode?: number;
+  errmsg?: string;
+  openlink?: string;
+}
+
 const API_BASE = 'https://api.weixin.qq.com';
 
 interface WxTemplateListResp {
@@ -218,6 +234,50 @@ export class WechatService {
       );
     }
     return Buffer.from(resp.data);
+  }
+
+  /**
+   * 生成可从手机或电脑浏览器直接唤起微信小程序的临时 URL Scheme。
+   * Scheme 与网页一次性票据同时到期；返回值只接受微信官方的 business Scheme，
+   * 避免把上游异常内容当成任意跳转地址交给浏览器。
+   */
+  async generateWxaUrlScheme(
+    options: WxaUrlSchemeOptions,
+    appType: WxAppType = 'owner',
+  ): Promise<string> {
+    const body = {
+      jump_wxa: {
+        path: options.path.replace(/^\/+/, ''),
+        query: options.query ?? '',
+        env_version: options.envVersion ?? 'release',
+      },
+      is_expire: true,
+      expire_type: 0,
+      expire_time: Math.floor(options.expiresAt.getTime() / 1000),
+    };
+
+    let token = await this.accessToken(appType);
+    let resp = await this.post<WxUrlSchemeResp>(
+      `/wxa/generatescheme?access_token=${encodeURIComponent(token)}`,
+      body,
+    );
+    if (resp.errcode === 40001 || resp.errcode === 42001) {
+      this.tokenCache.delete(appType);
+      token = await this.accessToken(appType);
+      resp = await this.post<WxUrlSchemeResp>(
+        `/wxa/generatescheme?access_token=${encodeURIComponent(token)}`,
+        body,
+      );
+    }
+    if (resp.errcode || !resp.openlink) {
+      throw new ServiceUnavailableException(
+        `生成微信授权入口失败：${resp.errmsg || resp.errcode || '未返回打开地址'}`,
+      );
+    }
+    if (!/^weixin:\/\/dl\/business\/\?t=[A-Za-z0-9_-]+$/.test(resp.openlink)) {
+      throw new ServiceUnavailableException('微信返回了无法识别的授权入口');
+    }
+    return resp.openlink;
   }
 
   private async postWxaCode(

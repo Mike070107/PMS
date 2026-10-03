@@ -143,12 +143,30 @@ export class QrLoginService {
       }),
     );
 
+    // 同一部手机无法扫描自己屏幕上的码；电脑用户也常已登录桌面微信。
+    // Scheme 失败不能拖垮原有二维码登录，所以这里只降级记录并保留二维码。
+    let launchScheme: string | null = null;
+    try {
+      launchScheme = await this.wechat.generateWxaUrlScheme(
+        {
+          path: CONFIRM_PAGE,
+          query: `ticket=${ticket}`,
+          envVersion: this.envVersion(),
+          expiresAt,
+        },
+        'staff',
+      );
+    } catch (err) {
+      this.logger.warn(`生成微信同机授权入口失败，继续使用二维码：${(err as Error).message}`);
+    }
+
     return {
       ticket,
       qrImage: `data:image/png;base64,${png.toString('base64')}`,
       expiresIn: TICKET_TTL_SEC,
       browserSecret: browser.secret,
       confirmationCode: matchCode,
+      launchScheme,
       applicationName: oidcRequest?.requiredAppName ?? 'PMS 物业管理后台',
       applicationHostname: oidcRequest?.requiredAppHostname ?? null,
     };

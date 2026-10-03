@@ -10,6 +10,7 @@ import {
 } from './lan-gateway-security';
 import { ExternalAccessService } from './external-access.service';
 import { ExternalAccessAgentController } from './external-access.controller';
+import { GatewayAccessController } from './gateway-access.controller';
 
 test('FRP admission endpoint returns the protocol-required HTTP 200', () => {
   const status = Reflect.getMetadata(
@@ -62,4 +63,22 @@ test('dynamic gateway can bootstrap a freshly verified route before public healt
 
   app.originCheckedAt = new Date(Date.now() - 91_000);
   await assert.rejects(() => service.resolveGatewayApplication('finance.prsznh.cn'), /公网 HTTPS 检查返回 302/);
+});
+
+test('gateway login page offers a same-phone WeChat launch action without removing the desktop QR', () => {
+  const controller = new GatewayAccessController({} as any, {} as any);
+  const html = (controller as any).renderLogin(
+    'ticket123',
+    'data:image/png;base64,abc',
+    '4821',
+    'weixin://dl/business/?t=launch123',
+    '用友财务系统',
+    'caiwu.prsznh.cn',
+    'https://caiwu.prsznh.cn/tplus/view/login.html',
+    'nonce',
+  );
+
+  assert.match(html, /打开微信授权登录/);
+  assert.match(html, /href="weixin:\/\/dl\/business\/\?t=launch123"/);
+  assert.match(html, /微信小程序登录二维码/);
 });
