@@ -53,10 +53,10 @@ test('只有新版助手可领取住户更新任务', () => {
   assert.equal(supportsParkingOwnerUpdates('0.7.0'), true);
 });
 
-test('跨库车辆资料对齐只交给 2.5.19 及以上助手', () => {
-  assert.equal(supportsParkingVehicleSync('2.5.17'), false);
-  assert.equal(supportsParkingVehicleSync('2.5.18'), false);
-  assert.equal(supportsParkingVehicleSync('2.5.19'), true);
+test('跨库资料复用只交给不修改到期日的 2.5.23 及以上助手', () => {
+  assert.equal(supportsParkingVehicleSync('2.5.19'), false);
+  assert.equal(supportsParkingVehicleSync('2.5.22'), false);
+  assert.equal(supportsParkingVehicleSync('2.5.23'), true);
   assert.equal(supportsParkingVehicleSync('2.6.0'), true);
   assert.equal(supportsParkingVehicleSync('3.0.0'), true);
   assert.equal(supportsParkingVehicleSync('0.9.0'), false);

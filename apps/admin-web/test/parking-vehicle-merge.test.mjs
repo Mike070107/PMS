@@ -4,6 +4,7 @@ import {
   groupParkingVehicleRows,
   normalizeParkingDate,
   normalizeParkingRoomIdentity,
+  parkingRenewalTargets,
   sameParkingText,
 } from '../src/lib/parkingVehicleMerge.ts';
 
@@ -18,6 +19,7 @@ test('同车牌在一期、二期各一条时合并为一张卡片', () => {
   assert.equal(groups[0].merged, true);
   assert.equal(groups[0].parking1?.id, '11');
   assert.equal(groups[0].parking2?.id, '22');
+  assert.deepEqual(parkingRenewalTargets(groups[0]).map((item) => item.id), ['11', '22']);
 });
 
 test('同库存在重复车牌时不合并，不隐藏脏数据', () => {
@@ -28,6 +30,7 @@ test('同库存在重复车牌时不合并，不隐藏脏数据', () => {
   ], (item) => item.plate, (item) => item.id);
   assert.equal(groups.length, 3);
   assert.ok(groups.every((group) => !group.merged));
+  assert.ok(groups.every((group) => parkingRenewalTargets(group).length === 1));
 });
 
 test('到期日只比较日期，房号自增后缀仍识别为同一房号', () => {

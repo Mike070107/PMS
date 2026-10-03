@@ -65,6 +65,13 @@ export function groupParkingVehicleRows<T extends { database: string }>(
   return groups;
 }
 
+/** 同车牌在一期、二期各有一条时，续期必须同时落到两个停车库。 */
+export function parkingRenewalTargets<T>(group: ParkingVehicleGroup<T>): T[] {
+  return group.merged && group.parking1 && group.parking2
+    ? [group.parking1, group.parking2]
+    : [...group.rows];
+}
+
 export function normalizeParkingDate(value: string | null | undefined): string | null {
   const text = value?.trim() || '';
   const match = /^(\d{4}-\d{2}-\d{2})/.exec(text);

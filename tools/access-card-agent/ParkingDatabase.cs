@@ -578,7 +578,7 @@ ORDER BY p.parameter_id;";
 
         /**
          * 一期、二期同车牌资料对齐：源库只读锁定，目标库串行化写入。
-         * 到期日仍通过 Palte_extend；房号和备注按目标车辆/住户精确更新，
+         * 只复用房号和备注；到期日属于各库续期业务，不在资料复用中修改。
          * 每个 UPDATE 都带原值条件并在同一事务内回读，不允许宽泛按车牌改多条数据。
          */
         private static Dictionary<string, object> SyncVehicleInfo(AgentConfig config, string password,
@@ -623,9 +623,6 @@ ORDER BY p.parameter_id;";
                         targetRoomColumn, targetNoteColumn, targetRecordId, targetPlate, true);
                     if (source.Room == null)
                         throw new InvalidOperationException("源停车库房号为空，不会清空目标库房号");
-                    if (!source.EndDate.HasValue)
-                        throw new InvalidOperationException("源停车库到期日期为空，不会清空目标库到期日期");
-
                     var desiredRoom = ResolveAvailableOwnerRoom(targetConnection, targetTransaction, targetOwner,
                         targetRoomColumn, target.OwnerId, source.Room);
                     if (VehicleSyncMatches(target, source, desiredRoom))
@@ -638,19 +635,6 @@ ORDER BY p.parameter_id;";
                     }
                     AssertExpectedVehicleSync(task.expected, target);
 
-                    if (!SameDate(target.EndDate, source.EndDate))
-                    {
-                        AssertUniqueVehiclePlate(targetConnection, targetTransaction, target.IssueId, targetPlate);
-                        using (var command = Procedure(targetConnection, targetTransaction, "Palte_extend"))
-                        {
-                            Add(command, "@P_plate", SqlDbType.VarChar, 50, targetPlate);
-                            Add(command, "@type", SqlDbType.Int, 0, 5);
-                            Add(command, "@P_money", SqlDbType.Float, 0, 0d);
-                            Add(command, "@End_Time", SqlDbType.DateTime, 0, source.EndDate.Value);
-                            Add(command, "@P_Admin", SqlDbType.VarChar, 20, "PMS");
-                            command.ExecuteNonQuery();
-                        }
-                    }
                     if (!String.Equals(Clean(target.Room), Clean(desiredRoom), StringComparison.Ordinal))
                         UpdateOwnerRoomForSync(targetConnection, targetTransaction, targetOwner, targetRoomColumn,
                             target.OwnerId, target.Room, desiredRoom);
@@ -721,12 +705,9 @@ ORDER BY p.parameter_id;";
         {
             expected = expected ?? new Dictionary<string, object>();
             var expectedRoom = Clean(Value(expected, "room"));
-            var expectedDate = Clean(Value(expected, "endDate"));
             var expectedNote = CleanMultiline(Value(expected, "note"));
             if (!String.Equals(expectedRoom, Clean(target.Room), StringComparison.Ordinal))
                 throw new InvalidOperationException("目标库房号已被其他操作修改，请重新查询后再同步");
-            if (!String.Equals(expectedDate, DateText(target.EndDate), StringComparison.Ordinal))
-                throw new InvalidOperationException("目标库到期日期已被其他操作修改，请重新查询后再同步");
             if (!String.Equals(expectedNote, CleanMultiline(target.Note), StringComparison.Ordinal))
                 throw new InvalidOperationException("目标库备注已被其他操作修改，请重新查询后再同步");
         }
@@ -827,8 +808,7 @@ ORDER BY p.parameter_id;";
         {
             var sameRoom = String.Equals(Clean(target.Room), Clean(desiredRoom), StringComparison.Ordinal) ||
                 String.Equals(NormalizeRoomIdentity(target.Room), NormalizeRoomIdentity(source.Room), StringComparison.Ordinal);
-            return sameRoom && SameDate(target.EndDate, source.EndDate) &&
-                String.Equals(CleanMultiline(target.Note), CleanMultiline(source.Note), StringComparison.Ordinal);
+            return sameRoom && String.Equals(CleanMultiline(target.Note), CleanMultiline(source.Note), StringComparison.Ordinal);
         }
 
         private static void AssertVehicleSyncWritten(ParkingVehicleSyncSnapshot source, string desiredRoom,
@@ -836,8 +816,6 @@ ORDER BY p.parameter_id;";
         {
             if (!String.Equals(Clean(desiredRoom), Clean(written.Room), StringComparison.Ordinal))
                 throw new InvalidOperationException("房号写入后读回不一致，本次同步已回滚");
-            if (!SameDate(source.EndDate, written.EndDate))
-                throw new InvalidOperationException("到期日期写入后读回不一致，本次同步已回滚");
             if (!String.Equals(CleanMultiline(source.Note), CleanMultiline(written.Note), StringComparison.Ordinal))
                 throw new InvalidOperationException("备注写入后读回不一致，本次同步已回滚");
         }
@@ -851,7 +829,6 @@ ORDER BY p.parameter_id;";
                 { "sourceDatabase", sourceDatabase }, { "targetDatabase", targetDatabase },
                 { "plate", after.Plate }, { "targetOwnerId", after.OwnerId },
                 { "beforeRoom", before.Room }, { "afterRoom", after.Room },
-                { "beforeEndDate", DateText(before.EndDate) }, { "afterEndDate", DateText(after.EndDate) },
                 { "beforeNote", before.Note }, { "afterNote", after.Note },
                 { "roomConflictAdjusted", roomConflictAdjusted }
             };

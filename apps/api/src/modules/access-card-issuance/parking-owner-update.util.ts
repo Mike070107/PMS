@@ -73,14 +73,14 @@ export function supportsParkingOwnerRebind(version?: string | null): boolean {
   return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 20)));
 }
 
-/** 跨库车辆资料对齐需要助手 2.5.19 开始提供的双库锁行、冲突房号和回读核验。 */
+/** 2.5.23 起跨库资料复用不再触碰车牌到期日。 */
 export function supportsParkingVehicleSync(version?: string | null): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version ?? '');
   if (!match) return false;
   const major = Number(match[1]);
   const minor = Number(match[2]);
   const patch = Number(match[3]);
-  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 19)));
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 23)));
 }
 
 /** 跨库车库授权、车辆类型修改和真实 Car_ID 下发需要 2.5.21 起的新停车操作协议。 */

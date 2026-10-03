@@ -541,7 +541,7 @@ export class AccessCardIssuanceService {
       (!['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) || supportsParkingAuthorizationFixes(agent.version)));
     if (!gateway) throw new ServiceUnavailableException(dto.kind === 'rebind_owner'
       ? '变更绑定用户需要 PMS 数据同步助手 2.5.20 及以上版本，请先更新现场助手'
-      : dto.kind === 'sync_vehicle_info' ? '车辆资料对齐需要 PMS 数据同步助手 2.5.19 及以上版本，请先在现场电脑升级'
+      : dto.kind === 'sync_vehicle_info' ? '车辆资料复用需要 PMS 数据同步助手 2.5.23 及以上版本，请先在现场电脑升级'
       : ['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) ? '车库授权、车辆类型修改和设备下发需要 PMS 数据同步助手 2.5.21 及以上版本，请先更新现场助手'
       : '停车网关尚未就绪：请安装 2.4.0 及以上助手并确认旧库存储过程写入权限');
     const payload = normalizeParkingOperationPayload(dto.payload);
@@ -2529,7 +2529,7 @@ function validateParkingOperation(
     if (normalizePlate(payload.sourcePlate) !== normalizePlate(payload.targetPlate)) {
       throw new BadRequestException('只能同步一期、二期中的同一车牌');
     }
-    if (!['room', 'endDate', 'note'].every((key) => Object.prototype.hasOwnProperty.call(expected, key))) {
+    if (!['room', 'note'].every((key) => Object.prototype.hasOwnProperty.call(expected, key))) {
       throw new BadRequestException('目标资料快照不完整，请重新查询后再同步');
     }
   }
@@ -2561,7 +2561,6 @@ function operationChanges(task: ParkingOperation): ParkingHistoryChange[] {
     const result = task.result ?? {};
     return [
       ['room', '房号', result.beforeRoom, result.afterRoom],
-      ['endDate', '到期日期', result.beforeEndDate, result.afterEndDate],
       ['note', '备注', result.beforeNote, result.afterNote],
     ].filter(([, , before, after]) => textValue(before) !== null || textValue(after) !== null)
       .filter(([, , before, after]) => String(before ?? '') !== String(after ?? ''))

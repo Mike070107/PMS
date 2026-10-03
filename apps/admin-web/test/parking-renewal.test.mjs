@@ -34,3 +34,11 @@ test('正式页默认期限、切换期限和预览续期共用规则，提交�
   assert.ok(/parkingRenewalEndDate\(vehicle\.validUntil, months\)/.test(preview), '预览与正式续期规则一致');
   assert.ok(/endDate, previousEndDate, identity, amount: calculatedAmount, months/.test(page), '提交使用当前所选日期');
 });
+
+test('同车牌跨一期二期时建立两个续期任务，资料复用不携带到期日', () => {
+  const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
+  assert.match(page, /onOperation\('renew_vehicle', row, parkingRenewalTargets\(group\)\)/);
+  assert.match(page, /Promise\.all\(targets\.map/);
+  assert.doesNotMatch(page, /message=\{`将覆盖\$\{targetLabel\}的房号、车牌到期日和备注`\}/);
+  assert.match(page, /车牌到期日不会被复用或修改/);
+});

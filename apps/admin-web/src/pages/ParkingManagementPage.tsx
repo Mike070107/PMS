@@ -59,6 +59,7 @@ import {
   normalizeParkingPlate,
   normalizeParkingRoomIdentity,
   parkingDatabase,
+  parkingRenewalTargets,
   sameParkingText,
   type ParkingVehicleGroup,
 } from '../lib/parkingVehicleMerge';
@@ -124,7 +125,7 @@ export default function ParkingManagementPage({
   const [history, setHistory] = useState<ParkingHistoryResponse | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [operationTarget, setOperationTarget] = useState<{ kind: accessCardIssuance.ParkingOperationKind; row: ParkingQueryRow | null } | null>(null);
+  const [operationTarget, setOperationTarget] = useState<{ kind: accessCardIssuance.ParkingOperationKind; row: ParkingQueryRow | null; rows?: ParkingQueryRow[] } | null>(null);
   const [operationBusy, setOperationBusy] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [lastOperation, setLastOperation] = useState<accessCardIssuance.ParkingOperation | null>(null);
@@ -363,27 +364,43 @@ export default function ParkingManagementPage({
     finally { setProofLoading(false); }
   };
 
-  const runParkingOperation = async (kind: accessCardIssuance.ParkingOperationKind, row: ParkingQueryRow | null, payload: Record<string, unknown>) => {
+  const runParkingOperation = async (kind: accessCardIssuance.ParkingOperationKind, row: ParkingQueryRow | null, payload: Record<string, unknown>, rows?: ParkingQueryRow[]) => {
     setOperationBusy(true); setOperationError(null);
     try {
-      let task = await accessCardIssuance.createParkingOperation({
-        database: row ? (row.database.toLowerCase() === 'parking1' ? 'parking1' : 'parking2') : ((payload.database as 'parking1' | 'parking2') || 'parking2'),
-        kind, sourceRecordId: row ? parkingHistoryRef(row).sourceRecordId : null,
-        pmsUserId: kind === 'rebind_owner' ? Number(payload.pmsUserId) : row?.pmsMatch?.userId ?? (kind === 'add_vehicle' && Number.isFinite(Number(payload.pmsUserId)) ? Number(payload.pmsUserId) : null),
-        idempotencyKey: createIdempotencyKey(), payload,
-      });
-      setLastOperation(task);
-      for (let attempt = 0; attempt < 112 && (task.status === 'pending' || task.status === 'running'); attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 800));
-        task = await accessCardIssuance.parkingOperation(task.id);
-        setLastOperation(task);
-      }
-      if (task.status === 'completed') {
-        message.success(`${operationLabel(kind)}已执行，旧库已读回验证`);
+      const targets = kind === 'renew_vehicle' && rows?.length ? rows : [row];
+      const batchKey = createIdempotencyKey();
+      const tasks = await Promise.all(targets.map((target) => {
+        const targetPayload = kind === 'renew_vehicle' && target
+          ? { ...payload, previousEndDate: normalizeParkingDate(fieldValue(target.fields, fieldAliases.expiry)) || '' }
+          : payload;
+        const database = target ? parkingDatabase(target.database) : ((payload.database as 'parking1' | 'parking2') || 'parking2');
+        return accessCardIssuance.createParkingOperation({
+          database,
+          kind, sourceRecordId: target ? parkingHistoryRef(target).sourceRecordId : null,
+          pmsUserId: kind === 'rebind_owner' ? Number(payload.pmsUserId) : target?.pmsMatch?.userId ?? (kind === 'add_vehicle' && Number.isFinite(Number(payload.pmsUserId)) ? Number(payload.pmsUserId) : null),
+          idempotencyKey: targets.length > 1 ? `${batchKey}-${database}` : batchKey, payload: targetPayload,
+        });
+      }));
+      const completed = await Promise.all(tasks.map(async (created) => {
+        let task = created;
+        for (let attempt = 0; attempt < 112 && (task.status === 'pending' || task.status === 'running'); attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 800));
+          task = await accessCardIssuance.parkingOperation(task.id);
+          setLastOperation(task);
+        }
+        return task;
+      }));
+      const failed = completed.find((task) => task.status === 'failed');
+      const unfinished = completed.find((task) => task.status === 'pending' || task.status === 'running');
+      setLastOperation(failed ?? unfinished ?? completed[completed.length - 1] ?? null);
+      if (!failed && !unfinished) {
+        message.success(targets.length > 1
+          ? '一期、二期车牌已同时续期，两个旧库均已读回验证'
+          : `${operationLabel(kind)}已执行，旧库已读回验证`);
         setOperationTarget(null);
         await searchParking(searchedTerm || term);
-      } else if (task.status === 'failed') throw new Error(task.error || `${operationLabel(kind)}失败，可修正后重试`);
-      else throw new Error('现场助手响应超时，任务仍保留，可稍后刷新状态');
+      } else if (failed) throw new Error(`${parkingDatabase(failed.database) === 'parking1' ? '一期' : '二期'}续期失败：${failed.error || '旧库未完成读回验证'}`);
+      else throw new Error('现场助手响应超时，任务仍保留，请查询原任务状态，不要重复提交');
     } catch (error) {
       const text = error instanceof Error ? error.message : `${operationLabel(kind)}失败`;
       setOperationError(text); message.error(text);
@@ -409,8 +426,8 @@ export default function ParkingManagementPage({
       okText: `复用${sourceLabel}信息`,
       cancelText: '取消',
       content: <div className="parking-sync-confirm">
-        <Alert type="warning" showIcon message={`将覆盖${targetLabel}的房号、车牌到期日和备注`}
-          description="实际执行时会重新读取源库，并核对目标库当前值。如果房号与目标库其他住户重名，会自动追加 /2、/3 等后缀。" />
+        <Alert type="warning" showIcon message={`将覆盖${targetLabel}的房号和备注`}
+          description="车牌到期日不会被复用或修改。实际执行时会重新读取源库，并核对目标库当前值。如果房号与目标库其他住户重名，会自动追加 /2、/3 等后缀。" />
         <ParkingSyncComparison sourceLabel={sourceLabel} targetLabel={targetLabel} source={sourceSnapshot} target={targetSnapshot} />
       </div>,
       onOk: async () => {
@@ -597,7 +614,7 @@ export default function ParkingManagementPage({
                 setEditingLegacyOwner(pending ? { ...target, values: pending.request.values } : target);
               }}
               onSync={syncParkingInfo}
-              onOperation={(kind, row) => { setOperationError(null); setLastOperation(null); setOperationTarget({ kind, row }); }}
+              onOperation={(kind, row, targetRows) => { setOperationError(null); setLastOperation(null); setOperationTarget({ kind, row, rows: targetRows }); }}
             />)}
           </div>
         ) : (
@@ -657,13 +674,20 @@ export default function ParkingManagementPage({
         loading={operationBusy}
         error={operationError}
         task={lastOperation}
+        targetRows={operationTarget?.rows}
         onClose={() => { if (!operationBusy) setOperationTarget(null); }}
-        onRetry={() => { if (lastOperation) void runParkingOperation(operationTarget?.kind ?? 'add_vehicle', operationTarget?.row ?? null, lastOperation.payload); }}
+        onRetry={() => {
+          if (!lastOperation) return;
+          const retryRows = operationTarget?.kind === 'renew_vehicle'
+            ? operationTarget.rows?.filter((item) => parkingDatabase(item.database) === parkingDatabase(lastOperation.database))
+            : operationTarget?.rows;
+          void runParkingOperation(operationTarget?.kind ?? 'add_vehicle', operationTarget?.row ?? null, lastOperation.payload, retryRows);
+        }}
         onRollback={async () => { if (!lastOperation) return; try { await accessCardIssuance.rollbackParkingOperation(lastOperation.id); message.success('已创建反向回滚任务'); } catch (error) { message.error(error instanceof Error ? error.message : '回滚任务创建失败'); } }}
         onCreateProofUpload={createProofUploadForPlate}
         onCheckPlate={checkParkingPlate}
         onQueryPlate={queryExistingPlate}
-        onSubmit={(payload) => operationTarget && void runParkingOperation(operationTarget.kind, operationTarget.row, payload)}
+        onSubmit={(payload) => operationTarget && void runParkingOperation(operationTarget.kind, operationTarget.row, payload, operationTarget.rows)}
       />
 
       <Modal
@@ -987,7 +1011,7 @@ function HistoryEntryList({ title, entries, empty }: {
   </section>;
 }
 
-type ParkingSyncSnapshot = { room: string | null; endDate: string | null; note: string | null };
+type ParkingSyncSnapshot = { room: string | null; note: string | null };
 
 function parkingSourceShortLabel(database: string): string {
   return parkingDatabase(database) === 'parking1' ? '一期' : '二期';
@@ -997,7 +1021,6 @@ function parkingSyncSnapshot(row: ParkingQueryRow): ParkingSyncSnapshot {
   const vehicleFields = Object.fromEntries(Object.entries(row.fields).filter(([key]) => !key.startsWith('Owner__')));
   return {
     room: ownerFieldValue(row.fields, fieldAliases.room),
-    endDate: normalizeParkingDate(fieldValue(row.fields, fieldAliases.expiry)),
     note: fieldValue(vehicleFields, fieldAliases.note),
   };
 }
@@ -1005,7 +1028,6 @@ function parkingSyncSnapshot(row: ParkingQueryRow): ParkingSyncSnapshot {
 function parkingSyncMismatch(left: ParkingSyncSnapshot, right: ParkingSyncSnapshot) {
   return {
     room: normalizeParkingRoomIdentity(left.room) !== normalizeParkingRoomIdentity(right.room),
-    endDate: normalizeParkingDate(left.endDate) !== normalizeParkingDate(right.endDate),
     note: !sameParkingText(left.note, right.note),
   };
 }
@@ -1021,7 +1043,6 @@ function ParkingSyncComparison({ sourceLabel, targetLabel, source, target }: {
 }) {
   const fields = [
     { label: '房号', source: source.room, target: target.room },
-    { label: '到期日', source: source.endDate, target: target.endDate },
     { label: '备注', source: source.note, target: target.note },
   ];
   return <div className="parking-sync-comparison" role="table" aria-label={`${sourceLabel}与${targetLabel}停车资料对照`}>
@@ -1077,7 +1098,7 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
   onEditLegacy: (target: ParkingLegacyOwnerTarget) => void;
   proofLoading: boolean;
   onSync: (source: ParkingQueryRow, target: ParkingQueryRow) => void;
-  onOperation: (kind: accessCardIssuance.ParkingOperationKind, row: ParkingQueryRow) => void;
+  onOperation: (kind: accessCardIssuance.ParkingOperationKind, row: ParkingQueryRow, rows?: ParkingQueryRow[]) => void;
 }) {
   const defaultDatabase = group.parking2 ? 'parking2' : 'parking1';
   const [operationDatabase, setOperationDatabase] = useState<'parking1' | 'parking2'>(defaultDatabase);
@@ -1097,10 +1118,7 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
   const phase1Snapshot = group.parking1 ? parkingSyncSnapshot(group.parking1) : null;
   const phase2Snapshot = group.parking2 ? parkingSyncSnapshot(group.parking2) : null;
   const mismatch = phase1Snapshot && phase2Snapshot ? parkingSyncMismatch(phase1Snapshot, phase2Snapshot) : null;
-  const needsSync = !!mismatch && (mismatch.room || mismatch.endDate || mismatch.note);
-  const dateMismatchText = mismatch?.endDate && phase1Snapshot && phase2Snapshot
-    ? `到期日期不一致：一期 ${phase1Snapshot.endDate || '未记录'} · 二期 ${phase2Snapshot.endDate || '未记录'}`
-    : null;
+  const needsSync = !!mismatch && (mismatch.room || mismatch.note);
   return (
     <article className="parking-query-card">
       <div className={`parking-license-plate ${plate.length > 7 ? 'is-green' : 'is-blue'}`}><span>{plate}</span></div>
@@ -1117,7 +1135,6 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
         {expiryView && <span className="parking-expiry-line"><CalendarOutlined /> 到期：{expiryView.date}
           {expiryView.days !== null && <b className={expiryView.days < 0 ? 'is-expired' : 'is-valid'}>有效期 {expiryView.days} 天</b>}
         </span>}
-        {dateMismatchText && <small className="parking-source-warning"><ExclamationCircleOutlined /> {dateMismatchText}</small>}
       </div>
       <div className="parking-vehicle-type">
         <span>车辆授权类型</span>
@@ -1138,7 +1155,7 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
       {group.parking1 && group.parking2 && phase1Snapshot && phase2Snapshot && <section className={`parking-sync-panel ${needsSync ? 'has-conflict' : 'is-consistent'}`}>
         <div className="parking-sync-heading">
           <div><strong>{needsSync ? '一期、二期资料不一致' : '一期、二期关键资料已一致'}</strong>
-            <small>{dateMismatchText || (mismatch?.room ? '房号不一致' : mismatch?.note ? '车辆备注不一致' : '房号、到期日和备注已对齐')}</small></div>
+            <small>{mismatch?.room ? '房号不一致' : mismatch?.note ? '车辆备注不一致' : '房号和备注已对齐；到期日不参与资料复用'}</small></div>
           <Space wrap className="parking-sync-actions">
             <Button size="small" icon={<SyncOutlined />} disabled={!canSyncParkingInfo || !needsSync}
               loading={syncingKey === parkingSyncTaskKey(group.parking1, group.parking2)}
@@ -1148,7 +1165,7 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
               onClick={() => onSync(group.parking2!, group.parking1!)}>复用二期信息</Button>
           </Space>
         </div>
-        {!canSyncParkingInfo && <small className="parking-sync-version-hint">请先将现场 PMS 数据同步助手升级到 2.5.19 或更高版本。</small>}
+        {!canSyncParkingInfo && <small className="parking-sync-version-hint">请先将现场 PMS 数据同步助手升级到 2.5.23 或更高版本。</small>}
         <ParkingSyncComparison sourceLabel="一期" targetLabel="二期" source={phase1Snapshot} target={phase2Snapshot} />
       </section>}
 
@@ -1187,7 +1204,7 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
         {group.merged && <label className="parking-operation-source">本次操作目标
           <Select value={operationDatabase} onChange={setOperationDatabase} options={[{ value: 'parking1', label: '一期停车库' }, { value: 'parking2', label: '二期停车库' }]} />
         </label>}
-        <Button type="primary" disabled={!canWriteLocal} icon={<CalendarOutlined />} onClick={() => onOperation('renew_vehicle', row)}>续期收费</Button>
+        <Button type="primary" disabled={!canWriteLocal} icon={<CalendarOutlined />} onClick={() => onOperation('renew_vehicle', row, parkingRenewalTargets(group))}>{group.merged ? '续期收费（一期+二期）' : '续期收费'}</Button>
         <Button disabled={!canWriteLocal} icon={<SwapOutlined />} onClick={() => onOperation('change_plate', row)}>变更车牌</Button>
         <Button disabled={!canWriteLocal} icon={<UserSwitchOutlined />} onClick={() => onOperation('rebind_owner', row)}>变更绑定用户</Button>
         <Button disabled={!canWriteLocal} icon={<SafetyCertificateOutlined />} onClick={() => onOperation('update_garages', row)}>调整车库授权</Button>
@@ -1198,11 +1215,12 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
   );
 }
 
-function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, task, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
+function ParkingOperationModal({ open, kind, row, roomOptions, targetRows, loading, error, task, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
   open: boolean;
   kind: accessCardIssuance.ParkingOperationKind;
   row: ParkingQueryRow | null;
   roomOptions: ParkingQueryRow[];
+  targetRows?: ParkingQueryRow[];
   onCreateProofUpload: (plate: string, ownerId?: string) => Promise<accessCardIssuance.ParkingProofUpload>;
   onCheckPlate: (plate: string) => Promise<ParkingPlateCheckResult>;
   onQueryPlate: (plate: string) => void;
@@ -1275,8 +1293,9 @@ function ParkingOperationModal({ open, kind, row, roomOptions, loading, error, t
   };
   if (kind === 'add_vehicle') return <AddVehicleOperationModal open={open} loading={loading} error={error} task={task} roomOptions={roomOptions} onClose={onClose} onSubmit={onSubmit} onRetry={onRetry} onRollback={onRollback} onCreateProofUpload={onCreateProofUpload} onCheckPlate={onCheckPlate} onQueryPlate={onQueryPlate} />;
   return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle', disabled: kind === 'rebind_owner' && !binding }} onOk={submit}>
-    {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space><Button size="small" onClick={onRetry}>重试</Button>{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
+    {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space>{task?.status === 'failed' && <Button size="small" onClick={onRetry}>仅重试失败的停车库</Button>}{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
     <div className="parking-operation-form">
+      {kind === 'renew_vehicle' && targetRows?.length === 2 && <Alert type="info" showIcon message="一期、二期将同时续期" description="检测到两个旧停车库都有该车牌；两边都读回验证后才显示整体成功。" />}
       <label>车牌<Input value={plate} disabled={!row} readOnly={kind === 'rebind_owner'} onChange={(e) => setPlate(e.target.value.toUpperCase())} /></label>
       {kind === 'change_plate' && <label>新车牌<Input value={newPlate} onChange={(e) => setNewPlate(e.target.value.toUpperCase())} /></label>}
       {kind === 'change_plate' && <label>绑定用户姓名<Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label>}
