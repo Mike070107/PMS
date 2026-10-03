@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   buildParkingRoomOptions,
   groupParkingVehicleRows,
   normalizeParkingDate,
+  normalizeManualParkingRoom,
   normalizeParkingRoomIdentity,
   parkingRenewalTargets,
   sameParkingText,
@@ -25,6 +27,19 @@ test('新增车牌房号直接来自 PMS 房产树，可区分一期二期并搜
     { roomKey: '228/3/102', database: 'parking2' },
   ]);
   assert.match(options[0].searchText, /6\/501.*张三/);
+});
+
+test('新增车牌可手工登记不在 PMS 房产清单里的住户，并准确确定旧库', () => {
+  assert.deepEqual(normalizeManualParkingRoom('198弄8号102室'), { database: 'parking1', roomKey: '198/8/102' });
+  assert.deepEqual(normalizeManualParkingRoom('228-08-0102'), { database: 'parking2', roomKey: '228/8/102' });
+  assert.equal(normalizeManualParkingRoom('8/102'), null);
+  assert.equal(normalizeManualParkingRoom('36/502'), null);
+  assert.equal(normalizeManualParkingRoom('228/8'), null);
+
+  const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
+  assert.match(page, /residentMode === 'manual'/, '正式新增车牌窗口必须提供手动登记分支');
+  assert.match(page, /pmsUserId: undefined/, '手动登记不应伪造 PMS 用户关联');
+  assert.match(page, /ownerAddress: normalizedManualRoom!\.roomKey/, '手动房号必须使用标准化值提交');
 });
 
 test('同车牌在一期、二期各一条时合并为一张卡片', () => {

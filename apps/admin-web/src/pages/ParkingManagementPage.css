@@ -274,6 +274,9 @@
 .parking-pms-resident-card small { color: #8391a1; font-size: 11px; }
 .parking-phone-override { display: grid; gap: 7px; padding: 12px 14px; border: 1px solid #efc987; border-radius: 10px; background: #fffaf0; }
 .parking-phone-override label { display: grid; grid-template-columns: 130px minmax(0,1fr); align-items: center; gap: 10px; color: #755520; font-weight: 650; }
+.parking-manual-resident-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px; border: 1px solid #dbe6ef; border-radius: 12px; background: #fbfdff; }
+.parking-manual-resident-fields .ant-alert, .parking-manual-resident-fields > .ant-typography { grid-column: 1 / -1; }
+.parking-manual-resident-fields > label { display: grid; gap: 7px; color: #3a526c; font-weight: 650; }
 .parking-horizontal-options { display: flex; flex-wrap: wrap; gap: 10px; }
 .parking-horizontal-options.ant-radio-group { width: 100%; }
 .parking-horizontal-options .ant-radio-button-wrapper { min-width: 106px; text-align: center; }
@@ -434,6 +437,8 @@
   .parking-payment-row { align-items: stretch; flex-direction: column; }
   .parking-new-amount { text-align: left; }
   .parking-phone-override label { grid-template-columns: minmax(0,1fr); }
+  .parking-manual-resident-fields { grid-template-columns: minmax(0,1fr); }
+  .parking-manual-resident-fields .ant-alert, .parking-manual-resident-fields > .ant-typography { grid-column: 1; }
   .parking-rate-hint { align-items: flex-start; flex-wrap: wrap; }
   .parking-rate-hint > span { flex-basis: calc(100% - 30px); }
   .parking-family-proof-box { grid-template-columns: minmax(0,1fr); }

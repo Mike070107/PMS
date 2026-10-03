@@ -39,6 +39,33 @@ export function buildParkingRoomOptions(communities: AddressCommunity[]): Parkin
       })));
 }
 
+export type ManualParkingResident = {
+  database: ParkingDatabase;
+  roomKey: string;
+};
+
+/**
+ * 手工登记仍需能确定写入一期或二期旧库，因此只接受完整的 198/楼栋/房号、
+ * 228/楼栋/房号；兼容横杠及“弄/号/室”等现场常见写法。
+ */
+export function normalizeManualParkingRoom(value: string): ManualParkingResident | null {
+  const text = value.trim()
+    .replace(/[\\-]/g, '/')
+    .replace(/弄/g, '/')
+    .replace(/号楼?/g, '/')
+    .replace(/室/g, '')
+    .replace(/\s+/g, '')
+    .replace(/\/{2,}/g, '/')
+    .replace(/^\/|\/$/g, '');
+  const match = /^(198|228)\/(\d+)\/(\d+)$/.exec(text);
+  if (!match) return null;
+  const lane = match[1];
+  return {
+    database: lane === '198' ? 'parking1' : 'parking2',
+    roomKey: `${lane}/${Number(match[2])}/${Number(match[3])}`,
+  };
+}
+
 export type ParkingVehicleGroup<T> = {
   key: string;
   plate: string;
