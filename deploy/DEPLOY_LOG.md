@@ -4077,3 +4077,11 @@
 - 自上次（74c7fba5）以来上线的相关提交：
   - a47cacb1 fix: renew matching plates across parking databases
 
+## 2026-10-03 20:19 · web · 9206793c
+
+- 包：`pms-web-20261003-201838.tar.gz`
+- 提交：9206793c feat: allow manual parking resident entry
+- 自上次（a47cacb1）以来上线的相关提交：
+  - 9206793c feat: allow manual parking resident entry
+  - 03473c6b fix: load PMS rooms when adding vehicles
+
