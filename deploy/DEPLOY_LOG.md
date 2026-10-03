@@ -4050,3 +4050,10 @@
 - 自上次（72683f54）以来上线的相关提交：
   - 74c7fba5 fix: resolve access doors from legacy databases
 
+## 2026-10-03 10:41 · api · 6836bdb8
+
+- 包：`pms-api-fast-20261003-104109.tar.gz`
+- 提交：6836bdb8 feat: add direct WeChat launch for gateway login
+- 自上次（514d5e7a）以来上线的相关提交：
+  - 6836bdb8 feat: add direct WeChat launch for gateway login
+
