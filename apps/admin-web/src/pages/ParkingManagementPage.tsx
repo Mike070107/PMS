@@ -55,12 +55,14 @@ import { type AddressCommunity, buildingMatchKeys, communityMatchKeys, houseMatc
 import { parkingRenewalEndDate } from '../lib/parkingRenewal';
 import {
   groupParkingVehicleRows,
+  buildParkingRoomOptions,
   normalizeParkingDate,
   normalizeParkingPlate,
   normalizeParkingRoomIdentity,
   parkingDatabase,
   parkingRenewalTargets,
   sameParkingText,
+  type ParkingRoomOption,
   type ParkingVehicleGroup,
 } from '../lib/parkingVehicleMerge';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -92,10 +94,12 @@ export default function ParkingManagementPage({
   readinessOverride,
   rowsOverride,
   historyOverride,
+  communitiesOverride,
 }: {
   readinessOverride?: AccessCardReadiness;
   rowsOverride?: ParkingQueryRow[];
   historyOverride?: ParkingHistoryResponse;
+  communitiesOverride?: AddressCommunity[];
 } = {}) {
   const { message, modal } = AntdApp.useApp();
   const [readiness, setReadiness] = useState<AccessCardReadiness | null>(null);
@@ -671,6 +675,7 @@ export default function ParkingManagementPage({
         kind={operationTarget?.kind ?? 'add_vehicle'}
         row={operationTarget?.row ?? null}
         roomOptions={rows}
+        communitiesOverride={communitiesOverride}
         loading={operationBusy}
         error={operationError}
         task={lastOperation}
@@ -1215,11 +1220,12 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
   );
 }
 
-function ParkingOperationModal({ open, kind, row, roomOptions, targetRows, loading, error, task, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
+function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverride, targetRows, loading, error, task, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
   open: boolean;
   kind: accessCardIssuance.ParkingOperationKind;
   row: ParkingQueryRow | null;
   roomOptions: ParkingQueryRow[];
+  communitiesOverride?: AddressCommunity[];
   targetRows?: ParkingQueryRow[];
   onCreateProofUpload: (plate: string, ownerId?: string) => Promise<accessCardIssuance.ParkingProofUpload>;
   onCheckPlate: (plate: string) => Promise<ParkingPlateCheckResult>;
@@ -1291,7 +1297,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, targetRows, loadi
     }
     onSubmit(payload);
   };
-  if (kind === 'add_vehicle') return <AddVehicleOperationModal open={open} loading={loading} error={error} task={task} roomOptions={roomOptions} onClose={onClose} onSubmit={onSubmit} onRetry={onRetry} onRollback={onRollback} onCreateProofUpload={onCreateProofUpload} onCheckPlate={onCheckPlate} onQueryPlate={onQueryPlate} />;
+  if (kind === 'add_vehicle') return <AddVehicleOperationModal open={open} loading={loading} error={error} task={task} roomOptions={roomOptions} communitiesOverride={communitiesOverride} onClose={onClose} onSubmit={onSubmit} onRetry={onRetry} onRollback={onRollback} onCreateProofUpload={onCreateProofUpload} onCheckPlate={onCheckPlate} onQueryPlate={onQueryPlate} />;
   return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle', disabled: kind === 'rebind_owner' && !binding }} onOk={submit}>
     {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space>{task?.status === 'failed' && <Button size="small" onClick={onRetry}>仅重试失败的停车库</Button>}{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
     <div className="parking-operation-form">
@@ -1348,42 +1354,6 @@ function ParkingOwnerPicker({ open, value, onChange }: { open: boolean; value: P
   </>;
 }
 
-type AddVehicleRoomOption = {
-  key: string;
-  database: 'parking1' | 'parking2';
-  pmsUserId: number;
-  roomKey: string;
-  communityName: string;
-  buildingNo: string;
-  roomNo: string;
-  name: string;
-  phone: string;
-};
-
-function buildAddVehicleRoomOptions(rows: ParkingQueryRow[]): AddVehicleRoomOption[] {
-  const seen = new Map<string, AddVehicleRoomOption>();
-  rows.forEach((row) => {
-    const match = row.pmsMatch;
-    const house = match?.house;
-    if (!match || !house) return;
-    const database = row.database.toLowerCase() === 'parking1' ? 'parking1' : 'parking2';
-    const roomKey = [house.lane, house.buildingNo, house.roomNo].filter(Boolean).join('/');
-    const key = `${database}:${match.userId}:${house.id}`;
-    if (!seen.has(key)) seen.set(key, {
-      key,
-      database,
-      pmsUserId: match.userId,
-      roomKey,
-      communityName: house.communityName || (database === 'parking1' ? '枫桦景苑一期' : '枫桦景苑二期'),
-      buildingNo: house.buildingNo,
-      roomNo: house.roomNo,
-      name: match.name || '未填写姓名',
-      phone: match.phone || '未记录电话',
-    });
-  });
-  return Array.from(seen.values());
-}
-
 const parkingPlateProvinces = '京津冀晋蒙辽吉黑沪苏浙皖闽赣鲁豫鄂湘粤桂琼渝川贵云藏陕甘青宁新'.split('');
 const parkingPlateLetters = 'ABCDEFGHJKLMNPQRSTUVWXYZ'.split('');
 const parkingPlateAlphaNumeric = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789'.split('');
@@ -1395,12 +1365,13 @@ function parkingDuplicateDescription(row: ParkingQueryRow): string {
   return [database, room, owner].filter(Boolean).join(' · ');
 }
 
-function AddVehicleOperationModal({ open, loading, error, task, roomOptions, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
+function AddVehicleOperationModal({ open, loading, error, task, communitiesOverride, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
   open: boolean;
   loading: boolean;
   error: string | null;
   task: accessCardIssuance.ParkingOperation | null;
   roomOptions: ParkingQueryRow[];
+  communitiesOverride?: AddressCommunity[];
   onClose: () => void;
   onSubmit: (payload: Record<string, unknown>) => void;
   onRetry: () => void;
@@ -1427,9 +1398,13 @@ function AddVehicleOperationModal({ open, loading, error, task, roomOptions, onC
   const [duplicateCheckError, setDuplicateCheckError] = useState<string | null>(null);
   const [duplicateCheckNonce, setDuplicateCheckNonce] = useState(0);
   const [submittingCheck, setSubmittingCheck] = useState(false);
+  const [communities, setCommunities] = useState<AddressCommunity[]>([]);
+  const [roomsBusy, setRoomsBusy] = useState(false);
+  const [roomsError, setRoomsError] = useState('');
+  const [roomsReload, setRoomsReload] = useState(0);
   const normalized = plate.replace(/[\s·]/g, '').toUpperCase().slice(0, 8);
   const isGreen = normalized.length === 8;
-  const rooms = buildAddVehicleRoomOptions(roomOptions);
+  const rooms = useMemo(() => buildParkingRoomOptions(communities), [communities]);
   const selectedRoom = rooms.find((item) => item.key === roomKey) || null;
   const monthly = identity === '租户车' ? 260 : identity === '亲情车' ? 0 : 180;
   const annual = identity === '租户车' ? 2760 : identity === '亲情车' ? 0 : 1800;
@@ -1449,11 +1424,18 @@ function AddVehicleOperationModal({ open, loading, error, task, roomOptions, onC
   }, [open]);
 
   useEffect(() => {
-    if (!open || !rooms.length || roomKey) return;
-    const first = rooms[0];
-    setRoomKey(first.key);
-    setGarages(first.roomKey.startsWith('198/') ? ['phase1'] : ['phase2']);
-  }, [open, roomKey, rooms]);
+    if (!open) return undefined;
+    if (communitiesOverride) {
+      setCommunities(communitiesOverride); setRoomsBusy(false); setRoomsError('');
+      return undefined;
+    }
+    let active = true;
+    setRoomsBusy(true); setRoomsError(''); setCommunities([]);
+    addressApi.tree().then((data) => { if (active) setCommunities(data); })
+      .catch((loadError) => { if (active) setRoomsError(loadError instanceof Error ? loadError.message : 'PMS 房号读取失败'); })
+      .finally(() => { if (active) setRoomsBusy(false); });
+    return () => { active = false; };
+  }, [communitiesOverride, open, roomsReload]);
 
   useEffect(() => {
     if (!open || !plateFormatValid) {
@@ -1511,7 +1493,7 @@ function AddVehicleOperationModal({ open, loading, error, task, roomOptions, onC
   };
   const submit = async () => {
     if (!plateFormatValid) return setValidationError('车牌格式不正确：请先选择省市简称，第二位输入字母，再输入 5 至 6 位字母或数字');
-    if (!selectedRoom) return setValidationError(rooms.length ? '请选择 PMS 房号' : '当前没有可选择的 PMS 房号，请先查询一个已关联 PMS 用户的房号');
+    if (!selectedRoom) return setValidationError(rooms.length ? '请选择 PMS 房号' : '当前没有可选择的 PMS 房号，请先确认 PMS 房产档案已登记业主');
     setSubmittingCheck(true);
     setValidationError(null);
     try {
@@ -1577,7 +1559,7 @@ function AddVehicleOperationModal({ open, loading, error, task, roomOptions, onC
     </> : <>
       <div className="parking-new-plate-summary"><div className={`parking-license-plate is-${isGreen ? 'green' : 'blue'}`}><span>{normalized.slice(0, 1)} {normalized.slice(1, 2)}·{normalized.slice(2)}</span></div><div><strong>新车登记</strong><Text type="secondary">一期、二期停车旧库均已完成真实查重。</Text></div></div>
       <Divider orientation="left">1 · PMS 房号与住户</Divider>
-      <div className="parking-new-form-section"><label>PMS 房号<Select showSearch value={roomKey || undefined} disabled={!rooms.length} optionFilterProp="label" onChange={chooseRoom} placeholder={rooms.length ? '选择 PMS 房号' : '请先查询并关联 PMS 房号'} options={rooms.map((item) => ({ value: item.key, label: `${item.roomKey} · ${item.name}` }))} /></label>{selectedRoom ? <div className="parking-pms-resident-card"><span className="parking-pms-resident-icon"><HomeOutlined /></span><div><strong>{selectedRoom.roomKey}</strong><Text>{selectedRoom.communityName} · {selectedRoom.buildingNo}号楼 · {selectedRoom.roomNo}室</Text></div><div><small>姓名</small><strong>{selectedRoom.name}</strong></div><div><small>电话</small><strong>{selectedRoom.phone}</strong></div></div> : <Alert type="info" showIcon message="请选择已关联 PMS 用户的房号" description="新增车牌不会让操作员手工输入旧系统住户编号。" />}{!phoneOverride ? <Button type="link" icon={<PhoneOutlined />} onClick={() => setPhoneOverride(true)}>现场电话不一致？填写停车登记电话</Button> : <div className="parking-phone-override"><label>现场登记电话<Input value={fieldPhone} onChange={(event) => setFieldPhone(event.target.value)} placeholder="输入现场提供的新电话" /></label><Text type="secondary">将记录为“{dayjs().format('YYYY-MM-DD HH:mm')} 停车登记电话”；写入旧库时房号统一规范为 {selectedRoom?.roomKey || '198/6/501'}。</Text></div>}</div>
+      <div className="parking-new-form-section"><label>PMS 房号<Select showSearch allowClear value={roomKey || undefined} loading={roomsBusy} disabled={roomsBusy || !!roomsError} onChange={(key) => chooseRoom(key || '')} placeholder={roomsBusy ? '正在读取 PMS 房号…' : '输入 198/6/501、6/501 或业主姓名'} filterOption={(input, option) => !!option && String((option as { searchText?: string }).searchText || '').includes(input.trim().toLowerCase())} notFoundContent={roomsBusy ? '正在读取 PMS 房号…' : '没有匹配的已登记业主房号'} options={rooms.map((item: ParkingRoomOption) => ({ value: item.key, label: `${item.roomKey} · ${item.name} · ${item.phone}`, searchText: item.searchText }))} /></label>{roomsError && <Alert type="error" showIcon message="PMS 房号读取失败" description={roomsError} action={<Button onClick={() => setRoomsReload((value) => value + 1)}>重新读取</Button>} />}{selectedRoom ? <div className="parking-pms-resident-card"><span className="parking-pms-resident-icon"><HomeOutlined /></span><div><strong>{selectedRoom.roomKey}</strong><Text>{selectedRoom.communityName} · {selectedRoom.buildingNo}号楼 · {selectedRoom.roomNo}室</Text></div><div><small>姓名</small><strong>{selectedRoom.name}</strong></div><div><small>电话</small><strong>{selectedRoom.phone}</strong></div></div> : !roomsError && <Alert type="info" showIcon message="请从 PMS 房产档案选择房号" description="选择后自动带出业主姓名和电话；无需手工输入旧系统住户编号。" />}{!phoneOverride ? <Button type="link" icon={<PhoneOutlined />} onClick={() => setPhoneOverride(true)}>现场电话不一致？填写停车登记电话</Button> : <div className="parking-phone-override"><label>现场登记电话<Input value={fieldPhone} onChange={(event) => setFieldPhone(event.target.value)} placeholder="输入现场提供的新电话" /></label><Text type="secondary">将记录为“{dayjs().format('YYYY-MM-DD HH:mm')} 停车登记电话”；写入旧库时房号统一规范为 {selectedRoom?.roomKey || '198/6/501'}。</Text></div>}</div>
       <Divider orientation="left">2 · 车辆授权类型</Divider><div className="parking-new-form-section"><Text type="secondary">授权类型决定收费规则，默认按住户车计价。</Text><Radio.Group className="parking-horizontal-options" value={identity} onChange={(event) => { setIdentity(event.target.value); if (event.target.value === '亲情车') { setProofUpload(null); setProofApproved(false); } }} optionType="button" buttonStyle="solid" options={['住户车', '亲情车', '租户车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} /></div>
       {isFamily && <div className="parking-family-proof-box"><div><strong>亲情车证明材料</strong><Text type="secondary">有效期 1 小时，用户扫码上传图片或 PDF；资料提交后由管理员审核。</Text></div>{proofUpload?.status === 'submitted' ? <><Alert type="success" showIcon message="资料已上传，等待管理员审核" description={proofUpload.fileName || '已收到用户上传的证明材料。'} />{proofUpload.fileUrl && <a href={proofUpload.fileUrl} target="_blank" rel="noreferrer">查看已上传资料</a>}<Checkbox checked={proofApproved} onChange={(event) => setProofApproved(event.target.checked)}>管理员已审核证明材料，确认开通亲情车</Checkbox></> : <><Button type="primary" loading={proofLoading} disabled={normalized.length < 7} onClick={() => void createProof()} icon={<QrcodeOutlined />}>{proofUpload ? '重新生成二维码' : '生成 1 小时上传二维码'}</Button>{proofUpload?.qrDataUrl && <div className="parking-family-proof-qr"><img src={proofUpload.qrDataUrl} alt="亲情车证明材料上传二维码" /><Text type="secondary">请用户扫码上传，{new Date(proofUpload.expiresAt).toLocaleString('zh-CN', { hour12: false })} 前有效</Text></div>}</>}</div>}
       <Divider orientation="left">3 · 授权车库</Divider><div className="parking-new-form-section"><Text type="secondary">可多选。根据 PMS 房号已自动预选对应小区车库。</Text><Checkbox.Group className="parking-horizontal-options parking-garage-options" value={garages} onChange={(values) => setGarages(values as string[])} options={[{ value: 'phase1', label: '一期地面车库' }, { value: 'phase2', label: '二期地面车库' }, { value: 'main', label: '二期大车库' }, { value: 'civil', label: '二期人防车库' }]} /></div>

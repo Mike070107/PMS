@@ -1,4 +1,43 @@
+import type { AddressCommunity } from '@pms/shared-types';
+
 export type ParkingDatabase = 'parking1' | 'parking2';
+
+export type ParkingRoomOption = {
+  key: string;
+  database: ParkingDatabase;
+  pmsUserId: number;
+  roomKey: string;
+  communityName: string;
+  buildingNo: string;
+  roomNo: string;
+  name: string;
+  phone: string;
+  searchText: string;
+};
+
+/** 新增车牌的房号必须来自 PMS 房产树，不能依赖当前停车查询结果。 */
+export function buildParkingRoomOptions(communities: AddressCommunity[]): ParkingRoomOption[] {
+  return communities.filter((community) => !community.isGroup).flatMap((community) =>
+    community.buildings.filter((building) => /^(198|228)$/.test(building.lane || '') && /^\d+$/.test(building.buildingNo)).flatMap((building) =>
+      building.houses.filter((house) => house.ownerId && /^\d+$/.test(house.roomNo)).map((house) => {
+        const lane = building.lane!;
+        const roomKey = `${lane}/${Number(building.buildingNo)}/${Number(house.roomNo)}`;
+        const name = house.ownerName || '姓名未登记';
+        const phone = house.ownerPhone || '电话未登记';
+        return {
+          key: `${house.id}:${house.ownerId}`,
+          database: lane === '198' ? 'parking1' as const : 'parking2' as const,
+          pmsUserId: house.ownerId!,
+          roomKey,
+          communityName: community.name,
+          buildingNo: building.buildingNo,
+          roomNo: house.roomNo,
+          name,
+          phone,
+          searchText: `${roomKey} ${Number(building.buildingNo)}/${Number(house.roomNo)} ${community.name} ${name} ${phone}`.toLowerCase(),
+        };
+      })));
+}
 
 export type ParkingVehicleGroup<T> = {
   key: string;

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildParkingRoomOptions,
   groupParkingVehicleRows,
   normalizeParkingDate,
   normalizeParkingRoomIdentity,
@@ -9,6 +10,22 @@ import {
 } from '../src/lib/parkingVehicleMerge.ts';
 
 const row = (database, plate, id) => ({ database, plate, id });
+
+test('新增车牌房号直接来自 PMS 房产树，可区分一期二期并搜索姓名', () => {
+  const options = buildParkingRoomOptions([
+    { id: 1, name: '枫桦景苑一期', parentId: null, isGroup: false, mainLane: '198', buildings: [
+      { id: 11, lane: '198', buildingNo: '6', roadName: null, houses: [{ id: 111, roomNo: '501', propertyType: '', shopName: null, ownerId: 9, ownerName: '张三', ownerPhone: '13800000000' }] },
+    ] },
+    { id: 2, name: '枫桦景苑二期', parentId: null, isGroup: false, mainLane: '228', buildings: [
+      { id: 22, lane: '228', buildingNo: '3', roadName: null, houses: [{ id: 222, roomNo: '102', propertyType: '', shopName: null, ownerId: 10, ownerName: '李四', ownerPhone: null }] },
+    ] },
+  ]);
+  assert.deepEqual(options.map(({ roomKey, database }) => ({ roomKey, database })), [
+    { roomKey: '198/6/501', database: 'parking1' },
+    { roomKey: '228/3/102', database: 'parking2' },
+  ]);
+  assert.match(options[0].searchText, /6\/501.*张三/);
+});
 
 test('同车牌在一期、二期各一条时合并为一张卡片', () => {
   const groups = groupParkingVehicleRows([

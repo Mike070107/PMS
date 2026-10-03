@@ -1,4 +1,5 @@
 import type { AccessCardReadiness, ParkingQueryRow } from '@pms/api-client';
+import type { AddressCommunity } from '@pms/shared-types';
 import ParkingManagementPage from './ParkingManagementPage';
 
 export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgrade' | 'ready' }) {
@@ -93,5 +94,11 @@ export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgr
       operator: '系统从旧停车库检测', occurredAt: '2026-09-29T07:42:00.000Z', timeBasis: 'operation' as const,
     }],
   } : undefined;
-  return <ParkingManagementPage readinessOverride={readiness} rowsOverride={rows} historyOverride={history} />;
+  const communities: AddressCommunity[] = [{
+    id: 1, name: '枫桦景苑二期', parentId: null, isGroup: false, mainLane: '228',
+    buildings: [{ id: 5, lane: '228', buildingNo: '5', roadName: null, houses: [
+      { id: 301, roomNo: '301', propertyType: '住宅', shopName: null, ownerId: 1264, ownerName: '张某某', ownerPhone: '13800006421' },
+    ] }],
+  }];
+  return <ParkingManagementPage readinessOverride={readiness} rowsOverride={rows} historyOverride={history} communitiesOverride={communities} />;
 }
