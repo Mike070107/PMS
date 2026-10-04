@@ -4085,3 +4085,10 @@
   - 9206793c feat: allow manual parking resident entry
   - 03473c6b fix: load PMS rooms when adding vehicles
 
+## 2026-10-04 22:28 · api · 0aab88d8
+
+- 包：`pms-api-fast-20261004-222829.tar.gz`
+- 提交：0aab88d8 feat: authorize internal apps through business roles
+- 自上次（a47cacb1）以来上线的相关提交：
+  - 0aab88d8 feat: authorize internal apps through business roles
+
