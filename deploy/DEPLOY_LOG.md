@@ -4092,3 +4092,10 @@
 - 自上次（a47cacb1）以来上线的相关提交：
   - 0aab88d8 feat: authorize internal apps through business roles
 
+## 2026-10-04 22:29 · web · 0aab88d8
+
+- 包：`pms-web-20261004-222829.tar.gz`
+- 提交：0aab88d8 feat: authorize internal apps through business roles
+- 自上次（9206793c）以来上线的相关提交：
+  - 0aab88d8 feat: authorize internal apps through business roles
+
