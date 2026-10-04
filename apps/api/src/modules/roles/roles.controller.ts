@@ -35,6 +35,12 @@ export class RolesController {
     return this.rolesService.scopeOptions(user, access);
   }
 
+  @Get('external-app-options')
+  @RequirePermission('roles', 'view')
+  externalAppOptions(@CurrentUser() user: AuthUser) {
+    return this.rolesService.externalAppOptions(user);
+  }
+
   /** 用户管理页的角色下拉：按操作者范围裁剪，所以挂在 users 的查看权下 */
   @Get('assignable')
   @RequirePermission('users', 'view')

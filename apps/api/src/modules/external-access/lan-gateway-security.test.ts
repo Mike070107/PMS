@@ -41,7 +41,7 @@ test('FRP admission binds every proxy name and port to the authenticated device'
   const agent = { id: 7, tenantId: 1, deviceKey: 'lan-test', tokenHash: hashGatewaySecret(deviceToken), enabled: true };
   const agentRepo = { findOne: async ({ where }: any) => where.deviceKey === agent.deviceKey ? agent : null };
   const appRepo = { findOne: async ({ where }: any) => where.agentId === agent.id && where.gatewayPort === 18050 && where.slug === 'finance' ? { id: 9 } : null };
-  const service = new ExternalAccessService(appRepo as any, {} as any, {} as any, agentRepo as any, {} as any);
+  const service = new ExternalAccessService(appRepo as any, {} as any, agentRepo as any, {} as any, {} as any);
   const metadata = { user: 'lan-test', metas: { deviceToken } };
   assert.deepEqual(await service.authorizeFrpOperation('plugin-secret-for-test', 'Login', { content: metadata }), { reject: false, unchange: true });
   assert.deepEqual(await service.authorizeFrpOperation('plugin-secret-for-test', 'NewProxy', { content: { user: metadata, proxy_name: 'lan-test.finance', proxy_type: 'tcp', remote_port: 18050, use_encryption: true } }), { reject: false, unchange: true });
@@ -58,11 +58,40 @@ test('dynamic gateway can bootstrap a freshly verified route before public healt
   const agent = { id: 7, tenantId: 1, enabled: true, desiredRevision: 3, appliedRevision: 3, lastSeenAt: now };
   const appRepo = { findOne: async () => app };
   const agentRepo = { findOne: async () => agent };
-  const service = new ExternalAccessService(appRepo as any, {} as any, {} as any, agentRepo as any, {} as any);
+  const service = new ExternalAccessService(appRepo as any, {} as any, agentRepo as any, {} as any, {} as any);
   assert.equal((await service.resolveGatewayApplication('finance.prsznh.cn')).id, 9);
 
   app.originCheckedAt = new Date(Date.now() - 91_000);
   await assert.rejects(() => service.resolveGatewayApplication('finance.prsznh.cn'), /公网 HTTPS 检查返回 302/);
+});
+
+test('内网应用图标入口只返回当前用户已授权且已启用的应用', async () => {
+  let where: any;
+  const appRepo = {
+    find: async (options: any) => {
+      where = options.where;
+      return [{
+        id: 9,
+        name: '用友财务系统',
+        publicHostname: 'caiwu.prsznh.cn',
+        entryPath: '/tplus/view/login.html',
+        publishStatus: 'online',
+      }];
+    },
+  };
+  const access = { externalAppIdsOfUser: async () => [9] };
+  const service = new ExternalAccessService(
+    appRepo as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    access as any,
+  );
+
+  const apps = await service.listMyApps({ id: 7, tenantId: 1 } as any);
+  assert.equal(where.tenantId, 1);
+  assert.equal(where.enabled, true);
+  assert.equal(apps[0].url, 'https://caiwu.prsznh.cn/tplus/view/login.html');
 });
 
 test('gateway login page offers a same-phone WeChat launch action without removing the desktop QR', () => {

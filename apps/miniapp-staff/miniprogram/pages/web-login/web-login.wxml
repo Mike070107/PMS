@@ -10,21 +10,29 @@
       <view class="state__title">无法确认登录</view>
       <view class="state__text">{{errorMsg}}</view>
     </view>
-    <button class="btn btn--ghost" bindtap="onBackHome">返回首页</button>
+    <view class="result-actions">
+      <button class="btn btn--primary" bindtap="onCloseMiniProgram">关闭小程序</button>
+      <button class="btn btn--ghost" bindtap="onBackHome">返回首页</button>
+    </view>
+    <view wx:if="{{closeHint}}" class="close-hint">{{closeHint}}</view>
   </block>
 
   <!-- 已处理完 -->
   <block wx:elif="{{done}}">
     <view class="card state">
       <view class="state__icon {{done === 'confirmed' ? 'state__icon--ok' : 'state__icon--warn'}}"></view>
-      <view class="state__title">{{done === 'confirmed' ? '已确认，请回到电脑' : '已拒绝这次登录'}}</view>
+      <view class="state__title">{{done === 'confirmed' ? '授权成功' : '已拒绝这次登录'}}</view>
       <view class="state__text">
         {{done === 'confirmed'
-          ? '网页会自动进入目标系统，这个页面可以关掉了。'
+          ? '原网页会自动进入目标系统，正在关闭小程序。'
           : '网页那边不会登录。如果这次登录不是你发起的，建议把后台密码改一下。'}}
       </view>
     </view>
-    <button class="btn btn--ghost" bindtap="onBackHome">返回首页</button>
+    <view class="result-actions">
+      <button class="btn btn--primary" bindtap="onCloseMiniProgram">关闭小程序</button>
+      <button class="btn btn--ghost" bindtap="onBackHome">返回首页</button>
+    </view>
+    <view wx:if="{{closeHint}}" class="close-hint">{{closeHint}}</view>
   </block>
 
   <!-- 确认 -->

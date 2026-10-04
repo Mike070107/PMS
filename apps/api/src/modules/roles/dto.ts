@@ -67,6 +67,13 @@ export class SaveRoleDto {
   @Type(() => Number)
   warehouseIds?: number[];
 
+  /** 可通过微信门禁进入的内网应用。允许只配置这一项，形成专用访问角色。 */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @Type(() => Number)
+  externalAppIds?: number[];
+
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
@@ -96,6 +103,12 @@ export class SaveRoleTemplateDto {
   @ValidateNested({ each: true })
   @Type(() => RolePermissionDto)
   permissions: RolePermissionDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @Type(() => Number)
+  externalAppIds?: number[];
 }
 
 /** 把某个角色当前的勾选另存为模板，并让这个角色改成跟随它（权限不变） */

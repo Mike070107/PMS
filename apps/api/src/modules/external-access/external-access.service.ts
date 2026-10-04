@@ -4,7 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { STAFF_APP_ROLES, UserStatus } from '../../common/enums';
-import { ExternalAccessApp, ExternalAccessGrant, LanGatewayAgent, User } from '../../entities';
+import { ExternalAccessApp, LanGatewayAgent, User } from '../../entities';
+import { AccessService } from '../access/access.service';
 import { CloudflareGatewayService } from './cloudflare-gateway.service';
 import {
   CreateExternalAccessAppDto,
@@ -29,45 +30,54 @@ export class ExternalAccessService {
   constructor(
     @InjectRepository(ExternalAccessApp)
     private readonly appRepo: Repository<ExternalAccessApp>,
-    @InjectRepository(ExternalAccessGrant)
-    private readonly grantRepo: Repository<ExternalAccessGrant>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(LanGatewayAgent)
     private readonly agentRepo: Repository<LanGatewayAgent>,
     private readonly cloudflare: CloudflareGatewayService,
+    private readonly accessService: AccessService,
   ) {}
 
   async list(user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const apps = await this.appRepo.find({ where: { tenantId }, order: { id: 'ASC' } });
-    const grants = apps.length
-      ? await this.grantRepo.find({ where: { tenantId, appId: In(apps.map((app) => app.id)) } })
-      : [];
     const agentIds = [...new Set(apps.map((app) => app.agentId).filter((id): id is number => !!id))];
     const agents = agentIds.length ? await this.agentRepo.find({ where: { tenantId, id: In(agentIds) } }) : [];
     const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
-    const byApp = new Map<number, number[]>();
-    for (const grant of grants) {
-      const ids = byApp.get(grant.appId) ?? [];
-      ids.push(grant.userId);
-      byApp.set(grant.appId, ids);
-    }
-    return apps.map((app) => this.view(app, byApp.get(app.id) ?? [], app.agentId ? agentsById.get(app.agentId) : undefined));
+    const roleIds = new Map(
+      await Promise.all(
+        apps.map(async (app) => [
+          app.id,
+          await this.accessService.roleIdsWithExternalApp(tenantId, app.id),
+        ] as const),
+      ),
+    );
+    return apps.map((app) => this.view(
+      app,
+      roleIds.get(app.id) ?? [],
+      app.agentId ? agentsById.get(app.agentId) : undefined,
+    ));
   }
 
-  async users(user: AuthUser) {
+  /**
+   * 当前用户可见的内网应用入口。
+   * Web 与小程序的图标入口共用这一份结果，避免再维护第二套授权名单。
+   */
+  async listMyApps(user: AuthUser) {
     const tenantId = this.requireTenant(user);
-    const rows = await this.userRepo.find({
-      where: { tenantId, role: In(STAFF_APP_ROLES) },
-      order: { name: 'ASC', id: 'ASC' },
+    const ids = await this.accessService.externalAppIdsOfUser(tenantId, user.id);
+    if (!ids.length) return [];
+    const apps = await this.appRepo.find({
+      where: { tenantId, id: In(ids), enabled: true },
+      order: { name: 'ASC' },
     });
-    return rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      phone: row.phone,
-      status: row.status,
-      wxBound: !!row.wxOpenid,
+    return apps.map((app) => ({
+      id: app.id,
+      name: app.name,
+      publicHostname: app.publicHostname,
+      entryPath: app.entryPath,
+      url: `https://${app.publicHostname}${app.entryPath || '/'}`,
+      publishStatus: app.publishStatus,
     }));
   }
 
@@ -319,9 +329,11 @@ export class ExternalAccessService {
     if (claims.appId !== app.id || claims.slug !== app.slug || !claims.userId || !claims.exp || claims.exp <= Math.floor(Date.now() / 1000)) {
       throw new UnauthorizedException('登录会话已过期或不属于当前应用');
     }
-    const grant = await this.grantRepo.findOne({ where: { appId: app.id, userId: claims.userId } });
     const user = await this.userRepo.findOne({ where: { id: claims.userId, tenantId: app.tenantId } });
-    if (!grant || !user || user.status !== UserStatus.ACTIVE || !STAFF_APP_ROLES.includes(user.role)) {
+    const allowed = user
+      ? await this.accessService.userHasExternalAppAccess(app.tenantId, user.id, app.id)
+      : false;
+    if (!allowed || !user || user.status !== UserStatus.ACTIVE || !STAFF_APP_ROLES.includes(user.role)) {
       throw new ForbiddenException('你已没有这个内网应用的访问权限');
     }
     const origin = new URL(app.originUrl);
@@ -339,7 +351,6 @@ export class ExternalAccessService {
   async create(dto: CreateExternalAccessAppDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const normalized = this.normalize(dto.publicHostname, dto.originUrl);
-    await this.validateUsers(tenantId, dto.userIds);
     await this.assertRouteAvailable(tenantId, normalized.publicHostname);
     const provider = resolveExternalAccessProvider();
     const agent = provider === 'domestic' ? await this.requireAgent(tenantId, dto.agentId) : null;
@@ -367,19 +378,15 @@ export class ExternalAccessService {
         updatedBy: user.id,
       }),
     );
-    await this.replaceGrants(app, dto.userIds, user.id);
     if (agent) await this.bumpAgentRevision(agent, [app]);
     else await this.syncAndRecord(app);
-    return this.view(app, dto.userIds, agent ?? undefined);
+    return this.view(app, [], agent ?? undefined);
   }
 
   async update(id: number, dto: UpdateExternalAccessAppDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const app = await this.appRepo.findOne({ where: { id, tenantId } });
     if (!app) throw new NotFoundException('内网应用不存在');
-    if (dto.userIds !== undefined) {
-      await this.validateUsers(tenantId, dto.userIds);
-    }
     const oldHostname = app.publicHostname;
     const oldAgentId = app.agentId;
     if (dto.name !== undefined) app.name = dto.name.trim();
@@ -398,9 +405,6 @@ export class ExternalAccessService {
     }
     app.updatedBy = user.id;
     await this.appRepo.save(app);
-    if (dto.userIds !== undefined) {
-      await this.replaceGrants(app, dto.userIds, user.id);
-    }
     if (resolveExternalAccessProvider() === 'domestic') {
       if (!app.gatewayPort) app.gatewayPort = await this.allocateGatewayPort();
       const affectedIds = [...new Set([oldAgentId, app.agentId].filter((id): id is number => !!id))];
@@ -409,9 +413,9 @@ export class ExternalAccessService {
         if (agent) await this.bumpAgentRevision(agent, agentId === app.agentId ? [app] : []);
       }
     } else await this.syncAndRecord(app, oldHostname);
-    const grants = await this.grantRepo.find({ where: { appId: app.id } });
+    const roleIds = await this.accessService.roleIdsWithExternalApp(tenantId, app.id);
     const currentAgent = app.agentId ? await this.agentRepo.findOne({ where: { id: app.agentId, tenantId } }) : null;
-    return this.view(app, grants.map((grant) => grant.userId), currentAgent ?? undefined);
+    return this.view(app, roleIds, currentAgent ?? undefined);
   }
 
   async sync(id: number, user: AuthUser) {
@@ -454,17 +458,6 @@ export class ExternalAccessService {
     return normalizeExternalRoute(publicHostname, originUrl, zone);
   }
 
-  private async validateUsers(tenantId: number, userIds: number[]) {
-    const unique = [...new Set(userIds)];
-    if (!unique.length) throw new BadRequestException('至少授权一个用户');
-    const users = await this.userRepo.find({ where: { tenantId, id: In(unique) } });
-    if (users.length !== unique.length) throw new BadRequestException('授权名单中包含无效用户');
-    const invalid = users.find(
-      (item) => !STAFF_APP_ROLES.includes(item.role) || item.status !== UserStatus.ACTIVE,
-    );
-    if (invalid) throw new BadRequestException(`用户「${invalid.name || invalid.id}」不是有效员工账号`);
-  }
-
   private async assertRouteAvailable(tenantId: number, hostname: string, exceptId?: number) {
     const existing = await this.appRepo.findOne({ where: { publicHostname: hostname } });
     if (existing && existing.id !== exceptId) {
@@ -488,27 +481,10 @@ export class ExternalAccessService {
     throw new BadRequestException('无法生成唯一权限标识，请更换外网子域名');
   }
 
-  private async replaceGrants(app: ExternalAccessApp, userIds: number[], operatorId: number) {
-    await this.grantRepo.delete({ appId: app.id });
-    const unique = [...new Set(userIds)];
-    if (!unique.length) return;
-    await this.grantRepo.save(
-      unique.map((userId) =>
-        this.grantRepo.create({
-          tenantId: app.tenantId,
-          appId: app.id,
-          userId,
-          createdBy: operatorId,
-          updatedBy: operatorId,
-        }),
-      ),
-    );
-  }
-
-  private view(app: ExternalAccessApp, userIds: number[], agent?: LanGatewayAgent) {
+  private view(app: ExternalAccessApp, roleIds: number[], agent?: LanGatewayAgent) {
     const stale = !!agent && (!agent.lastSeenAt || Date.now() - agent.lastSeenAt.getTime() > 90_000);
     const agentStatus = !agent ? null : !agent.enabled ? 'disabled' : agent.tokenHash && stale ? 'offline' : agent.status;
-    return { ...app, userIds, agentName: agent?.name ?? null, agentStatus };
+    return { ...app, roleIds, agentName: agent?.name ?? null, agentStatus };
   }
 
   private async requireAgent(tenantId: number, agentId?: number) {

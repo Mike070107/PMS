@@ -17,7 +17,6 @@ import {
   WebLoginTicket,
   OidcAuthorizationCode,
   ExternalAccessApp,
-  ExternalAccessGrant,
 } from '../../entities';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -44,7 +43,6 @@ import { OidcService } from './oidc.service';
       WebLoginTicket,
       OidcAuthorizationCode,
       ExternalAccessApp,
-      ExternalAccessGrant,
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],

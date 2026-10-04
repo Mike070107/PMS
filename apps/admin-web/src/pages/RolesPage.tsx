@@ -63,6 +63,8 @@ interface RoleRow {
   communityIds: number[];
   /** 额外可见的仓库（数据范围之外点名给的，主要是总仓） */
   warehouseIds: number[];
+  /** 角色实际生效的内网应用；跟随模板时服务端返回模板那一份。 */
+  externalAppIds: number[];
 }
 
 interface TemplateRow {
@@ -72,6 +74,14 @@ interface TemplateRow {
   permissions: RolePermRow[];
   /** 正在跟随这个模板的角色，改模板前的影响面 */
   roles: { id: number; name: string }[];
+  externalAppIds: number[];
+}
+
+interface ExternalAppOption {
+  id: number;
+  name: string;
+  publicHostname: string;
+  enabled: boolean;
 }
 
 interface ScopeOptions {
@@ -109,6 +119,7 @@ export default function RolesPage() {
   const isTenantAdmin = !access || access.isTenantAdmin || access.isPlatformAdmin;
   const [rows, setRows] = useState<RoleRow[]>([]);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const [externalApps, setExternalApps] = useState<ExternalAppOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<RoleRow | null>(null);
   const [creating, setCreating] = useState(false);
@@ -117,9 +128,10 @@ export default function RolesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [roleRows, tplRows] = await Promise.all([
+      const [roleRows, tplRows, appRows] = await Promise.all([
         request<RoleRow[]>({ url: '/roles' }),
         request<TemplateRow[]>({ url: '/roles/templates' }),
+        request<ExternalAppOption[]>({ url: '/roles/external-app-options' }),
       ]);
       setRows(
         roleRows.map((role) => ({
@@ -133,6 +145,7 @@ export default function RolesPage() {
           permissions: sanitizePermissionRows(template.permissions),
         })),
       );
+      setExternalApps(appRows);
     } catch (e: any) {
       message.error(e?.message || '加载失败');
     } finally {
@@ -197,7 +210,7 @@ export default function RolesPage() {
                     const visible = perms.filter((p) => p.canView);
                     const app = visible.filter((p) => isStaffAppPageKey(p.pageKey));
                     const admin = visible.filter((p) => !isStaffAppPageKey(p.pageKey));
-                    if (!visible.length) return <Text type="secondary">未配置</Text>;
+                    if (!visible.length && !r.externalAppIds.length) return <Text type="secondary">未配置</Text>;
                     const row = (
                       label: string,
                       list: RolePermRow[],
@@ -232,6 +245,15 @@ export default function RolesPage() {
                           STAFF_APP_PAGES.find((x) => x.key === k)?.label ?? k)}
                         {row('后台', admin, (k) =>
                           ADMIN_PAGES.find((x) => x.key === k)?.label ?? k)}
+                        {!!r.externalAppIds.length && (
+                          <div style={{ marginTop: 4 }}>
+                            <Text type="secondary" style={{ fontSize: 12, marginRight: 6 }}>内网应用</Text>
+                            {r.externalAppIds.map((appId) => {
+                              const appItem = externalApps.find((item) => item.id === appId);
+                              return <Tag key={appId} color="cyan">{appItem?.name ?? `应用 #${appId}`}</Tag>;
+                            })}
+                          </div>
+                        )}
                       </>
                     );
                   },
@@ -299,6 +321,7 @@ export default function RolesPage() {
                 mayWrite={mayWrite}
                 mayDelete={canDelete && isTenantAdmin}
                 onChanged={load}
+                externalApps={externalApps}
               />
             ),
           },
@@ -309,6 +332,7 @@ export default function RolesPage() {
         open={creating || !!editing}
         target={editing}
         templates={templates}
+        externalApps={externalApps}
         onClose={() => { setCreating(false); setEditing(null); }}
         onDone={() => { setCreating(false); setEditing(null); load(); }}
       />
@@ -400,11 +424,12 @@ function SaveAsTemplateModal({
 }
 
 function RoleFormModal({
-  open, target, templates, onClose, onDone,
+  open, target, templates, externalApps, onClose, onDone,
 }: {
   open: boolean;
   target?: RoleRow | null;
   templates: TemplateRow[];
+  externalApps: ExternalAppOption[];
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -415,6 +440,7 @@ function RoleFormModal({
   const [dataScope, setDataScope] = useState<string>(RoleDataScope.ALL);
   const [scopeOptions, setScopeOptions] = useState<ScopeOptions>({ offices: [], communities: [], warehouses: [] });
   const [perms, setPerms] = useState<Record<string, RolePermRow>>({});
+  const [externalAppIds, setExternalAppIds] = useState<number[]>([]);
   /** 跟随的权限模板 id；undefined = 自定义（勾选存在这个角色自己身上） */
   const [templateId, setTemplateId] = useState<number | undefined>(undefined);
   const followed = templates.find((t) => t.id === templateId) ?? null;
@@ -422,6 +448,7 @@ function RoleFormModal({
   const shownPerms = followed
     ? Object.fromEntries(followed.permissions.map((p) => [p.pageKey, { ...p }]))
     : perms;
+  const shownExternalAppIds = followed ? followed.externalAppIds : externalAppIds;
 
   // 公司没开通的页面不出现在矩阵里
   const pages = useMemo(
@@ -452,6 +479,7 @@ function RoleFormModal({
       });
       setDataScope(target.dataScope);
       setTemplateId(target.templateId ?? undefined);
+      setExternalAppIds(target.externalAppIds ?? []);
       // 跟随模板的角色，这里存的是模板那份 —— 解绑成「自定义」时正好当起点，
       // 不会一解绑就变成一格都没有
       setPerms(Object.fromEntries(target.permissions.map((p) => [p.pageKey, { ...p }])));
@@ -461,6 +489,7 @@ function RoleFormModal({
       setDataScope(RoleDataScope.ALL);
       setTemplateId(undefined);
       setPerms({});
+      setExternalAppIds([]);
     }
   }, [open, target, form]);
 
@@ -532,11 +561,11 @@ function RoleFormModal({
     // 只上小程序的角色（维修工、保安…）本来就不该进后台，零页面权限是正常配置；
     // 只上小程序的角色（维修工、保安…）本来就不该进后台，网站页面一个不勾是正常的；
     // 没选类型又一个网站页面都不勾，才是真的配错了
-      if (!permissions.length) {
-        message.warning('至少勾一个页面 —— 一格都不勾，绑这个角色的人什么也打不开');
+      if (!permissions.length && !externalAppIds.length) {
+        message.warning('至少勾一个页面或内网应用 —— 一项都不给，绑这个角色的人什么也打不开');
         return;
       }
-      if (!permissions.some((p) => isStaffAppPageKey(p.pageKey))) {
+      if (permissions.length && !permissions.some((p) => isStaffAppPageKey(p.pageKey))) {
         message.warning('这个角色在小程序里一格入口都没有，绑它的人登进去只有「我的」页');
       }
     }
@@ -552,6 +581,7 @@ function RoleFormModal({
         enabled: v.enabled,
         templateId: templateId ?? null,
         permissions,
+        externalAppIds: followed ? [] : externalAppIds,
       };
       if (target) {
         await request({ method: 'PATCH', url: `/roles/${target.id}`, data });
@@ -735,6 +765,18 @@ function RoleFormModal({
                   />
                 ),
               },
+              {
+                key: 'external-apps',
+                label: `内网应用${shownExternalAppIds.length ? `（${shownExternalAppIds.length}）` : ''}`,
+                children: (
+                  <ExternalAppPermissionGroup
+                    apps={externalApps}
+                    selectedIds={shownExternalAppIds}
+                    readOnly={!!followed}
+                    onChange={setExternalAppIds}
+                  />
+                ),
+              },
             ]}
           />
         </Form.Item>
@@ -855,6 +897,82 @@ function PermGroup({
   );
 }
 
+function ExternalAppPermissionGroup({
+  apps,
+  selectedIds,
+  readOnly,
+  onChange,
+}: {
+  apps: ExternalAppOption[];
+  selectedIds: number[];
+  readOnly?: boolean;
+  onChange: (ids: number[]) => void;
+}) {
+  if (!apps.length) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        message="还没有可授权的内网应用"
+        description="请先到「内网应用发布」创建应用，再回到这里配置角色授权。"
+      />
+    );
+  }
+
+  const selected = new Set(selectedIds);
+  return (
+    <div>
+      <Text type="secondary" style={{ display: 'block', marginBottom: 12, lineHeight: 1.6 }}>
+        勾选后，拥有这个角色的用户可通过微信确认进入对应内网应用。应用地址和隧道仍在「内网应用发布」维护。
+      </Text>
+      <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, overflow: 'hidden' }}>
+        {apps.map((app, index) => {
+          const checked = selected.has(app.id);
+          return (
+            <label
+              key={app.id}
+              style={{
+                minHeight: 52,
+                padding: '10px 16px',
+                borderTop: index ? '1px solid #f5f5f5' : undefined,
+                background: checked ? '#f6fffb' : undefined,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                cursor: readOnly ? 'default' : 'pointer',
+              }}
+            >
+              <Checkbox
+                checked={checked}
+                disabled={readOnly}
+                onChange={(event) => {
+                  const next = event.target.checked
+                    ? [...new Set([...selectedIds, app.id])]
+                    : selectedIds.filter((id) => id !== app.id);
+                  onChange(next);
+                }}
+              />
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <span style={{ display: 'block', fontWeight: checked ? 600 : 400 }}>{app.name}</span>
+                <Text type="secondary" style={{ fontSize: 12 }}>{app.publicHostname}</Text>
+              </span>
+              {!app.enabled && <Tag>已停用</Tag>}
+            </label>
+          );
+        })}
+      </div>
+      {readOnly && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginTop: 12 }}
+          message="此角色正在跟随模板，内网应用授权请到对应模板中修改。"
+        />
+      )}
+    </div>
+  );
+}
+
 // ============= 权限模板 =============
 
 /**
@@ -865,9 +983,10 @@ function PermGroup({
  * 每个角色改一遍（更会漏）。模板只管权限，数据范围仍由各角色自己配。
  */
 function TemplatesTab({
-  templates, loading, mayWrite, mayDelete, onChanged,
+  templates, externalApps, loading, mayWrite, mayDelete, onChanged,
 }: {
   templates: TemplateRow[];
+  externalApps: ExternalAppOption[];
   loading: boolean;
   mayWrite: boolean;
   mayDelete: boolean;
@@ -943,9 +1062,9 @@ function TemplatesTab({
             },
             {
               title: '包含的权限', dataIndex: 'permissions',
-              render: (perms: RolePermRow[]) => {
+              render: (perms: RolePermRow[], template) => {
                 const visible = perms.filter((p) => p.canView);
-                if (!visible.length) return <Text type="secondary">未配置</Text>;
+                if (!visible.length && !template.externalAppIds.length) return <Text type="secondary">未配置</Text>;
                 const app = visible.filter((p) => isStaffAppPageKey(p.pageKey));
                 const admin = visible.filter((p) => !isStaffAppPageKey(p.pageKey));
                 const row = (label: string, list: RolePermRow[], find: (k: string) => string) =>
@@ -967,6 +1086,15 @@ function TemplatesTab({
                   <>
                     {row('小程序', app, (k) => STAFF_APP_PAGES.find((x) => x.key === k)?.label ?? k)}
                     {row('后台', admin, (k) => ADMIN_PAGES.find((x) => x.key === k)?.label ?? k)}
+                    {!!template.externalAppIds.length && (
+                      <div style={{ marginTop: 4 }}>
+                        <Text type="secondary" style={{ fontSize: 12, marginRight: 6 }}>内网应用</Text>
+                        {template.externalAppIds.map((appId) => {
+                          const appItem = externalApps.find((item) => item.id === appId);
+                          return <Tag key={appId} color="cyan">{appItem?.name ?? `应用 #${appId}`}</Tag>;
+                        })}
+                      </div>
+                    )}
                   </>
                 );
               },
@@ -1016,6 +1144,7 @@ function TemplatesTab({
       <TemplateFormModal
         open={creating || !!editing}
         target={editing}
+        externalApps={externalApps}
         onClose={() => { setCreating(false); setEditing(null); }}
         onDone={() => { setCreating(false); setEditing(null); onChanged(); }}
       />
@@ -1024,10 +1153,11 @@ function TemplatesTab({
 }
 
 function TemplateFormModal({
-  open, target, onClose, onDone,
+  open, target, externalApps, onClose, onDone,
 }: {
   open: boolean;
   target?: TemplateRow | null;
+  externalApps: ExternalAppOption[];
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -1036,6 +1166,7 @@ function TemplateFormModal({
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [perms, setPerms] = useState<Record<string, RolePermRow>>({});
+  const [externalAppIds, setExternalAppIds] = useState<number[]>([]);
 
   const pages = useMemo(
     () =>
@@ -1053,9 +1184,11 @@ function TemplateFormModal({
     if (target) {
       form.setFieldsValue({ name: target.name, remark: target.remark ?? undefined });
       setPerms(Object.fromEntries(target.permissions.map((p) => [p.pageKey, { ...p }])));
+      setExternalAppIds(target.externalAppIds ?? []);
     } else {
       form.resetFields();
       setPerms({});
+      setExternalAppIds([]);
     }
   }, [open, target, form]);
 
@@ -1086,13 +1219,13 @@ function TemplateFormModal({
   const onOk = async () => {
     const v = await form.validateFields();
     const permissions = sanitizePermissionRows(Object.values(perms).filter((p) => p.canView));
-    if (!permissions.length) {
-      message.warning('至少勾一个页面 —— 空模板套上去的角色什么也打不开');
+    if (!permissions.length && !externalAppIds.length) {
+      message.warning('至少勾一个页面或内网应用 —— 空模板套上去的角色什么也打不开');
       return;
     }
     setSaving(true);
     try {
-      const data = { name: v.name, remark: v.remark || undefined, permissions };
+      const data = { name: v.name, remark: v.remark || undefined, permissions, externalAppIds };
       if (target) {
         await request({ method: 'PATCH', url: `/roles/templates/${target.id}`, data });
       } else {
@@ -1186,6 +1319,17 @@ function TemplateFormModal({
                     perms={perms}
                     onToggle={togglePage}
                     onAction={setPerm}
+                  />
+                ),
+              },
+              {
+                key: 'external-apps',
+                label: `内网应用${externalAppIds.length ? `（${externalAppIds.length}）` : ''}`,
+                children: (
+                  <ExternalAppPermissionGroup
+                    apps={externalApps}
+                    selectedIds={externalAppIds}
+                    onChange={setExternalAppIds}
                   />
                 ),
               },

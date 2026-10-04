@@ -19,6 +19,12 @@ import { ExternalAccessService } from './external-access.service';
 export class ExternalAccessController {
   constructor(private readonly service: ExternalAccessService) {}
 
+  /** Web / 小程序未来的内网应用图标入口，只返回本人已授权应用。 */
+  @Get('my-apps')
+  myApps(@CurrentUser() user: AuthUser) {
+    return this.service.listMyApps(user);
+  }
+
   @Get('apps')
   @RequirePermission('settings', 'view')
   list(@CurrentUser() user: AuthUser) {
@@ -29,12 +35,6 @@ export class ExternalAccessController {
   @RequirePermission('settings', 'view')
   configuration() {
     return this.service.configuration();
-  }
-
-  @Get('users')
-  @RequirePermission('settings', 'view')
-  users(@CurrentUser() user: AuthUser) {
-    return this.service.users(user);
   }
 
   @Get('agents')

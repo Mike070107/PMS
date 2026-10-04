@@ -7,6 +7,7 @@ import {
   Modal,
   Select,
   Skeleton,
+  Space,
   Switch,
   Tooltip,
 } from 'antd';
@@ -54,7 +55,7 @@ interface ExternalApp {
   originCheckedAt?: string | null;
   agentName?: string | null;
   agentStatus?: GatewayAgent['status'] | null;
-  userIds: number[];
+  roleIds: number[];
   lastSyncedAt?: string | null;
   lastSyncError?: string | null;
 }
@@ -75,14 +76,6 @@ interface GatewayAgent {
   appCount: number;
 }
 
-interface UserOption {
-  id: number;
-  name?: string | null;
-  phone?: string | null;
-  status: 'active' | 'disabled';
-  wxBound: boolean;
-}
-
 interface GatewayConfig {
   provider: 'domestic' | 'cloudflare';
   providerLabel: string;
@@ -92,9 +85,6 @@ const previewGateway: GatewayConfig = {
   provider: 'domestic',
   providerLabel: '腾讯云 WSS 网关',
 };
-
-const maskPhone = (phone?: string | null) =>
-  phone && phone.length >= 7 ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : phone || '未登记手机号';
 
 const previewApps: ExternalApp[] = [
   {
@@ -110,7 +100,7 @@ const previewApps: ExternalApp[] = [
     publishStatus: 'online',
     desiredRevision: 3,
     appliedRevision: 3,
-    userIds: [101, 102, 103],
+    roleIds: [11, 12],
     lastSyncedAt: new Date().toISOString(),
   },
   {
@@ -126,7 +116,7 @@ const previewApps: ExternalApp[] = [
     publishStatus: 'waiting_agent',
     desiredRevision: 1,
     appliedRevision: 0,
-    userIds: [101],
+    roleIds: [],
     lastSyncError: '局域网代理尚未在线，请在目标局域网启动 PMS 内网代理。',
   },
 ];
@@ -134,12 +124,6 @@ const previewApps: ExternalApp[] = [
 const previewAgents: GatewayAgent[] = [
   { id: 1, name: '财务室代理', deviceKey: 'lan-a13f8c2d', status: 'online', version: '1.1.0', computerName: 'SQLServer', desiredRevision: 3, appliedRevision: 3, enabled: true, enrolled: true, appCount: 1, lastSeenAt: new Date().toISOString() },
   { id: 2, name: '仓库代理', deviceKey: 'lan-b492ed11', status: 'pending', desiredRevision: 1, appliedRevision: 0, enabled: true, enrolled: false, appCount: 1 },
-];
-
-const previewUsers: UserOption[] = [
-  { id: 101, name: '王会计', phone: '13800138001', status: 'active', wxBound: true },
-  { id: 102, name: '李出纳', phone: '13800138002', status: 'active', wxBound: true },
-  { id: 103, name: '陈经理', phone: '13800138003', status: 'active', wxBound: false },
 ];
 
 type AppState = 'disabled' | 'error' | 'synced' | 'pending';
@@ -177,7 +161,6 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
   const { message } = AntdApp.useApp();
   const { canEdit } = usePagePerm('settings');
   const [apps, setApps] = useState<ExternalApp[]>(preview ? previewApps : []);
-  const [users, setUsers] = useState<UserOption[]>(preview ? previewUsers : []);
   const [agents, setAgents] = useState<GatewayAgent[]>(preview ? previewAgents : []);
   const [gateway, setGateway] = useState<GatewayConfig>(previewGateway);
   const [loading, setLoading] = useState(false);
@@ -190,14 +173,12 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
     if (preview) return;
     setLoading(true);
     try {
-      const [appRows, userRows, agentRows, gatewayConfig] = await Promise.all([
+      const [appRows, agentRows, gatewayConfig] = await Promise.all([
         request<ExternalApp[]>({ url: '/external-access/apps' }),
-        request<UserOption[]>({ url: '/external-access/users' }),
         request<GatewayAgent[]>({ url: '/external-access/agents' }),
         request<GatewayConfig>({ url: '/external-access/config' }),
       ]);
       setApps(appRows);
-      setUsers(userRows);
       setAgents(agentRows);
       setGateway(gatewayConfig);
     } catch (error: any) {
@@ -210,11 +191,11 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
   useEffect(() => { load(); }, [load]);
 
   const summary = useMemo(() => {
-    const authorizedUsers = new Set(apps.flatMap((app) => app.userIds));
+    const authorizedRoles = new Set(apps.flatMap((app) => app.roleIds));
     return {
       total: apps.length,
       synced: apps.filter((app) => getAppState(app) === 'synced').length,
-      users: authorizedUsers.size,
+      roles: authorizedRoles.size,
       attention: apps.filter((app) => getAppState(app) === 'error').length,
     };
   }, [apps]);
@@ -289,7 +270,7 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
         <div className="external-access-metrics" aria-label="发布概览">
           <Metric icon={<AppstoreOutlined />} value={summary.total} label="应用" tone="blue" />
           <Metric icon={<CheckCircleFilled />} value={summary.synced} label="在线" tone="green" />
-          <Metric icon={<TeamOutlined />} value={summary.users} label="授权" tone="violet" />
+          <Metric icon={<TeamOutlined />} value={summary.roles} label="授权角色" tone="violet" />
           <Metric icon={<ExclamationCircleFilled />} value={summary.attention} label="待处理" tone="amber" />
         </div>
       </section>
@@ -352,8 +333,8 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
         )}
       </section>
 
-      <ExternalAppModal open={creating} users={users} agents={agents} preview={preview} provider={gateway.provider} onClose={() => setCreating(false)} onDone={() => { setCreating(false); load(); }} />
-      <ExternalAppModal open={!!editing} target={editing} users={users} agents={agents} preview={preview} provider={gateway.provider} onClose={() => setEditing(null)} onDone={() => { setEditing(null); load(); }} />
+      <ExternalAppModal open={creating} agents={agents} preview={preview} provider={gateway.provider} onClose={() => setCreating(false)} onDone={() => { setCreating(false); load(); }} />
+      <ExternalAppModal open={!!editing} target={editing} agents={agents} preview={preview} provider={gateway.provider} onClose={() => setEditing(null)} onDone={() => { setEditing(null); load(); }} />
       <GatewayAgentModal open={creatingAgent} preview={preview} onClose={() => setCreatingAgent(false)} onDone={() => { setCreatingAgent(false); load(); }} />
     </main>
   );
@@ -375,7 +356,7 @@ function ExternalAppCard({ app, index, canEdit, provider, syncing, onEdit, onSyn
     { label: '内网', done: !!app.originCheckedAt || state === 'synced' },
     { label: '隧道', done: revisionApplied && agentOnline || state === 'synced' },
     { label: 'HTTPS', done: state === 'synced' },
-    { label: '授权', done: state === 'synced' && app.userIds.length > 0 },
+    { label: '授权', done: state === 'synced' && app.roleIds.length > 0 },
   ];
   const errorMessage = appErrorMessage(app);
 
@@ -407,7 +388,7 @@ function ExternalAppCard({ app, index, canEdit, provider, syncing, onEdit, onSyn
 
       <footer className="external-app-card__foot">
         <div className="external-app-facts">
-          <span><TeamOutlined aria-hidden="true" /><strong>{app.userIds.length}</strong> 人</span>
+          <span><TeamOutlined aria-hidden="true" /><strong>{app.roleIds.length}</strong> 个角色</span>
           <span><ClockCircleOutlined aria-hidden="true" /><strong>{app.sessionDuration}</strong></span>
         </div>
         <div className="external-app-actions">
@@ -510,7 +491,7 @@ function GatewayAgentModal({ open, preview, onClose, onDone }: { open: boolean; 
   </Modal>;
 }
 
-function ExternalAppModal({ open, target, users, agents, preview, provider, onClose, onDone }: { open: boolean; target?: ExternalApp | null; users: UserOption[]; agents: GatewayAgent[]; preview: boolean; provider: GatewayConfig['provider']; onClose: () => void; onDone: () => void }) {
+function ExternalAppModal({ open, target, agents, preview, provider, onClose, onDone }: { open: boolean; target?: ExternalApp | null; agents: GatewayAgent[]; preview: boolean; provider: GatewayConfig['provider']; onClose: () => void; onDone: () => void }) {
   const { message } = AntdApp.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -520,7 +501,7 @@ function ExternalAppModal({ open, target, users, agents, preview, provider, onCl
     if (target) form.setFieldsValue({ ...target, originUrl: originEntryUrl(target) });
     else {
       form.resetFields();
-      form.setFieldsValue({ enabled: true, sessionDuration: '1h', userIds: [], agentId: agents.length === 1 ? agents[0].id : undefined });
+      form.setFieldsValue({ enabled: true, sessionDuration: '1h', agentId: agents.length === 1 ? agents[0].id : undefined });
     }
   }, [open, target, form, agents]);
 
@@ -534,7 +515,7 @@ function ExternalAppModal({ open, target, users, agents, preview, provider, onCl
     try {
       const saved = await request<ExternalApp>({ method: target ? 'PATCH' : 'POST', url: target ? `/external-access/apps/${target.id}` : '/external-access/apps', data: values });
       if (saved.lastSyncError) message.warning(`配置已保存，但网关同步失败：${saved.lastSyncError}`);
-      else message.success(target ? '应用配置和授权已更新' : '内网应用已发布');
+      else message.success(target ? '应用发布配置已更新' : '内网应用已发布');
       onDone();
     } catch (error: any) {
       message.error(error?.message || '保存失败，填写内容已保留');
@@ -574,10 +555,19 @@ function ExternalAppModal({ open, target, users, agents, preview, provider, onCl
         </section>
 
         <section className="external-access-form-section" aria-labelledby="external-app-access-title">
-          <div className="external-access-form-section__head"><span><SafetyCertificateFilled aria-hidden="true" /></span><div><h3 id="external-app-access-title">权限</h3><p>预先授权，员工扫码确认后直接进入</p></div></div>
-          <Form.Item name="userIds" label="授权用户" extra="取消授权后立即停止该用户访问；已打开页面的下一次请求也会被拦截。" rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个授权用户' }]}>
-            <Select mode="multiple" showSearch optionFilterProp="label" maxTagCount="responsive" placeholder="按姓名或手机号选择" options={users.map((user) => ({ value: user.id, label: `${user.name || '未命名用户'} · ${maskPhone(user.phone)}${user.wxBound ? ' · 微信已绑定' : ' · 尚未绑定微信'}`, disabled: user.status !== 'active' }))} />
-          </Form.Item>
+          <div className="external-access-form-section__head"><span><SafetyCertificateFilled aria-hidden="true" /></span><div><h3 id="external-app-access-title">权限</h3><p>内网应用的访问权由业务角色统一管理</p></div></div>
+          <Alert
+            type="info"
+            showIcon
+            message="请在业务角色中授权"
+            description={<>在「业务角色 / 权限模板」勾选本应用，再到「用户管理」把对应角色分配给员工。发布配置只维护域名、内网地址和客户端。</>}
+            action={
+              <Space direction="vertical" size={4}>
+                <Button size="small" href="/roles" target="_blank">配置业务角色</Button>
+                <Button size="small" type="link" href="/staff" target="_blank">给用户分配角色</Button>
+              </Space>
+            }
+          />
           <div className="external-access-form-grid external-access-form-grid--settings">
             <Form.Item name="sessionDuration" label="登录有效期"><Select suffixIcon={<ClockCircleOutlined aria-hidden="true" />} options={[{ value: '30m', label: '30 分钟（财务推荐）' }, { value: '1h', label: '1 小时' }, { value: '4h', label: '4 小时（最长）' }]} /></Form.Item>
             <Form.Item className="external-access-switch-field" name="enabled" label="访问状态" valuePropName="checked" extra="关闭后立即停止新访问"><Switch checkedChildren="开放" unCheckedChildren="停用" /></Form.Item>

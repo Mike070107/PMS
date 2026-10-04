@@ -18,6 +18,7 @@ import {
   Role,
   RolePermission,
   RoleScope,
+  RoleTemplate,
   RoleTemplatePermission,
   RoleWarehouse,
   StaffProfile,
@@ -78,6 +79,8 @@ export class AccessService implements OnModuleInit {
     private readonly rolePermRepo: Repository<RolePermission>,
     @InjectRepository(RoleTemplatePermission)
     private readonly tplPermRepo: Repository<RoleTemplatePermission>,
+    @InjectRepository(RoleTemplate)
+    private readonly roleTemplateRepo: Repository<RoleTemplate>,
     @InjectRepository(RoleScope)
     private readonly roleScopeRepo: Repository<RoleScope>,
     @InjectRepository(RoleWarehouse)
@@ -315,6 +318,57 @@ export class AccessService implements OnModuleInit {
         : [],
     ]);
     return [...own, ...fromTemplates];
+  }
+
+  /**
+   * 用户实际可进入的内网应用：只读业务角色/权限模板。
+   * 不再支持逐用户例外，避免角色显示未授权但实际仍可访问。
+   */
+  async externalAppIdsOfUser(tenantId: number, userId: number): Promise<number[]> {
+    const bindings = await this.userRoleRepo.find({ where: { tenantId, userId } });
+    if (!bindings.length) return [];
+    const ids = new Set<number>();
+    const roles = await this.roleRepo.find({
+      where: { tenantId, id: In(bindings.map((binding) => binding.roleId)), enabled: true },
+    });
+    const templateIds = [
+      ...new Set(roles.map((role) => role.templateId).filter((id): id is number => !!id)),
+    ];
+    const templates = templateIds.length
+      ? await this.roleTemplateRepo.find({ where: { tenantId, id: In(templateIds) } })
+      : [];
+    const templateApps = new Map(templates.map((template) => [template.id, template.externalAppIds ?? []]));
+    for (const role of roles) {
+      const appIds = role.templateId
+        ? templateApps.get(role.templateId) ?? []
+        : role.externalAppIds ?? [];
+      appIds.forEach((appId) => ids.add(appId));
+    }
+    return [...ids];
+  }
+
+  async userHasExternalAppAccess(tenantId: number, userId: number, appId: number) {
+    return (await this.externalAppIdsOfUser(tenantId, userId)).includes(appId);
+  }
+
+  /** 发布清单展示哪些启用角色能进入指定应用（含跟随模板的角色）。 */
+  async roleIdsWithExternalApp(tenantId: number, appId: number): Promise<number[]> {
+    const roles = await this.roleRepo.find({ where: { tenantId, enabled: true } });
+    const templateIds = [
+      ...new Set(roles.map((role) => role.templateId).filter((id): id is number => !!id)),
+    ];
+    const templates = templateIds.length
+      ? await this.roleTemplateRepo.find({ where: { tenantId, id: In(templateIds) } })
+      : [];
+    const templateApps = new Map(templates.map((template) => [template.id, template.externalAppIds ?? []]));
+    return roles
+      .filter((role) => {
+        const ids = role.templateId
+          ? templateApps.get(role.templateId) ?? []
+          : role.externalAppIds ?? [];
+        return ids.includes(appId);
+      })
+      .map((role) => role.id);
   }
 
   /**

@@ -32,6 +32,13 @@ export class Role extends TenantEntity {
   @Column({ name: 'template_id', type: 'int', nullable: true })
   templateId: number | null;
 
+  /**
+   * 可进入的内网应用。跟随模板时这列保持为空，实时读取模板的 external_app_ids；
+   * 自定义角色才在这里保存，确保授权只有一个出处。
+   */
+  @Column({ name: 'external_app_ids', type: 'integer', array: true, default: () => "'{}'" })
+  externalAppIds: number[];
+
   /** RoleDataScope: all / offices / communities */
   @Column({ name: 'data_scope', type: 'varchar', length: 20, default: 'all' })
   dataScope: string;

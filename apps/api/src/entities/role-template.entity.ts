@@ -21,4 +21,8 @@ export class RoleTemplate extends TenantEntity {
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   remark: string | null;
+
+  /** 跟随此模板的角色共同拥有的内网应用访问权。 */
+  @Column({ name: 'external_app_ids', type: 'integer', array: true, default: () => "'{}'" })
+  externalAppIds: number[];
 }

@@ -16,6 +16,8 @@ import type { QrLoginScanInfo } from '@pms/api-client/src/endpoints/auth';
  */
 const PENDING_KEY = 'pms.staff.pending_qr';
 const TOKEN_KEY = 'pms.staff.access_token';
+const AUTO_CLOSE_DELAY_MS = 1200;
+let autoCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
 Page({
   data: {
@@ -29,6 +31,8 @@ Page({
     /** 浏览器 UA 太长，页面上只显示认得出的那部分 */
     deviceText: '',
     timeText: '',
+    /** 微信拒绝或不支持退出 API 时，给用户一个明确的手动兜底。 */
+    closeHint: '',
   },
 
   onLoad(q: Record<string, string>) {
@@ -49,6 +53,10 @@ Page({
       return;
     }
     this.load(scene);
+  },
+
+  onUnload() {
+    clearAutoCloseTimer();
   },
 
   async load(ticket: string) {
@@ -76,6 +84,7 @@ Page({
     try {
       await auth.qrLoginConfirm(this.data.ticket);
       this.setData({ done: 'confirmed' });
+      this.scheduleAutoClose();
     } catch (e: any) {
       // 没绑后台角色的人（维修工、保安等）在这里就要看到原因，
       // 不能让他点完确认、网页那边报一句他根本看不见的错
@@ -98,10 +107,45 @@ Page({
     }
   },
 
+  scheduleAutoClose() {
+    clearAutoCloseTimer();
+    autoCloseTimer = setTimeout(() => {
+      autoCloseTimer = null;
+      this.closeMiniProgram(true);
+    }, AUTO_CLOSE_DELAY_MS);
+  },
+
+  onCloseMiniProgram() {
+    clearAutoCloseTimer();
+    this.closeMiniProgram(false);
+  },
+
+  closeMiniProgram(silent: boolean) {
+    const unavailable = '当前微信版本不能自动关闭，请点右上角“…”关闭小程序，或返回首页。';
+    if (typeof wx.exitMiniProgram !== 'function') {
+      this.setData({ closeHint: unavailable });
+      if (!silent) wx.showToast({ icon: 'none', title: '请点右上角关闭小程序' });
+      return;
+    }
+    wx.exitMiniProgram({
+      fail: () => {
+        this.setData({ closeHint: unavailable });
+        if (!silent) wx.showToast({ icon: 'none', title: '请点右上角关闭小程序' });
+      },
+    });
+  },
+
   onBackHome() {
+    clearAutoCloseTimer();
     wx.switchTab({ url: '/pages/me/me' });
   },
 });
+
+function clearAutoCloseTimer() {
+  if (autoCloseTimer === null) return;
+  clearTimeout(autoCloseTimer);
+  autoCloseTimer = null;
+}
 
 /** 带上时间戳：login.ts 只认最近几分钟内的票据，别把人送到一张早就过期的码上 */
 function savePending(scene: string) {

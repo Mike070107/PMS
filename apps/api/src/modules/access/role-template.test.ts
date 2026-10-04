@@ -168,6 +168,47 @@ test('模板只勾了小程序入口时不算后台权限', async () => {
   assert.equal(await svc.rolesGrantAdminPages([{ id: 2, templateId: 9 }]), false);
 });
 
+test('内网应用授权只支持自定义角色和跟随模板角色', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  svc.userRoleRepo = fakeRepo(
+    [{ tenantId: 1, userId: 7, roleId: 11 }, { tenantId: 1, userId: 7, roleId: 12 }],
+    {},
+  );
+  svc.roleRepo = fakeRepo(
+    [
+      { id: 11, tenantId: 1, enabled: true, templateId: null, externalAppIds: [91] },
+      { id: 12, tenantId: 1, enabled: true, templateId: 8, externalAppIds: [] },
+    ],
+    {},
+  );
+  svc.roleTemplateRepo = fakeRepo(
+    [{ id: 8, tenantId: 1, externalAppIds: [92, 91] }],
+    {},
+  );
+
+  assert.deepEqual(
+    (await svc.externalAppIdsOfUser(1, 7)).sort((a: number, b: number) => a - b),
+    [91, 92],
+  );
+  assert.equal(await svc.userHasExternalAppAccess(1, 7, 92), true);
+  assert.equal(await svc.userHasExternalAppAccess(1, 7, 99), false);
+});
+
+test('发布清单可反查有哪些角色授权了指定内网应用', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  svc.roleRepo = fakeRepo(
+    [
+      { id: 11, tenantId: 1, enabled: true, templateId: null, externalAppIds: [91] },
+      { id: 12, tenantId: 1, enabled: true, templateId: 8, externalAppIds: [] },
+      { id: 13, tenantId: 1, enabled: true, templateId: null, externalAppIds: [92] },
+    ],
+    {},
+  );
+  svc.roleTemplateRepo = fakeRepo([{ id: 8, tenantId: 1, externalAppIds: [91] }], {});
+
+  assert.deepEqual(await svc.roleIdsWithExternalApp(1, 91), [11, 12]);
+});
+
 test('勾了后台页面但没打勾「查看」不算 —— 只是被列出来不等于能看', async () => {
   const svc = Object.create(AccessService.prototype) as any;
   svc.tplPermRepo = fakeRepo(

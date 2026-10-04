@@ -87,6 +87,21 @@
   color: var(--color-text-secondary);
 }
 
+.result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+  margin-top: var(--space-lg);
+}
+
+.close-hint {
+  margin: var(--space-md) var(--space-xs) 0;
+  font-size: var(--font-md);
+  line-height: 1.7;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
 /* 图标一律 SVG，不用 emoji */
 .state__icon {
   width: 96rpx;

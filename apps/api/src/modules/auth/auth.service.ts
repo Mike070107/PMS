@@ -32,7 +32,6 @@ import {
   UserReportCommunity,
   UserRoleAssignment,
   ExternalAccessApp,
-  ExternalAccessGrant,
 } from '../../entities';
 import { AccessService } from '../access/access.service';
 import { RbacSeedService } from '../access/rbac-seed.service';
@@ -74,8 +73,6 @@ export class AuthService {
     private readonly userRoleRepo: Repository<UserRoleAssignment>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
-    @InjectRepository(ExternalAccessGrant)
-    private readonly externalGrantRepo: Repository<ExternalAccessGrant>,
     @InjectRepository(ExternalAccessApp)
     private readonly externalAppRepo: Repository<ExternalAccessApp>,
     private readonly jwt: JwtService,
@@ -626,7 +623,7 @@ export class AuthService {
   }
 
   /**
-   * 通用内网应用准入：不要求 PMS 后台角色，只认独立的应用授权名单。
+   * 通用内网应用准入：只按业务角色/权限模板上的内网应用权限判断。
    * requiredAppId 存在时必须精确命中该应用，不能用“有任意应用权限”代替。
    */
   async requireExternalAccessUser(
@@ -641,19 +638,16 @@ export class AuthService {
     if (!STAFF_APP_ROLES.includes(user.role as UserRole) || !user.wxOpenid) {
       throw new ForbiddenException('请先在「邻修管理」小程序用登记的手机号完成登录绑定');
     }
-    const grants = user.tenantId
-      ? await this.externalGrantRepo.find({
-          where: {
-            tenantId: user.tenantId,
-            userId,
-            ...(required ? { appId: required.appId } : {}),
-          },
-        })
+    const allowedIds = user.tenantId
+      ? await this.accessService.externalAppIdsOfUser(user.tenantId, userId)
       : [];
-    const apps = grants.length
+    const wantedIds = required
+      ? allowedIds.filter((id) => id === required.appId)
+      : allowedIds;
+    const apps = wantedIds.length
       ? await this.externalAppRepo.find({
           where: {
-            id: In(grants.map((grant) => grant.appId)),
+            id: In(wantedIds),
             tenantId: user.tenantId!,
             enabled: true,
           },

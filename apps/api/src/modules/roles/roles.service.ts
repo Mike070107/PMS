@@ -18,6 +18,7 @@ import {
 } from '../../common/pages';
 import {
   Community,
+  ExternalAccessApp,
   ManagementOffice,
   Role,
   RolePermission,
@@ -100,6 +101,9 @@ export class RolesService {
       enabled: r.enabled,
       templateId: r.templateId,
       templateName: r.templateId ? tplNameById.get(r.templateId) ?? null : null,
+      externalAppIds: r.templateId
+        ? templates.find((template) => template.id === r.templateId)?.externalAppIds ?? []
+        : r.externalAppIds ?? [],
       userCount: countByRole.get(r.id) ?? 0,
       permissions: (r.templateId
         ? tplPerms.filter((p) => p.templateId === r.templateId)
@@ -187,6 +191,21 @@ export class RolesService {
           officeName: w.officeId ? officeNameById.get(w.officeId) ?? null : null,
         })),
     };
+  }
+
+  /** 角色与权限模板共用的内网应用候选项；授权本身只在角色页维护。 */
+  async externalAppOptions(user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const apps = await this.dataSource.getRepository(ExternalAccessApp).find({
+      where: { tenantId },
+      order: { id: 'ASC' },
+    });
+    return apps.map((app) => ({
+      id: app.id,
+      name: app.name,
+      publicHostname: app.publicHostname,
+      enabled: app.enabled,
+    }));
   }
 
   /**
@@ -282,6 +301,9 @@ export class RolesService {
     this.validateScopePayload(dto);
     await this.ensureNameFree(tenantId, dto.name);
     const templateId = await this.resolveTemplateId(tenantId, dto.templateId);
+    const externalAppIds = templateId
+      ? []
+      : await this.validateExternalApps(tenantId, dto.externalAppIds ?? []);
     return this.dataSource.transaction(async (em) => {
       const role = await em.getRepository(Role).save(
         em.getRepository(Role).create({
@@ -289,6 +311,7 @@ export class RolesService {
           name: dto.name.trim(),
           remark: dto.remark ?? null,
           templateId,
+          externalAppIds,
           dataScope: dto.dataScope,
           builtIn: false,
           enabled: dto.enabled ?? true,
@@ -328,10 +351,20 @@ export class RolesService {
             canDelete: p.canDelete,
           }))
         : null;
+    const fallbackExternalAppIds = role.templateId
+      ? (await this.tplRepo.findOne({ where: { id: role.templateId, tenantId } }))?.externalAppIds ?? []
+      : role.externalAppIds ?? [];
+    const nextExternalAppIds = nextTemplateId
+      ? []
+      : await this.validateExternalApps(
+          tenantId,
+          dto.externalAppIds ?? fallbackExternalAppIds,
+        );
     return this.dataSource.transaction(async (em) => {
       role.name = dto.name.trim();
       role.remark = dto.remark ?? null;
       role.templateId = nextTemplateId;
+      role.externalAppIds = nextExternalAppIds;
       role.dataScope = dto.dataScope;
       if (dto.enabled !== undefined) role.enabled = dto.enabled;
       role.updatedBy = user.id;
@@ -582,6 +615,7 @@ export class RolesService {
       roles: roles
         .filter((r) => r.templateId === t.id)
         .map((r) => ({ id: r.id, name: r.name })),
+      externalAppIds: t.externalAppIds ?? [],
     }));
   }
 
@@ -589,17 +623,22 @@ export class RolesService {
     const tenantId = this.requireTenant(user);
     this.requireRoleManager(access);
     await this.ensureTemplateNameFree(tenantId, dto.name, null);
+    const externalAppIds = await this.validateExternalApps(
+      tenantId,
+      dto.externalAppIds ?? [],
+    );
     return this.dataSource.transaction(async (em) => {
       const tpl = await em.getRepository(RoleTemplate).save(
         em.getRepository(RoleTemplate).create({
           tenantId,
           name: dto.name.trim(),
           remark: dto.remark ?? null,
+          externalAppIds,
           createdBy: user.id,
           updatedBy: user.id,
         }),
       );
-      await this.writeTemplatePerms(em, tpl, dto.permissions, user.id, access);
+      await this.writeTemplatePerms(em, tpl, dto.permissions, externalAppIds, user.id, access);
       return { id: tpl.id };
     });
   }
@@ -619,13 +658,18 @@ export class RolesService {
     const tpl = await this.tplRepo.findOne({ where: { id, tenantId } });
     if (!tpl) throw new NotFoundException('权限模板不存在');
     await this.ensureTemplateNameFree(tenantId, dto.name, id);
+    const externalAppIds = await this.validateExternalApps(
+      tenantId,
+      dto.externalAppIds ?? tpl.externalAppIds ?? [],
+    );
     return this.dataSource.transaction(async (em) => {
       tpl.name = dto.name.trim();
       tpl.remark = dto.remark ?? null;
+      tpl.externalAppIds = externalAppIds;
       tpl.updatedBy = user.id;
       await em.getRepository(RoleTemplate).save(tpl);
       await em.getRepository(RoleTemplatePermission).delete({ templateId: tpl.id });
-      await this.writeTemplatePerms(em, tpl, dto.permissions, user.id, access);
+      await this.writeTemplatePerms(em, tpl, dto.permissions, externalAppIds, user.id, access);
       return { id: tpl.id };
     });
   }
@@ -671,8 +715,8 @@ export class RolesService {
     }
     await this.ensureTemplateNameFree(tenantId, dto.name, null);
     const perms = await this.permRepo.find({ where: { roleId } });
-    if (!perms.length) {
-      throw new BadRequestException('这个角色一格权限都没勾，存成模板没有意义');
+    if (!perms.length && !(role.externalAppIds ?? []).length) {
+      throw new BadRequestException('这个角色没有页面或内网应用权限，存成模板没有意义');
     }
     return this.dataSource.transaction(async (em) => {
       const tpl = await em.getRepository(RoleTemplate).save(
@@ -680,6 +724,7 @@ export class RolesService {
           tenantId,
           name: dto.name.trim(),
           remark: dto.remark ?? role.remark ?? null,
+          externalAppIds: role.externalAppIds ?? [],
           createdBy: user.id,
           updatedBy: user.id,
         }),
@@ -693,11 +738,13 @@ export class RolesService {
           canEdit: p.canEdit,
           canDelete: p.canDelete,
         })),
+        role.externalAppIds ?? [],
         user.id,
         access,
       );
       // 源角色改成跟随：权限没变，但从此只有模板一份出处
       role.templateId = tpl.id;
+      role.externalAppIds = [];
       role.updatedBy = user.id;
       await em.getRepository(Role).save(role);
       await em.getRepository(RolePermission).delete({ roleId });
@@ -723,6 +770,7 @@ export class RolesService {
             tenantId,
             name: preset.name,
             remark: preset.remark,
+            externalAppIds: [],
             createdBy: user.id,
             updatedBy: user.id,
           }),
@@ -738,6 +786,7 @@ export class RolesService {
               canDelete: false,
             }),
           ),
+          [],
           user.id,
           access,
         );
@@ -751,13 +800,15 @@ export class RolesService {
     em: EntityManager,
     tpl: RoleTemplate,
     permissions: SaveRoleDto['permissions'],
+    externalAppIds: number[],
     operatorId: number,
     access: ResolvedAccess,
   ) {
     const byPage = this.normalizePermissions(permissions, access);
-    if (!byPage.size) {
-      throw new BadRequestException('至少勾一个页面 —— 空模板套上去的角色什么也打不开');
+    if (!byPage.size && !externalAppIds.length) {
+      throw new BadRequestException('至少勾一个页面或内网应用 —— 空模板套上去的角色什么也打不开');
     }
+    if (!byPage.size) return;
     await em.getRepository(RoleTemplatePermission).save(
       [...byPage.entries()].map(([pageKey, v]) =>
         em.getRepository(RoleTemplatePermission).create({
@@ -785,6 +836,18 @@ export class RolesService {
     if (existing && existing.id !== selfId) {
       throw new BadRequestException('模板名已存在');
     }
+  }
+
+  private async validateExternalApps(tenantId: number, appIds: number[]) {
+    const unique = [...new Set((appIds ?? []).filter((id) => Number.isInteger(id) && id > 0))];
+    if (!unique.length) return [];
+    const found = await this.dataSource.getRepository(ExternalAccessApp).count({
+      where: { tenantId, id: In(unique) },
+    });
+    if (found !== unique.length) {
+      throw new BadRequestException('内网应用不存在或不属于当前公司');
+    }
+    return unique;
   }
 
   private requireTenant(user: AuthUser): number {

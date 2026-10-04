@@ -36,11 +36,6 @@ export class CreateExternalAccessAppDto {
   @IsBoolean()
   enabled?: boolean;
 
-  @IsArray()
-  @Type(() => Number)
-  @IsInt({ each: true })
-  userIds: number[];
-
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -71,12 +66,6 @@ export class UpdateExternalAccessAppDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
-
-  @IsOptional()
-  @IsArray()
-  @Type(() => Number)
-  @IsInt({ each: true })
-  userIds?: number[];
 
   @IsOptional()
   @Type(() => Number)
