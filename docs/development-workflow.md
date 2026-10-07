@@ -31,3 +31,9 @@
 2026-10-02 已核实本机依赖事故：antd/icons/icons-svg/validator 包目录不完整（package.json 缺失、残留安装临时目录），普通/force pnpm install 都误报 up to date。未确认是谁/哪次安装导致。处理：先扫描同类缺失，再按锁文件精确版本下载并核对 SHA-512，备份损坏目录后定点恢复；不得为此修改几百个报错组件或升级依赖。发布预检先检查依赖元数据，失败明确包名。
 
 小程序仅受影响时上传并设体验版；未经当次授权不提交审核/正式发布。工具不可用如实报告。
+
+## 微信开发者工具 MCP
+
+- 项目默认 `.mcp.json` 不自动加载微信 MCP；需要时才显式使用 `.mcp.wechat-devtools.json`。已创建的旧 Codex 会话可能保留创建时的 MCP 清单，修改 `.mcp.json` 不会热更新它。
+- `tools/wechatide.cmd mcp` 必须无界面启动，禁止在 MCP 启动路径自动执行 `auth`；`auth` 会通过 `wechatide://` 拉起微信开发者工具窗口。授权只在用户明确需要微信 MCP 时单独执行。
+- 回归检查：`rg -n "auth -c" tools/wechatide.cmd` 必须无命中；打开一个保留旧 MCP 清单的会话后，不应再出现带 `wechatide://skill/auth` 参数的新进程。
