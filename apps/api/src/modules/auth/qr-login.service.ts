@@ -24,7 +24,6 @@ import { OidcService } from './oidc.service';
 import { WechatService, type WxEnvVersion } from './wechat.service';
 import {
   browserSecretMatches,
-  confirmationCode,
   createBrowserBinding,
 } from './qr-login-security';
 
@@ -99,7 +98,6 @@ export class QrLoginService {
     const ticket = randomScene();
     const expiresAt = new Date(Date.now() + TICKET_TTL_SEC * 1000);
     const browser = createBrowserBinding();
-    const matchCode = confirmationCode();
     const oidcRequest = options?.requiredApp
       ? {
           clientId: 'pms-gateway',
@@ -133,7 +131,6 @@ export class QrLoginService {
         userId: null,
         scannedByUserId: null,
         browserSecretHash: browser.hash,
-        confirmationCode: matchCode,
         expiresAt,
         confirmedAt: null,
         clientIp: clientIp?.slice(0, 64) ?? null,
@@ -165,7 +162,6 @@ export class QrLoginService {
       qrImage: `data:image/png;base64,${png.toString('base64')}`,
       expiresIn: TICKET_TTL_SEC,
       browserSecret: browser.secret,
-      confirmationCode: matchCode,
       launchScheme,
       applicationName: oidcRequest?.requiredAppName ?? 'PMS 物业管理后台',
       applicationHostname: oidcRequest?.requiredAppHostname ?? null,
@@ -310,7 +306,6 @@ export class QrLoginService {
       applicationName:
         row.oidcRequest?.requiredAppName ?? 'PMS 物业管理后台',
       applicationHostname: row.oidcRequest?.requiredAppHostname ?? null,
-      confirmationCode: row.confirmationCode,
       me: {
         name: me?.name ?? null,
         roleLabel: me ? USER_ROLE_LABELS[me.role] ?? me.role : null,

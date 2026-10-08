@@ -85,6 +85,10 @@ Page({
         repairExperiences.access().catch(() => ({ canView: false, canEdit: false, notebookCount: 0 })),
       ]);
       const user = session.me as MeResp;
+      if (!session.hasPmsAppAccess) {
+        wx.reLaunch({ url: '/pages/external-access/external-access' });
+        return;
+      }
       // 显示他绑的角色名 —— 现在没有「身份」这回事，角色名就是他的称呼
       const roleText = session.roleNames.join(' · ') || USER_ROLE_LABELS[user.role] || '员工';
       const reporterOnly = session.reporterOnly;

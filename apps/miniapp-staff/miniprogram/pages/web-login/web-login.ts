@@ -16,7 +16,7 @@ import type { QrLoginScanInfo } from '@pms/api-client/src/endpoints/auth';
  */
 const PENDING_KEY = 'pms.staff.pending_qr';
 const TOKEN_KEY = 'pms.staff.access_token';
-const AUTO_CLOSE_DELAY_MS = 1200;
+const AUTO_CLOSE_DELAY_MS = 800;
 let autoCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
 Page({
@@ -121,7 +121,7 @@ Page({
   },
 
   closeMiniProgram(silent: boolean) {
-    const unavailable = '当前微信版本不能自动关闭，请点右上角“…”关闭小程序，或返回首页。';
+    const unavailable = '当前微信版本不能自动关闭，请点右上角“…”关闭小程序。';
     if (typeof wx.exitMiniProgram !== 'function') {
       this.setData({ closeHint: unavailable });
       if (!silent) wx.showToast({ icon: 'none', title: '请点右上角关闭小程序' });
@@ -135,10 +135,6 @@ Page({
     });
   },
 
-  onBackHome() {
-    clearAutoCloseTimer();
-    wx.switchTab({ url: '/pages/me/me' });
-  },
 });
 
 function clearAutoCloseTimer() {

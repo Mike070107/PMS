@@ -65,7 +65,3 @@ export function readQrBrowserSecret(req: Request, ticket: string): string | unde
   }
   return undefined;
 }
-
-export function confirmationCode() {
-  return String(randomBytes(2).readUInt16BE(0) % 10_000).padStart(4, '0');
-}

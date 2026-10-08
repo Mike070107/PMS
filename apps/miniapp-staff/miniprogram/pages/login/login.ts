@@ -1,6 +1,6 @@
 import { auth } from '@pms/api-client';
 import type { StaffLoginReq } from '@pms/shared-types';
-import { clearSession } from '../../utils/session';
+import { clearSession, getSession } from '../../utils/session';
 import { clearAccessCache } from '../../utils/tabbar';
 import { guideHandlers } from '../../utils/guide';
 
@@ -143,7 +143,7 @@ Page({
     }
   },
 
-  enter(accessToken: string, refreshToken: string, role?: string) {
+  async enter(accessToken: string, refreshToken: string, role?: string) {
     getApp<StaffApp>().setTokens(accessToken, refreshToken);
     // 上一个人的权限缓存必须作废，否则换账号登录后各页还按旧身份渲染
     clearSession();
@@ -160,9 +160,17 @@ Page({
       return;
     }
 
-    // 落地页统一先进工单池那一屏。只报修的人（保安、居委会…）在「工单池」那一档
-    // 什么都看不到，由 pool 页拿到权限后自己把他切到「我报的」那一档 ——
-    // 这里还没有 /auth/me 的结果，硬猜会猜错。
+    // 登录后先读一次权限矩阵，不能再无条件把所有账号送进工单池。
+    // 只拥有“内网应用”角色的人借用本小程序完成扫码，完成后不应看到 PMS 菜单。
+    try {
+      const session = await getSession(undefined, true);
+      if (!session.hasPmsAppAccess) {
+        wx.reLaunch({ url: '/pages/external-access/external-access' });
+        return;
+      }
+    } catch {
+      // 弱网时保留既有落地页；页面会自行提示并允许重试，不能因预检失败卡在登录页。
+    }
     wx.switchTab({ url: '/pages/pool/pool' });
   },
 });

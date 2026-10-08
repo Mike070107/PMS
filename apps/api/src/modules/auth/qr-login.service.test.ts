@@ -21,7 +21,6 @@ function fixture() {
     userId: null,
     scannedByUserId: null,
     browserSecretHash: browser.hash,
-    confirmationCode: '4821',
     clientIp: '203.0.113.9',
     userAgent: 'Browser',
     createdAt: new Date(),
@@ -141,7 +140,6 @@ test('only the first scanner can confirm and confirmation checks the exact app g
   const { service, row, checked } = fixture();
   const info = await service.markScanned('ticket-1', alice);
   assert.equal(info.applicationHostname, 'caiwu.prsznh.cn');
-  assert.equal(info.confirmationCode, '4821');
   await assert.rejects(service.markScanned('ticket-1', bob), /另一位员工/);
   await service.confirm('ticket-1', alice);
   assert.equal(row.status, WebLoginTicketStatus.CONFIRMED);

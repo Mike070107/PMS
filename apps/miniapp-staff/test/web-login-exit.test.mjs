@@ -19,17 +19,22 @@ test('确认登录成功后安排自动关闭，拒绝登录不自动关闭', ()
   assert.doesNotMatch(cancelBody, /scheduleAutoClose/);
 });
 
-test('结果页提供关闭小程序按钮，并保留返回首页兜底', () => {
+test('结果页提供关闭小程序按钮，但不会把内网应用用户送入 PMS 首页', () => {
   assert.match(source, /wx\.exitMiniProgram/);
   assert.match(template, /bindtap="onCloseMiniProgram"/);
   assert.match(template, />关闭小程序</);
-  assert.match(template, /bindtap="onBackHome"/);
+  assert.doesNotMatch(template, /onBackHome|返回首页/);
 });
 
 test('退出能力失败时向用户展示可执行的关闭提示', () => {
   assert.match(source, /closeHint/);
   assert.match(template, /\{\{closeHint\}\}/);
   assert.match(source, /右上角/);
+});
+
+test('确认页保留应用与域名校验信息，但不再要求人工核对四位码', () => {
+  assert.match(template, /applicationHostname/);
+  assert.doesNotMatch(template, /confirmationCode|核对码/);
 });
 
 function section(start, end) {

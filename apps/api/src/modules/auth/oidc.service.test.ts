@@ -171,11 +171,10 @@ test('external login is a standalone QR page and redirects directly to the targe
     'csp-nonce',
     '用友财务系统',
     'caiwu.prsznh.cn',
-    '4821',
   ) as string;
   assert.match(html, /用友财务系统/);
   assert.match(html, /caiwu\.prsznh\.cn/);
-  assert.match(html, /4821/);
+  assert.doesNotMatch(html, /核对码|4821/);
   assert.match(html, /location\.replace\(d\.redirectTo\)/);
   assert.doesNotMatch(html, /管理后台登录|系统设置|工单管理/);
 });

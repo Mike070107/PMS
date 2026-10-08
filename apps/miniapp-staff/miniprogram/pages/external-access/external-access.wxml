@@ -1,0 +1,20 @@
+<view class="shell">
+  <view class="shell__mark"></view>
+  <view class="shell__eyebrow">PMS 内网应用连接</view>
+  <view class="shell__title">此账号仅用于安全授权</view>
+  <view class="shell__desc">请从电脑上的内网应用页面发起登录，再用微信确认。这里不会展示工单、更多应用或其他 PMS 菜单。</view>
+
+  <view class="shell__card">
+    <view class="shell__card-icon"></view>
+    <view>
+      <view class="shell__card-title">需要访问内网应用？</view>
+      <view class="shell__card-desc">返回电脑，打开对应域名后扫码或点击微信授权登录。</view>
+    </view>
+  </view>
+
+  <view class="shell__actions">
+    <button class="btn btn--primary" bindtap="onClose">关闭小程序</button>
+    <button class="btn btn--ghost" bindtap="onLogout">退出当前账号</button>
+  </view>
+  <view wx:if="{{closeHint}}" class="shell__hint">{{closeHint}}</view>
+</view>

@@ -17,6 +17,11 @@ export interface TabAccess {
   pages: Record<string, boolean> | null;
 }
 
+/** 是否至少拥有一个真正的 PMS 员工端入口。外部应用授权不属于这些入口。 */
+export function hasPmsAppAccess(pages: Record<string, boolean> | null): boolean {
+  return !!pages && Object.values(pages).some(Boolean);
+}
+
 /** tab key → 角色矩阵里的入口 key（后台「业务角色」页里勾的就是这些） */
 export const TAB_PAGE: Record<TabKey, string> = {
   pool: 'app:pool',
@@ -37,8 +42,11 @@ export const TAB_PAGE: Record<TabKey, string> = {
  * 多一格也比让有权限的人以为功能没了强，后端仍会拦。
  */
 export function canSeeTab(key: TabKey, access: TabAccess): boolean {
-  if (key === 'me' || key === 'more') return true;
   const { pages } = access;
+  // 外部应用专用用户也会借用这个小程序完成扫码，但没有 PMS 菜单权限。
+  // 不给“更多/我的”留兜底入口，避免他完成授权后误入工单功能。
+  if (pages && !hasPmsAppAccess(pages)) return false;
+  if (key === 'me' || key === 'more') return true;
   if (!pages) return true;
   if (key === 'approvals') {
     return !!(pages['app:approve-manager'] || pages['app:approve-purchaser']);

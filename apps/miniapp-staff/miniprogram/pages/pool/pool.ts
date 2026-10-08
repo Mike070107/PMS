@@ -338,6 +338,10 @@ Page({
     this.setData({ loading: true });
     try {
       const session = await getSession(this, refreshSession);
+      if (!session.hasPmsAppAccess) {
+        wx.reLaunch({ url: '/pages/external-access/external-access' });
+        return;
+      }
       /**
        * 只报修的人（保安、居委会…）在「工单池」那一档什么都看不到 —— 直接把他放在
        * 「我报的」这一档，别让人一进来就对着一片空白猜是不是坏了。

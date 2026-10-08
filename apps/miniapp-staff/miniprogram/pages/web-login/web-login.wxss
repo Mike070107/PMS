@@ -1,10 +1,10 @@
 /* 确认页只让人做一件事：看清是不是自己，然后二选一。
    字号沿用全局阶梯（tokens.wxss），这里不写死 rpx 字号。 */
 
-.lead {
-  padding: var(--space-md) var(--space-xs) 36rpx;
-}
+.auth-hero { padding: 44rpx var(--space-xs) 34rpx; text-align: center; }
+.eyebrow { margin-top: 18rpx; color: #477095; font-size: var(--font-sm); font-weight: 600; letter-spacing: 2rpx; }
 .lead__title {
+  margin-top: 14rpx;
   font-size: var(--font-3xl);
   font-weight: 700;
   line-height: 1.4;
@@ -17,54 +17,21 @@
   color: var(--color-text-secondary);
 }
 
-.row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-md);
-  padding: var(--space-md) 0;
-  border-bottom: 2rpx solid var(--color-border);
-}
-.row:last-child { border-bottom: none; }
-.row__label {
-  flex: 0 0 160rpx;
-  font-size: var(--font-md);
-  line-height: 1.6;
-  color: var(--color-text-tertiary);
-}
-.row__value {
-  flex: 1 1 auto;
-  font-size: var(--font-lg);
-  line-height: 1.6;
-  color: var(--color-text);
-  word-break: break-all;
-}
-.row__hint {
-  margin-top: 4rpx;
-  font-size: var(--font-sm);
-  color: var(--color-text-tertiary);
-  word-break: break-all;
-}
-.row--match { align-items: center; }
-.match-code {
-  flex: 1 1 auto;
-  color: #1849a9;
-  font-size: 48rpx;
-  font-weight: 700;
-  letter-spacing: 12rpx;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-}
-
-.warn {
-  margin: var(--space-lg) var(--space-xs);
-  padding: 22rpx 24rpx;
-  border: 2rpx solid #efd6aa;
-  border-radius: 20rpx;
-  background: #fff8ec;
-  font-size: var(--font-md);
-  line-height: 1.7;
-  color: var(--color-text-secondary);
-}
+.brand-mark { width: 104rpx; height: 104rpx; margin: 0 auto; border-radius: 34rpx; background-color: #e2f3ef; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f766e' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 5 6v5c0 4.5 3 7.7 7 10 4-2.3 7-5.5 7-10V6l-7-3Z'/%3E%3Cpath d='m8.5 12 2.2 2.2 4.8-5'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:center; background-size:58rpx; }
+.brand-mark--loading { opacity: .7; }
+.auth-card { padding: 0; overflow: hidden; }
+.app-chip { display:flex; align-items:center; gap:20rpx; padding:28rpx; background:linear-gradient(120deg,#eff9f7,#f6fbfb); border-bottom:2rpx solid #dcebea; }
+.app-chip__icon { width:72rpx; height:72rpx; flex-shrink:0; border-radius:24rpx; background:#d7f2eb url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f766e' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='16' height='16' rx='3'/%3E%3Cpath d='M8 12h8M12 8v8'/%3E%3C/svg%3E") center/38rpx no-repeat; }
+.app-chip__body { min-width:0; flex:1; }
+.app-chip__name { color:#173b46; font-size:var(--font-xl); font-weight:700; line-height:1.4; }
+.app-chip__host { margin-top:5rpx; overflow-wrap:anywhere; color:#527477; font-size:var(--font-sm); line-height:1.5; }
+.auth-meta { padding: 6rpx 28rpx; }
+.auth-meta__item { display:flex; align-items:flex-start; justify-content:space-between; gap:26rpx; padding:20rpx 0; border-bottom:2rpx solid #e6eef0; }
+.auth-meta__item:last-child { border-bottom:0; }
+.auth-meta__label { flex:0 0 142rpx; color:var(--color-text-tertiary); font-size:var(--font-md); line-height:1.6; }
+.auth-meta__value { min-width:0; flex:1; color:var(--color-text); font-size:var(--font-md); font-weight:600; line-height:1.6; overflow-wrap:anywhere; text-align:right; }
+.security-note { display:flex; align-items:flex-start; gap:14rpx; margin:var(--space-lg) var(--space-xs); padding:20rpx 22rpx; border:2rpx solid #cfe4df; border-radius:20rpx; background:#f4faf8; color:#45666b; font-size:var(--font-sm); line-height:1.7; }
+.security-note__icon { width:30rpx; height:30rpx; flex-shrink:0; margin-top:4rpx; background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f766e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 8v4M12 16h.01'/%3E%3C/svg%3E") center/contain no-repeat; }
 
 .btn-group { margin-top: var(--space-lg); }
 

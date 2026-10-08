@@ -1,0 +1,11 @@
+.shell { min-height:100vh; box-sizing:border-box; padding:132rpx 48rpx calc(72rpx + env(safe-area-inset-bottom)); background:linear-gradient(160deg,#f5fbfa 0%,#eef3f8 52%,#f7f9fc 100%); text-align:center; }
+.shell__mark { width:120rpx; height:120rpx; margin:0 auto; border-radius:40rpx; background:#dff3ee url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f766e' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 5 6v5c0 4.5 3 7.7 7 10 4-2.3 7-5.5 7-10V6l-7-3Z'/%3E%3Cpath d='M12 8v4M12 16h.01'/%3E%3C/svg%3E") center/62rpx no-repeat; box-shadow:0 18rpx 38rpx rgba(15,118,110,.13); }
+.shell__eyebrow { margin-top:28rpx; color:#3e7180; font-size:var(--font-sm); font-weight:600; letter-spacing:2rpx; }
+.shell__title { margin-top:14rpx; color:#193d49; font-size:44rpx; font-weight:700; line-height:1.35; }
+.shell__desc { max-width:570rpx; margin:20rpx auto 0; color:#5c7484; font-size:var(--font-md); line-height:1.75; }
+.shell__card { display:flex; align-items:flex-start; gap:20rpx; margin-top:62rpx; padding:28rpx; border:2rpx solid #d5e4e6; border-radius:28rpx; background:rgba(255,255,255,.86); text-align:left; box-shadow:0 10rpx 30rpx rgba(35,77,96,.06); }
+.shell__card-icon { width:64rpx; height:64rpx; flex-shrink:0; border-radius:22rpx; background:#e5f3f0 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f766e' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v18M5 8h14M5 16h14'/%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3C/svg%3E") center/34rpx no-repeat; }
+.shell__card-title { color:var(--color-text); font-size:var(--font-lg); font-weight:700; line-height:1.45; }
+.shell__card-desc { margin-top:6rpx; color:var(--color-text-secondary); font-size:var(--font-sm); line-height:1.65; }
+.shell__actions { display:flex; flex-direction:column; gap:20rpx; margin-top:54rpx; }
+.shell__hint { margin-top:20rpx; color:var(--color-text-secondary); font-size:var(--font-sm); line-height:1.7; }

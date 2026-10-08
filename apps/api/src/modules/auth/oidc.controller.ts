@@ -63,7 +63,6 @@ export class OidcController {
       nonce,
       ticket.applicationName,
       ticket.applicationHostname,
-      ticket.confirmationCode,
     ));
   }
 
@@ -117,18 +116,16 @@ export class OidcController {
     nonce: string,
     applicationName: string,
     applicationHostname: string | null,
-    confirmationCode: string,
   ) {
     const ticketJson = JSON.stringify(ticket).replace(/</g, '\\u003c');
     const appName = escapeHtml(applicationName);
     const hostname = escapeHtml(applicationHostname || '');
-    const matchCode = escapeHtml(confirmationCode);
     return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>内网应用安全登录</title>
 <style nonce="${nonce}">
-*{box-sizing:border-box}body{margin:0;background:#f5f7fa;color:#172033;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;min-height:100vh;display:grid;place-items:center;padding:24px}.card{width:min(440px,100%);background:#fff;border:1px solid #e4e8ef;border-radius:18px;padding:32px;box-shadow:0 16px 45px rgba(21,35,62,.10);text-align:center}h1{font-size:24px;margin:0 0 8px}.host{color:#667085;font-size:14px;margin:0 0 18px}.sub{color:#5f6b7a;line-height:1.7;margin:0 0 20px}.qr{display:block;width:260px;height:260px;max-width:100%;margin:0 auto;border-radius:12px}.match{margin:14px auto 0;padding:10px 14px;width:max-content;border-radius:10px;background:#eef4ff;color:#1849a9}.match b{font-size:24px;letter-spacing:.18em;font-variant-numeric:tabular-nums}.status{min-height:28px;margin-top:16px;color:#1769aa;font-weight:600}.tip{margin-top:20px;padding-top:18px;border-top:1px solid #edf0f4;color:#667085;font-size:14px;line-height:1.7}.error{color:#b42318}.ok{color:#067647}@media(max-width:480px){.card{padding:24px 18px}.qr{width:230px;height:230px}}
-</style></head><body><main class="card"><h1>${appName}</h1><p class="host">${hostname}</p><p class="sub">请用微信扫一扫，在「邻修管理」小程序中确认登录</p><img class="qr" src="${qrImage}" alt="登录二维码"><div class="match">核对码 <b>${matchCode}</b></div><div id="status" class="status">等待扫码确认…</div><div class="tip">手机上必须显示相同的应用、域名和核对码。二维码两分钟内有效，且只能由当前浏览器使用一次。</div></main>
+*{box-sizing:border-box}body{margin:0;background:#f5f7fa;color:#172033;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;min-height:100vh;display:grid;place-items:center;padding:24px}.card{width:min(440px,100%);background:#fff;border:1px solid #e4e8ef;border-radius:18px;padding:32px;box-shadow:0 16px 45px rgba(21,35,62,.10);text-align:center}h1{font-size:24px;margin:0 0 8px}.host{color:#667085;font-size:14px;margin:0 0 18px}.sub{color:#5f6b7a;line-height:1.7;margin:0 0 20px}.qr{display:block;width:260px;height:260px;max-width:100%;margin:0 auto;border-radius:12px}.status{min-height:28px;margin-top:16px;color:#1769aa;font-weight:600}.tip{margin-top:20px;padding-top:18px;border-top:1px solid #edf0f4;color:#667085;font-size:14px;line-height:1.7}.error{color:#b42318}.ok{color:#067647}@media(max-width:480px){.card{padding:24px 18px}.qr{width:230px;height:230px}}
+</style></head><body><main class="card"><h1>${appName}</h1><p class="host">${hostname}</p><p class="sub">请用微信扫一扫，在「邻修管理」小程序中确认登录</p><img class="qr" src="${qrImage}" alt="登录二维码"><div id="status" class="status">等待扫码确认…</div><div class="tip">请在微信中核对应用和域名。二维码两分钟内有效，且只能由当前浏览器使用一次。</div></main>
 <script nonce="${nonce}">(()=>{const ticket=${ticketJson};const el=document.getElementById('status');let stopped=false;async function poll(){if(stopped)return;try{const r=await fetch('/api/v1/auth/oidc/status?ticket='+encodeURIComponent(ticket),{cache:'no-store'});const d=await r.json();if(!r.ok){stopped=true;el.className='status error';el.textContent=d.message||'授权失败，请重新打开目标系统';return}if(d.status==='confirmed'&&d.redirectTo){stopped=true;el.className='status ok';el.textContent='授权成功，正在进入目标系统…';location.replace(d.redirectTo);return}if(d.status==='scanned'){el.textContent='已扫码，请在手机上确认'}else if(d.status==='cancelled'){stopped=true;el.className='status error';el.textContent='你已取消本次登录，请重新打开目标系统'}else if(d.status==='expired'){stopped=true;el.className='status error';el.textContent='二维码已过期，请刷新页面重试'}}catch(e){el.textContent='网络暂时不可用，正在重试…'}if(!stopped)setTimeout(poll,2000)}poll()})();</script></body></html>`;
   }
 }

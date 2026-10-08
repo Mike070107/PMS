@@ -21,6 +21,7 @@
     "pages/web-sign/web-sign",
     "pages/me/me",
     "pages/web-login/web-login",
+    "pages/external-access/external-access",
     "pages/index/index"
   ],
   "window": {

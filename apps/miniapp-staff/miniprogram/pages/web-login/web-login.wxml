@@ -1,6 +1,8 @@
 <view class="container">
   <view wx:if="{{loading}}" class="card state">
-    <view class="state__text">正在核对二维码…</view>
+    <view class="brand-mark brand-mark--loading"></view>
+    <view class="state__title">正在验证授权请求</view>
+    <view class="state__text">请稍候，不要重复扫描二维码</view>
   </view>
 
   <!-- 失败/过期：说清原因，别只给一句「失败」 -->
@@ -12,7 +14,6 @@
     </view>
     <view class="result-actions">
       <button class="btn btn--primary" bindtap="onCloseMiniProgram">关闭小程序</button>
-      <button class="btn btn--ghost" bindtap="onBackHome">返回首页</button>
     </view>
     <view wx:if="{{closeHint}}" class="close-hint">{{closeHint}}</view>
   </block>
@@ -24,59 +25,54 @@
       <view class="state__title">{{done === 'confirmed' ? '授权成功' : '已拒绝这次登录'}}</view>
       <view class="state__text">
         {{done === 'confirmed'
-          ? '原网页会自动进入目标系统，正在关闭小程序。'
+          ? '电脑正在进入目标系统。本页会自动关闭。'
           : '网页那边不会登录。如果这次登录不是你发起的，建议把后台密码改一下。'}}
       </view>
     </view>
     <view class="result-actions">
       <button class="btn btn--primary" bindtap="onCloseMiniProgram">关闭小程序</button>
-      <button class="btn btn--ghost" bindtap="onBackHome">返回首页</button>
     </view>
     <view wx:if="{{closeHint}}" class="close-hint">{{closeHint}}</view>
   </block>
 
   <!-- 确认 -->
   <block wx:else>
-    <view class="lead">
-      <view class="lead__title">确认登录{{info.applicationName}}？</view>
-      <view class="lead__sub">确认后，那台电脑将使用你的身份进入{{info.applicationName}}。</view>
+    <view class="auth-hero">
+      <view class="brand-mark"></view>
+      <view class="eyebrow">内网应用 · 安全授权</view>
+      <view class="lead__title">允许登录{{info.applicationName}}？</view>
+      <view class="lead__sub">确认后，这台电脑会使用你的授权进入应用。</view>
     </view>
 
-    <view class="card">
-      <view class="row">
-        <text class="row__label">目标应用</text>
-        <view class="row__value">
-          <view>{{info.applicationName}}</view>
-          <view wx:if="{{info.applicationHostname}}" class="row__hint">{{info.applicationHostname}}</view>
+    <view class="card auth-card">
+      <view class="app-chip">
+        <view class="app-chip__icon"></view>
+        <view class="app-chip__body">
+          <view class="app-chip__name">{{info.applicationName}}</view>
+          <view wx:if="{{info.applicationHostname}}" class="app-chip__host">{{info.applicationHostname}}</view>
         </view>
       </view>
-      <view class="row row--match">
-        <text class="row__label">电脑核对码</text>
-        <text class="match-code">{{info.confirmationCode}}</text>
-      </view>
-      <view class="row">
-        <text class="row__label">登录身份</text>
-        <text class="row__value">{{info.me.name || '本人'}}<text wx:if="{{info.me.roleLabel}}"> · {{info.me.roleLabel}}</text></text>
-      </view>
-      <view class="row">
-        <text class="row__label">设备</text>
-        <text class="row__value">{{deviceText}}</text>
-      </view>
-      <view class="row" wx:if="{{info.clientIp}}">
-        <text class="row__label">来源 IP</text>
-        <text class="row__value">{{info.clientIp}}</text>
-      </view>
-      <view class="row">
-        <text class="row__label">发起时间</text>
-        <text class="row__value">{{timeText}}</text>
+      <view class="auth-meta">
+        <view class="auth-meta__item">
+          <view class="auth-meta__label">授权身份</view>
+          <view class="auth-meta__value">{{info.me.name || '本人'}}<text wx:if="{{info.me.roleLabel}}"> · {{info.me.roleLabel}}</text></view>
+        </view>
+        <view class="auth-meta__item">
+          <view class="auth-meta__label">登录设备</view>
+          <view class="auth-meta__value">{{deviceText}}</view>
+        </view>
+        <view class="auth-meta__item">
+          <view class="auth-meta__label">发起时间</view>
+          <view class="auth-meta__value">{{timeText}}</view>
+        </view>
       </view>
     </view>
 
-    <view class="warn">请确认电脑与手机显示相同的应用、域名和四位核对码。不一致或不是你本人操作，请点「不是我」。</view>
+    <view class="security-note"><view class="security-note__icon"></view><text>请确认这是你正在使用的应用与域名；不是本人操作请立即拒绝。</text></view>
 
     <view class="btn-group">
       <button class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onConfirm">
-        <view class="btn__icon icon-action--check-white"></view><text>确认登录</text>
+        <view class="btn__icon icon-action--check-white"></view><text>确认并进入</text>
       </button>
       <button class="btn btn--outline" disabled="{{submitting}}" bindtap="onCancel">
         <view class="btn__icon icon-action--close-gray"></view><text>不是我</text>

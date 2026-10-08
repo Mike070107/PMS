@@ -22,6 +22,7 @@ import { request } from '../lib/api';
 import { handleGone } from '../lib/gone';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
+import { needsReportCommunitySelection } from '../lib/staffRoleRules';
 import { UserRole } from '@pms/shared-types';
 import { Link } from 'react-router-dom';
 
@@ -362,11 +363,13 @@ function StaffFormModal({
   const pickedRoles = roleOptions.filter((r) => roleIds.includes(r.id));
   const appKeys = new Set(pickedRoles.flatMap((r) => r.appPageKeys ?? []));
   /**
-   * 「只替住户报修的人」：他的角色里既没有工单池也没有派单台。
-   * 这类人报修位置受「可代报的小区」限制，所以才需要配那一栏。
+   * 只有「代住户创建报修」这个入口才需要指定可代报的小区。
+   *
+   * 过去仅凭“没有工单池/派单台”判断，会把纯内网应用角色、维修工等
+   * 一并误判成代报人员，导致保存时被迫选择小区。内网应用本身不依赖
+   * 小区范围；拥有工单池或派单台的人也按自己的业务范围处理报修位置。
    */
-  const reporterOnly =
-    !!pickedRoles.length && !appKeys.has('app:pool') && !appKeys.has('app:dispatch');
+  const needsReportCommunity = needsReportCommunitySelection(appKeys);
 
   /**
    * 让系统拟一组账号密码填进来。账号按姓名拼音首字母、重名加 01/02，服务端算，
@@ -437,7 +440,7 @@ function StaffFormModal({
             skills: v.skills,
             loginAccount: v.loginAccount || undefined,
             password: v.password || undefined,
-            reportCommunityIds: reporterOnly ? v.reportCommunityIds || [] : undefined,
+            reportCommunityIds: needsReportCommunity ? v.reportCommunityIds || [] : undefined,
             roleIds: v.roleIds ?? [],
           },
         });
@@ -452,12 +455,12 @@ function StaffFormModal({
             loginAccount: v.loginAccount || undefined,
             password: v.password || undefined,
             skills: v.skills,
-            reportCommunityIds: reporterOnly ? v.reportCommunityIds || [] : undefined,
+            reportCommunityIds: needsReportCommunity ? v.reportCommunityIds || [] : undefined,
             roleIds: v.roleIds?.length ? v.roleIds : undefined,
           },
         });
         message.success(
-          reporterOnly
+          needsReportCommunity
             ? '已登记。他在小程序注册过就已直接转为该身份；还没注册的，等他验证微信手机号时自动认领'
             : '员工已创建',
         );
@@ -548,7 +551,7 @@ function StaffFormModal({
             {...searchableWideSelectProps}
           />
         </Form.Item>
-        {reporterOnly ? (
+        {needsReportCommunity ? (
           <Form.Item
             name="reportCommunityIds"
             label="可代报的小区"

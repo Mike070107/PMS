@@ -11,7 +11,8 @@
  */
 import { auth } from '@pms/api-client';
 import { type MeResp } from '@pms/shared-types';
-import { rememberAccess } from './tabbar';
+import { rememberAccess, STAFF_APP_PAGE_KEYS } from './tabbar';
+import { hasPmsAppAccess } from './roles';
 
 export interface StaffSession {
   me: MeResp | null;
@@ -64,6 +65,8 @@ export interface StaffSession {
    * 报修位置受「可代报的小区」限制，落地页也不该是工单池。
    */
   reporterOnly: boolean;
+  /** 只拥有内网应用授权，不应进入员工端的工单/更多菜单。 */
+  hasPmsAppAccess: boolean;
 }
 
 const emptySession = (): StaffSession => ({
@@ -94,6 +97,7 @@ const emptySession = (): StaffSession => ({
   canReport: false,
   canUseMessages: false,
   reporterOnly: false,
+  hasPmsAppAccess: false,
 });
 
 export function buildSession(me: MeResp | null): StaffSession {
@@ -138,6 +142,9 @@ export function buildSession(me: MeResp | null): StaffSession {
     canReport: can('app:repair-create', 'view'),
     canUseMessages: can('app:messages', 'view'),
     reporterOnly: !!pages && !canSeePool && !canSeeDispatch && !canSeeMyOrders,
+    hasPmsAppAccess: !pages || hasPmsAppAccess(
+      Object.fromEntries(STAFF_APP_PAGE_KEYS.map((key) => [key, !!pages[key]?.view])),
+    ),
   };
 }
 
@@ -154,7 +161,9 @@ export function getSession(page?: any, force = false): Promise<StaffSession> {
     cached = auth
       .me()
       .then((me) => {
-        if (page) rememberAccess(page, me.access?.pages);
+        // 登录页也要写缓存：否则 switchTab 发生时，tabBar 还不知道这是内网应用专用账号，
+        // 会在首帧短暂展示默认菜单。
+        rememberAccess(page, me.access?.pages);
         return buildSession(me);
       })
       .catch((e) => {

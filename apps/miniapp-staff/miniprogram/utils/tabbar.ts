@@ -11,7 +11,8 @@ export { type TabKey };
 
 /** access.pages 的精简缓存：只留员工端那几个入口的「可见」 */
 const PAGES_KEY = 'pms.staff.pages';
-const TAB_PAGE_KEYS = [
+/** 员工端实际可进入的功能入口；内网应用授权不在此集合。 */
+export const STAFF_APP_PAGE_KEYS = [
   'app:pool',
   'app:dispatch',
   'app:my-orders',
@@ -148,11 +149,11 @@ export function setTabBadge(page: any, key: TabKey, count: number) {
  * 底部立刻跟着变 —— 不用退出重登，更不用杀掉小程序。
  */
 export function rememberAccess(
-  page: any,
+  page: any | undefined,
   pages: Record<string, { view?: boolean }> | null | undefined,
 ) {
   const slim: Record<string, boolean> | null = pages
-    ? TAB_PAGE_KEYS.reduce((acc, key) => {
+    ? STAFF_APP_PAGE_KEYS.reduce((acc, key) => {
         acc[key] = !!pages[key]?.view;
         return acc;
       }, {} as Record<string, boolean>)

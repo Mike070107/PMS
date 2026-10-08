@@ -72,10 +72,6 @@ export class WebLoginTicket extends BaseEntity {
   @Column({ name: 'browser_secret_hash', type: 'char', length: 64, nullable: true })
   browserSecretHash: string | null;
 
-  /** 电脑和手机同屏显示，帮助本人发现二维码转发/钓鱼。 */
-  @Column({ name: 'confirmation_code', type: 'char', length: 4, nullable: true })
-  confirmationCode: string | null;
-
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt: Date;
 
