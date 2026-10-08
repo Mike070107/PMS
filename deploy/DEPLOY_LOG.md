@@ -4099,3 +4099,11 @@
 - 自上次（9206793c）以来上线的相关提交：
   - 0aab88d8 feat: authorize internal apps through business roles
 
+## 2026-10-08 23:28 · api · ca8304f3
+
+- 包：`pms-api-fast-20261008-232806.tar.gz`
+- 提交：ca8304f3 chore: preserve staff role source formatting
+- 自上次（0aab88d8）以来上线的相关提交：
+  - ca8304f3 chore: preserve staff role source formatting
+  - 1351c3a4 feat: isolate intranet app authorization
+
