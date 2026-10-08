@@ -4114,3 +4114,16 @@
 - 自上次（0aab88d8）以来上线的相关提交：
   - 1351c3a4 feat: isolate intranet app authorization
 
+## 2026-10-08 23:34 · miniapp-staff · 883ace98
+
+- 提交：883ace98 deploy: web → ca8304f3
+- 自上次（94e7738b）以来上线的相关提交：
+  - 1351c3a4 feat: isolate intranet app authorization
+  - 0aab88d8 feat: authorize internal apps through business roles
+  - 514d5e7a fix: harden parking authorization operations
+  - c20488bf merge: preserve vehicle sync while integrating verified PMS owner rebinding
+  - bce48bdb fix(parking): rebind vehicles using verified PMS rooms and unique legacy owners
+  - 0b41955b feat(parking): reconcile duplicate plates across legacy databases
+  - 8b8e1411 fix(access-card): expose controller upload for pending cards
+  - 209f718f fix(parking): preserve vehicle identity and verify owner update outcomes
+
