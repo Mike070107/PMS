@@ -4107,3 +4107,10 @@
   - ca8304f3 chore: preserve staff role source formatting
   - 1351c3a4 feat: isolate intranet app authorization
 
+## 2026-10-08 23:32 · web · ca8304f3
+
+- 包：`pms-web-20261008-232806.tar.gz`
+- 提交：ca8304f3 chore: preserve staff role source formatting
+- 自上次（0aab88d8）以来上线的相关提交：
+  - 1351c3a4 feat: isolate intranet app authorization
+
