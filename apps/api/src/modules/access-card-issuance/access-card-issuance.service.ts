@@ -49,6 +49,7 @@ import {
   CardPreflightDto,
   CreateParkingQueryDto,
   CreateParkingMovementQueryDto,
+  CreateParkingFeeReportDto,
   CreateParkingOwnerUpdateDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
@@ -88,6 +89,8 @@ import {
   supportsStructuredParkingQueries,
   supportsParkingMovementQueries,
   parseParkingMovementRange,
+  parseParkingFeeReportRange,
+  supportsParkingFeeReports,
 } from './parking-query.util';
 import {
   normalizeParkingOwnerFieldHints,
@@ -482,6 +485,32 @@ export class AccessCardIssuanceService {
     return this.parkingMovementResponse(query);
   }
 
+  async createParkingFeeReport(dto: CreateParkingFeeReportDto, user: AuthUser, access: ResolvedAccess) {
+    if (!access.scopeAll) throw new ForbiddenException('停车金额报表目前仅支持全公司数据范围；请退出管理处视角或联系管理员');
+    const tenantId = this.requireTenant(user);
+    try { parseParkingFeeReportRange(dto.startDate, dto.endDate); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '金额报表日期不正确'); }
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
+    const gateway = orderAgentsByAvailability(agents).find((agent) =>
+      effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbRead === true &&
+      supportsParkingFeeReports(agent.version));
+    if (!gateway) throw new ServiceUnavailableException('金额报表需要在线的 2.5.25 或更新版本数据同步助手');
+    const query = this.parkingQueryRepo.create({
+      tenantId, term: '停车金额报表', queryKind: 'fee_report', rangeStart: dto.startDate, rangeEnd: dto.endDate,
+      status: 'pending', rows: [], attempt: 0, requestedAt: new Date(), completedAt: null,
+      leaseAgentKey: null, leaseExpiresAt: null, lastError: null, createdBy: user.id, updatedBy: user.id,
+    });
+    return this.parkingFeeReportResponse(await this.parkingQueryRepo.save(query));
+  }
+
+  async getParkingFeeReport(id: number, user: AuthUser, access: ResolvedAccess) {
+    if (!access.scopeAll) throw new ForbiddenException('当前数据范围不能查看全公司停车金额报表');
+    const tenantId = this.requireTenant(user);
+    const query = await this.parkingQueryRepo.findOne({ where: { id, tenantId, queryKind: 'fee_report' } });
+    if (!query) throw new NotFoundException('金额报表查询不存在或已失效');
+    return this.parkingFeeReportResponse(query);
+  }
+
   async createParkingOwnerUpdate(dto: CreateParkingOwnerUpdateDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const plate = dto.plate?.trim().toUpperCase();
@@ -756,6 +785,7 @@ export class AccessCardIssuanceService {
     if (!supportsStructuredParkingQueries(agent.version)) return { task: null };
 
     const canQueryMovements = supportsParkingMovementQueries(agent.version);
+    const canQueryFees = supportsParkingFeeReports(agent.version);
 
     const task = await this.parkingQueryRepo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(ParkingQuery);
@@ -763,7 +793,7 @@ export class AccessCardIssuanceService {
       const query = await repo.createQueryBuilder('query')
         .where('query.tenant_id = :tenantId', { tenantId: agent.tenantId })
         .andWhere("(query.status = 'pending' OR (query.status = 'running' AND query.lease_expires_at < :now))", { now })
-        .andWhere("(query.query_kind = 'vehicle' OR :canQueryMovements = true)", { canQueryMovements })
+        .andWhere("(query.query_kind = 'vehicle' OR (query.query_kind = 'movement' AND :canQueryMovements = true) OR (query.query_kind = 'fee_report' AND :canQueryFees = true))", { canQueryMovements, canQueryFees })
         .orderBy('query.created_at', 'ASC')
         .setLock('pessimistic_write')
         .setOnLocked('skip_locked')
@@ -901,7 +931,9 @@ export class AccessCardIssuanceService {
         query.status = 'completed';
         query.rows = query.queryKind === 'movement'
           ? sanitizeParkingMovementRows(dto.rows ?? [], query.term)
-          : sanitizeParkingRows(dto.rows ?? []);
+          : query.queryKind === 'fee_report'
+            ? sanitizeParkingFeeRows(dto.rows ?? [], query.rangeStart, query.rangeEnd)
+            : sanitizeParkingRows(dto.rows ?? []);
         query.lastError = null;
         query.completedAt = now;
         if (query.queryKind === 'vehicle') await this.captureParkingHistory(manager, query, now);
@@ -1165,6 +1197,15 @@ export class AccessCardIssuanceService {
     return {
       id: query.id, plate: query.term, status: query.status, startDate: query.rangeStart,
       endDate: query.rangeEnd, movements,
+      error: query.status === 'failed' ? query.lastError : null,
+      requestedAt: query.requestedAt, completedAt: query.completedAt,
+    };
+  }
+
+  private parkingFeeReportResponse(query: ParkingQuery) {
+    return {
+      id: query.id, status: query.status, startDate: query.rangeStart, endDate: query.rangeEnd,
+      rows: query.status === 'completed' ? query.rows : [],
       error: query.status === 'failed' ? query.lastError : null,
       requestedAt: query.requestedAt, completedAt: query.completedAt,
     };
@@ -2685,6 +2726,52 @@ function sanitizeParkingMovementRows(rows: ParkingQueryReportDto['rows'], reques
       },
     };
   });
+}
+
+function sanitizeParkingFeeRows(rows: ParkingQueryReportDto['rows'], startDate: string | null, endDate: string | null): ParkingQuery['rows'] {
+  if ((rows ?? []).length > 100) throw new BadRequestException('金额报表返回超过 100 行');
+  const sanitized = (rows ?? []).map((row) => {
+    const f = row.fields ?? {};
+    const database = row.database?.trim().toLowerCase();
+    const kind = String(f.kind ?? '');
+    const category = String(f.category ?? '');
+    const count = Number(f.count);
+    const amountCents = Number(f.amountCents);
+    if (!['parking1', 'parking2', 'both'].includes(database) ||
+        !['summary', 'daily', 'detail'].includes(kind) ||
+        !['renewal', 'temporary'].includes(category) ||
+        !Number.isSafeInteger(count) || count < 0 ||
+        !Number.isSafeInteger(amountCents) || Math.abs(amountCents) > 100_000_000_000_000 ||
+        (kind === 'daily' && (!/^\d{4}-\d{2}-\d{2}$/.test(String(f.day ?? '')) ||
+          String(f.day) < String(startDate) || String(f.day) > String(endDate))) ||
+        (kind === 'detail' && (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(f.occurredAt ?? '')) ||
+          String(f.occurredAt).slice(0, 10) < String(startDate) || String(f.occurredAt).slice(0, 10) > String(endDate)))) {
+      throw new BadRequestException('停车网关返回的金额报表字段不正确');
+    }
+    return { database, fields: {
+      kind, category, count, amountCents,
+      day: kind === 'daily' ? String(f.day) : null,
+      occurredAt: kind === 'detail' ? String(f.occurredAt) : null,
+      plate: kind === 'detail' ? String(f.plate ?? '').slice(0, 24) : null,
+      operator: kind === 'detail' ? String(f.operator ?? '').slice(0, 80) : null,
+    } };
+  });
+  for (const category of ['renewal', 'temporary']) for (const database of ['parking1', 'parking2']) {
+    if (sanitized.filter((row) => row.database === database && row.fields.kind === 'summary' && row.fields.category === category).length !== 1)
+      throw new BadRequestException('停车网关返回的金额报表缺少一期或二期汇总');
+  }
+  if (sanitized.filter((row) => row.fields.kind === 'detail').length > 30) throw new BadRequestException('金额报表明细超出最近 30 条上限');
+  for (const category of ['renewal', 'temporary']) {
+    const summary = sanitized.filter((row) => row.fields.kind === 'summary' && row.fields.category === category);
+    const daily = sanitized.filter((row) => row.fields.kind === 'daily' && row.fields.category === category);
+    if (summary.reduce((sum, row) => sum + Number(row.fields.amountCents), 0) !==
+          daily.reduce((sum, row) => sum + Number(row.fields.amountCents), 0) ||
+        summary.reduce((sum, row) => sum + Number(row.fields.count), 0) !==
+          daily.reduce((sum, row) => sum + Number(row.fields.count), 0)) {
+      throw new BadRequestException('金额报表每日汇总与一期、二期总额不一致');
+    }
+  }
+  return sanitized;
 }
 
 const parkingVehicleOutputAliases = [

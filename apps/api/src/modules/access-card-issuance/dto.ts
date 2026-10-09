@@ -327,6 +327,16 @@ export class CreateParkingMovementQueryDto {
   endDate: string;
 }
 
+export class CreateParkingFeeReportDto {
+  @IsString()
+  @MaxLength(10)
+  startDate: string;
+
+  @IsString()
+  @MaxLength(10)
+  endDate: string;
+}
+
 export class ParkingOwnerValuesDto {
   @IsOptional()
   @IsString()

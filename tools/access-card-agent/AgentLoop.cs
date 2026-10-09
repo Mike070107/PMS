@@ -216,14 +216,17 @@ namespace Pms.AccessCardAgent
                 var rows = task.queryKind == "movement"
                     ? ParkingDatabase.SearchMovementsBoth(_config, LoadSecret("parking-db-password.dat"),
                         LoadOptionalSecret("parking-movement-db-password.dat"), task.term, task.startDate, task.endDate)
-                    : ParkingDatabase.SearchBoth(_config, LoadSecret("parking-db-password.dat"), task.term);
+                    : task.queryKind == "fee_report"
+                        ? ParkingDatabase.SearchFeeReport(_config, LoadSecret("parking-db-password.dat"),
+                            LoadOptionalSecret("parking-movement-db-password.dat"), task.startDate, task.endDate)
+                        : ParkingDatabase.SearchBoth(_config, LoadSecret("parking-db-password.dat"), task.term);
                 _api.ReportParkingQuery(new ParkingQueryReport
                 {
                     queryId = task.queryId,
                     result = "success",
                     rows = rows
                 });
-                RecordActivity(task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, true, "查到 " + rows.Count + " 条记录");
+                RecordActivity(task.queryKind == "fee_report" ? "查询停车金额报表" : task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, true, "查到 " + rows.Count + " 条报表数据");
             }
             catch (Exception exception)
             {
@@ -233,7 +236,7 @@ namespace Pms.AccessCardAgent
                     result = "retry",
                     errorMessage = exception.Message
                 });
-                RecordActivity(task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, false, exception.Message);
+                RecordActivity(task.queryKind == "fee_report" ? "查询停车金额报表" : task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, false, exception.Message);
             }
         }
 

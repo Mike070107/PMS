@@ -178,9 +178,9 @@ interface MaterialUsageReport {
 
 type WorkOrderGroupBy = 'day' | 'assignee' | 'community' | 'repairType' | 'status';
 type MaterialUsageGroupBy = 'detail' | 'day' | 'assignee' | 'material' | 'warehouse' | 'community';
-type TabKey = 'work-orders' | 'staff' | 'stock' | 'material-usage';
+type TabKey = 'work-orders' | 'staff' | 'stock' | 'material-usage' | 'parking-fees';
 
-const TAB_KEYS: TabKey[] = ['work-orders', 'staff', 'stock', 'material-usage'];
+const TAB_KEYS: TabKey[] = ['work-orders', 'staff', 'stock', 'material-usage', 'parking-fees'];
 
 const WORK_ORDER_GROUP_LABELS: Record<WorkOrderGroupBy, string> = {
   day: '按天',
@@ -387,10 +387,150 @@ export default function ReportsPage() {
             label: '材料使用明细',
             children: <MaterialUsageReport range={range} communityId={communityId} options={options} rangeBar={rangeBar} />,
           },
+          { key: 'parking-fees', label: '停车金额', children: <ParkingFeesReport /> },
         ]}
       />
     </div>
   );
+}
+
+type ParkingFeeCategory = 'renewal' | 'temporary';
+type ParkingFeeKind = 'summary' | 'daily' | 'detail';
+interface ParkingFeeRow {
+  database: 'parking1' | 'parking2' | 'both';
+  fields: {
+    kind: ParkingFeeKind;
+    category: ParkingFeeCategory;
+    count: number;
+    amountCents: number;
+    day: string | null;
+    occurredAt: string | null;
+    plate: string | null;
+    operator: string | null;
+  };
+}
+interface ParkingFeeQuery {
+  id: number;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  rows: ParkingFeeRow[];
+  error: string | null;
+  startDate: string;
+  endDate: string;
+}
+
+function ParkingFeesReport() {
+  const { message } = AntdApp.useApp();
+  const [range, setRange] = useState<RangeValue>(() => [dayjs().startOf('month'), dayjs()]);
+  const [query, setQuery] = useState<ParkingFeeQuery | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const startDate = fmtDate(range[0]);
+  const endDate = fmtDate(range[1]);
+  const tooLong = range[1].diff(range[0], 'day') > 30;
+
+  const run = async () => {
+    if (tooLong) { message.error('每次最多查询连续 31 天'); return; }
+    setBusy(true);
+    setQuery(null);
+    try {
+      const created = await request<ParkingFeeQuery>({ method: 'POST',
+        url: '/access-card-issuance/parking/fees/queries', data: { startDate, endDate } });
+      setQuery(created);
+    } catch (error: any) {
+      message.error(error?.message || '金额报表查询创建失败');
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!query || (query.status !== 'pending' && query.status !== 'running')) return;
+    let cancelled = false;
+    const timer = window.setInterval(async () => {
+      try {
+        const next = await request<ParkingFeeQuery>({ url: `/access-card-issuance/parking/fees/queries/${query.id}` });
+        if (!cancelled) { setQuery(next); if (next.status === 'completed' || next.status === 'failed') setBusy(false); }
+      } catch (error: any) {
+        if (!cancelled) { setBusy(false); setQuery((previous) => previous && { ...previous, status: 'failed', error: error?.message || '报表查询中断' }); }
+      }
+    }, 1800);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [query?.id, query?.status]);
+
+  const rows = query?.status === 'completed' ? query.rows : [];
+  const summary = (category: ParkingFeeCategory, database: 'parking1' | 'parking2') =>
+    rows.find((row) => row.database === database && row.fields.kind === 'summary' && row.fields.category === category)?.fields;
+  const total = (category: ParkingFeeCategory, field: 'amountCents' | 'count') =>
+    (summary(category, 'parking1')?.[field] ?? 0) + (summary(category, 'parking2')?.[field] ?? 0);
+  const daily = rows.filter((row) => row.fields.kind === 'daily').sort((a, b) =>
+    String(b.fields.day).localeCompare(String(a.fields.day)) || a.fields.category.localeCompare(b.fields.category));
+  const detail = rows.filter((row) => row.fields.kind === 'detail').sort((a, b) =>
+    String(b.fields.occurredAt).localeCompare(String(a.fields.occurredAt)));
+  const categoryLabel = (category: ParkingFeeCategory) => category === 'renewal' ? '月租续期记录金额' : '临停应收金额';
+  const sourceLabel = (database: string) => database === 'parking1' ? '一期' : database === 'parking2' ? '二期' : '一、二期';
+
+  const exportReport = async () => {
+    if (query?.status !== 'completed') return;
+    setExporting(true);
+    try {
+      await exportXlsx(`停车金额_${query.startDate}_${query.endDate}`, [
+        { name: '分期汇总', columns: [
+          { title: '类别', key: 'category' }, { title: '来源', key: 'database' },
+          { title: '笔数', key: 'count' }, { title: '金额(元)', key: 'amount' },
+        ], rows: rows.filter((row) => row.fields.kind === 'summary').map((row) => ({
+          category: categoryLabel(row.fields.category), database: sourceLabel(row.database),
+          count: row.fields.count, amount: centsToYuan(row.fields.amountCents),
+        })) },
+        { name: '每日汇总', columns: [
+          { title: '日期', key: 'day' }, { title: '类别', key: 'category' },
+          { title: '笔数', key: 'count' }, { title: '金额(元)', key: 'amount' },
+        ], rows: daily.map((row) => ({ day: row.fields.day, category: categoryLabel(row.fields.category),
+          count: row.fields.count, amount: centsToYuan(row.fields.amountCents) })) },
+        { name: '最近30条明细', columns: [
+          { title: '时间', key: 'time' }, { title: '类别', key: 'category' }, { title: '来源', key: 'database' },
+          { title: '车牌', key: 'plate' }, { title: '操作员', key: 'operator' }, { title: '金额(元)', key: 'amount' },
+        ], rows: detail.map((row) => ({ time: row.fields.occurredAt, category: categoryLabel(row.fields.category),
+          database: sourceLabel(row.database), plate: row.fields.plate, operator: row.fields.operator,
+          amount: centsToYuan(row.fields.amountCents) })) },
+      ]);
+    } catch (error: any) { message.error(error?.message || '导出失败'); }
+    finally { setExporting(false); }
+  };
+
+  return <div className="pms-report-pane">
+    <CaliberNote>月租按旧库 <b>P_moneyKeep 的续期操作时间</b>、类型 5 统计记录金额；临停按捷顺出场视图 <b>OutTime</b> 统计 Charge1 应收金额。两类不是支付平台的实收，不能直接当作到账收入。</CaliberNote>
+    <Card className="pms-report-toolbar" size="small">
+      <Space wrap>
+        <DatePicker.RangePicker aria-label="停车金额报表日期" allowClear={false} value={range}
+          onChange={(value) => { if (value?.[0] && value?.[1]) { setRange([value[0], value[1]]); setQuery(null); setBusy(false); } }}
+          disabledDate={(date) => date.isAfter(dayjs().endOf('day'))} />
+        <Button type="primary" icon={<SearchOutlined />} loading={busy} disabled={tooLong} onClick={run}>查询金额</Button>
+        <Button icon={<DownloadOutlined />} disabled={query?.status !== 'completed'} loading={exporting} onClick={exportReport}>导出报表</Button>
+      </Space>
+      {tooLong && <Alert type="warning" showIcon message="每次最多查询连续 31 天，请缩小日期范围" style={{ marginTop: 12 }} />}
+    </Card>
+    {query?.status === 'failed' && <Alert type="error" showIcon message="金额报表未完成" description={query.error || '现场数据源读取失败'} style={{ marginTop: 12 }} />}
+    {(query?.status === 'pending' || query?.status === 'running') && <Alert type="info" showIcon message="正在由现场数据同步助手查询一期、二期旧库…" style={{ marginTop: 12 }} />}
+    {query?.status === 'completed' && <>
+      <Row gutter={[12, 12]} className="pms-report-tiles" style={{ marginTop: 12 }}>
+        <Col xs={24} md={12}><Card className="pms-report-tile"><Statistic title="月租续期记录金额" value={centsToYuan(total('renewal', 'amountCents'))} suffix="元" /><Text type="secondary">{total('renewal', 'count')} 笔 · 一期 {formatFeeMoney(summary('renewal', 'parking1')?.amountCents ?? 0)} / 二期 {formatFeeMoney(summary('renewal', 'parking2')?.amountCents ?? 0)}</Text></Card></Col>
+        <Col xs={24} md={12}><Card className="pms-report-tile"><Statistic title="临停应收金额" value={centsToYuan(total('temporary', 'amountCents'))} suffix="元" /><Text type="secondary">{total('temporary', 'count')} 笔 · 一期 {formatFeeMoney(summary('temporary', 'parking1')?.amountCents ?? 0)} / 二期 {formatFeeMoney(summary('temporary', 'parking2')?.amountCents ?? 0)}</Text></Card></Col>
+      </Row>
+      <Card title="每日金额" style={{ marginTop: 12 }}><Table size="small" rowKey={(row) => `${row.fields.category}-${row.fields.day}`} dataSource={daily} pagination={{ pageSize: 10 }} scroll={{ x: 550 }} columns={[
+        { title: '日期', dataIndex: ['fields', 'day'] },
+        { title: '类别', render: (_, row) => categoryLabel(row.fields.category) },
+        { title: '笔数', dataIndex: ['fields', 'count'], align: 'right' },
+        { title: '金额', align: 'right', render: (_, row) => formatFeeMoney(row.fields.amountCents) },
+      ]} /></Card>
+      <Card title="最近 30 条流水（全区间汇总不受此限制）" style={{ marginTop: 12 }}><Table size="small" rowKey={(row, index) => `${row.database}-${row.fields.occurredAt}-${index}`} dataSource={detail} pagination={{ pageSize: 10 }} scroll={{ x: 760 }} columns={[
+        { title: '时间', dataIndex: ['fields', 'occurredAt'] },
+        { title: '类别', render: (_, row) => categoryLabel(row.fields.category) },
+        { title: '来源', render: (_, row) => sourceLabel(row.database) },
+        { title: '车牌', dataIndex: ['fields', 'plate'] },
+        { title: '操作员', render: (_, row) => row.fields.operator || '-' },
+        { title: '金额', align: 'right', render: (_, row) => formatFeeMoney(row.fields.amountCents) },
+      ]} /></Card>
+    </>}
+  </div>;
 }
 
 // ---------------------------------------------------------------- 工单统计

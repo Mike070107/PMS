@@ -97,6 +97,28 @@ export function supportsParkingMovementQueries(version: string | null | undefine
     || (major === 0 && minor >= 9);
 }
 
+export function supportsParkingFeeReports(version: string | null | undefined): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 25)));
+}
+
+export function parseParkingFeeReportRange(startDate: string, endDate: string) {
+  // 与进出流水共用日期合法性及 31 天上限；这里只借用校验，不限制车牌。
+  const parseDate = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('请选择有效的报表日期');
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new Error('请选择有效的报表日期');
+    return date;
+  };
+  const start = parseDate(startDate);
+  const end = parseDate(endDate);
+  if (end.getTime() < start.getTime() || (end.getTime() - start.getTime()) / 86_400_000 > 30)
+    throw new Error('金额报表每次最多查询连续 31 天');
+  return { startDate, endDate };
+}
+
 export function parseParkingMovementRange(plateInput: string, startDate: string, endDate: string) {
   const plate = plateInput.trim().replace(/[\s·]/g, '').toUpperCase();
   if (!/^[\u4e00-\u9fff][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(plate)) {

@@ -11,6 +11,8 @@ import {
   supportsStructuredParkingQueries,
   supportsParkingMovementQueries,
   parseParkingMovementRange,
+  parseParkingFeeReportRange,
+  supportsParkingFeeReports,
 } from './parking-query.util';
 
 const duplicateRows = [{ database: 'parking2', fields: { P_plate: '沪EDK889', Owner__Room_No: '228/5/301' } }];
@@ -55,6 +57,16 @@ test('进出记录仅交给具备新版协议的助手，必须是完整车牌�
   assert.throws(() => parseParkingMovementRange('12345', '2026-09-01', '2026-09-02'), /完整车牌/);
   assert.throws(() => parseParkingMovementRange('沪A12345', '2026-09-01', '2026-10-02'), /31 天/);
   assert.throws(() => parseParkingMovementRange('沪A12345', '2026-02-30', '2026-03-01'), /有效/);
+});
+
+test('金额报表按 31 天限制查询，且仅新版助手可领取', () => {
+  assert.equal(supportsParkingFeeReports('2.5.24'), false);
+  assert.equal(supportsParkingFeeReports('2.5.25'), true);
+  assert.deepEqual(parseParkingFeeReportRange('2026-10-01', '2026-10-31'), {
+    startDate: '2026-10-01', endDate: '2026-10-31',
+  });
+  assert.throws(() => parseParkingFeeReportRange('2026-10-01', '2026-11-01'), /31 天/);
+  assert.throws(() => parseParkingFeeReportRange('2026-02-30', '2026-03-01'), /有效/);
 });
 
 test('P_Owner.owner_Name 中的旧库标准地址按房号解释', () => {

@@ -167,6 +167,132 @@ ORDER BY p.parameter_id;";
                 .Take(100).ToList();
         }
 
+        // 金额报表只读旧库；汇总和每日金额由 SQL 对完整区间聚合，明细仅返回最近 30 条。
+        // 临停 Charge1 是旧网页的“应收金额”，不是支付成功金额。
+        public static List<ParkingSearchRow> SearchFeeReport(AgentConfig config, string password, string movementPassword,
+            string startDate, string endDate)
+        {
+            DateTime start, end;
+            if (!DateTime.TryParseExact(startDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out start) ||
+                !DateTime.TryParseExact(endDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out end) ||
+                end < start || (end - start).TotalDays > 30)
+                throw new InvalidOperationException("金额报表每次最多查询连续 31 天");
+            var rows = new List<ParkingSearchRow>();
+            foreach (var phase1 in new[] { true, false })
+            {
+                var label = phase1 ? "parking1" : "parking2";
+                var parkingDatabase = phase1 ? config.ParkingPhase1Database : config.ParkingPhase2Database;
+                Validate(config, password, parkingDatabase);
+                using (var connection = new SqlConnection(ConnectionString(config, password, parkingDatabase)))
+                {
+                    connection.Open();
+                    var dateColumn = FeeRenewalDateColumn(connection);
+                    ReadFeeRows(connection, label, "renewal", "[dbo].[P_moneyKeep]", dateColumn,
+                        "[P_money]", "[P_plate]", "[P_Admin]", " AND [type] = 5", start, end.AddDays(1), rows);
+                }
+
+                var server = phase1 ? config.ParkingMovementPhase1Server : config.ParkingMovementPhase2Server;
+                var database = phase1 ? config.ParkingMovementPhase1Database : config.ParkingMovementPhase2Database;
+                var custom = !String.IsNullOrWhiteSpace(server) || !String.IsNullOrWhiteSpace(database);
+                if (custom && (String.IsNullOrWhiteSpace(server) || String.IsNullOrWhiteSpace(database)))
+                    throw new InvalidOperationException(label + " 的临停历史库地址与库名必须同时配置");
+                if (!custom) { server = config.ParkingSqlServer; database = parkingDatabase; }
+                var user = String.IsNullOrWhiteSpace(config.ParkingMovementUser) ? config.ParkingUser : config.ParkingMovementUser;
+                var secret = custom && !String.IsNullOrWhiteSpace(movementPassword) ? movementPassword : password;
+                if (String.IsNullOrWhiteSpace(server) || String.IsNullOrWhiteSpace(database) || String.IsNullOrWhiteSpace(user) || String.IsNullOrWhiteSpace(secret))
+                    throw new InvalidOperationException(label + " 的临停历史库尚未配置完整");
+                var builder = new SqlConnectionStringBuilder { DataSource = server, InitialCatalog = database,
+                    UserID = user, Password = secret, ConnectTimeout = 5, Encrypt = false,
+                    TrustServerCertificate = true, ApplicationName = "PMS Parking Fee Read" };
+                using (var connection = new SqlConnection(builder.ConnectionString))
+                {
+                    connection.Open();
+                    try
+                    {
+                        ReadFeeRows(connection, label, "temporary", "[TC].[View_RecordOut_temp]", "[OutTime]",
+                            "[Charge1]", "[CarNo]", "NULL", "", start, end.AddDays(1), rows);
+                    }
+                    catch (SqlException exception)
+                    {
+                        if (exception.Number == 208 || exception.Number == 229 || exception.Number == 207)
+                            throw new InvalidOperationException(label + " 无法读取临停收费视图 TC.View_RecordOut_temp；请配置捷顺历史库只读账号", exception);
+                        throw;
+                    }
+                }
+            }
+            var daily = rows.Where(row => Convert.ToString(row.fields["kind"]) == "daily")
+                .GroupBy(row => Convert.ToString(row.fields["category"]) + "|" + Convert.ToString(row.fields["day"]))
+                .Select(group => new ParkingSearchRow { database = "both", fields = new Dictionary<string, object> {
+                    { "kind", "daily" }, { "category", group.First().fields["category"] },
+                    { "day", group.First().fields["day"] }, { "count", group.Sum(row => Convert.ToInt64(row.fields["count"])) },
+                    { "amountCents", group.Sum(row => Convert.ToInt64(row.fields["amountCents"])) }
+                } }).ToList();
+            var detail = rows.Where(row => Convert.ToString(row.fields["kind"]) == "detail")
+                .OrderByDescending(row => Convert.ToString(row.fields["occurredAt"])).Take(30).ToList();
+            return rows.Where(row => Convert.ToString(row.fields["kind"]) == "summary").Concat(daily).Concat(detail).ToList();
+        }
+
+        private static string FeeRenewalDateColumn(SqlConnection connection)
+        {
+            var columns = new List<string>();
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = @"SELECT c.name FROM sys.columns c JOIN sys.types t ON t.user_type_id=c.user_type_id
+WHERE c.object_id=OBJECT_ID('dbo.P_moneyKeep') AND t.name IN ('datetime','smalldatetime','date','datetime2');";
+                using (var reader = command.ExecuteReader()) while (reader.Read()) columns.Add(reader.GetString(0));
+            }
+            if (columns.Count == 0) throw new InvalidOperationException("P_moneyKeep 不存在，或没有可识别的续期操作时间字段");
+            var preferred = new[] { "P_Date", "P_Time", "P_CreateTime", "CreateTime", "AddTime", "Time", "Date" };
+            var chosen = preferred.Select(name => columns.FirstOrDefault(column => column.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                .FirstOrDefault(column => column != null);
+            if (chosen == null && columns.Count == 1) chosen = columns[0];
+            if (chosen == null) throw new InvalidOperationException("P_moneyKeep 有多个日期字段，无法确定续期操作时间；请核对旧库表结构");
+            return "[" + chosen.Replace("]", "]]" ) + "]";
+        }
+
+        private static void ReadFeeRows(SqlConnection connection, string database, string category, string table,
+            string dateColumn, string amountColumn, string plateColumn, string operatorColumn, string extraFilter,
+            DateTime start, DateTime endExclusive, List<ParkingSearchRow> rows)
+        {
+            var where = dateColumn + " >= @start AND " + dateColumn + " < @end" + extraFilter;
+            var money = "CONVERT(decimal(18,2), " + amountColumn + ")";
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandTimeout = 30;
+                command.CommandText = "SELECT COUNT_BIG(*), COALESCE(SUM(" + money + "),0) FROM " + table + " WHERE " + where;
+                command.Parameters.Add("@start", SqlDbType.DateTime).Value = start;
+                command.Parameters.Add("@end", SqlDbType.DateTime).Value = endExclusive;
+                using (var reader = command.ExecuteReader())
+                {
+                    reader.Read();
+                    rows.Add(FeeRow(database, "summary", category, null, null, null, null,
+                        Convert.ToInt64(reader[0]), Convert.ToDecimal(reader[1])));
+                }
+                command.CommandText = "SELECT CONVERT(varchar(10)," + dateColumn + ",120), COUNT_BIG(*), COALESCE(SUM(" + money + "),0) FROM " + table +
+                    " WHERE " + where + " GROUP BY CONVERT(varchar(10)," + dateColumn + ",120)";
+                using (var reader = command.ExecuteReader())
+                    while (reader.Read()) rows.Add(FeeRow(database, "daily", category, Convert.ToString(reader[0]),
+                        null, null, null, Convert.ToInt64(reader[1]), Convert.ToDecimal(reader[2])));
+                command.CommandText = "SELECT TOP (30) " + dateColumn + ", " + plateColumn + ", " + operatorColumn + ", " + money +
+                    " FROM " + table + " WHERE " + where + " ORDER BY " + dateColumn + " DESC";
+                using (var reader = command.ExecuteReader())
+                    while (reader.Read()) rows.Add(FeeRow(database, "detail", category, null,
+                        reader[0] == DBNull.Value ? null : Convert.ToDateTime(reader[0]).ToString("yyyy-MM-dd HH:mm:ss"),
+                        reader[1] == DBNull.Value ? null : Convert.ToString(reader[1]),
+                        reader[2] == DBNull.Value ? null : Convert.ToString(reader[2]), 1, Convert.ToDecimal(reader[3])));
+            }
+        }
+
+        private static ParkingSearchRow FeeRow(string database, string kind, string category, string day,
+            string occurredAt, string plate, string operatorName, long count, decimal amount)
+        {
+            return new ParkingSearchRow { database = database, fields = new Dictionary<string, object> {
+                { "kind", kind }, { "category", category }, { "day", day }, { "occurredAt", occurredAt },
+                { "plate", plate }, { "operator", operatorName }, { "count", count },
+                { "amountCents", decimal.ToInt64(decimal.Round(amount * 100m, 0, MidpointRounding.AwayFromZero)) }
+            } };
+        }
+
         private static List<ParkingSearchRow> SearchMovements(AgentConfig config, string password, string movementPassword,
             string plate, DateTime start, DateTime endExclusive, bool phase1)
         {
