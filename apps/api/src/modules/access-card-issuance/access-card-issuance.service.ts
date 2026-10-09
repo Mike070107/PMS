@@ -234,6 +234,43 @@ export class AccessCardIssuanceService {
     };
   }
 
+  async getRecentCards(user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const communityIds = scopeCommunityIds(access);
+    if (communityIds?.length === 0) return [];
+
+    const query = this.itemRepo.createQueryBuilder('item')
+      .innerJoinAndSelect('item.batch', 'batch')
+      .where('item.tenant_id = :tenantId', { tenantId })
+      .andWhere('item.card_status = :cardStatus', { cardStatus: 'card_completed' });
+    if (communityIds) {
+      query.andWhere('batch.community_id IN (:...communityIds)', { communityIds });
+    }
+    const rows = await query
+      .orderBy('item.card_completed_at', 'DESC', 'NULLS LAST')
+      .addOrderBy('item.id', 'DESC')
+      .take(30)
+      .getMany();
+
+    return rows.map((item) => ({
+      id: item.id,
+      batchId: item.batchId,
+      houseId: item.batch.houseId,
+      address: item.batch.addressSnapshot,
+      projectPhase: item.batch.projectPhase,
+      accessSystem: item.batch.accessSystem,
+      icCardNo: item.icCardNo,
+      wgCardNo: item.wgCardNo,
+      legacyPersonNo: item.legacyPersonNo,
+      cardCompletedAt: item.cardCompletedAt,
+      accessStatus: item.accessStatus,
+      legacySyncStatus: item.legacySyncStatus,
+      controllerResults: item.controllerResults,
+      lastErrorRef: item.lastErrorRef,
+      lastErrorMessage: item.lastErrorMessage,
+    }));
+  }
+
   async createHistoryAuthorization(
     houseId: number,
     historyId: number,

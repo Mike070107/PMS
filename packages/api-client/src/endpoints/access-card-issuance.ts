@@ -86,6 +86,24 @@ export interface AccessCardIssueBatch {
   items: AccessCardIssueItem[];
 }
 
+export interface AccessCardRecentRecord {
+  id: number;
+  batchId: number;
+  houseId: number;
+  address: string;
+  projectPhase: ProjectPhase;
+  accessSystem: AccessSystem;
+  icCardNo: string | null;
+  wgCardNo: string | null;
+  legacyPersonNo: string | null;
+  cardCompletedAt: string | null;
+  accessStatus: string;
+  legacySyncStatus: string;
+  controllerResults: Array<Record<string, unknown>>;
+  lastErrorRef: string | null;
+  lastErrorMessage: string | null;
+}
+
 export interface AccessCardAuthorization {
   id: number;
   houseId: number;
@@ -388,6 +406,11 @@ export const parkingProofByPlate = (plate: string) =>
 export const houseContext = (houseId: number) =>
   request<AccessCardHouseContext>({
     url: `/access-card-issuance/houses/${houseId}/context`,
+  });
+
+export const recentCards = () =>
+  request<AccessCardRecentRecord[]>({
+    url: '/access-card-issuance/recent-cards',
   });
 
 export const createHistoryAuthorization = (houseId: number, historyId: number, data: {

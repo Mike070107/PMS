@@ -167,6 +167,15 @@ export class AccessCardIssuanceController {
     return this.service.getHouseContext(houseId, user, access);
   }
 
+  @Get('recent-cards')
+  @RequirePermission('business', 'view')
+  recentCards(
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.getRecentCards(user, access);
+  }
+
   @Post('batches')
   @RequirePermission('business', 'edit')
   create(

@@ -40,6 +40,7 @@ import {
   type AccessCardHouseContext,
   type AccessCardIssueBatch,
   type AccessCardPermissionResult,
+  type AccessCardRecentRecord,
   type AccessCardReadiness,
 } from '@pms/api-client';
 import type { AddressCommunity } from '@pms/shared-types';
@@ -115,6 +116,24 @@ const PREVIEW_READINESS: AccessCardReadiness = {
   features: { cardWrite: false, legacyDbWrite: false, accessDbWrite: false, parkingDbRead: true, parkingDbWrite: false, controllerUpload: false, historicalAccessGrant: true },
   agents: [],
 };
+
+const PREVIEW_RECENT_RECORDS: AccessCardRecentRecord[] = [
+  {
+    id: 3003, batchId: 9012, houseId: 1, address: '228/5/301', projectPhase: 'phase2', accessSystem: 'mjsystem',
+    icCardNo: 'A1B2C3D4', wgCardNo: '19545729', legacyPersonNo: '11308', cardCompletedAt: '2026-10-03T02:18:00.000Z',
+    accessStatus: 'controller_uploaded', legacySyncStatus: 'synced', controllerResults: [{ buildingNo: '5' }], lastErrorRef: null, lastErrorMessage: null,
+  },
+  {
+    id: 3002, batchId: 9011, houseId: 2, address: '228/41/402', projectPhase: 'phase2', accessSystem: 'iccard',
+    icCardNo: '11223344', wgCardNo: '05108721', legacyPersonNo: null, cardCompletedAt: '2026-10-02T06:16:00.000Z',
+    accessStatus: 'waiting_retry', legacySyncStatus: 'pending', controllerResults: [], lastErrorRef: 'A41F02', lastErrorMessage: '控制器未确认接收',
+  },
+  {
+    id: 3001, batchId: 9010, houseId: 3, address: '198/3/201', projectPhase: 'phase1', accessSystem: null,
+    icCardNo: '0A1B2C3D', wgCardNo: null, legacyPersonNo: '10982', cardCompletedAt: '2026-10-01T01:08:00.000Z',
+    accessStatus: 'not_required', legacySyncStatus: 'synced', controllerResults: [], lastErrorRef: null, lastErrorMessage: null,
+  },
+];
 
 function newIdempotencyKey(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -273,7 +292,21 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const [authorizationSubmitting, setAuthorizationSubmitting] = useState(false);
   const [retryingAuthorizationId, setRetryingAuthorizationId] = useState<number | null>(null);
   const [uploadingHistoryRowId, setUploadingHistoryRowId] = useState<number | null>(null);
+  const [recentRecords, setRecentRecords] = useState<AccessCardRecentRecord[]>(preview ? PREVIEW_RECENT_RECORDS : []);
+  const [recentRecordsLoading, setRecentRecordsLoading] = useState(false);
   const contextRequestRef = useRef(0);
+
+  const loadRecentRecords = useCallback(async () => {
+    if (preview) return;
+    setRecentRecordsLoading(true);
+    try {
+      setRecentRecords(await accessCardIssuance.recentCards());
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '最近发卡记录加载失败');
+    } finally {
+      setRecentRecordsLoading(false);
+    }
+  }, [preview]);
 
   const loadReadiness = useCallback(async () => {
     setReadinessLoading(true);
@@ -292,7 +325,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       message.error(error?.message || '房产地址加载失败');
     });
     void loadReadiness();
-  }, [loadReadiness, preview]);
+    void loadRecentRecords();
+  }, [loadReadiness, loadRecentRecords, preview]);
 
   useEffect(() => {
     if (preview || !batch || batch.status === 'completed' || batch.status === 'needs_operator') return;
@@ -300,7 +334,12 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     const refresh = async () => {
       try {
         const next = await accessCardIssuance.batch(batch.id);
-        if (!cancelled) setBatch(next);
+        if (!cancelled) {
+          const previousCompleted = batch.items.filter((item) => item.cardStatus === 'card_completed').length;
+          const nextCompleted = next.items.filter((item) => item.cardStatus === 'card_completed').length;
+          setBatch(next);
+          if (nextCompleted > previousCompleted) void loadRecentRecords();
+        }
       } catch {
         // 主动任务轮询失败不清空当前进度，下一轮继续。
       }
@@ -310,7 +349,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [batch?.id, batch?.status, preview]);
+  }, [batch?.id, batch?.status, batch?.items, loadRecentRecords, preview]);
 
   const loadContext = useCallback(async (
     houseId: number,
@@ -478,6 +517,23 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       } : item);
       const allDone = items.every((item) => item.cardStatus === 'card_completed');
       setBatch({ ...batch, items, status: allDone ? 'completed' : 'waiting_for_card', deliverable: allDone });
+      setRecentRecords((current) => [{
+        id: target.id,
+        batchId: batch.id,
+        houseId: batch.houseId,
+        address: batch.addressSnapshot,
+        projectPhase: batch.projectPhase,
+        accessSystem: batch.accessSystem,
+        icCardNo,
+        wgCardNo: batch.projectPhase === 'phase1' ? null : `19545${String(720 + target.sequence).padStart(3, '0')}`,
+        legacyPersonNo: null,
+        cardCompletedAt: completedAt,
+        accessStatus: batch.projectPhase === 'phase1' ? 'not_required' : 'controller_uploaded',
+        legacySyncStatus: 'pending',
+        controllerResults: [],
+        lastErrorRef: null,
+        lastErrorMessage: null,
+      }, ...current.filter((item) => item.id !== target.id)].slice(0, 30));
       setContext((current) => current ? {
         ...current,
         issuedCount: current.issuedCount + 1,
@@ -502,6 +558,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       const next = await accessCardIssuance.simulateNext(batch.id);
       setBatch(next);
       await refreshContext();
+      await loadRecentRecords();
       message.success(`第 ${next.items.filter((item) => item.cardStatus === 'card_completed').length} 张卡已完成`);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '模拟写卡失败');
@@ -519,6 +576,14 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         legacySyncStatus: 'synced',
       } : item);
       setBatch({ ...batch, items });
+      setRecentRecords((current) => current.map((item) => {
+        const batchItem = items.find((candidate) => candidate.id === item.id);
+        return batchItem ? {
+          ...item,
+          legacyPersonNo: batchItem.legacyPersonNo,
+          legacySyncStatus: batchItem.legacySyncStatus,
+        } : item;
+      }));
       setContext((current) => current ? {
         ...current,
         history: current.history.map((item) => item.legacySyncStatus === 'pending' ? {
@@ -535,6 +600,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       const next = await accessCardIssuance.simulateLegacySync(batch.id);
       setBatch(next);
       await refreshContext();
+      await loadRecentRecords();
       message.success('已模拟完成 .80 旧库增量同步');
     } catch (error) {
       message.error(error instanceof Error ? error.message : '模拟旧库同步失败');
@@ -846,6 +912,21 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     },
   ];
 
+  const recentColumns = [
+    { title: '发卡时间', dataIndex: 'cardCompletedAt', width: 180, render: formatTime },
+    { title: '房号', dataIndex: 'address', width: 150, render: (value: string) => <Text strong>{value}</Text> },
+    { title: 'IC 卡号', dataIndex: 'icCardNo', width: 140, render: (value: string | null) => value || '—' },
+    { title: 'WG 卡号', dataIndex: 'wgCardNo', width: 130, render: (value: string | null) => value || <Text type="secondary">不适用</Text> },
+    { title: '捷顺系统编号', dataIndex: 'legacyPersonNo', width: 145, render: (value: string | null) => value || <Tag>同步中</Tag> },
+    { title: '控制器上传', dataIndex: 'accessStatus', width: 190, render: (value: string, row: AccessCardRecentRecord) => (
+      <Space direction="vertical" size={3}>
+        {accessStatus(value)}
+        {row.lastErrorMessage && <Text type="danger" ellipsis={{ tooltip: row.lastErrorMessage }} style={{ maxWidth: 170 }}>{row.lastErrorMessage}</Text>}
+      </Space>
+    ) },
+    { title: '旧库同步', dataIndex: 'legacySyncStatus', width: 120, render: legacyStatus },
+  ];
+
   return (
     <div className="access-card-page">
       <section className="access-card-hero">
@@ -1137,6 +1218,34 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
           </Card>
         </>
       )}
+
+      <Card
+        className="access-card-history-card"
+        title="最近30条发卡记录"
+        extra={(
+          <Space wrap>
+            <Text type="secondary" role="status" aria-atomic="true">当前显示 {recentRecords.length} 条</Text>
+            <Button
+              icon={<ReloadOutlined aria-hidden="true" />}
+              loading={recentRecordsLoading}
+              onClick={() => void loadRecentRecords()}
+            >
+              刷新记录
+            </Button>
+          </Space>
+        )}
+      >
+        <Text type="secondary">按发卡时间倒序，仅展示由 PMS 新发出的卡片；旧系统历史请选择房号查询。</Text>
+        <Table<AccessCardRecentRecord>
+          rowKey="id"
+          columns={recentColumns}
+          dataSource={recentRecords}
+          loading={recentRecordsLoading}
+          pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
+          scroll={{ x: 1055 }}
+          locale={{ emptyText: <Empty description="还没有 PMS 新发卡记录" /> }}
+        />
+      </Card>
 
       <Modal
         title="给已发卡片追加门栋权限"

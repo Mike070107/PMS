@@ -90,3 +90,42 @@ test('已有权限的历史卡不会重复上传', async () => {
     /已上传控制器/,
   );
 });
+
+test('最近发卡记录限制30条并遵守小区数据范围', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const calls: Array<{ method: string; args: unknown[] }> = [];
+  const batch = {
+    houseId: 10,
+    addressSnapshot: '228/5/102',
+    projectPhase: 'phase2',
+    accessSystem: 'mjsystem',
+  };
+  const query = {
+    innerJoinAndSelect(...args: unknown[]) { calls.push({ method: 'innerJoinAndSelect', args }); return this; },
+    where(...args: unknown[]) { calls.push({ method: 'where', args }); return this; },
+    andWhere(...args: unknown[]) { calls.push({ method: 'andWhere', args }); return this; },
+    orderBy(...args: unknown[]) { calls.push({ method: 'orderBy', args }); return this; },
+    addOrderBy(...args: unknown[]) { calls.push({ method: 'addOrderBy', args }); return this; },
+    take(...args: unknown[]) { calls.push({ method: 'take', args }); return this; },
+    async getMany() {
+      return [{
+        id: 88, batchId: 9, batch, icCardNo: '11223344', wgCardNo: '05108721', legacyPersonNo: '11308',
+        cardCompletedAt: new Date('2026-10-03T02:18:00.000Z'), accessStatus: 'controller_uploaded',
+        legacySyncStatus: 'synced', controllerResults: [], lastErrorRef: null, lastErrorMessage: null,
+      }];
+    },
+  };
+  const state = service as unknown as Record<string, unknown>;
+  state.itemRepo = { createQueryBuilder: () => query };
+
+  const records = await service.getRecentCards(user, {
+    scopeAll: false,
+    communityIds: [228],
+  } as never);
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0]!.address, '228/5/102');
+  assert.ok(calls.some((call) => call.method === 'take' && call.args[0] === 30));
+  assert.ok(calls.some((call) => call.method === 'andWhere'
+    && call.args[0] === 'batch.community_id IN (:...communityIds)'));
+});
