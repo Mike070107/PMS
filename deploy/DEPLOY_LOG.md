@@ -4164,3 +4164,9 @@
 - 自上次（f6d7f2b5）以来上线的相关提交：
   - 18c9dd01 feat(access-card): show latest 30 issued cards
 
+## 2026-10-09 09:54 · assistant · 6d0ee5dd
+
+- 提交：6d0ee5dd Merge remote-tracking branch 'origin/main'
+- 自上次（807be2bc）以来上线的相关提交：
+  - 35f3be95 fix: map legacy parking download parameters and correct connection topology
+
