@@ -230,6 +230,17 @@ namespace Pms.DataSyncAssistant
             if (AccessGatewayDatabase.ExtractBuildingNo("20", "20号单门控制器") != "20" ||
                 AccessGatewayDatabase.ExtractBuildingNo("02", "02号单门控制器") != "2")
                 throw new InvalidOperationException("MjSystem 现场纯数字门名或单门控制器名称解析失败");
+            if (AccessControllerUploader.NormalizeMjSystemControllerSerial("0160217") != "0160217")
+                throw new InvalidOperationException("MjSystem 七位控制器序列号的前导零被破坏");
+            try
+            {
+                AccessControllerUploader.NormalizeMjSystemControllerSerial("16A217");
+                throw new InvalidOperationException("MjSystem 非数字控制器序列号未被拒绝");
+            }
+            catch (InvalidOperationException exception)
+            {
+                if (!exception.Message.Contains("格式无效")) throw;
+            }
             var selectedGroup = AccessGatewayDatabase.SelectIcCardGroup("41", new[]
             {
                 new IcCardGroupCandidate { Id = 11, Name = "11号楼" },

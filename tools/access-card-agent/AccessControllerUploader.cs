@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 
 namespace Pms.AccessCardAgent
 {
@@ -28,8 +29,9 @@ namespace Pms.AccessCardAgent
     {
         public static bool CanUpload(AgentConfig config)
         {
-            string ignored;
-            return TryFindWgComm(config, out ignored);
+            string ignoredWg;
+            string ignoredMj;
+            return TryFindWgComm(config, out ignoredWg) && TryFindMjSystemSdk(config, out ignoredMj);
         }
 
         public static object[] Upload(AgentConfig config, string password, AgentTask task)
@@ -53,31 +55,42 @@ namespace Pms.AccessCardAgent
                 !String.Equals(doorId, "M0030-1", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("故障验收只允许测试卡 WG 22345575 和 26 号楼控制器 M0030-1");
 
-            string dllPath;
-            if (!TryFindWgComm(config, out dllPath))
+            string wgDllPath;
+            if (!TryFindWgComm(config, out wgDllPath))
                 throw new FileNotFoundException("找不到原门禁通信组件 iCCard-WGComm.dll，请确认 iCCard 安装目录完整");
-            var vendor = new WgCommVendor(dllPath);
-            using (var connection = OpenMjSystem(config.MjSystemDatabasePath))
+            string mjSdkPath;
+            if (!TryFindMjSystemSdk(config, out mjSdkPath))
+                throw new FileNotFoundException("找不到 MjSystem 原生通信组件 ECardDerviceSDKMJ.dll，请确认 MjSystem 安装目录完整");
+            var payloadBuilder = new WgCommVendor(wgDllPath);
+            var vendor = new MjSystemVendor(mjSdkPath);
+            try
             {
-                var record = ReadMjSystemUploadRecord(connection, cardNo, doorId);
-                var frame = vendor.BuildOldAddFrame(record, 1);
-                string response;
-                var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response);
-                if (result != 0)
-                    throw new InvalidOperationException(
-                        "26号楼控制器无应答（" + record.ControllerName + " / " + record.CommMode +
-                        "，返回码 " + result.ToString(CultureInfo.InvariantCulture) + "）。PMS 应保留为失败可重试，不得显示已下发");
-                return new AccessControllerUploadResult
+                using (var connection = OpenMjSystem(config.MjSystemDatabasePath))
                 {
-                    buildingId = 26,
-                    buildingNo = "26",
-                    accessSystem = "mjsystem",
-                    status = "controller_uploaded",
-                    controller = record.ControllerName + " / SN " + record.ControllerSn,
-                    door = record.DoorName,
-                    protocol = "MjSystem 0x7E / " + record.CommMode,
-                    acknowledgement = String.IsNullOrWhiteSpace(response) ? "控制器已确认" : "控制器已确认，响应 " + Limit(response, 80)
-                };
+                    var record = ReadMjSystemUploadRecord(connection, cardNo, doorId);
+                    var frame = vendor.BuildCommand(record.ControllerSnText, payloadBuilder.BuildOldAddFunction(record, 1));
+                    string response;
+                    var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response);
+                    if (result != 0)
+                        throw new InvalidOperationException(
+                            "26号楼控制器无应答（" + record.ControllerName + " / " + record.CommMode +
+                            "，SDK 错误码 " + result.ToString(CultureInfo.InvariantCulture) + "）。PMS 应保留为失败可重试，不得显示已下发");
+                    return new AccessControllerUploadResult
+                    {
+                        buildingId = 26,
+                        buildingNo = "26",
+                        accessSystem = "mjsystem",
+                        status = "controller_uploaded",
+                        controller = record.ControllerName + " / SN " + record.ControllerSnText,
+                        door = record.DoorName,
+                        protocol = "MjSystem 原生 SDK 0x9E / " + record.CommMode,
+                        acknowledgement = String.IsNullOrWhiteSpace(response) ? "控制器已确认" : "控制器已确认，响应 " + Limit(response, 80)
+                    };
+                }
+            }
+            finally
+            {
+                vendor.Dispose();
             }
         }
 
@@ -86,42 +99,54 @@ namespace Pms.AccessCardAgent
             AgentTask task,
             AccessTargetBuilding[] targets)
         {
-            string dllPath;
-            if (!TryFindWgComm(config, out dllPath))
+            string wgDllPath;
+            if (!TryFindWgComm(config, out wgDllPath))
                 throw new FileNotFoundException("找不到原门禁通信组件 iCCard-WGComm.dll，请确认 iCCard 安装目录完整");
+            string mjSdkPath;
+            if (!TryFindMjSystemSdk(config, out mjSdkPath))
+                throw new FileNotFoundException("找不到 MjSystem 原生通信组件 ECardDerviceSDKMJ.dll，请确认 MjSystem 安装目录完整");
 
-            var vendor = new WgCommVendor(dllPath);
+            var payloadBuilder = new WgCommVendor(wgDllPath);
+            var vendor = new MjSystemVendor(mjSdkPath);
             var output = new List<object>();
-            using (var connection = OpenMjSystem(config.MjSystemDatabasePath))
+            try
             {
-                foreach (var target in targets)
+                using (var connection = OpenMjSystem(config.MjSystemDatabasePath))
                 {
-                    foreach (var doorId in MjSystemDoors(connection, target.buildingNo))
+                    foreach (var target in targets)
                     {
-                        var record = ReadMjSystemUploadRecord(connection, task.wgCardNo, doorId);
-                        var frame = vendor.BuildOldAddFrame(record, 1);
-                        string response;
-                        var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response);
-                        if (result != 0)
+                        foreach (var doorId in MjSystemDoors(connection, target.buildingNo))
                         {
-                            throw new InvalidOperationException(
-                                target.buildingNo + "号楼控制器未确认接收（" + record.ControllerName + " / " + record.CommMode +
-                                "，返回码 " + result.ToString(CultureInfo.InvariantCulture) + "）。请关闭占用 COM1 的旧管理软件、检查控制器供电和串口后重试");
-                        }
+                            var record = ReadMjSystemUploadRecord(connection, task.wgCardNo, doorId);
+                            var function = payloadBuilder.BuildOldAddFunction(record, 1);
+                            var frame = vendor.BuildCommand(record.ControllerSnText, function);
+                            string response;
+                            var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response);
+                            if (result != 0)
+                            {
+                                throw new InvalidOperationException(
+                                    target.buildingNo + "号楼控制器未确认接收（" + record.ControllerName + " / " + record.CommMode +
+                                    "，SDK 错误码 " + result.ToString(CultureInfo.InvariantCulture) + "）。请关闭占用 COM1 的旧管理软件、检查控制器供电和串口后重试");
+                            }
 
-                        output.Add(new AccessControllerUploadResult
-                        {
-                            buildingId = target.id,
-                            buildingNo = target.buildingNo,
-                            accessSystem = "mjsystem",
-                            status = "controller_uploaded",
-                            controller = record.ControllerName + " / SN " + record.ControllerSn,
-                            door = record.DoorName,
-                            protocol = "MjSystem 0x7E / " + record.CommMode,
-                            acknowledgement = String.IsNullOrWhiteSpace(response) ? "控制器已确认" : "控制器已确认，响应 " + Limit(response, 80)
-                        });
+                            output.Add(new AccessControllerUploadResult
+                            {
+                                buildingId = target.id,
+                                buildingNo = target.buildingNo,
+                                accessSystem = "mjsystem",
+                                status = "controller_uploaded",
+                                controller = record.ControllerName + " / SN " + record.ControllerSnText,
+                                door = record.DoorName,
+                                protocol = "MjSystem 原生 SDK 0x9E / " + record.CommMode,
+                                acknowledgement = String.IsNullOrWhiteSpace(response) ? "控制器已确认" : "控制器已确认，响应 " + Limit(response, 80)
+                            });
+                        }
                     }
                 }
+            }
+            finally
+            {
+                vendor.Dispose();
             }
             return output;
         }
@@ -252,7 +277,8 @@ namespace Pms.AccessCardAgent
                 {
                     if (!reader.Read())
                         throw new InvalidOperationException("MjSystem 找不到门 " + doorId + " 对应的控制器配置");
-                    record.ControllerSn = Convert.ToInt64(reader["cMacSn"], CultureInfo.InvariantCulture);
+                    record.ControllerSnText = Convert.ToString(reader["cMacSn"], CultureInfo.InvariantCulture).Trim();
+                    record.ControllerSn = Convert.ToInt64(record.ControllerSnText, CultureInfo.InvariantCulture);
                     var com = Convert.ToString(reader["vCom"], CultureInfo.InvariantCulture);
                     var ip = Convert.ToString(reader["vIp"], CultureInfo.InvariantCulture);
                     record.CommMode = !String.IsNullOrWhiteSpace(com) ? com : "IP";
@@ -321,10 +347,46 @@ namespace Pms.AccessCardAgent
             return path != null;
         }
 
+        private static bool TryFindMjSystemSdk(AgentConfig config, out string path)
+        {
+            var candidates = new List<string>();
+            if (config != null && !String.IsNullOrWhiteSpace(config.MjSystemDatabasePath))
+            {
+                var databaseDirectory = Path.GetDirectoryName(config.MjSystemDatabasePath);
+                if (!String.IsNullOrWhiteSpace(databaseDirectory))
+                {
+                    candidates.Add(Path.GetFullPath(Path.Combine(databaseDirectory, "..", "..", "ECardDerviceSDKMJ.dll")));
+                    var marker = "\\AppData\\Local\\VirtualStore\\";
+                    var markerIndex = databaseDirectory.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+                    if (markerIndex >= 0)
+                    {
+                        var relative = databaseDirectory.Substring(markerIndex + marker.Length);
+                        var databaseIndex = relative.IndexOf("\\Database", StringComparison.OrdinalIgnoreCase);
+                        if (databaseIndex >= 0) relative = relative.Substring(0, databaseIndex);
+                        candidates.Add(Path.Combine("C:\\", relative, "ECardDerviceSDKMJ.dll"));
+                    }
+                }
+            }
+            candidates.Add(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ECardDerviceSDKMJ.dll"));
+            candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "MjSystem", "ECardDerviceSDKMJ.dll"));
+            path = candidates.FirstOrDefault(File.Exists);
+            return path != null;
+        }
+
         private static string NormalizeBuilding(string value)
         {
             var trimmed = (value ?? "").TrimStart('0');
             return trimmed.Length == 0 ? "0" : trimmed;
+        }
+
+        internal static string NormalizeMjSystemControllerSerial(string controllerSn)
+        {
+            controllerSn = (controllerSn ?? "").Trim();
+            long parsed;
+            if (controllerSn.Length == 0 || controllerSn.Length > 9 ||
+                !Int64.TryParse(controllerSn, NumberStyles.None, CultureInfo.InvariantCulture, out parsed))
+                throw new InvalidOperationException("MjSystem 控制器序列号格式无效：" + controllerSn);
+            return controllerSn;
         }
 
         private static string[] MjSystemDoors(OleDbConnection connection, string buildingNo)
@@ -398,11 +460,136 @@ namespace Pms.AccessCardAgent
             public long ControlSegmentId;
             public long Password;
             public long ControllerSn;
+            public string ControllerSnText;
             public string ControllerName;
             public string CommMode;
             public string IpAddress;
             public int Port;
             public string DoorName;
+        }
+
+        private sealed class MjSystemVendor : IDisposable
+        {
+            private static readonly Guid ClassId = new Guid("DB4500C7-1C60-4D2D-923D-357841086053");
+            private static readonly Guid ClassFactoryId = new Guid("00000001-0000-0000-C000-000000000046");
+            private static readonly Guid DispatchId = new Guid("00020400-0000-0000-C000-000000000046");
+            private IntPtr _module;
+            private object _instance;
+
+            public MjSystemVendor(string dllPath)
+            {
+                _module = LoadLibrary(dllPath);
+                if (_module == IntPtr.Zero)
+                    throw new InvalidOperationException("无法加载 MjSystem 原生通信组件，Windows 错误 " + Marshal.GetLastWin32Error().ToString(CultureInfo.InvariantCulture));
+                var address = GetProcAddress(_module, "DllGetClassObject");
+                if (address == IntPtr.Zero) throw new InvalidOperationException("MjSystem 原生通信组件缺少 DllGetClassObject");
+                var getClassObject = (DllGetClassObjectDelegate)Marshal.GetDelegateForFunctionPointer(address, typeof(DllGetClassObjectDelegate));
+                IntPtr factoryPointer;
+                var classId = ClassId;
+                var factoryId = ClassFactoryId;
+                Marshal.ThrowExceptionForHR(getClassObject(ref classId, ref factoryId, out factoryPointer));
+                IClassFactory factory = null;
+                try
+                {
+                    factory = (IClassFactory)Marshal.GetObjectForIUnknown(factoryPointer);
+                    IntPtr instancePointer;
+                    var dispatchId = DispatchId;
+                    Marshal.ThrowExceptionForHR(factory.CreateInstance(IntPtr.Zero, ref dispatchId, out instancePointer));
+                    try { _instance = Marshal.GetObjectForIUnknown(instancePointer); }
+                    finally { Marshal.Release(instancePointer); }
+                }
+                finally
+                {
+                    Marshal.Release(factoryPointer);
+                    if (factory != null && Marshal.IsComObject(factory)) Marshal.ReleaseComObject(factory);
+                }
+            }
+
+            public string BuildCommand(string controllerSn, string function)
+            {
+                controllerSn = NormalizeMjSystemControllerSerial(controllerSn);
+                var result = Convert.ToString(Invoke("CreatCmd", new object[] { controllerSn, function }), CultureInfo.InvariantCulture);
+                if (String.IsNullOrWhiteSpace(result))
+                    throw new InvalidOperationException("MjSystem 原生 SDK 未能生成控制器命令（错误码 " + ErrorCode().ToString(CultureInfo.InvariantCulture) + "）");
+                return result;
+            }
+
+            public long Send(string commMode, string ipAddress, int port, string frame, out string response)
+            {
+                try
+                {
+                    object[] arguments;
+                    if ((commMode ?? "").StartsWith("COM", StringComparison.OrdinalIgnoreCase))
+                    {
+                        short comPort;
+                        if (!Int16.TryParse(commMode.Substring(3), NumberStyles.None, CultureInfo.InvariantCulture, out comPort) || comPort <= 0)
+                            throw new InvalidOperationException("MjSystem 串口配置无法识别：" + commMode);
+                        arguments = new object[] { comPort, frame };
+                        response = Convert.ToString(Invoke("GetAndSendInfo26", arguments), CultureInfo.InvariantCulture);
+                    }
+                    else
+                    {
+                        arguments = new object[] { ipAddress ?? "", port, frame };
+                        response = Convert.ToString(Invoke("GetAndSendTcpData", arguments), CultureInfo.InvariantCulture);
+                    }
+                    if (String.IsNullOrWhiteSpace(response) && arguments.Length > 0)
+                        response = Convert.ToString(arguments[arguments.Length - 1], CultureInfo.InvariantCulture);
+                    var validation = new object[] { response ?? "" };
+                    return Convert.ToBoolean(Invoke("ThenCommandVail", validation), CultureInfo.InvariantCulture) ? 0L : ErrorCodeOrFallback();
+                }
+                finally
+                {
+                    try { Invoke("CloseComm", new object[0]); }
+                    catch { }
+                }
+            }
+
+            private int ErrorCode()
+            {
+                return Convert.ToInt32(_instance.GetType().InvokeMember("ErrCode",
+                    BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public,
+                    null, _instance, new object[0], CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+            }
+
+            private long ErrorCodeOrFallback()
+            {
+                var error = ErrorCode();
+                return error == 0 ? -1L : error;
+            }
+
+            private object Invoke(string name, object[] arguments)
+            {
+                return _instance.GetType().InvokeMember(name,
+                    BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.Public,
+                    null, _instance, arguments, CultureInfo.InvariantCulture);
+            }
+
+            public void Dispose()
+            {
+                if (_instance != null && Marshal.IsComObject(_instance)) Marshal.FinalReleaseComObject(_instance);
+                _instance = null;
+                if (_module != IntPtr.Zero) FreeLibrary(_module);
+                _module = IntPtr.Zero;
+            }
+
+            [ComImport, Guid("00000001-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+            private interface IClassFactory
+            {
+                [PreserveSig]
+                int CreateInstance(IntPtr outer, ref Guid interfaceId, out IntPtr instance);
+                [PreserveSig]
+                int LockServer(bool shouldLock);
+            }
+
+            [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+            private delegate int DllGetClassObjectDelegate(ref Guid classId, ref Guid interfaceId, out IntPtr instance);
+
+            [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+            private static extern IntPtr LoadLibrary(string path);
+            [DllImport("kernel32.dll", CharSet = CharSet.Ansi, SetLastError = true)]
+            private static extern IntPtr GetProcAddress(IntPtr module, string name);
+            [DllImport("kernel32.dll")]
+            private static extern bool FreeLibrary(IntPtr module);
         }
 
         private sealed class WgCommVendor
@@ -419,13 +606,20 @@ namespace Pms.AccessCardAgent
 
             public string BuildOldAddFrame(ControllerUploadRecord record, int sequence)
             {
-                if (!Convert.ToBoolean(CallTool("isValidWg26Card", record.CardNo), CultureInfo.InvariantCulture))
-                    throw new InvalidOperationException("WG 卡号不符合原 iCCard 控制器规则");
                 if (record.ControllerSn < 0 || record.ControllerSn > 65535)
                     throw new InvalidOperationException("控制器序列号超出旧版协议范围");
 
                 var serialHex = record.ControllerSn.ToString("X4", CultureInfo.InvariantCulture);
-                var body = serialHex.Substring(2, 2) + serialHex.Substring(0, 2) + "0711";
+                var body = serialHex.Substring(2, 2) + serialHex.Substring(0, 2) + BuildOldAddFunction(record, sequence);
+                body += Convert.ToString(CallTool("_checkSum", body), CultureInfo.InvariantCulture);
+                return "7E" + body + "0D";
+            }
+
+            public string BuildOldAddFunction(ControllerUploadRecord record, int sequence)
+            {
+                if (!Convert.ToBoolean(CallTool("isValidWg26Card", record.CardNo), CultureInfo.InvariantCulture))
+                    throw new InvalidOperationException("WG 卡号不符合原门禁控制器规则");
+                var body = "0711";
                 body += Convert.ToString(CallTool("intToStr4", sequence), CultureInfo.InvariantCulture);
                 body += Convert.ToString(CallTool("intToStr4", Convert.ToInt32(record.CardNo % 100000)), CultureInfo.InvariantCulture);
                 body += Convert.ToString(CallTool("bytToStr", record.CardNo / 100000), CultureInfo.InvariantCulture);
@@ -436,9 +630,7 @@ namespace Pms.AccessCardAgent
                 var password = Convert.ToString(CallTool("lngToStr8", record.Password), CultureInfo.InvariantCulture);
                 body += password.Substring(0, 6);
                 body += "0000"; // 首卡标志、组合开门组；当前业务均未启用。
-                body = body.PadRight(60, '0');
-                body += Convert.ToString(CallTool("_checkSum", body), CultureInfo.InvariantCulture);
-                return "7E" + body + "0D";
+                return body.PadRight(56, '0');
             }
 
             public long Send(string commMode, string ipAddress, int port, string frame, out string response)
