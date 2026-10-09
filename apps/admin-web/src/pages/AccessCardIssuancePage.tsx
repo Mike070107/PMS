@@ -48,6 +48,7 @@ import type { AddressCommunity } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CopyableSecret from '../components/CopyableSecret';
 import HouseAddressPicker, { type PickedAddress } from '../components/HouseAddressPicker';
+import { shouldRetryHistoricalControllerUpload } from './access-card-controller-state';
 
 const { Text, Title } = Typography;
 
@@ -190,7 +191,9 @@ function ControllerPermissionCell({ row }: { row: AccessCardHistoryRow }) {
 
   return (
     <Space direction="vertical" size={4}>
-      {accessStatus(row.accessStatus)}
+      {row.accessStatus === 'controller_uploaded'
+        ? <Tag color="success">门禁库已有权限</Tag>
+        : accessStatus(row.accessStatus)}
       {permissions.length > 0 && (
         <Flex gap={4} wrap="wrap" align="center">
           {visible.map((item) => (
@@ -934,7 +937,18 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       title: '操作', key: 'actions', width: 196, fixed: 'right' as const,
       render: (_: unknown, row: AccessCardHistoryRow) => {
         if (context?.projectPhase !== 'phase2' || !row.wgCardNo) return <Text type="secondary">不适用</Text>;
-        if (row.latestAuthorization?.status === 'failed') {
+        if (row.accessStatus === 'controller_uploaded') {
+          return (
+            <Space direction="vertical" size={4} align="start">
+              <Button size="small" onClick={() => openHistoryAuthorization(row)}>额外授权</Button>
+              <Text type="secondary" style={{ maxWidth: 180 }}>
+                已从 .88 权限表读回；旧软件的设备回执无法从 MDB 事后反查
+              </Text>
+            </Space>
+          );
+        }
+        if (shouldRetryHistoricalControllerUpload(row.accessStatus, row.latestAuthorization?.status)) {
+          const failedAuthorization = row.latestAuthorization!;
           return (
             <Space direction="vertical" size={4} align="start">
               <Tag color="error">下发失败</Tag>
@@ -942,16 +956,16 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                 danger
                 size="small"
                 icon={<ReloadOutlined aria-hidden="true" />}
-                loading={retryingAuthorizationId === row.latestAuthorization.id}
+                loading={retryingAuthorizationId === failedAuthorization.id}
                 aria-label={`重试下发 WG 卡号 ${row.wgCardNo} 的门栋权限`}
-                title={row.latestAuthorization.error || '重新下发原目标楼栋权限'}
+                title={failedAuthorization.error || '重新下发原目标楼栋权限'}
                 onClick={() => void retryHistoryAuthorization(row)}
               >
                 重试下发
               </Button>
-              {row.latestAuthorization.error && (
-                <Text type="danger" style={{ maxWidth: 180 }} ellipsis={{ tooltip: row.latestAuthorization.error }}>
-                  {row.latestAuthorization.error}
+              {failedAuthorization.error && (
+                <Text type="danger" style={{ maxWidth: 180 }} ellipsis={{ tooltip: failedAuthorization.error }}>
+                  {failedAuthorization.error}
                 </Text>
               )}
             </Space>

@@ -23,7 +23,7 @@ namespace Pms.AccessCardAgent
 
     /**
      * 通过现场原管理软件的通信 DLL 下发单卡权限。
-     * 只在控制器返回原软件定义的成功码 0 后，才返回 controller_uploaded。
+     * 只在控制器的真实回包通过原 SDK 校验后，才返回 controller_uploaded。
      */
     internal static class AccessControllerUploader
     {
@@ -519,25 +519,32 @@ namespace Pms.AccessCardAgent
                 try
                 {
                     object[] arguments;
+                    string methodReturn;
                     if ((commMode ?? "").StartsWith("COM", StringComparison.OrdinalIgnoreCase))
                     {
                         short comPort;
                         if (!Int16.TryParse(commMode.Substring(3), NumberStyles.None, CultureInfo.InvariantCulture, out comPort) || comPort <= 0)
                             throw new InvalidOperationException("MjSystem 串口配置无法识别：" + commMode);
                         arguments = new object[] { comPort, frame };
-                        response = Convert.ToString(Invoke("GetAndSendInfo26", arguments), CultureInfo.InvariantCulture);
+                        methodReturn = Convert.ToString(InvokeWithInOutString("GetAndSendInfo26", arguments, 1), CultureInfo.InvariantCulture);
                     }
                     else
                     {
                         arguments = new object[] { ipAddress ?? "", port, frame };
-                        response = Convert.ToString(Invoke("GetAndSendTcpData", arguments), CultureInfo.InvariantCulture);
+                        methodReturn = Convert.ToString(InvokeWithInOutString("GetAndSendTcpData", arguments, 2), CultureInfo.InvariantCulture);
                     }
-                    if (String.IsNullOrWhiteSpace(response) && arguments.Length > 0)
-                        response = Convert.ToString(arguments[arguments.Length - 1], CultureInfo.InvariantCulture);
+                    var inOutValue = Convert.ToString(arguments[arguments.Length - 1], CultureInfo.InvariantCulture);
                     var sendError = ErrorCode();
-                    if (sendError != 0) return sendError;
-                    var validation = new object[] { response ?? "" };
-                    return Convert.ToBoolean(Invoke("ThenCommandVail", validation), CultureInfo.InvariantCulture) ? 0L : ErrorCodeOrFallback();
+                    response = SelectMjSystemControllerResponse(frame, methodReturn, inOutValue);
+                    if (!String.IsNullOrWhiteSpace(response))
+                    {
+                        var validation = new object[] { response };
+                        if (Convert.ToBoolean(InvokeWithInOutString("ThenCommandVail", validation, 0), CultureInfo.InvariantCulture))
+                            return 0L;
+                    }
+
+                    response = DescribeMjSystemSdkExchange(frame, methodReturn, inOutValue);
+                    return sendError == 0 ? ErrorCodeOrFallback() : sendError;
                 }
                 finally
                 {
@@ -564,6 +571,15 @@ namespace Pms.AccessCardAgent
                 return _instance.GetType().InvokeMember(name,
                     BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.Public,
                     null, _instance, arguments, CultureInfo.InvariantCulture);
+            }
+
+            private object InvokeWithInOutString(string name, object[] arguments, int inOutIndex)
+            {
+                var modifier = new ParameterModifier(arguments.Length);
+                modifier[inOutIndex] = true;
+                return _instance.GetType().InvokeMember(name,
+                    BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.Public,
+                    null, _instance, arguments, new[] { modifier }, CultureInfo.InvariantCulture, null);
             }
 
             public void Dispose()
@@ -597,10 +613,34 @@ namespace Pms.AccessCardAgent
         internal static string DescribeMjSystemError(long errorCode, string response)
         {
             var detail = errorCode == 2
-                ? "原生 SDK 无法打开或使用串口（错误码 2）。COM1 很可能仍被 MjSystem、Drive.exe 或其他串口程序占用；请完全退出旧门禁软件后重试"
+                ? "原生 SDK 未确认本次通信（错误码 2）。该错误不能单独证明 COM1 被占用；请根据后面的 SDK 调用返回和控制器回包继续排查"
                 : "原生 SDK 错误码 " + errorCode.ToString(CultureInfo.InvariantCulture);
-            if (!String.IsNullOrWhiteSpace(response)) detail += "；响应 " + Limit(response, 80);
+            if (!String.IsNullOrWhiteSpace(response)) detail += "；" + Limit(response, 180);
             return detail;
+        }
+
+        internal static string SelectMjSystemControllerResponse(string request, string methodReturn, string inOutValue)
+        {
+            request = (request ?? "").Trim();
+            methodReturn = (methodReturn ?? "").Trim();
+            inOutValue = (inOutValue ?? "").Trim();
+            if (inOutValue.Length > 0 && !String.Equals(inOutValue, request, StringComparison.OrdinalIgnoreCase))
+                return inOutValue;
+            if (methodReturn.Length > 0 && !String.Equals(methodReturn, request, StringComparison.OrdinalIgnoreCase))
+                return methodReturn;
+            return "";
+        }
+
+        internal static string DescribeMjSystemSdkExchange(string request, string methodReturn, string inOutValue)
+        {
+            request = (request ?? "").Trim();
+            methodReturn = (methodReturn ?? "").Trim();
+            inOutValue = (inOutValue ?? "").Trim();
+            var returned = methodReturn.Length == 0 ? "空" :
+                (String.Equals(methodReturn, request, StringComparison.OrdinalIgnoreCase) ? "与发送命令相同" : Limit(methodReturn, 80));
+            var reply = inOutValue.Length == 0 ? "空" :
+                (String.Equals(inOutValue, request, StringComparison.OrdinalIgnoreCase) ? "仍为发送命令（未收到控制器回包）" : Limit(inOutValue, 80));
+            return "SDK 调用返回 " + returned + "；控制器回包 " + reply;
         }
 
         private sealed class WgCommVendor

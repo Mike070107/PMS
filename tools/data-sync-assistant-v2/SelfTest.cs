@@ -236,8 +236,15 @@ namespace Pms.DataSyncAssistant
                 AccessGatewayDatabase.BuildMjSystemDepartment("228/03/201/10") != "228弄03号大门" ||
                 AccessGatewayDatabase.MjSystemEmployeeNumber(6955) != "6955")
                 throw new InvalidOperationException("MjSystem 员工编号或部门生成规则错误");
-            if (!AccessControllerUploader.DescribeMjSystemError(2, "").Contains("COM1"))
-                throw new InvalidOperationException("MjSystem 串口错误未提供可执行提示");
+            var requestFrame = "9E01EB3907241101006E78D80149359FC70100000000000000000000000000000005A49D";
+            var controllerReply = "9E0100010000009D";
+            if (AccessControllerUploader.SelectMjSystemControllerResponse(requestFrame, requestFrame, controllerReply) != controllerReply ||
+                AccessControllerUploader.SelectMjSystemControllerResponse(requestFrame, requestFrame, requestFrame) != "")
+                throw new InvalidOperationException("MjSystem SDK 未优先读取 ByRef 控制器回包，或把发送命令回显当成了回包");
+            var sdkFailure = AccessControllerUploader.DescribeMjSystemError(2,
+                AccessControllerUploader.DescribeMjSystemSdkExchange(requestFrame, requestFrame, requestFrame));
+            if (!sdkFailure.Contains("不能单独证明 COM1 被占用") || !sdkFailure.Contains("未收到控制器回包"))
+                throw new InvalidOperationException("MjSystem SDK 失败提示仍会误判串口占用或缺少回包证据");
             try
             {
                 AccessControllerUploader.NormalizeMjSystemControllerSerial("16A217");

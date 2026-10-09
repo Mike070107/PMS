@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "pnpm test:parking-renewal && pnpm test:staff-role-rules && tsc -b && vite build",
     "test:parking-renewal": "node --experimental-strip-types --test test/parking-renewal.test.mjs test/parking-vehicle-merge.test.mjs",
-    "test:staff-role-rules": "node --experimental-strip-types --test test/staff-role-rules.test.mjs test/upload-paste-target.test.mjs",
+    "test:staff-role-rules": "node --experimental-strip-types --test test/staff-role-rules.test.mjs test/upload-paste-target.test.mjs test/access-card-controller-state.test.mjs",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit"
   },
