@@ -1651,6 +1651,16 @@ ORDER BY ID DESC";
             if (key.Contains("owner")) return RawVehicleValue(vehicle, "Owner_ID") ?? Value(payload, "ownerId");
             if (key.Contains("space")) return RawVehicleValue(vehicle, "P_Spaces");
             if (key.Contains("note")) return RawVehicleValue(vehicle, "P_note");
+            // Add_DownloadCard 各现场版本参数不完全相同。已知语义参数仍按上面显式映射；
+            // 其余参数仅在 Car_Issue 有同名列时原值传入，禁止臆造状态值或传 NULL。
+            if (vehicle != null)
+            {
+                var matches = vehicle.Where(entry => NormalizeName(entry.Key) == key).Take(2).ToArray();
+                if (matches.Length > 1)
+                    throw new InvalidOperationException("旧库车辆字段 " + parameterName + " 对应多个列，已停止下发");
+                if (matches.Length == 1 && matches[0].Value != null && matches[0].Value != DBNull.Value)
+                    return matches[0].Value;
+            }
             return Value(payload, key);
         }
 
