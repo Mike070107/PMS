@@ -7,6 +7,7 @@ export interface AccessCardLegacyHistoryEntry {
   sequence: number;
   icCardNo: string | null;
   issuedAt: string | null;
+  personName?: string | null;
 }
 
 export interface AccessCardPermissionEntry {

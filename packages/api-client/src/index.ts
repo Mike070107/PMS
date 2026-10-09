@@ -23,6 +23,7 @@ export * as accessCardIssuance from './endpoints/access-card-issuance';
 export type {
   AccessCardHistoryRow,
   AccessCardRecentRecord,
+  LegacyRecentCardQuery,
   AccessCardHouseContext,
   AccessCardIssueBatch,
   AccessCardIssueItem,

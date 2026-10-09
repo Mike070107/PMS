@@ -1,3 +1,4 @@
+import { CreateParkingFeeDetailDto } from './dto';
 import {
   Body,
   Controller,
@@ -109,6 +110,20 @@ export class AccessCardIssuanceController {
     return this.service.getParkingFeeReport(id, user, access);
   }
 
+  @Post('parking/fees/details/queries')
+  @RequirePermission('reports', 'view')
+  createParkingFeeDetail(@Body() dto: CreateParkingFeeDetailDto, @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess) {
+    return this.service.createParkingFeeDetail(dto, user, access);
+  }
+
+  @Get('parking/fees/details/queries/:id')
+  @RequirePermission('reports', 'view')
+  getParkingFeeDetail(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess) {
+    return this.service.getParkingFeeDetail(id, user, access);
+  }
+
   @Post('parking/owners/updates')
   @RequirePermission('business', 'edit')
   createParkingOwnerUpdate(@Body() dto: CreateParkingOwnerUpdateDto, @CurrentUser() user: AuthUser) {
@@ -180,6 +195,18 @@ export class AccessCardIssuanceController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.service.getRecentCards(user, access);
+  }
+
+  @Post('recent-legacy-cards/queries')
+  @RequirePermission('business', 'view')
+  requestRecentLegacyCards(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.requestRecentLegacyCards(user, access);
+  }
+
+  @Get('recent-legacy-cards/queries')
+  @RequirePermission('business', 'view')
+  getRecentLegacyCards(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.getRecentLegacyCards(user, access);
   }
 
   @Post('batches')

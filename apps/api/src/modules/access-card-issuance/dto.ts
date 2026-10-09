@@ -184,6 +184,11 @@ export class LegacyHistoryEntryDto {
   @IsString()
   @MaxLength(40)
   issuedAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  personName?: string;
 }
 
 export class LegacyHistoryReportDto {
@@ -335,6 +340,17 @@ export class CreateParkingFeeReportDto {
   @IsString()
   @MaxLength(10)
   endDate: string;
+}
+
+export class CreateParkingFeeDetailDto extends CreateParkingFeeReportDto {
+  @IsIn(['renewal', 'temporary'])
+  category: 'renewal' | 'temporary';
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  page: number;
 }
 
 export class ParkingOwnerValuesDto {
@@ -517,7 +533,7 @@ export class ParkingQueryReportDto {
 
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(100)
+  @ArrayMaxSize(250)
   @ValidateNested({ each: true })
   @Type(() => ParkingQueryRowDto)
   rows?: ParkingQueryRowDto[];

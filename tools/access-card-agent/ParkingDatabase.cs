@@ -220,9 +220,57 @@ ORDER BY p.parameter_id;";
                     { "day", group.First().fields["day"] }, { "count", group.Sum(row => Convert.ToInt64(row.fields["count"])) },
                     { "amountCents", group.Sum(row => Convert.ToInt64(row.fields["amountCents"])) }
                 } }).ToList();
-            var detail = rows.Where(row => Convert.ToString(row.fields["kind"]) == "detail")
-                .OrderByDescending(row => Convert.ToString(row.fields["occurredAt"])).Take(30).ToList();
-            return rows.Where(row => Convert.ToString(row.fields["kind"]) == "summary").Concat(daily).Concat(detail).ToList();
+            return rows.Where(row => Convert.ToString(row.fields["kind"]) == "summary").Concat(daily).ToList();
+        }
+
+        // 明细独立分页读取，不把“最近 30 条”当成报表口径。总笔数由同日期区间的汇总提供。
+        public static List<ParkingSearchRow> SearchFeeDetail(AgentConfig config, string password,
+            string startDate, string endDate, string category, int page)
+        {
+            DateTime start, end;
+            if ((category != "renewal" && category != "temporary") || page < 1 || page > 1000 ||
+                !DateTime.TryParseExact(startDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out start) ||
+                !DateTime.TryParseExact(endDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out end) ||
+                end < start || (end - start).TotalDays > 30)
+                throw new InvalidOperationException("金额明细查询条件不正确");
+            var rows = new List<ParkingSearchRow>();
+            var take = checked(page * 50);
+            foreach (var phase1 in new[] { true, false })
+            {
+                var label = phase1 ? "parking1" : "parking2";
+                var database = phase1 ? config.ParkingPhase1Database : config.ParkingPhase2Database;
+                Validate(config, password, database);
+                using (var connection = new SqlConnection(ConnectionString(config, password, database)))
+                {
+                    connection.Open();
+                    var table = category == "renewal" ? "[dbo].[P_moneyKeep]" : ParkingExitFeeTable;
+                    var dateColumn = category == "renewal" ? FeeRenewalDateColumn(connection) : ParkingExitFeeDate;
+                    var amountColumn = category == "renewal" ? "[P_money]" : ParkingExitFeeAmount;
+                    var operatorColumn = category == "renewal" ? "[P_Admin]" :
+                        LoadColumns(connection, "dbo", "Car_Out").Any(column => column.Name.Equals("Out_User", StringComparison.OrdinalIgnoreCase))
+                            ? "[Out_User]" : "NULL";
+                    var filter = category == "renewal" ? " AND [type] = 5" : " AND [P_Shoufei] > 0";
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandTimeout = 60;
+                        command.CommandText = "SELECT TOP (@take) " + dateColumn + ", [P_plate], " + operatorColumn +
+                            ", CONVERT(decimal(18,2), " + amountColumn + ") FROM " + table +
+                            " WHERE " + dateColumn + " >= @start AND " + dateColumn + " < @end" + filter +
+                            " ORDER BY " + dateColumn + " DESC, [P_plate] DESC, " + amountColumn + " DESC";
+                        command.Parameters.Add("@take", SqlDbType.Int).Value = take;
+                        command.Parameters.Add("@start", SqlDbType.DateTime).Value = start;
+                        command.Parameters.Add("@end", SqlDbType.DateTime).Value = end.AddDays(1);
+                        using (var reader = command.ExecuteReader())
+                            while (reader.Read()) rows.Add(FeeRow(label, "detail", category, null,
+                                reader[0] == DBNull.Value ? null : Convert.ToDateTime(reader[0]).ToString("yyyy-MM-dd HH:mm:ss"),
+                                reader[1] == DBNull.Value ? null : Convert.ToString(reader[1]),
+                                reader[2] == DBNull.Value ? null : Convert.ToString(reader[2]), 1, Convert.ToDecimal(reader[3])));
+                    }
+                }
+            }
+            return rows.OrderByDescending(row => Convert.ToString(row.fields["occurredAt"]))
+                .ThenByDescending(row => Convert.ToString(row.fields["plate"]))
+                .ThenBy(row => row.database).Skip((page - 1) * 50).Take(50).ToList();
         }
 
         private static string FeeRenewalDateColumn(SqlConnection connection)
@@ -266,13 +314,6 @@ WHERE c.object_id=OBJECT_ID('dbo.P_moneyKeep') AND t.name IN ('datetime','smalld
                 using (var reader = command.ExecuteReader())
                     while (reader.Read()) rows.Add(FeeRow(database, "daily", category, Convert.ToString(reader[0]),
                         null, null, null, Convert.ToInt64(reader[1]), Convert.ToDecimal(reader[2])));
-                command.CommandText = "SELECT TOP (30) " + dateColumn + ", " + plateColumn + ", " + operatorColumn + ", " + money +
-                    " FROM " + table + " WHERE " + where + " ORDER BY " + dateColumn + " DESC";
-                using (var reader = command.ExecuteReader())
-                    while (reader.Read()) rows.Add(FeeRow(database, "detail", category, null,
-                        reader[0] == DBNull.Value ? null : Convert.ToDateTime(reader[0]).ToString("yyyy-MM-dd HH:mm:ss"),
-                        reader[1] == DBNull.Value ? null : Convert.ToString(reader[1]),
-                        reader[2] == DBNull.Value ? null : Convert.ToString(reader[2]), 1, Convert.ToDecimal(reader[3])));
             }
         }
 

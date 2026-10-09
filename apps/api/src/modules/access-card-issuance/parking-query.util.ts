@@ -104,6 +104,17 @@ export function supportsParkingFeeReports(version: string | null | undefined): b
   return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 27)));
 }
 
+export function supportsParkingFeeDetails(version: string | null | undefined): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 28)));
+}
+
+export function supportsLegacyRecentCards(version: string | null | undefined): boolean {
+  return supportsParkingFeeDetails(version);
+}
+
 export function parseParkingFeeReportRange(startDate: string, endDate: string) {
   // 与进出流水共用日期合法性及 31 天上限；这里只借用校验，不限制车牌。
   const parseDate = (value: string) => {

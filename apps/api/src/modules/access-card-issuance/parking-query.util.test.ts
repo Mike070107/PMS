@@ -13,6 +13,8 @@ import {
   parseParkingMovementRange,
   parseParkingFeeReportRange,
   supportsParkingFeeReports,
+  supportsParkingFeeDetails,
+  supportsLegacyRecentCards,
 } from './parking-query.util';
 
 const duplicateRows = [{ database: 'parking2', fields: { P_plate: '沪EDK889', Owner__Room_No: '228/5/301' } }];
@@ -62,6 +64,10 @@ test('进出记录仅交给具备新版协议的助手，必须是完整车牌�
 test('金额报表按 31 天限制查询，且仅新版助手可领取', () => {
   assert.equal(supportsParkingFeeReports('2.5.26'), false);
   assert.equal(supportsParkingFeeReports('2.5.27'), true);
+  assert.equal(supportsParkingFeeDetails('2.5.27'), false);
+  assert.equal(supportsParkingFeeDetails('2.5.28'), true);
+  assert.equal(supportsLegacyRecentCards('2.5.27'), false);
+  assert.equal(supportsLegacyRecentCards('2.5.28'), true);
   assert.deepEqual(parseParkingFeeReportRange('2026-10-01', '2026-10-31'), {
     startDate: '2026-10-01', endDate: '2026-10-31',
   });

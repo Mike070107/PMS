@@ -186,7 +186,9 @@ namespace Pms.AccessCardAgent
         {
             try
             {
-                var result = LegacyDatabase.GetHistory(_config, LoadSecret("legacy-db-password.dat"), task.roomKey);
+                var result = task.roomKey == "__recent_js_cards__"
+                    ? LegacyDatabase.GetRecentCards(_config, LoadSecret("legacy-db-password.dat"))
+                    : LegacyDatabase.GetHistory(_config, LoadSecret("legacy-db-password.dat"), task.roomKey);
                 _api.ReportLegacyHistory(new LegacyHistoryReport
                 {
                     snapshotId = task.snapshotId,
@@ -202,7 +204,7 @@ namespace Pms.AccessCardAgent
                 _api.ReportLegacyHistory(new LegacyHistoryReport
                 {
                     snapshotId = task.snapshotId,
-                    result = "retry",
+                    result = task.roomKey == "__recent_js_cards__" ? "failed" : "retry",
                     errorMessage = exception.Message
                 });
                 RecordActivity("查询门禁卡", task.roomKey, false, exception.Message);
@@ -216,6 +218,10 @@ namespace Pms.AccessCardAgent
                 var rows = task.queryKind == "movement"
                     ? ParkingDatabase.SearchMovementsBoth(_config, LoadSecret("parking-db-password.dat"),
                         LoadOptionalSecret("parking-movement-db-password.dat"), task.term, task.startDate, task.endDate)
+                    : task.queryKind == "fee_detail"
+                        ? ParkingDatabase.SearchFeeDetail(_config, LoadSecret("parking-db-password.dat"),
+                            task.startDate, task.endDate, task.term.Split(':')[0],
+                            int.Parse(task.term.Split(':')[1], System.Globalization.CultureInfo.InvariantCulture))
                     : task.queryKind == "fee_report"
                         ? ParkingDatabase.SearchFeeReport(_config, LoadSecret("parking-db-password.dat"),
                             LoadOptionalSecret("parking-movement-db-password.dat"), task.startDate, task.endDate)
@@ -226,7 +232,7 @@ namespace Pms.AccessCardAgent
                     result = "success",
                     rows = rows
                 });
-                RecordActivity(task.queryKind == "fee_report" ? "查询停车金额报表" : task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, true, "查到 " + rows.Count + " 条报表数据");
+                RecordActivity(task.queryKind == "fee_report" ? "查询停车金额报表" : task.queryKind == "fee_detail" ? "查询停车金额明细" : task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, true, "查到 " + rows.Count + " 条数据");
             }
             catch (Exception exception)
             {
@@ -236,7 +242,7 @@ namespace Pms.AccessCardAgent
                     result = "retry",
                     errorMessage = exception.Message
                 });
-                RecordActivity(task.queryKind == "fee_report" ? "查询停车金额报表" : task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, false, exception.Message);
+                RecordActivity(task.queryKind == "fee_report" ? "查询停车金额报表" : task.queryKind == "fee_detail" ? "查询停车金额明细" : task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, false, exception.Message);
             }
         }
 

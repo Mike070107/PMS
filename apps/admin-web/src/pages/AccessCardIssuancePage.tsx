@@ -41,6 +41,7 @@ import {
   type AccessCardIssueBatch,
   type AccessCardPermissionResult,
   type AccessCardRecentRecord,
+  type LegacyRecentCardQuery,
   type AccessCardReadiness,
 } from '@pms/api-client';
 import type { AddressCommunity } from '@pms/shared-types';
@@ -159,6 +160,7 @@ function accessStatus(value: string) {
   if (value === 'not_required') return <Tag>不适用</Tag>;
   if (value === 'controller_uploaded') return <Tag color="success">已上传</Tag>;
   if (value === 'not_uploaded') return <Tag color="error">未上传</Tag>;
+  if (value === 'access_db_written') return <Tag color="processing">.88 门禁库已写入，控制器待确认</Tag>;
   if (value === 'permission_check_pending') return <Tag color="processing">权限核验中</Tag>;
   if (value === 'permission_check_failed') return <Tag color="error">权限核验失败</Tag>;
   if (value === 'waiting_retry') return <Tag color="error">下载失败 · 门禁控制器离线</Tag>;
@@ -294,6 +296,9 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const [uploadingHistoryRowId, setUploadingHistoryRowId] = useState<number | null>(null);
   const [recentRecords, setRecentRecords] = useState<AccessCardRecentRecord[]>(preview ? PREVIEW_RECENT_RECORDS : []);
   const [recentRecordsLoading, setRecentRecordsLoading] = useState(false);
+  const [recentLegacy, setRecentLegacy] = useState<LegacyRecentCardQuery | null>(null);
+  const [recentLegacyLoading, setRecentLegacyLoading] = useState(false);
+  const [recentLegacyError, setRecentLegacyError] = useState<string | null>(null);
   const contextRequestRef = useRef(0);
 
   const loadRecentRecords = useCallback(async () => {
@@ -307,6 +312,25 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       setRecentRecordsLoading(false);
     }
   }, [preview]);
+
+  const loadRecentLegacy = useCallback(async () => {
+    if (preview) return;
+    setRecentLegacyLoading(true); setRecentLegacyError(null);
+    try { setRecentLegacy(await accessCardIssuance.requestRecentLegacyCards()); }
+    catch (error) { setRecentLegacyError(error instanceof Error ? error.message : '捷顺最近发卡记录读取失败'); }
+    finally { setRecentLegacyLoading(false); }
+  }, [preview]);
+
+  useEffect(() => {
+    if (preview || !recentLegacy || recentLegacy.status === 'error' || (recentLegacy.status !== 'pending' &&
+      (recentLegacy.permissionStatus !== 'pending' && recentLegacy.permissionStatus !== 'running'))) return;
+    let cancelled = false;
+    const timer = window.setInterval(async () => {
+      try { const next = await accessCardIssuance.recentLegacyCards(); if (!cancelled) setRecentLegacy(next); }
+      catch (error) { if (!cancelled) setRecentLegacyError(error instanceof Error ? error.message : '捷顺最近发卡记录读取失败'); }
+    }, 1500);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [preview, recentLegacy?.status, recentLegacy?.permissionStatus]);
 
   const loadReadiness = useCallback(async () => {
     setReadinessLoading(true);
@@ -326,7 +350,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     });
     void loadReadiness();
     void loadRecentRecords();
-  }, [loadReadiness, loadRecentRecords, preview]);
+    void loadRecentLegacy();
+  }, [loadReadiness, loadRecentRecords, loadRecentLegacy, preview]);
 
   useEffect(() => {
     if (preview || !batch || batch.status === 'completed' || batch.status === 'needs_operator') return;
@@ -1221,7 +1246,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
 
       <Card
         className="access-card-history-card"
-        title="最近30条发卡记录"
+        title="PMS 最近30条发卡记录"
         extra={(
           <Space wrap>
             <Text type="secondary" role="status" aria-atomic="true">当前显示 {recentRecords.length} 条</Text>
@@ -1245,6 +1270,36 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
           scroll={{ x: 1055 }}
           locale={{ emptyText: <Empty description="还没有 PMS 新发卡记录" /> }}
         />
+      </Card>
+
+      <Card className="access-card-history-card" title="捷顺数据库最新30笔发卡记录"
+        extra={<Button icon={<ReloadOutlined />} loading={recentLegacyLoading} onClick={() => void loadRecentLegacy()}>从 .80 重新查询</Button>}>
+        <Text type="secondary">由 .80 助手只读查询 JS0131625.MC.CardInfo，按发卡时间倒序；.88 的门禁库权限与控制器下发是不同状态。</Text>
+        {recentLegacyError && <Alert type="error" showIcon message="查询失败" description={recentLegacyError} style={{ marginTop: 12 }} />}
+        {recentLegacy?.status === 'error' && <Alert type="error" showIcon message="捷顺数据库未能读取" description={recentLegacy.error} style={{ marginTop: 12 }} />}
+        {recentLegacy?.permissionStatus === 'error' && <Alert type="warning" showIcon message=".88 门禁权限未能核验" description={recentLegacy.permissionError} style={{ marginTop: 12 }} />}
+        {recentLegacy?.status === 'ready' && <Text type="secondary" role="status">　.80 数据时间：{formatTime(recentLegacy.refreshedAt)}；.88 门禁库权限：{recentLegacy.permissionStatus === 'ready' ? '已读取' : recentLegacy.permissionStatus === 'error' ? '读取失败' : '等待 .88 助手核验'}。权限表不等于控制器回执。</Text>}
+        <Table size="small" loading={recentLegacyLoading || recentLegacy?.status === 'pending'}
+          rowKey={(row) => `${row.personId}-${row.icCardNo}-${row.issuedAt}`}
+          dataSource={recentLegacy?.rows ?? []} pagination={{ pageSize: 10, hideOnSinglePage: true }} scroll={{ x: 1050 }}
+          columns={[
+            { title: '捷顺发卡时间', dataIndex: 'issuedAt', width: 180, render: formatTime },
+            { title: '旧库登记名称／房号', dataIndex: 'personName', width: 180, render: (value: string | null) => value || '—' },
+            { title: '捷顺系统编号', dataIndex: 'personNo', width: 130 },
+            { title: 'IC 卡号', dataIndex: 'icCardNo', width: 130 },
+            { title: 'WG 卡号', dataIndex: 'wgCardNo', width: 125, render: (value: string | null) => value || '无法换算' },
+            { title: '.88 门禁库权限', width: 230, render: (_, row) => {
+              if (recentLegacy?.permissionStatus !== 'ready') return <Tag>待核验</Tag>;
+              const permissions = recentLegacy.permissions.filter((item) => item.wgCardNo === row.wgCardNo);
+              return permissions.length ? <Space wrap size={4}>{permissions.map((item, index) =>
+                <Tag key={`${item.buildingNo}-${index}`}>{item.buildingNo ? `${item.buildingNo}号楼` : item.door} · {item.accessSystem === 'iccard' ? 'iCCard' : 'MjSystem'}</Tag>)}</Space>
+                : <Tag color="warning">未查到门禁库权限</Tag>;
+            } },
+            { title: '控制器下发', width: 175, render: (_, row) => {
+              const pms = recentRecords.find((item) => item.icCardNo === row.icCardNo);
+              return pms ? accessStatus(pms.accessStatus) : <Tag>非 PMS 任务，未核验下发</Tag>;
+            } },
+          ]} />
       </Card>
 
       <Modal

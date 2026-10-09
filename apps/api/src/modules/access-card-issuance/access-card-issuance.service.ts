@@ -42,7 +42,7 @@ import {
   normalizeBuildingNo,
   projectPhaseOf,
 } from './access-card-routing';
-import { CreateAccessCardIssueDto } from './dto';
+import { CreateAccessCardIssueDto, CreateParkingFeeDetailDto } from './dto';
 import {
   AgentHeartbeatDto,
   AgentReportDto,
@@ -91,6 +91,8 @@ import {
   parseParkingMovementRange,
   parseParkingFeeReportRange,
   supportsParkingFeeReports,
+  supportsParkingFeeDetails,
+  supportsLegacyRecentCards,
 } from './parking-query.util';
 import {
   normalizeParkingOwnerFieldHints,
@@ -269,6 +271,45 @@ export class AccessCardIssuanceService {
       lastErrorRef: item.lastErrorRef,
       lastErrorMessage: item.lastErrorMessage,
     }));
+  }
+
+  async requestRecentLegacyCards(user: AuthUser, access: ResolvedAccess) {
+    if (!access.scopeAll) throw new ForbiddenException('捷顺全库最近发卡记录仅对全公司数据范围开放');
+    const tenantId = this.requireTenant(user);
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'legacy_sync', enabled: true } });
+    if (!agents.some((agent) => effectiveAgentStatus(agent) === 'online' && supportsLegacyRecentCards(agent.version)))
+      throw new ServiceUnavailableException('捷顺最近 30 笔查询需要在线的 2.5.28 或更新版本 .80 数据同步助手');
+    let snapshot = await this.legacySnapshotRepo.findOne({ where: { tenantId, roomKey: '__recent_js_cards__' } });
+    if (!snapshot) {
+      snapshot = this.legacySnapshotRepo.create({ tenantId, roomKey: '__recent_js_cards__', status: 'pending',
+        history: [], issuedCount: 0, nextSequence: 1, requestedAt: new Date(), refreshedAt: null,
+        leaseAgentKey: null, leaseExpiresAt: null, lastError: null, permissionStatus: 'idle',
+        permissionSubjects: [], permissions: [], permissionRequestedAt: null, permissionRefreshedAt: null,
+        permissionLeaseAgentKey: null, permissionLeaseExpiresAt: null, permissionLastError: null,
+        createdBy: user.id, updatedBy: user.id });
+    } else if (snapshot.status !== 'pending' || !snapshot.leaseExpiresAt || snapshot.leaseExpiresAt < new Date()) {
+      snapshot.status = 'pending'; snapshot.history = []; snapshot.requestedAt = new Date();
+      snapshot.leaseAgentKey = null; snapshot.leaseExpiresAt = null; snapshot.lastError = null;
+    }
+    await this.legacySnapshotRepo.save(snapshot);
+    return this.recentLegacyCardResponse(snapshot);
+  }
+
+  async getRecentLegacyCards(user: AuthUser, access: ResolvedAccess) {
+    if (!access.scopeAll) throw new ForbiddenException('捷顺全库最近发卡记录仅对全公司数据范围开放');
+    const tenantId = this.requireTenant(user);
+    const snapshot = await this.legacySnapshotRepo.findOne({ where: { tenantId, roomKey: '__recent_js_cards__' } });
+    if (!snapshot) throw new NotFoundException('请先刷新捷顺最近发卡记录');
+    return this.recentLegacyCardResponse(snapshot);
+  }
+
+  private recentLegacyCardResponse(snapshot: AccessCardLegacySnapshot) {
+    return { status: snapshot.status, rows: snapshot.status === 'ready' ? snapshot.history.map((row) => ({
+      ...row, wgCardNo: row.icCardNo && /^[0-9A-F]{8}$/.test(row.icCardNo) ? icToWg(row.icCardNo) : null,
+    })) : [],
+      error: snapshot.status === 'error' ? snapshot.lastError : null, refreshedAt: snapshot.refreshedAt,
+      permissionStatus: snapshot.permissionStatus, permissions: snapshot.permissionStatus === 'ready' ? snapshot.permissions : [],
+      permissionError: snapshot.permissionStatus === 'error' ? snapshot.permissionLastError : null };
   }
 
   async createHistoryAuthorization(
@@ -553,6 +594,33 @@ export class AccessCardIssuanceService {
     return this.parkingFeeReportResponse(query);
   }
 
+  async createParkingFeeDetail(dto: CreateParkingFeeDetailDto, user: AuthUser, access: ResolvedAccess) {
+    if (!access.scopeAll) throw new ForbiddenException('当前数据范围不能查看全公司停车金额明细');
+    const tenantId = this.requireTenant(user);
+    try { parseParkingFeeReportRange(dto.startDate, dto.endDate); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '金额明细日期不正确'); }
+    if (!['renewal', 'temporary'].includes(dto.category) || !Number.isInteger(dto.page) || dto.page < 1 || dto.page > 1000)
+      throw new BadRequestException('金额明细类别或页码不正确');
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
+    if (!orderAgentsByAvailability(agents).some((agent) => effectiveAgentStatus(agent) === 'online' &&
+      agent.capabilities?.parkingDbRead === true && supportsParkingFeeDetails(agent.version)))
+      throw new ServiceUnavailableException('金额明细分页需要在线的 2.5.28 或更新版本数据同步助手');
+    const query = this.parkingQueryRepo.create({
+      tenantId, term: `${dto.category}:${dto.page}`, queryKind: 'fee_detail', rangeStart: dto.startDate, rangeEnd: dto.endDate,
+      status: 'pending', rows: [], attempt: 0, requestedAt: new Date(), completedAt: null,
+      leaseAgentKey: null, leaseExpiresAt: null, lastError: null, createdBy: user.id, updatedBy: user.id,
+    });
+    return this.parkingFeeReportResponse(await this.parkingQueryRepo.save(query));
+  }
+
+  async getParkingFeeDetail(id: number, user: AuthUser, access: ResolvedAccess) {
+    if (!access.scopeAll) throw new ForbiddenException('当前数据范围不能查看全公司停车金额明细');
+    const tenantId = this.requireTenant(user);
+    const query = await this.parkingQueryRepo.findOne({ where: { id, tenantId, queryKind: 'fee_detail' } });
+    if (!query) throw new NotFoundException('金额明细查询不存在或已失效');
+    return this.parkingFeeReportResponse(query);
+  }
+
   async createParkingOwnerUpdate(dto: CreateParkingOwnerUpdateDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const plate = dto.plate?.trim().toUpperCase();
@@ -828,6 +896,7 @@ export class AccessCardIssuanceService {
 
     const canQueryMovements = supportsParkingMovementQueries(agent.version);
     const canQueryFees = supportsParkingFeeReports(agent.version);
+    const canQueryFeeDetails = supportsParkingFeeDetails(agent.version);
 
     const task = await this.parkingQueryRepo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(ParkingQuery);
@@ -835,7 +904,7 @@ export class AccessCardIssuanceService {
       const query = await repo.createQueryBuilder('query')
         .where('query.tenant_id = :tenantId', { tenantId: agent.tenantId })
         .andWhere("(query.status = 'pending' OR (query.status = 'running' AND query.lease_expires_at < :now))", { now })
-        .andWhere("(query.query_kind = 'vehicle' OR (query.query_kind = 'movement' AND :canQueryMovements = true) OR (query.query_kind = 'fee_report' AND :canQueryFees = true))", { canQueryMovements, canQueryFees })
+        .andWhere("(query.query_kind = 'vehicle' OR (query.query_kind = 'movement' AND :canQueryMovements = true) OR (query.query_kind = 'fee_report' AND :canQueryFees = true) OR (query.query_kind = 'fee_detail' AND :canQueryFeeDetails = true))", { canQueryMovements, canQueryFees, canQueryFeeDetails })
         .orderBy('query.created_at', 'ASC')
         .setLock('pessimistic_write')
         .setOnLocked('skip_locked')
@@ -975,6 +1044,8 @@ export class AccessCardIssuanceService {
           ? sanitizeParkingMovementRows(dto.rows ?? [], query.term)
           : query.queryKind === 'fee_report'
             ? sanitizeParkingFeeRows(dto.rows ?? [], query.rangeStart, query.rangeEnd)
+            : query.queryKind === 'fee_detail'
+              ? sanitizeParkingFeeDetailRows(dto.rows ?? [], query.term.split(':')[0], query.rangeStart, query.rangeEnd)
             : sanitizeParkingRows(dto.rows ?? []);
         query.lastError = null;
         query.completedAt = now;
@@ -1799,12 +1870,23 @@ export class AccessCardIssuanceService {
         sequence: row.sequence,
         icCardNo: row.icCardNo?.toUpperCase() || null,
         issuedAt: row.issuedAt || null,
+        personName: row.personName?.trim() || null,
       }));
       snapshot.issuedCount = dto.issuedCount ?? history.length;
       snapshot.nextSequence = dto.nextSequence ?? Math.max(0, ...history.map((row) => row.sequence)) + 1;
       snapshot.status = 'ready';
       snapshot.refreshedAt = new Date();
       snapshot.lastError = null;
+      if (snapshot.roomKey === '__recent_js_cards__') {
+        snapshot.permissionSubjects = this.permissionSubjects([], snapshot.history);
+        snapshot.permissions = [];
+        snapshot.permissionStatus = snapshot.permissionSubjects.length ? 'pending' : 'ready';
+        snapshot.permissionRequestedAt = new Date();
+        snapshot.permissionRefreshedAt = snapshot.permissionSubjects.length ? null : new Date();
+        snapshot.permissionLeaseAgentKey = null;
+        snapshot.permissionLeaseExpiresAt = null;
+        snapshot.permissionLastError = null;
+      }
     } else {
       snapshot.status = dto.result === 'retry' ? 'pending' : 'error';
       snapshot.lastError = dto.errorMessage || '.80 历史查询失败';
@@ -1982,7 +2064,7 @@ export class AccessCardIssuanceService {
       snapshot.permissionRefreshedAt = new Date();
       snapshot.permissionLastError = null;
     } else {
-      snapshot.permissionStatus = dto.result === 'retry' ? 'pending' : 'error';
+      snapshot.permissionStatus = dto.result === 'retry' && snapshot.roomKey !== '__recent_js_cards__' ? 'pending' : 'error';
       snapshot.permissionLastError = dto.errorMessage?.trim() || '楼栋门禁权限查询失败';
     }
     snapshot.permissionLeaseAgentKey = null;
@@ -2774,8 +2856,9 @@ export function sanitizeParkingMovementRows(rows: ParkingQueryReportDto['rows'],
   });
 }
 
-function sanitizeParkingFeeRows(rows: ParkingQueryReportDto['rows'], startDate: string | null, endDate: string | null): ParkingQuery['rows'] {
-  if ((rows ?? []).length > 100) throw new BadRequestException('金额报表返回超过 100 行');
+export function sanitizeParkingFeeRows(rows: ParkingQueryReportDto['rows'], startDate: string | null, endDate: string | null): ParkingQuery['rows'] {
+  // 31 天 × 两期 × 两类的每日行，再加跨期每日行与 4 个汇总，最多 190 行。
+  if ((rows ?? []).length > 200) throw new BadRequestException('金额报表汇总返回超过日期范围上限');
   const sanitized = (rows ?? []).map((row) => {
     const f = row.fields ?? {};
     const database = row.database?.trim().toLowerCase();
@@ -2784,7 +2867,7 @@ function sanitizeParkingFeeRows(rows: ParkingQueryReportDto['rows'], startDate: 
     const count = Number(f.count);
     const amountCents = Number(f.amountCents);
     if (!['parking1', 'parking2', 'both'].includes(database) ||
-        !['summary', 'daily', 'detail'].includes(kind) ||
+        !['summary', 'daily'].includes(kind) ||
         !['renewal', 'temporary'].includes(category) ||
         !Number.isSafeInteger(count) || count < 0 ||
         !Number.isSafeInteger(amountCents) || Math.abs(amountCents) > 100_000_000_000_000 ||
@@ -2806,18 +2889,45 @@ function sanitizeParkingFeeRows(rows: ParkingQueryReportDto['rows'], startDate: 
     if (sanitized.filter((row) => row.database === database && row.fields.kind === 'summary' && row.fields.category === category).length !== 1)
       throw new BadRequestException('停车网关返回的金额报表缺少一期或二期汇总');
   }
-  if (sanitized.filter((row) => row.fields.kind === 'detail').length > 30) throw new BadRequestException('金额报表明细超出最近 30 条上限');
   for (const category of ['renewal', 'temporary']) {
     const summary = sanitized.filter((row) => row.fields.kind === 'summary' && row.fields.category === category);
-    const daily = sanitized.filter((row) => row.fields.kind === 'daily' && row.fields.category === category);
+    const daily = sanitized.filter((row) => row.fields.kind === 'daily' && row.fields.category === category && row.database === 'both');
     if (summary.reduce((sum, row) => sum + Number(row.fields.amountCents), 0) !==
           daily.reduce((sum, row) => sum + Number(row.fields.amountCents), 0) ||
         summary.reduce((sum, row) => sum + Number(row.fields.count), 0) !==
           daily.reduce((sum, row) => sum + Number(row.fields.count), 0)) {
       throw new BadRequestException('金额报表每日汇总与一期、二期总额不一致');
     }
+    for (const database of ['parking1', 'parking2']) {
+      const source = summary.find((row) => row.database === database);
+      const sourceDays = sanitized.filter((row) => row.fields.kind === 'daily' && row.fields.category === category && row.database === database);
+      if (!source || Number(source.fields.amountCents) !== sourceDays.reduce((sum, row) => sum + Number(row.fields.amountCents), 0) ||
+          Number(source.fields.count) !== sourceDays.reduce((sum, row) => sum + Number(row.fields.count), 0))
+        throw new BadRequestException(`${database} 金额逐日汇总与分期总额不一致`);
+    }
   }
   return sanitized;
+}
+
+export function sanitizeParkingFeeDetailRows(rows: ParkingQueryReportDto['rows'], category: string,
+  startDate: string | null, endDate: string | null): ParkingQuery['rows'] {
+  if ((rows ?? []).length > 50) throw new BadRequestException('金额明细单页超过 50 条');
+  return (rows ?? []).map((row) => {
+    const fields = row.fields ?? {};
+    const database = row.database?.trim().toLowerCase();
+    const occurredAt = String(fields.occurredAt ?? '');
+    const amountCents = Number(fields.amountCents);
+    if (!['parking1', 'parking2'].includes(database) || fields.kind !== 'detail' ||
+        fields.category !== category || !Number.isSafeInteger(amountCents) ||
+        Math.abs(amountCents) > 100_000_000_000_000 ||
+        !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(occurredAt) ||
+        occurredAt.slice(0, 10) < String(startDate) || occurredAt.slice(0, 10) > String(endDate))
+      throw new BadRequestException('停车网关返回的金额明细字段不正确');
+    return { database, fields: {
+      kind: 'detail', category, count: 1, amountCents, day: null, occurredAt,
+      plate: String(fields.plate ?? '').slice(0, 24), operator: String(fields.operator ?? '').slice(0, 80),
+    } };
+  });
 }
 
 const parkingVehicleOutputAliases = [

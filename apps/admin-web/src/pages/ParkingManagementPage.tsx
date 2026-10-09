@@ -1293,21 +1293,18 @@ function ParkingMovementSection({ plate }: { plate: string }) {
         <DatePicker.RangePicker id={`movement-range-${plate}`} value={pickerRange}
           allowClear={false} format="YYYY-MM-DD"
           onCalendarChange={(dates) => setPickerRange(dates)}
-          onChange={(dates) => {
-            if (!dates?.[0] || !dates?.[1]) return;
-            const start = dates[0].format('YYYY-MM-DD');
-            const end = dates[1].format('YYYY-MM-DD');
-            if (dayjs(end).diff(dayjs(start), 'day') > 30) {
-              setPickerRange([dayjs(range[0]), dayjs(range[1])]);
-              setError('单次最多查询连续 31 天，请缩小日期范围');
-              return;
-            }
-            setPickerRange([dates[0], dates[1]]);
-            setRange([start, end]);
-          }} />
-        <Button icon={<ReloadOutlined />} onClick={() => setRefresh((value) => value + 1)} disabled={loading}>重新查询</Button>
+          onChange={(dates) => { if (dates?.[0] && dates?.[1]) setPickerRange([dates[0], dates[1]]); }} />
+        <Button icon={<ReloadOutlined />} onClick={() => {
+          if (!pickerRange[0] || !pickerRange[1]) { setError('请选择完整的开始和结束日期'); return; }
+          const start = pickerRange[0].format('YYYY-MM-DD');
+          const end = pickerRange[1].format('YYYY-MM-DD');
+          if (dayjs(end).diff(dayjs(start), 'day') > 30) { setError('单次最多查询连续 31 天，请缩小日期范围'); return; }
+          if (start === range[0] && end === range[1]) setRefresh((value) => value + 1);
+          else setRange([start, end]);
+        }} disabled={loading}>按日期查询</Button>
         <Text type="secondary">按当前车牌精确查询，最多返回一期、二期各 50 条</Text>
       </div>
+      {queried && !loading && <Text type="secondary">本次查询：{range[0]} 至 {range[1]}</Text>}
       {loading && <div className="parking-movement-state" role="status"><Spin /> 正在从旧停车系统查询进出流水…</div>}
       {!loading && error && <Alert type="error" showIcon message="进出记录未能读取" description={error} />}
       {!loading && !error && queried && records.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="所选日期内没有查到进出记录" />}

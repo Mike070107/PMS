@@ -72,10 +72,25 @@ test('到期日只比较日期，房号自增后缀仍识别为同一房号', ()
   assert.equal(sameParkingText('地库91号\r\n操作来源：PMS系统', '地库91号\n操作来源：PMS系统'), true);
 });
 
-test('进出记录日历保留尚未选完的日期，不被默认今日范围覆盖', () => {
+test('进出记录查询按钮提交日历显示的日期，而非上次已查询日期', () => {
   const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
   const movement = page.slice(page.indexOf('function ParkingMovementSection('), page.indexOf('function ParkingOperationModal('));
   assert.match(movement, /value=\{pickerRange\}/, '日期控件须显示临时选择，而非仅显示已提交的查询范围');
   assert.match(movement, /onCalendarChange=\{\(dates\) => setPickerRange\(dates\)\}/, '选第一天时须立即保存日历的临时状态');
-  assert.match(movement, /setRange\(\[start, end\]\)/, '完整选定后才更新查询范围');
+  assert.match(movement, /const start = pickerRange\[0\]\.format\('YYYY-MM-DD'\)/);
+  assert.match(movement, /const end = pickerRange\[1\]\.format\('YYYY-MM-DD'\)/);
+  assert.match(movement, /setRange\(\[start, end\]\)/, '按日期查询必须提交日历显示的范围');
+  assert.match(movement, /本次查询：\{range\[0\]\} 至 \{range\[1\]\}/, '结果旁应显示实际已查询的范围');
+});
+
+test('金额报表明细按类别分页而不是最近30条截断', () => {
+  const report = readFileSync(new URL('../src/pages/ReportsPage.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(report, /最近\s*30\s*条流水|最近30条明细/);
+  assert.match(report, /岗亭出场应收收费清单/);
+  assert.match(report, /月租车续期收费清单/);
+  assert.match(report, /parking\/fees\/details\/queries/);
+  const fees = report.slice(report.indexOf('function ParkingFeesReport()'), report.indexOf('function ParkingFeeDetailTable('));
+  assert.match(fees, /value=\{pickerRange\}/);
+  assert.match(fees, /onCalendarChange=\{\(dates\) => setPickerRange\(dates\)\}/);
+  assert.match(fees, /const startDate = pickerRange\[0\]/);
 });

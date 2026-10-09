@@ -29,7 +29,7 @@
             <Border Margin="18,18,18,0" Padding="18" CornerRadius="12" Background="#EDF7F5" BorderBrush="#B8DED5" BorderThickness="1" Visibility="{Binding EnrollmentVisibility}">
               <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="250"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center"><TextBlock Text="使用一次性密钥连接 PMS" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource Ink}"/><TextBlock Text="客户端名称已按本机自动生成，可改为财务室、仓库等安装位置；同一企业内不能重复。" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,4,18,0" TextWrapping="Wrap"/></StackPanel>
-                <StackPanel Grid.Column="1" Margin="0,0,10,0"><TextBox x:Name="InstallCodeBox" Height="39" VerticalContentAlignment="Center" FontFamily="Consolas" FontSize="15" MaxLength="19" ToolTip="一次性配对密钥，例如 ABCD-EFGH-JKLM-2345"/><TextBox x:Name="ClientNameBox" Height="34" VerticalContentAlignment="Center" FontSize="12" MaxLength="120" Margin="0,7,0,0" Text="{Binding SuggestedClientName}" ToolTip="客户端名称，可按安装位置修改"/></StackPanel>
+                <StackPanel Grid.Column="1" Margin="0,0,10,0"><TextBox x:Name="InstallCodeBox" Height="39" VerticalContentAlignment="Center" FontFamily="Consolas" FontSize="15" MaxLength="19" ToolTip="一次性配对密钥，例如 ABCD-EFGH-JKLM-2345"/><TextBox x:Name="ClientNameBox" Height="34" VerticalContentAlignment="Center" FontSize="12" MaxLength="120" Margin="0,7,0,0" Text="{Binding SuggestedClientName, Mode=OneTime}" ToolTip="客户端名称，可按安装位置修改"/></StackPanel>
                 <Button x:Name="EnrollButton" Grid.Column="2" Content="连接并安装" Click="Enroll_Click" MinWidth="118"/>
               </Grid>
             </Border>

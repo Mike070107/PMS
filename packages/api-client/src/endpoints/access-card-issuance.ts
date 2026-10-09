@@ -104,6 +104,18 @@ export interface AccessCardRecentRecord {
   lastErrorMessage: string | null;
 }
 
+export interface LegacyRecentCardQuery {
+  status: 'pending' | 'ready' | 'error';
+  rows: Array<{ personId: number; personNo: string; personName?: string | null;
+    icCardNo: string | null; wgCardNo: string | null; issuedAt: string | null }>;
+  error: string | null;
+  refreshedAt: string | null;
+  permissionStatus: 'idle' | 'pending' | 'running' | 'ready' | 'error';
+  permissions: Array<{ wgCardNo: string; accessSystem: 'mjsystem' | 'iccard'; buildingNo: string | null;
+    controller: string | null; door: string }>;
+  permissionError: string | null;
+}
+
 export interface AccessCardAuthorization {
   id: number;
   houseId: number;
@@ -435,6 +447,14 @@ export const recentCards = () =>
   request<AccessCardRecentRecord[]>({
     url: '/access-card-issuance/recent-cards',
   });
+
+export const requestRecentLegacyCards = () => request<LegacyRecentCardQuery>({
+  url: '/access-card-issuance/recent-legacy-cards/queries', method: 'POST',
+});
+
+export const recentLegacyCards = () => request<LegacyRecentCardQuery>({
+  url: '/access-card-issuance/recent-legacy-cards/queries',
+});
 
 export const createHistoryAuthorization = (houseId: number, historyId: number, data: {
   targetBuildingIds: number[];

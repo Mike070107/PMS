@@ -20,6 +20,7 @@ namespace Pms.AccessCardAgent
         public int sequence { get; set; }
         public string icCardNo { get; set; }
         public string issuedAt { get; set; }
+        public string personName { get; set; }
     }
 
     internal sealed class LegacyHistoryResult
@@ -41,6 +42,31 @@ namespace Pms.AccessCardAgent
     /** .80 旧库只读诊断；正式同步会复用同一事务锁后再写 Person/CardInfo。 */
     internal static class LegacyDatabase
     {
+        public static LegacyHistoryResult GetRecentCards(AgentConfig config, string password)
+        {
+            var result = new LegacyHistoryResult { issuedCount = 0, nextSequence = 31,
+                history = new List<LegacyHistoryEntry>() };
+            using (var connection = new SqlConnection(ConnectionString(config, password)))
+            using (var command = connection.CreateCommand())
+            {
+                connection.Open();
+                command.CommandText = @"SELECT TOP (30) c.[ID], c.[PersonID], p.[NO], p.[Name], c.[IDNO], c.[IssueDate]
+FROM [MC].[CardInfo] c LEFT JOIN [HR].[Person] p ON p.[ID] = c.[PersonID]
+WHERE c.[IDNO] IS NOT NULL AND LTRIM(RTRIM(c.[IDNO])) <> '' AND c.[IssueDate] IS NOT NULL
+ORDER BY c.[IssueDate] DESC, c.[ID] DESC;";
+                using (var reader = command.ExecuteReader())
+                    while (reader.Read()) result.history.Add(new LegacyHistoryEntry {
+                        personId = reader.IsDBNull(1) ? -Convert.ToInt64(reader.GetValue(0), CultureInfo.InvariantCulture) : Convert.ToInt64(reader.GetValue(1), CultureInfo.InvariantCulture),
+                        personNo = reader.IsDBNull(2) ? "" : Convert.ToString(reader.GetValue(2), CultureInfo.InvariantCulture).Trim(),
+                        personName = reader.IsDBNull(3) ? "" : Convert.ToString(reader.GetValue(3), CultureInfo.InvariantCulture).Trim(),
+                        sequence = result.history.Count + 1,
+                        icCardNo = reader.IsDBNull(4) ? null : Convert.ToString(reader.GetValue(4), CultureInfo.InvariantCulture).Trim().ToUpperInvariant(),
+                        issuedAt = reader.GetDateTime(5).ToString("o", CultureInfo.InvariantCulture)
+                    });
+            }
+            result.issuedCount = result.history.Count;
+            return result;
+        }
         public static LegacySequenceResult GetNextSequence(AgentConfig config, string password, string roomKey)
         {
             if (String.IsNullOrWhiteSpace(config.LegacySqlServer) ||
