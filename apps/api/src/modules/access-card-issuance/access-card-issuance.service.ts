@@ -249,7 +249,9 @@ export class AccessCardIssuanceService {
       query.andWhere('batch.community_id IN (:...communityIds)', { communityIds });
     }
     const rows = await query
-      .orderBy('item.card_completed_at', 'DESC', 'NULLS LAST')
+      // take() + 关联查询会触发 TypeORM 的分页别名解析；这里必须使用实体属性名，
+      // 否则它会把 card_completed_at 当成不存在的 propertyPath 并抛出 databaseName 错误。
+      .orderBy('item.cardCompletedAt', 'DESC', 'NULLS LAST')
       .addOrderBy('item.id', 'DESC')
       .take(30)
       .getMany();
