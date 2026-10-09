@@ -232,6 +232,12 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("MjSystem 现场纯数字门名或单门控制器名称解析失败");
             if (AccessControllerUploader.NormalizeMjSystemControllerSerial("0160217") != "0160217")
                 throw new InvalidOperationException("MjSystem 七位控制器序列号的前导零被破坏");
+            if (AccessGatewayDatabase.BuildMjSystemDepartment("228/3/201/10") != "228弄03号大门" ||
+                AccessGatewayDatabase.BuildMjSystemDepartment("228/03/201/10") != "228弄03号大门" ||
+                AccessGatewayDatabase.MjSystemEmployeeNumber(6955) != "6955")
+                throw new InvalidOperationException("MjSystem 员工编号或部门生成规则错误");
+            if (!AccessControllerUploader.DescribeMjSystemError(2, "").Contains("COM1"))
+                throw new InvalidOperationException("MjSystem 串口错误未提供可执行提示");
             try
             {
                 AccessControllerUploader.NormalizeMjSystemControllerSerial("16A217");

@@ -239,6 +239,7 @@ MjSystem 负责：
 - 监控中心门禁通过 TCP/IP `192.168.1.87:60000`。
 - 目录存在 `ECardDerviceSDKMJ.dll`，上传接入有技术基础，但尚未发送真实上传命令。
 - 2026-10-09 修正协议选型：MjSystem 控制器的 `cMacSn` 是带型号/系列信息的七位产品序列号（例如 3 号楼 `0160217`），不得塞入 iCCard 旧 `0x7E` 报文的两字节序列号字段，也不得截断或取模。MjSystem 下发必须调用其原生 `ECardDerviceSDKMJ.dll` 生成 `0x9E` 命令；iCCard 才继续使用 `iCCard-WGComm.dll`。回归必须覆盖前导零保留和非数字序列号拒绝。
+- 2026-10-09 现场数据规则补齐：MjSystem `Employee.vEmp_id` 必须等于实际自增 `EId`，不能写 PMS 任务号；`vDepart` 由房号生成“弄号弄XX号大门”（`228/3/201/10` → `228弄03号大门`）。PMS 自建旧记录在重试时纠正，已有非 PMS 员工不重写员工编号。原生 SDK 错误码 2 出现在串口无法打开或使用的路径；现场同时存在 MDB 持续锁定时优先确认旧 MjSystem/Drive.exe 是否占用 COM1。
 
 ### 6.4 权限映射的重要限制
 

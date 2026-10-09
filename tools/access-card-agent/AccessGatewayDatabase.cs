@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.OleDb;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -200,6 +201,23 @@ namespace Pms.AccessCardAgent
             return String.IsNullOrWhiteSpace(task.displayName) ? task.address : task.displayName.Trim();
         }
 
+        internal static string BuildMjSystemDepartment(string displayName)
+        {
+            var parts = (displayName ?? "").Split('/');
+            int buildingNo;
+            if (parts.Length < 2 || String.IsNullOrWhiteSpace(parts[0]) ||
+                !Int32.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out buildingNo) ||
+                buildingNo < 0 || buildingNo > 999)
+                throw new InvalidOperationException("无法从用户姓名生成 MjSystem 部门，必须使用“弄号/楼栋/房号/序号”格式");
+            return parts[0].Trim() + "弄" + buildingNo.ToString("D2", CultureInfo.InvariantCulture) + "号大门";
+        }
+
+        internal static string MjSystemEmployeeNumber(int employeeId)
+        {
+            if (employeeId <= 0) throw new InvalidOperationException("MjSystem 员工序号无效");
+            return employeeId.ToString(CultureInfo.InvariantCulture);
+        }
+
         internal static string ExtractBuildingNo(params string[] values)
         {
             foreach (var value in values)
@@ -236,6 +254,8 @@ namespace Pms.AccessCardAgent
                 {
                     var isExistingCardGrant = String.Equals(task.action, "authorize_existing_card", StringComparison.OrdinalIgnoreCase);
                     var marker = isExistingCardGrant ? "PMS_AUTH_" + task.taskId : "PMS_ITEM_" + task.itemId;
+                    var displayName = UserDisplayName(task);
+                    var department = BuildMjSystemDepartment(displayName);
                     var employeeId = ScalarInt(connection, transaction,
                         "SELECT EId FROM Employee WHERE vCardNo=?", task.wgCardNo);
                     if (employeeId.HasValue)
@@ -244,18 +264,27 @@ namespace Pms.AccessCardAgent
                             "SELECT EmpMemo FROM Employee WHERE EId=?", employeeId.Value);
                         if (!isExistingCardGrant && !String.Equals(memo, marker, StringComparison.OrdinalIgnoreCase))
                             throw new InvalidOperationException("WG 卡号已存在 MjSystem，但不属于当前 PMS 任务");
-                        Execute(connection, transaction,
-                            "UPDATE Employee SET vEmp_name=? WHERE EId=?",
-                            Limit(UserDisplayName(task), 50), employeeId.Value);
+                        if (!String.IsNullOrWhiteSpace(memo) && memo.StartsWith("PMS_", StringComparison.OrdinalIgnoreCase))
+                            Execute(connection, transaction,
+                                "UPDATE Employee SET vEmp_id=?,vEmp_name=?,vDepart=? WHERE EId=?",
+                                MjSystemEmployeeNumber(employeeId.Value), Limit(displayName, 50), department, employeeId.Value);
+                        else
+                            Execute(connection, transaction,
+                                "UPDATE Employee SET vEmp_name=?,vDepart=? WHERE EId=?",
+                                Limit(displayName, 50), department, employeeId.Value);
                     }
                     else
                     {
+                        var expectedEmployeeId = (ScalarInt(connection, transaction, "SELECT MAX(EId) FROM Employee") ?? 0) + 1;
                         Execute(connection, transaction,
                             "INSERT INTO Employee (vEmp_id,vEmp_name,vCardNo,vDepart,vDoorPassword,dBeginDate,dEndDate,EmpMemo,bWorkAttend) VALUES (?,?,?,?,?,?,?,?,?)",
-                            isExistingCardGrant ? "A" + task.taskId : "P" + task.itemId,
-                            Limit(UserDisplayName(task), 50), task.wgCardNo, "PMS 门禁发卡", "000000",
+                            MjSystemEmployeeNumber(expectedEmployeeId),
+                            Limit(displayName, 50), task.wgCardNo, department, "000000",
                             DateTime.Today, new DateTime(2099, 12, 31), marker, true);
                         employeeId = Convert.ToInt32(Scalar(connection, transaction, "SELECT @@IDENTITY"));
+                        Execute(connection, transaction,
+                            "UPDATE Employee SET vEmp_id=? WHERE EId=?",
+                            MjSystemEmployeeNumber(employeeId.Value), employeeId.Value);
                     }
 
                     var output = new List<object>();

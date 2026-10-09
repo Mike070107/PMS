@@ -73,8 +73,8 @@ namespace Pms.AccessCardAgent
                     var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response);
                     if (result != 0)
                         throw new InvalidOperationException(
-                            "26号楼控制器无应答（" + record.ControllerName + " / " + record.CommMode +
-                            "，SDK 错误码 " + result.ToString(CultureInfo.InvariantCulture) + "）。PMS 应保留为失败可重试，不得显示已下发");
+                            "26号楼控制器通信失败（" + record.ControllerName + " / " + record.CommMode + "）：" +
+                            DescribeMjSystemError(result, response) + "。PMS 应保留为失败可重试，不得显示已下发");
                     return new AccessControllerUploadResult
                     {
                         buildingId = 26,
@@ -125,8 +125,8 @@ namespace Pms.AccessCardAgent
                             if (result != 0)
                             {
                                 throw new InvalidOperationException(
-                                    target.buildingNo + "号楼控制器未确认接收（" + record.ControllerName + " / " + record.CommMode +
-                                    "，SDK 错误码 " + result.ToString(CultureInfo.InvariantCulture) + "）。请关闭占用 COM1 的旧管理软件、检查控制器供电和串口后重试");
+                                    target.buildingNo + "号楼控制器通信失败（" + record.ControllerName + " / " + record.CommMode + "）：" +
+                                    DescribeMjSystemError(result, response));
                             }
 
                             output.Add(new AccessControllerUploadResult
@@ -534,6 +534,8 @@ namespace Pms.AccessCardAgent
                     }
                     if (String.IsNullOrWhiteSpace(response) && arguments.Length > 0)
                         response = Convert.ToString(arguments[arguments.Length - 1], CultureInfo.InvariantCulture);
+                    var sendError = ErrorCode();
+                    if (sendError != 0) return sendError;
                     var validation = new object[] { response ?? "" };
                     return Convert.ToBoolean(Invoke("ThenCommandVail", validation), CultureInfo.InvariantCulture) ? 0L : ErrorCodeOrFallback();
                 }
@@ -590,6 +592,15 @@ namespace Pms.AccessCardAgent
             private static extern IntPtr GetProcAddress(IntPtr module, string name);
             [DllImport("kernel32.dll")]
             private static extern bool FreeLibrary(IntPtr module);
+        }
+
+        internal static string DescribeMjSystemError(long errorCode, string response)
+        {
+            var detail = errorCode == 2
+                ? "原生 SDK 无法打开或使用串口（错误码 2）。COM1 很可能仍被 MjSystem、Drive.exe 或其他串口程序占用；请完全退出旧门禁软件后重试"
+                : "原生 SDK 错误码 " + errorCode.ToString(CultureInfo.InvariantCulture);
+            if (!String.IsNullOrWhiteSpace(response)) detail += "；响应 " + Limit(response, 80);
+            return detail;
         }
 
         private sealed class WgCommVendor
