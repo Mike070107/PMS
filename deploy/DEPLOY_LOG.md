@@ -4241,3 +4241,10 @@
 - 自上次（d2ea3a76）以来上线的相关提交：
   - 0d50e91d fix parking fee report ranges and show recent access cards
 
+## 2026-10-09 14:08 · web · a70642a1
+
+- 包：`pms-web-20261009-140749.tar.gz`
+- 提交：a70642a1 feat(inventory): widen purchase detail and paste screenshots
+- 自上次（f5db6311）以来上线的相关提交：
+  - a70642a1 feat(inventory): widen purchase detail and paste screenshots
+
