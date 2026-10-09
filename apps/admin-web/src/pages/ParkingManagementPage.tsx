@@ -52,7 +52,7 @@ import {
 } from '@pms/api-client';
 import dayjs from 'dayjs';
 import { type AddressCommunity, buildingMatchKeys, communityMatchKeys, houseMatchKeys, scoreAddressPath, tokenizeAddress } from '@pms/shared-types';
-import { parkingRenewalEndDate } from '../lib/parkingRenewal';
+import { allocateParkingRenewalAmounts, parkingRenewalEndDate } from '../lib/parkingRenewal';
 import {
   groupParkingVehicleRows,
   buildParkingRoomOptions,
@@ -393,9 +393,10 @@ export default function ParkingManagementPage({
     try {
       const targets = kind === 'renew_vehicle' && rows?.length ? rows : [row];
       const batchKey = createIdempotencyKey();
-      const tasks = await Promise.all(targets.map((target) => {
+      const renewalAmounts = kind === 'renew_vehicle' ? allocateParkingRenewalAmounts(Number(payload.amount), targets.length) : [];
+      const tasks = await Promise.all(targets.map((target, index) => {
         const targetPayload = kind === 'renew_vehicle' && target
-          ? { ...payload, previousEndDate: normalizeParkingDate(fieldValue(target.fields, fieldAliases.expiry)) || '' }
+          ? { ...payload, amount: renewalAmounts[index], previousEndDate: normalizeParkingDate(fieldValue(target.fields, fieldAliases.expiry)) || '' }
           : payload;
         const database = target ? parkingDatabase(target.database) : ((payload.database as 'parking1' | 'parking2') || 'parking2');
         return accessCardIssuance.createParkingOperation({
@@ -1394,12 +1395,12 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
   return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle', disabled: kind === 'rebind_owner' && !binding }} onOk={submit}>
     {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space>{task?.status === 'failed' && <Button size="small" onClick={onRetry}>仅重试失败的停车库</Button>}{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
     <div className="parking-operation-form">
-      {kind === 'renew_vehicle' && targetRows?.length === 2 && <Alert type="info" showIcon message="一期、二期将同时续期" description="检测到两个旧停车库都有该车牌；两边都读回验证后才显示整体成功。" />}
+      {kind === 'renew_vehicle' && targetRows?.length === 2 && <Alert type="info" showIcon message="一期、二期将同时续期" description="两个旧库都会更新到期日；本次填写的金额只记入一期，二期同步金额为 0，避免报表重复计费。两边读回验证后才显示整体成功。" />}
       <label>车牌<Input value={plate} disabled={!row} readOnly={kind === 'rebind_owner'} onChange={(e) => setPlate(e.target.value.toUpperCase())} /></label>
       {kind === 'change_plate' && <label>新车牌<Input value={newPlate} onChange={(e) => setNewPlate(e.target.value.toUpperCase())} /></label>}
       {kind === 'change_plate' && <label>绑定用户姓名<Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label>}
       {kind === 'rebind_owner' && <ParkingOwnerPicker open={open} value={binding} onChange={setBinding} />}
-      {kind === 'renew_vehicle' && <><label>快捷期限<Select value={months} options={[1, 2, 3, 6, 12].map((value: number) => ({ value, label: `${value}个月` }))} onChange={changeMonths} /><InputNumber min={0} value={amount} onChange={setAmount} addonAfter="元" /><Text type="secondary">留空按收费规则验算：业主车月价 ¥180、12个月 ¥1800；租户车月价 ¥260、12个月 ¥2760。可在提交前覆盖本次金额。</Text></label><label>到期日期<DatePicker value={endDate ? dayjs(endDate) : null} format="YYYY-MM-DD" placeholder="选择到期日期" allowClear placement="bottomLeft" popupClassName="parking-date-picker-popup" onChange={(value) => setEndDate(value ? value.format('YYYY-MM-DD') : '')} style={{ width: '100%' }} />{kind === 'renew_vehicle' && <Text type="secondary">从当前到期日顺延所选月数，自动取目标自然月的最后一天；也可手动调整日期。</Text>}</label></>}
+      {kind === 'renew_vehicle' && <><label>快捷期限<Select value={months} options={[1, 2, 3, 6, 12].map((value: number) => ({ value, label: `${value}个月` }))} onChange={changeMonths} /><InputNumber min={0} precision={2} value={amount} onChange={setAmount} addonAfter="元" /><Text type="secondary">留空按收费规则验算：业主车月价 ¥180、12个月 ¥1800；租户车月价 ¥260、12个月 ¥2760。可在提交前覆盖本次金额。</Text></label><label>到期日期<DatePicker value={endDate ? dayjs(endDate) : null} format="YYYY-MM-DD" placeholder="选择到期日期" allowClear placement="bottomLeft" popupClassName="parking-date-picker-popup" onChange={(value) => setEndDate(value ? value.format('YYYY-MM-DD') : '')} style={{ width: '100%' }} />{kind === 'renew_vehicle' && <Text type="secondary">从当前到期日顺延所选月数，自动取目标自然月的最后一天；也可手动调整日期。</Text>}</label></>}
       {kind === 'update_garages' && <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }]} /></label>}
       {(kind === 'change_plate' || kind === 'update_vehicle_type') && <label>车辆授权类型<Select value={identity} options={['住户车', '租户车', '亲情车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>}
       {kind === 'download_vehicle' && <Alert type="info" showIcon message="将创建旧库设备下载任务" description="任务完成只代表旧系统已接受并回读下载队列；现场控制器回执会在状态中单独显示。" />}
