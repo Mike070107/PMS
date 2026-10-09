@@ -4206,3 +4206,10 @@
   - a5e51b17 docs(parking): record phase1 Car_Out schema confirmation
   - 8a886476 fix(parking): read movement and exit fees from Car_Out
 
+## 2026-10-09 11:40 · api · 0b786f9d
+
+- 包：`pms-api-fast-20261009-113953.tar.gz`
+- 提交：0b786f9d fix(parking): preserve movement date selection
+- 自上次（d2ea3a76）以来上线的相关提交：
+  - 3e400670 feat(gateway): standardize managed client publishing
+
