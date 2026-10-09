@@ -4127,3 +4127,26 @@
   - 8b8e1411 fix(access-card): expose controller upload for pending cards
   - 209f718f fix(parking): preserve vehicle identity and verify owner update outcomes
 
+## 2026-10-09 08:39 · api · 0a43ebe8
+
+- 包：`pms-api-fast-20261009-083750.tar.gz`
+- 提交：0a43ebe8 feat(parking): report renewal and temporary charge amounts
+- 自上次（ca8304f3）以来上线的相关提交：
+  - 0a43ebe8 feat(parking): report renewal and temporary charge amounts
+  - e7b43a59 feat(parking): add lazy plate movement history query
+
+## 2026-10-09 08:40 · web · f6d7f2b5
+
+- 包：`pms-web-20261009-083937.tar.gz`
+- 提交：f6d7f2b5 deploy: api → 0a43ebe8
+- 自上次（ca8304f3）以来上线的相关提交：
+  - 0a43ebe8 feat(parking): report renewal and temporary charge amounts
+  - e7b43a59 feat(parking): add lazy plate movement history query
+
+## 2026-10-09 08:41 · assistant · 807be2bc
+
+- 提交：807be2bc deploy: web → f6d7f2b5
+- 自上次（a47cacb1）以来上线的相关提交：
+  - 0a43ebe8 feat(parking): report renewal and temporary charge amounts
+  - e7b43a59 feat(parking): add lazy plate movement history query
+
