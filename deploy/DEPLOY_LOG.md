@@ -4221,3 +4221,10 @@
   - 0b786f9d fix(parking): preserve movement date selection
   - 3e400670 feat(gateway): standardize managed client publishing
 
+## 2026-10-09 13:37 · api · f5db6311
+
+- 包：`pms-api-fast-20261009-133658.tar.gz`
+- 提交：f5db6311 fix Windows checkout line endings for production shell scripts
+- 自上次（0b786f9d）以来上线的相关提交：
+  - 0d50e91d fix parking fee report ranges and show recent access cards
+
