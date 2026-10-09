@@ -4,6 +4,7 @@ import { UploadOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { auth } from '../lib/auth';
 import { compressImageFile } from '../lib/compressImage';
+import { useUploadPasteTarget } from './useUploadPasteTarget';
 
 /**
  * 材料实物照片：**一条 SKU 最多 4 张**，上传、缩略图、点开看大图三件事只在这里实现一次。
@@ -118,7 +119,6 @@ export function MaterialPhotosUpload({
   onUploadingChange,
   max = MATERIAL_PHOTO_LIMIT,
   compact = false,
-  pastable = false,
 }: {
   value?: string[];
   onChange?: (urls: string[]) => void;
@@ -126,10 +126,9 @@ export function MaterialPhotosUpload({
   max?: number;
   /** 富文本工具栏等紧凑场景只显示一个上传按钮，不渲染缩略图卡片。 */
   compact?: boolean;
-  /** 允许把剪贴板里的截图直接当作上传文件。同一页有多个上传区时，外层只能激活当前目标。 */
-  pastable?: boolean;
 }) {
   const { message } = AntdApp.useApp();
+  const pasteTarget = useUploadPasteTarget();
   const [pending, setPending] = useState(0);
   const urls = value || [];
   const full = urls.length >= max;
@@ -148,7 +147,7 @@ export function MaterialPhotosUpload({
     headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
     accept: 'image/*',
     multiple: true,
-    pastable,
+    pastable: pasteTarget.pastable,
     showUploadList: false,
     // 返回 Promise<File> 时 antd 传的是这里返回的那个文件 —— 压缩就挂在这一步，
     // 长边缩到 1600、重新编码，几 MB 的原图通常降到几百 KB（见 lib/compressImage.ts）
@@ -188,7 +187,11 @@ export function MaterialPhotosUpload({
   };
 
   if (compact) {
-    return <Upload {...uploadProps}><Button type="text" icon={<UploadOutlined />}>{pending > 0 ? '上传中' : '图片'}</Button></Upload>;
+    return (
+      <span {...pasteTarget.pasteTargetProps} title="鼠标移到这里后可 Ctrl+V 粘贴截图">
+        <Upload {...uploadProps}><Button type="text" icon={<UploadOutlined />}>{pending > 0 ? '上传中' : '图片'}</Button></Upload>
+      </span>
+    );
   }
 
   return (
@@ -198,7 +201,7 @@ export function MaterialPhotosUpload({
       竖着叠成一列（2026-09-01 截图里就是这样）。用普通 flex 容器，
       PreviewGroup 的孩子才是真正的 flex 项。
     */
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+    <div {...pasteTarget.pasteTargetProps} style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
       <Image.PreviewGroup>
         {urls.map((url, index) => (
           <div key={url} style={{ position: 'relative' }}>
@@ -248,7 +251,7 @@ export function MaterialPhotosUpload({
           >
             <UploadOutlined />
             <span style={{ fontSize: 12 }}>
-              {pending > 0 ? '上传中…' : pastable ? '拖放、点击或 Ctrl+V' : '拖到此处或点击'}
+              {pending > 0 ? '上传中…' : '拖放、点击或 Ctrl+V'}
             </span>
             <span style={{ fontSize: 12, color: '#aaa' }}>{urls.length}/{max}</span>
           </div>

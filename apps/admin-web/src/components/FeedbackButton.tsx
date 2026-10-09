@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { auth } from '../lib/auth';
 import { compressImageFile } from '../lib/compressImage';
+import { useUploadPasteTarget } from './useUploadPasteTarget';
 
 const { Text } = Typography;
 
@@ -41,6 +42,7 @@ export default function FeedbackButton({
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [files, setFiles] = useState<UploadFile<UploadResponse>[]>([]);
+  const pasteTarget = useUploadPasteTarget();
   const lastFailure = open ? getLastApiFailure() : null;
 
   const submit = async () => {
@@ -87,6 +89,7 @@ export default function FeedbackButton({
     headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
     accept: 'image/*,video/mp4,video/quicktime,.mov',
     multiple: true,
+    pastable: pasteTarget.pastable,
     listType: 'picture-card',
     fileList: files,
     beforeUpload: async (file, selectedFiles) => {
@@ -180,10 +183,12 @@ export default function FeedbackButton({
             >
               <Input.TextArea rows={5} maxLength={1000} showCount placeholder="例如：点「确认派单」后一直转圈，重试两次都一样" />
             </Form.Item>
-            <Form.Item label="现场图片/视频（选填）" extra="最多 4 张图片和 1 个视频；图片会自动压缩，视频最大 50MB。">
-              <Upload {...uploadProps}>
-                {files.length < 5 && <button type="button" className="pms-feedback-upload-button"><PlusOutlined /><span>添加附件</span></button>}
-              </Upload>
+            <Form.Item label="现场图片/视频（选填）" extra="最多 4 张图片和 1 个视频；截图可 Ctrl+V 粘贴，图片会自动压缩，视频最大 50MB。">
+              <div {...pasteTarget.pasteTargetProps}>
+                <Upload {...uploadProps}>
+                  {files.length < 5 && <button type="button" className="pms-feedback-upload-button"><PlusOutlined /><span>添加附件 / 粘贴截图</span></button>}
+                </Upload>
+              </div>
             </Form.Item>
           </Form>
           <Text type="secondary">系统只会附带页面、版本和最近错误摘要，不会附带表单原文、电话或密码。</Text>

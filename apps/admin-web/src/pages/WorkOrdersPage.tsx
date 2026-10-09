@@ -107,6 +107,7 @@ import { useTableColumnPrefs, type PrefsColumn } from '../components/tableColumn
 import { nameOr } from '../lib/displayName';
 import { compressImageFile } from '../lib/compressImage';
 import { DetailHero, DetailMetrics, DetailSection } from '../components/DetailPrimitives';
+import { useUploadPasteTarget } from '../components/useUploadPasteTarget';
 import {
   DEFAULT_CONTENT_SUGGESTIONS,
   DEFAULT_LOCATION_SUGGESTIONS,
@@ -1497,7 +1498,8 @@ function RepairSubmitDock({
   const contentSuggestionTitle = pickedRepairTypeLabel
     ? `${pickedRepairTypeLabel}·猜你想输`
     : '猜你想输';
-  const uploadProps = buildAttachmentUploadProps({ fileList, setFileList, message });
+  const pasteTarget = useUploadPasteTarget();
+  const uploadProps = buildAttachmentUploadProps({ fileList, setFileList, message, pastable: pasteTarget.pastable });
 
   // 只有查看权限：按钮留着但置灰，并说明去哪儿开权限，别让人对着整页找不到入口
   const fabButton = (
@@ -1650,12 +1652,14 @@ function RepairSubmitDock({
                 <section className="pms-repair-form-section">
                   <div className="pms-repair-form-section__head"><span>5</span><div><h2>补充照片或视频</h2><p>可选；有现场照片时更方便维修工判断。</p></div></div>
                   <Form.Item label="上传照片 / 视频">
-                    <Upload.Dragger {...uploadProps} style={attachmentDropStyle}>
-                      <p className="pms-repair-upload-icon"><UploadOutlined /></p>
-                      <p>点击上传，或把照片、视频拖到这里</p>
-                      <Text type="secondary">照片最多 {MAX_IMAGE_COUNT} 张，视频最多 {MAX_VIDEO_COUNT} 个；单个不超过 50MB。</Text>
-                      <AttachmentUploadPreview files={fileList} onRemove={(uid) => setFileList((list) => list.filter((file) => file.uid !== uid))} />
-                    </Upload.Dragger>
+                    <div {...pasteTarget.pasteTargetProps}>
+                      <Upload.Dragger {...uploadProps} style={attachmentDropStyle}>
+                        <p className="pms-repair-upload-icon"><UploadOutlined /></p>
+                        <p>点击、拖入，或 Ctrl+V 粘贴截图</p>
+                        <Text type="secondary">照片最多 {MAX_IMAGE_COUNT} 张，视频最多 {MAX_VIDEO_COUNT} 个；单个不超过 50MB。</Text>
+                        <AttachmentUploadPreview files={fileList} onRemove={(uid) => setFileList((list) => list.filter((file) => file.uid !== uid))} />
+                      </Upload.Dragger>
+                    </div>
                   </Form.Item>
                 </section>
               </Form>
@@ -2070,12 +2074,14 @@ function buildAttachmentUploadProps({
   message,
   maxImages = MAX_IMAGE_COUNT,
   maxVideos = MAX_VIDEO_COUNT,
+  pastable = false,
 }: {
   fileList: UploadFile<UploadResponse>[];
   setFileList: (files: UploadFile<UploadResponse>[]) => void;
   message: { success: (text: string) => void; error: (text: string) => void };
   maxImages?: number;
   maxVideos?: number;
+  pastable?: boolean;
 }): UploadProps<UploadResponse> {
   return {
     name: 'file',
@@ -2083,6 +2089,7 @@ function buildAttachmentUploadProps({
     headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
     accept: 'image/*,video/*',
     multiple: true,
+    pastable,
     showUploadList: false,
     fileList,
     beforeUpload: async (file, selectedFiles) => {
@@ -4519,6 +4526,7 @@ function ProgressModal({
   const [note, setNote] = useState('');
   const [fileList, setFileList] = useState<UploadFile<UploadResponse>[]>([]);
   const [saving, setSaving] = useState(false);
+  const pasteTarget = useUploadPasteTarget();
 
   useEffect(() => {
     if (open) {
@@ -4533,6 +4541,7 @@ function ProgressModal({
     message,
     maxImages: 6,
     maxVideos: 0,
+    pastable: pasteTarget.pastable,
   });
 
   const submit = async () => {
@@ -4583,15 +4592,17 @@ function ProgressModal({
           placeholder="例如：已完成现场排查，确认需更换门口机电源，等待配件送达。"
           onChange={(event) => setNote(event.target.value)}
         />
-        <Upload.Dragger {...uploadProps} style={{ ...attachmentDropStyle, minHeight: 112 }}>
-          <p className="pms-repair-upload-icon"><UploadOutlined /></p>
-          <p>点击或拖入现场照片</p>
-          <Text type="secondary">最多 6 张；图片会随这条进度一起保存。</Text>
-          <AttachmentUploadPreview
-            files={fileList}
-            onRemove={(uid) => setFileList((files) => files.filter((file) => file.uid !== uid))}
-          />
-        </Upload.Dragger>
+        <div {...pasteTarget.pasteTargetProps}>
+          <Upload.Dragger {...uploadProps} style={{ ...attachmentDropStyle, minHeight: 112 }}>
+            <p className="pms-repair-upload-icon"><UploadOutlined /></p>
+            <p>点击、拖入，或 Ctrl+V 粘贴现场截图</p>
+            <Text type="secondary">最多 6 张；图片会随这条进度一起保存。</Text>
+            <AttachmentUploadPreview
+              files={fileList}
+              onRemove={(uid) => setFileList((files) => files.filter((file) => file.uid !== uid))}
+            />
+          </Upload.Dragger>
+        </div>
       </Space>
     </Modal>
   );
@@ -4845,6 +4856,7 @@ function CompleteModal({
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<'done' | 'waiting'>('done');
   const [fileList, setFileList] = useState<UploadFile<UploadResponse>[]>([]);
+  const pasteTarget = useUploadPasteTarget();
   // 同一次填写复用同一个令牌：连点两下或弱网重试时服务端只认第一次，不会扣两遍库存
   const [idempotencyKey, setIdempotencyKey] = useState('');
 
@@ -4948,7 +4960,7 @@ function CompleteModal({
     } catch (e: any) { message.error(e?.message || '完工失败'); } finally { setSaving(false); }
   };
 
-  const uploadProps = buildAttachmentUploadProps({ fileList, setFileList, message });
+  const uploadProps = buildAttachmentUploadProps({ fileList, setFileList, message, pastable: pasteTarget.pastable });
 
   return (
     <Modal
@@ -5051,14 +5063,16 @@ function CompleteModal({
 
             <div className="pms-form-section-label"><strong>完工凭证</strong><span>上传维修后照片并补充需要交代的事项</span></div>
             <Form.Item label="维修照片 / 视频">
-              <Upload.Dragger {...uploadProps} style={attachmentDropStyle}>
-                <p style={{ marginBottom: 6 }}><UploadOutlined /> 拖拽或点击上传维修照片、视频</p>
-                <Text type="secondary">照片最多 {MAX_IMAGE_COUNT} 张，视频最多 {MAX_VIDEO_COUNT} 个；单个不超过 50MB。</Text>
-                <AttachmentUploadPreview
-                  files={fileList}
-                  onRemove={(uid) => setFileList(fileList.filter((file) => file.uid !== uid))}
-                />
-              </Upload.Dragger>
+              <div {...pasteTarget.pasteTargetProps}>
+                <Upload.Dragger {...uploadProps} style={attachmentDropStyle}>
+                  <p style={{ marginBottom: 6 }}><UploadOutlined /> 拖拽、点击，或 Ctrl+V 粘贴维修截图</p>
+                  <Text type="secondary">照片最多 {MAX_IMAGE_COUNT} 张，视频最多 {MAX_VIDEO_COUNT} 个；单个不超过 50MB。</Text>
+                  <AttachmentUploadPreview
+                    files={fileList}
+                    onRemove={(uid) => setFileList(fileList.filter((file) => file.uid !== uid))}
+                  />
+                </Upload.Dragger>
+              </div>
             </Form.Item>
 
             <Form.Item name="remark" label="备注">
