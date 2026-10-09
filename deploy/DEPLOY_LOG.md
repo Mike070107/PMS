@@ -4260,3 +4260,13 @@
   - 7a3eb9a6 fix(access-card): persist door user display name
   - 0a5b373b fix(access-card): use entity property for recent-card order
 
+## 2026-10-09 19:19 · web · 2726515f
+
+- 包：`pms-web-20261009-191737.tar.gz`
+- 提交：2726515f feat(parking): support verified Deliyun renewals
+- 自上次（a70642a1）以来上线的相关提交：
+  - 2726515f feat(parking): support verified Deliyun renewals
+  - 60b0d2aa feat(access-card): split database and controller actions
+  - f888b9ec feat(access-card): show room label in history
+  - 02ab1eaa feat(web): support pasted screenshots across photo uploads
+
