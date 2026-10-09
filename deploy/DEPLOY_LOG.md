@@ -4157,3 +4157,10 @@
 - 自上次（0a43ebe8）以来上线的相关提交：
   - 18c9dd01 feat(access-card): show latest 30 issued cards
 
+## 2026-10-09 09:53 · web · 6d0ee5dd
+
+- 包：`pms-web-20261009-095012.tar.gz`
+- 提交：6d0ee5dd Merge remote-tracking branch 'origin/main'
+- 自上次（f6d7f2b5）以来上线的相关提交：
+  - 18c9dd01 feat(access-card): show latest 30 issued cards
+
