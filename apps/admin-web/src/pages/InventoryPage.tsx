@@ -383,6 +383,8 @@ export default function InventoryPage() {
   const [rejectTarget, setRejectTarget] = useState<PurchaseRequestRow | null>(null);
   const [itemRejectTarget, setItemRejectTarget] = useState<{ request: PurchaseRequestRow; item: PurchaseRequestItem } | null>(null);
   const [editRequestTarget, setEditRequestTarget] = useState<PurchaseRequestRow | null>(null);
+  const [editPhotoPasteIndex, setEditPhotoPasteIndex] = useState(0);
+  const [editPhotoUploadingIndexes, setEditPhotoUploadingIndexes] = useState<Set<number>>(() => new Set());
   const [requestDetail, setRequestDetail] = useState<PurchaseRequestRow | null>(null);
   const [manualRequestOpen, setManualRequestOpen] = useState(false);
   /** 「看一眼」抽屉里打开的工单 */
@@ -997,6 +999,8 @@ export default function InventoryPage() {
   };
 
   const openEditRequest = (row: PurchaseRequestRow) => {
+    setEditPhotoPasteIndex(0);
+    setEditPhotoUploadingIndexes(new Set());
     editRequestForm.setFieldsValue({
       items: (row.items || []).map((item, index) => ({
         ...item,
@@ -1961,7 +1965,9 @@ export default function InventoryPage() {
         title="采购申请详情"
         open={!!requestDetail}
         onClose={() => setRequestDetail(null)}
-        width="min(940px, 96vw)"
+        // 材料明细表完整列宽约 1428px；桌面端留出卡片内边距后一次性展开，便于整页截图。
+        // 窄屏仍保留 16px 页面边界，表格内部继续水平滚动，避免内容被裁掉。
+        width="min(1560px, calc(100vw - 16px))"
         extra={requestDetail ? (
           <Space>
             {/* 下载纸面那张《XX 区材料申购单》：任何环节都能下，采购拿着去买、去签字 */}
@@ -2184,9 +2190,13 @@ export default function InventoryPage() {
       <Modal
         title={`修改采购申请 ${editRequestTarget?.requestNo || ''}`}
         open={!!editRequestTarget}
-        onCancel={() => setEditRequestTarget(null)}
+        onCancel={() => {
+          setEditRequestTarget(null);
+          setEditPhotoUploadingIndexes(new Set());
+        }}
         onOk={submitEditRequest}
         confirmLoading={saving}
+        okButtonProps={{ disabled: editPhotoUploadingIndexes.size > 0 }}
         width={920}
         destroyOnHidden
       >
@@ -2208,6 +2218,8 @@ export default function InventoryPage() {
                       size="small"
                       title={`${index + 1}. ${original?.sourceWorkOrderNo || '手工申请'}`}
                       extra={original?.rejectReason ? <Tag color="red">驳回：{original.rejectReason}</Tag> : null}
+                      onFocusCapture={() => setEditPhotoPasteIndex(index)}
+                      onClickCapture={() => setEditPhotoPasteIndex(index)}
                     >
                       <Form.Item name={[field.name, 'lineId']} hidden><Input /></Form.Item>
                       <Form.Item name={[field.name, 'materialId']} hidden><InputNumber /></Form.Item>
@@ -2243,8 +2255,18 @@ export default function InventoryPage() {
                           </Form.Item>
                         </Col>
                       </Row>
-                      <Form.Item name={[field.name, 'photoUrls']} label="照片（最多 4 张，第一张作缩略图；维修工拍的样本可以在这里换）">
-                        <MaterialPhotosUpload />
+                      <Form.Item name={[field.name, 'photoUrls']} label="照片（最多 4 张，第一张作缩略图；点选当前材料后可 Ctrl+V 粘贴截图）">
+                        <MaterialPhotosUpload
+                          pastable={editPhotoPasteIndex === index}
+                          onUploadingChange={(uploading) => {
+                            setEditPhotoUploadingIndexes((current) => {
+                              const next = new Set(current);
+                              if (uploading) next.add(index);
+                              else next.delete(index);
+                              return next;
+                            });
+                          }}
+                        />
                       </Form.Item>
                     </Card>
                   );

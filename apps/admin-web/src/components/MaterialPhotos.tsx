@@ -118,6 +118,7 @@ export function MaterialPhotosUpload({
   onUploadingChange,
   max = MATERIAL_PHOTO_LIMIT,
   compact = false,
+  pastable = false,
 }: {
   value?: string[];
   onChange?: (urls: string[]) => void;
@@ -125,6 +126,8 @@ export function MaterialPhotosUpload({
   max?: number;
   /** 富文本工具栏等紧凑场景只显示一个上传按钮，不渲染缩略图卡片。 */
   compact?: boolean;
+  /** 允许把剪贴板里的截图直接当作上传文件。同一页有多个上传区时，外层只能激活当前目标。 */
+  pastable?: boolean;
 }) {
   const { message } = AntdApp.useApp();
   const [pending, setPending] = useState(0);
@@ -145,6 +148,7 @@ export function MaterialPhotosUpload({
     headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
     accept: 'image/*',
     multiple: true,
+    pastable,
     showUploadList: false,
     // 返回 Promise<File> 时 antd 传的是这里返回的那个文件 —— 压缩就挂在这一步，
     // 长边缩到 1600、重新编码，几 MB 的原图通常降到几百 KB（见 lib/compressImage.ts）
@@ -244,7 +248,7 @@ export function MaterialPhotosUpload({
           >
             <UploadOutlined />
             <span style={{ fontSize: 12 }}>
-              {pending > 0 ? '上传中…' : '拖到此处或点击'}
+              {pending > 0 ? '上传中…' : pastable ? '拖放、点击或 Ctrl+V' : '拖到此处或点击'}
             </span>
             <span style={{ fontSize: 12, color: '#aaa' }}>{urls.length}/{max}</span>
           </div>
