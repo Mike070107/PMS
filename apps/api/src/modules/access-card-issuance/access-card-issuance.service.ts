@@ -490,6 +490,11 @@ export class AccessCardIssuanceService {
     return this.parkingQueryResponse(await this.parkingQueryRepo.save(query));
   }
 
+  async findDeliyunVehicles(plate: string, user: AuthUser) {
+    this.requireTenant(user);
+    return this.deliyun.findVehiclesByPlate(plate);
+  }
+
   async getParkingQuery(id: number, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const query = await this.parkingQueryRepo.findOne({ where: { id, tenantId, queryKind: 'vehicle' } });

@@ -77,6 +77,12 @@ export class AccessCardIssuanceController {
     return this.service.getParkingQuery(id, user);
   }
 
+  @Get('parking/deliyun/vehicles')
+  @RequirePermission('business', 'view')
+  findDeliyunVehicles(@Query('plate') plate: string, @CurrentUser() user: AuthUser) {
+    return this.service.findDeliyunVehicles(plate || '', user);
+  }
+
   @Post('parking/movements/queries')
   @RequirePermission('business', 'view')
   createParkingMovementQuery(@Body() dto: CreateParkingMovementQueryDto, @CurrentUser() user: AuthUser) {

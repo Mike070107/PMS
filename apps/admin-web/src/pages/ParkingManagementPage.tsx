@@ -78,7 +78,12 @@ type ParkingHistoryResponse = accessCardIssuance.ParkingHistoryResponse;
 type ParkingPlateCheckResult = {
   queryId: number | null;
   matches: ParkingQueryRow[];
+  deliyunMatches: accessCardIssuance.DeliyunVehicle[];
 };
+
+function isFullParkingPlate(value: string) {
+  return /^[京津冀晋蒙辽吉黑沪苏浙皖闽赣鲁豫鄂湘粤桂琼渝川贵云藏陕甘青宁新][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(value.replace(/[\s·]/g, '').toUpperCase());
+}
 
 async function executeParkingQuery(term: string): Promise<accessCardIssuance.ParkingQuery> {
   let query = await accessCardIssuance.createParkingQuery(term);
@@ -94,11 +99,13 @@ async function executeParkingQuery(term: string): Promise<accessCardIssuance.Par
 export default function ParkingManagementPage({
   readinessOverride,
   rowsOverride,
+  deliyunRowsOverride,
   historyOverride,
   communitiesOverride,
 }: {
   readinessOverride?: AccessCardReadiness;
   rowsOverride?: ParkingQueryRow[];
+  deliyunRowsOverride?: accessCardIssuance.DeliyunVehicle[];
   historyOverride?: ParkingHistoryResponse;
   communitiesOverride?: AddressCommunity[];
 } = {}) {
@@ -112,6 +119,7 @@ export default function ParkingManagementPage({
   const [term, setTerm] = useState('');
   const [searching, setSearching] = useState(false);
   const [rows, setRows] = useState<ParkingQueryRow[]>([]);
+  const [deliyunRows, setDeliyunRows] = useState<accessCardIssuance.DeliyunVehicle[]>([]);
   const [searchedTerm, setSearchedTerm] = useState('');
   const [proofUpload, setProofUpload] = useState<accessCardIssuance.ParkingProofUpload | null>(null);
   const [proofLoading, setProofLoading] = useState(false);
@@ -208,6 +216,7 @@ export default function ParkingManagementPage({
     }
     setSearching(true);
     setRows([]);
+    setDeliyunRows([]);
     setHistoryOwnerRow(null);
     setHistoryVehicleRow(null);
     setHistory(null);
@@ -215,13 +224,18 @@ export default function ParkingManagementPage({
     try {
       if (rowsOverride) {
         setRows(rowsOverride);
+        setDeliyunRows(deliyunRowsOverride ?? []);
         setHistoryOwnerRow(rowsOverride[0] ?? null);
         return;
       }
       const query = await executeParkingQuery(queryTerm);
       setRows(query.rows);
+      const cloud = isFullParkingPlate(queryTerm) && deliyun?.readEnabled
+        ? await accessCardIssuance.deliyunVehiclesByPlate(queryTerm)
+        : { rows: [] };
+      setDeliyunRows(cloud.rows);
       setHistoryOwnerRow(query.rows[0] ?? null);
-      if (query.rows.length === 0) message.info(`没有查到与“${queryTerm}”匹配的停车记录`);
+      if (query.rows.length === 0 && cloud.rows.length === 0) message.info(`没有查到与“${queryTerm}”匹配的停车记录`);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '停车数据查询失败');
     } finally {
@@ -243,14 +257,19 @@ export default function ParkingManagementPage({
       return {
         queryId: null,
         matches: rowsOverride.filter((row) => plateValue(row.fields).replace(/[\s·]/g, '').toUpperCase() === normalizedPlate),
+        deliyunMatches: (deliyunRowsOverride ?? []).filter((row) => row.plate.replace(/[\s·]/g, '').toUpperCase() === normalizedPlate),
       };
     }
-    const query = await executeParkingQuery(normalizedPlate);
+    const [query, cloud] = await Promise.all([
+      executeParkingQuery(normalizedPlate),
+      deliyun?.readEnabled ? accessCardIssuance.deliyunVehiclesByPlate(normalizedPlate) : Promise.resolve({ project: '', rows: [] }),
+    ]);
     return {
       queryId: query.id,
       matches: query.rows.filter((row) => plateValue(row.fields).replace(/[\s·]/g, '').toUpperCase() === normalizedPlate),
+      deliyunMatches: cloud.rows,
     };
-  }, [rowsOverride]);
+  }, [deliyun?.readEnabled, deliyunRowsOverride, rowsOverride]);
 
   const saveLegacyOwner = async (values: accessCardIssuance.ParkingOwnerValues) => {
     if (!editingLegacyOwner || legacyOwnerSubmitting.current) return;
@@ -584,11 +603,13 @@ export default function ParkingManagementPage({
         </div>
         {searching ? (
           <div className="parking-query-loading"><Spin /><span>正在查询一期、二期停车数据库…</span></div>
-        ) : rows.length > 0 ? (
+        ) : rows.length > 0 || deliyunRows.length > 0 ? (
           <div className="parking-query-results">
             <div className="parking-query-summary">
-              <CheckCircleOutlined /> 找到 {vehicleGroups.length} 辆车（{rows.length} 条旧库记录），其中 {rows.filter((row) => row.pmsMatch).length} 条已关联 PMS 用户
+              <CheckCircleOutlined /> 找到 {vehicleGroups.length} 辆本地车辆（{rows.length} 条旧库记录）
+              {deliyunRows.length > 0 ? `，德立云命中 ${deliyunRows.length} 辆` : ''}，其中 {rows.filter((row) => row.pmsMatch).length} 条已关联 PMS 用户
             </div>
+            {deliyunRows.map((row) => <DeliyunVehicleCard key={row.id || row.plate} row={row} />)}
             {historyOwnerRow && (
               <ParkingHistoryCard
                 rows={rows}
@@ -1430,6 +1451,25 @@ const parkingPlateProvinces = '京津冀晋蒙辽吉黑沪苏浙皖闽赣鲁豫�
 const parkingPlateLetters = 'ABCDEFGHJKLMNPQRSTUVWXYZ'.split('');
 const parkingPlateAlphaNumeric = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789'.split('');
 
+function DeliyunVehicleCard({ row }: { row: accessCardIssuance.DeliyunVehicle }) {
+  const period = row.beginDate || row.endDate ? `${row.beginDate || '未记录'} 至 ${row.endDate || '未记录'}` : '车位池车辆，有效期需按关联车位核对';
+  return <article className="parking-query-card">
+    <div className="parking-query-primary">
+      <span className="parking-device-icon"><SafetyCertificateOutlined /></span>
+      <div><strong>{row.plate}</strong><small>德立云 · 二期人防车库</small></div>
+      <Tag color="blue">{row.cardType || '车辆类型未记录'}</Tag>
+    </div>
+    <div className="parking-query-meta">
+      <span><CalendarOutlined /> 有效期：{period}</span>
+      <span><UserOutlined /> {row.ownerName || '车主未记录'}</span>
+      {row.ownerPhone && <span><PhoneOutlined /> {row.ownerPhone}</span>}
+      {row.address && <span><HomeOutlined /> {row.address}</span>}
+      {row.cardPoolName && <span><DatabaseOutlined /> {row.cardPoolName}</span>}
+    </div>
+    <Alert type="info" showIcon message="德立云当前为只读接入" description="该记录可用于车辆查重和有效期核对；新增、续期、授权及设备下发尚未开放。" />
+  </article>;
+}
+
 function parkingDuplicateDescription(row: ParkingQueryRow): string {
   const database = row.database.toLowerCase() === 'parking1' ? '枫桦景苑一期停车系统' : '枫桦景苑二期停车系统';
   const room = ownerFieldValue(row.fields, fieldAliases.room) || '房号未记录';
@@ -1471,6 +1511,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
   const [checking, setChecking] = useState(false);
   const [checkedPlate, setCheckedPlate] = useState('');
   const [duplicateMatches, setDuplicateMatches] = useState<ParkingQueryRow[]>([]);
+  const [deliyunDuplicateMatches, setDeliyunDuplicateMatches] = useState<accessCardIssuance.DeliyunVehicle[]>([]);
   const [duplicateCheckError, setDuplicateCheckError] = useState<string | null>(null);
   const [duplicateCheckNonce, setDuplicateCheckNonce] = useState(0);
   const [submittingCheck, setSubmittingCheck] = useState(false);
@@ -1489,7 +1530,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
   const isFamily = identity === '亲情车';
   const provinceSelected = parkingPlateProvinces.includes(normalized.slice(0, 1));
   const plateFormatValid = new RegExp(`^[${parkingPlateProvinces.join('')}][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$`).test(normalized);
-  const duplicateCheckPassed = plateFormatValid && checkedPlate === normalized && !checking && !duplicateCheckError && duplicateMatches.length === 0;
+  const duplicateCheckPassed = plateFormatValid && checkedPlate === normalized && !checking && !duplicateCheckError && duplicateMatches.length === 0 && deliyunDuplicateMatches.length === 0;
   const keyboardMode = !provinceSelected ? 'province' : normalized.length === 1 ? 'letter' : 'number';
   const keyboardKeys = keyboardMode === 'province' ? parkingPlateProvinces : keyboardMode === 'letter' ? parkingPlateLetters : parkingPlateAlphaNumeric;
   const keyboardTitle = keyboardMode === 'province' ? '第 1 步 · 选择省市简称' : keyboardMode === 'letter' ? '第 2 步 · 选择发牌机关字母' : '继续输入车牌序号';
@@ -1497,7 +1538,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
 
   useEffect(() => {
     if (!open) return;
-    setStep('plate'); setPlate(''); setRoomKey(''); setResidentMode('pms'); setManualRoom(''); setManualName(''); setManualPhone(''); setIdentity('住户车'); setMonths(1); setGarages([]); setFieldPhone(''); setPhoneOverride(false); setProofUpload(null); setProofApproved(false); setValidationError(null); setChecking(false); setCheckedPlate(''); setDuplicateMatches([]); setDuplicateCheckError(null); setSubmittingCheck(false);
+    setStep('plate'); setPlate(''); setRoomKey(''); setResidentMode('pms'); setManualRoom(''); setManualName(''); setManualPhone(''); setIdentity('住户车'); setMonths(1); setGarages([]); setFieldPhone(''); setPhoneOverride(false); setProofUpload(null); setProofApproved(false); setValidationError(null); setChecking(false); setCheckedPlate(''); setDuplicateMatches([]); setDeliyunDuplicateMatches([]); setDuplicateCheckError(null); setSubmittingCheck(false);
   }, [open]);
 
   useEffect(() => {
@@ -1519,6 +1560,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
       setChecking(false);
       setCheckedPlate('');
       setDuplicateMatches([]);
+      setDeliyunDuplicateMatches([]);
       setDuplicateCheckError(null);
       return undefined;
     }
@@ -1526,6 +1568,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
     setChecking(true);
     setCheckedPlate('');
     setDuplicateMatches([]);
+    setDeliyunDuplicateMatches([]);
     setDuplicateCheckError(null);
     const timer = window.setTimeout(() => {
       void onCheckPlate(normalized)
@@ -1533,6 +1576,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
           if (cancelled) return;
           setCheckedPlate(normalized);
           setDuplicateMatches(result.matches);
+          setDeliyunDuplicateMatches(result.deliyunMatches);
         })
         .catch((checkError) => {
           if (cancelled) return;
@@ -1586,9 +1630,10 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
       const freshCheck = await onCheckPlate(normalized);
       setCheckedPlate(normalized);
       setDuplicateMatches(freshCheck.matches);
-      if (freshCheck.matches.length) {
+      setDeliyunDuplicateMatches(freshCheck.deliyunMatches);
+      if (freshCheck.matches.length || freshCheck.deliyunMatches.length) {
         setStep('plate');
-        return setValidationError(`车牌 ${normalized} 已在旧停车系统中登记，不能重复新增；请从查询结果办理续期、换牌或授权调整`);
+        return setValidationError(`车牌 ${normalized} 已在停车系统中登记，不能重复新增；请先核对现有车辆资料`);
       }
       const pendingFamilyReview = isFamily && (!proofUpload || proofUpload.status !== 'submitted' || !proofApproved);
       const resident = residentMode === 'manual' ? {
@@ -1635,7 +1680,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
     {validationError && <Alert type="warning" showIcon closable message={validationError} onClose={() => setValidationError(null)} />}
     <div className="parking-new-flow"><span className={step === 'plate' ? 'is-current' : 'is-done'}>1 <small>车牌查重</small></span><i /><span className={step === 'details' ? 'is-current' : ''}>2 <small>登记资料</small></span></div>
     {step === 'plate' ? <>
-      <Alert type="info" showIcon message="输入完整车牌后自动查重" description="系统会真实查询枫桦景苑一期、二期停车旧库；任一旧库已存在该车牌都不能继续新增。" />
+      <Alert type="info" showIcon message="输入完整车牌后自动查重" description="系统会真实查询枫桦景苑一期、二期停车旧库及德立云；任一系统已存在该车牌都不能继续新增。" />
       <div className="parking-plate-entry parking-plate-entry-design">
         <label htmlFor="parking-add-plate-input">车牌号码</label>
         <Input id="parking-add-plate-input" size="large" value={normalized} onChange={(event) => setPlate(event.target.value.replace(/[\s·]/g, '').toUpperCase().slice(0, 8))} suffix={checking ? <SyncOutlined spin /> : duplicateCheckPassed ? <CheckCircleOutlined className="parking-plate-check-ok" /> : undefined} placeholder="请输入车牌，例如 沪EDK889" />
@@ -1648,16 +1693,16 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
         <div className="parking-key-actions"><Button disabled={!normalized} onClick={() => setPlate((value) => value.slice(0, -1))}>退格</Button><Button danger disabled={!normalized} onClick={() => setPlate('')}>清空</Button></div>
       </div>
       <div className="parking-duplicate-result" role="status" aria-live="polite">
-        {checking ? <div className="parking-checking"><SyncOutlined spin /> 正在真实查询一期、二期停车旧库…</div>
-          : duplicateMatches.length > 0 && checkedPlate === normalized ? <Alert type="error" showIcon message={`车牌 ${normalized} 已在旧停车系统中登记，不能新增`} action={<Button size="small" type="primary" icon={<SearchOutlined />} onClick={() => onQueryPlate(normalized)}>查询此车牌</Button>} description={<div className="parking-duplicate-matches">{duplicateMatches.map((row, index) => <span key={`${row.database}-${parkingHistoryRef(row).sourceRecordId || index}`}><StopOutlined /> {parkingDuplicateDescription(row)}</span>)}<b>点击“查询此车牌”后可直接办理续期、换牌或调整车库授权。</b></div>} />
+        {checking ? <div className="parking-checking"><SyncOutlined spin /> 正在真实查询一期、二期停车旧库及德立云…</div>
+          : (duplicateMatches.length > 0 || deliyunDuplicateMatches.length > 0) && checkedPlate === normalized ? <Alert type="error" showIcon message={`车牌 ${normalized} 已在停车系统中登记，不能新增`} action={<Button size="small" type="primary" icon={<SearchOutlined />} onClick={() => onQueryPlate(normalized)}>查询此车牌</Button>} description={<div className="parking-duplicate-matches">{duplicateMatches.map((row, index) => <span key={`${row.database}-${parkingHistoryRef(row).sourceRecordId || index}`}><StopOutlined /> {parkingDuplicateDescription(row)}</span>)}{deliyunDuplicateMatches.map((row) => <span key={`deliyun-${row.id || row.plate}`}><StopOutlined /> 德立云 · 二期人防车库 · {row.cardType || '车辆类型未记录'} · 有效期 {row.beginDate || '未记录'} 至 {row.endDate || '未记录'}</span>)}<b>请先查询并核对现有车辆资料，避免重复登记。</b></div>} />
             : duplicateCheckError && checkedPlate === normalized ? <Alert type="error" showIcon message="车牌查重失败，暂时不能继续" description={duplicateCheckError} action={<Button onClick={() => setDuplicateCheckNonce((value) => value + 1)}>重新查重</Button>} />
-              : duplicateCheckPassed ? <Alert type="success" showIcon message="一期、二期旧库均未发现该车牌" description="进入登记资料后，正式提交前还会再次查询，避免重复新增。" />
+              : duplicateCheckPassed ? <Alert type="success" showIcon message="一期、二期旧库及德立云均未发现该车牌" description="进入登记资料后，正式提交前还会再次查询，避免重复新增。" />
                 : normalized.length >= 7 && !plateFormatValid ? <Alert type="warning" showIcon message="车牌格式不正确" description="请先选择省市简称，第二位输入字母，再输入 5 至 6 位字母或数字；字母 I、O 不用于普通车牌。" />
                   : <Text type="secondary">请输入完整车牌，系统会自动开始真实查重。</Text>}
       </div>
       <div className="parking-new-drawer-actions"><Button onClick={onClose}>取消</Button><Button type="primary" disabled={!duplicateCheckPassed} onClick={() => setStep('details')}>继续登记资料</Button></div>
     </> : <>
-      <div className="parking-new-plate-summary"><div className={`parking-license-plate is-${isGreen ? 'green' : 'blue'}`}><span>{normalized.slice(0, 1)} {normalized.slice(1, 2)}·{normalized.slice(2)}</span></div><div><strong>新车登记</strong><Text type="secondary">一期、二期停车旧库均已完成真实查重。</Text></div></div>
+      <div className="parking-new-plate-summary"><div className={`parking-license-plate is-${isGreen ? 'green' : 'blue'}`}><span>{normalized.slice(0, 1)} {normalized.slice(1, 2)}·{normalized.slice(2)}</span></div><div><strong>新车登记</strong><Text type="secondary">一期、二期停车旧库及德立云均已完成真实查重。</Text></div></div>
       <Divider orientation="left">1 · 房号与住户</Divider>
       <div className="parking-new-form-section">
         <Radio.Group value={residentMode} onChange={(event) => chooseResidentMode(event.target.value)} optionType="button" buttonStyle="solid" options={[{ value: 'pms', label: '从 PMS 房产清单选择' }, { value: 'manual', label: '手动登记' }]} />

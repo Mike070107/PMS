@@ -228,3 +228,78 @@
 - 助手在事务内锁定住户编号分配，基础名重名时按已用最大后缀加一（`198/8/102` → `/2`，已有 `/5` 则 `/6`），不覆盖原住户。只插入新 P_Owner 档案；车辆 Owner_ID 由旧过程 Up_PakIssue 修改。房号、电话、关联主键及原车辆到期/金额/类型/授权/备注逐项读回，失败撤销事务。任务专属建档标记用于丢失回执后重放，历史展示实际分配后的房号。
 - 本地验证：正式组件的房号/姓名搜索、同户选择、实际提交报文、失败保留输入、375px 弹窗；合并现有跨库车辆资料同步后，停车 API 回归 42 项、Web 自然月续期/跨库合并回归 15 项通过；助手完整自检覆盖规范房号、重名后缀递增、非法房号拒绝和原车辆过程参数保持；Web/API 类型检查和构建通过。另修正停车任务领取条件的 OR 括号，回归断言旧助手不能绕过租户或新版换绑门槛。
 - 边界：浏览器使用本机隔离数据且不转发生产请求；尚未在现场 SQL Server 执行本次 P_Owner 建档 + Up_PakIssue，未验证控制器。本地验证不等于现场业务验收，尚未发布生产。
+
+## 德立云只读协议实验（2026-10-09）
+
+- 本次仅研究连接，使用用户提供的项目与 AccessKey 做只读 POST；未新增车辆、续期、授权、开闸或修改平台配置。凭据不写入源码、报告和探测输出。
+- 用户截图项目名为「枫桦景苑」，开放接口清单同时包含停车与门禁。勾选「授权所有接口」不能单独证明项目已开通对应系统的对接权限。
+- 门禁 PDF 第 4–8 页规定：`https://openapi.deliyun.cn/acs/{method}`、公共参数放 URL、`timestamp` 为 Unix 秒、`version=1.0`，业务 JSON 通过 POST 的 `data` 传递。第 6 页签名示例使用 URL 编码后的 `data`，末尾追加 `&accessKeySecret=...` 后计算小写 MD5。第 7 页示例 URL 又包含 Secret，与第 5 页“不作为实际参数传递”矛盾；实验不发送 Secret，只用于本地签名。文档封面的 V1.0.4 不是其声明的请求版本值。
+- 当前代码 `deliyun-parking.service.ts` 把公共参数放表单，使用毫秒时间戳与原始 JSON 签名；这些与门禁 PDF 存在差异，但停车协议尚未取得，不能直接按门禁规则修改生产适配器。
+- 实测 `/parking/findPunitInfo`：HTTP 200、`ecode=6`、`msg=版本号无效或没有传递`。按门禁规则把公共参数放 URL 并改成秒后仍相同；表单及 header 传参也未解决。有限尝试 `1.0`、`1.0.0`、`1.0.4`、`V1.0.4`、`2.0`、`1`、`v1.0`、`V1.0` 均未通过该层。不继续无依据枚举版本。
+- 实测 `/acs/getChannelList`（URL 公共参数、秒时间戳、`version=1.0`）：HTTP 200、`ecode=9`、`msg=该项目未开通对接权限`。收到项目权限阻断后停止门禁查询，不修改开通设置，不换门禁入口绕过。该响应不能证明签名验证已通过，因为服务端校验顺序未知。
+- 结论：网络与接口服务可达，但本次没有获取停车或门禁业务数据，没有证据确认停车 AccessKey、项目映射及签名通过。浏览器工具可见会话没有平台登录页；当前平台公开入口及公开脚本未提供停车请求协议，公开检索未找到有效的当前停车文档。
+- 可执行接续：`tools/deliyun/read-only-probe.mjs`，仅允许 `findPunitInfo`、`findParkGarage`、`findCarList`、`findPoolParkList`，固定官方 HTTPS 主机、12 秒超时、不重试、不跟随重定向。凭据由进程环境变量 `DELIYUN_ACCESS_KEY_ID`、`DELIYUN_ACCESS_KEY_SECRET`、`DELIYUN_COMM_KEY` 提供；执行 `node tools/deliyun/read-only-probe.mjs --version <厂商确认值>`。默认按门禁文档编码 `data` 签名，`--sign-data raw` 可复现原始 JSON 签名；输出只含状态、字段名和列表数量，不输出个人数据。该工具是协议探测，不是已验证的停车 SDK。
+- 工具验证：语法检查通过；09:47（北京时间）两次真实 `findPunitInfo` 请求分别使用原始/URL 编码 `data` 签名，均确认 `ecode=6` 且工具以失败退出；检查输出未包含凭据。传入写方法 `saveCar` 在发请求前被拒绝。未对其他三个停车查询方法发请求，因版本前置条件仍未解决。
+- 最短接续材料：当前停车 API 的完整 `findPunitInfo` 请求示例（主机、路径、版本、公共参数位置、签名与 data 编码规则）以及该项目停车对接开通状态。门禁若需继续，另由平台管理员/厂商确认项目门禁对接权限。
+- 各端版本：Web/API/Windows 助手本次均未改变、未部署；现场设备未测试。
+
+### 德立云停车管理助手小程序连接分析（2026-10-09）
+
+- 用户确认小程序运行在本机微信；进程窗口标题为「德立云停车管理助手」。本机当天更新的缓存包 AppID 为 `wxeff23efc2ee4475f`、缓存构建号为 `27`（不是接口版本或厂商语义版本），包内 84 个文件，SHA-256 为 `b3f755e7b7b0aaf0d188c869c74614cc23d1eb364933b4f93703a53e39ff03c0`。页面包含车场列表、车场详情、收入、设备运维，与截图一致。
+- 仅在内存中分析本机缓存代码；未保存解包源码、AES 常量、签名 Secret、账号密码或 Token。尝试读取目标小程序存储的结构未得到可解析的会话值，未导出密码、未读取其他小程序的会话、未更改微信程序或登录状态。
+- `public/API.js` 的基础地址为 `https://apis-pmas.deliyun.cn/apis/app/pmas`。这是账号登录会话接口，不是 `openapi.deliyun.cn` 的开放 AccessKey 接口，不能互换凭据或直接迁移版本参数。
+- `public/requestHeader.js` 与 `utils/secret.js`：HTTP header 使用 `ver=3.0`、`times`（Unix 秒）、`reqid`（32 位字母数字随机串）、`token`、`sign`；POST 为 `application/x-www-form-urlencoded`，唯一业务字段 `data` 是紧凑 JSON 经 AES-128-CBC / PKCS7 加密后的 Base64。AES key、IV 和签名 Secret 来自包内常量，仅运行时使用，不落盘或回显。
+- 签名源串按固定顺序拼接：`ver=3.0&times=<秒>&reqid=<随机串>&token=<会话>&data=<Base64>&secret=<包内常量>`，调用 SHA-256；与旧门禁文档的 ASCII 排序 MD5 协议不同。请求体经表单编码传输，签名串使用编码前的 Base64。
+- 登录页面通过 `/user/login` 提交加密的 `{username,password,vcode,vcodeid}`，成功后保存 `token`、`expireTime`、`updateCycle`；验证码开关由服务端决定。代码另有 `/user/updateToken`，但本次未调用登录、验证码、更新 Token、退出、改密码等接口，也未验证实际刷新结果。
+
+| 小程序只读接口 | 代码中的业务参数 | 数据用途 |
+|---|---|---|
+| `/punit/parkList` | `{pageNum:1,name:"搜索词"}` | 当前登录账号可访问的车场列表；页面通过返回项 `unitKey`、`unitName` 打开详情 |
+| `/punit/findParkCount` | `{}` 或 `{unitKey}` | 车场/设备在线统计；指定项目时包含登记车辆数、在场车辆数、通道数 |
+| `/device/findParkDeviceList` | 需继续核对设备页参数 | 设备列表 |
+| `/user/getMenus` | `{}` | 根据当前账号权限返回菜单及跳转路径 |
+| `/stat/income` | `{unitKey}` | 今日、昨日收入展示 |
+| `/stat/operate` | `{type,unitKey}` | 收费及车辆进出统计 |
+
+- 车场详情 `pages/park/park.js` 将菜单目标装入 WebView，向原路径附加 `token` 和 `unitKey`。包内有 `https://wpma.deliyun.cn/park/card_detail`、`/park/card_test` 引用。因此登记车辆、收费规则等详细管理契约还需分析菜单返回值和对应 H5，不应把车场列表接口误称为车辆列表接口；`unitKey` 与 OpenAPI `commKey` 的关系尚未验证。
+- 实际网络验证：复现小程序 AES/SHA-256 请求封装，向 `/punit/parkList` 发出一次查询「枫桦景苑」的 POST；未携带会话 Token，返回 HTTP 200、`ecode=2`、`msg=未登录`、`data=null`。这证明接口服务响应，不能证明签名已通过（校验顺序未知）或已取得项目数据。收到登录要求后停止真实请求，不尝试绕过登录。
+- 可执行复现工具：`tools/deliyun/analyze-miniapp.py --appid wxeff23efc2ee4475f --package <本机缓存包路径>`，通过 Codex bundled Python 执行，依赖 `cryptography`；仅输出域名、路径、参数规则及包哈希。加 `--probe` 只允许固定主机的只读车场列表请求，12 秒超时、不重试、不跟随重定向。可选会话从进程环境 `DELIYUN_MINIAPP_TOKEN` 获取，工具不读取密码或会话存储；输出只含返回码和数据字段/数量。未设置 Token 时只能验证登录要求。
+- 上一轮结论（未提供账号时）：小程序连接协议已静态定位，未完成携带有效会话的业务读取、项目映射、H5 车辆列表/授权读取、现场设备确认；PMS Web/API/助手版本与生产配置均未变，未部署。随后账号验证结果见下节。
+
+### 小程序账号登录与项目数据读取成功（2026-10-09）
+
+- 用户当次明确提供账号密码并授权尝试连接。使用已定位的官方小程序服务，账号密码仅在实验进程内存中处理，不写文件或输出；成功返回的 Token 仅在同一进程内用于两次只读查询，未保存、未更新本机微信会话。
+- `/user/login`：HTTP 200、`ecode=0`，响应字段为 `token`、`expireTime`、`updateCycle`；这次登录未被要求验证码。未调用续期、新增车辆、授权、开闸、改密码、退出或生产配置变更。
+- `/punit/parkList`：提交 `{pageNum:1,name:"枫桦景苑"}`，HTTP 200、`ecode=0`，返回 1 条且 `unitName` 精确匹配目标项目。响应字段包含 `id`、`unitKey`、`unitName`、`address`、`online`、`deviceNum`、`deviceOnlineNum`、`deviceOfflineNum`；项目标识仅用于内存中的后续查询，不记录其值。
+- `/punit/findParkCount`：使用上一步实际返回的 `unitKey`，HTTP 200、`ecode=0`。本次实时返回 `cardsNum=120`（登记车辆总数）、`carInfoNum=117`（在场车辆数）、`channelNum=11`（通道总数）、`deviceNum=3`、`deviceOnlineNum=3`、`deviceOfflineNum=0`。这些是此次接口快照，不能与早先截图的车位数、空位数混用或推算。
+- 纠正：小程序服务的账号鉴权、AES-128-CBC / PKCS7 / Base64 请求体、固定字段顺序 SHA-256 签名和项目统计读取已通过真实请求验证。前文无 Token 的“未登录”是历史实验结果，已被本次有效登录补齐；OpenAPI AccessKey 停车接口仍未接通，不能把两套接口当作同一契约。
+- 尚未验证：Token 到期与刷新、H5 登记车辆明细及授权、`unitKey` 与 `commKey` 的映射、现场控制器和业务写入。PMS Web/API/Windows 助手版本本次均未改动，未部署；登录成功及统计可读不等于已集成 PMS。
+
+### 车辆资料、有效期与登记契约验证（2026-10-09，后续只读实验）
+
+- 从当前账号 `/user/getMenus` 的真实返回定位 `/park/card`（固定车辆）和 `/park/addcard`（新增车辆）两个正式 WebView 页面。读取页面和其引用的 `config.js`、`getToken.js`、`dlyAjax-core.js`，确认 H5 API 基础路径为 `https://wpma.deliyun.cn/apis/park`，与小程序原生 AES 接口是不同的传输层。
+- H5 的 `getToken.js` 将登录 Token 原值设置为 `pmatoken` Cookie；请求参数为普通查询/表单字段。最初手工 URI 编码 Cookie 值的请求返回 `ecode=3`，后按页面代码原样设置 Cookie、用仅在内存中的 CookieJar 执行正式页面流程，同一个查询接口成功，未更换接口或绕过权限。Cookie、Token、个人资料和解包源码均未保存。
+- `GET /pma/card/findParkCards`，参数为 `unitKey`、`pageNum`、`pageSize=50`；本次三页分别返回 50、50、20 条，均 `ecode=0`，合计 120 个不重复车辆 ID，与项目统计吻合。118 辆为月票车（`cardTypeId=2`），2 辆为车位池车（`cardTypeId=7`）。
+- 列表返回 `plateNum`、`cardNo`、`carTypeId/carType`、`cardTypeId/cardType`、`beginDate/endDate`、`pname`、`pmobile`、`addr`、车位池、余额等字段。本次车牌 120 条均有值，车主姓名 117 条、手机号 84 条、起止日期各 118 条有值；缺失值不能补造。报告只保留字段名和数量，不保存车牌、姓名、电话、地址或内部标识。
+- `POST /pma/card/findCard` 是正式页面使用的只读详情接口，参数为 `unitKey`、`id`。实测 1 辆月票车及 2 辆车位池车均 `ecode=0`；详情包含 `pgIds/pgNames`（车库授权）、车辆/计费类型、人员、缴费规则、车辆分组、车位池、`beginTime/endTime`、备注。月票车有效期为 Unix 秒，样本与列表日期一致；车位池车自身起止值为 0，应继续查询关联车位。
+- `GET /pma/card/findCardPoolParks`，参数为 `unitKey`、`cardPoolId`；两辆车位池车关联查询均成功，每次返回 1 个车位及其 `beginDate/endDate`，样本为 2026-06-01 至 2027-09-30。这类车辆不能因车辆自身日期为 0 就显示“无有效期”或推断已过期。
+- `isExpired` 命名/显示语义仍需核对：样本日期在未来但返回数值 1，页面样式使用其真值作颜色条件。不能未经核实直接把 `1` 映射为“已过期”；展示有效期应先使用已验证的日期字段。
+- 登记依赖选项已实际读取成功：`findParkGarageList` 返回 4 个云端车库（二期地面车位、一期地面车位、二期大车库、二期民防车库）；`findCardTypeList` 返回 10 种计费类型；`findCarTypeList` 返回小型/中型/大型三种车辆类型；`findCardGroupSelList` 返回 3 个分组；`findCardPayRuleList` 返回空列表。云端车库名称不单独证明其与 PMS 旧系统四个目标的设备映射相同，不能据此改写现有授权规则。
+- 新增页面提交 `POST /pma/card/addCard`，参数包含 `unitKey`、`plateNum`、`cardNo`、`pgIds`、`cardTypeId`、`carTypeId`、`peopleId`、`cprtId`、`cardGroupId`、`poolId`、`money`、`beginTime`、`endTime`、`remark`。默认计费类型为月票车；有效期按页面所在时区将开始日 00:00:00、结束日 23:59:59 转为 Unix 秒。日期顺序在前端校验。
+- 页面默认全选所有车库，收费金额有 required 及 min=0.01 属性；计费类型、车辆类型、有效期开始/结束也为前端必填。上述只证明客户端契约，不证明服务端对每个字段的要求、收费记账结果、写入权限或设备生效。PMS 接入需要明确目标车库和金额规则，不能默认授权全部车库或擅自填金额。
+- 结论：车辆列表、月票有效期、单车详情及授权车库、车位池关联车位有效期均已通过真实只读请求。登记具备已定位的正式接口和参数，技术上有实现路径，但本次未发新增/修改/删除请求；需要指定测试车牌、类型、目标车库、有效期和收费金额后，才能做受控新增、保存回读及现场通行验收。
+- 可执行研究客户端已复用在 `tools/deliyun/analyze-miniapp.py` 的 `MiniappReadClient`；只允许明确列举的读取方法与正常登录，详情按正式页面使用 POST。实测登记写方法被工具在发请求前拒绝；语法检查通过。新增写入不属于当前探测工具职责。
+- 当前未验证项收敛为：登记写入及设备生效、Token 到期/刷新、云端与 PMS 车库映射、OpenAPI AccessKey 协议。Web/API/Windows 助手业务版本和生产配置本次均未改动，未部署。
+
+### 德立云专用账号接入 PMS（2026-10-09）
+
+- 用户提供新的 PMS 专用账号并明确要求先接入。账号密码只在实验进程环境中使用，未写入源码、`.env`、文档、数据库或测试输出；生产示例配置只保留占位符。
+- 新账号真实登录成功，可访问 8 个项目并精确定位「枫桦景苑」。只读实测返回登记车辆 120 辆、设备 3/3 在线；120 辆都有车牌，118 辆含车辆起止有效期。其余 2 辆为车位池车辆，不能把车辆自身空日期直接解释为无有效期。
+- `DeliyunParkingService` 现优先使用小程序账号协议登录，Token 只在 API 进程内缓存 10 分钟。原 AccessKey 探测保留为兼容回退；两套协议仍严格分开。账号链路的主机固定为 `apis-pmas.deliyun.cn` 和 `wpma.deliyun.cn`，服务端只实现登录、项目列表、项目统计和车辆列表四个只读调用。
+- 新增 `GET /api/v1/access-card-issuance/parking/deliyun/vehicles?plate=<完整车牌>`，沿用 `business:view` 权限，只接受完整规范车牌，返回页面所需白名单字段。密码、Token、签名、AES 常量、项目 key 及未使用的上游字段均不返回前端。
+- 停车页面查询完整车牌时同步读取德立云并展示车辆类型、车主、有效期和车位池提示；新增车辆的两次查重现在同时覆盖一期旧库、二期旧库和德立云。任一查询失败都不会把“未知”当作“未登记”放行。
+- 车位池车辆若列表自身没有日期，API 会继续读取 `findCardPoolParks` 并返回关联车位的有效期。使用专用账号对一辆真实车位池车辆复验，命中 1 辆、关联 1 个车位，开始和结束日期均成功取得；未输出车牌或人员资料。
+- 状态卡实际验证登录、项目统计和一条车辆列表读取后才显示「只读已连接」，并显示登记数与在线设备数；`writeEnabled` 固定为 `false`。新增、续期、车库授权、收费和设备下发均未接入。
+- Node 适配器使用真实专用账号完成状态探测和随机现有车牌精确查询：`connected=true`、`readEnabled=true`、`writeEnabled=false`、命中 1 条且车牌完全相等。输出未包含账号、Token、项目 key 或车辆明细。
+- 真实浏览器开发预览验收：桌面端查询完整车牌后同时显示本地车辆与德立云车辆卡；390px 下页面及新增抽屉均满足 `scrollWidth=clientWidth=390`。同一车牌在德立云命中时显示三系统重复提示并禁用「继续登记资料」。开发预览模块由 `import.meta.env.DEV` 动态加载，不进入生产构建。
+- 本地尚未写入生产运行配置、未部署、未用测试车牌执行登记，也未验证现场控制器。生产启用需当次明确部署授权，并在服务器运行环境安全配置账号及三项协议常量后，按「状态 → 车牌查询 → 页面查重」复验。

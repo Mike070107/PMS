@@ -222,6 +222,22 @@ export interface ParkingQuery {
   completedAt: string | null;
 }
 
+export interface DeliyunVehicle {
+  id: string;
+  plate: string;
+  cardNo: string | null;
+  carType: string | null;
+  cardType: string | null;
+  beginDate: string | null;
+  endDate: string | null;
+  ownerName: string | null;
+  ownerPhone: string | null;
+  address: string | null;
+  cardPoolId: string | null;
+  cardPoolName: string | null;
+  poolPeriods: Array<{ name: string | null; beginDate: string | null; endDate: string | null }>;
+}
+
 export interface ParkingMovementEntry {
   database: 'parking1' | 'parking2';
   plate: string;
@@ -320,6 +336,11 @@ export const createParkingQuery = (term: string) =>
 export const parkingQuery = (id: number) =>
   request<ParkingQuery>({
     url: `/access-card-issuance/parking/queries/${id}`,
+  });
+
+export const deliyunVehiclesByPlate = (plate: string) =>
+  request<{ project: string; rows: DeliyunVehicle[] }>({
+    url: `/access-card-issuance/parking/deliyun/vehicles?plate=${encodeURIComponent(plate)}`,
   });
 
 export const createParkingMovementQuery = (plate: string, startDate: string, endDate: string) =>

@@ -15,6 +15,7 @@ export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgr
       capabilities: { parkingDbRead: true, parkingDbWrite: mode === 'ready' },
       lastSeenAt: new Date().toISOString(),
     }],
+    deliyun: { configured: true, connected: true, readEnabled: true, writeEnabled: false, message: '德立云枫桦景苑车辆只读查询已连接（登记 120 辆，设备 3/3 在线）', checkedAt: new Date().toISOString() },
   };
   const rows: ParkingQueryRow[] | undefined = mode === 'ready' ? [{
     database: 'parking1',
@@ -100,5 +101,10 @@ export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgr
       { id: 301, roomNo: '301', propertyType: '住宅', shopName: null, ownerId: 1264, ownerName: '张某某', ownerPhone: '13800006421' },
     ] }],
   }];
-  return <ParkingManagementPage readinessOverride={readiness} rowsOverride={rows} historyOverride={history} communitiesOverride={communities} />;
+  const deliyunRows = mode === 'ready' ? [{
+    id: 'preview-cloud-1', plate: '沪A12345', cardNo: 'DLY-001', carType: '小型车', cardType: '月票车',
+    beginDate: '2026-01-01', endDate: '2026-12-31', ownerName: '张某某', ownerPhone: '13800006421',
+    address: '228/5/301', cardPoolId: null, cardPoolName: null, poolPeriods: [],
+  }] : undefined;
+  return <ParkingManagementPage readinessOverride={readiness} rowsOverride={rows} deliyunRowsOverride={deliyunRows} historyOverride={history} communitiesOverride={communities} />;
 }
