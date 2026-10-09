@@ -58,7 +58,7 @@ namespace Pms.DataSyncAssistant
                 MovementDatabaseTwoInput.Text = Get(existing, "movementDatabase2");
                 MovementUserInput.Text = Get(existing, "movementUser");
                 MovementPasswordHint.Text = _store.HasSecret(ConnectionAgentRuntime.MovementPasswordKey(existing))
-                    ? "历史库密码已安全保存，留空保持不变。" : "留空沿用车辆数据库密码。";
+                    ? "临停报表密码已安全保存，留空保持不变。" : "留空沿用车辆数据库密码。";
                 MjSystemPathInput.Text = Get(existing, "mjSystemPath");
                 IcCardPathInput.Text = Get(existing, "icCardPath");
                 PasswordHint.Text = _store.HasSecret("connection:" + existing.Id + ":password")
@@ -96,7 +96,8 @@ namespace Pms.DataSyncAssistant
             var isReader = _type == ConnectionTypes.CardReader;
             SqlFields.Visibility = isSql ? Visibility.Visible : Visibility.Collapsed;
             DatabaseFields.Visibility = isSql ? Visibility.Visible : Visibility.Collapsed;
-            MovementFields.Visibility = _type == ConnectionTypes.Parking ? Visibility.Visible : Visibility.Collapsed;
+            // 旧版外部历史库参数仅保留作配置迁移，不再作为停车进出与金额报表的用户输入。
+            MovementFields.Visibility = Visibility.Collapsed;
             FileFields.Visibility = isFile ? Visibility.Visible : Visibility.Collapsed;
             ReaderFields.Visibility = isReader ? Visibility.Visible : Visibility.Collapsed;
             PasswordLabel.Visibility = isReader ? Visibility.Collapsed : Visibility.Visible;

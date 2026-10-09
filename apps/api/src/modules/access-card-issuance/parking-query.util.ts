@@ -93,7 +93,7 @@ export function supportsParkingMovementQueries(version: string | null | undefine
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
   if (!match) return false;
   const [major, minor, patch] = match.slice(1).map(Number);
-  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 24)))
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 27)))
     || (major === 0 && minor >= 9);
 }
 
@@ -101,7 +101,7 @@ export function supportsParkingFeeReports(version: string | null | undefined): b
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
   if (!match) return false;
   const [major, minor, patch] = match.slice(1).map(Number);
-  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 25)));
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 27)));
 }
 
 export function parseParkingFeeReportRange(startDate: string, endDate: string) {

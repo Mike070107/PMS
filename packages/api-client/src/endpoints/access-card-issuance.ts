@@ -229,6 +229,8 @@ export interface ParkingMovementEntry {
   resident: string | null;
   inTime: string | null;
   outTime: string | null;
+  inGate: string | null;
+  outGate: string | null;
 }
 
 export interface ParkingMovementQuery {

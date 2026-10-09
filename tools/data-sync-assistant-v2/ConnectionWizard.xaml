@@ -54,16 +54,16 @@
             <StackPanel><TextBlock Text="主数据库" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="DatabaseOneInput" /></StackPanel>
             <StackPanel Grid.Column="2"><TextBlock Text="第二数据库（可选）" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="DatabaseTwoInput" /></StackPanel>
           </Grid>
-          <Expander x:Name="MovementFields" Header="进出记录历史库（如与车辆库不同，请展开配置）" Margin="0,12,0,0">
+          <Expander x:Name="MovementFields" Header="临停金额报表外部数据源（可选）" Margin="0,12,0,0">
             <StackPanel Margin="10,10,10,4">
-              <TextBlock Text="进出记录从 TC.View_RecordAll 读取。留空时尝试上面的同名车辆库。" TextWrapping="Wrap" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,8" />
-              <TextBlock Text="停车车辆库位于 192.168.6.3：一期 parking1、二期 parking2。仅当进出记录确实存放在其他库时才填写下方地址；旧网页中的历史地址不能作为当前配置依据。" TextWrapping="Wrap" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,8" />
-              <TextBlock Text="一期历史库 SQL Server" Foreground="{StaticResource PmsMuted}" /><TextBox x:Name="MovementServerOneInput" />
-              <TextBlock Text="一期历史库名称" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementDatabaseOneInput" />
-              <TextBlock Text="二期历史库 SQL Server" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementServerTwoInput" />
-              <TextBlock Text="二期历史库名称" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementDatabaseTwoInput" />
-              <TextBlock Text="历史库用户（留空沿用上面的用户）" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementUserInput" />
-              <TextBlock Text="历史库密码（留空沿用上面的密码；已保存时留空保持）" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" />
+              <TextBlock Text="车牌进出记录直接读取上面停车库的 dbo.Car_Out，不需要填写这里。下列参数仅用于尚待现场核实的临停金额报表视图；不确定时请留空。" TextWrapping="Wrap" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,8" />
+              <TextBlock Text="停车车辆库位于 192.168.6.3：一期 parking1、二期 parking2。不要把门禁卡库或旧网页地址填作停车来源。" TextWrapping="Wrap" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,8" />
+              <TextBlock Text="一期临停报表 SQL Server" Foreground="{StaticResource PmsMuted}" /><TextBox x:Name="MovementServerOneInput" />
+              <TextBlock Text="一期临停报表数据库" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementDatabaseOneInput" />
+              <TextBlock Text="二期临停报表 SQL Server" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementServerTwoInput" />
+              <TextBlock Text="二期临停报表数据库" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementDatabaseTwoInput" />
+              <TextBlock Text="临停报表用户（留空沿用上面的用户）" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementUserInput" />
+              <TextBlock Text="临停报表密码（留空沿用上面的密码；已保存时留空保持）" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" />
               <PasswordBox x:Name="MovementPasswordInput" MinHeight="38" Padding="10,7" BorderBrush="{StaticResource PmsBorder}" />
               <TextBlock x:Name="MovementPasswordHint" Foreground="#7A8EA4" FontSize="10" Margin="0,5,0,0" />
             </StackPanel>

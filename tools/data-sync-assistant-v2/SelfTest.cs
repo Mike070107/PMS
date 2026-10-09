@@ -50,6 +50,8 @@ namespace Pms.DataSyncAssistant
                 VerifyAccessGatewayMigration(root);
                 VerifyLegacyRoomMatching();
                 VerifyParkingOwnerColumnMapping();
+                VerifyParkingMovementSource();
+                VerifyParkingFeeSource();
                 VerifyParkingDownloadParameters();
                 VerifyParkingOwnerRebind();
                 VerifyActivityHistory(root);
@@ -64,6 +66,46 @@ namespace Pms.DataSyncAssistant
                 if (full.StartsWith(temp, StringComparison.OrdinalIgnoreCase) && Directory.Exists(full))
                     Directory.Delete(full, true);
             }
+        }
+
+        private static void VerifyParkingMovementSource()
+        {
+            using (var connection = new System.Data.SqlClient.SqlConnection())
+            using (var command = ParkingDatabase.CreateMovementCommand(connection, "沪ATEST1", new DateTime(2026, 10, 1), new DateTime(2026, 10, 2), true, true))
+            {
+                if (!command.CommandText.Contains("[dbo].[Car_Out]") ||
+                    !command.CommandText.Contains("[P_plate] = @plate") ||
+                    !command.CommandText.Contains("[Int_Time]") ||
+                    !command.CommandText.Contains("[out_Time]") ||
+                    command.CommandText.Contains("View_RecordAll") ||
+                    (string)command.Parameters["@plate"].Value != "沪ATEST1")
+                    throw new InvalidOperationException("停车进出记录没有使用停车库 Car_Out 的精确车牌和日期范围");
+            }
+            var table = new System.Data.DataTable();
+            table.Columns.Add("P_plate", typeof(string));
+            table.Columns.Add("Int_Time", typeof(DateTime));
+            table.Columns.Add("out_Time", typeof(DateTime));
+            table.Columns.Add("P_InPakname", typeof(string));
+            table.Columns.Add("P_OutPakname", typeof(string));
+            table.Rows.Add("沪ATEST1", new DateTime(2026, 10, 1, 8, 1, 2), new DateTime(2026, 10, 1, 18, 3, 4), "一期入口", "一期出口");
+            using (var reader = table.CreateDataReader())
+            {
+                var rows = ParkingDatabase.ReadMovementRows(reader, "parking1");
+                if (rows.Count != 1 || (string)rows[0].fields["carNo"] != "沪ATEST1" ||
+                    (string)rows[0].fields["inTime"] != "2026-10-01 08:01:02" ||
+                    (string)rows[0].fields["outTime"] != "2026-10-01 18:03:04" ||
+                    (string)rows[0].fields["inGate"] != "一期入口" ||
+                    (string)rows[0].fields["outGate"] != "一期出口")
+                    throw new InvalidOperationException("停车 Car_Out 字段映射错误");
+            }
+        }
+
+        private static void VerifyParkingFeeSource()
+        {
+            if (ParkingDatabase.ParkingExitFeeTable != "[dbo].[Car_Out]" ||
+                ParkingDatabase.ParkingExitFeeDate != "[out_Time]" ||
+                ParkingDatabase.ParkingExitFeeAmount != "[P_Shoufei]")
+                throw new InvalidOperationException("停车出场收费报表未使用停车库 Car_Out 的收费字段");
         }
 
         private static void VerifyParkingOwnerRebind()

@@ -465,7 +465,7 @@ function ParkingFeesReport() {
     String(b.fields.day).localeCompare(String(a.fields.day)) || a.fields.category.localeCompare(b.fields.category));
   const detail = rows.filter((row) => row.fields.kind === 'detail').sort((a, b) =>
     String(b.fields.occurredAt).localeCompare(String(a.fields.occurredAt)));
-  const categoryLabel = (category: ParkingFeeCategory) => category === 'renewal' ? '月租续期记录金额' : '临停应收金额';
+  const categoryLabel = (category: ParkingFeeCategory) => category === 'renewal' ? '月租续期记录金额' : '出场收费记录金额';
   const sourceLabel = (database: string) => database === 'parking1' ? '一期' : database === 'parking2' ? '二期' : '一、二期';
 
   const exportReport = async () => {
@@ -497,7 +497,7 @@ function ParkingFeesReport() {
   };
 
   return <div className="pms-report-pane">
-    <CaliberNote>月租按旧库 <b>P_moneyKeep 的续期操作时间</b>、类型 5 统计记录金额；临停按捷顺出场视图 <b>OutTime</b> 统计 Charge1 应收金额。两类不是支付平台的实收，不能直接当作到账收入。</CaliberNote>
+    <CaliberNote>月租按一期、二期停车库 <b>P_moneyKeep</b> 的类型 5 续期流水统计；出场收费按同库 <b>Car_Out.out_Time</b> 与 <b>P_Shoufei &gt; 0</b> 统计。Car_Out 尚不能可靠区分所有临停与其他补费，因此暂称“出场收费记录金额”；均非支付平台到账金额，现场金额仍需与旧系统对账。</CaliberNote>
     <Card className="pms-report-toolbar" size="small">
       <Space wrap>
         <DatePicker.RangePicker aria-label="停车金额报表日期" allowClear={false} value={range}
@@ -513,7 +513,7 @@ function ParkingFeesReport() {
     {query?.status === 'completed' && <>
       <Row gutter={[12, 12]} className="pms-report-tiles" style={{ marginTop: 12 }}>
         <Col xs={24} md={12}><Card className="pms-report-tile"><Statistic title="月租续期记录金额" value={centsToYuan(total('renewal', 'amountCents'))} suffix="元" /><Text type="secondary">{total('renewal', 'count')} 笔 · 一期 {formatFeeMoney(summary('renewal', 'parking1')?.amountCents ?? 0)} / 二期 {formatFeeMoney(summary('renewal', 'parking2')?.amountCents ?? 0)}</Text></Card></Col>
-        <Col xs={24} md={12}><Card className="pms-report-tile"><Statistic title="临停应收金额" value={centsToYuan(total('temporary', 'amountCents'))} suffix="元" /><Text type="secondary">{total('temporary', 'count')} 笔 · 一期 {formatFeeMoney(summary('temporary', 'parking1')?.amountCents ?? 0)} / 二期 {formatFeeMoney(summary('temporary', 'parking2')?.amountCents ?? 0)}</Text></Card></Col>
+        <Col xs={24} md={12}><Card className="pms-report-tile"><Statistic title="出场收费记录金额" value={centsToYuan(total('temporary', 'amountCents'))} suffix="元" /><Text type="secondary">{total('temporary', 'count')} 笔 · 一期 {formatFeeMoney(summary('temporary', 'parking1')?.amountCents ?? 0)} / 二期 {formatFeeMoney(summary('temporary', 'parking2')?.amountCents ?? 0)}</Text></Card></Col>
       </Row>
       <Card title="每日金额" style={{ marginTop: 12 }}><Table size="small" rowKey={(row) => `${row.fields.category}-${row.fields.day}`} dataSource={daily} pagination={{ pageSize: 10 }} scroll={{ x: 550 }} columns={[
         { title: '日期', dataIndex: ['fields', 'day'] },
