@@ -200,11 +200,24 @@ namespace Pms.AccessCardAgent
             return String.IsNullOrWhiteSpace(task.displayName) ? task.address : task.displayName.Trim();
         }
 
-        private static string ExtractBuildingNo(params string[] values)
+        internal static string ExtractBuildingNo(params string[] values)
         {
             foreach (var value in values)
             {
                 if (String.IsNullOrWhiteSpace(value)) continue;
+                var exactNumber = Regex.Match(value, @"^\s*(\d{1,3})\s*$");
+                if (exactNumber.Success)
+                {
+                    var exactNormalized = exactNumber.Groups[1].Value.TrimStart('0');
+                    return exactNormalized.Length == 0 ? "0" : exactNormalized;
+                }
+                var singleDoorController = Regex.Match(value,
+                    @"(?<!\d)(\d{1,3})\s*号\s*单门控制器", RegexOptions.IgnoreCase);
+                if (singleDoorController.Success)
+                {
+                    var controllerNormalized = singleDoorController.Groups[1].Value.TrimStart('0');
+                    return controllerNormalized.Length == 0 ? "0" : controllerNormalized;
+                }
                 var match = Regex.Match(value, @"(?<!\d)(\d{1,3})\s*(?:号|#)?(?:楼|幢|栋|大门)", RegexOptions.IgnoreCase);
                 if (!match.Success) continue;
                 var normalized = match.Groups[1].Value.TrimStart('0');

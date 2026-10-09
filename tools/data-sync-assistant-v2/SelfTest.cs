@@ -227,6 +227,9 @@ namespace Pms.DataSyncAssistant
 
             if (AccessGatewayDatabase.ExtractRoomBuildingNo("228/41/402/25") != "41")
                 throw new InvalidOperationException("iCCard 用户姓名未能解析本楼栋");
+            if (AccessGatewayDatabase.ExtractBuildingNo("20", "20号单门控制器") != "20" ||
+                AccessGatewayDatabase.ExtractBuildingNo("02", "02号单门控制器") != "2")
+                throw new InvalidOperationException("MjSystem 现场纯数字门名或单门控制器名称解析失败");
             var selectedGroup = AccessGatewayDatabase.SelectIcCardGroup("41", new[]
             {
                 new IcCardGroupCandidate { Id = 11, Name = "11号楼" },
