@@ -4184,3 +4184,10 @@
 - 自上次（6d0ee5dd）以来上线的相关提交：
   - 5019de39 feat: connect Deliyun parking read-only account
 
+## 2026-10-09 10:59 · api · d2ea3a76
+
+- 包：`pms-api-fast-20261009-105856.tar.gz`
+- 提交：d2ea3a76 fix(parking): distinguish gate receivables and single renewal charge
+- 自上次（5019de39）以来上线的相关提交：
+  - 8a886476 fix(parking): read movement and exit fees from Car_Out
+
