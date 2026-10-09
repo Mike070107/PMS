@@ -83,6 +83,16 @@ export function accessCardUserDisplayName(roomKey: string, sequence?: number | n
     : normalizedRoomKey;
 }
 
+/** 历史列表优先展示捷顺旧库真实登记名称；缺失时按房号与累计序号补齐。 */
+export function accessCardHistoryRoomLabel(
+  roomKey: string,
+  sequence: number,
+  legacyPersonName?: string | null,
+): string {
+  const storedName = legacyPersonName?.trim();
+  return storedName || accessCardUserDisplayName(roomKey, sequence);
+}
+
 /** 2.5.29 起 .88 助手才会把完整显示姓名写入门禁数据库。 */
 export function supportsAccessCardDisplayName(version: string | null | undefined): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');

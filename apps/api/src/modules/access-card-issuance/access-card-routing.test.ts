@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   accessBuildingsForHouse,
   accessCardUserDisplayName,
+  accessCardHistoryRoomLabel,
   accessSystemOf,
   belongsToSameAccessArea,
   icToWg,
@@ -72,6 +73,11 @@ test('门禁软件用户姓名展示房号和该房累计发卡序号', () => {
   assert.equal(accessCardUserDisplayName('228/16/401', 6), '228/16/401/6');
   assert.equal(accessCardUserDisplayName('228/16/401/', 6), '228/16/401/6');
   assert.equal(accessCardUserDisplayName('228/16/401', null), '228/16/401');
+});
+
+test('房号历史优先展示捷顺登记名称，缺失时生成房号与累计序号', () => {
+  assert.equal(accessCardHistoryRoomLabel('228/16/401', 6, ' 228/16/401/6 '), '228/16/401/6');
+  assert.equal(accessCardHistoryRoomLabel('228/16/401', 6, null), '228/16/401/6');
 });
 
 test('完整门禁用户姓名任务只交给 2.5.29 或更新助手', () => {

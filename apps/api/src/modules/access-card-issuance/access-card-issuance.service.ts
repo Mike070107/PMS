@@ -33,6 +33,7 @@ import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import {
   accessBuildingsForHouse,
+  accessCardHistoryRoomLabel,
   accessCardUserDisplayName,
   accessSystemOf,
   belongsToSameAccessArea,
@@ -190,6 +191,7 @@ export class AccessCardIssuanceService {
     }
     const history = mergedHistory.map((row) => ({
       ...row,
+      roomLabel: accessCardHistoryRoomLabel(context.roomKey, row.sequence, row.roomLabel),
       latestAuthorization: latestAuthorizationByRow.has(row.id)
         ? this.historyAuthorizationResponse(latestAuthorizationByRow.get(row.id)!)
         : null,
@@ -2354,6 +2356,7 @@ export class AccessCardIssuanceService {
         accessStatus: item.accessStatus,
         legacySyncStatus: item.legacySyncStatus,
         controllerResults: item.controllerResults,
+        roomLabel: null,
       }))
       .reverse();
   }
@@ -2469,6 +2472,7 @@ export class AccessCardIssuanceService {
       accessStatus: string;
       legacySyncStatus: string;
       controllerResults: Array<Record<string, unknown>>;
+      roomLabel?: string | null;
     }>,
     legacyHistory: AccessCardLegacySnapshot['history'],
     phase: 'phase1' | 'phase2',
@@ -2505,6 +2509,7 @@ export class AccessCardIssuanceService {
             ...existing,
             sequence: row.sequence,
             legacyPersonNo: row.personNo,
+            roomLabel: row.personName,
             issuedAt: row.issuedAt || existing.issuedAt,
             legacySyncStatus: 'synced',
           });
@@ -2513,6 +2518,7 @@ export class AccessCardIssuanceService {
           id: -row.personId,
           sequence: row.sequence,
           legacyPersonNo: row.personNo,
+          roomLabel: row.personName,
           icCardNo: row.icCardNo,
           wgCardNo: phase === 'phase2' && row.icCardNo ? icToWg(row.icCardNo) : null,
           issuedAt: row.issuedAt,

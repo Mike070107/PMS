@@ -74,8 +74,8 @@ const PREVIEW_CONTEXT: AccessCardHouseContext = {
   issuedCount: 4,
   nextSequence: 5,
   history: [
-    { id: 4, sequence: 4, legacyPersonNo: '11308', icCardNo: '22334455', wgCardNo: '06052751', issuedAt: '2026-09-29T06:24:04.000Z', accessStatus: 'not_uploaded', legacySyncStatus: 'synced', controllerResults: [] },
-    { id: 3, sequence: 3, legacyPersonNo: null, icCardNo: 'A1B2C3D4', wgCardNo: '19545729', issuedAt: new Date().toISOString(), accessStatus: 'controller_uploaded', legacySyncStatus: 'pending', controllerResults: [
+    { id: 4, sequence: 4, roomLabel: '228/5/301/4', legacyPersonNo: '11308', icCardNo: '22334455', wgCardNo: '06052751', issuedAt: '2026-09-29T06:24:04.000Z', accessStatus: 'not_uploaded', legacySyncStatus: 'synced', controllerResults: [] },
+    { id: 3, sequence: 3, roomLabel: '228/5/301/3', legacyPersonNo: null, icCardNo: 'A1B2C3D4', wgCardNo: '19545729', issuedAt: new Date().toISOString(), accessStatus: 'controller_uploaded', legacySyncStatus: 'pending', controllerResults: [
       { wgCardNo: '19545729', accessSystem: 'iccard', buildingNo: '4', controller: '4号楼控制器', door: '4号大门', sourceTable: 't_d_Privilege' },
       { wgCardNo: '19545729', accessSystem: 'iccard', buildingNo: '11', controller: '11号楼控制器', door: '11号大门', sourceTable: 't_d_Privilege' },
       { wgCardNo: '19545729', accessSystem: 'iccard', buildingNo: '41', controller: '41号楼控制器', door: '41号大门', sourceTable: 't_d_Privilege' },
@@ -84,6 +84,7 @@ const PREVIEW_CONTEXT: AccessCardHouseContext = {
     {
       id: 2,
       sequence: 2,
+      roomLabel: '228/5/301/2',
       legacyPersonNo: '11251',
       icCardNo: '11223344',
       wgCardNo: '05108721',
@@ -107,7 +108,7 @@ const PREVIEW_CONTEXT: AccessCardHouseContext = {
         completedAt: '2026-09-22T02:26:00.000Z',
       },
     },
-    { id: 1, sequence: 1, legacyPersonNo: '10982', icCardNo: '0A1B2C3D', wgCardNo: '04406922', issuedAt: '2025-12-16T01:08:00.000Z', accessStatus: 'controller_uploaded', legacySyncStatus: 'synced', controllerResults: [{ wgCardNo: '04406922', accessSystem: 'mjsystem', buildingNo: '3', controller: '3号楼控制器', door: '3号楼大门', sourceTable: 'MJ_MacPower' }] },
+    { id: 1, sequence: 1, roomLabel: '228/5/301/1', legacyPersonNo: '10982', icCardNo: '0A1B2C3D', wgCardNo: '04406922', issuedAt: '2025-12-16T01:08:00.000Z', accessStatus: 'controller_uploaded', legacySyncStatus: 'synced', controllerResults: [{ wgCardNo: '04406922', accessSystem: 'mjsystem', buildingNo: '3', controller: '3号楼控制器', door: '3号楼大门', sourceTable: 'MJ_MacPower' }] },
   ],
   historySources: { pms: true, legacy80: true, accessPermissions: true, accessPermissionsMessage: '已按门禁权限表核验 3 张卡', message: '已合并 192.168.1.80 历史记录' },
 };
@@ -566,6 +567,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         history: [{
           id: target.id,
           sequence: current.history.length + 1,
+          roomLabel: `${current.house.roomKey}/${current.history.length + 1}`,
           legacyPersonNo: null,
           icCardNo,
           wgCardNo: batch.projectPhase === 'phase1' ? null : `19545${String(720 + target.sequence).padStart(3, '0')}`,
@@ -882,6 +884,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
 
   const columns = [
     { title: '发卡序号', dataIndex: 'sequence', width: 92, fixed: 'left' as const, render: (value: number) => <strong>{value}</strong> },
+    { title: '房号', dataIndex: 'roomLabel', width: 180, fixed: 'left' as const, render: (value: string) => value || '—' },
     { title: '捷顺系统编号', dataIndex: 'legacyPersonNo', width: 136, render: (value: string | null) => value || <Tag>同步中</Tag> },
     { title: 'IC 卡号', dataIndex: 'icCardNo', width: 150, render: (value: string | null) => value || '—' },
     { title: 'WG 卡号', dataIndex: 'wgCardNo', width: 130, render: (value: string | null) => value || <Text type="secondary">不适用</Text> },
@@ -1237,7 +1240,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
               columns={columns}
               dataSource={history}
               pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
-              scroll={{ x: 1280 }}
+              scroll={{ x: 1460 }}
               locale={{ emptyText: <Empty description="这个房号还没有新系统发卡记录" /> }}
             />
           </Card>

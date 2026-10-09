@@ -15,6 +15,7 @@ export interface AccessCardPermissionResult {
 export interface AccessCardHistoryRow {
   id: number;
   sequence: number;
+  roomLabel: string;
   legacyPersonNo: string | null;
   icCardNo: string | null;
   wgCardNo: string | null;
