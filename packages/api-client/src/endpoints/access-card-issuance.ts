@@ -252,6 +252,8 @@ export interface DeliyunVehicle {
   address: string | null;
   cardPoolId: string | null;
   cardPoolName: string | null;
+  garageNames: string[];
+  civilDefenseAuthorized: boolean;
   poolPeriods: Array<{ name: string | null; beginDate: string | null; endDate: string | null }>;
 }
 
@@ -370,6 +372,20 @@ export const renewDeliyunVehicle = (data: {
   idempotencyKey: string;
 }) => request<ParkingOperation>({
   url: '/access-card-issuance/parking/deliyun/renewals',
+  method: 'POST',
+  data,
+});
+
+export const setDeliyunCivilDefenseAuthorization = (data: {
+  plate: string;
+  authorized: boolean;
+  vehicleId?: string | null;
+  beginDate?: string | null;
+  endDate?: string | null;
+  remark?: string | null;
+  idempotencyKey: string;
+}) => request<ParkingOperation>({
+  url: '/access-card-issuance/parking/deliyun/civil-defense-authorizations',
   method: 'POST',
   data,
 });

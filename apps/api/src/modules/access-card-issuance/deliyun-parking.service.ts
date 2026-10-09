@@ -29,6 +29,8 @@ export type DeliyunVehicle = {
   address: string | null;
   cardPoolId: string | null;
   cardPoolName: string | null;
+  garageNames: string[];
+  civilDefenseAuthorized: boolean;
   poolPeriods: Array<{ name: string | null; beginDate: string | null; endDate: string | null }>;
 };
 
@@ -45,6 +47,14 @@ export type DeliyunRenewalResult = {
   plate: string;
   previousEndDate: string;
   endDate: string;
+  verified: true;
+};
+
+export type DeliyunCivilDefenseResult = {
+  vehicleId: string;
+  plate: string;
+  authorized: boolean;
+  created: boolean;
   verified: true;
 };
 
@@ -88,7 +98,12 @@ export class DeliyunParkingService {
       this.assertSuccess(response, '德立云车辆查询失败');
       const rows = Array.isArray(response.data) ? response.data : [];
       const matched = rows.map(mapDeliyunVehicle).filter((row) => normalizePlate(row.plate) === normalized);
-      const enriched = await Promise.all(matched.map((row) => this.enrichPoolPeriods(row, session)));
+      const civilDefenseGarage = await this.civilDefenseGarage(session);
+      const enriched = await Promise.all(matched.map(async (row) => {
+        const detail = await this.vehicleDetail(row.id, session);
+        const authorization = deliyunGarageAuthorization(detail, civilDefenseGarage.id);
+        return this.enrichPoolPeriods({ ...row, ...authorization }, session);
+      }));
       return {
         project: session.park.unitName,
         rows: enriched,
@@ -131,6 +146,99 @@ export class DeliyunParkingService {
     if (!verified || verified.endDate !== input.endDate)
       throw new ServiceUnavailableException('德立云已接受更新，但回读到期日不一致；请刷新核对，暂勿重复提交');
     return { vehicleId, plate, previousEndDate: input.previousEndDate, endDate: input.endDate, verified: true };
+  }
+
+  async setCivilDefenseAuthorization(input: {
+    plate: string;
+    authorized: boolean;
+    vehicleId?: string | null;
+    beginDate?: string | null;
+    endDate?: string | null;
+    remark?: string | null;
+  }): Promise<DeliyunCivilDefenseResult> {
+    if (!this.writeEnabled()) throw new ServiceUnavailableException('德立云车库授权写入尚未启用');
+    const plate = normalizePlate(input.plate);
+    if (!isFullPlate(plate)) throw new BadRequestException('德立云车库授权需要完整车牌');
+
+    const session = await this.ensureMiniappSession();
+    const civilDefenseGarage = await this.civilDefenseGarage(session);
+    const current = await this.findVehiclesByPlate(plate);
+    if (current.rows.length > 1) throw new BadRequestException('德立云存在重复车牌，请先在德立云后台清理');
+    const row = current.rows[0];
+    const expectedVehicleId = input.vehicleId?.trim() || '';
+    if (expectedVehicleId && row?.id !== expectedVehicleId)
+      throw new BadRequestException('德立云车辆已变化，请刷新后重新操作');
+
+    let vehicleId = row?.id || '';
+    let created = false;
+    if (row) {
+      const detail = await this.vehicleDetail(row.id, session);
+      const actual = deliyunGarageAuthorization(detail, civilDefenseGarage.id).civilDefenseAuthorized;
+      if (actual !== input.authorized) {
+        const payload = buildDeliyunGarageAuthorizationPayload(
+          detail, session.park.unitKey, row.id, civilDefenseGarage.id, input.authorized,
+        );
+        const response = await this.h5Post('/pma/card/updateCard', payload, session.token);
+        this.assertSuccess(response, '德立云人防车库授权更新失败');
+      }
+    } else if (input.authorized) {
+      const beginDate = input.beginDate || '';
+      const endDate = input.endDate || '';
+      if (!isDateOnly(beginDate) || !isDateOnly(endDate) || endDate < beginDate)
+        throw new BadRequestException('德立云新建车辆需要有效的开始日和到期日');
+      const [cardTypes, carTypes] = await Promise.all([
+        this.h5Get<Array<Record<string, unknown>>>('/pma/base/findCardTypeList', { unitKey: session.park.unitKey }, session.token),
+        this.h5Get<Array<Record<string, unknown>>>('/pma/base/findCarTypeList', { unitKey: session.park.unitKey }, session.token),
+      ]);
+      this.assertSuccess(cardTypes, '德立云计费类型读取失败');
+      this.assertSuccess(carTypes, '德立云车型读取失败');
+      const cardTypeId = findNamedOptionId(cardTypes.data, '月票车');
+      const carTypeId = findNamedOptionId(carTypes.data, '小型车');
+      if (!cardTypeId || !carTypeId) throw new ServiceUnavailableException('德立云缺少月票车或小型车配置，已停止写入');
+      const payload = buildDeliyunCreatePayload({
+        unitKey: session.park.unitKey,
+        plate,
+        civilDefenseGarageId: civilDefenseGarage.id,
+        cardTypeId,
+        carTypeId,
+        beginDate,
+        endDate,
+        remark: input.remark || '',
+      });
+      const response = await this.h5Post('/pma/card/addCard', payload, session.token);
+      this.assertSuccess(response, '德立云人防车辆建档失败');
+      created = true;
+    } else {
+      return { vehicleId: '', plate, authorized: false, created: false, verified: true };
+    }
+
+    const verified = await this.findVehiclesByPlate(plate);
+    const verifiedRow = verified.rows.find((item) => !vehicleId || item.id === vehicleId) ?? verified.rows[0];
+    if (!verifiedRow || verifiedRow.civilDefenseAuthorized !== input.authorized)
+      throw new ServiceUnavailableException('德立云已接受车库授权操作，但回读结果不一致；请刷新核对，暂勿重复提交');
+    vehicleId = verifiedRow.id;
+    return { vehicleId, plate, authorized: input.authorized, created, verified: true };
+  }
+
+  private async vehicleDetail(vehicleId: string, session: MiniappSession): Promise<Record<string, unknown>> {
+    const response = await this.h5Post<Record<string, unknown>>('/pma/card/findCard', {
+      unitKey: session.park.unitKey,
+      id: vehicleId,
+    }, session.token);
+    this.assertSuccess(response, '德立云车辆详情读取失败');
+    const detail = response.data ?? {};
+    if (stringValue(detail.id) !== vehicleId) throw new ServiceUnavailableException('德立云车辆详情与查询结果不一致');
+    return detail;
+  }
+
+  private async civilDefenseGarage(session: MiniappSession): Promise<{ id: string; name: string }> {
+    const response = await this.h5Get<Array<Record<string, unknown>>>('/pma/base/findParkGarageList', {
+      unitKey: session.park.unitKey,
+    }, session.token);
+    this.assertSuccess(response, '德立云车库列表读取失败');
+    const garage = findCivilDefenseGarage(response.data);
+    if (!garage) throw new ServiceUnavailableException('德立云项目未找到二期民防车库，已停止写入');
+    return garage;
   }
 
   private async enrichPoolPeriods(row: DeliyunVehicle, session: MiniappSession): Promise<DeliyunVehicle> {
@@ -210,7 +318,7 @@ export class DeliyunParkingService {
     return response.data;
   }
 
-  private async h5Get<T>(path: '/pma/card/findParkCards' | '/pma/card/findCardPoolParks', params: Record<string, string>, token: string) {
+  private async h5Get<T>(path: '/pma/card/findParkCards' | '/pma/card/findCardPoolParks' | '/pma/base/findParkGarageList' | '/pma/base/findCardTypeList' | '/pma/base/findCarTypeList', params: Record<string, string>, token: string) {
     const response = await axios.get<DeliyunResponse<T>>(`${PARKING_H5_API}${path}`, {
       params,
       headers: { Cookie: `pmatoken=${token}` },
@@ -222,7 +330,7 @@ export class DeliyunParkingService {
     return response.data;
   }
 
-  private async h5Post<T = unknown>(path: '/pma/card/findCard' | '/pma/card/updateCard', payload: Record<string, unknown>, token: string) {
+  private async h5Post<T = unknown>(path: '/pma/card/findCard' | '/pma/card/updateCard' | '/pma/card/addCard', payload: Record<string, unknown>, token: string) {
     const body = new URLSearchParams();
     for (const [key, value] of Object.entries(payload))
       if (value !== undefined && value !== null) body.set(key, String(value));
@@ -314,6 +422,7 @@ export function buildDeliyunRenewalPayload(detail: Record<string, unknown>, unit
     carTypeId: detail.carTypeId,
     peopleId: detail.peopleId,
     cprtId: detail.cprtId,
+    cardGroupId: detail.cardGroupId,
     poolId: detail.poolId,
     money: detail.money,
     beginTime: detail.beginTime,
@@ -322,9 +431,97 @@ export function buildDeliyunRenewalPayload(detail: Record<string, unknown>, unit
   };
 }
 
+export function findCivilDefenseGarage(items: unknown): { id: string; name: string } | null {
+  if (!Array.isArray(items)) return null;
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const id = stringValue(row.id);
+    const name = stringValue(row.pgName ?? row.name ?? row.tname);
+    const normalized = name.replace(/\s/g, '');
+    if (id && /二期/.test(normalized) && /(民防|人防)/.test(normalized) && /(车库|车位)/.test(normalized)) return { id, name };
+  }
+  return null;
+}
+
+export function deliyunGarageAuthorization(detail: Record<string, unknown>, civilDefenseGarageId: string) {
+  const ids = stringList(detail.pgIds);
+  const garageNames = stringList(detail.pgNames);
+  return {
+    garageNames,
+    civilDefenseAuthorized: ids.includes(civilDefenseGarageId) || garageNames.some((name) =>
+      /二期/.test(name.replace(/\s/g, '')) && /(民防|人防)/.test(name.replace(/\s/g, ''))),
+  };
+}
+
+export function buildDeliyunGarageAuthorizationPayload(
+  detail: Record<string, unknown>,
+  unitKey: string,
+  vehicleId: string,
+  civilDefenseGarageId: string,
+  authorized: boolean,
+) {
+  const current = stringList(detail.pgIds);
+  const pgIds = authorized
+    ? Array.from(new Set([...current, civilDefenseGarageId]))
+    : current.filter((id) => id !== civilDefenseGarageId);
+  return {
+    unitKey,
+    id: vehicleId,
+    plateNum: detail.plateNum,
+    cardNo: detail.cardNo,
+    pgIds: pgIds.join(','),
+    cardTypeId: detail.cardTypeId,
+    carTypeId: detail.carTypeId,
+    peopleId: detail.peopleId,
+    cprtId: detail.cprtId,
+    cardGroupId: detail.cardGroupId,
+    poolId: detail.poolId,
+    money: detail.money,
+    beginTime: detail.beginTime,
+    endTime: detail.endTime,
+    remark: detail.remark,
+  };
+}
+
+export function buildDeliyunCreatePayload(input: {
+  unitKey: string;
+  plate: string;
+  civilDefenseGarageId: string;
+  cardTypeId: string;
+  carTypeId: string;
+  beginDate: string;
+  endDate: string;
+  remark?: string | null;
+}) {
+  const note = stringValue(input.remark);
+  const source = '操作来源：PMS系统';
+  return {
+    unitKey: input.unitKey,
+    plateNum: normalizePlate(input.plate),
+    cardNo: '',
+    pgIds: input.civilDefenseGarageId,
+    cardTypeId: input.cardTypeId,
+    carTypeId: input.carTypeId,
+    peopleId: '',
+    cprtId: '',
+    cardGroupId: '',
+    poolId: '',
+    money: 0,
+    beginTime: startOfDayEpoch(input.beginDate),
+    endTime: endOfDayEpoch(input.endDate),
+    remark: note.includes(source) ? note : [note, source].filter(Boolean).join('\n'),
+  };
+}
+
 export function endOfDayEpoch(date: string) {
   if (!isDateOnly(date)) throw new Error('DELIYUN_INVALID_DATE');
   return Math.floor(new Date(`${date}T23:59:59+08:00`).getTime() / 1000);
+}
+
+export function startOfDayEpoch(date: string) {
+  if (!isDateOnly(date)) throw new Error('DELIYUN_INVALID_DATE');
+  return Math.floor(new Date(`${date}T00:00:00+08:00`).getTime() / 1000);
 }
 
 export function encryptMiniappData(payload: Record<string, unknown>, key: string, iv: string) {
@@ -345,8 +542,20 @@ export function mapDeliyunVehicle(value: Record<string, unknown>): DeliyunVehicl
     beginDate: nullableString(value.beginDate), endDate: nullableString(value.endDate),
     ownerName: nullableString(value.pname), ownerPhone: nullableString(value.pmobile), address: nullableString(value.addr),
     cardPoolId: nullableString(value.cardPoolId), cardPoolName: nullableString(value.cardPoolName),
-    poolPeriods: [],
+    garageNames: [], civilDefenseAuthorized: false, poolPeriods: [],
   };
+}
+
+function stringList(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : value === null || value === undefined ? [] : [value];
+  return Array.from(new Set(raw.map((item) => stringValue(item)).filter(Boolean)));
+}
+
+function findNamedOptionId(items: unknown, expectedName: string): string | null {
+  if (!Array.isArray(items)) return null;
+  const match = items.find((item) => item && typeof item === 'object' &&
+    stringValue((item as Record<string, unknown>).tname ?? (item as Record<string, unknown>).name) === expectedName) as Record<string, unknown> | undefined;
+  return match ? nullableString(match.id) : null;
 }
 
 export function legacyDeliyunSign(params: Record<string, string>, secret: string) {

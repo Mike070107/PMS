@@ -56,6 +56,7 @@ import {
   CreateParkingMovementQueryDto,
   CreateParkingFeeReportDto,
   RenewDeliyunVehicleDto,
+  SetDeliyunCivilDefenseAuthorizationDto,
   CreateParkingOwnerUpdateDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
@@ -677,6 +678,44 @@ export class AccessCardIssuanceService {
       task.status = 'failed';
       task.completedAt = new Date();
       task.lastError = (error instanceof Error ? error.message : '德立云有效期续期失败').slice(0, 500);
+    }
+    task.updatedBy = user.id;
+    return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));
+  }
+
+  async setDeliyunCivilDefenseAuthorization(dto: SetDeliyunCivilDefenseAuthorizationDto, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const idempotencyKey = dto.idempotencyKey.trim();
+    const existing = await this.parkingOperationRepo.findOne({ where: { tenantId, idempotencyKey } });
+    if (existing) return this.parkingOperationResponse(existing);
+    const now = new Date();
+    const task = await this.parkingOperationRepo.save(this.parkingOperationRepo.create({
+      tenantId, kind: 'update_garages', database: 'deliyun', idempotencyKey,
+      sourceRecordId: dto.vehicleId?.trim() || null, pmsUserId: null,
+      payload: {
+        plate: dto.plate.trim().toUpperCase(), authorized: dto.authorized,
+        beginDate: dto.beginDate || null, endDate: dto.endDate || null, remark: dto.remark || null,
+      },
+      expected: { vehicleId: dto.vehicleId?.trim() || null }, result: null, status: 'running', attempt: 1,
+      requestedAt: now, completedAt: null, leaseAgentKey: null, leaseExpiresAt: null,
+      lastError: null, rollbackOfOperationId: null, createdBy: user.id, updatedBy: user.id,
+    }));
+    try {
+      task.result = await this.deliyun.setCivilDefenseAuthorization({
+        plate: dto.plate,
+        authorized: dto.authorized,
+        vehicleId: dto.vehicleId,
+        beginDate: dto.beginDate,
+        endDate: dto.endDate,
+        remark: dto.remark,
+      });
+      task.status = 'completed';
+      task.completedAt = new Date();
+      task.lastError = null;
+    } catch (error) {
+      task.status = 'failed';
+      task.completedAt = new Date();
+      task.lastError = (error instanceof Error ? error.message : '德立云人防车库授权失败').slice(0, 500);
     }
     task.updatedBy = user.id;
     return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));

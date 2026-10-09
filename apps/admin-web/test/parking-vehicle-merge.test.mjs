@@ -84,6 +84,26 @@ test('德立云续期明确只改有效期且写后回读', () => {
   assert.match(page, /车位池车辆暂不能在此续期/, '关联车位日期不能冒充普通车辆有效期修改');
 });
 
+test('二期人防勾选使用德立云真实授权并在变更后重新查询', () => {
+  const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(page, /key: 'civil'[\s\S]{0,160}authorized: false/,
+    '人防授权不得继续硬编码为未勾选');
+  assert.match(page, /civilDefenseAuthorized/,
+    '本地车辆卡必须合并同车牌的德立云授权结果');
+  assert.match(page, /label: '二期人防车库', value: 'civil'/,
+    '调整车库授权必须提供人防勾选');
+  assert.match(page, /setDeliyunCivilDefenseAuthorization\(\{/,
+    '人防授权变化必须调用德立云写入接口');
+  assert.match(page, /kind === 'add_vehicle' && requestedGarages\.includes\('civil'\)/,
+    '新增车辆选择人防时也必须自动写入德立云');
+  assert.match(page, /garages,\s*\n\s*effective:/,
+    '新增车辆提交必须保留用户选择的人防车库供德立云写入');
+  assert.match(page, /begin: \['stratime', 'sarttime', 'starttime'/,
+    '德立云新建车辆的开始日必须兼容旧库 D_Stratime 与历史 Sart_Time 拼写');
+  assert.match(page, /await searchParking\(searchedTerm \|\| term\)/,
+    '旧库与德立云完成后必须重新查询展示最终状态');
+});
+
 test('到期日只比较日期，房号自增后缀仍识别为同一房号', () => {
   assert.equal(normalizeParkingDate('2027-09-30 23:59:59'), '2027-09-30');
   assert.equal(normalizeParkingRoomIdentity('198/5/102/2'), '198/5/102');

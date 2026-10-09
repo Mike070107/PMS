@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayUnique,
   IsArray,
+  IsBoolean,
   IsInt,
   IsIn,
   IsOptional,
@@ -351,6 +352,41 @@ export class RenewDeliyunVehicleDto {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   endDate: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
+  idempotencyKey: string;
+}
+
+export class SetDeliyunCivilDefenseAuthorizationDto {
+  @IsString()
+  @MinLength(7)
+  @MaxLength(20)
+  plate: string;
+
+  @IsBoolean()
+  authorized: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  vehicleId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  beginDate?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  endDate?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  remark?: string | null;
 
   @IsString()
   @MinLength(8)

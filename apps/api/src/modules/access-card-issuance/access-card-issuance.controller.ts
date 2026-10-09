@@ -36,6 +36,7 @@ import {
   CreateParkingMovementQueryDto,
   CreateParkingFeeReportDto,
   RenewDeliyunVehicleDto,
+  SetDeliyunCivilDefenseAuthorizationDto,
   CreateParkingOwnerUpdateDto,
   CreateParkingProofUploadDto,
   ParkingQueryReportDto,
@@ -89,6 +90,12 @@ export class AccessCardIssuanceController {
   @RequirePermission('business', 'edit')
   renewDeliyunVehicle(@Body() dto: RenewDeliyunVehicleDto, @CurrentUser() user: AuthUser) {
     return this.service.renewDeliyunVehicle(dto, user);
+  }
+
+  @Post('parking/deliyun/civil-defense-authorizations')
+  @RequirePermission('business', 'edit')
+  setDeliyunCivilDefenseAuthorization(@Body() dto: SetDeliyunCivilDefenseAuthorizationDto, @CurrentUser() user: AuthUser) {
+    return this.service.setDeliyunCivilDefenseAuthorization(dto, user);
   }
 
   @Post('parking/movements/queries')

@@ -106,7 +106,8 @@ export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgr
   const deliyunRows = mode === 'ready' ? [{
     id: 'preview-cloud-1', plate: '沪A12345', cardNo: 'DLY-001', carType: '小型车', cardType: '月票车',
     beginDate: '2026-01-01', endDate: '2026-12-31', ownerName: '张某某', ownerPhone: '13800006421',
-    address: '228/5/301', cardPoolId: null, cardPoolName: null, poolPeriods: [],
+    address: '228/5/301', cardPoolId: null, cardPoolName: null,
+    garageNames: ['二期民防车库'], civilDefenseAuthorized: true, poolPeriods: [],
   }] : undefined;
   return <ParkingManagementPage readinessOverride={readiness} rowsOverride={rows} deliyunRowsOverride={deliyunRows} historyOverride={history} communitiesOverride={communities} />;
 }

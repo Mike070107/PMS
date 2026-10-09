@@ -399,11 +399,17 @@ export default function ParkingManagementPage({
     try {
       const targets = kind === 'renew_vehicle' && rows?.length ? rows : [row];
       const batchKey = createIdempotencyKey();
+      const requestedGarages = (kind === 'update_garages' || kind === 'add_vehicle') && Array.isArray(payload.garages)
+        ? payload.garages.map(String)
+        : [];
+      const localPayload = { ...payload };
+      if (kind === 'update_garages') localPayload.garages = requestedGarages.filter((garage) => garage !== 'civil');
+      if (kind === 'add_vehicle') delete localPayload.garages;
       const renewalAmounts = kind === 'renew_vehicle' ? allocateParkingRenewalAmounts(Number(payload.amount), targets.length) : [];
       const tasks = await Promise.all(targets.map((target, index) => {
         const targetPayload = kind === 'renew_vehicle' && target
           ? { ...payload, amount: renewalAmounts[index], previousEndDate: normalizeParkingDate(fieldValue(target.fields, fieldAliases.expiry)) || '' }
-          : payload;
+          : localPayload;
         const database = target ? parkingDatabase(target.database) : ((payload.database as 'parking1' | 'parking2') || 'parking2');
         return accessCardIssuance.createParkingOperation({
           database,
@@ -425,9 +431,46 @@ export default function ParkingManagementPage({
       const unfinished = completed.find((task) => task.status === 'pending' || task.status === 'running');
       setLastOperation(failed ?? unfinished ?? completed[completed.length - 1] ?? null);
       if (!failed && !unfinished) {
+        if (kind === 'update_garages' && row) {
+          const plate = normalizeParkingPlate(plateValue(row.fields));
+          const cloudRow = deliyunRows.find((item) => normalizeParkingPlate(item.plate) === plate);
+          const desired = requestedGarages.includes('civil');
+          if (desired !== (cloudRow?.civilDefenseAuthorized === true)) {
+            const cloudTask = await accessCardIssuance.setDeliyunCivilDefenseAuthorization({
+              plate,
+              authorized: desired,
+              vehicleId: cloudRow?.id ?? null,
+              beginDate: normalizeParkingDate(fieldValue(row.fields, fieldAliases.begin)),
+              endDate: normalizeParkingDate(fieldValue(row.fields, fieldAliases.expiry)),
+              remark: fieldValue(row.fields, fieldAliases.note),
+              idempotencyKey: `${batchKey}-deliyun`,
+            });
+            if (cloudTask.status !== 'completed') {
+              throw new Error(`一期、二期旧库授权已完成，但德立云人防授权未完成：${cloudTask.error || '请刷新核对后再重试'}`);
+            }
+          }
+        }
+        if (kind === 'add_vehicle' && requestedGarages.includes('civil') && payload.requiresProofReview !== true) {
+          const plate = normalizeParkingPlate(String(payload.plate || ''));
+          const cloudTask = await accessCardIssuance.setDeliyunCivilDefenseAuthorization({
+            plate,
+            authorized: true,
+            vehicleId: null,
+            beginDate: normalizeParkingDate(String(payload.startDate || '')),
+            endDate: normalizeParkingDate(String(payload.endDate || '')),
+            remark: String(payload.note || ''),
+            idempotencyKey: `${batchKey}-deliyun`,
+          });
+          if (cloudTask.status !== 'completed') {
+            throw new Error(`一期或二期旧库已新增车辆，但德立云人防授权未完成：${cloudTask.error || '请刷新核对后再重试'}`);
+          }
+        }
         message.success(targets.length > 1
           ? '一期、二期车牌已同时续期，两个旧库均已读回验证'
-          : `${operationLabel(kind)}已执行，旧库已读回验证`);
+          : kind === 'update_garages' ? '车库授权已执行，旧库与德立云均已回读验证'
+            : kind === 'add_vehicle' && requestedGarages.includes('civil') && payload.requiresProofReview !== true
+              ? '车辆已新增，旧库与德立云人防授权均已回读验证'
+              : `${operationLabel(kind)}已执行，旧库已读回验证`);
         setOperationTarget(null);
         await searchParking(searchedTerm || term);
       } else if (failed) throw new Error(`${parkingDatabase(failed.database) === 'parking1' ? '一期' : '二期'}续期失败：${failed.error || '旧库未完成读回验证'}`);
@@ -663,6 +706,7 @@ export default function ParkingManagementPage({
               key={group.key}
               group={group}
               canWriteLocal={canWriteLocal}
+              deliyunVehicle={deliyunRows.find((item) => normalizeParkingPlate(item.plate) === normalizeParkingPlate(plateValue(group.rows[0].fields)))}
               canSyncParkingInfo={canSyncParkingInfo}
               syncingKey={syncingKey}
               proofLoading={proofLoading}
@@ -762,6 +806,8 @@ export default function ParkingManagementPage({
         error={operationError}
         task={lastOperation}
         targetRows={operationTarget?.rows}
+        deliyunVehicle={operationTarget?.row ? deliyunRows.find((item) => normalizeParkingPlate(item.plate) === normalizeParkingPlate(plateValue(operationTarget.row!.fields))) : undefined}
+        deliyunWriteEnabled={deliyun?.writeEnabled === true}
         onClose={() => { if (!operationBusy) setOperationTarget(null); }}
         onRetry={() => {
           if (!lastOperation) return;
@@ -847,6 +893,7 @@ const fieldAliases = {
   room: ['ownername', 'owner_name', 'roomno', 'roomnumber', 'houseno', 'owneradd', 'owneraddress', 'address', 'addr', 'room', '房号', '地址'],
   phone: ['mobile', 'telephone', 'phone', 'tel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话'],
   space: ['parkno', 'parkingno', 'spaceno', 'berth', 'garage', '车位', '地库'],
+  begin: ['stratime', 'sarttime', 'starttime', 'begintime', 'startdate', 'begindate', '开始日期', '生效日期'],
   expiry: ['enddate', 'expiredate', 'expirydate', 'validto', 'deadline', 'overdate', 'endtime', '到期', '有效期'],
   identity: ['carbrand', 'carbeand', 'vehicleidentity', 'caridentity', 'ownertype', 'usertype', 'relationtype', 'carlei', '车辆身份', '车辆类型', '车类', '身份', '性质'],
   note: ['pnote', 'remark', 'remarks', 'note', '备注'],
@@ -951,7 +998,16 @@ function enabledChannelNumbers(value: string | null): number[] {
   return Array.from(value).flatMap((bit, index) => bit === '1' ? [index + 1] : []);
 }
 
-function garageRows(database: string, fields: ParkingQueryRow['fields']) {
+type ParkingGarageRow = {
+  key: string;
+  label: string;
+  source: string;
+  authorized: boolean;
+  downloaded: boolean;
+  cloud?: boolean;
+};
+
+function garageRows(database: string, fields: ParkingQueryRow['fields']): ParkingGarageRow[] {
   const effective = enabledChannelNumbers(fieldValue(fields, fieldAliases.effective));
   const downloaded = enabledChannelNumbers(fieldValue(fields, fieldAliases.download));
   const state = (channels: number[]) => ({
@@ -962,7 +1018,6 @@ function garageRows(database: string, fields: ParkingQueryRow['fields']) {
     { key: 'phase1', label: '一期地面车库', source: '来源：枫桦景苑一期停车系统', ...state([5, 7]) },
     { key: 'phase2', label: '二期地面车库', source: '来源：枫桦景苑二期停车系统', ...state([9, 11, 13]) },
     { key: 'main', label: '二期大车库', source: '来源：枫桦景苑二期停车系统', ...state([15, 17, 19, 21]) },
-    { key: 'civil', label: '二期人防车库', source: '来源：德立云停车系统', authorized: false, downloaded: false, cloud: true },
   ];
 }
 
@@ -1162,7 +1217,7 @@ function legacyOwnerTarget(row: ParkingQueryRow): ParkingLegacyOwnerTarget | nul
   } : null;
 }
 
-function mergedGarageRows(group: ParkingVehicleGroup<ParkingQueryRow>) {
+function mergedGarageRows(group: ParkingVehicleGroup<ParkingQueryRow>, deliyunVehicle?: accessCardIssuance.DeliyunVehicle): ParkingGarageRow[] {
   const phase1Rows = group.parking1 ? garageRows(group.parking1.database, group.parking1.fields) : [];
   const phase2Rows = group.parking2 ? garageRows(group.parking2.database, group.parking2.fields) : [];
   const find = (rows: ReturnType<typeof garageRows>, key: string) => rows.find((item) => item.key === key);
@@ -1170,13 +1225,19 @@ function mergedGarageRows(group: ParkingVehicleGroup<ParkingQueryRow>) {
     find(phase1Rows, 'phase1') ?? { key: 'phase1', label: '一期地面车库', source: '来源：枫桦景苑一期停车系统', authorized: false, downloaded: false },
     find(phase2Rows, 'phase2') ?? { key: 'phase2', label: '二期地面车库', source: '来源：枫桦景苑二期停车系统', authorized: false, downloaded: false },
     find(phase2Rows, 'main') ?? { key: 'main', label: '二期大车库', source: '来源：枫桦景苑二期停车系统', authorized: false, downloaded: false },
-    find(phase2Rows, 'civil') ?? find(phase1Rows, 'civil') ?? { key: 'civil', label: '二期人防车库', source: '来源：德立云停车系统', authorized: false, downloaded: false, cloud: true },
+    {
+      key: 'civil', label: '二期人防车库', source: '来源：德立云停车系统',
+      authorized: deliyunVehicle?.civilDefenseAuthorized === true,
+      downloaded: deliyunVehicle?.civilDefenseAuthorized === true,
+      cloud: true,
+    },
   ];
 }
 
-function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKey, onCreateProof, onViewProof, onEditPms, onEditLegacy, proofLoading, onSync, onOperation }: {
+function ParkingResultCard({ group, canWriteLocal, deliyunVehicle, canSyncParkingInfo, syncingKey, onCreateProof, onViewProof, onEditPms, onEditLegacy, proofLoading, onSync, onOperation }: {
   group: ParkingVehicleGroup<ParkingQueryRow>;
   canWriteLocal: boolean;
+  deliyunVehicle?: accessCardIssuance.DeliyunVehicle;
   canSyncParkingInfo: boolean;
   syncingKey: string | null;
   onCreateProof: (row: ParkingQueryRow) => void;
@@ -1201,7 +1262,7 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
   const expiryView = parkingExpiryView(fieldValue(row.fields, fieldAliases.expiry));
   const identity = vehicleIdentity(row.fields);
   const identities = Array.from(new Set(group.rows.map((item) => vehicleIdentity(item.fields) || '旧库未设置')));
-  const garages = mergedGarageRows(group);
+  const garages = mergedGarageRows(group, deliyunVehicle);
   const phase1Snapshot = group.parking1 ? parkingSyncSnapshot(group.parking1) : null;
   const phase2Snapshot = group.parking2 ? parkingSyncSnapshot(group.parking2) : null;
   const mismatch = phase1Snapshot && phase2Snapshot ? parkingSyncMismatch(phase1Snapshot, phase2Snapshot) : null;
@@ -1262,7 +1323,7 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
           <Checkbox checked={garage.authorized} disabled aria-label={`${garage.label}授权`} />
           <strong>{garage.label}</strong><span>{garage.source}</span>
           <Tag color={garage.cloud ? 'gold' : garage.authorized && garage.downloaded ? 'success' : garage.authorized ? 'warning' : 'default'}>
-            {garage.cloud ? '以德立云车牌为准' : garage.authorized ? (garage.downloaded ? '已下载生效' : '待下载') : '未授权'}
+            {garage.cloud ? (garage.authorized ? '德立云已授权' : '德立云未授权') : garage.authorized ? (garage.downloaded ? '已下载生效' : '待下载') : '未授权'}
           </Tag>
         </div>)}
       </div>
@@ -1379,13 +1440,15 @@ function ParkingMovementSection({ plate }: { plate: string }) {
   </details>;
 }
 
-function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverride, targetRows, loading, error, task, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
+function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverride, targetRows, deliyunVehicle, deliyunWriteEnabled, loading, error, task, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
   open: boolean;
   kind: accessCardIssuance.ParkingOperationKind;
   row: ParkingQueryRow | null;
   roomOptions: ParkingQueryRow[];
   communitiesOverride?: AddressCommunity[];
   targetRows?: ParkingQueryRow[];
+  deliyunVehicle?: accessCardIssuance.DeliyunVehicle;
+  deliyunWriteEnabled: boolean;
   onCreateProofUpload: (plate: string, ownerId?: string) => Promise<accessCardIssuance.ParkingProofUpload>;
   onCheckPlate: (plate: string) => Promise<ParkingPlateCheckResult>;
   onQueryPlate: (plate: string) => void;
@@ -1429,9 +1492,10 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
     setNote(row ? fieldValue(fields, fieldAliases.note) || '' : '');
     const currentPlateKey = row ? normalizeParkingPlate(currentPlate) : '';
     const sourceRows = row && currentPlateKey ? roomOptions.filter((item) => normalizeParkingPlate(plateValue(item.fields)) === currentPlateKey) : row ? [row] : [];
-    const garages = sourceRows.flatMap((item) => garageRows(item.database, item.fields)).filter((item) => item.authorized && !item.cloud).map((item) => item.key);
+    const garages = sourceRows.flatMap((item) => garageRows(item.database, item.fields)).filter((item) => item.authorized).map((item) => item.key);
+    if (deliyunVehicle?.civilDefenseAuthorized) garages.push('civil');
     setSelectedGarages(garages);
-  }, [open, row, kind, roomOptions]);
+  }, [open, row, kind, roomOptions, deliyunVehicle]);
   const changeMonths = (value: number) => {
     setMonths(value);
     if (kind === 'renew_vehicle' && previousEndDate) {
@@ -1456,7 +1520,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
     }
     onSubmit(payload);
   };
-  if (kind === 'add_vehicle') return <AddVehicleOperationModal open={open} loading={loading} error={error} task={task} roomOptions={roomOptions} communitiesOverride={communitiesOverride} onClose={onClose} onSubmit={onSubmit} onRetry={onRetry} onRollback={onRollback} onCreateProofUpload={onCreateProofUpload} onCheckPlate={onCheckPlate} onQueryPlate={onQueryPlate} />;
+  if (kind === 'add_vehicle') return <AddVehicleOperationModal open={open} loading={loading} error={error} task={task} roomOptions={roomOptions} communitiesOverride={communitiesOverride} deliyunWriteEnabled={deliyunWriteEnabled} onClose={onClose} onSubmit={onSubmit} onRetry={onRetry} onRollback={onRollback} onCreateProofUpload={onCreateProofUpload} onCheckPlate={onCheckPlate} onQueryPlate={onQueryPlate} />;
   return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle', disabled: kind === 'rebind_owner' && !binding }} onOk={submit}>
     {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space>{task?.status === 'failed' && <Button size="small" onClick={onRetry}>仅重试失败的停车库</Button>}{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
     <div className="parking-operation-form">
@@ -1466,7 +1530,11 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
       {kind === 'change_plate' && <label>绑定用户姓名<Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label>}
       {kind === 'rebind_owner' && <ParkingOwnerPicker open={open} value={binding} onChange={setBinding} />}
       {kind === 'renew_vehicle' && <><label>快捷期限<Select value={months} options={[1, 2, 3, 6, 12].map((value: number) => ({ value, label: `${value}个月` }))} onChange={changeMonths} /><InputNumber min={0} precision={2} value={amount} onChange={setAmount} addonAfter="元" /><Text type="secondary">留空按收费规则验算：业主车月价 ¥180、12个月 ¥1800；租户车月价 ¥260、12个月 ¥2760。可在提交前覆盖本次金额。</Text></label><label>到期日期<DatePicker value={endDate ? dayjs(endDate) : null} format="YYYY-MM-DD" placeholder="选择到期日期" allowClear placement="bottomLeft" popupClassName="parking-date-picker-popup" onChange={(value) => setEndDate(value ? value.format('YYYY-MM-DD') : '')} style={{ width: '100%' }} />{kind === 'renew_vehicle' && <Text type="secondary">从当前到期日顺延所选月数，自动取目标自然月的最后一天；也可手动调整日期。</Text>}</label></>}
-      {kind === 'update_garages' && <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }]} /></label>}
+      {kind === 'update_garages' && <><Alert type="info" showIcon message="人防授权同步德立云"
+        description={deliyunWriteEnabled
+          ? '勾选二期人防车库后，已有德立云车辆会追加该车库；未登记车牌会按月票小型车自动建档，不登记收费。写后回读一致才显示成功。'
+          : '德立云写入开关未开启，人防授权暂不可修改。'} />
+        <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }, { label: '二期人防车库', value: 'civil', disabled: !deliyunWriteEnabled }]} /></label></>}
       {(kind === 'change_plate' || kind === 'update_vehicle_type') && <label>车辆授权类型<Select value={identity} options={['住户车', '租户车', '亲情车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>}
       {kind === 'download_vehicle' && <Alert type="info" showIcon message="将创建旧库设备下载任务" description="任务完成只代表旧系统已接受并回读下载队列；现场控制器回执会在状态中单独显示。" />}
       {kind === 'delete_vehicle' && <Alert type="warning" showIcon message="注销会调用旧系统 Add_Del_Plate" description="车辆从旧库移除并写入注销流水，网页不会直接删除 Car_Issue。" />}
@@ -1553,13 +1621,14 @@ function parkingDuplicateDescription(row: ParkingQueryRow): string {
   return [database, room, owner].filter(Boolean).join(' · ');
 }
 
-function AddVehicleOperationModal({ open, loading, error, task, communitiesOverride, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
+function AddVehicleOperationModal({ open, loading, error, task, communitiesOverride, deliyunWriteEnabled, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {
   open: boolean;
   loading: boolean;
   error: string | null;
   task: accessCardIssuance.ParkingOperation | null;
   roomOptions: ParkingQueryRow[];
   communitiesOverride?: AddressCommunity[];
+  deliyunWriteEnabled: boolean;
   onClose: () => void;
   onSubmit: (payload: Record<string, unknown>) => void;
   onRetry: () => void;
@@ -1697,6 +1766,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
   };
   const submit = async () => {
     if (!plateFormatValid) return setValidationError('车牌格式不正确：请先选择省市简称，第二位输入字母，再输入 5 至 6 位字母或数字');
+    if (garages.includes('civil') && !deliyunWriteEnabled) return setValidationError('德立云写入开关未开启，不能授权二期人防车库');
     if (residentMode === 'pms' && !selectedRoom) return setValidationError(rooms.length ? '请选择 PMS 房号，或改用手动登记' : '当前没有可选择的 PMS 房号，请改用手动登记');
     if (residentMode === 'manual' && !normalizedManualRoom) return setValidationError('请输入完整房号，例如 198/8/102 或 228/8/102，以便确定写入一期或二期停车库');
     if (residentMode === 'manual' && !manualName.trim()) return setValidationError('请输入住户姓名');
@@ -1739,6 +1809,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
         months,
         startDate: dayjs().format('YYYY-MM-DD'),
         endDate: dayjs().add(months, 'month').format('YYYY-MM-DD'),
+        garages,
         effective: pendingFamilyReview ? new Array(256).fill('0').join('') : garageBitString(garages.filter((value) => value !== 'civil')),
         state: pendingFamilyReview ? 0 : 1,
         requiresProofReview: pendingFamilyReview,
@@ -1786,7 +1857,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
       </div>
       <Divider orientation="left">2 · 车辆授权类型</Divider><div className="parking-new-form-section"><Text type="secondary">授权类型决定收费规则，默认按住户车计价。</Text><Radio.Group className="parking-horizontal-options" value={identity} onChange={(event) => { setIdentity(event.target.value); if (event.target.value === '亲情车') { setProofUpload(null); setProofApproved(false); } }} optionType="button" buttonStyle="solid" options={['住户车', '亲情车', '租户车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} /></div>
       {isFamily && <div className="parking-family-proof-box"><div><strong>亲情车证明材料</strong><Text type="secondary">有效期 1 小时，用户扫码上传图片或 PDF；资料提交后由管理员审核。</Text></div>{proofUpload?.status === 'submitted' ? <><Alert type="success" showIcon message="资料已上传，等待管理员审核" description={proofUpload.fileName || '已收到用户上传的证明材料。'} />{proofUpload.fileUrl && <a href={proofUpload.fileUrl} target="_blank" rel="noreferrer">查看已上传资料</a>}<Checkbox checked={proofApproved} onChange={(event) => setProofApproved(event.target.checked)}>管理员已审核证明材料，确认开通亲情车</Checkbox></> : <><Button type="primary" loading={proofLoading} disabled={normalized.length < 7} onClick={() => void createProof()} icon={<QrcodeOutlined />}>{proofUpload ? '重新生成二维码' : '生成 1 小时上传二维码'}</Button>{proofUpload?.qrDataUrl && <div className="parking-family-proof-qr"><img src={proofUpload.qrDataUrl} alt="亲情车证明材料上传二维码" /><Text type="secondary">请用户扫码上传，{new Date(proofUpload.expiresAt).toLocaleString('zh-CN', { hour12: false })} 前有效</Text></div>}</>}</div>}
-      <Divider orientation="left">3 · 授权车库</Divider><div className="parking-new-form-section"><Text type="secondary">可多选。系统根据选择或输入的房号自动预选对应小区车库。</Text><Checkbox.Group className="parking-horizontal-options parking-garage-options" value={garages} onChange={(values) => setGarages(values as string[])} options={[{ value: 'phase1', label: '一期地面车库' }, { value: 'phase2', label: '二期地面车库' }, { value: 'main', label: '二期大车库' }, { value: 'civil', label: '二期人防车库' }]} /></div>
+      <Divider orientation="left">3 · 授权车库</Divider><div className="parking-new-form-section"><Text type="secondary">可多选。系统根据选择或输入的房号自动预选对应小区车库。</Text><Checkbox.Group className="parking-horizontal-options parking-garage-options" value={garages} onChange={(values) => setGarages(values as string[])} options={[{ value: 'phase1', label: '一期地面车库' }, { value: 'phase2', label: '二期地面车库' }, { value: 'main', label: '二期大车库' }, { value: 'civil', label: '二期人防车库', disabled: !deliyunWriteEnabled }]} />{garages.includes('civil') && <Alert type="info" showIcon message="将同步写入德立云" description="旧库新增并回读成功后，系统会按月票小型车在德立云建档，仅授权二期人防车库，不登记收费；德立云回读一致后才显示整体成功。" />}{!deliyunWriteEnabled && <Text type="secondary">德立云写入开关未开启，暂不能在新增登记时选择二期人防车库。</Text>}</div>
       <Divider orientation="left">4 · 缴费期限</Divider><div className="parking-new-form-section"><div className="parking-payment-row"><div><Text type="secondary">选择期限</Text><div className="parking-month-buttons">{[1, 2, 3, 6, 12].map((value) => <Button key={value} type={months === value ? 'primary' : 'default'} disabled={isFamily} onClick={() => setMonths(value)}>{value} 个月</Button>)}</div></div><div className="parking-new-amount"><small>按当前收费规则应收</small><strong>¥{amount.toFixed(2)}</strong><span>{isFamily ? '亲情车资料审核通过后再计费' : months === 12 ? '已按年付优惠价计算' : `${identity} · ¥${monthly}/月`}</span></div></div><div className="parking-rate-hint"><DollarOutlined /><span>当前固定标准：住户车 ¥180/月、¥1800/年；租户车 ¥260/月、¥2760/年。</span><Text type="secondary">收费规则配置尚未接入，登记前请核对金额。</Text></div></div>
       <div className="parking-new-drawer-actions"><Button onClick={() => setStep('plate')}>上一步</Button><Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={loading || submittingCheck} onClick={() => void submit()}>{submittingCheck ? '正在提交前再次查重' : isFamily && (!proofUpload || proofUpload.status !== 'submitted' || !proofApproved) ? '暂存车牌，等待审核' : isFamily ? '审核通过并确认开通' : `确认登记并收费 ¥${amount.toFixed(2)}`}</Button></Space></div>
     </>}
