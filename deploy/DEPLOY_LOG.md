@@ -4248,3 +4248,15 @@
 - 自上次（f5db6311）以来上线的相关提交：
   - a70642a1 feat(inventory): widen purchase detail and paste screenshots
 
+## 2026-10-09 19:18 · api · 2726515f
+
+- 包：`pms-api-fast-20261009-191737.tar.gz`
+- 提交：2726515f feat(parking): support verified Deliyun renewals
+- 自上次（f5db6311）以来上线的相关提交：
+  - 2726515f feat(parking): support verified Deliyun renewals
+  - 60b0d2aa feat(access-card): split database and controller actions
+  - f888b9ec feat(access-card): show room label in history
+  - 9063b2b5 fix(access-card): avoid joined take pagination crash
+  - 7a3eb9a6 fix(access-card): persist door user display name
+  - 0a5b373b fix(access-card): use entity property for recent-card order
+
