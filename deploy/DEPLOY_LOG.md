@@ -4170,3 +4170,10 @@
 - 自上次（807be2bc）以来上线的相关提交：
   - 35f3be95 fix: map legacy parking download parameters and correct connection topology
 
+## 2026-10-09 10:48 · api · 5019de39
+
+- 包：`pms-api-fast-20261009-104653.tar.gz`
+- 提交：5019de39 feat: connect Deliyun parking read-only account
+- 自上次（6d0ee5dd）以来上线的相关提交：
+  - 5019de39 feat: connect Deliyun parking read-only account
+
