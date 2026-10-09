@@ -1249,6 +1249,9 @@ function ParkingMovementSection({ plate }: { plate: string }) {
   const [range, setRange] = useState<[string, string]>([
     dayjs().subtract(6, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD'),
   ]);
+  const [pickerRange, setPickerRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([
+    dayjs(range[0]), dayjs(range[1]),
+  ]);
   const [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(false);
   const [queried, setQueried] = useState(false);
@@ -1287,13 +1290,19 @@ function ParkingMovementSection({ plate }: { plate: string }) {
     <div className="parking-movement-body">
       <div className="parking-movement-controls">
         <label htmlFor={`movement-range-${plate}`}>查询日期</label>
-        <DatePicker.RangePicker id={`movement-range-${plate}`} value={[dayjs(range[0]), dayjs(range[1])]}
+        <DatePicker.RangePicker id={`movement-range-${plate}`} value={pickerRange}
           allowClear={false} format="YYYY-MM-DD"
+          onCalendarChange={(dates) => setPickerRange(dates)}
           onChange={(dates) => {
             if (!dates?.[0] || !dates?.[1]) return;
             const start = dates[0].format('YYYY-MM-DD');
             const end = dates[1].format('YYYY-MM-DD');
-            if (dayjs(end).diff(dayjs(start), 'day') > 30) { setError('单次最多查询连续 31 天，请缩小日期范围'); return; }
+            if (dayjs(end).diff(dayjs(start), 'day') > 30) {
+              setPickerRange([dayjs(range[0]), dayjs(range[1])]);
+              setError('单次最多查询连续 31 天，请缩小日期范围');
+              return;
+            }
+            setPickerRange([dates[0], dates[1]]);
             setRange([start, end]);
           }} />
         <Button icon={<ReloadOutlined />} onClick={() => setRefresh((value) => value + 1)} disabled={loading}>重新查询</Button>

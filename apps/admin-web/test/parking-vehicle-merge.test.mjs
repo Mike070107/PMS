@@ -71,3 +71,11 @@ test('到期日只比较日期，房号自增后缀仍识别为同一房号', ()
   assert.equal(normalizeParkingRoomIdentity('198-5-102'), '198/5/102');
   assert.equal(sameParkingText('地库91号\r\n操作来源：PMS系统', '地库91号\n操作来源：PMS系统'), true);
 });
+
+test('进出记录日历保留尚未选完的日期，不被默认今日范围覆盖', () => {
+  const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
+  const movement = page.slice(page.indexOf('function ParkingMovementSection('), page.indexOf('function ParkingOperationModal('));
+  assert.match(movement, /value=\{pickerRange\}/, '日期控件须显示临时选择，而非仅显示已提交的查询范围');
+  assert.match(movement, /onCalendarChange=\{\(dates\) => setPickerRange\(dates\)\}/, '选第一天时须立即保存日历的临时状态');
+  assert.match(movement, /setRange\(\[start, end\]\)/, '完整选定后才更新查询范围');
+});
