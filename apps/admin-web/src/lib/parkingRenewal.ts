@@ -9,3 +9,11 @@ export function parkingRenewalEndDate(currentEndDate: string, months: number): s
   const parsed = dayjs(currentEndDate);
   return parsed.isValid() ? parsed.add(months, 'month').endOf('month').format('YYYY-MM-DD') : '';
 }
+
+/** 同一车牌同步两期到期日时，本次应收只记入第一库，避免报表重复计费。 */
+export function allocateParkingRenewalAmounts(amount: number, targetCount: number): number[] {
+  if (!Number.isFinite(amount) || amount < 0 || !Number.isInteger(targetCount) || targetCount < 1) {
+    throw new Error('续期金额或目标停车库数量无效');
+  }
+  return Array.from({ length: targetCount }, (_, index) => index === 0 ? amount : 0);
+}
