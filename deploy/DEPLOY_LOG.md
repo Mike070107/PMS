@@ -4199,3 +4199,10 @@
   - d2ea3a76 fix(parking): distinguish gate receivables and single renewal charge
   - 8a886476 fix(parking): read movement and exit fees from Car_Out
 
+## 2026-10-09 11:00 · assistant · d2ea3a76
+
+- 提交：d2ea3a76 fix(parking): distinguish gate receivables and single renewal charge
+- 自上次（6d0ee5dd）以来上线的相关提交：
+  - a5e51b17 docs(parking): record phase1 Car_Out schema confirmation
+  - 8a886476 fix(parking): read movement and exit fees from Car_Out
+
