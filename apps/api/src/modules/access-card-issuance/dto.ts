@@ -12,6 +12,7 @@ import {
   ValidateNested,
   Max,
   MaxLength,
+  Matches,
   Min,
   MinLength,
 } from 'class-validator';
@@ -330,6 +331,31 @@ export class CreateParkingMovementQueryDto {
   @IsString()
   @MaxLength(10)
   endDate: string;
+}
+
+export class RenewDeliyunVehicleDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  vehicleId: string;
+
+  @IsString()
+  @MinLength(7)
+  @MaxLength(20)
+  plate: string;
+
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  previousEndDate: string;
+
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  endDate: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
+  idempotencyKey: string;
 }
 
 export class CreateParkingFeeReportDto {

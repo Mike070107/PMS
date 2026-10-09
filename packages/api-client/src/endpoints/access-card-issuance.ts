@@ -161,7 +161,7 @@ export interface AccessCardReadiness {
     configured: boolean;
     connected: boolean;
     readEnabled: boolean;
-    writeEnabled: false;
+      writeEnabled: boolean;
     message: string;
     checkedAt: string | null;
   };
@@ -301,7 +301,7 @@ export type ParkingOperationKind = 'add_vehicle' | 'renew_vehicle' | 'change_pla
 export interface ParkingOperation {
   id: number;
   kind: ParkingOperationKind;
-  database: 'parking1' | 'parking2';
+  database: 'parking1' | 'parking2' | 'deliyun';
   sourceRecordId: string | null;
   pmsUserId: number | null;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -361,6 +361,18 @@ export const deliyunVehiclesByPlate = (plate: string) =>
   request<{ project: string; rows: DeliyunVehicle[] }>({
     url: `/access-card-issuance/parking/deliyun/vehicles?plate=${encodeURIComponent(plate)}`,
   });
+
+export const renewDeliyunVehicle = (data: {
+  vehicleId: string;
+  plate: string;
+  previousEndDate: string;
+  endDate: string;
+  idempotencyKey: string;
+}) => request<ParkingOperation>({
+  url: '/access-card-issuance/parking/deliyun/renewals',
+  method: 'POST',
+  data,
+});
 
 export const createParkingMovementQuery = (plate: string, startDate: string, endDate: string) =>
   request<ParkingMovementQuery>({

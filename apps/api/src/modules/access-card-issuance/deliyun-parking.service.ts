@@ -11,7 +11,7 @@ export type DeliyunParkingStatus = {
   configured: boolean;
   connected: boolean;
   readEnabled: boolean;
-  writeEnabled: false;
+  writeEnabled: boolean;
   message: string;
   checkedAt: string | null;
 };
@@ -38,6 +38,14 @@ type MiniappSession = {
   token: string;
   expiresAt: number;
   park: Required<Pick<DeliyunPark, 'unitKey' | 'unitName'>> & DeliyunPark;
+};
+
+export type DeliyunRenewalResult = {
+  vehicleId: string;
+  plate: string;
+  previousEndDate: string;
+  endDate: string;
+  verified: true;
 };
 
 /** 德立云只读适配器。密码、协议密钥和会话仅来自进程内存，不写数据库、日志或前端。 */
@@ -92,6 +100,39 @@ export class DeliyunParkingService {
     }
   }
 
+  async renewVehicle(input: { vehicleId: string; plate: string; previousEndDate: string; endDate: string }): Promise<DeliyunRenewalResult> {
+    if (!this.writeEnabled()) throw new ServiceUnavailableException('德立云有效期写入尚未启用');
+    const vehicleId = input.vehicleId.trim();
+    const plate = normalizePlate(input.plate);
+    if (!vehicleId || !isFullPlate(plate) || !isDateOnly(input.previousEndDate) || !isDateOnly(input.endDate))
+      throw new BadRequestException('德立云续期参数不完整');
+    if (input.endDate <= input.previousEndDate) throw new BadRequestException('续期后的有效期必须晚于当前到期日');
+    const session = await this.ensureMiniappSession();
+    const detailResponse = await this.h5Post<Record<string, unknown>>('/pma/card/findCard', {
+      unitKey: session.park.unitKey, id: vehicleId,
+    }, session.token);
+    this.assertSuccess(detailResponse, '德立云车辆详情读取失败');
+    const detail = detailResponse.data ?? {};
+    if (stringValue(detail.id) !== vehicleId || normalizePlate(stringValue(detail.plateNum)) !== plate)
+      throw new BadRequestException('德立云车辆已变化，请刷新后重新操作');
+    const currentEndDate = dateOnlyFromValue(detail.endDate) || dateOnlyFromEpoch(detail.endTime);
+    if (currentEndDate !== input.previousEndDate)
+      throw new BadRequestException(`德立云当前到期日已变为 ${currentEndDate || '未记录'}，请刷新后重新操作`);
+    if (stringValue(detail.cardPoolId) || numberValue(detail.cardTypeId) === 7)
+      throw new BadRequestException('车位池车辆的有效期属于关联车位，暂不允许从车辆续期入口修改');
+
+    const payload = buildDeliyunRenewalPayload(detail, session.park.unitKey, vehicleId, input.endDate);
+    const updateResponse = await this.h5Post('/pma/card/updateCard', payload, session.token);
+    this.assertSuccess(updateResponse, '德立云有效期更新失败');
+
+    // 写接口成功只说明上游接受；必须重新读取同一车辆确认最终日期。
+    const refreshed = await this.findVehiclesByPlate(plate);
+    const verified = refreshed.rows.find((row) => row.id === vehicleId);
+    if (!verified || verified.endDate !== input.endDate)
+      throw new ServiceUnavailableException('德立云已接受更新，但回读到期日不一致；请刷新核对，暂勿重复提交');
+    return { vehicleId, plate, previousEndDate: input.previousEndDate, endDate: input.endDate, verified: true };
+  }
+
   private async enrichPoolPeriods(row: DeliyunVehicle, session: MiniappSession): Promise<DeliyunVehicle> {
     if (row.beginDate || row.endDate || !row.cardPoolId) return row;
     const response = await this.h5Get<Array<Record<string, unknown>>>('/pma/card/findCardPoolParks', {
@@ -124,7 +165,8 @@ export class DeliyunParkingService {
       const onlineNum = numberValue(data.deviceOnlineNum ?? session.park.deviceOnlineNum);
       const countsText = [cardsNum === null ? '' : `登记 ${cardsNum} 辆`, deviceNum === null ? '' : `设备 ${onlineNum ?? 0}/${deviceNum} 在线`]
         .filter(Boolean).join('，');
-      return this.result(true, true, `德立云${session.park.unitName}车辆只读查询已连接${countsText ? `（${countsText}）` : ''}`);
+      const capability = this.writeEnabled() ? '车辆查询和有效期续期已连接' : '车辆只读查询已连接';
+      return this.result(true, true, `德立云${session.park.unitName}${capability}${countsText ? `（${countsText}）` : ''}`);
     } catch (error) {
       this.invalidateSessionOnAuthFailure(error);
       return this.result(true, false, miniappErrorMessage(error));
@@ -172,6 +214,20 @@ export class DeliyunParkingService {
     const response = await axios.get<DeliyunResponse<T>>(`${PARKING_H5_API}${path}`, {
       params,
       headers: { Cookie: `pmatoken=${token}` },
+      timeout: 10_000,
+      maxRedirects: 0,
+      validateStatus: () => true,
+    });
+    if (response.status < 200 || response.status >= 300) throw new Error(`DELIYUN_HTTP_${response.status}`);
+    return response.data;
+  }
+
+  private async h5Post<T = unknown>(path: '/pma/card/findCard' | '/pma/card/updateCard', payload: Record<string, unknown>, token: string) {
+    const body = new URLSearchParams();
+    for (const [key, value] of Object.entries(payload))
+      if (value !== undefined && value !== null) body.set(key, String(value));
+    const response = await axios.post<DeliyunResponse<T>>(`${PARKING_H5_API}${path}`, body, {
+      headers: { Cookie: `pmatoken=${token}`, 'content-type': 'application/x-www-form-urlencoded' },
       timeout: 10_000,
       maxRedirects: 0,
       validateStatus: () => true,
@@ -239,9 +295,36 @@ export class DeliyunParkingService {
 
   private value(name: string) { return this.config.get<string>(name, '').trim(); }
 
+  private writeEnabled() { return this.value('DELIYUN_WRITE_ENABLED').toLowerCase() === 'true'; }
+
   private result(configured: boolean, connected: boolean, message: string): DeliyunParkingStatus {
-    return { configured, connected, readEnabled: connected, writeEnabled: false, message, checkedAt: configured ? new Date().toISOString() : null };
+    return { configured, connected, readEnabled: connected, writeEnabled: connected && this.writeEnabled(), message, checkedAt: configured ? new Date().toISOString() : null };
   }
+}
+
+export function buildDeliyunRenewalPayload(detail: Record<string, unknown>, unitKey: string, vehicleId: string, endDate: string) {
+  if (!isDateOnly(endDate)) throw new Error('DELIYUN_INVALID_END_DATE');
+  return {
+    unitKey,
+    id: vehicleId,
+    plateNum: detail.plateNum,
+    cardNo: detail.cardNo,
+    pgIds: detail.pgIds,
+    cardTypeId: detail.cardTypeId,
+    carTypeId: detail.carTypeId,
+    peopleId: detail.peopleId,
+    cprtId: detail.cprtId,
+    poolId: detail.poolId,
+    money: detail.money,
+    beginTime: detail.beginTime,
+    endTime: endOfDayEpoch(endDate),
+    remark: detail.remark,
+  };
+}
+
+export function endOfDayEpoch(date: string) {
+  if (!isDateOnly(date)) throw new Error('DELIYUN_INVALID_DATE');
+  return Math.floor(new Date(`${date}T23:59:59+08:00`).getTime() / 1000);
 }
 
 export function encryptMiniappData(payload: Record<string, unknown>, key: string, iv: string) {
@@ -278,6 +361,20 @@ function isFullPlate(value: string) { return /^[京津冀晋蒙辽吉黑沪苏�
 function stringValue(value: unknown) { return typeof value === 'string' ? value.trim() : value === null || value === undefined ? '' : String(value); }
 function nullableString(value: unknown) { const text = stringValue(value); return text || null; }
 function numberValue(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null; }
+function isDateOnly(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00+08:00`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }) === value;
+}
+function dateOnlyFromValue(value: unknown) {
+  const text = stringValue(value);
+  return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : '';
+}
+function dateOnlyFromEpoch(value: unknown) {
+  const epoch = Number(value);
+  if (!Number.isFinite(epoch) || epoch <= 0) return '';
+  return new Date(epoch * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+}
 
 function miniappErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : '';

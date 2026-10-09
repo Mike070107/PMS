@@ -1684,6 +1684,12 @@ ORDER BY ID DESC";
             var key = NormalizeName(parameterName);
             if (key == "carid" || key == "car_id") return RawVehicleValue(vehicle, "Car_ID");
             if (key == "pid" || key == "p_id" || key == "issueid" || key == "issue_id") return RawVehicleValue(vehicle, "P_id");
+            // 现场 Add_DownloadCard 使用 Car_Download 的 D_* 参数名，车辆主表却沿用
+            // Sart_Time（历史拼写）/ End_Time。二者是同一业务日期，不能依赖同名列兜底。
+            if (key == "dstratime" || key == "dstarttime" || key == "dsarttime" ||
+                key == "stratime" || key == "starttime" || key == "sarttime")
+                return RawVehicleValue(vehicle, "Sart_Time");
+            if (key == "dendtime" || key == "endtime") return RawVehicleValue(vehicle, "End_Time");
             if (key.Contains("plate")) return plate;
             if (key.Contains("effective") || key.Contains("release")) return RawVehicleValue(vehicle, "P_Effective") ?? Value(payload, "effective");
             if (key.Contains("download")) return RawVehicleValue(vehicle, "P_Download") ?? Value(payload, "download");

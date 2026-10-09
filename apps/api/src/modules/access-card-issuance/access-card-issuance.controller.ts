@@ -35,6 +35,7 @@ import {
   CreateParkingQueryDto,
   CreateParkingMovementQueryDto,
   CreateParkingFeeReportDto,
+  RenewDeliyunVehicleDto,
   CreateParkingOwnerUpdateDto,
   CreateParkingProofUploadDto,
   ParkingQueryReportDto,
@@ -82,6 +83,12 @@ export class AccessCardIssuanceController {
   @RequirePermission('business', 'view')
   findDeliyunVehicles(@Query('plate') plate: string, @CurrentUser() user: AuthUser) {
     return this.service.findDeliyunVehicles(plate || '', user);
+  }
+
+  @Post('parking/deliyun/renewals')
+  @RequirePermission('business', 'edit')
+  renewDeliyunVehicle(@Body() dto: RenewDeliyunVehicleDto, @CurrentUser() user: AuthUser) {
+    return this.service.renewDeliyunVehicle(dto, user);
   }
 
   @Post('parking/movements/queries')

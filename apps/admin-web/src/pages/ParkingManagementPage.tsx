@@ -143,6 +143,10 @@ export default function ParkingManagementPage({
   const [operationError, setOperationError] = useState<string | null>(null);
   const [lastOperation, setLastOperation] = useState<accessCardIssuance.ParkingOperation | null>(null);
   const [syncingKey, setSyncingKey] = useState<string | null>(null);
+  const [deliyunRenewTarget, setDeliyunRenewTarget] = useState<{ row: accessCardIssuance.DeliyunVehicle; idempotencyKey: string } | null>(null);
+  const [deliyunRenewEndDate, setDeliyunRenewEndDate] = useState('');
+  const [deliyunRenewBusy, setDeliyunRenewBusy] = useState(false);
+  const [deliyunRenewError, setDeliyunRenewError] = useState<string | null>(null);
 
   const loadReadiness = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -230,7 +234,9 @@ export default function ParkingManagementPage({
       }
       const query = await executeParkingQuery(queryTerm);
       setRows(query.rows);
-      const cloud = isFullParkingPlate(queryTerm) && deliyun?.readEnabled
+      // 完整车牌直接调用正式查询接口；readiness 只用于状态展示，不能因轮询中的
+      // 旧状态或一次探测失败而静默跳过德立云查询。
+      const cloud = isFullParkingPlate(queryTerm)
         ? await accessCardIssuance.deliyunVehiclesByPlate(queryTerm)
         : { rows: [] };
       setDeliyunRows(cloud.rows);
@@ -262,14 +268,14 @@ export default function ParkingManagementPage({
     }
     const [query, cloud] = await Promise.all([
       executeParkingQuery(normalizedPlate),
-      deliyun?.readEnabled ? accessCardIssuance.deliyunVehiclesByPlate(normalizedPlate) : Promise.resolve({ project: '', rows: [] }),
+      accessCardIssuance.deliyunVehiclesByPlate(normalizedPlate),
     ]);
     return {
       queryId: query.id,
       matches: query.rows.filter((row) => plateValue(row.fields).replace(/[\s·]/g, '').toUpperCase() === normalizedPlate),
       deliyunMatches: cloud.rows,
     };
-  }, [deliyun?.readEnabled, deliyunRowsOverride, rowsOverride]);
+  }, [deliyunRowsOverride, rowsOverride]);
 
   const saveLegacyOwner = async (values: accessCardIssuance.ParkingOwnerValues) => {
     if (!editingLegacyOwner || legacyOwnerSubmitting.current) return;
@@ -432,6 +438,28 @@ export default function ParkingManagementPage({
     } finally { setOperationBusy(false); }
   };
 
+  const renewDeliyunVehicle = async () => {
+    const target = deliyunRenewTarget;
+    if (!target?.row.endDate || !deliyunRenewEndDate) return;
+    setDeliyunRenewBusy(true); setDeliyunRenewError(null);
+    try {
+      const task = await accessCardIssuance.renewDeliyunVehicle({
+        vehicleId: target.row.id,
+        plate: target.row.plate,
+        previousEndDate: target.row.endDate,
+        endDate: deliyunRenewEndDate,
+        idempotencyKey: target.idempotencyKey,
+      });
+      if (task.status !== 'completed') throw new Error(task.error || '德立云有效期续期未完成');
+      message.success('德立云有效期已修改并回读验证；未登记收费');
+      setDeliyunRenewTarget(null);
+      await searchParking(target.row.plate);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : '德立云有效期续期失败';
+      setDeliyunRenewError(text); message.error(text);
+    } finally { setDeliyunRenewBusy(false); }
+  };
+
   const syncParkingInfo = (source: ParkingQueryRow, target: ParkingQueryRow) => {
     const sourceRef = parkingHistoryRef(source);
     const targetRef = parkingHistoryRef(target);
@@ -574,9 +602,9 @@ export default function ParkingManagementPage({
             <small>{deliyun?.message || '正在读取德立云连接状态'}</small>
           </div>
           <Tag color={deliyun?.connected ? 'success' : deliyun?.configured ? 'gold' : 'default'}>
-            {deliyun?.connected ? '只读已连接' : deliyun?.configured ? '配置待补充' : '未配置'}
+            {deliyun?.writeEnabled ? '读写已连接' : deliyun?.connected ? '只读已连接' : deliyun?.configured ? '配置待补充' : '未配置'}
           </Tag>
-          <Tag>写入未开放</Tag>
+          <Tag color={deliyun?.writeEnabled ? 'success' : 'default'}>{deliyun?.writeEnabled ? '有效期续期已开放' : '写入未开放'}</Tag>
         </div>
       </Card>
 
@@ -610,7 +638,14 @@ export default function ParkingManagementPage({
               <CheckCircleOutlined /> 找到 {vehicleGroups.length} 辆本地车辆（{rows.length} 条旧库记录）
               {deliyunRows.length > 0 ? `，德立云命中 ${deliyunRows.length} 辆` : ''}，其中 {rows.filter((row) => row.pmsMatch).length} 条已关联 PMS 用户
             </div>
-            {deliyunRows.map((row) => <DeliyunVehicleCard key={row.id || row.plate} row={row} />)}
+            {deliyunRows.map((row) => <DeliyunVehicleCard key={row.id || row.plate} row={row}
+              writeEnabled={deliyun?.writeEnabled === true}
+              onRenew={(target) => {
+                if (!target.endDate) { message.error('德立云没有返回当前到期日，不能直接续期'); return; }
+                setDeliyunRenewError(null);
+                setDeliyunRenewEndDate(dayjs(target.endDate).add(1, 'month').endOf('month').format('YYYY-MM-DD'));
+                setDeliyunRenewTarget({ row: target, idempotencyKey: createIdempotencyKey() });
+              }} />)}
             {historyOwnerRow && (
               <ParkingHistoryCard
                 rows={rows}
@@ -692,6 +727,30 @@ export default function ParkingManagementPage({
         onClose={() => { if (!legacyOwnerSaving) setEditingLegacyOwner(undefined); }}
         onSubmit={saveLegacyOwner}
       />
+
+      <Modal title={`德立云有效期续期 · ${deliyunRenewTarget?.row.plate || ''}`}
+        open={!!deliyunRenewTarget} confirmLoading={deliyunRenewBusy}
+        okText="确认修改有效期" cancelText="取消"
+        okButtonProps={{ disabled: !deliyunRenewEndDate || !!deliyunRenewTarget?.row.cardPoolId }}
+        onCancel={() => { if (!deliyunRenewBusy) setDeliyunRenewTarget(null); }}
+        onOk={() => void renewDeliyunVehicle()}>
+        <div className="parking-gateway-form">
+          <Alert type="info" showIcon message="只修改有效期，不登记收费"
+            description="保存前会重新读取同一辆车，确认当前到期日没有变化；写入后再次回读，日期一致才显示成功。" />
+          {deliyunRenewTarget?.row.cardPoolId && <Alert type="warning" showIcon message="车位池车辆暂不能在此续期"
+            description="这类车辆的有效期属于关联车位，不能用普通车辆接口修改。" />}
+          <label htmlFor="deliyun-renew-end-date">新到期日</label>
+          <DatePicker id="deliyun-renew-end-date" value={deliyunRenewEndDate ? dayjs(deliyunRenewEndDate) : null}
+            format="YYYY-MM-DD" allowClear={false}
+            disabledDate={(date) => !!deliyunRenewTarget?.row.endDate && !date.isAfter(dayjs(deliyunRenewTarget.row.endDate), 'day')}
+            onChange={(date) => {
+              setDeliyunRenewEndDate(date?.format('YYYY-MM-DD') || '');
+              setDeliyunRenewTarget((current) => current ? { ...current, idempotencyKey: createIdempotencyKey() } : current);
+            }} />
+          <Text type="secondary">当前到期日：{deliyunRenewTarget?.row.endDate || '未记录'}</Text>
+          {deliyunRenewError && <Alert type="error" showIcon message="德立云续期未完成" description={deliyunRenewError} />}
+        </div>
+      </Modal>
 
       <ParkingOperationModal
         open={!!operationTarget}
@@ -1458,7 +1517,11 @@ const parkingPlateProvinces = '京津冀晋蒙辽吉黑沪苏浙皖闽赣鲁豫�
 const parkingPlateLetters = 'ABCDEFGHJKLMNPQRSTUVWXYZ'.split('');
 const parkingPlateAlphaNumeric = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789'.split('');
 
-function DeliyunVehicleCard({ row }: { row: accessCardIssuance.DeliyunVehicle }) {
+function DeliyunVehicleCard({ row, writeEnabled, onRenew }: {
+  row: accessCardIssuance.DeliyunVehicle;
+  writeEnabled: boolean;
+  onRenew: (row: accessCardIssuance.DeliyunVehicle) => void;
+}) {
   const period = row.beginDate || row.endDate ? `${row.beginDate || '未记录'} 至 ${row.endDate || '未记录'}` : '车位池车辆，有效期需按关联车位核对';
   return <article className="parking-query-card">
     <div className="parking-query-primary">
@@ -1473,7 +1536,13 @@ function DeliyunVehicleCard({ row }: { row: accessCardIssuance.DeliyunVehicle })
       {row.address && <span><HomeOutlined /> {row.address}</span>}
       {row.cardPoolName && <span><DatabaseOutlined /> {row.cardPoolName}</span>}
     </div>
-    <Alert type="info" showIcon message="德立云当前为只读接入" description="该记录可用于车辆查重和有效期核对；新增、续期、授权及设备下发尚未开放。" />
+    <Alert type={writeEnabled ? 'success' : 'info'} showIcon
+      message={writeEnabled ? '德立云有效期续期已开放' : '德立云当前为只读接入'}
+      description={writeEnabled ? '续期只修改有效期，不登记收费；其他资料、授权及设备操作保持不变。' : '该记录可用于车辆查重和有效期核对；写入尚未开放。'} />
+    <div className="parking-operation-actions">
+      <Button type="primary" icon={<CalendarOutlined />} disabled={!writeEnabled || !row.endDate || !!row.cardPoolId}
+        onClick={() => onRenew(row)}>续期有效期</Button>
+    </div>
   </article>;
 }
 

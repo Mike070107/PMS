@@ -65,6 +65,25 @@ test('同库存在重复车牌时不合并，不隐藏脏数据', () => {
   assert.ok(groups.every((group) => parkingRenewalTargets(group).length === 1));
 });
 
+test('完整车牌查询和新增查重不依赖德立云状态轮询结果', () => {
+  const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(page, /isFullParkingPlate\(queryTerm\)\s*&&\s*deliyun\?\.readEnabled/,
+    '状态探测与真实车辆查询必须解耦，不能静默跳过德立云');
+  assert.doesNotMatch(page, /deliyun\?\.readEnabled\s*\?\s*accessCardIssuance\.deliyunVehiclesByPlate/,
+    '新增查重必须始终调用德立云正式查询接口');
+  assert.match(page, /isFullParkingPlate\(queryTerm\)[\s\S]{0,160}deliyunVehiclesByPlate\(queryTerm\)/);
+  assert.match(page, /Promise\.all\(\[[\s\S]{0,240}deliyunVehiclesByPlate\(normalizedPlate\)/);
+});
+
+test('德立云续期明确只改有效期且写后回读', () => {
+  const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
+  assert.match(page, /只修改有效期，不登记收费/);
+  assert.match(page, /renewDeliyunVehicle\(\{/);
+  assert.match(page, /previousEndDate: target\.row\.endDate/);
+  assert.match(page, /await searchParking\(target\.row\.plate\)/, '写入完成后必须重新查询正式数据');
+  assert.match(page, /车位池车辆暂不能在此续期/, '关联车位日期不能冒充普通车辆有效期修改');
+});
+
 test('到期日只比较日期，房号自增后缀仍识别为同一房号', () => {
   assert.equal(normalizeParkingDate('2027-09-30 23:59:59'), '2027-09-30');
   assert.equal(normalizeParkingRoomIdentity('198/5/102/2'), '198/5/102');

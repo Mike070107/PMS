@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createDecipheriv } from 'node:crypto';
-import { encryptMiniappData, legacyDeliyunSign, mapDeliyunVehicle, miniappSign } from './deliyun-parking.service';
+import { buildDeliyunRenewalPayload, encryptMiniappData, endOfDayEpoch, legacyDeliyunSign, mapDeliyunVehicle, miniappSign } from './deliyun-parking.service';
 
 test('德立云旧协议签名与参数传入顺序无关', () => {
   const first = legacyDeliyunSign({ version: 'v1', accessKeyID: 'id', data: '{}', timestamp: '1', commKey: 'park' }, 'secret');
@@ -46,4 +46,18 @@ test('德立云车辆响应只映射页面需要的字段', () => {
     beginDate: '2026-01-01', endDate: '2026-12-31', ownerName: '张三', ownerPhone: '13800000000',
     address: null, cardPoolId: null, cardPoolName: null, poolPeriods: [],
   });
+});
+
+test('德立云续期只替换结束日期并保留车辆资料与授权', () => {
+  const detail = {
+    plateNum: '沪A12345', cardNo: 'C001', pgIds: '11,12', cardTypeId: 2, carTypeId: 1,
+    peopleId: 19, cprtId: 8, poolId: '', money: 0, beginTime: 1790784000,
+    endTime: 1822320000, remark: '原备注', ignored: '不得提交',
+  };
+  assert.deepEqual(buildDeliyunRenewalPayload(detail, 'project-key', 'vehicle-1', '2027-10-31'), {
+    unitKey: 'project-key', id: 'vehicle-1', plateNum: '沪A12345', cardNo: 'C001', pgIds: '11,12',
+    cardTypeId: 2, carTypeId: 1, peopleId: 19, cprtId: 8, poolId: '', money: 0,
+    beginTime: 1790784000, endTime: endOfDayEpoch('2027-10-31'), remark: '原备注',
+  });
+  assert.equal(endOfDayEpoch('2027-10-31'), 1824998399);
 });

@@ -55,6 +55,7 @@ import {
   CreateParkingQueryDto,
   CreateParkingMovementQueryDto,
   CreateParkingFeeReportDto,
+  RenewDeliyunVehicleDto,
   CreateParkingOwnerUpdateDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
@@ -648,6 +649,37 @@ export class AccessCardIssuanceService {
   async findDeliyunVehicles(plate: string, user: AuthUser) {
     this.requireTenant(user);
     return this.deliyun.findVehiclesByPlate(plate);
+  }
+
+  async renewDeliyunVehicle(dto: RenewDeliyunVehicleDto, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const idempotencyKey = dto.idempotencyKey.trim();
+    const existing = await this.parkingOperationRepo.findOne({ where: { tenantId, idempotencyKey } });
+    if (existing) return this.parkingOperationResponse(existing);
+    const now = new Date();
+    const task = await this.parkingOperationRepo.save(this.parkingOperationRepo.create({
+      tenantId, kind: 'renew_vehicle', database: 'deliyun', idempotencyKey,
+      sourceRecordId: dto.vehicleId.trim(), pmsUserId: null,
+      payload: { plate: dto.plate.trim().toUpperCase(), previousEndDate: dto.previousEndDate, endDate: dto.endDate },
+      expected: { previousEndDate: dto.previousEndDate }, result: null, status: 'running', attempt: 1,
+      requestedAt: now, completedAt: null, leaseAgentKey: null, leaseExpiresAt: null,
+      lastError: null, rollbackOfOperationId: null, createdBy: user.id, updatedBy: user.id,
+    }));
+    try {
+      task.result = await this.deliyun.renewVehicle({
+        vehicleId: dto.vehicleId, plate: dto.plate,
+        previousEndDate: dto.previousEndDate, endDate: dto.endDate,
+      });
+      task.status = 'completed';
+      task.completedAt = new Date();
+      task.lastError = null;
+    } catch (error) {
+      task.status = 'failed';
+      task.completedAt = new Date();
+      task.lastError = (error instanceof Error ? error.message : '德立云有效期续期失败').slice(0, 500);
+    }
+    task.updatedBy = user.id;
+    return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));
   }
 
   async getParkingQuery(id: number, user: AuthUser) {

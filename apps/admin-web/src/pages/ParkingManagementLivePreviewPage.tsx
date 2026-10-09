@@ -15,7 +15,9 @@ export default function ParkingManagementLivePreviewPage({ mode }: { mode: 'upgr
       capabilities: { parkingDbRead: true, parkingDbWrite: mode === 'ready' },
       lastSeenAt: new Date().toISOString(),
     }],
-    deliyun: { configured: true, connected: true, readEnabled: true, writeEnabled: false, message: '德立云枫桦景苑车辆只读查询已连接（登记 120 辆，设备 3/3 在线）', checkedAt: new Date().toISOString() },
+    deliyun: { configured: true, connected: true, readEnabled: true, writeEnabled: mode === 'ready', message: mode === 'ready'
+      ? '德立云枫桦景苑车辆查询和有效期续期已连接（登记 120 辆，设备 3/3 在线）'
+      : '德立云枫桦景苑车辆只读查询已连接（登记 120 辆，设备 3/3 在线）', checkedAt: new Date().toISOString() },
   };
   const rows: ParkingQueryRow[] | undefined = mode === 'ready' ? [{
     database: 'parking1',
