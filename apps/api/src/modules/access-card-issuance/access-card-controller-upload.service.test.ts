@@ -126,6 +126,10 @@ test('最近发卡记录限制30条并遵守小区数据范围', async () => {
   assert.equal(records.length, 1);
   assert.equal(records[0]!.address, '228/5/102');
   assert.ok(calls.some((call) => call.method === 'take' && call.args[0] === 30));
+  assert.ok(calls.some((call) => call.method === 'orderBy'
+    && call.args[0] === 'item.cardCompletedAt'));
+  assert.ok(!calls.some((call) => call.method === 'orderBy'
+    && call.args[0] === 'item.card_completed_at'));
   assert.ok(calls.some((call) => call.method === 'andWhere'
     && call.args[0] === 'batch.community_id IN (:...communityIds)'));
 });
