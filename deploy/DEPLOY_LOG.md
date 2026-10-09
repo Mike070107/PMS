@@ -4135,3 +4135,11 @@
   - 0a43ebe8 feat(parking): report renewal and temporary charge amounts
   - e7b43a59 feat(parking): add lazy plate movement history query
 
+## 2026-10-09 08:40 · web · f6d7f2b5
+
+- 包：`pms-web-20261009-083937.tar.gz`
+- 提交：f6d7f2b5 deploy: api → 0a43ebe8
+- 自上次（ca8304f3）以来上线的相关提交：
+  - 0a43ebe8 feat(parking): report renewal and temporary charge amounts
+  - e7b43a59 feat(parking): add lazy plate movement history query
+
