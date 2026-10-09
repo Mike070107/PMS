@@ -4150,3 +4150,10 @@
   - 0a43ebe8 feat(parking): report renewal and temporary charge amounts
   - e7b43a59 feat(parking): add lazy plate movement history query
 
+## 2026-10-09 09:52 · api · 6d0ee5dd
+
+- 包：`pms-api-fast-20261009-095012.tar.gz`
+- 提交：6d0ee5dd Merge remote-tracking branch 'origin/main'
+- 自上次（0a43ebe8）以来上线的相关提交：
+  - 18c9dd01 feat(access-card): show latest 30 issued cards
+
