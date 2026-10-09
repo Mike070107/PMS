@@ -4296,3 +4296,10 @@
 - 自上次（a0465201）以来上线的相关提交：
   - 8df0eb51 fix(access-card): use native MjSystem controller protocol
 
+## 2026-10-10 00:00 · api · 6f341405
+
+- 包：`pms-api-fast-20261009-235914.tar.gz`
+- 提交：6f341405 fix(parking): sync civil defense authorization with Deliyun
+- 自上次（2726515f）以来上线的相关提交：
+  - 6f341405 fix(parking): sync civil defense authorization with Deliyun
+
