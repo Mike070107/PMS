@@ -4228,3 +4228,10 @@
 - 自上次（0b786f9d）以来上线的相关提交：
   - 0d50e91d fix parking fee report ranges and show recent access cards
 
+## 2026-10-09 13:39 · web · f5db6311
+
+- 包：`pms-web-20261009-133658.tar.gz`
+- 提交：f5db6311 fix Windows checkout line endings for production shell scripts
+- 自上次（0b786f9d）以来上线的相关提交：
+  - 0d50e91d fix parking fee report ranges and show recent access cards
+
