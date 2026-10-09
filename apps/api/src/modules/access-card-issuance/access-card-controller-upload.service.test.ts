@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AccessCardIssuanceService } from './access-card-issuance.service';
+import { AccessCardIssuanceService, sanitizeParkingMovementRows } from './access-card-issuance.service';
 
 const user = { id: 7, tenantId: 3 } as never;
 
@@ -128,4 +128,24 @@ test('最近发卡记录限制30条并遵守小区数据范围', async () => {
   assert.ok(calls.some((call) => call.method === 'take' && call.args[0] === 30));
   assert.ok(calls.some((call) => call.method === 'andWhere'
     && call.args[0] === 'batch.community_id IN (:...communityIds)'));
+});
+
+test('Car_Out 进出记录保留停车出入口，不把出入口冒充住户', async () => {
+  const normalized = sanitizeParkingMovementRows([{
+    database: 'parking2', fields: {
+      carNo: '沪ATEST1', inTime: '2026-10-01 08:01:02', outTime: '2026-10-01 18:03:04',
+      inGate: '二期入口', outGate: '二期出口', cardTypeName: null, personName: null,
+    },
+  }] as never, '沪ATEST1');
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  state.parkingQueryRepo = { findOne: async () => ({
+    id: 9, tenantId: 3, queryKind: 'movement', term: '沪ATEST1', status: 'completed',
+    rangeStart: '2026-10-01', rangeEnd: '2026-10-01', rows: normalized,
+    lastError: null, requestedAt: new Date(), completedAt: new Date(),
+  }) };
+  const result = await service.getParkingMovementQuery(9, user);
+  assert.equal(result.movements[0]?.inGate, '二期入口');
+  assert.equal(result.movements[0]?.outGate, '二期出口');
+  assert.equal(result.movements[0]?.resident, null);
 });

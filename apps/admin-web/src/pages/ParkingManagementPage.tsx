@@ -1302,11 +1302,11 @@ function ParkingMovementSection({ plate }: { plate: string }) {
       {!loading && error && <Alert type="error" showIcon message="进出记录未能读取" description={error} />}
       {!loading && !error && queried && records.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="所选日期内没有查到进出记录" />}
       {!loading && !error && records.length > 0 && <div className="parking-movement-table-wrap"><table className="parking-movement-table">
-        <thead><tr><th>来源</th><th>入场时间</th><th>出场时间</th><th>卡类型</th><th>登记人</th></tr></thead>
+        <thead><tr><th>来源</th><th>入场时间</th><th>出场时间</th><th>入口</th><th>出口</th></tr></thead>
         <tbody>{records.map((entry, index) => <tr key={`${entry.database}-${entry.inTime}-${entry.outTime}-${index}`}>
           <td>{entry.database === 'parking1' ? '一期' : '二期'}</td>
           <td>{entry.inTime || '—'}</td><td>{entry.outTime || '尚未出场'}</td>
-          <td>{entry.cardType || '—'}</td><td>{entry.resident || '—'}</td>
+          <td>{entry.inGate || '—'}</td><td>{entry.outGate || '—'}</td>
         </tr>)}</tbody>
       </table></div>}
     </div>

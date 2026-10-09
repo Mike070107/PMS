@@ -78,14 +78,14 @@ namespace Pms.DataSyncAssistant
             var today = DateTime.Today.ToString("yyyy-MM-dd");
             try
             {
-                // 只读、精确车牌、当日范围；即使没有匹配记录也能验证视图权限。
+                // 只读、精确车牌、当日范围；即使没有匹配记录也能验证两期 Car_Out 的表与字段。
                 ParkingDatabase.SearchMovementsBoth(config, password, movementPassword, "沪A00000", today, today);
-                result.Checks.Add("一期、二期进出记录视图可读");
+                result.Checks.Add("一期、二期停车库 Car_Out 进出记录可读");
                 result.Summary = String.Join("；", result.Checks.ToArray());
             }
             catch (Exception exception)
             {
-                throw new InvalidOperationException("进出记录历史库检测失败：" + FriendlySqlError(exception));
+                throw new InvalidOperationException("停车库进出记录检测失败：" + FriendlySqlError(exception));
             }
         }
 

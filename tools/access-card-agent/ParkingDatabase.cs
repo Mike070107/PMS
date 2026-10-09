@@ -31,6 +31,9 @@ namespace Pms.AccessCardAgent
     /** 停车双库查询、车辆存储过程和住户资料写入能力。 */
     internal static class ParkingDatabase
     {
+        internal const string ParkingExitFeeTable = "[dbo].[Car_Out]";
+        internal const string ParkingExitFeeDate = "[out_Time]";
+        internal const string ParkingExitFeeAmount = "[P_Shoufei]";
         private static readonly string[] RequiredProcedures =
         {
             "AddIssue", "Palte_extend", "Up_PakIssue", "Add_Del_Plate",
@@ -148,8 +151,7 @@ ORDER BY p.parameter_id;";
             return rows;
         }
 
-        // 通行流水在捷顺 TC.View_RecordAll，不属于 parking1/parking2 的 Car_Issue 授权数据。
-        // 每期使用独立的只读连接；未配置历史库时仅尝试现有库，视图不存在则明确报错。
+        // 车牌进出流水只读一期/二期停车库的 dbo.Car_Out；不能把门禁卡库或旧网页视图当成停车来源。
         public static List<ParkingSearchRow> SearchMovementsBoth(AgentConfig config, string password, string movementPassword,
             string plate, string startDate, string endDate)
         {
@@ -161,14 +163,14 @@ ORDER BY p.parameter_id;";
                 end < start || (end - start).TotalDays > 30)
                 throw new InvalidOperationException("进出记录日期范围不正确，最多查询连续 31 天");
             var rows = new List<ParkingSearchRow>();
-            rows.AddRange(SearchMovements(config, password, movementPassword, plate, start, end.AddDays(1), true));
-            rows.AddRange(SearchMovements(config, password, movementPassword, plate, start, end.AddDays(1), false));
+            rows.AddRange(SearchMovements(config, password, plate, start, end.AddDays(1), true));
+            rows.AddRange(SearchMovements(config, password, plate, start, end.AddDays(1), false));
             return rows.OrderByDescending(row => Convert.ToString(row.fields["outTime"] ?? row.fields["inTime"], CultureInfo.InvariantCulture))
                 .Take(100).ToList();
         }
 
-        // 金额报表只读旧库；汇总和每日金额由 SQL 对完整区间聚合，明细仅返回最近 30 条。
-        // 临停 Charge1 是旧网页的“应收金额”，不是支付成功金额。
+        // 金额报表只读一期/二期停车库；出场收费按 Car_Out.P_Shoufei 正数记录统计，
+        // 不能据此推断支付平台到账，也不能仅凭该表确认收费车辆的业务分类。
         public static List<ParkingSearchRow> SearchFeeReport(AgentConfig config, string password, string movementPassword,
             string startDate, string endDate)
         {
@@ -189,33 +191,24 @@ ORDER BY p.parameter_id;";
                     var dateColumn = FeeRenewalDateColumn(connection);
                     ReadFeeRows(connection, label, "renewal", "[dbo].[P_moneyKeep]", dateColumn,
                         "[P_money]", "[P_plate]", "[P_Admin]", " AND [type] = 5", start, end.AddDays(1), rows);
-                }
-
-                var server = phase1 ? config.ParkingMovementPhase1Server : config.ParkingMovementPhase2Server;
-                var database = phase1 ? config.ParkingMovementPhase1Database : config.ParkingMovementPhase2Database;
-                var custom = !String.IsNullOrWhiteSpace(server) || !String.IsNullOrWhiteSpace(database);
-                if (custom && (String.IsNullOrWhiteSpace(server) || String.IsNullOrWhiteSpace(database)))
-                    throw new InvalidOperationException(label + " 的临停历史库地址与库名必须同时配置");
-                if (!custom) { server = config.ParkingSqlServer; database = parkingDatabase; }
-                var user = String.IsNullOrWhiteSpace(config.ParkingMovementUser) ? config.ParkingUser : config.ParkingMovementUser;
-                var secret = custom && !String.IsNullOrWhiteSpace(movementPassword) ? movementPassword : password;
-                if (String.IsNullOrWhiteSpace(server) || String.IsNullOrWhiteSpace(database) || String.IsNullOrWhiteSpace(user) || String.IsNullOrWhiteSpace(secret))
-                    throw new InvalidOperationException(label + " 的临停历史库尚未配置完整");
-                var builder = new SqlConnectionStringBuilder { DataSource = server, InitialCatalog = database,
-                    UserID = user, Password = secret, ConnectTimeout = 5, Encrypt = false,
-                    TrustServerCertificate = true, ApplicationName = "PMS Parking Fee Read" };
-                using (var connection = new SqlConnection(builder.ConnectionString))
-                {
-                    connection.Open();
+                    if (!ObjectExists(connection, "Car_Out", "U"))
+                        throw new InvalidOperationException(label + " 中未找到 dbo.Car_Out 出场收费记录表");
+                    var outColumns = LoadColumns(connection, "dbo", "Car_Out")
+                        .Select(column => column.Name).ToArray();
+                    foreach (var required in new[] { "out_Time", "P_Shoufei", "P_plate" })
+                        if (!outColumns.Contains(required, StringComparer.OrdinalIgnoreCase))
+                            throw new InvalidOperationException(label + ".dbo.Car_Out 缺少出场收费字段 " + required);
                     try
                     {
-                        ReadFeeRows(connection, label, "temporary", "[TC].[View_RecordOut_temp]", "[OutTime]",
-                            "[Charge1]", "[CarNo]", "NULL", "", start, end.AddDays(1), rows);
+                        ReadFeeRows(connection, label, "temporary", ParkingExitFeeTable, ParkingExitFeeDate,
+                            ParkingExitFeeAmount, "[P_plate]",
+                            outColumns.Contains("Out_User", StringComparer.OrdinalIgnoreCase) ? "[Out_User]" : "NULL",
+                            " AND [P_Shoufei] > 0", start, end.AddDays(1), rows);
                     }
                     catch (SqlException exception)
                     {
                         if (exception.Number == 208 || exception.Number == 229 || exception.Number == 207)
-                            throw new InvalidOperationException(label + " 无法读取临停收费视图 TC.View_RecordOut_temp；请配置捷顺历史库只读账号", exception);
+                            throw new InvalidOperationException(label + ".dbo.Car_Out 出场收费记录读取失败（SQL " + exception.Number + "）；请核对表字段与当前停车库账号的读取权限", exception);
                         throw;
                     }
                 }
@@ -293,66 +286,75 @@ WHERE c.object_id=OBJECT_ID('dbo.P_moneyKeep') AND t.name IN ('datetime','smalld
             } };
         }
 
-        private static List<ParkingSearchRow> SearchMovements(AgentConfig config, string password, string movementPassword,
+        private static List<ParkingSearchRow> SearchMovements(AgentConfig config, string password,
             string plate, DateTime start, DateTime endExclusive, bool phase1)
         {
             var databaseLabel = phase1 ? "parking1" : "parking2";
-            var server = phase1 ? config.ParkingMovementPhase1Server : config.ParkingMovementPhase2Server;
-            var database = phase1 ? config.ParkingMovementPhase1Database : config.ParkingMovementPhase2Database;
-            var custom = !String.IsNullOrWhiteSpace(server) || !String.IsNullOrWhiteSpace(database);
-            if (custom && (String.IsNullOrWhiteSpace(server) || String.IsNullOrWhiteSpace(database)))
-                throw new InvalidOperationException(databaseLabel + " 的进出记录库地址和库名必须同时配置");
-            if (!custom) { server = config.ParkingSqlServer; database = phase1 ? config.ParkingPhase1Database : config.ParkingPhase2Database; }
-            var user = String.IsNullOrWhiteSpace(config.ParkingMovementUser) ? config.ParkingUser : config.ParkingMovementUser;
-            var secret = custom && !String.IsNullOrWhiteSpace(movementPassword) ? movementPassword : password;
-            if (String.IsNullOrWhiteSpace(server) || String.IsNullOrWhiteSpace(database) || String.IsNullOrWhiteSpace(user) || String.IsNullOrWhiteSpace(secret))
-                throw new InvalidOperationException(databaseLabel + " 的进出记录数据库尚未配置完整");
-            var builder = new SqlConnectionStringBuilder
-            {
-                DataSource = server, InitialCatalog = database, UserID = user, Password = secret,
-                ConnectTimeout = 5, Encrypt = false, TrustServerCertificate = true,
-                ApplicationName = "PMS Parking Movement Read"
-            };
-            using (var connection = new SqlConnection(builder.ConnectionString))
+            var database = phase1 ? config.ParkingPhase1Database : config.ParkingPhase2Database;
+            Validate(config, password, database);
+            using (var connection = new SqlConnection(ConnectionString(config, password, database)))
             {
                 connection.Open();
-                using (var command = connection.CreateCommand())
+                if (!ObjectExists(connection, "Car_Out", "U"))
+                    throw new InvalidOperationException(databaseLabel + " 中未找到 dbo.Car_Out 进出记录表，请核对该库的实际表结构");
+                var columns = LoadColumns(connection, "dbo", "Car_Out")
+                    .Select(column => column.Name).ToArray();
+                foreach (var required in new[] { "P_plate", "Int_Time", "out_Time" })
+                    if (!columns.Contains(required, StringComparer.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(databaseLabel + ".dbo.Car_Out 缺少进出记录字段 " + required);
+                using (var command = CreateMovementCommand(connection, plate, start, endExclusive,
+                    columns.Contains("P_InPakname", StringComparer.OrdinalIgnoreCase),
+                    columns.Contains("P_OutPakname", StringComparer.OrdinalIgnoreCase)))
                 {
-                    command.CommandTimeout = 15;
-                    command.CommandText = @"SELECT TOP (50) CarNO, CardTypeName, PersonName, InTime, OutTime
-FROM [TC].[View_RecordAll]
-WHERE CarNO = @plate AND ((InTime >= @start AND InTime < @end) OR (OutTime >= @start AND OutTime < @end))
-ORDER BY COALESCE(OutTime, InTime) DESC;";
-                    command.Parameters.Add("@plate", SqlDbType.NVarChar, 20).Value = plate;
-                    command.Parameters.Add("@start", SqlDbType.DateTime).Value = start;
-                    command.Parameters.Add("@end", SqlDbType.DateTime).Value = endExclusive;
-                    var rows = new List<ParkingSearchRow>();
                     try
                     {
-                        using (var reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                var fields = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) {
-                                    { "carNo", Convert.ToString(reader["CarNO"]).Trim().ToUpperInvariant() },
-                                    { "cardTypeName", reader["CardTypeName"] == DBNull.Value ? null : Convert.ToString(reader["CardTypeName"]) },
-                                    { "personName", reader["PersonName"] == DBNull.Value ? null : Convert.ToString(reader["PersonName"]) },
-                                    { "inTime", reader["InTime"] == DBNull.Value ? null : Convert.ToDateTime(reader["InTime"]).ToString("yyyy-MM-dd HH:mm:ss") },
-                                    { "outTime", reader["OutTime"] == DBNull.Value ? null : Convert.ToDateTime(reader["OutTime"]).ToString("yyyy-MM-dd HH:mm:ss") }
-                                };
-                                rows.Add(new ParkingSearchRow { database = databaseLabel, fields = fields });
-                            }
-                        }
+                        using (var reader = command.ExecuteReader()) return ReadMovementRows(reader, databaseLabel);
                     }
                     catch (SqlException exception)
                     {
-                        if (exception.Number == 208 || exception.Number == 229)
-                            throw new InvalidOperationException(databaseLabel + " 的进出记录库无法读取 TC.View_RecordAll，请在助手设置中配置捷顺历史库和只读账号", exception);
+                        if (exception.Number == 208 || exception.Number == 207 || exception.Number == 229)
+                            throw new InvalidOperationException(databaseLabel + ".dbo.Car_Out 进出记录读取失败（SQL " + exception.Number + "）；请核对表字段与当前停车库账号的读取权限", exception);
                         throw;
                     }
-                    return rows;
                 }
             }
+        }
+
+        internal static SqlCommand CreateMovementCommand(SqlConnection connection, string plate, DateTime start,
+            DateTime endExclusive, bool hasInGate, bool hasOutGate)
+        {
+            var command = connection.CreateCommand();
+            command.CommandTimeout = 15;
+            command.CommandText = "SELECT TOP (50) [P_plate], [Int_Time], [out_Time], " +
+                (hasInGate ? "[P_InPakname]" : "CAST(NULL AS NVARCHAR(100))") + " AS [P_InPakname], " +
+                (hasOutGate ? "[P_OutPakname]" : "CAST(NULL AS NVARCHAR(100))") + @" AS [P_OutPakname]
+FROM [dbo].[Car_Out]
+WHERE [P_plate] = @plate AND (([Int_Time] >= @start AND [Int_Time] < @end)
+    OR ([out_Time] >= @start AND [out_Time] < @end))
+ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
+            command.Parameters.Add("@plate", SqlDbType.VarChar, 50).Value = plate;
+            command.Parameters.Add("@start", SqlDbType.DateTime).Value = start;
+            command.Parameters.Add("@end", SqlDbType.DateTime).Value = endExclusive;
+            return command;
+        }
+
+        internal static List<ParkingSearchRow> ReadMovementRows(System.Data.IDataReader reader, string databaseLabel)
+        {
+            var rows = new List<ParkingSearchRow>();
+            while (reader.Read())
+            {
+                var fields = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) {
+                    { "carNo", Convert.ToString(reader["P_plate"]).Trim().ToUpperInvariant() },
+                    { "cardTypeName", null },
+                    { "personName", null },
+                    { "inTime", reader["Int_Time"] == DBNull.Value ? null : Convert.ToDateTime(reader["Int_Time"]).ToString("yyyy-MM-dd HH:mm:ss") },
+                    { "outTime", reader["out_Time"] == DBNull.Value ? null : Convert.ToDateTime(reader["out_Time"]).ToString("yyyy-MM-dd HH:mm:ss") },
+                    { "inGate", reader["P_InPakname"] == DBNull.Value ? null : Convert.ToString(reader["P_InPakname"]) },
+                    { "outGate", reader["P_OutPakname"] == DBNull.Value ? null : Convert.ToString(reader["P_OutPakname"]) }
+                };
+                rows.Add(new ParkingSearchRow { database = databaseLabel, fields = fields });
+            }
+            return rows;
         }
 
         public static List<ParkingSearchRow> Search(AgentConfig config, string password, string database, string term)

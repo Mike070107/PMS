@@ -511,7 +511,7 @@ export class AccessCardIssuanceService {
     const gateway = orderAgentsByAvailability(agents).find((agent) =>
       effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbRead === true &&
       supportsParkingMovementQueries(agent.version));
-    if (!gateway) throw new ServiceUnavailableException('进出记录查询需要在线的 2.5.24 或更新版本数据同步助手');
+    if (!gateway) throw new ServiceUnavailableException('进出记录查询需要在线的 2.5.27 或更新版本数据同步助手');
     const query = this.parkingQueryRepo.create({
       tenantId, term: input.plate, queryKind: 'movement', rangeStart: input.startDate, rangeEnd: input.endDate,
       status: 'pending', rows: [], attempt: 0, requestedAt: new Date(), completedAt: null,
@@ -536,7 +536,7 @@ export class AccessCardIssuanceService {
     const gateway = orderAgentsByAvailability(agents).find((agent) =>
       effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbRead === true &&
       supportsParkingFeeReports(agent.version));
-    if (!gateway) throw new ServiceUnavailableException('金额报表需要在线的 2.5.25 或更新版本数据同步助手');
+    if (!gateway) throw new ServiceUnavailableException('金额报表需要在线的 2.5.27 或更新版本数据同步助手');
     const query = this.parkingQueryRepo.create({
       tenantId, term: '停车金额报表', queryKind: 'fee_report', rangeStart: dto.startDate, rangeEnd: dto.endDate,
       status: 'pending', rows: [], attempt: 0, requestedAt: new Date(), completedAt: null,
@@ -1233,6 +1233,8 @@ export class AccessCardIssuanceService {
         resident: row.fields.personName == null ? null : String(row.fields.personName),
         inTime: row.fields.inTime == null ? null : String(row.fields.inTime),
         outTime: row.fields.outTime == null ? null : String(row.fields.outTime),
+        inGate: row.fields.inGate == null ? null : String(row.fields.inGate),
+        outGate: row.fields.outGate == null ? null : String(row.fields.outGate),
       }))
         .sort((a, b) => String(b.outTime || b.inTime || '').localeCompare(String(a.outTime || a.inTime || '')))
       : [];
@@ -2743,7 +2745,7 @@ function sanitizeParkingRows(rows: ParkingQueryReportDto['rows']): ParkingQuery[
   });
 }
 
-function sanitizeParkingMovementRows(rows: ParkingQueryReportDto['rows'], requestedPlate: string): ParkingQuery['rows'] {
+export function sanitizeParkingMovementRows(rows: ParkingQueryReportDto['rows'], requestedPlate: string): ParkingQuery['rows'] {
   if ((rows ?? []).length > 100) throw new BadRequestException('进出记录返回超过 100 条，请缩小日期范围');
   return (rows ?? []).map((row) => {
     const database = row.database?.trim().toLowerCase();
@@ -2765,6 +2767,8 @@ function sanitizeParkingMovementRows(rows: ParkingQueryReportDto['rows'], reques
         personName: fields.personName == null ? null : String(fields.personName).slice(0, 100),
         inTime,
         outTime,
+        inGate: fields.inGate == null ? null : String(fields.inGate).slice(0, 100),
+        outGate: fields.outGate == null ? null : String(fields.outGate).slice(0, 100),
       },
     };
   });
