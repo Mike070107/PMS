@@ -68,6 +68,7 @@ test('未上传历史卡会创建本楼栋控制器上传任务', async () => {
 
   assert.equal(queued.length, 1);
   assert.equal(queued[0]!.historyId, -11251);
+  assert.equal(queued[0]!.cardSequence, 1);
   assert.equal(queued[0]!.wgCardNo, '05108721');
   assert.deepEqual(queued[0]!.targetBuildings, [
     { id: 5, buildingNo: '5', accessSystem: 'mjsystem' },

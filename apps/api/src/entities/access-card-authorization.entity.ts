@@ -17,6 +17,9 @@ export class AccessCardAuthorization extends TenantEntity {
   @Column({ name: 'room_key', type: 'varchar', length: 100 })
   roomKey: string;
 
+  @Column({ name: 'card_sequence', type: 'int', nullable: true })
+  cardSequence: number | null;
+
   @Column({ name: 'ic_card_no', type: 'varchar', length: 40, nullable: true })
   icCardNo: string | null;
 

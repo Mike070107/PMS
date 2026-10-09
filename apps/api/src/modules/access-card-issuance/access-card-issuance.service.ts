@@ -33,6 +33,7 @@ import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import {
   accessBuildingsForHouse,
+  accessCardUserDisplayName,
   accessSystemOf,
   belongsToSameAccessArea,
   icToWg,
@@ -41,6 +42,7 @@ import {
   legacyDuplicateCardMessage,
   normalizeBuildingNo,
   projectPhaseOf,
+  supportsAccessCardDisplayName,
 } from './access-card-routing';
 import { CreateAccessCardIssueDto, CreateParkingFeeDetailDto } from './dto';
 import {
@@ -356,6 +358,7 @@ export class AccessCardIssuanceService {
       houseId,
       historyId,
       roomKey: context.house.roomKey,
+      cardSequence: historyRow.sequence,
       icCardNo: historyRow.icCardNo,
       wgCardNo: historyRow.wgCardNo,
       targetBuildings: selected.map((building) => ({
@@ -403,6 +406,7 @@ export class AccessCardIssuanceService {
       houseId,
       historyId,
       roomKey: context.house.roomKey,
+      cardSequence: historyRow.sequence,
       icCardNo: historyRow.icCardNo,
       wgCardNo: historyRow.wgCardNo,
       targetBuildings: [{
@@ -1357,6 +1361,7 @@ export class AccessCardIssuanceService {
       houseId: task.houseId,
       historyRowId: task.historyRowId,
       roomKey: task.roomKey,
+      cardSequence: task.cardSequence,
       icCardNo: task.icCardNo,
       wgCardNo: task.wgCardNo,
       targetBuildings: task.targetBuildings,
@@ -1374,6 +1379,7 @@ export class AccessCardIssuanceService {
     houseId: number;
     historyId: number;
     roomKey: string;
+    cardSequence: number | null;
     icCardNo: string | null;
     wgCardNo: string;
     targetBuildings: AccessCardAuthorization['targetBuildings'];
@@ -1395,6 +1401,7 @@ export class AccessCardIssuanceService {
       houseId: input.houseId,
       historyRowId: input.historyId,
       roomKey: input.roomKey,
+      cardSequence: input.cardSequence,
       icCardNo: input.icCardNo,
       wgCardNo: input.wgCardNo,
       targetBuildings: input.targetBuildings,
@@ -1419,9 +1426,10 @@ export class AccessCardIssuanceService {
       effectiveAgentStatus(agent) === 'online'
       && agent.capabilities?.accessDbWrite === true
       && agent.capabilities?.controllerUpload === true
-      && agent.capabilities?.historicalAccessGrant === true);
+      && agent.capabilities?.historicalAccessGrant === true
+      && supportsAccessCardDisplayName(agent.version));
     if (!gateway) {
-      throw new ServiceUnavailableException('楼栋门禁网关尚未支持历史卡追加授权，请在 .88 电脑更新 PMS 数据同步助手后重试');
+      throw new ServiceUnavailableException('楼栋门禁网关需要 PMS 数据同步助手 2.5.29 或更新版本，请在 .88 电脑更新后重试');
     }
   }
 
@@ -1628,7 +1636,8 @@ export class AccessCardIssuanceService {
     // 绝不能落入门禁的 legacy_sync 分支而误领发卡任务。
     if (agent.kind === 'parking_gateway') return { task: null, retryAfterMs: 2500 };
     if (agent.kind === 'access_gateway' &&
-        (agent.capabilities?.accessDbWrite !== true || agent.capabilities?.controllerUpload !== true)) {
+        (agent.capabilities?.accessDbWrite !== true || agent.capabilities?.controllerUpload !== true ||
+          !supportsAccessCardDisplayName(agent.version))) {
       return { task: null, retryAfterMs: 2500 };
     }
     const now = new Date();
@@ -1650,6 +1659,7 @@ export class AccessCardIssuanceService {
       } else if (agent.kind === 'access_gateway') {
         qb.andWhere('batch.project_phase = :phase', { phase: 'phase2' })
           .andWhere('item.card_status = :cardStatus', { cardStatus: 'card_completed' })
+          .andWhere('item.legacy_house_sequence IS NOT NULL')
           .andWhere('item.access_status IN (:...accessStatuses)', {
             accessStatuses: ['pending', 'waiting_retry'],
           });
@@ -1683,6 +1693,7 @@ export class AccessCardIssuanceService {
           leaseExpiresAt: leaseExpiresAt.toISOString(),
           attempt: item.attempts,
           address: batch.addressSnapshot,
+          displayName: accessCardUserDisplayName(batch.addressSnapshot, item.legacyHouseSequence),
           roomKey: batch.legacyRoomKey,
           batchSequence: item.sequence,
           projectPhase: batch.projectPhase,
@@ -1903,7 +1914,7 @@ export class AccessCardIssuanceService {
   async claimHistoryAuthorization(agentKey: string, token: string) {
     const agent = await this.authenticateAgent(agentKey, token);
     if (agent.kind !== 'access_gateway') throw new ForbiddenException('只有楼栋门禁网关可以执行历史卡片授权');
-    if (agent.capabilities?.historicalAccessGrant !== true) return { task: null };
+    if (agent.capabilities?.historicalAccessGrant !== true || !supportsAccessCardDisplayName(agent.version)) return { task: null };
     const task = await this.authorizationRepo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(AccessCardAuthorization);
       const now = new Date();
@@ -1934,6 +1945,7 @@ export class AccessCardIssuanceService {
         taskId: item.id,
         action: 'authorize_existing_card',
         address: item.roomKey,
+        displayName: accessCardUserDisplayName(item.roomKey, item.cardSequence),
         roomKey: item.roomKey,
         projectPhase: 'phase2',
         icCardNo: item.icCardNo,

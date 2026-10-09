@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   accessBuildingsForHouse,
+  accessCardUserDisplayName,
   accessSystemOf,
   belongsToSameAccessArea,
   icToWg,
@@ -10,6 +11,7 @@ import {
   legacyDuplicateCardMessage,
   nextLegacyUserSequence,
   projectPhaseOf,
+  supportsAccessCardDisplayName,
 } from './access-card-routing';
 
 test('额外授权只列同一门禁区域，并按楼栋数字自然排序', () => {
@@ -64,6 +66,19 @@ test('房号展示不强制给楼栋补零', () => {
   assert.equal(legacyRoomKey('228', '05', '301'), '228/5/301');
   assert.equal(legacyRoomKey(null, '5', '301'), '5/301');
   assert.equal(legacyDatabaseRoomKey('228', '5', '301'), '228/05/301');
+});
+
+test('门禁软件用户姓名展示房号和该房累计发卡序号', () => {
+  assert.equal(accessCardUserDisplayName('228/16/401', 6), '228/16/401/6');
+  assert.equal(accessCardUserDisplayName('228/16/401/', 6), '228/16/401/6');
+  assert.equal(accessCardUserDisplayName('228/16/401', null), '228/16/401');
+});
+
+test('完整门禁用户姓名任务只交给 2.5.29 或更新助手', () => {
+  assert.equal(supportsAccessCardDisplayName('2.5.28'), false);
+  assert.equal(supportsAccessCardDisplayName('2.5.29.0'), true);
+  assert.equal(supportsAccessCardDisplayName('2.6.0'), true);
+  assert.equal(supportsAccessCardDisplayName(null), false);
 });
 
 test('IC 转 WG 与旧 PHP 字节顺序一致', () => {
