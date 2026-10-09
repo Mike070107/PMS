@@ -4290,3 +4290,9 @@
 - 自上次（ac1e4a26）以来上线的相关提交：
   - a0465201 fix(access-card): resolve numeric MjSystem doors
 
+## 2026-10-09 23:14 · assistant · 8df0eb51
+
+- 提交：8df0eb51 fix(access-card): use native MjSystem controller protocol
+- 自上次（a0465201）以来上线的相关提交：
+  - 8df0eb51 fix(access-card): use native MjSystem controller protocol
+
