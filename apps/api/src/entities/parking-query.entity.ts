@@ -2,6 +2,7 @@ import { Column, Entity, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
 
 export type ParkingQueryStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type ParkingQueryKind = 'vehicle' | 'movement';
 
 export interface ParkingQueryRow {
   database: string;
@@ -14,6 +15,15 @@ export interface ParkingQueryRow {
 export class ParkingQuery extends TenantEntity {
   @Column({ type: 'varchar', length: 80 })
   term: string;
+
+  @Column({ name: 'query_kind', type: 'varchar', length: 20, default: 'vehicle' })
+  queryKind: ParkingQueryKind;
+
+  @Column({ name: 'range_start', type: 'date', nullable: true })
+  rangeStart: string | null;
+
+  @Column({ name: 'range_end', type: 'date', nullable: true })
+  rangeEnd: string | null;
 
   @Column({ type: 'varchar', length: 20, default: 'pending' })
   status: ParkingQueryStatus;

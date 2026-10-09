@@ -79,6 +79,27 @@
 .parking-garage-row > span { color: #6b7b8d; }
 .parking-garage-row .ant-tag { width: max-content; margin: 0; }
 .parking-operation-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; padding-top: 12px; border-top: 1px solid #edf0f3; }
+.parking-movement-disclosure { grid-column: 1 / -1; min-width: 0; border: 1px solid #d8e3ee; border-radius: 10px; background: #f8fbff; }
+.parking-movement-disclosure > summary { min-height: 52px; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; cursor: pointer; list-style: none; color: #294666; font-size: 15px; font-weight: 650; }
+.parking-movement-disclosure > summary::-webkit-details-marker { display: none; }
+.parking-movement-disclosure > summary:focus-visible { outline: 3px solid rgba(49,85,138,.35); outline-offset: 2px; }
+.parking-movement-disclosure > summary > span { display: inline-flex; align-items: center; gap: 8px; }
+.parking-movement-summary-action { color: #31558a; font-size: 13px; }
+.parking-movement-disclosure[open] .parking-movement-summary-action .anticon { transform: rotate(180deg); }
+.parking-movement-body { display: grid; gap: 14px; padding: 14px; border-top: 1px solid #d8e3ee; }
+.parking-movement-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.parking-movement-controls > label { color: #40566f; font-weight: 600; }
+.parking-movement-controls .ant-picker { min-height: 40px; }
+.parking-movement-controls .ant-typography { flex: 1 1 100%; font-size: 12px; }
+.parking-movement-state { min-height: 95px; display: flex; justify-content: center; align-items: center; gap: 10px; color: #60758a; }
+.parking-movement-table-wrap { max-height: 390px; overflow: auto; border: 1px solid #dce5ef; border-radius: 8px; background: #fff; }
+.parking-movement-table { width: 100%; min-width: 610px; border-collapse: collapse; font-size: 13px; }
+.parking-movement-table th, .parking-movement-table td { padding: 10px 12px; border-bottom: 1px solid #e8eef4; text-align: left; white-space: nowrap; }
+.parking-movement-table th { position: sticky; top: 0; z-index: 1; color: #50667e; background: #f2f6fa; }
+@media (max-width: 600px) {
+  .parking-movement-controls .ant-picker { width: 100%; }
+  .parking-movement-controls > label { flex: 1 1 100%; }
+}
 .parking-operation-actions .ant-btn { flex: 1 1 145px; min-height: 48px; padding-inline: 18px; border-color: #b9c9dc; border-radius: 10px; background: #f8fbff; box-shadow: 0 2px 6px rgba(36,63,105,.06); font-size: 15px; font-weight: 650; }
 .parking-operation-actions .ant-btn .anticon { font-size: 17px; }
 .parking-operation-actions .ant-btn-primary { border-color: #31558a; background: #31558a; box-shadow: 0 4px 10px rgba(49,85,138,.2); }

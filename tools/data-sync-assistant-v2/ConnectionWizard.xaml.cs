@@ -52,6 +52,13 @@ namespace Pms.DataSyncAssistant
                 UserInput.Text = Get(existing, "user");
                 DatabaseOneInput.Text = Get(existing, "database1");
                 DatabaseTwoInput.Text = Get(existing, "database2");
+                MovementServerOneInput.Text = Get(existing, "movementServer1");
+                MovementDatabaseOneInput.Text = Get(existing, "movementDatabase1");
+                MovementServerTwoInput.Text = Get(existing, "movementServer2");
+                MovementDatabaseTwoInput.Text = Get(existing, "movementDatabase2");
+                MovementUserInput.Text = Get(existing, "movementUser");
+                MovementPasswordHint.Text = _store.HasSecret(ConnectionAgentRuntime.MovementPasswordKey(existing))
+                    ? "历史库密码已安全保存，留空保持不变。" : "留空沿用车辆数据库密码。";
                 MjSystemPathInput.Text = Get(existing, "mjSystemPath");
                 IcCardPathInput.Text = Get(existing, "icCardPath");
                 PasswordHint.Text = _store.HasSecret("connection:" + existing.Id + ":password")
@@ -89,6 +96,7 @@ namespace Pms.DataSyncAssistant
             var isReader = _type == ConnectionTypes.CardReader;
             SqlFields.Visibility = isSql ? Visibility.Visible : Visibility.Collapsed;
             DatabaseFields.Visibility = isSql ? Visibility.Visible : Visibility.Collapsed;
+            MovementFields.Visibility = _type == ConnectionTypes.Parking ? Visibility.Visible : Visibility.Collapsed;
             FileFields.Visibility = isFile ? Visibility.Visible : Visibility.Collapsed;
             ReaderFields.Visibility = isReader ? Visibility.Visible : Visibility.Collapsed;
             PasswordLabel.Visibility = isReader ? Visibility.Collapsed : Visibility.Visible;
@@ -107,14 +115,24 @@ namespace Pms.DataSyncAssistant
                     var secretKey = "connection:" + item.Id + ":password";
                     var password = !String.IsNullOrWhiteSpace(PasswordInput.Password)
                         ? PasswordInput.Password : _store.GetSecret(secretKey);
+                    var movementPassword = !String.IsNullOrWhiteSpace(MovementPasswordInput.Password)
+                        ? MovementPasswordInput.Password : _store.GetSecret(ConnectionAgentRuntime.MovementPasswordKey(item));
                     var newAgentToken = PrepareAgentCredential(item);
                     Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
                     var test = ConnectionTester.Test(item, password);
                     if (!test.Success) throw new InvalidOperationException(test.Summary);
+                    if (item.Type == ConnectionTypes.Parking &&
+                        (!String.IsNullOrWhiteSpace(Get(item, "movementServer1")) ||
+                         !String.IsNullOrWhiteSpace(Get(item, "movementDatabase1")) ||
+                         !String.IsNullOrWhiteSpace(Get(item, "movementServer2")) ||
+                         !String.IsNullOrWhiteSpace(Get(item, "movementDatabase2"))))
+                        ConnectionTester.TestParkingMovements(item, password, movementPassword, test);
                     item.Status = "本地检测通过，等待 PMS 上线";
                     item.StatusTone = "warning";
                     item.Summary = test.Summary;
                     if (!String.IsNullOrWhiteSpace(PasswordInput.Password)) _store.SetSecret(secretKey, PasswordInput.Password);
+                    if (!String.IsNullOrWhiteSpace(MovementPasswordInput.Password))
+                        _store.SetSecret(ConnectionAgentRuntime.MovementPasswordKey(item), MovementPasswordInput.Password);
                     if (newAgentToken != null) _store.SetSecret(ConnectionAgentRuntime.TokenKey(item), newAgentToken);
                     Result = item;
                     ResultChecksText.Text = String.Join("\n", test.Checks.Select(check => "✓  " + check).Concat(new[] { "✓  凭据已在本机加密保存" }).ToArray());
@@ -165,6 +183,11 @@ namespace Pms.DataSyncAssistant
             item.Parameters["user"] = UserInput.Text.Trim();
             item.Parameters["database1"] = DatabaseOneInput.Text.Trim();
             item.Parameters["database2"] = DatabaseTwoInput.Text.Trim();
+            item.Parameters["movementServer1"] = MovementServerOneInput.Text.Trim();
+            item.Parameters["movementDatabase1"] = MovementDatabaseOneInput.Text.Trim();
+            item.Parameters["movementServer2"] = MovementServerTwoInput.Text.Trim();
+            item.Parameters["movementDatabase2"] = MovementDatabaseTwoInput.Text.Trim();
+            item.Parameters["movementUser"] = MovementUserInput.Text.Trim();
             item.Parameters["mjSystemPath"] = MjSystemPathInput.Text.Trim();
             item.Parameters["icCardPath"] = IcCardPathInput.Text.Trim();
             item.DataLocation = _type == ConnectionTypes.CardReader ? "本机 USB 端口"

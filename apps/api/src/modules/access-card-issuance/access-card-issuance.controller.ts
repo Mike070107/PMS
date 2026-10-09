@@ -32,6 +32,7 @@ import {
   LegacyCardCheckReportDto,
   LegacyHistoryReportDto,
   CreateParkingQueryDto,
+  CreateParkingMovementQueryDto,
   CreateParkingOwnerUpdateDto,
   CreateParkingProofUploadDto,
   ParkingQueryReportDto,
@@ -73,6 +74,18 @@ export class AccessCardIssuanceController {
   @RequirePermission('business', 'view')
   getParkingQuery(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.service.getParkingQuery(id, user);
+  }
+
+  @Post('parking/movements/queries')
+  @RequirePermission('business', 'view')
+  createParkingMovementQuery(@Body() dto: CreateParkingMovementQueryDto, @CurrentUser() user: AuthUser) {
+    return this.service.createParkingMovementQuery(dto, user);
+  }
+
+  @Get('parking/movements/queries/:id')
+  @RequirePermission('business', 'view')
+  getParkingMovementQuery(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.getParkingMovementQuery(id, user);
   }
 
   @Post('parking/owners/updates')

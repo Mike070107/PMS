@@ -77,6 +77,11 @@ namespace Pms.DataSyncAssistant
                 var api = new AgentApiClient(config, token, RuntimeVersion);
                 var loop = new AgentLoop(config, api, delegate(string ignored)
                 {
+                    if (ignored == "parking-movement-db-password.dat")
+                    {
+                        var movementPassword = _store.GetSecret(MovementPasswordKey(_connection));
+                        if (!String.IsNullOrWhiteSpace(movementPassword)) return movementPassword;
+                    }
                     return _store.GetSecret(PasswordKey(_connection));
                 }, SetState, delegate(AgentActivity activity)
                 {
@@ -134,6 +139,11 @@ namespace Pms.DataSyncAssistant
             config.ParkingPhase1Database = Get(connection, "database1");
             config.ParkingPhase2Database = Get(connection, "database2");
             config.ParkingUser = Get(connection, "user");
+            config.ParkingMovementPhase1Server = Get(connection, "movementServer1");
+            config.ParkingMovementPhase1Database = Get(connection, "movementDatabase1");
+            config.ParkingMovementPhase2Server = Get(connection, "movementServer2");
+            config.ParkingMovementPhase2Database = Get(connection, "movementDatabase2");
+            config.ParkingMovementUser = Get(connection, "movementUser");
             config.MjSystemDatabasePath = ResolveMdbPath(connection, "mjSystemPath", "MJDataBase.mdb");
             config.IcCardDatabasePath = ResolveMdbPath(connection, "icCardPath", "iCCard.mdb");
             return config;
@@ -166,6 +176,11 @@ namespace Pms.DataSyncAssistant
         internal static string PasswordKey(ConnectionConfiguration connection)
         {
             return "connection:" + connection.Id + ":password";
+        }
+
+        internal static string MovementPasswordKey(ConnectionConfiguration connection)
+        {
+            return "connection:" + connection.Id + ":movementPassword";
         }
 
         private static string ResolveMdbPath(ConnectionConfiguration connection, string key, string fileName)

@@ -22,6 +22,11 @@ namespace Pms.AccessCardAgent
         public string ParkingPhase1Database { get; set; }
         public string ParkingPhase2Database { get; set; }
         public string ParkingUser { get; set; }
+        public string ParkingMovementPhase1Server { get; set; }
+        public string ParkingMovementPhase1Database { get; set; }
+        public string ParkingMovementPhase2Server { get; set; }
+        public string ParkingMovementPhase2Database { get; set; }
+        public string ParkingMovementUser { get; set; }
 
         public static AgentConfig Load(string path)
         {

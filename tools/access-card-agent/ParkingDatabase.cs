@@ -148,6 +148,87 @@ ORDER BY p.parameter_id;";
             return rows;
         }
 
+        // 通行流水在捷顺 TC.View_RecordAll，不属于 parking1/parking2 的 Car_Issue 授权数据。
+        // 每期使用独立的只读连接；未配置历史库时仅尝试现有库，视图不存在则明确报错。
+        public static List<ParkingSearchRow> SearchMovementsBoth(AgentConfig config, string password, string movementPassword,
+            string plate, string startDate, string endDate)
+        {
+            if (!Regex.IsMatch(plate ?? "", @"^[\u4e00-\u9fa5][A-Z][A-Z0-9]{5,6}$"))
+                throw new InvalidOperationException("进出记录必须按完整车牌精确查询");
+            DateTime start, end;
+            if (!DateTime.TryParseExact(startDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out start) ||
+                !DateTime.TryParseExact(endDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out end) ||
+                end < start || (end - start).TotalDays > 30)
+                throw new InvalidOperationException("进出记录日期范围不正确，最多查询连续 31 天");
+            var rows = new List<ParkingSearchRow>();
+            rows.AddRange(SearchMovements(config, password, movementPassword, plate, start, end.AddDays(1), true));
+            rows.AddRange(SearchMovements(config, password, movementPassword, plate, start, end.AddDays(1), false));
+            return rows.OrderByDescending(row => Convert.ToString(row.fields["outTime"] ?? row.fields["inTime"], CultureInfo.InvariantCulture))
+                .Take(100).ToList();
+        }
+
+        private static List<ParkingSearchRow> SearchMovements(AgentConfig config, string password, string movementPassword,
+            string plate, DateTime start, DateTime endExclusive, bool phase1)
+        {
+            var databaseLabel = phase1 ? "parking1" : "parking2";
+            var server = phase1 ? config.ParkingMovementPhase1Server : config.ParkingMovementPhase2Server;
+            var database = phase1 ? config.ParkingMovementPhase1Database : config.ParkingMovementPhase2Database;
+            var custom = !String.IsNullOrWhiteSpace(server) || !String.IsNullOrWhiteSpace(database);
+            if (custom && (String.IsNullOrWhiteSpace(server) || String.IsNullOrWhiteSpace(database)))
+                throw new InvalidOperationException(databaseLabel + " 的进出记录库地址和库名必须同时配置");
+            if (!custom) { server = config.ParkingSqlServer; database = phase1 ? config.ParkingPhase1Database : config.ParkingPhase2Database; }
+            var user = String.IsNullOrWhiteSpace(config.ParkingMovementUser) ? config.ParkingUser : config.ParkingMovementUser;
+            var secret = custom && !String.IsNullOrWhiteSpace(movementPassword) ? movementPassword : password;
+            if (String.IsNullOrWhiteSpace(server) || String.IsNullOrWhiteSpace(database) || String.IsNullOrWhiteSpace(user) || String.IsNullOrWhiteSpace(secret))
+                throw new InvalidOperationException(databaseLabel + " 的进出记录数据库尚未配置完整");
+            var builder = new SqlConnectionStringBuilder
+            {
+                DataSource = server, InitialCatalog = database, UserID = user, Password = secret,
+                ConnectTimeout = 5, Encrypt = false, TrustServerCertificate = true,
+                ApplicationName = "PMS Parking Movement Read"
+            };
+            using (var connection = new SqlConnection(builder.ConnectionString))
+            {
+                connection.Open();
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandTimeout = 15;
+                    command.CommandText = @"SELECT TOP (50) CarNO, CardTypeName, PersonName, InTime, OutTime
+FROM [TC].[View_RecordAll]
+WHERE CarNO = @plate AND ((InTime >= @start AND InTime < @end) OR (OutTime >= @start AND OutTime < @end))
+ORDER BY COALESCE(OutTime, InTime) DESC;";
+                    command.Parameters.Add("@plate", SqlDbType.NVarChar, 20).Value = plate;
+                    command.Parameters.Add("@start", SqlDbType.DateTime).Value = start;
+                    command.Parameters.Add("@end", SqlDbType.DateTime).Value = endExclusive;
+                    var rows = new List<ParkingSearchRow>();
+                    try
+                    {
+                        using (var reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                var fields = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) {
+                                    { "carNo", Convert.ToString(reader["CarNO"]).Trim().ToUpperInvariant() },
+                                    { "cardTypeName", reader["CardTypeName"] == DBNull.Value ? null : Convert.ToString(reader["CardTypeName"]) },
+                                    { "personName", reader["PersonName"] == DBNull.Value ? null : Convert.ToString(reader["PersonName"]) },
+                                    { "inTime", reader["InTime"] == DBNull.Value ? null : Convert.ToDateTime(reader["InTime"]).ToString("yyyy-MM-dd HH:mm:ss") },
+                                    { "outTime", reader["OutTime"] == DBNull.Value ? null : Convert.ToDateTime(reader["OutTime"]).ToString("yyyy-MM-dd HH:mm:ss") }
+                                };
+                                rows.Add(new ParkingSearchRow { database = databaseLabel, fields = fields });
+                            }
+                        }
+                    }
+                    catch (SqlException exception)
+                    {
+                        if (exception.Number == 208 || exception.Number == 229)
+                            throw new InvalidOperationException(databaseLabel + " 的进出记录库无法读取 TC.View_RecordAll，请在助手设置中配置捷顺历史库和只读账号", exception);
+                        throw;
+                    }
+                    return rows;
+                }
+            }
+        }
+
         public static List<ParkingSearchRow> Search(AgentConfig config, string password, string database, string term)
         {
             return Search(config, password, database, BuildSearchPlan(term));

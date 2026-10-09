@@ -313,6 +313,20 @@ export class CreateParkingQueryDto {
   term: string;
 }
 
+export class CreateParkingMovementQueryDto {
+  @IsString()
+  @MaxLength(20)
+  plate: string;
+
+  @IsString()
+  @MaxLength(10)
+  startDate: string;
+
+  @IsString()
+  @MaxLength(10)
+  endDate: string;
+}
+
 export class ParkingOwnerValuesDto {
   @IsOptional()
   @IsString()

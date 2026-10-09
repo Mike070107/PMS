@@ -213,14 +213,17 @@ namespace Pms.AccessCardAgent
         {
             try
             {
-                var rows = ParkingDatabase.SearchBoth(_config, LoadSecret("parking-db-password.dat"), task.term);
+                var rows = task.queryKind == "movement"
+                    ? ParkingDatabase.SearchMovementsBoth(_config, LoadSecret("parking-db-password.dat"),
+                        LoadOptionalSecret("parking-movement-db-password.dat"), task.term, task.startDate, task.endDate)
+                    : ParkingDatabase.SearchBoth(_config, LoadSecret("parking-db-password.dat"), task.term);
                 _api.ReportParkingQuery(new ParkingQueryReport
                 {
                     queryId = task.queryId,
                     result = "success",
                     rows = rows
                 });
-                RecordActivity("查询停车记录", task.term, true, "查到 " + rows.Count + " 条记录");
+                RecordActivity(task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, true, "查到 " + rows.Count + " 条记录");
             }
             catch (Exception exception)
             {
@@ -230,7 +233,7 @@ namespace Pms.AccessCardAgent
                     result = "retry",
                     errorMessage = exception.Message
                 });
-                RecordActivity("查询停车记录", task.term, false, exception.Message);
+                RecordActivity(task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, false, exception.Message);
             }
         }
 
@@ -478,6 +481,13 @@ namespace Pms.AccessCardAgent
         {
             if (_secretProvider != null) return _secretProvider(legacyFileName);
             return SecretStore.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, legacyFileName));
+        }
+
+        private string LoadOptionalSecret(string legacyFileName)
+        {
+            if (_secretProvider != null) return _secretProvider(legacyFileName);
+            var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, legacyFileName);
+            return File.Exists(path) ? SecretStore.Load(path) : null;
         }
 
         private void SetConnectionState(bool connected, string message)

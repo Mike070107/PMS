@@ -88,6 +88,35 @@ export function supportsStructuredParkingQueries(version: string | null | undefi
   return major === 0 && minor >= 8;
 }
 
+/** 进出流水使用新版助手的精确车牌、时间区间和限量查询协议。 */
+export function supportsParkingMovementQueries(version: string | null | undefined): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 24)))
+    || (major === 0 && minor >= 9);
+}
+
+export function parseParkingMovementRange(plateInput: string, startDate: string, endDate: string) {
+  const plate = plateInput.trim().replace(/[\s·]/g, '').toUpperCase();
+  if (!/^[\u4e00-\u9fff][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(plate)) {
+    throw new Error('进出记录必须使用完整车牌号查询');
+  }
+  const parseDate = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('请选择有效的查询日期');
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+      throw new Error('请选择有效的查询日期');
+    }
+    return date;
+  };
+  const start = parseDate(startDate);
+  const end = parseDate(endDate);
+  const days = (end.getTime() - start.getTime()) / 86_400_000;
+  if (days < 0 || days > 30) throw new Error('每次最多查询连续 31 天的进出记录');
+  return { plate, startDate, endDate };
+}
+
 /** 旧停车库把标准房号写进 P_Owner.owner_Name，例如 `198-6-402/2`。 */
 export function parkingLegacyRoomFromName(
   value: string | null | undefined,

@@ -1206,6 +1206,7 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
           editHint={!pmsMatch ? '没有找到该房号或电话号码对应的 PMS 业主档案' : undefined}
           onEdit={pmsMatch ? () => onEditPms({ id: pmsMatch.userId, name: pmsMatch.name, phone: pmsMatch.phone, status: pmsMatch.status || 'active', source: pmsMatch.source ?? null, contactNote: pmsMatch.contactNote, houseId: pmsMatch.houseId, house: pmsMatch.house }) : undefined} />
       </div>
+      <ParkingMovementSection key={plate} plate={plate} />
       <div className="parking-operation-actions" aria-label="停车业务操作">
         {group.merged && <label className="parking-operation-source">本次操作目标
           <Select value={operationDatabase} onChange={setOperationDatabase} options={[{ value: 'parking1', label: '一期停车库' }, { value: 'parking2', label: '二期停车库' }]} />
@@ -1219,6 +1220,76 @@ function ParkingResultCard({ group, canWriteLocal, canSyncParkingInfo, syncingKe
       </div>
     </article>
   );
+}
+
+function ParkingMovementSection({ plate }: { plate: string }) {
+  const [opened, setOpened] = useState(false);
+  const [range, setRange] = useState<[string, string]>([
+    dayjs().subtract(6, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD'),
+  ]);
+  const [refresh, setRefresh] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [queried, setQueried] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [records, setRecords] = useState<accessCardIssuance.ParkingMovementEntry[]>([]);
+
+  useEffect(() => {
+    if (!opened) return;
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true); setQueried(false); setError(null); setRecords([]);
+      try {
+        let query = await accessCardIssuance.createParkingMovementQuery(plate, range[0], range[1]);
+        for (let attempt = 0; !cancelled && attempt < 90 && (query.status === 'pending' || query.status === 'running'); attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 800));
+          if (cancelled) return;
+          query = await accessCardIssuance.parkingMovementQuery(query.id);
+        }
+        if (cancelled) return;
+        if (query.status === 'failed') throw new Error(query.error || '进出记录查询失败');
+        if (query.status !== 'completed') throw new Error('停车网关响应超时，请确认现场助手在线后重试');
+        setRecords(query.movements);
+        setQueried(true);
+      } catch (cause) {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : '进出记录查询失败');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [opened, plate, range, refresh]);
+
+  return <details className="parking-movement-disclosure" onToggle={(event) => setOpened(event.currentTarget.open)}>
+    <summary><span><HistoryOutlined /> 车牌进出记录</span><span className="parking-movement-summary-action">展开查询 <DownOutlined /></span></summary>
+    <div className="parking-movement-body">
+      <div className="parking-movement-controls">
+        <label htmlFor={`movement-range-${plate}`}>查询日期</label>
+        <DatePicker.RangePicker id={`movement-range-${plate}`} value={[dayjs(range[0]), dayjs(range[1])]}
+          allowClear={false} format="YYYY-MM-DD"
+          onChange={(dates) => {
+            if (!dates?.[0] || !dates?.[1]) return;
+            const start = dates[0].format('YYYY-MM-DD');
+            const end = dates[1].format('YYYY-MM-DD');
+            if (dayjs(end).diff(dayjs(start), 'day') > 30) { setError('单次最多查询连续 31 天，请缩小日期范围'); return; }
+            setRange([start, end]);
+          }} />
+        <Button icon={<ReloadOutlined />} onClick={() => setRefresh((value) => value + 1)} disabled={loading}>重新查询</Button>
+        <Text type="secondary">按当前车牌精确查询，最多返回一期、二期各 50 条</Text>
+      </div>
+      {loading && <div className="parking-movement-state" role="status"><Spin /> 正在从旧停车系统查询进出流水…</div>}
+      {!loading && error && <Alert type="error" showIcon message="进出记录未能读取" description={error} />}
+      {!loading && !error && queried && records.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="所选日期内没有查到进出记录" />}
+      {!loading && !error && records.length > 0 && <div className="parking-movement-table-wrap"><table className="parking-movement-table">
+        <thead><tr><th>来源</th><th>入场时间</th><th>出场时间</th><th>卡类型</th><th>登记人</th></tr></thead>
+        <tbody>{records.map((entry, index) => <tr key={`${entry.database}-${entry.inTime}-${entry.outTime}-${index}`}>
+          <td>{entry.database === 'parking1' ? '一期' : '二期'}</td>
+          <td>{entry.inTime || '—'}</td><td>{entry.outTime || '尚未出场'}</td>
+          <td>{entry.cardType || '—'}</td><td>{entry.resident || '—'}</td>
+        </tr>)}</tbody>
+      </table></div>}
+    </div>
+  </details>;
 }
 
 function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverride, targetRows, loading, error, task, onClose, onSubmit, onRetry, onRollback, onCreateProofUpload, onCheckPlate, onQueryPlate }: {

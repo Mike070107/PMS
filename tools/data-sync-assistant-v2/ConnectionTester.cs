@@ -71,6 +71,24 @@ namespace Pms.DataSyncAssistant
             return result;
         }
 
+        public static void TestParkingMovements(ConnectionConfiguration item, string password, string movementPassword,
+            ConnectionTestResult result)
+        {
+            var config = ConnectionAgentRuntime.BuildAgentConfig(item, new HostConfiguration());
+            var today = DateTime.Today.ToString("yyyy-MM-dd");
+            try
+            {
+                // 只读、精确车牌、当日范围；即使没有匹配记录也能验证视图权限。
+                ParkingDatabase.SearchMovementsBoth(config, password, movementPassword, "沪A00000", today, today);
+                result.Checks.Add("一期、二期进出记录视图可读");
+                result.Summary = String.Join("；", result.Checks.ToArray());
+            }
+            catch (Exception exception)
+            {
+                throw new InvalidOperationException("进出记录历史库检测失败：" + FriendlySqlError(exception));
+            }
+        }
+
         private static ConnectionTestResult TestAccessDatabases(ConnectionConfiguration item, string password)
         {
             var config = ConnectionAgentRuntime.BuildAgentConfig(item, new HostConfiguration());

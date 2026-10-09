@@ -54,6 +54,20 @@
             <StackPanel><TextBlock Text="主数据库" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="DatabaseOneInput" /></StackPanel>
             <StackPanel Grid.Column="2"><TextBlock Text="第二数据库（可选）" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="DatabaseTwoInput" /></StackPanel>
           </Grid>
+          <Expander x:Name="MovementFields" Header="进出记录历史库（如与车辆库不同，请展开配置）" Margin="0,12,0,0">
+            <StackPanel Margin="10,10,10,4">
+              <TextBlock Text="进出记录从 TC.View_RecordAll 读取。留空时尝试上面的同名车辆库。" TextWrapping="Wrap" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,8" />
+              <TextBlock Text="旧网页参考：一期 192.168.1.2\JSST / js；二期 192.168.1.5\JS / JSOCTNet。请以本机测试可连接的地址为准。" TextWrapping="Wrap" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,8" />
+              <TextBlock Text="一期历史库 SQL Server" Foreground="{StaticResource PmsMuted}" /><TextBox x:Name="MovementServerOneInput" />
+              <TextBlock Text="一期历史库名称" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementDatabaseOneInput" />
+              <TextBlock Text="二期历史库 SQL Server" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementServerTwoInput" />
+              <TextBlock Text="二期历史库名称" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementDatabaseTwoInput" />
+              <TextBlock Text="历史库用户（留空沿用上面的用户）" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementUserInput" />
+              <TextBlock Text="历史库密码（留空沿用上面的密码；已保存时留空保持）" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" />
+              <PasswordBox x:Name="MovementPasswordInput" MinHeight="38" Padding="10,7" BorderBrush="{StaticResource PmsBorder}" />
+              <TextBlock x:Name="MovementPasswordHint" Foreground="#7A8EA4" FontSize="10" Margin="0,5,0,0" />
+            </StackPanel>
+          </Expander>
           <StackPanel x:Name="FileFields" Visibility="Collapsed" Margin="0,10,0,0">
             <TextBlock Text="MjSystem 数据库文件" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,5" /><TextBox x:Name="MjSystemPathInput" />
             <TextBlock Text="iCCard 数据库文件" Foreground="{StaticResource PmsMuted}" Margin="0,10,0,5" /><TextBox x:Name="IcCardPathInput" />

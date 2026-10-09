@@ -48,6 +48,7 @@ import {
   AgentReportDto,
   CardPreflightDto,
   CreateParkingQueryDto,
+  CreateParkingMovementQueryDto,
   CreateParkingOwnerUpdateDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
@@ -85,6 +86,8 @@ import {
   parseParkingSearch,
   assertFreshParkingPlateCheck,
   supportsStructuredParkingQueries,
+  supportsParkingMovementQueries,
+  parseParkingMovementRange,
 } from './parking-query.util';
 import {
   normalizeParkingOwnerFieldHints,
@@ -430,6 +433,9 @@ export class AccessCardIssuanceService {
     const query = this.parkingQueryRepo.create({
       tenantId,
       term,
+      queryKind: 'vehicle',
+      rangeStart: null,
+      rangeEnd: null,
       status: 'pending',
       rows: [],
       attempt: 0,
@@ -446,9 +452,34 @@ export class AccessCardIssuanceService {
 
   async getParkingQuery(id: number, user: AuthUser) {
     const tenantId = this.requireTenant(user);
-    const query = await this.parkingQueryRepo.findOne({ where: { id, tenantId } });
+    const query = await this.parkingQueryRepo.findOne({ where: { id, tenantId, queryKind: 'vehicle' } });
     if (!query) throw new NotFoundException('停车查询不存在或已失效');
     return this.parkingQueryResponse(query);
+  }
+
+  async createParkingMovementQuery(dto: CreateParkingMovementQueryDto, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    let input: ReturnType<typeof parseParkingMovementRange>;
+    try { input = parseParkingMovementRange(dto.plate, dto.startDate, dto.endDate); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '进出记录查询条件不正确'); }
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
+    const gateway = orderAgentsByAvailability(agents).find((agent) =>
+      effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbRead === true &&
+      supportsParkingMovementQueries(agent.version));
+    if (!gateway) throw new ServiceUnavailableException('进出记录查询需要在线的 2.5.24 或更新版本数据同步助手');
+    const query = this.parkingQueryRepo.create({
+      tenantId, term: input.plate, queryKind: 'movement', rangeStart: input.startDate, rangeEnd: input.endDate,
+      status: 'pending', rows: [], attempt: 0, requestedAt: new Date(), completedAt: null,
+      leaseAgentKey: null, leaseExpiresAt: null, lastError: null, createdBy: user.id, updatedBy: user.id,
+    });
+    return this.parkingMovementResponse(await this.parkingQueryRepo.save(query));
+  }
+
+  async getParkingMovementQuery(id: number, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const query = await this.parkingQueryRepo.findOne({ where: { id, tenantId, queryKind: 'movement' } });
+    if (!query) throw new NotFoundException('进出记录查询不存在或已失效');
+    return this.parkingMovementResponse(query);
   }
 
   async createParkingOwnerUpdate(dto: CreateParkingOwnerUpdateDto, user: AuthUser) {
@@ -724,12 +755,15 @@ export class AccessCardIssuanceService {
     if (agent.kind !== 'parking_gateway') throw new ForbiddenException('当前代理不是停车系统网关');
     if (!supportsStructuredParkingQueries(agent.version)) return { task: null };
 
+    const canQueryMovements = supportsParkingMovementQueries(agent.version);
+
     const task = await this.parkingQueryRepo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(ParkingQuery);
       const now = new Date();
       const query = await repo.createQueryBuilder('query')
         .where('query.tenant_id = :tenantId', { tenantId: agent.tenantId })
         .andWhere("(query.status = 'pending' OR (query.status = 'running' AND query.lease_expires_at < :now))", { now })
+        .andWhere("(query.query_kind = 'vehicle' OR :canQueryMovements = true)", { canQueryMovements })
         .orderBy('query.created_at', 'ASC')
         .setLock('pessimistic_write')
         .setOnLocked('skip_locked')
@@ -750,7 +784,7 @@ export class AccessCardIssuanceService {
       query.leaseExpiresAt = new Date(now.getTime() + 90_000);
       query.updatedBy = null;
       await repo.save(query);
-      return { queryId: query.id, term: query.term };
+      return { queryId: query.id, term: query.term, queryKind: query.queryKind, startDate: query.rangeStart, endDate: query.rangeEnd };
     });
     return { task };
   }
@@ -865,10 +899,12 @@ export class AccessCardIssuanceService {
       const now = new Date();
       if (dto.result === 'success') {
         query.status = 'completed';
-        query.rows = sanitizeParkingRows(dto.rows ?? []);
+        query.rows = query.queryKind === 'movement'
+          ? sanitizeParkingMovementRows(dto.rows ?? [], query.term)
+          : sanitizeParkingRows(dto.rows ?? []);
         query.lastError = null;
         query.completedAt = now;
-        await this.captureParkingHistory(manager, query, now);
+        if (query.queryKind === 'vehicle') await this.captureParkingHistory(manager, query, now);
       } else if (dto.result === 'retry' && query.attempt < 3) {
         query.status = 'pending';
         query.lastError = dto.errorMessage?.trim() || '停车数据库暂时无法查询，正在重试';
@@ -1111,6 +1147,26 @@ export class AccessCardIssuanceService {
       error: query.status === 'failed' ? query.lastError : null,
       requestedAt: query.requestedAt,
       completedAt: query.completedAt,
+    };
+  }
+
+  private parkingMovementResponse(query: ParkingQuery) {
+    const movements = query.status === 'completed'
+      ? query.rows.map((row) => ({
+        database: row.database,
+        plate: String(row.fields.carNo ?? ''),
+        cardType: row.fields.cardTypeName == null ? null : String(row.fields.cardTypeName),
+        resident: row.fields.personName == null ? null : String(row.fields.personName),
+        inTime: row.fields.inTime == null ? null : String(row.fields.inTime),
+        outTime: row.fields.outTime == null ? null : String(row.fields.outTime),
+      }))
+        .sort((a, b) => String(b.outTime || b.inTime || '').localeCompare(String(a.outTime || a.inTime || '')))
+      : [];
+    return {
+      id: query.id, plate: query.term, status: query.status, startDate: query.rangeStart,
+      endDate: query.rangeEnd, movements,
+      error: query.status === 'failed' ? query.lastError : null,
+      requestedAt: query.requestedAt, completedAt: query.completedAt,
     };
   }
 
@@ -2601,6 +2657,33 @@ function sanitizeParkingRows(rows: ParkingQueryReportDto['rows']): ParkingQuery[
       else if (typeof rawValue === 'string') fields[key] = rawValue.slice(0, 500);
     }
     return { database: row.database.trim().slice(0, 80), fields };
+  });
+}
+
+function sanitizeParkingMovementRows(rows: ParkingQueryReportDto['rows'], requestedPlate: string): ParkingQuery['rows'] {
+  if ((rows ?? []).length > 100) throw new BadRequestException('进出记录返回超过 100 条，请缩小日期范围');
+  return (rows ?? []).map((row) => {
+    const database = row.database?.trim().toLowerCase();
+    const fields = row.fields ?? {};
+    const carNo = String(fields.carNo ?? '').replace(/[\s·]/g, '').toUpperCase();
+    const time = (value: unknown) => value == null || value === '' ? null : String(value);
+    const inTime = time(fields.inTime);
+    const outTime = time(fields.outTime);
+    if ((database !== 'parking1' && database !== 'parking2') || carNo !== requestedPlate ||
+        ![inTime, outTime].some((value) => value && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) ||
+        [inTime, outTime].some((value) => value && !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value))) {
+      throw new BadRequestException('停车网关返回的进出记录与所查车牌或时间格式不一致');
+    }
+    return {
+      database,
+      fields: {
+        carNo,
+        cardTypeName: fields.cardTypeName == null ? null : String(fields.cardTypeName).slice(0, 80),
+        personName: fields.personName == null ? null : String(fields.personName).slice(0, 100),
+        inTime,
+        outTime,
+      },
+    };
   });
 }
 

@@ -204,6 +204,27 @@ export interface ParkingQuery {
   completedAt: string | null;
 }
 
+export interface ParkingMovementEntry {
+  database: 'parking1' | 'parking2';
+  plate: string;
+  cardType: string | null;
+  resident: string | null;
+  inTime: string | null;
+  outTime: string | null;
+}
+
+export interface ParkingMovementQuery {
+  id: number;
+  plate: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  startDate: string;
+  endDate: string;
+  movements: ParkingMovementEntry[];
+  error: string | null;
+  requestedAt: string;
+  completedAt: string | null;
+}
+
 export interface ParkingOwnerValues {
   name: string | null;
   phone: string | null;
@@ -281,6 +302,18 @@ export const createParkingQuery = (term: string) =>
 export const parkingQuery = (id: number) =>
   request<ParkingQuery>({
     url: `/access-card-issuance/parking/queries/${id}`,
+  });
+
+export const createParkingMovementQuery = (plate: string, startDate: string, endDate: string) =>
+  request<ParkingMovementQuery>({
+    url: '/access-card-issuance/parking/movements/queries',
+    method: 'POST',
+    data: { plate, startDate, endDate },
+  });
+
+export const parkingMovementQuery = (id: number) =>
+  request<ParkingMovementQuery>({
+    url: `/access-card-issuance/parking/movements/queries/${id}`,
   });
 
 export const createParkingOwnerUpdate = (data: {

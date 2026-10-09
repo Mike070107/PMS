@@ -237,6 +237,9 @@ namespace Pms.AccessCardAgent
     {
         public int queryId { get; set; }
         public string term { get; set; }
+        public string queryKind { get; set; }
+        public string startDate { get; set; }
+        public string endDate { get; set; }
     }
 
     internal sealed class ParkingQueryReport
