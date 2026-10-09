@@ -224,6 +224,29 @@ namespace Pms.DataSyncAssistant
             if (grant.taskId != 19 || grant.action != "authorize_existing_card" || grant.targetBuildings.Length != 1 ||
                 grant.displayName != "228/16/401/6" || grant.operation != "access_database_only")
                 throw new InvalidOperationException("历史卡追加楼栋权限任务解析失败");
+
+            if (AccessGatewayDatabase.ExtractRoomBuildingNo("228/41/402/25") != "41")
+                throw new InvalidOperationException("iCCard 用户姓名未能解析本楼栋");
+            var selectedGroup = AccessGatewayDatabase.SelectIcCardGroup("41", new[]
+            {
+                new IcCardGroupCandidate { Id = 11, Name = "11号楼" },
+                new IcCardGroupCandidate { Id = 37, Name = "41号楼" }
+            });
+            if (selectedGroup.Id != 37 || selectedGroup.Name != "41号楼")
+                throw new InvalidOperationException("iCCard 用户组仍错误使用固定 GroupID");
+            try
+            {
+                AccessGatewayDatabase.SelectIcCardGroup("41", new[]
+                {
+                    new IcCardGroupCandidate { Id = 37, Name = "41号楼" },
+                    new IcCardGroupCandidate { Id = 38, Name = "41号楼备用" }
+                });
+                throw new InvalidOperationException("iCCard 重复楼栋用户组未被阻止");
+            }
+            catch (InvalidOperationException exception)
+            {
+                if (exception.Message.IndexOf("匹配到多条", StringComparison.Ordinal) < 0) throw;
+            }
         }
 
         private static void VerifyAccessGatewayMigration(string root)

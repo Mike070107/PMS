@@ -22,7 +22,15 @@ namespace Pms.AccessCardAgent
         public string accessSystem { get; set; }
         public string status { get; set; }
         public string databaseRecord { get; set; }
+        public int? groupId { get; set; }
+        public string groupName { get; set; }
         public string[] doors { get; set; }
+    }
+
+    internal sealed class IcCardGroupCandidate
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
     }
 
     internal sealed class AccessPermissionResult
@@ -277,6 +285,10 @@ namespace Pms.AccessCardAgent
             {
                 try
                 {
+                    var homeBuildingNo = ExtractRoomBuildingNo(UserDisplayName(task));
+                    if (String.IsNullOrWhiteSpace(homeBuildingNo))
+                        throw new InvalidOperationException("无法从用户姓名解析本楼栋，必须使用“弄号/楼栋/房号/序号”格式");
+                    var group = ResolveIcCardGroup(connection, transaction, homeBuildingNo);
                     var isExistingCardGrant = String.Equals(task.action, "authorize_existing_card", StringComparison.OrdinalIgnoreCase);
                     var marker = isExistingCardGrant ? "PMS_AUTH_" + task.taskId : "PMS_ITEM_" + task.itemId;
                     var consumerId = ScalarInt(connection, transaction,
@@ -288,8 +300,8 @@ namespace Pms.AccessCardAgent
                         if (!isExistingCardGrant && !String.Equals(note, marker, StringComparison.OrdinalIgnoreCase))
                             throw new InvalidOperationException("WG 卡号已存在 iCCard，但不属于当前 PMS 任务");
                         Execute(connection, transaction,
-                            "UPDATE t_b_Consumer SET f_ConsumerName=? WHERE f_ConsumerID=?",
-                            Limit(UserDisplayName(task), 50), consumerId.Value);
+                            "UPDATE t_b_Consumer SET f_ConsumerName=?,f_GroupID=? WHERE f_ConsumerID=?",
+                            Limit(UserDisplayName(task), 50), group.Id, consumerId.Value);
                     }
                     else
                     {
@@ -297,7 +309,7 @@ namespace Pms.AccessCardAgent
                             "SELECT MAX(f_ConsumerNO) FROM t_b_Consumer")) + 1;
                         Execute(connection, transaction,
                             "INSERT INTO t_b_Consumer (f_ConsumerNO,f_ConsumerName,f_ConsumerGrade,f_GroupID,f_AttendEnabled,f_DoorEnabled,f_BeginYMD,f_EndYMD,f_Note,f_PatrolEnabled,f_bShift) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                            nextNo, Limit(UserDisplayName(task), 50), "0", 11, 1, 1, DateTime.Today,
+                            nextNo, Limit(UserDisplayName(task), 50), "0", group.Id, 1, 1, DateTime.Today,
                             new DateTime(2099, 12, 31), marker, 0, 0);
                         consumerId = Convert.ToInt32(Scalar(connection, transaction, "SELECT @@IDENTITY"));
                         Execute(connection, transaction,
@@ -319,20 +331,93 @@ namespace Pms.AccessCardAgent
                                     "INSERT INTO t_d_Privilege (f_DoorID,f_ControlSegID,f_ConsumerID) VALUES (?,?,?)",
                                     door, 1, consumerId.Value);
                         }
+                        var savedGroupId = ScalarInt(connection, transaction,
+                            "SELECT f_GroupID FROM t_b_Consumer WHERE f_ConsumerID=?", consumerId.Value);
+                        var savedGroupName = ScalarString(connection, transaction,
+                            "SELECT f_GroupName FROM t_b_Group WHERE f_GroupID=?", savedGroupId);
+                        if (!savedGroupId.HasValue || savedGroupId.Value != group.Id ||
+                            !String.Equals(savedGroupName, group.Name, StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException(homeBuildingNo + "号楼用户组写入后读回不一致，事务已取消");
+                        var verifiedDoors = doors.Select(door => ReadIcCardDoorLabel(
+                            connection, transaction, door, target.buildingNo)).ToArray();
                         output.Add(new AccessDatabaseWriteResult
                         {
                             buildingId = target.id,
                             buildingNo = target.buildingNo,
                             accessSystem = "iccard",
                             status = "access_db_written",
-                            databaseRecord = "ConsumerID=" + consumerId.Value,
-                            doors = doors.Select(value => value.ToString()).ToArray()
+                            databaseRecord = "ConsumerID=" + consumerId.Value + ";GroupID=" + group.Id,
+                            groupId = group.Id,
+                            groupName = group.Name,
+                            doors = verifiedDoors
                         });
                     }
                     transaction.Commit();
                     return output;
                 }
                 catch { transaction.Rollback(); throw; }
+            }
+        }
+
+        internal static string ExtractRoomBuildingNo(string value)
+        {
+            if (String.IsNullOrWhiteSpace(value)) return null;
+            var match = Regex.Match(value.Trim(), @"^(?:已隐藏)?\s*\d+\s*/\s*(\d{1,3})\s*/");
+            return match.Success ? NormalizeBuilding(match.Groups[1].Value) : null;
+        }
+
+        internal static IcCardGroupCandidate SelectIcCardGroup(string buildingNo, IEnumerable<IcCardGroupCandidate> groups)
+        {
+            var normalized = NormalizeBuilding(buildingNo);
+            var matches = (groups ?? Enumerable.Empty<IcCardGroupCandidate>())
+                .Where(item => item != null && NormalizeBuilding(ExtractBuildingNo(item.Name)) == normalized)
+                .GroupBy(item => item.Id)
+                .Select(group => group.First())
+                .ToArray();
+            if (matches.Length == 0)
+                throw new InvalidOperationException(buildingNo + "号楼在 iCCard 用户组中没有精确匹配，请先核对 t_b_Group");
+            if (matches.Length > 1)
+                throw new InvalidOperationException(buildingNo + "号楼在 iCCard 用户组中匹配到多条记录，已停止写入");
+            return matches[0];
+        }
+
+        private static IcCardGroupCandidate ResolveIcCardGroup(
+            OleDbConnection connection, OleDbTransaction transaction, string buildingNo)
+        {
+            var groups = new List<IcCardGroupCandidate>();
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "SELECT f_GroupID,f_GroupName FROM t_b_Group";
+                using (var reader = command.ExecuteReader())
+                    while (reader.Read()) groups.Add(new IcCardGroupCandidate
+                    {
+                        Id = Convert.ToInt32(reader["f_GroupID"]),
+                        Name = Text(reader, "f_GroupName")
+                    });
+            }
+            return SelectIcCardGroup(buildingNo, groups);
+        }
+
+        private static string ReadIcCardDoorLabel(
+            OleDbConnection connection, OleDbTransaction transaction, int doorId, string buildingNo)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "SELECT D.f_DoorName,C.f_ControllerName " +
+                    "FROM t_b_Door AS D LEFT JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID " +
+                    "WHERE D.f_DoorID=?";
+                command.Parameters.AddWithValue("@door", doorId);
+                using (var reader = command.ExecuteReader())
+                {
+                    if (!reader.Read()) throw new InvalidOperationException("iCCard 门 " + doorId + " 写入后无法读回");
+                    var doorName = Text(reader, "f_DoorName");
+                    var controllerName = Text(reader, "f_ControllerName");
+                    if (NormalizeBuilding(ExtractBuildingNo(doorName, controllerName)) != NormalizeBuilding(buildingNo))
+                        throw new InvalidOperationException(buildingNo + "号楼门权限读回到其他楼栋，事务已取消");
+                    return doorId + ":" + doorName + (String.IsNullOrWhiteSpace(controllerName) ? "" : " / " + controllerName);
+                }
             }
         }
 
