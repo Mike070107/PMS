@@ -219,10 +219,10 @@ namespace Pms.DataSyncAssistant
                 task.displayName != "228/16/401/6")
                 throw new InvalidOperationException("门禁任务楼栋快照解析失败");
 
-            var grantJson = "{\"action\":\"authorize_existing_card\",\"taskId\":19,\"displayName\":\"228/16/401/6\",\"wgCardNo\":\"22355403\",\"targetBuildings\":[{\"id\":11,\"buildingNo\":\"11\",\"accessSystem\":\"iccard\"}]}";
+            var grantJson = "{\"action\":\"authorize_existing_card\",\"operation\":\"access_database_only\",\"taskId\":19,\"displayName\":\"228/16/401/6\",\"wgCardNo\":\"22355403\",\"targetBuildings\":[{\"id\":11,\"buildingNo\":\"11\",\"accessSystem\":\"iccard\"}]}";
             var grant = new JavaScriptSerializer().Deserialize<AgentTask>(grantJson);
             if (grant.taskId != 19 || grant.action != "authorize_existing_card" || grant.targetBuildings.Length != 1 ||
-                grant.displayName != "228/16/401/6")
+                grant.displayName != "228/16/401/6" || grant.operation != "access_database_only")
                 throw new InvalidOperationException("历史卡追加楼栋权限任务解析失败");
         }
 

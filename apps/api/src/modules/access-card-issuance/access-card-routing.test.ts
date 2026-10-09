@@ -12,7 +12,9 @@ import {
   legacyDuplicateCardMessage,
   nextLegacyUserSequence,
   projectPhaseOf,
+  parseLegacyAccessCardRoomName,
   supportsAccessCardDisplayName,
+  supportsAccessCardOperationMode,
 } from './access-card-routing';
 
 test('额外授权只列同一门禁区域，并按楼栋数字自然排序', () => {
@@ -85,6 +87,22 @@ test('完整门禁用户姓名任务只交给 2.5.29 或更新助手', () => {
   assert.equal(supportsAccessCardDisplayName('2.5.29.0'), true);
   assert.equal(supportsAccessCardDisplayName('2.6.0'), true);
   assert.equal(supportsAccessCardDisplayName(null), false);
+});
+
+test('拆分写门禁库与控制器下发只交给 2.5.30 或更新助手', () => {
+  assert.equal(supportsAccessCardOperationMode('2.5.29'), false);
+  assert.equal(supportsAccessCardOperationMode('2.5.30.0'), true);
+  assert.equal(supportsAccessCardOperationMode('2.6.0'), true);
+});
+
+test('捷顺登记名称精确解析弄号、楼栋、室号和累计卡序号', () => {
+  assert.deepEqual(parseLegacyAccessCardRoomName('228/16/401/6'), {
+    lane: '228', buildingNo: '16', roomNo: '401', sequence: 6,
+  });
+  assert.deepEqual(parseLegacyAccessCardRoomName('已隐藏228/05/301/2'), {
+    lane: '228', buildingNo: '5', roomNo: '301', sequence: 2,
+  });
+  assert.equal(parseLegacyAccessCardRoomName('228/16/401'), null);
 });
 
 test('IC 转 WG 与旧 PHP 字节顺序一致', () => {

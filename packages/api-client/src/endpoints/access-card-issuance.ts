@@ -108,7 +108,10 @@ export interface AccessCardRecentRecord {
 export interface LegacyRecentCardQuery {
   status: 'pending' | 'ready' | 'error';
   rows: Array<{ personId: number; personNo: string; personName?: string | null;
-    icCardNo: string | null; wgCardNo: string | null; issuedAt: string | null }>;
+    icCardNo: string | null; wgCardNo: string | null; issuedAt: string | null;
+    houseId: number | null; roomKey: string | null; projectPhase: ProjectPhase | null;
+    buildingNo: string | null; canManageAccess: boolean; actionMessage: string | null;
+    accessDatabaseTask: AccessCardAuthorization | null; controllerTask: AccessCardAuthorization | null }>;
   error: string | null;
   refreshedAt: string | null;
   permissionStatus: 'idle' | 'pending' | 'running' | 'ready' | 'error';
@@ -122,6 +125,7 @@ export interface AccessCardAuthorization {
   houseId: number;
   historyRowId: number;
   roomKey: string;
+  operation: 'access_database_only' | 'controller_upload';
   icCardNo: string | null;
   wgCardNo: string;
   targetBuildings: Array<{ id: number; buildingNo: string; accessSystem: Exclude<AccessSystem, null> }>;
@@ -456,6 +460,16 @@ export const requestRecentLegacyCards = () => request<LegacyRecentCardQuery>({
 export const recentLegacyCards = () => request<LegacyRecentCardQuery>({
   url: '/access-card-issuance/recent-legacy-cards/queries',
 });
+
+export const addRecentLegacyCardToAccessDatabase = (personId: number, data: { idempotencyKey: string }) =>
+  request<AccessCardAuthorization>({
+    url: `/access-card-issuance/recent-legacy-cards/${personId}/access-database`, method: 'POST', data,
+  });
+
+export const sendRecentLegacyCardToController = (personId: number, data: { idempotencyKey: string }) =>
+  request<AccessCardAuthorization>({
+    url: `/access-card-issuance/recent-legacy-cards/${personId}/controller`, method: 'POST', data,
+  });
 
 export const createHistoryAuthorization = (houseId: number, historyId: number, data: {
   targetBuildingIds: number[];

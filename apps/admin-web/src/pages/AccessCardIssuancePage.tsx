@@ -97,6 +97,7 @@ const PREVIEW_CONTEXT: AccessCardHouseContext = {
         houseId: 1,
         historyRowId: 2,
         roomKey: '228/5/301',
+        operation: 'controller_upload',
         icCardNo: '11223344',
         wgCardNo: '05108721',
         targetBuildings: [{ id: 9, buildingNo: '9', accessSystem: 'mjsystem' }],
@@ -159,7 +160,7 @@ function systemLabel(value: AccessCardHouseContext['accessSystem']): string {
 
 function accessStatus(value: string) {
   if (value === 'not_required') return <Tag>不适用</Tag>;
-  if (value === 'controller_uploaded') return <Tag color="success">已上传</Tag>;
+  if (value === 'controller_uploaded') return <Tag color="success">已下发</Tag>;
   if (value === 'not_uploaded') return <Tag color="error">未上传</Tag>;
   if (value === 'access_db_written') return <Tag color="processing">.88 门禁库已写入，控制器待确认</Tag>;
   if (value === 'permission_check_pending') return <Tag color="processing">权限核验中</Tag>;
@@ -300,6 +301,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const [recentLegacy, setRecentLegacy] = useState<LegacyRecentCardQuery | null>(null);
   const [recentLegacyLoading, setRecentLegacyLoading] = useState(false);
   const [recentLegacyError, setRecentLegacyError] = useState<string | null>(null);
+  const [recentLegacyActionKey, setRecentLegacyActionKey] = useState<string | null>(null);
   const contextRequestRef = useRef(0);
 
   const loadRecentRecords = useCallback(async () => {
@@ -705,7 +707,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         const targets = context.availableBuildings.filter((item) => authorizationBuildingIds.includes(item.id));
         setAuthorizationTask({
           id: 9901, houseId: context.house.id, historyRowId: authorizationRow.id,
-          roomKey: context.house.roomKey, icCardNo: authorizationRow.icCardNo,
+          roomKey: context.house.roomKey, operation: 'controller_upload', icCardNo: authorizationRow.icCardNo,
           wgCardNo: authorizationRow.wgCardNo || '', targetBuildings: targets.map((item) => ({
             id: item.id, buildingNo: item.buildingNo, accessSystem: item.accessSystem || 'mjsystem',
           })), controllerResults: [], status: 'completed', attempt: 1, error: null,
@@ -738,7 +740,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       }
       if (task.status === 'completed') {
         await refreshContext();
-        message.success('额外楼栋权限已写入并上传控制器');
+        message.success('额外楼栋权限已写入并下发控制器');
       } else if (task.status === 'failed') {
         message.error(task.error || '额外楼栋授权失败，请检查门禁网关');
       } else {
@@ -819,6 +821,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
           houseId: context.house.id,
           historyRowId: row.id,
           roomKey: context.house.roomKey,
+          operation: 'controller_upload',
           icCardNo: row.icCardNo,
           wgCardNo: row.wgCardNo,
           targetBuildings: [{
@@ -849,7 +852,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
             latestAuthorization: completedTask,
           }) : item),
         }) : current);
-        message.success(`卡号 ${row.wgCardNo} 已上传本楼栋控制器`);
+        message.success(`卡号 ${row.wgCardNo} 已下发至本楼栋控制器`);
         return;
       }
 
@@ -868,17 +871,53 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       }
       await refreshContext();
       if (task.status === 'completed') {
-        message.success(`卡号 ${row.wgCardNo} 已上传本楼栋控制器`);
+        message.success(`卡号 ${row.wgCardNo} 已下发至本楼栋控制器`);
       } else if (task.status === 'failed') {
-        message.error(task.error || '上传控制器失败，请按提示检查门禁网关后重试');
+        message.error(task.error || '下发控制器失败，请按提示检查门禁网关后重试');
       } else {
         message.warning('上传任务仍在后台执行，可稍后刷新历史查看结果');
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '上传控制器失败');
+      message.error(error instanceof Error ? error.message : '下发控制器失败');
       if (!preview) await refreshContext();
     } finally {
       setUploadingHistoryRowId(null);
+    }
+  };
+
+  const runRecentLegacyAction = async (
+    row: LegacyRecentCardQuery['rows'][number],
+    operation: 'access_database_only' | 'controller_upload',
+  ) => {
+    if (!row.canManageAccess) {
+      message.warning(row.actionMessage || '这张卡不能执行门禁操作');
+      return;
+    }
+    const actionKey = `${row.personId}:${operation}`;
+    setRecentLegacyActionKey(actionKey);
+    try {
+      let task = operation === 'access_database_only'
+        ? await accessCardIssuance.addRecentLegacyCardToAccessDatabase(row.personId, { idempotencyKey: newIdempotencyKey() })
+        : await accessCardIssuance.sendRecentLegacyCardToController(row.personId, { idempotencyKey: newIdempotencyKey() });
+      for (let attempt = 0; attempt < 72 && ['pending', 'running'].includes(task.status); attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_250));
+        task = await accessCardIssuance.historyAuthorization(task.id);
+      }
+      setRecentLegacy(await accessCardIssuance.recentLegacyCards());
+      if (task.status === 'completed') {
+        message.success(operation === 'access_database_only'
+          ? `卡号 ${row.wgCardNo} 已添加至 .88 门禁管理系统`
+          : `卡号 ${row.wgCardNo} 已下发至控制器`);
+      } else if (task.status === 'failed') {
+        message.error(task.error || (operation === 'access_database_only' ? '添加门禁管理系统失败' : '下发控制器失败'));
+      } else {
+        message.warning('任务仍在后台执行，可稍后刷新查看结果');
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '门禁操作失败');
+      try { setRecentLegacy(await accessCardIssuance.recentLegacyCards()); } catch { /* 保留当前列表 */ }
+    } finally {
+      setRecentLegacyActionKey(null);
     }
   };
 
@@ -889,7 +928,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     { title: 'IC 卡号', dataIndex: 'icCardNo', width: 150, render: (value: string | null) => value || '—' },
     { title: 'WG 卡号', dataIndex: 'wgCardNo', width: 130, render: (value: string | null) => value || <Text type="secondary">不适用</Text> },
     { title: '发卡时间', dataIndex: 'issuedAt', width: 180, render: formatTime },
-    { title: '控制器上传 / 门栋权限', key: 'controllerPermissions', width: 300, render: (_: unknown, row: AccessCardHistoryRow) => <ControllerPermissionCell row={row} /> },
+    { title: '控制器下发 / 门栋权限', key: 'controllerPermissions', width: 300, render: (_: unknown, row: AccessCardHistoryRow) => <ControllerPermissionCell row={row} /> },
     { title: '旧库同步', dataIndex: 'legacySyncStatus', width: 120, render: legacyStatus },
     {
       title: '操作', key: 'actions', width: 196, fixed: 'right' as const,
@@ -904,11 +943,11 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                 size="small"
                 icon={<ReloadOutlined aria-hidden="true" />}
                 loading={retryingAuthorizationId === row.latestAuthorization.id}
-                aria-label={`重试上传 WG 卡号 ${row.wgCardNo} 的门栋权限`}
+                aria-label={`重试下发 WG 卡号 ${row.wgCardNo} 的门栋权限`}
                 title={row.latestAuthorization.error || '重新下发原目标楼栋权限'}
                 onClick={() => void retryHistoryAuthorization(row)}
               >
-                重试上传
+                重试下发
               </Button>
               {row.latestAuthorization.error && (
                 <Text type="danger" style={{ maxWidth: 180 }} ellipsis={{ tooltip: row.latestAuthorization.error }}>
@@ -919,7 +958,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
           );
         }
         if (row.latestAuthorization && ['pending', 'running'].includes(row.latestAuthorization.status)) {
-          return <Tag color="processing">上传处理中</Tag>;
+          return <Tag color="processing">下发处理中</Tag>;
         }
         if (row.accessStatus === 'not_uploaded') {
           return (
@@ -928,10 +967,10 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
               size="small"
               icon={<UploadOutlined aria-hidden="true" />}
               loading={uploadingHistoryRowId === row.id}
-              aria-label={`上传 WG 卡号 ${row.wgCardNo} 到本楼栋控制器`}
+              aria-label={`下发 WG 卡号 ${row.wgCardNo} 到本楼栋控制器`}
               onClick={() => void uploadHistoryCardToController(row)}
             >
-              上传控制器
+              下发至控制器
             </Button>
           );
         }
@@ -946,7 +985,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     { title: 'IC 卡号', dataIndex: 'icCardNo', width: 140, render: (value: string | null) => value || '—' },
     { title: 'WG 卡号', dataIndex: 'wgCardNo', width: 130, render: (value: string | null) => value || <Text type="secondary">不适用</Text> },
     { title: '捷顺系统编号', dataIndex: 'legacyPersonNo', width: 145, render: (value: string | null) => value || <Tag>同步中</Tag> },
-    { title: '控制器上传', dataIndex: 'accessStatus', width: 190, render: (value: string, row: AccessCardRecentRecord) => (
+    { title: '控制器下发', dataIndex: 'accessStatus', width: 190, render: (value: string, row: AccessCardRecentRecord) => (
       <Space direction="vertical" size={3}>
         {accessStatus(value)}
         {row.lastErrorMessage && <Text type="danger" ellipsis={{ tooltip: row.lastErrorMessage }} style={{ maxWidth: 170 }}>{row.lastErrorMessage}</Text>}
@@ -961,7 +1000,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         <div>
           <Tag color="blue">ACR122U 任意工作站发卡</Tag>
           <h1>门禁发卡</h1>
-          <p>选择房号后，系统自动区分枫桦景苑一期与二期；一期只写卡，二期自动同步门禁并上传控制器。</p>
+          <p>选择房号后，系统自动区分枫桦景苑一期与二期；一期只写卡，二期自动同步门禁并下发控制器。</p>
         </div>
         <div className="access-card-hero-stat">
           <span>{batch ? '本次进度' : '默认数量'}</span>
@@ -1284,23 +1323,60 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         {recentLegacy?.status === 'ready' && <Text type="secondary" role="status">　.80 数据时间：{formatTime(recentLegacy.refreshedAt)}；.88 门禁库权限：{recentLegacy.permissionStatus === 'ready' ? '已读取' : recentLegacy.permissionStatus === 'error' ? '读取失败' : '等待 .88 助手核验'}。权限表不等于控制器回执。</Text>}
         <Table size="small" loading={recentLegacyLoading || recentLegacy?.status === 'pending'}
           rowKey={(row) => `${row.personId}-${row.icCardNo}-${row.issuedAt}`}
-          dataSource={recentLegacy?.rows ?? []} pagination={{ pageSize: 10, hideOnSinglePage: true }} scroll={{ x: 1050 }}
+          dataSource={recentLegacy?.rows ?? []} pagination={{ pageSize: 10, hideOnSinglePage: true }} scroll={{ x: 1250 }}
           columns={[
             { title: '捷顺发卡时间', dataIndex: 'issuedAt', width: 180, render: formatTime },
             { title: '旧库登记名称／房号', dataIndex: 'personName', width: 180, render: (value: string | null) => value || '—' },
             { title: '捷顺系统编号', dataIndex: 'personNo', width: 130 },
             { title: 'IC 卡号', dataIndex: 'icCardNo', width: 130 },
             { title: 'WG 卡号', dataIndex: 'wgCardNo', width: 125, render: (value: string | null) => value || '无法换算' },
-            { title: '.88 门禁库权限', width: 230, render: (_, row) => {
+            { title: '.88 门禁库权限', width: 280, render: (_, row) => {
+              if (!row.canManageAccess) return <Text type="secondary" title={row.actionMessage || undefined}>不适用</Text>;
               if (recentLegacy?.permissionStatus !== 'ready') return <Tag>待核验</Tag>;
               const permissions = recentLegacy.permissions.filter((item) => item.wgCardNo === row.wgCardNo);
-              return permissions.length ? <Space wrap size={4}>{permissions.map((item, index) =>
+              if (permissions.length) return <Space wrap size={4}>{permissions.map((item, index) =>
                 <Tag key={`${item.buildingNo}-${index}`}>{item.buildingNo ? `${item.buildingNo}号楼` : item.door} · {item.accessSystem === 'iccard' ? 'iCCard' : 'MjSystem'}</Tag>)}</Space>
-                : <Tag color="warning">未查到门禁库权限</Tag>;
+              if (row.accessDatabaseTask && ['pending', 'running'].includes(row.accessDatabaseTask.status)) {
+                return <Tag color="processing">正在添加</Tag>;
+              }
+              return (
+                <Space direction="vertical" size={4} align="start">
+                  <Tag color="warning">未查到门禁库权限</Tag>
+                  <Button
+                    size="small"
+                    danger={row.accessDatabaseTask?.status === 'failed'}
+                    loading={recentLegacyActionKey === `${row.personId}:access_database_only`}
+                    title={row.accessDatabaseTask?.error || '写入 .88 电脑对应的门禁管理软件数据库'}
+                    onClick={() => void runRecentLegacyAction(row, 'access_database_only')}
+                  >
+                    {row.accessDatabaseTask?.status === 'failed' ? '重试添加' : '添加至门禁管理系统'}
+                  </Button>
+                </Space>
+              );
             } },
-            { title: '控制器下发', width: 175, render: (_, row) => {
+            { title: '控制器下发', width: 190, render: (_, row) => {
+              if (!row.canManageAccess) return <Text type="secondary" title={row.actionMessage || undefined}>不适用</Text>;
               const pms = recentRecords.find((item) => item.icCardNo === row.icCardNo);
-              return pms ? accessStatus(pms.accessStatus) : <Tag>非 PMS 任务，未核验下发</Tag>;
+              if (pms?.accessStatus === 'controller_uploaded') return accessStatus(pms.accessStatus);
+              if (row.controllerTask?.status === 'completed') return <Tag color="success">已下发</Tag>;
+              if (row.controllerTask && ['pending', 'running'].includes(row.controllerTask.status)) return <Tag color="processing">下发处理中</Tag>;
+              const hasPermission = recentLegacy?.permissions.some((item) =>
+                item.wgCardNo === row.wgCardNo
+                && Boolean(item.buildingNo && row.buildingNo)
+                && String(Number(item.buildingNo)) === String(Number(row.buildingNo)));
+              return (
+                <Button
+                  size="small"
+                  type="primary"
+                  danger={row.controllerTask?.status === 'failed'}
+                  disabled={!hasPermission}
+                  loading={recentLegacyActionKey === `${row.personId}:controller_upload`}
+                  title={!hasPermission ? '请先添加至门禁管理系统' : row.controllerTask?.error || '下发本楼栋现场控制器'}
+                  onClick={() => void runRecentLegacyAction(row, 'controller_upload')}
+                >
+                  {row.controllerTask?.status === 'failed' ? '重试下发' : '下发至控制器'}
+                </Button>
+              );
             } },
           ]} />
       </Card>
@@ -1365,7 +1441,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                 showIcon
                 message={authorizationTask.status === 'completed' ? '授权完成'
                   : authorizationTask.status === 'failed' ? '授权失败'
-                    : authorizationTask.status === 'running' ? '正在写入并上传控制器' : '任务已提交，等待门禁网关'}
+                    : authorizationTask.status === 'running' ? '正在写入并下发控制器' : '任务已提交，等待门禁网关'}
                 description={authorizationTask.error || (authorizationTask.status === 'completed' ? '历史卡片权限列表已经刷新。' : '请保持窗口打开，完成后会自动刷新历史记录。')}
               />
             )}

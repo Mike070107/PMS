@@ -48,7 +48,7 @@ function houseContext(accessStatus: string) {
   };
 }
 
-test('未上传历史卡会创建本楼栋控制器上传任务', async () => {
+test('未下发历史卡会创建本楼栋控制器下发任务', async () => {
   const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
   const state = service as unknown as Record<string, unknown>;
   state.authorizationRepo = { findOne: async () => null };
@@ -88,7 +88,62 @@ test('已有权限的历史卡不会重复上传', async () => {
       { idempotencyKey: 'upload-controller-duplicate' },
       user,
     ),
-    /已上传控制器/,
+    /已下发控制器/,
+  );
+});
+
+test('捷顺最新记录可以只添加到二期门禁数据库', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  state.legacySnapshotRepo = { findOne: async () => ({
+    status: 'ready', history: [{ personId: 11251, personName: '228/5/102/1', icCardNo: '11223344' }],
+  }) };
+  state.recentLegacyCardResponse = async () => ({ rows: [{
+    personId: 11251, canManageAccess: true, houseId: 10, wgCardNo: '05108721', actionMessage: null,
+  }] });
+  state.getHouseContext = async () => houseContext('not_uploaded');
+  const queued: Array<Record<string, unknown>> = [];
+  state.enqueueHistoryAuthorization = async (input: Record<string, unknown>) => {
+    queued.push(input);
+    return { status: 'pending' };
+  };
+
+  await service.operateRecentLegacyCard(
+    11251,
+    'access_database_only',
+    { idempotencyKey: 'recent-access-db-11251' },
+    user,
+    { scopeAll: true } as never,
+  );
+
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0]!.operation, 'access_database_only');
+  assert.equal(queued[0]!.historyId, -11251);
+  assert.deepEqual(queued[0]!.targetBuildings, [
+    { id: 5, buildingNo: '5', accessSystem: 'mjsystem' },
+  ]);
+});
+
+test('198弄一期捷顺记录不允许写入 .88 门禁系统', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  state.legacySnapshotRepo = { findOne: async () => ({
+    status: 'ready', history: [{ personId: 19801, personName: '198/5/102/1', icCardNo: '11223344' }],
+  }) };
+  state.recentLegacyCardResponse = async () => ({ rows: [{
+    personId: 19801, canManageAccess: false, houseId: 20, wgCardNo: null,
+    actionMessage: '198弄一期卡不需要添加到 .88 门禁系统',
+  }] });
+
+  await assert.rejects(
+    service.operateRecentLegacyCard(
+      19801,
+      'access_database_only',
+      { idempotencyKey: 'recent-access-db-19801' },
+      user,
+      { scopeAll: true } as never,
+    ),
+    /198弄一期卡不需要添加/,
   );
 });
 

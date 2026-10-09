@@ -209,6 +209,28 @@ export class AccessCardIssuanceController {
     return this.service.getRecentLegacyCards(user, access);
   }
 
+  @Post('recent-legacy-cards/:personId/access-database')
+  @RequirePermission('business', 'edit')
+  addRecentLegacyCardToAccessDatabase(
+    @Param('personId', ParseIntPipe) personId: number,
+    @Body() dto: CreateAccessCardControllerUploadDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.operateRecentLegacyCard(personId, 'access_database_only', dto, user, access);
+  }
+
+  @Post('recent-legacy-cards/:personId/controller')
+  @RequirePermission('business', 'edit')
+  sendRecentLegacyCardToController(
+    @Param('personId', ParseIntPipe) personId: number,
+    @Body() dto: CreateAccessCardControllerUploadDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.operateRecentLegacyCard(personId, 'controller_upload', dto, user, access);
+  }
+
   @Post('batches')
   @RequirePermission('business', 'edit')
   create(

@@ -2,6 +2,7 @@ import { Column, Entity, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
 
 export type AccessCardAuthorizationStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type AccessCardAuthorizationOperation = 'access_database_only' | 'controller_upload';
 
 /** 已发卡片追加门栋权限；独立于发卡批次，避免污染发卡数量和旧库用户序号。 */
 @Entity('access_card_authorizations')
@@ -19,6 +20,9 @@ export class AccessCardAuthorization extends TenantEntity {
 
   @Column({ name: 'card_sequence', type: 'int', nullable: true })
   cardSequence: number | null;
+
+  @Column({ type: 'varchar', length: 30, default: 'controller_upload' })
+  operation: AccessCardAuthorizationOperation;
 
   @Column({ name: 'ic_card_no', type: 'varchar', length: 40, nullable: true })
   icCardNo: string | null;
