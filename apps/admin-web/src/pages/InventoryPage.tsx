@@ -68,6 +68,7 @@ import {
   uploadFileUrl,
 } from '../components/MaterialPhotos';
 import { searchableExtraWideSelectProps, searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
+import { useUploadPasteTarget } from '../components/useUploadPasteTarget';
 import { PurchaseOrderStatus, PurchaseRequestStatus, WAREHOUSE_TYPE_LABELS, WarehouseType } from '@pms/shared-types';
 
 const { Title, Text } = Typography;
@@ -383,7 +384,6 @@ export default function InventoryPage() {
   const [rejectTarget, setRejectTarget] = useState<PurchaseRequestRow | null>(null);
   const [itemRejectTarget, setItemRejectTarget] = useState<{ request: PurchaseRequestRow; item: PurchaseRequestItem } | null>(null);
   const [editRequestTarget, setEditRequestTarget] = useState<PurchaseRequestRow | null>(null);
-  const [editPhotoPasteIndex, setEditPhotoPasteIndex] = useState(0);
   const [editPhotoUploadingIndexes, setEditPhotoUploadingIndexes] = useState<Set<number>>(() => new Set());
   const [requestDetail, setRequestDetail] = useState<PurchaseRequestRow | null>(null);
   const [manualRequestOpen, setManualRequestOpen] = useState(false);
@@ -999,7 +999,6 @@ export default function InventoryPage() {
   };
 
   const openEditRequest = (row: PurchaseRequestRow) => {
-    setEditPhotoPasteIndex(0);
     setEditPhotoUploadingIndexes(new Set());
     editRequestForm.setFieldsValue({
       items: (row.items || []).map((item, index) => ({
@@ -2218,8 +2217,6 @@ export default function InventoryPage() {
                       size="small"
                       title={`${index + 1}. ${original?.sourceWorkOrderNo || '手工申请'}`}
                       extra={original?.rejectReason ? <Tag color="red">驳回：{original.rejectReason}</Tag> : null}
-                      onFocusCapture={() => setEditPhotoPasteIndex(index)}
-                      onClickCapture={() => setEditPhotoPasteIndex(index)}
                     >
                       <Form.Item name={[field.name, 'lineId']} hidden><Input /></Form.Item>
                       <Form.Item name={[field.name, 'materialId']} hidden><InputNumber /></Form.Item>
@@ -2257,7 +2254,6 @@ export default function InventoryPage() {
                       </Row>
                       <Form.Item name={[field.name, 'photoUrls']} label="照片（最多 4 张，第一张作缩略图；点选当前材料后可 Ctrl+V 粘贴截图）">
                         <MaterialPhotosUpload
-                          pastable={editPhotoPasteIndex === index}
                           onUploadingChange={(uploading) => {
                             setEditPhotoUploadingIndexes((current) => {
                               const next = new Set(current);
@@ -3428,6 +3424,7 @@ function LocationConfigModal({ warehouse, locations, onClose, onChanged }: {
 /** 多图上传（value/onChange 为 string[]，供 Form.Item 使用） */
 function MultiPhotoUpload({ value, onChange }: { value?: string[]; onChange?: (urls: string[]) => void }) {
   const { message } = AntdApp.useApp();
+  const pasteTarget = useUploadPasteTarget();
   const urls = value || [];
   const uploadProps: UploadProps<UploadResponse> = {
     name: 'file',
@@ -3435,6 +3432,7 @@ function MultiPhotoUpload({ value, onChange }: { value?: string[]; onChange?: (u
     headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
     accept: 'image/*',
     multiple: true,
+    pastable: pasteTarget.pastable,
     showUploadList: false,
     beforeUpload: async (file) => {
       if (!/^image\//i.test(file.type || '')) { message.error('只能上传照片'); return Upload.LIST_IGNORE; }
@@ -3451,7 +3449,8 @@ function MultiPhotoUpload({ value, onChange }: { value?: string[]; onChange?: (u
     },
   };
   return (
-    <Space wrap>
+    <div {...pasteTarget.pasteTargetProps}>
+      <Space wrap>
       {urls.map((url, index) => (
         <div key={url} style={{ position: 'relative' }}>
           <Image src={imageSrc(url)} width={72} height={72} style={{ objectFit: 'cover', borderRadius: 6 }} />
@@ -3464,16 +3463,18 @@ function MultiPhotoUpload({ value, onChange }: { value?: string[]; onChange?: (u
       <Upload.Dragger {...uploadProps} style={{ width: 156, height: 72, padding: 0, borderRadius: 6 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#888', cursor: 'pointer' }}>
           <UploadOutlined />
-          <span style={{ fontSize: 12, whiteSpace: 'nowrap' }}>拖到此处或点击</span>
+          <span style={{ fontSize: 12, whiteSpace: 'nowrap' }}>拖放、点击或 Ctrl+V</span>
         </div>
       </Upload.Dragger>
-    </Space>
+      </Space>
+    </div>
   );
 }
 
 /** 附件上传（图片或 PDF，value/onChange 为 string[]） */
 function AttachmentsUpload({ value, onChange }: { value?: string[]; onChange?: (urls: string[]) => void }) {
   const { message } = AntdApp.useApp();
+  const pasteTarget = useUploadPasteTarget();
   const urls = value || [];
   const uploadProps: UploadProps<UploadResponse> = {
     name: 'file',
@@ -3481,6 +3482,7 @@ function AttachmentsUpload({ value, onChange }: { value?: string[]; onChange?: (
     headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
     accept: 'image/*,application/pdf',
     multiple: true,
+    pastable: pasteTarget.pastable,
     showUploadList: false,
     beforeUpload: async (file) => {
       const ok = /^image\//i.test(file.type || '') || file.type === 'application/pdf';
@@ -3499,7 +3501,8 @@ function AttachmentsUpload({ value, onChange }: { value?: string[]; onChange?: (
     },
   };
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <div {...pasteTarget.pasteTargetProps}>
+      <Space direction="vertical" style={{ width: '100%' }}>
       {urls.map((url, index) => (
         <Space key={url}>
           <Text style={{ maxWidth: 320 }} ellipsis>
@@ -3512,10 +3515,11 @@ function AttachmentsUpload({ value, onChange }: { value?: string[]; onChange?: (
       <Upload.Dragger {...uploadProps} style={{ padding: '10px 12px', borderRadius: 6 }}>
         <Space>
           <UploadOutlined />
-          <Text type="secondary">把小票照片或发票 PDF 拖到这里，也可以点击选择</Text>
+          <Text type="secondary">小票照片可拖放、点击或 Ctrl+V 粘贴；发票 PDF 可拖放或点击选择</Text>
         </Space>
       </Upload.Dragger>
-    </Space>
+      </Space>
+    </div>
   );
 }
 
