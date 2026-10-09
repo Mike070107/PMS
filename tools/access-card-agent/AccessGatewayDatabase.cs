@@ -187,6 +187,11 @@ namespace Pms.AccessCardAgent
             return String.IsNullOrWhiteSpace(value) ? null : value;
         }
 
+        private static string UserDisplayName(AgentTask task)
+        {
+            return String.IsNullOrWhiteSpace(task.displayName) ? task.address : task.displayName.Trim();
+        }
+
         private static string ExtractBuildingNo(params string[] values)
         {
             foreach (var value in values)
@@ -218,13 +223,16 @@ namespace Pms.AccessCardAgent
                             "SELECT EmpMemo FROM Employee WHERE EId=?", employeeId.Value);
                         if (!isExistingCardGrant && !String.Equals(memo, marker, StringComparison.OrdinalIgnoreCase))
                             throw new InvalidOperationException("WG 卡号已存在 MjSystem，但不属于当前 PMS 任务");
+                        Execute(connection, transaction,
+                            "UPDATE Employee SET vEmp_name=? WHERE EId=?",
+                            Limit(UserDisplayName(task), 50), employeeId.Value);
                     }
                     else
                     {
                         Execute(connection, transaction,
                             "INSERT INTO Employee (vEmp_id,vEmp_name,vCardNo,vDepart,vDoorPassword,dBeginDate,dEndDate,EmpMemo,bWorkAttend) VALUES (?,?,?,?,?,?,?,?,?)",
                             isExistingCardGrant ? "A" + task.taskId : "P" + task.itemId,
-                            Limit(task.address, 50), task.wgCardNo, "PMS 门禁发卡", "000000",
+                            Limit(UserDisplayName(task), 50), task.wgCardNo, "PMS 门禁发卡", "000000",
                             DateTime.Today, new DateTime(2099, 12, 31), marker, true);
                         employeeId = Convert.ToInt32(Scalar(connection, transaction, "SELECT @@IDENTITY"));
                     }
@@ -279,6 +287,9 @@ namespace Pms.AccessCardAgent
                             "SELECT f_Note FROM t_b_Consumer WHERE f_ConsumerID=?", consumerId.Value);
                         if (!isExistingCardGrant && !String.Equals(note, marker, StringComparison.OrdinalIgnoreCase))
                             throw new InvalidOperationException("WG 卡号已存在 iCCard，但不属于当前 PMS 任务");
+                        Execute(connection, transaction,
+                            "UPDATE t_b_Consumer SET f_ConsumerName=? WHERE f_ConsumerID=?",
+                            Limit(UserDisplayName(task), 50), consumerId.Value);
                     }
                     else
                     {
@@ -286,7 +297,7 @@ namespace Pms.AccessCardAgent
                             "SELECT MAX(f_ConsumerNO) FROM t_b_Consumer")) + 1;
                         Execute(connection, transaction,
                             "INSERT INTO t_b_Consumer (f_ConsumerNO,f_ConsumerName,f_ConsumerGrade,f_GroupID,f_AttendEnabled,f_DoorEnabled,f_BeginYMD,f_EndYMD,f_Note,f_PatrolEnabled,f_bShift) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                            nextNo, Limit(task.address, 50), "0", 11, 1, 1, DateTime.Today,
+                            nextNo, Limit(UserDisplayName(task), 50), "0", 11, 1, 1, DateTime.Today,
                             new DateTime(2099, 12, 31), marker, 0, 0);
                         consumerId = Convert.ToInt32(Scalar(connection, transaction, "SELECT @@IDENTITY"));
                         Execute(connection, transaction,

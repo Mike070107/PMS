@@ -75,6 +75,56 @@ export function legacyDatabaseRoomKey(lane: string | null, buildingNo: string, r
   return [lane, storedBuilding, roomNo].filter(Boolean).join('/');
 }
 
+/** 门禁软件用户姓名统一使用页面房号与该房累计发卡序号，如 228/16/401/6。 */
+export function accessCardUserDisplayName(roomKey: string, sequence?: number | null): string {
+  const normalizedRoomKey = roomKey.trim().replace(/\/+$/, '');
+  return Number.isSafeInteger(sequence) && Number(sequence) > 0
+    ? `${normalizedRoomKey}/${sequence}`
+    : normalizedRoomKey;
+}
+
+/** 历史列表优先展示捷顺旧库真实登记名称；缺失时按房号与累计序号补齐。 */
+export function accessCardHistoryRoomLabel(
+  roomKey: string,
+  sequence: number,
+  legacyPersonName?: string | null,
+): string {
+  const storedName = legacyPersonName?.trim();
+  return storedName || accessCardUserDisplayName(roomKey, sequence);
+}
+
+/** 2.5.29 起 .88 助手才会把完整显示姓名写入门禁数据库。 */
+export function supportsAccessCardDisplayName(version: string | null | undefined): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 29)));
+}
+
+/** 2.5.30 起助手才会区分“只写门禁库”和“继续下发控制器”。 */
+export function supportsAccessCardOperationMode(version: string | null | undefined): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 30)));
+}
+
+export function parseLegacyAccessCardRoomName(value?: string | null): {
+  lane: string;
+  buildingNo: string;
+  roomNo: string;
+  sequence: number;
+} | null {
+  const match = /^(?:已隐藏)?\s*(\d+)\s*\/\s*(\d+)\s*\/\s*([^/]+?)\s*\/\s*(\d+)\s*$/.exec(value?.trim() || '');
+  if (!match) return null;
+  return {
+    lane: match[1],
+    buildingNo: String(Number(match[2])),
+    roomNo: match[3].trim(),
+    sequence: Number(match[4]),
+  };
+}
+
 /**
  * 旧库每张卡对应一个 HR.Person，Name 为 `基础房号/累计序号`。
  * 旧 PHP 用模糊匹配后的记录数 + 1；这里收窄成精确前缀，并兼顾历史缺号，

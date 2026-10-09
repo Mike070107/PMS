@@ -175,10 +175,12 @@ namespace Pms.AccessCardAgent
     {
         public int taskId { get; set; }
         public string action { get; set; }
+        public string operation { get; set; }
         public int itemId { get; set; }
         public int batchId { get; set; }
         public int attempt { get; set; }
         public string address { get; set; }
+        public string displayName { get; set; }
         public string roomKey { get; set; }
         public int batchSequence { get; set; }
         public string projectPhase { get; set; }

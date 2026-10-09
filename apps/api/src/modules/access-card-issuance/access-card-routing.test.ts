@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   accessBuildingsForHouse,
+  accessCardUserDisplayName,
+  accessCardHistoryRoomLabel,
   accessSystemOf,
   belongsToSameAccessArea,
   icToWg,
@@ -10,6 +12,9 @@ import {
   legacyDuplicateCardMessage,
   nextLegacyUserSequence,
   projectPhaseOf,
+  parseLegacyAccessCardRoomName,
+  supportsAccessCardDisplayName,
+  supportsAccessCardOperationMode,
 } from './access-card-routing';
 
 test('额外授权只列同一门禁区域，并按楼栋数字自然排序', () => {
@@ -64,6 +69,40 @@ test('房号展示不强制给楼栋补零', () => {
   assert.equal(legacyRoomKey('228', '05', '301'), '228/5/301');
   assert.equal(legacyRoomKey(null, '5', '301'), '5/301');
   assert.equal(legacyDatabaseRoomKey('228', '5', '301'), '228/05/301');
+});
+
+test('门禁软件用户姓名展示房号和该房累计发卡序号', () => {
+  assert.equal(accessCardUserDisplayName('228/16/401', 6), '228/16/401/6');
+  assert.equal(accessCardUserDisplayName('228/16/401/', 6), '228/16/401/6');
+  assert.equal(accessCardUserDisplayName('228/16/401', null), '228/16/401');
+});
+
+test('房号历史优先展示捷顺登记名称，缺失时生成房号与累计序号', () => {
+  assert.equal(accessCardHistoryRoomLabel('228/16/401', 6, ' 228/16/401/6 '), '228/16/401/6');
+  assert.equal(accessCardHistoryRoomLabel('228/16/401', 6, null), '228/16/401/6');
+});
+
+test('完整门禁用户姓名任务只交给 2.5.29 或更新助手', () => {
+  assert.equal(supportsAccessCardDisplayName('2.5.28'), false);
+  assert.equal(supportsAccessCardDisplayName('2.5.29.0'), true);
+  assert.equal(supportsAccessCardDisplayName('2.6.0'), true);
+  assert.equal(supportsAccessCardDisplayName(null), false);
+});
+
+test('拆分写门禁库与控制器下发只交给 2.5.30 或更新助手', () => {
+  assert.equal(supportsAccessCardOperationMode('2.5.29'), false);
+  assert.equal(supportsAccessCardOperationMode('2.5.30.0'), true);
+  assert.equal(supportsAccessCardOperationMode('2.6.0'), true);
+});
+
+test('捷顺登记名称精确解析弄号、楼栋、室号和累计卡序号', () => {
+  assert.deepEqual(parseLegacyAccessCardRoomName('228/16/401/6'), {
+    lane: '228', buildingNo: '16', roomNo: '401', sequence: 6,
+  });
+  assert.deepEqual(parseLegacyAccessCardRoomName('已隐藏228/05/301/2'), {
+    lane: '228', buildingNo: '5', roomNo: '301', sequence: 2,
+  });
+  assert.equal(parseLegacyAccessCardRoomName('228/16/401'), null);
 });
 
 test('IC 转 WG 与旧 PHP 字节顺序一致', () => {

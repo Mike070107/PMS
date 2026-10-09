@@ -33,6 +33,8 @@ import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import {
   accessBuildingsForHouse,
+  accessCardHistoryRoomLabel,
+  accessCardUserDisplayName,
   accessSystemOf,
   belongsToSameAccessArea,
   icToWg,
@@ -41,6 +43,9 @@ import {
   legacyDuplicateCardMessage,
   normalizeBuildingNo,
   projectPhaseOf,
+  parseLegacyAccessCardRoomName,
+  supportsAccessCardDisplayName,
+  supportsAccessCardOperationMode,
 } from './access-card-routing';
 import { CreateAccessCardIssueDto, CreateParkingFeeDetailDto } from './dto';
 import {
@@ -188,6 +193,7 @@ export class AccessCardIssuanceService {
     }
     const history = mergedHistory.map((row) => ({
       ...row,
+      roomLabel: accessCardHistoryRoomLabel(context.roomKey, row.sequence, row.roomLabel),
       latestAuthorization: latestAuthorizationByRow.has(row.id)
         ? this.historyAuthorizationResponse(latestAuthorizationByRow.get(row.id)!)
         : null,
@@ -249,11 +255,11 @@ export class AccessCardIssuanceService {
       query.andWhere('batch.community_id IN (:...communityIds)', { communityIds });
     }
     const rows = await query
-      // take() + 关联查询会触发 TypeORM 的分页别名解析；这里必须使用实体属性名，
-      // 否则它会把 card_completed_at 当成不存在的 propertyPath 并抛出 databaseName 错误。
+      // batch 是多对一关系，每张卡只会连接一条批次记录，可直接使用 SQL LIMIT。
+      // TypeORM 0.3.30 的 take() + 关联查询会进入分页别名重写并在生产抛出 databaseName 错误。
       .orderBy('item.cardCompletedAt', 'DESC', 'NULLS LAST')
       .addOrderBy('item.id', 'DESC')
-      .take(30)
+      .limit(30)
       .getMany();
 
     return rows.map((item) => ({
@@ -294,7 +300,7 @@ export class AccessCardIssuanceService {
       snapshot.leaseAgentKey = null; snapshot.leaseExpiresAt = null; snapshot.lastError = null;
     }
     await this.legacySnapshotRepo.save(snapshot);
-    return this.recentLegacyCardResponse(snapshot);
+    return this.recentLegacyCardResponse(snapshot, tenantId);
   }
 
   async getRecentLegacyCards(user: AuthUser, access: ResolvedAccess) {
@@ -302,16 +308,118 @@ export class AccessCardIssuanceService {
     const tenantId = this.requireTenant(user);
     const snapshot = await this.legacySnapshotRepo.findOne({ where: { tenantId, roomKey: '__recent_js_cards__' } });
     if (!snapshot) throw new NotFoundException('请先刷新捷顺最近发卡记录');
-    return this.recentLegacyCardResponse(snapshot);
+    return this.recentLegacyCardResponse(snapshot, tenantId);
   }
 
-  private recentLegacyCardResponse(snapshot: AccessCardLegacySnapshot) {
-    return { status: snapshot.status, rows: snapshot.status === 'ready' ? snapshot.history.map((row) => ({
-      ...row, wgCardNo: row.icCardNo && /^[0-9A-F]{8}$/.test(row.icCardNo) ? icToWg(row.icCardNo) : null,
-    })) : [],
+  private async recentLegacyCardResponse(snapshot: AccessCardLegacySnapshot, tenantId: number) {
+    const sourceRows = snapshot.status === 'ready' ? snapshot.history : [];
+    const buildings = sourceRows.length ? await this.buildingRepo.find({ where: { tenantId } }) : [];
+    const buildingIds = buildings.map((building) => building.id);
+    const houses = buildingIds.length ? await this.houseRepo.find({ where: { tenantId, buildingId: In(buildingIds) } }) : [];
+    const communityIds = Array.from(new Set(buildings.map((building) => building.communityId)));
+    const communities = communityIds.length ? await this.communityRepo.find({ where: { tenantId, id: In(communityIds) } }) : [];
+    const cardNumbers = sourceRows
+      .map((row) => row.icCardNo && /^[0-9A-F]{8}$/.test(row.icCardNo) ? icToWg(row.icCardNo) : null)
+      .filter((value): value is string => Boolean(value));
+    const tasks = cardNumbers.length ? await this.authorizationRepo.find({
+      where: { tenantId, wgCardNo: In(cardNumbers) }, order: { createdAt: 'DESC' }, take: 200,
+    }) : [];
+    const latestTask = new Map<string, AccessCardAuthorization>();
+    for (const task of tasks) {
+      const key = `${task.wgCardNo}:${task.operation}`;
+      if (!latestTask.has(key)) latestTask.set(key, task);
+    }
+    const normalizeAddressPart = (value?: string | null) => {
+      const trimmed = (value ?? '').trim();
+      return /^\d+$/.test(trimmed) ? String(Number(trimmed)) : trimmed;
+    };
+    const rows = sourceRows.map((row) => {
+      const wgCardNo = row.icCardNo && /^[0-9A-F]{8}$/.test(row.icCardNo) ? icToWg(row.icCardNo) : null;
+      const parsed = parseLegacyAccessCardRoomName(row.personName);
+      const building = parsed ? buildings.find((candidate) =>
+        normalizeAddressPart(candidate.lane) === normalizeAddressPart(parsed.lane)
+        && normalizeAddressPart(candidate.buildingNo) === normalizeAddressPart(parsed.buildingNo)) : undefined;
+      const house = building && parsed ? houses.find((candidate) =>
+        candidate.buildingId === building.id
+        && normalizeAddressPart(candidate.roomNo) === normalizeAddressPart(parsed.roomNo)) : undefined;
+      const community = building ? communities.find((candidate) => candidate.id === building.communityId) : undefined;
+      const phase = community ? projectPhaseOf(community.name) : parsed?.lane === '198' ? 'phase1' : null;
+      const system = phase && building ? accessSystemOf(phase, building.buildingNo) : null;
+      const canManageAccess = phase === 'phase2' && Boolean(house && system && wgCardNo);
+      const actionMessage = phase === 'phase1'
+        ? '198弄一期卡不需要添加到 .88 门禁系统'
+        : !parsed ? '捷顺登记名称不是“弄号/楼栋/室号/序号”格式，无法匹配房号'
+          : !house ? '未在 PMS 精确匹配到这个房号'
+            : !system ? '该楼栋门禁路由尚未配置'
+              : !wgCardNo ? 'IC 卡号无法换算 WG 卡号'
+                : null;
+      return {
+        ...row,
+        wgCardNo,
+        houseId: house?.id ?? null,
+        roomKey: house && building ? legacyRoomKey(building.lane, building.buildingNo, house.roomNo) : null,
+        projectPhase: phase,
+        buildingNo: building?.buildingNo ?? parsed?.buildingNo ?? null,
+        canManageAccess,
+        actionMessage,
+        accessDatabaseTask: wgCardNo ? this.historyAuthorizationResponse(latestTask.get(`${wgCardNo}:access_database_only`) ?? null) : null,
+        controllerTask: wgCardNo ? this.historyAuthorizationResponse(latestTask.get(`${wgCardNo}:controller_upload`) ?? null) : null,
+      };
+    });
+    return { status: snapshot.status, rows,
       error: snapshot.status === 'error' ? snapshot.lastError : null, refreshedAt: snapshot.refreshedAt,
       permissionStatus: snapshot.permissionStatus, permissions: snapshot.permissionStatus === 'ready' ? snapshot.permissions : [],
       permissionError: snapshot.permissionStatus === 'error' ? snapshot.permissionLastError : null };
+  }
+
+  async operateRecentLegacyCard(
+    personId: number,
+    operation: AccessCardAuthorization['operation'],
+    dto: CreateAccessCardControllerUploadDto,
+    user: AuthUser,
+    access: ResolvedAccess,
+  ) {
+    if (!access.scopeAll) throw new ForbiddenException('捷顺全库发卡操作仅对全公司数据范围开放');
+    const tenantId = this.requireTenant(user);
+    const snapshot = await this.legacySnapshotRepo.findOne({ where: { tenantId, roomKey: '__recent_js_cards__' } });
+    if (!snapshot || snapshot.status !== 'ready') throw new BadRequestException('请先刷新捷顺数据库最新30笔发卡记录');
+    const source = snapshot.history.find((row) => row.personId === personId);
+    if (!source) throw new NotFoundException('这条捷顺发卡记录已不在最新30笔中，请刷新后重试');
+    const response = await this.recentLegacyCardResponse(snapshot, tenantId);
+    const matched = response.rows.find((row) => row.personId === personId);
+    if (!matched?.canManageAccess || !matched.houseId || !matched.wgCardNo) {
+      throw new BadRequestException(matched?.actionMessage || '这条发卡记录无法匹配二期门禁房号');
+    }
+    const context = await this.getHouseContext(matched.houseId, user, access);
+    const historyRow = context.history.find((row) => row.icCardNo?.toUpperCase() === source.icCardNo?.toUpperCase());
+    if (!historyRow?.wgCardNo) throw new NotFoundException('房号历史中没有找到这张卡，请刷新房号历史后重试');
+    const homeBuilding = context.availableBuildings.find((building) => building.id === context.house.buildingId);
+    if (!homeBuilding?.routeReady || !homeBuilding.accessSystem) {
+      throw new BadRequestException(`本楼栋 ${context.house.buildingNo} 号楼的门禁路由尚未配置`);
+    }
+    if (operation === 'access_database_only') {
+      const alreadyRegistered = (historyRow.controllerResults ?? []).some((row) =>
+        normalizeBuildingNo(typeof row.buildingNo === 'string' ? row.buildingNo : '')
+          === normalizeBuildingNo(homeBuilding.buildingNo));
+      if (alreadyRegistered) throw new BadRequestException('这张卡已经存在本楼栋门禁管理系统中，无需重复添加');
+    }
+    return this.enqueueHistoryAuthorization({
+      tenantId,
+      houseId: matched.houseId,
+      historyId: historyRow.id,
+      roomKey: context.house.roomKey,
+      cardSequence: historyRow.sequence,
+      operation,
+      icCardNo: historyRow.icCardNo,
+      wgCardNo: historyRow.wgCardNo,
+      targetBuildings: [{
+        id: homeBuilding.id,
+        buildingNo: homeBuilding.buildingNo,
+        accessSystem: homeBuilding.accessSystem,
+      }],
+      idempotencyKey: dto.idempotencyKey.trim(),
+      userId: user.id,
+    });
   }
 
   async createHistoryAuthorization(
@@ -356,6 +464,8 @@ export class AccessCardIssuanceService {
       houseId,
       historyId,
       roomKey: context.house.roomKey,
+      cardSequence: historyRow.sequence,
+      operation: 'controller_upload',
       icCardNo: historyRow.icCardNo,
       wgCardNo: historyRow.wgCardNo,
       targetBuildings: selected.map((building) => ({
@@ -387,7 +497,7 @@ export class AccessCardIssuanceService {
     const historyRow = context.history.find((row) => row.id === historyId);
     if (!historyRow?.wgCardNo) throw new NotFoundException('没有找到这张历史卡片，或卡片缺少 WG 卡号');
     if (historyRow.accessStatus === 'controller_uploaded') {
-      throw new BadRequestException('这张卡已上传控制器，无需重复上传');
+      throw new BadRequestException('这张卡已下发控制器，无需重复下发');
     }
     if (historyRow.accessStatus !== 'not_uploaded') {
       throw new BadRequestException('这张卡的门禁权限尚未核验完成，请刷新历史后再试');
@@ -403,6 +513,8 @@ export class AccessCardIssuanceService {
       houseId,
       historyId,
       roomKey: context.house.roomKey,
+      cardSequence: historyRow.sequence,
+      operation: 'controller_upload',
       icCardNo: historyRow.icCardNo,
       wgCardNo: historyRow.wgCardNo,
       targetBuildings: [{
@@ -1351,12 +1463,15 @@ export class AccessCardIssuanceService {
     };
   }
 
-  private historyAuthorizationResponse(task: AccessCardAuthorization) {
+  private historyAuthorizationResponse(task: AccessCardAuthorization | null) {
+    if (!task) return null;
     return {
       id: task.id,
       houseId: task.houseId,
       historyRowId: task.historyRowId,
       roomKey: task.roomKey,
+      cardSequence: task.cardSequence,
+      operation: task.operation,
       icCardNo: task.icCardNo,
       wgCardNo: task.wgCardNo,
       targetBuildings: task.targetBuildings,
@@ -1374,6 +1489,8 @@ export class AccessCardIssuanceService {
     houseId: number;
     historyId: number;
     roomKey: string;
+    cardSequence: number | null;
+    operation: AccessCardAuthorization['operation'];
     icCardNo: string | null;
     wgCardNo: string;
     targetBuildings: AccessCardAuthorization['targetBuildings'];
@@ -1395,6 +1512,8 @@ export class AccessCardIssuanceService {
       houseId: input.houseId,
       historyRowId: input.historyId,
       roomKey: input.roomKey,
+      cardSequence: input.cardSequence,
+      operation: input.operation,
       icCardNo: input.icCardNo,
       wgCardNo: input.wgCardNo,
       targetBuildings: input.targetBuildings,
@@ -1419,9 +1538,10 @@ export class AccessCardIssuanceService {
       effectiveAgentStatus(agent) === 'online'
       && agent.capabilities?.accessDbWrite === true
       && agent.capabilities?.controllerUpload === true
-      && agent.capabilities?.historicalAccessGrant === true);
+      && agent.capabilities?.historicalAccessGrant === true
+      && supportsAccessCardOperationMode(agent.version));
     if (!gateway) {
-      throw new ServiceUnavailableException('楼栋门禁网关尚未支持历史卡追加授权，请在 .88 电脑更新 PMS 数据同步助手后重试');
+      throw new ServiceUnavailableException('楼栋门禁网关需要 PMS 数据同步助手 2.5.30 或更新版本，请在 .88 电脑更新后重试');
     }
   }
 
@@ -1628,7 +1748,8 @@ export class AccessCardIssuanceService {
     // 绝不能落入门禁的 legacy_sync 分支而误领发卡任务。
     if (agent.kind === 'parking_gateway') return { task: null, retryAfterMs: 2500 };
     if (agent.kind === 'access_gateway' &&
-        (agent.capabilities?.accessDbWrite !== true || agent.capabilities?.controllerUpload !== true)) {
+        (agent.capabilities?.accessDbWrite !== true || agent.capabilities?.controllerUpload !== true ||
+          !supportsAccessCardDisplayName(agent.version))) {
       return { task: null, retryAfterMs: 2500 };
     }
     const now = new Date();
@@ -1650,6 +1771,7 @@ export class AccessCardIssuanceService {
       } else if (agent.kind === 'access_gateway') {
         qb.andWhere('batch.project_phase = :phase', { phase: 'phase2' })
           .andWhere('item.card_status = :cardStatus', { cardStatus: 'card_completed' })
+          .andWhere('item.legacy_house_sequence IS NOT NULL')
           .andWhere('item.access_status IN (:...accessStatuses)', {
             accessStatuses: ['pending', 'waiting_retry'],
           });
@@ -1683,6 +1805,7 @@ export class AccessCardIssuanceService {
           leaseExpiresAt: leaseExpiresAt.toISOString(),
           attempt: item.attempts,
           address: batch.addressSnapshot,
+          displayName: accessCardUserDisplayName(batch.addressSnapshot, item.legacyHouseSequence),
           roomKey: batch.legacyRoomKey,
           batchSequence: item.sequence,
           projectPhase: batch.projectPhase,
@@ -1903,7 +2026,7 @@ export class AccessCardIssuanceService {
   async claimHistoryAuthorization(agentKey: string, token: string) {
     const agent = await this.authenticateAgent(agentKey, token);
     if (agent.kind !== 'access_gateway') throw new ForbiddenException('只有楼栋门禁网关可以执行历史卡片授权');
-    if (agent.capabilities?.historicalAccessGrant !== true) return { task: null };
+    if (agent.capabilities?.historicalAccessGrant !== true || !supportsAccessCardOperationMode(agent.version)) return { task: null };
     const task = await this.authorizationRepo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(AccessCardAuthorization);
       const now = new Date();
@@ -1933,7 +2056,9 @@ export class AccessCardIssuanceService {
       return {
         taskId: item.id,
         action: 'authorize_existing_card',
+        operation: item.operation,
         address: item.roomKey,
+        displayName: accessCardUserDisplayName(item.roomKey, item.cardSequence),
         roomKey: item.roomKey,
         projectPhase: 'phase2',
         icCardNo: item.icCardNo,
@@ -1963,7 +2088,7 @@ export class AccessCardIssuanceService {
         const missing = task.targetBuildings.filter((building) =>
           !reportedBuildings.has(normalizeBuildingNo(building.buildingNo)));
         if (missing.length) {
-          throw new BadRequestException(`控制器结果缺少 ${missing.map((item) => `${item.buildingNo}号楼`).join('、')}，任务不能标记完成`);
+          throw new BadRequestException(`门禁任务结果缺少 ${missing.map((item) => `${item.buildingNo}号楼`).join('、')}，任务不能标记完成`);
         }
         task.status = 'completed';
         task.controllerResults = dto.controllerResults ?? [];
@@ -1971,8 +2096,12 @@ export class AccessCardIssuanceService {
         task.completedAt = now;
 
         const snapshotRepo = manager.getRepository(AccessCardLegacySnapshot);
-        const snapshot = await snapshotRepo.findOne({ where: { tenantId: task.tenantId, roomKey: task.roomKey } });
-        if (snapshot) {
+        const snapshots = await snapshotRepo.find({
+          where: { tenantId: task.tenantId, roomKey: In([task.roomKey, '__recent_js_cards__']) },
+        });
+        for (const snapshot of snapshots) {
+          if (snapshot.roomKey === '__recent_js_cards__'
+            && !snapshot.permissionSubjects.some((row) => row.wgCardNo === task.wgCardNo)) continue;
           const targetNos = new Set(task.targetBuildings.map((item) => normalizeBuildingNo(item.buildingNo)));
           const kept = snapshot.permissions.filter((row) =>
             row.wgCardNo !== task.wgCardNo || !targetNos.has(normalizeBuildingNo(row.buildingNo || '')));
@@ -2095,7 +2224,7 @@ export class AccessCardIssuanceService {
       item.accessStatus = 'access_db_written';
       item.controllerResults = dto.controllerResults ?? [];
       item.lastErrorRef = null;
-      item.lastErrorMessage = '门禁数据库已写入，等待控制器上传';
+      item.lastErrorMessage = '门禁数据库已写入，等待控制器下发';
     } else if (dto.result === 'success') {
       if (agent.kind === 'issuer') {
         const icCardNo = this.normalizeIcCardNo(dto.icCardNo || '');
@@ -2342,6 +2471,7 @@ export class AccessCardIssuanceService {
         accessStatus: item.accessStatus,
         legacySyncStatus: item.legacySyncStatus,
         controllerResults: item.controllerResults,
+        roomLabel: null,
       }))
       .reverse();
   }
@@ -2457,6 +2587,7 @@ export class AccessCardIssuanceService {
       accessStatus: string;
       legacySyncStatus: string;
       controllerResults: Array<Record<string, unknown>>;
+      roomLabel?: string | null;
     }>,
     legacyHistory: AccessCardLegacySnapshot['history'],
     phase: 'phase1' | 'phase2',
@@ -2493,6 +2624,7 @@ export class AccessCardIssuanceService {
             ...existing,
             sequence: row.sequence,
             legacyPersonNo: row.personNo,
+            roomLabel: row.personName,
             issuedAt: row.issuedAt || existing.issuedAt,
             legacySyncStatus: 'synced',
           });
@@ -2501,6 +2633,7 @@ export class AccessCardIssuanceService {
           id: -row.personId,
           sequence: row.sequence,
           legacyPersonNo: row.personNo,
+          roomLabel: row.personName,
           icCardNo: row.icCardNo,
           wgCardNo: phase === 'phase2' && row.icCardNo ? icToWg(row.icCardNo) : null,
           issuedAt: row.issuedAt,

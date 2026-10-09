@@ -377,21 +377,25 @@ namespace Pms.AccessCardAgent
         {
             try
             {
-                AccessGatewayDatabase.Activate(
+                var databaseResults = AccessGatewayDatabase.Activate(
                     _config,
                     LoadSecret("iccard-db-password.dat"),
                     task);
-                var controllerResults = AccessControllerUploader.Upload(
-                    _config,
-                    LoadSecret("iccard-db-password.dat"),
-                    task);
+                var databaseOnly = String.Equals(task.operation, "access_database_only", StringComparison.OrdinalIgnoreCase);
+                var controllerResults = databaseOnly
+                    ? databaseResults
+                    : AccessControllerUploader.Upload(
+                        _config,
+                        LoadSecret("iccard-db-password.dat"),
+                        task);
                 _api.ReportHistoryAuthorization(new AccessCardAuthorizationReport
                 {
                     taskId = task.taskId,
                     result = "success",
                     controllerResults = controllerResults
                 });
-                RecordActivity("追加门栋权限", task.wgCardNo, true, "数据库写入和控制器下发完成");
+                RecordActivity(databaseOnly ? "添加门禁数据库" : "下发门禁控制器", task.wgCardNo, true,
+                    databaseOnly ? "门禁管理系统数据库写入完成" : "数据库写入和控制器下发完成");
             }
             catch (Exception exception)
             {
