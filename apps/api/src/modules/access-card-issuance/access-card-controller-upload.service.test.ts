@@ -107,7 +107,7 @@ test('最近发卡记录限制30条并遵守小区数据范围', async () => {
     andWhere(...args: unknown[]) { calls.push({ method: 'andWhere', args }); return this; },
     orderBy(...args: unknown[]) { calls.push({ method: 'orderBy', args }); return this; },
     addOrderBy(...args: unknown[]) { calls.push({ method: 'addOrderBy', args }); return this; },
-    take(...args: unknown[]) { calls.push({ method: 'take', args }); return this; },
+    limit(...args: unknown[]) { calls.push({ method: 'limit', args }); return this; },
     async getMany() {
       return [{
         id: 88, batchId: 9, batch, icCardNo: '11223344', wgCardNo: '05108721', legacyPersonNo: '11308',
@@ -126,7 +126,8 @@ test('最近发卡记录限制30条并遵守小区数据范围', async () => {
 
   assert.equal(records.length, 1);
   assert.equal(records[0]!.address, '228/5/102');
-  assert.ok(calls.some((call) => call.method === 'take' && call.args[0] === 30));
+  assert.ok(calls.some((call) => call.method === 'limit' && call.args[0] === 30));
+  assert.ok(!calls.some((call) => call.method === 'take'));
   assert.ok(calls.some((call) => call.method === 'orderBy'
     && call.args[0] === 'item.cardCompletedAt'));
   assert.ok(!calls.some((call) => call.method === 'orderBy'

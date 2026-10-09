@@ -251,11 +251,11 @@ export class AccessCardIssuanceService {
       query.andWhere('batch.community_id IN (:...communityIds)', { communityIds });
     }
     const rows = await query
-      // take() + 关联查询会触发 TypeORM 的分页别名解析；这里必须使用实体属性名，
-      // 否则它会把 card_completed_at 当成不存在的 propertyPath 并抛出 databaseName 错误。
+      // batch 是多对一关系，每张卡只会连接一条批次记录，可直接使用 SQL LIMIT。
+      // TypeORM 0.3.30 的 take() + 关联查询会进入分页别名重写并在生产抛出 databaseName 错误。
       .orderBy('item.cardCompletedAt', 'DESC', 'NULLS LAST')
       .addOrderBy('item.id', 'DESC')
-      .take(30)
+      .limit(30)
       .getMany();
 
     return rows.map((item) => ({
