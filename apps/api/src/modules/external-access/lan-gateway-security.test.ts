@@ -35,6 +35,13 @@ test('gateway configuration signatures are stable and bound to the device token'
   assert.notEqual(signGatewayConfiguration('{"revision":3}', token), signGatewayConfiguration('{"revision":2}', token));
 });
 
+test('gateway session supports the configured 12-hour workday duration', () => {
+  process.env.LAN_GATEWAY_SESSION_SECRET = 'gateway-session-secret-for-test-must-have-32-characters';
+  const service = new ExternalAccessService({} as any, {} as any, {} as any, {} as any, {} as any);
+  const session = service.createGatewaySession({ id: 9, slug: 'finance', sessionDuration: '12h' } as any, 7);
+  assert.equal(session.maxAge, 43_200);
+});
+
 test('FRP admission binds every proxy name and port to the authenticated device', async () => {
   process.env.LAN_GATEWAY_FRP_PLUGIN_SECRET = 'plugin-secret-for-test';
   const deviceToken = 'device-token-for-test';
@@ -99,7 +106,6 @@ test('gateway login page offers a same-phone WeChat launch action without removi
   const html = (controller as any).renderLogin(
     'ticket123',
     'data:image/png;base64,abc',
-    '4821',
     'weixin://dl/business/?t=launch123',
     '用友财务系统',
     'caiwu.prsznh.cn',

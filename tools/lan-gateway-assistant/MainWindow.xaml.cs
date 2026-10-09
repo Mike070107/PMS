@@ -21,6 +21,7 @@ namespace Pms.LanGatewayAssistant
         public ObservableCollection<RouteViewModel> Routes { get; private set; }
         public string VersionDisplay { get { return "v" + Assembly.GetExecutingAssembly().GetName().Version.ToString(3); } }
         public string ComputerDisplay { get { return Environment.MachineName + " · " + _configuration.ServerAddress + ":" + _configuration.ServerPort; } }
+        public string SuggestedClientName { get { return "内网客户端-" + Environment.MachineName.Substring(Math.Max(0, Environment.MachineName.Length - 4)).ToUpperInvariant(); } }
         public string HeaderStatus { get { return GatewayServiceManager.IsRunning() && _processRunning ? "代理运行中" : "需要检查"; } }
         public string StatusBrush { get { return GatewayServiceManager.IsRunning() && _processRunning ? "#35A875" : "#B7832B"; } }
         public string OverviewTitle { get { if (!_store.IsManaged) return "请输入 PMS 一次性配对密钥"; if (!_store.HasToken) return "代理连接凭据需要修复"; if (!GatewayServiceManager.Exists()) return "请安装后台服务"; if (!_processRunning) return "隧道正在恢复连接"; return Routes.Count == 0 ? "等待 PMS 下发内网应用" : "内网应用正在安全转发"; } }
@@ -50,6 +51,20 @@ namespace Pms.LanGatewayAssistant
             var id = Convert.ToString(((FrameworkElement)sender).Tag); var route = _configuration.Routes.FirstOrDefault(item => item.Id == id); if (route == null) return;
             var dialog = new RouteDialog(route, route.RemotePort) { Owner = this }; if (dialog.ShowDialog() != true) return; var index = _configuration.Routes.IndexOf(route); _configuration.Routes[index] = dialog.Result; SaveAndRestart();
         }
+        private async void TestRoute_Click(object sender, RoutedEventArgs e)
+        {
+            var id = Convert.ToString(((FrameworkElement)sender).Tag); var route = _configuration.Routes.FirstOrDefault(item => item.Id == id); if (route == null) return;
+            var button = sender as System.Windows.Controls.Button; if (button != null) { button.IsEnabled = false; button.Content = "测试中…"; }
+            try
+            {
+                var report = await Task.Factory.StartNew(delegate { return new GatewayControlPlaneClient(_store).TestRoute(route); });
+                var title = report.Healthy ? "内网连接正常" : "内网连接失败";
+                var icon = report.Healthy ? MessageBoxImage.Information : MessageBoxImage.Warning;
+                MessageBox.Show("「" + route.Name + "」\n" + report.Message + "\n\n目标：" + route.LocalUrl, title, MessageBoxButton.OK, icon);
+            }
+            catch (Exception exception) { MessageBox.Show(exception.GetBaseException().Message, "内网连接测试失败", MessageBoxButton.OK, MessageBoxImage.Error); }
+            finally { if (button != null) { button.IsEnabled = true; button.Content = "测试连接"; } }
+        }
         private void SaveAndRestart()
         {
             _store.Save(_configuration); ReloadRoutes();
@@ -72,7 +87,9 @@ namespace Pms.LanGatewayAssistant
             EnrollButton.IsEnabled = false; EnrollButton.Content = "正在连接…";
             try
             {
-                await Task.Factory.StartNew(delegate { return new GatewayControlPlaneClient(_store).Enroll(code, Assembly.GetExecutingAssembly().GetName().Version.ToString(3)); });
+                var clientName = ClientNameBox.Text.Trim();
+                if (String.IsNullOrWhiteSpace(clientName)) { MessageBox.Show("请填写客户端名称。", "缺少客户端名称", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+                await Task.Factory.StartNew(delegate { return new GatewayControlPlaneClient(_store).Enroll(code, Assembly.GetExecutingAssembly().GetName().Version.ToString(3), clientName); });
                 InstallCodeBox.Clear(); RaiseAll();
                 GatewayServiceManager.RunElevated(GatewayServiceManager.Exists() ? "--restart-service" : "--install-service");
                 MessageBox.Show("这台电脑已受 PMS 管理。后续新增或修改内网应用时，助手会自动领取配置。", "连接完成", MessageBoxButton.OK, MessageBoxImage.Information);

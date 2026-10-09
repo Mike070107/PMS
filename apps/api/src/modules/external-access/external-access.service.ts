@@ -107,9 +107,10 @@ export class ExternalAccessService {
   async createAgent(dto: CreateLanGatewayAgentDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const installCode = createGatewayInstallCode();
+    const name = await this.uniqueAgentName(tenantId, dto.name);
     const agent = await this.agentRepo.save(this.agentRepo.create({
       tenantId,
-      name: dto.name.trim(),
+      name,
       deviceKey: `lan-${createGatewayDeviceToken().slice(0, 20)}`,
       tokenHash: null,
       installCodeHash: hashGatewaySecret(installCode),
@@ -133,7 +134,7 @@ export class ExternalAccessService {
     const tenantId = this.requireTenant(user);
     const agent = await this.agentRepo.findOne({ where: { id, tenantId } });
     if (!agent) throw new NotFoundException('代理设备不存在');
-    if (dto.name !== undefined) agent.name = dto.name.trim();
+    if (dto.name !== undefined) agent.name = await this.uniqueAgentName(tenantId, dto.name, agent.id);
     if (dto.enabled !== undefined) {
       agent.enabled = dto.enabled;
       agent.status = dto.enabled ? (agent.tokenHash ? 'offline' : 'pending') : 'disabled';
@@ -166,6 +167,7 @@ export class ExternalAccessService {
     const frpToken = process.env.LAN_GATEWAY_FRP_TOKEN?.trim();
     if (!frpToken) throw new BadRequestException('网关平台尚未配置代理凭据');
     const deviceToken = createGatewayDeviceToken();
+    if (dto.clientName !== undefined) agent.name = await this.uniqueAgentName(agent.tenantId, dto.clientName, agent.id);
     agent.tokenHash = hashGatewaySecret(deviceToken);
     agent.installCodeHash = null;
     agent.installCodeExpiresAt = null;
@@ -299,7 +301,7 @@ export class ExternalAccessService {
 
   createGatewaySession(app: ExternalAccessApp, userId: number) {
     const secret = this.gatewaySessionSecret();
-    const seconds = app.sessionDuration === '30m' ? 1800 : app.sessionDuration === '4h' ? 14400 : 3600;
+    const seconds = app.sessionDuration === '30m' ? 1800 : app.sessionDuration === '4h' ? 14400 : app.sessionDuration === '12h' ? 43200 : 3600;
     const now = Math.floor(Date.now() / 1000);
     const payload = Buffer.from(JSON.stringify({
       userId,
@@ -493,6 +495,20 @@ export class ExternalAccessService {
     if (!agent) throw new BadRequestException('选择的内网代理不存在');
     if (!agent.enabled) throw new BadRequestException(`内网代理「${agent.name}」已停用`);
     return agent;
+  }
+
+  /** 同一企业内用名称定位设备；保留设备键做真实身份，名称只能作为可读标签。 */
+  private async uniqueAgentName(tenantId: number, value: string, exceptId?: number) {
+    const name = String(value || '').trim();
+    if (!name) throw new BadRequestException('请填写客户端名称');
+    const duplicate = await this.agentRepo
+      .createQueryBuilder('agent')
+      .where('agent.tenant_id = :tenantId', { tenantId })
+      .andWhere('LOWER(agent.name) = LOWER(:name)', { name })
+      .andWhere(exceptId ? 'agent.id <> :exceptId' : '1 = 1', { exceptId })
+      .getOne();
+    if (duplicate) throw new BadRequestException(`客户端名称「${name}」已存在，请换一个名称`);
+    return name;
   }
 
   private async allocateGatewayPort() {

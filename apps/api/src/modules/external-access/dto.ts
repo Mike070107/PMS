@@ -12,7 +12,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-const SESSION_DURATIONS = ['30m', '1h', '4h'] as const;
+const SESSION_DURATIONS = ['30m', '1h', '4h', '12h'] as const;
 
 export class CreateExternalAccessAppDto {
   @IsString()
@@ -102,6 +102,13 @@ export class EnrollLanGatewayAgentDto {
   @IsNotEmpty()
   @MaxLength(120)
   computerName: string;
+
+  /** 首次安装时可将自动生成的设备名改成安装位置名称。 */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  clientName?: string;
 
   @IsString()
   @IsNotEmpty()

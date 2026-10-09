@@ -23,11 +23,11 @@ namespace Pms.LanGatewayAssistant
 
         public GatewayControlPlaneClient(GatewayConfigurationStore store) { _store = store; }
 
-        public GatewayEnrollmentResponse Enroll(string installCode, string version)
+        public GatewayEnrollmentResponse Enroll(string installCode, string version, string clientName)
         {
             var current = _store.Load();
             var url = current.ApiBaseUrl.TrimEnd('/') + "/external-access-agent/enroll";
-            var request = _json.Serialize(new { installCode = (installCode ?? "").Trim().ToUpperInvariant(), computerName = Environment.MachineName, version = version });
+            var request = _json.Serialize(new { installCode = (installCode ?? "").Trim().ToUpperInvariant(), computerName = Environment.MachineName, clientName = (clientName ?? "").Trim(), version = version });
             using (var client = NewClient(false))
             {
                 client.Headers[HttpRequestHeader.ContentType] = "application/json";
@@ -77,6 +77,13 @@ namespace Pms.LanGatewayAssistant
             current.AppliedRevision = managed.Revision;
             _store.Save(current);
             return new GatewaySyncResult { Changed = true, Revision = managed.Revision, Routes = reports };
+        }
+
+        /** 用户主动点击的单条测试：只从本机访问目标地址，不会修改 PMS 或隧道配置。 */
+        public GatewayRouteReport TestRoute(GatewayRoute route)
+        {
+            if (route == null) throw new ArgumentNullException("route");
+            return Probe(new[] { route }).First();
         }
 
         public void Heartbeat(bool processRunning, int appliedRevision, IEnumerable<GatewayRouteReport> routes, string error)

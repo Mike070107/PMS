@@ -157,6 +157,11 @@ const launchUrl = (app: Pick<ExternalApp, 'publicHostname' | 'entryPath'>) =>
 const originEntryUrl = (app: Pick<ExternalApp, 'originUrl' | 'entryPath'>) =>
   `${app.originUrl}${app.entryPath === '/' ? '' : app.entryPath || ''}`;
 
+const suggestedClientName = () => {
+  const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `内网客户端-${suffix}`;
+};
+
 export default function ExternalAccessPage({ preview = false }: { preview?: boolean }) {
   const { message } = AntdApp.useApp();
   const { canEdit } = usePagePerm('settings');
@@ -280,7 +285,7 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
           <div className="external-access-section__head">
             <div>
               <span className="external-access-section__icon"><LaptopOutlined aria-hidden="true" /></span>
-              <div><h2 id="external-access-agents-title">代理设备</h2><p>新电脑使用一次性配对密钥连接</p></div>
+            <div><h2 id="external-access-agents-title">内网应用客户端</h2><p>先配对，再由客户端验证它能够访问内网应用</p></div>
             </div>
             <span className="external-access-section__count">{agents.length}</span>
           </div>
@@ -290,7 +295,7 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
             </div>
           ) : (
             <div className="external-access-empty external-access-empty--compact">
-              <span><LaptopOutlined aria-hidden="true" /></span><h3>还没有内网应用客户端</h3><p>先添加客户端，再把内网应用发布到该电脑。</p>
+              <span><LaptopOutlined aria-hidden="true" /></span><h3>还没有内网应用客户端</h3><p>先创建并配对客户端，再把内网应用发布到这台电脑。</p>
               {canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreatingAgent(true)}>添加内网应用客户端</Button>}
             </div>
           )}
@@ -439,6 +444,22 @@ function GatewayAgentCard({ agent, preview, canEdit, onChanged }: { agent: Gatew
     } catch (error: any) { message.error(error?.message || '更新代理状态失败'); }
     finally { setToggling(false); }
   };
+  const rename = () => {
+    let nextName = agent.name;
+    modal.confirm({
+      title: '重命名内网应用客户端',
+      content: <Input defaultValue={agent.name} maxLength={120} autoFocus onChange={(event) => { nextName = event.target.value; }} aria-label="客户端名称" />,
+      okText: '保存名称',
+      cancelText: '取消',
+      onOk: async () => {
+        const name = nextName.trim();
+        if (!name) { message.error('请填写客户端名称'); throw new Error('名称为空'); }
+        if (preview) { message.success('预览：客户端名称已更新'); return; }
+        await request({ method: 'PATCH', url: `/external-access/agents/${agent.id}`, data: { name } });
+        message.success('客户端名称已更新'); onChanged();
+      },
+    });
+  };
   return <article className="external-access-agent-card">
     <div className="external-access-agent-card__icon"><LaptopOutlined aria-hidden="true" /></div>
     <div className="external-access-agent-card__body">
@@ -447,7 +468,7 @@ function GatewayAgentCard({ agent, preview, canEdit, onChanged }: { agent: Gatew
       <div className="external-access-agent-card__facts"><span>{agent.appCount} 个应用</span><span>修订 {agent.appliedRevision}/{agent.desiredRevision}</span></div>
       {agent.lastError && <div className="external-app-error"><ExclamationCircleFilled aria-hidden="true" /><span>{agent.lastError}</span></div>}
     </div>
-    {canEdit && <div className="external-access-agent-card__actions"><Switch checked={agent.enabled} loading={toggling} checkedChildren="启用" unCheckedChildren="停用" onChange={setEnabled} aria-label={`${agent.enabled ? '停用' : '启用'} ${agent.name}`} /><Button loading={issuing} onClick={issueCode}>{agent.enrolled ? '重新配对' : '获取配对密钥'}</Button></div>}
+    {canEdit && <div className="external-access-agent-card__actions"><Switch checked={agent.enabled} loading={toggling} checkedChildren="启用" unCheckedChildren="停用" onChange={setEnabled} aria-label={`${agent.enabled ? '停用' : '启用'} ${agent.name}`} /><Button onClick={rename}>重命名</Button><Button loading={issuing} onClick={issueCode}>{agent.enrolled ? '重新配对' : '获取配对密钥'}</Button></div>}
     <Modal
       title="一次性配对密钥"
       open={Boolean(installCode)}
@@ -473,7 +494,7 @@ function GatewayAgentModal({ open, preview, onClose, onDone }: { open: boolean; 
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{ installCode: string; installCodeExpiresAt?: string } | null>(null);
-  useEffect(() => { if (open) { form.resetFields(); setResult(null); } }, [open, form]);
+  useEffect(() => { if (open) { form.resetFields(); form.setFieldsValue({ name: suggestedClientName() }); setResult(null); } }, [open, form]);
   const save = async ({ name }: { name: string }) => {
     if (preview) { setResult({ installCode: 'ABCD-EFGH-JKLM-2345' }); return; }
     setSaving(true);
@@ -487,7 +508,7 @@ function GatewayAgentModal({ open, preview, onClose, onDone }: { open: boolean; 
     message.success('一次性配对密钥已复制');
   };
   return <Modal title="添加内网应用客户端" open={open} onCancel={onClose} maskClosable={!result} destroyOnHidden footer={result ? [<Button key="done" onClick={onDone}>关闭</Button>, <Button key="copy" type="primary" icon={<CopyOutlined />} onClick={copyAndFinish}>复制密钥</Button>] : [<Button key="cancel" onClick={onClose}>取消</Button>, <Button key="create" type="primary" loading={saving} onClick={() => form.submit()}>创建并生成密钥</Button>]}>
-    {result ? <div className="external-access-enroll-result"><CheckCircleFilled aria-hidden="true" /><h3>内网应用客户端已创建</h3><p>请立即在目标电脑打开「PMS 内网应用连接助手」并输入下方密钥。密钥 10 分钟内有效、只能成功使用一次；关闭后不再显示。</p><code className="external-access-secret-value">{result.installCode}</code></div> : <Form form={form} layout="vertical" onFinish={save}><Form.Item name="name" label="客户端名称" extra="使用安装位置或用途，便于后续选择。" rules={[{ required: true, message: '请填写客户端名称' }]}><Input prefix={<LaptopOutlined />} placeholder="例如：财务室客户端" autoFocus /></Form.Item></Form>}
+    {result ? <div className="external-access-enroll-result"><CheckCircleFilled aria-hidden="true" /><h3>内网应用客户端已创建</h3><p>请立即在目标电脑打开「PMS 内网应用连接助手」并输入下方密钥。密钥 10 分钟内有效、只能成功使用一次；关闭后不再显示。配对后先在助手内测试目标网站，再发布应用。</p><code className="external-access-secret-value">{result.installCode}</code></div> : <Form form={form} layout="vertical" onFinish={save}><Form.Item name="name" label="客户端名称" extra="已自动生成短名称；可改为安装位置或用途。同一企业内名称不能重复。" rules={[{ required: true, message: '请填写客户端名称' }]}><Input prefix={<LaptopOutlined />} maxLength={120} autoFocus /></Form.Item></Form>}
   </Modal>;
 }
 
@@ -501,7 +522,7 @@ function ExternalAppModal({ open, target, agents, preview, provider, onClose, on
     if (target) form.setFieldsValue({ ...target, originUrl: originEntryUrl(target) });
     else {
       form.resetFields();
-      form.setFieldsValue({ enabled: true, sessionDuration: '1h', agentId: agents.length === 1 ? agents[0].id : undefined });
+      form.setFieldsValue({ enabled: true, sessionDuration: '12h', agentId: agents.length === 1 ? agents[0].id : undefined });
     }
   }, [open, target, form, agents]);
 
@@ -551,7 +572,7 @@ function ExternalAppModal({ open, target, agents, preview, provider, onClose, on
               <Input prefix={<CloudServerOutlined aria-hidden="true" />} placeholder="http://192.168.1.20:8080" />
             </Form.Item>
           </div>
-          {provider === 'domestic' && <Form.Item name="agentId" label="内网代理" extra="配置会自动下发到这台电脑，无需再编辑本地路由。" rules={[{ required: true, message: '请选择能访问该内网网站的代理电脑' }]}><Select placeholder="选择代理设备" options={agents.filter((agent) => agent.enabled).map((agent) => ({ value: agent.id, label: `${agent.name} · ${{ online: '在线', pending: '待安装', offline: '离线', degraded: '异常', disabled: '已停用' }[agent.status]}` }))} /></Form.Item>}
+          {provider === 'domestic' && <Form.Item name="agentId" label="内网应用客户端" extra="选择能够访问该内网地址的已配对客户端。保存后客户端会自动测试并回传结果，无需编辑本地路由。" rules={[{ required: true, message: '请选择能够访问该内网网站的已配对客户端' }]}><Select placeholder="选择已配对客户端" options={agents.filter((agent) => agent.enabled && agent.enrolled).map((agent) => ({ value: agent.id, label: `${agent.name} · ${{ online: '在线', pending: '待安装', offline: '离线', degraded: '异常', disabled: '已停用' }[agent.status]}` }))} /></Form.Item>}
         </section>
 
         <section className="external-access-form-section" aria-labelledby="external-app-access-title">
@@ -569,7 +590,7 @@ function ExternalAppModal({ open, target, agents, preview, provider, onClose, on
             }
           />
           <div className="external-access-form-grid external-access-form-grid--settings">
-            <Form.Item name="sessionDuration" label="登录有效期"><Select suffixIcon={<ClockCircleOutlined aria-hidden="true" />} options={[{ value: '30m', label: '30 分钟（财务推荐）' }, { value: '1h', label: '1 小时' }, { value: '4h', label: '4 小时（最长）' }]} /></Form.Item>
+            <Form.Item name="sessionDuration" label="登录有效期"><Select suffixIcon={<ClockCircleOutlined aria-hidden="true" />} options={[{ value: '30m', label: '30 分钟（财务推荐）' }, { value: '1h', label: '1 小时' }, { value: '4h', label: '4 小时' }, { value: '12h', label: '12 小时（工作日）' }]} /></Form.Item>
             <Form.Item className="external-access-switch-field" name="enabled" label="访问状态" valuePropName="checked" extra="关闭后立即停止新访问"><Switch checkedChildren="开放" unCheckedChildren="停用" /></Form.Item>
           </div>
         </section>

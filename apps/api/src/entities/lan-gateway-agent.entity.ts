@@ -5,7 +5,7 @@ export type LanGatewayAgentStatus = 'pending' | 'online' | 'offline' | 'degraded
 
 /** 一台受 PMS 控制面管理的局域网发布助手。 */
 @Entity('lan_gateway_agents')
-@Index(['tenantId', 'name'])
+@Index(['tenantId', 'name'], { unique: true })
 @Index(['deviceKey'], { unique: true })
 export class LanGatewayAgent extends TenantEntity {
   @Column({ type: 'varchar', length: 120 })
