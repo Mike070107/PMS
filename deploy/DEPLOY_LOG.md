@@ -4270,3 +4270,11 @@
   - f888b9ec feat(access-card): show room label in history
   - 02ab1eaa feat(web): support pasted screenshots across photo uploads
 
+## 2026-10-09 19:19 · assistant · 2726515f
+
+- 提交：2726515f feat(parking): support verified Deliyun renewals
+- 自上次（6edac687）以来上线的相关提交：
+  - 2726515f feat(parking): support verified Deliyun renewals
+  - 60b0d2aa feat(access-card): split database and controller actions
+  - 7a3eb9a6 fix(access-card): persist door user display name
+
