@@ -57,7 +57,7 @@
           <Expander x:Name="MovementFields" Header="进出记录历史库（如与车辆库不同，请展开配置）" Margin="0,12,0,0">
             <StackPanel Margin="10,10,10,4">
               <TextBlock Text="进出记录从 TC.View_RecordAll 读取。留空时尝试上面的同名车辆库。" TextWrapping="Wrap" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,8" />
-              <TextBlock Text="旧网页参考：一期 192.168.1.2\JSST / js；二期 192.168.1.5\JS / JSOCTNet。请以本机测试可连接的地址为准。" TextWrapping="Wrap" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,8" />
+              <TextBlock Text="停车车辆库位于 192.168.6.3：一期 parking1、二期 parking2。仅当进出记录确实存放在其他库时才填写下方地址；旧网页中的历史地址不能作为当前配置依据。" TextWrapping="Wrap" Foreground="{StaticResource PmsMuted}" Margin="0,0,0,8" />
               <TextBlock Text="一期历史库 SQL Server" Foreground="{StaticResource PmsMuted}" /><TextBox x:Name="MovementServerOneInput" />
               <TextBlock Text="一期历史库名称" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementDatabaseOneInput" />
               <TextBlock Text="二期历史库 SQL Server" Foreground="{StaticResource PmsMuted}" Margin="0,8,0,0" /><TextBox x:Name="MovementServerTwoInput" />

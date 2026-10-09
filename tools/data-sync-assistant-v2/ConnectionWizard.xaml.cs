@@ -74,7 +74,7 @@ namespace Pms.DataSyncAssistant
             }
             else if (_type == ConnectionTypes.LegacyAccess)
             {
-                NameInput.Text = "枫桦一二期小区大门门禁系统接入"; ServerInput.Text = _host.IpAddress; UserInput.Text = "SA"; DatabaseOneInput.Text = "JS0131625"; DatabaseTwoInput.Text = "";
+                NameInput.Text = "枫桦一二期小区大门门禁系统接入"; ServerInput.Text = "192.168.1.80"; UserInput.Text = "SA"; DatabaseOneInput.Text = "JS0131625"; DatabaseTwoInput.Text = "";
             }
             else if (_type == ConnectionTypes.BuildingAccess)
             {

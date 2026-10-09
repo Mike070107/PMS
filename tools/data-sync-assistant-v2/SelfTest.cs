@@ -360,24 +360,27 @@ namespace Pms.DataSyncAssistant
             table.Columns.Add("is_output", typeof(bool));
             table.Rows.Add("@P_plate", "nvarchar", (short)100, false);
             table.Rows.Add("@Car_ID", "varchar", (short)20, false);
+            table.Rows.Add("@Car_Zt", "int", (short)4, false);
             table.Rows.Add("@P_Effective", "varchar", (short)256, false);
             table.Rows.Add("@P_Admin", "varchar", (short)20, false);
             table.Rows.Add("@result", "nvarchar", (short)-1, true);
             List<ParkingDatabase.ProcedureParameter> parameters;
             using (var reader = table.CreateDataReader()) parameters = ParkingDatabase.ReadProcedureParameters(reader);
             var payload = new Dictionary<string, object> { { "effective", "00000011" }, { "carId", "0000000007" } };
-            var vehicle = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) { { "Car_ID", "0000000007" }, { "P_Effective", "00000011" } };
+            var vehicle = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) { { "Car_ID", "0000000007" }, { "Car_Zt", 1 }, { "P_Effective", "00000011" } };
             using (var command = new System.Data.SqlClient.SqlCommand("dbo.Add_DownloadCard"))
             {
                 ParkingDatabase.AddDownloadProcedureParameters(command, parameters, vehicle, payload, "沪ATEST1", "PMS");
-                if (command.Parameters.Count != 5 || (string)command.Parameters["@P_plate"].Value != "沪ATEST1" ||
+                if (command.Parameters.Count != 6 || (string)command.Parameters["@P_plate"].Value != "沪ATEST1" ||
                     command.Parameters["@P_plate"].SqlDbType != System.Data.SqlDbType.NVarChar || command.Parameters["@P_plate"].Size != 50 ||
                     (string)command.Parameters["@Car_ID"].Value != "0000000007" ||
+                    (int)command.Parameters["@Car_Zt"].Value != 1 ||
                     (string)command.Parameters["@P_Effective"].Value != "00000011" ||
                     (string)command.Parameters["@P_Admin"].Value != "PMS" ||
                     command.Parameters["@result"].Direction != System.Data.ParameterDirection.Output || command.Parameters["@result"].Size != -1)
                     throw new InvalidOperationException("下载参数绑定、真实 Car_ID、Unicode 长度或输出 MAX 参数失败");
             }
+            payload["carzt"] = 1; // 下面的通用过程测试没有车辆行，单独提供这个已知参数。
             parameters.Add(new ParkingDatabase.ProcedureParameter { Name = "@unknown_required", Type = System.Data.SqlDbType.Int });
             try
             {
