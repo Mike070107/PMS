@@ -4213,3 +4213,11 @@
 - 自上次（d2ea3a76）以来上线的相关提交：
   - 3e400670 feat(gateway): standardize managed client publishing
 
+## 2026-10-09 11:41 · web · 0b786f9d
+
+- 包：`pms-web-20261009-113953.tar.gz`
+- 提交：0b786f9d fix(parking): preserve movement date selection
+- 自上次（d2ea3a76）以来上线的相关提交：
+  - 0b786f9d fix(parking): preserve movement date selection
+  - 3e400670 feat(gateway): standardize managed client publishing
+
