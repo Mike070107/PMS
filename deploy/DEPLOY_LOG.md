@@ -4278,3 +4278,9 @@
   - 60b0d2aa feat(access-card): split database and controller actions
   - 7a3eb9a6 fix(access-card): persist door user display name
 
+## 2026-10-09 22:24 · assistant · ac1e4a26
+
+- 提交：ac1e4a26 fix(access-card): resolve iccard user group by building
+- 自上次（2726515f）以来上线的相关提交：
+  - ac1e4a26 fix(access-card): resolve iccard user group by building
+
