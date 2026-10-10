@@ -4498,3 +4498,16 @@
   - 965fe380 fees: 账单明细查询补收费时间/收款方式筛选与导出，并把日期口径统一到上海时区
   - e142f4ff feat(fees): close apartment cashier daily loop
 
+## 2026-10-11 00:23 · web · 7cb469c6
+
+- 包：`pms-web-20261011-002201.tar.gz`
+- 提交：7cb469c6 chore: 忽略 __pycache__、*.pyc 和 admin-web 临时 dist 目录
+- 自上次（dd45ea16）以来上线的相关提交：
+  - 600dcf94 web: 内容区宽度基准改为 1920×1080，上限定在 1600
+  - 3018e9da web: 后台内容区最大宽度收到 1440，超宽屏不再把控件拉满
+  - 6977f47a logs: 日志管理支持按管理处/小区和业务模块、具体操作筛选
+  - 04175066 fees: 新增财务对账（按日×收款方式），报表外观统一到收费台那套
+  - 63da4c38 fees: 新增收费报表（总览含环比、趋势、收款方式/费用项目/小区/收费员分布）
+  - 965fe380 fees: 账单明细查询补收费时间/收款方式筛选与导出，并把日期口径统一到上海时区
+  - e142f4ff feat(fees): close apartment cashier daily loop
+
