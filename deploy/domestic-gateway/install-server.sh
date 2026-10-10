@@ -33,6 +33,19 @@ upsert_env() {
   mv "${API_ENV}.tmp" "$API_ENV"
 }
 
+upsert_env_file() {
+  local path=$1 key=$2 value=$3
+  awk -v key="$key" -v value="$value" '
+    BEGIN { done=0 }
+    index($0, key "=") == 1 { print key "=" value; done=1; next }
+    { print }
+    END { if (!done) print key "=" value }
+  ' "$path" > "${path}.tmp"
+  chown --reference="$path" "${path}.tmp"
+  chmod --reference="$path" "${path}.tmp"
+  mv "${path}.tmp" "$path"
+}
+
 OIDC_CLIENT_ID=$(read_env EXTERNAL_OIDC_CLIENT_ID)
 OIDC_CLIENT_SECRET=$(read_env EXTERNAL_OIDC_CLIENT_SECRET)
 if [[ -z "$OIDC_CLIENT_ID" || -z "$OIDC_CLIENT_SECRET" ]]; then
@@ -56,11 +69,19 @@ fi
 if [[ ! -s /etc/pms-gateway/frp-plugin-secret ]]; then
   openssl rand -hex 32 > /etc/pms-gateway/frp-plugin-secret
 fi
+if [[ ! -s /etc/pms-gateway/router-secret ]]; then
+  openssl rand -hex 32 > /etc/pms-gateway/router-secret
+fi
+if [[ ! -s /etc/pms-gateway/external-account-key ]]; then
+  openssl rand -base64 32 > /etc/pms-gateway/external-account-key
+fi
 printf '%s' "$OIDC_CLIENT_SECRET" > /etc/pms-gateway/oidc-client-secret
-chmod 0600 /etc/pms-gateway/frp-token /etc/pms-gateway/oauth-cookie-secret /etc/pms-gateway/oidc-client-secret /etc/pms-gateway/session-secret /etc/pms-gateway/frp-plugin-secret
+chmod 0600 /etc/pms-gateway/frp-token /etc/pms-gateway/oauth-cookie-secret /etc/pms-gateway/oidc-client-secret /etc/pms-gateway/session-secret /etc/pms-gateway/frp-plugin-secret /etc/pms-gateway/router-secret /etc/pms-gateway/external-account-key
 upsert_env LAN_GATEWAY_FRP_TOKEN "$(tr -d '\r\n' < /etc/pms-gateway/frp-token)"
 upsert_env LAN_GATEWAY_SESSION_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/session-secret)"
 upsert_env LAN_GATEWAY_FRP_PLUGIN_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/frp-plugin-secret)"
+upsert_env LAN_GATEWAY_ROUTER_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/router-secret)"
+upsert_env EXTERNAL_ACCOUNT_CREDENTIAL_KEY_B64 "$(tr -d '\r\n' < /etc/pms-gateway/external-account-key)"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -122,8 +143,9 @@ GATEWAY_ROUTER_PORT=4190
 PMS_API_INTERNAL_URL=http://127.0.0.1:4000/api/v1
 PMS_PUBLIC_API_URL=https://prsznh.cn/api/v1
 EOF
-  chmod 0640 /etc/pms-gateway/router.env
 fi
+upsert_env_file /etc/pms-gateway/router.env LAN_GATEWAY_ROUTER_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/router-secret)"
+chmod 0640 /etc/pms-gateway/router.env
 
 # Certificates are renewed independently by certbot. Reload Nginx after a
 # successful renewal so the new certificate is served without a reboot.

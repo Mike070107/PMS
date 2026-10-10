@@ -20,6 +20,7 @@ import {
   WebLoginTicketStatus,
 } from '../../entities/web-login-ticket.entity';
 import { AuthService } from './auth.service';
+import { ExternalAccountBindingService } from './external-account-binding.service';
 import { OidcService } from './oidc.service';
 import { WechatService, type WxEnvVersion } from './wechat.service';
 import {
@@ -76,6 +77,7 @@ export class QrLoginService {
     private readonly config: ConfigService,
     private readonly authService: AuthService,
     private readonly oidcService: OidcService,
+    private readonly externalBindings: ExternalAccountBindingService,
   ) {}
 
   /** 出码。返回 base64 图片，省掉为一张两分钟就作废的图走一趟对象存储 */
@@ -296,6 +298,12 @@ export class QrLoginService {
     }
 
     const me = await this.userRepo.findOne({ where: { id: user.id } });
+    const requiredApp = row.purpose === WebLoginTicketPurpose.EXTERNAL_GATEWAY
+      ? await this.externalApp(row)
+      : null;
+    const binding = requiredApp
+      ? await this.externalBindings.bindingState(requiredApp, user.id)
+      : { required: false, bound: true, username: null };
     return {
       ticket: row.ticket,
       status: row.status,
@@ -306,6 +314,8 @@ export class QrLoginService {
       applicationName:
         row.oidcRequest?.requiredAppName ?? 'PMS 物业管理后台',
       applicationHostname: row.oidcRequest?.requiredAppHostname ?? null,
+      bindingRequired: binding.required && !binding.bound,
+      bindingUsername: binding.username,
       me: {
         name: me?.name ?? null,
         roleLabel: me ? USER_ROLE_LABELS[me.role] ?? me.role : null,
@@ -334,18 +344,55 @@ export class QrLoginService {
       await this.authService.issueWebTokensForUser(user.id);
     }
 
+    if (row.purpose === WebLoginTicketPurpose.EXTERNAL_GATEWAY) {
+      const app = await this.externalApp(row);
+      const binding = await this.externalBindings.bindingState(app, user.id);
+      if (binding.required && !binding.bound) {
+        return { ok: false as const, bindingRequired: true as const };
+      }
+    }
+
+    return this.completeConfirmation(row, user.id);
+  }
+
+  /** 首次绑定：验证原系统账密、加密保存，再完成这张扫码票据。 */
+  async bindExternalAccount(ticketCode: string, user: AuthUser, username: string, password: string) {
+    this.assertRateLimit('bind-external', String(user.id), 5, 15 * 60_000);
+    const row = await this.requireUsableTicket(ticketCode);
+    this.assertStaffApp(user);
+    if (
+      row.purpose !== WebLoginTicketPurpose.EXTERNAL_GATEWAY ||
+      row.status !== WebLoginTicketStatus.SCANNED ||
+      row.scannedByUserId !== user.id
+    ) {
+      throw new BadRequestException('这次扫码已失效，请让电脑刷新后重试');
+    }
+    await this.authService.requireExternalAccessUser(user.id, this.requiredApplication(row));
+    const app = await this.externalApp(row);
+    if (!user.tenantId) throw new ForbiddenException('当前账号没有所属租户，不能绑定内网应用');
+    const binding = await this.externalBindings.bind(
+      app,
+      { id: user.id, tenantId: user.tenantId },
+      username,
+      password,
+    );
+    await this.completeConfirmation(row, user.id);
+    return { ok: true as const, binding };
+  }
+
+  private async completeConfirmation(row: WebLoginTicket, userId: number) {
     const confirmedAt = new Date();
     const claimed = await this.ticketRepo.update(
       {
         id: row.id,
         status: WebLoginTicketStatus.SCANNED,
-        scannedByUserId: user.id,
+        scannedByUserId: userId,
       },
       {
         status: WebLoginTicketStatus.CONFIRMED,
-        userId: user.id,
+        userId,
         confirmedAt,
-        updatedBy: user.id,
+        updatedBy: userId,
       },
     );
     if (!claimed.affected) {
@@ -418,6 +465,13 @@ export class QrLoginService {
       appId: request.requiredAppId,
       appSlug: request.requiredAppName || request.requiredAppSlug,
     };
+  }
+
+  private async externalApp(row: WebLoginTicket) {
+    const required = this.requiredApplication(row);
+    const app = await this.externalAppRepo.findOne({ where: { id: required.appId, enabled: true } });
+    if (!app) throw new ForbiddenException('这个内网应用已停用');
+    return app;
   }
 
   private async bindOidcRequestToApplication(request: OidcLoginRequest): Promise<OidcLoginRequest> {

@@ -3,7 +3,7 @@ import http from 'node:http';
 import test from 'node:test';
 
 process.env.NODE_ENV = 'test';
-const { applicationRequestPath, forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie } = await import('./server.mjs');
+const { applicationRequestPath, browserSessionScript, forwardedHeaders, injectBrowserSession, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie } = await import('./server.mjs');
 
 test('requestJson works without fetch or WebAssembly', async (t) => {
   const originalFetch = globalThis.fetch;
@@ -59,6 +59,31 @@ test('the public host is preserved for browser-origin application sessions', () 
   assert.equal(headers['x-forwarded-proto'], 'https');
   assert.equal(headers.origin, 'https://wyglxt.prsznh.cn');
   assert.equal(headers.cookie, 'app_session=origin-session');
+});
+
+test('server-side target authorization overrides browser input and router secrets never reach the origin', () => {
+  const headers = forwardedHeaders({
+    host: 'wyglxt.prsznh.cn',
+    authorization: 'Bearer browser-forged-token',
+    'x-pms-gateway-router-secret': 'private-router-secret',
+  }, 'wyglxt.prsznh.cn', '127.0.0.1', { authorization: 'Bearer target-token' });
+  assert.equal(headers.authorization, 'Bearer target-token');
+  assert.equal(headers['x-pms-gateway-router-secret'], undefined);
+});
+
+test('browser bootstrap contains only a harmless placeholder token and escaped profile JSON', () => {
+  const script = browserSessionScript({
+    token: 'placeholder.jwt.signature',
+    user: { username: '</script><script>bad()</script>', role: '操作员' },
+  });
+  assert.match(script, /placeholder\.jwt\.signature/);
+  assert.doesNotMatch(script, /<\/script><script>bad/);
+  assert.match(script, /\\u003c\/script>/);
+  const html = injectBrowserSession('<html><head><title>Target</title></head><body></body></html>', {
+    token: 'placeholder.jwt.signature',
+    user: { username: 'remote-user' },
+  });
+  assert.ok(html.indexOf('sessionStorage.setItem') < html.indexOf('</head>'));
 });
 
 test('origin redirects and cookie domains are rewritten to the public host', () => {

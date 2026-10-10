@@ -37,7 +37,7 @@ test('gateway configuration signatures are stable and bound to the device token'
 
 test('gateway session supports the configured 12-hour workday duration', () => {
   process.env.LAN_GATEWAY_SESSION_SECRET = 'gateway-session-secret-for-test-must-have-32-characters';
-  const service = new ExternalAccessService({} as any, {} as any, {} as any, {} as any, {} as any);
+  const service = new ExternalAccessService({} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
   const session = service.createGatewaySession({ id: 9, slug: 'finance', sessionDuration: '12h' } as any, 7);
   assert.equal(session.maxAge, 43_200);
 });
@@ -48,7 +48,7 @@ test('FRP admission binds every proxy name and port to the authenticated device'
   const agent = { id: 7, tenantId: 1, deviceKey: 'lan-test', tokenHash: hashGatewaySecret(deviceToken), enabled: true };
   const agentRepo = { findOne: async ({ where }: any) => where.deviceKey === agent.deviceKey ? agent : null };
   const appRepo = { findOne: async ({ where }: any) => where.agentId === agent.id && where.gatewayPort === 18050 && where.slug === 'finance' ? { id: 9 } : null };
-  const service = new ExternalAccessService(appRepo as any, {} as any, agentRepo as any, {} as any, {} as any);
+  const service = new ExternalAccessService(appRepo as any, {} as any, agentRepo as any, {} as any, {} as any, {} as any);
   const metadata = { user: 'lan-test', metas: { deviceToken } };
   assert.deepEqual(await service.authorizeFrpOperation('plugin-secret-for-test', 'Login', { content: metadata }), { reject: false, unchange: true });
   assert.deepEqual(await service.authorizeFrpOperation('plugin-secret-for-test', 'NewProxy', { content: { user: metadata, proxy_name: 'lan-test.finance', proxy_type: 'tcp', remote_port: 18050, use_encryption: true } }), { reject: false, unchange: true });
@@ -65,7 +65,7 @@ test('dynamic gateway can bootstrap a freshly verified route before public healt
   const agent = { id: 7, tenantId: 1, enabled: true, desiredRevision: 3, appliedRevision: 3, lastSeenAt: now };
   const appRepo = { findOne: async () => app };
   const agentRepo = { findOne: async () => agent };
-  const service = new ExternalAccessService(appRepo as any, {} as any, agentRepo as any, {} as any, {} as any);
+  const service = new ExternalAccessService(appRepo as any, {} as any, agentRepo as any, {} as any, {} as any, {} as any);
   assert.equal((await service.resolveGatewayApplication('finance.prsznh.cn')).id, 9);
 
   app.originCheckedAt = new Date(Date.now() - 91_000);
@@ -93,6 +93,7 @@ test('内网应用图标入口只返回当前用户已授权且已启用的应�
     {} as any,
     {} as any,
     access as any,
+    {} as any,
   );
 
   const apps = await service.listMyApps({ id: 7, tenantId: 1 } as any);
@@ -116,4 +117,13 @@ test('gateway login page offers a same-phone WeChat launch action without removi
   assert.match(html, /打开微信授权登录/);
   assert.match(html, /href="weixin:\/\/dl\/business\/\?t=launch123"/);
   assert.match(html, /微信小程序登录二维码/);
+});
+
+test('gateway verification rejects callers without the private router secret', async () => {
+  process.env.LAN_GATEWAY_ROUTER_SECRET = 'router-secret-for-test';
+  const controller = new GatewayAccessController({ verifyGatewaySession: () => ({}) } as any, {} as any);
+  assert.throws(
+    () => controller.verify('finance.prsznh.cn', { headers: {} } as any),
+    /内网网关调用身份无效/,
+  );
 });

@@ -35,9 +35,27 @@ upsert_env() {
   mv "${API_ENV}.tmp" "$API_ENV"
 }
 
+upsert_env_file() {
+  local path=$1 key=$2 value=$3
+  awk -v key="$key" -v value="$value" '
+    BEGIN { done=0 }
+    index($0, key "=") == 1 { print key "=" value; done=1; next }
+    { print }
+    END { if (!done) print key "=" value }
+  ' "$path" > "${path}.tmp"
+  chown --reference="$path" "${path}.tmp"
+  chmod --reference="$path" "${path}.tmp"
+  mv "${path}.tmp" "$path"
+}
+
 ensure_secret /etc/pms-gateway/frp-token
 ensure_secret /etc/pms-gateway/session-secret
 ensure_secret /etc/pms-gateway/frp-plugin-secret
+ensure_secret /etc/pms-gateway/router-secret
+if [[ ! -s /etc/pms-gateway/external-account-key ]]; then
+  openssl rand -base64 32 > /etc/pms-gateway/external-account-key
+fi
+chmod 0600 /etc/pms-gateway/external-account-key
 
 backup="${API_ENV}.bak-gateway-control-$(date +%Y%m%d%H%M%S)"
 cp -a "$API_ENV" "$backup"
@@ -45,8 +63,13 @@ cp -a "$API_ENV" "$backup"
 upsert_env LAN_GATEWAY_FRP_TOKEN "$(tr -d '\r\n' < /etc/pms-gateway/frp-token)"
 upsert_env LAN_GATEWAY_SESSION_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/session-secret)"
 upsert_env LAN_GATEWAY_FRP_PLUGIN_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/frp-plugin-secret)"
+upsert_env LAN_GATEWAY_ROUTER_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/router-secret)"
+upsert_env EXTERNAL_ACCOUNT_CREDENTIAL_KEY_B64 "$(tr -d '\r\n' < /etc/pms-gateway/external-account-key)"
 upsert_env LAN_GATEWAY_SERVER_ADDRESS "gateway.prsznh.cn"
 upsert_env LAN_GATEWAY_SERVER_PORT "443"
+if [[ -f /etc/pms-gateway/router.env ]]; then
+  upsert_env_file /etc/pms-gateway/router.env LAN_GATEWAY_ROUTER_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/router-secret)"
+fi
 
 echo "gateway control-plane credentials configured"
 echo "backup: $backup"

@@ -40,8 +40,8 @@
     <view class="auth-hero">
       <view class="brand-mark"></view>
       <view class="eyebrow">内网应用 · 安全授权</view>
-      <view class="lead__title">允许登录{{info.applicationName}}？</view>
-      <view class="lead__sub">确认后，这台电脑会使用你的授权进入应用。</view>
+      <view class="lead__title">{{bindingRequired ? '首次绑定' : '允许登录'}}{{info.applicationName}}？</view>
+      <view class="lead__sub">{{bindingRequired ? '验证一次原系统账号，后续扫码确认即可进入。' : '确认后，这台电脑会使用你的授权进入应用。'}}</view>
     </view>
 
     <view class="card auth-card">
@@ -66,12 +66,30 @@
           <view class="auth-meta__value">{{timeText}}</view>
         </view>
       </view>
+      <view wx:if="{{bindingRequired}}" class="binding-form">
+        <view class="binding-form__intro">账号密码只用于代你登录此应用，并会加密保存。</view>
+        <view class="form-field">
+          <label class="form-label" for="binding-username">公寓系统用户名</label>
+          <input id="binding-username" class="form-input" value="{{bindingUsername}}" maxlength="120" placeholder="请输入用户名" bindinput="onUsernameInput" />
+        </view>
+        <view class="form-field">
+          <label class="form-label" for="binding-password">公寓系统密码</label>
+          <view class="password-field">
+            <input id="binding-password" class="form-input password-field__input" value="{{bindingPassword}}" password="{{!showPassword}}" maxlength="200" placeholder="请输入密码" confirm-type="done" bindinput="onPasswordInput" bindconfirm="onBindAndConfirm" />
+            <button class="password-toggle" disabled="{{submitting}}" bindtap="onTogglePassword">{{showPassword ? '隐藏' : '显示'}}</button>
+          </view>
+        </view>
+        <view wx:if="{{bindingError}}" class="form-error" role="alert">{{bindingError}}</view>
+      </view>
     </view>
 
     <view class="security-note"><view class="security-note__icon"></view><text>请确认这是你正在使用的应用与域名；不是本人操作请立即拒绝。</text></view>
 
     <view class="btn-group">
-      <button class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onConfirm">
+      <button wx:if="{{bindingRequired}}" class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onBindAndConfirm">
+        <view class="btn__icon icon-action--check-white"></view><text>验证并绑定</text>
+      </button>
+      <button wx:else class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onConfirm">
         <view class="btn__icon icon-action--check-white"></view><text>确认并进入</text>
       </button>
       <button class="btn btn--outline" disabled="{{submitting}}" bindtap="onCancel">

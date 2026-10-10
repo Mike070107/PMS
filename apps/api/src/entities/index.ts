@@ -59,6 +59,7 @@ import { RepairFeeRule } from './repair-fee-rule.entity';
 import { WebLoginTicket } from './web-login-ticket.entity';
 import { OidcAuthorizationCode } from './oidc-authorization-code.entity';
 import { ExternalAccessApp } from './external-access-app.entity';
+import { ExternalAccountBinding } from './external-account-binding.entity';
 import { LanGatewayAgent } from './lan-gateway-agent.entity';
 import { FeeStandard } from './fee-standard.entity';
 import { FeeBill } from './fee-bill.entity';
@@ -160,6 +161,7 @@ export const entities = [
   WebLoginTicket,
   OidcAuthorizationCode,
   ExternalAccessApp,
+  ExternalAccountBinding,
   LanGatewayAgent,
   FeeStandard,
   FeeBill,
@@ -246,6 +248,7 @@ export {
   WebLoginTicket,
   OidcAuthorizationCode,
   ExternalAccessApp,
+  ExternalAccountBinding,
   LanGatewayAgent,
   FeeStandard,
   FeeBill,

@@ -45,10 +45,19 @@ function fixture() {
   };
   const checked: any[] = [];
   const generatedSchemes: any[] = [];
+  let bound = false;
+  const externalApp = {
+    id: 8,
+    slug: 'caiwu',
+    name: '用友财务系统',
+    publicHostname: 'caiwu.prsznh.cn',
+    loginAdapter: 'bearer_json',
+  };
+  const bindingCalls: any[] = [];
   const service = new QrLoginService(
     repo as any,
     { findOne: async () => ({ id: 11, name: '叶双', role: UserRole.STAFF }) } as any,
-    {} as any,
+    { findOne: async () => externalApp } as any,
     {
       generateWxaUrlScheme: async (options: any, appType: string) => {
         generatedSchemes.push({ options, appType });
@@ -64,8 +73,16 @@ function fixture() {
       },
     } as any,
     { createAuthorizationCode: async () => 'https://caiwu.prsznh.cn/oauth2/callback?code=x' } as any,
+    {
+      bindingState: async () => ({ required: true, bound, username: bound ? 'remote-user' : null }),
+      bind: async (_app: any, user: any, username: string, password: string) => {
+        bindingCalls.push({ user, username, password });
+        bound = true;
+        return { username, displayName: '远端用户' };
+      },
+    } as any,
   );
-  return { service, row, browser, checked, generatedSchemes };
+  return { service, row, browser, checked, generatedSchemes, bindingCalls };
 }
 
 const alice: any = { id: 11, role: UserRole.STAFF, tenantId: 7 };
@@ -157,4 +174,20 @@ test('a concurrent losing scan reloads the database winner instead of claiming l
   };
   await assert.rejects(service.markScanned('ticket-1', alice), /另一位员工/);
   assert.equal(row.scannedByUserId, bob.id);
+});
+
+test('external gateway stays scanned until the first account binding succeeds', async () => {
+  const { service, row, bindingCalls } = fixture();
+  row.purpose = WebLoginTicketPurpose.EXTERNAL_GATEWAY;
+  const info = await service.markScanned('ticket-1', alice);
+  assert.equal(info.bindingRequired, true);
+
+  assert.deepEqual(await service.confirm('ticket-1', alice), { ok: false, bindingRequired: true });
+  assert.equal(row.status, WebLoginTicketStatus.SCANNED);
+
+  const result = await service.bindExternalAccount('ticket-1', alice, 'remote-user', 'remote-password');
+  assert.equal(result.ok, true);
+  assert.equal(row.status, WebLoginTicketStatus.CONFIRMED);
+  assert.equal(bindingCalls.length, 1);
+  assert.equal(bindingCalls[0].username, 'remote-user');
 });

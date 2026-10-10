@@ -31,6 +31,11 @@ Page({
     /** 浏览器 UA 太长，页面上只显示认得出的那部分 */
     deviceText: '',
     timeText: '',
+    bindingRequired: false,
+    bindingUsername: '',
+    bindingPassword: '',
+    showPassword: false,
+    bindingError: '',
     /** 微信拒绝或不支持退出 API 时，给用户一个明确的手动兜底。 */
     closeHint: '',
   },
@@ -66,6 +71,8 @@ Page({
       this.setData({
         loading: false,
         info,
+        bindingRequired: info.bindingRequired,
+        bindingUsername: info.bindingUsername || '',
         deviceText: describeUserAgent(info.userAgent),
         timeText: formatTime(info.requestedAt),
       });
@@ -82,13 +89,56 @@ Page({
     if (this.data.submitting) return;
     this.setData({ submitting: true });
     try {
-      await auth.qrLoginConfirm(this.data.ticket);
+      const result = await auth.qrLoginConfirm(this.data.ticket);
+      if (result.bindingRequired) {
+        this.setData({ bindingRequired: true, bindingError: '' });
+        return;
+      }
       this.setData({ done: 'confirmed' });
       this.scheduleAutoClose();
     } catch (e: any) {
       // 没绑后台角色的人（维修工、保安等）在这里就要看到原因，
       // 不能让他点完确认、网页那边报一句他根本看不见的错
       this.setData({ errorMsg: e?.message || '确认失败，请重试' });
+    } finally {
+      this.setData({ submitting: false });
+    }
+  },
+
+  onUsernameInput(e: any) {
+    this.setData({ bindingUsername: e.detail.value, bindingError: '' });
+  },
+
+  onPasswordInput(e: any) {
+    this.setData({ bindingPassword: e.detail.value, bindingError: '' });
+  },
+
+  onTogglePassword() {
+    this.setData({ showPassword: !this.data.showPassword });
+  },
+
+  async onBindAndConfirm() {
+    if (this.data.submitting) return;
+    const username = this.data.bindingUsername.trim();
+    const password = this.data.bindingPassword;
+    if (!username) {
+      this.setData({ bindingError: '请输入公寓系统用户名' });
+      return;
+    }
+    if (!password) {
+      this.setData({ bindingError: '请输入公寓系统密码' });
+      return;
+    }
+    this.setData({ submitting: true, bindingError: '' });
+    try {
+      await auth.qrLoginBindExternalAccount({ ticket: this.data.ticket, username, password });
+      this.setData({ done: 'confirmed', bindingPassword: '' });
+      this.scheduleAutoClose();
+    } catch (e: any) {
+      this.setData({
+        bindingPassword: '',
+        bindingError: e?.message || '账号验证失败，请检查后重试',
+      });
     } finally {
       this.setData({ submitting: false });
     }

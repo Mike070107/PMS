@@ -17,6 +17,7 @@ import {
   WebLoginTicket,
   OidcAuthorizationCode,
   ExternalAccessApp,
+  ExternalAccountBinding,
 } from '../../entities';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -25,6 +26,7 @@ import { WechatService } from './wechat.service';
 import { QrLoginService } from './qr-login.service';
 import { OidcController } from './oidc.controller';
 import { OidcService } from './oidc.service';
+import { ExternalAccountBindingService } from './external-account-binding.service';
 
 @Module({
   imports: [
@@ -43,6 +45,7 @@ import { OidcService } from './oidc.service';
       WebLoginTicket,
       OidcAuthorizationCode,
       ExternalAccessApp,
+      ExternalAccountBinding,
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -56,7 +59,7 @@ import { OidcService } from './oidc.service';
     }),
   ],
   controllers: [AuthController, OidcController],
-  providers: [AuthService, JwtStrategy, WechatService, OidcService, QrLoginService],
-  exports: [JwtModule, PassportModule, WechatService, QrLoginService],
+  providers: [AuthService, JwtStrategy, WechatService, OidcService, ExternalAccountBindingService, QrLoginService],
+  exports: [JwtModule, PassportModule, WechatService, ExternalAccountBindingService, QrLoginService],
 })
 export class AuthModule {}

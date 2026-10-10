@@ -37,6 +37,15 @@ test('确认页保留应用与域名校验信息，但不再要求人工核对�
   assert.doesNotMatch(template, /confirmationCode|核对码/);
 });
 
+test('首次绑定保留输入错误反馈并支持显示或隐藏密码', () => {
+  assert.match(source, /onBindAndConfirm/);
+  assert.match(source, /bindingPassword: ''/);
+  assert.match(template, /公寓系统用户名/);
+  assert.match(template, /公寓系统密码/);
+  assert.match(template, /onTogglePassword/);
+  assert.match(template, /\{\{bindingError\}\}/);
+});
+
 function section(start, end) {
   const startAt = source.indexOf(start);
   const endAt = source.indexOf(end, startAt + start.length);
