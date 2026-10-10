@@ -4341,3 +4341,10 @@
 - 自上次（7041949d）以来上线的相关提交：
   - 1520e083 fix(access-card): match MjSystem serial SDK call
 
+## 2026-10-10 10:20 · api · 7dbca40e
+
+- 包：`pms-api-fast-20261010-102024.tar.gz`
+- 提交：7dbca40e fix(gateway): make route publication responsive
+- 自上次（6f341405）以来上线的相关提交：
+  - 7dbca40e fix(gateway): make route publication responsive
+
