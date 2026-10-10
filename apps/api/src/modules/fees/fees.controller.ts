@@ -79,6 +79,17 @@ export class FeesController {
     return this.feesService.feeReport(query, user, access);
   }
 
+  /** 财务对账：按日 × 收款方式，和收费报表同一套取数口径 */
+  @Get('reports/reconciliation')
+  @RequirePermission('fees', 'view')
+  feeReconciliation(
+    @Query() query: FeeReportQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feesService.feeReconciliation(query, user, access);
+  }
+
   @Get('arrears')
   @RequirePermission('fees', 'view')
   listArrears(

@@ -10,7 +10,6 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
-  Progress,
   Row,
   Segmented,
   Select,
@@ -19,6 +18,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import {
@@ -30,6 +30,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
+  SwapOutlined,
   ThunderboltOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
@@ -53,6 +54,7 @@ import { handleGone } from '../lib/gone';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import ApartmentCashierPage from './ApartmentCashierPage';
+import './FeesReportShell.css';
 
 const { Title, Text } = Typography;
 
@@ -177,6 +179,27 @@ interface FeeReport {
   byCashier: Array<FeeReportSlice & { cashier: string | null }>;
 }
 
+/** 对账表的一格：某天某收款方式 */
+interface ReconCell {
+  amountCents: number;
+  chargedCents: number;
+  refundedCents: number;
+  count: number;
+}
+
+interface ReconRow extends ReconCell {
+  day: string;
+  byMethod: Record<string, ReconCell>;
+}
+
+interface FeeReconciliation {
+  range: { from: string; to: string };
+  /** 本区间实际出现过的收款方式，决定表头有哪几列 */
+  methods: string[];
+  rows: ReconRow[];
+  totals: ReconCell & { byMethod: Record<string, ReconCell> };
+}
+
 interface HouseDetail {
   house: {
     id: number;
@@ -257,6 +280,11 @@ export default function FeesPage() {
             key: 'reports',
             label: <span><BarChartOutlined /> 收费报表</span>,
             children: <ReportTab />,
+          },
+          {
+            key: 'recon',
+            label: <span><SwapOutlined /> 财务对账</span>,
+            children: <ReconTab />,
           },
           {
             key: 'arrears',
@@ -777,8 +805,12 @@ function BreakdownCard({
 }) {
   const peak = Math.max(1, ...rows.map((r) => Math.abs(r.amountCents)));
   return (
-    <Card size="small" title={title}>
+    <div className="fees-card fees-card--flush">
+      <div className="fees-heading">
+        <h2 style={{ fontSize: 16 }}>{title}</h2>
+      </div>
       <Table
+        className="fees-table"
         rowKey="key"
         size="small"
         loading={loading}
@@ -792,22 +824,21 @@ function BreakdownCard({
             dataIndex: 'amountCents',
             align: 'right' as const,
             width: 110,
-            render: (v: number) => formatFeeMoney(v),
+            render: (v: number) => (
+              <span className={v < 0 ? 'is-negative' : 'is-money'}>{formatFeeMoney(v)}</span>
+            ),
           },
           { title: '笔数', dataIndex: 'count', align: 'right' as const, width: 70 },
           {
             title: '占比',
             key: 'share',
-            width: 120,
+            width: 118,
             render: (_: unknown, r: { amountCents: number; share: number | null }) => (
-              <Space size={4}>
-                {/* 负数（红冲）不画条，免得出现一根反向的进度条 */}
-                <Progress
-                  percent={r.amountCents > 0 ? Math.round((r.amountCents / peak) * 100) : 0}
-                  showInfo={false}
-                  size="small"
-                  style={{ width: 54, marginBottom: 0 }}
-                />
+              <Space size={6}>
+                {/* 负数（红冲）不画条，免得出现一根反向的条 */}
+                <span className="fees-bar">
+                  <i style={{ width: `${r.amountCents > 0 ? Math.round((r.amountCents / peak) * 100) : 0}%` }} />
+                </span>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {r.share === null ? '—' : `${r.share}%`}
                 </Text>
@@ -816,7 +847,7 @@ function BreakdownCard({
           },
         ]}
       />
-    </Card>
+    </div>
   );
 }
 
@@ -941,10 +972,14 @@ function ReportTab() {
   };
 
   return (
-    <div>
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space wrap>
-          {/* 报表按「钱哪天收到」统计，和账期无关 */}
+    <div className="fees-shell">
+      <div className="fees-card">
+        <div className="fees-heading">
+          <i>1</i>
+          <h2>统计口径</h2>
+          <small>按「钱哪天收到」统计，和账期无关；红冲走负数自动抵冲</small>
+        </div>
+        <div className="fees-filters">
           <DatePicker.RangePicker
             allowClear={false}
             value={range}
@@ -995,58 +1030,49 @@ function ReportTab() {
           <Button icon={<DownloadOutlined />} loading={exporting} disabled={!data} onClick={exportReport}>
             导出 Excel
           </Button>
-        </Space>
-      </Card>
+        </div>
+      </div>
 
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} md={6}>
-          <Card size="small" loading={loading}>
-            <Statistic
-              title="实收合计"
-              value={formatFeeMoney(totals?.netCents)}
-              valueStyle={{ color: '#3f8600' }}
-            />
-            <GrowthText value={data?.growth.netCents ?? null} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card size="small" loading={loading}>
-            <Statistic title="收款笔数" value={totals?.receiptCount ?? 0} />
-            <GrowthText value={data?.growth.receiptCount ?? null} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card size="small" loading={loading}>
-            <Statistic title="收费户数" value={totals?.houseCount ?? 0} />
-            <GrowthText value={data?.growth.houseCount ?? null} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card size="small" loading={loading}>
-            <Statistic
-              title="红冲冲减"
-              value={formatFeeMoney(totals?.refundedCents)}
-              valueStyle={{ color: totals?.refundedCents ? '#cf1322' : undefined }}
-            />
-            {/* 实收 = 收款小计 − 红冲冲减，三个数摆在一起才看得懂为什么合计少了 */}
+      <div className="fees-tiles">
+        <div className="fees-tile">
+          <small>实收合计</small>
+          <strong>{formatFeeMoney(totals?.netCents)}</strong>
+          <span className="fees-tile__foot"><GrowthText value={data?.growth.netCents ?? null} /></span>
+        </div>
+        <div className="fees-tile">
+          <small>收款笔数</small>
+          <strong className="is-plain">{totals?.receiptCount ?? 0}</strong>
+          <span className="fees-tile__foot"><GrowthText value={data?.growth.receiptCount ?? null} /></span>
+        </div>
+        <div className="fees-tile">
+          <small>收费户数</small>
+          <strong className="is-plain">{totals?.houseCount ?? 0}</strong>
+          <span className="fees-tile__foot"><GrowthText value={data?.growth.houseCount ?? null} /></span>
+        </div>
+        <div className="fees-tile">
+          <small>红冲冲减</small>
+          <strong className={totals?.refundedCents ? 'is-negative' : 'is-plain'}>
+            {formatFeeMoney(totals?.refundedCents)}
+          </strong>
+          {/* 实收 = 收款小计 − 红冲冲减，三个数摆在一起才看得懂为什么合计少了 */}
+          <span className="fees-tile__foot">
             <Text type="secondary" style={{ fontSize: 12 }}>
               收款小计 {formatFeeMoney(totals?.chargedCents)}
             </Text>
-          </Card>
-        </Col>
-      </Row>
+          </span>
+        </div>
+      </div>
 
-      <Card
-        size="small"
-        title="实收趋势"
-        extra={
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            按收款日期统计（{data?.range.from} ~ {data?.range.to}），上期 {data?.previousRange.from} ~ {data?.previousRange.to}
-          </Text>
-        }
-        style={{ marginBottom: 16 }}
-      >
+      <div className="fees-card fees-card--flush">
+        <div className="fees-heading">
+          <i>2</i>
+          <h2>实收趋势</h2>
+          <small>
+            本期 {data?.range.from} ~ {data?.range.to}，上期 {data?.previousRange.from} ~ {data?.previousRange.to}
+          </small>
+        </div>
         <Table<FeeReport['trend'][number]>
+          className="fees-table"
           rowKey="bucket"
           size="small"
           loading={loading}
@@ -1065,7 +1091,7 @@ function ReportTab() {
               width: 130,
               align: 'right' as const,
               render: (v: number) => (
-                <span style={{ color: v < 0 ? '#cf1322' : undefined }}>{formatFeeMoney(v)}</span>
+                <span className={v < 0 ? 'is-negative' : 'is-money'}>{formatFeeMoney(v)}</span>
               ),
             },
             { title: '笔数', dataIndex: 'count', width: 80, align: 'right' as const },
@@ -1074,20 +1100,18 @@ function ReportTab() {
               key: 'bar',
               render: (_: unknown, r) => {
                 const peak = Math.max(1, ...(data?.trend ?? []).map((t) => Math.abs(t.amountCents)));
+                // 负数（红冲）不画条，只靠金额标红说明
+                const pct = r.amountCents > 0 ? Math.round((r.amountCents / peak) * 100) : 0;
                 return (
-                  <Progress
-                    percent={r.amountCents > 0 ? Math.round((r.amountCents / peak) * 100) : 0}
-                    showInfo={false}
-                    size="small"
-                    strokeColor={r.amountCents < 0 ? '#cf1322' : undefined}
-                    style={{ marginBottom: 0 }}
-                  />
+                  <span className="fees-bar" style={{ width: '100%', maxWidth: 260 }}>
+                    <i style={{ width: `${pct}%` }} />
+                  </span>
                 );
               },
             },
           ]}
         />
-      </Card>
+      </div>
 
       <Row gutter={[16, 16]}>
         {/* 两列并排时名字列只剩两百来像素，「微信」会被省略成「微…」，
@@ -1105,6 +1129,273 @@ function ReportTab() {
           <BreakdownCard title="按收费员" nameTitle="收费员" rows={cashierRows} loading={loading} />
         </Col>
       </Row>
+    </div>
+  );
+}
+
+// ====================================================================
+// 财务对账
+// ====================================================================
+/** 收款方式的中文名；老库导进来没记方式的那批单独叫「未记录」，不并进「其他」 */
+function methodLabel(method: string) {
+  if (method === 'unknown') return '未记录';
+  return FEE_PAYMENT_METHOD_LABELS[method] || method;
+}
+
+function ReconTab() {
+  const { message } = AntdApp.useApp();
+  const communities = useCommunities();
+
+  const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>(
+    () => [dayjs().startOf('month'), dayjs()],
+  );
+  const [communityId, setCommunityId] = useState<number | undefined>();
+  const [feeCode, setFeeCode] = useState<string | undefined>();
+  const [data, setData] = useState<FeeReconciliation | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const query = useMemo(
+    () => ({
+      from: range[0].format('YYYY-MM-DD'),
+      to: range[1].format('YYYY-MM-DD'),
+      communityId,
+      feeCode,
+    }),
+    [range, communityId, feeCode],
+  );
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setData(await request<FeeReconciliation>({ url: '/fees/reports/reconciliation', query }));
+    } catch (e: any) {
+      message.error(e?.message || '加载失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [message, query]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const methods = data?.methods ?? [];
+  const rows = data?.rows ?? [];
+  const totals = data?.totals;
+  // 区间天数按请求参数算，不读响应里的 range：
+  // 后端换版或接口返回少了字段时，这里崩一下会把整个后台带成白屏
+  const spanDays = dayjs(query.to).diff(dayjs(query.from), 'day') + 1;
+
+  // 表头随区间里实际出现过的收款方式长出来：出纳只核今天真有钱进来的那几个渠道
+  const columns = [
+    { title: '日期', dataIndex: 'day', fixed: 'left' as const, width: 118 },
+    ...methods.map((m) => ({
+      title: methodLabel(m),
+      key: m,
+      width: 118,
+      align: 'right' as const,
+      render: (_: unknown, r: ReconRow) => {
+        const cell = r.byMethod[m];
+        if (!cell || (!cell.amountCents && !cell.count)) return <span className="is-dim">-</span>;
+        return (
+          <Tooltip
+            title={`收款 ${formatFeeMoney(cell.chargedCents)}、红冲 ${formatFeeMoney(cell.refundedCents)}、${cell.count} 笔`}
+          >
+            <span className={cell.amountCents < 0 ? 'is-negative' : undefined}>
+              {formatFeeMoney(cell.amountCents)}
+            </span>
+          </Tooltip>
+        );
+      },
+    })),
+    {
+      title: '红冲冲减',
+      dataIndex: 'refundedCents',
+      width: 110,
+      align: 'right' as const,
+      render: (v: number) => (v ? <span className="is-negative">{formatFeeMoney(v)}</span> : <span className="is-dim">-</span>),
+    },
+    { title: '笔数', dataIndex: 'count', width: 72, align: 'right' as const },
+    {
+      title: '当日实收',
+      dataIndex: 'amountCents',
+      width: 130,
+      align: 'right' as const,
+      fixed: 'right' as const,
+      render: (v: number) => <span className={v < 0 ? 'is-negative' : 'is-money'}>{formatFeeMoney(v)}</span>,
+    },
+  ];
+
+  const exportRecon = async () => {
+    if (!data) return;
+    setExporting(true);
+    try {
+      const totalRow = {
+        ...(totals ?? { amountCents: 0, chargedCents: 0, refundedCents: 0, count: 0, byMethod: {} }),
+        day: '合计',
+      } as ReconRow;
+      await exportXlsx(`财务对账_${query.from}_${query.to}`, [
+        {
+          name: '按日对账',
+          columns: [
+            { title: '日期', key: 'day' },
+            ...methods.map((m) => ({
+              title: `${methodLabel(m)}(元)`,
+              key: `m_${m}`,
+              render: (r: ReconRow) => centsToYuan(r.byMethod[m]?.amountCents ?? 0),
+            })),
+            { title: '收款小计(元)', key: 'charged', render: (r: ReconRow) => centsToYuan(r.chargedCents) },
+            { title: '红冲冲减(元)', key: 'refunded', render: (r: ReconRow) => centsToYuan(r.refundedCents) },
+            { title: '笔数', key: 'count' },
+            { title: '当日实收(元)', key: 'amount', render: (r: ReconRow) => centsToYuan(r.amountCents) },
+          ],
+          // 合计行一起导出去，免得出纳在 Excel 里自己再求和一遍
+          rows: [...rows, totalRow],
+        },
+        {
+          name: '按收款方式',
+          columns: [
+            { title: '收款方式', key: 'name' },
+            { title: '收款小计(元)', key: 'charged' },
+            { title: '红冲冲减(元)', key: 'refunded' },
+            { title: '笔数', key: 'count' },
+            { title: '实收(元)', key: 'amount' },
+          ],
+          rows: methods.map((m) => {
+            const cell = totals?.byMethod[m];
+            return {
+              name: methodLabel(m),
+              charged: centsToYuan(cell?.chargedCents ?? 0),
+              refunded: centsToYuan(cell?.refundedCents ?? 0),
+              count: cell?.count ?? 0,
+              amount: centsToYuan(cell?.amountCents ?? 0),
+            };
+          }),
+        },
+      ]);
+      message.success('已导出财务对账表');
+    } catch (e: any) {
+      message.error(e?.message || '导出失败');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div className="fees-shell">
+      <div className="fees-card">
+        <div className="fees-heading">
+          <i>1</i>
+          <h2>对账区间</h2>
+          <small>和收费报表同一套取数口径，两边数字必然对得上</small>
+        </div>
+        <div className="fees-filters">
+          <DatePicker.RangePicker
+            allowClear={false}
+            value={range}
+            onChange={(v) => { if (v?.[0] && v?.[1]) setRange([v[0], v[1]]); }}
+            presets={[
+              { label: '本月', value: [dayjs().startOf('month'), dayjs()] },
+              { label: '上月', value: [dayjs().subtract(1, 'month').startOf('month'), dayjs().subtract(1, 'month').endOf('month')] },
+              { label: '近 30 天', value: [dayjs().subtract(29, 'day'), dayjs()] },
+            ]}
+            style={{ width: 260 }}
+          />
+          <Select
+            allowClear
+            placeholder="小区"
+            style={{ width: 150 }}
+            value={communityId}
+            onChange={setCommunityId}
+            options={withOptionTitles(communities.map((c) => ({ value: c.id, label: c.name })))}
+            {...searchableWideSelectProps}
+          />
+          <Select
+            allowClear
+            placeholder="费用项目"
+            style={{ width: 130 }}
+            value={feeCode}
+            onChange={setFeeCode}
+            options={FEE_OPTIONS}
+          />
+          <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>
+          <Button icon={<DownloadOutlined />} loading={exporting} disabled={!data} onClick={exportRecon}>
+            导出 Excel
+          </Button>
+        </div>
+      </div>
+
+      <div className="fees-tiles">
+        <div className="fees-tile">
+          <small>区间实收</small>
+          <strong>{formatFeeMoney(totals?.amountCents)}</strong>
+          <span className="fees-tile__foot">
+            <Text type="secondary" style={{ fontSize: 12 }}>收款小计 − 红冲冲减</Text>
+          </span>
+        </div>
+        <div className="fees-tile">
+          <small>收款小计</small>
+          <strong className="is-plain">{formatFeeMoney(totals?.chargedCents)}</strong>
+        </div>
+        <div className="fees-tile">
+          <small>红冲冲减</small>
+          <strong className={totals?.refundedCents ? 'is-negative' : 'is-plain'}>
+            {formatFeeMoney(totals?.refundedCents)}
+          </strong>
+        </div>
+        <div className="fees-tile">
+          <small>有流水天数</small>
+          <strong className="is-plain">
+            {rows.length}
+            <Text type="secondary" style={{ fontSize: 13, fontWeight: 600 }}> / {spanDays} 天</Text>
+          </strong>
+          <span className="fees-tile__foot">
+            <Text type="secondary" style={{ fontSize: 12 }}>共 {totals?.count ?? 0} 笔收款</Text>
+          </span>
+        </div>
+      </div>
+
+      <div className="fees-card fees-card--flush">
+        <div className="fees-heading">
+          <i>2</i>
+          <h2>按日 × 收款方式</h2>
+          <small>按收款日期（上海时间）统计，只列有流水的日子；格子上停一下看收款／红冲拆分</small>
+        </div>
+        <Table<ReconRow>
+          className="fees-table"
+          rowKey="day"
+          size="small"
+          loading={loading}
+          dataSource={rows}
+          columns={columns}
+          scroll={{ x: 'max-content' }}
+          pagination={{ pageSize: 31, showSizeChanger: false, hideOnSinglePage: true }}
+          summary={() => (
+            <Table.Summary fixed>
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0}>合计</Table.Summary.Cell>
+                {methods.map((m, i) => (
+                  <Table.Summary.Cell key={m} index={i + 1} align="right">
+                    <span className={(totals?.byMethod[m]?.amountCents ?? 0) < 0 ? 'is-negative' : undefined}>
+                      {formatFeeMoney(totals?.byMethod[m]?.amountCents ?? 0)}
+                    </span>
+                  </Table.Summary.Cell>
+                ))}
+                <Table.Summary.Cell index={methods.length + 1} align="right">
+                  {totals?.refundedCents
+                    ? <span className="is-negative">{formatFeeMoney(totals.refundedCents)}</span>
+                    : <span className="is-dim">-</span>}
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={methods.length + 2} align="right">
+                  {totals?.count ?? 0}
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={methods.length + 3} align="right">
+                  <span className="is-money">{formatFeeMoney(totals?.amountCents)}</span>
+                </Table.Summary.Cell>
+              </Table.Summary.Row>
+            </Table.Summary>
+          )}
+        />
+      </div>
     </div>
   );
 }

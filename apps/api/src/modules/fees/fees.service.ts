@@ -9,6 +9,7 @@ import { Brackets, DataSource, In, Repository, SelectQueryBuilder } from 'typeor
 import { AuthUser } from '../../common/current-user.decorator';
 import {
   FEE_ITEM_CODES,
+  FEE_PAYMENT_METHOD_VALUES,
   FeeBillSource,
   FeeBillStatus,
   FeeStandardStatus,
@@ -66,6 +67,16 @@ const MAX_PAGE_SIZE = 500;
 
 /** 一次「生成账单」最多铺多少户，超过就说清楚而不是把库写爆 */
 const GENERATE_LIMIT = 20000;
+
+/**
+ * 「几笔收款」：一张收据算一笔。
+ * 旧库导入的明细可能没有收据号，那就按明细各算一笔 ——
+ * COUNT(DISTINCT receipt_no) 会把 NULL 全丢掉，一整批历史收款会统计成 0 笔。
+ */
+const PAID_TXN_EXPR = `COUNT(DISTINCT COALESCE(f.receipt_no, 'bill#' || f.id))`;
+
+/** 老库导进来的流水有的没记收款方式，对账表给它单独一列，不能默默并进「其他」 */
+const UNKNOWN_METHOD = 'unknown';
 
 export interface PagedResult<T> {
   rows: T[];
@@ -214,6 +225,38 @@ export class FeesService {
   // ==================== 报表 ====================
 
   /**
+   * 报表与对账共用的「实收」取数：paid_at 落在区间内、状态是已收或红冲的明细。
+   *
+   * fee_bills 上直接挂了 community_id，所以不用联房屋/楼栋/小区三张表，
+   * 统计走单表扫描。筛选条件只认报表这几项，和账单列表那套刻意分开 ——
+   * 账单列表按账期找单子，这里按钱什么时候到账找流水。
+   */
+  private paidBillsQuery(
+    tenantId: number,
+    scope: number[] | null,
+    query: FeeReportQueryDto,
+    rangeFrom: string,
+    rangeTo: string,
+  ) {
+    const qb = this.billRepo
+      .createQueryBuilder('f')
+      .where('f.tenant_id = :tenantId', { tenantId })
+      .andWhere('f.paid_at IS NOT NULL')
+      .andWhere('f.status IN (:...paidStatuses)', {
+        paidStatuses: [FeeBillStatus.PAID, FeeBillStatus.REFUNDED],
+      })
+      .andWhere('f.paid_at >= :rangeFrom AND f.paid_at < :rangeTo', {
+        rangeFrom: dayStart(rangeFrom),
+        rangeTo: nextDayStart(rangeTo),
+      });
+    if (scope) qb.andWhere('f.community_id IN (:...scopeIds)', { scopeIds: scope });
+    if (query.communityId) qb.andWhere('f.community_id = :cid', { cid: query.communityId });
+    if (query.feeCode) qb.andWhere('f.fee_code = :feeCode', { feeCode: query.feeCode });
+    if (query.paymentMethod) qb.andWhere('f.payment_method = :pm', { pm: query.paymentMethod });
+    return qb;
+  }
+
+  /**
    * 收费报表：总览（含环比）+ 趋势 + 收款方式 / 费用项目 / 小区 / 收费员分布。
    *
    * 口径只有一个：按 paid_at 落在区间内的实收明细统计，和账期无关
@@ -229,28 +272,9 @@ export class FeesService {
     const prev = previousRange(from, to);
     if (scope && !scope.length) return this.emptyReport(from, to, prev, granularity);
 
-    const base = (rangeFrom: string, rangeTo: string) => {
-      const qb = this.billRepo
-        .createQueryBuilder('f')
-        .where('f.tenant_id = :tenantId', { tenantId })
-        .andWhere('f.paid_at IS NOT NULL')
-        .andWhere('f.status IN (:...paidStatuses)', {
-          paidStatuses: [FeeBillStatus.PAID, FeeBillStatus.REFUNDED],
-        })
-        .andWhere('f.paid_at >= :rangeFrom AND f.paid_at < :rangeTo', {
-          rangeFrom: dayStart(rangeFrom),
-          rangeTo: nextDayStart(rangeTo),
-        });
-      if (scope) qb.andWhere('f.community_id IN (:...scopeIds)', { scopeIds: scope });
-      if (query.communityId) qb.andWhere('f.community_id = :cid', { cid: query.communityId });
-      if (query.feeCode) qb.andWhere('f.fee_code = :feeCode', { feeCode: query.feeCode });
-      if (query.paymentMethod) qb.andWhere('f.payment_method = :pm', { pm: query.paymentMethod });
-      return qb;
-    };
+    const base = (rangeFrom: string, rangeTo: string) =>
+      this.paidBillsQuery(tenantId, scope, query, rangeFrom, rangeTo);
 
-    // 一次收款（一张收据）算一笔；旧库导入的明细可能没有收据号，按明细各算一笔，
-    // 不至于把一大批历史收款统计成 0 笔。
-    const TXN = `COUNT(DISTINCT COALESCE(f.receipt_no, 'bill#' || f.id))`;
     const totalsOf = async (rangeFrom: string, rangeTo: string) => {
       const raw = await base(rangeFrom, rangeTo)
         .select('COALESCE(SUM(f.amount_cents), 0)', 'netCents')
@@ -262,7 +286,7 @@ export class FeesService {
           'COALESCE(-SUM(CASE WHEN f.amount_cents < 0 THEN f.amount_cents ELSE 0 END), 0)',
           'refundedCents',
         )
-        .addSelect(TXN, 'receiptCount')
+        .addSelect(PAID_TXN_EXPR, 'receiptCount')
         .addSelect('COUNT(DISTINCT f.house_id)', 'houseCount')
         .addSelect('COUNT(*)', 'itemCount')
         .getRawOne<any>();
@@ -285,7 +309,7 @@ export class FeesService {
     const dayRows = await base(from, to)
       .select(`to_char(f.paid_at AT TIME ZONE '${FEE_TZ}', 'YYYY-MM-DD')`, 'day')
       .addSelect('COALESCE(SUM(f.amount_cents), 0)', 'amountCents')
-      .addSelect(TXN, 'count')
+      .addSelect(PAID_TXN_EXPR, 'count')
       .groupBy('day')
       .orderBy('day', 'ASC')
       .getRawMany<any>();
@@ -298,7 +322,7 @@ export class FeesService {
       const qb = base(from, to)
         .select(expr, alias)
         .addSelect('COALESCE(SUM(f.amount_cents), 0)', 'amountCents')
-        .addSelect(TXN, 'count');
+        .addSelect(PAID_TXN_EXPR, 'count');
       tune?.(qb);
       // 按表达式分组而不是按别名：Postgres 会把未加引号的 feeCode 折成小写，
       // 和 TypeORM 输出的 "feeCode" 对不上就直接报列不存在
@@ -403,6 +427,98 @@ export class FeesService {
       byCommunity: [],
       byCashier: [],
     };
+  }
+
+  /**
+   * 财务对账：按上海自然日 × 收款方式 的交叉表，每天一行，出纳拿它和现金、
+   * 微信/支付宝账单逐日核。
+   *
+   * 和收费报表同一套取数口径（paidBillsQuery），所以两个页面的数字必然对得上；
+   * 红冲单独成列，是为了解释「当天收了 5 笔、入账只有 4 笔的钱」是怎么回事。
+   * 区间内没有收款的日子不补空行 —— 对账看的是有流水的那些天。
+   */
+  async feeReconciliation(query: FeeReportQueryDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const scope = scopeCommunityIds(access);
+    const { from, to } = this.reportRange(query);
+    const empty = { range: { from, to }, methods: [], rows: [], totals: this.emptyReconTotals() };
+    if (scope && !scope.length) return empty;
+
+    const raw = await this.paidBillsQuery(tenantId, scope, query, from, to)
+      .select(`to_char(f.paid_at AT TIME ZONE '${FEE_TZ}', 'YYYY-MM-DD')`, 'day')
+      .addSelect('f.payment_method', 'method')
+      .addSelect('COALESCE(SUM(f.amount_cents), 0)', 'amountCents')
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN f.amount_cents > 0 THEN f.amount_cents ELSE 0 END), 0)',
+        'chargedCents',
+      )
+      .addSelect(
+        'COALESCE(-SUM(CASE WHEN f.amount_cents < 0 THEN f.amount_cents ELSE 0 END), 0)',
+        'refundedCents',
+      )
+      .addSelect(PAID_TXN_EXPR, 'count')
+      .groupBy('day')
+      .addGroupBy('f.payment_method')
+      .orderBy('day', 'ASC')
+      .getRawMany<any>();
+
+    // 列顺序按预置的收款方式排，不按当天谁先出现 —— 否则两天的表头会不一样
+    const seen = new Set<string>(raw.map((r) => r.method ?? UNKNOWN_METHOD));
+    const methods = [
+      ...FEE_PAYMENT_METHOD_VALUES.filter((m) => seen.has(m)),
+      ...(seen.has(UNKNOWN_METHOD) ? [UNKNOWN_METHOD] : []),
+    ];
+
+    const byDay = new Map<string, ReturnType<FeesService['emptyReconRow']>>();
+    const totals = this.emptyReconTotals();
+    for (const r of raw) {
+      const method = r.method ?? UNKNOWN_METHOD;
+      const cell = {
+        amountCents: Number(r.amountCents || 0),
+        chargedCents: Number(r.chargedCents || 0),
+        refundedCents: Number(r.refundedCents || 0),
+        count: Number(r.count || 0),
+      };
+      const row = byDay.get(r.day) ?? this.emptyReconRow(r.day);
+      row.byMethod[method] = cell;
+      row.amountCents += cell.amountCents;
+      row.chargedCents += cell.chargedCents;
+      row.refundedCents += cell.refundedCents;
+      row.count += cell.count;
+      byDay.set(r.day, row);
+
+      const sum = totals.byMethod[method] ?? { amountCents: 0, chargedCents: 0, refundedCents: 0, count: 0 };
+      sum.amountCents += cell.amountCents;
+      sum.chargedCents += cell.chargedCents;
+      sum.refundedCents += cell.refundedCents;
+      sum.count += cell.count;
+      totals.byMethod[method] = sum;
+      totals.amountCents += cell.amountCents;
+      totals.chargedCents += cell.chargedCents;
+      totals.refundedCents += cell.refundedCents;
+      totals.count += cell.count;
+    }
+
+    return { range: { from, to }, methods, rows: [...byDay.values()], totals };
+  }
+
+  private emptyReconRow(day: string) {
+    return {
+      day,
+      amountCents: 0,
+      chargedCents: 0,
+      refundedCents: 0,
+      count: 0,
+      byMethod: {} as Record<
+        string,
+        { amountCents: number; chargedCents: number; refundedCents: number; count: number }
+      >,
+    };
+  }
+
+  private emptyReconTotals() {
+    const { byMethod, amountCents, chargedCents, refundedCents, count } = this.emptyReconRow('');
+    return { amountCents, chargedCents, refundedCents, count, byMethod };
   }
 
   /** 欠费按户汇总：一户一行，欠多少个月、欠多少钱、最早欠到哪个账期 */

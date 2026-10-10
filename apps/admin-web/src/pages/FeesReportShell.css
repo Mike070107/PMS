@@ -1,0 +1,133 @@
+/*
+ * 收费报表 / 财务对账 的外观，沿用 ApartmentCashierPage.css 那一套 ——
+ * 同一个「物业费」页里来回切标签，卡片圆角、描边、阴影、金额颜色必须是一套，
+ * 否则收费台看着是一个系统、报表看着是另一个。
+ *
+ * 令牌故意和收费台同名同值（--ac-*），改品牌色时两边一起改，不会漏。
+ */
+.fees-shell {
+  --ac-brand: #31558a;
+  --ac-dark: #243f69;
+  --ac-line: #d8e2ed;
+  --ac-muted: #60748a;
+  --ac-money: #d2682b;
+  --ac-neg: #c0392b;
+}
+
+.fees-shell .fees-card {
+  margin-bottom: 18px;
+  padding: 20px;
+  border: 1px solid var(--ac-line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(36, 63, 105, 0.07);
+}
+.fees-shell .fees-card--flush { padding: 20px 20px 8px; }
+
+/* 序号徽章 + 标题 + 右侧说明，和收费台的 cashier-card__heading 同形 */
+.fees-shell .fees-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.fees-shell .fees-heading > i {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: #fff;
+  border-radius: 8px;
+  background: var(--ac-brand);
+  font-style: normal;
+  font-weight: 800;
+}
+.fees-shell .fees-heading h2 { margin: 0; font-size: 18px; }
+.fees-shell .fees-heading small {
+  margin-left: auto;
+  color: var(--ac-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+/* 筛选条：浅底块，和收费台的 cashier-selected-room 一个底色 */
+.fees-shell .fees-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 11px;
+  background: #f4f7fb;
+}
+
+/* 指标磁贴：金额赭橙，和收费台「今日收款合计」同色 */
+.fees-shell .fees-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.fees-shell .fees-tile {
+  padding: 14px 16px;
+  border: 1px solid var(--ac-line);
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(36, 63, 105, 0.07);
+}
+.fees-shell .fees-tile small { display: block; color: var(--ac-muted); font-size: 12px; }
+.fees-shell .fees-tile strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ac-money);
+  font-size: 24px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.fees-shell .fees-tile strong.is-plain { color: var(--ac-dark); }
+.fees-shell .fees-tile strong.is-negative { color: var(--ac-neg); }
+.fees-shell .fees-tile .fees-tile__foot { display: block; margin-top: 2px; font-size: 12px; }
+
+/* 表格：antd Table 套进这套外观，表头/行线和收费台的手写表一致 */
+.fees-shell .fees-table .ant-table { border: 1px solid var(--ac-line); border-radius: 11px; }
+.fees-shell .fees-table .ant-table-thead > tr > th {
+  color: var(--ac-muted);
+  background: #f3f6fa;
+  border-bottom: 1px solid var(--ac-line);
+  font-size: 12px;
+  font-weight: 700;
+}
+.fees-shell .fees-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid #edf1f5;
+  font-variant-numeric: tabular-nums;
+}
+.fees-shell .fees-table .ant-table-tbody > tr:last-child > td { border-bottom: 0; }
+.fees-shell .fees-table .ant-table-summary > tr > td {
+  background: #f4f7fb;
+  border-top: 2px solid var(--ac-line);
+  font-weight: 800;
+}
+.fees-shell .is-negative { color: var(--ac-neg); }
+.fees-shell .is-money { color: var(--ac-money); font-weight: 700; }
+.fees-shell .is-dim { color: #9fb0c2; }
+
+/* 占比细条：没有图表库，分布一律用条 + 数字 */
+.fees-shell .fees-bar {
+  display: inline-block;
+  width: 58px;
+  height: 6px;
+  border-radius: 99px;
+  background: #e6ecf4;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.fees-shell .fees-bar > i { display: block; height: 100%; border-radius: 99px; background: var(--ac-brand); }
+.fees-shell .fees-bar > i.is-negative { background: var(--ac-neg); }
+
+@media (max-width: 1100px) {
+  .fees-shell .fees-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .fees-shell .fees-tiles { grid-template-columns: 1fr; }
+  .fees-shell .fees-card { padding: 16px; }
+}
