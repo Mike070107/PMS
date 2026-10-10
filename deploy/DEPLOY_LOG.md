@@ -4396,3 +4396,10 @@
 - 自上次（3e644ac1）以来上线的相关提交：
   - 15f3d06a fix(parking): preserve legacy start date for civil defense grants
 
+## 2026-10-10 16:47 · api · 1b0adaf9
+
+- 包：`pms-api-fast-20261010-164646.tar.gz`
+- 提交：1b0adaf9 feat(fees): import legacy apartment contacts
+- 自上次（15f3d06a）以来上线的相关提交：
+  - 1b0adaf9 feat(fees): import legacy apartment contacts
+
