@@ -5,10 +5,12 @@ import {
   dayStart,
   daysBetween,
   fillTrendBuckets,
+  foldToBuckets,
   formatDay,
   growthRate,
   nextDayStart,
   previousRange,
+  shareRatio,
   shiftDay,
   todayRange,
 } from './report.util';
@@ -96,4 +98,34 @@ test('按月分桶时首尾月都在，中间空月补 0', () => {
     ['2026-11-01', '2026-12-01', '2027-01-01'],
   );
   assert.equal(fillTrendBuckets(rows, '2026-11-15', '2027-01-20', 'month')[1].amountCents, 500);
+});
+
+test('按天查出来的流水能折进周桶，跨周不会并到一起', () => {
+  const days = [
+    // 10-05 ~ 10-11 是同一周（周一起算）
+    { day: '2026-10-09', amountCents: 150000, count: 1 },
+    { day: '2026-10-11', amountCents: 8600, count: 2 },
+    // 下一周
+    { day: '2026-10-12', amountCents: 1000, count: 1 },
+  ];
+  assert.deepEqual(foldToBuckets(days, '2026-10-09', '2026-10-12', 'week'), [
+    { bucket: '2026-10-05', amountCents: 158600, count: 3 },
+    { bucket: '2026-10-12', amountCents: 1000, count: 1 },
+  ]);
+});
+
+test('折月桶时红冲的负数能把当月收款抵掉', () => {
+  const days = [
+    { day: '2026-10-10', amountCents: 150000, count: 1 },
+    { day: '2026-10-20', amountCents: -150000, count: 1 },
+  ];
+  assert.deepEqual(foldToBuckets(days, '2026-10-01', '2026-10-31', 'month'), [
+    { bucket: '2026-10-01', amountCents: 0, count: 2 },
+  ]);
+});
+
+test('合计为 0 时不编造占比', () => {
+  assert.equal(shareRatio(150000, 158600), 94.6);
+  assert.equal(shareRatio(0, 158600), 0);
+  assert.equal(shareRatio(100, 0), null);
 });

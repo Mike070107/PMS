@@ -76,6 +76,35 @@ export function growthRate(current: number, previous: number): number | null {
   return Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10;
 }
 
+/** 占比百分比，保留一位小数；合计为 0 时不编造占比。 */
+export function shareRatio(part: number, total: number): number | null {
+  if (!total) return null;
+  return Math.round((part / total) * 1000) / 10;
+}
+
+/**
+ * 把「按上海自然日」的明细折进周/月桶，再补齐空桶。
+ *
+ * SQL 只按天分组（一个表达式走到底，口径不会和筛选条件打岔），
+ * 周/月在这里折 —— 周和月的边界算法只有一份，和 bucketStart 共用。
+ */
+export function foldToBuckets(
+  dayRows: Array<{ day: string; amountCents: number; count: number }>,
+  from: string,
+  to: string,
+  granularity: TrendGranularity,
+) {
+  const sums = new Map<string, { bucket: string; amountCents: number; count: number }>();
+  for (const row of dayRows) {
+    const bucket = bucketStart(row.day, granularity);
+    const hit = sums.get(bucket) ?? { bucket, amountCents: 0, count: 0 };
+    hit.amountCents += row.amountCents;
+    hit.count += row.count;
+    sums.set(bucket, hit);
+  }
+  return fillTrendBuckets([...sums.values()], from, to, granularity);
+}
+
 /** 把缺口日期补成 0，趋势图不会因为某天没收款就把两天连成一条直线。 */
 export function fillTrendBuckets(
   rows: Array<{ bucket: string; amountCents: number; count: number }>,

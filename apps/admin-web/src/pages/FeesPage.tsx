@@ -10,7 +10,9 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Progress,
   Row,
+  Segmented,
   Select,
   Space,
   Statistic,
@@ -20,6 +22,7 @@ import {
   Typography,
 } from 'antd';
 import {
+  BarChartOutlined,
   CreditCardOutlined,
   DownloadOutlined,
   EditOutlined,
@@ -143,6 +146,37 @@ interface BillSummary {
   unpaidCount: number;
 }
 
+type Granularity = 'day' | 'week' | 'month';
+
+interface FeeReportTotals {
+  /** 实收 = 收款小计 − 红冲冲减 */
+  netCents: number;
+  chargedCents: number;
+  refundedCents: number;
+  receiptCount: number;
+  houseCount: number;
+  itemCount: number;
+}
+
+interface FeeReportSlice {
+  amountCents: number;
+  count: number;
+  share: number | null;
+}
+
+interface FeeReport {
+  range: { from: string; to: string; granularity: Granularity };
+  previousRange: { from: string; to: string };
+  totals: FeeReportTotals;
+  previous: FeeReportTotals;
+  growth: { netCents: number | null; receiptCount: number | null; houseCount: number | null };
+  trend: Array<{ bucket: string; amountCents: number; count: number }>;
+  byMethod: Array<FeeReportSlice & { method: string | null }>;
+  byFee: Array<FeeReportSlice & { feeCode: string; feeName: string }>;
+  byCommunity: Array<FeeReportSlice & { communityId: number | null; communityName: string | null }>;
+  byCashier: Array<FeeReportSlice & { cashier: string | null }>;
+}
+
 interface HouseDetail {
   house: {
     id: number;
@@ -218,6 +252,11 @@ export default function FeesPage() {
             key: 'bills',
             label: <span><FileTextOutlined /> 账单</span>,
             children: <BillsTab onOpenHouse={setDetailHouseId} />,
+          },
+          {
+            key: 'reports',
+            label: <span><BarChartOutlined /> 收费报表</span>,
+            children: <ReportTab />,
           },
           {
             key: 'arrears',
@@ -701,6 +740,371 @@ function BillsTab({ onOpenHouse }: { onOpenHouse: (houseId: number) => void }) {
         onClose={() => setGenerateOpen(false)}
         onDone={() => { setGenerateOpen(false); load(); }}
       />
+    </div>
+  );
+}
+
+// ====================================================================
+// 收费报表
+// ====================================================================
+
+/** 趋势桶的横轴文字：按周显示「某日那周」，按月只显示年月 */
+function bucketText(bucket: string, granularity: Granularity) {
+  if (granularity === 'month') return dayjs(bucket).format('YYYY年MM月');
+  if (granularity === 'week') return `${dayjs(bucket).format('MM-DD')} 起那周`;
+  return bucket;
+}
+
+/** 环比：上期为 0 时后端给 null，这里如实说「上期无收款」而不是写 0% */
+function GrowthText({ value }: { value: number | null }) {
+  if (value === null) return <Text type="secondary" style={{ fontSize: 12 }}>上期无收款</Text>;
+  const up = value >= 0;
+  return (
+    <Text style={{ fontSize: 12, color: up ? '#3f8600' : '#cf1322' }}>
+      环比 {up ? '↑' : '↓'} {Math.abs(value)}%
+    </Text>
+  );
+}
+
+/** 分布表：收款方式 / 费用项目 / 小区 / 收费员四块共用一套列 */
+function BreakdownCard({
+  title, rows, nameTitle, loading,
+}: {
+  title: string;
+  nameTitle: string;
+  loading: boolean;
+  rows: Array<{ key: string; name: string; amountCents: number; count: number; share: number | null }>;
+}) {
+  const peak = Math.max(1, ...rows.map((r) => Math.abs(r.amountCents)));
+  return (
+    <Card size="small" title={title}>
+      <Table
+        rowKey="key"
+        size="small"
+        loading={loading}
+        dataSource={rows}
+        pagination={false}
+        scroll={{ y: 260 }}
+        columns={[
+          { title: nameTitle, dataIndex: 'name', ellipsis: true },
+          {
+            title: '实收',
+            dataIndex: 'amountCents',
+            align: 'right' as const,
+            width: 110,
+            render: (v: number) => formatFeeMoney(v),
+          },
+          { title: '笔数', dataIndex: 'count', align: 'right' as const, width: 70 },
+          {
+            title: '占比',
+            key: 'share',
+            width: 120,
+            render: (_: unknown, r: { amountCents: number; share: number | null }) => (
+              <Space size={4}>
+                {/* 负数（红冲）不画条，免得出现一根反向的进度条 */}
+                <Progress
+                  percent={r.amountCents > 0 ? Math.round((r.amountCents / peak) * 100) : 0}
+                  showInfo={false}
+                  size="small"
+                  style={{ width: 54, marginBottom: 0 }}
+                />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {r.share === null ? '—' : `${r.share}%`}
+                </Text>
+              </Space>
+            ),
+          },
+        ]}
+      />
+    </Card>
+  );
+}
+
+function ReportTab() {
+  const { message } = AntdApp.useApp();
+  const communities = useCommunities();
+
+  const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>(
+    () => [dayjs().startOf('month'), dayjs()],
+  );
+  const [communityId, setCommunityId] = useState<number | undefined>();
+  const [feeCode, setFeeCode] = useState<string | undefined>();
+  const [paymentMethod, setPaymentMethod] = useState<string | undefined>();
+  const [granularity, setGranularity] = useState<Granularity>('day');
+  const [data, setData] = useState<FeeReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const query = useMemo(
+    () => ({
+      from: range[0].format('YYYY-MM-DD'),
+      to: range[1].format('YYYY-MM-DD'),
+      communityId,
+      feeCode,
+      paymentMethod,
+      granularity,
+    }),
+    [range, communityId, feeCode, paymentMethod, granularity],
+  );
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setData(await request<FeeReport>({ url: '/fees/reports/summary', query }));
+    } catch (e: any) {
+      message.error(e?.message || '加载失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [message, query]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const totals = data?.totals;
+  const methodRows = (data?.byMethod ?? []).map((r) => ({
+    key: r.method ?? 'unknown',
+    name: r.method ? FEE_PAYMENT_METHOD_LABELS[r.method] || r.method : '未记录',
+    amountCents: r.amountCents,
+    count: r.count,
+    share: r.share,
+  }));
+  const feeRows = (data?.byFee ?? []).map((r) => ({
+    key: r.feeCode,
+    name: r.feeName || r.feeCode,
+    amountCents: r.amountCents,
+    count: r.count,
+    share: r.share,
+  }));
+  const communityRows = (data?.byCommunity ?? []).map((r) => ({
+    key: String(r.communityId ?? 'unknown'),
+    name: r.communityName || '未知小区',
+    amountCents: r.amountCents,
+    count: r.count,
+    share: r.share,
+  }));
+  const cashierRows = (data?.byCashier ?? []).map((r) => ({
+    key: r.cashier ?? 'unknown',
+    name: r.cashier || '未记录',
+    amountCents: r.amountCents,
+    count: r.count,
+    share: r.share,
+  }));
+
+  const exportReport = async () => {
+    if (!data) return;
+    setExporting(true);
+    try {
+      const slice = (name: string, nameTitle: string, rows: typeof methodRows) => ({
+        name,
+        columns: [
+          { title: nameTitle, key: 'name' },
+          { title: '实收(元)', key: 'amount', render: (r: typeof rows[number]) => centsToYuan(r.amountCents) },
+          { title: '笔数', key: 'count' },
+          { title: '占比(%)', key: 'share', render: (r: typeof rows[number]) => r.share ?? '' },
+        ],
+        rows,
+      });
+      await exportXlsx(`收费报表_${query.from}_${query.to}`, [
+        {
+          name: '总览',
+          columns: [{ title: '指标', key: 'k' }, { title: '本期', key: 'v' }, { title: '上期', key: 'p' }],
+          rows: [
+            { k: '统计区间', v: `${data.range.from} ~ ${data.range.to}`, p: `${data.previousRange.from} ~ ${data.previousRange.to}` },
+            { k: '实收合计(元)', v: centsToYuan(data.totals.netCents), p: centsToYuan(data.previous.netCents) },
+            { k: '收款小计(元)', v: centsToYuan(data.totals.chargedCents), p: centsToYuan(data.previous.chargedCents) },
+            { k: '红冲冲减(元)', v: centsToYuan(data.totals.refundedCents), p: centsToYuan(data.previous.refundedCents) },
+            { k: '收款笔数', v: data.totals.receiptCount, p: data.previous.receiptCount },
+            { k: '收费户数', v: data.totals.houseCount, p: data.previous.houseCount },
+            { k: '收费明细条数', v: data.totals.itemCount, p: data.previous.itemCount },
+          ],
+        },
+        {
+          name: '趋势',
+          columns: [
+            { title: granularity === 'month' ? '月份' : granularity === 'week' ? '周起始日' : '日期', key: 'bucket' },
+            { title: '实收(元)', key: 'amount', render: (r: FeeReport['trend'][number]) => centsToYuan(r.amountCents) },
+            { title: '笔数', key: 'count' },
+          ],
+          rows: data.trend,
+        },
+        slice('收款方式', '收款方式', methodRows),
+        slice('费用项目', '费用项目', feeRows),
+        slice('小区', '小区', communityRows),
+        slice('收费员', '收费员', cashierRows),
+      ]);
+      message.success('已导出收费报表');
+    } catch (e: any) {
+      message.error(e?.message || '导出失败');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div>
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Space wrap>
+          {/* 报表按「钱哪天收到」统计，和账期无关 */}
+          <DatePicker.RangePicker
+            allowClear={false}
+            value={range}
+            onChange={(v) => { if (v?.[0] && v?.[1]) setRange([v[0], v[1]]); }}
+            presets={[
+              { label: '本月', value: [dayjs().startOf('month'), dayjs()] },
+              { label: '上月', value: [dayjs().subtract(1, 'month').startOf('month'), dayjs().subtract(1, 'month').endOf('month')] },
+              { label: '近 30 天', value: [dayjs().subtract(29, 'day'), dayjs()] },
+              { label: '本年', value: [dayjs().startOf('year'), dayjs()] },
+            ]}
+            style={{ width: 260 }}
+          />
+          <Select
+            allowClear
+            placeholder="小区"
+            style={{ width: 150 }}
+            value={communityId}
+            onChange={setCommunityId}
+            options={withOptionTitles(communities.map((c) => ({ value: c.id, label: c.name })))}
+            {...searchableWideSelectProps}
+          />
+          <Select
+            allowClear
+            placeholder="费用项目"
+            style={{ width: 130 }}
+            value={feeCode}
+            onChange={setFeeCode}
+            options={FEE_OPTIONS}
+          />
+          <Select
+            allowClear
+            placeholder="收款方式"
+            style={{ width: 120 }}
+            value={paymentMethod}
+            onChange={setPaymentMethod}
+            options={FEE_PAYMENT_METHODS.map((item) => ({ value: item.value, label: item.label }))}
+          />
+          <Segmented
+            value={granularity}
+            onChange={(v) => setGranularity(v as Granularity)}
+            options={[
+              { value: 'day', label: '按日' },
+              { value: 'week', label: '按周' },
+              { value: 'month', label: '按月' },
+            ]}
+          />
+          <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>
+          <Button icon={<DownloadOutlined />} loading={exporting} disabled={!data} onClick={exportReport}>
+            导出 Excel
+          </Button>
+        </Space>
+      </Card>
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} md={6}>
+          <Card size="small" loading={loading}>
+            <Statistic
+              title="实收合计"
+              value={formatFeeMoney(totals?.netCents)}
+              valueStyle={{ color: '#3f8600' }}
+            />
+            <GrowthText value={data?.growth.netCents ?? null} />
+          </Card>
+        </Col>
+        <Col xs={12} md={6}>
+          <Card size="small" loading={loading}>
+            <Statistic title="收款笔数" value={totals?.receiptCount ?? 0} />
+            <GrowthText value={data?.growth.receiptCount ?? null} />
+          </Card>
+        </Col>
+        <Col xs={12} md={6}>
+          <Card size="small" loading={loading}>
+            <Statistic title="收费户数" value={totals?.houseCount ?? 0} />
+            <GrowthText value={data?.growth.houseCount ?? null} />
+          </Card>
+        </Col>
+        <Col xs={12} md={6}>
+          <Card size="small" loading={loading}>
+            <Statistic
+              title="红冲冲减"
+              value={formatFeeMoney(totals?.refundedCents)}
+              valueStyle={{ color: totals?.refundedCents ? '#cf1322' : undefined }}
+            />
+            {/* 实收 = 收款小计 − 红冲冲减，三个数摆在一起才看得懂为什么合计少了 */}
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              收款小计 {formatFeeMoney(totals?.chargedCents)}
+            </Text>
+          </Card>
+        </Col>
+      </Row>
+
+      <Card
+        size="small"
+        title="实收趋势"
+        extra={
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            按收款日期统计（{data?.range.from} ~ {data?.range.to}），上期 {data?.previousRange.from} ~ {data?.previousRange.to}
+          </Text>
+        }
+        style={{ marginBottom: 16 }}
+      >
+        <Table<FeeReport['trend'][number]>
+          rowKey="bucket"
+          size="small"
+          loading={loading}
+          dataSource={data?.trend ?? []}
+          pagination={{ pageSize: 31, showSizeChanger: false, hideOnSinglePage: true }}
+          columns={[
+            {
+              title: granularity === 'month' ? '月份' : granularity === 'week' ? '周' : '日期',
+              dataIndex: 'bucket',
+              width: 160,
+              render: (v: string) => bucketText(v, granularity),
+            },
+            {
+              title: '实收',
+              dataIndex: 'amountCents',
+              width: 130,
+              align: 'right' as const,
+              render: (v: number) => (
+                <span style={{ color: v < 0 ? '#cf1322' : undefined }}>{formatFeeMoney(v)}</span>
+              ),
+            },
+            { title: '笔数', dataIndex: 'count', width: 80, align: 'right' as const },
+            {
+              title: '',
+              key: 'bar',
+              render: (_: unknown, r) => {
+                const peak = Math.max(1, ...(data?.trend ?? []).map((t) => Math.abs(t.amountCents)));
+                return (
+                  <Progress
+                    percent={r.amountCents > 0 ? Math.round((r.amountCents / peak) * 100) : 0}
+                    showInfo={false}
+                    size="small"
+                    strokeColor={r.amountCents < 0 ? '#cf1322' : undefined}
+                    style={{ marginBottom: 0 }}
+                  />
+                );
+              },
+            },
+          ]}
+        />
+      </Card>
+
+      <Row gutter={[16, 16]}>
+        {/* 两列并排时名字列只剩两百来像素，「微信」会被省略成「微…」，
+            所以 1200px 以下一行只放一块 */}
+        <Col xs={24} xl={12}>
+          <BreakdownCard title="按收款方式" nameTitle="收款方式" rows={methodRows} loading={loading} />
+        </Col>
+        <Col xs={24} xl={12}>
+          <BreakdownCard title="按费用项目" nameTitle="费用项目" rows={feeRows} loading={loading} />
+        </Col>
+        <Col xs={24} xl={12}>
+          <BreakdownCard title="按小区" nameTitle="小区" rows={communityRows} loading={loading} />
+        </Col>
+        <Col xs={24} xl={12}>
+          <BreakdownCard title="按收费员" nameTitle="收费员" rows={cashierRows} loading={loading} />
+        </Col>
+      </Row>
     </div>
   );
 }

@@ -242,6 +242,20 @@ export const FEE_ITEMS: ReadonlyArray<{ code: string; name: string }> = [
 
 export const FEE_ITEM_CODES: string[] = FEE_ITEMS.map((item) => item.code);
 
+/**
+ * 收款方式的取值。和 @pms/shared-types 的 FEE_PAYMENT_METHODS 必须一致 ——
+ * api 不依赖 shared-types（同 enums.ts / address-line.util.ts 的既有做法），
+ * 展示用的中文名在前端那份里，这里只管校验入库的值。
+ */
+export const FEE_PAYMENT_METHOD_VALUES: string[] = [
+  'cash',
+  'wechat',
+  'alipay',
+  'bank',
+  'cheque',
+  'other',
+];
+
 export function feeItemName(code: string): string {
   return FEE_ITEMS.find((item) => item.code === code)?.name ?? code;
 }

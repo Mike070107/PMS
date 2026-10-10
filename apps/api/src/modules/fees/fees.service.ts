@@ -28,6 +28,7 @@ import {
   CreateCashierChargeDto,
   CreateBillDto,
   CreateStandardDto,
+  FeeReportQueryDto,
   GenerateBillsDto,
   ImportFeesDto,
   ListBillsQueryDto,
@@ -46,7 +47,19 @@ import {
   normalizeCashierItems,
   reversalRemark,
 } from './cashier.util';
-import { dayStart, nextDayStart, todayInTz, todayRange } from './report.util';
+import {
+  FEE_TZ,
+  TrendGranularity,
+  dayStart,
+  daysBetween,
+  foldToBuckets,
+  growthRate,
+  nextDayStart,
+  previousRange,
+  shareRatio,
+  todayInTz,
+  todayRange,
+} from './report.util';
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -195,6 +208,200 @@ export class FeesService {
       paidCents: Number(raw?.paidCents || 0),
       unpaidCents: Number(raw?.unpaidCents || 0),
       unpaidCount: Number(raw?.unpaidCount || 0),
+    };
+  }
+
+  // ==================== 报表 ====================
+
+  /**
+   * 收费报表：总览（含环比）+ 趋势 + 收款方式 / 费用项目 / 小区 / 收费员分布。
+   *
+   * 口径只有一个：按 paid_at 落在区间内的实收明细统计，和账期无关
+   * （12 月的房租 1 月才收，算 1 月的收入）。
+   * 红冲的原单和负数红冲单都带 paid_at，两条相加为 0 —— 当天收完当天红冲
+   * 等于没收，隔月红冲则冲减红冲发生那个月，和收费员手上的现金一致。
+   */
+  async feeReport(query: FeeReportQueryDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const scope = scopeCommunityIds(access);
+    const { from, to } = this.reportRange(query);
+    const granularity: TrendGranularity = query.granularity ?? 'day';
+    const prev = previousRange(from, to);
+    if (scope && !scope.length) return this.emptyReport(from, to, prev, granularity);
+
+    const base = (rangeFrom: string, rangeTo: string) => {
+      const qb = this.billRepo
+        .createQueryBuilder('f')
+        .where('f.tenant_id = :tenantId', { tenantId })
+        .andWhere('f.paid_at IS NOT NULL')
+        .andWhere('f.status IN (:...paidStatuses)', {
+          paidStatuses: [FeeBillStatus.PAID, FeeBillStatus.REFUNDED],
+        })
+        .andWhere('f.paid_at >= :rangeFrom AND f.paid_at < :rangeTo', {
+          rangeFrom: dayStart(rangeFrom),
+          rangeTo: nextDayStart(rangeTo),
+        });
+      if (scope) qb.andWhere('f.community_id IN (:...scopeIds)', { scopeIds: scope });
+      if (query.communityId) qb.andWhere('f.community_id = :cid', { cid: query.communityId });
+      if (query.feeCode) qb.andWhere('f.fee_code = :feeCode', { feeCode: query.feeCode });
+      if (query.paymentMethod) qb.andWhere('f.payment_method = :pm', { pm: query.paymentMethod });
+      return qb;
+    };
+
+    // 一次收款（一张收据）算一笔；旧库导入的明细可能没有收据号，按明细各算一笔，
+    // 不至于把一大批历史收款统计成 0 笔。
+    const TXN = `COUNT(DISTINCT COALESCE(f.receipt_no, 'bill#' || f.id))`;
+    const totalsOf = async (rangeFrom: string, rangeTo: string) => {
+      const raw = await base(rangeFrom, rangeTo)
+        .select('COALESCE(SUM(f.amount_cents), 0)', 'netCents')
+        .addSelect(
+          'COALESCE(SUM(CASE WHEN f.amount_cents > 0 THEN f.amount_cents ELSE 0 END), 0)',
+          'chargedCents',
+        )
+        .addSelect(
+          'COALESCE(-SUM(CASE WHEN f.amount_cents < 0 THEN f.amount_cents ELSE 0 END), 0)',
+          'refundedCents',
+        )
+        .addSelect(TXN, 'receiptCount')
+        .addSelect('COUNT(DISTINCT f.house_id)', 'houseCount')
+        .addSelect('COUNT(*)', 'itemCount')
+        .getRawOne<any>();
+      return {
+        netCents: Number(raw?.netCents || 0),
+        chargedCents: Number(raw?.chargedCents || 0),
+        refundedCents: Number(raw?.refundedCents || 0),
+        receiptCount: Number(raw?.receiptCount || 0),
+        houseCount: Number(raw?.houseCount || 0),
+        itemCount: Number(raw?.itemCount || 0),
+      };
+    };
+
+    const [totals, previous] = await Promise.all([
+      totalsOf(from, to),
+      totalsOf(prev.from, prev.to),
+    ]);
+
+    // 趋势只按上海自然日分组，周/月在 Node 里折 —— 边界算法只留一份
+    const dayRows = await base(from, to)
+      .select(`to_char(f.paid_at AT TIME ZONE '${FEE_TZ}', 'YYYY-MM-DD')`, 'day')
+      .addSelect('COALESCE(SUM(f.amount_cents), 0)', 'amountCents')
+      .addSelect(TXN, 'count')
+      .groupBy('day')
+      .orderBy('day', 'ASC')
+      .getRawMany<any>();
+
+    const breakdown = async (
+      expr: string,
+      alias: string,
+      tune?: (qb: SelectQueryBuilder<FeeBill>) => void,
+    ) => {
+      const qb = base(from, to)
+        .select(expr, alias)
+        .addSelect('COALESCE(SUM(f.amount_cents), 0)', 'amountCents')
+        .addSelect(TXN, 'count');
+      tune?.(qb);
+      // 按表达式分组而不是按别名：Postgres 会把未加引号的 feeCode 折成小写，
+      // 和 TypeORM 输出的 "feeCode" 对不上就直接报列不存在
+      return qb
+        .groupBy(expr)
+        .orderBy('"amountCents"', 'DESC')
+        .getRawMany<any>();
+    };
+
+    const [methodRows, feeRows, communityRows, cashierRows] = await Promise.all([
+      breakdown('f.payment_method', 'method'),
+      breakdown('f.fee_code', 'feeCode', (qb) => {
+        qb.addSelect('MAX(f.fee_name)', 'feeName');
+      }),
+      breakdown('f.community_id', 'communityId', (qb) => {
+        qb.leftJoin(Community, 'c', 'c.id = f.community_id').addSelect('MAX(c.name)', 'communityName');
+      }),
+      breakdown('f.cashier', 'cashier'),
+    ]);
+
+    const share = (cents: number) => shareRatio(cents, totals.netCents);
+    return {
+      range: { from, to, granularity },
+      previousRange: prev,
+      totals,
+      previous,
+      growth: {
+        netCents: growthRate(totals.netCents, previous.netCents),
+        receiptCount: growthRate(totals.receiptCount, previous.receiptCount),
+        houseCount: growthRate(totals.houseCount, previous.houseCount),
+      },
+      trend: foldToBuckets(
+        dayRows.map((r) => ({
+          day: r.day,
+          amountCents: Number(r.amountCents || 0),
+          count: Number(r.count || 0),
+        })),
+        from,
+        to,
+        granularity,
+      ),
+      byMethod: methodRows.map((r) => ({
+        method: r.method ?? null,
+        amountCents: Number(r.amountCents || 0),
+        count: Number(r.count || 0),
+        share: share(Number(r.amountCents || 0)),
+      })),
+      byFee: feeRows.map((r) => ({
+        feeCode: r.feeCode,
+        feeName: r.feeName ?? feeItemName(r.feeCode),
+        amountCents: Number(r.amountCents || 0),
+        count: Number(r.count || 0),
+        share: share(Number(r.amountCents || 0)),
+      })),
+      byCommunity: communityRows.map((r) => ({
+        communityId: r.communityId === null ? null : Number(r.communityId),
+        communityName: r.communityName ?? null,
+        amountCents: Number(r.amountCents || 0),
+        count: Number(r.count || 0),
+        share: share(Number(r.amountCents || 0)),
+      })),
+      byCashier: cashierRows.map((r) => ({
+        cashier: r.cashier ?? null,
+        amountCents: Number(r.amountCents || 0),
+        count: Number(r.count || 0),
+        share: share(Number(r.amountCents || 0)),
+      })),
+    };
+  }
+
+  private reportRange(query: FeeReportQueryDto) {
+    const { from, to } = query;
+    if (from > to) throw new BadRequestException('开始日期不能晚于截止日期');
+    // 按天分桶，区间太长趋势图会糊成一片，也白查一堆数据
+    if (daysBetween(from, to) > 1096) throw new BadRequestException('报表区间最长 3 年');
+    return { from, to };
+  }
+
+  private emptyReport(
+    from: string,
+    to: string,
+    prev: { from: string; to: string },
+    granularity: TrendGranularity,
+  ) {
+    const zero = {
+      netCents: 0,
+      chargedCents: 0,
+      refundedCents: 0,
+      receiptCount: 0,
+      houseCount: 0,
+      itemCount: 0,
+    };
+    return {
+      range: { from, to, granularity },
+      previousRange: prev,
+      totals: zero,
+      previous: zero,
+      growth: { netCents: null, receiptCount: null, houseCount: null },
+      trend: foldToBuckets([], from, to, granularity),
+      byMethod: [],
+      byFee: [],
+      byCommunity: [],
+      byCashier: [],
     };
   }
 

@@ -15,8 +15,11 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { FEE_PAYMENT_METHODS } from '@pms/shared-types';
-import { FeeBillStatus, FeeStandardStatus } from '../../common/enums';
+import {
+  FEE_PAYMENT_METHOD_VALUES,
+  FeeBillStatus,
+  FeeStandardStatus,
+} from '../../common/enums';
 
 /** 账期 YYYYMM（月份 01-12） */
 const PERIOD_RE = /^\d{4}(0[1-9]|1[0-2])$/;
@@ -87,8 +90,40 @@ export class ListBillsQueryDto extends PageQueryDto {
   paidTo?: string;
 
   @IsOptional()
-  @IsIn(FEE_PAYMENT_METHODS.map((item) => item.value))
+  @IsIn(FEE_PAYMENT_METHOD_VALUES)
   paymentMethod?: string;
+}
+
+/**
+ * 收费报表口径：一律按「实收」统计，看的是钱什么时候进来的，和账期无关。
+ *
+ * 红冲产生的负数收据也在统计范围内，金额相加能自动把误收那笔抵掉。
+ */
+export class FeeReportQueryDto {
+  @Matches(DATE_RE, { message: '开始日期格式应为 YYYY-MM-DD' })
+  from: string;
+
+  @Matches(DATE_RE, { message: '截止日期格式应为 YYYY-MM-DD' })
+  to: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  communityId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  feeCode?: string;
+
+  @IsOptional()
+  @IsIn(FEE_PAYMENT_METHOD_VALUES)
+  paymentMethod?: string;
+
+  /** 趋势图的横轴粒度，缺省按天 */
+  @IsOptional()
+  @IsIn(['day', 'week', 'month'])
+  granularity?: 'day' | 'week' | 'month';
 }
 
 export class ArrearsQueryDto extends PageQueryDto {
@@ -198,7 +233,7 @@ export class PayBillsDto {
   paidAt?: string;
 
   @IsString()
-  @IsIn(['cash', 'wechat', 'alipay', 'bank', 'cheque', 'other'])
+  @IsIn(FEE_PAYMENT_METHOD_VALUES)
   paymentMethod: string;
 
   /** 收据号，留空自动生成，这一批账单共用 */

@@ -22,6 +22,7 @@ import {
   CreateCashierChargeDto,
   CreateBillDto,
   CreateStandardDto,
+  FeeReportQueryDto,
   GenerateBillsDto,
   ImportFeesDto,
   ListBillsQueryDto,
@@ -65,6 +66,17 @@ export class FeesController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.feesService.billSummary(query, user, access);
+  }
+
+  /** 收费报表：按实收时间统计，不是按账期 */
+  @Get('reports/summary')
+  @RequirePermission('fees', 'view')
+  feeReport(
+    @Query() query: FeeReportQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feesService.feeReport(query, user, access);
   }
 
   @Get('arrears')
