@@ -22,6 +22,7 @@ namespace Pms.LanGatewayAssistant
                 var window = new MainWindow(store);
                 try
                 {
+                    Require(window.UpdateButton != null && Convert.ToString(window.UpdateButton.Content) == "检查更新", "manual update button");
                     Require(window.ClientNameBox.Text == window.SuggestedClientName, "client name prefilled on startup");
                     window.ClientNameBox.Text = "财务室客户端";
                     Require(window.ClientNameBox.Text == "财务室客户端", "client name remains editable");

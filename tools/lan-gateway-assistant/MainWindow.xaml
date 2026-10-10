@@ -7,12 +7,13 @@
   <Grid>
     <Grid.RowDefinitions><RowDefinition Height="64"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <Border Background="White" BorderBrush="#D6E1EC" BorderThickness="0,0,0,1">
-      <Grid Margin="24,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <Grid Margin="24,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <Border Width="40" Height="40" CornerRadius="12" Background="{StaticResource PrimaryStrong}" VerticalAlignment="Center">
           <Viewbox Width="23" Height="23"><Canvas Width="24" Height="24"><Path Stroke="White" StrokeThickness="1.8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M4,7 L12,3 L20,7 L20,17 L12,21 L4,17 Z M8,9 L8,15 M12,7 L12,17 M16,9 L16,15"/></Canvas></Viewbox>
         </Border>
         <StackPanel Grid.Column="1" Margin="13,0,0,0" VerticalAlignment="Center"><StackPanel Orientation="Horizontal"><TextBlock Text="PMS 内网应用连接助手" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource Ink}"/><Border Background="#EAF1F9" CornerRadius="9" Padding="7,2" Margin="9,0,0,0"><TextBlock Text="{Binding VersionDisplay}" FontSize="10" Foreground="{StaticResource Primary}" FontWeight="SemiBold"/></Border></StackPanel><TextBlock Text="{Binding ComputerDisplay}" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,2,0,0"/></StackPanel>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"><Ellipse Width="9" Height="9" Fill="{Binding StatusBrush}" Margin="0,0,8,0"/><TextBlock Text="{Binding HeaderStatus}" Foreground="#405A73" FontWeight="SemiBold" FontSize="12"/></StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,18,0"><Ellipse Width="9" Height="9" Fill="{Binding StatusBrush}" Margin="0,0,8,0"/><TextBlock Text="{Binding HeaderStatus}" Foreground="#405A73" FontWeight="SemiBold" FontSize="12"/></StackPanel>
+        <Button x:Name="UpdateButton" Grid.Column="3" Style="{StaticResource SecondaryButton}" Content="检查更新" Height="36" MinHeight="36" Click="CheckUpdate_Click"/>
       </Grid>
     </Border>
     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">

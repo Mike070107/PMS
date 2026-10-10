@@ -97,6 +97,22 @@ namespace Pms.LanGatewayAssistant
             catch (Exception exception) { MessageBox.Show(exception.GetBaseException().Message, "连接未完成", MessageBoxButton.OK, MessageBoxImage.Error); }
             finally { EnrollButton.IsEnabled = true; EnrollButton.Content = "连接并安装"; RefreshStatus(); }
         }
+        private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+        {
+            UpdateButton.IsEnabled = false; UpdateButton.Content = "正在检查…";
+            try
+            {
+                var result = await Task.Factory.StartNew(delegate { return GatewayUpdateService.CheckAndDownload(Assembly.GetExecutingAssembly().GetName().Version.ToString(3), _store.RootPath); });
+                if (!result.HasUpdate) { MessageBox.Show("当前已是最新版。", "检查更新", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+                if (MessageBox.Show("已下载 v" + result.Manifest.Version + "。\n\n" + result.Manifest.Notes + "\n\n现在安全更新吗？", "发现新版", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
+                {
+                    GatewayUpdateService.StartApply(result.DownloadedFile, Process.GetCurrentProcess().MainModule.FileName, Process.GetCurrentProcess().Id);
+                    var app = Application.Current as App; if (app != null) app.ExitApplication();
+                }
+            }
+            catch (Exception ex) { MessageBox.Show(ex.Message, "更新未完成", MessageBoxButton.OK, MessageBoxImage.Error); }
+            finally { UpdateButton.IsEnabled = true; UpdateButton.Content = "检查更新"; }
+        }
         private void OpenLogs_Click(object sender, RoutedEventArgs e) { var folder = Path.GetDirectoryName(_store.LogPath); Directory.CreateDirectory(folder); Process.Start("explorer.exe", "\"" + folder + "\""); }
         private void RefreshStatus()
         {
