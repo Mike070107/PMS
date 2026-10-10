@@ -48,6 +48,35 @@ class TransformTest(unittest.TestCase):
         self.assertEqual(payload["bills"][0]["unitPriceCents"], 80)
         self.assertEqual(payload["bills"][0]["status"], "refunded")
 
+    def test_broadcast_spreads_community_price_to_every_house_of_that_community(self):
+        mappings = [{"ID": "11", "小区编号": "2", "match_status": "matched", "house_id": "900"}]
+        prices = [
+            {"id": "1", "electricity": "1.20", "rent_fee": "800", "created_at": "2026-01-01 00:00:00"},
+            {"id": "2", "electricity": "0.80", "created_at": "2026-01-01 00:00:00"},
+        ]
+        houses = [
+            {"house_id": "501", "community_id": "20"},
+            {"house_id": "502", "community_id": "20"},
+            {"house_id": "777", "community_id": "21"},
+        ]
+        payload, _ = MODULE.transform(mappings, [], prices, houses, {"1": "20"})
+        self.assertEqual(
+            [(row["house"]["houseId"], row["feeCode"], row["amountCents"]) for row in payload["standards"]],
+            [
+                (501, "electricity", 120), (501, "rent", 80000),
+                (502, "electricity", 120), (502, "rent", 80000),
+                (900, "electricity", 80),
+            ],
+        )
+        self.assertEqual(payload["standards"][0]["legacyRef"], "apartment:price:1:501:electricity")
+
+    def test_broadcast_does_not_touch_other_communities(self):
+        mappings = []
+        prices = [{"id": "1", "electricity": "1.20", "created_at": "2026-01-01 00:00:00"}]
+        houses = [{"house_id": "777", "community_id": "21"}]
+        payload, _ = MODULE.transform(mappings, [], prices, houses, {"1": "20"})
+        self.assertEqual(payload["standards"], [])
+
     def test_read_csv_accepts_gzip(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "rows.csv.gz"

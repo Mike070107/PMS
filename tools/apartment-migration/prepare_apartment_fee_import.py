@@ -74,7 +74,13 @@ def paid_time(row: Mapping[str, str]) -> str:
     return value.replace(" ", "T")
 
 
-def transform(mapping_rows: Sequence[Mapping[str, str]], order_rows: Sequence[Mapping[str, str]], price_rows: Sequence[Mapping[str, str]] = ()):
+def transform(
+    mapping_rows: Sequence[Mapping[str, str]],
+    order_rows: Sequence[Mapping[str, str]],
+    price_rows: Sequence[Mapping[str, str]] = (),
+    house_rows: Sequence[Mapping[str, str]] = (),
+    broadcast: Mapping[str, str] = {},
+):
     addresses = {str(row.get("ID") or "").strip(): row for row in mapping_rows}
     owners = []
     for row in mapping_rows:
@@ -141,6 +147,14 @@ def transform(mapping_rows: Sequence[Mapping[str, str]], order_rows: Sequence[Ma
     for row in mapping_rows:
         if row.get("match_status") == "matched" and row.get("house_id"):
             houses_by_legacy_community.setdefault(str(row.get("小区编号") or "").strip(), set()).add(int(row["house_id"]))
+    # 旧系统 fee_prices 是「一小区一行单价」。地址表没能唯一匹配的小区（例如吴泾店的房产
+    # 来自用户确认的房号清单、不是旧地址表），只能按已确认的社区映射把单价铺到该社区全部
+    # 房产；这不是按地址猜房，社区对应关系必须由调用方显式给出。
+    for legacy_community, pms_community in broadcast.items():
+        target = houses_by_legacy_community.setdefault(legacy_community, set())
+        for row in house_rows:
+            if str(row.get("community_id") or "").strip() == str(pms_community).strip():
+                target.add(int(row["house_id"]))
     standards = []
     for price in price_rows:
         legacy_community = str(price.get("id") or price.get("小区编号") or "").strip()
@@ -164,10 +178,32 @@ def main() -> int:
     parser.add_argument("--mapping-csv", type=Path, required=True)
     parser.add_argument("--orders-csv", type=Path, required=True)
     parser.add_argument("--fee-prices-csv", type=Path)
+    parser.add_argument("--houses-csv", type=Path, help="PMS 房产清单，至少含 house_id 和 community_id")
+    parser.add_argument(
+        "--broadcast-community-price",
+        action="append",
+        default=[],
+        metavar="旧小区编号=PMS社区ID",
+        help="把该旧小区的单价铺到这个 PMS 社区的全部房产；社区映射必须已在文档中确认",
+    )
     parser.add_argument("--output-json", type=Path, required=True)
     parser.add_argument("--rejected-csv", type=Path, required=True)
     args = parser.parse_args()
-    payload, rejected = transform(read_csv(args.mapping_csv), read_csv(args.orders_csv), read_csv(args.fee_prices_csv) if args.fee_prices_csv else ())
+    broadcast = {}
+    for pair in args.broadcast_community_price:
+        legacy, _, pms = str(pair).partition("=")
+        if not legacy.strip() or not pms.strip():
+            raise SystemExit(f"--broadcast-community-price 格式应为 旧小区编号=PMS社区ID，收到：{pair}")
+        broadcast[legacy.strip()] = pms.strip()
+    if broadcast and not args.houses_csv:
+        raise SystemExit("--broadcast-community-price 需要同时提供 --houses-csv")
+    payload, rejected = transform(
+        read_csv(args.mapping_csv),
+        read_csv(args.orders_csv),
+        read_csv(args.fee_prices_csv) if args.fee_prices_csv else (),
+        read_csv(args.houses_csv) if args.houses_csv else (),
+        broadcast,
+    )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     args.rejected_csv.parent.mkdir(parents=True, exist_ok=True)
