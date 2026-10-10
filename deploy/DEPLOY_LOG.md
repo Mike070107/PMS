@@ -4362,3 +4362,9 @@
 - 说明：已核对公网更新清单与 SHA-256
 - 自上次（4eefeb0b）以来没有相关提交（重新部署）
 
+## 2026-10-10 11:24 · assistant · b16d1e8d
+
+- 提交：b16d1e8d fix: align MjSystem controller permission frame
+- 自上次（7dbca40e）以来上线的相关提交：
+  - b16d1e8d fix: align MjSystem controller permission frame
+
