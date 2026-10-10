@@ -4435,3 +4435,27 @@
   - 18c9dd01 feat(access-card): show latest 30 issued cards
   - e7b43a59 feat(parking): add lazy plate movement history query
 
+## 2026-10-10 17:33 · miniapp-owner · 165b42f0
+
+- 包：`1.0.20261010b`
+- 提交：165b42f0 docs(gateway): record private connect design decisions
+- 自上次（0330f4a4）以来上线的相关提交：
+  - 2aab2811 feat(gateway): bind apartment accounts for source-less intranet login
+  - 3e644ac1 feat(fees): add apartment cashier and legacy import
+  - 6f341405 fix(parking): sync civil defense authorization with Deliyun
+  - 2726515f feat(parking): support verified Deliyun renewals
+  - 60b0d2aa feat(access-card): split database and controller actions
+  - f888b9ec feat(access-card): show room label in history
+  - 0d50e91d fix parking fee report ranges and show recent access cards
+  - 8a886476 fix(parking): read movement and exit fees from Car_Out
+  - 5019de39 feat: connect Deliyun parking read-only account
+  - 18c9dd01 feat(access-card): show latest 30 issued cards
+  - e7b43a59 feat(parking): add lazy plate movement history query
+  - 1351c3a4 feat: isolate intranet app authorization
+  - 514d5e7a fix: harden parking authorization operations
+  - c20488bf merge: preserve vehicle sync while integrating verified PMS owner rebinding
+  - bce48bdb fix(parking): rebind vehicles using verified PMS rooms and unique legacy owners
+  - 0b41955b feat(parking): reconcile duplicate plates across legacy databases
+  - 8b8e1411 fix(access-card): expose controller upload for pending cards
+  - 209f718f fix(parking): preserve vehicle identity and verify owner update outcomes
+
