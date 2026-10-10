@@ -111,7 +111,7 @@ BEGIN
   INSERT INTO buildings
     (tenant_id, community_id, lane, building_no, road_name, zone, created_by, updated_by)
   SELECT DISTINCT v_tenant_id, {COMMUNITY_ID}, {sql_literal(LANE)}, i.building_no,
-         {sql_literal(ROAD_NAME)}, NULL, NULL, NULL
+         {sql_literal(ROAD_NAME)}, NULL::varchar, NULL::integer, NULL::integer
     FROM wujing_property_import i
    WHERE NOT EXISTS (
      SELECT 1 FROM buildings b
@@ -124,8 +124,8 @@ BEGIN
   INSERT INTO houses
     (tenant_id, building_id, unit_id, room_no, property_type, road_name,
      full_address, shop_name, area_sqm, created_by, updated_by)
-  SELECT v_tenant_id, b.id, NULL, i.room_no, '公寓', {sql_literal(ROAD_NAME)},
-         i.full_address, NULL, NULL, NULL, NULL
+  SELECT v_tenant_id, b.id, NULL::integer, i.room_no, '公寓', {sql_literal(ROAD_NAME)},
+         i.full_address, NULL::varchar, NULL::numeric, NULL::integer, NULL::integer
     FROM wujing_property_import i
     JOIN buildings b
       ON b.tenant_id = v_tenant_id

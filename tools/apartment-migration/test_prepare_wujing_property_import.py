@@ -58,6 +58,7 @@ class WujingPropertyImportTest(unittest.TestCase):
         self.assertIn("WHERE NOT EXISTS", sql)
         self.assertIn("'A栋34号'", sql)
         self.assertIn("'龙吴路4787弄A栋34号101室'", sql)
+        self.assertIn("NULL::integer", sql)
 
 
 if __name__ == "__main__":
