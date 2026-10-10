@@ -4466,3 +4466,10 @@
 - 自上次（165b42f0）以来上线的相关提交：
   - dd45ea16 revert(gateway): drop apartment account binding for native PMS development
 
+## 2026-10-10 17:59 · web · dd45ea16
+
+- 包：`pms-web-20261010-175754.tar.gz`
+- 提交：dd45ea16 revert(gateway): drop apartment account binding for native PMS development
+- 自上次（165b42f0）以来上线的相关提交：
+  - dd45ea16 revert(gateway): drop apartment account binding for native PMS development
+
