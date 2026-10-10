@@ -52,10 +52,6 @@ ensure_secret /etc/pms-gateway/frp-token
 ensure_secret /etc/pms-gateway/session-secret
 ensure_secret /etc/pms-gateway/frp-plugin-secret
 ensure_secret /etc/pms-gateway/router-secret
-if [[ ! -s /etc/pms-gateway/external-account-key ]]; then
-  openssl rand -base64 32 > /etc/pms-gateway/external-account-key
-fi
-chmod 0600 /etc/pms-gateway/external-account-key
 
 backup="${API_ENV}.bak-gateway-control-$(date +%Y%m%d%H%M%S)"
 cp -a "$API_ENV" "$backup"
@@ -64,7 +60,6 @@ upsert_env LAN_GATEWAY_FRP_TOKEN "$(tr -d '\r\n' < /etc/pms-gateway/frp-token)"
 upsert_env LAN_GATEWAY_SESSION_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/session-secret)"
 upsert_env LAN_GATEWAY_FRP_PLUGIN_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/frp-plugin-secret)"
 upsert_env LAN_GATEWAY_ROUTER_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/router-secret)"
-upsert_env EXTERNAL_ACCOUNT_CREDENTIAL_KEY_B64 "$(tr -d '\r\n' < /etc/pms-gateway/external-account-key)"
 upsert_env LAN_GATEWAY_SERVER_ADDRESS "gateway.prsznh.cn"
 upsert_env LAN_GATEWAY_SERVER_PORT "443"
 if [[ -f /etc/pms-gateway/router.env ]]; then

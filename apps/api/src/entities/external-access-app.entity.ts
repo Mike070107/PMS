@@ -59,12 +59,4 @@ export class ExternalAccessApp extends TenantEntity {
 
   @Column({ name: 'last_sync_error', type: 'varchar', length: 1000, nullable: true })
   lastSyncError: string | null;
-
-  /** 无源码应用的登录适配方式；none 保持原有网关门禁行为。 */
-  @Column({ name: 'login_adapter', type: 'varchar', length: 30, default: 'none' })
-  loginAdapter: 'none' | 'bearer_json';
-
-  /** 只允许后台使用的相对登录路径，不接受任意外部 URL。 */
-  @Column({ name: 'login_path', type: 'varchar', length: 255, nullable: true })
-  loginPath: string | null;
 }

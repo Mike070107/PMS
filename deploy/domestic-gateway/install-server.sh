@@ -72,16 +72,12 @@ fi
 if [[ ! -s /etc/pms-gateway/router-secret ]]; then
   openssl rand -hex 32 > /etc/pms-gateway/router-secret
 fi
-if [[ ! -s /etc/pms-gateway/external-account-key ]]; then
-  openssl rand -base64 32 > /etc/pms-gateway/external-account-key
-fi
 printf '%s' "$OIDC_CLIENT_SECRET" > /etc/pms-gateway/oidc-client-secret
-chmod 0600 /etc/pms-gateway/frp-token /etc/pms-gateway/oauth-cookie-secret /etc/pms-gateway/oidc-client-secret /etc/pms-gateway/session-secret /etc/pms-gateway/frp-plugin-secret /etc/pms-gateway/router-secret /etc/pms-gateway/external-account-key
+chmod 0600 /etc/pms-gateway/frp-token /etc/pms-gateway/oauth-cookie-secret /etc/pms-gateway/oidc-client-secret /etc/pms-gateway/session-secret /etc/pms-gateway/frp-plugin-secret /etc/pms-gateway/router-secret
 upsert_env LAN_GATEWAY_FRP_TOKEN "$(tr -d '\r\n' < /etc/pms-gateway/frp-token)"
 upsert_env LAN_GATEWAY_SESSION_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/session-secret)"
 upsert_env LAN_GATEWAY_FRP_PLUGIN_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/frp-plugin-secret)"
 upsert_env LAN_GATEWAY_ROUTER_SECRET "$(tr -d '\r\n' < /etc/pms-gateway/router-secret)"
-upsert_env EXTERNAL_ACCOUNT_CREDENTIAL_KEY_B64 "$(tr -d '\r\n' < /etc/pms-gateway/external-account-key)"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

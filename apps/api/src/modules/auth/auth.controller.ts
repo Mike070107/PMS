@@ -14,7 +14,6 @@ import {
   BootstrapAdminDto,
   OwnerMatchPhoneDto,
   OwnerOnboardDto,
-  QrLoginBindingDto,
   QrLoginTicketDto,
   RefreshTokenDto,
   StaffLoginDto,
@@ -73,15 +72,6 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   qrLoginConfirm(@Body() dto: QrLoginTicketDto, @CurrentUser() user: AuthUser) {
     return this.qrLoginService.confirm(dto.ticket, user);
-  }
-
-  @Post('qr-login/bind-external-account')
-  @UseGuards(JwtAuthGuard)
-  qrLoginBindExternalAccount(
-    @Body() dto: QrLoginBindingDto,
-    @CurrentUser() user: AuthUser,
-  ) {
-    return this.qrLoginService.bindExternalAccount(dto.ticket, user, dto.username, dto.password);
   }
 
   @Post('qr-login/cancel')

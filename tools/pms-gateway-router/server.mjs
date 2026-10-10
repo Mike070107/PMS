@@ -73,16 +73,11 @@ function requestJson(value, headers = {}, timeoutMs = 5000) {
 
 function proxyHttp(request, response, hostname, route) {
   const upstream = new URL(route.upstream);
-  const headers = forwardedHeaders(request.headers, hostname, request.socket.remoteAddress, route.upstreamHeaders);
-  if (route.browserSession) delete headers['accept-encoding'];
+  const headers = forwardedHeaders(request.headers, hostname, request.socket.remoteAddress);
   const proxy = http.request({ hostname: upstream.hostname, port: upstream.port, method: request.method, path: applicationRequestPath(request.url), headers }, (upstreamResponse) => {
     const responseHeaders = { ...upstreamResponse.headers };
     rewriteLocation(responseHeaders, hostname, route.originHost);
     rewriteCookies(responseHeaders, hostname);
-    if (route.browserSession && isHtmlResponse(responseHeaders)) {
-      writeHtmlWithBrowserSession(upstreamResponse, response, responseHeaders, route.browserSession);
-      return;
-    }
     response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
     upstreamResponse.pipe(response);
   });
@@ -91,47 +86,10 @@ function proxyHttp(request, response, hostname, route) {
   request.pipe(proxy);
 }
 
-function isHtmlResponse(headers) {
-  return String(headers['content-type'] || '').toLowerCase().includes('text/html');
-}
-
-function writeHtmlWithBrowserSession(upstreamResponse, response, headers, browserSession) {
-  const chunks = [];
-  let size = 0;
-  upstreamResponse.on('data', (chunk) => {
-    size += chunk.length;
-    if (size <= 4 * 1024 * 1024) chunks.push(chunk);
-    else upstreamResponse.destroy(new Error('内网页面过大，无法建立自动登录会话'));
-  });
-  upstreamResponse.on('error', (error) => errorPage(response, 502, '内网应用暂时无法访问', error.message));
-  upstreamResponse.on('end', () => {
-    if (response.headersSent) return;
-    const html = Buffer.concat(chunks).toString('utf8');
-    const output = injectBrowserSession(html, browserSession);
-    delete headers['content-length'];
-    delete headers['content-encoding'];
-    headers['content-length'] = Buffer.byteLength(output);
-    headers['cache-control'] = 'no-store';
-    response.writeHead(upstreamResponse.statusCode || 502, headers);
-    response.end(output);
-  });
-}
-
-function browserSessionScript(session) {
-  const token = JSON.stringify(String(session?.token || '')).replace(/</g, '\\u003c');
-  const user = JSON.stringify(JSON.stringify(session?.user || {})).replace(/</g, '\\u003c');
-  return `<script>sessionStorage.setItem('token',${token});sessionStorage.setItem('user',${user});</script>`;
-}
-
-function injectBrowserSession(html, session) {
-  const script = browserSessionScript(session);
-  return html.includes('</head>') ? html.replace('</head>', `${script}</head>`) : `${script}${html}`;
-}
-
 function proxyUpgrade(request, socket, head, hostname, route) {
   const upstream = new URL(route.upstream);
   const target = net.connect(Number(upstream.port), upstream.hostname, () => {
-    const headers = forwardedHeaders(request.headers, hostname, request.socket.remoteAddress, route.upstreamHeaders);
+    const headers = forwardedHeaders(request.headers, hostname, request.socket.remoteAddress);
     const lines = [`${request.method} ${applicationRequestPath(request.url)} HTTP/${request.httpVersion}`];
     for (const [name, value] of Object.entries(headers)) {
       if (Array.isArray(value)) for (const item of value) lines.push(`${name}: ${item}`);
@@ -146,7 +104,7 @@ function proxyUpgrade(request, socket, head, hostname, route) {
   socket.on('error', () => target.destroy());
 }
 
-function forwardedHeaders(original, publicHost, remoteAddress, upstreamHeaders = {}) {
+function forwardedHeaders(original, publicHost, remoteAddress) {
   const headers = { ...original };
   // The browser's Origin is the public hostname. Preserving that Host through
   // the tunnel keeps host-bound sessions and JWT generation in the same
@@ -158,7 +116,6 @@ function forwardedHeaders(original, publicHost, remoteAddress, upstreamHeaders =
   headers['x-real-ip'] = remoteAddress || '';
   headers.cookie = stripGatewayCookie(original.cookie);
   delete headers['x-pms-gateway-router-secret'];
-  if (upstreamHeaders.authorization) headers.authorization = upstreamHeaders.authorization;
   delete headers['content-length'];
   if (!headers.cookie) delete headers.cookie;
   return headers;
@@ -225,4 +182,4 @@ function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char);
 }
 
-export { applicationRequestPath, browserSessionScript, forwardedHeaders, injectBrowserSession, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie };
+export { applicationRequestPath, forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie };

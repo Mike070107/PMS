@@ -111,9 +111,6 @@ export interface QrLoginScanInfo {
   /** 本次确认将登录的目标，如 PMS 后台或内网应用。 */
   applicationName: string;
   applicationHostname: string | null;
-  /** 该无源码应用是否需要先验证原账号。 */
-  bindingRequired: boolean;
-  bindingUsername: string | null;
   /** 出码那台机器的 IP 和浏览器，本人据此判断是不是自己 */
   clientIp: string | null;
   userAgent: string | null;
@@ -126,14 +123,7 @@ export const qrLoginScan = (ticket: string) =>
   request<QrLoginScanInfo>({ method: 'POST', url: '/auth/qr-login/scan', data: { ticket } });
 
 export const qrLoginConfirm = (ticket: string) =>
-  request<{ ok: boolean; bindingRequired?: boolean }>({ method: 'POST', url: '/auth/qr-login/confirm', data: { ticket } });
-
-export const qrLoginBindExternalAccount = (data: { ticket: string; username: string; password: string }) =>
-  request<{ ok: true; binding: { username: string; displayName: string | null } }>({
-    method: 'POST',
-    url: '/auth/qr-login/bind-external-account',
-    data,
-  });
+  request<{ ok: true }>({ method: 'POST', url: '/auth/qr-login/confirm', data: { ticket } });
 
 export const qrLoginCancel = (ticket: string) =>
   request<{ ok: true }>({ method: 'POST', url: '/auth/qr-login/cancel', data: { ticket } });

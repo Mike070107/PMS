@@ -139,16 +139,3 @@ export class QrLoginTicketDto {
   @MaxLength(32)
   ticket: string;
 }
-
-/** 首次进入无源码内网应用时，在微信中一次性验证原账号。 */
-export class QrLoginBindingDto extends QrLoginTicketDto {
-  @IsString()
-  @MinLength(1)
-  @MaxLength(120)
-  username: string;
-
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  password: string;
-}

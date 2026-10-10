@@ -6,7 +6,6 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { STAFF_APP_ROLES, UserStatus } from '../../common/enums';
 import { ExternalAccessApp, LanGatewayAgent, User } from '../../entities';
 import { AccessService } from '../access/access.service';
-import { ExternalAccountBindingService } from '../auth/external-account-binding.service';
 import { CloudflareGatewayService } from './cloudflare-gateway.service';
 import {
   CreateExternalAccessAppDto,
@@ -37,7 +36,6 @@ export class ExternalAccessService {
     private readonly agentRepo: Repository<LanGatewayAgent>,
     private readonly cloudflare: CloudflareGatewayService,
     private readonly accessService: AccessService,
-    private readonly externalBindings: ExternalAccountBindingService,
   ) {}
 
   async list(user: AuthUser) {
@@ -341,7 +339,6 @@ export class ExternalAccessService {
       throw new ForbiddenException('你已没有这个内网应用的访问权限');
     }
     const origin = new URL(app.originUrl);
-    const authorization = await this.externalBindings.gatewayAuthorization(app, user.id);
     return {
       appId: app.id,
       slug: app.slug,
@@ -350,14 +347,7 @@ export class ExternalAccessService {
       upstream: `http://127.0.0.1:${app.gatewayPort}`,
       originHost: origin.host,
       entryPath: app.entryPath || '/',
-      upstreamHeaders: authorization.headers,
-      browserSession: authorization.browserSession,
     };
-  }
-
-  gatewayLandingUrl(app: ExternalAccessApp) {
-    const path = app.loginAdapter === 'bearer_json' ? '/' : (app.entryPath || '/');
-    return `https://${app.publicHostname}${path}`;
   }
 
   async create(dto: CreateExternalAccessAppDto, user: AuthUser) {
