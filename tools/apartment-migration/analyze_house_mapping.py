@@ -28,8 +28,6 @@ COMMUNITY_RULES: Mapping[int, CommunityRule] = {
     2: CommunityRule("21", "馨香臣寓颛桥店"),
     3: CommunityRule("23", "馨香臣寓江川店"),
     4: CommunityRule("22", "馨香臣寓马桥店"),
-    # 业务确认：旧库编号 5 归到吴泾一村管理处下的馨香臣寓吴泾店。
-    5: CommunityRule("20", "馨香臣寓吴泾店"),
 }
 
 
