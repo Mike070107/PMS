@@ -4348,3 +4348,10 @@
 - 自上次（6f341405）以来上线的相关提交：
   - 7dbca40e fix(gateway): make route publication responsive
 
+## 2026-10-10 10:21 · web · 7dbca40e
+
+- 包：`pms-web-20261010-102024.tar.gz`
+- 提交：7dbca40e fix(gateway): make route publication responsive
+- 自上次（e6b068c2）以来上线的相关提交：
+  - 7dbca40e fix(gateway): make route publication responsive
+
