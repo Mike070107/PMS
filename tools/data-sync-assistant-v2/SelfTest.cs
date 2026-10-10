@@ -47,6 +47,7 @@ namespace Pms.DataSyncAssistant
                     throw new InvalidOperationException("配置备份未生成");
 
                 VerifyRuntimeMapping(store, config);
+                VerifyMjSystemSerialProtocol(root);
                 VerifyAccessGatewayMigration(root);
                 VerifyLegacyRoomMatching();
                 VerifyParkingOwnerColumnMapping();
@@ -276,6 +277,24 @@ namespace Pms.DataSyncAssistant
             {
                 if (exception.Message.IndexOf("匹配到多条", StringComparison.Ordinal) < 0) throw;
             }
+        }
+
+        private static void VerifyMjSystemSerialProtocol(string root)
+        {
+            var installRoot = Path.Combine(root, "MjSystem");
+            var databasePath = Path.Combine(installRoot, "Database", "ChineseSimple", "MJDataBase.mdb");
+            var iniDirectory = Path.Combine(installRoot, "Ini", "ChineseSimple");
+            Directory.CreateDirectory(Path.GetDirectoryName(databasePath));
+            Directory.CreateDirectory(iniDirectory);
+            File.WriteAllText(
+                Path.Combine(iniDirectory, "dbconnect.ini"),
+                "[Database]\r\nConnectDatabase=Access\r\n[SendKey]\r\nSendKey=0\r\n",
+                Encoding.Default);
+
+            if (AccessControllerUploader.ResolveMjSystemCardProtocol(databasePath) != "0")
+                throw new InvalidOperationException("MjSystem 未读取旧管理软件的 WG26 SendKey 协议参数");
+            if (AccessControllerUploader.MjSystemSerialSendMethodForTest() != "GetAndSendInfo34Or26")
+                throw new InvalidOperationException("MjSystem 串口下发没有使用原管理软件的 34/26 自适应 SDK 方法");
         }
 
         private static void VerifyAccessGatewayMigration(string root)

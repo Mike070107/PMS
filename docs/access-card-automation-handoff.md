@@ -396,16 +396,23 @@ created
 ### 2026-10-10：MjSystem SDK 的返回值不等于控制器回包
 
 - 现象：PMS 对 3 号楼 `M0041 / COM1` 下发报错码 2，日志中所谓“响应”与发送的 `0x9E` 命令逐字节完全相同；同一卡、同一 `M0041-1` 通过原 MjSystem 界面可成功上传，因此不能仅凭错误码 2 就断言串口或控制器故障。
-- 已证实根因：`GetAndSendInfo26(short, in/out BSTR)` 的控制器回包通过第二个 `ByRef` 参数返回；旧实现优先读方法返回值，把发送命令回显当成了控制器响应，且没有显式标记 COM `ByRef` 参数。
+- 已证实的回包解析缺陷：`GetAndSendInfo26(short, in/out BSTR)` 的控制器回包可通过第二个 `ByRef` 参数返回；旧实现优先读方法返回值，把发送命令回显当成了控制器响应，且没有显式标记 COM `ByRef` 参数。该缺陷会造成误报，但 2.5.36 修复后现场仍返回错误码 2，因此它不是通信失败的完整根因。
 - 预防：COM 调用显式使用 `ParameterModifier` 标记 in/out 字符串；优先选取与发送命令不同的 ByRef 值，只在真实回包通过 `ThenCommandVail` 后记为成功。日志必须分开写“SDK 调用返回”与“控制器回包”，不得用命令回显冒充设备回执。
 - 回归：方法返回等于发送命令、ByRef 参数为真实回包时，必须选取 ByRef 回包；两者都等于发送命令时，必须判为未收到控制器回包。
 
-### 2026-10-10：MjSystem VB6 ActiveX SDK 不能从 MTA 后台线程直调
+### 2026-10-10：MjSystem VB6 ActiveX SDK 保持 STA/OLE 调用契约
 
 - 现场证据：原 MjSystem 界面能读到 `M0041 / SN 0160217`，显示“1门在线”、WG26；PMS 2.5.36 调用同一 SDK 时命令能生成，但 `GetAndSendInfo26` 返回空且 ByRef 仍是发送命令。
 - 已确认的实现差异：`ECardDerviceSDKMJ.dll` 只导入 `MSVBVM60.DLL`，是 VB6 ActiveX DLL；原管理软件是 STA 界面程序，而 PMS 统一服务的连接工作线程未设置 apartment，默认为 MTA，且手动 `DllGetClassObject` 路径没有显式初始化 OLE。
-- 修复：MjSystem 命令生成、串口发送、回包校验和 COM 释放全部放在同一专用 STA 线程，该线程显式成对调用 `OleInitialize/OleUninitialize`。自检必须验证真实执行 apartment 为 STA。
+- 2.5.37 结果：改为专用 STA 线程并显式成对调用 `OleInitialize/OleUninitialize` 后，现场 M0041 仍返回错误码 2；因此 MTA 是风险项但不是本次故障根因。STA/OLE 调用契约继续保留，自检继续验证真实 apartment 为 STA。
 - 验收边界：本地编译和自检只能确认线程/OLE 契约；只有升级 `.88` 后收到并通过 `ThenCommandVail` 的 M0041 真实回包，才能宣称控制器下发成功。
+
+### 2026-10-10：MjSystem 串口下发必须调用 34/26 自适应方法
+
+- 2.5.37 现场结果：WG `22345575` 对 3 号楼 `M0041 / COM1` 连续三次仍为错误码 2，方法返回为空且 ByRef 保持发送命令；原管理软件对同一在线控制器可以正常下发。
+- 已证实根因：对原 `IISSystem.exe` 的 `frmMacPowerSet2` 实时新增权限路径反汇编，RS232/485 分支调用 `ECardDerviceSDKMJ.dll` vtable `0x48`；类型库确认该方法是 `GetAndSendInfo34Or26(short, in/out BSTR command, in/out BSTR cardProtocol)`。PMS 2.5.34—2.5.37 错误固定调用 vtable `0x54` 的 `GetAndSendInfo26`，与原管理软件不一致。
+- 现场协议证据：原软件界面显示 M0041 为 `WG26`；现场 `Ini/ChineseSimple/dbconnect.ini` 的 `[SendKey] SendKey=0`。PMS 必须从旧软件同一配置读取该值并作为第三个 in/out 参数传入，不能凭楼栋或卡号猜测。
+- 回归：本地自检创建旧目录结构并验证读取 `SendKey=0`；串口调用方法固定断言为 `GetAndSendInfo34Or26`；真实完成仍须 `.88` 安装新版后对受控测试卡获得通过 `ThenCommandVail` 的控制器回包。
 
 ### 2026-10-10：门禁库权限不是控制器回执
 

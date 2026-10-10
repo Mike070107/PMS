@@ -28,6 +28,8 @@ namespace Pms.AccessCardAgent
      */
     internal static class AccessControllerUploader
     {
+        private const string MjSystemSerialSendMethod = "GetAndSendInfo34Or26";
+
         public static bool CanUpload(AgentConfig config)
         {
             string ignoredWg;
@@ -76,7 +78,13 @@ namespace Pms.AccessCardAgent
                     var record = ReadMjSystemUploadRecord(connection, cardNo, doorId);
                     var frame = vendor.BuildCommand(record.ControllerSnText, payloadBuilder.BuildOldAddFunction(record, 1));
                     string response;
-                    var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response);
+                    var result = vendor.Send(
+                        record.CommMode,
+                        record.IpAddress,
+                        record.Port,
+                        frame,
+                        IsMjSystemSerial(record.CommMode) ? ResolveMjSystemCardProtocol(config.MjSystemDatabasePath) : null,
+                        out response);
                     if (result != 0)
                         throw new InvalidOperationException(
                             "26号楼控制器通信失败（" + record.ControllerName + " / " + record.CommMode + "）：" +
@@ -170,7 +178,13 @@ namespace Pms.AccessCardAgent
                             var function = payloadBuilder.BuildOldAddFunction(record, 1);
                             var frame = vendor.BuildCommand(record.ControllerSnText, function);
                             string response;
-                            var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response);
+                            var result = vendor.Send(
+                                record.CommMode,
+                                record.IpAddress,
+                                record.Port,
+                                frame,
+                                IsMjSystemSerial(record.CommMode) ? ResolveMjSystemCardProtocol(config.MjSystemDatabasePath) : null,
+                                out response);
                             if (result != 0)
                             {
                                 throw new InvalidOperationException(
@@ -422,6 +436,64 @@ namespace Pms.AccessCardAgent
             return path != null;
         }
 
+        internal static string ResolveMjSystemCardProtocol(string databasePath)
+        {
+            if (String.IsNullOrWhiteSpace(databasePath))
+                throw new InvalidOperationException("MjSystem 数据库路径为空，无法读取卡片协议");
+
+            var databaseDirectory = Path.GetDirectoryName(databasePath);
+            var language = databaseDirectory == null ? "ChineseSimple" : new DirectoryInfo(databaseDirectory).Name;
+            var databaseRoot = databaseDirectory == null ? null : Directory.GetParent(databaseDirectory);
+            var installRoot = databaseRoot == null ? null : databaseRoot.Parent;
+            var candidates = new List<string>();
+            if (installRoot != null)
+                candidates.Add(Path.Combine(installRoot.FullName, "Ini", language, "dbconnect.ini"));
+
+            var virtualStoreMarker = "\\AppData\\Local\\VirtualStore\\";
+            var markerIndex = databasePath.IndexOf(virtualStoreMarker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex >= 0 && installRoot != null)
+            {
+                var relativeInstall = installRoot.FullName.Substring(markerIndex + virtualStoreMarker.Length);
+                candidates.Add(Path.Combine("C:\\", relativeInstall, "Ini", language, "dbconnect.ini"));
+            }
+
+            foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (!File.Exists(candidate)) continue;
+                var inSendKey = false;
+                foreach (var rawLine in File.ReadAllLines(candidate))
+                {
+                    var line = (rawLine ?? "").Trim();
+                    if (line.StartsWith("[", StringComparison.Ordinal) && line.EndsWith("]", StringComparison.Ordinal))
+                    {
+                        inSendKey = String.Equals(line, "[SendKey]", StringComparison.OrdinalIgnoreCase);
+                        continue;
+                    }
+                    if (!inSendKey) continue;
+                    var separator = line.IndexOf('=');
+                    if (separator <= 0 || !String.Equals(line.Substring(0, separator).Trim(), "SendKey", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var value = line.Substring(separator + 1).Trim();
+                    if (value == "0" || value == "1") return value;
+                    throw new InvalidOperationException("MjSystem 卡片协议配置无效：" + value + "（" + candidate + "）");
+                }
+            }
+
+            throw new FileNotFoundException(
+                "未找到 MjSystem 卡片协议配置 [SendKey] SendKey，无法安全选择 WG26/WG34 下发协议",
+                candidates.FirstOrDefault() ?? databasePath);
+        }
+
+        internal static string MjSystemSerialSendMethodForTest()
+        {
+            return MjSystemSerialSendMethod;
+        }
+
+        private static bool IsMjSystemSerial(string commMode)
+        {
+            return (commMode ?? "").StartsWith("COM", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static string NormalizeBuilding(string value)
         {
             var trimmed = (value ?? "").TrimStart('0');
@@ -565,32 +637,36 @@ namespace Pms.AccessCardAgent
                 return result;
             }
 
-            public long Send(string commMode, string ipAddress, int port, string frame, out string response)
+            public long Send(string commMode, string ipAddress, int port, string frame, string cardProtocol, out string response)
             {
                 try
                 {
                     object[] arguments;
                     string methodReturn;
-                    if ((commMode ?? "").StartsWith("COM", StringComparison.OrdinalIgnoreCase))
+                    if (IsMjSystemSerial(commMode))
                     {
                         short comPort;
                         if (!Int16.TryParse(commMode.Substring(3), NumberStyles.None, CultureInfo.InvariantCulture, out comPort) || comPort <= 0)
                             throw new InvalidOperationException("MjSystem 串口配置无法识别：" + commMode);
-                        arguments = new object[] { comPort, frame };
-                        methodReturn = Convert.ToString(InvokeWithInOutString("GetAndSendInfo26", arguments, 1), CultureInfo.InvariantCulture);
+                        if (cardProtocol != "0" && cardProtocol != "1")
+                            throw new InvalidOperationException("MjSystem 卡片协议必须是旧管理软件配置的 0 或 1");
+                        arguments = new object[] { comPort, frame, cardProtocol };
+                        methodReturn = Convert.ToString(InvokeWithInOutStrings(MjSystemSerialSendMethod, arguments, 1, 2), CultureInfo.InvariantCulture);
                     }
                     else
                     {
                         arguments = new object[] { ipAddress ?? "", port, frame };
-                        methodReturn = Convert.ToString(InvokeWithInOutString("GetAndSendTcpData", arguments, 2), CultureInfo.InvariantCulture);
+                        methodReturn = Convert.ToString(InvokeWithInOutStrings("GetAndSendTcpData", arguments, 2), CultureInfo.InvariantCulture);
                     }
-                    var inOutValue = Convert.ToString(arguments[arguments.Length - 1], CultureInfo.InvariantCulture);
+                    var inOutValue = Convert.ToString(
+                        IsMjSystemSerial(commMode) ? arguments[1] : arguments[2],
+                        CultureInfo.InvariantCulture);
                     var sendError = ErrorCode();
                     response = SelectMjSystemControllerResponse(frame, methodReturn, inOutValue);
                     if (!String.IsNullOrWhiteSpace(response))
                     {
                         var validation = new object[] { response };
-                        if (Convert.ToBoolean(InvokeWithInOutString("ThenCommandVail", validation, 0), CultureInfo.InvariantCulture))
+                        if (Convert.ToBoolean(InvokeWithInOutStrings("ThenCommandVail", validation, 0), CultureInfo.InvariantCulture))
                             return 0L;
                     }
 
@@ -624,10 +700,10 @@ namespace Pms.AccessCardAgent
                     null, _instance, arguments, CultureInfo.InvariantCulture);
             }
 
-            private object InvokeWithInOutString(string name, object[] arguments, int inOutIndex)
+            private object InvokeWithInOutStrings(string name, object[] arguments, params int[] inOutIndices)
             {
                 var modifier = new ParameterModifier(arguments.Length);
-                modifier[inOutIndex] = true;
+                foreach (var inOutIndex in inOutIndices) modifier[inOutIndex] = true;
                 return _instance.GetType().InvokeMember(name,
                     BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.Public,
                     null, _instance, arguments, new[] { modifier }, CultureInfo.InvariantCulture, null);
