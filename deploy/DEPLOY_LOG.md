@@ -4459,3 +4459,10 @@
   - 8b8e1411 fix(access-card): expose controller upload for pending cards
   - 209f718f fix(parking): preserve vehicle identity and verify owner update outcomes
 
+## 2026-10-10 17:58 · api · dd45ea16
+
+- 包：`pms-api-fast-20261010-175754.tar.gz`
+- 提交：dd45ea16 revert(gateway): drop apartment account binding for native PMS development
+- 自上次（165b42f0）以来上线的相关提交：
+  - dd45ea16 revert(gateway): drop apartment account binding for native PMS development
+
