@@ -3,7 +3,7 @@ import http from 'node:http';
 import test from 'node:test';
 
 process.env.NODE_ENV = 'test';
-const { normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie } = await import('./server.mjs');
+const { forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie } = await import('./server.mjs');
 
 test('requestJson works without fetch or WebAssembly', async (t) => {
   const originalFetch = globalThis.fetch;
@@ -39,6 +39,19 @@ test('only registered zone-shaped hostnames reach routing', () => {
 
 test('gateway cookie is never forwarded to the intranet origin', () => {
   assert.equal(stripGatewayCookie('sid=abc; __Secure-pms_gateway=secret; theme=light'), 'sid=abc; theme=light');
+});
+
+test('the public host is preserved for browser-origin application sessions', () => {
+  const headers = forwardedHeaders({
+    host: 'wyglxt.prsznh.cn',
+    cookie: '__Secure-pms_gateway=session; app_session=origin-session',
+    origin: 'https://wyglxt.prsznh.cn',
+  }, 'wyglxt.prsznh.cn', '127.0.0.1');
+  assert.equal(headers.host, 'wyglxt.prsznh.cn');
+  assert.equal(headers['x-forwarded-host'], 'wyglxt.prsznh.cn');
+  assert.equal(headers['x-forwarded-proto'], 'https');
+  assert.equal(headers.origin, 'https://wyglxt.prsznh.cn');
+  assert.equal(headers.cookie, 'app_session=origin-session');
 });
 
 test('origin redirects and cookie domains are rewritten to the public host', () => {

@@ -73,7 +73,7 @@ function requestJson(value, headers = {}, timeoutMs = 5000) {
 
 function proxyHttp(request, response, hostname, route) {
   const upstream = new URL(route.upstream);
-  const headers = forwardedHeaders(request.headers, hostname, route.originHost, request.socket.remoteAddress);
+  const headers = forwardedHeaders(request.headers, hostname, request.socket.remoteAddress);
   const proxy = http.request({ hostname: upstream.hostname, port: upstream.port, method: request.method, path: request.url, headers }, (upstreamResponse) => {
     const responseHeaders = { ...upstreamResponse.headers };
     rewriteLocation(responseHeaders, hostname, route.originHost);
@@ -89,7 +89,7 @@ function proxyHttp(request, response, hostname, route) {
 function proxyUpgrade(request, socket, head, hostname, route) {
   const upstream = new URL(route.upstream);
   const target = net.connect(Number(upstream.port), upstream.hostname, () => {
-    const headers = forwardedHeaders(request.headers, hostname, route.originHost, request.socket.remoteAddress);
+    const headers = forwardedHeaders(request.headers, hostname, request.socket.remoteAddress);
     const lines = [`${request.method} ${request.url} HTTP/${request.httpVersion}`];
     for (const [name, value] of Object.entries(headers)) {
       if (Array.isArray(value)) for (const item of value) lines.push(`${name}: ${item}`);
@@ -104,9 +104,13 @@ function proxyUpgrade(request, socket, head, hostname, route) {
   socket.on('error', () => target.destroy());
 }
 
-function forwardedHeaders(original, publicHost, originHost, remoteAddress) {
+function forwardedHeaders(original, publicHost, remoteAddress) {
   const headers = { ...original };
-  headers.host = originHost;
+  // The browser's Origin is the public hostname. Preserving that Host through
+  // the tunnel keeps host-bound sessions and JWT generation in the same
+  // browser origin as the application page, while the TCP destination remains
+  // the private origin selected by `route.upstream`.
+  headers.host = publicHost;
   headers['x-forwarded-host'] = publicHost;
   headers['x-forwarded-proto'] = 'https';
   headers['x-real-ip'] = remoteAddress || '';
@@ -169,4 +173,4 @@ function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char);
 }
 
-export { normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie };
+export { forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie };
