@@ -19,6 +19,30 @@ export type ExternalRouteInput = {
   enabled: boolean;
 };
 
+/** 保存前比较可持久化配置，避免“未改任何字段”也重新下发整台客户端。 */
+export type ExternalAccessConfiguration = {
+  name: string;
+  publicHostname: string;
+  originUrl: string;
+  entryPath: string;
+  sessionDuration: string;
+  enabled: boolean;
+  agentId: number | null;
+};
+
+export function externalAccessConfigurationChanged(
+  current: ExternalAccessConfiguration,
+  next: ExternalAccessConfiguration,
+) {
+  return current.name !== next.name
+    || current.publicHostname !== next.publicHostname
+    || current.originUrl !== next.originUrl
+    || current.entryPath !== next.entryPath
+    || current.sessionDuration !== next.sessionDuration
+    || current.enabled !== next.enabled
+    || current.agentId !== next.agentId;
+}
+
 /** 规范化并校验一条外网域名 → 内网 HTTP 服务的路由。 */
 export function normalizeExternalRoute(
   publicHostname: string,

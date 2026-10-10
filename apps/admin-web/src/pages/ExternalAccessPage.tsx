@@ -174,9 +174,9 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
   const [creatingAgent, setCreatingAgent] = useState(false);
   const [syncingId, setSyncingId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (preview) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const [appRows, agentRows, gatewayConfig] = await Promise.all([
         request<ExternalApp[]>({ url: '/external-access/apps' }),
@@ -189,11 +189,25 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
     } catch (error: any) {
       message.error(error?.message || '加载内网应用失败');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [message, preview]);
 
   useEffect(() => { load(); }, [load]);
+
+  const hasPendingPublication = useMemo(() => !preview && (
+    apps.some((app) => app.publishStatus === 'waiting_agent' || app.publishStatus === 'publishing')
+    || agents.some((agent) => agent.status === 'pending')
+  ), [agents, apps, preview]);
+
+  // The agent acknowledges a real route change asynchronously. While that is
+  // happening, refresh only this page's status silently so a completed route
+  // cannot remain visually stuck on “发布中”.
+  useEffect(() => {
+    if (!hasPendingPublication) return undefined;
+    const timer = window.setInterval(() => { void load(true); }, 3_000);
+    return () => window.clearInterval(timer);
+  }, [hasPendingPublication, load]);
 
   const summary = useMemo(() => {
     const authorizedRoles = new Set(apps.flatMap((app) => app.roleIds));
@@ -257,7 +271,7 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
                 size="large"
                 icon={<ReloadOutlined />}
                 loading={loading}
-                onClick={load}
+                onClick={() => { void load(); }}
                 aria-label="刷新应用状态"
               />
             </Tooltip>
@@ -516,9 +530,11 @@ function ExternalAppModal({ open, target, agents, preview, provider, onClose, on
   const { message } = AntdApp.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setDirty(false);
     if (target) form.setFieldsValue({ ...target, originUrl: originEntryUrl(target) });
     else {
       form.resetFields();
@@ -556,11 +572,11 @@ function ExternalAppModal({ open, target, agents, preview, provider, onClose, on
       width={680}
       footer={[
         <Button key="cancel" onClick={onClose}>取消</Button>,
-        <Button key="submit" type="primary" icon={<CloudSyncOutlined />} loading={saving} onClick={() => form.submit()}>{provider === 'domestic' ? (target ? '保存配置' : '发布应用') : (target ? '保存并同步' : '发布并同步')}</Button>,
+        <Button key="submit" type="primary" icon={<CloudSyncOutlined />} loading={saving} disabled={!!target && !dirty} onClick={() => form.submit()}>{provider === 'domestic' ? (target ? '保存配置' : '发布应用') : (target ? '保存并同步' : '发布并同步')}</Button>,
       ]}
     >
       {target?.lastSyncError && <Alert className="external-access-modal__alert" type="error" showIcon message="上次同步失败" description={target.lastSyncError} />}
-      <Form form={form} layout="vertical" requiredMark="optional" onFinish={save}>
+      <Form form={form} layout="vertical" requiredMark="optional" onValuesChange={() => setDirty(form.isFieldsTouched())} onFinish={save}>
         <section className="external-access-form-section" aria-labelledby="external-app-connection-title">
           <div className="external-access-form-section__head"><span><LinkOutlined aria-hidden="true" /></span><div><h3 id="external-app-connection-title">连接</h3><p>定义用户看到的入口与真实内网目标</p></div></div>
           <Form.Item name="name" label="应用名称" rules={[{ required: true, message: '请填写用户能看懂的应用名称' }]}><Input prefix={<AppstoreOutlined aria-hidden="true" />} placeholder="例如：用友财务系统" /></Form.Item>

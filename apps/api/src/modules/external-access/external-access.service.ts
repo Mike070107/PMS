@@ -15,7 +15,7 @@ import {
   UpdateExternalAccessAppDto,
   UpdateLanGatewayAgentDto,
 } from './dto';
-import { normalizeExternalRoute, resolveExternalAccessProvider } from './external-access.util';
+import { externalAccessConfigurationChanged, normalizeExternalRoute, resolveExternalAccessProvider } from './external-access.util';
 import {
   createGatewayDeviceToken,
   createGatewayInstallCode,
@@ -389,25 +389,34 @@ export class ExternalAccessService {
     const tenantId = this.requireTenant(user);
     const app = await this.appRepo.findOne({ where: { id, tenantId } });
     if (!app) throw new NotFoundException('内网应用不存在');
+    const provider = resolveExternalAccessProvider();
     const oldHostname = app.publicHostname;
     const oldAgentId = app.agentId;
-    if (dto.name !== undefined) app.name = dto.name.trim();
-    if (dto.sessionDuration !== undefined) app.sessionDuration = dto.sessionDuration;
-    if (dto.enabled !== undefined) app.enabled = dto.enabled;
-    if (dto.agentId !== undefined && resolveExternalAccessProvider() === 'domestic') {
-      app.agentId = (await this.requireAgent(tenantId, dto.agentId)).id;
-    }
+    const normalized = dto.publicHostname !== undefined || dto.originUrl !== undefined
+      ? this.normalize(dto.publicHostname ?? app.publicHostname, dto.originUrl ?? `${app.originUrl}${app.entryPath || '/'}`)
+      : { publicHostname: app.publicHostname, originUrl: app.originUrl, entryPath: app.entryPath };
     if (dto.publicHostname !== undefined || dto.originUrl !== undefined) {
-      const normalized = this.normalize(
-        dto.publicHostname ?? app.publicHostname,
-        dto.originUrl ?? `${app.originUrl}${app.entryPath || '/'}`,
-      );
       await this.assertRouteAvailable(tenantId, normalized.publicHostname, app.id);
-      Object.assign(app, normalized);
     }
+    const selectedAgentId = dto.agentId !== undefined && provider === 'domestic'
+      ? (await this.requireAgent(tenantId, dto.agentId)).id
+      : app.agentId;
+    const next = {
+      name: dto.name !== undefined ? dto.name.trim() : app.name,
+      ...normalized,
+      sessionDuration: dto.sessionDuration ?? app.sessionDuration,
+      enabled: dto.enabled ?? app.enabled,
+      agentId: selectedAgentId,
+    };
+    if (!externalAccessConfigurationChanged(app, next)) {
+      const roleIds = await this.accessService.roleIdsWithExternalApp(tenantId, app.id);
+      const currentAgent = app.agentId ? await this.agentRepo.findOne({ where: { id: app.agentId, tenantId } }) : null;
+      return this.view(app, roleIds, currentAgent ?? undefined);
+    }
+    Object.assign(app, next);
     app.updatedBy = user.id;
     await this.appRepo.save(app);
-    if (resolveExternalAccessProvider() === 'domestic') {
+    if (provider === 'domestic') {
       if (!app.gatewayPort) app.gatewayPort = await this.allocateGatewayPort();
       const affectedIds = [...new Set([oldAgentId, app.agentId].filter((id): id is number => !!id))];
       for (const agentId of affectedIds) {

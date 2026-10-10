@@ -9,6 +9,9 @@ namespace Pms.LanGatewayAssistant
 {
     internal sealed class GatewayRuntime : IDisposable
     {
+        // A configuration change is an operator-visible action. Keep its delivery
+        // bounded instead of making the operator wait for two 15-second cycles.
+        private static readonly TimeSpan SynchronizationInterval = TimeSpan.FromSeconds(5);
         private readonly GatewayConfigurationStore _store;
         private readonly GatewayControlPlaneClient _controlPlane;
         private readonly ManualResetEvent _stopping = new ManualResetEvent(false);
@@ -28,7 +31,7 @@ namespace Pms.LanGatewayAssistant
                     if (!configuration.Routes.Exists(route => route.Enabled))
                     {
                         WriteHealth(false, configuration.Routes.Count == 0 ? "等待 PMS 下发第一个内网应用" : "当前没有启用的内网应用", 0);
-                        if (_stopping.WaitOne(TimeSpan.FromSeconds(15))) break;
+                        if (_stopping.WaitOne(SynchronizationInterval)) break;
                         continue;
                     }
                     _store.WriteRuntimeToken();
@@ -36,11 +39,16 @@ namespace Pms.LanGatewayAssistant
                     if (!File.Exists(_store.FrpcPath)) throw new FileNotFoundException("代理核心 frpc.exe 未安装", _store.FrpcPath);
                     _process = Process.Start(new ProcessStartInfo { FileName = _store.FrpcPath, Arguments = "-c \"" + _store.FrpcConfigPath + "\"", WorkingDirectory = _store.RootPath, UseShellExecute = false, CreateNoWindow = true });
                     WriteHealth(true, "代理核心运行中", _process.Id);
-                    var nextSync = DateTime.UtcNow.AddSeconds(15);
+                    // Do not wait for the next polling slot to tell PMS that the
+                    // freshly restarted encrypted tunnel is usable. This also
+                    // performs the first public HTTPS verification immediately.
+                    var started = Synchronize(true);
+                    if (started.Changed) continue;
+                    var nextSync = DateTime.UtcNow.Add(SynchronizationInterval);
                     while (!_stopping.WaitOne(1000) && !_process.HasExited)
                     {
                         if (DateTime.UtcNow < nextSync) continue;
-                        nextSync = DateTime.UtcNow.AddSeconds(15);
+                        nextSync = DateTime.UtcNow.Add(SynchronizationInterval);
                         var refreshed = Synchronize(true);
                         if (refreshed.Changed) break;
                     }

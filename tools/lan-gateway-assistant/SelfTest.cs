@@ -67,7 +67,7 @@ namespace Pms.LanGatewayAssistant
                     }
                 });
                 store.SaveDeviceToken("preview-device-token"); store.SaveToken("preview-frp-token");
-                var window = new MainWindow(store); window.Width = 1180; window.Height = 760; window.WindowStartupLocation = WindowStartupLocation.Manual; window.Left = -10000; window.Top = -10000;
+                var window = new MainWindow(store); window.Width = 880; window.Height = 760; window.WindowStartupLocation = WindowStartupLocation.Manual; window.Left = -10000; window.Top = -10000;
                 window.Show(); window.UpdateLayout();
                 var bitmap = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32); bitmap.Render(window);
                 var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));

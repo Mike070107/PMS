@@ -1,10 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  externalAccessConfigurationChanged,
   mergeIngressRules,
   normalizeExternalRoute,
   resolveExternalAccessProvider,
 } from './external-access.util';
+
+test('does not treat an unchanged published application as a new client revision', () => {
+  const current = {
+    name: '公寓物业管理系统', publicHostname: 'wyglxt.prsznh.cn', originUrl: 'http://192.168.110.249:5000', entryPath: '/login',
+    sessionDuration: '12h', enabled: true, agentId: 1,
+  };
+  assert.equal(externalAccessConfigurationChanged(current, { ...current }), false);
+  assert.equal(externalAccessConfigurationChanged(current, { ...current, entryPath: '/' }), true);
+  assert.equal(externalAccessConfigurationChanged(current, { ...current, agentId: 2 }), true);
+});
 
 test('selects domestic gateway only when explicitly configured', () => {
   assert.equal(resolveExternalAccessProvider('domestic'), 'domestic');
