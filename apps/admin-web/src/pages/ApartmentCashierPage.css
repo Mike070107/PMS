@@ -18,8 +18,16 @@
 .cashier-selected-room button { display: inline-flex; align-items: center; gap: 6px; color: var(--ac-brand); border: 0; background: transparent; font-weight: 700; cursor: pointer; }
 .cashier-history { margin-top: 12px; overflow: hidden; border: 1px solid var(--ac-line); border-radius: 11px; }
 .cashier-history > header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #f3f7fb; font-weight: 700; }.cashier-history > header span { display: flex; gap: 7px; align-items: center; }
-.cashier-history__table { min-width: 720px; }.cashier-history__head,.cashier-history__row { display: grid; grid-template-columns: 1.15fr 1.15fr 1.7fr .8fr .8fr; gap: 10px; padding: 9px 12px; }
+.cashier-history__table { min-width: 720px; }.cashier-history__head,.cashier-history__row { display: grid; grid-template-columns: 1.1fr 1.15fr 1.6fr .8fr .7fr 1.2fr; gap: 10px; align-items: center; padding: 9px 12px; }
 .cashier-history__head { color: var(--ac-muted); background: #fafbfd; font-size: 12px; font-weight: 700; }.cashier-history__row { border-top: 1px solid #edf1f5; font-size: 12px; }.cashier-history .ant-pagination { padding: 10px 12px; border-top: 1px solid #edf1f5; }
+.cashier-row-actions { display: flex; align-items: center; gap: 2px; }.cashier-row-actions .ant-btn { padding: 0 4px; font-size: 12px; }.cashier-row-actions .ant-tag { margin: 0; }
+.cashier-today__summary { display: flex; align-items: end; gap: 22px; margin-bottom: 14px; padding: 12px 14px; border-radius: 11px; background: #f4f7fb; }
+.cashier-today__summary small { display: block; color: var(--ac-muted); font-size: 12px; }.cashier-today__summary strong { color: #d2682b; font-size: 24px; }.cashier-today__summary b { font-size: 17px; }.cashier-today__summary .ant-btn { margin-left: auto; }
+.cashier-today__scroll { overflow-x: auto; border: 1px solid var(--ac-line); border-radius: 11px; }
+.cashier-today__table { min-width: 880px; }
+.cashier-today__table .cashier-history__head,.cashier-today__table .cashier-history__row { grid-template-columns: .55fr 1.15fr 1fr .7fr 1.3fr .85fr .55fr 1.2fr; }
+.cashier-today__table .is-negative { color: #c0392b; }
+.cashier-refund-hint { margin: 0 0 14px; padding: 11px 12px; color: #7a4a1a; border-radius: 9px; background: #fff6e6; font-size: 13px; line-height: 1.7; }
 .cashier-fee-picker { display: grid; grid-template-columns: repeat(4,1fr); gap: 9px; }
 .cashier-fee-picker button { display: grid; grid-template-columns: 32px 1fr auto; align-items: center; gap: 8px; min-height: 54px; padding: 9px 11px; color: #36515c; border: 1px solid var(--ac-line); border-radius: 11px; background: #fff; text-align: left; cursor: pointer; }
 .cashier-fee-picker button:hover,.cashier-fee-picker button.active { border-color: #91acd0; background: #f0f5fb; }.cashier-fee-picker i { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: #e6eef7; color: var(--ac-brand); font-style: normal; }.cashier-fee-picker i svg { width: 18px; height: 18px; }.cashier-fee-picker small { color: var(--ac-brand); }

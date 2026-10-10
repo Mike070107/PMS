@@ -26,7 +26,9 @@ import {
   ImportFeesDto,
   ListBillsQueryDto,
   ListStandardsQueryDto,
+  PageQueryDto,
   PayBillsDto,
+  RefundReceiptDto,
   UpdateBillDto,
   UpdateStandardDto,
 } from './dto';
@@ -95,6 +97,53 @@ export class FeesController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.feesService.cashierHistory(houseId, Number(page), user, access);
+  }
+
+  /** 今日收费流水 + 今日合计（收费员交班对账用） */
+  @Get('cashier/today')
+  @RequirePermission('fees', 'view')
+  cashierToday(
+    @Query() query: PageQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feesService.cashierToday(query, user, access);
+  }
+
+  @Get('cashier/receipts/:receiptNo')
+  @RequirePermission('fees', 'view')
+  cashierReceipt(
+    @Param('receiptNo') receiptNo: string,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feesService.cashierReceipt(receiptNo, user, access);
+  }
+
+  /**
+   * 补打小票：票面数据前端已经有了，这个请求存在的意义是让「谁在什么时候补打了哪张票」
+   * 进日志管理 —— 小票是收费凭证，重复打印必须可追溯。
+   */
+  @Post('cashier/receipts/:receiptNo/reprint')
+  @RequirePermission('fees', 'view')
+  async reprintReceipt(
+    @Param('receiptNo') receiptNo: string,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    await this.feesService.cashierReceipt(receiptNo, user, access);
+    return { ok: true, receiptNo };
+  }
+
+  @Post('cashier/receipts/:receiptNo/refund')
+  @RequirePermission('fees', 'edit')
+  refundReceipt(
+    @Param('receiptNo') receiptNo: string,
+    @Body() dto: RefundReceiptDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feesService.refundReceipt(receiptNo, dto, user, access);
   }
 
   @Post('cashier/charges')

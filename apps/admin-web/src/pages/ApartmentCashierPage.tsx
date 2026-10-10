@@ -10,9 +10,12 @@ import {
   MobileOutlined,
   PhoneOutlined,
   PrinterOutlined,
+  ReloadOutlined,
   RightOutlined,
+  RollbackOutlined,
   ThunderboltOutlined,
   UserOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
 import { App, Button, DatePicker, Empty, Input, InputNumber, Modal, Pagination, Select, Spin, Tag } from 'antd';
 import { FEE_PAYMENT_METHOD_LABELS, formatFeeMoney } from '@pms/shared-types';
@@ -32,9 +35,24 @@ type FeeItem = {
   feeCode: string; feeName: string; unit: string; quantity: number; unitPriceCents: number;
   amountCents: number; serviceFrom?: string; serviceTo?: string; vehiclePlate?: string;
 };
+type ReceiptItem = {
+  feeCode: string; feeName: string; quantity: number | null; unit: string | null;
+  unitPriceCents: number | null; amountCents: number;
+};
 type HistoryRow = {
   receiptNo: string; paidAt: string; paymentMethod: string; cashier: string | null;
   amountCents: number; status: string; items: Array<{ feeName: string }>;
+};
+type TodayRow = {
+  receiptNo: string; buildingNo: string; roomNo: string; ownerName: string | null;
+  paidAt: string; paymentMethod: string; cashier: string | null;
+  amountCents: number; status: string; items: Array<{ feeName: string }>;
+};
+type ReceiptPaperData = {
+  receiptNo: string | null; communityName: string | null; place: string;
+  ownerName: string | null; paidAt: string | null; paymentMethod: string | null;
+  remark: string | null; amountCents: number; refunded: boolean;
+  items: Array<{ feeCode: string; feeName: string; quantity: number | null; unit: string | null; amountCents: number }>;
 };
 
 const FEE_TYPES = [
@@ -78,6 +96,16 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
   const [receiptNo, setReceiptNo] = useState<string>();
   const [historyVersion, setHistoryVersion] = useState(0);
   const [rates, setRates] = useState<Record<string, number>>({});
+  const [todayRows, setTodayRows] = useState<TodayRow[]>([]);
+  const [todayTotal, setTodayTotal] = useState(0);
+  const [todayCents, setTodayCents] = useState(0);
+  const [todayPage, setTodayPage] = useState(1);
+  const [loadingToday, setLoadingToday] = useState(false);
+  const [openingReceipt, setOpeningReceipt] = useState<string>();
+  const [receiptDetail, setReceiptDetail] = useState<(ReceiptPaperData & { items: ReceiptItem[] }) | null>(null);
+  const [refundTarget, setRefundTarget] = useState<{ receiptNo: string; amountCents: number }>();
+  const [refundReason, setRefundReason] = useState('');
+  const [refunding, setRefunding] = useState(false);
 
   const house = houses.find((item) => item.id === houseId);
   const total = items.reduce((sum, item) => sum + item.amountCents, 0);
@@ -155,6 +183,91 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
       .finally(() => setLoadingHistory(false));
   }, [historyPage, historyVersion, houseId, message, preview]);
 
+  useEffect(() => {
+    if (preview) {
+      setTodayRows([
+        { receiptNo: 'SJ202610100002', buildingNo: 'A栋34号', roomNo: '101', ownerName: '示例住户', paidAt: '2026-10-10T10:05:00+08:00', paymentMethod: 'cash', cashier: '收费员', amountCents: 150000, status: 'paid', items: [{ feeName: '房租' }] },
+        { receiptNo: 'SJ202610100001', buildingNo: 'B栋35号', roomNo: '207', ownerName: '张三', paidAt: '2026-10-10T09:20:00+08:00', paymentMethod: 'wechat', cashier: '收费员', amountCents: 8600, status: 'refunded', items: [{ feeName: '电费' }, { feeName: '冷水费' }] },
+      ]);
+      setTodayTotal(2);
+      setTodayCents(158600);
+      return;
+    }
+    setLoadingToday(true);
+    request<{ rows: TodayRow[]; total: number; totalCents: number }>({
+      url: '/fees/cashier/today', query: { page: todayPage },
+    })
+      .then((data) => { setTodayRows(data.rows); setTodayTotal(data.total); setTodayCents(data.totalCents); })
+      .catch((error) => message.error(error?.message || '今日收费流水加载失败'))
+      .finally(() => setLoadingToday(false));
+  }, [historyVersion, message, preview, todayPage]);
+
+  const reload = () => { setHistoryVersion((value) => value + 1); };
+
+  /** 补打：先记一条补打日志再出票面，小票是凭证，重复打印必须查得到。 */
+  const reprint = async (no: string) => {
+    if (preview) {
+      const row = todayRows.find((item) => item.receiptNo === no);
+      setReceiptDetail({
+        receiptNo: no, communityName: '馨香臣寓吴泾店', place: `${row?.buildingNo || 'A栋34号'} ${row?.roomNo || '101'}室`,
+        ownerName: row?.ownerName || '示例住户', paidAt: row?.paidAt || null, paymentMethod: row?.paymentMethod || 'cash',
+        remark: null, amountCents: row?.amountCents ?? 150000, refunded: row?.status === 'refunded',
+        items: [{ feeCode: 'rent', feeName: '房租', quantity: 1, unit: '月', unitPriceCents: 150000, amountCents: row?.amountCents ?? 150000 }],
+      });
+      setReceiptOpen(true);
+      return;
+    }
+    setOpeningReceipt(no);
+    try {
+      await request({ method: 'POST', url: `/fees/cashier/receipts/${encodeURIComponent(no)}/reprint` });
+      const detail = await request<any>({ url: `/fees/cashier/receipts/${encodeURIComponent(no)}` });
+      setReceiptDetail({
+        receiptNo: detail.receiptNo,
+        communityName: detail.communityName,
+        place: `${detail.buildingNo || ''} ${detail.roomNo || ''}室`.trim(),
+        ownerName: detail.ownerName,
+        paidAt: detail.paidAt,
+        paymentMethod: detail.paymentMethod,
+        remark: detail.remark,
+        amountCents: detail.amountCents,
+        refunded: detail.status === 'refunded',
+        items: detail.items,
+      });
+      setReceiptOpen(true);
+    } catch (error: any) {
+      message.error(error?.message || '小票取数失败');
+    } finally {
+      setOpeningReceipt(undefined);
+    }
+  };
+
+  const submitRefund = async () => {
+    if (!refundTarget) return;
+    if (preview) {
+      setTodayRows((rows) => rows.map((row) => (row.receiptNo === refundTarget.receiptNo ? { ...row, status: 'refunded' } : row)));
+      setRefundTarget(undefined);
+      setRefundReason('');
+      message.success(`已红冲 ${refundTarget.receiptNo}（预览模式）`);
+      return;
+    }
+    setRefunding(true);
+    try {
+      const result = await request<{ receiptNo: string }>({
+        method: 'POST',
+        url: `/fees/cashier/receipts/${encodeURIComponent(refundTarget.receiptNo)}/refund`,
+        data: { reason: refundReason || undefined },
+      });
+      message.success(`已红冲 ${refundTarget.receiptNo}，红冲收据号 ${result.receiptNo}`);
+      setRefundTarget(undefined);
+      setRefundReason('');
+      reload();
+    } catch (error: any) {
+      message.error(error?.message || '红冲失败');
+    } finally {
+      setRefunding(false);
+    }
+  };
+
   const addFee = (code: string) => {
     if (items.some((item) => item.feeCode === code)) return;
     const definition = FEE_TYPES.find((item) => item.code === code)!;
@@ -224,6 +337,24 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
     }
   };
 
+  const closeReceipt = () => { setReceiptOpen(false); setReceiptDetail(null); };
+
+  /** 票面只有一个来源：补打时用后端取回的收据，否则用当前表单。 */
+  const receiptPaper: ReceiptPaperData | null = receiptDetail ?? (house ? {
+    receiptNo: receiptNo || null,
+    communityName: house.communityName,
+    place: `${house.buildingNo} ${house.roomNo}室`,
+    ownerName: ownerName || null,
+    paidAt: receiptNo ? new Date().toISOString() : null,
+    paymentMethod: paymentMethod || null,
+    remark: remark || null,
+    amountCents: total,
+    refunded: false,
+    items: items.map((item) => ({
+      feeCode: item.feeCode, feeName: item.feeName, quantity: item.quantity, unit: item.unit, amountCents: item.amountCents,
+    })),
+  } : null);
+
   const buildingOptions = useMemo(() => buildings.map((item) => ({
     value: item.id,
     label: buildings.some((other) => other.communityId !== item.communityId)
@@ -255,11 +386,18 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
               <header><span><HistoryOutlined /> 此房间历史缴费</span><Tag color="blue">收费时间倒序 · 10条/页</Tag></header>
               <Spin spinning={loadingHistory}>
                 {history.length ? <div className="cashier-history__table">
-                  <div className="cashier-history__head"><span>收费时间</span><span>账单号</span><span>收费项目</span><span>金额</span><span>方式</span></div>
+                  <div className="cashier-history__head"><span>收费时间</span><span>账单号</span><span>收费项目</span><span>金额</span><span>方式</span><span>操作</span></div>
                   {history.map((row) => <div className="cashier-history__row" key={row.receiptNo}>
                     <span>{dayjs(row.paidAt).format('YYYY-MM-DD HH:mm')}</span><span>{row.receiptNo}</span>
-                    <span>{row.items.map((item) => item.feeName).join('、')}</span><strong>{formatFeeMoney(row.amountCents)}</strong>
+                    <span>{row.items.map((item) => item.feeName).join('、')}</span><strong>{money(row.amountCents)}</strong>
                     <span>{FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod}</span>
+                    <ReceiptActions
+                      row={row}
+                      canEdit={canEdit}
+                      loading={openingReceipt === row.receiptNo}
+                      onReprint={() => reprint(row.receiptNo)}
+                      onRefund={() => { setRefundTarget({ receiptNo: row.receiptNo, amountCents: row.amountCents }); setRefundReason(''); }}
+                    />
                   </div>)}
                 </div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无历史收费" />}
               </Spin>
@@ -293,6 +431,38 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
               </div>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="点击上方图标添加收费项目" />}
             </div>
           </section>
+
+          <section className="cashier-card">
+            <header className="cashier-card__heading">
+              <span><WalletOutlined /></span><h2>今日收费流水</h2>
+              <small>交班对账 · 含红冲抵消</small>
+            </header>
+            <div className="cashier-today__summary">
+              <div><small>今日收款合计</small><strong>{money(todayCents)}</strong></div>
+              <div><small>今日收据</small><b>{todayTotal} 张</b></div>
+              <Button size="small" icon={<ReloadOutlined />} loading={loadingToday} onClick={reload}>刷新</Button>
+            </div>
+            <Spin spinning={loadingToday}>
+              {todayRows.length ? <div className="cashier-today__scroll"><div className="cashier-history__table cashier-today__table">
+                <div className="cashier-history__head"><span>收费时间</span><span>收据号</span><span>房号</span><span>姓名</span><span>收费项目</span><span>金额</span><span>方式</span><span>操作</span></div>
+                {todayRows.map((row) => <div className="cashier-history__row" key={row.receiptNo}>
+                  <span>{dayjs(row.paidAt).format('HH:mm')}</span><span>{row.receiptNo}</span>
+                  <span>{row.buildingNo} {row.roomNo}室</span><span>{row.ownerName || '-'}</span>
+                  <span>{row.items.map((item) => item.feeName).join('、')}</span>
+                  <strong className={row.amountCents < 0 ? 'is-negative' : undefined}>{money(row.amountCents)}</strong>
+                  <span>{FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod}</span>
+                  <ReceiptActions
+                    row={row}
+                    canEdit={canEdit}
+                    loading={openingReceipt === row.receiptNo}
+                    onReprint={() => reprint(row.receiptNo)}
+                    onRefund={() => { setRefundTarget({ receiptNo: row.receiptNo, amountCents: row.amountCents }); setRefundReason(''); }}
+                  />
+                </div>)}
+              </div></div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今天还没有收费记录" />}
+            </Spin>
+            {todayTotal > 20 && <Pagination size="small" current={todayPage} pageSize={20} total={todayTotal} showSizeChanger={false} onChange={setTodayPage} />}
+          </section>
         </div>
 
         <aside className="cashier-checkout">
@@ -308,16 +478,80 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
         </aside>
       </div>
 
-      <Modal open={receiptOpen} onCancel={() => setReceiptOpen(false)} width={520} title={<span><PrinterOutlined /> 打印预览 · 热敏小票</span>} footer={<><Button onClick={() => setReceiptOpen(false)}>关闭</Button><Button type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>打印</Button></>} centered className="cashier-receipt-modal">
-        <div className="cashier-receipt-stage"><article className="cashier-receipt">
-          <header><h2>物业收费凭证</h2><strong>{house?.communityName || '公寓收费'}</strong></header>
-          <section><div><span>收费时间</span><b>{receiptNo ? dayjs().format('YYYY-MM-DD HH:mm') : '提交时自动记录'}</b></div><div><span>地址</span><b>{house ? `${house.buildingNo} ${house.roomNo}室` : '-'}</b></div><div><span>姓名</span><b>{ownerName || '-'}</b></div><div><span>收款方式</span><b>{paymentMethod ? FEE_PAYMENT_METHOD_LABELS[paymentMethod] : '待选择'}</b></div></section>
-          <section className="cashier-receipt__items"><h3>收费项目</h3>{items.map((item) => <div key={item.feeCode}><span>{item.feeName} × {item.quantity}{item.unit}</span><b>{formatFeeMoney(item.amountCents)}</b></div>)}</section>
-          <div className="cashier-receipt__total"><span>合计</span><strong>{formatFeeMoney(total)}</strong></div>
-          <section><div><span>账单号</span><b>{receiptNo || '提交后自动生成'}</b></div><div><span>备注</span><b>{remark || '-'}</b></div></section><footer>— 谢谢 —</footer>
-        </article><p>兼容 60–72mm 热敏小票；打印时只输出白色票面。</p></div>
+      <Modal open={receiptOpen} onCancel={closeReceipt} width={520} title={<span><PrinterOutlined /> {receiptDetail ? `补打小票 · ${receiptDetail.receiptNo}` : '打印预览 · 热敏小票'}</span>} footer={<><Button onClick={closeReceipt}>关闭</Button><Button type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>打印</Button></>} centered className="cashier-receipt-modal">
+        <div className="cashier-receipt-stage">
+          <ReceiptPaper data={receiptPaper} />
+          <p>兼容 60–72mm 热敏小票；打印时只输出白色票面。</p>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!refundTarget}
+        onCancel={() => setRefundTarget(undefined)}
+        title={<span><RollbackOutlined /> 红冲收据 {refundTarget?.receiptNo}</span>}
+        okText="确认红冲"
+        okButtonProps={{ danger: true, loading: refunding }}
+        onOk={submitRefund}
+        centered
+      >
+        <p className="cashier-refund-hint">
+          原收据 <b>{refundTarget?.receiptNo}</b>（{money(refundTarget?.amountCents || 0)}）全部明细将标记为红冲，
+          并自动生成一张金额为 <b>{money(-(refundTarget?.amountCents || 0))}</b> 的红冲收据。原收据不会删除，仍可查询和补打。
+        </p>
+        <label className="cashier-remark">
+          <span>红冲原因（选填，会记入操作日志）</span>
+          <Input.TextArea rows={3} value={refundReason} onChange={(event) => setRefundReason(event.target.value)} maxLength={200} showCount placeholder="例如：住户付款方式填错，重新开票" />
+        </label>
       </Modal>
     </div>
+  );
+}
+
+/** 负数金额按中文习惯写成 -¥1,500.00，别写成 ¥-1,500.00。 */
+function money(cents: number) {
+  return cents < 0 ? `-${formatFeeMoney(-cents)}` : formatFeeMoney(cents);
+}
+
+function ReceiptActions({ row, canEdit, loading, onReprint, onRefund }: {
+  row: { receiptNo: string; status: string; amountCents: number };
+  canEdit: boolean; loading: boolean; onReprint: () => void; onRefund: () => void;
+}) {
+  const refunded = row.status === 'refunded';
+  return (
+    <span className="cashier-row-actions">
+      <Button type="link" size="small" icon={<PrinterOutlined />} loading={loading} onClick={onReprint}>补打</Button>
+      {refunded
+        ? <Tag color="red">已红冲</Tag>
+        : <Button type="link" size="small" danger icon={<RollbackOutlined />} disabled={!canEdit || row.amountCents <= 0} onClick={onRefund}>红冲</Button>}
+    </span>
+  );
+}
+
+function ReceiptPaper({ data }: { data: ReceiptPaperData | null }) {
+  if (!data) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未选择房间" />;
+  return (
+    <article className="cashier-receipt">
+      <header><h2>物业收费凭证</h2><strong>{data.communityName || '公寓收费'}</strong>{data.refunded && <em>（已红冲）</em>}</header>
+      <section>
+        <div><span>收费时间</span><b>{data.paidAt ? dayjs(data.paidAt).format('YYYY-MM-DD HH:mm') : '提交时自动记录'}</b></div>
+        <div><span>地址</span><b>{data.place || '-'}</b></div>
+        <div><span>姓名</span><b>{data.ownerName || '-'}</b></div>
+        <div><span>收款方式</span><b>{data.paymentMethod ? FEE_PAYMENT_METHOD_LABELS[data.paymentMethod] || data.paymentMethod : '待选择'}</b></div>
+      </section>
+      <section className="cashier-receipt__items">
+        <h3>收费项目</h3>
+        {data.items.map((item) => <div key={item.feeCode}>
+          <span>{item.feeName}{item.quantity ? ` × ${item.quantity}${item.unit || ''}` : ''}</span>
+          <b>{money(item.amountCents)}</b>
+        </div>)}
+      </section>
+      <div className="cashier-receipt__total"><span>合计</span><strong>{money(data.amountCents)}</strong></div>
+      <section>
+        <div><span>账单号</span><b>{data.receiptNo || '提交后自动生成'}</b></div>
+        <div><span>备注</span><b>{data.remark || '-'}</b></div>
+      </section>
+      <footer>— 谢谢 —</footer>
+    </article>
   );
 }
 

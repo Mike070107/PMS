@@ -32,11 +32,20 @@ import {
   ImportFeesDto,
   ListBillsQueryDto,
   ListStandardsQueryDto,
+  PageQueryDto,
   PayBillsDto,
+  RefundReceiptDto,
   UpdateBillDto,
   UpdateStandardDto,
 } from './dto';
-import { mergeCashierContact, normalizeCashierContact, normalizeCashierItems } from './cashier.util';
+import {
+  assertReceiptRefundable,
+  markRefundedRemark,
+  mergeCashierContact,
+  normalizeCashierContact,
+  normalizeCashierItems,
+  reversalRemark,
+} from './cashier.util';
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -369,18 +378,7 @@ export class FeesService {
       .offset((page - 1) * pageSize)
       .limit(pageSize)
       .getRawMany<any>();
-    const receiptNos = headers.map((row) => row.receiptNo);
-    const items = receiptNos.length
-      ? await this.billRepo.find({
-          where: { tenantId, houseId, receiptNo: In(receiptNos) },
-          order: { id: 'ASC' },
-        })
-      : [];
-    const itemsByReceipt = new Map<string, FeeBill[]>();
-    items.forEach((item) => {
-      const key = item.receiptNo as string;
-      itemsByReceipt.set(key, [...(itemsByReceipt.get(key) ?? []), item]);
-    });
+    const itemsByReceipt = await this.receiptItems(tenantId, headers.map((row) => row.receiptNo));
     return {
       rows: headers.map((row) => ({
         receiptNo: row.receiptNo,
@@ -390,23 +388,211 @@ export class FeesService {
         remark: row.remark,
         amountCents: Number(row.amountCents),
         status: row.refunded ? FeeBillStatus.REFUNDED : FeeBillStatus.PAID,
-        items: (itemsByReceipt.get(row.receiptNo) ?? []).map((item) => ({
-          id: item.id,
-          feeCode: item.feeCode,
-          feeName: item.feeName,
-          quantity: item.quantity === null ? null : Number(item.quantity),
-          unit: item.unit,
-          unitPriceCents: item.unitPriceCents,
-          amountCents: item.amountCents,
-          serviceFrom: item.serviceFrom,
-          serviceTo: item.serviceTo,
-          vehiclePlate: item.vehiclePlate,
-        })),
+        items: itemsByReceipt.get(row.receiptNo) ?? [],
       })),
       total: Number(count?.total || 0),
       page,
       pageSize,
     };
+  }
+
+  /**
+   * 今日收费流水：一张收据一行，按收费时间倒序。
+   *
+   * 合计把红冲产生的负数收据一并算进去 —— 当天收完又红冲的那笔自动抵消为 0，
+   * 收费员手上的现金和这个数才对得上。
+   */
+  async cashierToday(query: PageQueryDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const scope = scopeCommunityIds(access);
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    if (scope && !scope.length) return { rows: [], total: 0, page, pageSize, totalCents: 0 };
+
+    const { from, to } = this.todayRange();
+    const base = () => {
+      const qb = this.billRepo
+        .createQueryBuilder('f')
+        .innerJoin(House, 'h', 'h.id = f.house_id AND h.tenant_id = f.tenant_id')
+        .innerJoin(Building, 'b', 'b.id = h.building_id')
+        .innerJoin(Community, 'c', 'c.id = b.community_id')
+        .where('f.tenant_id = :tenantId', { tenantId })
+        .andWhere('f.receipt_no IS NOT NULL')
+        .andWhere('f.paid_at >= :from AND f.paid_at < :to', { from, to });
+      if (scope) qb.andWhere('f.community_id IN (:...scopeIds)', { scopeIds: scope });
+      return qb;
+    };
+
+    const summary = await base()
+      .select('COUNT(DISTINCT f.receipt_no)', 'total')
+      .addSelect('COALESCE(SUM(f.amount_cents), 0)', 'totalCents')
+      .getRawOne<any>();
+    const headers = await base()
+      .select('f.receipt_no', 'receiptNo')
+      .addSelect('f.house_id', 'houseId')
+      .addSelect('c.name', 'communityName')
+      .addSelect('b.lane', 'lane')
+      .addSelect('b.building_no', 'buildingNo')
+      .addSelect('h.room_no', 'roomNo')
+      .addSelect('MAX(f.paid_at)', 'paidAt')
+      .addSelect('MAX(f.payment_method)', 'paymentMethod')
+      .addSelect('MAX(f.cashier)', 'cashier')
+      .addSelect('MAX(f.owner_name)', 'ownerName')
+      .addSelect('MAX(f.remark)', 'remark')
+      .addSelect('SUM(f.amount_cents)', 'amountCents')
+      .addSelect(`BOOL_OR(f.status = '${FeeBillStatus.REFUNDED}')`, 'refunded')
+      .groupBy('f.receipt_no')
+      .addGroupBy('f.house_id')
+      .addGroupBy('c.name')
+      .addGroupBy('b.lane')
+      .addGroupBy('b.building_no')
+      .addGroupBy('h.room_no')
+      .orderBy('MAX(f.paid_at)', 'DESC')
+      .addOrderBy('f.receipt_no', 'DESC')
+      .offset((page - 1) * pageSize)
+      .limit(pageSize)
+      .getRawMany<any>();
+
+    const itemsByReceipt = await this.receiptItems(tenantId, headers.map((row) => row.receiptNo));
+    return {
+      rows: headers.map((row) => ({
+        receiptNo: row.receiptNo,
+        houseId: Number(row.houseId),
+        communityName: row.communityName,
+        lane: row.lane,
+        buildingNo: row.buildingNo,
+        roomNo: row.roomNo,
+        ownerName: row.ownerName,
+        paidAt: row.paidAt,
+        paymentMethod: row.paymentMethod,
+        cashier: row.cashier,
+        remark: row.remark,
+        amountCents: Number(row.amountCents),
+        status: row.refunded ? FeeBillStatus.REFUNDED : FeeBillStatus.PAID,
+        items: itemsByReceipt.get(row.receiptNo) ?? [],
+      })),
+      total: Number(summary?.total || 0),
+      page,
+      pageSize,
+      totalCents: Number(summary?.totalCents || 0),
+    };
+  }
+
+  /** 按收据号取整张收据，补打小票和红冲确认都用它。 */
+  async cashierReceipt(receiptNo: string, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const bills = await this.loadReceipt(tenantId, receiptNo, access);
+    const head = bills[0];
+    const place = await this.houseRepo
+      .createQueryBuilder('h')
+      .innerJoin(Building, 'b', 'b.id = h.building_id')
+      .innerJoin(Community, 'c', 'c.id = b.community_id')
+      .where('h.id = :houseId AND h.tenant_id = :tenantId', { houseId: head.houseId, tenantId })
+      .select([
+        'c.name AS "communityName"',
+        'b.lane AS lane',
+        'b.building_no AS "buildingNo"',
+        'h.room_no AS "roomNo"',
+        'h.full_address AS "fullAddress"',
+      ])
+      .getRawOne<any>();
+    const owner = head.ownerId
+      ? await this.userRepo.findOne({ where: { id: head.ownerId, tenantId } })
+      : null;
+    return {
+      receiptNo,
+      houseId: head.houseId,
+      communityName: place?.communityName ?? null,
+      lane: place?.lane ?? null,
+      buildingNo: place?.buildingNo ?? null,
+      roomNo: place?.roomNo ?? null,
+      fullAddress: place?.fullAddress ?? null,
+      ownerName: head.ownerName ?? owner?.name ?? null,
+      ownerPhone: owner?.phone ?? null,
+      paidAt: head.paidAt,
+      paymentMethod: head.paymentMethod,
+      cashier: head.cashier,
+      remark: head.remark,
+      status: bills.some((bill) => bill.status === FeeBillStatus.REFUNDED)
+        ? FeeBillStatus.REFUNDED
+        : head.status,
+      amountCents: bills.reduce((sum, bill) => sum + bill.amountCents, 0),
+      items: bills.map((bill) => this.mapReceiptItem(bill)),
+    };
+  }
+
+  /**
+   * 整张收据红冲：原收据全部明细置红冲并留痕，另开一张金额取负的红冲收据。
+   *
+   * 不删除原收据 —— 已经打给住户的小票号必须查得到，而且两张单据相加为 0
+   * 才能让当天流水、月报和对账同时对得上。
+   */
+  async refundReceipt(
+    receiptNo: string,
+    dto: RefundReceiptDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const bills = await this.loadReceipt(tenantId, receiptNo, access);
+    assertReceiptRefundable(bills);
+    const reversalNo = await this.nextReceiptNo(tenantId);
+    const cashier = await this.operatorName(user.id);
+    const now = new Date();
+    const period = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const remark = reversalRemark(receiptNo, dto.reason);
+
+    return this.dataSource.transaction(async (manager) => {
+      const reversals = bills.map((bill) => manager.create(FeeBill, {
+        tenantId,
+        communityId: bill.communityId,
+        houseId: bill.houseId,
+        ownerId: bill.ownerId,
+        ownerName: bill.ownerName,
+        feeCode: bill.feeCode,
+        feeName: bill.feeName,
+        period,
+        // 单价和数量保持正数，负号只由金额表达 —— 和旧库红冲明细同一口径。
+        quantity: bill.quantity,
+        unit: bill.unit,
+        unitPriceCents: bill.unitPriceCents,
+        amountCents: -bill.amountCents,
+        serviceFrom: bill.serviceFrom,
+        serviceTo: bill.serviceTo,
+        vehiclePlate: bill.vehiclePlate,
+        legacyPayload: null,
+        status: FeeBillStatus.REFUNDED,
+        paidAt: now,
+        paymentMethod: bill.paymentMethod,
+        receiptNo: reversalNo,
+        invoiceNo: null,
+        cashier,
+        refundedAt: now,
+        remark,
+        source: FeeBillSource.MANUAL,
+        standardId: null,
+        legacyRef: null,
+        createdBy: user.id,
+        updatedBy: user.id,
+      }));
+      await manager.save(FeeBill, reversals);
+
+      bills.forEach((bill) => {
+        bill.status = FeeBillStatus.REFUNDED;
+        bill.refundedAt = now;
+        bill.remark = markRefundedRemark(bill.remark);
+        bill.updatedBy = user.id;
+      });
+      await manager.save(FeeBill, bills);
+
+      return {
+        ok: true,
+        receiptNo: reversalNo,
+        originalReceiptNo: receiptNo,
+        amountCents: reversals.reduce((sum, bill) => sum + bill.amountCents, 0),
+        itemCount: reversals.length,
+      };
+    });
   }
 
   /** 公寓收费台：同步住户资料和记账必须同成同败。 */
@@ -1267,6 +1453,54 @@ export class FeesService {
         }
       }),
     );
+  }
+
+  /** 本地自然日的 [今天 00:00, 明天 00:00)，服务器时区即营业时区。 */
+  private todayRange() {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const to = new Date(from);
+    to.setDate(to.getDate() + 1);
+    return { from, to };
+  }
+
+  private async receiptItems(tenantId: number, receiptNos: string[]) {
+    const byReceipt = new Map<string, ReturnType<FeesService['mapReceiptItem']>[]>();
+    if (!receiptNos.length) return byReceipt;
+    const bills = await this.billRepo.find({
+      where: { tenantId, receiptNo: In(receiptNos) },
+      order: { id: 'ASC' },
+    });
+    bills.forEach((bill) => {
+      const key = bill.receiptNo as string;
+      byReceipt.set(key, [...(byReceipt.get(key) ?? []), this.mapReceiptItem(bill)]);
+    });
+    return byReceipt;
+  }
+
+  private async loadReceipt(tenantId: number, receiptNo: string, access?: ResolvedAccess) {
+    const bills = await this.billRepo.find({
+      where: { tenantId, receiptNo },
+      order: { id: 'ASC' },
+    });
+    if (!bills.length) throw new NotFoundException('收据不存在');
+    this.assertCommunityInScope(bills[0].communityId, access);
+    return bills;
+  }
+
+  private mapReceiptItem(bill: FeeBill) {
+    return {
+      id: bill.id,
+      feeCode: bill.feeCode,
+      feeName: bill.feeName,
+      quantity: bill.quantity === null ? null : Number(bill.quantity),
+      unit: bill.unit,
+      unitPriceCents: bill.unitPriceCents,
+      amountCents: bill.amountCents,
+      serviceFrom: bill.serviceFrom,
+      serviceTo: bill.serviceTo,
+      vehiclePlate: bill.vehiclePlate,
+    };
   }
 
   private mapBillRow(r: any) {

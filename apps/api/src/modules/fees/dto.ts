@@ -306,6 +306,14 @@ export class CreateCashierChargeDto {
   items: CashierChargeItemDto[];
 }
 
+/** 整张收据红冲：原收据全部置红冲，另开一张负数收据。 */
+export class RefundReceiptDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+}
+
 export class GenerateBillsDto {
   @Type(() => Number)
   @IsInt()
