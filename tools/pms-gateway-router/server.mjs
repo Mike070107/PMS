@@ -13,10 +13,6 @@ const server = http.createServer(async (request, response) => {
   try {
     const hostname = normalizeHostname(request.headers.host);
     const route = await authorize(hostname, request.headers.cookie);
-    if (request.url === '/' && route.entryPath && route.entryPath !== '/') {
-      response.writeHead(302, { location: route.entryPath, 'cache-control': 'no-store' });
-      return response.end();
-    }
     proxyHttp(request, response, hostname, route);
   } catch (error) {
     handleError(request, response, error);
@@ -74,7 +70,7 @@ function requestJson(value, headers = {}, timeoutMs = 5000) {
 function proxyHttp(request, response, hostname, route) {
   const upstream = new URL(route.upstream);
   const headers = forwardedHeaders(request.headers, hostname, request.socket.remoteAddress);
-  const proxy = http.request({ hostname: upstream.hostname, port: upstream.port, method: request.method, path: request.url, headers }, (upstreamResponse) => {
+  const proxy = http.request({ hostname: upstream.hostname, port: upstream.port, method: request.method, path: applicationRequestPath(request.url), headers }, (upstreamResponse) => {
     const responseHeaders = { ...upstreamResponse.headers };
     rewriteLocation(responseHeaders, hostname, route.originHost);
     rewriteCookies(responseHeaders, hostname);
@@ -90,7 +86,7 @@ function proxyUpgrade(request, socket, head, hostname, route) {
   const upstream = new URL(route.upstream);
   const target = net.connect(Number(upstream.port), upstream.hostname, () => {
     const headers = forwardedHeaders(request.headers, hostname, request.socket.remoteAddress);
-    const lines = [`${request.method} ${request.url} HTTP/${request.httpVersion}`];
+    const lines = [`${request.method} ${applicationRequestPath(request.url)} HTTP/${request.httpVersion}`];
     for (const [name, value] of Object.entries(headers)) {
       if (Array.isArray(value)) for (const item of value) lines.push(`${name}: ${item}`);
       else if (value !== undefined) lines.push(`${name}: ${value}`);
@@ -157,6 +153,14 @@ function normalizeHostname(value) {
   return hostname;
 }
 
+// The configured entry path is only the initial launch URL. After an
+// application signs in, it may deliberately redirect from /login to /. Never
+// rewrite that navigation back to the launch path or the user enters a login
+// loop.
+function applicationRequestPath(value) {
+  return String(value || '/');
+}
+
 function errorPage(response, status, title, detail) {
   if (response.headersSent) return response.destroy();
   const reference = Math.random().toString(36).slice(2, 10).toUpperCase();
@@ -173,4 +177,4 @@ function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char);
 }
 
-export { forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie };
+export { applicationRequestPath, forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie };

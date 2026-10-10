@@ -3,7 +3,7 @@ import http from 'node:http';
 import test from 'node:test';
 
 process.env.NODE_ENV = 'test';
-const { forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie } = await import('./server.mjs');
+const { applicationRequestPath, forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie } = await import('./server.mjs');
 
 test('requestJson works without fetch or WebAssembly', async (t) => {
   const originalFetch = globalThis.fetch;
@@ -35,6 +35,13 @@ test('only registered zone-shaped hostnames reach routing', () => {
   assert.equal(normalizeHostname('CaiWu.prsznh.cn:443'), 'caiwu.prsznh.cn');
   assert.throws(() => normalizeHostname('prsznh.cn'));
   assert.throws(() => normalizeHostname('caiwu.example.com'));
+});
+
+test('preserves an application redirect to the root after login', () => {
+  // The property application starts at /login, but successful login navigates
+  // to /. The gateway must pass that path through instead of sending it back.
+  assert.equal(applicationRequestPath('/'), '/');
+  assert.equal(applicationRequestPath('/dashboard?tab=home'), '/dashboard?tab=home');
 });
 
 test('gateway cookie is never forwarded to the intranet origin', () => {
