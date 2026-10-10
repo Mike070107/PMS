@@ -147,6 +147,30 @@ const RULES: Rule[] = [
   { method: 'POST', pattern: /^\/staff\/(\d+)\/unbind-wx$/, code: 'staff_unbind_wechat', label: '解绑员工微信', area: '用户权限', objectType: 'staff' },
 ];
 
+/** 报修新增走 body 分支，不在 RULES 里，补进筛选项，否则下拉少两条。 */
+const EXTRA_ACTIONS: Array<{ code: string; label: string; area: string }> = [
+  { code: 'repair_create_quick_ai', label: 'AI 随手拍报修', area: '报修' },
+  { code: 'repair_create_form', label: '填写表单报修', area: '报修' },
+];
+
+/** 给筛选下拉用：按业务模块分组的操作清单。code 是上线后不改名的那个。 */
+export function listBusinessActions() {
+  const byArea = new Map<string, Map<string, string>>();
+  for (const item of [...EXTRA_ACTIONS, ...RULES]) {
+    if (!byArea.has(item.area)) byArea.set(item.area, new Map());
+    byArea.get(item.area)!.set(item.code, item.label);
+  }
+  return [...byArea.entries()].map(([area, actions]) => ({
+    area,
+    actions: [...actions.entries()].map(([code, label]) => ({ code, label })),
+  }));
+}
+
+/** 某个业务模块下的全部 action code，用于「只看这个模块」的筛选。 */
+export function businessActionCodesByArea(area: string) {
+  return [...new Set([...EXTRA_ACTIONS, ...RULES].filter((item) => item.area === area).map((item) => item.code))];
+}
+
 export function resolveBusinessAction(
   method: string,
   rawPath: string,

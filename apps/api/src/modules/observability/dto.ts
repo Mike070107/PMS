@@ -51,6 +51,31 @@ export class SystemLogQueryDto {
   @IsIn(FEEDBACK_STATUSES)
   feedbackStatus?: (typeof FEEDBACK_STATUSES)[number];
 
+  /** 业务模块，如「收费」「工单」；和 action 同时给时按 action 更细的那个算 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  area?: string;
+
+  /** 具体业务动作 code，如 apartment_charge_create */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  action?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  communityId?: number;
+
+  /** 管理处：先展开成它下面的小区，再按小区匹配 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  officeId?: number;
+
   @IsOptional()
   @IsString()
   @MaxLength(120)

@@ -45,6 +45,13 @@ export class ObservabilityController {
     return this.observability.list(user, query);
   }
 
+  /** 筛选下拉用：业务模块 → 具体操作（静态清单，不查库） */
+  @Get('log-filters')
+  @RequirePermission('logs', 'view')
+  logFilters() {
+    return this.observability.logFilterOptions();
+  }
+
   @Patch('feedback/:id/status')
   @RequirePermission('logs', 'edit')
   updateFeedbackStatus(

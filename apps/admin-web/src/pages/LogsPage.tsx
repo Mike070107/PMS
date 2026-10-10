@@ -36,6 +36,9 @@ interface LogRow {
   detail?: Record<string, any> | null; createdAt: string;
 }
 interface LogList { list: LogRow[]; total: number; page: number; pageSize: number }
+interface OfficeOption { id: number; name: string; communities: { id: number; name: string }[] }
+interface OfficesResp { offices: OfficeOption[]; unassigned: { id: number; name: string }[] }
+interface LogFilterOptions { areas: Array<{ area: string; actions: Array<{ code: string; label: string }> }> }
 
 const categoryMeta: Record<string, { label: string; color: string }> = {
   login: { label: '登录日志', color: 'blue' }, operation: { label: '业务操作', color: 'geekblue' },
@@ -97,6 +100,38 @@ export default function LogsPage() {
   const [keyword, setKeyword] = useState('');
   const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [detailRow, setDetailRow] = useState<LogRow | null>(null);
+  const [area, setArea] = useState<string>();
+  const [action, setAction] = useState<string>();
+  const [officeId, setOfficeId] = useState<number>();
+  const [communityId, setCommunityId] = useState<number>();
+  const [offices, setOffices] = useState<OfficesResp>({ offices: [], unassigned: [] });
+  const [actionOptions, setActionOptions] = useState<LogFilterOptions>({ areas: [] });
+
+  // 筛选项是静态/低频数据，进页面取一次就够；失败就退回只按时间和关键词筛
+  useEffect(() => {
+    void (async () => {
+      const [officeResp, filterResp] = await Promise.allSettled([
+        request<OfficesResp>({ url: '/offices' }),
+        request<LogFilterOptions>({ url: '/observability/log-filters' }),
+      ]);
+      if (officeResp.status === 'fulfilled') setOffices(officeResp.value);
+      if (filterResp.status === 'fulfilled') setActionOptions(filterResp.value);
+    })();
+  }, []);
+
+  const communityOptions = useMemo(() => {
+    const list = officeId
+      ? offices.offices.find((item) => item.id === officeId)?.communities || []
+      : [...offices.offices.flatMap((item) => item.communities), ...offices.unassigned];
+    return list.map((item) => ({ value: item.id, label: item.name }));
+  }, [offices, officeId]);
+  const areaActionOptions = useMemo(() => {
+    const groups = area ? actionOptions.areas.filter((item) => item.area === area) : actionOptions.areas;
+    return groups.map((group) => ({
+      label: group.area,
+      options: group.actions.map((item) => ({ value: item.code, label: item.label })),
+    }));
+  }, [actionOptions, area]);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -114,10 +149,12 @@ export default function LogsPage() {
         feedbackStatus: mode === 'feedback' ? feedbackState : undefined,
         keyword: keyword.trim() || undefined, from: dates?.[0]?.startOf('day').toISOString(),
         to: dates?.[1]?.endOf('day').toISOString(),
+        area: action ? undefined : area, action, communityId,
+        officeId: communityId ? undefined : officeId,
       } }));
     } catch (e: any) { message.error(e?.message || '日志加载失败'); }
     finally { setLoading(false); }
-  }, [category, dates, feedbackState, keyword, logs.pageSize, message, mode, source, success]);
+  }, [action, area, category, communityId, dates, feedbackState, keyword, logs.pageSize, message, mode, officeId, source, success]);
 
   useEffect(() => { if (mode === 'overview') void loadOverview(); else void loadLogs(1); }, [mode]);
 
@@ -217,12 +254,30 @@ export default function LogsPage() {
       <div className="pms-filter-bar">
         {mode === 'logs' && <Select allowClear placeholder="日志类型" value={category} onChange={setCategory} style={{ width: 136 }} options={Object.entries(categoryMeta).map(([value, meta]) => ({ value, label: meta.label }))} />}
         {mode === 'feedback' && <Select allowClear placeholder="处理状态" value={feedbackState} onChange={setFeedbackState} style={{ width: 132 }} options={Object.entries(feedbackStatusMeta).map(([value, meta]) => ({ value, label: meta.label }))} />}
+        {mode !== 'feedback' && <Select allowClear showSearch optionFilterProp="label" placeholder="管理处" value={officeId}
+          onChange={(v) => { setOfficeId(v); setCommunityId(undefined); }} style={{ width: 150 }}
+          options={offices.offices.map((item) => ({ value: item.id, label: item.name }))} />}
+        {mode !== 'feedback' && <Select allowClear showSearch optionFilterProp="label" placeholder="小区" value={communityId}
+          onChange={setCommunityId} style={{ width: 160 }} options={communityOptions} />}
+        {mode !== 'feedback' && <Select allowClear placeholder="业务模块" value={area}
+          onChange={(v) => { setArea(v); setAction(undefined); }} style={{ width: 130 }}
+          options={actionOptions.areas.map((item) => ({ value: item.area, label: item.area }))} />}
+        {mode !== 'feedback' && <Select allowClear showSearch optionFilterProp="label" placeholder="具体操作" value={action}
+          onChange={setAction} style={{ width: 200 }} options={areaActionOptions} />}
         <Select allowClear placeholder="来源终端" value={source} onChange={setSource} style={{ width: 150 }} options={Object.entries(sourceLabels).filter(([k]) => k !== 'miniapp').map(([value, label]) => ({ value, label }))} />
         {mode !== 'feedback' && <Select allowClear placeholder="执行结果" value={success} onChange={setSuccess} style={{ width: 120 }} options={[{ value: 'true', label: '成功' }, { value: 'false', label: '失败/异常' }]} />}
         <RangePicker value={dates} onChange={setDates} />
         <Input.Search allowClear placeholder="搜索操作、说明、页面或单号" value={keyword} onChange={(e) => setKeyword(e.target.value)} onSearch={() => void loadLogs(1)} style={{ minWidth: 230, flex: 1 }} />
         <Button type="primary" onClick={() => void loadLogs(1)}>查询</Button>
+        <Button onClick={() => {
+          setCategory(undefined); setSource(undefined); setSuccess(undefined); setFeedbackState(undefined);
+          setArea(undefined); setAction(undefined); setOfficeId(undefined); setCommunityId(undefined);
+          setKeyword(''); setDates(null);
+        }}>重置</Button>
       </div>
+      {mode !== 'feedback' && (officeId || communityId) && <Text type="secondary" className="pms-filter-note">
+        按管理处/小区筛选，只能筛到操作本身带了小区的记录（如报修、账单、房屋档案）；系统设置、角色权限这类与小区无关的操作不会出现在结果里。
+      </Text>}
       <Table<LogRow> rowKey="id" loading={loading} dataSource={logs.list} columns={mode === 'operations' ? operationColumns : mode === 'feedback' ? feedbackColumns : logColumns} scroll={{ x: mode === 'feedback' ? 1320 : 1100 }} pagination={{ current: logs.page, pageSize: logs.pageSize, total: logs.total, showSizeChanger: true, showTotal: (total) => `共 ${total} 条`, onChange: (page, pageSize) => void loadLogs(page, pageSize) }} />
     </Card>}
     <LogDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} canManageFeedback={canManageFeedback} onStatus={updateFeedback} />

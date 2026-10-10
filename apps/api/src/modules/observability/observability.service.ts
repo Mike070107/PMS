@@ -4,10 +4,10 @@ import { DataSource, LessThan, MoreThan, Repository } from 'typeorm';
 import * as os from 'node:os';
 import type { Request } from 'express';
 import { AuthUser } from '../../common/current-user.decorator';
-import { RequestMetric, SystemLog, User } from '../../entities';
+import { Community, RequestMetric, SystemLog, User } from '../../entities';
 import { AccessService } from '../access/access.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { resolveBusinessAction } from './business-action';
+import { businessActionCodesByArea, listBusinessActions, resolveBusinessAction } from './business-action';
 import { buildApiErrorAlert } from './alert-presentation';
 import { safeFeedbackAttachments } from './feedback-attachment';
 import {
@@ -51,6 +51,7 @@ export class ObservabilityService {
     @InjectRepository(SystemLog) private readonly logRepo: Repository<SystemLog>,
     @InjectRepository(RequestMetric) private readonly metricRepo: Repository<RequestMetric>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
+    @InjectRepository(Community) private readonly communityRepo: Repository<Community>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly access: AccessService,
     private readonly notifications: NotificationsService,
@@ -282,6 +283,22 @@ export class ObservabilityService {
     return this.logRepo.save(row);
   }
 
+  /** null = 不按小区筛；[] = 条件成立但一个小区都没有 */
+  private async resolveLogCommunityIds(tenantId: number, query: SystemLogQueryDto) {
+    if (query.communityId) return [query.communityId];
+    if (!query.officeId) return null;
+    const rows = await this.communityRepo.find({
+      where: { tenantId, officeId: query.officeId },
+      select: ['id'],
+    });
+    return rows.map((row) => row.id);
+  }
+
+  /** 筛选下拉的数据源：业务模块 → 具体操作 */
+  logFilterOptions() {
+    return { areas: listBusinessActions() };
+  }
+
   async list(user: AuthUser, query: SystemLogQueryDto) {
     const tenantId = requireTenant(user);
     const qb = this.logRepo.createQueryBuilder('log').where('log.tenant_id = :tenantId', { tenantId });
@@ -293,6 +310,28 @@ export class ObservabilityService {
       qb.andWhere("log.detail ->> 'feedbackStatus' = :feedbackStatus", {
         feedbackStatus: query.feedbackStatus,
       });
+    }
+    if (query.action) qb.andWhere('log.action = :action', { action: query.action });
+    else if (query.area) {
+      // 老日志的 detail 里没有 businessArea，靠 action code 兜一层，否则按模块筛会漏早期记录
+      const codes = businessActionCodesByArea(query.area);
+      if (codes.length) {
+        qb.andWhere("(log.detail ->> 'businessArea' = :area OR log.action IN (:...areaCodes))", {
+          area: query.area,
+          areaCodes: codes,
+        });
+      } else {
+        qb.andWhere("log.detail ->> 'businessArea' = :area", { area: query.area });
+      }
+    }
+    const communityIds = await this.resolveLogCommunityIds(tenantId, query);
+    if (communityIds) {
+      if (!communityIds.length) qb.andWhere('1 = 0');
+      else {
+        qb.andWhere("log.detail ->> 'communityId' IN (:...communityIds)", {
+          communityIds: communityIds.map((id) => String(id)),
+        });
+      }
     }
     if (query.from) qb.andWhere('log.created_at >= :from', { from: new Date(query.from) });
     if (query.to) qb.andWhere('log.created_at <= :to', { to: new Date(query.to) });

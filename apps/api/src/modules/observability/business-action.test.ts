@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveBusinessAction } from './business-action';
+import { businessActionCodesByArea, listBusinessActions, resolveBusinessAction } from './business-action';
 import { apiEndpointLabel, buildApiErrorAlert } from './alert-presentation';
 
 test('区分 AI 随手拍报修与普通填表报修', () => {
@@ -12,6 +12,28 @@ test('区分 AI 随手拍报修与普通填表报修', () => {
     resolveBusinessAction('POST', '/repair-requests', { entryMode: 'form' }).label,
     '填写表单报修',
   );
+});
+
+test('筛选下拉按业务模块分组，code 不重复且含报修两种入口', () => {
+  const groups = listBusinessActions();
+  const areas = groups.map((group) => group.area);
+  assert.equal(new Set(areas).size, areas.length, '业务模块不能重复出现');
+  assert.ok(areas.includes('收费') && areas.includes('工单') && areas.includes('报修'));
+  for (const group of groups) {
+    const codes = group.actions.map((item) => item.code);
+    assert.equal(new Set(codes).size, codes.length, `${group.area} 下的 action code 重复了`);
+    assert.ok(group.actions.every((item) => item.label), `${group.area} 下有缺中文名的操作`);
+  }
+  const repair = groups.find((group) => group.area === '报修')!.actions.map((item) => item.code);
+  assert.ok(repair.includes('repair_create_quick_ai') && repair.includes('repair_create_form'));
+});
+
+test('按业务模块取 action code，和实际记录下来的 code 对得上', () => {
+  const fee = businessActionCodesByArea('收费');
+  assert.ok(fee.includes(resolveBusinessAction('POST', '/fees/cashier/charges').code));
+  assert.ok(fee.includes(resolveBusinessAction('POST', '/fees/cashier/receipts/SJ01/refund').code));
+  assert.ok(!fee.includes(resolveBusinessAction('POST', '/work-orders/1/assign').code));
+  assert.deepEqual(businessActionCodesByArea('不存在的模块'), []);
 });
 
 test('工单、库存和盘点操作转成稳定业务事件', () => {

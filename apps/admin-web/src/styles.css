@@ -2452,6 +2452,9 @@ body.pms-col-resizing * {
   border-radius: 10px;
 }
 
+/* 小区/管理处筛选的口径说明，别让人以为「没查到」就是没发生过 */
+.pms-filter-note { display: block; margin: -8px 0 14px; font-size: 12px; line-height: 1.7; }
+
 .pms-log-time { color: #526761; font-variant-numeric: tabular-nums; }
 .pms-log-message { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .pms-log-slow { color: #cf3c4b; font-weight: 600; }
