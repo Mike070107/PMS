@@ -4403,3 +4403,10 @@
 - 自上次（15f3d06a）以来上线的相关提交：
   - 1b0adaf9 feat(fees): import legacy apartment contacts
 
+## 2026-10-10 17:24 · api · 165b42f0
+
+- 包：`pms-api-fast-20261010-172425.tar.gz`
+- 提交：165b42f0 docs(gateway): record private connect design decisions
+- 自上次（1b0adaf9）以来上线的相关提交：
+  - 2aab2811 feat(gateway): bind apartment accounts for source-less intranet login
+
