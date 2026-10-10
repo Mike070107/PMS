@@ -4,7 +4,11 @@
 和吴泾店那份一次性脚本的区别：社区不写死，支持没有路名/弄号的小区（lane 为 NULL），
 也支持往已有楼栋里补房号。入库前后都做数量复核，重复执行不会多建。
 
-输入 CSV 必须有列：pms_community_id, building_no, room_no；可选 road_name, lane。
+输入 CSV 必须有列：pms_community_id, building_no, room_no；
+可选 road_name, lane, property_type（默认「公寓」）。
+
+默认剔除活动室/办公室/停车这类非住人条目；确有收费记录、必须建档时用
+--allow-non-house 显式放行，不靠改关键词表绕过。
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ from pathlib import Path
 NON_HOUSE_WORDS = ("活动室", "停车", "车位", "办公", "仓库", "水泵房", "监控室", "门卫")
 
 REQUIRED_COLUMNS = ("pms_community_id", "building_no", "room_no")
+ALLOWED_PROPERTY_TYPES = ("公寓", "住宅", "商铺", "办公楼")
 
 
 def sql_literal(value: str | None) -> str:
@@ -27,7 +32,7 @@ def sql_literal(value: str | None) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def read_rooms(path: Path):
+def read_rooms(path: Path, allow_non_house: bool = False):
     """读清单并剔除非住人条目，返回 (入库行, 被剔除行)。"""
     with open(path, "rt", encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream)
@@ -47,19 +52,23 @@ def read_rooms(path: Path):
             raise ValueError(f"社区 ID 必须是数字：{community_id!r}")
         if not building_no or not room_no:
             raise ValueError(f"楼栋号和房号都不能为空：{item!r}")
-        if any(word in room_no or word in building_no for word in NON_HOUSE_WORDS):
+        if not allow_non_house and any(word in room_no or word in building_no for word in NON_HOUSE_WORDS):
             skipped.append({"pms_community_id": community_id, "building_no": building_no, "room_no": room_no})
             continue
         key = (community_id, building_no, room_no)
         if key in seen:
             raise ValueError(f"清单内房号重复：社区 {community_id} {building_no} {room_no}")
         seen.add(key)
+        property_type = (item.get("property_type") or "").strip() or "公寓"
+        if property_type not in ALLOWED_PROPERTY_TYPES:
+            raise ValueError(f"房产类型不在允许范围：{property_type}（可用：{'、'.join(ALLOWED_PROPERTY_TYPES)}）")
         rows.append({
             "pms_community_id": community_id,
             "building_no": building_no,
             "room_no": room_no,
             "road_name": (item.get("road_name") or "").strip() or None,
             "lane": (item.get("lane") or "").strip() or None,
+            "property_type": property_type,
         })
     if not rows:
         raise ValueError("清单里没有可建档的房产")
@@ -77,6 +86,7 @@ def render_sql(rows: list[dict[str, str | None]], tag: str) -> str:
             sql_literal(row["room_no"]),
             sql_literal(row["road_name"]),
             sql_literal(row["lane"]),
+            sql_literal(row["property_type"]),
         ])
         + ")"
         for row in rows
@@ -102,10 +112,11 @@ BEGIN
     room_no varchar(30) NOT NULL,
     road_name varchar(60),
     lane varchar(30),
+    property_type varchar(30) NOT NULL,
     PRIMARY KEY (community_id, building_no, room_no)
   ) ON COMMIT DROP;
 
-  INSERT INTO apartment_house_import (community_id, building_no, room_no, road_name, lane)
+  INSERT INTO apartment_house_import (community_id, building_no, room_no, road_name, lane, property_type)
   VALUES
 {values};
 
@@ -131,7 +142,7 @@ BEGIN
   INSERT INTO houses
     (tenant_id, building_id, unit_id, room_no, property_type, road_name,
      full_address, shop_name, area_sqm, created_by, updated_by)
-  SELECT v_tenant_id, b.id, NULL::integer, i.room_no, '公寓', i.road_name,
+  SELECT v_tenant_id, b.id, NULL::integer, i.room_no, i.property_type, i.road_name,
          CASE WHEN i.road_name IS NULL THEN NULL
               ELSE i.road_name || coalesce(i.lane || '弄', '') || i.building_no || i.room_no || '室'
          END,
@@ -162,7 +173,7 @@ BEGIN
      AND h.building_id = b.id
      AND h.unit_id IS NULL
      AND h.room_no = i.room_no
-     AND h.property_type = '公寓';
+     AND h.property_type = i.property_type;
   IF v_actual <> {expected} THEN
     RAISE EXCEPTION '入库后复核失败：期望 {expected}，实际 %', v_actual;
   END IF;
@@ -190,9 +201,11 @@ def main() -> int:
     parser.add_argument("--tag", required=True, help="建档批次标识，用于咨询锁")
     parser.add_argument("--output-sql", type=Path, required=True)
     parser.add_argument("--summary-json", type=Path, required=True)
+    parser.add_argument("--allow-non-house", action="store_true",
+                        help="放行活动室/办公室/停车这类非住人条目（需有明确业务理由，如确有收费记录）")
     args = parser.parse_args()
 
-    rows, skipped = read_rooms(args.rooms)
+    rows, skipped = read_rooms(args.rooms, allow_non_house=args.allow_non_house)
     args.output_sql.parent.mkdir(parents=True, exist_ok=True)
     args.output_sql.write_text(render_sql(rows, args.tag), encoding="utf-8")
     summary = summarize(rows, skipped)

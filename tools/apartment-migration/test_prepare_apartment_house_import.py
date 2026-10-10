@@ -23,6 +23,20 @@ class ReadRoomsTest(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(skipped[0]["building_no"], "一期活动室")
 
+    def test_显式放行时非住人条目也能建档(self):
+        rows, skipped = read_rooms(write(HEADER + "22,一期活动室,1\n"), allow_non_house=True)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(skipped, [])
+
+    def test_房产类型默认公寓且只认允许的取值(self):
+        rows, _ = read_rooms(write(HEADER + "22,1号楼,101\n"))
+        self.assertEqual(rows[0]["property_type"], "公寓")
+        rows, _ = read_rooms(write("pms_community_id,building_no,room_no,property_type\n21,15,超市,商铺\n"))
+        self.assertEqual(rows[0]["property_type"], "商铺")
+        self.assertIn("'商铺'", render_sql(rows, "t"))
+        with self.assertRaisesRegex(ValueError, "房产类型不在允许范围"):
+            read_rooms(write("pms_community_id,building_no,room_no,property_type\n21,15,x,仓库\n"))
+
     def test_清单内房号重复直接报错而不是悄悄去重(self):
         with self.assertRaisesRegex(ValueError, "房号重复"):
             read_rooms(write(HEADER + "22,1号楼,101\n22,1号楼,101\n"))

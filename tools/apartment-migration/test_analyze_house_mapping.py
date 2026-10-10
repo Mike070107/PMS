@@ -60,5 +60,22 @@ class NormalizeTest(unittest.TestCase):
         self.assertNotIn("target_community_id", row)
 
 
+    def test_人工确认的别名能把旧地址指到PMS实际房产(self):
+        # 颛桥旧库写 15号楼/超市，PMS 实际建在「单层商铺」下
+        self.assertEqual(MAPPING.resolve_alias(2, "15", "超市"), ("单层商铺", "超市"))
+        self.assertEqual(MAPPING.resolve_alias(2, "15", "106"), ("15", "106"))
+        self.assertEqual(MAPPING.resolve_alias(1, "15", "超市"), ("15", "超市"))
+
+    def test_别名生效后超市能匹配到单层商铺那一间(self):
+        legacy = [{"ID": "4", "小区编号": "2", "楼栋号": "15号楼", "房间号": "超市", "姓名": "杨春梅", "手机号": ""}]
+        pms = [
+            {"community_id": "21", "community_name": "馨香臣寓颛桥店", "lane": "", "building_no": "单层商铺", "room_no": "超市", "house_id": "8588"},
+            {"community_id": "21", "community_name": "馨香臣寓颛桥店", "lane": "", "building_no": "15", "room_no": "106", "house_id": "9398"},
+        ]
+        row = MAPPING.analyze(legacy, pms)[0]
+        self.assertEqual(row["match_status"], "matched")
+        self.assertEqual(row["house_id"], "8588")
+
+
 if __name__ == "__main__":
     unittest.main()

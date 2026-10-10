@@ -31,6 +31,14 @@ COMMUNITY_RULES: Mapping[int, CommunityRule] = {
     4: CommunityRule("22", "馨香臣寓马桥店"),
 }
 
+# 旧库楼栋/房号与 PMS 实际档案对不上、但已人工确认是同一处的，在这里逐条写明。
+# 只允许一对一显式别名，不做相似度猜测：键值都用归一化后的 (楼栋, 房号)。
+LEGACY_ADDRESS_ALIASES: Mapping[int, Mapping[Tuple[str, str], Tuple[str, str]]] = {
+    # 颛桥店的超市在 PMS 建在「单层商铺」下（房屋 8588），旧库记成 15号楼/超市。
+    # 2026-10-11 用户确认是同一间，不再另建重复的超市。
+    2: {("15", "超市"): ("单层商铺", "超市")},
+}
+
 # 吴泾旧库只写 A/B/C/D/E 栋，PMS 按现场门牌保存完整楼栋名。
 WU_JING_BUILDING_MAP = {
     "a": "A栋34号",
@@ -71,6 +79,14 @@ def normalize_legacy_building(community_id: int, value: object) -> str:
         if target:
             return normalize_building(target)
     return normalized
+
+
+def resolve_alias(community_id: int, building: str, room: str) -> Tuple[str, str]:
+    """把人工确认过的旧地址换成 PMS 实际的 (楼栋, 房号)；没登记别名就原样返回。"""
+    alias = LEGACY_ADDRESS_ALIASES.get(community_id, {}).get((building, room))
+    if not alias:
+        return building, room
+    return normalize_building(alias[0]), normalize_room(alias[1])
 
 
 def normalize_lane(value: object) -> str:
@@ -145,11 +161,16 @@ def analyze(old_rows: Iterable[Mapping[str, str]], pms_rows: Iterable[Mapping[st
         if not rule:
             results.append({**dict(old), "match_status": "unknown_community", "contact_action": "not_applicable"})
             continue
+        building, room = resolve_alias(
+            community_id,
+            normalize_legacy_building(community_id, old.get("楼栋号")),
+            normalize_room(old.get("房间号")),
+        )
         key = (
             compact(rule.pms_community_id),
             normalize_lane(rule.required_lane).casefold(),
-            normalize_legacy_building(community_id, old.get("楼栋号")),
-            normalize_room(old.get("房间号")),
+            building,
+            room,
         )
         ids = sorted(house_ids_by_key.get(key, set()), key=lambda value: int(value))
         status = "matched" if len(ids) == 1 else "ambiguous" if ids else "unmatched"
