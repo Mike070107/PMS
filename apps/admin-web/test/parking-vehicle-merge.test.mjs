@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   buildParkingRoomOptions,
+  firstValidParkingPeriod,
   groupParkingVehicleRows,
   normalizeParkingDate,
   normalizeManualParkingRoom,
@@ -102,6 +103,10 @@ test('二期人防勾选使用德立云真实授权并在变更后重新查询',
     '德立云新建车辆的开始日必须兼容旧库 D_Stratime 与历史 Sart_Time 拼写');
   assert.match(page, /await searchParking\(searchedTerm \|\| term\)/,
     '旧库与德立云完成后必须重新查询展示最终状态');
+  assert.match(page, /kind === 'update_garages' && row && requestedGarages\.includes\('civil'\)/,
+    '新增德立云人防车辆前必须预检旧库现有的开始日和到期日');
+  assert.match(page, /onOperation\('update_garages', row, group\.rows\)/,
+    '选中旧库缺日期时应能从同车牌的另一旧库读取完整日期');
 });
 
 test('到期日只比较日期，房号自增后缀仍识别为同一房号', () => {
@@ -109,6 +114,15 @@ test('到期日只比较日期，房号自增后缀仍识别为同一房号', ()
   assert.equal(normalizeParkingRoomIdentity('198/5/102/2'), '198/5/102');
   assert.equal(normalizeParkingRoomIdentity('198-5-102'), '198/5/102');
   assert.equal(sameParkingText('地库91号\r\n操作来源：PMS系统', '地库91号\n操作来源：PMS系统'), true);
+});
+
+test('人防建档复用同一旧库车辆的开始和结束日期，缺失时才用另一库', () => {
+  assert.deepEqual(firstValidParkingPeriod([
+    { beginDate: null, endDate: '2027-09-30' },
+    { beginDate: '2026-10-01', endDate: '2027-09-30' },
+  ]), { beginDate: '2026-10-01', endDate: '2027-09-30' });
+  assert.equal(firstValidParkingPeriod([{ beginDate: '2026-02-31', endDate: '2027-09-30' }]), null);
+  assert.equal(firstValidParkingPeriod([{ beginDate: '2027-10-01', endDate: '2027-09-30' }]), null);
 });
 
 test('进出记录查询按钮提交日历显示的日期，而非上次已查询日期', () => {

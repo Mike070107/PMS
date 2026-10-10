@@ -54,6 +54,7 @@ import dayjs from 'dayjs';
 import { type AddressCommunity, buildingMatchKeys, communityMatchKeys, houseMatchKeys, scoreAddressPath, tokenizeAddress } from '@pms/shared-types';
 import { allocateParkingRenewalAmounts, parkingRenewalEndDate } from '../lib/parkingRenewal';
 import {
+  firstValidParkingPeriod,
   groupParkingVehicleRows,
   buildParkingRoomOptions,
   normalizeManualParkingRoom,
@@ -402,6 +403,17 @@ export default function ParkingManagementPage({
       const requestedGarages = (kind === 'update_garages' || kind === 'add_vehicle') && Array.isArray(payload.garages)
         ? payload.garages.map(String)
         : [];
+      const civilCloudRow = kind === 'update_garages' && row
+        ? deliyunRows.find((item) => normalizeParkingPlate(item.plate) === normalizeParkingPlate(plateValue(row.fields)))
+        : null;
+      const civilPeriod = firstValidParkingPeriod([row, ...(rows ?? [])].filter((candidate): candidate is ParkingQueryRow => !!candidate)
+        .filter((candidate) => row && normalizeParkingPlate(plateValue(candidate.fields)) === normalizeParkingPlate(plateValue(row.fields)))
+        .map((candidate) => ({
+          beginDate: normalizeParkingDate(fieldValue(candidate.fields, fieldAliases.begin)),
+          endDate: normalizeParkingDate(fieldValue(candidate.fields, fieldAliases.expiry)),
+        })));
+      if (kind === 'update_garages' && row && requestedGarages.includes('civil') && !civilCloudRow && !civilPeriod)
+        throw new Error('旧库车辆缺少完整开始日或到期日，已停止本次授权，未修改旧库。请刷新车牌查询后重试');
       const localPayload = { ...payload };
       if (kind === 'update_garages') localPayload.garages = requestedGarages.filter((garage) => garage !== 'civil');
       if (kind === 'add_vehicle') delete localPayload.garages;
@@ -433,15 +445,15 @@ export default function ParkingManagementPage({
       if (!failed && !unfinished) {
         if (kind === 'update_garages' && row) {
           const plate = normalizeParkingPlate(plateValue(row.fields));
-          const cloudRow = deliyunRows.find((item) => normalizeParkingPlate(item.plate) === plate);
+          const cloudRow = civilCloudRow;
           const desired = requestedGarages.includes('civil');
           if (desired !== (cloudRow?.civilDefenseAuthorized === true)) {
             const cloudTask = await accessCardIssuance.setDeliyunCivilDefenseAuthorization({
               plate,
               authorized: desired,
               vehicleId: cloudRow?.id ?? null,
-              beginDate: normalizeParkingDate(fieldValue(row.fields, fieldAliases.begin)),
-              endDate: normalizeParkingDate(fieldValue(row.fields, fieldAliases.expiry)),
+              beginDate: civilPeriod?.beginDate ?? null,
+              endDate: civilPeriod?.endDate ?? null,
               remark: fieldValue(row.fields, fieldAliases.note),
               idempotencyKey: `${batchKey}-deliyun`,
             });
@@ -1356,7 +1368,7 @@ function ParkingResultCard({ group, canWriteLocal, deliyunVehicle, canSyncParkin
         <Button type="primary" disabled={!canWriteLocal} icon={<CalendarOutlined />} onClick={() => onOperation('renew_vehicle', row, parkingRenewalTargets(group))}>{group.merged ? '续期收费（一期+二期）' : '续期收费'}</Button>
         <Button disabled={!canWriteLocal} icon={<SwapOutlined />} onClick={() => onOperation('change_plate', row)}>变更车牌</Button>
         <Button disabled={!canWriteLocal} icon={<UserSwitchOutlined />} onClick={() => onOperation('rebind_owner', row)}>变更绑定用户</Button>
-        <Button disabled={!canWriteLocal} icon={<SafetyCertificateOutlined />} onClick={() => onOperation('update_garages', row)}>调整车库授权</Button>
+        <Button disabled={!canWriteLocal} icon={<SafetyCertificateOutlined />} onClick={() => onOperation('update_garages', row, group.rows)}>调整车库授权</Button>
         <Button disabled={!canWriteLocal} icon={<CloudUploadOutlined />} onClick={() => onOperation('download_vehicle', row)}>下发设备</Button>
         <Button danger disabled={!canWriteLocal} icon={<StopOutlined />} onClick={() => onOperation('delete_vehicle', row)}>注销车辆</Button>
       </div>

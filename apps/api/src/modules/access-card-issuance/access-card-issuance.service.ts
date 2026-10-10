@@ -3010,7 +3010,7 @@ function operationChanges(task: ParkingOperation): ParkingHistoryChange[] {
     .map(([field, label, before, after]) => ({ field, label, before: textValue(before), after: textValue(after) }));
 }
 
-function sanitizeParkingRows(rows: ParkingQueryReportDto['rows']): ParkingQuery['rows'] {
+export function sanitizeParkingRows(rows: ParkingQueryReportDto['rows']): ParkingQuery['rows'] {
   return (rows ?? []).slice(0, 100).map((row) => {
     const fields: Record<string, string | number | boolean | null> = {};
     // 旧助手曾把 Car_Issue 全部字段上传到这里，再按出现顺序截 60 个。
@@ -3143,7 +3143,7 @@ const parkingVehicleOutputAliases = [
   'carbrand', 'carbeand', 'vehicleidentity', 'caridentity', 'ownertype', 'usertype', 'relationtype', 'carlei', '车辆类型', '车辆身份', '性质',
   'enddate', 'expiredate', 'expirydate', 'validto', 'deadline', 'overdate', 'endtime', '到期', '有效期',
   'parkno', 'parkingno', 'spaceno', 'berth', 'garage', '车位', '地库',
-  'starttime', 'startdate', 'begintime', 'begindate', 'updatetime', 'updatedate',
+  'sarttime', 'dstratime', 'starttime', 'startdate', 'begintime', 'begindate', 'updatetime', 'updatedate',
 ] as const;
 
 const parkingOwnerOutputAliases = [

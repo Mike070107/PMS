@@ -144,6 +144,16 @@ export function normalizeParkingDate(value: string | null | undefined): string |
   return match?.[1] ?? (text || null);
 }
 
+/** 人防新建车牌复用同一旧库车辆记录的完整有效期；不能拼接两辆或两库的日期。 */
+export function firstValidParkingPeriod(periods: Array<{ beginDate: string | null; endDate: string | null }>) {
+  const validDate = (value: string | null): value is string => {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  };
+  return periods.find(({ beginDate, endDate }) => validDate(beginDate) && validDate(endDate) && beginDate <= endDate) ?? null;
+}
+
 /** 第四段及以后是旧库为规避同房号主键冲突使用的自增号。 */
 export function normalizeParkingRoomIdentity(value: string | null | undefined): string | null {
   const text = value?.trim().replace(/[\\-]/g, '/') || '';

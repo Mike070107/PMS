@@ -16,8 +16,17 @@ import {
   supportsParkingFeeDetails,
   supportsLegacyRecentCards,
 } from './parking-query.util';
+import { sanitizeParkingRows } from './access-card-issuance.service';
 
 const duplicateRows = [{ database: 'parking2', fields: { P_plate: '沪EDK889', Owner__Room_No: '228/5/301' } }];
+
+test('旧库 Sart_Time 和 End_Time 必须一起送到人防新建授权', () => {
+  const [row] = sanitizeParkingRows([{ database: 'parking2', fields: {
+    P_plate: '沪APD0088', Sart_Time: '2026-10-01 00:00:00', End_Time: '2027-09-30 23:59:59',
+  } }]);
+  assert.equal(row.fields.Sart_Time, '2026-10-01 00:00:00');
+  assert.equal(row.fields.End_Time, '2027-09-30 23:59:59');
+});
 
 test('两段房号保留楼栋边界，不把 6 号楼扩成 36 号楼', () => {
   assert.deepEqual(parseParkingSearch('6/502'), { kind: 'house', term: '6/502' });
