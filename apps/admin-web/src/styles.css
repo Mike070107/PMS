@@ -319,7 +319,7 @@ a,
 .pms-content {
   box-sizing: border-box;
   padding: 28px 30px 42px;
-  max-width: 1440px;
+  max-width: 1600px;
   width: 100%;
   margin: 0 auto;
 }
@@ -2738,7 +2738,7 @@ body {
 .pms-user-name { font-size: 15px; font-weight: 500; }
 .pms-user-role { font-size: 12px; }
 .pms-content {
-  max-width: 1440px;
+  max-width: 1600px;
   padding: 26px 28px 44px;
 }
 .pms-fadein { animation-duration: 180ms; }
