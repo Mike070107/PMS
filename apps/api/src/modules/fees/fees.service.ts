@@ -46,6 +46,7 @@ import {
   normalizeCashierItems,
   reversalRemark,
 } from './cashier.util';
+import { dayStart, nextDayStart, todayInTz, todayRange } from './report.util';
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -109,6 +110,12 @@ export class FeesService {
       'f.fee_name AS "feeName"',
       'f.period AS period',
       'f.amount_cents AS "amountCents"',
+      'f.quantity AS quantity',
+      'f.unit AS unit',
+      'f.unit_price_cents AS "unitPriceCents"',
+      'f.service_from AS "serviceFrom"',
+      'f.service_to AS "serviceTo"',
+      'f.vehicle_plate AS "vehiclePlate"',
       'f.status AS status',
       'f.paid_at AS "paidAt"',
       'f.payment_method AS "paymentMethod"',
@@ -409,7 +416,7 @@ export class FeesService {
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
     if (scope && !scope.length) return { rows: [], total: 0, page, pageSize, totalCents: 0 };
 
-    const { from, to } = this.todayRange();
+    const { from, to } = todayRange();
     const base = () => {
       const qb = this.billRepo
         .createQueryBuilder('f')
@@ -539,7 +546,7 @@ export class FeesService {
     const reversalNo = await this.nextReceiptNo(tenantId);
     const cashier = await this.operatorName(user.id);
     const now = new Date();
-    const period = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const period = todayInTz(now).slice(0, 7).replace('-', '');
     const remark = reversalRemark(receiptNo, dto.reason);
 
     return this.dataSource.transaction(async (manager) => {
@@ -610,9 +617,7 @@ export class FeesService {
     const receiptNo = await this.nextReceiptNo(tenantId);
     const cashier = await this.operatorName(user.id);
     const paidAt = dto.paidAt ? new Date(`${dto.paidAt}T12:00:00+08:00`) : new Date();
-    const period = dto.paidAt
-      ? dto.paidAt.slice(0, 7).replace('-', '')
-      : `${paidAt.getFullYear()}${String(paidAt.getMonth() + 1).padStart(2, '0')}`;
+    const period = (dto.paidAt ?? todayInTz(paidAt)).slice(0, 7).replace('-', '');
 
     return this.dataSource.transaction(async (manager) => {
       let owner: User | null = null;
@@ -1410,6 +1415,10 @@ export class FeesService {
     if (q.status) qb.andWhere('f.status = :status', { status: q.status });
     if (q.periodFrom) qb.andWhere('f.period >= :pf', { pf: q.periodFrom });
     if (q.periodTo) qb.andWhere('f.period <= :pt', { pt: q.periodTo });
+    // 收费时间按自然日闭区间给，查询用「次日 00:00 之前」，当天收的款不会被时分秒漏掉
+    if (q.paidFrom) qb.andWhere('f.paid_at >= :paidFrom', { paidFrom: dayStart(q.paidFrom) });
+    if (q.paidTo) qb.andWhere('f.paid_at < :paidTo', { paidTo: nextDayStart(q.paidTo) });
+    if (q.paymentMethod) qb.andWhere('f.payment_method = :pm', { pm: q.paymentMethod });
     if (q.q) this.applyKeyword(qb, q.q);
   }
 
@@ -1453,15 +1462,6 @@ export class FeesService {
         }
       }),
     );
-  }
-
-  /** 本地自然日的 [今天 00:00, 明天 00:00)，服务器时区即营业时区。 */
-  private todayRange() {
-    const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const to = new Date(from);
-    to.setDate(to.getDate() + 1);
-    return { from, to };
   }
 
   private async receiptItems(tenantId: number, receiptNos: string[]) {
@@ -1519,6 +1519,12 @@ export class FeesService {
       feeName: r.feeName,
       period: r.period,
       amountCents: Number(r.amountCents),
+      quantity: r.quantity === null || r.quantity === undefined ? null : Number(r.quantity),
+      unit: r.unit ?? null,
+      unitPriceCents: r.unitPriceCents === null || r.unitPriceCents === undefined ? null : Number(r.unitPriceCents),
+      serviceFrom: r.serviceFrom ?? null,
+      serviceTo: r.serviceTo ?? null,
+      vehiclePlate: r.vehiclePlate ?? null,
       status: r.status,
       paidAt: r.paidAt,
       paymentMethod: r.paymentMethod,
@@ -1587,11 +1593,7 @@ export class FeesService {
 
   /** 收据号：SJ + 年月日 + 当天序号，人能看懂、当天连续 */
   private async nextReceiptNo(tenantId: number): Promise<string> {
-    const now = new Date();
-    const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
-      now.getDate(),
-    ).padStart(2, '0')}`;
-    const prefix = `SJ${ymd}`;
+    const prefix = `SJ${todayInTz().replace(/-/g, '')}`;
     const row = await this.billRepo
       .createQueryBuilder('f')
       .select('MAX(f.receipt_no)', 'maxNo')

@@ -15,6 +15,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { FEE_PAYMENT_METHODS } from '@pms/shared-types';
 import { FeeBillStatus, FeeStandardStatus } from '../../common/enums';
 
 /** 账期 YYYYMM（月份 01-12） */
@@ -75,6 +76,19 @@ export class ListBillsQueryDto extends PageQueryDto {
   @IsOptional()
   @Matches(PERIOD_RE, { message: '账期格式应为 YYYYMM' })
   periodTo?: string;
+
+  /** 收费时间（实收日期）区间，和账期是两回事：12 月的账可能 1 月才收 */
+  @IsOptional()
+  @Matches(DATE_RE, { message: '收费开始日期格式应为 YYYY-MM-DD' })
+  paidFrom?: string;
+
+  @IsOptional()
+  @Matches(DATE_RE, { message: '收费截止日期格式应为 YYYY-MM-DD' })
+  paidTo?: string;
+
+  @IsOptional()
+  @IsIn(FEE_PAYMENT_METHODS.map((item) => item.value))
+  paymentMethod?: string;
 }
 
 export class ArrearsQueryDto extends PageQueryDto {

@@ -21,6 +21,7 @@ import {
 } from 'antd';
 import {
   CreditCardOutlined,
+  DownloadOutlined,
   EditOutlined,
   FileTextOutlined,
   PlusOutlined,
@@ -44,6 +45,7 @@ import {
   formatAddressLine,
 } from '@pms/shared-types';
 import { request } from '../lib/api';
+import { centsToYuan, exportXlsx } from '../lib/exportXlsx';
 import { handleGone } from '../lib/gone';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
@@ -78,6 +80,12 @@ interface BillRow {
   feeName: string;
   period: string;
   amountCents: number;
+  quantity: number | null;
+  unit: string | null;
+  unitPriceCents: number | null;
+  serviceFrom: string | null;
+  serviceTo: string | null;
+  vehiclePlate: string | null;
   status: FeeBillStatus;
   paidAt: string | null;
   paymentMethod: string | null;
@@ -161,6 +169,20 @@ const STATUS_COLOR: Record<string, string> = {
   [FeeBillStatus.REFUNDED]: 'purple',
   [FeeBillStatus.CANCELLED]: 'default',
 };
+
+/**
+ * 导出走分页累加，和后端 MAX_PAGE_SIZE 对齐；
+ * 上限与报表明细一致（5000 条），超了让人缩小筛选范围，不无声截断。
+ */
+const EXPORT_PAGE_SIZE = 500;
+const EXPORT_ROW_LIMIT = 5000;
+
+/** 房租这类按期收的费用要能看出收的是哪段时间 */
+function serviceText(r: { serviceFrom: string | null; serviceTo: string | null }) {
+  if (!r.serviceFrom && !r.serviceTo) return '';
+  const day = (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD') : '?');
+  return `${day(r.serviceFrom)} ~ ${day(r.serviceTo)}`;
+}
 
 /** 枫桦景苑一期 · 198弄2号 101 —— 列表、弹窗共用一套写法 */
 function placeText(r: {
@@ -254,6 +276,9 @@ function BillsTab({ onOpenHouse }: { onOpenHouse: (houseId: number) => void }) {
   const [feeCode, setFeeCode] = useState<string | undefined>();
   const [status, setStatus] = useState<FeeBillStatus | undefined>(FeeBillStatus.UNPAID);
   const [periodRange, setPeriodRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
+  const [paidRange, setPaidRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<string | undefined>();
+  const [exporting, setExporting] = useState(false);
 
   const [payOpen, setPayOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -268,8 +293,11 @@ function BillsTab({ onOpenHouse }: { onOpenHouse: (houseId: number) => void }) {
       status,
       periodFrom: periodRange?.[0] ? periodRange[0].format('YYYYMM') : undefined,
       periodTo: periodRange?.[1] ? periodRange[1].format('YYYYMM') : undefined,
+      paidFrom: paidRange?.[0] ? paidRange[0].format('YYYY-MM-DD') : undefined,
+      paidTo: paidRange?.[1] ? paidRange[1].format('YYYY-MM-DD') : undefined,
+      paymentMethod,
     }),
-    [q, communityId, feeCode, status, periodRange],
+    [q, communityId, feeCode, status, periodRange, paidRange, paymentMethod],
   );
 
   const load = useCallback(async () => {
@@ -305,6 +333,65 @@ function BillsTab({ onOpenHouse }: { onOpenHouse: (houseId: number) => void }) {
       load();
     } catch (e: any) {
       message.error(e?.message || `${what}失败`);
+    }
+  };
+
+  // 导出按当前筛选条件重新向后端取全量，不是导出屏幕上这一页
+  const exportBills = async () => {
+    setExporting(true);
+    try {
+      const all: BillRow[] = [];
+      let got = 0;
+      for (let p = 1; all.length < EXPORT_ROW_LIMIT; p += 1) {
+        const data = await request<Paged<BillRow>>({
+          url: '/fees/bills',
+          query: { ...query, page: p, pageSize: EXPORT_PAGE_SIZE },
+        });
+        all.push(...data.rows);
+        got = data.total;
+        if (data.rows.length < EXPORT_PAGE_SIZE || all.length >= got) break;
+      }
+      if (!all.length) {
+        message.warning('当前筛选条件下没有账单可导出');
+        return;
+      }
+      await exportXlsx(`收费明细_${dayjs().format('YYYYMMDD')}`, [
+        {
+          name: '账单明细',
+          columns: [
+            { title: '收据号', key: 'receiptNo', render: (r: BillRow) => r.receiptNo || '' },
+            { title: '小区', key: 'communityName' },
+            { title: '房号', key: 'place', render: (r: BillRow) => placeText(r) },
+            { title: '房屋性质', key: 'propertyType' },
+            { title: '业主/住户', key: 'ownerName', render: (r: BillRow) => r.ownerName || '' },
+            { title: '费用项目', key: 'feeName' },
+            { title: '账期', key: 'period', render: (r: BillRow) => formatFeePeriod(r.period) },
+            { title: '数量', key: 'quantity', render: (r: BillRow) => r.quantity ?? '' },
+            { title: '单位', key: 'unit', render: (r: BillRow) => r.unit || '' },
+            { title: '单价(元)', key: 'unitPrice', render: (r: BillRow) => (r.unitPriceCents === null ? '' : centsToYuan(r.unitPriceCents)) },
+            { title: '金额(元)', key: 'amount', render: (r: BillRow) => centsToYuan(r.amountCents) },
+            { title: '服务期间', key: 'service', render: (r: BillRow) => serviceText(r) },
+            { title: '车牌', key: 'vehiclePlate', render: (r: BillRow) => r.vehiclePlate || '' },
+            { title: '状态', key: 'statusLabel', render: (r: BillRow) => FEE_BILL_STATUS_LABELS[r.status] || r.status },
+            { title: '收款日期', key: 'paidAt', render: (r: BillRow) => (r.paidAt ? dayjs(r.paidAt).format('YYYY-MM-DD') : '') },
+            { title: '收款方式', key: 'paymentMethodLabel', render: (r: BillRow) => (r.paymentMethod ? FEE_PAYMENT_METHOD_LABELS[r.paymentMethod] || r.paymentMethod : '') },
+            { title: '收费员', key: 'cashier', render: (r: BillRow) => r.cashier || '' },
+            { title: '发票号', key: 'invoiceNo', render: (r: BillRow) => r.invoiceNo || '' },
+            { title: '来源', key: 'sourceLabel', render: (r: BillRow) => FEE_BILL_SOURCE_LABELS[r.source] || r.source },
+            { title: '备注', key: 'remark', render: (r: BillRow) => r.remark || '' },
+          ],
+          rows: all,
+        },
+      ]);
+      if (got > all.length) {
+        message.warning(`共 ${got} 条，本次只导出前 ${all.length} 条；请缩小筛选范围后分批导出`);
+      } else {
+        message.success(`已导出 ${all.length} 条`);
+      }
+    } catch (e: any) {
+      message.error(e?.message || '导出失败');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -390,6 +477,21 @@ function BillsTab({ onOpenHouse }: { onOpenHouse: (houseId: number) => void }) {
               onChange={(v) => setPeriodRange(v as any)}
               style={{ width: 240 }}
             />
+            {/* 账期是这笔钱属于哪个月，收费时间是实际收到钱的那天，12 月的账可能 1 月才收 */}
+            <DatePicker.RangePicker
+              placeholder={['起始收费日', '截止收费日']}
+              value={paidRange as any}
+              onChange={(v) => setPaidRange(v as any)}
+              style={{ width: 260 }}
+            />
+            <Select
+              allowClear
+              placeholder="收款方式"
+              style={{ width: 120 }}
+              value={paymentMethod}
+              onChange={setPaymentMethod}
+              options={FEE_PAYMENT_METHODS.map((item) => ({ value: item.value, label: item.label }))}
+            />
             <Input
               placeholder="房号 / 业主 / 收据号"
               prefix={<SearchOutlined />}
@@ -400,6 +502,9 @@ function BillsTab({ onOpenHouse }: { onOpenHouse: (houseId: number) => void }) {
               style={{ width: 200 }}
             />
             <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>
+            <Button icon={<DownloadOutlined />} loading={exporting} onClick={exportBills}>
+              导出 Excel
+            </Button>
             {canEdit && (
               <>
                 <Button icon={<ThunderboltOutlined />} onClick={() => setGenerateOpen(true)}>
@@ -453,7 +558,7 @@ function BillsTab({ onOpenHouse }: { onOpenHouse: (houseId: number) => void }) {
           loading={loading}
           dataSource={rows}
           tableLayout="fixed"
-          scroll={{ x: 1500 }}
+          scroll={{ x: 1830 }}
           rowSelection={{
             selectedRowKeys: selected.map((r) => r.id),
             onChange: (_keys, sel) => setSelected(sel),
@@ -483,8 +588,51 @@ function BillsTab({ onOpenHouse }: { onOpenHouse: (houseId: number) => void }) {
               title: '业主', dataIndex: 'ownerName', width: 100, ellipsis: true,
               render: (v) => v || <Text type="secondary">-</Text>,
             },
-            { title: '项目', dataIndex: 'feeName', width: 110, ellipsis: true },
-            { title: '账期', dataIndex: 'period', width: 90, render: formatFeePeriod },
+            {
+              title: '项目', dataIndex: 'feeName', width: 120, ellipsis: true,
+              render: (v: string, r) => (
+                <span title={r.vehiclePlate ? `${v}（${r.vehiclePlate}）` : v}>
+                  {v}
+                  {r.vehiclePlate && (
+                    <>
+                      <br />
+                      <Text type="secondary" style={{ fontSize: 12 }}>{r.vehiclePlate}</Text>
+                    </>
+                  )}
+                </span>
+              ),
+            },
+            {
+              // 账期和服务期间是同一件事的粗细两档，并一列既省 170px，也省得对着两列猜区别
+              title: '账期', dataIndex: 'period', width: 160,
+              render: (v: string, r) => (
+                <span>
+                  {formatFeePeriod(v)}
+                  {serviceText(r) && (
+                    <>
+                      <br />
+                      <Text type="secondary" style={{ fontSize: 12 }}>{serviceText(r)}</Text>
+                    </>
+                  )}
+                </span>
+              ),
+            },
+            {
+              title: '数量 / 单价', key: 'qty', width: 120, align: 'right',
+              render: (_, r) =>
+                r.quantity === null && r.unitPriceCents === null ? (
+                  <Text type="secondary">-</Text>
+                ) : (
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {r.quantity ?? '-'}
+                    {r.unit || ''}
+                    <br />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {r.unitPriceCents === null ? '-' : formatFeeMoney(r.unitPriceCents)}
+                    </Text>
+                  </span>
+                ),
+            },
             {
               title: '金额', dataIndex: 'amountCents', width: 110, align: 'right',
               render: (v: number) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatFeeMoney(v)}</span>,
@@ -502,6 +650,10 @@ function BillsTab({ onOpenHouse }: { onOpenHouse: (houseId: number) => void }) {
               render: (v: string | null) => (v ? FEE_PAYMENT_METHOD_LABELS[v] || v : '-'),
             },
             { title: '收据号', dataIndex: 'receiptNo', width: 140, ellipsis: true, render: (v) => v || '-' },
+            {
+              title: '收费员', dataIndex: 'cashier', width: 90, ellipsis: true,
+              render: (v: string | null) => v || <Text type="secondary">-</Text>,
+            },
             {
               title: '来源', dataIndex: 'source', width: 110,
               render: (v: string) => <Text type="secondary">{FEE_BILL_SOURCE_LABELS[v] || v}</Text>,
