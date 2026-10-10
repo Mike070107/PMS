@@ -4368,3 +4368,10 @@
 - 自上次（7dbca40e）以来上线的相关提交：
   - b16d1e8d fix: align MjSystem controller permission frame
 
+## 2026-10-10 16:20 · web · 5a0f1d19
+
+- 包：`pms-web-20261010-161951.tar.gz`
+- 提交：5a0f1d19 fix(properties): keep lane out of community title
+- 自上次（7dbca40e）以来上线的相关提交：
+  - 5a0f1d19 fix(properties): keep lane out of community title
+
