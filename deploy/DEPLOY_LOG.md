@@ -4355,3 +4355,10 @@
 - 自上次（e6b068c2）以来上线的相关提交：
   - 7dbca40e fix(gateway): make route publication responsive
 
+## 2026-10-10 10:23 · assistant · 7dbca40e
+
+- 包：`Pms.LanGatewayAssistant-1.2.6.exe`
+- 提交：7dbca40e fix(gateway): make route publication responsive
+- 说明：已核对公网更新清单与 SHA-256
+- 自上次（4eefeb0b）以来没有相关提交（重新部署）
+
