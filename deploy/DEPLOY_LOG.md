@@ -4382,3 +4382,10 @@
 - 自上次（7dbca40e）以来上线的相关提交：
   - 3e644ac1 feat(fees): add apartment cashier and legacy import
 
+## 2026-10-10 16:44 · web · c9e68ba7
+
+- 包：`pms-web-20261010-164322.tar.gz`
+- 提交：c9e68ba7 deploy: api → 3e644ac1
+- 自上次（5a0f1d19）以来上线的相关提交：
+  - 3e644ac1 feat(fees): add apartment cashier and legacy import
+
