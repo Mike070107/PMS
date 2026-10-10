@@ -4410,3 +4410,11 @@
 - 自上次（1b0adaf9）以来上线的相关提交：
   - 2aab2811 feat(gateway): bind apartment accounts for source-less intranet login
 
+## 2026-10-10 17:26 · web · 165b42f0
+
+- 包：`pms-web-20261010-172425.tar.gz`
+- 提交：165b42f0 docs(gateway): record private connect design decisions
+- 自上次（c9e68ba7）以来上线的相关提交：
+  - 2aab2811 feat(gateway): bind apartment accounts for source-less intranet login
+  - 15f3d06a fix(parking): preserve legacy start date for civil defense grants
+
