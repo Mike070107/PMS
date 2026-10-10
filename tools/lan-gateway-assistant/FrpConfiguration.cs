@@ -26,8 +26,11 @@ namespace Pms.LanGatewayAssistant
             text.AppendLine("log.to = \"" + Escape(store.LogPath.Replace('\\', '/')) + "\""); text.AppendLine("log.level = \"info\""); text.AppendLine("log.maxDays = 14");
             foreach (var route in enabled)
             {
-                Uri origin; if (!Uri.TryCreate(route.LocalUrl, UriKind.Absolute, out origin) || origin.Scheme != "http") throw new InvalidOperationException("「" + route.Name + "」的内网地址必须是 http:// 地址");
-                var port = origin.IsDefaultPort ? 80 : origin.Port;
+                Uri origin;
+                if (!Uri.TryCreate(route.LocalUrl, UriKind.Absolute, out origin) || (origin.Scheme != "http" && origin.Scheme != "tcp"))
+                    throw new InvalidOperationException("「" + route.Name + "」的内网地址必须是 http:// 或 tcp:// 地址");
+                var port = origin.Scheme == "http" && origin.IsDefaultPort ? 80 : origin.Port;
+                if (port < 1 || port > 65535) throw new InvalidOperationException("「" + route.Name + "」必须指定有效端口");
                 text.AppendLine(); text.AppendLine("[[proxies]]"); text.AppendLine("name = \"" + Escape(route.Id) + "\""); text.AppendLine("type = \"tcp\"");
                 text.AppendLine("localIP = \"" + Escape(origin.Host) + "\""); text.AppendLine("localPort = " + port.ToString(CultureInfo.InvariantCulture)); text.AppendLine("remotePort = " + route.RemotePort.ToString(CultureInfo.InvariantCulture));
                 text.AppendLine("transport.useEncryption = true"); text.AppendLine("transport.useCompression = true");

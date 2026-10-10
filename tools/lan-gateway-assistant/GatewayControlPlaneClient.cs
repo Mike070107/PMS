@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Web.Script.Serialization;
@@ -154,6 +155,22 @@ namespace Pms.LanGatewayAssistant
             {
                 try
                 {
+                    Uri origin;
+                    if (Uri.TryCreate(route.LocalUrl, UriKind.Absolute, out origin) && origin.Scheme == "tcp")
+                    {
+                        if (origin.Port < 1 || origin.Port > 65535) throw new InvalidOperationException("缺少有效端口");
+                        using (var client = new TcpClient())
+                        {
+                            var pending = client.BeginConnect(origin.Host, origin.Port, null, null);
+                            try
+                            {
+                                if (!pending.AsyncWaitHandle.WaitOne(5000)) throw new TimeoutException("连接超时");
+                                client.EndConnect(pending);
+                            }
+                            finally { pending.AsyncWaitHandle.Close(); }
+                        }
+                        return new GatewayRouteReport { AppId = route.AppId, Healthy = true, Message = "内网 TCP 端口可访问" };
+                    }
                     var request = (HttpWebRequest)WebRequest.Create(route.LocalUrl); request.Method = "GET"; request.Timeout = 5000; request.ReadWriteTimeout = 5000; request.AllowAutoRedirect = true;
                     using (var response = (HttpWebResponse)request.GetResponse())
                     {

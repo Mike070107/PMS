@@ -29,6 +29,9 @@ namespace Pms.LanGatewayAssistant
                 finally { window.Close(); }
                 var text = FrpConfiguration.Build(config, store);
                 Require(text.Contains("serverPort = 443"), "server port"); Require(text.Contains("transport.protocol = \"wss\""), "wss"); Require(text.Contains("user = \"lan-self-test\""), "device identity"); Require(text.Contains("metadatas.deviceToken = \"self-test-device-token\""), "device admission token"); Require(text.Contains("localIP = \"192.168.1.20\""), "local ip"); Require(text.Contains("localPort = 8050"), "local port"); Require(text.Contains("remotePort = 18050"), "remote port");
+                config.Routes.Add(new GatewayRoute { Id = "temporary-ssh", Name = "Temporary SSH", PublicHostname = "maintenance.prsznh.cn", LocalUrl = "tcp://192.168.110.249:22", RemotePort = 18997, Enabled = true });
+                var tcpText = FrpConfiguration.Build(config, store);
+                Require(tcpText.Contains("name = \"temporary-ssh\""), "tcp route name"); Require(tcpText.Contains("localIP = \"192.168.110.249\""), "tcp route ip"); Require(tcpText.Contains("localPort = 22"), "tcp route port"); Require(tcpText.Contains("remotePort = 18997"), "tcp remote port");
                 var sample = new byte[] { 1, 2, 3, 4 }; var protectedValue = ProtectedData.Protect(sample, null, DataProtectionScope.LocalMachine); var roundTrip = ProtectedData.Unprotect(protectedValue, null, DataProtectionScope.LocalMachine); Require(roundTrip.Length == sample.Length, "dpapi");
                 Require(GatewayUpdateService.IsTrustedDownloadUrl(new Uri("https://prsznh.cn/downloads/pms-lan-gateway-assistant/1.2.1/Pms.LanGatewayAssistant.exe")), "trusted update URL");
                 Require(!GatewayUpdateService.IsTrustedDownloadUrl(new Uri("http://prsznh.cn/downloads/pms-lan-gateway-assistant/x.exe")), "reject HTTP update URL");
