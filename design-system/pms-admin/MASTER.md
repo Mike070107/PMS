@@ -58,6 +58,17 @@
 | `--space-2xl` | `48px` / `3rem` | Section margins |
 | `--space-3xl` | `64px` / `4rem` | Hero padding |
 
+### 内容区宽度（后台实际约束）
+
+| 位置 | 值 | 说明 |
+|------|----|------|
+| `.pms-content` max-width | `1440px` | 后台所有业务页的内容上限，居中显示 |
+| 侧边导航 | `236px` | 固定宽度，不参与内容上限计算 |
+| 内容区 padding | `26px 28px 44px` | ≤900px 时收到 `18px 14px 34px` |
+
+- ✅ 2K/4K 最大化时内容保持 1440px 居中，筛选条自然折行
+- ❌ 不要把筛选控件或工具条设成占满整行的 flex:1，宽屏下会被拉成一条长缝
+- ⚡ 1676px 以下视口 max-width 不生效，布局与改动前一致
 ### Shadow Depths
 
 | Level | Value | Usage |
