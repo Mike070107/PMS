@@ -235,6 +235,23 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("MjSystem 七位控制器序列号的前导零被破坏");
             if (AccessControllerUploader.MjSystemApartmentForTest() != System.Threading.ApartmentState.STA)
                 throw new InvalidOperationException("MjSystem 原生 SDK 没有进入专用 STA/OLE 线程");
+            var mjPermissionArguments = AccessControllerUploader.BuildMjSystemPermissionArguments(
+                "0160217", "6938", 22345575L, 1,
+                new DateTime(2000, 1, 1), new DateTime(2040, 12, 31),
+                1, "000000", "228/3/201/10", "0");
+            if (mjPermissionArguments.Length != 48 ||
+                Convert.ToString(mjPermissionArguments[0]) != "1D" ||
+                Convert.ToString(mjPermissionArguments[1]) != "0160217" ||
+                Convert.ToString(mjPermissionArguments[2]) != "6938" ||
+                Convert.ToString(mjPermissionArguments[3]) != "22345575" ||
+                Convert.ToString(mjPermissionArguments[5]) != "2000/1/1 0:00:00" ||
+                Convert.ToString(mjPermissionArguments[6]) != "2040/12/31 0:00:00" ||
+                Convert.ToString(mjPermissionArguments[7]) != "1" ||
+                Convert.ToString(mjPermissionArguments[8]) != "000000" ||
+                Convert.ToString(mjPermissionArguments[9]) != "228/3/201/10" ||
+                Convert.ToString(mjPermissionArguments[10]) != "0" ||
+                Convert.ToString(mjPermissionArguments[11]) != "")
+                throw new InvalidOperationException("MjSystem 1D 新增权限参数没有与原管理软件对齐");
             if (AccessGatewayDatabase.BuildMjSystemDepartment("228/3/201/10") != "228弄03号大门" ||
                 AccessGatewayDatabase.BuildMjSystemDepartment("228/03/201/10") != "228弄03号大门" ||
                 AccessGatewayDatabase.MjSystemEmployeeNumber(6955) != "6955")

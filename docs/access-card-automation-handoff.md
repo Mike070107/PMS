@@ -410,9 +410,16 @@ created
 ### 2026-10-10：MjSystem 串口下发必须调用 34/26 自适应方法
 
 - 2.5.37 现场结果：WG `22345575` 对 3 号楼 `M0041 / COM1` 连续三次仍为错误码 2，方法返回为空且 ByRef 保持发送命令；原管理软件对同一在线控制器可以正常下发。
-- 已证实根因：对原 `IISSystem.exe` 的 `frmMacPowerSet2` 实时新增权限路径反汇编，RS232/485 分支调用 `ECardDerviceSDKMJ.dll` vtable `0x48`；类型库确认该方法是 `GetAndSendInfo34Or26(short, in/out BSTR command, in/out BSTR cardProtocol)`。PMS 2.5.34—2.5.37 错误固定调用 vtable `0x54` 的 `GetAndSendInfo26`，与原管理软件不一致。
+- 已证实差异（但非完整根因）：对原 `IISSystem.exe` 的 `frmMacPowerSet2` 实时新增权限路径反汇编，RS232/485 分支调用 `ECardDerviceSDKMJ.dll` vtable `0x48`；类型库确认该方法是 `GetAndSendInfo34Or26(short, in/out BSTR command, in/out BSTR cardProtocol)`。PMS 2.5.34—2.5.37 错误固定调用 vtable `0x54` 的 `GetAndSendInfo26`，与原管理软件不一致。2.5.38 修正该差异后现场仍返回错误码 2，说明它只是一个必须修正的调用差异，不是全部根因。
 - 现场协议证据：原软件界面显示 M0041 为 `WG26`；现场 `Ini/ChineseSimple/dbconnect.ini` 的 `[SendKey] SendKey=0`。PMS 必须从旧软件同一配置读取该值并作为第三个 in/out 参数传入，不能凭楼栋或卡号猜测。
 - 回归：本地自检创建旧目录结构并验证读取 `SendKey=0`；串口调用方法固定断言为 `GetAndSendInfo34Or26`；真实完成仍须 `.88` 安装新版后对受控测试卡获得通过 `ThenCommandVail` 的控制器回包。
+
+### 2026-10-10：MjSystem 新增权限必须由厂家 SDK 生成完整 1D 指令
+
+- 2.5.38 现场结果：测试卡 WG `22345575`、门 `M0041-1`、控制器 SN `0160217` 连续三次仍为错误码 2，未收到控制器回包；因此 2.5.38 不得标记为业务修复。
+- 已证实根因：原 `IISSystem.exe` 在发送前调用同一 SDK 的 `CreateBstrFuncData("1D", ...)`，参数依次包含控制器 SN、员工编号、WG 卡号、下发序号、开始/结束日期、时间组、门密码、员工姓名和卡协议。该方法返回的已是完整 `0x9E` 指令并被原软件直接发送。PMS 2.5.34—2.5.38 却用 iCCard 的 `0711` 规则手工拼功能数据，再调 `CreatCmd`，所以生成了不同的命令。
+- 只生成、不发送的对照证据：现场记录 `6938 / 22345575 / 2000-01-01 / 2040-12-31 / 时间组1 / 000000 / 228/3/201/10 / WG26`经厂家 SDK 生成的指令以 `9E01EB391D...` 开头；2.5.38 的手工路径以 `9E01EB390724...` 开头。此对照未打开 COM1，未向控制器写入。
+- 回归：固定检查 48 个 in/out 参数的前 11 项与原软件顺序一致，保留七位 SN 前导零、门密码前导零和 WG26/WG34 配置。本地自检仍不代表设备生效；只有新版现场收到并验证真实回包后才能记为已下发。
 
 ### 2026-10-10：门禁库权限不是控制器回执
 

@@ -63,27 +63,24 @@ namespace Pms.AccessCardAgent
                 !String.Equals(doorId, "M0030-1", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("故障验收只允许测试卡 WG 22345575 和 26 号楼控制器 M0030-1");
 
-            string wgDllPath;
-            if (!TryFindWgComm(config, out wgDllPath))
-                throw new FileNotFoundException("找不到原门禁通信组件 iCCard-WGComm.dll，请确认 iCCard 安装目录完整");
             string mjSdkPath;
             if (!TryFindMjSystemSdk(config, out mjSdkPath))
                 throw new FileNotFoundException("找不到 MjSystem 原生通信组件 ECardDerviceSDKMJ.dll，请确认 MjSystem 安装目录完整");
-            var payloadBuilder = new WgCommVendor(wgDllPath);
             var vendor = new MjSystemVendor(mjSdkPath);
             try
             {
                 using (var connection = OpenMjSystem(config.MjSystemDatabasePath))
                 {
                     var record = ReadMjSystemUploadRecord(connection, cardNo, doorId);
-                    var frame = vendor.BuildCommand(record.ControllerSnText, payloadBuilder.BuildOldAddFunction(record, 1));
+                    var cardProtocol = ResolveMjSystemCardProtocol(config.MjSystemDatabasePath);
+                    var frame = vendor.BuildPermissionCommand(record, 1, cardProtocol);
                     string response;
                     var result = vendor.Send(
                         record.CommMode,
                         record.IpAddress,
                         record.Port,
                         frame,
-                        IsMjSystemSerial(record.CommMode) ? ResolveMjSystemCardProtocol(config.MjSystemDatabasePath) : null,
+                        IsMjSystemSerial(record.CommMode) ? cardProtocol : null,
                         out response);
                     if (result != 0)
                         throw new InvalidOperationException(
@@ -156,34 +153,30 @@ namespace Pms.AccessCardAgent
             AgentTask task,
             AccessTargetBuilding[] targets)
         {
-            string wgDllPath;
-            if (!TryFindWgComm(config, out wgDllPath))
-                throw new FileNotFoundException("找不到原门禁通信组件 iCCard-WGComm.dll，请确认 iCCard 安装目录完整");
             string mjSdkPath;
             if (!TryFindMjSystemSdk(config, out mjSdkPath))
                 throw new FileNotFoundException("找不到 MjSystem 原生通信组件 ECardDerviceSDKMJ.dll，请确认 MjSystem 安装目录完整");
 
-            var payloadBuilder = new WgCommVendor(wgDllPath);
             var vendor = new MjSystemVendor(mjSdkPath);
             var output = new List<object>();
             try
             {
                 using (var connection = OpenMjSystem(config.MjSystemDatabasePath))
                 {
+                    var cardProtocol = ResolveMjSystemCardProtocol(config.MjSystemDatabasePath);
                     foreach (var target in targets)
                     {
                         foreach (var doorId in MjSystemDoors(connection, target.buildingNo))
                         {
                             var record = ReadMjSystemUploadRecord(connection, task.wgCardNo, doorId);
-                            var function = payloadBuilder.BuildOldAddFunction(record, 1);
-                            var frame = vendor.BuildCommand(record.ControllerSnText, function);
+                            var frame = vendor.BuildPermissionCommand(record, 1, cardProtocol);
                             string response;
                             var result = vendor.Send(
                                 record.CommMode,
                                 record.IpAddress,
                                 record.Port,
                                 frame,
-                                IsMjSystemSerial(record.CommMode) ? ResolveMjSystemCardProtocol(config.MjSystemDatabasePath) : null,
+                                IsMjSystemSerial(record.CommMode) ? cardProtocol : null,
                                 out response);
                             if (result != 0)
                             {
@@ -299,7 +292,7 @@ namespace Pms.AccessCardAgent
         private static ControllerUploadRecord ReadMjSystemUploadRecord(OleDbConnection connection, string cardNo, string doorId)
         {
             const string permissionSql =
-                "SELECT TOP 1 P.cCardNo,P.cDoorId,P.cTimeId,E.vDoorPassword,E.dBeginDate,E.dEndDate " +
+                "SELECT TOP 1 P.cCardNo,P.cDoorId,P.cTimeId,E.vDoorPassword,E.dBeginDate,E.dEndDate,E.vEmp_id,E.vEmp_name " +
                 "FROM MJ_MacPower AS P INNER JOIN Employee AS E ON P.cCardNo=E.vCardNo " +
                 "WHERE P.cCardNo=? AND P.cDoorId=?";
             string controllerId;
@@ -326,6 +319,10 @@ namespace Pms.AccessCardAgent
                         ControlSegmentId = Convert.ToInt64(reader["cTimeId"], CultureInfo.InvariantCulture),
                         Password = reader["vDoorPassword"] == DBNull.Value || String.IsNullOrWhiteSpace(Convert.ToString(reader["vDoorPassword"]))
                             ? 0L : Convert.ToInt64(reader["vDoorPassword"], CultureInfo.InvariantCulture),
+                        DoorPasswordText = reader["vDoorPassword"] == DBNull.Value
+                            ? "" : Convert.ToString(reader["vDoorPassword"], CultureInfo.InvariantCulture),
+                        EmployeeId = Convert.ToString(reader["vEmp_id"], CultureInfo.InvariantCulture),
+                        EmployeeName = Convert.ToString(reader["vEmp_name"], CultureInfo.InvariantCulture),
                         DoorName = doorId,
                         ControllerName = controllerId
                     };
@@ -510,6 +507,38 @@ namespace Pms.AccessCardAgent
             return controllerSn;
         }
 
+        internal static object[] BuildMjSystemPermissionArguments(
+            string controllerSn,
+            string employeeId,
+            long cardNo,
+            int sequence,
+            DateTime beginDate,
+            DateTime endDate,
+            long controlSegmentId,
+            string doorPassword,
+            string employeeName,
+            string cardProtocol)
+        {
+            if (cardProtocol != "0" && cardProtocol != "1")
+                throw new InvalidOperationException("MjSystem 卡片协议必须是旧管理软件配置的 0 或 1");
+            if (sequence <= 0) throw new InvalidOperationException("MjSystem 下发序号必须大于 0");
+
+            var arguments = new object[48];
+            for (var index = 0; index < arguments.Length; index++) arguments[index] = "";
+            arguments[0] = "1D";
+            arguments[1] = NormalizeMjSystemControllerSerial(controllerSn);
+            arguments[2] = employeeId ?? "";
+            arguments[3] = cardNo.ToString(CultureInfo.InvariantCulture);
+            arguments[4] = sequence.ToString(CultureInfo.InvariantCulture);
+            arguments[5] = beginDate.ToString("yyyy/M/d H:mm:ss", CultureInfo.InvariantCulture);
+            arguments[6] = endDate.ToString("yyyy/M/d H:mm:ss", CultureInfo.InvariantCulture);
+            arguments[7] = controlSegmentId.ToString(CultureInfo.InvariantCulture);
+            arguments[8] = String.IsNullOrWhiteSpace(doorPassword) ? "000000" : doorPassword.Trim();
+            arguments[9] = employeeName ?? "";
+            arguments[10] = cardProtocol;
+            return arguments;
+        }
+
         private static string[] MjSystemDoors(OleDbConnection connection, string buildingNo)
         {
             var normalized = NormalizeBuilding(buildingNo);
@@ -580,6 +609,9 @@ namespace Pms.AccessCardAgent
             public DateTime EndDate;
             public long ControlSegmentId;
             public long Password;
+            public string DoorPasswordText;
+            public string EmployeeId;
+            public string EmployeeName;
             public long ControllerSn;
             public string ControllerSnText;
             public string ControllerName;
@@ -628,10 +660,23 @@ namespace Pms.AccessCardAgent
                 }
             }
 
-            public string BuildCommand(string controllerSn, string function)
+            public string BuildPermissionCommand(ControllerUploadRecord record, int sequence, string cardProtocol)
             {
-                controllerSn = NormalizeMjSystemControllerSerial(controllerSn);
-                var result = Convert.ToString(Invoke("CreatCmd", new object[] { controllerSn, function }), CultureInfo.InvariantCulture);
+                if (record == null) throw new ArgumentNullException("record");
+                var arguments = BuildMjSystemPermissionArguments(
+                    record.ControllerSnText,
+                    record.EmployeeId,
+                    record.CardNo,
+                    sequence,
+                    record.BeginDate,
+                    record.EndDate,
+                    record.ControlSegmentId,
+                    record.DoorPasswordText,
+                    record.EmployeeName,
+                    cardProtocol);
+                // 原 IISSystem.exe 为 1D（新增权限）直接调用该 SDK 方法，其返回值已是完整 0x9E 指令。
+                // 不得再把返回值交给 CreatCmd 二次包装。
+                var result = Convert.ToString(InvokeAllInOutStrings("CreateBstrFuncData", arguments), CultureInfo.InvariantCulture);
                 if (String.IsNullOrWhiteSpace(result))
                     throw new InvalidOperationException("MjSystem 原生 SDK 未能生成控制器命令（错误码 " + ErrorCode().ToString(CultureInfo.InvariantCulture) + "）");
                 return result;
@@ -704,6 +749,15 @@ namespace Pms.AccessCardAgent
             {
                 var modifier = new ParameterModifier(arguments.Length);
                 foreach (var inOutIndex in inOutIndices) modifier[inOutIndex] = true;
+                return _instance.GetType().InvokeMember(name,
+                    BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.Public,
+                    null, _instance, arguments, new[] { modifier }, CultureInfo.InvariantCulture, null);
+            }
+
+            private object InvokeAllInOutStrings(string name, object[] arguments)
+            {
+                var modifier = new ParameterModifier(arguments.Length);
+                for (var index = 0; index < arguments.Length; index++) modifier[index] = true;
                 return _instance.GetType().InvokeMember(name,
                     BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.Public,
                     null, _instance, arguments, new[] { modifier }, CultureInfo.InvariantCulture, null);

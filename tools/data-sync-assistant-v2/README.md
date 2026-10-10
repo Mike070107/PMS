@@ -4,6 +4,7 @@
 
 ## 已接入能力
 
+- 2.5.39（源码待现场部署）：MjSystem 新增权限完全改用原管理软件的 `CreateBstrFuncData("1D", ...)` 路径，把员工编号、WG 卡号、有效期、时间组、门密码、姓名和 WG26/WG34 参数交由厂家 SDK 编码，并直接发送其返回的完整 `0x9E` 指令；不再手工拼 iCCard `0711` 权限数据，也不再二次调用 `CreatCmd` 包装。
 - 2.5.38：MjSystem 串口下发与原管理软件保持一致，调用 `GetAndSendInfo34Or26`，并从旧软件 `dbconnect.ini` 的 `[SendKey]` 读取 WG26/WG34 协议参数；不再错误固定调用 `GetAndSendInfo26`。
 - 2.5.37：MjSystem 的 VB6 ActiveX 通信 SDK 改为只在专用 STA 线程中调用，并在同一线程显式初始化和释放 OLE。
 - 2.5.36：MjSystem 原生 SDK 按类型库的 `in/out BSTR` 约定读取控制器回包，不再把 SDK 返回的发送命令回显误当成控制器响应；只有真实回包通过 `ThenCommandVail` 才记为已下发。错误码 2 不再直接断言 COM1 被占用，失败记录分开显示 SDK 调用返回与控制器回包。
