@@ -28,6 +28,10 @@ class TransformTest(unittest.TestCase):
         self.assertTrue(all(row["house"] == {"houseId": 900} for row in payload["bills"]))
         self.assertEqual(payload["bills"][0]["legacyRef"], "apartment:order:7:electricity")
         self.assertEqual(payload["bills"][0]["paymentMethod"], "wechat")
+        self.assertEqual(payload["owners"], [{
+            "house": {"houseId": 900}, "name": "张三", "phone": None,
+            "legacyRef": "apartment:address:11:owner",
+        }])
         self.assertEqual(len(rejected), 1)
         self.assertEqual([row["feeCode"] for row in payload["standards"]], ["electricity", "rent"])
         self.assertEqual(payload["standards"][0]["house"], {"houseId": 900})

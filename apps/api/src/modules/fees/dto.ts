@@ -425,6 +425,26 @@ export class HouseLocatorDto {
   roomNo?: string;
 }
 
+export class ImportOwnerRowDto {
+  @ValidateNested()
+  @Type(() => HouseLocatorDto)
+  house: HouseLocatorDto;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  name?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string | null;
+
+  @IsString()
+  @MaxLength(60)
+  legacyRef: string;
+}
+
 export class ImportStandardRowDto {
   @ValidateNested()
   @Type(() => HouseLocatorDto)
@@ -580,6 +600,12 @@ export class ImportBillRowDto {
 }
 
 export class ImportFeesDto {
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ImportOwnerRowDto)
+  owners?: ImportOwnerRowDto[];
+
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

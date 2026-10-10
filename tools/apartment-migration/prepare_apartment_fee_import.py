@@ -76,6 +76,20 @@ def paid_time(row: Mapping[str, str]) -> str:
 
 def transform(mapping_rows: Sequence[Mapping[str, str]], order_rows: Sequence[Mapping[str, str]], price_rows: Sequence[Mapping[str, str]] = ()):
     addresses = {str(row.get("ID") or "").strip(): row for row in mapping_rows}
+    owners = []
+    for row in mapping_rows:
+        if row.get("match_status") != "matched" or not row.get("house_id"):
+            continue
+        name = str(row.get("姓名") or "").strip()
+        phone = str(row.get("手机号") or "").strip()
+        if not name and not phone:
+            continue
+        owners.append({
+            "house": {"houseId": int(row["house_id"])},
+            "name": name or None,
+            "phone": phone or None,
+            "legacyRef": f"apartment:address:{str(row.get('ID') or '').strip()}:owner",
+        })
     bills = []
     rejected = []
     for order in order_rows:
@@ -142,7 +156,7 @@ def transform(mapping_rows: Sequence[Mapping[str, str]], order_rows: Sequence[Ma
                     "status": "active", "remark": f"旧公寓系统社区单价，计费单位：{unit}",
                     "legacyRef": f"apartment:price:{legacy_community}:{house_id}:{code}",
                 })
-    return {"standards": standards, "bills": bills}, rejected
+    return {"owners": owners, "standards": standards, "bills": bills}, rejected
 
 
 def main() -> int:
@@ -160,7 +174,7 @@ def main() -> int:
     with args.rejected_csv.open("w", encoding="utf-8-sig", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=["订单ID", "地址ID", "原因"])
         writer.writeheader(); writer.writerows(rejected)
-    print(json.dumps({"standards": len(payload["standards"]), "bills": len(payload["bills"]), "rejected": len(rejected)}, ensure_ascii=False))
+    print(json.dumps({"owners": len(payload["owners"]), "standards": len(payload["standards"]), "bills": len(payload["bills"]), "rejected": len(rejected)}, ensure_ascii=False))
     return 0
 
 

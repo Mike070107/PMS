@@ -981,16 +981,97 @@ export class FeesService {
     }
     const standards = dto.standards ?? [];
     const bills = dto.bills ?? [];
-    if (!standards.length && !bills.length) {
+    const owners = dto.owners ?? [];
+    if (!owners.length && !standards.length && !bills.length) {
       throw new BadRequestException('没有要导入的数据');
     }
 
     return this.dataSource.transaction(async (manager) => {
       const index = await HouseIndex.load(manager, tenantId);
       const result = {
+        owners: { created: 0, updated: 0, unmatched: [] as string[], conflicts: [] as string[] },
         standards: { created: 0, updated: 0, unmatched: [] as string[] },
         bills: { created: 0, updated: 0, unmatched: [] as string[] },
       };
+
+      // ---- 住户资料 ----
+      if (owners.length) {
+        const refs = owners.map((row) => row.legacyRef);
+        const existingByRef = await manager.find(User, {
+          where: { tenantId, role: UserRole.OWNER, legacyRef: In(refs) },
+        });
+        const byRef = new Map(existingByRef.map((owner) => [owner.legacyRef as string, owner]));
+        const houseIds = Array.from(new Set(owners.map((row) => index.resolve(row.house)?.id).filter((id): id is number => !!id)));
+        const existingByHouse = houseIds.length
+          ? await manager.find(User, {
+              where: { tenantId, role: UserRole.OWNER, status: UserStatus.ACTIVE, houseId: In(houseIds) },
+              order: { id: 'ASC' },
+            })
+          : [];
+        const byHouse = new Map<number, User[]>();
+        existingByHouse.forEach((owner) => byHouse.set(owner.houseId as number, [...(byHouse.get(owner.houseId as number) ?? []), owner]));
+        const toSave: User[] = [];
+        for (const row of owners) {
+          const house = index.resolve(row.house);
+          if (!house) {
+            result.owners.unmatched.push(HouseIndex.describe(row.house));
+            continue;
+          }
+          const name = row.name?.trim() || null;
+          const phone = row.phone?.trim() || null;
+          let owner = byRef.get(row.legacyRef) ?? null;
+          if (owner) {
+            owner.houseId = house.id;
+            if (name) owner.name = name;
+            if (phone) owner.phone = phone;
+            owner.source = OwnerSource.LEGACY_IMPORT;
+            owner.updatedBy = user.id;
+            result.owners.updated += 1;
+          } else {
+            const current = byHouse.get(house.id) ?? [];
+            if (current.length > 1 || (current.length === 1 && (
+              (name && current[0].name && name !== current[0].name)
+              || (phone && current[0].phone && phone !== current[0].phone)
+            ))) {
+              result.owners.conflicts.push(HouseIndex.describe(row.house));
+              continue;
+            }
+            if (current.length === 1) {
+              owner = current[0];
+              if (!owner.name && name) owner.name = name;
+              if (!owner.phone && phone) owner.phone = phone;
+              if (!owner.legacyRef) owner.legacyRef = row.legacyRef;
+              owner.updatedBy = user.id;
+              result.owners.updated += 1;
+            } else {
+              owner = manager.create(User, {
+                tenantId,
+                wxOpenid: null,
+                wxUnionid: null,
+                wxMpOpenid: null,
+                name,
+                phone,
+                wxNickname: null,
+                passwordHash: null,
+                loginAccount: null,
+                role: UserRole.OWNER,
+                houseId: house.id,
+                status: UserStatus.ACTIVE,
+                source: OwnerSource.LEGACY_IMPORT,
+                contactNote: null,
+                legacyRef: row.legacyRef,
+                createdBy: user.id,
+                updatedBy: user.id,
+              });
+              byHouse.set(house.id, [owner]);
+              result.owners.created += 1;
+            }
+          }
+          byRef.set(row.legacyRef, owner);
+          toSave.push(owner);
+        }
+        if (toSave.length) await manager.save(toSave, { chunk: 500 });
+      }
 
       // ---- 收费标准 ----
       if (standards.length) {
