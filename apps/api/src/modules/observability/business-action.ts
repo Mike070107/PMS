@@ -97,6 +97,7 @@ const RULES: Rule[] = [
   { method: 'PATCH', pattern: /^\/owners-mgmt\/(\d+)$/, code: 'owner_update', label: '修改业主档案', area: '业主', objectType: 'owner' },
   { method: 'DELETE', pattern: /^\/owners-mgmt\/(\d+)$/, code: 'owner_delete', label: '删除业主档案', area: '业主', objectType: 'owner' },
   { method: 'POST', pattern: /^\/fees\/bills$/, code: 'fee_bill_create', label: '新增物业费账单', area: '收费', objectType: 'fee_bill' },
+  { method: 'POST', pattern: /^\/fees\/cashier\/charges$/, code: 'apartment_charge_create', label: '办理公寓收费', area: '收费', objectType: 'fee_bill' },
   { method: 'PATCH', pattern: /^\/fees\/bills\/(\d+)$/, code: 'fee_bill_update', label: '修改物业费账单', area: '收费', objectType: 'fee_bill' },
   { method: 'DELETE', pattern: /^\/fees\/bills\/(\d+)$/, code: 'fee_bill_delete', label: '删除物业费账单', area: '收费', objectType: 'fee_bill' },
   { method: 'POST', pattern: /^\/fees\/bills\/pay$/, code: 'fee_bill_pay', label: '登记物业费收款', area: '收费', objectType: 'fee_bill' },

@@ -12,7 +12,9 @@ import {
   FeeBillSource,
   FeeBillStatus,
   FeeStandardStatus,
+  OwnerSource,
   UserRole,
+  UserStatus,
   feeItemName,
 } from '../../common/enums';
 import { addNaturalOrderBy } from '../../common/natural-order';
@@ -23,6 +25,7 @@ import { Building, Community, FeeBill, FeeStandard, House, User } from '../../en
 import {
   ArrearsQueryDto,
   CancelBillsDto,
+  CreateCashierChargeDto,
   CreateBillDto,
   CreateStandardDto,
   GenerateBillsDto,
@@ -33,6 +36,7 @@ import {
   UpdateBillDto,
   UpdateStandardDto,
 } from './dto';
+import { mergeCashierContact, normalizeCashierContact, normalizeCashierItems } from './cashier.util';
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -333,6 +337,189 @@ export class FeesService {
       bills,
       standards,
     };
+  }
+
+  /** 收费台的房间历史：一张收据一行，按实际收费时间倒序，固定 10 条分页。 */
+  async cashierHistory(houseId: number, pageInput: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const place = await this.resolveHousePlace(tenantId, houseId);
+    this.assertCommunityInScope(place.communityId, access);
+    const page = Math.max(1, Number(pageInput) || 1);
+    const pageSize = 10;
+    const base = this.billRepo
+      .createQueryBuilder('f')
+      .where('f.tenant_id = :tenantId', { tenantId })
+      .andWhere('f.house_id = :houseId', { houseId })
+      .andWhere('f.receipt_no IS NOT NULL')
+      .andWhere('f.paid_at IS NOT NULL');
+    const count = await base.clone()
+      .select('COUNT(DISTINCT f.receipt_no)', 'total')
+      .getRawOne<{ total: string }>();
+    const headers = await base.clone()
+      .select('f.receipt_no', 'receiptNo')
+      .addSelect('MAX(f.paid_at)', 'paidAt')
+      .addSelect('MAX(f.payment_method)', 'paymentMethod')
+      .addSelect('MAX(f.cashier)', 'cashier')
+      .addSelect('MAX(f.remark)', 'remark')
+      .addSelect('SUM(f.amount_cents)', 'amountCents')
+      .addSelect(`BOOL_OR(f.status = '${FeeBillStatus.REFUNDED}')`, 'refunded')
+      .groupBy('f.receipt_no')
+      .orderBy('MAX(f.paid_at)', 'DESC')
+      .addOrderBy('f.receipt_no', 'DESC')
+      .offset((page - 1) * pageSize)
+      .limit(pageSize)
+      .getRawMany<any>();
+    const receiptNos = headers.map((row) => row.receiptNo);
+    const items = receiptNos.length
+      ? await this.billRepo.find({
+          where: { tenantId, houseId, receiptNo: In(receiptNos) },
+          order: { id: 'ASC' },
+        })
+      : [];
+    const itemsByReceipt = new Map<string, FeeBill[]>();
+    items.forEach((item) => {
+      const key = item.receiptNo as string;
+      itemsByReceipt.set(key, [...(itemsByReceipt.get(key) ?? []), item]);
+    });
+    return {
+      rows: headers.map((row) => ({
+        receiptNo: row.receiptNo,
+        paidAt: row.paidAt,
+        paymentMethod: row.paymentMethod,
+        cashier: row.cashier,
+        remark: row.remark,
+        amountCents: Number(row.amountCents),
+        status: row.refunded ? FeeBillStatus.REFUNDED : FeeBillStatus.PAID,
+        items: (itemsByReceipt.get(row.receiptNo) ?? []).map((item) => ({
+          id: item.id,
+          feeCode: item.feeCode,
+          feeName: item.feeName,
+          quantity: item.quantity === null ? null : Number(item.quantity),
+          unit: item.unit,
+          unitPriceCents: item.unitPriceCents,
+          amountCents: item.amountCents,
+          serviceFrom: item.serviceFrom,
+          serviceTo: item.serviceTo,
+          vehiclePlate: item.vehiclePlate,
+        })),
+      })),
+      total: Number(count?.total || 0),
+      page,
+      pageSize,
+    };
+  }
+
+  /** 公寓收费台：同步住户资料和记账必须同成同败。 */
+  async createCashierCharge(
+    dto: CreateCashierChargeDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const place = await this.resolveHousePlace(tenantId, dto.houseId);
+    this.assertCommunityInScope(place.communityId, access);
+    const items = normalizeCashierItems(dto.items);
+    items.forEach((item) => this.assertFeeCode(item.feeCode));
+    const contact = normalizeCashierContact(dto.ownerName, dto.ownerPhone);
+    const receiptNo = await this.nextReceiptNo(tenantId);
+    const cashier = await this.operatorName(user.id);
+    const paidAt = dto.paidAt ? new Date(`${dto.paidAt}T12:00:00+08:00`) : new Date();
+    const period = dto.paidAt
+      ? dto.paidAt.slice(0, 7).replace('-', '')
+      : `${paidAt.getFullYear()}${String(paidAt.getMonth() + 1).padStart(2, '0')}`;
+
+    return this.dataSource.transaction(async (manager) => {
+      let owner: User | null = null;
+      if (dto.ownerId) {
+        owner = await manager.findOne(User, {
+          where: { id: dto.ownerId, tenantId, role: UserRole.OWNER, houseId: dto.houseId },
+        });
+        if (!owner) throw new BadRequestException('所选住户已不属于这个房间，请刷新后重试');
+      } else {
+        owner = await manager.findOne(User, {
+          where: { tenantId, role: UserRole.OWNER, houseId: dto.houseId, status: UserStatus.ACTIVE },
+          order: { id: 'ASC' },
+        });
+      }
+
+      if (contact.phone && contact.phone !== owner?.phone) {
+        const duplicate = await manager.findOne(User, {
+          where: { tenantId, role: UserRole.OWNER, phone: contact.phone },
+        });
+        if (duplicate && duplicate.id !== owner?.id) {
+          throw new BadRequestException('该手机号已登记在另一位业主名下，收费记录未保存');
+        }
+      }
+
+      if (owner) {
+        const mergedContact = mergeCashierContact(owner, contact);
+        owner.name = mergedContact.name;
+        owner.phone = mergedContact.phone;
+        owner.updatedBy = user.id;
+        await manager.save(User, owner);
+      } else if (contact.name || contact.phone) {
+        owner = await manager.save(User, manager.create(User, {
+          tenantId,
+          wxOpenid: null,
+          wxUnionid: null,
+          wxMpOpenid: null,
+          name: contact.name,
+          phone: contact.phone,
+          wxNickname: null,
+          passwordHash: null,
+          loginAccount: null,
+          role: UserRole.OWNER,
+          houseId: dto.houseId,
+          status: UserStatus.ACTIVE,
+          source: OwnerSource.MANUAL,
+          contactNote: null,
+          legacyRef: null,
+          createdBy: user.id,
+          updatedBy: user.id,
+        }));
+      }
+
+      const rows = items.map((item) => manager.create(FeeBill, {
+        tenantId,
+        communityId: place.communityId,
+        houseId: dto.houseId,
+        ownerId: owner?.id ?? null,
+        ownerName: contact.name ?? owner?.name ?? null,
+        feeCode: item.feeCode,
+        feeName: feeItemName(item.feeCode),
+        period,
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPriceCents: item.unitPriceCents,
+        amountCents: item.amountCents,
+        serviceFrom: item.serviceFrom,
+        serviceTo: item.serviceTo,
+        vehiclePlate: item.vehiclePlate,
+        legacyPayload: null,
+        status: FeeBillStatus.PAID,
+        paidAt,
+        paymentMethod: dto.paymentMethod,
+        receiptNo,
+        invoiceNo: null,
+        cashier,
+        refundedAt: null,
+        remark: [dto.remark?.trim(), item.remark].filter(Boolean).join('；') || null,
+        source: FeeBillSource.MANUAL,
+        standardId: null,
+        legacyRef: null,
+        createdBy: user.id,
+        updatedBy: user.id,
+      }));
+      await manager.save(FeeBill, rows);
+      return {
+        ok: true,
+        receiptNo,
+        paidAt,
+        ownerId: owner?.id ?? null,
+        amountCents: rows.reduce((sum, item) => sum + item.amountCents, 0),
+        itemCount: rows.length,
+      };
+    });
   }
 
   async createBill(dto: CreateBillDto, user: AuthUser, access?: ResolvedAccess) {
@@ -902,6 +1089,15 @@ export class FeesService {
             feeName: row.feeName || feeItemName(row.feeCode),
             period: row.period,
             amountCents: row.amountCents,
+            quantity: row.quantity === undefined || row.quantity === null
+              ? null
+              : Number(row.quantity).toFixed(3),
+            unit: row.unit ?? null,
+            unitPriceCents: row.unitPriceCents ?? null,
+            serviceFrom: row.serviceFrom ?? null,
+            serviceTo: row.serviceTo ?? null,
+            vehiclePlate: row.vehiclePlate ?? null,
+            legacyPayload: row.legacyPayload ?? null,
             status: row.status ?? FeeBillStatus.UNPAID,
             paidAt: row.paidAt ? new Date(row.paidAt) : null,
             paymentMethod: row.paymentMethod ?? null,

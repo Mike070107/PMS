@@ -49,6 +49,19 @@ test('日志详情只摘要业务索引，不记联系人和表单原文', () =>
   assert.deepEqual(event.detail, { communityId: 3, entryMode: 'form' });
 });
 
+test('公寓收费提交进入日志管理且不记录住户隐私', () => {
+  const event = resolveBusinessAction('POST', '/api/v1/fees/cashier/charges', {
+    houseId: 900,
+    ownerName: '不应进入日志',
+    ownerPhone: '13800000000',
+    paymentMethod: 'wechat',
+    items: [{ feeCode: 'rent', amountCents: 120000 }],
+  });
+  assert.equal(event.code, 'apartment_charge_create');
+  assert.equal(event.label, '办理公寓收费');
+  assert.deepEqual(event.detail, { houseId: 900, itemCount: 1 });
+});
+
 test('暂未配置中文名的接口也按路由分别统计，不再全部混成一个事件', () => {
   const upload = resolveBusinessAction('POST', '/api/v1/upload');
   const notice = resolveBusinessAction('POST', '/api/v1/notifications/templates/test');

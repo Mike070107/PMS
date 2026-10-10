@@ -50,7 +50,7 @@ export class PropertiesController {
 
   @Get('communities')
   // 库存页仓库档案要按名称选「所属小区」，管库存的人未必有房产页权限
-  @RequirePermission(['properties', 'qr', 'users', 'work-orders', 'inventory'], 'view')
+  @RequirePermission(['properties', 'qr', 'users', 'work-orders', 'inventory', 'fees'], 'view')
   listCommunities(
     @Query() query: CommunityQueryDto,
     @CurrentUser() user: AuthUser,
@@ -163,7 +163,7 @@ export class PropertiesController {
   // ---------------- Buildings ----------------
 
   @Get('buildings')
-  @RequirePermission(['properties', 'qr', 'work-orders'], 'view')
+  @RequirePermission(['properties', 'qr', 'work-orders', 'fees'], 'view')
   listBuildings(
     @Query() query: BuildingQueryDto,
     @CurrentUser() user: AuthUser,
@@ -249,7 +249,7 @@ export class PropertiesController {
   // ---------------- Houses ----------------
 
   @Get('houses')
-  @RequirePermission(['properties', 'business'], 'view')
+  @RequirePermission(['properties', 'business', 'fees'], 'view')
   listHouses(
     @Query() query: HouseQueryDto,
     @CurrentUser() user: AuthUser,
@@ -264,7 +264,7 @@ export class PropertiesController {
    * 用同一个接口凑会逼着列表把全量拉回来（房产上了 5000 套就顶到上限了）。
    */
   @Get('houses/summary')
-  @RequirePermission(['properties', 'business'], 'view')
+  @RequirePermission(['properties', 'business', 'fees'], 'view')
   houseSummary(
     @Query() query: HouseQueryDto,
     @CurrentUser() user: AuthUser,

@@ -20,7 +20,7 @@ import {
   Typography,
 } from 'antd';
 import {
-  DollarOutlined,
+  CreditCardOutlined,
   EditOutlined,
   FileTextOutlined,
   PlusOutlined,
@@ -47,6 +47,7 @@ import { request } from '../lib/api';
 import { handleGone } from '../lib/gone';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
+import ApartmentCashierPage from './ApartmentCashierPage';
 
 const { Title, Text } = Typography;
 
@@ -172,7 +173,7 @@ function placeText(r: {
 }
 
 export default function FeesPage() {
-  const [tab, setTab] = useState('bills');
+  const [tab, setTab] = useState('cashier');
   const [detailHouseId, setDetailHouseId] = useState<number | null>(null);
 
   return (
@@ -187,6 +188,11 @@ export default function FeesPage() {
         onChange={setTab}
         items={[
           {
+            key: 'cashier',
+            label: <span><CreditCardOutlined /> 收费工作台</span>,
+            children: <ApartmentCashierPage />,
+          },
+          {
             key: 'bills',
             label: <span><FileTextOutlined /> 账单</span>,
             children: <BillsTab onOpenHouse={setDetailHouseId} />,
@@ -196,11 +202,6 @@ export default function FeesPage() {
             label: <span><WarningOutlined /> 欠费催缴</span>,
             children: <ArrearsTab onOpenHouse={setDetailHouseId} />,
           },
-          {
-            key: 'standards',
-            label: <span><DollarOutlined /> 收费标准</span>,
-            children: <StandardsTab onOpenHouse={setDetailHouseId} />,
-          },
         ]}
       />
       <HouseDetailModal
@@ -208,6 +209,16 @@ export default function FeesPage() {
         onClose={() => setDetailHouseId(null)}
       />
     </div>
+  );
+}
+
+export function FeeStandardsPanel() {
+  const [detailHouseId, setDetailHouseId] = useState<number | null>(null);
+  return (
+    <>
+      <StandardsTab onOpenHouse={setDetailHouseId} />
+      <HouseDetailModal houseId={detailHouseId} onClose={() => setDetailHouseId(null)} />
+    </>
   );
 }
 

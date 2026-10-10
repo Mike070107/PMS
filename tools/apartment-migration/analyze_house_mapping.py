@@ -30,6 +30,15 @@ COMMUNITY_RULES: Mapping[int, CommunityRule] = {
     4: CommunityRule("22", "馨香臣寓马桥店"),
 }
 
+# 吴泾旧库只写 A/B/C/D/E 栋，PMS 按现场门牌保存完整楼栋名。
+WU_JING_BUILDING_MAP = {
+    "a": "A栋34号",
+    "b": "B栋35号",
+    "c": "C栋39号",
+    "d": "D栋41号",
+    "e": "E栋40号",
+}
+
 
 def compact(value: object) -> str:
     return re.sub(r"\s+", "", str(value or "").strip()).replace("（", "(").replace("）", ")")
@@ -51,6 +60,15 @@ def normalize_room(value: object) -> str:
     if match:
         text = match.group(1)
     return text.casefold()
+
+
+def normalize_legacy_building(community_id: int, value: object) -> str:
+    normalized = normalize_building(value)
+    if community_id == 1:
+        target = WU_JING_BUILDING_MAP.get(normalized)
+        if target:
+            return normalize_building(target)
+    return normalized
 
 
 def normalize_lane(value: object) -> str:
@@ -125,7 +143,12 @@ def analyze(old_rows: Iterable[Mapping[str, str]], pms_rows: Iterable[Mapping[st
         if not rule:
             results.append({**dict(old), "match_status": "unknown_community", "contact_action": "not_applicable"})
             continue
-        key = house_key(rule.pms_community_id, rule.required_lane, old.get("楼栋号"), old.get("房间号"))
+        key = (
+            compact(rule.pms_community_id),
+            normalize_lane(rule.required_lane).casefold(),
+            normalize_legacy_building(community_id, old.get("楼栋号")),
+            normalize_room(old.get("房间号")),
+        )
         ids = sorted(house_ids_by_key.get(key, set()), key=lambda value: int(value))
         status = "matched" if len(ids) == 1 else "ambiguous" if ids else "unmatched"
         house_id = ids[0] if len(ids) == 1 else ""
@@ -137,7 +160,7 @@ def analyze(old_rows: Iterable[Mapping[str, str]], pms_rows: Iterable[Mapping[st
                 "target_community_id": rule.pms_community_id,
                 "target_community": rule.pms_community_name,
                 "required_lane": rule.required_lane or "",
-                "normalized_building": normalize_building(old.get("楼栋号")),
+                "normalized_building": normalize_legacy_building(community_id, old.get("楼栋号")),
                 "normalized_room": normalize_room(old.get("房间号")),
                 "match_status": status,
                 "candidate_house_ids": "|".join(ids),

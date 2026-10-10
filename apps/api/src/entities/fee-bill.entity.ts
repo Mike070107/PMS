@@ -3,11 +3,11 @@ import { TenantEntity } from '../common/base.entity';
 import { FeeBillSource, FeeBillStatus } from '../common/enums';
 
 /**
- * 物业费账单：一户、一个费用项目、一个账期（月）一条。
+ * 统一收费明细：一户、一个费用项目、一个账期（月）一条。
  *
  * 只做记账：登记收款 / 撤销收款 / 作废，不接在线支付。
- * 老系统的 wyzj 表就是这个粒度（每户每月一行，收款日期为空即欠费），
- * 导入时一行对一行，legacy_ref 保证重跑不建重。
+ * 物业费欠费与公寓收费共用这一张账目表；一次公寓收款的多个项目用同一 receipt_no
+ * 归为一张收据。旧系统导入按项目拆行，legacy_ref 保证重跑不建重。
  */
 @Entity('fee_bills')
 @Index(['tenantId', 'houseId', 'period'])
@@ -43,6 +43,29 @@ export class FeeBill extends TenantEntity {
   @Column({ name: 'amount_cents', type: 'int' })
   amountCents: number;
 
+  /** 公寓收费台的数量/单位/单价；普通物业费账单可为空。 */
+  @Column({ type: 'numeric', precision: 12, scale: 3, nullable: true })
+  quantity: string | null;
+
+  @Column({ type: 'varchar', length: 12, nullable: true })
+  unit: string | null;
+
+  @Column({ name: 'unit_price_cents', type: 'int', nullable: true })
+  unitPriceCents: number | null;
+
+  @Column({ name: 'service_from', type: 'date', nullable: true })
+  serviceFrom: string | null;
+
+  @Column({ name: 'service_to', type: 'date', nullable: true })
+  serviceTo: string | null;
+
+  @Column({ name: 'vehicle_plate', type: 'varchar', length: 30, nullable: true })
+  vehiclePlate: string | null;
+
+  /** 原公寓系统订单快照，便于迁移核对，不参与业务计算。 */
+  @Column({ name: 'legacy_payload', type: 'jsonb', nullable: true })
+  legacyPayload: Record<string, unknown> | null;
+
   @Column({ type: 'varchar', length: 20, default: FeeBillStatus.UNPAID })
   status: FeeBillStatus;
 
@@ -77,7 +100,7 @@ export class FeeBill extends TenantEntity {
   @Column({ name: 'standard_id', type: 'int', nullable: true })
   standardId: number | null;
 
-  /** 导入来源标识（wjwy:zj:<wyzj.ZJ_ID>），重跑导入时按它去重 */
+  /** 导入来源标识，重跑导入时按它去重。 */
   @Column({ name: 'legacy_ref', type: 'varchar', length: 60, nullable: true })
   legacyRef: string | null;
 }

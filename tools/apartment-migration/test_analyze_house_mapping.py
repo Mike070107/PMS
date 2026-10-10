@@ -27,7 +27,7 @@ class NormalizeTest(unittest.TestCase):
     def test_maps_legacy_wujing_apartment_to_pms_wujing_apartment(self):
         legacy = [{"ID": "2", "小区编号": "1", "楼栋号": "A栋", "房间号": "101", "姓名": "", "手机号": ""}]
         pms = [
-            {"community_id": "20", "community_name": "馨香臣寓吴泾店", "lane": "", "building_no": "A", "room_no": "101", "house_id": "10"},
+            {"community_id": "20", "community_name": "馨香臣寓吴泾店", "lane": "", "building_no": "A栋34号", "room_no": "101", "house_id": "10"},
             {"community_id": "19", "community_name": "吴泾一村", "lane": "", "building_no": "A", "room_no": "101", "house_id": "11"},
         ]
         row = MAPPING.analyze(legacy, pms)[0]

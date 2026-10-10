@@ -5,6 +5,8 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
@@ -216,6 +218,94 @@ export class CancelBillsDto {
   reason?: string;
 }
 
+export class CashierChargeItemDto {
+  @IsString()
+  @MaxLength(20)
+  feeCode: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  quantity?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(12)
+  unit?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  unitPriceCents?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  amountCents: number;
+
+  @IsOptional()
+  @Matches(DATE_RE, { message: '开始日期格式应为 YYYY-MM-DD' })
+  serviceFrom?: string;
+
+  @IsOptional()
+  @Matches(DATE_RE, { message: '结束日期格式应为 YYYY-MM-DD' })
+  serviceTo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  vehiclePlate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  remark?: string;
+}
+
+/** 公寓收费台一次提交：住户资料同步和全部收费明细在同一事务中完成。 */
+export class CreateCashierChargeDto {
+  @Type(() => Number)
+  @IsInt()
+  houseId: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  ownerId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  ownerName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  ownerPhone?: string;
+
+  @IsString()
+  @IsIn(['cash', 'wechat', 'alipay'])
+  paymentMethod: string;
+
+  @IsOptional()
+  @Matches(DATE_RE, { message: '收费日期格式应为 YYYY-MM-DD' })
+  paidAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  remark?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => CashierChargeItemDto)
+  items: CashierChargeItemDto[];
+}
+
 export class GenerateBillsDto {
   @Type(() => Number)
   @IsInt()
@@ -411,6 +501,40 @@ export class ImportBillRowDto {
   @Type(() => Number)
   @IsInt()
   amountCents: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  quantity?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(12)
+  unit?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  unitPriceCents?: number | null;
+
+  @IsOptional()
+  @Matches(DATE_RE)
+  serviceFrom?: string | null;
+
+  @IsOptional()
+  @Matches(DATE_RE)
+  serviceTo?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  vehiclePlate?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  legacyPayload?: Record<string, unknown> | null;
 
   @IsOptional()
   @IsIn(Object.values(FeeBillStatus))

@@ -19,6 +19,7 @@ import { PermissionsGuard } from '../access/permissions.guard';
 import {
   ArrearsQueryDto,
   CancelBillsDto,
+  CreateCashierChargeDto,
   CreateBillDto,
   CreateStandardDto,
   GenerateBillsDto,
@@ -83,6 +84,27 @@ export class FeesController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.feesService.houseDetail(houseId, user, access);
+  }
+
+  @Get('cashier/houses/:houseId/history')
+  @RequirePermission('fees', 'view')
+  cashierHistory(
+    @Param('houseId', ParseIntPipe) houseId: number,
+    @Query('page') page: string,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feesService.cashierHistory(houseId, Number(page), user, access);
+  }
+
+  @Post('cashier/charges')
+  @RequirePermission('fees', 'edit')
+  createCashierCharge(
+    @Body() dto: CreateCashierChargeDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feesService.createCashierCharge(dto, user, access);
   }
 
   @Post('bills')
@@ -169,7 +191,7 @@ export class FeesController {
   // ---------- 收费标准 ----------
 
   @Get('standards')
-  @RequirePermission('fees', 'view')
+  @RequirePermission(['settings', 'fees'], 'view')
   listStandards(
     @Query() query: ListStandardsQueryDto,
     @CurrentUser() user: AuthUser,
@@ -179,7 +201,7 @@ export class FeesController {
   }
 
   @Post('standards')
-  @RequirePermission('fees', 'edit')
+  @RequirePermission(['settings', 'fees'], 'edit')
   createStandard(
     @Body() dto: CreateStandardDto,
     @CurrentUser() user: AuthUser,
@@ -189,7 +211,7 @@ export class FeesController {
   }
 
   @Patch('standards/:id')
-  @RequirePermission('fees', 'edit')
+  @RequirePermission(['settings', 'fees'], 'edit')
   updateStandard(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateStandardDto,
@@ -200,7 +222,7 @@ export class FeesController {
   }
 
   @Delete('standards/:id')
-  @RequirePermission('fees', 'delete')
+  @RequirePermission(['settings', 'fees'], 'delete')
   deleteStandard(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import AiSamplesPanel from '../components/AiSamplesPanel';
 import AiLearningPanel from '../components/AiLearningPanel';
 import AiUsagePanel from '../components/AiUsagePanel';
+import { FeeStandardsPanel } from './FeesPage';
 
 /** 采购审批链表单（和服务端 PurchaseApprovalSetting 同形） */
 interface PurchaseApprovalForm {
@@ -144,18 +145,20 @@ function SettingSection({
   summary,
   extra,
   children,
+  wide = false,
 }: {
   title: string;
   summary: string;
   extra?: ReactNode;
   children: ReactNode;
+  wide?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const toggle = () => setOpen((v) => !v);
   return (
     <Card
       className="pms-setting-card"
-      style={{ maxWidth: 760, marginBottom: 16 }}
+      style={{ maxWidth: wide ? 1280 : 760, marginBottom: 16 }}
       styles={open ? undefined : { body: { display: 'none' } }}
       title={
         <div
@@ -527,6 +530,20 @@ export default function SettingsPage() {
 
   return (
     <div>
+      <SettingSection
+        title="收费标准"
+        summary="按 PMS 房间维护各费用项目的当前标准和生效历史"
+        wide
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="收费标准统一放在系统设置"
+          description="收费工作台只负责选房、计费和收款；修改标准不会回写已经完成的历史收费记录。"
+        />
+        <FeeStandardsPanel />
+      </SettingSection>
       <SettingSection
         title="微信订阅消息"
         summary="业主收「已派单 / 待验收」，维修工收「有新工单」，填模板 ID 才发得出去"
