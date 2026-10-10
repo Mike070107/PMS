@@ -4329,3 +4329,9 @@
 - 自上次（2f83c3f0）以来上线的相关提交：
   - e6b068c2 fix(access-card): reconcile controller upload evidence
 
+## 2026-10-10 09:23 · assistant · 7041949d
+
+- 提交：7041949d fix(access-card): run MjSystem SDK in STA
+- 自上次（e6b068c2）以来上线的相关提交：
+  - 7041949d fix(access-card): run MjSystem SDK in STA
+
