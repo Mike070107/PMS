@@ -33,6 +33,12 @@ namespace Pms.LanGatewayAssistant
                 catch (Exception exception) { MessageBox.Show(exception.Message, "更新未完成", MessageBoxButton.OK, MessageBoxImage.Error); Shutdown(1); }
                 return;
             }
+            if (e.Args.Length == 3 && e.Args[0] == "--apply-service-update")
+            {
+                try { GatewayUpdateService.ApplyService(e.Args[1], e.Args[2]); Shutdown(0); }
+                catch { Shutdown(1); }
+                return;
+            }
             if (e.Args.Length > 0 && e.Args[0] == "--self-test") { try { SelfTest.Run(); Shutdown(0); } catch { Shutdown(1); } return; }
             if (e.Args.Length > 1 && e.Args[0] == "--render-main-window") { try { SelfTest.RenderMainWindow(e.Args[1]); Shutdown(0); } catch { Shutdown(1); } return; }
             bool created; _instance = new Mutex(true, InstanceName, out created);

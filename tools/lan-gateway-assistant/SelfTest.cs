@@ -36,6 +36,8 @@ namespace Pms.LanGatewayAssistant
                 Require(!GatewayUpdateService.IsTrustedDownloadUrl(new Uri("https://prsznh.cn/downloads/other/x.exe")), "reject unrelated update path");
                 Require(GatewayUpdateService.IsSha256(new string('a', 64)), "valid sha256");
                 Require(!GatewayUpdateService.IsSha256(new string('z', 64)), "reject non-hex sha256");
+                store.WriteActivity("silent update test");
+                Require(File.Exists(store.ActivityLogPath), "silent update activity log");
                 var heartbeat = GatewayControlPlaneClient.BuildHeartbeatJson("1.2.2", true, 3, new[] { new GatewayRouteReport { AppId = 9, Healthy = true, Message = "ok" } }, null);
                 Require(heartbeat.Contains("\"appId\":9"), "heartbeat lower camel app id");
                 Require(heartbeat.Contains("\"healthy\":true"), "heartbeat lower camel health");

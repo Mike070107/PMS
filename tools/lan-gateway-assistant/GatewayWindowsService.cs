@@ -2,6 +2,7 @@ using Microsoft.Win32;
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.ServiceProcess;
 using System.Threading;
 
@@ -10,9 +11,44 @@ namespace Pms.LanGatewayAssistant
     internal sealed class GatewayWindowsService : ServiceBase
     {
         private GatewayRuntime _runtime;
+        private GatewayConfigurationStore _store;
+        private Timer _updateTimer;
+        private int _checkingUpdate;
+        private bool _updateStarted;
         public GatewayWindowsService() { ServiceName = GatewayServiceManager.ServiceName; CanStop = true; AutoLog = true; }
-        protected override void OnStart(string[] args) { _runtime = new GatewayRuntime(new GatewayConfigurationStore()); _runtime.Start(); }
-        protected override void OnStop() { if (_runtime != null) { _runtime.Dispose(); _runtime = null; } }
+        protected override void OnStart(string[] args)
+        {
+            _store = new GatewayConfigurationStore();
+            _runtime = new GatewayRuntime(_store); _runtime.Start();
+            _updateTimer = new Timer(CheckForSilentUpdate, null, TimeSpan.FromMinutes(2), TimeSpan.FromHours(6));
+            _store.WriteActivity("后台服务已启动；静默更新每 6 小时检查一次");
+        }
+        protected override void OnStop()
+        {
+            if (_updateTimer != null) { _updateTimer.Dispose(); _updateTimer = null; }
+            if (_runtime != null) { _runtime.Dispose(); _runtime = null; }
+        }
+
+        private void CheckForSilentUpdate(object state)
+        {
+            if (_updateStarted || Interlocked.Exchange(ref _checkingUpdate, 1) != 0) return;
+            try
+            {
+                var current = Assembly.GetExecutingAssembly().GetName().Version.ToString(3);
+                var update = GatewayUpdateService.CheckAndDownload(current, _store.RootPath);
+                if (!update.HasUpdate) return;
+                _updateStarted = true;
+                if (_updateTimer != null) _updateTimer.Dispose();
+                _store.WriteActivity("已验证 v" + update.Manifest.Version + " 更新包，正在静默更新后台服务");
+                GatewayUpdateService.StartServiceApply(update.DownloadedFile, _store.InstalledExecutablePath);
+            }
+            catch (Exception exception)
+            {
+                _updateStarted = false;
+                if (_store != null) _store.WriteActivity("静默检查更新失败：" + exception.Message);
+            }
+            finally { Interlocked.Exchange(ref _checkingUpdate, 0); }
+        }
     }
 
     internal static class GatewayServiceManager

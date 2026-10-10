@@ -57,11 +57,33 @@ namespace Pms.LanGatewayAssistant
             var source = Path.GetFullPath(downloadedFile);
             var target = Path.GetFullPath(targetExecutable);
             if (!File.Exists(source)) throw new FileNotFoundException("更新包不存在", source);
+            if (!File.Exists(target)) throw new FileNotFoundException("当前已安装程序不存在", target);
             if (String.Equals(source, target, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("更新包不能与当前程序使用同一文件");
             foreach (var stale in Directory.GetFiles(Path.GetDirectoryName(source), "*.runner-*.exe")) TryDelete(stale);
             var runner = source + ".runner-" + Guid.NewGuid().ToString("N") + ".exe";
             File.Copy(source, runner, true);
             Process.Start(new ProcessStartInfo { FileName = runner, Arguments = "--apply-update \"" + target + "\" " + previousProcessId + " \"" + source + "\"", UseShellExecute = true, Verb = "runas" });
+        }
+
+        public static void StartServiceApply(string downloadedFile, string targetExecutable)
+        {
+            var source = Path.GetFullPath(downloadedFile);
+            var target = Path.GetFullPath(targetExecutable);
+            if (!File.Exists(source)) throw new FileNotFoundException("更新包不存在", source);
+            if (!File.Exists(target)) throw new FileNotFoundException("当前已安装程序不存在", target);
+            if (String.Equals(source, target, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("更新包不能与当前程序使用同一文件");
+            foreach (var stale in Directory.GetFiles(Path.GetDirectoryName(source), "*.service-runner-*.exe")) TryDelete(stale);
+            var runner = source + ".service-runner-" + Guid.NewGuid().ToString("N") + ".exe";
+            File.Copy(source, runner, true);
+            var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = runner,
+                Arguments = "--apply-service-update \"" + target + "\" \"" + source + "\"",
+                WorkingDirectory = Path.GetDirectoryName(target),
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            if (process == null) throw new InvalidOperationException("无法启动静默更新器");
         }
 
         public static void Apply(string targetExecutable, int previousProcessId, string payload)
@@ -83,6 +105,35 @@ namespace Pms.LanGatewayAssistant
             {
                 try { if (File.Exists(backup)) File.Copy(backup, target, true); if (wasRunning && GatewayServiceManager.Exists()) GatewayServiceManager.Start(); } catch { }
                 throw new InvalidOperationException("更新未完成，已恢复原版本。原因：" + exception.Message, exception);
+            }
+        }
+
+        public static void ApplyService(string targetExecutable, string payload)
+        {
+            var store = new GatewayConfigurationStore();
+            var target = Path.GetFullPath(targetExecutable);
+            var source = Path.GetFullPath(payload);
+            var backup = target + ".previous";
+            try
+            {
+                if (!File.Exists(source)) throw new FileNotFoundException("更新包不存在", source);
+                if (!File.Exists(target)) throw new FileNotFoundException("当前已安装程序不存在", target);
+                GatewayServiceManager.Stop();
+                File.Copy(target, backup, true);
+                CopyWithRetry(source, target);
+                GatewayServiceManager.Start();
+                store.WriteActivity("已静默更新到 v" + FileVersionInfo.GetVersionInfo(target).FileVersion);
+            }
+            catch (Exception exception)
+            {
+                try
+                {
+                    if (File.Exists(backup)) File.Copy(backup, target, true);
+                    if (GatewayServiceManager.Exists()) GatewayServiceManager.Start();
+                }
+                catch { }
+                store.WriteActivity("静默更新失败，已尝试恢复旧版本：" + exception.Message);
+                throw;
             }
         }
 

@@ -21,6 +21,7 @@ namespace Pms.LanGatewayAssistant
         public string InstalledExecutablePath { get { return Path.Combine(RootPath, "bin", "Pms.LanGatewayAssistant.exe"); } }
         public string FrpcConfigPath { get { return Path.Combine(RootPath, "frpc.toml"); } }
         public string LogPath { get { return Path.Combine(RootPath, "logs", "frpc.log"); } }
+        public string ActivityLogPath { get { return Path.Combine(RootPath, "logs", "assistant.log"); } }
         public string HealthPath { get { return Path.Combine(RootPath, "health.json"); } }
 
         public GatewayConfigurationStore() : this(null, true) { }
@@ -103,6 +104,16 @@ namespace Pms.LanGatewayAssistant
         {
             if (!File.Exists(source)) throw new FileNotFoundException("代理核心 frpc.exe 不存在", source);
             Directory.CreateDirectory(Path.GetDirectoryName(FrpcPath)); File.Copy(source, FrpcPath, true); RestrictFile(FrpcPath);
+        }
+
+        public void WriteActivity(string message)
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(ActivityLogPath));
+                File.AppendAllText(ActivityLogPath, DateTimeOffset.Now.ToString("o") + " " + message + Environment.NewLine, new UTF8Encoding(false));
+            }
+            catch { }
         }
 
         private void TryMigrateLegacy()

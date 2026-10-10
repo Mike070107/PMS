@@ -22,7 +22,7 @@ $Manifest = [ordered]@{
     version = $Version
     url = "https://prsznh.cn/downloads/pms-lan-gateway-assistant/$Version/Pms.LanGatewayAssistant.exe"
     sha256 = $Hash
-    notes = "PMS 内网应用连接助手 $Version：修复客户端名称预填导致窗口启动失败；保留手动修改客户端名称"
+    notes = "PMS 内网应用连接助手 $Version：后台服务每六小时静默检查、校验并安全更新，失败自动恢复旧版"
     publishedAt = (Get-Date).ToUniversalTime().ToString("o")
 } | ConvertTo-Json
 $Utf8WithoutBom = New-Object Text.UTF8Encoding($false)
