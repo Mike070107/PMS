@@ -4335,3 +4335,9 @@
 - 自上次（e6b068c2）以来上线的相关提交：
   - 7041949d fix(access-card): run MjSystem SDK in STA
 
+## 2026-10-10 10:08 · assistant · 4eefeb0b
+
+- 提交：4eefeb0b fix(gateway): preserve public host for intranet sessions
+- 自上次（7041949d）以来上线的相关提交：
+  - 1520e083 fix(access-card): match MjSystem serial SDK call
+
