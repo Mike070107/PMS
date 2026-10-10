@@ -4389,3 +4389,10 @@
 - 自上次（5a0f1d19）以来上线的相关提交：
   - 3e644ac1 feat(fees): add apartment cashier and legacy import
 
+## 2026-10-10 16:46 · api · 15f3d06a
+
+- 包：`pms-api-fast-20261010-164524.tar.gz`
+- 提交：15f3d06a fix(parking): preserve legacy start date for civil defense grants
+- 自上次（3e644ac1）以来上线的相关提交：
+  - 15f3d06a fix(parking): preserve legacy start date for civil defense grants
+
