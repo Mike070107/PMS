@@ -24,7 +24,8 @@ class CommunityRule(NamedTuple):
 
 COMMUNITY_RULES: Mapping[int, CommunityRule] = {
     # 使用 PMS 的稳定社区 ID 做匹配，名称只用于报告展示，避免同音/形近字造成误匹配。
-    1: CommunityRule("20", "馨香臣寓吴泾店"),
+    # 吴泾店 PMS 楼栋带弄号 4787（龙吴路4787弄），不写上就一条都匹配不到。
+    1: CommunityRule("20", "馨香臣寓吴泾店", "4787"),
     2: CommunityRule("21", "馨香臣寓颛桥店"),
     3: CommunityRule("23", "馨香臣寓江川店"),
     4: CommunityRule("22", "馨香臣寓马桥店"),
@@ -55,9 +56,10 @@ def normalize_building(value: object) -> str:
 
 def normalize_room(value: object) -> str:
     text = compact(value)
-    # 颛桥旧系统把房间序号同时记为 101(A)、102(B)；PMS 的正式房号是 101、102。
-    match = re.fullmatch(r"(\d+)[(]([A-Za-z])\)", text)
-    if match:
+    # 旧系统在房号后面带括号写自己的定位码：颛桥写 101(A)，吴泾写 101(A105C)。
+    # 2026-10-11 用户确认「去掉括号后就是同一间」，统一去掉尾部括号段。
+    match = re.fullmatch(r"(.+?)\(([^()]*)\)", text)
+    if match and match.group(1):
         text = match.group(1)
     return text.casefold()
 
