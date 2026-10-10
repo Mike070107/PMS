@@ -4473,3 +4473,10 @@
 - 自上次（165b42f0）以来上线的相关提交：
   - dd45ea16 revert(gateway): drop apartment account binding for native PMS development
 
+## 2026-10-10 18:03 · miniapp-staff · dd45ea16
+
+- 提交：dd45ea16 revert(gateway): drop apartment account binding for native PMS development
+- 说明：1.0.20261010c 已上传体验版；撤销账号绑定表单
+- 自上次（165b42f0）以来上线的相关提交：
+  - dd45ea16 revert(gateway): drop apartment account binding for native PMS development
+
