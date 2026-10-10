@@ -278,7 +278,7 @@ function HousesTab() {
       return {
         key: `c:${community.id}`,
         houseCount,
-        title: `${shortPhaseName(community.name, parentName)}${mainLane ? `（${mainLane}弄）` : ''} (${houseCount})`,
+        title: `${shortPhaseName(community.name, parentName)} (${houseCount})`,
         children: own.map((b) => ({
           key: `b:${b.buildingId}`,
           title: `${formatBuildingNode(b.lane, b.buildingNo, b.roadName, mainLane)} (${b.count})`,
