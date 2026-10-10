@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Pms.AccessCardAgent
 {
@@ -44,12 +45,17 @@ namespace Pms.AccessCardAgent
             if (icTargets.Length > 0)
                 results.AddRange(UploadIcCard(config, password, task, icTargets));
             if (mjTargets.Length > 0)
-                results.AddRange(UploadMjSystem(config, task, mjTargets));
+                results.AddRange(RunMjSystemSta(delegate { return UploadMjSystem(config, task, mjTargets).ToArray(); }));
             return results.ToArray();
         }
 
         /** 现场故障路径验收：只向指定 MjSystem 门控制器发送已存在的测试卡。 */
         public static object UploadMjSystemDoorForDiagnostic(AgentConfig config, string cardNo, string doorId)
+        {
+            return RunMjSystemSta(delegate { return UploadMjSystemDoorForDiagnosticCore(config, cardNo, doorId); });
+        }
+
+        private static object UploadMjSystemDoorForDiagnosticCore(AgentConfig config, string cardNo, string doorId)
         {
             if (!String.Equals(cardNo, "22345575", StringComparison.Ordinal) ||
                 !String.Equals(doorId, "M0030-1", StringComparison.OrdinalIgnoreCase))
@@ -92,6 +98,49 @@ namespace Pms.AccessCardAgent
             {
                 vendor.Dispose();
             }
+        }
+
+        internal static ApartmentState MjSystemApartmentForTest()
+        {
+            return RunMjSystemSta(delegate { return Thread.CurrentThread.GetApartmentState(); });
+        }
+
+        private static T RunMjSystemSta<T>(Func<T> action)
+        {
+            if (action == null) throw new ArgumentNullException("action");
+            T result = default(T);
+            Exception error = null;
+            using (var completed = new ManualResetEvent(false))
+            {
+                var thread = new Thread(new ThreadStart(delegate
+                {
+                    var initialized = false;
+                    try
+                    {
+                        var oleResult = OleInitialize(IntPtr.Zero);
+                        if (oleResult < 0)
+                            Marshal.ThrowExceptionForHR(oleResult);
+                        initialized = true;
+                        result = action();
+                    }
+                    catch (Exception exception)
+                    {
+                        error = exception;
+                    }
+                    finally
+                    {
+                        if (initialized) OleUninitialize();
+                        completed.Set();
+                    }
+                }));
+                thread.IsBackground = true;
+                thread.Name = "PMS-MjSystem-SDK-STA";
+                thread.SetApartmentState(ApartmentState.STA);
+                thread.Start();
+                completed.WaitOne();
+            }
+            if (error != null) throw error;
+            return result;
         }
 
         private static IEnumerable<object> UploadMjSystem(
@@ -478,6 +527,8 @@ namespace Pms.AccessCardAgent
 
             public MjSystemVendor(string dllPath)
             {
+                if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
+                    throw new InvalidOperationException("MjSystem 原生 SDK 必须在 STA/OLE 线程中运行");
                 _module = LoadLibrary(dllPath);
                 if (_module == IntPtr.Zero)
                     throw new InvalidOperationException("无法加载 MjSystem 原生通信组件，Windows 错误 " + Marshal.GetLastWin32Error().ToString(CultureInfo.InvariantCulture));
@@ -608,7 +659,14 @@ namespace Pms.AccessCardAgent
             private static extern IntPtr GetProcAddress(IntPtr module, string name);
             [DllImport("kernel32.dll")]
             private static extern bool FreeLibrary(IntPtr module);
+
         }
+
+        [DllImport("ole32.dll")]
+        private static extern int OleInitialize(IntPtr reserved);
+
+        [DllImport("ole32.dll")]
+        private static extern void OleUninitialize();
 
         internal static string DescribeMjSystemError(long errorCode, string response)
         {

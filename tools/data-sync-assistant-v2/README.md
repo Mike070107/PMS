@@ -4,6 +4,7 @@
 
 ## 已接入能力
 
+- 2.5.37：MjSystem 的 VB6 ActiveX 通信 SDK 改为只在专用 STA 线程中调用，并在同一线程显式初始化和释放 OLE；避免后台 MTA 连接线程中命令能生成、但 COM1 收不到控制器回包。
 - 2.5.36：MjSystem 原生 SDK 按类型库的 `in/out BSTR` 约定读取控制器回包，不再把 SDK 返回的发送命令回显误当成控制器响应；只有真实回包通过 `ThenCommandVail` 才记为已下发。错误码 2 不再直接断言 COM1 被占用，失败记录分开显示 SDK 调用返回与控制器回包。
 - 2.5.35：MjSystem 新增员工按实际自增 `EId` 回填相同的 `vEmp_id`，部门按房号生成（如 `228/3/201/10` → `228弄03号大门`）；重试时自动纠正此前由 PMS 写入的 `A19/A20` 和“PMS 门禁发卡”。MjSystem 原生 SDK 错误码 2 明确提示为串口无法打开或使用，优先排查旧软件/Drive.exe 占用 COM1。
 - 2.5.34：MjSystem 控制器下发改用其原生 `ECardDerviceSDKMJ.dll` 和 `0x9E` 协议，完整保留现场七位产品序列号（如 3 号楼 `0160217`）；不再错误套用 iCCard 的两字节 `0x7E` 序列号格式。iCCard 控制器仍使用原 `iCCard-WGComm.dll`，两套协议分开处理。

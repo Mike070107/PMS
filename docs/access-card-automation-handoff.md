@@ -400,6 +400,13 @@ created
 - 预防：COM 调用显式使用 `ParameterModifier` 标记 in/out 字符串；优先选取与发送命令不同的 ByRef 值，只在真实回包通过 `ThenCommandVail` 后记为成功。日志必须分开写“SDK 调用返回”与“控制器回包”，不得用命令回显冒充设备回执。
 - 回归：方法返回等于发送命令、ByRef 参数为真实回包时，必须选取 ByRef 回包；两者都等于发送命令时，必须判为未收到控制器回包。
 
+### 2026-10-10：MjSystem VB6 ActiveX SDK 不能从 MTA 后台线程直调
+
+- 现场证据：原 MjSystem 界面能读到 `M0041 / SN 0160217`，显示“1门在线”、WG26；PMS 2.5.36 调用同一 SDK 时命令能生成，但 `GetAndSendInfo26` 返回空且 ByRef 仍是发送命令。
+- 已确认的实现差异：`ECardDerviceSDKMJ.dll` 只导入 `MSVBVM60.DLL`，是 VB6 ActiveX DLL；原管理软件是 STA 界面程序，而 PMS 统一服务的连接工作线程未设置 apartment，默认为 MTA，且手动 `DllGetClassObject` 路径没有显式初始化 OLE。
+- 修复：MjSystem 命令生成、串口发送、回包校验和 COM 释放全部放在同一专用 STA 线程，该线程显式成对调用 `OleInitialize/OleUninitialize`。自检必须验证真实执行 apartment 为 STA。
+- 验收边界：本地编译和自检只能确认线程/OLE 契约；只有升级 `.88` 后收到并通过 `ThenCommandVail` 的 M0041 真实回包，才能宣称控制器下发成功。
+
 ### 2026-10-10：门禁库权限不是控制器回执
 
 - 现场只读证据：WG `21630830` 在 `MJ_MacPower` 已有 `M0041-1 / cTimeId=1`，且原 MjSystem 界面显示上传成功；但 `MJ_MacPower` 只有 `cCardNo`、`cDoorId`、`cTimeId` 三个字段，没有逐卡的下发状态或设备回执字段。`Log` 表也只记录进入“门禁权限管理”界面，不记录这张卡的上传结果。
