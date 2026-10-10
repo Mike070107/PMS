@@ -24,28 +24,30 @@ class NormalizeTest(unittest.TestCase):
         self.assertEqual(row["house_id"], "99")
         self.assertEqual(row["contact_action"], "create_owner")
 
-    def test_maps_old_wujing_home_only_to_wujing_first_village(self):
+    def test_maps_legacy_community_5_to_wujing_apartment(self):
         legacy = [{"ID": "2", "小区编号": "5", "楼栋号": "8号楼", "房间号": "201", "姓名": "", "手机号": ""}]
+        pms = [
+            {"community_id": "20", "community_name": "馨香臣寓吴泾店", "lane": "", "building_no": "8", "room_no": "201", "house_id": "10"},
+            {"community_id": "19", "community_name": "吴泾一村", "lane": "", "building_no": "8", "room_no": "201", "house_id": "11"},
+            {"community_id": "13", "community_name": "吴泾新村", "lane": "5530", "building_no": "8", "room_no": "201", "house_id": "12"},
+        ]
+        row = MAPPING.analyze(legacy, pms)[0]
+        self.assertEqual(row["match_status"], "matched")
+        self.assertEqual(row["house_id"], "10")
+        self.assertEqual(row["target_community_id"], "20")
+        self.assertEqual(row["target_community"], "馨香臣寓吴泾店")
+        self.assertEqual(row["required_lane"], "")
+
+    def test_never_falls_back_to_wujing_villages(self):
+        legacy = [{"ID": "3", "小区编号": "5", "楼栋号": "8号楼", "房间号": "201", "姓名": "", "手机号": ""}]
         pms = [
             {"community_id": "19", "community_name": "吴泾一村", "lane": "", "building_no": "8", "room_no": "201", "house_id": "10"},
             {"community_id": "13", "community_name": "吴泾新村", "lane": "5530", "building_no": "8", "room_no": "201", "house_id": "11"},
         ]
         row = MAPPING.analyze(legacy, pms)[0]
-        self.assertEqual(row["match_status"], "matched")
-        self.assertEqual(row["house_id"], "10")
-        self.assertEqual(row["target_community_id"], "19")
-        self.assertEqual(row["target_community"], "吴泾一村")
-        self.assertEqual(row["required_lane"], "")
-
-    def test_never_falls_back_to_wujing_new_village_lane_5530(self):
-        legacy = [{"ID": "3", "小区编号": "5", "楼栋号": "8号楼", "房间号": "201", "姓名": "", "手机号": ""}]
-        pms = [
-            {"community_id": "13", "community_name": "吴泾新村", "lane": "5530", "building_no": "8", "room_no": "201", "house_id": "11"},
-        ]
-        row = MAPPING.analyze(legacy, pms)[0]
         self.assertEqual(row["match_status"], "unmatched")
         self.assertEqual(row["candidate_house_ids"], "")
-        self.assertEqual(row["target_community_id"], "19")
+        self.assertEqual(row["target_community_id"], "20")
 
 
 if __name__ == "__main__":
