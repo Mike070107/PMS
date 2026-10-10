@@ -4375,3 +4375,10 @@
 - 自上次（7dbca40e）以来上线的相关提交：
   - 5a0f1d19 fix(properties): keep lane out of community title
 
+## 2026-10-10 16:43 · api · 3e644ac1
+
+- 包：`pms-api-fast-20261010-164242.tar.gz`
+- 提交：3e644ac1 feat(fees): add apartment cashier and legacy import
+- 自上次（7dbca40e）以来上线的相关提交：
+  - 3e644ac1 feat(fees): add apartment cashier and legacy import
+
