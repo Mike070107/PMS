@@ -4522,3 +4522,10 @@
 - 同时修复自检退出码恒为 0：WPF 生成的 `Main()` 丢掉 `app.Run()` 返回值，且默认 `OnLastWindowClose` 会在关掉自检窗口时先排好退出码 0 的关闭，打包脚本的自检闸门此前从未生效。
 - ⚠ 现场仍需确认：财务室电脑此前为 1.2.8，更新包已上线但**尚未核实现场已自动升级到 1.2.9**。
 - ⚠ `tools/lan-gateway-assistant` 不在 `mark-deployed` 任何目标的 paths 内（`assistant` 只含 data-sync-assistant-v2 和 access-card-agent），因此本次无部署标记，仅手工记录。
+## 2026-10-11 09:16 · web · c3cabc1d
+
+- 包：`pms-web-20261011-091606.tar.gz`
+- 提交：c3cabc1d feat(fees): 公寓收费台接进收费业务菜单，选址改成小区→楼栋→房号
+- 自上次（7cb469c6）以来上线的相关提交：
+  - c3cabc1d feat(fees): 公寓收费台接进收费业务菜单，选址改成小区→楼栋→房号
+
