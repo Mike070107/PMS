@@ -4487,3 +4487,45 @@
 - 自上次（165b42f0）以来上线的相关提交：
   - dd45ea16 revert(gateway): drop apartment account binding for native PMS development
 
+## 2026-10-11 00:22 · api · 7cb469c6
+
+- 包：`pms-api-fast-20261011-002201.tar.gz`
+- 提交：7cb469c6 chore: 忽略 __pycache__、*.pyc 和 admin-web 临时 dist 目录
+- 自上次（dd45ea16）以来上线的相关提交：
+  - 6977f47a logs: 日志管理支持按管理处/小区和业务模块、具体操作筛选
+  - 04175066 fees: 新增财务对账（按日×收款方式），报表外观统一到收费台那套
+  - 63da4c38 fees: 新增收费报表（总览含环比、趋势、收款方式/费用项目/小区/收费员分布）
+  - 965fe380 fees: 账单明细查询补收费时间/收款方式筛选与导出，并把日期口径统一到上海时区
+  - e142f4ff feat(fees): close apartment cashier daily loop
+
+## 2026-10-11 00:23 · web · 7cb469c6
+
+- 包：`pms-web-20261011-002201.tar.gz`
+- 提交：7cb469c6 chore: 忽略 __pycache__、*.pyc 和 admin-web 临时 dist 目录
+- 自上次（dd45ea16）以来上线的相关提交：
+  - 600dcf94 web: 内容区宽度基准改为 1920×1080，上限定在 1600
+  - 3018e9da web: 后台内容区最大宽度收到 1440，超宽屏不再把控件拉满
+  - 6977f47a logs: 日志管理支持按管理处/小区和业务模块、具体操作筛选
+  - 04175066 fees: 新增财务对账（按日×收款方式），报表外观统一到收费台那套
+  - 63da4c38 fees: 新增收费报表（总览含环比、趋势、收款方式/费用项目/小区/收费员分布）
+  - 965fe380 fees: 账单明细查询补收费时间/收款方式筛选与导出，并把日期口径统一到上海时区
+  - e142f4ff feat(fees): close apartment cashier daily loop
+
+
+## 2026-10-11 · windows-lan-gateway-assistant · 33cfa163
+
+- 包：`Pms.LanGatewayAssistant.exe` 1.2.9
+- 地址：`https://prsznh.cn/downloads/pms-lan-gateway-assistant/1.2.9/Pms.LanGatewayAssistant.exe`
+- SHA-256：`b279cf9e5b827f851b7dbeb9836b37428737fbcc7add275a6c94f336124e6fbc`
+- 公网更新清单与下载文件已回读校验一致；`caiwu.prsznh.cn` 发布后仍为 302 接入网关，未回到 503。
+- 修复：单条内网服务停机时 `SocketException` 越过只接 `WebException` 的分支冒泡，中断整轮配置同步，导致其余健康应用被判成「代理已应用配置，但无法访问内网网站」。探测改为并发、异常收敛成报告；配置变更立即重连，不再排 60 秒崩溃退避。
+- 同时修复自检退出码恒为 0：WPF 生成的 `Main()` 丢掉 `app.Run()` 返回值，且默认 `OnLastWindowClose` 会在关掉自检窗口时先排好退出码 0 的关闭，打包脚本的自检闸门此前从未生效。
+- ⚠ 现场仍需确认：财务室电脑此前为 1.2.8，更新包已上线但**尚未核实现场已自动升级到 1.2.9**。
+- ⚠ `tools/lan-gateway-assistant` 不在 `mark-deployed` 任何目标的 paths 内（`assistant` 只含 data-sync-assistant-v2 和 access-card-agent），因此本次无部署标记，仅手工记录。
+## 2026-10-11 09:16 · web · c3cabc1d
+
+- 包：`pms-web-20261011-091606.tar.gz`
+- 提交：c3cabc1d feat(fees): 公寓收费台接进收费业务菜单，选址改成小区→楼栋→房号
+- 自上次（7cb469c6）以来上线的相关提交：
+  - c3cabc1d feat(fees): 公寓收费台接进收费业务菜单，选址改成小区→楼栋→房号
+

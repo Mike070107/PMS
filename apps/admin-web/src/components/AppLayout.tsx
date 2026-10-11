@@ -131,6 +131,7 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/parking': '统一管理住户车辆、车位和四个停车区权限',
   '/access-cards': '选房号并跟踪写卡、门禁入库与主板上传',
   '/fees': '物业费账单、收款登记与欠费催缴',
+  '/apartment-cashier': '公寓按房间收电费、房租与停车费，即时出小票',
   '/materials': '维护标准材料、单位与基础价格',
   '/inventory': '管理库存、盘点、采购、收货与仓库调拨',
   '/stocktakes': '发起盘点、办公室复核并查看盘点报告',

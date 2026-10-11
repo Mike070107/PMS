@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Diagnostics;
 using System.Drawing;
@@ -46,6 +47,36 @@ namespace Pms.LanGatewayAssistant
                 Require(heartbeat.Contains("\"appId\":9"), "heartbeat lower camel app id");
                 Require(heartbeat.Contains("\"healthy\":true"), "heartbeat lower camel health");
                 Require(!heartbeat.Contains("\"AppId\""), "heartbeat rejects PascalCase route fields");
+                // 一条内网服务停机曾经会让整份配置同步中断，把其余健康的应用一起拖下线。
+                // 探测必须把每种失败都收敛成报告：端口被拒是 SocketException、无效端口是
+                // InvalidOperationException，都不是 WebException，缺了兜底就会向外冒泡。
+                var offlineHttp = new GatewayRoute { AppId = 101, Name = "Offline HTTP", PublicHostname = "a.prsznh.cn", LocalUrl = "http://127.0.0.1:1/", RemotePort = 18101, Enabled = true };
+                var offlineTcp = new GatewayRoute { AppId = 102, Name = "Offline TCP", PublicHostname = "b.prsznh.cn", LocalUrl = "tcp://127.0.0.1:1", RemotePort = 18102, Enabled = true };
+                var brokenPort = new GatewayRoute { AppId = 103, Name = "Broken Port", PublicHostname = "c.prsznh.cn", LocalUrl = "tcp://127.0.0.1:0", RemotePort = 18103, Enabled = true };
+                var stopped = new GatewayRoute { AppId = 104, Name = "Stopped", PublicHostname = "d.prsznh.cn", LocalUrl = "http://127.0.0.1:1/", RemotePort = 18104, Enabled = false };
+                var probed = GatewayControlPlaneClient.Probe(new[] { offlineHttp, offlineTcp, brokenPort, stopped });
+                Require(probed.Count == 3, "probe skips disabled routes");
+                Require(probed.All(item => item != null && !item.Healthy), "unreachable routes report unhealthy instead of throwing");
+                Require(probed.All(item => !String.IsNullOrWhiteSpace(item.Message)), "every unhealthy report carries a reason");
+                Require(probed.Any(item => item.AppId == 102) && probed.Any(item => item.AppId == 103), "socket and invalid-port failures are captured, not propagated");
+                Require(GatewayControlPlaneClient.Probe(new GatewayRoute[0]).Count == 0, "probe tolerates an empty route set");
+                var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+                listener.Start();
+                try
+                {
+                    var livePort = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+                    var live = new GatewayRoute { AppId = 105, Name = "Live", PublicHostname = "e.prsznh.cn", LocalUrl = "tcp://127.0.0.1:" + livePort, RemotePort = 18105, Enabled = true };
+                    var mixed = GatewayControlPlaneClient.Probe(new[] { offlineHttp, live, offlineTcp });
+                    Require(mixed.Single(item => item.AppId == 105).Healthy, "a reachable app stays healthy beside a stopped one");
+                    Require(!mixed.Single(item => item.AppId == 101).Healthy, "the stopped app is still reported unhealthy");
+                    Require(mixed.Count == 3, "every enabled app gets its own verdict");
+                }
+                finally { listener.Stop(); }
+                // 代理核心瞬时崩溃不该换来一整分钟断线，但反复崩溃要逐步退让并封顶。
+                Require(GatewayRuntime.NextDelay(TimeSpan.FromSeconds(5)) == TimeSpan.FromSeconds(10), "restart backoff doubles");
+                var backoff = TimeSpan.FromSeconds(5);
+                for (var attempt = 0; attempt < 10; attempt++) backoff = GatewayRuntime.NextDelay(backoff);
+                Require(backoff == TimeSpan.FromMinutes(1), "restart backoff stops at one minute");
                 var executableIcon = Icon.ExtractAssociatedIcon(Process.GetCurrentProcess().MainModule.FileName);
                 Require(executableIcon != null, "embedded tray icon");
                 executableIcon.Dispose();
