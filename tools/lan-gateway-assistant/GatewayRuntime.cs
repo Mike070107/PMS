@@ -12,9 +12,15 @@ namespace Pms.LanGatewayAssistant
         // A configuration change is an operator-visible action. Keep its delivery
         // bounded instead of making the operator wait for two 15-second cycles.
         private static readonly TimeSpan SynchronizationInterval = TimeSpan.FromSeconds(5);
+        // 代理核心崩溃时先快速拉起，只有反复崩溃才逐步退让，避免把一次瞬时故障
+        // 变成一整分钟的断线。能稳定运行满 StableUptime 就把退让重新收回最小值。
+        private static readonly TimeSpan MinimumRestartDelay = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan MaximumRestartDelay = TimeSpan.FromMinutes(1);
+        private static readonly TimeSpan StableUptime = TimeSpan.FromMinutes(1);
         private readonly GatewayConfigurationStore _store;
         private readonly GatewayControlPlaneClient _controlPlane;
         private readonly ManualResetEvent _stopping = new ManualResetEvent(false);
+        private TimeSpan _restartDelay = MinimumRestartDelay;
         private Process _process;
         private Thread _thread;
         public GatewayRuntime(GatewayConfigurationStore store) { _store = store; _controlPlane = new GatewayControlPlaneClient(store); }
@@ -37,6 +43,7 @@ namespace Pms.LanGatewayAssistant
                     _store.WriteRuntimeToken();
                     _store.WriteFrpcConfiguration(FrpConfiguration.Build(configuration, _store));
                     if (!File.Exists(_store.FrpcPath)) throw new FileNotFoundException("代理核心 frpc.exe 未安装", _store.FrpcPath);
+                    var startedAt = DateTime.UtcNow;
                     _process = Process.Start(new ProcessStartInfo { FileName = _store.FrpcPath, Arguments = "-c \"" + _store.FrpcConfigPath + "\"", WorkingDirectory = _store.RootPath, UseShellExecute = false, CreateNoWindow = true });
                     WriteHealth(true, "代理核心运行中", _process.Id);
                     // Do not wait for the next polling slot to tell PMS that the
@@ -44,20 +51,25 @@ namespace Pms.LanGatewayAssistant
                     // performs the first public HTTPS verification immediately.
                     var started = Synchronize(true);
                     if (started.Changed) continue;
+                    var reconfigured = false;
                     var nextSync = DateTime.UtcNow.Add(SynchronizationInterval);
                     while (!_stopping.WaitOne(1000) && !_process.HasExited)
                     {
                         if (DateTime.UtcNow < nextSync) continue;
                         nextSync = DateTime.UtcNow.Add(SynchronizationInterval);
                         var refreshed = Synchronize(true);
-                        if (refreshed.Changed) break;
+                        if (refreshed.Changed) { reconfigured = true; break; }
                     }
                     if (_stopping.WaitOne(0)) break;
-                    WriteHealth(false, "代理核心已退出，1 分钟后自动重试", 0);
+                    // 配置变更是管理员刚按下的操作，立刻带着新配置重启，不要让它去排
+                    // 崩溃重试的队——那会把一次正常改配置变成一整分钟的断线。
+                    if (reconfigured) { WriteHealth(false, "配置已更新，正在重启代理核心", 0); continue; }
+                    _restartDelay = DateTime.UtcNow - startedAt >= StableUptime ? MinimumRestartDelay : NextDelay(_restartDelay);
+                    WriteHealth(false, "代理核心已退出，" + ((int)_restartDelay.TotalSeconds) + " 秒后自动重试", 0);
                 }
-                catch (Exception exception) { WriteHealth(false, exception.Message, 0); }
+                catch (Exception exception) { _restartDelay = NextDelay(_restartDelay); WriteHealth(false, exception.Message, 0); }
                 finally { StopChild(); }
-                if (_stopping.WaitOne(TimeSpan.FromMinutes(1))) break;
+                if (_stopping.WaitOne(_restartDelay)) break;
             }
             WriteHealth(false, "后台服务已停止", 0);
         }
@@ -78,6 +90,7 @@ namespace Pms.LanGatewayAssistant
                 return new GatewaySyncResult { Changed = false, Revision = configuration.AppliedRevision, Routes = new System.Collections.Generic.List<GatewayRouteReport>() };
             }
         }
+        internal static TimeSpan NextDelay(TimeSpan current) { return TimeSpan.FromTicks(Math.Min(current.Ticks * 2, MaximumRestartDelay.Ticks)); }
         private void StopChild() { try { if (_process != null && !_process.HasExited) { _process.Kill(); _process.WaitForExit(5000); } } catch { } finally { if (_process != null) _process.Dispose(); _process = null; } }
         private void WriteHealth(bool running, string message, int processId)
         {

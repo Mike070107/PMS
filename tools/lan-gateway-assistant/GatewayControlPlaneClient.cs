@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 
 namespace Pms.LanGatewayAssistant
@@ -19,6 +20,7 @@ namespace Pms.LanGatewayAssistant
 
     internal sealed class GatewayControlPlaneClient
     {
+        private const int ProbeTimeoutMilliseconds = 5000;
         private readonly GatewayConfigurationStore _store;
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer();
 
@@ -67,9 +69,9 @@ namespace Pms.LanGatewayAssistant
                 RemotePort = route.RemotePort,
                 Enabled = route.Enabled
             }).ToList();
+            // 探测结果只是各应用此刻的健康状态，不是配置是否有效。一条内网服务停机
+            // 不能阻断整份配置落盘，否则其余健康的应用会跟着一起断线。
             var reports = Probe(routes);
-            var failure = reports.FirstOrDefault(item => !item.Healthy);
-            if (failure != null) throw new InvalidOperationException("「" + routes.First(item => item.AppId == failure.AppId).Name + "」" + failure.Message);
             if (managed.Revision <= current.AppliedRevision)
                 return new GatewaySyncResult { Changed = false, Revision = current.AppliedRevision, Routes = reports };
             current.ServerAddress = managed.ServerAddress;
@@ -149,42 +151,64 @@ namespace Pms.LanGatewayAssistant
             return new InvalidOperationException("无法连接 PMS：" + exception.Message, exception);
         }
 
-        private static List<GatewayRouteReport> Probe(IEnumerable<GatewayRoute> routes)
+        // 串行探测时每条不通的应用都要独占一个超时，累加起来会超过同步间隔，
+        // 把心跳和 frpc 退出检测一起拖住，所以逐条并发、整轮只花一个超时。
+        internal static List<GatewayRouteReport> Probe(IEnumerable<GatewayRoute> routes)
         {
-            return (routes ?? Enumerable.Empty<GatewayRoute>()).Where(route => route.Enabled).Select(route =>
+            var pending = (routes ?? Enumerable.Empty<GatewayRoute>()).Where(route => route.Enabled).ToList();
+            if (pending.Count == 0) return new List<GatewayRouteReport>();
+            var reports = new GatewayRouteReport[pending.Count];
+            var tasks = new Task[pending.Count];
+            for (var index = 0; index < pending.Count; index++)
             {
-                try
+                var slot = index;
+                tasks[slot] = Task.Factory.StartNew(() => { reports[slot] = ProbeOne(pending[slot]); });
+            }
+            Task.WaitAll(tasks);
+            return reports.ToList();
+        }
+
+        /** 探测只回答"这个应用此刻通不通"。任何异常都必须收敛成一条不健康报告：
+            一旦向外抛出就会中断整条同步链路，让其余健康的应用一起失联。
+            TCP 路由被拒时抛的是 SocketException、超时抛 TimeoutException，
+            都不是 WebException，必须有兜底分支接住。 */
+        private static GatewayRouteReport ProbeOne(GatewayRoute route)
+        {
+            try
+            {
+                Uri origin;
+                if (Uri.TryCreate(route.LocalUrl, UriKind.Absolute, out origin) && origin.Scheme == "tcp")
                 {
-                    Uri origin;
-                    if (Uri.TryCreate(route.LocalUrl, UriKind.Absolute, out origin) && origin.Scheme == "tcp")
+                    if (origin.Port < 1 || origin.Port > 65535) throw new InvalidOperationException("缺少有效端口");
+                    using (var client = new TcpClient())
                     {
-                        if (origin.Port < 1 || origin.Port > 65535) throw new InvalidOperationException("缺少有效端口");
-                        using (var client = new TcpClient())
+                        var pending = client.BeginConnect(origin.Host, origin.Port, null, null);
+                        try
                         {
-                            var pending = client.BeginConnect(origin.Host, origin.Port, null, null);
-                            try
-                            {
-                                if (!pending.AsyncWaitHandle.WaitOne(5000)) throw new TimeoutException("连接超时");
-                                client.EndConnect(pending);
-                            }
-                            finally { pending.AsyncWaitHandle.Close(); }
+                            if (!pending.AsyncWaitHandle.WaitOne(ProbeTimeoutMilliseconds)) throw new TimeoutException("连接超时");
+                            client.EndConnect(pending);
                         }
-                        return new GatewayRouteReport { AppId = route.AppId, Healthy = true, Message = "内网 TCP 端口可访问" };
+                        finally { pending.AsyncWaitHandle.Close(); }
                     }
-                    var request = (HttpWebRequest)WebRequest.Create(route.LocalUrl); request.Method = "GET"; request.Timeout = 5000; request.ReadWriteTimeout = 5000; request.AllowAutoRedirect = true;
-                    using (var response = (HttpWebResponse)request.GetResponse())
-                    {
-                        var code = (int)response.StatusCode;
-                        return new GatewayRouteReport { AppId = route.AppId, Healthy = code >= 200 && code < 400, Message = code >= 200 && code < 400 ? "内网站点可访问" : "内网站点返回 HTTP " + code };
-                    }
+                    return new GatewayRouteReport { AppId = route.AppId, Healthy = true, Message = "内网 TCP 端口可访问" };
                 }
-                catch (WebException exception)
+                var request = (HttpWebRequest)WebRequest.Create(route.LocalUrl); request.Method = "GET"; request.Timeout = ProbeTimeoutMilliseconds; request.ReadWriteTimeout = ProbeTimeoutMilliseconds; request.AllowAutoRedirect = true;
+                using (var response = (HttpWebResponse)request.GetResponse())
                 {
-                    var response = exception.Response as HttpWebResponse;
-                    var message = response != null ? "内网站点返回 HTTP " + (int)response.StatusCode : "无法访问内网地址：" + exception.Message;
-                    return new GatewayRouteReport { AppId = route.AppId, Healthy = false, Message = message };
+                    var code = (int)response.StatusCode;
+                    return new GatewayRouteReport { AppId = route.AppId, Healthy = code >= 200 && code < 400, Message = code >= 200 && code < 400 ? "内网站点可访问" : "内网站点返回 HTTP " + code };
                 }
-            }).ToList();
+            }
+            catch (WebException exception)
+            {
+                var response = exception.Response as HttpWebResponse;
+                var message = response != null ? "内网站点返回 HTTP " + (int)response.StatusCode : "无法访问内网地址：" + exception.Message;
+                return new GatewayRouteReport { AppId = route.AppId, Healthy = false, Message = message };
+            }
+            catch (Exception exception)
+            {
+                return new GatewayRouteReport { AppId = route.AppId, Healthy = false, Message = "无法访问内网地址：" + exception.Message };
+            }
         }
 
         private static string Sign(string payload, string token)
