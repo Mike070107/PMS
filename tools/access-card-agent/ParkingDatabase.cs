@@ -1321,12 +1321,15 @@ SELECT id FROM @created;";
                                 AddBindingProcedureParameters(command, before, Value(before, "owner_Name") ?? LegacyOwnerRoom(payload));
                                 command.Parameters["@P_Effective"].Value = nextEffective;
                                 command.Parameters["@P_Download"].Value = nextDownload;
+                                if (Number(payload, "familyReviewId", 0) > 0) command.Parameters["@Car_Zt"].Value = 1;
                                 command.Parameters["@admin"].Value = admin;
                                 command.ExecuteNonQuery();
                             }
                         }
                         var after = ReadBindingVehicle(connection, transaction, plate);
                         AssertGarageSelection(after, requested, database);
+                        if (Number(payload, "familyReviewId", 0) > 0 && Number(after, "Car_Zt", -1) != 1)
+                            throw new InvalidOperationException("亲情车审核开通后车辆状态读回不一致，已撤销本次操作");
                         transaction.Commit();
                         results.Add(new Dictionary<string, object> {
                             { "database", database },
@@ -1335,6 +1338,7 @@ SELECT id FROM @created;";
                             { "issueId", Value(after, "P_id") },
                             { "effective", Value(after, "P_Effective") },
                             { "download", Value(after, "P_Download") }
+                            , { "state", Number(after, "Car_Zt", -1) }
                         });
                     }
                 }
@@ -1362,7 +1366,7 @@ SELECT id FROM @created;";
                 Add(command, "@Car_Brand", SqlDbType.VarChar, 20, Value(source, "Car_Beand") ?? Value(source, "Car_Brand") ?? Value(payload, "identity") ?? "住户车");
                 Add(command, "@Car_Money", SqlDbType.Float, 0, 0);
                 Add(command, "@Car_Deposit", SqlDbType.Float, 0, 0);
-                Add(command, "@Car_Zt", SqlDbType.Int, 0, NumberFromObject(source.ContainsKey("Car_Zt") ? source["Car_Zt"] : null, 1));
+                Add(command, "@Car_Zt", SqlDbType.Int, 0, Number(payload, "familyReviewId", 0) > 0 ? 1 : NumberFromObject(source.ContainsKey("Car_Zt") ? source["Car_Zt"] : null, 1));
                 Add(command, "@P_note", SqlDbType.VarChar, 200, Value(source, "P_note") ?? AppendPmsSource(null));
                 Add(command, "@P_Admin", SqlDbType.VarChar, 20, admin);
                 Add(command, "@P_Spaces", SqlDbType.VarChar, 20, Value(source, "P_Spaces") ?? "");
@@ -1592,7 +1596,7 @@ SELECT id FROM @created;";
         {
             using (var check = connection.CreateCommand())
             {
-                check.CommandText = "SELECT TOP 1 P_id, P_plate, End_Time, P_Effective, P_Download FROM Car_Issue WHERE P_plate=@plate ORDER BY P_id DESC";
+                check.CommandText = "SELECT TOP 1 P_id, P_plate, End_Time, Car_Zt, P_Effective, P_Download FROM Car_Issue WHERE P_plate=@plate ORDER BY P_id DESC";
                 Add(check, "@plate", SqlDbType.VarChar, 50, plate);
                 using (var reader = check.ExecuteReader())
                 {
@@ -1601,6 +1605,7 @@ SELECT id FROM @created;";
                     if (!reader.IsDBNull(reader.GetOrdinal("End_Time"))) result["endDate"] = Convert.ToDateTime(reader["End_Time"]).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
                     if (!reader.IsDBNull(reader.GetOrdinal("P_Effective"))) result["effective"] = Convert.ToString(reader["P_Effective"]);
                     if (!reader.IsDBNull(reader.GetOrdinal("P_Download"))) result["download"] = Convert.ToString(reader["P_Download"]);
+                    result["state"] = reader.IsDBNull(reader.GetOrdinal("Car_Zt")) ? -1 : Convert.ToInt32(reader["Car_Zt"], CultureInfo.InvariantCulture);
                     return result;
                 }
             }

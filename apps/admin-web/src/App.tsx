@@ -22,7 +22,7 @@ const DataSyncAssistantPreviewPage = import.meta.env.DEV
   : null;
 // 公寓收费工作台是正式页面（收费业务 → 公寓收费工作台），不是 DEV 预览；
 // /dev/apartment-cashier 仅保留本机免登录看样式用，和正式路由同一个组件。
-const ApartmentCashierPage = lazy(() => import('./pages/ApartmentCashierPage'));
+const ApartmentCashierPage = lazy(() => import('./pages/ApartmentCashierWorkspace'));
 const FeesPage = lazy(() => import('./pages/FeesPage'));
 const PropertiesPage = lazy(() => import('./pages/PropertiesPage'));
 const OwnerAuditPage = lazy(() => import('./pages/OwnerAuditPage'));
@@ -174,7 +174,7 @@ export default function App() {
         <Route path="parking" element={<RequireTenantScope><RequirePage pageKey="business"><ParkingManagementPage /></RequirePage></RequireTenantScope>} />
         <Route path="access-cards" element={<RequireTenantScope><RequirePage pageKey="business"><AccessCardIssuancePage /></RequirePage></RequireTenantScope>} />
         <Route path="fees" element={<RequireTenantScope><RequirePage pageKey="fees"><FeesPage /></RequirePage></RequireTenantScope>} />
-        <Route path="apartment-cashier" element={<RequireTenantScope><RequirePage pageKey="fees"><ApartmentCashierPage /></RequirePage></RequireTenantScope>} />
+        <Route path="apartment-cashier" element={<RequireTenantScope><RequirePage pageKey="apartment-cashier"><ApartmentCashierPage /></RequirePage></RequireTenantScope>} />
         <Route path="properties" element={<RequireTenantScope><RequirePage pageKey="properties"><PropertiesPage /></RequirePage></RequireTenantScope>} />
         <Route path="owners" element={<RequireTenantScope><RequirePage pageKey="owners"><OwnerAuditPage /></RequirePage></RequireTenantScope>} />
         <Route path="work-orders" element={<RequireTenantScope><RequirePage pageKey="work-orders"><WorkOrdersPage /></RequirePage></RequireTenantScope>} />

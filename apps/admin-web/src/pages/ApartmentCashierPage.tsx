@@ -87,9 +87,9 @@ const PAYMENT_METHODS = [
   { value: 'cash', label: '现金', type: 'cash' as const },
 ];
 
-export default function ApartmentCashierPage({ preview = false }: { preview?: boolean }) {
+export default function ApartmentCashierPage({ preview = false, permissionKey = 'apartment-cashier' }: { preview?: boolean; permissionKey?: string }) {
   const { message } = App.useApp();
-  const permission = usePagePerm('fees');
+  const permission = usePagePerm(permissionKey);
   const canEdit = preview || permission.canEdit;
   // 收费员多半只管自己那家店，默认就选他被授权的小区，省掉每次开工第一步
   const { access } = useAuth();

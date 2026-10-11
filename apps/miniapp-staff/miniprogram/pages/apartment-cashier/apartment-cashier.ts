@@ -372,6 +372,7 @@ Page({
   },
 
   async onSubmit() {
+    if (!this.data.canCharge || this.data.submitting) return;
     const house = this.data.houses[this.data.houseIndex];
     if (!house) return this.setData({ submitError: '先选房间' });
     if (!this.data.rows.length) return this.setData({ submitError: '先添加收费项目' });
@@ -380,14 +381,21 @@ Page({
     }
     if (!this.data.paymentMethod) return this.setData({ submitError: '选一个收款方式' });
 
-    const confirm = await wx.showModal({
+    this.setData({ submitting: true, submitError: '' });
+    let confirm: WechatMiniprogram.ShowModalSuccessCallbackResult;
+    try {
+      confirm = await wx.showModal({
       title: '确认收款',
       content: `${this.data.placeText} ${this.data.ownerName || ''}\n${this.data.totalText}（${
         FEE_PAYMENT_METHOD_LABELS[this.data.paymentMethod]
       }）`,
       confirmText: '收款',
-    });
-    if (!confirm.confirm) return;
+      });
+    } catch {
+      this.setData({ submitting: false, submitError: '确认窗口未能打开，请重试' });
+      return;
+    }
+    if (!confirm.confirm) { this.setData({ submitting: false }); return; }
 
     this.setData({ submitting: true, submitError: '' });
     try {

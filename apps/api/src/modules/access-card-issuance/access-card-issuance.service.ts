@@ -27,6 +27,7 @@ import {
   ParkingHistory,
   ParkingRecordSnapshot,
   ParkingOperation,
+  ParkingProofUpload,
   User,
 } from '../../entities';
 import { ResolvedAccess } from '../access/access.service';
@@ -71,6 +72,7 @@ import {
   ParkingHistoryQueryDto,
 } from './dto';
 import { agentTokenMatches, issueAgentSecret } from './agent-auth';
+import { prepareFamilyRegistration, validateRegistrationGarageNumbers, supportsFamilyActivation } from './parking-family';
 import { effectiveAgentStatus, orderAgentsByAvailability } from './agent-status';
 import { DeliyunParkingService } from './deliyun-parking.service';
 import {
@@ -683,17 +685,32 @@ export class AccessCardIssuanceService {
     return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));
   }
 
-  async setDeliyunCivilDefenseAuthorization(dto: SetDeliyunCivilDefenseAuthorizationDto, user: AuthUser) {
+  async setDeliyunCivilDefenseAuthorization(dto: SetDeliyunCivilDefenseAuthorizationDto, user: AuthUser, retryFailed = false) {
     const tenantId = this.requireTenant(user);
     const idempotencyKey = dto.idempotencyKey.trim();
     const existing = await this.parkingOperationRepo.findOne({ where: { tenantId, idempotencyKey } });
-    if (existing) return this.parkingOperationResponse(existing);
+    if (dto.authorized) {
+      const proof = await this.parkingOperationRepo.manager.getRepository(ParkingProofUpload).findOne({ where: { tenantId, plate: dto.plate.trim().toUpperCase() }, order: { createdAt: 'DESC' } });
+      if (proof?.registrationId && proof.reviewStatus !== 'approved') throw new BadRequestException('亲情车资料尚未审核通过，不允许开通人防车库');
+    }
+    if (existing && (!retryFailed || existing.status !== 'failed')) return this.parkingOperationResponse(existing);
+    if (existing) {
+      const acquired = await this.parkingOperationRepo.manager.transaction(async (manager) => {
+        const repo = manager.getRepository(ParkingOperation);
+        const locked = await repo.findOne({ where: { id: existing.id, tenantId }, lock: { mode: 'pessimistic_write' } });
+        if (!locked || locked.status !== 'failed') return false;
+        locked.status = 'running'; locked.attempt += 1; locked.lastError = null; locked.completedAt = null;
+        await repo.save(locked); Object.assign(existing, locked); return true;
+      });
+      if (!acquired) return this.parkingOperationResponse((await this.parkingOperationRepo.findOne({ where: { id: existing.id, tenantId } }))!);
+    }
     const now = new Date();
-    const task = await this.parkingOperationRepo.save(this.parkingOperationRepo.create({
+    const task = existing || await this.parkingOperationRepo.save(this.parkingOperationRepo.create({
       tenantId, kind: 'update_garages', database: 'deliyun', idempotencyKey,
       sourceRecordId: dto.vehicleId?.trim() || null, pmsUserId: null,
       payload: {
         plate: dto.plate.trim().toUpperCase(), authorized: dto.authorized,
+        ownerRoom: dto.ownerRoom || null, parkingSpace: dto.parkingSpace || null,
         beginDate: dto.beginDate || null, endDate: dto.endDate || null, remark: dto.remark || null,
       },
       expected: { vehicleId: dto.vehicleId?.trim() || null }, result: null, status: 'running', attempt: 1,
@@ -704,6 +721,8 @@ export class AccessCardIssuanceService {
       task.result = await this.deliyun.setCivilDefenseAuthorization({
         plate: dto.plate,
         authorized: dto.authorized,
+        ownerRoom: dto.ownerRoom,
+        parkingSpace: dto.parkingSpace,
         vehicleId: dto.vehicleId,
         beginDate: dto.beginDate,
         endDate: dto.endDate,
@@ -891,16 +910,29 @@ export class AccessCardIssuanceService {
     const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
     const gateway = orderAgentsByAvailability(agents).find((agent) =>
       effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbWrite === true && supportsParkingOwnerUpdates(agent.version) &&
+      (!(dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId) || supportsFamilyActivation(agent.version)) &&
       (dto.kind !== 'rebind_owner' || supportsParkingOwnerRebind(agent.version)) &&
       (dto.kind !== 'sync_vehicle_info' || supportsParkingVehicleSync(agent.version)) &&
       (!['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) || supportsParkingAuthorizationFixes(agent.version)));
-    if (!gateway) throw new ServiceUnavailableException(dto.kind === 'rebind_owner'
+    if (!gateway) throw new ServiceUnavailableException(dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId ? '亲情车待审核登记与自动开通需要现场助手升级到 2.5.40' : dto.kind === 'rebind_owner'
       ? '变更绑定用户需要 PMS 数据同步助手 2.5.20 及以上版本，请先更新现场助手'
       : dto.kind === 'sync_vehicle_info' ? '车辆资料复用需要 PMS 数据同步助手 2.5.23 及以上版本，请先在现场电脑升级'
       : ['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) ? '车库授权、车辆类型修改和设备下发需要 PMS 数据同步助手 2.5.21 及以上版本，请先更新现场助手'
       : '停车网关尚未就绪：请安装 2.4.0 及以上助手并确认旧库存储过程写入权限');
     const payload = normalizeParkingOperationPayload(dto.payload);
     const expected = normalizeParkingOperationPayload(dto.expected ?? {});
+    let familyProof: ParkingProofUpload | null = null;
+    if (dto.kind === 'add_vehicle' && payload.identity === '亲情车') {
+      familyProof = await this.parkingOperationRepo.manager.getRepository(ParkingProofUpload).findOne({ where: { id: Number(payload.proofUploadId) || 0, tenantId } });
+      prepareFamilyRegistration(payload, familyProof);
+    }
+    if (['update_garages', 'download_vehicle'].includes(dto.kind)) {
+      const proof = await this.parkingOperationRepo.manager.getRepository(ParkingProofUpload).findOne({ where: { tenantId, plate: String(payload.plate || '').trim().toUpperCase() }, order: { createdAt: 'DESC' } });
+      if (proof?.registrationId && proof.reviewStatus !== 'approved') throw new BadRequestException('亲情车资料尚未审核通过，不允许授权或下发');
+      if (payload.familyReviewId && (!proof || proof.id !== Number(payload.familyReviewId) || proof.reviewStatus !== 'approved')) throw new BadRequestException('亲情车审核凭证不匹配');
+      if (payload.familyReviewId && !supportsFamilyActivation(gateway.version))
+        throw new ServiceUnavailableException('亲情车审核自动开通需要现场助手升级到 2.5.40');
+    }
     if (dto.kind === 'rebind_owner') {
       const houseId = Number(payload.houseId);
       if (!Number.isSafeInteger(houseId) || houseId <= 0 || !Number.isSafeInteger(dto.pmsUserId) || !dto.pmsUserId) {
@@ -949,7 +981,68 @@ export class AccessCardIssuanceService {
       requestedAt: now, completedAt: null, leaseAgentKey: null, leaseExpiresAt: null,
       lastError: null, rollbackOfOperationId: null, createdBy: user.id, updatedBy: user.id,
     });
+    if (familyProof) {
+      return this.parkingOperationRepo.manager.transaction(async (manager) => {
+        const proofs = manager.getRepository(ParkingProofUpload);
+        const locked = await proofs.findOne({ where: { id: familyProof!.id, tenantId }, lock: { mode: 'pessimistic_write' } });
+        prepareFamilyRegistration(payload, locked);
+        const saved = await manager.getRepository(ParkingOperation).save(task);
+        locked!.registrationId = saved.id;
+        locked!.updatedBy = user.id;
+        await proofs.save(locked!);
+        return this.parkingOperationResponse(saved);
+      });
+    }
     return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));
+  }
+
+  async reviewParkingProof(id: number, decision: 'approved' | 'rejected', reason: string | undefined, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const proof = await this.parkingOperationRepo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(ParkingProofUpload);
+      const row = await repo.findOne({ where: { id, tenantId }, lock: { mode: 'pessimistic_write' } });
+      if (!row) throw new NotFoundException('亲情车资料不存在');
+      if (row.reviewStatus === 'approved' && decision !== 'approved') throw new BadRequestException('已通过审核的车辆不能直接驳回，请先调整车库授权');
+      if (decision === 'rejected' && !reason?.trim()) throw new BadRequestException('请填写驳回原因');
+      if (decision === 'approved' && !row.submittedAt) throw new BadRequestException('用户尚未上传证明材料，不能通过审核');
+      if (!row.registrationId) throw new BadRequestException('请先保存待审核车牌');
+      const registration = await manager.getRepository(ParkingOperation).findOne({ where: { id: row.registrationId, tenantId } });
+      if (registration?.status !== 'completed') throw new BadRequestException('待审核车辆尚未完成旧库保存，请先确认原登记结果');
+      if (row.reviewStatus !== 'approved') {
+        row.reviewStatus = decision; row.reviewReason = decision === 'rejected' ? reason!.trim() : null;
+        row.reviewedBy = user.id; row.reviewedAt = new Date(); row.updatedBy = user.id;
+        await repo.save(row);
+      }
+      return row;
+    });
+    if (decision === 'rejected') return { reviewStatus: decision, operation: null, cloudOperation: null };
+    const registration = await this.parkingOperationRepo.findOne({ where: { id: proof.registrationId!, tenantId } });
+    const p = registration!.payload;
+    const garages = (p.garages as string[]).filter((key) => key !== 'civil');
+    // 既有助手一次 update_garages 会同时对一期/二期读回；稳定键使重复审核不会重复建任务。
+    let operation = await this.createParkingOperation({
+      kind: 'update_garages', database: registration!.database as 'parking1' | 'parking2',
+      idempotencyKey: `family-review-${id}-local`, payload: { ...p, ownerRoom: p.ownerAddress, garages, familyReviewId: id, state: 1 },
+    }, user);
+    if (operation.status === 'failed') {
+      operation = await this.parkingOperationRepo.manager.transaction(async (manager) => {
+        const repo = manager.getRepository(ParkingOperation);
+        const locked = await repo.findOne({ where: { id: operation.id, tenantId }, lock: { mode: 'pessimistic_write' } });
+        if (!locked || Number(locked.payload.familyReviewId) !== id) throw new BadRequestException('亲情车授权原任务不匹配');
+        if (locked.status === 'failed') {
+          locked.status = 'pending'; locked.attempt = 0; locked.completedAt = null; locked.lastError = null;
+          locked.leaseAgentKey = null; locked.leaseExpiresAt = null; locked.updatedBy = user.id; await repo.save(locked);
+        }
+        return this.parkingOperationResponse(locked);
+      });
+    }
+    const cloudOperation = (p.garages as string[]).includes('civil') ? await this.setDeliyunCivilDefenseAuthorization({
+      plate: proof.plate, authorized: true, beginDate: String(p.startDate), endDate: String(p.endDate),
+      ownerRoom: String(p.ownerAddress || ''), parkingSpace: String((p.garageNumbers as Record<string, unknown> | undefined)?.civil || p.spaces || ''),
+      remark: String(p.note || ''),
+      idempotencyKey: `family-review-${id}-civil`,
+    }, user, true) : null;
+    return { reviewStatus: 'approved' as const, operation, cloudOperation };
   }
 
   async getParkingOperation(id: number, user: AuthUser) {
@@ -1130,6 +1223,8 @@ export class AccessCardIssuanceService {
         .andWhere("(task.kind <> 'rebind_owner' OR :canRebind = true)", { canRebind: supportsParkingOwnerRebind(agent.version) })
         .andWhere(canSyncVehicleInfo ? '1=1' : "task.kind <> 'sync_vehicle_info'")
         .andWhere(canUseAuthorizationFixes ? '1=1' : "task.kind NOT IN ('update_garages', 'update_vehicle_type', 'download_vehicle')")
+        .andWhere(supportsFamilyActivation(agent.version) ? '1=1' : "NOT (task.payload ? 'familyReviewId')")
+        .andWhere(supportsFamilyActivation(agent.version) ? '1=1' : "NOT (task.kind = 'add_vehicle' AND task.payload->>'requiresProofReview' = 'true')")
         .orderBy('task.created_at', 'ASC').setLock('pessimistic_write').setOnLocked('skip_locked').getOne();
       if (!item) return null;
       if (item.attempt >= 3) {
@@ -1153,6 +1248,11 @@ export class AccessCardIssuanceService {
       if (task.status !== 'running' || task.leaseAgentKey !== agent.agentKey) throw new BadRequestException('停车操作任务不属于当前网关或已经结束');
       const now = new Date();
       if (dto.result === 'success') {
+        if (task.kind === 'add_vehicle' && task.payload.requiresProofReview) {
+          const values = dto.values ?? {};
+          if (values.verified !== true || Number(values.state) !== 0 || String(values.effective || '') !== '0'.repeat(256))
+            throw new BadRequestException('亲情车旧库待审核状态或零授权未读回一致，不能标为成功');
+        }
         if (task.kind === 'rebind_owner') {
           const values = dto.values ?? {};
           const baseRoom = textValue(values.targetRoom);
@@ -1176,6 +1276,8 @@ export class AccessCardIssuanceService {
             if (!row || !garageBitsMatch(textValue(row.effective), requested, database)) {
               throw new BadRequestException(`${database === 'parking1' ? '一期' : '二期'}车库授权读回结果与本次勾选不一致，不能标为成功`);
             }
+            if (task.payload.familyReviewId && row.existed !== false && Number(row.state) !== 1)
+              throw new BadRequestException('亲情车开通状态未读回验证，不能标为成功');
           }
         }
         if (task.kind === 'update_vehicle_type') {
@@ -2929,14 +3031,14 @@ function validateParkingOperation(
   targetRecordId?: string,
 ) {
   const requireValue = (key: string, label: string) => { if (!textValue(payload[key])) throw new BadRequestException(`${label}不能为空`); };
-  if (kind === 'add_vehicle') { requireValue('plate', '车牌'); requireValue('ownerName', '住户姓名'); requireValue('endDate', '到期日期'); }
+  if (kind === 'add_vehicle') { requireValue('plate', '车牌'); requireValue('ownerName', '住户姓名'); requireValue('endDate', '到期日期'); validateRegistrationGarageNumbers(payload); }
   if (kind === 'renew_vehicle') { requireValue('plate', '车牌'); requireValue('endDate', '到期日期'); }
   if (kind === 'change_plate') { requireValue('plate', '原车牌'); requireValue('newPlate', '新车牌'); requireValue('ownerName', '住户姓名'); }
   if (kind === 'rebind_owner') { requireValue('plate', '车牌'); requireValue('ownerRoom', '新绑定房号'); requireValue('previousOwnerId', '当前旧库住户编号，请重新查询车辆'); }
   if (kind === 'update_garages') {
     requireValue('plate', '车牌'); requireValue('ownerRoom', '房号');
     const garages = Array.isArray(payload.garages) ? payload.garages.map((item) => textValue(item)).filter(Boolean) : String(textValue(payload.garages) || '').split(',').map((item) => textValue(item)).filter(Boolean);
-    if (!garages.length) throw new BadRequestException('请至少选择一个车库授权状态');
+    if (!garages.length && !payload.familyReviewId) throw new BadRequestException('请至少选择一个车库授权状态');
     const invalid = garages.find((item) => !['phase1', 'phase2', 'main'].includes(item!));
     if (invalid) throw new BadRequestException(`不支持的车库授权：${invalid}；二期人防车库以德立云系统为准`);
     payload.garages = garages;

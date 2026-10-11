@@ -317,6 +317,10 @@ export interface ParkingOperation {
 }
 
 export interface ParkingProofUpload {
+  reviewStatus?: 'pending' | 'approved' | 'rejected';
+  reviewReason?: string | null;
+  registrationId?: number | null;
+  files?: Array<{ fileName: string; fileUrl: string; contentType: string }>;
   id: number;
   plate: string;
   url?: string;
@@ -328,6 +332,12 @@ export interface ParkingProofUpload {
   fileName?: string | null;
   fileUrl?: string | null;
 }
+
+export type ParkingRates = Record<'owner' | 'tenant', Record<string, number>>;
+export const parkingFeeRates = () => request<ParkingRates>({ url: '/access-card-issuance/parking/fee-rates' });
+export const saveParkingFeeRates = (rates: ParkingRates) => request<ParkingRates>({ url: '/access-card-issuance/parking/fee-rates', method: 'POST', data: { rates } });
+export const reviewParkingProof = (id: number, decision: 'approved' | 'rejected', reason?: string) =>
+  request<{ reviewStatus: string; operation: ParkingOperation | null; cloudOperation: ParkingOperation | null }>({ url: `/access-card-issuance/parking/proof-uploads/${id}/review`, method: 'POST', data: { decision, reason } });
 
 export const readiness = () =>
   request<AccessCardReadiness>({ url: '/access-card-issuance/readiness' });
@@ -377,6 +387,8 @@ export const renewDeliyunVehicle = (data: {
 });
 
 export const setDeliyunCivilDefenseAuthorization = (data: {
+  ownerRoom?: string | null;
+  parkingSpace?: string | null;
   plate: string;
   authorized: boolean;
   vehicleId?: string | null;

@@ -49,7 +49,7 @@ export class FeesController {
   // ---------- 账单 ----------
 
   @Get('bills')
-  @RequirePermission('fees', 'view')
+  @RequirePermission(['fees', 'apartment-cashier'], 'view')
   listBills(
     @Query() query: ListBillsQueryDto,
     @CurrentUser() user: AuthUser,
@@ -59,7 +59,7 @@ export class FeesController {
   }
 
   @Get('bills/summary')
-  @RequirePermission('fees', 'view')
+  @RequirePermission(['fees', 'apartment-cashier'], 'view')
   billSummary(
     @Query() query: ListBillsQueryDto,
     @CurrentUser() user: AuthUser,
@@ -70,7 +70,7 @@ export class FeesController {
 
   /** 收费报表：按实收时间统计，不是按账期 */
   @Get('reports/summary')
-  @RequirePermission('fees', 'view')
+  @RequirePermission(['fees', 'apartment-cashier'], 'view')
   feeReport(
     @Query() query: FeeReportQueryDto,
     @CurrentUser() user: AuthUser,
@@ -81,7 +81,7 @@ export class FeesController {
 
   /** 财务对账：按日 × 收款方式，和收费报表同一套取数口径 */
   @Get('reports/reconciliation')
-  @RequirePermission('fees', 'view')
+  @RequirePermission(['fees', 'apartment-cashier'], 'view')
   feeReconciliation(
     @Query() query: FeeReportQueryDto,
     @CurrentUser() user: AuthUser,
@@ -102,7 +102,7 @@ export class FeesController {
 
   /** 一户的全部账单 + 收费标准（欠费页点「明细」） */
   @Get('houses/:houseId')
-  @RequirePermission(['fees', 'app:apartment-cashier'], 'view')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   houseDetail(
     @Param('houseId', ParseIntPipe) houseId: number,
     @CurrentUser() user: AuthUser,
@@ -112,7 +112,7 @@ export class FeesController {
   }
 
   @Get('cashier/houses/:houseId/history')
-  @RequirePermission(['fees', 'app:apartment-cashier'], 'view')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   cashierHistory(
     @Param('houseId', ParseIntPipe) houseId: number,
     @Query('page') page: string,
@@ -124,7 +124,7 @@ export class FeesController {
 
   /** 今日收费流水 + 今日合计（收费员交班对账用） */
   @Get('cashier/today')
-  @RequirePermission(['fees', 'app:apartment-cashier'], 'view')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   cashierToday(
     @Query() query: PageQueryDto,
     @CurrentUser() user: AuthUser,
@@ -134,7 +134,7 @@ export class FeesController {
   }
 
   @Get('cashier/receipts/:receiptNo')
-  @RequirePermission(['fees', 'app:apartment-cashier'], 'view')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   cashierReceipt(
     @Param('receiptNo') receiptNo: string,
     @CurrentUser() user: AuthUser,
@@ -148,7 +148,7 @@ export class FeesController {
    * 进日志管理 —— 小票是收费凭证，重复打印必须可追溯。
    */
   @Post('cashier/receipts/:receiptNo/reprint')
-  @RequirePermission(['fees', 'app:apartment-cashier'], 'view')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   async reprintReceipt(
     @Param('receiptNo') receiptNo: string,
     @CurrentUser() user: AuthUser,
@@ -159,7 +159,7 @@ export class FeesController {
   }
 
   @Post('cashier/receipts/:receiptNo/refund')
-  @RequirePermission(['fees', 'app:apartment-cashier'], 'edit')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'edit')
   refundReceipt(
     @Param('receiptNo') receiptNo: string,
     @Body() dto: RefundReceiptDto,
@@ -170,7 +170,7 @@ export class FeesController {
   }
 
   @Post('cashier/charges')
-  @RequirePermission(['fees', 'app:apartment-cashier'], 'edit')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'edit')
   createCashierCharge(
     @Body() dto: CreateCashierChargeDto,
     @CurrentUser() user: AuthUser,
