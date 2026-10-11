@@ -392,9 +392,7 @@ export class DeliyunParkingService {
   }
 
   private async h5Post<T = unknown>(path: '/pma/card/deleteCard' | '/pma/card/addPeople' | '/pma/card/findCard' | '/pma/card/updateCard' | '/pma/card/addCard', payload: Record<string, unknown>, token: string) {
-    const body = new URLSearchParams();
-    for (const [key, value] of Object.entries(payload))
-      if (value !== undefined && value !== null) body.set(key, String(value));
+    const body = deliyunFormBody(payload);
     const response = await axios.post<DeliyunResponse<T>>(`${PARKING_H5_API}${path}`, body, {
       headers: { Cookie: `pmatoken=${token}`, 'content-type': 'application/x-www-form-urlencoded' },
       timeout: 10_000,
@@ -585,6 +583,18 @@ export function buildDeliyunCreatePayload(input: {
     endTime: endOfDayEpoch(input.endDate),
     remark: note.includes(source) ? note : [note, source].filter(Boolean).join('\n'),
   };
+}
+
+/** 可选数字外键未选择时省略，不传空字符串让 Java long 转换失败，也不虚构 ID=0。 */
+export function deliyunFormBody(payload: Record<string, unknown>): URLSearchParams {
+  const numericFields = new Set(['cprtId', 'cardGroupId', 'poolId', 'peopleId', 'cardTypeId', 'carTypeId', 'money', 'beginTime', 'endTime']);
+  const body = new URLSearchParams();
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === undefined || value === null) continue;
+    if (numericFields.has(key) && String(value).trim() === '') continue;
+    body.set(key, String(value));
+  }
+  return body;
 }
 
 export function endOfDayEpoch(date: string) {

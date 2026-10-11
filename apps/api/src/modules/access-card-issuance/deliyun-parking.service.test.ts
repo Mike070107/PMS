@@ -7,6 +7,7 @@ import {
   buildDeliyunRenewalPayload,
   buildDeliyunPlateChangePayload,
   shanghaiDateOnly,
+  deliyunFormBody,
   deliyunGarageAuthorization,
   encryptMiniappData,
   endOfDayEpoch,
@@ -17,6 +18,19 @@ import {
   startOfDayEpoch,
   DeliyunParkingService,
 } from './deliyun-parking.service';
+
+test('德立云表单不发送空的数字关联ID，保留有效ID和数字零，不把车位备注映射为cprtId', () => {
+  const body = deliyunFormBody({ cprtId: '', cardGroupId: ' ', poolId: null, peopleId: '19',
+    cardTypeId: 2, carTypeId: 1, money: 0, cardNo: '', remark: '车位号：B01' });
+  assert.equal(body.has('cprtId'), false);
+  assert.equal(body.has('cardGroupId'), false);
+  assert.equal(body.has('poolId'), false);
+  assert.equal(body.get('peopleId'), '19');
+  assert.equal(body.get('money'), '0');
+  assert.equal(body.get('cardNo'), '');
+  assert.equal(body.get('remark'), '车位号：B01');
+  assert.equal(deliyunFormBody({ cprtId: 8, cardGroupId: '6', poolId: 0 }).get('cprtId'), '8');
+});
 
 test('人防换牌只改车牌，保留车库、用户、卡号、车位备注与原有效期', () => {
   const detail = { plateNum: '沪APD0088', cardNo: '123', pgIds: 'garage-1,garage-2',
