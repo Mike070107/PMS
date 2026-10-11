@@ -4580,3 +4580,10 @@
 - 自上次（e6b0547d）以来上线的相关提交：
   - 0dd2add7 fix(parking): synchronize civil-defense plate changes and fallback authorization dates
 
+## 2026-10-12 01:44 · api · 888eb281
+
+- 包：`pms-api-fast-20261012-014325.tar.gz`
+- 提交：888eb281 fix(parking): reuse existing civil-defense residents with duplicate room names
+- 自上次（0dd2add7）以来上线的相关提交：
+  - 888eb281 fix(parking): reuse existing civil-defense residents with duplicate room names
+
