@@ -32,6 +32,13 @@ test('人防日期固定上海时区年月日格式，不依赖区域默认分�
   assert.equal(shanghaiDateOnly(new Date('2026-10-11T16:30:00Z')), '2026-10-12');
 });
 
+test('德立云失败保留上游具体消息，未返回时明确提示，不能只给通用失败', () => {
+  const service = new DeliyunParkingService({ get: () => 'true' } as any) as any;
+  assert.throws(() => service.assertSuccess({ ecode: 7, msg: '该车牌已经存在' }, '德立云人防车辆建档失败'), /代码 7.*该车牌已经存在/);
+  assert.throws(() => service.assertSuccess({ ecode: 7 }, '德立云人防车辆建档失败'), /未返回具体原因/);
+  assert.throws(() => service.assertSuccess({ ecode: 2, msg: '登录过期' }, '车辆查询失败'), /DELIYUN_AUTH_2/);
+});
+
 test('同房号重复人员直接复用有效ID，返回顺序变化不新建或更换关联', async () => {
   const service = new DeliyunParkingService({ get: () => 'true' } as any);
   const internal = service as any;

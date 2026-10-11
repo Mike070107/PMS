@@ -409,7 +409,13 @@ export class DeliyunParkingService {
     if (String(response?.ecode) === '0') return;
     const code = response?.ecode === undefined ? '' : `_${String(response.ecode)}`;
     const auth = ['2', '3'].includes(String(response?.ecode));
-    throw new Error(`${auth ? 'DELIYUN_AUTH' : 'DELIYUN_API'}${code}:${prefix}`);
+    // 上游 msg 才是业务拒绝原因；不回显完整响应、请求或登录凭据。
+    const raw = typeof response?.msg === 'string' ? response.msg.trim() : '';
+    const reason = raw
+      .replace(/(token|password|passwd|secret|accessKey|authorization|cookie)\s*[:=]\s*[^\s,;，；]+/gi, '$1=[已脱敏]')
+      .replace(/\b1[3-9]\d{9}\b/g, '[电话已脱敏]')
+      .replace(/[\r\n\t]+/g, ' ').slice(0, 300);
+    throw new Error(`${auth ? 'DELIYUN_AUTH' : 'DELIYUN_API'}${code}:${prefix}（代码 ${String(response?.ecode ?? '未知')}）：${reason || '德立云未返回具体原因'}`);
   }
 
   private invalidateSessionOnAuthFailure(error: unknown) {
