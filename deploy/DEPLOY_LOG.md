@@ -4540,3 +4540,15 @@
   - 3fd020e0 feat: integrate staff apartment cashier with permission and submission regressions
   - 6c24bcd5 feat: integrate parking family review, fees and apartment permissions
 
+## 2026-10-12 01:07 · web · c183eea9
+
+- 包：`pms-web-20261012-010509.tar.gz`
+- 提交：c183eea9 fix: publish gateway release notes and run self-test hidden
+- 自上次（c3cabc1d）以来上线的相关提交：
+  - 52fd2bba gateway: 内网应用可删除，助手改显示真实探测结果
+  - 391a6e12 merge: integrate parking and staff cashier without replacing existing main features
+  - 781e1bf1 feat: preserve pending apartment staff cashier and shared fee definitions
+  - 3fd020e0 feat: integrate staff apartment cashier with permission and submission regressions
+  - 52dff942 merge: preserve current main and integrated parking/apartment changes
+  - 6c24bcd5 feat: integrate parking family review, fees and apartment permissions
+
