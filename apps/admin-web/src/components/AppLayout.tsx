@@ -82,6 +82,7 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
       { key: '/access-cards', pageKey: 'business', icon: <IdcardOutlined />, label: '门禁发卡' },
       { key: '/parking', pageKey: 'business', icon: <CarOutlined />, label: '停车管理' },
       { key: '/fees', pageKey: 'fees', icon: <AccountBookOutlined />, label: '物业费' },
+      { key: '/apartment-cashier', pageKey: 'apartment-cashier', icon: <ApartmentOutlined />, label: '公寓收费台' },
     ],
   },
   {

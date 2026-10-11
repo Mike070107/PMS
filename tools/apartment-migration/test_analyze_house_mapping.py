@@ -16,6 +16,19 @@ class NormalizeTest(unittest.TestCase):
         self.assertEqual(MAPPING.normalize_room("101（A）"), "101")
         self.assertEqual(MAPPING.normalize_room("超市"), "超市")
 
+    def test_去掉房号后面的旧定位码_用户已确认是同一间(self):
+        # 吴泾旧库写 101(A105C)，PMS 的正式房号是 101
+        self.assertEqual(MAPPING.normalize_room("101(A105C)"), "101")
+        self.assertEqual(MAPPING.normalize_room("101A"), "101a")  # 拆间后缀不在括号里，不能去掉
+        self.assertEqual(MAPPING.normalize_room("(A105C)"), "(a105c)")  # 只有括号段时保留原样，不敢猜
+
+    def test_吴泾带定位码的房号能匹配到PMS房产(self):
+        legacy = [{"ID": "9", "小区编号": "1", "楼栋号": "A栋", "房间号": "119(A201)", "姓名": "", "手机号": ""}]
+        pms = [{"community_id": "20", "community_name": "馨香臣寓吴泾店", "lane": "4787", "building_no": "A栋34号", "room_no": "119", "house_id": "77"}]
+        row = MAPPING.analyze(legacy, pms)[0]
+        self.assertEqual(row["match_status"], "matched")
+        self.assertEqual(row["house_id"], "77")
+
     def test_matches_zhuanqiao_room_to_pms_house(self):
         legacy = [{"ID": "1", "小区编号": "2", "楼栋号": "1号楼", "房间号": "101(A)", "姓名": "张三", "手机号": "13800000000"}]
         pms = [{"community_id": "21", "community_name": "馨香臣寓颛桥店", "lane": "", "building_no": "1", "room_no": "101", "house_id": "99", "owner_id": "", "owner_name": "", "owner_phone": ""}]
@@ -27,7 +40,7 @@ class NormalizeTest(unittest.TestCase):
     def test_maps_legacy_wujing_apartment_to_pms_wujing_apartment(self):
         legacy = [{"ID": "2", "小区编号": "1", "楼栋号": "A栋", "房间号": "101", "姓名": "", "手机号": ""}]
         pms = [
-            {"community_id": "20", "community_name": "馨香臣寓吴泾店", "lane": "", "building_no": "A栋34号", "room_no": "101", "house_id": "10"},
+            {"community_id": "20", "community_name": "馨香臣寓吴泾店", "lane": "4787", "building_no": "A栋34号", "room_no": "101", "house_id": "10"},
             {"community_id": "19", "community_name": "吴泾一村", "lane": "", "building_no": "A", "room_no": "101", "house_id": "11"},
         ]
         row = MAPPING.analyze(legacy, pms)[0]
@@ -35,7 +48,7 @@ class NormalizeTest(unittest.TestCase):
         self.assertEqual(row["house_id"], "10")
         self.assertEqual(row["target_community_id"], "20")
         self.assertEqual(row["target_community"], "馨香臣寓吴泾店")
-        self.assertEqual(row["required_lane"], "")
+        self.assertEqual(row["required_lane"], "4787")
 
     def test_legacy_wujing_home_is_not_mapped_to_the_apartment(self):
         legacy = [{"ID": "3", "小区编号": "5", "楼栋号": "8号楼", "房间号": "201", "姓名": "", "手机号": ""}]
@@ -45,6 +58,23 @@ class NormalizeTest(unittest.TestCase):
         row = MAPPING.analyze(legacy, pms)[0]
         self.assertEqual(row["match_status"], "unknown_community")
         self.assertNotIn("target_community_id", row)
+
+
+    def test_人工确认的别名能把旧地址指到PMS实际房产(self):
+        # 颛桥旧库写 15号楼/超市，PMS 实际建在「单层商铺」下
+        self.assertEqual(MAPPING.resolve_alias(2, "15", "超市"), ("单层商铺", "超市"))
+        self.assertEqual(MAPPING.resolve_alias(2, "15", "106"), ("15", "106"))
+        self.assertEqual(MAPPING.resolve_alias(1, "15", "超市"), ("15", "超市"))
+
+    def test_别名生效后超市能匹配到单层商铺那一间(self):
+        legacy = [{"ID": "4", "小区编号": "2", "楼栋号": "15号楼", "房间号": "超市", "姓名": "杨春梅", "手机号": ""}]
+        pms = [
+            {"community_id": "21", "community_name": "馨香臣寓颛桥店", "lane": "", "building_no": "单层商铺", "room_no": "超市", "house_id": "8588"},
+            {"community_id": "21", "community_name": "馨香臣寓颛桥店", "lane": "", "building_no": "15", "room_no": "106", "house_id": "9398"},
+        ]
+        row = MAPPING.analyze(legacy, pms)[0]
+        self.assertEqual(row["match_status"], "matched")
+        self.assertEqual(row["house_id"], "8588")
 
 
 if __name__ == "__main__":

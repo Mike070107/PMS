@@ -168,3 +168,20 @@ export function sameParkingText(left: string | null | undefined, right: string |
   const clean = (value: string | null | undefined) => value?.replace(/\r\n?/g, '\n').trim() || null;
   return clean(left) === clean(right);
 }
+
+/** 房号/姓名查询也必须逐车读云端；限制并发，失败车辆保留未知状态。 */
+export async function queryParkingCloudVehicles<T>(plates: string[], query: (plate: string) => Promise<{ rows: T[] }>) {
+  const pending = [...new Set(plates.map(normalizeParkingPlate).filter((plate) => /^[京津冀晋蒙辽吉黑沪苏浙皖闽赣鲁豫鄂湘粤桂琼渝川贵云藏陕甘青宁新][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(plate)))];
+  const rows: T[] = [];
+  const checked: string[] = [];
+  const failed: string[] = [];
+  let index = 0;
+  await Promise.all(Array.from({ length: Math.min(3, pending.length) }, async () => {
+    while (index < pending.length) {
+      const plate = pending[index++];
+      try { const result = await query(plate); rows.push(...result.rows); checked.push(plate); }
+      catch { failed.push(plate); }
+    }
+  }));
+  return { rows, checked, failed };
+}

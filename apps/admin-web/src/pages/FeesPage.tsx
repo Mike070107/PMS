@@ -269,7 +269,7 @@ export default function FeesPage() {
           {
             key: 'cashier',
             label: <span><CreditCardOutlined /> 收费工作台</span>,
-            children: <ApartmentCashierPage />,
+            children: <ApartmentCashierPage permissionKey="fees" />,
           },
           {
             key: 'bills',
@@ -325,9 +325,11 @@ function useCommunities() {
 // ====================================================================
 // 账单
 // ====================================================================
-function BillsTab({ onOpenHouse }: { onOpenHouse: (houseId: number) => void }) {
+export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (houseId: number) => void; readOnly?: boolean }) {
   const { message, modal } = AntdApp.useApp();
-  const { canEdit, canDelete } = usePagePerm('fees');
+  const billPermission = usePagePerm('fees');
+  const canEdit = !readOnly && billPermission.canEdit;
+  const canDelete = !readOnly && billPermission.canDelete;
   const communities = useCommunities();
 
   const [rows, setRows] = useState<BillRow[]>([]);
@@ -341,7 +343,7 @@ function BillsTab({ onOpenHouse }: { onOpenHouse: (houseId: number) => void }) {
   const [q, setQ] = useState('');
   const [communityId, setCommunityId] = useState<number | undefined>();
   const [feeCode, setFeeCode] = useState<string | undefined>();
-  const [status, setStatus] = useState<FeeBillStatus | undefined>(FeeBillStatus.UNPAID);
+  const [status, setStatus] = useState<FeeBillStatus | undefined>(readOnly ? undefined : FeeBillStatus.UNPAID);
   const [periodRange, setPeriodRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const [paidRange, setPaidRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string | undefined>();
@@ -851,7 +853,7 @@ function BreakdownCard({
   );
 }
 
-function ReportTab() {
+export function ReportTab() {
   const { message } = AntdApp.useApp();
   const communities = useCommunities();
 
@@ -1142,7 +1144,7 @@ function methodLabel(method: string) {
   return FEE_PAYMENT_METHOD_LABELS[method] || method;
 }
 
-function ReconTab() {
+export function ReconTab() {
   const { message } = AntdApp.useApp();
   const communities = useCommunities();
 
@@ -2226,7 +2228,7 @@ function DetailField({ label, value, color }: { label: string; value: string; co
   );
 }
 
-function HouseDetailModal({ houseId, onClose }: { houseId: number | null; onClose: () => void }) {
+export function HouseDetailModal({ houseId, onClose }: { houseId: number | null; onClose: () => void }) {
   const { message } = AntdApp.useApp();
   const [data, setData] = useState<HouseDetail | null>(null);
   const [loading, setLoading] = useState(false);

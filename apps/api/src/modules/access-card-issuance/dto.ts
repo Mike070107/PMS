@@ -360,6 +360,16 @@ export class RenewDeliyunVehicleDto {
 }
 
 export class SetDeliyunCivilDefenseAuthorizationDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+\/\d+\/\d+$/)
+  ownerRoom?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  parkingSpace?: string | null;
+
   @IsString()
   @MinLength(7)
   @MaxLength(20)
@@ -574,6 +584,21 @@ export class CreateParkingProofUploadDto {
   @IsString()
   @MaxLength(50)
   ownerId?: string;
+}
+
+export class ReviewParkingProofDto {
+  @IsIn(['approved', 'rejected'])
+  decision: 'approved' | 'rejected';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
+export class ParkingRatesDto {
+  @IsObject()
+  rates: Record<string, Record<string, number>>;
 }
 
 export class ParkingQueryRowDto {

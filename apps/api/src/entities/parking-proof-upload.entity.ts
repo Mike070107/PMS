@@ -7,6 +7,24 @@ import { TenantEntity } from '../common/base.entity';
 @Index(['tenantId', 'plate'])
 @Index(['expiresAt'])
 export class ParkingProofUpload extends TenantEntity {
+  @Column({ name: 'review_status', type: 'varchar', length: 20, default: 'pending' })
+  reviewStatus: 'pending' | 'approved' | 'rejected';
+
+  @Column({ name: 'review_reason', type: 'text', nullable: true })
+  reviewReason: string | null;
+
+  @Column({ name: 'reviewed_at', type: 'timestamptz', nullable: true })
+  reviewedAt: Date | null;
+
+  @Column({ name: 'reviewed_by', type: 'int', nullable: true })
+  reviewedBy: number | null;
+
+  @Column({ name: 'registration_id', type: 'int', nullable: true })
+  registrationId: number | null;
+
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  files: Array<{ objectKey: string; fileName: string; contentType: string }>;
+
   @Column({ name: 'token_hash', type: 'varchar', length: 64 })
   tokenHash: string;
 

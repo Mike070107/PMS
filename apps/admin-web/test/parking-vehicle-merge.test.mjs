@@ -10,7 +10,21 @@ import {
   normalizeParkingRoomIdentity,
   parkingRenewalTargets,
   sameParkingText,
+  queryParkingCloudVehicles,
 } from '../src/lib/parkingVehicleMerge.ts';
+
+test('房号查询返回车牌逐车查德立云，去重且失败不当成未授权', async () => {
+  const calls = [];
+  const result = await queryParkingCloudVehicles(['沪APD0088', '沪 APD0088', '沪A12345'], async (plate) => {
+    calls.push(plate);
+    if (plate === '沪A12345') throw new Error('timeout');
+    return { rows: [{ plate, civilDefenseAuthorized: true }] };
+  });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(result.checked, ['沪APD0088']);
+  assert.deepEqual(result.failed, ['沪A12345']);
+  assert.equal(result.rows[0].civilDefenseAuthorized, true);
+});
 
 const row = (database, plate, id) => ({ database, plate, id });
 
@@ -72,7 +86,7 @@ test('完整车牌查询和新增查重不依赖德立云状态轮询结果', ()
     '状态探测与真实车辆查询必须解耦，不能静默跳过德立云');
   assert.doesNotMatch(page, /deliyun\?\.readEnabled\s*\?\s*accessCardIssuance\.deliyunVehiclesByPlate/,
     '新增查重必须始终调用德立云正式查询接口');
-  assert.match(page, /isFullParkingPlate\(queryTerm\)[\s\S]{0,160}deliyunVehiclesByPlate\(queryTerm\)/);
+  assert.match(page, /queryParkingCloudVehicles/);
   assert.match(page, /Promise\.all\(\[[\s\S]{0,240}deliyunVehiclesByPlate\(normalizedPlate\)/);
 });
 
@@ -97,7 +111,7 @@ test('二期人防勾选使用德立云真实授权并在变更后重新查询',
     '人防授权变化必须调用德立云写入接口');
   assert.match(page, /kind === 'add_vehicle' && requestedGarages\.includes\('civil'\)/,
     '新增车辆选择人防时也必须自动写入德立云');
-  assert.match(page, /garages,\s*\n\s*effective:/,
+  assert.match(page, /garages,\s*\n\s*garageNumbers: selectedGarageNumbers/,
     '新增车辆提交必须保留用户选择的人防车库供德立云写入');
   assert.match(page, /begin: \['stratime', 'sarttime', 'starttime'/,
     '德立云新建车辆的开始日必须兼容旧库 D_Stratime 与历史 Sart_Time 拼写');

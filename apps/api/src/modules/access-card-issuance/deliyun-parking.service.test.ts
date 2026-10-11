@@ -13,7 +13,57 @@ import {
   mapDeliyunVehicle,
   miniappSign,
   startOfDayEpoch,
+  DeliyunParkingService,
 } from './deliyun-parking.service';
+
+test('人防授权按项目车辆列表存在判断，不要求详情重复返回车库字段', () => {
+  assert.equal(deliyunGarageAuthorization({ id: 'vehicle-1', plateNum: '沪APD0088' }).civilDefenseAuthorized, true);
+});
+
+test('取消人防授权删除车辆并回读不存在，不调用 updateCard', async () => {
+  const service = new DeliyunParkingService({ get: () => 'true' } as any);
+  const calls: Array<{ path: string; payload: unknown }> = [];
+  const internal = service as any;
+  internal.ensureMiniappSession = async () => ({ park: { unitKey: 'park' }, token: 'test' });
+  internal.civilDefenseGarage = async () => ({ id: '27031' });
+  internal.findVehiclesByPlate = async () => ({ rows: calls.length ? [] : [{ id: 'v1', plate: '沪APD0088', civilDefenseAuthorized: true }] });
+  internal.vehicleDetail = async () => ({ id: 'v1', plateNum: '沪APD0088', pgIds: '27031' });
+  internal.h5Post = async (path: string, payload: unknown) => { calls.push({ path, payload }); return { ecode: 0, data: 1 }; };
+  const result = await service.setCivilDefenseAuthorization({ plate: '沪APD0088', authorized: false, vehicleId: 'v1' });
+  assert.deepEqual(calls, [{ path: '/pma/card/deleteCard', payload: { unitKey: 'park', id: 'v1' } }]);
+  assert.equal(result.verified, true);
+  assert.equal(result.authorized, false);
+});
+
+test('新建使用今天、二期截止日、已有房号人员及车位备注，金额为零且回读字段', async () => {
+  const service = new DeliyunParkingService({ get: () => 'true' } as any);
+  const internal = service as any;
+  let payload: Record<string, any> | null = null;
+  internal.ensureMiniappSession = async () => ({ park: { unitKey: 'park' }, token: 'test' });
+  internal.civilDefenseGarage = async () => ({ id: '27031' });
+  internal.findVehiclesByPlate = async () => ({ rows: payload ? [{ id: 'v1', civilDefenseAuthorized: true }] : [] });
+  internal.h5Get = async (path: string) => ({ ecode: 0, data: path.includes('CardType') ? [{ id: 2, tname: '月票车' }] : path.includes('CarType') ? [{ id: 1, tname: '小型车' }] : [{ id: 9, pname: '228/53/1401' }] });
+  internal.h5Post = async (path: string, value: Record<string, any>) => {
+    assert.equal(path, '/pma/card/addCard'); payload = value; return { ecode: 0 };
+  };
+  internal.vehicleDetail = async () => payload;
+  await service.setCivilDefenseAuthorization({ plate: '沪APD0088', authorized: true, beginDate: '2000-01-01', endDate: '2099-12-31', ownerRoom: '228/53/1401', parkingSpace: 'B008', remark: '原备注' });
+  const saved = payload as unknown as Record<string, any>;
+  assert.equal(saved.beginTime, startOfDayEpoch(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' })));
+  assert.equal(saved.endTime, endOfDayEpoch('2099-12-31'));
+  assert.equal(saved.peopleId, '9');
+  assert.equal(saved.money, 0);
+  assert.match(saved.remark, /车位号：B008/);
+});
+
+test('删除响应成功但车辆仍存在时不得报告取消完成', async () => {
+  const service = new DeliyunParkingService({ get: () => 'true' } as any);
+  const internal = service as any;
+  internal.ensureMiniappSession = async () => ({ park: { unitKey: 'park' }, token: 'test' });
+  internal.findVehiclesByPlate = async () => ({ rows: [{ id: 'v1', civilDefenseAuthorized: true }] });
+  internal.h5Post = async () => ({ ecode: 0 });
+  await assert.rejects(service.setCivilDefenseAuthorization({ plate: '沪APD0088', authorized: false }), /车辆仍存在/);
+});
 
 test('德立云旧协议签名与参数传入顺序无关', () => {
   const first = legacyDeliyunSign({ version: 'v1', accessKeyID: 'id', data: '{}', timestamp: '1', commKey: 'park' }, 'secret');
@@ -74,16 +124,17 @@ test('德立云续期只替换结束日期并保留车辆资料与授权', () =>
   assert.equal(endOfDayEpoch('2027-10-31'), 1824998399);
 });
 
-test('德立云车库权限以详情 pgIds/pgNames 为准，二期民防即 PMS 二期人防', () => {
+test('德立云项目车辆存在即授权，同时保留真实车库名称供展示', () => {
   const garage = findCivilDefenseGarage([
     { id: 27028, pgName: '二期地面车位' },
     { id: 27031, pgName: '二期民防车库' },
   ]);
   assert.deepEqual(garage, { id: '27031', name: '二期民防车库' });
   assert.deepEqual(deliyunGarageAuthorization({
+    id: 'v1', plateNum: '沪APD0088',
     pgIds: [27028, 27029, 27030, 27031],
     pgNames: ['二期地面车位', '一期地面车位', '二期大车库', '二期民防车库'],
-  }, garage.id), {
+  }), {
     garageNames: ['二期地面车位', '一期地面车位', '二期大车库', '二期民防车库'],
     civilDefenseAuthorized: true,
   });

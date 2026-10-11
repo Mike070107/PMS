@@ -26,6 +26,7 @@ import { request } from '../lib/api';
 import './ApartmentCashierPage.css';
 
 type Owner = { id: number; name: string | null; phone: string | null };
+type Community = { id: number; name: string };
 type Building = { id: number; communityId: number; communityName?: string; buildingNo: string; lane?: string | null };
 type House = {
   id: number; communityId: number; communityName: string; buildingId: number; buildingNo: string;
@@ -72,12 +73,14 @@ const PAYMENT_METHODS = [
   { value: 'cash', label: '现金', type: 'cash' as const },
 ];
 
-export default function ApartmentCashierPage({ preview = false }: { preview?: boolean }) {
+export default function ApartmentCashierPage({ preview = false, permissionKey = 'apartment-cashier' }: { preview?: boolean; permissionKey?: string }) {
   const { message } = App.useApp();
-  const permission = usePagePerm('fees');
+  const permission = usePagePerm(permissionKey);
   const canEdit = preview || permission.canEdit;
+  const [communities, setCommunities] = useState<Community[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [houses, setHouses] = useState<House[]>([]);
+  const [communityId, setCommunityId] = useState<number>();
   const [buildingId, setBuildingId] = useState<number>();
   const [houseId, setHouseId] = useState<number>();
   const [ownerName, setOwnerName] = useState('');
@@ -89,6 +92,7 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyOpen, setHistoryOpen] = useState(true);
+  const [loadingBuildings, setLoadingBuildings] = useState(false);
   const [loadingHouses, setLoadingHouses] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -110,19 +114,39 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
   const house = houses.find((item) => item.id === houseId);
   const total = items.reduce((sum, item) => sum + item.amountCents, 0);
 
+  // 公寓选址只有三级：小区 → 楼栋 → 房号。公寓没有弄号，地址保持简洁，不在这里追问弄。
   useEffect(() => {
     if (preview) {
-      setBuildings([{ id: 34, communityId: 20, communityName: '馨香臣寓吴泾店', buildingNo: 'A栋34号' }, { id: 35, communityId: 20, communityName: '馨香臣寓吴泾店', buildingNo: 'B栋35号' }, { id: 39, communityId: 20, communityName: '馨香臣寓吴泾店', buildingNo: 'C栋39号' }]);
+      setCommunities([{ id: 20, name: '馨香臣寓吴泾店' }, { id: 21, name: '馨香臣寓颛桥店' }]);
+      setCommunityId(20);
+      return;
+    }
+    request<Community[]>({ url: '/communities' })
+      .then((rows) => {
+        setCommunities(rows);
+        if (rows.length === 1) setCommunityId(rows[0].id);
+      })
+      .catch((error) => message.error(error?.message || '小区加载失败'));
+  }, [message, preview]);
+
+  useEffect(() => {
+    setBuildings([]);
+    setBuildingId(undefined);
+    if (!communityId) return;
+    if (preview) {
+      setBuildings([{ id: 34, communityId, communityName: '馨香臣寓吴泾店', buildingNo: 'A栋34号' }, { id: 35, communityId, communityName: '馨香臣寓吴泾店', buildingNo: 'B栋35号' }, { id: 39, communityId, communityName: '馨香臣寓吴泾店', buildingNo: 'C栋39号' }]);
       setBuildingId(34);
       return;
     }
-    request<Building[]>({ url: '/buildings' })
+    setLoadingBuildings(true);
+    request<Building[]>({ url: '/buildings', query: { communityId } })
       .then((rows) => {
         setBuildings(rows);
         if (rows.length === 1) setBuildingId(rows[0].id);
       })
-      .catch((error) => message.error(error?.message || '楼栋加载失败'));
-  }, [message, preview]);
+      .catch((error) => message.error(error?.message || '楼栋加载失败'))
+      .finally(() => setLoadingBuildings(false));
+  }, [communityId, message, preview]);
 
   useEffect(() => {
     setHouses([]);
@@ -369,7 +393,8 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
           <section className="cashier-card">
             <header className="cashier-card__heading"><span>1</span><h2>选择收费房间</h2><small>来自 PMS 房产资料</small></header>
             <div className="cashier-room-form">
-              <label><b>楼栋</b><Select value={buildingId} onChange={setBuildingId} options={buildingOptions} placeholder="选择楼栋" showSearch optionFilterProp="label" /></label>
+              <label><b>小区</b><Select value={communityId} onChange={setCommunityId} options={communities.map((item) => ({ value: item.id, label: item.name }))} placeholder="选择小区" showSearch optionFilterProp="label" /></label>
+              <label><b>楼栋</b><Select loading={loadingBuildings} value={buildingId} onChange={setBuildingId} options={buildingOptions} placeholder={communityId ? '选择楼栋' : '请先选择小区'} disabled={!communityId} showSearch optionFilterProp="label" /></label>
               <label><b>房号</b><Select loading={loadingHouses} value={houseId} onChange={setHouseId} options={houses.map((item) => ({ value: item.id, label: item.roomNo }))} placeholder={buildingId ? '选择房号' : '请先选择楼栋'} disabled={!buildingId} showSearch optionFilterProp="label" /></label>
               <label><b>姓名</b><Input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} prefix={<UserOutlined />} placeholder="PMS 暂无姓名，可在此补录" /></label>
               <label><b>手机号</b><Input value={ownerPhone} onChange={(event) => setOwnerPhone(event.target.value)} prefix={<PhoneOutlined />} placeholder="PMS 暂无手机号，可在此补录" maxLength={30} /></label>

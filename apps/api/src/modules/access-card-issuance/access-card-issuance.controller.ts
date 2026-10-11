@@ -9,10 +9,11 @@ import {
   Post,
   Query,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
   UseGuards,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { CurrentAccess } from '../access/current-access.decorator';
@@ -39,6 +40,8 @@ import {
   SetDeliyunCivilDefenseAuthorizationDto,
   CreateParkingOwnerUpdateDto,
   CreateParkingProofUploadDto,
+  ReviewParkingProofDto,
+  ParkingRatesDto,
   ParkingQueryReportDto,
   ParkingOwnerUpdateReportDto,
   ParkingHistoryQueryDto,
@@ -192,6 +195,20 @@ export class AccessCardIssuanceController {
     return this.parkingProof.status(id, user);
   }
 
+  @Post('parking/proof-uploads/:id/review')
+  @RequirePermission('business', 'edit')
+  reviewParkingProof(@Param('id', ParseIntPipe) id: number, @Body() dto: ReviewParkingProofDto, @CurrentUser() user: AuthUser) {
+    return this.service.reviewParkingProof(id, dto.decision, dto.reason, user);
+  }
+
+  @Get('parking/fee-rates')
+  @RequirePermission('business', 'view')
+  parkingRates(@CurrentUser() user: AuthUser) { return this.parkingProof.rates(user); }
+
+  @Post('parking/fee-rates')
+  @RequirePermission('business', 'edit')
+  saveParkingRates(@Body() dto: ParkingRatesDto, @CurrentUser() user: AuthUser) { return this.parkingProof.saveRates(dto.rates, user); }
+
   @Get('houses/:houseId/context')
   @RequirePermission('business', 'view')
   houseContext(
@@ -335,9 +352,9 @@ export class ParkingProofController {
   }
 
   @Post('submit')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
-  submit(@Query('token') token: string, @UploadedFile() file?: Express.Multer.File) {
-    return this.service.submit(token || '', file);
+  @UseInterceptors(FilesInterceptor('file', 10, { limits: { fileSize: 20 * 1024 * 1024 } }))
+  submit(@Query('token') token: string, @UploadedFiles() files?: Express.Multer.File[]) {
+    return this.service.submit(token || '', files);
   }
 }
 

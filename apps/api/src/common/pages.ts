@@ -15,6 +15,7 @@ export const ADMIN_PAGE_KEYS = [
   'maintenance-inspect', // 养护单查验（物业经理签字），单独一格：填单的人不该能自己查验自己
   'experience-notes', // 维修经验总结（按管理处 + 报修类型共享）
   'business', // 前台收费
+  'apartment-cashier', // 公寓收费台（收费 / 明细 / 报表 / 对账）
   'fees', // 物业费（账单 / 收费标准 / 欠费）
   'materials', // 材料 SKU 库
   'inventory', // 库存与采购

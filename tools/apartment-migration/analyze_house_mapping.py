@@ -24,10 +24,19 @@ class CommunityRule(NamedTuple):
 
 COMMUNITY_RULES: Mapping[int, CommunityRule] = {
     # 使用 PMS 的稳定社区 ID 做匹配，名称只用于报告展示，避免同音/形近字造成误匹配。
-    1: CommunityRule("20", "馨香臣寓吴泾店"),
+    # 吴泾店 PMS 楼栋带弄号 4787（龙吴路4787弄），不写上就一条都匹配不到。
+    1: CommunityRule("20", "馨香臣寓吴泾店", "4787"),
     2: CommunityRule("21", "馨香臣寓颛桥店"),
     3: CommunityRule("23", "馨香臣寓江川店"),
     4: CommunityRule("22", "馨香臣寓马桥店"),
+}
+
+# 旧库楼栋/房号与 PMS 实际档案对不上、但已人工确认是同一处的，在这里逐条写明。
+# 只允许一对一显式别名，不做相似度猜测：键值都用归一化后的 (楼栋, 房号)。
+LEGACY_ADDRESS_ALIASES: Mapping[int, Mapping[Tuple[str, str], Tuple[str, str]]] = {
+    # 颛桥店的超市在 PMS 建在「单层商铺」下（房屋 8588），旧库记成 15号楼/超市。
+    # 2026-10-11 用户确认是同一间，不再另建重复的超市。
+    2: {("15", "超市"): ("单层商铺", "超市")},
 }
 
 # 吴泾旧库只写 A/B/C/D/E 栋，PMS 按现场门牌保存完整楼栋名。
@@ -55,9 +64,10 @@ def normalize_building(value: object) -> str:
 
 def normalize_room(value: object) -> str:
     text = compact(value)
-    # 颛桥旧系统把房间序号同时记为 101(A)、102(B)；PMS 的正式房号是 101、102。
-    match = re.fullmatch(r"(\d+)[(]([A-Za-z])\)", text)
-    if match:
+    # 旧系统在房号后面带括号写自己的定位码：颛桥写 101(A)，吴泾写 101(A105C)。
+    # 2026-10-11 用户确认「去掉括号后就是同一间」，统一去掉尾部括号段。
+    match = re.fullmatch(r"(.+?)\(([^()]*)\)", text)
+    if match and match.group(1):
         text = match.group(1)
     return text.casefold()
 
@@ -69,6 +79,14 @@ def normalize_legacy_building(community_id: int, value: object) -> str:
         if target:
             return normalize_building(target)
     return normalized
+
+
+def resolve_alias(community_id: int, building: str, room: str) -> Tuple[str, str]:
+    """把人工确认过的旧地址换成 PMS 实际的 (楼栋, 房号)；没登记别名就原样返回。"""
+    alias = LEGACY_ADDRESS_ALIASES.get(community_id, {}).get((building, room))
+    if not alias:
+        return building, room
+    return normalize_building(alias[0]), normalize_room(alias[1])
 
 
 def normalize_lane(value: object) -> str:
@@ -143,11 +161,16 @@ def analyze(old_rows: Iterable[Mapping[str, str]], pms_rows: Iterable[Mapping[st
         if not rule:
             results.append({**dict(old), "match_status": "unknown_community", "contact_action": "not_applicable"})
             continue
+        building, room = resolve_alias(
+            community_id,
+            normalize_legacy_building(community_id, old.get("楼栋号")),
+            normalize_room(old.get("房间号")),
+        )
         key = (
             compact(rule.pms_community_id),
             normalize_lane(rule.required_lane).casefold(),
-            normalize_legacy_building(community_id, old.get("楼栋号")),
-            normalize_room(old.get("房间号")),
+            building,
+            room,
         )
         ids = sorted(house_ids_by_key.get(key, set()), key=lambda value: int(value))
         status = "matched" if len(ids) == 1 else "ambiguous" if ids else "unmatched"

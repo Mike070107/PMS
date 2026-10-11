@@ -9,7 +9,7 @@ type Session = { plate: string; expiresAt: string; status: 'waiting' | 'opened' 
 export default function ParkingProofUploadPage() {
   const { token = '' } = useParams();
   const [session, setSession] = useState<Session | null>(null);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -23,11 +23,11 @@ export default function ParkingProofUploadPage() {
   }, [token]);
 
   const submit = async () => {
-    if (!file) { setError('请先拍照或选择证明材料'); return; }
-    if (file.size > 20 * 1024 * 1024) { setError('文件不能超过 20MB'); return; }
+    if (!files.length) { setError('请先拍照或选择证明材料'); return; }
+    if (files.length > 10 || files.some((file) => file.size > 20 * 1024 * 1024)) { setError('最多 10 份资料，每份不能超过 20MB'); return; }
     setSaving(true); setError('');
     try {
-      const form = new FormData(); form.append('file', file);
+      const form = new FormData(); files.forEach((file) => form.append('file', file));
       const next = await fetch(`${API_BASE_URL}/parking-proof/submit?token=${encodeURIComponent(token)}`, { method: 'POST', body: form }).then(readResponse<Session>);
       setSession(next);
     } catch (reason) {
@@ -48,11 +48,11 @@ export default function ParkingProofUploadPage() {
           <>
             <div className="parking-proof-plate">{session.plate}</div>
             <p>请拍摄或选择能证明亲情车关系的材料。支持照片或 PDF，仅用于本次亲情车办理。</p>
-            <label className="parking-proof-picker">
-              <span>{file ? file.name : '拍照或选择材料'}</span>
-              <input type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,application/pdf" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            <label className="parking-proof-picker" tabIndex={0} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setFiles(Array.from(event.dataTransfer.files)); }} onPaste={(event) => { const pasted = Array.from(event.clipboardData.files); if (pasted.length) { event.preventDefault(); setFiles(pasted); } }}>
+              <span>{files.length ? `已选择 ${files.length} 份：${files.map((file) => file.name).join('、')}` : '拍照、选择、拖入或粘贴材料（最多10份）'}</span>
+              <input type="file" multiple accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,application/pdf" onChange={(event) => setFiles(Array.from(event.target.files || []))} />
             </label>
-            <button type="button" disabled={!file || saving} onClick={() => void submit()}>{saving ? '正在上传…' : '确认上传'}</button>
+            <button type="button" disabled={!files.length || saving} onClick={() => void submit()}>{saving ? '正在上传…' : '确认上传'}</button>
             <small>链接有效至 {new Date(session.expiresAt).toLocaleString('zh-CN', { hour12: false })}</small>
           </>
         ) : null}

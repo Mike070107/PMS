@@ -82,6 +82,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   },
   { key: 'business', label: '前台收费', group: '收费业务' },
   { key: 'fees', label: '物业费', group: '收费业务' },
+  { key: 'apartment-cashier', label: '公寓收费台', group: '收费业务', actions: [{ field: 'canEdit', label: '收费与红冲' }] },
   { key: 'materials', label: '材料 SKU 库', group: '材料与库存' },
   { key: 'inventory', label: '库存与采购', group: '材料与库存' },
   {
