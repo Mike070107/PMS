@@ -48,6 +48,70 @@ class TransformTest(unittest.TestCase):
         self.assertEqual(payload["bills"][0]["unitPriceCents"], 80)
         self.assertEqual(payload["bills"][0]["status"], "refunded")
 
+    def test_负数的退费单也算退款而不是收款(self):
+        # 旧库 88 笔【退费】只记负金额、红冲还是 0，不能当成一笔正常收款
+        mappings = [{"ID": "11", "小区编号": "2", "match_status": "matched", "house_id": "900"}]
+        orders = [{
+            "订单ID": "9", "地址ID": "11", "录入时间": "2026-02-03 10:20:00",
+            "电费金额": "-8.00", "红冲": "0", "备注": "【退费】",
+        }]
+        payload, _ = MODULE.transform(mappings, orders)
+        self.assertEqual(payload["bills"][0]["status"], "refunded")
+        self.assertEqual(payload["bills"][0]["refundedAt"], "2026-02-03T10:20:00")
+
+    def test_停车结算台账按汇总导一条不拆明细(self):
+        mappings = [{
+            "ID": "2194", "小区编号": "2", "楼栋号": "停车结算", "房间号": "安乐村",
+            "match_status": "matched", "house_id": "9395",
+        }]
+        orders = [{
+            "订单ID": "607", "账单号": "WD1", "地址ID": "2194", "录入时间": "2026-01-05 12:36:15",
+            "收款方式": "支付宝", "收款金额": "-2650.00", "停车费金额": "-2650.00",
+            "停车费月数": "16", "停车开始日期": "2026-01-05", "停车结束日期": "2026-02-04",
+            "备注": "【退费】月租车80辆2400，临时车100辆250，合计2650", "红冲": "0",
+        }]
+        payload, rejected = MODULE.transform(mappings, orders)
+        self.assertFalse(rejected)
+        self.assertEqual(len(payload["bills"]), 1)
+        bill = payload["bills"][0]
+        self.assertEqual(bill["feeCode"], "parking_settle")
+        self.assertEqual(bill["feeName"], "停车结算汇总")
+        self.assertEqual(bill["amountCents"], -265000)
+        self.assertEqual(bill["status"], "refunded")
+        # 汇总不编造数量和单价：旧库「停车费月数」16 是台账流水，不是真实月数
+        self.assertIsNone(bill["quantity"])
+        self.assertIsNone(bill["unitPriceCents"])
+        self.assertIn("月租车80辆2400", bill["remark"])
+        self.assertEqual(bill["legacyRef"], "apartment:order:607:parking_settle")
+
+    def test_汇总总额与明细合计不符时拒绝而不是猜(self):
+        mappings = [{
+            "ID": "2194", "小区编号": "2", "楼栋号": "停车结算",
+            "match_status": "matched", "house_id": "9395",
+        }]
+        orders = [{
+            "订单ID": "608", "地址ID": "2194", "录入时间": "2026-01-05 12:36:15",
+            "收款金额": "-2650.00", "停车费金额": "-2000.00", "红冲": "0",
+        }]
+        payload, rejected = MODULE.transform(mappings, orders)
+        self.assertEqual(payload["bills"], [])
+        self.assertIn("不一致", rejected[0]["原因"])
+
+    def test_普通房间的停车费照旧拆成明细(self):
+        mappings = [{
+            "ID": "11", "小区编号": "2", "楼栋号": "15号楼", "房间号": "106",
+            "match_status": "matched", "house_id": "9398",
+        }]
+        orders = [{
+            "订单ID": "7", "地址ID": "11", "录入时间": "2026-02-03 10:20:00",
+            "收款金额": "300.00", "停车费月数": "1", "停车费金额": "300.00",
+            "车牌号": "沪A12345", "红冲": "0",
+        }]
+        payload, _ = MODULE.transform(mappings, orders)
+        self.assertEqual(payload["bills"][0]["feeCode"], "parking")
+        self.assertEqual(payload["bills"][0]["quantity"], 1.0)
+        self.assertEqual(payload["bills"][0]["vehiclePlate"], "沪A12345")
+
     def test_broadcast_spreads_community_price_to_every_house_of_that_community(self):
         mappings = [{"ID": "11", "小区编号": "2", "match_status": "matched", "house_id": "900"}]
         prices = [

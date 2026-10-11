@@ -14,7 +14,7 @@ import json
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Mapping, Sequence, Tuple
 
 
 FEE_FIELDS = (
@@ -29,6 +29,16 @@ FEE_FIELDS = (
 )
 
 PAYMENTS = {"微信": "wechat", "支付宝": "alipay", "现金": "cash"}
+
+# 旧库里有些「地址」其实是按月结算的汇总台账，不是某一间房的收费明细：
+# 颛桥店「停车结算/安乐村」每月记一笔「月租车N辆X，临时车M辆Y，合计Z」。
+# 汇总就按汇总导：合并成一条，不拆成每辆车的明细，也不编造数量和单价
+# （旧库那里的「停车费月数」写的是 16、19 这种台账流水号，不是真实月数）。
+# 键是 (旧小区编号, 旧楼栋号)，必须逐条人工确认后登记，不做模糊判断。
+SETTLEMENT_LEDGERS: Mapping[Tuple[str, str], Tuple[str, str]] = {
+    ("2", "停车结算"): ("parking_settle", "停车结算汇总"),
+}
+
 PRICE_FIELDS = (
     ("electricity", "电费", "electricity", "度"),
     ("cold_water", "冷水费", "coldWater", "吨"),
@@ -108,6 +118,55 @@ def transform(
         try:
             timestamp = paid_time(order)
             period = datetime.fromisoformat(timestamp).strftime("%Y%m")
+            red_reversal = str(order.get("红冲") or "0").strip() == "1"
+
+            def base_bill(code: str, name: str, amount: int) -> dict:
+                # 旧库记退费有两种写法：红冲标记，和直接记一笔负数的【退费】单。
+                # 两者是同一件事，统一按 refunded 落库；对账的退款额按金额正负算，不会重复计。
+                refunded = red_reversal or amount < 0
+                return {
+                    "house": {"houseId": int(mapped["house_id"])},
+                    "ownerName": mapped.get("姓名") or None,
+                    "feeCode": code,
+                    "feeName": name,
+                    "period": period,
+                    "amountCents": amount,
+                    "status": "refunded" if refunded else "paid",
+                    "paidAt": timestamp,
+                    "paymentMethod": PAYMENTS.get(str(order.get("收款方式") or "").strip(), "other"),
+                    "receiptNo": order.get("账单号") or f"LEGACY-{order_id}",
+                    "cashier": order.get("操作员") or order.get("操作员ID") or None,
+                    "refundedAt": timestamp if refunded else None,
+                    "remark": order.get("备注") or None,
+                    "legacyPayload": {"orderId": order_id, "addressId": address_id, "redReversal": order.get("红冲")},
+                    "legacyRef": f"apartment:order:{order_id}:{code}",
+                }
+
+            ledger = SETTLEMENT_LEDGERS.get((
+                str(mapped.get("小区编号") or "").strip(),
+                str(mapped.get("楼栋号") or "").strip(),
+            ))
+            if ledger:
+                code, name = ledger
+                total = cents(order.get("收款金额"))
+                detail = sum(cents(order.get(field[4])) for field in FEE_FIELDS)
+                # 汇总台账只认实收总额。万一旧库的明细列和总额对不上，宁可拒绝也不猜。
+                if total != detail:
+                    rejected.append({"订单ID": order_id, "地址ID": address_id,
+                                     "原因": f"汇总台账总额{total}与明细合计{detail}不一致"})
+                    continue
+                if total == 0:
+                    rejected.append({"订单ID": order_id, "地址ID": address_id, "原因": "订单没有非零收费项目"})
+                    continue
+                bills.append({
+                    **base_bill(code, name, total),
+                    "quantity": None, "unit": None, "unitPriceCents": None,
+                    "serviceFrom": date_text(order.get("停车开始日期")),
+                    "serviceTo": date_text(order.get("停车结束日期")),
+                    "vehiclePlate": None,
+                })
+                continue
+
             created = 0
             for code, name, quantity_field, unit, amount_field, from_field, to_field in FEE_FIELDS:
                 amount = cents(order.get(amount_field))
@@ -115,28 +174,14 @@ def transform(
                     continue
                 quantity = number(order.get(quantity_field))
                 bills.append({
-                    "house": {"houseId": int(mapped["house_id"])},
-                    "ownerName": mapped.get("姓名") or None,
-                    "feeCode": code,
-                    "feeName": name,
-                    "period": period,
-                    "amountCents": amount,
-                    "status": "refunded" if str(order.get("红冲") or "0").strip() == "1" else "paid",
-                    "paidAt": timestamp,
-                    "paymentMethod": PAYMENTS.get(str(order.get("收款方式") or "").strip(), "other"),
-                    "receiptNo": order.get("账单号") or f"LEGACY-{order_id}",
-                    "cashier": order.get("操作员") or order.get("操作员ID") or None,
-                    "refundedAt": timestamp if str(order.get("红冲") or "0").strip() == "1" else None,
-                    "remark": order.get("备注") or None,
+                    **base_bill(code, name, amount),
                     "quantity": quantity,
                     "unit": unit,
-                    # 红冲明细的金额为负数，但历史单价仍是正数；负号只由金额表达。
+                    # 红冲/退费明细的金额为负数，但历史单价仍是正数；负号只由金额表达。
                     "unitPriceCents": abs(round(amount / quantity)) if quantity else None,
                     "serviceFrom": date_text(order.get(from_field)) if from_field else None,
                     "serviceTo": date_text(order.get(to_field)) if to_field else None,
                     "vehiclePlate": order.get("车牌号") or None if code == "parking" else None,
-                    "legacyPayload": {"orderId": order_id, "addressId": address_id, "redReversal": order.get("红冲")},
-                    "legacyRef": f"apartment:order:{order_id}:{code}",
                 })
                 created += 1
             if not created:
@@ -188,6 +233,13 @@ def main() -> int:
     )
     parser.add_argument("--output-json", type=Path, required=True)
     parser.add_argument("--rejected-csv", type=Path, required=True)
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        choices=["owners", "standards", "bills"],
+        help="只输出这些段，其余留空；本次授权只导账单时用它把写入范围摆在命令里",
+    )
     args = parser.parse_args()
     broadcast = {}
     for pair in args.broadcast_community_price:
@@ -204,6 +256,8 @@ def main() -> int:
         read_csv(args.houses_csv) if args.houses_csv else (),
         broadcast,
     )
+    if args.only:
+        payload = {key: (value if key in args.only else []) for key, value in payload.items()}
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     args.rejected_csv.parent.mkdir(parents=True, exist_ok=True)
