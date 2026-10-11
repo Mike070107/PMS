@@ -7,12 +7,29 @@ import { FeesController } from './fees.controller';
 import { PropertiesController } from '../properties/properties.controller';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { AccessService } from '../access/access.service';
+import { STAFF_APP_PAGE_KEYS } from '../../common/pages';
 import { Reflector } from '@nestjs/core';
 
 const permits = (controller: any, method: string, action: string) =>
   Reflect.getMetadata(PERMISSION_KEY, controller.prototype[method]).items.some(
     (p: any) => p.pageKey === 'apartment-cashier' && p.action === action,
   );
+
+test('员工公寓入口只放行选址和收费，不扩大后台账单管理权限', () => {
+  assert.ok((STAFF_APP_PAGE_KEYS as readonly string[]).includes('app:apartment-cashier'));
+  for (const method of ['listCommunities', 'listBuildings', 'listHouses']) {
+    assert.ok(Reflect.getMetadata(PERMISSION_KEY, (PropertiesController.prototype as any)[method]).items.some(
+      (p: any) => p.pageKey === 'app:apartment-cashier' && p.action === 'view'), method);
+  }
+  for (const [method, action] of [['houseDetail', 'view'], ['cashierHistory', 'view'], ['createCashierCharge', 'edit']]) {
+    assert.ok(Reflect.getMetadata(PERMISSION_KEY, (FeesController.prototype as any)[method]).items.some(
+      (p: any) => p.pageKey === 'app:apartment-cashier' && p.action === action), method);
+  }
+  for (const method of ['unpayBills', 'deleteBill', 'importFees']) {
+    assert.equal(Reflect.getMetadata(PERMISSION_KEY, (FeesController.prototype as any)[method]).items.some(
+      (p: any) => p.pageKey === 'app:apartment-cashier'), false);
+  }
+});
 
 test('公寓收费台可以独立登记和授权', () => {
   assert.ok((ADMIN_PAGE_KEYS as readonly string[]).includes('apartment-cashier'));

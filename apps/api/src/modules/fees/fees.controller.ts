@@ -102,7 +102,7 @@ export class FeesController {
 
   /** 一户的全部账单 + 收费标准（欠费页点「明细」） */
   @Get('houses/:houseId')
-  @RequirePermission(['fees', 'apartment-cashier'], 'view')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   houseDetail(
     @Param('houseId', ParseIntPipe) houseId: number,
     @CurrentUser() user: AuthUser,
@@ -112,7 +112,7 @@ export class FeesController {
   }
 
   @Get('cashier/houses/:houseId/history')
-  @RequirePermission(['fees', 'apartment-cashier'], 'view')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   cashierHistory(
     @Param('houseId', ParseIntPipe) houseId: number,
     @Query('page') page: string,
@@ -124,7 +124,7 @@ export class FeesController {
 
   /** 今日收费流水 + 今日合计（收费员交班对账用） */
   @Get('cashier/today')
-  @RequirePermission(['fees', 'apartment-cashier'], 'view')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   cashierToday(
     @Query() query: PageQueryDto,
     @CurrentUser() user: AuthUser,
@@ -134,7 +134,7 @@ export class FeesController {
   }
 
   @Get('cashier/receipts/:receiptNo')
-  @RequirePermission(['fees', 'apartment-cashier'], 'view')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   cashierReceipt(
     @Param('receiptNo') receiptNo: string,
     @CurrentUser() user: AuthUser,
@@ -148,7 +148,7 @@ export class FeesController {
    * 进日志管理 —— 小票是收费凭证，重复打印必须可追溯。
    */
   @Post('cashier/receipts/:receiptNo/reprint')
-  @RequirePermission(['fees', 'apartment-cashier'], 'view')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   async reprintReceipt(
     @Param('receiptNo') receiptNo: string,
     @CurrentUser() user: AuthUser,
@@ -159,7 +159,7 @@ export class FeesController {
   }
 
   @Post('cashier/receipts/:receiptNo/refund')
-  @RequirePermission(['fees', 'apartment-cashier'], 'edit')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'edit')
   refundReceipt(
     @Param('receiptNo') receiptNo: string,
     @Body() dto: RefundReceiptDto,
@@ -170,7 +170,7 @@ export class FeesController {
   }
 
   @Post('cashier/charges')
-  @RequirePermission(['fees', 'apartment-cashier'], 'edit')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'edit')
   createCashierCharge(
     @Body() dto: CreateCashierChargeDto,
     @CurrentUser() user: AuthUser,

@@ -54,6 +54,7 @@ export const STAFF_APP_PAGE_KEYS = [
   'app:approve-purchaser', // 采购审批（采购这一步）
   'app:messages', // 消息中心
   'app:experience-notes', // 维修经验总结（查看/编辑；默认维修工无需额外授权）
+  'app:apartment-cashier', // 公寓收费工作台（按房间收电费/房租/停车费，出小票）
 ] as const;
 
 export type StaffAppPageKey = (typeof STAFF_APP_PAGE_KEYS)[number];

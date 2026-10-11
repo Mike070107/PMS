@@ -49,6 +49,9 @@ Page({
     /** 代报角色：报修范围是授权小区，不是全公司，文案得说准 */
     repairDesc: '巡查发现的问题直接提单，地址可选全公司任意楼栋房号',
     experienceAccess: { canView: false, canEdit: false, notebookCount: 0 },
+    /** 公寓收费工作台：没有这一格权限的人，「更多」里连这块都不出现 */
+    canSeeCashier: false,
+    canCharge: false,
   },
 
   /** 显示当前跑的是哪个包：改完重新上传后，忘记「选为体验版本」一眼就能看出来 */
@@ -108,6 +111,8 @@ Page({
           ? (scope ? `可报 ${scope} 内任意楼栋房号` : '还没有可代报的小区，请联系物业管理员开通')
           : '巡查发现的问题直接提单，地址可选全公司任意楼栋房号',
         experienceAccess,
+        canSeeCashier: session.canSeeCashier,
+        canCharge: session.canCharge,
       });
       if (session.canAccept) this.refreshNotifyState();
     } catch {
@@ -128,6 +133,10 @@ Page({
       return;
     }
     wx.navigateTo({ url: '/pages/experience-notes/experience-notes' });
+  },
+
+  onOpenCashier() {
+    wx.navigateTo({ url: '/pages/apartment-cashier/apartment-cashier' });
   },
 
   onGoRepair() {

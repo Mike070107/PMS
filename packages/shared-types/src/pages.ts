@@ -228,6 +228,13 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
     editLabel: '编辑笔记',
     editHint: '新建、修改图文经验；该类别默认维修工自动拥有编辑权',
   },
+  {
+    key: 'app:apartment-cashier',
+    label: '公寓收费工作台',
+    hint: '按房间收电费、房租、停车费并出小票；只看自己数据范围内的小区',
+    editLabel: '收款 / 红冲',
+    editHint: '不勾只能查房间和历史缴费，收不了钱、红冲不了',
+  },
 ];
 
 /**
