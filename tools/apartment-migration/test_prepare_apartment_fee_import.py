@@ -48,6 +48,24 @@ class TransformTest(unittest.TestCase):
         self.assertEqual(payload["bills"][0]["unitPriceCents"], 80)
         self.assertEqual(payload["bills"][0]["status"], "refunded")
 
+    def test_收费员按店绑定PMS人员而不是写裸的操作员id(self):
+        # 旧库只有「操作员ID=7」，直接落库界面会显示成 7
+        mappings = [
+            {"ID": "11", "小区编号": "2", "match_status": "matched", "house_id": "900"},
+            {"ID": "12", "小区编号": "1", "match_status": "matched", "house_id": "901"},
+        ]
+        orders = [
+            {"订单ID": "7", "地址ID": "11", "录入时间": "2026-02-03 10:20:00",
+             "收款金额": "8.00", "电费金额": "8.00", "操作员ID": "7", "红冲": "0"},
+            {"订单ID": "8", "地址ID": "12", "录入时间": "2026-02-03 10:20:00",
+             "收款金额": "8.00", "电费金额": "8.00", "操作员ID": "7", "红冲": "0"},
+        ]
+        payload, _ = MODULE.transform(mappings, orders)
+        self.assertEqual(payload["bills"][0]["cashier"], "华新")      # 颛桥
+        self.assertEqual(payload["bills"][1]["cashier"], "陈莉莉")    # 吴泾
+        # 旧库操作员 id 不丢，留在 legacyPayload 里可追溯
+        self.assertEqual(payload["bills"][0]["legacyPayload"]["legacyOperatorId"], "7")
+
     def test_负数的退费单也算退款而不是收款(self):
         # 旧库 88 笔【退费】只记负金额、红冲还是 0，不能当成一笔正常收款
         mappings = [{"ID": "11", "小区编号": "2", "match_status": "matched", "house_id": "900"}]

@@ -20,9 +20,9 @@ const ParkingManagementLivePreviewPage = import.meta.env.DEV
 const DataSyncAssistantPreviewPage = import.meta.env.DEV
   ? lazy(() => import('./pages/DataSyncAssistantPreviewPage'))
   : null;
-const ApartmentCashierPreviewPage = import.meta.env.DEV
-  ? lazy(() => import('./pages/ApartmentCashierPage'))
-  : null;
+// 公寓收费台是正式页面（收费业务 → 公寓收费台），不是 DEV 预览；
+// /dev/apartment-cashier 仅保留本机免登录看样式用，和正式路由同一个组件。
+const ApartmentCashierPage = lazy(() => import('./pages/ApartmentCashierPage'));
 const FeesPage = lazy(() => import('./pages/FeesPage'));
 const PropertiesPage = lazy(() => import('./pages/PropertiesPage'));
 const OwnerAuditPage = lazy(() => import('./pages/OwnerAuditPage'));
@@ -149,9 +149,7 @@ export default function App() {
           {DataSyncAssistantPreviewPage && (
             <Route path="/dev/data-sync-assistant" element={<DataSyncAssistantPreviewPage />} />
           )}
-          {ApartmentCashierPreviewPage && (
-            <Route path="/dev/apartment-cashier" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f7fa' }}><ApartmentCashierPreviewPage preview /></div>} />
-          )}
+          <Route path="/dev/apartment-cashier" element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f7fa' }}><ApartmentCashierPage preview /></div>} />
           <Route
             path="/dev/external-access"
             element={<div style={{ minHeight: '100vh', padding: 24, background: '#f5f6f8' }}><ExternalAccessPage preview /></div>}
@@ -176,6 +174,7 @@ export default function App() {
         <Route path="parking" element={<RequireTenantScope><RequirePage pageKey="business"><ParkingManagementPage /></RequirePage></RequireTenantScope>} />
         <Route path="access-cards" element={<RequireTenantScope><RequirePage pageKey="business"><AccessCardIssuancePage /></RequirePage></RequireTenantScope>} />
         <Route path="fees" element={<RequireTenantScope><RequirePage pageKey="fees"><FeesPage /></RequirePage></RequireTenantScope>} />
+        <Route path="apartment-cashier" element={<RequireTenantScope><RequirePage pageKey="fees"><ApartmentCashierPage /></RequirePage></RequireTenantScope>} />
         <Route path="properties" element={<RequireTenantScope><RequirePage pageKey="properties"><PropertiesPage /></RequirePage></RequireTenantScope>} />
         <Route path="owners" element={<RequireTenantScope><RequirePage pageKey="owners"><OwnerAuditPage /></RequirePage></RequireTenantScope>} />
         <Route path="work-orders" element={<RequireTenantScope><RequirePage pageKey="work-orders"><WorkOrdersPage /></RequirePage></RequireTenantScope>} />

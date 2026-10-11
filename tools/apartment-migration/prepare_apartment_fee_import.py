@@ -43,6 +43,14 @@ SETTLEMENT_LEDGERS: Mapping[Tuple[str, str], Tuple[str, str]] = {
     ("2", "停车结算"): ("parking_settle", "停车结算"),
 }
 
+# 旧库 orders 只存「操作员ID」，导出的三张表里没有操作员姓名表，直接落库会让界面的
+# 「收费员」显示成裸 id（7）。2026-10-11 用户指定了每店对应的 PMS 人员，按店绑定姓名；
+# 旧库的操作员 ID 仍留在 legacyPayload 里，可追溯。键是旧小区编号。
+CASHIER_BY_LEGACY_COMMUNITY: Mapping[str, str] = {
+    "1": "陈莉莉",   # 吴泾店 → PMS 员工 7891
+    "2": "华新",     # 颛桥店 → PMS 员工 7888
+}
+
 PRICE_FIELDS = (
     ("electricity", "电费", "electricity", "度"),
     ("cold_water", "冷水费", "coldWater", "吨"),
@@ -139,10 +147,16 @@ def transform(
                     "paidAt": timestamp,
                     "paymentMethod": PAYMENTS.get(str(order.get("收款方式") or "").strip(), "other"),
                     "receiptNo": order.get("账单号") or f"LEGACY-{order_id}",
-                    "cashier": order.get("操作员") or order.get("操作员ID") or None,
+                    "cashier": CASHIER_BY_LEGACY_COMMUNITY.get(
+                        str(mapped.get("小区编号") or "").strip()
+                    ) or order.get("操作员") or None,
                     "refundedAt": timestamp if refunded else None,
                     "remark": order.get("备注") or None,
-                    "legacyPayload": {"orderId": order_id, "addressId": address_id, "redReversal": order.get("红冲")},
+                    "legacyPayload": {
+                        "orderId": order_id, "addressId": address_id,
+                        "redReversal": order.get("红冲"),
+                        "legacyOperatorId": order.get("操作员ID") or None,
+                    },
                     "legacyRef": f"apartment:order:{order_id}:{code}",
                 }
 
