@@ -4573,3 +4573,10 @@
 - 自上次（c183eea9）以来上线的相关提交：
   - 0dd2add7 fix(parking): synchronize civil-defense plate changes and fallback authorization dates
 
+## 2026-10-12 01:41 · web · 0dd2add7
+
+- 包：`pms-web-20261012-013952.tar.gz`
+- 提交：0dd2add7 fix(parking): synchronize civil-defense plate changes and fallback authorization dates
+- 自上次（e6b0547d）以来上线的相关提交：
+  - 0dd2add7 fix(parking): synchronize civil-defense plate changes and fallback authorization dates
+
