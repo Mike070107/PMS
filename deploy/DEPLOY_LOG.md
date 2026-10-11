@@ -4552,3 +4552,10 @@
   - 52dff942 merge: preserve current main and integrated parking/apartment changes
   - 6c24bcd5 feat: integrate parking family review, fees and apartment permissions
 
+## 2026-10-12 01:16 · web · e6b0547d
+
+- 包：`pms-web-20261012-011554.tar.gz`
+- 提交：e6b0547d fix: compact history and align parking identity information; clean self-test fixtures safely
+- 自上次（c183eea9）以来上线的相关提交：
+  - e6b0547d fix: compact history and align parking identity information; clean self-test fixtures safely
+
