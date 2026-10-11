@@ -64,8 +64,14 @@ namespace Pms.DataSyncAssistant
             {
                 var full = Path.GetFullPath(root);
                 var temp = Path.GetFullPath(Path.GetTempPath());
-                if (full.StartsWith(temp, StringComparison.OrdinalIgnoreCase) && Directory.Exists(full))
+                if (full.StartsWith(temp, StringComparison.OrdinalIgnoreCase) &&
+                    Path.GetFileName(full).StartsWith("PmsDataSyncAssistantV2Test-", StringComparison.Ordinal) &&
+                    Directory.Exists(full))
+                {
+                    foreach (var file in Directory.GetFiles(full, "*", SearchOption.AllDirectories))
+                        File.SetAttributes(file, FileAttributes.Normal);
                     Directory.Delete(full, true);
+                }
             }
         }
 
