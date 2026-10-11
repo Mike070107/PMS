@@ -20,6 +20,7 @@ import {
   CopyOutlined,
   CloudServerOutlined,
   CloudSyncOutlined,
+  DeleteOutlined,
   EditOutlined,
   ExclamationCircleFilled,
   ExportOutlined,
@@ -163,7 +164,7 @@ const suggestedClientName = () => {
 };
 
 export default function ExternalAccessPage({ preview = false }: { preview?: boolean }) {
-  const { message } = AntdApp.useApp();
+  const { message, modal } = AntdApp.useApp();
   const { canEdit } = usePagePerm('settings');
   const [apps, setApps] = useState<ExternalApp[]>(preview ? previewApps : []);
   const [agents, setAgents] = useState<GatewayAgent[]>(preview ? previewAgents : []);
@@ -173,6 +174,7 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
   const [creating, setCreating] = useState(false);
   const [creatingAgent, setCreatingAgent] = useState(false);
   const [syncingId, setSyncingId] = useState<number | null>(null);
+  const [removingId, setRemovingId] = useState<number | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (preview) return;
@@ -235,6 +237,43 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
     } finally {
       setSyncingId(null);
     }
+  };
+
+  const remove = (app: ExternalApp) => {
+    modal.confirm({
+      title: `删除「${app.name}」？`,
+      icon: <ExclamationCircleFilled />,
+      okText: '确认删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      content: (
+        <div className="external-access-remove-confirm">
+          <p>删除后将立即收回 {app.publicHostname} 的公网入口、隧道通道和全部角色授权，此操作不可撤销。内网里的业务系统本身不受影响。</p>
+          {app.enabled && (
+            <Alert
+              type="warning"
+              showIcon
+              message="这个应用仍在开放访问"
+              description="正在使用它的员工会马上失去访问。如果只是想临时关闭，请改用编辑里的「停用」。"
+            />
+          )}
+        </div>
+      ),
+      onOk: async () => {
+        if (preview) { message.info('视觉预览不会删除应用'); return; }
+        setRemovingId(app.id);
+        try {
+          await request({ method: 'DELETE', url: `/external-access/apps/${app.id}` });
+          message.success(`「${app.name}」已删除`);
+          load();
+        } catch (error: any) {
+          message.error(error?.message || '删除失败');
+          throw error;
+        } finally {
+          setRemovingId(null);
+        }
+      },
+    });
   };
 
   return (
@@ -344,8 +383,10 @@ export default function ExternalAccessPage({ preview = false }: { preview?: bool
                 canEdit={canEdit}
                 provider={gateway.provider}
                 syncing={syncingId === app.id}
+                removing={removingId === app.id}
                 onEdit={() => setEditing(app)}
                 onSync={() => sync(app)}
+                onRemove={() => remove(app)}
               />
             ))}
           </div>
@@ -363,7 +404,7 @@ function Metric({ icon, value, label, tone }: { icon: React.ReactNode; value: nu
   return <div className={`external-access-metric external-access-metric--${tone}`}><span className="external-access-metric__icon" aria-hidden="true">{icon}</span><strong>{value}</strong><small>{label}</small></div>;
 }
 
-function ExternalAppCard({ app, index, canEdit, provider, syncing, onEdit, onSync }: { app: ExternalApp; index: number; canEdit: boolean; provider: GatewayConfig['provider']; syncing: boolean; onEdit: () => void; onSync: () => void }) {
+function ExternalAppCard({ app, index, canEdit, provider, syncing, removing, onEdit, onSync, onRemove }: { app: ExternalApp; index: number; canEdit: boolean; provider: GatewayConfig['provider']; syncing: boolean; removing: boolean; onEdit: () => void; onSync: () => void; onRemove: () => void }) {
   const state = getAppState(app);
   const status = stateMeta[state];
   const isFinanceApp = /财务|用友|会计|资金/.test(app.name);
@@ -413,6 +454,7 @@ function ExternalAppCard({ app, index, canEdit, provider, syncing, onEdit, onSyn
         <div className="external-app-actions">
           <Tooltip title={state === 'synced' ? `打开 ${app.name}` : '发布完成后可打开'}><Button type="text" shape="circle" icon={<ExportOutlined />} href={state === 'synced' ? launchUrl(app) : undefined} target="_blank" disabled={state !== 'synced'} aria-label={`打开 ${app.name}`} /></Tooltip>
           {canEdit && <Tooltip title="编辑配置"><Button type="text" shape="circle" icon={<EditOutlined />} onClick={onEdit} aria-label={`编辑 ${app.name}`} /></Tooltip>}
+          {canEdit && <Tooltip title="删除应用"><Button className="external-app-actions__remove" type="text" shape="circle" danger icon={<DeleteOutlined />} loading={removing} onClick={onRemove} aria-label={`删除 ${app.name}`} /></Tooltip>}
           {canEdit && provider === 'cloudflare' && <Tooltip title="同步 Cloudflare"><Button className="external-app-actions__sync" type="primary" shape="circle" icon={<CloudSyncOutlined />} loading={syncing} onClick={onSync} aria-label={`同步 ${app.name} 到 Cloudflare`} /></Tooltip>}
         </div>
       </footer>

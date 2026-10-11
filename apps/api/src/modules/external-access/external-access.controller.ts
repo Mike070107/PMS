@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
@@ -86,6 +86,12 @@ export class ExternalAccessController {
   sync(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.service.sync(id, user);
   }
+
+  @Delete('apps/:id')
+  @RequirePermission('settings', 'edit')
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.remove(id, user);
+  }
 }
 
 /** Windows 内网应用连接助手入口：仅接受短期一次性配对密钥或设备凭据。 */
@@ -113,6 +119,16 @@ export class ExternalAccessAgentController {
     @Body() dto: LanGatewayHeartbeatDto,
   ) {
     return this.service.agentHeartbeat(deviceKey, bearerToken(authorization), dto);
+  }
+
+  /** 助手用 POST 而不是 DELETE：WebClient.UploadString 只发 POST。 */
+  @Post('apps/:appId/remove')
+  removeApp(
+    @Headers('x-agent-id') deviceKey: string,
+    @Headers('authorization') authorization: string,
+    @Param('appId', ParseIntPipe) appId: number,
+  ) {
+    return this.service.agentRemoveApp(deviceKey, bearerToken(authorization), appId);
   }
 
   /** frps 仅从本机调用；路径密钥防止公网对设备令牌进行探测。 */

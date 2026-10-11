@@ -351,6 +351,26 @@ export class AccessService implements OnModuleInit {
     return (await this.externalAppIdsOfUser(tenantId, userId)).includes(appId);
   }
 
+  /**
+   * 删除内网应用时，把它从所有角色与权限模板的授权名单里摘掉。
+   * 留着会变成一串指向不存在应用的孤儿 id：权限界面上显示不出名字，
+   * 而且以后新应用复用同一个主键时，会把访问权悄悄还给原来那批角色。
+   */
+  async revokeExternalAppFromRoles(tenantId: number, appId: number) {
+    const roles = await this.roleRepo.find({ where: { tenantId } });
+    for (const role of roles) {
+      if (!role.externalAppIds?.includes(appId)) continue;
+      role.externalAppIds = role.externalAppIds.filter((id) => id !== appId);
+      await this.roleRepo.save(role);
+    }
+    const templates = await this.roleTemplateRepo.find({ where: { tenantId } });
+    for (const template of templates) {
+      if (!template.externalAppIds?.includes(appId)) continue;
+      template.externalAppIds = template.externalAppIds.filter((id) => id !== appId);
+      await this.roleTemplateRepo.save(template);
+    }
+  }
+
   /** 发布清单展示哪些启用角色能进入指定应用（含跟随模板的角色）。 */
   async roleIdsWithExternalApp(tenantId: number, appId: number): Promise<number[]> {
     const roles = await this.roleRepo.find({ where: { tenantId, enabled: true } });

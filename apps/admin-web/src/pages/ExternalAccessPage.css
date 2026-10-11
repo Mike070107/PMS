@@ -317,6 +317,8 @@
 .external-app-actions { flex: none; gap: 4px; }
 .external-app-actions .ant-btn { width: 42px; min-width: 42px; height: 42px; }
 .external-app-actions__sync { box-shadow: 0 7px 15px rgba(47, 111, 237, 0.22); }
+.external-access-remove-confirm p { margin: 0 0 10px; color: #475569; font-size: 14px; line-height: 1.6; }
+.external-access-remove-confirm .ant-alert { margin: 0; }
 .external-app-card--skeleton { justify-content: center; animation: none; }
 
 .external-access-empty { min-height: 300px; padding: 32px; display: grid; place-items: center; align-content: center; text-align: center; }

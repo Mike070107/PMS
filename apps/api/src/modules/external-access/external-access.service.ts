@@ -440,6 +440,58 @@ export class ExternalAccessService {
     return { ok: true, syncedAt: app.lastSyncedAt };
   }
 
+  async remove(id: number, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const app = await this.appRepo.findOne({ where: { id, tenantId } });
+    if (!app) throw new NotFoundException('内网应用不存在');
+    const name = app.name;
+    await this.detach(app);
+    return { ok: true, id, name };
+  }
+
+  /**
+   * 现场助手删除本机的一个内网应用。
+   * 助手手里只有设备凭据，一旦现场电脑被人拿到，这条接口就是它能造成的最大破坏，
+   * 所以只允许删「绑在这台设备上」且「管理员已经停用」的应用——正在用的业务系统
+   * 必须先由管理员在 PMS 后台停用，删不掉。
+   */
+  async agentRemoveApp(deviceKey: string, token: string, appId: number) {
+    const agent = await this.authenticateAgent(deviceKey, token);
+    const app = await this.appRepo.findOne({
+      where: { id: appId, tenantId: agent.tenantId, agentId: agent.id },
+    });
+    if (!app) throw new NotFoundException('这台电脑上没有这个内网应用');
+    if (app.enabled) {
+      throw new ForbiddenException('这个内网应用仍在启用中，请先在 PMS 后台停用后再删除');
+    }
+    const name = app.name;
+    await this.detach(app);
+    return { ok: true, id: appId, name };
+  }
+
+  /**
+   * 先收走公网入口和角色授权，再删记录：顺序反过来的话，数据库里已经没有这条
+   * 应用了，Cloudflare 上的 DNS 和 Access 却还活着，没人会再去清理。
+   */
+  private async detach(app: ExternalAccessApp) {
+    const { id, tenantId, agentId } = app;
+    if (resolveExternalAccessProvider() === 'domestic') {
+      const agent = agentId
+        ? await this.agentRepo.findOne({ where: { id: agentId, tenantId } })
+        : null;
+      await this.appRepo.delete({ id, tenantId });
+      // 下发新修订号，现场助手才会把这条隧道撤掉；少了这一步 frpc 会继续监听端口。
+      if (agent) await this.bumpAgentRevision(agent, []);
+    } else {
+      const remaining = (await this.appRepo.find({ where: { tenantId } })).filter(
+        (item) => item.id !== id,
+      );
+      await this.cloudflare.removeApp(app, remaining);
+      await this.appRepo.delete({ id, tenantId });
+    }
+    await this.accessService.revokeExternalAppFromRoles(tenantId, id);
+  }
+
   private async syncAndRecord(
     app: ExternalAccessApp,
     oldHostname?: string,
