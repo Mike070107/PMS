@@ -19,6 +19,29 @@ export class CloudflareGatewayService {
     await this.syncIngress(allApps, cfg, oldHostname);
   }
 
+  /** 删除应用时一起收走公网入口。先撤 Tunnel 路由停掉流量，再删 DNS 和 Access；
+      反过来先删 Access 会让源站在 DNS 还解析得到的那几秒里失去保护。 */
+  async removeApp(app: ExternalAccessApp, remainingApps: ExternalAccessApp[]) {
+    const cfg = this.requireConfig();
+    await this.syncIngress(remainingApps, cfg, app.publicHostname);
+    if (app.cloudflareDnsRecordId) {
+      await this.cf(
+        `zones/${cfg.zoneId}/dns_records/${app.cloudflareDnsRecordId}`,
+        'DELETE',
+        undefined,
+        cfg.token,
+      );
+    }
+    if (app.cloudflareAppId) {
+      await this.cf(
+        `accounts/${cfg.accountId}/access/apps/${app.cloudflareAppId}`,
+        'DELETE',
+        undefined,
+        cfg.token,
+      );
+    }
+  }
+
   private async syncAccess(app: ExternalAccessApp, cfg: ReturnType<typeof this.requireConfig>) {
     let existingAppId = app.cloudflareAppId;
     if (!existingAppId) {

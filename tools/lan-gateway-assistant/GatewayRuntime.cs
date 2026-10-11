@@ -65,6 +65,7 @@ namespace Pms.LanGatewayAssistant
                     // 崩溃重试的队——那会把一次正常改配置变成一整分钟的断线。
                     if (reconfigured) { WriteHealth(false, "配置已更新，正在重启代理核心", 0); continue; }
                     _restartDelay = DateTime.UtcNow - startedAt >= StableUptime ? MinimumRestartDelay : NextDelay(_restartDelay);
+                    RecordTunnelRestart();
                     WriteHealth(false, "代理核心已退出，" + ((int)_restartDelay.TotalSeconds) + " 秒后自动重试", 0);
                 }
                 catch (Exception exception) { _restartDelay = NextDelay(_restartDelay); WriteHealth(false, exception.Message, 0); }
@@ -79,6 +80,7 @@ namespace Pms.LanGatewayAssistant
             {
                 var previousRevision = _store.Load().AppliedRevision;
                 var result = _controlPlane.Synchronize();
+                RecordRouteHealth(result.Routes);
                 _controlPlane.Heartbeat(processRunning && !result.Changed, result.Changed ? previousRevision : result.Revision, result.Routes, null);
                 return result;
             }
@@ -91,6 +93,15 @@ namespace Pms.LanGatewayAssistant
             }
         }
         internal static TimeSpan NextDelay(TimeSpan current) { return TimeSpan.FromTicks(Math.Min(current.Ticks * 2, MaximumRestartDelay.Ticks)); }
+        /** 探测结果落盘，界面进程才有东西可显示；写不进去不能影响转发。 */
+        private void RecordRouteHealth(System.Collections.Generic.IList<GatewayRouteReport> reports)
+        {
+            try { _store.SaveStability(GatewayStabilityLog.Merge(_store.LoadStability(), _store.Load().Routes, reports, DateTimeOffset.Now)); } catch { }
+        }
+        private void RecordTunnelRestart()
+        {
+            try { _store.SaveStability(GatewayStabilityLog.RecordRestart(_store.LoadStability(), DateTimeOffset.Now)); } catch { }
+        }
         private void StopChild() { try { if (_process != null && !_process.HasExited) { _process.Kill(); _process.WaitForExit(5000); } } catch { } finally { if (_process != null) _process.Dispose(); _process = null; } }
         private void WriteHealth(bool running, string message, int processId)
         {

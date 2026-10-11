@@ -82,11 +82,32 @@ namespace Pms.LanGatewayAssistant
             return new GatewaySyncResult { Changed = true, Revision = managed.Revision, Routes = reports };
         }
 
-        /** 用户主动点击的单条测试：只从本机访问目标地址，不会修改 PMS 或隧道配置。 */
+        /** 用户主动点击的单条测试：只从本机访问目标地址，不会修改 PMS 或隧道配置。
+            走 ProbeOne 而不是 Probe，因为 Probe 会跳过停用的应用——而「内网服务修好了吗」
+            正是停用期间最需要点的一次测试。 */
         public GatewayRouteReport TestRoute(GatewayRoute route)
         {
             if (route == null) throw new ArgumentNullException("route");
-            return Probe(new[] { route }).First();
+            var report = ProbeOne(route); report.Id = route.Id; return report;
+        }
+
+        /**
+         * 从 PMS 删除这台电脑上的一个内网应用。
+         * 助手手里只有设备凭据，所以服务器那侧把它限制成「只能删本机已停用的应用」：
+         * 现场电脑的凭据万一外泄，最多也只能清理一个管理员已经下线的条目，
+         * 删不掉正在用的业务系统。
+         */
+        public void RemoveApp(GatewayRoute route)
+        {
+            if (route == null) throw new ArgumentNullException("route");
+            if (route.AppId <= 0) throw new InvalidOperationException("这个内网应用不是由 PMS 下发的，无法从服务器删除");
+            var current = _store.Load();
+            using (var client = NewClient(true))
+            {
+                client.Headers[HttpRequestHeader.ContentType] = "application/json";
+                try { client.UploadString(current.ApiBaseUrl.TrimEnd('/') + "/external-access-agent/apps/" + route.AppId + "/remove", "POST", "{}"); }
+                catch (WebException exception) { throw FriendlyRemoteError(exception); }
+            }
         }
 
         public void Heartbeat(bool processRunning, int appliedRevision, IEnumerable<GatewayRouteReport> routes, string error)
@@ -162,7 +183,7 @@ namespace Pms.LanGatewayAssistant
             for (var index = 0; index < pending.Count; index++)
             {
                 var slot = index;
-                tasks[slot] = Task.Factory.StartNew(() => { reports[slot] = ProbeOne(pending[slot]); });
+                tasks[slot] = Task.Factory.StartNew(() => { reports[slot] = ProbeOne(pending[slot]); reports[slot].Id = pending[slot].Id; });
             }
             Task.WaitAll(tasks);
             return reports.ToList();

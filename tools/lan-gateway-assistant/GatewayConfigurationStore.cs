@@ -23,6 +23,7 @@ namespace Pms.LanGatewayAssistant
         public string LogPath { get { return Path.Combine(RootPath, "logs", "frpc.log"); } }
         public string ActivityLogPath { get { return Path.Combine(RootPath, "logs", "assistant.log"); } }
         public string HealthPath { get { return Path.Combine(RootPath, "health.json"); } }
+        public string StabilityPath { get { return Path.Combine(RootPath, "routes-health.json"); } }
 
         public GatewayConfigurationStore() : this(null, true) { }
         internal GatewayConfigurationStore(string rootPath, bool migrate)
@@ -52,6 +53,19 @@ namespace Pms.LanGatewayAssistant
             var content = _json.Serialize(value); var temporary = ConfigPath + ".new";
             File.WriteAllText(temporary, content, new UTF8Encoding(false));
             if (File.Exists(ConfigPath)) File.Replace(temporary, ConfigPath, ConfigPath + ".previous", true); else File.Move(temporary, ConfigPath);
+        }
+
+        public GatewayStability LoadStability()
+        {
+            try { if (File.Exists(StabilityPath)) return _json.Deserialize<GatewayStability>(File.ReadAllText(StabilityPath)); } catch { }
+            return null;
+        }
+
+        public void SaveStability(GatewayStability value)
+        {
+            var content = _json.Serialize(value); var temporary = StabilityPath + ".new";
+            File.WriteAllText(temporary, content, new UTF8Encoding(false));
+            if (File.Exists(StabilityPath)) File.Replace(temporary, StabilityPath, null, true); else File.Move(temporary, StabilityPath);
         }
 
         public bool HasToken { get { return File.Exists(TokenPath) && new FileInfo(TokenPath).Length > 0; } }
