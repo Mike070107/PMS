@@ -4594,3 +4594,10 @@
 - 自上次（888eb281）以来上线的相关提交：
   - ed5e69ee fix(parking): preserve sanitized upstream rejection details
 
+## 2026-10-12 01:54 · api · ad301159
+
+- 包：`pms-api-fast-20261012-015416.tar.gz`
+- 提交：ad301159 fix(parking): omit empty numeric fields in Deliyun form requests
+- 自上次（ed5e69ee）以来上线的相关提交：
+  - ad301159 fix(parking): omit empty numeric fields in Deliyun form requests
+
