@@ -8,7 +8,7 @@ $MsBuild = Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319\MSBuild.exe
 
 & $MsBuild $ProjectFile /t:Rebuild /p:Configuration=Release /p:Platform=x86
 if ($LASTEXITCODE -ne 0) { throw "PMS 内网应用连接助手构建失败" }
-$SelfTest = Start-Process -FilePath $Executable -ArgumentList "--self-test" -Wait -PassThru
+$SelfTest = Start-Process -FilePath $Executable -ArgumentList "--self-test" -WindowStyle Hidden -Wait -PassThru
 if ($SelfTest.ExitCode -ne 0) { throw "PMS 内网应用连接助手自检失败" }
 
 $Version = ([Version][Diagnostics.FileVersionInfo]::GetVersionInfo($Executable).FileVersion).ToString(3)
@@ -22,7 +22,7 @@ $Manifest = [ordered]@{
     version = $Version
     url = "https://prsznh.cn/downloads/pms-lan-gateway-assistant/$Version/Pms.LanGatewayAssistant.exe"
     sha256 = $Hash
-    notes = "PMS 内网应用连接助手 $Version：单个内网应用停机不再连带其余应用断线，探测改为并发，改配置后立即重连"
+    notes = "PMS 内网应用连接助手 $Version：支持安全删除停用应用，显示真实探测结果与连接稳定性状态"
     publishedAt = (Get-Date).ToUniversalTime().ToString("o")
 } | ConvertTo-Json
 $Utf8WithoutBom = New-Object Text.UTF8Encoding($false)
