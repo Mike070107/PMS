@@ -4559,3 +4559,10 @@
 - 自上次（c183eea9）以来上线的相关提交：
   - e6b0547d fix: compact history and align parking identity information; clean self-test fixtures safely
 
+## 2026-10-12 01:17 · assistant · e6b0547d
+
+- 提交：e6b0547d fix: compact history and align parking identity information; clean self-test fixtures safely
+- 自上次（b16d1e8d）以来上线的相关提交：
+  - e6b0547d fix: compact history and align parking identity information; clean self-test fixtures safely
+  - 6c24bcd5 feat: integrate parking family review, fees and apartment permissions
+
