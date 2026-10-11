@@ -59,7 +59,7 @@ class TransformTest(unittest.TestCase):
         self.assertEqual(payload["bills"][0]["status"], "refunded")
         self.assertEqual(payload["bills"][0]["refundedAt"], "2026-02-03T10:20:00")
 
-    def test_停车结算台账按汇总导一条不拆明细(self):
+    def test_停车结算一张单落一笔明细既不合并也不拆车(self):
         mappings = [{
             "ID": "2194", "小区编号": "2", "楼栋号": "停车结算", "房间号": "安乐村",
             "match_status": "matched", "house_id": "9395",
@@ -75,7 +75,7 @@ class TransformTest(unittest.TestCase):
         self.assertEqual(len(payload["bills"]), 1)
         bill = payload["bills"][0]
         self.assertEqual(bill["feeCode"], "parking_settle")
-        self.assertEqual(bill["feeName"], "停车结算汇总")
+        self.assertEqual(bill["feeName"], "停车结算")
         self.assertEqual(bill["amountCents"], -265000)
         self.assertEqual(bill["status"], "refunded")
         # 汇总不编造数量和单价：旧库「停车费月数」16 是台账流水，不是真实月数
@@ -83,6 +83,24 @@ class TransformTest(unittest.TestCase):
         self.assertIsNone(bill["unitPriceCents"])
         self.assertIn("月租车80辆2400", bill["remark"])
         self.assertEqual(bill["legacyRef"], "apartment:order:607:parking_settle")
+
+    def test_停车结算几张单就几笔明细各留自己的收据号(self):
+        # 用户 2026-10-11 确认：11 笔订单就对应 11 笔退费明细，不许合并成一行
+        mappings = [{
+            "ID": "2194", "小区编号": "2", "楼栋号": "停车结算",
+            "match_status": "matched", "house_id": "9395",
+        }]
+        orders = [
+            {"订单ID": str(600 + i), "账单号": f"WD{i}", "地址ID": "2194",
+             "录入时间": "2026-04-02 09:59:37", "收款金额": f"-{i}0.00",
+             "停车费金额": f"-{i}0.00", "红冲": "0"}
+            for i in (1, 2, 3)
+        ]
+        payload, rejected = MODULE.transform(mappings, orders)
+        self.assertFalse(rejected)
+        self.assertEqual(len(payload["bills"]), 3)
+        self.assertEqual([b["receiptNo"] for b in payload["bills"]], ["WD1", "WD2", "WD3"])
+        self.assertEqual([b["amountCents"] for b in payload["bills"]], [-1000, -2000, -3000])
 
     def test_汇总总额与明细合计不符时拒绝而不是猜(self):
         mappings = [{
