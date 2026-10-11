@@ -32,6 +32,32 @@ test('人防日期固定上海时区年月日格式，不依赖区域默认分�
   assert.equal(shanghaiDateOnly(new Date('2026-10-11T16:30:00Z')), '2026-10-12');
 });
 
+test('同房号重复人员直接复用有效ID，返回顺序变化不新建或更换关联', async () => {
+  const service = new DeliyunParkingService({ get: () => 'true' } as any);
+  const internal = service as any;
+  const people = [{ id: '20', pname: '228/53/301' }, { id: '', pname: '228/53/301' },
+    { id: '3', pname: '228/53/301' }, { id: '1', pname: '228/53/301/2' }];
+  internal.h5Get = async () => ({ ecode: 0, data: people });
+  internal.h5Post = async () => assert.fail('已有人员不得调用新建');
+  const session = { park: { unitKey: 'park' }, token: 'test' };
+  const first = await internal.ensureOwnerRoom('228/53/301', session);
+  people.reverse();
+  assert.equal(await internal.ensureOwnerRoom('228/53/301', session), first);
+  assert.ok(['3', '20'].includes(first));
+});
+
+test('房号无可用人员才新建，且必须回读有效ID', async () => {
+  const service = new DeliyunParkingService({ get: () => 'true' } as any);
+  const internal = service as any;
+  let created = false;
+  internal.h5Get = async () => ({ ecode: 0, data: created ? [{ id: '42', pname: '198/6/501' }] : [{ id: '1', pname: '198/36/501' }] });
+  internal.h5Post = async (path: string, payload: any) => {
+    assert.equal(path, '/pma/card/addPeople'); assert.equal(payload.name, '198/6/501');
+    assert.equal(created, false); created = true; return { ecode: 0 };
+  };
+  assert.equal(await internal.ensureOwnerRoom('198/6/501', { park: { unitKey: 'park' }, token: 'test' }), '42');
+});
+
 test('人防直接换牌调用更新不删除；失败回读不报告成功', async () => {
   const service = new DeliyunParkingService({ get: () => 'true' } as any);
   const internal = service as any;

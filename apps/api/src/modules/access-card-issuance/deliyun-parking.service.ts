@@ -264,9 +264,13 @@ export class DeliyunParkingService {
     const read = async () => {
       const response = await this.h5Get<Array<Record<string, unknown>>>('/pma/card/findPeopleList', { unitKey: session.park.unitKey, pname: room }, session.token);
       this.assertSuccess(response, '德立云所属人员查询失败');
-      const matches = (Array.isArray(response.data) ? response.data : []).filter((item) => stringValue(item.pname) === room);
-      if (matches.length > 1) throw new BadRequestException('德立云存在同房号重复人员，请先核对');
-      return stringValue(matches[0]?.id);
+      // 房号精确一致即可复用；重复人员不再阻止车辆授权，也不清理上游人员。
+      // 按 ID 固定排序，避免上游列表顺序变化导致不同重试选到不同人员。
+      const ids = (Array.isArray(response.data) ? response.data : [])
+        .filter(item => stringValue(item.pname).trim() === room)
+        .map(item => stringValue(item.id).trim()).filter(Boolean)
+        .sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+      return ids[0] || '';
     };
     const existing = await read();
     if (existing) return existing;
