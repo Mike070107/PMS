@@ -4529,3 +4529,14 @@
 - 自上次（7cb469c6）以来上线的相关提交：
   - c3cabc1d feat(fees): 公寓收费台接进收费业务菜单，选址改成小区→楼栋→房号
 
+## 2026-10-12 01:06 · api · c183eea9
+
+- 包：`pms-api-fast-20261012-010509.tar.gz`
+- 提交：c183eea9 fix: publish gateway release notes and run self-test hidden
+- 自上次（7cb469c6）以来上线的相关提交：
+  - 52fd2bba gateway: 内网应用可删除，助手改显示真实探测结果
+  - 391a6e12 merge: integrate parking and staff cashier without replacing existing main features
+  - 781e1bf1 feat: preserve pending apartment staff cashier and shared fee definitions
+  - 3fd020e0 feat: integrate staff apartment cashier with permission and submission regressions
+  - 6c24bcd5 feat: integrate parking family review, fees and apartment permissions
+
