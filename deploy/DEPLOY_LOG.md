@@ -4566,3 +4566,10 @@
   - e6b0547d fix: compact history and align parking identity information; clean self-test fixtures safely
   - 6c24bcd5 feat: integrate parking family review, fees and apartment permissions
 
+## 2026-10-12 01:40 · api · 0dd2add7
+
+- 包：`pms-api-fast-20261012-013952.tar.gz`
+- 提交：0dd2add7 fix(parking): synchronize civil-defense plate changes and fallback authorization dates
+- 自上次（c183eea9）以来上线的相关提交：
+  - 0dd2add7 fix(parking): synchronize civil-defense plate changes and fallback authorization dates
+
