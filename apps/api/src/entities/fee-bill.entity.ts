@@ -43,7 +43,7 @@ export class FeeBill extends TenantEntity {
   @Column({ name: 'amount_cents', type: 'int' })
   amountCents: number;
 
-  /** 公寓收费台的数量/单位/单价；普通物业费账单可为空。 */
+  /** 公寓收费工作台的数量/单位/单价；普通物业费账单可为空。 */
   @Column({ type: 'numeric', precision: 12, scale: 3, nullable: true })
   quantity: string | null;
 

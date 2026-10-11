@@ -13,6 +13,7 @@
     "pages/stocktake-count/stocktake-count",
     "pages/stocktake-review/stocktake-review",
     "pages/material-inbound/material-inbound",
+    "pages/apartment-cashier/apartment-cashier",
     "pages/messages/messages",
     "pages/feedback/feedback",
     "pages/experience-notes/experience-notes",

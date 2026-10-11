@@ -20,7 +20,7 @@ const ParkingManagementLivePreviewPage = import.meta.env.DEV
 const DataSyncAssistantPreviewPage = import.meta.env.DEV
   ? lazy(() => import('./pages/DataSyncAssistantPreviewPage'))
   : null;
-// 公寓收费台是正式页面（收费业务 → 公寓收费台），不是 DEV 预览；
+// 公寓收费工作台是正式页面（收费业务 → 公寓收费工作台），不是 DEV 预览；
 // /dev/apartment-cashier 仅保留本机免登录看样式用，和正式路由同一个组件。
 const ApartmentCashierPage = lazy(() => import('./pages/ApartmentCashierPage'));
 const FeesPage = lazy(() => import('./pages/FeesPage'));

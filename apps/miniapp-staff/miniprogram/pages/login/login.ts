@@ -1,7 +1,7 @@
 import { auth } from '@pms/api-client';
 import type { StaffLoginReq } from '@pms/shared-types';
 import { clearSession, getSession } from '../../utils/session';
-import { clearAccessCache } from '../../utils/tabbar';
+import { clearAccessCache, rememberMeMode } from '../../utils/tabbar';
 import { guideHandlers } from '../../utils/guide';
 
 /** 扫码登录票据的暂存位：web-login 页发现没登录时写入，登录成功后由这里送回去 */
@@ -166,6 +166,15 @@ Page({
       const session = await getSession(undefined, true);
       if (!session.hasPmsAppAccess) {
         wx.reLaunch({ url: '/pages/external-access/external-access' });
+        return;
+      }
+      // 工单池那一格被藏起来的人（比如只给了「公寓收费工作台」的收费员）不能落在
+      // 工单池上 —— 那一格 tabBar 里压根没有，页面也是空的。送他去「更多」，
+      // 他被授权的图标就在那儿。
+      // 判据和 canSeeTab('pool') 一致：工单池那一格有「待接单」和「我报的」两种授权
+      if (!session.canSeePool && !session.canSeeMyRepairs) {
+        rememberMeMode('more');
+        wx.switchTab({ url: '/pages/me/me' });
         return;
       }
     } catch {

@@ -90,6 +90,46 @@ export const FEE_PAYMENT_METHOD_LABELS: Record<string, string> = FEE_PAYMENT_MET
   {} as Record<string, string>,
 );
 
+/**
+ * 公寓收费工作台的费用项目。和上面的 FEE_ITEMS 是两份清单，故意分开：
+ * FEE_ITEMS 是「物业费账单」能开的全部项目（含老系统历史项），
+ * 这一份是收费员在工作台上能一键点的常用项，带单位 —— 后台页和小程序页共用这一份，
+ * 不要在页面里各写一遍（两端的按钮顺序、单位、code 必须一致，否则小票对不上）。
+ */
+export const APARTMENT_FEE_TYPES: ReadonlyArray<{ code: string; name: string; unit: string }> = [
+  { code: 'electricity', name: '电费', unit: '度' },
+  { code: 'cold_water', name: '冷水费', unit: '吨' },
+  { code: 'hot_water', name: '热水费', unit: '吨' },
+  { code: 'network', name: '网费', unit: '月' },
+  { code: 'parking', name: '停车费', unit: '月' },
+  { code: 'rent', name: '房租', unit: '月' },
+  { code: 'management', name: '管理费', unit: '月' },
+  { code: 'deposit', name: '押金', unit: '次' },
+];
+
+/**
+ * 楼栋号纯数字时补个「号」：公寓楼栋在库里就存「13」，下拉里光秃秃一个数字
+ * 看不出是楼栋还是房号。已经带了「号 / 栋 / 幢 / 座」的（如「A栋34号」）原样显示。
+ */
+export function buildingLabel(buildingNo?: string | null): string {
+  const text = (buildingNo || '').trim();
+  return /^\d+$/.test(text) ? `${text}号` : text;
+}
+
+/** 房号纯数字才缀「室」；办公楼那种「工程部」名字房号不缀。 */
+export function roomLabel(roomNo?: string | null): string {
+  const text = (roomNo || '').trim();
+  return /^\d+$/.test(text) ? `${text}室` : text;
+}
+
+/**
+ * 楼栋和房号之间必须有分隔符：`13 130室` 会被读成一个号码。
+ * 收费对象、小票地址、收费流水一律写成 `13号-130室`。
+ */
+export function placeLabel(buildingNo?: string | null, roomNo?: string | null): string {
+  return [buildingLabel(buildingNo), roomLabel(roomNo)].filter(Boolean).join('-');
+}
+
 /** 账期 '202207' → '2022-07'；非法值原样返回 */
 export function formatFeePeriod(period?: string | null): string {
   if (!period) return '-';

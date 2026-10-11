@@ -20,6 +20,20 @@
         </view>
       </view>
     </view>
+
+    <!-- 收费业务：只有拿到「公寓收费工作台」这一格权限的人才看得到这块 -->
+    <view wx:if="{{canSeeCashier}}" class="card more-panel">
+      <view class="more-panel__title">收费业务</view>
+      <view class="app-grid">
+        <view class="app-tile" bindtap="onOpenCashier">
+          <view class="app-tile__icon"><view class="cashier-glyph"></view></view>
+          <view class="app-tile__name">公寓收费工作台</view>
+          <view class="app-tile__desc">
+            {{canCharge ? '按房间收电费、房租、停车费并出小票' : '只能查房间和历史缴费，收不了款'}}
+          </view>
+        </view>
+      </view>
+    </view>
   </block>
   <block wx:else>
   <view class="screen-head screen-head--help">

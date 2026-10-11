@@ -18,10 +18,17 @@ import {
   WalletOutlined,
 } from '@ant-design/icons';
 import { App, Button, DatePicker, Empty, Input, InputNumber, Modal, Pagination, Select, Spin, Tag } from 'antd';
-import { FEE_PAYMENT_METHOD_LABELS, formatFeeMoney } from '@pms/shared-types';
+import {
+  APARTMENT_FEE_TYPES,
+  FEE_PAYMENT_METHOD_LABELS,
+  buildingLabel,
+  formatFeeMoney,
+  placeLabel,
+  roomLabel,
+} from '@pms/shared-types';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
-import { usePagePerm } from '../lib/auth';
+import { useAuth, usePagePerm } from '../lib/auth';
 import { request } from '../lib/api';
 import './ApartmentCashierPage.css';
 
@@ -56,16 +63,23 @@ type ReceiptPaperData = {
   items: Array<{ feeCode: string; feeName: string; quantity: number | null; unit: string | null; amountCents: number }>;
 };
 
-const FEE_TYPES = [
-  { code: 'electricity', name: '电费', unit: '度', icon: <ThunderboltOutlined />, tone: 'electricity' },
-  { code: 'cold_water', name: '冷水费', unit: '吨', icon: <WaterDropIcon />, tone: 'cold-water' },
-  { code: 'hot_water', name: '热水费', unit: '吨', icon: <WaterDropIcon />, tone: 'hot-water' },
-  { code: 'network', name: '网费', unit: '月', icon: <MobileOutlined />, tone: 'network' },
-  { code: 'parking', name: '停车费', unit: '月', icon: <CarOutlined />, tone: 'parking' },
-  { code: 'rent', name: '房租', unit: '月', icon: <HomeOutlined />, tone: 'rent' },
-  { code: 'management', name: '管理费', unit: '月', icon: <ApartmentOutlined />, tone: 'management' },
-  { code: 'deposit', name: '押金', unit: '次', icon: <CreditCardOutlined />, tone: 'deposit' },
-] as const;
+/** 图标是各端自己的事；code / 名称 / 单位一律取 shared-types 的 APARTMENT_FEE_TYPES */
+const FEE_ICONS: Record<string, { icon: JSX.Element; tone: string }> = {
+  electricity: { icon: <ThunderboltOutlined />, tone: 'electricity' },
+  cold_water: { icon: <WaterDropIcon />, tone: 'cold-water' },
+  hot_water: { icon: <WaterDropIcon />, tone: 'hot-water' },
+  network: { icon: <MobileOutlined />, tone: 'network' },
+  parking: { icon: <CarOutlined />, tone: 'parking' },
+  rent: { icon: <HomeOutlined />, tone: 'rent' },
+  management: { icon: <ApartmentOutlined />, tone: 'management' },
+  deposit: { icon: <CreditCardOutlined />, tone: 'deposit' },
+};
+
+const FEE_TYPES = APARTMENT_FEE_TYPES.map((item) => ({
+  ...item,
+  icon: FEE_ICONS[item.code]?.icon ?? <WalletOutlined />,
+  tone: FEE_ICONS[item.code]?.tone ?? 'management',
+}));
 
 const PAYMENT_METHODS = [
   { value: 'wechat', label: '微信', type: 'wechat' as const },
@@ -77,6 +91,10 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
   const { message } = App.useApp();
   const permission = usePagePerm('fees');
   const canEdit = preview || permission.canEdit;
+  // 收费员多半只管自己那家店，默认就选他被授权的小区，省掉每次开工第一步
+  const { access } = useAuth();
+  // 用字符串做依赖：access 对象每次刷新都是新引用，直接依赖数组会把小区反复重拉
+  const myCommunityKey = (access?.communityIds ?? []).join(',');
   const [communities, setCommunities] = useState<Community[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [houses, setHouses] = useState<House[]>([]);
@@ -124,10 +142,14 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
     request<Community[]>({ url: '/communities' })
       .then((rows) => {
         setCommunities(rows);
-        if (rows.length === 1) setCommunityId(rows[0].id);
+        // 他的数据范围里只有一个小区时，那就是「他自己的小区」，直接选上。
+        // 范围是多个（或 scopeAll，communityIds 为空）时不替他猜，让他自己点。
+        const scoped = myCommunityKey ? myCommunityKey.split(',').map(Number) : [];
+        const mine = scoped.length ? rows.filter((item) => scoped.includes(item.id)) : rows;
+        if (mine.length === 1) setCommunityId(mine[0].id);
       })
       .catch((error) => message.error(error?.message || '小区加载失败'));
-  }, [message, preview]);
+  }, [message, myCommunityKey, preview]);
 
   useEffect(() => {
     setBuildings([]);
@@ -233,7 +255,7 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
     if (preview) {
       const row = todayRows.find((item) => item.receiptNo === no);
       setReceiptDetail({
-        receiptNo: no, communityName: '馨香臣寓吴泾店', place: `${row?.buildingNo || 'A栋34号'} ${row?.roomNo || '101'}室`,
+        receiptNo: no, communityName: '馨香臣寓吴泾店', place: placeLabel(row?.buildingNo || 'A栋34号', row?.roomNo || '101'),
         ownerName: row?.ownerName || '示例住户', paidAt: row?.paidAt || null, paymentMethod: row?.paymentMethod || 'cash',
         remark: null, amountCents: row?.amountCents ?? 150000, refunded: row?.status === 'refunded',
         items: [{ feeCode: 'rent', feeName: '房租', quantity: 1, unit: '月', unitPriceCents: 150000, amountCents: row?.amountCents ?? 150000 }],
@@ -248,7 +270,7 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
       setReceiptDetail({
         receiptNo: detail.receiptNo,
         communityName: detail.communityName,
-        place: `${detail.buildingNo || ''} ${detail.roomNo || ''}室`.trim(),
+        place: placeLabel(detail.buildingNo, detail.roomNo),
         ownerName: detail.ownerName,
         paidAt: detail.paidAt,
         paymentMethod: detail.paymentMethod,
@@ -367,7 +389,7 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
   const receiptPaper: ReceiptPaperData | null = receiptDetail ?? (house ? {
     receiptNo: receiptNo || null,
     communityName: house.communityName,
-    place: `${house.buildingNo} ${house.roomNo}室`,
+    place: placeLabel(house.buildingNo, house.roomNo),
     ownerName: ownerName || null,
     paidAt: receiptNo ? new Date().toISOString() : null,
     paymentMethod: paymentMethod || null,
@@ -382,8 +404,8 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
   const buildingOptions = useMemo(() => buildings.map((item) => ({
     value: item.id,
     label: buildings.some((other) => other.communityId !== item.communityId)
-      ? `${item.communityName ? `${item.communityName} · ` : ''}${item.buildingNo}`
-      : item.buildingNo,
+      ? `${item.communityName ? `${item.communityName} · ` : ''}${buildingLabel(item.buildingNo)}`
+      : buildingLabel(item.buildingNo),
   })), [buildings]);
 
   return (
@@ -395,14 +417,14 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
             <div className="cashier-room-form">
               <label><b>小区</b><Select value={communityId} onChange={setCommunityId} options={communities.map((item) => ({ value: item.id, label: item.name }))} placeholder="选择小区" showSearch optionFilterProp="label" /></label>
               <label><b>楼栋</b><Select loading={loadingBuildings} value={buildingId} onChange={setBuildingId} options={buildingOptions} placeholder={communityId ? '选择楼栋' : '请先选择小区'} disabled={!communityId} showSearch optionFilterProp="label" /></label>
-              <label><b>房号</b><Select loading={loadingHouses} value={houseId} onChange={setHouseId} options={houses.map((item) => ({ value: item.id, label: item.roomNo }))} placeholder={buildingId ? '选择房号' : '请先选择楼栋'} disabled={!buildingId} showSearch optionFilterProp="label" /></label>
+              <label><b>房号</b><Select loading={loadingHouses} value={houseId} onChange={setHouseId} options={houses.map((item) => ({ value: item.id, label: roomLabel(item.roomNo) }))} placeholder={buildingId ? '选择房号' : '请先选择楼栋'} disabled={!buildingId} showSearch optionFilterProp="label" /></label>
               <label><b>姓名</b><Input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} prefix={<UserOutlined />} placeholder="PMS 暂无姓名，可在此补录" /></label>
               <label><b>手机号</b><Input value={ownerPhone} onChange={(event) => setOwnerPhone(event.target.value)} prefix={<PhoneOutlined />} placeholder="PMS 暂无手机号，可在此补录" maxLength={30} /></label>
             </div>
             <p className="cashier-owner-hint"><UserOutlined />提交收费时，新增或修改的姓名、手机号会同步到 PMS 业主资料。</p>
 
             {house && <div className="cashier-selected-room">
-              <HomeOutlined /><div><small>当前房间</small><strong>{house.buildingNo} {house.roomNo}室</strong></div>
+              <HomeOutlined /><div><small>当前房间</small><strong>{placeLabel(house.buildingNo, house.roomNo)}</strong></div>
               <span>{house.communityName}{house.fullAddress ? ` · ${house.fullAddress}` : ''}</span>
               <button type="button" onClick={() => setHistoryOpen((value) => !value)}>{historyOpen ? <DownOutlined /> : <RightOutlined />}历史缴费</button>
             </div>}
@@ -472,7 +494,7 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
                 <div className="cashier-history__head"><span>收费时间</span><span>收据号</span><span>房号</span><span>姓名</span><span>收费项目</span><span>金额</span><span>方式</span><span>操作</span></div>
                 {todayRows.map((row) => <div className="cashier-history__row" key={row.receiptNo}>
                   <span>{dayjs(row.paidAt).format('HH:mm')}</span><span>{row.receiptNo}</span>
-                  <span>{row.buildingNo} {row.roomNo}室</span><span>{row.ownerName || '-'}</span>
+                  <span>{placeLabel(row.buildingNo, row.roomNo)}</span><span>{row.ownerName || '-'}</span>
                   <span>{row.items.map((item) => item.feeName).join('、')}</span>
                   <strong className={row.amountCents < 0 ? 'is-negative' : undefined}>{money(row.amountCents)}</strong>
                   <span>{FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod}</span>
@@ -492,7 +514,7 @@ export default function ApartmentCashierPage({ preview = false }: { preview?: bo
 
         <aside className="cashier-checkout">
           <header className="cashier-card__heading"><span>3</span><h2>确认收款</h2></header>
-          <div className="cashier-checkout__address"><small>收费对象</small><strong>{house ? `${house.buildingNo} ${house.roomNo}室` : '尚未选择房间'}</strong><span>{ownerName || ownerPhone || '住户信息待填写'}</span></div>
+          <div className="cashier-checkout__address"><small>收费对象</small><strong>{house ? placeLabel(house.buildingNo, house.roomNo) : '尚未选择房间'}</strong><span>{ownerName || ownerPhone || '住户信息待填写'}</span></div>
           <dl><div><dt>收费项目</dt><dd>{items.length} 项</dd></div><div><dt>收费时间</dt><dd>提交时自动记录</dd></div></dl>
           <fieldset className="cashier-payment"><legend>收款方式</legend>{PAYMENT_METHODS.map((item) => <button type="button" className={`${item.type} ${paymentMethod === item.value ? 'active' : ''}`} key={item.value} onClick={() => setPaymentMethod(item.value)}><LegacyPaymentIcon type={item.type} /><span>{item.label}</span></button>)}</fieldset>
           <label className="cashier-remark"><span>备注</span><Input.TextArea rows={3} value={remark} onChange={(event) => setRemark(event.target.value)} placeholder="选填" maxLength={255} showCount /></label>

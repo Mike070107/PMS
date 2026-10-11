@@ -925,7 +925,7 @@ export class FeesService {
     });
   }
 
-  /** 公寓收费台：同步住户资料和记账必须同成同败。 */
+  /** 公寓收费工作台：同步住户资料和记账必须同成同败。 */
   async createCashierCharge(
     dto: CreateCashierChargeDto,
     user: AuthUser,

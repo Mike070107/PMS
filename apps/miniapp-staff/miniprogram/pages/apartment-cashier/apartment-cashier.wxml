@@ -1,0 +1,241 @@
+<!--
+  公寓收费工作台（员工端）。绑定名一律对应 apartment-cashier.ts 的 data / 方法。
+  手机上只做「收一笔、出一张、看这间房交过什么」；补打和红冲在网站后台办。
+-->
+<view class="container container--with-bar">
+  <view wx:if="{{loading}}" class="muted center">加载中…</view>
+
+  <!-- 没有这一格权限就把原因说清楚，不要静默空白 -->
+  <view wx:elif="{{!canSeeCashier}}" class="card">
+    <view class="card__title">公寓收费工作台</view>
+    <view class="muted mt-sm">
+      你的角色还没有「公寓收费工作台」这一格权限，所以看不到房间和收费。需要的话请办公室在管理后台
+      「系统设置 → 角色权限」里给你的角色勾上它。
+    </view>
+  </view>
+
+  <block wx:else>
+    <view class="screen-head screen-head--help">
+      <view class="screen-head__title">公寓收费工作台</view>
+      <view wx:if="{{guide}}" class="screen-head__desc">先选房间 → 点要收的项目 → 填数量单价 → 选收款方式收款</view>
+      <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
+    </view>
+
+    <view wx:if="{{error}}" class="card"><view class="field-error">{{error}}</view></view>
+
+    <!-- ============ 1 选房间 ============ -->
+    <view class="card">
+      <view class="field">
+        <view class="label">小区</view>
+        <picker mode="selector" range="{{communityNames}}" value="{{communityIndex}}" bindchange="onPickCommunity">
+          <view class="picker {{communityIndex < 0 ? 'placeholder' : ''}}">
+            {{communityIndex < 0 ? '选择小区' : communityNames[communityIndex]}}
+          </view>
+        </picker>
+      </view>
+
+      <view class="field">
+        <view class="label">楼栋</view>
+        <picker
+          wx:if="{{buildingNames.length}}"
+          mode="selector"
+          range="{{buildingNames}}"
+          value="{{buildingIndex}}"
+          bindchange="onPickBuilding"
+        >
+          <view class="picker {{buildingIndex < 0 ? 'placeholder' : ''}}">
+            {{buildingIndex < 0 ? '选择楼栋' : buildingNames[buildingIndex]}}
+          </view>
+        </picker>
+        <view wx:elif="{{loadingBuildings}}" class="picker placeholder">加载中…</view>
+        <view wx:elif="{{communityIndex >= 0}}" class="muted">这个小区下还没有楼栋档案</view>
+        <view wx:else class="picker placeholder">先选小区</view>
+      </view>
+
+      <view class="field">
+        <view class="label">房号</view>
+        <picker
+          wx:if="{{houseNames.length}}"
+          mode="selector"
+          range="{{houseNames}}"
+          value="{{houseIndex}}"
+          bindchange="onPickHouse"
+        >
+          <view class="picker {{houseIndex < 0 ? 'placeholder' : ''}}">
+            {{houseIndex < 0 ? '选择房号' : houseNames[houseIndex]}}
+          </view>
+        </picker>
+        <view wx:elif="{{loadingHouses}}" class="picker placeholder">加载中…</view>
+        <view wx:elif="{{buildingIndex >= 0}}" class="muted">这栋楼下还没有房间档案</view>
+        <view wx:else class="picker placeholder">先选楼栋</view>
+      </view>
+    </view>
+
+    <block wx:if="{{placeText}}">
+      <!-- 收费对象：楼栋补「号」、和房号用「-」隔开，跟小票、后台一字不差 -->
+      <view class="card cashier-place">
+        <view class="cashier-place__title">{{communityText}} {{placeText}}</view>
+        <view class="field">
+          <view class="label">姓名<text class="label__opt">房产档案里有就自动带出，可改</text></view>
+          <input class="input" placeholder="住户姓名" value="{{ownerName}}" bindinput="onInputOwnerName" />
+        </view>
+        <view class="field">
+          <view class="label">手机号<text class="label__opt">选填</text></view>
+          <input class="input" type="number" placeholder="11 位手机号" value="{{ownerPhone}}" bindinput="onInputOwnerPhone" />
+        </view>
+      </view>
+
+      <!-- ============ 2 点要收的项目 ============ -->
+      <view class="card">
+        <view class="label">收什么<text class="label__opt">点一下加一项，再点取消</text></view>
+        <view class="fee-grid">
+          <view
+            wx:for="{{feeTypes}}"
+            wx:key="code"
+            class="fee-tile {{item.active ? 'fee-tile--on' : ''}}"
+            data-code="{{item.code}}"
+            bindtap="onToggleFee"
+          >
+            <text class="fee-tile__name">{{item.name}}</text>
+            <text class="fee-tile__unit">按{{item.unit}}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- ============ 3 填数量单价 ============ -->
+      <view wx:if="{{rows.length}}" class="card">
+        <view class="label">这一单</view>
+        <view wx:for="{{rows}}" wx:key="feeCode" class="fee-row">
+          <view class="fee-row__head">
+            <text class="fee-row__name">{{item.feeName}}</text>
+            <text class="fee-row__del" data-code="{{item.feeCode}}" catchtap="onRemoveFee">删除</text>
+          </view>
+          <view class="fee-row__inputs">
+            <view class="fee-row__field">
+              <text class="fee-row__label">数量（{{item.unit}}）</text>
+              <input
+                class="input"
+                type="digit"
+                value="{{item.quantityText}}"
+                data-code="{{item.feeCode}}"
+                data-field="quantityText"
+                bindinput="onRowInput"
+              />
+            </view>
+            <view class="fee-row__field">
+              <text class="fee-row__label">单价（元）</text>
+              <input
+                class="input"
+                type="digit"
+                placeholder="0.00"
+                value="{{item.unitPriceYuan}}"
+                data-code="{{item.feeCode}}"
+                data-field="unitPriceYuan"
+                bindinput="onRowInput"
+              />
+            </view>
+            <view class="fee-row__field">
+              <text class="fee-row__label">金额（元）</text>
+              <input
+                class="input"
+                type="digit"
+                placeholder="0.00"
+                value="{{item.amountYuan}}"
+                data-code="{{item.feeCode}}"
+                data-field="amountYuan"
+                bindinput="onRowInput"
+              />
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{guide}}" class="muted mt-sm">金额会按数量×单价自动算；要抹零头直接改金额，改过就以你填的为准。</view>
+      </view>
+
+      <!-- ============ 4 收款方式 ============ -->
+      <view wx:if="{{rows.length}}" class="card">
+        <view class="field">
+          <view class="label">收款方式</view>
+          <view class="chips chips--field">
+            <view
+              wx:for="{{paymentMethods}}"
+              wx:key="value"
+              class="chip {{paymentMethod === item.value ? 'chip--on' : ''}}"
+              data-value="{{item.value}}"
+              bindtap="onPickMethod"
+            >{{item.label}}</view>
+          </view>
+        </view>
+        <view class="field">
+          <view class="label">备注<text class="label__opt">选填，会打在小票上</text></view>
+          <input class="input" placeholder="如：抄表到 10 月 8 日" value="{{remark}}" bindinput="onInputRemark" />
+        </view>
+      </view>
+
+      <!-- ============ 5 这间房交过什么 ============ -->
+      <view class="card">
+        <view class="label">历史缴费</view>
+        <view wx:if="{{historyLoading}}" class="muted">加载中…</view>
+        <pms-empty wx:elif="{{!history.length}}" text="这间房还没有缴费记录" />
+        <block wx:else>
+          <view wx:for="{{history}}" wx:key="receiptNo" class="his-row">
+            <view class="his-row__main">
+              <text class="his-row__items">{{item.itemsText || '—'}}</text>
+              <text class="his-row__amount {{item.refunded ? 'his-row__amount--off' : ''}}">{{item.amountText}}</text>
+            </view>
+            <view class="meta">
+              {{item.timeText}} · {{item.methodText}} · {{item.receiptNo}}{{item.refunded ? ' · 已红冲' : ''}}
+            </view>
+          </view>
+        </block>
+        <view wx:if="{{guide}}" class="muted mt-sm">要补打小票或红冲，请在网站后台「收费业务 → 公寓收费工作台」里办。</view>
+      </view>
+    </block>
+
+    <pms-empty wx:else text="先选房间，再收费" />
+  </block>
+</view>
+
+<!-- 底部操作条：固定不滚，让开安全区 -->
+<view wx:if="{{!loading && canSeeCashier && placeText}}" class="action-bar">
+  <view wx:if="{{submitError}}" class="field-error action-bar__error">{{submitError}}</view>
+  <view class="action-bar__row">
+    <view class="action-bar__total">合计 {{totalText}}</view>
+    <button
+      wx:if="{{canCharge}}"
+      class="btn btn--primary"
+      loading="{{submitting}}"
+      disabled="{{submitting || !rows.length}}"
+      bindtap="onSubmit"
+    >
+      <view class="btn__icon icon-action--check-white"></view><text>收款</text>
+    </button>
+    <view wx:else class="muted">你只有查看权限，收不了款</view>
+  </view>
+</view>
+
+<!-- ============ 收完款的小票 ============ -->
+<view wx:if="{{receiptOpen}}" class="sheet-mask" bindtap="onCloseReceipt" catchtouchmove="noop" />
+<view wx:if="{{receiptOpen}}" class="sheet" catchtouchmove="noop">
+  <view class="sheet__head">
+    <text class="sheet__title">收款成功</text>
+    <text class="sheet__close" bindtap="onCloseReceipt">关闭</text>
+  </view>
+
+  <scroll-view class="sheet__body" scroll-y>
+    <view class="receipt__amount">{{receiptAmountText}}</view>
+    <view class="kv"><text class="kv__k">小票号</text><text class="kv__v">{{receiptNo}}</text></view>
+    <view class="kv"><text class="kv__k">收费对象</text><text class="kv__v">{{communityText}} {{placeText}}</text></view>
+    <view class="kv"><text class="kv__k">住户</text><text class="kv__v">{{ownerName || '未填'}}</text></view>
+    <view class="label mt">明细</view>
+    <view wx:for="{{receiptItems}}" wx:key="feeName" class="kv">
+      <text class="kv__k">{{item.feeName}} {{item.qtyText}}</text>
+      <text class="kv__v">{{item.amountText}}</text>
+    </view>
+  </scroll-view>
+
+  <view class="sheet__foot">
+    <button class="btn btn--primary" bindtap="onCloseReceipt">
+      <view class="btn__icon icon-action--check-white"></view><text>知道了</text>
+    </button>
+  </view>
+</view>

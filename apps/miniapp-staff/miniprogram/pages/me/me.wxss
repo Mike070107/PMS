@@ -119,6 +119,11 @@
   width: 50rpx; height: 50rpx; background: center / contain no-repeat
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 19.5A2.5 2.5 0 0 1 6.5 17H20'/%3E%3Cpath d='M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z'/%3E%3Cpath d='m9 9 2 2 4-4'/%3E%3C/svg%3E");
 }
+/* 收费工作台：钱包 + 卡，一眼知道是收钱的那块 */
+.cashier-glyph {
+  width: 50rpx; height: 50rpx; background: center / contain no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='5' width='20' height='14' rx='2'/%3E%3Cpath d='M2 10h20'/%3E%3Cpath d='M6 15h4'/%3E%3C/svg%3E");
+}
 .app-tile__name { margin-top: 22rpx; font-size: var(--font-xl); font-weight: 700; line-height: 1.35; }
 .app-tile__desc { margin-top: 10rpx; font-size: var(--font-sm); color: var(--color-text-tertiary); line-height: 1.55; }
 .app-tile__badge { display: inline-block; margin-top: 16rpx; padding: 4rpx 14rpx; border-radius: 999rpx; background: #e7f0fb; color: #31558a; font-size: var(--font-xs); }

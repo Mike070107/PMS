@@ -1,5 +1,5 @@
 /**
- * 公寓收费台冒烟：真登录、真点、真断言，给 browser-automation skill 的 --script 用。
+ * 公寓收费工作台冒烟：真登录、真点、真断言，给 browser-automation skill 的 --script 用。
  *
  * 为什么要有：这页之前只注册在 import.meta.env.DEV 的 /dev 预览路由里，生产构建
  * 组件是 null，用户在「收费业务」里根本找不到（2026-10-11 Mike：「为什么我到现在
@@ -74,12 +74,12 @@ export default async function run(page) {
     return { ok: true, url: page.url() };
   });
 
-  await check('收费业务菜单里有「公寓收费台」，点进去就是这页', async () => {
-    const item = page.locator('.ant-menu-item', { hasText: '公寓收费台' }).first();
+  await check('收费业务菜单里有「公寓收费工作台」，点进去就是这页', async () => {
+    const item = page.locator('.ant-menu-item', { hasText: '公寓收费工作台' }).first();
     const visible = await item.count();
     if (!visible) {
       const menu = (await page.locator('.ant-menu').innerText()).replace(/\s+/g, ' ');
-      return { ok: false, reason: '菜单里找不到公寓收费台', menu: menu.slice(0, 300) };
+      return { ok: false, reason: '菜单里找不到公寓收费工作台', menu: menu.slice(0, 300) };
     }
     await item.click();
     await page.waitForFunction(() => location.pathname === '/apartment-cashier', { timeout: 30000 });

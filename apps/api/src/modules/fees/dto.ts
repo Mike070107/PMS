@@ -313,7 +313,7 @@ export class CashierChargeItemDto {
   remark?: string;
 }
 
-/** 公寓收费台一次提交：住户资料同步和全部收费明细在同一事务中完成。 */
+/** 公寓收费工作台一次提交：住户资料同步和全部收费明细在同一事务中完成。 */
 export class CreateCashierChargeDto {
   @Type(() => Number)
   @IsInt()
