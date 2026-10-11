@@ -196,6 +196,7 @@
 </view>
 
 <!-- 底部操作条：固定不滚，让开安全区 -->
+<staff-tabbar id="cashier-tabbar" wx:if="{{!receiptOpen}}" />
 <view wx:if="{{!loading && canSeeCashier && placeText}}" class="action-bar">
   <view wx:if="{{submitError}}" class="field-error action-bar__error">{{submitError}}</view>
   <view class="action-bar__row">

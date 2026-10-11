@@ -1,6 +1,7 @@
 {
   "navigationBarTitleText": "公寓收费工作台",
   "usingComponents": {
+    "staff-tabbar": "/custom-tab-bar/index",
     "pms-empty": "@pms/miniapp-ui/components/empty/index"
   }
 }

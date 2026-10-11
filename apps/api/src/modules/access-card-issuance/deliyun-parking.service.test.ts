@@ -5,6 +5,8 @@ import {
   buildDeliyunCreatePayload,
   buildDeliyunGarageAuthorizationPayload,
   buildDeliyunRenewalPayload,
+  buildDeliyunPlateChangePayload,
+  shanghaiDateOnly,
   deliyunGarageAuthorization,
   encryptMiniappData,
   endOfDayEpoch,
@@ -15,6 +17,35 @@ import {
   startOfDayEpoch,
   DeliyunParkingService,
 } from './deliyun-parking.service';
+
+test('人防换牌只改车牌，保留车库、用户、卡号、车位备注与原有效期', () => {
+  const detail = { plateNum: '沪APD0088', cardNo: '123', pgIds: 'garage-1,garage-2',
+    peopleId: 'owner-1', cardTypeId: 7, carTypeId: 1, cprtId: 'space-1', cardGroupId: 'group-1',
+    poolId: 'pool-1', money: 150, beginTime: 1000, endTime: 2000, remark: '车位号：B12\n原备注' };
+  const result = buildDeliyunPlateChangePayload(detail, 'unit-1', 'vehicle-1', '沪BAU1900');
+  assert.equal(result.plateNum, '沪BAU1900');
+  for (const key of Object.keys(detail).filter(key => key !== 'plateNum')) assert.deepEqual(result[key], detail[key]);
+  assert.equal(result.id, 'vehicle-1');
+});
+
+test('人防日期固定上海时区年月日格式，不依赖区域默认分隔符', () => {
+  assert.equal(shanghaiDateOnly(new Date('2026-10-11T16:30:00Z')), '2026-10-12');
+});
+
+test('人防直接换牌调用更新不删除；失败回读不报告成功', async () => {
+  const service = new DeliyunParkingService({ get: () => 'true' } as any);
+  const internal = service as any;
+  const before = { id: 'v1', plateNum: '沪APD0088', pgIds: 'garage', peopleId: 'p1', beginTime: 1, endTime: 2, remark: '车位号：B01' };
+  let saved: any;
+  internal.ensureMiniappSession = async () => ({ park: { unitKey: 'park' }, token: 'test' });
+  internal.vehicleDetail = async () => saved || before;
+  internal.findVehiclesByPlate = async () => ({ rows: [] });
+  internal.h5Post = async (path: string, payload: any) => { assert.equal(path, '/pma/card/updateCard'); saved = payload; return { ecode: 0 }; };
+  assert.equal((await service.changePlate({ vehicleId: 'v1', plate: before.plateNum, newPlate: '沪BAU1900' })).verified, true);
+  saved = undefined;
+  internal.h5Post = async () => ({ ecode: 0 });
+  await assert.rejects(service.changePlate({ vehicleId: 'v1', plate: before.plateNum, newPlate: '沪BAU1900' }), /回读不一致/);
+});
 
 test('人防授权按项目车辆列表存在判断，不要求详情重复返回车库字段', () => {
   assert.equal(deliyunGarageAuthorization({ id: 'vehicle-1', plateNum: '沪APD0088' }).civilDefenseAuthorized, true);

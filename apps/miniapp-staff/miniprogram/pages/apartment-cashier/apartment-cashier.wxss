@@ -53,7 +53,8 @@
 .his-row__amount--off { color: var(--color-text-tertiary); text-decoration: line-through; }
 
 /* ---------- 底部操作条：合计 + 收款，错误提示摆按钮上方 ---------- */
-.action-bar { flex-direction: column; align-items: stretch; gap: 12rpx; }
+.action-bar { flex-direction: column; align-items: stretch; gap: 12rpx; bottom: calc(152rpx + env(safe-area-inset-bottom)); }
+.container--with-bar { padding-bottom: calc(340rpx + env(safe-area-inset-bottom)); }
 .action-bar__error { margin: 0; }
 .action-bar__row { display: flex; align-items: center; gap: 20rpx; }
 .action-bar__total { flex: 1 1 auto; font-size: 38rpx; font-weight: 700; color: #203e5c; }

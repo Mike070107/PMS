@@ -6,6 +6,16 @@ import vm from 'node:vm';
 const requireApi = createRequire(new URL('../../api/package.json', import.meta.url));
 const ts = requireApi('typescript');
 const source = readFileSync(new URL('../miniprogram/pages/apartment-cashier/apartment-cashier.ts', import.meta.url), 'utf8');
+test('公寓收费底部入口按权限展示，不再放更多；收费页复用底栏', () => {
+  const rolesSource = readFileSync(new URL('../miniprogram/utils/roles.ts', import.meta.url), 'utf8');
+  const exports = {};
+  vm.runInNewContext(ts.transpileModule(rolesSource, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports });
+  assert.equal(exports.canSeeTab('cashier', { pages: { 'app:apartment-cashier': true } }), true);
+  assert.equal(exports.canSeeTab('cashier', { pages: { 'app:pool': true } }), false);
+  const more = readFileSync(new URL('../miniprogram/pages/me/me.wxml', import.meta.url), 'utf8');
+  assert.doesNotMatch(more, /bindtap="onOpenCashier"/);
+  assert.match(readFileSync(new URL('../miniprogram/pages/apartment-cashier/apartment-cashier.wxml', import.meta.url), 'utf8'), /staff-tabbar id="cashier-tabbar"/);
+});
 function fixture({ confirm = true, fail = false } = {}) {
   let page, modalCalls = 0; const charges = [];
   const shared = { APARTMENT_FEE_TYPES: [{ code: 'rent', name: '房租', unit: '月' }], FEE_PAYMENT_METHOD_LABELS: { cash: '现金' },

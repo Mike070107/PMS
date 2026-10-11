@@ -52,6 +52,8 @@
 }
 .tabbar__item--on { background: #edf4fa; border-radius: 999rpx; }
 .tabbar__item--hover { opacity: 0.6; }
+.tabbar__icon--cashier { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%238c8c8c' stroke-width='1.8'%3E%3Cpath d='M6 3h12v18l-3-2-3 2-3-2-3 2V3Z M9 7h6 M9 11h6 M9 15h3'/%3E%3C/svg%3E"); }
+.tabbar__item--on .tabbar__icon--cashier { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2331558a' stroke-width='1.8'%3E%3Cpath d='M6 3h12v18l-3-2-3 2-3-2-3 2V3Z M9 7h6 M9 11h6 M9 15h3'/%3E%3C/svg%3E"); }
 
 .tabbar__icon {
   position: relative;

@@ -408,31 +408,48 @@ export default function ParkingManagementPage({
     finally { setProofLoading(false); }
   };
 
-  const runParkingOperation = async (kind: accessCardIssuance.ParkingOperationKind, row: ParkingQueryRow | null, payload: Record<string, unknown>, rows?: ParkingQueryRow[]) => {
+  const runParkingOperation = async (kind: accessCardIssuance.ParkingOperationKind, row: ParkingQueryRow | null, payload: Record<string, unknown>, operationRows?: ParkingQueryRow[]) => {
     setOperationBusy(true); setOperationError(null);
     try {
-      const targets = kind === 'renew_vehicle' && rows?.length ? rows : [row];
+      if (kind === 'change_plate' && lastOperation?.database === 'deliyun' && lastOperation.status === 'failed') {
+        const retry = await accessCardIssuance.changeDeliyunPlate({
+          vehicleId: lastOperation.sourceRecordId || '', plate: String(lastOperation.payload.plate || ''),
+          newPlate: String(lastOperation.payload.newPlate || ''), idempotencyKey: createIdempotencyKey(),
+        });
+        setLastOperation(retry);
+        if (retry.status !== 'completed') throw new Error(`人防换牌仍未完成：${retry.error || '请核对原任务'}`);
+        message.success('人防换牌已读回验证，未重复执行旧库换牌');
+        setOperationTarget(null);
+        await searchParking(String(retry.payload.newPlate || ''));
+        return;
+      }
+      const targets = kind === 'renew_vehicle' && operationRows?.length ? operationRows : [row];
       const batchKey = createIdempotencyKey();
       const requestedGarages = (kind === 'update_garages' || kind === 'add_vehicle') && Array.isArray(payload.garages)
         ? payload.garages.map(String)
         : [];
-      const civilCloudRow = kind === 'update_garages' && row
+      const civilCloudRow = (kind === 'update_garages' || kind === 'change_plate') && row
         ? deliyunRows.find((item) => normalizeParkingPlate(item.plate) === normalizeParkingPlate(plateValue(row.fields)))
         : null;
       if (kind === 'update_garages' && row && !cloudChecked.includes(normalizeParkingPlate(plateValue(row.fields))))
         throw new Error('德立云授权状态尚未读到，已停止修改，请重新查询车牌');
-      const civilSource = [row, ...(rows ?? [])].filter((candidate): candidate is ParkingQueryRow => !!candidate)
-        .find((candidate) => parkingDatabase(candidate.database) === 'parking2' && row && normalizeParkingPlate(plateValue(candidate.fields)) === normalizeParkingPlate(plateValue(row.fields)));
+      if (kind === 'change_plate' && row && !cloudChecked.includes(normalizeParkingPlate(plateValue(row.fields))))
+        throw new Error('人防车库状态尚未查明，请重新查询后换牌，避免漏改人防车牌');
+      const civilCandidates = [row, ...(operationRows ?? []), ...rows].filter((candidate): candidate is ParkingQueryRow =>
+        !!candidate && !!row && normalizeParkingPlate(plateValue(candidate.fields)) === normalizeParkingPlate(plateValue(row.fields)));
+      const civilSource = civilCandidates.find(candidate => parkingDatabase(candidate.database) === 'parking2')
+        ?? civilCandidates.find(candidate => parkingDatabase(candidate.database) === 'parking1');
       const civilPeriod = firstValidParkingPeriod(civilSource ? [{
-        beginDate: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
+        beginDate: dayjs().format('YYYY-MM-DD'),
         endDate: normalizeParkingDate(fieldValue(civilSource.fields, fieldAliases.expiry)),
       }] : []);
       const sourceRoom = civilSource ? normalizeParkingRoomIdentity(ownerFieldValue(civilSource.fields, fieldAliases.room)) : null;
-      const civilOwnerRoom = sourceRoom && /^\d+\/\d+$/.test(sourceRoom) ? `228/${sourceRoom}` : sourceRoom;
+      const civilOwnerRoom = sourceRoom && /^\d+\/\d+$/.test(sourceRoom)
+        ? `${civilSource && parkingDatabase(civilSource.database) === 'parking1' ? '198' : '228'}/${sourceRoom}` : sourceRoom;
       if (kind === 'update_garages' && row && requestedGarages.includes('civil') && !civilCloudRow && !civilPeriod)
-        throw new Error('二期停车系统缺少该车牌的有效截止日期，已停止授权，未修改旧库');
+        throw new Error('授权人防车库出现错误，没有读到车牌有效期；已停止授权，未修改旧库');
       if (kind === 'update_garages' && requestedGarages.includes('civil') && !civilCloudRow && !/^\d+\/\d+\/\d+$/.test(civilOwnerRoom || ''))
-        throw new Error('二期停车系统缺少完整房号，已停止授权，未修改旧库');
+        throw new Error('停车系统缺少完整房号，已停止授权，未修改旧库');
       const localPayload = { ...payload };
       if (kind === 'update_garages') localPayload.garages = requestedGarages.filter((garage) => garage !== 'civil');
       // 亲情车目标车库必须保留到服务端登记记录，供审核通过后自动授权。
@@ -462,6 +479,14 @@ export default function ParkingManagementPage({
       const unfinished = completed.find((task) => task.status === 'pending' || task.status === 'running');
       setLastOperation(failed ?? unfinished ?? completed[completed.length - 1] ?? null);
       if (!failed && !unfinished) {
+        if (kind === 'change_plate' && civilCloudRow) {
+          const cloudTask = await accessCardIssuance.changeDeliyunPlate({
+            vehicleId: civilCloudRow.id, plate: civilCloudRow.plate,
+            newPlate: String(payload.newPlate || ''), idempotencyKey: `${batchKey}-deliyun`,
+          });
+          setLastOperation(cloudTask);
+          if (cloudTask.status !== 'completed') throw new Error(`旧停车系统换牌已完成，但人防换牌未完成：${cloudTask.error || '请查询原任务结果，勿重复提交'}`);
+        }
         if (kind === 'update_garages' && row) {
           const plate = normalizeParkingPlate(plateValue(row.fields));
           const cloudRow = civilCloudRow;
@@ -506,9 +531,10 @@ export default function ParkingManagementPage({
           : kind === 'update_garages' ? '车库授权已执行，旧库与德立云均已回读验证'
             : kind === 'add_vehicle' && requestedGarages.includes('civil') && payload.requiresProofReview !== true
               ? '车辆已新增，旧库与德立云人防授权均已回读验证'
+              : kind === 'change_plate' && civilCloudRow ? '旧停车系统与人防系统换牌均已读回验证'
               : `${operationLabel(kind)}已执行，旧库已读回验证`);
         setOperationTarget(null);
-        await searchParking(searchedTerm || term || String(payload.plate || ''));
+        await searchParking(kind === 'change_plate' ? String(payload.newPlate || '') : searchedTerm || term || String(payload.plate || ''));
       } else if (failed) throw new Error(`${parkingDatabase(failed.database) === 'parking1' ? '一期' : '二期'}续期失败：${failed.error || '旧库未完成读回验证'}`);
       else throw new Error('现场助手响应超时，任务仍保留，请查询原任务状态，不要重复提交');
     } catch (error) {
@@ -1584,7 +1610,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
     <div className="parking-operation-form">
       {kind === 'renew_vehicle' && targetRows?.length === 2 && <Alert type="info" showIcon message="一期、二期将同时续期" description="两个旧库都会更新到期日；本次填写的金额只记入一期，二期同步金额为 0，避免报表重复计费。两边读回验证后才显示整体成功。" />}
       <label>车牌<Input value={plate} disabled={!row} readOnly={kind === 'rebind_owner'} onChange={(e) => setPlate(e.target.value.toUpperCase())} /></label>
-      {kind === 'change_plate' && <label>新车牌<Input value={newPlate} onChange={(e) => setNewPlate(e.target.value.toUpperCase())} /></label>}
+      {kind === 'change_plate' && <ParkingPlateEntry id="parking-change-plate-input" label="新车牌" value={newPlate} onChange={setNewPlate} />}
       {kind === 'change_plate' && <label>绑定用户姓名<Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label>}
       {kind === 'rebind_owner' && <ParkingOwnerPicker open={open} value={binding} onChange={setBinding} />}
       {kind === 'renew_vehicle' && <><label>缴费期限<Select value={months} options={[1, 2, 3, 6, 12].map((value) => ({ value, label: `${value}个月` }))} onChange={(value) => { changeMonths(value); setAmount(null); }} /></label><ParkingFeeFields rates={feeRates.rates} onSaved={feeRates.setRates} identity={identity} months={months} amount={amount} onAmountChange={setAmount} loading={feeRates.loading} error={feeRates.error} onRetry={feeRates.retry} /><label>到期日期<DatePicker value={endDate ? dayjs(endDate) : null} format="YYYY-MM-DD" allowClear={false} onChange={(value) => setEndDate(value ? value.format('YYYY-MM-DD') : '')} style={{ width: '100%' }} /><Text type="secondary">按自然月月底计算，可用日历自定义。</Text></label></>}
@@ -1735,13 +1761,8 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
 
   const amount = amountOverride ?? feeRates.amount(identity, months);
   const isFamily = identity === '亲情车';
-  const provinceSelected = parkingPlateProvinces.includes(normalized.slice(0, 1));
   const plateFormatValid = new RegExp(`^[${parkingPlateProvinces.join('')}][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$`).test(normalized);
   const duplicateCheckPassed = plateFormatValid && checkedPlate === normalized && !checking && !duplicateCheckError && duplicateMatches.length === 0 && deliyunDuplicateMatches.length === 0;
-  const keyboardMode = !provinceSelected ? 'province' : normalized.length === 1 ? 'letter' : 'number';
-  const keyboardKeys = keyboardMode === 'province' ? parkingPlateProvinces : keyboardMode === 'letter' ? parkingPlateLetters : parkingPlateAlphaNumeric;
-  const keyboardTitle = keyboardMode === 'province' ? '第 1 步 · 选择省市简称' : keyboardMode === 'letter' ? '第 2 步 · 选择发牌机关字母' : '继续输入车牌序号';
-  const keyboardHint = keyboardMode === 'province' ? '已补齐全国 31 个省、自治区、直辖市简称' : keyboardMode === 'letter' ? '第二位只能输入英文字母' : '可输入字母或数字，普通车牌共 7 位，新能源车牌共 8 位';
 
   useEffect(() => {
     if (!open) return;
@@ -1807,7 +1828,6 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
     return () => window.clearInterval(timer);
   }, [proofUpload?.id, proofUpload?.status]);
 
-  const appendPlate = (char: string) => setPlate((value) => `${value}${char}`.replace(/[\s·]/g, '').toUpperCase().slice(0, 8));
   const chooseRoom = (key: string) => {
     const next = rooms.find((item) => item.key === key);
     setRoomKey(key);
@@ -1901,17 +1921,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
     <div className="parking-new-flow"><span className={step === 'plate' ? 'is-current' : 'is-done'}>1 <small>车牌查重</small></span><i /><span className={step === 'details' ? 'is-current' : ''}>2 <small>登记资料</small></span></div>
     {step === 'plate' ? <>
       <Alert type="info" showIcon message="输入完整车牌后自动查重" description="系统会真实查询枫桦景苑一期、二期停车旧库及德立云；任一系统已存在该车牌都不能继续新增。" />
-      <div className="parking-plate-entry parking-plate-entry-design">
-        <label htmlFor="parking-add-plate-input">车牌号码</label>
-        <Input id="parking-add-plate-input" size="large" value={normalized} onChange={(event) => setPlate(event.target.value.replace(/[\s·]/g, '').toUpperCase().slice(0, 8))} suffix={checking ? <SyncOutlined spin /> : duplicateCheckPassed ? <CheckCircleOutlined className="parking-plate-check-ok" /> : undefined} placeholder="请输入车牌，例如 沪EDK889" />
-        <div className={`parking-license-plate is-${isGreen ? 'green' : 'blue'} is-large`}><span>{normalized ? `${normalized.slice(0, 1)} ${normalized.slice(1, 2)}·${normalized.slice(2)}` : '请选择省市简称'}</span></div>
-        <Text type="secondary"><InfoCircleOutlined /> 可点击下方两步键盘，也可直接使用电脑键盘输入。</Text>
-      </div>
-      <div className={`parking-plate-keyboard is-${keyboardMode}`}>
-        <div className="parking-keyboard-heading"><div><strong>{keyboardTitle}</strong><span>{keyboardHint}</span></div>{provinceSelected && <Button type="link" onClick={() => setPlate('')}>重选省市简称</Button>}</div>
-        <div className="parking-key-grid">{keyboardKeys.map((key) => <button type="button" key={key} aria-label={`输入 ${key}`} onClick={() => appendPlate(key)}>{key}</button>)}</div>
-        <div className="parking-key-actions"><Button disabled={!normalized} onClick={() => setPlate((value) => value.slice(0, -1))}>退格</Button><Button danger disabled={!normalized} onClick={() => setPlate('')}>清空</Button></div>
-      </div>
+      <ParkingPlateEntry id="parking-add-plate-input" label="车牌号码" value={normalized} onChange={setPlate} suffix={checking ? <SyncOutlined spin /> : duplicateCheckPassed ? <CheckCircleOutlined className="parking-plate-check-ok" /> : undefined} />
       <div className="parking-duplicate-result" role="status" aria-live="polite">
         {checking ? <div className="parking-checking"><SyncOutlined spin /> 正在真实查询一期、二期停车旧库及德立云…</div>
           : (duplicateMatches.length > 0 || deliyunDuplicateMatches.length > 0) && checkedPlate === normalized ? <Alert type="error" showIcon message={`车牌 ${normalized} 已在停车系统中登记，不能新增`} action={<Button size="small" type="primary" icon={<SearchOutlined />} onClick={() => onQueryPlate(normalized)}>查询此车牌</Button>} description={<div className="parking-duplicate-matches">{duplicateMatches.map((row, index) => <span key={`${row.database}-${parkingHistoryRef(row).sourceRecordId || index}`}><StopOutlined /> {parkingDuplicateDescription(row)}</span>)}{deliyunDuplicateMatches.map((row) => <span key={`deliyun-${row.id || row.plate}`}><StopOutlined /> 德立云 · 二期人防车库 · {row.cardType || '车辆类型未记录'} · 有效期 {row.beginDate || '未记录'} 至 {row.endDate || '未记录'}</span>)}<b>请先查询并核对现有车辆资料，避免重复登记。</b></div>} />
@@ -1942,6 +1952,28 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
     </>}
     {task?.status === 'completed' && <Alert type="success" showIcon message={isFamily && task.payload.requiresProofReview ? '车牌已暂存，等待亲情车资料审核' : '新增车牌已完成'} description="车辆写入旧库后已读回验证。亲情车资料审核通过后，系统自动执行对应车库授权。" />}
   </Drawer>;
+}
+
+function ParkingPlateEntry({ id, label, value, onChange, suffix }: {
+  id: string; label: string; value: string; onChange: (value: string) => void; suffix?: React.ReactNode;
+}) {
+  const normalized = value.replace(/[\s·]/g, '').toUpperCase().slice(0, 8);
+  const provinceSelected = parkingPlateProvinces.includes(normalized.slice(0, 1));
+  const mode = !provinceSelected ? 'province' : normalized.length === 1 ? 'letter' : 'number';
+  const keys = mode === 'province' ? parkingPlateProvinces : mode === 'letter' ? parkingPlateLetters : parkingPlateAlphaNumeric;
+  return <>
+    <div className="parking-plate-entry parking-plate-entry-design">
+      <label htmlFor={id}>{label}</label>
+      <Input id={id} size="large" value={normalized} onChange={(event) => onChange(event.target.value.replace(/[\s·]/g, '').toUpperCase().slice(0, 8))} suffix={suffix} placeholder="请输入车牌，例如 沪EDK889" />
+      <div className={`parking-license-plate is-${normalized.length === 8 ? 'green' : 'blue'} is-large`}><span>{normalized ? `${normalized.slice(0, 1)} ${normalized.slice(1, 2)}·${normalized.slice(2)}` : '请选择省市简称'}</span></div>
+      <Text type="secondary"><InfoCircleOutlined /> 可点击下方键盘，也可使用电脑键盘输入。</Text>
+    </div>
+    <div className={`parking-plate-keyboard is-${mode}`}>
+      <div className="parking-keyboard-heading"><div><strong>{mode === 'province' ? '第 1 步 · 选择省市简称' : mode === 'letter' ? '第 2 步 · 选择发牌机关字母' : '继续输入车牌序号'}</strong><span>普通车牌共 7 位，新能源车牌共 8 位</span></div>{provinceSelected && <Button type="link" onClick={() => onChange('')}>重选省市简称</Button>}</div>
+      <div className="parking-key-grid">{keys.map((key) => <button type="button" key={key} aria-label={`输入 ${key}`} onClick={() => onChange(`${normalized}${key}`.slice(0, 8))}>{key}</button>)}</div>
+      <div className="parking-key-actions"><Button disabled={!normalized} onClick={() => onChange(normalized.slice(0, -1))}>退格</Button><Button danger disabled={!normalized} onClick={() => onChange('')}>清空</Button></div>
+    </div>
+  </>;
 }
 
 function operationLabel(kind: accessCardIssuance.ParkingOperationKind): string {

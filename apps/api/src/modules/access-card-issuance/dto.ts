@@ -359,6 +359,17 @@ export class RenewDeliyunVehicleDto {
   idempotencyKey: string;
 }
 
+export class ChangeDeliyunPlateDto {
+  @IsString() @MinLength(1) @MaxLength(100)
+  vehicleId: string;
+  @IsString() @MinLength(7) @MaxLength(20)
+  plate: string;
+  @IsString() @MinLength(7) @MaxLength(20)
+  newPlate: string;
+  @IsString() @MinLength(8) @MaxLength(100)
+  idempotencyKey: string;
+}
+
 export class SetDeliyunCivilDefenseAuthorizationDto {
   @IsOptional()
   @IsString()

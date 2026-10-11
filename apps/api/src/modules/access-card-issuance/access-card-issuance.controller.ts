@@ -37,6 +37,7 @@ import {
   CreateParkingMovementQueryDto,
   CreateParkingFeeReportDto,
   RenewDeliyunVehicleDto,
+  ChangeDeliyunPlateDto,
   SetDeliyunCivilDefenseAuthorizationDto,
   CreateParkingOwnerUpdateDto,
   CreateParkingProofUploadDto,
@@ -93,6 +94,12 @@ export class AccessCardIssuanceController {
   @RequirePermission('business', 'edit')
   renewDeliyunVehicle(@Body() dto: RenewDeliyunVehicleDto, @CurrentUser() user: AuthUser) {
     return this.service.renewDeliyunVehicle(dto, user);
+  }
+
+  @Post('parking/deliyun/plate-changes')
+  @RequirePermission('business', 'edit')
+  changeDeliyunPlate(@Body() dto: ChangeDeliyunPlateDto, @CurrentUser() user: AuthUser) {
+    return this.service.changeDeliyunPlate(dto, user);
   }
 
   @Post('parking/deliyun/civil-defense-authorizations')

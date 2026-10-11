@@ -149,6 +149,31 @@ export class DeliyunParkingService {
     return { vehicleId, plate, previousEndDate: input.previousEndDate, endDate: input.endDate, verified: true };
   }
 
+  async changePlate(input: { vehicleId: string; plate: string; newPlate: string }) {
+    if (!this.writeEnabled()) throw new ServiceUnavailableException('德立云写入尚未启用');
+    const plate = normalizePlate(input.plate), newPlate = normalizePlate(input.newPlate);
+    if (!input.vehicleId.trim() || !isFullPlate(plate) || !isFullPlate(newPlate) || plate === newPlate)
+      throw new BadRequestException('请填写不同于原车牌的完整新车牌');
+    const session = await this.ensureMiniappSession();
+    const detail = await this.vehicleDetail(input.vehicleId, session);
+    // 结果未知后的重试先查原车辆，已经换号则不再重复写。
+    const currentPlate = normalizePlate(stringValue(detail.plateNum));
+    if (currentPlate === newPlate) return { vehicleId: input.vehicleId, plate, newPlate, verified: true };
+    if (currentPlate !== plate) throw new BadRequestException('人防车辆已变化，请刷新后重新操作');
+    if ((await this.findVehiclesByPlate(newPlate)).rows.length)
+      throw new BadRequestException('新车牌已在人防车库登记，不能覆盖');
+    const payload = buildDeliyunPlateChangePayload(detail, session.park.unitKey, input.vehicleId, newPlate);
+    const response = await this.h5Post('/pma/card/updateCard', payload, session.token);
+    this.assertSuccess(response, '人防车牌更新失败');
+    const verified = await this.vehicleDetail(input.vehicleId, session);
+    const preserved = ['cardNo', 'pgIds', 'cardTypeId', 'carTypeId', 'peopleId', 'cprtId', 'cardGroupId', 'poolId', 'money', 'beginTime', 'endTime', 'remark'];
+    if (normalizePlate(stringValue(verified.plateNum)) !== newPlate || preserved.some(key => stringValue(verified[key]) !== stringValue(detail[key])))
+      throw new ServiceUnavailableException('人防已接受换牌，但车牌或原资料回读不一致，请刷新核对，勿重复提交');
+    if ((await this.findVehiclesByPlate(plate)).rows.some(row => row.id === input.vehicleId))
+      throw new ServiceUnavailableException('人防旧车牌仍可查到，请刷新核对');
+    return { vehicleId: input.vehicleId, plate, newPlate, verified: true };
+  }
+
   async setCivilDefenseAuthorization(input: {
     plate: string;
     authorized: boolean;
@@ -181,7 +206,7 @@ export class DeliyunParkingService {
       }
     } else if (input.authorized) {
       const civilDefenseGarage = await this.civilDefenseGarage(session);
-      const beginDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+      const beginDate = shanghaiDateOnly(new Date());
       const endDate = input.endDate || '';
       if (!isDateOnly(beginDate) || !isDateOnly(endDate) || endDate < beginDate)
         throw new BadRequestException('德立云新建车辆需要有效的开始日和到期日');
@@ -515,6 +540,11 @@ export function buildDeliyunGarageAuthorizationPayload(
   };
 }
 
+export function buildDeliyunPlateChangePayload(detail: Record<string, unknown>, unitKey: string, vehicleId: string, newPlate: string) {
+  return { ...buildDeliyunGarageAuthorizationPayload(detail, unitKey, vehicleId, '', false),
+    pgIds: detail.pgIds, plateNum: normalizePlate(newPlate) };
+}
+
 export function buildDeliyunCreatePayload(input: {
   unitKey: string;
   plate: string;
@@ -606,7 +636,7 @@ function numberValue(value: unknown) { const parsed = Number(value); return Numb
 function isDateOnly(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00+08:00`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }) === value;
+  return !Number.isNaN(parsed.getTime()) && shanghaiDateOnly(parsed) === value;
 }
 function dateOnlyFromValue(value: unknown) {
   const text = stringValue(value);
@@ -615,7 +645,13 @@ function dateOnlyFromValue(value: unknown) {
 function dateOnlyFromEpoch(value: unknown) {
   const epoch = Number(value);
   if (!Number.isFinite(epoch) || epoch <= 0) return '';
-  return new Date(epoch * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+  return shanghaiDateOnly(new Date(epoch * 1000));
+}
+
+export function shanghaiDateOnly(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const value = (type: string) => parts.find(part => part.type === type)?.value;
+  return `${value('year')}-${value('month')}-${value('day')}`;
 }
 
 function miniappErrorMessage(error: unknown) {

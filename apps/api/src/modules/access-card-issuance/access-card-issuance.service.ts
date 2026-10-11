@@ -57,6 +57,7 @@ import {
   CreateParkingMovementQueryDto,
   CreateParkingFeeReportDto,
   RenewDeliyunVehicleDto,
+  ChangeDeliyunPlateDto,
   SetDeliyunCivilDefenseAuthorizationDto,
   CreateParkingOwnerUpdateDto,
   EnrollAccessCardAgentDto,
@@ -682,6 +683,30 @@ export class AccessCardIssuanceService {
       task.lastError = (error instanceof Error ? error.message : '德立云有效期续期失败').slice(0, 500);
     }
     task.updatedBy = user.id;
+    return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));
+  }
+
+  async changeDeliyunPlate(dto: ChangeDeliyunPlateDto, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const idempotencyKey = dto.idempotencyKey.trim();
+    const existing = await this.parkingOperationRepo.findOne({ where: { tenantId, idempotencyKey } });
+    if (existing) return this.parkingOperationResponse(existing);
+    const task = await this.parkingOperationRepo.save(this.parkingOperationRepo.create({
+      tenantId, kind: 'change_plate', database: 'deliyun', idempotencyKey,
+      sourceRecordId: dto.vehicleId.trim(), pmsUserId: null,
+      payload: { plate: dto.plate, newPlate: dto.newPlate }, expected: { plate: dto.plate },
+      result: null, status: 'running', attempt: 1, requestedAt: new Date(), completedAt: null,
+      leaseAgentKey: null, leaseExpiresAt: null, lastError: null, rollbackOfOperationId: null,
+      createdBy: user.id, updatedBy: user.id,
+    }));
+    try {
+      task.result = await this.deliyun.changePlate(dto);
+      task.status = 'completed';
+    } catch (error) {
+      task.status = 'failed';
+      task.lastError = (error instanceof Error ? error.message : '人防换牌失败').slice(0, 500);
+    }
+    task.completedAt = new Date();
     return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));
   }
 

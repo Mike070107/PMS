@@ -173,6 +173,10 @@ Page({
       // 他被授权的图标就在那儿。
       // 判据和 canSeeTab('pool') 一致：工单池那一格有「待接单」和「我报的」两种授权
       if (!session.canSeePool && !session.canSeeMyRepairs) {
+        if (session.canSeeCashier) {
+          wx.reLaunch({ url: '/pages/apartment-cashier/apartment-cashier' });
+          return;
+        }
         rememberMeMode('more');
         wx.switchTab({ url: '/pages/me/me' });
         return;

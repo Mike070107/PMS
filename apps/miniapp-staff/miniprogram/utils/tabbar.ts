@@ -26,6 +26,7 @@ export const STAFF_APP_PAGE_KEYS = [
   'app:approve-purchaser',
   'app:repair-create',
   'app:messages',
+  'app:apartment-cashier',
   'app:experience-notes',
 ];
 
@@ -112,7 +113,8 @@ export function rememberMeMode(mode: MeMode) {
 }
 
 function getTabBar(page: any) {
-  return typeof page?.getTabBar === 'function' ? page.getTabBar() : null;
+  return (typeof page?.getTabBar === 'function' ? page.getTabBar() : null)
+    || page?.selectComponent?.('#cashier-tabbar') || null;
 }
 
 export function syncTabBar(page: any, key: TabKey) {

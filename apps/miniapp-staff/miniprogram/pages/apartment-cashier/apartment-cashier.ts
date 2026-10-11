@@ -25,6 +25,7 @@ import {
 } from '@pms/shared-types';
 import { getSession } from '../../utils/session';
 import { guideHandlers } from '../../utils/guide';
+import { rememberAccess, syncTabBar } from '../../utils/tabbar';
 
 /** 手机上只给这三种真的会在现场用到的收款方式 */
 const PAYMENT_METHODS = [
@@ -117,11 +118,14 @@ Page({
 
   onShow() {
     this.syncGuide();
+    syncTabBar(this, 'cashier');
   },
 
   async onLoad() {
     try {
       const session = await getSession();
+      rememberAccess(this, session.me?.access?.pages);
+      syncTabBar(this, 'cashier');
       if (!session.canSeeCashier) {
         this.setData({ canSeeCashier: false, loading: false });
         return;

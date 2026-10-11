@@ -402,6 +402,12 @@ export const setDeliyunCivilDefenseAuthorization = (data: {
   data,
 });
 
+export const changeDeliyunPlate = (data: {
+  vehicleId: string; plate: string; newPlate: string; idempotencyKey: string;
+}) => request<ParkingOperation>({
+  url: '/access-card-issuance/parking/deliyun/plate-changes', method: 'POST', data,
+});
+
 export const createParkingMovementQuery = (plate: string, startDate: string, endDate: string) =>
   request<ParkingMovementQuery>({
     url: '/access-card-issuance/parking/movements/queries',

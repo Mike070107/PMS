@@ -36,6 +36,7 @@ const ALL_TABS: TabDef[] = [
   { key: 'maintenance', pagePath: '/pages/approvals/approvals?mode=maintenance', text: '养护单' },
   { key: 'materials', pagePath: '/pages/inventory/inventory', text: '材料与库存' },
   { key: 'approvals', pagePath: '/pages/approvals/approvals', text: '审批' },
+  { key: 'cashier', pagePath: '/pages/apartment-cashier/apartment-cashier', text: '公寓收费' },
   { key: 'more', pagePath: '/pages/me/me?mode=more', text: '更多' },
   { key: 'me', pagePath: '/pages/me/me', text: '我的' },
 ];
@@ -59,7 +60,7 @@ function visibleTabs(access: TabAccess) {
   if (tabs.length <= 6) return tabs;
   const compact: Record<TabKey, string> = {
     dispatch: '派单', pool: '工单池', mine: '在手', maintenance: '养护',
-    materials: '库存', approvals: '审批', more: '更多', me: '我的',
+    materials: '库存', approvals: '审批', cashier: '收费', more: '更多', me: '我的',
   };
   return tabs.map((tab) => ({ ...tab, text: compact[tab.key] }));
 }
@@ -148,7 +149,9 @@ Component({
         return;
       }
 
-      wx.switchTab({ url: target });
+      // 原生 tab 页最多五个；收费页复用同一底栏组件，不占原生名额。
+      if (tab.key === 'cashier') wx.navigateTo({ url: target });
+      else wx.switchTab({ url: target });
     },
 
     /** 各 tab 页在 onShow 里调，告诉 tabBar 现在在哪一屏 */
