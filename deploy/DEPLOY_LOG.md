@@ -4630,3 +4630,10 @@
   - d666e3de fix(auth): require phone reverification in existing staff login flows
   - a07894f1 feat(auth): self-service phone and password updates with WeChat confirmation
 
+## 2026-10-12 08:47 · web · 618f7456
+
+- 包：`pms-web-20261012-084614.tar.gz`
+- 提交：618f7456 test(auth): cover phone verification with existing miniapp login
+- 自上次（d7cca6dc）以来上线的相关提交：
+  - a07894f1 feat(auth): self-service phone and password updates with WeChat confirmation
+
