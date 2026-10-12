@@ -4658,3 +4658,10 @@
 - 自上次（763cafb6）以来上线的相关提交：
   - 56c7eb5e feat(fees): visualize collection reports and sort charges by payment date
 
+## 2026-10-12 09:19 · web · 56c7eb5e
+
+- 包：`pms-web-20261012-091823.tar.gz`
+- 提交：56c7eb5e feat(fees): visualize collection reports and sort charges by payment date
+- 自上次（763cafb6）以来上线的相关提交：
+  - 56c7eb5e feat(fees): visualize collection reports and sort charges by payment date
+
