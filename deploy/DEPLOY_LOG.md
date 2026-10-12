@@ -4679,3 +4679,10 @@
 - 自上次（29fe26a3）以来上线的相关提交：
   - 109c0af0 fix(auth): fit login card within narrow screens
 
+## 2026-10-12 17:16 · api · a0da6f85
+
+- 包：`pms-api-fast-20261012-171602.tar.gz`
+- 提交：a0da6f85 feat(fees): add refund mode and autosave cashier contact
+- 自上次（56c7eb5e）以来上线的相关提交：
+  - a0da6f85 feat(fees): add refund mode and autosave cashier contact
+
