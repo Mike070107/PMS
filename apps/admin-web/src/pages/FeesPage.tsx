@@ -35,7 +35,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FEE_BILL_SOURCE_LABELS,
   FEE_BILL_STATUS_LABELS,
@@ -54,6 +54,7 @@ import { handleGone } from '../lib/gone';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import ApartmentCashierPage from './ApartmentCashierPage';
+import { FeeBreakdownChart, FeeTrendChart } from '../components/FeeReportCharts';
 import './FeesReportShell.css';
 
 const { Title, Text } = Typography;
@@ -811,6 +812,8 @@ function BreakdownCard({
       <div className="fees-heading">
         <h2 style={{ fontSize: 16 }}>{title}</h2>
       </div>
+      <FeeBreakdownChart rows={rows} loading={loading} />
+      <details className="fees-chart-details"><summary>查看{title}明细</summary>
       <Table
         className="fees-table"
         rowKey="key"
@@ -849,6 +852,7 @@ function BreakdownCard({
           },
         ]}
       />
+      </details>
     </div>
   );
 }
@@ -867,6 +871,8 @@ export function ReportTab() {
   const [data, setData] = useState<FeeReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const requestSequence = useRef(0);
 
   const query = useMemo(
     () => ({
@@ -881,13 +887,17 @@ export function ReportTab() {
   );
 
   const load = useCallback(async () => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
+    setData(null);
+    setReportError(null);
     try {
-      setData(await request<FeeReport>({ url: '/fees/reports/summary', query }));
+      const result = await request<FeeReport>({ url: '/fees/reports/summary', query });
+      if (sequence === requestSequence.current) setData(result);
     } catch (e: any) {
-      message.error(e?.message || '加载失败');
+      if (sequence === requestSequence.current) setReportError(e?.message || '收费报表加载失败，请重试');
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }, [message, query]);
 
@@ -974,7 +984,7 @@ export function ReportTab() {
   };
 
   return (
-    <div className="fees-shell">
+    <div className="fees-shell fees-report-dashboard">
       <div className="fees-card">
         <div className="fees-heading">
           <i>1</i>
@@ -1035,26 +1045,27 @@ export function ReportTab() {
         </div>
       </div>
 
-      <div className="fees-tiles">
+      {reportError && <Alert type="error" showIcon message={reportError} action={<Button onClick={load}>重试</Button>} style={{ marginBottom: 16 }} />}
+      <div className="fees-tiles" aria-busy={loading}>
         <div className="fees-tile">
           <small>实收合计</small>
-          <strong>{formatFeeMoney(totals?.netCents)}</strong>
+          <strong>{totals ? formatFeeMoney(totals.netCents) : '—'}</strong>
           <span className="fees-tile__foot"><GrowthText value={data?.growth.netCents ?? null} /></span>
         </div>
         <div className="fees-tile">
           <small>收款笔数</small>
-          <strong className="is-plain">{totals?.receiptCount ?? 0}</strong>
+          <strong className="is-plain">{totals?.receiptCount ?? '—'}</strong>
           <span className="fees-tile__foot"><GrowthText value={data?.growth.receiptCount ?? null} /></span>
         </div>
         <div className="fees-tile">
           <small>收费户数</small>
-          <strong className="is-plain">{totals?.houseCount ?? 0}</strong>
+          <strong className="is-plain">{totals?.houseCount ?? '—'}</strong>
           <span className="fees-tile__foot"><GrowthText value={data?.growth.houseCount ?? null} /></span>
         </div>
         <div className="fees-tile">
           <small>红冲冲减</small>
           <strong className={totals?.refundedCents ? 'is-negative' : 'is-plain'}>
-            {formatFeeMoney(totals?.refundedCents)}
+            {totals ? formatFeeMoney(totals.refundedCents) : '—'}
           </strong>
           {/* 实收 = 收款小计 − 红冲冲减，三个数摆在一起才看得懂为什么合计少了 */}
           <span className="fees-tile__foot">
@@ -1073,6 +1084,8 @@ export function ReportTab() {
             本期 {data?.range.from} ~ {data?.range.to}，上期 {data?.previousRange.from} ~ {data?.previousRange.to}
           </small>
         </div>
+        <FeeTrendChart rows={data?.trend ?? []} loading={loading} label={(bucket) => bucketText(bucket, granularity)} />
+        <details className="fees-chart-details"><summary>查看趋势明细</summary>
         <Table<FeeReport['trend'][number]>
           className="fees-table"
           rowKey="bucket"
@@ -1113,6 +1126,7 @@ export function ReportTab() {
             },
           ]}
         />
+        </details>
       </div>
 
       <Row gutter={[16, 16]}>

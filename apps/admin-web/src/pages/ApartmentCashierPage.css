@@ -29,7 +29,7 @@
 .cashier-today__summary { display: flex; align-items: end; gap: 22px; margin-bottom: 14px; padding: 12px 14px; border-radius: 11px; background: #f4f7fb; }
 .cashier-today__summary small { display: block; color: var(--ac-muted); font-size: 12px; }.cashier-today__summary strong { color: #d2682b; font-size: 24px; }.cashier-today__summary b { font-size: 17px; }.cashier-today__summary .ant-btn { margin-left: auto; }
 .cashier-today__scroll { overflow-x: auto; border: 1px solid var(--ac-line); border-radius: 11px; }
-.cashier-today__table { grid-template-columns: repeat(8,max-content); }
+.cashier-today__table { grid-template-columns: repeat(9,max-content); }
 .cashier-today__table .is-negative { color: #c0392b; }
 .cashier-refund-hint { margin: 0 0 14px; padding: 11px 12px; color: #7a4a1a; border-radius: 9px; background: #fff6e6; font-size: 13px; line-height: 1.7; }
 .cashier-fee-picker { display: grid; grid-template-columns: repeat(4,1fr); gap: 9px; }

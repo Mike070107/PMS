@@ -124,6 +124,41 @@
 .fees-shell .fees-bar > i { display: block; height: 100%; border-radius: 99px; background: var(--ac-brand); }
 .fees-shell .fees-bar > i.is-negative { background: var(--ac-neg); }
 
+/* 真实汇总驱动的图表，保持 PMS 品牌与可读性，不引入另一套看板。 */
+.fees-report-dashboard .fees-tile:first-child { background: linear-gradient(135deg,#e8eff9,#f5fafb); border-color: #bacde4; }
+.fees-report-dashboard .fees-tile strong { font-size: 30px; }
+.fees-trend-chart { padding: 8px 4px; }
+.fees-trend-chart svg { display: block; width: 100%; min-height: 220px; }
+.fees-trend-chart svg text { fill: var(--ac-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.fees-chart-grid { stroke: #e5edf5; stroke-dasharray: 4 6; }
+.fees-chart-zero { stroke: #8ca1bb; }
+.fees-chart-point { fill: #fff; stroke: var(--ac-brand); stroke-width: 2; cursor: pointer; }
+.fees-chart-point:focus { outline: 2px solid var(--ac-brand); outline-offset: 4px; }
+.fees-chart-legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--ac-muted); font-size: 13px; }
+.fees-chart-legend i { display: inline-block; width: 18px; height: 3px; background: var(--ac-brand); vertical-align: middle; margin-right: 8px; }
+.fees-chart-readout { display: flex; flex-wrap: wrap; gap: 16px; min-height: 44px; align-items: center; padding: 8px 16px; border-radius: 10px; background: #f3f7fc; color: var(--ac-muted); }
+.fees-chart-readout strong { color: var(--ac-brand); font-size: 20px; font-variant-numeric: tabular-nums; }
+.fees-chart-details { margin-top: 16px; }
+.fees-chart-details summary { cursor: pointer; padding: 12px 0; color: var(--ac-brand); font-weight: 600; }
+.fees-chart-details summary:focus-visible { outline: 2px solid var(--ac-brand); outline-offset: 2px; }
+.fees-breakdown-chart { max-height: 330px; overflow-y: auto; padding: 0 4px; }
+.fees-breakdown-row { padding: 12px 0; }
+.fees-breakdown-label { display: flex; gap: 12px; justify-content: space-between; margin-bottom: 8px; }
+.fees-breakdown-label > span { min-width: 0; overflow-wrap: anywhere; }
+.fees-breakdown-label strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fees-breakdown-track { height: 12px; position: relative; background: #edf2f8; border-radius: 6px; overflow: hidden; }
+.fees-breakdown-track > i { position: absolute; height: 100%; border-radius: 6px; background: linear-gradient(90deg,var(--ac-brand),#5289ac); }
+.fees-breakdown-track > i.is-negative { background: var(--ac-neg); }
+.fees-breakdown-zero { position: absolute; top: 0; bottom: 0; width: 1px; background: #8497ab; z-index: 1; }
+.fees-breakdown-row small { display: block; margin-top: 6px; color: var(--ac-muted); }
+@media (max-width: 720px) {
+  .fees-report-dashboard .fees-heading { flex-wrap: wrap; }
+  .fees-report-dashboard .fees-heading small { margin-left: 0; text-align: left; }
+  .fees-trend-chart svg { min-width: 560px; }
+  .fees-trend-chart { overflow-x: auto; }
+  .fees-chart-details { overflow-x: auto; }
+}
+
 @media (max-width: 1100px) {
   .fees-shell .fees-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

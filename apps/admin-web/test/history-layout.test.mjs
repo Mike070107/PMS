@@ -37,6 +37,15 @@ test('公寓收费历史按内容统一列宽，而非比例拉散', () => {
   assert.match(cashier, /grid-template-columns: subgrid/);
   assert.match(cashier, /overflow-x: auto/);
 });
+
+test('今日收费流水首列展示真实收费员，姓名明确为住户姓名，九列对齐', () => {
+  const source = readFileSync(new URL('../src/pages/ApartmentCashierPage.tsx', import.meta.url), 'utf8');
+  const today = source.slice(source.indexOf('<h2>今日收费流水</h2>'), source.indexOf('<aside className="cashier-checkout">'));
+  assert.match(today, /cashier-history__head"><span>收费员<\/span><span>收费时间/);
+  assert.match(today, /<span>住户姓名<\/span>/);
+  assert.match(today, /<span>\{row.cashier \|\| '-'\}<\/span>/);
+  assert.match(cashier, /\.cashier-today__table \{ grid-template-columns: repeat\(9,max-content\)/);
+});
 test('授权类型位于信息右侧，不独占一整行；保留手机单列', () => {
   assert.doesNotMatch(parking.match(/\.parking-vehicle-type \{[^}]+\}/)[0], /grid-column: 1 \/ -1/);
   assert.match(parking, /\.parking-query-card \{[^}]*216px minmax\(160px,200px\) minmax\(210px,280px\)/);

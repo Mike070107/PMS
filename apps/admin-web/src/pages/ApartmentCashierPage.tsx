@@ -491,9 +491,9 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
             </div>
             <Spin spinning={loadingToday}>
               {todayRows.length ? <div className="cashier-today__scroll"><div className="cashier-history__table cashier-today__table">
-                <div className="cashier-history__head"><span>收费时间</span><span>收据号</span><span>房号</span><span>姓名</span><span>收费项目</span><span>金额</span><span>方式</span><span>操作</span></div>
+                <div className="cashier-history__head"><span>收费员</span><span>收费时间</span><span>收据号</span><span>房号</span><span>住户姓名</span><span>收费项目</span><span>金额</span><span>方式</span><span>操作</span></div>
                 {todayRows.map((row) => <div className="cashier-history__row" key={row.receiptNo}>
-                  <span>{dayjs(row.paidAt).format('HH:mm')}</span><span>{row.receiptNo}</span>
+                  <span>{row.cashier || '-'}</span><span>{dayjs(row.paidAt).format('HH:mm')}</span><span>{row.receiptNo}</span>
                   <span>{placeLabel(row.buildingNo, row.roomNo)}</span><span>{row.ownerName || '-'}</span>
                   <span>{row.items.map((item) => item.feeName).join('、')}</span>
                   <strong className={row.amountCents < 0 ? 'is-negative' : undefined}>{money(row.amountCents)}</strong>

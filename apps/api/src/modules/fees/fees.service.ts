@@ -154,7 +154,8 @@ export class FeesService {
       'h.room_no AS "roomNo"',
       'h.property_type AS "propertyType"',
     ])
-      .orderBy('f.period', 'DESC')
+      .orderBy('f.paid_at', 'DESC', 'NULLS LAST')
+      .addOrderBy('f.id', 'DESC')
       .addOrderBy('c.id', 'ASC');
     addNaturalOrderBy(qb, 'b.lane');
     addNaturalOrderBy(qb, 'b.building_no');
