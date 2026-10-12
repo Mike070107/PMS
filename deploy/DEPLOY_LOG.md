@@ -4644,3 +4644,10 @@
 - 自上次（618f7456）以来上线的相关提交：
   - 763cafb6 fix(reports): scope staff visibility and synchronize business role labels
 
+## 2026-10-12 08:58 · web · 763cafb6
+
+- 包：`pms-web-20261012-085732.tar.gz`
+- 提交：763cafb6 fix(reports): scope staff visibility and synchronize business role labels
+- 自上次（618f7456）以来上线的相关提交：
+  - 763cafb6 fix(reports): scope staff visibility and synchronize business role labels
+
