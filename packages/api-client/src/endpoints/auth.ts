@@ -106,6 +106,8 @@ export const qrLoginStatus = (ticket: string) =>
 
 /** 扫开小程序码后，告诉本人「谁在哪台机器上要登录」 */
 export interface QrLoginScanInfo {
+  confirmAction?: 'profile' | 'login';
+  phoneReverificationRequired?: boolean;
   ticket: string;
   status: string;
   /** 本次确认将登录的目标，如 PMS 后台或内网应用。 */
@@ -122,8 +124,14 @@ export interface QrLoginScanInfo {
 export const qrLoginScan = (ticket: string) =>
   request<QrLoginScanInfo>({ method: 'POST', url: '/auth/qr-login/scan', data: { ticket } });
 
-export const qrLoginConfirm = (ticket: string) =>
-  request<{ ok: true }>({ method: 'POST', url: '/auth/qr-login/confirm', data: { ticket } });
+export const qrLoginConfirm = (ticket: string, phoneCode?: string) =>
+  request<{ ok: true }>({ method: 'POST', url: '/auth/qr-login/confirm', data: { ticket, phoneCode } });
+
+export interface SelfProfile { name: string | null; phone: string | null; hasPassword: boolean; phoneReverificationRequired: boolean }
+export const selfProfile = () => request<SelfProfile>({ url: '/auth/self-profile' });
+export const selfProfileVerification = () => request<QrLoginTicketResp>({ method: 'POST', url: '/auth/self-profile/verification' });
+export const updateSelfProfile = (data: { phone?: string; currentPassword?: string; newPassword?: string; verificationToken?: string }) =>
+  request<SelfProfile>({ method: 'POST', url: '/auth/self-profile', data });
 
 export const qrLoginCancel = (ticket: string) =>
   request<{ ok: true }>({ method: 'POST', url: '/auth/qr-login/cancel', data: { ticket } });

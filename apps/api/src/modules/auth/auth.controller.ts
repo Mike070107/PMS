@@ -4,6 +4,7 @@ import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthService } from './auth.service';
 import { QrLoginService } from './qr-login.service';
+import { WebLoginTicketPurpose } from '../../entities/web-login-ticket.entity';
 import {
   clearQrBrowserCookie,
   readQrBrowserSecret,
@@ -18,6 +19,7 @@ import {
   RefreshTokenDto,
   StaffLoginDto,
   WxLoginDto,
+  UpdateSelfProfileDto,
 } from './dto';
 
 @Controller('auth')
@@ -26,6 +28,25 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly qrLoginService: QrLoginService,
   ) {}
+
+  @Get('self-profile')
+  @UseGuards(JwtAuthGuard)
+  selfProfile(@CurrentUser() user: AuthUser) { return this.authService.selfProfile(user.id); }
+
+  @Post('self-profile')
+  @UseGuards(JwtAuthGuard)
+  updateSelfProfile(@Body() dto: UpdateSelfProfileDto, @CurrentUser() user: AuthUser) {
+    return this.authService.updateSelfProfile(user.id, dto);
+  }
+
+  @Post('self-profile/verification')
+  @UseGuards(JwtAuthGuard)
+  async selfProfileVerification(@CurrentUser() user: AuthUser, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const ticket = await this.qrLoginService.createTicket(req.ip, req.headers['user-agent'], { purpose: WebLoginTicketPurpose.SELF_PROFILE, profileUserId: user.id });
+    setQrBrowserCookie(req, res, ticket.ticket, ticket.browserSecret, ticket.expiresIn);
+    const { browserSecret: _secret, ...publicTicket } = ticket;
+    return publicTicket;
+  }
 
   // ---------------- 微信扫码登录后台 ----------------
 
@@ -71,7 +92,7 @@ export class AuthController {
   @Post('qr-login/confirm')
   @UseGuards(JwtAuthGuard)
   qrLoginConfirm(@Body() dto: QrLoginTicketDto, @CurrentUser() user: AuthUser) {
-    return this.qrLoginService.confirm(dto.ticket, user);
+    return this.qrLoginService.confirm(dto.ticket, user, dto.phoneCode);
   }
 
   @Post('qr-login/cancel')

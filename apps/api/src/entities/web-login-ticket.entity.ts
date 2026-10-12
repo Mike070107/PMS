@@ -12,6 +12,7 @@ export enum WebLoginTicketStatus {
 
 export enum WebLoginTicketPurpose {
   ADMIN = 'admin',
+  SELF_PROFILE = 'self_profile',
   EXTERNAL_ACCESS_OIDC = 'external_access_oidc',
   EXTERNAL_GATEWAY = 'external_gateway',
 }

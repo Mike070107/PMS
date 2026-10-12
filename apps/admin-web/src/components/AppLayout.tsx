@@ -26,6 +26,7 @@ import {
   ReadOutlined,
 } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
+import SelfProfileModal from './SelfProfileModal';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { auth as authApi } from '@pms/api-client';
 import type { AdminAccess } from '@pms/shared-types';
@@ -166,6 +167,7 @@ export default function AppLayout() {
   const { user, access, actingTenant, actingOffice } = useAuth();
   const [isMobile, setIsMobile] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [selfProfileOpen, setSelfProfileOpen] = useState(false);
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 900px)');
@@ -354,6 +356,7 @@ export default function AppLayout() {
             <Dropdown
               menu={{
                 items: [
+                  { key: 'profile', icon: <UserOutlined />, label: '修改电话和密码', onClick: () => setSelfProfileOpen(true) },
                   {
                     key: 'logout',
                     icon: <LogoutOutlined />,
@@ -378,6 +381,7 @@ export default function AppLayout() {
                 </div>
               </div>
             </Dropdown>
+            <SelfProfileModal open={selfProfileOpen} onClose={() => setSelfProfileOpen(false)} onSaved={() => { setSelfProfileOpen(false); auth.clear(); nav('/login', { replace: true }); }} />
           </div>
         </Header>
         <Content className="pms-main-content">

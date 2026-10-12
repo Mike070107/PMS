@@ -71,8 +71,9 @@
     <view class="security-note"><view class="security-note__icon"></view><text>请确认这是你正在使用的应用与域名；不是本人操作请立即拒绝。</text></view>
 
     <view class="btn-group">
-      <button class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onConfirm">
-        <view class="btn__icon icon-action--check-white"></view><text>确认并进入</text>
+      <button wx:if="{{info.phoneReverificationRequired}}" class="btn btn--primary" open-type="getPhoneNumber" bindgetphonenumber="onConfirm" loading="{{submitting}}" disabled="{{submitting}}">授权新手机号并确认登录</button>
+      <button wx:else class="btn btn--primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onConfirm">
+        <view class="btn__icon icon-action--check-white"></view><text>{{info.confirmAction === 'profile' ? '确认修改电话和密码' : '确认并进入'}}</text>
       </button>
       <button class="btn btn--outline" disabled="{{submitting}}" bindtap="onCancel">
         <view class="btn__icon icon-action--close-gray"></view><text>不是我</text>

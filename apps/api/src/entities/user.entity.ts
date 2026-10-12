@@ -36,6 +36,11 @@ export class User extends BaseEntity {
   @Column({ type: 'varchar', length: 30, nullable: true })
   phone: string | null;
 
+  @Column({ name: 'phone_reverification_required', type: 'boolean', default: false })
+  phoneReverificationRequired: boolean;
+  @Column({ name: 'credential_version', type: 'int', default: 0 })
+  credentialVersion: number;
+
   @Column({ name: 'wx_nickname', type: 'varchar', length: 120, nullable: true })
   wxNickname: string | null;
 

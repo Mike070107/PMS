@@ -11,7 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
   AuditStatus,
@@ -43,6 +43,7 @@ import {
   RefreshTokenDto,
   StaffLoginDto,
   WxLoginDto,
+  UpdateSelfProfileDto,
 } from './dto';
 import { SettingsService } from '../settings/settings.service';
 import { WechatService, type WxSession } from './wechat.service';
@@ -53,6 +54,49 @@ const STAFF_ROLES: UserRole[] = STAFF_APP_ROLES;
 
 @Injectable()
 export class AuthService {
+  private readonly selfProfileAttempts = new Map<number, { at: number; count: number }>();
+  async selfProfile(id: number) {
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user) throw new UnauthorizedException('用户不存在');
+    return { name: user.name, phone: user.phone, hasPassword: !!user.passwordHash, phoneReverificationRequired: !!user.phoneReverificationRequired };
+  }
+
+  async updateSelfProfile(id: number, dto: UpdateSelfProfileDto) {
+    const nowMs = Date.now();
+    const attempt = this.selfProfileAttempts.get(id);
+    if (attempt && nowMs - attempt.at < 10 * 60_000 && attempt.count >= 5)
+      throw new ForbiddenException('身份验证尝试过多，请10分钟后重试');
+    this.selfProfileAttempts.set(id, attempt && nowMs - attempt.at < 10 * 60_000 ? { ...attempt, count: attempt.count + 1 } : { at: nowMs, count: 1 });
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user || user.status !== UserStatus.ACTIVE) throw new UnauthorizedException('账号不存在或已停用');
+    if (user.passwordHash && !dto.verificationToken) {
+      if (!dto.currentPassword || !(await bcrypt.compare(dto.currentPassword, user.passwordHash)))
+        throw new BadRequestException('当前密码不正确');
+    } else {
+      let proof: { sub?: number; iat?: number; authMethod?: string; credentialVersion?: number; typ?: string };
+      try { proof = this.jwt.verify(dto.verificationToken || ''); }
+      catch { throw new BadRequestException('请先扫码确认本人身份'); }
+      const now = Math.floor(Date.now() / 1000);
+      if (proof.sub !== id || proof.typ !== 'self_profile' || proof.authMethod !== 'wechat' || (proof.credentialVersion ?? 0) !== (user.credentialVersion ?? 0) || !proof.iat || proof.iat > now || now - proof.iat > 180)
+        throw new BadRequestException('微信身份确认已过期或不是本人，请重新扫码');
+    }
+    const patch: Partial<User> = { updatedBy: id };
+    if (dto.phone !== undefined && dto.phone !== user.phone) {
+      const duplicate = await this.userRepo.findOne({ where: { tenantId: user.tenantId ?? IsNull(), phone: dto.phone } });
+      if (duplicate && duplicate.id !== id) throw new ConflictException('该电话已被本公司其他账号使用');
+      patch.phone = dto.phone; patch.phoneReverificationRequired = true;
+    }
+    if (dto.newPassword) {
+      if (Buffer.byteLength(dto.newPassword, 'utf8') > 72) throw new BadRequestException('新密码过长，请控制在72个UTF-8字节以内');
+      patch.passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    }
+    if (patch.phone !== undefined || patch.passwordHash !== undefined) patch.credentialVersion = (user.credentialVersion ?? 0) + 1;
+    // 只允许本人资料列，不修改role、租户、角色关联、房屋或数据范围。
+    const saved = await this.userRepo.update({ id, phone: user.phone ?? IsNull(), credentialVersion: user.credentialVersion ?? 0 }, patch);
+    if (!saved.affected) throw new ConflictException('资料已变化，请刷新后重试');
+    this.selfProfileAttempts.delete(id);
+    return this.selfProfile(id);
+  }
   private readonly logger = new Logger(AuthService.name);
   constructor(
     @InjectRepository(User)
@@ -332,7 +376,7 @@ export class AuthService {
   }
 
   async refresh(dto: RefreshTokenDto) {
-    let payload: { sub: number; typ?: string };
+    let payload: { sub: number; typ?: string; credentialVersion?: number };
     try {
       payload = this.jwt.verify(dto.refreshToken, { secret: this.refreshSecret() });
     } catch {
@@ -345,6 +389,7 @@ export class AuthService {
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('用户不存在或已停用');
     }
+    if ((payload.credentialVersion ?? 0) !== (user.credentialVersion ?? 0)) throw new UnauthorizedException('电话或密码已更新，请重新登录');
     return this.issueWxTokens(user);
   }
 
@@ -614,12 +659,19 @@ export class AuthService {
   async issueWebTokensForUser(userId: number) {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('user not found');
+    if (user.phoneReverificationRequired) throw new ForbiddenException('电话已变更，请在微信扫码确认页重新授权手机号');
     if (user.status !== UserStatus.ACTIVE) {
       throw new ForbiddenException('该账号已停用，请联系管理员');
     }
     await this.assertWebAdminAccess(user);
     await this.assertTenantActive(user);
-    return this.issueTokens(user);
+    return this.issueTokens(user, 'wechat');
+  }
+
+  async issueSelfProfileProof(userId: number) {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user || user.status !== UserStatus.ACTIVE) throw new UnauthorizedException('账号不可用');
+    return this.jwt.sign({ sub: userId, typ: 'self_profile', authMethod: 'wechat', credentialVersion: user.credentialVersion ?? 0 }, { expiresIn: 180 });
   }
 
   /**
@@ -968,7 +1020,7 @@ export class AuthService {
   }
 
   private issueWxTokens(user: User) {
-    const payload = { sub: user.id, tenantId: user.tenantId, role: user.role };
+    const payload = { sub: user.id, tenantId: user.tenantId, role: user.role, credentialVersion: user.credentialVersion ?? 0 };
     const accessTtlSec = Number(
       this.config.get<string>('JWT_ACCESS_TTL_SEC', '7200'),
     );
@@ -992,11 +1044,13 @@ export class AuthService {
     };
   }
 
-  private issueTokens(user: User) {
+  private issueTokens(user: User, authMethod: 'password' | 'wechat' = 'password') {
     const payload = {
       sub: user.id,
       tenantId: user.tenantId,
       role: user.role,
+      authMethod,
+      credentialVersion: user.credentialVersion ?? 0,
     };
     return {
       accessToken: this.jwt.sign(payload),

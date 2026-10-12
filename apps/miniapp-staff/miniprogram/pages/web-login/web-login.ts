@@ -78,11 +78,13 @@ Page({
     }
   },
 
-  async onConfirm() {
+  async onConfirm(event?: WechatMiniprogram.CustomEvent<{ code?: string }>) {
     if (this.data.submitting) return;
     this.setData({ submitting: true });
     try {
-      await auth.qrLoginConfirm(this.data.ticket);
+      const phoneCode = this.data.info?.phoneReverificationRequired ? event?.detail?.code : undefined;
+      if (this.data.info?.phoneReverificationRequired && !phoneCode) throw new Error('请授权微信手机号，核对新号码后才能登录');
+      await auth.qrLoginConfirm(this.data.ticket, phoneCode);
       this.setData({ done: 'confirmed' });
       this.scheduleAutoClose();
     } catch (e: any) {

@@ -13,6 +13,8 @@ export interface JwtPayload {
   sub: number;
   tenantId: number | null;
   role: string;
+  credentialVersion?: number;
+  typ?: string;
 }
 
 @Injectable()
@@ -44,11 +46,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * PermissionsGuard 对其直通。非 superadmin 带这个头一律忽略。
    */
   async validate(req: Request, payload: JwtPayload): Promise<AuthUser> {
+    if (payload.typ === 'self_profile') throw new UnauthorizedException('资料修改证明不能用于登录');
     const user = await this.userRepo.findOne({
       where: { id: payload.sub },
-      select: ['id', 'tenantId', 'role', 'status'],
+      select: ['id', 'tenantId', 'role', 'status', 'credentialVersion'],
     });
     if (!user) throw new UnauthorizedException('用户不存在或已删除');
+    if ((payload.credentialVersion ?? 0) !== (user.credentialVersion ?? 0)) throw new UnauthorizedException('电话或密码已更新，请重新登录');
     if (user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('账号已停用');
     }

@@ -86,6 +86,7 @@ export class QrLoginService {
       purpose: WebLoginTicketPurpose;
       oidcRequest?: OidcLoginRequest;
       requiredApp?: ExternalAccessApp;
+      profileUserId?: number;
     },
   ) {
     this.assertRateLimit('create', clientIp || 'unknown', 6, 60_000);
@@ -128,7 +129,7 @@ export class QrLoginService {
         status: WebLoginTicketStatus.PENDING,
         purpose: options?.purpose ?? WebLoginTicketPurpose.ADMIN,
         oidcRequest,
-        userId: null,
+        userId: options?.profileUserId ?? null,
         scannedByUserId: null,
         browserSecretHash: browser.hash,
         expiresAt,
@@ -176,7 +177,7 @@ export class QrLoginService {
     this.assertRateLimit('poll', clientIp || 'unknown', 120, 60_000);
     const row = await this.findTicket(ticketCode);
     if (!row) return { status: 'expired' as const };
-    if (row.purpose !== WebLoginTicketPurpose.ADMIN) {
+    if (![WebLoginTicketPurpose.ADMIN, WebLoginTicketPurpose.SELF_PROFILE].includes(row.purpose)) {
       return { status: 'expired' as const };
     }
 
@@ -202,6 +203,9 @@ export class QrLoginService {
     );
     if (!claimed.affected) return { status: 'expired' as const };
 
+    if (row.purpose === WebLoginTicketPurpose.SELF_PROFILE) {
+      return { status: 'confirmed' as const, accessToken: await this.authService.issueSelfProfileProof(row.userId) };
+    }
     const tokens = await this.authService.issueWebTokensForUser(row.userId);
     this.logger.log(`扫码登录成功：用户 #${row.userId}（ticket ${ticketCode.slice(0, 6)}…）`);
     return { status: 'confirmed' as const, ...tokens };
@@ -272,6 +276,8 @@ export class QrLoginService {
     this.assertRateLimit('scan', String(user.id), 20, 5 * 60_000);
     const row = await this.requireUsableTicket(ticketCode);
     this.assertStaffApp(user);
+    if (row.purpose === WebLoginTicketPurpose.SELF_PROFILE && row.userId !== user.id)
+      throw new ForbiddenException('只能由修改资料的本人扫码确认');
     if (row.status === WebLoginTicketStatus.CANCELLED || row.status === WebLoginTicketStatus.CONSUMED) {
       throw new BadRequestException('这个二维码已经用过或已取消，请让网页刷新一张');
     }
@@ -304,8 +310,10 @@ export class QrLoginService {
       requestedAt: row.createdAt,
       expiresAt: row.expiresAt,
       applicationName:
-        row.oidcRequest?.requiredAppName ?? 'PMS 物业管理后台',
+        row.purpose === WebLoginTicketPurpose.SELF_PROFILE ? '确认修改本人电话和密码' : row.oidcRequest?.requiredAppName ?? 'PMS 物业管理后台',
+      confirmAction: row.purpose === WebLoginTicketPurpose.SELF_PROFILE ? 'profile' : 'login',
       applicationHostname: row.oidcRequest?.requiredAppHostname ?? null,
+      phoneReverificationRequired: !!me?.phoneReverificationRequired,
       me: {
         name: me?.name ?? null,
         roleLabel: me ? USER_ROLE_LABELS[me.role] ?? me.role : null,
@@ -314,16 +322,27 @@ export class QrLoginService {
   }
 
   /** 本人点「确认登录」 */
-  async confirm(ticketCode: string, user: AuthUser) {
+  async confirm(ticketCode: string, user: AuthUser, phoneCode?: string) {
     this.assertRateLimit('confirm', String(user.id), 12, 5 * 60_000);
     const row = await this.requireUsableTicket(ticketCode);
     this.assertStaffApp(user);
+    if (row.purpose === WebLoginTicketPurpose.SELF_PROFILE && row.userId !== user.id)
+      throw new ForbiddenException('只能由修改资料的本人确认');
     if (row.status === WebLoginTicketStatus.CONFIRMED) {
       if (row.userId === user.id) return { ok: true as const };
       throw new ForbiddenException('这次登录已由另一位员工确认');
     }
     if (row.status !== WebLoginTicketStatus.SCANNED || row.scannedByUserId !== user.id) {
       throw new BadRequestException('这个二维码已经用过或已取消，请让网页刷新一张');
+    }
+
+    const account = await this.userRepo.findOne({ where: { id: user.id } });
+    if (account?.phoneReverificationRequired) {
+      if (!phoneCode) throw new BadRequestException('电话已变更，请重新授权微信手机号后确认登录');
+      const phone = await this.wechat.getPhoneNumber(phoneCode, 'staff');
+      if (phone !== account.phone) throw new ForbiddenException('微信授权手机号与账号当前电话不一致，请使用新号码授权');
+      const verified = await this.userRepo.update({ id: user.id, phone: account.phone }, { phoneReverificationRequired: false });
+      if (!verified.affected) throw new BadRequestException('电话已再次变化，请重新扫码');
     }
 
     // 没有后台权限的人（没绑角色的维修工、保安等）在手机上就要看到原因，

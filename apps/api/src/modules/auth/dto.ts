@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class WxLoginDto {
@@ -135,7 +135,20 @@ export class OwnerMatchPhoneDto {
 
 /** 扫码登录：小程序侧带回票据（就是小程序码的 scene） */
 export class QrLoginTicketDto {
+  @IsOptional() @IsString() @MaxLength(256)
+  phoneCode?: string;
   @IsString()
   @MaxLength(32)
   ticket: string;
+}
+
+export class UpdateSelfProfileDto {
+  @IsOptional() @IsString() @Matches(/^1[3-9]\d{9}$/)
+  phone?: string;
+  @IsOptional() @IsString() @MaxLength(128)
+  currentPassword?: string;
+  @IsOptional() @IsString() @MinLength(8) @MaxLength(128)
+  newPassword?: string;
+  @IsOptional() @IsString() @MaxLength(4096)
+  verificationToken?: string;
 }
