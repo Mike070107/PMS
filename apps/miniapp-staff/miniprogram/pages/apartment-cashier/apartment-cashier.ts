@@ -19,6 +19,7 @@ import {
   APARTMENT_FEE_TYPES,
   FEE_PAYMENT_METHOD_LABELS,
   buildingLabel,
+  cashierQuantityFromAmount,
   formatFeeMoney,
   placeLabel,
   roomLabel,
@@ -327,8 +328,7 @@ Page({
   },
 
   /**
-   * 数量、单价改了就重算金额；金额被手动改过之后就以手填的为准 ——
-   * 现场常有「抹个零头」，算出来的数不能把人填的覆盖掉。
+   * 数量、单价改了重算金额；手填实收金额反推三位小数的数量，金额保持手填值。
    */
   onRowInput(e: WechatMiniprogram.Input) {
     const code = String(e.currentTarget.dataset.code);
@@ -340,6 +340,11 @@ Page({
       if (field === 'quantityText') next.quantity = numberOf(text);
       if (field === 'amountYuan') {
         next.amountCents = yuanToCents(text);
+        const quantity = cashierQuantityFromAmount(next.amountCents, yuanToCents(next.unitPriceYuan));
+        if (quantity !== null) {
+          next.quantity = quantity;
+          next.quantityText = String(quantity);
+        }
       } else {
         next.amountCents = Math.round(next.quantity * yuanToCents(next.unitPriceYuan));
         next.amountYuan = next.amountCents ? (next.amountCents / 100).toFixed(2) : '';

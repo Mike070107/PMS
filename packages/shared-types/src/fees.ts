@@ -142,3 +142,9 @@ export function formatFeeMoney(cents?: number | null): string {
   const yuan = (cents || 0) / 100;
   return `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+/** 实收为准反推用量；金额按分、数量保留数据库支持的三位小数。无有效单价时不覆盖数量。 */
+export function cashierQuantityFromAmount(amountCents: number, unitPriceCents: number): number | null {
+  if (!Number.isSafeInteger(amountCents) || !Number.isSafeInteger(unitPriceCents) || unitPriceCents <= 0) return null;
+  return Number((Math.abs(amountCents) / unitPriceCents).toFixed(3));
+}

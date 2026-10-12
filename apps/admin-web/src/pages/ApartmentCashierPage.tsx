@@ -22,6 +22,7 @@ import {
   APARTMENT_FEE_TYPES,
   FEE_PAYMENT_METHOD_LABELS,
   buildingLabel,
+  cashierQuantityFromAmount,
   formatFeeMoney,
   placeLabel,
   roomLabel,
@@ -379,6 +380,12 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
       const next = { ...item, ...patch };
       if ('quantity' in patch || 'unitPriceCents' in patch) {
         next.amountCents = Math.round(next.quantity * next.unitPriceCents);
+      }
+      if ('amountCents' in patch) {
+        const quantity = cashierQuantityFromAmount(next.amountCents, next.unitPriceCents);
+        if (quantity !== null) next.quantity = quantity;
+        // 不按舍入后的用量再算金额，避免200元被改成199.99/200.01元。
+        next.amountCents = patch.amountCents ?? item.amountCents;
       }
       next.amountCents = (item.refund ? -1 : 1) * Math.abs(next.amountCents);
       return next;
