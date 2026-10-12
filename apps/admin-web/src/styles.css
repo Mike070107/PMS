@@ -899,6 +899,7 @@ a,
   box-shadow: 0 0 0 4px rgba(145, 168, 208, 0.14);
 }
 .pms-login-formpane {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;

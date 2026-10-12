@@ -5,6 +5,10 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 const ts = createRequire(new URL('../../api/package.json', import.meta.url))('typescript');
 const exports = {};
+test('窄屏登录网格允许卡片收缩，不能被固定卡片宽度撑出视口', () => {
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /\.pms-login-formpane\s*\{[^}]*min-width:\s*0\s*;/);
+});
 vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/wechatLaunch.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports });
 test('只允许有效票据通过微信官方 Scheme 唤起，过期和取消立即失效', () => {
   const url = 'weixin://dl/business/?t=test';
