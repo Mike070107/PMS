@@ -4686,3 +4686,10 @@
 - 自上次（56c7eb5e）以来上线的相关提交：
   - a0da6f85 feat(fees): add refund mode and autosave cashier contact
 
+## 2026-10-12 17:17 · web · a0da6f85
+
+- 包：`pms-web-20261012-171602.tar.gz`
+- 提交：a0da6f85 feat(fees): add refund mode and autosave cashier contact
+- 自上次（109c0af0）以来上线的相关提交：
+  - a0da6f85 feat(fees): add refund mode and autosave cashier contact
+
