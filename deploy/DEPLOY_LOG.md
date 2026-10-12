@@ -4665,3 +4665,10 @@
 - 自上次（763cafb6）以来上线的相关提交：
   - 56c7eb5e feat(fees): visualize collection reports and sort charges by payment date
 
+## 2026-10-12 11:44 · web · 29fe26a3
+
+- 包：`pms-web-20261012-114342.tar.gz`
+- 提交：29fe26a3 feat(auth): launch local WeChat from PMS login
+- 自上次（56c7eb5e）以来上线的相关提交：
+  - 29fe26a3 feat(auth): launch local WeChat from PMS login
+
