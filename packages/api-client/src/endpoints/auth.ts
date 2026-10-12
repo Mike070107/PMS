@@ -74,6 +74,7 @@ export const matchPhone = (data: { phoneCode: string; communityId?: number }) =>
 
 /** 网页出码。qrImage 是 data:image/png;base64,... 可直接塞进 <img src> */
 export interface QrLoginTicketResp {
+  launchScheme?: string | null;
   ticket: string;
   qrImage: string;
   expiresIn: number;

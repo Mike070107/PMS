@@ -1,11 +1,12 @@
 import { Card, Form, Input, Button, App as AntdApp, Typography, Tabs, Spin } from 'antd';
-import { LockOutlined, QrcodeOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
+import { LockOutlined, QrcodeOutlined, ReloadOutlined, UserOutlined, WechatOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { auth as authApi } from '@pms/api-client';
 import type { AdminLoginResp } from '@pms/api-client/src/endpoints/auth';
 import { auth } from '../lib/auth';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import BrandLogo from '../components/BrandLogo';
+import { wechatLaunchHref } from '../lib/wechatLaunch';
 
 const { Text, Title } = Typography;
 
@@ -116,7 +117,7 @@ export default function LoginPage() {
             管理后台登录
           </Title>
           <Text type="secondary" style={{ display: 'block', marginBottom: 14 }}>
-            用微信扫码登录，或使用物业分配的账号
+            打开微信或扫码登录，也可使用物业分配的账号
           </Text>
           {/* 扫码放第一个并作为默认页签：不用记密码、也不会把密码敲在公用电脑上，
               是日常最该走的那条路；账号密码留给没绑微信/扫不了码的情况 */}
@@ -127,7 +128,7 @@ export default function LoginPage() {
                 key: 'qr',
                 label: (
                   <span>
-                    <QrcodeOutlined /> 微信扫码
+                    <QrcodeOutlined /> 微信登录
                   </span>
                 ),
                 children: <QrLoginPanel onSuccess={finishLogin} />,
@@ -163,6 +164,8 @@ function QrLoginPanel({
   onSuccess: (accessToken: string, user: AdminLoginResp['user']) => Promise<void>;
 }) {
   const [qrImage, setQrImage] = useState('');
+  const [launchScheme, setLaunchScheme] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState(0);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<'pending' | 'scanned' | 'expired' | 'cancelled'>('pending');
   const [errorMsg, setErrorMsg] = useState('');
@@ -180,15 +183,25 @@ function QrLoginPanel({
   const load = useCallback(async () => {
     stopPolling();
     setLoading(true);
+    setLaunchScheme(null);
     setErrorMsg('');
     setStatus('pending');
     try {
+      const requestedAt = Date.now();
       const t = await authApi.qrLoginTicket();
       if (!aliveRef.current) return;
       setQrImage(t.qrImage);
+      setLaunchScheme(t.launchScheme ?? null);
+      const deadline = requestedAt + t.expiresIn * 1000;
+      setExpiresAt(deadline);
       setLoading(false);
 
       timerRef.current = window.setInterval(async () => {
+        if (Date.now() >= deadline) {
+          stopPolling();
+          setStatus('expired');
+          return;
+        }
         try {
           const r = await authApi.qrLoginStatus(t.ticket);
           if (!aliveRef.current) return;
@@ -229,9 +242,9 @@ function QrLoginPanel({
   const dead = status === 'expired' || status === 'cancelled';
   const hintText =
     status === 'scanned'
-      ? '已扫码，请在手机上点「确认登录」'
+      ? '已打开微信，请点「确认登录」'
       : status === 'cancelled'
-        ? '你在手机上拒绝了这次登录'
+        ? '你在微信中拒绝了这次登录'
         : status === 'expired'
           ? '二维码已过期'
           : '请用微信扫码，在【邻修管理】里确认';
@@ -251,6 +264,26 @@ function QrLoginPanel({
 
   return (
     <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
+      <Button
+        type="primary"
+        size="large"
+        block
+        icon={<WechatOutlined />}
+        loading={loading}
+        disabled={!wechatLaunchHref(launchScheme, status, loading, expiresAt)}
+        href={wechatLaunchHref(launchScheme, status, loading, expiresAt)}
+        onClick={(event) => {
+          if (!wechatLaunchHref(launchScheme, status, loading, expiresAt)) {
+            event.preventDefault();
+            if (Date.now() >= expiresAt) setStatus('expired');
+          }
+        }}
+      >
+        打开本机微信登录
+      </Button>
+      <Text type="secondary" style={{ display: 'block', margin: '10px 0 18px', lineHeight: 1.7 }}>
+        {dead ? '本次登录已失效，请刷新二维码后重试。' : !loading && !launchScheme ? '暂时无法生成微信入口，请使用下方二维码。' : '在微信中确认后将自动登录；若未唤起，请用微信扫码。'}
+      </Text>
       <div
         style={{
           position: 'relative',
