@@ -4608,3 +4608,10 @@
 - 自上次（ad301159）以来上线的相关提交：
   - d7cca6dc fix(parking): integrate civil-defense details and map download machine IDs
 
+## 2026-10-12 08:16 · web · d7cca6dc
+
+- 包：`pms-web-20261012-081511.tar.gz`
+- 提交：d7cca6dc fix(parking): integrate civil-defense details and map download machine IDs
+- 自上次（0dd2add7）以来上线的相关提交：
+  - d7cca6dc fix(parking): integrate civil-defense details and map download machine IDs
+
