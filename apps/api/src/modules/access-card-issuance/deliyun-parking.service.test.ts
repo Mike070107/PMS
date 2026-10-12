@@ -8,6 +8,7 @@ import {
   buildDeliyunPlateChangePayload,
   shanghaiDateOnly,
   deliyunFormBody,
+  deliyunCreatedVehicleMismatches,
   deliyunGarageAuthorization,
   encryptMiniappData,
   endOfDayEpoch,
@@ -18,6 +19,14 @@ import {
   startOfDayEpoch,
   DeliyunParkingService,
 } from './deliyun-parking.service';
+
+test('人防真实字段差异按名称报错；缺失金额不假装已核验，也不误判授权失败', () => {
+  const expected = { plateNum: '沪APD0593', cardTypeId: 2, carTypeId: 1, peopleId: 19, money: 0, beginTime: 1, endTime: 2, remark: '原备注' };
+  const { money, ...returned } = expected;
+  assert.deepEqual(deliyunCreatedVehicleMismatches(returned, expected), []);
+  assert.deepEqual(deliyunCreatedVehicleMismatches({ ...returned, endTime: 3, peopleId: 20 }, expected), ['人员关联', '到期日期']);
+  assert.deepEqual(deliyunCreatedVehicleMismatches({ ...returned, money: 100 }, expected), ['金额']);
+});
 
 test('德立云表单不发送空的数字关联ID，保留有效ID和数字零，不把车位备注映射为cprtId', () => {
   const body = deliyunFormBody({ cprtId: '', cardGroupId: ' ', poolId: null, peopleId: '19',
@@ -124,7 +133,8 @@ test('新建使用今天、二期截止日、已有房号人员及车位备注�
   internal.h5Post = async (path: string, value: Record<string, any>) => {
     assert.equal(path, '/pma/card/addCard'); payload = value; return { ecode: 0 };
   };
-  internal.vehicleDetail = async () => payload;
+  // 真实详情接口不返回 money，不能将缺失字段误报为写入不一致。
+  internal.vehicleDetail = async () => { const { money, ...detail } = payload!; return detail; };
   await service.setCivilDefenseAuthorization({ plate: '沪APD0088', authorized: true, beginDate: '2000-01-01', endDate: '2099-12-31', ownerRoom: '228/53/1401', parkingSpace: 'B008', remark: '原备注' });
   const saved = payload as unknown as Record<string, any>;
   assert.equal(saved.beginTime, startOfDayEpoch(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' })));

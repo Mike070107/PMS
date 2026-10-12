@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 const parking = readFileSync(new URL('../src/pages/ParkingManagementPage.css', import.meta.url), 'utf8');
 const cashier = readFileSync(new URL('../src/pages/ApartmentCashierPage.css', import.meta.url), 'utf8');
+test('人防不再展示独立续期卡片，授权后信息放在旧停车和PMS之间', () => {
+  const source = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /<DeliyunVehicleCard\b/);
+  const compare = source.slice(source.indexOf('<div className={`parking-owner-compare'), source.indexOf('<ParkingMovementSection key={plate}'));
+  assert.ok(compare.indexOf('parking-old-system-panels') < compare.indexOf('<CivilDefenseOwnerPanel'));
+  assert.ok(compare.indexOf('<CivilDefenseOwnerPanel') < compare.indexOf('title="PMS系统业主信息"'));
+  assert.match(compare, /deliyunVehicle\?\.civilDefenseAuthorized && <CivilDefenseOwnerPanel/);
+  assert.match(compare, /parkingSpace=/); assert.match(compare, /validityRange=/);
+  assert.match(parking, /\.parking-owner-compare.has-civil \{ grid-template-columns: repeat\(3,minmax\(0,1fr\)\)/);
+});
 test('人防授权日期使用确定格式，二期来源覆盖完整查询结果而非只有当前旧库行', () => {
   const source = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
   assert.match(source, /\[row, \.\.\.\(operationRows \?\? \[\]\), \.\.\.rows\]/);

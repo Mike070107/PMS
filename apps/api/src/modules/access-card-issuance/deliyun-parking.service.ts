@@ -17,6 +17,8 @@ export type DeliyunParkingStatus = {
 };
 
 export type DeliyunVehicle = {
+  remark?: string | null;
+  parkingSpace?: string | null;
   id: string;
   plate: string;
   cardNo: string | null;
@@ -103,7 +105,9 @@ export class DeliyunParkingService {
         if (normalizePlate(stringValue(detail.plateNum)) !== normalized)
           throw new ServiceUnavailableException('德立云车辆详情车牌已变化，请重新查询');
         const authorization = deliyunGarageAuthorization(detail);
-        return this.enrichPoolPeriods({ ...row, ...authorization }, session);
+        const remark = nullableString(detail.remark);
+        const parkingSpace = /(?:^|\n)车位号[：:]\s*([^\r\n]+)/.exec(remark || '')?.[1]?.trim() || null;
+        return this.enrichPoolPeriods({ ...row, ...authorization, remark, parkingSpace }, session);
       }));
       return {
         project: session.park.unitName,
@@ -251,9 +255,9 @@ export class DeliyunParkingService {
     vehicleId = verifiedRow.id;
     if (createdPayload) {
       const detail = await this.vehicleDetail(vehicleId, session);
-      const keys = ['plateNum', 'cardTypeId', 'carTypeId', 'peopleId', 'money', 'beginTime', 'endTime', 'remark'] as const;
-      if (keys.some((key) => stringValue(detail[key]) !== stringValue(createdPayload![key])))
-        throw new ServiceUnavailableException('德立云车辆已建档，但人员、计费、日期或备注回读不一致；请核对，暂勿重复提交');
+      const mismatches = deliyunCreatedVehicleMismatches(detail, createdPayload);
+      if (mismatches.length)
+        throw new ServiceUnavailableException(`德立云车辆已建档，但以下字段回读不一致：${mismatches.join('、')}；请核对，暂勿重复提交`);
     }
     return { vehicleId, plate, authorized: input.authorized, created, verified: true };
   }
@@ -586,6 +590,16 @@ export function buildDeliyunCreatePayload(input: {
 }
 
 /** 可选数字外键未选择时省略，不传空字符串让 Java long 转换失败，也不虚构 ID=0。 */
+export function deliyunCreatedVehicleMismatches(detail: Record<string, unknown>, expected: Record<string, unknown>): string[] {
+  const labels: Record<string, string> = { plateNum: '车牌', cardTypeId: '计费类型', carTypeId: '车型', peopleId: '人员关联',
+    beginTime: '开始日期', endTime: '到期日期', remark: '备注' };
+  const mismatches = Object.keys(labels).filter(key => stringValue(detail[key]) !== stringValue(expected[key])).map(key => labels[key]);
+  // 已查证 findCard 不提供 money；此入口只提交 0 且不登记收费，不能声称金额已回读。
+  if (detail.money !== undefined && detail.money !== null && stringValue(detail.money) !== ''
+    && Number(detail.money) !== Number(expected.money)) mismatches.push('金额');
+  return mismatches;
+}
+
 export function deliyunFormBody(payload: Record<string, unknown>): URLSearchParams {
   const numericFields = new Set(['cprtId', 'cardGroupId', 'poolId', 'peopleId', 'cardTypeId', 'carTypeId', 'money', 'beginTime', 'endTime']);
   const body = new URLSearchParams();

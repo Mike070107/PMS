@@ -144,7 +144,10 @@
   .parking-date-picker-popup .ant-picker-body { padding-inline: 12px; }
 }
 .parking-owner-compare { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
-.parking-owner-compare.is-merged { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.parking-owner-compare.has-civil { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.parking-old-system-panels { display: grid; align-content: start; gap: 8px; min-width: 0; }
+.parking-owner-panel dl > div { min-width: 0; }
+.parking-owner-panel dd { overflow-wrap: anywhere; }
 .parking-sync-panel { grid-column: 1 / -1; min-width: 0; display: grid; gap: 11px; padding: 13px 14px; border: 1px solid #cfe1d5; border-radius: 11px; background: #f4faf6; }
 .parking-sync-panel.has-conflict { border-color: #e8c987; background: #fffaf0; }
 .parking-sync-heading { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -431,7 +434,7 @@
   .parking-vehicle-identity { grid-template-columns: 230px minmax(0,1fr); }
   .parking-vehicle-event { grid-column: 1 / -1; }
   .parking-system-grid { grid-template-columns: minmax(0,1fr); }
-  .parking-owner-compare.is-merged { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .parking-owner-compare.has-civil { grid-template-columns: repeat(3,minmax(0,1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -460,7 +463,7 @@
   .parking-history-columns.has-vehicle { grid-template-columns: minmax(0,1fr); }
   .parking-history-list dl > div { grid-template-columns: minmax(0,1fr); }
   .parking-query-card .parking-license-plate { width: min(100%, 238px); }
-  .parking-owner-compare, .parking-owner-compare.is-merged { grid-template-columns: minmax(0,1fr); }
+  .parking-owner-compare, .parking-owner-compare.has-civil { grid-template-columns: minmax(0,1fr); }
   .parking-sync-heading { align-items: stretch; flex-direction: column; }
   .parking-sync-actions { display: grid; grid-template-columns: minmax(0,1fr); width: 100%; }
   .parking-sync-actions .ant-btn { width: 100%; min-height: 44px; }

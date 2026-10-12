@@ -1655,11 +1655,29 @@ ORDER BY ID DESC";
             using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
             {
                 var vehicle = ReadBindingVehicle(connection, transaction, plate);
-                using (var command = Procedure(connection, transaction, "Add_DownloadCard"))
+                var parameters = ProcedureParameters(connection, transaction, "Add_DownloadCard");
+                var hasMachine = parameters.Any(item => NormalizeName(item.Name) == "downloadid");
+                var channels = hasMachine ? DownloadMachineIds(Value(vehicle, "P_Effective")) : new[] { 0 };
+                foreach (var channel in channels)
                 {
-                    var parameters = ProcedureParameters(connection, transaction, "Add_DownloadCard");
-                    AddDownloadProcedureParameters(command, parameters, vehicle, payload, plate, admin);
-                    command.ExecuteNonQuery();
+                    var mapped = new Dictionary<string, object>(payload);
+                    mapped["downloadid"] = channel;
+                    var downloading = new Dictionary<string, object>(vehicle, StringComparer.OrdinalIgnoreCase);
+                    downloading["Car_Zt"] = 1; // 待下载，不把原正常状态0传入过程冒充下载成功。
+                    using (var command = Procedure(connection, transaction, "Add_DownloadCard"))
+                    {
+                        AddDownloadProcedureParameters(command, parameters, downloading, mapped, plate, admin);
+                        command.ExecuteNonQuery();
+                    }
+                    if (hasMachine)
+                    using (var check = connection.CreateCommand())
+                    {
+                        check.Transaction = transaction;
+                        check.CommandText = "SELECT COUNT(*) FROM dbo.Car_Download WHERE Plate=@plate AND Download_ID=@machine AND Car_Zt=1";
+                        Add(check, "@plate", SqlDbType.VarChar, 50, plate);
+                        Add(check, "@machine", SqlDbType.Int, 0, channel);
+                        if (Convert.ToInt32(check.ExecuteScalar()) < 1) throw new InvalidOperationException("机号 " + channel + " 未读到待下载任务，已撤销本次下发");
+                    }
                 }
                 transaction.Commit();
             }
@@ -1683,10 +1701,20 @@ ORDER BY ID DESC";
             }
         }
 
+        internal static int[] DownloadMachineIds(string effective)
+        {
+            if (String.IsNullOrEmpty(effective) || effective.Any(ch => ch != '0' && ch != '1'))
+                throw new InvalidOperationException("未读到有效的通道授权位串，已停止下发");
+            var result = effective.Select((ch, index) => ch == '1' ? index + 1 : 0).Where(id => id > 0).ToArray();
+            if (result.Length == 0) throw new InvalidOperationException("该车牌没有已授权通道，已停止下发");
+            return result;
+        }
+
         private static object DownloadParameterValue(string parameterName, Dictionary<string, object> vehicle,
             Dictionary<string, object> payload, string plate, string admin)
         {
             var key = NormalizeName(parameterName);
+            if (key == "downloadid") return Number(payload, "downloadid", 0) > 0 ? (object)Number(payload, "downloadid", 0) : null;
             if (key == "carid" || key == "car_id") return RawVehicleValue(vehicle, "Car_ID");
             if (key == "pid" || key == "p_id" || key == "issueid" || key == "issue_id") return RawVehicleValue(vehicle, "P_id");
             // 现场 Add_DownloadCard 使用 Car_Download 的 D_* 参数名，车辆主表却沿用

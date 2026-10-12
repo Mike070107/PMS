@@ -240,6 +240,8 @@ export interface ParkingQuery {
 }
 
 export interface DeliyunVehicle {
+  remark?: string | null;
+  parkingSpace?: string | null;
   id: string;
   plate: string;
   cardNo: string | null;

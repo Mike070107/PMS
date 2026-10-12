@@ -535,7 +535,7 @@ export default function ParkingManagementPage({
               : `${operationLabel(kind)}已执行，旧库已读回验证`);
         setOperationTarget(null);
         await searchParking(kind === 'change_plate' ? String(payload.newPlate || '') : searchedTerm || term || String(payload.plate || ''));
-      } else if (failed) throw new Error(`${parkingDatabase(failed.database) === 'parking1' ? '一期' : '二期'}续期失败：${failed.error || '旧库未完成读回验证'}`);
+      } else if (failed) throw new Error(`${parkingDatabase(failed.database) === 'parking1' ? '一期' : '二期'}${operationLabel(kind)}失败：${failed.error || '旧库未完成读回验证'}`);
       else throw new Error('现场助手响应超时，任务仍保留，请查询原任务状态，不要重复提交');
     } catch (error) {
       const text = error instanceof Error ? error.message : `${operationLabel(kind)}失败`;
@@ -745,14 +745,8 @@ export default function ParkingManagementPage({
               <CheckCircleOutlined /> 找到 {vehicleGroups.length} 辆本地车辆（{rows.length} 条旧库记录）
               {deliyunRows.length > 0 ? `，德立云命中 ${deliyunRows.length} 辆` : ''}，其中 {rows.filter((row) => row.pmsMatch).length} 条已关联 PMS 用户
             </div>
-            {deliyunRows.map((row) => <DeliyunVehicleCard key={row.id || row.plate} row={row}
-              writeEnabled={deliyun?.writeEnabled === true}
-              onRenew={(target) => {
-                if (!target.endDate) { message.error('德立云没有返回当前到期日，不能直接续期'); return; }
-                setDeliyunRenewError(null);
-                setDeliyunRenewEndDate(dayjs(target.endDate).add(1, 'month').endOf('month').format('YYYY-MM-DD'));
-                setDeliyunRenewTarget({ row: target, idempotencyKey: createIdempotencyKey() });
-              }} />)}
+            {deliyunRows.filter(cloud => !rows.some(local => normalizeParkingPlate(plateValue(local.fields)) === normalizeParkingPlate(cloud.plate))).map(cloud =>
+              <article className="parking-query-card" key={cloud.id}><div><strong>{cloud.plate}</strong><div><Checkbox checked={cloud.civilDefenseAuthorized} disabled /> 二期人防车库</div></div><CivilDefenseOwnerPanel row={cloud} /></article>)}
             {historyOwnerRow && (
               <ParkingHistoryCard
                 rows={rows}
@@ -787,7 +781,7 @@ export default function ParkingManagementPage({
                 setEditingLegacyOwner(pending ? { ...target, values: pending.request.values } : target);
               }}
               onSync={syncParkingInfo}
-              onOperation={(kind, row, targetRows) => { setOperationError(null); setLastOperation(null); setOperationTarget({ kind, row, rows: targetRows }); }}
+              onOperation={(kind, row, targetRows) => { if (operationBusy) { message.info('当前操作仍在执行，请等待结果后再打开其他操作'); return; } setOperationError(null); setLastOperation(null); setOperationTarget({ kind, row, rows: targetRows }); }}
             />)}
           </div>
         ) : (
@@ -1422,19 +1416,24 @@ function ParkingResultCard({ group, canWriteLocal, deliyunVehicle, cloudKnown, c
           </Tag>
         </div>)}
       </div>
-      <div className={`parking-owner-compare ${group.merged ? 'is-merged' : ''}`}>
+      <div className={`parking-owner-compare ${deliyunVehicle?.civilDefenseAuthorized ? 'has-civil' : ''}`}>
+        <div className="parking-old-system-panels">
         {group.rows.map((sourceRow) => {
           const snapshot = parkingSyncSnapshot(sourceRow);
           const target = legacyOwnerTarget(sourceRow);
           const sourcePhone = ownerFieldValue(sourceRow.fields, fieldAliases.phone);
           const ownerId = parkingHistoryRef(sourceRow).externalOwnerId;
           return <OwnerDataPanel key={sourceRow.database}
-            title={group.merged ? `旧停车系统住户信息 · ${parkingSourceShortLabel(sourceRow.database)}` : '旧停车系统住户信息'}
+            title={group.merged ? `旧停车系统信息 · ${parkingSourceShortLabel(sourceRow.database)}` : '旧停车系统信息'}
             phone={sourcePhone} room={snapshot.room || '未识别房号'} note={snapshot.note}
+            parkingSpace={fieldValue(sourceRow.fields, fieldAliases.space) || '未记录'}
+            validityRange={`${parkingExpiryView(fieldValue(sourceRow.fields, fieldAliases.begin))?.date || '未记录'} 至 ${parkingExpiryView(fieldValue(sourceRow.fields, fieldAliases.expiry))?.date || '未记录'}`}
             editable={canWriteLocal && !!target}
             editHint={!ownerId ? '旧停车系统没有返回住户编号，无法定位要更新的住户' : !canWriteLocal ? '请更新现场数据同步助手，并检查停车数据库账号的写入权限' : undefined}
             onEdit={target ? () => onEditLegacy(target) : undefined} />;
         })}
+        </div>
+        {deliyunVehicle?.civilDefenseAuthorized && <CivilDefenseOwnerPanel row={deliyunVehicle} />}
         <OwnerDataPanel title="PMS系统业主信息" name={pmsMatch?.name || '未关联'} phone={pmsMatch?.phone || null}
           room={pmsMatch?.house ? `${pmsMatch.house.communityName || ''} ${pmsMatch.house.lane || ''}弄 ${pmsMatch.house.buildingNo}号 ${pmsMatch.house.roomNo}室` : null}
           note={pmsMatch?.contactNote || null} editable={!!pmsMatch}
@@ -1994,9 +1993,16 @@ function garageBitString(keys: string[]): string {
   const bits = Array.from({ length: 256 }, () => '0'); keys.forEach((key) => (channels[key] || []).forEach((channel) => { bits[channel - 1] = '1'; })); return bits.join('');
 }
 
-function OwnerDataPanel({ title, name, phone, room, note, editable, editHint, updatedAt, updateSource, onEdit }: {
+function CivilDefenseOwnerPanel({ row }: { row: accessCardIssuance.DeliyunVehicle }) {
+  return <OwnerDataPanel title="人防车库系统住户信息" phone={row.ownerPhone} room={row.ownerName || row.address}
+    note={row.remark || null} parkingSpace={row.parkingSpace || '未记录'}
+    validityRange={`${row.beginDate?.slice(0, 10) || '未记录'} 至 ${row.endDate?.slice(0, 10) || '未记录'}`} editable={false} hideEdit />;
+}
+
+function OwnerDataPanel({ title, name, phone, room, note, parkingSpace, validityRange, hideEdit, editable, editHint, updatedAt, updateSource, onEdit }: {
   title: string; name?: string; phone: string | null; room: string | null; note: string | null;
   editable: boolean; editHint?: string; updatedAt?: string | null; updateSource?: string | null; onEdit?: () => void;
+  parkingSpace?: string; validityRange?: string; hideEdit?: boolean;
 }) {
   const updatedAtText = updatedAt && dayjs(updatedAt).isValid() ? dayjs(updatedAt).format('YYYY-MM-DD HH:mm') : null;
   // 旧库 owner_Name 是房号，不渲染虚假的姓名栏；显示和复制使用相同字段。
@@ -2004,6 +2010,8 @@ function OwnerDataPanel({ title, name, phone, room, note, editable, editHint, up
     { label: name === undefined ? '房号' : '姓名', value: name === undefined ? room || '未记录' : name, important: true },
     { label: '电话', value: phone || '未记录', important: true },
     ...(name === undefined ? [] : [{ label: '房号', value: room || '未记录', important: false }]),
+    ...(parkingSpace !== undefined ? [{ label: '车位号', value: parkingSpace, important: false }] : []),
+    ...(validityRange !== undefined ? [{ label: '有效期', value: validityRange, important: false }] : []),
     { label: '备注', value: note || '无', important: false },
   ];
   const text = [
@@ -2014,7 +2022,7 @@ function OwnerDataPanel({ title, name, phone, room, note, editable, editHint, up
   return <section className="parking-owner-panel">
     <header><strong>{title}</strong><Space size={4}>
       <Button size="small" icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(text)}>复制</Button>
-      <Button size="small" icon={<EditOutlined />} disabled={!editable} title={editHint} onClick={onEdit}>编辑</Button>
+      {!hideEdit && <Button size="small" icon={<EditOutlined />} disabled={!editable} title={editHint} onClick={onEdit}>编辑</Button>}
     </Space></header>
     <dl>{fields.map(({ label, value, important }) => <div key={label}><dt>{label}</dt><dd className={important ? 'parking-owner-important' : undefined}>{value}</dd></div>)}
       {updatedAtText && <div><dt>最后更新时间</dt><dd className="parking-owner-metadata">{updatedAtText}</dd></div>}

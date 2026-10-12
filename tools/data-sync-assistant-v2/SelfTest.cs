@@ -526,6 +526,17 @@ namespace Pms.DataSyncAssistant
                     command.Parameters["@result"].Direction != System.Data.ParameterDirection.Output || command.Parameters["@result"].Size != -1)
                     throw new InvalidOperationException("下载参数绑定、真实 Car_ID、Unicode 长度或输出 MAX 参数失败");
             }
+            if (!ParkingDatabase.DownloadMachineIds("001001").SequenceEqual(new[] { 3, 6 }))
+                throw new InvalidOperationException("下载机号必须逐位解析，不允许将位串传到整数参数");
+            using (var downloadCommand = new System.Data.SqlClient.SqlCommand("dbo.Add_DownloadCard"))
+            {
+                var perMachine = new Dictionary<string, object> { { "downloadid", 3 } };
+                ParkingDatabase.AddDownloadProcedureParameters(downloadCommand, new[] {
+                    new ParkingDatabase.ProcedureParameter { Name = "@Download_ID", Type = System.Data.SqlDbType.Int }
+                }, vehicle, perMachine, "沪ATEST1", "PMS");
+                if ((int)downloadCommand.Parameters["@Download_ID"].Value != 3)
+                    throw new InvalidOperationException("下载机号不是整数");
+            }
             payload["carzt"] = 1; // 下面的通用过程测试没有车辆行，单独提供这个已知参数。
             payload["dstratime"] = startTime;
             payload["dendtime"] = endTime;
