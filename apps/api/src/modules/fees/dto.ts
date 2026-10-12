@@ -291,7 +291,6 @@ export class CashierChargeItemDto {
 
   @Type(() => Number)
   @IsInt()
-  @Min(0)
   amountCents: number;
 
   @IsOptional()
@@ -353,6 +352,23 @@ export class CreateCashierChargeDto {
   @ValidateNested({ each: true })
   @Type(() => CashierChargeItemDto)
   items: CashierChargeItemDto[];
+}
+
+export class UpdateCashierContactDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  ownerId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  ownerName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  ownerPhone?: string;
 }
 
 /** 整张收据红冲：原收据全部置红冲，另开一张负数收据。 */

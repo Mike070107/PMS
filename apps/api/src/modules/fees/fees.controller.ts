@@ -20,6 +20,7 @@ import {
   ArrearsQueryDto,
   CancelBillsDto,
   CreateCashierChargeDto,
+  UpdateCashierContactDto,
   CreateBillDto,
   CreateStandardDto,
   FeeReportQueryDto,
@@ -177,6 +178,17 @@ export class FeesController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.feesService.createCashierCharge(dto, user, access);
+  }
+
+  @Patch('cashier/houses/:houseId/contact')
+  @RequirePermission(['apartment-cashier', 'app:apartment-cashier'], 'edit')
+  updateCashierContact(
+    @Param('houseId', ParseIntPipe) houseId: number,
+    @Body() dto: UpdateCashierContactDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feesService.updateCashierContact(houseId, dto, user, access);
   }
 
   @Post('bills')

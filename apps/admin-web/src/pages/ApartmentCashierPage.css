@@ -8,6 +8,8 @@
 .cashier-card__heading > span { display: grid; place-items: center; width: 28px; height: 28px; color: #fff; border-radius: 8px; background: var(--ac-brand); font-weight: 800; }
 .cashier-card__heading h2 { margin: 0; font-size: 18px; }
 .cashier-card__heading small { margin-left: auto; color: var(--ac-muted); }
+.cashier-fee-heading { flex-wrap: wrap; }
+.cashier-refund-mode { display: flex; align-items: center; gap: 8px; margin-left: auto; min-height: 32px; white-space: nowrap; }
 /* 第一行是选址（小区/楼栋/房号），姓名和手机号单独占第二行 —— 五个框挤一行时
    选址和住户资料混在一起，收费员分不清哪几个是必须先点的。 */
 .cashier-room-form { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 12px; }

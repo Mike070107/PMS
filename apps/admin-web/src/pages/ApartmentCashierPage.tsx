@@ -17,7 +17,7 @@ import {
   UserOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { App, Button, DatePicker, Empty, Input, InputNumber, Modal, Pagination, Select, Spin, Tag } from 'antd';
+import { App, Button, DatePicker, Empty, Input, InputNumber, Modal, Pagination, Select, Spin, Switch, Tag } from 'antd';
 import {
   APARTMENT_FEE_TYPES,
   FEE_PAYMENT_METHOD_LABELS,
@@ -27,7 +27,7 @@ import {
   roomLabel,
 } from '@pms/shared-types';
 import dayjs from 'dayjs';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth, usePagePerm } from '../lib/auth';
 import { request } from '../lib/api';
 import './ApartmentCashierPage.css';
@@ -40,6 +40,7 @@ type House = {
   roomNo: string; fullAddress: string | null; owner: Owner | null; owners: Owner[];
 };
 type FeeItem = {
+  refund: boolean;
   feeCode: string; feeName: string; unit: string; quantity: number; unitPriceCents: number;
   amountCents: number; serviceFrom?: string; serviceTo?: string; vehiclePlate?: string;
 };
@@ -103,7 +104,13 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
   const [houseId, setHouseId] = useState<number>();
   const [ownerName, setOwnerName] = useState('');
   const [ownerPhone, setOwnerPhone] = useState('');
+  const [savingContact, setSavingContact] = useState(false);
+  const contactSaving = useRef(false);
+  const savedContact = useRef({ name: '', phone: '' });
+  const initializedHouseId = useRef<number>();
+  const [contactError, setContactError] = useState<{ field: 'name' | 'phone'; message: string }>();
   const [items, setItems] = useState<FeeItem[]>([]);
+  const [refundMode, setRefundMode] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>();
   const [remark, setRemark] = useState('');
   const [history, setHistory] = useState<HistoryRow[]>([]);
@@ -173,8 +180,6 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
   useEffect(() => {
     setHouses([]);
     setHouseId(undefined);
-    setOwnerName('');
-    setOwnerPhone('');
     if (!buildingId) return;
     if (preview) {
       setHouses([{ id: 101, communityId: 20, communityName: '馨香臣寓吴泾店', buildingId, buildingNo: buildings.find((item) => item.id === buildingId)?.buildingNo || 'A栋34号', roomNo: '101', fullAddress: '龙吴路4787弄34号101室', owner: { id: 1, name: '示例住户', phone: '138****8000' }, owners: [] }, { id: 102, communityId: 20, communityName: '馨香臣寓吴泾店', buildingId, buildingNo: buildings.find((item) => item.id === buildingId)?.buildingNo || 'A栋34号', roomNo: '102', fullAddress: '龙吴路4787弄34号102室', owner: null, owners: [] }]);
@@ -190,9 +195,16 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
 
   useEffect(() => {
     const selected = houses.find((item) => item.id === houseId);
+    if (houseId && !selected) return;
+    // 保存姓名/手机号会更新 houses，但同一房间的收费草稿不能因此被重置。
+    if (initializedHouseId.current === houseId) return;
+    initializedHouseId.current = houseId;
     setOwnerName(selected?.owner?.name || '');
     setOwnerPhone(selected?.owner?.phone || '');
+    savedContact.current = { name: selected?.owner?.name || '', phone: selected?.owner?.phone || '' };
+    setContactError(undefined);
     setItems([]);
+    setRefundMode(false);
     setPaymentMethod(undefined);
     setHistoryPage(1);
   }, [houseId, houses]);
@@ -249,6 +261,34 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
   }, [historyVersion, message, preview, todayPage]);
 
   const reload = () => { setHistoryVersion((value) => value + 1); };
+
+  const saveContact = async (field: 'name' | 'phone') => {
+    if (!house || !canEdit || contactSaving.current) return;
+    const value = (field === 'name' ? ownerName : ownerPhone).trim();
+    if (value === savedContact.current[field]) return;
+    contactSaving.current = true;
+    setSavingContact(true);
+    setContactError(undefined);
+    try {
+      const result = preview
+        ? { owner: { id: house.owner?.id ?? 1, name: field === 'name' ? value : savedContact.current.name, phone: field === 'phone' ? value : savedContact.current.phone } }
+        : await request<{ owner: Owner | null }>({
+          method: 'PATCH', url: `/fees/cashier/houses/${house.id}/contact`,
+          data: { ownerId: house.owner?.id, [field === 'name' ? 'ownerName' : 'ownerPhone']: value },
+        });
+      savedContact.current[field] = value;
+      if (field === 'name') setOwnerName(value); else setOwnerPhone(value);
+      setHouses((current) => current.map((row) => row.id === house.id ? { ...row, owner: result.owner } : row));
+      message.success(preview ? '用户信息已保存（预览模式）' : '用户信息已保存');
+    } catch (error: any) {
+      const text = error?.message || '用户信息保存失败，已保留输入，请重试';
+      setContactError({ field, message: text });
+      message.error(text);
+    } finally {
+      contactSaving.current = false;
+      setSavingContact(false);
+    }
+  };
 
   /** 补打：先记一条补打日志再出票面，小票是凭证，重复打印必须查得到。 */
   const reprint = async (no: string) => {
@@ -323,8 +363,9 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
       feeName: definition.name,
       unit: definition.unit,
       quantity: 1,
+      refund: refundMode,
       unitPriceCents,
-      amountCents: unitPriceCents,
+      amountCents: refundMode ? -Math.abs(unitPriceCents) : unitPriceCents,
     }]);
   };
 
@@ -335,17 +376,19 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
       if ('quantity' in patch || 'unitPriceCents' in patch) {
         next.amountCents = Math.round(next.quantity * next.unitPriceCents);
       }
+      next.amountCents = (item.refund ? -1 : 1) * Math.abs(next.amountCents);
       return next;
     }));
   };
 
   const reset = () => {
+    setRefundMode(false);
     setItems([]); setPaymentMethod(undefined); setRemark(''); setReceiptNo(undefined);
   };
 
   const submit = async () => {
-    if (!house || !paymentMethod || !items.length) return;
-    if (items.some((item) => item.amountCents <= 0)) {
+    if (!house || !paymentMethod || !items.length || contactSaving.current || contactError) return;
+    if (items.some((item) => item.amountCents === 0)) {
       message.error('请填写每个收费项目的数量、单价或实收金额');
       return;
     }
@@ -415,13 +458,14 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
           <section className="cashier-card">
             <header className="cashier-card__heading"><span>1</span><h2>选择收费房间</h2><small>来自 PMS 房产资料</small></header>
             <div className="cashier-room-form">
-              <label><b>小区</b><Select value={communityId} onChange={setCommunityId} options={communities.map((item) => ({ value: item.id, label: item.name }))} placeholder="选择小区" showSearch optionFilterProp="label" /></label>
-              <label><b>楼栋</b><Select loading={loadingBuildings} value={buildingId} onChange={setBuildingId} options={buildingOptions} placeholder={communityId ? '选择楼栋' : '请先选择小区'} disabled={!communityId} showSearch optionFilterProp="label" /></label>
-              <label><b>房号</b><Select loading={loadingHouses} value={houseId} onChange={setHouseId} options={houses.map((item) => ({ value: item.id, label: roomLabel(item.roomNo) }))} placeholder={buildingId ? '选择房号' : '请先选择楼栋'} disabled={!buildingId} showSearch optionFilterProp="label" /></label>
-              <label><b>姓名</b><Input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} prefix={<UserOutlined />} placeholder="PMS 暂无姓名，可在此补录" /></label>
-              <label><b>手机号</b><Input value={ownerPhone} onChange={(event) => setOwnerPhone(event.target.value)} prefix={<PhoneOutlined />} placeholder="PMS 暂无手机号，可在此补录" maxLength={30} /></label>
+              <label><b>小区</b><Select value={communityId} onChange={(value) => { if (!contactSaving.current) setCommunityId(value); }} options={communities.map((item) => ({ value: item.id, label: item.name }))} placeholder="选择小区" showSearch optionFilterProp="label" /></label>
+              <label><b>楼栋</b><Select loading={loadingBuildings} value={buildingId} onChange={(value) => { if (!contactSaving.current) setBuildingId(value); }} options={buildingOptions} placeholder={communityId ? '选择楼栋' : '请先选择小区'} disabled={!communityId} showSearch optionFilterProp="label" /></label>
+              <label><b>房号</b><Select loading={loadingHouses} value={houseId} onChange={(value) => { if (!contactSaving.current) setHouseId(value); }} options={houses.map((item) => ({ value: item.id, label: roomLabel(item.roomNo) }))} placeholder={buildingId ? '选择房号' : '请先选择楼栋'} disabled={!buildingId} showSearch optionFilterProp="label" /></label>
+              <label><b>姓名</b><Input value={ownerName} disabled={!canEdit || !house || savingContact || submitting} maxLength={60} status={contactError?.field === 'name' ? 'error' : undefined} onBlur={() => void saveContact('name')} onPressEnter={(event) => event.currentTarget.blur()} onChange={(event) => setOwnerName(event.target.value)} prefix={<UserOutlined />} placeholder="PMS 暂无姓名，可在此补录" />{contactError?.field === 'name' && <small role="alert">{contactError.message}</small>}</label>
+              <label><b>手机号</b><Input value={ownerPhone} disabled={!canEdit || !house || savingContact || submitting} status={contactError?.field === 'phone' ? 'error' : undefined} onBlur={() => void saveContact('phone')} onPressEnter={(event) => event.currentTarget.blur()} onChange={(event) => setOwnerPhone(event.target.value)} prefix={<PhoneOutlined />} placeholder="PMS 暂无手机号，可在此补录" maxLength={30} />{contactError?.field === 'phone' && <small role="alert">{contactError.message}</small>}</label>
+              {savingContact && <span role="status">正在保存用户信息…</span>}
             </div>
-            <p className="cashier-owner-hint"><UserOutlined />提交收费时，新增或修改的姓名、手机号会同步到 PMS 业主资料。</p>
+            <p className="cashier-owner-hint"><UserOutlined />姓名、手机号修改后，离开输入框或按回车自动保存到 PMS 业主资料。</p>
 
             {house && <div className="cashier-selected-room">
               <HomeOutlined /><div><small>当前房间</small><strong>{placeLabel(house.buildingNo, house.roomNo)}</strong></div>
@@ -453,7 +497,8 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
           </section>
 
           <section className="cashier-card">
-            <header className="cashier-card__heading"><span>2</span><h2>添加收费项目</h2></header>
+            <header className="cashier-card__heading cashier-fee-heading"><span>2</span><h2>添加收费项目</h2><label className="cashier-refund-mode"><span>退费模式</span><Switch aria-label="退费模式" checked={refundMode} onChange={setRefundMode} disabled={!canEdit || submitting} /></label></header>
+            {refundMode && <p className="cashier-refund-hint">新添加项目按负数退费，已添加项目保持不变。</p>}
             <div className="cashier-fee-picker">
               {FEE_TYPES.map((fee) => <button className={`${fee.tone} ${items.some((item) => item.feeCode === fee.code) ? 'active' : ''}`} type="button" key={fee.code} onClick={() => addFee(fee.code)}>
                 <i>{fee.icon}</i><b>{fee.name}</b><small>{items.some((item) => item.feeCode === fee.code) ? '已添加' : '+'}</small>
@@ -463,11 +508,11 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
               <div className="cashier-fee-table__head"><span>收费项目</span><span>数量</span><span>单位</span><span>单价（元）</span><span>实收金额</span><span /></div>
               {items.length ? items.map((item) => <div className="cashier-fee-row-wrap" key={item.feeCode}>
                 <div className="cashier-fee-table__row">
-                  <strong>{item.feeName}</strong>
+                  <strong>{item.feeName}{item.refund && <Tag color="red">退费</Tag>}</strong>
                   <InputNumber min={0} precision={3} value={item.quantity} onChange={(value) => updateItem(item.feeCode, { quantity: Number(value) || 0 })} />
                   <span>{item.unit}</span>
                   <InputNumber min={0} precision={2} value={item.unitPriceCents / 100} onChange={(value) => updateItem(item.feeCode, { unitPriceCents: Math.round((Number(value) || 0) * 100) })} />
-                  <InputNumber min={0} precision={2} value={item.amountCents / 100} onChange={(value) => updateItem(item.feeCode, { amountCents: Math.round((Number(value) || 0) * 100) })} />
+                  <InputNumber aria-label={`${item.feeName}${item.refund ? '退费' : '实收'}金额`} min={item.refund ? undefined : 0} precision={2} value={item.amountCents / 100} onChange={(value) => updateItem(item.feeCode, { amountCents: Math.round((Number(value) || 0) * 100) })} />
                   <Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除${item.feeName}`} onClick={() => setItems((current) => current.filter((row) => row.feeCode !== item.feeCode))} />
                 </div>
                 {(item.feeCode === 'network' || item.feeCode === 'parking') && <div className="cashier-fee-extra">
@@ -519,7 +564,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
           <fieldset className="cashier-payment"><legend>收款方式</legend>{PAYMENT_METHODS.map((item) => <button type="button" className={`${item.type} ${paymentMethod === item.value ? 'active' : ''}`} key={item.value} onClick={() => setPaymentMethod(item.value)}><LegacyPaymentIcon type={item.type} /><span>{item.label}</span></button>)}</fieldset>
           <label className="cashier-remark"><span>备注</span><Input.TextArea rows={3} value={remark} onChange={(event) => setRemark(event.target.value)} placeholder="选填" maxLength={255} showCount /></label>
           <div className="cashier-total"><span>收款合计</span><strong>{formatFeeMoney(total)}</strong></div>
-          <Button block type="primary" size="large" icon={<PrinterOutlined />} loading={submitting} disabled={!canEdit || !house || !items.length || !paymentMethod} onClick={submit}>收费并生成小票</Button>
+          <Button block type="primary" size="large" icon={<PrinterOutlined />} loading={submitting} disabled={!canEdit || !house || !items.length || !paymentMethod || savingContact || !!contactError} onClick={submit}>收费并生成小票</Button>
           <Button block icon={<EyeOutlined />} disabled={!house || !items.length} onClick={() => setReceiptOpen(true)}>打印预览</Button>
           <Button block onClick={reset}>清空重填</Button>
         </aside>

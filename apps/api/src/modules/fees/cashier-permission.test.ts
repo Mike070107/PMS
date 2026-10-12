@@ -15,6 +15,11 @@ const permits = (controller: any, method: string, action: string) =>
     (p: any) => p.pageKey === 'apartment-cashier' && p.action === action,
   );
 
+test('自动保存住户资料要求公寓收费台编辑权', () => {
+  assert.ok(permits(FeesController, 'updateCashierContact', 'edit'));
+  assert.equal(permits(FeesController, 'updateCashierContact', 'view'), false);
+});
+
 test('员工公寓入口只放行选址和收费，不扩大后台账单管理权限', () => {
   assert.ok((STAFF_APP_PAGE_KEYS as readonly string[]).includes('app:apartment-cashier'));
   for (const method of ['listCommunities', 'listBuildings', 'listHouses']) {

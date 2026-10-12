@@ -57,7 +57,7 @@ export function normalizeCashierItems(items: CashierItemInput[]) {
   return items.map((item) => {
     const quantity = item.quantity === undefined ? null : Number(item.quantity.toFixed(3));
     const unitPriceCents = item.unitPriceCents ?? null;
-    if (item.amountCents < 0) throw new BadRequestException('收费金额不能小于 0');
+    if (!Number.isSafeInteger(item.amountCents)) throw new BadRequestException('收费或退费金额必须为整数分');
     return {
       feeCode: item.feeCode,
       quantity: quantity === null ? null : quantity.toFixed(3),

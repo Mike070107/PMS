@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
+import { Brackets, DataSource, EntityManager, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
   FEE_ITEM_CODES,
@@ -27,6 +27,7 @@ import {
   ArrearsQueryDto,
   CancelBillsDto,
   CreateCashierChargeDto,
+  UpdateCashierContactDto,
   CreateBillDto,
   CreateStandardDto,
   FeeReportQueryDto,
@@ -927,6 +928,82 @@ export class FeesService {
   }
 
   /** 公寓收费工作台：同步住户资料和记账必须同成同败。 */
+  private async saveCashierContact(
+    manager: EntityManager,
+    dto: UpdateCashierContactDto & { houseId: number },
+    user: AuthUser,
+    tenantId: number,
+    replaceContact = false,
+  ) {
+    // 同一房间的补录和收费串行，避免重复建立住户。
+    await manager.findOne(House, { where: { id: dto.houseId, tenantId }, lock: { mode: 'pessimistic_write' } });
+    const contact = normalizeCashierContact(dto.ownerName, dto.ownerPhone);
+    let owner: User | null = null;
+    if (dto.ownerId) {
+      owner = await manager.findOne(User, {
+        where: { id: dto.ownerId, tenantId, role: UserRole.OWNER, houseId: dto.houseId },
+      });
+      if (!owner) throw new BadRequestException('所选住户已不属于这个房间，请刷新后重试');
+    } else {
+      owner = await manager.findOne(User, {
+        where: { tenantId, role: UserRole.OWNER, houseId: dto.houseId, status: UserStatus.ACTIVE },
+        order: { id: 'ASC' },
+      });
+    }
+
+    if (contact.phone && contact.phone !== owner?.phone) {
+      const duplicate = await manager.findOne(User, {
+        where: { tenantId, role: UserRole.OWNER, phone: contact.phone },
+      });
+      if (duplicate && duplicate.id !== owner?.id) {
+        throw new BadRequestException('该手机号已登记在另一位业主名下，未保存');
+      }
+    }
+
+    if (owner) {
+      const mergedContact = replaceContact ? {
+        name: dto.ownerName === undefined ? owner.name : contact.name,
+        phone: dto.ownerPhone === undefined ? owner.phone : contact.phone,
+      } : mergeCashierContact(owner, contact);
+      owner.name = mergedContact.name;
+      owner.phone = mergedContact.phone;
+      owner.updatedBy = user.id;
+      await manager.save(User, owner);
+    } else if (contact.name || contact.phone) {
+      owner = await manager.save(User, manager.create(User, {
+        tenantId,
+        wxOpenid: null,
+        wxUnionid: null,
+        wxMpOpenid: null,
+        name: contact.name,
+        phone: contact.phone,
+        wxNickname: null,
+        passwordHash: null,
+        loginAccount: null,
+        role: UserRole.OWNER,
+        houseId: dto.houseId,
+        status: UserStatus.ACTIVE,
+        source: OwnerSource.MANUAL,
+        contactNote: null,
+        legacyRef: null,
+        createdBy: user.id,
+        updatedBy: user.id,
+      }));
+    }
+
+    return owner;
+  }
+
+  async updateCashierContact(houseId: number, dto: UpdateCashierContactDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const place = await this.resolveHousePlace(tenantId, houseId);
+    this.assertCommunityInScope(place.communityId, access);
+    return this.dataSource.transaction(async (manager) => {
+      const owner = await this.saveCashierContact(manager, { ...dto, houseId }, user, tenantId, true);
+      return { owner: owner ? { id: owner.id, name: owner.name, phone: owner.phone } : null };
+    });
+  }
+
   async createCashierCharge(
     dto: CreateCashierChargeDto,
     user: AuthUser,
@@ -944,55 +1021,7 @@ export class FeesService {
     const period = (dto.paidAt ?? todayInTz(paidAt)).slice(0, 7).replace('-', '');
 
     return this.dataSource.transaction(async (manager) => {
-      let owner: User | null = null;
-      if (dto.ownerId) {
-        owner = await manager.findOne(User, {
-          where: { id: dto.ownerId, tenantId, role: UserRole.OWNER, houseId: dto.houseId },
-        });
-        if (!owner) throw new BadRequestException('所选住户已不属于这个房间，请刷新后重试');
-      } else {
-        owner = await manager.findOne(User, {
-          where: { tenantId, role: UserRole.OWNER, houseId: dto.houseId, status: UserStatus.ACTIVE },
-          order: { id: 'ASC' },
-        });
-      }
-
-      if (contact.phone && contact.phone !== owner?.phone) {
-        const duplicate = await manager.findOne(User, {
-          where: { tenantId, role: UserRole.OWNER, phone: contact.phone },
-        });
-        if (duplicate && duplicate.id !== owner?.id) {
-          throw new BadRequestException('该手机号已登记在另一位业主名下，收费记录未保存');
-        }
-      }
-
-      if (owner) {
-        const mergedContact = mergeCashierContact(owner, contact);
-        owner.name = mergedContact.name;
-        owner.phone = mergedContact.phone;
-        owner.updatedBy = user.id;
-        await manager.save(User, owner);
-      } else if (contact.name || contact.phone) {
-        owner = await manager.save(User, manager.create(User, {
-          tenantId,
-          wxOpenid: null,
-          wxUnionid: null,
-          wxMpOpenid: null,
-          name: contact.name,
-          phone: contact.phone,
-          wxNickname: null,
-          passwordHash: null,
-          loginAccount: null,
-          role: UserRole.OWNER,
-          houseId: dto.houseId,
-          status: UserStatus.ACTIVE,
-          source: OwnerSource.MANUAL,
-          contactNote: null,
-          legacyRef: null,
-          createdBy: user.id,
-          updatedBy: user.id,
-        }));
-      }
+      const owner = await this.saveCashierContact(manager, dto, user, tenantId);
 
       const rows = items.map((item) => manager.create(FeeBill, {
         tenantId,
