@@ -251,6 +251,7 @@ export class AuthService {
       if (!bound) {
         throw new UnauthorizedException('该微信尚未绑定员工账号，请用手机号验证登录');
       }
+      if (bound.phoneReverificationRequired) throw new UnauthorizedException('电话已变更，请重新授权微信手机号登录');
       return this.issueStaffTokens(bound);
     }
 
@@ -339,6 +340,12 @@ export class AuthService {
       target = await this.userRepo.save(target);
     }
 
+    if (target.phoneReverificationRequired) {
+      if (!byPhone) throw new UnauthorizedException('电话已变更，请重新授权微信手机号登录');
+      // 新旧小程序均支持手机号登录：微信实际号码已在前面与目标账号匹配。
+      target.phoneReverificationRequired = false;
+      target = await this.userRepo.save(target);
+    }
     return this.issueStaffTokens(target);
   }
 
