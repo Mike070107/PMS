@@ -91,3 +91,16 @@ test('资料修改证明不能充当登录令牌；他人不能扫描本人的�
   qr.requireUsableTicket = async () => ({ id: 1, userId: 7, status: WebLoginTicketStatus.PENDING, purpose: WebLoginTicketPurpose.SELF_PROFILE });
   await assert.rejects(qr.markScanned('ticket', { id: 9 }), /本人/);
 });
+
+test('旧小程序静默微信登录不能绕过变更电话；微信手机号登录匹配后完成重验', async () => {
+  const f = await fixture(); f.account.phoneReverificationRequired = true; f.account.wxOpenid = 'wx-user';
+  f.service.wechat = { jscode2session: async () => ({ openid: 'wx-user' }), getPhoneNumber: async () => f.account.phone };
+  f.service.userRepo.findOne = async () => f.account;
+  f.service.userRepo.find = async () => [f.account];
+  f.service.userRepo.save = async (value: any) => value;
+  f.service.issueStaffTokens = async () => ({ ok: true });
+  await assert.rejects(f.service.staffLogin({ code: 'wx-code' }), /重新授权微信手机号/);
+  await f.service.staffLogin({ code: 'wx-code', phoneCode: 'phone-code' });
+  assert.equal(f.account.phoneReverificationRequired, false);
+  assert.equal(f.account.role, 'manager');
+});
