@@ -4700,3 +4700,10 @@
 - 自上次（a0da6f85）以来上线的相关提交：
   - 035b19de feat(fees): add scoped reusable fee templates and effective price versions
 
+## 2026-10-12 19:06 · web · 035b19de
+
+- 包：`pms-web-20261012-185656.tar.gz`
+- 提交：035b19de feat(fees): add scoped reusable fee templates and effective price versions
+- 自上次（a0da6f85）以来上线的相关提交：
+  - 035b19de feat(fees): add scoped reusable fee templates and effective price versions
+
