@@ -363,6 +363,8 @@ export class ReportsService {
     const scope = this.scopeIds(access);
     const scopedOut = (scope && !scope.length) || (query.communityId && scope && !scope.includes(query.communityId));
 
+    if (scopedOut) return { range: this.rangeView(range), summary: this.emptyAgg(), staffCount: 0, completedInRange: 0, activeNow: 0, rows: [] };
+
     const agg = scopedOut
       ? []
       : await this.aggregateWorkOrders(tenantId, range, scope, query, 'assignee');
@@ -411,9 +413,9 @@ export class ReportsService {
     const activeByUser = new Map(activeRows.map((r) => [Number(r.assignee_id), num(r.n)]));
 
     const technicianIds = await this.accessService.userIdsWithPermission(tenantId, 'app:pool', 'edit');
-    const userIds = [
+    const userIds = await this.staffIdsInScope(tenantId, [
       ...new Set([...technicianIds, ...aggByUser.keys(), ...completedByUser.keys(), ...activeByUser.keys()]),
-    ];
+    ], query.communityId ? [query.communityId] : scope);
     if (!userIds.length) {
       return { range: this.rangeView(range), summary: this.emptyAgg(), rows: [] };
     }
@@ -465,8 +467,8 @@ export class ReportsService {
       range: this.rangeView(range),
       summary: summary ? this.stripKey(summary as WorkOrderAggRow) : this.emptyAgg(),
       staffCount: rows.length,
-      completedInRange: [...completedByUser.values()].reduce((s, n) => s + n, 0),
-      activeNow: [...activeByUser.values()].reduce((s, n) => s + n, 0),
+      completedInRange: rows.reduce((s, row) => s + row.completedInRange, 0),
+      activeNow: rows.reduce((s, row) => s + row.activeNow, 0),
       rows,
     };
   }
@@ -816,7 +818,7 @@ export class ReportsService {
       `SELECT DISTINCT assignee_id FROM work_orders WHERE tenant_id = $1 AND deleted_at IS NULL AND status <> 'voided' AND assignee_id IS NOT NULL`,
       [tenantId],
     );
-    const staffIds = [...new Set([...technicianIds, ...assigneeRows.map((r) => Number(r.assignee_id))])];
+    const staffIds = await this.staffIdsInScope(tenantId, [...new Set([...technicianIds, ...assigneeRows.map((r) => Number(r.assignee_id))])], scope);
     const staff = staffIds.length
       ? await this.dataSource.getRepository(User).find({
           where: { tenantId, id: In(staffIds), role: UserRole.STAFF },
@@ -864,6 +866,18 @@ export class ReportsService {
 
   private scopeIds(access?: ResolvedAccess): number[] | null {
     return scopeCommunityIds(access);
+  }
+
+  private async staffIdsInScope(tenantId: number, ids: number[], scope: number[] | null): Promise<number[]> {
+    if (scope === null) return ids;
+    if (!scope.length || !ids.length) return [];
+    const offices = new Set((await Promise.all(scope.map(id => this.accessService.officeIdOfCommunity(tenantId, id)))).filter((id): id is number => !!id));
+    if (!offices.size) return [];
+    const matches = await Promise.all(ids.map(async id => {
+      const mine = await this.accessService.userOfficeIds(tenantId, id);
+      return !mine.all && mine.officeIds.some(office => offices.has(office)) ? id : null;
+    }));
+    return matches.filter((id): id is number => id !== null);
   }
 
   private resolveTenantId(user: AuthUser, requestedTenantId?: number): number {

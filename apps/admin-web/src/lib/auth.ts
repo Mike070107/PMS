@@ -127,6 +127,11 @@ export const auth = {
     else store.removeItem(ACCESS_KEY);
     refresh();
   },
+  updateRoleNames(userId: string | number, roleNames: string[]) {
+    if (!cached.user || String(cached.user.id) !== String(userId)) return;
+    store.setItem(USER_KEY, JSON.stringify({ ...cached.user, roleNames }));
+    refresh();
+  },
   setActingTenant(t: ActingTenant | null) {
     if (t) store.setItem(ACTING_KEY, JSON.stringify(t));
     else store.removeItem(ACTING_KEY);

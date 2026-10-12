@@ -181,7 +181,8 @@ export default function AppLayout() {
   useEffect(() => {
     (async () => {
       try {
-        const meResp = (await authApi.me()) as { access?: AdminAccess };
+        const meResp = (await authApi.me()) as { id: string | number; roleNames?: string[]; access?: AdminAccess };
+        if (Array.isArray(meResp.roleNames)) auth.updateRoleNames(meResp.id, meResp.roleNames);
         if (meResp?.access) {
           auth.setAccess(meResp.access);
           // 本地残留的管理处选择已不在自己可切范围（角色被改、管理处被删）时清掉，
@@ -273,7 +274,7 @@ export default function AppLayout() {
         <div className="pms-sider-foot-label">当前身份</div>
         <div className="pms-sider-foot-value">
           {/* 顶栏显示他绑的角色名（后端 /auth/me 下发）；没有就退回一句中性称呼 */}
-          {user?.roleNames?.join(' · ') || '物业管理人员'}
+          {user?.roleNames?.join(' · ') || (user?.roleNames ? '未绑定业务角色' : '身份加载中')}
         </div>
         <div className="pms-sider-foot-meta">邻修物业管理平台 · {new Date().getFullYear()}</div>
         <div className="pms-sider-foot-version" title={BUILD_COMMIT ? `构建提交 ${BUILD_COMMIT}` : undefined}>
