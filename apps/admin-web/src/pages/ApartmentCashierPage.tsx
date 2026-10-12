@@ -125,6 +125,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
   const [receiptNo, setReceiptNo] = useState<string>();
   const [historyVersion, setHistoryVersion] = useState(0);
   const [rates, setRates] = useState<Record<string, number>>({});
+  const [rateQuote, setRateQuote] = useState<string|null|undefined>();
   const [todayRows, setTodayRows] = useState<TodayRow[]>([]);
   const [todayTotal, setTodayTotal] = useState(0);
   const [todayCents, setTodayCents] = useState(0);
@@ -210,15 +211,18 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
   }, [houseId, houses]);
 
   useEffect(() => {
+    let cancelled=false;
+    setRateQuote(undefined);
     if (!houseId) { setRates({}); return; }
     if (preview) {
       setRates({ electricity: 80, cold_water: 500, hot_water: 800, network: 5000, parking: 30000, rent: 150000, management: 5000, deposit: 3000 });
       return;
     }
     setRates({});
-    request<{ standards: Array<{ feeCode: string; amountCents: number; status: string }> }>({ url: `/fees/houses/${houseId}` })
-      .then((data) => setRates(Object.fromEntries(data.standards.filter((item) => item.status === 'active').map((item) => [item.feeCode, item.amountCents]))))
-      .catch(() => setRates({}));
+    request<{ rateQuote?:string|null; standards: Array<{ feeCode: string; amountCents: number; status: string }> }>({ url: `/fees/houses/${houseId}` })
+      .then((data) => {if(!cancelled){setRateQuote(data.rateQuote);setRates(Object.fromEntries(data.standards.filter((item) => item.status === 'active').map((item) => [item.feeCode, item.amountCents])));}})
+      .catch(() => {if(!cancelled)setRates({});});
+    return ()=>{cancelled=true;};
   }, [houseId, preview]);
 
   useEffect(() => {
@@ -388,6 +392,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
 
   const submit = async () => {
     if (!house || !paymentMethod || !items.length || contactSaving.current || contactError) return;
+    if(!preview && rateQuote===undefined) {message.error('收费标准尚未读到，请重新选择房号核对单价后提交');return;}
     if (items.some((item) => item.amountCents === 0)) {
       message.error('请填写每个收费项目的数量、单价或实收金额');
       return;
@@ -397,6 +402,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
       const result = await request<{ receiptNo: string }>({
         method: 'POST', url: '/fees/cashier/charges', data: {
           houseId: house.id,
+          rateQuote,
           ownerId: house.owner?.id,
           ownerName,
           ownerPhone,

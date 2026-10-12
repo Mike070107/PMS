@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -19,6 +20,7 @@ import {
   feeItemName,
 } from '../../common/enums';
 import { addNaturalOrderBy } from '../../common/natural-order';
+import { FeeTemplatesService } from './fee-templates.service';
 import { HouseIndex } from '../../common/house-index';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
@@ -100,6 +102,7 @@ export class FeesService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly dataSource: DataSource,
+    private readonly feeTemplates: FeeTemplatesService,
   ) {}
 
   // ==================== 账单 ====================
@@ -655,6 +658,7 @@ export class FeesService {
       }),
     ]);
 
+    const templateStandards = await this.feeTemplates.currentStandards(tenantId,houseId,todayInTz(new Date()));
     const unpaidCents = bills
       .filter((b) => b.status === FeeBillStatus.UNPAID)
       .reduce((sum, b) => sum + b.amountCents, 0);
@@ -676,7 +680,9 @@ export class FeesService {
       },
       unpaidCents,
       bills,
-      standards,
+      standards: templateStandards ?? standards,
+      legacyStandards: templateStandards ? standards : [],
+      rateQuote: templateStandards?.[0] ? `${templateStandards[0].assignmentId}:${templateStandards[0].templateId}:${templateStandards[0].templateVersion}` : null,
     };
   }
 
@@ -1022,6 +1028,11 @@ export class FeesService {
 
     return this.dataSource.transaction(async (manager) => {
       const owner = await this.saveCashierContact(manager, dto, user, tenantId);
+      // 与模板调价、套用使用同一把锁，报价校验到保存期间不穿插改价。
+      await manager.query('SELECT pg_advisory_xact_lock($1,$2)',[tenantId,place.communityId]);
+      const templateSnapshot = await this.feeTemplates.resolve(tenantId,dto.houseId,dto.paidAt ?? todayInTz(paidAt),manager);
+      const actualQuote = templateSnapshot ? `${templateSnapshot.assignment_id}:${templateSnapshot.template_id}:${templateSnapshot.version}` : null;
+      if(dto.rateQuote !== undefined && dto.rateQuote !== actualQuote) throw new ConflictException('收费模板或住户调整已变化，请重新选择房间核对单价后提交；本次没有收费');
 
       const rows = items.map((item) => manager.create(FeeBill, {
         tenantId,
@@ -1039,7 +1050,7 @@ export class FeesService {
         serviceFrom: item.serviceFrom,
         serviceTo: item.serviceTo,
         vehiclePlate: item.vehiclePlate,
-        legacyPayload: null,
+        legacyPayload: templateSnapshot ? { feeTemplate: { templateId:templateSnapshot.template_id,version:templateSnapshot.version,assignmentId:templateSnapshot.assignment_id,effectiveFrom:templateSnapshot.effective_from,items:templateSnapshot.items } } : null,
         status: FeeBillStatus.PAID,
         paidAt,
         paymentMethod: dto.paymentMethod,
@@ -1259,7 +1270,7 @@ export class FeesService {
     // 账期首日：生效日期晚于账期的标准这次不参与
     const periodStart = `${dto.period.slice(0, 4)}-${dto.period.slice(4)}-01`;
 
-    const standards = await this.standardRepo
+    let standards = await this.standardRepo
       .createQueryBuilder('s')
       .where('s.tenant_id = :tenantId', { tenantId })
       .andWhere('s.community_id = :cid', { cid: dto.communityId })
@@ -1271,6 +1282,10 @@ export class FeesService {
       .orderBy('s.id', 'ASC')
       .limit(GENERATE_LIMIT + 1)
       .getMany();
+
+    if(standards.length>GENERATE_LIMIT) throw new BadRequestException(`原收费标准超过 ${GENERATE_LIMIT} 条，请按费用项目分批生成，避免截断后遗漏`);
+    const templateGeneration = await this.feeTemplates.generationStandards(tenantId,dto.communityId,periodStart,dto.feeCode);
+    standards = [...standards.filter(std => !templateGeneration.coveredHouseIds.has(std.houseId)),...templateGeneration.standards];
 
     if (standards.length > GENERATE_LIMIT) {
       throw new BadRequestException(
@@ -1324,6 +1339,7 @@ export class FeesService {
           status: FeeBillStatus.UNPAID,
           source: FeeBillSource.GENERATED,
           standardId: std.id,
+          legacyPayload: (std as FeeStandard & {templateSnapshot?:Record<string,unknown>}).templateSnapshot ? {feeTemplate:(std as FeeStandard & {templateSnapshot?:Record<string,unknown>}).templateSnapshot} : null,
           createdBy: user.id,
           updatedBy: user.id,
         }),

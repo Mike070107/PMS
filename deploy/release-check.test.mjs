@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertRelease, assertVersionIncrease, evidenceMatches, parkingChanges, productionInput, assistantInput, deploymentCommit } from './release-check.mjs';
+import { assertRelease, assertVersionIncrease, evidenceMatches, parkingChanges, feeChanges, productionInput, assistantInput, deploymentCommit } from './release-check.mjs';
 
 test('验收记录必须通过且匹配输入哈希，不能以旧记录放行新源码', () => {
   assert.equal(evidenceMatches({ passed: true, inputHash: 'A' }, 'A'), true);
@@ -18,6 +18,9 @@ test('助手源码变更必须提高版本，禁止同号覆盖和降级', () =>
   for (const version of ['2.5.16', '2.5.9', 'bad']) assert.throws(() => assertVersionIncrease(version, '2.5.16'));
 });
 test('按相关路径选择回归；纯文档不制造助手新版本', () => {
+  assert.equal(feeChanges(['apps/api/src/modules/fees/fees.service.ts']),true);
+  assert.equal(feeChanges(['apps/admin-web/src/pages/FeeTemplateSettings.tsx']),true);
+  assert.equal(feeChanges(['docs/fees.md']),false);
   assert.equal(parkingChanges(['apps/admin-web/src/pages/ParkingManagementPage.tsx']), true);
   assert.equal(parkingChanges(['apps/api/src/modules/access-card-issuance/dto.ts']), true);
   assert.equal(parkingChanges(['apps/admin-web/src/pages/OtherPage.tsx']), false);

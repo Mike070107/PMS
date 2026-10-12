@@ -58,6 +58,7 @@ function record(file, data) {
 }
 export function evidenceMatches(evidence, hash) { return evidence?.passed === true && evidence.inputHash === hash; }
 export function parkingChanges(files) { return files.some(file => /Parking|parking|access-card|shared-types|api-client/.test(file)); }
+export function feeChanges(files) { return files.some(file => /FeeTemplate|FeesPage|ApartmentCashier|modules\/fees\/|FeeTemplates|apartment-cashier/.test(file)); }
 export function assertVersionIncrease(current, published) {
   const parse = value => {
     if (!/^\d+\.\d+\.\d+$/.test(value)) throw new Error(`无效助手版本：${value}`);
@@ -84,6 +85,16 @@ async function check(target, commit) {
     }
   }
   const changes = changed(target, commit);
+  if ((target==='api'||target==='web') && (feeChanges(changes)||changes.includes('unmarked'))) {
+    const hash=sha(fingerprint('api')+fingerprint('web'));
+    const file=join(EVIDENCE,`fee-templates-${hash}.json`);
+    if(existsSync(file)&&evidenceMatches(JSON.parse(readFileSync(file,'utf8')),hash)) console.log('复用同源码收费模板回归证据');
+    else {
+      run('pnpm --filter @pms/api test:fee-templates');
+      run('node --test apps/admin-web/test/fee-template-settings.test.mjs');
+      record(file,{passed:true,inputHash:hash,commit,testedAt:new Date().toISOString(),scope:'isolated PostgreSQL and service/permission tests; not production cashier acceptance'});
+    }
+  }
   if (parkingChanges(changes) || changes.includes('unmarked')) {
     // 本组是 Web/API 契约测试；助手自己的构建和 SelfTest 由助手发布脚本验收。
     const hash = sha(fingerprint('api') + fingerprint('web'));

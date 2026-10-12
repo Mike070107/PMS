@@ -55,6 +55,7 @@ import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import ApartmentCashierPage from './ApartmentCashierPage';
 import { FeeBreakdownChart, FeeTrendChart } from '../components/FeeReportCharts';
+import FeeTemplateSettings from './FeeTemplateSettings';
 import './FeesReportShell.css';
 
 const { Title, Text } = Typography;
@@ -303,13 +304,7 @@ export default function FeesPage() {
 }
 
 export function FeeStandardsPanel() {
-  const [detailHouseId, setDetailHouseId] = useState<number | null>(null);
-  return (
-    <>
-      <StandardsTab onOpenHouse={setDetailHouseId} />
-      <HouseDetailModal houseId={detailHouseId} onClose={() => setDetailHouseId(null)} />
-    </>
-  );
+  return <FeeTemplateSettings />;
 }
 
 /** 小区下拉：后端已按角色数据范围过滤，直接用 */
@@ -2322,7 +2317,7 @@ export function HouseDetailModal({ houseId, onClose }: { houseId: number | null;
             label: `收费标准（${data?.standards.length ?? 0}）`,
             children: (
               <Table<StandardRow>
-                rowKey="id"
+                rowKey={row=>row.id??row.feeCode}
                 size="small"
                 loading={loading}
                 dataSource={data?.standards ?? []}

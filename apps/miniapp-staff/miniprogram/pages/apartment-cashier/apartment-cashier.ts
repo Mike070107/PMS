@@ -252,11 +252,17 @@ Page({
   // ---------------- 单价与历史 ----------------
 
   rates: {} as Record<string, number>,
+  rateQuote: undefined as string | null | undefined,
+  ratesRequest: 0,
 
   async loadRates(houseId: number) {
+    const requestId=++this.ratesRequest;
     this.rates = {};
+    this.rateQuote=undefined;
     try {
       const data = await apartmentCashier.standards(houseId);
+      if(requestId!==this.ratesRequest)return;
+      this.rateQuote=data.rateQuote;
       const map: Record<string, number> = {};
       for (const item of data.standards || []) {
         if (item.status === 'active') map[item.feeCode] = item.amountCents;
@@ -379,6 +385,7 @@ Page({
     if (!this.data.canCharge || this.data.submitting) return;
     const house = this.data.houses[this.data.houseIndex];
     if (!house) return this.setData({ submitError: '先选房间' });
+    if(this.rateQuote===undefined) return this.setData({submitError:'收费标准尚未读到，请重新选择房号核对单价后提交'});
     if (!this.data.rows.length) return this.setData({ submitError: '先添加收费项目' });
     if (this.data.rows.some((row) => row.amountCents <= 0)) {
       return this.setData({ submitError: '每一项都要填出金额，0 元的项先删掉' });
@@ -405,6 +412,7 @@ Page({
     try {
       const result = await apartmentCashier.charge({
         houseId: house.id,
+        rateQuote: this.rateQuote,
         ownerId: house.owner?.id,
         ownerName: this.data.ownerName,
         ownerPhone: this.data.ownerPhone,

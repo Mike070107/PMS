@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "nest build",
+    "test:fee-templates": "node -r ts-node/register --test src/modules/fees/fee-templates.util.test.ts src/modules/fees/fee-templates.persistence.test.ts src/modules/fees/fee-templates.integration.test.ts",
     "test:qr-security": "node -r ts-node/register --test src/modules/auth/qr-login-security.test.ts src/modules/auth/qr-login.service.test.ts src/modules/auth/oidc.service.test.ts",
     "test:gateway": "node -r ts-node/register --test src/modules/external-access/lan-gateway-security.test.ts src/modules/external-access/external-access.util.test.ts src/modules/external-access/external-access-delete.test.ts",
     "test:parking-owner": "node -r ts-node/register --test src/modules/access-card-issuance/parking-owner-update.util.test.ts src/modules/access-card-issuance/parking-owner-update.service.test.ts",
@@ -55,6 +56,7 @@
     "xlsx": "0.18.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@nestjs/cli": "^10.4.5",
     "@nestjs/schematics": "^10.2.0",
     "@types/bcryptjs": "^2.4.6",

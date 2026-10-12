@@ -314,6 +314,10 @@ export class CashierChargeItemDto {
 
 /** 公寓收费工作台一次提交：住户资料同步和全部收费明细在同一事务中完成。 */
 export class CreateCashierChargeDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  rateQuote?: string | null;
   @Type(() => Number)
   @IsInt()
   houseId: number;

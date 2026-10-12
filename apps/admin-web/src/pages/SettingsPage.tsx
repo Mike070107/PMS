@@ -532,15 +532,15 @@ export default function SettingsPage() {
     <div>
       <SettingSection
         title="收费标准"
-        summary="按 PMS 房间维护各费用项目的当前标准和生效历史"
+        summary="公寓与小区独立配置；模板统一调价，住户批量套用与个别调整"
         wide
       >
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
-          message="收费标准统一放在系统设置"
-          description="收费工作台只负责选房、计费和收款；修改标准不会回写已经完成的历史收费记录。"
+          message="模板统一管理，住户无需逐户改价"
+          description="公寓门店与小区分开。修改模板保存新版本并选择生效日，已生成账单与历史收款保持原价。"
         />
         <FeeStandardsPanel />
       </SettingSection>
