@@ -4621,3 +4621,12 @@
 - 自上次（e6b0547d）以来上线的相关提交：
   - d7cca6dc fix(parking): integrate civil-defense details and map download machine IDs
 
+## 2026-10-12 08:46 · api · 618f7456
+
+- 包：`pms-api-fast-20261012-084614.tar.gz`
+- 提交：618f7456 test(auth): cover phone verification with existing miniapp login
+- 自上次（d7cca6dc）以来上线的相关提交：
+  - 618f7456 test(auth): cover phone verification with existing miniapp login
+  - d666e3de fix(auth): require phone reverification in existing staff login flows
+  - a07894f1 feat(auth): self-service phone and password updates with WeChat confirmation
+
