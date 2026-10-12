@@ -4707,3 +4707,17 @@
 - 自上次（a0da6f85）以来上线的相关提交：
   - 035b19de feat(fees): add scoped reusable fee templates and effective price versions
 
+## 2026-10-12 20:04 · api · 890918e2
+
+- 包：`pms-api-fast-20261012-200340.tar.gz`
+- 提交：890918e2 fix(cashier): infer quantity from actual collected amount
+- 自上次（035b19de）以来上线的相关提交：
+  - 890918e2 fix(cashier): infer quantity from actual collected amount
+
+## 2026-10-12 20:06 · web · 890918e2
+
+- 包：`pms-web-20261012-200604.tar.gz`
+- 提交：890918e2 fix(cashier): infer quantity from actual collected amount
+- 自上次（035b19de）以来上线的相关提交：
+  - 890918e2 fix(cashier): infer quantity from actual collected amount
+
