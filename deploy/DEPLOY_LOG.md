@@ -4637,3 +4637,10 @@
 - 自上次（d7cca6dc）以来上线的相关提交：
   - a07894f1 feat(auth): self-service phone and password updates with WeChat confirmation
 
+## 2026-10-12 08:58 · api · 763cafb6
+
+- 包：`pms-api-fast-20261012-085732.tar.gz`
+- 提交：763cafb6 fix(reports): scope staff visibility and synchronize business role labels
+- 自上次（618f7456）以来上线的相关提交：
+  - 763cafb6 fix(reports): scope staff visibility and synchronize business role labels
+
