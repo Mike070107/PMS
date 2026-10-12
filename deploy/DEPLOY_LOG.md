@@ -4672,3 +4672,10 @@
 - 自上次（56c7eb5e）以来上线的相关提交：
   - 29fe26a3 feat(auth): launch local WeChat from PMS login
 
+## 2026-10-12 11:46 · web · 109c0af0
+
+- 包：`pms-web-20261012-114609.tar.gz`
+- 提交：109c0af0 fix(auth): fit login card within narrow screens
+- 自上次（29fe26a3）以来上线的相关提交：
+  - 109c0af0 fix(auth): fit login card within narrow screens
+
