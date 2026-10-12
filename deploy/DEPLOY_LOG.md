@@ -4693,3 +4693,10 @@
 - 自上次（109c0af0）以来上线的相关提交：
   - a0da6f85 feat(fees): add refund mode and autosave cashier contact
 
+## 2026-10-12 19:05 · api · 035b19de
+
+- 包：`pms-api-20261012-1857.tar.gz`
+- 提交：035b19de feat(fees): add scoped reusable fee templates and effective price versions
+- 自上次（a0da6f85）以来上线的相关提交：
+  - 035b19de feat(fees): add scoped reusable fee templates and effective price versions
+
