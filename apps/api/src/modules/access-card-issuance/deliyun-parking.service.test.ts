@@ -28,16 +28,16 @@ test('人防真实字段差异按名称报错；缺失金额不假装已核验�
   assert.deepEqual(deliyunCreatedVehicleMismatches({ ...returned, money: 100 }, expected), ['金额']);
 });
 
-test('德立云表单不发送空的数字关联ID，保留有效ID和数字零，不把车位备注映射为cprtId', () => {
+test('德立云表单不发送空的数字关联ID，车位号写入卡号', () => {
   const body = deliyunFormBody({ cprtId: '', cardGroupId: ' ', poolId: null, peopleId: '19',
-    cardTypeId: 2, carTypeId: 1, money: 0, cardNo: '', remark: '车位号：B01' });
+    cardTypeId: 2, carTypeId: 1, money: 0, cardNo: 'B01', remark: '来自PMS' });
   assert.equal(body.has('cprtId'), false);
   assert.equal(body.has('cardGroupId'), false);
   assert.equal(body.has('poolId'), false);
   assert.equal(body.get('peopleId'), '19');
   assert.equal(body.get('money'), '0');
-  assert.equal(body.get('cardNo'), '');
-  assert.equal(body.get('remark'), '车位号：B01');
+  assert.equal(body.get('cardNo'), 'B01');
+  assert.equal(body.get('remark'), '来自PMS');
   assert.equal(deliyunFormBody({ cprtId: 8, cardGroupId: '6', poolId: 0 }).get('cprtId'), '8');
 });
 
@@ -141,7 +141,8 @@ test('新建使用今天、二期截止日、已有房号人员及车位备注�
   assert.equal(saved.endTime, endOfDayEpoch('2099-12-31'));
   assert.equal(saved.peopleId, '9');
   assert.equal(saved.money, 0);
-  assert.match(saved.remark, /车位号：B008/);
+  assert.equal(saved.cardNo, 'B008');
+  assert.equal(saved.remark, '来自PMS');
 });
 
 test('删除响应成功但车辆仍存在时不得报告取消完成', async () => {
@@ -249,6 +250,6 @@ test('德立云不存在车牌时按月票小型车建档，不记收费', () =>
     unitKey: 'project-key', plateNum: '沪A12345', cardNo: '', pgIds: '27031', cardTypeId: '2', carTypeId: '122300',
     peopleId: '', cprtId: '', cardGroupId: '', poolId: '', money: 0,
     beginTime: startOfDayEpoch('2026-10-01'), endTime: endOfDayEpoch('2027-09-30'),
-    remark: '原备注\n操作来源：PMS系统',
+    remark: '来自PMS',
   });
 });

@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, DataSource, EntityManager, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
+import { nameToInitials } from '../../common/pinyin-initials';
 import {
   FEE_ITEM_CODES,
   FEE_PAYMENT_METHOD_VALUES,
@@ -755,8 +756,13 @@ export class FeesService {
         .innerJoin(Building, 'b', 'b.id = h.building_id')
         .innerJoin(Community, 'c', 'c.id = b.community_id')
         .where('f.tenant_id = :tenantId', { tenantId })
-        .andWhere('f.receipt_no IS NOT NULL')
-        .andWhere('f.paid_at >= :from AND f.paid_at < :to', { from, to });
+        .andWhere('f.receipt_no IS NOT NULL');
+      if (query.backfill) {
+        qb.andWhere('f.created_at >= :from AND f.created_at < :to', { from, to })
+          .andWhere("f.legacy_payload @> :backfill", { backfill: JSON.stringify({ cashierBackfill: true }) });
+      } else {
+        qb.andWhere('f.paid_at >= :from AND f.paid_at < :to', { from, to });
+      }
       if (scope) qb.andWhere('f.community_id IN (:...scopeIds)', { scopeIds: scope });
       return qb;
     };
@@ -1021,10 +1027,14 @@ export class FeesService {
     const items = normalizeCashierItems(dto.items);
     items.forEach((item) => this.assertFeeCode(item.feeCode));
     const contact = normalizeCashierContact(dto.ownerName, dto.ownerPhone);
-    const receiptNo = await this.nextReceiptNo(tenantId);
+    const now = new Date();
+    const paidAt = dto.paidAt ? new Date(dto.paidAt) : now;
+    if (!Number.isFinite(paidAt.getTime())) throw new BadRequestException('收费时间不正确');
+    if (paidAt.getTime() > now.getTime() + 60_000) throw new BadRequestException('补录收费时间不能选择未来时间');
+    const isBackfill = !!dto.paidAt;
+    const receiptNo = this.cashierVoucherNo(place.communityName, now);
     const cashier = await this.operatorName(user.id);
-    const paidAt = dto.paidAt ? new Date(`${dto.paidAt}T12:00:00+08:00`) : new Date();
-    const period = (dto.paidAt ?? todayInTz(paidAt)).slice(0, 7).replace('-', '');
+    const period = todayInTz(paidAt).slice(0, 7).replace('-', '');
 
     return this.dataSource.transaction(async (manager) => {
       const owner = await this.saveCashierContact(manager, dto, user, tenantId);
@@ -1050,7 +1060,7 @@ export class FeesService {
         serviceFrom: item.serviceFrom,
         serviceTo: item.serviceTo,
         vehiclePlate: item.vehiclePlate,
-        legacyPayload: templateSnapshot ? { feeTemplate: { templateId:templateSnapshot.template_id,version:templateSnapshot.version,assignmentId:templateSnapshot.assignment_id,effectiveFrom:templateSnapshot.effective_from,items:templateSnapshot.items } } : null,
+        legacyPayload: { ...(templateSnapshot ? { feeTemplate: { templateId:templateSnapshot.template_id,version:templateSnapshot.version,assignmentId:templateSnapshot.assignment_id,effectiveFrom:templateSnapshot.effective_from,items:templateSnapshot.items } } : {}), ...(isBackfill ? { cashierBackfill: true } : {}) },
         status: FeeBillStatus.PAID,
         paidAt,
         paymentMethod: dto.paymentMethod,
@@ -1927,6 +1937,7 @@ export class FeesService {
     const row = await this.houseRepo
       .createQueryBuilder('h')
       .innerJoin(Building, 'b', 'b.id = h.building_id')
+      .innerJoin(Community, 'c', 'c.id = b.community_id')
       .leftJoin(
         User,
         'u',
@@ -1936,6 +1947,7 @@ export class FeesService {
       .where('h.id = :houseId AND h.tenant_id = :tenantId', { houseId, tenantId })
       .select([
         'b.community_id AS "communityId"',
+        'c.name AS "communityName"',
         'u.id AS "ownerId"',
         'u.name AS "ownerName"',
       ])
@@ -1943,6 +1955,7 @@ export class FeesService {
     if (!row) throw new NotFoundException('房产不存在');
     return {
       communityId: Number(row.communityId),
+      communityName: row.communityName ?? null,
       ownerId: row.ownerId ? Number(row.ownerId) : null,
       ownerName: row.ownerName ?? null,
     };
@@ -1971,6 +1984,14 @@ export class FeesService {
       .getRawOne<any>();
     const seq = row?.maxNo ? Number(String(row.maxNo).slice(prefix.length)) + 1 : 1;
     return `${prefix}${String(Number.isFinite(seq) ? seq : 1).padStart(4, '0')}`;
+  }
+
+  /** 公寓收费凭证号：SJ + 小区拼音首字母 + 上海日期时分秒 + 毫秒时间戳。 */
+  private cashierVoucherNo(communityName: string | null | undefined, now: Date): string {
+    const initials = (nameToInitials(communityName || '') || 'XQ').toUpperCase();
+    const parts = new Intl.DateTimeFormat('zh-CN', { timeZone: FEE_TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+      .formatToParts(now).reduce<Record<string, string>>((out, item) => ({ ...out, [item.type]: item.value }), {});
+    return `SJ${initials}${parts.year}${parts.month}${parts.day}${parts.hour}${parts.minute}${parts.second}${now.getTime()}`;
   }
 
   /** 'YYYY-MM-DD' 的前一天，用于把旧标准封到新标准生效前一日 */

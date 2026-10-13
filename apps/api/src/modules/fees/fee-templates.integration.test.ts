@@ -28,7 +28,7 @@ test('批量请求必须有范围户数和价格版本，不接受字符串布�
 
 test('正式收费服务校验报价并保存模板快照，报价变化时不写收费记录',async()=>{
   const service:any=Object.create(FeesService.prototype);
-  service.requireTenant=()=>1;service.resolveHousePlace=async()=>({communityId:1});service.assertCommunityInScope=()=>{};
+  service.requireTenant=()=>1;service.resolveHousePlace=async()=>({communityId:1,communityName:'馨香臣寓吴泾店'});service.assertCommunityInScope=()=>{};
   service.nextReceiptNo=async()=> 'TEST-ONLY';service.operatorName=async()=> '测试收费员';service.saveCashierContact=async()=>null;
   const snapshot={assignment_id:12,template_id:3,version:2,effective_from:'2026-10-12',items:[{feeCode:'rent',amountCents:90000}]};
   service.feeTemplates={resolve:async()=>snapshot};
@@ -41,4 +41,10 @@ test('正式收费服务校验报价并保存模板快照，报价变化时不�
   const result=await service.createCashierCharge({...dto,rateQuote:'12:3:2'},{id:7,tenantId:1});
   assert.equal(result.amountCents,90000);assert.equal(saved[0].legacyPayload.feeTemplate.version,2);
   assert.equal(saved[0].legacyPayload.feeTemplate.assignmentId,12);
+});
+
+test('公寓凭证号包含小区拼音首字母、上海日期时分秒和毫秒时间戳',()=>{
+  const service:any=Object.create(FeesService.prototype);
+  const now=new Date('2026-10-13T13:45:26.789Z');
+  assert.equal(service.cashierVoucherNo('馨香臣寓吴泾店',now),`SJXXCYWJD20261013214526${now.getTime()}`);
 });

@@ -106,7 +106,7 @@ export class DeliyunParkingService {
           throw new ServiceUnavailableException('德立云车辆详情车牌已变化，请重新查询');
         const authorization = deliyunGarageAuthorization(detail);
         const remark = nullableString(detail.remark);
-        const parkingSpace = /(?:^|\n)车位号[：:]\s*([^\r\n]+)/.exec(remark || '')?.[1]?.trim() || null;
+        const parkingSpace = nullableString(detail.cardNo);
         return this.enrichPoolPeriods({ ...row, ...authorization, remark, parkingSpace }, session);
       }));
       return {
@@ -207,6 +207,16 @@ export class DeliyunParkingService {
       if (!input.authorized) {
         const response = await this.h5Post('/pma/card/deleteCard', { unitKey: session.park.unitKey, id: row.id }, session.token);
         this.assertSuccess(response, '德立云车辆删除失败');
+      } else {
+        const detail = await this.vehicleDetail(row.id, session);
+        const payload = {
+          ...buildDeliyunGarageAuthorizationPayload(detail, session.park.unitKey, row.id, '', true),
+          pgIds: detail.pgIds,
+          cardNo: input.parkingSpace?.trim() || detail.cardNo || '',
+          remark: '来自PMS',
+        };
+        const response = await this.h5Post('/pma/card/updateCard', payload, session.token);
+        this.assertSuccess(response, '德立云人防车位号更新失败');
       }
     } else if (input.authorized) {
       const civilDefenseGarage = await this.civilDefenseGarage(session);
@@ -252,6 +262,8 @@ export class DeliyunParkingService {
     const verifiedRow = verified.rows.find((item) => !vehicleId || item.id === vehicleId) ?? verified.rows[0];
     if (!verifiedRow || verifiedRow.civilDefenseAuthorized !== input.authorized)
       throw new ServiceUnavailableException('德立云已接受车库授权操作，但回读结果不一致；请刷新核对，暂勿重复提交');
+    if (row && input.parkingSpace?.trim() && verifiedRow.cardNo !== input.parkingSpace.trim())
+      throw new ServiceUnavailableException('德立云已接受车位号更新，但卡号回读不一致；请刷新核对，暂勿重复提交');
     vehicleId = verifiedRow.id;
     if (createdPayload) {
       const detail = await this.vehicleDetail(vehicleId, session);
@@ -569,12 +581,10 @@ export function buildDeliyunCreatePayload(input: {
   peopleId?: string;
   parkingSpace?: string | null;
 }) {
-  const note = [stringValue(input.remark), input.parkingSpace?.trim() ? `车位号：${input.parkingSpace.trim()}` : ''].filter(Boolean).join('\n');
-  const source = '操作来源：PMS系统';
   return {
     unitKey: input.unitKey,
     plateNum: normalizePlate(input.plate),
-    cardNo: '',
+    cardNo: input.parkingSpace?.trim() || '',
     pgIds: input.civilDefenseGarageId,
     cardTypeId: input.cardTypeId,
     carTypeId: input.carTypeId,
@@ -585,13 +595,13 @@ export function buildDeliyunCreatePayload(input: {
     money: 0,
     beginTime: startOfDayEpoch(input.beginDate),
     endTime: endOfDayEpoch(input.endDate),
-    remark: note.includes(source) ? note : [note, source].filter(Boolean).join('\n'),
+    remark: '来自PMS',
   };
 }
 
 /** 可选数字外键未选择时省略，不传空字符串让 Java long 转换失败，也不虚构 ID=0。 */
 export function deliyunCreatedVehicleMismatches(detail: Record<string, unknown>, expected: Record<string, unknown>): string[] {
-  const labels: Record<string, string> = { plateNum: '车牌', cardTypeId: '计费类型', carTypeId: '车型', peopleId: '人员关联',
+  const labels: Record<string, string> = { plateNum: '车牌', cardNo: '车位号', cardTypeId: '计费类型', carTypeId: '车型', peopleId: '人员关联',
     beginTime: '开始日期', endTime: '到期日期', remark: '备注' };
   const mismatches = Object.keys(labels).filter(key => stringValue(detail[key]) !== stringValue(expected[key])).map(key => labels[key]);
   // 已查证 findCard 不提供 money；此入口只提交 0 且不登记收费，不能声称金额已回读。

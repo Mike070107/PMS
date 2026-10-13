@@ -17,7 +17,7 @@ import {
   UserOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { App, Button, DatePicker, Empty, Input, InputNumber, Modal, Pagination, Select, Spin, Switch, Tag } from 'antd';
+import { App, Button, Checkbox, DatePicker, Empty, Input, InputNumber, Modal, Pagination, Select, Spin, Switch, Tag } from 'antd';
 import {
   APARTMENT_FEE_TYPES,
   FEE_PAYMENT_METHOD_LABELS,
@@ -124,6 +124,10 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
   const [submitting, setSubmitting] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptNo, setReceiptNo] = useState<string>();
+  const [receiptPaidAt, setReceiptPaidAt] = useState<string>();
+  const [backfillMode, setBackfillMode] = useState(false);
+  const [backfillAt, setBackfillAt] = useState(() => dayjs().second(0).millisecond(0));
+  const [backfillRows, setBackfillRows] = useState<TodayRow[]>([]);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [rates, setRates] = useState<Record<string, number>>({});
   const [rateQuote, setRateQuote] = useState<string|null|undefined>();
@@ -394,7 +398,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
 
   const reset = () => {
     setRefundMode(false);
-    setItems([]); setPaymentMethod(undefined); setRemark(''); setReceiptNo(undefined);
+    setItems([]); setPaymentMethod(undefined); setRemark(''); setReceiptNo(undefined); setReceiptPaidAt(undefined);
   };
 
   const submit = async () => {
@@ -406,7 +410,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
     }
     setSubmitting(true);
     try {
-      const result = await request<{ receiptNo: string }>({
+      const result = await request<{ receiptNo: string; paidAt: string }>({
         method: 'POST', url: '/fees/cashier/charges', data: {
           houseId: house.id,
           rateQuote,
@@ -414,6 +418,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
           ownerName,
           ownerPhone,
           paymentMethod,
+          ...(backfillMode ? { paidAt: backfillAt.toISOString() } : {}),
           remark,
           items: items.map((item) => ({
             feeCode: item.feeCode,
@@ -428,10 +433,12 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
         },
       });
       setReceiptNo(result.receiptNo);
+      setReceiptPaidAt(result.paidAt);
       setReceiptOpen(true);
       setHistoryPage(1);
       setHistoryVersion((value) => value + 1);
-      message.success(`收费成功，收据号 ${result.receiptNo}`);
+      message.success(`收费成功，凭证号 ${result.receiptNo}`);
+      if (backfillMode) request<{ rows: TodayRow[] }>({ url: '/fees/cashier/today', query: { backfill: true, pageSize: 100 } }).then((data) => setBackfillRows(data.rows)).catch(() => undefined);
     } catch (error: any) {
       message.error(error?.message || '收费提交失败，已保留当前输入');
     } finally {
@@ -447,7 +454,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
     communityName: house.communityName,
     place: placeLabel(house.buildingNo, house.roomNo),
     ownerName: ownerName || null,
-    paidAt: receiptNo ? new Date().toISOString() : null,
+    paidAt: receiptNo ? receiptPaidAt || new Date().toISOString() : null,
     paymentMethod: paymentMethod || null,
     remark: remark || null,
     amountCents: total,
@@ -469,7 +476,8 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
       <div className="apartment-cashier__grid">
         <div className="apartment-cashier__main">
           <section className="cashier-card">
-            <header className="cashier-card__heading"><span>1</span><h2>选择收费房间</h2><small>来自 PMS 房产资料</small></header>
+            <header className="cashier-card__heading"><span>1</span><h2>选择收费房间</h2><Checkbox checked={backfillMode} onChange={(event) => { setBackfillMode(event.target.checked); if (event.target.checked) { setBackfillAt(dayjs().second(0).millisecond(0)); request<{ rows: TodayRow[] }>({ url: '/fees/cashier/today', query: { backfill: true, pageSize: 100 } }).then((data) => setBackfillRows(data.rows)).catch((error) => message.error(error?.message || '今日补录流水读取失败')); } }}>补录收费记录</Checkbox><small>来自 PMS 房产资料</small></header>
+            {backfillMode && <div className="cashier-room-form"><label><b>收款时间</b><DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" allowClear={false} value={backfillAt} disabledDate={(date) => date && date.startOf('day').isAfter(dayjs().startOf('day'))} onChange={(value) => value && setBackfillAt(value.second(0).millisecond(0))} /></label></div>}
             <div className="cashier-room-form">
               <label><b>小区</b><Select value={communityId} onChange={(value) => { if (!contactSaving.current) setCommunityId(value); }} options={communities.map((item) => ({ value: item.id, label: item.name }))} placeholder="选择小区" showSearch optionFilterProp="label" /></label>
               <label><b>楼栋</b><Select loading={loadingBuildings} value={buildingId} onChange={(value) => { if (!contactSaving.current) setBuildingId(value); }} options={buildingOptions} placeholder={communityId ? '选择楼栋' : '请先选择小区'} disabled={!communityId} showSearch optionFilterProp="label" /></label>
@@ -490,7 +498,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
               <header><span><HistoryOutlined /> 此房间历史缴费</span><Tag color="blue">收费时间倒序 · 10条/页</Tag></header>
               <Spin spinning={loadingHistory}>
                 {history.length ? <div className="cashier-history__table">
-                  <div className="cashier-history__head"><span>收费时间</span><span>账单号</span><span>收费项目</span><span>金额</span><span>方式</span><span>操作</span></div>
+                  <div className="cashier-history__head"><span>收费时间</span><span>凭证号</span><span>收费项目</span><span>金额</span><span>方式</span><span>操作</span></div>
                   {history.map((row) => <div className="cashier-history__row" key={row.receiptNo}>
                     <span>{dayjs(row.paidAt).format('YYYY-MM-DD HH:mm')}</span><span>{row.receiptNo}</span>
                     <span>{row.items.map((item) => item.feeName).join('、')}</span><strong>{money(row.amountCents)}</strong>
@@ -507,6 +515,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
               </Spin>
               {historyTotal > 10 && <Pagination size="small" current={historyPage} pageSize={10} total={historyTotal} showSizeChanger={false} onChange={setHistoryPage} />}
             </div>}
+            {backfillMode && <div className="cashier-history"><header><span><HistoryOutlined /> 今日补录流水</span></header>{backfillRows.length ? <div className="cashier-history__table"><div className="cashier-history__head"><span>收款时间</span><span>凭证号</span><span>房号</span><span>金额</span><span>方式</span></div>{backfillRows.map((row) => <div className="cashier-history__row" key={row.receiptNo}><span>{dayjs(row.paidAt).format('YYYY-MM-DD HH:mm')}</span><span>{row.receiptNo}</span><span>{placeLabel(row.buildingNo, row.roomNo)}</span><strong>{money(row.amountCents)}</strong><span>{FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod}</span></div>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今天还没有补录收费" />}</div>}
           </section>
 
           <section className="cashier-card">
@@ -549,7 +558,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
             </div>
             <Spin spinning={loadingToday}>
               {todayRows.length ? <div className="cashier-today__scroll"><div className="cashier-history__table cashier-today__table">
-                <div className="cashier-history__head"><span>收费员</span><span>收费时间</span><span>收据号</span><span>房号</span><span>住户姓名</span><span>收费项目</span><span>金额</span><span>方式</span><span>操作</span></div>
+                <div className="cashier-history__head"><span>收费员</span><span>收费时间</span><span>凭证号</span><span>房号</span><span>住户姓名</span><span>收费项目</span><span>金额</span><span>方式</span><span>操作</span></div>
                 {todayRows.map((row) => <div className="cashier-history__row" key={row.receiptNo}>
                   <span>{row.cashier || '-'}</span><span>{dayjs(row.paidAt).format('HH:mm')}</span><span>{row.receiptNo}</span>
                   <span>{placeLabel(row.buildingNo, row.roomNo)}</span><span>{row.ownerName || '-'}</span>
@@ -652,7 +661,7 @@ function ReceiptPaper({ data }: { data: ReceiptPaperData | null }) {
       </section>
       <div className="cashier-receipt__total"><span>合计</span><strong>{money(data.amountCents)}</strong></div>
       <section>
-        <div><span>账单号</span><b>{data.receiptNo || '提交后自动生成'}</b></div>
+        <div><span>凭证号</span><b>{data.receiptNo || '提交后自动生成'}</b></div>
         <div><span>备注</span><b>{data.remark || '-'}</b></div>
       </section>
       <footer>— 谢谢 —</footer>

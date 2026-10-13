@@ -500,7 +500,7 @@ export default function ParkingManagementPage({
               endDate: civilPeriod?.endDate ?? null,
               remark: civilSource ? fieldValue(civilSource.fields, fieldAliases.note) : null,
               ownerRoom: civilOwnerRoom,
-              parkingSpace: civilSource ? fieldValue(civilSource.fields, fieldAliases.space) : null,
+              parkingSpace: String(payload.civilParkingSpace || (civilSource ? fieldValue(civilSource.fields, fieldAliases.space) : '') || ''),
               idempotencyKey: `${batchKey}-deliyun`,
             });
             if (cloudTask.status !== 'completed') {
@@ -1555,6 +1555,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
   const [amount, setAmount] = useState<number | null>(null);
   const [months, setMonths] = useState(1);
   const [selectedGarages, setSelectedGarages] = useState<string[]>([]);
+  const [civilParkingSpace, setCivilParkingSpace] = useState('');
   const [effective, setEffective] = useState('');
   const [download, setDownload] = useState('');
   const [note, setNote] = useState('');
@@ -1579,6 +1580,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
     const garages = sourceRows.flatMap((item) => garageRows(item.database, item.fields)).filter((item) => item.authorized).map((item) => item.key);
     if (deliyunVehicle?.civilDefenseAuthorized) garages.push('civil');
     setSelectedGarages(garages);
+    setCivilParkingSpace(deliyunVehicle?.cardNo || deliyunVehicle?.parkingSpace || '');
   }, [open, row, kind, roomOptions, deliyunVehicle]);
   const changeMonths = (value: number) => {
     setMonths(value);
@@ -1598,13 +1600,15 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
     const payload: Record<string, unknown> = { plate, newPlate, ownerName, ownerRoom, ownerId, endDate, previousEndDate, identity, amount: calculatedAmount, months, effective, download, note };
     if (kind === 'add_vehicle') payload.effective = garageBitString(selectedGarages);
     if (kind === 'update_garages') {
+      if (selectedGarages.includes('civil') && !civilParkingSpace.trim()) return;
       payload.garages = selectedGarages;
+      payload.civilParkingSpace = civilParkingSpace.trim();
       payload.previousGarages = sourceGarageSummary(roomOptions, plate);
     }
     onSubmit(payload);
   };
   if (kind === 'add_vehicle') return <AddVehicleOperationModal open={open} loading={loading} error={error} task={task} roomOptions={roomOptions} communitiesOverride={communitiesOverride} deliyunWriteEnabled={deliyunWriteEnabled} onClose={onClose} onSubmit={onSubmit} onRetry={onRetry} onRollback={onRollback} onCreateProofUpload={onCreateProofUpload} onCheckPlate={onCheckPlate} onQueryPlate={onQueryPlate} />;
-  return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle', disabled: (kind === 'rebind_owner' && !binding) || (kind === 'renew_vehicle' && (!endDate || feeRates.loading || !!feeRates.error || !feeRates.rates)) }} onOk={submit}>
+  return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle', disabled: (kind === 'rebind_owner' && !binding) || (kind === 'renew_vehicle' && (!endDate || feeRates.loading || !!feeRates.error || !feeRates.rates)) || (kind === 'update_garages' && selectedGarages.includes('civil') && !civilParkingSpace.trim()) }} onOk={submit}>
     {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space>{task?.status === 'failed' && <Button size="small" onClick={onRetry}>仅重试失败的停车库</Button>}{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
     <div className="parking-operation-form">
       {kind === 'renew_vehicle' && targetRows?.length === 2 && <Alert type="info" showIcon message="一期、二期将同时续期" description="两个旧库都会更新到期日；本次填写的金额只记入一期，二期同步金额为 0，避免报表重复计费。两边读回验证后才显示整体成功。" />}
@@ -1617,7 +1621,8 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
         description={deliyunWriteEnabled
           ? '德立云已有该车牌即为已授权。勾选时缺失车辆按二期资料建档（月租、小型车、金额0、今天起至二期到期日）；取消勾选会删除德立云对应车辆。写后回读才显示成功。'
           : '德立云写入开关未开启，人防授权暂不可修改。'} />
-        <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }, { label: '二期人防车库', value: 'civil', disabled: !deliyunWriteEnabled }]} /></label></>}
+        <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }, { label: '二期人防车库', value: 'civil', disabled: !deliyunWriteEnabled }]} /></label>
+        {selectedGarages.includes('civil') && <label>地库车位号（必填）<Input aria-required="true" maxLength={20} value={civilParkingSpace} placeholder="将写入德立云卡号栏位" onChange={(event) => setCivilParkingSpace(event.target.value)} /></label>}</>}
       {(kind === 'change_plate' || kind === 'update_vehicle_type') && <label>车辆授权类型<Select value={identity} options={['住户车', '租户车', '亲情车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>}
       {kind === 'download_vehicle' && <Alert type="info" showIcon message="将创建旧库设备下载任务" description="任务完成只代表旧系统已接受并回读下载队列；现场控制器回执会在状态中单独显示。" />}
       {kind === 'delete_vehicle' && <Alert type="warning" showIcon message="注销会调用旧系统 Add_Del_Plate" description="车辆从旧库移除并写入注销流水，网页不会直接删除 Car_Issue。" />}
@@ -1885,7 +1890,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
       };
       const hasParkingPhone = residentMode === 'manual' ? !!manualPhone.trim() : phoneOverride && !!fieldPhone.trim();
       const selectedGarageNumbers = Object.fromEntries(['main', 'civil'].filter((key) => garages.includes(key)).map((key) => [key, garageNumbers[key].trim()]));
-      const note = [vehicleNote.trim(), selectedGarageNumbers.main ? `二期大车库号：${selectedGarageNumbers.main}` : '', selectedGarageNumbers.civil ? `二期人防车库号：${selectedGarageNumbers.civil}` : '', hasParkingPhone ? `${dayjs().format('YYYY-MM-DD HH:mm')} 停车登记电话` : '', '操作来源：PMS系统'].filter(Boolean).join('；');
+      const note = [vehicleNote.trim(), selectedGarageNumbers.main ? `二期大车库号：${selectedGarageNumbers.main}` : '', hasParkingPhone ? `${dayjs().format('YYYY-MM-DD HH:mm')} 停车登记电话` : '', '操作来源：PMS系统'].filter(Boolean).join('；');
       onSubmit({
         database: resident.database,
         pmsUserId: resident.pmsUserId,
@@ -1942,9 +1947,9 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
       <Divider orientation="left">3 · 授权车库</Divider><div className="parking-new-form-section"><Text type="secondary">可多选。系统根据选择或输入的房号自动预选对应小区车库。</Text>
         <div className="parking-new-garage-grid">{[{ value: 'phase1', label: '一期地面车库' }, { value: 'phase2', label: '二期地面车库' }, { value: 'main', label: '二期大车库' }, { value: 'civil', label: '二期人防车库' }].map((option) => <div key={option.value} className="parking-new-garage-option">
           <Checkbox disabled={option.value === 'civil' && !deliyunWriteEnabled} checked={garages.includes(option.value)} onChange={(event) => setGarages((current) => event.target.checked ? [...current, option.value] : current.filter((value) => value !== option.value))}>{option.label}</Checkbox>
-          {['main', 'civil'].includes(option.value) && garages.includes(option.value) && <label>{option.label}车库号（必填）<Input aria-required="true" value={garageNumbers[option.value] || ''} maxLength={20} placeholder="请输入车库号" onChange={(event) => setGarageNumbers((current) => ({ ...current, [option.value]: event.target.value }))} /></label>}
+          {['main', 'civil'].includes(option.value) && garages.includes(option.value) && <label>{option.value === 'civil' ? '地库车位号' : `${option.label}车库号`}（必填）<Input aria-required="true" value={garageNumbers[option.value] || ''} maxLength={20} placeholder={option.value === 'civil' ? '将写入德立云卡号栏位' : '请输入车库号'} onChange={(event) => setGarageNumbers((current) => ({ ...current, [option.value]: event.target.value }))} /></label>}
         </div>)}</div>
-        {garages.includes('civil') && <Alert type="info" showIcon message={isFamily ? '审核通过后同步写入德立云' : '将同步写入德立云'} description="人防车库号随登记备注保存；亲情车保持待审核，审核通过后才开通所选车库。" />}{!deliyunWriteEnabled && <Text type="secondary">德立云写入开关未开启，暂不能在新增登记时选择二期人防车库。</Text>}</div>
+        {garages.includes('civil') && <Alert type="info" showIcon message={isFamily ? '审核通过后同步写入德立云' : '将同步写入德立云'} description="地库车位号写入德立云卡号栏位，备注只写“来自PMS”；亲情车审核通过后才开通。" />}{!deliyunWriteEnabled && <Text type="secondary">德立云写入开关未开启，暂不能在新增登记时选择二期人防车库。</Text>}</div>
       <Divider orientation="left">4 · 缴费期限</Divider><div className="parking-new-form-section"><div className="parking-month-buttons">{[1, 2, 3, 6, 12].map((value) => <Button key={value} type={months === value ? 'primary' : 'default'} onClick={() => { setMonths(value); setAmountOverride(null); setEndDate(dayjs().add(value, 'month').endOf('month').format('YYYY-MM-DD')); }}>{value} 个月</Button>)}</div><label>到期日期（可自定义）<DatePicker value={endDate ? dayjs(endDate) : null} allowClear={false} format="YYYY-MM-DD" onChange={(date) => setEndDate(date?.format('YYYY-MM-DD') || '')} /></label><ParkingFeeFields rates={feeRates.rates} onSaved={feeRates.setRates} identity={identity} months={months} amount={amountOverride} onAmountChange={setAmountOverride} loading={feeRates.loading} error={feeRates.error} onRetry={feeRates.retry} disabled={isFamily} /></div>
       <label className="parking-new-note">备注<Input.TextArea value={vehicleNote} onChange={(event) => setVehicleNote(event.target.value)} maxLength={120} showCount rows={3} placeholder="填写车辆登记备注（选填）" /></label>
       <div className="parking-new-drawer-actions"><Button onClick={() => setStep('plate')}>上一步</Button><Space><Button onClick={onClose}>取消</Button><Button type="primary" disabled={task?.status === 'completed' || (!isFamily && (feeRates.loading || !!feeRates.error || !feeRates.rates))} loading={loading || submittingCheck} onClick={() => void submit()}>{submittingCheck ? '提交前查重中' : isFamily ? '保存待审核车牌' : `确认登记并收费 ¥${amount.toFixed(2)}`}</Button></Space></div>

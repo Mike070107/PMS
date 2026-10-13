@@ -3,6 +3,8 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
+  IsISO8601,
   IsIn,
   IsInt,
   IsNumber,
@@ -27,6 +29,10 @@ const PERIOD_RE = /^\d{4}(0[1-9]|1[0-2])$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export class PageQueryDto {
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  backfill?: boolean;
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -342,7 +348,7 @@ export class CreateCashierChargeDto {
   paymentMethod: string;
 
   @IsOptional()
-  @Matches(DATE_RE, { message: '收费日期格式应为 YYYY-MM-DD' })
+  @IsISO8601({}, { message: '收费时间格式不正确' })
   paidAt?: string;
 
   @IsOptional()
