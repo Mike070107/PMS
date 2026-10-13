@@ -4735,3 +4735,10 @@
 - 自上次（890918e2）以来上线的相关提交：
   - 0fc2cf6a feat: update parking slots and cashier backfill
 
+## 2026-10-13 22:38 · web · 1c7b7162
+
+- 包：`pms-web-20261013-223722.tar.gz`
+- 提交：1c7b7162 fix(cashier): align backfill controls with room heading
+- 自上次（0fc2cf6a）以来上线的相关提交：
+  - 1c7b7162 fix(cashier): align backfill controls with room heading
+
