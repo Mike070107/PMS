@@ -8,6 +8,10 @@
 .cashier-card__heading > span { display: grid; place-items: center; width: 28px; height: 28px; color: #fff; border-radius: 8px; background: var(--ac-brand); font-weight: 800; }
 .cashier-card__heading h2 { margin: 0; font-size: 18px; }
 .cashier-card__heading small { margin-left: auto; color: var(--ac-muted); }
+.cashier-room-heading { flex-wrap: wrap; }
+.cashier-backfill-controls { display: flex; align-items: center; gap: 18px; margin-left: 28px; }
+.cashier-backfill-controls label { display: flex; align-items: center; gap: 8px; color: #4c6069; font-size: 13px; white-space: nowrap; }
+.cashier-backfill-controls .ant-picker { width: 190px; }
 .cashier-fee-heading { flex-wrap: wrap; }
 .cashier-refund-mode { display: flex; align-items: center; gap: 8px; margin-left: auto; min-height: 32px; white-space: nowrap; }
 /* 第一行是选址（小区/楼栋/房号），姓名和手机号单独占第二行 —— 五个框挤一行时
@@ -45,5 +49,5 @@
 .cashier-total { display:flex; justify-content:space-between; align-items:end; margin:16px 0; }.cashier-total span{color:var(--ac-muted)}.cashier-total strong{color:#d2682b;font-size:28px}.cashier-checkout>.ant-btn{margin-top:8px}
 .cashier-receipt-modal .ant-modal-content{background:#eef3f8}.cashier-receipt-stage{display:grid;justify-items:center}.cashier-receipt{width:min(72mm,100%);padding:5mm 4mm;color:#111;border:1px dashed #999;background:#fff;font-family:'宋体',SimSun,monospace;font-size:14px;line-height:1.5}.cashier-receipt header{text-align:center;border-bottom:1px dashed #111;padding-bottom:9px}.cashier-receipt h2{margin:0}.cashier-receipt section{display:grid;gap:5px;padding:10px 0}.cashier-receipt section div,.cashier-receipt__total{display:flex;justify-content:space-between;gap:12px}.cashier-receipt section b{text-align:right}.cashier-receipt__items{border-top:1px dashed #111;border-bottom:1px dashed #111}.cashier-receipt__items h3{margin:0}.cashier-receipt__total{padding:11px 0;border-bottom:2px solid #111}.cashier-receipt__total strong{font-size:21px}.cashier-receipt footer{text-align:center;border-top:1px dashed #111;padding-top:7px}.cashier-receipt-stage>p{color:var(--ac-muted);font-size:12px;text-align:center}
 @media(max-width:1100px){.apartment-cashier__grid{grid-template-columns:1fr}.cashier-checkout{position:static}.cashier-room-form{grid-template-columns:repeat(2,minmax(0,1fr))}.cashier-room-form>label{grid-column:auto!important}}
-@media(max-width:720px){.cashier-room-form{grid-template-columns:1fr}.cashier-room-form>label{grid-column:auto!important}.cashier-fee-picker{grid-template-columns:repeat(2,1fr)}.cashier-selected-room{grid-template-columns:42px 1fr}.cashier-selected-room>span:not(.anticon),.cashier-selected-room>button{grid-column:1/-1;text-align:left}.cashier-history{overflow-x:auto}}
+@media(max-width:720px){.cashier-room-heading small{display:none}.cashier-backfill-controls{flex-basis:100%;flex-wrap:wrap;margin-left:38px;gap:10px 16px}.cashier-backfill-controls label{flex-wrap:wrap}.cashier-backfill-controls .ant-picker{width:min(220px,100%)}.cashier-room-form{grid-template-columns:1fr}.cashier-room-form>label{grid-column:auto!important}.cashier-fee-picker{grid-template-columns:repeat(2,1fr)}.cashier-selected-room{grid-template-columns:42px 1fr}.cashier-selected-room>span:not(.anticon),.cashier-selected-room>button{grid-column:1/-1;text-align:left}.cashier-history{overflow-x:auto}}
 @media print{body *{visibility:hidden!important}.cashier-receipt,.cashier-receipt *{visibility:visible!important}.cashier-receipt{position:fixed;inset:0 auto auto 0;border:0;box-shadow:none}}
