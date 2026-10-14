@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 const parking = readFileSync(new URL('../src/pages/ParkingManagementPage.css', import.meta.url), 'utf8');
 const cashier = readFileSync(new URL('../src/pages/ApartmentCashierPage.css', import.meta.url), 'utf8');
+const feesPage = readFileSync(new URL('../src/pages/FeesPage.tsx', import.meta.url), 'utf8');
 test('人防不再展示独立续期卡片，授权后信息放在旧停车和PMS之间', () => {
   const source = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /<DeliyunVehicleCard\b/);
@@ -38,13 +39,20 @@ test('公寓收费历史按内容统一列宽，而非比例拉散', () => {
   assert.match(cashier, /overflow-x: auto/);
 });
 
-test('今日收费流水首列展示真实收费员，姓名明确为住户姓名，九列对齐', () => {
+test('历史缴费和今日收费流水展示备注，新增列保持对齐', () => {
   const source = readFileSync(new URL('../src/pages/ApartmentCashierPage.tsx', import.meta.url), 'utf8');
   const today = source.slice(source.indexOf('<h2>今日收费流水</h2>'), source.indexOf('<aside className="cashier-checkout">'));
   assert.match(today, /cashier-history__head"><span>收费员<\/span><span>收费时间/);
   assert.match(today, /<span>住户姓名<\/span>/);
   assert.match(today, /<span>\{row.cashier \|\| '-'\}<\/span>/);
-  assert.match(cashier, /\.cashier-today__table \{ grid-template-columns: repeat\(9,max-content\)/);
+  assert.match(today, /<span>方式<\/span><span>备注<\/span><span>操作<\/span>/);
+  assert.match(today, /title=\{row\.remark \|\| undefined\}>\{row\.remark \|\| '-'\}/);
+  assert.match(cashier, /\.cashier-history__table--history \{ grid-template-columns: repeat\(7,max-content\)/);
+  assert.match(cashier, /\.cashier-today__table \{ grid-template-columns: repeat\(10,max-content\)/);
+});
+test('收费明细显示到分钟，导出与房间明细使用相同收款时间口径', () => {
+  assert.equal((feesPage.match(/title: '收款时间'/g) || []).length, 3);
+  assert.ok((feesPage.match(/format\('YYYY-MM-DD HH:mm'\)/g) || []).length >= 3);
 });
 test('授权类型位于信息右侧，不独占一整行；保留手机单列', () => {
   assert.doesNotMatch(parking.match(/\.parking-vehicle-type \{[^}]+\}/)[0], /grid-column: 1 \/ -1/);

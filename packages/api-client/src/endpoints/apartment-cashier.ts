@@ -42,6 +42,7 @@ export interface CashierHistoryRow {
   paidAt: string;
   paymentMethod: string;
   cashier: string | null;
+  remark: string | null;
   amountCents: number;
   status: string;
   items: Array<{ feeName: string }>;

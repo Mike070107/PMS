@@ -51,12 +51,12 @@ type ReceiptItem = {
 };
 type HistoryRow = {
   receiptNo: string; paidAt: string; paymentMethod: string; cashier: string | null;
-  amountCents: number; status: string; items: Array<{ feeName: string }>;
+  remark: string | null; amountCents: number; status: string; items: Array<{ feeName: string }>;
 };
 type TodayRow = {
   receiptNo: string; buildingNo: string; roomNo: string; ownerName: string | null;
   paidAt: string; paymentMethod: string; cashier: string | null;
-  amountCents: number; status: string; items: Array<{ feeName: string }>;
+  remark: string | null; amountCents: number; status: string; items: Array<{ feeName: string }>;
 };
 type ReceiptPaperData = {
   receiptNo: string | null; communityName: string | null; place: string;
@@ -237,7 +237,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
       return;
     }
     if (preview) {
-      setHistory([{ receiptNo: 'PZXXCYWJD2610100001', paidAt: '2026-10-10T09:20:00+08:00', paymentMethod: 'wechat', cashier: '收费员', amountCents: 150000, status: 'paid', items: [{ feeName: '房租' }] }]);
+      setHistory([{ receiptNo: 'PZXXCYWJD2610100001', paidAt: '2026-10-10T09:20:00+08:00', paymentMethod: 'wechat', cashier: '收费员', remark: '10月房租', amountCents: 150000, status: 'paid', items: [{ feeName: '房租' }] }]);
       setHistoryTotal(1);
       return;
     }
@@ -253,8 +253,8 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
   useEffect(() => {
     if (preview) {
       setTodayRows([
-        { receiptNo: 'PZXXCYWJD2610100002', buildingNo: 'A栋34号', roomNo: '101', ownerName: '示例住户', paidAt: '2026-10-10T10:05:00+08:00', paymentMethod: 'cash', cashier: '收费员', amountCents: 150000, status: 'paid', items: [{ feeName: '房租' }] },
-        { receiptNo: 'PZXXCYWJD2610100001', buildingNo: 'B栋35号', roomNo: '207', ownerName: '张三', paidAt: '2026-10-10T09:20:00+08:00', paymentMethod: 'wechat', cashier: '收费员', amountCents: 8600, status: 'refunded', items: [{ feeName: '电费' }, { feeName: '冷水费' }] },
+        { receiptNo: 'PZXXCYWJD2610100002', buildingNo: 'A栋34号', roomNo: '101', ownerName: '示例住户', paidAt: '2026-10-10T10:05:00+08:00', paymentMethod: 'cash', cashier: '收费员', remark: '10月房租', amountCents: 150000, status: 'paid', items: [{ feeName: '房租' }] },
+        { receiptNo: 'PZXXCYWJD2610100001', buildingNo: 'B栋35号', roomNo: '207', ownerName: '张三', paidAt: '2026-10-10T09:20:00+08:00', paymentMethod: 'wechat', cashier: '收费员', remark: null, amountCents: 8600, status: 'refunded', items: [{ feeName: '电费' }, { feeName: '冷水费' }] },
       ]);
       setTodayTotal(2);
       setTodayCents(158600);
@@ -496,12 +496,13 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
             {house && historyOpen && <div className="cashier-history">
               <header><span><HistoryOutlined /> 此房间历史缴费</span><Tag color="blue">收费时间倒序 · 10条/页</Tag></header>
               <Spin spinning={loadingHistory}>
-                {history.length ? <div className="cashier-history__table">
-                  <div className="cashier-history__head"><span>收费时间</span><span>凭证号</span><span>收费项目</span><span>金额</span><span>方式</span><span>操作</span></div>
+                {history.length ? <div className="cashier-history__table cashier-history__table--history">
+                  <div className="cashier-history__head"><span>收费时间</span><span>凭证号</span><span>收费项目</span><span>金额</span><span>方式</span><span>备注</span><span>操作</span></div>
                   {history.map((row) => <div className="cashier-history__row" key={row.receiptNo}>
                     <span>{dayjs(row.paidAt).format('YYYY-MM-DD HH:mm')}</span><span>{row.receiptNo}</span>
                     <span>{row.items.map((item) => item.feeName).join('、')}</span><strong>{money(row.amountCents)}</strong>
                     <span>{FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod}</span>
+                    <span title={row.remark || undefined}>{row.remark || '-'}</span>
                     <ReceiptActions
                       row={row}
                       canEdit={canEdit}
@@ -514,7 +515,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
               </Spin>
               {historyTotal > 10 && <Pagination size="small" current={historyPage} pageSize={10} total={historyTotal} showSizeChanger={false} onChange={setHistoryPage} />}
             </div>}
-            {backfillMode && <div className="cashier-history"><header><span><HistoryOutlined /> 今日补录流水</span></header>{backfillRows.length ? <div className="cashier-history__table"><div className="cashier-history__head"><span>收款时间</span><span>凭证号</span><span>房号</span><span>金额</span><span>方式</span></div>{backfillRows.map((row) => <div className="cashier-history__row" key={row.receiptNo}><span>{dayjs(row.paidAt).format('YYYY-MM-DD HH:mm')}</span><span>{row.receiptNo}</span><span>{placeLabel(row.buildingNo, row.roomNo)}</span><strong>{money(row.amountCents)}</strong><span>{FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod}</span></div>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今天还没有补录收费" />}</div>}
+            {backfillMode && <div className="cashier-history"><header><span><HistoryOutlined /> 今日补录流水</span></header>{backfillRows.length ? <div className="cashier-history__table cashier-history__table--backfill"><div className="cashier-history__head"><span>收款时间</span><span>凭证号</span><span>房号</span><span>金额</span><span>方式</span><span>备注</span></div>{backfillRows.map((row) => <div className="cashier-history__row" key={row.receiptNo}><span>{dayjs(row.paidAt).format('YYYY-MM-DD HH:mm')}</span><span>{row.receiptNo}</span><span>{placeLabel(row.buildingNo, row.roomNo)}</span><strong>{money(row.amountCents)}</strong><span>{FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod}</span><span title={row.remark || undefined}>{row.remark || '-'}</span></div>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今天还没有补录收费" />}</div>}
           </section>
 
           <section className="cashier-card">
@@ -557,13 +558,14 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
             </div>
             <Spin spinning={loadingToday}>
               {todayRows.length ? <div className="cashier-today__scroll"><div className="cashier-history__table cashier-today__table">
-                <div className="cashier-history__head"><span>收费员</span><span>收费时间</span><span>凭证号</span><span>房号</span><span>住户姓名</span><span>收费项目</span><span>金额</span><span>方式</span><span>操作</span></div>
+                <div className="cashier-history__head"><span>收费员</span><span>收费时间</span><span>凭证号</span><span>房号</span><span>住户姓名</span><span>收费项目</span><span>金额</span><span>方式</span><span>备注</span><span>操作</span></div>
                 {todayRows.map((row) => <div className="cashier-history__row" key={row.receiptNo}>
                   <span>{row.cashier || '-'}</span><span>{dayjs(row.paidAt).format('HH:mm')}</span><span>{row.receiptNo}</span>
                   <span>{placeLabel(row.buildingNo, row.roomNo)}</span><span>{row.ownerName || '-'}</span>
                   <span>{row.items.map((item) => item.feeName).join('、')}</span>
                   <strong className={row.amountCents < 0 ? 'is-negative' : undefined}>{money(row.amountCents)}</strong>
                   <span>{FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod}</span>
+                  <span title={row.remark || undefined}>{row.remark || '-'}</span>
                   <ReceiptActions
                     row={row}
                     canEdit={canEdit}

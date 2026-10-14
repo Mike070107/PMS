@@ -438,7 +438,7 @@ export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (hous
             { title: '服务期间', key: 'service', render: (r: BillRow) => serviceText(r) },
             { title: '车牌', key: 'vehiclePlate', render: (r: BillRow) => r.vehiclePlate || '' },
             { title: '状态', key: 'statusLabel', render: (r: BillRow) => FEE_BILL_STATUS_LABELS[r.status] || r.status },
-            { title: '收款日期', key: 'paidAt', render: (r: BillRow) => (r.paidAt ? dayjs(r.paidAt).format('YYYY-MM-DD') : '') },
+            { title: '收款时间', key: 'paidAt', render: (r: BillRow) => (r.paidAt ? dayjs(r.paidAt).format('YYYY-MM-DD HH:mm') : '') },
             { title: '收款方式', key: 'paymentMethodLabel', render: (r: BillRow) => (r.paymentMethod ? FEE_PAYMENT_METHOD_LABELS[r.paymentMethod] || r.paymentMethod : '') },
             { title: '收费员', key: 'cashier', render: (r: BillRow) => r.cashier || '' },
             { title: '发票号', key: 'invoiceNo', render: (r: BillRow) => r.invoiceNo || '' },
@@ -707,8 +707,8 @@ export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (hous
               render: (v: FeeBillStatus) => <Tag color={STATUS_COLOR[v]}>{FEE_BILL_STATUS_LABELS[v]}</Tag>,
             },
             {
-              title: '收款日期', dataIndex: 'paidAt', width: 110,
-              render: (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD') : '-'),
+              title: '收款时间', dataIndex: 'paidAt', width: 150,
+              render: (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-'),
             },
             {
               title: '收款方式', dataIndex: 'paymentMethod', width: 110,
@@ -2304,8 +2304,8 @@ export function HouseDetailModal({ houseId, onClose }: { houseId: number | null;
                     render: (v: FeeBillStatus) => <Tag color={STATUS_COLOR[v]}>{FEE_BILL_STATUS_LABELS[v]}</Tag>,
                   },
                   {
-                    title: '收款日期', dataIndex: 'paidAt', width: 110,
-                    render: (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD') : '-'),
+                    title: '收款时间', dataIndex: 'paidAt', width: 150,
+                    render: (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-'),
                   },
                   { title: '收据号', dataIndex: 'receiptNo', width: 140, ellipsis: true, render: (v) => v || '-' },
                 ]}
