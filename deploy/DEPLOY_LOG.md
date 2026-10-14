@@ -4763,3 +4763,10 @@
 - 自上次（e4fa8d86）以来上线的相关提交：
   - 96547e2d fix(cashier): read voucher sequence from fee bills
 
+## 2026-10-14 17:33 · web · 450d4e69
+
+- 包：`pms-web-20261014-173127.tar.gz`
+- 提交：450d4e69 fix(fees): show cashier remarks and payment times
+- 自上次（e4fa8d86）以来上线的相关提交：
+  - 450d4e69 fix(fees): show cashier remarks and payment times
+
