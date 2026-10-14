@@ -4742,3 +4742,10 @@
 - 自上次（0fc2cf6a）以来上线的相关提交：
   - 1c7b7162 fix(cashier): align backfill controls with room heading
 
+## 2026-10-14 11:32 · api · e4fa8d86
+
+- 包：`pms-api-fast-20261014-113120.tar.gz`
+- 提交：e4fa8d86 fix(cashier): shorten voucher order numbers
+- 自上次（0fc2cf6a）以来上线的相关提交：
+  - e4fa8d86 fix(cashier): shorten voucher order numbers
+
