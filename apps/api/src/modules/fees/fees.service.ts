@@ -1032,7 +1032,6 @@ export class FeesService {
     if (!Number.isFinite(paidAt.getTime())) throw new BadRequestException('收费时间不正确');
     if (paidAt.getTime() > now.getTime() + 60_000) throw new BadRequestException('补录收费时间不能选择未来时间');
     const isBackfill = !!dto.paidAt;
-    const receiptNo = this.cashierVoucherNo(place.communityName, now);
     const cashier = await this.operatorName(user.id);
     const period = todayInTz(paidAt).slice(0, 7).replace('-', '');
 
@@ -1040,6 +1039,7 @@ export class FeesService {
       const owner = await this.saveCashierContact(manager, dto, user, tenantId);
       // 与模板调价、套用使用同一把锁，报价校验到保存期间不穿插改价。
       await manager.query('SELECT pg_advisory_xact_lock($1,$2)',[tenantId,place.communityId]);
+      const receiptNo = await this.nextCashierVoucherNo(manager, tenantId, place.communityId, place.communityName, paidAt);
       const templateSnapshot = await this.feeTemplates.resolve(tenantId,dto.houseId,dto.paidAt ?? todayInTz(paidAt),manager);
       const actualQuote = templateSnapshot ? `${templateSnapshot.assignment_id}:${templateSnapshot.template_id}:${templateSnapshot.version}` : null;
       if(dto.rateQuote !== undefined && dto.rateQuote !== actualQuote) throw new ConflictException('收费模板或住户调整已变化，请重新选择房间核对单价后提交；本次没有收费');
@@ -1986,12 +1986,25 @@ export class FeesService {
     return `${prefix}${String(Number.isFinite(seq) ? seq : 1).padStart(4, '0')}`;
   }
 
-  /** 公寓收费凭证号：SJ + 小区拼音首字母 + 上海日期时分秒 + 毫秒时间戳。 */
-  private cashierVoucherNo(communityName: string | null | undefined, now: Date): string {
+  /** 凭证号同时就是收费订单号：PZ + 门店全称首字母 + YYMMDD + 至少4位当日流水。 */
+  private async nextCashierVoucherNo(
+    manager: EntityManager,
+    tenantId: number,
+    communityId: number,
+    communityName: string | null | undefined,
+    paidAt: Date,
+  ): Promise<string> {
     const initials = (nameToInitials(communityName || '') || 'XQ').toUpperCase();
-    const parts = new Intl.DateTimeFormat('zh-CN', { timeZone: FEE_TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
-      .formatToParts(now).reduce<Record<string, string>>((out, item) => ({ ...out, [item.type]: item.value }), {});
-    return `SJ${initials}${parts.year}${parts.month}${parts.day}${parts.hour}${parts.minute}${parts.second}${now.getTime()}`;
+    const date = todayInTz(paidAt).replace(/-/g, '').slice(2);
+    const prefix = `PZ${initials}${date}`;
+    const rows = await manager.query(
+      'SELECT MAX(receipt_no) AS "maxNo" FROM fee_bill WHERE tenant_id = $1 AND community_id = $2 AND receipt_no LIKE $3',
+      [tenantId, communityId, `${prefix}%`],
+    );
+    const maxNo = String(rows?.[0]?.maxNo || '');
+    const previous = maxNo.startsWith(prefix) ? Number(maxNo.slice(prefix.length)) : 0;
+    const sequence = Number.isInteger(previous) ? previous + 1 : 1;
+    return `${prefix}${String(sequence).padStart(4, '0')}`;
   }
 
   /** 'YYYY-MM-DD' 的前一天，用于把旧标准封到新标准生效前一日 */

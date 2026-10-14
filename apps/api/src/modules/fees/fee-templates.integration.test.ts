@@ -29,11 +29,11 @@ test('批量请求必须有范围户数和价格版本，不接受字符串布�
 test('正式收费服务校验报价并保存模板快照，报价变化时不写收费记录',async()=>{
   const service:any=Object.create(FeesService.prototype);
   service.requireTenant=()=>1;service.resolveHousePlace=async()=>({communityId:1,communityName:'馨香臣寓吴泾店'});service.assertCommunityInScope=()=>{};
-  service.nextReceiptNo=async()=> 'TEST-ONLY';service.operatorName=async()=> '测试收费员';service.saveCashierContact=async()=>null;
+  service.operatorName=async()=> '测试收费员';service.saveCashierContact=async()=>null;
   const snapshot={assignment_id:12,template_id:3,version:2,effective_from:'2026-10-12',items:[{feeCode:'rent',amountCents:90000}]};
   service.feeTemplates={resolve:async()=>snapshot};
   let saved:any[]=[];let lock=false;
-  const manager={query:async()=>{lock=true;return [];},create:(_:any,row:any)=>row,save:async(_:any,rows:any[])=>{saved=rows;}};
+  const manager={query:async(sql:string)=>{lock=true;return sql.includes('MAX(receipt_no)')?[{maxNo:null}]:[];},create:(_:any,row:any)=>row,save:async(_:any,rows:any[])=>{saved=rows;}};
   service.dataSource={transaction:async(fn:any)=>fn(manager)};
   const dto:any={houseId:101,paymentMethod:'cash',rateQuote:'12:3:1',items:[{feeCode:'rent',quantity:1,unit:'月',unitPriceCents:90000,amountCents:90000}]};
   await assert.rejects(service.createCashierCharge(dto,{id:7,tenantId:1}),/模板或住户调整已变化/);
@@ -43,8 +43,16 @@ test('正式收费服务校验报价并保存模板快照，报价变化时不�
   assert.equal(saved[0].legacyPayload.feeTemplate.assignmentId,12);
 });
 
-test('公寓凭证号包含小区拼音首字母、上海日期时分秒和毫秒时间戳',()=>{
+test('公寓凭证号即收费订单号：PZ+门店全称首字母+6位日期+4位当日流水',async()=>{
   const service:any=Object.create(FeesService.prototype);
-  const now=new Date('2026-10-13T13:45:26.789Z');
-  assert.equal(service.cashierVoucherNo('馨香臣寓吴泾店',now),`SJXXCYWJD20261013214526${now.getTime()}`);
+  const manager={query:async()=>[{maxNo:'PZXXCYWJD2610140027'}]};
+  const paidAt=new Date('2026-10-14T03:45:00.000Z');
+  assert.equal(await service.nextCashierVoucherNo(manager,1,20,'馨香臣寓吴泾店',paidAt),'PZXXCYWJD2610140028');
+});
+
+test('当日流水超过9999后自然扩位，不停止收费',async()=>{
+  const service:any=Object.create(FeesService.prototype);
+  const manager={query:async()=>[{maxNo:'PZXXCYWJD2610149999'}]};
+  const paidAt=new Date('2026-10-14T03:45:00.000Z');
+  assert.equal(await service.nextCashierVoucherNo(manager,1,20,'馨香臣寓吴泾店',paidAt),'PZXXCYWJD26101410000');
 });

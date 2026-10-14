@@ -237,7 +237,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
       return;
     }
     if (preview) {
-      setHistory([{ receiptNo: 'SJ202610100001', paidAt: '2026-10-10T09:20:00+08:00', paymentMethod: 'wechat', cashier: '收费员', amountCents: 150000, status: 'paid', items: [{ feeName: '房租' }] }]);
+      setHistory([{ receiptNo: 'PZXXCYWJD2610100001', paidAt: '2026-10-10T09:20:00+08:00', paymentMethod: 'wechat', cashier: '收费员', amountCents: 150000, status: 'paid', items: [{ feeName: '房租' }] }]);
       setHistoryTotal(1);
       return;
     }
@@ -253,8 +253,8 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
   useEffect(() => {
     if (preview) {
       setTodayRows([
-        { receiptNo: 'SJ202610100002', buildingNo: 'A栋34号', roomNo: '101', ownerName: '示例住户', paidAt: '2026-10-10T10:05:00+08:00', paymentMethod: 'cash', cashier: '收费员', amountCents: 150000, status: 'paid', items: [{ feeName: '房租' }] },
-        { receiptNo: 'SJ202610100001', buildingNo: 'B栋35号', roomNo: '207', ownerName: '张三', paidAt: '2026-10-10T09:20:00+08:00', paymentMethod: 'wechat', cashier: '收费员', amountCents: 8600, status: 'refunded', items: [{ feeName: '电费' }, { feeName: '冷水费' }] },
+        { receiptNo: 'PZXXCYWJD2610100002', buildingNo: 'A栋34号', roomNo: '101', ownerName: '示例住户', paidAt: '2026-10-10T10:05:00+08:00', paymentMethod: 'cash', cashier: '收费员', amountCents: 150000, status: 'paid', items: [{ feeName: '房租' }] },
+        { receiptNo: 'PZXXCYWJD2610100001', buildingNo: 'B栋35号', roomNo: '207', ownerName: '张三', paidAt: '2026-10-10T09:20:00+08:00', paymentMethod: 'wechat', cashier: '收费员', amountCents: 8600, status: 'refunded', items: [{ feeName: '电费' }, { feeName: '冷水费' }] },
       ]);
       setTodayTotal(2);
       setTodayCents(158600);
