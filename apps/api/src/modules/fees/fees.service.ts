@@ -1998,7 +1998,7 @@ export class FeesService {
     const date = todayInTz(paidAt).replace(/-/g, '').slice(2);
     const prefix = `PZ${initials}${date}`;
     const rows = await manager.query(
-      'SELECT MAX(receipt_no) AS "maxNo" FROM fee_bill WHERE tenant_id = $1 AND community_id = $2 AND receipt_no LIKE $3',
+      'SELECT MAX(receipt_no) AS "maxNo" FROM fee_bills WHERE tenant_id = $1 AND community_id = $2 AND receipt_no LIKE $3',
       [tenantId, communityId, `${prefix}%`],
     );
     const maxNo = String(rows?.[0]?.maxNo || '');

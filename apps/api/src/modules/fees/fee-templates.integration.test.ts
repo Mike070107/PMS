@@ -50,6 +50,14 @@ test('公寓凭证号即收费订单号：PZ+门店全称首字母+6位日期+4�
   assert.equal(await service.nextCashierVoucherNo(manager,1,20,'馨香臣寓吴泾店',paidAt),'PZXXCYWJD2610140028');
 });
 
+test('公寓凭证号流水从正式 fee_bills 表读取',async()=>{
+  let sql='';
+  const manager={query:async(value:string)=>{sql=value;return [{maxNo:null}];}};
+  const service:any=Object.create(FeesService.prototype);
+  await service.nextCashierVoucherNo(manager,1,19,'吴泾一村',new Date('2026-10-14T01:00:00.000Z'));
+  assert.match(sql,/\bFROM fee_bills\b/);
+});
+
 test('当日流水超过9999后自然扩位，不停止收费',async()=>{
   const service:any=Object.create(FeesService.prototype);
   const manager={query:async()=>[{maxNo:'PZXXCYWJD2610149999'}]};
