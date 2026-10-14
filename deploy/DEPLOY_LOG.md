@@ -4756,3 +4756,10 @@
 - 自上次（1c7b7162）以来上线的相关提交：
   - e4fa8d86 fix(cashier): shorten voucher order numbers
 
+## 2026-10-14 11:45 · api · 96547e2d
+
+- 包：`pms-api-fast-20261014-114503.tar.gz`
+- 提交：96547e2d fix(cashier): read voucher sequence from fee bills
+- 自上次（e4fa8d86）以来上线的相关提交：
+  - 96547e2d fix(cashier): read voucher sequence from fee bills
+
