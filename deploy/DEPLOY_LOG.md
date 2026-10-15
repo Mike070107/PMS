@@ -4898,3 +4898,9 @@
   - e5f4b2e fix(parking): add civil expiry reconciliation action
   - bf934a4 fix(parking): sync civil defense expiry on renewal
 
+## 2026-10-15 18:25 · assistant · d67b3c1
+
+- 提交：d67b3c1 docs(parking): add deliyun H5 field dictionary
+- 自上次（81aa645）以来上线的相关提交：
+  - b599aad fix(parking): require download confirmation
+
