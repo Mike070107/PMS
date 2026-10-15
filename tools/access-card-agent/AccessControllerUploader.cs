@@ -83,9 +83,23 @@ namespace Pms.AccessCardAgent
             if (task.targetBuildings == null || task.targetBuildings.Length != 1)
                 throw new InvalidOperationException("远程开门每次只允许选择一个楼栋");
             var target = task.targetBuildings[0];
+            if (String.Equals(target.accessSystem, "mjsystem", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!String.Equals(task.operation, "remote_open", StringComparison.OrdinalIgnoreCase) ||
+                    NormalizeBuilding(target.buildingNo) != "26")
+                    return new object[] { DoorOperationFailed(target,
+                        "MjSystem 现场协议验证期间只允许 26 号楼执行一次立即远程开门，本次未发送命令") };
+                try
+                {
+                    return RunMjSystemSta(delegate
+                    {
+                        return ExecuteMjSystemRemoteOpen26(config, task, target);
+                    });
+                }
+                catch (Exception exception) { return new object[] { DoorOperationFailed(target, exception.Message) }; }
+            }
             if (!String.Equals(target.accessSystem, "iccard", StringComparison.OrdinalIgnoreCase))
-                return new object[] { DoorOperationFailed(target,
-                    "MjSystem 远程开门命令尚未完成现场协议验证，本次未向控制器发送任何命令") };
+                return new object[] { DoorOperationFailed(target, "不支持的门禁系统") };
             try
             {
                 string dllPath;
@@ -117,6 +131,37 @@ namespace Pms.AccessCardAgent
             catch (Exception exception) { return new object[] { DoorOperationFailed(target, exception.Message) }; }
         }
 
+        private static object[] ExecuteMjSystemRemoteOpen26(AgentConfig config, AgentTask task, AccessTargetBuilding target)
+        {
+            string sdkPath;
+            if (!TryFindMjSystemSdk(config, out sdkPath))
+                throw new FileNotFoundException("找不到 MjSystem 原生通信组件 ECardDerviceSDKMJ.dll，请确认 MjSystem 安装目录完整");
+            using (var connection = OpenMjSystem(config.MjSystemDatabasePath))
+            {
+                var doorId = MjSystemDoor(connection, target.buildingNo);
+                if (!String.Equals(doorId, "M0030-1", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("26号楼实体门必须唯一映射为 M0030-1，实际为 " + doorId + "，已停止发送");
+                var record = ReadMjSystemDoorRecord(connection, doorId);
+                using (var vendor = new MjSystemVendor(sdkPath))
+                {
+                    var frame = vendor.BuildRemoteOpenCommand(record);
+                    string response;
+                    var result = vendor.SendDoorCommand(record.CommMode, record.IpAddress, record.Port, frame, out response);
+                    if (result != 0 || String.IsNullOrWhiteSpace(response))
+                        throw new InvalidOperationException("26号楼控制器未确认远程开门（" +
+                            record.ControllerName + " / " + record.CommMode + "）：" + DescribeMjSystemError(result, response));
+                    return new object[] { new AccessControllerUploadResult
+                    {
+                        buildingId = target.id, buildingNo = target.buildingNo, accessSystem = "mjsystem",
+                        status = DoorOperationSuccessStatus(task.operation),
+                        controller = record.ControllerName + " / SN " + record.ControllerSnText,
+                        door = record.DoorName, protocol = "MjSystem 原生 SDK 0x9E / 1A / " + record.CommMode,
+                        acknowledgement = "控制器已确认，响应 " + Limit(response, 80)
+                    } };
+                }
+            }
+        }
+
         internal static string BuildIcCardDoorOperationFunction(string operation, long doorNo, long doorDelay)
         {
             if (doorNo < 1 || doorNo > 255) throw new InvalidOperationException("iCCard 门号超出协议范围");
@@ -131,6 +176,27 @@ namespace Pms.AccessCardAgent
             if (String.Equals(operation, "restore_normal", StringComparison.OrdinalIgnoreCase))
                 return "8F10" + door + "03" + (doorDelay * 10L).ToString("X4", CultureInfo.InvariantCulture);
             throw new InvalidOperationException("不支持的门禁操作：" + operation);
+        }
+
+        internal static object[] BuildMjSystemRemoteOpenArguments(string controllerSn, long doorNo)
+        {
+            if (doorNo < 1 || doorNo > 255) throw new InvalidOperationException("MjSystem 门号超出协议范围");
+            var arguments = new object[48];
+            for (var index = 0; index < arguments.Length; index++) arguments[index] = "";
+            // IISSystem 4.02.1307 frmMacOpendoor 的电脑远程开门使用 1A，第一个业务参数为门序号。
+            arguments[0] = "1A";
+            arguments[1] = NormalizeMjSystemControllerSerial(controllerSn);
+            arguments[2] = doorNo.ToString(CultureInfo.InvariantCulture);
+            return arguments;
+        }
+
+        internal static void ValidateMjSystemRemoteOpenCommand(string command)
+        {
+            var normalized = (command ?? "").Trim();
+            if (normalized.Length < 14 || !normalized.StartsWith("9E01", StringComparison.OrdinalIgnoreCase) ||
+                !String.Equals(normalized.Substring(8, 2), "1A", StringComparison.OrdinalIgnoreCase) ||
+                !normalized.EndsWith("9D", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("MjSystem 原生 SDK 返回的不是 1A 远程开门命令，本次未发送");
         }
 
         /**
@@ -620,6 +686,38 @@ namespace Pms.AccessCardAgent
             return record;
         }
 
+        private static ControllerUploadRecord ReadMjSystemDoorRecord(OleDbConnection connection, string doorId)
+        {
+            const string sql =
+                "SELECT TOP 1 D.cDoorId,D.vDoorName,M.cMacId,M.cMacSn,M.vConnType,M.vIp,M.vCom " +
+                "FROM MJ_DoorInfo AS D INNER JOIN MJ_MacInfo AS M ON D.cMacId=M.cMacId WHERE D.cDoorId=?";
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = sql;
+                command.Parameters.AddWithValue("@door", doorId);
+                using (var reader = command.ExecuteReader())
+                {
+                    if (!reader.Read()) throw new InvalidOperationException("MjSystem 找不到实体门 " + doorId + " 对应的控制器");
+                    var separator = doorId.LastIndexOf('-');
+                    if (separator <= 0 || separator >= doorId.Length - 1)
+                        throw new InvalidOperationException("MjSystem 门编号格式无法识别：" + doorId);
+                    var serial = Convert.ToString(reader["cMacSn"], CultureInfo.InvariantCulture).Trim();
+                    var com = Convert.ToString(reader["vCom"], CultureInfo.InvariantCulture);
+                    return new ControllerUploadRecord
+                    {
+                        ControllerSnText = NormalizeMjSystemControllerSerial(serial),
+                        ControllerSn = Convert.ToInt64(serial, CultureInfo.InvariantCulture),
+                        ControllerName = Convert.ToString(reader["cMacId"], CultureInfo.InvariantCulture),
+                        DoorNo = Convert.ToInt64(doorId.Substring(separator + 1), CultureInfo.InvariantCulture),
+                        DoorName = Convert.ToString(reader["vDoorName"], CultureInfo.InvariantCulture),
+                        CommMode = !String.IsNullOrWhiteSpace(com) ? com : "IP",
+                        IpAddress = Convert.ToString(reader["vIp"], CultureInfo.InvariantCulture) ?? "",
+                        Port = 60000
+                    };
+                }
+            }
+        }
+
         private static OleDbConnection Open(string path, string password)
         {
             if (String.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -1049,6 +1147,58 @@ namespace Pms.AccessCardAgent
                     throw new InvalidOperationException("MjSystem 原生 SDK 未能生成撤销权限命令（错误码 " + ErrorCode().ToString(CultureInfo.InvariantCulture) + "）");
                 ValidateMjSystemPermissionRemovalCommand(result);
                 return result;
+            }
+
+            public string BuildRemoteOpenCommand(ControllerUploadRecord record)
+            {
+                if (record == null) throw new ArgumentNullException("record");
+                var arguments = BuildMjSystemRemoteOpenArguments(record.ControllerSnText, record.DoorNo);
+                var result = Convert.ToString(InvokeAllInOutStrings("CreateBstrFuncData", arguments), CultureInfo.InvariantCulture);
+                if (String.IsNullOrWhiteSpace(result))
+                    throw new InvalidOperationException("MjSystem 原生 SDK 未能生成远程开门命令（错误码 " + ErrorCode().ToString(CultureInfo.InvariantCulture) + "）");
+                ValidateMjSystemRemoteOpenCommand(result);
+                return result;
+            }
+
+            public long SendDoorCommand(string commMode, string ipAddress, int port, string frame, out string response)
+            {
+                try
+                {
+                    object[] arguments;
+                    string methodReturn;
+                    if (IsMjSystemSerial(commMode))
+                    {
+                        short comPort;
+                        if (!Int16.TryParse(commMode.Substring(3), NumberStyles.None, CultureInfo.InvariantCulture, out comPort) || comPort <= 0)
+                            throw new InvalidOperationException("MjSystem 串口配置无法识别：" + commMode);
+                        // IISSystem 的设备操作使用通用串口方法；卡片协议专用的 34/26 方法只用于权限数据。
+                        arguments = new object[] { comPort, frame };
+                        methodReturn = Convert.ToString(InvokeWithInOutStrings("GetAndSendInfo", arguments, 1), CultureInfo.InvariantCulture);
+                    }
+                    else
+                    {
+                        arguments = new object[] { ipAddress ?? "", port, frame };
+                        methodReturn = Convert.ToString(InvokeWithInOutStrings("GetAndSendTcpData", arguments, 2), CultureInfo.InvariantCulture);
+                    }
+                    var inOutValue = Convert.ToString(
+                        IsMjSystemSerial(commMode) ? arguments[1] : arguments[2],
+                        CultureInfo.InvariantCulture);
+                    var sendError = ErrorCode();
+                    response = SelectMjSystemControllerResponse(frame, methodReturn, inOutValue);
+                    if (!String.IsNullOrWhiteSpace(response))
+                    {
+                        var validation = new object[] { response };
+                        if (Convert.ToBoolean(InvokeWithInOutStrings("ThenCommandVail", validation, 0), CultureInfo.InvariantCulture))
+                            return 0L;
+                    }
+                    response = DescribeMjSystemSdkExchange(frame, methodReturn, inOutValue);
+                    return sendError == 0 ? ErrorCodeOrFallback() : sendError;
+                }
+                finally
+                {
+                    try { Invoke("CloseComm", new object[0]); }
+                    catch { }
+                }
             }
 
             public long Send(string commMode, string ipAddress, int port, string frame, string cardProtocol, out string response)

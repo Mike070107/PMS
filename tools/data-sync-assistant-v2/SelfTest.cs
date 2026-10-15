@@ -355,6 +355,25 @@ namespace Pms.DataSyncAssistant
                 Convert.ToString(mjPermissionArguments[10]) != "0" ||
                 Convert.ToString(mjPermissionArguments[11]) != "")
                 throw new InvalidOperationException("MjSystem 1D 新增权限参数没有与原管理软件对齐");
+            var mjRemoteOpenArguments = AccessControllerUploader.BuildMjSystemRemoteOpenArguments("0160217", 1);
+            if (mjRemoteOpenArguments.Length != 48 ||
+                Convert.ToString(mjRemoteOpenArguments[0]) != "1A" ||
+                Convert.ToString(mjRemoteOpenArguments[1]) != "0160217" ||
+                Convert.ToString(mjRemoteOpenArguments[2]) != "1" ||
+                Convert.ToString(mjRemoteOpenArguments[3]) != "")
+                throw new InvalidOperationException("MjSystem 1A 远程开门参数没有与旧管理软件对齐");
+            AccessControllerUploader.ValidateMjSystemRemoteOpenCommand(
+                "9E01EB391A250100000000000000000000000000000000000000000000000000000002039D");
+            try
+            {
+                AccessControllerUploader.ValidateMjSystemRemoteOpenCommand(
+                    "9E01EB391D250100000000000000000000000000000000000000000000000000000002039D");
+                throw new InvalidOperationException("MjSystem 非 1A 命令未被远程开门校验拒绝");
+            }
+            catch (InvalidOperationException exception)
+            {
+                if (!exception.Message.Contains("不是 1A")) throw;
+            }
             if (AccessGatewayDatabase.BuildMjSystemDepartment("228/3/201/10") != "228弄03号大门" ||
                 AccessGatewayDatabase.BuildMjSystemDepartment("228/03/201/10") != "228弄03号大门" ||
                 AccessGatewayDatabase.MjSystemEmployeeNumber(6955) != "6955")

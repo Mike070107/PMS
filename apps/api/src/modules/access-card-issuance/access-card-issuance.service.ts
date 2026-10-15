@@ -588,10 +588,14 @@ export class AccessCardIssuanceService {
     if (!building?.routeReady || !building.accessSystem) {
       throw new BadRequestException('所选楼栋不属于当前门禁区域，或门禁路由尚未配置');
     }
+    if (building.accessSystem === 'mjsystem'
+      && (normalizeBuildingNo(building.buildingNo) !== '26' || dto.operation !== 'remote_open')) {
+      throw new BadRequestException('MjSystem 现场验证期间仅允许 26 号楼立即远程开门，其他命令不会发送');
+    }
     const agents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
     const gateway = orderAgentsByAvailability(agents).find((agent) => effectiveAgentStatus(agent) === 'online'
       && agent.capabilities?.remoteDoorControl === true && supportsRemoteDoorControl(agent.version));
-    if (!gateway) throw new ServiceUnavailableException('远程开门需要 .88 电脑升级 PMS 数据同步助手 2.5.43 或更新版本');
+    if (!gateway) throw new ServiceUnavailableException('远程开门需要 .88 电脑升级 PMS 数据同步助手 2.5.45 或更新版本');
     const durationSeconds = dto.operation === 'temporary_open' ? dto.durationSeconds : null;
     if (dto.operation === 'temporary_open' && (!durationSeconds || durationSeconds < 60 || durationSeconds > 86_400)) {
       throw new BadRequestException('临时开门时长必须在 1 分钟至 24 小时之间');

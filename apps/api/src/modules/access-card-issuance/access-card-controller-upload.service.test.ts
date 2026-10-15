@@ -119,7 +119,7 @@ test('iCCard 远程开门只对选中的单栋建立独立任务', async () => {
   context.availableBuildings.push({ id: 11, buildingNo: '11', accessSystem: 'iccard', routeReady: true });
   state.getHouseContext = async () => context;
   state.agentRepo = { find: async () => [{
-    agentKey: 'access-gateway', kind: 'access_gateway', enabled: true, version: '2.5.43',
+    agentKey: 'access-gateway', kind: 'access_gateway', enabled: true, version: '2.5.45',
     status: 'online', lastSeenAt: new Date(), capabilities: { remoteDoorControl: true },
   }] };
   const queued: Array<Record<string, unknown>> = [];
@@ -135,6 +135,34 @@ test('iCCard 远程开门只对选中的单栋建立独立任务', async () => {
   assert.equal(queued[0]!.wgCardNo, '__door_operation__');
   assert.equal(queued[0]!.durationSeconds, 1800);
   assert.deepEqual(queued[0]!.targetBuildings, [{ id: 11, buildingNo: '11', accessSystem: 'iccard' }]);
+});
+
+test('MjSystem 现场验证只允许26号楼立即远程开门', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  state.authorizationRepo = { findOne: async () => null };
+  const context = houseContext('not_uploaded');
+  context.availableBuildings.push({ id: 26, buildingNo: '26', accessSystem: 'mjsystem', routeReady: true });
+  state.getHouseContext = async () => context;
+  state.agentRepo = { find: async () => [{
+    agentKey: 'access-gateway', kind: 'access_gateway', enabled: true, version: '2.5.45',
+    status: 'online', lastSeenAt: new Date(), capabilities: { remoteDoorControl: true },
+  }] };
+  const queued: Array<Record<string, unknown>> = [];
+  state.enqueueHistoryAuthorization = async (input: Record<string, unknown>) => { queued.push(input); return { status: 'pending' }; };
+
+  await service.createDoorOperation(10, {
+    buildingId: 26, operation: 'remote_open', idempotencyKey: 'mj26-controlled-open',
+  }, user);
+  assert.equal(queued.length, 1);
+  assert.deepEqual(queued[0]!.targetBuildings, [{ id: 26, buildingNo: '26', accessSystem: 'mjsystem' }]);
+
+  await assert.rejects(service.createDoorOperation(10, {
+    buildingId: 5, operation: 'remote_open', idempotencyKey: 'mj5-blocked-open',
+  }, user), /仅允许 26 号楼/);
+  await assert.rejects(service.createDoorOperation(10, {
+    buildingId: 26, operation: 'temporary_open', durationSeconds: 300, idempotencyKey: 'mj26-blocked-temp',
+  }, user), /仅允许 26 号楼立即远程开门/);
 });
 
 test('历史卡取消勾选只为真实已有权限的楼栋创建撤销任务', async () => {

@@ -117,12 +117,12 @@ export function supportsAccessCardPermissionRevoke(version: string | null | unde
   return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 44)));
 }
 
-/** 2.5.43 起助手才支持 iCCard 设备检测、远程开门和定时恢复。 */
+/** 2.5.45 起助手才包含受控的 MjSystem 26号楼远程开门协议；旧版不得领取门操作任务。 */
 export function supportsRemoteDoorControl(version: string | null | undefined): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
   if (!match) return false;
   const [major, minor, patch] = match.slice(1).map(Number);
-  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 43)));
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 45)));
 }
 
 export function parseLegacyAccessCardRoomName(value?: string | null): {

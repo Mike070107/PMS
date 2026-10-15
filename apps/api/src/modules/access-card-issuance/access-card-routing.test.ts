@@ -19,9 +19,9 @@ import {
   supportsRemoteDoorControl,
 } from './access-card-routing';
 
-test('远程开门只交给2.5.43或更新助手', () => {
-  assert.equal(supportsRemoteDoorControl('2.5.42'), false);
-  assert.equal(supportsRemoteDoorControl('2.5.43'), true);
+test('远程开门只交给2.5.45或更新助手', () => {
+  assert.equal(supportsRemoteDoorControl('2.5.44'), false);
+  assert.equal(supportsRemoteDoorControl('2.5.45'), true);
   assert.equal(supportsRemoteDoorControl('2.6.0'), true);
 });
 

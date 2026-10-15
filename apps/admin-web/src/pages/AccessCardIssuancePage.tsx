@@ -474,6 +474,9 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const legacyAgent = readiness?.agents.find((item) => item.kind === 'legacy_sync' && item.status === 'online')
     ?? readiness?.agents.find((item) => item.kind === 'legacy_sync');
   const canStart = !!context?.routeReady && (!!onlineIssuer || !!readiness?.simulationEnabled);
+  const selectedDoorBuilding = context?.availableBuildings.find((item) => item.id === doorBuildingId);
+  const selectedDoorIsMjSystem = selectedDoorBuilding?.accessSystem === 'mjsystem';
+  const selectedDoorIsMj26 = selectedDoorIsMjSystem && Number(selectedDoorBuilding?.buildingNo) === 26;
 
   const extraOptions = useMemo(
     () => context?.availableBuildings
@@ -494,8 +497,14 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     if (!context || !doorBuildingId) return;
     const building = context.availableBuildings.find((item) => item.id === doorBuildingId);
     if (!building) return;
-    if (building.accessSystem !== 'iccard') {
-      message.warning('MjSystem 远程开门命令尚未完成现场协议验证，系统不会冒险发送命令');
+    if (building.accessSystem !== 'iccard' && building.accessSystem !== 'mjsystem') {
+      message.error('该楼栋尚未配置可用门禁系统');
+      return;
+    }
+    const isMj26RemoteOpen = building.accessSystem === 'mjsystem'
+      && Number(building.buildingNo) === 26 && operation === 'remote_open';
+    if (building.accessSystem !== 'iccard' && !isMj26RemoteOpen) {
+      message.warning('MjSystem 现场验证期间仅开放 26 号楼立即远程开门，其他命令不会发送');
       return;
     }
     if (operation !== 'controller_detect') {
@@ -1216,7 +1225,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                     onChange={(value) => { setDoorBuildingId(value); setDoorOperation(null); }}
                     options={context.availableBuildings.map((item) => ({
                       value: item.id,
-                      label: `${item.buildingNo}号楼 · ${systemLabel(item.accessSystem)}${item.accessSystem === 'mjsystem' ? '（待协议验证）' : ''}`,
+                      label: `${item.buildingNo}号楼 · ${systemLabel(item.accessSystem)}${item.accessSystem === 'mjsystem' ? (Number(item.buildingNo) === 26 ? '（现场验证）' : '（待协议验证）') : ''}`,
                       disabled: !item.routeReady,
                     }))}
                   />
@@ -1248,9 +1257,9 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                 </Col>
                 <Col xs={24} md={8}>
                   <Space wrap>
-                    <Button loading={doorOperationSubmitting} onClick={() => void runDoorOperation('controller_detect')}>检测设备</Button>
-                    <Button type="primary" icon={<UnlockOutlined />} loading={doorOperationSubmitting} onClick={() => void runDoorOperation('remote_open')}>远程开门</Button>
-                    <Button loading={doorOperationSubmitting} onClick={() => void runDoorOperation('temporary_open')}>临时常开</Button>
+                    <Button disabled={selectedDoorIsMjSystem} loading={doorOperationSubmitting} onClick={() => void runDoorOperation('controller_detect')}>检测设备</Button>
+                    <Button disabled={selectedDoorIsMjSystem && !selectedDoorIsMj26} type="primary" icon={<UnlockOutlined />} loading={doorOperationSubmitting} onClick={() => void runDoorOperation('remote_open')}>远程开门</Button>
+                    <Button disabled={selectedDoorIsMjSystem} loading={doorOperationSubmitting} onClick={() => void runDoorOperation('temporary_open')}>临时常开</Button>
                   </Space>
                 </Col>
               </Row>
@@ -1266,7 +1275,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                     : undefined)}
                 />
               )}
-              <Text type="secondary">iCCard 按旧程序“总控制台 → 选择门 → 远程开门”的实际通信命令执行；临时常开到期由服务器排队恢复，关闭网页不影响；若网关离线，将在重连后执行恢复。</Text>
+              <Text type="secondary">iCCard 按旧程序“总控制台 → 选择门 → 远程开门”的实际通信命令执行；MjSystem 当前仅开放 26 号楼立即远程开门现场验证，检测设备和临时常开尚未开放。</Text>
             </Card>
           )}
           <Row gutter={[18, 18]} align="stretch">
