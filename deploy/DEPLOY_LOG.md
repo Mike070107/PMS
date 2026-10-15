@@ -4777,3 +4777,10 @@
 - 自上次（96547e2d）以来上线的相关提交：
   - 7218a497 feat(access): revoke door permissions and add remote control
 
+## 2026-10-15 08:35 · web · 7218a497
+
+- 包：`pms-web-20261015-083348.tar.gz`
+- 提交：7218a497 feat(access): revoke door permissions and add remote control
+- 自上次（450d4e69）以来上线的相关提交：
+  - 7218a497 feat(access): revoke door permissions and add remote control
+
