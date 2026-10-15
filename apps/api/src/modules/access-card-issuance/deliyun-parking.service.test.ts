@@ -270,16 +270,17 @@ test('德立云续期重试发现目标日期已生效时直接按幂等成功�
   assert.equal(result.endDate, '2026-12-31');
 });
 
-test('德立云续期按完整编辑契约保留原值且只替换到期日', () => {
+test('德立云续期走正式延期接口且金额固定为零', () => {
   const detail = {
     plateNum: '沪A12345', cardNo: 'C001', pgIds: [11, 12], cardTypeId: 2, carTypeId: 1,
     peopleId: 19, cprtId: 8, cardGroupId: 6, poolId: '', money: 0, beginTime: 1790784000,
     endTime: 1822320000, remark: '原备注', ignored: '不得提交',
   };
   assert.deepEqual(buildDeliyunRenewalPayload(detail, 'project-key', 'vehicle-1', '2027-10-31'), {
-    unitKey: 'project-key', id: 'vehicle-1', plateNum: '沪A12345', cardNo: 'C001', pgIds: [11, 12],
-    cardTypeId: 2, carTypeId: 1, peopleId: 19, cprtId: 8, poolId: '', money: 0,
-    beginTime: 1790784000, endTime: endOfDayEpoch('2027-10-31'), remark: '原备注',
+    unitKey: 'project-key', isRegistrationAudit: 0, overdelayType: 0, cardIds: 'vehicle-1',
+    payRuleType: 1, delayType: 2, payMode: 0, money: 0, deposit: 0,
+    beginDate: '2026-10-01', endDate: '2027-10-31', endDateLong: endOfDayEpoch('2027-10-31') * 1000,
+    endDateStr: '2027-10-31', plateNum: '沪A12345',
   });
   assert.equal(endOfDayEpoch('2027-10-31'), 1824998399);
 });

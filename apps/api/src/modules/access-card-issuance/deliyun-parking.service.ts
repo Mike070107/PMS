@@ -147,10 +147,9 @@ export class DeliyunParkingService {
       throw new BadRequestException('车位池车辆的有效期属于关联车位，暂不允许从车辆续期入口修改');
 
     const payload = buildDeliyunRenewalPayload(detail, session.park.unitKey, vehicleId, input.endDate);
-    const updateResponse = await this.h5Post('/pma/card/updateCard', payload, session.token);
+    const updateResponse = await this.h5Post('/pma/card/saveCycpayBatch', payload, session.token);
     this.assertSuccess(updateResponse, '德立云有效期更新失败');
 
-    // updateCard 是德立云的完整编辑保存接口，只传 endTime 会返回成功但不落库。
     // 写后直接读详情：到期日一致，且其他原字段都没有变化，才能完成。
     const verified = await this.vehicleDetail(vehicleId, session);
     const verifiedEndDate = dateOnlyFromValue(verified.endDate) || dateOnlyFromEpoch(verified.endTime);
@@ -429,7 +428,7 @@ export class DeliyunParkingService {
     return response.data;
   }
 
-  private async h5Post<T = unknown>(path: '/pma/card/deleteCard' | '/pma/card/addPeople' | '/pma/card/findCard' | '/pma/card/updateCard' | '/pma/card/addCard', payload: Record<string, unknown>, token: string) {
+  private async h5Post<T = unknown>(path: '/pma/card/deleteCard' | '/pma/card/addPeople' | '/pma/card/findCard' | '/pma/card/updateCard' | '/pma/card/addCard' | '/pma/card/saveCycpayBatch', payload: Record<string, unknown>, token: string) {
     const body = deliyunFormBody(payload);
     const response = await axios.post<DeliyunResponse<T>>(`${PARKING_H5_API}${path}`, body, {
       headers: { Cookie: `pmatoken=${token}`, 'content-type': 'application/x-www-form-urlencoded' },
@@ -515,23 +514,25 @@ export class DeliyunParkingService {
 
 export function buildDeliyunRenewalPayload(detail: Record<string, unknown>, unitKey: string, vehicleId: string, endDate: string) {
   if (!isDateOnly(endDate)) throw new Error('DELIYUN_INVALID_END_DATE');
-  // 德立云 updateCard 是完整编辑保存，不是 PATCH。按官方 H5 表单契约回传
-  // 刚读到的原字段，但只替换 endTime；不提交官方表单没有的 cardGroupId。
+  const beginDate = dateOnlyFromValue(detail.beginDate) || dateOnlyFromEpoch(detail.beginTime);
+  if (!beginDate) throw new Error('DELIYUN_INVALID_BEGIN_DATE');
+  // 德立云有效期必须走正式“延期缴费”接口；本场景只同步日期，
+  // 因此金额、押金固定为 0，不修改其他车辆资料。
   return {
     unitKey,
-    id: vehicleId,
+    isRegistrationAudit: 0,
+    overdelayType: 0,
+    cardIds: vehicleId,
+    payRuleType: 1,
+    delayType: 2,
+    payMode: 0,
+    money: 0,
+    deposit: 0,
+    beginDate,
+    endDate,
+    endDateLong: endOfDayEpoch(endDate) * 1000,
+    endDateStr: endDate,
     plateNum: detail.plateNum,
-    cardNo: detail.cardNo,
-    pgIds: detail.pgIds,
-    cardTypeId: detail.cardTypeId,
-    carTypeId: detail.carTypeId,
-    peopleId: detail.peopleId,
-    cprtId: detail.cprtId,
-    poolId: detail.poolId,
-    money: detail.money,
-    beginTime: detail.beginTime,
-    endTime: endOfDayEpoch(endDate),
-    remark: detail.remark,
   };
 }
 
