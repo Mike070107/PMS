@@ -4879,3 +4879,13 @@
 - 自上次（c819b5c3）以来上线的相关提交：
   - 1066705b fix(parking): persist Deliyun parking space after create
 
+## 2026-10-15 18:24 · api · d67b3c1
+
+- 包：`pms-api-fast-20261015-182354.tar.gz`
+- 提交：d67b3c1 docs(parking): add deliyun H5 field dictionary
+- 自上次（1066705）以来上线的相关提交：
+  - b599aad fix(parking): require download confirmation
+  - bf934a4 fix(parking): sync civil defense expiry on renewal
+  - 6ba8be5 test(repairs): preserve owner timestamp without contact phone
+  - 8e16a1f feat(repairs): sync owner phone from repair intake
+
