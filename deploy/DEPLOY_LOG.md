@@ -4934,3 +4934,10 @@
   - ff052cdb fix(parking): renew only authorized systems
   - 1ff731ea feat(access-cards): add ACR122U issuance workflow
 
+## 2026-10-15 19:06 · web · 7e250001
+
+- 包：`pms-web-20261015-190549.tar.gz`
+- 提交：7e250001 fix(parking): validate garage expiry on authorization
+- 自上次（ff052cdb）以来上线的相关提交：
+  - 7e250001 fix(parking): validate garage expiry on authorization
+
