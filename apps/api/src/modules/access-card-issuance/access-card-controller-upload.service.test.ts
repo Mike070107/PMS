@@ -84,7 +84,7 @@ function houseContext(accessStatus: string) {
   };
 }
 
-test('未下发历史卡会创建本楼栋控制器下发任务', async () => {
+test('历史卡未写入门禁管理系统时禁止跳过直接下发', async () => {
   const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
   const state = service as unknown as Record<string, unknown>;
   state.authorizationRepo = { findOne: async () => null };
@@ -95,20 +95,24 @@ test('未下发历史卡会创建本楼栋控制器下发任务', async () => {
     return { status: 'pending' };
   };
 
-  await service.uploadHistoryCardToController(
-    10,
-    -11251,
-    { idempotencyKey: 'upload-controller-11251' },
-    user,
+  await assert.rejects(
+    service.uploadHistoryCardToController(10, -11251, { idempotencyKey: 'upload-controller-11251' }, user),
+    /请先.*添加至门禁管理系统/,
   );
+  assert.equal(queued.length, 0);
+});
 
+test('历史卡可先幂等创建本楼栋门禁库写入任务', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  state.authorizationRepo = { findOne: async () => null };
+  state.getHouseContext = async () => houseContext('not_uploaded');
+  const queued: Array<Record<string, unknown>> = [];
+  state.enqueueHistoryAuthorization = async (input: Record<string, unknown>) => { queued.push(input); return { status: 'pending' }; };
+  await service.addHistoryCardToAccessDatabase(10, -11251, { idempotencyKey: 'add-access-db-11251' }, user);
   assert.equal(queued.length, 1);
-  assert.equal(queued[0]!.historyId, -11251);
-  assert.equal(queued[0]!.cardSequence, 1);
+  assert.equal(queued[0]!.operation, 'access_database_only');
   assert.equal(queued[0]!.wgCardNo, '05108721');
-  assert.deepEqual(queued[0]!.targetBuildings, [
-    { id: 5, buildingNo: '5', accessSystem: 'mjsystem' },
-  ]);
 });
 
 test('iCCard 远程开门只对选中的单栋建立独立任务', async () => {
@@ -327,21 +331,16 @@ test('旧版助手不会领取已排队的撤销权限任务', async () => {
   assert.equal(clauses.some((clause) => clause.includes('task.operation <>')), true);
 });
 
-test('已有权限的历史卡不会重复上传', async () => {
+test('门禁库已有权限后才会创建控制器下发任务', async () => {
   const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
   const state = service as unknown as Record<string, unknown>;
   state.authorizationRepo = { findOne: async () => null };
   state.getHouseContext = async () => houseContext('controller_uploaded');
-
-  await assert.rejects(
-    service.uploadHistoryCardToController(
-      10,
-      -11251,
-      { idempotencyKey: 'upload-controller-duplicate' },
-      user,
-    ),
-    /已下发控制器/,
-  );
+  const queued: Array<Record<string, unknown>> = [];
+  state.enqueueHistoryAuthorization = async (input: Record<string, unknown>) => { queued.push(input); return { status: 'pending' }; };
+  await service.uploadHistoryCardToController(10, -11251, { idempotencyKey: 'upload-controller-after-db' }, user);
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0]!.operation, 'controller_upload');
 });
 
 test('捷顺最新记录可以只添加到二期门禁数据库', async () => {

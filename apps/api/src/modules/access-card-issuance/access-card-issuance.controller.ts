@@ -316,6 +316,18 @@ export class AccessCardIssuanceController {
     return this.service.uploadHistoryCardToController(houseId, historyId, dto, user, access);
   }
 
+  @Post('houses/:houseId/history/:historyId/access-database')
+  @RequirePermission('business', 'edit')
+  addHistoryCardToAccessDatabase(
+    @Param('houseId', ParseIntPipe) houseId: number,
+    @Param('historyId', ParseIntPipe) historyId: number,
+    @Body() dto: CreateAccessCardControllerUploadDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.addHistoryCardToAccessDatabase(houseId, historyId, dto, user, access);
+  }
+
   @Post('houses/:houseId/door-operations')
   @RequirePermission('business', 'edit')
   createDoorOperation(

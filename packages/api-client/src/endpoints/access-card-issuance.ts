@@ -24,6 +24,8 @@ export interface AccessCardHistoryRow {
   legacySyncStatus: string;
   controllerResults: AccessCardPermissionResult[];
   latestAuthorization?: AccessCardAuthorization | null;
+  accessDatabaseTask?: AccessCardAuthorization | null;
+  controllerTask?: AccessCardAuthorization | null;
 }
 
 export interface AccessCardHouseContext {
@@ -549,6 +551,14 @@ export const uploadHistoryCardToController = (houseId: number, historyId: number
   idempotencyKey: string;
 }) => request<AccessCardAuthorization>({
   url: `/access-card-issuance/houses/${houseId}/history/${historyId}/upload-controller`,
+  method: 'POST',
+  data,
+});
+
+export const addHistoryCardToAccessDatabase = (houseId: number, historyId: number, data: {
+  idempotencyKey: string;
+}) => request<AccessCardAuthorization>({
+  url: `/access-card-issuance/houses/${houseId}/history/${historyId}/access-database`,
   method: 'POST',
   data,
 });

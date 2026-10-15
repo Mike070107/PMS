@@ -50,7 +50,6 @@ import type { AddressCommunity } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CopyableSecret from '../components/CopyableSecret';
 import HouseAddressPicker, { type PickedAddress } from '../components/HouseAddressPicker';
-import { shouldRetryHistoricalControllerUpload } from './access-card-controller-state';
 
 const { Text, Title } = Typography;
 
@@ -303,7 +302,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const [authorizationBuildingIds, setAuthorizationBuildingIds] = useState<number[]>([]);
   const [authorizationTasks, setAuthorizationTasks] = useState<AccessCardAuthorization[]>([]);
   const [authorizationSubmitting, setAuthorizationSubmitting] = useState(false);
-  const [retryingAuthorizationId, setRetryingAuthorizationId] = useState<number | null>(null);
+  const [addingHistoryRowId, setAddingHistoryRowId] = useState<number | null>(null);
   const [uploadingHistoryRowId, setUploadingHistoryRowId] = useState<number | null>(null);
   const [doorBuildingId, setDoorBuildingId] = useState<number | null>(null);
   const [doorControlOpen, setDoorControlOpen] = useState(false);
@@ -877,64 +876,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     }
   };
 
-  const retryHistoryAuthorization = async (row: AccessCardHistoryRow) => {
-    const failedTask = row.latestAuthorization;
-    if (!failedTask || failedTask.status !== 'failed') return;
-    setRetryingAuthorizationId(failedTask.id);
-    try {
-      if (preview) {
-        const completedTask: AccessCardAuthorization = {
-          ...failedTask,
-          status: 'completed',
-          attempt: 1,
-          error: null,
-          completedAt: new Date().toISOString(),
-          controllerResults: [{ buildingNo: '9', status: 'uploaded' }],
-        };
-        setContext((current) => current ? ({
-          ...current,
-          history: current.history.map((item) => item.id === row.id ? ({
-            ...item,
-            accessStatus: 'controller_uploaded',
-            controllerResults: [
-              ...(item.controllerResults ?? []),
-              { wgCardNo: row.wgCardNo!, accessSystem: 'mjsystem', buildingNo: '9', controller: '9号楼控制器', door: '9号楼大门', sourceTable: 'MJ_MacPower' },
-            ],
-            latestAuthorization: completedTask,
-          }) : item),
-        }) : current);
-        message.success(`卡号 ${row.wgCardNo} 的门栋权限已重新下发成功`);
-        return;
-      }
-      let task = await accessCardIssuance.retryHistoryAuthorization(failedTask.id);
-      setContext((current) => current ? ({
-        ...current,
-        history: current.history.map((item) => item.id === row.id
-          ? { ...item, latestAuthorization: task }
-          : item),
-      }) : current);
-      for (let attempt = 0; attempt < 72 && ['pending', 'running'].includes(task.status); attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1_250));
-        task = await accessCardIssuance.historyAuthorization(task.id);
-      }
-      await refreshContext();
-      if (task.status === 'completed') {
-        message.success(`卡号 ${row.wgCardNo} 的门栋权限已重新下发成功`);
-      } else if (task.status === 'failed') {
-        message.error(task.error || '重新下发失败，请按提示检查门禁网关后再重试');
-      } else {
-        message.warning('重试任务仍在后台执行，可稍后刷新历史查看结果');
-      }
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : '重新下发失败');
-      await refreshContext();
-    } finally {
-      setRetryingAuthorizationId(null);
-    }
-  };
-
   const uploadHistoryCardToController = async (row: AccessCardHistoryRow) => {
-    if (!context || !row.wgCardNo || row.accessStatus !== 'not_uploaded') return;
+    if (!context || !row.wgCardNo || row.accessStatus !== 'controller_uploaded') return;
     setUploadingHistoryRowId(row.id);
     try {
       if (preview) {
@@ -1009,6 +952,28 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     }
   };
 
+  const addHistoryCardToAccessDatabase = async (row: AccessCardHistoryRow) => {
+    if (!context || !row.wgCardNo || row.accessStatus === 'controller_uploaded') return;
+    setAddingHistoryRowId(row.id);
+    try {
+      let task = await accessCardIssuance.addHistoryCardToAccessDatabase(context.house.id, row.id, {
+        idempotencyKey: newIdempotencyKey(),
+      });
+      for (let attempt = 0; attempt < 72 && ['pending', 'running'].includes(task.status); attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_250));
+        task = await accessCardIssuance.historyAuthorization(task.id);
+      }
+      await refreshContext();
+      if (task.status === 'completed') message.success(`卡号 ${row.wgCardNo} 已添加至门禁管理系统`);
+      else if (task.status === 'failed') message.error(task.error || '添加门禁管理系统失败');
+      else message.warning('添加任务仍在后台执行，可稍后刷新历史查看结果');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '添加门禁管理系统失败');
+    } finally {
+      setAddingHistoryRowId(null);
+    }
+  };
+
   const runRecentLegacyAction = async (
     row: LegacyRecentCardQuery['rows'][number],
     operation: 'access_database_only' | 'controller_upload',
@@ -1057,59 +1022,34 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     {
       title: '操作', key: 'actions', width: 196, fixed: 'right' as const,
       render: (_: unknown, row: AccessCardHistoryRow) => {
-        if (context?.projectPhase !== 'phase2' || !row.wgCardNo) return <Text type="secondary">不适用</Text>;
-        if (row.accessStatus === 'controller_uploaded') {
-          return (
-            <Space direction="vertical" size={4} align="start">
-              <Button size="small" onClick={() => openHistoryAuthorization(row)}>管理权限</Button>
-              <Text type="secondary" style={{ maxWidth: 180 }}>
-                已从 .88 权限表读回；旧软件的设备回执无法从 MDB 事后反查
-              </Text>
-            </Space>
-          );
-        }
-        if (shouldRetryHistoricalControllerUpload(row.accessStatus, row.latestAuthorization?.status)) {
-          const failedAuthorization = row.latestAuthorization!;
-          return (
-            <Space direction="vertical" size={4} align="start">
-              <Tag color="error">下发失败</Tag>
-              <Button
-                danger
-                size="small"
-                icon={<ReloadOutlined aria-hidden="true" />}
-                loading={retryingAuthorizationId === failedAuthorization.id}
-                aria-label={`重试下发 WG 卡号 ${row.wgCardNo} 的门栋权限`}
-                title={failedAuthorization.error || '重新下发原目标楼栋权限'}
-                onClick={() => void retryHistoryAuthorization(row)}
-              >
-                重试下发
+        if (context?.projectPhase !== 'phase2') return <Text type="secondary">不适用</Text>;
+        const hasPermission = row.accessStatus === 'controller_uploaded';
+        const databaseBusy = row.accessDatabaseTask && ['pending', 'running'].includes(row.accessDatabaseTask.status);
+        const controllerBusy = row.controllerTask && ['pending', 'running'].includes(row.controllerTask.status);
+        const controllerCompleted = row.controllerTask?.status === 'completed';
+        return (
+          <Space direction="vertical" size={4} align="start">
+            {hasPermission ? <Tag color="success">已添加</Tag> : (
+              <Button size="small" danger={row.accessDatabaseTask?.status === 'failed'}
+                disabled={!row.wgCardNo || Boolean(databaseBusy)} loading={addingHistoryRowId === row.id}
+                title={!row.wgCardNo ? '这张卡没有 WG 卡号，无法添加' : row.accessDatabaseTask?.error || '写入 .88 电脑对应的门禁管理软件数据库'}
+                onClick={() => void addHistoryCardToAccessDatabase(row)}>
+                {databaseBusy ? '正在添加' : row.accessDatabaseTask?.status === 'failed' ? '重试添加' : '添加至门禁管理系统'}
               </Button>
-              {failedAuthorization.error && (
-                <Text type="danger" style={{ maxWidth: 180 }} ellipsis={{ tooltip: failedAuthorization.error }}>
-                  {failedAuthorization.error}
-                </Text>
-              )}
-            </Space>
-          );
-        }
-        if (row.latestAuthorization && ['pending', 'running'].includes(row.latestAuthorization.status)) {
-          return <Tag color="processing">下发处理中</Tag>;
-        }
-        if (row.accessStatus === 'not_uploaded') {
-          return (
-            <Button
-              type="primary"
-              size="small"
-              icon={<UploadOutlined aria-hidden="true" />}
-              loading={uploadingHistoryRowId === row.id}
-              aria-label={`下发 WG 卡号 ${row.wgCardNo} 到本楼栋控制器`}
-              onClick={() => void uploadHistoryCardToController(row)}
-            >
-              下发至控制器
-            </Button>
-          );
-        }
-        return <Button size="small" onClick={() => openHistoryAuthorization(row)}>管理权限</Button>;
+            )}
+            {controllerCompleted ? <Tag color="success">已下发</Tag> : (
+              <Button type="primary" size="small" icon={<UploadOutlined aria-hidden="true" />}
+                danger={row.controllerTask?.status === 'failed'}
+                disabled={!row.wgCardNo || !hasPermission || Boolean(controllerBusy)}
+                loading={uploadingHistoryRowId === row.id}
+                title={!row.wgCardNo ? '这张卡没有 WG 卡号，无法下发' : !hasPermission ? '请先添加至门禁管理系统' : row.controllerTask?.error || '下发本楼栋现场控制器'}
+                onClick={() => void uploadHistoryCardToController(row)}>
+                {controllerBusy ? '下发处理中' : row.controllerTask?.status === 'failed' ? '重试下发' : '下发至控制器'}
+              </Button>
+            )}
+            {hasPermission && <Button size="small" onClick={() => openHistoryAuthorization(row)}>管理权限</Button>}
+          </Space>
+        );
       },
     },
   ];

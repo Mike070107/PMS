@@ -453,7 +453,14 @@ created
 9. 分别测试单楼栋、额外勾选多楼栋、多实体门楼栋、重复卡、中途拿卡、MDB 锁、控制器离线和续传。
 10. 保留 `observe` 模式为默认；只在实机证据齐全后逐段开启 `cardWriter`、`accessDatabase`、`controllerUpload`。
 
-## 11. 严禁事项
+## 11. 2026-10-15 历史卡片写库与控制器下发分步
+
+- 原“下发至控制器”的 `controller_upload` 实际会先调用 `AccessGatewayDatabase.Activate` 幂等写入 MjSystem/iCCard，再调用 `AccessControllerUploader.Upload`；旧文案容易让人误以为只操作控制器。
+- 历史卡片页面改为与“捷顺数据库最新30笔发卡记录”一致的两步：先执行 `access_database_only`，权限表回读确认后才开放 `controller_upload`。两类任务独立显示处理、失败、重试和完成状态。
+- API 按房号、历史行和 operation 复用已在处理或已完成任务；无 WG 卡号时后台拒绝，前端禁用并说明原因。
+- 本次未发布生产；`228/23/201` 的现场写库和控制器下发须在 API/Web 部署后从历史卡片正式入口验收。
+
+## 12. 严禁事项
 
 - 禁止在浏览器代码、API 返回值、日志、截图、Markdown 或 Git 中记录写卡密钥、MDB 密码或 SQL 密码。
 - 禁止写入 M1 `0 扇区 0 块`。

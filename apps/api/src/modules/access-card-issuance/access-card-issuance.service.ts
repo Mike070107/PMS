@@ -196,8 +196,11 @@ export class AccessCardIssuanceService {
       permissionSnapshot.permissions,
     );
     const latestAuthorizationByRow = new Map<number, AccessCardAuthorization>();
+    const latestAuthorizationByRowAndOperation = new Map<string, AccessCardAuthorization>();
     for (const task of authorizationTasks) {
       if (!latestAuthorizationByRow.has(task.historyRowId)) latestAuthorizationByRow.set(task.historyRowId, task);
+      const key = `${task.historyRowId}:${task.operation}`;
+      if (!latestAuthorizationByRowAndOperation.has(key)) latestAuthorizationByRowAndOperation.set(key, task);
     }
     const history = mergedHistory.map((row) => ({
       ...row,
@@ -205,6 +208,10 @@ export class AccessCardIssuanceService {
       latestAuthorization: latestAuthorizationByRow.has(row.id)
         ? this.historyAuthorizationResponse(latestAuthorizationByRow.get(row.id)!)
         : null,
+      accessDatabaseTask: this.historyAuthorizationResponse(
+        latestAuthorizationByRowAndOperation.get(`${row.id}:access_database_only`) ?? null),
+      controllerTask: this.historyAuthorizationResponse(
+        latestAuthorizationByRowAndOperation.get(`${row.id}:controller_upload`) ?? null),
     }));
 
     return {
@@ -541,13 +548,16 @@ export class AccessCardIssuanceService {
     }
     const historyRow = context.history.find((row) => row.id === historyId);
     if (!historyRow?.wgCardNo) throw new NotFoundException('没有找到这张历史卡片，或卡片缺少 WG 卡号');
-    if (historyRow.accessStatus === 'controller_uploaded') {
-      throw new BadRequestException('这张卡已下发控制器，无需重复下发');
+    const sameOperation = await this.authorizationRepo.findOne({
+      where: { tenantId, houseId, historyRowId: historyId, operation: 'controller_upload' },
+      order: { createdAt: 'DESC' },
+    });
+    if (sameOperation && ['pending', 'running', 'completed'].includes(sameOperation.status)) {
+      return this.historyAuthorizationResponse(sameOperation);
     }
-    if (historyRow.accessStatus !== 'not_uploaded') {
-      throw new BadRequestException('这张卡的门禁权限尚未核验完成，请刷新历史后再试');
+    if (historyRow.accessStatus !== 'controller_uploaded') {
+      throw new BadRequestException('请先将这张卡添加至门禁管理系统，确认已添加后再下发控制器');
     }
-
     const homeBuilding = context.availableBuildings.find((building) => building.id === context.house.buildingId);
     if (!homeBuilding?.routeReady || !homeBuilding.accessSystem) {
       throw new BadRequestException(`本楼栋 ${context.house.buildingNo} 号楼的门禁路由尚未配置`);
@@ -569,6 +579,54 @@ export class AccessCardIssuanceService {
       }],
       idempotencyKey,
       userId: user.id,
+    });
+  }
+
+  async addHistoryCardToAccessDatabase(
+    houseId: number,
+    historyId: number,
+    dto: CreateAccessCardControllerUploadDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const idempotencyKey = dto.idempotencyKey.trim();
+    const existing = await this.authorizationRepo.findOne({ where: { tenantId, idempotencyKey } });
+    if (existing) return this.historyAuthorizationResponse(existing);
+    const context = await this.getHouseContext(houseId, user, access);
+    if (context.projectPhase !== 'phase2') throw new BadRequestException('枫桦景苑一期卡片不需要添加楼栋门禁权限');
+    const historyRow = context.history.find((row) => row.id === historyId);
+    if (!historyRow) throw new NotFoundException('没有找到这张历史卡片');
+    if (!historyRow.wgCardNo) throw new BadRequestException('这张卡没有 WG 卡号，无法添加至门禁管理系统');
+    const sameOperation = await this.authorizationRepo.findOne({
+      where: { tenantId, houseId, historyRowId: historyId, operation: 'access_database_only' },
+      order: { createdAt: 'DESC' },
+    });
+    if (sameOperation && ['pending', 'running', 'completed'].includes(sameOperation.status)) {
+      return this.historyAuthorizationResponse(sameOperation);
+    }
+    const homeBuilding = context.availableBuildings.find((building) => building.id === context.house.buildingId);
+    if (!homeBuilding?.routeReady || !homeBuilding.accessSystem) {
+      throw new BadRequestException(`本楼栋 ${context.house.buildingNo} 号楼的门禁路由尚未配置`);
+    }
+    if (historyRow.controllerResults.some((row) =>
+      normalizeBuildingNo(typeof row.buildingNo === 'string' ? row.buildingNo : '')
+        === normalizeBuildingNo(homeBuilding.buildingNo))) {
+      const completed = this.authorizationRepo.create({
+        tenantId, houseId, historyRowId: historyId, roomKey: context.house.roomKey,
+        cardSequence: historyRow.sequence, operation: 'access_database_only', icCardNo: historyRow.icCardNo,
+        wgCardNo: historyRow.wgCardNo, targetBuildings: [{ id: homeBuilding.id, buildingNo: homeBuilding.buildingNo, accessSystem: homeBuilding.accessSystem }],
+        durationSeconds: null, controllerResults: [], idempotencyKey, status: 'completed', attempt: 0,
+        requestedAt: new Date(), completedAt: new Date(), leaseAgentKey: null, leaseExpiresAt: null,
+        lastError: null, createdBy: user.id, updatedBy: user.id,
+      });
+      return this.historyAuthorizationResponse(await this.authorizationRepo.save(completed));
+    }
+    return this.enqueueHistoryAuthorization({
+      tenantId, houseId, historyId, roomKey: context.house.roomKey, cardSequence: historyRow.sequence,
+      operation: 'access_database_only', icCardNo: historyRow.icCardNo, wgCardNo: historyRow.wgCardNo,
+      targetBuildings: [{ id: homeBuilding.id, buildingNo: homeBuilding.buildingNo, accessSystem: homeBuilding.accessSystem }],
+      idempotencyKey, userId: user.id,
     });
   }
 
