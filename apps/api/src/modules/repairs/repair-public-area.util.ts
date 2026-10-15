@@ -21,7 +21,7 @@
 /** 明确长在公共区域的设施 / 场所。长词在前，「单元门口」不被「门口」抢先 */
 const PUBLIC_AREA_WORDS: string[] = [
   // 门禁对讲这一套：报修最常见的公区故障
-  '单元门口机', '门口机', '可视对讲', '楼宇对讲', '对讲机', '对讲', '单元门禁', '门禁',
+  '单元门口机', '门口机', '单元门禁',
   '道闸', '车闸', '闸机', '单元门', '楼下门', '大门', '铁门', '防盗门',
   // 垂直交通与通道
   '电梯', '扶梯', '楼道', '楼梯间', '走廊', '过道', '消防通道', '天井',
@@ -46,6 +46,11 @@ const INDOOR_WORDS: string[] = [
   '厨房', '卫生间', '洗手间', '厕所', '浴室', '卧室', '客厅', '餐厅', '书房',
   '阳台', '储藏室', '阁楼', '马桶', '抽水马桶', '洗菜盆', '水槽', '热水器', '油烟机',
 ];
+
+/** 同一设备既有住户室内机，也有楼下公区机，不能只看设备名判公区。 */
+const DUAL_LOCATION_DEVICES = ['可视对讲', '楼宇对讲', '门禁对讲', '对讲机', '对讲', '门禁'];
+/** 明确说到“18号802”这类楼栋+房号，默认就是去该户；公区地点词仍可覆盖。 */
+const HOUSE_ADDRESS_RE = /\d{1,4}号(?:楼|栋|幢)?[\s、,，]{0,2}\d{3,4}(?:室|房)?/;
 
 /**
  * 只看文本判断是不是公区报修。**只在大模型不可用时用**，词表刻意收得紧。
@@ -100,6 +105,12 @@ export function classifyPublicAreaText(text: string): boolean | null {
   if (!value) return null;
   if (INDOOR_MARKERS.some((word) => value.includes(word))) return false;
   if (INDOOR_WORDS.some((word) => value.includes(word))) return false;
+  if (
+    HOUSE_ADDRESS_RE.test(value) &&
+    DUAL_LOCATION_DEVICES.some((word) => value.includes(word)) &&
+    !PUBLIC_AREA_PLACES.some((word) => value.includes(word)) &&
+    !['门口机', '单元门', '楼下门'].some((word) => value.includes(word))
+  ) return false;
   if (PUBLIC_AREA_WORDS.some((word) => value.includes(word))) return true;
   return null;
 }

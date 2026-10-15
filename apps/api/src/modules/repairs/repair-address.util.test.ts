@@ -243,6 +243,14 @@ test('剥描述：用 matchedRaw 剥完只剩故障本身', () => {
   assert.equal(desc, '家里灯不亮');
 });
 
+test('一句话有来源房号和权限目标房号时，只剥最前面的报修地址', () => {
+  const raw = '228弄23号201 IC卡开通两期19号702权限编号11269和11270';
+  const c = extractAddressCandidate(raw)!;
+  assert.equal(c.phase, null);
+  assert.equal(c.matchedRaw, '228弄23号201');
+  assert.equal(raw.replace(c.matchedRaw, '').trim(), 'IC卡开通两期19号702权限编号11269和11270');
+});
+
 /**
  * 语音转文字会在门牌各段之间断出逗号：「5511弄，236号，502报修电子门…」。
  * 认不出 502 的后果是三重的（2026-09-01 线上实际发生）：地址落成「公共区域」、

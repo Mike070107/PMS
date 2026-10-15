@@ -105,8 +105,7 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
   const value = String(text || '').trim();
   if (!value) return null;
 
-  const phaseMatch = PHASE_RE.exec(value);
-  const phase = phaseMatch ? phaseToCn(phaseMatch[1]) + '期' : null;
+  let phaseMatch = PHASE_RE.exec(value);
   const roadMatch = ROAD_RE.exec(value);
   const roadName = roadMatch ? roadMatch[1] : null;
   const laneMatch = LANE_RE.exec(value);
@@ -158,6 +157,14 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
     }
     break;
   }
+  /**
+   * 一句话可能同时包含“报修地址”和“要开通权限的目标地址”：
+   * 「228弄23号201 IC卡开通二期19号702权限」。后面的“二期”属于业务描述，
+   * 不能反过来并入前一个地址，否则 matchedRaw 会从 228弄一直吞到“二期”，把
+   * 「IC卡开通」也当地址删掉。分期只有出现在本次首个楼栋号之前才修饰这个地址。
+   */
+  if (phaseMatch && buildingFrom >= 0 && phaseMatch.index > buildingFrom) phaseMatch = null;
+  const phase = phaseMatch ? phaseToCn(phaseMatch[1]) + '期' : null;
   if (!roomNo) {
     const explicit = ROOM_EXPLICIT_RE.exec(value);
     if (explicit) roomNo = explicit[1];

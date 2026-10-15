@@ -5601,6 +5601,7 @@ export class RepairsService implements OnModuleInit {
         sourceText: dto.aiAssist.sourceText,
         draft: dto.aiAssist.draft,
         finalValue: {
+          addressText: dto.addressText || '',
           description: dto.content,
           // 只拿本次表单真正提交的联系人对比；服务端从登录账号/房屋档案兜出的联系人
           // 不在原话里，拿它教模型会变成“没说人名也要猜一个”。
@@ -5608,6 +5609,8 @@ export class RepairsService implements OnModuleInit {
           phone: dto.contactPhone || '',
           repairType: repairType || '',
           urgent,
+          // 选到具体房屋就是户内；停在小区/楼栋级就是公共区域。
+          publicArea: !dto.houseId,
         },
         model: cfg.model,
         userId,

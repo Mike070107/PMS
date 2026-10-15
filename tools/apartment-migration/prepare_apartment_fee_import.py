@@ -49,6 +49,7 @@ SETTLEMENT_LEDGERS: Mapping[Tuple[str, str], Tuple[str, str]] = {
 CASHIER_BY_LEGACY_COMMUNITY: Mapping[str, str] = {
     "1": "陈莉莉",   # 吴泾店 → PMS 员工 7891
     "2": "华新",     # 颛桥店 → PMS 员工 7888
+    "5": "陈莉莉",   # 旧库“吴泾老家”实际为吴泾一村，用户确认 → PMS 员工 7891
 }
 
 PRICE_FIELDS = (

@@ -30,6 +30,13 @@ test('户内的一律不算公区', () => {
   assert.ok(!isPublicAreaText('家里灯不亮'));
   assert.ok(!isPublicAreaText('热水器打不着火'));
   assert.equal(classifyPublicAreaText('家里的门禁对讲没声音'), false);
+  assert.equal(classifyPublicAreaText('枫桦景苑二期18号802可视对讲，没有图像'), false);
+});
+
+test('对讲和门禁按具体位置判断，楼下门口机仍是公区', () => {
+  assert.equal(classifyPublicAreaText('18号802可视对讲没有图像'), false);
+  assert.equal(classifyPublicAreaText('18号802楼下门口机没有图像'), true);
+  assert.equal(classifyPublicAreaText('18号楼道门禁没有反应'), true);
 });
 
 test('说了「我家 / 家里」就按户内，别被句子里的公区词带偏', () => {

@@ -87,15 +87,18 @@ const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很
 
 字段：
 - addressText: 这句话里表示"在哪儿"的原话片段（小区名、几弄、几号、几室、楼道、大门等）。不要补全、不要猜测没说过的信息。唯一允许的改写是把中文数字换成阿拉伯数字："十七号二零一" 写成 "17号201"、"五千五百十一弄" 写成 "5511弄"。没有就给空字符串。
-- description: 故障本身，理成一句通顺的话。必须去掉门牌号、人名、电话、催促语（急急急）、客套话（麻烦、谢谢）。保留故障现象和影响（如"居民出不去"）。设备编号、设备名称、故障现象必须逐字保留："11号显示屏图像卡顿"不能概括成"显示屏坏"。不要编造原话里没有的细节，也不要用“坏了”替换更具体的现象。
+- description: 故障本身，理成一句通顺的话。只去掉报修地点的门牌号、人名、电话、催促语（急急急）、客套话（麻烦、谢谢）。如果还有目标房号、卡号、设备编号、权限编号，它们属于要办理的业务，必须原样保留；例如“228弄23号201 IC卡开通两期19号702权限编号11269和11270”只能去掉开头报修地点，description 必须是“IC卡开通两期19号702权限编号11269和11270”。保留故障现象和影响（如"居民出不去"）。设备编号、设备名称、故障现象必须逐字保留："11号显示屏图像卡顿"不能概括成"显示屏坏"。不要编造原话里没有的细节，也不要用“坏了”替换更具体的现象。
 - contactName: 联系人姓名。只有明确说了人名才填（张先生、李阿姨、王师傅）。没说就给空字符串，绝对不要把地址或数字当成姓名。
 - phone: 手机号，11位数字。没有就给空字符串。
 - urgent: 说话人是否表达了很急（急急急、十万火急、马上、等着用）。布尔值。
 - publicArea: 坏的东西在公共区域还是在住户家里。布尔值。
   判断的是"**坏的东西**在哪"，不是"说话人住哪"。报修人常常连自己的门牌一起说，
   那个门牌只是他的住址：说"278号503报门口机没反应"，门口机在单元门口，publicArea 就是 true。
-  公共区域的东西：门口机/可视对讲/单元门/门禁/道闸、电梯、楼道、楼道灯、路灯、监控、
+  公共区域的东西：门口机/单元门/道闸、电梯、楼道、楼道灯、路灯、监控、
   水泵房、配电箱、垃圾房、车库、外墙、绿化、井盖。
+  可视对讲、楼宇对讲、对讲机、门禁既可能是楼下公区设备，也可能是住户室内机：
+  已明确说到“18号802可视对讲没有图像”且没有“楼下/门口机/单元门”等公区地点时，
+  应按802室户内设备，publicArea=false；只有明确说楼下门口机等公区位置才为true。
   住户家里的东西：家里的灯、马桶、水管、热水器、入户门锁、阳台、厨房卫生间里的东西。
   说了"我家""家里"的一律按住户家里算。
 - repairType: 报修类型编码。必须从本提示词后面给出的「本项目可用报修类型」中选择；无法确定时给空字符串。
@@ -120,6 +123,9 @@ const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很
 
 输入：枫桦景苑二期25号303家里门铃打不开门
 输出：{"addressText":"枫桦景苑二期25号303","description":"家里门铃打不开门","contactName":"","phone":"","urgent":false,"publicArea":false,"repairType":"__SMART_TYPE__"}
+
+输入：枫桦景苑二期18号802可视对讲，没有图像
+输出：{"addressText":"枫桦景苑二期18号802","description":"可视对讲没有图像","contactName":"","phone":"","urgent":false,"publicArea":false,"repairType":"__SMART_TYPE__"}
 
 输入：枫桦景苑二期监控室11号显示屏图像卡顿
 输出：{"addressText":"枫桦景苑二期监控室","description":"11号显示屏图像卡顿","contactName":"","phone":"","urgent":false,"publicArea":true,"repairType":"__SMART_TYPE__"}`;
@@ -260,6 +266,7 @@ export class RepairTextAiService {
       `${tenantPrompt}\n\n${typeContext}`,
       'repair',
       keywordTail,
+      value,
     );
     const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value, {
       kind: 'repair-parse',
@@ -310,6 +317,8 @@ export class RepairTextAiService {
       tenantId,
       `${COMPLETION_PROMPT}\n\n${feeContext}`,
       'completion',
+      '',
+      value,
     );
     const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value, {
       kind: 'completion-summary',
@@ -328,10 +337,16 @@ export class RepairTextAiService {
   }
 
   /** 固定规则 + 样例库拼成的完整提示词。样例取不到就只用固定规则那半截 */
-  private async buildSystemPrompt(tenantId: number, base: string, kind: string, tail = ''): Promise<string> {
+  private async buildSystemPrompt(
+    tenantId: number,
+    base: string,
+    kind: string,
+    tail = '',
+    sourceText = '',
+  ): Promise<string> {
     let examples: string[] = [];
     try {
-      const rows = await this.samples.forPrompt(tenantId, kind);
+      const rows = await this.samples.forPrompt(tenantId, kind, sourceText);
       examples = rows
         .filter((row) => row.text?.trim() && row.expected && Object.keys(row.expected).length)
         .map((row) => `输入：${row.text.trim()}\n输出：${JSON.stringify(fullShape(row.expected, row.text))}`);

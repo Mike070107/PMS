@@ -49,17 +49,39 @@ export class ExtractSamplesService {
     }
   }
 
-  /** 拼提示词用：启用的、最近更新的若干条 */
-  async forPrompt(tenantId: number, kind = 'repair'): Promise<AiExtractSample[]> {
+  /**
+   * 拼提示词用：优先取和本次原话“结构相似”的样例，再用最近样例补足。
+   * 房号、弄号、电话和业务编号先变量化，因此换了门牌仍能命中同类纠错；这里只
+   * 取例子给模型参考，不复制旧样例的具体数字。
+   */
+  async forPrompt(tenantId: number, kind = 'repair', sourceText = ''): Promise<AiExtractSample[]> {
     await this.ensureSeeded(tenantId, kind);
     const rows = await this.repo.find({
       where: { tenantId, kind, enabled: true },
       order: { updatedAt: 'DESC' },
-      take: ExtractSamplesService.SAMPLE_LIMIT,
+      take: 200,
     });
-    // 进提示词前按 id 排稳：只是改了一下某条的备注，不该把顺序打乱 ——
-    // 顺序一变，DeepSeek 的前缀缓存整段失效（2026-09-05 查费用时定的）
-    return rows.sort((a, b) => a.id - b.id);
+    const query = buildLearningTemplate(sourceText);
+    const similar = query
+      ? rows
+          .map((row) => ({ row, score: learningSimilarity(query, buildLearningTemplate(row.text)) }))
+          .filter((item) => item.score >= 0.28)
+          .sort((a, b) => b.score - a.score || b.row.updatedAt.getTime() - a.row.updatedAt.getTime())
+          .slice(0, 8)
+          .map((item) => item.row)
+      : [];
+    const selected = [...similar];
+    for (const row of rows) {
+      if (selected.length >= ExtractSamplesService.SAMPLE_LIMIT) break;
+      if (!selected.some((item) => item.id === row.id)) selected.push(row);
+    }
+    // 相似样例必须排在最后、紧邻用户输入，模型对当前结构的关注更稳定；组内按 id
+    // 排稳，避免只改备注就让提示词顺序抖动、破坏服务商前缀缓存。
+    const similarIds = new Set(similar.map((row) => row.id));
+    return [
+      ...selected.filter((row) => !similarIds.has(row.id)).sort((a, b) => a.id - b.id),
+      ...similar.sort((a, b) => a.id - b.id),
+    ];
   }
 
   /**
@@ -91,7 +113,7 @@ export class ExtractSamplesService {
 
   async create(
     tenantId: number,
-    userId: number,
+    userId: number | null,
     input: { text: string; expected: Record<string, unknown>; note?: string; kind?: string },
   ): Promise<AiExtractSample> {
     return this.repo.save(
@@ -137,6 +159,36 @@ export function normalizeSampleText(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/[，,。；;：:、！？!?“”"'（）()\s]+/g, '');
+}
+
+/** 把会变化的地址和编号变成槽位，只留下业务语义与各槽位之间的关系。 */
+export function buildLearningTemplate(value: string): string {
+  return normalizeSampleText(value)
+    .replace(/[一二三四五六七八九十两\d]+期/g, '<期>')
+    .replace(/\d{1,4}弄/g, '<弄>')
+    .replace(/\d{1,4}号(?:楼|栋|幢)?\d{3,4}(?:室|房)?/g, '<楼室>')
+    .replace(/\d{1,4}号(?:楼|栋|幢)?/g, '<楼>')
+    .replace(/\d{3,4}(?:室|房)/g, '<室>')
+    .replace(/1\d{10}/g, '<电话>')
+    // 权限编号、卡号、设备号等具体值可变，但“有两个编号”的结构仍会留下两个槽位。
+    .replace(/\d{5,}/g, '<编号>')
+    .replace(/\d+/g, '<数>');
+}
+
+/** 字符双元组相似度；模板完全相同直接满分，短句也能稳定比较。 */
+export function learningSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const grams = (text: string) => {
+    const out = new Set<string>();
+    for (let i = 0; i < Math.max(1, text.length - 1); i += 1) out.add(text.slice(i, i + 2));
+    return out;
+  };
+  const left = grams(a);
+  const right = grams(b);
+  let common = 0;
+  for (const item of left) if (right.has(item)) common += 1;
+  return common / Math.max(1, left.size + right.size - common);
 }
 
 /** 空字段不写进提示词：教一堆空值会让模型倾向于什么都不填 */

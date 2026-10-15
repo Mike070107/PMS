@@ -215,7 +215,7 @@ export default function AiLearningPanel({ canEdit }: { canEdit: boolean }) {
           <Tag color={feedback.length ? 'orange' : 'default'}>{feedback.length}</Tag>
         </Space>
         <Paragraph type="secondary" style={{ fontSize: 13, marginTop: 4 }}>
-          系统会比较 AI 草稿和最终提交。只有在这里点“收为样例”后，修改才会进入下一次识别，避免自动学错。
+          系统会比较原始语音、AI 草稿和人工最终提交。同一句原话在两张工单中被改成完全相同的结果会自动收为样例；只出现一次或修改结果冲突时留在这里人工审核，避免误操作教错系统。
         </Paragraph>
         <Table<Feedback>
           rowKey="id"

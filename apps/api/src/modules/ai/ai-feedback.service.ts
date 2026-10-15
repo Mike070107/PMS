@@ -36,7 +36,7 @@ export class AiFeedbackService {
     const finalValue = sanitizeFields(input.kind, input.finalValue);
     if (!Object.keys(draft).length) return null;
     const fieldDiff = diffFields(draft, finalValue);
-    return this.repo.save(
+    const saved = await this.repo.save(
       this.repo.create({
         tenantId,
         kind: input.kind,
@@ -53,6 +53,44 @@ export class AiFeedbackService {
         updatedBy: input.userId ?? null,
       }),
     );
+    if (saved.status === 'pending') await this.autoPromoteRepeatedCorrection(tenantId, saved);
+    return saved;
+  }
+
+  /**
+   * 同一种原话被两次独立提交纠正成完全相同的结果，自动收为正式样例。
+   * 一次修改仍留给后台审核，避免误触或临时特例立刻教偏整个租户；结果有冲突也不学习。
+   */
+  private async autoPromoteRepeatedCorrection(tenantId: number, current: AiAssistFeedback) {
+    try {
+      const recent = await this.repo.find({
+        where: { tenantId, kind: current.kind, status: 'pending' },
+        order: { updatedAt: 'DESC' },
+        take: 200,
+      });
+      const key = consistentCorrectionKey(current.sourceText, current.kind, current.finalValue);
+      const matches = recent.filter(
+        (row) => consistentCorrectionKey(row.sourceText, row.kind, row.finalValue) === key,
+      );
+      const independentOrders = new Set(matches.map((row) => row.workOrderId ?? `feedback-${row.id}`));
+      if (independentOrders.size < 2) return;
+      const existing = await this.samples.findExact(tenantId, current.sourceText, current.kind);
+      if (!existing) {
+        await this.samples.create(tenantId, current.createdBy, {
+          kind: current.kind,
+          text: current.sourceText,
+          expected: sampleExpected(current.kind, current.finalValue),
+          note: `由 ${independentOrders.size} 张工单的一致人工纠错自动收录`,
+        });
+      }
+      await this.repo.update(
+        { id: In(matches.map((row) => row.id)), tenantId },
+        { status: 'promoted', updatedBy: current.createdBy },
+      );
+      current.status = 'promoted';
+    } catch {
+      // 自动学习是加分项；失败时保留 pending，仍可在后台人工审核，不能影响报修提交。
+    }
   }
 
   async list(
@@ -177,6 +215,19 @@ function stable(value: unknown): string {
   if (typeof value === 'string') return value.trim().replace(/[，,；;。\s]+/g, '');
   if (Array.isArray(value)) return JSON.stringify(value.map(stable).sort());
   return JSON.stringify(value ?? null);
+}
+
+export function consistentCorrectionKey(
+  sourceText: string,
+  kind: 'repair' | 'completion',
+  finalValue: Record<string, unknown>,
+): string {
+  const normalizedSource = sourceText.trim().toLowerCase().replace(/[，,。；;：:、！？!?“”"'（）()\s]+/g, '');
+  const normalizedFinal = sanitizeFields(kind, finalValue);
+  const ordered = Object.fromEntries(
+    Object.keys(normalizedFinal).sort().map((key) => [key, stable(normalizedFinal[key])]),
+  );
+  return `${kind}|${normalizedSource}|${JSON.stringify(ordered)}`;
 }
 
 function sampleExpected(kind: string, value: Record<string, unknown>) {
