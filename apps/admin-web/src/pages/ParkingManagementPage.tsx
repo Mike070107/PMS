@@ -1679,7 +1679,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
         <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }, { label: '二期人防车库', value: 'civil', disabled: !deliyunWriteEnabled }]} /></label>
         {selectedGarages.includes('civil') && <label>地库车位号（必填）<Input aria-required="true" maxLength={20} value={civilParkingSpace} placeholder="将写入德立云卡号栏位" onChange={(event) => setCivilParkingSpace(event.target.value)} /></label>}</>}
       {(kind === 'change_plate' || kind === 'update_vehicle_type') && <label>车辆授权类型<Select value={identity} options={['住户车', '租户车', '亲情车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>}
-      {kind === 'download_vehicle' && <Alert type="info" showIcon message="将创建旧库设备下载任务" description="任务完成只代表旧系统已接受并回读下载队列；现场控制器回执会在状态中单独显示。" />}
+      {kind === 'download_vehicle' && <Alert type="info" showIcon message="重新下发并等待设备确认" description="系统会按当前授权通道重新生成下载任务，并等待旧停车系统确认所有现行通道已下载；只写入队列不会显示成功，60秒未确认会列出未完成通道，可排查现场下载服务后再次下发。" />}
       {kind === 'delete_vehicle' && <Alert type="warning" showIcon message="注销会调用旧系统 Add_Del_Plate" description="车辆从旧库移除并写入注销流水，网页不会直接删除 Car_Issue。" />}
       {task?.status === 'completed' && <Button danger onClick={onRollback}>为本次操作创建反向回滚任务</Button>}
     </div>

@@ -66,6 +66,8 @@ test('没有控制器回执时不把旧库下载位冒充现场设备状态', ()
   assert.match(page, /旧库标记已下载/);
   assert.match(page, /设备状态未确认/);
   assert.doesNotMatch(page, /garage\.downloaded \? '已下载生效' : '待下载'/);
+  assert.match(page, /重新下发并等待设备确认/);
+  assert.match(page, /只写入队列不会显示成功/);
 });
 
 test('停车金额报表分别标明续期登记额与岗亭应收额', () => {

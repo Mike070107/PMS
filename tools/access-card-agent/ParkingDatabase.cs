@@ -6,6 +6,7 @@ using System.Data.SqlClient;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace Pms.AccessCardAgent
 {
@@ -810,7 +811,7 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                 if (task.kind == "download_vehicle")
                 {
                     ExecuteDownloadVehicle(connection, payload, plate, admin);
-                    return VerifyDownloadQueue(connection, plate);
+                    return WaitForDownloadConfirmation(connection, plate, task.database, 60000);
                 }
                 throw new InvalidOperationException("不支持的停车操作：" + task.kind);
             }
@@ -1766,6 +1767,41 @@ ORDER BY ID DESC";
                 if (count <= 0) throw new InvalidOperationException("设备下载存储过程执行后未在 Car_Download 找到该车牌任务");
                 return new Dictionary<string, object> { { "verified", true }, { "deviceVerification", "queued" }, { "downloadRows", count }, { "message", "下载任务已写入 Car_Download，现场控制器回执需由设备状态继续核验" } };
             }
+        }
+
+        private static Dictionary<string, object> WaitForDownloadConfirmation(SqlConnection connection, string plate, string database, int timeoutMs)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            int[] missing = new int[0];
+            do
+            {
+                var vehicle = VerifyVehicle(connection, plate, "设备下载确认");
+                missing = MissingDownloadMachineIds(Value(vehicle, "effective"), Value(vehicle, "download"), database);
+                if (missing.Length == 0)
+                    return new Dictionary<string, object>
+                    {
+                        { "verified", true },
+                        { "deviceVerification", "confirmed" },
+                        { "effective", Value(vehicle, "effective") },
+                        { "download", Value(vehicle, "download") },
+                        { "message", "旧停车系统已确认全部授权通道下载完成" }
+                    };
+                if (DateTime.UtcNow < deadline) Thread.Sleep(2000);
+            } while (DateTime.UtcNow < deadline);
+            throw new InvalidOperationException("控制器在60秒内未确认下载完成，未确认通道：" + String.Join("、", missing) + "；任务已保留，可排查现场下载服务后重新下发");
+        }
+
+        internal static int[] MissingDownloadMachineIds(string effective, string download, string database)
+        {
+            var authorized = DownloadMachineIds(effective);
+            var downloadedBits = NormalizeBits(download);
+            var managed = String.Equals(database, "parking1", StringComparison.OrdinalIgnoreCase)
+                ? new HashSet<int>(GarageChannels("phase1"))
+                : new HashSet<int>(GarageChannels("phase2").Concat(GarageChannels("main")));
+            return authorized.Where(delegate(int channel)
+            {
+                return managed.Contains(channel) && downloadedBits[channel - 1] != '1';
+            }).ToArray();
         }
 
         internal sealed class ProcedureParameter { public string Name; public SqlDbType Type; public int Size; public bool IsOutput; }

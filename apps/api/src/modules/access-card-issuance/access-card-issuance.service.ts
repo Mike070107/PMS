@@ -118,6 +118,7 @@ import {
   applyParkingOwnerSnapshot,
   parkingOwnerWriteMismatches,
   supportsParkingAuthorizationFixes,
+  supportsParkingDeviceConfirmation,
   supportsParkingVehicleSync,
 } from './parking-owner-update.util';
 
@@ -1120,11 +1121,13 @@ export class AccessCardIssuanceService {
       (!(dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId) || supportsFamilyActivation(agent.version)) &&
       (dto.kind !== 'rebind_owner' || supportsParkingOwnerRebind(agent.version)) &&
       (dto.kind !== 'sync_vehicle_info' || supportsParkingVehicleSync(agent.version)) &&
-      (!['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) || supportsParkingAuthorizationFixes(agent.version)));
+      (!['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) || supportsParkingAuthorizationFixes(agent.version)) &&
+      (dto.kind !== 'download_vehicle' || supportsParkingDeviceConfirmation(agent.version)));
     if (!gateway) throw new ServiceUnavailableException(dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId ? '亲情车待审核登记与自动开通需要现场助手升级到 2.5.40' : dto.kind === 'rebind_owner'
       ? '变更绑定用户需要 PMS 数据同步助手 2.5.20 及以上版本，请先更新现场助手'
       : dto.kind === 'sync_vehicle_info' ? '车辆资料复用需要 PMS 数据同步助手 2.5.23 及以上版本，请先在现场电脑升级'
-      : ['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) ? '车库授权、车辆类型修改和设备下发需要 PMS 数据同步助手 2.5.21 及以上版本，请先更新现场助手'
+      : dto.kind === 'download_vehicle' ? '停车设备下发需要 PMS 数据同步助手 2.5.47 或更新版本，旧版只能写入队列、不能确认设备完成'
+      : ['update_garages', 'update_vehicle_type'].includes(dto.kind) ? '车库授权和车辆类型修改需要 PMS 数据同步助手 2.5.21 及以上版本，请先更新现场助手'
       : '停车网关尚未就绪：请安装 2.4.0 及以上助手并确认旧库存储过程写入权限');
     const payload = normalizeParkingOperationPayload(dto.payload);
     const expected = normalizeParkingOperationPayload(dto.expected ?? {});
@@ -1421,6 +1424,7 @@ export class AccessCardIssuanceService {
     if (!supportsParkingOwnerUpdates(agent.version) || agent.capabilities?.parkingDbWrite !== true) return { task: null };
     const canSyncVehicleInfo = supportsParkingVehicleSync(agent.version);
     const canUseAuthorizationFixes = supportsParkingAuthorizationFixes(agent.version);
+    const canConfirmParkingDevice = supportsParkingDeviceConfirmation(agent.version);
     const task = await this.parkingOperationRepo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(ParkingOperation);
       const now = new Date();
@@ -1430,6 +1434,7 @@ export class AccessCardIssuanceService {
         .andWhere("(task.kind <> 'rebind_owner' OR :canRebind = true)", { canRebind: supportsParkingOwnerRebind(agent.version) })
         .andWhere(canSyncVehicleInfo ? '1=1' : "task.kind <> 'sync_vehicle_info'")
         .andWhere(canUseAuthorizationFixes ? '1=1' : "task.kind NOT IN ('update_garages', 'update_vehicle_type', 'download_vehicle')")
+        .andWhere(canConfirmParkingDevice ? '1=1' : "task.kind <> 'download_vehicle'")
         .andWhere(supportsFamilyActivation(agent.version) ? '1=1' : "NOT (task.payload ? 'familyReviewId')")
         .andWhere(supportsFamilyActivation(agent.version) ? '1=1' : "NOT (task.kind = 'add_vehicle' AND task.payload->>'requiresProofReview' = 'true')")
         .orderBy('task.created_at', 'ASC').setLock('pessimistic_write').setOnLocked('skip_locked').getOne();
@@ -1495,8 +1500,8 @@ export class AccessCardIssuanceService {
         }
         if (task.kind === 'download_vehicle') {
           const values = dto.values ?? {};
-          if (values.verified !== true || textValue(values.deviceVerification) !== 'queued' || Number(values.downloadRows) <= 0) {
-            throw new BadRequestException('助手没有核验到旧库设备下载队列，不能标为成功');
+          if (values.verified !== true || textValue(values.deviceVerification) !== 'confirmed') {
+            throw new BadRequestException('助手没有确认 P_Download 已覆盖全部现行授权通道，不能标为成功');
           }
         }
         task.status = 'completed'; task.result = dto.values ?? { verified: true }; task.lastError = null; task.completedAt = now;
