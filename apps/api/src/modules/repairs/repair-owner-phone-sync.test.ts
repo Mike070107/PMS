@@ -18,7 +18,7 @@ function fixture(owners: Array<Record<string, unknown>>) {
   return { service, updates, warnings };
 }
 
-test('房号唯一匹配业主时用报修电话更新，时间等于工单生成时间', async () => {
+test('业主主动填写报修电话时即使号码未变化，也用工单生成时间更新', async () => {
   const { service, updates } = fixture([
     { id: 31, tenantId: 1, houseId: 970, role: UserRole.OWNER, name: '刘薇薇', phone: '13000000000' },
   ]);
@@ -37,6 +37,21 @@ test('房号唯一匹配业主时用报修电话更新，时间等于工单生�
   assert.equal(updates[0].patch.phone, '13800138000');
   assert.equal(updates[0].patch.updatedAt, createdAt);
   assert.equal(updates[0].patch.updatedBy, 31);
+});
+
+test('业主未主动填写报修电话时不更新电话和资料时间', async () => {
+  const { service, updates } = fixture([
+    { id: 31, tenantId: 1, houseId: 970, role: UserRole.OWNER, name: '刘薇薇', phone: '13800138000' },
+  ]);
+  await service.rememberContactAsOwner(
+    { houseId: 970, contactName: '刘薇薇' },
+    1,
+    RepairSource.OWNER_MINIAPP,
+    31,
+    new Date('2026-10-15T10:23:47.482+08:00'),
+  );
+
+  assert.equal(updates.length, 0);
 });
 
 test('同房多业主只在姓名能唯一匹配时更新', async () => {
