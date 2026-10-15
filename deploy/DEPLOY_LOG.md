@@ -4830,3 +4830,10 @@
 - 自上次（52b170f7）以来上线的相关提交：
   - 81aa6455 feat(access): complete remote door controls
 
+## 2026-10-15 11:25 · api · f9ca2df3
+
+- 包：`pms-api-fast-20261015-112443.tar.gz`
+- 提交：f9ca2df3 feat(ai): learn from corrected repair speech
+- 自上次（81aa6455）以来上线的相关提交：
+  - f9ca2df3 feat(ai): learn from corrected repair speech
+
