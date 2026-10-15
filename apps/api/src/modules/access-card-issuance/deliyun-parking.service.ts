@@ -107,7 +107,8 @@ export class DeliyunParkingService {
         const authorization = deliyunGarageAuthorization(detail);
         const remark = nullableString(detail.remark);
         const parkingSpace = nullableString(detail.cardNo);
-        return this.enrichPoolPeriods({ ...row, ...authorization, remark, parkingSpace }, session);
+        // 列表接口经常不返 cardNo，真值在 findCard 详情里。
+        return this.enrichPoolPeriods({ ...row, ...authorization, remark, cardNo: parkingSpace, parkingSpace }, session);
       }));
       return {
         project: session.park.unitName,
@@ -266,8 +267,22 @@ export class DeliyunParkingService {
       throw new ServiceUnavailableException('德立云已接受车位号更新，但卡号回读不一致；请刷新核对，暂勿重复提交');
     vehicleId = verifiedRow.id;
     if (createdPayload) {
-      const detail = await this.vehicleDetail(vehicleId, session);
-      const mismatches = deliyunCreatedVehicleMismatches(detail, createdPayload);
+      let detail = await this.vehicleDetail(vehicleId, session);
+      let mismatches = deliyunCreatedVehicleMismatches(detail, createdPayload);
+      // 生产已证实 addCard 会建档却忽略 cardNo，updateCard.cardNo 才会真正落下“卡号/注册号”。
+      // 只对这一个已知差异幂等补写，其它字段仍按原规则报错。
+      if (mismatches.length === 1 && mismatches[0] === '车位号' && stringValue(createdPayload.cardNo)) {
+        const repairPayload = {
+          ...buildDeliyunGarageAuthorizationPayload(detail, session.park.unitKey, vehicleId, '', true),
+          pgIds: detail.pgIds,
+          cardNo: createdPayload.cardNo,
+          remark: detail.remark,
+        };
+        const repairResponse = await this.h5Post('/pma/card/updateCard', repairPayload, session.token);
+        this.assertSuccess(repairResponse, '德立云人防车位号补写失败');
+        detail = await this.vehicleDetail(vehicleId, session);
+        mismatches = deliyunCreatedVehicleMismatches(detail, createdPayload);
+      }
       if (mismatches.length)
         throw new ServiceUnavailableException(`德立云车辆已建档，但以下字段回读不一致：${mismatches.join('、')}；请核对，暂勿重复提交`);
     }

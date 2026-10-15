@@ -145,6 +145,49 @@ test('新建使用今天、二期截止日、已有房号人员及车位备注�
   assert.equal(saved.remark, '来自PMS');
 });
 
+test('新建接口忽略车位号时用 updateCard.cardNo 补写并再回读', async () => {
+  const service = new DeliyunParkingService({ get: () => 'true' } as any);
+  const internal = service as any;
+  let created = false;
+  let repaired = false;
+  const addPayloads: Record<string, any>[] = [];
+  const updatePayloads: Record<string, any>[] = [];
+  internal.ensureMiniappSession = async () => ({ park: { unitKey: 'park' }, token: 'test' });
+  internal.civilDefenseGarage = async () => ({ id: '27031' });
+  internal.findVehiclesByPlate = async () => ({ rows: created ? [{ id: 'v1', civilDefenseAuthorized: true }] : [] });
+  internal.h5Get = async (path: string) => ({ ecode: 0, data: path.includes('CardType') ? [{ id: 2, tname: '月票车' }] : path.includes('CarType') ? [{ id: 1, tname: '小型车' }] : [{ id: 9, pname: '228/53/1401' }] });
+  internal.h5Post = async (path: string, value: Record<string, any>) => {
+    if (path === '/pma/card/addCard') { addPayloads.push(value); created = true; }
+    else if (path === '/pma/card/updateCard') { updatePayloads.push(value); repaired = true; }
+    else assert.fail(`未预期路径 ${path}`);
+    return { ecode: 0 };
+  };
+  internal.vehicleDetail = async () => ({ ...addPayloads[0], id: 'v1', cardNo: repaired ? 'MF12' : '' });
+
+  const result = await service.setCivilDefenseAuthorization({
+    plate: '沪BAU1900', authorized: true, endDate: '2099-12-31', ownerRoom: '228/53/1401', parkingSpace: 'MF12',
+  });
+  assert.equal(result.verified, true);
+  assert.equal(addPayloads[0].cardNo, 'MF12');
+  assert.equal(updatePayloads.length, 1);
+  assert.equal(updatePayloads[0].cardNo, 'MF12');
+});
+
+test('车辆列表不带卡号时使用详情 cardNo 映射 PMS 车位号', async () => {
+  const service = new DeliyunParkingService({ get: () => 'true' } as any);
+  const internal = service as any;
+  internal.hasMiniappAccount = () => true;
+  internal.missingMiniappProtocolConfig = () => [];
+  internal.ensureMiniappSession = async () => ({ park: { unitKey: 'park', unitName: '枫桦景苑' }, token: 'test' });
+  internal.h5Get = async () => ({ ecode: 0, data: [{ id: 'v1', plateNum: '沪BAU1900' }] });
+  internal.vehicleDetail = async () => ({ id: 'v1', plateNum: '沪BAU1900', cardNo: 'MF12' });
+  internal.enrichPoolPeriods = async (row: unknown) => row;
+
+  const result = await service.findVehiclesByPlate('沪BAU1900');
+  assert.equal(result.rows[0].cardNo, 'MF12');
+  assert.equal(result.rows[0].parkingSpace, 'MF12');
+});
+
 test('删除响应成功但车辆仍存在时不得报告取消完成', async () => {
   const service = new DeliyunParkingService({ get: () => 'true' } as any);
   const internal = service as any;
