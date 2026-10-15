@@ -4810,3 +4810,10 @@
 - 自上次（7218a497）以来上线的相关提交：
   - 52b170f7 feat(access): validate MjSystem remote open on building 26
 
+## 2026-10-15 10:29 · api · 81aa6455
+
+- 包：`pms-api-fast-20261015-102853.tar.gz`
+- 提交：81aa6455 feat(access): complete remote door controls
+- 自上次（52b170f7）以来上线的相关提交：
+  - 81aa6455 feat(access): complete remote door controls
+
