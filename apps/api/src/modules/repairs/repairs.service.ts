@@ -5571,7 +5571,13 @@ export class RepairsService implements OnModuleInit {
     // 「这个电话 → 这个人 → 这个房号」记进业主档案。
     // 和上面的类型负样本一样放在事务外、吞掉异常：这是顺手攒的资料，
     // 绝不能因为它让报修提交失败。
-    await this.rememberContactAsOwner(dto, tenantId, source, submittedBy);
+    await this.rememberContactAsOwner(
+      dto,
+      tenantId,
+      source,
+      submittedBy,
+      created.workOrder.createdAt,
+    );
 
     // 类型里配的维修工每人一条「新工单」：站内信一定写，微信订阅消息尽力而为。
     // 通知失败只记日志，不能让报修提交失败（notifyUser 内部已兜住）
@@ -5670,26 +5676,24 @@ export class RepairsService implements OnModuleInit {
    * 四条约束，少一条都会把档案搞脏：
    * 1. 只认端上**明确传上来的** contactName/contactPhone —— resolveContact 会
    *    把提交人自己兜底成联系人，那是维修工不是业主，记进去就全是自己人；
-   * 2. 业主自己报的不记：他的档案本来就该由认证流程建，来源不能被覆盖成「报修登记」；
-   * 3. 已有档案只补空字段，不覆盖已填的（尤其不改房号）—— 一个手机号可能有多套房，
-   *    也可能后台已经核实过，自动流程不跟人抢方向盘；
-   * 4. 房号已经绑了别的业主就不动，避免一次口误把人家的房子改姓。
+   * 2. 房号精确命中已有业主时，用本次明确填写的电话更新该档案；
+   * 3. 同房多业主只能靠姓名或原电话唯一定位，无法唯一定位就不动；
+   * 4. 档案更新时间使用工单生成时间，这才能表示“这个电话什么时候被业务确认过”。
    */
   private async rememberContactAsOwner(
     dto: CreateRepairRequestDto,
     tenantId: number,
     source: RepairSource,
     submittedBy: number | null,
+    repairCreatedAt: Date,
   ) {
-    if (source === RepairSource.OWNER_MINIAPP) return;
-
     const name = dto.contactName?.trim();
     const phone = dto.contactPhone?.trim();
-    if (!name || !phone) return;
+    if (!phone) return;
 
     try {
       // 提交人自己的手机号：维修工把自己填成联系人了，不是业主
-      if (submittedBy) {
+      if (submittedBy && source !== RepairSource.OWNER_MINIAPP) {
         const me = await this.userRepo.findOne({
           where: { id: submittedBy },
           select: ['id', 'phone'],
@@ -5698,6 +5702,44 @@ export class RepairsService implements OnModuleInit {
       }
 
       const houseId = dto.houseId ?? null;
+      if (houseId) {
+        const houseOwners = await this.userRepo.find({
+          where: {
+            tenantId,
+            houseId,
+            role: UserRole.OWNER,
+            status: UserStatus.ACTIVE,
+          },
+          order: { id: 'ASC' },
+        });
+        if (houseOwners.length) {
+          const sameName = name
+            ? houseOwners.filter((owner) => owner.name?.trim() === name)
+            : [];
+          const samePhone = houseOwners.filter((owner) => owner.phone?.trim() === phone);
+          const matched = houseOwners.length === 1
+            ? houseOwners[0]
+            : sameName.length === 1
+              ? sameName[0]
+              : samePhone.length === 1
+                ? samePhone[0]
+                : null;
+          if (!matched) {
+            this.logger.warn(`报修电话未回写：房号 ${houseId} 对应 ${houseOwners.length} 条业主档案，无法唯一定位`);
+            return;
+          }
+          await this.userRepo.update(matched.id, {
+            phone,
+            ...(!matched.name && name ? { name } : {}),
+            updatedAt: repairCreatedAt,
+            updatedBy: submittedBy,
+          });
+          return;
+        }
+      }
+
+      // 房号没有已建档业主时保留原有“报修登记”补档行为。
+      if (!name || source === RepairSource.OWNER_MINIAPP) return;
       const existing = await this.userRepo.findOne({
         where: { tenantId, phone, role: UserRole.OWNER },
       });
@@ -5710,7 +5752,11 @@ export class RepairsService implements OnModuleInit {
           patch.houseId = houseId;
         }
         if (Object.keys(patch).length) {
-          await this.userRepo.update(existing.id, { ...patch, updatedBy: submittedBy });
+          await this.userRepo.update(existing.id, {
+            ...patch,
+            updatedAt: repairCreatedAt,
+            updatedBy: submittedBy,
+          });
         }
         return;
       }
@@ -5724,6 +5770,8 @@ export class RepairsService implements OnModuleInit {
           houseId: houseId && (await this.isHouseFree(tenantId, houseId)) ? houseId : null,
           status: UserStatus.ACTIVE,
           source: OwnerSource.REPAIR_INTAKE,
+          createdAt: repairCreatedAt,
+          updatedAt: repairCreatedAt,
           createdBy: submittedBy,
           updatedBy: submittedBy,
         }),
