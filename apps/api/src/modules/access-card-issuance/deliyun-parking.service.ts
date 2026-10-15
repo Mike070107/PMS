@@ -146,14 +146,17 @@ export class DeliyunParkingService {
     if (deliyunRelationId(detail.cardPoolId) || numberValue(detail.cardTypeId) === 7)
       throw new BadRequestException('车位池车辆的有效期属于关联车位，暂不允许从车辆续期入口修改');
 
-    const payload = buildDeliyunRenewalPayload(session.park.unitKey, vehicleId, input.endDate);
+    const payload = buildDeliyunRenewalPayload(detail, session.park.unitKey, vehicleId, input.endDate);
     const updateResponse = await this.h5Post('/pma/card/updateCard', payload, session.token);
     this.assertSuccess(updateResponse, '德立云有效期更新失败');
 
-    // 写接口成功只说明上游接受；必须重新读取同一车辆确认最终日期。
-    const refreshed = await this.findVehiclesByPlate(plate);
-    const verified = refreshed.rows.find((row) => row.id === vehicleId);
-    if (!verified || verified.endDate !== input.endDate)
+    // updateCard 是德立云的完整编辑保存接口，只传 endTime 会返回成功但不落库。
+    // 写后直接读详情：到期日一致，且其他原字段都没有变化，才能完成。
+    const verified = await this.vehicleDetail(vehicleId, session);
+    const verifiedEndDate = dateOnlyFromValue(verified.endDate) || dateOnlyFromEpoch(verified.endTime);
+    const preserved = ['plateNum', 'cardNo', 'pgIds', 'cardTypeId', 'carTypeId', 'peopleId', 'cprtId', 'poolId', 'money', 'beginTime', 'remark'];
+    const changed = preserved.filter((key) => comparableDeliyunValue(verified[key]) !== comparableDeliyunValue(detail[key]));
+    if (verifiedEndDate !== input.endDate || changed.length)
       throw new ServiceUnavailableException('德立云已接受更新，但回读到期日不一致；请刷新核对，暂勿重复提交');
     return { vehicleId, plate, previousEndDate: input.previousEndDate, endDate: input.endDate, verified: true };
   }
@@ -510,14 +513,25 @@ export class DeliyunParkingService {
   }
 }
 
-export function buildDeliyunRenewalPayload(unitKey: string, vehicleId: string, endDate: string) {
+export function buildDeliyunRenewalPayload(detail: Record<string, unknown>, unitKey: string, vehicleId: string, endDate: string) {
   if (!isDateOnly(endDate)) throw new Error('DELIYUN_INVALID_END_DATE');
-  // 续期的业务边界只是修改到期日。车辆详情只用于写前校验，
-  // 不回传车牌、车位、授权、人员、计费、金额、开始日或备注。
+  // 德立云 updateCard 是完整编辑保存，不是 PATCH。按官方 H5 表单契约回传
+  // 刚读到的原字段，但只替换 endTime；不提交官方表单没有的 cardGroupId。
   return {
     unitKey,
     id: vehicleId,
+    plateNum: detail.plateNum,
+    cardNo: detail.cardNo,
+    pgIds: detail.pgIds,
+    cardTypeId: detail.cardTypeId,
+    carTypeId: detail.carTypeId,
+    peopleId: detail.peopleId,
+    cprtId: detail.cprtId,
+    poolId: detail.poolId,
+    money: detail.money,
+    beginTime: detail.beginTime,
     endTime: endOfDayEpoch(endDate),
+    remark: detail.remark,
   };
 }
 
@@ -624,10 +638,19 @@ export function deliyunFormBody(payload: Record<string, unknown>): URLSearchPara
   const body = new URLSearchParams();
   for (const [key, value] of Object.entries(payload)) {
     if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      // 德立云官方 H5 使用 jQuery 默认表单序列化，数组是 key[]=a&key[]=b。
+      for (const item of value) body.append(`${key}[]`, String(item));
+      continue;
+    }
     if (numericFields.has(key) && String(value).trim() === '') continue;
     body.set(key, String(value));
   }
   return body;
+}
+
+function comparableDeliyunValue(value: unknown) {
+  return Array.isArray(value) ? value.map(String).sort().join(',') : stringValue(value);
 }
 
 export function endOfDayEpoch(date: string) {

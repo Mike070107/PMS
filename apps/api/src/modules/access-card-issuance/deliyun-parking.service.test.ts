@@ -40,6 +40,9 @@ test('德立云表单不发送空的数字关联ID，车位号写入卡号', () 
   assert.equal(body.get('cardNo'), 'B01');
   assert.equal(body.get('remark'), '来自PMS');
   assert.equal(deliyunFormBody({ cprtId: 8, cardGroupId: '6', poolId: 0 }).get('cprtId'), '8');
+  const garages = deliyunFormBody({ pgIds: [27028, 27031] });
+  assert.deepEqual(garages.getAll('pgIds[]'), ['27028', '27031']);
+  assert.equal(garages.has('pgIds'), false);
 });
 
 test('人防换牌只改车牌，保留车库、用户、卡号、车位备注与原有效期', () => {
@@ -267,9 +270,16 @@ test('德立云续期重试发现目标日期已生效时直接按幂等成功�
   assert.equal(result.endDate, '2026-12-31');
 });
 
-test('德立云续期只提交到期日，不回传或改写其他车辆资料', () => {
-  assert.deepEqual(buildDeliyunRenewalPayload('project-key', 'vehicle-1', '2027-10-31'), {
-    unitKey: 'project-key', id: 'vehicle-1', endTime: endOfDayEpoch('2027-10-31'),
+test('德立云续期按完整编辑契约保留原值且只替换到期日', () => {
+  const detail = {
+    plateNum: '沪A12345', cardNo: 'C001', pgIds: [11, 12], cardTypeId: 2, carTypeId: 1,
+    peopleId: 19, cprtId: 8, cardGroupId: 6, poolId: '', money: 0, beginTime: 1790784000,
+    endTime: 1822320000, remark: '原备注', ignored: '不得提交',
+  };
+  assert.deepEqual(buildDeliyunRenewalPayload(detail, 'project-key', 'vehicle-1', '2027-10-31'), {
+    unitKey: 'project-key', id: 'vehicle-1', plateNum: '沪A12345', cardNo: 'C001', pgIds: [11, 12],
+    cardTypeId: 2, carTypeId: 1, peopleId: 19, cprtId: 8, poolId: '', money: 0,
+    beginTime: 1790784000, endTime: endOfDayEpoch('2027-10-31'), remark: '原备注',
   });
   assert.equal(endOfDayEpoch('2027-10-31'), 1824998399);
 });
