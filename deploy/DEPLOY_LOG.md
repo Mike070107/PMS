@@ -4912,3 +4912,10 @@
   - f905c9b5 fix(parking): limit deliyun renewal to end date
   - 1ff731ea feat(access-cards): add ACR122U issuance workflow
 
+## 2026-10-15 18:53 · api · db4e96d7
+
+- 包：`pms-api-fast-20261015-185306.tar.gz`
+- 提交：db4e96d7 fix(parking): match deliyun renewal edit contract
+- 自上次（13f912f3）以来上线的相关提交：
+  - db4e96d7 fix(parking): match deliyun renewal edit contract
+
