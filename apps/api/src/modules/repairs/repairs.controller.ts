@@ -38,6 +38,7 @@ import {
   UrgeRepairDto,
   UpdateMissingMaterialsDto,
   UpdateOfficeSuggestionSettingsDto,
+  UpdateWorkOrderDescriptionDto,
   UpdateWorkOrderIntakeDto,
   UpdateWorkOrderRepairTypeDto,
   UpdateWorkOrderAddressDto,
@@ -435,6 +436,18 @@ export class RepairsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.repairsService.updateWorkOrderIntake(id, dto, user, access);
+  }
+
+  /** 单独更正故障描述，并将原话 / 旧识别 / 人工结果写入 AI 纠错三联记录。 */
+  @Patch('work-orders/:id/description')
+  @RequirePermission('work-orders', 'edit')
+  updateWorkOrderDescription(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateWorkOrderDescriptionDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.repairsService.updateWorkOrderDescription(id, dto, user, access);
   }
 
   /** 后台更正工单类型；learnKeywords 同时写进新类型的判定关键词（自学习） */

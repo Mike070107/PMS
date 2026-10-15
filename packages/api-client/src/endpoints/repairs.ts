@@ -188,6 +188,16 @@ export const updateWorkOrderIntake = (id: number | string, data: UpdateWorkOrder
     data,
   });
 
+/** 单独更正故障描述；服务端保留原话并记录 AI 纠错三联数据。 */
+export const updateWorkOrderDescription = (
+  id: number | string,
+  data: { content: string; reason?: string },
+) => request<{ ok: true; content: string; learningRecorded: boolean }>({
+  method: 'PATCH',
+  url: `/work-orders/${id}/description`,
+  data,
+});
+
 /** 业主端提交报修（后端同时建 repair_request 与 work_order） */
 export const create = (data: RepairCreateReq) =>
   request<{ request: { id: number }; workOrder: { id: number; orderNo: string } }>({

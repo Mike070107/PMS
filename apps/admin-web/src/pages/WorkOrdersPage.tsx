@@ -2393,6 +2393,7 @@ function WorkOrderDetailDrawer({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [changeTypeOpen, setChangeTypeOpen] = useState(false);
   const [changeAddressOpen, setChangeAddressOpen] = useState(false);
+  const [changeDescriptionOpen, setChangeDescriptionOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [rollbackOpen, setRollbackOpen] = useState(false);
@@ -2610,8 +2611,13 @@ function WorkOrderDetailDrawer({
                         label: '故障描述',
                         span: 2,
                         children: (
-                          <Space direction="vertical" size={4}>
-                            <span>{detail.request.content}</span>
+                          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                            <Space size={6} wrap align="start">
+                              <span style={{ whiteSpace: 'pre-wrap' }}>{detail.request.content}</span>
+                              {canEdit ? (
+                                <Button type="link" size="small" onClick={() => setChangeDescriptionOpen(true)}>更正描述</Button>
+                              ) : null}
+                            </Space>
                             {detail.request.originalContent ? (
                               <>
                                 <Button
@@ -2855,6 +2861,14 @@ function WorkOrderDetailDrawer({
         currentText={detail?.request.addressText ?? ''}
         onClose={() => setChangeAddressOpen(false)}
         onDone={async () => { setChangeAddressOpen(false); await refresh(); }}
+      />
+      <ChangeDescriptionModal
+        open={changeDescriptionOpen}
+        workOrderId={id}
+        currentText={detail?.request.content ?? ''}
+        originalText={detail?.request.originalContent ?? ''}
+        onClose={() => setChangeDescriptionOpen(false)}
+        onDone={async () => { setChangeDescriptionOpen(false); await refresh(); }}
       />
       <ChangeTypeModal
         open={changeTypeOpen}
@@ -3199,6 +3213,110 @@ function ChangeAddressModal({
             placeholder="例如：语音识别把 24 号听成了 4 号"
           />
         </div>
+      </Space>
+    </Modal>
+  );
+}
+
+function ChangeDescriptionModal({
+  open, workOrderId, currentText, originalText, onClose, onDone,
+}: {
+  open: boolean;
+  workOrderId: number | null;
+  currentText: string;
+  originalText: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [content, setContent] = useState('');
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setContent(currentText);
+    setReason('');
+    setError('');
+  }, [open, currentText]);
+
+  const submit = async () => {
+    const next = content.trim();
+    if (next.length < 2) {
+      setError('请填写至少 2 个字的故障描述');
+      return;
+    }
+    if (next === currentText.trim()) {
+      setError('故障描述没有变化');
+      return;
+    }
+    setError('');
+    setSubmitting(true);
+    try {
+      const result = await request<{ learningRecorded: boolean }>({
+        method: 'PATCH',
+        url: `/work-orders/${workOrderId}/description`,
+        data: { content: next, reason: reason.trim() || undefined },
+      });
+      message.success(
+        result.learningRecorded
+          ? '故障描述已更正，人工纠错已记入 AI 学习队列'
+          : '故障描述已更正，但 AI 学习记录未写入，请联系管理员查看日志',
+      );
+      onDone();
+    } catch (e: any) {
+      setError(e?.message || '更正失败，请稍后重试');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title="更正故障描述"
+      okText="确认更正"
+      okButtonProps={{ loading: submitting }}
+      onOk={submit}
+      onCancel={onClose}
+      destroyOnHidden
+      width={640}
+    >
+      <Space direction="vertical" size={14} style={{ width: '100%' }}>
+        {originalText ? (
+          <div>
+            <Text type="secondary">原始报修内容</Text>
+            <div style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{originalText}</div>
+          </div>
+        ) : null}
+        <div>
+          <label htmlFor="work-order-description"><Text type="secondary">更正后的故障描述</Text></label>
+          <TextArea
+            id="work-order-description"
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            rows={5}
+            maxLength={2000}
+            showCount
+            status={error ? 'error' : undefined}
+            aria-describedby={error ? 'work-order-description-error' : undefined}
+          />
+          {error ? <Text id="work-order-description-error" type="danger">{error}</Text> : null}
+        </div>
+        <div>
+          <label htmlFor="work-order-description-reason"><Text type="secondary">更正原因（选填，会写入工单进度）</Text></label>
+          <Input
+            id="work-order-description-reason"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            maxLength={200}
+            placeholder="例如：AI 遗漏了 IC 卡开权信息"
+          />
+        </div>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          保存后会保留原始报修原话，并把本次人工纠错记入 AI 学习队列。
+        </Text>
       </Space>
     </Modal>
   );
@@ -4692,13 +4810,11 @@ function AssignModal({
   const [availableTechnicians, setAvailableTechnicians] = useState<TechnicianOption[]>(technicians);
   const selectedSkill = Form.useWatch('skill', form) as string | undefined;
   const selectedAssigneeId = Form.useWatch('assigneeId', form) as number | undefined;
-  const selectedRule = repairTypeRules.find((rule) => rule.repairType === selectedSkill);
-  const eligibleTechnicians = (selectedSkill
-    ? availableTechnicians.filter((technician) =>
-        technician.skills?.includes(selectedSkill) || selectedRule?.assigneeIds?.includes(technician.id),
-      )
-    : availableTechnicians
-  ).slice().sort((a, b) => a.openCount - b.openCount || a.id - b.id);
+  // 人员匹配以后端“工种技能 + 该管理处默认维修工”的结果为准。
+  // 端上只有公开类型列表，既不该也无法自己重建派单规则。
+  const eligibleTechnicians = availableTechnicians
+    .slice()
+    .sort((a, b) => a.openCount - b.openCount || a.id - b.id);
   const selectedTechnician = eligibleTechnicians.find((item) => item.id === selectedAssigneeId);
 
   useEffect(() => {
@@ -4709,15 +4825,20 @@ function AssignModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setAvailableTechnicians(technicians);
+    setAvailableTechnicians(selectedSkill ? [] : technicians);
     request<TechnicianOption[]>({
       url: '/work-orders/technicians',
-      query: communityId ? { communityId } : {},
+      query: {
+        ...(communityId ? { communityId } : {}),
+        ...(selectedSkill ? { skill: selectedSkill } : {}),
+      },
     })
       .then((items) => { if (!cancelled) setAvailableTechnicians(items); })
-      .catch(() => { /* 后端保存时还会再次校验范围；加载失败时保留原列表 */ });
+      .catch(() => {
+        if (!cancelled) setAvailableTechnicians(selectedSkill ? [] : technicians);
+      });
     return () => { cancelled = true; };
-  }, [open, communityId, technicians]);
+  }, [open, communityId, selectedSkill, technicians]);
 
   const onOk = async () => {
     const v = await form.validateFields();

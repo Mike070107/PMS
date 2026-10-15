@@ -265,6 +265,18 @@ export class UpdateWorkOrderIntakeDto {
   reason?: string;
 }
 
+/** 单独更正故障描述；保留原始报修原话，并将人工纠错送入 AI 学习链路。 */
+export class UpdateWorkOrderDescriptionDto {
+  @IsString()
+  @MaxLength(2000)
+  content: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+}
+
 /** 设定/取消工单的要求完成截止时间；不传 slaDueAt = 取消 */
 export class UpdateWorkOrderSlaDto {
   @IsOptional()

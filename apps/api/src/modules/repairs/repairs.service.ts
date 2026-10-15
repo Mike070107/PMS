@@ -116,6 +116,7 @@ import {
   RollbackWorkOrderDto,
   UpdateMissingMaterialsDto,
   UpdateOfficeSuggestionSettingsDto,
+  UpdateWorkOrderDescriptionDto,
   UpdateWorkOrderIntakeDto,
   UpdateWorkOrderRepairTypeDto,
   UpdateWorkOrderAddressDto,
@@ -6922,6 +6923,75 @@ export class RepairsService implements OnModuleInit {
       repairType,
       candidateCount: candidates.length,
     };
+  }
+
+  async updateWorkOrderDescription(
+    id: number,
+    dto: UpdateWorkOrderDescriptionDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.resolveTenantId(user);
+    const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
+    if (!workOrder) throw new NotFoundException('work order not found');
+    this.assertWorkOrderScope(workOrder, access);
+    const lockReason = workOrderAddressLockReason(workOrder.status);
+    if (lockReason) throw new BadRequestException(lockReason.replace(/地址/g, '故障描述'));
+    const request = await this.repairRequestRepo.findOne({
+      where: { id: workOrder.requestId, tenantId },
+    });
+    if (!request) throw new NotFoundException('repair request not found');
+    const content = dto.content?.trim();
+    if (!content || content.length < 2) throw new BadRequestException('请填写至少 2 个字的故障描述');
+    if (content === request.content.trim()) throw new BadRequestException('故障描述没有变化');
+
+    const before = request.content;
+    const sourceText = request.originalContent?.trim() || before;
+    await this.dataSource.transaction(async (manager) => {
+      if (!request.originalContent) request.originalContent = before;
+      request.content = content;
+      request.updatedBy = user.id;
+      await manager.save(RepairRequest, request);
+      workOrder.updatedBy = user.id;
+      await manager.save(WorkOrder, workOrder);
+      const reason = dto.reason?.trim();
+      await this.writeLog(
+        manager,
+        workOrder,
+        workOrder.status,
+        'change_description',
+        user.id,
+        `故障描述由「${before}」更正为「${content}」${reason ? `；原因：${reason}` : ''}`,
+      );
+    });
+
+    let learningRecorded = false;
+    try {
+      const cfg = await this.settings.getAiAssistRaw(tenantId);
+      const common = {
+        addressText: request.addressText || '',
+        contactName: request.contactName || '',
+        phone: request.contactPhone || '',
+        repairType: request.repairType || '',
+        urgent: !!request.urgent,
+        publicArea: !request.houseId,
+      };
+      const feedback = await this.aiFeedback.record(tenantId, {
+        kind: 'repair',
+        workOrderId: workOrder.id,
+        sourceText,
+        draft: { ...common, description: before },
+        finalValue: { ...common, description: content },
+        model: cfg.model,
+        userId: user.id,
+      });
+      learningRecorded = !!feedback;
+    } catch (error) {
+      this.logger.warn(
+        `故障描述 AI 纠错记录失败（不影响工单）：${error instanceof Error ? error.message : error}`,
+      );
+    }
+    return { ok: true as const, content, learningRecorded };
   }
 
   async updateWorkOrderRepairType(
