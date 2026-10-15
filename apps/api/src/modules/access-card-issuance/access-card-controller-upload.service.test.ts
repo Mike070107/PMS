@@ -4,6 +4,42 @@ import { AccessCardIssuanceService, sanitizeParkingMovementRows } from './access
 
 const user = { id: 7, tenantId: 3 } as never;
 
+test('多楼栋结果保留已成功楼栋，只重试失败楼栋', () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const merge = (service as unknown as {
+    mergeAuthorizationResults: (operation: 'controller_upload', previous: Array<Record<string, unknown>>, current: Array<Record<string, unknown>>) => Array<Record<string, unknown>>;
+  }).mergeAuthorizationResults.bind(service);
+  const first = merge('controller_upload', [], [
+    { buildingId: 26, buildingNo: '26', status: 'controller_uploaded' },
+    { buildingId: 20, buildingNo: '20', status: 'controller_failed', error: '离线' },
+  ]);
+  const second = merge('controller_upload', first, [
+    { buildingId: 20, buildingNo: '20', status: 'controller_uploaded' },
+  ]);
+  assert.deepEqual(second.map((row) => [row.buildingNo, row.status]), [
+    ['26', 'controller_uploaded'],
+    ['20', 'controller_uploaded'],
+  ]);
+});
+
+test('撤销权限保留已完成楼栋，只重试控制器或数据库未确认的楼栋', () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const merge = (service as unknown as {
+    mergeAuthorizationResults: (operation: 'controller_revoke', previous: Array<Record<string, unknown>>, current: Array<Record<string, unknown>>) => Array<Record<string, unknown>>;
+  }).mergeAuthorizationResults.bind(service);
+  const first = merge('controller_revoke', [], [
+    { buildingId: 26, buildingNo: '26', status: 'controller_removed' },
+    { buildingId: 20, buildingNo: '20', status: 'controller_failed', error: '门禁数据库回读失败' },
+  ]);
+  const second = merge('controller_revoke', first, [
+    { buildingId: 20, buildingNo: '20', status: 'controller_removed' },
+  ]);
+  assert.deepEqual(second.map((row) => [row.buildingNo, row.status]), [
+    ['26', 'controller_removed'],
+    ['20', 'controller_removed'],
+  ]);
+});
+
 function houseContext(accessStatus: string) {
   return {
     house: {
@@ -73,6 +109,115 @@ test('未下发历史卡会创建本楼栋控制器下发任务', async () => {
   assert.deepEqual(queued[0]!.targetBuildings, [
     { id: 5, buildingNo: '5', accessSystem: 'mjsystem' },
   ]);
+});
+
+test('iCCard 远程开门只对选中的单栋建立独立任务', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  state.authorizationRepo = { findOne: async () => null };
+  const context = houseContext('not_uploaded');
+  context.availableBuildings.push({ id: 11, buildingNo: '11', accessSystem: 'iccard', routeReady: true });
+  state.getHouseContext = async () => context;
+  state.agentRepo = { find: async () => [{
+    agentKey: 'access-gateway', kind: 'access_gateway', enabled: true, version: '2.5.43',
+    status: 'online', lastSeenAt: new Date(), capabilities: { remoteDoorControl: true },
+  }] };
+  const queued: Array<Record<string, unknown>> = [];
+  state.enqueueHistoryAuthorization = async (input: Record<string, unknown>) => { queued.push(input); return { status: 'pending' }; };
+
+  await service.createDoorOperation(10, {
+    buildingId: 11, operation: 'temporary_open', durationSeconds: 1800,
+    idempotencyKey: 'door-open-building-11',
+  }, user);
+
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0]!.historyId, 0);
+  assert.equal(queued[0]!.wgCardNo, '__door_operation__');
+  assert.equal(queued[0]!.durationSeconds, 1800);
+  assert.deepEqual(queued[0]!.targetBuildings, [{ id: 11, buildingNo: '11', accessSystem: 'iccard' }]);
+});
+
+test('历史卡取消勾选只为真实已有权限的楼栋创建撤销任务', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  state.authorizationRepo = { findOne: async () => null };
+  const context = houseContext('controller_uploaded');
+  (context.history[0] as unknown as { controllerResults: Array<Record<string, unknown>> }).controllerResults = [{
+    buildingNo: '9', accessSystem: 'mjsystem', controller: '9号楼控制器', door: '9号楼大门',
+  }];
+  state.getHouseContext = async () => context;
+  state.agentRepo = { find: async () => [{
+    agentKey: 'access-gateway', kind: 'access_gateway', enabled: true, version: '2.5.44',
+    status: 'online', lastSeenAt: new Date(), capabilities: {
+      accessDbWrite: true, controllerUpload: true, historicalAccessGrant: true,
+    },
+  }] };
+  const queued: Array<Record<string, unknown>> = [];
+  state.enqueueHistoryAuthorization = async (input: Record<string, unknown>) => { queued.push(input); return { status: 'pending' }; };
+
+  await service.revokeHistoryAuthorization(10, -11251, {
+    targetBuildingIds: [9], idempotencyKey: 'revoke-building-9',
+  }, user);
+
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0]!.operation, 'controller_revoke');
+  assert.deepEqual(queued[0]!.targetBuildings, [{ id: 9, buildingNo: '9', accessSystem: 'mjsystem' }]);
+  await assert.rejects(
+    service.revokeHistoryAuthorization(10, -11251, {
+      targetBuildingIds: [5], idempotencyKey: 'revoke-never-authorized-building-5',
+    }, user),
+    /没有 5号楼 权限/,
+  );
+});
+
+test('旧版助手不允许重试撤销权限任务', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  const task = {
+    id: 81, tenantId: 3, houseId: 10, historyRowId: -11251, operation: 'controller_revoke',
+    status: 'failed', attempt: 1, controllerResults: [], completedAt: new Date(),
+    leaseAgentKey: null, leaseExpiresAt: null, lastError: '旧任务失败', updatedBy: null,
+  };
+  const query = {
+    where: () => query, andWhere: () => query, getOne: async () => null,
+  };
+  state.authorizationRepo = { findOne: async () => task, createQueryBuilder: () => query };
+  state.resolveHouse = async () => ({ id: 10 });
+  state.agentRepo = { find: async () => [{
+    agentKey: 'access-gateway', kind: 'access_gateway', enabled: true, version: '2.5.43',
+    status: 'online', lastSeenAt: new Date(), capabilities: {
+      accessDbWrite: true, controllerUpload: true, historicalAccessGrant: true,
+    },
+  }] };
+
+  await assert.rejects(service.retryHistoryAuthorization(81, user), /2\.5\.44/);
+});
+
+test('旧版助手不会领取已排队的撤销权限任务', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  const clauses: string[] = [];
+  const query = {
+    where: (clause: string) => { clauses.push(clause); return query; },
+    andWhere: (clause: string) => { clauses.push(clause); return query; },
+    orderBy: () => query,
+    setLock: () => query,
+    setOnLocked: () => query,
+    getOne: async () => null,
+  };
+  state.authenticateAgent = async () => ({
+    agentKey: 'access-gateway', tenantId: 3, kind: 'access_gateway', version: '2.5.43',
+    capabilities: { historicalAccessGrant: true },
+  });
+  state.authorizationRepo = {
+    manager: {
+      transaction: async (callback: (manager: { getRepository: () => { createQueryBuilder: () => typeof query } }) => Promise<unknown>) =>
+        callback({ getRepository: () => ({ createQueryBuilder: () => query }) }),
+    },
+  };
+
+  assert.deepEqual(await service.claimHistoryAuthorization('access-gateway', 'token'), { task: null });
+  assert.equal(clauses.some((clause) => clause.includes('task.operation <>')), true);
 });
 
 test('已有权限的历史卡不会重复上传', async () => {

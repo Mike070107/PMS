@@ -294,6 +294,25 @@ export class CreateAccessCardControllerUploadDto {
   idempotencyKey: string;
 }
 
+export class CreateAccessDoorOperationDto {
+  @Type(() => Number)
+  @IsInt()
+  buildingId: number;
+
+  @IsIn(['controller_detect', 'remote_open', 'temporary_open'])
+  operation: 'controller_detect' | 'remote_open' | 'temporary_open';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  durationSeconds?: number;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
+  idempotencyKey: string;
+}
+
 export class AccessCardAuthorizationReportDto {
   @Type(() => Number)
   @IsInt()

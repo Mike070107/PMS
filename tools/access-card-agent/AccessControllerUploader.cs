@@ -20,6 +20,7 @@ namespace Pms.AccessCardAgent
         public string door { get; set; }
         public string protocol { get; set; }
         public string acknowledgement { get; set; }
+        public string error { get; set; }
     }
 
     /**
@@ -45,10 +46,163 @@ namespace Pms.AccessCardAgent
             var mjTargets = task.targetBuildings.Where(item => item.accessSystem == "mjsystem").ToArray();
 
             if (icTargets.Length > 0)
-                results.AddRange(UploadIcCard(config, password, task, icTargets));
+            {
+                try { results.AddRange(UploadIcCard(config, password, task, icTargets)); }
+                catch (Exception exception) { results.AddRange(FailedResults(icTargets, "iccard", exception, false)); }
+            }
             if (mjTargets.Length > 0)
-                results.AddRange(RunMjSystemSta(delegate { return UploadMjSystem(config, task, mjTargets).ToArray(); }));
+            {
+                try { results.AddRange(RunMjSystemSta(delegate { return UploadMjSystem(config, task, mjTargets).ToArray(); })); }
+                catch (Exception exception) { results.AddRange(FailedResults(mjTargets, "mjsystem", exception, false)); }
+            }
             return results.ToArray();
+        }
+
+        public static object[] Revoke(AgentConfig config, string password, AgentTask task)
+        {
+            if (task == null) throw new ArgumentNullException("task");
+            var results = new List<object>();
+            var icTargets = task.targetBuildings.Where(item => item.accessSystem == "iccard").ToArray();
+            var mjTargets = task.targetBuildings.Where(item => item.accessSystem == "mjsystem").ToArray();
+            if (icTargets.Length > 0)
+            {
+                try { results.AddRange(RevokeIcCard(config, password, task, icTargets)); }
+                catch (Exception exception) { results.AddRange(FailedResults(icTargets, "iccard", exception, true)); }
+            }
+            if (mjTargets.Length > 0)
+            {
+                try { results.AddRange(RunMjSystemSta(delegate { return RevokeMjSystem(config, task, mjTargets).ToArray(); })); }
+                catch (Exception exception) { results.AddRange(FailedResults(mjTargets, "mjsystem", exception, true)); }
+            }
+            return results.ToArray();
+        }
+
+        public static object[] ExecuteDoorOperation(AgentConfig config, string password, AgentTask task)
+        {
+            if (task == null) throw new ArgumentNullException("task");
+            if (task.targetBuildings == null || task.targetBuildings.Length != 1)
+                throw new InvalidOperationException("远程开门每次只允许选择一个楼栋");
+            var target = task.targetBuildings[0];
+            if (!String.Equals(target.accessSystem, "iccard", StringComparison.OrdinalIgnoreCase))
+                return new object[] { DoorOperationFailed(target,
+                    "MjSystem 远程开门命令尚未完成现场协议验证，本次未向控制器发送任何命令") };
+            try
+            {
+                string dllPath;
+                if (!TryFindWgComm(config, out dllPath))
+                    throw new FileNotFoundException("找不到原门禁通信组件 iCCard-WGComm.dll，请确认 iCCard 安装目录完整");
+                var vendor = new WgCommVendor(dllPath);
+                using (var connection = Open(config.IcCardDatabasePath, password))
+                {
+                    var doorId = IcCardDoor(connection, target.buildingNo);
+                    var record = ReadIcCardDoorRecord(connection, doorId);
+                    var function = BuildIcCardDoorOperationFunction(task.operation, record.DoorNo, record.DoorDelay);
+                    var frame = vendor.BuildOldControllerFrame(record.ControllerSn, function);
+                    string response;
+                    var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response);
+                    if (result != 0 || String.IsNullOrWhiteSpace(response) ||
+                        String.Equals(response.Trim(), frame.Trim(), StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(target.buildingNo + "号楼控制器未确认命令（" +
+                            record.IpAddress + ":" + record.Port + "，返回码 " + result.ToString(CultureInfo.InvariantCulture) + "）");
+                    return new object[] { new AccessControllerUploadResult
+                    {
+                        buildingId = target.id, buildingNo = target.buildingNo, accessSystem = "iccard",
+                        status = DoorOperationSuccessStatus(task.operation),
+                        controller = record.ControllerName + " / SN " + record.ControllerSn,
+                        door = record.DoorName, protocol = "iCCard 0x7E / UDP",
+                        acknowledgement = "控制器已确认，响应 " + Limit(response, 80)
+                    } };
+                }
+            }
+            catch (Exception exception) { return new object[] { DoorOperationFailed(target, exception.Message) }; }
+        }
+
+        internal static string BuildIcCardDoorOperationFunction(string operation, long doorNo, long doorDelay)
+        {
+            if (doorNo < 1 || doorNo > 255) throw new InvalidOperationException("iCCard 门号超出协议范围");
+            var door = doorNo.ToString("X2", CultureInfo.InvariantCulture);
+            // 旧程序“总控制台”用 F110 + (26 + 门序号 - 1) 读取门状态；
+            // 8110 还需要控制器当前记录索引，不适合只做在线检测。
+            if (String.Equals(operation, "controller_detect", StringComparison.OrdinalIgnoreCase))
+                return "F110" + (doorNo + 25L).ToString("X2", CultureInfo.InvariantCulture) + "00";
+            if (String.Equals(operation, "remote_open", StringComparison.OrdinalIgnoreCase)) return "9D10" + door + "01";
+            if (String.Equals(operation, "temporary_open", StringComparison.OrdinalIgnoreCase))
+                return "8F10" + door + "01" + (doorDelay * 10L).ToString("X4", CultureInfo.InvariantCulture);
+            if (String.Equals(operation, "restore_normal", StringComparison.OrdinalIgnoreCase))
+                return "8F10" + door + "03" + (doorDelay * 10L).ToString("X4", CultureInfo.InvariantCulture);
+            throw new InvalidOperationException("不支持的门禁操作：" + operation);
+        }
+
+        /**
+         * 旧 iCCard 的“删除单卡门权限”不是新增命令 0711 的子命令。
+         * 原程序 dfrmPrivilegeUpdate.uploadDeleted 实际构造 0811 + 序号 + 卡号 + 门号。
+         */
+        internal static string BuildIcCardDeleteFunction(long cardNo, long doorNo, int sequence)
+        {
+            var cardWithinGroup = cardNo % 100000L;
+            var cardGroup = cardNo / 100000L;
+            if (cardNo < 0 || cardWithinGroup > 65535L || cardGroup > 255L)
+                throw new InvalidOperationException("WG 卡号不符合旧 iCCard 控制器规则");
+            if (doorNo < 1 || doorNo > 255) throw new InvalidOperationException("iCCard 门号超出协议范围");
+            if (sequence < 1 || sequence > 65535) throw new InvalidOperationException("iCCard 撤销序号超出协议范围");
+            return "0811" + sequence.ToString("X4", CultureInfo.InvariantCulture) +
+                cardWithinGroup.ToString("X4", CultureInfo.InvariantCulture) +
+                cardGroup.ToString("X2", CultureInfo.InvariantCulture) +
+                doorNo.ToString("X2", CultureInfo.InvariantCulture);
+        }
+
+        private static string DoorOperationSuccessStatus(string operation)
+        {
+            if (operation == "controller_detect") return "controller_detected";
+            if (operation == "remote_open") return "door_opened";
+            if (operation == "temporary_open") return "door_held_open";
+            if (operation == "restore_normal") return "door_restored";
+            return "controller_failed";
+        }
+
+        private static AccessControllerUploadResult DoorOperationFailed(AccessTargetBuilding target, string error)
+        {
+            return new AccessControllerUploadResult { buildingId = target.id, buildingNo = target.buildingNo,
+                accessSystem = target.accessSystem, status = "controller_failed", error = error };
+        }
+
+        public static bool HasDoorOperationFailures(string operation, object[] results)
+        {
+            var expected = DoorOperationSuccessStatus(operation);
+            return (results ?? new object[0]).OfType<AccessControllerUploadResult>()
+                .Any(item => !String.Equals(item.status, expected, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public static string DoorOperationFailureMessage(object[] results)
+        {
+            var failures = (results ?? new object[0]).OfType<AccessControllerUploadResult>()
+                .Where(item => String.Equals(item.status, "controller_failed", StringComparison.OrdinalIgnoreCase))
+                .Select(item => item.buildingNo + "号楼：" + (item.error ?? "控制器操作失败")).ToArray();
+            return failures.Length == 0 ? null : String.Join("；", failures);
+        }
+
+        public static string DoorOperationLabel(string operation)
+        {
+            if (operation == "controller_detect") return "检测门禁控制器";
+            if (operation == "remote_open") return "远程开门";
+            if (operation == "temporary_open") return "临时常开";
+            if (operation == "restore_normal") return "恢复门禁正常状态";
+            return "门禁操作";
+        }
+
+        private static IEnumerable<object> FailedResults(
+            IEnumerable<AccessTargetBuilding> targets, string accessSystem, Exception exception, bool removal)
+        {
+            foreach (var target in targets ?? Enumerable.Empty<AccessTargetBuilding>())
+                yield return removal
+                    ? (object)RemoveFailedResult(target, accessSystem, exception)
+                    : FailedResult(target, accessSystem, exception);
+        }
+
+        internal static object[] FailedResultsForTest(
+            IEnumerable<AccessTargetBuilding> targets, string accessSystem, Exception exception)
+        {
+            return FailedResults(targets, accessSystem, exception, false).ToArray();
         }
 
         /** 现场故障路径验收：只向指定 MjSystem 门控制器发送已存在的测试卡。 */
@@ -166,8 +320,9 @@ namespace Pms.AccessCardAgent
                     var cardProtocol = ResolveMjSystemCardProtocol(config.MjSystemDatabasePath);
                     foreach (var target in targets)
                     {
-                        foreach (var doorId in MjSystemDoors(connection, target.buildingNo))
+                        try
                         {
+                            var doorId = MjSystemDoor(connection, target.buildingNo);
                             var record = ReadMjSystemUploadRecord(connection, task.wgCardNo, doorId);
                             var frame = vendor.BuildPermissionCommand(record, 1, cardProtocol);
                             string response;
@@ -178,13 +333,9 @@ namespace Pms.AccessCardAgent
                                 frame,
                                 IsMjSystemSerial(record.CommMode) ? cardProtocol : null,
                                 out response);
-                            if (result != 0)
-                            {
-                                throw new InvalidOperationException(
+                            if (result != 0) throw new InvalidOperationException(
                                     target.buildingNo + "号楼控制器通信失败（" + record.ControllerName + " / " + record.CommMode + "）：" +
                                     DescribeMjSystemError(result, response));
-                            }
-
                             output.Add(new AccessControllerUploadResult
                             {
                                 buildingId = target.id,
@@ -196,6 +347,10 @@ namespace Pms.AccessCardAgent
                                 protocol = "MjSystem 原生 SDK 0x9E / " + record.CommMode,
                                 acknowledgement = String.IsNullOrWhiteSpace(response) ? "控制器已确认" : "控制器已确认，响应 " + Limit(response, 80)
                             });
+                        }
+                        catch (Exception exception)
+                        {
+                            output.Add(FailedResult(target, "mjsystem", exception));
                         }
                     }
                 }
@@ -223,19 +378,16 @@ namespace Pms.AccessCardAgent
             {
                 foreach (var target in targets)
                 {
-                    foreach (var doorId in IcCardDoors(connection, target.buildingNo))
+                    try
                     {
+                        var doorId = IcCardDoor(connection, target.buildingNo);
                         var record = ReadIcCardUploadRecord(connection, task.wgCardNo, doorId);
                         var frame = vendor.BuildOldAddFrame(record, 1);
                         string response;
                         var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response);
-                        if (result != 0)
-                        {
-                            throw new InvalidOperationException(
+                        if (result != 0) throw new InvalidOperationException(
                                 target.buildingNo + "号楼控制器未确认接收（" + record.IpAddress + ":" + record.Port +
                                 "，返回码 " + result.ToString(CultureInfo.InvariantCulture) + "）。请检查控制器供电和网络后重试");
-                        }
-
                         output.Add(new AccessControllerUploadResult
                         {
                             buildingId = target.id,
@@ -248,9 +400,99 @@ namespace Pms.AccessCardAgent
                             acknowledgement = String.IsNullOrWhiteSpace(response) ? "控制器已确认" : "控制器已确认，响应 " + Limit(response, 80)
                         });
                     }
+                    catch (Exception exception)
+                    {
+                        output.Add(FailedResult(target, "iccard", exception));
+                    }
                 }
             }
             return output;
+        }
+
+        private static IEnumerable<object> RevokeMjSystem(AgentConfig config, AgentTask task, AccessTargetBuilding[] targets)
+        {
+            string sdkPath;
+            if (!TryFindMjSystemSdk(config, out sdkPath))
+                throw new FileNotFoundException("找不到 MjSystem 原生通信组件 ECardDerviceSDKMJ.dll，请确认 MjSystem 安装目录完整");
+            var vendor = new MjSystemVendor(sdkPath);
+            var output = new List<object>();
+            try
+            {
+                using (var connection = OpenMjSystem(config.MjSystemDatabasePath))
+                {
+                    var cardProtocol = ResolveMjSystemCardProtocol(config.MjSystemDatabasePath);
+                    foreach (var target in targets)
+                    {
+                        try
+                        {
+                            var doorId = MjSystemDoor(connection, target.buildingNo);
+                            var record = ReadMjSystemUploadRecord(connection, task.wgCardNo, doorId);
+                            var frame = vendor.BuildPermissionRemovalCommand(record, 1, cardProtocol);
+                            string response;
+                            var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame,
+                                IsMjSystemSerial(record.CommMode) ? cardProtocol : null, out response);
+                            if (result != 0) throw new InvalidOperationException(
+                                target.buildingNo + "号楼控制器撤销失败（" + record.ControllerName + " / " + record.CommMode + "）：" +
+                                DescribeMjSystemError(result, response));
+                            output.Add(RemovedResult(target, "mjsystem", record, response, "MjSystem 原生 SDK 0x9E / " + record.CommMode));
+                        }
+                        catch (Exception exception) { output.Add(RemoveFailedResult(target, "mjsystem", exception)); }
+                    }
+                }
+            }
+            finally { vendor.Dispose(); }
+            return output;
+        }
+
+        private static IEnumerable<object> RevokeIcCard(AgentConfig config, string password, AgentTask task, AccessTargetBuilding[] targets)
+        {
+            string dllPath;
+            if (!TryFindWgComm(config, out dllPath))
+                throw new FileNotFoundException("找不到原门禁通信组件 iCCard-WGComm.dll，请确认 iCCard 安装目录完整");
+            var vendor = new WgCommVendor(dllPath);
+            var output = new List<object>();
+            using (var connection = Open(config.IcCardDatabasePath, password))
+            {
+                foreach (var target in targets)
+                {
+                    try
+                    {
+                        var doorId = IcCardDoor(connection, target.buildingNo);
+                        var record = ReadIcCardUploadRecord(connection, task.wgCardNo, doorId);
+                        var frame = vendor.BuildOldDeleteFrame(record, 1);
+                        string response;
+                        var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response);
+                        if (result != 0) throw new InvalidOperationException(
+                            target.buildingNo + "号楼控制器撤销失败（" + record.IpAddress + ":" + record.Port +
+                            "，返回码 " + result.ToString(CultureInfo.InvariantCulture) + "）");
+                        output.Add(RemovedResult(target, "iccard", record, response, "iCCard 0x7E / UDP"));
+                    }
+                    catch (Exception exception) { output.Add(RemoveFailedResult(target, "iccard", exception)); }
+                }
+            }
+            return output;
+        }
+
+        private static AccessControllerUploadResult RemovedResult(
+            AccessTargetBuilding target, string accessSystem, ControllerUploadRecord record, string response, string protocol)
+        {
+            return new AccessControllerUploadResult
+            {
+                buildingId = target.id, buildingNo = target.buildingNo, accessSystem = accessSystem,
+                status = "controller_removed", controller = record.ControllerName + " / SN " +
+                    (String.IsNullOrWhiteSpace(record.ControllerSnText) ? record.ControllerSn.ToString(CultureInfo.InvariantCulture) : record.ControllerSnText),
+                door = record.DoorName, protocol = protocol,
+                acknowledgement = String.IsNullOrWhiteSpace(response) ? "控制器已确认删除" : "控制器已确认删除，响应 " + Limit(response, 80)
+            };
+        }
+
+        private static AccessControllerUploadResult RemoveFailedResult(AccessTargetBuilding target, string accessSystem, Exception exception)
+        {
+            return new AccessControllerUploadResult
+            {
+                buildingId = target.id, buildingNo = target.buildingNo, accessSystem = accessSystem,
+                status = "controller_remove_failed", error = exception.Message
+            };
         }
 
         private static ControllerUploadRecord ReadIcCardUploadRecord(OleDbConnection connection, string cardNo, int doorId)
@@ -278,6 +520,35 @@ namespace Pms.AccessCardAgent
                         EndDate = Convert.ToDateTime(reader["f_EndYMD"], CultureInfo.InvariantCulture),
                         ControlSegmentId = Convert.ToInt64(reader["f_ControlSegID"], CultureInfo.InvariantCulture),
                         Password = reader["f_Password"] == DBNull.Value ? 0L : Convert.ToInt64(reader["f_Password"], CultureInfo.InvariantCulture),
+                        ControllerSn = Convert.ToInt64(reader["f_ControllerSN"], CultureInfo.InvariantCulture),
+                        ControllerName = Convert.ToString(reader["f_ControllerName"], CultureInfo.InvariantCulture),
+                        CommMode = Convert.ToString(reader["f_ComPort"], CultureInfo.InvariantCulture),
+                        IpAddress = Convert.ToString(reader["f_IP"], CultureInfo.InvariantCulture),
+                        Port = Convert.ToInt32(reader["f_PORT"], CultureInfo.InvariantCulture),
+                        DoorName = Convert.ToString(reader["f_DoorName"], CultureInfo.InvariantCulture)
+                    };
+                }
+            }
+        }
+
+        private static ControllerUploadRecord ReadIcCardDoorRecord(OleDbConnection connection, int doorId)
+        {
+            const string sql =
+                "SELECT TOP 1 D.f_DoorNO,D.f_DoorName,D.f_DoorDelay," +
+                "C.f_ControllerSN,C.f_ControllerName,C.f_ComPort,C.f_IP,C.f_PORT " +
+                "FROM t_b_Door AS D INNER JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID " +
+                "WHERE D.f_DoorID=?";
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = sql;
+                command.Parameters.AddWithValue("@door", doorId);
+                using (var reader = command.ExecuteReader())
+                {
+                    if (!reader.Read()) throw new InvalidOperationException("iCCard 数据库中找不到选中的实体门");
+                    return new ControllerUploadRecord
+                    {
+                        DoorNo = Convert.ToInt64(reader["f_DoorNO"], CultureInfo.InvariantCulture),
+                        DoorDelay = reader["f_DoorDelay"] == DBNull.Value ? 5L : Convert.ToInt64(reader["f_DoorDelay"], CultureInfo.InvariantCulture),
                         ControllerSn = Convert.ToInt64(reader["f_ControllerSN"], CultureInfo.InvariantCulture),
                         ControllerName = Convert.ToString(reader["f_ControllerName"], CultureInfo.InvariantCulture),
                         CommMode = Convert.ToString(reader["f_ComPort"], CultureInfo.InvariantCulture),
@@ -539,11 +810,39 @@ namespace Pms.AccessCardAgent
             return arguments;
         }
 
-        private static string[] MjSystemDoors(OleDbConnection connection, string buildingNo)
+        internal static object[] BuildMjSystemPermissionRemovalArguments(
+            string controllerSn,
+            string employeeId,
+            long cardNo,
+            int sequence,
+            DateTime beginDate,
+            DateTime endDate,
+            long controlSegmentId,
+            string doorPassword,
+            string employeeName,
+            string cardProtocol)
+        {
+            var arguments = BuildMjSystemPermissionArguments(
+                controllerSn, employeeId, cardNo, sequence, beginDate, endDate,
+                controlSegmentId, doorPassword, employeeName, cardProtocol);
+            // IISSystem 4.02.1307 的 frmMacPower.DelePower 使用 1E，并在成功后删除 MJ_MacPower。
+            arguments[0] = "1E";
+            return arguments;
+        }
+
+        internal static void ValidateMjSystemPermissionRemovalCommand(string command)
+        {
+            var normalized = (command ?? "").Trim();
+            // ECardDerviceSDKMJ 2.07.0003 返回：9E01 + 两字节控制器序列号 + 功能码。
+            if (normalized.Length < 12 || !normalized.StartsWith("9E01", StringComparison.OrdinalIgnoreCase) ||
+                !String.Equals(normalized.Substring(8, 2), "1E", StringComparison.OrdinalIgnoreCase) ||
+                !normalized.EndsWith("9D", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("MjSystem 原生 SDK 返回的不是 1E 撤销权限命令，本次未发送");
+        }
+
+        private static string MjSystemDoor(OleDbConnection connection, string buildingNo)
         {
             var normalized = NormalizeBuilding(buildingNo);
-            if (normalized == "3") return new[] { "M0041-1" };
-            if (normalized == "26") return new[] { "M0038-1", "M0003-1", "M0030-1" };
             var matches = new List<string>();
             const string sql =
                 "SELECT D.cDoorId,D.vDoorName,M.vExposition " +
@@ -564,12 +863,10 @@ namespace Pms.AccessCardAgent
                 }
             }
             var doors = matches.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            if (doors.Length == 0)
-                throw new InvalidOperationException(buildingNo + "号楼在 MjSystem 未找到可唯一识别的实体门，请先核对门名称");
-            return doors;
+            return RequireSingleMjSystemDoor(buildingNo, doors);
         }
 
-        private static int[] IcCardDoors(OleDbConnection connection, string buildingNo)
+        private static int IcCardDoor(OleDbConnection connection, string buildingNo)
         {
             var normalized = NormalizeBuilding(buildingNo);
             var matches = new List<int>();
@@ -591,8 +888,65 @@ namespace Pms.AccessCardAgent
                 }
             }
             var doors = matches.Distinct().ToArray();
-            if (doors.Length == 0) throw new InvalidOperationException(buildingNo + "号楼在 iCCard 未找到可唯一识别的实体门，请先核对门名称");
-            return doors;
+            if (doors.Length != 1) throw new InvalidOperationException(buildingNo + "号楼在 iCCard 未找到可唯一识别的实体门，请先核对门名称");
+            return doors[0];
+        }
+
+        private static AccessControllerUploadResult FailedResult(AccessTargetBuilding target, string accessSystem, Exception exception)
+        {
+            return new AccessControllerUploadResult
+            {
+                buildingId = target.id,
+                buildingNo = target.buildingNo,
+                accessSystem = accessSystem,
+                status = "controller_failed",
+                error = exception.Message
+            };
+        }
+
+        internal static string RequireSingleMjSystemDoor(string buildingNo, string[] doors)
+        {
+            var unique = (doors ?? new string[0]).Where(item => !String.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            if (unique.Length != 1)
+                throw new InvalidOperationException(buildingNo + "号楼在 MjSystem 未找到可唯一识别的实体门，请先核对门名称");
+            return unique[0];
+        }
+
+        internal static bool HasFailures(object[] results)
+        {
+            return (results ?? new object[0]).OfType<AccessControllerUploadResult>()
+                .Any(item => !String.Equals(item.status, "controller_uploaded", StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static bool HasRemovalFailures(AccessTargetBuilding[] targets, object[] results)
+        {
+            var rows = (results ?? new object[0]).OfType<AccessControllerUploadResult>().ToArray();
+            return (targets ?? new AccessTargetBuilding[0]).Any(target => !rows.Any(item =>
+                item.buildingId == target.id &&
+                String.Equals(item.status, "controller_removed", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        internal static string FailureMessage(object[] results)
+        {
+            var failures = (results ?? new object[0]).OfType<AccessControllerUploadResult>()
+                .Where(item => !String.Equals(item.status, "controller_uploaded", StringComparison.OrdinalIgnoreCase))
+                .Select(item => item.buildingNo + "号楼：" + (String.IsNullOrWhiteSpace(item.error) ? "控制器下发失败" : item.error))
+                .ToArray();
+            return failures.Length == 0 ? null : String.Join("；", failures);
+        }
+
+        internal static string RemovalFailureMessage(AccessTargetBuilding[] targets, object[] results)
+        {
+            var rows = (results ?? new object[0]).OfType<AccessControllerUploadResult>().ToArray();
+            var failures = rows
+                .Where(item => !String.Equals(item.status, "controller_removed", StringComparison.OrdinalIgnoreCase))
+                .Select(item => item.buildingNo + "号楼：" + (String.IsNullOrWhiteSpace(item.error) ? "控制器撤销失败" : item.error))
+                .Concat((targets ?? new AccessTargetBuilding[0])
+                    .Where(target => !rows.Any(item => item.buildingId == target.id))
+                    .Select(target => target.buildingNo + "号楼：网关未返回撤销结果"))
+                .Distinct().ToArray();
+            return failures.Length == 0 ? null : String.Join("；", failures);
         }
 
         private static string Limit(string value, int length)
@@ -605,6 +959,7 @@ namespace Pms.AccessCardAgent
         {
             public long CardNo;
             public long DoorNo;
+            public long DoorDelay;
             public DateTime BeginDate;
             public DateTime EndDate;
             public long ControlSegmentId;
@@ -679,6 +1034,20 @@ namespace Pms.AccessCardAgent
                 var result = Convert.ToString(InvokeAllInOutStrings("CreateBstrFuncData", arguments), CultureInfo.InvariantCulture);
                 if (String.IsNullOrWhiteSpace(result))
                     throw new InvalidOperationException("MjSystem 原生 SDK 未能生成控制器命令（错误码 " + ErrorCode().ToString(CultureInfo.InvariantCulture) + "）");
+                return result;
+            }
+
+            public string BuildPermissionRemovalCommand(ControllerUploadRecord record, int sequence, string cardProtocol)
+            {
+                if (record == null) throw new ArgumentNullException("record");
+                var arguments = BuildMjSystemPermissionRemovalArguments(
+                    record.ControllerSnText, record.EmployeeId, record.CardNo, sequence,
+                    record.BeginDate, record.EndDate, record.ControlSegmentId,
+                    record.DoorPasswordText, record.EmployeeName, cardProtocol);
+                var result = Convert.ToString(InvokeAllInOutStrings("CreateBstrFuncData", arguments), CultureInfo.InvariantCulture);
+                if (String.IsNullOrWhiteSpace(result))
+                    throw new InvalidOperationException("MjSystem 原生 SDK 未能生成撤销权限命令（错误码 " + ErrorCode().ToString(CultureInfo.InvariantCulture) + "）");
+                ValidateMjSystemPermissionRemovalCommand(result);
                 return result;
             }
 
@@ -854,6 +1223,17 @@ namespace Pms.AccessCardAgent
                 return "7E" + body + "0D";
             }
 
+            public string BuildOldControllerFrame(long controllerSn, string function)
+            {
+                if (controllerSn < 0 || controllerSn > 65535)
+                    throw new InvalidOperationException("控制器序列号超出旧版协议范围");
+                var serialHex = controllerSn.ToString("X4", CultureInfo.InvariantCulture);
+                var body = serialHex.Substring(2, 2) + serialHex.Substring(0, 2) + (function ?? "");
+                body = body.PadRight(60, '0');
+                body += Convert.ToString(CallTool("_checkSum", body), CultureInfo.InvariantCulture);
+                return "7E" + body + "0D";
+            }
+
             public string BuildOldAddFunction(ControllerUploadRecord record, int sequence)
             {
                 if (!Convert.ToBoolean(CallTool("isValidWg26Card", record.CardNo), CultureInfo.InvariantCulture))
@@ -870,6 +1250,19 @@ namespace Pms.AccessCardAgent
                 body += password.Substring(0, 6);
                 body += "0000"; // 首卡标志、组合开门组；当前业务均未启用。
                 return body.PadRight(56, '0');
+            }
+
+            public string BuildOldDeleteFrame(ControllerUploadRecord record, int sequence)
+            {
+                if (record.ControllerSn < 0 || record.ControllerSn > 65535)
+                    throw new InvalidOperationException("控制器序列号超出旧版协议范围");
+                if (!Convert.ToBoolean(CallTool("isValidWg26Card", record.CardNo), CultureInfo.InvariantCulture))
+                    throw new InvalidOperationException("WG 卡号不符合原门禁控制器规则");
+                var serialHex = record.ControllerSn.ToString("X4", CultureInfo.InvariantCulture);
+                var function = BuildIcCardDeleteFunction(record.CardNo, record.DoorNo, sequence);
+                var body = serialHex.Substring(2, 2) + serialHex.Substring(0, 2) + function.PadRight(56, '0');
+                body += Convert.ToString(CallTool("_checkSum", body), CultureInfo.InvariantCulture);
+                return "7E" + body + "0D";
             }
 
             public long Send(string commMode, string ipAddress, int port, string frame, out string response)

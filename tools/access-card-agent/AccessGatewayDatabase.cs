@@ -83,6 +83,96 @@ namespace Pms.AccessCardAgent
             return results.ToArray();
         }
 
+        /** 控制器确认撤销后，逐栋删除对应门禁数据库权限并回读；一栋失败不回滚其它楼栋。 */
+        public static object[] RemovePermissions(AgentConfig config, string password, AgentTask task, object[] controllerResults)
+        {
+            return FinalizePermissionRemovals(task, controllerResults, delegate(AccessTargetBuilding target)
+            {
+                if (String.Equals(target.accessSystem, "mjsystem", StringComparison.OrdinalIgnoreCase))
+                    RemoveMjPermission(config, task.wgCardNo, target);
+                else if (String.Equals(target.accessSystem, "iccard", StringComparison.OrdinalIgnoreCase))
+                    RemoveIcPermission(config, password, task.wgCardNo, target);
+                else
+                    throw new InvalidOperationException(target.buildingNo + "号楼未配置可识别的门禁系统");
+            });
+        }
+
+        internal static object[] FinalizePermissionRemovals(
+            AgentTask task,
+            object[] controllerResults,
+            Action<AccessTargetBuilding> removeDatabasePermission)
+        {
+            var rows = (controllerResults ?? new object[0]).OfType<AccessControllerUploadResult>().ToArray();
+            foreach (var row in rows.Where(item =>
+                String.Equals(item.status, "controller_removed", StringComparison.OrdinalIgnoreCase)))
+            {
+                var target = (task.targetBuildings ?? new AccessTargetBuilding[0]).SingleOrDefault(item =>
+                    item.id == row.buildingId &&
+                    String.Equals(NormalizeBuilding(item.buildingNo), NormalizeBuilding(row.buildingNo), StringComparison.OrdinalIgnoreCase));
+                if (target == null)
+                {
+                    row.status = "controller_failed";
+                    row.error = "控制器已确认撤销，但网关无法对应本次楼栋任务，门禁数据库未修改";
+                    continue;
+                }
+                try
+                {
+                    removeDatabasePermission(target);
+                    row.acknowledgement = (String.IsNullOrWhiteSpace(row.acknowledgement)
+                        ? "控制器已确认删除" : row.acknowledgement) + "；门禁数据库已回读确认删除";
+                }
+                catch (Exception exception)
+                {
+                    row.status = "controller_failed";
+                    row.error = "控制器已确认撤销，但门禁数据库删除或回读失败：" + exception.Message;
+                }
+            }
+            return rows.Cast<object>().ToArray();
+        }
+
+        private static void RemoveMjPermission(AgentConfig config, string cardNo, AccessTargetBuilding target)
+        {
+            using (var connection = Open(config.MjSystemDatabasePath, null, "MjSystem"))
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    var door = MjDoors(connection, transaction, target.buildingNo).Single();
+                    using (var command = Command(connection, transaction,
+                        "DELETE FROM MJ_MacPower WHERE cCardNo=? AND cDoorId=?", new object[] { cardNo, door })) command.ExecuteNonQuery();
+                    if (Convert.ToInt32(Scalar(connection, transaction,
+                        "SELECT COUNT(*) FROM MJ_MacPower WHERE cCardNo=? AND cDoorId=?", cardNo, door)) != 0)
+                        throw new InvalidOperationException(target.buildingNo + "号楼 MjSystem 权限删除后读回仍存在");
+                    transaction.Commit();
+                }
+                catch { transaction.Rollback(); throw; }
+            }
+        }
+
+        private static void RemoveIcPermission(AgentConfig config, string password, string cardNo, AccessTargetBuilding target)
+        {
+            using (var connection = Open(config.IcCardDatabasePath, password, "iCCard"))
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    var consumer = Scalar(connection, transaction,
+                        "SELECT TOP 1 f_ConsumerID FROM t_b_IDCard WHERE f_CardNO=?", cardNo);
+                    if (consumer != null && consumer != DBNull.Value)
+                    {
+                        var door = IcCardDoors(connection, transaction, target.buildingNo).Single();
+                        using (var command = Command(connection, transaction,
+                            "DELETE FROM t_d_Privilege WHERE f_ConsumerID=? AND f_DoorID=?", new object[] { consumer, door })) command.ExecuteNonQuery();
+                        if (Convert.ToInt32(Scalar(connection, transaction,
+                            "SELECT COUNT(*) FROM t_d_Privilege WHERE f_ConsumerID=? AND f_DoorID=?", consumer, door)) != 0)
+                            throw new InvalidOperationException(target.buildingNo + "号楼 iCCard 权限删除后读回仍存在");
+                    }
+                    transaction.Commit();
+                }
+                catch { transaction.Rollback(); throw; }
+            }
+        }
+
         /** 只读核验历史卡在两套楼栋门禁数据库中的实际门权限。 */
         public static AccessPermissionResult[] FindPermissions(
             AgentConfig config,
@@ -463,22 +553,33 @@ namespace Pms.AccessCardAgent
             }
         }
 
-        // 已知现场验证过的门保留为兜底；其它楼栋从现场数据库按门名/控制器名唯一解析。
+        // 所有楼栋都从现场数据库按门名/控制器名唯一解析。
+        // 不允许在代码中把一个楼栋扩展成多个门；跨楼栋权限只能来自 PMS 页面明确选中的 targetBuildings。
         private static string[] MjDoors(OleDbConnection connection, OleDbTransaction transaction, string buildingNo)
         {
-            if (NormalizeBuilding(buildingNo) == "3") return new[] { "M0041-1" };
-            if (NormalizeBuilding(buildingNo) == "26") return new[] { "M0038-1", "M0003-1", "M0030-1" };
-            var doors = ResolveMjDoors(connection, transaction, buildingNo);
-            if (doors.Length == 0) throw new InvalidOperationException(buildingNo + "号楼在 MjSystem 未找到可唯一识别的实体门，请先核对门名称");
-            return doors;
+            return RequireSingleMjDoors(buildingNo, ResolveMjDoors(connection, transaction, buildingNo));
         }
 
         private static int[] IcCardDoors(OleDbConnection connection, OleDbTransaction transaction, string buildingNo)
         {
-            if (NormalizeBuilding(buildingNo) == "11") return new[] { 26 };
-            var doors = ResolveIcCardDoors(connection, transaction, buildingNo);
-            if (doors.Length == 0) throw new InvalidOperationException(buildingNo + "号楼在 iCCard 未找到可唯一识别的实体门，请先核对门名称");
-            return doors;
+            return RequireSingleIcCardDoors(buildingNo, ResolveIcCardDoors(connection, transaction, buildingNo));
+        }
+
+        internal static string[] RequireSingleMjDoors(string buildingNo, string[] doors)
+        {
+            var unique = (doors ?? new string[0]).Where(item => !String.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            if (unique.Length != 1)
+                throw new InvalidOperationException(buildingNo + "号楼在 MjSystem 未找到可唯一识别的实体门，请先核对门名称");
+            return unique;
+        }
+
+        internal static int[] RequireSingleIcCardDoors(string buildingNo, int[] doors)
+        {
+            var unique = (doors ?? new int[0]).Distinct().ToArray();
+            if (unique.Length != 1)
+                throw new InvalidOperationException(buildingNo + "号楼在 iCCard 未找到可唯一识别的实体门，请先核对门名称");
+            return unique;
         }
 
         private static string[] ResolveMjDoors(OleDbConnection connection, OleDbTransaction transaction, string buildingNo)

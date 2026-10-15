@@ -7,6 +7,7 @@ import {
   Empty,
   Flex,
   Input,
+  InputNumber,
   Modal,
   Row,
   Select,
@@ -30,6 +31,7 @@ import {
   SafetyCertificateOutlined,
   UploadOutlined,
   UsbOutlined,
+  UnlockOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import {
@@ -295,10 +297,14 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const [agentCredential, setAgentCredential] = useState<{ id: string; token: string; message: string } | null>(null);
   const [authorizationRow, setAuthorizationRow] = useState<AccessCardHistoryRow | null>(null);
   const [authorizationBuildingIds, setAuthorizationBuildingIds] = useState<number[]>([]);
-  const [authorizationTask, setAuthorizationTask] = useState<AccessCardAuthorization | null>(null);
+  const [authorizationTasks, setAuthorizationTasks] = useState<AccessCardAuthorization[]>([]);
   const [authorizationSubmitting, setAuthorizationSubmitting] = useState(false);
   const [retryingAuthorizationId, setRetryingAuthorizationId] = useState<number | null>(null);
   const [uploadingHistoryRowId, setUploadingHistoryRowId] = useState<number | null>(null);
+  const [doorBuildingId, setDoorBuildingId] = useState<number | null>(null);
+  const [doorDurationSeconds, setDoorDurationSeconds] = useState(300);
+  const [doorOperation, setDoorOperation] = useState<AccessCardAuthorization | null>(null);
+  const [doorOperationSubmitting, setDoorOperationSubmitting] = useState(false);
   const [recentRecords, setRecentRecords] = useState<AccessCardRecentRecord[]>(preview ? PREVIEW_RECENT_RECORDS : []);
   const [recentRecordsLoading, setRecentRecordsLoading] = useState(false);
   const [recentLegacy, setRecentLegacy] = useState<LegacyRecentCardQuery | null>(null);
@@ -394,6 +400,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       const next = await accessCardIssuance.houseContext(houseId);
       if (requestId !== undefined && contextRequestRef.current !== requestId) return null;
       setContext(next);
+      setDoorBuildingId((current) => current && next.availableBuildings.some((item) => item.id === current)
+        ? current : next.house.buildingId);
       if (!preserveSelection) setExtraBuildingIds([]);
       return next;
     } catch (error) {
@@ -480,6 +488,60 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
 
   const refreshContext = async () => {
     if (picked?.houseId) await loadContextUntilLegacyReady(picked.houseId, true);
+  };
+
+  const runDoorOperation = async (operation: 'controller_detect' | 'remote_open' | 'temporary_open') => {
+    if (!context || !doorBuildingId) return;
+    const building = context.availableBuildings.find((item) => item.id === doorBuildingId);
+    if (!building) return;
+    if (building.accessSystem !== 'iccard') {
+      message.warning('MjSystem 远程开门命令尚未完成现场协议验证，系统不会冒险发送命令');
+      return;
+    }
+    if (operation !== 'controller_detect') {
+      const action = operation === 'remote_open' ? '立即开门' : `临时常开 ${Math.round(doorDurationSeconds / 60)} 分钟`;
+      const confirmed = await new Promise<boolean>((resolve) => Modal.confirm({
+        title: `确认${action}？`,
+        content: `将向 ${building.buildingNo} 号楼的实体门控制器发送命令。`,
+        okText: '确认执行', cancelText: '取消',
+        onOk: () => resolve(true), onCancel: () => resolve(false),
+      }));
+      if (!confirmed) return;
+    }
+    setDoorOperationSubmitting(true);
+    try {
+      if (preview) {
+        const task: AccessCardAuthorization = {
+          id: 9990, houseId: context.house.id, historyRowId: 0, roomKey: context.house.roomKey,
+          operation, icCardNo: null, wgCardNo: '__door_operation__', durationSeconds: operation === 'temporary_open' ? doorDurationSeconds : null,
+          targetBuildings: [{ id: building.id, buildingNo: building.buildingNo, accessSystem: building.accessSystem }],
+          controllerResults: [{ buildingNo: building.buildingNo, status: operation === 'controller_detect' ? 'controller_detected' : operation === 'remote_open' ? 'door_opened' : 'door_held_open' }],
+          status: 'completed', attempt: 1, error: null, requestedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+        };
+        setDoorOperation(task);
+        message.success(operation === 'controller_detect' ? '控制器在线' : operation === 'remote_open' ? '控制器已确认开门' : '已进入临时常开；到期由在线网关恢复，离线时将在重连后恢复');
+        return;
+      }
+      let task = await accessCardIssuance.createDoorOperation(context.house.id, {
+        buildingId: building.id, operation,
+        durationSeconds: operation === 'temporary_open' ? doorDurationSeconds : undefined,
+        idempotencyKey: newIdempotencyKey(),
+      });
+      setDoorOperation(task);
+      for (let attempt = 0; attempt < 72 && ['pending', 'running'].includes(task.status); attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_250));
+        task = await accessCardIssuance.historyAuthorization(task.id);
+        setDoorOperation(task);
+      }
+      if (task.status === 'completed') {
+        message.success(operation === 'controller_detect' ? '控制器在线' : operation === 'remote_open' ? '控制器已确认开门' : '已进入临时常开；到期由在线网关恢复，离线时将在重连后恢复');
+      } else if (task.status === 'failed') message.error(task.error || '门禁操作失败');
+      else message.warning('门禁任务仍在后台执行');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '门禁操作失败');
+    } finally {
+      setDoorOperationSubmitting(false);
+    }
   };
 
   const start = async () => {
@@ -684,73 +746,111 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
 
   const authorizationOptions = useMemo(() => {
     if (!context || !authorizationRow) return [];
-    const authorized = new Set((authorizationRow.controllerResults ?? [])
-      .map((item) => item.buildingNo?.replace(/\s*号楼\s*$/, '').trim())
-      .filter(Boolean));
     return context.availableBuildings
-      .filter((item) => item.id !== context.house.buildingId && !authorized.has(item.buildingNo.trim()))
       .map((item) => ({
         value: item.id,
-        label: `${context.house.lane ? `${context.house.lane}弄` : ''}${item.buildingNo}号楼 · ${systemLabel(item.accessSystem)}`,
+        label: `${context.house.lane ? `${context.house.lane}弄` : ''}${item.buildingNo}号楼 · ${systemLabel(item.accessSystem)}${item.id === context.house.buildingId ? '（本楼栋）' : ''}`,
         disabled: !item.routeReady,
       }));
   }, [authorizationRow, context]);
 
+  const authorizedBuildingIds = useMemo(() => {
+    if (!context || !authorizationRow) return [];
+    const numbers = new Set((authorizationRow.controllerResults ?? [])
+      .map((item) => item.buildingNo?.replace(/\s*号楼\s*$/, '').replace(/^0+/, '').trim())
+      .filter(Boolean));
+    return context.availableBuildings
+      .filter((item) => numbers.has(item.buildingNo.replace(/^0+/, '').trim()))
+      .map((item) => item.id);
+  }, [authorizationRow, context]);
+
+  const authorizationChanged = useMemo(() => {
+    const current = new Set(authorizationBuildingIds);
+    return authorizedBuildingIds.some((id) => !current.has(id))
+      || authorizationBuildingIds.some((id) => !authorizedBuildingIds.includes(id));
+  }, [authorizationBuildingIds, authorizedBuildingIds]);
+
   const openHistoryAuthorization = (row: AccessCardHistoryRow) => {
     setAuthorizationRow(row);
-    setAuthorizationBuildingIds([]);
-    setAuthorizationTask(null);
+    const numbers = new Set((row.controllerResults ?? [])
+      .map((item) => item.buildingNo?.replace(/\s*号楼\s*$/, '').replace(/^0+/, '').trim())
+      .filter(Boolean));
+    setAuthorizationBuildingIds((context?.availableBuildings ?? [])
+      .filter((item) => numbers.has(item.buildingNo.replace(/^0+/, '').trim()))
+      .map((item) => item.id));
+    setAuthorizationTasks([]);
   };
 
   const submitHistoryAuthorization = async () => {
-    if (!context || !authorizationRow || !authorizationBuildingIds.length) return;
+    if (!context || !authorizationRow || !authorizationChanged) return;
+    const additions = authorizationBuildingIds.filter((id) => !authorizedBuildingIds.includes(id));
+    const removals = authorizedBuildingIds.filter((id) => !authorizationBuildingIds.includes(id));
+    if (removals.includes(context.house.buildingId)) {
+      const confirmed = await new Promise<boolean>((resolve) => Modal.confirm({
+        title: '确认撤销本楼栋权限？',
+        content: `撤销后，这张卡将不能再刷开 ${context.house.buildingNo} 号楼门禁。`,
+        okText: '确认撤销', okButtonProps: { danger: true }, cancelText: '保留权限',
+        onOk: () => resolve(true), onCancel: () => resolve(false),
+      }));
+      if (!confirmed) return;
+    }
     setAuthorizationSubmitting(true);
     try {
       if (preview) {
-        const targets = context.availableBuildings.filter((item) => authorizationBuildingIds.includes(item.id));
-        setAuthorizationTask({
+        const targets = context.availableBuildings.filter((item) => additions.includes(item.id));
+        const previewTask: AccessCardAuthorization = {
           id: 9901, houseId: context.house.id, historyRowId: authorizationRow.id,
           roomKey: context.house.roomKey, operation: 'controller_upload', icCardNo: authorizationRow.icCardNo,
           wgCardNo: authorizationRow.wgCardNo || '', targetBuildings: targets.map((item) => ({
             id: item.id, buildingNo: item.buildingNo, accessSystem: item.accessSystem || 'mjsystem',
           })), controllerResults: [], status: 'completed', attempt: 1, error: null,
           requestedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
-        });
+        };
+        setAuthorizationTasks([previewTask]);
         setContext((current) => current ? ({
           ...current,
           history: current.history.map((row) => row.id !== authorizationRow.id ? row : ({
             ...row,
             accessStatus: 'controller_uploaded',
-            controllerResults: [...row.controllerResults, ...targets.map((item) => ({
+            controllerResults: [...row.controllerResults.filter((item) => {
+              const building = context.availableBuildings.find((candidate) => candidate.buildingNo.replace(/^0+/, '') === item.buildingNo?.replace(/^0+/, ''));
+              return !building || !removals.includes(building.id);
+            }), ...targets.map((item) => ({
               wgCardNo: row.wgCardNo || '', accessSystem: item.accessSystem || 'mjsystem',
               buildingNo: item.buildingNo, controller: `${item.buildingNo}号楼控制器`,
               door: `${item.buildingNo}号楼大门`, sourceTable: item.accessSystem === 'iccard' ? 't_d_Privilege' as const : 'MJ_MacPower' as const,
             }))],
           })),
         }) : current);
-        message.success('额外楼栋权限已完成');
+        message.success('门栋权限已更新');
         return;
       }
-      let task = await accessCardIssuance.createHistoryAuthorization(context.house.id, authorizationRow.id, {
-        targetBuildingIds: authorizationBuildingIds,
-        idempotencyKey: newIdempotencyKey(),
-      });
-      setAuthorizationTask(task);
-      for (let attempt = 0; attempt < 72 && ['pending', 'running'].includes(task.status); attempt += 1) {
+      const submitted = await Promise.all([
+        additions.length ? accessCardIssuance.createHistoryAuthorization(context.house.id, authorizationRow.id, {
+          targetBuildingIds: additions, idempotencyKey: newIdempotencyKey(),
+        }) : null,
+        removals.length ? accessCardIssuance.revokeHistoryAuthorization(context.house.id, authorizationRow.id, {
+          targetBuildingIds: removals, idempotencyKey: newIdempotencyKey(),
+        }) : null,
+      ]);
+      let tasks = submitted.filter((item): item is AccessCardAuthorization => Boolean(item));
+      setAuthorizationTasks(tasks);
+      for (let attempt = 0; attempt < 72 && tasks.some((task) => ['pending', 'running'].includes(task.status)); attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_250));
-        task = await accessCardIssuance.historyAuthorization(task.id);
-        setAuthorizationTask(task);
+        tasks = await Promise.all(tasks.map((task) => ['pending', 'running'].includes(task.status)
+          ? accessCardIssuance.historyAuthorization(task.id) : task));
+        setAuthorizationTasks(tasks);
       }
-      if (task.status === 'completed') {
+      if (tasks.every((task) => task.status === 'completed')) {
         await refreshContext();
-        message.success('额外楼栋权限已写入并下发控制器');
-      } else if (task.status === 'failed') {
-        message.error(task.error || '额外楼栋授权失败，请检查门禁网关');
+        message.success('门栋权限已按选择结果更新');
+      } else if (tasks.some((task) => task.status === 'failed')) {
+        message.error(tasks.find((task) => task.status === 'failed')?.error || '部分门栋权限操作失败，可按楼栋重试');
       } else {
-        message.warning('授权仍在后台执行，可稍后刷新历史查看结果');
+        message.warning('权限任务仍在后台执行，可稍后刷新历史查看结果');
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '额外楼栋授权失败');
+      message.error(error instanceof Error ? error.message : '门栋权限更新失败');
     } finally {
       setAuthorizationSubmitting(false);
     }
@@ -940,7 +1040,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         if (row.accessStatus === 'controller_uploaded') {
           return (
             <Space direction="vertical" size={4} align="start">
-              <Button size="small" onClick={() => openHistoryAuthorization(row)}>额外授权</Button>
+              <Button size="small" onClick={() => openHistoryAuthorization(row)}>管理权限</Button>
               <Text type="secondary" style={{ maxWidth: 180 }}>
                 已从 .88 权限表读回；旧软件的设备回执无法从 MDB 事后反查
               </Text>
@@ -988,7 +1088,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
             </Button>
           );
         }
-        return <Button size="small" onClick={() => openHistoryAuthorization(row)}>额外授权</Button>;
+        return <Button size="small" onClick={() => openHistoryAuthorization(row)}>管理权限</Button>;
       },
     },
   ];
@@ -1104,6 +1204,71 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
 
       {context && (
         <>
+          {context.projectPhase === 'phase2' && (
+            <Card className="access-card-form-card" title={<Space><UnlockOutlined />门禁远程控制</Space>}>
+              <Row gutter={[16, 16]} align="bottom">
+                <Col xs={24} md={8}>
+                  <label className="pms-field-label" htmlFor="access-card-door-building">选择门</label>
+                  <Select
+                    id="access-card-door-building"
+                    style={{ width: '100%' }}
+                    value={doorBuildingId}
+                    onChange={(value) => { setDoorBuildingId(value); setDoorOperation(null); }}
+                    options={context.availableBuildings.map((item) => ({
+                      value: item.id,
+                      label: `${item.buildingNo}号楼 · ${systemLabel(item.accessSystem)}${item.accessSystem === 'mjsystem' ? '（待协议验证）' : ''}`,
+                      disabled: !item.routeReady,
+                    }))}
+                  />
+                </Col>
+                <Col xs={24} md={8}>
+                  <label className="pms-field-label" htmlFor="access-card-door-duration">临时常开时长</label>
+                  <Space.Compact style={{ width: '100%' }}>
+                    <Select
+                      aria-label="临时常开预设时长"
+                      value={doorDurationSeconds}
+                      style={{ width: '62%' }}
+                      onChange={setDoorDurationSeconds}
+                      options={[
+                        { value: 300, label: '5 分钟' }, { value: 1800, label: '30 分钟' },
+                        { value: 3600, label: '1 小时' }, { value: 28800, label: '8 小时' },
+                        { value: 86400, label: '24 小时' },
+                      ]}
+                    />
+                    <InputNumber
+                      id="access-card-door-duration"
+                      aria-label="自定义临时常开分钟数"
+                      min={1} max={1440}
+                      value={Math.round(doorDurationSeconds / 60)}
+                      onChange={(value) => setDoorDurationSeconds(Math.max(60, Math.min(86400, Number(value || 5) * 60)))}
+                      addonAfter="分钟"
+                      style={{ width: '38%' }}
+                    />
+                  </Space.Compact>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Space wrap>
+                    <Button loading={doorOperationSubmitting} onClick={() => void runDoorOperation('controller_detect')}>检测设备</Button>
+                    <Button type="primary" icon={<UnlockOutlined />} loading={doorOperationSubmitting} onClick={() => void runDoorOperation('remote_open')}>远程开门</Button>
+                    <Button loading={doorOperationSubmitting} onClick={() => void runDoorOperation('temporary_open')}>临时常开</Button>
+                  </Space>
+                </Col>
+              </Row>
+              {doorOperation && (
+                <Alert
+                  className="access-card-inline-alert"
+                  type={doorOperation.status === 'completed' ? 'success' : doorOperation.status === 'failed' ? 'error' : 'info'}
+                  showIcon
+                  message={doorOperation.status === 'completed' ? '控制器已确认'
+                    : doorOperation.status === 'failed' ? '操作失败' : '正在等待 .88 网关执行'}
+                  description={doorOperation.error || (doorOperation.operation === 'temporary_open' && doorOperation.status === 'completed'
+                    ? `已安排 ${Math.round((doorOperation.durationSeconds || doorDurationSeconds) / 60)} 分钟后恢复正常门禁状态；网关离线时将在重连后执行`
+                    : undefined)}
+                />
+              )}
+              <Text type="secondary">iCCard 按旧程序“总控制台 → 选择门 → 远程开门”的实际通信命令执行；临时常开到期由服务器排队恢复，关闭网页不影响；若网关离线，将在重连后执行恢复。</Text>
+            </Card>
+          )}
           <Row gutter={[18, 18]} align="stretch">
             <Col xs={24} xl={10}>
               <Card className="access-card-form-card" title="2. 发卡设置">
@@ -1396,7 +1561,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       </Card>
 
       <Modal
-        title="给已发卡片追加门栋权限"
+        title="管理已发卡片门栋权限"
         open={!!authorizationRow}
         width={600}
         destroyOnClose
@@ -1406,15 +1571,15 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         footer={(
           <Space>
             <Button disabled={authorizationSubmitting} onClick={() => setAuthorizationRow(null)}>
-              {authorizationTask?.status === 'completed' ? '关闭' : '取消'}
+              {authorizationTasks.length > 0 && authorizationTasks.every((task) => task.status === 'completed') ? '关闭' : '取消'}
             </Button>
             <Button
               type="primary"
               loading={authorizationSubmitting}
-              disabled={!authorizationBuildingIds.length || !historicalAuthorizationReady || authorizationTask?.status === 'completed'}
+              disabled={!authorizationChanged || !historicalAuthorizationReady || authorizationTasks.some((task) => ['pending', 'running'].includes(task.status))}
               onClick={() => void submitHistoryAuthorization()}
             >
-              确认追加授权
+              保存权限
             </Button>
           </Space>
         )}
@@ -1432,7 +1597,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
             )}
             {authorizationOptions.length ? (
               <div className="access-card-field">
-                <label htmlFor="history-card-extra-buildings">选择额外授权楼栋</label>
+                <label htmlFor="history-card-extra-buildings">选择这张卡可以通行的楼栋</label>
                 <Select
                   id="history-card-extra-buildings"
                   mode="multiple"
@@ -1441,24 +1606,35 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                   value={authorizationBuildingIds}
                   options={authorizationOptions}
                   disabled={authorizationSubmitting}
-                  placeholder="可选择一个或多个其他楼栋"
+                  placeholder="勾选授权，取消勾选即撤销"
                   onChange={setAuthorizationBuildingIds}
                 />
-                <Text type="secondary">列表已排除本楼栋和这张卡已有权限的楼栋。</Text>
+                <Text type="secondary">已授权楼栋会自动勾选；取消勾选后，系统先向控制器删除权限，确认成功后再删除 .88 门禁库记录。</Text>
               </div>
             ) : (
-              <Alert type="info" showIcon message="没有可追加的楼栋" description="当前门禁区域内的其他楼栋均已授权，或尚未配置门禁路由。" />
+              <Alert type="info" showIcon message="没有可管理的楼栋" description="当前门禁区域尚未配置可用门禁路由。" />
             )}
-            {authorizationTask && (
+            {authorizationTasks.map((task) => (
               <Alert
-                type={authorizationTask.status === 'completed' ? 'success' : authorizationTask.status === 'failed' ? 'error' : 'info'}
+                key={task.id}
+                type={task.status === 'completed' ? 'success' : task.status === 'failed' ? 'error' : 'info'}
                 showIcon
-                message={authorizationTask.status === 'completed' ? '授权完成'
-                  : authorizationTask.status === 'failed' ? '授权失败'
-                    : authorizationTask.status === 'running' ? '正在写入并下发控制器' : '任务已提交，等待门禁网关'}
-                description={authorizationTask.error || (authorizationTask.status === 'completed' ? '历史卡片权限列表已经刷新。' : '请保持窗口打开，完成后会自动刷新历史记录。')}
+                message={`${task.operation === 'controller_revoke' ? '撤销权限' : '新增权限'}：${task.status === 'completed' ? '完成' : task.status === 'failed' ? '部分失败' : '执行中'}`}
+                description={(
+                  <Space direction="vertical" size={4}>
+                    {task.error && <Text type="danger">{task.error}</Text>}
+                    {task.controllerResults.map((result, index) => (
+                      <Text key={`${String(result.buildingNo)}-${index}`}>
+                        {String(result.buildingNo || '未知')}号楼：
+                        {['controller_uploaded', 'controller_removed'].includes(String(result.status))
+                          ? <Text type="success">成功</Text>
+                          : <Text type="danger">失败{result.error ? `，${String(result.error)}` : ''}</Text>}
+                      </Text>
+                    ))}
+                  </Space>
+                )}
               />
-            )}
+            ))}
           </Space>
         )}
       </Modal>

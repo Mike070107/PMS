@@ -47,6 +47,8 @@ import {
   parseLegacyAccessCardRoomName,
   supportsAccessCardDisplayName,
   supportsAccessCardOperationMode,
+  supportsAccessCardPermissionRevoke,
+  supportsRemoteDoorControl,
 } from './access-card-routing';
 import { CreateAccessCardIssueDto, CreateParkingFeeDetailDto } from './dto';
 import {
@@ -68,6 +70,7 @@ import {
   CreateParkingOperationDto,
   CreateAccessCardAuthorizationDto,
   CreateAccessCardControllerUploadDto,
+  CreateAccessDoorOperationDto,
   AccessCardAuthorizationReportDto,
   ParkingOperationReportDto,
   ParkingHistoryQueryDto,
@@ -483,6 +486,43 @@ export class AccessCardIssuanceService {
     });
   }
 
+  async revokeHistoryAuthorization(
+    houseId: number,
+    historyId: number,
+    dto: CreateAccessCardAuthorizationDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const idempotencyKey = dto.idempotencyKey.trim();
+    const existing = await this.authorizationRepo.findOne({ where: { tenantId, idempotencyKey } });
+    if (existing) return this.historyAuthorizationResponse(existing);
+    const context = await this.getHouseContext(houseId, user, access);
+    if (context.projectPhase !== 'phase2') throw new BadRequestException('枫桦景苑一期卡片没有楼栋门禁权限可撤销');
+    const historyRow = context.history.find((row) => row.id === historyId);
+    if (!historyRow?.wgCardNo) throw new NotFoundException('没有找到这张历史卡片，或卡片缺少 WG 卡号');
+    if (!dto.targetBuildingIds.length) throw new BadRequestException('请至少选择一个要撤销权限的楼栋');
+    const availableById = new Map(context.availableBuildings.map((building) => [building.id, building]));
+    const selected = dto.targetBuildingIds.map((id) => availableById.get(id));
+    if (selected.some((building) => !building || !building.routeReady || !building.accessSystem)) {
+      throw new BadRequestException('所选楼栋不属于当前门禁区域，或门禁路由尚未配置');
+    }
+    const authorized = new Set((historyRow.controllerResults ?? [])
+      .map((row) => normalizeBuildingNo(typeof row.buildingNo === 'string' ? row.buildingNo : ''))
+      .filter(Boolean));
+    const missing = selected.filter((building) => !authorized.has(normalizeBuildingNo(building!.buildingNo)));
+    if (missing.length) throw new BadRequestException(`这张卡没有 ${missing.map((item) => `${item!.buildingNo}号楼`).join('、')} 权限，不能撤销`);
+    await this.requirePermissionRevokeGateway(tenantId);
+    return this.enqueueHistoryAuthorization({
+      tenantId, houseId, historyId, roomKey: context.house.roomKey, cardSequence: historyRow.sequence,
+      operation: 'controller_revoke', icCardNo: historyRow.icCardNo, wgCardNo: historyRow.wgCardNo,
+      targetBuildings: selected.map((building) => ({
+        id: building!.id, buildingNo: building!.buildingNo, accessSystem: building!.accessSystem!,
+      })),
+      idempotencyKey, userId: user.id,
+    });
+  }
+
   async uploadHistoryCardToController(
     houseId: number,
     historyId: number,
@@ -532,6 +572,38 @@ export class AccessCardIssuanceService {
     });
   }
 
+  async createDoorOperation(
+    houseId: number,
+    dto: CreateAccessDoorOperationDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const idempotencyKey = dto.idempotencyKey.trim();
+    const existing = await this.authorizationRepo.findOne({ where: { tenantId, idempotencyKey } });
+    if (existing) return this.historyAuthorizationResponse(existing);
+    const context = await this.getHouseContext(houseId, user, access);
+    if (context.projectPhase !== 'phase2') throw new BadRequestException('枫桦景苑一期没有联网门禁控制器');
+    const building = context.availableBuildings.find((item) => item.id === dto.buildingId);
+    if (!building?.routeReady || !building.accessSystem) {
+      throw new BadRequestException('所选楼栋不属于当前门禁区域，或门禁路由尚未配置');
+    }
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
+    const gateway = orderAgentsByAvailability(agents).find((agent) => effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.remoteDoorControl === true && supportsRemoteDoorControl(agent.version));
+    if (!gateway) throw new ServiceUnavailableException('远程开门需要 .88 电脑升级 PMS 数据同步助手 2.5.43 或更新版本');
+    const durationSeconds = dto.operation === 'temporary_open' ? dto.durationSeconds : null;
+    if (dto.operation === 'temporary_open' && (!durationSeconds || durationSeconds < 60 || durationSeconds > 86_400)) {
+      throw new BadRequestException('临时开门时长必须在 1 分钟至 24 小时之间');
+    }
+    return this.enqueueHistoryAuthorization({
+      tenantId, houseId, historyId: 0, roomKey: context.house.roomKey, cardSequence: null,
+      operation: dto.operation, icCardNo: null, wgCardNo: '__door_operation__',
+      targetBuildings: [{ id: building.id, buildingNo: building.buildingNo, accessSystem: building.accessSystem }],
+      durationSeconds, idempotencyKey, userId: user.id,
+    });
+  }
+
   async getHistoryAuthorization(id: number, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const task = await this.authorizationRepo.findOne({ where: { id, tenantId } });
@@ -556,10 +628,14 @@ export class AccessCardIssuanceService {
       .andWhere('authorization.status IN (:...statuses)', { statuses: ['pending', 'running'] })
       .getOne();
     if (activeTask) throw new BadRequestException('这张卡已有其他门栋权限任务正在执行，请等待完成后刷新历史');
-    await this.requireHistoryAuthorizationGateway(tenantId);
+    if (task.operation === 'controller_revoke') {
+      await this.requirePermissionRevokeGateway(tenantId);
+    } else {
+      await this.requireHistoryAuthorizationGateway(tenantId);
+    }
     task.status = 'pending';
     task.attempt = 0;
-    task.controllerResults = [];
+    task.controllerResults = task.controllerResults.filter((row) => this.authorizationResultSucceeded(task.operation, row));
     task.completedAt = null;
     task.leaseAgentKey = null;
     task.leaseExpiresAt = null;
@@ -1679,7 +1755,36 @@ export class AccessCardIssuanceService {
       error: task.status === 'failed' ? task.lastError : null,
       requestedAt: task.requestedAt,
       completedAt: task.completedAt,
+      durationSeconds: task.durationSeconds,
     };
+  }
+
+  private authorizationResultSucceeded(operation: AccessCardAuthorization['operation'], row: Record<string, unknown>) {
+    const expected = operation === 'access_database_only' ? 'access_db_written'
+      : operation === 'controller_revoke' ? 'controller_removed'
+        : operation === 'controller_detect' ? 'controller_detected'
+          : operation === 'remote_open' ? 'door_opened'
+            : operation === 'temporary_open' ? 'door_held_open'
+              : operation === 'restore_normal' ? 'door_restored'
+                : 'controller_uploaded';
+    return row.status === expected;
+  }
+
+  private mergeAuthorizationResults(
+    operation: AccessCardAuthorization['operation'],
+    previous: Array<Record<string, unknown>>,
+    current: Array<Record<string, unknown>>,
+  ) {
+    const merged = new Map<string, Record<string, unknown>>();
+    for (const row of previous) {
+      const key = normalizeBuildingNo(typeof row.buildingNo === 'string' ? row.buildingNo : '');
+      if (key && this.authorizationResultSucceeded(operation, row)) merged.set(key, row);
+    }
+    for (const row of current) {
+      const key = normalizeBuildingNo(typeof row.buildingNo === 'string' ? row.buildingNo : '');
+      if (key && !merged.has(key)) merged.set(key, row);
+    }
+    return [...merged.values()];
   }
 
   private async enqueueHistoryAuthorization(input: {
@@ -1692,6 +1797,7 @@ export class AccessCardIssuanceService {
     icCardNo: string | null;
     wgCardNo: string;
     targetBuildings: AccessCardAuthorization['targetBuildings'];
+    durationSeconds?: number | null;
     idempotencyKey: string;
     userId: number;
   }) {
@@ -1715,6 +1821,7 @@ export class AccessCardIssuanceService {
       icCardNo: input.icCardNo,
       wgCardNo: input.wgCardNo,
       targetBuildings: input.targetBuildings,
+      durationSeconds: input.durationSeconds ?? null,
       controllerResults: [],
       idempotencyKey: input.idempotencyKey,
       status: 'pending',
@@ -1740,6 +1847,19 @@ export class AccessCardIssuanceService {
       && supportsAccessCardOperationMode(agent.version));
     if (!gateway) {
       throw new ServiceUnavailableException('楼栋门禁网关需要 PMS 数据同步助手 2.5.30 或更新版本，请在 .88 电脑更新后重试');
+    }
+  }
+
+  private async requirePermissionRevokeGateway(tenantId: number): Promise<void> {
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
+    const gateway = orderAgentsByAvailability(agents).find((agent) =>
+      effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.accessDbWrite === true
+      && agent.capabilities?.controllerUpload === true
+      && agent.capabilities?.historicalAccessGrant === true
+      && supportsAccessCardPermissionRevoke(agent.version));
+    if (!gateway) {
+      throw new ServiceUnavailableException('撤销门栋权限需要 .88 电脑升级 PMS 数据同步助手 2.5.44 或更新版本');
     }
   }
 
@@ -1990,6 +2110,13 @@ export class AccessCardIssuanceService {
       const targetBuildings = batch.targetBuildingIds.length
         ? await this.buildingRepo.find({ where: { id: In(batch.targetBuildingIds), tenantId: agent.tenantId } })
         : [];
+      const uploadedBuildings = new Set((item.controllerResults ?? [])
+        .filter((row) => row.status === 'controller_uploaded')
+        .map((row) => normalizeBuildingNo(typeof row.buildingNo === 'string' ? row.buildingNo : '')));
+      const pendingBuildingIds = batch.targetBuildingIds.filter((buildingId) => {
+        const building = targetBuildings.find((candidate) => candidate.id === buildingId);
+        return !building || !uploadedBuildings.has(normalizeBuildingNo(building.buildingNo));
+      });
       const action = agent.kind === 'issuer'
         ? 'write_card'
         : agent.kind === 'access_gateway'
@@ -2010,8 +2137,8 @@ export class AccessCardIssuanceService {
           accessSystem: batch.accessSystem,
           icCardNo: item.icCardNo,
           wgCardNo: item.wgCardNo,
-          targetBuildingIds: batch.targetBuildingIds,
-          targetBuildings: batch.targetBuildingIds.map((buildingId) => {
+          targetBuildingIds: pendingBuildingIds,
+          targetBuildings: pendingBuildingIds.map((buildingId) => {
             const building = targetBuildings.find((candidate) => candidate.id === buildingId);
             if (!building) throw new BadRequestException(`门禁目标楼栋 ${buildingId} 不存在`);
             return {
@@ -2228,10 +2355,21 @@ export class AccessCardIssuanceService {
     const task = await this.authorizationRepo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(AccessCardAuthorization);
       const now = new Date();
-      const item = await repo.createQueryBuilder('task')
+      const query = repo.createQueryBuilder('task')
         .where('task.tenant_id = :tenantId', { tenantId: agent.tenantId })
-        .andWhere("task.status = 'pending' OR (task.status = 'running' AND task.lease_expires_at < :now)", { now })
-        .orderBy('task.created_at', 'ASC')
+        .andWhere("(task.status = 'pending' OR (task.status = 'running' AND task.lease_expires_at < :now))", { now })
+        .andWhere('task.requested_at <= :now', { now })
+        .orderBy('task.created_at', 'ASC');
+      if (agent.capabilities?.remoteDoorControl !== true || !supportsRemoteDoorControl(agent.version)) {
+        query.andWhere('task.operation NOT IN (:...doorOperations)', {
+          doorOperations: ['controller_detect', 'remote_open', 'temporary_open', 'restore_normal'],
+        });
+      }
+      // 2.5.43 及更早版本的 iCCard 撤销帧协议不正确，已排队任务也不能被旧助手领取。
+      if (!supportsAccessCardPermissionRevoke(agent.version)) {
+        query.andWhere('task.operation <> :revokeOperation', { revokeOperation: 'controller_revoke' });
+      }
+      const item = await query
         .setLock('pessimistic_write')
         .setOnLocked('skip_locked')
         .getOne();
@@ -2251,6 +2389,11 @@ export class AccessCardIssuanceService {
       item.leaseExpiresAt = new Date(now.getTime() + 90_000);
       item.updatedBy = null;
       await repo.save(item);
+      const completedBuildings = new Set(item.controllerResults
+        .filter((row) => this.authorizationResultSucceeded(item.operation, row))
+        .map((row) => normalizeBuildingNo(typeof row.buildingNo === 'string' ? row.buildingNo : '')));
+      const pendingBuildings = item.targetBuildings.filter((building) =>
+        !completedBuildings.has(normalizeBuildingNo(building.buildingNo)));
       return {
         taskId: item.id,
         action: 'authorize_existing_card',
@@ -2261,8 +2404,9 @@ export class AccessCardIssuanceService {
         projectPhase: 'phase2',
         icCardNo: item.icCardNo,
         wgCardNo: item.wgCardNo,
-        targetBuildingIds: item.targetBuildings.map((building) => building.id),
-        targetBuildings: item.targetBuildings,
+        durationSeconds: item.durationSeconds,
+        targetBuildingIds: pendingBuildings.map((building) => building.id),
+        targetBuildings: pendingBuildings,
       };
     });
     return { task };
@@ -2279,20 +2423,16 @@ export class AccessCardIssuanceService {
         throw new BadRequestException('历史卡片授权任务不属于当前网关或已经结束');
       }
       const now = new Date();
-      if (dto.result === 'success') {
-        const reportedBuildings = new Set((dto.controllerResults ?? [])
-          .map((row) => normalizeBuildingNo(typeof row.buildingNo === 'string' ? row.buildingNo : ''))
-          .filter(Boolean));
-        const missing = task.targetBuildings.filter((building) =>
-          !reportedBuildings.has(normalizeBuildingNo(building.buildingNo)));
-        if (missing.length) {
-          throw new BadRequestException(`门禁任务结果缺少 ${missing.map((item) => `${item.buildingNo}号楼`).join('、')}，任务不能标记完成`);
-        }
-        task.status = 'completed';
-        task.controllerResults = dto.controllerResults ?? [];
-        task.lastError = null;
-        task.completedAt = now;
+      task.controllerResults = this.mergeAuthorizationResults(
+        task.operation, task.controllerResults, dto.controllerResults ?? []);
+      const succeededNos = new Set(task.controllerResults
+        .filter((row) => this.authorizationResultSucceeded(task.operation, row))
+        .map((row) => normalizeBuildingNo(typeof row.buildingNo === 'string' ? row.buildingNo : '')));
+      const allSucceeded = task.targetBuildings.every((building) =>
+        succeededNos.has(normalizeBuildingNo(building.buildingNo)));
 
+      const isDoorOperation = ['controller_detect', 'remote_open', 'temporary_open', 'restore_normal'].includes(task.operation);
+      if (succeededNos.size && !isDoorOperation) {
         const snapshotRepo = manager.getRepository(AccessCardLegacySnapshot);
         const snapshots = await snapshotRepo.find({
           where: { tenantId: task.tenantId, roomKey: In([task.roomKey, '__recent_js_cards__']) },
@@ -2300,32 +2440,58 @@ export class AccessCardIssuanceService {
         for (const snapshot of snapshots) {
           if (snapshot.roomKey === '__recent_js_cards__'
             && !snapshot.permissionSubjects.some((row) => row.wgCardNo === task.wgCardNo)) continue;
-          const targetNos = new Set(task.targetBuildings.map((item) => normalizeBuildingNo(item.buildingNo)));
-          const kept = snapshot.permissions.filter((row) =>
-            row.wgCardNo !== task.wgCardNo || !targetNos.has(normalizeBuildingNo(row.buildingNo || '')));
-          const additions: AccessCardPermissionEntry[] = task.controllerResults
-            .map((row) => ({
-              wgCardNo: task.wgCardNo,
-              accessSystem: row.accessSystem === 'iccard' ? 'iccard' as const : 'mjsystem' as const,
-              buildingNo: typeof row.buildingNo === 'string' ? row.buildingNo : null,
-              controller: typeof row.controller === 'string' ? row.controller : null,
-              door: typeof row.door === 'string' ? row.door : '楼栋门禁',
-              sourceTable: row.accessSystem === 'iccard' ? 't_d_Privilege' as const : 'MJ_MacPower' as const,
-            }))
-            .filter((row) => row.buildingNo && targetNos.has(normalizeBuildingNo(row.buildingNo)));
-          snapshot.permissions = [...kept, ...additions];
+          if (task.operation === 'controller_revoke') {
+            snapshot.permissions = snapshot.permissions.filter((row) =>
+              row.wgCardNo !== task.wgCardNo || !succeededNos.has(normalizeBuildingNo(row.buildingNo || '')));
+          } else {
+            const kept = snapshot.permissions.filter((row) =>
+              row.wgCardNo !== task.wgCardNo || !succeededNos.has(normalizeBuildingNo(row.buildingNo || '')));
+            const additions: AccessCardPermissionEntry[] = task.controllerResults
+              .filter((row) => this.authorizationResultSucceeded(task.operation, row))
+              .map((row) => ({
+                wgCardNo: task.wgCardNo,
+                accessSystem: row.accessSystem === 'iccard' ? 'iccard' as const : 'mjsystem' as const,
+                buildingNo: typeof row.buildingNo === 'string' ? row.buildingNo : null,
+                controller: typeof row.controller === 'string' ? row.controller : null,
+                door: typeof row.door === 'string' ? row.door : '楼栋门禁',
+                sourceTable: row.accessSystem === 'iccard' ? 't_d_Privilege' as const : 'MJ_MacPower' as const,
+              }));
+            snapshot.permissions = [...kept, ...additions];
+          }
           snapshot.permissionStatus = 'ready';
           snapshot.permissionRefreshedAt = now;
           snapshot.permissionLastError = null;
           snapshot.updatedBy = null;
           await snapshotRepo.save(snapshot);
         }
+      }
+
+      if (allSucceeded) {
+        task.status = 'completed';
+        task.lastError = null;
+        task.completedAt = now;
+        if (task.operation === 'temporary_open' && task.durationSeconds) {
+          const restoreAt = new Date(now.getTime() + task.durationSeconds * 1000);
+          const restoreKey = `door-restore-${task.id}`;
+          const existingRestore = await repo.findOne({ where: { tenantId: task.tenantId, idempotencyKey: restoreKey } });
+          if (!existingRestore) {
+            await repo.save(repo.create({
+              tenantId: task.tenantId, houseId: task.houseId, historyRowId: 0,
+              roomKey: task.roomKey, cardSequence: null, operation: 'restore_normal',
+              icCardNo: null, wgCardNo: '__door_operation__', targetBuildings: task.targetBuildings,
+              durationSeconds: null, controllerResults: [], idempotencyKey: restoreKey,
+              status: 'pending', attempt: 0, requestedAt: restoreAt, completedAt: null,
+              leaseAgentKey: null, leaseExpiresAt: null, lastError: null,
+              createdBy: task.createdBy, updatedBy: task.createdBy,
+            }));
+          }
+        }
       } else if (dto.result === 'retry' && task.attempt < 3) {
         task.status = 'pending';
-        task.lastError = dto.errorMessage?.trim() || '门禁网关暂时无法追加权限，正在重试';
+        task.lastError = dto.errorMessage?.trim() || '部分楼栋操作失败，正在只重试失败楼栋';
       } else {
         task.status = 'failed';
-        task.lastError = dto.errorMessage?.trim() || '历史卡片追加权限失败';
+        task.lastError = dto.errorMessage?.trim() || '历史卡片门栋权限操作失败';
         task.completedAt = now;
       }
       task.leaseAgentKey = null;
@@ -2442,9 +2608,13 @@ export class AccessCardIssuanceService {
         item.cardCompletedAt = new Date();
       } else if (agent.kind === 'access_gateway') {
         if (item.cardStatus !== 'card_completed') throw new BadRequestException('实体卡尚未完成，不能同步门禁');
+        item.controllerResults = this.mergeAuthorizationResults(
+          'controller_upload', item.controllerResults ?? [], dto.controllerResults ?? []);
+        const allSucceeded = item.batch.targetBuildingIds.every((buildingId) =>
+          item.controllerResults.some((row) => Number(row.buildingId) === buildingId && row.status === 'controller_uploaded'));
+        if (!allSucceeded) throw new BadRequestException('控制器结果缺少部分目标楼栋，不能标记全部完成');
         item.accessStatus = 'controller_uploaded';
         item.accessCompletedAt = new Date();
-        item.controllerResults = dto.controllerResults ?? [];
       } else {
         if (!dto.legacyPersonNo || !dto.legacyHouseSequence) {
           throw new BadRequestException('.80 同步服务必须返回旧系统编号和房号累计序号');
@@ -2457,6 +2627,10 @@ export class AccessCardIssuanceService {
       item.lastErrorRef = null;
       item.lastErrorMessage = null;
     } else {
+      if (agent.kind === 'access_gateway' && dto.controllerResults?.length) {
+        item.controllerResults = this.mergeAuthorizationResults(
+          'controller_upload', item.controllerResults ?? [], dto.controllerResults);
+      }
       item.lastErrorRef = dto.errorRef || randomBytes(4).toString('hex').toUpperCase();
       item.lastErrorMessage = dto.errorMessage || '代理执行失败';
       if (agent.kind === 'issuer') {

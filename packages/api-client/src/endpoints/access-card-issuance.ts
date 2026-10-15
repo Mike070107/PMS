@@ -125,7 +125,8 @@ export interface AccessCardAuthorization {
   houseId: number;
   historyRowId: number;
   roomKey: string;
-  operation: 'access_database_only' | 'controller_upload';
+  operation: 'access_database_only' | 'controller_upload' | 'controller_revoke'
+    | 'controller_detect' | 'remote_open' | 'temporary_open' | 'restore_normal';
   icCardNo: string | null;
   wgCardNo: string;
   targetBuildings: Array<{ id: number; buildingNo: string; accessSystem: Exclude<AccessSystem, null> }>;
@@ -135,6 +136,7 @@ export interface AccessCardAuthorization {
   error: string | null;
   requestedAt: string;
   completedAt: string | null;
+  durationSeconds?: number | null;
 }
 
 export interface AccessCardReadiness {
@@ -528,10 +530,30 @@ export const createHistoryAuthorization = (houseId: number, historyId: number, d
   data,
 });
 
+export const revokeHistoryAuthorization = (houseId: number, historyId: number, data: {
+  targetBuildingIds: number[];
+  idempotencyKey: string;
+}) => request<AccessCardAuthorization>({
+  url: `/access-card-issuance/houses/${houseId}/history/${historyId}/revocations`,
+  method: 'POST',
+  data,
+});
+
 export const uploadHistoryCardToController = (houseId: number, historyId: number, data: {
   idempotencyKey: string;
 }) => request<AccessCardAuthorization>({
   url: `/access-card-issuance/houses/${houseId}/history/${historyId}/upload-controller`,
+  method: 'POST',
+  data,
+});
+
+export const createDoorOperation = (houseId: number, data: {
+  buildingId: number;
+  operation: 'controller_detect' | 'remote_open' | 'temporary_open';
+  durationSeconds?: number;
+  idempotencyKey: string;
+}) => request<AccessCardAuthorization>({
+  url: `/access-card-issuance/houses/${houseId}/door-operations`,
   method: 'POST',
   data,
 });

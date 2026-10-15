@@ -2,7 +2,14 @@ import { Column, Entity, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
 
 export type AccessCardAuthorizationStatus = 'pending' | 'running' | 'completed' | 'failed';
-export type AccessCardAuthorizationOperation = 'access_database_only' | 'controller_upload';
+export type AccessCardAuthorizationOperation =
+  | 'access_database_only'
+  | 'controller_upload'
+  | 'controller_revoke'
+  | 'controller_detect'
+  | 'remote_open'
+  | 'temporary_open'
+  | 'restore_normal';
 
 /** 已发卡片追加门栋权限；独立于发卡批次，避免污染发卡数量和旧库用户序号。 */
 @Entity('access_card_authorizations')
@@ -32,6 +39,10 @@ export class AccessCardAuthorization extends TenantEntity {
 
   @Column({ name: 'target_buildings', type: 'jsonb', default: () => "'[]'" })
   targetBuildings: Array<{ id: number; buildingNo: string; accessSystem: 'mjsystem' | 'iccard' }>;
+
+  /** 临时常开时长；其他操作为 null。 */
+  @Column({ name: 'duration_seconds', type: 'int', nullable: true })
+  durationSeconds: number | null;
 
   @Column({ name: 'controller_results', type: 'jsonb', default: () => "'[]'" })
   controllerResults: Array<Record<string, unknown>>;

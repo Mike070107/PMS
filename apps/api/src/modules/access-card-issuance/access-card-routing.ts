@@ -109,6 +109,22 @@ export function supportsAccessCardOperationMode(version: string | null | undefin
   return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 30)));
 }
 
+/** 2.5.44 起助手才使用旧软件核实过的 iCCard 0811 / MjSystem 1E 撤销协议。 */
+export function supportsAccessCardPermissionRevoke(version: string | null | undefined): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 44)));
+}
+
+/** 2.5.43 起助手才支持 iCCard 设备检测、远程开门和定时恢复。 */
+export function supportsRemoteDoorControl(version: string | null | undefined): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 43)));
+}
+
 export function parseLegacyAccessCardRoomName(value?: string | null): {
   lane: string;
   buildingNo: string;

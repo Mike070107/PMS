@@ -188,6 +188,7 @@ namespace Pms.AccessCardAgent
         public string icCardNo { get; set; }
         public string wgCardNo { get; set; }
         public string cardTemplateVersion { get; set; }
+        public int? durationSeconds { get; set; }
         public object[] targetBuildingIds { get; set; }
         public AccessTargetBuilding[] targetBuildings { get; set; }
     }

@@ -15,7 +15,21 @@ import {
   parseLegacyAccessCardRoomName,
   supportsAccessCardDisplayName,
   supportsAccessCardOperationMode,
+  supportsAccessCardPermissionRevoke,
+  supportsRemoteDoorControl,
 } from './access-card-routing';
+
+test('远程开门只交给2.5.43或更新助手', () => {
+  assert.equal(supportsRemoteDoorControl('2.5.42'), false);
+  assert.equal(supportsRemoteDoorControl('2.5.43'), true);
+  assert.equal(supportsRemoteDoorControl('2.6.0'), true);
+});
+
+test('撤销控制器权限只交给2.5.44或更新助手', () => {
+  assert.equal(supportsAccessCardPermissionRevoke('2.5.43'), false);
+  assert.equal(supportsAccessCardPermissionRevoke('2.5.44'), true);
+  assert.equal(supportsAccessCardPermissionRevoke('2.6.0'), true);
+});
 
 test('额外授权只列同一门禁区域，并按楼栋数字自然排序', () => {
   const current = { communityId: 2, lane: '228' };

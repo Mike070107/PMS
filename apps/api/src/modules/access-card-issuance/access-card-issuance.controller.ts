@@ -30,6 +30,7 @@ import {
   CreateAccessCardIssueDto,
   CreateAccessCardAuthorizationDto,
   CreateAccessCardControllerUploadDto,
+  CreateAccessDoorOperationDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
   LegacyHistoryReportDto,
@@ -291,6 +292,18 @@ export class AccessCardIssuanceController {
     return this.service.createHistoryAuthorization(houseId, historyId, dto, user, access);
   }
 
+  @Post('houses/:houseId/history/:historyId/revocations')
+  @RequirePermission('business', 'edit')
+  revokeHistoryAuthorization(
+    @Param('houseId', ParseIntPipe) houseId: number,
+    @Param('historyId', ParseIntPipe) historyId: number,
+    @Body() dto: CreateAccessCardAuthorizationDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.revokeHistoryAuthorization(houseId, historyId, dto, user, access);
+  }
+
   @Post('houses/:houseId/history/:historyId/upload-controller')
   @RequirePermission('business', 'edit')
   uploadHistoryCardToController(
@@ -301,6 +314,17 @@ export class AccessCardIssuanceController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.service.uploadHistoryCardToController(houseId, historyId, dto, user, access);
+  }
+
+  @Post('houses/:houseId/door-operations')
+  @RequirePermission('business', 'edit')
+  createDoorOperation(
+    @Param('houseId', ParseIntPipe) houseId: number,
+    @Body() dto: CreateAccessDoorOperationDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.createDoorOperation(houseId, dto, user, access);
   }
 
   @Get('history-authorizations/:id')

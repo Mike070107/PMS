@@ -178,7 +178,8 @@ namespace Pms.AccessCardAgent
                 { "parkingDbRead", config.Kind == "parking_gateway" },
                 { "parkingDbWrite", config.Kind == "parking_gateway" && parkingWrite },
                 { "controllerUpload", config.Kind == "access_gateway" && controllerUpload },
-                { "historicalAccessGrant", config.Kind == "access_gateway" && accessWrite && controllerUpload }
+                { "historicalAccessGrant", config.Kind == "access_gateway" && accessWrite && controllerUpload },
+                { "remoteDoorControl", config.Kind == "access_gateway" && accessWrite && controllerUpload }
             };
         }
 
@@ -377,6 +378,48 @@ namespace Pms.AccessCardAgent
         {
             try
             {
+                if (String.Equals(task.operation, "controller_detect", StringComparison.OrdinalIgnoreCase) ||
+                    String.Equals(task.operation, "remote_open", StringComparison.OrdinalIgnoreCase) ||
+                    String.Equals(task.operation, "temporary_open", StringComparison.OrdinalIgnoreCase) ||
+                    String.Equals(task.operation, "restore_normal", StringComparison.OrdinalIgnoreCase))
+                {
+                    var doorResults = AccessControllerUploader.ExecuteDoorOperation(
+                        _config, LoadSecret("iccard-db-password.dat"), task);
+                    var doorFailed = AccessControllerUploader.HasDoorOperationFailures(task.operation, doorResults);
+                    _api.ReportHistoryAuthorization(new AccessCardAuthorizationReport
+                    {
+                        taskId = task.taskId,
+                        result = doorFailed ? "retry" : "success",
+                        controllerResults = doorResults,
+                        errorMessage = doorFailed ? AccessControllerUploader.DoorOperationFailureMessage(doorResults) : null
+                    });
+                    RecordActivity(AccessControllerUploader.DoorOperationLabel(task.operation),
+                        task.targetBuildings != null && task.targetBuildings.Length > 0
+                            ? task.targetBuildings[0].buildingNo + "号楼" : "未知门禁",
+                        !doorFailed,
+                        doorFailed ? AccessControllerUploader.DoorOperationFailureMessage(doorResults) : "控制器已确认");
+                    return;
+                }
+                if (String.Equals(task.operation, "controller_revoke", StringComparison.OrdinalIgnoreCase))
+                {
+                    var removalResults = AccessControllerUploader.Revoke(
+                        _config, LoadSecret("iccard-db-password.dat"), task);
+                    removalResults = AccessGatewayDatabase.RemovePermissions(
+                        _config, LoadSecret("iccard-db-password.dat"), task, removalResults);
+                    var removalFailed = AccessControllerUploader.HasRemovalFailures(task.targetBuildings, removalResults);
+                    var removalError = removalFailed
+                        ? AccessControllerUploader.RemovalFailureMessage(task.targetBuildings, removalResults) : null;
+                    _api.ReportHistoryAuthorization(new AccessCardAuthorizationReport
+                    {
+                        taskId = task.taskId,
+                        result = removalFailed ? "retry" : "success",
+                        controllerResults = removalResults,
+                        errorMessage = removalError
+                    });
+                    RecordActivity("撤销门栋权限", task.wgCardNo, !removalFailed,
+                        removalFailed ? removalError : "控制器和门禁数据库权限均已删除");
+                    return;
+                }
                 var databaseResults = AccessGatewayDatabase.Activate(
                     _config,
                     LoadSecret("iccard-db-password.dat"),
@@ -388,14 +431,18 @@ namespace Pms.AccessCardAgent
                         _config,
                         LoadSecret("iccard-db-password.dat"),
                         task);
+                var failed = !databaseOnly && AccessControllerUploader.HasFailures(controllerResults);
                 _api.ReportHistoryAuthorization(new AccessCardAuthorizationReport
                 {
                     taskId = task.taskId,
-                    result = "success",
-                    controllerResults = controllerResults
+                    result = failed ? "retry" : "success",
+                    controllerResults = controllerResults,
+                    errorMessage = failed ? AccessControllerUploader.FailureMessage(controllerResults) : null
                 });
-                RecordActivity(databaseOnly ? "添加门禁数据库" : "下发门禁控制器", task.wgCardNo, true,
-                    databaseOnly ? "门禁管理系统数据库写入完成" : "数据库写入和控制器下发完成");
+                RecordActivity(databaseOnly ? "添加门禁数据库" : "下发门禁控制器", task.wgCardNo, !failed,
+                    databaseOnly ? "门禁管理系统数据库写入完成" : failed
+                        ? AccessControllerUploader.FailureMessage(controllerResults)
+                        : "数据库写入和控制器下发完成");
             }
             catch (Exception exception)
             {
@@ -461,13 +508,16 @@ namespace Pms.AccessCardAgent
                         _config,
                         LoadSecret("iccard-db-password.dat"),
                         task);
+                    var failed = AccessControllerUploader.HasFailures(controllerResults);
                     _api.Report(new AgentReport
                     {
                         itemId = task.itemId,
-                        result = "success",
-                        controllerResults = controllerResults
+                        result = failed ? "retry" : "success",
+                        controllerResults = controllerResults,
+                        errorMessage = failed ? AccessControllerUploader.FailureMessage(controllerResults) : null
                     });
-                    RecordActivity("下发门禁权限", task.wgCardNo, true, "数据库写入和控制器下发完成");
+                    RecordActivity("下发门禁权限", task.wgCardNo, !failed,
+                        failed ? AccessControllerUploader.FailureMessage(controllerResults) : "数据库写入和控制器下发完成");
                 }
                 catch (Exception exception)
                 {

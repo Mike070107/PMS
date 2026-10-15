@@ -48,6 +48,8 @@ namespace Pms.DataSyncAssistant
 
                 VerifyRuntimeMapping(store, config);
                 VerifyMjSystemSerialProtocol(root);
+                VerifyIcCardDoorCommands();
+                VerifyPermissionRemoval();
                 VerifyAccessGatewayMigration(root);
                 VerifyLegacyRoomMatching();
                 VerifyParkingOwnerColumnMapping();
@@ -73,6 +75,70 @@ namespace Pms.DataSyncAssistant
                     Directory.Delete(full, true);
                 }
             }
+        }
+
+        private static void VerifyIcCardDoorCommands()
+        {
+            if (AccessControllerUploader.BuildIcCardDoorOperationFunction("controller_detect", 1, 5) != "F1101A00")
+                throw new InvalidOperationException("iCCard 设备检测命令与旧总控制台不一致");
+            if (AccessControllerUploader.BuildIcCardDoorOperationFunction("remote_open", 1, 5) != "9D100101")
+                throw new InvalidOperationException("iCCard 远程开门命令与旧总控制台不一致");
+            if (AccessControllerUploader.BuildIcCardDoorOperationFunction("temporary_open", 1, 5) != "8F1001010032")
+                throw new InvalidOperationException("iCCard 临时常开命令错误");
+            if (AccessControllerUploader.BuildIcCardDoorOperationFunction("restore_normal", 1, 5) != "8F1001030032")
+                throw new InvalidOperationException("iCCard 恢复正常门禁命令错误");
+        }
+
+        private static void VerifyPermissionRemoval()
+        {
+            if (AccessControllerUploader.BuildIcCardDeleteFunction(22345575L, 1, 1) != "08110001B207DF01")
+                throw new InvalidOperationException("iCCard 删除权限命令没有使用旧程序真实的 0811 帧");
+
+            var removalArguments = AccessControllerUploader.BuildMjSystemPermissionRemovalArguments(
+                "0160217", "6938", 22345575L, 1,
+                new DateTime(2000, 1, 1), new DateTime(2040, 12, 31),
+                1, "000000", "228/3/201/10", "0");
+            if (removalArguments.Length != 48 || Convert.ToString(removalArguments[0]) != "1E" ||
+                Convert.ToString(removalArguments[1]) != "0160217" ||
+                Convert.ToString(removalArguments[2]) != "6938" ||
+                Convert.ToString(removalArguments[3]) != "22345575")
+                throw new InvalidOperationException("MjSystem 1E 撤销权限参数没有与原 IISSystem 对齐");
+            AccessControllerUploader.ValidateMjSystemPermissionRemovalCommand(
+                "9E01EB391E2500001B1A223455750000000000000000000000000000000000000000035B9D");
+            try
+            {
+                AccessControllerUploader.ValidateMjSystemPermissionRemovalCommand(
+                    "9E01EB391D253600DFB2070100010140123101FFFFFF3232382F332F32303338202009919D");
+                throw new InvalidOperationException("MjSystem 新增权限帧被误当成撤销权限帧接受");
+            }
+            catch (InvalidOperationException exception)
+            {
+                if (!exception.Message.Contains("不是 1E")) throw;
+            }
+
+            var task = new AgentTask
+            {
+                targetBuildings = new[]
+                {
+                    new AccessTargetBuilding { id = 20, buildingNo = "20", accessSystem = "mjsystem" },
+                    new AccessTargetBuilding { id = 26, buildingNo = "26", accessSystem = "mjsystem" }
+                }
+            };
+            var finalized = AccessGatewayDatabase.FinalizePermissionRemovals(task, new object[]
+            {
+                new AccessControllerUploadResult { buildingId = 20, buildingNo = "20", status = "controller_removed" },
+                new AccessControllerUploadResult { buildingId = 26, buildingNo = "26", status = "controller_removed" }
+            }, delegate(AccessTargetBuilding target)
+            {
+                if (target.id == 20) throw new InvalidOperationException("测试数据库回读失败");
+            }).Cast<AccessControllerUploadResult>().ToArray();
+            if (finalized.Single(item => item.buildingId == 20).status != "controller_failed" ||
+                !finalized.Single(item => item.buildingId == 20).error.Contains("数据库删除或回读失败") ||
+                finalized.Single(item => item.buildingId == 26).status != "controller_removed" ||
+                !finalized.Single(item => item.buildingId == 26).acknowledgement.Contains("数据库已回读确认删除") ||
+                !AccessControllerUploader.HasRemovalFailures(task.targetBuildings, finalized.Cast<object>().ToArray()) ||
+                !AccessControllerUploader.RemovalFailureMessage(task.targetBuildings, finalized.Cast<object>().ToArray()).Contains("20号楼"))
+                throw new InvalidOperationException("撤销权限未按楼栋独立保存控制器与数据库结果");
         }
 
         private static void VerifyParkingMovementSource()
@@ -225,6 +291,37 @@ namespace Pms.DataSyncAssistant
                 task.targetBuildings[0].buildingNo != "11" || task.targetBuildings[0].accessSystem != "iccard" ||
                 task.displayName != "228/16/401/6")
                 throw new InvalidOperationException("门禁任务楼栋快照解析失败");
+
+            if (AccessControllerUploader.RequireSingleMjSystemDoor("26", new[] { "M0030-1" }) != "M0030-1")
+                throw new InvalidOperationException("26号楼未唯一映射到自己的 M0030-1 控制器");
+            try
+            {
+                AccessControllerUploader.RequireSingleMjSystemDoor("26", new[] { "M0038-1", "M0003-1", "M0030-1" });
+                throw new InvalidOperationException("一个楼栋错误映射多个控制器时未被拒绝");
+            }
+            catch (InvalidOperationException exception)
+            {
+                if (!exception.Message.Contains("唯一识别")) throw;
+            }
+            if (AccessGatewayDatabase.RequireSingleMjDoors("26", new[] { "M0030-1" }).Single() != "M0030-1")
+                throw new InvalidOperationException("MjSystem 写库路由未保留 26 号楼唯一实体门");
+            AssertRejectsMultipleDoors(delegate
+            {
+                AccessGatewayDatabase.RequireSingleMjDoors("26", new[] { "M0038-1", "M0003-1", "M0030-1" });
+            }, "MjSystem 写库路由");
+            AssertRejectsMultipleDoors(delegate
+            {
+                AccessGatewayDatabase.RequireSingleIcCardDoors("53", new[] { 53, 531, 532 });
+            }, "iCCard 写库路由");
+
+            var uploadFailureResults = AccessControllerUploader.FailedResultsForTest(new[]
+            {
+                new AccessTargetBuilding { id = 20, buildingNo = "20", accessSystem = "mjsystem" },
+                new AccessTargetBuilding { id = 26, buildingNo = "26", accessSystem = "mjsystem" }
+            }, "mjsystem", new InvalidOperationException("测试离线"));
+            if (uploadFailureResults.Length != 2 ||
+                uploadFailureResults.Cast<AccessControllerUploadResult>().Any(item => item.status != "controller_failed"))
+                throw new InvalidOperationException("多楼栋失败结果未按楼栋独立保留");
 
             var grantJson = "{\"action\":\"authorize_existing_card\",\"operation\":\"access_database_only\",\"taskId\":19,\"displayName\":\"228/16/401/6\",\"wgCardNo\":\"22355403\",\"targetBuildings\":[{\"id\":11,\"buildingNo\":\"11\",\"accessSystem\":\"iccard\"}]}";
             var grant = new JavaScriptSerializer().Deserialize<AgentTask>(grantJson);
@@ -673,6 +770,19 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("新版启动失败时未选择已存在的旧版回退路径");
             if (UnifiedServiceManager.ChooseFailureAction(false, 0) != UpgradeFailureAction.RetryUnifiedWithoutFallback)
                 throw new InvalidOperationException("没有旧服务时仍可能卸载唯一的新版服务");
+        }
+
+        private static void AssertRejectsMultipleDoors(Action action, string path)
+        {
+            try
+            {
+                action();
+                throw new InvalidOperationException(path + " 未拒绝一个楼栋映射多个实体门");
+            }
+            catch (InvalidOperationException exception)
+            {
+                if (!exception.Message.Contains("唯一识别")) throw;
+            }
         }
     }
 }
