@@ -138,6 +138,17 @@ export function parkingRenewalTargets<T>(group: ParkingVehicleGroup<T>): T[] {
     : [...group.rows];
 }
 
+/** 续期范围只取车库授权清单中已勾选的旧库；查到车辆记录不等于该库已授权。 */
+export function parkingAuthorizedRenewalTargets<T>(
+  group: ParkingVehicleGroup<T>,
+  authorized: (row: T, database: ParkingDatabase) => boolean,
+): T[] {
+  return parkingRenewalTargets(group).filter((row) => {
+    const database = row === group.parking1 ? 'parking1' : 'parking2';
+    return authorized(row, database);
+  });
+}
+
 export function normalizeParkingDate(value: string | null | undefined): string | null {
   const text = value?.trim() || '';
   const match = /^(\d{4}-\d{2}-\d{2})/.exec(text);

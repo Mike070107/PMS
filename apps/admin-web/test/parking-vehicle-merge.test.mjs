@@ -9,6 +9,7 @@ import {
   normalizeManualParkingRoom,
   normalizeParkingRoomIdentity,
   parkingRenewalTargets,
+  parkingAuthorizedRenewalTargets,
   sameParkingText,
   queryParkingCloudVehicles,
 } from '../src/lib/parkingVehicleMerge.ts';
@@ -67,6 +68,14 @@ test('同车牌在一期、二期各一条时合并为一张卡片', () => {
   assert.equal(groups[0].parking1?.id, '11');
   assert.equal(groups[0].parking2?.id, '22');
   assert.deepEqual(parkingRenewalTargets(groups[0]).map((item) => item.id), ['11', '22']);
+});
+
+test('续期只选择车库授权清单已勾选的旧库，不按查到的车辆记录全写', () => {
+  const groups = groupParkingVehicleRows([
+    { ...row('parking1', '沪A0A998', '11'), authorized: false },
+    { ...row('parking2', '沪A0A998', '22'), authorized: true },
+  ], (item) => item.plate, (item) => item.id);
+  assert.deepEqual(parkingAuthorizedRenewalTargets(groups[0], (item) => item.authorized).map((item) => item.id), ['22']);
 });
 
 test('同库存在重复车牌时不合并，不隐藏脏数据', () => {

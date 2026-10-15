@@ -44,7 +44,9 @@ test('正式页默认期限、切换期限和预览续期共用规则，提交�
 
 test('同车牌跨一期二期时建立两个续期任务，资料复用不携带到期日', () => {
   const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
-  assert.match(page, /onOperation\('renew_vehicle', row, parkingRenewalTargets\(group\)\)/);
+  assert.match(page, /onOperation\('renew_vehicle', row, renewalTargets\)/);
+  assert.match(page, /parkingAuthorizedRenewalTargets\(group/,
+    '一期、二期续期目标必须先经过车库授权清单过滤');
   assert.match(page, /Promise\.all\(targets\.map/);
   assert.doesNotMatch(page, /message=\{`将覆盖\$\{targetLabel\}的房号、车牌到期日和备注`\}/);
   assert.match(page, /车牌到期日不会被复用或修改/);
@@ -52,8 +54,16 @@ test('同车牌跨一期二期时建立两个续期任务，资料复用不携�
 
 test('正式续期会同步已授权的人防有效期，失败重试不重复收费或续期旧库', () => {
   const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
+  assert.match(page, /续期收费（三系统）/,
+    '一期、二期和人防均授权时，正式入口必须明确显示三系统续期');
+  assert.match(page, /一期、二期、德立云三个系统将共同续期/,
+    '提交前必须明确告知三个系统都在本次续期范围');
   assert.match(page, /kind === 'renew_vehicle' && civilCloudRow\?\.civilDefenseAuthorized/);
+  assert.match(page, /operationRows !== undefined \? operationRows : \[row\]/,
+    '授权清单没有旧库时必须允许空旧库目标，不能退回当前行误续期');
   assert.match(page, /renewDeliyunVehicle\(\{/);
+  assert.match(page, /idempotencyKey: `\$\{batchKey\}-deliyun`/,
+    '德立云必须属于同一续期批次，不能成为无关联的手工补写');
   assert.match(page, /lastOperation\?\.database === 'deliyun' && lastOperation\.status === 'failed'/);
   assert.match(page, /未重复收费或续期旧库/);
   assert.match(page, /避免漏续人防有效期/);

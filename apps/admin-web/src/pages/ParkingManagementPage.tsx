@@ -62,7 +62,7 @@ import {
   normalizeParkingPlate,
   normalizeParkingRoomIdentity,
   parkingDatabase,
-  parkingRenewalTargets,
+  parkingAuthorizedRenewalTargets,
   sameParkingText,
   queryParkingCloudVehicles,
   type ParkingRoomOption,
@@ -438,7 +438,7 @@ export default function ParkingManagementPage({
         await searchParking(String(retry.payload.plate || ''));
         return;
       }
-      const targets = kind === 'renew_vehicle' && operationRows?.length ? operationRows : [row];
+      const targets = kind === 'renew_vehicle' && operationRows !== undefined ? operationRows : [row];
       const batchKey = createIdempotencyKey();
       const requestedGarages = (kind === 'update_garages' || kind === 'add_vehicle') && Array.isArray(payload.garages)
         ? payload.garages.map(String)
@@ -475,7 +475,8 @@ export default function ParkingManagementPage({
       const localPayload = { ...payload };
       if (kind === 'update_garages') localPayload.garages = requestedGarages.filter((garage) => garage !== 'civil');
       // 亲情车目标车库必须保留到服务端登记记录，供审核通过后自动授权。
-      const renewalAmounts = kind === 'renew_vehicle' ? allocateParkingRenewalAmounts(Number(payload.amount), targets.length) : [];
+      const renewalAmounts = kind === 'renew_vehicle' && targets.length
+        ? allocateParkingRenewalAmounts(Number(payload.amount), targets.length) : [];
       const tasks = await Promise.all(targets.map((target, index) => {
         const targetPayload = kind === 'renew_vehicle' && target
           ? { ...payload, amount: renewalAmounts[index], previousEndDate: normalizeParkingDate(fieldValue(target.fields, fieldAliases.expiry)) || '' }
@@ -1384,6 +1385,10 @@ function ParkingResultCard({ group, canWriteLocal, deliyunVehicle, deliyunWriteE
   }, [plate, identity, proofRefresh]);
   const identities = Array.from(new Set(group.rows.map((item) => vehicleIdentity(item.fields) || '旧库未设置')));
   const garages = mergedGarageRows(group, deliyunVehicle);
+  const renewalTargets = parkingAuthorizedRenewalTargets(group, (target, database) =>
+    garageRows(target.database, target.fields).some((garage) => garage.authorized &&
+      (database === 'parking1' ? garage.key === 'phase1' : garage.key === 'phase2' || garage.key === 'main')));
+  const renewsCivil = deliyunVehicle?.civilDefenseAuthorized === true;
   const phase1Snapshot = group.parking1 ? parkingSyncSnapshot(group.parking1) : null;
   const phase2Snapshot = group.parking2 ? parkingSyncSnapshot(group.parking2) : null;
   const mismatch = phase1Snapshot && phase2Snapshot ? parkingSyncMismatch(phase1Snapshot, phase2Snapshot) : null;
@@ -1448,7 +1453,12 @@ function ParkingResultCard({ group, canWriteLocal, deliyunVehicle, deliyunWriteE
 
       <div className="parking-operation-actions" aria-label="停车业务操作">
         {group.merged && <label className="parking-operation-source">本次操作目标<Select value={operationDatabase} onChange={setOperationDatabase} options={[{ value: 'parking1', label: '一期停车库' }, { value: 'parking2', label: '二期停车库' }]} /></label>}
-        <Button type="primary" disabled={!canWriteLocal} icon={<CalendarOutlined />} onClick={() => onOperation('renew_vehicle', row, parkingRenewalTargets(group))}>{group.merged ? '续期收费（一期+二期）' : '续期收费'}</Button>
+        <Button type="primary" disabled={!canWriteLocal || (!renewalTargets.length && !renewsCivil)} icon={<CalendarOutlined />} onClick={() => onOperation('renew_vehicle', row, renewalTargets)}>
+          {renewalTargets.length === 2 && renewsCivil ? '续期收费（三系统）'
+            : renewalTargets.length === 2 ? '续期收费（一期+二期）'
+            : renewalTargets.length === 1 && renewsCivil ? '续期收费（授权旧库+人防）'
+            : renewsCivil ? '续期收费（仅人防）' : '续期收费'}
+        </Button>
         <Button disabled={!canWriteLocal} icon={<SwapOutlined />} onClick={() => onOperation('change_plate', row)}>变更车牌</Button>
         <Button disabled={!canWriteLocal} icon={<UserSwitchOutlined />} onClick={() => onOperation('rebind_owner', row)}>变更绑定用户</Button>
         <Button disabled={!canWriteLocal} icon={<SafetyCertificateOutlined />} onClick={() => onOperation('update_garages', row, group.rows)}>调整车库授权</Button>
@@ -1664,7 +1674,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
   return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle', disabled: (kind === 'rebind_owner' && !binding) || (kind === 'renew_vehicle' && (!endDate || feeRates.loading || !!feeRates.error || !feeRates.rates)) || (kind === 'update_garages' && selectedGarages.includes('civil') && !civilParkingSpace.trim()) }} onOk={submit}>
     {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space>{task?.status === 'failed' && <Button size="small" onClick={onRetry}>仅重试失败的停车库</Button>}{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
     <div className="parking-operation-form">
-      {kind === 'renew_vehicle' && targetRows?.length === 2 && <Alert type="info" showIcon message="一期、二期将同时续期" description={deliyunVehicle?.civilDefenseAuthorized
+      {kind === 'renew_vehicle' && targetRows?.length === 2 && <Alert type="info" showIcon message={deliyunVehicle?.civilDefenseAuthorized ? '一期、二期、德立云三个系统将共同续期' : '一期、二期将同时续期'} description={deliyunVehicle?.civilDefenseAuthorized
         ? '两个旧库和德立云人防会同步到同一到期日；金额只记入一期，二期和人防不重复收费。三方读回验证后才显示整体成功。'
         : '两个旧库都会更新到期日；本次填写的金额只记入一期，二期同步金额为 0，避免报表重复计费。两边读回验证后才显示整体成功。'} />}
       <label>车牌<Input value={plate} disabled={!row} readOnly={kind === 'rebind_owner'} onChange={(e) => setPlate(e.target.value.toUpperCase())} /></label>
