@@ -4770,3 +4770,10 @@
 - 自上次（e4fa8d86）以来上线的相关提交：
   - 450d4e69 fix(fees): show cashier remarks and payment times
 
+## 2026-10-15 08:34 · api · 7218a497
+
+- 包：`pms-api-fast-20261015-083348.tar.gz`
+- 提交：7218a497 feat(access): revoke door permissions and add remote control
+- 自上次（96547e2d）以来上线的相关提交：
+  - 7218a497 feat(access): revoke door permissions and add remote control
+
