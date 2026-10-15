@@ -4844,3 +4844,10 @@
 - 自上次（81aa6455）以来上线的相关提交：
   - f9ca2df3 feat(ai): learn from corrected repair speech
 
+## 2026-10-15 12:31 · api · 2c7e7167
+
+- 包：`pms-api-fast-20261015-123042.tar.gz`
+- 提交：2c7e7167 feat(access): split history database and controller actions
+- 自上次（f9ca2df3）以来上线的相关提交：
+  - 2c7e7167 feat(access): split history database and controller actions
+
