@@ -4872,3 +4872,10 @@
 - 自上次（2c7e7167）以来上线的相关提交：
   - c819b5c3 feat(repairs): learn from corrected descriptions
 
+## 2026-10-15 16:49 · api · 1066705b
+
+- 包：`pms-api-fast-20261015-164903.tar.gz`
+- 提交：1066705b fix(parking): persist Deliyun parking space after create
+- 自上次（c819b5c3）以来上线的相关提交：
+  - 1066705b fix(parking): persist Deliyun parking space after create
+
