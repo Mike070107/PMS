@@ -4926,3 +4926,11 @@
 - 自上次（db4e96d7）以来上线的相关提交：
   - 05915533 fix(parking): renew deliyun with zero-fee delay
 
+## 2026-10-15 19:03 · web · ff052cdb
+
+- 包：`pms-web-20261015-190248.tar.gz`
+- 提交：ff052cdb fix(parking): renew only authorized systems
+- 自上次（d67b3c13）以来上线的相关提交：
+  - ff052cdb fix(parking): renew only authorized systems
+  - 1ff731ea feat(access-cards): add ACR122U issuance workflow
+
