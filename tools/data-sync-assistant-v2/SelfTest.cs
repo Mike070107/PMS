@@ -294,6 +294,8 @@ namespace Pms.DataSyncAssistant
 
             if (AccessControllerUploader.RequireSingleMjSystemDoor("26", new[] { "M0030-1" }) != "M0030-1")
                 throw new InvalidOperationException("26号楼未唯一映射到自己的 M0030-1 控制器");
+            if (AccessControllerUploader.RequireSingleMjSystemDoor("5", new[] { "M0029-1" }) != "M0029-1")
+                throw new InvalidOperationException("非 26 号楼的 MjSystem 唯一实体门解析失败");
             try
             {
                 AccessControllerUploader.RequireSingleMjSystemDoor("26", new[] { "M0038-1", "M0003-1", "M0030-1" });

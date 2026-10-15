@@ -159,6 +159,12 @@ export interface AccessCardReadiness {
     capabilities: Record<string, boolean>;
     lastSeenAt: string | null;
   }>;
+  doorControlBuildings?: Array<{
+    id: number;
+    buildingNo: string;
+    accessSystem: Exclude<AccessSystem, null>;
+    routeReady: boolean;
+  }>;
   deliyun?: {
     configured: boolean;
     connected: boolean;
@@ -554,6 +560,17 @@ export const createDoorOperation = (houseId: number, data: {
   idempotencyKey: string;
 }) => request<AccessCardAuthorization>({
   url: `/access-card-issuance/houses/${houseId}/door-operations`,
+  method: 'POST',
+  data,
+});
+
+export const createStandaloneDoorOperation = (data: {
+  buildingId: number;
+  operation: 'controller_detect' | 'remote_open' | 'temporary_open';
+  durationSeconds?: number;
+  idempotencyKey: string;
+}) => request<AccessCardAuthorization>({
+  url: '/access-card-issuance/door-operations',
   method: 'POST',
   data,
 });

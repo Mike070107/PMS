@@ -63,8 +63,8 @@ export class AccessCardIssuanceController {
 
   @Get('readiness')
   @RequirePermission('business', 'view')
-  readiness(@CurrentUser() user: AuthUser) {
-    return this.service.readiness(user);
+  readiness(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.readiness(user, access);
   }
 
   @Post('agents')
@@ -325,6 +325,16 @@ export class AccessCardIssuanceController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.service.createDoorOperation(houseId, dto, user, access);
+  }
+
+  @Post('door-operations')
+  @RequirePermission('business', 'edit')
+  createStandaloneDoorOperation(
+    @Body() dto: CreateAccessDoorOperationDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.createStandaloneDoorOperation(dto, user, access);
   }
 
   @Get('history-authorizations/:id')

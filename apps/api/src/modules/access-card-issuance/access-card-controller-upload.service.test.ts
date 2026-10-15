@@ -119,7 +119,7 @@ test('iCCard 远程开门只对选中的单栋建立独立任务', async () => {
   context.availableBuildings.push({ id: 11, buildingNo: '11', accessSystem: 'iccard', routeReady: true });
   state.getHouseContext = async () => context;
   state.agentRepo = { find: async () => [{
-    agentKey: 'access-gateway', kind: 'access_gateway', enabled: true, version: '2.5.45',
+    agentKey: 'access-gateway', kind: 'access_gateway', enabled: true, version: '2.5.46',
     status: 'online', lastSeenAt: new Date(), capabilities: { remoteDoorControl: true },
   }] };
   const queued: Array<Record<string, unknown>> = [];
@@ -137,7 +137,7 @@ test('iCCard 远程开门只对选中的单栋建立独立任务', async () => {
   assert.deepEqual(queued[0]!.targetBuildings, [{ id: 11, buildingNo: '11', accessSystem: 'iccard' }]);
 });
 
-test('MjSystem 现场验证只允许26号楼立即远程开门', async () => {
+test('MjSystem 所有唯一映射楼栋都允许立即远程开门，但不猜测未验证命令', async () => {
   const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
   const state = service as unknown as Record<string, unknown>;
   state.authorizationRepo = { findOne: async () => null };
@@ -145,7 +145,7 @@ test('MjSystem 现场验证只允许26号楼立即远程开门', async () => {
   context.availableBuildings.push({ id: 26, buildingNo: '26', accessSystem: 'mjsystem', routeReady: true });
   state.getHouseContext = async () => context;
   state.agentRepo = { find: async () => [{
-    agentKey: 'access-gateway', kind: 'access_gateway', enabled: true, version: '2.5.45',
+    agentKey: 'access-gateway', kind: 'access_gateway', enabled: true, version: '2.5.46',
     status: 'online', lastSeenAt: new Date(), capabilities: { remoteDoorControl: true },
   }] };
   const queued: Array<Record<string, unknown>> = [];
@@ -157,12 +157,91 @@ test('MjSystem 现场验证只允许26号楼立即远程开门', async () => {
   assert.equal(queued.length, 1);
   assert.deepEqual(queued[0]!.targetBuildings, [{ id: 26, buildingNo: '26', accessSystem: 'mjsystem' }]);
 
-  await assert.rejects(service.createDoorOperation(10, {
+  await service.createDoorOperation(10, {
     buildingId: 5, operation: 'remote_open', idempotencyKey: 'mj5-blocked-open',
-  }, user), /仅允许 26 号楼/);
+  }, user);
+  assert.deepEqual(queued[1]!.targetBuildings, [{ id: 5, buildingNo: '5', accessSystem: 'mjsystem' }]);
   await assert.rejects(service.createDoorOperation(10, {
     buildingId: 26, operation: 'temporary_open', durationSeconds: 300, idempotencyKey: 'mj26-blocked-temp',
-  }, user), /仅允许 26 号楼立即远程开门/);
+  }, user), /设备检测和临时常开协议尚未验收/);
+});
+
+test('设备与服务入口无需先选房号即可创建楼栋开门任务', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  state.authorizationRepo = { findOne: async () => null };
+  state.buildingRepo = { findOne: async () => ({ id: 26, tenantId: 3, communityId: 228, buildingNo: '26', lane: '228' }) };
+  state.communityRepo = { findOne: async () => ({ id: 228, tenantId: 3, name: '枫桦景苑二期' }) };
+  state.houseRepo = { findOne: async () => ({ id: 2601, tenantId: 3, buildingId: 26, roomNo: '101' }) };
+  const context = houseContext('not_uploaded');
+  context.house.id = 2601;
+  context.house.buildingId = 26;
+  context.house.buildingNo = '26';
+  context.house.roomKey = '228/26/101';
+  context.availableBuildings.push({ id: 26, buildingNo: '26', accessSystem: 'mjsystem', routeReady: true });
+  state.getHouseContext = async () => context;
+  state.agentRepo = { find: async () => [{
+    agentKey: 'access-gateway', kind: 'access_gateway', enabled: true, version: '2.5.46',
+    status: 'online', lastSeenAt: new Date(), capabilities: { remoteDoorControl: true },
+  }] };
+  const queued: Array<Record<string, unknown>> = [];
+  state.enqueueHistoryAuthorization = async (input: Record<string, unknown>) => { queued.push(input); return { status: 'pending' }; };
+
+  await service.createStandaloneDoorOperation({
+    buildingId: 26, operation: 'remote_open', idempotencyKey: 'device-card-mj26-open',
+  }, user);
+
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0]!.houseId, 2601);
+  assert.deepEqual(queued[0]!.targetBuildings, [{ id: 26, buildingNo: '26', accessSystem: 'mjsystem' }]);
+});
+
+test('iCCard 临时常开确认后按所选时长创建一次恢复正常任务', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  const startedAt = new Date();
+  const task = {
+    id: 901, tenantId: 3, houseId: 10, historyRowId: 0, roomKey: '228/41/101', cardSequence: null,
+    operation: 'temporary_open', icCardNo: null, wgCardNo: '__door_operation__',
+    targetBuildings: [{ id: 41, buildingNo: '41', accessSystem: 'iccard' }],
+    durationSeconds: 1800, controllerResults: [], idempotencyKey: 'temp-open-41',
+    status: 'running', attempt: 1, requestedAt: startedAt, completedAt: null,
+    leaseAgentKey: 'access-gateway', leaseExpiresAt: new Date(startedAt.getTime() + 90_000),
+    lastError: null, createdBy: 7, updatedBy: null,
+  };
+  const saved: Array<Record<string, unknown>> = [];
+  const repo = {
+    findOne: async ({ where }: { where: Record<string, unknown> }) => {
+      if (where.id === 901) return task;
+      if (where.idempotencyKey === 'door-restore-901') return null;
+      return null;
+    },
+    create: (value: Record<string, unknown>) => value,
+    save: async (value: Record<string, unknown>) => { saved.push({ ...value }); return value; },
+  };
+  state.authenticateAgent = async () => ({
+    tenantId: 3, agentKey: 'access-gateway', kind: 'access_gateway',
+  });
+  state.authorizationRepo = {
+    manager: {
+      transaction: async (callback: (manager: { getRepository: () => typeof repo }) => Promise<void>) =>
+        callback({ getRepository: () => repo }),
+    },
+  };
+
+  await service.reportHistoryAuthorization('access-gateway', 'token', {
+    taskId: 901,
+    result: 'success',
+    controllerResults: [{ buildingId: 41, buildingNo: '41', accessSystem: 'iccard', status: 'door_held_open' }],
+  });
+
+  const restore = saved.find((item) => item.operation === 'restore_normal');
+  assert.ok(restore);
+  assert.equal(restore.status, 'pending');
+  assert.equal(restore.idempotencyKey, 'door-restore-901');
+  assert.deepEqual(restore.targetBuildings, task.targetBuildings);
+  assert.equal(new Date(restore.requestedAt as Date).getTime() - new Date(task.completedAt!).getTime(), 1_800_000);
+  assert.equal(task.status, 'completed');
 });
 
 test('历史卡取消勾选只为真实已有权限的楼栋创建撤销任务', async () => {

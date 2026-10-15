@@ -588,14 +588,13 @@ export class AccessCardIssuanceService {
     if (!building?.routeReady || !building.accessSystem) {
       throw new BadRequestException('所选楼栋不属于当前门禁区域，或门禁路由尚未配置');
     }
-    if (building.accessSystem === 'mjsystem'
-      && (normalizeBuildingNo(building.buildingNo) !== '26' || dto.operation !== 'remote_open')) {
-      throw new BadRequestException('MjSystem 现场验证期间仅允许 26 号楼立即远程开门，其他命令不会发送');
+    if (building.accessSystem === 'mjsystem' && dto.operation !== 'remote_open') {
+      throw new BadRequestException('MjSystem 当前只开放已现场验证的立即远程开门；设备检测和临时常开协议尚未验收');
     }
     const agents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
     const gateway = orderAgentsByAvailability(agents).find((agent) => effectiveAgentStatus(agent) === 'online'
       && agent.capabilities?.remoteDoorControl === true && supportsRemoteDoorControl(agent.version));
-    if (!gateway) throw new ServiceUnavailableException('远程开门需要 .88 电脑升级 PMS 数据同步助手 2.5.45 或更新版本');
+    if (!gateway) throw new ServiceUnavailableException('门禁远程控制需要 .88 电脑升级 PMS 数据同步助手 2.5.46 或更新版本');
     const durationSeconds = dto.operation === 'temporary_open' ? dto.durationSeconds : null;
     if (dto.operation === 'temporary_open' && (!durationSeconds || durationSeconds < 60 || durationSeconds > 86_400)) {
       throw new BadRequestException('临时开门时长必须在 1 分钟至 24 小时之间');
@@ -606,6 +605,31 @@ export class AccessCardIssuanceService {
       targetBuildings: [{ id: building.id, buildingNo: building.buildingNo, accessSystem: building.accessSystem }],
       durationSeconds, idempotencyKey, userId: user.id,
     });
+  }
+
+  async createStandaloneDoorOperation(
+    dto: CreateAccessDoorOperationDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const building = await this.buildingRepo.findOne({ where: { id: dto.buildingId, tenantId } });
+    if (!building) throw new NotFoundException('所选楼栋不存在');
+    const community = await this.communityRepo.findOne({ where: { id: building.communityId, tenantId } });
+    if (!community || projectPhaseOf(community.name) !== 'phase2') {
+      throw new BadRequestException('所选楼栋不属于枫桦景苑二期门禁区域');
+    }
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.includes(community.id)) throw new ForbiddenException('该楼栋不在你的管理范围内');
+    if (!accessSystemOf('phase2', building.buildingNo)) {
+      throw new BadRequestException('所选楼栋的门禁路由尚未配置');
+    }
+    const referenceHouse = await this.houseRepo.findOne({
+      where: { tenantId, buildingId: building.id },
+      order: { id: 'ASC' },
+    });
+    if (!referenceHouse) throw new BadRequestException('所选楼栋没有可用于门禁任务的房产记录');
+    return this.createDoorOperation(referenceHouse.id, dto, user, access);
   }
 
   async getHistoryAuthorization(id: number, user: AuthUser) {
@@ -648,9 +672,20 @@ export class AccessCardIssuanceService {
     return this.historyAuthorizationResponse(await this.authorizationRepo.save(task));
   }
 
-  async readiness(user: AuthUser) {
+  async readiness(user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const agents = await this.agentRepo.find({ where: { tenantId }, order: { id: 'ASC' } });
+    const [agents, communities] = await Promise.all([
+      this.agentRepo.find({ where: { tenantId }, order: { id: 'ASC' } }),
+      this.communityRepo.find({ where: { tenantId, enabled: true } }),
+    ]);
+    const scope = scopeCommunityIds(access);
+    const phase2CommunityIds = communities
+      .filter((community) => projectPhaseOf(community.name) === 'phase2')
+      .filter((community) => !scope || scope.includes(community.id))
+      .map((community) => community.id);
+    const doorBuildings = phase2CommunityIds.length
+      ? await this.buildingRepo.find({ where: { tenantId, communityId: In(phase2CommunityIds) } })
+      : [];
     const simulationEnabled = this.simulationEnabled();
     const deliyun = await this.deliyun.status();
     const parkingDbWrite = agents.some((agent) =>
@@ -688,6 +723,15 @@ export class AccessCardIssuanceService {
         capabilities: agent.capabilities,
         lastSeenAt: agent.lastSeenAt,
       })),
+      doorControlBuildings: doorBuildings
+        .map((building) => ({
+          id: building.id,
+          buildingNo: building.buildingNo,
+          accessSystem: accessSystemOf('phase2', building.buildingNo),
+          routeReady: accessSystemOf('phase2', building.buildingNo) !== null,
+        }))
+        .filter((building) => building.routeReady)
+        .sort((left, right) => left.buildingNo.localeCompare(right.buildingNo, 'zh-CN', { numeric: true })),
       deliyun,
     };
   }

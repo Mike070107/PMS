@@ -121,6 +121,10 @@ const PREVIEW_READINESS: AccessCardReadiness = {
   simulationEnabled: true,
   features: { cardWrite: false, legacyDbWrite: false, accessDbWrite: false, parkingDbRead: true, parkingDbWrite: false, controllerUpload: false, historicalAccessGrant: true },
   agents: [],
+  doorControlBuildings: [
+    { id: 26, buildingNo: '26', accessSystem: 'mjsystem', routeReady: true },
+    { id: 41, buildingNo: '41', accessSystem: 'iccard', routeReady: true },
+  ],
 };
 
 const PREVIEW_RECENT_RECORDS: AccessCardRecentRecord[] = [
@@ -302,6 +306,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const [retryingAuthorizationId, setRetryingAuthorizationId] = useState<number | null>(null);
   const [uploadingHistoryRowId, setUploadingHistoryRowId] = useState<number | null>(null);
   const [doorBuildingId, setDoorBuildingId] = useState<number | null>(null);
+  const [doorControlOpen, setDoorControlOpen] = useState(false);
   const [doorDurationSeconds, setDoorDurationSeconds] = useState(300);
   const [doorOperation, setDoorOperation] = useState<AccessCardAuthorization | null>(null);
   const [doorOperationSubmitting, setDoorOperationSubmitting] = useState(false);
@@ -400,8 +405,6 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       const next = await accessCardIssuance.houseContext(houseId);
       if (requestId !== undefined && contextRequestRef.current !== requestId) return null;
       setContext(next);
-      setDoorBuildingId((current) => current && next.availableBuildings.some((item) => item.id === current)
-        ? current : next.house.buildingId);
       if (!preserveSelection) setExtraBuildingIds([]);
       return next;
     } catch (error) {
@@ -474,9 +477,18 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   const legacyAgent = readiness?.agents.find((item) => item.kind === 'legacy_sync' && item.status === 'online')
     ?? readiness?.agents.find((item) => item.kind === 'legacy_sync');
   const canStart = !!context?.routeReady && (!!onlineIssuer || !!readiness?.simulationEnabled);
-  const selectedDoorBuilding = context?.availableBuildings.find((item) => item.id === doorBuildingId);
+  const doorControlBuildings = useMemo(() => readiness?.doorControlBuildings ?? [], [readiness]);
+  const selectedDoorBuilding = doorControlBuildings.find((item) => item.id === doorBuildingId);
   const selectedDoorIsMjSystem = selectedDoorBuilding?.accessSystem === 'mjsystem';
-  const selectedDoorIsMj26 = selectedDoorIsMjSystem && Number(selectedDoorBuilding?.buildingNo) === 26;
+
+  useEffect(() => {
+    setDoorBuildingId((current) => {
+      if (current && doorControlBuildings.some((item) => item.id === current)) return current;
+      return doorControlBuildings.find((item) => Number(item.buildingNo) === 26)?.id
+        ?? doorControlBuildings[0]?.id
+        ?? null;
+    });
+  }, [doorControlBuildings]);
 
   const extraOptions = useMemo(
     () => context?.availableBuildings
@@ -494,20 +506,20 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   };
 
   const runDoorOperation = async (operation: 'controller_detect' | 'remote_open' | 'temporary_open') => {
-    if (!context || !doorBuildingId) return;
-    const building = context.availableBuildings.find((item) => item.id === doorBuildingId);
+    if (!doorBuildingId) return;
+    const building = doorControlBuildings.find((item) => item.id === doorBuildingId);
     if (!building) return;
     if (building.accessSystem !== 'iccard' && building.accessSystem !== 'mjsystem') {
       message.error('该楼栋尚未配置可用门禁系统');
       return;
     }
-    const isMj26RemoteOpen = building.accessSystem === 'mjsystem'
-      && Number(building.buildingNo) === 26 && operation === 'remote_open';
-    if (building.accessSystem !== 'iccard' && !isMj26RemoteOpen) {
-      message.warning('MjSystem 现场验证期间仅开放 26 号楼立即远程开门，其他命令不会发送');
+    if (building.accessSystem === 'mjsystem' && operation !== 'remote_open') {
+      message.warning('MjSystem 当前只开放已现场验证的立即远程开门；设备检测和临时常开协议尚未验收');
       return;
     }
-    if (operation !== 'controller_detect') {
+    // iCCard 的三个操作按钮本身就是操作员的明确指令，避免再弹一次确认框阻断现场操作。
+    // MjSystem 立即开门仍保留二次确认，因为它是另一套现场协议，且没有检测/常开作为前置状态确认。
+    if (building.accessSystem === 'mjsystem' && operation === 'remote_open') {
       const action = operation === 'remote_open' ? '立即开门' : `临时常开 ${Math.round(doorDurationSeconds / 60)} 分钟`;
       const confirmed = await new Promise<boolean>((resolve) => Modal.confirm({
         title: `确认${action}？`,
@@ -521,7 +533,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     try {
       if (preview) {
         const task: AccessCardAuthorization = {
-          id: 9990, houseId: context.house.id, historyRowId: 0, roomKey: context.house.roomKey,
+          id: 9990, houseId: context?.house.id ?? 0, historyRowId: 0, roomKey: `__door_control__/${building.buildingNo}`,
           operation, icCardNo: null, wgCardNo: '__door_operation__', durationSeconds: operation === 'temporary_open' ? doorDurationSeconds : null,
           targetBuildings: [{ id: building.id, buildingNo: building.buildingNo, accessSystem: building.accessSystem }],
           controllerResults: [{ buildingNo: building.buildingNo, status: operation === 'controller_detect' ? 'controller_detected' : operation === 'remote_open' ? 'door_opened' : 'door_held_open' }],
@@ -531,7 +543,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         message.success(operation === 'controller_detect' ? '控制器在线' : operation === 'remote_open' ? '控制器已确认开门' : '已进入临时常开；到期由在线网关恢复，离线时将在重连后恢复');
         return;
       }
-      let task = await accessCardIssuance.createDoorOperation(context.house.id, {
+      let task = await accessCardIssuance.createStandaloneDoorOperation({
         buildingId: building.id, operation,
         durationSeconds: operation === 'temporary_open' ? doorDurationSeconds : undefined,
         idempotencyKey: newIdempotencyKey(),
@@ -1136,6 +1148,14 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         className="access-card-bridge-card"
         title={<Space><SafetyCertificateOutlined />设备与服务</Space>}
         extra={<Space wrap>
+          <Button
+            type="primary"
+            icon={<UnlockOutlined />}
+            disabled={!doorControlBuildings.length}
+            onClick={() => { setDoorOperation(null); setDoorControlOpen(true); }}
+          >
+            门禁远程控制
+          </Button>
           <Button onClick={() => { setAgentCredential(null); setAgentModalOpen(true); }}>注册本地服务</Button>
           <Button icon={<ReloadOutlined />} loading={readinessLoading} onClick={() => void loadReadiness()}>重新检测</Button>
         </Space>}
@@ -1178,6 +1198,104 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         )}
       </Card>
 
+      <Modal
+        open={doorControlOpen}
+        title={<Space><UnlockOutlined />门禁远程控制</Space>}
+        width={960}
+        footer={null}
+        destroyOnHidden
+        onCancel={() => { if (!doorOperationSubmitting) setDoorControlOpen(false); }}
+        maskClosable={!doorOperationSubmitting}
+        closable={!doorOperationSubmitting}
+      >
+        <Row gutter={[16, 16]} align="bottom">
+          <Col xs={24} md={8}>
+            <label className="pms-field-label" htmlFor="access-card-door-building">选择门</label>
+            <Select
+              id="access-card-door-building"
+              style={{ width: '100%' }}
+              value={doorBuildingId}
+              onChange={(value) => { setDoorBuildingId(value); setDoorOperation(null); }}
+              options={doorControlBuildings.map((item) => ({
+                value: item.id,
+                label: `${item.buildingNo}号楼 · ${systemLabel(item.accessSystem)}`,
+                disabled: !item.routeReady,
+              }))}
+            />
+          </Col>
+          <Col xs={24} md={8}>
+            <label className="pms-field-label" htmlFor="access-card-door-duration">临时常开时长</label>
+            <Space.Compact style={{ width: '100%' }}>
+              <Select
+                aria-label="临时常开预设时长"
+                value={doorDurationSeconds}
+                style={{ width: '62%' }}
+                onChange={setDoorDurationSeconds}
+                options={[
+                  { value: 300, label: '5 分钟' }, { value: 1800, label: '30 分钟' },
+                  { value: 3600, label: '1 小时' }, { value: 28800, label: '8 小时' },
+                  { value: 86400, label: '24 小时' },
+                ]}
+              />
+              <InputNumber
+                id="access-card-door-duration"
+                aria-label="自定义临时常开分钟数"
+                min={1} max={1440}
+                value={Math.round(doorDurationSeconds / 60)}
+                onChange={(value) => setDoorDurationSeconds(Math.max(60, Math.min(86400, Number(value || 5) * 60)))}
+                addonAfter="分钟"
+                style={{ width: '38%' }}
+              />
+            </Space.Compact>
+          </Col>
+          <Col xs={24} md={8}>
+            <Space wrap>
+              <Button disabled={selectedDoorIsMjSystem} loading={doorOperationSubmitting} onClick={() => void runDoorOperation('controller_detect')}>检测设备</Button>
+              <Button type="primary" icon={<UnlockOutlined />} loading={doorOperationSubmitting} onClick={() => void runDoorOperation('remote_open')}>远程开门</Button>
+              <Button disabled={selectedDoorIsMjSystem} loading={doorOperationSubmitting} onClick={() => void runDoorOperation('temporary_open')}>临时常开</Button>
+            </Space>
+          </Col>
+        </Row>
+        {selectedDoorBuilding && (
+          <Alert
+            className="access-card-inline-alert"
+            type="warning"
+            showIcon
+            message={`当前操作目标：${selectedDoorBuilding.buildingNo} 号楼 · ${systemLabel(selectedDoorBuilding.accessSystem)}`}
+            description={selectedDoorBuilding.accessSystem === 'iccard'
+              ? `检测设备、远程开门和临时常开均为单击后立即发送；临时常开到期后系统会自动恢复正常门禁。当前时长 ${Math.round(doorDurationSeconds / 60)} 分钟。`
+              : '远程开门会要求再次确认；MjSystem 的设备检测和临时常开尚未开放。'}
+          />
+        )}
+        {doorOperation && (
+          <Alert
+            className="access-card-inline-alert"
+            type={doorOperation.status === 'completed' ? 'success' : doorOperation.status === 'failed' ? 'error' : 'info'}
+            showIcon
+            message={doorOperation.status === 'completed' ? '控制器已确认'
+              : doorOperation.status === 'failed' ? '操作失败' : '正在等待 .88 网关执行'}
+            description={doorOperation.error || (
+              <Space direction="vertical" size={2}>
+                {doorOperation.operation === 'temporary_open' && doorOperation.status === 'completed' && (
+                  <Text>已安排 {Math.round((doorOperation.durationSeconds || doorDurationSeconds) / 60)} 分钟后恢复正常门禁状态；网关离线时将在重连后执行。</Text>
+                )}
+                {doorOperation.controllerResults.map((result, index) => (
+                  <Text key={`${result.buildingNo || 'door'}-${index}`}>
+                    {typeof result.buildingNo === 'string' ? `${result.buildingNo}号楼` : '目标门'}：
+                    {typeof result.controller === 'string' ? result.controller : '控制器'} · {' '}
+                    {typeof result.door === 'string' ? result.door : '实体门'} · {' '}
+                    {typeof result.acknowledgement === 'string' ? result.acknowledgement
+                      : typeof result.error === 'string' ? result.error
+                        : typeof result.status === 'string' ? result.status : '等待回执'}
+                  </Text>
+                ))}
+              </Space>
+            )}
+          />
+        )}
+        <Text type="secondary">此入口不依赖房号。iCCard 的设备检测、远程开门和临时常开均已开放；MjSystem 已开放所有可唯一映射楼栋的立即远程开门，其他两项须等现场协议验收。</Text>
+      </Modal>
+
       <Card className="access-card-house-card" title="1. 选择房号">
         <Row gutter={[18, 18]} align="middle">
           <Col xs={24} lg={11}>
@@ -1213,71 +1331,6 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
 
       {context && (
         <>
-          {context.projectPhase === 'phase2' && (
-            <Card className="access-card-form-card" title={<Space><UnlockOutlined />门禁远程控制</Space>}>
-              <Row gutter={[16, 16]} align="bottom">
-                <Col xs={24} md={8}>
-                  <label className="pms-field-label" htmlFor="access-card-door-building">选择门</label>
-                  <Select
-                    id="access-card-door-building"
-                    style={{ width: '100%' }}
-                    value={doorBuildingId}
-                    onChange={(value) => { setDoorBuildingId(value); setDoorOperation(null); }}
-                    options={context.availableBuildings.map((item) => ({
-                      value: item.id,
-                      label: `${item.buildingNo}号楼 · ${systemLabel(item.accessSystem)}${item.accessSystem === 'mjsystem' ? (Number(item.buildingNo) === 26 ? '（现场验证）' : '（待协议验证）') : ''}`,
-                      disabled: !item.routeReady,
-                    }))}
-                  />
-                </Col>
-                <Col xs={24} md={8}>
-                  <label className="pms-field-label" htmlFor="access-card-door-duration">临时常开时长</label>
-                  <Space.Compact style={{ width: '100%' }}>
-                    <Select
-                      aria-label="临时常开预设时长"
-                      value={doorDurationSeconds}
-                      style={{ width: '62%' }}
-                      onChange={setDoorDurationSeconds}
-                      options={[
-                        { value: 300, label: '5 分钟' }, { value: 1800, label: '30 分钟' },
-                        { value: 3600, label: '1 小时' }, { value: 28800, label: '8 小时' },
-                        { value: 86400, label: '24 小时' },
-                      ]}
-                    />
-                    <InputNumber
-                      id="access-card-door-duration"
-                      aria-label="自定义临时常开分钟数"
-                      min={1} max={1440}
-                      value={Math.round(doorDurationSeconds / 60)}
-                      onChange={(value) => setDoorDurationSeconds(Math.max(60, Math.min(86400, Number(value || 5) * 60)))}
-                      addonAfter="分钟"
-                      style={{ width: '38%' }}
-                    />
-                  </Space.Compact>
-                </Col>
-                <Col xs={24} md={8}>
-                  <Space wrap>
-                    <Button disabled={selectedDoorIsMjSystem} loading={doorOperationSubmitting} onClick={() => void runDoorOperation('controller_detect')}>检测设备</Button>
-                    <Button disabled={selectedDoorIsMjSystem && !selectedDoorIsMj26} type="primary" icon={<UnlockOutlined />} loading={doorOperationSubmitting} onClick={() => void runDoorOperation('remote_open')}>远程开门</Button>
-                    <Button disabled={selectedDoorIsMjSystem} loading={doorOperationSubmitting} onClick={() => void runDoorOperation('temporary_open')}>临时常开</Button>
-                  </Space>
-                </Col>
-              </Row>
-              {doorOperation && (
-                <Alert
-                  className="access-card-inline-alert"
-                  type={doorOperation.status === 'completed' ? 'success' : doorOperation.status === 'failed' ? 'error' : 'info'}
-                  showIcon
-                  message={doorOperation.status === 'completed' ? '控制器已确认'
-                    : doorOperation.status === 'failed' ? '操作失败' : '正在等待 .88 网关执行'}
-                  description={doorOperation.error || (doorOperation.operation === 'temporary_open' && doorOperation.status === 'completed'
-                    ? `已安排 ${Math.round((doorOperation.durationSeconds || doorDurationSeconds) / 60)} 分钟后恢复正常门禁状态；网关离线时将在重连后执行`
-                    : undefined)}
-                />
-              )}
-              <Text type="secondary">iCCard 按旧程序“总控制台 → 选择门 → 远程开门”的实际通信命令执行；MjSystem 当前仅开放 26 号楼立即远程开门现场验证，检测设备和临时常开尚未开放。</Text>
-            </Card>
-          )}
           <Row gutter={[18, 18]} align="stretch">
             <Col xs={24} xl={10}>
               <Card className="access-card-form-card" title="2. 发卡设置">

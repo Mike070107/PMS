@@ -85,15 +85,14 @@ namespace Pms.AccessCardAgent
             var target = task.targetBuildings[0];
             if (String.Equals(target.accessSystem, "mjsystem", StringComparison.OrdinalIgnoreCase))
             {
-                if (!String.Equals(task.operation, "remote_open", StringComparison.OrdinalIgnoreCase) ||
-                    NormalizeBuilding(target.buildingNo) != "26")
+                if (!String.Equals(task.operation, "remote_open", StringComparison.OrdinalIgnoreCase))
                     return new object[] { DoorOperationFailed(target,
-                        "MjSystem 现场协议验证期间只允许 26 号楼执行一次立即远程开门，本次未发送命令") };
+                        "MjSystem 当前只开放已现场验证的立即远程开门协议；设备检测和临时常开命令未发送") };
                 try
                 {
                     return RunMjSystemSta(delegate
                     {
-                        return ExecuteMjSystemRemoteOpen26(config, task, target);
+                        return ExecuteMjSystemRemoteOpen(config, task, target);
                     });
                 }
                 catch (Exception exception) { return new object[] { DoorOperationFailed(target, exception.Message) }; }
@@ -131,7 +130,7 @@ namespace Pms.AccessCardAgent
             catch (Exception exception) { return new object[] { DoorOperationFailed(target, exception.Message) }; }
         }
 
-        private static object[] ExecuteMjSystemRemoteOpen26(AgentConfig config, AgentTask task, AccessTargetBuilding target)
+        private static object[] ExecuteMjSystemRemoteOpen(AgentConfig config, AgentTask task, AccessTargetBuilding target)
         {
             string sdkPath;
             if (!TryFindMjSystemSdk(config, out sdkPath))
@@ -139,8 +138,6 @@ namespace Pms.AccessCardAgent
             using (var connection = OpenMjSystem(config.MjSystemDatabasePath))
             {
                 var doorId = MjSystemDoor(connection, target.buildingNo);
-                if (!String.Equals(doorId, "M0030-1", StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException("26号楼实体门必须唯一映射为 M0030-1，实际为 " + doorId + "，已停止发送");
                 var record = ReadMjSystemDoorRecord(connection, doorId);
                 using (var vendor = new MjSystemVendor(sdkPath))
                 {
@@ -148,7 +145,7 @@ namespace Pms.AccessCardAgent
                     string response;
                     var result = vendor.SendDoorCommand(record.CommMode, record.IpAddress, record.Port, frame, out response);
                     if (result != 0 || String.IsNullOrWhiteSpace(response))
-                        throw new InvalidOperationException("26号楼控制器未确认远程开门（" +
+                        throw new InvalidOperationException(target.buildingNo + "号楼控制器未确认远程开门（" +
                             record.ControllerName + " / " + record.CommMode + "）：" + DescribeMjSystemError(result, response));
                     return new object[] { new AccessControllerUploadResult
                     {

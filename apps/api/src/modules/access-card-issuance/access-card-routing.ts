@@ -117,12 +117,12 @@ export function supportsAccessCardPermissionRevoke(version: string | null | unde
   return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 44)));
 }
 
-/** 2.5.45 起助手才包含受控的 MjSystem 26号楼远程开门协议；旧版不得领取门操作任务。 */
+/** 2.5.46 起助手才会按现场 MDB 唯一门映射为所有 MjSystem 楼栋远程开门。 */
 export function supportsRemoteDoorControl(version: string | null | undefined): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
   if (!match) return false;
   const [major, minor, patch] = match.slice(1).map(Number);
-  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 45)));
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 46)));
 }
 
 export function parseLegacyAccessCardRoomName(value?: string | null): {
