@@ -4889,3 +4889,12 @@
   - 6ba8be5 test(repairs): preserve owner timestamp without contact phone
   - 8e16a1f feat(repairs): sync owner phone from repair intake
 
+## 2026-10-15 18:25 · web · d67b3c1
+
+- 包：`pms-web-20261015-182354.tar.gz`
+- 提交：d67b3c1 docs(parking): add deliyun H5 field dictionary
+- 自上次（c819b5c）以来上线的相关提交：
+  - b599aad fix(parking): require download confirmation
+  - e5f4b2e fix(parking): add civil expiry reconciliation action
+  - bf934a4 fix(parking): sync civil defense expiry on renewal
+
