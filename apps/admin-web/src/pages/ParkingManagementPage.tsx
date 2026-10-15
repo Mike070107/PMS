@@ -459,8 +459,10 @@ export default function ParkingManagementPage({
         throw new Error(`人防当前到期日为 ${civilCloudRow.endDate}，不能用较早日期覆盖；请调整本次到期日`);
       const civilCandidates = [row, ...(operationRows ?? []), ...rows].filter((candidate): candidate is ParkingQueryRow =>
         !!candidate && !!row && normalizeParkingPlate(plateValue(candidate.fields)) === normalizeParkingPlate(plateValue(row.fields)));
-      const civilSource = civilCandidates.find(candidate => parkingDatabase(candidate.database) === 'parking2')
-        ?? civilCandidates.find(candidate => parkingDatabase(candidate.database) === 'parking1');
+      const phase1CivilSource = civilCandidates.find(candidate => parkingDatabase(candidate.database) === 'parking1');
+      const phase2CivilSource = civilCandidates.find(candidate => parkingDatabase(candidate.database) === 'parking2');
+      const civilSource = kind === 'update_garages' && requestedGarages.includes('civil')
+        ? phase2CivilSource : phase2CivilSource ?? phase1CivilSource;
       const civilPeriod = firstValidParkingPeriod(civilSource ? [{
         beginDate: dayjs().format('YYYY-MM-DD'),
         endDate: normalizeParkingDate(fieldValue(civilSource.fields, fieldAliases.expiry)),
@@ -469,7 +471,18 @@ export default function ParkingManagementPage({
       const civilOwnerRoom = sourceRoom && /^\d+\/\d+$/.test(sourceRoom)
         ? `${civilSource && parkingDatabase(civilSource.database) === 'parking1' ? '198' : '228'}/${sourceRoom}` : sourceRoom;
       if (kind === 'update_garages' && row && requestedGarages.includes('civil') && !civilCloudRow && !civilPeriod)
-        throw new Error('授权人防车库出现错误，没有读到车牌有效期；已停止授权，未修改旧库');
+        throw new Error('授权人防车库出现错误，没有读到二期地面车库有效期；已停止授权，未修改旧库');
+      if (kind === 'update_garages' && requestedGarages.includes('civil') && !phase2CivilSource)
+        throw new Error('二期人防车库必须跟随二期地面车库有效期；没有查到二期车辆，已停止授权');
+      const phase1EndDate = phase1CivilSource ? normalizeParkingDate(fieldValue(phase1CivilSource.fields, fieldAliases.expiry)) : null;
+      const phase2EndDate = phase2CivilSource ? normalizeParkingDate(fieldValue(phase2CivilSource.fields, fieldAliases.expiry)) : null;
+      if (kind === 'update_garages' && requestedGarages.includes('phase1') &&
+        (requestedGarages.includes('phase2') || requestedGarages.includes('main')) &&
+        (!phase1EndDate || !phase2EndDate || phase1EndDate !== phase2EndDate))
+        throw new Error(`勾选车库的有效期不一致（一期 ${phase1EndDate || '未读取'}，二期 ${phase2EndDate || '未读取'}）；请先续期同步，未修改授权`);
+      if (kind === 'update_garages' && requestedGarages.includes('civil') && civilCloudRow?.endDate && phase2EndDate &&
+        civilCloudRow.endDate > phase2EndDate)
+        throw new Error(`人防有效期 ${civilCloudRow.endDate} 晚于二期地面车库 ${phase2EndDate}，为避免缩短有效期已停止授权`);
       if (kind === 'update_garages' && requestedGarages.includes('civil') && !civilCloudRow && !/^\d+\/\d+\/\d+$/.test(civilOwnerRoom || ''))
         throw new Error('停车系统缺少完整房号，已停止授权，未修改旧库');
       const localPayload = { ...payload };
@@ -543,6 +556,16 @@ export default function ParkingManagementPage({
             if (cloudTask.status !== 'completed') {
               throw new Error(`一期、二期旧库授权已完成，但德立云人防授权未完成：${cloudTask.error || '请刷新核对后再重试'}`);
             }
+          }
+          if (desired && cloudRow?.endDate && phase2EndDate && cloudRow.endDate < phase2EndDate) {
+            const expiryTask = await accessCardIssuance.renewDeliyunVehicle({
+              vehicleId: cloudRow.id, plate: cloudRow.plate,
+              previousEndDate: cloudRow.endDate, endDate: phase2EndDate,
+              idempotencyKey: `${batchKey}-deliyun-expiry`,
+            });
+            setLastOperation(expiryTask);
+            if (expiryTask.status !== 'completed')
+              throw new Error(`车库授权已完成，但人防有效期未同步到二期地面车库：${expiryTask.error || '请只重试人防日期同步'}`);
           }
         }
         if (kind === 'add_vehicle' && requestedGarages.includes('civil') && payload.requiresProofReview !== true) {

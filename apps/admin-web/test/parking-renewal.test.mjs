@@ -71,6 +71,18 @@ test('正式续期会同步已授权的人防有效期，失败重试不重复�
   assert.match(page, /与旧停车系统到期日不一致/);
 });
 
+test('调整车库授权先核对勾选系统日期，人防只跟随二期地面日期', () => {
+  const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
+  assert.match(page, /kind === 'update_garages' && requestedGarages\.includes\('civil'\)[\s\S]{0,120}\? phase2CivilSource/,
+    '调整人防授权不得回退使用一期有效期');
+  assert.match(page, /勾选车库的有效期不一致/,
+    '一期和二期同时勾选时必须在任何授权写入前检查日期一致');
+  assert.match(page, /civilCloudRow\.endDate > phase2EndDate/,
+    '人防日期晚于二期时不得静默缩短');
+  assert.match(page, /idempotencyKey: `\$\{batchKey\}-deliyun-expiry`/,
+    '人防日期较早时必须用独立幂等任务同步到二期日期');
+});
+
 test('没有控制器回执时不把旧库下载位冒充现场设备状态', () => {
   const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
   assert.match(page, /旧库标记已下载/);

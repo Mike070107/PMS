@@ -14,13 +14,14 @@ test('人防不再展示独立续期卡片，授权后信息放在旧停车和PM
   assert.match(compare, /parkingSpace=/); assert.match(compare, /validityRange=/);
   assert.match(parking, /\.parking-owner-compare.has-civil \{ grid-template-columns: repeat\(3,minmax\(0,1fr\)\)/);
 });
-test('人防授权日期使用确定格式，二期来源覆盖完整查询结果而非只有当前旧库行', () => {
+test('人防授权日期使用确定格式，调整授权时只跟随完整查询结果中的二期日期', () => {
   const source = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
   assert.match(source, /\[row, \.\.\.\(operationRows \?\? \[\]\), \.\.\.rows\]/);
   assert.match(source, /beginDate: dayjs\(\).format\('YYYY-MM-DD'\)/);
   assert.doesNotMatch(source, /toLocaleDateString\('en-CA'/);
-  assert.match(source, /civilCandidates.find\(candidate => parkingDatabase\(candidate.database\) === 'parking2'\)\s*\?\? civilCandidates.find\(candidate => parkingDatabase\(candidate.database\) === 'parking1'\)/);
-  assert.match(source, /授权人防车库出现错误，没有读到车牌有效期/);
+  assert.match(source, /const phase2CivilSource = civilCandidates\.find\(candidate => parkingDatabase\(candidate.database\) === 'parking2'\)/);
+  assert.match(source, /kind === 'update_garages' && requestedGarages\.includes\('civil'\)\s*\? phase2CivilSource/);
+  assert.match(source, /授权人防车库出现错误，没有读到二期地面车库有效期/);
 });
 test('新增与换牌复用同一个点选车牌组件，不替换旧车牌输入', () => {
   const source = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
