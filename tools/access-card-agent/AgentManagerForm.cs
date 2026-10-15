@@ -32,6 +32,7 @@ namespace Pms.AccessCardAgent
         private readonly Button _testButton = new Button();
         private readonly Button _installButton = new Button();
         private AgentConfig _existing;
+        private readonly bool _portableIssuer;
 
         public AgentManagerForm(string root, bool updateCompleted = false)
         {
@@ -41,19 +42,23 @@ namespace Pms.AccessCardAgent
             _legacyPasswordPath = Path.Combine(root, "legacy-db-password.dat");
             _icCardPasswordPath = Path.Combine(root, "iccard-db-password.dat");
             _parkingPasswordPath = Path.Combine(root, "parking-db-password.dat");
+            _portableIssuer = Path.GetFileNameWithoutExtension(Process.GetCurrentProcess().MainModule.FileName)
+                .IndexOf("AccessCardAssistant", StringComparison.OrdinalIgnoreCase) >= 0;
 
-            Text = "PMS 数据同步助手";
+            Text = _portableIssuer ? "PMS 门禁发卡小助手" : "PMS 数据同步助手";
             Font = new Font("Microsoft YaHei UI", 10F);
             AutoScaleMode = AutoScaleMode.Dpi;
             StartPosition = FormStartPosition.CenterScreen;
             MinimumSize = new Size(600, 680);
             ClientSize = new Size(640, 720);
             Icon = SystemIcons.Application;
+            BackColor = Color.FromArgb(240, 253, 250);
 
             var rootPanel = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(22),
+                BackColor = Color.White,
                 ColumnCount = 1,
                 RowCount = 5
             };
@@ -66,14 +71,16 @@ namespace Pms.AccessCardAgent
 
             rootPanel.Controls.Add(new Label
             {
-                Text = "PMS 数据同步助手",
+                Text = _portableIssuer ? "PMS 门禁发卡小助手" : "PMS 数据同步助手",
                 AutoSize = true,
                 Font = new Font(Font.FontFamily, 18F, FontStyle.Bold),
                 Margin = new Padding(0, 0, 0, 8)
             });
             rootPanel.Controls.Add(new Label
             {
-                Text = "选择这台电脑的用途，然后粘贴 PMS 网页生成的一次性连接密钥。代理 ID 会自动识别并固定保存。",
+                Text = _portableIssuer
+                    ? "输入这台发卡电脑的名称，粘贴 PMS 门禁发卡页生成的一次性连接 Key。绑定后助手将驻留托盘，后台检查更新并由用户确认安装。"
+                    : "选择这台电脑的用途，然后粘贴 PMS 网页生成的一次性连接密钥。代理 ID 会自动识别并固定保存。",
                 AutoSize = true,
                 MaximumSize = new Size(570, 0),
                 ForeColor = Color.DimGray,
@@ -135,6 +142,10 @@ namespace Pms.AccessCardAgent
             openWeb.Click += delegate { Process.Start(new ProcessStartInfo { FileName = "https://prsznh.cn/access-cards", UseShellExecute = true }); };
             var updateButton = new Button { Text = "安装更新", Dock = DockStyle.Fill, Height = 46 };
             updateButton.Click += delegate { InstallUpdate(); };
+            StyleButton(openWeb, false);
+            StyleButton(updateButton, false);
+            StyleButton(_testButton, false);
+            StyleButton(_installButton, true);
             buttons.Controls.Add(openWeb, 0, 0);
             buttons.Controls.Add(updateButton, 1, 0);
             buttons.Controls.Add(_testButton, 2, 0);
@@ -158,23 +169,38 @@ namespace Pms.AccessCardAgent
             return labelControl;
         }
 
+        private static void StyleButton(Button button, bool primary)
+        {
+            button.FlatStyle = FlatStyle.Flat;
+            button.FlatAppearance.BorderSize = primary ? 0 : 1;
+            button.FlatAppearance.BorderColor = Color.FromArgb(15, 118, 110);
+            button.BackColor = primary ? Color.FromArgb(3, 105, 161) : Color.White;
+            button.ForeColor = primary ? Color.White : Color.FromArgb(15, 118, 110);
+            button.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            button.Cursor = Cursors.Hand;
+            button.Margin = new Padding(4);
+        }
+
         private void LoadExisting()
         {
             try { if (File.Exists(_configPath)) _existing = AgentConfig.Load(_configPath); }
             catch (Exception exception) { SetStatus("现有配置无法读取：" + exception.Message, true); }
-            var selectedKind = _existing == null ? "legacy_sync" : _existing.Kind;
+            var selectedKind = _existing == null ? (_portableIssuer ? "issuer" : "legacy_sync") : _existing.Kind;
             for (var i = 0; i < _kind.Items.Count; i++)
                 if (((KindItem)_kind.Items[i]).Value == selectedKind) _kind.SelectedIndex = i;
-            if (_existing != null)
+            if (_existing != null || _portableIssuer)
             {
                 // 一个安装目录只属于一个后台服务。禁止在原目录切换用途，避免另一服务的
                 // agent.config.json / DPAPI 密钥被覆盖。
                 _kind.Enabled = false;
-                _name.Text = _existing.Name;
-                _parkingServer.Text = _existing.ParkingSqlServer;
-                _parkingPhase1.Text = _existing.ParkingPhase1Database;
-                _parkingPhase2.Text = _existing.ParkingPhase2Database;
-                _parkingUser.Text = _existing.ParkingUser;
+                if (_existing != null)
+                {
+                    _name.Text = _existing.Name;
+                    _parkingServer.Text = _existing.ParkingSqlServer;
+                    _parkingPhase1.Text = _existing.ParkingPhase1Database;
+                    _parkingPhase2.Text = _existing.ParkingPhase2Database;
+                    _parkingUser.Text = _existing.ParkingUser;
+                }
             }
             _token.PlaceholderTextCompat(File.Exists(_tokenPath) ? "已保存，留空保持不变" : "请粘贴一次性密钥");
             SetStatus(File.Exists(_tokenPath) ? "已找到本机密钥，可直接测试或安装后台服务。" : "请完成配置。", false);

@@ -22,6 +22,7 @@ import {
   CheckCircleOutlined,
   CreditCardOutlined,
   DatabaseOutlined,
+  DownloadOutlined,
   EllipsisOutlined,
   ExperimentOutlined,
   LeftOutlined,
@@ -468,14 +469,13 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
   };
 
   const issuerAgents = readiness?.agents.filter((item) => item.kind === 'issuer') ?? [];
-  const onlineIssuer = issuerAgents.find((item) => item.status === 'online');
+  const onlineIssuer = issuerAgents.find((item) => item.status === 'online' && item.capabilities?.cardWrite === true);
   // A computer can be re-registered after replacement or credential rotation.
   // Prefer the currently-online record instead of the oldest record of that kind.
   const accessGateway = readiness?.agents.find((item) => item.kind === 'access_gateway' && item.status === 'online')
     ?? readiness?.agents.find((item) => item.kind === 'access_gateway');
-  const legacyAgent = readiness?.agents.find((item) => item.kind === 'legacy_sync' && item.status === 'online')
-    ?? readiness?.agents.find((item) => item.kind === 'legacy_sync');
-  const canStart = !!context?.routeReady && (!!onlineIssuer || !!readiness?.simulationEnabled);
+  const canStart = !!context?.routeReady
+    && (!!readiness?.simulationEnabled || (!!onlineIssuer && readiness?.features.legacyDbWrite === true));
   const doorControlBuildings = useMemo(() => readiness?.doorControlBuildings ?? [], [readiness]);
   const selectedDoorBuilding = doorControlBuildings.find((item) => item.id === doorBuildingId);
   const selectedDoorIsMjSystem = selectedDoorBuilding?.accessSystem === 'mjsystem';
@@ -1074,8 +1074,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
       <section className="access-card-hero">
         <div>
           <Tag color="blue">ACR122U 任意工作站发卡</Tag>
-          <h1>门禁发卡</h1>
-          <p>选择房号后，系统自动区分枫桦景苑一期与二期；一期只写卡，二期自动同步门禁并下发控制器。</p>
+          <h1>枫桦景苑门禁卡授权</h1>
+          <p>请放入已由加密初始化助手制作的本小区卡；系统将写入大铁门权限、逐块回读，并由 .80 助手同步捷顺发卡记录。</p>
         </div>
         <div className="access-card-hero-stat">
           <span>{batch ? '本次进度' : '默认数量'}</span>
@@ -1088,6 +1088,19 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         className="access-card-bridge-card"
         title={<Space><SafetyCertificateOutlined />设备与服务</Space>}
         extra={<Space wrap>
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            href="/downloads/pms-access-card-assistant/latest/Pms.AccessCardAssistant.exe"
+          >
+            下载发卡小助手
+          </Button>
+          <Button
+            icon={<SafetyCertificateOutlined />}
+            href="/downloads/pms-access-card-assistant/latest/%E6%9E%AB%E6%A1%A6%E6%99%AF%E8%8B%91%E9%97%A8%E7%A6%81%E5%8D%A1%E5%8A%A0%E5%AF%86%E5%88%9D%E5%A7%8B%E5%8C%96%E5%8A%A9%E6%89%8B.exe"
+          >
+            下载加密初始化助手
+          </Button>
           <Button
             type="primary"
             icon={<UnlockOutlined />}
@@ -1106,15 +1119,15 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
               icon={<UsbOutlined />}
               label="办公室发卡器接入"
               state={onlineIssuer ? 'ready' : readiness?.simulationEnabled ? 'pending' : 'disabled'}
-              detail={onlineIssuer ? `${onlineIssuer.name} 已连接` : readiness?.simulationEnabled ? '尚未接入，当前可用模拟模式' : '未检测到发卡助手'}
+              detail={onlineIssuer ? `${onlineIssuer.name} 已连接，ACR122U 和加密模板就绪` : readiness?.simulationEnabled ? '尚未接入，当前可用模拟模式' : '未检测到可写卡的发卡助手'}
             />
           </Col>
           <Col xs={24} md={8}>
             <HealthTile
               icon={<DatabaseOutlined />}
               label="枫桦一二期小区大门门禁系统接入"
-              state={legacyAgent?.status === 'online' ? 'ready' : 'pending'}
-              detail={legacyAgent?.status === 'online' ? '增量同步服务在线' : '未接入，发卡后将显示待同步'}
+              state={readiness?.features.legacyDbWrite ? 'ready' : 'pending'}
+              detail={readiness?.features.legacyDbWrite ? '唯一 ICNO 分配与捷顺入库就绪' : '未检测到 .80 捷顺数据库写入服务'}
             />
           </Col>
           <Col xs={24} md={8}>
@@ -1318,7 +1331,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                     开始下一次发卡
                   </Button>
                 )}
-                {!canStart && <Alert className="access-card-inline-alert" type="error" showIcon message="当前没有可用发卡工作站，或该楼栋路由尚未配置。" />}
+                {!canStart && <Alert className="access-card-inline-alert" type="error" showIcon message="请确认发卡助手、ACR122U、加密模板和 .80 捷顺同步服务均已就绪。" />}
               </Card>
             </Col>
 
@@ -1345,15 +1358,15 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                         showIcon
                         icon={<CheckCircleOutlined />}
                         message="发卡完成，可以交付"
-                        description={batch.items.some((item) => item.legacySyncStatus !== 'synced') ? '旧发卡记录仍在同步中，不影响本卡使用。' : '卡片、门禁与旧库记录均已完成。'}
+                        description="卡片、门禁与捷顺数据库记录均已写入并回读确认。"
                       />
                     ) : (
                       <div className="access-card-place-card">
                         <span><UsbOutlined /></span>
                         <div>
                           <Text type="secondary">正在制作第 {currentSequence} / {batch.quantity} 张</Text>
-                          <Title level={3}>请放一张已加密初始化的门禁卡</Title>
-                          <Text>完成后请拿走卡片，系统检测移开后才会等待下一张。</Text>
+                          <Title level={3}>请放入枫桦景苑已加密初始卡</Title>
+                          <Text>未加密空白卡、已发卡或外来卡都会被拒绝；授权和整卡回读通过后再同步捷顺数据库。</Text>
                         </div>
                       </div>
                     )}
@@ -1654,7 +1667,17 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
           <div className="access-card-agent-secret">
             <Alert type="warning" showIcon message="密钥只显示这一次" description={agentCredential.message} />
             <CopyableSecret label="一次性连接密钥" value={agentCredential.token} />
-            <Text type="secondary">在对应电脑双击数据同步助手，只需粘贴上方连接密钥。代理 ID 会自动识别并固定保存；不要把密钥发到聊天、截图或配置仓库。</Text>
+            {agentKind === 'issuer' && (
+              <Button
+                block
+                type="primary"
+                icon={<DownloadOutlined />}
+                href="/downloads/pms-access-card-assistant/latest/Pms.AccessCardAssistant.exe"
+              >
+                下载免安装发卡小助手
+              </Button>
+            )}
+            <Text type="secondary">在对应电脑双击助手，输入电脑名称并粘贴上方连接 Key。绑定后会常驻托盘、开机自启并静默检查更新；不要把 Key 发到聊天、截图或配置仓库。</Text>
           </div>
         ) : (
           <div className="access-card-agent-form">

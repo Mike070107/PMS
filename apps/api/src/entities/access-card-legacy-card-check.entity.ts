@@ -27,6 +27,9 @@ export class AccessCardLegacyCardCheck extends TenantEntity {
   @Column({ type: 'jsonb', default: () => "'[]'" })
   matches: AccessCardLegacyCardMatch[];
 
+  @Column({ name: 'allocated_ic_no', type: 'int', nullable: true })
+  allocatedIcNo: number | null;
+
   @Column({ name: 'requested_at', type: 'timestamptz' })
   requestedAt: Date;
 

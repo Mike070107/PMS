@@ -14,6 +14,7 @@ namespace Pms.AccessCardAgent
         private readonly string _tokenPath;
         private readonly ManualResetEvent _stop = new ManualResetEvent(false);
         private Thread _worker;
+        private Thread _updater;
 
         public AccessCardWindowsService(AgentConfig config, string tokenPath)
         {
@@ -32,12 +33,25 @@ namespace Pms.AccessCardAgent
             _worker.IsBackground = true;
             _worker.Name = ServiceName + "-worker";
             _worker.Start();
+            _updater = new Thread(delegate()
+            {
+                if (_stop.WaitOne(TimeSpan.FromMinutes(1))) return;
+                while (!_stop.WaitOne(0))
+                {
+                    try { AutomaticUpdater.CheckAndStage(); } catch { }
+                    if (_stop.WaitOne(TimeSpan.FromHours(6))) return;
+                }
+            });
+            _updater.IsBackground = true;
+            _updater.Name = ServiceName + "-updater";
+            _updater.Start();
         }
 
         protected override void OnStop()
         {
             _stop.Set();
             if (_worker != null) _worker.Join(10000);
+            if (_updater != null) _updater.Join(2000);
         }
     }
 

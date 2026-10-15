@@ -28,8 +28,10 @@ namespace Pms.AccessCardAgent
         private readonly string _serviceName;
         private readonly NotifyIcon _icon;
         private readonly ToolStripMenuItem _statusItem;
+        private readonly ToolStripMenuItem _updateItem;
         private readonly Timer _timer;
         private bool? _wasRunning;
+        private string _notifiedUpdateVersion;
         private bool _disposed;
 
         public AgentTrayContext(AgentConfig config)
@@ -44,6 +46,9 @@ namespace Pms.AccessCardAgent
             menu.Items.Add("代理设置", null, delegate { OpenSettings(); });
             menu.Items.Add("启动服务", null, delegate { ChangeService(false); });
             menu.Items.Add("重启服务", null, delegate { ChangeService(true); });
+            _updateItem = new ToolStripMenuItem("暂无可安装更新") { Enabled = false };
+            _updateItem.Click += delegate { ConfirmAndInstallUpdate(); };
+            menu.Items.Add(_updateItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("退出状态图标", null, delegate { ExitTray(); });
 
@@ -55,6 +60,7 @@ namespace Pms.AccessCardAgent
                 Visible = true
             };
             _icon.DoubleClick += delegate { OpenPage(); };
+            _icon.BalloonTipClicked += delegate { ConfirmAndInstallUpdate(); };
 
             _timer = new Timer { Interval = 5000 };
             _timer.Tick += delegate { RefreshStatus(); };
@@ -89,6 +95,40 @@ namespace Pms.AccessCardAgent
             if (_wasRunning == true && !running)
                 _icon.ShowBalloonTip(5000, "PMS 数据同步助手已停止", "右键图标可重新启动服务。", ToolTipIcon.Warning);
             _wasRunning = running;
+            RefreshUpdateStatus();
+        }
+
+        private void RefreshUpdateStatus()
+        {
+            var staged = AutomaticUpdater.GetStagedUpdate();
+            _updateItem.Enabled = staged != null;
+            _updateItem.Text = staged == null ? "暂无可安装更新" : "安装更新 " + staged.version + "…";
+            if (staged != null && !String.Equals(_notifiedUpdateVersion, staged.version, StringComparison.OrdinalIgnoreCase))
+            {
+                _notifiedUpdateVersion = staged.version;
+                _icon.ShowBalloonTip(10000, "门禁发卡助手有可用更新",
+                    "版本 " + staged.version + " 已安全下载。点击此处确认安装，当前版本可继续使用。", ToolTipIcon.Info);
+            }
+        }
+
+        private void ConfirmAndInstallUpdate()
+        {
+            var staged = AutomaticUpdater.GetStagedUpdate();
+            if (staged == null) return;
+            var details = String.IsNullOrWhiteSpace(staged.releaseNotes) ? "" : "\r\n\r\n" + staged.releaseNotes;
+            if (MessageBox.Show("版本 " + staged.version + " 已下载并通过签名校验。是否现在安装？" + details +
+                "\r\n\r\n安装时 Windows 会请求管理员权限；取消不会影响当前版本。",
+                "枫桦景苑门禁卡授权", MessageBoxButtons.YesNo, MessageBoxIcon.Information) != DialogResult.Yes) return;
+            try
+            {
+                AutomaticUpdater.StartInstall(staged);
+                ExitThread();
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show("更新未开始：" + exception.Message + "\r\n当前版本未被修改。",
+                    "枫桦景苑门禁卡授权", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void ChangeService(bool restart)

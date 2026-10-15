@@ -5,6 +5,10 @@ tools/access-card-agent/legacy-db-password.dat
 tools/access-card-agent/iccard-db-password.dat
 tools/access-card-agent/bin/
 tools/access-card-agent/obj/
+tools/access-card-agent/.verify-build/
+tools/access-card-agent/release/
+# 本机真实卡片模板；正式构建时嵌入 EXE，但明文/密文模板均不得进入 Git。
+tools/access-card-agent/access-card-profiles.seed
 tools/data-sync-assistant-v2/bin/
 tools/data-sync-assistant-v2/obj/
 tools/data-sync-assistant-v2/release/

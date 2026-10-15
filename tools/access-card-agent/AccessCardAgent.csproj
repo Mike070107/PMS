@@ -39,7 +39,10 @@
     <Compile Include="AgentStatus.cs" />
     <Compile Include="AccessGatewayDatabase.cs" />
     <Compile Include="AccessControllerUploader.cs" />
+    <Compile Include="AutomaticUpdater.cs" />
     <Compile Include="CardReader.cs" />
+    <Compile Include="CardProfiles.cs" />
+    <Compile Include="CardInitializerForm.cs" />
     <Compile Include="LegacyDatabase.cs" />
     <Compile Include="ParkingDatabase.cs" />
     <Compile Include="Program.cs" />
@@ -48,6 +51,11 @@
     <Compile Include="TrayApplication.cs" />
     <Compile Include="UpdateInstaller.cs" />
     <Compile Include="WindowsService.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="access-card-profiles.seed" Condition="Exists('access-card-profiles.seed')">
+      <LogicalName>Pms.AccessCardAgent.access-card-profiles.seed</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

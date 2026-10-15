@@ -31,15 +31,31 @@ namespace Pms.AccessCardAgent
             WriteProgress(progressPath, "正在停止后台服务");
             var restartService = WindowsServiceInstaller.StopForUpdate(serviceName);
             var backup = targetExecutable + ".previous";
-            WriteProgress(progressPath, "正在备份和替换程序");
-            File.Copy(targetExecutable, backup, true);
-            File.Copy(Process.GetCurrentProcess().MainModule.FileName, targetExecutable, true);
-            if (restartService)
+            var backupCreated = false;
+            try
             {
-                WriteProgress(progressPath, "正在重新启动后台服务");
-                WindowsServiceInstaller.StartAfterUpdate(serviceName);
+                WriteProgress(progressPath, "正在备份和替换程序");
+                File.Copy(targetExecutable, backup, true);
+                backupCreated = true;
+                File.Copy(Process.GetCurrentProcess().MainModule.FileName, targetExecutable, true);
+                if (restartService)
+                {
+                    WriteProgress(progressPath, "正在重新启动后台服务");
+                    WindowsServiceInstaller.StartAfterUpdate(serviceName);
+                }
+            }
+            catch
+            {
+                WriteProgress(progressPath, "更新失败，正在恢复旧版本");
+                if (backupCreated) File.Copy(backup, targetExecutable, true);
+                if (restartService)
+                {
+                    try { WindowsServiceInstaller.StartAfterUpdate(serviceName); } catch { }
+                }
+                throw;
             }
             WriteProgress(progressPath, "更新完成");
+            AutomaticUpdater.ClearStagedUpdate();
             Process.Start(new ProcessStartInfo { FileName = targetExecutable, Arguments = "--updated", UseShellExecute = true });
         }
 

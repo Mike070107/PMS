@@ -762,11 +762,17 @@ export class AccessCardIssuanceService {
     const historicalAccessGrant = agents.some((agent) =>
       agent.kind === 'access_gateway' && effectiveAgentStatus(agent) === 'online'
       && agent.capabilities?.historicalAccessGrant === true);
+    const cardWrite = agents.some((agent) =>
+      agent.kind === 'issuer' && effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.cardWrite === true);
+    const legacyDbWrite = agents.some((agent) =>
+      agent.kind === 'legacy_sync' && effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.legacyDbWrite === true);
     return {
       simulationEnabled,
       features: {
-        cardWrite: false,
-        legacyDbWrite: false,
+        cardWrite,
+        legacyDbWrite,
         accessDbWrite,
         parkingDbRead: true,
         parkingDbWrite,
@@ -2213,6 +2219,7 @@ export class AccessCardIssuanceService {
 
       const item = await qb.getOne();
       if (!item) return { task: null, retryAfterMs: 2500 };
+      const cardCheck = await manager.getRepository(AccessCardLegacyCardCheck).findOne({ where: { itemId: item.id } });
       item.leaseAgentKey = agent.agentKey;
       item.leaseExpiresAt = leaseExpiresAt;
       item.attempts += 1;
@@ -2248,6 +2255,7 @@ export class AccessCardIssuanceService {
           accessSystem: batch.accessSystem,
           icCardNo: item.icCardNo,
           wgCardNo: item.wgCardNo,
+          legacyIcNo: cardCheck?.allocatedIcNo ?? null,
           targetBuildingIds: pendingBuildingIds,
           targetBuildings: pendingBuildingIds.map((buildingId) => {
             const building = targetBuildings.find((candidate) => candidate.id === buildingId);
@@ -2329,6 +2337,7 @@ export class AccessCardIssuanceService {
         icCardNo,
         status: 'pending',
         matches: [],
+        allocatedIcNo: null,
         requestedAt: new Date(),
         checkedAt: null,
         leaseAgentKey: null,
@@ -2343,6 +2352,7 @@ export class AccessCardIssuanceService {
       check.icCardNo = icCardNo;
       check.status = 'pending';
       check.matches = [];
+      check.allocatedIcNo = null;
       check.requestedAt = new Date();
       check.checkedAt = null;
       check.leaseAgentKey = null;
@@ -2362,7 +2372,8 @@ export class AccessCardIssuanceService {
       await this.blockDuplicateCard(item, message);
       return { status: 'duplicate', message, matches: check.matches };
     }
-    return { status: 'clear', message: '卡号未在 PMS 或捷顺系统登记，可以继续写卡' };
+    if (!check.allocatedIcNo) return { status: 'pending', message: '正在由 .80 分配唯一 ICNO' };
+    return { status: 'clear', message: '卡号未在 PMS 或捷顺系统登记，可以继续写卡', allocatedIcNo: check.allocatedIcNo };
   }
 
   async claimLegacyCardCheck(agentKey: string, token: string) {
@@ -2384,7 +2395,21 @@ export class AccessCardIssuanceService {
       check.leaseAgentKey = agent.agentKey;
       check.leaseExpiresAt = leaseExpiresAt;
       await repo.save(check);
-      return { task: { checkId: check.id, icCardNo: check.icCardNo, leaseExpiresAt: leaseExpiresAt.toISOString() } };
+      const reservedLegacyIcNos = (await repo.createQueryBuilder('reserved')
+        .select('reserved.allocated_ic_no', 'allocatedIcNo')
+        .where('reserved.tenant_id = :tenantId', { tenantId: agent.tenantId })
+        .andWhere('reserved.allocated_ic_no IS NOT NULL')
+        .getRawMany<{ allocatedIcNo: number | string }>())
+        .map((row) => Number(row.allocatedIcNo))
+        .filter((value) => Number.isInteger(value) && value > 0);
+      return {
+        task: {
+          checkId: check.id,
+          icCardNo: check.icCardNo,
+          reservedLegacyIcNos,
+          leaseExpiresAt: leaseExpiresAt.toISOString(),
+        },
+      };
     });
   }
 
@@ -2403,6 +2428,7 @@ export class AccessCardIssuanceService {
         issuedAt: match.issuedAt || null,
       }));
       check.status = check.matches.length ? 'duplicate' : 'clear';
+      check.allocatedIcNo = check.matches.length ? null : (dto.allocatedIcNo ?? null);
       check.lastError = null;
     } else {
       check.status = dto.result === 'retry' ? 'pending' : 'error';
@@ -3187,6 +3213,7 @@ export class AccessCardIssuanceService {
   private isDeliverable(batch: AccessCardIssueBatch, items: AccessCardIssueItem[]): boolean {
     if (items.length !== batch.quantity) return false;
     return items.every((item) => item.cardStatus === 'card_completed'
+      && item.legacySyncStatus === 'synced'
       && (batch.projectPhase === 'phase1' || item.accessStatus === 'controller_uploaded'));
   }
 

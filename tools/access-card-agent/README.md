@@ -11,6 +11,28 @@
 
 当前版本已经实现代理凭据、DPAPI 加密、心跳、带租约任务领取、结果回报、ACR122U/PCSC 设备枚举，以及停车双库的实时查询。0.5.0 起会检查停车专用账号是否同时具有一期、二期所需存储过程的执行权限；只有全部通过时才向 PMS 上报 `parkingDbWrite=true`。
 
+ACR122U 配置与诊断命令（只在发卡电脑首次安装和排障时运行）：
+
+```powershell
+# 三份明文镜像只用于首次安装，生成的 access-card-profiles.dat 为本机 DPAPI 密文
+.\Pms.DataSyncAssistant.exe --install-card-profiles <未加密空白卡.txt> <已加密初始卡.txt> <大铁门授权卡.txt>
+.\Pms.DataSyncAssistant.exe --inspect-card
+```
+
+空白卡与物业发卡严格分离：
+
+- `枫桦景苑门禁卡加密初始化助手.exe`：离线批量将采购空白卡制作为本小区初始卡，不连 PMS、不分配 ICNO、不写房号和大门权限。
+- `Pms.AccessCardAssistant.exe`：双击后输入电脑名称和网页生成的 Key，安装后托盘常驻。只接受已初始化卡，由 PMS 下发 ICNO 和大铁门权限。
+- 两个程序都是便携 EXE，无安装包；发卡小助手后台每 6 小时静默检查并下载更新，但不会静默替换程序。下载包通过 SHA-256、可信代码签名链和固定发布者证书指纹三重校验后，托盘提示用户确认安装；取消或失败都继续使用旧版本。
+
+自动更新发布必须在 Windows 证书存储中安装受信任的 Authenticode 代码签名证书，并把证书指纹传给构建脚本。脚本会先调用 Windows SDK `signtool.exe` 签名和加时间戳，再计算哈希并生成清单：
+
+```powershell
+.\build-portable.ps1 -SignerThumbprint '<签名证书指纹>'
+```
+
+没有配置证书指纹或 EXE 未通过签名校验时，助手会拒绝自动更新。当前项目没有内置或提交任何签名私钥；未取得正式证书前请使用界面的手工升级入口。
+
 ## 构建
 
 ```powershell

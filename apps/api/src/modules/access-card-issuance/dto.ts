@@ -158,6 +158,13 @@ export class LegacyCardCheckReportDto {
   matches?: LegacyCardMatchDto[];
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  allocatedIcNo?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(500)
   errorMessage?: string;

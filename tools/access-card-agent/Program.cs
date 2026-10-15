@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.ServiceProcess;
@@ -8,6 +9,7 @@ namespace Pms.AccessCardAgent
 {
     internal static class Program
     {
+        [STAThread]
         private static int Main(string[] args)
         {
             try
@@ -31,6 +33,18 @@ namespace Pms.AccessCardAgent
                 if (!Environment.UserInteractive)
                 {
                     ServiceBase.Run(new AccessCardWindowsService(AgentConfig.Load(configPath), tokenPath));
+                    return 0;
+                }
+                var executableName = Path.GetFileNameWithoutExtension(Process.GetCurrentProcess().MainModule.FileName);
+                if ((args.Length > 0 && args[0] == "--initializer") || executableName.IndexOf("初始化助手", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    using (var instance = SingleInstance.TryEnter("CardInitializer"))
+                    {
+                        if (instance == null) return 0;
+                        Application.EnableVisualStyles();
+                        Application.SetCompatibleTextRenderingDefault(false);
+                        Application.Run(new CardInitializerForm(root));
+                    }
                     return 0;
                 }
                 if (args.Length > 0 && args[0] == "--tray")
@@ -152,6 +166,23 @@ namespace Pms.AccessCardAgent
                     Console.WriteLine(readers.Length == 0 ? "未检测到 PC/SC 读卡器" : String.Join(Environment.NewLine, readers));
                     return readers.Length == 0 ? 2 : 0;
                 }
+                if (args.Length == 4 && args[0] == "--install-card-profiles")
+                {
+                    CardProfiles.Install(Path.Combine(root, CardProfiles.ProtectedFileName), args[1], args[2], args[3]);
+                    Console.WriteLine("卡片模板已用 Windows DPAPI 加密保存，明文密钥未写入日志。");
+                    return 0;
+                }
+                if (args.Length == 5 && args[0] == "--build-portable-profile-seed")
+                {
+                    CardProfiles.BuildPortableSeed(args[1], args[2], args[3], args[4]);
+                    Console.WriteLine("便携版卡片模板已生成：" + args[1]);
+                    return 0;
+                }
+                if (args.Length > 0 && args[0] == "--inspect-card")
+                {
+                    PrintCardInspection(CardReader.Inspect(CardProfiles.Load(Path.Combine(root, CardProfiles.ProtectedFileName))));
+                    return 0;
+                }
                 var config = AgentConfig.Load(configPath);
                 if (args.Length > 0 && args[0] == "--install-service")
                 {
@@ -255,6 +286,13 @@ namespace Pms.AccessCardAgent
                 Console.Error.WriteLine(exception.Message);
                 return 1;
             }
+        }
+
+        private static void PrintCardInspection(CardInspection result)
+        {
+            Console.WriteLine("卡片 UID：" + result.Uid);
+            Console.WriteLine("识别结果：" + result.Message);
+            if (result.IcNo.HasValue) Console.WriteLine("ICNO：" + result.IcNo.Value);
         }
 
         private static void PrintProbe(AccessDatabaseProbeResult result)

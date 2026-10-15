@@ -9,7 +9,7 @@ namespace Pms.AccessCardAgent
 {
     internal sealed class AgentApiClient
     {
-        public const string Version = "0.8.0";
+        public const string Version = "0.9.0";
         private readonly AgentConfig _config;
         private readonly string _token;
         private readonly string _version;
@@ -187,6 +187,7 @@ namespace Pms.AccessCardAgent
         public string accessSystem { get; set; }
         public string icCardNo { get; set; }
         public string wgCardNo { get; set; }
+        public int? legacyIcNo { get; set; }
         public string cardTemplateVersion { get; set; }
         public int? durationSeconds { get; set; }
         public object[] targetBuildingIds { get; set; }
@@ -310,6 +311,7 @@ namespace Pms.AccessCardAgent
     {
         public int checkId { get; set; }
         public string icCardNo { get; set; }
+        public int[] reservedLegacyIcNos { get; set; }
     }
 
     internal sealed class LegacyCardCheckReport
@@ -317,6 +319,7 @@ namespace Pms.AccessCardAgent
         public int checkId { get; set; }
         public string result { get; set; }
         public List<LegacyCardMatch> matches { get; set; }
+        public int? allocatedIcNo { get; set; }
         public string errorMessage { get; set; }
     }
 

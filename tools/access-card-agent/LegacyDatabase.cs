@@ -39,6 +39,13 @@ namespace Pms.AccessCardAgent
         public string issuedAt { get; set; }
     }
 
+    internal sealed class LegacyCardSyncResult
+    {
+        public long PersonId { get; set; }
+        public string PersonNo { get; set; }
+        public int HouseSequence { get; set; }
+    }
+
     /** .80 旧库只读诊断；正式同步会复用同一事务锁后再写 Person/CardInfo。 */
     internal static class LegacyDatabase
     {
@@ -201,6 +208,176 @@ ORDER BY c.[IssueDate] DESC, p.[ID] DESC;";
                 }
             }
             return matches;
+        }
+
+        /** 只读查找现库未占用的 ICNO；PMS 使用唯一索引保留，真正写库时再次查重。 */
+        public static int FindAvailableIcNo(AgentConfig config, string password, IEnumerable<int> reservedIcNos)
+        {
+            var reserved = new HashSet<int>(reservedIcNos ?? new int[0]);
+            using (var connection = new SqlConnection(ConnectionString(config, password)))
+            using (var command = connection.CreateCommand())
+            {
+                connection.Open();
+                command.CommandText = "SELECT [ICNO] FROM [MC].[CardInfo] WHERE [ICNO] IS NOT NULL";
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int used;
+                        if (Int32.TryParse(Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture).Trim(),
+                            NumberStyles.None, CultureInfo.InvariantCulture, out used)) reserved.Add(used);
+                    }
+                }
+                for (var candidate = 30500; candidate <= 65535; candidate++)
+                    if (!reserved.Contains(candidate)) return candidate;
+                throw new InvalidOperationException("捷顺数据库已无可分配 ICNO");
+            }
+        }
+
+        public static LegacyCardSyncResult SyncIssuedCard(AgentConfig config, string password, AgentTask task)
+        {
+            if (!task.legacyIcNo.HasValue || String.IsNullOrWhiteSpace(task.icCardNo) || String.IsNullOrWhiteSpace(task.roomKey))
+                throw new InvalidOperationException("捷顺入库任务缺少 ICNO、UID 或房号");
+            using (var connection = new SqlConnection(ConnectionString(config, password)))
+            {
+                connection.Open();
+                using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
+                {
+                    try
+                    {
+                        var roomKey = NormalizeRoomKey(task.roomKey);
+                        using (var prior = connection.CreateCommand())
+                        {
+                            prior.Transaction = transaction;
+                            prior.CommandText = @"SELECT TOP (1) c.IDNO,c.ICNO,p.ID,p.NO,p.Name
+FROM MC.CardInfo c WITH (UPDLOCK,HOLDLOCK)
+INNER JOIN HR.Person p WITH (UPDLOCK,HOLDLOCK) ON p.ID=c.PersonID
+WHERE c.IDNO=@uid OR c.ICNO=@icno
+ORDER BY c.ID DESC";
+                            prior.Parameters.Add("@uid", SqlDbType.VarChar, 20).Value = task.icCardNo;
+                            prior.Parameters.Add("@icno", SqlDbType.VarChar, 8).Value = task.legacyIcNo.Value.ToString(CultureInfo.InvariantCulture);
+                            using (var reader = prior.ExecuteReader())
+                            {
+                                if (reader.Read())
+                                {
+                                    var storedUid = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture).Trim().ToUpperInvariant();
+                                    var storedIcNo = Convert.ToString(reader.GetValue(1), CultureInfo.InvariantCulture).Trim();
+                                    int storedSequence;
+                                    if (!String.Equals(storedUid, task.icCardNo.Trim().ToUpperInvariant(), StringComparison.Ordinal) ||
+                                        !String.Equals(storedIcNo, task.legacyIcNo.Value.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
+                                        !TrySequence(roomKey, Convert.ToString(reader.GetValue(4), CultureInfo.InvariantCulture), out storedSequence))
+                                        throw new InvalidOperationException("UID 或 ICNO 已被其他捷顺记录占用");
+                                    var result = new LegacyCardSyncResult
+                                    {
+                                        PersonId = Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture),
+                                        PersonNo = Convert.ToString(reader.GetValue(3), CultureInfo.InvariantCulture).Trim(),
+                                        HouseSequence = storedSequence
+                                    };
+                                    reader.Close();
+                                    transaction.Commit();
+                                    return result;
+                                }
+                            }
+                        }
+                        var houseSequence = 1;
+                        using (var names = connection.CreateCommand())
+                        {
+                            names.Transaction = transaction;
+                            names.CommandText = @"SELECT [Name] FROM [HR].[Person] WITH (UPDLOCK,HOLDLOCK) WHERE [Name] LIKE @candidate ESCAPE '\'";
+                            names.Parameters.Add("@candidate", SqlDbType.NVarChar, 120).Value = CandidateLike(roomKey);
+                            var count = 0;
+                            var max = 0;
+                            using (var reader = names.ExecuteReader())
+                            {
+                                while (reader.Read())
+                                {
+                                    int value;
+                                    if (!TrySequence(roomKey, reader.IsDBNull(0) ? "" : reader.GetString(0), out value)) continue;
+                                    count++;
+                                    if (value > max) max = value;
+                                }
+                            }
+                            houseSequence = Math.Max(count, max) + 1;
+                        }
+                        var displayName = roomKey + "/" + houseSequence.ToString(CultureInfo.InvariantCulture);
+                        long personId;
+                        string personNo;
+                        using (var existing = connection.CreateCommand())
+                        {
+                            existing.Transaction = transaction;
+                            existing.CommandText = @"SELECT TOP (1) p.ID,p.NO FROM HR.Person p WITH (UPDLOCK,HOLDLOCK) WHERE p.Name=@name ORDER BY p.ID DESC";
+                            existing.Parameters.Add("@name", SqlDbType.NVarChar, 20).Value = displayName;
+                            using (var reader = existing.ExecuteReader())
+                            {
+                                if (reader.Read()) { personId = Convert.ToInt64(reader.GetValue(0)); personNo = Convert.ToString(reader.GetValue(1)); }
+                                else { personId = 0; personNo = null; }
+                            }
+                        }
+                        if (personId == 0)
+                        {
+                            using (var next = connection.CreateCommand())
+                            {
+                                next.Transaction = transaction;
+                                next.CommandText = "SELECT ID,NO FROM HR.Person WITH (UPDLOCK,HOLDLOCK)";
+                                long maxId = 0;
+                                long maxNo = 0;
+                                using (var reader = next.ExecuteReader())
+                                {
+                                    while (reader.Read())
+                                    {
+                                        var id = Convert.ToInt64(reader.GetValue(0), CultureInfo.InvariantCulture);
+                                        if (id > maxId) maxId = id;
+                                        long no;
+                                        if (!reader.IsDBNull(1) && Int64.TryParse(Convert.ToString(reader.GetValue(1), CultureInfo.InvariantCulture).Trim(),
+                                            NumberStyles.None, CultureInfo.InvariantCulture, out no) && no > maxNo) maxNo = no;
+                                    }
+                                }
+                                personId = maxId + 1;
+                                personNo = Convert.ToString(maxNo + 1, CultureInfo.InvariantCulture);
+                            }
+                            using (var insert = connection.CreateCommand())
+                            {
+                                insert.Transaction = transaction;
+                                insert.CommandText = @"INSERT INTO HR.Person
+(ID,SID,NO,Name,Sex,IDentityType,IdentityNO,Mobile,Tel1,Tel2,Email,RoomNO,Address,Photo,Job1ID,Job2ID,AreaID,DeptID,Remark,SystemDataFlag,DeleteFlag,ArchiveFlag,UploadFlag,ServerNO,ServerDown,PersonType,OptDate,TenementTypeNo,ToMasterRelationNo,LiveInHouseStateNo,CertificationTypeNo,PayTypeId,BirthAddr,Birthday)
+VALUES(@id,1,@no,@name,1,N'0',N'',N'',N'',N'',N'',N'',N'',N'',0,0,0,1,N'',0,0,0,0,'0','0',0,GETDATE(),0,0,0,405,0,N'',CAST('2010-01-01' AS datetime))";
+                                insert.Parameters.Add("@id", SqlDbType.BigInt).Value = personId;
+                                insert.Parameters.Add("@no", SqlDbType.NVarChar, 10).Value = personNo;
+                                insert.Parameters.Add("@name", SqlDbType.NVarChar, 20).Value = displayName;
+                                insert.ExecuteNonQuery();
+                            }
+                        }
+                        using (var duplicate = connection.CreateCommand())
+                        {
+                            duplicate.Transaction = transaction;
+                            duplicate.CommandText = "SELECT ID,PersonID FROM MC.CardInfo WITH (UPDLOCK,HOLDLOCK) WHERE IDNO=@uid OR ICNO=@icno";
+                            duplicate.Parameters.Add("@uid", SqlDbType.VarChar, 20).Value = task.icCardNo;
+                            duplicate.Parameters.Add("@icno", SqlDbType.VarChar, 8).Value = task.legacyIcNo.Value.ToString(CultureInfo.InvariantCulture);
+                            using (var reader = duplicate.ExecuteReader()) if (reader.Read())
+                            {
+                                if (Convert.ToInt64(reader.GetValue(1)) != personId) throw new InvalidOperationException("UID 或 ICNO 已被其他人员占用");
+                                transaction.Commit(); return new LegacyCardSyncResult { PersonId = personId, PersonNo = personNo, HouseSequence = houseSequence };
+                            }
+                        }
+                        long cardId;
+                        using (var next = connection.CreateCommand()) { next.Transaction = transaction; next.CommandText = "SELECT ISNULL(MAX(ID),0)+1 FROM MC.CardInfo WITH (UPDLOCK,HOLDLOCK)"; cardId = Convert.ToInt64(next.ExecuteScalar()); }
+                        using (var insert = connection.CreateCommand())
+                        {
+                            insert.Transaction = transaction;
+                            insert.CommandText = @"INSERT INTO MC.CardInfo
+(ID,SID,IDNO,ICNO,Status,PersonSID,PersonID,Deposit,UserID,OptDate,IssueDate,IssueOptons,Remark,ServerNO,ServerDown,Ver,IsPlan,MediaType,PhysicalCardType,VMAutoQuitDeviceName)
+VALUES(@id,1,@uid,@icno,1,1,@personId,0,1,GETDATE(),GETDATE(),'01000000000000010000',N'PMS大铁门授权','00000000000000000000000000000000','00000000000000000000000000000000',0,0,1,55,NULL)";
+                            insert.Parameters.Add("@id", SqlDbType.BigInt).Value = cardId; insert.Parameters.Add("@uid", SqlDbType.VarChar, 20).Value = task.icCardNo;
+                            insert.Parameters.Add("@icno", SqlDbType.VarChar, 8).Value = task.legacyIcNo.Value.ToString(CultureInfo.InvariantCulture); insert.Parameters.Add("@personId", SqlDbType.BigInt).Value = personId;
+                            insert.ExecuteNonQuery();
+                        }
+                        using (var verify = connection.CreateCommand()) { verify.Transaction = transaction; verify.CommandText = "SELECT COUNT(*) FROM MC.CardInfo WHERE IDNO=@uid AND ICNO=@icno AND PersonID=@personId AND Status=1"; verify.Parameters.Add("@uid", SqlDbType.VarChar, 20).Value = task.icCardNo; verify.Parameters.Add("@icno", SqlDbType.VarChar, 8).Value = task.legacyIcNo.Value.ToString(CultureInfo.InvariantCulture); verify.Parameters.Add("@personId", SqlDbType.BigInt).Value = personId; if (Convert.ToInt32(verify.ExecuteScalar()) != 1) throw new InvalidOperationException("捷顺卡记录写后回读失败"); }
+                        transaction.Commit();
+                        return new LegacyCardSyncResult { PersonId = personId, PersonNo = personNo, HouseSequence = houseSequence };
+                    }
+                    catch { transaction.Rollback(); throw; }
+                }
+            }
         }
 
         private static string ConnectionString(AgentConfig config, string password)

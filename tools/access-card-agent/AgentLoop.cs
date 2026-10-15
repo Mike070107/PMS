@@ -167,12 +167,22 @@ namespace Pms.AccessCardAgent
 
         internal static Dictionary<string, bool> BuildCapabilities(AgentConfig config, bool hasReader, bool parkingWrite, bool accessWrite, bool controllerUpload)
         {
+            var cardProfilesReady = false;
+            if (config.Kind == "issuer" && hasReader)
+            {
+                try
+                {
+                    CardProfiles.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, CardProfiles.ProtectedFileName));
+                    cardProfilesReady = true;
+                }
+                catch { cardProfilesReady = false; }
+            }
             return new Dictionary<string, bool>
             {
                 { "pcscReader", hasReader },
-                { "cardWrite", false },
+                { "cardWrite", cardProfilesReady },
                 { "legacyDbRead", config.Kind == "legacy_sync" },
-                { "legacyDbWrite", false },
+                { "legacyDbWrite", config.Kind == "legacy_sync" },
                 { "accessDbRead", config.Kind == "access_gateway" },
                 { "accessDbWrite", config.Kind == "access_gateway" && accessWrite },
                 { "parkingDbRead", config.Kind == "parking_gateway" },
@@ -326,11 +336,15 @@ namespace Pms.AccessCardAgent
             try
             {
                 var matches = LegacyDatabase.FindCard(_config, LoadSecret("legacy-db-password.dat"), task.icCardNo);
+                var allocatedIcNo = matches.Count == 0
+                    ? LegacyDatabase.FindAvailableIcNo(_config, LoadSecret("legacy-db-password.dat"), task.reservedLegacyIcNos)
+                    : (int?)null;
                 _api.ReportLegacyCardCheck(new LegacyCardCheckReport
                 {
                     checkId = task.checkId,
                     result = "success",
-                    matches = matches
+                    matches = matches,
+                    allocatedIcNo = allocatedIcNo
                 });
                 RecordActivity("检查卡号", task.icCardNo, true, matches.Count == 0 ? "未发现重复卡" : "发现 " + matches.Count + " 条已有记录");
             }
@@ -489,6 +503,25 @@ namespace Pms.AccessCardAgent
                         _api.Report(new AgentReport { itemId = task.itemId, result = "retry", errorMessage = detail });
                         return;
                     }
+                    if (!preflight.ContainsKey("allocatedIcNo"))
+                    {
+                        _api.Report(new AgentReport { itemId = task.itemId, result = "retry", errorMessage = ".80 尚未返回唯一 ICNO" });
+                        return;
+                    }
+                    var allocatedIcNo = Convert.ToInt32(preflight["allocatedIcNo"]);
+                    var profiles = CardProfiles.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, CardProfiles.ProtectedFileName));
+                    var inspection = CardReader.Inspect(profiles);
+                    if (inspection.State == PropertyCardState.ForeignOrDamaged)
+                        throw new InvalidOperationException("非枫桦景苑卡或卡片损坏，已停止写入");
+                    if (inspection.State == PropertyCardState.UnencryptedBlank)
+                        throw new InvalidOperationException("这是未加密空白卡，请先使用独立的“门禁卡加密初始化助手”批量初始化");
+                    if (inspection.State == PropertyCardState.Initialized)
+                        inspection = CardReader.AuthorizeMainGate(profiles, allocatedIcNo);
+                    if (inspection.State != PropertyCardState.Authorized || inspection.IcNo != allocatedIcNo)
+                        throw new InvalidOperationException("写卡后状态或 ICNO 回读不一致");
+                    _api.Report(new AgentReport { itemId = task.itemId, result = "success", icCardNo = inspection.Uid });
+                    RecordActivity("枫桦景苑大铁门授权", inspection.Uid, true, "加密、授权和逐块回读完成");
+                    return;
                 }
                 catch (Exception exception)
                 {
@@ -528,6 +561,27 @@ namespace Pms.AccessCardAgent
                         errorMessage = exception.Message
                     });
                     RecordActivity("下发门禁权限", task.wgCardNo, false, exception.Message);
+                }
+                return;
+            }
+            if (_config.Kind == "legacy_sync" && task.action == "sync_legacy")
+            {
+                try
+                {
+                    var result = LegacyDatabase.SyncIssuedCard(_config, LoadSecret("legacy-db-password.dat"), task);
+                    _api.Report(new AgentReport
+                    {
+                        itemId = task.itemId,
+                        result = "success",
+                        legacyPersonNo = result.PersonNo,
+                        legacyHouseSequence = result.HouseSequence
+                    });
+                    RecordActivity("同步捷顺发卡记录", task.icCardNo, true, "人员和卡片已事务写入并回读验证");
+                }
+                catch (Exception exception)
+                {
+                    _api.Report(new AgentReport { itemId = task.itemId, result = "retry", errorMessage = exception.Message });
+                    RecordActivity("同步捷顺发卡记录", task.icCardNo, false, exception.Message);
                 }
                 return;
             }
