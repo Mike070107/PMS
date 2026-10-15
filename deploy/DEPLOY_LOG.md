@@ -4904,3 +4904,11 @@
 - 自上次（81aa645）以来上线的相关提交：
   - b599aad fix(parking): require download confirmation
 
+## 2026-10-15 18:45 · api · 13f912f3
+
+- 包：`pms-api-fast-20261015-184501.tar.gz`
+- 提交：13f912f3 docs(workflow): rely on global mainline policy
+- 自上次（d67b3c13）以来上线的相关提交：
+  - f905c9b5 fix(parking): limit deliyun renewal to end date
+  - 1ff731ea feat(access-cards): add ACR122U issuance workflow
+
