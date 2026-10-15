@@ -423,18 +423,40 @@ export default function ParkingManagementPage({
         await searchParking(String(retry.payload.newPlate || ''));
         return;
       }
+      if (kind === 'renew_vehicle' && lastOperation?.database === 'deliyun' && lastOperation.status === 'failed') {
+        const retry = await accessCardIssuance.renewDeliyunVehicle({
+          vehicleId: lastOperation.sourceRecordId || '',
+          plate: String(lastOperation.payload.plate || ''),
+          previousEndDate: String(lastOperation.payload.previousEndDate || ''),
+          endDate: String(lastOperation.payload.endDate || ''),
+          idempotencyKey: createIdempotencyKey(),
+        });
+        setLastOperation(retry);
+        if (retry.status !== 'completed') throw new Error(`人防有效期仍未同步：${retry.error || '请核对原任务'}`);
+        message.success('人防有效期已读回验证，未重复收费或续期旧库');
+        setOperationTarget(null);
+        await searchParking(String(retry.payload.plate || ''));
+        return;
+      }
       const targets = kind === 'renew_vehicle' && operationRows?.length ? operationRows : [row];
       const batchKey = createIdempotencyKey();
       const requestedGarages = (kind === 'update_garages' || kind === 'add_vehicle') && Array.isArray(payload.garages)
         ? payload.garages.map(String)
         : [];
-      const civilCloudRow = (kind === 'update_garages' || kind === 'change_plate') && row
+      const civilCloudRow = (kind === 'update_garages' || kind === 'change_plate' || kind === 'renew_vehicle') && row
         ? deliyunRows.find((item) => normalizeParkingPlate(item.plate) === normalizeParkingPlate(plateValue(row.fields)))
         : null;
       if (kind === 'update_garages' && row && !cloudChecked.includes(normalizeParkingPlate(plateValue(row.fields))))
         throw new Error('德立云授权状态尚未读到，已停止修改，请重新查询车牌');
       if (kind === 'change_plate' && row && !cloudChecked.includes(normalizeParkingPlate(plateValue(row.fields))))
         throw new Error('人防车库状态尚未查明，请重新查询后换牌，避免漏改人防车牌');
+      if (kind === 'renew_vehicle' && row && !cloudChecked.includes(normalizeParkingPlate(plateValue(row.fields))))
+        throw new Error('人防车库状态尚未查明，请重新查询后续期，避免漏续人防有效期');
+      if (kind === 'renew_vehicle' && civilCloudRow?.civilDefenseAuthorized && !civilCloudRow.endDate)
+        throw new Error('人防当前到期日未能读取，已停止续期；请刷新核对，避免旧库先收费而人防未同步');
+      if (kind === 'renew_vehicle' && civilCloudRow?.civilDefenseAuthorized && civilCloudRow.endDate &&
+        String(payload.endDate || '') < civilCloudRow.endDate)
+        throw new Error(`人防当前到期日为 ${civilCloudRow.endDate}，不能用较早日期覆盖；请调整本次到期日`);
       const civilCandidates = [row, ...(operationRows ?? []), ...rows].filter((candidate): candidate is ParkingQueryRow =>
         !!candidate && !!row && normalizeParkingPlate(plateValue(candidate.fields)) === normalizeParkingPlate(plateValue(row.fields)));
       const civilSource = civilCandidates.find(candidate => parkingDatabase(candidate.database) === 'parking2')
@@ -479,6 +501,20 @@ export default function ParkingManagementPage({
       const unfinished = completed.find((task) => task.status === 'pending' || task.status === 'running');
       setLastOperation(failed ?? unfinished ?? completed[completed.length - 1] ?? null);
       if (!failed && !unfinished) {
+        if (kind === 'renew_vehicle' && civilCloudRow?.civilDefenseAuthorized &&
+          civilCloudRow.endDate !== String(payload.endDate || '')) {
+          if (!civilCloudRow.endDate) throw new Error('旧停车系统已续期，但人防当前到期日未能读取；请刷新核对，勿重复收费');
+          const cloudTask = await accessCardIssuance.renewDeliyunVehicle({
+            vehicleId: civilCloudRow.id,
+            plate: civilCloudRow.plate,
+            previousEndDate: civilCloudRow.endDate,
+            endDate: String(payload.endDate || ''),
+            idempotencyKey: `${batchKey}-deliyun`,
+          });
+          setLastOperation(cloudTask);
+          if (cloudTask.status !== 'completed')
+            throw new Error(`一期、二期旧库续期已完成，但人防有效期未同步：${cloudTask.error || '请只重试失败的人防任务，勿重复收费'}`);
+        }
         if (kind === 'change_plate' && civilCloudRow) {
           const cloudTask = await accessCardIssuance.changeDeliyunPlate({
             vehicleId: civilCloudRow.id, plate: civilCloudRow.plate,
@@ -525,8 +561,10 @@ export default function ParkingManagementPage({
             throw new Error(`一期或二期旧库已新增车辆，但德立云人防授权未完成：${cloudTask.error || '请刷新核对后再重试'}`);
           }
         }
-        message.success(targets.length > 1
-          ? '一期、二期车牌已同时续期，两个旧库均已读回验证'
+        message.success(kind === 'renew_vehicle' && civilCloudRow?.civilDefenseAuthorized
+          ? `${targets.length > 1 ? '一期、二期及人防' : '旧停车系统及人防'}有效期已同步，并全部读回验证`
+          : targets.length > 1
+            ? '一期、二期车牌已同时续期，两个旧库均已读回验证'
           : kind === 'add_vehicle' && payload.requiresProofReview === true ? '亲情车已暂存为待审核，所选车库尚未开通'
           : kind === 'update_garages' ? '车库授权已执行，旧库与德立云均已回读验证'
             : kind === 'add_vehicle' && requestedGarages.includes('civil') && payload.requiresProofReview !== true
@@ -1412,7 +1450,7 @@ function ParkingResultCard({ group, canWriteLocal, deliyunVehicle, cloudKnown, c
           <Checkbox checked={garage.authorized} indeterminate={garage.cloud && !cloudKnown} disabled aria-label={`${garage.label}授权`} />
           <strong>{garage.label}</strong><span>{garage.source}</span>
           <Tag color={garage.cloud ? 'gold' : garage.authorized && garage.downloaded ? 'success' : garage.authorized ? 'warning' : 'default'}>
-            {garage.cloud ? (!cloudKnown ? '德立云状态未知' : garage.authorized ? '德立云已授权' : '德立云未授权') : garage.authorized ? (garage.downloaded ? '已下载生效' : '待下载') : '未授权'}
+            {garage.cloud ? (!cloudKnown ? '德立云状态未知' : garage.authorized ? '德立云已授权' : '德立云未授权') : garage.authorized ? (garage.downloaded ? '旧库标记已下载' : '设备状态未确认') : '未授权'}
           </Tag>
         </div>)}
       </div>
@@ -1611,7 +1649,9 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
   return <Modal title={title} open={open} onCancel={onClose} confirmLoading={loading} okText={kind === 'delete_vehicle' ? '确认注销' : '提交操作'} okButtonProps={{ danger: kind === 'delete_vehicle', disabled: (kind === 'rebind_owner' && !binding) || (kind === 'renew_vehicle' && (!endDate || feeRates.loading || !!feeRates.error || !feeRates.rates)) || (kind === 'update_garages' && selectedGarages.includes('civil') && !civilParkingSpace.trim()) }} onOk={submit}>
     {error && <Alert type="error" showIcon message="操作未完成" description={error} action={<Space>{task?.status === 'failed' && <Button size="small" onClick={onRetry}>仅重试失败的停车库</Button>}{task?.status === 'completed' && <Button size="small" danger onClick={onRollback}>创建回滚</Button>}</Space>} />}
     <div className="parking-operation-form">
-      {kind === 'renew_vehicle' && targetRows?.length === 2 && <Alert type="info" showIcon message="一期、二期将同时续期" description="两个旧库都会更新到期日；本次填写的金额只记入一期，二期同步金额为 0，避免报表重复计费。两边读回验证后才显示整体成功。" />}
+      {kind === 'renew_vehicle' && targetRows?.length === 2 && <Alert type="info" showIcon message="一期、二期将同时续期" description={deliyunVehicle?.civilDefenseAuthorized
+        ? '两个旧库和德立云人防会同步到同一到期日；金额只记入一期，二期和人防不重复收费。三方读回验证后才显示整体成功。'
+        : '两个旧库都会更新到期日；本次填写的金额只记入一期，二期同步金额为 0，避免报表重复计费。两边读回验证后才显示整体成功。'} />}
       <label>车牌<Input value={plate} disabled={!row} readOnly={kind === 'rebind_owner'} onChange={(e) => setPlate(e.target.value.toUpperCase())} /></label>
       {kind === 'change_plate' && <ParkingPlateEntry id="parking-change-plate-input" label="新车牌" value={newPlate} onChange={setNewPlate} />}
       {kind === 'change_plate' && <label>绑定用户姓名<Input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label>}

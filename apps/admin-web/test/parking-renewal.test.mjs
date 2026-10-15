@@ -50,6 +50,22 @@ test('同车牌跨一期二期时建立两个续期任务，资料复用不携�
   assert.match(page, /车牌到期日不会被复用或修改/);
 });
 
+test('正式续期会同步已授权的人防有效期，失败重试不重复收费或续期旧库', () => {
+  const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
+  assert.match(page, /kind === 'renew_vehicle' && civilCloudRow\?\.civilDefenseAuthorized/);
+  assert.match(page, /renewDeliyunVehicle\(\{/);
+  assert.match(page, /lastOperation\?\.database === 'deliyun' && lastOperation\.status === 'failed'/);
+  assert.match(page, /未重复收费或续期旧库/);
+  assert.match(page, /避免漏续人防有效期/);
+});
+
+test('没有控制器回执时不把旧库下载位冒充现场设备状态', () => {
+  const page = readFileSync(new URL('../src/pages/ParkingManagementPage.tsx', import.meta.url), 'utf8');
+  assert.match(page, /旧库标记已下载/);
+  assert.match(page, /设备状态未确认/);
+  assert.doesNotMatch(page, /garage\.downloaded \? '已下载生效' : '待下载'/);
+});
+
 test('停车金额报表分别标明续期登记额与岗亭应收额', () => {
   const page = readFileSync(new URL('../src/pages/ReportsPage.tsx', import.meta.url), 'utf8');
   assert.match(page, /P_moneyKeep\.P_money/);

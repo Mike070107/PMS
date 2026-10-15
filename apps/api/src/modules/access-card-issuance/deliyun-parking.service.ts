@@ -137,9 +137,13 @@ export class DeliyunParkingService {
     if (stringValue(detail.id) !== vehicleId || normalizePlate(stringValue(detail.plateNum)) !== plate)
       throw new BadRequestException('德立云车辆已变化，请刷新后重新操作');
     const currentEndDate = dateOnlyFromValue(detail.endDate) || dateOnlyFromEpoch(detail.endTime);
+    // 上一次请求可能已经写入成功、只是在回读前中断。重试先认最终状态，
+    // 不能因为 previousEndDate 已过时而再次写入或要求操作员重复续期。
+    if (currentEndDate === input.endDate)
+      return { vehicleId, plate, previousEndDate: input.previousEndDate, endDate: input.endDate, verified: true };
     if (currentEndDate !== input.previousEndDate)
       throw new BadRequestException(`德立云当前到期日已变为 ${currentEndDate || '未记录'}，请刷新后重新操作`);
-    if (stringValue(detail.cardPoolId) || numberValue(detail.cardTypeId) === 7)
+    if (deliyunRelationId(detail.cardPoolId) || numberValue(detail.cardTypeId) === 7)
       throw new BadRequestException('车位池车辆的有效期属于关联车位，暂不允许从车辆续期入口修改');
 
     const payload = buildDeliyunRenewalPayload(detail, session.park.unitKey, vehicleId, input.endDate);
@@ -663,9 +667,15 @@ export function mapDeliyunVehicle(value: Record<string, unknown>): DeliyunVehicl
     carType: nullableString(value.carType), cardType: nullableString(value.cardType),
     beginDate: nullableString(value.beginDate), endDate: nullableString(value.endDate),
     ownerName: nullableString(value.pname), ownerPhone: nullableString(value.pmobile), address: nullableString(value.addr),
-    cardPoolId: nullableString(value.cardPoolId), cardPoolName: nullableString(value.cardPoolName),
+    cardPoolId: deliyunRelationId(value.cardPoolId), cardPoolName: nullableString(value.cardPoolName),
     garageNames: [], civilDefenseAuthorized: false, poolPeriods: [],
   };
+}
+
+/** 德立云用 0 / "0" 表示未关联；不能把它当成真实车位池 ID。 */
+export function deliyunRelationId(value: unknown): string | null {
+  const id = nullableString(value);
+  return id && id !== '0' ? id : null;
 }
 
 function stringList(value: unknown): string[] {

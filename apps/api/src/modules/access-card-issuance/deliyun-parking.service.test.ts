@@ -10,6 +10,7 @@ import {
   deliyunFormBody,
   deliyunCreatedVehicleMismatches,
   deliyunGarageAuthorization,
+  deliyunRelationId,
   encryptMiniappData,
   endOfDayEpoch,
   findCivilDefenseGarage,
@@ -240,6 +241,30 @@ test('德立云车辆响应只映射页面需要的字段', () => {
     beginDate: '2026-01-01', endDate: '2026-12-31', ownerName: '张三', ownerPhone: '13800000000',
     address: null, cardPoolId: null, cardPoolName: null, garageNames: [], civilDefenseAuthorized: false, poolPeriods: [],
   });
+});
+
+test('德立云关系ID的 0 表示未关联，不能误判为车位池车辆', () => {
+  assert.equal(deliyunRelationId(0), null);
+  assert.equal(deliyunRelationId('0'), null);
+  assert.equal(deliyunRelationId('pool-1'), 'pool-1');
+  assert.equal(mapDeliyunVehicle({ id: 1, plateNum: '沪EQR573', cardPoolId: '0' }).cardPoolId, null);
+});
+
+test('德立云续期重试发现目标日期已生效时直接按幂等成功返回', async () => {
+  const service = new DeliyunParkingService({ get: () => 'true' } as any);
+  const internal = service as any;
+  internal.ensureMiniappSession = async () => ({ park: { unitKey: 'park' }, token: 'test' });
+  internal.h5Post = async (path: string) => {
+    assert.equal(path, '/pma/card/findCard');
+    return { ecode: 0, data: { id: 'v1', plateNum: '沪EQR573', endDate: '2026-12-31', cardPoolId: '0', cardTypeId: 2 } };
+  };
+  internal.findVehiclesByPlate = async () => assert.fail('目标日期已生效时不应重复写入或再次查询');
+
+  const result = await service.renewVehicle({
+    vehicleId: 'v1', plate: '沪EQR573', previousEndDate: '2026-10-31', endDate: '2026-12-31',
+  });
+  assert.equal(result.verified, true);
+  assert.equal(result.endDate, '2026-12-31');
 });
 
 test('德立云续期只替换结束日期并保留车辆资料与授权', () => {
