@@ -146,7 +146,7 @@ export class DeliyunParkingService {
     if (deliyunRelationId(detail.cardPoolId) || numberValue(detail.cardTypeId) === 7)
       throw new BadRequestException('车位池车辆的有效期属于关联车位，暂不允许从车辆续期入口修改');
 
-    const payload = buildDeliyunRenewalPayload(detail, session.park.unitKey, vehicleId, input.endDate);
+    const payload = buildDeliyunRenewalPayload(session.park.unitKey, vehicleId, input.endDate);
     const updateResponse = await this.h5Post('/pma/card/updateCard', payload, session.token);
     this.assertSuccess(updateResponse, '德立云有效期更新失败');
 
@@ -510,24 +510,14 @@ export class DeliyunParkingService {
   }
 }
 
-export function buildDeliyunRenewalPayload(detail: Record<string, unknown>, unitKey: string, vehicleId: string, endDate: string) {
+export function buildDeliyunRenewalPayload(unitKey: string, vehicleId: string, endDate: string) {
   if (!isDateOnly(endDate)) throw new Error('DELIYUN_INVALID_END_DATE');
+  // 续期的业务边界只是修改到期日。车辆详情只用于写前校验，
+  // 不回传车牌、车位、授权、人员、计费、金额、开始日或备注。
   return {
     unitKey,
     id: vehicleId,
-    plateNum: detail.plateNum,
-    cardNo: detail.cardNo,
-    pgIds: detail.pgIds,
-    cardTypeId: detail.cardTypeId,
-    carTypeId: detail.carTypeId,
-    peopleId: detail.peopleId,
-    cprtId: detail.cprtId,
-    cardGroupId: detail.cardGroupId,
-    poolId: detail.poolId,
-    money: detail.money,
-    beginTime: detail.beginTime,
     endTime: endOfDayEpoch(endDate),
-    remark: detail.remark,
   };
 }
 
