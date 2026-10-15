@@ -57,6 +57,8 @@ test('正式续期会同步已授权的人防有效期，失败重试不重复�
   assert.match(page, /lastOperation\?\.database === 'deliyun' && lastOperation\.status === 'failed'/);
   assert.match(page, /未重复收费或续期旧库/);
   assert.match(page, /避免漏续人防有效期/);
+  assert.match(page, /同步人防到期日/);
+  assert.match(page, /与旧停车系统到期日不一致/);
 });
 
 test('没有控制器回执时不把旧库下载位冒充现场设备状态', () => {

@@ -68,7 +68,7 @@ import {
   type ParkingRoomOption,
   type ParkingVehicleGroup,
 } from '../lib/parkingVehicleMerge';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import CopyableSecret from '../components/CopyableSecret';
 import OwnerFormModal, { type OwnerRow } from './OwnerFormModal';
 import ParkingLegacyOwnerModal, { type ParkingLegacyOwnerTarget } from './ParkingLegacyOwnerModal';
@@ -808,6 +808,12 @@ export default function ParkingManagementPage({
               syncingKey={syncingKey}
               proofLoading={proofLoading}
               proofRefresh={proofRefresh}
+              deliyunWriteEnabled={deliyun?.writeEnabled === true}
+              onSyncDeliyunExpiry={(cloud, endDate) => {
+                setDeliyunRenewError(null);
+                setDeliyunRenewEndDate(endDate);
+                setDeliyunRenewTarget({ row: cloud, idempotencyKey: createIdempotencyKey() });
+              }}
               onReviewProof={(row) => void viewProofForPlate(plateValue(row.fields))}
               onCreateProof={(row) => void createProofUpload(row)}
               onViewProof={(row) => void viewProofForPlate(plateValue(row.fields))}
@@ -1334,10 +1340,11 @@ function mergedGarageRows(group: ParkingVehicleGroup<ParkingQueryRow>, deliyunVe
   ];
 }
 
-function ParkingResultCard({ group, canWriteLocal, deliyunVehicle, cloudKnown, canSyncParkingInfo, syncingKey, onCreateProof, onViewProof, onReviewProof, proofRefresh, onEditPms, onEditLegacy, proofLoading, onSync, onOperation }: {
+function ParkingResultCard({ group, canWriteLocal, deliyunVehicle, deliyunWriteEnabled, cloudKnown, canSyncParkingInfo, syncingKey, onCreateProof, onViewProof, onReviewProof, proofRefresh, onEditPms, onEditLegacy, proofLoading, onSync, onOperation, onSyncDeliyunExpiry }: {
   group: ParkingVehicleGroup<ParkingQueryRow>;
   canWriteLocal: boolean;
   deliyunVehicle?: accessCardIssuance.DeliyunVehicle;
+  deliyunWriteEnabled: boolean;
   cloudKnown: boolean;
   canSyncParkingInfo: boolean;
   syncingKey: string | null;
@@ -1350,6 +1357,7 @@ function ParkingResultCard({ group, canWriteLocal, deliyunVehicle, cloudKnown, c
   onReviewProof: (row: ParkingQueryRow) => void;
   onSync: (source: ParkingQueryRow, target: ParkingQueryRow) => void;
   onOperation: (kind: accessCardIssuance.ParkingOperationKind, row: ParkingQueryRow, rows?: ParkingQueryRow[]) => void;
+  onSyncDeliyunExpiry: (row: accessCardIssuance.DeliyunVehicle, endDate: string) => void;
 }) {
   const defaultDatabase = group.parking2 ? 'parking2' : 'parking1';
   const [operationDatabase, setOperationDatabase] = useState<'parking1' | 'parking2'>(defaultDatabase);
@@ -1380,6 +1388,10 @@ function ParkingResultCard({ group, canWriteLocal, deliyunVehicle, cloudKnown, c
   const phase2Snapshot = group.parking2 ? parkingSyncSnapshot(group.parking2) : null;
   const mismatch = phase1Snapshot && phase2Snapshot ? parkingSyncMismatch(phase1Snapshot, phase2Snapshot) : null;
   const needsSync = !!mismatch && (mismatch.room || mismatch.note);
+  const civilExpirySource = group.parking2 ?? group.parking1;
+  const civilTargetEndDate = civilExpirySource
+    ? normalizeParkingDate(fieldValue(civilExpirySource.fields, fieldAliases.expiry))
+    : null;
   return (
     <article className="parking-query-card">
       <div className={`parking-license-plate ${plate.length > 7 ? 'is-green' : 'is-blue'}`}><span>{plate}</span></div>
@@ -1471,7 +1483,10 @@ function ParkingResultCard({ group, canWriteLocal, deliyunVehicle, cloudKnown, c
             onEdit={target ? () => onEditLegacy(target) : undefined} />;
         })}
         </div>
-        {deliyunVehicle?.civilDefenseAuthorized && <CivilDefenseOwnerPanel row={deliyunVehicle} />}
+        {deliyunVehicle?.civilDefenseAuthorized && <CivilDefenseOwnerPanel row={deliyunVehicle}
+          targetEndDate={civilTargetEndDate}
+          canSyncExpiry={deliyunWriteEnabled && !!civilTargetEndDate && !!deliyunVehicle.endDate && civilTargetEndDate > deliyunVehicle.endDate}
+          onSyncExpiry={civilTargetEndDate ? () => onSyncDeliyunExpiry(deliyunVehicle, civilTargetEndDate) : undefined} />}
         <OwnerDataPanel title="PMS系统业主信息" name={pmsMatch?.name || '未关联'} phone={pmsMatch?.phone || null}
           room={pmsMatch?.house ? `${pmsMatch.house.communityName || ''} ${pmsMatch.house.lane || ''}弄 ${pmsMatch.house.buildingNo}号 ${pmsMatch.house.roomNo}室` : null}
           note={pmsMatch?.contactNote || null} editable={!!pmsMatch}
@@ -2038,16 +2053,26 @@ function garageBitString(keys: string[]): string {
   const bits = Array.from({ length: 256 }, () => '0'); keys.forEach((key) => (channels[key] || []).forEach((channel) => { bits[channel - 1] = '1'; })); return bits.join('');
 }
 
-function CivilDefenseOwnerPanel({ row }: { row: accessCardIssuance.DeliyunVehicle }) {
+function CivilDefenseOwnerPanel({ row, targetEndDate, canSyncExpiry = false, onSyncExpiry }: {
+  row: accessCardIssuance.DeliyunVehicle;
+  targetEndDate?: string | null;
+  canSyncExpiry?: boolean;
+  onSyncExpiry?: () => void;
+}) {
   return <OwnerDataPanel title="人防车库系统住户信息" phone={row.ownerPhone} room={row.ownerName || row.address}
     note={row.remark || null} parkingSpace={row.parkingSpace || '未记录'}
-    validityRange={`${row.beginDate?.slice(0, 10) || '未记录'} 至 ${row.endDate?.slice(0, 10) || '未记录'}`} editable={false} hideEdit />;
+    validityRange={`${row.beginDate?.slice(0, 10) || '未记录'} 至 ${row.endDate?.slice(0, 10) || '未记录'}`} editable={false} hideEdit
+    extra={targetEndDate && targetEndDate !== row.endDate
+      ? <Alert type="warning" showIcon message={`与旧停车系统到期日不一致（旧库 ${targetEndDate}）`}
+          action={canSyncExpiry && onSyncExpiry ? <Button size="small" type="primary" onClick={onSyncExpiry}>同步人防到期日</Button> : undefined} />
+      : undefined} />;
 }
 
-function OwnerDataPanel({ title, name, phone, room, note, parkingSpace, validityRange, hideEdit, editable, editHint, updatedAt, updateSource, onEdit }: {
+function OwnerDataPanel({ title, name, phone, room, note, parkingSpace, validityRange, hideEdit, editable, editHint, updatedAt, updateSource, onEdit, extra }: {
   title: string; name?: string; phone: string | null; room: string | null; note: string | null;
   editable: boolean; editHint?: string; updatedAt?: string | null; updateSource?: string | null; onEdit?: () => void;
   parkingSpace?: string; validityRange?: string; hideEdit?: boolean;
+  extra?: ReactNode;
 }) {
   const updatedAtText = updatedAt && dayjs(updatedAt).isValid() ? dayjs(updatedAt).format('YYYY-MM-DD HH:mm') : null;
   // 旧库 owner_Name 是房号，不渲染虚假的姓名栏；显示和复制使用相同字段。
@@ -2074,6 +2099,7 @@ function OwnerDataPanel({ title, name, phone, room, note, parkingSpace, validity
       {updateSource && <div><dt>更新来源</dt><dd className="parking-owner-metadata">{updateSource}</dd></div>}
     </dl>
     {!editable && editHint && <small>{editHint}</small>}
+    {extra}
   </section>;
 }
 
