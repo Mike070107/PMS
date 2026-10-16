@@ -4993,3 +4993,27 @@
   - 3fd020e0 feat: integrate staff apartment cashier with permission and submission regressions
   - 6c24bcd5 feat: integrate parking family review, fees and apartment permissions
 
+## 2026-10-16 18:33 · miniapp-owner · 77e13363
+
+- 包：`1.0.20261016a`
+- 提交：77e13363 deploy: api → f287f463
+- 说明：CLI已上传开发版本；体验版选定及手机更新未核验，未提交审核或正式发布。仅包外临时目录未跟踪，受影响源码与主线提交一致。
+- 自上次（0d4aef1c）以来上线的相关提交：
+  - f287f463 fix(repairs): retain selected addresses and separate fault descriptions
+  - c819b5c3 feat(repairs): learn from corrected descriptions
+  - 2c7e7167 feat(access): split history database and controller actions
+  - f9ca2df3 feat(ai): learn from corrected repair speech
+  - 81aa6455 feat(access): complete remote door controls
+  - 7218a497 feat(access): revoke door permissions and add remote control
+  - 450d4e69 fix(fees): show cashier remarks and payment times
+  - 890918e2 fix(cashier): infer quantity from actual collected amount
+  - 035b19de feat(fees): add scoped reusable fee templates and effective price versions
+  - 29fe26a3 feat(auth): launch local WeChat from PMS login
+  - a07894f1 feat(auth): self-service phone and password updates with WeChat confirmation
+  - d7cca6dc fix(parking): integrate civil-defense details and map download machine IDs
+  - 0dd2add7 fix(parking): synchronize civil-defense plate changes and fallback authorization dates
+  - 391a6e12 merge: integrate parking and staff cashier without replacing existing main features
+  - 781e1bf1 feat: preserve pending apartment staff cashier and shared fee definitions
+  - 3fd020e0 feat: integrate staff apartment cashier with permission and submission regressions
+  - 6c24bcd5 feat: integrate parking family review, fees and apartment permissions
+
