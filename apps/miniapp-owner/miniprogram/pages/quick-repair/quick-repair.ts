@@ -498,6 +498,13 @@ Page({
 
     const scope = this.data.scope;
     const detected = this.data.detected;
+    const description = extractFaultDescription(content, {
+      addressText: detected?.matched ? detected.matchedRaw || detected.matchedText : undefined,
+      allowEmpty: !!detected?.matched,
+    });
+    if (!description && !attachments.length) {
+      return wx.showToast({ icon: 'none', title: '地址已识别，请补充具体故障' });
+    }
     const spokenContact = extractContact(content);
     const reporterRoomLabel = detected?.publicArea
       ? formatReporterRoomLabel(detected.buildingText, detected.reporterRoomNo)
@@ -531,13 +538,7 @@ Page({
         urgent: this.data.urgent,
         // 描述里认出来的地址已经单独提交了，从描述里剥掉，顺带剥语音带进来的语气词；
         // 只拍照没打字时给一句占位，后端要求 content 非空
-        content:
-          (detected?.ai?.description || '').trim() ||
-          extractFaultDescription(content, {
-            // matchedRaw 是地址在原话里占的整段（含小区名），剥得干净
-            addressText: detected?.matched ? detected.matchedRaw || detected.matchedText : undefined,
-          }) ||
-          '业主随手拍报修，详见照片',
+        content: description || '业主随手拍报修，详见照片',
         attachments,
       });
       wx.showToast({ title: '已提交' });

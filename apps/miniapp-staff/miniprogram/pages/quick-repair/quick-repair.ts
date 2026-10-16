@@ -408,21 +408,18 @@ Page({
     // 「业主张先生报修一期47号大门关不上电话138…」→ 描述只剩「大门关不上」，
     // 不然后台看单的人要在一串人名电话里自己找故障是什么
     const contact = extractContact(content);
-    /**
-     * 故障描述：后台开了 AI 辅助识别就用模型理顺的那一句，否则走规则剥。
-     * 模型强在「把口语理成通顺的一句话」，规则强在「一个字都不改地剥掉已认走的片段」——
-     * 模型没给（没开、超时、调不通）时无缝退回规则，用户看不出区别。
-     */
+    // 故障描述只剥已确认的字段，不采用可能再次带入门牌的 AI 概括。
     const ruleDescription = extractFaultDescription(content, {
       // 用原话里的那一段，不是归一化的 matchedText ——
       // 后者不含小区名，剥完描述里会剩个「枫桦景苑」
-      addressText: detected?.matchedRaw || detected?.matchedText,
+      addressText: detected?.matched ? detected.matchedRaw || detected.matchedText : undefined,
+      allowEmpty: !!detected?.matched,
       phoneText: contact.phoneText,
       nameText: contact.nameText,
     });
-    // 规则只剥已经确认的地址/联系人/电话，一个字都不改；AI 只能在规则确实抽不出内容时兜底。
+    // 规则只剥已经确认的地址/联系人/电话，一个字都不改。
     // 不能让“11号显示屏图像卡顿”被概括成“显示屏坏”，设备编号和故障现象都会丢。
-    const description = ruleDescription || (detected?.ai?.description || '').trim();
+    const description = ruleDescription;
     const found: FoundRow[] = [];
     // 地址只在真撞上库时才显示：模型给的地址服务端已经拿去撞过一遍了，
     // 撞不上就是 matched=false —— 那种情况下宁可不填，也不能让师傅按一个编出来的门牌去找
@@ -482,7 +479,7 @@ Page({
   /** 认错了就整单改到「我要报修」去逐项改，别在这一屏里堆一套表单 */
   onEditInFull() {
     saveRepairFormHandoff({
-      content: this.data.description || this.data.content,
+      content: this.data.description,
       sourceText: this.originalSpeechSegments.join('；') || this.data.content,
       attachments: this.data.attachments,
       detected: this.data.detected,
@@ -508,6 +505,9 @@ Page({
         errorMsg: '这句话里没认出小区房号。说清楚「几期几号几室」再试一次，或点下面改用完整表单',
       });
     }
+    if (this.data.description.trim().length < 2) {
+      return this.setData({ errorMsg: '地址已识别，请补充具体故障' });
+    }
 
     this.setData({ submitting: true, errorMsg: '' });
     try {
@@ -528,8 +528,8 @@ Page({
         ),
         // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
         urgent: this.data.urgent,
-        // 提交剥干净的描述；剥过头（空了）就退回原话
-        content: this.data.description || content,
+        // 提交已经展示并校验过的故障描述。
+        content: this.data.description,
         attachments: this.data.attachments,
       });
       wx.showToast({ title: '已提交' });

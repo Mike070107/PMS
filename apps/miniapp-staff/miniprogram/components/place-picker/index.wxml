@@ -1,4 +1,4 @@
-<view class="field {{compact ? 'field--compact' : ''}}" bindtap="onOpen">
+<view wx:if="{{!hideTrigger}}" class="field {{compact ? 'field--compact' : ''}}" bindtap="onOpen">
   <view wx:if="{{!compact}}" class="label">报修位置</view>
   <view class="picker {{compact ? 'picker--compact' : ''}} {{valueText ? '' : 'placeholder'}}">
     {{valueText || (loading ? '正在加载地址…' : '点这里选小区 / 楼栋 / 房号')}}

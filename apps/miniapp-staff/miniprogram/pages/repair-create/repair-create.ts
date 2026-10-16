@@ -37,13 +37,12 @@ import { consumeRepairFormHandoff } from '../../utils/repair-form-handoff';
  *
  * 传 matchedRaw（地址在原话里占的整段，含小区名），不要传归一化的 matchedText ——
  * 那份不含小区名，剥完描述里会剩个「枫桦景苑」（2026-08-31 用户实际看到的）。
- * 剥空了就退回原文：宁可描述里带点地址，也不能提交一条空描述。
+ * 只说地址时留空，由表单要求补充故障。
  */
 function stripAddress(content: string, matchedRaw?: string | null): string {
   const full = content.trim();
   if (!matchedRaw) return full;
-  const stripped = extractFaultDescription(full, { addressText: matchedRaw }).trim();
-  return stripped || full;
+  return extractFaultDescription(full, { addressText: matchedRaw, allowEmpty: true }).trim();
 }
 
 /**
@@ -483,7 +482,7 @@ Page({
     this.autoFillFromText(content);
     this.refreshUrgency(content);
     if (!shouldDetectAddress(content)) {
-      if (this.data.detected) this.setData({ detected: null });
+      if (this.data.detected && !this.data.detected.matched) this.setData({ detected: null });
       return;
     }
     // 停 1.2 秒再识别（原 400ms）：打字中途每停一下就调一次大模型太浪费（2026-09-05 查费用）
@@ -505,6 +504,9 @@ Page({
     }
     if (res.matchedText && res.matchedText === this.dismissedMatch) return;
     const patch: Record<string, unknown> = { detected: res };
+    if (res.matched && content === this.data.content) {
+      patch.content = stripAddress(content, res.matchedRaw || res.matchedText);
+    }
     if (!this.spotTouched && res.matched && res.level !== 'house') {
       patch.spotText = res.specificLocation || res.spotName || '';
     }
@@ -668,7 +670,7 @@ Page({
       }
       this.sourceSegments = [...this.sourceSegments, text].slice(-8);
       // 联系人和电话由下面的字段单独接住（autoFillFromText），说的这一段里就别再留着；
-      // 语气词一并剥掉。地址先留在文字里 —— 识别要靠它撞库，提交时再从描述里去掉
+      // 地址先留给识别撞库，确认填入地址栏后由 detectAddress 从描述中去掉。
       const contact = extractContact(text);
       const spoken = extractFaultDescription(text, {
         phoneText: contact.phoneText,
@@ -778,7 +780,7 @@ Page({
     const errors = {
       place: communityId || detected?.matched ? '' : '请先选择报修位置',
       type: typeIndex < 0 ? '请选择报修类型' : '',
-      content: content.trim().length >= 5 ? '' : '请至少填写 5 个字描述问题',
+      content: content.trim().length >= 2 ? '' : '请至少填写 2 个字描述问题',
       phone: contactPhone && !PHONE_RE.test(contactPhone) ? '请填写正确的手机号' : '',
     };
     this.setData({ errors });
@@ -808,7 +810,7 @@ Page({
     const errors = {
       place: communityId || detected?.matched ? '' : '请先选择报修位置',
       type: typeIndex < 0 ? '请选择报修类型' : '',
-      content: content.trim().length >= 5 ? '' : '请至少填写 5 个字描述问题',
+      content: content.trim().length >= 2 ? '' : '请至少填写 2 个字描述问题',
       phone: contactPhone && !PHONE_RE.test(contactPhone) ? '请填写正确的手机号' : '',
     };
     this.setData({ errors });
@@ -842,14 +844,13 @@ Page({
         ),
         // 说了「急修」就按紧急提交；人点掉了就是 false —— 端上传什么服务端认什么
         urgent: this.data.urgent,
-        // 地址在描述里留到这一刻是为了让识别撞库（见 onSpeech 那段注释），
-        // 提交时剥掉：地址已经单独放在 addressText 里了，描述只留故障本身。
+        // 地址确认后已从描述框移除；提交时再清理一次作为兜底。
         // 用 matchedRaw（原话里的那一整段，含小区名），不是归一化的 matchedText ——
         // 后者剥完会剩个「枫桦景苑」在描述开头（2026-08-31 实际现象）。
-        // 剥空了就退回原文：宁可带点地址，也不能提交一条空描述
+        // 只说地址时留空，由表单校验要求补充故障。
         // 逐字剥掉已确认的地址，保留设备编号与故障现象。AI 的概括只做分类辅助，
         // 不能覆盖用户原话（“11号显示屏图像卡顿”不能变成“显示屏坏”）。
-        content: stripAddress(content, detected?.matchedRaw),
+        content: stripAddress(content, detected?.matched ? detected.matchedRaw || detected.matchedText : undefined),
         attachments: this.data.attachments,
       });
       wx.showToast({ title: '报修已提交' });

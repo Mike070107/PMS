@@ -551,7 +551,9 @@
         <view><view class="complete-card__title">现场实际情况</view><view wx:if="{{guide}}" class="complete-card__desc">核对位置、故障和收费</view></view>
       </view>
       <view class="complete-label">实际位置 <text>选填</text></view>
-      <input class="complete-input" placeholder="例如：厨房水槽下方" value="{{faultLocation}}" data-field="faultLocation" bindinput="onFaultInput"/>
+      <button class="complete-place-button" bindtap="onOpenCompletePlace" loading="{{editBookLoading}}" disabled="{{editBookLoading || busy}}">{{editBookLoading ? '正在加载房产列表' : '从房产列表选择'}}</button>
+      <view wx:if="{{completePlaceError}}" class="complete-place-error">{{completePlaceError}}</view>
+      <input class="complete-input" maxlength="255" placeholder="可选择房产，再补充厨房、水槽下方等细节" value="{{faultLocation}}" data-field="faultLocation" bindinput="onFaultInput"/>
       <button wx:if="{{hasSpeech}}" class="speech-field-button speech-field-button--compact {{(recording || pressing) && speechTarget === 'faultLocation' ? 'speech-field-button--on' : ''}}" data-speech-target="faultLocation" data-speech-label="实际位置" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove"><view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'faultLocation' ? '松开结束' : (pressing && speechTarget === 'faultLocation' ? '正在准备…' : '按住说实际位置')}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">识别后自动填入</view></view></button>
       <view wx:if="{{recording && speechTarget === 'faultLocation'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
       <view class="complete-label complete-label--next">实际故障现象 <text>选填</text></view>
@@ -696,3 +698,6 @@
     </block>
   </scroll-view>
 </view>
+
+<!-- 选择面板挂在根部，避免被完工表单的 scroll-view 裁切。 -->
+<place-picker wx:if="{{panel === 'complete'}}" id="completePlacePicker" hideTrigger="{{true}}" bind:picked="onCompletePlacePicked" bind:openchange="onCompletePickerOpenChange" />

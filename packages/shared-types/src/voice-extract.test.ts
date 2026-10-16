@@ -80,6 +80,12 @@ test('故障描述：房号里的短数字不能被当成电话剥掉', () => {
 
 // ---------------- 认出来的人/电话怎么合进表单 ----------------
 
+test('已填地址的表单允许剥空，不把门牌当故障描述放回来；默认行为兼容原有调用', () => {
+  const raw = '一期17号201';
+  assert.equal(extractFaultDescription(raw, { addressText: raw, allowEmpty: true }), '');
+  assert.equal(extractFaultDescription(raw, { addressText: raw }), raw);
+});
+
 /** 员工端「我要报修」的起手式：联系人/电话都是登录人的默认值 */
 const defaults = {
   name: '张保安',

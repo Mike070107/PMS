@@ -262,6 +262,8 @@ interface PageData {
   /** 未接单前允许办公室在员工端修正报修信息 */
   canEditIntake: boolean;
   editPickerOpen: boolean;
+  completePickerOpen: boolean;
+  completePlaceError: string;
   editBookLoading: boolean;
   editCommunityId: number | null;
   editBuildingId: number | null;
@@ -418,6 +420,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     canUrge: false,
     canEditIntake: false,
     editPickerOpen: false,
+    completePickerOpen: false,
+    completePlaceError: '',
     editBookLoading: true,
     editCommunityId: null,
     editBuildingId: null,
@@ -550,6 +554,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
    * 关面板不清草稿（和点「关闭」一样），再点开还在；只有完工提交成功才由业务代码跳回列表。
    */
   onEdgeBack() {
+    if (this.data.completePickerOpen) {
+      this.closeCompletePlacePicker();
+      return;
+    }
     if (this.data.skuOpen) {
       this.onCloseSku();
       return;
@@ -568,7 +576,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
    * 2026-09-05 Mike 反馈右滑「没变」：之前只接了自己画的手势，iOS 的系统右滑根本不经过它。
    */
   onOverlayLeave() {
-    if (this.data.skuOpen) this.onCloseSku();
+    if (this.data.completePickerOpen) this.closeCompletePlacePicker();
+    else if (this.data.skuOpen) this.onCloseSku();
     else if (this.data.panel) this.onClosePanel();
     this.setData({ overlayPulse: true }, () => this.setData({ overlayPulse: false }));
   },
@@ -935,6 +944,41 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       | (WechatMiniprogram.Component.TrivialInstance & { setBook?: (book: unknown[], spots: unknown[]) => void })
       | null;
     picker?.setBook?.(this.addressBook, this.addressSpots);
+  },
+
+  async onOpenCompletePlace() {
+    if (this.data.busy || this.data.editBookLoading || this.data.panel !== 'complete') return;
+    this.setData({ completePlaceError: '' });
+    if (!this.addressBook.length) await this.loadEditBook();
+    if (this.data.panel !== 'complete') return;
+    if (!this.addressBook.length) {
+      this.setData({ completePlaceError: '房产列表暂未加载成功，请重试；也可直接填写实际位置' });
+      return;
+    }
+    const picker = this.selectComponent('#completePlacePicker') as
+      | (WechatMiniprogram.Component.TrivialInstance & {
+          setBook?: (book: unknown[], spots: unknown[]) => void;
+          onOpen?: () => void;
+        })
+      | null;
+    picker?.setBook?.(this.addressBook, this.addressSpots);
+    picker?.onOpen?.();
+  },
+
+  onCompletePlacePicked(e: WechatMiniprogram.CustomEvent<PickedPlace>) {
+    this.setData({ faultLocation: e.detail.fullText, completePlaceError: '' });
+  },
+
+  onCompletePickerOpenChange(e: WechatMiniprogram.CustomEvent<{ open: boolean }>) {
+    this.setData({ completePickerOpen: !!e.detail.open });
+  },
+
+  closeCompletePlacePicker() {
+    const picker = this.selectComponent('#completePlacePicker') as
+      | (WechatMiniprogram.Component.TrivialInstance & { onClose?: () => void })
+      | null;
+    picker?.onClose?.();
+    this.setData({ completePickerOpen: false });
   },
 
   seedEditForm() {
@@ -1563,6 +1607,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   onClosePanel() {
+    if (this.data.completePickerOpen) this.closeCompletePlacePicker();
     // 维修工按着语音键时也可能直接点关闭。先结束录音，避免面板关了麦克风还在工作。
     if (this.data.recording) hold?.release();
     this.setData({ panel: '', recording: false, partial: '' });

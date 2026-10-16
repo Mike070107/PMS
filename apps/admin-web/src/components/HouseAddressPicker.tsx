@@ -133,14 +133,7 @@ export function describePickedAddress(path: AddrOption[]): PickedAddress | null 
   };
 }
 
-export default function HouseAddressPicker({
-  communities,
-  value,
-  onChange,
-  onPicked,
-  loading,
-  id,
-}: {
+export default function HouseAddressPicker(props: {
   communities: AddressCommunity[];
   value?: Array<number | string>;
   onChange?: (value: Array<number | string>) => void;
@@ -148,6 +141,18 @@ export default function HouseAddressPicker({
   loading?: boolean;
   id?: string;
 }) {
+  const {
+    communities,
+    value,
+    onChange,
+    onPicked,
+    loading,
+    id,
+  } = props;
+  // Form.Item can explicitly pass undefined when resetting a controlled field.
+  const controlled = Object.prototype.hasOwnProperty.call(props, 'value');
+  const [internalValue, setInternalValue] = useState<Array<number | string>>([]);
+  const selectedValue = controlled ? value : internalValue;
   const options = useMemo(() => buildOptions(communities), [communities]);
   const allPaths = useMemo(() => flattenPaths(options), [options]);
   const [searchValue, setSearchValue] = useState('');
@@ -179,7 +184,9 @@ export default function HouseAddressPicker({
   };
 
   const commitPath = (path: AddrOption[]) => {
-    onChange?.(path.map((item) => item.value));
+    const next = path.map((item) => item.value);
+    if (!controlled) setInternalValue(next);
+    onChange?.(next);
     onPicked?.(describePickedAddress(path));
     setSearchValue('');
     setOpen(false);
@@ -214,13 +221,13 @@ export default function HouseAddressPicker({
   };
 
   const currentText = useMemo(() => {
-    if (!value?.length) return '';
-    const community = options.find((item) => item.value === value[0]);
+    if (!selectedValue?.length) return '';
+    const community = options.find((item) => item.value === selectedValue[0]);
     if (!community) return '';
-    const building = community.children?.find((item) => item.value === value[1]);
-    const house = building?.children?.find((item) => item.value === value[2]);
+    const building = community.children?.find((item) => item.value === selectedValue[1]);
+    const house = building?.children?.find((item) => item.value === selectedValue[2]);
     return pathText([community, building, house].filter(Boolean) as AddrOption[]);
-  }, [value, options]);
+  }, [selectedValue, options]);
 
   return (
     <div className="house-address-picker">
@@ -229,7 +236,7 @@ export default function HouseAddressPicker({
         className="house-address-picker-control"
         popupClassName="house-address-picker-popup"
         options={options}
-        value={value}
+        value={selectedValue}
         loading={loading}
         changeOnSelect
         allowClear
@@ -252,6 +259,7 @@ export default function HouseAddressPicker({
           render: (_input, path) => pathText(path as AddrOption[]) || '—',
         }}
         onChange={(next, selectedOptions) => {
+          if (!controlled) setInternalValue((next as Array<number | string>) || []);
           onChange?.((next as Array<number | string>) || []);
           onPicked?.(describePickedAddress((selectedOptions || []) as AddrOption[]));
           setSearchValue('');

@@ -38,13 +38,12 @@ import { askSubscribeAfterSubmit, primeSubscribeTemplates } from '../../utils/un
  * 提交前把描述里的地址剥掉（员工端 repair-create 有一份一样的）。
  * 必须传 matchedRaw ——「地址在原话里占的整段」，含小区名；
  * 归一化的 matchedText 不含小区名，剥完会在描述开头剩个「枫桦景苑」。
- * 剥空了退回原文，不提交空描述。
+ * 只说地址时留空，由表单要求补充故障。
  */
 function stripAddress(content: string, matchedRaw?: string | null): string {
   const full = content.trim();
   if (!matchedRaw) return full;
-  const stripped = extractFaultDescription(full, { addressText: matchedRaw }).trim();
-  return stripped || full;
+  return extractFaultDescription(full, { addressText: matchedRaw, allowEmpty: true }).trim();
 }
 
 /**
@@ -535,7 +534,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     // 每一处改内容都会走到这一句，新增入口只要调 scheduleDetect 就自动跟上
     this.refreshUrgency(content);
     if (!shouldDetectAddress(content)) {
-      if (this.data.detected) this.setData({ detected: null });
+      if (this.data.detected && !this.data.detected.matched) this.setData({ detected: null });
       return;
     }
     // 停 1.2 秒再识别（原 400ms）：打字中途每停一下就调一次大模型太浪费（2026-09-05 查费用）
@@ -554,6 +553,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     // 用户点过 × 的同一段地址不再弹出来
     if (res.matchedText && res.matchedText === this.dismissedMatch) return;
     const patch: Record<string, unknown> = { detected: res };
+    if (res.matched) {
+      patch.content = stripAddress(content, res.matchedRaw || res.matchedText);
+    }
     if (this.data.typeIndex < 0 && res.ai?.repairType) {
       const index = this.types.findIndex(
         (item: PublicRepairType) => item.repairType === res.ai?.repairType,
@@ -720,7 +722,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     const errors = {
       place: communityId || detected?.matched ? '' : '请先选择报修位置',
       type: typeIndex < 0 ? '请选择报修类型' : '',
-      content: content.trim().length >= 5 ? '' : '请至少填写 5 个字描述问题',
+      content: content.trim().length >= 2 ? '' : '请至少填写 2 个字描述问题',
       phone: !contactPhone
         ? anonymousRoom
           ? '不填房号时请留个电话，维修工上门前会先联系你'
@@ -776,8 +778,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         urgent: this.data.urgent,
         // 地址已经单独放进 addressText，描述只留故障本身。用 matchedRaw
         // （原话里地址占的整段，含小区名）剥 —— 归一化的 matchedText 不含小区名，
-        // 剥完会剩个「枫桦景苑」在描述开头。剥空就退回原文，不提交空描述。
-        content: (detected?.ai?.description || '').trim() || stripAddress(content, detected?.matchedRaw),
+        // 剥完会剩个「枫桦景苑」在描述开头。只说地址时要求补充故障。
+        content: stripAddress(content, detected?.matched ? detected.matchedRaw || detected.matchedText : undefined),
         attachments: this.data.attachments,
       });
       wx.showToast({ title: '报修已提交' });

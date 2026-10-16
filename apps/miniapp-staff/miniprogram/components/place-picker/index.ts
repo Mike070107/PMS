@@ -102,6 +102,8 @@ Component<
     loading: { type: Boolean, value: false },
     /** 报修三步表单使用紧凑外观，标签和辅助说明由页面统一排版 */
     compact: { type: Boolean, value: false },
+    /** 由页面自己的按钮打开，面板仍挂在页面根部，避免嵌套滚动裁切。 */
+    hideTrigger: { type: Boolean, value: false },
   },
 
   data: {

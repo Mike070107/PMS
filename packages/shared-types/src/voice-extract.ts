@@ -134,11 +134,12 @@ export function extractContact(raw: string): ExtractedContact {
  *
  * 剥的顺序：先剥认出来的原文片段（地址 matchedText / phoneText / nameText），
  * 再剥它们留下的标签词（「电话」「联系人」「业主」「报修」……），
- * 最后剥语音识别带进来的语气词和头尾标点。剥完少于 2 个字就退回原话 —— 宁可多也别空。
+ * 最后剥语音识别带进来的语气词和头尾标点。默认少于 2 个字退回原话；
+ * 已确认填入地址栏的调用方可用 allowEmpty，让只说地址时留空并提示补充故障。
  */
 export function extractFaultDescription(
   raw: string,
-  removals: { addressText?: string; phoneText?: string; nameText?: string } = {},
+  removals: { addressText?: string; phoneText?: string; nameText?: string; allowEmpty?: boolean } = {},
 ): string {
   let text = String(raw || '').trim();
   if (!text) return '';
@@ -201,7 +202,7 @@ export function extractFaultDescription(
     .replace(/，。|。，/g, '。');
 
   // 剥过头了就退回原话：描述空着比带点噪音更糟
-  return text.replace(/[，。]/g, '').length >= 2 ? text : original;
+  return removals.allowEmpty || text.replace(/[，。]/g, '').length >= 2 ? text : original;
 }
 
 // ---------------- 认出来的人/电话怎么合进表单 ----------------
