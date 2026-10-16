@@ -4941,3 +4941,10 @@
 - 自上次（ff052cdb）以来上线的相关提交：
   - 7e250001 fix(parking): validate garage expiry on authorization
 
+## 2026-10-16 13:52 · api · 2cbf75e7
+
+- 包：`pms-api-fast-20261016-135142.tar.gz`
+- 提交：2cbf75e7 fix(fees): unify cashier finance totals and reversal links
+- 自上次（05915533）以来上线的相关提交：
+  - 2cbf75e7 fix(fees): unify cashier finance totals and reversal links
+
