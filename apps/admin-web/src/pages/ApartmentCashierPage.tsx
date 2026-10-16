@@ -17,7 +17,7 @@ import {
   UserOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { App, Button, Checkbox, DatePicker, Empty, Input, InputNumber, Modal, Pagination, Select, Spin, Switch, Tag } from 'antd';
+import { App, AutoComplete, Button, Checkbox, DatePicker, Empty, Input, InputNumber, Modal, Pagination, Select, Spin, Switch, Tag } from 'antd';
 import {
   APARTMENT_FEE_TYPES,
   FEE_PAYMENT_METHOD_LABELS,
@@ -49,16 +49,17 @@ type ReceiptItem = {
   feeCode: string; feeName: string; quantity: number | null; unit: string | null;
   unitPriceCents: number | null; amountCents: number;
 };
-type HistoryRow = {
+type ReceiptLinks = { originalReceiptNo?: string | null; reversalReceiptNo?: string | null };
+type HistoryRow = ReceiptLinks & {
   receiptNo: string; paidAt: string; paymentMethod: string; cashier: string | null;
   remark: string | null; amountCents: number; status: string; items: Array<{ feeName: string }>;
 };
-type TodayRow = {
+type TodayRow = ReceiptLinks & {
   receiptNo: string; buildingNo: string; roomNo: string; ownerName: string | null;
   paidAt: string; paymentMethod: string; cashier: string | null;
   remark: string | null; amountCents: number; status: string; items: Array<{ feeName: string }>;
 };
-type ReceiptPaperData = {
+type ReceiptPaperData = ReceiptLinks & {
   receiptNo: string | null; communityName: string | null; place: string;
   ownerName: string | null; paidAt: string | null; paymentMethod: string | null;
   remark: string | null; amountCents: number; refunded: boolean;
@@ -113,6 +114,12 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
   const [items, setItems] = useState<FeeItem[]>([]);
   const [refundMode, setRefundMode] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>();
+  const [methodOptions, setMethodOptions] = useState<string[]>([]);
+  useEffect(() => {
+    if (preview) return;
+    request<string[]>({ url: '/fees/cashier/payment-methods' }).then(setMethodOptions)
+      .catch((error) => message.error(error?.message || '收款方式加载失败'));
+  }, [preview]);
   const [remark, setRemark] = useState('');
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
@@ -318,6 +325,8 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
       const detail = await request<any>({ url: `/fees/cashier/receipts/${encodeURIComponent(no)}` });
       setReceiptDetail({
         receiptNo: detail.receiptNo,
+        originalReceiptNo: detail.originalReceiptNo,
+        reversalReceiptNo: detail.reversalReceiptNo,
         communityName: detail.communityName,
         place: placeLabel(detail.buildingNo, detail.roomNo),
         ownerName: detail.ownerName,
@@ -325,7 +334,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
         paymentMethod: detail.paymentMethod,
         remark: detail.remark,
         amountCents: detail.amountCents,
-        refunded: detail.status === 'refunded',
+        refunded: detail.status === 'refunded' && detail.amountCents > 0,
         items: detail.items,
       });
       setReceiptOpen(true);
@@ -507,7 +516,8 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
                       row={row}
                       canEdit={canEdit}
                       loading={openingReceipt === row.receiptNo}
-                      onReprint={() => reprint(row.receiptNo)}
+                      onViewRelated={(no) => void reprint(no)}
+                    onReprint={() => reprint(row.receiptNo)}
                       onRefund={() => { setRefundTarget({ receiptNo: row.receiptNo, amountCents: row.amountCents }); setRefundReason(''); }}
                     />
                   </div>)}
@@ -520,7 +530,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
 
           <section className="cashier-card">
             <header className="cashier-card__heading cashier-fee-heading"><span>2</span><h2>添加收费项目</h2><label className="cashier-refund-mode"><span>退费模式</span><Switch aria-label="退费模式" checked={refundMode} onChange={setRefundMode} disabled={!canEdit || submitting} /></label></header>
-            {refundMode && <p className="cashier-refund-hint">新添加项目按负数退费，已添加项目保持不变。</p>}
+            {refundMode && <p className="cashier-refund-hint">新添加项目按负数退费，无需关联旧账单；已添加项目保持不变。</p>}
             <div className="cashier-fee-picker">
               {FEE_TYPES.map((fee) => <button className={`${fee.tone} ${items.some((item) => item.feeCode === fee.code) ? 'active' : ''}`} type="button" key={fee.code} onClick={() => addFee(fee.code)}>
                 <i>{fee.icon}</i><b>{fee.name}</b><small>{items.some((item) => item.feeCode === fee.code) ? '已添加' : '+'}</small>
@@ -549,10 +559,10 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
           <section className="cashier-card">
             <header className="cashier-card__heading">
               <span><WalletOutlined /></span><h2>今日收费流水</h2>
-              <small>交班对账 · 含红冲抵消</small>
+              <small>交班对账 · 收费减红冲减退费</small>
             </header>
             <div className="cashier-today__summary">
-              <div><small>今日收款合计</small><strong>{money(todayCents)}</strong></div>
+              <div><small>今日净实收</small><strong>{money(todayCents)}</strong></div>
               <div><small>今日收据</small><b>{todayTotal} 张</b></div>
               <Button size="small" icon={<ReloadOutlined />} loading={loadingToday} onClick={reload}>刷新</Button>
             </div>
@@ -570,6 +580,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
                     row={row}
                     canEdit={canEdit}
                     loading={openingReceipt === row.receiptNo}
+                    onViewRelated={(no) => void reprint(no)}
                     onReprint={() => reprint(row.receiptNo)}
                     onRefund={() => { setRefundTarget({ receiptNo: row.receiptNo, amountCents: row.amountCents }); setRefundReason(''); }}
                   />
@@ -584,7 +595,8 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
           <header className="cashier-card__heading"><span>3</span><h2>确认收款</h2></header>
           <div className="cashier-checkout__address"><small>收费对象</small><strong>{house ? placeLabel(house.buildingNo, house.roomNo) : '尚未选择房间'}</strong><span>{ownerName || ownerPhone || '住户信息待填写'}</span></div>
           <dl><div><dt>收费项目</dt><dd>{items.length} 项</dd></div><div><dt>收费时间</dt><dd>提交时自动记录</dd></div></dl>
-          <fieldset className="cashier-payment"><legend>收款方式</legend>{PAYMENT_METHODS.map((item) => <button type="button" className={`${item.type} ${paymentMethod === item.value ? 'active' : ''}`} key={item.value} onClick={() => setPaymentMethod(item.value)}><LegacyPaymentIcon type={item.type} /><span>{item.label}</span></button>)}</fieldset>
+          <fieldset className="cashier-payment"><legend>收款方式</legend>{PAYMENT_METHODS.map((item) => <button type="button" className={`${item.type} ${paymentMethod === item.value ? 'active' : ''}`} key={item.value} disabled={!canEdit || submitting} onClick={() => setPaymentMethod(item.value)}><LegacyPaymentIcon type={item.type} /><span>{item.label}</span></button>)}</fieldset>
+          <label className="cashier-remark"><span>其他收款方式（可新增）</span><AutoComplete aria-label="其他收款方式" value={PAYMENT_METHODS.some((m) => m.value === paymentMethod) ? '' : paymentMethod} options={methodOptions.filter((m) => !PAYMENT_METHODS.some((p) => p.value === m)).map((m) => ({ value: m, label: FEE_PAYMENT_METHOD_LABELS[m] || m }))} onChange={(value) => setPaymentMethod(value.trim() || undefined)} maxLength={30} disabled={!canEdit || submitting} placeholder="选择或输入收款方式" /></label>
           <label className="cashier-remark"><span>备注</span><Input.TextArea rows={3} value={remark} onChange={(event) => setRemark(event.target.value)} placeholder="选填" maxLength={255} showCount /></label>
           <div className="cashier-total"><span>收款合计</span><strong>{formatFeeMoney(total)}</strong></div>
           <Button block type="primary" size="large" icon={<PrinterOutlined />} loading={submitting} disabled={!canEdit || !house || !items.length || !paymentMethod || savingContact || !!contactError} onClick={submit}>收费并生成小票</Button>
@@ -595,6 +607,8 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
 
       <Modal open={receiptOpen} onCancel={closeReceipt} width={520} title={<span><PrinterOutlined /> {receiptDetail ? `补打小票 · ${receiptDetail.receiptNo}` : '打印预览 · 热敏小票'}</span>} footer={<><Button onClick={closeReceipt}>关闭</Button><Button type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>打印</Button></>} centered className="cashier-receipt-modal">
         <div className="cashier-receipt-stage">
+          {receiptPaper?.originalReceiptNo && <Button type="link" onClick={() => void reprint(receiptPaper.originalReceiptNo!)}>查看原收据 {receiptPaper.originalReceiptNo}</Button>}
+          {receiptPaper?.reversalReceiptNo && <Button type="link" onClick={() => void reprint(receiptPaper.reversalReceiptNo!)}>查看红冲单 {receiptPaper.reversalReceiptNo}</Button>}
           <ReceiptPaper data={receiptPaper} />
           <p>兼容 60–72mm 热敏小票；打印时只输出白色票面。</p>
         </div>
@@ -627,17 +641,20 @@ function money(cents: number) {
   return cents < 0 ? `-${formatFeeMoney(-cents)}` : formatFeeMoney(cents);
 }
 
-function ReceiptActions({ row, canEdit, loading, onReprint, onRefund }: {
-  row: { receiptNo: string; status: string; amountCents: number };
-  canEdit: boolean; loading: boolean; onReprint: () => void; onRefund: () => void;
+function ReceiptActions({ row, canEdit, loading, onReprint, onRefund, onViewRelated }: {
+  row: ReceiptLinks & { receiptNo: string; status: string; amountCents: number };
+  canEdit: boolean; loading: boolean; onReprint: () => void; onRefund: () => void; onViewRelated: (no: string) => void;
 }) {
-  const refunded = row.status === 'refunded';
+  const refunded = row.status === 'refunded' && row.amountCents > 0;
   return (
     <span className="cashier-row-actions">
       <Button type="link" size="small" icon={<PrinterOutlined />} loading={loading} onClick={onReprint}>补打</Button>
+      {row.originalReceiptNo && <Button type="link" size="small" onClick={() => onViewRelated(row.originalReceiptNo!)}>原收据 {row.originalReceiptNo}</Button>}
+      {row.reversalReceiptNo && <Button type="link" size="small" onClick={() => onViewRelated(row.reversalReceiptNo!)}>红冲单 {row.reversalReceiptNo}</Button>}
+      {row.amountCents < 0 && <Tag color="red">{row.originalReceiptNo ? '红冲订单' : '退费订单'}</Tag>}
       {refunded
-        ? <Tag color="red">已红冲</Tag>
-        : <Button type="link" size="small" danger icon={<RollbackOutlined />} disabled={!canEdit || row.amountCents <= 0} onClick={onRefund}>红冲</Button>}
+        ? <Tag color="red">已被红冲</Tag>
+        : row.amountCents > 0 && <Button type="link" size="small" danger icon={<RollbackOutlined />} disabled={!canEdit || row.amountCents <= 0} onClick={onRefund}>红冲</Button>}
     </span>
   );
 }
@@ -646,13 +663,15 @@ function ReceiptPaper({ data }: { data: ReceiptPaperData | null }) {
   if (!data) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未选择房间" />;
   return (
     <article className="cashier-receipt">
-      <header><h2>物业收费凭证</h2><strong>{data.communityName || '公寓收费'}</strong>{data.refunded && <em>（已红冲）</em>}</header>
+      <header><h2>物业收费凭证</h2><strong>{data.communityName || '公寓收费'}</strong>{data.refunded && <em>（已被红冲）</em>}</header>
       <section>
         <div><span>收费时间</span><b>{data.paidAt ? dayjs(data.paidAt).format('YYYY-MM-DD HH:mm') : '提交时自动记录'}</b></div>
         <div><span>地址</span><b>{data.place || '-'}</b></div>
         <div><span>姓名</span><b>{data.ownerName || '-'}</b></div>
         <div><span>收款方式</span><b>{data.paymentMethod ? FEE_PAYMENT_METHOD_LABELS[data.paymentMethod] || data.paymentMethod : '待选择'}</b></div>
       </section>
+      {data.originalReceiptNo && <section><div><span>被红冲原收据</span><b>{data.originalReceiptNo}</b></div></section>}
+      {data.reversalReceiptNo && <section><div><span>红冲单号</span><b>{data.reversalReceiptNo}</b></div></section>}
       <section className="cashier-receipt__items">
         <h3>收费项目</h3>
         {data.items.map((item) => <div key={item.feeCode}>

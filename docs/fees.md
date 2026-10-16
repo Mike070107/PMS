@@ -1,5 +1,17 @@
 # 物业费（后台记账）
 
+## 2026-10-16 公寓收费统计与红冲关联（本地开发，尚未发布）
+
+- 今日流水、收费明细实收汇总、收费报表、财务对账及Excel使用同一有符号明细：全部正数收费−负数红冲绝对值−负数独立退费绝对值。按`paid_at`上海业务发生日统计；被红冲原单保留金额和原发生日，不能再按状态从历史收入排除，也不按`refunded_at`再扣一次。混合收费/退费收据按各明细正负累计；混合退费收据不接受整单红冲。
+- 迁移`1792300000000-CashierReceiptLinks`新增`original_receipt_no`和`reversal_receipt_no`，原单和红冲单保存双向单号；旧数据只回填同公司、同房号、金额相反、备注明确且唯一的关联，不推测缺失/歧义历史。迁移不修改金额、日期。正式部署必须先执行迁移再启动新版API，本次没有连接或迁移生产数据库。
+- 红冲事务锁住原收据全部明细后重新校验状态；复用收费凭证编号及门店事务锁生成红冲单，避免同原单重复扣款和不同原单并发生成同号。只允许已登记的纯收费原单红冲；独立退费沿用负数收费明细，无需关联旧账单。已红冲记录拒绝修改、删除、作废或重新收款。
+- 收费台、房间历史、小票详情显示双向关联；收费明细显示“已被红冲”、原收据号/红冲单号，点击关联单号查询成对订单。列表及导出保留所有原收费、红冲和退费明细。
+- 收款方式接口从当前公司及授权范围已保存流水发现新增方式；收费台可输入新方式，刷新后可再次选择。报表/明细筛选允许动态方式，对账及Excel表头包含全部实际渠道。微信/支付宝/现金原按钮与现有页面风格保留。
+- 回归：`pnpm --filter @pms/api test:cashier-finance`；`pnpm --filter @pms/admin-web test:cashier-finance`。隔离PGlite执行真实迁移、TypeORM保存/读取及报表SQL，覆盖同日/跨日红冲、独立退费、重复请求、动态渠道、租户/范围限制、历史保护；Excel测试执行页面实际导出处理器并生成/重读工作簿。PGlite不代替真实PostgreSQL多连接并发验收。
+- 修改文件：API `src/modules/fees/fees.service.ts`、`fees.controller.ts`、`dto.ts`、`cashier.util.ts`、`cashier-finance.test.ts`、`cashier-finance.persistence.test.ts`，`src/entities/fee-bill.entity.ts`、`src/migrations/1792300000000-CashierReceiptLinks.ts`及`apps/api/package.json`；Web `src/pages/ApartmentCashierPage.tsx`、`src/pages/FeesPage.tsx`、`src/components/FeeReportCharts.tsx`、`test/cashier-finance.test.mjs`及`apps/admin-web/package.json`；文档`docs/fees.md`。
+- 本次有效验证：后端33项、Web/Excel及既有收费回归10项通过；Web `tsc -b` + Vite构建、API Nest构建通过。将新增3个缺陷用例运行于Git原版本，均按预期失败，新版本全部通过。
+- 验收边界：Web/API类型检查及本地构建；真实浏览器预览服务启动遭`127.0.0.1:5186 EACCES`权限拒绝，未绕过，桌面/窄屏及正式账号完整操作未验证。无已确认可部署测试环境，本次未发布生产。Web/API线上版本未改，小程序和助手源码及版本未改。
+
 ## 2026-10-12 实收金额反推数量（Web / API 已发布）
 
 2026-10-12 20:06：源码 `890918e2`，Web `2.0.20261012-2006`、API `api-890918e`，公网版本及收费台制品哈希核对通过。员工端开发版本 `1.0.20261012e` 已上传，但尚未选为体验版，不移动小程序部署标记。助手未变，仍为2.5.41。本次无数据库迁移或真实收费写入。

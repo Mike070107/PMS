@@ -22,7 +22,7 @@ export function FeeTrendChart({ rows, loading, label }: { rows: TrendRow[]; load
   const tickIndices = [...new Set([0, Math.floor((rows.length - 1) / 2), rows.length - 1])].filter(i => i >= 0);
   return <Spin spinning={loading}><div className="fees-trend-chart">
     {!rows.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={loading ? '正在读取收费数据' : '所选日期没有收费数据'} /> : <>
-      <div className="fees-chart-legend"><span><i />实收金额 · 元</span><span>含红冲冲减</span></div>
+      <div className="fees-chart-legend"><span><i />实收金额 · 元</span><span>含红冲及退费</span></div>
       <svg viewBox="0 0 880 272" role="img" aria-label="实收金额趋势，横轴为收费日期，纵轴为元；下方可展开完整明细">
         <defs><linearGradient id={`${id}-area`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--ac-brand)" stopOpacity=".28" /><stop offset="100%" stopColor="var(--ac-brand)" stopOpacity=".02" /></linearGradient></defs>
         {[min, (min + max) / 2, max].map((value, index) => <g key={index}><line x1="88" x2="824" y1={y(value)} y2={y(value)} className="fees-chart-grid" /><text x="78" y={y(value) + 4} textAnchor="end">{(value / 100).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}</text></g>)}

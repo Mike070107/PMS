@@ -33,9 +33,12 @@ export function mergeCashierContact(
 /** 原收据被红冲后留在备注里的标记，和旧系统口径一致。 */
 export const REFUNDED_MARK = '【已被红冲】';
 
-export function assertReceiptRefundable(bills: { status: string }[]) {
+export function assertReceiptRefundable(bills: { status: string; amountCents?: number }[]) {
   if (bills.some((bill) => bill.status === FeeBillStatus.REFUNDED)) {
     throw new BadRequestException('这张收据已经红冲过，不能重复红冲');
+  }
+  if (!bills.length || bills.some((bill) => bill.amountCents !== undefined && bill.amountCents <= 0)) {
+    throw new BadRequestException('只有纯收费收据可以红冲，退费收据不能红冲');
   }
   if (bills.some((bill) => bill.status !== FeeBillStatus.PAID)) {
     throw new BadRequestException('只有已收款的收据可以红冲');

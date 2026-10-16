@@ -149,6 +149,8 @@ export class FeesService {
       'f.paid_at AS "paidAt"',
       'f.payment_method AS "paymentMethod"',
       'f.receipt_no AS "receiptNo"',
+      'f.original_receipt_no AS "originalReceiptNo"',
+      'f.reversal_receipt_no AS "reversalReceiptNo"',
       'f.invoice_no AS "invoiceNo"',
       'f.cashier AS cashier',
       'f.remark AS remark',
@@ -201,7 +203,7 @@ export class FeesService {
         'dueCents',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN f.status = :paid THEN f.amount_cents ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN f.status IN (:paid, :refunded) THEN f.amount_cents ELSE 0 END), 0)`,
         'paidCents',
       )
       .addSelect(
@@ -215,6 +217,7 @@ export class FeesService {
       .setParameters({
         cancelled: FeeBillStatus.CANCELLED,
         paid: FeeBillStatus.PAID,
+        refunded: FeeBillStatus.REFUNDED,
         unpaid: FeeBillStatus.UNPAID,
       })
       .getRawOne<any>();
@@ -472,6 +475,7 @@ export class FeesService {
     const seen = new Set<string>(raw.map((r) => r.method ?? UNKNOWN_METHOD));
     const methods = [
       ...FEE_PAYMENT_METHOD_VALUES.filter((m) => seen.has(m)),
+      ...[...seen].filter((m) => !FEE_PAYMENT_METHOD_VALUES.includes(m as any) && m !== UNKNOWN_METHOD).sort(),
       ...(seen.has(UNKNOWN_METHOD) ? [UNKNOWN_METHOD] : []),
     ];
 
@@ -515,7 +519,7 @@ export class FeesService {
       chargedCents: 0,
       refundedCents: 0,
       count: 0,
-      byMethod: {} as Record<
+      byMethod: Object.create(null) as Record<
         string,
         { amountCents: number; chargedCents: number; refundedCents: number; count: number }
       >,
@@ -709,6 +713,8 @@ export class FeesService {
       .addSelect('MAX(f.payment_method)', 'paymentMethod')
       .addSelect('MAX(f.cashier)', 'cashier')
       .addSelect('MAX(f.remark)', 'remark')
+      .addSelect('MAX(f.original_receipt_no)', 'originalReceiptNo')
+      .addSelect('MAX(f.reversal_receipt_no)', 'reversalReceiptNo')
       .addSelect('SUM(f.amount_cents)', 'amountCents')
       .addSelect(`BOOL_OR(f.status = '${FeeBillStatus.REFUNDED}')`, 'refunded')
       .groupBy('f.receipt_no')
@@ -721,6 +727,8 @@ export class FeesService {
     return {
       rows: headers.map((row) => ({
         receiptNo: row.receiptNo,
+        originalReceiptNo: row.originalReceiptNo ?? null,
+        reversalReceiptNo: row.reversalReceiptNo ?? null,
         paidAt: row.paidAt,
         paymentMethod: row.paymentMethod,
         cashier: row.cashier,
@@ -733,6 +741,20 @@ export class FeesService {
       page,
       pageSize,
     };
+  }
+
+  /** 收款方式由已登记流水动态发现；新方式随订单持久化，无需修改枚举。 */
+  async cashierPaymentMethods(user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.length) return [];
+    const qb = this.billRepo.createQueryBuilder('f')
+      .select('DISTINCT f.payment_method', 'method')
+      .where('f.tenant_id = :tenantId', { tenantId })
+      .andWhere('f.payment_method IS NOT NULL');
+    if (scope) qb.andWhere('f.community_id IN (:...scopeIds)', { scopeIds: scope });
+    const rows = await qb.getRawMany<{method: string}>();
+    return [...new Set([...FEE_PAYMENT_METHOD_VALUES, ...rows.map((r) => r.method)])];
   }
 
   /**
@@ -756,7 +778,8 @@ export class FeesService {
         .innerJoin(Building, 'b', 'b.id = h.building_id')
         .innerJoin(Community, 'c', 'c.id = b.community_id')
         .where('f.tenant_id = :tenantId', { tenantId })
-        .andWhere('f.receipt_no IS NOT NULL');
+        .andWhere('f.receipt_no IS NOT NULL')
+        .andWhere('f.status IN (:...paidStatuses)', { paidStatuses: [FeeBillStatus.PAID, FeeBillStatus.REFUNDED] });
       if (query.backfill) {
         qb.andWhere('f.created_at >= :from AND f.created_at < :to', { from, to })
           .andWhere("f.legacy_payload @> :backfill", { backfill: JSON.stringify({ cashierBackfill: true }) });
@@ -783,6 +806,8 @@ export class FeesService {
       .addSelect('MAX(f.cashier)', 'cashier')
       .addSelect('MAX(f.owner_name)', 'ownerName')
       .addSelect('MAX(f.remark)', 'remark')
+      .addSelect('MAX(f.original_receipt_no)', 'originalReceiptNo')
+      .addSelect('MAX(f.reversal_receipt_no)', 'reversalReceiptNo')
       .addSelect('SUM(f.amount_cents)', 'amountCents')
       .addSelect(`BOOL_OR(f.status = '${FeeBillStatus.REFUNDED}')`, 'refunded')
       .groupBy('f.receipt_no')
@@ -801,6 +826,8 @@ export class FeesService {
     return {
       rows: headers.map((row) => ({
         receiptNo: row.receiptNo,
+        originalReceiptNo: row.originalReceiptNo ?? null,
+        reversalReceiptNo: row.reversalReceiptNo ?? null,
         houseId: Number(row.houseId),
         communityName: row.communityName,
         lane: row.lane,
@@ -845,6 +872,8 @@ export class FeesService {
       : null;
     return {
       receiptNo,
+      originalReceiptNo: head.originalReceiptNo,
+      reversalReceiptNo: head.reversalReceiptNo,
       houseId: head.houseId,
       communityName: place?.communityName ?? null,
       lane: place?.lane ?? null,
@@ -878,15 +907,22 @@ export class FeesService {
     access?: ResolvedAccess,
   ) {
     const tenantId = this.requireTenant(user);
-    const bills = await this.loadReceipt(tenantId, receiptNo, access);
-    assertReceiptRefundable(bills);
-    const reversalNo = await this.nextReceiptNo(tenantId);
+    const original = await this.loadReceipt(tenantId, receiptNo, access);
+    const place = await this.resolveHousePlace(tenantId, original[0].houseId);
     const cashier = await this.operatorName(user.id);
     const now = new Date();
     const period = todayInTz(now).slice(0, 7).replace('-', '');
     const remark = reversalRemark(receiptNo, dto.reason);
 
     return this.dataSource.transaction(async (manager) => {
+      // 在事务内锁定原单并重新校验，两个并发红冲只能成功一次。
+      const bills = await manager.find(FeeBill, {
+        where: { tenantId, receiptNo }, order: { id: 'ASC' }, lock: { mode: 'pessimistic_write' },
+      });
+      bills.forEach((bill) => this.assertCommunityInScope(bill.communityId, access));
+      assertReceiptRefundable(bills);
+      await manager.query('SELECT pg_advisory_xact_lock($1,$2)', [tenantId, place.communityId]);
+      const reversalNo = await this.nextCashierVoucherNo(manager, tenantId, place.communityId, place.communityName, now);
       const reversals = bills.map((bill) => manager.create(FeeBill, {
         tenantId,
         communityId: bill.communityId,
@@ -909,6 +945,8 @@ export class FeesService {
         paidAt: now,
         paymentMethod: bill.paymentMethod,
         receiptNo: reversalNo,
+        originalReceiptNo: receiptNo,
+        reversalReceiptNo: null,
         invoiceNo: null,
         cashier,
         refundedAt: now,
@@ -924,6 +962,7 @@ export class FeesService {
       bills.forEach((bill) => {
         bill.status = FeeBillStatus.REFUNDED;
         bill.refundedAt = now;
+        bill.reversalReceiptNo = reversalNo;
         bill.remark = markRefundedRemark(bill.remark);
         bill.updatedBy = user.id;
       });
@@ -1132,6 +1171,7 @@ export class FeesService {
     if (!bill) throw new NotFoundException('账单不存在');
     this.assertCommunityInScope(bill.communityId, access);
     // 已收款的账单改金额会让「已收多少」对不上账，必须先撤销收款
+    if (bill.status === FeeBillStatus.REFUNDED) throw new BadRequestException('红冲记录必须保留，不能修改');
     if (bill.status === FeeBillStatus.PAID && (dto.amountCents !== undefined || dto.period)) {
       throw new BadRequestException('已收款的账单不能改金额或账期，请先撤销收款');
     }
@@ -1152,6 +1192,7 @@ export class FeesService {
     const bill = await this.billRepo.findOne({ where: { id, tenantId } });
     if (!bill) throw new NotFoundException('账单不存在');
     this.assertCommunityInScope(bill.communityId, access);
+    if (bill.status === FeeBillStatus.REFUNDED) throw new BadRequestException('红冲记录必须保留，不能删除');
     if (bill.status === FeeBillStatus.PAID) {
       throw new BadRequestException('已收款的账单不能删除，如需处理请先撤销收款或作废');
     }
@@ -1166,10 +1207,11 @@ export class FeesService {
     if (!bills.length) throw new NotFoundException('账单不存在');
     bills.forEach((b) => this.assertCommunityInScope(b.communityId, access));
 
+    if (bills.some((b) => b.status === FeeBillStatus.REFUNDED)) throw new BadRequestException('红冲记录必须保留，请重新登记收费');
     const alreadyPaid = bills.filter((b) => b.status === FeeBillStatus.PAID);
     const cancelled = bills.filter((b) => b.status === FeeBillStatus.CANCELLED);
     const target = bills.filter(
-      (b) => b.status === FeeBillStatus.UNPAID || b.status === FeeBillStatus.REFUNDED,
+      (b) => b.status === FeeBillStatus.UNPAID,
     );
     if (!target.length) {
       throw new BadRequestException(
@@ -1234,6 +1276,7 @@ export class FeesService {
     const bills = await this.billRepo.find({ where: { id: In(dto.ids), tenantId } });
     if (!bills.length) throw new NotFoundException('账单不存在');
     bills.forEach((b) => this.assertCommunityInScope(b.communityId, access));
+    if (bills.some((b) => b.status === FeeBillStatus.REFUNDED)) throw new BadRequestException('红冲记录必须保留，不能作废');
     const target = bills.filter((b) => b.status !== FeeBillStatus.CANCELLED);
     const paid = target.filter((b) => b.status === FeeBillStatus.PAID);
     if (paid.length) {
@@ -1821,7 +1864,9 @@ export class FeesService {
         if (alias === 'f') {
           sub
             .orWhere('f.owner_name ILIKE :kw', { kw: `%${raw}%` })
-            .orWhere('f.receipt_no ILIKE :kw', { kw: `%${raw}%` });
+            .orWhere('f.receipt_no ILIKE :kw', { kw: `%${raw}%` })
+            .orWhere('f.original_receipt_no ILIKE :kw', { kw: `%${raw}%` })
+            .orWhere('f.reversal_receipt_no ILIKE :kw', { kw: `%${raw}%` });
         }
         if (hasOwnerJoin) {
           sub
@@ -1908,6 +1953,8 @@ export class FeesService {
       paidAt: r.paidAt,
       paymentMethod: r.paymentMethod,
       receiptNo: r.receiptNo,
+      originalReceiptNo: r.originalReceiptNo ?? null,
+      reversalReceiptNo: r.reversalReceiptNo ?? null,
       invoiceNo: r.invoiceNo,
       cashier: r.cashier,
       remark: r.remark,

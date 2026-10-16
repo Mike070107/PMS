@@ -124,6 +124,12 @@ export class FeesController {
   }
 
   /** 今日收费流水 + 今日合计（收费员交班对账用） */
+  @Get('cashier/payment-methods')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
+  cashierPaymentMethods(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.feesService.cashierPaymentMethods(user, access);
+  }
+
   @Get('cashier/today')
   @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   cashierToday(

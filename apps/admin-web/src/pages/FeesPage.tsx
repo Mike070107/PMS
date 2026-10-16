@@ -97,6 +97,8 @@ interface BillRow {
   paidAt: string | null;
   paymentMethod: string | null;
   receiptNo: string | null;
+  originalReceiptNo?: string | null;
+  reversalReceiptNo?: string | null;
   invoiceNo: string | null;
   cashier: string | null;
   remark: string | null;
@@ -153,7 +155,7 @@ interface BillSummary {
 type Granularity = 'day' | 'week' | 'month';
 
 interface FeeReportTotals {
-  /** 实收 = 收款小计 − 红冲冲减 */
+  /** 实收 = 全部收费 − 红冲 − 独立退费 */
   netCents: number;
   chargedCents: number;
   refundedCents: number;
@@ -308,6 +310,22 @@ export function FeeStandardsPanel() {
 }
 
 /** 小区下拉：后端已按角色数据范围过滤，直接用 */
+function billStatusLabel(r: BillRow) {
+  return r.originalReceiptNo ? '红冲订单' : r.amountCents < 0 ? '退费订单' : r.status === 'refunded' ? '已被红冲' : FEE_BILL_STATUS_LABELS[r.status] || r.status;
+}
+
+function usePaymentMethodOptions() {
+  const [methods, setMethods] = useState(FEE_PAYMENT_METHODS.map((m) => ({ value: m.value as string, label: m.label as string })));
+  useEffect(() => {
+    let cancelled = false;
+    request<string[]>({ url: '/fees/cashier/payment-methods' }).then((values) => {
+      if (!cancelled) setMethods(values.map((value) => ({ value, label: FEE_PAYMENT_METHOD_LABELS[value] || value })));
+    }).catch(() => { /* 保留预置选项，页面主数据请求会报告连接错误。 */ });
+    return () => { cancelled = true; };
+  }, []);
+  return methods;
+}
+
 function useCommunities() {
   const [communities, setCommunities] = useState<CommunityOption[]>([]);
   useEffect(() => {
@@ -343,6 +361,7 @@ export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (hous
   const [periodRange, setPeriodRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const [paidRange, setPaidRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string | undefined>();
+  const paymentMethodOptions = usePaymentMethodOptions();
   const [exporting, setExporting] = useState(false);
 
   const [payOpen, setPayOpen] = useState(false);
@@ -425,6 +444,8 @@ export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (hous
           name: '账单明细',
           columns: [
             { title: '收据号', key: 'receiptNo', render: (r: BillRow) => r.receiptNo || '' },
+            { title: '原收据号', key: 'originalReceiptNo' },
+            { title: '红冲单号', key: 'reversalReceiptNo' },
             { title: '小区', key: 'communityName' },
             { title: '房号', key: 'place', render: (r: BillRow) => placeText(r) },
             { title: '房屋性质', key: 'propertyType' },
@@ -437,7 +458,7 @@ export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (hous
             { title: '金额(元)', key: 'amount', render: (r: BillRow) => centsToYuan(r.amountCents) },
             { title: '服务期间', key: 'service', render: (r: BillRow) => serviceText(r) },
             { title: '车牌', key: 'vehiclePlate', render: (r: BillRow) => r.vehiclePlate || '' },
-            { title: '状态', key: 'statusLabel', render: (r: BillRow) => FEE_BILL_STATUS_LABELS[r.status] || r.status },
+            { title: '状态', key: 'statusLabel', render: (r: BillRow) => billStatusLabel(r) },
             { title: '收款时间', key: 'paidAt', render: (r: BillRow) => (r.paidAt ? dayjs(r.paidAt).format('YYYY-MM-DD HH:mm') : '') },
             { title: '收款方式', key: 'paymentMethodLabel', render: (r: BillRow) => (r.paymentMethod ? FEE_PAYMENT_METHOD_LABELS[r.paymentMethod] || r.paymentMethod : '') },
             { title: '收费员', key: 'cashier', render: (r: BillRow) => r.cashier || '' },
@@ -555,7 +576,7 @@ export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (hous
               style={{ width: 120 }}
               value={paymentMethod}
               onChange={setPaymentMethod}
-              options={FEE_PAYMENT_METHODS.map((item) => ({ value: item.value, label: item.label }))}
+              options={paymentMethodOptions}
             />
             <Input
               placeholder="房号 / 业主 / 收据号"
@@ -704,7 +725,7 @@ export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (hous
             },
             {
               title: '状态', dataIndex: 'status', width: 90,
-              render: (v: FeeBillStatus) => <Tag color={STATUS_COLOR[v]}>{FEE_BILL_STATUS_LABELS[v]}</Tag>,
+              render: (v: FeeBillStatus, r) => <Tag color={STATUS_COLOR[v]}>{billStatusLabel(r)}</Tag>,
             },
             {
               title: '收款时间', dataIndex: 'paidAt', width: 150,
@@ -714,7 +735,7 @@ export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (hous
               title: '收款方式', dataIndex: 'paymentMethod', width: 110,
               render: (v: string | null) => (v ? FEE_PAYMENT_METHOD_LABELS[v] || v : '-'),
             },
-            { title: '收据号', dataIndex: 'receiptNo', width: 140, ellipsis: true, render: (v) => v || '-' },
+            { title: '收据号 / 关联单号', dataIndex: 'receiptNo', width: 200, render: (v, r) => <span>{v || '-'}{r.originalReceiptNo && <><br /><Button type="link" size="small" onClick={() => { setQ(r.originalReceiptNo!); setStatus(undefined); setPeriodRange(null); setPaidRange(null); setFeeCode(undefined); setPaymentMethod(undefined); setPage(1); }}>原收据 {r.originalReceiptNo}</Button></>}{r.reversalReceiptNo && <><br /><Button type="link" size="small" onClick={() => { setQ(r.reversalReceiptNo!); setStatus(undefined); setPeriodRange(null); setPaidRange(null); setFeeCode(undefined); setPaymentMethod(undefined); setPage(1); }}>红冲单 {r.reversalReceiptNo}</Button></>}</span> },
             {
               title: '收费员', dataIndex: 'cashier', width: 90, ellipsis: true,
               render: (v: string | null) => v || <Text type="secondary">-</Text>,
@@ -862,6 +883,7 @@ export function ReportTab() {
   const [communityId, setCommunityId] = useState<number | undefined>();
   const [feeCode, setFeeCode] = useState<string | undefined>();
   const [paymentMethod, setPaymentMethod] = useState<string | undefined>();
+  const paymentMethodOptions = usePaymentMethodOptions();
   const [granularity, setGranularity] = useState<Granularity>('day');
   const [data, setData] = useState<FeeReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -950,7 +972,7 @@ export function ReportTab() {
             { k: '统计区间', v: `${data.range.from} ~ ${data.range.to}`, p: `${data.previousRange.from} ~ ${data.previousRange.to}` },
             { k: '实收合计(元)', v: centsToYuan(data.totals.netCents), p: centsToYuan(data.previous.netCents) },
             { k: '收款小计(元)', v: centsToYuan(data.totals.chargedCents), p: centsToYuan(data.previous.chargedCents) },
-            { k: '红冲冲减(元)', v: centsToYuan(data.totals.refundedCents), p: centsToYuan(data.previous.refundedCents) },
+            { k: '红冲及退费(元)', v: centsToYuan(data.totals.refundedCents), p: centsToYuan(data.previous.refundedCents) },
             { k: '收款笔数', v: data.totals.receiptCount, p: data.previous.receiptCount },
             { k: '收费户数', v: data.totals.houseCount, p: data.previous.houseCount },
             { k: '收费明细条数', v: data.totals.itemCount, p: data.previous.itemCount },
@@ -984,7 +1006,7 @@ export function ReportTab() {
         <div className="fees-heading">
           <i>1</i>
           <h2>统计口径</h2>
-          <small>按「钱哪天收到」统计，和账期无关；红冲走负数自动抵冲</small>
+          <small>按「钱哪天收到」统计，和账期无关；红冲及独立退费按各自发生日冲减，跨日不回写历史</small>
         </div>
         <div className="fees-filters">
           <DatePicker.RangePicker
@@ -1022,7 +1044,7 @@ export function ReportTab() {
             style={{ width: 120 }}
             value={paymentMethod}
             onChange={setPaymentMethod}
-            options={FEE_PAYMENT_METHODS.map((item) => ({ value: item.value, label: item.label }))}
+            options={paymentMethodOptions}
           />
           <Segmented
             value={granularity}
@@ -1058,11 +1080,11 @@ export function ReportTab() {
           <span className="fees-tile__foot"><GrowthText value={data?.growth.houseCount ?? null} /></span>
         </div>
         <div className="fees-tile">
-          <small>红冲冲减</small>
+          <small>红冲及退费</small>
           <strong className={totals?.refundedCents ? 'is-negative' : 'is-plain'}>
             {totals ? formatFeeMoney(totals.refundedCents) : '—'}
           </strong>
-          {/* 实收 = 收款小计 − 红冲冲减，三个数摆在一起才看得懂为什么合计少了 */}
+          {/* 实收 = 全部收费 − 红冲 − 独立退费，三个数摆在一起才看得懂为什么合计少了 */}
           <span className="fees-tile__foot">
             <Text type="secondary" style={{ fontSize: 12 }}>
               收款小计 {formatFeeMoney(totals?.chargedCents)}
@@ -1219,7 +1241,7 @@ export function ReconTab() {
       },
     })),
     {
-      title: '红冲冲减',
+      title: '红冲及退费',
       dataIndex: 'refundedCents',
       width: 110,
       align: 'right' as const,
@@ -1255,7 +1277,7 @@ export function ReconTab() {
               render: (r: ReconRow) => centsToYuan(r.byMethod[m]?.amountCents ?? 0),
             })),
             { title: '收款小计(元)', key: 'charged', render: (r: ReconRow) => centsToYuan(r.chargedCents) },
-            { title: '红冲冲减(元)', key: 'refunded', render: (r: ReconRow) => centsToYuan(r.refundedCents) },
+            { title: '红冲及退费(元)', key: 'refunded', render: (r: ReconRow) => centsToYuan(r.refundedCents) },
             { title: '笔数', key: 'count' },
             { title: '当日实收(元)', key: 'amount', render: (r: ReconRow) => centsToYuan(r.amountCents) },
           ],
@@ -1267,7 +1289,7 @@ export function ReconTab() {
           columns: [
             { title: '收款方式', key: 'name' },
             { title: '收款小计(元)', key: 'charged' },
-            { title: '红冲冲减(元)', key: 'refunded' },
+            { title: '红冲及退费(元)', key: 'refunded' },
             { title: '笔数', key: 'count' },
             { title: '实收(元)', key: 'amount' },
           ],
@@ -1340,7 +1362,7 @@ export function ReconTab() {
           <small>区间实收</small>
           <strong>{formatFeeMoney(totals?.amountCents)}</strong>
           <span className="fees-tile__foot">
-            <Text type="secondary" style={{ fontSize: 12 }}>收款小计 − 红冲冲减</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>全部收费 − 红冲 − 独立退费</Text>
           </span>
         </div>
         <div className="fees-tile">
@@ -1348,7 +1370,7 @@ export function ReconTab() {
           <strong className="is-plain">{formatFeeMoney(totals?.chargedCents)}</strong>
         </div>
         <div className="fees-tile">
-          <small>红冲冲减</small>
+          <small>红冲及退费</small>
           <strong className={totals?.refundedCents ? 'is-negative' : 'is-plain'}>
             {formatFeeMoney(totals?.refundedCents)}
           </strong>
@@ -2301,13 +2323,13 @@ export function HouseDetailModal({ houseId, onClose }: { houseId: number | null;
                   },
                   {
                     title: '状态', dataIndex: 'status', width: 90,
-                    render: (v: FeeBillStatus) => <Tag color={STATUS_COLOR[v]}>{FEE_BILL_STATUS_LABELS[v]}</Tag>,
+                    render: (v: FeeBillStatus, r) => <Tag color={STATUS_COLOR[v]}>{billStatusLabel(r)}</Tag>,
                   },
                   {
                     title: '收款时间', dataIndex: 'paidAt', width: 150,
                     render: (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-'),
                   },
-                  { title: '收据号', dataIndex: 'receiptNo', width: 140, ellipsis: true, render: (v) => v || '-' },
+                  { title: '收据号 / 关联单号', dataIndex: 'receiptNo', width: 200, render: (v, r) => <span>{v || '-'}{r.originalReceiptNo && <><br />原收据 {r.originalReceiptNo}</>}{r.reversalReceiptNo && <><br />红冲单 {r.reversalReceiptNo}</>}</span> },
                 ]}
               />
             ),

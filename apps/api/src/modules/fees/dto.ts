@@ -18,7 +18,6 @@ import {
   ValidateNested,
 } from 'class-validator';
 import {
-  FEE_PAYMENT_METHOD_VALUES,
   FeeBillStatus,
   FeeStandardStatus,
 } from '../../common/enums';
@@ -96,7 +95,9 @@ export class ListBillsQueryDto extends PageQueryDto {
   paidTo?: string;
 
   @IsOptional()
-  @IsIn(FEE_PAYMENT_METHOD_VALUES)
+  @IsString()
+  @Matches(/\S/, { message: '收款方式不能为空' })
+  @MaxLength(30)
   paymentMethod?: string;
 }
 
@@ -123,7 +124,9 @@ export class FeeReportQueryDto {
   feeCode?: string;
 
   @IsOptional()
-  @IsIn(FEE_PAYMENT_METHOD_VALUES)
+  @IsString()
+  @Matches(/\S/, { message: '收款方式不能为空' })
+  @MaxLength(30)
   paymentMethod?: string;
 
   /** 趋势图的横轴粒度，缺省按天 */
@@ -239,7 +242,8 @@ export class PayBillsDto {
   paidAt?: string;
 
   @IsString()
-  @IsIn(FEE_PAYMENT_METHOD_VALUES)
+  @Matches(/\S/, { message: '收款方式不能为空' })
+  @MaxLength(30)
   paymentMethod: string;
 
   /** 收据号，留空自动生成，这一批账单共用 */
@@ -344,7 +348,8 @@ export class CreateCashierChargeDto {
   ownerPhone?: string;
 
   @IsString()
-  @IsIn(['cash', 'wechat', 'alipay'])
+  @Matches(/\S/, { message: '收款方式不能为空' })
+  @MaxLength(30)
   paymentMethod: string;
 
   @IsOptional()

@@ -10,6 +10,7 @@ import { FeeBillSource, FeeBillStatus } from '../common/enums';
  * 归为一张收据。旧系统导入按项目拆行，legacy_ref 保证重跑不建重。
  */
 @Entity('fee_bills')
+@Index('idx_fee_receipt_links', ['tenantId', 'receiptNo'])
 @Index(['tenantId', 'houseId', 'period'])
 @Index(['tenantId', 'communityId', 'period'])
 @Index(['tenantId', 'status'])
@@ -79,6 +80,13 @@ export class FeeBill extends TenantEntity {
   /** 收据号。一次收几个月的账单共用同一个收据号（老系统的「合并单据号」也落这里） */
   @Column({ name: 'receipt_no', type: 'varchar', length: 60, nullable: true })
   receiptNo: string | null;
+
+  /** 红冲单指向原收据；原单指向红冲单。金额和原 paid_at 保留。 */
+  @Column({ name: 'original_receipt_no', type: 'varchar', length: 60, nullable: true })
+  originalReceiptNo: string | null;
+
+  @Column({ name: 'reversal_receipt_no', type: 'varchar', length: 60, nullable: true })
+  reversalReceiptNo: string | null;
 
   @Column({ name: 'invoice_no', type: 'varchar', length: 60, nullable: true })
   invoiceNo: string | null;
