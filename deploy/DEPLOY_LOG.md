@@ -4962,3 +4962,10 @@
 - 自上次（2cbf75e7）以来上线的相关提交：
   - f287f463 fix(repairs): retain selected addresses and separate fault descriptions
 
+## 2026-10-16 18:32 · web · 77e13363
+
+- 包：`pms-web-20261016-183109.tar.gz`
+- 提交：77e13363 deploy: api → f287f463
+- 自上次（bbd0a589）以来上线的相关提交：
+  - f287f463 fix(repairs): retain selected addresses and separate fault descriptions
+
