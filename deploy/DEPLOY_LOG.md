@@ -4948,3 +4948,10 @@
 - 自上次（05915533）以来上线的相关提交：
   - 2cbf75e7 fix(fees): unify cashier finance totals and reversal links
 
+## 2026-10-16 13:53 · web · bbd0a589
+
+- 包：`pms-web-20261016-135224.tar.gz`
+- 提交：bbd0a589 deploy: api → 2cbf75e7
+- 自上次（7e250001）以来上线的相关提交：
+  - 2cbf75e7 fix(fees): unify cashier finance totals and reversal links
+
