@@ -4955,3 +4955,10 @@
 - 自上次（7e250001）以来上线的相关提交：
   - 2cbf75e7 fix(fees): unify cashier finance totals and reversal links
 
+## 2026-10-16 18:30 · api · f287f463
+
+- 包：`pms-api-fast-20261016-182834.tar.gz`
+- 提交：f287f463 fix(repairs): retain selected addresses and separate fault descriptions
+- 自上次（2cbf75e7）以来上线的相关提交：
+  - f287f463 fix(repairs): retain selected addresses and separate fault descriptions
+
