@@ -5017,3 +5017,10 @@
   - 3fd020e0 feat: integrate staff apartment cashier with permission and submission regressions
   - 6c24bcd5 feat: integrate parking family review, fees and apartment permissions
 
+## 2026-10-17 11:35 · web · 2ff59e27
+
+- 包：`pms-web-20261017-113316.tar.gz`
+- 提交：2ff59e27 feat(inventory): include office and sku images in request exports
+- 自上次（77e13363）以来上线的相关提交：
+  - 2ff59e27 feat(inventory): include office and sku images in request exports
+
