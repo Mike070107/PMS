@@ -5024,3 +5024,10 @@
 - 自上次（77e13363）以来上线的相关提交：
   - 2ff59e27 feat(inventory): include office and sku images in request exports
 
+## 2026-10-17 11:36 · api · 8503b92b
+
+- 包：`pms-api-fast-20261017-113536.tar.gz`
+- 提交：8503b92b deploy: web → 2ff59e27
+- 自上次（f287f463）以来上线的相关提交：
+  - 2ff59e27 feat(inventory): include office and sku images in request exports
+
