@@ -157,6 +157,7 @@ interface PurchaseRequestItem {
   sourceWorkOrderId?: number | null;
   sourceWorkOrderNo?: string | null;
   sourceWorkOrderSummary?: string | null;
+  sourceWorkOrderLocation?: string | null;
   sourceOfficeName?: string | null;
   rejectReason?: string;
   rejectedAtStage?: 'manager' | 'purchaser' | 'rollback';
@@ -173,6 +174,7 @@ interface PurchaseRequestRow {
   purchaserName?: string | null;
   workOrderNo?: string | null;
   workOrderSummary?: string | null;
+  workOrderLocation?: string | null;
   sourceOfficeName?: string | null;
   sourceRequestNos?: string[];
   sourceWorkOrderNos?: string[];
@@ -2108,27 +2110,20 @@ export default function InventoryPage() {
                       ? requestDetail.workOrderNo || unknown('工单')
                       : '手工申请，无来源工单'}</Text>
                 </Col>
-                {requestDetail.sourceWorkOrderNos?.length || requestDetail.workOrderId ? (
-                  <Col span={24}>
-                    <Text type="secondary">报修工单摘要</Text><br />
-                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                      {requestDetail.items?.filter((item, index, items) => item.sourceWorkOrderSummary && items.findIndex((other) => (
-                        other.sourceWorkOrderId === item.sourceWorkOrderId && other.sourceWorkOrderSummary === item.sourceWorkOrderSummary
-                      )) === index).map((item) => (
-                        <Text key={`${item.sourceWorkOrderId || 'work-order'}-${item.sourceWorkOrderSummary}`}>
-                          {item.sourceWorkOrderNo ? `${item.sourceWorkOrderNo}：` : ''}{item.sourceWorkOrderSummary}
-                        </Text>
-                      ))}
-                      {!requestDetail.items?.some((item) => item.sourceWorkOrderSummary) && (
-                        <Text>{requestDetail.workOrderNo ? `${requestDetail.workOrderNo}：` : ''}{requestDetail.workOrderSummary || '未填写'}</Text>
-                      )}
-                    </Space>
-                  </Col>
-                ) : null}
                 <Col span={8}><Text type="secondary">预估金额</Text><br /><Text strong>{money(requestDetail.estTotalCents)}</Text></Col>
                 <Col span={8}><Text type="secondary">创建时间</Text><br /><Text>{formatDateTime(requestDetail.createdAt)}</Text></Col>
               </Row>
             </Card>
+
+            {(requestDetail.sourceWorkOrderNos?.length || requestDetail.workOrderId) ? (
+              <Card size="small" title="工单报修信息">
+                <Row gutter={[16, 12]}>
+                  <Col span={8}><Text type="secondary">来源工单</Text><br /><Text>{requestDetail.sourceWorkOrderNos?.join('、') || requestDetail.workOrderNo || '未填写'}</Text></Col>
+                  <Col span={8}><Text type="secondary">报修位置</Text><br /><Text>{requestDetail.items?.find((item) => item.sourceWorkOrderLocation)?.sourceWorkOrderLocation || requestDetail.workOrderLocation || '未填写'}</Text></Col>
+                  <Col span={24}><Text type="secondary">报修原因 / 工单摘要</Text><br /><Text>{requestDetail.items?.find((item) => item.sourceWorkOrderSummary)?.sourceWorkOrderSummary || requestDetail.workOrderSummary || '未填写'}</Text></Col>
+                </Row>
+              </Card>
+            ) : null}
 
             <Card size="small" title="材料明细">
               <Table

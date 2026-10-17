@@ -1091,7 +1091,7 @@ export class InventoryService {
         : Promise.resolve([]),
       workOrderIds.length
         ? this.dataSource.query(
-            `SELECT w.id, w.order_no, COALESCE(NULLIF(w.fault_symptom, ''), rr.content) AS work_order_summary, o.name AS office_name
+            `SELECT w.id, w.order_no, w.fault_location, COALESCE(NULLIF(w.fault_symptom, ''), rr.content) AS work_order_summary, o.name AS office_name
              FROM work_orders w
              LEFT JOIN repair_requests rr ON rr.id = w.request_id AND rr.tenant_id = w.tenant_id
              LEFT JOIN communities c ON c.id = w.community_id AND c.tenant_id = w.tenant_id
@@ -1458,6 +1458,9 @@ export class InventoryService {
             ? summaryById.get(sourceWorkOrderId) ?? null
             : null,
           sourceOfficeName: sourceWorkOrderId ? officeById.get(sourceWorkOrderId) ?? null : null,
+          sourceWorkOrderLocation: sourceWorkOrderId
+            ? (workOrders as Array<{ id: number; fault_location: string | null }>).find((w) => w.id === sourceWorkOrderId)?.fault_location ?? null
+            : null,
         };
       });
       return {
@@ -1469,6 +1472,9 @@ export class InventoryService {
         workOrderNo: row.workOrderId ? orderNoById.get(row.workOrderId) ?? null : null,
         workOrderSummary: row.workOrderId ? summaryById.get(row.workOrderId) ?? null : null,
         sourceOfficeName: row.workOrderId ? officeById.get(row.workOrderId) ?? null : null,
+        workOrderLocation: row.workOrderId
+          ? (workOrders as Array<{ id: number; fault_location: string | null }>).find((w) => w.id === row.workOrderId)?.fault_location ?? null
+          : null,
         officeReviewerName: nameOf(row.officeReviewerId ?? null),
         // 审批链视图和「提交后去哪」由服务端按配置算好，Web / 小程序直接画
         steps: purchaseSteps(flow, row, {
