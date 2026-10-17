@@ -5060,3 +5060,12 @@
 - 自上次（ffc3d573）以来上线的相关提交：
   - 95cc2582 feat(inventory): capture material request reasons
 
+## 2026-10-17 11:57 · web · 2994a0e2
+
+- 包：`pms-web-20261017-115659.tar.gz`
+- 提交：2994a0e2 deploy: api → 95cc2582
+- 自上次（2da1d978）以来上线的相关提交：
+  - 95cc2582 feat(inventory): capture material request reasons
+  - d833e1bc fix(inventory): use office staff as export applicant
+  - 3876ee15 fix(inventory): use source office for request export
+
