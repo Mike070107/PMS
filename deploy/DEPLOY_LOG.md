@@ -5031,3 +5031,10 @@
 - 自上次（f287f463）以来上线的相关提交：
   - 2ff59e27 feat(inventory): include office and sku images in request exports
 
+## 2026-10-17 11:39 · api · 2de623c1
+
+- 包：`pms-api-fast-20261017-113921.tar.gz`
+- 提交：2de623c1 fix(inventory): show repair summary on request details
+- 自上次（8503b92b）以来上线的相关提交：
+  - 2de623c1 fix(inventory): show repair summary on request details
+
