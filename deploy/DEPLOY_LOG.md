@@ -5069,3 +5069,11 @@
   - d833e1bc fix(inventory): use office staff as export applicant
   - 3876ee15 fix(inventory): use source office for request export
 
+## 2026-10-17 11:58 · miniapp-staff · 95cc2582
+
+- 包：`1.0.20261017a`
+- 提交：95cc2582 feat(inventory): capture material request reasons
+- 说明：CLI已上传开发版本；体验版选定及手机更新未核验，未提交审核或正式发布。受影响源码与主线功能提交一致。
+- 自上次（f287f463）以来上线的相关提交：
+  - 95cc2582 feat(inventory): capture material request reasons
+
