@@ -2108,7 +2108,7 @@ export default function InventoryPage() {
                       ? requestDetail.workOrderNo || unknown('工单')
                       : '手工申请，无来源工单'}</Text>
                 </Col>
-                {(requestDetail.items || []).some((item) => item.sourceWorkOrderSummary) || requestDetail.workOrderSummary ? (
+                {requestDetail.sourceWorkOrderNos?.length || requestDetail.workOrderId ? (
                   <Col span={24}>
                     <Text type="secondary">报修工单摘要</Text><br />
                     <Space direction="vertical" size={4} style={{ width: '100%' }}>
@@ -2119,8 +2119,8 @@ export default function InventoryPage() {
                           {item.sourceWorkOrderNo ? `${item.sourceWorkOrderNo}：` : ''}{item.sourceWorkOrderSummary}
                         </Text>
                       ))}
-                      {!requestDetail.items?.some((item) => item.sourceWorkOrderSummary) && requestDetail.workOrderSummary && (
-                        <Text>{requestDetail.workOrderNo ? `${requestDetail.workOrderNo}：` : ''}{requestDetail.workOrderSummary}</Text>
+                      {!requestDetail.items?.some((item) => item.sourceWorkOrderSummary) && (
+                        <Text>{requestDetail.workOrderNo ? `${requestDetail.workOrderNo}：` : ''}{requestDetail.workOrderSummary || '未填写'}</Text>
                       )}
                     </Space>
                   </Col>

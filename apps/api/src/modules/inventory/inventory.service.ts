@@ -1091,8 +1091,9 @@ export class InventoryService {
         : Promise.resolve([]),
       workOrderIds.length
         ? this.dataSource.query(
-            `SELECT w.id, w.order_no, w.fault_symptom, o.name AS office_name
+            `SELECT w.id, w.order_no, COALESCE(NULLIF(w.fault_symptom, ''), rr.content) AS work_order_summary, o.name AS office_name
              FROM work_orders w
+             LEFT JOIN repair_requests rr ON rr.id = w.request_id AND rr.tenant_id = w.tenant_id
              LEFT JOIN communities c ON c.id = w.community_id AND c.tenant_id = w.tenant_id
              LEFT JOIN offices o ON o.id = c.office_id AND o.tenant_id = w.tenant_id
              WHERE w.tenant_id = $1 AND w.deleted_at IS NULL AND w.id = ANY($2::int[])`,
@@ -1408,7 +1409,7 @@ export class InventoryService {
       (workOrders as Array<{ id: number; order_no: string }>).map((w) => [w.id, w.order_no]),
     );
     const summaryById = new Map<number, string | null>(
-      (workOrders as Array<{ id: number; fault_symptom: string | null }>).map((w) => [w.id, w.fault_symptom || null]),
+      (workOrders as Array<{ id: number; work_order_summary: string | null }>).map((w) => [w.id, w.work_order_summary || null]),
     );
     const officeById = new Map<number, string | null>(
       (workOrders as Array<{ id: number; office_name: string | null }>).map((w) => [w.id, w.office_name || null]),
