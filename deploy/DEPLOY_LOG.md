@@ -5053,3 +5053,10 @@
   - ffc3d573 feat(inventory): show repair details for purchase requests
   - 2de623c1 fix(inventory): show repair summary on request details
 
+## 2026-10-17 11:56 · api · 95cc2582
+
+- 包：`pms-api-fast-20261017-115612.tar.gz`
+- 提交：95cc2582 feat(inventory): capture material request reasons
+- 自上次（ffc3d573）以来上线的相关提交：
+  - 95cc2582 feat(inventory): capture material request reasons
+
