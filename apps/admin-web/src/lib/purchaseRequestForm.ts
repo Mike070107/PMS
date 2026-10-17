@@ -96,11 +96,20 @@ export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promi
   applicant.font = { name: '宋体', size: 12 };
   applicant.alignment = { horizontal: 'right', vertical: 'middle' };
 
+  // ---- 材料申请原因：放在明细表上方，采购先看为什么要买，再看买什么 ----
+  ws.mergeCells('A3:F3');
+  const reasonCell = ws.getCell('A3');
+  reasonCell.value = `材料申请原因：${data.reason || '未填写'}`;
+  reasonCell.font = { name: '宋体', size: 11, bold: true };
+  reasonCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+  reasonCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF4FF' } };
+  ws.getRow(3).height = 32;
+
   // ---- 表格 ----
   const thin = { style: 'thin' as const, color: { argb: 'FF000000' } };
   const border = { top: thin, left: thin, bottom: thin, right: thin };
 
-  const headerRow = ws.getRow(3);
+  const headerRow = ws.getRow(4);
   headerRow.height = 28;
   HEADERS.forEach((text, i) => {
     const cell = headerRow.getCell(i + 1);
@@ -113,7 +122,7 @@ export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promi
   const rowCount = Math.max(MIN_ROWS, data.items.length);
   for (let i = 0; i < rowCount; i += 1) {
     const item = data.items[i];
-    const row = ws.getRow(4 + i);
+    const row = ws.getRow(5 + i);
     row.height = item?.photoUrl ? 78 : 24;
     const values: Array<string | number> = [
       i + 1,
@@ -139,18 +148,16 @@ export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promi
       const dataUrl = await imageDataUrl(item.photoUrl);
       if (dataUrl) {
         const imageId = wb.addImage({ base64: dataUrl, extension: dataUrl.includes('png') ? 'png' : 'jpeg' });
-        ws.addImage(imageId, { tl: { col: 5.15, row: 3 + i + 0.08 }, ext: { width: 90, height: 65 } });
+        ws.addImage(imageId, { tl: { col: 5.15, row: 4 + i + 0.08 }, ext: { width: 90, height: 65 } });
       }
     }
   }
 
-  // ---- 表下面的申请原因和单号：纸面没有，但下下来要能对回系统里那张单 ----
-  const footRow = 4 + rowCount;
+  // ---- 表下面保留系统单号，方便对回系统记录 ----
+  const footRow = 5 + rowCount;
   ws.mergeCells(`A${footRow}:F${footRow}`);
   const foot = ws.getCell(`A${footRow}`);
-  foot.value = [data.reason ? `申请原因：${data.reason}` : '', `系统申请单号：${data.requestNo}`]
-    .filter(Boolean)
-    .join('　　');
+  foot.value = `系统申请单号：${data.requestNo}`;
   foot.font = { name: '宋体', size: 10, color: { argb: 'FF595959' } };
   foot.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
   ws.getRow(footRow).height = 22;

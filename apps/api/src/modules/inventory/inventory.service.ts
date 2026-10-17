@@ -1399,7 +1399,15 @@ export class InventoryService {
         : Promise.resolve([]),
       workOrderIds.length
         ? this.dataSource.query(
-            'SELECT id, order_no FROM work_orders WHERE tenant_id = $1 AND deleted_at IS NULL AND id = ANY($2::int[])',
+            `SELECT w.id, w.order_no, w.status, w.fault_location,
+                    rr.address_text, rr.contact_name, rr.contact_phone, rr.repair_type, rr.urgent,
+                    COALESCE(NULLIF(w.fault_symptom, ''), rr.content) AS work_order_summary,
+                    c.name AS community_name, o.name AS office_name
+             FROM work_orders w
+             LEFT JOIN repair_requests rr ON rr.id = w.request_id AND rr.tenant_id = w.tenant_id
+             LEFT JOIN communities c ON c.id = w.community_id AND c.tenant_id = w.tenant_id
+             LEFT JOIN management_offices o ON o.id = c.office_id AND o.tenant_id = w.tenant_id
+             WHERE w.tenant_id = $1 AND w.deleted_at IS NULL AND w.id = ANY($2::int[])`,
             [tenantId, workOrderIds],
           )
         : Promise.resolve([]),
@@ -1414,6 +1422,27 @@ export class InventoryService {
     const officeById = new Map<number, string | null>(
       (workOrders as Array<{ id: number; office_name: string | null }>).map((w) => [w.id, w.office_name || null]),
     );
+    const workOrderInfoById = new Map<number, {
+      status: string | null;
+      location: string | null;
+      communityName: string | null;
+      contactName: string | null;
+      contactPhone: string | null;
+      repairType: string | null;
+      urgent: boolean;
+    }>((workOrders as Array<{
+      id: number; status: string | null; fault_location: string | null; address_text: string | null;
+      community_name: string | null; contact_name: string | null; contact_phone: string | null;
+      repair_type: string | null; urgent: boolean | null;
+    }>).map((w) => [w.id, {
+      status: w.status || null,
+      location: w.fault_location || w.address_text || null,
+      communityName: w.community_name || null,
+      contactName: w.contact_name || null,
+      contactPhone: w.contact_phone || null,
+      repairType: w.repair_type || null,
+      urgent: !!w.urgent,
+    }]));
     const nameOf = (id: number | null) => (id ? nameById.get(id) || null : null);
     // 明细行要能直接展示缩略图 / 规格 / 编码：有 SKU 的从材料库补，申购新材料的用维修工拍的样本照
     // （2026-09-05 Mike：申请单要看到图、名称、型号、备注、来源工单）
@@ -1432,6 +1461,7 @@ export class InventoryService {
     return rows.map((row) => {
       const items = (row.items || []).map((item, index) => {
         const sourceWorkOrderId = item.sourceWorkOrderId ?? row.workOrderId;
+        const sourceWorkOrderInfo = sourceWorkOrderId ? workOrderInfoById.get(sourceWorkOrderId) : undefined;
         const material = item.materialId ? materialById.get(item.materialId) : undefined;
         const materialPhotos = material
           ? [...(material.photoUrls || []), material.photoUrl || '']
@@ -1458,9 +1488,13 @@ export class InventoryService {
             ? summaryById.get(sourceWorkOrderId) ?? null
             : null,
           sourceOfficeName: sourceWorkOrderId ? officeById.get(sourceWorkOrderId) ?? null : null,
-          sourceWorkOrderLocation: sourceWorkOrderId
-            ? (workOrders as Array<{ id: number; fault_location: string | null }>).find((w) => w.id === sourceWorkOrderId)?.fault_location ?? null
-            : null,
+          sourceWorkOrderLocation: sourceWorkOrderInfo?.location ?? null,
+          sourceWorkOrderStatus: sourceWorkOrderInfo?.status ?? null,
+          sourceCommunityName: sourceWorkOrderInfo?.communityName ?? null,
+          sourceContactName: sourceWorkOrderInfo?.contactName ?? null,
+          sourceContactPhone: sourceWorkOrderInfo?.contactPhone ?? null,
+          sourceRepairType: sourceWorkOrderInfo?.repairType ?? null,
+          sourceUrgent: sourceWorkOrderInfo?.urgent ?? false,
         };
       });
       return {
@@ -1472,9 +1506,7 @@ export class InventoryService {
         workOrderNo: row.workOrderId ? orderNoById.get(row.workOrderId) ?? null : null,
         workOrderSummary: row.workOrderId ? summaryById.get(row.workOrderId) ?? null : null,
         sourceOfficeName: row.workOrderId ? officeById.get(row.workOrderId) ?? null : null,
-        workOrderLocation: row.workOrderId
-          ? (workOrders as Array<{ id: number; fault_location: string | null }>).find((w) => w.id === row.workOrderId)?.fault_location ?? null
-          : null,
+        workOrderInfo: row.workOrderId ? workOrderInfoById.get(row.workOrderId) ?? null : null,
         officeReviewerName: nameOf(row.officeReviewerId ?? null),
         // 审批链视图和「提交后去哪」由服务端按配置算好，Web / 小程序直接画
         steps: purchaseSteps(flow, row, {

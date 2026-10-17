@@ -158,6 +158,12 @@ interface PurchaseRequestItem {
   sourceWorkOrderNo?: string | null;
   sourceWorkOrderSummary?: string | null;
   sourceWorkOrderLocation?: string | null;
+  sourceWorkOrderStatus?: string | null;
+  sourceCommunityName?: string | null;
+  sourceContactName?: string | null;
+  sourceContactPhone?: string | null;
+  sourceRepairType?: string | null;
+  sourceUrgent?: boolean;
   sourceOfficeName?: string | null;
   rejectReason?: string;
   rejectedAtStage?: 'manager' | 'purchaser' | 'rollback';
@@ -175,6 +181,15 @@ interface PurchaseRequestRow {
   workOrderNo?: string | null;
   workOrderSummary?: string | null;
   workOrderLocation?: string | null;
+  workOrderInfo?: {
+    status?: string | null;
+    location?: string | null;
+    communityName?: string | null;
+    contactName?: string | null;
+    contactPhone?: string | null;
+    repairType?: string | null;
+    urgent?: boolean;
+  } | null;
   sourceOfficeName?: string | null;
   sourceRequestNos?: string[];
   sourceWorkOrderNos?: string[];
@@ -2119,9 +2134,26 @@ export default function InventoryPage() {
             {(requestDetail.sourceWorkOrderNos?.length || requestDetail.workOrderId) ? (
               <Card size="small" title="工单报修信息">
                 <Row gutter={[16, 12]}>
-                  <Col span={8}><Text type="secondary">来源工单</Text><br /><Text>{requestDetail.sourceWorkOrderNos?.join('、') || requestDetail.workOrderNo || '未填写'}</Text></Col>
-                  <Col span={8}><Text type="secondary">报修位置</Text><br /><Text>{requestDetail.items?.find((item) => item.sourceWorkOrderLocation)?.sourceWorkOrderLocation || requestDetail.workOrderLocation || '未填写'}</Text></Col>
-                  <Col span={24}><Text type="secondary">报修原因 / 工单摘要</Text><br /><Text>{requestDetail.items?.find((item) => item.sourceWorkOrderSummary)?.sourceWorkOrderSummary || requestDetail.workOrderSummary || '未填写'}</Text></Col>
+                  <Col span={8}><Text type="secondary">来源工单</Text><br /><Text strong>{requestDetail.sourceWorkOrderNos?.join('、') || requestDetail.workOrderNo || '未填写'}</Text></Col>
+                  <Col span={8}><Text type="secondary">所属管理处</Text><br /><Text>{requestDetail.items?.find((item) => item.sourceOfficeName)?.sourceOfficeName || requestDetail.sourceOfficeName || '未填写'}</Text></Col>
+                  <Col span={8}><Text type="secondary">小区</Text><br /><Text>{requestDetail.items?.find((item) => item.sourceCommunityName)?.sourceCommunityName || requestDetail.workOrderInfo?.communityName || '未填写'}</Text></Col>
+                  <Col span={16}><Text type="secondary">报修地址 / 具体位置</Text><br /><Text>{requestDetail.items?.find((item) => item.sourceWorkOrderLocation)?.sourceWorkOrderLocation || requestDetail.workOrderInfo?.location || requestDetail.workOrderLocation || '未填写'}</Text></Col>
+                  <Col span={8}><Text type="secondary">报修类型</Text><br /><Text>{requestDetail.items?.find((item) => item.sourceRepairType)?.sourceRepairType || requestDetail.workOrderInfo?.repairType || '未填写'}</Text></Col>
+                  <Col span={8}><Text type="secondary">联系人</Text><br /><Text>{requestDetail.items?.find((item) => item.sourceContactName)?.sourceContactName || requestDetail.workOrderInfo?.contactName || '未填写'}</Text></Col>
+                  <Col span={8}><Text type="secondary">联系电话</Text><br /><Text>{requestDetail.items?.find((item) => item.sourceContactPhone)?.sourceContactPhone || requestDetail.workOrderInfo?.contactPhone || '未填写'}</Text></Col>
+                  <Col span={8}><Text type="secondary">紧急程度</Text><br />{(requestDetail.items?.some((item) => item.sourceUrgent) || requestDetail.workOrderInfo?.urgent) ? <Tag color="red">紧急</Tag> : <Tag>普通</Tag>}</Col>
+                  <Col span={24}>
+                    <Text type="secondary">报修原因 / 故障描述</Text><br />
+                    <Text style={{ fontSize: 16, lineHeight: 1.7 }}>{requestDetail.items?.find((item) => item.sourceWorkOrderSummary)?.sourceWorkOrderSummary || requestDetail.workOrderSummary || '未填写'}</Text>
+                  </Col>
+                  <Col span={24}>
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="材料申请原因"
+                      description={requestDetail.reason || [...new Set((requestDetail.items || []).map((item) => item.note?.trim()).filter(Boolean))].join('；') || '工单缺料申请，未填写具体申请原因'}
+                    />
+                  </Col>
                 </Row>
               </Card>
             ) : null}

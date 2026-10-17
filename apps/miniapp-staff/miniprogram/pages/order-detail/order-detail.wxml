@@ -462,12 +462,12 @@
         <view class="btn__icon icon-action--plus-white"></view><text>添加材料</text>
       </button>
     </view>
-    <view class="label mt">补充说明<text class="label__opt">选填</text></view>
+    <view class="label mt">材料申请原因<text class="label__opt">申购时必填</text></view>
     <button wx:if="{{hasSpeech}}" class="speech-field-button speech-field-button--compact {{(recording || pressing) && speechTarget === 'materialNote' ? 'speech-field-button--on' : ''}}" data-speech-target="materialNote" data-speech-label="缺料补充说明" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove">
-      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'materialNote' ? '松开结束' : (pressing && speechTarget === 'materialNote' ? '正在准备…' : '按住说补充说明')}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">型号、品牌或用途</view></view>
+      <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'materialNote' ? '松开结束' : (pressing && speechTarget === 'materialNote' ? '正在准备…' : '按住说申请原因')}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">说明为什么要买、用于哪里</view></view>
     </button>
     <view wx:if="{{recording && speechTarget === 'materialNote'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
-    <textarea class="complete-textarea complete-textarea--short" maxlength="500" placeholder="型号、品牌或用途" value="{{materialNote}}" bindinput="onMaterialNote"/>
+    <textarea class="complete-textarea complete-textarea--short" maxlength="255" placeholder="例如：门口机电源板烧坏无法维修，申请同型号电源板更换" value="{{materialNote}}" bindinput="onMaterialNote"/>
 
     <view class="error" wx:if="{{materialError}}">{{materialError}}</view>
   </scroll-view>

@@ -2023,6 +2023,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         materialError: '这些料仓库里都够用，直接完工提交即可，不用报缺料',
       });
     }
+    const applicationReason = this.data.materialNote.trim();
+    if (!applicationReason) {
+      return this.setData({ materialError: '请填写材料申请原因，说明为什么要买、用于哪里' });
+    }
 
     this.setData({ busy: true, materialError: '' });
     try {
@@ -2046,7 +2050,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           note: row.note,
           photoUrls: row.photoUrls,
         })),
-        note: this.data.materialNote.trim() || undefined,
+        note: applicationReason,
       });
       this.setData({ panel: '', materialNote: '' });
       this.setMaterialRows([]);

@@ -4275,6 +4275,7 @@ export class RepairsService implements OnModuleInit {
           purchaserId: null,
           purchaserAt: null,
           rejectReason: null,
+          reason: dto.note?.trim() || null,
           createdBy: user.id,
           updatedBy: user.id,
         }),
