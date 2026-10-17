@@ -5077,3 +5077,10 @@
 - 自上次（f287f463）以来上线的相关提交：
   - 95cc2582 feat(inventory): capture material request reasons
 
+## 2026-10-17 12:53 · api · edd2dfb3
+
+- 包：`pms-api-fast-20261017-125255.tar.gz`
+- 提交：edd2dfb3 fix(inventory): display repair type labels
+- 自上次（95cc2582）以来上线的相关提交：
+  - edd2dfb3 fix(inventory): display repair type labels
+
