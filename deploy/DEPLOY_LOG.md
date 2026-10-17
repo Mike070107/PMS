@@ -5038,3 +5038,10 @@
 - 自上次（8503b92b）以来上线的相关提交：
   - 2de623c1 fix(inventory): show repair summary on request details
 
+## 2026-10-17 11:41 · api · ffc3d573
+
+- 包：`pms-api-fast-20261017-114102.tar.gz`
+- 提交：ffc3d573 feat(inventory): show repair details for purchase requests
+- 自上次（2de623c1）以来上线的相关提交：
+  - ffc3d573 feat(inventory): show repair details for purchase requests
+
