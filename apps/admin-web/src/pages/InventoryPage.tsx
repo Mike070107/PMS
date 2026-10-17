@@ -351,7 +351,7 @@ export default function InventoryPage() {
   const { message, modal } = AntdApp.useApp();
   const { canEdit, canDelete } = usePagePerm('inventory');
   const { canView: canViewStocktakes, canEdit: canEditStocktakes } = usePagePerm('stocktakes');
-  const { access, actingOffice } = useAuth();
+  const { access, actingOffice, user } = useAuth();
   // 「材料 SKU」「仓库数量」是全公司口径的家底数字，范围受限的角色看了对不上账
   const companyWide = useCompanyWideView();
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
@@ -895,7 +895,7 @@ export default function InventoryPage() {
         areaName:
           sourceOfficeName || actingOffice?.name || (access?.offices?.length === 1 ? access.offices[0].name : ''),
         requestNo: row.requestNo,
-        applicantName: nameOr(row.applicantName, '申请人'),
+        applicantName: nameOr(row.officeReviewerName || (actingOffice && user?.role === 'staff' ? user.name : null) || row.applicantName, '申请人'),
         dateText: row.createdAt
           ? new Date(row.createdAt).toLocaleDateString('zh-CN', {
               year: 'numeric',
