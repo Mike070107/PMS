@@ -1091,7 +1091,11 @@ export class InventoryService {
         : Promise.resolve([]),
       workOrderIds.length
         ? this.dataSource.query(
-            'SELECT id, order_no FROM work_orders WHERE tenant_id = $1 AND deleted_at IS NULL AND id = ANY($2::int[])',
+            `SELECT w.id, w.order_no, w.fault_symptom, o.name AS office_name
+             FROM work_orders w
+             LEFT JOIN communities c ON c.id = w.community_id AND c.tenant_id = w.tenant_id
+             LEFT JOIN offices o ON o.id = c.office_id AND o.tenant_id = w.tenant_id
+             WHERE w.tenant_id = $1 AND w.deleted_at IS NULL AND w.id = ANY($2::int[])`,
             [tenantId, workOrderIds],
           )
         : Promise.resolve([]),
@@ -1403,6 +1407,12 @@ export class InventoryService {
     const orderNoById = new Map<number, string>(
       (workOrders as Array<{ id: number; order_no: string }>).map((w) => [w.id, w.order_no]),
     );
+    const summaryById = new Map<number, string | null>(
+      (workOrders as Array<{ id: number; fault_symptom: string | null }>).map((w) => [w.id, w.fault_symptom || null]),
+    );
+    const officeById = new Map<number, string | null>(
+      (workOrders as Array<{ id: number; office_name: string | null }>).map((w) => [w.id, w.office_name || null]),
+    );
     const nameOf = (id: number | null) => (id ? nameById.get(id) || null : null);
     // 明细行要能直接展示缩略图 / 规格 / 编码：有 SKU 的从材料库补，申购新材料的用维修工拍的样本照
     // （2026-09-05 Mike：申请单要看到图、名称、型号、备注、来源工单）
@@ -1443,6 +1453,10 @@ export class InventoryService {
           sourceWorkOrderNo: sourceWorkOrderId
             ? orderNoById.get(sourceWorkOrderId) ?? null
             : null,
+          sourceWorkOrderSummary: sourceWorkOrderId
+            ? summaryById.get(sourceWorkOrderId) ?? null
+            : null,
+          sourceOfficeName: sourceWorkOrderId ? officeById.get(sourceWorkOrderId) ?? null : null,
         };
       });
       return {
@@ -1452,6 +1466,8 @@ export class InventoryService {
         managerName: nameOf(row.managerId),
         purchaserName: nameOf(row.purchaserId),
         workOrderNo: row.workOrderId ? orderNoById.get(row.workOrderId) ?? null : null,
+        workOrderSummary: row.workOrderId ? summaryById.get(row.workOrderId) ?? null : null,
+        sourceOfficeName: row.workOrderId ? officeById.get(row.workOrderId) ?? null : null,
         officeReviewerName: nameOf(row.officeReviewerId ?? null),
         // 审批链视图和「提交后去哪」由服务端按配置算好，Web / 小程序直接画
         steps: purchaseSteps(flow, row, {

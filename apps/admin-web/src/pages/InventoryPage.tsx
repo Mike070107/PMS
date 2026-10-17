@@ -156,6 +156,8 @@ interface PurchaseRequestItem {
   sourceRequestNo?: string;
   sourceWorkOrderId?: number | null;
   sourceWorkOrderNo?: string | null;
+  sourceWorkOrderSummary?: string | null;
+  sourceOfficeName?: string | null;
   rejectReason?: string;
   rejectedAtStage?: 'manager' | 'purchaser' | 'rollback';
 }
@@ -170,6 +172,8 @@ interface PurchaseRequestRow {
   managerName?: string | null;
   purchaserName?: string | null;
   workOrderNo?: string | null;
+  workOrderSummary?: string | null;
+  sourceOfficeName?: string | null;
   sourceRequestNos?: string[];
   sourceWorkOrderNos?: string[];
   id: number;
@@ -886,7 +890,7 @@ export default function InventoryPage() {
       const { downloadPurchaseRequestForm } = await import('../lib/purchaseRequestForm');
       await downloadPurchaseRequestForm({
         areaName:
-          actingOffice?.name ?? (access?.offices?.length === 1 ? access.offices[0].name : ''),
+          row.sourceOfficeName || actingOffice?.name || (access?.offices?.length === 1 ? access.offices[0].name : ''),
         requestNo: row.requestNo,
         applicantName: nameOr(row.applicantName, '申请人'),
         dateText: row.createdAt
@@ -906,6 +910,7 @@ export default function InventoryPage() {
             unit: item.unit || material?.unit || '',
             note: item.note || '',
             sourceOrderNo: item.sourceWorkOrderNo || '',
+            photoUrl: material?.photoUrls?.[0] || material?.photoUrl || item.photoUrls?.[0] || item.photoUrl || undefined,
           };
         }),
       });
@@ -2103,6 +2108,23 @@ export default function InventoryPage() {
                       ? requestDetail.workOrderNo || unknown('工单')
                       : '手工申请，无来源工单'}</Text>
                 </Col>
+                {(requestDetail.items || []).some((item) => item.sourceWorkOrderSummary) || requestDetail.workOrderSummary ? (
+                  <Col span={24}>
+                    <Text type="secondary">报修工单摘要</Text><br />
+                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                      {requestDetail.items?.filter((item, index, items) => item.sourceWorkOrderSummary && items.findIndex((other) => (
+                        other.sourceWorkOrderId === item.sourceWorkOrderId && other.sourceWorkOrderSummary === item.sourceWorkOrderSummary
+                      )) === index).map((item) => (
+                        <Text key={`${item.sourceWorkOrderId || 'work-order'}-${item.sourceWorkOrderSummary}`}>
+                          {item.sourceWorkOrderNo ? `${item.sourceWorkOrderNo}：` : ''}{item.sourceWorkOrderSummary}
+                        </Text>
+                      ))}
+                      {!requestDetail.items?.some((item) => item.sourceWorkOrderSummary) && requestDetail.workOrderSummary && (
+                        <Text>{requestDetail.workOrderNo ? `${requestDetail.workOrderNo}：` : ''}{requestDetail.workOrderSummary}</Text>
+                      )}
+                    </Space>
+                  </Col>
+                ) : null}
                 <Col span={8}><Text type="secondary">预估金额</Text><br /><Text strong>{money(requestDetail.estTotalCents)}</Text></Col>
                 <Col span={8}><Text type="secondary">创建时间</Text><br /><Text>{formatDateTime(requestDetail.createdAt)}</Text></Col>
               </Row>

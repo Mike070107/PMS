@@ -3,7 +3,7 @@
  * 系统里的采购申请要能一键下成同一张表，下下来直接用）。
  *
  * 纸面长这样（列宽、留白行数都照它来）：
- *   第 1 行  合并居中的大标题「上海新家　区材料申购单」
+ *   第 1 行  合并居中的大标题「枫桦景苑管理处 材料申购单」
  *   第 2 行  左边「日期2026/9/11」，右边「申请人：苏静」
  *   第 3 行  表头 序号 / 材料名称 / 规格 / 申购量 / 备注
  *   第 4 行起 明细；不足 10 行的用带序号的空行补满，好让人手写补充
@@ -21,6 +21,8 @@ export interface PurchaseFormItem {
   note: string;
   /** 来源工单号，跟在备注后面，采购能顺着查回去 */
   sourceOrderNo: string;
+  /** 材料 SKU 主图，导出后嵌入到参考图片列 */
+  photoUrl?: string;
 }
 
 export interface PurchaseFormData {
@@ -38,7 +40,21 @@ export interface PurchaseFormData {
 
 /** 纸面固定 10 行，明细多了就按明细行数走 */
 const MIN_ROWS = 10;
-const HEADERS = ['序号', '材料名称', '规格', '申购量', '备注'];
+const HEADERS = ['序号', '材料名称', '规格', '申购量', '备注', '参考图片'];
+
+async function imageDataUrl(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+    return `data:${blob.type || 'image/jpeg'};base64,${btoa(binary)}`;
+  } catch {
+    return null;
+  }
+}
 
 export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promise<void> {
   const ExcelJS = (await import('exceljs')).default ?? (await import('exceljs'));
@@ -55,13 +71,14 @@ export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promi
     { width: 30 },
     { width: 12 },
     { width: 28 },
+    { width: 18 },
   ];
 
   // ---- 标题 ----
-  ws.mergeCells('A1:E1');
+  ws.mergeCells('A1:F1');
   const title = ws.getCell('A1');
-  // 没取到管理处名就留一段空白，和纸面上那条待填的下划线一个意思，别印成「　区材料申购单」
-  title.value = data.areaName ? `${data.areaName}　区材料申购单` : '＿＿＿＿＿　区材料申购单';
+  // 来源工单有管理处名时直接带出，避免下载后还要人工辨认属于哪个管理处。
+  title.value = data.areaName ? `${data.areaName} 材料申购单` : '＿＿＿＿＿ 材料申购单';
   title.font = { name: '宋体', size: 18, bold: true };
   title.alignment = { horizontal: 'center', vertical: 'middle' };
   ws.getRow(1).height = 38;
@@ -73,7 +90,7 @@ export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promi
   dateCell.value = `日期${data.dateText}`;
   dateCell.font = { name: '宋体', size: 12 };
   dateCell.alignment = { horizontal: 'left', vertical: 'middle' };
-  ws.mergeCells('D2:E2');
+  ws.mergeCells('D2:F2');
   const applicant = ws.getCell('D2');
   applicant.value = `申请人：${data.applicantName || ''}`;
   applicant.font = { name: '宋体', size: 12 };
@@ -97,13 +114,14 @@ export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promi
   for (let i = 0; i < rowCount; i += 1) {
     const item = data.items[i];
     const row = ws.getRow(4 + i);
-    row.height = 24;
+    row.height = item?.photoUrl ? 78 : 24;
     const values: Array<string | number> = [
       i + 1,
       item?.name ?? '',
       item?.spec ?? '',
       item ? (item.unit ? `${item.qty}${item.unit}` : item.qty) : '',
       item ? [item.note, item.sourceOrderNo].filter(Boolean).join(' · ') : '',
+      '',
     ];
     values.forEach((value, c) => {
       const cell = row.getCell(c + 1);
@@ -117,11 +135,18 @@ export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promi
       };
       cell.border = border;
     });
+    if (item?.photoUrl) {
+      const dataUrl = await imageDataUrl(item.photoUrl);
+      if (dataUrl) {
+        const imageId = wb.addImage({ base64: dataUrl, extension: dataUrl.includes('png') ? 'png' : 'jpeg' });
+        ws.addImage(imageId, { tl: { col: 5.15, row: 3 + i + 0.08 }, ext: { width: 90, height: 65 } });
+      }
+    }
   }
 
   // ---- 表下面的申请原因和单号：纸面没有，但下下来要能对回系统里那张单 ----
   const footRow = 4 + rowCount;
-  ws.mergeCells(`A${footRow}:E${footRow}`);
+  ws.mergeCells(`A${footRow}:F${footRow}`);
   const foot = ws.getCell(`A${footRow}`);
   foot.value = [data.reason ? `申请原因：${data.reason}` : '', `系统申请单号：${data.requestNo}`]
     .filter(Boolean)
@@ -137,7 +162,11 @@ export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promi
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${`${data.areaName || ''}材料申购单_${data.requestNo}`.replace(/[\\/:*?"<>|]/g, '_')}.xlsx`;
+  const fileName = [data.areaName || '未命名管理处', '材料申购单', data.requestNo]
+    .filter(Boolean)
+    .join('_')
+    .replace(/[\\/:*?"<>|]/g, '_');
+  a.download = `${fileName}.xlsx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
