@@ -5045,3 +5045,11 @@
 - 自上次（2de623c1）以来上线的相关提交：
   - ffc3d573 feat(inventory): show repair details for purchase requests
 
+## 2026-10-17 11:42 · web · 2da1d978
+
+- 包：`pms-web-20261017-114144.tar.gz`
+- 提交：2da1d978 deploy: api → ffc3d573
+- 自上次（2ff59e27）以来上线的相关提交：
+  - ffc3d573 feat(inventory): show repair details for purchase requests
+  - 2de623c1 fix(inventory): show repair summary on request details
+
