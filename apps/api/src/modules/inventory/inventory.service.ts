@@ -1400,7 +1400,12 @@ export class InventoryService {
       workOrderIds.length
         ? this.dataSource.query(
             `SELECT w.id, w.order_no, w.status, w.fault_location,
-                    rr.address_text, rr.contact_name, rr.contact_phone, rr.repair_type, rr.urgent,
+                    rr.address_text, rr.contact_name, rr.contact_phone, rr.repair_type,
+                    COALESCE((SELECT rtr.label FROM repair_type_rules rtr
+                              WHERE rtr.tenant_id = w.tenant_id AND rtr.repair_type = rr.repair_type
+                                AND (rtr.office_id = c.office_id OR rtr.office_id IS NULL)
+                              ORDER BY CASE WHEN rtr.office_id = c.office_id THEN 0 ELSE 1 END
+                              LIMIT 1), rr.repair_type) AS repair_type_label, rr.urgent,
                     COALESCE(NULLIF(w.fault_symptom, ''), rr.content) AS work_order_summary,
                     c.name AS community_name, o.name AS office_name
              FROM work_orders w
@@ -1433,14 +1438,14 @@ export class InventoryService {
     }>((workOrders as Array<{
       id: number; status: string | null; fault_location: string | null; address_text: string | null;
       community_name: string | null; contact_name: string | null; contact_phone: string | null;
-      repair_type: string | null; urgent: boolean | null;
+      repair_type: string | null; repair_type_label: string | null; urgent: boolean | null;
     }>).map((w) => [w.id, {
       status: w.status || null,
       location: w.fault_location || w.address_text || null,
       communityName: w.community_name || null,
       contactName: w.contact_name || null,
       contactPhone: w.contact_phone || null,
-      repairType: w.repair_type || null,
+      repairType: w.repair_type_label || w.repair_type || null,
       urgent: !!w.urgent,
     }]));
     const nameOf = (id: number | null) => (id ? nameById.get(id) || null : null);
