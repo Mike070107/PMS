@@ -890,9 +890,10 @@ export default function InventoryPage() {
   const downloadRequestForm = async (row: PurchaseRequestRow) => {
     try {
       const { downloadPurchaseRequestForm } = await import('../lib/purchaseRequestForm');
+      const sourceOfficeName = row.sourceOfficeName || row.items.find((item) => item.sourceOfficeName)?.sourceOfficeName || '';
       await downloadPurchaseRequestForm({
         areaName:
-          row.sourceOfficeName || actingOffice?.name || (access?.offices?.length === 1 ? access.offices[0].name : ''),
+          sourceOfficeName || actingOffice?.name || (access?.offices?.length === 1 ? access.offices[0].name : ''),
         requestNo: row.requestNo,
         applicantName: nameOr(row.applicantName, '申请人'),
         dateText: row.createdAt
