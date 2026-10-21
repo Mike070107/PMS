@@ -192,6 +192,14 @@ namespace Pms.AccessCardAgent
         public int? durationSeconds { get; set; }
         public object[] targetBuildingIds { get; set; }
         public AccessTargetBuilding[] targetBuildings { get; set; }
+
+        internal AgentTask ForBuilding(AccessTargetBuilding building)
+        {
+            var task = (AgentTask)MemberwiseClone();
+            task.targetBuildings = new[] { building };
+            task.targetBuildingIds = new object[] { building.id };
+            return task;
+        }
     }
 
     internal sealed class AccessCardAuthorizationReport

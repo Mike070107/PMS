@@ -50,6 +50,7 @@ namespace Pms.DataSyncAssistant
                 VerifyMjSystemSerialProtocol(root);
                 VerifyIcCardDoorCommands();
                 VerifyPermissionRemoval();
+                VerifyPerBuildingIsolation();
                 VerifyAccessGatewayMigration(root);
                 VerifyLegacyRoomMatching();
                 VerifyParkingOwnerColumnMapping();
@@ -74,6 +75,31 @@ namespace Pms.DataSyncAssistant
                         File.SetAttributes(file, FileAttributes.Normal);
                     Directory.Delete(full, true);
                 }
+            }
+        }
+
+        private static void VerifyPerBuildingIsolation()
+        {
+            foreach (var operation in new[] { "controller_upload", "controller_revoke", "access_database_only" })
+            {
+                var task = new AgentTask { taskId = 19, operation = operation, wgCardNo = "22355403",
+                    targetBuildings = new[] {
+                        new AccessTargetBuilding { id = 20, buildingNo = "20", accessSystem = "mjsystem" },
+                        new AccessTargetBuilding { id = 26, buildingNo = "26", accessSystem = "mjsystem" } } };
+                var called = new List<int>();
+                var results = AccessControllerUploader.ExecutePerBuilding(task, delegate(AgentTask single) {
+                    if (single.targetBuildings.Length != 1 || single.taskId != 19 || single.wgCardNo != task.wgCardNo)
+                        throw new InvalidOperationException("单栋任务身份丢失");
+                    var target = single.targetBuildings[0];
+                    called.Add(target.id);
+                    if (target.id == 20) throw new InvalidOperationException("控制器离线");
+                    return new object[] { new AccessControllerUploadResult { buildingId = target.id,
+                        buildingNo = target.buildingNo, status = operation == "controller_revoke" ? "controller_removed"
+                            : operation == "access_database_only" ? "access_db_written" : "controller_uploaded" } };
+                }).OfType<AccessControllerUploadResult>().ToArray();
+                if (called.Count != 2 || results.Length != 2 || results[0].status != "controller_failed"
+                    || results[1].status == "controller_failed" || task.targetBuildings.Length != 2)
+                    throw new InvalidOperationException("离线门栋阻断了其它门栋或污染原任务");
             }
         }
 

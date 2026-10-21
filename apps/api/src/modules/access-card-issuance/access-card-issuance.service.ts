@@ -213,6 +213,8 @@ export class AccessCardIssuanceService {
         latestAuthorizationByRowAndOperation.get(`${row.id}:access_database_only`) ?? null),
       controllerTask: this.historyAuthorizationResponse(
         latestAuthorizationByRowAndOperation.get(`${row.id}:controller_upload`) ?? null),
+      revokeTask: this.historyAuthorizationResponse(
+        latestAuthorizationByRowAndOperation.get(`${row.id}:controller_revoke`) ?? null),
     }));
 
     return {
@@ -409,6 +411,9 @@ export class AccessCardIssuanceService {
     const context = await this.getHouseContext(matched.houseId, user, access);
     const historyRow = context.history.find((row) => row.icCardNo?.toUpperCase() === source.icCardNo?.toUpperCase());
     if (!historyRow?.wgCardNo) throw new NotFoundException('房号历史中没有找到这张卡，请刷新房号历史后重试');
+    if (operation === 'controller_upload') {
+      return this.uploadHistoryCardToController(matched.houseId, historyRow.id, dto, user, access);
+    }
     const homeBuilding = context.availableBuildings.find((building) => building.id === context.house.buildingId);
     if (!homeBuilding?.routeReady || !homeBuilding.accessSystem) {
       throw new BadRequestException(`本楼栋 ${context.house.buildingNo} 号楼的门禁路由尚未配置`);
@@ -556,6 +561,9 @@ export class AccessCardIssuanceService {
     if (sameOperation && ['pending', 'running', 'completed'].includes(sameOperation.status)) {
       return this.historyAuthorizationResponse(sameOperation);
     }
+    if (sameOperation?.status === 'failed') {
+      return this.retryHistoryAuthorization(sameOperation.id, user, access);
+    }
     if (historyRow.accessStatus !== 'controller_uploaded') {
       throw new BadRequestException('请先将这张卡添加至门禁管理系统，确认已添加后再下发控制器');
     }
@@ -573,11 +581,14 @@ export class AccessCardIssuanceService {
       operation: 'controller_upload',
       icCardNo: historyRow.icCardNo,
       wgCardNo: historyRow.wgCardNo,
-      targetBuildings: [{
-        id: homeBuilding.id,
-        buildingNo: homeBuilding.buildingNo,
-        accessSystem: homeBuilding.accessSystem,
-      }],
+      targetBuildings: context.availableBuildings.filter((building) => building.id === homeBuilding.id
+        || historyRow.controllerResults.some((row) => normalizeBuildingNo(String(row.buildingNo || ''))
+          === normalizeBuildingNo(building.buildingNo))).map((building) => {
+        if (!building.routeReady || !building.accessSystem) {
+          throw new BadRequestException(`${building.buildingNo}号楼的门禁路由尚未配置`);
+        }
+        return { id: building.id, buildingNo: building.buildingNo, accessSystem: building.accessSystem };
+      }),
       idempotencyKey,
       userId: user.id,
     });

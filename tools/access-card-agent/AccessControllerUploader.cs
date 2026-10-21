@@ -31,6 +31,20 @@ namespace Pms.AccessCardAgent
     {
         private const string MjSystemSerialSendMethod = "GetAndSendInfo34Or26";
 
+        internal static object[] ExecutePerBuilding(AgentTask task, Func<AgentTask, object[]> execute)
+        {
+            var results = new List<object>();
+            foreach (var target in task.targetBuildings ?? new AccessTargetBuilding[0])
+            {
+                try { results.AddRange(execute(task.ForBuilding(target))); }
+                catch (Exception exception)
+                {
+                    results.Add(FailedResult(target, target.accessSystem, exception));
+                }
+            }
+            return results.ToArray();
+        }
+
         public static bool CanUpload(AgentConfig config)
         {
             string ignoredWg;

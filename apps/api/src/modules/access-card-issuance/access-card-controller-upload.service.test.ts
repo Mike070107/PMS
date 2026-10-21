@@ -4,6 +4,50 @@ import { AccessCardIssuanceService, sanitizeParkingMovementRows } from './access
 
 const user = { id: 7, tenantId: 3 } as never;
 
+for (const [operation, success] of [['controller_upload', 'controller_uploaded'], ['controller_revoke', 'controller_removed']]) {
+  test(`${operation} 领取任务跳过成功门栋，仅发送离线门栋`, async () => {
+    const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+    const state = service as unknown as Record<string, unknown>;
+    state.authenticateAgent = async () => ({ tenantId: 3, agentKey: 'gateway', kind: 'access_gateway', version: '2.5.48',
+      capabilities: { historicalAccessGrant: true, remoteDoorControl: true } });
+    const task = { id: 1, operation, status: 'pending', attempt: 0, roomKey: '228/26/101',
+      targetBuildings: [{ id: 26, buildingNo: '26' }, { id: 20, buildingNo: '20' }],
+      controllerResults: [{ buildingNo: '26', status: success }, { buildingNo: '20', status: 'controller_failed', error: '离线' }] };
+    const query: Record<string, unknown> = {};
+    for (const method of ['where', 'andWhere', 'orderBy', 'setLock', 'setOnLocked']) query[method] = () => query;
+    query.getOne = async () => task;
+    const repo = { createQueryBuilder: () => query, save: async () => task };
+    state.authorizationRepo = { manager: { transaction: async (run: (manager: unknown) => unknown) => run({ getRepository: () => repo }) } };
+    const result = await service.claimHistoryAuthorization('gateway', 'token');
+    assert.deepEqual(result.task?.targetBuildingIds, [20]);
+    assert.equal(task.controllerResults[0]!.status, success);
+  });
+}
+
+test('历史下发失败后复用原任务，不创建全栋新任务', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  let reads = 0;
+  state.authorizationRepo = { findOne: async () => ++reads === 1 ? null : { id: 99, status: 'failed' } };
+  state.getHouseContext = async () => houseContext('controller_uploaded');
+  state.retryHistoryAuthorization = async (id: number) => ({ id, status: 'pending' });
+  state.enqueueHistoryAuthorization = async () => { throw new Error('不得创建新任务'); };
+  assert.equal((await service.uploadHistoryCardToController(10, -11251, { idempotencyKey: 'retry' }, user))?.id, 99);
+});
+
+test('首次下发包含门禁库已有的全部楼栋权限', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const state = service as unknown as Record<string, unknown>;
+  state.authorizationRepo = { findOne: async () => null };
+  const context = houseContext('controller_uploaded');
+  (context.history[0]!.controllerResults as Array<Record<string, unknown>>).push({ buildingNo: '9' });
+  state.getHouseContext = async () => context;
+  let targets: unknown;
+  state.enqueueHistoryAuthorization = async (input: Record<string, unknown>) => { targets = input.targetBuildings; return {}; };
+  await service.uploadHistoryCardToController(10, -11251, { idempotencyKey: 'all-permissions' }, user);
+  assert.deepEqual(targets, [{ id: 5, buildingNo: '5', accessSystem: 'mjsystem' }, { id: 9, buildingNo: '9', accessSystem: 'mjsystem' }]);
+});
+
 test('多楼栋结果保留已成功楼栋，只重试失败楼栋', () => {
   const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
   const merge = (service as unknown as {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 
 namespace Pms.AccessCardAgent
@@ -416,10 +417,11 @@ namespace Pms.AccessCardAgent
                 }
                 if (String.Equals(task.operation, "controller_revoke", StringComparison.OrdinalIgnoreCase))
                 {
-                    var removalResults = AccessControllerUploader.Revoke(
-                        _config, LoadSecret("iccard-db-password.dat"), task);
-                    removalResults = AccessGatewayDatabase.RemovePermissions(
-                        _config, LoadSecret("iccard-db-password.dat"), task, removalResults);
+                    var removalResults = AccessControllerUploader.ExecutePerBuilding(task, delegate(AgentTask single)
+                    {
+                        var removed = AccessControllerUploader.Revoke(_config, LoadSecret("iccard-db-password.dat"), single);
+                        return AccessGatewayDatabase.RemovePermissions(_config, LoadSecret("iccard-db-password.dat"), single, removed);
+                    });
                     var removalFailed = AccessControllerUploader.HasRemovalFailures(task.targetBuildings, removalResults);
                     var removalError = removalFailed
                         ? AccessControllerUploader.RemovalFailureMessage(task.targetBuildings, removalResults) : null;
@@ -434,18 +436,14 @@ namespace Pms.AccessCardAgent
                         removalFailed ? removalError : "控制器和门禁数据库权限均已删除");
                     return;
                 }
-                var databaseResults = AccessGatewayDatabase.Activate(
-                    _config,
-                    LoadSecret("iccard-db-password.dat"),
-                    task);
                 var databaseOnly = String.Equals(task.operation, "access_database_only", StringComparison.OrdinalIgnoreCase);
-                var controllerResults = databaseOnly
-                    ? databaseResults
-                    : AccessControllerUploader.Upload(
-                        _config,
-                        LoadSecret("iccard-db-password.dat"),
-                        task);
-                var failed = !databaseOnly && AccessControllerUploader.HasFailures(controllerResults);
+                var controllerResults = AccessControllerUploader.ExecutePerBuilding(task, delegate(AgentTask single)
+                {
+                    var written = AccessGatewayDatabase.Activate(_config, LoadSecret("iccard-db-password.dat"), single);
+                    return databaseOnly ? written : AccessControllerUploader.Upload(_config, LoadSecret("iccard-db-password.dat"), single);
+                });
+                var failed = controllerResults.OfType<AccessControllerUploadResult>().Any(row => row.status == "controller_failed")
+                    || (!databaseOnly && AccessControllerUploader.HasFailures(controllerResults));
                 _api.ReportHistoryAuthorization(new AccessCardAuthorizationReport
                 {
                     taskId = task.taskId,
@@ -533,14 +531,11 @@ namespace Pms.AccessCardAgent
             {
                 try
                 {
-                    var results = AccessGatewayDatabase.Activate(
-                        _config,
-                        LoadSecret("iccard-db-password.dat"),
-                        task);
-                    var controllerResults = AccessControllerUploader.Upload(
-                        _config,
-                        LoadSecret("iccard-db-password.dat"),
-                        task);
+                    var controllerResults = AccessControllerUploader.ExecutePerBuilding(task, delegate(AgentTask single)
+                    {
+                        AccessGatewayDatabase.Activate(_config, LoadSecret("iccard-db-password.dat"), single);
+                        return AccessControllerUploader.Upload(_config, LoadSecret("iccard-db-password.dat"), single);
+                    });
                     var failed = AccessControllerUploader.HasFailures(controllerResults);
                     _api.Report(new AgentReport
                     {

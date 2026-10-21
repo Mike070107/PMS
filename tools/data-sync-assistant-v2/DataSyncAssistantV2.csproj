@@ -80,6 +80,7 @@
     <Compile Include="..\access-card-agent\CardReader.cs">
       <Link>Adapters\CardReader.cs</Link>
     </Compile>
+    <Compile Include="..\access-card-agent\CardProfiles.cs"><Link>Adapters\CardProfiles.cs</Link></Compile>
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </Compile>

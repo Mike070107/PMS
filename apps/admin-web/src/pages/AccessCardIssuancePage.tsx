@@ -51,6 +51,7 @@ import type { AddressCommunity } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CopyableSecret from '../components/CopyableSecret';
 import HouseAddressPicker, { type PickedAddress } from '../components/HouseAddressPicker';
+import { controllerBuildingResults } from './access-card-controller-state';
 
 const { Text, Title } = Typography;
 
@@ -182,6 +183,15 @@ function permissionLabel(item: AccessCardPermissionResult): string {
   return item.door || item.controller || '未命名门禁';
 }
 
+function ControllerTaskResults({ task }: { task?: AccessCardAuthorization | null }) {
+  if (!task) return null;
+  return <Space direction="vertical" size={2}>{controllerBuildingResults(task).map((row) => (
+    <Text key={row.buildingNo} type={row.succeeded ? 'success' : 'secondary'}>
+      {row.buildingNo}号楼：{row.detail}
+    </Text>
+  ))}</Space>;
+}
+
 function ControllerPermissionCell({ row }: { row: AccessCardHistoryRow }) {
   const [expanded, setExpanded] = useState(false);
   const permissions = useMemo(() => {
@@ -200,6 +210,8 @@ function ControllerPermissionCell({ row }: { row: AccessCardHistoryRow }) {
       {row.accessStatus === 'controller_uploaded'
         ? <Tag color="success">门禁库已有权限</Tag>
         : accessStatus(row.accessStatus)}
+      <ControllerTaskResults task={row.controllerTask} />
+      <ControllerTaskResults task={row.revokeTask} />
       {permissions.length > 0 && (
         <Flex gap={4} wrap="wrap" align="center">
           {visible.map((item) => (
@@ -776,7 +788,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
 
   const authorizedBuildingIds = useMemo(() => {
     if (!context || !authorizationRow) return [];
-    const numbers = new Set((authorizationRow.controllerResults ?? [])
+    const liveRow = context.history.find((row) => row.id === authorizationRow.id) ?? authorizationRow;
+    const numbers = new Set((liveRow.controllerResults ?? [])
       .map((item) => item.buildingNo?.replace(/\s*号楼\s*$/, '').replace(/^0+/, '').trim())
       .filter(Boolean));
     return context.availableBuildings
@@ -798,7 +811,33 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     setAuthorizationBuildingIds((context?.availableBuildings ?? [])
       .filter((item) => numbers.has(item.buildingNo.replace(/^0+/, '').trim()))
       .map((item) => item.id));
-    setAuthorizationTasks([]);
+    setAuthorizationTasks([row.controllerTask, row.revokeTask].filter((task): task is AccessCardAuthorization => Boolean(task)));
+  };
+
+  const retryAuthorizationTask = async (original: AccessCardAuthorization) => {
+    setAuthorizationSubmitting(true);
+    try {
+      if (preview) {
+        message.info('预览仅展示逐栋结果，实际重试请在正式门禁发卡页操作');
+        return;
+      }
+      let task = await accessCardIssuance.retryHistoryAuthorization(original.id);
+      const update = () => setAuthorizationTasks((current) => current.map((item) => item.id === task.id ? task : item));
+      update();
+      for (let attempt = 0; attempt < 72 && ['pending', 'running'].includes(task.status); attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_250));
+        task = await accessCardIssuance.historyAuthorization(task.id);
+        update();
+      }
+      await refreshContext();
+      if (task.status === 'failed') message.error(task.error || '未完成门栋仍未确认，请检查连接后重试');
+      else if (task.status === 'completed') message.success('剩余门栋已完成');
+      else message.info('剩余门栋仍在后台处理中');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '重试失败');
+    } finally {
+      setAuthorizationSubmitting(false);
+    }
   };
 
   const submitHistoryAuthorization = async () => {
@@ -861,8 +900,8 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
           ? accessCardIssuance.historyAuthorization(task.id) : task));
         setAuthorizationTasks(tasks);
       }
+      await refreshContext();
       if (tasks.every((task) => task.status === 'completed')) {
-        await refreshContext();
         message.success('门栋权限已按选择结果更新');
       } else if (tasks.some((task) => task.status === 'failed')) {
         message.error(tasks.find((task) => task.status === 'failed')?.error || '部分门栋权限操作失败，可按楼栋重试');
@@ -923,7 +962,9 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
         return;
       }
 
-      let task = await accessCardIssuance.uploadHistoryCardToController(context.house.id, row.id, {
+      let task = row.controllerTask?.status === 'failed'
+        ? await accessCardIssuance.retryHistoryAuthorization(row.controllerTask.id)
+        : await accessCardIssuance.uploadHistoryCardToController(context.house.id, row.id, {
         idempotencyKey: newIdempotencyKey(),
       });
       setContext((current) => current ? ({
@@ -985,7 +1026,9 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
     const actionKey = `${row.personId}:${operation}`;
     setRecentLegacyActionKey(actionKey);
     try {
-      let task = operation === 'access_database_only'
+      let task = operation === 'controller_upload' && row.controllerTask?.status === 'failed'
+        ? await accessCardIssuance.retryHistoryAuthorization(row.controllerTask.id)
+        : operation === 'access_database_only'
         ? await accessCardIssuance.addRecentLegacyCardToAccessDatabase(row.personId, { idempotencyKey: newIdempotencyKey() })
         : await accessCardIssuance.sendRecentLegacyCardToController(row.personId, { idempotencyKey: newIdempotencyKey() });
       for (let attempt = 0; attempt < 72 && ['pending', 'running'].includes(task.status); attempt += 1) {
@@ -1552,14 +1595,14 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
               if (!row.canManageAccess) return <Text type="secondary" title={row.actionMessage || undefined}>不适用</Text>;
               const pms = recentRecords.find((item) => item.icCardNo === row.icCardNo);
               if (pms?.accessStatus === 'controller_uploaded') return accessStatus(pms.accessStatus);
-              if (row.controllerTask?.status === 'completed') return <Tag color="success">已下发</Tag>;
-              if (row.controllerTask && ['pending', 'running'].includes(row.controllerTask.status)) return <Tag color="processing">下发处理中</Tag>;
+              if (row.controllerTask?.status === 'completed') return <ControllerTaskResults task={row.controllerTask} />;
+              if (row.controllerTask && ['pending', 'running'].includes(row.controllerTask.status)) return <Space direction="vertical"><Tag color="processing">下发处理中</Tag><ControllerTaskResults task={row.controllerTask} /></Space>;
               const hasPermission = recentLegacy?.permissions.some((item) =>
                 item.wgCardNo === row.wgCardNo
                 && Boolean(item.buildingNo && row.buildingNo)
                 && String(Number(item.buildingNo)) === String(Number(row.buildingNo)));
               return (
-                <Button
+                <Space direction="vertical"><ControllerTaskResults task={row.controllerTask} /><Button
                   size="small"
                   type="primary"
                   danger={row.controllerTask?.status === 'failed'}
@@ -1569,7 +1612,7 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                   onClick={() => void runRecentLegacyAction(row, 'controller_upload')}
                 >
                   {row.controllerTask?.status === 'failed' ? '重试下发' : '下发至控制器'}
-                </Button>
+                </Button></Space>
               );
             } },
           ]} />
@@ -1638,14 +1681,9 @@ export default function AccessCardIssuancePage({ preview = false }: { preview?: 
                 description={(
                   <Space direction="vertical" size={4}>
                     {task.error && <Text type="danger">{task.error}</Text>}
-                    {task.controllerResults.map((result, index) => (
-                      <Text key={`${String(result.buildingNo)}-${index}`}>
-                        {String(result.buildingNo || '未知')}号楼：
-                        {['controller_uploaded', 'controller_removed'].includes(String(result.status))
-                          ? <Text type="success">成功</Text>
-                          : <Text type="danger">失败{result.error ? `，${String(result.error)}` : ''}</Text>}
-                      </Text>
-                    ))}
+                    <ControllerTaskResults task={task} />
+                    {task.status === 'failed' && <Button loading={authorizationSubmitting}
+                      onClick={() => void retryAuthorizationTask(task)}>仅重试未完成门栋</Button>}
                   </Space>
                 )}
               />

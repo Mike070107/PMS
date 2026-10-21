@@ -26,6 +26,7 @@ export interface AccessCardHistoryRow {
   latestAuthorization?: AccessCardAuthorization | null;
   accessDatabaseTask?: AccessCardAuthorization | null;
   controllerTask?: AccessCardAuthorization | null;
+  revokeTask?: AccessCardAuthorization | null;
 }
 
 export interface AccessCardHouseContext {
