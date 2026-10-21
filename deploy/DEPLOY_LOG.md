@@ -5084,3 +5084,10 @@
 - 自上次（95cc2582）以来上线的相关提交：
   - edd2dfb3 fix(inventory): display repair type labels
 
+## 2026-10-21 10:40 · api · 04a589c0
+
+- 包：`pms-api-fast-20261021-103833.tar.gz`
+- 提交：04a589c0 fix(access-cards): isolate building operations and resume failed targets
+- 自上次（edd2dfb3）以来上线的相关提交：
+  - 04a589c0 fix(access-cards): isolate building operations and resume failed targets
+
