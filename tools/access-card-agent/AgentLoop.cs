@@ -452,9 +452,8 @@ namespace Pms.AccessCardAgent
                     errorMessage = failed ? AccessControllerUploader.FailureMessage(controllerResults) : null
                 });
                 RecordActivity(databaseOnly ? "添加门禁数据库" : "下发门禁控制器", task.wgCardNo, !failed,
-                    databaseOnly ? "门禁管理系统数据库写入完成" : failed
-                        ? AccessControllerUploader.FailureMessage(controllerResults)
-                        : "数据库写入和控制器下发完成");
+                    failed ? AccessControllerUploader.FailureMessage(controllerResults)
+                        : databaseOnly ? "门禁管理系统数据库写入完成" : "数据库写入和控制器下发完成");
             }
             catch (Exception exception)
             {
