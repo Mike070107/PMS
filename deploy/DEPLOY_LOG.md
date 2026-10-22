@@ -5135,3 +5135,10 @@
 - 自上次（1496a5ef）以来上线的相关提交：
   - 63d58f7d feat(family-cars): 员工小程序「审批」里加亲情车经理审批
 
+## 2026-10-22 14:09 · api · d20ab74a
+
+- 包：`pms-api-20261022-1356.tar.gz`
+- 提交：d20ab74a feat(fees): query current MIS property bills by household
+- 自上次（63d58f7d）以来上线的相关提交：
+  - d20ab74a feat(fees): query current MIS property bills by household
+
