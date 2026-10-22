@@ -5149,3 +5149,14 @@
 - 自上次（63d58f7d）以来上线的相关提交：
   - d20ab74a feat(fees): query current MIS property bills by household
 
+## 2026-10-22 21:40 · api · 31416c13
+
+- 提交：31416c13 fix(repairs): preserve card service addresses and expose notification failures
+- 说明：本次上传后遇服务器部署锁；现场已运行相同提交和源码哈希，公网verify-live通过，复用已上线API，不重复切换
+- 自上次（d20ab74a）以来上线的相关提交：
+  - 31416c13 fix(repairs): preserve card service addresses and expose notification failures
+  - 8993178d feat(family-cars): 从停车库批量导入现有亲情车
+  - d16a80d6 fix(fees): 一通MIS房号下拉按数字排（1号→2号→…→10号）
+  - 9477b319 fix(sort): 房号与楼栋号按数字排（1,2,3,11,21 而不是 1,10,11,2）
+  - d0301714 feat(neighbor-web): 邻修新版管理后台骨架 + 今日待办 + 工单调度
+
