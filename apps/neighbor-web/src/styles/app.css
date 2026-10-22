@@ -40,3 +40,77 @@
 .kv dd { word-break: break-word; }
 
 .mono { font-variant-numeric: tabular-nums; }
+
+/* 库存材料缩略图与看图 */
+.stock-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  display: block;
+  cursor: zoom-in;
+}
+.stock-thumb.is-empty {
+  display: grid;
+  place-items: center;
+  cursor: default;
+  border-style: dashed;
+  background: var(--sunken);
+  color: var(--ink3);
+}
+.photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(12, 18, 15, 0.74);
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  animation: pv-in 0.12s ease-out;
+}
+.pv-inner {
+  max-width: min(920px, 92vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pv-inner > img {
+  max-width: 100%;
+  max-height: 68vh;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #fff;
+}
+.pv-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+}
+.pv-bar b { font-size: 16px; }
+.pv-bar .muted { color: rgba(255, 255, 255, 0.72) !important; }
+.pv-thumbs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.pv-thumbs button {
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+.pv-thumbs button.on { border-color: #fff; }
+.pv-thumbs img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+}
+@keyframes pv-in { from { opacity: 0; } }

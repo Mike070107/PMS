@@ -2,7 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MaterialView, StockMovementView, StockView, WarehouseView } from '@pms/shared-types';
 import { inventory } from '@pms/api-client';
 import { Btn, Card, ErrorNote, Loading, Sheet, toast } from '@/components/ui';
+import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
+
+const PHOTO_OF = (m?: MaterialView): string[] => {
+  if (!m) return [];
+  const urls = m.photoUrls?.length ? m.photoUrls : (m.photoUrl ? [m.photoUrl] : []);
+  return urls.filter(Boolean);
+};
 
 const MOVEMENT_LABEL: Record<string, string> = {
   inbound: '入库', outbound: '出库', transfer: '调拨', adjust: '盘点调整',
@@ -22,6 +29,7 @@ export default function Stock() {
   const [err, setErr] = useState('');
   const [peek, setPeek] = useState<StockView | null>(null);
   const [movements, setMovements] = useState<StockMovementView[] | null>(null);
+  const [photos, setPhotos] = useState<{ name: string; urls: string[]; index: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -108,7 +116,7 @@ export default function Stock() {
         <table className="t">
           <thead>
             <tr>
-              <th>材料</th><th>规格</th><th>仓库</th>
+              <th style={{ width: 70 }}>图片</th><th>材料</th><th>规格</th><th>仓库</th>
               <th style={{ textAlign: 'right' }}>当前</th>
               <th style={{ textAlign: 'right' }}>安全库存</th>
               <th>状态</th>
@@ -119,6 +127,17 @@ export default function Stock() {
           <tbody>
             {rows.length ? rows.map(({ s, m, qty, safe, low }) => (
               <tr key={s.id} className="row" onClick={() => void openPeek(s)}>
+                <td onClick={(e) => {
+                  e.stopPropagation();
+                  const urls = PHOTO_OF(m);
+                  if (urls.length) setPhotos({ name: m?.name || '', urls, index: 0 });
+                }}>
+                  {PHOTO_OF(m).length ? (
+                    <img src={PHOTO_OF(m)[0]} alt={m?.name || ''} className="stock-thumb" />
+                  ) : (
+                    <span className="stock-thumb is-empty"><Icon name="box" size={22} /></span>
+                  )}
+                </td>
                 <td><b>{m?.name || `#${s.materialId}`}</b></td>
                 <td className="sub">{m?.spec || '—'}</td>
                 <td>{warehouseOf(s.warehouseId)}</td>
@@ -130,7 +149,7 @@ export default function Stock() {
                   {low ? <Btn size="sm" onClick={() => { window.location.href = '/inventory'; }}>申请采购</Btn> : null}
                 </td>
               </tr>
-            )) : <tr><td colSpan={8} className="empty">没有符合条件的库存</td></tr>}
+            )) : <tr><td colSpan={9} className="empty">没有符合条件的库存</td></tr>}
           </tbody>
         </table>
       </Card>
@@ -154,6 +173,19 @@ export default function Stock() {
               <div><small>单位成本</small><b>{money((peek.unitCostCents ?? 0) / 100)}</b></div>
               <div><small>库存金额</small><b>{money((peek.amountCents ?? 0) / 100)}</b></div>
             </div>
+            {PHOTO_OF(materialOf(peek.materialId)).length ? (
+              <>
+                <div className="sec-t">材料实物照片</div>
+                <div className="photos" style={{ marginBottom: 16 }}>
+                  {PHOTO_OF(materialOf(peek.materialId)).map((url, index) => (
+                    <button key={url} type="button" style={{ padding: 0, border: 0, background: 'none', cursor: 'zoom-in' }}
+                      onClick={() => setPhotos({ name: materialOf(peek.materialId)?.name || '', urls: PHOTO_OF(materialOf(peek.materialId)), index })}>
+                      <i style={{ backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center', width: 96, height: 96, borderRadius: 9, display: 'block' }} />
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
             <div className="sec-t">最近出入库流水<span className="r muted">最新在前</span></div>
             {movements === null ? <Loading text="读取流水…" /> : movements.length ? (
               <table className="t">
@@ -175,6 +207,28 @@ export default function Stock() {
           </>
         ) : null}
       </Sheet>
+      {photos ? (
+        <div className="photo-viewer" onClick={() => setPhotos(null)}>
+          <div className="pv-inner" onClick={(e) => e.stopPropagation()}>
+            <img src={photos.urls[photos.index]} alt={photos.name} />
+            <div className="pv-bar">
+              <b>{photos.name}</b>
+              <span className="muted">{photos.index + 1} / {photos.urls.length}</span>
+              <button className="btn sm" onClick={() => setPhotos(null)}>关闭</button>
+            </div>
+            {photos.urls.length > 1 ? (
+              <div className="pv-thumbs">
+                {photos.urls.map((url, index) => (
+                  <button key={url} type="button" className={index === photos.index ? 'on' : ''}
+                    onClick={() => setPhotos({ ...photos, index })}>
+                    <img src={url} alt="" />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
