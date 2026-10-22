@@ -281,6 +281,43 @@ importers:
         specifier: ^5.6.2
         version: 5.6.2
 
+  apps/neighbor-web:
+    dependencies:
+      '@pms/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
+      '@pms/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
+      dayjs:
+        specifier: ^1.11.13
+        version: 1.11.21
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
+      react-router-dom:
+        specifier: ^6.27.0
+        version: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.11
+        version: 18.3.30
+      '@types/react-dom':
+        specifier: ^18.3.0
+        version: 18.3.7(@types/react@18.3.30)
+      '@vitejs/plugin-react':
+        specifier: ^4.3.3
+        version: 4.3.3(vite@5.4.10(@types/node@22.19.19)(terser@5.48.0))
+      typescript:
+        specifier: ^5.6.2
+        version: 5.6.2
+      vite:
+        specifier: ^5.4.10
+        version: 5.4.10(@types/node@22.19.19)(terser@5.48.0)
+
   packages/api-client:
     dependencies:
       '@pms/shared-types':

@@ -1,0 +1,30 @@
+/* 设计稿 CSS 之外的一点点补充（保持同一套变量，不引入第二种视觉语言） */
+
+#root { min-height: 100vh; }
+
+.side .scope select {
+  -webkit-appearance: none;
+  appearance: none;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.nav a { user-select: none; }
+
+/* 顶栏搜索框是整个可点区域，光标也给提示 */
+.search { user-select: none; }
+
+/* 卡片表头的列宽在小屏下别挤成一团 */
+@media (max-width: 1280px) {
+  .content { padding: 18px 16px 70px; }
+}
+
+.photo-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+.photo-grid i {
+  display: block; width: 84px; height: 84px; border-radius: 8px;
+  background: var(--sunken); border: 1px solid var(--line);
+}
+
+.kv dd { word-break: break-word; }
+
+.mono { font-variant-numeric: tabular-nums; }
