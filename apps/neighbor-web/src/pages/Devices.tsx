@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { accessCardIssuance } from '@pms/api-client';
 import type { AccessCardReadiness } from '@pms/api-client/src/endpoints/access-card-issuance';
+import { legacyUrl } from '@/lib/legacy';
 import { Card, ErrorNote, Loading, toast } from '@/components/ui';
 import { ago } from '@/lib/format';
 
@@ -60,7 +61,7 @@ export default function Devices() {
         </div>
         <div className="act">
           <button className="btn" onClick={() => { void load(); toast('已刷新'); }}>刷新</button>
-          <button className="btn" onClick={() => { window.location.href = '/access-cards'; }}>发卡台</button>
+          <button className="btn" onClick={() => { window.location.href = legacyUrl('/access-cards'); }}>发卡台</button>
         </div>
       </div>
 

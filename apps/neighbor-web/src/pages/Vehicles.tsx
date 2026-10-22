@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import type { ParkingQuery } from '@pms/api-client/src/endpoints/access-card-issuance';
+import { legacyUrl } from '@/lib/legacy';
 import { Btn, Card, ErrorNote, Loading, toast } from '@/components/ui';
 
 interface Card { id: number; cardNo: string; houseId: number; status: string }
@@ -103,8 +104,8 @@ export default function Vehicles() {
           <p>停车管理与门禁发卡合并：同一个房号下看车辆授权和门禁卡</p>
         </div>
         <div className="act">
-          <button className="btn" onClick={() => { window.location.href = '/parking'; }}>登记新车 / 续期</button>
-          <button className="btn p" onClick={() => { window.location.href = '/access-cards'; }}>＋ 发门禁卡</button>
+          <button className="btn" onClick={() => { window.location.href = legacyUrl('/parking'); }}>登记新车 / 续期</button>
+          <button className="btn p" onClick={() => { window.location.href = legacyUrl('/access-cards'); }}>＋ 发门禁卡</button>
         </div>
       </div>
 
@@ -168,7 +169,7 @@ export default function Vehicles() {
                       ) : <span className="pill s-pend">未匹配房号</span>}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      <Btn size="sm" onClick={() => { window.location.href = `/parking?plate=${encodeURIComponent(plate)}`; }}>续期 / 调整</Btn>
+                      <Btn size="sm" onClick={() => { window.location.href = legacyUrl(`/parking?plate=${encodeURIComponent(plate)}`); }}>续期 / 调整</Btn>
                     </td>
                   </tr>
                 );
@@ -188,7 +189,7 @@ export default function Vehicles() {
             <b>门禁卡</b>
             <span className="muted">{cards.length} 张</span>
             {cardErr ? <span className="muted" style={{ color: 'var(--dang)' }}>{cardErr}</span> : null}
-            <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => { window.location.href = '/access-cards'; }}>去发卡台</button>
+            <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => { window.location.href = legacyUrl('/access-cards'); }}>去发卡台</button>
           </div>
           {cards.length ? (
             <table className="t">

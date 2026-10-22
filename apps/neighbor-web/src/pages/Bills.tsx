@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
+import { legacyUrl } from '@/lib/legacy';
 import { Btn, Card, ErrorNote, Empty, Field, Loading, Sheet, toast } from '@/components/ui';
 import { dayjs, money } from '@/lib/format';
 
@@ -143,7 +144,7 @@ export default function Bills() {
           <p>按房号、账期、缴费状态查；收款在这里登记，红冲与生成账单仍在现有页面</p>
         </div>
         <div className="act">
-          <button className="btn" onClick={() => { window.location.href = '/fees'; }}>生成账单 / 红冲</button>
+          <button className="btn" onClick={() => { window.location.href = legacyUrl('/fees'); }}>生成账单 / 红冲</button>
           {picked.length ? (
             <button className="btn p" onClick={() => setPayOpen(true)}>收款（{picked.length} 笔 · {money(pickedAmount / 100)}）</button>
           ) : null}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MaterialView, StockMovementView, StockView, WarehouseView } from '@pms/shared-types';
 import { inventory } from '@pms/api-client';
+import { legacyUrl } from '@/lib/legacy';
 import { Btn, Card, ErrorNote, Loading, Sheet, toast } from '@/components/ui';
 import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
@@ -92,7 +93,7 @@ export default function Stock() {
         </div>
         <div className="act">
           <button className="btn" onClick={() => { void load(); toast('已刷新'); }}>刷新</button>
-          <button className="btn" onClick={() => { window.location.href = '/inventory'; }}>入库 / 调拨</button>
+          <button className="btn" onClick={() => { window.location.href = legacyUrl('/inventory'); }}>入库 / 调拨</button>
         </div>
       </div>
 
@@ -146,7 +147,7 @@ export default function Stock() {
                 <td>{low ? <span className="pill urg">{qty ? '低于安全库存' : '无货'}</span> : <span className="muted">正常</span>}</td>
                 <td style={{ textAlign: 'right' }} className="muted">{money((s.amountCents ?? 0) / 100)}</td>
                 <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                  {low ? <Btn size="sm" onClick={() => { window.location.href = '/inventory'; }}>申请采购</Btn> : null}
+                  {low ? <Btn size="sm" onClick={() => { window.location.href = legacyUrl('/inventory'); }}>申请采购</Btn> : null}
                 </td>
               </tr>
             )) : <tr><td colSpan={9} className="empty">没有符合条件的库存</td></tr>}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PurchaseRequestStatus } from '@pms/shared-types';
 import type { PurchaseRequestView } from '@pms/shared-types';
 import { purchases } from '@pms/api-client';
+import { legacyUrl } from '@/lib/legacy';
 import { Btn, Card, Empty, ErrorNote, Field, Loading, Sheet, toast } from '@/components/ui';
 import { ago, dayjs, money } from '@/lib/format';
 
@@ -84,7 +85,7 @@ export default function Purchase() {
         </div>
         <div className="act">
           <button className="btn" onClick={() => { void load(); toast('已刷新'); }}>刷新</button>
-          <button className="btn" onClick={() => { window.location.href = '/inventory'; }}>新建采购申请</button>
+          <button className="btn" onClick={() => { window.location.href = legacyUrl('/inventory'); }}>新建采购申请</button>
         </div>
       </div>
 
@@ -125,7 +126,7 @@ export default function Purchase() {
               </Btn>
             ) : null}
             {stage === 'orders' ? (
-              <Btn size="sm" onClick={() => { window.location.href = '/inventory'; }}>去现有页面下单 / 入库</Btn>
+              <Btn size="sm" onClick={() => { window.location.href = legacyUrl('/inventory'); }}>去现有页面下单 / 入库</Btn>
             ) : null}
           </div>
         </div>
@@ -174,7 +175,7 @@ export default function Purchase() {
                       </>
                     ) : null}
                     {stage === 'draft' || stage === 'office_review' ? <Btn size="sm" onClick={() => setDetail(r)}>查看</Btn> : null}
-                    {stage === 'approved' ? <Btn size="sm" onClick={() => { window.location.href = '/inventory'; }}>去下单</Btn> : null}
+                    {stage === 'approved' ? <Btn size="sm" onClick={() => { window.location.href = legacyUrl('/inventory'); }}>去下单</Btn> : null}
                     {stage === 'done' ? <Btn size="sm" onClick={() => setDetail(r)}>查看</Btn> : null}
                   </td>
                 </tr>

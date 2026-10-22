@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { request } from '@pms/api-client';
+import { legacyUrl } from '@/lib/legacy';
 import { Btn, Card, ErrorNote, Loading, toast } from '@/components/ui';
 import { money } from '@/lib/format';
 
@@ -95,7 +96,7 @@ export default function Settings() {
   return (
     <>
       <div className="ph"><div><h1>系统设置</h1><p>每类配置一个分组，收银台和工单页只读取这里的值</p></div>
-        <div className="act"><button className="btn" onClick={() => { window.location.href = '/settings'; }}>打开现有设置页</button></div>
+        <div className="act"><button className="btn" onClick={() => { window.location.href = legacyUrl('/settings'); }}>打开现有设置页</button></div>
       </div>
 
       {err ? <ErrorNote>{err}</ErrorNote> : null}
@@ -175,7 +176,7 @@ export default function Settings() {
                   </p>
                 </>
               ) : <div className="empty">服务端还没有下发审批链配置</div>}
-              <Btn style={{ marginTop: 12 }} onClick={() => { window.location.href = '/settings'; }}>去调整</Btn>
+              <Btn style={{ marginTop: 12 }} onClick={() => { window.location.href = legacyUrl('/settings'); }}>去调整</Btn>
             </>
           ) : null}
 
@@ -191,7 +192,7 @@ export default function Settings() {
               <p className="muted" style={{ fontSize: 14, marginTop: 14 }}>
                 工单超时后系统在催办时段内自动发微信给维修工和办公室；自动验收到期未评价的工单会按默认好评结束。
               </p>
-              <Btn style={{ marginTop: 12 }} onClick={() => { window.location.href = '/settings'; }}>去调整</Btn>
+              <Btn style={{ marginTop: 12 }} onClick={() => { window.location.href = legacyUrl('/settings'); }}>去调整</Btn>
             </>
           ) : null}
 
@@ -222,7 +223,7 @@ export default function Settings() {
                   })}
                 </tbody>
               </table>
-              <Btn style={{ marginTop: 12 }} onClick={() => { window.location.href = '/settings'; }}>去配置模板</Btn>
+              <Btn style={{ marginTop: 12 }} onClick={() => { window.location.href = legacyUrl('/settings'); }}>去配置模板</Btn>
             </>
           ) : null}
 

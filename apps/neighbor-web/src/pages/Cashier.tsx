@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { address, request } from '@pms/api-client';
 import type { AddressBuilding, AddressCommunity, AddressHouse } from '@pms/shared-types';
 import { sortedBuildings, sortedHouses } from '@pms/shared-types';
+import { legacyUrl } from '@/lib/legacy';
 import { Btn, Card, ErrorNote, Field, Loading, toast } from '@/components/ui';
 import { useSession } from '@/lib/auth';
 import { dayjs, money } from '@/lib/format';
@@ -292,7 +293,7 @@ export default function Cashier() {
           </p>
         </div>
         <div className="act">
-          <button className="btn" onClick={() => { window.location.href = '/fees'; }}>今日流水 / 红冲</button>
+          <button className="btn" onClick={() => { window.location.href = legacyUrl('/fees'); }}>今日流水 / 红冲</button>
         </div>
       </div>
 
@@ -395,7 +396,7 @@ export default function Cashier() {
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <Btn size="sm" onClick={() => { window.location.href = '/parking'; }}>车辆与门禁档案</Btn>
+                <Btn size="sm" onClick={() => { window.location.href = legacyUrl('/parking'); }}>车辆与门禁档案</Btn>
                 <Btn size="sm" kind="g" onClick={() => { setHouse(null); setResult(null); setQ(''); }}>换一个房号</Btn>
               </div>
             </Card>
@@ -411,7 +412,7 @@ export default function Cashier() {
                 <b style={{ display: 'block' }}>门禁卡</b>
                 <span className="muted" style={{ fontSize: 14 }}>{cardRule ? `${money(cardRule.unitPriceCents / 100)} / 张` : '未配收费规则'}</span>
               </button>
-              <button className="tile" onClick={() => { window.location.href = `/fees?q=${encodeURIComponent(`${house.buildingNo}/${house.roomNo}`)}`; }}
+              <button className="tile" onClick={() => { window.location.href = legacyUrl(`/fees?q=${encodeURIComponent(`${house.buildingNo}/${house.roomNo}`)}`); }}
                 style={{ textAlign: 'left', padding: '14px 16px', border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
                 <b style={{ display: 'block' }}>物业费</b>
                 <span className="muted" style={{ fontSize: 14 }}>{bills?.length ? `欠 ${bills.length} 笔 · ${money(arrears / 100)}` : '无欠费'} · 去账单页收</span>
