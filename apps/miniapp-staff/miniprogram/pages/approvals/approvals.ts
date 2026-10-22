@@ -1,4 +1,4 @@
-import { maintenance, purchases } from '@pms/api-client';
+import { familyCars, maintenance, purchases } from '@pms/api-client';
 import { formatDateTimeCn } from '@pms/miniapp-ui';
 import { getSession } from '../../utils/session';
 import { cachedApprovalMode, setTabBadge, syncTabBar } from '../../utils/tabbar';
@@ -30,6 +30,42 @@ interface ApprovalRow extends PurchaseRequestView {
 }
 
 const yuan = (cents: number) => `¥${((cents || 0) / 100).toFixed(2)}`;
+
+/** 亲情车待审卡片。图片地址是服务端下发的相对路径，小程序要拼成绝对地址才能显示 */
+interface FamilyFile extends familyCars.FamilyCarFile {
+  /** 图片的绝对地址；PDF 留空，只显示文件名 */
+  photo: string;
+}
+
+interface FamilyRow extends Omit<familyCars.FamilyCarDetail, 'files'> {
+  files: FamilyFile[];
+  roomText: string;
+  carOwnerText: string;
+  garageText: string;
+  createdAtText: string;
+  photos: string[];
+}
+
+function toFamilyRow(item: familyCars.FamilyCarDetail): FamilyRow {
+  const app = getApp<{ baseURL?: string }>();
+  const base = String(app?.baseURL || '');
+  // baseURL 形如 https://prsznh.cn/api/v1，去掉 /api/v1 就是站点根
+  const origin = base.replace(/\/api\/v1\/?$/, '');
+  const absolute = (url: string) => (!url || /^https?:\/\//.test(url) ? url : `${origin}${url}`);
+  const files: FamilyFile[] = (item.files || []).map((file) => ({
+    ...file,
+    photo: String(file.contentType || '').startsWith('image/') ? absolute(file.fileUrl) : '',
+  }));
+  return {
+    ...item,
+    files,
+    roomText: `${item.lane} 弄 ${item.buildingNo} 号 ${item.roomNo} 室`,
+    carOwnerText: [item.carOwnerName || '车主待填', item.relation].filter(Boolean).join(' · '),
+    garageText: (item.garages || []).map((key) => ({ phase1: '一期停车库', phase2: '二期地面车库', main: '二期大车库', civil: '二期人防车库' } as Record<string, string>)[key] || key).join('、'),
+    createdAtText: formatDateTimeCn(item.createdAt),
+    photos: files.map((file) => file.photo).filter(Boolean),
+  };
+}
 
 interface MaintenanceRow extends maintenance.MaintenanceListItem {
   createdAtText: string;
@@ -69,6 +105,12 @@ Page({
     /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
     guide: false,
     mode: 'approvals' as 'approvals' | 'maintenance',
+    /** 审批页里再分两摊：采购申请 / 亲情车。只有一摊权限的人不显示切换 */
+    section: 'purchase' as 'purchase' | 'family',
+    canApproveFamilyCar: false,
+    familyList: [] as FamilyRow[],
+    familyEmpty: false,
+    familyBusyId: 0,
     canApprove: false,
     canInspectMaintenance: false,
     canSignMaintenance: false,
@@ -91,6 +133,14 @@ Page({
     selectedMap: {} as Record<number, boolean>,
     selectedCount: 0,
     summarizing: false,
+  },
+
+  onLoad(options: Record<string, string | undefined>) {
+    // 服务端发的「亲情车待经理审批」通知直接跳这一档
+    if (options?.section === 'family') {
+      this.setData({ section: 'family' });
+      wx.setNavigationBarTitle({ title: '亲情车审批' });
+    }
   },
 
   onShow() {
@@ -137,7 +187,25 @@ Page({
 
       // 办公室汇总用的是「材料与库存·操作」这一格 —— 和 Web 上合并提交是同一个权限
       const canSummarize = session.canEditMaterials;
-      if (!session.canApprove && !canSummarize) {
+      const canApproveFamilyCar = session.canApproveFamilyCar;
+      // 本地变量记着这一轮拿到的亲情车条数：setData 之后立刻读 this.data 不保险
+      let familyRows: FamilyRow[] = this.data.familyList;
+      if (session.canApprove || canSummarize || canApproveFamilyCar) {
+        // 亲情车待审：和采购各占一档，没这一格权限的人不请求（接口会 403）
+        this.setData({
+          canApproveFamilyCar,
+          section: canApproveFamilyCar && !(session.canApprove || canSummarize) ? 'family' : this.data.section,
+        });
+        if (canApproveFamilyCar) {
+          const family = await familyCars.pendingManager().catch(() => [] as familyCars.FamilyCarDetail[]);
+          familyRows = family.map(toFamilyRow);
+          this.setData({ familyList: familyRows, familyEmpty: familyRows.length === 0 });
+        } else {
+          familyRows = [];
+          this.setData({ familyList: [], familyEmpty: false });
+        }
+      }
+      if (!session.canApprove && !canSummarize && !canApproveFamilyCar) {
         this.setData({
           canApprove: false,
           canSummarize: false,
@@ -145,7 +213,8 @@ Page({
           roleHint:
             '你的角色没有采购审批权限。请管理员在管理后台「业务角色」页，' +
             '把你的角色在「邻修小程序页面权限」里勾上「采购审批（经理这一步）」' +
-            '或「采购审批（采购这一步）」的「批 / 驳回」；办公室汇总要勾「材料与库存」的「操作」。' +
+            '或「采购审批（采购这一步）」的「批 / 驳回」；办公室汇总要勾「材料与库存」的「操作」；' +
+            '亲情车审批要勾「亲情车经理审批」。' +
             '改完在这一页下拉刷新即可。',
           list: [],
           summaryList: [],
@@ -190,11 +259,73 @@ Page({
         selectedCount: Object.keys(selectedMap).length,
         loaded: true,
       });
-      // 角标 = 轮到我审的 + 等我汇总的
-      setTabBadge(this, 'approvals', reviewList.length + summaryList.length);
+      // 角标 = 轮到我审的 + 等我汇总的 + 亲情车待我审的
+      setTabBadge(this, 'approvals', reviewList.length + summaryList.length + familyRows.length);
     } catch (e: any) {
       this.setData({ loaded: true });
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
+    }
+  },
+
+  onSwitchSection(e: WechatMiniprogram.BaseEvent) {
+    const section = e.currentTarget.dataset.section === 'family' ? 'family' : 'purchase';
+    this.setData({ section });
+    wx.setNavigationBarTitle({ title: section === 'family' ? '亲情车审批' : '采购审批' });
+  },
+
+  onPreviewFamilyPhoto(e: WechatMiniprogram.BaseEvent) {
+    const url = String(e.currentTarget.dataset.url || '');
+    const urls = ((e.currentTarget.dataset.urls || []) as string[]).filter(Boolean);
+    if (!urls.length) return;
+    wx.previewImage({ current: url || urls[0], urls });
+  },
+
+  /** 经理通过：车库授权 + 续期一年由服务端接着做，成功后这条从待审里消失 */
+  async onApproveFamily(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.id);
+    const plate = String(e.currentTarget.dataset.plate || '');
+    if (!id || this.data.familyBusyId) return;
+    const res = await wx.showModal({
+      title: `通过 ${plate} 的亲情车？`,
+      content: '通过后立即下发车库授权并续期一年，有效期从今天起算。',
+      confirmText: '通过并开通',
+    });
+    if (!res.confirm) return;
+    this.setData({ familyBusyId: id });
+    try {
+      await familyCars.managerReview(id, 'approve');
+      wx.showToast({ title: '已通过，正在开通' });
+      await this.load();
+    } catch (err: any) {
+      wx.showToast({ icon: 'none', title: err?.message || '操作失败' });
+    } finally {
+      this.setData({ familyBusyId: 0 });
+    }
+  },
+
+  /** 退回办公室：资料不清楚时用，办公室可以要求业主补资料或重新提交 */
+  async onReturnFamily(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.id);
+    const plate = String(e.currentTarget.dataset.plate || '');
+    if (!id || this.data.familyBusyId) return;
+    const res = await wx.showModal({
+      title: `退回 ${plate}？`,
+      editable: true,
+      placeholderText: '请填写退回原因（必填），办公室会看到',
+      confirmText: '确认退回',
+    });
+    if (!res.confirm) return;
+    const reason = (res.content || '').trim();
+    if (!reason) return wx.showToast({ icon: 'none', title: '请填写退回原因' });
+    this.setData({ familyBusyId: id });
+    try {
+      await familyCars.managerReview(id, 'return', reason);
+      wx.showToast({ title: '已退回办公室' });
+      await this.load();
+    } catch (err: any) {
+      wx.showToast({ icon: 'none', title: err?.message || '操作失败' });
+    } finally {
+      this.setData({ familyBusyId: 0 });
     }
   },
 

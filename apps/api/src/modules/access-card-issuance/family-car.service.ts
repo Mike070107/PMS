@@ -79,7 +79,8 @@ export const FAMILY_STATUS_LABEL: Record<FamilyCarStatus, string> = {
 
 /** 还在办理或有效、会占用这个车牌的状态 */
 const LIVE_STATUSES: FamilyCarStatus[] = ['upload', 'office', 'manager', 'returned', 'opening', 'active'];
-const MANAGER_KEYS = ['family-cars-approve'];
+// 网页「亲情车经理审核」和员工小程序「审批 · 亲情车」是同一件事的两个入口
+const MANAGER_KEYS = ['family-cars-approve', 'app:family-car-approve'];
 
 @Injectable()
 export class FamilyCarService {
@@ -702,8 +703,8 @@ export class FamilyCarService {
     for (const receiverId of ids) {
       await this.notifications.notifyUser({
         tenantId: car.tenantId, receiverId, eventKey: 'family_car_pending_manager', title,
-        // 经理审核目前在网页「亲情车管理」办理；小程序审批页还没有亲情车，不带落地页
-        payload: { familyCarId: car.id },
+        // 点通知直达员工小程序的亲情车审批
+        payload: { familyCarId: car.id }, page: '/pages/approvals/approvals?section=family',
         template: 'orderUrge',
         templateFields: this.templateFields(car, '待经理审核', `${car.carOwnerName}（${car.relation}）亲情车待审核`),
       });

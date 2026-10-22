@@ -70,7 +70,7 @@ export class StopFamilyCarDto {
   @IsString() @MinLength(1) @MaxLength(200) note: string;
 }
 
-const MANAGER = ['family-cars-approve'] as const;
+const MANAGER = ['family-cars-approve', 'app:family-car-approve'] as const;
 
 /** 亲情车管理：清册、登记、资料、办公室审核、物业经理审核、开通、停用 */
 @Controller('family-cars')

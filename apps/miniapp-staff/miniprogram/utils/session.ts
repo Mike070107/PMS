@@ -52,6 +52,8 @@ export interface StaffSession {
    */
   canViewSku: boolean;
   canEditSku: boolean;
+  /** 亲情车经理审批（app:family-car-approve）：在「审批」里看待审亲情车 */
+  canApproveFamilyCar: boolean;
   /** 采购审批（两步各自一格） */
   canApproveAsManager: boolean;
   canApproveAsPurchaser: boolean;
@@ -94,6 +96,7 @@ const emptySession = (): StaffSession => ({
   canEditStocktakes: false,
   canViewSku: false,
   canEditSku: false,
+  canApproveFamilyCar: false,
   canApproveAsManager: false,
   canApproveAsPurchaser: false,
   canApprove: false,
@@ -117,6 +120,7 @@ export function buildSession(me: MeResp | null): StaffSession {
   const canSeePool = can('app:pool', 'view');
   const canSeeDispatch = can('app:dispatch', 'view');
   const canSeeMyOrders = can('app:my-orders', 'view');
+  const canApproveFamilyCar = can('app:family-car-approve', 'view');
   const canApproveAsManager = can('app:approve-manager', 'edit');
   const canApproveAsPurchaser = can('app:approve-purchaser', 'edit');
   return {
@@ -141,6 +145,7 @@ export function buildSession(me: MeResp | null): StaffSession {
     canEditStocktakes: can('app:stocktakes', 'edit'),
     canViewSku: can('app:materials', 'view'),
     canEditSku: can('app:materials', 'edit'),
+    canApproveFamilyCar,
     canApproveAsManager,
     canApproveAsPurchaser,
     canApprove: canApproveAsManager || canApproveAsPurchaser,

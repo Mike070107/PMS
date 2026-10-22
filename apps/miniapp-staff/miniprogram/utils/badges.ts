@@ -14,7 +14,7 @@
  * 不做定时轮询：角标只在 tab 页 onShow、小程序切回前台、下拉刷新
  * 以及接单/完工等明确业务动作后更新，避免无人操作时持续请求服务器。
  */
-import { maintenance, purchases, repairs } from '@pms/api-client';
+import { familyCars, maintenance, purchases, repairs } from '@pms/api-client';
 import { PurchaseRequestStatus } from '@pms/shared-types';
 import { readCachedAccess, setTabBadge } from './tabbar';
 import { hasToken, refreshUnread } from './unread';
@@ -48,14 +48,20 @@ export async function refreshTabBadges(page: any): Promise<number> {
       .catch(() => undefined);
   }
 
-  // 审批页先看经理那一步（采购申请必须先过经理），角标口径跟着它
-  if (can('app:approve-manager') || can('app:approve-purchaser')) {
+  // 审批页先看经理那一步（采购申请必须先过经理），角标口径跟着它；
+  // 亲情车待审是同一屏的另一摊，两笔要加起来一次设，否则后到的会把前一个数覆盖掉
+  if (can('app:approve-manager') || can('app:approve-purchaser') || can('app:family-car-approve')) {
     const status = can('app:approve-manager')
       ? PurchaseRequestStatus.MANAGER_REVIEW
       : PurchaseRequestStatus.PURCHASER_REVIEW;
-    purchases
-      .listRequests({ status })
-      .then((list) => setTabBadge(page, 'approvals', list.length))
+    const purchaseTask = can('app:approve-manager') || can('app:approve-purchaser')
+      ? purchases.listRequests({ status }).then((list) => list.length).catch(() => 0)
+      : Promise.resolve(0);
+    const familyTask = can('app:family-car-approve')
+      ? familyCars.pendingManager().then((list) => list.length).catch(() => 0)
+      : Promise.resolve(0);
+    Promise.all([purchaseTask, familyTask])
+      .then(([purchaseCount, familyCount]) => setTabBadge(page, 'approvals', purchaseCount + familyCount))
       .catch(() => undefined);
   }
 

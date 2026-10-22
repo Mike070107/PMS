@@ -225,6 +225,13 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
     editHint: '采购申请要先过这一步',
   },
   {
+    key: 'app:family-car-approve',
+    label: '亲情车经理审批',
+    hint: '看亲情车登记和资料，通过后自动开通车库并续期一年',
+    editLabel: '通过 / 退回',
+    editHint: '通过后立刻下发车库授权',
+  },
+  {
     key: 'app:approve-purchaser',
     label: '采购审批（采购这一步）',
     hint: '看经理批完、待采购确认的单',

@@ -57,6 +57,7 @@ export const STAFF_APP_PAGE_KEYS = [
   'app:messages', // 消息中心
   'app:experience-notes', // 维修经验总结（查看/编辑；默认维修工无需额外授权）
   'app:apartment-cashier', // 公寓收费工作台（按房间收电费/房租/停车费，出小票）
+  'app:family-car-approve', // 亲情车经理审批（看资料、通过后开通车库）
 ] as const;
 
 export type StaffAppPageKey = (typeof STAFF_APP_PAGE_KEYS)[number];
@@ -135,6 +136,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:stocktakes': 'e',
       'app:materials': 'e',
       'app:approve-manager': 'e',
+      'app:family-car-approve': 'e',
       'app:maintenance-inspect': 'v',
       'app:my-repairs': 'v',
       'app:repair-create': 'v',

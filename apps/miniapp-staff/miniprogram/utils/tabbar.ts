@@ -24,6 +24,7 @@ export const STAFF_APP_PAGE_KEYS = [
   'app:materials',
   'app:approve-manager',
   'app:approve-purchaser',
+  'app:family-car-approve',
   'app:repair-create',
   'app:messages',
   'app:apartment-cashier',

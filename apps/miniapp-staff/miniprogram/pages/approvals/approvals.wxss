@@ -39,5 +39,15 @@
 .pick-box--on { border-color: var(--color-brand); background: var(--color-brand) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") no-repeat center / 30rpx; }
 .summary-bar__btns { display: flex; flex-shrink: 0; gap: 12rpx; }
 
+/* ---- 亲情车待审（2026-10-22）：车牌要一眼认出来，不许换行、不加点 ---- */
+.family-card { border-left-color: #7a5cc4; }
+.family-card__head { display: flex; align-items: baseline; gap: 16rpx; }
+.family-card__plate { flex-shrink: 0; white-space: nowrap; padding: 4rpx 16rpx; border: 2rpx solid #b9c9e6; border-radius: 10rpx; background: #eef4ff; color: #123a78; font-size: 36rpx; font-weight: 700; letter-spacing: 2rpx; }
+.family-card__room { flex: 1; min-width: 0; color: var(--color-text-secondary); font-size: var(--font-sm); }
+.family-photos { display: flex; flex-wrap: wrap; gap: 12rpx; margin: 8rpx 0 4rpx; }
+.family-photos__item { width: 150rpx; height: 150rpx; border-radius: 12rpx; background: #e4e9ef; }
+.family-photos__pdf { display: flex; align-items: center; justify-content: center; width: 150rpx; height: 150rpx; padding: 8rpx; border-radius: 12rpx; background: #fff1f0; color: #cf1322; font-size: var(--font-xs); line-height: 1.3; word-break: break-all; }
+.family-file-src { margin-top: 6rpx; color: var(--color-text-tertiary); font-size: var(--font-xs); }
+
 /* 卡片上的「详情 / 编辑 ›」：进申请单详情页看全部照片、改明细、补图（2026-09-06） */
 .pr-detail-link { flex-shrink: 0; margin-left: 16rpx; padding: 8rpx 0; color: var(--color-brand); font-size: var(--font-sm); font-weight: 600; }

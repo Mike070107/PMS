@@ -71,7 +71,11 @@ function setup(legacyRows: any[] = []) {
   family = new FamilyCarService(
     repos.car as any, repos.house as any, repos.building as any, repos.community as any, repos.user as any,
     repos.query as any, repos.op as any, repos.proof as any, parking as any, proofs, storage as any,
-    { userIdsWithPermission: async (_t: number, key: string) => (key === 'family-cars' ? [10] : [20]) } as any,
+    {
+      // 办公室走网页那一格；经理只有小程序那一格也应该收到待审提醒
+      userIdsWithPermission: async (_t: number, key: string) =>
+        key === 'family-cars' ? [10] : key === 'app:family-car-approve' ? [30] : [],
+    } as any,
     { notifyUser: async (input: any) => { notices.push(input); } } as any,
   );
   const check = async (plate: string) => repos.query.save({ tenantId: 1, queryKind: 'vehicle', term: plate, status: 'completed', completedAt: new Date(), rows: legacyRows });
@@ -124,7 +128,10 @@ test('完整流程：登记 → 业主扫码填信息上传 → 办公室审核 
   await family.officeReview(created.id, 'approve', '户口本可证明父子关系', office);
   car = await family.get(created.id, office);
   assert.equal(car.status, 'manager');
-  assert.ok(notices.some((n) => n.receiverId === 20 && n.eventKey === 'family_car_pending_manager'), '经理收到待审提醒');
+  const managerNotice = notices.find((n) => n.eventKey === 'family_car_pending_manager');
+  assert.ok(managerNotice, '经理收到待审提醒');
+  assert.equal(managerNotice.receiverId, 30, '只勾了小程序「亲情车经理审批」也能收到提醒');
+  assert.equal(managerNotice.page, '/pages/approvals/approvals?section=family', '通知点开直达亲情车审批');
   assert.equal((await family.pendingManager(manager)).length, 1);
 
   // 经理退回 → 办公室重新提交 → 经理通过
