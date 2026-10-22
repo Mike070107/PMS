@@ -17,7 +17,7 @@ export default function BrandLogo({ size = 'default', dark = false }: BrandLogoP
     <Space size={isLarge ? 14 : 10} align="center">
       <img
         aria-hidden="true"
-        src="/app-icon-192.png"
+        src={`${import.meta.env.BASE_URL}app-icon-192.png`}
         alt=""
         style={{
           width: markSize,
@@ -26,7 +26,7 @@ export default function BrandLogo({ size = 'default', dark = false }: BrandLogoP
           borderRadius: isLarge ? 12 : 9,
           display: 'block',
           objectFit: 'cover',
-          boxShadow: isLarge ? '0 12px 28px rgba(49, 85, 138, 0.2)' : 'none',
+          boxShadow: isLarge ? '0 12px 28px rgba(14, 107, 90, 0.2)' : 'none',
         }}
       />
       {!isCompact && (

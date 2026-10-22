@@ -9,6 +9,8 @@ const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate(
 const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
 
 export default defineConfig({
+  // 部署到子路径（如测试环境 /beta-legacy/）时用 VITE_BASE 覆盖；默认站点根
+  base: env.VITE_BASE || '/',
   plugins: [react()],
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(env.VITE_APP_VERSION || `2.0.${stamp}`),

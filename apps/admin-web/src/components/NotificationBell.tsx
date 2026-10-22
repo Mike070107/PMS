@@ -219,7 +219,7 @@ export default function NotificationBell() {
                   onClick={() => onItemClick(row)}
                   style={{
                     cursor: 'pointer',
-                    background: row.readAt ? undefined : 'rgba(49,85,138,0.06)',
+                    background: row.readAt ? undefined : 'rgba(14,107,90,0.06)',
                     borderRadius: 8,
                     padding: '12px 12px',
                     marginBottom: 4,
@@ -228,7 +228,7 @@ export default function NotificationBell() {
                   <List.Item.Meta
                     title={
                       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                        {!row.readAt && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#31558a', flex: 'none' }} />}
+                        {!row.readAt && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#0e6b5a', flex: 'none' }} />}
                         <Tag color={CATEGORY_COLORS[meta.categoryTone]} style={{ margin: 0 }}>{meta.categoryLabel}</Tag>
                         <Tag
                           color={meta.priority === 'action' ? 'red' : meta.priority === 'important' ? 'orange' : undefined}

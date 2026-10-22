@@ -6,10 +6,10 @@
  * 令牌故意和收费台同名同值（--ac-*），改品牌色时两边一起改，不会漏。
  */
 .fees-shell {
-  --ac-brand: #31558a;
-  --ac-dark: #243f69;
-  --ac-line: #d8e2ed;
-  --ac-muted: #60748a;
+  --ac-brand: #0e6b5a;
+  --ac-dark: #0a5547;
+  --ac-line: #e3e6e0;
+  --ac-muted: #55615b;
   --ac-money: #d2682b;
   --ac-neg: #c0392b;
 }
@@ -20,7 +20,7 @@
   border: 1px solid var(--ac-line);
   border-radius: 16px;
   background: #fff;
-  box-shadow: 0 10px 28px rgba(36, 63, 105, 0.07);
+  box-shadow: 0 10px 28px rgba(10, 85, 71, 0.07);
 }
 .fees-shell .fees-card--flush { padding: 20px 20px 8px; }
 
@@ -73,7 +73,7 @@
   border: 1px solid var(--ac-line);
   border-radius: 13px;
   background: #fff;
-  box-shadow: 0 10px 28px rgba(36, 63, 105, 0.07);
+  box-shadow: 0 10px 28px rgba(10, 85, 71, 0.07);
 }
 .fees-shell .fees-tile small { display: block; color: var(--ac-muted); font-size: 12px; }
 .fees-shell .fees-tile strong {

@@ -2,20 +2,22 @@ import type { ThemeConfig } from 'antd';
 
 /**
  * PMS Admin 设计系统（design-system/pms-admin/MASTER.md）
- * 简洁运营后台配色：中性灰白承载内容，海军蓝用于导航与信息强调。
+ *
+ * 2026-10 与新界面（apps/neighbor-web）统一：浅色侧栏 + 墨绿主色 + 大字版尺寸。
+ * 字号/控件高度本来就已经按现场用户放大过（16px 基准、46px 控件），这里只调色板与导航。
  */
 export const brand = {
-  primary: '#31558a',
-  primaryHover: '#254675',
-  accent: '#4f7fb3',
-  ink: '#1f334a',
-  inkSecondary: '#5f7287',
-  bgLayout: '#eef3f8',
-  siderTop: '#31558a',
-  siderBottom: '#243f69',
-  siderText: 'rgba(241, 245, 249, 0.82)',
-  siderTextMuted: 'rgba(241, 245, 249, 0.46)',
-  gold: '#f59e0b',
+  primary: '#0e6b5a',
+  primaryHover: '#0a5547',
+  accent: '#0b5a4b',
+  ink: '#17201c',
+  inkSecondary: '#55615b',
+  bgLayout: '#f5f6f3',
+  siderTop: '#ffffff',
+  siderBottom: '#fbfcfa',
+  siderText: 'rgba(23, 32, 28, 0.82)',
+  siderTextMuted: 'rgba(23, 32, 28, 0.46)',
+  gold: '#a45f00',
 };
 
 export const antdTheme: ThemeConfig = {
@@ -25,10 +27,10 @@ export const antdTheme: ThemeConfig = {
     colorLink: brand.accent,
     colorTextBase: brand.ink,
     colorBgLayout: brand.bgLayout,
-    colorBorder: '#d6e1ec',
-    colorBorderSecondary: '#e4ebf2',
+    colorBorder: '#e3e6e0',
+    colorBorderSecondary: '#eef0eb',
     colorBgContainer: '#ffffff',
-    colorFillAlter: '#f5f8fb',
+    colorFillAlter: '#f7f8f6',
     borderRadius: 12,
     borderRadiusSM: 9,
     fontSize: 16,
@@ -37,42 +39,51 @@ export const antdTheme: ThemeConfig = {
     padding: 18,
     paddingLG: 24,
     boxShadowTertiary:
-      '0 1px 2px rgba(31, 41, 55, 0.04), 0 8px 24px rgba(31, 41, 55, 0.05)',
+      '0 1px 2px rgba(23, 32, 28, 0.04), 0 8px 24px rgba(23, 32, 28, 0.05)',
   },
   components: {
     Button: {
       controlHeight: 46,
       controlHeightLG: 52,
       fontWeight: 500,
-      primaryShadow: '0 4px 14px rgba(49, 85, 138, 0.18)',
+      primaryShadow: '0 4px 14px rgba(14, 107, 90, 0.18)',
     },
     Card: {
       headerFontSize: 18,
       headerHeight: 62,
       boxShadowTertiary:
-        '0 1px 2px rgba(31, 41, 55, 0.04), 0 8px 24px rgba(31, 41, 55, 0.05)',
+        '0 1px 2px rgba(23, 32, 28, 0.04), 0 8px 24px rgba(23, 32, 28, 0.05)',
     },
     Descriptions: { titleMarginBottom: 18 },
     Form: { labelFontSize: 16, verticalLabelPadding: '0 0 10px' },
     Input: { inputFontSize: 16, activeBorderColor: brand.primary },
     Menu: {
-      itemHeight: 48,
-      fontSize: 15,
+      itemHeight: 46,
+      fontSize: 15.5,
+      // 浅色侧栏：未选中用次要墨色，选中用墨绿浅底
+      itemBg: 'transparent',
+      itemColor: brand.siderText,
+      itemHoverBg: '#f5f7f4',
+      itemHoverColor: brand.ink,
+      itemSelectedBg: '#e2f0eb',
+      itemSelectedColor: '#0b5a4b',
+      itemMarginInline: 8,
+      itemBorderRadius: 9,
+      groupTitleColor: '#8d978f',
+      // 移动端抽屉仍可能用深色主题，保留一套 dark 值
       darkItemBg: 'transparent',
       darkSubMenuItemBg: 'transparent',
-      darkItemColor: brand.siderText,
+      darkItemColor: 'rgba(255,255,255,0.82)',
       darkItemHoverBg: 'rgba(255, 255, 255, 0.08)',
       darkItemSelectedBg: 'rgba(255, 255, 255, 0.14)',
       darkItemSelectedColor: '#ffffff',
-      itemMarginInline: 8,
-      itemBorderRadius: 9,
     },
     Table: {
-      cellFontSize: 15,
-      headerBg: '#f4f8fc',
-      headerColor: '#465d75',
+      cellFontSize: 15.5,
+      headerBg: '#f7f8f6',
+      headerColor: '#55615b',
       headerSplitColor: 'transparent',
-      rowHoverBg: '#edf4fa',
+      rowHoverBg: '#f6f9f6',
     },
     Modal: { titleFontSize: 20 },
     Select: { optionFontSize: 16, controlHeight: 46 },

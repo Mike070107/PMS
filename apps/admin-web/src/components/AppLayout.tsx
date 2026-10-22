@@ -256,12 +256,12 @@ export default function AppLayout() {
   const sidebarContent = (
     <div className="pms-sider-inner">
       <div className="pms-sider-brand">
-        <BrandLogo dark />
+        <BrandLogo />
       </div>
       <div className="pms-sider-nav-label">业务导航</div>
       <Menu
         mode="inline"
-        theme="dark"
+        theme="light"
         selectedKeys={[selected]}
         items={menuItems}
         onClick={() => setMobileNavOpen(false)}
@@ -292,7 +292,7 @@ export default function AppLayout() {
   return (
     <Layout className="pms-app-shell">
       {!isMobile && (
-        <Sider className="pms-sider pms-desktop-sider" width={236} theme="dark">
+        <Sider className="pms-sider pms-desktop-sider" width={236} theme="light">
           {sidebarContent}
         </Sider>
       )}
@@ -304,9 +304,9 @@ export default function AppLayout() {
         open={isMobile && mobileNavOpen}
         onClose={() => setMobileNavOpen(false)}
         styles={{
-          body: { padding: 0, background: '#243f69' },
+          body: { padding: 0, background: '#0a5547' },
           content: {
-            background: 'linear-gradient(180deg, #31558a 0%, #243f69 100%)',
+            background: 'linear-gradient(180deg, #0e6b5a 0%, #0a5547 100%)',
             borderRadius: '0 18px 18px 0',
           },
         }}
