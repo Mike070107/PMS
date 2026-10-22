@@ -3633,3 +3633,32 @@ h2.ant-typography {
 .ant-statistic-content { color: var(--pms-ink); }
 .ant-segmented { border-radius: 10px; }
 .ant-form-item-label > label { font-size: 15px !important; }
+
+/* 第三轮：状态标签与新界面的状态字典同色（浅底 + 深字），不用 antd 的高饱和色块。
+   新界面口径：待派单琥珀 / 待接单蓝 / 维修中青绿 / 等材料紫 / 待验收蓝青 / 已完成绿 / 关闭灰 */
+.ant-tag {
+  border-color: transparent !important;
+  font-weight: 600;
+  padding-inline: 9px;
+}
+.ant-tag-blue,
+.ant-tag-processing { color: #2b5c94 !important; background: #e7eef8 !important; }
+.ant-tag-green,
+.ant-tag-success { color: #2f7a3a !important; background: #e6f3e7 !important; }
+.ant-tag-orange,
+.ant-tag-gold,
+.ant-tag-warning { color: #a45f00 !important; background: #fcf0d9 !important; }
+.ant-tag-red,
+.ant-tag-error,
+.ant-tag-volcano { color: #b4342a !important; background: #fbe8e5 !important; }
+.ant-tag-purple,
+.ant-tag-magenta { color: #7a3e8f !important; background: #f4e9f8 !important; }
+.ant-tag-cyan { color: #1e6577 !important; background: #e6f1f4 !important; }
+.ant-tag-default,
+.ant-tag-geekblue,
+.ant-tag-lime { color: #4e5a54 !important; background: #eef0ec !important; }
+
+/* 页面说明、区块标题与正文的节奏对齐新版 */
+.pms-page-note { font-size: 15px !important; color: var(--pms-ink-secondary) !important; }
+.ant-typography h4, h4.ant-typography { font-size: 17px !important; font-weight: 650 !important; }
+.ant-divider-inner-text { font-size: 14.5px; color: var(--pms-ink-secondary); }
