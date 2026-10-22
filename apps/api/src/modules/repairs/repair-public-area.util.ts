@@ -103,6 +103,10 @@ export function detectPublicAreaPlace(text: string): string {
 export function classifyPublicAreaText(text: string): boolean | null {
   const value = String(text || '');
   if (!value) return null;
+  // 授权范围不是故障位置；删去权限短语后仍保留真实公区故障的判断。
+  const locationText = value.replace(/(?:开通|增加|添加|取消|调整|变更)?[\s的]*(?:楼道|单元门|大门|电梯|门禁|楼栋)(?:通行|出入)?权限/g, '权限');
+  const cardService = /新开卡|开新卡|补卡|换卡|办卡|发卡|开通.*权限|增加.*权限|门禁卡.*(?:授权|续期|挂失)/.test(value);
+  if (cardService && HOUSE_ADDRESS_RE.test(value) && !detectPublicAreaWord(locationText)) return false;
   if (INDOOR_MARKERS.some((word) => value.includes(word))) return false;
   if (INDOOR_WORDS.some((word) => value.includes(word))) return false;
   if (

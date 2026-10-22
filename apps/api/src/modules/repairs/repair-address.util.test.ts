@@ -317,3 +317,18 @@ test('matchedRaw 要圈住粘在一起的完整数字，别在描述里剩个「
   const c2 = extractAddressCandidate('1984号门口监控黑屏')!;
   assert.equal(c2.matchedRaw, '1984号');
 });
+
+
+test('零散楼号与后续完整弄号地址不跨句拼接', () => {
+  const result = extractAddressCandidate('11号1302新开卡，开通楼道权限，卡号11277；228弄51号1302');
+  assert.equal(result?.lane, '228');
+  assert.equal(result?.buildingNo, '51');
+  assert.equal(result?.roomNo, '1302');
+});
+
+
+test('办理目标即使提供弄号，也不能覆盖句首报修房屋', () => {
+  const result = extractAddressCandidate('51号1302开通228弄19号702权限');
+  assert.equal(result?.buildingNo, '51');
+  assert.equal(result?.roomNo, '1302');
+});

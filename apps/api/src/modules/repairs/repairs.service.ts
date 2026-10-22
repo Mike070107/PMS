@@ -4876,8 +4876,10 @@ export class RepairsService implements OnModuleInit {
       return;
     }
 
+    const failed: string[] = [];
+    const results: string[] = [];
     for (const receiver of receivers) {
-      await this.notifications.notifyUser({
+      const delivery = await this.notifications.notifyUser({
         tenantId: workOrder.tenantId,
         receiverId: receiver.id,
         eventKey: unassigned ? 'order_pool_unassigned' : 'order_pool_new',
@@ -4911,6 +4913,29 @@ export class RepairsService implements OnModuleInit {
           dueAt: this.formatDue(workOrder),
         },
       });
+      const result = `${receiver.name || '维修工'}：${delivery?.reason || '通知结果未知，请核对'}`;
+      results.push(result);
+      if (!delivery?.externalSent) failed.push(result);
+    }
+    const deliveryLogRepo = this.dataSource.getRepository(WorkOrderLog);
+    await deliveryLogRepo.save(deliveryLogRepo.create({
+      tenantId: workOrder.tenantId, workOrderId: workOrder.id,
+      fromStatus: workOrder.status, toStatus: workOrder.status,
+      action: 'progress', operatorId: null,
+      note: `${unassigned ? '等待办公室派单' : '自动分流后等待维修工接单'}；${results.join('；')}`,
+      createdBy: null, updatedBy: null,
+    }));
+    if (failed.length && !unassigned) {
+      const dispatchers = await this.dispatchersToNotify(workOrder.tenantId, workOrder.communityId, null);
+      for (const dispatcher of dispatchers) {
+        await this.notifications.notifyUser({
+          tenantId: workOrder.tenantId, receiverId: dispatcher.id,
+          eventKey: 'order_notification_failed',
+          title: `工单微信提醒未全部发出：${workOrder.orderNo}`,
+          payload: { workOrderId: workOrder.id, orderNo: workOrder.orderNo, content: failed.join('；') },
+          page: `pages/order-detail/order-detail?id=${workOrder.id}`,
+        });
+      }
     }
   }
 
@@ -5421,7 +5446,7 @@ export class RepairsService implements OnModuleInit {
     const candidates = await this.ruleCandidates(tenantId, typeRule, dto.communityId);
     const configuredAssigneeCount = typeRule ? ruleAssigneeIds(typeRule).length : 0;
     const routingNote = candidates.length
-      ? `已进入工单池并通知维修工 ${candidates.map((c) => c.name || '未命名员工').join('、')}`
+      ? `已按类型进入维修工接单池，候选人 ${candidates.map((c) => c.name || '未命名员工').join('、')}`
       : !repairType
         ? '未识别到报修类型，已转办公室派单'
         : !typeRule
@@ -5585,7 +5610,11 @@ export class RepairsService implements OnModuleInit {
     // 即使类型没配默认维修工也必须调用：notifyCandidatesOnCreate 会退给有「派单台·派单」
     // 权限的办公室人员。旧代码在外层先判断 candidates.length，导致方法里的办公室兜底
     // 永远进不去，新报修就静悄悄躺在池子里。
-    await this.notifyCandidatesOnCreate(created.workOrder, candidates, submittedBy);
+    try {
+      await this.notifyCandidatesOnCreate(created.workOrder, candidates, submittedBy);
+    } catch (error) {
+      this.logger.error(`工单已创建，通知结果记录失败：${error instanceof Error ? error.message : error}`);
+    }
 
     await this.recordRepairAiFeedback(dto, created, repairType, urgent, submittedBy);
 

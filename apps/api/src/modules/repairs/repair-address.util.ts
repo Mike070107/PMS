@@ -122,6 +122,11 @@ export function extractAddressCandidate(text: string): RepairAddressCandidate | 
   BUILDING_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = BUILDING_RE.exec(value))) {
+    // 不把前一句的残缺楼号拼到后一句明确的“弄+号”上。
+    // “11号1302新开卡；228弄51号1302”应取同一连续门牌中的51号。
+    if (laneMatch && m.index < laneMatch.index && /[；;\n]\s*$/.test(value.slice(0, laneMatch.index)) &&
+      /^[\s、,，]{0,2}\d{1,4}号(?:楼|栋)?[\s、,，]{0,2}\d{3,4}(?:室|房)?\s*$/.test(value.slice(laneMatch.index + laneMatch[0].length))) continue;
+
     const before = value.slice(Math.max(0, m.index - 2), m.index);
     if (NO_PREFIX_BLACKLIST.has(before)) continue;
     if (PLACE_CHAR_BEFORE_NO.test(value.slice(Math.max(0, m.index - 1), m.index))) continue;

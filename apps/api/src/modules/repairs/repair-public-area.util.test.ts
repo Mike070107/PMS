@@ -51,3 +51,15 @@ test('模糊词不认：宁可漏判，也不能把户内单错判成公区', ()
   assert.equal(detectPublicAreaWord('水龙头坏了'), '');
   assert.equal(classifyPublicAreaText('门口有点吵'), null);
 });
+
+
+test('门禁卡办理的权限范围不能降级房屋地址，真实公区故障仍保留', () => {
+  for (const text of [
+    '11号1302新开卡，开通楼道权限，卡号11277；228弄51号1302',
+    '228弄51号1302补卡，增加电梯权限',
+    '51号1302门禁卡授权',
+    '51号1302开通单元门权限',
+  ]) assert.equal(classifyPublicAreaText(text), false, text);
+  assert.equal(classifyPublicAreaText('51号1302补卡，楼道灯也不亮'), true);
+  assert.equal(classifyPublicAreaText('51号1302楼下门口机损坏'), true);
+});

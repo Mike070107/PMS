@@ -297,7 +297,6 @@ export class NotificationsService {
     if (!item) throw new NotFoundException('notification not found');
     if (!item.readAt) {
       item.readAt = new Date();
-      item.status = NotifyStatus.SENT;
       await this.notificationRepo.save(item);
     }
     return { ok: true };
@@ -394,7 +393,7 @@ export class NotificationsService {
     try {
       const result: unknown = await this.notificationRepo.query(
         `UPDATE notifications
-            SET read_at = now(), status = '${NotifyStatus.SENT}'
+            SET read_at = now()
           WHERE tenant_id = $1 AND receiver_id = $2 AND read_at IS NULL
             AND (${clauses.join(' OR ')})`,
         params,
@@ -473,7 +472,7 @@ export class NotificationsService {
     template?: SubscribeTemplateKey;
     /** 事件的语义字段；填到模板哪个位置由 buildTemplateData 按模板真实字段决定 */
     templateFields?: TemplateFields;
-  }): Promise<void> {
+  }): Promise<{ externalSent: boolean; reason: string } | undefined> {
     try {
       const saved = await this.notificationRepo.save(
         this.notificationRepo.create({
@@ -503,7 +502,7 @@ export class NotificationsService {
           page: input.page,
           notificationId: saved.id,
         });
-        if (viaMp) return;
+        if (viaMp) return { externalSent: true, reason: '公众号已发送（不代表已读）' };
       }
 
       await this.trySendSubscribe({
@@ -514,6 +513,11 @@ export class NotificationsService {
         page: input.page,
         notificationId: saved.id,
       });
+      const delivery = await this.notificationRepo.findOne({ where: { id: saved.id, tenantId: input.tenantId } });
+      return {
+        externalSent: delivery?.channel === NotifyChannel.WX_SUBSCRIBE && delivery.status === NotifyStatus.SENT,
+        reason: String(delivery?.payload?.deliveryReason || (delivery?.channel === NotifyChannel.WX_SUBSCRIBE ? '微信已发送（不代表已读）' : '仅站内通知，微信未发送')),
+      };
     } catch (err) {
       this.logger.error(`通知写入失败（${input.eventKey}）：${(err as Error).message}`);
     }
@@ -579,6 +583,14 @@ export class NotificationsService {
     return process.env.WX_STAFF_APPID || undefined;
   }
 
+  private async recordDeliveryFailure(id: number, reason: string) {
+    const notification = await this.notificationRepo.findOne({ where: { id } });
+    await this.notificationRepo.update({ id }, {
+      status: NotifyStatus.FALLBACK,
+      payload: { ...(notification?.payload || {}), deliveryReason: reason },
+    });
+  }
+
   private async trySendSubscribe(input: {
     tenantId: number;
     receiverId: number;
@@ -596,24 +608,27 @@ export class NotificationsService {
         .find(Boolean) ||
       '';
     // 物业还没在公众平台申请模板：只走站内信，不算异常
-    if (!templateId) return;
+    if (!templateId) {
+      await this.recordDeliveryFailure(input.notificationId, '未配置微信通知模板，仅站内通知');
+      return;
+    }
     const appType = TEMPLATE_APP[input.template];
 
     const receiver = await this.userRepo.findOne({
       where: { id: input.receiverId },
       select: ['id', 'wxOpenid'],
     });
-    if (!receiver?.wxOpenid) return;
+    if (!receiver?.wxOpenid) {
+      await this.recordDeliveryFailure(input.notificationId, '未绑定小程序身份，仅站内通知');
+      return;
+    }
 
     const grant = await this.grantRepo.findOne({
       where: { tenantId: input.tenantId, userId: input.receiverId, templateId },
     });
     // 没授权或额度用完：标成 fallback，后台能看出「这条没推出去，只落了站内信」
     if (!grant || grant.remaining <= 0) {
-      await this.notificationRepo.update(
-        { id: input.notificationId },
-        { status: NotifyStatus.FALLBACK },
-      );
+      await this.recordDeliveryFailure(input.notificationId, '微信订阅未授权或额度用完，请在员工小程序「我的 → 新工单提醒」重新允许；仅站内通知');
       return;
     }
 
@@ -623,10 +638,7 @@ export class NotificationsService {
       templateFields = await this.wechat.getTemplateFields(templateId, appType);
     } catch (err) {
       this.logger.error(`拉取订阅模板字段失败（${templateId}）：${(err as Error).message}`);
-      await this.notificationRepo.update(
-        { id: input.notificationId },
-        { status: NotifyStatus.FALLBACK },
-      );
+      await this.recordDeliveryFailure(input.notificationId, '微信通知模板读取失败，仅站内通知');
       return;
     }
 
@@ -637,10 +649,12 @@ export class NotificationsService {
     const { data } = buildTemplateData(input.fields, templateFields);
     // 员工端的模板必须用员工端的 token 发 —— 这里原来没传 appType，
     // 「新工单派给维修工」一直在拿业主端的 token 发，从来没成功过
-    const ok = await this.wechat.sendSubscribeMessage(
+    const outcome = await this.wechat.sendSubscribeMessageDetailed(
       { openid: receiver.wxOpenid, templateId, page: input.page, data },
       appType,
     );
+    const ok = outcome.ok;
+    if (!ok) await this.recordDeliveryFailure(input.notificationId, `微信发送失败${outcome.errcode ? `（错误码 ${outcome.errcode}）` : ''}，仅站内通知；请检查订阅授权或通知配置`);
     await this.notificationRepo.update(
       { id: input.notificationId },
       { channel: ok ? NotifyChannel.WX_SUBSCRIBE : NotifyChannel.IN_APP,

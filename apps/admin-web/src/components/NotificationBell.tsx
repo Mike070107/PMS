@@ -25,6 +25,7 @@ const EVENT_ROUTES: Record<string, string> = {
   order_urged_escalated: '/work-orders',
   order_pool_unassigned: '/work-orders',
   order_pool_new: '/work-orders',
+  order_notification_failed: '/work-orders',
   order_transfer_requested: '/work-orders',
   order_assigned: '/work-orders',
   order_urge_repair: '/work-orders',
