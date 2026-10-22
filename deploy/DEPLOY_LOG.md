@@ -5107,3 +5107,10 @@
   - a778aa47 feat(access-cards): audit card initialization batches
   - 1ff731ea feat(access-cards): add ACR122U issuance workflow
 
+## 2026-10-22 13:00 · api · 1496a5ef
+
+- 包：`pms-api-fast-20261022-130029.tar.gz`
+- 提交：1496a5ef feat(family-cars): 亲情车管理页：清册、登记、扫码填写上传、办公室与经理两级审核、自动开通续期、到期提醒停用
+- 自上次（04a589c0）以来上线的相关提交：
+  - 1496a5ef feat(family-cars): 亲情车管理页：清册、登记、扫码填写上传、办公室与经理两级审核、自动开通续期、到期提醒停用
+
