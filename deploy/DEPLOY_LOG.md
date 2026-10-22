@@ -5142,3 +5142,10 @@
 - 自上次（63d58f7d）以来上线的相关提交：
   - d20ab74a feat(fees): query current MIS property bills by household
 
+## 2026-10-22 14:10 · web · d20ab74a
+
+- 包：`pms-web-20261022-135623.tar.gz`
+- 提交：d20ab74a feat(fees): query current MIS property bills by household
+- 自上次（63d58f7d）以来上线的相关提交：
+  - d20ab74a feat(fees): query current MIS property bills by household
+
