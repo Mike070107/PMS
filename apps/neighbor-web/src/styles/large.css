@@ -1,0 +1,258 @@
+/*
+ * 大字版尺寸层（现场用户年龄偏大，默认按 16px 基准、44px 触控高度做）。
+ *
+ * 只覆盖 design.css 的尺寸，不改颜色与结构：删掉 main.tsx 里这一行 import
+ * 就回到设计稿原始尺寸。所有数值都在这里集中，改一处全站生效。
+ */
+
+:root {
+  --r: 12px;
+  --r-s: 9px;
+  --fs: 16px;          /* 正文 */
+  --fs-sm: 14.5px;     /* 次要 */
+  --fs-xs: 13.5px;     /* 注释 */
+  --fs-h1: 26px;
+  --fs-h2: 21px;
+  --ctrl: 44px;        /* 输入框 / 按钮标准高度 */
+  --row: 15px;         /* 表格单元格内边距 */
+  --gap: 16px;
+}
+
+body {
+  font-size: var(--fs);
+  line-height: 1.55;
+}
+
+/* ---------- 外壳 ---------- */
+#web { grid-template-columns: 252px 1fr; }
+
+.brand { padding: 18px 18px 14px; gap: 12px; }
+.logo { width: 38px; height: 38px; font-size: 18px; border-radius: 11px; }
+.brand b { font-size: 19px; }
+.brand small { font-size: 13.5px; margin-top: 1px; }
+
+.scope {
+  margin: 6px 12px 10px;
+  padding: 11px 12px;
+  font-size: 15.5px;
+  border-radius: 9px;
+}
+.scope select { font-size: 15.5px !important; }
+
+.nav { padding: 0 10px 14px; }
+.nav h6 { margin: 18px 10px 6px; font-size: 13.5px; letter-spacing: .3px; }
+.nav a {
+  padding: 11px 10px;
+  font-size: 16px;
+  border-radius: 9px;
+  gap: 11px;
+  justify-content: flex-start;
+}
+.nav a .icon { width: 21px; height: 21px; opacity: .9; }
+.nav a.on .icon { opacity: 1; }
+.nav a .n {
+  margin-left: auto;
+  font-size: 13px;
+  line-height: 21px;
+  padding: 0 7px;
+  border-radius: 11px;
+}
+.nav a .leg { margin-left: auto; font-size: 12px; padding: 0 5px; border-radius: 4px; }
+
+.me { padding: 14px 16px; font-size: 15px; gap: 11px; }
+.av { width: 40px; height: 40px; font-size: 16px; }
+.me b { font-size: 15.5px; }
+
+.top { height: 68px; padding: 0 26px; gap: 14px; }
+.crumb { font-size: 15px; }
+.crumb b { font-size: 18px; margin-left: 8px; }
+.search {
+  width: 420px;
+  height: var(--ctrl);
+  font-size: 15.5px;
+  padding: 0 14px;
+  border-radius: 10px;
+  gap: 9px;
+}
+.search kbd, .kbd { font-size: 12.5px; padding: 1px 6px; }
+.ib { width: var(--ctrl); height: var(--ctrl); border-radius: 10px; font-size: 18px; }
+.ib .icon { width: 21px; height: 21px; }
+.dot { width: 8px; height: 8px; top: 9px; right: 10px; }
+
+.content { padding: 26px 28px 90px; }
+
+/* ---------- 页头 ---------- */
+.ph { margin-bottom: 20px; align-items: center; }
+.ph h1 { font-size: var(--fs-h1); font-weight: 700; }
+.ph p { font-size: 15px; margin-top: 6px; line-height: 1.6; }
+.ph .act { gap: 10px; }
+
+/* ---------- 控件 ---------- */
+.btn {
+  height: var(--ctrl);
+  padding: 0 18px;
+  font-size: 15.5px;
+  border-radius: 9px;
+  gap: 8px;
+}
+.btn .icon { width: 18px; height: 18px; }
+.btn.sm { height: 36px; padding: 0 13px; font-size: 14.5px; border-radius: 8px; }
+.btn.sm .icon { width: 16px; height: 16px; }
+.btn.lg { height: 50px; padding: 0 22px; font-size: 17px; }
+
+.chip { height: 40px; padding: 0 16px; font-size: 15.5px; gap: 7px; border-radius: 999px; }
+.chip .c { font-size: 13.5px; }
+.seg { padding: 4px; border-radius: 10px; }
+.seg button { height: 36px; padding: 0 15px; font-size: 15px; border-radius: 8px; }
+
+.field { gap: 8px; margin-bottom: 16px; }
+.field label { font-size: 15px; }
+.in {
+  height: var(--ctrl);
+  font-size: 15.5px;
+  padding: 0 13px;
+  border-radius: 9px;
+}
+textarea.in { min-height: 96px; padding: 11px 13px; font-size: 15.5px; line-height: 1.6; }
+input[type="checkbox"] { width: 19px; height: 19px; }
+
+.pill {
+  height: 27px;
+  padding: 0 10px;
+  font-size: 13.5px;
+  border-radius: 7px;
+  gap: 6px;
+}
+.pill::before { width: 7px; height: 7px; }
+
+.sec-t { font-size: 15.5px; margin-bottom: 12px; gap: 9px; }
+.note { font-size: 14.5px; padding: 12px 14px; line-height: 1.75; border-radius: 9px; }
+.empty { padding: 46px 20px; font-size: 15.5px; line-height: 1.8; }
+.muted, .sub { font-size: inherit; }
+
+/* ---------- 表格 ---------- */
+.t th {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 13px var(--row);
+}
+.t td { padding: var(--row); font-size: 15.5px; }
+.t tr.row:hover td { background: #f6f9f6; }
+
+/* ---------- 工作台 ---------- */
+.kpis div { padding: 18px 22px; }
+.kpis small { font-size: 14.5px; }
+.kpis b { font-size: 30px; margin-top: 4px; letter-spacing: .3px; }
+.kpis em { font-size: 13.5px; }
+
+.todo a { padding: 17px 18px; grid-template-columns: 54px 1fr auto; gap: 15px; }
+.todo .num { font-size: 27px; }
+.todo b { font-size: 16.5px; }
+.todo span.d { font-size: 14.5px; margin-top: 2px; }
+.todo .go { font-size: 15px; }
+
+.quick { padding: 14px; gap: 10px; }
+.quick button { padding: 15px 16px; border-radius: 10px; }
+.quick b { font-size: 16px; }
+.quick span { font-size: 14px; margin-top: 2px; }
+
+/* ---------- 看板 ---------- */
+.board {
+  gap: 15px;
+  /* 大字版一列放不下 5 列就横向滚，不把卡片挤成两行 */
+  grid-template-columns: repeat(5, minmax(244px, 1fr));
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.board .col h4 { font-size: 15px; }
+.wc { padding: 14px 15px; margin-bottom: 11px; border-radius: 10px; }
+.wc .a { font-size: 16px; }
+.wc .q { font-size: 15px; margin: 5px 0 9px; line-height: 1.5; }
+.wc .m { font-size: 13.5px; gap: 8px; }
+
+.wo-bar { gap: 12px; margin-bottom: 16px; }
+
+/* ---------- 抽屉 ---------- */
+.sheet { width: min(760px, 100vw); }
+.sh-h { padding: 20px 22px 0; }
+.sh-h .l1 { font-size: 14.5px; }
+.sh-h h2 { font-size: 23px; margin: 6px 0 8px; }
+.sh-h .l3 { font-size: 15px; line-height: 1.7; }
+.tabs { gap: 4px; }
+.tabs button { padding: 13px 15px; font-size: 15.5px; }
+.sh-b { padding: 18px 22px 26px; }
+
+.next { padding: 14px 16px; border-radius: 10px; margin-bottom: 16px; }
+.next .k { font-size: 13.5px; }
+.next .t { font-size: 18px; margin: 4px 0 10px; }
+.next .row { gap: 10px; }
+.menu { min-width: 190px; }
+.menu button { padding: 11px 14px; font-size: 15px; }
+.menu button small { font-size: 13px; }
+.menu h6 { font-size: 12.5px; padding: 9px 14px 4px; }
+
+.facts { gap: 12px; margin-bottom: 16px; }
+.facts > div { padding: 12px 14px; border-radius: 9px; }
+.facts > div small { font-size: 13.5px; }
+.facts > div b { font-size: 16px; margin-top: 3px; }
+
+.kv { grid-template-columns: 108px 1fr; gap: 11px 14px; font-size: 15.5px; }
+.kv dt { font-size: 15px; }
+
+.flow { padding: 16px 18px; border-radius: 11px; }
+.flow h3 { font-size: 18px; margin-bottom: 14px; }
+.flow .foot { display: flex; gap: 10px; margin-top: 6px; }
+.step-n { width: 24px; height: 24px; font-size: 13.5px; line-height: 24px; }
+
+.workers { display: flex; flex-direction: column; gap: 9px; }
+.workers .wk { padding: 13px; border-radius: 10px; gap: 12px; }
+.workers .wk b { font-size: 15.5px; }
+.workers .wk small { font-size: 13.5px; }
+.workers .wk .load { font-size: 13.5px; }
+
+.tl .e { padding: 11px 0; font-size: 15px; line-height: 1.65; }
+.tl .e b { font-size: 15.5px; }
+.tl .e .w { font-size: 14px; }
+
+.photos { gap: 10px; }
+.photos i { width: 96px; height: 96px; border-radius: 9px; }
+
+/* ---------- 收银台 / 车辆 / 采购 / 库存 / 设置 ---------- */
+.hsearch { gap: 10px; margin-bottom: 18px; }
+.hsearch .in { height: 48px; font-size: 16.5px; }
+.cash .tiles button { padding: 16px 18px !important; border-radius: 11px !important; }
+.cash .tiles button b { font-size: 16.5px; }
+.cash .tiles button span { font-size: 14px; }
+
+.pipe button { padding: 15px 16px; }
+.pipe small { font-size: 13.5px; }
+.pipe b { font-size: 27px; margin: 3px 0 1px; }
+.pipe .who { font-size: 12.5px; }
+
+.set { grid-template-columns: 232px 1fr; }
+.subnav a { padding: 12px 14px; font-size: 15.5px; border-radius: 9px; }
+.subnav h6 { margin: 16px 14px 5px; font-size: 13.5px; }
+
+.mrow { font-size: 15.5px; padding: 14px 2px; gap: 12px; }
+
+/* ---------- 登录 / 命令面板 ---------- */
+.cmdk input { height: 60px; font-size: 17px; }
+.cmdk .it { padding: 13px 15px; font-size: 15.5px; border-radius: 9px; }
+.cmdk .it small { font-size: 13px; }
+.cmdk h6 { font-size: 12.5px; }
+
+.toast { font-size: 15.5px; padding: 12px 18px; border-radius: 10px; }
+
+/* 侧栏收起时（窄屏）也要保证正文可读 */
+@media (max-width: 1360px) {
+  .search { width: 320px; }
+}
+
+@media (max-width: 900px) {
+  #web { grid-template-columns: 1fr; }
+  .content { padding: 18px 16px 80px; }
+  .search { width: auto; flex: 1; }
+  .board { grid-template-columns: repeat(5, 280px); overflow: auto; }
+  .cash { grid-template-columns: 1fr !important; }
+  .set { grid-template-columns: 1fr; }
+}

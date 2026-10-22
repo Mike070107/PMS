@@ -214,10 +214,10 @@ export default function Cashier() {
           <div>
             <Card style={{ padding: '16px 18px', display: 'flex', alignItems: 'flex-start', gap: 16 }}>
               <div style={{ flex: 1 }}>
-                <div className="muted" style={{ fontSize: 12.5 }}>{house.communityName}</div>
+                <div className="muted" style={{ fontSize: 14 }}>{house.communityName}</div>
                 <h2 style={{ margin: '2px 0 10px', fontSize: 20 }}>
                   {house.buildingNo}/{house.roomNo}
-                  <span className="muted" style={{ fontSize: 14, fontWeight: 400, marginLeft: 10 }}>
+                  <span className="muted" style={{ fontSize: 15, fontWeight: 400, marginLeft: 10 }}>
                     {house.owner?.name || '未登记业主'} · {house.owner?.phone || '无电话'}
                   </span>
                 </h2>
@@ -242,17 +242,17 @@ export default function Cashier() {
               <button className={`tile ${pickPark ? 'on' : ''}`} onClick={() => { setPickPark((v) => !v); setPickCard(false); }}
                 style={{ textAlign: 'left', padding: '14px 16px', border: '1px solid var(--line)', borderRadius: 10, background: pickPark ? 'var(--acc-w)' : '#fff' }}>
                 <b style={{ display: 'block' }}>停车月租</b>
-                <span className="muted" style={{ fontSize: 12.5 }}>{parkRule ? `${money(parkRule.unitPriceCents / 100)} / 月` : '未配收费规则'}</span>
+                <span className="muted" style={{ fontSize: 14 }}>{parkRule ? `${money(parkRule.unitPriceCents / 100)} / 月` : '未配收费规则'}</span>
               </button>
               <button className={`tile ${pickCard ? 'on' : ''}`} onClick={() => { setPickCard((v) => !v); setPickPark(false); }}
                 style={{ textAlign: 'left', padding: '14px 16px', border: '1px solid var(--line)', borderRadius: 10, background: pickCard ? 'var(--acc-w)' : '#fff' }}>
                 <b style={{ display: 'block' }}>门禁卡</b>
-                <span className="muted" style={{ fontSize: 12.5 }}>{cardRule ? `${money(cardRule.unitPriceCents / 100)} / 张` : '未配收费规则'}</span>
+                <span className="muted" style={{ fontSize: 14 }}>{cardRule ? `${money(cardRule.unitPriceCents / 100)} / 张` : '未配收费规则'}</span>
               </button>
               <button className="tile" onClick={() => { window.location.href = `/fees?q=${encodeURIComponent(`${house.buildingNo}/${house.roomNo}`)}`; }}
                 style={{ textAlign: 'left', padding: '14px 16px', border: '1px solid var(--line)', borderRadius: 10, background: '#fff' }}>
                 <b style={{ display: 'block' }}>物业费</b>
-                <span className="muted" style={{ fontSize: 12.5 }}>{bills?.length ? `欠 ${bills.length} 笔 · ${money(arrears / 100)}` : '无欠费'} · 去账单页收</span>
+                <span className="muted" style={{ fontSize: 14 }}>{bills?.length ? `欠 ${bills.length} 笔 · ${money(arrears / 100)}` : '无欠费'} · 去账单页收</span>
               </button>
             </div>
 
@@ -316,7 +316,7 @@ export default function Cashier() {
               {busy ? '收款中…' : '收款'}
             </button>
 
-            <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+            <p className="muted" style={{ fontSize: 13.5, marginTop: 10 }}>
               退款走「红冲」：在物业费/收费流水里对原收据整单红冲，原收据保留。
               {arrears ? <> 本房还有物业费欠款 {money(arrears / 100)}，需在账单页单独收。</> : null}
             </p>

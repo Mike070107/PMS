@@ -184,7 +184,7 @@ export default function Purchase() {
         ) : <Empty>这一环节没有待办</Empty>}
       </Card>
 
-      <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+      <p className="muted" style={{ fontSize: 14, marginTop: 10 }}>
         审批环节跟随「系统设置 → 采购审批链」；金额低于阈值时该环节会自动跳过（服务端判定，这里显示的就是真实结果）。
       </p>
 

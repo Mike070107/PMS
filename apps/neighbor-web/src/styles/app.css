@@ -2,6 +2,18 @@
 
 #root { min-height: 100vh; }
 
+/* 线性图标：24 网格、1.6 描边、圆头，颜色跟文字走 */
+.icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .side .scope select {
   -webkit-appearance: none;
   appearance: none;

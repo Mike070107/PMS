@@ -95,7 +95,7 @@ export default function Devices() {
                   <td><span className={`pill ${st.cls}`}>{st.text}</span></td>
                   <td className="muted">{a.version || '—'}</td>
                   <td className="muted">{a.lastSeenAt ? ago(a.lastSeenAt) : '—'}</td>
-                  <td className="sub" style={{ fontSize: 12.5 }}>{caps.length ? caps.slice(0, 4).join('、') : '—'}</td>
+                  <td className="sub" style={{ fontSize: 14 }}>{caps.length ? caps.slice(0, 4).join('、') : '—'}</td>
                 </tr>
               );
             }) : <tr><td colSpan={6} className="empty">还没有注册任何本地服务</td></tr>}

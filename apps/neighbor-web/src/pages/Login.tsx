@@ -33,12 +33,12 @@ export default function Login() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', padding: 20 }}>
-      <div className="card" style={{ width: 380, padding: '28px 28px 24px' }}>
+      <div className="card" style={{ width: 430, padding: '32px 32px 28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
           <div className="logo" style={{ width: 36, height: 36, fontSize: 18 }}>邻</div>
           <div>
             <b style={{ fontSize: 18 }}>邻修</b>
-            <div className="muted" style={{ fontSize: 12.5 }}>物业管理平台 · 新版测试环境</div>
+            <div className="muted" style={{ fontSize: 14 }}>物业管理平台 · 新版测试环境</div>
           </div>
         </div>
 
@@ -59,7 +59,7 @@ export default function Login() {
           {busy ? '登录中…' : '登录'}
         </button>
 
-        <p className="muted" style={{ fontSize: 12.5, marginTop: 16, lineHeight: 1.7 }}>
+        <p className="muted" style={{ fontSize: 14, marginTop: 16, lineHeight: 1.7 }}>
           这是新版界面的测试环境，数据和账号与正式系统完全共用：
           在这里做的增删改会直接落到正式数据上。
         </p>

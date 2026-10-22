@@ -352,7 +352,7 @@ function MaintTab({ detail }: { detail: WorkOrderDetail }) {
           <Btn onClick={() => { window.location.href = '/maintenance-orders'; }}>打开现有养护单页面</Btn>
         </>
       ) : (
-        <div className="empty">完工后可在这里生成养护单<br /><span style={{ fontSize: 12.5 }}>（定额、签字、打印都在本工单内完成）</span></div>
+        <div className="empty">完工后可在这里生成养护单<br /><span style={{ fontSize: 14 }}>（定额、签字、打印都在本工单内完成）</span></div>
       )}
     </>
   );
@@ -510,9 +510,9 @@ function FinishFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; bus
         stock.items.length ? (
           <div style={{ maxHeight: 210, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 8, padding: '4px 10px', marginBottom: 14 }}>
             {stock.items.map((it) => (
-              <div key={it.materialId} className="mrow" style={{ fontSize: 13.5 }}>
+              <div key={it.materialId} className="mrow" style={{ fontSize: 15 }}>
                 <span>{it.name}{it.spec ? <span className="muted"> · {it.spec}</span> : null}</span>
-                <span className="muted" style={{ fontSize: 12 }}>库存 {it.qty}{it.unit}</span>
+                <span className="muted" style={{ fontSize: 13.5 }}>库存 {it.qty}{it.unit}</span>
                 <input className="in" style={{ width: 70, height: 30, marginLeft: 'auto' }} type="number" min={0} max={it.qty}
                   value={picked[it.materialId] ?? ''}
                   onChange={(e) => setPicked((p) => ({ ...p, [it.materialId]: Number(e.target.value) }))} placeholder="0" />

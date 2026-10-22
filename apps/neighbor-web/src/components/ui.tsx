@@ -38,7 +38,7 @@ export function Field({ label, hint, children }: { label: string; hint?: ReactNo
     <div className="field">
       <label>{label}</label>
       {children}
-      {hint ? <span className="muted" style={{ fontSize: 12.5 }}>{hint}</span> : null}
+      {hint ? <span className="muted" style={{ fontSize: 14 }}>{hint}</span> : null}
     </div>
   );
 }
@@ -145,7 +145,7 @@ export function ConfirmModal({
     <div className="cmdk" style={{ alignItems: 'center', paddingTop: 0 }} onClick={onClose}>
       <div className="box" style={{ width: 460, padding: 20 }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 10px', fontSize: 17 }}>{title}</h3>
-        <div className="sub" style={{ fontSize: 13.5, lineHeight: 1.7, marginBottom: 16 }}>{children}</div>
+        <div className="sub" style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 16 }}>{children}</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <Btn onClick={onClose}>取消</Btn>
           <Btn kind={danger ? 'd' : 'p'} onClick={onConfirm} disabled={busy}>{busy ? '处理中…' : confirmText}</Btn>

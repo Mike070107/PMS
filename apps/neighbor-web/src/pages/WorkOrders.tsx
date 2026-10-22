@@ -125,7 +125,7 @@ export default function WorkOrders() {
           ))}
         </div>
         <input
-          className="in" style={{ width: 240, marginLeft: 'auto' }}
+          className="in" style={{ width: 300, marginLeft: 'auto' }}
           placeholder="在当前筛选内搜索：房号 / 电话 / 维修工"
           defaultValue={q}
           onKeyDown={(e) => { if (e.key === 'Enter') setParam({ q: (e.target as HTMLInputElement).value }); }}
@@ -148,7 +148,7 @@ export default function WorkOrders() {
             return (
               <div className="col" key={col}>
                 <h4 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 8px' }}>
-                  <Pill status={col} /><span className="c muted" style={{ fontSize: 12 }}>{items.length}</span>
+                  <Pill status={col} /><span className="c muted" style={{ fontSize: 13.5 }}>{items.length}</span>
                 </h4>
                 {items.length ? items.map((o) => (
                   <div key={o.id} className={`wc ${sel === o.id ? 'sel' : ''}`} onClick={() => setParam({ sel: String(o.id) })}>

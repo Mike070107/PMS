@@ -132,7 +132,7 @@ export default function Vehicles() {
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 10 }}>
             <b>停车库记录</b>
             <span className="muted">{rows.length} 条 · 查询「{query?.term}」</span>
-            <span className="muted" style={{ marginLeft: 'auto', fontSize: 12.5 }}>
+            <span className="muted" style={{ marginLeft: 'auto', fontSize: 14 }}>
               完成于 {query?.completedAt ? new Date(query.completedAt).toLocaleTimeString('zh-CN') : '—'}
             </span>
           </div>
@@ -157,7 +157,7 @@ export default function Vehicles() {
                 const m = r.pmsMatch;
                 return (
                   <tr key={`${r.database}-${i}`}>
-                    <td className="sub" style={{ fontSize: 12.5 }}>{r.database}</td>
+                    <td className="sub" style={{ fontSize: 14 }}>{r.database}</td>
                     <td><b>{plate || '—'}</b>{owner ? <span className="muted"> · {owner}</span> : null}</td>
                     <td>{phone || <span className="muted">缺电话</span>}</td>
                     <td className="sub">{garage || '—'}</td>

@@ -152,7 +152,7 @@ export default function Settings() {
                   </tbody>
                 </table>
               ) : <div className="empty" style={{ padding: 18 }}>没有生效中的物业费标准</div>}
-              <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>新增 / 调整标准在现有设置页与物业费页，这里只读。</p>
+              <p className="muted" style={{ fontSize: 14, marginTop: 12 }}>新增 / 调整标准在现有设置页与物业费页，这里只读。</p>
             </>
           ) : null}
 
@@ -170,7 +170,7 @@ export default function Settings() {
                       <span className="step-n">{i + 1}</span><b>{a}</b><span className="muted">{b}</span>
                     </div>
                   ))}
-                  <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>
+                  <p className="muted" style={{ fontSize: 14, marginTop: 14 }}>
                     审批链决定「采购流程」页里每一格是否出现；金额低于阈值时该环节自动跳过。
                   </p>
                 </>
@@ -188,7 +188,7 @@ export default function Settings() {
                 <div><small>接单时限</small><b>{settings?.dispatchEscalation?.acceptMinutes ? `${settings.dispatchEscalation.acceptMinutes} 分钟` : '—'}</b></div>
                 <div><small>催办时段</small><b>{settings?.dispatchEscalation ? `${settings.dispatchEscalation.startAt}–${settings.dispatchEscalation.endAt}` : '—'}</b></div>
               </div>
-              <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>
+              <p className="muted" style={{ fontSize: 14, marginTop: 14 }}>
                 工单超时后系统在催办时段内自动发微信给维修工和办公室；自动验收到期未评价的工单会按默认好评结束。
               </p>
               <Btn style={{ marginTop: 12 }} onClick={() => { window.location.href = '/settings'; }}>去调整</Btn>
@@ -215,7 +215,7 @@ export default function Settings() {
                     const v = (settings?.wxSubscribeTemplates?.[k] || '').trim();
                     return (
                       <tr key={k}>
-                        <td><b>{label}</b><div className="muted" style={{ fontSize: 12 }}>{k}</div></td>
+                        <td><b>{label}</b><div className="muted" style={{ fontSize: 13.5 }}>{k}</div></td>
                         <td>{v ? <span className="pill s-done">已配置</span> : <span className="pill s-pend">未配置</span>}</td>
                       </tr>
                     );

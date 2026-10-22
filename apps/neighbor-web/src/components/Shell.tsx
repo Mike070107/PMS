@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { auth, useSession } from '@/lib/auth';
 import { notifications } from '@pms/api-client';
+import Icon from '@/components/Icon';
+import type { IconName } from '@/components/Icon';
 import { toast } from '@/components/ui';
 import { statusOf } from '@/lib/format';
 
@@ -13,6 +15,8 @@ import { statusOf } from '@/lib/format';
 export interface NavItem {
   key: string;
   name: string;
+  /** 图标：一个词永久一枚，不做同义多图 */
+  icon: IconName;
   /** 新版路由（相对 basename） */
   to?: string;
   /** 旧后台绝对路径；本次未迁移的页面 */
@@ -21,56 +25,56 @@ export interface NavItem {
 export interface NavGroup { title: string; items: NavItem[] }
 
 export const NAV: NavGroup[] = [
-  { title: '', items: [{ key: 'today', name: '今日待办', to: '/today' }] },
+  { title: '', items: [{ key: 'today', name: '今日待办', icon: 'today', to: '/today' }] },
   {
     title: '报修服务',
     items: [
-      { key: 'work-orders', name: '工单调度', to: '/work-orders' },
-      { key: 'maint', name: '养护单', legacy: '/maintenance-orders' },
-      { key: 'notes', name: '维修经验', legacy: '/experience-notes' },
+      { key: 'work-orders', name: '工单调度', icon: 'kanban', to: '/work-orders' },
+      { key: 'maint', name: '养护单', icon: 'file', legacy: '/maintenance-orders' },
+      { key: 'notes', name: '维修经验', icon: 'book', legacy: '/experience-notes' },
     ],
   },
   {
     title: '收费',
     items: [
-      { key: 'cashier', name: '收银台', to: '/cashier' },
-      { key: 'bills', name: '账单与欠费', legacy: '/fees' },
-      { key: 'recon', name: '收费对账', legacy: '/fees?tab=recon' },
+      { key: 'cashier', name: '收银台', icon: 'cash', to: '/cashier' },
+      { key: 'bills', name: '账单与欠费', icon: 'receipt', legacy: '/fees' },
+      { key: 'recon', name: '收费对账', icon: 'scale', legacy: '/fees?tab=recon' },
     ],
   },
   {
     title: '车辆与门禁',
     items: [
-      { key: 'vehicles', name: '住户车辆与门禁', to: '/vehicles' },
-      { key: 'devices', name: '设备中心', to: '/devices' },
+      { key: 'vehicles', name: '住户车辆与门禁', icon: 'car', to: '/vehicles' },
+      { key: 'devices', name: '设备中心', icon: 'cpu', to: '/devices' },
     ],
   },
   {
     title: '物资',
     items: [
-      { key: 'purchase', name: '采购流程', to: '/purchase' },
-      { key: 'stock', name: '库存', to: '/stock' },
-      { key: 'count', name: '盘点', legacy: '/stocktakes' },
-      { key: 'sku', name: '材料库', legacy: '/materials' },
+      { key: 'purchase', name: '采购流程', icon: 'flow', to: '/purchase' },
+      { key: 'stock', name: '库存', icon: 'box', to: '/stock' },
+      { key: 'count', name: '盘点', icon: 'clipboard', legacy: '/stocktakes' },
+      { key: 'sku', name: '材料库', icon: 'layers', legacy: '/materials' },
     ],
   },
   {
     title: '档案',
     items: [
-      { key: 'houses', name: '房产', legacy: '/properties' },
-      { key: 'owners', name: '业主', legacy: '/owners' },
-      { key: 'people', name: '员工与权限', legacy: '/staff' },
-      { key: 'offices', name: '管理处', legacy: '/offices' },
+      { key: 'houses', name: '房产', icon: 'home', legacy: '/properties' },
+      { key: 'owners', name: '业主', icon: 'users', legacy: '/owners' },
+      { key: 'people', name: '员工与权限', icon: 'shield', legacy: '/staff' },
+      { key: 'offices', name: '管理处', icon: 'building', legacy: '/offices' },
     ],
   },
-  { title: '分析', items: [{ key: 'reports', name: '报表', legacy: '/reports' }] },
+  { title: '分析', items: [{ key: 'reports', name: '报表', icon: 'chart', legacy: '/reports' }] },
   {
     title: '系统',
     items: [
-      { key: 'settings', name: '系统设置', to: '/settings' },
-      { key: 'qr', name: '楼栋报修码', legacy: '/qr' },
-      { key: 'intranet', name: '内网应用', legacy: '/external-access' },
-      { key: 'logs', name: '日志', legacy: '/logs' },
+      { key: 'settings', name: '系统设置', icon: 'gear', to: '/settings' },
+      { key: 'qr', name: '楼栋报修码', icon: 'qr', legacy: '/qr' },
+      { key: 'intranet', name: '内网应用', icon: 'globe', legacy: '/external-access' },
+      { key: 'logs', name: '日志', icon: 'log', legacy: '/logs' },
     ],
   },
 ];
@@ -177,9 +181,10 @@ export default function Shell() {
                     tabIndex={0}
                     onKeyDown={(e) => { if (e.key === 'Enter') goto(item); }}
                   >
-                    {item.name}
+                    <Icon name={item.icon} />
+                    <span>{item.name}</span>
                     {badge ? <span className="n">{badge}</span> : null}
-                    {item.legacy ? <span className="muted" style={{ fontSize: 11 }}>旧</span> : null}
+                    {item.legacy ? <span className="leg">旧</span> : null}
                   </a>
                 );
               })}
@@ -190,7 +195,7 @@ export default function Shell() {
           <div className="av">{name.slice(0, 1)}</div>
           <div style={{ minWidth: 0 }}>
             <b>{name}</b>
-            <div className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div className="muted" style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {roleLabel}{officeName ? ` · ${officeName}` : ''}
             </div>
           </div>
@@ -209,12 +214,16 @@ export default function Shell() {
         <header className="top">
           <div className="crumb">{current.group}<b>{current.name}</b></div>
           <div className="search" onClick={() => setCmdk(true)}>
-            ⌕ 搜房号、单号、车牌、功能…
+            <Icon name="search" size={18} />
+            <span>搜房号、单号、车牌、功能…</span>
             <kbd>Ctrl K</kbd>
           </div>
-          <button className="btn p" onClick={() => nav('/work-orders?new=1')}>＋ 新建</button>
+          <button className="btn p" onClick={() => nav('/work-orders?new=1')}>
+            <Icon name="plus" size={18} />新建
+          </button>
           <button className="ib" title="通知" onClick={() => { window.location.href = '/dashboard'; }}>
-            🔔{unread ? <span className="dot" /> : null}
+            <Icon name="bell" />
+            {unread ? <span className="dot" /> : null}
           </button>
         </header>
         <div className="content">
