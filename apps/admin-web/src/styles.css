@@ -3583,3 +3583,53 @@ h2.ant-typography {
   .access-card-address-summary { align-items: flex-start; flex-direction: column; }
   .access-card-place-card { grid-template-columns: minmax(0,1fr); }
 }
+
+/* ==========================================================================
+   旧后台第二轮改造：组件骨架向新界面（apps/neighbor-web）靠
+   Ant Design 默认的卡片投影、深色表头、12px 圆角混在浅绿界面里像是两套系统，
+   这里统一成「素、平、浅」：无投影、1px 描边、表头浅灰、按钮与输入框同高同圆角。
+   ========================================================================== */
+.ant-card {
+  border-radius: 12px !important;
+  border-color: var(--pms-border) !important;
+  box-shadow: none !important;
+}
+.ant-card-head {
+  border-bottom-color: var(--pms-border) !important;
+  min-height: 56px !important;
+}
+.ant-card-head-title { font-size: 17px !important; font-weight: 650 !important; }
+.ant-card-extra { font-size: 14px; }
+
+.ant-table-wrapper .ant-table { font-size: 15px; }
+.ant-table-wrapper .ant-table-thead > tr > th {
+  background: #f7f8f6 !important;
+  color: var(--pms-ink-secondary) !important;
+  font-weight: 600 !important;
+  border-bottom-color: var(--pms-border) !important;
+}
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  border-bottom-color: #eef0eb !important;
+  padding-block: 14px !important;
+}
+.ant-table-wrapper .ant-table-tbody > tr:hover > td { background: #f6f9f6 !important; }
+.ant-table-wrapper .ant-table-pagination { margin-block: 14px 4px !important; }
+
+.ant-btn { border-radius: 9px !important; font-weight: 500; }
+.ant-btn-primary { box-shadow: 0 3px 10px rgba(14, 107, 90, 0.16) !important; }
+.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-picker, .ant-select .ant-select-selector {
+  border-radius: 9px !important;
+}
+.ant-modal-content, .ant-drawer-content { border-radius: 14px !important; }
+.ant-modal-header, .ant-drawer-header {
+  border-bottom: 1px solid var(--pms-border) !important;
+  padding-bottom: 14px !important;
+}
+.ant-tag { border-radius: 6px; font-size: 13px; }
+.ant-descriptions-item-label { color: var(--pms-ink-secondary) !important; }
+.ant-tabs-tab { font-size: 15.5px !important; }
+.ant-tabs-tab-active .ant-tabs-tab-btn { font-weight: 650; }
+.ant-alert { border-radius: 10px; }
+.ant-statistic-content { color: var(--pms-ink); }
+.ant-segmented { border-radius: 10px; }
+.ant-form-item-label > label { font-size: 15px !important; }
