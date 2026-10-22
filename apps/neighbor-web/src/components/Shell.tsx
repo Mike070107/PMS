@@ -38,7 +38,7 @@ export const NAV: NavGroup[] = [
     title: '收费',
     items: [
       { key: 'cashier', name: '收银台', icon: 'cash', to: '/cashier' },
-      { key: 'bills', name: '账单与欠费', icon: 'receipt', legacy: '/fees' },
+      { key: 'bills', name: '账单与欠费', icon: 'receipt', to: '/bills' },
       { key: 'recon', name: '收费对账', icon: 'scale', legacy: '/fees?tab=recon' },
     ],
   },

@@ -9,6 +9,7 @@ import { Loading, Toaster } from '@/components/ui';
 const Today = lazy(() => import('@/pages/Today'));
 const WorkOrders = lazy(() => import('@/pages/WorkOrders'));
 const Cashier = lazy(() => import('@/pages/Cashier'));
+const Bills = lazy(() => import('@/pages/Bills'));
 const Vehicles = lazy(() => import('@/pages/Vehicles'));
 const Devices = lazy(() => import('@/pages/Devices'));
 const Purchase = lazy(() => import('@/pages/Purchase'));
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="/today" element={<Today />} />
             <Route path="/work-orders" element={<WorkOrders />} />
             <Route path="/cashier" element={<Cashier />} />
+            <Route path="/bills" element={<Bills />} />
             <Route path="/vehicles" element={<Vehicles />} />
             <Route path="/devices" element={<Devices />} />
             <Route path="/purchase" element={<Purchase />} />
