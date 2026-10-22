@@ -406,8 +406,8 @@ export class ParkingProofController {
 
   @Post('submit')
   @UseInterceptors(FilesInterceptor('file', 10, { limits: { fileSize: 20 * 1024 * 1024 } }))
-  submit(@Query('token') token: string, @UploadedFiles() files?: Express.Multer.File[]) {
-    return this.service.submit(token || '', files);
+  submit(@Query('token') token: string, @UploadedFiles() files?: Express.Multer.File[], @Body() body?: Record<string, unknown>) {
+    return this.service.submit(token || '', files, body);
   }
 }
 

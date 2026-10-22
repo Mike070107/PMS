@@ -83,6 +83,21 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { key: 'business', label: '前台收费', group: '收费业务' },
   { key: 'fees', label: '物业费', group: '收费业务' },
   { key: 'apartment-cashier', label: '公寓收费台', group: '收费业务', actions: [{ field: 'canEdit', label: '收费与红冲' }] },
+  {
+    key: 'family-cars',
+    label: '亲情车管理',
+    group: '收费业务',
+    hint: '亲情车清册、登记、资料上传、办公室审核、到期停用',
+    actions: [{ field: 'canEdit', label: '登记与办公室审核', hint: '登记亲情车、上传资料、办公室审核、续登、提前停用' }],
+  },
+  {
+    key: 'family-cars-approve',
+    label: '亲情车经理审核',
+    group: '收费业务',
+    // 和「亲情车管理」分开：登记的人不该能自己批准自己（同养护单查验）
+    hint: '勾中 = 物业经理审核亲情车，通过后自动开通车库',
+    actions: [{ field: 'canEdit', label: '审核通过 / 退回' }],
+  },
   { key: 'materials', label: '材料 SKU 库', group: '材料与库存' },
   { key: 'inventory', label: '库存与采购', group: '材料与库存' },
   {

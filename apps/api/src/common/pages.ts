@@ -16,6 +16,8 @@ export const ADMIN_PAGE_KEYS = [
   'experience-notes', // 维修经验总结（按管理处 + 报修类型共享）
   'business', // 前台收费
   'apartment-cashier', // 公寓收费台（收费 / 明细 / 报表 / 对账）
+  'family-cars', // 亲情车管理（清册 / 登记 / 办公室审核）
+  'family-cars-approve', // 亲情车经理审核，单独一格：登记的人不该能自己批准自己
   'fees', // 物业费（账单 / 收费标准 / 欠费）
   'materials', // 材料 SKU 库
   'inventory', // 库存与采购

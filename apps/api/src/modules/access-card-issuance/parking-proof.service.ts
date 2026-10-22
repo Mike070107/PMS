@@ -1,15 +1,20 @@
 import { BadRequestException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes } from 'node:crypto';
 import * as QRCode from 'qrcode';
 import { Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { ParkingProofUpload, TenantConfig } from '../../entities';
+import { FamilyCar, ParkingProofUpload, TenantConfig } from '../../entities';
 import { detectUploadContentType } from '../upload/upload.controller';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { CreateParkingProofUploadDto } from './dto';
 import { DEFAULT_PARKING_RATES, normalizeParkingRates } from './parking-family';
+// 只引类型：亲情车服务依赖本服务，运行期再按 token 取，避免两个类互相注入
+import type { FamilyCarService } from './family-car.service';
+
+export const FAMILY_CAR_SERVICE = 'FAMILY_CAR_SERVICE';
 
 // 亲情车资料二维码给住户留出完整的一小时上传窗口；状态接口仍会在提交后继续保留审核凭证。
 const TTL_MS = 60 * 60 * 1000;
@@ -22,7 +27,65 @@ export class ParkingProofService {
     private readonly storage: ObjectStorageService,
     private readonly config: ConfigService,
     @InjectRepository(TenantConfig) private readonly configRepo: Repository<TenantConfig>,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  /** 亲情车管理延迟取用，避免两个服务互相注入 */
+  private familyCars(): FamilyCarService {
+    return this.moduleRef.get<FamilyCarService>(FAMILY_CAR_SERVICE, { strict: false });
+  }
+
+  /**
+   * 亲情车管理页的扫码上传会话：1 小时有效，限定本条登记和车牌。
+   * 新会话生成时让上一份未提交的会话立即失效，避免旧二维码继续可用。
+   */
+  async createFamilySession(car: FamilyCar, user: AuthUser, previousId: number | null) {
+    if (previousId) {
+      const previous = await this.repo.findOne({ where: { id: previousId, tenantId: car.tenantId } });
+      if (previous && !previous.submittedAt && previous.expiresAt.getTime() > Date.now()) {
+        previous.expiresAt = new Date();
+        previous.updatedBy = user.id;
+        await this.repo.save(previous);
+      }
+    }
+    const token = randomBytes(24).toString('base64url');
+    const expiresAt = new Date(Date.now() + TTL_MS);
+    const row = await this.repo.save(this.repo.create({
+      tenantId: car.tenantId,
+      tokenHash: this.hash(token),
+      plate: car.plate,
+      ownerId: null,
+      requestedBy: user.id,
+      expiresAt,
+      openedAt: null,
+      submittedAt: null,
+      objectKey: null,
+      fileName: null,
+      contentType: null,
+      createdBy: user.id,
+      updatedBy: user.id,
+      reviewStatus: 'pending', reviewReason: null, reviewedAt: null, reviewedBy: null,
+      // 新登记车辆的旧库暂存任务：停车模块用它判断这辆车是否仍待审核
+      registrationId: car.registrationOperationId ?? null,
+      files: [],
+      familyCarId: car.id,
+      form: null,
+    }));
+    const url = this.publicUrl(token);
+    return {
+      id: row.id,
+      plate: car.plate,
+      url,
+      qrDataUrl: await QRCode.toDataURL(url, { width: 520, margin: 1, errorCorrectionLevel: 'M' }),
+      expiresAt: expiresAt.toISOString(),
+      status: 'waiting' as const,
+    };
+  }
+
+  private publicUrl(token: string) {
+    const base = String(this.config.get('APP_PUBLIC_BASE_URL') || '').replace(/\/+$/, '');
+    return `${base}/parking-proof/${token}`;
+  }
 
   async create(dto: CreateParkingProofUploadDto, user: AuthUser) {
     if (!user.tenantId) throw new BadRequestException('当前账号没有物业公司范围');
@@ -46,8 +109,7 @@ export class ParkingProofService {
       updatedBy: user.id,
       reviewStatus: previous?.reviewStatus === 'approved' ? 'approved' : 'pending', reviewReason: null, reviewedAt: previous?.reviewedAt ?? null, reviewedBy: previous?.reviewedBy ?? null, registrationId: previous?.registrationId ?? null, files: [],
     }));
-    const base = String(this.config.get('APP_PUBLIC_BASE_URL') || '').replace(/\/+$/, '');
-    const url = `${base}/parking-proof/${token}`;
+    const url = this.publicUrl(token);
     return {
       id: row.id,
       plate,
@@ -95,12 +157,27 @@ export class ParkingProofService {
       row.openedAt = new Date();
       await this.repo.save(row);
     }
-    return this.view(row);
+    const family = row.familyCarId ? await this.familyCars().sessionInfo(row.familyCarId) : null;
+    return { ...this.view(row), family };
   }
 
-  async submit(token: string, input?: Express.Multer.File | Express.Multer.File[]) {
+  async submit(token: string, input?: Express.Multer.File | Express.Multer.File[], body?: Record<string, unknown>) {
     const row = await this.byToken(token);
     if (row.submittedAt) throw new BadRequestException('证明材料已经上传，请关闭此页面');
+    let form: Record<string, string> | null = null;
+    if (row.familyCarId) {
+      const info = await this.familyCars().sessionInfo(row.familyCarId);
+      const read = (key: string, max: number) => String(body?.[key] ?? '').trim().slice(0, max);
+      form = { carOwnerName: read('carOwnerName', 50), carOwnerPhone: read('carOwnerPhone', 30), relation: read('relation', 20) };
+      const merged = {
+        carOwnerName: form.carOwnerName || info?.carOwnerName || '',
+        carOwnerPhone: form.carOwnerPhone || info?.carOwnerPhone || '',
+        relation: form.relation || info?.relation || '',
+      };
+      if (!merged.carOwnerName || !merged.carOwnerPhone || !merged.relation) throw new BadRequestException('请填写车主姓名、手机号和与业主关系');
+      if (!/^1\d{10}$/.test(merged.carOwnerPhone) && !/[*]/.test(merged.carOwnerPhone)) throw new BadRequestException('车主手机号格式不正确');
+      if (form.relation && info && !(info.relations as string[]).includes(form.relation)) throw new BadRequestException('请选择与业主的关系');
+    }
     const files = Array.isArray(input) ? input : input ? [input] : [];
     if (!files.length || files.length > 10) throw new BadRequestException('请选择 1 至 10 份证明材料');
     const types = files.map((file) => detectUploadContentType(file.buffer));
@@ -120,9 +197,13 @@ export class ParkingProofService {
         const stored = await this.storage.putBuffer(file.buffer, contentType, 'parking-proofs', file.originalname);
         locked.files.push({ objectKey: stored.objectKey, fileName: file.originalname.slice(0, 255), contentType });
       }
-      Object.assign(locked, locked.files[0], { submittedAt: new Date() });
+      Object.assign(locked, locked.files[0], { submittedAt: new Date(), form });
       Object.assign(row, await repo.save(locked));
     });
+    if (row.familyCarId) {
+      const now = new Date().toISOString();
+      await this.familyCars().ownerSubmitted(row.familyCarId, row.files.map((file) => ({ ...file, source: 'owner' as const, uploadedAt: now })), form);
+    }
     return this.view(row);
   }
 

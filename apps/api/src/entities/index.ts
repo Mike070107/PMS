@@ -37,6 +37,7 @@ import { ParkingVehicle } from './parking-vehicle.entity';
 import { ParkingQuery } from './parking-query.entity';
 import { ParkingOwnerUpdate } from './parking-owner-update.entity';
 import { ParkingProofUpload } from './parking-proof-upload.entity';
+import { FamilyCar } from './family-car.entity';
 import { ParkingHistory } from './parking-history.entity';
 import { ParkingRecordSnapshot } from './parking-record-snapshot.entity';
 import { ParkingOperation } from './parking-operation.entity';
@@ -138,6 +139,7 @@ export const entities = [
   ParkingQuery,
   ParkingOwnerUpdate,
   ParkingProofUpload,
+  FamilyCar,
   ParkingHistory,
   ParkingRecordSnapshot,
   ParkingOperation,
@@ -224,6 +226,7 @@ export {
   ParkingQuery,
   ParkingOwnerUpdate,
   ParkingProofUpload,
+  FamilyCar,
   ParkingHistory,
   ParkingRecordSnapshot,
   ParkingOperation,
@@ -262,3 +265,4 @@ export type {
 } from './work-order-material.entity';
 export type { SuggestionScope } from './management-office.entity';
 export type { StocktakeStatus } from './stocktake-task.entity';
+export type { FamilyCarStatus, FamilyCarMode, FamilyCarFile, FamilyCarLogEntry } from './family-car.entity';

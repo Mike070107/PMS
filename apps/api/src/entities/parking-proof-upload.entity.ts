@@ -54,4 +54,12 @@ export class ParkingProofUpload extends TenantEntity {
 
   @Column({ name: 'content_type', type: 'varchar', length: 100, nullable: true })
   contentType: string | null;
+
+  /** 亲情车管理页发起的上传会话；为空表示旧的停车管理入口 */
+  @Column({ name: 'family_car_id', type: 'int', nullable: true })
+  familyCarId: number | null;
+
+  /** 业主扫码时填写的车主信息（车主姓名、电话、关系），提交时写回亲情车登记 */
+  @Column({ type: 'jsonb', nullable: true })
+  form: Record<string, string> | null;
 }

@@ -13,3 +13,10 @@
 .parking-proof-success { display: grid; gap: 10px; padding: 24px 18px; color: #2d6846; border-radius: 12px; background: #edf8f1; text-align: center; }
 .parking-proof-success strong { font-size: 26px; }
 .parking-proof-success span { font-size: 17px; line-height: 1.7; }
+
+.parking-proof-addr { color: #5b6472; font-size: 15px; margin-bottom: 6px; }
+.parking-proof-plate { white-space: nowrap; }
+.parking-proof-form { text-align: left; margin: 14px 0 4px; }
+.parking-proof-form h2 { font-size: 15px; margin: 14px 0 8px; }
+.parking-proof-form label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: #4b5563; margin-bottom: 10px; }
+.parking-proof-form input, .parking-proof-form select { font-size: 16px; padding: 10px 12px; border: 1px solid #d0d6de; border-radius: 8px; background: #fff; }

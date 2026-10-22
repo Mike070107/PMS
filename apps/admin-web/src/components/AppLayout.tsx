@@ -14,6 +14,7 @@ import {
   LogoutOutlined,
   CreditCardOutlined,
   CarOutlined,
+  HeartOutlined,
   IdcardOutlined,
   TeamOutlined,
   UserOutlined,
@@ -47,6 +48,8 @@ interface NavItem {
   key: string;
   /** 权限矩阵里的页面 key；null = 不受矩阵控制（平台菜单单独判断） */
   pageKey: string | null;
+  /** 有这些页面之一的查看权限也显示（如物业经理只有「亲情车经理审核」） */
+  alsoPageKeys?: string[];
   icon: React.ReactNode;
   label: string;
 }
@@ -82,6 +85,7 @@ const NAV_GROUPS: Array<{ title: string; platformOnly?: boolean; items: NavItem[
       { key: '/business', pageKey: 'business', icon: <CreditCardOutlined />, label: '前台收费' },
       { key: '/access-cards', pageKey: 'business', icon: <IdcardOutlined />, label: '门禁发卡' },
       { key: '/parking', pageKey: 'business', icon: <CarOutlined />, label: '停车管理' },
+      { key: '/family-cars', pageKey: 'family-cars', alsoPageKeys: ['family-cars-approve'], icon: <HeartOutlined />, label: '亲情车管理' },
       { key: '/fees', pageKey: 'fees', icon: <AccountBookOutlined />, label: '物业费' },
       { key: '/apartment-cashier', pageKey: 'apartment-cashier', icon: <ApartmentOutlined />, label: '公寓收费台' },
     ],
@@ -130,6 +134,7 @@ const PAGE_DESCRIPTIONS: Record<string, string> = {
   '/experience-notes': '按管理处和报修类别沉淀共享的图文维修经验',
   '/business': '办理停车、门禁与前台收费业务',
   '/parking': '统一管理住户车辆、车位和四个停车区权限',
+  '/family-cars': '亲情车清册、登记、资料审核与车库开通，每年登记一次',
   '/access-cards': '选房号并跟踪写卡、门禁入库与主板上传',
   '/fees': '物业费账单、收款登记与欠费催缴',
   '/apartment-cashier': '公寓按房间收电费、房租与停车费，即时出小票',
@@ -156,7 +161,7 @@ function visibleGroups(access: AdminAccess | null, isPlatform: boolean, hasTenan
         ? group.items
         : []
       : hasTenantScope
-        ? group.items.filter((item) => !item.pageKey || pagePerm(access, item.pageKey).canView)
+        ? group.items.filter((item) => !item.pageKey || [item.pageKey, ...(item.alsoPageKeys || [])].some((key) => pagePerm(access, key).canView))
         : [],
   })).filter((group) => group.items.length > 0);
 }

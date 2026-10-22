@@ -9,6 +9,7 @@ import {
   AccessCardAuthorization,
   Building,
   Community,
+  FamilyCar,
   House,
   ParkingQuery,
   ParkingOwnerUpdate,
@@ -21,13 +22,17 @@ import {
 } from '../../entities';
 import { AccessCardAgentController, AccessCardIssuanceController, ParkingProofController } from './access-card-issuance.controller';
 import { AccessCardIssuanceService } from './access-card-issuance.service';
-import { ParkingProofService } from './parking-proof.service';
+import { FAMILY_CAR_SERVICE, ParkingProofService } from './parking-proof.service';
 import { UploadModule } from '../upload/upload.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { FamilyCarController } from './family-car.controller';
+import { FamilyCarService } from './family-car.service';
 import { DeliyunParkingService } from './deliyun-parking.service';
 
 @Module({
   imports: [
     UploadModule,
+    NotificationsModule,
     TypeOrmModule.forFeature([
       AccessCardAgent,
       AccessCardIssueBatch,
@@ -37,6 +42,7 @@ import { DeliyunParkingService } from './deliyun-parking.service';
       AccessCardAuthorization,
       Building,
       Community,
+      FamilyCar,
       House,
       ParkingQuery,
       ParkingOwnerUpdate,
@@ -48,7 +54,13 @@ import { DeliyunParkingService } from './deliyun-parking.service';
       User,
     ]),
   ],
-  controllers: [AccessCardIssuanceController, AccessCardAgentController, ParkingProofController],
-  providers: [AccessCardIssuanceService, ParkingProofService, DeliyunParkingService],
+  controllers: [AccessCardIssuanceController, AccessCardAgentController, ParkingProofController, FamilyCarController],
+  providers: [
+    AccessCardIssuanceService,
+    ParkingProofService,
+    DeliyunParkingService,
+    FamilyCarService,
+    { provide: FAMILY_CAR_SERVICE, useExisting: FamilyCarService },
+  ],
 })
 export class AccessCardIssuanceModule {}

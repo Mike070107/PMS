@@ -21,6 +21,7 @@ export * as feedback from './endpoints/feedback';
 export * as repairExperiences from './endpoints/repair-experiences';
 export * as accessCardIssuance from './endpoints/access-card-issuance';
 export * as apartmentCashier from './endpoints/apartment-cashier';
+export * as familyCars from './endpoints/family-cars';
 export type {
   AccessCardHistoryRow,
   AccessCardRecentRecord,

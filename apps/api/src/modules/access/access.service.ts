@@ -207,7 +207,10 @@ export class AccessService implements OnModuleInit {
     // 用户找遍后台也找不到「系统设置」在哪
     const allowedKeys = enabledPages
       ? [
-          ...ADMIN_PAGE_KEYS.filter((k) => enabledPages.includes(k) || ALWAYS_ENABLED_PAGES.includes(k)),
+          ...ADMIN_PAGE_KEYS.filter((k) => enabledPages.includes(k) || ALWAYS_ENABLED_PAGES.includes(k) ||
+            // 亲情车是从「前台收费 / 停车」拆出来的新页面：开通了前台收费的公司默认可用，
+            // 否则上线后存量公司的 enabled_pages 里没有这两个 key，菜单会整页消失
+            ((k === 'family-cars' || k === 'family-cars-approve') && enabledPages.includes('business'))),
           ...STAFF_APP_PAGE_KEYS,
         ]
       : [...ALL_PAGE_KEYS];

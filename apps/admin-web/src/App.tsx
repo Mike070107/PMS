@@ -11,6 +11,7 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const BusinessPage = lazy(() => import('./pages/BusinessPage'));
 const AccessCardIssuancePage = lazy(() => import('./pages/AccessCardIssuancePage'));
 const ParkingManagementPage = lazy(() => import('./pages/ParkingManagementPage'));
+const FamilyCarsPage = lazy(() => import('./pages/FamilyCarsPage'));
 const ParkingManagementPreviewPage = import.meta.env.DEV
   ? lazy(() => import('./pages/ParkingManagementPreviewPage'))
   : null;
@@ -62,6 +63,8 @@ const PAGE_ROUTES: Array<[string, string]> = [
   ['experience-notes', '/experience-notes'],
   ['business', '/business'],
   ['fees', '/fees'],
+  ['family-cars', '/family-cars'],
+  ['family-cars-approve', '/family-cars'],
   ['materials', '/materials'],
   ['inventory', '/inventory'],
   ['properties', '/properties'],
@@ -106,9 +109,9 @@ function HomeRedirect() {
 }
 
 /** 路由级权限：直接敲 URL 也进不了无查看权的页面（菜单过滤之外的兜底） */
-function RequirePage({ pageKey, children }: { pageKey: string; children: React.ReactNode }) {
+function RequirePage({ pageKey, children }: { pageKey: string | string[]; children: React.ReactNode }) {
   const { access } = useAuth();
-  if (!pagePerm(access, pageKey).canView) {
+  if (!(Array.isArray(pageKey) ? pageKey : [pageKey]).some((key) => pagePerm(access, key).canView)) {
     const fallback = firstVisiblePath(access);
     if (fallback) return <Navigate to={fallback} replace />;
     return (
@@ -174,6 +177,7 @@ export default function App() {
         <Route path="parking" element={<RequireTenantScope><RequirePage pageKey="business"><ParkingManagementPage /></RequirePage></RequireTenantScope>} />
         <Route path="access-cards" element={<RequireTenantScope><RequirePage pageKey="business"><AccessCardIssuancePage /></RequirePage></RequireTenantScope>} />
         <Route path="fees" element={<RequireTenantScope><RequirePage pageKey="fees"><FeesPage /></RequirePage></RequireTenantScope>} />
+        <Route path="family-cars" element={<RequireTenantScope><RequirePage pageKey={['family-cars', 'family-cars-approve']}><FamilyCarsPage /></RequirePage></RequireTenantScope>} />
         <Route path="apartment-cashier" element={<RequireTenantScope><RequirePage pageKey="apartment-cashier"><ApartmentCashierPage /></RequirePage></RequireTenantScope>} />
         <Route path="properties" element={<RequireTenantScope><RequirePage pageKey="properties"><PropertiesPage /></RequirePage></RequireTenantScope>} />
         <Route path="owners" element={<RequireTenantScope><RequirePage pageKey="owners"><OwnerAuditPage /></RequirePage></RequireTenantScope>} />

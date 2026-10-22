@@ -1229,6 +1229,8 @@ export class AccessCardIssuanceService {
       const repo = manager.getRepository(ParkingProofUpload);
       const row = await repo.findOne({ where: { id, tenantId }, lock: { mode: 'pessimistic_write' } });
       if (!row) throw new NotFoundException('亲情车资料不存在');
+      // 亲情车管理登记的资料要走办公室 + 物业经理两级审核，不能在停车管理里一步通过
+      if (row.familyCarId) throw new BadRequestException('该车辆在「亲情车管理」办理，请到亲情车管理审核');
       if (row.reviewStatus === 'approved' && decision !== 'approved') throw new BadRequestException('已通过审核的车辆不能直接驳回，请先调整车库授权');
       if (decision === 'rejected' && !reason?.trim()) throw new BadRequestException('请填写驳回原因');
       if (decision === 'approved' && !row.submittedAt) throw new BadRequestException('用户尚未上传证明材料，不能通过审核');
