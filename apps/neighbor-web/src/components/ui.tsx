@@ -8,7 +8,7 @@ export function Pill({ status, extra }: { status: string; extra?: string }) {
 }
 
 export function Btn({
-  children, kind = '', size = '', onClick, disabled, title, type = 'button',
+  children, kind = '', size = '', onClick, disabled, title, type = 'button', style,
 }: {
   children: ReactNode;
   kind?: '' | 'p' | 'd' | 'g';
@@ -17,6 +17,7 @@ export function Btn({
   disabled?: boolean;
   title?: string;
   type?: 'button' | 'submit';
+  style?: React.CSSProperties;
 }) {
   return (
     <button
@@ -25,6 +26,7 @@ export function Btn({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      style={style}
     >
       {children}
     </button>
