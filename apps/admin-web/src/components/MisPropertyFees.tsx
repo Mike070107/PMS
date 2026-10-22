@@ -3,7 +3,7 @@ import {ReloadOutlined,SearchOutlined} from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {useEffect,useRef,useState} from 'react';
 import {request} from '../lib/api';
-import {formatFeePeriod,formatFeeMoney} from '@pms/shared-types';
+import {compareNatural,formatFeePeriod,formatFeeMoney} from '@pms/shared-types';
 
 interface Options {available:boolean;message:string;communities:Array<{id:number;name:string}>;feeItems:Array<{code:string;name:string}>;}
 interface HouseOption {id:number;label:string;ownerName:string|null;}
@@ -27,7 +27,7 @@ export default function MisPropertyFees(){
  useEffect(()=>{
   if(!communityId){setHouseOptions([]);setHouseLoading(false);return;}
   let active=true;setHouseLoading(true);setHouseError('');
-  const timer=setTimeout(()=>{request<{rows:HouseOption[]}>({url:'/fees/mis/houses',query:{communityId,q:houseTerm||undefined},timeout:15000}).then(data=>{if(active)setHouseOptions(data.rows);}).catch(e=>{if(active){setHouseOptions([]);setHouseError(e.message||'房号查询失败');}}).finally(()=>{if(active)setHouseLoading(false);});},250);
+  const timer=setTimeout(()=>{request<{rows:HouseOption[]}>({url:'/fees/mis/houses',query:{communityId,q:houseTerm||undefined},timeout:15000}).then(data=>{if(active)setHouseOptions([...data.rows].sort((a,b)=>compareNatural(a.label,b.label)));}).catch(e=>{if(active){setHouseOptions([]);setHouseError(e.message||'房号查询失败');}}).finally(()=>{if(active)setHouseLoading(false);});},250);
   return()=>{active=false;clearTimeout(timer);};
  },[communityId,houseTerm]);
  useEffect(()=>{

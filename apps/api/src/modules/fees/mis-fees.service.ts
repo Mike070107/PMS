@@ -5,6 +5,7 @@ import { Building, Community, House, User } from '../../entities';
 import { AuthUser } from '../../common/current-user.decorator';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
+import { naturalNumberSql } from '../../common/natural-order';
 import { buildMisFeeQuery, MisFeeQuery, MisHouseFilter, misFeeStatus, misMoneyToCents } from './mis-fees.query';
 
 // 与用户确认的映射；公寓收费台、北桥和颛桥均不参与物业费查询。
@@ -54,7 +55,14 @@ export class MisFeesService implements OnModuleDestroy {
    .leftJoin(User,'u',"u.house_id=h.id AND u.tenant_id=h.tenant_id AND u.role='owner' AND u.status='active'")
    .where('h.tenant_id=:tenantId AND b.community_id=:communityId',{tenantId:user.tenantId,communityId})
    .select(['h.id AS id','h.room_no AS "roomNo"','COALESCE(h.road_name,b.road_name) AS road','b.lane AS lane','b.building_no AS "buildingNo"','MAX(u.name) AS "ownerName"'])
-   .groupBy('h.id,b.road_name,b.lane,b.building_no').orderBy('b.building_no','ASC').addOrderBy('h.room_no','ASC').limit(50);
+   // 楼号/房号是 varchar，直接 ASC 会排成 1号 → 10号 → 2号；
+   // 这里按数字前缀排，GROUP BY 里同样补上表达式（PostgreSQL 要求 ORDER BY 表达式出现在 GROUP BY 中）。
+   .groupBy('h.id,b.road_name,b.lane,b.building_no')
+   .addGroupBy(naturalNumberSql('b.lane')).addGroupBy(naturalNumberSql('b.building_no')).addGroupBy(naturalNumberSql('h.room_no'))
+   .addOrderBy(naturalNumberSql('b.lane'),'ASC','NULLS LAST').addOrderBy('b.lane','ASC','NULLS LAST')
+   .addOrderBy(naturalNumberSql('b.building_no'),'ASC','NULLS LAST').addOrderBy('b.building_no','ASC','NULLS LAST')
+   .addOrderBy(naturalNumberSql('h.room_no'),'ASC','NULLS LAST').addOrderBy('h.room_no','ASC','NULLS LAST')
+   .limit(50);
   if(q?.trim()){
    const term='%'+q.trim().replace(/[\\%_]/g,c=>'\\'+c)+'%';
    qb.andWhere("(CONCAT(COALESCE(h.road_name,b.road_name),CASE WHEN b.lane IS NOT NULL AND b.lane<>'' THEN b.lane||'弄' ELSE '' END,b.building_no,'号',h.room_no) ILIKE :term OR u.name ILIKE :term OR u.phone ILIKE :term OR u.contact_note ILIKE :term)",{term});
