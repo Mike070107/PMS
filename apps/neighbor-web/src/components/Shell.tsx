@@ -79,6 +79,12 @@ export const NAV: NavGroup[] = [
   },
 ];
 
+/**
+ * 未迁移页面所在位置。生产和旧后台同域根路径，测试环境旧后台部署在 /beta-legacy/，
+ * 用 VITE_LEGACY_BASE 切，避免把测试环境的点击带回生产界面。
+ */
+const LEGACY_BASE = (import.meta.env.VITE_LEGACY_BASE || '').replace(/\/$/, '');
+
 const ALL_ITEMS = NAV.flatMap((g) => g.items.map((i) => ({ ...i, group: g.title || '总览' })));
 const PAGE_OF = (pathname: string) => {
   const seg = pathname.split('/').filter(Boolean)[0] || 'today';
@@ -123,7 +129,7 @@ export default function Shell() {
     setCmdk(false);
     if (item.legacy) {
       // 旧后台在站点根路径下，这里必须整页跳转（两套前端独立的构建产物）
-      window.location.href = item.legacy;
+      window.location.href = `${LEGACY_BASE}${item.legacy}`;
       return;
     }
     if (item.to) nav(item.to);
