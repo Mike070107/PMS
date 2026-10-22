@@ -5160,3 +5160,17 @@
   - 9477b319 fix(sort): 房号与楼栋号按数字排（1,2,3,11,21 而不是 1,10,11,2）
   - d0301714 feat(neighbor-web): 邻修新版管理后台骨架 + 今日待办 + 工单调度
 
+## 2026-10-22 21:42 · web · f1647790
+
+- 包：`pms-web-20261022-214032.tar.gz`
+- 提交：f1647790 deploy: api → 31416c13
+- 自上次（d20ab74a）以来上线的相关提交：
+  - 31416c13 fix(repairs): preserve card service addresses and expose notification failures
+  - 95e57a5e style(admin-web): 旧后台状态标签改用新界面的浅底深字口径（第三轮）
+  - f7a61d76 style(admin-web): 旧后台组件骨架向新界面对齐（第二轮）
+  - 8993178d feat(family-cars): 从停车库批量导入现有亲情车
+  - d16a80d6 fix(fees): 一通MIS房号下拉按数字排（1号→2号→…→10号）
+  - 9477b319 fix(sort): 房号与楼栋号按数字排（1,2,3,11,21 而不是 1,10,11,2）
+  - da0586d8 style(admin-web): 旧后台按新界面视觉统一（浅侧栏+墨绿+大字）
+  - d0301714 feat(neighbor-web): 邻修新版管理后台骨架 + 今日待办 + 工单调度
+
