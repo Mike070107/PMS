@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "nest build",
+    "test:mis-fees": "node -r ts-node/register/transpile-only --test src/modules/fees/mis-fees.test.ts src/modules/fees/mis-fees.live.test.ts",
     "test:cashier-finance": "node -r ts-node/register/transpile-only -e \"require('./src/modules/fees/cashier-finance.test');require('./src/modules/fees/cashier-finance.persistence.test');require('./src/modules/fees/cashier.util.test');require('./src/modules/fees/report.util.test');require('./src/modules/fees/cashier-permission.test');\"",
     "test:fee-templates": "node -r ts-node/register --test src/modules/fees/fee-templates.util.test.ts src/modules/fees/fee-templates.persistence.test.ts src/modules/fees/fee-templates.integration.test.ts",
     "test:qr-security": "node -r ts-node/register --test src/modules/auth/qr-login-security.test.ts src/modules/auth/qr-login.service.test.ts src/modules/auth/oidc.service.test.ts",
@@ -44,6 +45,7 @@
     "jszip": "^3.10.2",
     "mailparser": "^3.9.28",
     "minio": "^8.0.1",
+    "mssql": "12.7.10",
     "nanoid": "^3.3.7",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",

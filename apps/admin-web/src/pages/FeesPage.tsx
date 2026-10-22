@@ -52,8 +52,8 @@ import { request } from '../lib/api';
 import { centsToYuan, exportXlsx } from '../lib/exportXlsx';
 import { handleGone } from '../lib/gone';
 import { usePagePerm } from '../lib/auth';
+import MisPropertyFees from '../components/MisPropertyFees';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
-import ApartmentCashierPage from './ApartmentCashierPage';
 import { FeeBreakdownChart, FeeTrendChart } from '../components/FeeReportCharts';
 import FeeTemplateSettings from './FeeTemplateSettings';
 import './FeesReportShell.css';
@@ -256,53 +256,7 @@ function placeText(r: {
 }
 
 export default function FeesPage() {
-  const [tab, setTab] = useState('cashier');
-  const [detailHouseId, setDetailHouseId] = useState<number | null>(null);
-
-  return (
-    <div>
-      <Space align="start" style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Text className="pms-page-note" type="secondary">
-            按户记账：登记收款、查欠费、维护每户的收费标准。目前只做账目管理，不接在线支付与发票。
-        </Text>
-      </Space>
-      <Tabs
-        activeKey={tab}
-        onChange={setTab}
-        items={[
-          {
-            key: 'cashier',
-            label: <span><CreditCardOutlined /> 收费工作台</span>,
-            children: <ApartmentCashierPage permissionKey="fees" />,
-          },
-          {
-            key: 'bills',
-            label: <span><FileTextOutlined /> 账单</span>,
-            children: <BillsTab onOpenHouse={setDetailHouseId} />,
-          },
-          {
-            key: 'reports',
-            label: <span><BarChartOutlined /> 收费报表</span>,
-            children: <ReportTab />,
-          },
-          {
-            key: 'recon',
-            label: <span><SwapOutlined /> 财务对账</span>,
-            children: <ReconTab />,
-          },
-          {
-            key: 'arrears',
-            label: <span><WarningOutlined /> 欠费催缴</span>,
-            children: <ArrearsTab onOpenHouse={setDetailHouseId} />,
-          },
-        ]}
-      />
-      <HouseDetailModal
-        houseId={detailHouseId}
-        onClose={() => setDetailHouseId(null)}
-      />
-    </div>
-  );
+  return <MisPropertyFees />;
 }
 
 export function FeeStandardsPanel() {

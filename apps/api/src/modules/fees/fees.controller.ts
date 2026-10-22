@@ -35,6 +35,8 @@ import {
   UpdateStandardDto,
 } from './dto';
 import { FeesService } from './fees.service';
+import { MisFeesService } from './mis-fees.service';
+import { MisFeesQueryDto, MisHouseSearchDto } from './mis-fees.dto';
 
 /**
  * 物业费（纯管理端页面），走页面权限矩阵。
@@ -45,7 +47,19 @@ import { FeesService } from './fees.service';
 @Controller('fees')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class FeesController {
-  constructor(private readonly feesService: FeesService) {}
+  constructor(private readonly feesService: FeesService,private readonly misFeesService:MisFeesService) {}
+
+  @Get('mis/options')
+  @RequirePermission('fees','view')
+  misOptions(@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.metadata(user,access);}
+
+  @Get('mis/bills')
+  @RequirePermission('fees','view')
+  misBills(@Query() query:MisFeesQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.list(query,user,access);}
+
+  @Get('mis/houses')
+  @RequirePermission('fees','view')
+  misHouses(@Query() query:MisHouseSearchDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.searchHouses(query.communityId,query.q,user,access);}
 
   // ---------- 账单 ----------
 
