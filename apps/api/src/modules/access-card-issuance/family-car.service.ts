@@ -32,6 +32,7 @@ import {
   classifyPlateCheck,
   databaseForLane,
   daysUntil,
+  defaultFamilyGarages,
   familyValidity,
   isExpiringSoon,
   isPastEnd,
@@ -42,6 +43,21 @@ import {
   shanghaiDate,
 } from './family-car.util';
 import { ParkingProofService } from './parking-proof.service';
+
+
+/** 把 228/6/502、228弄6号502室、6-502 解析成楼栋与房号；认不出返回 null */
+export function parseImportRoom(text: string): { lane: string | null; buildingNo: string; roomNo: string } | null {
+  const parts = String(text || '')
+    .replace(/[弄号楼栋幢室座\s]/g, '/')
+    .replace(/[\\\-—–]/g, '/')
+    .split('/')
+    .map((part) => part.trim())
+    .filter((part) => /^\d+$/.test(part));
+  if (parts.length < 2) return null;
+  const tail = parts.slice(-3).map((part) => String(Number(part)));
+  if (tail.length >= 3) return { lane: tail[0], buildingNo: tail[1], roomNo: tail[2] };
+  return { lane: null, buildingNo: tail[0], roomNo: tail[1] };
+}
 
 export interface CreateFamilyCarInput {
   houseId: number;
@@ -187,6 +203,178 @@ export class FamilyCarService {
     const visible = scope ? await this.filterByScope(rows, scope) : rows;
     const today = shanghaiDate();
     return visible.map((row) => this.detail(row, today));
+  }
+
+  // ---------------- 从停车库导入 ----------------
+
+  /**
+   * 把停车系统里已经在用的亲情车导进亲情车列表。
+   *
+   * 现场做法：在停车系统导出亲情车清单（车牌、房号、车主、有效期），办公室把清单
+   * 贴进导入框。这里逐行匹配 PMS 房号与业主；这些车在旧库已经生效，导入后直接记为
+   * 已生效（不再走两级审核，否则全部卡在待审），并在日志里写明来源。
+   *
+   * dryRun = 只出核对结果，不落库。
+   */
+  async importFromParking(
+    dto: {
+      rows: Array<{
+        plate: string;
+        room: string;
+        ownerName?: string;
+        ownerPhone?: string;
+        carOwnerName?: string;
+        carOwnerPhone?: string;
+        relation?: string;
+        identity?: string;
+        database?: string;
+        startDate?: string;
+        endDate?: string;
+        remark?: string;
+      }>;
+      dryRun?: boolean;
+    },
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const scope = scopeCommunityIds(access);
+    const today = shanghaiDate();
+    const dryRun = !!dto.dryRun;
+    const results: Array<{
+      plate: string;
+      room: string;
+      verdict: 'imported' | 'would_import' | 'skipped' | 'failed';
+      message: string;
+    }> = [];
+    let imported = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const row of dto.rows.slice(0, 500)) {
+      const plate = normalizeFamilyPlate(row.plate);
+      const roomText = String(row.room || '').trim();
+      const fail = (message: string) => {
+        failed += 1;
+        results.push({ plate, room: roomText, verdict: 'failed', message });
+      };
+      const skip = (message: string) => {
+        skipped += 1;
+        results.push({ plate, room: roomText, verdict: 'skipped', message });
+      };
+
+      if (!isValidFamilyPlate(plate)) { fail('车牌格式不正确，例：豫GQ3N07'); continue; }
+      if (row.identity && !row.identity.includes('亲情')) {
+        skip(`旧库车辆身份是「${row.identity}」，不是亲情车`);
+        continue;
+      }
+
+      const parsed = parseImportRoom(roomText);
+      if (!parsed) { fail('房号无法识别，例：228/6/502'); continue; }
+
+      // 楼栋：给了弄号就精确定位，没给就按楼号找（可能命中多个小区）
+      const where: Record<string, unknown> = { tenantId, buildingNo: parsed.buildingNo };
+      if (parsed.lane) where.lane = parsed.lane;
+      const buildings = (await this.buildingRepo.find({ where })).filter(
+        (b) => !scope || scope.includes(b.communityId),
+      );
+      if (!buildings.length) {
+        fail(parsed.lane ? `找不到 ${parsed.lane} 弄 ${parsed.buildingNo} 号` : `找不到 ${parsed.buildingNo} 号楼`);
+        continue;
+      }
+      if (buildings.length > 1) {
+        fail('房号对应多个楼栋，请把弄号写全，例：228/6/502');
+        continue;
+      }
+      const building = buildings[0];
+      const house = await this.houseRepo.findOne({
+        where: { tenantId, buildingId: building.id, roomNo: parsed.roomNo },
+      });
+      if (!house) { fail(`该楼栋没有 ${parsed.roomNo} 室`); continue; }
+
+      const lane = (building.lane || '').trim();
+      const database = databaseForLane(lane);
+      if (!database) { fail('只支持 198 弄 / 228 弄的住宅房号'); continue; }
+
+      const duplicate = await this.repo.findOne({
+        where: { tenantId, plate, status: In(LIVE_STATUSES) },
+      });
+      if (duplicate) {
+        skip(`车牌已在亲情车列表（${duplicate.lane}/${duplicate.buildingNo}/${duplicate.roomNo} · ${FAMILY_STATUS_LABEL[duplicate.status]}）`);
+        continue;
+      }
+
+      if (dryRun) {
+        results.push({ plate, room: roomText, verdict: 'would_import', message: `将导入到 ${lane}/${parsed.buildingNo}/${parsed.roomNo}` });
+        continue;
+      }
+
+      const owner = await this.userRepo.findOne({
+        where: { tenantId, houseId: house.id, role: UserRole.OWNER, status: UserStatus.ACTIVE },
+        order: { id: 'ASC' },
+      });
+      const validity = row.startDate && row.endDate
+        ? { startDate: row.startDate, endDate: row.endDate }
+        : familyValidity(today);
+      const garages = defaultFamilyGarages(lane);
+
+      const car = await this.repo.save(this.repo.create({
+        tenantId,
+        houseId: house.id,
+        lane,
+        buildingNo: String(Number(building.buildingNo)),
+        roomNo: String(Number(house.roomNo)),
+        ownerName: (row.ownerName || owner?.name || '').trim().slice(0, 50),
+        ownerPhone: (row.ownerPhone || owner?.phone || '').trim().slice(0, 30),
+        ownerUserId: owner?.id ?? null,
+        carOwnerName: (row.carOwnerName || '').trim().slice(0, 50),
+        carOwnerPhone: (row.carOwnerPhone || '').trim().slice(0, 30),
+        relation: (row.relation || '').trim().slice(0, 20),
+        plate,
+        remark: (row.remark || '从停车库导入').trim().slice(0, 200),
+        database: (row.database as 'parking1' | 'parking2') || database,
+        garages,
+        garageNumbers: {},
+        mode: 'existing',
+        status: 'active',
+        ownerFill: false,
+        files: [],
+        proofUploadId: null,
+        registrationOperationId: null,
+        openOperationId: null,
+        renewOperationId: null,
+        expireOperationId: null,
+        civilOperationId: null,
+        officeReviewedBy: null,
+        officeReviewedAt: null,
+        officeNote: '从停车库导入：旧库已生效，未走 PMS 审核',
+        managerReviewedBy: null,
+        managerReviewedAt: null,
+        managerNote: '',
+        startDate: validity.startDate,
+        endDate: validity.endDate,
+        remindedAt: null,
+        previousId: null,
+        lastError: null,
+        log: [],
+        createdBy: user.id,
+        updatedBy: user.id,
+      }));
+      await this.appendLog(
+        car,
+        user,
+        '从停车库导入',
+        `旧库已在用${row.identity ? `（车辆身份：${row.identity}）` : ''}；导入前无 PMS 资料与审核记录`,
+      );
+      imported += 1;
+      results.push({ plate, room: roomText, verdict: 'imported', message: `已导入 ${lane}/${parsed.buildingNo}/${parsed.roomNo}` });
+    }
+
+    return {
+      dryRun,
+      summary: { total: dto.rows.length, imported, skipped, failed },
+      rows: results,
+    };
   }
 
   // ---------------- 登记 ----------------

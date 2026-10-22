@@ -129,3 +129,38 @@ export const retry = (id: number) => request<FamilyCarDetail>({ url: `/family-ca
 
 export const stop = (id: number, note: string) =>
   request<FamilyCarDetail>({ url: `/family-cars/${id}/stop`, method: 'POST', data: { note } });
+
+/** 从停车系统导入亲情车的一行：车牌与房号必填，其余按现场导出表填 */
+export interface ImportFamilyCarRow {
+  plate: string;
+  room: string;
+  ownerName?: string;
+  ownerPhone?: string;
+  carOwnerName?: string;
+  carOwnerPhone?: string;
+  relation?: string;
+  identity?: string;
+  database?: string;
+  startDate?: string;
+  endDate?: string;
+  remark?: string;
+}
+
+export interface ImportFamilyCarResult {
+  dryRun: boolean;
+  summary: { total: number; imported: number; skipped: number; failed: number };
+  rows: Array<{
+    plate: string;
+    room: string;
+    verdict: 'imported' | 'would_import' | 'skipped' | 'failed';
+    message: string;
+  }>;
+}
+
+/** dryRun=true 只核对不落库；确认后同参数再调一次 dryRun=false */
+export const importFromParking = (rows: ImportFamilyCarRow[], dryRun = false) =>
+  request<ImportFamilyCarResult>({
+    url: '/family-cars/import',
+    method: 'POST',
+    data: { rows, dryRun },
+  });

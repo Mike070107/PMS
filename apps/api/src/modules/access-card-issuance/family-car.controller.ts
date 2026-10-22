@@ -24,6 +24,7 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
@@ -70,6 +71,30 @@ export class StopFamilyCarDto {
   @IsString() @MinLength(1) @MaxLength(200) note: string;
 }
 
+/** 从停车系统导入的一行：现场把旧库的亲情车清单导成表，按行贴进来 */
+export class ImportFamilyCarRowDto {
+  @IsString() @MinLength(6) @MaxLength(20) plate: string;
+  /** 房号，支持 228/6/502、228弄6号502室、6/502 */
+  @IsString() @MinLength(3) @MaxLength(40) room: string;
+  @IsOptional() @IsString() @MaxLength(50) ownerName?: string;
+  @IsOptional() @IsString() @MaxLength(30) ownerPhone?: string;
+  @IsOptional() @IsString() @MaxLength(50) carOwnerName?: string;
+  @IsOptional() @IsString() @MaxLength(30) carOwnerPhone?: string;
+  @IsOptional() @IsString() @MaxLength(20) relation?: string;
+  /** 旧库车辆身份（Car_Brand）。给了就必须是「亲情车」，防止把住户车导进来 */
+  @IsOptional() @IsString() @MaxLength(30) identity?: string;
+  @IsOptional() @IsString() @MaxLength(20) database?: string;
+  @IsOptional() @IsString() @MaxLength(20) startDate?: string;
+  @IsOptional() @IsString() @MaxLength(20) endDate?: string;
+  @IsOptional() @IsString() @MaxLength(200) remark?: string;
+}
+
+export class ImportFamilyCarsDto {
+  @IsArray() @ValidateNested({ each: true }) @Type(() => ImportFamilyCarRowDto) rows: ImportFamilyCarRowDto[];
+  /** true = 只出核对结果，不落库 */
+  @IsOptional() @IsBoolean() dryRun?: boolean;
+}
+
 const MANAGER = ['family-cars-approve', 'app:family-car-approve'] as const;
 
 /** 亲情车管理：清册、登记、资料、办公室审核、物业经理审核、开通、停用 */
@@ -106,6 +131,12 @@ export class FamilyCarController {
   @RequirePermission('family-cars', 'edit')
   create(@Body() dto: CreateFamilyCarDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.service.create(dto, user, access);
+  }
+
+  @Post('import')
+  @RequirePermission('family-cars', 'edit')
+  importFromParking(@Body() dto: ImportFamilyCarsDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.importFromParking(dto, user, access);
   }
 
   @Patch(':id')

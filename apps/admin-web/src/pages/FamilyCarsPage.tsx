@@ -149,6 +149,7 @@ export default function FamilyCarsPage() {
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
   const [register, setRegister] = useState<{ open: boolean; source?: Row }>({ open: false });
+  const [importOpen, setImportOpen] = useState(false);
   const [popupQr, setPopupQr] = useState<{ id: number; qr: Qr } | null>(null);
 
   const load = useCallback(async (quiet = false) => {
@@ -220,6 +221,7 @@ export default function FamilyCarsPage() {
         <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
         <div className="family-bar-right">
           <Button onClick={() => void exportList()} disabled={!visible.length}>导出 Excel</Button>
+          {canEdit && <Button onClick={() => setImportOpen(true)}>从停车库导入</Button>}
           {canEdit && <Button type="primary" onClick={() => setRegister({ open: true })}>＋ 登记亲情车</Button>}
         </div>
       </div>
@@ -256,6 +258,7 @@ export default function FamilyCarsPage() {
       onShowQr={(qr) => setPopupQr({ id: openId, qr })} onChanged={() => void load(true)}
       onRenew={(row) => { setOpenId(null); setRegister({ open: true, source: row }); }} />}
     {popupQr && <QrModal carId={popupQr.id} qr={popupQr.qr} onClose={() => setPopupQr(null)} />}
+    {importOpen && <ImportFamilyCarsModal onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); void load(true); }} />}
   </div>;
 }
 
@@ -719,4 +722,98 @@ function DetailDrawer({ id, canEdit, canApprove, onClose, onChanged, onShowQr, o
     {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
     {body}
   </Drawer>;
+}
+
+
+/* ---------------- 从停车库导入 ---------------- */
+
+const IMPORT_HEADER = '车牌 房号 车主姓名 电话 旧库身份 到期日';
+
+/** 一行一条。支持从 Excel 直接复制（制表符）或手打逗号/空格分隔 */
+function parseImportText(text: string): Array<familyCars.ImportFamilyCarRow> {
+  const rows: Array<familyCars.ImportFamilyCarRow> = [];
+  for (const line of text.split(/\r?\n/)) {
+    const raw = line.trim();
+    if (!raw) continue;
+    if (raw.startsWith('#') || raw.startsWith('车牌')) continue;
+    let cells = raw.split(/[\t,，;；|]+/).map((cell) => cell.trim()).filter(Boolean);
+    if (cells.length < 2) cells = raw.split(/\s{1,}/).map((cell) => cell.trim()).filter(Boolean);
+    if (cells.length < 2) continue;
+    const [plate, room, ownerName, ownerPhone, identity, endDate] = cells;
+    rows.push({
+      plate,
+      room,
+      ownerName: ownerName || undefined,
+      ownerPhone: ownerPhone || undefined,
+      identity: identity || undefined,
+      endDate: endDate || undefined,
+      remark: '从停车库导入',
+    });
+  }
+  return rows;
+}
+
+const VERDICT_LABEL: Record<string, { text: string; color: string }> = {
+  imported: { text: '已导入', color: 'green' },
+  would_import: { text: '可导入', color: 'blue' },
+  skipped: { text: '跳过', color: 'orange' },
+  failed: { text: '失败', color: 'red' },
+};
+
+function ImportFamilyCarsModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const { message } = AntdApp.useApp();
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<familyCars.ImportFamilyCarResult | null>(null);
+  const parsed = useMemo(() => parseImportText(text), [text]);
+
+  const run = async (dryRun: boolean) => {
+    if (!parsed.length) { message.warning('先粘贴要导入的亲情车清单'); return; }
+    setBusy(true);
+    try {
+      const res = await familyCars.importFromParking(parsed, dryRun);
+      setResult(res);
+      const ok = res.rows.filter((row) => row.verdict === 'imported' || row.verdict === 'would_import').length;
+      if (dryRun) message.success(`核对完成：可导入 ${ok} 条，跳过 ${res.summary.skipped} 条，失败 ${res.summary.failed} 条`);
+      else {
+        message.success(`已导入 ${res.summary.imported} 条，跳过 ${res.summary.skipped} 条，失败 ${res.summary.failed} 条`);
+        onDone();
+      }
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '导入失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const canImport = !!result?.dryRun && result.rows.some((row) => row.verdict === 'would_import');
+
+  return <Modal open width={880} title="从停车库导入亲情车" onCancel={onClose} destroyOnClose
+    footer={<div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+      <Button onClick={onClose}>取消</Button>
+      <Button onClick={() => void run(true)} loading={busy}>核对</Button>
+      <Button type="primary" disabled={!canImport} loading={busy} onClick={() => void run(false)}>确认导入</Button>
+    </div>}>
+    <Alert type="info" showIcon style={{ marginBottom: 12 }}
+      message="这些车在停车系统里已经在用，导入后状态直接记为「已生效」，不再走两级审核；PMS 里没有照片资料，日志会写明来源。" />
+    <Input.TextArea rows={7} value={text} onChange={(e) => setText(e.target.value)}
+      placeholder={`每行一条，从 Excel 复制即可（列顺序：${IMPORT_HEADER}）` +
+        `\n例：豫GQ3N07\t228/6/502\t周丽华\t13800002231\t亲情车\t2027-06-30`} />
+    <div style={{ margin: '8px 0 12px', color: 'rgba(0,0,0,.45)', fontSize: 13 }}>
+      已识别 {parsed.length} 行；房号支持 228/6/502、228弄6号502室、6/502 三种写法。
+    </div>
+    {result && <>
+      <div style={{ marginBottom: 8 }}>
+        共 {result.summary.total} 条：可导入/已导入 {result.rows.filter((row) => row.verdict === 'imported' || row.verdict === 'would_import').length}，
+        跳过 {result.summary.skipped}，失败 {result.summary.failed}
+      </div>
+      <Table size="small" rowKey={(row, index) => `${row.plate}-${index}`} dataSource={result.rows} pagination={{ pageSize: 10 }}
+        columns={[
+          { title: '车牌', dataIndex: 'plate', width: 120 },
+          { title: '房号', dataIndex: 'room', width: 140 },
+          { title: '结果', dataIndex: 'verdict', width: 90, render: (v: string) => <Tag color={VERDICT_LABEL[v]?.color}>{VERDICT_LABEL[v]?.text || v}</Tag> },
+          { title: '说明', dataIndex: 'message' },
+        ]} />
+    </>}
+  </Modal>;
 }
