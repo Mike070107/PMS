@@ -48,6 +48,7 @@ import {
   formatFeePeriod,
   formatAddressLine,
 } from '@pms/shared-types';
+import { sortedHouses } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { centsToYuan, exportXlsx } from '../lib/exportXlsx';
 import { handleGone } from '../lib/gone';
@@ -1726,7 +1727,7 @@ function useHouseSearch() {
         if (!value) return;
         setSearching(true);
         try {
-          setOptions(await request<HouseOption[]>({ url: '/houses', query: { q: value } }));
+          setOptions(sortedHouses(await request<HouseOption[]>({ url: '/houses', query: { q: value } })));
         } catch {
           /* 搜不到就保持原列表，不打断输入 */
         } finally {
@@ -1940,7 +1941,7 @@ function BillFormModal({
             loading={searching}
             disabled={!!target}
             onSearch={search}
-            options={withOptionTitles(options.map((h) => ({ value: h.id, label: houseOptionLabel(h) })))}
+            options={withOptionTitles(sortedHouses(options).map((h) => ({ value: h.id, label: houseOptionLabel(h) })))}
           />
         </Form.Item>
         <Row gutter={12}>
@@ -2068,7 +2069,7 @@ function StandardFormModal({
             loading={searching}
             disabled={!!target}
             onSearch={search}
-            options={withOptionTitles(options.map((h) => ({ value: h.id, label: houseOptionLabel(h) })))}
+            options={withOptionTitles(sortedHouses(options).map((h) => ({ value: h.id, label: houseOptionLabel(h) })))}
           />
         </Form.Item>
         <Row gutter={12}>

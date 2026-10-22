@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { address, request } from '@pms/api-client';
 import type { AddressBuilding, AddressCommunity, AddressHouse } from '@pms/shared-types';
+import { sortedBuildings, sortedHouses } from '@pms/shared-types';
 import { Btn, Card, ErrorNote, Field, Loading, toast } from '@/components/ui';
 import { useSession } from '@/lib/auth';
 import { dayjs, money } from '@/lib/format';
@@ -103,13 +104,14 @@ export default function Cashier() {
   }, [tree, allowedIds]);
 
   const buildings = useMemo(
-    () => communities.find((c) => c.id === selCommunity)?.buildings ?? [],
+    // 楼栋和房号都按数字排：1、2、3、11、21，不是字典序的 1、10、11、2
+    () => sortedBuildings(communities.find((c) => c.id === selCommunity)?.buildings ?? []),
     [communities, selCommunity],
   );
 
   const roomList = useMemo(() => {
     const b = buildings.find((x) => x.id === selBuilding);
-    const list = b?.houses ?? [];
+    const list = sortedHouses(b?.houses ?? []);
     const kw = roomFilter.trim();
     if (!kw) return list;
     return list.filter((h) => h.roomNo.includes(kw) || (h.ownerName || '').includes(kw));

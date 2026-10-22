@@ -1114,6 +1114,7 @@ export interface DictItem {
 
 export * from './address';
 export * from './work-order-sort';
+export * from './natural-order';
 export * from './repair-classify';
 export * from './pages';
 export * from './fees';

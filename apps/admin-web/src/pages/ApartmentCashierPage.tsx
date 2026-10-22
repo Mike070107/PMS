@@ -30,6 +30,7 @@ import {
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth, usePagePerm } from '../lib/auth';
+import { sortedHouses } from '@pms/shared-types';
 import { request } from '../lib/api';
 import './ApartmentCashierPage.css';
 
@@ -201,7 +202,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
     }
     setLoadingHouses(true);
     request<House[]>({ url: '/houses', query: { buildingId } })
-      .then(setHouses)
+      .then((list) => setHouses(sortedHouses(list)))
       .catch((error) => message.error(error?.message || '房号加载失败'))
       .finally(() => setLoadingHouses(false));
   }, [buildingId, buildings, message, preview]);
