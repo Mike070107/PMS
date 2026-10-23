@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { address, request } from '@pms/api-client';
-import type { AddressBuilding, AddressCommunity, AddressHouse } from '@pms/shared-types';
+import type { AddressCommunity } from '@pms/shared-types';
+import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import { sortedBuildings, sortedHouses } from '@pms/shared-types';
 import { legacyUrl } from '@/lib/legacy';
 import { Btn, Card, ErrorNote, Field, Loading, toast } from '@/components/ui';
@@ -58,13 +59,11 @@ export default function Cashier() {
   const [bills, setBills] = useState<Bill[] | null>(null);
   const [err, setErr] = useState('');
 
-  // 选房号（小区 → 楼栋 → 房号），只在权限范围内列
+  // 房号选择：一个输入框里既能打字也能点选；车牌/姓名/电话查走 fallback
   const [tree, setTree] = useState<AddressCommunity[] | null>(null);
   const [treeErr, setTreeErr] = useState('');
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [selCommunity, setSelCommunity] = useState<number | 0>(0);
-  const [selBuilding, setSelBuilding] = useState<number | 0>(0);
-  const [roomFilter, setRoomFilter] = useState('');
+  const [picked, setPicked] = useState<PickedHouse | null>(null);
+  const [remoteOpen, setRemoteOpen] = useState(false);
 
   const [pickPark, setPickPark] = useState(false);
   const [vehicleId, setVehicleId] = useState<number | null>(null);
@@ -103,20 +102,6 @@ export default function Cashier() {
     const list = (tree ?? []).filter((c) => !c.isGroup);
     return allowedIds ? list.filter((c) => allowedIds.has(c.id)) : list;
   }, [tree, allowedIds]);
-
-  const buildings = useMemo(
-    // 楼栋和房号都按数字排：1、2、3、11、21，不是字典序的 1、10、11、2
-    () => sortedBuildings(communities.find((c) => c.id === selCommunity)?.buildings ?? []),
-    [communities, selCommunity],
-  );
-
-  const roomList = useMemo(() => {
-    const b = buildings.find((x) => x.id === selBuilding);
-    const list = sortedHouses(b?.houses ?? []);
-    const kw = roomFilter.trim();
-    if (!kw) return list;
-    return list.filter((h) => h.roomNo.includes(kw) || (h.ownerName || '').includes(kw));
-  }, [buildings, selBuilding, roomFilter]);
 
   const scopeLabel = useMemo(() => {
     const a = session.access;
@@ -176,32 +161,32 @@ export default function Cashier() {
   };
 
   /**
-   * 从地址树里选房号：先按树上的数据把人名/电话带出来，立刻能收费；
+   * 从房号选择器里拿到房号：先按树上的数据把人名/电话带出来，立刻能收费；
    * 再按「楼号/房号」查一次业务数据把车辆和门禁卡补上（查不到不影响收款）。
    */
-  const chooseHouse = async (c: AddressCommunity, b: AddressBuilding, h: AddressHouse) => {
+  const chooseHouse = async (p: PickedHouse) => {
+    setPicked(p);
+    setQ(p.text);
     const hit: HouseHit = {
-      id: h.id,
-      roomNo: h.roomNo,
-      lane: b.lane,
-      buildingNo: b.buildingNo,
-      communityId: c.id,
-      communityName: c.name,
-      owner: h.ownerId ? { id: h.ownerId, name: h.ownerName ?? null, phone: h.ownerPhone ?? null } : null,
+      id: p.houseId,
+      roomNo: p.roomNo,
+      lane: p.lane,
+      buildingNo: p.buildingNo,
+      communityId: p.communityId,
+      communityName: p.communityName,
+      owner: p.ownerId ? { id: p.ownerId, name: p.ownerName, phone: p.ownerPhone } : null,
     };
-    setPickerOpen(false);
-    setQ(`${b.buildingNo}/${h.roomNo}`);
     const only: SearchResult = { houses: [hit], vehicles: [], accessCards: [] };
     setResult(only);
     applyHouse(hit, only);
 
     try {
-      const r = await searchByQ(`${b.buildingNo}/${h.roomNo}`);
-      const exact = r.houses.find((x) => x.id === h.id) ?? hit;
+      const r = await searchByQ(`${p.buildingNo}/${p.roomNo}`);
+      const exact = r.houses.find((x) => x.id === p.houseId) ?? hit;
       const merged: SearchResult = {
         houses: [exact],
-        vehicles: r.vehicles.filter((v) => v.houseId === h.id),
-        accessCards: r.accessCards.filter((x) => x.houseId === h.id),
+        vehicles: r.vehicles.filter((v) => v.houseId === p.houseId),
+        accessCards: r.accessCards.filter((x) => x.houseId === p.houseId),
       };
       setResult(merged);
       applyHouse(exact, merged);
@@ -299,74 +284,32 @@ export default function Cashier() {
 
       {err ? <ErrorNote>{err}</ErrorNote> : null}
 
-      <div className="hsearch" style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        <input className="in" value={q} placeholder="输房号（228/6/502）、业主姓名、手机号或车牌"
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void search(); }} />
-        <Btn kind="p" size="lg" disabled={searching} onClick={() => void search()}>{searching ? '查询中…' : '查找'}</Btn>
-        <Btn size="lg" onClick={() => setPickerOpen((v) => !v)} disabled={!!treeErr && !tree}>
-          {pickerOpen ? '收起选房号' : '选房号'}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
+        <HousePicker
+          communities={communities}
+          value={picked}
+          placeholder="输入 228/6/502 查房号，或点选 小区 → 楼栋 → 室号，选中的房号自动查询"
+          onPick={(p) => void chooseHouse(p)}
+          onTextChange={(text) => setQ(text)}
+          onClear={() => { setPicked(null); setQ(''); setHouse(null); }}
+          onFallbackSearch={() => setRemoteOpen(true)}
+        />
+        <Btn kind="p" size="lg" disabled={searching} onClick={() => void search()}>
+          {searching ? '查询中…' : '查询'}
         </Btn>
+        <Btn size="lg" onClick={() => setRemoteOpen((v) => !v)}>车牌 / 姓名</Btn>
       </div>
 
-      {pickerOpen ? (
-        <Card style={{ padding: '16px 18px', marginBottom: 16 }}>
-          <div className="sec-t">
-            选房号
-            <span className="r muted">只列你可以访问的小区 / 楼栋 / 房号</span>
-          </div>
-          {treeErr ? <ErrorNote>{treeErr}</ErrorNote> : null}
-          {tree === null ? <Loading text="加载小区与楼栋…" /> : (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.1fr', gap: 12 }}>
-                <Field label="小区">
-                  <select className="in" value={selCommunity}
-                    onChange={(e) => { setSelCommunity(Number(e.target.value)); setSelBuilding(0); setRoomFilter(''); }}>
-                    <option value={0}>请选择</option>
-                    {communities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </Field>
-                <Field label="楼栋">
-                  <select className="in" value={selBuilding} disabled={!selCommunity}
-                    onChange={(e) => { setSelBuilding(Number(e.target.value)); setRoomFilter(''); }}>
-                    <option value={0}>{selCommunity ? '请选择' : '先选小区'}</option>
-                    {buildings.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.lane ? `${b.lane}弄${b.buildingNo}号` : `${b.buildingNo}号楼`}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="房号（可输入过滤）">
-                  <input className="in" value={roomFilter} disabled={!selBuilding}
-                    placeholder="502 或业主姓名"
-                    onChange={(e) => setRoomFilter(e.target.value)} />
-                </Field>
-              </div>
-
-              {!selBuilding ? (
-                <div className="muted" style={{ padding: '6px 0' }}>
-                  {communities.length ? '选楼栋后列出房号' : '当前账号范围内没有可收费的小区'}
-                </div>
-              ) : roomList.length ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(172px,1fr))', gap: 8, maxHeight: 300, overflow: 'auto', paddingBottom: 4 }}>
-                  {roomList.map((h) => {
-                    const c = communities.find((x) => x.id === selCommunity);
-                    const b = buildings.find((x) => x.id === selBuilding);
-                    return (
-                      <button key={h.id} className="btn" style={{ justifyContent: 'space-between', height: 48 }}
-                        onClick={() => { if (c && b) void chooseHouse(c, b, h); }}>
-                        <b>{h.roomNo}</b>
-                        <span className="muted" style={{ fontSize: 13.5 }}>{h.ownerName || '空户'}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : <div className="empty" style={{ padding: 18 }}>没有匹配的房号</div>}
-            </>
-          )}
-        </Card>
+      {remoteOpen ? (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+          <input className="in" value={q} placeholder="业主姓名、手机号或车牌号，回车查询"
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void search(); }} />
+          <Btn size="lg" onClick={() => setRemoteOpen(false)}>收起</Btn>
+        </div>
       ) : null}
+
+      {treeErr ? <ErrorNote>{treeErr}</ErrorNote> : null}
 
       {!house ? (
         <Card style={{ padding: '56px 20px' }}>

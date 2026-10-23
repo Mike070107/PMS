@@ -114,3 +114,100 @@
   display: block;
 }
 @keyframes pv-in { from { opacity: 0; } }
+
+/* ===== 房号选择器：一个输入框，既能打字联想，也能点选小区→楼栋→室号 ===== */
+.hp { position: relative; flex: 1; min-width: 0; }
+.hp-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink3);
+  transition: border-color .12s, box-shadow .12s;
+}
+.hp-box.is-open, .hp-box:focus-within {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px var(--acc-w);
+}
+.hp-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+}
+.hp-input::placeholder { color: var(--ink3); }
+.hp-clear {
+  border: 0; background: none; cursor: pointer; color: var(--ink3);
+  font-size: 15px; padding: 4px 6px; border-radius: 6px;
+}
+.hp-clear:hover { background: var(--sunken); color: var(--ink); }
+
+.hp-pop {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  min-width: 420px;
+  max-height: 420px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(20, 30, 25, .12);
+}
+.hp-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; font-size: 13.5px; color: var(--ink3);
+  border-bottom: 1px solid var(--line2);
+  position: sticky; top: 0; background: #fff; z-index: 1;
+}
+.hp-back {
+  border: 0; background: none; cursor: pointer;
+  color: var(--acc-t); font: inherit; font-size: 13.5px; padding: 2px 6px; border-radius: 6px;
+}
+.hp-back:hover { background: var(--acc-w); }
+.hp-list { padding: 6px; }
+.hp-row, .hp-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; padding: 12px 12px; border: 0; border-radius: 8px;
+  background: none; cursor: pointer; font: inherit; font-size: 15.5px; color: var(--ink);
+  text-align: left;
+}
+.hp-row:hover, .hp-item:hover, .hp-item.is-active { background: var(--acc-w); color: var(--acc-t); }
+.hp-item-main { flex: 1; min-width: 0; }
+.hp-item-side { color: var(--ink3); font-size: 14px; flex: none; }
+.hp-arrow { color: var(--ink3); flex: none; }
+.hp-empty { padding: 18px 14px; color: var(--ink3); font-size: 14.5px; line-height: 1.7; }
+.hp-hint { padding: 8px 12px 10px; color: var(--ink3); font-size: 12.5px; }
+.hp-filter {
+  width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--line);
+  border-radius: 8px; font: inherit; font-size: 15px; outline: none;
+}
+.hp-filter:focus { border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-w); }
+.hp-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px; padding: 8px 12px 12px;
+}
+.hp-house {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px;
+  background: #fff; cursor: pointer; font: inherit;
+}
+.hp-house:hover { border-color: var(--acc); background: var(--acc-w); }
+.hp-house b { font-size: 16px; }
+.hp-house span { font-size: 13.5px; color: var(--ink3); }
+.hp-fallback {
+  display: block; width: 100%; padding: 12px 14px; border: 0; border-top: 1px solid var(--line2);
+  background: var(--sunken); color: var(--acc-t); font: inherit; font-size: 14.5px;
+  cursor: pointer; border-radius: 0 0 12px 12px; text-align: left;
+}
+.hp-fallback:hover { background: var(--acc-w); }

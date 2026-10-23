@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import type { ParkingQuery } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { legacyUrl } from '@/lib/legacy';
+import HousePicker, { type PickedHouse } from '@/components/HousePicker';
+import { useAddressTree } from '@/lib/address-tree';
 import { Btn, Card, ErrorNote, Loading, toast } from '@/components/ui';
 
 interface Card { id: number; cardNo: string; houseId: number; status: string }
@@ -31,6 +33,8 @@ function labelOf(key: string) {
  */
 export default function Vehicles() {
   const [term, setTerm] = useState('');
+  const [pickedHouse, setPickedHouse] = useState<PickedHouse | null>(null);
+  const { communities } = useAddressTree();
   const [query, setQuery] = useState<ParkingQuery | null>(null);
   const [polling, setPolling] = useState(false);
   const [err, setErr] = useState('');
@@ -72,8 +76,8 @@ export default function Vehicles() {
     }
   }, []);
 
-  const search = async () => {
-    const kw = term.trim();
+  const search = async (kwOverride?: string) => {
+    const kw = (kwOverride ?? term).trim();
     if (!kw) return;
     setErr('');
     setQuery(null);
@@ -112,9 +116,14 @@ export default function Vehicles() {
       {err ? <ErrorNote>{err}</ErrorNote> : null}
 
       <div className="hsearch" style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        <input className="in" value={term} placeholder="房号 228/6/502、姓名、电话，或完整车牌 / 4 位尾号"
-          onChange={(e) => setTerm(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void search(); }} />
+        <HousePicker
+          communities={communities}
+          value={pickedHouse}
+          placeholder="输入 228/6/502 或点选 小区→楼栋→室号；也可搜姓名、电话、车牌"
+          onPick={(p) => { setPickedHouse(p); setTerm(p.text); void search(p.text); }}
+          onTextChange={(text) => setTerm(text)}
+          onClear={() => { setPickedHouse(null); setTerm(''); }}
+        />
         <Btn kind="p" size="lg" disabled={polling} onClick={() => void search()}>{polling ? '现场库查询中…' : '查询'}</Btn>
       </div>
 

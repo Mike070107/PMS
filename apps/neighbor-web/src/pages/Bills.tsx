@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
 import { legacyUrl } from '@/lib/legacy';
+import HousePicker, { type PickedHouse } from '@/components/HousePicker';
+import { useAddressTree } from '@/lib/address-tree';
 import { Btn, Card, ErrorNote, Empty, Field, Loading, Sheet, toast } from '@/components/ui';
 import { dayjs, money } from '@/lib/format';
 
@@ -63,6 +65,8 @@ export default function Bills() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<'' | BillStatus>('unpaid');
   const [q, setQ] = useState('');
+  const [pickedHouse, setPickedHouse] = useState<PickedHouse | null>(null);
+  const { communities } = useAddressTree();
   const [err, setErr] = useState('');
   const [checked, setChecked] = useState<number[]>([]);
 
@@ -83,11 +87,12 @@ export default function Bills() {
     [q, status, page],
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (kw?: string) => {
+    const qq = kw === undefined ? query : { ...query, q: kw.trim() || undefined, page: 1 };
     try {
       const [list, sum] = await Promise.all([
-        request<{ rows: Bill[]; total: number }>({ url: '/fees/bills', query }),
-        request<Summary>({ url: '/fees/bills/summary', query }).catch(() => null),
+        request<{ rows: Bill[]; total: number }>({ url: '/fees/bills', query: qq }),
+        request<Summary>({ url: '/fees/bills/summary', query: qq }).catch(() => null),
       ]);
       setRows(list.rows);
       setTotal(list.total);
@@ -167,10 +172,16 @@ export default function Bills() {
               onClick={() => { setStatus(item.key); setPage(1); }}>{item.label}</button>
           ))}
         </div>
-        <input className="in" style={{ width: 300, marginLeft: 'auto' }} placeholder="搜房号 / 业主 / 收据号"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); void load(); } }} />
+        <div style={{ width: 420, marginLeft: 'auto' }}>
+          <HousePicker
+            communities={communities}
+            value={pickedHouse}
+            placeholder="输入 228/6/502 或点选 小区→楼栋→室号，也可搜业主/收据号"
+            onPick={(p) => { setPickedHouse(p); setQ(p.text); setPage(1); void load(p.text); }}
+            onTextChange={(text) => setQ(text)}
+            onClear={() => { setPickedHouse(null); setQ(''); setPage(1); void load(''); }}
+          />
+        </div>
         <Btn onClick={() => { setPage(1); void load(); }}>查询</Btn>
       </div>
 

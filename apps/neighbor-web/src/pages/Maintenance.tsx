@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { maintenance } from '@pms/api-client';
 import type { MaintenanceListItem } from '@pms/api-client/src/endpoints/maintenance';
 import { legacyUrl } from '@/lib/legacy';
+import HousePicker, { type PickedHouse } from '@/components/HousePicker';
+import { useAddressTree } from '@/lib/address-tree';
 import { Card, ErrorNote, Loading, toast } from '@/components/ui';
 import { dayjs, money } from '@/lib/format';
 
@@ -49,6 +51,8 @@ export default function Maintenance() {
   const [rows, setRows] = useState<MaintenanceListItem[] | null>(null);
   const [filter, setFilter] = useState('active');
   const [q, setQ] = useState('');
+  const [pickedHouse, setPickedHouse] = useState<PickedHouse | null>(null);
+  const { communities } = useAddressTree();
   const [err, setErr] = useState('');
 
   const load = useCallback(async () => {
@@ -103,9 +107,16 @@ export default function Maintenance() {
             </button>
           ))}
         </div>
-        <input className="in" style={{ width: 300, marginLeft: 'auto' }}
-          placeholder="搜养护单号 / 工单号 / 地址 / 修理人"
-          value={q} onChange={(e) => setQ(e.target.value)} />
+        <div style={{ width: 340, marginLeft: 'auto' }}>
+          <HousePicker
+            communities={communities}
+            value={pickedHouse}
+            placeholder="输入 228/6/502 或点选小区→楼栋→室号；也可搜单号/修理人"
+            onPick={(p) => { setPickedHouse(p); setQ(p.text); }}
+            onTextChange={(text) => setQ(text)}
+            onClear={() => { setPickedHouse(null); setQ(''); }}
+          />
+        </div>
       </div>
 
       <Card style={{ overflow: 'hidden' }}>

@@ -6,6 +6,8 @@ import { repairs } from '@pms/api-client';
 import { Card, ErrorNote, Loading, Pill, toast } from '@/components/ui';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import WorkOrderSheet from '@/components/WorkOrderSheet';
+import HousePicker, { type PickedHouse } from '@/components/HousePicker';
+import { useAddressTree } from '@/lib/address-tree';
 import { ago, BOARD_COLUMNS, dueText, isActive, isOverdue, maskPhone } from '@/lib/format';
 
 type Filter = 'active' | 'overdue' | 'all' | WorkOrderStatus;
@@ -36,6 +38,9 @@ export default function WorkOrders() {
   const filter = (params.get('filter') || 'active') as Filter;
   const view = params.get('view') === 'list' ? 'list' : 'board';
   const q = params.get('q') || '';
+  const [qInput, setQInput] = useState(q);
+  const [pickedHouse, setPickedHouse] = useState<PickedHouse | null>(null);
+  const { communities } = useAddressTree();
   const sel = params.get('sel') ? Number(params.get('sel')) : null;
   const creating = params.get('new') === '1';
 
@@ -124,13 +129,16 @@ export default function WorkOrders() {
             </button>
           ))}
         </div>
-        <input
-          className="in" style={{ width: 300, marginLeft: 'auto' }}
-          placeholder="在当前筛选内搜索：房号 / 电话 / 维修工"
-          defaultValue={q}
-          onKeyDown={(e) => { if (e.key === 'Enter') setParam({ q: (e.target as HTMLInputElement).value }); }}
-          onBlur={(e) => { if (e.target.value !== q) setParam({ q: e.target.value }); }}
-        />
+        <div style={{ width: 340, marginLeft: 'auto' }}>
+          <HousePicker
+            communities={communities}
+            value={pickedHouse}
+            placeholder="输入 228/6/502 或点选小区→楼栋→室号；也可搜电话/维修工"
+            onPick={(p) => { setPickedHouse(p); setParam({ q: p.text }); }}
+            onTextChange={(text) => setQInput(text)}
+            onClear={() => { setPickedHouse(null); setQInput(''); setParam({ q: '' }); }}
+          />
+        </div>
         <div className="seg">
           <button className={view === 'board' ? 'on' : ''} onClick={() => setParam({ view: 'board' })}>看板</button>
           <button className={view === 'list' ? 'on' : ''} onClick={() => setParam({ view: 'list' })}>列表</button>
