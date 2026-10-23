@@ -134,7 +134,7 @@ export default function WorkOrders() {
             communities={communities}
             value={pickedHouse}
             placeholder="输入 228/6/502 或点选小区→楼栋→室号；也可搜电话/维修工"
-            onPick={(p) => { setPickedHouse(p); setParam({ q: p.text }); }}
+            onPick={(p) => { const key = `${p.buildingNo}/${p.roomNo}`; setPickedHouse(p); setQInput(key); setParam({ q: key }); }}
             onTextChange={(text) => setQInput(text)}
             onClear={() => { setPickedHouse(null); setQInput(''); setParam({ q: '' }); }}
           />

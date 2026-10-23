@@ -112,7 +112,7 @@ export default function Maintenance() {
             communities={communities}
             value={pickedHouse}
             placeholder="输入 228/6/502 或点选小区→楼栋→室号；也可搜单号/修理人"
-            onPick={(p) => { setPickedHouse(p); setQ(p.text); }}
+            onPick={(p) => { const key = `${p.buildingNo}/${p.roomNo}`; setPickedHouse(p); setQ(key); }}
             onTextChange={(text) => setQ(text)}
             onClear={() => { setPickedHouse(null); setQ(''); }}
           />

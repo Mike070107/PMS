@@ -155,14 +155,13 @@
   z-index: 60;
   top: calc(100% + 6px);
   left: 0;
-  right: 0;
-  min-width: 420px;
-  max-height: 420px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(20, 30, 25, .12);
+  box-shadow: 0 12px 32px rgba(20, 30, 25, .14);
+  overflow: hidden;
 }
 .hp-head {
   display: flex; align-items: center; gap: 10px;
@@ -211,3 +210,34 @@
   cursor: pointer; border-radius: 0 0 12px 12px; text-align: left;
 }
 .hp-fallback:hover { background: var(--acc-w); }
+
+/* 三列联动：小区 | 楼栋 | 室号 同屏 */
+.hp-cols { display: flex; align-items: stretch; }
+.hp-col {
+  width: 218px;
+  max-height: 372px;
+  overflow-y: auto;
+  padding: 6px 0;
+  border-right: 1px solid var(--line2);
+}
+.hp-col:last-child { border-right: 0; }
+.hp-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  text-align: left;
+  border-radius: 8px;
+}
+.hp-cell:hover { background: var(--sunken); }
+.hp-cell.is-on { background: #e4e7e6; font-weight: 700; }
+.hp-cell-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hp-cell-house { justify-content: flex-start; }

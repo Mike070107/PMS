@@ -120,7 +120,7 @@ export default function Vehicles() {
           communities={communities}
           value={pickedHouse}
           placeholder="输入 228/6/502 或点选 小区→楼栋→室号；也可搜姓名、电话、车牌"
-          onPick={(p) => { setPickedHouse(p); setTerm(p.text); void search(p.text); }}
+          onPick={(p) => { const key = `${p.buildingNo}/${p.roomNo}`; setPickedHouse(p); setTerm(key); void search(key); }}
           onTextChange={(text) => setTerm(text)}
           onClear={() => { setPickedHouse(null); setTerm(''); }}
         />

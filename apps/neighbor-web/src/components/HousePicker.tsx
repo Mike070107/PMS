@@ -26,7 +26,10 @@ export interface PickedHouse {
   ownerName: string | null;
   ownerPhone: string | null;
   ownerId: number | null;
+  /** 完整地址：枫桦景苑二期 228弄3号502室 */
   text: string;
+  /** 输入框里显示的路径：枫桦景苑二期/228弄3号502 */
+  shortText: string;
 }
 
 interface Entry {
@@ -37,11 +40,12 @@ interface Entry {
   text: string;
 }
 
+const COL_WIDTH = 218;
+
 /**
- * 房号选择：一个输入框同时干两件事——
- *   1. 直接打字：「228/4/201」「4/201」「枫桦」「502」都能联想；
- *   2. 点选：小区 → 楼栋 → 室号，不需要另开面板。
- * 交互与旧后台「先确认报修地址」一致，办公室接电话时边听边打就能选中。
+ * 房号选择：一个输入框 + 三列联动（小区 | 楼栋 | 室号），与旧后台「先确认报修地址」一致。
+ *   - 点开框：三列同屏，最左列小区，点小区第二列出楼栋，点楼栋第三列出室号，点室号即选中；
+ *   - 直接在框里打 228/2/802、2/802、502 或业主姓名：切成联想列表，回车选第一条。
  */
 export default function HousePicker({
   communities, value, onPick, placeholder, disabled, onFallbackSearch, onClear, onTextChange,
@@ -60,12 +64,13 @@ export default function HousePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [level, setLevel] = useState<0 | 1 | 2>(0);
   const [community, setCommunity] = useState<AddressCommunity | null>(null);
   const [building, setBuilding] = useState<AddressBuilding | null>(null);
   const [active, setActive] = useState(0);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const close = () => { setOpen(false); setQuery(''); setActive(0); };
 
   useEffect(() => {
     if (!open) return;
@@ -76,14 +81,14 @@ export default function HousePicker({
     return () => document.removeEventListener('mousedown', onDown);
   }, [open]);
 
-  const close = () => {
-    setOpen(false);
-    setQuery('');
-    setLevel(0);
-    setCommunity(null);
-    setBuilding(null);
-    setActive(0);
-  };
+  // 打开时把已选的小区/楼栋回填到左右两列，位置不跳
+  useEffect(() => {
+    if (!open) return;
+    if (!value) return;
+    const c = communities.find((x) => x.id === value.communityId) ?? null;
+    setCommunity(c);
+    setBuilding(c?.buildings.find((b) => b.id === value.buildingId) ?? null);
+  }, [open, value, communities]);
 
   /** 叶子级（房号）扁平表：搜索与回车都用它 */
   const entries = useMemo<Entry[]>(() => {
@@ -110,52 +115,46 @@ export default function HousePicker({
   const results = useMemo(() => {
     const tokens = tokenizeAddress(query);
     if (!tokens.length) return [];
-    const scored = entries
+    return entries
       .map((entry) => ({ entry, score: scoreAddressPath(tokens, entry.keys) }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 30);
-    return scored.map((item) => item.entry);
+      .slice(0, 40)
+      .map((item) => item.entry);
   }, [entries, query]);
 
-  const pick = (entry: Entry) => {
+  const pick = (c: AddressCommunity, b: AddressBuilding, h: AddressHouse) => {
+    const laneText = b.lane ? `${b.lane}弄` : '';
     onPick({
-      communityId: entry.community.id,
-      communityName: entry.community.name,
-      lane: entry.building.lane,
-      buildingId: entry.building.id,
-      buildingNo: entry.building.buildingNo,
-      buildingText: formatBuildingFull(entry.building),
-      houseId: entry.house.id,
-      roomNo: entry.house.roomNo,
-      ownerName: entry.house.ownerName ?? null,
-      ownerPhone: entry.house.ownerPhone ?? null,
-      ownerId: entry.house.ownerId ?? null,
-      text: entry.text,
+      communityId: c.id,
+      communityName: c.name,
+      lane: b.lane,
+      buildingId: b.id,
+      buildingNo: b.buildingNo,
+      buildingText: formatBuildingFull(b),
+      houseId: h.id,
+      roomNo: h.roomNo,
+      ownerName: h.ownerName ?? null,
+      ownerPhone: h.ownerPhone ?? null,
+      ownerId: h.ownerId ?? null,
+      text: formatFullAddress(c.name, b, h.roomNo),
+      shortText: `${c.name}/${laneText}${b.buildingNo}号${h.roomNo}`,
     });
     close();
     inputRef.current?.blur();
   };
 
-  const searching = query.trim().length > 0;
-  const communitiesList = useMemo(() => communities.filter((c) => !c.isGroup), [communities]);
-  const buildingsList = useMemo(() => (community ? sortedBuildings(community.buildings) : []), [community]);
-  const housesList = useMemo(() => {
-    if (!building) return [];
-    const list = sortedHouses(building.houses);
-    const kw = query.trim();
-    return kw ? list.filter((h) => h.roomNo.includes(kw) || (h.ownerName || '').includes(kw)) : list;
-  }, [building, query]);
-
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Escape') { close(); return; }
-    if (event.key === 'Enter') {
-      if (searching && results[active]) { event.preventDefault(); pick(results[active]); }
+    if (event.key === 'Escape') { close(); inputRef.current?.blur(); return; }
+    if (event.key === 'Enter' && query.trim() && results[active]) {
+      const r = results[active];
+      event.preventDefault();
+      pick(r.community, r.building, r.house);
       return;
     }
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setActive((n) => Math.min(n + 1, Math.max(0, (searching ? results.length : 0) - 1)));
+      setActive((n) => Math.min(n + 1, Math.max(0, results.length - 1)));
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
@@ -163,100 +162,91 @@ export default function HousePicker({
     }
   };
 
+  const searching = query.trim().length > 0;
+  const communityList = useMemo(() => communities.filter((c) => !c.isGroup), [communities]);
+  const buildingList = useMemo(() => (community ? sortedBuildings(community.buildings) : []), [community]);
+  const houseList = useMemo(() => (building ? sortedHouses(building.houses) : []), [building]);
+
   return (
     <div className="hp" ref={boxRef}>
       <div className={`hp-box ${open ? 'is-open' : ''}`}>
-        <Icon name="home" size={18} />
+        <Icon name="search" size={18} />
         <input
           ref={inputRef}
           className="hp-input"
           disabled={disabled}
-          value={open ? query : (value?.text || query)}
-          placeholder={placeholder || '输入 228/4/201，或点选 小区 → 楼栋 → 室号'}
+          value={open ? query : (value?.shortText ?? '')}
+          placeholder={placeholder || '输入 228/2/802，或点选 小区 → 楼栋 → 室号'}
           onFocus={() => { if (!disabled) setOpen(true); }}
           onChange={(e) => { setQuery(e.target.value); setActive(0); onTextChange?.(e.target.value); }}
           onKeyDown={onKeyDown}
         />
         {value && !open && onClear ? (
-          <button type="button" className="hp-clear" title="清除" onClick={() => { onClear(); setQuery(''); }}>
-            ✕
-          </button>
-        ) : (
-          <Icon name="search" size={18} />
-        )}
+          <button type="button" className="hp-clear" title="清除" onClick={() => { onClear(); setQuery(''); }}>✕</button>
+        ) : null}
       </div>
 
       {open ? (
-        <div className="hp-pop">
+        <div className="hp-pop" style={{ width: searching ? 470 : COL_WIDTH * 3 + 2 }}>
           {searching ? (
             results.length ? (
               <div className="hp-list">
                 {results.map((entry, index) => (
-                  <button key={`${entry.house.id}`} type="button"
+                  <button key={entry.house.id} type="button"
                     className={`hp-item ${index === active ? 'is-active' : ''}`}
                     onMouseEnter={() => setActive(index)}
-                    onClick={() => pick(entry)}>
+                    onClick={() => setActive(index)}
+                    onDoubleClick={() => pick(entry.community, entry.building, entry.house)}>
                     <span className="hp-item-main">{entry.text}</span>
                     {entry.house.ownerName ? <span className="hp-item-side">{entry.house.ownerName}</span> : null}
                   </button>
                 ))}
-                <div className="hp-hint">回车选第一条 · Esc 关闭</div>
+                <div className="hp-hint">回车选第一条 · 双击直接选中 · Esc 关闭</div>
               </div>
             ) : (
-              <div className="hp-empty">没有匹配的房号，试试「228/4/201」「4/201」「502」或业主姓名</div>
+              <div className="hp-empty">没有匹配的房号，试试「228/2/802」「2/802」「502」或业主姓名</div>
             )
-          ) : level === 0 ? (
-            <>
-              <div className="hp-head">选择小区</div>
-              <div className="hp-list">
-                {communitiesList.map((c) => (
-                  <button key={c.id} type="button" className="hp-row"
-                    onClick={() => { setCommunity(c); setBuilding(null); setLevel(1); }}>
-                    <span>{c.name}{c.mainLane ? `（${c.mainLane}弄）` : ''}</span>
-                    <Icon name="chev" size={16} className="hp-arrow" />
-                  </button>
-                ))}
-                {!communitiesList.length ? <div className="hp-empty">当前账号范围内没有小区</div> : null}
-              </div>
-            </>
-          ) : level === 1 ? (
-            <>
-              <div className="hp-head">
-                <button type="button" className="hp-back" onClick={() => { setCommunity(null); setLevel(0); }}>← 小区</button>
-                <span>{community?.name}</span>
-              </div>
-              <div className="hp-list">
-                {buildingsList.map((b) => (
-                  <button key={b.id} type="button" className="hp-row"
-                    onClick={() => { setBuilding(b); setLevel(2); }}>
-                    <span>{community ? formatBuildingLabel(community, b) : b.buildingNo}</span>
-                    <Icon name="chev" size={16} className="hp-arrow" />
-                  </button>
-                ))}
-                {!buildingsList.length ? <div className="hp-empty">这个小区还没有楼栋</div> : null}
-              </div>
-            </>
           ) : (
-            <>
-              <div className="hp-head">
-                <button type="button" className="hp-back" onClick={() => { setBuilding(null); setLevel(1); }}>← 楼栋</button>
-                <span>{community && building ? formatBuildingLabel(community, building) : ''}</span>
-              </div>
-              <div style={{ padding: '8px 10px 4px' }}>
-                <input className="hp-filter" value={query} autoFocus placeholder="输入房号或业主姓名过滤"
-                  onChange={(e) => setQuery(e.target.value)} />
-              </div>
-              <div className="hp-grid">
-                {housesList.map((h) => (
-                  <button key={h.id} type="button" className="hp-house"
-                    onClick={() => { if (community && building) pick({ community, building, house: h, keys: [], text: formatFullAddress(community.name, building, h.roomNo) }); }}>
-                    <b>{h.roomNo}</b>
-                    <span>{h.ownerName || '空户'}</span>
+            <div className="hp-cols">
+              {/* 一列：小区 */}
+              <div className="hp-col">
+                {communityList.map((c) => (
+                  <button key={c.id} type="button"
+                    className={`hp-cell ${community?.id === c.id ? 'is-on' : ''}`}
+                    onClick={() => { setCommunity(c); setBuilding(null); }}>
+                    <span className="hp-cell-t">{c.name}{c.mainLane ? `（${c.mainLane}弄）` : ''}</span>
+                    <Icon name="chev" size={14} className="hp-arrow" />
                   </button>
                 ))}
-                {!housesList.length ? <div className="hp-empty">没有匹配的房号</div> : null}
+                {!communityList.length ? <div className="hp-empty">当前账号范围内没有小区</div> : null}
               </div>
-            </>
+
+              {/* 二列：楼栋 */}
+              <div className="hp-col">
+                {buildingList.map((b) => (
+                  <button key={b.id} type="button"
+                    className={`hp-cell ${building?.id === b.id ? 'is-on' : ''}`}
+                    onClick={() => setBuilding(b)}>
+                    <span className="hp-cell-t">{community ? formatBuildingLabel(community, b) : b.buildingNo}</span>
+                    <Icon name="chev" size={14} className="hp-arrow" />
+                  </button>
+                ))}
+                {!community ? <div className="hp-empty">先选小区</div> : null}
+                {community && !buildingList.length ? <div className="hp-empty">没有楼栋</div> : null}
+              </div>
+
+              {/* 三列：室号 */}
+              <div className="hp-col">
+                {houseList.map((h) => (
+                  <button key={h.id} type="button" className="hp-cell hp-cell-house"
+                    onClick={() => { if (community && building) pick(community, building, h); }}>
+                    <span className="hp-cell-t">{h.roomNo}{h.ownerName ? ` · ${h.ownerName}` : ''}</span>
+                  </button>
+                ))}
+                {!building ? <div className="hp-empty">先选楼栋</div> : null}
+                {building && !houseList.length ? <div className="hp-empty">这个楼栋还没有房号</div> : null}
+              </div>
+            </div>
           )}
 
           {onFallbackSearch ? (

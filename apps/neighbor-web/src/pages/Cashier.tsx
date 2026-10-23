@@ -166,7 +166,7 @@ export default function Cashier() {
    */
   const chooseHouse = async (p: PickedHouse) => {
     setPicked(p);
-    setQ(p.text);
+    setQ(`${p.buildingNo}/${p.roomNo}`);
     const hit: HouseHit = {
       id: p.houseId,
       roomNo: p.roomNo,

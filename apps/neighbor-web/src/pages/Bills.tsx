@@ -177,7 +177,7 @@ export default function Bills() {
             communities={communities}
             value={pickedHouse}
             placeholder="输入 228/6/502 或点选 小区→楼栋→室号，也可搜业主/收据号"
-            onPick={(p) => { setPickedHouse(p); setQ(p.text); setPage(1); void load(p.text); }}
+            onPick={(p) => { const key = `${p.buildingNo}/${p.roomNo}`; setPickedHouse(p); setQ(key); setPage(1); void load(key); }}
             onTextChange={(text) => setQ(text)}
             onClear={() => { setPickedHouse(null); setQ(''); setPage(1); void load(''); }}
           />
