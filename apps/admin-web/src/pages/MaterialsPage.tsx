@@ -384,7 +384,7 @@ function MaterialEditorModal({
       {editing && (
         <div style={{
           marginBottom: 14, padding: '8px 12px', borderRadius: 8,
-          background: 'rgba(14,107,90,0.06)', fontSize: 13,
+          background: 'rgba(49,85,138,0.06)', fontSize: 13,
         }}>
           <LockOutlined /> 被业务单据引用后，名称和型号将锁定不可改（保存时校验）；其余栏位可随时更新。
         </div>

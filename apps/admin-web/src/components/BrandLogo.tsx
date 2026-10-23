@@ -26,7 +26,7 @@ export default function BrandLogo({ size = 'default', dark = false }: BrandLogoP
           borderRadius: isLarge ? 12 : 9,
           display: 'block',
           objectFit: 'cover',
-          boxShadow: isLarge ? '0 12px 28px rgba(14, 107, 90, 0.2)' : 'none',
+          boxShadow: isLarge ? '0 12px 28px rgba(49, 85, 138, 0.2)' : 'none',
         }}
       />
       {!isCompact && (

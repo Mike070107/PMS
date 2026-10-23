@@ -110,7 +110,7 @@ export default function LoginPage() {
         <Card
           className="pms-login-card"
           variant="borderless"
-          style={{ boxShadow: '0 20px 60px rgba(23, 32, 28, 0.12)', borderRadius: 14 }}
+          style={{ boxShadow: '0 20px 60px rgba(31, 41, 55, 0.12)', borderRadius: 14 }}
           styles={{ body: { padding: '36px 34px' } }}
         >
           <Title level={4} style={{ marginBottom: 4 }}>

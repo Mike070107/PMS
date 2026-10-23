@@ -1,4 +1,4 @@
-.fee-template-settings { --ft-brand:#0e6b5a; --ft-line:#e3e6e0; --ft-muted:#55615b; }
+.fee-template-settings { --ft-brand:#31558a; --ft-line:#d8e2ed; --ft-muted:#60748a; }
 .fee-template-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:16px 0; }
 .fee-template-toolbar label { display:flex; align-items:center; flex-wrap:wrap; gap:12px; font-weight:600; }
 .fee-template-columns { display:grid; grid-template-columns:260px minmax(0,1fr); gap:16px; }
@@ -7,9 +7,9 @@
 .fee-template-list h3,.fee-template-title h3 { margin:0; font-size:18px; }
 .fee-template-list .ant-list-item { border:0; padding:6px 0; }
 .fee-template-choice { width:100%; display:flex; flex-direction:column; gap:8px; padding:16px; border:1px solid transparent; border-radius:10px; background:#f5f7fa; text-align:left; cursor:pointer; transition:background .18s,border-color .18s; }
-.fee-template-choice strong { font-size:16px; color:#0a5547; overflow-wrap:anywhere; }
+.fee-template-choice strong { font-size:16px; color:#243f69; overflow-wrap:anywhere; }
 .fee-template-choice span { color:var(--ft-muted); }
-.fee-template-choice.is-selected { border-color:var(--ft-brand); background:#e6f1ec; }
+.fee-template-choice.is-selected { border-color:var(--ft-brand); background:#eaf0f9; }
 .fee-template-choice:focus-visible { outline:2px solid var(--ft-brand); outline-offset:2px; }
 .fee-template-title { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
 .fee-template-title>span { color:var(--ft-muted); }
@@ -19,7 +19,7 @@
 .fee-template-item { display:grid; grid-template-columns:minmax(110px,1fr) 120px 80px 140px 140px 60px; gap:12px; align-items:center; padding:12px 0; border-bottom:1px solid #edf1f5; }
 .fee-template-item .ant-form-item { margin-bottom:0; }
 .fee-template-item .ant-input-number { width:100%; }
-.fee-template-item-header { color:#55615b; margin:8px 0; }
+.fee-template-item-header { color:#60748a; margin:8px 0; }
 .fee-template-modal-field { display:flex; align-items:center; gap:12px; margin:16px 0; flex-wrap:wrap; }
 .fee-template-exception-row { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #edf1f5; }
 @media(max-width:1000px) { .fee-template-columns { grid-template-columns:1fr; } .fee-template-list .ant-list-items { display:flex; flex-wrap:wrap; gap:8px; } .fee-template-list .ant-list-item { flex:1 1 220px; } }
