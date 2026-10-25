@@ -194,6 +194,12 @@ async function requestViaFetch<T>(
     });
   } catch (e: any) {
     clearTimeout(t);
+    // 超时触发的 abort：浏览器抛的原文是「signal is aborted without reason」，
+    // 直接显示会吓人且无从排障，换成可理解的超时提示。
+    if (controller.signal.aborted || e?.name === 'AbortError' || /aborted/i.test(e?.message || '')) {
+      const secs = Math.round((opts.timeout ?? 15000) / 1000);
+      throw new ApiError(-1, `请求超时（${secs} 秒内无响应，可能是网络或外部系统较慢），请稍后重试`);
+    }
     throw new ApiError(-1, e?.message || '网络异常');
   }
   clearTimeout(t);
