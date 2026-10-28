@@ -35,6 +35,7 @@ import {
   UpsertBusinessRuleDto,
 } from './dto';
 import { BusinessExecutionService } from './business-execution.service';
+import { PARKING_TARGETS, validateRuleTarget } from './parking-targets';
 
 @Injectable()
 export class BusinessService {
@@ -89,6 +90,7 @@ export class BusinessService {
       tenantId,
       access,
     );
+    await this.assertRuleTarget(dto, communityId, tenantId);
     const rule = this.ruleRepo.create({
       tenantId,
       serviceType: dto.serviceType,
@@ -124,6 +126,7 @@ export class BusinessService {
       tenantId,
       access,
     );
+    await this.assertRuleTarget(dto, communityId, tenantId);
     Object.assign(rule, {
       serviceType: dto.serviceType,
       name: dto.name,
@@ -135,6 +138,21 @@ export class BusinessService {
       updatedBy: user.id,
     });
     return this.ruleRepo.save(rule);
+  }
+
+  /** 停车月租规则绑定的停车目标须存在、且适用于规则所在小区（config.parkingTarget） */
+  private async assertRuleTarget(dto: UpsertBusinessRuleDto, communityId: number | null, tenantId: number) {
+    const targetKey = (dto.config ?? {}).parkingTarget;
+    if (targetKey === undefined || targetKey === null || targetKey === '') return;
+    if (dto.serviceType !== BusinessServiceType.PARKING_MONTHLY) throw new BadRequestException('只有停车月租规则可以绑定停车目标');
+    const community = communityId ? await this.communityRepo.findOne({ where: { id: communityId, tenantId } }) : null;
+    const error = validateRuleTarget({ targetKey, communityName: community?.name ?? null });
+    if (error) throw new BadRequestException(error);
+  }
+
+  /** 停车目标目录（前端配置收费标准、收银台选择目标用），附带每个目标在各小区的规则 */
+  parkingTargets() {
+    return PARKING_TARGETS;
   }
 
   /** 规则绑定小区的合法性：小区须属于本公司；受限角色必须绑且只能绑自己范围内的小区 */

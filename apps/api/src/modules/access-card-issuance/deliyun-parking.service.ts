@@ -65,6 +65,8 @@ export type DeliyunCivilDefenseResult = {
 export class DeliyunParkingService {
   private cached: { expiresAt: number; value: DeliyunParkingStatus } | null = null;
   private session: MiniappSession | null = null;
+  /** 同一账号下其他停车场：复用默认会话的 token，只缓存各场的 unitKey，避免重复登录挤掉旧页会话 */
+  private parkSessions = new Map<string, MiniappSession>();
 
   constructor(private readonly config: ConfigService) {}
 
@@ -83,14 +85,14 @@ export class DeliyunParkingService {
     return value;
   }
 
-  async findVehiclesByPlate(plate: string): Promise<{ project: string; rows: DeliyunVehicle[] }> {
+  async findVehiclesByPlate(plate: string, parkName?: string): Promise<{ project: string; rows: DeliyunVehicle[] }> {
     const normalized = normalizePlate(plate);
     if (!isFullPlate(normalized)) throw new BadRequestException('请输入完整车牌后再查询德立云');
     if (!this.hasMiniappAccount() || this.missingMiniappProtocolConfig().length) {
       throw new ServiceUnavailableException('德立云专用账号连接尚未配置完整');
     }
     try {
-      const session = await this.ensureMiniappSession();
+      const session = await this.ensureMiniappSession(parkName);
       const response = await this.h5Get<Array<Record<string, unknown>>>('/pma/card/findParkCards', {
         unitKey: session.park.unitKey,
         pageNum: '1',
@@ -116,19 +118,19 @@ export class DeliyunParkingService {
       };
     } catch (error) {
       this.invalidateSessionOnAuthFailure(error);
-      if (error instanceof ServiceUnavailableException) throw error;
+      if (error instanceof ServiceUnavailableException || error instanceof BadRequestException) throw error;
       throw new ServiceUnavailableException('德立云车辆查询暂时不可用，请稍后重试');
     }
   }
 
-  async renewVehicle(input: { vehicleId: string; plate: string; previousEndDate: string; endDate: string }): Promise<DeliyunRenewalResult> {
+  async renewVehicle(input: { vehicleId: string; plate: string; previousEndDate: string; endDate: string; parkName?: string }): Promise<DeliyunRenewalResult> {
     if (!this.writeEnabled()) throw new ServiceUnavailableException('德立云有效期写入尚未启用');
     const vehicleId = input.vehicleId.trim();
     const plate = normalizePlate(input.plate);
     if (!vehicleId || !isFullPlate(plate) || !isDateOnly(input.previousEndDate) || !isDateOnly(input.endDate))
       throw new BadRequestException('德立云续期参数不完整');
-    if (input.endDate <= input.previousEndDate) throw new BadRequestException('续期后的有效期必须晚于当前到期日');
-    const session = await this.ensureMiniappSession();
+    if (input.endDate <= input.previousEndDate)      throw new BadRequestException('续期后的有效期必须晚于当前到期日');
+    const session = await this.ensureMiniappSession(input.parkName);
     const detailResponse = await this.h5Post<Record<string, unknown>>('/pma/card/findCard', {
       unitKey: session.park.unitKey, id: vehicleId,
     }, session.token);
@@ -379,7 +381,24 @@ export class DeliyunParkingService {
     }
   }
 
-  private async ensureMiniappSession(): Promise<MiniappSession> {
+  /** parkName 为空 = 默认项目（DELIYUN_PROJECT_NAME，旧页行为不变）；否则切到同账号下的指定停车场 */
+  private async ensureMiniappSession(parkName?: string): Promise<MiniappSession> {
+    const base = await this.ensureDefaultMiniappSession();
+    const name = (parkName || '').trim();
+    if (!name || name === base.park.unitName) return base;
+    const cached = this.parkSessions.get(name);
+    if (cached && cached.token === base.token && cached.expiresAt > Date.now()) return cached;
+    const parks = await this.appPost<DeliyunPark[]>('/punit/parkList', { pageNum: 1, name }, base.token);
+    this.assertSuccess(parks, '德立云项目列表读取失败');
+    const park = Array.isArray(parks.data) ? parks.data.find((item) => item.unitName === name) : undefined;
+    const unitKey = stringValue(park?.unitKey);
+    if (!park || !unitKey) throw new BadRequestException(`德立云账号下没有停车场「${name}」`);
+    const session: MiniappSession = { token: base.token, expiresAt: base.expiresAt, park: { ...park, unitKey, unitName: name } };
+    this.parkSessions.set(name, session);
+    return session;
+  }
+
+  private async ensureDefaultMiniappSession(): Promise<MiniappSession> {
     if (this.session && this.session.expiresAt > Date.now()) return this.session;
     const login = await this.appPost<Record<string, unknown>>('/user/login', {
       username: this.value('DELIYUN_MINIAPP_USERNAME'),
@@ -454,7 +473,7 @@ export class DeliyunParkingService {
   }
 
   private invalidateSessionOnAuthFailure(error: unknown) {
-    if (error instanceof Error && error.message.startsWith('DELIYUN_AUTH')) this.session = null;
+    if (error instanceof Error && error.message.startsWith('DELIYUN_AUTH')) { this.session = null; this.parkSessions.clear(); }
   }
 
   private hasMiniappAccount() {

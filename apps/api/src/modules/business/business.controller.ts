@@ -98,6 +98,13 @@ export class BusinessController {
     return this.businessService.listTransactions(user, access);
   }
 
+  /** 停车目标目录：配置收费标准、收银台按小区选停车场 */
+  @Get('parking-targets')
+  @RequirePermission('business', 'view')
+  parkingTargets() {
+    return this.businessService.parkingTargets();
+  }
+
   /** 执行层：待处理（排队/执行中/重试/转人工/失败/演练）的停车同步 */
   @Get('execution/pending')
   @RequirePermission('business', 'view')

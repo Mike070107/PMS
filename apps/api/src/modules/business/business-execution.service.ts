@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
-import { BusinessLog, BusinessTransaction, ParkingOperation } from '../../entities';
+import { BusinessLog, BusinessRule, BusinessTransaction, ParkingOperation } from '../../entities';
+import { findParkingTarget } from './parking-targets';
 import { BusinessServiceType } from '../../common/enums';
 import { AuthUser } from '../../common/current-user.decorator';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
@@ -21,6 +22,8 @@ import {
 export interface ExecutionState {
   connector: 'deliyun';
   mode: SyncMode;
+  /** 停车目标 key（来自收费规则 config.parkingTarget） */
+  target?: string | null;
   attempts: number;
   nextAt?: string | null;
   lastError?: string | null;
@@ -51,6 +54,7 @@ export class BusinessExecutionService {
     @InjectRepository(BusinessTransaction) private readonly txnRepo: Repository<BusinessTransaction>,
     @InjectRepository(BusinessLog) private readonly logRepo: Repository<BusinessLog>,
     @InjectRepository(ParkingOperation) private readonly opRepo: Repository<ParkingOperation>,
+    @InjectRepository(BusinessRule) private readonly ruleRepo: Repository<BusinessRule>,
     private readonly deliyun: DeliyunParkingService,
     private readonly config: ConfigService,
   ) {}
@@ -126,19 +130,32 @@ export class BusinessExecutionService {
     const mode = this.mode();
     const attempts = (prev.attempts || 0) + 1;
     const plate = String((txn.snapshot?.vehicle as { plateNo?: string } | undefined)?.plateNo || '').trim().toUpperCase();
-    const target = (txn.endDate as unknown as string | null) || null;
+    const targetEndDate = (txn.endDate as unknown as string | null) || null;
     let op: ParkingOperation | null = null;
 
     try {
-      if (!plate) throw new BadRequestException('这笔停车收费没有车牌，无法同步德立云');
-      const found = await this.deliyun.findVehiclesByPlate(plate);
+      if (!plate) throw new BadRequestException('这笔停车收费没有车牌，无法同步停车系统');
+      // 按收费规则绑定的停车目标分发：德立云哪个场 / 本地停车库
+      const rule = txn.ruleId ? await this.ruleRepo.findOne({ where: { id: txn.ruleId, tenantId: txn.tenantId } }) : null;
+      const target = findParkingTarget(rule?.config?.parkingTarget);
+      prev.target = target?.key ?? null;
+      if (!target) {
+        return await this.finish(txn, 'manual', { ...prev, mode, attempts, nextAt: null,
+          lastError: `收费规则「${rule?.name || txn.ruleId}」没有绑定停车场，无法判断续哪套停车系统；请在「收费标准」给规则选好停车场，或人工续期` });
+      }
+      if (target.system === 'local') {
+        return await this.finish(txn, 'manual', { ...prev, mode, attempts, nextAt: null,
+          lastError: `「${target.label}」在本地停车库，自动续期正在接入；请暂在旧「停车管理」页给 ${plate} 续期到 ${targetEndDate || '本次到期日'}` });
+      }
+      const parkName = target.deliyunPark!;
+      const found = await this.deliyun.findVehiclesByPlate(plate, parkName);
       const plan = planDeliyunRenewal({
-        plate, targetEndDate: target,
+        plate, targetEndDate,
         rows: found.rows.map((r) => ({ id: r.id, plate: r.plate, endDate: r.endDate, cardPoolId: r.cardPoolId })),
       });
 
       if (plan.action === 'manual') {
-        return await this.finish(txn, 'manual', { ...prev, mode, attempts, lastError: plan.reason, nextAt: null });
+        return await this.finish(txn, 'manual', { ...prev, mode, attempts, lastError: `[${target.label}] ${plan.reason}`, nextAt: null });
       }
       if (plan.action === 'noop') {
         return await this.finish(txn, 'synced', { ...prev, mode, attempts, lastError: null, nextAt: null, result: { vehicleId: plan.vehicleId, endDate: plan.endDate, verified: true, note: plan.reason } });
@@ -151,13 +168,13 @@ export class BusinessExecutionService {
       op = await this.opRepo.save(this.opRepo.create({
         tenantId: txn.tenantId, kind: 'renew_vehicle', database: 'deliyun',
         idempotencyKey: `biz:${txn.txnNo}:${attempts}`, sourceRecordId: plan.vehicleId, pmsUserId: null,
-        payload: { plate, previousEndDate: plan.previousEndDate, endDate: plan.endDate, businessTxnNo: txn.txnNo },
+        payload: { plate, previousEndDate: plan.previousEndDate, endDate: plan.endDate, businessTxnNo: txn.txnNo, park: parkName },
         expected: { previousEndDate: plan.previousEndDate }, result: null,
         status: 'running', attempt: 1, requestedAt: new Date(), completedAt: null,
         leaseAgentKey: null, leaseExpiresAt: null, lastError: null, rollbackOfOperationId: null,
         createdBy: txn.createdBy, updatedBy: txn.createdBy,
       }));
-      const result = await this.deliyun.renewVehicle({ vehicleId: plan.vehicleId, plate, previousEndDate: plan.previousEndDate, endDate: plan.endDate });
+      const result = await this.deliyun.renewVehicle({ vehicleId: plan.vehicleId, plate, previousEndDate: plan.previousEndDate, endDate: plan.endDate, parkName });
       op.status = 'completed'; op.result = result as unknown as Record<string, unknown>; op.completedAt = new Date();
       await this.opRepo.save(op);
       return await this.finish(txn, 'synced', { ...prev, mode, attempts, planned, operationId: op.id, lastError: null, nextAt: null, result: result as unknown as Record<string, unknown> });
