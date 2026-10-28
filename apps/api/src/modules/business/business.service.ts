@@ -34,6 +34,7 @@ import {
   EstimateBusinessDto,
   UpsertBusinessRuleDto,
 } from './dto';
+import { BusinessExecutionService } from './business-execution.service';
 
 @Injectable()
 export class BusinessService {
@@ -52,6 +53,7 @@ export class BusinessService {
     private readonly houseRepo: Repository<House>,
     @InjectRepository(Building)
     private readonly buildingRepo: Repository<Building>,
+    private readonly execution: BusinessExecutionService,
     @InjectRepository(Community)
     private readonly communityRepo: Repository<Community>,
     @InjectRepository(User)
@@ -294,6 +296,8 @@ export class BusinessService {
     let targetType: string | null = null;
     let targetId: number | null = null;
     const snapshot: Record<string, unknown> = { estimate, ruleName: rule.name };
+    const exec = this.execution.initialFor(dto.serviceType);
+    if (exec.execution) snapshot.execution = exec.execution;
 
     if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
       const vehicle = await this.upsertVehicle(dto, tenantId, user.id, estimate.endDate);
@@ -324,7 +328,7 @@ export class BusinessService {
         endDate: estimate.endDate,
         amountCents: estimate.amountCents,
         paymentMethod: dto.paymentMethod ?? 'cash',
-        externalSyncStatus: 'mocked',
+        externalSyncStatus: exec.status,
         invoiceStatus: 'pending',
         remark: dto.remark ?? null,
         snapshot,
@@ -345,8 +349,8 @@ export class BusinessService {
       this.logRepo.create({
         tenantId,
         transactionId: txn.id,
-        action: 'external_sync_reserved',
-        detail: { serviceType: dto.serviceType, targetType, targetId },
+        action: exec.status === 'queued' ? 'external_sync_queued' : 'external_sync_reserved',
+        detail: { serviceType: dto.serviceType, targetType, targetId, mode: exec.execution?.mode ?? null },
         createdBy: user.id,
         updatedBy: user.id,
       }),
@@ -360,6 +364,7 @@ export class BusinessService {
       }),
     ]);
 
+    if (exec.status === 'queued') this.execution.kick(txn.id);
     return txn;
   }
 

@@ -62,5 +62,6 @@ import { DeliyunParkingService } from './deliyun-parking.service';
     FamilyCarService,
     { provide: FAMILY_CAR_SERVICE, useExisting: FamilyCarService },
   ],
+  exports: [DeliyunParkingService],
 })
 export class AccessCardIssuanceModule {}

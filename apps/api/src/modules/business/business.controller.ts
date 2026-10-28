@@ -23,12 +23,17 @@ import {
   UpsertBusinessRuleDto,
 } from './dto';
 import { BusinessService } from './business.service';
+import { BusinessExecutionService } from './business-execution.service';
+import { scopeCommunityIds } from '../access/scope.util';
 
 /** 前台收费（纯管理端页面），走页面权限矩阵。 */
 @Controller('business')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class BusinessController {
-  constructor(private readonly businessService: BusinessService) {}
+  constructor(
+    private readonly businessService: BusinessService,
+    private readonly execution: BusinessExecutionService,
+  ) {}
 
   @Get('rules')
   @RequirePermission('business', 'view')
@@ -91,5 +96,26 @@ export class BusinessController {
   @RequirePermission('business', 'view')
   listTransactions(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.businessService.listTransactions(user, access);
+  }
+
+  /** 执行层：待处理（排队/执行中/重试/转人工/失败/演练）的停车同步 */
+  @Get('execution/pending')
+  @RequirePermission('business', 'view')
+  executionPending(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.execution.pending(user.tenantId!, scopeCommunityIds(access));
+  }
+
+  /** 执行层：当前同步模式（off / dry-run / on），前端据此提示 */
+  @Get('execution/mode')
+  @RequirePermission('business', 'view')
+  executionMode() {
+    return { mode: this.execution.mode() };
+  }
+
+  /** 执行层：人工重试一笔（转人工 / 失败 / 演练 → 重新排队） */
+  @Post('transactions/:id/retry-sync')
+  @RequirePermission('business', 'edit')
+  retrySync(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.execution.retry(id, user);
   }
 }
