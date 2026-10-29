@@ -7,6 +7,7 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { ASSIGNABLE_STAFF_ROLES, UserRole, UserStatus } from '../../common/enums';
 
@@ -16,6 +17,18 @@ import { ASSIGNABLE_STAFF_ROLES, UserRole, UserStatus } from '../../common/enums
  * 但同样需要物业先登记、能停用、能改授权小区，走员工那套管理流程最省事。
  */
 const ASSIGNABLE_ROLES = ASSIGNABLE_STAFF_ROLES;
+
+/** 工作范围一行：在某管理处（null = 全部管理处）做哪些工种 */
+export class StaffAssignmentDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  officeId?: number | null;
+
+  @IsArray()
+  @IsString({ each: true })
+  skills!: string[];
+}
 
 export class ListStaffQueryDto {
   /** 按绑定的业务角色筛（角色 id） */
@@ -74,6 +87,13 @@ export class CreateStaffDto {
   @IsArray()
   @Type(() => Number)
   roleIds?: number[];
+
+  /** 工作范围（员工 × 管理处 × 工种）；不传则按角色旧范围推出（旧后台兼容） */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StaffAssignmentDto)
+  assignments?: StaffAssignmentDto[];
 }
 
 export class UpdateStaffDto {
@@ -123,6 +143,13 @@ export class UpdateStaffDto {
   @IsArray()
   @Type(() => Number)
   roleIds?: number[];
+
+  /** 工作范围；传了就整份覆盖 */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StaffAssignmentDto)
+  assignments?: StaffAssignmentDto[];
 }
 
 /**

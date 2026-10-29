@@ -41,6 +41,7 @@ test('启动时把历史合并权限复制为新的独立页面权限', async ()
     },
   };
   svc.logger = { log() {}, warn(message: string) { throw new Error(message); } };
+  svc.backfillAssignments = async () => {};
 
   await svc.onModuleInit();
 
@@ -269,59 +270,85 @@ test('按权限反查通知收件人时包含跟随模板的角色，不再只�
   );
 });
 
-test('多个受限角色的数据范围取并集，不因角色名称或工种改变', async () => {
+test('数据范围只看员工工作范围：多个管理处取并集，角色范围不再参与', async () => {
   const svc = Object.create(AccessService.prototype) as any;
   svc.tenantRepo = { async findOne() { return { enabledPages: null }; } };
-  svc.userRoleRepo = fakeRepo(
-    [
-      { userId: 7, roleId: 11 },
-      { userId: 7, roleId: 12 },
-    ],
-    {},
-  );
+  svc.userRoleRepo = fakeRepo([{ userId: 7, roleId: 11 }], {});
+  // 角色上仍是旧的「全公司」范围，也不能把人放成全公司
   svc.roleRepo = fakeRepo(
-    [
-      { id: 11, tenantId: 1, enabled: true, builtIn: false, dataScope: RoleDataScope.OFFICES },
-      { id: 12, tenantId: 1, enabled: true, builtIn: false, dataScope: RoleDataScope.COMMUNITIES },
-    ],
+    [{ id: 11, tenantId: 1, enabled: true, builtIn: false, dataScope: RoleDataScope.ALL }],
     {},
   );
   svc.effectivePermissions = async () => [];
-  let resolvedRoleIds: number[] = [];
-  svc.resolveScopeCommunityIds = async (_tenantId: number, roleIds: number[]) => {
-    resolvedRoleIds = roleIds;
+  svc.assignmentsOf = async () => new Map([[7, [
+    { officeId: 3, skills: ['welding'] },
+    { officeId: 5, skills: ['electric', 'mason'] },
+  ]]]);
+  let askedOffices: number[] = [];
+  svc.communityIdsOfOffices = async (_tenantId: number, officeIds: number[]) => {
+    askedOffices = officeIds;
     return [10, 11, 20];
   };
 
   const access = await svc.getAccess({ id: 7, tenantId: 1, role: UserRole.STAFF });
   assert.equal(access.scopeAll, false);
   assert.deepEqual(access.communityIds, [10, 11, 20]);
-  assert.deepEqual(resolvedRoleIds, [11, 12]);
+  assert.deepEqual(askedOffices, [3, 5]);
 });
 
-test('任一角色是全公司范围时才放开全公司，且不再误套局部清单', async () => {
+test('工作范围里有「全部管理处」才放开全公司，且不再解析局部清单', async () => {
   const svc = Object.create(AccessService.prototype) as any;
   svc.tenantRepo = { async findOne() { return { enabledPages: null }; } };
-  svc.userRoleRepo = fakeRepo(
-    [
-      { userId: 7, roleId: 11 },
-      { userId: 7, roleId: 12 },
-    ],
-    {},
-  );
+  svc.userRoleRepo = fakeRepo([{ userId: 7, roleId: 11 }], {});
   svc.roleRepo = fakeRepo(
-    [
-      { id: 11, tenantId: 1, enabled: true, builtIn: false, dataScope: RoleDataScope.OFFICES },
-      { id: 12, tenantId: 1, enabled: true, builtIn: false, dataScope: RoleDataScope.ALL },
-    ],
+    [{ id: 11, tenantId: 1, enabled: true, builtIn: false, dataScope: RoleDataScope.OFFICES }],
     {},
   );
   svc.effectivePermissions = async () => [];
-  svc.resolveScopeCommunityIds = async () => {
-    throw new Error('已有全公司角色时不应再解析局部范围');
+  svc.assignmentsOf = async () => new Map([[7, [
+    { officeId: null, skills: ['smart'] },
+    { officeId: 5, skills: ['electric'] },
+  ]]]);
+  svc.communityIdsOfOffices = async () => {
+    throw new Error('全部管理处时不应再解析局部范围');
   };
 
   const access = await svc.getAccess({ id: 7, tenantId: 1, role: UserRole.STAFF });
   assert.equal(access.scopeAll, true);
   assert.equal(access.communityIds, null);
+});
+
+test('回填工作范围只处理还没有工作范围的员工（幂等），按角色旧范围推出', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  svc.logger = { log() {}, warn() {} };
+  svc.userRoleRepo = {
+    async find() {
+      return [
+        { tenantId: 1, userId: 3, roleId: 39 },
+        { tenantId: 1, userId: 4, roleId: 24 },
+        { tenantId: 1, userId: 9, roleId: 40 },
+      ];
+    },
+  };
+  const saved: any[] = [];
+  svc.assignmentRepo = {
+    async find() { return [{ userId: 9 }]; }, // 9 号已经在员工页配过，不能动
+    create(row: any) { return row; },
+    async save(rows: any[]) { saved.push(...rows); return rows; },
+  };
+  const asked: number[] = [];
+  svc.deriveAssignmentsFromRoles = async (_t: number, userId: number) => {
+    asked.push(userId);
+    return userId === 3
+      ? [{ officeId: 1, skills: ['electric'] }]
+      : [{ officeId: null, skills: ['water'] }];
+  };
+
+  await svc.backfillAssignments();
+
+  assert.deepEqual(asked, [3, 4]);
+  assert.deepEqual(saved, [
+    { tenantId: 1, userId: 3, officeId: 1, skills: ['electric'] },
+    { tenantId: 1, userId: 4, officeId: null, skills: ['water'] },
+  ]);
 });

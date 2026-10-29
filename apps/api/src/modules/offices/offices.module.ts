@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Community, ManagementOffice, RepairTypeRule, RoleScope, Warehouse } from '../../entities';
+import { Community, ManagementOffice, RepairTypeRule, RoleScope, StaffAssignment, Warehouse } from '../../entities';
 import { OfficesController } from './offices.controller';
 import { OfficesService } from './offices.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ManagementOffice, Community, RoleScope, RepairTypeRule, Warehouse])],
+  imports: [TypeOrmModule.forFeature([ManagementOffice, Community, RoleScope, RepairTypeRule, StaffAssignment, Warehouse])],
   controllers: [OfficesController],
   providers: [OfficesService],
 })

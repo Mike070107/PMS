@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { Community, ManagementOffice, RepairTypeRule, RoleScope, Warehouse } from '../../entities';
+import { Community, ManagementOffice, RepairTypeRule, RoleScope, StaffAssignment, Warehouse } from '../../entities';
 import { WarehouseType } from '../../common/enums';
 import { ensureOfficeRepairRules } from '../repairs/repair-rule-template';
 import { ResolvedAccess } from '../access/access.service';
@@ -27,6 +27,8 @@ export class OfficesService {
     private readonly communityRepo: Repository<Community>,
     @InjectRepository(RoleScope)
     private readonly roleScopeRepo: Repository<RoleScope>,
+    @InjectRepository(StaffAssignment)
+    private readonly assignmentRepo: Repository<StaffAssignment>,
   ) {}
 
   async list(user: AuthUser, access?: ResolvedAccess) {
@@ -165,6 +167,10 @@ export class OfficesService {
     });
     if (scopeCount > 0) {
       throw new BadRequestException('仍有角色的数据范围指向该管理处，请先调整角色');
+    }
+    const staffCount = await this.assignmentRepo.count({ where: { tenantId, officeId: id } });
+    if (staffCount > 0) {
+      throw new BadRequestException(`仍有 ${staffCount} 名员工在该管理处工作，请先在员工页调整工作范围`);
     }
     await this.officeRepo.delete({ id, tenantId });
     return { ok: true };

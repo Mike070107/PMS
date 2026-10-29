@@ -8,7 +8,6 @@ import {
   ALL_PAGE_KEYS,
   ALWAYS_ENABLED_PAGES,
   PermissionAction,
-  RoleDataScope,
   STAFF_APP_PAGE_KEYS,
   isStaffAppPageKey,
 } from '../../common/pages';
@@ -21,6 +20,7 @@ import {
   RoleTemplate,
   RoleTemplatePermission,
   RoleWarehouse,
+  StaffAssignment,
   StaffProfile,
   Tenant,
   UserRoleAssignment,
@@ -30,6 +30,14 @@ import {
   findSmartRepairWarehouse,
   hasSmartRepairSkill,
 } from '../../common/warehouse-preference';
+import {
+  StaffAssignment as AssignmentRow,
+  assignmentsFromRoles,
+  coverageOf,
+  normalizeAssignments,
+  scopeOfAssignments,
+  skillsAtOffice,
+} from '../staff/staff-assignment.util';
 
 export interface PageActions {
   view: boolean;
@@ -95,6 +103,8 @@ export class AccessService implements OnModuleInit {
     private readonly staffProfileRepo: Repository<StaffProfile>,
     @InjectRepository(Warehouse)
     private readonly warehouseRepo: Repository<Warehouse>,
+    @InjectRepository(StaffAssignment)
+    private readonly assignmentRepo: Repository<StaffAssignment>,
   ) {}
 
   /**
@@ -165,6 +175,113 @@ export class AccessService implements OnModuleInit {
       // 补不上不该拦住服务启动：大不了管理员去角色页手动勾一下
       this.logger.warn(`补齐拆分权限失败：${(e as Error).message}`);
     }
+    try {
+      await this.backfillAssignments();
+    } catch (e) {
+      this.logger.warn(`回填员工工作范围失败：${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * 一次性回填 staff_assignments：数据范围从「角色」挪到「员工 × 管理处」。
+   *
+   * 只处理**还一行工作范围都没有**、但绑了角色的员工，所以幂等；已经在员工页
+   * 配过范围的人一概不动。推导规则见 assignmentsFromRoles：上线那一刻每个人的
+   * 数据范围、派单候选与原来完全一致，之后再逐人收窄到「某管理处做某工种」。
+   */
+  private async backfillAssignments() {
+    const bindings = await this.userRoleRepo.find();
+    if (!bindings.length) return;
+    const have = new Set(
+      (await this.assignmentRepo.find({ select: ['userId'] })).map((r) => r.userId),
+    );
+    const pending = [...new Set(bindings.map((b) => b.userId))].filter((id) => !have.has(id));
+    if (!pending.length) return;
+    let created = 0;
+    for (const userId of pending) {
+      const mine = bindings.filter((b) => b.userId === userId);
+      const tenantId = mine[0].tenantId;
+      const rows = await this.deriveAssignmentsFromRoles(tenantId, userId, mine.map((b) => b.roleId));
+      if (!rows.length) continue;
+      await this.assignmentRepo.save(
+        rows.map((r) => this.assignmentRepo.create({ tenantId, userId, officeId: r.officeId, skills: r.skills })),
+      );
+      created += rows.length;
+    }
+    if (created) this.logger.log(`回填员工工作范围：${pending.length} 人、${created} 行`);
+  }
+
+  /**
+   * 按角色旧的数据范围推出工作范围（回填与旧后台建员工兼容共用）。
+   * 旧后台下线、roles.data_scope / role_scopes 删除时，这个方法与回填一起删。
+   */
+  async deriveAssignmentsFromRoles(
+    tenantId: number,
+    userId: number,
+    roleIds: number[],
+  ): Promise<AssignmentRow[]> {
+    if (!roleIds.length) return [];
+    const roles = await this.roleRepo.find({ where: { tenantId, id: In(roleIds), enabled: true } });
+    if (!roles.length) return [];
+    const scopes = await this.roleScopeRepo.find({ where: { roleId: In(roles.map((r) => r.id)) } });
+    const communityIds = scopes.map((s) => s.communityId).filter((v): v is number => !!v);
+    const officeOfCommunity = new Map<number, number | null>();
+    for (const cid of communityIds) officeOfCommunity.set(cid, await this.officeIdOfCommunity(tenantId, cid));
+    const profile = await this.staffProfileRepo.findOne({ where: { tenantId, userId }, select: ['id', 'skills'] });
+    return assignmentsFromRoles(
+      roles.map((r) => ({
+        builtIn: r.builtIn,
+        dataScope: r.dataScope,
+        officeIds: scopes
+          .filter((s) => s.roleId === r.id)
+          .map((s) => s.officeId ?? (s.communityId ? officeOfCommunity.get(s.communityId) ?? null : null))
+          .filter((v): v is number => !!v),
+      })),
+      profile?.skills ?? [],
+    );
+  }
+
+  /** 这些管理处里属于本公司的 id */
+  async existingOfficeIds(tenantId: number, officeIds: number[]): Promise<number[]> {
+    if (!officeIds.length) return [];
+    const rows = await this.officeRepo.find({ where: { tenantId, id: In(officeIds) }, select: ['id'] });
+    return rows.map((r) => r.id);
+  }
+
+  /** 一批员工的工作范围 */
+  async assignmentsOf(tenantId: number, userIds: number[]): Promise<Map<number, AssignmentRow[]>> {
+    const map = new Map<number, AssignmentRow[]>();
+    if (!userIds.length) return map;
+    const rows = await this.assignmentRepo.find({ where: { tenantId, userId: In(userIds) } });
+    // 企业超级管理员（内置角色）天然是全部管理处，不依赖有没有配过工作范围
+    const bindings = await this.userRoleRepo.find({ where: { tenantId, userId: In(userIds) } });
+    const builtIn = bindings.length
+      ? new Set(
+          (await this.roleRepo.find({
+            where: { tenantId, id: In([...new Set(bindings.map((b) => b.roleId))]), builtIn: true, enabled: true },
+            select: ['id'],
+          })).map((r) => r.id),
+        )
+      : new Set<number>();
+    const admins = new Set(bindings.filter((b) => builtIn.has(b.roleId)).map((b) => b.userId));
+    for (const id of userIds) {
+      const own: Array<{ officeId: number | null; skills: string[] }> = rows.filter((r) => r.userId === id);
+      map.set(id, normalizeAssignments(admins.has(id) ? [{ officeId: null, skills: [] }, ...own] : own));
+    }
+    return map;
+  }
+
+  /**
+   * 每个人在某管理处能做的工种：officeId=undefined → 全部工种；null → 只算「全部管理处」那一行。
+   * 派单按这里匹配，「上海新家做电工、永德段做电焊」就不会串。
+   */
+  async skillsAtOfficeOf(
+    tenantId: number,
+    userIds: number[],
+    officeId: number | null | undefined,
+  ): Promise<Map<number, string[]>> {
+    const byUser = await this.assignmentsOf(tenantId, userIds);
+    return new Map(userIds.map((id) => [id, skillsAtOffice(byUser.get(id) ?? [], officeId)]));
   }
 
   private fullPages(keys: readonly string[]): Record<string, PageActions> {
@@ -259,13 +376,14 @@ export class AccessService implements OnModuleInit {
       }
     }
 
-    const scopeAll = roles.some((r) => r.dataScope === RoleDataScope.ALL);
+    // 数据范围只看员工工作范围（staff_assignments），角色只管能做什么
+    const scope = user.tenantId
+      ? scopeOfAssignments((await this.assignmentsOf(user.tenantId, [user.id])).get(user.id) ?? [])
+      : { all: false, officeIds: [] };
+    const scopeAll = scope.all;
     let communityIds: number[] | null = null;
     if (!scopeAll) {
-      communityIds = await this.resolveScopeCommunityIds(
-        user.tenantId,
-        roles.map((r) => r.id),
-      );
+      communityIds = await this.communityIdsOfOffices(user.tenantId, scope.officeIds);
     }
 
     return {
@@ -465,18 +583,9 @@ export class AccessService implements OnModuleInit {
     tenantId: number,
     officeId: number,
   ): Promise<number[]> {
-    const tops = await this.communityRepo.find({
-      where: { tenantId, officeId },
-      select: ['id'],
-    });
-    const topIds = tops.map((c) => c.id);
-    if (!topIds.length) return [];
-    const children = await this.communityRepo.find({
-      where: { tenantId, parentId: In(topIds) },
-      select: ['id'],
-    });
-    return [...new Set([...topIds, ...children.map((c) => c.id)])];
+    return this.communityIdsOfOffices(tenantId, [officeId]);
   }
+
 
   /**
    * 当前用户可切换的管理处（顶栏切换器的选项）：全公司范围 = 全部启用中的
@@ -504,40 +613,20 @@ export class AccessService implements OnModuleInit {
     return visible;
   }
 
-  /**
-   * 把角色范围明细展开成具体小区 id 集合：
-   * 管理处 → 其下全部顶层小区；顶层小区 → 追加其分期子小区。
-   * （roles 模块判断「角色范围是否不超过操作者范围」时也复用这份展开逻辑。）
-   */
-  async resolveScopeCommunityIds(
-    tenantId: number | null,
-    roleIds: number[],
-  ): Promise<number[]> {
-    if (!tenantId || !roleIds.length) return [];
-    const scopes = await this.roleScopeRepo.find({
-      where: { roleId: In(roleIds) },
-    });
-    const officeIds = [
-      ...new Set(scopes.map((s) => s.officeId).filter((v): v is number => !!v)),
-    ];
-    const topIds = new Set(
-      scopes.map((s) => s.communityId).filter((v): v is number => !!v),
-    );
-    if (officeIds.length) {
-      const byOffice = await this.communityRepo.find({
-        where: { tenantId, officeId: In(officeIds) },
-        select: ['id'],
-      });
-      byOffice.forEach((c) => topIds.add(c.id));
-    }
-    if (!topIds.size) return [];
-    const children = await this.communityRepo.find({
-      where: { tenantId, parentId: In([...topIds]) },
+  /** 一组管理处 → 其下顶层小区 + 分期子小区的完整 id 集合（升序） */
+  async communityIdsOfOffices(tenantId: number | null, officeIds: number[]): Promise<number[]> {
+    if (!tenantId || !officeIds.length) return [];
+    const tops = await this.communityRepo.find({
+      where: { tenantId, officeId: In(officeIds) },
       select: ['id'],
     });
-    const all = new Set(topIds);
-    children.forEach((c) => all.add(c.id));
-    return [...all].sort((a, b) => a - b);
+    const topIds = tops.map((c) => c.id);
+    if (!topIds.length) return [];
+    const children = await this.communityRepo.find({
+      where: { tenantId, parentId: In(topIds) },
+      select: ['id'],
+    });
+    return [...new Set([...topIds, ...children.map((c) => c.id)])].sort((a, b) => a - b);
   }
 
   /**
@@ -644,32 +733,10 @@ export class AccessService implements OnModuleInit {
   ): Promise<Map<number, 'all' | 'office'>> {
     const result = new Map<number, 'all' | 'office'>();
     if (!userIds.length) return result;
-    const bindings = await this.userRoleRepo.find({
-      where: { tenantId, userId: In(userIds) },
-    });
-    if (!bindings.length) return result;
-    const roleIds = [...new Set(bindings.map((b) => b.roleId))];
-    const roles = await this.roleRepo.find({
-      where: { id: In(roleIds), tenantId, enabled: true },
-    });
-    const allRoleIds = new Set(
-      roles
-        .filter((r) => r.builtIn || r.dataScope === RoleDataScope.ALL)
-        .map((r) => r.id),
-    );
-    const officeRoleIds = new Set<number>();
-    if (officeId) {
-      const scopes = await this.roleScopeRepo.find({ where: { roleId: In(roleIds) } });
-      const officeCommunities = new Set(await this.expandOfficeCommunityIds(tenantId, officeId));
-      for (const s of scopes) {
-        if (s.officeId === officeId || (s.communityId && officeCommunities.has(s.communityId))) {
-          officeRoleIds.add(s.roleId);
-        }
-      }
-    }
-    for (const b of bindings) {
-      if (allRoleIds.has(b.roleId)) result.set(b.userId, 'all');
-      else if (officeRoleIds.has(b.roleId) && !result.has(b.userId)) result.set(b.userId, 'office');
+    const byUser = await this.assignmentsOf(tenantId, userIds);
+    for (const id of userIds) {
+      const hit = coverageOf(byUser.get(id) ?? [], officeId);
+      if (hit) result.set(id, hit);
     }
     return result;
   }
@@ -683,30 +750,9 @@ export class AccessService implements OnModuleInit {
     tenantId: number,
     userId: number,
   ): Promise<{ all: boolean; officeIds: number[] }> {
-    const bindings = await this.userRoleRepo.find({ where: { tenantId, userId } });
-    if (!bindings.length) return { all: false, officeIds: [] };
-    const roleIds = bindings.map((b) => b.roleId);
-    const roles = await this.roleRepo.find({ where: { id: In(roleIds), tenantId, enabled: true } });
-    const all = roles.some((r) => r.builtIn || r.dataScope === RoleDataScope.ALL);
-    const scopes = await this.roleScopeRepo.find({ where: { roleId: In(roles.map((r) => r.id)) } });
-    const officeIds = new Set(scopes.map((s) => s.officeId).filter((v): v is number => !!v));
-    const communityIds = scopes.map((s) => s.communityId).filter((v): v is number => !!v);
-    if (communityIds.length) {
-      const communities = await this.communityRepo.find({
-        where: { tenantId, id: In(communityIds) },
-        select: ['id', 'officeId', 'parentId'],
-      });
-      const parentIds = communities.filter((c) => !c.officeId && c.parentId).map((c) => c.parentId as number);
-      const parents = parentIds.length
-        ? await this.communityRepo.find({ where: { tenantId, id: In(parentIds) }, select: ['id', 'officeId'] })
-        : [];
-      for (const c of communities) {
-        const oid = c.officeId ?? parents.find((p) => p.id === c.parentId)?.officeId ?? null;
-        if (oid) officeIds.add(oid);
-      }
-    }
-    return { all, officeIds: [...officeIds] };
+    return scopeOfAssignments((await this.assignmentsOf(tenantId, [userId])).get(userId) ?? []);
   }
+
 
   /** 这个人绑了哪些角色（名字），给前端显示用 */
   async listRoleNames(user: AuthUser): Promise<string[]> {

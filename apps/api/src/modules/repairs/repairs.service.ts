@@ -84,7 +84,6 @@ import {
   RepairTypeRule,
   Review,
   Material,
-  StaffProfile,
   User,
   UserReportCommunity,
   Stock,
@@ -1515,11 +1514,8 @@ export class RepairsService implements OnModuleInit {
       }
     });
 
-    const profiles = await this.dataSource.getRepository(StaffProfile).find({
-      where: { tenantId, userId: In(ids) },
-      select: ['userId', 'skills'],
-    });
-    const skillsByUser = new Map(profiles.map((item) => [item.userId, item.skills || []]));
+    // 工种按管理处取：上海新家的电工单不会派给只在永德段做电工的人
+    const skillsByUser = await this.accessService.skillsAtOfficeOf(tenantId, ids, officeScope);
 
     let result = technicians.map((item) => ({
       id: item.id,

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   Role,
+  StaffAssignment,
   StaffProfile,
   User,
   UserReportCommunity,
@@ -16,6 +17,7 @@ import { StaffService } from './staff.service';
     TypeOrmModule.forFeature([
       User,
       StaffProfile,
+      StaffAssignment,
       UserReportCommunity,
       Role,
       UserRoleAssignment,

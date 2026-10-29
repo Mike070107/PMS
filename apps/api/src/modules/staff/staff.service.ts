@@ -23,6 +23,7 @@ import {
 } from '../../common/enums';
 import {
   Role,
+  StaffAssignment,
   StaffProfile,
   User,
   UserReportCommunity,
@@ -36,6 +37,12 @@ import {
   SuggestCredentialsDto,
   UpdateStaffDto,
 } from './dto';
+import {
+  StaffAssignment as AssignmentRow,
+  assignmentsWithin,
+  normalizeAssignments,
+  unionSkills,
+} from './staff-assignment.util';
 
 // 名单只此一份（common/enums.ts）：这里和 dto.ts、角色表 business_role 的取值域
 // 必须是同一份，否则会出现「后台能选、保存报 invalid role」这种自相矛盾
@@ -68,6 +75,8 @@ export class StaffService {
     private readonly roleRepo: Repository<Role>,
     @InjectRepository(UserRoleAssignment)
     private readonly userRoleRepo: Repository<UserRoleAssignment>,
+    @InjectRepository(StaffAssignment)
+    private readonly assignmentRepo: Repository<StaffAssignment>,
     private readonly rolesService: RolesService,
     private readonly accessService: AccessService,
   ) {}
@@ -108,32 +117,17 @@ export class StaffService {
       tenantId,
       users.map((item) => item.id),
     );
+    const assignmentsByUser = await this.accessService.assignmentsOf(
+      tenantId,
+      users.map((item) => item.id),
+    );
+    // 受限操作者只看得到「工作范围全在自己管理处内」的人（超管、全部管理处的人看不到）
     if (!access.isPlatformAdmin && !access.isTenantAdmin && !access.scopeAll) {
-      const roleIds = [
-        ...new Set(
-          users.flatMap((item) =>
-            (rolesByUser.get(item.id) ?? []).map((role) => role.id),
-          ),
-        ),
-      ];
-      const roles = roleIds.length
-        ? await this.roleRepo.find({ where: { tenantId, id: In(roleIds) } })
-        : [];
-      const visibleRoleIds = new Set<number>();
-      for (const role of roles) {
-        if (
-          !role.builtIn &&
-          (await this.rolesService.roleWithinScope(role, access))
-        ) {
-          visibleRoleIds.add(role.id);
-        }
-      }
+      const operator = await this.accessService.userOfficeIds(tenantId, user.id);
       users = users.filter((item) => {
+        const rows = assignmentsByUser.get(item.id) ?? [];
         const bound = rolesByUser.get(item.id) ?? [];
-        return (
-          bound.length > 0 &&
-          bound.every((role) => visibleRoleIds.has(role.id))
-        );
+        return rows.length > 0 && !bound.some((r) => r.builtIn) && assignmentsWithin(rows, operator);
       });
       if (!users.length) return [];
     }
@@ -159,6 +153,7 @@ export class StaffService {
         profileByUser.get(u.id) ?? null,
         grantsByUser.get(u.id) ?? [],
         rolesByUser.get(u.id) ?? [],
+        assignmentsByUser.get(u.id) ?? [],
       ),
     );
   }
@@ -171,6 +166,8 @@ export class StaffService {
     if (!dto.roleIds?.length) {
       throw new BadRequestException('请给这个人选一个业务角色');
     }
+    const wanted = dto.assignments ? normalizeAssignments(dto.assignments) : null;
+    if (wanted) await this.validateAssignments(wanted, tenantId, user, access);
     // 员工统一是 staff，能干什么全看他绑的角色 —— 这里不再有「业务身份」这回事
     const role = UserRole.STAFF;
 
@@ -259,7 +256,16 @@ export class StaffService {
       ? await this.replaceRoleBindings(tenantId, created.id, dto.roleIds, user.id)
       : [];
 
-    return this.toView(created, profile, communityIds, roles);
+    // 旧后台建员工不带工作范围：按角色旧范围推出，保证他照样能看到、能被派单
+    const rows =
+      wanted ??
+      (await this.accessService.deriveAssignmentsFromRoles(tenantId, created.id, dto.roleIds ?? []));
+    const assignments = await this.replaceAssignments(tenantId, created.id, rows, user.id);
+    if (!profile && assignments.length) {
+      profile = await this.profileRepo.findOne({ where: { tenantId, userId: created.id } });
+    }
+
+    return this.toView(created, profile, communityIds, roles, assignments);
   }
 
   async update(id: number, dto: UpdateStaffDto, user: AuthUser, access: ResolvedAccess) {
@@ -269,11 +275,13 @@ export class StaffService {
     if (!ASSIGNABLE_ROLES.includes(target.role)) {
       throw new BadRequestException('cannot edit this user via /staff');
     }
-    await this.guardManageable(target, access);
+    await this.guardManageable(target, access, user);
 
     if (dto.roleIds !== undefined && dto.roleIds.length) {
       await this.validateAssignableRoles(dto.roleIds, tenantId, access);
     }
+    const wanted = dto.assignments ? normalizeAssignments(dto.assignments) : null;
+    if (wanted) await this.validateAssignments(wanted, tenantId, user, access);
 
     if (dto.loginAccount !== undefined) {
       const account = dto.loginAccount.trim();
@@ -350,7 +358,25 @@ export class StaffService {
         ? await this.replaceRoleBindings(tenantId, id, dto.roleIds, user.id)
         : (await this.loadRolesByUser(tenantId, [id])).get(id) ?? [];
 
-    return this.toView(target, profile ?? null, communityIds, roles);
+    let assignments: AssignmentRow[];
+    if (wanted) {
+      assignments = await this.replaceAssignments(tenantId, id, wanted, user.id);
+    } else if (dto.roleIds !== undefined || dto.skills !== undefined) {
+      // 旧后台的编辑表单（只有全局工种 + 角色）：按角色旧范围重推一次
+      const rows = await this.accessService.deriveAssignmentsFromRoles(
+        tenantId,
+        id,
+        roles.map((r) => r.id),
+      );
+      assignments = await this.replaceAssignments(tenantId, id, rows, user.id);
+    } else {
+      assignments = (await this.accessService.assignmentsOf(tenantId, [id])).get(id) ?? [];
+    }
+    if (assignments.length || wanted) {
+      profile = await this.profileRepo.findOne({ where: { tenantId, userId: id } });
+    }
+
+    return this.toView(target, profile ?? null, communityIds, roles, assignments);
   }
 
   /**
@@ -389,7 +415,7 @@ export class StaffService {
     if (!ASSIGNABLE_ROLES.includes(target.role)) {
       throw new BadRequestException('cannot edit this user via /staff');
     }
-    await this.guardManageable(target, access);
+    await this.guardManageable(target, access, user);
     if (!target.wxOpenid && !target.wxUnionid) {
       throw new BadRequestException('该员工尚未绑定微信');
     }
@@ -400,7 +426,8 @@ export class StaffService {
 
     const profile = await this.profileRepo.findOne({ where: { tenantId, userId: id } });
     const roles = (await this.loadRolesByUser(tenantId, [id])).get(id) ?? [];
-    return this.toView(target, profile ?? null, [], roles);
+    const assignments = (await this.accessService.assignmentsOf(tenantId, [id])).get(id) ?? [];
+    return this.toView(target, profile ?? null, [], roles, assignments);
   }
 
   private toView(
@@ -408,6 +435,7 @@ export class StaffService {
     profile: StaffProfile | null,
     reportCommunityIds: number[] = [],
     roles: { id: number; name: string; builtIn: boolean }[] = [],
+    assignments: AssignmentRow[] = [],
   ) {
     return {
       id: user.id,
@@ -424,7 +452,78 @@ export class StaffService {
       reportCommunityIds,
       roles,
       roleIds: roles.map((r) => r.id),
+      /** 工作范围：在哪个管理处（null = 全部）做哪些工种 */
+      assignments,
     };
+  }
+
+  /**
+   * 整份覆盖工作范围，并把工种并集回写 staff_profiles.skills。
+   * profile.skills 只是「这个人会哪些工种」的汇总（智能化仓库、报表等按人看工种的地方读它），
+   * 唯一来源是这里，不要在别处单独改它。
+   */
+  private async replaceAssignments(
+    tenantId: number,
+    userId: number,
+    rows: AssignmentRow[],
+    operatorId: number,
+  ): Promise<AssignmentRow[]> {
+    const normalized = normalizeAssignments(rows);
+    await this.assignmentRepo.delete({ tenantId, userId });
+    if (normalized.length) {
+      await this.assignmentRepo.save(
+        normalized.map((r) =>
+          this.assignmentRepo.create({
+            tenantId,
+            userId,
+            officeId: r.officeId,
+            skills: r.skills,
+            createdBy: operatorId,
+            updatedBy: operatorId,
+          }),
+        ),
+      );
+    }
+    const skills = unionSkills(normalized);
+    const profile = await this.profileRepo.findOne({ where: { tenantId, userId } });
+    if (profile) {
+      profile.skills = skills;
+      profile.updatedBy = operatorId;
+      await this.profileRepo.save(profile);
+    } else if (skills.length) {
+      await this.profileRepo.save(
+        this.profileRepo.create({
+          tenantId,
+          userId,
+          skills,
+          zones: [],
+          onDuty: true,
+          createdBy: operatorId,
+          updatedBy: operatorId,
+        }),
+      );
+    }
+    return normalized;
+  }
+
+  /** 工作范围的管理处必须属于本公司，受限操作者只能派到自己范围内的管理处 */
+  private async validateAssignments(
+    rows: AssignmentRow[],
+    tenantId: number,
+    user: AuthUser,
+    access: ResolvedAccess,
+  ) {
+    const officeIds = rows.map((r) => r.officeId).filter((v): v is number => v !== null);
+    if (officeIds.length) {
+      const found = await this.accessService.existingOfficeIds(tenantId, officeIds);
+      const missing = officeIds.filter((id) => !found.includes(id));
+      if (missing.length) throw new BadRequestException('工作范围里有不存在的管理处');
+    }
+    if (access.isPlatformAdmin || access.isTenantAdmin || access.scopeAll) return;
+    const operator = await this.accessService.userOfficeIds(tenantId, user.id);
+    if (!assignmentsWithin(rows, operator)) {
+      throw new ForbiddenException('只能把员工安排到你管理范围内的管理处，不能设为「全部管理处」');
+    }
   }
 
   private async loadRolesByUser(tenantId: number, userIds: number[]) {
@@ -508,7 +607,7 @@ export class StaffService {
    * 受限操作者（数据范围非全公司）不能动超出范围的用户：
    * 目标绑了内置角色（企业超管）、或目标绑定的角色范围超出操作者范围时拒绝。
    */
-  private async guardManageable(target: User, access: ResolvedAccess) {
+  private async guardManageable(target: User, access: ResolvedAccess, operator: AuthUser) {
     if (access.isPlatformAdmin || access.isTenantAdmin) return;
     if (target.role === UserRole.SUPERADMIN) {
       throw new ForbiddenException('无权管理平台账号');
@@ -523,13 +622,10 @@ export class StaffService {
     if (targetRoles.some((r) => r.builtIn)) {
       throw new ForbiddenException('无权管理企业超级管理员账号');
     }
-    const fullRoles = await this.roleRepo.find({
-      where: { id: In(targetRoles.map((r) => r.id)) },
-    });
-    for (const role of fullRoles) {
-      if (!(await this.rolesService.roleWithinScope(role, access))) {
-        throw new ForbiddenException('该用户的角色范围超出你的管理范围');
-      }
+    const rows = (await this.accessService.assignmentsOf(target.tenantId, [target.id])).get(target.id) ?? [];
+    const mine = await this.accessService.userOfficeIds(target.tenantId, operator.id);
+    if (!rows.length || !assignmentsWithin(rows, mine)) {
+      throw new ForbiddenException('该员工的工作范围超出你的管理范围');
     }
   }
 

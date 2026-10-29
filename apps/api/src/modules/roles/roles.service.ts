@@ -283,16 +283,13 @@ export class RolesService {
     return out;
   }
 
-  /** 角色的数据范围是否不超过操作者的范围 */
+  /**
+   * 受限操作者能不能看到 / 分配这个角色。
+   * 角色只管「能做什么」，「在哪里做」由员工工作范围（staff_assignments）决定，
+   * 而受限操作者只能把人派到自己范围内的管理处 —— 所以这里只需挡住内置超管。
+   */
   async roleWithinScope(role: Role, access: ResolvedAccess): Promise<boolean> {
-    if (access.scopeAll) return true;
-    if (role.dataScope === RoleDataScope.ALL) return false;
-    const roleCommunityIds = await this.accessService.resolveScopeCommunityIds(
-      role.tenantId,
-      [role.id],
-    );
-    const mine = new Set(access.communityIds ?? []);
-    return roleCommunityIds.every((id) => mine.has(id));
+    return access.scopeAll || access.isTenantAdmin || access.isPlatformAdmin || !role.builtIn;
   }
 
   async create(dto: SaveRoleDto, user: AuthUser, access: ResolvedAccess) {

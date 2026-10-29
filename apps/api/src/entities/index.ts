@@ -7,6 +7,7 @@ import { House } from './house.entity';
 import { QrCode } from './qr-code.entity';
 import { User } from './user.entity';
 import { StaffProfile } from './staff-profile.entity';
+import { StaffAssignment } from './staff-assignment.entity';
 import { UserAudit } from './user-audit.entity';
 import { UserReportCommunity } from './user-report-community.entity';
 import { RepairRequest } from './repair-request.entity';
@@ -109,6 +110,7 @@ export const entities = [
   QrCode,
   User,
   StaffProfile,
+  StaffAssignment,
   UserAudit,
   UserReportCommunity,
   RepairRequest,
@@ -196,6 +198,7 @@ export {
   QrCode,
   User,
   StaffProfile,
+  StaffAssignment,
   UserAudit,
   UserReportCommunity,
   RepairRequest,
