@@ -975,8 +975,9 @@ export class MaintenanceService implements OnModuleInit {
       communityId: workOrder.communityId,
       status: MAINTENANCE_STATUS.FILLING,
       unitName: office?.name || topCommunity?.name || null,
-      // 按地址从业主档案取姓名，档案没有时才回退到报修联系人。
-      reporterName: owner?.name?.trim() || request?.contactName || null,
+      // 只按地址从业主档案取姓名；档案里没有就留空让办公室手填 ——
+      // 报修联系人常是「5511」这类昵称/尾号，印到「报修人姓名」上是错的。
+      reporterName: owner?.name?.trim() || null,
       // 有门牌的地址不写「村」：小区名在「管房单位」那一格已经有了，
       // 两处写同一个名字既重复，也会把纸上不到 1cm 的格子撑爆。
       // 公区没有门牌，才拿小区名占住这一格，否则地址整行是空的
