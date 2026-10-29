@@ -46,6 +46,12 @@ export class VehicleIntakeController {
     return this.service.setClass(id, body?.vehicleClass ?? '', user, access);
   }
 
+  @Post(':id/garages')
+  @RequirePermission([...VIEW], 'edit')
+  setGarages(@Param('id', ParseIntPipe) id: number, @Body() body: { garages?: string[]; garageNumbers?: Record<string, string> }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.setGarages(id, body?.garages, body?.garageNumbers, user, access);
+  }
+
   @Post(':id/review')
   @RequirePermission([...VIEW], 'edit')
   review(@Param('id', ParseIntPipe) id: number, @Body() body: ReviewIntakeInput, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {

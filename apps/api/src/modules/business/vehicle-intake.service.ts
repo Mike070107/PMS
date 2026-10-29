@@ -119,6 +119,22 @@ export class VehicleIntakeService {
     return this.view(row);
   }
 
+  /** 要开通的车库（付费车：停车目标 key；亲情车：phase1/phase2/main/civil + 车库号）。收款 / 审核通过前可改 */
+  async setGarages(id: number, garages: unknown, garageNumbers: unknown, user: AuthUser, access?: ResolvedAccess) {
+    const row = await this.load(id, user, access);
+    if (row.status === 'void' || (row.kind === 'paid' && row.transactionId) || (row.kind === 'family' && row.status === 'approved')) {
+      throw new BadRequestException('已收款或已办理，不能再改车库');
+    }
+    const next = this.cleanList(garages);
+    const nums = this.cleanNumbers(garageNumbers);
+    if (next.join(',') === row.garages.join(',') && JSON.stringify(nums) === JSON.stringify(row.garageNumbers)) return this.view(row);
+    row.garages = next;
+    row.garageNumbers = nums;
+    row.updatedBy = user.id;
+    await this.repo.save(row);
+    return this.view(row);
+  }
+
   /** 重新生成二维码：旧码立即失效，新码 1 小时有效 */
   async regenerate(id: number, formBase: string, user: AuthUser, access?: ResolvedAccess) {
     const row = await this.load(id, user, access);
@@ -213,6 +229,8 @@ export class VehicleIntakeService {
 
   async attachPayment(row: VehicleIntake, txn: BusinessTransaction, user: AuthUser) {
     row.transactionId = txn.id;
+    const systems = ((txn.snapshot?.parking as { systems?: Array<{ label?: string }> } | undefined)?.systems ?? []).map((s) => s.label).filter(Boolean);
+    if (systems.length) row.log = [...row.log, await this.entry(user, '收款开通车库', systems.join('、'))];
     row.log = [...row.log, await this.entry(user, `已收款 ¥${(txn.amountCents / 100).toFixed(2)}`,
       txn.externalSyncStatus === 'awaiting_docs' ? '资料未齐，收款挂「待处理」，业主提交并审核通过后自动办理' : `流水 ${txn.txnNo}`)];
     await this.repo.save(row);
