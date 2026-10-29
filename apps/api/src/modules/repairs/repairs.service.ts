@@ -172,6 +172,7 @@ import {
   workOrderStatusLabel,
   type RollbackResolution,
 } from './work-order-state-machine';
+import { decideAcceptMode, proxyNote } from './work-order-proxy.util';
 import { nextPurchaseRequestNo } from '../inventory/purchase-request-no.util';
 import { nextPurchaseStatus, pendingStepFor } from '../inventory/purchase-flow';
 import { planPurchaseRollback, type PurchaseRollbackEffect } from './rollback-purchase';
@@ -3630,11 +3631,17 @@ export class RepairsService implements OnModuleInit {
       // controller 已校验 app:pool·edit，这里再校验小区数据范围；行锁保证并发时
       // 只有第一个人能把待接单改成维修中。
       const previousAssigneeId = workOrder.assigneeId;
-      const isClaim = previousAssigneeId !== user.id;
+      // 办公室/管理员（有派单权限）可以代被派维修工确认接单，负责人不变；也可以自己从池子认领
+      const decided = decideAcceptMode({
+        status: workOrder.status,
+        assigneeId: previousAssigneeId,
+        userId: user.id,
+        canDispatch: await this.canDispatch(user, access),
+      });
+      if ('error' in decided) throw new ForbiddenException(decided.error);
+      const onBehalf = decided.mode === 'accept_on_behalf';
+      const isClaim = decided.mode === 'claim';
       if (isClaim) {
-        if (workOrder.status === WorkOrderStatus.DISPATCHED && previousAssigneeId) {
-          throw new ForbiddenException('工单已派给其他维修工');
-        }
         assertWorkOrderTransition(
           workOrder.status,
           WorkOrderStatus.IN_PROGRESS,
@@ -3674,9 +3681,11 @@ export class RepairsService implements OnModuleInit {
         user.id,
         isClaim
           ? fromStatus === WorkOrderStatus.WAITING_MATERIAL
-            ? '维修工从工单池接回（缺料单）'
-            : '维修工从工单池认领'
-          : null,
+            ? '从工单池接回（缺料单）'
+            : '从工单池认领'
+          : onBehalf
+            ? '办公室代维修工确认接单'
+            : null,
         [],
         {
           beforeSnapshot,
@@ -3982,6 +3991,7 @@ export class RepairsService implements OnModuleInit {
             : `当前状态（${workOrderStatusLabel(workOrder.status)}）不能提交完工：请先接单，或材料到位后从工单池接回`,
       );
       await this.ensureAssigneeOrAdmin(workOrder, user);
+      const proxyAssigneeId = workOrder.assigneeId;
 
       const fromStatus = workOrder.status;
       const beforeSnapshot = await this.captureWorkOrderSnapshot(manager, workOrder);
@@ -4091,7 +4101,7 @@ export class RepairsService implements OnModuleInit {
         fromStatus,
         'complete',
         user.id,
-        dto.actionNote ?? null,
+        proxyNote(dto.actionNote, user.id, proxyAssigneeId),
         [],
         {
           beforeSnapshot,
@@ -4161,6 +4171,7 @@ export class RepairsService implements OnModuleInit {
         'work order cannot wait material',
       );
       await this.ensureAssigneeOrAdmin(workOrder, user);
+      const proxyAssigneeId = workOrder.assigneeId;
 
       const fromStatus = workOrder.status;
       // 缺料会把负责人置空退回工单池。撤回时要把人和接单时间原样接回来。
@@ -4343,6 +4354,7 @@ export class RepairsService implements OnModuleInit {
         'need_material',
         user.id,
         [
+          proxyAssigneeId != null && proxyAssigneeId !== user.id ? '办公室代填' : null,
           newlyUsed.length
             ? `已领用：${newlyUsed.map((item) => `${item.name} ×${item.qty}${item.unit || ''}`).join('、')}`
             : null,
@@ -8181,7 +8193,7 @@ export class RepairsService implements OnModuleInit {
     if (user.role === UserRole.OWNER) return false;
     const resolved = access ?? (await this.accessService.getAccess(user));
     if (resolved.isPlatformAdmin || resolved.isTenantAdmin) return true;
-    return !!(resolved.pages['app:dispatch']?.edit || resolved.pages['work-orders']?.edit);
+    return !!(resolved.pages?.['app:dispatch']?.edit || resolved.pages?.['work-orders']?.edit);
   }
 
   /**

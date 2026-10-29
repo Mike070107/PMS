@@ -499,8 +499,9 @@ export class RepairsController {
     return this.repairsService.rollbackWorkOrder(id, dto, user, access);
   }
 
+  /** 维修工从池子接单；办公室（工单管理·办理）可自己接，或代被派维修工确认接单 */
   @Post('work-orders/:id/accept')
-  @RequirePermission('app:pool', 'edit')
+  @RequirePermission(['app:pool', 'work-orders'], 'edit')
   acceptWorkOrder(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
@@ -509,8 +510,9 @@ export class RepairsController {
     return this.repairsService.acceptWorkOrder(id, user, access);
   }
 
+  /** 维修工完工；办公室可代填（service 里 ensureAssigneeOrAdmin 已放行派单权限，时间轴记「办公室代填」） */
   @Post('work-orders/:id/complete')
-  @RequirePermission('app:my-orders', 'edit')
+  @RequirePermission(['app:my-orders', 'work-orders'], 'edit')
   completeWorkOrder(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CompleteWorkOrderDto,
@@ -521,7 +523,7 @@ export class RepairsController {
   }
 
   @Post('work-orders/:id/need-material')
-  @RequirePermission('app:my-orders', 'edit')
+  @RequirePermission(['app:my-orders', 'work-orders'], 'edit')
   markNeedMaterial(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: NeedMaterialDto,
