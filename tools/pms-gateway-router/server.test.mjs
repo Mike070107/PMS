@@ -3,7 +3,7 @@ import http from 'node:http';
 import test from 'node:test';
 
 process.env.NODE_ENV = 'test';
-const { applicationRequestPath, forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie } = await import('./server.mjs');
+const { applicationRequestPath, forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, safeReturnTo, sessionCookieHeader, stripGatewayCookie } = await import('./server.mjs');
 
 test('requestJson works without fetch or WebAssembly', async (t) => {
   const originalFetch = globalThis.fetch;
@@ -46,6 +46,20 @@ test('preserves an application redirect to the root after login', () => {
 
 test('gateway cookie is never forwarded to the intranet origin', () => {
   assert.equal(stripGatewayCookie('sid=abc; __Secure-pms_gateway=secret; theme=light'), 'sid=abc; theme=light');
+  assert.equal(stripGatewayCookie('sid=abc; __Host-pms_gateway=secret; theme=light'), 'sid=abc; theme=light');
+});
+
+test('the session cookie is host-only (no Domain), secure and http-only', () => {
+  const header = sessionCookieHeader('tok', 28800);
+  assert.match(header, /^__Host-pms_gateway=tok; Path=\/; Max-Age=28800; Secure; HttpOnly; SameSite=Lax$/);
+  assert.doesNotMatch(header, /Domain=/i);
+});
+
+test('after login the browser only returns to the same application host', () => {
+  assert.equal(safeReturnTo('caiwu.prsznh.cn', 'https://caiwu.prsznh.cn/tplus/'), 'https://caiwu.prsznh.cn/tplus/');
+  assert.equal(safeReturnTo('caiwu.prsznh.cn', 'https://evil.example.com/'), 'https://caiwu.prsznh.cn/');
+  assert.equal(safeReturnTo('caiwu.prsznh.cn', 'https://nas.prsznh.cn/'), 'https://caiwu.prsznh.cn/');
+  assert.equal(safeReturnTo('caiwu.prsznh.cn', 'javascript:alert(1)'), 'https://caiwu.prsznh.cn/');
 });
 
 test('the public host is preserved for browser-origin application sessions', () => {

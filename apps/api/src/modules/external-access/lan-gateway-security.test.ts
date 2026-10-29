@@ -35,11 +35,51 @@ test('gateway configuration signatures are stable and bound to the device token'
   assert.notEqual(signGatewayConfiguration('{"revision":3}', token), signGatewayConfiguration('{"revision":2}', token));
 });
 
-test('gateway session supports the configured 12-hour workday duration', () => {
+test('gateway session lasts 4 / 8 / 12 hours, unknown values fall back to 8 hours', () => {
   process.env.LAN_GATEWAY_SESSION_SECRET = 'gateway-session-secret-for-test-must-have-32-characters';
   const service = new ExternalAccessService({} as any, {} as any, {} as any, {} as any, {} as any);
-  const session = service.createGatewaySession({ id: 9, slug: 'finance', sessionDuration: '12h' } as any, 7);
-  assert.equal(session.maxAge, 43_200);
+  const at = (d: string) => service.createGatewaySession({ id: 9, slug: 'finance', sessionDuration: d } as any, 7).maxAge;
+  assert.equal(at('4h'), 14_400);
+  assert.equal(at('8h'), 28_800);
+  assert.equal(at('12h'), 43_200);
+  assert.equal(at('1h'), 28_800);
+});
+
+function gatewayFixture() {
+  process.env.LAN_GATEWAY_SESSION_SECRET = 'gateway-session-secret-for-test-must-have-32-characters';
+  const now = new Date();
+  const app = { id: 9, tenantId: 1, slug: 'finance', publicHostname: 'finance.prsznh.cn', originUrl: 'http://192.168.1.2:8050', enabled: true, publishStatus: 'online', agentId: 7, gatewayPort: 18050, sessionDuration: '8h' };
+  const agent = { id: 7, tenantId: 1, enabled: true, lastSeenAt: now };
+  const user = { id: 5, tenantId: 1, status: 'active', role: 'staff' };
+  const service = new ExternalAccessService(
+    { findOne: async () => app } as any, { findOne: async () => user } as any, { findOne: async () => agent } as any,
+    {} as any, { userHasExternalAppAccess: async () => true } as any,
+  );
+  return { service, app };
+}
+
+test('handoff code exchanges once for a host-only session; it is never accepted as a session itself', async () => {
+  const { service, app } = gatewayFixture();
+  const code = service.createGatewayHandoff(app as any, 5);
+  await assert.rejects(() => service.verifyGatewaySession('finance.prsznh.cn', code), /过期或不属于当前应用/);
+  const session = await service.exchangeGatewayHandoff('finance.prsznh.cn', code);
+  assert.equal(session.maxAge, 28_800);
+  assert.equal((await service.verifyGatewaySession('finance.prsznh.cn', session.token)).userId, 5);
+  await assert.rejects(() => service.exchangeGatewayHandoff('finance.prsznh.cn', code), /已使用/);
+  await assert.rejects(() => service.exchangeGatewayHandoff('finance.prsznh.cn', session.token), /交接码无效/);
+});
+
+test('FRP rejects new user connections once the application is disabled', async () => {
+  process.env.LAN_GATEWAY_FRP_PLUGIN_SECRET = 'plugin-secret-for-test';
+  const deviceToken = 'device-token-for-test';
+  const agent = { id: 7, tenantId: 1, deviceKey: 'lan-test', tokenHash: hashGatewaySecret(deviceToken), enabled: true };
+  let enabled = true;
+  const appRepo = { findOne: async ({ where }: any) => (where.slug === 'finance' && where.enabled === true && enabled ? { id: 9 } : null) };
+  const service = new ExternalAccessService(appRepo as any, {} as any, { findOne: async () => agent } as any, {} as any, {} as any);
+  const conn = { content: { user: { user: 'lan-test', metas: { deviceToken } }, proxy_name: 'lan-test.finance', proxy_type: 'tcp' } };
+  assert.equal((await service.authorizeFrpOperation('plugin-secret-for-test', 'NewUserConn', conn)).reject, false);
+  enabled = false;
+  assert.equal((await service.authorizeFrpOperation('plugin-secret-for-test', 'NewUserConn', conn)).reject, true);
 });
 
 test('FRP admission binds every proxy name and port to the authenticated device', async () => {

@@ -259,6 +259,12 @@ export class ExternalAccessService {
     try {
       const agent = await this.authenticateAgent(deviceKey, deviceToken);
       if (operation === 'Login') return { reject: false, unchange: true };
+      // 每一条用户连接都再查一次应用状态：应用停用后，即使代理端的旧隧道还在，也接不进内网
+      if (operation === 'NewUserConn') {
+        const proxyName = String(content.proxy_name || '').replace(`${deviceKey}.`, '');
+        const live = await this.appRepo.findOne({ where: { tenantId: agent.tenantId, agentId: agent.id, slug: proxyName, enabled: true } });
+        return live ? { reject: false, unchange: true } : { reject: true, reject_reason: 'application is disabled' };
+      }
       if (operation !== 'NewProxy') return { reject: true, reject_reason: 'operation is not allowed' };
       const remotePort = Number(content.remote_port);
       const proxyName = String(content.proxy_name || '').replace(`${deviceKey}.`, '');
@@ -300,44 +306,78 @@ export class ExternalAccessService {
   }
 
   createGatewaySession(app: ExternalAccessApp, userId: number) {
+    const seconds = gatewaySessionSeconds(app.sessionDuration);
+    return { token: this.signGatewayToken({ typ: 'session', userId, appId: app.id, slug: app.slug }, seconds), maxAge: seconds };
+  }
+
+  /**
+   * 扫码确认后发给浏览器的一次性交接码（60 秒、只能用一次）。
+   * 会话 Cookie 由应用自己的域名（网关路由）用它换取并写成仅限本域名的 Cookie，
+   * 这样一个应用的登录不会被带到 *.prsznh.cn 下的其他站点，也不会互相顶掉。
+   */
+  createGatewayHandoff(app: ExternalAccessApp, userId: number) {
+    return this.signGatewayToken({ typ: 'handoff', userId, appId: app.id, slug: app.slug }, 60);
+  }
+
+  private usedHandoffs = new Map<string, number>();
+
+  async exchangeGatewayHandoff(hostname: string, code: string) {
+    const app = await this.resolveGatewayApplication(hostname);
+    const claims = this.readGatewayToken(code);
+    if (claims.typ !== 'handoff' || claims.appId !== app.id || claims.slug !== app.slug || !claims.userId || !claims.jti) {
+      throw new UnauthorizedException('登录交接码无效，请重新扫码');
+    }
+    const now = Date.now();
+    for (const [jti, exp] of this.usedHandoffs) if (exp < now) this.usedHandoffs.delete(jti);
+    if (this.usedHandoffs.has(claims.jti)) throw new UnauthorizedException('登录交接码已使用，请重新扫码');
+    this.usedHandoffs.set(claims.jti, (claims.exp ?? 0) * 1000 + 60_000);
+    await this.assertGatewayUser(app, claims.userId);
+    return this.createGatewaySession(app, claims.userId);
+  }
+
+  private signGatewayToken(claims: Record<string, unknown>, seconds: number) {
     const secret = this.gatewaySessionSecret();
-    const seconds = app.sessionDuration === '30m' ? 1800 : app.sessionDuration === '4h' ? 14400 : app.sessionDuration === '12h' ? 43200 : 3600;
     const now = Math.floor(Date.now() / 1000);
     const payload = Buffer.from(JSON.stringify({
-      userId,
-      appId: app.id,
-      slug: app.slug,
+      ...claims,
       iat: now,
       exp: now + seconds,
       jti: randomBytes(12).toString('base64url'),
     })).toString('base64url');
     const signature = createHmac('sha256', secret).update(payload).digest('base64url');
-    return { token: `${payload}.${signature}`, maxAge: seconds };
+    return `${payload}.${signature}`;
   }
 
-  async verifyGatewaySession(hostname: string, token: string) {
-    const app = await this.resolveGatewayApplication(hostname);
+  private readGatewayToken(token: string): { typ?: string; userId?: number; appId?: number; slug?: string; exp?: number; jti?: string } {
     const [payload, signature, extra] = String(token || '').split('.');
     if (!payload || !signature || extra) throw new UnauthorizedException('请先扫码授权');
     const expected = createHmac('sha256', this.gatewaySessionSecret()).update(payload).digest();
     let actual: Buffer;
     try { actual = Buffer.from(signature, 'base64url'); } catch { throw new UnauthorizedException('登录会话无效'); }
-    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-      throw new UnauthorizedException('登录会话无效');
-    }
-    let claims: { userId?: number; appId?: number; slug?: string; exp?: number };
+    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw new UnauthorizedException('登录会话无效');
+    let claims: { typ?: string; userId?: number; appId?: number; slug?: string; exp?: number; jti?: string };
     try { claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')); }
     catch { throw new UnauthorizedException('登录会话无效'); }
-    if (claims.appId !== app.id || claims.slug !== app.slug || !claims.userId || !claims.exp || claims.exp <= Math.floor(Date.now() / 1000)) {
-      throw new UnauthorizedException('登录会话已过期或不属于当前应用');
-    }
-    const user = await this.userRepo.findOne({ where: { id: claims.userId, tenantId: app.tenantId } });
-    const allowed = user
-      ? await this.accessService.userHasExternalAppAccess(app.tenantId, user.id, app.id)
-      : false;
+    if (!claims.exp || claims.exp <= Math.floor(Date.now() / 1000)) throw new UnauthorizedException('登录会话已过期');
+    return claims;
+  }
+
+  private async assertGatewayUser(app: ExternalAccessApp, userId: number) {
+    const user = await this.userRepo.findOne({ where: { id: userId, tenantId: app.tenantId } });
+    const allowed = user ? await this.accessService.userHasExternalAppAccess(app.tenantId, user.id, app.id) : false;
     if (!allowed || !user || user.status !== UserStatus.ACTIVE || !STAFF_APP_ROLES.includes(user.role)) {
       throw new ForbiddenException('你已没有这个内网应用的访问权限');
     }
+  }
+
+  async verifyGatewaySession(hostname: string, token: string) {
+    const app = await this.resolveGatewayApplication(hostname);
+    const claims = this.readGatewayToken(token);
+    // 只认会话令牌：60 秒的交接码不能直接当会话用
+    if (claims.typ !== 'session' || claims.appId !== app.id || claims.slug !== app.slug || !claims.userId) {
+      throw new UnauthorizedException('登录会话已过期或不属于当前应用');
+    }
+    await this.assertGatewayUser(app, claims.userId);
     const origin = new URL(app.originUrl);
     return {
       appId: app.id,
@@ -363,7 +403,7 @@ export class ExternalAccessService {
         slug: await this.deriveUniqueSlug(tenantId, normalized.publicHostname),
         name: dto.name.trim(),
         ...normalized,
-        sessionDuration: dto.sessionDuration ?? '1h',
+        sessionDuration: dto.sessionDuration ?? '8h',
         enabled: dto.enabled ?? true,
         agentId: agent?.id ?? null,
         gatewayPort,
@@ -662,4 +702,9 @@ export class ExternalAccessService {
       return { ok: false, message: '内网代理已就绪，正在等待公网域名与 HTTPS 入口生效' };
     }
   }
+}
+
+/** 登录有效期（秒）：4 / 8 / 12 小时；历史值或未知值按默认 8 小时 */
+export function gatewaySessionSeconds(duration: string | null | undefined): number {
+  return duration === '4h' ? 14_400 : duration === '12h' ? 43_200 : 28_800;
 }

@@ -12,7 +12,8 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-const SESSION_DURATIONS = ['30m', '1h', '4h', '12h'] as const;
+/** 内网应用登录有效期：4 / 8 / 12 小时，默认 8 小时（一个工作日） */
+export const SESSION_DURATIONS = ['4h', '8h', '12h'] as const;
 
 export class CreateExternalAccessAppDto {
   @IsString()

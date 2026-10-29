@@ -22,4 +22,5 @@ log.maxDays = 14
 name = "pms-device-admission"
 addr = "127.0.0.1:4000"
 path = "/api/v1/external-access-agent/frp-plugin/__FRP_PLUGIN_SECRET__"
-ops = ["Login", "NewProxy"]
+# NewUserConn：每条访问连接都再查一次应用是否启用，停用后旧隧道也接不进内网
+ops = ["Login", "NewProxy", "NewUserConn"]

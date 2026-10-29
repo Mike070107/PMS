@@ -6,13 +6,16 @@ const listenHost = process.env.GATEWAY_ROUTER_HOST || '127.0.0.1';
 const listenPort = Number(process.env.GATEWAY_ROUTER_PORT || 4190);
 const apiBase = (process.env.PMS_API_INTERNAL_URL || 'http://127.0.0.1:4000/api/v1').replace(/\/$/, '');
 const publicApiBase = (process.env.PMS_PUBLIC_API_URL || 'https://prsznh.cn/api/v1').replace(/\/$/, '');
-const sessionCookie = '__Secure-pms_gateway';
+// 会话只写在当前应用自己的域名上；旧版写在整个 .prsznh.cn 的那个也一并从转发里剔除
+const sessionCookie = '__Host-pms_gateway';
+const legacyCookie = '__Secure-pms_gateway';
 const routerSecret = process.env.LAN_GATEWAY_ROUTER_SECRET || '';
 
 const server = http.createServer(async (request, response) => {
   if (request.url === '/_pms_gateway/healthz') return json(response, 200, { ok: true });
   try {
     const hostname = normalizeHostname(request.headers.host);
+    if (String(request.url || '').startsWith('/_pms_gateway/session?')) return await establishSession(request, response, hostname);
     const route = await authorize(hostname, request.headers.cookie);
     proxyHttp(request, response, hostname, route);
   } catch (error) {
@@ -35,6 +38,43 @@ if (process.env.NODE_ENV !== 'test') {
   server.listen(listenPort, listenHost, () => {
     process.stdout.write(`PMS gateway router listening on http://${listenHost}:${listenPort}\n`);
   });
+}
+
+/** 扫码确认后的落地：用一次性交接码换会话，写成仅限本域名的 Cookie，再回到原页面 */
+async function establishSession(request, response, hostname) {
+  const params = new URL(request.url, `https://${hostname}`).searchParams;
+  const code = params.get('code') || '';
+  const returnTo = safeReturnTo(hostname, params.get('returnTo'));
+  const { status, body } = await requestJson(
+    `${apiBase}/gateway-access/exchange?hostname=${encodeURIComponent(hostname)}&code=${encodeURIComponent(code)}`,
+    { 'x-pms-gateway-router-secret': routerSecret },
+    5000,
+  );
+  if (status < 200 || status >= 300 || !body.token) {
+    const error = new Error(body.message || '登录交接失败');
+    error.status = 401;
+    throw error;
+  }
+  response.writeHead(302, {
+    location: returnTo,
+    'set-cookie': sessionCookieHeader(body.token, Number(body.maxAge) || 0),
+    'cache-control': 'no-store',
+  });
+  return response.end();
+}
+
+function sessionCookieHeader(token, maxAge) {
+  return `${sessionCookie}=${token}; Path=/; Max-Age=${Math.max(0, Math.floor(maxAge))}; Secure; HttpOnly; SameSite=Lax`;
+}
+
+function safeReturnTo(hostname, value) {
+  try {
+    const url = new URL(value || `https://${hostname}/`);
+    if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== hostname) throw new Error('host');
+    return url.toString();
+  } catch {
+    return `https://${hostname}/`;
+  }
 }
 
 async function authorize(hostname, cookie) {
@@ -122,7 +162,7 @@ function forwardedHeaders(original, publicHost, remoteAddress) {
 }
 
 function stripGatewayCookie(value = '') {
-  return String(value).split(';').map((part) => part.trim()).filter((part) => part && !part.startsWith(`${sessionCookie}=`)).join('; ');
+  return String(value).split(';').map((part) => part.trim()).filter((part) => part && !part.startsWith(`${sessionCookie}=`) && !part.startsWith(`${legacyCookie}=`)).join('; ');
 }
 
 function rewriteLocation(headers, publicHost, originHost) {
@@ -182,4 +222,4 @@ function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char);
 }
 
-export { applicationRequestPath, forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, stripGatewayCookie };
+export { applicationRequestPath, forwardedHeaders, normalizeHostname, requestJson, rewriteCookies, rewriteLocation, safeReturnTo, sessionCookieHeader, stripGatewayCookie };
