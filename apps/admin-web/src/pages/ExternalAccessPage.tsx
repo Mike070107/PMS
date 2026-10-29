@@ -95,7 +95,7 @@ const previewApps: ExternalApp[] = [
     publicHostname: 'caiwu.prsznh.cn',
     originUrl: 'http://192.168.10.20:8080',
     entryPath: '/tplus/view/login.html',
-    sessionDuration: '1h',
+    sessionDuration: '8h',
     enabled: true,
     agentId: 1,
     publishStatus: 'online',
@@ -580,7 +580,7 @@ function ExternalAppModal({ open, target, agents, preview, provider, onClose, on
     if (target) form.setFieldsValue({ ...target, originUrl: originEntryUrl(target) });
     else {
       form.resetFields();
-      form.setFieldsValue({ enabled: true, sessionDuration: '12h', agentId: agents.length === 1 ? agents[0].id : undefined });
+      form.setFieldsValue({ enabled: true, sessionDuration: '8h', agentId: agents.length === 1 ? agents[0].id : undefined });
     }
   }, [open, target, form, agents]);
 
@@ -648,7 +648,7 @@ function ExternalAppModal({ open, target, agents, preview, provider, onClose, on
             }
           />
           <div className="external-access-form-grid external-access-form-grid--settings">
-            <Form.Item name="sessionDuration" label="登录有效期"><Select suffixIcon={<ClockCircleOutlined aria-hidden="true" />} options={[{ value: '30m', label: '30 分钟（财务推荐）' }, { value: '1h', label: '1 小时' }, { value: '4h', label: '4 小时' }, { value: '12h', label: '12 小时（工作日）' }]} /></Form.Item>
+            <Form.Item name="sessionDuration" label="登录有效期"><Select suffixIcon={<ClockCircleOutlined aria-hidden="true" />} options={[{ value: '4h', label: '4 小时' }, { value: '8h', label: '8 小时（默认）' }, { value: '12h', label: '12 小时' }]} /></Form.Item>
             <Form.Item className="external-access-switch-field" name="enabled" label="访问状态" valuePropName="checked" extra="关闭后立即停止新访问"><Switch checkedChildren="开放" unCheckedChildren="停用" /></Form.Item>
           </div>
         </section>
