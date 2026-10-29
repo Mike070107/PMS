@@ -5190,3 +5190,11 @@
   - f1ee0c05 feat(api): 收费执行层 P1——停车月租收款后自动同步德立云有效期
   - b8e9d88a refactor(neighbor-web): 房号选择直接复用旧后台 HouseAddressPicker
 
+## 2026-10-29 09:30 · api · 3d4fc687
+
+- 包：`pms-api-fast-20261029-093011.tar.gz`
+- 提交：3d4fc687 feat(api): 材料SKU 删除与使用情况;已使用的 SKU 锁定名称/规格/单位/分类/参数
+- 自上次（a7ebd8b1）以来上线的相关提交：
+  - 3d4fc687 feat(api): 材料SKU 删除与使用情况;已使用的 SKU 锁定名称/规格/单位/分类/参数
+  - 0cc0ee0d feat(api): 办公室可接单、代被派维修工确认接单、代填完工与缺料(时间轴记「办公室代填」)
+
