@@ -21,13 +21,18 @@ export interface ParkingTarget {
   communities: string[];
   /** 收费主体 */
   billing: 'vehicle' | 'space';
+  /** 前台按钮用的短名（一期地面 / 二期大车库…） */
+  short?: string;
 }
 
+/** 枫桦景苑一期、二期是同一片停车场：两期住户都可以办任一车库（与亲情车一致） */
+const FENGHUA = ['枫桦景苑一期', '枫桦景苑二期'];
+
 export const PARKING_TARGETS: ParkingTarget[] = [
-  { key: 'local:phase1_parking', label: '枫桦景苑一期 地面车库', system: 'local', database: 'parking1', localTarget: 'phase1_parking', communities: ['枫桦景苑一期'], billing: 'vehicle' },
-  { key: 'local:phase2_parking', label: '枫桦景苑二期 地面车库', system: 'local', database: 'parking2', localTarget: 'phase2_parking', communities: ['枫桦景苑二期'], billing: 'vehicle' },
-  { key: 'local:phase2_main_garage', label: '枫桦景苑二期 大车库', system: 'local', database: 'parking2', localTarget: 'phase2_main_garage', communities: ['枫桦景苑二期'], billing: 'space' },
-  { key: 'deliyun:枫桦景苑', label: '枫桦景苑二期 人防车库', system: 'deliyun', deliyunPark: '枫桦景苑', communities: ['枫桦景苑二期'], billing: 'vehicle' },
+  { key: 'local:phase1_parking', label: '枫桦景苑一期 地面车库', system: 'local', database: 'parking1', localTarget: 'phase1_parking', communities: FENGHUA, billing: 'vehicle', short: '一期地面' },
+  { key: 'local:phase2_parking', label: '枫桦景苑二期 地面车库', system: 'local', database: 'parking2', localTarget: 'phase2_parking', communities: FENGHUA, billing: 'vehicle', short: '二期地面' },
+  { key: 'local:phase2_main_garage', label: '枫桦景苑二期 大车库', system: 'local', database: 'parking2', localTarget: 'phase2_main_garage', communities: FENGHUA, billing: 'space', short: '二期大车库' },
+  { key: 'deliyun:枫桦景苑', label: '枫桦景苑二期 人防车库', system: 'deliyun', deliyunPark: '枫桦景苑', communities: FENGHUA, billing: 'vehicle', short: '二期人防车库' },
   { key: 'deliyun:上海永南小区', label: '永南小区', system: 'deliyun', deliyunPark: '上海永南小区', communities: ['永南140弄', '永南150弄', '永南5511弄'], billing: 'vehicle' },
   { key: 'deliyun:上海永德小区', label: '永德小区', system: 'deliyun', deliyunPark: '上海永德小区', communities: ['永北150弄', '永北5511弄'], billing: 'vehicle' },
   { key: 'deliyun:上海吴泾小区', label: '吴泾小区', system: 'deliyun', deliyunPark: '上海吴泾小区', communities: ['吴泾新村'], billing: 'vehicle' },

@@ -11,10 +11,11 @@ test('目录：key 唯一，德立云目标都有停车场名，本地目标都�
   }
 });
 
-test('枫桦景苑二期同时有地面、大车库（本地库）和人防（德立云）', () => {
-  const keys = targetsForCommunity('枫桦景苑二期').map((t) => t.key).sort();
-  assert.deepEqual(keys, ['deliyun:枫桦景苑', 'local:phase2_main_garage', 'local:phase2_parking']);
-  assert.deepEqual(targetsForCommunity('枫桦景苑一期').map((t) => t.key), ['local:phase1_parking']);
+test('枫桦景苑一期、二期都能办四个车库：一期地面、二期地面、二期大车库（本地库）、二期人防（德立云）', () => {
+  const all = ['local:phase1_parking', 'local:phase2_parking', 'local:phase2_main_garage', 'deliyun:枫桦景苑'];
+  assert.deepEqual(targetsForCommunity('枫桦景苑二期').map((t) => t.key), all);
+  assert.deepEqual(targetsForCommunity('枫桦景苑一期').map((t) => t.key), all);
+  assert.deepEqual(targetsForCommunity('枫桦景苑一期').map((t) => t.short), ['一期地面', '二期地面', '二期大车库', '二期人防车库']);
 });
 
 test('永南三个弄都走德立云「上海永南小区」；马桥店与公寓不出现', () => {
