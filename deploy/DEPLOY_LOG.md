@@ -5240,3 +5240,10 @@
 - 自上次（b2ecea07）以来上线的相关提交：
   - f4c874e7 feat(business): 新办车牌/亲情车扫码自填 + 停车收费标准按车辆类别与套餐计价
 
+## 2026-10-29 21:33 · api · 20eb0aab
+
+- 包：`pms-api-fast-20261029-213306.tar.gz`
+- 提交：20eb0aab feat(business): 新办车牌登记单保存要开通的车库(POST vehicle-intakes/:id/garages),收款时记入日志
+- 自上次（f4c874e7）以来上线的相关提交：
+  - 20eb0aab feat(business): 新办车牌登记单保存要开通的车库(POST vehicle-intakes/:id/garages),收款时记入日志
+
