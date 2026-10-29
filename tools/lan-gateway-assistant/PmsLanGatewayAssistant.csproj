@@ -27,10 +27,8 @@
     <Resource Include="Resources\AppIcon.ico" />
     <ApplicationDefinition Include="App.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></ApplicationDefinition>
     <Page Include="MainWindow.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
-    <Page Include="RouteDialog.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
     <Compile Include="App.xaml.cs"><DependentUpon>App.xaml</DependentUpon></Compile>
     <Compile Include="MainWindow.xaml.cs"><DependentUpon>MainWindow.xaml</DependentUpon></Compile>
-    <Compile Include="RouteDialog.xaml.cs"><DependentUpon>RouteDialog.xaml</DependentUpon></Compile>
     <Compile Include="Models.cs" /><Compile Include="GatewayConfigurationStore.cs" />
     <Compile Include="FrpConfiguration.cs" /><Compile Include="GatewayRuntime.cs" />
     <Compile Include="GatewayStability.cs" />

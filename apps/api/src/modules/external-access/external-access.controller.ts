@@ -59,6 +59,12 @@ export class ExternalAccessController {
     return this.service.updateAgent(id, dto, user);
   }
 
+  @Delete('agents/:id')
+  @RequirePermission('settings', 'edit')
+  deleteAgent(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.deleteAgent(id, user);
+  }
+
   @Post('agents/:id/install-code')
   @RequirePermission('settings', 'edit')
   rotateAgentInstallCode(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
@@ -119,16 +125,6 @@ export class ExternalAccessAgentController {
     @Body() dto: LanGatewayHeartbeatDto,
   ) {
     return this.service.agentHeartbeat(deviceKey, bearerToken(authorization), dto);
-  }
-
-  /** 助手用 POST 而不是 DELETE：WebClient.UploadString 只发 POST。 */
-  @Post('apps/:appId/remove')
-  removeApp(
-    @Headers('x-agent-id') deviceKey: string,
-    @Headers('authorization') authorization: string,
-    @Param('appId', ParseIntPipe) appId: number,
-  ) {
-    return this.service.agentRemoveApp(deviceKey, bearerToken(authorization), appId);
   }
 
   /** frps 仅从本机调用；路径密钥防止公网对设备令牌进行探测。 */

@@ -121,48 +121,41 @@ test('Cloudflare 模式先收走公网入口再删记录，剩余应用重建 in
   assert.deepEqual(f.deletedWhere, [{ id: 6, tenantId: 1 }]);
 });
 
-test('助手只能删本机已停用的应用', async () => {
-  const f = fixture();
-  const result = await f.service.agentRemoveApp(f.agent.deviceKey, DEVICE_TOKEN, 6);
-  assert.deepEqual(result, { ok: true, id: 6, name: '临时只读数据库导出' });
-  assert.deepEqual(f.revoked, [{ tenantId: 1, appId: 6 }]);
-});
-
-test('助手删不掉仍在启用的应用，必须先由管理员停用', async () => {
-  const f = fixture();
-  await assert.rejects(
-    () => f.service.agentRemoveApp(f.agent.deviceKey, DEVICE_TOKEN, 1),
-    /仍在启用中/,
-  );
-  assert.deepEqual(f.deletedWhere, []);
-  assert.deepEqual(f.rows.map((row) => row.id), [6, 1]);
-});
-
-test('助手删不掉别的电脑上的应用', async () => {
-  const f = fixture({
-    apps: [{ id: 8, tenantId: 1, agentId: 4, name: '别人的应用', enabled: false, publicHostname: 'other.prsznh.cn' }],
+test('客户端删除接口挂着设置页的编辑权限', () => {
+  assert.deepEqual(Reflect.getMetadata(PERMISSION_KEY, ExternalAccessController.prototype.deleteAgent), {
+    items: [{ pageKey: 'settings', action: 'edit' }],
   });
-  await assert.rejects(
-    () => f.service.agentRemoveApp(f.agent.deviceKey, DEVICE_TOKEN, 8),
-    /这台电脑上没有这个内网应用/,
-  );
-  assert.deepEqual(f.deletedWhere, []);
 });
 
-test('设备令牌不对时删除请求直接被拒', async () => {
+test('客户端还承载应用时不能删，提示先处理哪些应用', async () => {
   const f = fixture();
-  await assert.rejects(
-    () => f.service.agentRemoveApp(f.agent.deviceKey, 'b'.repeat(64), 6),
-    /代理设备凭据无效/,
-  );
-  assert.deepEqual(f.deletedWhere, []);
+  let deleted = false;
+  f.service.agentRepo.delete = async () => { deleted = true; };
+  f.service.appRepo.find = async ({ where }: any) => f.rows.filter((r) => r.tenantId === where.tenantId && r.agentId === where.agentId);
+  await assert.rejects(() => f.service.deleteAgent(3, f.user), /还承载 2 个应用（临时只读数据库导出、用友财务系统）/);
+  assert.equal(deleted, false);
 });
 
-test('代理被停用后，它的删除请求也不再受理', async () => {
-  const f = fixture({ agentEnabled: false });
-  await assert.rejects(
-    () => f.service.agentRemoveApp(f.agent.deviceKey, DEVICE_TOKEN, 6),
-    /代理设备凭据无效/,
-  );
-  assert.deepEqual(f.deletedWhere, []);
+test('空客户端可以真删除，之后它的设备凭据拿到 410（助手据此自清）', async () => {
+  const f = fixture({ apps: [] });
+  const gone: number[] = [];
+  f.service.agentRepo.delete = async (where: any) => { gone.push(where.id); };
+  f.service.appRepo.find = async () => [];
+  const result = await f.service.deleteAgent(3, f.user);
+  assert.deepEqual(result, { ok: true, id: 3, name: undefined });
+  assert.deepEqual(gone, [3]);
+  f.service.agentRepo.findOne = async () => null;
+  await assert.rejects(() => (f.service as any).authenticateAgent(f.agent.deviceKey, DEVICE_TOKEN), (e: any) => e.getStatus() === 410);
+});
+
+test('跨企业删客户端当作不存在', async () => {
+  const f = fixture();
+  await assert.rejects(() => f.service.deleteAgent(3, { id: 9, tenantId: 2 } as any), /代理设备不存在/);
+});
+
+test('令牌不对 → 410；停用 → 403（停用只是暂停，助手不能清凭据）', async () => {
+  const f = fixture();
+  await assert.rejects(() => (f.service as any).authenticateAgent(f.agent.deviceKey, 'b'.repeat(64)), (e: any) => e.getStatus() === 410);
+  const g = fixture({ agentEnabled: false });
+  await assert.rejects(() => (g.service as any).authenticateAgent(g.agent.deviceKey, DEVICE_TOKEN), (e: any) => e.getStatus() === 403);
 });

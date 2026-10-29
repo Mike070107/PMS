@@ -74,11 +74,30 @@ namespace Pms.LanGatewayAssistant
                     Require(window.AppHealthDisplay == "0/1", "the overview counts connected apps, not configured ones");
                     Require(window.StabilityDisplay == "75.0%", "the overview shows the whole-machine availability");
                     Require(window.StabilitySummary.Contains("自动重启 2 次"), "the overview reports tunnel restarts");
-                    Require(FindButton(window, "删除") != null, "every app card offers a delete action");
+                    Require(FindButton(window, "删除") == null, "the assistant never deletes: removal happens on the PMS web page");
+                    Require(window.Nodes.Count == 4 && window.Nodes[0].Glyph == "\u2713", "status nodes show pairing as a green check");
                     Require(FindButton(window, "测试连接") != null, "every app card offers a connectivity test");
                     Require(FindButton(window, "打开网站") != null, "every app card can open its public site");
                 }
                 finally { window.Close(); }
+                // 网页上删掉客户端 → 服务器回 410 → 助手自清：凭据、转发全没了，界面回到待配对并说明原因。
+                var removedRoot = Path.Combine(root, "removed"); var removedStore = new GatewayConfigurationStore(removedRoot, false);
+                removedStore.Save(new GatewayConfiguration { DeviceId = "lan-removed", Routes = new System.Collections.Generic.List<GatewayRoute> { route }, AppliedRevision = 9 });
+                removedStore.SaveDeviceToken("x"); removedStore.SaveToken("y"); removedStore.WriteRuntimeToken();
+                Require(removedStore.IsManaged, "fixture starts managed");
+                removedStore.ClearEnrollment("这台电脑已从 PMS 移除");
+                var cleared = removedStore.Load();
+                Require(!removedStore.IsManaged && !removedStore.HasToken && !File.Exists(removedStore.RuntimeTokenPath), "removal wipes device and tunnel credentials");
+                Require(cleared.Routes.Count == 0 && cleared.AppliedRevision == 0, "removal drops every forwarded app");
+                Require(cleared.RemovedNotice.Contains("已从 PMS 移除"), "removal leaves a notice for the operator");
+                var removedWindow = new MainWindow(removedStore);
+                try
+                {
+                    removedWindow.WindowStartupLocation = WindowStartupLocation.Manual; removedWindow.Left = -10000; removedWindow.Top = -10000; removedWindow.Show(); removedWindow.UpdateLayout();
+                    Require(removedWindow.RemovedVisibility == Visibility.Visible && removedWindow.EnrollmentVisibility == Visibility.Visible, "a removed computer explains itself and offers re-pairing");
+                    Require(removedWindow.ManagedVisibility == Visibility.Collapsed && removedWindow.HeaderStatus == "未配对", "a removed computer stops claiming to be connected");
+                }
+                finally { removedWindow.Close(); }
                 var text = FrpConfiguration.Build(config, store);
                 Require(text.Contains("serverPort = 443"), "server port"); Require(text.Contains("transport.protocol = \"wss\""), "wss"); Require(text.Contains("user = \"lan-self-test\""), "device identity"); Require(text.Contains("metadatas.deviceToken = \"self-test-device-token\""), "device admission token"); Require(text.Contains("localIP = \"192.168.1.20\""), "local ip"); Require(text.Contains("localPort = 8050"), "local port"); Require(text.Contains("remotePort = 18050"), "remote port");
                 config.Routes.Add(new GatewayRoute { Id = "temporary-ssh", Name = "Temporary SSH", PublicHostname = "maintenance.prsznh.cn", LocalUrl = "tcp://192.168.110.249:22", RemotePort = 18997, Enabled = true });
@@ -137,7 +156,8 @@ namespace Pms.LanGatewayAssistant
             }
             finally { try { Directory.Delete(root, true); } catch { } }
         }
-        public static void RenderMainWindow(string outputPath)
+        public static void RenderMainWindow(string outputPath) { RenderMainWindow(outputPath, false); }
+        public static void RenderMainWindow(string outputPath, bool removed)
         {
             var root = Path.Combine(Path.GetTempPath(), "pms-lan-gateway-render-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
             try
@@ -159,6 +179,7 @@ namespace Pms.LanGatewayAssistant
                     Routes = routes
                 });
                 store.SaveDeviceToken("preview-device-token"); store.SaveToken("preview-frp-token");
+                if (removed) store.ClearEnrollment("这台电脑已从 PMS 移除或已在别处重新配对");
                 // 预览要同时摊开三种状态：连得上、连不上、已停用。只画「全绿」的图没法
                 // 判断出事时界面说得清不清楚。
                 var start = DateTimeOffset.Now.AddMinutes(-40);

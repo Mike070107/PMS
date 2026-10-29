@@ -1,4 +1,3 @@
-using Microsoft.Win32;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -21,10 +20,33 @@ namespace Pms.LanGatewayAssistant
         private GatewayStability _stability;
         public ObservableCollection<RouteViewModel> Routes { get; private set; }
         public string VersionDisplay { get { return "v" + Assembly.GetExecutingAssembly().GetName().Version.ToString(3); } }
-        public string ComputerDisplay { get { return Environment.MachineName + " · " + _configuration.ServerAddress + ":" + _configuration.ServerPort; } }
+        public string ComputerDisplay { get { return "本机 " + Environment.MachineName + (_store.IsManaged ? " · 通过 " + _configuration.ServerAddress + " 加密连接" : " · 尚未接入 PMS"); } }
         public string SuggestedClientName { get { return "内网客户端-" + Environment.MachineName.Substring(Math.Max(0, Environment.MachineName.Length - 4)).ToUpperInvariant(); } }
-        public string HeaderStatus { get { return GatewayServiceManager.IsRunning() && _processRunning ? "代理运行中" : "需要检查"; } }
-        public string StatusBrush { get { return GatewayServiceManager.IsRunning() && _processRunning ? "#35A875" : "#B7832B"; } }
+        private bool Healthy { get { return _store.IsManaged && GatewayServiceManager.IsRunning() && (_processRunning || Routes.Count(item => item.Enabled) == 0); } }
+        public string HeaderStatus { get { return !_store.IsManaged ? "未配对" : Healthy ? "运行正常" : "需要检查"; } }
+        public string StatusBrush { get { return !_store.IsManaged ? "#7C8998" : Healthy ? "#14896F" : "#B86E0C"; } }
+        public string HeaderBackground { get { return !_store.IsManaged ? "#F1F4F7" : Healthy ? "#E6F6F1" : "#FFF3E2"; } }
+        /** 四个节点：配对 / 后台服务 / 加密隧道 / 应用连通；正常绿色打勾，有问题琥珀色感叹号，还没到这一步灰色。 */
+        public System.Collections.Generic.List<StatusNode> Nodes
+        {
+            get
+            {
+                var enabled = Routes.Count(item => item.Enabled);
+                var failing = Routes.Count(item => item.Failing);
+                var working = Routes.Count(item => item.Working);
+                var service = GatewayServiceManager.IsRunning();
+                return new System.Collections.Generic.List<StatusNode>
+                {
+                    StatusNode.Of("配对 PMS", _store.IsManaged ? "已配对" : "未配对", _store.IsManaged ? NodeState.Ok : NodeState.Bad),
+                    StatusNode.Of("后台服务", ServiceState, service ? NodeState.Ok : NodeState.Bad),
+                    enabled == 0 ? StatusNode.Of("加密隧道", "暂无应用", NodeState.Idle) : StatusNode.Of("加密隧道", TunnelState, _processRunning ? NodeState.Ok : NodeState.Bad),
+                    enabled == 0 ? StatusNode.Of("应用连通", "暂无应用", NodeState.Idle)
+                        : failing > 0 ? StatusNode.Of("应用连通", failing + " 个连不上", NodeState.Bad)
+                        : working < enabled ? StatusNode.Of("应用连通", "检测中 " + working + "/" + enabled, NodeState.Idle)
+                        : StatusNode.Of("应用连通", "全部正常 " + working + "/" + enabled, NodeState.Ok),
+                };
+            }
+        }
         /** 概览只给结论：有应用连不上就直接点名，别让人自己去扫一遍卡片。 */
         public string OverviewTitle
         {
@@ -69,9 +91,12 @@ namespace Pms.LanGatewayAssistant
                 return head + "加密隧道累计自动重启 " + _stability.TunnelRestarts + " 次" + when + "。";
             }
         }
-        public Visibility NoRoutesVisibility { get { return Routes.Count == 0 ? Visibility.Visible : Visibility.Collapsed; } }
+        public Visibility NoRoutesVisibility { get { return _store.IsManaged && Routes.Count == 0 ? Visibility.Visible : Visibility.Collapsed; } }
+        public Visibility RoutesSectionVisibility { get { return Routes.Count > 0 ? Visibility.Visible : Visibility.Collapsed; } }
         public Visibility EnrollmentVisibility { get { return _store.IsManaged ? Visibility.Collapsed : Visibility.Visible; } }
-        public Visibility ManualConfigurationVisibility { get { return _store.IsManaged ? Visibility.Collapsed : Visibility.Visible; } }
+        public Visibility ManagedVisibility { get { return _store.IsManaged ? Visibility.Visible : Visibility.Collapsed; } }
+        public string RemovedNotice { get { return _configuration.RemovedNotice; } }
+        public Visibility RemovedVisibility { get { return !_store.IsManaged && !String.IsNullOrWhiteSpace(_configuration.RemovedNotice) ? Visibility.Visible : Visibility.Collapsed; } }
         public Visibility ServiceActionVisibility { get { return _store.IsManaged && !GatewayServiceManager.IsRunning() ? Visibility.Visible : Visibility.Collapsed; } }
         public string ServiceActionText { get { return GatewayServiceManager.Exists() ? "启动 / 修复代理" : "安装后台服务"; } }
         public string HealthMessage { get { return _healthMessage; } }
@@ -83,20 +108,10 @@ namespace Pms.LanGatewayAssistant
             Routes = new ObservableCollection<RouteViewModel>(_configuration.Routes.Select(item => new RouteViewModel(item, GatewayStabilityLog.Find(_stability, item)))); DataContext = this; InitializeComponent();
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) }; _timer.Tick += delegate { RefreshStatus(); }; _timer.Start(); Closed += delegate { _timer.Stop(); }; RefreshStatus();
         }
-        private void AddRoute_Click(object sender, RoutedEventArgs e)
-        {
-            var port = Enumerable.Range(18050, 100).FirstOrDefault(candidate => _configuration.Routes.All(item => item.RemotePort != candidate)); if (port == 0) { MessageBox.Show("可用的隧道端口已用完。", "无法添加", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
-            var dialog = new RouteDialog(null, port) { Owner = this }; if (dialog.ShowDialog() != true) return; _configuration.Routes.Add(dialog.Result); SaveAndRestart();
-        }
         private RouteViewModel ModelOf(object sender)
         {
             var id = Convert.ToString(((FrameworkElement)sender).Tag);
             return Routes.FirstOrDefault(item => String.Equals(item.Id, id, StringComparison.Ordinal));
-        }
-        private void EditRoute_Click(object sender, RoutedEventArgs e)
-        {
-            var model = ModelOf(sender); if (model == null) return; var route = model.Model;
-            var dialog = new RouteDialog(route, route.RemotePort) { Owner = this }; if (dialog.ShowDialog() != true) return; var index = _configuration.Routes.IndexOf(route); _configuration.Routes[index] = dialog.Result; SaveAndRestart();
         }
         /** 测试结果写回卡片本身；弹窗一关就什么都看不见了，排障时等于没测。 */
         private async void TestRoute_Click(object sender, RoutedEventArgs e)
@@ -121,49 +136,9 @@ namespace Pms.LanGatewayAssistant
             try { Process.Start(target.AbsoluteUri); }
             catch (Exception exception) { MessageBox.Show(exception.Message, "无法打开浏览器", MessageBoxButton.OK, MessageBoxImage.Error); }
         }
-        /**
-         * 删除分三种情况交代清楚：手动模式只影响本机；PMS 托管且还在启用时先要求在
-         * 后台停用（助手只有设备凭据，服务器不允许它删正在用的业务系统）；已停用的
-         * 才真正从 PMS 删掉。按钮一直在，但会说明为什么现在不能删。
-         */
-        private async void DeleteRoute_Click(object sender, RoutedEventArgs e)
-        {
-            var model = ModelOf(sender); if (model == null) return; var route = model.Model;
-            if (!_store.IsManaged)
-            {
-                if (MessageBox.Show("删除「" + route.Name + "」后，本机不再转发它，公网地址会立即失效。\n\n要继续吗？", "删除内网应用", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-                _configuration.Routes.Remove(route); SaveAndRestart(); return;
-            }
-            if (route.Enabled)
-            {
-                MessageBox.Show("「" + route.Name + "」还在启用中，本机不能删除正在使用的内网应用。\n\n请先在 PMS 后台停用它，确认没有人再访问之后，再回到这里删除。", "请先在 PMS 后台停用", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-            if (MessageBox.Show("「" + route.Name + "」已经停用。\n\n删除后 PMS 上的这条记录和它的公网域名一起移除，以后要用必须重新发布。\n\n要继续吗？", "从 PMS 删除内网应用", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-            var button = sender as System.Windows.Controls.Button; if (button != null) { button.IsEnabled = false; button.Content = "删除中…"; }
-            try
-            {
-                await Task.Factory.StartNew(delegate { new GatewayControlPlaneClient(_store).RemoveApp(route); });
-                MessageBox.Show("「" + route.Name + "」已从 PMS 删除。", "删除完成", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            catch (Exception exception) { MessageBox.Show(exception.GetBaseException().Message, "删除未完成", MessageBoxButton.OK, MessageBoxImage.Error); }
-            finally { if (button != null) { button.IsEnabled = true; button.Content = "删除"; } RefreshStatus(); }
-        }
-        private void SaveAndRestart()
-        {
-            _store.Save(_configuration); ReloadRoutes();
-            try { if (GatewayServiceManager.Exists()) GatewayServiceManager.RunElevated("--restart-service"); }
-            catch (Exception exception) { MessageBox.Show("配置已保存，但后台服务重启失败：\n\n" + exception.Message, "还差一步", MessageBoxButton.OK, MessageBoxImage.Warning); }
-            RefreshStatus();
-        }
         private void ReloadRoutes() { Routes.Clear(); foreach (var route in _configuration.Routes) Routes.Add(new RouteViewModel(route, GatewayStabilityLog.Find(_stability, route))); RaiseAll(); }
         private void InstallService_Click(object sender, RoutedEventArgs e) { try { GatewayServiceManager.RunElevated("--install-service"); RefreshStatus(); MessageBox.Show("后台服务已安装并启动，电脑重启后会自动运行。", "安装完成", MessageBoxButton.OK, MessageBoxImage.Information); } catch (Exception ex) { MessageBox.Show(ex.Message, "安装未完成", MessageBoxButton.OK, MessageBoxImage.Error); } }
         private void RestartService_Click(object sender, RoutedEventArgs e) { try { GatewayServiceManager.RunElevated(GatewayServiceManager.Exists() ? "--restart-service" : "--install-service"); RefreshStatus(); } catch (Exception ex) { MessageBox.Show(ex.Message, "重启未完成", MessageBoxButton.OK, MessageBoxImage.Error); } }
-        private void ImportToken_Click(object sender, RoutedEventArgs e)
-        {
-            var dialog = new OpenFileDialog { Title = "选择 PMS 代理连接凭据", Filter = "PMS 连接凭据|frp-token;*.token;*.txt|All files|*.*" }; if (dialog.ShowDialog() != true) return;
-            try { _store.SaveToken(File.ReadAllText(dialog.FileName).Trim()); RefreshStatus(); MessageBox.Show("连接凭据已使用 Windows 本机加密保存。", "导入成功", MessageBoxButton.OK, MessageBoxImage.Information); } catch (Exception ex) { MessageBox.Show(ex.Message, "导入失败", MessageBoxButton.OK, MessageBoxImage.Error); }
-        }
         private async void Enroll_Click(object sender, RoutedEventArgs e)
         {
             var code = InstallCodeBox.Text.Trim();
@@ -176,10 +151,11 @@ namespace Pms.LanGatewayAssistant
                 await Task.Factory.StartNew(delegate { return new GatewayControlPlaneClient(_store).Enroll(code, Assembly.GetExecutingAssembly().GetName().Version.ToString(3), clientName); });
                 InstallCodeBox.Clear(); RaiseAll();
                 GatewayServiceManager.RunElevated(GatewayServiceManager.Exists() ? "--restart-service" : "--install-service");
-                MessageBox.Show("这台电脑已受 PMS 管理。后续新增或修改内网应用时，助手会自动领取配置。", "连接完成", MessageBoxButton.OK, MessageBoxImage.Information);
+                _configuration = _store.Load(); ReloadRoutes();
+                MessageBox.Show("这台电脑已接入 PMS。网页上会显示已连上，之后发布到这台电脑的内网应用会自动同步过来。", "连接完成", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception exception) { MessageBox.Show(exception.GetBaseException().Message, "连接未完成", MessageBoxButton.OK, MessageBoxImage.Error); }
-            finally { EnrollButton.IsEnabled = true; EnrollButton.Content = "连接并安装"; RefreshStatus(); }
+            finally { EnrollButton.IsEnabled = true; EnrollButton.Content = "连接"; RefreshStatus(); }
         }
         private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
         {
@@ -206,7 +182,8 @@ namespace Pms.LanGatewayAssistant
                 var latest = _store.Load();
                 var currentRoutes = String.Join("|", _configuration.Routes.Select(item => item.Id + ":" + item.LocalUrl + ":" + item.RemotePort + ":" + item.Enabled));
                 var latestRoutes = String.Join("|", latest.Routes.Select(item => item.Id + ":" + item.LocalUrl + ":" + item.RemotePort + ":" + item.Enabled));
-                if (latest.AppliedRevision != _configuration.AppliedRevision || !String.Equals(currentRoutes, latestRoutes, StringComparison.Ordinal)) { _configuration = latest; ReloadRoutes(); }
+                if (latest.AppliedRevision != _configuration.AppliedRevision || latest.DeviceId != _configuration.DeviceId || !String.Equals(currentRoutes, latestRoutes, StringComparison.Ordinal)) { _configuration = latest; ReloadRoutes(); }
+                else _configuration.RemovedNotice = latest.RemovedNotice;
             }
             catch { }
             _processRunning = false; _healthMessage = GatewayServiceManager.Exists() ? "等待后台服务回报…" : "后台服务尚未安装";
@@ -223,6 +200,26 @@ namespace Pms.LanGatewayAssistant
             RaiseAll();
         }
         private void Raise(string name) { if (PropertyChanged != null) PropertyChanged(this, new PropertyChangedEventArgs(name)); }
-        private void RaiseAll() { foreach (var name in new[] { "HeaderStatus", "StatusBrush", "OverviewTitle", "ServiceState", "TunnelState", "AppHealthDisplay", "StabilityDisplay", "StabilitySummary", "NoRoutesVisibility", "EnrollmentVisibility", "ManualConfigurationVisibility", "ServiceActionVisibility", "ServiceActionText", "HealthMessage", "LogPreview" }) Raise(name); }
+        private void RaiseAll() { foreach (var name in new[] { "HeaderStatus", "StatusBrush", "HeaderBackground", "Nodes", "OverviewTitle", "ServiceState", "TunnelState", "AppHealthDisplay", "StabilityDisplay", "StabilitySummary", "NoRoutesVisibility", "RoutesSectionVisibility", "EnrollmentVisibility", "ManagedVisibility", "RemovedNotice", "RemovedVisibility", "ServiceActionVisibility", "ServiceActionText", "ComputerDisplay", "HealthMessage", "LogPreview" }) Raise(name); }
+    }
+
+    public enum NodeState { Ok, Bad, Idle }
+    public sealed class StatusNode
+    {
+        public string Title { get; private set; }
+        public string Value { get; private set; }
+        public string Glyph { get; private set; }
+        public string Accent { get; private set; }
+        public string Background { get; private set; }
+        public static StatusNode Of(string title, string value, NodeState state)
+        {
+            return new StatusNode
+            {
+                Title = title, Value = value,
+                Glyph = state == NodeState.Ok ? "\u2713" : state == NodeState.Bad ? "!" : "\u2026",
+                Accent = state == NodeState.Ok ? "#14896F" : state == NodeState.Bad ? "#C27A12" : "#8F9CAA",
+                Background = state == NodeState.Ok ? "#E9F7F2" : state == NodeState.Bad ? "#FFF4E3" : "#F2F5F8",
+            };
+        }
     }
 }

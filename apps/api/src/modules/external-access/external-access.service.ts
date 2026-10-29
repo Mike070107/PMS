@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, GoneException, Injectable, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -142,6 +142,23 @@ export class ExternalAccessService {
     agent.updatedBy = user.id;
     await this.agentRepo.save(agent);
     return this.agentView(agent, await this.appRepo.count({ where: { tenantId, agentId: id } }));
+  }
+
+  /**
+   * 网页上删除客户端（真删除）。客户端程序本身没有账号，不提供删除：
+   * 记录删掉后它下一次同步拿到 410，自己停隧道、清凭据，回到「待配对」。
+   * 还挂着应用时拒绝，免得应用变成没有出口的孤儿——先删应用或改到别的客户端。
+   */
+  async deleteAgent(id: number, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const agent = await this.agentRepo.findOne({ where: { id, tenantId } });
+    if (!agent) throw new NotFoundException('代理设备不存在');
+    const apps = await this.appRepo.find({ where: { tenantId, agentId: id } });
+    if (apps.length) {
+      throw new BadRequestException(`这台客户端还承载 ${apps.length} 个应用（${apps.map((a) => a.name).join('、')}），请先删除这些应用或改到其他客户端`);
+    }
+    await this.agentRepo.delete({ id, tenantId });
+    return { ok: true, id, name: agent.name };
   }
 
   async rotateAgentInstallCode(id: number, user: AuthUser) {
@@ -490,26 +507,6 @@ export class ExternalAccessService {
   }
 
   /**
-   * 现场助手删除本机的一个内网应用。
-   * 助手手里只有设备凭据，一旦现场电脑被人拿到，这条接口就是它能造成的最大破坏，
-   * 所以只允许删「绑在这台设备上」且「管理员已经停用」的应用——正在用的业务系统
-   * 必须先由管理员在 PMS 后台停用，删不掉。
-   */
-  async agentRemoveApp(deviceKey: string, token: string, appId: number) {
-    const agent = await this.authenticateAgent(deviceKey, token);
-    const app = await this.appRepo.findOne({
-      where: { id: appId, tenantId: agent.tenantId, agentId: agent.id },
-    });
-    if (!app) throw new NotFoundException('这台电脑上没有这个内网应用');
-    if (app.enabled) {
-      throw new ForbiddenException('这个内网应用仍在启用中，请先在 PMS 后台停用后再删除');
-    }
-    const name = app.name;
-    await this.detach(app);
-    return { ok: true, id: appId, name };
-  }
-
-  /**
    * 先收走公网入口和角色授权，再删记录：顺序反过来的话，数据库里已经没有这条
    * 应用了，Cloudflare 上的 DNS 和 Access 却还活着，没人会再去清理。
    */
@@ -641,9 +638,12 @@ export class ExternalAccessService {
 
   private async authenticateAgent(deviceKey: string, token: string) {
     const agent = await this.agentRepo.findOne({ where: { deviceKey: (deviceKey || '').trim() } });
-    if (!agent || !agent.enabled || !gatewaySecretMatches(token, agent.tokenHash)) {
-      throw new UnauthorizedException('代理设备凭据无效');
+    // 410 = 这台电脑已不归 PMS 管（记录被删，或已在别的电脑上重新配对）：助手据此自清凭据。
+    // 停用只是暂停，用 403，助手保留凭据等重新启用。
+    if (!agent || !gatewaySecretMatches(token, agent.tokenHash)) {
+      throw new GoneException('代理设备凭据无效：这台电脑已从 PMS 移除或已在别处重新配对');
     }
+    if (!agent.enabled) throw new ForbiddenException('代理设备凭据无效：这台客户端已在 PMS 停用');
     return agent;
   }
 

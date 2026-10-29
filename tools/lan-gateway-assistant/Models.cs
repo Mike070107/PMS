@@ -14,6 +14,8 @@ namespace Pms.LanGatewayAssistant
         public int ServerPort { get; set; }
         public List<GatewayRoute> Routes { get; set; }
         public int AppliedRevision { get; set; }
+        /** PMS 网页删除了这台客户端（或在别处重新配对）后留下的说明，重新配对时清掉。 */
+        public string RemovedNotice { get; set; }
     }
 
     internal sealed class GatewayRoute

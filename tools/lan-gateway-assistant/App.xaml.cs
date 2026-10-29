@@ -43,7 +43,7 @@ namespace Pms.LanGatewayAssistant
                 return;
             }
             if (e.Args.Length > 0 && e.Args[0] == "--self-test") { try { SelfTest.Run(); Shutdown(0); } catch (Exception exception) { try { Console.Error.WriteLine(exception.ToString()); } catch { } Shutdown(1); } return; }
-            if (e.Args.Length > 1 && e.Args[0] == "--render-main-window") { try { SelfTest.RenderMainWindow(e.Args[1]); Shutdown(0); } catch { Shutdown(1); } return; }
+            if (e.Args.Length > 1 && e.Args[0] == "--render-main-window") { try { SelfTest.RenderMainWindow(e.Args[1], e.Args.Length > 2 && e.Args[2] == "removed"); Shutdown(0); } catch { Shutdown(1); } return; }
             bool created; _instance = new Mutex(true, InstanceName, out created);
             if (!created)
             {

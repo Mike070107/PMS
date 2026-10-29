@@ -48,7 +48,11 @@ namespace Pms.LanGatewayAssistant
             var current = _store.Load();
             if (!_store.IsManaged) return new GatewaySyncResult { Changed = false, Revision = current.AppliedRevision, Routes = Probe(current.Routes) };
             string response;
-            using (var client = NewClient(true)) response = client.DownloadString(current.ApiBaseUrl.TrimEnd('/') + "/external-access-agent/configuration");
+            using (var client = NewClient(true))
+            {
+                try { response = client.DownloadString(current.ApiBaseUrl.TrimEnd('/') + "/external-access-agent/configuration"); }
+                catch (WebException exception) { ThrowIfRemoved(exception); throw; }
+            }
             var envelope = _json.Deserialize<GatewayConfigurationEnvelope>(response);
             if (envelope == null || String.IsNullOrWhiteSpace(envelope.Configuration) || String.IsNullOrWhiteSpace(envelope.Signature))
                 throw new InvalidOperationException("服务器返回的配置不完整");
@@ -91,25 +95,6 @@ namespace Pms.LanGatewayAssistant
             var report = ProbeOne(route); report.Id = route.Id; return report;
         }
 
-        /**
-         * 从 PMS 删除这台电脑上的一个内网应用。
-         * 助手手里只有设备凭据，所以服务器那侧把它限制成「只能删本机已停用的应用」：
-         * 现场电脑的凭据万一外泄，最多也只能清理一个管理员已经下线的条目，
-         * 删不掉正在用的业务系统。
-         */
-        public void RemoveApp(GatewayRoute route)
-        {
-            if (route == null) throw new ArgumentNullException("route");
-            if (route.AppId <= 0) throw new InvalidOperationException("这个内网应用不是由 PMS 下发的，无法从服务器删除");
-            var current = _store.Load();
-            using (var client = NewClient(true))
-            {
-                client.Headers[HttpRequestHeader.ContentType] = "application/json";
-                try { client.UploadString(current.ApiBaseUrl.TrimEnd('/') + "/external-access-agent/apps/" + route.AppId + "/remove", "POST", "{}"); }
-                catch (WebException exception) { throw FriendlyRemoteError(exception); }
-            }
-        }
-
         public void Heartbeat(bool processRunning, int appliedRevision, IEnumerable<GatewayRouteReport> routes, string error)
         {
             if (!_store.IsManaged) return;
@@ -123,7 +108,8 @@ namespace Pms.LanGatewayAssistant
             using (var client = NewClient(true))
             {
                 client.Headers[HttpRequestHeader.ContentType] = "application/json";
-                client.UploadString(current.ApiBaseUrl.TrimEnd('/') + "/external-access-agent/heartbeat", "POST", request);
+                try { client.UploadString(current.ApiBaseUrl.TrimEnd('/') + "/external-access-agent/heartbeat", "POST", request); }
+                catch (WebException exception) { ThrowIfRemoved(exception); throw; }
             }
         }
 
@@ -156,6 +142,16 @@ namespace Pms.LanGatewayAssistant
                 var config = _store.Load(); client.Headers["X-Agent-Id"] = config.DeviceId; client.Headers[HttpRequestHeader.Authorization] = "Bearer " + _store.ReadDeviceToken();
             }
             return client;
+        }
+
+        /** 410 = PMS 网页已删除这台客户端（或已在别的电脑上重新配对）。403 停用不算，停用只是暂停。 */
+        private void ThrowIfRemoved(WebException exception)
+        {
+            var response = exception.Response as HttpWebResponse;
+            if (response == null || (int)response.StatusCode != 410) return;
+            var friendly = FriendlyRemoteError(exception).Message;
+            var colon = friendly.IndexOf('：');
+            throw new GatewayRemovedException(colon >= 0 ? friendly.Substring(colon + 1) : friendly);
         }
 
         private Exception FriendlyRemoteError(WebException exception)
@@ -243,6 +239,8 @@ namespace Pms.LanGatewayAssistant
             var difference = 0; for (var i = 0; i < left.Length; i++) difference |= left[i] ^ right[i]; return difference == 0;
         }
     }
+
+    internal sealed class GatewayRemovedException : Exception { public GatewayRemovedException(string message) : base(message) { } }
 
     internal sealed class TimedWebClient : WebClient
     {

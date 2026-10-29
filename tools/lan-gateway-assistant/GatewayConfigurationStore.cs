@@ -100,8 +100,21 @@ namespace Pms.LanGatewayAssistant
             Uri api;
             if (!Uri.TryCreate(response.ApiBaseUrl, UriKind.Absolute, out api) || api.Scheme != Uri.UriSchemeHttps || !(api.Host.Equals("prsznh.cn", StringComparison.OrdinalIgnoreCase) || api.Host.EndsWith(".prsznh.cn", StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException("服务器返回的控制面地址不安全，已拒绝保存");
-            var value = Load(); value.DeviceId = response.DeviceId; value.ApiBaseUrl = response.ApiBaseUrl; value.ComputerName = Environment.MachineName;
+            var value = Load(); value.DeviceId = response.DeviceId; value.ApiBaseUrl = response.ApiBaseUrl; value.ComputerName = Environment.MachineName; value.RemovedNotice = null;
             Save(value); SaveDeviceToken(response.DeviceToken); SaveToken(response.FrpToken);
+        }
+        /**
+         * PMS 网页上删掉了这台客户端：停用全部转发、清掉设备凭据和代理凭据，回到「待配对」。
+         * 客户端没有账号，不能自己删；这里只是服从服务器的结论。
+         */
+        public void ClearEnrollment(string notice)
+        {
+            foreach (var path in new[] { DeviceTokenPath, TokenPath, RuntimeTokenPath, FrpcConfigPath })
+                try { if (File.Exists(path)) File.Delete(path); } catch { }
+            var value = Load(); value.DeviceId = null; value.Routes = new System.Collections.Generic.List<GatewayRoute>(); value.AppliedRevision = 0;
+            value.RemovedNotice = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm") + " " + (String.IsNullOrWhiteSpace(notice) ? "这台电脑已从 PMS 移除" : notice);
+            Save(value);
+            try { File.Delete(StabilityPath); } catch { }
         }
         public void WriteRuntimeToken()
         {

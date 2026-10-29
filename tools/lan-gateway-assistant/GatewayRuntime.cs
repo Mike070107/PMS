@@ -84,6 +84,15 @@ namespace Pms.LanGatewayAssistant
                 _controlPlane.Heartbeat(processRunning && !result.Changed, result.Changed ? previousRevision : result.Revision, result.Routes, null);
                 return result;
             }
+            catch (GatewayRemovedException removed)
+            {
+                // 网页上删了这台客户端：立刻停转发、清凭据，界面回到「待配对」。
+                _store.ClearEnrollment(removed.Message);
+                _store.WriteActivity("PMS 已移除这台客户端，已停止转发并清除配对：" + removed.Message);
+                StopChild();
+                WriteHealth(false, "已从 PMS 移除，等待重新配对", 0);
+                return new GatewaySyncResult { Changed = true, Revision = 0, Routes = new System.Collections.Generic.List<GatewayRouteReport>() };
+            }
             catch (Exception exception)
             {
                 var configuration = _store.Load();
