@@ -12,6 +12,8 @@ export type ExternalSyncStatus =
   | 'synced' //   已生效并回读确认
   | 'dry_run' //  演练：只读核对并记下「将要写什么」，未写入
   | 'manual' //   需要人工处理（数据对不上，不自动重试）
+  | 'review' //   非标准续期（自定日期/金额），等物业经理审核，通过后才执行
+  | 'rejected' // 物业经理驳回：不执行，前台按驳回原因处理（退款/重办）
   | 'failed'; //  多次重试仍失败
 
 /** BUSINESS_DELIYUN_SYNC：off=不自动同步（旧行为）；dry-run=只读演练（默认）；on=真实写入 */

@@ -311,7 +311,7 @@ export class BusinessExecutionService {
     const where = {
       tenantId,
       serviceType: BusinessServiceType.PARKING_MONTHLY,
-      externalSyncStatus: In(['queued', 'running', 'retry', 'manual', 'failed', 'dry_run']),
+      externalSyncStatus: In(['review', 'rejected', 'queued', 'running', 'retry', 'manual', 'failed', 'dry_run']),
       ...(scope ? { communityId: In(scope) } : {}),
     };
     return this.txnRepo.find({ where, order: { id: 'DESC' }, take: 200 });

@@ -22,6 +22,7 @@ import {
   EstimateBusinessDto,
   UpsertBusinessRuleDto,
   HouseholdParkingQueryDto,
+  ReviewDecisionDto,
 } from './dto';
 import { BusinessService } from './business.service';
 import { BusinessExecutionService } from './business-execution.service';
@@ -65,6 +66,25 @@ export class BusinessController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.businessService.updateRule(id, dto, user, access);
+  }
+
+  /** 物业经理：待审核的非标准停车续期 */
+  @Get('reviews')
+  @RequirePermission(['app:approve-manager', 'business'], 'view')
+  reviews(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.businessService.listReviews(user, access);
+  }
+
+  @Post('transactions/:id/approve')
+  @RequirePermission('app:approve-manager', 'edit')
+  approveReview(@Param('id', ParseIntPipe) id: number, @Body() dto: ReviewDecisionDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.businessService.decideReview(id, true, dto.reason, user, access);
+  }
+
+  @Post('transactions/:id/reject')
+  @RequirePermission('app:approve-manager', 'edit')
+  rejectReview(@Param('id', ParseIntPipe) id: number, @Body() dto: ReviewDecisionDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.businessService.decideReview(id, false, dto.reason, user, access);
   }
 
   /** 收银台：一户在各停车系统登记的车（德立云实时；本地库由前端发现场查询） */

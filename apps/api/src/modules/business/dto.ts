@@ -146,6 +146,13 @@ export class ParkingSystemRefDto {
   label: string;
 }
 
+export class ReviewDecisionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+}
+
 export class HouseholdParkingQueryDto {
   @Type(() => Number)
   @IsInt()
@@ -163,6 +170,18 @@ export class CompleteBusinessDto extends EstimateBusinessDto {
   @IsString()
   @MaxLength(500)
   remark?: string;
+
+  /** 非标准续期（自定开始/结束日期）的实收金额（分）；填了就要物业经理审核后才执行 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  manualAmountCents?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  customReason?: string;
 
   @IsOptional()
   @IsArray()

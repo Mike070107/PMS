@@ -36,7 +36,10 @@ import {
 } from './dto';
 import { BusinessExecutionService } from './business-execution.service';
 import { findParkingTarget, PARKING_TARGETS, targetsForCommunity, validateRuleTarget } from './parking-targets';
-import { renewalWindow } from './business-execution.util';
+import { addDays, addMonthsClamped, renewalWindow } from './business-execution.util';
+import { AccessService } from '../access/access.service';
+import { Notification } from '../../entities';
+import { NotifyChannel, NotifyStatus } from '../../common/enums';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
 
 @Injectable()
@@ -62,7 +65,65 @@ export class BusinessService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly deliyun: DeliyunParkingService,
+    private readonly access: AccessService,
   ) {}
+
+  /** 物业经理：待审核的非标准停车续期 */
+  async listReviews(user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.length) return [];
+    return this.txnRepo.find({
+      where: { tenantId, serviceType: BusinessServiceType.PARKING_MONTHLY, externalSyncStatus: 'review', ...(scope ? { communityId: In(scope) } : {}) },
+      order: { id: 'ASC' }, take: 200,
+    });
+  }
+
+  /** 审核非标准续期：通过 → 进执行队列；驳回 → 不执行，留驳回原因给前台处理 */
+  async decideReview(id: number, approve: boolean, reason: string | undefined, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const txn = await this.txnRepo.findOne({ where: { id, tenantId } });
+    if (!txn) throw new NotFoundException('流水不存在');
+    const scope = scopeCommunityIds(access);
+    if (scope && (txn.communityId == null || !scope.includes(txn.communityId))) throw new ForbiddenException('这笔不在你的管理范围内');
+    if (txn.externalSyncStatus !== 'review') throw new BadRequestException('这笔已经审核过了');
+    if (txn.createdBy === user.id) throw new ForbiddenException('不能审核自己收款登记的续期，请由其他有审批权限的人处理');
+    if (!approve && !reason?.trim()) throw new BadRequestException('驳回请写原因');
+    const review = { ...((txn.snapshot?.review as Record<string, unknown>) || {}), decidedBy: user.id, decidedAt: new Date().toISOString(), decision: approve ? 'approved' : 'rejected', decisionReason: reason?.trim() || null };
+    const exec = this.execution.initialFor(BusinessServiceType.PARKING_MONTHLY);
+    const next = approve ? exec.status : 'rejected';
+    const claimed = await this.txnRepo.createQueryBuilder().update(BusinessTransaction)
+      .set({ externalSyncStatus: next, updatedBy: user.id, // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        snapshot: { ...(txn.snapshot || {}), review, ...(approve && exec.execution ? { execution: exec.execution } : {}) } as any })
+      .where('id = :id AND external_sync_status = :st', { id, st: 'review' }).execute();
+    if (!claimed.affected) throw new BadRequestException('这笔已经审核过了');
+    await this.logRepo.save(this.logRepo.create({ tenantId, transactionId: id, action: approve ? 'review_approved' : 'review_rejected', detail: { reason: reason?.trim() || null }, createdBy: user.id, updatedBy: user.id }));
+    if (txn.createdBy) {
+      const plate = (txn.snapshot?.vehicle as { plateNo?: string } | undefined)?.plateNo || '';
+      await this.txnRepo.manager.save(Notification, this.txnRepo.manager.create(Notification, {
+        tenantId, receiverId: txn.createdBy, channel: NotifyChannel.IN_APP, eventKey: 'business.review_decided',
+        title: approve ? `停车续期 ${plate} 已审核通过，系统开始续期` : `停车续期 ${plate} 被驳回：${reason?.trim()}`,
+        payload: { transactionId: id, txnNo: txn.txnNo, approved: approve }, status: NotifyStatus.SENT, readAt: null, createdBy: user.id, updatedBy: user.id,
+      })).catch(() => undefined);
+    }
+    if (approve && next === 'queued') this.execution.kick(id);
+    return { id, externalSyncStatus: next };
+  }
+
+  /** 通知能审批的物业经理（按小区所属管理处收窄） */
+  private async notifyReviewers(tenantId: number, communityId: number | null, title: string, payload: Record<string, unknown>, operatorId: number) {
+    try {
+      let ids = await this.access.userIdsWithPermission(tenantId, 'app:approve-manager', 'edit');
+      const officeId = communityId ? (await this.communityRepo.findOne({ where: { id: communityId, tenantId } }))?.officeId ?? null : null;
+      if (officeId) { const cover = await this.access.filterUsersCoveringOffice(tenantId, ids, officeId); ids = ids.filter((x) => cover.has(x)); }
+      ids = ids.filter((x) => x !== operatorId);
+      if (!ids.length) return;
+      await this.txnRepo.manager.save(Notification, ids.map((receiverId) => this.txnRepo.manager.create(Notification, {
+        tenantId, receiverId, channel: NotifyChannel.IN_APP, eventKey: 'business.review_requested', title, payload,
+        status: NotifyStatus.SENT, readAt: null, createdBy: operatorId, updatedBy: operatorId,
+      })));
+    } catch { /* 通知失败不影响收款登记 */ }
+  }
 
   /**
    * 收银台「停车缴费」：一户在各停车系统里登记的车。
@@ -331,6 +392,14 @@ export class BusinessService {
     const tenantId = this.requireTenant(user);
     const estimate = await this.estimate(dto, user);
     const rule = await this.findRule(tenantId, dto.ruleId, dto.serviceType);
+    // 非标准续期：前台自定开始/结束日期并手填实收金额 → 先登记收款，等物业经理审核通过再执行
+    const custom = dto.serviceType === BusinessServiceType.PARKING_MONTHLY && (dto.manualAmountCents != null || !!dto.startDate || !!dto.endDate);
+    if (custom) {
+      if (!dto.startDate || !dto.endDate) throw new BadRequestException('非标准续期要填开始日期和结束日期');
+      if (dto.manualAmountCents == null) throw new BadRequestException('非标准续期要填实收金额');
+      if (!dto.customReason?.trim()) throw new BadRequestException('请写明非标准续期的原因，供物业经理审核');
+    }
+    const amountCents = custom ? dto.manualAmountCents! : estimate.amountCents;
     const house = dto.houseId
       ? await this.houseRepo.findOne({ where: { id: dto.houseId, tenantId } })
       : null;
@@ -357,6 +426,12 @@ export class BusinessService {
     const snapshot: Record<string, unknown> = { estimate, ruleName: rule.name };
     const exec = this.execution.initialFor(dto.serviceType);
     if (exec.execution) snapshot.execution = exec.execution;
+    if (custom) {
+      snapshot.review = {
+        reason: dto.customReason!.trim(), requestedBy: user.id, requestedAt: new Date().toISOString(),
+        startDate: estimate.startDate, endDate: estimate.endDate, manualAmountCents: amountCents, standardAmountCents: estimate.amountCents,
+      };
+    }
 
     if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
       if (dto.parkingSystems?.length) {
@@ -397,9 +472,9 @@ export class BusinessService {
         quantity: estimate.quantity,
         startDate: estimate.startDate,
         endDate: estimate.endDate,
-        amountCents: estimate.amountCents,
+        amountCents,
         paymentMethod: dto.paymentMethod ?? 'cash',
-        externalSyncStatus: exec.status,
+        externalSyncStatus: custom ? 'review' : exec.status,
         invoiceStatus: 'pending',
         remark: dto.remark ?? null,
         snapshot,
@@ -420,7 +495,7 @@ export class BusinessService {
       this.logRepo.create({
         tenantId,
         transactionId: txn.id,
-        action: exec.status === 'queued' ? 'external_sync_queued' : 'external_sync_reserved',
+        action: custom ? 'review_requested' : exec.status === 'queued' ? 'external_sync_queued' : 'external_sync_reserved',
         detail: { serviceType: dto.serviceType, targetType, targetId, mode: exec.execution?.mode ?? null },
         createdBy: user.id,
         updatedBy: user.id,
@@ -435,7 +510,11 @@ export class BusinessService {
       }),
     ]);
 
-    if (exec.status === 'queued') this.execution.kick(txn.id);
+    if (custom) {
+      const plate = (dto.plateNo || '').trim().toUpperCase();
+      await this.notifyReviewers(tenantId, communityId, `待审核：停车非标准续期 ${plate} ${estimate.startDate}~${estimate.endDate} 实收 ¥${(amountCents / 100).toFixed(2)}`,
+        { transactionId: txn.id, txnNo: txn.txnNo, page: '/pending' }, user.id);
+    } else if (exec.status === 'queued') this.execution.kick(txn.id);
     return txn;
   }
 
@@ -461,7 +540,12 @@ export class BusinessService {
     // 续期：没到期的接着原到期日续，已过期的从今天起；结束日 = 开始 + N 月 − 1 天
     const win = dto.startDate ? null : renewalWindow({ currentEndDate: current, today: this.today(), months: quantity });
     const startDate = dto.startDate ?? win!.startDate;
-    const endDate = dto.endDate ?? (win ? win.endDate : this.addMonths(startDate, quantity));
+    const endDate = dto.endDate ?? (win ? win.endDate : addDays(addMonthsClamped(startDate, quantity), -1));
+    if (dto.startDate || dto.endDate) {
+      const ok = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+      if (!ok(startDate) || !ok(endDate)) throw new BadRequestException('开始日期和结束日期都要填，格式 YYYY-MM-DD');
+      if (endDate < startDate) throw new BadRequestException('结束日期不能早于开始日期');
+    }
     return {
       serviceType: dto.serviceType,
       ruleId: rule.id,
@@ -611,8 +695,8 @@ export class BusinessService {
     if (!start || !end) return 0;
     const a = new Date(start);
     const b = new Date(end);
-    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || b <= a) return 0;
-    const days = Math.ceil((b.getTime() - a.getTime()) / 86400000);
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || b < a) return 0;
+    const days = Math.round((b.getTime() - a.getTime()) / 86400000) + 1; // 起止都算在内
     return Math.max(1, Math.ceil(days / 31));
   }
 
