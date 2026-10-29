@@ -90,6 +90,13 @@ export class VehicleIntake extends TenantEntity {
   @Column({ name: 'token_hash', type: 'varchar', length: 64 })
   tokenHash: string;
 
+  /**
+   * 二维码随机种子：链接里的码 = HMAC(服务端密钥, 种子)，库里只存种子和码的哈希。
+   * 办公室刷新页面后可以按种子再显示同一个码（没过期就一直有效），不必换码让业主拍过的码作废。
+   */
+  @Column({ name: 'token_nonce', type: 'varchar', length: 32, default: '' })
+  tokenNonce: string;
+
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt: Date;
 

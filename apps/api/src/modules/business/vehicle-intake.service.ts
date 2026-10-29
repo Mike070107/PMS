@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, GoneException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import * as QRCode from 'qrcode';
 import { Brackets, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -64,13 +64,14 @@ export class VehicleIntakeService {
     if (input.kind !== 'paid' && input.kind !== 'family') throw new BadRequestException('请选择付费车或亲情车');
     const house = await this.resolveHouse(Number(input.houseId), tenantId, access);
     const formBase = this.checkFormBase(input.formBase);
-    const token = randomBytes(24).toString('base64url');
+    const nonce = randomBytes(18).toString('base64url');
+    const token = this.tokenOf(nonce);
     const row = await this.repo.save(this.repo.create({
       tenantId, kind: input.kind, status: 'waiting', houseId: house.id, communityId: house.communityId,
       houseLabel: house.label, ownerName: house.ownerName, ownerPhone: house.ownerPhone,
       plate: '', contactName: '', contactPhone: '', relation: '', files: [], vehicleClass: input.kind === 'paid' ? this.cls(input.vehicleClass) : '',
       garages: this.cleanList(input.garages), garageNumbers: this.cleanNumbers(input.garageNumbers),
-      tokenHash: this.hash(token), expiresAt: new Date(Date.now() + INTAKE_TTL_MS), openedAt: null, submittedAt: null,
+      tokenHash: this.hash(token), tokenNonce: nonce, expiresAt: new Date(Date.now() + INTAKE_TTL_MS), openedAt: null, submittedAt: null,
       reviewedBy: null, reviewedAt: null, reviewNote: '', transactionId: null, familyCarId: null, log: [],
       createdBy: user.id, updatedBy: user.id,
     }));
@@ -135,12 +136,23 @@ export class VehicleIntakeService {
     return this.view(row);
   }
 
-  /** 重新生成二维码：旧码立即失效，新码 1 小时有效 */
+  /** 再次显示当前二维码（刷新页面后 / 业主想再拍一次）：同一个码，没过期就一直有效 */
+  async showQr(id: number, formBase: string, user: AuthUser, access?: ResolvedAccess) {
+    const row = await this.load(id, user, access);
+    if (!['waiting', 'reupload'].includes(row.status)) throw new BadRequestException('业主已提交或已办理，不需要再扫码');
+    if (!row.tokenNonce || row.expiresAt.getTime() <= Date.now()) throw new GoneException('二维码已过期，请点「重新生成二维码」');
+    const token = this.tokenOf(row.tokenNonce);
+    if (this.hash(token) !== row.tokenHash) throw new GoneException('二维码已失效，请点「重新生成二维码」');
+    return { ...(await this.view(row)), qr: await this.qr(this.checkFormBase(formBase), token, row.expiresAt) };
+  }
+
+  /** 换新码：旧码立即失效，新码 1 小时有效（二维码过期了、或怕旧码被别人拿到时用） */
   async regenerate(id: number, formBase: string, user: AuthUser, access?: ResolvedAccess) {
     const row = await this.load(id, user, access);
     if (!['waiting', 'reupload', 'submitted'].includes(row.status)) throw new BadRequestException('这条登记已审核完成，不能再生成二维码');
     const base = this.checkFormBase(formBase);
-    const token = randomBytes(24).toString('base64url');
+    row.tokenNonce = randomBytes(18).toString('base64url');
+    const token = this.tokenOf(row.tokenNonce);
     row.tokenHash = this.hash(token);
     row.expiresAt = new Date(Date.now() + INTAKE_TTL_MS);
     row.openedAt = null;
@@ -187,15 +199,20 @@ export class VehicleIntakeService {
     if (input.garages) row.garages = this.cleanList(input.garages);
     if (input.garageNumbers) row.garageNumbers = this.cleanNumbers(input.garageNumbers);
     if (!isValidFamilyPlate(row.plate)) throw new BadRequestException('车牌格式不正确，例如 豫GQ3N07');
-    if (!row.contactName || !PHONE.test(row.contactPhone)) throw new BadRequestException('请补全车主姓名和 11 位手机号');
+    if (!PHONE.test(row.contactPhone)) throw new BadRequestException('请补全 11 位手机号');
 
     if (row.kind === 'family') {
-      if (!(FAMILY_RELATIONS as readonly string[]).includes(row.relation)) throw new BadRequestException('请选择车主与业主的关系');
+      if (!row.relation) throw new BadRequestException('请选择车主与业主的关系');
+      // 业主填「其他」时写的是自由文字（如 表哥），亲情车档案按「其他亲属」归类，原话记进备注
+      const listed = (FAMILY_RELATIONS as readonly string[]).includes(row.relation);
       if (!input.duplicateCheckQueryId) throw new BadRequestException('亲情车通过前要先在旧停车库查重');
       const car = await this.familyCars.createFromIntake({
         houseId: row.houseId, plate: row.plate, duplicateCheckQueryId: Number(input.duplicateCheckQueryId),
-        carOwnerName: row.contactName, carOwnerPhone: row.contactPhone, relation: row.relation,
-        garages: row.garages, garageNumbers: row.garageNumbers, remark: `收银台扫码登记 #${row.id}`,
+        // 扫码页不再要求填车主姓名：没填就记为「业主某某的某某」，办公室可在审核时补
+        carOwnerName: row.contactName || `${row.ownerName || '业主'}的${row.relation}`.slice(0, 50),
+        carOwnerPhone: row.contactPhone, relation: listed ? row.relation : '其他亲属',
+        garages: row.garages, garageNumbers: row.garageNumbers,
+        remark: `收银台扫码登记 #${row.id}${listed ? '' : ` · 关系：${row.relation}`}`.slice(0, 200),
       }, row.files.map((f) => ({ ...f, source: 'owner' as const })), note || '收银台已审核业主扫码资料', user, access);
       row.familyCarId = (car as { id: number }).id;
     }
@@ -294,9 +311,9 @@ export class VehicleIntakeService {
     const contactPhone = read('contactPhone', 30).replace(/\D/g, '');
     const relation = read('relation', 20);
     if (!isValidFamilyPlate(plate)) throw new BadRequestException('车牌格式不正确，例如 豫GQ3N07');
-    if (!contactName) throw new BadRequestException('请填写车主姓名');
     if (!PHONE.test(contactPhone)) throw new BadRequestException('请填写 11 位手机号，方便物业联系');
-    if (row.kind === 'family' && !(FAMILY_RELATIONS as readonly string[]).includes(relation)) throw new BadRequestException('请选择车主与业主的关系');
+    // 关系：选列表里的，或选「其他」后自己写（最多 12 字）
+    if (row.kind === 'family' && (!relation || relation === '其他亲属' || relation.length > 12)) throw new BadRequestException('请选择车主与业主的关系；选「其他」请写明是什么关系');
     const files = input ?? [];
     const keep = row.status === 'reupload' && body?.keepFiles === '1' ? row.files : [];
     if (!files.length && !keep.length) throw new BadRequestException('请上传资料照片（行驶证、驾驶证等）');
@@ -442,6 +459,12 @@ export class VehicleIntakeService {
   }
 
   private hash(value: string) { return createHash('sha256').update(value).digest('hex'); }
+
+  /** 链接里的码由种子 + 服务端密钥算出，库里不存明文码 */
+  private tokenOf(nonce: string) {
+    const secret = String(this.config.get('JWT_SECRET') || 'change-me-in-prod');
+    return createHmac('sha256', `${secret}:vehicle-intake-qr`).update(nonce).digest('base64url').slice(0, 32);
+  }
 
   private tenant(user: AuthUser) {
     if (!user.tenantId) throw new BadRequestException('当前账号没有物业公司范围');

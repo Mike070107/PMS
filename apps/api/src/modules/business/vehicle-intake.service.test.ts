@@ -104,7 +104,12 @@ test('reupload keeps the same QR usable; regenerating invalidates the old one', 
   await service.review(created.id, { decision: 'reupload', note: '行驶证看不清' }, user);
   const again = await service.publicSession(token);
   assert.equal(again.reviewNote, '行驶证看不清');
+  // 刷新页面后再显示：同一个码
+  const again2 = await service.showQr(created.id, 'https://prsznh.cn/beta/m/plate', user);
+  assert.equal(again2.qr.url, created.qr.url);
   const fresh = await service.regenerate(created.id, 'https://prsznh.cn/beta/m/plate', user);
+  assert.notEqual(fresh.qr.url, created.qr.url);
+  assert.equal((await service.showQr(created.id, 'https://prsznh.cn/beta/m/plate', user)).qr.url, fresh.qr.url);
   await assert.rejects(() => service.publicSession(token), /链接无效/);
   const kept = await service.publicSubmit(tokenOf(fresh.qr.url), [], { plate: '豫GQ3N07', contactName: '李四', contactPhone: '13900000000', keepFiles: '1' });
   assert.equal(kept.fileCount, 1);
@@ -123,7 +128,9 @@ test('family intake: relation required, needs duplicate check, converts to a fam
   const created = await service.create({ houseId: 5, kind: 'family', garages: ['phase2'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
   const token = tokenOf(created.qr.url);
   await assert.rejects(() => service.publicSubmit(token, [file()], { plate: '豫GQ3N07', contactName: '李四', contactPhone: '13900000000' }), /关系/);
-  await service.publicSubmit(token, [file()], { plate: '豫GQ3N07', contactName: '李四', contactPhone: '13900000000', relation: '子女' });
+  await assert.rejects(() => service.publicSubmit(token, [file()], { plate: '豫GQ3N07', contactPhone: '13900000000', relation: '其他亲属' }), /写明/);
+  // 不填车主姓名、关系选「其他」自己写
+  await service.publicSubmit(token, [file()], { plate: '豫GQ3N07', contactPhone: '13900000000', relation: '表哥' });
   await assert.rejects(() => service.review(created.id, { decision: 'approve' }, user), /查重/);
   const done = await service.review(created.id, { decision: 'approve', duplicateCheckQueryId: 12 }, user);
   assert.equal(done.familyCarId, 77);

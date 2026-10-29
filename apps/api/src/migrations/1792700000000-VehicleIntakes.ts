@@ -22,6 +22,7 @@ export class VehicleIntakes1792700000000 implements MigrationInterface {
       garages jsonb NOT NULL DEFAULT '[]'::jsonb,
       garage_numbers jsonb NOT NULL DEFAULT '{}'::jsonb,
       token_hash varchar(64) NOT NULL,
+      token_nonce varchar(32) NOT NULL DEFAULT '',
       expires_at timestamptz NOT NULL,
       opened_at timestamptz NULL,
       submitted_at timestamptz NULL,
@@ -36,6 +37,7 @@ export class VehicleIntakes1792700000000 implements MigrationInterface {
       created_by int NULL,
       updated_by int NULL
     )`);
+    await q.query(`ALTER TABLE vehicle_intakes ADD COLUMN IF NOT EXISTS token_nonce varchar(32) NOT NULL DEFAULT ''`);
     await q.query(`CREATE INDEX IF NOT EXISTS idx_vehicle_intakes_status ON vehicle_intakes (tenant_id, status)`);
     await q.query(`CREATE INDEX IF NOT EXISTS idx_vehicle_intakes_house ON vehicle_intakes (tenant_id, house_id)`);
     await q.query(`CREATE INDEX IF NOT EXISTS idx_vehicle_intakes_token ON vehicle_intakes (token_hash)`);

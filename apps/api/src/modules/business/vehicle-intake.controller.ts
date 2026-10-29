@@ -34,6 +34,12 @@ export class VehicleIntakeController {
     return this.service.create(body, user, access);
   }
 
+  @Post(':id/show-qr')
+  @RequirePermission([...VIEW], 'view')
+  showQr(@Param('id', ParseIntPipe) id: number, @Body() body: { formBase: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.showQr(id, body?.formBase, user, access);
+  }
+
   @Post(':id/qr')
   @RequirePermission([...VIEW], 'edit')
   regenerate(@Param('id', ParseIntPipe) id: number, @Body() body: { formBase: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
