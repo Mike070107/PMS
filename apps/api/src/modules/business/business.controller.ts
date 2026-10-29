@@ -153,4 +153,22 @@ export class BusinessController {
   retrySync(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.execution.retry(id, user);
   }
+
+  @Get('plate-tags')
+  @RequirePermission('business', 'view')
+  plateTags(@Query('plates') plates: string, @CurrentUser() user: AuthUser) {
+    return this.businessService.plateTags(String(plates || '').split(','), user);
+  }
+
+  @Post('plate-tags')
+  @RequirePermission('business', 'edit')
+  setPlateTag(@Body() body: { plate: string; vehicleClass: string; houseId?: number | null }, @CurrentUser() user: AuthUser) {
+    return this.businessService.setPlateTag(body?.plate, body?.vehicleClass ?? '', body?.houseId ?? null, user);
+  }
+
+  @Post('transactions/:id/manual-done')
+  @RequirePermission('business', 'edit')
+  manualDone(@Param('id', ParseIntPipe) id: number, @Body() body: { note?: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.execution.markDone(id, body?.note, user, scopeCommunityIds(access));
+  }
 }

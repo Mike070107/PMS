@@ -50,6 +50,8 @@ import { AccessCardLegacySnapshot } from './access-card-legacy-snapshot.entity';
 import { AccessCardLegacyCardCheck } from './access-card-legacy-card-check.entity';
 import { AccessCardAuthorization } from './access-card-authorization.entity';
 import { BusinessTransaction } from './business-transaction.entity';
+import { VehicleIntake } from './vehicle-intake.entity';
+import { ParkingPlateTag } from './parking-plate-tag.entity';
 import { BusinessLog } from './business-log.entity';
 import { RepairTypeRule } from './repair-type-rule.entity';
 import { RepairTypeCorrection } from './repair-type-correction.entity';
@@ -153,6 +155,8 @@ export const entities = [
   AccessCardLegacyCardCheck,
   AccessCardAuthorization,
   BusinessTransaction,
+  VehicleIntake,
+  ParkingPlateTag,
   BusinessLog,
   RepairTypeRule,
   RepairTypeCorrection,
@@ -241,6 +245,8 @@ export {
   AccessCardLegacyCardCheck,
   AccessCardAuthorization,
   BusinessTransaction,
+  VehicleIntake,
+  ParkingPlateTag,
   BusinessLog,
   RepairTypeRule,
   RepairTypeCorrection,
@@ -261,6 +267,7 @@ export {
 };
 
 export type { WorkOrderSnapshot } from './work-order-log.entity';
+export type { VehicleIntakeFile, VehicleIntakeKind, VehicleIntakeLog, VehicleIntakeStatus } from './vehicle-intake.entity';
 export type { CompletionBatchStatus } from './work-order-completion-batch.entity';
 export type {
   WorkOrderMaterialStatus,

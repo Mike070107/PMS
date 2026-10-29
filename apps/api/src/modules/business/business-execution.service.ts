@@ -111,6 +111,24 @@ export class BusinessExecutionService {
   }
 
   /** 人工重试（转人工 / 失败 / 演练 → 重新排队） */
+  /** 人工已在停车系统办好（自动执行转人工的单）：记下谁、何时、备注，状态改为已生效 */
+  async markDone(id: number, note: string | undefined, user: AuthUser, scope: number[] | null) {
+    const txn = await this.txnRepo.findOne({ where: { id, tenantId: user.tenantId! } });
+    if (!txn) throw new NotFoundException('流水不存在');
+    if (scope && (txn.communityId == null || !scope.includes(txn.communityId))) throw new BadRequestException('这笔不在你的管理范围内');
+    if (!['manual', 'failed', 'dry_run'].includes(txn.externalSyncStatus)) throw new BadRequestException('只有转人工、失败或演练的单可以标记已办好');
+    const text = (note || '').trim().slice(0, 200);
+    if (!text) throw new BadRequestException('请写明在哪个系统怎么办好的，供审计');
+    const execution = { ...((txn.snapshot?.execution as object) || {}), manualDone: { by: user.id, at: new Date().toISOString(), note: text }, lastError: null, nextAt: null };
+    const done = await this.txnRepo.createQueryBuilder().update(BusinessTransaction)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .set({ externalSyncStatus: 'synced', snapshot: { ...(txn.snapshot || {}), execution } as any, updatedBy: user.id })
+      .where('id = :id AND external_sync_status IN (:...ss)', { id, ss: ['manual', 'failed', 'dry_run'] }).execute();
+    if (!done.affected) throw new BadRequestException('状态已变化，请刷新');
+    await this.txnRepo.manager.save(BusinessLog, this.txnRepo.manager.create(BusinessLog, { tenantId: txn.tenantId, transactionId: id, action: 'manual_done', detail: { note: text }, createdBy: user.id, updatedBy: user.id }));
+    return { id, externalSyncStatus: 'synced' as const };
+  }
+
   async retry(id: number, user: AuthUser) {
     const txn = await this.txnRepo.findOne({ where: { id, tenantId: user.tenantId! } });
     if (!txn) throw new NotFoundException('流水不存在');
@@ -145,7 +163,15 @@ export class BusinessExecutionService {
     const targetEndDate = (txn.endDate as unknown as string | null) || null;
     let op: ParkingOperation | null = null;
 
-    const systems = ((txn.snapshot?.parking as { systems?: ParkingSystemRef[] } | undefined)?.systems) ?? [];
+    const parkingSnap = txn.snapshot?.parking as { systems?: ParkingSystemRef[]; newVehicle?: boolean } | undefined;
+    const systems = parkingSnap?.systems ?? [];
+    if (parkingSnap?.newVehicle) {
+      // 新办车牌：旧库新增要现场查重、德立云 addCard 尚未验证写回，暂不自动新增
+      const planned = { action: 'add_vehicle', plate, startDate: txn.startDate, endDate: targetEndDate, systems: systems.map((s) => s.label) };
+      if (mode !== 'on') return this.finish(txn, 'dry_run', { ...prev, mode, attempts, result: planned, lastError: null, nextAt: null });
+      return this.finish(txn, 'manual', { ...prev, mode, attempts, result: planned, nextAt: null,
+        lastError: `新车牌 ${plate} 需要在停车系统新增登记（${systems.map((s) => s.label).join('、') || '所选车库'}，有效期 ${txn.startDate} 至 ${targetEndDate}）；自动新增尚未接入，办好后在车牌管理点「已办好」` });
+    }
     if (plate && systems.length) return this.runSystems(txn, prev, mode, attempts, plate, targetEndDate, systems);
 
     try {
@@ -311,7 +337,7 @@ export class BusinessExecutionService {
     const where = {
       tenantId,
       serviceType: BusinessServiceType.PARKING_MONTHLY,
-      externalSyncStatus: In(['review', 'rejected', 'queued', 'running', 'retry', 'manual', 'failed', 'dry_run']),
+      externalSyncStatus: In(['awaiting_docs', 'review', 'rejected', 'queued', 'running', 'retry', 'manual', 'failed', 'dry_run']),
       ...(scope ? { communityId: In(scope) } : {}),
     };
     return this.txnRepo.find({ where, order: { id: 'DESC' }, take: 200 });

@@ -189,4 +189,11 @@ export class CompleteBusinessDto extends EstimateBusinessDto {
   @ValidateNested({ each: true })
   @Type(() => ParkingSystemRefDto)
   parkingSystems?: ParkingSystemRefDto[];
+
+  /** 新办车牌：收银台扫码登记单；车牌可以还没填（先收款，挂「待业主资料」） */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  intakeId?: number;
 }

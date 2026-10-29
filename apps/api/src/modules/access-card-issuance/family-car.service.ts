@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { In, Not, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { UserRole, UserStatus } from '../../common/enums';
 import {
@@ -589,6 +589,9 @@ export class FamilyCarService {
     if (!['office', 'returned'].includes(car.status)) throw new BadRequestException('当前不在办公室审核环节');
     if (decision === 'reupload') {
       car.status = 'upload';
+      // 重传后要重新经办公室审核，不能沿用之前的审核结果自动推进
+      car.officeReviewedBy = null;
+      car.officeReviewedAt = null;
       const qr = await this.proofs.createFamilySession(car, user, car.proofUploadId);
       car.proofUploadId = qr.id;
       await this.appendLog(car, user, '要求业主补资料，已重新生成二维码', text || undefined);
@@ -687,6 +690,42 @@ export class FamilyCarService {
     await this.notifyOffice(car, `亲情车 ${car.plate} 业主已上传资料，待办公室审核`);
   }
 
+  /**
+   * 收银台「新办车牌 · 亲情车」：业主扫码填的车牌、车主和资料已由办公室在收银台审核过。
+   * 这里按原流程建亲情车登记（含旧库查重、暂存），带上资料，并记下办公室已审核；
+   * 新车牌的旧库暂存完成后自动提交物业经理（定时任务推进），不用办公室再审一遍。
+   */
+  async createFromIntake(input: CreateFamilyCarInput, files: FamilyCarFile[], note: string, user: AuthUser, access?: ResolvedAccess) {
+    const created = await this.create({ ...input, ownerFill: false }, user, access);
+    const car = await this.load(created.id, user, access);
+    car.files = files;
+    car.status = 'office';
+    car.officeReviewedBy = user.id;
+    car.officeReviewedAt = new Date();
+    car.officeNote = (note || '收银台已审核业主扫码资料').slice(0, 500);
+    // 收银台的二维码已经收齐资料，亲情车自己的上传码不再需要
+    if (car.proofUploadId) {
+      const proof = await this.proofRepo.findOne({ where: { id: car.proofUploadId, tenantId: car.tenantId } });
+      if (proof && !proof.submittedAt && proof.expiresAt.getTime() > Date.now()) { proof.expiresAt = new Date(); await this.proofRepo.save(proof); }
+    }
+    await this.appendLog(car, user, '收银台扫码登记，办公室已审核资料', car.officeNote);
+    await this.advancePreReviewed(car, user).catch(() => undefined);
+    return this.detail(car);
+  }
+
+  /** 办公室已审核（收银台）、只等旧库暂存完成的登记：完成后自动提交物业经理 */
+  private async advancePreReviewed(car: FamilyCar, user: AuthUser) {
+    if (car.status !== 'office' || !car.officeReviewedAt) return;
+    if (car.mode === 'new') {
+      const registration = car.registrationOperationId ? await this.operationRepo.findOne({ where: { id: car.registrationOperationId, tenantId: car.tenantId } }) : null;
+      if (registration?.status === 'failed') { await this.setError(car, `旧库暂存失败：${registration.lastError || '请联系管理员'}`); return; }
+      if (registration?.status !== 'completed') return;
+    }
+    car.status = 'manager';
+    await this.appendLog(car, user, '旧库暂存完成，自动提交物业经理审核');
+    await this.notifyManagers(car, user);
+  }
+
   /** 业主扫码页显示的登记信息 */
   async sessionInfo(familyCarId: number) {
     const car = await this.repo.findOne({ where: { id: familyCarId } });
@@ -704,6 +743,8 @@ export class FamilyCarService {
   @Cron(CronExpression.EVERY_5_MINUTES)
   async tick() {
     try {
+      const preReviewed = await this.repo.find({ where: { status: 'office', officeReviewedAt: Not(IsNull()) } });
+      for (const car of preReviewed) await this.advancePreReviewed(car, this.systemUser(car)).catch((error) => this.logger.warn(`亲情车 ${car.id} 自动提交经理失败：${error.message}`));
       const opening = await this.repo.find({ where: { status: 'opening' } });
       for (const car of opening) await this.sync(car, this.systemUser(car)).catch((error) => this.logger.warn(`亲情车 ${car.id} 开通进度同步失败：${error.message}`));
       const today = shanghaiDate();

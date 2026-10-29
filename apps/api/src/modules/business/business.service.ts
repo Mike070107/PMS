@@ -26,6 +26,7 @@ import {
   House,
   ParkingVehicle,
   User,
+  ParkingPlateTag,
 } from '../../entities';
 import {
   BusinessRuleQueryDto,
@@ -38,6 +39,8 @@ import { BusinessExecutionService } from './business-execution.service';
 import { findParkingTarget, PARKING_TARGETS, targetsForCommunity, validateRuleTarget } from './parking-targets';
 import { addDays, addMonthsClamped, renewalWindow } from './business-execution.util';
 import { AccessService } from '../access/access.service';
+import { VehicleIntakeService } from './vehicle-intake.service';
+import { normalizeTiers, normalizeVehicleClass, priceParking, type ParkingRuleConfig } from './parking-pricing';
 import { Notification } from '../../entities';
 import { NotifyChannel, NotifyStatus } from '../../common/enums';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
@@ -66,7 +69,31 @@ export class BusinessService {
     private readonly userRepo: Repository<User>,
     private readonly deliyun: DeliyunParkingService,
     private readonly access: AccessService,
+    private readonly intakes: VehicleIntakeService,
+    @InjectRepository(ParkingPlateTag)
+    private readonly tagRepo: Repository<ParkingPlateTag>,
   ) {}
+
+  /** 车牌分类（按哪类收费）：收银台按车牌批量取 */
+  async plateTags(plates: string[], user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const list = [...new Set(plates.map((p) => normPlate(p)).filter(Boolean))].slice(0, 100);
+    if (!list.length) return [];
+    return this.tagRepo.find({ where: { tenantId, plate: In(list) } });
+  }
+
+  /** 给车牌打分类标记；清空 = 取消分类 */
+  async setPlateTag(plateValue: string, vehicleClass: string, houseId: number | null, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const plate = normPlate(plateValue);
+    if (!/^[\u4e00-\u9fa5][A-Z][A-Z0-9]{5,6}$/.test(plate)) throw new BadRequestException('车牌格式不正确');
+    let cls: string;
+    try { cls = normalizeVehicleClass(vehicleClass); } catch (e) { throw new BadRequestException((e as Error).message); }
+    const row = await this.tagRepo.findOne({ where: { tenantId, plate } });
+    if (!cls) { if (row) await this.tagRepo.delete({ id: row.id }); return { plate, vehicleClass: '' }; }
+    if (row) { row.vehicleClass = cls; row.houseId = houseId ?? row.houseId; row.updatedBy = user.id; return this.tagRepo.save(row); }
+    return this.tagRepo.save(this.tagRepo.create({ tenantId, plate, vehicleClass: cls, houseId: houseId ?? null, createdBy: user.id, updatedBy: user.id }));
+  }
 
   /** 物业经理：待审核的非标准停车续期 */
   async listReviews(user: AuthUser, access?: ResolvedAccess) {
@@ -91,7 +118,10 @@ export class BusinessService {
     if (!approve && !reason?.trim()) throw new BadRequestException('驳回请写原因');
     const review = { ...((txn.snapshot?.review as Record<string, unknown>) || {}), decidedBy: user.id, decidedAt: new Date().toISOString(), decision: approve ? 'approved' : 'rejected', decisionReason: reason?.trim() || null };
     const exec = this.execution.initialFor(BusinessServiceType.PARKING_MONTHLY);
-    const next = approve ? exec.status : 'rejected';
+    // 新办车牌：金额通过了，但业主资料还没审核通过的，继续等资料
+    const intakeId = (txn.snapshot?.intake as { id?: number } | undefined)?.id;
+    const waitDocs = approve && intakeId ? !(await this.intakes.isApproved(intakeId, tenantId)) : false;
+    const next = !approve ? 'rejected' : waitDocs ? 'awaiting_docs' : exec.status;
     const claimed = await this.txnRepo.createQueryBuilder().update(BusinessTransaction)
       .set({ externalSyncStatus: next, updatedBy: user.id, // eslint-disable-next-line @typescript-eslint/no-explicit-any
         snapshot: { ...(txn.snapshot || {}), review, ...(approve && exec.execution ? { execution: exec.execution } : {}) } as any })
@@ -191,6 +221,7 @@ export class BusinessService {
       access,
     );
     await this.assertRuleTarget(dto, communityId, tenantId);
+    await this.assertRuleUnique(dto, communityId, tenantId, null);
     const rule = this.ruleRepo.create({
       tenantId,
       serviceType: dto.serviceType,
@@ -227,6 +258,7 @@ export class BusinessService {
       access,
     );
     await this.assertRuleTarget(dto, communityId, tenantId);
+    await this.assertRuleUnique(dto, communityId, tenantId, rule.id);
     Object.assign(rule, {
       serviceType: dto.serviceType,
       name: dto.name,
@@ -238,6 +270,16 @@ export class BusinessService {
       updatedBy: user.id,
     });
     return this.ruleRepo.save(rule);
+  }
+
+  /** 同一小区、同一停车场、同一车辆类别只能有一条启用的收费标准，否则收银台不知道用哪条 */
+  private async assertRuleUnique(dto: UpsertBusinessRuleDto, communityId: number | null, tenantId: number, selfId: number | null) {
+    if (dto.serviceType !== BusinessServiceType.PARKING_MONTHLY || dto.enabled === false) return;
+    const cfg = (dto.config ?? {}) as ParkingRuleConfig;
+    const same = await this.ruleRepo.find({ where: { tenantId, serviceType: BusinessServiceType.PARKING_MONTHLY, enabled: true, communityId: communityId ?? IsNull() } });
+    const clash = same.find((r) => r.id !== selfId && ((r.config ?? {}) as ParkingRuleConfig).parkingTarget === cfg.parkingTarget
+      && (((r.config ?? {}) as ParkingRuleConfig).vehicleClass || '') === (cfg.vehicleClass || ''));
+    if (clash) throw new BadRequestException(`这个停车场已经有「${cfg.vehicleClass || '不分类'}」的收费标准（${clash.name}），请直接修改那条或先停用`);
   }
 
   /** 停车月租规则绑定的停车目标须存在、且适用于规则所在小区（config.parkingTarget） */
@@ -400,6 +442,22 @@ export class BusinessService {
       if (!dto.customReason?.trim()) throw new BadRequestException('请写明非标准续期的原因，供物业经理审核');
     }
     const amountCents = custom ? dto.manualAmountCents! : estimate.amountCents;
+    // 新办车牌：车牌由业主扫码填写，可能还没填；资料没审核通过前收款挂「待业主资料」
+    const intake = dto.intakeId && dto.serviceType === BusinessServiceType.PARKING_MONTHLY
+      ? await this.intakes.claimForPayment(dto.intakeId, dto.houseId, user) : null;
+    if (intake) {
+      dto.plateNo = intake.plate || undefined;
+      dto.currentEndDate = undefined;
+    }
+    // 车辆类别要和收费标准对上：业主车不能按租客车价收，反之亦然
+    if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
+      const ruleClass = ((rule.config ?? {}) as ParkingRuleConfig).vehicleClass || '';
+      const carClass = intake ? intake.row.vehicleClass
+        : dto.plateNo ? (await this.tagRepo.findOne({ where: { tenantId, plate: normPlate(dto.plateNo) } }))?.vehicleClass || '' : '';
+      if (ruleClass && carClass && ruleClass !== carClass) {
+        throw new BadRequestException(`这辆车标记为「${carClass}」，不能按「${ruleClass}」的收费标准收款；如分类有误请先改分类`);
+      }
+    }
     const house = dto.houseId
       ? await this.houseRepo.findOne({ where: { id: dto.houseId, tenantId } })
       : null;
@@ -439,17 +497,24 @@ export class BusinessService {
         const allowed = targetsForCommunity((await this.communityRepo.findOne({ where: { id: communityId ?? -1, tenantId } }))?.name ?? null);
         for (const s of dto.parkingSystems) {
           const ok = s.kind === 'local'
-            ? !!s.database && !!s.sourceRecordId && allowed.some((t) => t.system === 'local' && t.database === s.database)
+            ? !!s.database && (!!s.sourceRecordId || !!intake) && allowed.some((t) => t.system === 'local' && t.database === s.database)
             : !!s.park && allowed.some((t) => t.system === 'deliyun' && t.deliyunPark === s.park);
           if (!ok) throw new BadRequestException(`「${s.label}」不属于该房号所在小区的停车系统`);
         }
         const target = findParkingTarget(rule.config?.parkingTarget);
-        snapshot.parking = { plate: (dto.plateNo || '').trim().toUpperCase(), target: target?.key ?? null, systems: dto.parkingSystems };
+        snapshot.parking = { plate: (dto.plateNo || '').trim().toUpperCase(), target: target?.key ?? null, systems: dto.parkingSystems, ...(intake ? { newVehicle: true } : {}) };
       }
-      const vehicle = await this.upsertVehicle(dto, tenantId, user.id, estimate.endDate);
-      targetType = 'parking_vehicle';
-      targetId = vehicle.id;
-      snapshot.vehicle = { id: vehicle.id, plateNo: vehicle.plateNo, validUntil: vehicle.validUntil };
+      if (intake) {
+        snapshot.intake = { id: intake.row.id };
+        snapshot.vehicle = { plateNo: intake.plate || '', validUntil: estimate.endDate };
+        targetType = 'vehicle_intake';
+        targetId = intake.row.id;
+      } else {
+        const vehicle = await this.upsertVehicle(dto, tenantId, user.id, estimate.endDate);
+        targetType = 'parking_vehicle';
+        targetId = vehicle.id;
+        snapshot.vehicle = { id: vehicle.id, plateNo: vehicle.plateNo, validUntil: vehicle.validUntil };
+      }
     } else if (dto.serviceType === BusinessServiceType.ACCESS_CARD) {
       const created = await this.issueAccessCards(dto, tenantId, user.id);
       targetType = 'access_card_batch';
@@ -474,7 +539,7 @@ export class BusinessService {
         endDate: estimate.endDate,
         amountCents,
         paymentMethod: dto.paymentMethod ?? 'cash',
-        externalSyncStatus: custom ? 'review' : exec.status,
+        externalSyncStatus: custom ? 'review' : intake && !intake.approved ? 'awaiting_docs' : exec.status,
         invoiceStatus: 'pending',
         remark: dto.remark ?? null,
         snapshot,
@@ -510,11 +575,12 @@ export class BusinessService {
       }),
     ]);
 
+    if (intake) await this.intakes.attachPayment(intake.row, txn, user);
     if (custom) {
-      const plate = (dto.plateNo || '').trim().toUpperCase();
+      const plate = (dto.plateNo || '').trim().toUpperCase() || '新办车牌';
       await this.notifyReviewers(tenantId, communityId, `待审核：停车非标准续期 ${plate} ${estimate.startDate}~${estimate.endDate} 实收 ¥${(amountCents / 100).toFixed(2)}`,
         { transactionId: txn.id, txnNo: txn.txnNo, page: '/pending' }, user.id);
-    } else if (exec.status === 'queued') this.execution.kick(txn.id);
+    } else if (txn.externalSyncStatus === 'queued') this.execution.kick(txn.id);
     return txn;
   }
 
@@ -536,6 +602,9 @@ export class BusinessService {
     }
     const quantity = dto.months ?? this.monthsBetween(dto.startDate, dto.endDate);
     if (!quantity || quantity < 1) throw new BadRequestException('请选择缴费月数');
+    let priced: { amountCents: number; breakdown: string };
+    try { priced = priceParking(quantity, rule.unitPriceCents, ((rule.config ?? {}) as ParkingRuleConfig).tiers ?? []); }
+    catch (e) { throw new BadRequestException((e as Error).message); }
     const current = /^\d{4}-\d{2}-\d{2}/.test(dto.currentEndDate || '') ? dto.currentEndDate!.slice(0, 10) : null;
     // 续期：没到期的接着原到期日续，已过期的从今天起；结束日 = 开始 + N 月 − 1 天
     const win = dto.startDate ? null : renewalWindow({ currentEndDate: current, today: this.today(), months: quantity });
@@ -553,8 +622,10 @@ export class BusinessService {
       quantity,
       startDate,
       endDate,
-      amountCents: rule.unitPriceCents * quantity,
+      amountCents: priced.amountCents,
       summary: `停车月租 ${quantity} 个月`,
+      breakdown: priced.breakdown,
+      vehicleClass: ((rule.config ?? {}) as ParkingRuleConfig).vehicleClass ?? null,
       tenantId,
     };
   }
@@ -683,6 +754,17 @@ export class BusinessService {
     ) {
       throw new BadRequestException('停车月租必须按月计费');
     }
+    if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
+      // 自建的车辆类别和套餐档：规范化后再存，计价只认这一份
+      const cfg = { ...(dto.config ?? {}) } as ParkingRuleConfig & Record<string, unknown>;
+      try {
+        cfg.vehicleClass = normalizeVehicleClass(cfg.vehicleClass);
+        cfg.tiers = normalizeTiers(cfg.tiers);
+      } catch (e) { throw new BadRequestException((e as Error).message); }
+      if (!cfg.vehicleClass) delete cfg.vehicleClass;
+      if (!cfg.tiers.length) delete cfg.tiers;
+      dto.config = cfg;
+    }
     if (
       dto.serviceType === BusinessServiceType.ACCESS_CARD &&
       dto.billingUnit !== BusinessBillingUnit.CARD
@@ -725,4 +807,8 @@ export class BusinessService {
     }
     return user.tenantId;
   }
+}
+
+function normPlate(p: string) {
+  return String(p || '').replace(/[\s·.．・-]/g, '').toUpperCase();
 }
