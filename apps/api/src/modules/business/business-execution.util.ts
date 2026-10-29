@@ -82,3 +82,74 @@ export function classifyFailure(error: unknown, attempts: number): { status: Ext
 
 /** 可以人工点「重试」的状态 */
 export const RETRYABLE_BY_HAND: ExternalSyncStatus[] = ['manual', 'failed', 'dry_run', 'retry'];
+
+/** 日期加减（纯字符串运算，不受服务器时区影响） */
+export function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + days));
+  return t.toISOString().slice(0, 10);
+}
+
+/** 加 N 个自然月；目标月没有这一天时取月末（1-31 加 1 月 = 2-28/29） */
+export function addMonthsClamped(date: string, months: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const total = (m - 1) + months;
+  const ty = y + Math.floor(total / 12);
+  const tm = ((total % 12) + 12) % 12;
+  const last = new Date(Date.UTC(ty, tm + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(ty, tm, Math.min(d, last))).toISOString().slice(0, 10);
+}
+
+/**
+ * 续期区间：还没到期的车接着原到期日往后续，已过期（或没有到期日）的从今天起算。
+ * 结束日 = 开始日 + N 个月 − 1 天（例：01-01 续 6 个月 → 06-30）。
+ */
+export function renewalWindow(input: { currentEndDate?: string | null; today: string; months: number }): { startDate: string; endDate: string } {
+  const { currentEndDate, today, months } = input;
+  const start = isDate(currentEndDate) && currentEndDate >= today ? addDays(currentEndDate, 1) : today;
+  return { startDate: start, endDate: addDays(addMonthsClamped(start, months), -1) };
+}
+
+/** 一笔款拆到多套停车系统记账（旧库每条续期都要写金额）：按分均分，余数给第一条 */
+export function splitAmountCents(total: number, n: number): number[] {
+  if (n <= 0) return [];
+  const base = Math.floor(total / n);
+  return Array.from({ length: n }, (_, i) => base + (i === 0 ? total - base * n : 0));
+}
+
+/** 收银时登记的、这辆车要一起续期的各套停车系统 */
+export type ParkingSystemRef =
+  | { kind: 'local'; database: 'parking1' | 'parking2'; sourceRecordId: string; previousEndDate: string | null; label: string }
+  | { kind: 'deliyun'; park: string; label: string };
+
+/** 每套系统的执行进度（存在 snapshot.execution.steps） */
+export interface ExecutionStep {
+  key: string;
+  label: string;
+  kind: 'local' | 'deliyun';
+  status: 'pending' | 'waiting' | 'done' | 'manual' | 'failed' | 'dry_run';
+  operationId?: number | null;
+  note?: string | null;
+}
+
+export const stepKey = (s: ParkingSystemRef) => (s.kind === 'local' ? `local:${s.database}:${s.sourceRecordId}` : `deliyun:${s.park}`);
+
+/** 汇总各步状态 → 这笔流水的外部同步状态 */
+export function aggregateSteps(steps: ExecutionStep[]): ExternalSyncStatus {
+  if (!steps.length) return 'manual';
+  if (steps.some((s) => s.status === 'pending' || s.status === 'waiting')) return 'queued';
+  if (steps.some((s) => s.status === 'failed')) return 'failed';
+  if (steps.some((s) => s.status === 'manual')) return 'manual';
+  if (steps.some((s) => s.status === 'dry_run')) return 'dry_run';
+  return 'synced';
+}
+
+/** 本地旧库续期前的核对：只往后延，不回退 */
+export function planLocalRenewal(input: { previousEndDate: string | null; targetEndDate: string | null }): { action: 'renew' | 'noop' | 'manual'; reason?: string } {
+  const prev = (input.previousEndDate || '').slice(0, 10);
+  const target = input.targetEndDate;
+  if (!isDate(target)) return { action: 'manual', reason: '本次收费没有到期日' };
+  if (isDate(prev) && prev === target) return { action: 'noop', reason: '旧库到期日已是本次目标' };
+  if (isDate(prev) && prev > target) return { action: 'manual', reason: `旧库到期日 ${prev} 已晚于本次收费到期日 ${target}，不自动回退` };
+  return { action: 'renew' };
+}

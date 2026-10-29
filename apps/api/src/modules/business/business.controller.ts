@@ -21,6 +21,7 @@ import {
   CompleteBusinessDto,
   EstimateBusinessDto,
   UpsertBusinessRuleDto,
+  HouseholdParkingQueryDto,
 } from './dto';
 import { BusinessService } from './business.service';
 import { BusinessExecutionService } from './business-execution.service';
@@ -64,6 +65,13 @@ export class BusinessController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.businessService.updateRule(id, dto, user, access);
+  }
+
+  /** 收银台：一户在各停车系统登记的车（德立云实时；本地库由前端发现场查询） */
+  @Get('household-parking')
+  @RequirePermission('business', 'view')
+  householdParking(@Query() query: HouseholdParkingQueryDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.businessService.householdParking(query.houseId, user, access);
   }
 
   @Get('search')

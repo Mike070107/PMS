@@ -102,16 +102,7 @@ export class DeliyunParkingService {
       this.assertSuccess(response, '德立云车辆查询失败');
       const rows = Array.isArray(response.data) ? response.data : [];
       const matched = rows.map(mapDeliyunVehicle).filter((row) => normalizePlate(row.plate) === normalized);
-      const enriched = await Promise.all(matched.map(async (row) => {
-        const detail = await this.vehicleDetail(row.id, session);
-        if (normalizePlate(stringValue(detail.plateNum)) !== normalized)
-          throw new ServiceUnavailableException('德立云车辆详情车牌已变化，请重新查询');
-        const authorization = deliyunGarageAuthorization(detail);
-        const remark = nullableString(detail.remark);
-        const parkingSpace = nullableString(detail.cardNo);
-        // 列表接口经常不返 cardNo，真值在 findCard 详情里。
-        return this.enrichPoolPeriods({ ...row, ...authorization, remark, cardNo: parkingSpace, parkingSpace }, session);
-      }));
+      const enriched = await Promise.all(matched.map((row) => this.enrichVehicle(row, session, normalized)));
       return {
         project: session.park.unitName,
         rows: enriched,
@@ -121,6 +112,77 @@ export class DeliyunParkingService {
       if (error instanceof ServiceUnavailableException || error instanceof BadRequestException) throw error;
       throw new ServiceUnavailableException('德立云车辆查询暂时不可用，请稍后重试');
     }
+  }
+
+  /**
+   * 按房号查一户在某个德立云停车场登记的车辆（人员名 pname 存的就是完整房号，如 228/53/1401）。
+   * 列表接口是否支持 pname 过滤没有文档：先带 pname 查一页，若返回了别的房号说明参数被忽略，
+   * 之后这个场改为整场分页读取并缓存 5 分钟，再按房号精确过滤。
+   */
+  async findVehiclesByRoom(room: string, parkName?: string): Promise<{ project: string; rows: DeliyunVehicle[] }> {
+    const want = normalizeRoomKey(room);
+    if (!want) throw new BadRequestException('房号不完整，无法查询德立云');
+    if (!this.hasMiniappAccount() || this.missingMiniappProtocolConfig().length) {
+      throw new ServiceUnavailableException('德立云专用账号连接尚未配置完整');
+    }
+    try {
+      const session = await this.ensureMiniappSession(parkName);
+      const unitKey = session.park.unitKey;
+      let list: DeliyunVehicle[];
+      if (!this.noPnameFilter.has(unitKey)) {
+        const response = await this.h5Get<Array<Record<string, unknown>>>('/pma/card/findParkCards', {
+          unitKey, pageNum: '1', pageSize: '50', pname: room.trim(),
+        }, session.token);
+        this.assertSuccess(response, '德立云车辆查询失败');
+        list = (Array.isArray(response.data) ? response.data : []).map(mapDeliyunVehicle);
+        if (list.some((row) => !roomKeyMatches(row.ownerName || '', room))) {
+          this.noPnameFilter.add(unitKey);
+          list = await this.allCards(session);
+        }
+      } else {
+        list = await this.allCards(session);
+      }
+      const matched = list.filter((row) => roomKeyMatches(row.ownerName || '', room)).slice(0, 10);
+      const enriched = await Promise.all(matched.map((row) => this.enrichVehicle(row, session, normalizePlate(row.plate))));
+      return { project: session.park.unitName, rows: enriched };
+    } catch (error) {
+      this.invalidateSessionOnAuthFailure(error);
+      if (error instanceof ServiceUnavailableException || error instanceof BadRequestException) throw error;
+      throw new ServiceUnavailableException('德立云车辆查询暂时不可用，请稍后重试');
+    }
+  }
+
+  private noPnameFilter = new Set<string>();
+  private cardCache = new Map<string, { at: number; rows: DeliyunVehicle[] }>();
+
+  /** 整场车辆列表（只用于按房号过滤），5 分钟缓存；最多读 60 页（3000 辆）防失控 */
+  private async allCards(session: MiniappSession): Promise<DeliyunVehicle[]> {
+    const key = session.park.unitKey;
+    const hit = this.cardCache.get(key);
+    if (hit && Date.now() - hit.at < 5 * 60_000) return hit.rows;
+    const rows: DeliyunVehicle[] = [];
+    for (let page = 1; page <= 60; page += 1) {
+      const response = await this.h5Get<Array<Record<string, unknown>>>('/pma/card/findParkCards', {
+        unitKey: key, pageNum: String(page), pageSize: '50',
+      }, session.token);
+      this.assertSuccess(response, '德立云车辆列表读取失败');
+      const data = Array.isArray(response.data) ? response.data : [];
+      rows.push(...data.map(mapDeliyunVehicle));
+      if (data.length < 50) break;
+    }
+    this.cardCache.set(key, { at: Date.now(), rows });
+    return rows;
+  }
+
+  /** 列表接口经常不返 cardNo（PMS 的「地库车位号」），真值和授权车库在 findCard 详情里 */
+  private async enrichVehicle(row: DeliyunVehicle, session: MiniappSession, plate: string): Promise<DeliyunVehicle> {
+    const detail = await this.vehicleDetail(row.id, session);
+    if (normalizePlate(stringValue(detail.plateNum)) !== plate)
+      throw new ServiceUnavailableException('德立云车辆详情车牌已变化，请重新查询');
+    const authorization = deliyunGarageAuthorization(detail);
+    const remark = nullableString(detail.remark);
+    const parkingSpace = nullableString(detail.cardNo);
+    return this.enrichPoolPeriods({ ...row, ...authorization, remark, cardNo: parkingSpace, parkingSpace }, session);
   }
 
   async renewVehicle(input: { vehicleId: string; plate: string; previousEndDate: string; endDate: string; parkName?: string }): Promise<DeliyunRenewalResult> {
@@ -730,6 +792,22 @@ export function legacyDeliyunSign(params: Record<string, string>, secret: string
 }
 
 function randomRequestId() { return randomBytes(24).toString('base64url').slice(0, 32); }
+/** 房号比对键：228/06/0502、228-6-502 都归一成 228/6/502；不足两段（只有室号）返回空 */
+export function normalizeRoomKey(value: string): string {
+  const parts = value.trim().split(/[\/\-－—\s]+/).filter(Boolean).map((p) => p.replace(/^0+(?=\d)/, ''));
+  return parts.length >= 2 ? parts.slice(-3).join('/') : '';
+}
+
+/** 同一户：段数相同则全等；一边带弄号一边不带（吴泾一村没有弄号）时比较后两段（楼/室） */
+export function roomKeyMatches(a: string, b: string): boolean {
+  const x = normalizeRoomKey(a); const y = normalizeRoomKey(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const xs = x.split('/'); const ys = y.split('/');
+  if (xs.length === ys.length) return false;
+  return xs.slice(-2).join('/') === ys.slice(-2).join('/');
+}
+
 function normalizePlate(value: string) { return value.replace(/[\s·]/g, '').toUpperCase(); }
 function isFullPlate(value: string) { return /^[京津冀晋蒙辽吉黑沪苏浙皖闽赣鲁豫鄂湘粤桂琼渝川贵云藏陕甘青宁新][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(value); }
 function stringValue(value: unknown) { return typeof value === 'string' ? value.trim() : value === null || value === undefined ? '' : String(value); }

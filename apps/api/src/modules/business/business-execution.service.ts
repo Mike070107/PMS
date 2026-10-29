@@ -8,7 +8,14 @@ import { findParkingTarget } from './parking-targets';
 import { BusinessServiceType } from '../../common/enums';
 import { AuthUser } from '../../common/current-user.decorator';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
+import { AccessCardIssuanceService } from '../access-card-issuance/access-card-issuance.service';
 import {
+  aggregateSteps,
+  ExecutionStep,
+  ParkingSystemRef,
+  planLocalRenewal,
+  splitAmountCents,
+  stepKey,
   classifyFailure,
   ExternalSyncStatus,
   nextRetryAt,
@@ -31,6 +38,8 @@ export interface ExecutionState {
   planned?: { vehicleId: string; previousEndDate: string; endDate: string } | null;
   result?: Record<string, unknown> | null;
   finishedAt?: string | null;
+  /** 一辆车要在多套停车系统一起续期时，每套一步 */
+  steps?: ExecutionStep[];
 }
 
 const STALE_RUNNING_MS = 5 * 60_000;
@@ -57,6 +66,7 @@ export class BusinessExecutionService {
     @InjectRepository(BusinessRule) private readonly ruleRepo: Repository<BusinessRule>,
     private readonly deliyun: DeliyunParkingService,
     private readonly config: ConfigService,
+    private readonly issuance: AccessCardIssuanceService,
   ) {}
 
   mode(): SyncMode {
@@ -109,7 +119,9 @@ export class BusinessExecutionService {
       throw new BadRequestException(`当前状态「${txn.externalSyncStatus}」不能重试`);
     }
     const prev = (txn.snapshot?.execution as ExecutionState | undefined) ?? null;
-    const execution: ExecutionState = { connector: 'deliyun', mode: this.mode(), attempts: 0, nextAt: null, lastError: null, operationId: prev?.operationId ?? null };
+    // 保留各系统步骤：已完成的不重做，只重跑失败/转人工的那几套
+    const steps = prev?.steps?.map((s) => (s.status === 'done' || s.status === 'waiting' ? s : { ...s, status: 'pending' as const }));
+    const execution: ExecutionState = { connector: 'deliyun', mode: this.mode(), attempts: 0, nextAt: null, lastError: null, operationId: prev?.operationId ?? null, ...(steps ? { steps } : {}) };
     await this.txnRepo.update({ id }, { externalSyncStatus: 'queued', // eslint-disable-next-line @typescript-eslint/no-explicit-any
       snapshot: { ...(txn.snapshot || {}), execution } as any, updatedBy: user.id });
     await this.log(txn, 'external_sync_retry_requested', { from: txn.externalSyncStatus, by: user.id }, user.id);
@@ -132,6 +144,9 @@ export class BusinessExecutionService {
     const plate = String((txn.snapshot?.vehicle as { plateNo?: string } | undefined)?.plateNo || '').trim().toUpperCase();
     const targetEndDate = (txn.endDate as unknown as string | null) || null;
     let op: ParkingOperation | null = null;
+
+    const systems = ((txn.snapshot?.parking as { systems?: ParkingSystemRef[] } | undefined)?.systems) ?? [];
+    if (plate && systems.length) return this.runSystems(txn, prev, mode, attempts, plate, targetEndDate, systems);
 
     try {
       if (!plate) throw new BadRequestException('这笔停车收费没有车牌，无法同步停车系统');
@@ -191,15 +206,97 @@ export class BusinessExecutionService {
     }
   }
 
+  /**
+   * 收银台登记了这辆车在哪几套系统（旧库一期/二期记录、德立云某场）时，逐套续到同一个到期日。
+   * - 旧库：经现场助手的 parking_operations 队列（renew_vehicle，助手写后回读）；这里只建任务，下一轮扫描读结果；
+   * - 德立云：直接调接口续期并回读；
+   * - 已完成的步骤不重做；任何一步对不上转人工，不退款、不影响其他步骤；
+   * - 演练模式只核对、写下每套系统「将要怎么续」，不建任务、不写入。
+   */
+  private async runSystems(txn: BusinessTransaction, prev: ExecutionState, mode: SyncMode, attempts: number,
+    plate: string, targetEndDate: string | null, systems: ParkingSystemRef[]) {
+    const old = new Map((prev.steps ?? []).map((s) => [s.key, s]));
+    const locals = systems.filter((s) => s.kind === 'local');
+    const amounts = splitAmountCents(txn.amountCents, locals.length);
+    const steps: ExecutionStep[] = [];
+    for (const sys of systems) {
+      const key = stepKey(sys);
+      const was = old.get(key);
+      const step: ExecutionStep = { key, label: sys.label, kind: sys.kind, status: 'pending', operationId: was?.operationId ?? null, note: null };
+      steps.push(step);
+      if (was?.status === 'done') { Object.assign(step, was); continue; }
+      try {
+        if (sys.kind === 'deliyun') {
+          const found = await this.deliyun.findVehiclesByPlate(plate, sys.park);
+          const plan = planDeliyunRenewal({ plate, targetEndDate, rows: found.rows.map((r) => ({ id: r.id, plate: r.plate, endDate: r.endDate, cardPoolId: r.cardPoolId })) });
+          if (plan.action === 'manual') { step.status = 'manual'; step.note = plan.reason; continue; }
+          if (plan.action === 'noop') { step.status = 'done'; step.note = plan.reason; continue; }
+          if (mode !== 'on') { step.status = 'dry_run'; step.note = `将把 ${plan.previousEndDate} 续到 ${plan.endDate}`; continue; }
+          const result = await this.deliyun.renewVehicle({ vehicleId: plan.vehicleId, plate, previousEndDate: plan.previousEndDate, endDate: plan.endDate, parkName: sys.park });
+          const op = await this.opRepo.save(this.opRepo.create({
+            tenantId: txn.tenantId, kind: 'renew_vehicle', database: 'deliyun', idempotencyKey: `biz:${txn.txnNo}:${key}:${attempts}`,
+            sourceRecordId: plan.vehicleId, pmsUserId: null,
+            payload: { plate, previousEndDate: plan.previousEndDate, endDate: plan.endDate, businessTxnNo: txn.txnNo, park: sys.park },
+            expected: { previousEndDate: plan.previousEndDate }, result: result as unknown as Record<string, unknown>,
+            status: 'completed', attempt: 1, requestedAt: new Date(), completedAt: new Date(),
+            leaseAgentKey: null, leaseExpiresAt: null, lastError: null, rollbackOfOperationId: null,
+            createdBy: txn.createdBy, updatedBy: txn.createdBy,
+          }));
+          step.status = 'done'; step.operationId = op.id; step.note = `已续到 ${plan.endDate}（已回读）`;
+          continue;
+        }
+        // 本地旧库：先看上一轮建的任务有没有结果
+        if (step.operationId) {
+          const op = await this.opRepo.findOne({ where: { id: step.operationId, tenantId: txn.tenantId } });
+          if (op?.status === 'completed') { step.status = 'done'; step.note = `已续到 ${targetEndDate}（现场助手已回读）`; continue; }
+          if (op && (op.status === 'pending' || op.status === 'running')) { step.status = 'waiting'; step.note = '现场助手处理中'; continue; }
+          if (op?.status === 'failed') { step.status = 'failed'; step.note = op.lastError || '现场助手执行失败'; step.operationId = null; continue; }
+        }
+        const plan = planLocalRenewal({ previousEndDate: sys.previousEndDate, targetEndDate });
+        if (plan.action === 'manual') { step.status = 'manual'; step.note = plan.reason ?? null; continue; }
+        if (plan.action === 'noop') { step.status = 'done'; step.note = plan.reason ?? null; continue; }
+        if (mode !== 'on') { step.status = 'dry_run'; step.note = `将经现场助手把 ${(sys.previousEndDate || '无到期日').slice(0, 10)} 续到 ${targetEndDate}`; continue; }
+        const created = await this.issuance.createParkingOperation({
+          database: sys.database, kind: 'renew_vehicle', sourceRecordId: sys.sourceRecordId,
+          idempotencyKey: `biz:${txn.txnNo}:${key}:${attempts}`,
+          payload: { plate, endDate: targetEndDate, previousEndDate: (sys.previousEndDate || '').slice(0, 10), amount: amounts[locals.indexOf(sys)] / 100, businessTxnNo: txn.txnNo },
+        } as never, { id: txn.createdBy ?? 0, tenantId: txn.tenantId } as unknown as AuthUser);
+        step.operationId = Number((created as { id?: number }).id) || null;
+        step.status = 'waiting'; step.note = '已交给现场助手';
+      } catch (error) {
+        const { status, message } = classifyFailure(error, attempts);
+        step.status = status === 'manual' ? 'manual' : 'failed';
+        step.note = message;
+        if (status === 'retry') step.status = 'pending';
+      }
+    }
+    const status = aggregateSteps(steps);
+    const waiting = steps.some((s) => s.status === 'waiting');
+    const retrying = steps.some((s) => s.status === 'pending');
+    const finalStatus: ExternalSyncStatus = retrying ? (attempts >= 3 ? 'failed' : 'retry') : status;
+    const problems = steps.filter((s) => ['manual', 'failed', 'pending'].includes(s.status)).map((s) => `[${s.label}] ${s.note || s.status}`);
+    // 等现场助手：放回队列，一分钟后的扫描再来读结果（不算一次失败）
+    const nextAt = waiting ? new Date(Date.now() + 30_000).toISOString() : retrying ? nextRetryAt(attempts).toISOString() : null;
+    return this.finish(txn, finalStatus, {
+      ...prev, mode, attempts: waiting && !retrying ? attempts - 1 : attempts, steps, nextAt,
+      lastError: problems.length ? problems.join('；') : null,
+    });
+  }
+
   private async finish(txn: BusinessTransaction, status: ExternalSyncStatus, execution: ExecutionState) {
     const final = status === 'synced' || status === 'manual' || status === 'failed' || status === 'dry_run';
     const exec = { ...execution, finishedAt: final ? new Date().toISOString() : null };
     await this.txnRepo.update({ id: txn.id }, { externalSyncStatus: status, // eslint-disable-next-line @typescript-eslint/no-explicit-any
       snapshot: { ...(txn.snapshot || {}), execution: exec } as any });
-    await this.log(txn, `external_sync_${status}`, {
-      connector: 'deliyun', mode: exec.mode, attempts: exec.attempts, lastError: exec.lastError ?? null,
-      planned: exec.planned ?? null, operationId: exec.operationId ?? null,
-    }, txn.createdBy);
+    // 等现场助手回执的轮询（queued→queued）不重复记日志
+    const prevStatus = (txn.snapshot?.execution as ExecutionState | undefined)?.steps?.length ? txn.externalSyncStatus : null;
+    if (!(status === 'queued' && (prevStatus === 'queued' || prevStatus === 'running'))) {
+      await this.log(txn, `external_sync_${status}`, {
+        connector: 'deliyun', mode: exec.mode, attempts: exec.attempts, lastError: exec.lastError ?? null,
+        planned: exec.planned ?? null, operationId: exec.operationId ?? null,
+        steps: exec.steps?.map((s) => ({ label: s.label, status: s.status, note: s.note ?? null })) ?? null,
+      }, txn.createdBy);
+    }
     return { id: txn.id, externalSyncStatus: status };
   }
 

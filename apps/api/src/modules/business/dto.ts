@@ -1,5 +1,8 @@
 import {
+  IsArray,
   IsBoolean,
+  ArrayMaxSize,
+  ValidateNested,
   IsIn,
   IsInt,
   IsOptional,
@@ -106,6 +109,48 @@ export class EstimateBusinessDto {
   @IsOptional()
   @IsString()
   endDate?: string;
+
+  /** 续期：这辆车当前的到期日（多套系统取最早的），未到期时接着它往后续 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  currentEndDate?: string;
+}
+
+/** 收银时这辆车要一起续期的停车系统（旧库记录 / 德立云停车场） */
+export class ParkingSystemRefDto {
+  @IsIn(['local', 'deliyun'])
+  kind: 'local' | 'deliyun';
+
+  @IsOptional()
+  @IsIn(['parking1', 'parking2'])
+  database?: 'parking1' | 'parking2';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  sourceRecordId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  previousEndDate?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  park?: string;
+
+  @IsString()
+  @MaxLength(40)
+  label: string;
+}
+
+export class HouseholdParkingQueryDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  houseId: number;
 }
 
 export class CompleteBusinessDto extends EstimateBusinessDto {
@@ -118,4 +163,11 @@ export class CompleteBusinessDto extends EstimateBusinessDto {
   @IsString()
   @MaxLength(500)
   remark?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @ValidateNested({ each: true })
+  @Type(() => ParkingSystemRefDto)
+  parkingSystems?: ParkingSystemRefDto[];
 }

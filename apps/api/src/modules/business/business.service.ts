@@ -35,7 +35,9 @@ import {
   UpsertBusinessRuleDto,
 } from './dto';
 import { BusinessExecutionService } from './business-execution.service';
-import { PARKING_TARGETS, validateRuleTarget } from './parking-targets';
+import { findParkingTarget, PARKING_TARGETS, targetsForCommunity, validateRuleTarget } from './parking-targets';
+import { renewalWindow } from './business-execution.util';
+import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
 
 @Injectable()
 export class BusinessService {
@@ -59,7 +61,44 @@ export class BusinessService {
     private readonly communityRepo: Repository<Community>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly deliyun: DeliyunParkingService,
   ) {}
+
+  /**
+   * 收银台「停车缴费」：一户在各停车系统里登记的车。
+   * - 德立云的场（人防车库、永南、永德、吴泾、上海新家…）在这里按房号实时查，带回车位号（cardNo）、授权车库、有效期；
+   * - 本地旧库（枫桦一期/二期地面、二期大车库）要经现场助手读，前端用 roomTerm 发起 /access-card-issuance/parking/queries。
+   * 每个场单独成败，一个场查不到不影响其他场。
+   */
+  async householdParking(houseId: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const house = await this.houseRepo.findOne({ where: { id: houseId, tenantId } });
+    if (!house) throw new NotFoundException('房号不存在');
+    const building = await this.buildingRepo.findOne({ where: { id: house.buildingId, tenantId } });
+    const community = building ? await this.communityRepo.findOne({ where: { id: building.communityId, tenantId } }) : null;
+    const scope = scopeCommunityIds(access);
+    if (scope && (!community || !scope.includes(community.id))) throw new ForbiddenException('该房号不在你的管理范围内');
+    const strip = (v: string | null | undefined) => (v || '').trim().replace(/^0+(?=\d)/, '');
+    const parts = [strip(building?.lane), strip(building?.buildingNo), strip(house.roomNo)].filter(Boolean);
+    const room = parts.join('/');
+    const targets = targetsForCommunity(community?.name ?? null);
+    const parks = [...new Map(targets.filter((t) => t.system === 'deliyun').map((t) => [t.deliyunPark!, t])).values()];
+    const deliyun = await Promise.all(parks.map(async (t) => {
+      try {
+        const r = await this.deliyun.findVehiclesByRoom(room, t.deliyunPark);
+        return { targetKey: t.key, label: t.label, park: t.deliyunPark!, ok: true, error: null as string | null, rows: r.rows };
+      } catch (e) {
+        return { targetKey: t.key, label: t.label, park: t.deliyunPark!, ok: false, error: e instanceof Error ? e.message : '查询失败', rows: [] };
+      }
+    }));
+    const localDatabases = [...new Set(targets.filter((t) => t.system === 'local').map((t) => t.database!))];
+    return {
+      houseId, room, communityId: community?.id ?? null, communityName: community?.name ?? null,
+      targets, deliyun, localDatabases,
+      /** 本地库查询词：旧库住户名里存的是 198-4-201 / 198/06/302 这类房号 */
+      roomTerm: parts.length >= 2 ? parts.join('/') : null,
+    };
+  }
 
   async listRules(query: BusinessRuleQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
@@ -230,31 +269,33 @@ export class BusinessService {
         .innerJoin(Building, 'sb', 'sb.id = sh.building_id AND sb.tenant_id = sh.tenant_id')
         .andWhere('sb.community_id IN (:...scope)', { scope });
     };
-    const vehicles = await scopedByHouse(
+    // 按房号搜时要带出这些房子名下的车和卡（以前只按车牌/卡号过滤，按房号搜永远是空的）
+    const houseIds = houseRows.map((r) => Number(r.id));
+    const byHouseOrText = (qb: any, alias: string, col: string) => {
+      if (!q) return qb;
+      return qb.andWhere(new Brackets((sub) => {
+        sub.where(`${alias}.${col} ILIKE :kw2`, { kw2: `%${q}%` });
+        if (houseIds.length) sub.orWhere(`${alias}.house_id IN (:...hids)`, { hids: houseIds });
+      }));
+    };
+    const filteredVehicles = await byHouseOrText(scopedByHouse(
       this.vehicleRepo
         .createQueryBuilder('v')
         .where('v.tenant_id = :tenantId', { tenantId }),
       'v',
-    )
+    ), 'v', 'plate_no')
       .orderBy('v.id', 'DESC')
       .take(50)
       .getMany();
-    const cards = await scopedByHouse(
+    const filteredCards = await byHouseOrText(scopedByHouse(
       this.cardRepo
         .createQueryBuilder('ac')
         .where('ac.tenant_id = :tenantId', { tenantId }),
       'ac',
-    )
+    ), 'ac', 'card_no')
       .orderBy('ac.id', 'DESC')
       .take(100)
       .getMany();
-
-    const filteredVehicles = q
-      ? vehicles.filter((v) => v.plateNo.toLowerCase().includes(q.toLowerCase()))
-      : vehicles.slice(0, 20);
-    const filteredCards = q
-      ? cards.filter((c) => c.cardNo.toLowerCase().includes(q.toLowerCase()))
-      : cards.slice(0, 20);
 
     return {
       houses: houseRows.map((r) => ({
@@ -318,6 +359,18 @@ export class BusinessService {
     if (exec.execution) snapshot.execution = exec.execution;
 
     if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
+      if (dto.parkingSystems?.length) {
+        // 只接受本小区停车目录里的系统，防止把款记到别的小区的场
+        const allowed = targetsForCommunity((await this.communityRepo.findOne({ where: { id: communityId ?? -1, tenantId } }))?.name ?? null);
+        for (const s of dto.parkingSystems) {
+          const ok = s.kind === 'local'
+            ? !!s.database && !!s.sourceRecordId && allowed.some((t) => t.system === 'local' && t.database === s.database)
+            : !!s.park && allowed.some((t) => t.system === 'deliyun' && t.deliyunPark === s.park);
+          if (!ok) throw new BadRequestException(`「${s.label}」不属于该房号所在小区的停车系统`);
+        }
+        const target = findParkingTarget(rule.config?.parkingTarget);
+        snapshot.parking = { plate: (dto.plateNo || '').trim().toUpperCase(), target: target?.key ?? null, systems: dto.parkingSystems };
+      }
       const vehicle = await this.upsertVehicle(dto, tenantId, user.id, estimate.endDate);
       targetType = 'parking_vehicle';
       targetId = vehicle.id;
@@ -404,8 +457,11 @@ export class BusinessService {
     }
     const quantity = dto.months ?? this.monthsBetween(dto.startDate, dto.endDate);
     if (!quantity || quantity < 1) throw new BadRequestException('请选择缴费月数');
-    const startDate = dto.startDate ?? this.today();
-    const endDate = dto.endDate ?? this.addMonths(startDate, quantity);
+    const current = /^\d{4}-\d{2}-\d{2}/.test(dto.currentEndDate || '') ? dto.currentEndDate!.slice(0, 10) : null;
+    // 续期：没到期的接着原到期日续，已过期的从今天起；结束日 = 开始 + N 月 − 1 天
+    const win = dto.startDate ? null : renewalWindow({ currentEndDate: current, today: this.today(), months: quantity });
+    const startDate = dto.startDate ?? win!.startDate;
+    const endDate = dto.endDate ?? (win ? win.endDate : this.addMonths(startDate, quantity));
     return {
       serviceType: dto.serviceType,
       ruleId: rule.id,
