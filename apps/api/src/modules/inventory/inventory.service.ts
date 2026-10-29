@@ -70,6 +70,7 @@ import {
   UpdateWarehouseLocationDto,
   WarehouseLocationQueryDto,
 } from './dto';
+import { LOCKED_WHEN_USED, lockedChanges, MATERIAL_ID_TABLES, MATERIAL_JSON_COLUMNS, usageMessage } from './material-usage.util';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import {
   applyStockDelta,
@@ -437,15 +438,16 @@ export class InventoryService {
     const material = await this.materialRepo.findOne({ where: { id, tenantId } });
     if (!material) throw new NotFoundException('material not found');
 
+    // 已被单据引用的 SKU：名称/规格/单位/分类/参数锁定（历史单据按 materialId 回查），价格/图片/别名/启停用可改
+    const locked = lockedChanges(material, dto);
+    if (locked.length) {
+      const where = await this.materialUsage(tenantId, id);
+      if (where.length) throw new BadRequestException(usageMessage(where, 'edit', locked));
+    }
     const nextName = dto.name !== undefined ? dto.name.trim() : material.name;
     const nextSpec = dto.spec !== undefined ? (dto.spec?.trim() || null) : material.spec;
     const identityChanged = nextName !== material.name || nextSpec !== material.spec;
     if (identityChanged) {
-      if (await this.isMaterialReferenced(tenantId, id)) {
-        throw new BadRequestException(
-          '该材料已被业务单据引用，名称和型号不可修改；请新建 SKU 并停用本条',
-        );
-      }
       await this.assertMaterialUnique(tenantId, nextName, nextSpec, id);
       material.name = nextName;
       material.spec = nextSpec;
@@ -515,6 +517,45 @@ export class InventoryService {
   }
 
   /** 是否已被业务引用（库存/批次/流水/工单耗材/采购单任一存在即锁定名称型号） */
+  /** SKU 在哪些地方被用过（为空 = 没用过，可删可全改）。每处 LIMIT 1，只问有没有 */
+  async materialUsage(tenantId: number, materialId: number): Promise<string[]> {
+    const checks = [
+      ...MATERIAL_ID_TABLES.map(([table, label]) =>
+        this.dataSource
+          .query(`SELECT 1 FROM ${table} WHERE tenant_id = $1 AND material_id = $2 LIMIT 1`, [tenantId, materialId])
+          .then((r: unknown[]) => (r.length ? label : null)),
+      ),
+      ...MATERIAL_JSON_COLUMNS.map(([table, column, label]) =>
+        this.dataSource
+          .query(`SELECT 1 FROM ${table} WHERE tenant_id = $1 AND ${column} @> $2::jsonb LIMIT 1`, [
+            tenantId,
+            JSON.stringify([{ materialId }]),
+          ])
+          .then((r: unknown[]) => (r.length ? label : null)),
+      ),
+    ];
+    return [...new Set((await Promise.all(checks)).filter((x): x is string => !!x))];
+  }
+
+  async getMaterialUsage(id: number, user: AuthUser) {
+    const tenantId = this.resolveTenantId(user);
+    const material = await this.materialRepo.findOne({ where: { id, tenantId } });
+    if (!material) throw new NotFoundException('material not found');
+    const where = await this.materialUsage(tenantId, id);
+    return { id, used: where.length > 0, where, lockedFields: where.length ? LOCKED_WHEN_USED.map(([, l]) => l) : [] };
+  }
+
+  /** 删除 SKU：被任何单据用过就拒绝（否则历史单据查不到材料），提示改为停用 */
+  async deleteMaterial(id: number, user: AuthUser) {
+    const tenantId = this.resolveTenantId(user);
+    const material = await this.materialRepo.findOne({ where: { id, tenantId } });
+    if (!material) throw new NotFoundException('material not found');
+    const where = await this.materialUsage(tenantId, id);
+    if (where.length) throw new BadRequestException(usageMessage(where, 'delete'));
+    await this.materialRepo.delete({ id, tenantId });
+    return { id, deleted: true };
+  }
+
   private async isMaterialReferenced(tenantId: number, materialId: number): Promise<boolean> {
     const [movement, lot, usage] = await Promise.all([
       this.dataSource

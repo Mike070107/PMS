@@ -111,6 +111,20 @@ export class InventoryController {
     return this.inventoryService.updateMaterial(id, dto, user);
   }
 
+  /** SKU 用在了哪些地方：前端据此锁定栏位、决定能不能删 */
+  @Get('materials/:id/usage')
+  @RequirePermission(['materials', 'app:inventory', 'app:materials'], 'view')
+  materialUsage(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.inventoryService.getMaterialUsage(id, user);
+  }
+
+  /** 删除 SKU：已被任何单据使用则拒绝（提示停用），避免历史单据查不到材料 */
+  @Delete('materials/:id')
+  @RequirePermission(['materials', 'app:materials'], 'edit')
+  deleteMaterial(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.inventoryService.deleteMaterial(id, user);
+  }
+
   /**
    * 小程序端更新材料。wx.request 不支持 PATCH，这里给一个等价的 POST 入口，
    * 逻辑与 PATCH /materials/:id 完全相同。
