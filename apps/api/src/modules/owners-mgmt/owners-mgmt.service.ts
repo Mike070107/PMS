@@ -11,7 +11,7 @@ import { OwnerSource, UserRole, UserStatus } from '../../common/enums';
 import { HouseIndex } from '../../common/house-index';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
-import { Building, Community, House, ParkingHistory, User } from '../../entities';
+import { Building, Community, House, ParkingHistory, RepairRequest, User } from '../../entities';
 import {
   CreateOwnerDto,
   ImportOwnersDto,
@@ -96,6 +96,27 @@ export class OwnersMgmtService {
     // 保安/居委会那套 2026-08-24 整体挪到员工端，归「用户管理」维护
     const rows = await qb.getRawMany<any>();
 
+    // 「已核实/活跃」= 这户在系统里有过真实交互。用报修记录做信号：
+    // 批量取每户最近一条未删除报修（内容摘要 + 时间），前端据此标「已核实」并显示最近交互。
+    const houseIds = Array.from(
+      new Set(rows.map((r) => r.houseId).filter(Boolean).map(Number)),
+    );
+    const lastByHouse = new Map<number, { at: Date; content: string | null }>();
+    if (houseIds.length) {
+      const reps = await this.userRepo.manager
+        .createQueryBuilder(RepairRequest, 'req')
+        .select(['req.house_id AS "houseId"', 'req.created_at AS "at"', 'req.content AS content'])
+        .where('req.tenant_id = :tenantId', { tenantId })
+        .andWhere('req.house_id IN (:...ids)', { ids: houseIds })
+        .distinctOn(['req.house_id'])
+        .orderBy('req.house_id', 'ASC')
+        .addOrderBy('req.created_at', 'DESC')
+        .getRawMany<{ houseId: string; at: string; content: string | null }>();
+      for (const x of reps) {
+        lastByHouse.set(Number(x.houseId), { at: new Date(x.at), content: x.content });
+      }
+    }
+
     return rows.map((r) => ({
       id: Number(r.id),
       name: r.name,
@@ -117,6 +138,15 @@ export class OwnersMgmtService {
             communityName: r.communityName,
           }
         : null,
+      // 最近交互（报修）：有则前端标「已核实」并显示；无则该档案还没人用过
+      lastInteraction:
+        r.houseId && lastByHouse.has(Number(r.houseId))
+          ? {
+              kind: 'repair' as const,
+              at: lastByHouse.get(Number(r.houseId))!.at,
+              label: (lastByHouse.get(Number(r.houseId))!.content || '报修').trim().slice(0, 24),
+            }
+          : null,
     }));
   }
 
