@@ -11,6 +11,7 @@ import {
   Length,
   Max,
   MaxLength,
+  Matches,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -629,6 +630,13 @@ export class ChargeQueryDto {
 }
 
 export class PayChargeDto {
+  /** 相同收款操作重试必须沿用此编号 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  @Matches(/^[A-Za-z0-9_-]{8,80}$/)
+  clientRequestId?: string;
+
   /** 本次实收金额（分）。不传按剩余应收全额 */
   @IsOptional()
   @Type(() => Number)

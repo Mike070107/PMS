@@ -10,6 +10,7 @@ import { ResolvedAccess } from '../access/access.service';
 import { MetersService } from './meters.service';
 import { Meters1792900000000 } from '../../migrations/1792900000000-Meters';
 import { MeterLearning1792900000001 } from '../../migrations/1792900000001-MeterLearning';
+import { MeterChargePayments1792900000002 } from '../../migrations/1792900000002-MeterChargePayments';
 
 /**
  * 在内存 PostgreSQL 里跑真实迁移和真实 SQL/事务，验证「读数→用量→账单→收款」这条链。
@@ -58,6 +59,7 @@ async function fixture() {
 
   await new Meters1792900000000().up({ query: (sql: string) => pg.query(sql) } as any);
   await new MeterLearning1792900000001().up({ query: (sql: string) => pg.query(sql) } as any);
+  await new MeterChargePayments1792900000002().up({ query: (sql: string) => pg.query(sql) } as any);
   await pg.query(
     `INSERT INTO meters(tenant_id, meter_no, meter_type, name, unit, integer_digits, decimal_digits,
        multiplier, unit_price_cents, initial_reading, initial_reading_at, last_reading_value,
@@ -251,5 +253,66 @@ test('现场改数自动进入候选池：原图与裁切图保留，重试不�
     assert.equal(rows.rows[0].ocr_raw.recognitionImageKey, 'uploads/meter/crop.png');
     const sampleRows = await pg.query<any>('SELECT corrected_digits FROM meter_ocr_samples');
     assert.equal(sampleRows.rows[0].corrected_digits, '02411');
+  } finally { await pg.close(); }
+});
+
+
+test('抄表收款：部分收款重试不重复入账，变更同一请求被拒绝，刷新金额一致', async () => {
+  const { pg, service } = await fixture();
+  try {
+    const created = await service.createReading(1, reading(2410, '2026-10-01T09:00:00+08:00', 'pay-reading'), user, access);
+    const reviewed = await service.reviewReading(created.reading.id, {}, user, access);
+    const id = reviewed.charge!.id;
+    const payload = { amountCents: 1000, method: 'wechat', clientRequestId: 'meter-pay-1' };
+    assert.equal((await service.payCharge(id, payload, user, access)).paidCents, 1000);
+    assert.equal((await service.payCharge(id, payload, user, access)).paidCents, 1000);
+    await assert.rejects(service.payCharge(id, { ...payload, amountCents: 1100 }, user, access), /同一收款请求/);
+    await assert.rejects(service.payCharge(id, { ...payload, clientRequestId: 'other-tenant' }, { ...user, tenantId: 2 }, access), /不存在/);
+    await assert.rejects(service.payCharge(id, { amountCents: 3300, method: 'cash', clientRequestId: 'too-much' }, user, access), /超过待收/);
+    const final = await service.payCharge(id, { amountCents: 3200, method: 'cash', clientRequestId: 'meter-pay-2' }, user, access);
+    assert.equal(final.status, 'paid');
+    assert.equal((await service.payCharge(id, payload, user, access)).paidCents, 4200);
+    const detail = await service.meterDetail(1, user, access);
+    assert.equal(detail.stats.unpaidCents, 0);
+    assert.equal(detail.charges[0].paidCents, 4200);
+    const log = await pg.query('SELECT amount_cents, method FROM meter_charge_payments ORDER BY id');
+    assert.deepEqual(log.rows, [{ amount_cents: 1000, method: 'wechat' }, { amount_cents: 3200, method: 'cash' }]);
+  } finally { await pg.close(); }
+});
+
+
+test('账单读数来自对应抄表快照：首次减期初、第二次减上次，档案底数修改不覆盖账单', async () => {
+  const { pg, service } = await fixture();
+  try {
+    const first = await service.createReading(1, reading(2410, '2026-10-01T09:00:00+08:00', 'bill-reading-1'), user, access);
+    await service.reviewReading(first.reading.id, {}, user, access);
+    const second = await service.createReading(1, reading(2415, '2026-10-05T09:00:00+08:00', 'bill-reading-2'), user, access);
+    await service.reviewReading(second.reading.id, {}, user, access);
+    await pg.query('UPDATE meters SET initial_reading = 9999 WHERE id = 1');
+    const list = await service.listCharges({}, user, access);
+    assert.equal(list.rows[0].previousValue, 2410);
+    assert.equal(list.rows[0].readingValue, 2415);
+    assert.equal(list.rows[0].usageValue, list.rows[0].readingValue! - list.rows[0].previousValue!);
+    assert.equal(list.rows[1].previousValue, 2400);
+    assert.equal(list.rows[1].readingValueText, '02410');
+    assert.equal(list.rows[1].previousValueText, '02400');
+    const detail = await service.meterDetail(1, user, access);
+    assert.equal(detail.charges[0].readingValueText, list.rows[0].readingValueText);
+    assert.equal(detail.charges[1].previousValue, 2400);
+  } finally { await pg.close(); }
+});
+
+
+test('抄表GPS随原记录保存并复核后仍可读取，不使用档案安装坐标覆盖', async () => {
+  const { pg, service } = await fixture();
+  try {
+    const created = await service.createReading(1, { ...reading(2410, '2026-10-30T09:00:00+08:00', 'gps-reading'), latitude: 31.2, longitude: 121.4, accuracy: 8 }, user, access);
+    assert.equal(created.reading.latitude, 31.2);
+    const reviewed = await service.reviewReading(created.reading.id, {}, user, access);
+    assert.equal(reviewed.reading.status, 'confirmed');
+    const saved = await service.readingDetail(created.reading.id, user, access);
+    assert.equal(saved.reading.latitude, 31.2); assert.equal(saved.reading.longitude, 121.4);
+    assert.equal(Number(saved.reading.gpsAccuracy), 8);
+    await assert.rejects(service.reviewReading(created.reading.id, {}, user, access), /已经复核/);
   } finally { await pg.close(); }
 });

@@ -1,3 +1,4 @@
+export const METER_READING_STATUS_LABELS = { pending: '待复核', confirmed: '已复核', void: '已作废' } as const;
 import { request } from '../request';
 
 export type MeterType = 'water' | 'electricity' | 'gas' | 'heat';
@@ -109,6 +110,10 @@ export interface MeterChargeRow {
   meterTypeLabel: string;
   ownerName: string;
   period: string;
+  previousValue: number | null;
+  readingValue: number | null;
+  previousValueText: string | null;
+  readingValueText: string | null;
   usageValue: number;
   unit: string;
   unitPriceCents: number;
@@ -415,6 +420,7 @@ export const meters = {
   payCharge: (
     id: number,
     data: {
+      clientRequestId?: string;
       amountCents?: number;
       method?: string;
       paidAt?: string;

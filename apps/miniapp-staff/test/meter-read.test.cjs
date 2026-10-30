@@ -8,7 +8,7 @@ const apiRequire=createRequire(path.resolve(__dirname,'../../api/package.json'))
 const ts=apiRequire('typescript');
 const crop=apiRequire(path.resolve(__dirname,'../miniprogram/utils/crop.ts'));
 const meter=apiRequire(path.resolve(__dirname,'../miniprogram/utils/meter.ts'));
-function fixture({render=async()=>'/crop.png'}={}) {
+function fixture({render=async()=>'/crop.png',locate=async()=>({latitude:31.2,longitude:121.4,accuracy:8,capturedAt:Date.now()})}={}) {
  let definition, request, submission;
  const originalKey='uploads/original.jpg';
  const client={upload:{uploadTempFile:async()=>({objectKey:'uploads/crop.png'})},meters:{
@@ -22,6 +22,7 @@ function fixture({render=async()=>'/crop.png'}={}) {
    if(name==='@pms/api-client')return client;
    if(name.endsWith('/crop'))return crop;
    if(name.endsWith('/meter'))return meter;
+   if(name.endsWith('/meter-location'))return {getMeterLocation:locate};
    if(name.endsWith('/meter-crop'))return {};
    if(name.endsWith('/meter-crop-canvas'))return {renderMeterCrop:render};
    if(name.endsWith('/session'))return {};
@@ -46,4 +47,20 @@ test('红框图独立识别，提交和留档保持全景原图',async()=>{
 test('取消裁切等待后，迟到结果不会触发上传识别或覆盖输入',async()=>{
  let resolve;const f=fixture({render:()=>new Promise(r=>resolve=r)});const pending=f.page.recognizeRoi();f.page.onCancelRecognition();f.page.onCropValueInput({detail:{value:'00999'}});resolve('/crop.png');await pending;
  assert.equal(f.request,undefined);assert.equal(f.page.data.valueText,'00999');assert.equal(f.page.data.recognizing,false);
+});
+
+
+test('拍照定位：定位中可见，失败清空旧坐标，重试成功保存GCJ02坐标及精度',async()=>{
+ let reject;const f=fixture({locate:()=>new Promise((_r,j)=>reject=j)});f.page.data.location={latitude:30,longitude:120};const wait=f.page.initLocation();
+ assert.equal(f.page.data.locationStatus,'loading');assert.equal(f.page.data.location.latitude,undefined);reject(Error('定位权限被拒绝'));await wait;
+ assert.equal(f.page.data.locationStatus,'failed');assert.match(f.page.data.locationText,/权限/);
+});
+test('拍照定位：后发定位优先，过期回调不能覆盖新坐标；重拍清空旧坐标',async()=>{
+ const callbacks=[];const f=fixture({locate:()=>new Promise(r=>callbacks.push(r))});
+ const first=f.page.initLocation();const second=f.page.initLocation();callbacks[1]({latitude:31,longitude:121,accuracy:6,capturedAt:Date.now()});await second;
+ callbacks[0]({latitude:30,longitude:120,accuracy:5,capturedAt:Date.now()});await first;assert.equal(f.page.data.location.latitude,31);
+ f.page.onRetake();assert.equal(f.page.data.location.latitude,undefined);assert.equal(f.page.data.locationStatus,'idle');
+});
+test('拍照定位：提交前补取定位，坐标和精度进入原有保存接口',async()=>{
+ const f=fixture();f.page.data.valueText='00881';await f.page.submit();assert.equal(f.submission.latitude,31.2);assert.equal(f.submission.longitude,121.4);assert.equal(f.submission.accuracy,8);
 });

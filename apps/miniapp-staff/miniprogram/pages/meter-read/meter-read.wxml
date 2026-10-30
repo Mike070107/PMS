@@ -21,6 +21,17 @@
       </view>
     </view>
 
+    <view class="card meter-location-card" aria-live="polite">
+      <view class="meter-location-head"><image class="meter-location-icon" src="/assets/location-pin.svg" mode="aspectFit" /><text>现场定位</text></view>
+      <view class="meter-location-status {{locationStatus === 'failed' ? 'is-warn' : ''}}">{{locationText}}</view>
+      <view wx:if="{{photoSource === 'album'}}" class="meter-location-help">相册照片记录的是本次选图时的位置，不代表原照片拍摄位置。</view>
+      <view class="meter-location-actions">
+        <button wx:if="{{locationStatus === 'ready'}}" class="mini-btn" bindtap="onViewCaptureLocation">查看位置</button>
+        <button class="mini-btn" loading="{{locationStatus === 'loading'}}" disabled="{{locationStatus === 'loading' || submitting}}" bindtap="onRetryLocation">{{locationStatus === 'ready' ? '重新定位' : '获取定位'}}</button>
+        <button wx:if="{{locationStatus === 'failed'}}" class="mini-btn" bindtap="onLocationSettings">微信定位设置</button>
+      </view>
+    </view>
+
     <!-- 拍照走系统相机：这条链路在真机/体验版最稳；闪光灯用系统相机顶部的控制 -->
     <block wx:if="{{mode === 'camera'}}">
       <view class="card meter-camera-launch">
@@ -178,6 +189,7 @@
     </view>
     <view class="crop-hint">{{autoBoxText || '单指拖动 · 双指缩放/旋转 · 框不动'}}</view>
     <scroll-view scroll-y class="crop-sheet" style="height:{{recognizing ? 240 : (digitWarning || error || valueError ? 420 : 340)}}rpx;">
+      <view class="crop-location-state" aria-live="polite"><image src="/assets/location-pin.svg" mode="aspectFit" />{{locationStatus === 'loading' ? '正在获取现场定位…' : locationStatus === 'ready' ? locationText : '尚无现场定位，返回后可重新定位'}}</view>
       <view wx:if="{{recognizing}}">
         <view class="crop-sheet__hint">{{recognitionStatus || '正在保存全景原图…'}}</view>
         <button class="btn btn--ghost crop-cancel" bindtap="onCancelRecognition">取消等待</button>

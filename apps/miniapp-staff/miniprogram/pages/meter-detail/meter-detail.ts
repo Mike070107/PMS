@@ -1,15 +1,18 @@
-import { meters } from '@pms/api-client';
+import { meters, METER_READING_STATUS_LABELS } from '@pms/api-client';
 import type { MeterChargeRow, MeterDetailResp, MeterReadingRow } from '@pms/api-client';
 import { getSession } from '../../utils/session';
-import { formatMeterTime, meterErrText } from '../../utils/meter';
+import { formatMeterTime, meterErrText, readingTextError } from '../../utils/meter';
 
 interface ChargeView extends MeterChargeRow {
   receivableYuan: string;
   paidYuan: string;
+  outstandingYuan: string;
+  hasPendingPayment: boolean;
 }
 
 interface ReadingView extends MeterReadingRow {
   readAtText: string;
+  statusLabel: string;
 }
 
 interface DetailView extends Omit<MeterDetailResp, 'charges' | 'stats' | 'readings'> {
@@ -25,6 +28,18 @@ Page({
     loading: true,
     error: '',
     canSubmit: false,
+    reviewTarget: null as ReadingView | null,
+    reviewValue: '', reviewNote: '', reviewValueError: '', reviewError: '', reviewBusy: false, reviewFocus: false,
+    canPay: false,
+    payScope: '',
+    payTarget: null as ChargeView | null,
+    payAmount: '', payMethod: '', payReceipt: '', payNote: '',
+    payAmountError: '', payMethodError: '', payError: '', payAmountFocus: false,
+    payBusy: false, payPending: false,
+    paymentMethods: [
+      { value: 'wechat', label: '微信' }, { value: 'alipay', label: '支付宝' }, { value: 'cash', label: '现金' },
+    ],
+    otherPaymentMethods: [ { value: 'bank', label: '银行转账' }, { value: 'other', label: '其他' } ],
     canEditArchive: false,
     tab: 'archive' as 'archive' | 'readings' | 'charges',
     form: {
@@ -54,21 +69,27 @@ Page({
     this.setData({ loading: true, error: '' });
     try {
       const [detail, session] = await Promise.all([meters.detail(this.data.id), getSession(this)]);
+      const payScope = `meter-pay:${session.me?.tenantId}:${session.me?.id}`;
       const view: DetailView = {
         ...detail,
         readings: detail.readings.map((reading) => ({
           ...reading,
           readAtText: formatMeterTime(reading.readAt),
+          statusLabel: METER_READING_STATUS_LABELS[reading.status],
         })),
         charges: detail.charges.map((charge) => ({
           ...charge,
           receivableYuan: (charge.receivableCents / 100).toFixed(2),
           paidYuan: (charge.paidCents / 100).toFixed(2),
+          outstandingYuan: (charge.outstandingCents / 100).toFixed(2),
+          hasPendingPayment: !!wx.getStorageSync(`${payScope}:${charge.id}`),
         })),
         stats: { ...detail.stats, unpaidYuan: (detail.stats.unpaidCents / 100).toFixed(2) },
       };
       this.setData({
         detail: view,
+        canPay: session.canCharge,
+        payScope,
         canSubmit: session.canSubmitReading,
         canEditArchive: session.canSubmitReading,
         loading: false,
@@ -86,6 +107,69 @@ Page({
     } catch (e) {
       this.setData({ loading: false, error: meterErrText(e) });
     }
+  },
+
+  onOpenPay(event: any) {
+    if (!this.data.canPay || this.data.payBusy) return;
+    const row = this.data.detail?.charges.find((item) => item.id === Number(event.currentTarget.dataset.id));
+    if (!row) return;
+    const pending = wx.getStorageSync(`${this.data.payScope}:${row.id}`);
+    if (!pending && (row.status === 'paid' || row.status === 'void' || row.outstandingCents <= 0)) return;
+    this.setData({ payTarget: row, payAmount: pending ? (pending.amountCents / 100).toFixed(2) : row.outstandingYuan,
+      payMethod: pending?.method || '', payReceipt: pending?.receiptNo || '', payNote: pending?.note || '',
+      payAmountError: '', payMethodError: '', payError: '', payPending: !!pending, payAmountFocus: false }, () => {
+      wx.pageScrollTo({ selector: '#meter-pay-form', duration: 200 });
+    });
+  },
+
+  onPayField(event: any) {
+    if (this.data.payBusy || this.data.payPending) return;
+    const field = event.currentTarget.dataset.field;
+    if (!['payAmount', 'payReceipt', 'payNote'].includes(field)) return;
+    this.setData({ [field]: event.detail.value, ...(field === 'payAmount' ? { payAmountError: '', payAmountFocus: false } : {}) });
+  },
+
+  onPayMethod(event: any) {
+    if (this.data.payBusy || this.data.payPending) return;
+    this.setData({ payMethod: event.currentTarget.dataset.value, payMethodError: '' });
+  },
+
+  onClosePay() { if (!this.data.payBusy) this.setData({ payTarget: null }); },
+
+  async onSubmitPay() {
+    const target = this.data.payTarget;
+    if (!target || !this.data.canPay || this.data.payBusy) return;
+    const key = `${this.data.payScope}:${target.id}`;
+    const pending = wx.getStorageSync(key);
+    const text = this.data.payAmount.trim();
+    const amountCents = Math.round(Number(text) * 100);
+    const amountError = pending ? '' : !/^\d+(?:\.\d{1,2})?$/.test(text) || !Number.isSafeInteger(amountCents) || amountCents < 1
+      ? '请填写大于0的金额，最多两位小数' : amountCents > Math.min(target.outstandingCents, 100000000)
+      ? `本次最多可收 ¥${(Math.min(target.outstandingCents, 100000000) / 100).toFixed(2)}` : '';
+    const methodError = !pending && !['wechat','alipay','cash','bank','other'].includes(this.data.payMethod) ? '请选择收款方式' : '';
+    this.setData({ payAmountError: amountError, payMethodError: methodError, payAmountFocus: !!amountError });
+    if (amountError || methodError) {
+      wx.pageScrollTo({ selector: amountError ? '#meter-pay-amount' : '#meter-pay-methods', duration: 200 });
+      return;
+    }
+    const payload = pending || { clientRequestId: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
+      amountCents, method: this.data.payMethod, receiptNo: this.data.payReceipt.trim(), note: this.data.payNote.trim() };
+    this.setData({ payBusy: true, payError: '' });
+    try {
+      // 先持久化请求编号；断网、退出再进入仍按同一笔重试。
+      wx.setStorageSync(key, payload);
+      this.setData({ payPending: true });
+      await meters.payCharge(target.id, payload);
+      wx.removeStorageSync(key);
+      this.setData({ payTarget: null, payPending: false });
+      wx.showToast({ icon: 'success', title: '收款已登记' });
+      await this.load();
+    } catch (e: any) {
+      if ([400, 422].includes(e?.httpStatus)) {
+        wx.removeStorageSync(key); this.setData({ payPending: false });
+      }
+      this.setData({ payError: meterErrText(e) });
+    } finally { this.setData({ payBusy: false }); }
   },
 
   onTab(event: any) {
@@ -148,33 +232,43 @@ Page({
 
   onReview(event: any) {
     const reading = this.data.detail?.readings.find((row) => row.id === Number(event.currentTarget.dataset.id));
-    if (!reading) return;
-    wx.showModal({
-      title: `复核 ${reading.readingValueText} ${reading.unit}`,
-      editable: true,
-      placeholderText: '核对后的读数，可直接确认或改数',
-      content: reading.readingValueText,
-      confirmText: '复核通过',
-      success: async (res: any) => {
-        if (!res.confirm) return;
-        const text = String(res.content || '').trim();
-        const value = text ? Number(text) : undefined;
-        if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
-          wx.showToast({ icon: 'none', title: '读数格式不对' });
-          return;
-        }
-        try {
-          const result = await meters.reviewReading(reading.id, { readingValue: value });
-          wx.showToast({
-            icon: 'success',
-            title: result.charge ? '复核通过，已出账' : '复核通过',
-          });
-          await this.load();
-        } catch (e) {
-          wx.showToast({ icon: 'none', title: meterErrText(e) });
-        }
-      },
-    } as any);
+    if (!reading || this.data.reviewBusy) return;
+    this.setData({ reviewTarget: reading, reviewValue: reading.readingValueText, reviewNote: reading.reviewNote || '',
+      reviewValueError: '', reviewError: '', reviewFocus: false }, () => wx.pageScrollTo({ selector: '#meter-review-form', duration: 200 }));
+  },
+  onReviewValue(event: any) { if (!this.data.reviewBusy) this.setData({ reviewValue: event.detail.value, reviewValueError: '', reviewFocus: false }); },
+  onReviewNote(event: any) { if (!this.data.reviewBusy) this.setData({ reviewNote: event.detail.value }); },
+  onCloseReview() { if (!this.data.reviewBusy) this.setData({ reviewTarget: null }); },
+
+  async onSubmitReview() {
+    const target = this.data.reviewTarget;
+    if (!target || target.status !== 'pending' || !this.data.canSubmit || this.data.reviewBusy) return;
+    const error = readingTextError(this.data.reviewValue);
+    if (error) { this.setData({ reviewValueError: error, reviewFocus: true }); return; }
+    this.setData({ reviewBusy: true, reviewError: '' });
+    const apply = (row: MeterReadingRow) => this.setData({ reviewTarget: { ...row, readAtText: formatMeterTime(row.readAt),
+      statusLabel: METER_READING_STATUS_LABELS[row.status] }, reviewValue: row.readingValueText });
+    try {
+      const result = await meters.reviewReading(target.id, { readingValue: Number(this.data.reviewValue), reviewNote: this.data.reviewNote.trim() || undefined });
+      apply(result.reading);
+      wx.showToast({ icon: 'success', title: result.charge ? '已复核，已出账' : '已复核' });
+      await this.load();
+    } catch (error) {
+      try {
+        const latest = await meters.reading(target.id);
+        if (latest.reading.status === 'confirmed') { apply(latest.reading); await this.load(); return; }
+      } catch { /* 仍保留原输入 */ }
+      this.setData({ reviewError: meterErrText(error) });
+    } finally { this.setData({ reviewBusy: false }); }
+  },
+
+  onReadingLocation(event: any) {
+    const id = Number(event.currentTarget.dataset.id);
+    const reading = this.data.reviewTarget?.id === id ? this.data.reviewTarget : this.data.detail?.readings.find((row) => row.id === id);
+    if (!reading || reading.latitude === null || reading.longitude === null) return;
+    wx.openLocation({ latitude: reading.latitude, longitude: reading.longitude, name: '本次抄表现场定位',
+      address: `${reading.meterNo} · ${formatMeterTime(reading.readAt)}`, scale: 18,
+      fail: () => wx.showToast({ icon: 'none', title: '地图打开失败，请重试' }) });
   },
 
   onRead() {

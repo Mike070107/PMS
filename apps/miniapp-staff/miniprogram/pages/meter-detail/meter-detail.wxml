@@ -57,6 +57,26 @@
     <block wx:elif="{{tab === 'readings'}}">
       <view class="card meter-history">
         <view class="meter-section-title">抄表历史</view>
+        <view wx:if="{{reviewTarget}}" id="meter-review-form" class="meter-review-panel">
+          <view class="meter-section-title">{{reviewTarget.status === 'pending' && canSubmit ? '复核抄表' : '抄表详情'}} · {{reviewTarget.statusLabel}}</view>
+          <image wx:if="{{reviewTarget.photoUrl}}" class="meter-review-original" src="{{reviewTarget.photoUrl}}" mode="widthFix" data-url="{{reviewTarget.photoUrl}}" bindtap="onPreviewPhoto" />
+          <view class="meter-review-meta">{{reviewTarget.readAtText}} · {{reviewTarget.operatorName || '—'}}</view>
+          <view class="meter-review-meta">上次 {{reviewTarget.previousValue === null ? '未设置' : reviewTarget.previousValue}} · 本次 {{reviewTarget.readingValueText}} {{reviewTarget.unit}}</view>
+          <view class="meter-review-meta">用量 {{reviewTarget.usageValue === null ? '无底数，未计算' : reviewTarget.usageValue + ' ' + reviewTarget.unit}}</view>
+          <button wx:if="{{reviewTarget.latitude !== null && reviewTarget.longitude !== null}}" class="meter-gps-button" aria-label="查看本次抄表定位" data-id="{{reviewTarget.id}}" bindtap="onReadingLocation"><image src="/assets/location-pin.svg" mode="aspectFit" />定位</button>
+          <view wx:else class="meter-review-meta">未记录现场定位</view>
+          <block wx:if="{{reviewTarget.status === 'pending' && canSubmit}}">
+            <label for="meter-review-value" class="meter-pay-label">核对后的读数 *</label>
+            <input id="meter-review-value" class="meter-pay-input {{reviewValueError ? 'is-invalid' : ''}}" aria-label="核对后的读数" aria-invalid="{{!!reviewValueError}}" aria-describedby="meter-review-value-error" focus="{{reviewFocus}}" type="digit" value="{{reviewValue}}" disabled="{{reviewBusy}}" bindinput="onReviewValue" />
+            <view wx:if="{{reviewValueError}}" id="meter-review-value-error" class="meter-pay-error">{{reviewValueError}}</view>
+            <label for="meter-review-note" class="meter-pay-label">复核备注（选填）</label>
+            <textarea id="meter-review-note" class="meter-review-note" value="{{reviewNote}}" maxlength="1000" disabled="{{reviewBusy}}" bindinput="onReviewNote" />
+            <view wx:if="{{reviewError}}" class="meter-pay-error" role="alert">{{reviewError}}</view>
+            <button class="btn btn--primary meter-review-submit" loading="{{reviewBusy}}" disabled="{{reviewBusy}}" bindtap="onSubmitReview">确认复核</button>
+          </block>
+          <view wx:elif="{{reviewTarget.reviewNote}}" class="meter-review-meta">复核备注：{{reviewTarget.reviewNote}}</view>
+          <button class="btn btn--outline meter-review-close" disabled="{{reviewBusy}}" bindtap="onCloseReview">关闭详情</button>
+        </view>
         <view wx:if="{{!detail.readings.length}}" class="meter-section-empty">还没有抄表记录</view>
         <view wx:for="{{detail.readings}}" wx:key="id" class="meter-history-row">
           <image
@@ -73,17 +93,17 @@
               <text class="meter-history-value">{{item.readingValueText}}</text>
               <text class="meter-history-unit">{{item.unit}}</text>
               <text wx:if="{{item.status === 'void'}}" class="meter-history-void">已作废</text>
-              <text wx:if="{{item.status === 'pending'}}" class="meter-history-pending">待复核</text>
+              <text class="meter-history-pending {{item.status === 'confirmed' ? 'is-reviewed' : ''}}">{{item.statusLabel}}</text>
             </view>
             <view class="meter-history-meta">{{item.readAtText}} · {{item.operatorName || '—'}}</view>
             <view class="meter-history-meta">
               用量 {{item.usageValue === null ? '首次' : item.usageValue + ' ' + item.unit}}
-              <text wx:if="{{item.latitude !== null}}"> · 已记录定位</text>
+              <button wx:if="{{item.latitude !== null && item.longitude !== null}}" class="meter-gps-button" aria-label="查看本次抄表定位" data-id="{{item.id}}" bindtap="onReadingLocation"><image src="/assets/location-pin.svg" mode="aspectFit" />定位</button>
             </view>
             <view wx:if="{{item.anomalyLabels.length}}" class="meter-history-tags">
               <text wx:for="{{item.anomalyLabels}}" wx:for-item="label" wx:key="*this" class="meter-history-tag">{{label}}</text>
             </view>
-            <button wx:if="{{item.status === 'pending' && canSubmit}}" class="btn btn--outline btn--sm meter-review-btn" data-id="{{item.id}}" bindtap="onReview">复核 / 修正读数</button>
+            <button class="btn btn--outline btn--sm meter-review-btn" disabled="{{reviewBusy}}" data-id="{{item.id}}" bindtap="onReview">{{item.status === 'pending' && canSubmit ? '复核' : '查看详情'}}</button>
           </view>
         </view>
       </view>
@@ -92,17 +112,44 @@
     <block wx:else>
       <view class="card meter-history">
         <view class="meter-section-title">账单收费</view>
+        <view wx:if="{{payTarget}}" id="meter-pay-form" class="meter-pay-form">
+          <view class="meter-section-title">登记收款 · {{payTarget.period}}</view>
+          <view class="meter-pay-summary">应收 ¥{{payTarget.receivableYuan}} · 已收 ¥{{payTarget.paidYuan}} · 待收 ¥{{payTarget.outstandingYuan}}</view>
+          <view class="meter-pay-help">仅登记已收到的款项，不会发起微信或支付宝扣款。</view>
+          <view wx:if="{{payPending}}" class="meter-pay-warning">本次登记结果待确认。请按原资料查询或重试，同一笔不会重复入账。</view>
+          <label for="meter-pay-amount" class="meter-pay-label">本次收款（元） *</label>
+          <input id="meter-pay-amount" class="meter-pay-input {{payAmountError ? 'is-invalid' : ''}}" aria-label="本次收款（元）" aria-invalid="{{!!payAmountError}}" aria-describedby="meter-pay-amount-error" focus="{{payAmountFocus}}" type="digit" value="{{payAmount}}" disabled="{{payBusy || payPending}}" data-field="payAmount" bindinput="onPayField" />
+          <view wx:if="{{payAmountError}}" id="meter-pay-amount-error" class="meter-pay-error">{{payAmountError}}</view>
+          <view class="meter-pay-label">收款方式 *</view>
+          <view id="meter-pay-methods" class="meter-pay-methods {{payMethodError ? 'is-invalid' : ''}}" role="group" aria-label="收款方式" aria-invalid="{{!!payMethodError}}" aria-describedby="meter-pay-method-error">
+            <button wx:for="{{paymentMethods}}" wx:key="value" class="meter-pay-method {{payMethod === item.value ? 'is-selected' : ''}}" aria-pressed="{{payMethod === item.value}}" disabled="{{payBusy || payPending}}" data-value="{{item.value}}" bindtap="onPayMethod"><image src="/assets/payment/{{item.value}}.svg" mode="aspectFit" aria-hidden="true" /><text>{{item.label}}</text></button>
+          <view class="meter-pay-other-methods">
+            <button wx:for="{{otherPaymentMethods}}" wx:key="value" class="meter-pay-other {{payMethod === item.value ? 'is-selected' : ''}}" aria-pressed="{{payMethod === item.value}}" disabled="{{payBusy || payPending}}" data-value="{{item.value}}" bindtap="onPayMethod">{{item.label}}</button>
+          </view>
+          </view>
+          <view wx:if="{{payMethodError}}" id="meter-pay-method-error" class="meter-pay-error">{{payMethodError}}</view>
+          <label for="meter-pay-receipt" class="meter-pay-label">票据号（选填）</label>
+          <input id="meter-pay-receipt" class="meter-pay-input" value="{{payReceipt}}" maxlength="60" disabled="{{payBusy || payPending}}" data-field="payReceipt" bindinput="onPayField" />
+          <label for="meter-pay-note" class="meter-pay-label">备注（选填）</label>
+          <input id="meter-pay-note" class="meter-pay-input" value="{{payNote}}" maxlength="500" disabled="{{payBusy || payPending}}" data-field="payNote" bindinput="onPayField" />
+          <view wx:if="{{payError}}" role="alert" class="meter-pay-error">{{payError}}</view>
+          <button class="btn btn--primary meter-pay-submit" loading="{{payBusy}}" disabled="{{payBusy}}" bindtap="onSubmitPay">{{payPending ? '查询 / 重试本次登记' : '确认登记收款'}}</button>
+          <button class="btn btn--outline meter-pay-close" disabled="{{payBusy}}" bindtap="onClosePay">关闭</button>
+        </view>
         <view wx:if="{{!detail.charges.length}}" class="meter-section-empty">还没有生成账单；抄表复核通过后自动出账</view>
         <view wx:for="{{detail.charges}}" wx:key="id" class="meter-charge-row">
           <view class="meter-charge-main">
             <view class="meter-charge-period">{{item.period}}</view>
+            <view class="meter-charge-meta">上次 {{item.previousValueText === null ? '未设置' : item.previousValueText}} · 本次 {{item.readingValueText || '—'}}</view>
             <view class="meter-charge-meta">用量 {{item.usageValue}} {{item.unit}} · 单价 ¥{{item.unitPriceCents / 100}}</view>
           </view>
           <view class="meter-charge-side">
-            <view class="meter-charge-money">¥{{item.receivableYuan}}</view>
+            <view class="meter-charge-money">应收 ¥{{item.receivableYuan}}</view>
+            <view class="meter-charge-meta">已收 ¥{{item.paidYuan}} · 待收 ¥{{item.outstandingYuan}}</view>
             <view class="meter-charge-status {{item.status === 'paid' ? 'is-ok' : item.status === 'void' ? 'is-void' : 'is-warn'}}">
               {{item.status === 'paid' ? '已结清' : item.status === 'partial' ? '部分收款' : item.status === 'void' ? '已作废' : '待收'}}
             </view>
+            <button wx:if="{{canPay && (item.hasPendingPayment || ((item.status === 'unpaid' || item.status === 'partial') && item.outstandingCents > 0))}}" class="btn btn--outline btn--sm meter-pay-open" disabled="{{payBusy}}" data-id="{{item.id}}" bindtap="onOpenPay">{{item.hasPendingPayment ? '核对登记结果' : '登记收款'}}</button>
           </view>
         </view>
       </view>

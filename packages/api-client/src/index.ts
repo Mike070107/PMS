@@ -22,7 +22,7 @@ export * as repairExperiences from './endpoints/repair-experiences';
 export * as accessCardIssuance from './endpoints/access-card-issuance';
 export * as apartmentCashier from './endpoints/apartment-cashier';
 export * as familyCars from './endpoints/family-cars';
-export { meters } from './endpoints/meters';
+export { meters, METER_READING_STATUS_LABELS } from './endpoints/meters';
 export type {
   MeterRow,
   MeterReadingRow,

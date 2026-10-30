@@ -1,3 +1,4 @@
+import { getMeterLocation } from '../../utils/meter-location';
 import { meters, upload } from '@pms/api-client';
 import type { MeterOcrResp, MeterRow, ReadingResult } from '@pms/api-client';
 import { getSession } from '../../utils/session';
@@ -88,7 +89,10 @@ Page({
     readAt: '',
     readAtText: '',
     location: {} as LocationInfo,
-    locationText: '正在获取位置…',
+    locationText: '拍照后获取现场定位',
+    locationStatus: 'idle',
+    locationAt: 0,
+    photoSource: 'camera',
     ocr: null as MeterOcrResp | null,
     recognizing: false,
     uploading: false,
@@ -159,24 +163,41 @@ Page({
     } catch (e) {
       this.setData({ loading: false, error: meterErrText(e) });
     }
-    this.initLocation();
+
   },
 
   initLocation() {
-    wx.getLocation({
-      type: 'gcj02',
-      isHighAccuracy: true,
-      highAccuracyExpireTime: 4000,
-      success: (res) => {
-        this.setData({
-          location: { latitude: res.latitude, longitude: res.longitude, accuracy: res.accuracy },
-          locationText: `已记录位置（精度约 ${Math.round(res.accuracy || 0)} 米）`,
-        });
-      },
-      fail: () => {
-        this.setData({ locationText: '未获取定位，仍可抄表；后台会标记“无现场定位”' });
-      },
+    const token = ((this as any).locationToken || 0) + 1;
+    (this as any).locationToken = token;
+    this.setData({ location: {}, locationAt: 0, locationStatus: 'loading', locationText: '正在获取现场定位…' });
+    const pending = getMeterLocation().then((point) => {
+      if ((this as any).locationToken !== token) return false;
+      this.setData({ location: { latitude: point.latitude, longitude: point.longitude, accuracy: point.accuracy },
+        locationAt: point.capturedAt, locationStatus: 'ready',
+        locationText: `已获取现场定位（${point.accuracy === undefined ? '精度未知' : '精度约 ' + Math.round(point.accuracy) + ' 米'}）` });
+      return true;
+    }).catch((error) => {
+      if ((this as any).locationToken !== token) return false;
+      this.setData({ location: {}, locationAt: 0, locationStatus: 'failed', locationText: meterErrText(error) });
+      return false;
     });
+    (this as any).locationPromise = pending;
+    return pending;
+  },
+
+  onRetryLocation() { if (this.data.locationStatus !== 'loading' && !this.data.submitting) void this.initLocation(); },
+  onLocationSettings() {
+    wx.openSetting({ success: () => { void this.initLocation(); } });
+  },
+  onViewCaptureLocation() {
+    const point = this.data.location;
+    if (point.latitude === undefined || point.longitude === undefined) return;
+    wx.openLocation({ latitude: point.latitude, longitude: point.longitude, name: '本次抄表现场位置', scale: 18,
+      fail: () => wx.showToast({ icon: 'none', title: '地图打开失败，请重试' }) });
+  },
+  onUnload() {
+    (this as any).locationToken = ((this as any).locationToken || 0) + 1;
+    (this as any).cropToken = ((this as any).cropToken || 0) + 1;
   },
 
   async takeSystemPhoto() {
@@ -188,7 +209,7 @@ Page({
         sizeType: ['original'],
       });
       const file = res.tempFiles?.[0];
-      if (file?.tempFilePath) this.handlePhoto(file.tempFilePath);
+      if (file?.tempFilePath) this.handlePhoto(file.tempFilePath, 'camera');
     } catch (e: any) {
       const msg = String(e?.errMsg || '');
       if (!/cancel/i.test(msg)) {
@@ -206,14 +227,16 @@ Page({
         sizeType: ['original'],
       });
       const file = res.tempFiles?.[0];
-      if (file?.tempFilePath) this.handlePhoto(file.tempFilePath);
+      if (file?.tempFilePath) this.handlePhoto(file.tempFilePath, 'album');
     } catch (e: any) {
       const msg = String(e?.errMsg || '');
       if (!/cancel/i.test(msg)) wx.showToast({ icon: 'none', title: '相册打开失败，请重试' });
     }
   },
 
-  handlePhoto(path: string) {
+  handlePhoto(path: string, source: 'camera' | 'album' = 'camera') {
+    this.setData({ photoSource: source });
+    void this.initLocation();
     wx.getImageInfo({
       src: path,
       success: (info) => {
@@ -720,9 +743,11 @@ Page({
   },
 
   onRetake() {
+    (this as any).locationToken = ((this as any).locationToken || 0) + 1;
     (this as any).cropToken = ((this as any).cropToken || 0) + 1;
     this.setData({
       mode: 'camera',
+      location: {}, locationAt: 0, locationStatus: 'idle', locationText: '拍照后获取现场定位',
       cropOpen: false,
       imgScale: 1,
       imgX: 0,
@@ -824,6 +849,9 @@ Page({
     const value = Number(this.data.valueText);
     const meter = this.data.meter;
     if (!meter) return;
+    if (this.data.locationStatus === 'loading') await (this as any).locationPromise;
+    else if (!this.data.locationAt || Date.now() - this.data.locationAt > 5 * 60 * 1000) await this.initLocation();
+    const hasLocation = this.data.location.latitude !== undefined && this.data.location.longitude !== undefined;
     const warning =
       this.data.ocr?.meterNoMatched === false
         ? '\n注意：识别到的表号与档案不一致，请再核对一次表身编号。'
@@ -834,8 +862,8 @@ Page({
       title: '确认提交这次抄表？',
       content: `表号 ${meter.meterNo}\n本次读数 ${this.data.valueText} ${meter.unit}\n${
         this.data.usageText ? `预计用量 ${this.data.usageText}\n` : ''
-      }${this.data.amountText ? `预计金额 ${this.data.amountText}\n` : ''}拍照时间 ${this.data.readAtText || formatMeterTime(new Date())}${warning}`,
-      confirmText: '读数无误',
+      }${this.data.amountText ? `预计金额 ${this.data.amountText}\n` : ''}拍照时间 ${this.data.readAtText || formatMeterTime(new Date())}\n${hasLocation ? '已附现场定位' : '未获取现场定位，本次将标记“无现场定位”'}${warning}`,
+      confirmText: hasLocation ? '读数无误' : '无定位提交',
       cancelText: '再核对',
     });
     if (!confirm.confirm) return;

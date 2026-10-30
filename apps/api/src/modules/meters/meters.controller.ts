@@ -39,8 +39,8 @@ import { MetersService } from './meters.service';
  * 抄表模块。后台和员工端共用同一批接口，权限矩阵里分别挂 `meters` / `app:meters`。
  *
  * 需要特别注意的两类动作：
- * - 员工端只需要「看档案 + 拍照提交读数」，**不能改档案、不能收款**；
- * - 修正/作废历史读数、账单收款、调整应收，一律只给后台 `meters` 页权限。
+ * - 员工端收款需要 app:apartment-cashier 编辑权限，仅抄表权限不能收款；
+ * - 其他修改接口仍按原有权限，不因开放收款而扩大授权。
  */
 @Controller('meters')
 @UseGuards(JwtAuthGuard, RolesOrPermissionGuard)
@@ -133,7 +133,7 @@ export class MetersController {
   }
 
   @Post('charges/:id/pay')
-  @RequirePermission('meters', 'edit')
+  @RequirePermission(['meters', 'app:apartment-cashier'], 'edit')
   pay(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: PayChargeDto,

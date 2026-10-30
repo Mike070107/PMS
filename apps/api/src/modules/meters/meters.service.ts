@@ -167,7 +167,9 @@ export class MetersService {
         [id, tenantId],
       ),
       this.dataSource.query(
-        `SELECT * FROM meter_charges WHERE meter_id = $1 AND tenant_id = $2 ORDER BY period DESC, id DESC LIMIT 24`,
+        `SELECT cg.*, r.previous_value, r.reading_value
+         FROM meter_charges cg LEFT JOIN meter_readings r ON r.id = cg.reading_id AND r.tenant_id = cg.tenant_id AND r.meter_id = cg.meter_id
+         WHERE cg.meter_id = $1 AND cg.tenant_id = $2 ORDER BY cg.period DESC, cg.id DESC LIMIT 24`,
         [id, tenantId],
       ),
       this.dataSource.query(
@@ -716,6 +718,7 @@ export class MetersService {
       if (!locked.length) throw new NotFoundException('抄表记录不存在');
       const reading = await manager.findOne(MeterReading, { where: { id, tenantId } });
       if (!reading) throw new NotFoundException('抄表记录不存在');
+      if (reading.status !== 'pending') throw new BadRequestException(reading.status === 'confirmed' ? '这条已经复核过了' : '已作废的记录不能复核');
       const meter = await manager.findOne(Meter, { where: { id: reading.meterId, tenantId } });
       if (!meter) throw new NotFoundException('仪表不存在');
 
@@ -977,7 +980,8 @@ export class MetersService {
     const offset = (page - 1) * pageSize;
     const from = `
       FROM meter_charges cg
-      JOIN meters m ON m.id = cg.meter_id
+      JOIN meters m ON m.id = cg.meter_id AND m.tenant_id = cg.tenant_id
+      LEFT JOIN meter_readings r ON r.id = cg.reading_id AND r.tenant_id = cg.tenant_id AND r.meter_id = cg.meter_id
       WHERE ${where.join(' AND ')}
     `;
     const [count, totals, rows] = await Promise.all([
@@ -990,7 +994,7 @@ export class MetersService {
         params,
       ),
       this.dataSource.query(
-        `SELECT cg.*, m.meter_type, m.name AS meter_name, m.unit, m.install_address
+        `SELECT cg.*, r.previous_value, r.reading_value, m.integer_digits, m.decimal_digits, m.meter_type, m.name AS meter_name, m.unit, m.install_address
          ${from}
          ORDER BY cg.period DESC, cg.id DESC LIMIT ${pageSize} OFFSET ${offset}`,
         params,
@@ -1018,6 +1022,19 @@ export class MetersService {
       const meter = await manager.findOne(Meter, { where: { id: charge.meterId, tenantId } });
       if (!meter) throw new NotFoundException('仪表不存在');
       this.assertMeterScope(meter, access);
+      const requestId = dto.clientRequestId?.trim() || null;
+      const fingerprint = JSON.stringify({ amountCents: dto.amountCents ?? null, method: dto.method?.trim() || null,
+        paidAt: dto.paidAt || null, receiptNo: dto.receiptNo?.trim() || null, note: dto.note?.trim() || null });
+      if (requestId) {
+        const previous = await manager.query(
+          'SELECT request_fingerprint FROM meter_charge_payments WHERE tenant_id = $1 AND charge_id = $2 AND client_request_id = $3',
+          [tenantId, id, requestId],
+        );
+        if (previous.length) {
+          if (previous[0].request_fingerprint !== fingerprint) throw new ConflictException('同一收款请求不能修改金额或收款资料，请刷新账单后重新登记');
+          return { charge, meter };
+        }
+      }
       if (charge.status === 'void') throw new BadRequestException('账单已作废');
       if (charge.status === 'paid') throw new BadRequestException('账单已结清');
       const remaining = charge.receivableCents - charge.paidCents;
@@ -1032,7 +1049,14 @@ export class MetersService {
       charge.receiptNo = dto.receiptNo?.trim() || charge.receiptNo;
       if (dto.note) charge.note = [charge.note, dto.note.trim()].filter(Boolean).join('；').slice(0, 1000);
       charge.updatedBy = user.id;
-      return { charge: await manager.save(charge), meter };
+      await manager.save(charge);
+      await manager.query(
+        `INSERT INTO meter_charge_payments(tenant_id, charge_id, amount_cents, method, paid_at, receipt_no, note, operator_id, client_request_id, request_fingerprint)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [tenantId, id, amount, charge.paymentMethod, charge.paidAt, dto.receiptNo?.trim() || null,
+          dto.note?.trim() || null, user.id, requestId, fingerprint],
+      );
+      return { charge, meter };
     });
     return this.mapCharge(result.charge, result.meter);
   }
@@ -1357,6 +1381,12 @@ export class MetersService {
   private mapCharge(row: any, meter?: Meter) {
     const type = row.meter_type || meter?.meterType || 'water';
     const meta = TYPE_META[type as MeterType] || TYPE_META.water;
+    const previous = row.previousValue ?? row.previous_value;
+    const current = row.readingValue ?? row.reading_value;
+    const previousValue = previous == null ? null : Number(previous);
+    const readingValue = current == null ? null : Number(current);
+    const integerDigits = row.integer_digits ?? meter?.integerDigits ?? meta.integerDigits;
+    const decimalDigits = row.decimal_digits ?? meter?.decimalDigits ?? meta.decimalDigits;
     return {
       id: row.id,
       meterId: row.meterId ?? row.meter_id,
@@ -1367,6 +1397,10 @@ export class MetersService {
       meterTypeLabel: meta.label,
       ownerName: row.ownerNameSnapshot ?? row.owner_name_snapshot ?? '',
       period: row.period,
+      previousValue,
+      readingValue,
+      previousValueText: previousValue === null ? null : formatReadingValue(previousValue, integerDigits, decimalDigits),
+      readingValueText: readingValue === null ? null : formatReadingValue(readingValue, integerDigits, decimalDigits),
       usageValue: Number(row.usageValue ?? row.usage_value),
       unit: row.unit || meter?.unit || meta.unit,
       unitPriceCents: Number(row.unitPriceCents ?? row.unit_price_cents),

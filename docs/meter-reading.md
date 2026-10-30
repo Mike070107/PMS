@@ -266,3 +266,36 @@ VL-Plus：5/6，平均2.11秒；VL-OCR：4/6，平均0.51秒。第5张 Plus=0089
 本次未写入或启用生产meter_vision密钥；首次使用须在设置中配置对应租户并测试图像识别。
 生产浏览器正式入口当前需要登录，未取得有效会话，故登录后设置保存/模型调用/抄表提交刷新仍未验证；微信真机相机、canvas导出与上传同样未验证。API健康和体验版上传不能代替这些业务验收。
 安全证据：outputs/meter-production-release-20261030.json、outputs/meter-production-staff-trial-20261030.png；机器发布证据位于artifacts/release-checks。
+
+
+## 15. 账单读数列与双端图标收款（2026-10-31，本地未发布）
+
+用户确认：账单记账在用量前展示上次/本次抄表；少量收款方式直接点图标，小程序允许登记已收到的款项。
+- 后台账单及Excel导出增加“上次抄表、本次抄表”，取关联meter_readings的previous_value/reading_value，保留前导零；详情与小程序账单使用同一字段。首次previous_value来自当时期初底数，不读取当前档案底数冒充历史；没有底数为null，不按0算。倍率1用量为差值，倍率表与归零继续走computeUsage既有规则。
+- 公寓收费台原有SVG抽成PaymentMethodIcon，抄表登记复用。微信/支付宝/现金为大图标按钮，保留银行转账与其他；无默认收款方式，需明确选择。金额/方式错误就近红框、提示、aria关联，后台聚焦首个错误；失败保留输入。
+- 员工小程序在仪表档案→账单收费显示应收/已收/待收，支持全额或部分登记、方式、票据号和备注；成功重新读取服务端金额。仅记录实收，不发起第三方扣款。
+- 权限：小程序需现有app:apartment-cashier编辑权限，后台仍为meters编辑；服务端继续校验租户与仪表数据范围。app:meters编辑本身不获收款权限，不改其他修改/作废/调整入口权限。
+- 已复现原接口相同部分收款重复调用会重复累计（1000→2000分）。新增请求编号与meter_charge_payments实收日志，账单行锁内校验请求资料、原子保存账单及日志；同一请求重试返回当前账单，不再累计。不同金额复用同编号拒绝。旧客户端未带编号仍按原行为，新双端均携带编号。
+- 超时/5xx/登录异常保留原请求编号和原资料，重开页面可按同一笔查询/重试；不自动循环写入。明确400/422拒绝后允许修正。小程序待确认操作按租户/用户/账单隔离保存，后台按同样范围存sessionStorage。
+
+验证：28项抄表/收款回归通过（含真实迁移/SQL、幂等、跨租户、全额/部分、权限、字段错误、超时恢复、历史底数不漂移）；API构建、员工端tsc、后台完整构建通过（其内置31+29项测试通过）。
+浏览器使用实际MeterManagementPage、实际MetersService及隔离PGlite：02400→02410=10m³，应收42元，登记10元后刷新为已收10/待收32元；375px图标、错误关联和首项焦点验证。小程序320px使用实际WXML/WXSS转换布局对照，图标可见、无横向溢出；页面方法回归执行实际TS逻辑，仍非微信真机验收。
+证据：outputs/meter-payment-local-browser-evidence.json、outputs/meter-charge-readings-payment-refreshed.png、outputs/meter-payment-web-375-error.png、outputs/meter-payment-mini-320-error.png。
+
+发布前必须先在目标数据库执行1792900000002-MeterChargePayments迁移，再发布API；迁移为新增实收日志表，不追填历史收款。回退代码时保留新收款日志，不删除部署后实收数据。
+本轮没有生产授权或生产写入，线上各端版本未变；正式租户、微信真机登记/刷新和生产迁移/部署未验证。
+执行：pnpm --filter @pms/api test:meters；pnpm --filter @pms/api exec node --test ../miniapp-staff/test/meter-pay.test.cjs；pnpm --filter @pms/miniapp-staff exec tsc --noEmit；pnpm --filter @pms/admin-web build。
+
+
+## 16. 复核状态、地图与拍照定位（2026-10-31，准备生产发布）
+
+用户当次明确授权完成后推送生产，员工小程序用微信开发者工具CLI上传体验版，不提交审核。
+- 数据状态仍是pending/confirmed/void，双端共用METER_READING_STATUS_LABELS显示待复核/已复核/已作废。后台确认成功后更新当前详情及列表，操作变为查看详情；已复核默认只读，原有后台修正功能通过显式“修正读数”保留。失败保留字段输入；结果未知先读取原记录。
+- 小程序原有只有原生输入弹窗，现改为可核对原图/前后读数/用量/位置的复核详情，app:meters编辑权限可确认；确认后转为只读详情。请求中防重复，超时先回查，不自动重复复核。服务端在行锁内再次确认仍为pending。
+- 后台复核GPS改为定位图标，点击弹窗地图显示该次抄表坐标及精度。免密钥OpenStreetMap嵌入底图使用WGS84，将保存的GCJ02反算，保留高德查看入口（原GCJ02）；不使用仪表档案安装位置替代现场GPS。实际浏览器已加载地图与标记。地图源说明：https://wiki.openstreetmap.org/wiki/Export 。微信内置地图继续用GCJ02，参考腾讯官方位置文档：https://github.com/TencentLBS/tencentmap-miniprogram-skill/blob/main/references/wx_location_api/wx.getLocation.md 。
+- 拍照/选图后重新获取现场GPS，状态和精度可见，支持重新定位和微信定位设置；定位调用有9秒超时，失败清空旧坐标，旧请求和卸载回调不能覆盖新照片。提交前补取缺失/过期定位；没有定位明确提示并由用户选择“无定位提交”，仍按既有规则后台标记异常。相册注明定位是选图现场，不冒充照片EXIF位置。识别裁切页也显示定位状态。
+
+本地验证：49项抄表/收费/复核/GPS/裁切回归通过；地图坐标往返和无效值2项通过，后台完整构建内置31+31项通过；API构建、后台及员工小程序类型检查通过。真实页面→实际服务→隔离PostgreSQL确认后已复核/查看详情，GPS随原记录保存与刷新可读。微信原生定位/相机/权限弹窗、真机复核尚未验证，不能以VM或布局对照代替。
+生产基线（00:35北京时间）：唯一124.223.179.214/VM-4-8-ubuntu，API api-28fe890，Web2.0.20261030-2357；数据库pms_repair，现有仪表2/抄表2/账单1，收款日志表未建；meter_vision已由现有配置启用，本次保持其及其他受影响设置指纹，绝不覆盖环境或密钥。
+新增deploy/meter-charge-payments-db.cjs只针对该目标读取脱敏基线、做服务端私有备份并执行新增实收日志表迁移；迁移前需核对连接身份指纹，先迁移再发布API。回退保留上线后收款日志和业务新增数据。
+待补生产发布后的实际版本、配置指纹比较及体验版证据；现场设备验收仍由实际手机确认。

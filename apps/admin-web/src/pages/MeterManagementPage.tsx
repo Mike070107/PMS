@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { wgs84ToGcj02 } from '../lib/meter-geo';
+import ReadingLocationMap from '../components/ReadingLocationMap';
+import MeterPaymentMethods from '../components/MeterPaymentMethods';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   App as AntdApp,
@@ -39,7 +42,7 @@ import {
   ThunderboltOutlined,
   DashboardOutlined,
 } from '@ant-design/icons';
-import { address as addressApi, meters } from '@pms/api-client';
+import { address as addressApi, meters, METER_READING_STATUS_LABELS } from '@pms/api-client';
 import type {
   ChargeStatus,
   MeterChargeRow,
@@ -76,13 +79,7 @@ const CHARGE_STATUS: Record<string, { label: string; color: string }> = {
   paid: { label: '已结清', color: 'green' },
   void: { label: '已作废', color: 'default' },
 };
-const PAY_METHODS = [
-  { value: 'cash', label: '现金' },
-  { value: 'wechat', label: '微信' },
-  { value: 'alipay', label: '支付宝' },
-  { value: 'bank', label: '银行转账' },
-  { value: 'other', label: '其他' },
-];
+
 
 const money = (cents: number | string | null | undefined) => (Number(cents || 0) / 100).toFixed(2);
 const timeText = (value: string | null | undefined) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—');
@@ -90,34 +87,6 @@ const confidenceText = (value: string | number | null | undefined) =>
   value === null || value === undefined || value === '' ? '—' : `${Math.round(Number(value))}%`;
 
 /** 浏览器定位是 WGS84，微信/高德用 GCJ-02；存库统一 GCJ-02，导航才不会偏几百米 */
-function wgs84ToGcj02(lng: number, lat: number): [number, number] {
-  const a = 6378245.0;
-  const ee = 0.00669342162296594323;
-  if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) return [lng, lat];
-  const transformLat = (x: number, y: number) => {
-    let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
-    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
-    ret += ((20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin((y / 3.0) * Math.PI)) * 2.0) / 3.0;
-    ret += ((160.0 * Math.sin((y / 12.0) * Math.PI) + 320 * Math.sin((y * Math.PI) / 30.0)) * 2.0) / 3.0;
-    return ret;
-  };
-  const transformLng = (x: number, y: number) => {
-    let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
-    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
-    ret += ((20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin((x / 3.0) * Math.PI)) * 2.0) / 3.0;
-    ret += ((150.0 * Math.sin((x / 12.0) * Math.PI) + 300.0 * Math.sin((x / 30.0) * Math.PI)) * 2.0) / 3.0;
-    return ret;
-  };
-  let dLat = transformLat(lng - 105.0, lat - 35.0);
-  let dLng = transformLng(lng - 105.0, lat - 35.0);
-  const radLat = (lat / 180.0) * Math.PI;
-  let magic = Math.sin(radLat);
-  magic = 1 - ee * magic * magic;
-  const sqrtMagic = Math.sqrt(magic);
-  dLat = (dLat * 180.0) / (((a * (1 - ee)) / (magic * sqrtMagic)) * Math.PI);
-  dLng = (dLng * 180.0) / ((a / sqrtMagic) * Math.cos(radLat) * Math.PI);
-  return [lng + dLng, lat + dLat];
-}
 
 interface MeterFormValues {
   meterNo: string;
@@ -164,7 +133,7 @@ function ChargeTag({ status }: { status: string }) {
 
 export default function MeterManagementPage() {
   const { message } = AntdApp.useApp();
-  const { access } = useAuth();
+  const { access, user, actingTenant } = useAuth();
   const canEdit = pagePerm(access, 'meters').canEdit;
   const canDelete = pagePerm(access, 'meters').canDelete;
 
@@ -213,6 +182,10 @@ export default function MeterManagementPage() {
   const [savingMeter, setSavingMeter] = useState(false);
 
   const [review, setReview] = useState<MeterReadingRow | null>(null);
+  const [reviewEditing, setReviewEditing] = useState(false);
+  const [reviewValueError, setReviewValueError] = useState('');
+  const reviewInput = useRef<any>(null);
+  const [locationReading, setLocationReading] = useState<MeterReadingRow | null>(null);
   const [reviewValue, setReviewValue] = useState<number | null>(null);
   const [reviewNote, setReviewNote] = useState('');
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -223,6 +196,8 @@ export default function MeterManagementPage() {
   const [payTarget, setPayTarget] = useState<MeterChargeRow | null>(null);
   const [payForm] = Form.useForm<{ amount: number; method: string; receiptNo?: string; note?: string }>();
   const [payBusy, setPayBusy] = useState(false);
+  const [payPending, setPayPending] = useState(false);
+  const payStorageKey = (id: number) => `meter-pay:${actingTenant?.id || user?.tenantId}:${user?.id}:${id}`;
 
   const [adjustTarget, setAdjustTarget] = useState<MeterChargeRow | null>(null);
   const [adjustForm] = Form.useForm<{ adjustment: number; note?: string }>();
@@ -480,31 +455,36 @@ export default function MeterManagementPage() {
 
   const openReview = (row: MeterReadingRow) => {
     setReview(row);
+    setReviewEditing(row.status === 'pending' && canEdit);
+    setReviewValueError('');
     setReviewValue(row.readingValue);
     setReviewNote(row.reviewNote || '');
   };
 
   const saveReview = async () => {
-    if (!review || reviewValue === null) {
-      message.warning('请填写核对后的读数');
-      return;
+    if (!review || reviewBusy || !canEdit || !reviewEditing) return;
+    if (reviewValue === null || !Number.isFinite(reviewValue) || reviewValue < 0 || reviewValue >= 1e10) {
+      setReviewValueError('请填写有效的核对读数，最多10位整数和3位小数'); reviewInput.current?.focus(); return;
     }
     setReviewBusy(true);
     try {
-      if (review.status === 'pending') {
-        await meters.reviewReading(review.id, { readingValue: reviewValue, reviewNote });
-        message.success('复核通过，账单已自动生成');
-      } else {
-        await meters.updateReading(review.id, { readingValue: reviewValue, reviewNote });
-        message.success('读数已更新');
-      }
-      setReview(null);
+      const result = review.status === 'pending'
+        ? await meters.reviewReading(review.id, { readingValue: reviewValue, reviewNote })
+        : await meters.updateReading(review.id, { readingValue: reviewValue, reviewNote });
+      message.success(review.status === 'pending' ? (result.charge ? '已复核，账单已生成' : '已复核') : '读数已更新');
+      setReview(result.reading); setReviewValue(result.reading.readingValue); setReviewEditing(false);
       await refreshAll();
     } catch (e) {
-      message.error(e instanceof Error ? e.message : '保存失败');
-    } finally {
-      setReviewBusy(false);
-    }
+      // 返回丢失时先查询原记录，不盲目重复确认。
+      try {
+        const latest = await meters.reading(review.id);
+        if (review.status === 'pending' && latest.reading.status === 'confirmed') {
+          setReview(latest.reading); setReviewValue(latest.reading.readingValue); setReviewEditing(false);
+          message.info('记录已复核，已刷新实际结果'); await refreshAll(); return;
+        }
+      } catch { /* 保留输入，展示原失败原因 */ }
+      message.error(e instanceof Error ? e.message : '复核失败，输入已保留');
+    } finally { setReviewBusy(false); }
   };
 
   const voidReading = async () => {
@@ -549,32 +529,47 @@ export default function MeterManagementPage() {
   };
 
   const openPay = (row: MeterChargeRow) => {
+    payForm.resetFields();
     payForm.setFieldsValue({
       amount: Number((row.outstandingCents / 100).toFixed(2)),
-      method: row.paymentMethod || 'cash',
+      method: undefined,
       receiptNo: row.receiptNo,
       note: '',
     });
+    const pending = sessionStorage.getItem(payStorageKey(row.id));
+    setPayPending(!!pending);
+    if (pending) {
+      const data = JSON.parse(pending);
+      payForm.setFieldsValue({ amount: data.amountCents / 100, method: data.method, receiptNo: data.receiptNo, note: data.note });
+    }
     setPayTarget(row);
   };
 
   const submitPay = async () => {
-    if (!payTarget) return;
-    const values = await payForm.validateFields().catch(() => null);
+    if (!payTarget || payBusy || !canEdit) return;
+    const values = payPending ? payForm.getFieldsValue() : await payForm.validateFields().catch((error) => { const name = error?.errorFields?.[0]?.name; if (name) { payForm.scrollToField(name); payForm.getFieldInstance(name)?.focus?.(); } return null; });
     if (!values) return;
     setPayBusy(true);
     try {
-      await meters.payCharge(payTarget.id, {
-        amountCents: Math.round(values.amount * 100),
-        method: values.method,
-        receiptNo: values.receiptNo,
-        note: values.note,
-      });
+      const key = payStorageKey(payTarget.id);
+      const stored = sessionStorage.getItem(key);
+      const data = stored ? JSON.parse(stored) : {
+        clientRequestId: crypto.randomUUID(), amountCents: Math.round(values.amount * 100),
+        method: values.method, receiptNo: values.receiptNo, note: values.note,
+      };
+      sessionStorage.setItem(key, JSON.stringify(data));
+      setPayPending(true);
+      await meters.payCharge(payTarget.id, data);
+      sessionStorage.removeItem(key);
+      setPayPending(false);
       message.success('收款已登记');
       setPayTarget(null);
       await Promise.all([loadCharges(chargePage), loadSummary(period)]);
     } catch (e) {
-      message.error(e instanceof Error ? e.message : '登记收款失败');
+      if ([400, 422].includes((e as any)?.httpStatus)) {
+        sessionStorage.removeItem(payStorageKey(payTarget.id)); setPayPending(false);
+      }
+      message.error(e instanceof Error ? e.message : '登记收款失败，信息已保留');
     } finally {
       setPayBusy(false);
     }
@@ -636,6 +631,8 @@ export default function MeterManagementPage() {
           { title: '类型', key: 'typeLabel', width: 8 },
           { title: '名称', key: 'meterName', width: 20 },
           { title: '使用人', key: 'ownerName', width: 12 },
+          { title: '上次抄表', key: 'previousReading', width: 14 },
+          { title: '本次抄表', key: 'currentReading', width: 14 },
           { title: '用量', key: 'usage', width: 10 },
           { title: '单位', key: 'unit', width: 8 },
           { title: '单价(元)', key: 'price', width: 10 },
@@ -653,6 +650,8 @@ export default function MeterManagementPage() {
           typeLabel: TYPE_LABEL[row.meterType] || row.meterType,
           meterName: row.meterName,
           ownerName: row.ownerName,
+          previousReading: row.previousValueText ?? '未设置',
+          currentReading: row.readingValueText ?? '—',
           usage: row.usageValue,
           unit: row.unit,
           price: row.unitPriceCents / 100,
@@ -823,14 +822,14 @@ export default function MeterManagementPage() {
       dataIndex: 'status',
       width: 80,
       render: (value: string) =>
-        value === 'pending' ? <Tag color="orange">待复核</Tag> : value === 'confirmed' ? <Tag color="green">已确认</Tag> : <Tag>已作废</Tag>,
+        value === 'pending' ? <Tag color="orange">待复核</Tag> : value === 'confirmed' ? <Tag color="green">已复核</Tag> : <Tag>已作废</Tag>,
     },
     {
       title: '操作',
       key: 'actions',
       width: 100,
       fixed: 'right',
-      render: (_: unknown, row) => <Button size="small" onClick={() => openReview(row)}>{canEdit ? '复核' : '查看'}</Button>,
+      render: (_: unknown, row) => <Button size="small" onClick={() => openReview(row)}>{canEdit && row.status === 'pending' ? '复核' : '查看详情'}</Button>,
     },
   ];
 
@@ -847,7 +846,9 @@ export default function MeterManagementPage() {
         </div>
       ),
     },
-    { title: '用量', dataIndex: 'usageValue', width: 100, render: (value: number, row) => `${value} ${row.unit}` },
+    { title: <span title="首次抄表使用期初底数">上次抄表</span>, dataIndex: 'previousValueText', width: 120, render: (value: string | null) => <span className="meter-reading">{value ?? '未设置'}</span> },
+    { title: '本次抄表', dataIndex: 'readingValueText', width: 120, render: (value: string | null) => <span className="meter-reading">{value ?? '—'}</span> },
+    { title: <span title="用量 =（本次抄表 − 上次抄表）× 倍率；归零换算按表位处理">用量</span>, dataIndex: 'usageValue', width: 100, render: (value: number, row) => `${value} ${row.unit}` },
     { title: '单价', dataIndex: 'unitPriceCents', width: 90, render: (value: number) => `¥${money(value)}` },
     { title: '应收', dataIndex: 'receivableCents', width: 100, render: (value: number) => <span className="meter-money">{money(value)}</span> },
     { title: '已收', dataIndex: 'paidCents', width: 100, render: (value: number) => money(value) },
@@ -866,7 +867,7 @@ export default function MeterManagementPage() {
       fixed: 'right',
       render: (_: unknown, row) => (
         <Space size={4} wrap>
-          {canEdit && row.status !== 'paid' && row.status !== 'void' && <Button size="small" type="primary" onClick={() => openPay(row)}>收款</Button>}
+          {canEdit && ((row.status !== 'paid' && row.status !== 'void') || !!sessionStorage.getItem(payStorageKey(row.id))) && <Button size="small" type="primary" onClick={() => openPay(row)}>收款</Button>}
           {canEdit && row.status !== 'paid' && row.status !== 'void' && <Button size="small" onClick={() => openAdjust(row)}>调整</Button>}
           {canEdit && row.paidCents === 0 && row.status !== 'void' && (
             <Popconfirm title="作废这张账单？" description="作废后不再计入欠费，抄表记录仍保留。" onConfirm={() => void voidCharge(row)}>
@@ -1099,7 +1100,7 @@ export default function MeterManagementPage() {
                     loading={chargeLoading}
                     columns={chargeColumns}
                     dataSource={charges}
-                    scroll={{ x: 1200 }}
+                    scroll={{ x: 1500 }}
                     pagination={{ current: chargePage, pageSize: 30, total: chargeTotal, showSizeChanger: false, onChange: (page) => void loadCharges(page) }}
                   />
                 </div>
@@ -1232,8 +1233,8 @@ export default function MeterManagementPage() {
       <Drawer
         open={!!review}
         width={860}
-        title={review ? `复核抄表 · ${review.meterNo}` : '复核抄表'}
-        onClose={() => setReview(null)}
+        title={review ? `${review.status === 'pending' ? '复核抄表' : '抄表详情'} · ${review.meterNo}` : '抄表详情'}
+        onClose={() => { if (!reviewBusy) setReview(null); }}
         extra={review ? (review.chargeStatus ? <ChargeTag status={review.chargeStatus} /> : <Tag>未计费</Tag>) : null}
       >
         {review && (
@@ -1269,8 +1270,8 @@ export default function MeterManagementPage() {
                   <span>{review.unit}</span>
                 </div>
                 <div className="meter-review-reading__meta">
-                  <Tag color={review.status === 'pending' ? 'orange' : 'green'}>
-                    {review.status === 'pending' ? '待复核' : '已确认'}
+                  <Tag color={review.status === 'pending' ? 'orange' : review.status === 'confirmed' ? 'green' : 'default'}>
+                    {METER_READING_STATUS_LABELS[review.status]}
                   </Tag>
                   <span>{review.meterNo} · {timeText(review.readAt)}</span>
                 </div>
@@ -1287,7 +1288,7 @@ export default function MeterManagementPage() {
                   {review.orientation ? ` · 自动旋转 ${review.orientation}°` : ''}
                 </Descriptions.Item>
                 <Descriptions.Item label="GPS">
-                  {review.latitude === null || review.longitude === null ? '未记录' : `${review.longitude}, ${review.latitude}（±${review.gpsAccuracy || '?'}m）`}
+                  {review.latitude === null || review.longitude === null ? '未记录' : <Button icon={<EnvironmentOutlined />} shape="circle" aria-label="查看本次抄表定位" title="在地图上查看本次抄表位置" style={{ minWidth: 44, height: 44 }} onClick={() => setLocationReading(review)} />}
                 </Descriptions.Item>
                 <Descriptions.Item label="异常">
                   {review.anomalyLabels?.length ? review.anomalyLabels.map((label) => <Tag key={label} color="red">{label}</Tag>) : '无'}
@@ -1305,14 +1306,16 @@ export default function MeterManagementPage() {
                 </details>
               )}
 
-              {canEdit && review.status !== 'void' && (
+              {canEdit && review.status === 'confirmed' && !reviewEditing && <Button onClick={() => setReviewEditing(true)} disabled={review.chargeStatus === 'paid'}>修正读数</Button>}
+              {canEdit && reviewEditing && review.status !== 'void' && (
                 <div className="meter-review-edit">
-                  <div className="meter-review-label">核对后的读数</div>
-                  <InputNumber value={reviewValue} onChange={setReviewValue} precision={3} min={0} style={{ width: '100%' }} suffix={review.unit} disabled={review.chargeStatus === 'paid'} />
-                  <div className="meter-review-label">复核备注</div>
-                  <Input.TextArea rows={3} value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="改数原因、现场情况" />
+                  <label htmlFor="meter-review-value" className="meter-review-label">核对后的读数 *</label>
+                  <InputNumber ref={reviewInput} id="meter-review-value" aria-invalid={!!reviewValueError} aria-describedby="meter-review-value-error" status={reviewValueError ? 'error' : undefined} value={reviewValue} onChange={(value) => { setReviewValue(value); setReviewValueError(''); }} precision={3} min={0} style={{ width: '100%' }} suffix={review.unit} disabled={reviewBusy || review.chargeStatus === 'paid'} />
+                  {reviewValueError && <div id="meter-review-value-error" role="alert" style={{ color: '#b42332' }}>{reviewValueError}</div>}
+                  <label htmlFor="meter-review-note" className="meter-review-label">复核备注</label>
+                  <Input.TextArea id="meter-review-note" disabled={reviewBusy} rows={3} value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="改数原因、现场情况" />
                   <Space className="meter-review-actions">
-                    <Button type="primary" loading={reviewBusy} onClick={() => void saveReview()} disabled={review.chargeStatus === 'paid'}>保存</Button>
+                    <Button type="primary" loading={reviewBusy} onClick={() => void saveReview()} disabled={review.chargeStatus === 'paid'}>{review.status === 'pending' ? '确认复核' : '保存修正'}</Button>
                     <Popconfirm title="作废这条抄表记录？" description="只能作废最近一次抄表；账单会一并作废。" onConfirm={() => void voidReading()}>
                       <Button danger loading={reviewBusy}>作废记录</Button>
                     </Popconfirm>
@@ -1324,6 +1327,8 @@ export default function MeterManagementPage() {
           </div>
         )}
       </Drawer>
+
+      <ReadingLocationMap reading={locationReading} onClose={() => setLocationReading(null)} />
 
       <Drawer
         open={!!samplePreview}
@@ -1422,7 +1427,7 @@ export default function MeterManagementPage() {
                 { title: '时间', dataIndex: 'readAt', width: 140, render: (value: string) => timeText(value) },
                 { title: '读数', dataIndex: 'readingValueText', width: 100 },
                 { title: '用量', dataIndex: 'usageValue', width: 90, render: (value: number | null) => (value === null ? '首次' : value) },
-                { title: '状态', dataIndex: 'status', width: 80, render: (value: string) => (value === 'pending' ? '待复核' : value === 'confirmed' ? '已确认' : '已作废') },
+                { title: '状态', dataIndex: 'status', width: 80, render: (value: string) => (value === 'pending' ? '待复核' : value === 'confirmed' ? '已复核' : '已作废') },
                 { title: '原图', dataIndex: 'photoUrl', width: 70, render: (value: string) => (value ? <Image src={imageSrc(value)} width={38} height={38} style={{ objectFit: 'cover' }} /> : '—') },
               ]}
             />
@@ -1433,19 +1438,24 @@ export default function MeterManagementPage() {
       <Modal
         open={!!payTarget}
         title={payTarget ? `登记收款 · ${payTarget.meterNo} · ${payTarget.period}` : '登记收款'}
-        onCancel={() => setPayTarget(null)}
+        onCancel={() => { if (!payBusy) setPayTarget(null); }}
+        closable={!payBusy}
+        maskClosable={!payBusy}
         onOk={() => void submitPay()}
         confirmLoading={payBusy}
-        okText="确认收款"
+        okText={payPending ? "查询 / 重试本次登记" : "确认登记收款"}
+        cancelText="取消"
         forceRender
       >
         {payTarget && (
-          <Form form={payForm} layout="vertical">
+          <Form form={payForm} layout="vertical" disabled={payBusy || payPending}>
             <Alert type="info" showIcon message={`应收 ¥${money(payTarget.receivableCents)}，已收 ¥${money(payTarget.paidCents)}，待收 ¥${money(payTarget.outstandingCents)}`} />
-            <Form.Item name="amount" label="本次收款（元）" rules={[{ required: true, message: '请填收款金额' }]}>
+            {payPending && <Alert type="warning" showIcon message="本次登记结果待确认，请按原资料查询或重试；同一笔不会重复入账。" />}
+            <Typography.Paragraph className="meter-payment-note">仅登记已收到的款项，不会发起微信或支付宝扣款。</Typography.Paragraph>
+            <Form.Item name="amount" label="本次收款（元）" rules={[{ required: true, message: '请填收款金额' }, { type: 'number', min: 0.01, max: Math.min(payTarget.outstandingCents / 100, 1000000), message: '金额须大于0，且不能超过待收金额或100万元' }]}>
               <InputNumber min={0.01} max={payTarget.outstandingCents / 100} precision={2} style={{ width: '100%' }} suffix="元" />
             </Form.Item>
-            <Form.Item name="method" label="收款方式" rules={[{ required: true }]}><Select options={PAY_METHODS} /></Form.Item>
+            <Form.Item name="method" label="收款方式" rules={[{ required: true, message: '请选择收款方式' }]}><MeterPaymentMethods disabled={payBusy || payPending} /></Form.Item>
             <Form.Item name="receiptNo" label="票据号"><Input maxLength={60} placeholder="可空" /></Form.Item>
             <Form.Item name="note" label="备注"><Input.TextArea rows={2} maxLength={500} /></Form.Item>
           </Form>
