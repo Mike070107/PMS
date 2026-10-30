@@ -60,6 +60,7 @@ Page({
     roiY: 0,
     roiW: 0,
     roiH: 0,
+    roiScale: 1,
     roiDirty: false,
     roiTouched: false,
     templateRoi: null as Roi | null,
@@ -240,6 +241,7 @@ Page({
         roiY: Math.round(roi.y * height),
         roiW: Math.max(16, Math.round(roi.w * width)),
         roiH: Math.max(16, Math.round(roi.h * height)),
+        roiScale: 1,
       },
       () => {
         setTimeout(() => { (this as any).roiSyncing = false; }, 80);
@@ -252,6 +254,22 @@ Page({
     const known = (this.data.meter?.meterNo || '').replace(/\D/g, '');
     const actual = (digits || '').replace(/\D/g, '');
     return !!known && !!actual && actual === known;
+  },
+
+  /** 红框被双指捏合后，实际识别区域要按中心缩放，而不是只改显示大小 */
+  effectiveRoi(): Roi {
+    const base = this.data.roi;
+    const scale = clamp(Number(this.data.roiScale) || 1, 0.5, 3);
+    const w = clamp(base.w * scale, 0.03, 1);
+    const h = clamp(base.h * scale, 0.02, 1);
+    const cx = base.x + base.w / 2;
+    const cy = base.y + base.h / 2;
+    return {
+      x: clamp(cx - w / 2, 0, 1 - w),
+      y: clamp(cy - h / 2, 0, 1 - h),
+      w,
+      h,
+    };
   },
 
   /** 先用整图 OCR 的文字框自动给红框；识别不到就给默认框，让人自己拖 */
@@ -342,7 +360,7 @@ Page({
     const width = this.data.photoWidth;
     const height = this.data.photoHeight;
     if (!width || !height) return boxed[0] || null;
-    const roi = this.data.roi;
+    const roi = this.effectiveRoi();
     const inside = boxed.filter((item) => {
       const box = item.box!;
       const cx = (box[0] + box[2]) / 2 / width;
@@ -427,30 +445,14 @@ Page({
     });
   },
 
-  resizeRoi(factor: number) {
-    const roi = this.data.roi;
-    const centerX = roi.x + roi.w / 2;
-    const centerY = roi.y + roi.h / 2;
-    const w = clamp(roi.w * factor, 0.08, 1);
-    const h = clamp(roi.h * factor, 0.05, 1);
-    const next = {
-      x: clamp(centerX - w / 2, 0, 1 - w),
-      y: clamp(centerY - h / 2, 0, 1 - h),
-      w,
-      h,
-    };
-    this.setData(
-      { roi: next, roiDirty: true, roiTouched: true, autoBoxText: '红框已调整，点「识别框内」重新识别' },
-      () => this.syncRoiPx(next),
-    );
-  },
-
-  onRoiSmaller() {
-    this.resizeRoi(0.85);
-  },
-
-  onRoiLarger() {
-    this.resizeRoi(1.18);
+  onRoiScale(event: any) {
+    const scale = clamp(Number(event.detail?.scale) || 1, 0.5, 3);
+    this.setData({
+      roiScale: scale,
+      roiDirty: true,
+      roiTouched: true,
+      autoBoxText: '红框大小已调整，点「识别框内」重新识别',
+    });
   },
 
   onRecognizeRoi() {
@@ -478,6 +480,7 @@ Page({
       roiY: 0,
       roiW: 0,
       roiH: 0,
+      roiScale: 1,
       roiDirty: false,
       roiTouched: false,
       autoBoxText: '',
@@ -560,7 +563,7 @@ Page({
         photoKey: this.data.photoKey,
         photoWidth: this.data.photoWidth || undefined,
         photoHeight: this.data.photoHeight || undefined,
-        roi: this.data.roi,
+        roi: this.effectiveRoi(),
         latitude: this.data.location.latitude,
         longitude: this.data.location.longitude,
         accuracy: this.data.location.accuracy,
@@ -575,7 +578,7 @@ Page({
               text: this.data.ocr.texts,
               meterNo: this.data.ocr.meterNo || undefined,
               orientation: this.data.ocr.orientation ?? 0,
-              raw: { candidates: this.data.ocr.candidates, digits: this.data.ocr.digits, roi: this.data.roi },
+              raw: { candidates: this.data.ocr.candidates, digits: this.data.ocr.digits, roi: this.effectiveRoi() },
             }
           : { status: 'skipped' as const },
       });
