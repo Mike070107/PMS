@@ -303,4 +303,13 @@ export class PropertiesController {
   ) {
     return this.propertiesService.deleteHouse(id, user, access);
   }
+  @Post('houses/:id/restore')
+  @RequirePermission('properties', 'delete')
+  restoreHouse(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.propertiesService.restoreHouse(id, user, access);
+  }
 }

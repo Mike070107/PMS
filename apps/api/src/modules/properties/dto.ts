@@ -360,6 +360,11 @@ export class HouseQueryDto extends TenantScopedQueryDto {
   @MaxLength(60)
   q?: string;
 
+  /** archived=1 只看已归档；默认只看未归档 */
+  @IsOptional()
+  @IsString()
+  archived?: string;
+
   /**
    * 传了 page 就走服务端分页，返回 { rows, total, page, pageSize }；
    * 不传仍返回数组（房号搜索下拉、前台收费、物业费那几处调用方按数组用，别改它们的口径）。

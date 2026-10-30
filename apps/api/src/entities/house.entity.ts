@@ -40,4 +40,8 @@ export class House extends TenantEntity {
   /** 建筑面积（平方米），保留两位小数。可空——历史房产未登记时为 null */
   @Column({ name: 'area_sqm', type: 'numeric', precision: 7, scale: 2, nullable: true })
   areaSqm: string | null;
+
+  /** 归档时间：非空=已归档（软删除，可恢复）。默认清单只看未归档。 */
+  @Column({ name: 'archived_at', type: 'timestamptz', nullable: true })
+  archivedAt: Date | null;
 }

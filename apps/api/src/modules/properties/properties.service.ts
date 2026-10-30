@@ -733,6 +733,7 @@ export class PropertiesService {
         'h.full_address AS "fullAddress"',
         'h.shop_name AS "shopName"',
         'h.area_sqm AS "areaSqm"',
+        'h.archived_at AS "archivedAt"',
         'b.lane AS lane',
         'b.building_no AS "buildingNo"',
         'c.name AS "communityName"',
@@ -760,6 +761,9 @@ export class PropertiesService {
 
     if (query.q) this.applyHouseKeyword(qb, query.q);
 
+    // 默认只看未归档；archived=1 只看已归档
+    if (query.archived) qb.andWhere('h.archived_at IS NOT NULL');
+    else qb.andWhere('h.archived_at IS NULL');
     // 传了 page 才分页。老调用方（房号搜索下拉、前台收费、物业费）不传，继续拿数组，
     // 但上限从 5000 提到 20000 —— 一次导入几千套房很容易顶到旧上限，
     // 顶到之后列表和左侧树的角标会一起少掉，还看不出是被截断的（2026-08-27 就这么撞上了）。
@@ -793,6 +797,7 @@ export class PropertiesService {
       lane: r.lane,
       buildingNo: r.buildingNo,
       communityName: r.communityName,
+      archivedAt: r.archivedAt ?? null,
       // 原来的字段保持不变：绑了好几个业主时给第一个（按 id，稳定）
       owner: ownersByHouse.get(Number(r.id))?.[0] ?? null,
       /** 这套房绑着的全部业主。原来靠「同一套房出现好几行」表达，那是 bug 不是设计 */
@@ -1072,38 +1077,27 @@ export class PropertiesService {
   }
 
   async deleteHouse(id: number, user: AuthUser, access?: ResolvedAccess) {
+    // 归档（软删除，可恢复）：保留业主关联和历史工单，只从默认清单隐藏，可在「已归档」里恢复
     const tenantId = this.resolveTenantId(user);
     const house = await this.houseRepo.findOne({ where: { id, tenantId } });
     if (!house) throw new NotFoundException('house not found');
     await this.assertBuildingInScope(access, tenantId, house.buildingId);
+    if (!house.archivedAt) {
+      house.archivedAt = new Date();
+      await this.houseRepo.save(house);
+    }
+    return { ok: true, archived: true };
+  }
 
-    const ownerCount = await this.userRepo.count({
-      where: { tenantId, houseId: id, role: UserRole.OWNER, status: UserStatus.ACTIVE },
-    });
-    if (ownerCount > 0) {
-      throw new BadRequestException('该房产已绑定业主，请先解绑业主');
+  async restoreHouse(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const house = await this.houseRepo.findOne({ where: { id, tenantId } });
+    if (!house) throw new NotFoundException('house not found');
+    await this.assertBuildingInScope(access, tenantId, house.buildingId);
+    if (house.archivedAt) {
+      house.archivedAt = null;
+      await this.houseRepo.save(house);
     }
-    /**
-     * 这一户有没有历史工单。
-     *
-     * **不能写 `leftJoin('w.request')`**：WorkOrder 上的 request_id 只是一个普通列，
-     * 没有声明 @ManyToOne 关系，TypeORM 在**拼查询时**就抛
-     * 「Relation with property path request in entity was not found」——
-     * 表现是后台删除房产一律 500，而 typecheck 和 build 都发现不了
-     * （2026-09-15 线上实测；同类写法全仓就这一处）。按表显式 join。
-     */
-    const workOrderCount = await this.workOrderRepo
-      .createQueryBuilder('w')
-      .innerJoin(RepairRequest, 'r', 'r.id = w.request_id AND r.tenant_id = w.tenant_id')
-      .where('w.tenant_id = :tenantId', { tenantId })
-      .andWhere('r.house_id = :id', { id })
-      .getCount();
-    if (workOrderCount > 0) {
-      throw new BadRequestException(
-        `该房产有 ${workOrderCount} 条历史工单，无法删除`,
-      );
-    }
-    await this.houseRepo.remove(house);
     return { ok: true };
   }
 
