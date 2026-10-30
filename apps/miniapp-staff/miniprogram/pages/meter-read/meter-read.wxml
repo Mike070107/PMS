@@ -165,18 +165,40 @@
     <view class="crop-sheet">
       <view wx:if="{{recognizing}}" class="crop-sheet__hint">正在识别红框内的读数…</view>
       <block wx:elif="{{ocr && ocr.ok && !imgDirty}}">
-        <view class="crop-value">{{valueText || ocr.digits}}<text>{{meter.unit}}</text></view>
+        <view class="crop-input-row">
+          <input
+            class="crop-input"
+            type="digit"
+            value="{{valueText}}"
+            bindinput="onCropValueInput"
+            placeholder="识别不对，直接改这里"
+            confirm-type="done"
+          />
+          <text class="crop-unit">{{meter.unit}}</text>
+        </view>
         <view wx:if="{{digitWarning}}" class="crop-warn">{{digitWarning}}</view>
-        <view wx:else class="crop-sheet__hint">核对红框和数字，没问题就使用这个读数</view>
+        <view wx:else class="crop-sheet__hint">识别不准可以直接改数字，改完点使用</view>
         <view class="crop-actions">
           <button class="btn btn--ghost" bindtap="onRecognizeRoi">重新识别</button>
           <button class="btn btn--primary" disabled="{{!cropCanUse}}" bindtap="onUseCropResult">使用这个读数</button>
         </view>
       </block>
       <block wx:else>
+        <view class="crop-input-row">
+          <input
+            class="crop-input"
+            type="digit"
+            value="{{valueText}}"
+            bindinput="onCropValueInput"
+            placeholder="也可以直接手输读数"
+            confirm-type="done"
+          />
+          <text class="crop-unit">{{meter.unit}}</text>
+        </view>
         <view class="crop-warn">{{error || (imgDirty ? '画面已调整，请点识别' : '还没读出数字，调整画面后再试')}}</view>
         <view class="crop-actions">
-          <button class="btn btn--primary" bindtap="onRecognizeRoi">{{recognizing ? '识别中…' : '识别'}}</button>
+          <button class="btn btn--ghost" bindtap="onRecognizeRoi">{{recognizing ? '识别中…' : '识别'}}</button>
+          <button class="btn btn--primary" disabled="{{!cropCanUse}}" bindtap="onUseCropResult">使用这个读数</button>
         </view>
       </block>
     </view>

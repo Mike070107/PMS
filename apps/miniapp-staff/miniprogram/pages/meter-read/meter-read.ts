@@ -656,6 +656,20 @@ Page({
     return valueText;
   },
 
+  /** 识别结果允许在裁剪页直接手改；改完不必重拍 */
+  onCropValueInput(event: any) {
+    const valueText = sanitizeReadingInput(event.detail.value);
+    const preview = previewUsage(this.data.meter, valueText);
+    this.setData({
+      valueText,
+      usageText: preview.usageText,
+      amountText: preview.amountText,
+      digitWarning: '',
+      error: '',
+      cropCanUse: !!valueText,
+    });
+  },
+
   onNote(event: any) {
     this.setData({ note: event.detail.value });
   },
