@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -24,9 +25,11 @@ import {
   MeterQueryDto,
   MeterSummaryQueryDto,
   OcrQueryDto,
+  OcrSampleQueryDto,
   PayChargeDto,
   ReadingQueryDto,
   UpdateMeterDto,
+  UpdateOcrSampleDto,
   UpdateReadingDto,
 } from './dto';
 import { MetersService } from './meters.service';
@@ -153,6 +156,27 @@ export class MetersController {
   @RequirePermission('meters', 'view')
   ocrHealth() {
     return this.service.ocrHealth();
+  }
+
+  @Get('ocr-samples')
+  @RequirePermission('meters', 'view')
+  ocrSamples(
+    @Query() query: OcrSampleQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.listOcrSamples(query, user, access);
+  }
+
+  @Patch('ocr-samples/:id')
+  @RequirePermission('meters', 'edit')
+  updateOcrSample(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateOcrSampleDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.updateOcrSample(id, dto, user, access);
   }
 
   // ------------------------------------------------------------ 档案

@@ -107,6 +107,18 @@ test('用量：正常差值、倍率、归零进位；抄错一位不能被当�
   assert.equal(computeUsage(100, null, 1, 5).usage, null);
 });
 
+test('倍率表：小数位先保留，乘倍率后再算钱', () => {
+  // 表盘 00001.23，倍率 80 -> 98.4，不能被整数位截成 1 或 98
+  const small = computeUsage(1.23, 0, 80, 6);
+  assert.equal(small.usage, 98.4);
+  assert.equal(amountCentsOf(small.usage as number, 250), 24600);
+
+  // 三相电表 022322.24 - 022300.00 = 22.24，倍率 20 -> 444.8
+  const electric = computeUsage(22322.24, 22300, 20, 6);
+  assert.equal(electric.usage, 444.8);
+  assert.equal(amountCentsOf(electric.usage as number, 65), 28912);
+});
+
 test('金额：分整数、四舍五入，不用浮点直接乘', () => {
   assert.equal(amountCentsOf(24.05, 420), 10101);
   assert.equal(amountCentsOf(153.2, 65), 9958);

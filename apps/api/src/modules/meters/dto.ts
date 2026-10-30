@@ -402,6 +402,13 @@ export class ReadingOcrMetaDto {
   meterNo?: string;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(359)
+  orientation?: number;
+
+  @IsOptional()
   @IsObject()
   raw?: Record<string, unknown>;
 }
@@ -644,4 +651,42 @@ export class MeterSummaryQueryDto {
   @IsString()
   @MaxLength(7)
   period?: string;
+}
+
+export class OcrSampleQueryDto {
+  @IsOptional()
+  @IsIn(['candidate', 'training', 'trained', 'excluded'])
+  status?: 'candidate' | 'training' | 'trained' | 'excluded';
+
+  @IsOptional()
+  @IsIn(METER_TYPES)
+  meterType?: (typeof METER_TYPES)[number];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  keyword?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  pageSize?: number;
+}
+
+export class UpdateOcrSampleDto {
+  @IsIn(['candidate', 'training', 'trained', 'excluded'])
+  status: 'candidate' | 'training' | 'trained' | 'excluded';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
 }

@@ -92,6 +92,7 @@
         <view wx:if="{{recognizing}}" class="meter-ocr-hint">正在识别框内读数，约 2~5 秒…</view>
         <view wx:elif="{{ocr && ocr.ok}}" class="meter-ocr-hint">已回填到下面输入框，请对照全景原图核对每个数字</view>
         <view wx:elif="{{ocr}}" class="meter-ocr-hint">框内没有自动读出数字，请调整红框后重试，或对照原图手工输入</view>
+        <view wx:if="{{ocr && ocr.orientation}}" class="meter-ocr-hint">照片自动旋转 {{ocr.orientation}}° 后识别，原图方向不变</view>
         <view wx:if="{{ocr && ocr.meterNoMatched === false}}" class="meter-ocr-warn">
           识别到表号 {{ocr.meterNo}}，与档案 {{meter.meterNo}} 不一致，请重点核对
         </view>

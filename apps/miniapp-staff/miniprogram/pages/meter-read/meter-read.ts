@@ -64,6 +64,7 @@ Page({
     roiW: 0,
     roiH: 0,
     roiDirty: false,
+    templateRoi: null as Roi | null,
     autoBoxText: '',
     digitWarning: '',
     readAt: '',
@@ -103,8 +104,10 @@ Page({
         return;
       }
       const detail = await meters.detail(id);
+      const lastWithRoi = detail.readings.find((item) => item.roi);
       this.setData({
         meter: detail.meter,
+        templateRoi: lastWithRoi?.roi ?? null,
         canSubmit: session.canSubmitReading,
         loading: false,
         lastReadingText: detail.meter.lastReadingAt
@@ -191,7 +194,7 @@ Page({
         const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
         const displayWidth = Math.max(240, Number(win.windowWidth || 375) - 24);
         const displayHeight = Math.max(200, Math.round((displayWidth * info.height) / Math.max(1, info.width)));
-        const roi = { ...DEFAULT_ROI };
+        const roi = this.data.templateRoi || { ...DEFAULT_ROI };
         this.setData(
           {
             mode: 'preview',
@@ -225,7 +228,7 @@ Page({
             photoPath: path,
             photoDisplayWidth: displayWidth,
             photoDisplayHeight: Math.round(displayWidth * 1.4),
-            roi: { ...DEFAULT_ROI },
+            roi: this.data.templateRoi || { ...DEFAULT_ROI },
             readAt: new Date().toISOString(),
           },
           () => this.syncRoiPx(this.data.roi),
@@ -271,7 +274,7 @@ Page({
     const box = preferred?.box;
     const width = this.data.photoWidth;
     const height = this.data.photoHeight;
-    if (!box || !width || !height) return { ...DEFAULT_ROI };
+    if (!box || !width || !height) return this.data.templateRoi || { ...DEFAULT_ROI };
     const padX = 0.02;
     const padY = 0.015;
     const x = clamp(box[0] / width - padX, 0, 0.98);
@@ -552,6 +555,7 @@ Page({
               confidence: this.data.ocr.confidence,
               text: this.data.ocr.texts,
               meterNo: this.data.ocr.meterNo || undefined,
+              orientation: this.data.ocr.orientation ?? 0,
               raw: { candidates: this.data.ocr.candidates, digits: this.data.ocr.digits, roi: this.data.roi },
             }
           : { status: 'skipped' as const },

@@ -46,6 +46,8 @@ import type {
   MeterStatus,
   MeterSummaryResp,
   MeterType,
+  OcrSampleRow,
+  OcrSampleStatus,
 } from '@pms/api-client';
 import dayjs, { type Dayjs } from 'dayjs';
 import { imageSrc, MaterialPhotosUpload } from '../components/MaterialPhotos';
@@ -186,6 +188,14 @@ export default function MeterManagementPage() {
   const [chargeKeyword, setChargeKeyword] = useState('');
   const [chargeType, setChargeType] = useState<string>('');
   const [chargeTotals, setChargeTotals] = useState({ receivable: 0, paid: 0, outstanding: 0 });
+  const [samples, setSamples] = useState<OcrSampleRow[]>([]);
+  const [sampleTotal, setSampleTotal] = useState(0);
+  const [samplePage, setSamplePage] = useState(1);
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const [sampleStatus, setSampleStatus] = useState<OcrSampleStatus | ''>('candidate');
+  const [sampleType, setSampleType] = useState<string>('');
+  const [sampleKeyword, setSampleKeyword] = useState('');
+  const [samplePreview, setSamplePreview] = useState<OcrSampleRow | null>(null);
 
   const [meterModal, setMeterModal] = useState<{ open: boolean; row?: MeterRow }>({ open: false });
   const [meterForm] = Form.useForm<MeterFormValues>();
@@ -286,8 +296,27 @@ export default function MeterManagementPage() {
     }
   }, [chargeKeyword, chargeType, chargeStatus, period, message]);
 
-  const loadOcrHealth = useCallback(async () => {
+  const loadSamples = useCallback(async (page: number) => {
+    setSampleLoading(true);
     try {
+      const data = await meters.ocrSamples({
+        status: sampleStatus || undefined,
+        meterType: (sampleType || undefined) as MeterType | undefined,
+        keyword: sampleKeyword || undefined,
+        page,
+        pageSize: 30,
+      });
+      setSamples(data.rows);
+      setSampleTotal(data.total);
+      setSamplePage(data.page);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '读取纠错样本失败');
+    } finally {
+      setSampleLoading(false);
+    }
+  }, [sampleStatus, sampleType, sampleKeyword, message]);
+
+  const loadOcrHealth = useCallback(async () => {    try {
       setOcrHealth(await meters.ocrHealth());
     } catch (e) {
       setOcrHealth({ ok: false, provider: 'none', detail: e instanceof Error ? e.message : '连接失败' });
@@ -305,6 +334,10 @@ export default function MeterManagementPage() {
   useEffect(() => { void loadMeters(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [meterKeyword, meterType, meterDue]);
   useEffect(() => { void loadReadings(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [readingKeyword, readingType, readingAnomalyOnly, readingRange]);
   useEffect(() => { void loadCharges(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [chargeKeyword, chargeType, chargeStatus, period]);
+  useEffect(() => {
+    if (tab === 'learning') void loadSamples(1);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [tab, sampleStatus, sampleType, sampleKeyword]);
 
   const refreshAll = async () => {
     await Promise.all([loadSummary(period), loadMeters(meterPage), loadReadings(readingPage), loadCharges(chargePage)]);
@@ -823,6 +856,112 @@ export default function MeterManagementPage() {
     },
   ];
 
+  const SAMPLE_STATUS: Record<OcrSampleStatus, { label: string; color: string }> = {
+    candidate: { label: '待确认', color: 'orange' },
+    training: { label: '进训练集', color: 'blue' },
+    trained: { label: '已训练', color: 'green' },
+    excluded: { label: '已排除', color: 'default' },
+  };
+
+  const changeSampleStatus = async (row: OcrSampleRow, status: OcrSampleStatus) => {
+    try {
+      const updated = await meters.updateOcrSample(row.id, { status });
+      setSamples((list) => list.map((item) => (item.id === row.id ? updated : item)));
+      message.success(`已标记为「${SAMPLE_STATUS[status].label}」`);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '更新样本状态失败');
+    }
+  };
+
+  const exportSamples = () => {
+    if (!samples.length) {
+      message.info('当前页没有样本');
+      return;
+    }
+    const header = ['id', '表号', '表名', '类型', '整数位', '小数位', '预测值', '纠正值', '置信度', '旋转角', '状态', '纠正时间', '原图'];
+    const lines = samples.map((row) => [
+      row.id,
+      row.meterNo,
+      row.meterName,
+      TYPE_LABEL[row.meterType] || row.meterType,
+      row.integerDigits,
+      row.decimalDigits,
+      row.predictedValue ?? '',
+      row.correctedValue ?? '',
+      row.confidence ?? '',
+      `${row.orientation}°`,
+      SAMPLE_STATUS[row.status]?.label || row.status,
+      row.correctedAt || '',
+      row.photoUrl,
+    ]);
+    const csv = `\uFEFF${[header, ...lines].map((line) => line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')}`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `meter-ocr-samples-${dayjs().format('YYYYMMDD-HHmm')}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const sampleColumns: ColumnsType<OcrSampleRow> = [
+    {
+      title: '原图',
+      dataIndex: 'photoUrl',
+      width: 74,
+      render: (value: string, row) => (
+        value ? <Image src={imageSrc(value)} width={52} height={52} style={{ objectFit: 'cover', borderRadius: 6, cursor: 'pointer' }} preview={false} onClick={() => setSamplePreview(row)} /> : <Text type="secondary">无</Text>
+      ),
+    },
+    {
+      title: '表 / 地点',
+      key: 'meter',
+      width: 180,
+      render: (_: unknown, row) => (
+        <div>
+          <div>{row.meterNo} · {row.meterName || '—'}</div>
+          <Text type="secondary" style={{ fontSize: 12 }}>{TYPE_LABEL[row.meterType] || row.meterType} · {row.integerDigits}+{row.decimalDigits} 位</Text>
+        </div>
+      ),
+    },
+    {
+      title: '预测 → 纠正',
+      key: 'values',
+      width: 190,
+      render: (_: unknown, row) => (
+        <Space size={6}>
+          <Text delete type="secondary">{row.predictedValue ?? '—'}</Text>
+          <span>→</span>
+          <Text strong>{row.correctedValue ?? '—'}</Text>
+        </Space>
+      ),
+    },
+    { title: '置信度', dataIndex: 'confidence', width: 82, render: (value: string | null) => (value ? `${Number(value).toFixed(0)}%` : '—') },
+    { title: '方向', dataIndex: 'orientation', width: 64, render: (value: number) => `${value}°` },
+    { title: '状态', dataIndex: 'status', width: 96, render: (value: OcrSampleStatus) => <Tag color={SAMPLE_STATUS[value]?.color}>{SAMPLE_STATUS[value]?.label || value}</Tag> },
+    { title: '纠正时间', dataIndex: 'correctedAt', width: 150, render: (value: string) => timeText(value) },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 220,
+      fixed: 'right',
+      render: (_: unknown, row) => (
+        <Space size={4} wrap>
+          <Button size="small" onClick={() => setSamplePreview(row)}>查看</Button>
+          {canEdit && row.status === 'candidate' && (
+            <>
+              <Button size="small" type="primary" onClick={() => void changeSampleStatus(row, 'training')}>加入训练</Button>
+              <Button size="small" onClick={() => void changeSampleStatus(row, 'excluded')}>排除</Button>
+            </>
+          )}
+          {canEdit && row.status !== 'candidate' && (
+            <Button size="small" onClick={() => void changeSampleStatus(row, 'candidate')}>移回候选</Button>
+          )}
+        </Space>
+      ),
+    },
+  ];
+
   return (
     <div className="meter-page">
       <div className="meter-toolbar">
@@ -940,6 +1079,45 @@ export default function MeterManagementPage() {
                     dataSource={charges}
                     scroll={{ x: 1200 }}
                     pagination={{ current: chargePage, pageSize: 30, total: chargeTotal, showSizeChanger: false, onChange: (page) => void loadCharges(page) }}
+                  />
+                </div>
+              ),
+            },
+            {
+              key: 'learning',
+              label: `识别学习${sampleTotal ? ` (${sampleTotal})` : ''}`,
+              children: (
+                <div>
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message="人工改过的读数会自动进这里，原图和纠错值永久保留；先标记「加入训练」，不会立刻改线上模型。"
+                  />
+                  <div className="meter-filters meter-filters--between">
+                    <div className="meter-filters">
+                      <Select
+                        style={{ width: 130 }}
+                        value={sampleStatus || 'all'}
+                        onChange={(value) => setSampleStatus(value === 'all' ? '' : (value as OcrSampleStatus))}
+                        options={[{ value: 'all', label: '全部状态' }, ...Object.entries(SAMPLE_STATUS).map(([value, meta]) => ({ value, label: meta.label }))]}
+                      />
+                      <Select placeholder="全部类型" allowClear style={{ width: 120 }} value={sampleType || undefined} onChange={(value) => setSampleType(value || '')} options={TYPE_OPTIONS} />
+                      <Input allowClear prefix={<SearchOutlined />} placeholder="表号 / 表名 / 地点" value={sampleKeyword} onChange={(e) => setSampleKeyword(e.target.value)} style={{ width: 240 }} />
+                    </div>
+                    <Space>
+                      <Text type="secondary">共 {sampleTotal} 条</Text>
+                      <Button icon={<DownloadOutlined />} onClick={exportSamples}>导出当前页</Button>
+                    </Space>
+                  </div>
+                  <Table
+                    rowKey="id"
+                    size="middle"
+                    loading={sampleLoading}
+                    columns={sampleColumns}
+                    dataSource={samples}
+                    scroll={{ x: 1180 }}
+                    pagination={{ current: samplePage, pageSize: 30, total: sampleTotal, showSizeChanger: false, onChange: (page) => void loadSamples(page) }}
                   />
                 </div>
               ),
@@ -1071,6 +1249,7 @@ export default function MeterManagementPage() {
                 <Descriptions.Item label="识别">
                   {confidenceText(review.ocrConfidence)} · {review.ocrProvider === 'sidecar' ? '本地 OCR' : review.ocrProvider === 'llm' ? '大模型' : '人工/无'}
                   {review.ocrMeterNo ? ` · 识别表号 ${review.ocrMeterNo}` : ''}
+                  {review.orientation ? ` · 自动旋转 ${review.orientation}°` : ''}
                 </Descriptions.Item>
                 <Descriptions.Item label="GPS">
                   {review.latitude === null || review.longitude === null ? '未记录' : `${review.longitude}, ${review.latitude}（±${review.gpsAccuracy || '?'}m）`}
@@ -1106,6 +1285,53 @@ export default function MeterManagementPage() {
                   {review.chargeStatus === 'paid' && <Alert type="info" showIcon message="这张账单已收款，修正读数前请先处理收款。" />}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+      </Drawer>
+
+      <Drawer
+        open={!!samplePreview}
+        width={760}
+        title={samplePreview ? `识别纠错样本 · ${samplePreview.meterNo}` : '识别纠错样本'}
+        onClose={() => setSamplePreview(null)}
+      >
+        {samplePreview && (
+          <div className="meter-review">
+            <div className="meter-review-photo">
+              {samplePreview.photoUrl ? (
+                <div className="meter-review-frame">
+                  <Image src={imageSrc(samplePreview.photoUrl)} style={{ width: '100%', borderRadius: 8 }} />
+                  {samplePreview.roi && (
+                    <span
+                      className="meter-roi"
+                      style={{
+                        left: `${samplePreview.roi.x * 100}%`,
+                        top: `${samplePreview.roi.y * 100}%`,
+                        width: `${samplePreview.roi.w * 100}%`,
+                        height: `${samplePreview.roi.h * 100}%`,
+                      }}
+                    />
+                  )}
+                </div>
+              ) : <div className="meter-review-no-photo">没有原图</div>}
+              <div className="meter-review-hint">原图与纠正值永久保留；这条样本不会自动改线上模型，需在训练流程里显式使用。</div>
+            </div>
+            <div className="meter-review-side">
+              <Descriptions size="small" column={1} bordered>
+                <Descriptions.Item label="表 / 地点">{samplePreview.meterNo} · {samplePreview.meterName || '—'}</Descriptions.Item>
+                <Descriptions.Item label="位数">{samplePreview.integerDigits} 位整数 + {samplePreview.decimalDigits} 位小数</Descriptions.Item>
+                <Descriptions.Item label="预测 → 纠正">
+                  <Text delete type="secondary">{samplePreview.predictedValue ?? '—'}</Text>
+                  {' → '}
+                  <Text strong>{samplePreview.correctedValue ?? '—'}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="置信度 / 方向">{samplePreview.confidence ?? '—'}% / {samplePreview.orientation}°</Descriptions.Item>
+                <Descriptions.Item label="状态"><Tag color={SAMPLE_STATUS[samplePreview.status]?.color}>{SAMPLE_STATUS[samplePreview.status]?.label || samplePreview.status}</Tag></Descriptions.Item>
+                <Descriptions.Item label="纠正时间">{timeText(samplePreview.correctedAt)}</Descriptions.Item>
+              </Descriptions>
+              <div className="meter-detail-section">OCR 原文</div>
+              <pre className="meter-ocr-raw">{samplePreview.ocrText || '—'}</pre>
             </div>
           </div>
         )}

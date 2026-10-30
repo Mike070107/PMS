@@ -105,6 +105,10 @@ export class MeterReading extends TenantEntity {
   @Column({ name: 'ocr_raw', type: 'jsonb', nullable: true })
   ocrRaw: Record<string, unknown> | null;
 
+  /** OCR 时自动选定的旋转角（0/90/180/270），原图不旋转，只用于审计与复现 */
+  @Column({ type: 'int', default: 0 })
+  orientation: number;
+
   @Column({ type: 'varchar', length: 20, default: 'confirmed' })
   status: MeterReadingStatus;
 

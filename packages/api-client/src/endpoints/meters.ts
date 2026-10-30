@@ -75,6 +75,8 @@ export interface MeterReadingRow {
   photoHeight: number | null;
   /** 端上框选的读数区域（0~1），后台据此在原图上画红框 */
   roi: { x: number; y: number; w: number; h: number } | null;
+  /** OCR 自动选择的旋转角，原图不旋转 */
+  orientation: number;
   ocrStatus: 'success' | 'failed' | 'skipped';
   ocrProvider: 'sidecar' | 'llm' | 'none' | null;
   ocrConfidence: string | null;
@@ -152,11 +154,44 @@ export interface MeterOcrResp {
   }>;
   needsReview: boolean;
   imageUrl: string;
+  orientation: number;
   error?: string;
 }
 
-export interface MeterSummaryResp {
-  period: string;
+export type OcrSampleStatus = 'candidate' | 'training' | 'trained' | 'excluded';
+
+export interface OcrSampleRow {
+  id: number;
+  meterId: number;
+  readingId: number | null;
+  meterNo: string;
+  meterName: string;
+  meterType: MeterType;
+  integerDigits: number;
+  decimalDigits: number;
+  photoUrl: string;
+  roi: { x: number; y: number; w: number; h: number } | null;
+  orientation: number;
+  ocrProvider: string;
+  ocrText: string;
+  confidence: string | null;
+  predictedValue: string | null;
+  correctedValue: string | null;
+  status: OcrSampleStatus;
+  source: string;
+  note: string;
+  correctedAt: string | null;
+  createdAt: string;
+}
+
+export interface OcrSampleListResp {
+  rows: OcrSampleRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface MeterSummaryResp {  period: string;
   meters: { total: number; active: number; due: number };
   readings: { readings: number; meters_read: number };
   usage: Array<{ meterType: MeterType; label: string; usage: number; unit: string }>;
@@ -206,6 +241,7 @@ export interface ReadingInput {
     confidence?: number;
     text?: string;
     meterNo?: string;
+    orientation?: number;
     raw?: Record<string, unknown>;
   };
   latitude?: number;
@@ -282,7 +318,7 @@ export const meters = {
     request<{ payload: string; dataUrl: string; meterNo: string }>({ url: `/meters/${id}/qr` }),
 
   ocr: (id: number, data: { imageKey: string; crop?: { x: number; y: number; w: number; h: number } }) =>
-    request<MeterOcrResp>({ url: `/meters/${id}/ocr`, method: 'POST', data, timeout: 45000 }),
+    request<MeterOcrResp>({ url: `/meters/${id}/ocr`, method: 'POST', data, timeout: 90000 }),
 
   ocrHealth: () =>
     request<{ ok: boolean; provider: string; detail?: string }>({ url: '/meters/ocr/health' }),
@@ -322,6 +358,27 @@ export const meters = {
     id: number,
     data: { readingValue?: number; note?: string; reviewNote?: string; status?: ReadingStatus },
   ) => request<ReadingResult>({ url: `/meters/readings/${id}`, method: 'PUT', data }),
+
+  ocrSamples: (params: {
+    status?: OcrSampleStatus | '';
+    meterType?: MeterType | '';
+    keyword?: string;
+    page?: number;
+    pageSize?: number;
+  } = {}) =>
+    request<OcrSampleListResp>({
+      url: '/meters/ocr-samples',
+      query: query({
+        status: params.status || undefined,
+        meterType: params.meterType || undefined,
+        keyword: params.keyword,
+        page: params.page,
+        pageSize: params.pageSize,
+      }),
+    }),
+
+  updateOcrSample: (id: number, data: { status: OcrSampleStatus; note?: string }) =>
+    request<OcrSampleRow>({ url: `/meters/ocr-samples/${id}`, method: 'PATCH', data }),
 
   charges: (params: {
     meterType?: MeterType | '';

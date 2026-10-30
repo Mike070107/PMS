@@ -4,11 +4,12 @@ import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
 import { DataSource, QueryResult } from 'typeorm';
 import { Broadcaster } from 'typeorm/subscriber/Broadcaster';
-import { entities, Meter, MeterCharge, MeterReading } from '../../entities';
+import { entities, Meter, MeterCharge, MeterOcrSample, MeterReading } from '../../entities';
 import { UserRole } from '../../common/enums';
 import { ResolvedAccess } from '../access/access.service';
 import { MetersService } from './meters.service';
 import { Meters1792900000000 } from '../../migrations/1792900000000-Meters';
+import { MeterLearning1792900000001 } from '../../migrations/1792900000001-MeterLearning';
 
 /**
  * 在内存 PostgreSQL 里跑真实迁移和真实 SQL/事务，验证「读数→用量→账单→收款」这条链。
@@ -56,6 +57,7 @@ async function fixture() {
     pg.transaction((tx: any) => callback(runner(tx, true).manager))) as any;
 
   await new Meters1792900000000().up({ query: (sql: string) => pg.query(sql) } as any);
+  await new MeterLearning1792900000001().up({ query: (sql: string) => pg.query(sql) } as any);
   await pg.query(
     `INSERT INTO meters(tenant_id, meter_no, meter_type, name, unit, integer_digits, decimal_digits,
        multiplier, unit_price_cents, initial_reading, initial_reading_at, last_reading_value,
@@ -68,6 +70,7 @@ async function fixture() {
     ds.getRepository(Meter),
     ds.getRepository(MeterReading),
     ds.getRepository(MeterCharge),
+    ds.getRepository(MeterOcrSample),
     {} as any,
     {} as any,
     {} as any,
@@ -174,6 +177,28 @@ test('真实迁移/SQL：抄错不能当归零、补录时间不能早于最近�
     const before = await service.meterDetail(1, user, access);
     assert.equal(before.stats.unpaidCents, 4200);
     assert.equal(before.charges[0].paidCents, 4200);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('真实迁移/SQL：后台纠正读数会自动落学习样本，可标记进训练集', async () => {
+  const { pg, service } = await fixture();
+  try {
+    const created = await service.createReading(1, reading(2410, '2026-10-01T09:00:00+08:00', 's1'), user, access);
+    await service.updateReading(created.reading.id, { readingValue: 2420, reviewNote: '识别少了一位' }, user, access);
+
+    const list = await service.listOcrSamples({}, user, access);
+    assert.equal(list.total, 1);
+    assert.equal(list.rows[0].predictedValue, '2410.000');
+    assert.equal(list.rows[0].correctedValue, '2420.000');
+    assert.equal(list.rows[0].status, 'candidate');
+
+    const marked = await service.updateOcrSample(list.rows[0].id, { status: 'training' }, user, access);
+    assert.equal(marked.status, 'training');
+
+    const rows = await pg.query(`SELECT predicted_value, corrected_value FROM meter_ocr_samples`);
+    assert.equal(rows.rows.length, 1);
   } finally {
     await pg.close();
   }

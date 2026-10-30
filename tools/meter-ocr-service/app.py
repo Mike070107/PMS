@@ -135,6 +135,55 @@ def run_ocr(image: np.ndarray) -> list[dict[str, Any]]:
     return items
 
 
+def rotate_image(image: np.ndarray, angle: int) -> np.ndarray:
+    if angle == 90:
+        return cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+    if angle == 180:
+        return cv2.rotate(image, cv2.ROTATE_180)
+    if angle == 270:
+        return cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return image
+
+
+def map_box_to_original(box: list[float], angle: int, width: int, height: int) -> list[float]:
+    """把旋转后图上的框映射回原图坐标，红框和后台复核都按原图显示。"""
+    x1, y1, x2, y2 = box
+    points = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+    mapped: list[tuple[float, float]] = []
+    for x, y in points:
+        if angle == 90:
+            ox, oy = y, height - 1 - x
+        elif angle == 180:
+            ox, oy = width - 1 - x, height - 1 - y
+        elif angle == 270:
+            ox, oy = width - 1 - y, x
+        else:
+            ox, oy = x, y
+        mapped.append((min(max(ox, 0), width - 1), min(max(oy, 0), height - 1)))
+    xs = [p[0] for p in mapped]
+    ys = [p[1] for p in mapped]
+    return [round(min(xs), 1), round(min(ys), 1), round(max(xs), 1), round(max(ys), 1)]
+
+
+def recognize_rotations(image: np.ndarray) -> list[dict[str, Any]]:
+    height, width = image.shape[:2]
+    variants: list[dict[str, Any]] = []
+    for angle in (0, 90, 270, 180):
+        started = time.time()
+        rotated = rotate_image(image, angle)
+        items = run_ocr(rotated)
+        for item in items:
+            item["box"] = map_box_to_original(item["box"], angle, width, height)
+        variants.append(
+            {
+                "orientation": angle,
+                "items": items,
+                "elapsedMs": int((time.time() - started) * 1000),
+            }
+        )
+    return variants
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = f"MeterOcr/{VERSION}"
 
@@ -185,18 +234,34 @@ class Handler(BaseHTTPRequestHandler):
             if bool(payload.get("enhance")):
                 image = enhance(image)
             height, width = image.shape[:2]
-            items = run_ocr(image)
-            self._send(
-                200,
-                {
-                    "ok": True,
-                    "items": items,
-                    "width": width,
-                    "height": height,
-                    "elapsedMs": int((time.time() - started) * 1000),
-                    "enhanced": bool(payload.get("enhance")),
-                },
-            )
+            auto_rotate = bool(payload.get("autoRotate"))
+            if auto_rotate:
+                variants = recognize_rotations(image)
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "variants": variants,
+                        "width": width,
+                        "height": height,
+                        "elapsedMs": int((time.time() - started) * 1000),
+                        "autoRotate": True,
+                    },
+                )
+            else:
+                items = run_ocr(image)
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "items": items,
+                        "width": width,
+                        "height": height,
+                        "elapsedMs": int((time.time() - started) * 1000),
+                        "orientation": 0,
+                        "enhanced": bool(payload.get("enhance")),
+                    },
+                )
         except ValueError as exc:
             self._send(400, {"ok": False, "error": str(exc)})
         except Exception as exc:  # noqa: BLE001

@@ -17,6 +17,7 @@ import {
   House,
   Meter,
   MeterCharge,
+  MeterOcrSample,
   MeterReading,
   User,
   type MeterReadingAnomaly,
@@ -42,9 +43,11 @@ import type {
   MeterQueryDto,
   MeterSummaryQueryDto,
   OcrQueryDto,
+  OcrSampleQueryDto,
   PayChargeDto,
   ReadingQueryDto,
   UpdateMeterDto,
+  UpdateOcrSampleDto,
   UpdateReadingDto,
 } from './dto';
 
@@ -74,6 +77,7 @@ export class MetersService {
     @InjectRepository(Meter) private readonly meterRepo: Repository<Meter>,
     @InjectRepository(MeterReading) private readonly readingRepo: Repository<MeterReading>,
     @InjectRepository(MeterCharge) private readonly chargeRepo: Repository<MeterCharge>,
+    @InjectRepository(MeterOcrSample) private readonly sampleRepo: Repository<MeterOcrSample>,
     @InjectRepository(Community) private readonly communityRepo: Repository<Community>,
     @InjectRepository(House) private readonly houseRepo: Repository<House>,
     @InjectRepository(Building) private readonly buildingRepo: Repository<Building>,
@@ -497,6 +501,7 @@ export class MetersService {
         ocrText: dto.ocr?.text ?? null,
         ocrMeterNo: dto.ocr?.meterNo ?? null,
         ocrRaw: dto.ocr?.raw ?? null,
+        orientation: dto.ocr?.orientation ?? 0,
         status: 'confirmed',
         anomalyFlags: [...new Set(anomalies)],
         latitude: dto.latitude === undefined ? null : String(dto.latitude),
@@ -643,6 +648,10 @@ export class MetersService {
       await this.refreshMeterLast(meter);
       return this.readingResult(reading, meter);    }
 
+    const predictedBefore = reading.readingValue;
+    const correctedValue = dto.readingValue === undefined ? null : round3(dto.readingValue);
+    const valueChanged = correctedValue !== null && Math.abs(correctedValue - Number(reading.readingValue)) > 0.0005;
+
     if (dto.readingValue !== undefined) {
       if (charge && (charge.paidCents > 0 || charge.status === 'paid')) {
         throw new BadRequestException('这张抄表已收款，改读数前请先处理账单');
@@ -675,8 +684,151 @@ export class MetersService {
     if (dto.status !== undefined) reading.status = dto.status;
     reading.updatedBy = user.id;
     await this.readingRepo.save(reading);
+    if (valueChanged) {
+      await this.upsertOcrSample(reading, meter, predictedBefore, reading.readingValue, user);
+    }
     await this.refreshMeterLast(meter);
     return this.readingResult(reading, meter);
+  }
+
+  // ---------------------------------------------------------------- 识别纠错样本
+
+  /**
+   * 人工把读数从识别值改成确认值时自动落一条样本。只标记 candidate，
+   * 不会立刻改线上模型；训练页再逐条确认是否进入训练集。
+   */
+  private async upsertOcrSample(
+    reading: MeterReading,
+    meter: Meter,
+    predictedValue: string,
+    correctedValue: string,
+    user: AuthUser,
+  ) {
+    const existing = reading.id
+      ? await this.sampleRepo.findOne({ where: { tenantId: reading.tenantId, readingId: reading.id } })
+      : null;
+    const sample = existing ?? this.sampleRepo.create({
+      tenantId: reading.tenantId,
+      meterId: meter.id,
+      readingId: reading.id,
+      meterNoSnapshot: meter.meterNo,
+      meterType: meter.meterType,
+      integerDigits: meter.integerDigits,
+      decimalDigits: meter.decimalDigits,
+      photoKey: reading.photoKey,
+      photoUrl: reading.photoUrl,
+      roi: reading.roi,
+      orientation: reading.orientation ?? 0,
+      ocrProvider: reading.ocrProvider,
+      ocrText: reading.ocrText,
+      confidence: reading.ocrConfidence,
+      predictedValue,
+      predictedDigits: String(predictedValue).replace('.', ''),
+      status: 'candidate',
+      source: 'review',
+      correctedBy: user.id,
+      correctedAt: new Date(),
+      createdBy: user.id,
+      updatedBy: user.id,
+    });
+    sample.correctedValue = correctedValue;
+    sample.correctedDigits = String(correctedValue).replace('.', '');
+    sample.status = 'candidate';
+    sample.correctedBy = user.id;
+    sample.correctedAt = new Date();
+    sample.updatedBy = user.id;
+    sample.roi = reading.roi;
+    sample.orientation = reading.orientation ?? 0;
+    sample.photoKey = reading.photoKey;
+    sample.photoUrl = reading.photoUrl;
+    sample.ocrText = reading.ocrText;
+    sample.ocrProvider = reading.ocrProvider;
+    sample.confidence = reading.ocrConfidence;
+    try {
+      await this.sampleRepo.save(sample);
+    } catch (error: any) {
+      // 并发复核同一张记录时唯一索引会拦一次，下一次保存会把纠正值补齐
+      if (String(error?.code) !== '23505') throw error;
+    }  }
+
+  async listOcrSamples(query: OcrSampleQueryDto, user: AuthUser, access: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const where: string[] = ['s.tenant_id = $1'];
+    const params: unknown[] = [tenantId];
+    const push = (value: unknown) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+    if (query.status) where.push(`s.status = ${push(query.status)}`);
+    if (query.meterType) where.push(`m.meter_type = ${push(query.meterType)}`);
+    if (query.keyword?.trim()) {
+      const kw = `%${query.keyword.trim()}%`;
+      const p = push(kw);
+      where.push(`(s.meter_no_snapshot ILIKE ${p} OR m.name ILIKE ${p} OR m.install_address ILIKE ${p})`);
+    }
+    this.applyCommunityScope(where, params, access, 'm.community_id');
+    const page = Math.max(1, Math.round(query.page || 1));
+    const pageSize = Math.min(200, Math.max(1, Math.round(query.pageSize || 30)));
+    const offset = (page - 1) * pageSize;
+    const from = `
+      FROM meter_ocr_samples s
+      JOIN meters m ON m.id = s.meter_id
+      WHERE ${where.join(' AND ')}
+    `;
+    const [count, rows] = await Promise.all([
+      this.dataSource.query(`SELECT count(*)::int AS total ${from}`, params),
+      this.dataSource.query(
+        `SELECT s.*, m.meter_type, m.name AS meter_name, m.install_address, m.community_id
+         ${from}
+         ORDER BY s.id DESC LIMIT ${pageSize} OFFSET ${offset}`,
+        params,
+      ),
+    ]);
+    return {
+      rows: rows.map((row: any) => this.mapOcrSample(row)),
+      total: count[0]?.total ?? 0,
+      page,
+      pageSize,
+    };
+  }
+
+  async updateOcrSample(id: number, dto: UpdateOcrSampleDto, user: AuthUser, access: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const sample = await this.sampleRepo.findOne({ where: { id, tenantId } });
+    if (!sample) throw new NotFoundException('识别样本不存在');
+    const meter = await this.findMeter(sample.meterId, tenantId);
+    this.assertMeterScope(meter, access);
+    sample.status = dto.status;
+    if (dto.note !== undefined) sample.note = dto.note.trim() || null;
+    sample.updatedBy = user.id;
+    await this.sampleRepo.save(sample);
+    return this.mapOcrSample({ ...sample, meter_type: meter.meterType, meter_name: meter.name, install_address: meter.installAddress });
+  }
+
+  private mapOcrSample(row: any) {
+    return {
+      id: row.id,
+      meterId: row.meterId ?? row.meter_id,
+      readingId: row.readingId ?? row.reading_id,
+      meterNo: row.meterNoSnapshot ?? row.meter_no_snapshot,
+      meterName: row.meter_name || '',
+      meterType: row.meter_type,
+      integerDigits: Number(row.integerDigits ?? row.integer_digits ?? 0),
+      decimalDigits: Number(row.decimalDigits ?? row.decimal_digits ?? 0),
+      photoUrl: this.storage.toDisplayUrl(row.photoUrl ?? row.photo_url),
+      roi: row.roi ?? null,
+      orientation: Number(row.orientation ?? 0),
+      ocrProvider: row.ocrProvider ?? row.ocr_provider ?? '',
+      ocrText: row.ocrText ?? row.ocr_text ?? '',
+      confidence: row.confidence ?? null,
+      predictedValue: row.predictedValue ?? row.predicted_value ?? null,
+      correctedValue: row.correctedValue ?? row.corrected_value ?? null,
+      status: row.status,
+      source: row.source,
+      note: row.note || '',
+      correctedAt: row.correctedAt ?? row.corrected_at ?? null,
+      createdAt: row.createdAt ?? row.created_at,
+    };
   }
 
   // ---------------------------------------------------------------- 账单
@@ -1066,6 +1218,7 @@ export class MetersService {
       ocrConfidence: row.ocrConfidence ?? row.ocr_confidence,
       ocrText: row.ocrText ?? row.ocr_text,
       ocrMeterNo: row.ocrMeterNo ?? row.ocr_meter_no,
+      orientation: Number(row.orientation ?? 0),
       status: row.status,
       anomalyFlags: flags,
       anomalyLabels: flags.map((flag) => ANOMALY_LABELS[flag] || flag),

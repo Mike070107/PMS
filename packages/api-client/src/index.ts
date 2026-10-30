@@ -39,6 +39,9 @@ export type {
   MeterStatus,
   ReadingStatus,
   ChargeStatus,
+  OcrSampleRow,
+  OcrSampleListResp,
+  OcrSampleStatus,
 } from './endpoints/meters';
 export type {
   AccessCardHistoryRow,

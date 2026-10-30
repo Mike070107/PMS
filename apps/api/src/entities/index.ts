@@ -88,6 +88,7 @@ import { RepairExperienceFavorite } from './repair-experience-favorite.entity';
 import { Meter } from './meter.entity';
 import { MeterReading } from './meter-reading.entity';
 import { MeterCharge } from './meter-charge.entity';
+import { MeterOcrSample } from './meter-ocr-sample.entity';
 
 export const entities = [
   Tenant,
@@ -110,6 +111,7 @@ export const entities = [
   Meter,
   MeterReading,
   MeterCharge,
+  MeterOcrSample,
   Community,
   Building,
   Unit,
@@ -203,6 +205,7 @@ export {
   Meter,
   MeterReading,
   MeterCharge,
+  MeterOcrSample,
   Community,
   Building,
   Unit,
@@ -294,3 +297,4 @@ export type {
   MeterOcrResult,
 } from './meter-reading.entity';
 export type { MeterChargeStatus } from './meter-charge.entity';
+export type { MeterOcrSampleStatus } from './meter-ocr-sample.entity';

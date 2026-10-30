@@ -6,6 +6,7 @@ import {
   House,
   Meter,
   MeterCharge,
+  MeterOcrSample,
   MeterReading,
   User,
 } from '../../entities';
@@ -17,7 +18,7 @@ import { MetersService } from './meters.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Meter, MeterReading, MeterCharge, Community, House, Building, User]),
+    TypeOrmModule.forFeature([Meter, MeterReading, MeterCharge, MeterOcrSample, Community, House, Building, User]),
     UploadModule,
     AiModule,
   ],
