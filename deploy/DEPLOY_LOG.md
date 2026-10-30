@@ -5489,3 +5489,10 @@
   - 28fe890c feat(meters): crop-only vision recognition, independent AI settings and correction samples
   - a1b62873 fix(meters): OCR 按固定红框过滤候选，避免选中框外表号/绿标
 
+## 2026-10-31 00:39 · api · 17ae188a
+
+- 包：`pms-api-fast-20261031-003923.tar.gz`
+- 提交：17ae188a fix(deploy): cast meter migration history parameters explicitly
+- 自上次（28fe890c）以来上线的相关提交：
+  - a102cc9f feat(meters): reviewed details, GPS maps, reliable photo location and receipt registration
+
