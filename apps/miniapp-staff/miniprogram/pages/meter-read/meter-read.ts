@@ -1,6 +1,7 @@
 import { meters, upload } from '@pms/api-client';
 import type { MeterOcrResp, MeterRow, ReadingResult } from '@pms/api-client';
 import { getSession } from '../../utils/session';
+import { fitRoiToFrame, frameRoi as computeFrameRoi } from '../../utils/crop';
 import {
   formatMeterTime,
   formatMeterValue,
@@ -49,6 +50,15 @@ Page({
     meter: null as MeterRow | null,
     loading: true,
     mode: 'camera' as 'camera' | 'preview' | 'done',
+    cropOpen: false,
+    frame: { x: 0.1, y: 0.41, w: 0.8, h: 0.18 },
+    imgScale: 1,
+    imgX: 0,
+    imgY: 0,
+    imgRotate: 0,
+    imgTouched: false,
+    imgDirty: false,
+    cropCanUse: false,
     photoPath: '',
     photoKey: '',
     photoWidth: 0,
@@ -179,9 +189,9 @@ Page({
       success: (info) => {
         const now = new Date();
         const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
-        const maxWidth = Math.max(220, Number(win.windowWidth || 375) - 24);
-        // 全景照只用于框选，不再占满整屏；默认高度压在 43vh/430px 内，点「查看全景」再看大图
-        const maxHeight = Math.max(260, Math.min(430, Math.round(Number(win.windowHeight || 700) * 0.43)));
+        const maxWidth = Math.max(220, Number(win.windowWidth || 375));
+        // 全屏裁剪页：图片尽量大，但给顶部/底部操作留空间
+        const maxHeight = Math.max(260, Math.min(500, Math.round(Number(win.windowHeight || 700) * 0.55)));
         let displayWidth = maxWidth;
         let displayHeight = Math.round((displayWidth * info.height) / Math.max(1, info.width));
         if (displayHeight > maxHeight) {
@@ -192,11 +202,19 @@ Page({
         this.setData(
           {
             mode: 'preview',
+            cropOpen: true,
             photoPath: path,
             photoWidth: info.width,
             photoHeight: info.height,
             photoDisplayWidth: displayWidth,
             photoDisplayHeight: displayHeight,
+            imgScale: 1,
+            imgX: 0,
+            imgY: 0,
+            imgRotate: 0,
+            imgTouched: false,
+            imgDirty: false,
+            cropCanUse: false,
             photoRotate: 0,
             rotating: false,
             roi,
@@ -218,15 +236,23 @@ Page({
       },
       fail: () => {
         const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
-        const maxWidth = Math.max(220, Number(win.windowWidth || 375) - 24);
-        const maxHeight = Math.max(260, Math.min(430, Math.round(Number(win.windowHeight || 700) * 0.43)));
+        const maxWidth = Math.max(220, Number(win.windowWidth || 375));
+        const maxHeight = Math.max(260, Math.min(500, Math.round(Number(win.windowHeight || 700) * 0.55)));
         const displayWidth = Math.min(maxWidth, Math.round(maxHeight * 0.7));
         this.setData(
           {
             mode: 'preview',
+            cropOpen: true,
             photoPath: path,
             photoDisplayWidth: displayWidth,
             photoDisplayHeight: Math.round(displayWidth * 1.4),
+            imgScale: 1,
+            imgX: 0,
+            imgY: 0,
+            imgRotate: 0,
+            imgTouched: false,
+            imgDirty: false,
+            cropCanUse: false,
             photoRotate: 0,
             rotating: false,
             roi: this.data.templateRoi || { ...DEFAULT_ROI },
@@ -260,6 +286,39 @@ Page({
         setTimeout(() => { (this as any).roiSyncing = false; }, 80);
       },
     );
+  },
+
+  /** 固定红框在当前图片变换下对应的原图归一化区域（旋转后取轴对齐外接框） */
+  frameRoi(): Roi {
+    return computeFrameRoi(
+      this.data.frame,
+      { scale: this.data.imgScale, x: this.data.imgX, y: this.data.imgY, rotate: this.data.imgRotate },
+      this.data.photoDisplayWidth,
+      this.data.photoDisplayHeight,
+    );
+  },
+
+  /** 自动把 OCR 找到的读数区移到固定红框里；用户之后可再缩放/旋转 */
+  focusOnRoi(roi: Roi) {
+    const next = fitRoiToFrame(
+      this.data.frame,
+      roi,
+      this.data.photoDisplayWidth,
+      this.data.photoDisplayHeight,
+    );
+    if (!next) return;
+    this.setData({
+      imgScale: next.scale,
+      imgX: next.x,
+      imgY: next.y,
+      imgRotate: next.rotate,
+      imgTouched: false,
+      imgDirty: false,
+    });
+  },
+
+  resetView() {
+    this.setData({ imgScale: 1, imgX: 0, imgY: 0, imgRotate: 0, imgTouched: true, imgDirty: true });
   },
 
   /** 表号也是 8 位数字时，绝不能被当成读数；档案表号是唯一可信来源 */
@@ -306,7 +365,7 @@ Page({
     const box = preferred?.box;
     const width = this.data.photoWidth;
     const height = this.data.photoHeight;
-    if (!box || !width || !height) return this.data.templateRoi || { ...DEFAULT_ROI };
+    if (!box || !width || !height) return { ...DEFAULT_ROI };
     const padX = 0.02;
     const padY = 0.015;
     const x = clamp(box[0] / width - padX, 0, 0.98);
@@ -325,33 +384,22 @@ Page({
       wx.showLoading({ title: '定位读数区域…', mask: true });
       const full = await meters.ocr(this.data.id, { imageKey: stored.objectKey });
       const autoRoi = this.roiFromOcr(full);
-      const keepUser = this.data.roiTouched;
-      const useTemplate = !keepUser && !!this.data.templateRoi;
-      const roi = keepUser
-        ? this.data.roi
-        : useTemplate
-          ? this.data.templateRoi!
-          : autoRoi;
+      const keepUser = this.data.imgTouched;
       const located = (full.candidates || []).some(
         (item) =>
           Array.isArray(item.box) &&
           item.box.length >= 4 &&
           !this.isMeterNoDigits(item.digits),
       );
-      this.setData(
-        {
-          roi,
-          roiDirty: false,
-          autoBoxText: keepUser
-            ? '已保留你框选的位置，正在识别'
-            : useTemplate
-              ? '已套用这块表上次确认的读数位置，可拖动微调'
-              : located
-                ? '已自动框选读数区域，请核对红框；歪了可拖动，或用下面按钮调大小'
-                : '没有自动找到读数区，请把红框拖到读数数字上',
-        },
-        () => this.syncRoiPx(roi),
-      );
+      if (!keepUser) this.focusOnRoi(autoRoi);
+      this.setData({
+        cropCanUse: false,
+        autoBoxText: keepUser
+          ? '已保留你调整的画面，正在识别'
+          : located
+            ? '已自动把读数移到红框里，可双指缩放/转动微调'
+            : '没有自动找到读数区，请拖动/缩放图片把数字放进红框',
+      });
       wx.hideLoading();
       await this.recognizeRoi();
     } catch (e) {
@@ -373,7 +421,7 @@ Page({
     const width = this.data.photoWidth;
     const height = this.data.photoHeight;
     if (!width || !height) return boxed[0] || null;
-    const roi = this.effectiveRoi();
+    const roi = this.frameRoi();
     const inside = boxed.filter((item) => {
       const box = item.box!;
       const cx = (box[0] + box[2]) / 2 / width;
@@ -428,7 +476,8 @@ Page({
         amountText: preview.amountText,
         digitWarning,
         recognizing: false,
-        roiDirty: false,
+        imgDirty: false,
+        cropCanUse: !digitWarning && !!valueText,
         error,
       });
     } catch (e) {
@@ -441,35 +490,82 @@ Page({
 
   onPhotoTouchStart(event: any) {
     const touches = event.touches || [];
-    if (touches.length < 2) return;
-    (this as any).rotateStartAngle = Math.atan2(
-      touches[1].clientY - touches[0].clientY,
-      touches[1].clientX - touches[0].clientX,
-    ) * (180 / Math.PI);
-    (this as any).rotateStartValue = this.data.photoRotate;
-    this.setData({ rotating: true });
+    if (!touches.length) return;
+    if (touches.length >= 2) {
+      const midX = (touches[0].clientX + touches[1].clientX) / 2;
+      const midY = (touches[0].clientY + touches[1].clientY) / 2;
+      (this as any).gesture = {
+        mode: 'pinch',
+        startDist: Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY),
+        startAngle: Math.atan2(touches[1].clientY - touches[0].clientY, touches[1].clientX - touches[0].clientX) * 180 / Math.PI,
+        startMidX: midX,
+        startMidY: midY,
+        startScale: this.data.imgScale,
+        startRotate: this.data.imgRotate,
+        startX: this.data.imgX,
+        startY: this.data.imgY,
+      };
+    } else {
+      (this as any).gesture = {
+        mode: 'pan',
+        startTouchX: touches[0].clientX,
+        startTouchY: touches[0].clientY,
+        startX: this.data.imgX,
+        startY: this.data.imgY,
+      };
+    }
   },
 
   onPhotoTouchMove(event: any) {
-    if (!this.data.rotating) return;
+    const g = (this as any).gesture;
     const touches = event.touches || [];
-    if (touches.length < 2) return;
-    const angle = Math.atan2(
-      touches[1].clientY - touches[0].clientY,
-      touches[1].clientX - touches[0].clientX,
-    ) * (180 / Math.PI);
-    let next = Number((this as any).rotateStartValue || 0) + angle - Number((this as any).rotateStartAngle || 0);
-    while (next > 180) next -= 360;
-    while (next < -180) next += 360;
-    this.setData({ photoRotate: Math.round(next) });
+    if (!g || !touches.length) return;
+    if (touches.length >= 2 && g.mode === 'pinch') {
+      const dist = Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+      const angle = Math.atan2(touches[1].clientY - touches[0].clientY, touches[1].clientX - touches[0].clientX) * 180 / Math.PI;
+      const midX = (touches[0].clientX + touches[1].clientX) / 2;
+      const midY = (touches[0].clientY + touches[1].clientY) / 2;
+      let rotate = Number(g.startRotate) + angle - Number(g.startAngle);
+      while (rotate > 180) rotate -= 360;
+      while (rotate < -180) rotate += 360;
+      this.setData({
+        imgScale: clamp(Number(g.startScale) * (dist / Math.max(1, g.startDist)), 0.6, 5),
+        imgRotate: Math.round(rotate),
+        imgX: Number(g.startX) + (midX - Number(g.startMidX)),
+        imgY: Number(g.startY) + (midY - Number(g.startMidY)),
+        imgTouched: true,
+        imgDirty: true,
+        cropCanUse: false,
+      });
+      return;
+    }
+    if (touches.length === 1 && g.mode === 'pan') {
+      this.setData({
+        imgX: Number(g.startX) + (touches[0].clientX - Number(g.startTouchX)),
+        imgY: Number(g.startY) + (touches[0].clientY - Number(g.startTouchY)),
+        imgTouched: true,
+        imgDirty: true,
+        cropCanUse: false,
+      });
+    }
   },
 
   onPhotoTouchEnd() {
-    if (this.data.rotating) this.setData({ rotating: false });
+    (this as any).gesture = null;
   },
 
-  onResetRotate() {
-    this.setData({ photoRotate: 0 });
+  onResetView() {
+    this.setData({ imgScale: 1, imgX: 0, imgY: 0, imgRotate: 0, imgTouched: true, imgDirty: true, cropCanUse: false });
+  },
+
+  onUseCropResult() {
+    if (!this.data.cropCanUse) return;
+    this.setData({ cropOpen: false });
+  },
+
+  onRetakeCrop() {
+    this.setData({ cropOpen: false });
+    this.onRetake();
   },
 
   onRoiChange(event: any) {
@@ -519,6 +615,14 @@ Page({
   onRetake() {
     this.setData({
       mode: 'camera',
+      cropOpen: false,
+      imgScale: 1,
+      imgX: 0,
+      imgY: 0,
+      imgRotate: 0,
+      imgTouched: false,
+      imgDirty: false,
+      cropCanUse: false,
       photoPath: '',
       photoKey: '',
       photoDisplayWidth: 0,
@@ -575,8 +679,8 @@ Page({
       wx.showToast({ icon: 'none', title: '请先拍照，原图必须留档' });
       return;
     }
-    if (this.data.roiDirty) {
-      wx.showToast({ icon: 'none', title: '红框已调整，请先点“识别框内”' });
+    if (this.data.imgDirty) {
+      wx.showToast({ icon: 'none', title: '画面已调整，请先点“识别”' });
       return;
     }
     if (!this.data.valueText.trim()) {
@@ -613,7 +717,7 @@ Page({
         photoKey: this.data.photoKey,
         photoWidth: this.data.photoWidth || undefined,
         photoHeight: this.data.photoHeight || undefined,
-        roi: this.effectiveRoi(),
+        roi: this.frameRoi(),
         latitude: this.data.location.latitude,
         longitude: this.data.location.longitude,
         accuracy: this.data.location.accuracy,
@@ -628,7 +732,7 @@ Page({
               text: this.data.ocr.texts,
               meterNo: this.data.ocr.meterNo || undefined,
               orientation: this.data.ocr.orientation ?? 0,
-              raw: { candidates: this.data.ocr.candidates, digits: this.data.ocr.digits, roi: this.effectiveRoi() },
+              raw: { candidates: this.data.ocr.candidates, digits: this.data.ocr.digits, roi: this.frameRoi() },
             }
           : { status: 'skipped' as const },
       });
