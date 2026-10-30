@@ -261,7 +261,13 @@ Page({
     const expected = this.data.meter
       ? Number(this.data.meter.integerDigits) + Number(this.data.meter.decimalDigits)
       : 0;
-    const preferred = boxed.find((item) => (item.digits || '').length === expected) || boxed[0];
+    // 同为 8 位时，读数框通常比铭牌上的标准号框高得多；优先选面积最大的那个
+    const preferred = boxed
+      .filter((item) => !expected || (item.digits || '').length === expected)
+      .sort((a, b) => {
+        const area = (item: typeof a) => Math.abs((item.box![2] - item.box![0]) * (item.box![3] - item.box![1]));
+        return area(b) - area(a);
+      })[0] || boxed[0];
     const box = preferred?.box;
     const width = this.data.photoWidth;
     const height = this.data.photoHeight;

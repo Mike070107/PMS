@@ -241,6 +241,7 @@ export function parseMeterOcr(
   for (const group of groups) {
     const text = lineText(group);
     if (!text) continue;
+    const rawText = group.map((item) => item.text).join(' ');
     // 同一行里的数字串；允许「02405 m」「0224 1888」这种被空格/单位隔开的写法
     const compact = text.replace(/\s+/g, '');
     const runs = compact.match(/\d{3,}(?:\.\d{1,3})?/g) || [];
@@ -272,6 +273,9 @@ export function parseMeterOcr(
       // 读数行常带单位；铭牌行常带「表号/编号/年」
       if (/(?:m3|m³|kwh|kw·h|立方|吨|度)/i.test(text)) score += 0.08;
       if (/表号|编号|出厂|年|GB|JJG|Q3|R=/.test(text)) score -= 0.25;
+      // 用未归一化的原文再罚一次：GB 里的 G 在某些 OCR 结果里会被归一成 6，
+      // 只查归一化文本会漏掉标准号行，导致 8 位标准号抢走读数。
+      if (/GB|JJG|DTSD|DDS|imp|Hz|\bV\b|表号|编号|出厂|年/.test(rawText)) score -= 0.3;
       const value = digitsToValue(run, integerDigits, decimalDigits, explicitDecimal);
       if (value === null) continue;
       candidates.push({
