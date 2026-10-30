@@ -18,11 +18,6 @@
             {{experienceAccess.notebookCount}} 个笔记本
           </view>
         </view>
-        <view wx:if="{{canSeeMeters}}" class="app-tile" bindtap="onOpenMeters">
-          <view class="app-tile__icon"><view class="meter-tile">表</view></view>
-          <view class="app-tile__name">抄表</view>
-          <view class="app-tile__desc">拍照识别读数、核对原图后提交</view>
-        </view>
       </view>
     </view>
 
@@ -43,6 +38,15 @@
   </view>
 
   <view class="card entries">
+    <!-- 抄表是现场高频入口，放在「我的工作台」第一项，不再藏进「更多应用」 -->
+    <view wx:if="{{canSeeMeters}}" class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenMeters">
+      <view class="entry-icon"><view class="meter-tile">表</view></view>
+      <view class="entry__body">
+        <view class="entry__title">抄表</view>
+        <view class="entry__desc">拍照识别读数、核对原图后提交；也能查历史读数和欠费</view>
+      </view>
+      <view class="entry__arrow"></view>
+    </view>
     <view wx:if="{{canUseMessages}}" class="entry" hover-class="entry--hover" hover-stay-time="80" bindtap="onOpenMessages">
       <view class="entry-icon"><view class="entry-icon__glyph icon-menu--message"></view></view>
       <view class="entry__body">
