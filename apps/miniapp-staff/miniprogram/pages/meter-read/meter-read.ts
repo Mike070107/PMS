@@ -59,6 +59,7 @@ Page({
     imgTouched: false,
     imgDirty: false,
     cropCanUse: false,
+    manualMode: false,
     photoPath: '',
     photoKey: '',
     photoWidth: 0,
@@ -395,13 +396,18 @@ Page({
   },
 
   async uploadAndLocate(path: string) {
-    this.setData({ uploading: true, recognizing: true, error: '' });
+    const token = ((this as any).cropToken || 0) + 1;
+    (this as any).cropToken = token;
+    this.setData({ uploading: true, recognizing: true, manualMode: false, error: '' });
     wx.showLoading({ title: '上传全景原图…', mask: true });
     try {
       const stored = await upload.uploadTempFile(path);
+      // 即使用户已点“手动框选”，上传完成的 key 也要留下，手动确认后可再次识别
       this.setData({ photoKey: stored.objectKey, uploading: false });
+      if (token !== (this as any).cropToken) return;
       wx.showLoading({ title: '定位读数区域…', mask: true });
       const full = await meters.ocr(this.data.id, { imageKey: stored.objectKey });
+      if (token !== (this as any).cropToken) return;
       const autoRoi = this.roiFromOcr(full);
       const keepUser = this.data.imgTouched;
       const located = (full.candidates || []).some(
@@ -422,6 +428,7 @@ Page({
       wx.hideLoading();
       await this.recognizeRoi();
     } catch (e) {
+      if (token !== (this as any).cropToken) return;
       this.setData({
         uploading: false,
         recognizing: false,
@@ -452,12 +459,14 @@ Page({
 
   async recognizeRoi(manageLoading = true) {
     if (!this.data.photoKey) return;
+    const token = (this as any).cropToken || 0;
     this.setData({ recognizing: true, error: '', digitWarning: '' });
     if (manageLoading) wx.showLoading({ title: '识别红框内读数…', mask: true });
     try {
       // 注意：仍然对全景原图 OCR，只用红框过滤候选。
       // 裁剪后的小图在液晶屏上会丢上下文（实测会把 0224 1888 识别成反序），不能作为唯一输入。
       const result = await meters.ocr(this.data.id, { imageKey: this.data.photoKey });
+      if (token !== (this as any).cropToken) return;
       const chosen = this.pickCandidate(result);
       const meter = this.data.meter;
       let valueText = this.data.valueText;
@@ -500,11 +509,41 @@ Page({
         error,
       });
     } catch (e) {
+      if (token !== (this as any).cropToken) return;
       this.setData({ error: meterErrText(e) });
     } finally {
-      this.setData({ recognizing: false });
-      if (manageLoading) wx.hideLoading();
+      if (token === (this as any).cropToken) {
+        this.setData({ recognizing: false });
+        if (manageLoading) wx.hideLoading();
+      }
     }
+  },
+
+  /**
+   * 右上角手动框选：立刻让当前上传/识别结果失效，停止转圈；
+   * 图片回到全景，用户自己拖/缩放/旋转，再点识别。
+   */
+  onManualSelect() {
+    (this as any).cropToken = ((this as any).cropToken || 0) + 1;
+    wx.hideLoading();
+    this.setData({
+      uploading: false,
+      recognizing: false,
+      manualMode: true,
+      ocr: null,
+      valueText: '',
+      usageText: '',
+      amountText: '',
+      digitWarning: '',
+      cropCanUse: false,
+      imgScale: 1,
+      imgX: 0,
+      imgY: 0,
+      imgRotate: 0,
+      imgTouched: true,
+      imgDirty: true,
+      autoBoxText: '手动模式：拖动/缩放/旋转图片，把读数放进红框后点识别',
+    });
   },
 
   onPhotoTouchStart(event: any) {

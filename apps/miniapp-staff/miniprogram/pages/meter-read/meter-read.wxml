@@ -139,7 +139,10 @@
     <view class="crop-top">
       <text class="crop-top__btn" bindtap="onRetakeCrop">重拍</text>
       <text class="crop-top__title">把读数放进红框</text>
-      <text class="crop-top__btn" bindtap="onResetView">重置</text>
+      <view class="crop-top__actions">
+        <text class="crop-top__btn crop-top__manual" bindtap="onManualSelect">手动框选</text>
+        <text class="crop-top__btn" bindtap="onResetView">重置</text>
+      </view>
     </view>
     <view class="crop-stage-wrap">
       <view
@@ -161,7 +164,7 @@
         ></view>
       </view>
     </view>
-    <view class="crop-hint">单指拖动 · 双指缩放/旋转 · 框不动</view>
+    <view class="crop-hint">{{autoBoxText || '单指拖动 · 双指缩放/旋转 · 框不动'}}</view>
     <view class="crop-sheet">
       <view wx:if="{{recognizing}}" class="crop-sheet__hint">正在识别红框内的读数…</view>
       <block wx:elif="{{ocr && ocr.ok && !imgDirty}}">
