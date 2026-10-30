@@ -49,6 +49,9 @@ Page({
     meter: null as MeterRow | null,
     loading: true,
     mode: 'camera' as 'camera' | 'preview' | 'done',
+    cameraReady: false,
+    cameraError: '',
+    flash: 'off' as 'off' | 'on' | 'auto',
     photoPath: '',
     photoKey: '',
     photoWidth: 0,
@@ -122,8 +125,6 @@ Page({
     this.initLocation();
   },
 
-  onUnload() {},
-
   initLocation() {
     wx.getLocation({
       type: 'gcj02',
@@ -141,7 +142,37 @@ Page({
     });
   },
 
-  async takePhoto() {
+  onReady() {
+    (this as any).cameraCtx = wx.createCameraContext();
+    this.setData({ cameraReady: true });
+  },
+
+  onUnload() {
+    (this as any).cameraCtx = null;
+  },
+
+  onCameraError(event: any) {
+    this.setData({ cameraError: event?.detail?.errMsg || '相机打不开，请改用系统相机或相册' });
+  },
+
+  toggleFlash() {
+    this.setData({ flash: this.data.flash === 'on' ? 'off' : 'on' });
+  },
+
+  takePhoto() {
+    const ctx = (this as any).cameraCtx;
+    if (!ctx || this.data.cameraError) {
+      void this.takeSystemPhoto();
+      return;
+    }
+    ctx.takePhoto({
+      quality: 'high',
+      success: (res: any) => this.handlePhoto(res.tempImagePath),
+      fail: (error: any) => this.setData({ cameraError: error?.errMsg || '拍照失败，请改用系统相机' }),
+    });
+  },
+
+  async takeSystemPhoto() {
     try {
       const res = await wx.chooseMedia({
         count: 1,

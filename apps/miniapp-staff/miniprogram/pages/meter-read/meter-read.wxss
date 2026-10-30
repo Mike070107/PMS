@@ -26,6 +26,18 @@
 .meter-camera-launch__desc { margin: 14rpx 0 28rpx; font-size: 26rpx; color: #718499; line-height: 1.7; text-align: left; }
 .meter-camera-launch__main { margin-bottom: 18rpx; }
 
+.meter-camera-card { padding: 18rpx 18rpx 12rpx; }
+.meter-camera-wrap--compact { height: 320rpx; margin-bottom: 12rpx; }
+.meter-camera-wrap--compact .meter-camera { height: 320rpx; }
+.meter-camera-wrap--compact .meter-camera-frame { height: 120rpx; }
+.meter-camera-actions { display: flex; align-items: center; justify-content: space-between; padding: 0 24rpx 8rpx; }
+.meter-camera-side {
+  margin: 0; padding: 0 18rpx; height: 64rpx; line-height: 64rpx;
+  border-radius: 32rpx; background: #f2f6fa; color: #31558a; font-size: 23rpx;
+}
+.meter-camera-side::after { border: none; }
+.meter-camera-fallback { text-align: center; padding: 8rpx 0 6rpx; color: #31558a; font-size: 23rpx; }
+
 .meter-camera-wrap { position: relative; width: 100%; height: 760rpx; border-radius: 24rpx; overflow: hidden; background: #0e1722; margin-bottom: 24rpx; }
 .meter-camera { width: 100%; height: 760rpx; }
 .meter-camera-guide { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }

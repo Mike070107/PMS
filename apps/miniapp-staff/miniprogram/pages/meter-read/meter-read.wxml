@@ -20,18 +20,37 @@
       </view>
     </view>
 
-    <!-- 拍照：用系统相机，和工单完工照片同一条链路；不用 <camera> 预览，避免相机组件权限/黑屏差异 -->
+    <!-- 拍照：小预览取景，补光灯，拍高清原图；相机组件异常时退回系统相机 -->
     <block wx:if="{{mode === 'camera'}}">
-      <view class="card meter-camera-launch">
-        <view class="meter-camera-launch__icon">表</view>
-        <view class="meter-camera-launch__title">拍一张仪表全景照</view>
-        <view class="meter-camera-launch__desc">
-          把整块表拍进画面，读数放在中间、数字尽量大，避开玻璃反光。拍完再框选读数区。
+      <view class="card meter-camera-card">
+        <view class="meter-camera-wrap meter-camera-wrap--compact">
+          <camera
+            wx:if="{{!cameraError}}"
+            class="meter-camera"
+            device-position="back"
+            flash="{{flash}}"
+            binderror="onCameraError"
+          >
+            <cover-view class="meter-camera-guide">
+              <cover-view class="meter-camera-frame"></cover-view>
+              <cover-view class="meter-camera-tip">读数放中间，避开反光</cover-view>
+            </cover-view>
+          </camera>
+          <view wx:else class="meter-camera-error">
+            <view class="meter-camera-error__title">相机打不开</view>
+            <view class="meter-camera-error__desc">{{cameraError}}</view>
+            <button class="mini-btn" bindtap="takeSystemPhoto">用系统相机</button>
+            <button class="mini-btn" bindtap="chooseFromAlbum">从相册选</button>
+          </view>
         </view>
-        <button class="btn btn--primary meter-camera-launch__main" bindtap="takePhoto">拍照</button>
-        <button class="btn btn--outline" bindtap="chooseFromAlbum">从相册选照片</button>
+        <view class="meter-camera-actions">
+          <button class="meter-camera-side" bindtap="toggleFlash">{{flash === 'on' ? '补光：开' : '补光：关'}}</button>
+          <view class="meter-shutter" bindtap="takePhoto"><view class="meter-shutter__inner"></view></view>
+          <button class="meter-camera-side" bindtap="chooseFromAlbum">相册</button>
+        </view>
+        <view class="meter-camera-fallback" bindtap="takeSystemPhoto">黑屏/打不开？改用系统相机</view>
+        <view class="meter-camera-hint">小预览只用于对准；拍照会保留高清原图，后台可放大核对。</view>
       </view>
-      <view class="meter-camera-hint">原图会永久保留，供后台复核；识别结果只是草稿，提交前请核对。</view>
     </block>
 
      <!-- 全景 + 红框核对 -->
