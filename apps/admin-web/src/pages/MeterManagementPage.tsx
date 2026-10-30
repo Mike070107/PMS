@@ -1469,7 +1469,8 @@ export default function MeterManagementPage() {
               onClick={() => {
                 const link = document.createElement('a');
                 link.href = qr.wxaCodeDataUrl || qr.dataUrl;
-                link.download = `表码-${qr.meterNo}.png`;
+                const ext = qr.wxaCodeDataUrl.startsWith('data:image/jpeg') ? 'jpg' : 'png';
+                link.download = `表码-${qr.meterNo}.${ext}`;
                 link.click();
               }}
             >

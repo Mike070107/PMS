@@ -401,8 +401,10 @@ export class MetersService {
             },
             'staff',
           );
-          wxaCodeDataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+          const mime = buffer[0] === 0xff && buffer[1] === 0xd8 ? 'image/jpeg' : 'image/png';
+          wxaCodeDataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
           wxaCodeEnv = env;
+          wxaCodeError = '';
           break;
         } catch (error) {
           wxaCodeError = error instanceof Error ? error.message : '生成小程序码失败';
