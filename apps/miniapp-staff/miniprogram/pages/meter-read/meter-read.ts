@@ -64,6 +64,7 @@ Page({
     roiW: 0,
     roiH: 0,
     roiDirty: false,
+    roiTouched: false,
     templateRoi: null as Roi | null,
     autoBoxText: '',
     digitWarning: '',
@@ -205,6 +206,7 @@ Page({
             photoDisplayHeight: displayHeight,
             roi,
             roiDirty: false,
+            roiTouched: false,
             autoBoxText: '正在定位读数区域…',
             digitWarning: '',
             readAt: now.toISOString(),
@@ -229,6 +231,8 @@ Page({
             photoDisplayWidth: displayWidth,
             photoDisplayHeight: Math.round(displayWidth * 1.4),
             roi: this.data.templateRoi || { ...DEFAULT_ROI },
+            roiDirty: false,
+            roiTouched: false,
             readAt: new Date().toISOString(),
           },
           () => this.syncRoiPx(this.data.roi),
@@ -258,9 +262,21 @@ Page({
     );
   },
 
+  /** 表号也是 8 位数字时，绝不能被当成读数；档案表号是唯一可信来源 */
+  isMeterNoDigits(digits: string | null | undefined): boolean {
+    const known = (this.data.meter?.meterNo || '').replace(/\D/g, '');
+    const actual = (digits || '').replace(/\D/g, '');
+    return !!known && !!actual && actual === known;
+  },
+
   /** 先用整图 OCR 的文字框自动给红框；识别不到就给默认框，让人自己拖 */
   roiFromOcr(result: MeterOcrResp): Roi {
-    const boxed = (result.candidates || []).filter((item) => Array.isArray(item.box) && item.box.length >= 4);
+    const boxed = (result.candidates || []).filter(
+      (item) =>
+        Array.isArray(item.box) &&
+        item.box.length >= 4 &&
+        !this.isMeterNoDigits(item.digits),
+    );
     const expected = this.data.meter
       ? Number(this.data.meter.integerDigits) + Number(this.data.meter.decimalDigits)
       : 0;
@@ -292,15 +308,31 @@ Page({
       this.setData({ photoKey: stored.objectKey, uploading: false });
       wx.showLoading({ title: '定位读数区域…', mask: true });
       const full = await meters.ocr(this.data.id, { imageKey: stored.objectKey });
-      const roi = this.roiFromOcr(full);
-      const located = !!(full.candidates || []).find((item) => Array.isArray(item.box) && item.box.length >= 4);
+      const autoRoi = this.roiFromOcr(full);
+      const keepUser = this.data.roiTouched;
+      const useTemplate = !keepUser && !!this.data.templateRoi;
+      const roi = keepUser
+        ? this.data.roi
+        : useTemplate
+          ? this.data.templateRoi!
+          : autoRoi;
+      const located = (full.candidates || []).some(
+        (item) =>
+          Array.isArray(item.box) &&
+          item.box.length >= 4 &&
+          !this.isMeterNoDigits(item.digits),
+      );
       this.setData(
         {
           roi,
           roiDirty: false,
-          autoBoxText: located
-            ? '已自动框选读数区域，请核对红框；歪了可拖动，或用下面按钮调大小'
-            : '没有自动找到读数区，请把红框拖到读数数字上',
+          autoBoxText: keepUser
+            ? '已保留你框选的位置，正在识别'
+            : useTemplate
+              ? '已套用这块表上次确认的读数位置，可拖动微调'
+              : located
+                ? '已自动框选读数区域，请核对红框；歪了可拖动，或用下面按钮调大小'
+                : '没有自动找到读数区，请把红框拖到读数数字上',
         },
         () => this.syncRoiPx(roi),
       );
@@ -319,7 +351,7 @@ Page({
 
   /** 在全图 OCR 的候选里，只取落在红框内的数字；这样保留整图上下文，避免裁图后 OCR 变差 */
   pickCandidate(result: MeterOcrResp): MeterOcrResp['candidates'][number] | null {
-    const candidates = result.candidates || [];
+    const candidates = (result.candidates || []).filter((item) => !this.isMeterNoDigits(item.digits));
     const boxed = candidates.filter((item) => Array.isArray(item.box) && item.box.length >= 4);
     if (!boxed.length) return candidates[0] || null;
     const width = this.data.photoWidth;
@@ -405,6 +437,7 @@ Page({
         h: this.data.roi.h,
       },
       roiDirty: true,
+      roiTouched: true,
       autoBoxText: '红框已调整，点「识别框内」重新识别',
     });
   },
@@ -422,7 +455,7 @@ Page({
       h,
     };
     this.setData(
-      { roi: next, roiDirty: true, autoBoxText: '红框已调整，点「识别框内」重新识别' },
+      { roi: next, roiDirty: true, roiTouched: true, autoBoxText: '红框已调整，点「识别框内」重新识别' },
       () => this.syncRoiPx(next),
     );
   },
@@ -461,6 +494,7 @@ Page({
       roiW: 0,
       roiH: 0,
       roiDirty: false,
+      roiTouched: false,
       autoBoxText: '',
       digitWarning: '',
       ocr: null,

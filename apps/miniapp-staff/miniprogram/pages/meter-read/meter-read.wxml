@@ -81,7 +81,7 @@
           <button class="mini-btn" bindtap="onRoiLarger">放大框</button>
           <button class="mini-btn meter-roi-run" bindtap="onRecognizeRoi">{{recognizing ? '识别中…' : '识别框内'}}</button>
         </view>
-        <view class="meter-photo-tip">全景原图永久保留；红框只决定识别范围，不会裁掉原图。请核对表号、整数位和小数点。</view>
+        <view class="meter-photo-tip">全景原图永久保留；红框只框读数，表号不会被当读数。框偏了直接拖红框，不要重新拍。</view>
       </view>
 
       <view class="card meter-ocr-card {{ocr && ocr.ok ? 'is-ok' : 'is-warn'}}">
