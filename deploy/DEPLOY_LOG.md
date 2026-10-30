@@ -5350,3 +5350,10 @@
 - 自上次（20e624d6）以来上线的相关提交：
   - 803b77b5 perf(meters): 0° 优先逐方向识别，常见照片只跑一次 OCR
 
+## 2026-10-30 20:25 · api · d5d4baf9
+
+- 包：`pms-api-fast-20261030-202513.tar.gz`
+- 提交：d5d4baf9 fix(meters): 只有 photoKey 时也生成可展示原图地址
+- 自上次（803b77b5）以来上线的相关提交：
+  - d5d4baf9 fix(meters): 只有 photoKey 时也生成可展示原图地址
+
