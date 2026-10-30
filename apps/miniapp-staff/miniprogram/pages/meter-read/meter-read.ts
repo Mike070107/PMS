@@ -399,31 +399,24 @@ Page({
   async uploadAndLocate(path: string) {
     const token = ((this as any).cropToken || 0) + 1;
     (this as any).cropToken = token;
-    this.setData({ uploading: true, recognizing: true, manualMode: false, error: '' });
-    wx.showLoading({ title: '上传全景原图…', mask: false });
+    this.setData({
+      uploading: true,
+      recognizing: true,
+      manualMode: false,
+      error: '',
+      autoBoxText: '正在上传全景原图…',
+    });
     try {
       const stored = await upload.uploadTempFile(path);
       // 即使用户已点“手动框选”，上传完成的 key 也要留下，手动确认后可再次识别
       this.setData({ photoKey: stored.objectKey, uploading: false });
       if (token !== (this as any).cropToken) return;
-      wx.showLoading({ title: '定位读数区域…', mask: false });
-      const full = await meters.ocr(this.data.id, { imageKey: stored.objectKey });
-      if (token !== (this as any).cropToken) return;
-      const located = (full.candidates || []).some(
-        (item) =>
-          Array.isArray(item.box) &&
-          item.box.length >= 4 &&
-          !this.isMeterNoDigits(item.digits),
-      );
-      // 不再自动缩放/移动画面：默认红框就在读数常见位置，自动聚焦一旦选到表号/规格，
-      // 会把用户已经对准的画面又拽走。识别结果仍可手改，画面交给用户微调。
+      // 不再先跑一遍全图定位 OCR：那次调用只会让用户多等 2~8 秒，
+      // 且我们已经取消自动聚焦，直接按当前红框识别即可。
       this.setData({
         cropCanUse: false,
-        autoBoxText: located
-          ? '识别完成，可拖动/缩放/旋转图片微调红框'
-          : '没有自动找到读数区，请拖动/缩放图片把数字放进红框',
+        autoBoxText: '正在识别红框内读数，点右上角“手动框选”可随时停止',
       });
-      wx.hideLoading();
       await this.recognizeRoi();
     } catch (e) {
       if (token !== (this as any).cropToken) return;
@@ -431,9 +424,8 @@ Page({
         uploading: false,
         recognizing: false,
         autoBoxText: '',
-        error: `全景原图上传或定位失败：${meterErrText(e)}。原图还在本机，可以重试或手工输入。`,
+        error: `全景原图上传失败：${meterErrText(e)}。原图还在本机，可以重试或手工输入。`,
       });
-      wx.hideLoading();
     }
   },
 
@@ -452,14 +444,13 @@ Page({
     ) as MeterOcrResp['candidates'][number] | null;
   },
 
-  async recognizeRoi(manageLoading = true) {
+  async recognizeRoi() {
     if (!this.data.photoKey) {
       wx.showToast({ icon: 'none', title: '原图还在上传，请稍候再识别' });
       return;
     }
     const token = (this as any).cropToken || 0;
     this.setData({ recognizing: true, error: '', digitWarning: '' });
-    if (manageLoading) wx.showLoading({ title: '识别红框内读数…', mask: false });
     try {
       // 注意：仍然对全景原图 OCR，只用红框过滤候选。
       // 裁剪后的小图在液晶屏上会丢上下文（实测会把 0224 1888 识别成反序），不能作为唯一输入。
@@ -517,7 +508,6 @@ Page({
     } finally {
       if (token === (this as any).cropToken) {
         this.setData({ recognizing: false });
-        if (manageLoading) wx.hideLoading();
       }
     }
   },

@@ -102,8 +102,10 @@ export class MeterOcrService {
           if (
             !isMeterNo &&
             parsed.value !== null &&
-            parsed.digits?.length === expected &&
-            parsed.confidence >= (orientation === 0 ? 70 : 85)
+            (roi
+              ? true
+              : parsed.digits?.length === expected &&
+                parsed.confidence >= (orientation === 0 ? 70 : 85))
           ) {
             return this.finish(base, meter, parsed, 'sidecar', found.orientation);
           }
