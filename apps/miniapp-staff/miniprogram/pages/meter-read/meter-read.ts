@@ -400,31 +400,28 @@ Page({
     const token = ((this as any).cropToken || 0) + 1;
     (this as any).cropToken = token;
     this.setData({ uploading: true, recognizing: true, manualMode: false, error: '' });
-    wx.showLoading({ title: '上传全景原图…', mask: true });
+    wx.showLoading({ title: '上传全景原图…', mask: false });
     try {
       const stored = await upload.uploadTempFile(path);
       // 即使用户已点“手动框选”，上传完成的 key 也要留下，手动确认后可再次识别
       this.setData({ photoKey: stored.objectKey, uploading: false });
       if (token !== (this as any).cropToken) return;
-      wx.showLoading({ title: '定位读数区域…', mask: true });
+      wx.showLoading({ title: '定位读数区域…', mask: false });
       const full = await meters.ocr(this.data.id, { imageKey: stored.objectKey });
       if (token !== (this as any).cropToken) return;
-      const autoRoi = this.roiFromOcr(full);
-      const keepUser = this.data.imgTouched;
       const located = (full.candidates || []).some(
         (item) =>
           Array.isArray(item.box) &&
           item.box.length >= 4 &&
           !this.isMeterNoDigits(item.digits),
       );
-      if (!keepUser) this.focusOnRoi(autoRoi);
+      // 不再自动缩放/移动画面：默认红框就在读数常见位置，自动聚焦一旦选到表号/规格，
+      // 会把用户已经对准的画面又拽走。识别结果仍可手改，画面交给用户微调。
       this.setData({
         cropCanUse: false,
-        autoBoxText: keepUser
-          ? '已保留你调整的画面，正在识别'
-          : located
-            ? '已自动把读数移到红框里，可双指缩放/转动微调'
-            : '没有自动找到读数区，请拖动/缩放图片把数字放进红框',
+        autoBoxText: located
+          ? '识别完成，可拖动/缩放/旋转图片微调红框'
+          : '没有自动找到读数区，请拖动/缩放图片把数字放进红框',
       });
       wx.hideLoading();
       await this.recognizeRoi();
@@ -462,7 +459,7 @@ Page({
     }
     const token = (this as any).cropToken || 0;
     this.setData({ recognizing: true, error: '', digitWarning: '' });
-    if (manageLoading) wx.showLoading({ title: '识别红框内读数…', mask: true });
+    if (manageLoading) wx.showLoading({ title: '识别红框内读数…', mask: false });
     try {
       // 注意：仍然对全景原图 OCR，只用红框过滤候选。
       // 裁剪后的小图在液晶屏上会丢上下文（实测会把 0224 1888 识别成反序），不能作为唯一输入。
