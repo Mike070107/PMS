@@ -53,7 +53,7 @@ Page({
     if (this.data.loading) return;
     this.setData({ loading: true, error: '' });
     try {
-      const session = await getSession(this);
+      const session = await getSession(this, reset);
       if (!session.canSeeMeters) {
         this.setData({ canView: false, loading: false });
         return;
