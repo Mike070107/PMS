@@ -52,7 +52,7 @@ async function main() {
         exists = !!(await client.query("SELECT to_regclass('public.meter_charge_payments') AS name")).rows[0].name;
         if (!exists) await new MeterChargePayments1792900000002().up({query:(sql,params)=>client.query(sql,params)});
         if ((await client.query("SELECT to_regclass('public.migrations') AS name")).rows[0].name) {
-          await client.query("INSERT INTO migrations(timestamp,name) SELECT $1,$2 WHERE NOT EXISTS(SELECT 1 FROM migrations WHERE name=$2)",[1792900000002,'MeterChargePayments1792900000002']);
+          await client.query("INSERT INTO migrations(timestamp,name) SELECT $1::bigint,$2::varchar WHERE NOT EXISTS(SELECT 1 FROM migrations WHERE name=$2::varchar)",[1792900000002,'MeterChargePayments1792900000002']);
         }
         await client.query('COMMIT');
       } catch(error) { await client.query('ROLLBACK');throw error; }
