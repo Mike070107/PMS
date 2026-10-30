@@ -481,6 +481,7 @@ export class MetersService {
         }
       }
 
+      const photoKey = this.photoKeyOf(dto.photoUrl, dto.photoKey);
       const reading = manager.create(MeterReading, {
         tenantId,
         meterId: meter.id,
@@ -490,8 +491,10 @@ export class MetersService {
         usageValue: usageResult.usage === null ? null : usageResult.usage.toFixed(3),
         readAt,
         source: dto.source ?? 'photo',
-        photoKey: this.photoKeyOf(dto.photoUrl, dto.photoKey),
-        photoUrl: dto.photoUrl ? this.storage.toDisplayUrl(dto.photoUrl) : null,
+        photoKey,
+        photoUrl: dto.photoUrl
+          ? this.storage.toDisplayUrl(dto.photoUrl)
+          : photoKey || null,
         photoWidth: dto.photoWidth ?? null,
         photoHeight: dto.photoHeight ?? null,
         roi: dto.roi ?? null,
@@ -815,7 +818,7 @@ export class MetersService {
       meterType: row.meter_type,
       integerDigits: Number(row.integerDigits ?? row.integer_digits ?? 0),
       decimalDigits: Number(row.decimalDigits ?? row.decimal_digits ?? 0),
-      photoUrl: this.storage.toDisplayUrl(row.photoUrl ?? row.photo_url),
+      photoUrl: this.storage.toDisplayUrl(row.photoUrl || row.photo_url || row.photoKey || row.photo_key),
       roi: row.roi ?? null,
       orientation: Number(row.orientation ?? 0),
       ocrProvider: row.ocrProvider ?? row.ocr_provider ?? '',
@@ -1164,7 +1167,7 @@ export class MetersService {
       readingCount: Number(row.reading_count ?? row.readingCount ?? 0),
       unpaidCents: Number(row.unpaid_cents ?? row.unpaidCents ?? 0),
       status: row.status || 'active',
-      photoUrl: this.storage.toDisplayUrl(row.photoUrl ?? row.photo_url),
+      photoUrl: this.storage.toDisplayUrl(row.photoUrl || row.photo_url || row.photoKey || row.photo_key),
       remark: row.remark || '',
       qrToken: row.qrToken ?? row.qr_token,
       createdAt: row.createdAt ?? row.created_at,
@@ -1208,7 +1211,7 @@ export class MetersService {
       readAt: row.readAt ?? row.read_at,
       createdAt: row.createdAt ?? row.created_at,
       source: row.source,
-      photoUrl: this.storage.toDisplayUrl(row.photoUrl ?? row.photo_url),
+      photoUrl: this.storage.toDisplayUrl(row.photoUrl || row.photo_url || row.photoKey || row.photo_key),
       photoKey: row.photoKey ?? row.photo_key,
       photoWidth: row.photoWidth ?? row.photo_width ?? null,
       photoHeight: row.photoHeight ?? row.photo_height ?? null,
