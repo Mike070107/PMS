@@ -217,7 +217,14 @@ export default function MeterManagementPage() {
   const [adjustForm] = Form.useForm<{ adjustment: number; note?: string }>();
   const [adjustBusy, setAdjustBusy] = useState(false);
 
-  const [qr, setQr] = useState<{ dataUrl: string; payload: string; meterNo: string } | null>(null);
+  const [qr, setQr] = useState<{
+    dataUrl: string;
+    payload: string;
+    meterNo: string;
+    wxaCodeDataUrl: string;
+    wxaCodeEnv: string;
+    wxaCodeError: string;
+  } | null>(null);
 
   const communityOptions = useMemo(
     () => communities.map((item) => ({ value: item.id, label: item.name })),
@@ -1085,7 +1092,7 @@ export default function MeterManagementPage() {
             },
             {
               key: 'learning',
-              label: `识别学习${sampleTotal ? ` (${sampleTotal})` : ''}`,
+              label: `识别自学习${sampleTotal ? ` (${sampleTotal})` : ''}`,
               children: (
                 <div>
                   <Alert
@@ -1444,14 +1451,24 @@ export default function MeterManagementPage() {
       >
         {qr && (
           <div className="meter-qr">
-            <img src={qr.dataUrl} alt={`表 ${qr.meterNo} 二维码`} />
-            <p>员工端「抄表 → 扫码」可直接定位到这块表并带出档案。</p>
+            <img src={qr.wxaCodeDataUrl || qr.dataUrl} alt={`表 ${qr.meterNo} 二维码`} />
+            {qr.wxaCodeDataUrl ? (
+              <p>
+                微信扫一扫直接打开员工端，进入这块表的抄表页；授权过的员工登录后即可拍照。
+                {qr.wxaCodeEnv === 'trial' ? ' 当前生成的是体验版码，只有体验成员能扫；正式发布后重新生成正式码。' : ''}
+              </p>
+            ) : (
+              <p>当前是普通二维码，需要员工端「抄表 → 扫码」识别；微信直接扫不会进小程序。</p>
+            )}
+            {qr.wxaCodeError && !qr.wxaCodeDataUrl && (
+              <Alert type="warning" showIcon message={`小程序码生成失败：${qr.wxaCodeError}`} />
+            )}
             <Text code>{qr.payload}</Text>
             <Button
               icon={<DownloadOutlined />}
               onClick={() => {
                 const link = document.createElement('a');
-                link.href = qr.dataUrl;
+                link.href = qr.wxaCodeDataUrl || qr.dataUrl;
                 link.download = `表码-${qr.meterNo}.png`;
                 link.click();
               }}

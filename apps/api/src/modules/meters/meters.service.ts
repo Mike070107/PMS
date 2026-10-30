@@ -24,6 +24,7 @@ import {
   type MeterType,
 } from '../../entities';
 import { ResolvedAccess } from '../access/access.service';
+import { WechatService } from '../auth/wechat.service';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { MeterOcrService } from './meter-ocr.service';
 import {
@@ -85,6 +86,7 @@ export class MetersService {
     private readonly dataSource: DataSource,
     private readonly storage: ObjectStorageService,
     private readonly ocr: MeterOcrService,
+    private readonly wechat: WechatService,
   ) {}
 
   // ---------------------------------------------------------------- 档案
@@ -381,7 +383,43 @@ export class MetersService {
       errorCorrectionLevel: 'M',
       color: { dark: '#1f334a', light: '#ffffff' },
     });
-    return { payload, dataUrl, meterNo: meter.meterNo };
+
+    // 小程序码：微信扫一扫直接打开员工端抄表页；scene 只放 qrToken，页面自己查表。
+    let wxaCodeDataUrl = '';
+    let wxaCodeEnv = '';
+    let wxaCodeError = '';
+    if (this.wechat.isConfigured('staff')) {
+      for (const env of ['release', 'trial'] as const) {
+        try {
+          const buffer = await this.wechat.getUnlimitedWxaCode(
+            {
+              scene: `m=${meter.qrToken}`,
+              page: 'pages/meter-read/meter-read',
+              width: 430,
+              envVersion: env,
+              checkPath: env === 'release',
+            },
+            'staff',
+          );
+          wxaCodeDataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+          wxaCodeEnv = env;
+          break;
+        } catch (error) {
+          wxaCodeError = error instanceof Error ? error.message : '生成小程序码失败';
+        }
+      }
+    } else {
+      wxaCodeError = '未配置员工端微信 AppID/Secret，暂时只能使用普通二维码';
+    }
+
+    return {
+      payload,
+      dataUrl,
+      meterNo: meter.meterNo,
+      wxaCodeDataUrl,
+      wxaCodeEnv,
+      wxaCodeError,
+    };
   }
 
   // ---------------------------------------------------------------- 识别

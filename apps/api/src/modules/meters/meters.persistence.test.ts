@@ -78,6 +78,7 @@ async function fixture() {
     ds,
     storage,
     ocr,
+    { isConfigured: () => false } as any,
   );
   return { pg, ds, service };
 }

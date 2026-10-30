@@ -315,7 +315,14 @@ export const meters = {
   remove: (id: number) => request<{ ok: boolean }>({ url: `/meters/${id}`, method: 'DELETE' }),
 
   qr: (id: number) =>
-    request<{ payload: string; dataUrl: string; meterNo: string }>({ url: `/meters/${id}/qr` }),
+    request<{
+      payload: string;
+      dataUrl: string;
+      meterNo: string;
+      wxaCodeDataUrl: string;
+      wxaCodeEnv: string;
+      wxaCodeError: string;
+    }>({ url: `/meters/${id}/qr` }),
 
   ocr: (id: number, data: { imageKey: string; crop?: { x: number; y: number; w: number; h: number } }) =>
     request<MeterOcrResp>({ url: `/meters/${id}/ocr`, method: 'POST', data, timeout: 90000 }),

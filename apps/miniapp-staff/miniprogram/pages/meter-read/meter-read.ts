@@ -100,13 +100,16 @@ Page({
   },
 
   async onLoad(options: any) {
-    const id = Number(options?.id || 0);
-    if (!id) {
+    let id = Number(options?.id || 0);
+    // 微信扫小程序码会带 scene=m=<qrToken>；普通二维码/表号仍走 id。
+    const scene = options?.scene ? decodeURIComponent(String(options.scene)) : '';
+    const token = scene.replace(/^m=/i, '').trim();
+    if (!id && !token) {
       wx.showToast({ icon: 'none', title: '缺少仪表编号' });
       setTimeout(() => wx.navigateBack(), 800);
       return;
     }
-    this.setData({ id, clientRequestId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}` });
+    this.setData({ clientRequestId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}` });
     try {
       const session = await getSession(this);
       if (!session.canSeeMeters) {
@@ -114,6 +117,20 @@ Page({
         setTimeout(() => wx.navigateBack(), 900);
         return;
       }
+      if (!id && token) {
+        const found = await meters.lookup(token);
+        if (found.rows.length !== 1) {
+          wx.showModal({
+            title: '没有找到这块表',
+            content: '二维码不在你的数据范围内，或已经失效。请从抄表列表里选择这块表。',
+            showCancel: false,
+            success: () => wx.navigateBack(),
+          });
+          return;
+        }
+        id = found.rows[0].id;
+      }
+      this.setData({ id });
       const detail = await meters.detail(id);
       const lastWithRoi = detail.readings.find((item) => item.roi);
       this.setData({
