@@ -38,6 +38,7 @@
         <view wx:else class="meter-camera-error">
           <view class="meter-camera-error__title">相机打不开</view>
           <view class="meter-camera-error__desc">{{cameraError}}</view>
+          <button class="btn btn--outline" bindtap="onOpenCameraSetting">开启相机权限</button>
           <button class="btn btn--outline" bindtap="chooseFromAlbum">从相册选照片</button>
         </view>
       </view>

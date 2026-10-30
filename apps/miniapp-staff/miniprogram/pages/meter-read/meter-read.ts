@@ -127,6 +127,25 @@ Page({
     this.setData({ cameraReady: true });
   },
 
+  onShow() {
+    // 权限被关掉时 <camera> 可能只给一块黑，不会触发 binderror；主动查一次，给出可点的出口
+    wx.getSetting({
+      success: (res) => {
+        const cameraAuth = res.authSetting['scope.camera'];
+        if (cameraAuth === undefined) {
+          wx.authorize({
+            scope: 'scope.camera',
+            fail: () => this.setData({ cameraError: '需要相机权限才能拍照。点下面「开启相机权限」，或从相册选照片。' }),
+          });
+        } else if (cameraAuth === false) {
+          this.setData({ cameraError: '微信相机权限被关闭了。点下面「开启相机权限」授权，或从相册选照片。' });
+        } else if (cameraAuth === true && this.data.cameraError) {
+          this.setData({ cameraError: '' });
+        }
+      },
+    });
+  },
+
   onUnload() {
     (this as any).cameraCtx = null;
   },
@@ -151,6 +170,19 @@ Page({
   onCameraError(event: any) {
     this.setData({
       cameraError: event?.detail?.errMsg || '相机打不开，请检查微信的相机权限',
+    });
+  },
+
+  onOpenCameraSetting() {
+    wx.openSetting({
+      success: (res) => {
+        if (res.authSetting['scope.camera']) {
+          this.setData({ cameraError: '' });
+        } else {
+          wx.showToast({ icon: 'none', title: '还没有开启相机权限' });
+        }
+      },
+      fail: () => wx.showToast({ icon: 'none', title: '请到微信设置里开启相机权限' }),
     });
   },
 
