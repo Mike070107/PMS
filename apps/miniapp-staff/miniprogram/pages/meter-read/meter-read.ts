@@ -454,11 +454,22 @@ Page({
       const cy = (box[1] + box[3]) / 2 / height;
       return cx >= roi.x && cx <= roi.x + roi.w && cy >= roi.y && cy <= roi.y + roi.h;
     });
-    return inside.sort((a, b) => b.score - a.score)[0] || null;
+    if (inside.length) return inside.sort((a, b) => b.score - a.score)[0] || null;
+    // 红框坐标可能因旋转/缩放手势偏一点；整图明显读出了数字时，
+    // 不要直接报“没找到”，退回全图最高分候选，用户还能手改。
+    const expected = this.data.meter
+      ? Number(this.data.meter.integerDigits) + Number(this.data.meter.decimalDigits)
+      : 0;
+    return boxed
+      .filter((item) => !expected || (item.digits || '').length === expected)
+      .sort((a, b) => b.score - a.score)[0] || boxed.sort((a, b) => b.score - a.score)[0] || null;
   },
 
   async recognizeRoi(manageLoading = true) {
-    if (!this.data.photoKey) return;
+    if (!this.data.photoKey) {
+      wx.showToast({ icon: 'none', title: '原图还在上传，请稍候再识别' });
+      return;
+    }
     const token = (this as any).cropToken || 0;
     this.setData({ recognizing: true, error: '', digitWarning: '' });
     if (manageLoading) wx.showLoading({ title: '识别红框内读数…', mask: true });
@@ -536,6 +547,7 @@ Page({
       amountText: '',
       digitWarning: '',
       cropCanUse: false,
+      error: '',
       imgScale: 1,
       imgX: 0,
       imgY: 0,

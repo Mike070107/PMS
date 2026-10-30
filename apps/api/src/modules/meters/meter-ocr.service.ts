@@ -89,13 +89,17 @@ export class MeterOcrService {
         for (const orientation of [0, 90, 270, 180]) {
           const found = await this.runSidecar(sidecarUrl, buffer, crop, false, meter, orientation);
           const parsed = found.parsed;
-          const score = parsed.value === null
+          const isMeterNo =
+            !!parsed.digits &&
+            normalizeMeterNo(parsed.digits) === normalizeMeterNo(meter.meterNo);
+          const score = parsed.value === null || isMeterNo
             ? -1
             : parsed.confidence +
               (parsed.digits?.length === expected ? 40 : 0) +
               (parsed.digits?.startsWith('0') ? 5 : 0);
           if (!best || score > best.score) best = { found, score };
           if (
+            !isMeterNo &&
             parsed.value !== null &&
             parsed.digits?.length === expected &&
             parsed.confidence >= (orientation === 0 ? 70 : 85)
