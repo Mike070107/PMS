@@ -17,7 +17,7 @@ import {
 
 export const METER_TYPES = ['water', 'electricity', 'gas', 'heat'] as const;
 export const METER_STATUSES = ['active', 'disabled'] as const;
-export const READING_STATUSES = ['confirmed', 'void'] as const;
+export const READING_STATUSES = ['pending', 'confirmed', 'void'] as const;
 export const CHARGE_STATUSES = ['unpaid', 'partial', 'paid', 'void'] as const;
 
 export class MeterQueryDto {
@@ -514,6 +514,20 @@ export class UpdateReadingDto {
   @IsOptional()
   @IsIn(READING_STATUSES)
   status?: (typeof READING_STATUSES)[number];
+}
+
+export class ReviewReadingDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  @Max(999999999)
+  readingValue?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reviewNote?: string;
 }
 
 export class ReadingQueryDto {

@@ -47,3 +47,15 @@
 .meter-charge-status.is-ok { color: #2f7a54; }
 .meter-charge-status.is-warn { color: #ad6800; }
 .meter-charge-status.is-void { color: #a5b4c3; }
+
+.meter-tabs { display: flex; gap: 10rpx; margin: 18rpx 0; padding: 8rpx; background: #eef4f9; border-radius: 16rpx; }
+.meter-tab { flex: 1; text-align: center; padding: 16rpx 8rpx; border-radius: 12rpx; font-size: 27rpx; color: #536a80; }
+.meter-tab.is-on { background: #fff; color: #31558a; font-weight: 600; box-shadow: 0 2rpx 10rpx rgba(31, 62, 96, 0.08); }
+.meter-edit-card { padding: 24rpx; }
+.meter-edit-row { display: flex; align-items: center; gap: 16rpx; padding: 14rpx 0; border-bottom: 2rpx solid #f0f4f8; font-size: 26rpx; color: #536a80; }
+.meter-edit-row > text { width: 120rpx; flex-shrink: 0; }
+.meter-edit-input { flex: 1; min-width: 0; height: 56rpx; font-size: 27rpx; color: #1f334a; }
+.meter-location-btn { margin-top: 18rpx; }
+.meter-save-btn { margin-top: 20rpx; }
+.meter-history-pending { margin-left: 10rpx; padding: 2rpx 10rpx; border-radius: 8rpx; background: #fff7e6; color: #ad6800; font-size: 22rpx; }
+.meter-review-btn { margin-top: 10rpx; }

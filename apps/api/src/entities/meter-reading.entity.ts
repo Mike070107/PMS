@@ -3,7 +3,7 @@ import { TenantEntity } from '../common/base.entity';
 import { Meter } from './meter.entity';
 
 export type MeterReadingSource = 'photo' | 'manual' | 'import';
-export type MeterReadingStatus = 'confirmed' | 'void';
+export type MeterReadingStatus = 'pending' | 'confirmed' | 'void';
 export type MeterOcrStatus = 'success' | 'failed' | 'skipped';
 
 /** 异常标记只用于提醒人复核，不阻断保存：现场情况千差万别，拦下来只会逼人改数 */

@@ -119,7 +119,7 @@
           <view wx:if="{{result.charge}}" class="meter-done__row">
             <text>本次应收</text><text class="is-money">¥{{resultChargeYuan}}</text>
           </view>
-          <view wx:else class="meter-done__row"><text>账单</text><text>本次未生成账单</text></view>
+          <view wx:else class="meter-done__row"><text>账单</text><text>待复核通过后自动出账</text></view>
           <view class="meter-done__row"><text>拍照时间</text><text>{{readAtText}}</text></view>
           <view class="meter-done__row"><text>抄表人</text><text>{{result.reading.operatorName || '本人'}}</text></view>
         </view>

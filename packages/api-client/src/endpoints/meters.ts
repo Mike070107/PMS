@@ -2,7 +2,7 @@ import { request } from '../request';
 
 export type MeterType = 'water' | 'electricity' | 'gas' | 'heat';
 export type MeterStatus = 'active' | 'disabled';
-export type ReadingStatus = 'confirmed' | 'void';
+export type ReadingStatus = 'pending' | 'confirmed' | 'void';
 export type ChargeStatus = 'unpaid' | 'partial' | 'paid' | 'void';
 
 export interface MeterRow {
@@ -365,6 +365,9 @@ export const meters = {
     id: number,
     data: { readingValue?: number; note?: string; reviewNote?: string; status?: ReadingStatus },
   ) => request<ReadingResult>({ url: `/meters/readings/${id}`, method: 'PUT', data }),
+
+  reviewReading: (id: number, data: { readingValue?: number; reviewNote?: string }) =>
+    request<ReadingResult>({ url: `/meters/readings/${id}/review`, method: 'POST', data }),
 
   ocrSamples: (params: {
     status?: OcrSampleStatus | '';

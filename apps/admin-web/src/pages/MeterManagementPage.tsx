@@ -30,10 +30,14 @@ import {
   DownloadOutlined,
   EditOutlined,
   EnvironmentOutlined,
+  ExperimentOutlined,
+  FireOutlined,
   PlusOutlined,
   QrcodeOutlined,
   ReloadOutlined,
   SearchOutlined,
+  ThunderboltOutlined,
+  DashboardOutlined,
 } from '@ant-design/icons';
 import { address as addressApi, meters } from '@pms/api-client';
 import type {
@@ -142,8 +146,15 @@ interface MeterFormValues {
 }
 
 function TypeTag({ type }: { type: string }) {
-  const color = type === 'water' ? 'blue' : type === 'electricity' ? 'gold' : type === 'gas' ? 'volcano' : 'purple';
-  return <Tag color={color}>{TYPE_LABEL[type] || type}</Tag>;
+  const meta =
+    type === 'water'
+      ? { color: 'blue', icon: <ExperimentOutlined /> }
+      : type === 'electricity'
+        ? { color: 'gold', icon: <ThunderboltOutlined /> }
+        : type === 'gas'
+          ? { color: 'volcano', icon: <FireOutlined /> }
+          : { color: 'purple', icon: <DashboardOutlined /> };
+  return <Tag color={meta.color} icon={meta.icon}>{TYPE_LABEL[type] || type}</Tag>;
 }
 
 function ChargeTag({ status }: { status: string }) {
@@ -482,8 +493,13 @@ export default function MeterManagementPage() {
     }
     setReviewBusy(true);
     try {
-      await meters.updateReading(review.id, { readingValue: reviewValue, reviewNote });
-      message.success('读数已更新');
+      if (review.status === 'pending') {
+        await meters.reviewReading(review.id, { readingValue: reviewValue, reviewNote });
+        message.success('复核通过，账单已自动生成');
+      } else {
+        await meters.updateReading(review.id, { readingValue: reviewValue, reviewNote });
+        message.success('读数已更新');
+      }
       setReview(null);
       await refreshAll();
     } catch (e) {
@@ -808,7 +824,8 @@ export default function MeterManagementPage() {
       title: '状态',
       dataIndex: 'status',
       width: 80,
-      render: (value: string) => (value === 'confirmed' ? <Tag color="green">已确认</Tag> : <Tag>已作废</Tag>),
+      render: (value: string) =>
+        value === 'pending' ? <Tag color="orange">待复核</Tag> : value === 'confirmed' ? <Tag color="green">已确认</Tag> : <Tag>已作废</Tag>,
     },
     {
       title: '操作',
@@ -1247,6 +1264,19 @@ export default function MeterManagementPage() {
               </div>
             </div>
             <div className="meter-review-side">
+              <div className="meter-review-reading">
+                <div className="meter-review-reading__label">核对后的读数</div>
+                <div className="meter-review-reading__value">
+                  {reviewValue === null ? review.readingValueText : reviewValue}
+                  <span>{review.unit}</span>
+                </div>
+                <div className="meter-review-reading__meta">
+                  <Tag color={review.status === 'pending' ? 'orange' : 'green'}>
+                    {review.status === 'pending' ? '待复核' : '已确认'}
+                  </Tag>
+                  <span>{review.meterNo} · {timeText(review.readAt)}</span>
+                </div>
+              </div>
               <Descriptions size="small" column={1} bordered styles={{ label: { width: 92, whiteSpace: 'nowrap' } }}>
                 <Descriptions.Item label="表 / 地点">{review.meterNo} · {review.meterName || '—'}</Descriptions.Item>
                 <Descriptions.Item label="抄表时间">{timeText(review.readAt)}</Descriptions.Item>
@@ -1284,7 +1314,7 @@ export default function MeterManagementPage() {
                   <div className="meter-review-label">复核备注</div>
                   <Input.TextArea rows={3} value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="改数原因、现场情况" />
                   <Space className="meter-review-actions">
-                    <Button type="primary" loading={reviewBusy} onClick={() => void saveReview()} disabled={review.chargeStatus === 'paid'}>保存修正</Button>
+                    <Button type="primary" loading={reviewBusy} onClick={() => void saveReview()} disabled={review.chargeStatus === 'paid'}>保存</Button>
                     <Popconfirm title="作废这条抄表记录？" description="只能作废最近一次抄表；账单会一并作废。" onConfirm={() => void voidReading()}>
                       <Button danger loading={reviewBusy}>作废记录</Button>
                     </Popconfirm>
@@ -1394,7 +1424,7 @@ export default function MeterManagementPage() {
                 { title: '时间', dataIndex: 'readAt', width: 140, render: (value: string) => timeText(value) },
                 { title: '读数', dataIndex: 'readingValueText', width: 100 },
                 { title: '用量', dataIndex: 'usageValue', width: 90, render: (value: number | null) => (value === null ? '首次' : value) },
-                { title: '状态', dataIndex: 'status', width: 80, render: (value: string) => (value === 'confirmed' ? '已确认' : '已作废') },
+                { title: '状态', dataIndex: 'status', width: 80, render: (value: string) => (value === 'pending' ? '待复核' : value === 'confirmed' ? '已确认' : '已作废') },
                 { title: '原图', dataIndex: 'photoUrl', width: 70, render: (value: string) => (value ? <Image src={imageSrc(value)} width={38} height={38} style={{ objectFit: 'cover' }} /> : '—') },
               ]}
             />

@@ -105,12 +105,16 @@ test('真实迁移/SQL：首次抄表→账单→第二次用量→幂等重试�
       user,
       access,
     );
-    assert.equal(first.reading.readingValue, 2410);
-    assert.equal(first.reading.previousValue, 2400);
-    assert.equal(first.reading.usageValue, 10);
-    assert.equal(first.charge?.amountCents, 4200);
-    assert.equal(first.charge?.period, '2026-10');
-    assert.equal(first.meter.lastReadingValue, 2410);
+    assert.equal(first.reading.status, 'pending');
+    assert.equal(first.charge, null);
+    assert.equal(first.meter.lastReadingValue, 2400);
+    const firstReviewed = await service.reviewReading(first.reading.id, {}, user, access);
+    assert.equal(firstReviewed.reading.readingValue, 2410);
+    assert.equal(firstReviewed.reading.previousValue, 2400);
+    assert.equal(firstReviewed.reading.usageValue, 10);
+    assert.equal(firstReviewed.charge?.amountCents, 4200);
+    assert.equal(firstReviewed.charge?.period, '2026-10');
+    assert.equal(firstReviewed.meter.lastReadingValue, 2410);
 
     const second = await service.createReading(
       1,
@@ -118,9 +122,10 @@ test('真实迁移/SQL：首次抄表→账单→第二次用量→幂等重试�
       user,
       access,
     );
-    assert.equal(second.reading.usageValue, 5);
-    assert.equal(second.charge?.amountCents, 2100);
-    assert.equal(second.charge?.receivableCents, 2100);
+    const secondReviewed = await service.reviewReading(second.reading.id, {}, user, access);
+    assert.equal(secondReviewed.reading.usageValue, 5);
+    assert.equal(secondReviewed.charge?.amountCents, 2100);
+    assert.equal(secondReviewed.charge?.receivableCents, 2100);
 
     const retry = await service.createReading(
       1,
@@ -152,7 +157,8 @@ test('真实迁移/SQL：首次抄表→账单→第二次用量→幂等重试�
 test('真实迁移/SQL：抄错不能当归零、补录时间不能早于最近一次、收款后不能改数', async () => {
   const { pg, service } = await fixture();
   try {
-    await service.createReading(1, reading(2410, '2026-10-01T09:00:00+08:00', 'r1'), user, access);
+    const first = await service.createReading(1, reading(2410, '2026-10-01T09:00:00+08:00', 'r1'), user, access);
+    await service.reviewReading(first.reading.id, {}, user, access);
     await assert.rejects(
       service.createReading(1, reading(2400, '2026-10-06T09:00:00+08:00', 'r2'), user, access),
       /小于上次/,
@@ -163,15 +169,16 @@ test('真实迁移/SQL：抄错不能当归零、补录时间不能早于最近�
     );
 
     const latest = await service.createReading(1, reading(2420, '2026-10-08T09:00:00+08:00', 'r4'), user, access);
-    assert.equal(latest.reading.usageValue, 10);
+    const latestReviewed = await service.reviewReading(latest.reading.id, {}, user, access);
+    assert.equal(latestReviewed.reading.usageValue, 10);
 
-    await service.payCharge(latest.charge!.id, { amountCents: 4200, method: 'cash' }, user, access);
+    await service.payCharge(latestReviewed.charge!.id, { amountCents: 4200, method: 'cash' }, user, access);
     await assert.rejects(
-      service.updateReading(latest.reading.id, { readingValue: 2421 }, user, access),
+      service.updateReading(latestReviewed.reading.id, { readingValue: 2421 }, user, access),
       /已收款/,
     );
     await assert.rejects(
-      service.payCharge(latest.charge!.id, { amountCents: 1 }, user, access),
+      service.payCharge(latestReviewed.charge!.id, { amountCents: 1 }, user, access),
       /已结清/,
     );
 
@@ -187,7 +194,7 @@ test('真实迁移/SQL：后台纠正读数会自动落学习样本，可标记�
   const { pg, service } = await fixture();
   try {
     const created = await service.createReading(1, reading(2410, '2026-10-01T09:00:00+08:00', 's1'), user, access);
-    await service.updateReading(created.reading.id, { readingValue: 2420, reviewNote: '识别少了一位' }, user, access);
+    await service.reviewReading(created.reading.id, { readingValue: 2420, reviewNote: '识别少了一位' }, user, access);
 
     const list = await service.listOcrSamples({}, user, access);
     assert.equal(list.total, 1);
@@ -208,8 +215,10 @@ test('真实迁移/SQL：后台纠正读数会自动落学习样本，可标记�
 test('真实迁移/SQL：作废最近一次抄表会回退表头读数并作废未收账单', async () => {
   const { pg, service } = await fixture();
   try {
-    await service.createReading(1, reading(2410, '2026-10-01T09:00:00+08:00', 'v1'), user, access);
+    const first = await service.createReading(1, reading(2410, '2026-10-01T09:00:00+08:00', 'v1'), user, access);
+    await service.reviewReading(first.reading.id, {}, user, access);
     const second = await service.createReading(1, reading(2420, '2026-10-06T09:00:00+08:00', 'v2'), user, access);
+    await service.reviewReading(second.reading.id, {}, user, access);
     await service.updateReading(second.reading.id, { status: 'void', reviewNote: '抄错表' }, user, access);
     const detail = await service.meterDetail(1, user, access);
     assert.equal(detail.meter.lastReadingValue, 2410);

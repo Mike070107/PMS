@@ -28,6 +28,7 @@ import {
   OcrSampleQueryDto,
   PayChargeDto,
   ReadingQueryDto,
+  ReviewReadingDto,
   UpdateMeterDto,
   UpdateOcrSampleDto,
   UpdateReadingDto,
@@ -89,6 +90,17 @@ export class MetersController {
     return this.service.listReadings(query, user, access);
   }
 
+  @Post('readings/:id/review')
+  @RequirePermission(['meters', 'app:meters'], 'edit')
+  reviewReading(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReviewReadingDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.reviewReading(id, dto, user, access);
+  }
+
   @Get('readings/:id')
   @RequirePermission(['meters', 'app:meters'], 'view')
   reading(
@@ -100,7 +112,7 @@ export class MetersController {
   }
 
   @Put('readings/:id')
-  @RequirePermission('meters', 'edit')
+  @RequirePermission(['meters', 'app:meters'], 'edit')
   updateReading(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateReadingDto,
@@ -202,7 +214,7 @@ export class MetersController {
   }
 
   @Put(':id')
-  @RequirePermission('meters', 'edit')
+  @RequirePermission(['meters', 'app:meters'], 'edit')
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMeterDto,

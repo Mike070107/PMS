@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
 import { nanoid } from 'nanoid';
 import QRCode from 'qrcode';
 import type { AuthUser } from '../../common/current-user.decorator';
@@ -47,6 +47,7 @@ import type {
   OcrSampleQueryDto,
   PayChargeDto,
   ReadingQueryDto,
+  ReviewReadingDto,
   UpdateMeterDto,
   UpdateOcrSampleDto,
   UpdateReadingDto,
@@ -474,6 +475,13 @@ export class MetersService {
         where: { tenantId, meterId: meter.id, status: 'confirmed' },
         order: { readAt: 'DESC', id: 'DESC' },
       });
+      const pending = await manager.findOne(MeterReading, {
+        where: { tenantId, meterId: meter.id, status: 'pending' },
+        order: { readAt: 'DESC', id: 'DESC' },
+      });
+      if (pending) {
+        throw new BadRequestException('这块表已有待复核的抄表记录，请先复核后再抄下一次');
+      }
       if (last && readAt.getTime() < last.readAt.getTime()) {
         throw new BadRequestException(
           `这次拍照时间早于最近一次抄表（${this.formatDateTime(last.readAt)}），请按顺序补录，或让管理员在后台修正`,
@@ -545,7 +553,7 @@ export class MetersService {
         ocrMeterNo: dto.ocr?.meterNo ?? null,
         ocrRaw: dto.ocr?.raw ?? null,
         orientation: dto.ocr?.orientation ?? 0,
-        status: 'confirmed',
+        status: 'pending',
         anomalyFlags: [...new Set(anomalies)],
         latitude: dto.latitude === undefined ? null : String(dto.latitude),
         longitude: dto.longitude === undefined ? null : String(dto.longitude),
@@ -558,46 +566,8 @@ export class MetersService {
         updatedBy: user.id,
       });
       const saved = await manager.save(reading);
-      if (!meter.lastReadingAt || readAt.getTime() >= meter.lastReadingAt.getTime()) {
-        meter.lastReadingValue = saved.readingValue;
-        meter.lastReadingAt = readAt;
-        meter.updatedBy = user.id;
-        await manager.save(meter);
-      }
-
-      let charge: MeterCharge | null = null;
-      if (
-        meter.billingEnabled &&
-        meter.unitPriceCents > 0 &&
-        usageResult.usage !== null &&
-        usageResult.usage > 0
-      ) {
-        const amount = amountCentsOf(usageResult.usage, meter.unitPriceCents);
-        if (amount > 2_000_000_000) throw new BadRequestException('本次金额过大，请检查单价和读数');
-        if (amount > 0) {
-          charge = manager.create(MeterCharge, {
-            tenantId,
-            meterId: meter.id,
-            readingId: saved.id,
-            meterNoSnapshot: meter.meterNo,
-            ownerNameSnapshot: meter.ownerName,
-            period: periodOf(readAt),
-            usageValue: usageResult.usage.toFixed(3),
-            unitPriceCents: meter.unitPriceCents,
-            amountCents: amount,
-            adjustmentCents: 0,
-            receivableCents: amount,
-            paidCents: 0,
-            status: 'unpaid',
-            dueDate: this.dueDateOf(periodOf(readAt)),
-            note: null,
-            createdBy: user.id,
-            updatedBy: user.id,
-          });
-          charge = await manager.save(charge);
-        }
-      }
-      return { reading: saved, charge, meter };
+      // 待复核：先不动表头最近读数，也不出账；复核通过后再更新表头并生成账单。
+      return { reading: saved, charge: null as MeterCharge | null, meter };
     });
     return this.readingResult(result.reading, result.meter, result.charge ?? undefined);
   }
@@ -732,6 +702,113 @@ export class MetersService {
     }
     await this.refreshMeterLast(meter);
     return this.readingResult(reading, meter);
+  }
+
+  /**
+   * 复核待处理抄表：修正读数 → 确认 → 更新表头 → 生成/重算账单。
+   * 只有 pending 能走这里；已确认的记录仍按 admin 的 updateReading 修正。
+   */
+  async reviewReading(id: number, dto: ReviewReadingDto, user: AuthUser, access: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const before = await this.readingRepo.findOne({ where: { id, tenantId } });
+    if (!before) throw new NotFoundException('抄表记录不存在');
+    const beforeMeter = await this.findMeter(before.meterId, tenantId);
+    this.assertMeterScope(beforeMeter, access);
+    if (before.status === 'void') throw new BadRequestException('已作废的记录不能复核');
+    if (before.status === 'confirmed') throw new BadRequestException('这条已经复核过了');
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const locked = await manager.query(
+        `SELECT id FROM meter_readings WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+        [id, tenantId],
+      );
+      if (!locked.length) throw new NotFoundException('抄表记录不存在');
+      const reading = await manager.findOne(MeterReading, { where: { id, tenantId } });
+      if (!reading) throw new NotFoundException('抄表记录不存在');
+      const meter = await manager.findOne(Meter, { where: { id: reading.meterId, tenantId } });
+      if (!meter) throw new NotFoundException('仪表不存在');
+
+      const value = round3(dto.readingValue === undefined ? Number(reading.readingValue) : dto.readingValue);
+      const previous = await manager.findOne(MeterReading, {
+        where: { tenantId, meterId: meter.id, status: 'confirmed', readAt: LessThan(reading.readAt) },
+        order: { readAt: 'DESC', id: 'DESC' },
+      });
+      const previousValue = previous
+        ? Number(previous.readingValue)
+        : meter.initialReading !== null && (!meter.initialReadingAt || meter.initialReadingAt <= reading.readAt)
+          ? Number(meter.initialReading)
+          : null;
+      const usageResult = computeUsage(value, previousValue, Number(meter.multiplier), meter.integerDigits);
+      if (usageResult.error) throw new BadRequestException(usageResult.error);
+
+      const predictedBefore = reading.readingValue;
+      reading.readingValue = value.toFixed(3);
+      reading.previousValue = previousValue === null ? null : previousValue.toFixed(3);
+      reading.usageValue = usageResult.usage === null ? null : usageResult.usage.toFixed(3);
+      reading.status = 'confirmed';
+      reading.reviewedBy = user.id;
+      reading.reviewedAt = new Date();
+      if (dto.reviewNote !== undefined) reading.reviewNote = dto.reviewNote.trim() || null;
+      const flags = new Set(reading.anomalyFlags || []);
+      if (usageResult.usage !== null && Math.abs(usageResult.usage) < 0.0005) flags.add('zero_usage');
+      else flags.delete('zero_usage');
+      reading.anomalyFlags = [...flags];
+      reading.updatedBy = user.id;
+      await manager.save(reading);
+
+      if (!meter.lastReadingAt || reading.readAt.getTime() >= meter.lastReadingAt.getTime()) {
+        meter.lastReadingValue = reading.readingValue;
+        meter.lastReadingAt = reading.readAt;
+        meter.updatedBy = user.id;
+        await manager.save(meter);
+      }
+
+      let charge = await manager.findOne(MeterCharge, { where: { tenantId, readingId: reading.id } });
+      if (
+        meter.billingEnabled &&
+        meter.unitPriceCents > 0 &&
+        usageResult.usage !== null &&
+        usageResult.usage > 0
+      ) {
+        const amount = amountCentsOf(usageResult.usage, meter.unitPriceCents);
+        if (amount > 2_000_000_000) throw new BadRequestException('本次金额过大，请检查单价和读数');
+        if (amount > 0) {
+          if (!charge) {
+            charge = manager.create(MeterCharge, {
+              tenantId,
+              meterId: meter.id,
+              readingId: reading.id,
+              meterNoSnapshot: meter.meterNo,
+              ownerNameSnapshot: meter.ownerName,
+              period: periodOf(reading.readAt),
+              usageValue: usageResult.usage.toFixed(3),
+              unitPriceCents: meter.unitPriceCents,
+              amountCents: amount,
+              adjustmentCents: 0,
+              receivableCents: amount,
+              paidCents: 0,
+              status: 'unpaid',
+              dueDate: this.dueDateOf(periodOf(reading.readAt)),
+              note: null,
+              createdBy: user.id,
+              updatedBy: user.id,
+            });
+          } else {
+            charge.usageValue = usageResult.usage.toFixed(3);
+            charge.amountCents = amount;
+            charge.receivableCents = amount + charge.adjustmentCents;
+            charge.updatedBy = user.id;
+          }
+          charge = await manager.save(charge);
+        }
+      }
+      return { reading, meter, charge, predictedBefore };
+    });
+
+    if (Math.abs(Number(result.predictedBefore) - Number(result.reading.readingValue)) > 0.0005) {
+      await this.upsertOcrSample(result.reading, result.meter, result.predictedBefore, result.reading.readingValue, user);
+    }
+    return this.readingResult(result.reading, result.meter, result.charge ?? undefined);
   }
 
   // ---------------------------------------------------------------- 识别纠错样本
