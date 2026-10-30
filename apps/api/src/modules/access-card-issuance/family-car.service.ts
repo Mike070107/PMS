@@ -243,7 +243,7 @@ export class FamilyCarService {
         : [...(on([9, 11, 13]) ? ['phase2'] : []), ...(on([15, 17, 19, 21]) ? ['main'] : [])];
       return {
         plate: legacyPlate(r),
-        room: legacyRoomKey(r) || String(f.Owner__owner_Name ?? ''),
+        room: (legacyRoomKey(r) || String(f.Owner__owner_Name ?? '')).trim().slice(0, 40),
         identity: legacyIdentity(r),
         database: r.database,
         startDate: date(f.Sart_Time ?? f.Start_Time),
@@ -253,7 +253,13 @@ export class FamilyCarService {
         garages,
       };
     });
-    return { id: q.id, status: q.status, error: null, rows };
+    // 同一车牌在一期、二期库都有（或重复登记）：留到期最晚的一条，另一条记进说明
+    const byPlate = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) {
+      const prev = byPlate.get(row.plate);
+      if (!prev || (row.endDate || '') > (prev.endDate || '')) byPlate.set(row.plate, prev ? { ...row, remark: `${row.remark}（旧库另有一条 ${prev.database === 'parking1' ? '一期' : '二期'} 记录，已取到期较晚的）`.slice(0, 200) } : row);
+    }
+    return { id: q.id, status: q.status, error: null, rows: [...byPlate.values()], total: rows.length };
   }
 
   async importFromParking(
@@ -311,7 +317,11 @@ export class FamilyCarService {
       }
 
       const parsed = parseImportRoom(roomText);
-      if (!parsed) { fail('房号无法识别，例：228/6/502'); continue; }
+      if (!parsed) {
+        // 旧库里写的是人名 / 备注、没有房号：不按姓名去猜（同名会挂错户），列出来请办公室核实后手动登记
+        fail(roomText && !/\d/.test(roomText) ? `旧库没有登记房号（房号栏写的是「${roomText}」），未导入；请核实房号后手动登记` : roomText ? `房号「${roomText}」无法识别，例：228/6/502` : '旧库没有登记房号，未导入；请核实房号后手动登记');
+        continue;
+      }
 
       // 楼栋：给了弄号就精确定位，没给就按楼号找（可能命中多个小区）
       const where: Record<string, unknown> = { tenantId, buildingNo: parsed.buildingNo };

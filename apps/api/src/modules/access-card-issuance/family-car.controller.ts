@@ -73,9 +73,10 @@ export class StopFamilyCarDto {
 
 /** 从停车系统导入的一行：现场把旧库的亲情车清单导成表，按行贴进来 */
 export class ImportFamilyCarRowDto {
-  @IsString() @MinLength(6) @MaxLength(20) plate: string;
+  @IsString() @MaxLength(20) plate: string; // 格式在服务里逐行判，坏行进核对结果，不整批失败
   /** 房号，支持 228/6/502、228弄6号502室、6/502 */
-  @IsString() @MinLength(3) @MaxLength(40) room: string;
+  // 旧库有些车没登记房号（写的是人名 / 备注），也要能进核对结果、逐条说明原因，不能整批校验失败
+  @IsString() @MaxLength(40) room: string;
   @IsOptional() @IsString() @MaxLength(50) ownerName?: string;
   @IsOptional() @IsString() @MaxLength(30) ownerPhone?: string;
   @IsOptional() @IsString() @MaxLength(50) carOwnerName?: string;
