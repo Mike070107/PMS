@@ -13,6 +13,7 @@ import {
 } from 'antd';
 import { RightOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import MeterVisionSettings, { type MeterVisionSetting } from '../components/MeterVisionSettings';
 import AiSamplesPanel from '../components/AiSamplesPanel';
 import AiLearningPanel from '../components/AiLearningPanel';
 import AiUsagePanel from '../components/AiUsagePanel';
@@ -43,6 +44,7 @@ import { usePagePerm } from '../lib/auth';
 const { Title, Text, Paragraph } = Typography;
 
 interface TenantSettings {
+  meterVision?: MeterVisionSetting;
   ownerPhoneAutoMatch: { enabled: boolean };
   wxSubscribeTemplates: {
     orderDispatched: string;
@@ -850,6 +852,12 @@ export default function SettingsPage() {
           开着服务号时，派单通知优先走它；没关注的人自动退回小程序订阅消息，
           两条都不通时仍然会写进小程序里的「消息」。
         </Paragraph>
+      </SettingSection>
+
+      <SettingSection title="抄表图像识别 AI"
+        summary={settings?.meterVision?.enabled ? `已开启 · ${settings.meterVision.model}` : '未开启 · 红框裁切识别，原图完整留档'}>
+        <MeterVisionSettings initial={settings?.meterVision} canEdit={canEdit}
+          onSaved={(meterVision) => setSettings((current) => current ? { ...current, meterVision } : current)} />
       </SettingSection>
 
       <SettingSection

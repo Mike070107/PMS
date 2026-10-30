@@ -30,12 +30,13 @@ interface SidecarResult {
 }
 
 const LLM_SYSTEM =
-  '你是物业抄表识别器。只读图里的水表/电表当前读数，输出 JSON，不要解释，不要编造看不清的数字。';
+  '你是物业抄表识别器。只读图里的水表/电表当前读数，输出 JSON，不要解释，不要编造看不清的数字；无法确认的位写?。';
 const LLM_PROMPT = `读出这张表照片的当前读数与表号，只输出 JSON：
-{"reading":"只保留数字和小数点","meterNo":"表身印刷的表号，看不清就给空字符串","confidence":0到100的整数}
+{"reading":"保留前导零和可见小数点，无法确定的位用?","meterNo":"表身印刷的表号，看不清就给空字符串","confidence":0到100的整数}
 规则：
 - reading 只要当前累计读数，不要用量、不要单价、不要规格里的数字（如 3×220/380V、R=80、GB/T 标准号）。
-- 电表液晶屏若显示 022418.88，reading 必须带小数点；水表字轮 02405 就填 02405。
+- 保留全部前导零；液晶屏可见小数点才保留小数点；水表字轮按窗口内完整数字返回。
+- 字轮只读同一排当前数字，不能将上下相邻字轮的过渡数字追加成新位；字轮颜色不作为补小数点的依据。
 - 表号是印在表壳/铭牌上的编号（常见 6~12 位），不是读数；看不清或没有就给空字符串。`;
 
 /**
@@ -62,6 +63,7 @@ export class MeterOcrService {
     crop: { x: number; y: number; w: number; h: number } | undefined,
     user: AuthUser,
     roi?: { x: number; y: number; w: number; h: number },
+    recognitionImageKey?: string,
   ): Promise<MeterOcrResponse> {
     const buffer = await this.readUpload(imageKey);
     const imageUrl = this.storage.fileUrl(imageKey);
@@ -79,6 +81,18 @@ export class MeterOcrService {
       meterNoMatched: null as boolean | null,
       orientation: 0,
     };
+
+    // 原图始终保留原 objectKey；只把独立的红框图送给视觉模型。
+    if (recognitionImageKey) {
+      const recognitionBuffer = await this.readUpload(recognitionImageKey);
+      try {
+        const parsed = await this.runLlm(meter, recognitionBuffer, user.tenantId ?? 0);
+        if (parsed) return this.finish(base, meter, parsed, 'llm');
+      } catch {
+        this.logger.warn('meter OCR 裁切图视觉识别失败');
+      }
+      return { ...base, ok: false, error: '裁切图未能可靠识别，请核对画面后重试或手工输入' };
+    }
 
     const sidecarUrl = this.sidecarUrl();
     if (sidecarUrl) {
@@ -102,16 +116,15 @@ export class MeterOcrService {
           if (
             !isMeterNo &&
             parsed.value !== null &&
-            (roi
-              ? true
-              : parsed.digits?.length === expected &&
-                parsed.confidence >= (orientation === 0 ? 70 : 85))
+            !parsed.needsReview &&
+            parsed.digits?.length === expected &&
+            parsed.confidence >= 85
           ) {
             return this.finish(base, meter, parsed, 'sidecar', found.orientation);
           }
         }
 
-        if (best && best.found.parsed.value !== null) {
+        if (best && best.score >= 0 && best.found.parsed.value !== null) {
           return this.finish(base, meter, best.found.parsed, 'sidecar', best.found.orientation);
         }
 
@@ -141,7 +154,7 @@ export class MeterOcrService {
     }
 
     try {
-      const llm = await this.runLlm(meter, buffer, user.tenantId ?? 0);
+      const llm = roi ? null : await this.runLlm(meter, buffer, user.tenantId ?? 0);
       if (llm) return this.finish(base, meter, llm, 'llm');
     } catch (error) {
       this.logger.warn(`meter OCR 大模型兜底失败：${error instanceof Error ? error.message : error}`);
@@ -157,7 +170,11 @@ export class MeterOcrService {
     };
   }
 
-  async health(): Promise<{ ok: boolean; provider: string; detail?: string }> {
+  async health(tenantId?: number): Promise<{ ok: boolean; provider: string; detail?: string }> {
+    if (tenantId) {
+      const ready = await this.llm.isReady(tenantId, 'meter');
+      return { ok: ready, provider: 'llm', detail: ready ? '已配置独立抄表AI，实际效果需用照片核对' : '请在设置中启用并配置“抄表图像识别 AI”' };
+    }
     const url = this.sidecarUrl();
     if (!url) return { ok: false, provider: 'none', detail: 'METER_OCR_URL 未配置' };
     try {
@@ -267,16 +284,35 @@ export class MeterOcrService {
           );
         })
       : [];
-    const usable = inRoi.length ? inRoi : items;
-    return {
-      parsed: parseMeterOcr(usable, {
-        integerDigits: meter.integerDigits,
-        decimalDigits: meter.decimalDigits,
-        width,
-        height,
-      }),
-      orientation: Number(data.orientation) || orientation,
+    const usable = roi ? inRoi : items;
+    // 边车返回原图坐标；拼接字轮前必须恢复到识别方向，否则侧拍会反序/拆行。
+    const angle = Number(data.orientation) || orientation;
+    const rotateBox = (box: number[], inverse = false): number[] => {
+      const [x1, y1, x2, y2] = box;
+      const w = Number(width), h = Number(height);
+      if (angle === 90) return inverse
+        ? [y1, h - 1 - x2, y2, h - 1 - x1]
+        : [h - 1 - y2, x1, h - 1 - y1, x2];
+      if (angle === 270) return inverse
+        ? [w - 1 - y2, x1, w - 1 - y1, x2]
+        : [y1, w - 1 - x2, y2, w - 1 - x1];
+      if (angle === 180) return [w - 1 - x2, h - 1 - y2, w - 1 - x1, h - 1 - y1];
+      return box;
     };
+    const canRotate = !!width && !!height;
+    const parsed = parseMeterOcr(usable.map((item) => ({
+      ...item, box: item.box && canRotate ? rotateBox(item.box) : item.box,
+    })), {
+      integerDigits: meter.integerDigits,
+      decimalDigits: meter.decimalDigits,
+      meterNoHint: meter.meterNo,
+      width: angle === 90 || angle === 270 ? height : width,
+      height: angle === 90 || angle === 270 ? width : height,
+    });
+    if (canRotate) for (const candidate of parsed.candidates) {
+      if (candidate.box) candidate.box = rotateBox(candidate.box, true);
+    }
+    return { parsed, orientation: angle };
   }
 
   /**
@@ -285,19 +321,23 @@ export class MeterOcrService {
    */
   private async runLlm(meter: Meter, buffer: Buffer, tenantId: number): Promise<MeterOcrParsed | null> {
     if (!tenantId) return null;
-    const ready = await this.llm.isReady(tenantId);
+    const ready = await this.llm.isReady(tenantId, 'meter');
     if (!ready) return null;
     const json = await this.llm.askImageJson<{
       reading?: string;
       meterNo?: string;
       confidence?: number;
-    }>(tenantId, LLM_SYSTEM, LLM_PROMPT, { contentType: 'image/jpeg', buffer }, { kind: 'meter-ocr' });
+      uncertain?: boolean;
+    }>(tenantId, LLM_SYSTEM, LLM_PROMPT, { contentType: buffer.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) ? 'image/png' : 'image/jpeg', buffer }, { kind: 'meter-ocr', profile: 'meter' });
     if (!json) return null;
     const normalized = normalizeOcrText(String(json.reading ?? '')).replace(/\s+/g, '');
     const explicitDecimal = /[.,]/.test(normalized);
     const bare = normalized.replace(/[^\d]/g, '');
-    if (!bare) return null;
-    const value = digitsToValue(bare, meter.integerDigits, meter.decimalDigits, explicitDecimal);
+    if (!/^\d+(?:\.\d+)?$/.test(normalized)) return {
+      digits: null, value: null, confidence: 0, meterNo: null, meterNoCandidates: [],
+      texts: JSON.stringify(json).slice(0, 4000), candidates: [], needsReview: true,
+    };
+    const value = digitsToValue(normalized, meter.integerDigits, meter.decimalDigits, explicitDecimal);
     if (value === null) return null;
     const confidence = Math.max(0, Math.min(100, Number(json.confidence) || 60));
     return {
@@ -308,7 +348,7 @@ export class MeterOcrService {
       meterNoCandidates: json.meterNo ? [normalizeMeterNo(json.meterNo)] : [],
       texts: JSON.stringify(json).slice(0, 4000),
       candidates: [{ digits: bare, value, score: confidence / 100, text: normalized, explicitDecimal }],
-      needsReview: confidence < 85,
+      needsReview: true, // 现场六图证明模型仍会高分误读；视觉草稿必须由人核对。
     };
   }
 

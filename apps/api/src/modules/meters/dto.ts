@@ -369,6 +369,12 @@ export class OcrQueryDto {
   @Max(4)
   decimalDigits?: number;
 
+  /** 红框裁切并扶正后单独上传的识别图，绝不代替原图留档 */
+  @IsOptional()
+  @IsString()
+  @Length(1, 255)
+  recognitionImageKey?: string;
+
   /** 读数区域（0~1），不传则整图识别 */
   @IsOptional()
   @IsObject()

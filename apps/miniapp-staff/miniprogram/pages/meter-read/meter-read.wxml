@@ -1,4 +1,5 @@
 <view class="container">
+  <canvas type="2d" id="meter-recognition-canvas" style="position:fixed;left:-10000px;top:0;width:1px;height:1px;" />
   <view wx:if="{{loading}}" class="meter-read-loading">正在读取仪表档案…</view>
 
   <block wx:elif="{{meter}}">
@@ -57,13 +58,18 @@
       </view>
 
       <view class="card meter-input-card">
-        <view class="meter-input-label">
+        <label for="meter-reading-value" class="meter-input-label">
           本次读数
           <text class="meter-input-sub">（{{meter.integerDigits}} 位整数{{meter.decimalDigits ? ' + ' + meter.decimalDigits + ' 位小数' : ''}}）</text>
-        </view>
-        <view class="meter-input-row">
+        </label>
+        <view class="meter-input-row {{valueError ? 'is-invalid' : ''}}">
           <input
+            id="meter-reading-value"
             class="meter-value-input"
+            focus="{{valueFocus}}"
+            aria-label="本次读数"
+            aria-invalid="{{!!valueError}}"
+            aria-describedby="meter-reading-error"
             type="digit"
             value="{{valueText}}"
             bindinput="onValueInput"
@@ -72,6 +78,7 @@
           />
           <text class="meter-input-unit">{{meter.unit}}</text>
         </view>
+        <view wx:if="{{valueError}}" id="meter-reading-error" class="meter-field-error">{{valueError}}</view>
         <view class="meter-preview">
           <view class="meter-preview__row">
             <text>上次读数</text>
@@ -140,10 +147,10 @@
       <text class="crop-top__btn" bindtap="onRetakeCrop">重拍</text>
       <text class="crop-top__title">把读数放进红框</text>
       <view class="crop-top__actions">
-        <text class="crop-top__btn crop-top__manual" bindtap="onManualSelect">手动框选</text>
-        <text class="crop-top__btn" bindtap="onResetView">重置</text>
+        <text class="crop-top__btn" bindtap="onPreviewPhoto">查看原图</text>
       </view>
     </view>
+    <view class="crop-archive">{{photoKey ? '全景原图已留档' : '全景原图保存中'}} · AI 只读取红框图片</view>
     <view class="crop-stage-wrap">
       <view
         class="crop-stage"
@@ -164,13 +171,27 @@
         ></view>
       </view>
     </view>
+    <view class="crop-tools">
+      <button class="crop-tool" disabled="{{recognizing}}" data-step="-90" bindtap="onRotateStep">左转90°</button>
+      <button class="crop-tool" disabled="{{recognizing}}" data-step="90" bindtap="onRotateStep">右转90°</button>
+      <button class="crop-tool" disabled="{{recognizing}}" bindtap="onResetView">重置画面</button>
+    </view>
     <view class="crop-hint">{{autoBoxText || '单指拖动 · 双指缩放/旋转 · 框不动'}}</view>
-    <view class="crop-sheet">
-      <view wx:if="{{recognizing}}" class="crop-sheet__hint">正在识别红框内的读数…</view>
+    <scroll-view scroll-y class="crop-sheet" style="height:{{recognizing ? 240 : (digitWarning || error || valueError ? 420 : 340)}}rpx;">
+      <view wx:if="{{recognizing}}">
+        <view class="crop-sheet__hint">{{recognitionStatus || '正在保存全景原图…'}}</view>
+        <button class="btn btn--ghost crop-cancel" bindtap="onCancelRecognition">取消等待</button>
+      </view>
       <block wx:elif="{{ocr && ocr.ok && !imgDirty}}">
-        <view class="crop-input-row">
+        <label for="meter-crop-value" class="crop-input-label">核对本次读数</label>
+        <view class="crop-input-row {{valueError ? 'is-invalid' : ''}}">
           <input
+            id="meter-crop-value"
             class="crop-input"
+            focus="{{cropValueFocus}}"
+            aria-label="核对本次读数"
+            aria-invalid="{{!!valueError}}"
+            aria-describedby="meter-crop-error"
             type="digit"
             value="{{valueText}}"
             bindinput="onCropValueInput"
@@ -179,17 +200,24 @@
           />
           <text class="crop-unit">{{meter.unit}}</text>
         </view>
+        <view wx:if="{{valueError}}" id="meter-crop-error" class="meter-field-error">{{valueError}}</view>
         <view wx:if="{{digitWarning}}" class="crop-warn">{{digitWarning}}</view>
         <view wx:else class="crop-sheet__hint">识别不准可以直接改数字，改完点使用</view>
         <view class="crop-actions">
           <button class="btn btn--ghost" bindtap="onRecognizeRoi">重新识别</button>
-          <button class="btn btn--primary" disabled="{{!cropCanUse}}" bindtap="onUseCropResult">使用这个读数</button>
+          <button class="btn btn--primary" disabled="{{recognizing || uploading}}" bindtap="onUseCropResult">核对后继续</button>
         </view>
       </block>
       <block wx:else>
-        <view class="crop-input-row">
+        <label for="meter-crop-value" class="crop-input-label">核对本次读数</label>
+        <view class="crop-input-row {{valueError ? 'is-invalid' : ''}}">
           <input
+            id="meter-crop-value"
             class="crop-input"
+            focus="{{cropValueFocus}}"
+            aria-label="核对本次读数"
+            aria-invalid="{{!!valueError}}"
+            aria-describedby="meter-crop-error"
             type="digit"
             value="{{valueText}}"
             bindinput="onCropValueInput"
@@ -198,12 +226,13 @@
           />
           <text class="crop-unit">{{meter.unit}}</text>
         </view>
+        <view wx:if="{{valueError}}" id="meter-crop-error" class="meter-field-error">{{valueError}}</view>
         <view class="crop-warn">{{error || (imgDirty ? '画面已调整，请点识别' : '还没读出数字，调整画面后再试')}}</view>
         <view class="crop-actions">
           <button class="btn btn--ghost" bindtap="onRecognizeRoi">{{recognizing ? '识别中…' : '识别'}}</button>
-          <button class="btn btn--primary" disabled="{{!cropCanUse}}" bindtap="onUseCropResult">使用这个读数</button>
+          <button class="btn btn--primary" disabled="{{recognizing || uploading}}" bindtap="onUseCropResult">核对后继续</button>
         </view>
       </block>
-    </view>
+    </scroll-view>
   </view>
 </view>

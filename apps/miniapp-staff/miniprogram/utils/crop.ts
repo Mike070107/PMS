@@ -76,3 +76,27 @@ export function fitRoiToFrame(
     rotate: 0,
   };
 }
+
+
+/** 原图分辨率导出红框：使用与预览相同的平移、缩放、旋转，避免截图压低像素。 */
+export function meterCropPlan(
+  frame: CropFrame, transform: CropTransform, displayWidth: number, displayHeight: number,
+  photoWidth: number, photoHeight: number,
+) {
+  if (![displayWidth, displayHeight, photoWidth, photoHeight, frame.w, frame.h].every((n) => Number.isFinite(n) && n > 0)) {
+    throw new Error('图片尺寸未就绪，请重新选择照片');
+  }
+  const scale = clamp(Number(transform.scale) || 1, 0.2, 6);
+  const nativeRatio = Math.min(photoWidth / displayWidth, photoHeight / displayHeight) / scale;
+  const ratio = Math.min(nativeRatio, 2048 / Math.max(frame.w * displayWidth, frame.h * displayHeight));
+  return {
+    width: Math.max(1, Math.round(frame.w * displayWidth * ratio)),
+    height: Math.max(1, Math.round(frame.h * displayHeight * ratio)),
+    centerX: (displayWidth / 2 + transform.x - frame.x * displayWidth) * ratio,
+    centerY: (displayHeight / 2 + transform.y - frame.y * displayHeight) * ratio,
+    drawWidth: displayWidth,
+    drawHeight: displayHeight,
+    scale: scale * ratio,
+    radians: transform.rotate * Math.PI / 180,
+  };
+}

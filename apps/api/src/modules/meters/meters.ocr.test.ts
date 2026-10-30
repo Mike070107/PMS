@@ -131,3 +131,101 @@ test('账期按北京时间归月，服务器时区不影响', () => {
   assert.equal(periodOf(new Date('2026-10-31T16:30:00Z')), '2026-11');
   assert.equal(periodOf(new Date('2026-10-31T15:59:00Z')), '2026-10');
 });
+
+
+test('已知表号即使分数更高也不能作为读数', () => {
+  const parsed = parseMeterOcr([
+    { text: '20054564', score: 0.99, box: [20, 400, 600, 500] },
+    { text: '02241888', score: 0.80, box: [20, 100, 600, 200] },
+  ], { integerDigits: 6, decimalDigits: 2, meterNoHint: '20054564' });
+  assert.equal(parsed.value, 22418.88);
+});
+
+test('位数不符必须复核，不把高 OCR 字符分数当读数可靠性', () => {
+  const parsed = parseMeterOcr([{ text: '00892', score: 0.99 }], {
+    integerDigits: 6, decimalDigits: 0,
+  });
+  assert.equal(parsed.needsReview, true);
+});
+
+
+test('大模型显式小数点不能被剥除后变成整数', async () => {
+  const { MeterOcrService } = await import('./meter-ocr.service');
+  const service = new MeterOcrService({} as any, {} as any, {
+    isReady: async () => true,
+    askImageJson: async () => ({ reading: '123.45', confidence: 90 }),
+  } as any);
+  const parsed = await (service as any).runLlm({ integerDigits: 6, decimalDigits: 2 }, Buffer.from('image'), 1);
+  assert.equal(parsed.value, 123.45);
+});
+
+test('框内空白不得退回框外数字；识别必须传入档案表号排除', async () => {
+  const { MeterOcrService } = await import('./meter-ocr.service');
+  const axios = (await import('axios')).default;
+  const original = axios.post;
+  try {
+    axios.post = (async () => ({ data: { ok: true, width: 1000, height: 1000, items: [
+      { text: '20054564', score: 0.99, box: [100, 100, 400, 180] },
+    ] } })) as any;
+    const service = new MeterOcrService({ get: () => '' } as any, {} as any, {} as any);
+    const meter = { integerDigits: 6, decimalDigits: 2, meterNo: '20054564' };
+    const found = await (service as any).runSidecar('http://isolated', Buffer.from('image'), undefined, false, meter, 0,
+      { x: 0.5, y: 0.5, w: 0.4, h: 0.2 });
+    assert.equal(found.parsed.value, null);
+    const full = await (service as any).runSidecar('http://isolated', Buffer.from('image'), undefined, false, meter);
+    assert.equal(full.parsed.value, null);
+  } finally { axios.post = original; }
+});
+
+
+test('侧拍 90 度的拆分字轮按识别方向拼接，候选框还原到原图', async () => {
+  const { MeterOcrService } = await import('./meter-ocr.service');
+  const axios = (await import('axios')).default;
+  const original = axios.post;
+  try {
+    axios.post = (async () => ({ data: { ok: true, width: 1000, height: 1000, orientation: 90, items: [
+      { text: '0224', score: 0.9, box: [100, 699, 160, 899] },
+      { text: '1888', score: 0.9, box: [100, 479, 160, 679] },
+    ] } })) as any;
+    const service = new MeterOcrService({ get: () => '' } as any, {} as any, {} as any);
+    const found = await (service as any).runSidecar('http://isolated', Buffer.from('image'), undefined, false,
+      { integerDigits: 6, decimalDigits: 2, meterNo: '20054564' }, 90);
+    assert.equal(found.parsed.value, 22418.88);
+    assert.deepEqual(found.parsed.candidates[0].box, [100, 479, 160, 899]);
+  } finally { axios.post = original; }
+});
+
+
+test('裁切图交给视觉模型，响应与留档仍指向原图', async () => {
+  const { Readable } = await import('node:stream');
+  const { MeterOcrService } = await import('./meter-ocr.service');
+  const original = Buffer.from('original-full-photo');
+  const crop = Buffer.from([137,80,78,71,13,10,26,10,1]);
+  let sent: any;
+  const service = new MeterOcrService({ get: () => '' } as any, {
+    getObject: async (key: string) => ({ stream: Readable.from([key.endsWith('crop.png') ? crop : original]) }),
+    fileUrl: (key: string) => key,
+  } as any, {
+    isReady: async () => true,
+    askImageJson: async (_tenant: number, _system: string, _prompt: string, image: any) => {
+      sent = image; return { reading: '008922', confidence: 90 };
+    },
+  } as any);
+  const result = await (service as any).recognize({ integerDigits: 6, decimalDigits: 0, meterNo: 'W-1' },
+    'uploads/original.jpg', undefined, { tenantId: 1 }, { x: .2, y: .3, w: .5, h: .1 }, 'uploads/crop.png');
+  assert.deepEqual(sent?.buffer, crop);
+  assert.equal(sent.contentType, 'image/png');
+  assert.equal(result.imageUrl, 'uploads/original.jpg');
+  assert.equal(result.value, 8922);
+});
+
+test('视觉模型问号不能被删除后误当成完整读数', async () => {
+  const { MeterOcrService } = await import('./meter-ocr.service');
+  const service = new MeterOcrService({} as any, {} as any, {
+    isReady: async () => true,
+    askImageJson: async () => ({ reading: '0088?', uncertain: true, confidence: 99 }),
+  } as any);
+  const parsed = await (service as any).runLlm({ integerDigits: 5, decimalDigits: 0 }, Buffer.from('image'), 1);
+  assert.equal(parsed?.value, null);
+  assert.equal(parsed?.needsReview, true);
+});

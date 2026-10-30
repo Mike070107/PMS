@@ -1,13 +1,15 @@
 import { meters, upload } from '@pms/api-client';
 import type { MeterOcrResp, MeterRow, ReadingResult } from '@pms/api-client';
 import { getSession } from '../../utils/session';
-import { fitRoiToFrame, frameRoi as computeFrameRoi } from '../../utils/crop';
+import { fitRoiToFrame, meterCropPlan, frameRoi as computeFrameRoi } from '../../utils/crop';
 import { pickReadingCandidate } from '../../utils/meter-crop';
+import { renderMeterCrop } from '../../utils/meter-crop-canvas';
 import {
   formatMeterTime,
   formatMeterValue,
   meterErrText,
   sanitizeReadingInput,
+  readingTextError,
 } from '../../utils/meter';
 
 interface LocationInfo {
@@ -63,6 +65,9 @@ Page({
     manualMode: false,
     photoPath: '',
     photoKey: '',
+    recognitionImageKey: '',
+    recognitionRoi: null as Roi | null,
+    recognitionTransform: null as { scale: number; x: number; y: number; rotate: number } | null,
     photoWidth: 0,
     photoHeight: 0,
     photoDisplayWidth: 0,
@@ -88,6 +93,10 @@ Page({
     recognizing: false,
     uploading: false,
     valueText: '',
+    valueError: '',
+    valueFocus: false,
+    cropValueFocus: false,
+    recognitionStatus: '',
     usageText: '',
     amountText: '',
     note: '',
@@ -225,6 +234,10 @@ Page({
             mode: 'preview',
             cropOpen: true,
             photoPath: path,
+            photoKey: '',
+            recognitionImageKey: '',
+            recognitionRoi: null,
+            recognitionTransform: null,
             photoWidth: info.width,
             photoHeight: info.height,
             photoDisplayWidth: displayWidth,
@@ -265,6 +278,10 @@ Page({
             mode: 'preview',
             cropOpen: true,
             photoPath: path,
+            photoKey: '',
+            recognitionImageKey: '',
+            recognitionRoi: null,
+            recognitionTransform: null,
             photoDisplayWidth: displayWidth,
             photoDisplayHeight: Math.round(displayWidth * 1.4),
             imgScale: 1,
@@ -409,15 +426,16 @@ Page({
     try {
       const stored = await upload.uploadTempFile(path);
       // 即使用户已点“手动框选”，上传完成的 key 也要留下，手动确认后可再次识别
+      if (this.data.photoPath !== path) return;
       this.setData({ photoKey: stored.objectKey, uploading: false });
       if (token !== (this as any).cropToken) return;
-      // 不再先跑一遍全图定位 OCR：那次调用只会让用户多等 2~8 秒，
-      // 且我们已经取消自动聚焦，直接按当前红框识别即可。
+      // 全景原图上传只负责留档。用户先把字轮/液晶读数放进红框，再生成识别图。
       this.setData({
         cropCanUse: false,
-        autoBoxText: '正在识别红框内读数，点右上角“手动框选”可随时停止',
+        recognizing: false,
+        imgDirty: true,
+        autoBoxText: '全景原图已留档。拖动、缩放、旋转图片，把完整读数放进红框后点识别',
       });
-      await this.recognizeRoi();
     } catch (e) {
       if (token !== (this as any).cropToken) return;
       this.setData({
@@ -445,24 +463,42 @@ Page({
   },
 
   async recognizeRoi() {
+    if (this.data.recognizing) return;
     if (!this.data.photoKey) {
       wx.showToast({ icon: 'none', title: '原图还在上传，请稍候再识别' });
       return;
     }
-    const token = (this as any).cropToken || 0;
-    this.setData({ recognizing: true, error: '', digitWarning: '' });
+    const token = ((this as any).cropToken || 0) + 1;
+    (this as any).cropToken = token;
+    const originalKey = this.data.photoKey;
+    const roi = this.frameRoi();
+    const transform = { scale: this.data.imgScale, x: this.data.imgX, y: this.data.imgY, rotate: this.data.imgRotate };
+    (this as any).gesture = null;
+    this.setData({ recognizing: true, ocr: null, error: '', digitWarning: '', recognitionStatus: '正在裁切、扶正红框图片…' });
+    let recognitionPath = '';
     try {
-      // 注意：仍然对全景原图 OCR，只用红框过滤候选。
-      // 裁剪后的小图在液晶屏上会丢上下文（实测会把 0224 1888 识别成反序），不能作为唯一输入。
+      const plan = meterCropPlan(this.data.frame, transform,
+        this.data.photoDisplayWidth, this.data.photoDisplayHeight, this.data.photoWidth, this.data.photoHeight);
+      recognitionPath = await renderMeterCrop(this, this.data.photoPath, plan, () => token === (this as any).cropToken);
+      if (token !== (this as any).cropToken) return;
+      this.setData({ recognitionStatus: '正在上传裁切图…' });
+      const recognition = await upload.uploadTempFile(recognitionPath);
+      if (token !== (this as any).cropToken) return;
+      this.setData({ recognitionImageKey: recognition.objectKey, recognitionRoi: roi, recognitionTransform: transform, recognitionStatus: 'AI 正在识别红框读数…' });
       const result = await meters.ocr(this.data.id, {
-        imageKey: this.data.photoKey,
-        roi: this.frameRoi(),
+        imageKey: originalKey,
+        recognitionImageKey: recognition.objectKey,
+        roi,
       });
       if (token !== (this as any).cropToken) return;
-      const chosen = this.pickCandidate(result);
+      // 服务端已完成位数、表号、歧义判断，端上不能重新选值或抬高置信度。
+      const chosen = result.ok && result.value !== null
+        ? result.candidates.find((item) => item.value === result.value && item.digits === result.digits)
+        : null;
       const meter = this.data.meter;
       let valueText = this.data.valueText;
-      let digitWarning = '';
+      let digitWarning = result.needsReview && result.ok
+        ? '识别结果仅供参考，请逐位对照原图核对；不正确可直接修改读数。' : '';
       let error = '';
       let ocr: MeterOcrResp = result;
       if (chosen && chosen.value !== null) {
@@ -471,7 +507,7 @@ Page({
           ok: true,
           value: chosen.value,
           digits: chosen.digits,
-          confidence: Math.round(chosen.score * 100),
+          confidence: result.confidence,
         };
         if (meter) {
           const expected = Number(meter.integerDigits) + Number(meter.decimalDigits);
@@ -486,9 +522,9 @@ Page({
           }
         }
       } else {
-        valueText = '';
+        // 识别失败保留已输入的读数。
         ocr = { ...result, ok: false, value: null, digits: null };
-        error = '红框内没有找到数字，请把红框对准读数后重试，或手工输入';
+        error = result.error || '红框内读数无法确定，请调整画面后重试，或手工输入';
       }
       const preview = previewUsage(meter, valueText);
       this.setData({
@@ -499,13 +535,15 @@ Page({
         digitWarning,
         recognizing: false,
         imgDirty: false,
-        cropCanUse: !digitWarning && !!valueText,
+        cropCanUse: !readingTextError(valueText),
+        autoBoxText: result.ok ? '识别仅供参考，请逐位核对；原图可随时查看' : '请调整红框后重试，或直接手工填写读数',
         error,
       });
     } catch (e) {
       if (token !== (this as any).cropToken) return;
       this.setData({ error: meterErrText(e) });
     } finally {
+      if (recognitionPath) wx.getFileSystemManager().unlink({ filePath: recognitionPath, fail: () => undefined });
       if (token === (this as any).cropToken) {
         this.setData({ recognizing: false });
       }
@@ -541,6 +579,7 @@ Page({
   },
 
   onPhotoTouchStart(event: any) {
+    if (this.data.recognizing) return;
     const touches = event.touches || [];
     if (!touches.length) return;
     if (touches.length >= 2) {
@@ -569,6 +608,7 @@ Page({
   },
 
   onPhotoTouchMove(event: any) {
+    if (this.data.recognizing) return;
     const g = (this as any).gesture;
     const touches = event.touches || [];
     if (!g || !touches.length) return;
@@ -607,12 +647,27 @@ Page({
   },
 
   onResetView() {
+    if (this.data.recognizing) return;
     this.setData({ imgScale: 1, imgX: 0, imgY: 0, imgRotate: 0, imgTouched: true, imgDirty: true, cropCanUse: false });
   },
 
   onUseCropResult() {
-    if (!this.data.cropCanUse) return;
-    this.setData({ cropOpen: false });
+    const valueError = readingTextError(this.data.valueText);
+    if (valueError) { this.setData({ valueError, cropValueFocus: true }); return; }
+    if (this.data.recognizing || this.data.uploading) return;
+    this.setData({ cropOpen: false, valueError: '', cropValueFocus: false });
+  },
+
+  onCancelRecognition() {
+    (this as any).cropToken = ((this as any).cropToken || 0) + 1;
+    this.setData({ recognizing: false, recognitionStatus: '', autoBoxText: '已停止等待识别，原图和填写内容保留，可调整后重试' });
+  },
+
+  onRotateStep(event: any) {
+    if (this.data.recognizing) return;
+    const step = Number(event.currentTarget?.dataset?.step) || 90;
+    const imgRotate = ((this.data.imgRotate + step + 540) % 360) - 180;
+    this.setData({ imgRotate, imgTouched: true, imgDirty: true, cropCanUse: false, autoBoxText: '请把全部读数放入红框，小数点也要保留' });
   },
 
   onRetakeCrop() {
@@ -665,6 +720,7 @@ Page({
   },
 
   onRetake() {
+    (this as any).cropToken = ((this as any).cropToken || 0) + 1;
     this.setData({
       mode: 'camera',
       cropOpen: false,
@@ -677,6 +733,9 @@ Page({
       cropCanUse: false,
       photoPath: '',
       photoKey: '',
+      recognitionImageKey: '',
+      recognitionRoi: null,
+      recognitionTransform: null,
       photoDisplayWidth: 0,
       photoDisplayHeight: 0,
       photoRotate: 0,
@@ -693,6 +752,9 @@ Page({
       digitWarning: '',
       ocr: null,
       valueText: '',
+      valueError: '',
+      valueFocus: false,
+      cropValueFocus: false,
       usageText: '',
       amountText: '',
       error: '',
@@ -704,12 +766,13 @@ Page({
   onValueInput(event: any) {
     const valueText = sanitizeReadingInput(event.detail.value);
     const preview = previewUsage(this.data.meter, valueText);
-    this.setData({ valueText, usageText: preview.usageText, amountText: preview.amountText });
+    this.setData({ valueText, valueError: '', valueFocus: false, usageText: preview.usageText, amountText: preview.amountText });
     return valueText;
   },
 
   /** 识别结果允许在裁剪页直接手改；改完不必重拍 */
   onCropValueInput(event: any) {
+    (this as any).cropToken = ((this as any).cropToken || 0) + 1;
     const valueText = sanitizeReadingInput(event.detail.value);
     const preview = previewUsage(this.data.meter, valueText);
     this.setData({
@@ -717,8 +780,11 @@ Page({
       usageText: preview.usageText,
       amountText: preview.amountText,
       digitWarning: '',
-      error: '',
-      cropCanUse: !!valueText,
+      valueError: '',
+      cropValueFocus: false,
+      cropCanUse: !readingTextError(valueText),
+      recognizing: false,
+      imgDirty: false,
     });
   },
 
@@ -749,15 +815,13 @@ Page({
       wx.showToast({ icon: 'none', title: '画面已调整，请先点“识别”' });
       return;
     }
-    if (!this.data.valueText.trim()) {
-      wx.showToast({ icon: 'none', title: '请填写或核对读数' });
+    const valueError = readingTextError(this.data.valueText);
+    if (valueError) {
+      this.setData({ valueError, valueFocus: true });
+      wx.pageScrollTo({ selector: '#meter-reading-value', duration: 200 });
       return;
     }
     const value = Number(this.data.valueText);
-    if (!Number.isFinite(value) || value < 0) {
-      wx.showToast({ icon: 'none', title: '读数格式不对' });
-      return;
-    }
     const meter = this.data.meter;
     if (!meter) return;
     const warning =
@@ -798,7 +862,11 @@ Page({
               text: this.data.ocr.texts,
               meterNo: this.data.ocr.meterNo || undefined,
               orientation: this.data.ocr.orientation ?? 0,
-              raw: { candidates: this.data.ocr.candidates, digits: this.data.ocr.digits, roi: this.frameRoi() },
+              raw: { candidates: this.data.ocr.candidates, digits: this.data.ocr.digits, predictedValue: this.data.ocr.value, roi: this.frameRoi(),
+                recognitionImageKey: this.data.recognitionImageKey || undefined,
+                imageTransform: this.data.recognitionTransform || undefined,
+                recognitionRoi: this.data.recognitionRoi || undefined,
+              },
             }
           : { status: 'skipped' as const },
       });

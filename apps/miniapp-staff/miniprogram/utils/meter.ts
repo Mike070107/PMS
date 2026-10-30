@@ -51,3 +51,13 @@ export function sanitizeReadingInput(value: string): string {
   if (!rest.length) return whole.slice(0, 10);
   return `${whole.slice(0, 10)}.${rest.join('').slice(0, 3)}`;
 }
+
+
+export function readingTextError(value: string): string {
+  const text = value.trim();
+  if (!text) return '请填写本次读数，并对照原图核对';
+  if (!/^\d+(?:\.\d{1,3})?$/.test(text) || !Number.isFinite(Number(text)) || Number(text) >= 1e10) {
+    return '请填写有效读数，最多10位整数和3位小数';
+  }
+  return '';
+}

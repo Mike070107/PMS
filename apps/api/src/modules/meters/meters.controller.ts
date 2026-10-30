@@ -166,8 +166,8 @@ export class MetersController {
 
   @Get('ocr/health')
   @RequirePermission('meters', 'view')
-  ocrHealth() {
-    return this.service.ocrHealth();
+  ocrHealth(@CurrentUser() user: AuthUser) {
+    return this.service.ocrHealth(user);
   }
 
   @Get('ocr-samples')

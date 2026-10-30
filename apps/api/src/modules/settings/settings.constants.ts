@@ -17,6 +17,8 @@ export const TENANT_SETTING_KEYS = {
   PURCHASE_APPROVAL: 'purchase_approval',
   /** 大模型辅助识别（一句话报修的语义整理） */
   AI_ASSIST: 'ai_assist',
+  /** 独立的抄表图像识别配置，不复用维修模型或密钥 */
+  METER_VISION: 'meter_vision',
 } as const;
 
 export interface OwnerPhoneAutoMatchSetting {
@@ -164,6 +166,14 @@ export interface AiAssistSetting {
   priceOutputPerM: number;
 }
 
+export interface MeterVisionSetting {
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  timeoutMs: number;
+}
+
 export const DEFAULT_TENANT_SETTINGS: {
   ownerPhoneAutoMatch: OwnerPhoneAutoMatchSetting;
   wxSubscribeTemplates: WxSubscribeTemplatesSetting;
@@ -171,6 +181,7 @@ export const DEFAULT_TENANT_SETTINGS: {
   dispatchEscalation: DispatchEscalationSetting;
   wxServiceAccount: WxServiceAccountSetting;
   aiAssist: AiAssistSetting;
+  meterVision: MeterVisionSetting;
   purchaseApproval: PurchaseApprovalSetting;
 } = {
   // 默认关：业主档案没导手机号之前开着也匹配不到，反而让业主白点一次
@@ -201,6 +212,8 @@ export const DEFAULT_TENANT_SETTINGS: {
     priceInputHitPerM: 0,
     priceOutputPerM: 0,
   },
+  meterVision: { enabled: false, baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model: 'qwen3-vl-plus', apiKey: '', timeoutMs: 15000 },
   purchaseApproval: {
     office: 'summary',
     manager: true,
@@ -217,5 +230,6 @@ export interface TenantSettings {
   dispatchEscalation: DispatchEscalationSetting;
   wxServiceAccount: WxServiceAccountSetting;
   aiAssist: AiAssistSetting;
+  meterVision: MeterVisionSetting;
   purchaseApproval: PurchaseApprovalSetting;
 }

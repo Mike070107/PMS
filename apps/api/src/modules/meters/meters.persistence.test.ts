@@ -227,3 +227,29 @@ test('真实迁移/SQL：作废最近一次抄表会回退表头读数并作废�
     await pg.close();
   }
 });
+
+
+test('现场改数自动进入候选池：原图与裁切图保留，重试不重复，不自动训练', async () => {
+  const { pg, service } = await fixture();
+  try {
+    const dto = { ...reading(2411, '2026-10-01T09:00:00+08:00', 'field-correction'),
+      note: '末位在0和1之间，现场核对为1',
+      ocr: { status: 'success' as const, provider: 'llm' as const, confidence: 90,
+        raw: { predictedValue: 2414, digits: '02414', recognitionImageKey: 'uploads/meter/crop.png',
+          imageTransform: { rotate: 180, scale: 2, x: 0, y: 0 } } },
+    };
+    const saved = await service.createReading(1, dto, user, access);
+    await service.createReading(1, dto, user, access);
+    const samples = await service.listOcrSamples({}, user, access);
+    assert.equal(samples.total, 1);
+    assert.equal(samples.rows[0].status, 'candidate');
+    assert.equal(samples.rows[0].source, 'field');
+    assert.equal(samples.rows[0].predictedValue, '2414.000');
+    assert.equal(samples.rows[0].correctedValue, '2411.000');
+    const rows = await pg.query<any>('SELECT photo_key, ocr_raw FROM meter_readings WHERE id=$1', [saved.reading.id]);
+    assert.equal(rows.rows[0].photo_key, 'uploads/meter/test.jpg');
+    assert.equal(rows.rows[0].ocr_raw.recognitionImageKey, 'uploads/meter/crop.png');
+    const sampleRows = await pg.query<any>('SELECT corrected_digits FROM meter_ocr_samples');
+    assert.equal(sampleRows.rows[0].corrected_digits, '02411');
+  } finally { await pg.close(); }
+});

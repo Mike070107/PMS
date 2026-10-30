@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { IsArray, IsBoolean, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
@@ -12,6 +12,7 @@ import { LlmService } from './llm.service';
 import { AiFeedbackService } from './ai-feedback.service';
 import { RepairFeeRulesService } from './repair-fee-rules.service';
 import { AiUsageService } from './ai-usage.service';
+import { MeterVisionDto } from '../settings/dto';
 import { SettingsService } from '../settings/settings.service';
 
 /**
@@ -78,6 +79,13 @@ export class AiController {
   test(@Body() dto: TestAiDto, @CurrentUser() user: AuthUser) {
     const tenantId = user.tenantId as number;
     return this.llm.testConnection(tenantId, dto);
+  }
+
+  @Post('meter-vision/test')
+  @RequirePermission('settings', 'edit')
+  testMeterVision(@Body() dto: MeterVisionDto, @CurrentUser() user: AuthUser) {
+    if (!user.tenantId) throw new ForbiddenException('请先选择具体物业公司');
+    return this.llm.testMeterImage(user.tenantId, dto);
   }
 
   /**

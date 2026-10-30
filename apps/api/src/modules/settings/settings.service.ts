@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -14,6 +14,7 @@ import {
   type PurchaseApprovalSetting, AiAssistSetting,
   type WxServiceAccountSetting,
   type TenantSettings,
+  type MeterVisionSetting,
   type WxSubscribeTemplatesSetting,
 } from './settings.constants';
 
@@ -38,6 +39,7 @@ export class SettingsService {
         ...settings.wxServiceAccount,
         appSecret: this.maskSecret(settings.wxServiceAccount.appSecret),
       },
+      meterVision: { ...settings.meterVision, apiKey: this.maskSecret(settings.meterVision.apiKey) },
       aiAssist: {
         ...settings.aiAssist,
         apiKey: this.maskSecret(settings.aiAssist.apiKey),
@@ -75,6 +77,8 @@ export class SettingsService {
         ...DEFAULT_TENANT_SETTINGS.aiAssist,
         ...((byKey.get(TENANT_SETTING_KEYS.AI_ASSIST) ?? {}) as Partial<AiAssistSetting>),
       },
+      meterVision: { ...DEFAULT_TENANT_SETTINGS.meterVision,
+        ...((byKey.get(TENANT_SETTING_KEYS.METER_VISION) ?? {}) as Partial<MeterVisionSetting>) },
       purchaseApproval: this.normalizePurchaseApproval(
         byKey.get(TENANT_SETTING_KEYS.PURCHASE_APPROVAL),
       ),
@@ -104,6 +108,33 @@ export class SettingsService {
    */
   async getAiAssistRaw(tenantId: number): Promise<AiAssistSetting> {
     return (await this.getSettingsByTenant(tenantId)).aiAssist;
+  }
+
+  async getMeterVisionRaw(tenantId: number): Promise<MeterVisionSetting> {
+    return (await this.getSettingsByTenant(tenantId)).meterVision;
+  }
+
+  /** 保存与未保存测试共用；地址变更时禁止拿旧服务商的密钥继续发送。 */
+  async resolveMeterVision(tenantId: number, incoming: Partial<MeterVisionSetting> = {}) {
+    const saved = await this.getMeterVisionRaw(tenantId);
+    const baseUrl = (incoming.baseUrl === undefined ? saved.baseUrl : incoming.baseUrl).trim().replace(/\/+$/, '');
+    let parsed: URL;
+    try { parsed = new URL(baseUrl); } catch { throw new BadRequestException('接口地址：请填写有效的 HTTP(S) 地址'); }
+    if (!['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) {
+      throw new BadRequestException('接口地址：不允许包含账号、密码或查询参数');
+    }
+    if (parsed.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)) {
+      throw new BadRequestException('接口地址：外部服务须使用 HTTPS');
+    }
+    const key = incoming.apiKey?.trim() || '';
+    const sameEndpoint = baseUrl.replace(/\/v1$/, '') === saved.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
+    const apiKey = key && !key.startsWith('••') ? key : sameEndpoint ? saved.apiKey : '';
+    const next: MeterVisionSetting = { enabled: incoming.enabled ?? saved.enabled, baseUrl,
+      model: incoming.model === undefined ? saved.model : incoming.model.trim(), apiKey,
+      timeoutMs: incoming.timeoutMs ?? saved.timeoutMs };
+    if (!next.model) throw new BadRequestException('模型：请选择或填写视觉模型名');
+    if (next.enabled && !apiKey) throw new BadRequestException('API Key：请填写该接口对应的密钥');
+    return next;
   }
 
   /**
@@ -137,6 +168,10 @@ export class SettingsService {
 
   async updateSettings(dto: UpdateTenantSettingsDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
+    if (dto.meterVision) {
+      const value = await this.resolveMeterVision(tenantId, dto.meterVision);
+      await this.upsert(tenantId, TENANT_SETTING_KEYS.METER_VISION, { ...value }, user.id);
+    }
     if (dto.ownerPhoneAutoMatch) {
       await this.upsert(
         tenantId,

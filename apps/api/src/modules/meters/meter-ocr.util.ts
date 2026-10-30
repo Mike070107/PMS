@@ -249,6 +249,7 @@ export function parseMeterOcr(
       if (run.replace(/\./g, '').length > MAX_READING_DIGITS) continue;
       const explicitDecimal = run.includes('.');
       const bare = run.replace(/\./g, '');
+      if (hint && normalizeMeterNo(bare) === hint) continue;
       let score = runScore(group);
       // 位数正好匹配建档位数时最可信；差一位还可以接受，差更多基本是规格/表号
       if (bare.length === expected) score += 0.08;

@@ -135,6 +135,15 @@ class AiAssistDto {
   priceOutputPerM?: number;
 }
 
+/** 抄表专用视觉配置。密钥留空保持，兼容 OpenAI 图像接口。 */
+export class MeterVisionDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsString() @MaxLength(200) baseUrl?: string;
+  @IsOptional() @IsString() @MaxLength(80) model?: string;
+  @IsOptional() @IsString() @MaxLength(512) apiKey?: string;
+  @IsOptional() @IsInt() @Min(1000) @Max(60000) timeoutMs?: number;
+}
+
 /** HH:mm，24 小时制 */
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -171,6 +180,11 @@ class PurchaseApprovalDto {
 }
 
 export class UpdateTenantSettingsDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MeterVisionDto)
+  meterVision?: MeterVisionDto;
+
   @IsOptional()
   @ValidateNested()
   @Type(() => OwnerPhoneAutoMatchDto)

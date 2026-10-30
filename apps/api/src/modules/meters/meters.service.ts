@@ -416,11 +416,11 @@ export class MetersService {
     const tenantId = this.resolveTenantId(user);
     const meter = await this.findMeter(id, tenantId);
     this.assertMeterScope(meter, access);
-    return this.ocr.recognize(meter, dto.imageKey, dto.crop, user, dto.roi);
+    return this.ocr.recognize(meter, dto.imageKey, dto.crop, user, dto.roi, dto.recognitionImageKey);
   }
 
-  async ocrHealth() {
-    return this.ocr.health();
+  async ocrHealth(user?: AuthUser) {
+    return this.ocr.health(user ? this.resolveTenantId(user) : undefined);
   }
 
   // ---------------------------------------------------------------- 抄表
@@ -551,6 +551,12 @@ export class MetersService {
         updatedBy: user.id,
       });
       const saved = await manager.save(reading);
+      const prediction = dto.ocr?.raw?.predictedValue;
+      if (typeof prediction === 'number' && Number.isFinite(prediction) && prediction >= 0 && prediction <= 99999999999.999 &&
+          Math.abs(prediction - readingValue) > 0.0005) {
+        // 现场纠正与读数在同一事务保存，候选池不代表已训练或已复核。
+        await this.upsertOcrSample(saved, meter, prediction.toFixed(3), saved.readingValue, user, manager, 'field');
+      }
       // 待复核：先不动表头最近读数，也不出账；复核通过后再更新表头并生成账单。
       return { reading: saved, charge: null as MeterCharge | null, meter };
     });
@@ -808,11 +814,14 @@ export class MetersService {
     predictedValue: string,
     correctedValue: string,
     user: AuthUser,
+    manager?: EntityManager,
+    source = 'review',
   ) {
+    const samples = manager ? manager.getRepository(MeterOcrSample) : this.sampleRepo;
     const existing = reading.id
-      ? await this.sampleRepo.findOne({ where: { tenantId: reading.tenantId, readingId: reading.id } })
+      ? await samples.findOne({ where: { tenantId: reading.tenantId, readingId: reading.id } })
       : null;
-    const sample = existing ?? this.sampleRepo.create({
+    const sample = existing ?? samples.create({
       tenantId: reading.tenantId,
       meterId: meter.id,
       readingId: reading.id,
@@ -828,16 +837,18 @@ export class MetersService {
       ocrText: reading.ocrText,
       confidence: reading.ocrConfidence,
       predictedValue,
-      predictedDigits: String(predictedValue).replace('.', ''),
+      predictedDigits: formatReadingValue(predictedValue, meter.integerDigits, meter.decimalDigits).replace('.', ''),
       status: 'candidate',
-      source: 'review',
+      source,
       correctedBy: user.id,
       correctedAt: new Date(),
       createdBy: user.id,
       updatedBy: user.id,
     });
     sample.correctedValue = correctedValue;
-    sample.correctedDigits = String(correctedValue).replace('.', '');
+    sample.correctedDigits = formatReadingValue(correctedValue, meter.integerDigits, meter.decimalDigits).replace('.', '');
+    sample.source = source;
+    sample.note = reading.note;
     sample.status = 'candidate';
     sample.correctedBy = user.id;
     sample.correctedAt = new Date();
@@ -850,11 +861,12 @@ export class MetersService {
     sample.ocrProvider = reading.ocrProvider;
     sample.confidence = reading.ocrConfidence;
     try {
-      await this.sampleRepo.save(sample);
+      await samples.save(sample);
     } catch (error: any) {
       // 并发复核同一张记录时唯一索引会拦一次，下一次保存会把纠正值补齐
       if (String(error?.code) !== '23505') throw error;
-    }  }
+    }
+  }
 
   async listOcrSamples(query: OcrSampleQueryDto, user: AuthUser, access: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);

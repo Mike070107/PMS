@@ -1,18 +1,20 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import axios from 'axios';
 import { SettingsService } from '../settings/settings.service';
-import type { AiAssistSetting } from '../settings/settings.constants';
+import { DEFAULT_TENANT_SETTINGS, type MeterVisionSetting, type AiAssistSetting } from '../settings/settings.constants';
+import { METER_VISION_TEST_PNG } from './meter-vision-test-image';
 import { AiUsageService, readUsage, type LlmUsage } from './ai-usage.service';
 
 /** askJson 的附加信息：kind 进用量台账；cacheable 的用途才查/写结果缓存 */
 export interface AskOptions {
   kind?: string;
   cacheable?: boolean;
+  profile?: 'meter';
 }
 
 type ChatUserContent = string | Array<
   | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' } }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' }; min_pixels?: number; max_pixels?: number }
 >;
 
 /**
@@ -39,8 +41,8 @@ export class LlmService {
   ) {}
 
   /** 配置齐了吗（开关开着 + 地址 + 模型 + key）。没配齐就别走 AI 那条路 */
-  async isReady(tenantId: number): Promise<boolean> {
-    const cfg = await this.settings.getAiAssistRaw(tenantId);
+  async isReady(tenantId: number, profile?: 'meter'): Promise<boolean> {
+    const cfg = profile === 'meter' ? await this.meterConfig(tenantId) : await this.settings.getAiAssistRaw(tenantId);
     return !!(cfg.enabled && cfg.baseUrl && cfg.model && cfg.apiKey);
   }
 
@@ -107,13 +109,13 @@ export class LlmService {
     image: { contentType: string; buffer: Buffer },
     opts: AskOptions = {},
   ): Promise<T | null> {
-    const cfg = await this.settings.getAiAssistRaw(tenantId);
+    const cfg = opts.profile === 'meter' ? await this.meterConfig(tenantId) : await this.settings.getAiAssistRaw(tenantId);
     if (!cfg.enabled || !cfg.baseUrl || !cfg.model || !cfg.apiKey) return null;
     const started = Date.now();
     const raw = await this.chat(cfg, system, [
       { type: 'text', text: prompt },
-      { type: 'image_url', image_url: { url: `data:${image.contentType};base64,${image.buffer.toString('base64')}`, detail: 'high' } },
-    ]);
+      { type: 'image_url', image_url: { url: `data:${image.contentType};base64,${image.buffer.toString('base64')}`, detail: 'high' }, ...(opts.profile === 'meter' ? { min_pixels: 65536, max_pixels: 8388608 } : {}) },
+    ], opts.profile === 'meter');
     const latencyMs = Date.now() - started;
     if (!raw.ok) {
       this.logger.warn(`图片识别调用失败（${cfg.baseUrl} ${cfg.model}）：${raw.error}`);
@@ -147,10 +149,32 @@ export class LlmService {
     return { ok: true, reply: res.content.slice(0, 200), model: cfg.model };
   }
 
+  private async meterConfig(tenantId: number, override?: Partial<MeterVisionSetting>): Promise<AiAssistSetting> {
+    const cfg = override ? await this.settings.resolveMeterVision(tenantId, { ...override, enabled: true })
+      : await this.settings.getMeterVisionRaw(tenantId);
+    return { ...DEFAULT_TENANT_SETTINGS.aiAssist, ...cfg,
+      baseUrl: cfg.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, ''), cacheDays: 0 };
+  }
+
+  async testMeterImage(tenantId: number, override?: Partial<MeterVisionSetting>) {
+    const cfg = await this.meterConfig(tenantId, override || {});
+    const started = Date.now();
+    const result = await this.chat(cfg, '只读取图片内容，不要猜测。', [
+      { type: 'text', text: '请读取图片中从左到右的数字，只返回JSON：{"reading":"读数字符串"}。' },
+      { type: 'image_url', image_url: { url: `data:image/png;base64,${METER_VISION_TEST_PNG}`, detail: 'high' }, min_pixels: 65536, max_pixels: 8388608 },
+    ], true);
+    const base = { model: cfg.model, elapsedMs: Date.now() - started };
+    if (!result.ok) return { ...base, ok: false, error: result.error };
+    const parsed = parseJsonLoose<{ reading?: string }>(result.content);
+    if (parsed?.reading !== '12345') return { ...base, ok: false, error: '接口已响应，但测试图数字未读对，请检查模型是否支持图片识别' };
+    return { ...base, ok: true, reading: parsed.reading };
+  }
+
   private async chat(
     cfg: AiAssistSetting,
     system: string,
     user: ChatUserContent,
+    meterVision = false,
   ): Promise<{ ok: true; content: string; usage: LlmUsage | null } | { ok: false; error: string }> {
     const url = `${cfg.baseUrl.replace(/\/+$/, '')}/v1/chat/completions`;
     const deepSeek = /(^|\.)deepseek\.com(?=\/|$)/i.test(
@@ -169,6 +193,7 @@ export class LlmService {
           temperature: 0,
           max_tokens: 800,
           stream: false,
+          ...(meterVision && /^qwen3-vl-/i.test(cfg.model) ? { enable_thinking: false } : {}),
           // DeepSeek 官方支持 JSON Output。这里只对官方域名开启，其他 OpenAI 兼容服务商
           // 继续走宽松 JSON 解析，避免某些本地/旧接口因不认识 response_format 而 400。
           ...(deepSeek ? { response_format: { type: 'json_object' } } : {}),
@@ -187,7 +212,7 @@ export class LlmService {
       );
       const content = res.data?.choices?.[0]?.message?.content;
       if (typeof content !== 'string' || !content.trim()) {
-        return { ok: false, error: `返回里没有 choices[0].message.content：${JSON.stringify(res.data).slice(0, 200)}` };
+        return { ok: false, error: `返回里没有 choices[0].message.content：${JSON.stringify(res.data).split(cfg.apiKey || '__no_key__').join('[REDACTED]').slice(0, 200)}` };
       }
       // usage 里有本次的 token 数；DeepSeek 还会多给 prompt_cache_hit_tokens（前缀缓存命中）
       return { ok: true, content, usage: readUsage(res.data?.usage) };
@@ -197,7 +222,7 @@ export class LlmService {
       const detail =
         (typeof body === 'string' ? body : body && JSON.stringify(body)) || err?.message || String(err);
       const status = err?.response?.status;
-      return { ok: false, error: `${status ? `HTTP ${status} ` : ''}${String(detail).slice(0, 300)}` };
+      return { ok: false, error: `${status ? `HTTP ${status} ` : ''}${String(detail).split(cfg.apiKey || '__no_key__').join('[REDACTED]').slice(0, 300)}` };
     }
   }
 }

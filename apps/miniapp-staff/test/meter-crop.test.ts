@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pickReadingCandidate, type OcrCandidateLike } from '../miniprogram/utils/meter-crop';
-import { fitRoiToFrame, frameRoi } from '../miniprogram/utils/crop';
+import { fitRoiToFrame, frameRoi, meterCropPlan } from '../miniprogram/utils/crop';
 
 // 来自现场电表照片的真实候选（表号 20054564 与读数 02241888 都是 8 位）
 const ELECTRIC: OcrCandidateLike[] = [
@@ -49,4 +49,23 @@ test('自动把读数框进固定框后，候选仍在框内命中', () => {
   const roi = frameRoi(FRAME, t, WIDTH, HEIGHT);
   const chosen = pickReadingCandidate(ELECTRIC, roi, WIDTH, HEIGHT, 8, '20054564');
   assert.equal(chosen?.digits, '02241888');
+});
+
+
+test('导出红框保持原图像素，不用屏幕截图分辨率', () => {
+  const plan = meterCropPlan(FRAME, { scale: 2, x: 12, y: -10, rotate: 90 }, 300, 500, 1200, 2000);
+  assert.equal(plan.width, 480);
+  assert.equal(plan.height, 180);
+  assert.equal(plan.scale, 4);
+  assert.equal(plan.radians, Math.PI / 2);
+  // 图片中心映射到画布中心+位移-红框左上；与预览的变换顺序一致。
+  assert.equal(plan.centerX, 264);
+  assert.equal(plan.centerY, 70);
+});
+
+test('大图导出限制长边；未知原图尺寸拒绝生成', () => {
+  const plan = meterCropPlan(FRAME, { scale: 1, x: 0, y: 0, rotate: 0 }, 300, 500, 12000, 20000);
+  assert.equal(plan.width, 2048);
+  assert.ok(plan.height < 2048);
+  assert.throws(() => meterCropPlan(FRAME, { scale: 1, x: 0, y: 0, rotate: 0 }, 300, 500, 0, 0));
 });
