@@ -486,8 +486,10 @@ Page({
           const expected = Number(meter.integerDigits) + Number(meter.decimalDigits);
           const actual = (chosen.digits || '').length;
           if (actual && actual !== expected) {
-            valueText = '';
-            digitWarning = `识别到 ${actual} 位数字，档案是 ${meter.integerDigits} 位整数 + ${meter.decimalDigits} 位小数，位数不一致。请先核对档案位数，或手工输入读数；不要直接按当前位数提交。`;
+            // 位数不一致不把输入框清空：先按档案位数填入识别值并明确警告，
+            // 用户能直接看到/修改，不会被“位数不对”卡死。
+            valueText = formatMeterValue(chosen.value, meter.integerDigits, meter.decimalDigits);
+            digitWarning = `识别到 ${actual} 位数字，档案是 ${meter.integerDigits} 位整数 + ${meter.decimalDigits} 位小数，位数不一致。已按档案位数填入，请对照原图核对后再提交。`;
           } else {
             valueText = formatMeterValue(chosen.value, meter.integerDigits, meter.decimalDigits);
           }

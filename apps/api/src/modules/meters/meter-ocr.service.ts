@@ -254,7 +254,15 @@ export class MeterOcrService {
           if (!box || box.length < 4) return false;
           const cx = (box[0] + box[2]) / 2 / width;
           const cy = (box[1] + box[3]) / 2 / height;
-          return cx >= roi.x && cx <= roi.x + roi.w && cy >= roi.y && cy <= roi.y + roi.h;
+          // 留一点余量，避免用户框得刚好把最左/最右一位切掉。
+          const padX = roi.w * 0.08;
+          const padY = roi.h * 0.1;
+          return (
+            cx >= roi.x - padX &&
+            cx <= roi.x + roi.w + padX &&
+            cy >= roi.y - padY &&
+            cy <= roi.y + roi.h + padY
+          );
         })
       : [];
     const usable = inRoi.length ? inRoi : items;
