@@ -73,6 +73,8 @@ export interface MeterReadingRow {
   photoKey: string | null;
   photoWidth: number | null;
   photoHeight: number | null;
+  /** 端上框选的读数区域（0~1），后台据此在原图上画红框 */
+  roi: { x: number; y: number; w: number; h: number } | null;
   ocrStatus: 'success' | 'failed' | 'skipped';
   ocrProvider: 'sidecar' | 'llm' | 'none' | null;
   ocrConfidence: string | null;
@@ -140,7 +142,14 @@ export interface MeterOcrResp {
   meterNoCandidates: string[];
   meterNoMatched: boolean | null;
   texts: string;
-  candidates: Array<{ digits: string; value: number | null; score: number; text: string; explicitDecimal: boolean }>;
+  candidates: Array<{
+    digits: string;
+    value: number | null;
+    score: number;
+    text: string;
+    explicitDecimal: boolean;
+    box?: number[];
+  }>;
   needsReview: boolean;
   imageUrl: string;
   error?: string;

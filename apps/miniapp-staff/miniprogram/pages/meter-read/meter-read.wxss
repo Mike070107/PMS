@@ -33,9 +33,36 @@
 .meter-camera-hint { margin: 0 24rpx 28rpx; text-align: center; font-size: 24rpx; color: #8194a8; line-height: 1.6; }
 
 .meter-photo-card { padding: 0; overflow: hidden; }
-.meter-photo { width: 100%; display: block; background: #0e1722; }
+.meter-photo-frame { position: relative; width: 100%; overflow: hidden; background: #0e1722; }
+.meter-photo-full { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+.meter-roi-area { position: absolute; left: 0; top: 0; overflow: hidden; }
+.meter-roi-box {
+  border: 4rpx solid #ff3b30;
+  border-radius: 8rpx;
+  background: rgba(255, 59, 48, 0.08);
+  box-shadow: 0 0 0 2000rpx rgba(0, 0, 0, 0.18);
+  box-sizing: border-box;
+}
+.meter-roi-label {
+  position: absolute;
+  left: -4rpx;
+  top: -42rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx 6rpx 0 0;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 21rpx;
+  line-height: 34rpx;
+  white-space: nowrap;
+}
 .meter-photo-meta { display: flex; justify-content: space-between; gap: 12rpx; padding: 14rpx 22rpx; font-size: 23rpx; color: #718499; background: #f7fafd; }
-.meter-photo-tip { padding: 0 22rpx 16rpx; font-size: 23rpx; color: #8194a8; background: #f7fafd; }
+.meter-photo-view { color: #31558a; }
+.meter-photo-loc { padding: 0 22rpx 8rpx; font-size: 22rpx; color: #8194a8; background: #f7fafd; }
+.meter-roi-hint { padding: 10rpx 22rpx 0; font-size: 24rpx; color: #536a80; line-height: 1.5; background: #f7fafd; }
+.meter-roi-tools { display: flex; gap: 14rpx; padding: 12rpx 22rpx; background: #f7fafd; flex-wrap: wrap; }
+.meter-roi-tools .mini-btn { margin: 0; }
+.meter-roi-run { background: #31558a !important; color: #fff !important; }
+.meter-photo-tip { padding: 0 22rpx 16rpx; font-size: 23rpx; color: #8194a8; background: #f7fafd; line-height: 1.5; }
 
 .meter-ocr-card { padding: 24rpx; border-left: 6rpx solid #2f7a54; }
 .meter-ocr-card.is-warn { border-left-color: #ad6800; }

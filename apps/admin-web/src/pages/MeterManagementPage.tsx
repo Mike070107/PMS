@@ -959,6 +959,12 @@ export default function MeterManagementPage() {
         forceRender
       >
         <Form form={meterForm} layout="vertical" className="meter-form">
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="整数位/小数位必须按表盘填：电表常见 6 位整数 + 2 位小数，机械水表常见 5 位整数。填错会让读数差 10 倍，例如 022418.88 会被算成 2241.888。"
+          />
           <div className="meter-form-section">基本信息</div>
           <Row gutter={16}>
             <Col span={8}><Form.Item name="meterNo" label="表号" rules={[{ required: true, message: '请填表身钢印号/条码号' }]}><Input placeholder="表壳上的编号" maxLength={64} /></Form.Item></Col>
@@ -1034,9 +1040,26 @@ export default function MeterManagementPage() {
           <div className="meter-review">
             <div className="meter-review-photo">
               {review.photoUrl
-                ? <Image src={imageSrc(review.photoUrl)} style={{ width: '100%', borderRadius: 8 }} />
+                ? (
+                  <div className="meter-review-frame">
+                    <Image src={imageSrc(review.photoUrl)} style={{ width: '100%', borderRadius: 8 }} />
+                    {review.roi && (
+                      <span
+                        className="meter-roi"
+                        style={{
+                          left: `${review.roi.x * 100}%`,
+                          top: `${review.roi.y * 100}%`,
+                          width: `${review.roi.w * 100}%`,
+                          height: `${review.roi.h * 100}%`,
+                        }}
+                      />
+                    )}
+                  </div>
+                )
                 : <div className="meter-review-no-photo">这条记录没有原图（人工补录）</div>}
-              <div className="meter-review-hint">原图永久保留，用于事后核对。识别结果只是草稿，账以确认读数为准。</div>
+              <div className="meter-review-hint">
+                原图永久保留，用于事后核对。红框是抄表员框选的识别区域；识别结果只是草稿，账以确认读数为准。
+              </div>
             </div>
             <div className="meter-review-side">
               <Descriptions size="small" column={1} bordered styles={{ label: { width: 92, whiteSpace: 'nowrap' } }}>

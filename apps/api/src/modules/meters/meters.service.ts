@@ -1060,6 +1060,7 @@ export class MetersService {
       photoKey: row.photoKey ?? row.photo_key,
       photoWidth: row.photoWidth ?? row.photo_width ?? null,
       photoHeight: row.photoHeight ?? row.photo_height ?? null,
+      roi: row.roi ?? null,
       ocrStatus: row.ocrStatus ?? row.ocr_status,
       ocrProvider: row.ocrProvider ?? row.ocr_provider,
       ocrConfidence: row.ocrConfidence ?? row.ocr_confidence,

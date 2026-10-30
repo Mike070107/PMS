@@ -52,15 +52,36 @@
       <view class="meter-camera-hint">拍照后会自动上传并识别读数；原图会永久保留，供后台复核。</view>
     </block>
 
-    <!-- 核对与提交 -->
+     <!-- 全景 + 红框核对 -->
     <block wx:elif="{{mode === 'preview'}}">
       <view class="card meter-photo-card">
-        <image class="meter-photo" src="{{photoPath}}" mode="widthFix" bindtap="onPreviewPhoto" />
+        <view class="meter-photo-frame" style="width:{{photoDisplayWidth}}px;height:{{photoDisplayHeight}}px">
+          <image class="meter-photo-full" src="{{photoPath}}" mode="scaleToFill" />
+          <movable-area class="meter-roi-area" style="width:{{photoDisplayWidth}}px;height:{{photoDisplayHeight}}px">
+            <movable-view
+              class="meter-roi-box"
+              direction="all"
+              x="{{roiX}}"
+              y="{{roiY}}"
+              style="width:{{roiW}}px;height:{{roiH}}px"
+              bindchange="onRoiChange"
+            >
+              <view class="meter-roi-label">读数区</view>
+            </movable-view>
+          </movable-area>
+        </view>
         <view class="meter-photo-meta">
           <text>{{readAtText || '拍照时间待记录'}}</text>
-          <text>{{locationText}}</text>
+          <text class="meter-photo-view" bindtap="onPreviewPhoto">查看全景</text>
         </view>
-        <view class="meter-photo-tip">点图片可放大；请核对表号、整数位和小数点。</view>
+        <view class="meter-photo-loc">{{locationText}}</view>
+        <view class="meter-roi-hint">{{autoBoxText}}</view>
+        <view class="meter-roi-tools">
+          <button class="mini-btn" bindtap="onRoiSmaller">缩小框</button>
+          <button class="mini-btn" bindtap="onRoiLarger">放大框</button>
+          <button class="mini-btn meter-roi-run" bindtap="onRecognizeRoi">{{recognizing ? '识别中…' : '识别框内'}}</button>
+        </view>
+        <view class="meter-photo-tip">全景原图永久保留；红框只决定识别范围，不会裁掉原图。请核对表号、整数位和小数点。</view>
       </view>
 
       <view class="card meter-ocr-card {{ocr && ocr.ok ? 'is-ok' : 'is-warn'}}">
@@ -68,12 +89,13 @@
           <view class="meter-ocr-title">识别结果</view>
           <view wx:if="{{ocr}}" class="meter-conf {{ocr.confidence >= 75 ? 'is-ok' : 'is-warn'}}">{{ocr.confidence}}%</view>
         </view>
-        <view wx:if="{{recognizing}}" class="meter-ocr-hint">正在识别，约 2~5 秒…</view>
-        <view wx:elif="{{ocr && ocr.ok}}" class="meter-ocr-hint">已回填到下面输入框，请对照原图核对每个数字</view>
-        <view wx:elif="{{ocr}}" class="meter-ocr-hint">没有自动读出数字，请对照原图手工输入</view>
+        <view wx:if="{{recognizing}}" class="meter-ocr-hint">正在识别框内读数，约 2~5 秒…</view>
+        <view wx:elif="{{ocr && ocr.ok}}" class="meter-ocr-hint">已回填到下面输入框，请对照全景原图核对每个数字</view>
+        <view wx:elif="{{ocr}}" class="meter-ocr-hint">框内没有自动读出数字，请调整红框后重试，或对照原图手工输入</view>
         <view wx:if="{{ocr && ocr.meterNoMatched === false}}" class="meter-ocr-warn">
           识别到表号 {{ocr.meterNo}}，与档案 {{meter.meterNo}} 不一致，请重点核对
         </view>
+        <view wx:if="{{digitWarning}}" class="meter-ocr-warn">{{digitWarning}}</view>
         <view wx:if="{{error}}" class="meter-ocr-error">{{error}}</view>
         <view class="meter-ocr-actions">
           <button wx:if="{{ocr && !ocr.ok}}" class="mini-btn" bindtap="onRetryRecognize">再识别一次</button>
