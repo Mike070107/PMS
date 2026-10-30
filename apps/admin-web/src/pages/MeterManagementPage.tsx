@@ -232,9 +232,7 @@ export default function MeterManagementPage() {
     dataUrl: string;
     payload: string;
     meterNo: string;
-    wxaCodeDataUrl: string;
-    wxaCodeEnv: string;
-    wxaCodeError: string;
+    shortCode: string;
   } | null>(null);
 
   const communityOptions = useMemo(
@@ -1481,26 +1479,18 @@ export default function MeterManagementPage() {
       >
         {qr && (
           <div className="meter-qr">
-            <img src={qr.wxaCodeDataUrl || qr.dataUrl} alt={`表 ${qr.meterNo} 二维码`} />
-            {qr.wxaCodeDataUrl ? (
-              <p>
-                微信扫一扫直接打开员工端，进入这块表的抄表页；授权过的员工登录后即可拍照。
-                {qr.wxaCodeEnv === 'trial' ? ' 当前生成的是体验版码，只有体验成员能扫；正式发布后重新生成正式码。' : ''}
-              </p>
-            ) : (
-              <p>当前是普通二维码，需要员工端「抄表 → 扫码」识别；微信直接扫不会进小程序。</p>
-            )}
-            {qr.wxaCodeError && !qr.wxaCodeDataUrl && (
-              <Alert type="warning" showIcon message={`小程序码生成失败：${qr.wxaCodeError}`} />
-            )}
-            <Text code>{qr.payload}</Text>
+            <img src={qr.dataUrl} alt={`表 ${qr.meterNo} 二维码`} />
+            <p>
+              普通二维码内容：<Text code>{qr.payload}</Text>
+              。微信扫一扫会打开员工端这块表的拍照识别页（需先在公众平台配置「扫普通链接二维码打开小程序」）。
+            </p>
+            <p>设备码 <Text code>{qr.shortCode}</Text>，现场贴码不用表号，短码更好扫。</p>
             <Button
               icon={<DownloadOutlined />}
               onClick={() => {
                 const link = document.createElement('a');
-                link.href = qr.wxaCodeDataUrl || qr.dataUrl;
-                const ext = qr.wxaCodeDataUrl.startsWith('data:image/jpeg') ? 'jpg' : 'png';
-                link.download = `表码-${qr.meterNo}.${ext}`;
+                link.href = qr.dataUrl;
+                link.download = `表码-${qr.shortCode}.png`;
                 link.click();
               }}
             >

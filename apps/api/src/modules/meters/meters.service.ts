@@ -24,7 +24,6 @@ import {
   type MeterType,
 } from '../../entities';
 import { ResolvedAccess } from '../access/access.service';
-import { WechatService } from '../auth/wechat.service';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { MeterOcrService } from './meter-ocr.service';
 import {
@@ -87,7 +86,6 @@ export class MetersService {
     private readonly dataSource: DataSource,
     private readonly storage: ObjectStorageService,
     private readonly ocr: MeterOcrService,
-    private readonly wechat: WechatService,
   ) {}
 
   // ---------------------------------------------------------------- 档案
@@ -365,7 +363,9 @@ export class MetersService {
     const code = String(rawCode || '').trim();
     if (!code) throw new BadRequestException('缺少表二维码/表号');
     const token = code.replace(/^PMSMETER:/i, '').trim();
-    let rows = await this.meterRepo.find({ where: { tenantId, qrToken: token } });
+    const urlMatch = code.match(/\/m\/([A-Za-z0-9]+)/);
+    const lookupCode = urlMatch ? urlMatch[1] : code;
+    let rows = await this.meterRepo.find({ where: { tenantId, qrToken: urlMatch ? lookupCode : token } });
     if (!rows.length) {
       rows = await this.meterRepo.find({ where: { tenantId, meterNo: code } });
     }
@@ -377,52 +377,37 @@ export class MetersService {
     const tenantId = this.resolveTenantId(user);
     const meter = await this.findMeter(id, tenantId);
     this.assertMeterScope(meter, access);
-    const payload = this.qrPayload(meter);
+    const shortCode = await this.ensureShortCode(meter, tenantId);
+    const base = (process.env.APP_PUBLIC_BASE_URL || 'https://prsznh.cn').replace(/\/+$/, '');
+    // 普通二维码 + 短链；在公众平台配置「扫普通链接二维码打开小程序」后，
+    // 微信扫这个 URL 会直接打开 pages/meter-read，并带 q=完整URL。
+    const payload = `${base}/m/${shortCode}`;
     const dataUrl = await QRCode.toDataURL(payload, {
-      width: 360,
-      margin: 1,
-      errorCorrectionLevel: 'M',
+      width: 420,
+      margin: 4,
+      errorCorrectionLevel: 'H',
       color: { dark: '#1f334a', light: '#ffffff' },
     });
+    return { payload, dataUrl, meterNo: meter.meterNo, shortCode };
+  }
 
-    // 小程序码：微信扫一扫直接打开员工端抄表页；scene 只放 qrToken，页面自己查表。
-    let wxaCodeDataUrl = '';
-    let wxaCodeEnv = '';
-    let wxaCodeError = '';
-    if (this.wechat.isConfigured('staff')) {
-      for (const env of ['release', 'trial'] as const) {
-        try {
-          const buffer = await this.wechat.getUnlimitedWxaCode(
-            {
-              scene: `m=${meter.qrToken}`,
-              page: 'pages/meter-read/meter-read',
-              width: 430,
-              envVersion: env,
-              checkPath: env === 'release',
-            },
-            'staff',
-          );
-          const mime = buffer[0] === 0xff && buffer[1] === 0xd8 ? 'image/jpeg' : 'image/png';
-          wxaCodeDataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
-          wxaCodeEnv = env;
-          wxaCodeError = '';
-          break;
-        } catch (error) {
-          wxaCodeError = error instanceof Error ? error.message : '生成小程序码失败';
+  /** 4 位设备码，最多 9999 块表；冲突自动重试，4 位用完才退到 5 位。 */
+  private async ensureShortCode(meter: Meter, tenantId: number): Promise<string> {
+    if (/^\d{4,5}$/.test(meter.qrToken)) return meter.qrToken;
+    for (let digits = 4; digits <= 5; digits += 1) {
+      const max = 10 ** digits;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const code = String(Math.floor(Math.random() * max)).padStart(digits, '0');
+        if (code === '0000') continue;
+        const exists = await this.meterRepo.exists({ where: { tenantId, qrToken: code } });
+        if (!exists) {
+          meter.qrToken = code;
+          await this.meterRepo.save(meter);
+          return code;
         }
       }
-    } else {
-      wxaCodeError = '未配置员工端微信 AppID/Secret，暂时只能使用普通二维码';
     }
-
-    return {
-      payload,
-      dataUrl,
-      meterNo: meter.meterNo,
-      wxaCodeDataUrl,
-      wxaCodeEnv,
-      wxaCodeError,
-    };
+    throw new BadRequestException('设备码已用完，请联系管理员扩容');
   }
 
   // ---------------------------------------------------------------- 识别

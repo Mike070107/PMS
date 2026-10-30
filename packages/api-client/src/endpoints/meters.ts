@@ -319,9 +319,7 @@ export const meters = {
       payload: string;
       dataUrl: string;
       meterNo: string;
-      wxaCodeDataUrl: string;
-      wxaCodeEnv: string;
-      wxaCodeError: string;
+      shortCode: string;
     }>({ url: `/meters/${id}/qr` }),
 
   ocr: (id: number, data: { imageKey: string; crop?: { x: number; y: number; w: number; h: number } }) =>

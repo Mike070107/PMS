@@ -101,9 +101,11 @@ Page({
 
   async onLoad(options: any) {
     let id = Number(options?.id || 0);
-    // 微信扫小程序码会带 scene=m=<qrToken>；普通二维码/表号仍走 id。
+    // 微信扫普通链接二维码会带 q=https%3A...%2Fm%2F1234；小程序码则带 scene=m=xxx。
+    const q = options?.q ? decodeURIComponent(String(options.q)) : '';
     const scene = options?.scene ? decodeURIComponent(String(options.scene)) : '';
-    const token = scene.replace(/^m=/i, '').trim();
+    const qrMatch = q.match(/\/m\/([A-Za-z0-9]+)/);
+    const token = (qrMatch?.[1] || scene.replace(/^m=/i, '')).trim();
     if (!id && !token) {
       wx.showToast({ icon: 'none', title: '缺少仪表编号' });
       setTimeout(() => wx.navigateBack(), 800);
