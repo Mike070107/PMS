@@ -82,21 +82,50 @@ export class MeterOcrService {
     const sidecarUrl = this.sidecarUrl();
     if (sidecarUrl) {
       try {
-        let found = await this.runSidecar(sidecarUrl, buffer, crop, false, meter);
-        // 原图没读出数时，再做一次增强（灰度+对比度）识别。现场反光/脏污很常见，
-        // 两次都失败才退回大模型；这一层只多花 1~2 秒。
-        if (found.parsed.value === null) {
-          found = await this.runSidecar(sidecarUrl, buffer, crop, true, meter);
+        const expected = meter.integerDigits + meter.decimalDigits;
+        // 先试 0°（绝大多数照片就是正的）；只有读不出/位数不对才继续转。
+        // 这样常见照片只跑一次 OCR，不再固定跑四个方向。
+        let best: { found: SidecarResult; score: number } | null = null;
+        for (const orientation of [0, 90, 270, 180]) {
+          const found = await this.runSidecar(sidecarUrl, buffer, crop, false, meter, orientation);
+          const parsed = found.parsed;
+          const score = parsed.value === null
+            ? -1
+            : parsed.confidence +
+              (parsed.digits?.length === expected ? 40 : 0) +
+              (parsed.digits?.startsWith('0') ? 5 : 0);
+          if (!best || score > best.score) best = { found, score };
+          if (
+            parsed.value !== null &&
+            parsed.digits?.length === expected &&
+            parsed.confidence >= (orientation === 0 ? 70 : 85)
+          ) {
+            return this.finish(base, meter, parsed, 'sidecar', found.orientation);
+          }
         }
-        if (found.parsed.value !== null) {
-          return this.finish(base, meter, found.parsed, 'sidecar', found.orientation);
+
+        if (best && best.found.parsed.value !== null) {
+          return this.finish(base, meter, best.found.parsed, 'sidecar', best.found.orientation);
         }
-        this.logger.warn(`meter OCR sidecar 未读出读数（${meter.id}）：${found.parsed.texts.slice(0, 120)}`);
-        base.texts = found.parsed.texts;
-        base.candidates = found.parsed.candidates;
-        base.meterNoCandidates = found.parsed.meterNoCandidates;
-        base.confidence = found.parsed.confidence;
-        base.orientation = found.orientation;
+
+        // 四个方向都没读出数，只对最可能的方向做一次增强，不再把四方向重跑一遍。
+        const enhanced = await this.runSidecar(
+          sidecarUrl,
+          buffer,
+          crop,
+          true,
+          meter,
+          best?.found.orientation || 0,
+        );
+        if (enhanced.parsed.value !== null) {
+          return this.finish(base, meter, enhanced.parsed, 'sidecar', enhanced.orientation);
+        }
+        this.logger.warn(`meter OCR sidecar 未读出读数（${meter.id}）：${enhanced.parsed.texts.slice(0, 120)}`);
+        base.texts = enhanced.parsed.texts;
+        base.candidates = enhanced.parsed.candidates;
+        base.meterNoCandidates = enhanced.parsed.meterNoCandidates;
+        base.confidence = enhanced.parsed.confidence;
+        base.orientation = enhanced.orientation;
         base.needsReview = true;
       } catch (error) {
         this.logger.warn(`meter OCR sidecar 调用失败：${error instanceof Error ? error.message : error}`);
@@ -179,6 +208,7 @@ export class MeterOcrService {
     crop: { x: number; y: number; w: number; h: number } | undefined,
     enhance: boolean,
     meter: Meter,
+    orientation = 0,
   ): Promise<SidecarResult> {
     const res = await axios.post(
       url,
@@ -187,83 +217,29 @@ export class MeterOcrService {
         contentType: 'image/jpeg',
         crop: crop || undefined,
         enhance,
-        autoRotate: true,
+        rotate: orientation,
       },
       {
-        timeout: 45000,
+        timeout: 25000,
         maxBodyLength: 30 * 1024 * 1024,
         headers: this.sidecarHeaders(),
       },
     );
     const data = res.data || {};
     if (data.ok === false) throw new BadGatewayException(String(data.error || 'OCR 服务返回失败'));
+    const items: OcrBoxItem[] = Array.isArray(data.items)
+      ? data.items
+          .slice(0, 300)
+          .map((item: any) => ({
+            text: String(item?.text ?? ''),
+            score: Number(item?.score ?? 0),
+            box: Array.isArray(item?.box) ? item.box : undefined,
+          }))
+          .filter((item: OcrBoxItem) => item.text.trim())
+      : [];
+    if (!items.length) throw new BadGatewayException('OCR 服务没有返回文字');
     const width = Number(data.width) || undefined;
     const height = Number(data.height) || undefined;
-
-    const parseItems = (raw: any): OcrBoxItem[] =>
-      Array.isArray(raw)
-        ? raw
-            .slice(0, 300)
-            .map((item: any) => ({
-              text: String(item?.text ?? ''),
-              score: Number(item?.score ?? 0),
-              box: Array.isArray(item?.box) ? item.box : undefined,
-            }))
-            .filter((item: OcrBoxItem) => item.text.trim())
-        : [];
-
-    const expected = meter.integerDigits + meter.decimalDigits;
-    const variants = Array.isArray(data.variants) ? data.variants : [];
-    if (variants.length) {
-      const parsedVariants: Array<{ parsed: MeterOcrParsed; orientation: number }> = [];
-      for (const variant of variants) {
-        const items = parseItems(variant?.items);
-        if (!items.length) continue;
-        parsedVariants.push({
-          parsed: parseMeterOcr(items, {
-            integerDigits: meter.integerDigits,
-            decimalDigits: meter.decimalDigits,
-            width: Number(variant.width || data.width) || width,
-            height: Number(variant.height || data.height) || height,
-          }),
-          orientation: Number(variant.orientation) || 0,
-        });
-      }
-      if (parsedVariants.length) {
-        // 手机竖拍时 0° 通常就是正确方向。只要 0° 已经读出且位数对得上，
-        // 就不要让旋转 180° 的「高置信度误读」抢走结果（实测会多出前导 6）。
-        const upright = parsedVariants.find((item) => item.orientation === 0);
-        if (
-          upright &&
-          upright.parsed.value !== null &&
-          upright.parsed.digits?.length === expected &&
-          upright.parsed.confidence >= 70
-        ) {
-          return upright;
-        }
-        let best = parsedVariants[0];
-        let bestScore = -Infinity;
-        for (const item of parsedVariants) {
-          const digits = item.parsed.digits || '';
-          const lengthMatch = digits.length === expected;
-          const score = item.parsed.value === null
-            ? -1
-            : item.parsed.confidence +
-              (lengthMatch ? 40 : 0) +
-              Math.min(digits.length, expected) * 2 +
-              (digits.startsWith('0') ? 5 : 0);
-          if (score > bestScore) {
-            best = item;
-            bestScore = score;
-          }
-        }
-        return best;
-      }
-      throw new BadGatewayException('OCR 服务没有返回可解析的文字');
-    }
-
-    const items = parseItems(data.items);
-    if (!items.length) throw new BadGatewayException('OCR 服务没有返回文字');
     return {
       parsed: parseMeterOcr(items, {
         integerDigits: meter.integerDigits,
@@ -271,7 +247,7 @@ export class MeterOcrService {
         width,
         height,
       }),
-      orientation: Number(data.orientation) || 0,
+      orientation: Number(data.orientation) || orientation,
     };
   }
 

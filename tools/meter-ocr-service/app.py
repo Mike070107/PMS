@@ -249,7 +249,16 @@ class Handler(BaseHTTPRequestHandler):
                     },
                 )
             else:
-                items = run_ocr(image)
+                try:
+                    orientation = int(payload.get("rotate") or 0) % 360
+                except (TypeError, ValueError):
+                    orientation = 0
+                if orientation not in (0, 90, 180, 270):
+                    orientation = 0
+                rotated = rotate_image(image, orientation)
+                items = run_ocr(rotated)
+                for item in items:
+                    item["box"] = map_box_to_original(item["box"], orientation, width, height)
                 self._send(
                     200,
                     {
@@ -258,7 +267,7 @@ class Handler(BaseHTTPRequestHandler):
                         "width": width,
                         "height": height,
                         "elapsedMs": int((time.time() - started) * 1000),
-                        "orientation": 0,
+                        "orientation": orientation,
                         "enhanced": bool(payload.get("enhance")),
                     },
                 )
