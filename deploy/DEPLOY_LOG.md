@@ -5319,3 +5319,12 @@
   - 0e68f5d6 fix(api-client): 请求超时不再显示「signal is aborted without reason」
   - b8e9d88a refactor(neighbor-web): 房号选择直接复用旧后台 HouseAddressPicker
 
+## 2026-10-30 14:00 · api · 20e624d6
+
+- 包：`pms-api-fast-20261030-140012.tar.gz`
+- 提交：20e624d6 feat(meters): 自动四向旋转、纠错样本与识别学习页
+- 自上次（ec687451）以来上线的相关提交：
+  - 20e624d6 feat(meters): 自动四向旋转、纠错样本与识别学习页
+  - f4e56d81 fix(meters): 读数候选排除标准号行，红框优先选大面积读数框
+  - b9622c7b feat(meters): 全景红框选读数区，按框内候选识别并保留 ROI
+
