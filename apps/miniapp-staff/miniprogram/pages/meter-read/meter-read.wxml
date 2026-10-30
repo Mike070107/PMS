@@ -88,7 +88,6 @@
           <text>{{readAtText || '拍照时间待记录'}}</text>
           <view class="meter-photo-meta__actions">
             <text wx:if="{{photoRotate}}" class="meter-photo-view" bindtap="onResetRotate">回正</text>
-            <text class="meter-photo-view" bindtap="onPreviewPhoto">查看全景</text>
           </view>
         </view>
         <view class="meter-photo-loc">{{locationText}}</view>
@@ -96,7 +95,7 @@
         <view class="meter-roi-tools">
           <button class="mini-btn meter-roi-run" bindtap="onRecognizeRoi">{{recognizing ? '识别中…' : '识别框内'}}</button>
         </view>
-        <view class="meter-photo-tip">单指拖动红框，双指捏合放大/缩小红框；在框外双指转动可旋转画面，点「回正」复位。把读数数字放进框内再点识别。</view>
+        <view class="meter-photo-tip">只看红框有没有套住读数数字；原图后台可放大人工比对。单指拖框、双指缩放，框外套住读数即可识别。</view>
       </view>
 
       <view class="card meter-ocr-card {{ocr && ocr.ok ? 'is-ok' : 'is-warn'}}">

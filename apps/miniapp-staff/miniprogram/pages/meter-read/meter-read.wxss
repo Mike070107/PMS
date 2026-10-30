@@ -60,7 +60,7 @@
 .meter-photo-full { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
 .meter-roi-area { position: absolute; left: 0; top: 0; overflow: hidden; }
 .meter-roi-box {
-  border: 4rpx solid #ff3b30;
+  border: 6rpx solid #ff3b30;
   border-radius: 8rpx;
   background: rgba(255, 59, 48, 0.08);
   box-shadow: 0 0 0 2000rpx rgba(0, 0, 0, 0.18);
