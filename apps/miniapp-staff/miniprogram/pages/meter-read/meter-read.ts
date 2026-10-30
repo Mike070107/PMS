@@ -463,7 +463,10 @@ Page({
     try {
       // 注意：仍然对全景原图 OCR，只用红框过滤候选。
       // 裁剪后的小图在液晶屏上会丢上下文（实测会把 0224 1888 识别成反序），不能作为唯一输入。
-      const result = await meters.ocr(this.data.id, { imageKey: this.data.photoKey });
+      const result = await meters.ocr(this.data.id, {
+        imageKey: this.data.photoKey,
+        roi: this.frameRoi(),
+      });
       if (token !== (this as any).cropToken) return;
       const chosen = this.pickCandidate(result);
       const meter = this.data.meter;

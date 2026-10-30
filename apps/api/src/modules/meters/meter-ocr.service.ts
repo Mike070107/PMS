@@ -61,6 +61,7 @@ export class MeterOcrService {
     imageKey: string,
     crop: { x: number; y: number; w: number; h: number } | undefined,
     user: AuthUser,
+    roi?: { x: number; y: number; w: number; h: number },
   ): Promise<MeterOcrResponse> {
     const buffer = await this.readUpload(imageKey);
     const imageUrl = this.storage.fileUrl(imageKey);
@@ -87,7 +88,7 @@ export class MeterOcrService {
         // 这样常见照片只跑一次 OCR，不再固定跑四个方向。
         let best: { found: SidecarResult; score: number } | null = null;
         for (const orientation of [0, 90, 270, 180]) {
-          const found = await this.runSidecar(sidecarUrl, buffer, crop, false, meter, orientation);
+          const found = await this.runSidecar(sidecarUrl, buffer, crop, false, meter, orientation, roi);
           const parsed = found.parsed;
           const isMeterNo =
             !!parsed.digits &&
@@ -120,6 +121,7 @@ export class MeterOcrService {
           true,
           meter,
           best?.found.orientation || 0,
+          roi,
         );
         if (enhanced.parsed.value !== null) {
           return this.finish(base, meter, enhanced.parsed, 'sidecar', enhanced.orientation);
@@ -213,6 +215,7 @@ export class MeterOcrService {
     enhance: boolean,
     meter: Meter,
     orientation = 0,
+    roi?: { x: number; y: number; w: number; h: number },
   ): Promise<SidecarResult> {
     const res = await axios.post(
       url,
@@ -244,8 +247,19 @@ export class MeterOcrService {
     if (!items.length) throw new BadGatewayException('OCR 服务没有返回文字');
     const width = Number(data.width) || undefined;
     const height = Number(data.height) || undefined;
+    // 固定红框只用于筛候选，不裁剪原图；框外的表号/绿色标签直接排除。
+    const inRoi = roi && width && height
+      ? items.filter((item) => {
+          const box = item.box;
+          if (!box || box.length < 4) return false;
+          const cx = (box[0] + box[2]) / 2 / width;
+          const cy = (box[1] + box[3]) / 2 / height;
+          return cx >= roi.x && cx <= roi.x + roi.w && cy >= roi.y && cy <= roi.y + roi.h;
+        })
+      : [];
+    const usable = inRoi.length ? inRoi : items;
     return {
-      parsed: parseMeterOcr(items, {
+      parsed: parseMeterOcr(usable, {
         integerDigits: meter.integerDigits,
         decimalDigits: meter.decimalDigits,
         width,

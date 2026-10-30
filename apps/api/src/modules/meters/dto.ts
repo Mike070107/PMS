@@ -373,6 +373,11 @@ export class OcrQueryDto {
   @IsOptional()
   @IsObject()
   crop?: { x: number; y: number; w: number; h: number };
+
+  /** 固定红框对应的原图区域（0~1），只用于过滤 OCR 候选，不裁剪图片 */
+  @IsOptional()
+  @IsObject()
+  roi?: { x: number; y: number; w: number; h: number };
 }
 
 export class ReadingOcrMetaDto {

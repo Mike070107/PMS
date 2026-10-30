@@ -322,7 +322,7 @@ export const meters = {
       shortCode: string;
     }>({ url: `/meters/${id}/qr` }),
 
-  ocr: (id: number, data: { imageKey: string; crop?: { x: number; y: number; w: number; h: number } }) =>
+  ocr: (id: number, data: { imageKey: string; crop?: { x: number; y: number; w: number; h: number }; roi?: { x: number; y: number; w: number; h: number } }) =>
     request<MeterOcrResp>({ url: `/meters/${id}/ocr`, method: 'POST', data, timeout: 90000 }),
 
   ocrHealth: () =>

@@ -416,7 +416,7 @@ export class MetersService {
     const tenantId = this.resolveTenantId(user);
     const meter = await this.findMeter(id, tenantId);
     this.assertMeterScope(meter, access);
-    return this.ocr.recognize(meter, dto.imageKey, dto.crop, user);
+    return this.ocr.recognize(meter, dto.imageKey, dto.crop, user, dto.roi);
   }
 
   async ocrHealth() {
