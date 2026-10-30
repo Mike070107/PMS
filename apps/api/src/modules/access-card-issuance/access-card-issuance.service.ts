@@ -1,3 +1,4 @@
+import { loadAddressTreeLite, resolveAddressForTenant } from '../../common/address-lookup';
 import {
   BadRequestException,
   ForbiddenException,
@@ -106,6 +107,7 @@ import {
   supportsParkingFeeReports,
   supportsParkingFeeDetails,
   supportsLegacyRecentCards,
+  supportsParkingIdentityList,
 } from './parking-query.util';
 import {
   normalizeParkingOwnerFieldHints,
@@ -812,11 +814,27 @@ export class AccessCardIssuanceService {
     };
   }
 
+  /** 搜索词能唯一落到一户时，返回 弄/楼号/室号；否则 null（照原样交给 parseParkingSearch） */
+  private async houseTermFromAddress(tenantId: number, input: string): Promise<string | null> {
+    const ds = this.parkingQueryRepo.manager.connection;
+    const hit = await resolveAddressForTenant(ds, tenantId, input).catch(() => null);
+    if (!hit || hit.level !== 'house' || hit.houseIds.length !== 1) return null;
+    for (const c of await loadAddressTreeLite(ds, tenantId)) {
+      for (const b of c.buildings) {
+        const h = b.houses.find((x) => x.id === hit.houseIds[0]);
+        if (h) return b.lane ? `${b.lane}/${b.buildingNo}/${h.roomNo}` : null;
+      }
+    }
+    return null;
+  }
+
   async createParkingQuery(dto: CreateParkingQueryDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     let term: string;
+    // 一期20号601、枫桦景苑一期20号601室… 先按地址簿落到唯一一户，再写成停车库认的 198/20/601
+    const raw = (await this.houseTermFromAddress(tenantId, dto.term)) ?? dto.term;
     try {
-      term = parseParkingSearch(dto.term).term;
+      term = parseParkingSearch(raw).term;
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : '查询内容格式不正确');
     }
@@ -1021,6 +1039,28 @@ export class AccessCardIssuanceService {
     const query = await this.parkingQueryRepo.findOne({ where: { id, tenantId, queryKind: 'fee_report' } });
     if (!query) throw new NotFoundException('金额报表查询不存在或已失效');
     return this.parkingFeeReportResponse(query);
+  }
+
+  /** 旧停车库按车辆授权类型拉整张清单（只读），如「亲情车」；结果在 parking_queries.rows */
+  async createParkingIdentityList(identity: string, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
+    if (!orderAgentsByAvailability(agents).some((agent) => effectiveAgentStatus(agent) === 'online' &&
+      agent.capabilities?.parkingDbRead === true && supportsParkingIdentityList(agent.version)))
+      throw new ServiceUnavailableException('从旧停车库拉清单需要在线的 2.5.49 或更新版本数据同步助手（会自动升级，稍后再试）');
+    const query = this.parkingQueryRepo.create({
+      tenantId, term: identity, queryKind: 'identity_list', rangeStart: null, rangeEnd: null,
+      status: 'pending', rows: [], attempt: 0, requestedAt: new Date(), completedAt: null,
+      leaseAgentKey: null, leaseExpiresAt: null, lastError: null, createdBy: user.id, updatedBy: user.id,
+    });
+    return this.parkingQueryRepo.save(query);
+  }
+
+  async getParkingIdentityList(id: number, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const query = await this.parkingQueryRepo.findOne({ where: { id, tenantId, queryKind: 'identity_list' } });
+    if (!query) throw new NotFoundException('清单查询不存在或已失效');
+    return query;
   }
 
   async createParkingFeeDetail(dto: CreateParkingFeeDetailDto, user: AuthUser, access: ResolvedAccess) {
@@ -1404,6 +1444,7 @@ export class AccessCardIssuanceService {
     const canQueryMovements = supportsParkingMovementQueries(agent.version);
     const canQueryFees = supportsParkingFeeReports(agent.version);
     const canQueryFeeDetails = supportsParkingFeeDetails(agent.version);
+    const canListIdentity = supportsParkingIdentityList(agent.version);
 
     const task = await this.parkingQueryRepo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(ParkingQuery);
@@ -1411,7 +1452,7 @@ export class AccessCardIssuanceService {
       const query = await repo.createQueryBuilder('query')
         .where('query.tenant_id = :tenantId', { tenantId: agent.tenantId })
         .andWhere("(query.status = 'pending' OR (query.status = 'running' AND query.lease_expires_at < :now))", { now })
-        .andWhere("(query.query_kind = 'vehicle' OR (query.query_kind = 'movement' AND :canQueryMovements = true) OR (query.query_kind = 'fee_report' AND :canQueryFees = true) OR (query.query_kind = 'fee_detail' AND :canQueryFeeDetails = true))", { canQueryMovements, canQueryFees, canQueryFeeDetails })
+        .andWhere("(query.query_kind = 'vehicle' OR (query.query_kind = 'movement' AND :canQueryMovements = true) OR (query.query_kind = 'fee_report' AND :canQueryFees = true) OR (query.query_kind = 'fee_detail' AND :canQueryFeeDetails = true) OR (query.query_kind = 'identity_list' AND :canListIdentity = true))", { canQueryMovements, canQueryFees, canQueryFeeDetails, canListIdentity })
         .orderBy('query.created_at', 'ASC')
         .setLock('pessimistic_write')
         .setOnLocked('skip_locked')
@@ -1564,7 +1605,7 @@ export class AccessCardIssuanceService {
             ? sanitizeParkingFeeRows(dto.rows ?? [], query.rangeStart, query.rangeEnd)
             : query.queryKind === 'fee_detail'
               ? sanitizeParkingFeeDetailRows(dto.rows ?? [], query.term.split(':')[0], query.rangeStart, query.rangeEnd)
-            : sanitizeParkingRows(dto.rows ?? []);
+            : sanitizeParkingRows(dto.rows ?? [], query.queryKind === 'identity_list' ? 3000 : 100);
         query.lastError = null;
         query.completedAt = now;
         if (query.queryKind === 'vehicle') await this.captureParkingHistory(manager, query, now);
@@ -3462,8 +3503,8 @@ function operationChanges(task: ParkingOperation): ParkingHistoryChange[] {
     .map(([field, label, before, after]) => ({ field, label, before: textValue(before), after: textValue(after) }));
 }
 
-export function sanitizeParkingRows(rows: ParkingQueryReportDto['rows']): ParkingQuery['rows'] {
-  return (rows ?? []).slice(0, 100).map((row) => {
+export function sanitizeParkingRows(rows: ParkingQueryReportDto['rows'], limit = 100): ParkingQuery['rows'] {
+  return (rows ?? []).slice(0, limit).map((row) => {
     const fields: Record<string, string | number | boolean | null> = {};
     // 旧助手曾把 Car_Issue 全部字段上传到这里，再按出现顺序截 60 个。
     // 住户联表字段排在后面时会在助手端或这里被截掉；接口只保留停车页面和

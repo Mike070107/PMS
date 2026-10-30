@@ -1,3 +1,4 @@
+import { resolveAddressForTenant } from '../../common/address-lookup';
 import {
   BadRequestException,
   ForbiddenException,
@@ -390,6 +391,8 @@ export class BusinessService {
       return { houses: [], vehicles: [], accessCards: [] };
     }
     const q = (query.q || '').trim();
+    // 认得出是地址就按房精准查（198/20/601、一期20号601、枫桦景苑一期20号楼…），姓名电话照常模糊
+    const addr = await resolveAddressForTenant(this.houseRepo.manager.connection, tenantId, q);
     const houseQb = this.houseRepo
       .createQueryBuilder('h')
       .leftJoin(Building, 'b', 'b.id = h.building_id AND b.tenant_id = h.tenant_id')
@@ -401,6 +404,11 @@ export class BusinessService {
       .andWhere(
         q
           ? new Brackets((sub) => {
+              if (addr) {
+                sub.where(addr.allHouseIds.length ? 'h.id IN (:...addrHouseIds)' : '1=0', { addrHouseIds: addr.allHouseIds })
+                  .orWhere('u.name ILIKE :kw', { kw: `%${q}%` });
+                return;
+              }
               sub
                 .where('h.room_no ILIKE :kw', { kw: `%${q}%` })
                 .orWhere('b.building_no ILIKE :kw', { kw: `%${q}%` })

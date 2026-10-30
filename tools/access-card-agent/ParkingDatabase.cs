@@ -152,6 +152,65 @@ ORDER BY p.parameter_id;";
             return rows;
         }
 
+        // 按「车辆授权类型」（Car_Issue.Car_Brand，旧库有的拼成 Car_Beand）列出整张清单，只读。
+        // 例：亲情车清册从旧库拉一份进 PMS。和 Search 同一套字段白名单和住户联表，但不限前 50 条（上限 3000）。
+        public static List<ParkingSearchRow> ListByIdentityBoth(AgentConfig config, string password, string identity)
+        {
+            var value = String.IsNullOrWhiteSpace(identity) ? "" : identity.Trim();
+            if (value.Length < 2 || value.Length > 20) throw new InvalidOperationException("车辆授权类型不正确");
+            var rows = new List<ParkingSearchRow>();
+            rows.AddRange(ListByIdentity(config, password, config.ParkingPhase1Database, value));
+            rows.AddRange(ListByIdentity(config, password, config.ParkingPhase2Database, value));
+            return rows;
+        }
+
+        private static List<ParkingSearchRow> ListByIdentity(AgentConfig config, string password, string database, string identity)
+        {
+            Validate(config, password, database);
+            using (var connection = new SqlConnection(ConnectionString(config, password, database)))
+            {
+                connection.Open();
+                if (!ObjectExists(connection, "Car_Issue", "U"))
+                    throw new InvalidOperationException(database + " 中不存在 Car_Issue 表");
+                var columns = LoadColumns(connection, "dbo", "Car_Issue");
+                var identityColumn = columns.Find(delegate(ParkingColumn column)
+                {
+                    return String.Equals(column.Name, "Car_Brand", StringComparison.OrdinalIgnoreCase);
+                }) ?? columns.Find(delegate(ParkingColumn column)
+                {
+                    return String.Equals(column.Name, "Car_Beand", StringComparison.OrdinalIgnoreCase);
+                });
+                if (identityColumn == null) throw new InvalidOperationException(database + " 的 Car_Issue 没有车辆授权类型字段");
+                var ownerSource = FindOwnerSource(connection);
+                var select = BuildParkingSelect(columns, ownerSource);
+                var join = ownerSource == null ? "" : " LEFT JOIN " + QuoteName(ownerSource.Schema, ownerSource.Table) + " o WITH (NOLOCK) ON " +
+                    "CONVERT(NVARCHAR(200), c.[Owner_ID]) = CONVERT(NVARCHAR(200), o." + QuoteColumn(ownerSource.KeyColumn) + ")";
+                using (var command = connection.CreateCommand())
+                {
+                    command.Parameters.Add("@identity", SqlDbType.NVarChar, 60).Value = "%" + EscapeLike(identity) + "%";
+                    command.CommandText = "SELECT TOP 3000 " + select + " FROM [dbo].[Car_Issue] c WITH (NOLOCK)" + join +
+                        " WHERE CONVERT(NVARCHAR(200), c." + QuoteColumn(identityColumn.Name) + ") LIKE @identity ESCAPE N'~';";
+                    command.CommandTimeout = 30;
+                    var rows = new List<ParkingSearchRow>();
+                    using (var reader = command.ExecuteReader(CommandBehavior.SequentialAccess))
+                    {
+                        while (reader.Read())
+                        {
+                            var fields = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                            for (var index = 0; index < reader.FieldCount && fields.Count < 60; index++)
+                            {
+                                if (reader.IsDBNull(index)) continue;
+                                var cell = SafeValue(reader.GetValue(index));
+                                if (cell != null) fields[reader.GetName(index)] = cell;
+                            }
+                            rows.Add(new ParkingSearchRow { database = database, fields = fields });
+                        }
+                    }
+                    return DeduplicateRows(rows);
+                }
+            }
+        }
+
         // 车牌进出流水只读一期/二期停车库的 dbo.Car_Out；不能把门禁卡库或旧网页视图当成停车来源。
         public static List<ParkingSearchRow> SearchMovementsBoth(AgentConfig config, string password, string movementPassword,
             string plate, string startDate, string endDate)

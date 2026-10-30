@@ -97,6 +97,14 @@ export function supportsParkingMovementQueries(version: string | null | undefine
     || (major === 0 && minor >= 9);
 }
 
+/** 按车辆授权类型拉整张清单（亲情车清册从旧库导入）：数据同步助手 2.5.49 起 */
+export function supportsParkingIdentityList(version: string | null | undefined): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 49)));
+}
+
 export function supportsParkingFeeReports(version: string | null | undefined): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version || '');
   if (!match) return false;

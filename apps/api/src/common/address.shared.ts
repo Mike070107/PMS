@@ -390,8 +390,9 @@ export function resolveAddressQuery(input: string, communities: AddressTreeLite[
     }
   }
   if (!hits.length) return null;
-  // 同分时更具体的一层优先（选到户就不再带整栋）
-  const rank = { house: 3, building: 2, community: 1 } as const;
+  // 同分时取较粗的一层：「永南150弄20号」既能读成 150弄20号楼，也能读成 0 号楼 20 室（库里真有 0 号楼），
+  // 按楼栋给出不会漏单；要到户的输入（198/20/601）户的分本来就更高，不受影响
+  const rank = { house: 1, building: 2, community: 3 } as const;
   const top = Math.max(...hits.map((x) => rank[x.level]));
   const kept = hits.filter((x) => rank[x.level] === top);
   return {

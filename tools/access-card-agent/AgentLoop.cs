@@ -237,6 +237,8 @@ namespace Pms.AccessCardAgent
                     : task.queryKind == "fee_report"
                         ? ParkingDatabase.SearchFeeReport(_config, LoadSecret("parking-db-password.dat"),
                             LoadOptionalSecret("parking-movement-db-password.dat"), task.startDate, task.endDate)
+                        : task.queryKind == "identity_list"
+                            ? ParkingDatabase.ListByIdentityBoth(_config, LoadSecret("parking-db-password.dat"), task.term)
                         : ParkingDatabase.SearchBoth(_config, LoadSecret("parking-db-password.dat"), task.term);
                 _api.ReportParkingQuery(new ParkingQueryReport
                 {
@@ -244,7 +246,7 @@ namespace Pms.AccessCardAgent
                     result = "success",
                     rows = rows
                 });
-                RecordActivity(task.queryKind == "fee_report" ? "查询停车金额报表" : task.queryKind == "fee_detail" ? "查询停车金额明细" : task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, true, "查到 " + rows.Count + " 条数据");
+                RecordActivity(task.queryKind == "identity_list" ? "拉取" + task.term + "清单" : task.queryKind == "fee_report" ? "查询停车金额报表" : task.queryKind == "fee_detail" ? "查询停车金额明细" : task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, true, "查到 " + rows.Count + " 条数据");
             }
             catch (Exception exception)
             {
@@ -254,7 +256,7 @@ namespace Pms.AccessCardAgent
                     result = "retry",
                     errorMessage = exception.Message
                 });
-                RecordActivity(task.queryKind == "fee_report" ? "查询停车金额报表" : task.queryKind == "fee_detail" ? "查询停车金额明细" : task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, false, exception.Message);
+                RecordActivity(task.queryKind == "identity_list" ? "拉取" + task.term + "清单" : task.queryKind == "fee_report" ? "查询停车金额报表" : task.queryKind == "fee_detail" ? "查询停车金额明细" : task.queryKind == "movement" ? "查询车牌进出记录" : "查询停车记录", task.term, false, exception.Message);
             }
         }
 

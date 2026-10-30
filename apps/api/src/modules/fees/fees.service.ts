@@ -1,3 +1,4 @@
+import { resolveAddressForTenant, type AddressFilter } from '../../common/address-lookup';
 import {
   BadRequestException,
   ConflictException,
@@ -124,7 +125,7 @@ export class FeesService {
       .innerJoin(Community, 'c', 'c.id = b.community_id')
       .where('f.tenant_id = :tenantId', { tenantId });
 
-    this.applyBillFilters(qb, query, scope);
+    this.applyBillFilters(qb, query, scope, await resolveAddressForTenant(this.dataSource, tenantId, query.q));
 
     const total = await qb.getCount();
     const { page, pageSize } = this.paging(query);
@@ -193,7 +194,7 @@ export class FeesService {
       .innerJoin(Building, 'b', 'b.id = h.building_id')
       .innerJoin(Community, 'c', 'c.id = b.community_id')
       .where('f.tenant_id = :tenantId', { tenantId });
-    this.applyBillFilters(qb, query, scope);
+    this.applyBillFilters(qb, query, scope, await resolveAddressForTenant(this.dataSource, tenantId, query.q));
 
     const raw = await qb
       .select('COUNT(*)', 'billCount')
@@ -540,6 +541,7 @@ export class FeesService {
     const tenantId = this.requireTenant(user);
     const scope = scopeCommunityIds(access);
     if (scope && !scope.length) return this.emptyPage(query);
+    const addr = query.q ? await resolveAddressForTenant(this.dataSource, tenantId, query.q) : null;
 
     const base = () => {
       const qb = this.billRepo
@@ -558,7 +560,7 @@ export class FeesService {
       if (scope) qb.andWhere('f.community_id IN (:...scopeIds)', { scopeIds: scope });
       if (query.communityId) qb.andWhere('f.community_id = :cid', { cid: query.communityId });
       if (query.feeCode) qb.andWhere('f.fee_code = :feeCode', { feeCode: query.feeCode });
-      if (query.q) this.applyKeyword(qb, query.q);
+      if (query.q) this.applyKeyword(qb, query.q, addr);
       return qb;
     };
 
@@ -1439,7 +1441,7 @@ export class FeesService {
     if (query.feeCode) qb.andWhere('s.fee_code = :feeCode', { feeCode: query.feeCode });
     // 默认只看当前生效的：历史标准是留痕用的，混在一起看不出现在到底收多少
     qb.andWhere('s.status = :status', { status: query.status || FeeStandardStatus.ACTIVE });
-    if (query.q) this.applyKeyword(qb, query.q);
+    if (query.q) this.applyKeyword(qb, query.q, await resolveAddressForTenant(this.dataSource, tenantId, query.q));
 
     const total = await qb.getCount();
     const { page, pageSize } = this.paging(query);
@@ -1827,6 +1829,7 @@ export class FeesService {
     qb: SelectQueryBuilder<FeeBill>,
     query: ListBillsQueryDto | ArrearsQueryDto,
     scope: number[] | null,
+   addr: AddressFilter | null = null,
   ) {
     const q = query as ListBillsQueryDto;
     if (scope) qb.andWhere('f.community_id IN (:...scopeIds)', { scopeIds: scope });
@@ -1841,12 +1844,26 @@ export class FeesService {
     if (q.paidFrom) qb.andWhere('f.paid_at >= :paidFrom', { paidFrom: dayStart(q.paidFrom) });
     if (q.paidTo) qb.andWhere('f.paid_at < :paidTo', { paidTo: nextDayStart(q.paidTo) });
     if (q.paymentMethod) qb.andWhere('f.payment_method = :pm', { pm: q.paymentMethod });
-    if (q.q) this.applyKeyword(qb, q.q);
+    if (q.q) this.applyKeyword(qb, q.q, addr);
   }
 
   /** 房号 / 业主 / 电话 / 收据号 的模糊搜索，账单和标准两边共用一套写法 */
-  private applyKeyword(qb: SelectQueryBuilder<any>, keyword: string) {
+  /**
+   * 账单 / 收款记录的关键字搜索。认得出是地址（198/20、一期20、枫桦景苑一期20号楼…）就按房精准过滤，
+   * 不再拿原文 ILIKE 房号/楼号 —— 「20」会把 201、120 都带出来；姓名、电话、收据号照常模糊查。
+   */
+  private applyKeyword(qb: SelectQueryBuilder<any>, keyword: string, addr: AddressFilter | null = null) {
     const raw = keyword.trim();
+    if (addr) {
+      const alias0 = qb.alias;
+      const ownerJoin = qb.expressionMap.aliases.some((a) => a.name === 'u');
+      qb.andWhere(new Brackets((sub) => {
+        sub.where(addr.allHouseIds.length ? 'h.id IN (:...addrHouseIds)' : '1=0', { addrHouseIds: addr.allHouseIds });
+        if (alias0 === 'f') sub.orWhere('f.owner_name ILIKE :kw', { kw: `%${raw}%` });
+        if (ownerJoin) sub.orWhere('u.name ILIKE :kw', { kw: `%${raw}%` });
+      }));
+      return;
+    }
     const parts = raw.split(/[\/\\\-\s]+/).map((p) => p.trim()).filter(Boolean);
     const alias = qb.alias;
     const hasOwnerJoin = qb.expressionMap.aliases.some((a) => a.name === 'u');

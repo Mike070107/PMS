@@ -657,7 +657,7 @@ export class ParkingQueryReportDto {
 
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(250)
+  @ArrayMaxSize(3000)
   @ValidateNested({ each: true })
   @Type(() => ParkingQueryRowDto)
   rows?: ParkingQueryRowDto[];

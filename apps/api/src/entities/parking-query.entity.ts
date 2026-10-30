@@ -2,7 +2,7 @@ import { Column, Entity, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
 
 export type ParkingQueryStatus = 'pending' | 'running' | 'completed' | 'failed';
-export type ParkingQueryKind = 'vehicle' | 'movement' | 'fee_report' | 'fee_detail';
+export type ParkingQueryKind = 'vehicle' | 'movement' | 'fee_report' | 'fee_detail' | 'identity_list';
 
 export interface ParkingQueryRow {
   database: string;

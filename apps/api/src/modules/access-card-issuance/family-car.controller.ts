@@ -87,6 +87,7 @@ export class ImportFamilyCarRowDto {
   @IsOptional() @IsString() @MaxLength(20) startDate?: string;
   @IsOptional() @IsString() @MaxLength(20) endDate?: string;
   @IsOptional() @IsString() @MaxLength(200) remark?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) garages?: string[];
 }
 
 export class ImportFamilyCarsDto {
@@ -131,6 +132,18 @@ export class FamilyCarController {
   @RequirePermission('family-cars', 'edit')
   create(@Body() dto: CreateFamilyCarDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.service.create(dto, user, access);
+  }
+
+  @Post('legacy-pull')
+  @RequirePermission('family-cars', 'edit')
+  startLegacyPull(@CurrentUser() user: AuthUser) {
+    return this.service.startLegacyPull(user);
+  }
+
+  @Get('legacy-pull/:id')
+  @RequirePermission('family-cars', 'edit')
+  legacyPullResult(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.legacyPullResult(id, user);
   }
 
   @Post('import')

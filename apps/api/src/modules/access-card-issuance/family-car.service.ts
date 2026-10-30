@@ -28,8 +28,13 @@ import { detectUploadContentType } from '../upload/upload.controller';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { AccessCardIssuanceService } from './access-card-issuance.service';
 import {
+  FAMILY_GARAGES,
   FAMILY_RELATIONS,
   classifyPlateCheck,
+  legacyIdentity,
+  legacyPlate,
+  legacyRoomKey,
+  type LegacyRow,
   databaseForLane,
   daysUntil,
   defaultFamilyGarages,
@@ -216,6 +221,41 @@ export class FamilyCarService {
    *
    * dryRun = 只出核对结果，不落库。
    */
+  /** 从现场旧停车库（一期 parking1 / 二期 parking2）拉一份亲情车清单：交给数据同步助手只读查询 */
+  async startLegacyPull(user: AuthUser) {
+    const q = await this.parking.createParkingIdentityList('亲情车', user);
+    return { id: q.id, status: q.status };
+  }
+
+  /**
+   * 拉取进度；完成后把旧库行整理成导入行（车牌、房号、有效期、电话、实际授权车库），
+   * 交给 importFromParking 先核对（dryRun）再导入 —— 和手工贴清单走同一套校验。
+   */
+  async legacyPullResult(id: number, user: AuthUser) {
+    const q = await this.parking.getParkingIdentityList(id, user);
+    if (q.status !== 'completed') return { id: q.id, status: q.status, error: q.lastError, rows: [] };
+    const date = (v: unknown) => { const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(v ?? '')); return m ? m[1] : undefined; };
+    const rows = (q.rows as LegacyRow[]).filter((r) => legacyIdentity(r).includes('亲情')).map((r) => {
+      const f = r.fields || {};
+      const bits = String(f.P_Effective ?? '');
+      const on = (chs: number[]) => /^[01]{16,}$/.test(bits) && chs.some((c) => bits[c - 1] === '1');
+      const garages = r.database === 'parking1' ? (on([5, 7]) ? ['phase1'] : [])
+        : [...(on([9, 11, 13]) ? ['phase2'] : []), ...(on([15, 17, 19, 21]) ? ['main'] : [])];
+      return {
+        plate: legacyPlate(r),
+        room: legacyRoomKey(r) || String(f.Owner__owner_Name ?? ''),
+        identity: legacyIdentity(r),
+        database: r.database,
+        startDate: date(f.Sart_Time ?? f.Start_Time),
+        endDate: date(f.End_Time),
+        ownerPhone: f.Owner__owner_Tel ? String(f.Owner__owner_Tel).slice(0, 30) : undefined,
+        remark: f.P_note ? `从旧停车库导入 · ${String(f.P_note).slice(0, 150)}` : '从旧停车库导入',
+        garages,
+      };
+    });
+    return { id: q.id, status: q.status, error: null, rows };
+  }
+
   async importFromParking(
     dto: {
       rows: Array<{
@@ -231,6 +271,7 @@ export class FamilyCarService {
         startDate?: string;
         endDate?: string;
         remark?: string;
+        garages?: string[];
       }>;
       dryRun?: boolean;
     },
@@ -316,7 +357,9 @@ export class FamilyCarService {
       const validity = row.startDate && row.endDate
         ? { startDate: row.startDate, endDate: row.endDate }
         : familyValidity(today);
-      const garages = defaultFamilyGarages(lane);
+      // 旧库拉来的行带着实际授权的车库（P_Effective 通道位），以旧库为准；手贴的清单没有就按弄号默认
+      const fromLegacy = (row.garages ?? []).filter((g) => (FAMILY_GARAGES as readonly string[]).includes(g));
+      const garages = fromLegacy.length ? fromLegacy : defaultFamilyGarages(lane);
 
       const car = await this.repo.save(this.repo.create({
         tenantId,
@@ -336,7 +379,8 @@ export class FamilyCarService {
         garages,
         garageNumbers: {},
         mode: 'existing',
-        status: 'active',
+        // 旧库里已过期的也导进来（历史清册），标成已过期，不发到期提醒
+        status: isPastEnd(validity.endDate, today) ? 'expired' : 'active',
         ownerFill: false,
         files: [],
         proofUploadId: null,
