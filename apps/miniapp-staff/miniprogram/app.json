@@ -53,8 +53,8 @@
         "text": "材料与库存"
       },
       {
-        "pagePath": "pages/approvals/approvals",
-        "text": "审批"
+        "pagePath": "pages/meters/meters",
+        "text": "抄表"
       },
       {
         "pagePath": "pages/me/me",

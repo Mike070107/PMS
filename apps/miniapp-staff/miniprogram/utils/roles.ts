@@ -9,7 +9,7 @@
  */
 
 /** 底部 tab 的 key，与 custom-tab-bar 的 ALL_TABS 一一对应 */
-export type TabKey = 'pool' | 'dispatch' | 'mine' | 'maintenance' | 'materials' | 'approvals' | 'cashier' | 'more' | 'me';
+export type TabKey = 'pool' | 'dispatch' | 'mine' | 'maintenance' | 'materials' | 'approvals' | 'cashier' | 'meters' | 'more' | 'me';
 
 /** tabBar 判显隐要的那点东西：角色矩阵里各入口的「可见」 */
 export interface TabAccess {
@@ -31,6 +31,7 @@ export const TAB_PAGE: Record<TabKey, string> = {
   materials: 'app:inventory', // SKU、盘点入口在 canSeeTab 里一并判
   approvals: 'app:approve-manager', // 采购那一步在 canSeeTab 里一并判
   cashier: 'app:apartment-cashier',
+  meters: 'app:meters',
   more: '',
   me: '',
 };

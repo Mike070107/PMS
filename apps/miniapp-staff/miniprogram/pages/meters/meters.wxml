@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container container--tabbar">
   <view class="screen-head">
     <view class="screen-head__title">抄表</view>
     <view class="screen-head__desc">选表后现场拍照，识别结果会回填到输入框；对着原图核对再提交。原图和时间都会留档。</view>

@@ -1,6 +1,7 @@
 import { meters } from '@pms/api-client';
 import type { MeterRow, MeterSummaryResp, MeterType } from '@pms/api-client';
 import { getSession } from '../../utils/session';
+import { syncTabBar } from '../../utils/tabbar';
 import { formatMeterTime, meterErrText } from '../../utils/meter';
 
 interface MeterCard extends MeterRow {
@@ -36,6 +37,7 @@ Page({
   },
 
   onShow() {
+    syncTabBar(this, 'meters');
     void this.load(true);
   },
 
