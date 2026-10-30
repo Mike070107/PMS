@@ -55,6 +55,8 @@ Page({
     photoHeight: 0,
     photoDisplayWidth: 0,
     photoDisplayHeight: 0,
+    photoRotate: 0,
+    rotating: false,
     roi: { ...DEFAULT_ROI } as Roi,
     roiX: 0,
     roiY: 0,
@@ -197,6 +199,8 @@ Page({
             photoHeight: info.height,
             photoDisplayWidth: displayWidth,
             photoDisplayHeight: displayHeight,
+            photoRotate: 0,
+            rotating: false,
             roi,
             roiDirty: false,
             roiTouched: false,
@@ -225,6 +229,8 @@ Page({
             photoPath: path,
             photoDisplayWidth: displayWidth,
             photoDisplayHeight: Math.round(displayWidth * 1.4),
+            photoRotate: 0,
+            rotating: false,
             roi: this.data.templateRoi || { ...DEFAULT_ROI },
             roiDirty: false,
             roiTouched: false,
@@ -435,7 +441,41 @@ Page({
     }
   },
 
+  onPhotoTouchStart(event: any) {
+    const touches = event.touches || [];
+    if (touches.length < 2) return;
+    (this as any).rotateStartAngle = Math.atan2(
+      touches[1].clientY - touches[0].clientY,
+      touches[1].clientX - touches[0].clientX,
+    ) * (180 / Math.PI);
+    (this as any).rotateStartValue = this.data.photoRotate;
+    this.setData({ rotating: true });
+  },
+
+  onPhotoTouchMove(event: any) {
+    if (!this.data.rotating) return;
+    const touches = event.touches || [];
+    if (touches.length < 2) return;
+    const angle = Math.atan2(
+      touches[1].clientY - touches[0].clientY,
+      touches[1].clientX - touches[0].clientX,
+    ) * (180 / Math.PI);
+    let next = Number((this as any).rotateStartValue || 0) + angle - Number((this as any).rotateStartAngle || 0);
+    while (next > 180) next -= 360;
+    while (next < -180) next += 360;
+    this.setData({ photoRotate: Math.round(next) });
+  },
+
+  onPhotoTouchEnd() {
+    if (this.data.rotating) this.setData({ rotating: false });
+  },
+
+  onResetRotate() {
+    this.setData({ photoRotate: 0 });
+  },
+
   onRoiChange(event: any) {
+    if (this.data.rotating) return;
     if ((this as any).roiSyncing) return;    const width = this.data.photoDisplayWidth;
     const height = this.data.photoDisplayHeight;
     if (!width || !height) return;
@@ -455,6 +495,7 @@ Page({
   },
 
   onRoiScale(event: any) {
+    if (this.data.rotating) return;
     const scale = clamp(Number(event.detail?.scale) || 1, 0.5, 3);
     this.setData({
       roiScale: scale,
@@ -484,6 +525,8 @@ Page({
       photoKey: '',
       photoDisplayWidth: 0,
       photoDisplayHeight: 0,
+      photoRotate: 0,
+      rotating: false,
       roi: { ...DEFAULT_ROI },
       roiX: 0,
       roiY: 0,
