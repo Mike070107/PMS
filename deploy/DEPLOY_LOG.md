@@ -5509,3 +5509,10 @@
 - 自上次（b0fbbf92）以来上线的相关提交：
   - a102cc9f feat(meters): reviewed details, GPS maps, reliable photo location and receipt registration
 
+## 2026-10-31 06:17 · api · 74d033e2
+
+- 包：`pms-api-fast-20261031-061649.tar.gz`
+- 提交：74d033e2 feat(properties): 房产归档(软删除可恢复)——houses.archived_at 列;删除改为归档(保留业主/工单,允许带业主归档);新增 /houses/:id/restore 恢复;/houses?archived=1 查已归档,默认只看在册;列表附 archivedAt
+- 自上次（17ae188a）以来上线的相关提交：
+  - 74d033e2 feat(properties): 房产归档(软删除可恢复)——houses.archived_at 列;删除改为归档(保留业主/工单,允许带业主归档);新增 /houses/:id/restore 恢复;/houses?archived=1 查已归档,默认只看在册;列表附 archivedAt
+
