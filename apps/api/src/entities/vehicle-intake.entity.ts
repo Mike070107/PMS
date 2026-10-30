@@ -70,7 +70,7 @@ export class VehicleIntake extends TenantEntity {
   contactPhone: string;
 
   /** 付费车：按哪类收费（业主车 / 租客车 / 大车…），新办时先选 */
-  @Column({ name: 'vehicle_class', type: 'varchar', length: 12, default: '' })
+  @Column({ name: 'vehicle_class', type: 'varchar', length: 40, default: '' })
   vehicleClass: string;
 
   /** 亲情车：与业主关系 */

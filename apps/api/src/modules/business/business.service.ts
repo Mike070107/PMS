@@ -40,7 +40,7 @@ import { findParkingTarget, PARKING_TARGETS, targetsForCommunity, validateRuleTa
 import { addDays, addMonthsClamped, renewalWindow } from './business-execution.util';
 import { AccessService } from '../access/access.service';
 import { VehicleIntakeService } from './vehicle-intake.service';
-import { normalizeTiers, normalizeVehicleClass, priceParking, type ParkingRuleConfig } from './parking-pricing';
+import { DEFAULT_GROUP, STANDARD_MONTHS, normalizeTiers, normalizeVehicleClass, priceRule, targetsOverlap, upgradeToTable, type ParkingRuleConfig } from './parking-pricing';
 import { Notification } from '../../entities';
 import { NotifyChannel, NotifyStatus } from '../../common/enums';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
@@ -82,13 +82,32 @@ export class BusinessService {
     return this.tagRepo.find({ where: { tenantId, plate: In(list) } });
   }
 
-  /** 给车牌打分类标记；清空 = 取消分类 */
+  /** 缴费规则分组下的车牌：按分组 / 车牌片段查（收费标准页用） */
+  async listPlateTags(query: { group?: string; q?: string }, user: AuthUser) {
+    const tenantId = this.requireTenant(user);
+    const qb = this.tagRepo.createQueryBuilder('t').where('t.tenant_id = :tenantId', { tenantId });
+    if (query.group) qb.andWhere('t.vehicle_class = :g', { g: query.group });
+    const q = normPlate(query.q || '');
+    if (q) qb.andWhere('t.plate ILIKE :q', { q: `%${q}%` });
+    const [rows, counts] = await Promise.all([
+      qb.orderBy('t.updated_at', 'DESC').take(500).getMany(),
+      this.tagRepo.createQueryBuilder('t').select('t.vehicle_class', 'group').addSelect('COUNT(*)', 'n')
+        .where('t.tenant_id = :tenantId', { tenantId }).groupBy('t.vehicle_class').getRawMany<{ group: string; n: string }>(),
+    ]);
+    return { rows, counts: Object.fromEntries(counts.map((c) => [c.group, Number(c.n)])) };
+  }
+
+  /** 车牌归入缴费规则分组；清空 = 移出分组（按默认分组收） */
   async setPlateTag(plateValue: string, vehicleClass: string, houseId: number | null, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const plate = normPlate(plateValue);
     if (!/^[\u4e00-\u9fa5][A-Z][A-Z0-9]{5,6}$/.test(plate)) throw new BadRequestException('车牌格式不正确');
     let cls: string;
     try { cls = normalizeVehicleClass(vehicleClass); } catch (e) { throw new BadRequestException((e as Error).message); }
+    if (cls) {
+      const groups = await this.ruleRepo.find({ where: { tenantId, serviceType: BusinessServiceType.PARKING_MONTHLY, enabled: true } });
+      if (!groups.some((r) => ((r.config ?? {}) as ParkingRuleConfig).vehicleClass === cls)) throw new BadRequestException(`没有启用中的缴费规则分组「${cls}」`);
+    }
     const row = await this.tagRepo.findOne({ where: { tenantId, plate } });
     if (!cls) { if (row) await this.tagRepo.delete({ id: row.id }); return { plate, vehicleClass: '' }; }
     if (row) { row.vehicleClass = cls; row.houseId = houseId ?? row.houseId; row.updatedBy = user.id; return this.tagRepo.save(row); }
@@ -194,6 +213,7 @@ export class BusinessService {
   async listRules(query: BusinessRuleQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     await this.ensureDefaultRules(tenantId, user.id);
+    await this.upgradeParkingRules(tenantId);
     const scope = scopeCommunityIds(access);
     if (scope && !scope.length) return [];
     const baseWhere = {
@@ -259,6 +279,8 @@ export class BusinessService {
     );
     await this.assertRuleTarget(dto, communityId, tenantId);
     await this.assertRuleUnique(dto, communityId, tenantId, rule.id);
+    const oldGroup = ((rule.config ?? {}) as ParkingRuleConfig).vehicleClass || '';
+    const newGroup = ((dto.config ?? {}) as ParkingRuleConfig).vehicleClass || '';
     Object.assign(rule, {
       serviceType: dto.serviceType,
       name: dto.name,
@@ -269,27 +291,72 @@ export class BusinessService {
       enabled: dto.enabled ?? true,
       updatedBy: user.id,
     });
-    return this.ruleRepo.save(rule);
+    const saved = await this.ruleRepo.save(rule);
+    // 分组改名：车牌跟着改（同名分组在别的小区还在用时不动，免得把那边的车也改走）
+    if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY && oldGroup && newGroup && oldGroup !== newGroup) {
+      const still = (await this.ruleRepo.find({ where: { tenantId, serviceType: BusinessServiceType.PARKING_MONTHLY } }))
+        .some((r) => ((r.config ?? {}) as ParkingRuleConfig).vehicleClass === oldGroup);
+      if (!still) {
+        await this.tagRepo.update({ tenantId, vehicleClass: oldGroup }, { vehicleClass: newGroup, updatedBy: user.id });
+        await this.intakes.renameGroup(tenantId, oldGroup, newGroup);
+      }
+    }
+    return saved;
   }
 
-  /** 同一小区、同一停车场、同一车辆类别只能有一条启用的收费标准，否则收银台不知道用哪条 */
+  /**
+   * 同一小区里，同名分组的适用车库不能重叠（否则收银台不知道用哪条价格表）；
+   * 默认分组同理，一个车库只能有一个默认分组。
+   */
   private async assertRuleUnique(dto: UpsertBusinessRuleDto, communityId: number | null, tenantId: number, selfId: number | null) {
     if (dto.serviceType !== BusinessServiceType.PARKING_MONTHLY || dto.enabled === false) return;
     const cfg = (dto.config ?? {}) as ParkingRuleConfig;
-    const same = await this.ruleRepo.find({ where: { tenantId, serviceType: BusinessServiceType.PARKING_MONTHLY, enabled: true, communityId: communityId ?? IsNull() } });
-    const clash = same.find((r) => r.id !== selfId && ((r.config ?? {}) as ParkingRuleConfig).parkingTarget === cfg.parkingTarget
-      && (((r.config ?? {}) as ParkingRuleConfig).vehicleClass || '') === (cfg.vehicleClass || ''));
-    if (clash) throw new BadRequestException(`这个停车场已经有「${cfg.vehicleClass || '不分类'}」的收费标准（${clash.name}），请直接修改那条或先停用`);
+    const same = (await this.ruleRepo.find({ where: { tenantId, serviceType: BusinessServiceType.PARKING_MONTHLY, enabled: true, communityId: communityId ?? IsNull() } }))
+      .filter((r) => r.id !== selfId && targetsOverlap(((r.config ?? {}) as ParkingRuleConfig).parkingTargets, cfg.parkingTargets));
+    const clash = same.find((r) => (((r.config ?? {}) as ParkingRuleConfig).vehicleClass || '') === (cfg.vehicleClass || ''));
+    if (clash) throw new BadRequestException(`本小区已经有适用车库重叠的分组「${cfg.vehicleClass}」，请直接修改它或先停用`);
+    const dflt = cfg.isDefault ? same.find((r) => ((r.config ?? {}) as ParkingRuleConfig).isDefault) : null;
+    if (dflt) throw new BadRequestException(`本小区这些车库已经有默认分组「${((dflt.config ?? {}) as ParkingRuleConfig).vehicleClass}」，一个车库只能有一个默认分组`);
+  }
+
+  /** 旧规则（单价 + 套餐）一次性升级为缴费规则分组价格表，金额不变；幂等 */
+  private async upgradeParkingRules(tenantId: number) {
+    const rows = await this.ruleRepo.find({ where: { tenantId, serviceType: BusinessServiceType.PARKING_MONTHLY } });
+    const changed = rows.flatMap((r) => {
+      const next = upgradeToTable((r.config ?? {}) as ParkingRuleConfig, r.unitPriceCents);
+      if (!next) return [];
+      r.config = next as Record<string, unknown>;
+      return [r];
+    });
+    if (changed.length) await this.ruleRepo.save(changed);
+  }
+
+  /** 删除缴费规则分组：收过款的分组只能停用（流水要能追溯当时的价格表）；分组里的车牌一并移出 */
+  async deleteRule(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const rule = await this.ruleRepo.findOne({ where: { id, tenantId } });
+    if (!rule) throw new NotFoundException('分组不存在');
+    await this.assertRuleCommunity(rule.communityId, tenantId, access);
+    const used = await this.txnRepo.count({ where: { tenantId, ruleId: id } });
+    if (used) throw new BadRequestException(`这个分组已经收过 ${used} 笔款，不能删除，可以停用`);
+    const cls = ((rule.config ?? {}) as ParkingRuleConfig).vehicleClass;
+    await this.ruleRepo.delete({ id, tenantId });
+    const others = cls ? (await this.ruleRepo.find({ where: { tenantId, serviceType: BusinessServiceType.PARKING_MONTHLY } })).some((r) => ((r.config ?? {}) as ParkingRuleConfig).vehicleClass === cls) : true;
+    if (cls && !others) await this.tagRepo.delete({ tenantId, vehicleClass: cls });
+    return { ok: true };
   }
 
   /** 停车月租规则绑定的停车目标须存在、且适用于规则所在小区（config.parkingTarget） */
   private async assertRuleTarget(dto: UpsertBusinessRuleDto, communityId: number | null, tenantId: number) {
-    const targetKey = (dto.config ?? {}).parkingTarget;
-    if (targetKey === undefined || targetKey === null || targetKey === '') return;
+    const cfg = (dto.config ?? {}) as ParkingRuleConfig;
+    const keys = [...new Set([...(cfg.parkingTargets ?? []), ...(cfg.parkingTarget ? [cfg.parkingTarget] : [])])];
+    if (!keys.length) return;
     if (dto.serviceType !== BusinessServiceType.PARKING_MONTHLY) throw new BadRequestException('只有停车月租规则可以绑定停车目标');
     const community = communityId ? await this.communityRepo.findOne({ where: { id: communityId, tenantId } }) : null;
-    const error = validateRuleTarget({ targetKey, communityName: community?.name ?? null });
-    if (error) throw new BadRequestException(error);
+    for (const targetKey of keys) {
+      const error = validateRuleTarget({ targetKey, communityName: community?.name ?? null });
+      if (error) throw new BadRequestException(error);
+    }
   }
 
   /** 停车目标目录（前端配置收费标准、收银台选择目标用），附带每个目标在各小区的规则 */
@@ -449,13 +516,13 @@ export class BusinessService {
       dto.plateNo = intake.plate || undefined;
       dto.currentEndDate = undefined;
     }
-    // 车辆类别要和收费标准对上：业主车不能按租客车价收，反之亦然
+    // 车牌所在的缴费规则分组要和所用价格表对上：业主车不能按租客车价收，反之亦然
     if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
       const ruleClass = ((rule.config ?? {}) as ParkingRuleConfig).vehicleClass || '';
       const carClass = intake ? intake.row.vehicleClass
         : dto.plateNo ? (await this.tagRepo.findOne({ where: { tenantId, plate: normPlate(dto.plateNo) } }))?.vehicleClass || '' : '';
       if (ruleClass && carClass && ruleClass !== carClass) {
-        throw new BadRequestException(`这辆车标记为「${carClass}」，不能按「${ruleClass}」的收费标准收款；如分类有误请先改分类`);
+        throw new BadRequestException(`这辆车属于「${carClass}」分组，不能按「${ruleClass}」分组的价格收款；分组不对请先改分组`);
       }
     }
     const house = dto.houseId
@@ -603,7 +670,7 @@ export class BusinessService {
     const quantity = dto.months ?? this.monthsBetween(dto.startDate, dto.endDate);
     if (!quantity || quantity < 1) throw new BadRequestException('请选择缴费月数');
     let priced: { amountCents: number; breakdown: string };
-    try { priced = priceParking(quantity, rule.unitPriceCents, ((rule.config ?? {}) as ParkingRuleConfig).tiers ?? []); }
+    try { priced = priceRule(quantity, rule.unitPriceCents, (rule.config ?? {}) as ParkingRuleConfig); }
     catch (e) { throw new BadRequestException((e as Error).message); }
     const current = /^\d{4}-\d{2}-\d{2}/.test(dto.currentEndDate || '') ? dto.currentEndDate!.slice(0, 10) : null;
     // 续期：没到期的接着原到期日续，已过期的从今天起；结束日 = 开始 + N 月 − 1 天
@@ -755,15 +822,25 @@ export class BusinessService {
       throw new BadRequestException('停车月租必须按月计费');
     }
     if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
-      // 自建的车辆类别和套餐档：规范化后再存，计价只认这一份
+      // 缴费规则分组：分组名 + 价格表（每个可选月数一个金额）+ 适用车库 + 是否默认；规范化后再存，计价只认这一份
       const cfg = { ...(dto.config ?? {}) } as ParkingRuleConfig & Record<string, unknown>;
       try {
-        cfg.vehicleClass = normalizeVehicleClass(cfg.vehicleClass);
+        cfg.vehicleClass = normalizeVehicleClass(cfg.vehicleClass) || DEFAULT_GROUP;
         cfg.tiers = normalizeTiers(cfg.tiers);
       } catch (e) { throw new BadRequestException((e as Error).message); }
-      if (!cfg.vehicleClass) delete cfg.vehicleClass;
-      if (!cfg.tiers.length) delete cfg.tiers;
+      // 旧后台只传单价：按单价生成 1/2/3/6/12 个月的价格表，兼容老入口
+      if (!cfg.tiers.length && dto.unitPriceCents > 0) cfg.tiers = STANDARD_MONTHS.map((m) => ({ months: m, amountCents: dto.unitPriceCents * m }));
+      if (!cfg.tiers.length) throw new BadRequestException('价格表至少要有一个月数和金额');
+      cfg.priceMode = 'table';
+      cfg.parkingTargets = [...new Set((Array.isArray(cfg.parkingTargets) ? cfg.parkingTargets : cfg.parkingTarget ? [cfg.parkingTarget] : []).map(String).filter(Boolean))];
+      // 执行层兜底只认单个 parkingTarget：只绑一个车库时才填
+      if (cfg.parkingTargets.length === 1) cfg.parkingTarget = cfg.parkingTargets[0]; else delete cfg.parkingTarget;
+      cfg.isDefault = !!cfg.isDefault;
       dto.config = cfg;
+      dto.name = (dto.name || '').trim() || cfg.vehicleClass;
+      // 单价字段保留给旧界面显示：1 个月的价格，没有就按最短档折算
+      const one = cfg.tiers.find((t) => t.months === 1) ?? cfg.tiers[0];
+      dto.unitPriceCents = Math.round(one.amountCents / one.months);
     }
     if (
       dto.serviceType === BusinessServiceType.ACCESS_CARD &&

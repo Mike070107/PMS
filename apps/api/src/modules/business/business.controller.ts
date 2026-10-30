@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -55,6 +56,12 @@ export class BusinessController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.businessService.createRule(dto, user, access);
+  }
+
+  @Delete('rules/:id')
+  @RequirePermission('business', 'edit')
+  deleteRule(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.businessService.deleteRule(id, user, access);
   }
 
   @Patch('rules/:id')
@@ -158,6 +165,12 @@ export class BusinessController {
   @RequirePermission('business', 'view')
   plateTags(@Query('plates') plates: string, @CurrentUser() user: AuthUser) {
     return this.businessService.plateTags(String(plates || '').split(','), user);
+  }
+
+  @Get('plate-tags/list')
+  @RequirePermission('business', 'view')
+  listPlateTags(@Query('group') group: string, @Query('q') q: string, @CurrentUser() user: AuthUser) {
+    return this.businessService.listPlateTags({ group, q }, user);
   }
 
   @Post('plate-tags')

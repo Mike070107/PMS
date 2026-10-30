@@ -108,12 +108,17 @@ export class VehicleIntakeService {
   }
 
   /** 付费车改「按哪类收费」（收款前） */
+  /** 缴费规则分组改名时，登记单上记的分组名一起改 */
+  async renameGroup(tenantId: number, from: string, to: string) {
+    await this.repo.update({ tenantId, vehicleClass: from }, { vehicleClass: to });
+  }
+
   async setClass(id: number, vehicleClass: string, user: AuthUser, access?: ResolvedAccess) {
     const row = await this.load(id, user, access);
-    if (row.kind !== 'paid' || row.transactionId || row.status === 'void') throw new BadRequestException('已收款或已作废，不能再改车辆类别');
+    if (row.kind !== 'paid' || row.transactionId || row.status === 'void') throw new BadRequestException('已收款或已作废，不能再改缴费规则分组');
     const cls = this.cls(vehicleClass);
     if (cls === row.vehicleClass) return this.view(row);
-    row.log = [...row.log, await this.entry(user, `车辆类别改为「${cls || '不分类'}」`, row.vehicleClass ? `原为「${row.vehicleClass}」` : undefined)];
+    row.log = [...row.log, await this.entry(user, `缴费规则分组改为「${cls || '默认分组'}」`, row.vehicleClass ? `原为「${row.vehicleClass}」` : undefined)];
     row.vehicleClass = cls;
     row.updatedBy = user.id;
     await this.repo.save(row);
