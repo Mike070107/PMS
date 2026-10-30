@@ -1,0 +1,163 @@
+<view class="container">
+  <view wx:if="{{loading}}" class="meter-read-loading">正在读取仪表档案…</view>
+
+  <block wx:elif="{{meter}}">
+    <view class="card meter-head-card">
+      <view class="meter-head-card__top">
+        <view class="meter-type meter-type--{{meter.meterType}}">{{meter.meterTypeLabel}}</view>
+        <view class="meter-head-card__no">{{meter.meterNo}}</view>
+        <view wx:if="{{meter.status !== 'active'}}" class="meter-head-card__off">停用</view>
+      </view>
+      <view class="meter-head-card__name">{{meter.name || '未命名仪表'}}</view>
+      <view class="meter-head-card__addr">{{meter.communityName}}{{meter.installAddress ? ' · ' + meter.installAddress : ''}}</view>
+      <view class="meter-head-card__last">
+        上次读数 <text>{{meter.lastReadingValueText || '—'}} {{meter.unit}}</text>
+        <text class="meter-head-card__time">{{lastReadingText}}</text>
+      </view>
+      <view class="meter-head-card__digits">
+        读数位数：{{meter.integerDigits}} 位整数{{meter.decimalDigits ? ' + ' + meter.decimalDigits + ' 位小数' : '，无小数'}}
+        <text wx:if="{{meter.unitPriceCents > 0}}"> · 单价 ¥{{meter.unitPriceYuan}}/{{meter.unit}}</text>
+      </view>
+    </view>
+
+    <!-- 拍照 -->
+    <block wx:if="{{mode === 'camera'}}">
+      <view class="meter-camera-wrap">
+        <camera
+          wx:if="{{!cameraError}}"
+          class="meter-camera"
+          device-position="back"
+          flash="{{flash}}"
+          binderror="onCameraError"
+        >
+          <cover-view class="meter-camera-guide">
+            <cover-view class="meter-camera-frame"></cover-view>
+            <cover-view class="meter-camera-tip">把读数数字放进取景框，避开反光</cover-view>
+          </cover-view>
+        </camera>
+        <view wx:else class="meter-camera-error">
+          <view class="meter-camera-error__title">相机打不开</view>
+          <view class="meter-camera-error__desc">{{cameraError}}</view>
+          <button class="btn btn--outline" bindtap="chooseFromAlbum">从相册选照片</button>
+        </view>
+      </view>
+
+      <view class="meter-shutter-row">
+        <button class="meter-shutter-side" bindtap="toggleFlash">{{flash === 'on' ? '关闪光' : '开闪光'}}</button>
+        <view class="meter-shutter" bindtap="takePhoto">
+          <view class="meter-shutter__inner"></view>
+        </view>
+        <button class="meter-shutter-side" bindtap="chooseFromAlbum">相册</button>
+      </view>
+      <view class="meter-camera-hint">拍照后会自动上传并识别读数；原图会永久保留，供后台复核。</view>
+    </block>
+
+    <!-- 核对与提交 -->
+    <block wx:elif="{{mode === 'preview'}}">
+      <view class="card meter-photo-card">
+        <image class="meter-photo" src="{{photoPath}}" mode="widthFix" bindtap="onPreviewPhoto" />
+        <view class="meter-photo-meta">
+          <text>{{readAtText || '拍照时间待记录'}}</text>
+          <text>{{locationText}}</text>
+        </view>
+        <view class="meter-photo-tip">点图片可放大；请核对表号、整数位和小数点。</view>
+      </view>
+
+      <view class="card meter-ocr-card {{ocr && ocr.ok ? 'is-ok' : 'is-warn'}}">
+        <view class="meter-ocr-head">
+          <view class="meter-ocr-title">识别结果</view>
+          <view wx:if="{{ocr}}" class="meter-conf {{ocr.confidence >= 75 ? 'is-ok' : 'is-warn'}}">{{ocr.confidence}}%</view>
+        </view>
+        <view wx:if="{{recognizing}}" class="meter-ocr-hint">正在识别，约 2~5 秒…</view>
+        <view wx:elif="{{ocr && ocr.ok}}" class="meter-ocr-hint">已回填到下面输入框，请对照原图核对每个数字</view>
+        <view wx:elif="{{ocr}}" class="meter-ocr-hint">没有自动读出数字，请对照原图手工输入</view>
+        <view wx:if="{{ocr && ocr.meterNoMatched === false}}" class="meter-ocr-warn">
+          识别到表号 {{ocr.meterNo}}，与档案 {{meter.meterNo}} 不一致，请重点核对
+        </view>
+        <view wx:if="{{error}}" class="meter-ocr-error">{{error}}</view>
+        <view class="meter-ocr-actions">
+          <button wx:if="{{ocr && !ocr.ok}}" class="mini-btn" bindtap="onRetryRecognize">再识别一次</button>
+          <button wx:if="{{ocr && ocr.texts}}" class="mini-btn" bindtap="toggleOcrText">{{showOcrText ? '收起原文' : '查看识别原文'}}</button>
+        </view>
+        <scroll-view wx:if="{{showOcrText}}" scroll-y class="meter-ocr-text">{{ocr.texts}}</scroll-view>
+      </view>
+
+      <view class="card meter-input-card">
+        <view class="meter-input-label">
+          本次读数
+          <text class="meter-input-sub">（{{meter.integerDigits}} 位整数{{meter.decimalDigits ? ' + ' + meter.decimalDigits + ' 位小数' : ''}}）</text>
+        </view>
+        <view class="meter-input-row">
+          <input
+            class="meter-value-input"
+            type="digit"
+            value="{{valueText}}"
+            bindinput="onValueInput"
+            placeholder="请输入读数"
+            confirm-type="done"
+          />
+          <text class="meter-input-unit">{{meter.unit}}</text>
+        </view>
+        <view class="meter-preview">
+          <view class="meter-preview__row">
+            <text>上次读数</text>
+            <text class="meter-preview__value">{{meter.lastReadingValueText || '无'}} {{meter.unit}}</text>
+          </view>
+          <view wx:if="{{usageText}}" class="meter-preview__row">
+            <text>预计用量</text>
+            <text class="meter-preview__value">{{usageText}}</text>
+          </view>
+          <view wx:if="{{amountText}}" class="meter-preview__row">
+            <text>预计金额</text>
+            <text class="meter-preview__value is-money">{{amountText}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="card">
+        <view class="meter-input-label">备注（选填）</view>
+        <textarea
+          class="meter-note"
+          value="{{note}}"
+          bindinput="onNote"
+          placeholder="如表盘脏、换表、住户不在等情况"
+          maxlength="500"
+          auto-height
+        />
+      </view>
+
+      <view wx:if="{{!canSubmit}}" class="meter-readonly">你的角色只有查看权限，不能提交读数。</view>
+      <button class="btn btn--primary meter-submit" disabled="{{submitting || !canSubmit}}" bindtap="submit">
+        {{submitting ? '提交中…' : '确认提交'}}
+      </button>
+      <button class="btn btn--ghost meter-retake" bindtap="onRetake">重拍</button>
+    </block>
+
+    <!-- 成功 -->
+    <block wx:else>
+      <view class="card meter-done">
+        <view class="meter-done__icon"></view>
+        <view class="meter-done__title">抄表已提交</view>
+        <view class="meter-done__no">{{meter.meterNo}}</view>
+        <view class="meter-done__value">{{result.reading.readingValueText}} <text>{{meter.unit}}</text></view>
+        <view class="meter-done__rows">
+          <view class="meter-done__row"><text>用量</text><text>{{result.usageLabel}}</text></view>
+          <view wx:if="{{result.charge}}" class="meter-done__row">
+            <text>本次应收</text><text class="is-money">¥{{resultChargeYuan}}</text>
+          </view>
+          <view wx:else class="meter-done__row"><text>账单</text><text>本次未生成账单</text></view>
+          <view class="meter-done__row"><text>拍照时间</text><text>{{readAtText}}</text></view>
+          <view class="meter-done__row"><text>抄表人</text><text>{{result.reading.operatorName || '本人'}}</text></view>
+        </view>
+        <view class="meter-done__tip">原图与识别记录已保存，后台可在「抄表管理」复核。</view>
+      </view>
+      <button class="btn btn--primary" bindtap="onContinue">继续抄下一块</button>
+      <button class="btn btn--ghost" bindtap="onOpenDetail">查看这块表的历史</button>
+    </block>
+  </block>
+
+  <view wx:else class="empty-state">
+    <view class="empty-state__title">没有读到仪表</view>
+    <view class="empty-state__desc">{{error || '请返回重试或联系管理员。'}}</view>
+  </view>
+</view>

@@ -1,0 +1,80 @@
+.meter-read-loading { padding: 80rpx 0; text-align: center; color: #718499; }
+
+.meter-head-card { padding: 26rpx 24rpx; }
+.meter-head-card__top { display: flex; align-items: center; gap: 12rpx; flex-wrap: wrap; }
+.meter-type { padding: 2rpx 14rpx; border-radius: 8rpx; font-size: 24rpx; line-height: 40rpx; background: #edf4fa; color: #31558a; }
+.meter-type--water { background: #e8f2fe; color: #1d63b8; }
+.meter-type--electricity { background: #fff7e6; color: #ad6800; }
+.meter-type--gas { background: #fff1f0; color: #c53d45; }
+.meter-type--heat { background: #f4efff; color: #6b4fa8; }
+.meter-head-card__no { font-family: Consolas, 'SF Mono', monospace; font-size: 36rpx; font-weight: 700; color: #1f334a; }
+.meter-head-card__off { margin-left: auto; font-size: 24rpx; color: #8194a8; }
+.meter-head-card__name { margin-top: 12rpx; font-size: 32rpx; font-weight: 600; color: #1f334a; }
+.meter-head-card__addr { margin-top: 6rpx; font-size: 26rpx; color: #536a80; line-height: 1.5; }
+.meter-head-card__last { margin-top: 14rpx; padding: 12rpx 14rpx; background: #f7fafd; border-radius: 12rpx; font-size: 26rpx; color: #536a80; }
+.meter-head-card__last text { font-family: Consolas, 'SF Mono', monospace; font-size: 30rpx; font-weight: 600; color: #1f334a; }
+.meter-head-card__time { float: right; font-family: inherit !important; font-size: 23rpx !important; font-weight: 400 !important; color: #8194a8 !important; }
+.meter-head-card__digits { margin-top: 10rpx; font-size: 23rpx; color: #8194a8; }
+
+.meter-camera-wrap { position: relative; width: 100%; height: 760rpx; border-radius: 24rpx; overflow: hidden; background: #0e1722; margin-bottom: 24rpx; }
+.meter-camera { width: 100%; height: 760rpx; }
+.meter-camera-guide { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.meter-camera-frame { width: 78%; height: 210rpx; border: 5rpx solid rgba(255, 255, 255, 0.9); border-radius: 16rpx; box-shadow: 0 0 0 2000rpx rgba(0, 0, 0, 0.35); }
+.meter-camera-tip { margin-top: 24rpx; padding: 8rpx 20rpx; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 25rpx; border-radius: 24rpx; }
+.meter-camera-error { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16rpx; padding: 40rpx; color: #fff; text-align: center; }
+.meter-camera-error__title { font-size: 34rpx; font-weight: 600; }
+.meter-camera-error__desc { font-size: 25rpx; color: #c9d6e3; line-height: 1.6; }
+.meter-camera-error .btn { margin-top: 20rpx; }
+
+.meter-shutter-row { display: flex; align-items: center; justify-content: space-between; padding: 0 40rpx 16rpx; }
+.meter-shutter { width: 132rpx; height: 132rpx; border-radius: 50%; border: 8rpx solid #fff; box-shadow: 0 0 0 3rpx #c5d2df, 0 8rpx 24rpx rgba(31, 62, 96, 0.18); display: flex; align-items: center; justify-content: center; background: #fff; }
+.meter-shutter__inner { width: 96rpx; height: 96rpx; border-radius: 50%; background: #31558a; }
+.meter-shutter-side { width: 150rpx !important; height: 76rpx !important; line-height: 76rpx; padding: 0; font-size: 25rpx; color: #31558a; background: #edf4fa; border-radius: 38rpx; }
+.meter-camera-hint { margin: 0 24rpx 28rpx; text-align: center; font-size: 24rpx; color: #8194a8; line-height: 1.6; }
+
+.meter-photo-card { padding: 0; overflow: hidden; }
+.meter-photo { width: 100%; display: block; background: #0e1722; }
+.meter-photo-meta { display: flex; justify-content: space-between; gap: 12rpx; padding: 14rpx 22rpx; font-size: 23rpx; color: #718499; background: #f7fafd; }
+.meter-photo-tip { padding: 0 22rpx 16rpx; font-size: 23rpx; color: #8194a8; background: #f7fafd; }
+
+.meter-ocr-card { padding: 24rpx; border-left: 6rpx solid #2f7a54; }
+.meter-ocr-card.is-warn { border-left-color: #ad6800; }
+.meter-ocr-head { display: flex; align-items: center; justify-content: space-between; }
+.meter-ocr-title { font-size: 29rpx; font-weight: 600; color: #1f334a; }
+.meter-conf { padding: 2rpx 14rpx; border-radius: 8rpx; font-size: 24rpx; background: #edf8f1; color: #2f7a54; }
+.meter-conf.is-warn { background: #fff7e6; color: #ad6800; }
+.meter-ocr-hint { margin-top: 10rpx; font-size: 25rpx; color: #536a80; line-height: 1.5; }
+.meter-ocr-warn { margin-top: 10rpx; padding: 10rpx 14rpx; background: #fff1f0; border-radius: 8rpx; font-size: 24rpx; color: #a8262e; line-height: 1.5; }
+.meter-ocr-error { margin-top: 10rpx; font-size: 24rpx; color: #c53d45; line-height: 1.5; }
+.meter-ocr-actions { display: flex; gap: 16rpx; margin-top: 12rpx; flex-wrap: wrap; }
+.meter-ocr-text { margin-top: 12rpx; max-height: 240rpx; padding: 14rpx; background: #f5f7fa; border-radius: 10rpx; font-size: 22rpx; color: #536a80; line-height: 1.6; white-space: pre-wrap; }
+
+.meter-input-card { padding: 26rpx 24rpx; }
+.meter-input-label { font-size: 28rpx; font-weight: 600; color: #1f334a; }
+.meter-input-sub { font-size: 23rpx; font-weight: 400; color: #8194a8; }
+.meter-input-row { display: flex; align-items: baseline; gap: 12rpx; margin-top: 12rpx; border-bottom: 2rpx solid #dbe5ef; padding-bottom: 10rpx; }
+.meter-value-input { flex: 1; min-width: 0; font-family: Consolas, 'SF Mono', monospace; font-size: 68rpx; font-weight: 700; color: #1f334a; letter-spacing: 2rpx; height: 96rpx; line-height: 96rpx; }
+.meter-input-unit { font-size: 28rpx; color: #718499; }
+.meter-preview { margin-top: 16rpx; padding: 14rpx 16rpx; background: #f7fafd; border-radius: 12rpx; }
+.meter-preview__row { display: flex; justify-content: space-between; gap: 20rpx; padding: 4rpx 0; font-size: 26rpx; color: #536a80; }
+.meter-preview__value { font-family: Consolas, 'SF Mono', monospace; font-weight: 600; color: #1f334a; }
+.meter-preview__value.is-money { color: #c53d45; }
+
+.meter-note { width: 100%; min-height: 110rpx; margin-top: 10rpx; padding: 16rpx; box-sizing: border-box; background: #f7fafd; border-radius: 12rpx; font-size: 27rpx; color: #1f334a; line-height: 1.6; }
+
+.meter-readonly { margin: 0 0 16rpx; padding: 14rpx 18rpx; background: #fff7e6; color: #ad6800; border-radius: 12rpx; font-size: 25rpx; }
+.meter-submit { margin-top: 8rpx; }
+.meter-retake { margin-top: 16rpx; }
+
+.meter-done { padding: 40rpx 28rpx 30rpx; text-align: center; }
+.meter-done__icon { width: 96rpx; height: 96rpx; margin: 0 auto 18rpx; border-radius: 50%; background: #edf8f1; position: relative; }
+.meter-done__icon::after { content: ''; position: absolute; left: 28rpx; top: 38rpx; width: 38rpx; height: 20rpx; border-left: 7rpx solid #2f7a54; border-bottom: 7rpx solid #2f7a54; transform: rotate(-45deg); }
+.meter-done__title { font-size: 36rpx; font-weight: 600; color: #1f334a; }
+.meter-done__no { margin-top: 8rpx; font-family: Consolas, 'SF Mono', monospace; font-size: 26rpx; color: #718499; }
+.meter-done__value { margin: 18rpx 0 22rpx; font-family: Consolas, 'SF Mono', monospace; font-size: 72rpx; font-weight: 700; color: #1f334a; }
+.meter-done__value text { font-size: 28rpx; font-weight: 400; color: #718499; margin-left: 6rpx; }
+.meter-done__rows { text-align: left; background: #f7fafd; border-radius: 14rpx; padding: 14rpx 18rpx; }
+.meter-done__row { display: flex; justify-content: space-between; gap: 20rpx; padding: 7rpx 0; font-size: 26rpx; color: #536a80; }
+.meter-done__row text:last-child { color: #1f334a; font-weight: 500; }
+.meter-done__row .is-money { color: #c53d45; font-family: Consolas, 'SF Mono', monospace; font-weight: 700; }
+.meter-done__tip { margin-top: 18rpx; font-size: 23rpx; color: #8194a8; line-height: 1.6; }

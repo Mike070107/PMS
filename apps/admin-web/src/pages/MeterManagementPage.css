@@ -1,0 +1,62 @@
+.meter-page { display: flex; flex-direction: column; gap: 16px; }
+.meter-toolbar { display: flex; justify-content: flex-end; }
+.meter-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.meter-head h2 { margin: 0 0 4px; font-size: 22px; line-height: 1.3; color: #1f334a; }
+.meter-head p { margin: 0; color: #6b7c90; font-size: 13px; max-width: 760px; line-height: 1.6; }
+.meter-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.meter-stats .ant-card { border-radius: 10px; border-color: #e5eaf1; }
+.meter-stats .ant-statistic-title { font-size: 13px; color: #6b7c90; }
+.meter-stats .ant-statistic-content { font-size: 24px; color: #1f334a; }
+.meter-body { border-radius: 10px; border-color: #e5eaf1; }
+.meter-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.meter-filters--between { justify-content: space-between; }
+.meter-filters--between > .meter-filters { margin-bottom: 0; }
+.meter-charge-totals { display: flex; gap: 24px; padding: 10px 14px; margin-bottom: 12px; background: #f7f9fc; border: 1px solid #edf1f6; border-radius: 8px; font-size: 13px; color: #52667c; }
+.meter-charge-totals b { font-size: 18px; margin-left: 4px; color: #1f334a; font-variant-numeric: tabular-nums; }
+.meter-charge-totals b.is-ok { color: #389e0d; }
+.meter-charge-totals b.is-warn { color: #cf1322; }
+.meter-no-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.meter-link { border: 0; background: transparent; padding: 0; color: #1554ad; font-family: Consolas, 'SF Mono', monospace; font-weight: 600; font-size: 14px; cursor: pointer; }
+.meter-link:hover { text-decoration: underline; }
+.meter-sub { font-size: 12px !important; line-height: 1.5; display: inline-block; }
+.meter-reading { font-family: Consolas, 'SF Mono', monospace; font-size: 16px; font-weight: 700; color: #1f334a; letter-spacing: .3px; }
+.meter-unit { margin-left: 4px; font-size: 12px; color: #8194a8; }
+.meter-money { font-family: Consolas, 'SF Mono', monospace; font-weight: 600; color: #cf1322; }
+.meter-inline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.meter-anomalies { margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; }
+.meter-anomalies .ant-tag { margin: 0; font-size: 11px; line-height: 18px; }
+.meter-form-section { margin: 6px 0 12px; padding-left: 10px; border-left: 3px solid #1677ff; font-size: 14px; font-weight: 600; color: #1f334a; }
+.meter-form .ant-form-item { margin-bottom: 14px; }
+.meter-review { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.meter-review-photo { position: sticky; top: 0; }
+.meter-review-photo .ant-image { width: 100%; }
+.meter-review-hint { margin-top: 8px; font-size: 12px; color: #8194a8; line-height: 1.6; }
+.meter-review-no-photo { padding: 60px 16px; text-align: center; color: #8194a8; background: #f7f9fc; border: 1px dashed #d9e2ec; border-radius: 8px; }
+.meter-review-side { min-width: 0; }
+.meter-review-edit { margin-top: 16px; padding: 14px; border: 1px solid #e5eaf1; border-radius: 8px; background: #fbfcfe; }
+.meter-review-label { margin: 10px 0 6px; font-size: 13px; color: #52667c; }
+.meter-review-label:first-child { margin-top: 0; }
+.meter-review-actions { margin-top: 12px; }
+.meter-ocr-text { margin-top: 12px; font-size: 12px; color: #6b7c90; }
+.meter-ocr-text summary { cursor: pointer; user-select: none; }
+.meter-ocr-text pre { margin: 8px 0 0; padding: 10px; max-height: 160px; overflow: auto; background: #f5f7fa; border-radius: 6px; white-space: pre-wrap; word-break: break-all; }
+.meter-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.meter-detail-no { font-family: Consolas, 'SF Mono', monospace; font-size: 20px; font-weight: 700; margin: 0 8px; }
+.meter-detail-desc { margin: 14px 0; }
+.meter-detail-stats { display: flex; gap: 20px; flex-wrap: wrap; padding: 10px 14px; background: #f7f9fc; border-radius: 8px; font-size: 13px; color: #52667c; margin-bottom: 16px; }
+.meter-detail-stats b { font-size: 16px; color: #1f334a; }
+.meter-detail-stats b.is-warn { color: #cf1322; }
+.meter-detail-loading { padding: 40px; text-align: center; color: #8194a8; }
+.meter-pay .ant-alert { margin-bottom: 16px; }
+.meter-qr { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.meter-qr img { width: 240px; height: 240px; border: 1px solid #edf1f6; border-radius: 8px; }
+.meter-qr p { margin: 0; color: #6b7c90; font-size: 13px; line-height: 1.6; }
+.meter-qr .ant-typography { font-size: 12px; }
+@media (max-width: 1280px) {
+  .meter-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .meter-review { grid-template-columns: 1fr; }
+  .meter-review-photo { position: static; }
+}
+@media (max-width: 720px) {
+  .meter-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

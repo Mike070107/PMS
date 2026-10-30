@@ -65,6 +65,9 @@ export interface StaffSession {
   /** 公寓收费工作台：按房间收费、出小票 */
   canSeeCashier: boolean;
   canCharge: boolean;
+  /** 抄表：看仪表档案与历史 / 现场拍照提交读数 */
+  canSeeMeters: boolean;
+  canSubmitReading: boolean;
   /**
    * 只替住户报修的人（保安、居委会…）：既看不到工单池也看不到派单台。
    * 报修位置受「可代报的小区」限制，落地页也不该是工单池。
@@ -104,6 +107,8 @@ const emptySession = (): StaffSession => ({
   canUseMessages: false,
   canSeeCashier: false,
   canCharge: false,
+  canSeeMeters: false,
+  canSubmitReading: false,
   reporterOnly: false,
   hasPmsAppAccess: false,
 });
@@ -153,6 +158,8 @@ export function buildSession(me: MeResp | null): StaffSession {
     canUseMessages: can('app:messages', 'view'),
     canSeeCashier: can('app:apartment-cashier', 'view'),
     canCharge: can('app:apartment-cashier', 'edit'),
+    canSeeMeters: can('app:meters', 'view'),
+    canSubmitReading: can('app:meters', 'edit'),
     reporterOnly: !!pages && !canSeePool && !canSeeDispatch && !canSeeMyOrders,
     hasPmsAppAccess: !pages || hasPmsAppAccess(
       Object.fromEntries(STAFF_APP_PAGE_KEYS.map((key) => [key, !!pages[key]?.view])),

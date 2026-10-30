@@ -82,6 +82,16 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   },
   { key: 'business', label: '前台收费', group: '收费业务' },
   { key: 'fees', label: '物业费', group: '收费业务' },
+  {
+    key: 'meters',
+    label: '抄表管理',
+    group: '收费业务',
+    hint: '仪表档案、拍照抄表、识别结果复核、水电费应收与收款记账',
+    actions: [
+      { field: 'canEdit', label: '建档 / 抄表 / 收款', hint: '新增和修改仪表、补录与修正读数、登记收款' },
+      { field: 'canDelete', label: '作废记录', hint: '作废抄表记录和未收款账单；已收款账单不能直接删' },
+    ],
+  },
   { key: 'apartment-cashier', label: '公寓收费台', group: '收费业务', actions: [{ field: 'canEdit', label: '收费与红冲' }] },
   {
     key: 'family-cars',
@@ -257,6 +267,13 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
     editLabel: '收款 / 红冲',
     editHint: '不勾只能查房间和历史缴费，收不了钱、红冲不了',
   },
+  {
+    key: 'app:meters',
+    label: '抄表',
+    hint: '查看仪表档案、历史读数和欠费；按数据范围只看自己小区',
+    editLabel: '拍照抄表 / 提交',
+    editHint: '现场拍照识别读数、核对原图后提交；不勾只能看历史',
+  },
 ];
 
 /**
@@ -307,6 +324,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:stocktakes': 'e',
       'app:maintenance-sign': 'v',
       'app:messages': 'v',
+      'app:meters': 'e',
     },
   },
   {
@@ -323,6 +341,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',
+      'app:meters': 'e',
     },
     adminPages: {
       dashboard: 'v',
@@ -334,6 +353,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       stocktakes: 'e',
       properties: 'v',
       qr: 'v',
+      meters: 'e',
     },
   },
   {
@@ -351,6 +371,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:repair-create': 'v',
       'app:messages': 'v',
       'app:maintenance-inspect': 'v',
+      'app:meters': 'e',
     },
     adminPages: {
       dashboard: 'v',
@@ -361,6 +382,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'maintenance-inspect': 'v',
       business: 'e',
       fees: 'e',
+      meters: 'e',
       materials: 'e',
       inventory: 'e',
       stocktakes: 'e',

@@ -19,6 +19,7 @@ export const ADMIN_PAGE_KEYS = [
   'family-cars', // 亲情车管理（清册 / 登记 / 办公室审核）
   'family-cars-approve', // 亲情车经理审核，单独一格：登记的人不该能自己批准自己
   'fees', // 物业费（账单 / 收费标准 / 欠费）
+  'meters', // 抄表管理（仪表档案 / 抄表记录 / 水电费记账）
   'materials', // 材料 SKU 库
   'inventory', // 库存与采购
   'stocktakes', // 库存盘点（发起、报告、复核）
@@ -57,6 +58,7 @@ export const STAFF_APP_PAGE_KEYS = [
   'app:messages', // 消息中心
   'app:experience-notes', // 维修经验总结（查看/编辑；默认维修工无需额外授权）
   'app:apartment-cashier', // 公寓收费工作台（按房间收电费/房租/停车费，出小票）
+  'app:meters', // 抄表（拍照识别读数、提交记录、看历史）
   'app:family-car-approve', // 亲情车经理审批（看资料、通过后开通车库）
 ] as const;
 
@@ -96,6 +98,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:stocktakes': 'e',
       'app:maintenance-sign': 'v',
       'app:messages': 'v',
+      'app:meters': 'e',
     },
   },
   {
@@ -112,6 +115,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',
+      'app:meters': 'e',
     },
     adminPages: {
       dashboard: 'v',
@@ -123,6 +127,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       stocktakes: 'e',
       properties: 'v',
       qr: 'v',
+      meters: 'e',
     },
   },
   {
@@ -141,6 +146,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',
+      'app:meters': 'e',
     },
     adminPages: {
       dashboard: 'v',
@@ -151,6 +157,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'maintenance-inspect': 'v',
       business: 'e',
       fees: 'e',
+      meters: 'e',
       materials: 'e',
       inventory: 'e',
       stocktakes: 'e',

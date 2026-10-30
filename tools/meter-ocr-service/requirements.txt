@@ -1,0 +1,4 @@
+# 抄表 OCR 边车依赖。rapidocr 1.2.3 是当前 PyPI 最新稳定版，模型随包分发。
+rapidocr_onnxruntime==1.2.3
+opencv-python-headless>=4.8,<5
+numpy>=1.24,<3

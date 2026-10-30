@@ -1,0 +1,99 @@
+<view class="container">
+  <view class="screen-head">
+    <view class="screen-head__title">抄表</view>
+    <view class="screen-head__desc">选表后现场拍照，识别结果会回填到输入框；对着原图核对再提交。原图和时间都会留档。</view>
+  </view>
+
+  <block wx:if="{{!canView}}">
+    <view class="empty-state">
+      <view class="empty-state__title">没有抄表权限</view>
+      <view class="empty-state__desc">请联系管理员在「业务角色」里给这个角色勾上「抄表」。</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view wx:if="{{summary}}" class="card meter-summary">
+      <view class="meter-summary__item">
+        <view class="meter-summary__value">{{summary.readings.meters_read}}<text>/{{summary.meters.active}}</text></view>
+        <view class="meter-summary__label">本月已抄 / 启用表</view>
+      </view>
+      <view class="meter-summary__item">
+        <view class="meter-summary__value {{summary.meters.due ? 'is-warn' : ''}}">{{summary.meters.due}}</view>
+        <view class="meter-summary__label">本月未抄</view>
+      </view>
+      <view class="meter-summary__item">
+        <view class="meter-summary__value {{summary.charges.outstanding ? 'is-danger' : ''}}">¥{{summary.charges.outstandingYuan || '0.00'}}</view>
+        <view class="meter-summary__label">本月待收</view>
+      </view>
+    </view>
+
+    <button class="btn btn--primary meter-scan" bindtap="onScan">
+      <view class="meter-scan__icon"></view>
+      <text>扫码抄表</text>
+    </button>
+
+    <view class="meter-search">
+      <input
+        class="input"
+        placeholder="搜表号、地点、使用人或电话"
+        value="{{keyword}}"
+        confirm-type="search"
+        bindinput="onKeyword"
+        bindconfirm="onSearch"
+      />
+      <button class="btn btn--outline btn--sm" bindtap="onSearch">搜索</button>
+    </view>
+
+    <scroll-view class="chips" scroll-x enhanced show-scrollbar="{{false}}">
+      <view
+        wx:for="{{typeOptions}}"
+        wx:key="key"
+        class="chip {{type === item.key ? 'chip--on' : ''}}"
+        data-type="{{item.key}}"
+        bindtap="onType"
+      >{{item.label}}</view>
+      <view class="chip {{due ? 'chip--warn' : ''}}" bindtap="onToggleDue">本月未抄</view>
+    </scroll-view>
+
+    <view wx:if="{{error}}" class="card meter-error" bindtap="onRetry">
+      <view class="meter-error__title">读取失败</view>
+      <view class="meter-error__desc">{{error}}</view>
+      <view class="meter-error__retry">点这里重试</view>
+    </view>
+
+    <view wx:if="{{loading}}" class="meter-loading">加载仪表…</view>
+
+    <block wx:for="{{rows}}" wx:key="id">
+      <view class="card meter-card">
+        <view class="meter-card__head">
+          <view class="meter-type meter-type--{{item.meterType}}">{{item.meterTypeLabel}}</view>
+          <view class="meter-card__no">{{item.meterNo}}</view>
+          <view wx:if="{{item.unpaidCents > 0}}" class="meter-unpaid">待收 ¥{{item.unpaidYuan}}</view>
+          <view wx:if="{{item.status !== 'active'}}" class="meter-off">停用</view>
+        </view>
+        <view class="meter-card__name">{{item.name || '未命名仪表'}}</view>
+        <view class="meter-card__addr">{{item.communityName}}{{item.installAddress ? ' · ' + item.installAddress : ''}}</view>
+        <view class="meter-card__last">
+          <text class="meter-card__last-label">上次读数</text>
+          <text class="meter-card__last-value">{{item.lastReadingValueText || '—'}}</text>
+          <text class="meter-card__last-unit">{{item.unit}}</text>
+          <text class="meter-card__last-time">{{item.lastReadingText}}</text>
+        </view>
+        <view class="meter-card__owner" wx:if="{{item.ownerName || item.ownerPhone}}">
+          使用人：{{item.ownerName || '—'}}<text wx:if="{{item.ownerPhone}}"> · {{item.ownerPhone}}</text>
+        </view>
+        <view class="meter-card__actions">
+          <button class="btn btn--ghost btn--sm" data-id="{{item.id}}" bindtap="onDetail">档案与历史</button>
+          <button class="btn btn--primary btn--sm" data-id="{{item.id}}" bindtap="onRead">去抄表</button>
+        </view>
+      </view>
+    </block>
+
+    <view wx:if="{{!loading && !rows.length && !error}}" class="empty-state">
+      <view class="empty-state__title">没有找到仪表</view>
+      <view class="empty-state__desc">换个关键词或类型试试；新表需要管理员先在后台「抄表管理 → 仪表档案」建档。</view>
+    </view>
+
+    <view wx:if="{{rows.length}}" class="meter-count">{{hasMore ? '上拉加载更多 · 共 ' + total + ' 块表' : '共 ' + total + ' 块表'}}</view>
+  </block>
+</view>

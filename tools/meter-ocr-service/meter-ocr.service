@@ -1,0 +1,27 @@
+[Unit]
+Description=PMS meter OCR sidecar (RapidOCR)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pmsmeter
+Group=pmsmeter
+WorkingDirectory=/opt/meter-ocr
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/pms/meter-ocr.env
+ExecStart=/opt/meter-ocr/venv/bin/python /opt/meter-ocr/app.py
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+CapabilityBoundingSet=
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

@@ -52,6 +52,8 @@ Page({
     /** 公寓收费工作台：没有这一格权限的人，「更多」里连这块都不出现 */
     canSeeCashier: false,
     canCharge: false,
+    /** 抄表入口：有 app:meters 查看权限才出现在「更多应用」 */
+    canSeeMeters: false,
   },
 
   /** 显示当前跑的是哪个包：改完重新上传后，忘记「选为体验版本」一眼就能看出来 */
@@ -113,6 +115,7 @@ Page({
         experienceAccess,
         canSeeCashier: session.canSeeCashier,
         canCharge: session.canCharge,
+        canSeeMeters: session.canSeeMeters,
       });
       if (session.canAccept) this.refreshNotifyState();
     } catch {
@@ -137,6 +140,10 @@ Page({
 
   onOpenCashier() {
     wx.navigateTo({ url: '/pages/apartment-cashier/apartment-cashier' });
+  },
+
+  onOpenMeters() {
+    wx.navigateTo({ url: '/pages/meters/meters' });
   },
 
   onGoRepair() {

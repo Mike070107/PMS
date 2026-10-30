@@ -219,7 +219,7 @@ export function MaterialPhotosUpload({
             >
               ×
             </Button>
-            {index === 0 && (
+            {index === 0 && max > 1 && (
               <span
                 style={{
                   position: 'absolute', left: 2, bottom: 2, padding: '0 6px',

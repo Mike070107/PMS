@@ -1,0 +1,91 @@
+<view class="container">
+  <view wx:if="{{loading}}" class="meter-detail-loading">加载仪表档案…</view>
+
+  <block wx:elif="{{detail}}">
+    <view class="card meter-detail-head">
+      <view class="meter-detail-head__line">
+        <view class="meter-type meter-type--{{detail.meter.meterType}}">{{detail.meter.meterTypeLabel}}</view>
+        <view class="meter-detail-head__no">{{detail.meter.meterNo}}</view>
+        <view wx:if="{{detail.meter.status !== 'active'}}" class="meter-detail-head__off">停用</view>
+      </view>
+      <view class="meter-detail-head__name">{{detail.meter.name || '未命名仪表'}}</view>
+      <view class="meter-detail-head__addr">{{detail.meter.communityName}}{{detail.meter.installAddress ? ' · ' + detail.meter.installAddress : ''}}</view>
+      <view class="meter-detail-actions">
+        <button class="btn btn--ghost btn--sm" bindtap="onNavigate">导航到表位</button>
+        <button wx:if="{{detail.meter.ownerPhone}}" class="btn btn--ghost btn--sm" bindtap="onCall">打电话</button>
+        <button wx:if="{{canSubmit}}" class="btn btn--primary btn--sm" bindtap="onRead">去抄表</button>
+      </view>
+    </view>
+
+    <view class="card meter-detail-info">
+      <view class="meter-detail-info__row"><text>使用人</text><text>{{detail.meter.ownerName || '—'}}</text></view>
+      <view class="meter-detail-info__row"><text>电话</text><text>{{detail.meter.ownerPhone || '—'}}</text></view>
+      <view class="meter-detail-info__row"><text>单价</text><text>¥{{detail.meter.unitPriceYuan}} / {{detail.meter.unit}}</text></view>
+      <view class="meter-detail-info__row"><text>倍率</text><text>{{detail.meter.multiplier}}</text></view>
+      <view class="meter-detail-info__row"><text>读数位数</text><text>{{detail.meter.integerDigits}} 位整数 + {{detail.meter.decimalDigits}} 位小数</text></view>
+      <view class="meter-detail-info__row"><text>上次读数</text><text class="is-mono">{{detail.meter.lastReadingValueText || '—'}} {{detail.meter.unit}}</text></view>
+      <view class="meter-detail-info__row"><text>经纬度</text><text>{{detail.meter.latitude === null ? '未记录' : detail.meter.longitude + ', ' + detail.meter.latitude}}</text></view>
+      <view wx:if="{{detail.meter.remark}}" class="meter-detail-info__row"><text>备注</text><text>{{detail.meter.remark}}</text></view>
+    </view>
+
+    <view class="meter-detail-stats">
+      <view class="meter-detail-stat"><view class="meter-detail-stat__value">{{detail.stats.readingCount}}</view><view class="meter-detail-stat__label">累计抄表</view></view>
+      <view class="meter-detail-stat"><view class="meter-detail-stat__value">{{detail.stats.yearUsage}}</view><view class="meter-detail-stat__label">本年用量 {{detail.meter.unit}}</view></view>
+      <view class="meter-detail-stat"><view class="meter-detail-stat__value {{detail.stats.unpaidCents ? 'is-danger' : ''}}">¥{{detail.stats.unpaidYuan}}</view><view class="meter-detail-stat__label">待收</view></view>
+    </view>
+
+    <view class="card meter-history">
+      <view class="meter-section-title">抄表历史</view>
+      <view wx:if="{{!detail.readings.length}}" class="meter-section-empty">还没有抄表记录</view>
+      <view wx:for="{{detail.readings}}" wx:key="id" class="meter-history-row">
+        <image
+          wx:if="{{item.photoUrl}}"
+          class="meter-history-photo"
+          src="{{item.photoUrl}}"
+          mode="aspectFill"
+          data-url="{{item.photoUrl}}"
+          bindtap="onPreviewPhoto"
+        />
+        <view wx:else class="meter-history-photo meter-history-photo--none">无图</view>
+        <view class="meter-history-body">
+          <view class="meter-history-top">
+            <text class="meter-history-value">{{item.readingValueText}}</text>
+            <text class="meter-history-unit">{{item.unit}}</text>
+            <text wx:if="{{item.status === 'void'}}" class="meter-history-void">已作废</text>
+          </view>
+          <view class="meter-history-meta">{{item.readAtText}} · {{item.operatorName || '—'}}</view>
+          <view class="meter-history-meta">
+            用量 {{item.usageValue === null ? '首次' : item.usageValue + ' ' + item.unit}}
+            <text wx:if="{{item.chargeStatus}}"> · {{item.chargeStatus === 'paid' ? '已结清' : item.chargeStatus === 'partial' ? '部分收款' : '待收'}}</text>
+          </view>
+          <view wx:if="{{item.anomalyLabels.length}}" class="meter-history-tags">
+            <text wx:for="{{item.anomalyLabels}}" wx:for-item="label" wx:key="*this" class="meter-history-tag">{{label}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="card meter-history">
+      <view class="meter-section-title">账单</view>
+      <view wx:if="{{!detail.charges.length}}" class="meter-section-empty">还没有生成账单</view>
+      <view wx:for="{{detail.charges}}" wx:key="id" class="meter-charge-row">
+        <view class="meter-charge-main">
+          <view class="meter-charge-period">{{item.period}}</view>
+          <view class="meter-charge-meta">用量 {{item.usageValue}} {{item.unit}} · 单价 ¥{{item.unitPriceCents / 100}}</view>
+        </view>
+        <view class="meter-charge-side">
+          <view class="meter-charge-money">¥{{item.receivableYuan}}</view>
+          <view class="meter-charge-status {{item.status === 'paid' ? 'is-ok' : item.status === 'void' ? 'is-void' : 'is-warn'}}">
+            {{item.status === 'paid' ? '已结清' : item.status === 'partial' ? '部分收款' : item.status === 'void' ? '已作废' : '待收'}}
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:else class="empty-state">
+    <view class="empty-state__title">没有读到仪表</view>
+    <view class="empty-state__desc">{{error || '请返回重试'}}</view>
+    <button class="btn btn--outline" bindtap="onRetry">重试</button>
+  </view>
+</view>

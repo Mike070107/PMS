@@ -31,6 +31,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
 import { RepairExperiencesModule } from './modules/repair-experiences/repair-experiences.module';
 import { AccessCardIssuanceModule } from './modules/access-card-issuance/access-card-issuance.module';
 import { ExternalAccessModule } from './modules/external-access/external-access.module';
+import { MetersModule } from './modules/meters/meters.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { ExternalAccessModule } from './modules/external-access/external-access.
     RepairExperiencesModule,
     AccessCardIssuanceModule,
     ExternalAccessModule,
+    MetersModule,
     PropertiesModule,
     QrModule,
     OwnersModule,

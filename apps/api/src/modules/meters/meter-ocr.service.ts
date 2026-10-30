@@ -1,0 +1,261 @@
+import { BadGatewayException, BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
+import type { AuthUser } from '../../common/current-user.decorator';
+import { Meter } from '../../entities';
+import { LlmService } from '../ai/llm.service';
+import { ObjectStorageService } from '../upload/object-storage.service';
+import {
+  digitsToValue,
+  normalizeMeterNo,
+  normalizeOcrText,
+  parseMeterOcr,
+  type MeterOcrParsed,
+  type OcrBoxItem,
+} from './meter-ocr.util';
+
+export interface MeterOcrResponse extends MeterOcrParsed {
+  ok: boolean;
+  provider: 'sidecar' | 'llm' | 'none';
+  meterNoMatched: boolean | null;
+  imageUrl: string;
+  error?: string;
+}
+
+const LLM_SYSTEM =
+  '你是物业抄表识别器。只读图里的水表/电表当前读数，输出 JSON，不要解释，不要编造看不清的数字。';
+const LLM_PROMPT = `读出这张表照片的当前读数与表号，只输出 JSON：
+{"reading":"只保留数字和小数点","meterNo":"表身印刷的表号，看不清就给空字符串","confidence":0到100的整数}
+规则：
+- reading 只要当前累计读数，不要用量、不要单价、不要规格里的数字（如 3×220/380V、R=80、GB/T 标准号）。
+- 电表液晶屏若显示 022418.88，reading 必须带小数点；水表字轮 02405 就填 02405。
+- 表号是印在表壳/铭牌上的编号（常见 6~12 位），不是读数；看不清或没有就给空字符串。`;
+
+/**
+ * 抄表识别编排：
+ * 1. 优先走自托管 OCR（tools/meter-ocr-service），不依赖外部账号、按次免费；
+ * 2. 自托管不可用或没读出数时，退回租户已配置的多模态大模型；
+ * 3. 两条路都不通就返回 ok=false —— 前端必须能继续人工输入，不能把识别失败当业务失败。
+ *
+ * 识别结果**绝不直接落库**：前端拿它回填输入框，人对着原图确认后才提交。
+ */
+@Injectable()
+export class MeterOcrService {
+  private readonly logger = new Logger(MeterOcrService.name);
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly storage: ObjectStorageService,
+    private readonly llm: LlmService,
+  ) {}
+
+  async recognize(
+    meter: Meter,
+    imageKey: string,
+    crop: { x: number; y: number; w: number; h: number } | undefined,
+    user: AuthUser,
+  ): Promise<MeterOcrResponse> {
+    const buffer = await this.readUpload(imageKey);
+    const imageUrl = this.storage.fileUrl(imageKey);
+    const base: Omit<MeterOcrResponse, 'ok'> = {
+      provider: 'none' as const,
+      value: null,
+      digits: null,
+      confidence: 0,
+      meterNo: null,
+      meterNoCandidates: [],
+      texts: '',
+      candidates: [],
+      needsReview: true,
+      imageUrl,
+      meterNoMatched: null as boolean | null,
+    };
+
+    const sidecarUrl = this.sidecarUrl();
+    if (sidecarUrl) {
+      try {
+        let parsed = await this.runSidecar(sidecarUrl, buffer, crop, false, meter);
+        // 原图没读出数时，再做一次增强（灰度+对比度）识别。现场反光/脏污很常见，
+        // 两次都失败才退回大模型；这一层只多花 1~2 秒。
+        if (!parsed.value) parsed = await this.runSidecar(sidecarUrl, buffer, crop, true, meter);
+        if (parsed.value !== null) {
+          return this.finish(base, meter, parsed, 'sidecar');
+        }
+        this.logger.warn(`meter OCR sidecar 未读出读数（${meter.id}）：${parsed.texts.slice(0, 120)}`);
+        base.texts = parsed.texts;
+        base.candidates = parsed.candidates;
+        base.meterNoCandidates = parsed.meterNoCandidates;
+        base.confidence = parsed.confidence;
+        base.needsReview = true;
+      } catch (error) {
+        this.logger.warn(`meter OCR sidecar 调用失败：${error instanceof Error ? error.message : error}`);
+      }
+    }
+
+    try {
+      const llm = await this.runLlm(meter, buffer, user.tenantId ?? 0);
+      if (llm) return this.finish(base, meter, llm, 'llm');
+    } catch (error) {
+      this.logger.warn(`meter OCR 大模型兜底失败：${error instanceof Error ? error.message : error}`);
+    }
+
+    return {
+      ...base,
+      ok: false,
+      needsReview: true,
+      error: sidecarUrl
+        ? '识别服务暂时不可用，请手工输入读数'
+        : '还没有配置识别服务，请手工输入读数；配置方法见 docs/meter-reading.md',
+    };
+  }
+
+  async health(): Promise<{ ok: boolean; provider: string; detail?: string }> {
+    const url = this.sidecarUrl();
+    if (!url) return { ok: false, provider: 'none', detail: 'METER_OCR_URL 未配置' };
+    try {
+      const res = await axios.get(url.replace(/\/ocr\/?$/, '/health'), {
+        timeout: 3000,
+        headers: this.sidecarHeaders(),
+      });
+      return { ok: !!res.data?.ok, provider: 'sidecar', detail: String(res.data?.engine || '') };
+    } catch (error) {
+      return { ok: false, provider: 'sidecar', detail: error instanceof Error ? error.message : '连接失败' };
+    }
+  }
+
+  private finish(
+    base: Omit<MeterOcrResponse, 'ok'>,
+    meter: Meter,
+    parsed: MeterOcrParsed,
+    provider: 'sidecar' | 'llm',
+  ): MeterOcrResponse {
+    const hint = normalizeMeterNo(meter.meterNo);
+    const candidates = parsed.meterNoCandidates.map(normalizeMeterNo);
+    const matched =
+      parsed.meterNo || candidates.length
+        ? hint
+          ? candidates.includes(hint) || normalizeMeterNo(parsed.meterNo) === hint
+          : null
+        : null;
+    return {
+      ...base,
+      ...parsed,
+      ok: parsed.value !== null,
+      provider,
+      meterNoMatched: matched,
+      imageUrl: base.imageUrl,
+      needsReview:
+        parsed.needsReview ||
+        parsed.confidence < 75 ||
+        (matched === false ? true : false),
+    };
+  }
+
+  private sidecarUrl(): string {
+    return (this.config.get<string>('METER_OCR_URL') || '').trim().replace(/\/+$/, '');
+  }
+
+  private sidecarHeaders(): Record<string, string> {
+    const token = (this.config.get<string>('METER_OCR_TOKEN') || '').trim();
+    return token ? { 'x-meter-ocr-token': token } : {};
+  }
+
+  private async runSidecar(
+    url: string,
+    buffer: Buffer,
+    crop: { x: number; y: number; w: number; h: number } | undefined,
+    enhance: boolean,
+    meter: Meter,
+  ): Promise<MeterOcrParsed> {
+    const res = await axios.post(
+      url,
+      {
+        image: buffer.toString('base64'),
+        contentType: 'image/jpeg',
+        crop: crop || undefined,
+        enhance,
+      },
+      {
+        timeout: 25000,
+        maxBodyLength: 30 * 1024 * 1024,
+        headers: this.sidecarHeaders(),
+      },
+    );
+    const data = res.data || {};
+    if (data.ok === false) throw new BadGatewayException(String(data.error || 'OCR 服务返回失败'));
+    const items: OcrBoxItem[] = Array.isArray(data.items)
+      ? data.items
+          .slice(0, 300)
+          .map((item: any) => ({
+            text: String(item?.text ?? ''),
+            score: Number(item?.score ?? 0),
+            box: Array.isArray(item?.box) ? item.box : undefined,
+          }))
+          .filter((item: OcrBoxItem) => item.text.trim())
+      : [];
+    if (!items.length) throw new BadGatewayException('OCR 服务没有返回文字');
+    const width = Number(data.width) || undefined;
+    const height = Number(data.height) || undefined;
+    return parseMeterOcr(items, {
+      integerDigits: meter.integerDigits,
+      decimalDigits: meter.decimalDigits,
+      width,
+      height,
+    });
+  }
+
+  /**
+   * 大模型兜底。这里不直接用 parseMeterOcr：模型返回的是一整句读数，
+   * 而且提示词已经要求它带小数点，按文本解析比再造一套框逻辑稳。
+   */
+  private async runLlm(meter: Meter, buffer: Buffer, tenantId: number): Promise<MeterOcrParsed | null> {
+    if (!tenantId) return null;
+    const ready = await this.llm.isReady(tenantId);
+    if (!ready) return null;
+    const json = await this.llm.askImageJson<{
+      reading?: string;
+      meterNo?: string;
+      confidence?: number;
+    }>(tenantId, LLM_SYSTEM, LLM_PROMPT, { contentType: 'image/jpeg', buffer }, { kind: 'meter-ocr' });
+    if (!json) return null;
+    const normalized = normalizeOcrText(String(json.reading ?? '')).replace(/\s+/g, '');
+    const explicitDecimal = /[.,]/.test(normalized);
+    const bare = normalized.replace(/[^\d]/g, '');
+    if (!bare) return null;
+    const value = digitsToValue(bare, meter.integerDigits, meter.decimalDigits, explicitDecimal);
+    if (value === null) return null;
+    const confidence = Math.max(0, Math.min(100, Number(json.confidence) || 60));
+    return {
+      digits: bare,
+      value,
+      confidence,
+      meterNo: normalizeMeterNo(json.meterNo) || null,
+      meterNoCandidates: json.meterNo ? [normalizeMeterNo(json.meterNo)] : [],
+      texts: JSON.stringify(json).slice(0, 4000),
+      candidates: [{ digits: bare, value, score: confidence / 100, text: normalized, explicitDecimal }],
+      needsReview: confidence < 85,
+    };
+  }
+
+  private async readUpload(imageKey: string): Promise<Buffer> {
+    if (!imageKey || !/^uploads\/[A-Za-z0-9/_\-.]+$/.test(imageKey) || imageKey.includes('..')) {
+      throw new BadRequestException('图片地址无效');
+    }
+    let object: Awaited<ReturnType<ObjectStorageService['getObject']>>;
+    try {
+      object = await this.storage.getObject(imageKey);
+    } catch {
+      throw new BadRequestException('原图读取失败，请重新上传');
+    }
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of object.stream) {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += buf.length;
+      if (total > 30 * 1024 * 1024) throw new BadRequestException('原图超过 30MB');
+      chunks.push(buf);
+    }
+    if (!chunks.length) throw new BadRequestException('原图为空');
+    return Buffer.concat(chunks);
+  }
+}

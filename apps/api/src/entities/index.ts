@@ -85,6 +85,9 @@ import { RequestMetric } from './request-metric.entity';
 import { UserFeedback } from './user-feedback.entity';
 import { RepairExperienceNote } from './repair-experience-note.entity';
 import { RepairExperienceFavorite } from './repair-experience-favorite.entity';
+import { Meter } from './meter.entity';
+import { MeterReading } from './meter-reading.entity';
+import { MeterCharge } from './meter-charge.entity';
 
 export const entities = [
   Tenant,
@@ -104,6 +107,9 @@ export const entities = [
   UserFeedback,
   RepairExperienceNote,
   RepairExperienceFavorite,
+  Meter,
+  MeterReading,
+  MeterCharge,
   Community,
   Building,
   Unit,
@@ -194,6 +200,9 @@ export {
   UserFeedback,
   RepairExperienceNote,
   RepairExperienceFavorite,
+  Meter,
+  MeterReading,
+  MeterCharge,
   Community,
   Building,
   Unit,
@@ -276,3 +285,12 @@ export type {
 export type { SuggestionScope } from './management-office.entity';
 export type { StocktakeStatus } from './stocktake-task.entity';
 export type { FamilyCarStatus, FamilyCarMode, FamilyCarFile, FamilyCarLogEntry } from './family-car.entity';
+export type { MeterType, MeterStatus } from './meter.entity';
+export type {
+  MeterReadingSource,
+  MeterReadingStatus,
+  MeterOcrStatus,
+  MeterReadingAnomaly,
+  MeterOcrResult,
+} from './meter-reading.entity';
+export type { MeterChargeStatus } from './meter-charge.entity';

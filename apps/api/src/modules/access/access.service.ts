@@ -327,7 +327,10 @@ export class AccessService implements OnModuleInit {
           ...ADMIN_PAGE_KEYS.filter((k) => enabledPages.includes(k) || ALWAYS_ENABLED_PAGES.includes(k) ||
             // 亲情车是从「前台收费 / 停车」拆出来的新页面：开通了前台收费的公司默认可用，
             // 否则上线后存量公司的 enabled_pages 里没有这两个 key，菜单会整页消失
-            ((k === 'family-cars' || k === 'family-cars-approve') && enabledPages.includes('business'))),
+            ((k === 'family-cars' || k === 'family-cars-approve') && enabledPages.includes('business')) ||
+            // 抄表同属收费业务：存量公司开通了物业费或前台收费就默认可见，
+            // 平台仍可在「物业公司」页单独关掉
+            (k === 'meters' && (enabledPages.includes('fees') || enabledPages.includes('business')))),
           ...STAFF_APP_PAGE_KEYS,
         ]
       : [...ALL_PAGE_KEYS];

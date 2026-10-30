@@ -13,6 +13,9 @@
     "pages/stocktake-count/stocktake-count",
     "pages/stocktake-review/stocktake-review",
     "pages/material-inbound/material-inbound",
+    "pages/meters/meters",
+    "pages/meter-read/meter-read",
+    "pages/meter-detail/meter-detail",
     "pages/apartment-cashier/apartment-cashier",
     "pages/messages/messages",
     "pages/feedback/feedback",
@@ -62,8 +65,12 @@
   "permission": {
     "scope.record": {
       "desc": "用于按住说话报修、记用料、写维修备注，把语音转成文字"
+    },
+    "scope.userLocation": {
+      "desc": "抄表时记录表位，方便后台核对与导航；不授权也能手工输入读数"
     }
   },
+  "requiredPrivateInfos": ["getLocation"],
   "style": "v2",
   "sitemapLocation": "sitemap.json",
   "plugins": {

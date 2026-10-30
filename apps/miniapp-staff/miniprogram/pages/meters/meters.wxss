@@ -1,0 +1,89 @@
+.meter-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16rpx;
+  padding: 26rpx 20rpx;
+}
+.meter-summary__item { text-align: center; }
+.meter-summary__value { font-size: 44rpx; font-weight: 700; color: #1f334a; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.meter-summary__value text { font-size: 26rpx; color: #8194a8; font-weight: 400; margin-left: 2rpx; }
+.meter-summary__value.is-warn { color: #ad6800; }
+.meter-summary__value.is-danger { color: #c53d45; }
+.meter-summary__label { margin-top: 4rpx; font-size: 24rpx; color: #718499; }
+
+.meter-scan {
+  margin: 0 0 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+}
+.meter-scan__icon {
+  width: 34rpx;
+  height: 34rpx;
+  border: 5rpx solid #fff;
+  border-radius: 6rpx;
+  position: relative;
+}
+.meter-scan__icon::after {
+  content: '';
+  position: absolute;
+  left: 4rpx;
+  right: 4rpx;
+  top: 11rpx;
+  height: 5rpx;
+  background: #fff;
+  border-radius: 3rpx;
+}
+
+.meter-search { display: flex; gap: 16rpx; align-items: center; margin-bottom: 16rpx; }
+.meter-search .input { flex: 1; margin: 0; }
+
+.meter-card { padding: 26rpx 24rpx; }
+.meter-card__head { display: flex; align-items: center; gap: 12rpx; flex-wrap: wrap; }
+.meter-type {
+  padding: 2rpx 14rpx;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  line-height: 40rpx;
+  background: #edf4fa;
+  color: #31558a;
+}
+.meter-type--water { background: #e8f2fe; color: #1d63b8; }
+.meter-type--electricity { background: #fff7e6; color: #ad6800; }
+.meter-type--gas { background: #fff1f0; color: #c53d45; }
+.meter-type--heat { background: #f4efff; color: #6b4fa8; }
+.meter-card__no {
+  font-family: Consolas, 'SF Mono', monospace;
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1f334a;
+  letter-spacing: 1rpx;
+}
+.meter-unpaid {
+  margin-left: auto;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+  font-size: 23rpx;
+  line-height: 38rpx;
+  background: #fff1f0;
+  color: #c53d45;
+}
+.meter-off { margin-left: auto; font-size: 23rpx; color: #8194a8; }
+.meter-card__name { margin-top: 14rpx; font-size: 31rpx; font-weight: 600; color: #1f334a; }
+.meter-card__addr { margin-top: 6rpx; font-size: 26rpx; color: #536a80; line-height: 1.5; }
+.meter-card__last { margin-top: 16rpx; padding: 14rpx 16rpx; background: #f7fafd; border-radius: 12rpx; display: flex; align-items: baseline; gap: 8rpx; flex-wrap: wrap; }
+.meter-card__last-label { font-size: 24rpx; color: #718499; }
+.meter-card__last-value { font-family: Consolas, 'SF Mono', monospace; font-size: 40rpx; font-weight: 700; color: #1f334a; }
+.meter-card__last-unit { font-size: 24rpx; color: #718499; }
+.meter-card__last-time { margin-left: auto; font-size: 23rpx; color: #8194a8; }
+.meter-card__owner { margin-top: 12rpx; font-size: 25rpx; color: #536a80; }
+.meter-card__actions { margin-top: 20rpx; display: flex; gap: 16rpx; }
+.meter-card__actions .btn { width: auto !important; flex: 1 1 0; }
+
+.meter-error { border-color: #f3c1c4; background: #fff8f8; }
+.meter-error__title { font-size: 30rpx; font-weight: 600; color: #a8262e; }
+.meter-error__desc { margin-top: 8rpx; font-size: 26rpx; color: #8a4a4f; line-height: 1.6; }
+.meter-error__retry { margin-top: 10rpx; font-size: 26rpx; color: #31558a; }
+.meter-loading { padding: 40rpx; text-align: center; color: #718499; font-size: 28rpx; }
+.meter-count { margin: 24rpx 0 8rpx; text-align: center; font-size: 24rpx; color: #8194a8; }
