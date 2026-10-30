@@ -5481,3 +5481,11 @@
   - 1496a5ef feat(family-cars): 亲情车管理页：清册、登记、扫码填写上传、办公室与经理两级审核、自动开通续期、到期提醒停用
   - 04a589c0 fix(access-cards): isolate building operations and resume failed targets
 
+## 2026-10-30 23:58 · web · b0fbbf92
+
+- 包：`pms-web-20261030-235630.tar.gz`
+- 提交：b0fbbf92 deploy: api → 28fe890c
+- 自上次（0fd1f4d4）以来上线的相关提交：
+  - 28fe890c feat(meters): crop-only vision recognition, independent AI settings and correction samples
+  - a1b62873 fix(meters): OCR 按固定红框过滤候选，避免选中框外表号/绿标
+
