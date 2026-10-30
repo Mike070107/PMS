@@ -8,6 +8,9 @@ import {
   isExpiringSoon,
   isPastEnd,
   legacyRoomKey,
+  legacyRoomOfRow,
+  parseLegacyRoomText,
+  roomKey,
   normalizeFamilyGarages,
   normalizeFamilyPlate,
   shanghaiDate,
@@ -64,4 +67,43 @@ test('查重分类：本户亲情车为续登，别户或住户车拒绝', () =>
   assert.equal(result.mode, 'conflict');
   const elsewhere = { database: 'parking1', fields: { P_plate: '豫GQ3N07', Car_Brand: '亲情车', owner_Name: '198/1/302' } };
   assert.equal(classifyPlateCheck([elsewhere], '豫GQ3N07', '228/6/502').mode, 'conflict');
+});
+
+test('旧库房号：序号括号、换车牌、已隐藏、备注后缀、两段按库补弄号', () => {
+  const k = (s: string, db = 'parking1') => { const r = parseLegacyRoomText(s, db); return r && r.kind === 'house' ? `${r.lane}/${r.buildingNo}/${r.roomNo}` : r ? `${r.road}/${r.number}` : null; };
+  assert.equal(k('198-46-101(2)'), '198/46/101');
+  assert.equal(k('198-46-101 (1)'), '198/46/101');
+  assert.equal(k('198-24-501（1）'), '198/24/501');
+  assert.equal(k('198/14/102换车牌'), '198/14/102');
+  assert.equal(k('已隐藏198-6-402/2'), '198/6/402');
+  assert.equal(k('228-2-901租', 'parking2'), '228/2/901');
+  assert.equal(k('198-27-602新业主'), '198/27/602');
+  assert.equal(k('14/102'), '198/14/102');
+  assert.equal(k('20/501新车', 'parking2'), '228/20/501');
+  assert.equal(k('228弄06号0402室', 'parking2'), '228/6/402');
+});
+
+test('旧库商铺：路名 + 门牌', () => {
+  assert.deepEqual(parseLegacyRoomText('永德路169号商铺'), { kind: 'shop', road: '永德路', number: '169', source: '永德路169号商铺' });
+  assert.equal((parseLegacyRoomText('永德路187') as any).number, '187');
+  assert.equal((parseLegacyRoomText('永德路187二楼美容院') as any).number, '187');
+  assert.equal((parseLegacyRoomText('宝秀路701号') as any).road, '宝秀路');
+});
+
+test('认不出的不猜：备注、错位数字', () => {
+  for (const s of ['建行', '悠闲居装饰', '居委小高', '1968-2-201', '2228-47-502', '']) assert.equal(parseLegacyRoomText(s, 'parking1'), null, s);
+});
+
+test('owner_Name 是人名时，房号在 owner_Add，人名是车主', () => {
+  const row = { database: 'parking1', fields: { Owner__owner_Name: '陈程', Owner__owner_Add: '198/11/102' } };
+  const r = legacyRoomOfRow(row);
+  assert.equal(r.personName, '陈程');
+  assert.equal(legacyRoomKey(row), '198/11/102');
+  assert.equal(legacyRoomKey({ database: 'parking1', fields: { Owner__owner_Name: '198-46-101(2)' } }), '198/46/101');
+  assert.equal(legacyRoomKey({ database: 'parking1', fields: { Owner__owner_Name: '永德路169号商铺' } }), '永德路169号商铺');
+});
+
+test('商铺写回旧库用旧库写法', () => {
+  assert.equal(roomKey('永德路', '169', '商铺'), '永德路169号商铺');
+  assert.equal(roomKey('198', '06', '0402'), '198/6/402');
 });

@@ -75,6 +75,8 @@ export function normalizeFamilyGarages(value: unknown): string[] {
 }
 
 export function roomKey(lane: string, buildingNo: string, roomNo: string): string {
+  // 商铺：lane 存路名（永德路），写回旧库用旧库同款写法「永德路169号商铺」
+  if (!/^\d+$/.test(lane)) return `${lane}${buildingNo}号${roomNo}`;
   return [lane, buildingNo, roomNo].map((part) => String(Number(part))).join('/');
 }
 
@@ -106,11 +108,10 @@ export function legacyIdentity(row: LegacyRow): string {
 
 /** 旧库 owner_Name 实际保存房号，owner_Add 是地址；统一为 198/6/502 */
 export function legacyRoomKey(row: LegacyRow): string | null {
-  const raw = field(row, ['ownername', 'owneradd', 'owneraddress', 'roomno', '房号']);
-  if (!raw) return null;
-  const parts = raw.replace(/弄|号楼?|-|\\/g, '/').replace(/室/g, '').match(/\d+/g);
-  if (!parts || parts.length < 3) return null;
-  return parts.slice(-3).map((part) => String(Number(part))).join('/');
+  // 和导入同一口径：owner_Name / owner_Add / P_note 里认房号（含 (2) 序号、换车牌、备注后缀、商铺）
+  const { room } = legacyRoomOfRow(row);
+  if (!room) return null;
+  return room.kind === 'house' ? `${room.lane}/${room.buildingNo}/${room.roomNo}` : `${room.road}${room.number}号商铺`;
 }
 
 export type PlateCheckOutcome =
@@ -140,4 +141,60 @@ export function classifyPlateCheck(rows: LegacyRow[], plate: string, targetRoom:
     }
   }
   return { mode: 'existing', databases: Array.from(new Set(matches.map((row) => row.database))) };
+}
+
+// ---------- 旧库房号识别（亲情车导入 / 车牌按房号对应 PMS） ----------
+
+export type LegacyRoomRef =
+  | { kind: 'house'; lane: string; buildingNo: string; roomNo: string; source: string }
+  | { kind: 'shop'; road: string; number: string; source: string };
+
+/**
+ * 旧停车库一条车的房号可能在三个地方，按顺序认：
+ *   P_Owner.owner_Name（多数是房号：198-46-101(2)、198/14/102换车牌、已隐藏198-6-402/2），
+ *   owner_Add（owner_Name 写成人名时，房号在这里：198/11/102），P_note。
+ * 写法统一：弄/号/室、横杠、反斜杠都当分隔；末尾 (2)/（2）/ /2 是同户多卡序号；「换车牌」「已隐藏」是操作标记。
+ * 商铺：永德路169号商铺、永德路187、永德路159商铺培训、宝秀路701号 → 路名 + 门牌号。
+ * 只有两段写法（14/102）才按库补弄号：一期 parking1 补 198，二期 parking2 补 228。
+ */
+export function parseLegacyRoomText(text: string | null | undefined, database?: string | null): LegacyRoomRef | null {
+  const raw = String(text ?? '').trim();
+  if (!raw) return null;
+  const cleaned = raw
+    .replace(/^已隐藏\s*/, '')
+    .replace(/\s+/g, '')
+    .replace(/换车牌$/, '')
+    .replace(/[（(]\d{1,2}[)）]$/, '')
+    // 完整门牌后面跟的备注（198-27-602新业主、228-2-901租、20/501新车）：备注不影响房号
+    .replace(/^(\d[\d/\\\-—–]*\d)[\u4e00-\u9fa5]{1,6}$/, '$1');
+  const shop = /^([\u4e00-\u9fa5]{1,8}?路)(\d{1,5})/.exec(cleaned);
+  if (shop) return { kind: 'shop', road: shop[1], number: String(Number(shop[2])), source: raw };
+  const parts = cleaned
+    .replace(/[弄号幢栋座]/g, '/')
+    .replace(/室$/, '')
+    .replace(/[\\\-—–]/g, '/')
+    .split('/')
+    .filter(Boolean);
+  if (!parts.length || !parts.slice(0, 3).every((p) => /^\d+$/.test(p))) return null;
+  const lane = database === 'parking1' ? '198' : database === 'parking2' ? '228' : null;
+  if (parts.length >= 3 && /^(198|228)$/.test(parts[0])) {
+    if (!parts.slice(3).every((p) => /^\d{1,2}$/.test(p))) return null; // 第四段起是同户多卡序号
+    return { kind: 'house', lane: parts[0], buildingNo: String(Number(parts[1])), roomNo: String(Number(parts[2])), source: raw };
+  }
+  if (lane && (parts.length === 2 || (parts.length === 3 && /^\d{1,2}$/.test(parts[2]))) && parts[0].length <= 2 && parts[1].length >= 2) {
+    return { kind: 'house', lane, buildingNo: String(Number(parts[0])), roomNo: String(Number(parts[1])), source: raw };
+  }
+  return null;
+}
+
+/** 一条旧库车的房号 + 车主（owner_Name 是人名时就是车主姓名） */
+export function legacyRoomOfRow(row: LegacyRow): { room: LegacyRoomRef | null; personName: string | null; tried: string[] } {
+  // 字段名有 Owner__owner_Name（联表）和 owner_Name 两种写法，按别名取
+  const name = field(row, ['ownerownername', 'ownername', 'roomno', '房号']) || '';
+  const add = field(row, ['ownerowneradd', 'owneradd', 'owneraddress']) || '';
+  const note = field(row, ['pnote', 'note', '备注']) || '';
+  const tried = [name, add, note].filter(Boolean);
+  const room = parseLegacyRoomText(name, row.database) ?? parseLegacyRoomText(add, row.database) ?? parseLegacyRoomText(note, row.database);
+  const personName = name && !parseLegacyRoomText(name, row.database) && /^[\u4e00-\u9fa5·]{2,5}$/.test(name) ? name : null;
+  return { room, personName, tried };
 }

@@ -33,7 +33,7 @@ import {
   classifyPlateCheck,
   legacyIdentity,
   legacyPlate,
-  legacyRoomKey,
+  legacyRoomOfRow,
   type LegacyRow,
   databaseForLane,
   daysUntil,
@@ -241,15 +241,21 @@ export class FamilyCarService {
       const on = (chs: number[]) => /^[01]{16,}$/.test(bits) && chs.some((c) => bits[c - 1] === '1');
       const garages = r.database === 'parking1' ? (on([5, 7]) ? ['phase1'] : [])
         : [...(on([9, 11, 13]) ? ['phase2'] : []), ...(on([15, 17, 19, 21]) ? ['main'] : [])];
+      // 房号按旧页面同一口径认：owner_Name → owner_Add → P_note；owner_Name 写的是人名时那就是车主
+      const { room: ref, personName, tried } = legacyRoomOfRow(r);
+      const room = ref ? (ref.kind === 'house' ? `${ref.lane}/${ref.buildingNo}/${ref.roomNo}` : `${ref.road}/${ref.number}`) : (tried[0] || '');
+      const tel = f.Owner__owner_Tel ? String(f.Owner__owner_Tel).slice(0, 30) : undefined;
       return {
         plate: legacyPlate(r),
-        room: (legacyRoomKey(r) || String(f.Owner__owner_Name ?? '')).trim().slice(0, 40),
+        room: room.trim().slice(0, 40),
+        carOwnerName: personName ?? undefined,
+        carOwnerPhone: personName ? tel : undefined,
         identity: legacyIdentity(r),
         database: r.database,
         startDate: date(f.Sart_Time ?? f.Start_Time),
         endDate: date(f.End_Time),
-        ownerPhone: f.Owner__owner_Tel ? String(f.Owner__owner_Tel).slice(0, 30) : undefined,
-        remark: f.P_note ? `从旧停车库导入 · ${String(f.P_note).slice(0, 150)}` : '从旧停车库导入',
+        ownerPhone: personName ? undefined : tel,
+        remark: `从旧停车库导入${ref && ref.source !== room ? ` · 旧库房号「${ref.source}」` : ''}${f.P_note ? ` · ${String(f.P_note).slice(0, 100)}` : ''}`.slice(0, 200),
         garages,
       };
     });
@@ -316,36 +322,66 @@ export class FamilyCarService {
         continue;
       }
 
-      const parsed = parseImportRoom(roomText);
-      if (!parsed) {
+      // 商铺：永德路/169（旧库写法 永德路169号商铺、永德路187…）→ 路名 + 门牌（也认 157-159 这种合并门牌）
+      const shopKey = /^([\u4e00-\u9fa5]{1,8}路)\/?(\d{1,5})/.exec(roomText.replace(/\s+/g, ''));
+      const parsed = shopKey ? null : parseImportRoom(roomText);
+      if (!shopKey && !parsed) {
         // 旧库里写的是人名 / 备注、没有房号：不按姓名去猜（同名会挂错户），列出来请办公室核实后手动登记
         fail(roomText && !/\d/.test(roomText) ? `旧库没有登记房号（房号栏写的是「${roomText}」），未导入；请核实房号后手动登记` : roomText ? `房号「${roomText}」无法识别，例：228/6/502` : '旧库没有登记房号，未导入；请核实房号后手动登记');
         continue;
       }
 
-      // 楼栋：给了弄号就精确定位，没给就按楼号找（可能命中多个小区）
-      const where: Record<string, unknown> = { tenantId, buildingNo: parsed.buildingNo };
-      if (parsed.lane) where.lane = parsed.lane;
-      const buildings = (await this.buildingRepo.find({ where })).filter(
-        (b) => !scope || scope.includes(b.communityId),
-      );
-      if (!buildings.length) {
-        fail(parsed.lane ? `找不到 ${parsed.lane} 弄 ${parsed.buildingNo} 号` : `找不到 ${parsed.buildingNo} 号楼`);
-        continue;
+      let building: Building;
+      let house: House | null;
+      if (shopKey) {
+        const [, road, no] = shopKey;
+        const n = Number(no);
+        const covers = (b: Building) => {
+          const m = /^(\d+)(?:-(\d+))?$/.exec(String(b.buildingNo || '').trim());
+          return !!m && (m[2] ? n >= Number(m[1]) && n <= Number(m[2]) : n === Number(m[1]));
+        };
+        const onRoad = (await this.buildingRepo.find({ where: { tenantId, roadName: road } }))
+          .filter((b) => (!scope || scope.includes(b.communityId)) && covers(b));
+        // 门牌正好相等的优先（221 号 和 219-229 合并门牌同时命中时取 221）
+        const exact = onRoad.filter((b) => String(b.buildingNo).trim() === String(n));
+        const shops = exact.length ? exact : onRoad;
+        if (!shops.length) { fail(`找不到商铺 ${road}${no}号`); continue; }
+        if (shops.length > 1) { fail(`${road}${no}号 对应多个楼栋，请手动登记`); continue; }
+        building = shops[0];
+        const inShop = await this.houseRepo.find({ where: { tenantId, buildingId: building.id } });
+        house = inShop.find((h) => h.roomNo === '商铺') ?? (inShop.length === 1 ? inShop[0] : null);
+        if (!house) { fail(`${road}${building.buildingNo}号 有 ${inShop.length} 个房产，无法确定是哪一间，请手动登记`); continue; }
+      } else {
+        // 楼栋：给了弄号就精确定位，没给就按楼号找（可能命中多个小区）
+        // 楼号按数字比（库里个别楼号写成 06）
+        const where: Record<string, unknown> = { tenantId };
+        if (parsed!.lane) where.lane = parsed!.lane;
+        const sameNo = (v: string) => /^\d+$/.test(String(v).trim()) && Number(v) === Number(parsed!.buildingNo);
+        const buildings = (parsed!.lane ? await this.buildingRepo.find({ where }) : await this.buildingRepo.find({ where: { tenantId, buildingNo: In([parsed!.buildingNo, parsed!.buildingNo.padStart(2, '0')]) } }))
+          .filter((b) => (!scope || scope.includes(b.communityId)) && sameNo(b.buildingNo));
+        if (!buildings.length) {
+          fail(parsed!.lane ? `找不到 ${parsed!.lane} 弄 ${parsed!.buildingNo} 号` : `找不到 ${parsed!.buildingNo} 号楼`);
+          continue;
+        }
+        if (buildings.length > 1) {
+          fail('房号对应多个楼栋，请把弄号写全，例：228/6/502');
+          continue;
+        }
+        building = buildings[0];
+        house = (await this.houseRepo.find({ where: { tenantId, buildingId: building.id } }))
+          .find((h) => h.roomNo === parsed!.roomNo || (/^\d+$/.test(h.roomNo) && Number(h.roomNo) === Number(parsed!.roomNo))) ?? null;
+        if (!house) { fail(`${parsed!.lane ?? ''}${parsed!.lane ? '弄' : ''}${parsed!.buildingNo}号没有 ${parsed!.roomNo} 室`); continue; }
       }
-      if (buildings.length > 1) {
-        fail('房号对应多个楼栋，请把弄号写全，例：228/6/502');
-        continue;
-      }
-      const building = buildings[0];
-      const house = await this.houseRepo.findOne({
-        where: { tenantId, buildingId: building.id, roomNo: parsed.roomNo },
-      });
-      if (!house) { fail(`该楼栋没有 ${parsed.roomNo} 室`); continue; }
 
-      const lane = (building.lane || '').trim();
-      const database = databaseForLane(lane);
-      if (!database) { fail('只支持 198 弄 / 228 弄的住宅房号'); continue; }
+      // 商铺没有弄号：lane 记路名，库按旧库来源（没有就按小区：一期 parking1）
+      const lane = (building.lane || building.roadName || '').trim();
+      const community = shopKey ? await this.communityRepo.findOne({ where: { tenantId, id: building.communityId } }) : null;
+      const database = databaseForLane(lane)
+        ?? (row.database === 'parking1' || row.database === 'parking2' ? row.database : null)
+        ?? (community?.name.includes('一期') ? 'parking1' : community?.name.includes('二期') ? 'parking2' : null);
+      if (!database) { fail('只支持枫桦景苑一期 / 二期的房号和商铺'); continue; }
+      const normNo = (v: string) => (/^\d+$/.test(v) ? String(Number(v)) : v);
+      const target = `${lane}${/^\d+$/.test(lane) ? '/' : ''}${normNo(building.buildingNo)}${/^\d+$/.test(lane) ? '/' : '号'}${normNo(house.roomNo)}`;
 
       const duplicate = await this.repo.findOne({
         where: { tenantId, plate, status: In(LIVE_STATUSES) },
@@ -356,7 +392,7 @@ export class FamilyCarService {
       }
 
       if (dryRun) {
-        results.push({ plate, room: roomText, verdict: 'would_import', message: `将导入到 ${lane}/${parsed.buildingNo}/${parsed.roomNo}` });
+        results.push({ plate, room: roomText, verdict: 'would_import', message: `将导入到 ${target}` });
         continue;
       }
 
@@ -369,14 +405,14 @@ export class FamilyCarService {
         : familyValidity(today);
       // 旧库拉来的行带着实际授权的车库（P_Effective 通道位），以旧库为准；手贴的清单没有就按弄号默认
       const fromLegacy = (row.garages ?? []).filter((g) => (FAMILY_GARAGES as readonly string[]).includes(g));
-      const garages = fromLegacy.length ? fromLegacy : defaultFamilyGarages(lane);
+      const garages = fromLegacy.length ? fromLegacy : defaultFamilyGarages(database === 'parking1' ? '198' : '228');
 
       const car = await this.repo.save(this.repo.create({
         tenantId,
         houseId: house.id,
         lane,
-        buildingNo: String(Number(building.buildingNo)),
-        roomNo: String(Number(house.roomNo)),
+        buildingNo: normNo(building.buildingNo),
+        roomNo: normNo(house.roomNo),
         ownerName: (row.ownerName || owner?.name || '').trim().slice(0, 50),
         ownerPhone: (row.ownerPhone || owner?.phone || '').trim().slice(0, 30),
         ownerUserId: owner?.id ?? null,
@@ -385,7 +421,7 @@ export class FamilyCarService {
         relation: (row.relation || '').trim().slice(0, 20),
         plate,
         remark: (row.remark || '从停车库导入').trim().slice(0, 200),
-        database: (row.database as 'parking1' | 'parking2') || database,
+        database,
         garages,
         garageNumbers: {},
         mode: 'existing',
@@ -421,7 +457,7 @@ export class FamilyCarService {
         `旧库已在用${row.identity ? `（车辆身份：${row.identity}）` : ''}；导入前无 PMS 资料与审核记录`,
       );
       imported += 1;
-      results.push({ plate, room: roomText, verdict: 'imported', message: `已导入 ${lane}/${parsed.buildingNo}/${parsed.roomNo}` });
+      results.push({ plate, room: roomText, verdict: 'imported', message: `已导入 ${target}` });
     }
 
     return {
