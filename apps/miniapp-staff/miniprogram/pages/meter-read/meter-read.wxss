@@ -16,6 +16,16 @@
 .meter-head-card__time { float: right; font-family: inherit !important; font-size: 23rpx !important; font-weight: 400 !important; color: #8194a8 !important; }
 .meter-head-card__digits { margin-top: 10rpx; font-size: 23rpx; color: #8194a8; }
 
+.meter-camera-launch { margin-top: 20rpx; padding: 40rpx 32rpx; text-align: center; }
+.meter-camera-launch__icon {
+  width: 96rpx; height: 96rpx; margin: 0 auto 18rpx; border-radius: 28rpx;
+  background: #edf4fa; color: #31558a; font-size: 44rpx; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.meter-camera-launch__title { font-size: 34rpx; font-weight: 700; color: #1f334a; }
+.meter-camera-launch__desc { margin: 14rpx 0 28rpx; font-size: 26rpx; color: #718499; line-height: 1.7; text-align: left; }
+.meter-camera-launch__main { margin-bottom: 18rpx; }
+
 .meter-camera-wrap { position: relative; width: 100%; height: 760rpx; border-radius: 24rpx; overflow: hidden; background: #0e1722; margin-bottom: 24rpx; }
 .meter-camera { width: 100%; height: 760rpx; }
 .meter-camera-guide { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }

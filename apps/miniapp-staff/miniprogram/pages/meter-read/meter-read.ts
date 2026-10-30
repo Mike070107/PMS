@@ -49,9 +49,6 @@ Page({
     meter: null as MeterRow | null,
     loading: true,
     mode: 'camera' as 'camera' | 'preview' | 'done',
-    cameraReady: false,
-    cameraError: '',
-    flash: 'off' as 'off' | 'on' | 'auto',
     photoPath: '',
     photoKey: '',
     photoWidth: 0,
@@ -122,14 +119,7 @@ Page({
     this.initLocation();
   },
 
-  onReady() {
-    (this as any).cameraCtx = wx.createCameraContext();
-    this.setData({ cameraReady: true });
-  },
-
-  onUnload() {
-    (this as any).cameraCtx = null;
-  },
+  onUnload() {},
 
   initLocation() {
     wx.getLocation({
@@ -148,56 +138,38 @@ Page({
     });
   },
 
-  onCameraError(event: any) {
-    this.setData({
-      cameraError: event?.detail?.errMsg || '相机打不开，请检查微信的相机权限',
-    });
-  },
-
-  onOpenCameraSetting() {
-    wx.openSetting({
-      success: (res) => {
-        if (res.authSetting['scope.camera']) {
-          this.setData({ cameraError: '' });
-        } else {
-          wx.showToast({ icon: 'none', title: '还没有开启相机权限' });
-        }
-      },
-      fail: () => wx.showToast({ icon: 'none', title: '请到微信设置里开启相机权限' }),
-    });
-  },
-
-  toggleFlash() {
-    const next = this.data.flash === 'off' ? 'on' : 'off';
-    this.setData({ flash: next });
-  },
-
-  takePhoto() {
-    const ctx = (this as any).cameraCtx;
-    if (!ctx) {
-      wx.showToast({ icon: 'none', title: '相机还没准备好' });
-      return;
+  async takePhoto() {
+    try {
+      const res = await wx.chooseMedia({
+        count: 1,
+        mediaType: ['image'],
+        sourceType: ['camera'],
+        sizeType: ['original'],
+      });
+      const file = res.tempFiles?.[0];
+      if (file?.tempFilePath) this.handlePhoto(file.tempFilePath);
+    } catch (e: any) {
+      const msg = String(e?.errMsg || '');
+      if (!/cancel/i.test(msg)) {
+        wx.showToast({ icon: 'none', title: '相机打开失败，请检查微信相机权限，或从相册选照片' });
+      }
     }
-    ctx.takePhoto({
-      quality: 'high',
-      success: (res: any) => this.handlePhoto(res.tempImagePath),
-      fail: (error: any) => {
-        this.setData({ cameraError: error?.errMsg || '拍照失败，请重试' });
-      },
-    });
   },
 
-  chooseFromAlbum() {
-    wx.chooseMedia({
-      count: 1,
-      mediaType: ['image'],
-      sourceType: ['album'],
-      sizeType: ['original', 'compressed'],
-      success: (res) => {
-        const file = res.tempFiles?.[0];
-        if (file?.tempFilePath) this.handlePhoto(file.tempFilePath);
-      },
-    });
+  async chooseFromAlbum() {
+    try {
+      const res = await wx.chooseMedia({
+        count: 1,
+        mediaType: ['image'],
+        sourceType: ['album'],
+        sizeType: ['original'],
+      });
+      const file = res.tempFiles?.[0];
+      if (file?.tempFilePath) this.handlePhoto(file.tempFilePath);
+    } catch (e: any) {
+      const msg = String(e?.errMsg || '');
+      if (!/cancel/i.test(msg)) wx.showToast({ icon: 'none', title: '相册打开失败，请重试' });
+    }
   },
 
   handlePhoto(path: string) {
