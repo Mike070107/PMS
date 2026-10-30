@@ -5496,3 +5496,9 @@
 - 自上次（28fe890c）以来上线的相关提交：
   - a102cc9f feat(meters): reviewed details, GPS maps, reliable photo location and receipt registration
 
+## 2026-10-31 00:41 · miniapp-staff · 17ae188a
+
+- 提交：17ae188a fix(deploy): cast meter migration history parameters explicitly
+- 自上次（b0fbbf92）以来上线的相关提交：
+  - a102cc9f feat(meters): reviewed details, GPS maps, reliable photo location and receipt registration
+
