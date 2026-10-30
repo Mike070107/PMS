@@ -179,8 +179,15 @@ Page({
       success: (info) => {
         const now = new Date();
         const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
-        const displayWidth = Math.max(240, Number(win.windowWidth || 375) - 24);
-        const displayHeight = Math.max(200, Math.round((displayWidth * info.height) / Math.max(1, info.width)));
+        const maxWidth = Math.max(220, Number(win.windowWidth || 375) - 24);
+        // 全景照只用于框选，不再占满整屏；默认高度压在 43vh/430px 内，点「查看全景」再看大图
+        const maxHeight = Math.max(260, Math.min(430, Math.round(Number(win.windowHeight || 700) * 0.43)));
+        let displayWidth = maxWidth;
+        let displayHeight = Math.round((displayWidth * info.height) / Math.max(1, info.width));
+        if (displayHeight > maxHeight) {
+          displayHeight = maxHeight;
+          displayWidth = Math.max(180, Math.round((displayHeight * info.width) / Math.max(1, info.height)));
+        }
         const roi = this.data.templateRoi || { ...DEFAULT_ROI };
         this.setData(
           {
@@ -209,7 +216,9 @@ Page({
       },
       fail: () => {
         const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
-        const displayWidth = Math.max(240, Number(win.windowWidth || 375) - 24);
+        const maxWidth = Math.max(220, Number(win.windowWidth || 375) - 24);
+        const maxHeight = Math.max(260, Math.min(430, Math.round(Number(win.windowHeight || 700) * 0.43)));
+        const displayWidth = Math.min(maxWidth, Math.round(maxHeight * 0.7));
         this.setData(
           {
             mode: 'preview',

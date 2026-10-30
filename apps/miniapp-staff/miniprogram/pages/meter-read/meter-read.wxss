@@ -43,7 +43,7 @@
 .meter-camera-hint { margin: 0 24rpx 28rpx; text-align: center; font-size: 24rpx; color: #8194a8; line-height: 1.6; }
 
 .meter-photo-card { padding: 0; overflow: hidden; }
-.meter-photo-frame { position: relative; width: 100%; overflow: hidden; background: #0e1722; }
+.meter-photo-frame { position: relative; width: 100%; overflow: hidden; background: #0e1722; margin: 0 auto; }
 .meter-photo-full { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
 .meter-roi-area { position: absolute; left: 0; top: 0; overflow: hidden; }
 .meter-roi-box {
