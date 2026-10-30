@@ -5306,3 +5306,16 @@
   - 10853d91 chore: family-car 三个文件换行符恢复 LF
   - 350dcd41 fix(family-cars): 旧库房号按旧页面口径识别——owner_Name/owner_Add/P_note、(2)序号、换车牌、已隐藏、备注后缀、两段补弄号；商铺按路名+门牌(合并门牌、精确优先)；人名栏即车主；楼号/室号按数字比
 
+## 2026-10-30 10:56 · web · b0d19730
+
+- 包：`pms-web-20261030-105538.tar.gz`
+- 提交：b0d19730 deploy: api → ec687451
+- 自上次（814e90f2）以来上线的相关提交：
+  - ec687451 feat(meters): 拍照抄表、仪表档案与水电记账
+  - 7ce66f6d feat: 全站地址搜索统一(账单/车辆/工单走 common/address-lookup，现场停车库查询先落到唯一一户)；工单用料仓库按数据授权范围；亲情车从旧停车库拉取(助手 2.5.49 新增只读 identity_list，导入带旧库实际车库与有效期、过期记已过期)
+  - d7e06ce7 feat(address): 列表搜索地址识别——模糊输入精准命中(198/20、一期20、枫桦景苑一期20号楼=同一栋)，汉字数字连写切分、1期=一期、简称子序列；工单搜索按地址落到楼栋/户，另可搜电话/联系人
+  - b2ecea07 fix(gateway): 内网应用会话改为仅限本域名 + 停用即断连 + 有效期 4/8/12 小时
+  - 1c9a4e63 fix(maintenance): 报修人只取业主档案姓名;格子里的数字/单词不再被拆开裁切
+  - 0e68f5d6 fix(api-client): 请求超时不再显示「signal is aborted without reason」
+  - b8e9d88a refactor(neighbor-web): 房号选择直接复用旧后台 HouseAddressPicker
+
