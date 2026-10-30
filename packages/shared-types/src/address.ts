@@ -59,10 +59,20 @@ export interface AddressCommunitySpot {
 const SEPARATOR = /[/\\\-—－_·,，、。:：;；#＃\s]+/;
 const UNIT_CHARS = /[弄号室栋幢座楼单元]/g;
 
+const PHASE_CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+
+/**
+ * 「枫桦景苑一期20号楼」「一期20」「1期/20」→ ['枫桦景苑一期', '20']。
+ * 汉字和数字之间也算分隔（2026-10-30：连着写的「一期20」整段当成一个词，什么都撞不上）；
+ * 阿拉伯数字的「1期」先写成「一期」，和小区名对得上。
+ */
 export function tokenizeAddress(input: string): string[] {
   return input
     .trim()
+    .replace(/(\d{1,2})\s*期/g, (m, n: string) => (Number(n) <= 10 ? `${PHASE_CN[Number(n)]}期` : m))
     .replace(UNIT_CHARS, '/')
+    .replace(/([\u4e00-\u9fa5])(?=\d)/g, '$1/')
+    .replace(/(\d)(?=[\u4e00-\u9fa5])/g, '$1/')
     .split(SEPARATOR)
     .map((part) => part.trim())
     .filter(Boolean);
@@ -187,7 +197,15 @@ function scoreToken(token: string, keys: MatchKeys): number {
   if (keys.exact.some((key) => key.toLowerCase() === lower)) return 6;
   if (keys.prefix.some((key) => key.toLowerCase().startsWith(lower))) return 4;
   if (keys.loose.some((key) => key.toLowerCase().includes(lower))) return 2;
+  // 简称：「枫桦一期」按顺序都在「枫桦景苑一期」里（只认两字以上的汉字词，数字不走这档）
+  if (/^[\u4e00-\u9fa5]{2,}$/.test(token) && keys.loose.some((key) => isSubsequence(token, key))) return 1;
   return 0;
+}
+
+function isSubsequence(short: string, long: string): boolean {
+  let i = 0;
+  for (const ch of long) if (ch === short[i]) i += 1;
+  return i === short.length;
 }
 
 /** 一组 token（1~3 个）打在同一层上，全部命中才算命中 */
@@ -312,4 +330,84 @@ export function houseMatchKeys(house: AddressHouse): MatchKeys {
     loose.push(house.shopName);
   }
   return { exact, prefix, loose };
+}
+
+// ---------------- 列表搜索：地址 → 命中哪些小区 / 楼栋 / 房 ----------------
+
+export interface AddressQueryHits {
+  /** 命中到哪一层；同分的全部保留（「20」= 所有小区的 20 号楼） */
+  level: 'community' | 'building' | 'house';
+  communityIds: number[];
+  buildingIds: number[];
+  houseIds: number[];
+}
+
+/** 地址簿里最省的一份：服务端只查这几个字段 */
+export interface AddressTreeLite {
+  id: number;
+  name: string;
+  mainLane: string | null;
+  buildings: Array<{
+    id: number;
+    lane: string | null;
+    buildingNo: string;
+    roadName: string | null;
+    houses: Array<{ id: number; roomNo: string; shopName?: string | null; ownerName?: string | null; ownerPhone?: string | null }>;
+  }>;
+}
+
+/**
+ * 列表页搜索框的地址识别：模糊输入、精准命中。
+ *
+ * 和选房下拉同一套打分（scoreAddressPath），区别是只留**最高分那一档**——
+ *   198/20、一期20、枫桦景苑一期20号楼、198弄20号 → 都只命中 枫桦景苑一期 198弄20号；
+ *   不会因为「20」是「201」的前缀，把 198/201 的单也搜出来。
+ * 命中楼栋时，楼里各户的单和这栋的公区单都算（调用方按 buildingId 过滤）。
+ * 输入不像地址（纯文字、单号）返回 null，调用方退回原来的文字搜索。
+ */
+export function resolveAddressQuery(input: string, communities: AddressTreeLite[]): AddressQueryHits | null {
+  const tokens = tokenizeAddress(input).slice(0, 6);
+  if (!tokens.length) return null;
+  let best = 0;
+  let hits: Array<{ level: AddressQueryHits['level']; c: number; b?: number; h?: number }> = [];
+  const take = (score: number, hit: (typeof hits)[number]) => {
+    if (!score || score < best) return;
+    if (score > best) { best = score; hits = []; }
+    hits.push(hit);
+  };
+  for (const c of communities) {
+    const ck = communityMatchKeys({ ...c, parentId: null, isGroup: false, buildings: [] });
+    take(scoreAddressPath(tokens, [ck]), { level: 'community', c: c.id });
+    for (const b of c.buildings) {
+      const bk = buildingMatchKeys({ ...b, houses: [] });
+      take(scoreAddressPath(tokens, [ck, bk]), { level: 'building', c: c.id, b: b.id });
+      if (tokens.length < 2 && !/\D/.test(tokens[0]) && tokens[0].length < 3) continue; // 「20」这种短数字先认楼号，不铺开到房
+      for (const h of b.houses) {
+        const hk = houseMatchKeys({ propertyType: '', shopName: null, ...h });
+        take(scoreAddressPath(tokens, [ck, bk, hk]), { level: 'house', c: c.id, b: b.id, h: h.id });
+      }
+    }
+  }
+  if (!hits.length) return null;
+  // 同分时更具体的一层优先（选到户就不再带整栋）
+  const rank = { house: 3, building: 2, community: 1 } as const;
+  const top = Math.max(...hits.map((x) => rank[x.level]));
+  const kept = hits.filter((x) => rank[x.level] === top);
+  return {
+    level: kept[0].level,
+    communityIds: [...new Set(kept.map((x) => x.c))],
+    buildingIds: [...new Set(kept.flatMap((x) => (x.b ? [x.b] : [])))],
+    houseIds: [...new Set(kept.flatMap((x) => (x.h ? [x.h] : [])))],
+  };
+}
+
+/** 选房下拉选到哪一层，就把哪一层写成搜索框里的规范短写：198/20/602、198/20、枫桦景苑一期 */
+export function addressSearchKey(
+  community: { name: string },
+  building?: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName'> | null,
+  roomNo?: string | null,
+): string {
+  if (!building) return community.name;
+  const head = building.lane ? [building.lane] : [community.name, ...(building.roadName ? [building.roadName] : [])];
+  return [...head, building.buildingNo, roomNo || ''].filter(Boolean).join('/');
 }

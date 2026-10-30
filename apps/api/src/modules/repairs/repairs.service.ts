@@ -1,3 +1,4 @@
+import { resolveAddressQuery, type AddressTreeLite } from '../../common/address.shared';
 import {
   BadRequestException,
   ForbiddenException,
@@ -140,7 +141,6 @@ import {
   extractKeywordCandidates,
   sameNo,
   splitGluedLaneNo,
-  tokenizeAddress,
 } from './repair-address.util';
 import {
   COMMON_ACTION_SUGGESTIONS,
@@ -1980,21 +1980,27 @@ export class RepairsService implements OnModuleInit {
     if (!keyword) return [where];
     const like = `%${keyword}%`;
 
-    const [textHits, addressRequestIds, technicians] = await Promise.all([
+    // 先当地址认：198/20、一期20、枫桦景苑一期20号楼 都精准落到同一栋（和选房下拉同一套打分）。
+    // 认成了地址就不再拿原文去 ILIKE 地址文本 —— 那样「20」会把 201 室、2020 年的单都带出来。
+    const addressRequestIds = await this.requestIdsByAddress(tenantId, keyword);
+    const [textHits, technicians] = await Promise.all([
       this.repairRequestRepo.find({
-        where: [
-          { tenantId, addressText: ILike(like) },
-          { tenantId, content: ILike(like) },
-        ],
+        where: addressRequestIds
+          ? [{ tenantId, content: ILike(like) }]
+          : [
+              { tenantId, addressText: ILike(like) },
+              { tenantId, content: ILike(like) },
+              { tenantId, contactPhone: ILike(like) } as FindOptionsWhere<RepairRequest>,
+              { tenantId, contactName: ILike(like) },
+            ],
         select: ['id'],
         take: 300,
       }),
-      this.requestIdsByAddressTokens(tenantId, keyword),
       this.userRepo.find({ where: { tenantId, name: ILike(like) }, select: ['id'], take: 50 }),
     ]);
 
     const wheres: FindOptionsWhere<WorkOrder>[] = [{ ...where, orderNo: ILike(like) }];
-    const requestIds = Array.from(new Set([...textHits.map((item) => item.id), ...addressRequestIds]));
+    const requestIds = Array.from(new Set([...textHits.map((item) => item.id), ...(addressRequestIds ?? [])]));
     if (requestIds.length) wheres.push({ ...where, requestId: In(requestIds) });
     // 维修工本人只看自己的单（where 已带 assigneeId），这时按姓名找别人没有意义，也不能放开
     if (technicians.length && where.assigneeId === undefined) {
@@ -2003,49 +2009,53 @@ export class RepairsService implements OnModuleInit {
     return wheres;
   }
 
-  /** 「198/47/201」→ 命中的 requestId：三段及以上按房号找，两段以内按楼栋找（公区报修只挂楼栋） */
-  private async requestIdsByAddressTokens(tenantId: number, keyword: string): Promise<number[]> {
-    const tokens = tokenizeAddress(keyword).slice(0, 4);
-    if (!tokens.length) return [];
-    const pattern = `%${tokens.join('%')}%`;
-
-    const houses = await this.dataSource
-      .getRepository(House)
-      .createQueryBuilder('h')
-      .innerJoin(Building, 'b', 'b.id = h.buildingId AND b.tenantId = :tenantId', { tenantId })
-      .select(['h.id', 'h.buildingId'])
-      .where('h.tenantId = :tenantId', { tenantId })
-      .andWhere(
-        "((COALESCE(b.lane, '') || '/' || b.buildingNo || '/' || h.roomNo) ILIKE :pattern OR COALESCE(h.fullAddress, '') ILIKE :pattern)",
-        { pattern },
-      )
-      .take(500)
-      .getMany();
-    const houseIds = houses.map((item) => item.id);
-
-    let buildingIds: number[] = [];
-    if (tokens.length <= 2) {
-      const buildings = await this.dataSource
-        .getRepository(Building)
-        .createQueryBuilder('b')
-        .select(['b.id'])
-        .where('b.tenantId = :tenantId', { tenantId })
-        .andWhere("(COALESCE(b.lane, '') || '/' || b.buildingNo) ILIKE :pattern", { pattern })
-        .take(200)
-        .getMany();
-      buildingIds = buildings.map((item) => item.id);
+  /** 地址簿精简版（小区 → 楼栋 → 房号），搜索用；60 秒缓存，房产改动最多晚一分钟生效 */
+  private addressTreeCache = new Map<number, { at: number; tree: AddressTreeLite[] }>();
+  private async addressTreeLite(tenantId: number): Promise<AddressTreeLite[]> {
+    const hit = this.addressTreeCache.get(tenantId);
+    if (hit && Date.now() - hit.at < 60_000) return hit.tree;
+    const [communities, buildings, houses] = await Promise.all([
+      this.dataSource.query(`SELECT id, name FROM communities WHERE tenant_id = $1`, [tenantId]) as Promise<Array<{ id: number; name: string }>>,
+      this.dataSource.getRepository(Building).find({ where: { tenantId }, select: ['id', 'communityId', 'lane', 'buildingNo', 'roadName'] }),
+      this.dataSource.getRepository(House).find({ where: { tenantId }, select: ['id', 'buildingId', 'roomNo', 'shopName'] }),
+    ]);
+    const housesByBuilding = new Map<number, AddressTreeLite['buildings'][number]['houses']>();
+    for (const h of houses) {
+      const list = housesByBuilding.get(h.buildingId) ?? [];
+      list.push({ id: h.id, roomNo: h.roomNo, shopName: (h as any).shopName ?? null });
+      housesByBuilding.set(h.buildingId, list);
     }
-    if (!houseIds.length && !buildingIds.length) return [];
-
-    const conditions: FindOptionsWhere<RepairRequest>[] = [];
-    if (houseIds.length) conditions.push({ tenantId, houseId: In(houseIds) });
-    if (buildingIds.length) conditions.push({ tenantId, buildingId: In(buildingIds) });
-    const requests = await this.repairRequestRepo.find({
-      where: conditions,
-      select: ['id'],
-      order: { id: 'DESC' },
-      take: 300,
+    const tree: AddressTreeLite[] = communities.map((c) => {
+      const own = buildings.filter((b) => b.communityId === Number(c.id));
+      const laneCount = new Map<string, number>();
+      own.forEach((b) => { if (b.lane) laneCount.set(b.lane, (laneCount.get(b.lane) ?? 0) + 1); });
+      const mainLane = [...laneCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+      return {
+        id: Number(c.id), name: c.name, mainLane,
+        buildings: own.map((b) => ({ id: b.id, lane: b.lane ?? null, buildingNo: b.buildingNo ?? '', roadName: (b as any).roadName ?? null, houses: housesByBuilding.get(b.id) ?? [] })),
+      };
     });
+    this.addressTreeCache.set(tenantId, { at: Date.now(), tree });
+    return tree;
+  }
+
+  /**
+   * 搜索词当地址认出来的报修单 id；不像地址返回 null（调用方退回文字搜索）。
+   * 命中楼栋 = 这栋的公区单 + 楼里各户的单；命中小区 = 整个小区。
+   */
+  private async requestIdsByAddress(tenantId: number, keyword: string): Promise<number[] | null> {
+    const hits = resolveAddressQuery(keyword, await this.addressTreeLite(tenantId));
+    if (!hits) return null;
+    const conditions: FindOptionsWhere<RepairRequest>[] = [];
+    if (hits.level === 'house') conditions.push({ tenantId, houseId: In(hits.houseIds) });
+    if (hits.level === 'building') {
+      conditions.push({ tenantId, buildingId: In(hits.buildingIds) });
+      const tree = await this.addressTreeLite(tenantId);
+      const houseIds = tree.flatMap((c) => c.buildings).filter((b) => hits.buildingIds.includes(b.id)).flatMap((b) => b.houses.map((h) => h.id));
+      if (houseIds.length) conditions.push({ tenantId, houseId: In(houseIds) });
+    }
+    if (hits.level === 'community') conditions.push({ tenantId, communityId: In(hits.communityIds) });
+    const requests = await this.repairRequestRepo.find({ where: conditions, select: ['id'], order: { id: 'DESC' }, take: 2000 });
     return requests.map((item) => item.id);
   }
 
