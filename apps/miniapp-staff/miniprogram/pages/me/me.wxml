@@ -18,6 +18,12 @@
             {{experienceAccess.notebookCount}} 个笔记本
           </view>
         </view>
+        <!-- 保留在「更多」的兜底入口：有人上次停在更多页，主入口在「我的」页但这里也不该空 -->
+        <view wx:if="{{canSeeMeters}}" class="app-tile" bindtap="onOpenMeters">
+          <view class="app-tile__icon"><view class="meter-tile">表</view></view>
+          <view class="app-tile__name">抄表</view>
+          <view class="app-tile__desc">拍照识别读数、核对原图后提交</view>
+        </view>
       </view>
     </view>
 
