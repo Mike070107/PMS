@@ -11,6 +11,7 @@ import { randomBytes } from 'crypto';
 import {
   DataSource,
   EntityManager,
+  FindOperator,
   FindOptionsWhere,
   ILike,
   In,
@@ -1306,9 +1307,8 @@ export class RepairsService implements OnModuleInit {
     // 单测里的轻量仓库桩只有 find；生产仓库走带报修表联查的完整排序。
     // 「已完结」是终态清单，最近结束的排前面 —— 沿用「先报先修」的升序会让 100 条截断
     // 只剩最老的那批，最近修完的一张都看不到。
-    const finishedFirst = query.scope === 'done';
-    const workOrders = typeof (this.workOrderRepo as any).createQueryBuilder === 'function'
-      ? await (() => {
+    const fetchOrders = (workOrderWhere: FindOptionsWhere<WorkOrder> | FindOptionsWhere<WorkOrder>[], finishedFirst: boolean, take = 100) => typeof (this.workOrderRepo as any).createQueryBuilder === 'function'
+      ? (() => {
           const qb = this.workOrderRepo
             .createQueryBuilder('wo')
             .innerJoin(
@@ -1327,13 +1327,29 @@ export class RepairsService implements OnModuleInit {
               .addOrderBy('request.createdAt', 'ASC')
               .addOrderBy('wo.id', 'ASC');
           }
-          return qb.take(100).getMany();
+          return qb.take(take).getMany();
         })()
-      : await this.workOrderRepo.find({
+      : this.workOrderRepo.find({
           where: workOrderWhere,
           order: { id: finishedFirst ? 'DESC' : 'ASC' },
-          take: 100,
+          take,
         });
+    // 不限状态的列表（工单调度「进行中 / 全部」、小程序「全部」）：先取全部没结束的单，
+    // 剩下的名额给最近结束的单。原来混在一起按「先报先修」取前 100，单子总数过 100 后
+    // 最新报的单被老的已完成单挤出去，调度台上看不到新报修（2026-10-30 反馈）。
+    const OPEN_EXCLUDED = [WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED, WorkOrderStatus.VOIDED];
+    const mixed = !query.status && query.scope !== 'done' && wheres.length > 0
+      && wheres.every((w) => (w as any).status instanceof FindOperator && (w as any).status.type === 'not'
+        && (w as any).status.value === WorkOrderStatus.VOIDED);
+    let workOrders: WorkOrder[];
+    if (mixed) {
+      const open = await fetchOrders(wheres.map((w) => ({ ...w, status: Not(In(OPEN_EXCLUDED)) })), false, 300);
+      const rest = open.length >= 100 ? [] : await fetchOrders(
+        wheres.map((w) => ({ ...w, status: In([WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED]) })), true, 100 - open.length);
+      workOrders = [...open, ...rest];
+    } else {
+      workOrders = await fetchOrders(workOrderWhere, query.scope === 'done');
+    }
     const requestIds = workOrders.map((item) => item.requestId);
     if (!requestIds.length) return workOrders;
 
