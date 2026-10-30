@@ -38,6 +38,14 @@ import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps'
 
 const { Title, Text } = Typography;
 
+/** 与后端 access.service 的存量租户兼容规则保持一致：
+ *  开通了物业费/前台收费的老公司，抄表管理默认也算开通，否则角色页看不到勾选项。 */
+function isPageEnabled(pageKey: string, enabledPages: string[] | null | undefined): boolean {
+  if (!enabledPages) return true;
+  if (enabledPages.includes(pageKey) || ALWAYS_ENABLED_PAGES.includes(pageKey)) return true;
+  return pageKey === 'meters' && (enabledPages.includes('fees') || enabledPages.includes('business'));
+}
+
 
 interface RolePermRow {
   pageKey: string;
@@ -455,9 +463,7 @@ function RoleFormModal({
     () =>
       ADMIN_PAGES.filter(
         (p) =>
-          !access?.enabledPages ||
-          access.enabledPages.includes(p.key) ||
-          ALWAYS_ENABLED_PAGES.includes(p.key),
+          isPageEnabled(p.key, access?.enabledPages),
       ),
     [access?.enabledPages],
   );
@@ -1172,9 +1178,7 @@ function TemplateFormModal({
     () =>
       ADMIN_PAGES.filter(
         (p) =>
-          !access?.enabledPages ||
-          access.enabledPages.includes(p.key) ||
-          ALWAYS_ENABLED_PAGES.includes(p.key),
+          isPageEnabled(p.key, access?.enabledPages),
       ),
     [access?.enabledPages],
   );
