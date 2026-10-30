@@ -5436,3 +5436,48 @@
   - 28fe890c feat(meters): crop-only vision recognition, independent AI settings and correction samples
   - 349e58e8 perf(meters): 去掉全图预定位，红框 OCR 一次调用优先0度
 
+## 2026-10-30 23:57 · miniapp-staff · b0fbbf92
+
+- 提交：b0fbbf92 deploy: api → 28fe890c
+- 自上次（95cc2582）以来上线的相关提交：
+  - 28fe890c feat(meters): crop-only vision recognition, independent AI settings and correction samples
+  - 349e58e8 perf(meters): 去掉全图预定位，红框 OCR 一次调用优先0度
+  - 6f8184bb fix(meters): 位数不一致保留识别值不再清空，ROI留边
+  - a1b62873 fix(meters): OCR 按固定红框过滤候选，避免选中框外表号/绿标
+  - 18330b79 fix(miniapp): 识别加载不再挡住手动框选，取消自动拽动画面
+  - 0c1eb0c6 test(miniapp): 用真实电表候选覆盖红框偏移/表号误选
+  - cf5509a3 fix(meters): 表号候选不提前终止 OCR，红框未命中回退全图读数
+  - f5a47426 feat(miniapp): 抄表右上角手动框选，立即停止自动识别
+  - b878128e feat(meters): 设备普通二维码用四位短码，微信扫码直达拍照页
+  - 72501dbf feat(meters): 抄表待复核、小程序档案/账单 tab、现场地图选点；web 复核突出读数
+  - 07b8d259 feat(meters): 微信扫小程序码直达抄表页；识别学习改名识别自学习
+  - 85a0be5f feat(miniapp): 识别结果在裁剪页可直接手改
+  - 93e12a23 feat(miniapp): 全屏固定框，图片缩放/旋转/拖动后识别
+  - 8977bc4a fix(miniapp): 抄表拍照退回系统相机，闪光灯用系统控制
+  - 1da67f87 fix(miniapp): 抄表小图只强调红框，后台看原图比对
+  - 890fffae feat(miniapp): 抄表小预览取景、补光灯，拍照保留高清原图
+  - 5c94b59b feat(miniapp): 全景预览支持双指旋转并回正
+  - f2307a4b fix(miniapp): 压缩抄表全景预览高度，减少占屏
+  - 5816378c feat(miniapp): 红框支持双指捏合缩放，去掉放大缩小按钮
+  - 19ab53e4 fix(miniapp): 抄表拍照改用系统相机，与工单完工照片同链路
+  - 7b84c3fd fix(miniapp): 不再主动查相机权限，避免已授权仍提示开启
+  - 83332323 fix(miniapp): 权限缓存补上 app:meters，抄表 tab 才会显示
+  - 42b85a22 fix(miniapp): 抄表 tab 进入时强制刷新权限，角色授权后无需杀进程
+  - 6039f2a8 fix(miniapp): 相机权限被关时给出开启入口，不再只显示黑屏
+  - a1f63115 feat(miniapp): 抄表改为独立底部 tab，审批改为页内入口
+  - 6daf6acf fix(miniapp): 更多页保留抄表兜底入口，避免停在该页时无入口
+  - 60e7e258 fix(miniapp): 红框不再被自动定位覆盖，表号候选不当作读数
+  - 2f4f6456 feat(miniapp): 抄表从更多应用提到我的工作台首项
+  - 20e624d6 feat(meters): 自动四向旋转、纠错样本与识别学习页
+  - f4e56d81 fix(meters): 读数候选排除标准号行，红框优先选大面积读数框
+  - b9622c7b feat(meters): 全景红框选读数区，按框内候选识别并保留 ROI
+  - ec687451 feat(meters): 拍照抄表、仪表档案与水电记账
+  - 7ce66f6d feat: 全站地址搜索统一(账单/车辆/工单走 common/address-lookup，现场停车库查询先落到唯一一户)；工单用料仓库按数据授权范围；亲情车从旧停车库拉取(助手 2.5.49 新增只读 identity_list，导入带旧库实际车库与有效期、过期记已过期)
+  - d7e06ce7 feat(address): 列表搜索地址识别——模糊输入精准命中(198/20、一期20、枫桦景苑一期20号楼=同一栋)，汉字数字连写切分、1期=一期、简称子序列；工单搜索按地址落到楼栋/户，另可搜电话/联系人
+  - 0e68f5d6 fix(api-client): 请求超时不再显示「signal is aborted without reason」
+  - 8993178d feat(family-cars): 从停车库批量导入现有亲情车
+  - 9477b319 fix(sort): 房号与楼栋号按数字排（1,2,3,11,21 而不是 1,10,11,2）
+  - 63d58f7d feat(family-cars): 员工小程序「审批」里加亲情车经理审批
+  - 1496a5ef feat(family-cars): 亲情车管理页：清册、登记、扫码填写上传、办公室与经理两级审核、自动开通续期、到期提醒停用
+  - 04a589c0 fix(access-cards): isolate building operations and resume failed targets
+
