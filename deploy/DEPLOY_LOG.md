@@ -5428,3 +5428,11 @@
 - 自上次（a1b62873）以来上线的相关提交：
   - 6f8184bb fix(meters): 位数不一致保留识别值不再清空，ROI留边
 
+## 2026-10-30 23:56 · api · 28fe890c
+
+- 包：`pms-api-fast-20261030-235538.tar.gz`
+- 提交：28fe890c feat(meters): crop-only vision recognition, independent AI settings and correction samples
+- 自上次（6f8184bb）以来上线的相关提交：
+  - 28fe890c feat(meters): crop-only vision recognition, independent AI settings and correction samples
+  - 349e58e8 perf(meters): 去掉全图预定位，红框 OCR 一次调用优先0度
+
