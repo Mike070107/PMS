@@ -2,6 +2,7 @@ import { meters, upload } from '@pms/api-client';
 import type { MeterOcrResp, MeterRow, ReadingResult } from '@pms/api-client';
 import { getSession } from '../../utils/session';
 import { fitRoiToFrame, frameRoi as computeFrameRoi } from '../../utils/crop';
+import { pickReadingCandidate } from '../../utils/meter-crop';
 import {
   formatMeterTime,
   formatMeterValue,
@@ -441,28 +442,17 @@ Page({
 
   /** 在全图 OCR 的候选里，只取落在红框内的数字；这样保留整图上下文，避免裁图后 OCR 变差 */
   pickCandidate(result: MeterOcrResp): MeterOcrResp['candidates'][number] | null {
-    const candidates = (result.candidates || []).filter((item) => !this.isMeterNoDigits(item.digits));
-    const boxed = candidates.filter((item) => Array.isArray(item.box) && item.box.length >= 4);
-    if (!boxed.length) return candidates[0] || null;
-    const width = this.data.photoWidth;
-    const height = this.data.photoHeight;
-    if (!width || !height) return boxed[0] || null;
-    const roi = this.frameRoi();
-    const inside = boxed.filter((item) => {
-      const box = item.box!;
-      const cx = (box[0] + box[2]) / 2 / width;
-      const cy = (box[1] + box[3]) / 2 / height;
-      return cx >= roi.x && cx <= roi.x + roi.w && cy >= roi.y && cy <= roi.y + roi.h;
-    });
-    if (inside.length) return inside.sort((a, b) => b.score - a.score)[0] || null;
-    // 红框坐标可能因旋转/缩放手势偏一点；整图明显读出了数字时，
-    // 不要直接报“没找到”，退回全图最高分候选，用户还能手改。
     const expected = this.data.meter
       ? Number(this.data.meter.integerDigits) + Number(this.data.meter.decimalDigits)
       : 0;
-    return boxed
-      .filter((item) => !expected || (item.digits || '').length === expected)
-      .sort((a, b) => b.score - a.score)[0] || boxed.sort((a, b) => b.score - a.score)[0] || null;
+    return pickReadingCandidate(
+      result.candidates || [],
+      this.frameRoi(),
+      this.data.photoWidth,
+      this.data.photoHeight,
+      expected,
+      this.data.meter?.meterNo || '',
+    ) as MeterOcrResp['candidates'][number] | null;
   },
 
   async recognizeRoi(manageLoading = true) {
