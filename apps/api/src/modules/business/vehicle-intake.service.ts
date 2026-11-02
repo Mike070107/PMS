@@ -37,7 +37,7 @@ export interface ReviewIntakeInput {
  * 车牌办理单（扫码自填）：
  * 收银台生成二维码 → 业主手机填车牌、车主电话、上传资料（可拍下二维码回家再填，1 小时内有效）
  * → 办公室实时看到并审核 → 付费车：资料通过 + 已收费 → 进入执行；亲情车：转亲情车登记走经理审核与开通。
- * 每一步写日志（谁、何时、做了什么），供车牌管理页审计。
+ * 每一步写日志（谁、何时、做了什么），供「车牌登记审核」页审计。
  */
 @Injectable()
 export class VehicleIntakeService {
@@ -173,7 +173,7 @@ export class VehicleIntakeService {
     const note = (input.note || '').trim().slice(0, 500);
     if (input.decision === 'void') {
       if (row.status === 'void') return this.view(row);
-      if (row.status === 'approved' && (row.kind === 'family' || row.transactionId)) throw new BadRequestException('已审核通过并进入办理的登记不能在这里作废，请到车牌管理处理');
+      if (row.status === 'approved' && (row.kind === 'family' || row.transactionId)) throw new BadRequestException('已审核通过并进入办理的登记不能在这里作废，请到「车牌登记审核」处理');
       if (!note) throw new BadRequestException('作废请写原因');
       row.status = 'void';
       row.log = [...row.log, await this.entry(user, '作废', note)];

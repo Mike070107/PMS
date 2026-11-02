@@ -170,7 +170,7 @@ export class BusinessExecutionService {
       const planned = { action: 'add_vehicle', plate, startDate: txn.startDate, endDate: targetEndDate, systems: systems.map((s) => s.label) };
       if (mode !== 'on') return this.finish(txn, 'dry_run', { ...prev, mode, attempts, result: planned, lastError: null, nextAt: null });
       return this.finish(txn, 'manual', { ...prev, mode, attempts, result: planned, nextAt: null,
-        lastError: `新车牌 ${plate} 需要在停车系统新增登记（${systems.map((s) => s.label).join('、') || '所选车库'}，有效期 ${txn.startDate} 至 ${targetEndDate}）；自动新增尚未接入，办好后在车牌管理点「已办好」` });
+        lastError: `新车牌 ${plate} 需要在停车系统新增登记（${systems.map((s) => s.label).join('、') || '所选车库'}，有效期 ${txn.startDate} 至 ${targetEndDate}）；自动新增尚未接入，办好后在「车牌登记审核」点「已办好」` });
     }
     if (plate && systems.length) return this.runSystems(txn, prev, mode, attempts, plate, targetEndDate, systems);
 
