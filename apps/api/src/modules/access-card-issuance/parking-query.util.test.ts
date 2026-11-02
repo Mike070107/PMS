@@ -41,14 +41,15 @@ test('完整房号兼容弄号文字和旧库卡序号后缀', () => {
 test('区分完整车牌、车牌尾号、电话和姓名', () => {
   assert.equal(parseParkingSearch('沪BDQ8839').kind, 'plate');
   assert.deepEqual(parseParkingSearch('DQ8839'), { kind: 'plate_tail', term: 'DQ8839' });
-  assert.deepEqual(parseParkingSearch('8839'), { kind: 'plate_tail', term: '8839' });
-  assert.deepEqual(parseParkingSearch('13800001234'), { kind: 'phone', term: '13800001234' });
+  // 纯数字 4~11 位既可能是车牌尾号也可能是电话：统一走 plate_phone，现场助手同时查车牌列和电话列
+  assert.deepEqual(parseParkingSearch('8839'), { kind: 'plate_phone', term: '8839' });
+  assert.deepEqual(parseParkingSearch('13800001234'), { kind: 'plate_phone', term: '13800001234' });
   assert.deepEqual(parseParkingSearch('张三'), { kind: 'resident', term: '张三' });
 });
 
 test('拒绝会造成大范围扫描的短数字', () => {
-  assert.throws(() => parseParkingSearch('502'), /数字信息太少/);
-  assert.throws(() => parseParkingSearch('12'), /数字信息太少/);
+  assert.throws(() => parseParkingSearch('502'), /数字太少/);
+  assert.throws(() => parseParkingSearch('12'), /数字太少/);
   assert.throws(() => parseParkingSearch('28/49/1202'), /无法识别查询内容/);
 });
 
