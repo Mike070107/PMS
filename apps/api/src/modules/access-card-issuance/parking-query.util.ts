@@ -1,4 +1,4 @@
-export type ParkingSearchKind = 'house' | 'plate' | 'plate_tail' | 'phone' | 'resident';
+export type ParkingSearchKind = 'house' | 'plate' | 'plate_tail' | 'plate_phone' | 'phone' | 'resident';
 
 export interface ParsedParkingSearch {
   kind: ParkingSearchKind;
@@ -189,6 +189,10 @@ export function parseParkingSearch(input: string): ParsedParkingSearch {
   if (/^[\u4e00-\u9fff][A-Z][A-Z0-9挂学警港澳]{5,6}$/.test(compact)) {
     return { kind: 'plate', term: compact };
   }
+  // 纯数字 4~11 位既可能是车牌尾号也可能是电话：现场助手会同时匹配车牌列和电话列
+  if (/^\d{4,11}$/.test(compact)) {
+    return { kind: 'plate_phone', term: compact };
+  }
   if (/^[A-Z0-9]{4,6}$/.test(compact)) {
     return { kind: 'plate_tail', term: compact };
   }
@@ -198,9 +202,9 @@ export function parseParkingSearch(input: string): ParsedParkingSearch {
   if (/^[\u4e00-\u9fff·]{2,20}$/.test(term)) return { kind: 'resident', term };
 
   if (/^\d{1,6}$/.test(digits)) {
-    throw new Error('数字信息太少：查房号请输入“楼栋/室”，如 6/502；查车牌尾号至少输入 4 位；查电话至少输入 7 位');
+    throw new Error('数字太少：车牌尾号或电话请至少输入 4 位；查房号请输入“楼栋/室”，如 6/502');
   }
-  throw new Error('无法识别查询内容：请输入房号（如 6/502）、住户姓名、7 位以上电话、完整车牌或至少 4 位车牌尾号');
+  throw new Error('无法识别查询内容：请输入房号（如 6/502）、住户姓名、车牌尾号或电话（4 位以上）、完整车牌');
 }
 
 type ParkingQueryFieldValue = string | number | boolean | null;

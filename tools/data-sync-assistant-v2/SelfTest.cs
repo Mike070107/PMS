@@ -65,15 +65,25 @@ namespace Pms.DataSyncAssistant
             }
             finally
             {
+                // 清理临时目录是收尾动作：被占用的文件（自检里启动过的子进程句柄/WIN32 延迟释放）
+                // 不该把整轮自检判成失败。重试数次后仍删不掉就留着，下次启动前会再清。
                 var full = Path.GetFullPath(root);
                 var temp = Path.GetFullPath(Path.GetTempPath());
                 if (full.StartsWith(temp, StringComparison.OrdinalIgnoreCase) &&
                     Path.GetFileName(full).StartsWith("PmsDataSyncAssistantV2Test-", StringComparison.Ordinal) &&
                     Directory.Exists(full))
                 {
-                    foreach (var file in Directory.GetFiles(full, "*", SearchOption.AllDirectories))
-                        File.SetAttributes(file, FileAttributes.Normal);
-                    Directory.Delete(full, true);
+                    for (var attempt = 0; attempt < 5 && Directory.Exists(full); attempt++)
+                    {
+                        try
+                        {
+                            foreach (var file in Directory.GetFiles(full, "*", SearchOption.AllDirectories))
+                                File.SetAttributes(file, FileAttributes.Normal);
+                            Directory.Delete(full, true);
+                        }
+                        catch (IOException) { System.Threading.Thread.Sleep(300); }
+                        catch (UnauthorizedAccessException) { System.Threading.Thread.Sleep(300); }
+                    }
                 }
             }
         }
@@ -555,8 +565,13 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("停车裸房号与所属数据库映射失败");
             if (ParkingDatabase.SearchKindForTest("DQ8839") != "PlateTail")
                 throw new InvalidOperationException("停车车牌尾号识别失败");
-            if (ParkingDatabase.SearchKindForTest("8839") != "PlateTail")
+            // 纯数字 4~11 位既可能是车牌尾号也可能是电话：走 PlatePhone，同时查车牌列和电话列
+            if (ParkingDatabase.SearchKindForTest("8839") != "PlatePhone")
                 throw new InvalidOperationException("停车纯数字车牌尾号识别失败");
+            if (ParkingDatabase.SearchKindForTest("13900001111") != "PlatePhone")
+                throw new InvalidOperationException("停车纯数字电话识别失败");
+            if (ParkingDatabase.SearchKindForTest("1234") != "PlatePhone")
+                throw new InvalidOperationException("停车 4 位数字未按车牌尾号/电话综合查询");
             try
             {
                 ParkingDatabase.SearchKindForTest("502");
@@ -564,7 +579,7 @@ namespace Pms.DataSyncAssistant
             }
             catch (InvalidOperationException exception)
             {
-                if (!exception.Message.Contains("数字信息太少")) throw;
+                if (!exception.Message.Contains("数字太少")) throw;
             }
             try
             {

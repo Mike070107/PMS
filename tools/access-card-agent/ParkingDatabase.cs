@@ -2444,6 +2444,7 @@ ORDER BY c.column_id;";
             House,
             Plate,
             PlateTail,
+            PlatePhone,
             Phone,
             Resident
         }
@@ -2512,17 +2513,19 @@ ORDER BY c.column_id;";
             var compact = Regex.Replace(term, @"\s+", "").ToUpperInvariant();
             if (Regex.IsMatch(compact, @"^[\u4e00-\u9fff][A-Z][A-Z0-9挂学警港澳]{5,6}$"))
                 return SinglePattern(ParkingSearchKind.Plate, "%" + EscapeLike(compact) + "%");
-            if (Regex.IsMatch(compact, @"^[A-Z0-9]{4,6}$"))
-                return SinglePattern(ParkingSearchKind.PlateTail, "%" + EscapeLike(compact));
 
             var digits = Regex.Replace(term, @"[\s-]", "");
-            if (Regex.IsMatch(digits, @"^\d{7,11}$"))
-                return SinglePattern(ParkingSearchKind.Phone, "%" + EscapeLike(digits) + "%");
+            // 纯数字 4~11 位：既可能是车牌尾号也可能是电话 —— 一个入口同时在车牌列和电话列里模糊匹配。
+            if (Regex.IsMatch(digits, @"^\d{4,11}$"))
+                return SinglePattern(ParkingSearchKind.PlatePhone, "%" + EscapeLike(digits) + "%");
+            // 含字母的 4~6 位短串只可能是车牌尾号（电话是纯数字）。
+            if (Regex.IsMatch(compact, @"^[A-Z0-9]{4,6}$"))
+                return SinglePattern(ParkingSearchKind.PlateTail, "%" + EscapeLike(compact));
             if (Regex.IsMatch(term, @"^[\u4e00-\u9fff·]{2,20}$"))
                 return SinglePattern(ParkingSearchKind.Resident, "%" + EscapeLike(term) + "%");
-            if (Regex.IsMatch(digits, @"^\d{1,6}$"))
-                throw new InvalidOperationException("数字信息太少：查房号请输入“楼栋/室”，如 6/502；查车牌尾号至少输入 4 位；查电话至少输入 7 位");
-            throw new InvalidOperationException("无法识别查询内容：请输入房号、住户姓名、7 位以上电话、完整车牌或至少 4 位车牌尾号");
+            if (Regex.IsMatch(digits, @"^\d{1,3}$"))
+                throw new InvalidOperationException("数字太少：车牌尾号或电话请至少输入 4 位，房号请输入“楼栋/室”如 6/502");
+            throw new InvalidOperationException("无法识别查询内容：请输入房号（如 6/502）、住户姓名、车牌尾号或电话（4 位以上）、完整车牌");
         }
 
         private static ParkingSearchPlan SinglePattern(ParkingSearchKind kind, string pattern)
@@ -2575,6 +2578,14 @@ ORDER BY c.column_id;";
                 foreach (var column in vehicle.Where(delegate(ParkingColumn item) { return IsPlateColumn(item.Name); }))
                     result.Add(new ParkingSearchColumn { Alias = "c", Column = column });
             }
+            else if (kind == ParkingSearchKind.PlatePhone)
+            {
+                // 4 位以上纯数字：同时查车牌列和电话列，命中任一即返回。
+                foreach (var column in vehicle.Where(delegate(ParkingColumn item) { return IsPlateColumn(item.Name); }))
+                    result.Add(new ParkingSearchColumn { Alias = "c", Column = column });
+                foreach (var column in owner.Where(delegate(ParkingColumn item) { return OwnerColumnScore(item.Name, "phone") > 0; }))
+                    result.Add(new ParkingSearchColumn { Alias = "o", Column = column });
+            }
             else if (kind == ParkingSearchKind.Phone)
             {
                 foreach (var column in owner.Where(delegate(ParkingColumn item) { return OwnerColumnScore(item.Name, "phone") > 0; }))
@@ -2609,6 +2620,7 @@ ORDER BY c.column_id;";
         {
             if (kind == ParkingSearchKind.House) return "房号";
             if (kind == ParkingSearchKind.Phone) return "电话";
+            if (kind == ParkingSearchKind.PlatePhone) return "车牌尾号或电话";
             if (kind == ParkingSearchKind.Resident) return "住户姓名";
             return "车牌";
         }
