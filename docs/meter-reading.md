@@ -357,3 +357,4 @@ VL-Plus：5/6，平均2.11秒；VL-OCR：4/6，平均0.51秒。第5张 Plus=0089
 隔离真实页面→实际服务→PGlite导出34张跨分页表码，OpenCV逐张解码34/34成功且短链唯一；勾选同号水电两表另导出2张。标签样图已目视核对文字无遮挡；尚未代替手机微信扫码或纸张打印验收。证据 outputs/meter-label-batch-local-20261103.zip、meter-label-selected-local-20261103.zip、meter-label-sample-local-20261103.png。
 首次API发布尚在本地旧打包目录清理阶段即停止，未上传或切换生产。为避免旧node_modules逐文件清理长时间阻塞，pack.ps1改为每次使用独立的deploy/dist/api-pack-日期-随机码/api目录，tar内部仍为api，原有环境文件排除和开包复查保持；不动旧目录，不更改服务端配置。语法和发布检查自测通过，正式发布还需以新提交实际打包验收。
 微信平台只读核实员工AppID wx002fde4bfaa4c7d9，wx.chooseLocation与wx.getLocation均显示已开通。CLI重新登录二维码再次超时（code25），尚无成功上传，不能据此改变体验版标记。
+标签排版按用户反馈改为居中分区：表号/名称双列，安装地点单独居中，底部为表类型与设备码；长文本自动撑高换行。新版批量34张再次全部解码成功（34/34且唯一），样图已目视核对。新版证据 outputs/meter-label-batch-centered-20261103.zip、meter-label-centered-sample-20261103.png。
