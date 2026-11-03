@@ -137,9 +137,13 @@ export class BusinessService {
     const scope = scopeCommunityIds(access);
     if (scope && (txn.communityId == null || !scope.includes(txn.communityId))) throw new ForbiddenException('这笔不在你的管理范围内');
     if (txn.externalSyncStatus !== 'review') throw new BadRequestException('这笔已经审核过了');
-    if (txn.createdBy === user.id) throw new ForbiddenException('不能审核自己收款登记的续期，请由其他有审批权限的人处理');
+    // 系统管理员可以自审（值班时一个人也要能走完），其余人仍然不能审自己登记的单子；
+    // 自审会在审计里留痕，出问题能查是谁自审了哪笔。
+    const isAdmin = !!access?.isTenantAdmin || !!access?.isPlatformAdmin;
+    const selfApproval = txn.createdBy === user.id;
+    if (selfApproval && !isAdmin) throw new ForbiddenException('不能审核自己收款登记的续期，请由其他有审批权限的人处理');
     if (!approve && !reason?.trim()) throw new BadRequestException('驳回请写原因');
-    const review = { ...((txn.snapshot?.review as Record<string, unknown>) || {}), decidedBy: user.id, decidedAt: new Date().toISOString(), decision: approve ? 'approved' : 'rejected', decisionReason: reason?.trim() || null };
+    const review = { ...((txn.snapshot?.review as Record<string, unknown>) || {}), decidedBy: user.id, decidedAt: new Date().toISOString(), decision: approve ? 'approved' : 'rejected', decisionReason: reason?.trim() || null, selfApproval: selfApproval && isAdmin ? '超管自审' : null };
     const exec = this.execution.initialFor(BusinessServiceType.PARKING_MONTHLY);
     // 新办车牌：金额通过了，但业主资料还没审核通过的，继续等资料
     const intakeId = (txn.snapshot?.intake as { id?: number } | undefined)?.id;
