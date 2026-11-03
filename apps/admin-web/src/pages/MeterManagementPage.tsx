@@ -1,3 +1,4 @@
+import { makeMeterQrLabel, meterQrFilename } from '../lib/meter-qr-label';
 import { captureLocationLabel, captureTimeLabel } from '@pms/shared-types';
 import { wgs84ToGcj02 } from '../lib/meter-geo';
 import ReadingLocationMap from '../components/ReadingLocationMap';
@@ -212,7 +213,15 @@ export default function MeterManagementPage() {
     payload: string;
     meterNo: string;
     shortCode: string;
+    labelDataUrl: string;
+    meterTypeLabel: string;
+    name: string;
+    installAddress: string;
   } | null>(null);
+
+  const [selectedMeters, setSelectedMeters] = useState<MeterRow[]>([]);
+  const [qrBatchBusy, setQrBatchBusy] = useState(false);
+  const [qrBatchProgress, setQrBatchProgress] = useState('');
 
   const communityOptions = useMemo(
     () => communities.map((item) => ({ value: item.id, label: item.name })),
@@ -451,10 +460,54 @@ export default function MeterManagementPage() {
 
   const openQr = async (row: MeterRow) => {
     try {
-      setQr(await meters.qr(row.id));
+      const code = await meters.qr(row.id);
+      const label = { ...code, name:row.name, installAddress:row.installAddress, meterTypeLabel:row.meterTypeLabel };
+      setQr({ ...label, labelDataUrl: await makeMeterQrLabel(label) });
     } catch (e) {
       message.error(e instanceof Error ? e.message : '生成二维码失败');
     }
+  };
+
+  const downloadQrBatch = async (scope: 'selected' | 'filtered') => {
+    if (qrBatchBusy) return;
+    setQrBatchBusy(true); setQrBatchProgress('正在准备表码…');
+    try {
+      let rows = [...selectedMeters];
+      if (scope === 'filtered') {
+        rows = [];
+        for (let page = 1; ; page += 1) {
+          const result = await meters.list({ keyword:meterKeyword || undefined, meterType:(meterType || undefined) as MeterType | undefined, due:meterDue, page, pageSize:200 });
+          if (result.total > 500) throw new Error('本次最多下载500张，请用名称或类型缩小筛选范围');
+          rows.push(...result.rows);
+          if (rows.length >= result.total || !result.rows.length) break;
+        }
+      }
+      rows = [...new Map(rows.map(row => [row.id,row])).values()];
+      if (!rows.length) { message.info('请先选择仪表，或调整筛选条件'); return; }
+      const { default:JSZip } = await import('jszip');
+      const zip = new JSZip(); const failures: string[] = []; let completed = 0;
+      for (let index=0; index<rows.length; index+=1) {
+        const row=rows[index]; setQrBatchProgress(`正在生成 ${index+1}/${rows.length}`);
+        try {
+          const code=await meters.qr(row.id);
+          const label={...code,name:row.name,installAddress:row.installAddress,meterTypeLabel:row.meterTypeLabel};
+          const image=await makeMeterQrLabel(label);
+          zip.file(meterQrFilename(label),image.split(',')[1],{base64:true}); completed+=1;
+        } catch(error) {
+          if ([401,403].includes(Number((error as {httpStatus?:number})?.httpStatus))) throw error;
+          failures.push(`${row.meterTypeLabel} ${row.meterNo}：${error instanceof Error ? error.message : '生成失败'}`);
+        }
+      }
+      if (!completed) throw new Error(`未生成表码：${failures.join('；')}`);
+      if (failures.length) zip.file('未成功生成的表码.txt',failures.join('\n'));
+      const blob=await zip.generateAsync({type:'blob'});
+      const url=URL.createObjectURL(blob); const link=document.createElement('a'); link.href=url;
+      link.download=`仪表表码-${dayjs().format('YYYYMMDD-HHmm')}-${completed}张.zip`; link.click();
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+      if (failures.length) message.warning(`已下载${completed}张，另有${failures.length}张失败，详见ZIP中的失败清单`);
+      else message.success(`已下载${completed}张带信息的设备表码`);
+    } catch(error) { message.error(error instanceof Error ? error.message : '批量下载失败，请重试'); }
+    finally { setQrBatchBusy(false); setQrBatchProgress(''); }
   };
 
   const openReview = (row: MeterReadingRow) => {
@@ -1068,10 +1121,16 @@ export default function MeterManagementPage() {
                     <Select placeholder="全部类型" allowClear style={{ width: 120 }} value={meterType || undefined} onChange={(value) => setMeterType(value || '')} options={TYPE_OPTIONS} />
                     <Button type={meterDue ? 'primary' : 'default'} onClick={() => setMeterDue((value) => !value)}>本月未抄</Button>
                   </div>
+                  <div className="meter-filters" aria-live="polite">
+                    <Button icon={<DownloadOutlined />} disabled={!selectedMeters.length || qrBatchBusy} onClick={()=>void downloadQrBatch('selected')}>下载已选表码（{selectedMeters.length}）</Button>
+                    <Button icon={<DownloadOutlined />} loading={qrBatchBusy} disabled={!meterTotal || qrBatchBusy} onClick={()=>void downloadQrBatch('filtered')}>批量下载筛选结果（{meterTotal}）</Button>
+                    <Text type="secondary">{qrBatchProgress || 'ZIP 内每张表码均含表号、名称、安装地点及表类型，可直接打印。'}</Text>
+                  </div>
                   <Table
                     rowKey="id"
                     size="middle"
                     loading={meterLoading}
+                    rowSelection={{ selectedRowKeys:selectedMeters.map(row=>row.id), preserveSelectedRowKeys:true, onChange:(_keys,rows)=>setSelectedMeters(rows), getCheckboxProps:(row)=>({disabled:qrBatchBusy,'aria-label':`选择${row.meterTypeLabel} ${row.meterNo}`}) }}
                     columns={meterColumns}
                     dataSource={meterRows}
                     scroll={{ x: 1180 }}
@@ -1507,18 +1566,18 @@ export default function MeterManagementPage() {
       >
         {qr && (
           <div className="meter-qr">
-            <img src={qr.dataUrl} alt={`表 ${qr.meterNo} 二维码`} />
+            <img src={qr.labelDataUrl} alt={`${qr.meterTypeLabel} ${qr.meterNo}，名称 ${qr.name || '未填写'}，安装地点 ${qr.installAddress || '未填写'} 的设备二维码标签`} />
             <p>
               普通二维码内容：<Text code>{qr.payload}</Text>
               。微信扫一扫会打开员工端这块表的拍照识别页（需先在公众平台配置「扫普通链接二维码打开小程序」）。
             </p>
-            <p>设备码 <Text code>{qr.shortCode}</Text>，现场贴码不用表号，短码更好扫。</p>
+            <p>设备码 <Text code>{qr.shortCode}</Text>，二维码下方已附表号、名称、安装地点，便于现场核对。</p>
             <Button
               icon={<DownloadOutlined />}
               onClick={() => {
                 const link = document.createElement('a');
-                link.href = qr.dataUrl;
-                link.download = `表码-${qr.shortCode}.png`;
+                link.href = qr.labelDataUrl;
+                link.download = meterQrFilename(qr);
                 link.click();
               }}
             >

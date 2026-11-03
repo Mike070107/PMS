@@ -51,9 +51,10 @@ try {
         Run "build api" { pnpm --filter "@pms/api" build }
         if ($SourceCommit) { Run 'stamp API release' { node deploy/release-check.mjs stamp api $SourceCommit } }
 
-        $ApiDist = Join-Path $DeployDir "dist\api"
-        Write-Host ("==> clean " + $ApiDist) -ForegroundColor Cyan
-        Remove-Tree $ApiDist
+        # 每次使用新的打包目录，避免旧 node_modules 的逐文件清理阻塞发布；不触碰其他包。
+        $ApiPackRoot = Join-Path $DeployDir ("dist\api-pack-" + $Ts + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8))
+        $ApiDist = Join-Path $ApiPackRoot 'api'
+        New-Item -ItemType Directory -Force -Path $ApiPackRoot | Out-Null
 
         Run ("pnpm deploy api -> " + $ApiDist) {
             pnpm --filter "@pms/api" deploy --legacy --prod $ApiDist
@@ -78,7 +79,7 @@ try {
         $ApiTar = Join-Path $DeployDir ("pms-api-" + $Ts + ".tar.gz")
         # --exclude 是第二道保险：上面删过一次，这里再确保它进不了包
         Run ("tar -> pms-api-" + $Ts + ".tar.gz") {
-            tar -czf $ApiTar --exclude="api/.env" -C (Join-Path $DeployDir "dist") api
+            tar -czf $ApiTar --exclude="api/.env" -C $ApiPackRoot api
         }
         $size = (Get-Item -LiteralPath $ApiTar).Length
         if ($size -lt 5MB) { Die ("pms-api tarball too small: " + $size + " bytes") }

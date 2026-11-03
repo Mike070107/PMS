@@ -56,7 +56,7 @@
 .meter-detail-loading { padding: 40px; text-align: center; color: #8194a8; }
 .meter-pay .ant-alert { margin-bottom: 16px; }
 .meter-qr { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.meter-qr img { width: 240px; height: 240px; border: 1px solid #edf1f6; border-radius: 8px; }
+.meter-qr img { width: 280px; max-width: 100%; height: auto; border: 1px solid #edf1f6; border-radius: 8px; }
 .meter-qr p { margin: 0; color: #6b7c90; font-size: 13px; line-height: 1.6; }
 .meter-qr .ant-typography { font-size: 12px; }
 @media (max-width: 1280px) {

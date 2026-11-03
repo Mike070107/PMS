@@ -352,3 +352,8 @@ VL-Plus：5/6，平均2.11秒；VL-OCR：4/6，平均0.51秒。第5张 Plus=0089
 发布前生产基线：124.223.179.214 / VM-4-8-ubuntu /opt/pms-repair，DB身份指纹1d06316c8e331cac42c6509e97c94138ecfb0aa6ecd17141dc54f26f4d6421e6，环境SHA256 de58cef6d3589d1433c31d6e3ecbfce965cfca09925744e6c93d736aa16ce035；meter_vision、ai_assist、订阅模板、dispatch_escalation 指纹与前次相同。当前33档案、0抄表、0账单，收款日志迁移已存在。本次不迁移数据库、不改密钥、连接身份、开关和自动任务。
 
 本机打包临时文件问题：系统TEMP中的esbuild中间文件清理失败；关闭本次预览后仍失败。为本次进程单独设置 TEMP/TMP 到项目 .tmp/meter-release-temp，先校验该目录可写可删，按原Vite生产构建通过，未修改系统权限、全局环境或生产配置。完整后台检查和发布制品在提交确定来源后重新构建。API运行文件、依赖和环境回退备份位于服务器私有目录 /opt/pms-repair/backups/meter-exif-price-20261103；回退只恢复运行文件，不能覆盖新导入档案及后续业务数据。
+
+二维码增补：仪表档案增加勾选下载和“批量下载筛选结果”两个入口，后者读取全部筛选分页（单次最多500张），ZIP中每张PNG包含表类型、设备短码、表号、名称、安装地点。单张预览与下载使用同一标签生成器，长文本换行，文件名含类型和唯一设备码，同号水电表不覆盖。批量生成显示进度；普通单项失败列入ZIP失败清单，鉴权失败立即停止，不静默报告全部成功。使用懒加载JSZip，不改变原二维码载荷与短码路由。
+隔离真实页面→实际服务→PGlite导出34张跨分页表码，OpenCV逐张解码34/34成功且短链唯一；勾选同号水电两表另导出2张。标签样图已目视核对文字无遮挡；尚未代替手机微信扫码或纸张打印验收。证据 outputs/meter-label-batch-local-20261103.zip、meter-label-selected-local-20261103.zip、meter-label-sample-local-20261103.png。
+首次API发布尚在本地旧打包目录清理阶段即停止，未上传或切换生产。为避免旧node_modules逐文件清理长时间阻塞，pack.ps1改为每次使用独立的deploy/dist/api-pack-日期-随机码/api目录，tar内部仍为api，原有环境文件排除和开包复查保持；不动旧目录，不更改服务端配置。语法和发布检查自测通过，正式发布还需以新提交实际打包验收。
+微信平台只读核实员工AppID wx002fde4bfaa4c7d9，wx.chooseLocation与wx.getLocation均显示已开通。CLI重新登录二维码再次超时（code25），尚无成功上传，不能据此改变体验版标记。
