@@ -493,3 +493,9 @@ gunzip -c /tmp/${DATE}.sql.gz \
 - [ ] COS 控制台给 `backups/pg/` 配生命周期规则（30 天保留）
 - [ ] CAM 子账号 SecretId/Key 每 90 天轮换；轮换时同步更新 `apps/api/.env` 和 `/root/.cos.conf`
 - [ ] 微信小程序 AppID/Secret 备案后填入 `.env`
+
+### 本地发布依赖判断（2026-11-03）
+
+统一入口在锁文件变化时使用 `python deploy/api-runtime-dependencies.py refs/tags/deployed/api` 核对完整 API 运行依赖闭包（含间接、可选、peer、别名、workspace 与完整性）；本机需要 Python 3 和 PyYAML。检查失败停止发布，未知锁结构按完整包处理。仅 Web/小程序独立依赖变化且 API 运行依赖指纹一致时保留服务器 node_modules、发布 dist 快速包；API 运行依赖变化仍发完整包。前置回归：`python deploy/api-runtime-dependencies.test.py`。
+
+完整 API 包改用每次独立的 `deploy/dist/api-pack-<日期>-<随机码>/api` 本地暂存目录，tar 内部路径仍为 api，环境文件排除与开包复查不变，避免清理旧 node_modules 阻塞。Windows esbuild 临时文件清理异常时，本轮已验证可给发布进程单独设置 TEMP/TMP 到可读写的项目临时目录，不修改系统权限或全局环境。

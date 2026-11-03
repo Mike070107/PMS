@@ -360,3 +360,14 @@ VL-Plus：5/6，平均2.11秒；VL-OCR：4/6，平均0.51秒。第5张 Plus=0089
 标签排版按用户反馈改为居中分区：表号/名称双列，安装地点单独居中，底部为表类型与设备码；长文本自动撑高换行。新版批量34张再次全部解码成功（34/34且唯一），样图已目视核对。新版证据 outputs/meter-label-batch-centered-20261103.zip、meter-label-centered-sample-20261103.png。
 最终按用户要求收紧标签：表号、名称在一行两列，安装地点下一行，类型和设备短码置于底部小字；常规标签由960×1238调整为760×800，二维码静区保留。实际浏览器调用同一标签生成器生成新版样图，OpenCV完整解码成功。证据 outputs/meter-label-compact-sample-20261103.png。
 API依赖打包阻塞补充：pnpm deploy在本机展开518个目录后持续无文件导入，尚未上传或切换生产，已停止该次本地进程。核对锁文件差异仅新增Web JSZip和员工端开发用exifr；新增API完整运行依赖闭包检查（包括间接/可选依赖、peer snapshot、别名、workspace link及包完整性），旧生产与当前指纹均4212be5e250100ecce6a1f24b08bae299a865c70d9d8e175aef46387295fae99。5项回归覆盖前端独立依赖、API变更、间接/可选完整性、别名peer、workspace、未知结构按完整包处理；依赖检查自身失败立即停止。由统一发布入口据此自动使用dist快速包，保留现有服务器node_modules及环境，不是跳过依赖校验。本地发布新增前置Python3+PyYAML，部署服务器不需要Python依赖。
+
+## 22. 本轮生产发布结果（2026-11-03 14:25–14:28，北京时间）
+
+用户明确要求发布生产及员工小程序。功能与排版提交1f454a7c、2eff4777、cd096ce0、96bf04a8，发布工具修正2c10673e，均已推送main；发布前临时隔离其他任务改动，未纳入发布。
+- API api-2c10673 / 2c10673e，包pms-api-fast-20261103-142410.tar.gz，统一发布入口完成源冻结、构建、上传前源码核对、公网版本与制品核验和deployed/api标签。服务器node_modules保持，启动约3秒后db=up。
+- Web2.0.20261103-1425 / 5144fdc4（API部署日志提交，同一运行源码），包pms-web-20261103-142535.tar.gz，统一入口完整构建（内置31+31测试）、公网版本/主JS与关键文件哈希核验、deployed/web标签通过。正式登录入口刷新显示该版本和33块仪表，档案有“下载已选表码”“批量下载筛选结果（33）”。
+- 生产正式批量入口实际生成33张紧凑版标签ZIP，17电表/16水表，OpenCV逐张解码33/33、短链唯一且均为https://prsznh.cn/m/，没有失败清单。样图文字已目视核对。证据 outputs/白玉兰小楼-33张设备表码-20261103.zip、meter-label-production-evidence-20261103.json、meter-label-production-sample-20261103.png、meter-production-batch-ui-20261103.png。
+- 生产配置与DB身份发布前后相同：环境SHA256 de58cef6d3589d1433c31d6e3ecbfce965cfca09925744e6c93d736aa16ce035；meter_vision/ai_assist/订阅模板/升级提醒开关指纹全部相同。导入33档案保留，仍0抄表、0账单，无生产试算/试收款数据。生成设备码按既有规则将随机token转为唯一短码，这是用户批量表码操作的预期保存结果。证据 outputs/meter-release-before-switch-20261103.json、meter-release-after-api-20261103.json、meter-release-final-db-20261103.json，机器发布证据artifacts/release-checks，正式部署日志deploy/DEPLOY_LOG.md。
+- 回退依据：服务器私有 /opt/pms-repair/backups/meter-exif-price-20261103（旧API运行文件、依赖、环境），Web保留web.bak.1793687175等脚本备份。回退只恢复代码，必须保留33档案、已生成的短码及以后新增业务/收款、配置更新，不恢复旧业务快照覆盖新数据。
+
+员工端发布仍未完成：微信开发者工具新登录二维码等待扫码，CLI islogin明确login=false；体验版仍1.0.20261031a，正式版1.0.20261016a。本轮没有成功upload、没有移动deployed/miniapp-staff、没有提交审核。平台位置API已开通的证据不等于开发者工具登录或手机授权成功。真机拍照/相册EXIF保留、定位授权、保存生产刷新及微信扫码/纸张打印仍待现场验收；生产没有可用于验证GPS与本次单价的新抄表记录，未用虚构账单替代。助手和业主端未发布。
