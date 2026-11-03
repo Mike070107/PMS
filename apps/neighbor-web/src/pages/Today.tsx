@@ -1,181 +1,164 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import type { WorkOrderListItem } from '@pms/shared-types';
 import { WorkOrderStatus } from '@pms/shared-types';
 import { repairs, request } from '@pms/api-client';
 import { useSession } from '@/lib/auth';
-import { ago, dayjs, dueText, isActive, isOverdue, money, statusOf } from '@/lib/format';
-import { Card, ErrorNote, Loading, Pill } from '@/components/ui';
+import { dayjs, isActive, isOverdue, money, stageOf } from '@/lib/format';
+import Icon from '@/components/Icon';
+import type { IconName } from '@/components/Icon';
+import { Loading } from '@/components/ui';
 
-interface Txn { id: number; amountCents: number; createdAt: string }
+interface Txn {
+  id: number; txnNo: string; serviceType: string; status: string;
+  amountCents: number; paymentMethod: string | null; createdAt: string;
+}
 
+const SERVICE_LABEL: Record<string, string> = { parking_monthly: '停车月租', access_card: '门禁卡' };
+const svcIcon = (s: string): IconName => (s === 'parking_monthly' ? 'car' : s === 'access_card' ? 'key' : 'cash');
+
+/**
+ * 今日工作：以收费为导向。顶部今日前台收款（停车+门禁的 business 流水），
+ * 分项收入、需要处理（工单待办 + 外部失败入口）、最近收款。
+ * 物业费收款在另一套账（fees），这里不混入一个口径，标注清楚。
+ */
 export default function Today() {
   const nav = useNavigate();
   const session = useSession();
   const [orders, setOrders] = useState<WorkOrderListItem[] | null>(null);
   const [txns, setTxns] = useState<Txn[] | null>(null);
-  const [err, setErr] = useState('');
 
   useEffect(() => {
     let alive = true;
-    repairs.list({ scope: 'all' })
-      .then((r) => { if (alive) setOrders(r); })
-      .catch((e) => { if (alive) setErr(e instanceof Error ? e.message : '工单加载失败'); });
-    request<Txn[]>({ url: '/business/transactions' })
-      .then((r) => { if (alive) setTxns(r); })
-      .catch(() => { if (alive) setTxns([]); });
+    repairs.list({ scope: 'all' }).then((r) => { if (alive) setOrders(r); }).catch(() => { if (alive) setOrders([]); });
+    request<Txn[]>({ url: '/business/transactions' }).then((r) => { if (alive) setTxns(r); }).catch(() => { if (alive) setTxns([]); });
     return () => { alive = false; };
   }, []);
 
-  const stat = useMemo(() => {
+  const today = dayjs().startOf('day');
+  const todayTxns = useMemo(() => (txns ?? []).filter((t) => dayjs(t.createdAt).isAfter(today)), [txns]);
+  const paid = useMemo(() => todayTxns.filter((t) => t.status !== 'refunded'), [todayTxns]);
+  const refunded = useMemo(() => todayTxns.filter((t) => t.status === 'refunded'), [todayTxns]);
+  const income = paid.reduce((s, t) => s + t.amountCents, 0);
+  const refund = refunded.reduce((s, t) => s + t.amountCents, 0);
+  const bySvc = (s: string) => paid.filter((t) => t.serviceType === s);
+  const parkSum = bySvc('parking_monthly').reduce((s, t) => s + t.amountCents, 0);
+  const cardSum = bySvc('access_card').reduce((s, t) => s + t.amountCents, 0);
+  const maxSum = Math.max(parkSum, cardSum, 1);
+
+  const repairStat = useMemo(() => {
     const list = orders ?? [];
-    const today = dayjs().startOf('day');
-    const created = list.filter((o) => o.createdAt && dayjs(o.createdAt).isAfter(today)).length;
-    const done = list.filter((o) => o.completedAt && dayjs(o.completedAt).isAfter(today)).length;
     const active = list.filter((o) => isActive(o.status));
-    const overdue = active.filter((o) => isOverdue(o));
     const by = (s: WorkOrderStatus) => list.filter((o) => o.status === s).length;
-    const payToday = (txns ?? []).filter((t) => dayjs(t.createdAt).isAfter(today));
     return {
-      created,
-      done,
-      overdue: overdue.length,
-      pending: by(WorkOrderStatus.CREATED),
-      waitAccept: by(WorkOrderStatus.DISPATCHED),
-      working: by(WorkOrderStatus.IN_PROGRESS),
-      material: by(WorkOrderStatus.WAITING_MATERIAL),
+      pending: list.filter((o) => stageOf(o) === WorkOrderStatus.CREATED).length,
+      accepting: list.filter((o) => stageOf(o) === 'pending_accept').length,
       review: by(WorkOrderStatus.DONE_PENDING_REVIEW),
-      payAmount: payToday.reduce((s, t) => s + (t.amountCents || 0), 0),
-      payCount: payToday.length,
-      active,
+      material: by(WorkOrderStatus.WAITING_MATERIAL),
+      overdue: active.filter((o) => isOverdue(o)).length,
+      active: active.length,
     };
-  }, [orders, txns]);
-
-  const workers = useMemo(() => {
-    const map = new Map<string, number>();
-    (stat.active || []).forEach((o) => {
-      const name = o.assigneeName || '未指派';
-      map.set(name, (map.get(name) ?? 0) + 1);
-    });
-    return [...map.entries()].sort((a, b) => b[1] - a[1]);
-  }, [stat.active]);
-
-  const urgent = useMemo(() => {
-    return [...(orders ?? [])]
-      .filter((o) => isActive(o.status) && (o.urgent || isOverdue(o)))
-      .sort((a, b) => (a.slaDueAt || '').localeCompare(b.slaDueAt || ''))
-      .slice(0, 6);
   }, [orders]);
 
-  const name = session.user?.name || session.user?.loginAccount || '';
-  const hour = dayjs().hour();
-  const greet = hour < 6 ? '凌晨好' : hour < 12 ? '上午好' : hour < 18 ? '下午好' : '晚上好';
+  const name = session.user?.name || session.user?.loginAccount || '管理员';
+  const officeName = session.actingOffice?.name || (session.access?.scopeAll ? '全部管理处' : '');
 
-  if (orders === null && !err) return <Loading />;
+  if (orders === null && txns === null) return <Loading />;
 
-  const rows: Array<[string, string, number, string, boolean]> = [
-    ['待派单', '点进去直接是待派单列，带推荐维修工', stat.pending, '/work-orders?filter=created', true],
-    ['已超时', '超过要求完成时间仍未完工', stat.overdue, '/work-orders?filter=overdue', true],
-    ['待业主验收', '可代业主验收或催业主确认', stat.review, '/work-orders?filter=done_pending_review', false],
-    ['等材料的工单', '跟踪采购进度，到料后继续维修', stat.material, '/work-orders?filter=waiting_material', false],
+  const todoRows: Array<{ icon: IconName; tone: string; t: string; d: string; n: number; to: string }> = [
+    { icon: 'kanban', tone: 'red', t: '待派单工单', d: '没有自动派出去的，要办公室派', n: repairStat.pending, to: '/work-orders?filter=created' },
+    { icon: 'kanban', tone: 'blue', t: '待维修工接单', d: '已自动通知默认维修工，久没人接就改派', n: repairStat.accepting, to: '/work-orders?filter=pending_accept' },
+    { icon: 'clock', tone: 'amber', t: '已超时工单', d: '超过要求完成时间仍未完工', n: repairStat.overdue, to: '/work-orders?filter=overdue' },
+    { icon: 'check', tone: 'blue', t: '待业主验收', d: '可代业主验收或催业主确认', n: repairStat.review, to: '/work-orders?filter=done_pending_review' },
+    { icon: 'box', tone: 'amber', t: '等材料的工单', d: '到料后继续维修', n: repairStat.material, to: '/work-orders?filter=waiting_material' },
   ];
 
   return (
     <>
-      <div className="ph">
+      <div className="ph" style={{ marginBottom: 14 }}>
         <div>
-          <h1>{greet}，{name || '管理员'}</h1>
-          <p>{dayjs().format('M 月 D 日 dddd')} · 实时数据来自正式库</p>
+          <h1 style={{ fontSize: 22 }}>今日工作</h1>
+          <p>{dayjs().format('YYYY 年 M 月 D 日 dddd')}{officeName ? ` · ${officeName}` : ''} · 实时数据来自正式库</p>
         </div>
         <div className="act">
-          <button className="btn" onClick={() => nav('/work-orders?view=board')}>看工单看板</button>
-          <button className="btn p" onClick={() => nav('/work-orders?new=1')}>＋ 登记报修</button>
+          <button className="btn" onClick={() => nav('/work-orders?new=1')}><Icon name="plus" size={18} />登记报修</button>
+          <button className="btn p" onClick={() => nav('/cashier')}><Icon name="cash" size={18} />收费办理</button>
         </div>
       </div>
 
-      {err ? <ErrorNote>{err}</ErrorNote> : null}
-
-      <div className="kpis">
-        <div><small>今日新增工单</small><b>{stat.created}</b><em>进行中 {stat.active.length} 单</em></div>
-        <div><small>今日完工</small><b>{stat.done}</b><em>待验收 {stat.review} 单</em></div>
-        <div><small>今日收款</small><b>{txns === null ? '…' : `¥ ${(stat.payAmount / 100).toFixed(2)}`}</b><em>{stat.payCount} 笔 · 前台收费</em></div>
-        <div><small>已超时</small><b style={{ color: stat.overdue ? 'var(--dang)' : undefined }}>{stat.overdue}</b><em>紧急 {urgent.filter((o) => o.urgent).length} 单</em></div>
-      </div>
-
-      <div className="dash">
-        <Card>
-          <div style={{ padding: '14px 16px 6px' }} className="sec-t">
-            需要处理<span className="r muted">点击直达已筛选好的列表</span>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.55fr 1fr', gap: 20, alignItems: 'start' }}>
+        <div>
+          <div className="hero">
+            <div className="lbl"><Icon name="wallet" size={17} />今日前台收款（停车 + 门禁 · {officeName || '本账号范围'}）</div>
+            <div className="big money"><small>¥</small>{(income / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</div>
+            <div className="split">
+              <div><div className="k">实收</div><div className="v money">{money(income / 100)}</div></div>
+              <div><div className="k">退款</div><div className="v money">{refund ? `−${money(refund / 100)}` : '¥0.00'}</div></div>
+              <div><div className="k">收款笔数</div><div className="v">{paid.length} 笔</div></div>
+              <div><div className="k">进行中工单</div><div className="v">{repairStat.active} 单</div></div>
+            </div>
           </div>
-          <div className="todo">
-            {rows.map(([t, d, n, to, hot]) => (
-              <Link key={t} to={to}>
-                <span className={`num ${hot && n ? 'hot' : ''}`}>{orders === null ? '…' : n}</span>
-                <div><b>{t}</b><span className="d">{d}</span></div>
-                <span className="go">处理 →</span>
-              </Link>
-            ))}
+
+          <div className="statRow" style={{ marginTop: 20 }}>
+            <div className="stat"><div className="ic blue"><Icon name="car" /></div><div className="v money">{money(parkSum / 100)}</div><div className="k">停车 · {bySvc('parking_monthly').length} 笔</div></div>
+            <div className="stat"><div className="ic amber"><Icon name="key" /></div><div className="v money">{money(cardSum / 100)}</div><div className="k">门禁卡 · {bySvc('access_card').length} 笔</div></div>
+            <div className="stat"><div className="ic green"><Icon name="home" /></div><div className="v" style={{ fontSize: 17, color: 'var(--ink3)' }}>另一账口径</div><div className="k">物业费在「账单与待缴」</div></div>
           </div>
-        </Card>
+
+          <div className="card" style={{ marginTop: 20, padding: '18px 20px' }}>
+            <div className="side-h"><Icon name="chart" size={19} style={{ color: 'var(--acc-t)' }} />今日分项收入</div>
+            <div style={{ marginTop: 12 }}>
+              {[['停车月租', parkSum, 'var(--acc)'], ['门禁卡', cardSum, 'var(--warn)']].map(([nm, v, col]) => (
+                <div key={nm as string} style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
+                  <div style={{ width: 80, fontSize: 13.5, color: 'var(--ink2)' }}>{nm as string}</div>
+                  <div style={{ flex: 1, height: 10, borderRadius: 6, background: 'var(--line2)', overflow: 'hidden' }}><div style={{ height: '100%', borderRadius: 6, width: `${Math.round((v as number) / maxSum * 100)}%`, background: col as string }} /></div>
+                  <div style={{ width: 100, textAlign: 'right', fontWeight: 700, fontSize: 14 }}>{money((v as number) / 100)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
 
         <div>
-          <Card style={{ marginBottom: 16 }}>
-            <div style={{ padding: '14px 16px 0' }} className="sec-t">常用操作</div>
-            <div className="quick">
-              <button onClick={() => nav('/work-orders?new=1')}><b>登记报修</b><span>电话 / 前台来访</span></button>
-              <button onClick={() => nav('/cashier')}><b>收费</b><span>物业费、停车、门禁卡</span></button>
-              <button onClick={() => nav('/vehicles')}><b>查房号 / 车牌</b><span>车辆授权、门禁卡</span></button>
-              <button onClick={() => nav('/purchase')}><b>采购申请</b><span>缺料、零星采买</span></button>
-            </div>
-          </Card>
+          <button className="btn p lg" style={{ width: '100%', justifyContent: 'center', marginBottom: 16 }} onClick={() => nav('/cashier')}>
+            <Icon name="cash" />开始收费办理
+          </button>
 
-          <Card>
-            <div style={{ padding: '14px 16px 4px' }} className="sec-t">维修工在手单数<span className="r muted">进行中的工单</span></div>
-            {workers.length ? (
-              <table className="t">
-                <tbody>
-                  {workers.map(([w, n]) => (
-                    <tr key={w}>
-                      <td style={{ width: 90 }}><b>{w}</b></td>
-                      <td><div className="bar" style={{ width: 120 }}><i style={{ width: `${Math.min(100, n * 18)}%`, background: n >= 5 ? 'var(--dang)' : undefined }} /></div></td>
-                      <td style={{ textAlign: 'right' }}>{n}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : <div className="empty" style={{ padding: 24 }}>当前没有进行中的工单</div>}
-          </Card>
-        </div>
-      </div>
-
-      <Card style={{ marginTop: 16 }}>
-        <div style={{ padding: '14px 16px 6px' }} className="sec-t">
-          紧急 / 已超时<span className="r muted">按要求完成时间排序</span>
-        </div>
-        {urgent.length ? (
-          <table className="t">
-            <thead>
-              <tr><th>地址</th><th>问题</th><th>状态</th><th>负责人</th><th>要求完成</th></tr>
-            </thead>
-            <tbody>
-              {urgent.map((o) => (
-                <tr key={o.id} className="row" onClick={() => nav(`/work-orders?sel=${o.id}`)}>
-                  <td><b>{o.summaryAddress || '—'}</b>{o.urgent ? <span className="pill urg" style={{ marginLeft: 6 }}>紧急</span> : null}</td>
-                  <td className="sub" style={{ maxWidth: 320 }}>{o.summaryContent || '—'}</td>
-                  <td><Pill status={o.status} /></td>
-                  <td>{o.assigneeName || <span className="muted">未指派</span>}</td>
-                  <td className={isOverdue(o) ? 'over' : ''}>{dueText(o.slaDueAt)}</td>
-                </tr>
+          <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="side-h" style={{ padding: '16px 18px 2px' }}><Icon name="alert" size={19} style={{ color: 'var(--warn)' }} />需要处理</div>
+            <div className="rowList">
+              {todoRows.map((r) => (
+                <button key={r.t} className="lrow click" onClick={() => nav(r.to)}>
+                  <div className={`li ic ${r.n ? r.tone : 'blue'}`}><Icon name={r.icon} /></div>
+                  <div className="lt"><b>{r.t}</b><small>{r.d}</small></div>
+                  <b style={{ fontSize: 20, color: r.n && (r.tone === 'red' || r.tone === 'amber') ? 'var(--dang)' : 'var(--ink)' }}>{orders === null ? '…' : r.n}</b>
+                </button>
               ))}
-            </tbody>
-          </table>
-        ) : <div className="empty" style={{ padding: 30 }}>没有紧急或超时的工单</div>}
-      </Card>
+              <button className="lrow click" onClick={() => nav('/pending')}>
+                <div className="li ic amber"><Icon name="cpu" /></div>
+                <div className="lt"><b>外部任务待处理</b><small>停车/写卡/MIS 的失败与待核验</small></div>
+                <Icon name="chev" className="go" />
+              </button>
+            </div>
+          </div>
 
-      <div className="note" style={{ marginTop: 16 }}>
-        新版界面（测试环境）。统计口径：今日新增按建单时间、今日完工按完工时间，「今日收款」取自前台收费流水。
-        养护单、报表、账单等页面尚未迁移，左侧标「旧」的入口会跳回原后台。
+          <div className="card" style={{ overflow: 'hidden', marginTop: 16 }}>
+            <div className="side-h" style={{ padding: '16px 18px 2px' }}><Icon name="receipt" size={19} style={{ color: 'var(--acc-t)' }} />最近收款</div>
+            <div className="rowList">
+              {paid.length === 0 ? <div className="empty" style={{ padding: 28 }}>今天还没有停车/门禁收款</div>
+                : paid.slice(0, 5).map((t) => (
+                  <div key={t.id} className="lrow">
+                    <div className="li ic green"><Icon name={svcIcon(t.serviceType)} /></div>
+                    <div className="lt"><b>{SERVICE_LABEL[t.serviceType] || t.serviceType}</b><small>{t.txnNo} · {t.paymentMethod || '—'} · {dayjs(t.createdAt).format('HH:mm')}</small></div>
+                    <b className="money">{money(t.amountCents / 100)}</b>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
       </div>
+
+      <div className="note2" style={{ marginTop: 18 }}><Icon name="alert" />「今日前台收款」只含停车 + 门禁的 business 流水；物业费是另一套账，在「账单与待缴」里看。外部动作（停车续期/写卡/MIS 记账）当前仅登记，真实下发与核验在「待处理」跟踪。</div>
     </>
   );
 }

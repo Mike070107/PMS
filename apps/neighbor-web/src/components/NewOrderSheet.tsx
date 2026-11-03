@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { REPAIR_TYPE_OPTIONS } from '@pms/shared-types';
 import { repairs } from '@pms/api-client';
 import { Btn, ErrorNote, Field, Sheet, toast } from '@/components/ui';
+import Icon from '@/components/Icon';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import { useAddressTree } from '@/lib/address-tree';
 
@@ -11,12 +12,23 @@ import { useAddressTree } from '@/lib/address-tree';
  * 地址是一个输入框：直接打 228/6/502 联想，或点选 小区 → 楼栋 → 室号，
  * 选中后自动带出业主姓名和电话；公共区域报修切到「公共区域」直接写位置。
  */
+/** 收银台已经选定住户时，带着这户直接开报修（不用再选一次房号） */
+export interface RepairPrefill {
+  communityId: number | null;
+  /** 完整地址：枫桦景苑二期 228弄3号502室 */
+  addressText: string;
+  contactName?: string | null;
+  contactPhone?: string | null;
+}
+
 export default function NewOrderSheet({
-  open, onClose, onCreated,
+  open, onClose, onCreated, initialHouse,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (workOrderId: number) => void;
+  /** 传了就带着这户开报修：地址固定显示，可点「改地址」切回选房 */
+  initialHouse?: RepairPrefill | null;
 }) {
   const { communities, error: treeErr } = useAddressTree();
   const [mode, setMode] = useState<'house' | 'area'>('house');
@@ -30,30 +42,41 @@ export default function NewOrderSheet({
   const [urgent, setUrgent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  /** 带户进来时锁定地址；点「改地址」解锁回到选房 */
+  const [fixed, setFixed] = useState<RepairPrefill | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setErr('');
-  }, [open]);
+    // 每次打开按传入的住户重置：带户就锁地址、带出联系人；不带户就空白选房
+    setFixed(initialHouse ?? null);
+    setMode('house');
+    setPicked(null); setSpot(''); setAreaText('');
+    setContactName(initialHouse?.contactName ?? '');
+    setContactPhone(initialHouse?.contactPhone ?? '');
+    setContent(''); setRepairType(''); setUrgent(false);
+  }, [open, initialHouse]);
 
   const reset = () => {
-    setPicked(null); setSpot(''); setAreaText('');
+    setFixed(null); setPicked(null); setSpot(''); setAreaText('');
     setContactName(''); setContactPhone(''); setContent(''); setRepairType(''); setUrgent(false); setErr('');
   };
 
-  const fullAddress = mode === 'house'
-    ? [picked?.text, spot.trim()].filter(Boolean).join(' ')
-    : areaText.trim();
+  const fullAddress = fixed
+    ? [fixed.addressText, spot.trim()].filter(Boolean).join(' ')
+    : mode === 'house'
+      ? [picked?.text, spot.trim()].filter(Boolean).join(' ')
+      : areaText.trim();
 
   const submit = async () => {
-    if (mode === 'house' && !picked) { setErr('请选房号，或切到「公共区域」写地址'); return; }
-    if (mode === 'area' && !areaText.trim()) { setErr('请填写公共区域地址'); return; }
+    if (!fixed && mode === 'house' && !picked) { setErr('请选房号，或切到「公共区域」写地址'); return; }
+    if (!fixed && mode === 'area' && !areaText.trim()) { setErr('请填写公共区域地址'); return; }
     if (!content.trim()) { setErr('请填写问题描述'); return; }
     setBusy(true);
     setErr('');
     try {
       const r = await repairs.create({
-        communityId: picked?.communityId ?? communities[0]?.id ?? 0,
+        communityId: fixed?.communityId ?? picked?.communityId ?? communities[0]?.id ?? 0,
         addressText: fullAddress,
         contactName: contactName.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
@@ -80,34 +103,49 @@ export default function NewOrderSheet({
     >
       {err ? <ErrorNote>{err}</ErrorNote> : null}
 
-      <Field label="报修地址 *" hint="直接输入 228/6/502 查找，或点选 小区 → 楼栋 → 室号；选中自动带出业主和电话">
-        <div className="chips" style={{ marginBottom: 8 }}>
-          <button className={`chip ${mode === 'house' ? 'on' : ''}`} onClick={() => setMode('house')}>住户房号</button>
-          <button className={`chip ${mode === 'area' ? 'on' : ''}`} onClick={() => setMode('area')}>公共区域</button>
-        </div>
-
-        {mode === 'house' ? (
+      <Field label="报修地址 *" hint={fixed ? '收银台已选定这户；如要改到别处，点「改地址」' : '直接输入 228/6/502 查找，或点选 小区 → 楼栋 → 室号；选中自动带出业主和电话'}>
+        {fixed ? (
           <>
-            <HousePicker
-              communities={communities}
-              value={picked}
-              placeholder="输入 228/6/502，或点选 小区 → 楼栋 → 室号"
-              onPick={(p) => {
-                setPicked(p);
-                if (p.ownerName && !contactName) setContactName(p.ownerName);
-                if (p.ownerPhone && !contactPhone) setContactPhone(p.ownerPhone);
-              }}
-              onClear={() => setPicked(null)}
-            />
-            {picked ? (
-              <input className="in" style={{ marginTop: 8 }} value={spot}
-                onChange={(e) => setSpot(e.target.value)}
-                placeholder="具体位置（选填）：卫生间、厨房、阳台…" />
-            ) : null}
+            <div className="fixed-addr">
+              <Icon name="home" size={16} />
+              <b style={{ flex: 1 }}>{fixed.addressText}</b>
+              <button type="button" className="btn g sm" onClick={() => { setFixed(null); setSpot(''); }}>改地址</button>
+            </div>
+            <input className="in" style={{ marginTop: 8 }} value={spot}
+              onChange={(e) => setSpot(e.target.value)}
+              placeholder="具体位置（选填）：卫生间、厨房、阳台…" />
           </>
         ) : (
-          <input className="in" value={areaText} onChange={(e) => setAreaText(e.target.value)}
-            placeholder="例如：枫桦景苑二期 3号楼 大堂 / 地下车库 B2 水泵房" />
+          <>
+            <div className="chips" style={{ marginBottom: 8 }}>
+              <button className={`chip ${mode === 'house' ? 'on' : ''}`} onClick={() => setMode('house')}>住户房号</button>
+              <button className={`chip ${mode === 'area' ? 'on' : ''}`} onClick={() => setMode('area')}>公共区域</button>
+            </div>
+
+            {mode === 'house' ? (
+              <>
+                <HousePicker
+                  communities={communities}
+                  value={picked}
+                  placeholder="输入 228/6/502，或点选 小区 → 楼栋 → 室号"
+                  onPick={(p) => {
+                    setPicked(p);
+                    if (p.ownerName && !contactName) setContactName(p.ownerName);
+                    if (p.ownerPhone && !contactPhone) setContactPhone(p.ownerPhone);
+                  }}
+                  onClear={() => setPicked(null)}
+                />
+                {picked ? (
+                  <input className="in" style={{ marginTop: 8 }} value={spot}
+                    onChange={(e) => setSpot(e.target.value)}
+                    placeholder="具体位置（选填）：卫生间、厨房、阳台…" />
+                ) : null}
+              </>
+            ) : (
+              <input className="in" value={areaText} onChange={(e) => setAreaText(e.target.value)}
+                placeholder="例如：枫桦景苑二期 3号楼 大堂 / 地下车库 B2 水泵房" />
+            )}
+          </>
         )}
       </Field>
 

@@ -2,144 +2,148 @@ import { useCallback, useEffect, useState } from 'react';
 import { accessCardIssuance } from '@pms/api-client';
 import type { AccessCardReadiness } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { legacyUrl } from '@/lib/legacy';
-import { Card, ErrorNote, Loading, toast } from '@/components/ui';
+import { Loading, ErrorNote, toast } from '@/components/ui';
 import { ago } from '@/lib/format';
+import Icon from '@/components/Icon';
+import type { IconName } from '@/components/Icon';
+import ToneIcon from '@/components/ToneIcon';
 
-const KIND_LABEL: Record<string, string> = {
-  issuer: '发卡器助手',
-  access_gateway: '门禁网关',
-  legacy_sync: '旧库同步',
-  parking_gateway: '停车网关',
+const KIND: Record<string, { label: string; icon: IconName }> = {
+  issuer: { label: '发卡器助手', icon: 'key' },
+  access_gateway: { label: '门禁网关', icon: 'cpu' },
+  legacy_sync: { label: '旧库同步', icon: 'refresh' },
+  parking_gateway: { label: '停车网关', icon: 'car' },
 };
-
-const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
-  online: { text: '正常', cls: 's-done' },
-  degraded: { text: '部分可用', cls: 's-pend' },
-  offline: { text: '离线', cls: 'urg' },
+const STATUS: Record<string, { text: string; tone: string; tag: string }> = {
+  online: { text: '正常', tone: 'green', tag: 'ok' },
+  degraded: { text: '部分可用', tone: 'amber', tag: 'warn' },
+  offline: { text: '离线', tone: 'red', tag: 'dang' },
 };
-
-const FEATURE_LABEL: Array<[keyof AccessCardReadiness['features'], string]> = [
-  ['cardWrite', '写卡'],
-  ['legacyDbWrite', '旧门禁库写入'],
-  ['accessDbWrite', '新门禁库写入'],
-  ['parkingDbRead', '停车库读取'],
-  ['parkingDbWrite', '停车库写入'],
-  ['controllerUpload', '控制器下发'],
+const FEATURES: Array<[keyof AccessCardReadiness['features'], string]> = [
+  ['cardWrite', '写卡'], ['legacyDbWrite', '旧门禁库写入'], ['accessDbWrite', '新门禁库写入'],
+  ['parkingDbRead', '停车库读取'], ['parkingDbWrite', '停车库写入'], ['controllerUpload', '控制器下发'],
 ];
 
 /**
- * 设备中心：把散在各处的本地服务、库连接、控制器状态集中一页。
- * 数据来自 /access-card-issuance/readiness —— 和发卡页用同一份现场状态。
+ * 系统与设备（卡片式，对齐新设计）：现场助手 / 库连接 / 控制器状态集中一页。
+ * 数据来自 /access-card-issuance/readiness，和发卡页同一份现场状态；本页只读展示。
  */
 export default function Devices() {
   const [data, setData] = useState<AccessCardReadiness | null>(null);
   const [err, setErr] = useState('');
 
   const load = useCallback(async () => {
-    try {
-      setData(await accessCardIssuance.readiness());
-      setErr('');
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : '设备状态读取失败');
-    }
+    try { setData(await accessCardIssuance.readiness()); setErr(''); }
+    catch (e) { setErr(e instanceof Error ? e.message : '设备状态读取失败'); }
   }, []);
-
   useEffect(() => { void load(); }, [load]);
 
-  if (!data && !err) return <Loading text="读取设备状态…" />;
+  if (!data && !err) return <Loading />;
 
   const agents = data?.agents ?? [];
   const online = agents.filter((a) => a.status === 'online').length;
-  const offline = agents.filter((a) => a.status === 'offline').length;
+  const offline = agents.filter((a) => a.status !== 'online').length;
+  const deliyun = data?.deliyun;
+
+  const stats: Array<{ icon: IconName; tone: string; v: string; k: string }> = data ? [
+    { icon: 'cpu', tone: online && !offline ? 'green' : offline ? 'amber' : 'blue', v: `${online}/${agents.length}`, k: '现场助手在线' },
+    { icon: 'key', tone: data.features.cardWrite ? 'green' : 'red', v: data.features.cardWrite ? '可用' : '停用', k: `写卡${data.simulationEnabled ? ' · 模拟模式' : ''}` },
+    { icon: 'cpu', tone: data.features.controllerUpload ? 'green' : 'red', v: data.features.controllerUpload ? '可用' : '停用', k: '控制器下发' },
+    { icon: 'car', tone: deliyun?.connected ? 'green' : deliyun?.configured ? 'red' : 'blue', v: deliyun?.connected ? '已连接' : deliyun?.configured ? '未连接' : '未配置', k: '德立云停车' },
+  ] : [];
 
   return (
     <>
-      <div className="ph">
-        <div>
-          <h1>设备中心</h1>
-          <p>停车网关、发卡器、门禁控制器的在线状态集中在这里；业务页只显示一条状态带</p>
-        </div>
+      <div className="ph" style={{ marginBottom: 14 }}>
+        <div><div className="h1row"><ToneIcon kind="devices" /><h1 style={{ fontSize: 22 }}>系统与设备</h1></div><p>现场助手、库连接、门禁控制器的在线状态集中展示</p></div>
         <div className="act">
-          <button className="btn" onClick={() => { void load(); toast('已刷新'); }}>刷新</button>
-          <button className="btn" onClick={() => { window.location.href = legacyUrl('/access-cards'); }}>发卡台</button>
+          <button className="btn" onClick={() => { void load(); toast('已刷新'); }}><Icon name="refresh" size={18} />刷新</button>
+          <button className="btn" onClick={() => { window.location.href = `${import.meta.env.BASE_URL}access-cards`; }}><Icon name="key" size={18} />门禁管理</button>
         </div>
       </div>
 
       {err ? <ErrorNote>{err}</ErrorNote> : null}
 
       {data ? (
-        <div className="kpis" style={{ marginBottom: 16 }}>
-          <div><small>已注册服务</small><b>{agents.length}</b><em>{online} 个正常 · {offline} 个离线</em></div>
-          <div><small>写卡</small><b>{data.features.cardWrite ? '可用' : '不可用'}</b><em>{data.simulationEnabled ? '模拟模式已开' : '真实设备'}</em></div>
-          <div><small>控制器下发</small><b>{data.features.controllerUpload ? '可用' : '不可用'}</b><em>权限变更能否下发到门禁</em></div>
-          <div>
-            <small>德立云（二期人防）</small>
-            <b>{data.deliyun?.connected ? '已连接' : data.deliyun?.configured ? '未连接' : '未配置'}</b>
-            <em>{data.deliyun?.message || '—'}</em>
-          </div>
-        </div>
-      ) : null}
-
-      <Card style={{ overflow: 'hidden' }}>
-        <table className="t">
-          <thead>
-            <tr><th>设备 / 服务</th><th>类型</th><th>状态</th><th>版本</th><th>最近心跳</th><th>能力</th></tr>
-          </thead>
-          <tbody>
-            {agents.length ? agents.map((a) => {
-              const st = STATUS_LABEL[a.status] || STATUS_LABEL.offline;
-              const caps = Object.entries(a.capabilities || {}).filter(([, v]) => v).map(([k]) => k);
-              return (
-                <tr key={a.id}>
-                  <td><b>{a.name || a.id}</b></td>
-                  <td className="sub">{KIND_LABEL[a.kind] || a.kind}</td>
-                  <td><span className={`pill ${st.cls}`}>{st.text}</span></td>
-                  <td className="muted">{a.version || '—'}</td>
-                  <td className="muted">{a.lastSeenAt ? ago(a.lastSeenAt) : '—'}</td>
-                  <td className="sub" style={{ fontSize: 14 }}>{caps.length ? caps.slice(0, 4).join('、') : '—'}</td>
-                </tr>
-              );
-            }) : <tr><td colSpan={6} className="empty">还没有注册任何本地服务</td></tr>}
-          </tbody>
-        </table>
-      </Card>
-
-      {data ? (
         <>
-          <Card style={{ padding: '14px 18px', marginTop: 16 }}>
-            <div className="sec-t">能力开关<span className="r muted">由服务端按现场配置下发</span></div>
+          <div className="pendGrid" style={{ marginBottom: 4 }}>
+            {stats.map((s) => (
+              <div key={s.k} className="stat">
+                <div className={`ic ${s.tone}`} style={{ width: 44, height: 44 }}><Icon name={s.icon} /></div>
+                <div className="v" style={{ fontSize: 22 }}>{s.v}</div>
+                <div className="k">{s.k}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="secTitle"><Icon name="cpu" size={18} />现场助手 / 服务</div>
+          <div className="card" style={{ overflow: 'hidden' }}>
+            {agents.length ? (
+              <div className="rowList">
+                {agents.map((a) => {
+                  const st = STATUS[a.status] || STATUS.offline;
+                  const kind = KIND[a.kind] || { label: a.kind, icon: 'cpu' as IconName };
+                  const caps = Object.entries(a.capabilities || {}).filter(([, v]) => v).map(([k]) => k);
+                  return (
+                    <div key={a.id} className="lrow">
+                      <div className={`li ic ${st.tone}`}><Icon name={kind.icon} /></div>
+                      <div className="lt">
+                        <b>{a.name || a.id} <span className={`tag ${st.tag}`} style={{ marginLeft: 6 }}>{st.text}</span></b>
+                        <small>{kind.label} · 版本 {a.version || '—'} · 最近心跳 {a.lastSeenAt ? ago(a.lastSeenAt) : '未知'}{caps.length ? ` · ${caps.slice(0, 4).join('、')}` : ''}</small>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <div className="empty" style={{ padding: 40 }}>还没有注册任何现场助手</div>}
+          </div>
+
+          <div className="secTitle"><Icon name="check" size={18} />能力开关 <span className="muted" style={{ fontWeight: 400, fontSize: 13, marginLeft: 6 }}>由服务端按现场配置下发</span></div>
+          <div className="card" style={{ padding: '14px 16px' }}>
             <div className="chips">
-              {FEATURE_LABEL.map(([k, label]) => (
-                <span key={k} className={`pill ${data.features[k] ? 's-done' : 's-off'}`}>
-                  {label}{data.features[k] ? ' · 可用' : ' · 不可用'}
+              {FEATURES.map(([k, label]) => (
+                <span key={k} className={`tag ${data.features[k] ? 'ok' : 'mute'}`}>
+                  <Icon name={data.features[k] ? 'check' : 'x'} size={14} />{label}
                 </span>
               ))}
             </div>
-          </Card>
+          </div>
+
+          {deliyun ? (
+            <>
+              <div className="secTitle"><Icon name="car" size={18} />德立云停车（二期人防）</div>
+              <div className="card" style={{ padding: '14px 16px' }}>
+                <div className="lrow" style={{ padding: 0 }}>
+                  <div className={`li ic ${deliyun.connected ? 'green' : deliyun.configured ? 'red' : 'blue'}`}><Icon name="car" /></div>
+                  <div className="lt">
+                    <b>{deliyun.connected ? '已连接' : deliyun.configured ? '未连接' : '未配置'}</b>
+                    <small>{deliyun.message || '停车续期/暂停任务经此网关下发'}</small>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
 
           {data.doorControlBuildings?.length ? (
-            <Card style={{ padding: '14px 18px', marginTop: 12 }}>
-              <div className="sec-t">楼栋门禁下发路由</div>
-              <table className="t">
-                <thead><tr><th>楼栋</th><th>门禁系统</th><th>路由</th></tr></thead>
-                <tbody>
+            <>
+              <div className="secTitle"><Icon name="key" size={18} />楼栋门禁下发路由</div>
+              <div className="card" style={{ overflow: 'hidden' }}>
+                <div className="rowList">
                   {data.doorControlBuildings.map((b) => (
-                    <tr key={b.id}>
-                      <td><b>{b.buildingNo}</b></td>
-                      <td className="sub">{b.accessSystem}</td>
-                      <td>{b.routeReady ? <span className="pill s-done">已就绪</span> : <span className="pill urg">不可达</span>}</td>
-                    </tr>
+                    <div key={b.id} className="lrow">
+                      <div className={`li ic ${b.routeReady ? 'green' : 'red'}`}><Icon name="key" /></div>
+                      <div className="lt"><b>{b.buildingNo}</b><small>门禁系统：{b.accessSystem}</small></div>
+                      {b.routeReady ? <span className="tag ok"><Icon name="check" />已就绪</span> : <span className="tag dang"><Icon name="alert" />不可达</span>}
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </Card>
+                </div>
+              </div>
+            </>
           ) : null}
         </>
       ) : null}
 
-      <div className="note" style={{ marginTop: 16 }}>
-        设备注册、远程开门、控制器检测仍在现有「门禁发卡 / 停车管理」页；这一页读的就是那边的现场状态，只是把它集中展示。
-      </div>
+      <div className="note2" style={{ marginTop: 16 }}><Icon name="alert" />设备注册、远程开门、控制器检测仍在现有「门禁发卡 / 停车管理」页；本页读的是那边的现场状态，集中只读展示。</div>
     </>
   );
 }

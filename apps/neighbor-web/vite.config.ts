@@ -19,7 +19,11 @@ export default defineConfig(({ command }) => ({
     'import.meta.env.VITE_BUILD_COMMIT': JSON.stringify(env.VITE_BUILD_COMMIT || ''),
   },
   resolve: {
-    alias: { '@': path.resolve(__dirname, 'src') },
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+      // 养护单套打表单、手写体、打印：直接复用旧后台已调好的源码（含 14MB 字体），不复制一份
+      '@legacy': path.resolve(__dirname, '../admin-web/src'),
+    },
   },
   server: {
     port: 4173,

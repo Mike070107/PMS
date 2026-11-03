@@ -140,6 +140,8 @@ export default function HouseAddressPicker(props: {
   onPicked?: (picked: PickedAddress | null) => void;
   loading?: boolean;
   id?: string;
+  /** 挂载就展开下拉（搜索框里点「选地址」时用） */
+  autoOpen?: boolean;
 }) {
   const {
     communities,
@@ -148,6 +150,7 @@ export default function HouseAddressPicker(props: {
     onPicked,
     loading,
     id,
+    autoOpen,
   } = props;
   // Form.Item can explicitly pass undefined when resetting a controlled field.
   const controlled = Object.prototype.hasOwnProperty.call(props, 'value');
@@ -156,7 +159,7 @@ export default function HouseAddressPicker(props: {
   const options = useMemo(() => buildOptions(communities), [communities]);
   const allPaths = useMemo(() => flattenPaths(options), [options]);
   const [searchValue, setSearchValue] = useState('');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!autoOpen);
   // 按过上下键就说明用户自己在挑高亮项，Enter 交还给 Cascader 原生处理
   // （左右键只是在输入框里移光标，不算）
   const arrowUsedRef = useRef(false);
@@ -208,6 +211,7 @@ export default function HouseAddressPicker(props: {
     let best: AddrOption[] | null = null;
     let bestScore = 0;
     for (const path of allPaths) {
+      if (path[path.length - 1]?.kind !== 'house') continue;
       const score = scoreAddressPath(tokens, path.map((item) => item.keys));
       if (score > bestScore) {
         bestScore = score;
@@ -244,7 +248,11 @@ export default function HouseAddressPicker(props: {
         dropdownStyle={{ width: 720, maxWidth: 'calc(100vw - 32px)' }}
         displayRender={() => currentText}
         open={open}
-        onDropdownVisibleChange={setOpen}
+        onDropdownVisibleChange={(v) => {
+          setOpen(v);
+          // 关闭时清掉搜索词：下次点开回到「小区 → 楼栋 → 室号」逐级点选，而不是停在上次的搜索平铺
+          if (!v) { setSearchValue(''); arrowUsedRef.current = false; }
+        }}
         searchValue={searchValue}
         onSearch={(next) => {
           setSearchValue(next);
@@ -253,16 +261,26 @@ export default function HouseAddressPicker(props: {
         onKeyDown={onKeyDown}
         showSearch={{
           limit: 50,
-          filter: (input, path) => scoreOf(input, path as AddrOption[]) > 0,
+          // 空输入时返回 false：下拉回到「小区 → 楼栋 → 室号」逐级点选列（和旧后台一致）；
+          // 有输入时只放行「到室号」的整条路径，每行都能直接选中，不混入楼栋级半路径。
+          filter: (input, path) => {
+            if (!input.trim()) return false;
+            const leaf = (path as AddrOption[])[path.length - 1];
+            return leaf?.kind === 'house' && scoreOf(input, path as AddrOption[]) > 0;
+          },
           sort: (a, b, input) =>
             scoreOf(input, b as AddrOption[]) - scoreOf(input, a as AddrOption[]),
           render: (_input, path) => pathText(path as AddrOption[]) || '—',
         }}
         onChange={(next, selectedOptions) => {
+          const opts = (selectedOptions || []) as AddrOption[];
           if (!controlled) setInternalValue((next as Array<number | string>) || []);
           onChange?.((next as Array<number | string>) || []);
-          onPicked?.(describePickedAddress((selectedOptions || []) as AddrOption[]));
+          onPicked?.(describePickedAddress(opts));
           setSearchValue('');
+          // 选到「室号」(叶子)就收起下拉；点小区/楼栋是在逐级展开，保持打开
+          const leaf = opts[opts.length - 1];
+          if (leaf?.kind === 'house') setOpen(false);
         }}
       />
       {currentText && (

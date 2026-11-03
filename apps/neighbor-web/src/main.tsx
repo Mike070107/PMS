@@ -7,6 +7,20 @@ import { IconSprite } from './components/Icon';
 import './styles/design.css';
 import './styles/app.css';
 import './styles/large.css';
+import './styles/guards.css';
+import { startLayoutGuard } from './lib/layoutGuard';
+
+/**
+ * 发布新版后，已经打开的页面再懒加载旧版的页面文件会失败（文件名带哈希，旧的已不在）→ 白屏。
+ * 碰到这种加载失败就自动刷新一次拿新版；10 秒内不重复刷，避免网络真断时死循环。
+ */
+window.addEventListener('vite:preloadError', (event) => {
+  const last = Number(sessionStorage.getItem('pms.chunkReload') || 0);
+  if (Date.now() - last < 10_000) return;
+  event.preventDefault();
+  sessionStorage.setItem('pms.chunkReload', String(Date.now()));
+  window.location.reload();
+});
 
 configureApi();
 
@@ -21,3 +35,5 @@ createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </React.StrictMode>,
 );
+
+startLayoutGuard();

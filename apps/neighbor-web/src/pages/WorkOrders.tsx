@@ -6,22 +6,24 @@ import { repairs } from '@pms/api-client';
 import { Card, ErrorNote, Loading, Pill, toast } from '@/components/ui';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import WorkOrderSheet from '@/components/WorkOrderSheet';
-import HousePicker, { type PickedHouse } from '@/components/HousePicker';
+import AddressSearch from '@/components/AddressSearch';
 import { useAddressTree } from '@/lib/address-tree';
-import { ago, BOARD_COLUMNS, dueText, isActive, isOverdue, maskPhone } from '@/lib/format';
+import { ago, BOARD_COLUMNS, dueText, isActive, isOverdue, maskPhone, stageOf } from '@/lib/format';
+import ToneIcon from '@/components/ToneIcon';
 
-type Filter = 'active' | 'overdue' | 'all' | WorkOrderStatus;
+type Filter = 'active' | 'overdue' | 'all' | 'pending_accept' | WorkOrderStatus;
 
 const FILTERS: Array<[Filter, string]> = [
   ['active', '进行中'],
   ['overdue', '紧急/超时'],
   [WorkOrderStatus.CREATED, '待派单'],
-  [WorkOrderStatus.DISPATCHED, '待接单'],
+  ['pending_accept', '待接单'],
   [WorkOrderStatus.IN_PROGRESS, '维修中'],
   [WorkOrderStatus.WAITING_MATERIAL, '等材料'],
   [WorkOrderStatus.DONE_PENDING_REVIEW, '待验收'],
   [WorkOrderStatus.COMPLETED, '已完成'],
   [WorkOrderStatus.CANCELLED, '已关闭'],
+  [WorkOrderStatus.VOIDED, '已作废'],
   ['all', '全部'],
 ];
 
@@ -38,8 +40,6 @@ export default function WorkOrders() {
   const filter = (params.get('filter') || 'active') as Filter;
   const view = params.get('view') === 'list' ? 'list' : 'board';
   const q = params.get('q') || '';
-  const [qInput, setQInput] = useState(q);
-  const [pickedHouse, setPickedHouse] = useState<PickedHouse | null>(null);
   const { communities } = useAddressTree();
   const sel = params.get('sel') ? Number(params.get('sel')) : null;
   const creating = params.get('new') === '1';
@@ -50,18 +50,22 @@ export default function WorkOrders() {
   const load = useCallback(async () => {
     try {
       // all = 进行中 + 已完结要分开拿：done 单独一个 scope
-      const [active, done] = await Promise.all([
-        repairs.list({ scope: 'all' }),
-        repairs.list({ scope: 'done' }).catch(() => [] as WorkOrderListItem[]),
+      // 搜索交给服务端：地址模糊输入精准命中（198/20 = 一期20 = 枫桦景苑一期20号楼），还能搜到列表 100 条以外的老单
+      const kw = q.trim() || undefined;
+      // 作废单服务端默认不返回，单独拉一次给「已作废」用（不算进「全部」）
+      const [active, done, voided] = await Promise.all([
+        repairs.list({ scope: 'all', q: kw } as any),
+        repairs.list({ scope: 'done', q: kw } as any).catch(() => [] as WorkOrderListItem[]),
+        repairs.list({ scope: 'all', status: WorkOrderStatus.VOIDED, q: kw } as any).catch(() => [] as WorkOrderListItem[]),
       ]);
       const map = new Map<number, WorkOrderListItem>();
-      [...active, ...done].forEach((o) => map.set(o.id, o));
+      [...active, ...done, ...voided].forEach((o) => map.set(o.id, o));
       setOrders([...map.values()]);
       setErr('');
     } catch (e) {
       setErr(e instanceof Error ? e.message : '工单加载失败');
     }
-  }, []);
+  }, [q]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -75,14 +79,12 @@ export default function WorkOrders() {
 
   const filtered = useMemo(() => {
     const list = orders ?? [];
-    const kw = q.trim();
     return list
       .filter((o) => {
-        if (kw && !(`${o.summaryAddress || ''}${o.summaryContent || ''}${o.orderNo}${o.assigneeName || ''}${o.contactName || ''}`.includes(kw))) return false;
-        if (filter === 'all') return true;
+        if (filter === 'all') return o.status !== WorkOrderStatus.VOIDED;
         if (filter === 'active') return isActive(o.status);
         if (filter === 'overdue') return isActive(o.status) && (isOverdue(o) || o.urgent);
-        return o.status === filter;
+        return stageOf(o) === filter;
       })
       .sort((a, b) => {
         // 紧急、超时优先，其次新建的在前
@@ -90,14 +92,14 @@ export default function WorkOrders() {
         const d = rank(a) - rank(b);
         return d !== 0 ? d : (b.createdAt || '').localeCompare(a.createdAt || '');
       });
-  }, [orders, filter, q]);
+  }, [orders, filter]);
 
   const countOf = (f: Filter) => {
     const list = orders ?? [];
     if (f === 'active') return list.filter((o) => isActive(o.status)).length;
     if (f === 'overdue') return list.filter((o) => isActive(o.status) && (isOverdue(o) || o.urgent)).length;
-    if (f === 'all') return list.length;
-    return list.filter((o) => o.status === f).length;
+    if (f === 'all') return list.filter((o) => o.status !== WorkOrderStatus.VOIDED).length;
+    return list.filter((o) => stageOf(o) === f).length;
   };
 
   const boardable = view === 'board' && (filter === 'active' || filter === 'overdue' || filter === 'all');
@@ -108,10 +110,12 @@ export default function WorkOrders() {
     <>
       <div className="ph">
         <div>
-          <h1>工单调度</h1>
+          <div className="h1row"><ToneIcon kind="workorders" /><h1>工单调度</h1></div>
           <p>看板按处理环节排列；点任意一张卡片在右侧处理，不离开当前页</p>
         </div>
         <div className="act">
+          <AddressSearch communities={communities} value={q} width={300} onChange={(text) => setParam({ q: text, sel: null })}
+            placeholder="198/20、电话、单号、维修工" />
           <button className="btn" onClick={() => setParam({ view: view === 'board' ? 'list' : 'board' })}>
             {view === 'board' ? '列表视图' : '看板视图'}
           </button>
@@ -129,20 +133,6 @@ export default function WorkOrders() {
             </button>
           ))}
         </div>
-        <div style={{ width: 340, marginLeft: 'auto' }}>
-          <HousePicker
-            communities={communities}
-            value={pickedHouse}
-            placeholder="输入 228/6/502 或点选小区→楼栋→室号；也可搜电话/维修工"
-            onPick={(p) => { const key = `${p.buildingNo}/${p.roomNo}`; setPickedHouse(p); setQInput(key); setParam({ q: key }); }}
-            onTextChange={(text) => setQInput(text)}
-            onClear={() => { setPickedHouse(null); setQInput(''); setParam({ q: '' }); }}
-          />
-        </div>
-        <div className="seg">
-          <button className={view === 'board' ? 'on' : ''} onClick={() => setParam({ view: 'board' })}>看板</button>
-          <button className={view === 'list' ? 'on' : ''} onClick={() => setParam({ view: 'list' })}>列表</button>
-        </div>
       </div>
 
       {!boardable && view === 'board' ? (
@@ -152,7 +142,7 @@ export default function WorkOrders() {
       {boardable ? (
         <div className="board">
           {BOARD_COLUMNS.map((col) => {
-            const items = filtered.filter((o) => o.status === col);
+            const items = filtered.filter((o) => stageOf(o) === col);
             return (
               <div className="col" key={col}>
                 <h4 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 8px' }}>
@@ -171,7 +161,9 @@ export default function WorkOrders() {
                     <div className="m">
                       {o.photoCount ? <span>▣ {o.photoCount}</span> : null}
                       <span>{ago(o.createdAt)}</span>
-                      <span className="r">{o.assigneeName || <span style={{ color: 'var(--warn)' }}>未指派</span>}</span>
+                      <span className="r">{o.assigneeName ? (o.status === WorkOrderStatus.DISPATCHED ? `派给 ${o.assigneeName}` : o.assigneeName) : (stageOf(o) === 'pending_accept'
+                        ? <span style={{ color: 'var(--info, #2f6fb0)' }} title="按工种自动派单，等其中一人接单">已自动派给 {o.candidateIds?.length} 位维修工</span>
+                        : <span style={{ color: 'var(--warn)' }}>未指派</span>)}</span>
                     </div>
                     {o.missingMaterials?.length ? (
                       <div className="m" style={{ marginTop: 6, color: '#7a3e8f' }}>
@@ -195,8 +187,8 @@ export default function WorkOrders() {
                 <tr key={o.id} className={`row ${sel === o.id ? 'sel' : ''}`} onClick={() => setParam({ sel: String(o.id) })}>
                   <td><b>{o.summaryAddress || '—'}</b>{o.urgent ? <span className="pill urg" style={{ marginLeft: 6 }}>紧急</span> : null}</td>
                   <td className="sub" style={{ maxWidth: 300 }}>{o.summaryContent || '—'}</td>
-                  <td><Pill status={o.status} /></td>
-                  <td>{o.assigneeName || <span className="muted">—</span>}</td>
+                  <td><Pill status={stageOf(o)} /></td>
+                  <td>{o.assigneeName || (stageOf(o) === 'pending_accept' ? <span className="muted">已自动派给 {o.candidateIds?.length} 位</span> : <span className="muted">—</span>)}</td>
                   <td>{ago(o.createdAt).replace('前', '')}</td>
                   <td className={isOverdue(o) ? 'over' : ''}>{dueText(o.slaDueAt)}</td>
                   <td className="muted">{o.orderNo}</td>

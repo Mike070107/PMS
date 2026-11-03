@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
 import { legacyUrl } from '@/lib/legacy';
-import HousePicker, { type PickedHouse } from '@/components/HousePicker';
+import AddressSearch from '@/components/AddressSearch';
 import { useAddressTree } from '@/lib/address-tree';
 import { Btn, Card, ErrorNote, Empty, Field, Loading, Sheet, toast } from '@/components/ui';
 import { dayjs, money } from '@/lib/format';
+import FeeIcon from '@/components/FeeIcon';
+import ToneIcon from '@/components/ToneIcon';
 
 type BillStatus = 'unpaid' | 'paid' | 'refunded' | 'cancelled';
 
@@ -55,7 +57,7 @@ const PAGE_SIZE = 20;
 const placeOf = (b: Bill) => `${b.communityName} ${b.buildingNo}/${b.roomNo}`;
 
 /**
- * 账单与欠费：只管「收了多少、还欠多少、这户有哪些单」。
+ * 账单与待缴：只管「收了多少、还欠多少、这户有哪些单」。
  * 收款走 /fees/bills/pay（和旧后台同一套账），生成账单、红冲、导出仍在旧页。
  */
 export default function Bills() {
@@ -65,7 +67,6 @@ export default function Bills() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<'' | BillStatus>('unpaid');
   const [q, setQ] = useState('');
-  const [pickedHouse, setPickedHouse] = useState<PickedHouse | null>(null);
   const { communities } = useAddressTree();
   const [err, setErr] = useState('');
   const [checked, setChecked] = useState<number[]>([]);
@@ -145,11 +146,11 @@ export default function Bills() {
     <>
       <div className="ph">
         <div>
-          <h1>账单与欠费</h1>
+          <div className="h1row"><ToneIcon kind="bills" /><h1>账单与待缴</h1></div>
           <p>按房号、账期、缴费状态查；收款在这里登记，红冲与生成账单仍在现有页面</p>
         </div>
         <div className="act">
-          <button className="btn" onClick={() => { window.location.href = legacyUrl('/fees'); }}>生成账单 / 红冲</button>
+          <button className="btn" onClick={() => { window.location.href = `${import.meta.env.BASE_URL}fees`; }}>生成账单 / 红冲</button>
           {picked.length ? (
             <button className="btn p" onClick={() => setPayOpen(true)}>收款（{picked.length} 笔 · {money(pickedAmount / 100)}）</button>
           ) : null}
@@ -172,15 +173,9 @@ export default function Bills() {
               onClick={() => { setStatus(item.key); setPage(1); }}>{item.label}</button>
           ))}
         </div>
-        <div style={{ width: 420, marginLeft: 'auto' }}>
-          <HousePicker
-            communities={communities}
-            value={pickedHouse}
-            placeholder="输入 228/6/502 或点选 小区→楼栋→室号，也可搜业主/收据号"
-            onPick={(p) => { const key = `${p.buildingNo}/${p.roomNo}`; setPickedHouse(p); setQ(key); setPage(1); void load(key); }}
-            onTextChange={(text) => setQ(text)}
-            onClear={() => { setPickedHouse(null); setQ(''); setPage(1); void load(''); }}
-          />
+        <div style={{ marginLeft: 'auto' }}>
+          <AddressSearch communities={communities} value={q} width={400} placeholder="198/20/601、一期20号601、业主、收据号"
+            onChange={(text) => { setQ(text); setPage(1); void load(text); }} />
         </div>
         <Btn onClick={() => { setPage(1); void load(); }}>查询</Btn>
       </div>
@@ -203,7 +198,7 @@ export default function Bills() {
                 </td>
                 <td><b>{placeOf(b)}</b></td>
                 <td>{b.ownerName || <span className="muted">—</span>}</td>
-                <td className="sub">{b.feeName}</td>
+                <td className="sub"><span className="feeCell"><FeeIcon name={b.feeName} size={26} />{b.feeName}</span></td>
                 <td className="sub">{b.period}</td>
                 <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(b.amountCents / 100)}</td>
                 <td><span className={`pill ${STATUS[b.status]?.cls || 's-off'}`}>{STATUS[b.status]?.text || b.status}</span></td>
@@ -239,7 +234,7 @@ export default function Bills() {
                 {picked.map((b) => (
                   <tr key={b.id}>
                     <td>{placeOf(b)}</td>
-                    <td className="sub">{b.feeName}</td>
+                    <td className="sub"><span className="feeCell"><FeeIcon name={b.feeName} size={26} />{b.feeName}</span></td>
                     <td className="sub">{b.period}</td>
                     <td style={{ textAlign: 'right' }}>{money(b.amountCents / 100)}</td>
                   </tr>

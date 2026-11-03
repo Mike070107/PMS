@@ -1,0 +1,25 @@
+/*
+ * 布局约束（全站，最后加载）。这是基本规矩，不是某一页的补丁：
+ * 1. 按钮、选项片、标签、分段按钮、页签——里面的字永远一行，不换行、不被挤扁。
+ * 2. 装着这些控件的行放不下时，整个控件换到下一行，而不是把控件压窄让字竖排。
+ * 3. 网格/弹性布局里的列用 minmax(0,1fr)，长文本自己换行或省略，不把容器撑破。
+ * 开发自查：地址后加 ?layoutcheck=1，溢出/被挤换行的元素会标红并在控制台列出（lib/layoutGuard.ts）。
+ */
+.btn, .chip, .pill, .tag, .seg button, .tabs button, .ea-icon-btn, .ea-seg .chip {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+:is(div, span, section, label, header, footer, nav, form, p, li):has(> :is(.chip, .pill, .tag, .btn, .seg)) {
+  flex-wrap: wrap;
+}
+.seg { flex-wrap: wrap; max-width: 100%; }
+/* 弹性/网格子项默认 min-width:auto 会被长文本撑破，统一放开 */
+:is(.row, .grid, .cols) > * { min-width: 0; }
+/* 表格：表头一行；短值（房号、日期、金额、状态）加 .nw 不拆行，长描述照常换行 */
+.t th, .t .nw, .nw { white-space: nowrap; }
+/* 宽表格在自己的盒子里横向滚动，不把整页撑出横向滚动条 */
+.t-scroll { overflow-x: auto; max-width: 100%; }
+
+/* antd 浮层（下拉/日期/级联）挂 body 下，必须压过侧栏与粘性页头，否则看得见却点不到 */
+.ant-select-dropdown,.ant-picker-dropdown,.ant-cascader-dropdown,.ant-dropdown,.ant-modal-root{z-index:2000!important}
+.ant-select-dropdown,.ant-cascader-dropdown{max-width:min(560px,92vw)}

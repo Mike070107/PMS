@@ -43,8 +43,8 @@ export function Field({ label, hint, children }: { label: string; hint?: ReactNo
   );
 }
 
-export function Card({ children, style }: { children: ReactNode; style?: React.CSSProperties }) {
-  return <div className="card" style={style}>{children}</div>;
+export function Card({ children, style, className }: { children: ReactNode; style?: React.CSSProperties; className?: string }) {
+  return <div className={`card ${className || ''}`.trim()} style={style}>{children}</div>;
 }
 
 export function Empty({ children }: { children: ReactNode }) {

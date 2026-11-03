@@ -1,18 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { WorkOrderStatus } from '@pms/shared-types';
+import { WorkOrderStatus, REPAIR_TYPE_OPTIONS } from '@pms/shared-types';
 import type { RollbackPreview, TechnicianOption, WorkOrderDetail, WorkOrderStockOptions } from '@pms/shared-types';
 import { repairs } from '@pms/api-client';
 import { Btn, Card, ErrorNote, Field, Loading, Pill, Sheet, toast } from '@/components/ui';
-import { ago, dayjs, dueText, isOverdue, money, statusOf } from '@/lib/format';
+import { ago, dayjs, dueText, isOverdue, money, stageOf, statusOf } from '@/lib/format';
+import { useSession } from '@/lib/auth';
+import MaterialPicker, { linesToPayload } from '@/components/MaterialPicker';
+import type { MatLine } from '@/components/MaterialPicker';
+import HousePicker, { type PickedHouse } from '@/components/HousePicker';
+import { useAddressTree } from '@/lib/address-tree';
 
 type Tab = 'info' | 'tl' | 'mat' | 'maint';
 type Flow =
   | null
   | 'dispatch'
+  | 'intake'
   | 'finish'
   | 'material'
   | 'accept'
+  | 'claim'
   | 'rate'
   | 'cancel'
   | 'void'
@@ -47,6 +54,7 @@ const ACTION_LABEL: Record<string, string> = {
   create: '报修登记',
   assign: '派单',
   accept: '维修工接单',
+  claim: '认领接单',
   progress: '添加进度',
   complete: '登记完工',
   review: '业主验收',
@@ -60,7 +68,8 @@ const ACTION_LABEL: Record<string, string> = {
 
 /**
  * 工单详情抽屉：设计稿的核心交互——不离开列表就能把一单处理完。
- * 每个状态只有一个主操作，调整类和终止类折进「更多」。
+ * 每个状态只有一个主操作；「撤回上一步」常驻可见（先预览再确认）；撤单/作废等终止类折进「更多」。
+ * 办公室可以自己接单、代维修工接单、代填完工与缺料，时间轴由后端记「办公室代填」。
  */
 export default function WorkOrderSheet({
   id, onClose, onChanged,
@@ -110,7 +119,7 @@ export default function WorkOrderSheet({
 
   const head = (
     <div className="l3" style={{ marginBottom: 10 }}>
-      {wo ? <><Pill status={wo.status} /> {wo.urgent ? <span className="pill urg" style={{ marginLeft: 6 }}>紧急</span> : null}
+      {wo ? <><Pill status={stageOf(wo)} /> {wo.urgent ? <span className="pill urg" style={{ marginLeft: 6 }}>紧急</span> : null}
         {isOverdue(wo) ? <span className="pill urg" style={{ marginLeft: 6 }}>已超时</span> : null}
         <span style={{ marginLeft: 8 }}>{wo.summaryContent || req?.content || ''}</span></> : null}
       <div className="tabs" style={{ marginTop: 12 }}>
@@ -172,17 +181,21 @@ function NextActions({
   const cfg: Cfg = (() => {
     switch (s) {
       case WorkOrderStatus.CREATED:
-        return { t: '办公室派单', main: ['dispatch', '派给维修工'], sec: [['progress', '补充信息']], more: [['cancel', '撤单'], ['void', '作废']] };
+        // 已按报修类型自动通知了默认维修工：和旧后台一样显示「待维修工接单」，主操作是改派
+        if (stageOf(detail.workOrder) === 'pending_accept') {
+          return { t: `已按工种自动派给 ${detail.workOrder.candidateIds?.length ?? 0} 位维修工，等其中一人接单`, main: ['dispatch', '改派维修工'], sec: [['claim', '我来接单'], ['intake', '更正录入'], ['progress', '补充信息']], more: [['cancel', '撤单'], ['void', '作废']] };
+        }
+        return { t: '待派单', main: ['dispatch', '派给维修工'], sec: [['claim', '我来接单'], ['intake', '更正录入'], ['progress', '补充信息']], more: [['cancel', '撤单'], ['void', '作废']] };
       case WorkOrderStatus.DISPATCHED:
-        return { t: '等维修工在小程序接单', main: ['accept', '代维修工接单'], sec: [['dispatch', '改派'], ['urge', '催一下']], more: [['undo', '撤回到待派单'], ['cancel', '撤单'], ['void', '作废']] };
+        return { t: `已派给 ${detail.workOrder.assigneeName || '维修工'}，等接单`, main: ['accept', '代维修工接单'], sec: [['dispatch', '改派'], ['intake', '更正录入'], ['urge', '催一下'], ['undo', '撤回上一步']], more: [['material', '代登记缺料'], ['cancel', '撤单'], ['void', '作废']] };
       case WorkOrderStatus.IN_PROGRESS:
-        return { t: '现场维修中', main: ['finish', '登记完工'], sec: [['material', '缺料 / 申请采购'], ['progress', '添加进度']], more: [['dispatch', '改派'], ['transfer', '退回办公室重派'], ['undo', '撤回上一步'], ['cancel', '撤单'], ['void', '作废']] };
+        return { t: `${detail.workOrder.assigneeName || '维修工'} 维修中`, main: ['finish', '登记完工 · 用料扣料'], sec: [['material', '登记缺料'], ['progress', '添加进度'], ['undo', '撤回上一步']], more: [['dispatch', '改派'], ['transfer', '退回办公室重派'], ['cancel', '撤单'], ['void', '作废']] };
       case WorkOrderStatus.WAITING_MATERIAL:
-        return { t: '等材料到位', main: ['finish', '材料已到 · 登记完工'], sec: [['material', '修改缺料清单']], more: [['dispatch', '改派'], ['undo', '撤回上一步'], ['cancel', '撤单'], ['void', '作废']] };
+        return { t: '等材料到位（已退回工单池）', main: ['finish', '材料已到 · 登记完工'], sec: [['claim', '我来接回维修'], ['dispatch', '派给维修工'], ['material', '修改缺料清单'], ['undo', '撤回上一步']], more: [['cancel', '撤单'], ['void', '作废']] };
       case WorkOrderStatus.DONE_PENDING_REVIEW:
-        return { t: '等业主验收', main: ['rate', '代业主验收'], sec: [['urge', '提醒业主'], ['progress', '添加进度']], more: [['undo', '撤回到维修中'], ['void', '作废']] };
+        return { t: '等业主验收', main: ['rate', '代业主验收'], sec: [['urge', '提醒业主'], ['progress', '添加进度'], ['undo', '撤回上一步']], more: [['void', '作废']] };
       case WorkOrderStatus.COMPLETED:
-        return { t: '已完成', main: null, sec: [['progress', '补充维修记录']], more: [['undo', '撤回到待验收'], ['void', '作废']] };
+        return { t: '已完成', main: null, sec: [['progress', '补充维修记录'], ['undo', '撤回上一步']], more: [['void', '作废']] };
       default:
         return { t: statusOf(s).name, main: null, sec: [], more: [] };
     }
@@ -229,9 +242,26 @@ function InfoTab({ detail }: { detail: WorkOrderDetail }) {
       <dl className="kv" style={{ margin: '0 0 16px' }}>
         <dt>地址</dt><dd>{wo.summaryAddress || req?.addressText || '—'}</dd>
         <dt>问题</dt><dd>{req?.content || wo.summaryContent || '—'}</dd>
+        {req?.originalContent && req.originalContent.trim() && req.originalContent.trim() !== (req?.content || '').trim() ? (
+          <><dt>原始报修内容</dt><dd style={{ color: 'var(--muted-foreground)' }}>{req.originalContent}</dd></>
+        ) : null}
         <dt>联系人</dt><dd>{req?.contactName || wo.contactName || '—'} · {req?.contactPhone || '—'}</dd>
         <dt>报修来源</dt><dd>{wo.sourceLabel || '—'}{wo.submittedByName ? `（${wo.submittedByName} 提交）` : ''}</dd>
         <dt>登记时间</dt><dd>{dayjs(wo.createdAt).format('YYYY-MM-DD HH:mm')}</dd>
+      </dl>
+
+      <div className="sec-t">派单匹配</div>
+      <dl className="kv" style={{ margin: '0 0 16px' }}>
+        <dt>匹配工单类型</dt>
+        <dd>{wo.repairTypeLabel || (wo.repairType ? wo.repairType : <span style={{ color: 'var(--warn)' }}>未识别到类型 · 转办公室派单</span>)}</dd>
+        <dt>匹配维修工种</dt>
+        <dd>
+          {wo.assigneeName
+            ? `已派 ${wo.assigneeName}`
+            : wo.candidateIds?.length
+              ? `已按工种自动通知 ${wo.candidateIds.length} 位维修工，等其中一人接单`
+              : <span style={{ color: 'var(--warn)' }}>没有匹配到维修工（该类型未配默认维修工或未识别类型），待办公室派单</span>}
+        </dd>
       </dl>
 
       {(req?.attachments?.length || wo.photos?.length) ? (
@@ -347,9 +377,9 @@ function MaintTab({ detail }: { detail: WorkOrderDetail }) {
       {ready ? (
         <>
           <p className="note" style={{ marginTop: 0 }}>
-            养护单挂在工单下面生成与签字。这一块在新版里还没接完，先在现有「养护单」页面处理。
+            按这张工单开《房屋修理养护任务单》：已经开过的直接打开原来那张，不会重复开单。
           </p>
-          <Btn onClick={() => { window.location.href = '/maintenance-orders'; }}>打开现有养护单页面</Btn>
+          <Btn kind="p" onClick={() => { window.location.href = `${import.meta.env.BASE_URL}maint?workOrderId=${detail.workOrder.id}`; }}>填养护单</Btn>
         </>
       ) : (
         <div className="empty">完工后可在这里生成养护单<br /><span style={{ fontSize: 14 }}>（定额、签字、打印都在本工单内完成）</span></div>
@@ -394,13 +424,19 @@ function FlowPanel({
   );
 
   if (flow === 'dispatch') return <DispatchFlow detail={detail} busy={busy} err={err} run={run} shell={shell} />;
+  if (flow === 'intake') return <IntakeFlow detail={detail} busy={busy} run={run} shell={shell} />;
   if (flow === 'finish') return <FinishFlow detail={detail} busy={busy} run={run} shell={shell} />;
   if (flow === 'material') return <MaterialFlow detail={detail} busy={busy} run={run} shell={shell} />;
 
   if (flow === 'accept') {
     return shell('代维修工接单',
-      <p className="sub">确认 {wo.assigneeName || '该维修工'} 已通过电话确认接单？操作人会记为你本人。</p>,
-      <Btn kind="p" size="lg" disabled={busy} onClick={() => void run(() => repairs.accept(wo.id), '已代接单')}>确认接单</Btn>);
+      <p className="sub">{wo.assigneeName || '该维修工'} 已电话确认接单？工单转「维修中」，负责人仍是 {wo.assigneeName || '他'}；时间轴记为「办公室代维修工确认接单」，操作人是你。</p>,
+      <Btn kind="p" size="lg" disabled={busy} onClick={() => void run(() => repairs.accept(wo.id), '已代接单')}>确认代接单</Btn>);
+  }
+  if (flow === 'claim') {
+    return shell(wo.status === WorkOrderStatus.WAITING_MATERIAL ? '我来接回维修' : '我来接单',
+      <p className="sub">这张单的负责人会改成你本人，状态转「维修中」。之后由你登记完工和用料；需要时也能再改派给维修工。</p>,
+      <Btn kind="p" size="lg" disabled={busy} onClick={() => void run(() => repairs.accept(wo.id), '已接单，负责人是你')}>确认接单</Btn>);
   }
 
   if (flow === 'rate') return <RateFlow detail={detail} busy={busy} run={run} shell={shell} />;
@@ -475,53 +511,104 @@ function DispatchFlow({ detail, busy, err, run, shell }: { detail: WorkOrderDeta
   );
 }
 
+function IntakeFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; busy: boolean; run: RunFn; shell: ShellFn }) {
+  const wo = detail.workOrder;
+  const req = detail.request;
+  const { communities } = useAddressTree();
+  const [content, setContent] = useState(req?.content || wo.summaryContent || '');
+  const [repairType, setRepairType] = useState(wo.repairType || req?.repairType || '');
+  const [contactName, setContactName] = useState(req?.contactName || wo.contactName || '');
+  const [contactPhone, setContactPhone] = useState(req?.contactPhone || '');
+  const [urgent, setUrgent] = useState(!!wo.urgent);
+  const [picked, setPicked] = useState<PickedHouse | null>(null);
+  const [reason, setReason] = useState('');
+
+  return shell('更正录入信息',
+    <>
+      <p className="note" style={{ marginTop: 0 }}>接单前可更正地址、报修类型、描述、联系人。改类型会按新类型重新匹配维修工并通知。</p>
+      <Field label="报修地址" hint="不改就留空，保持原地址">
+        <div style={{ fontSize: 13.5, marginBottom: 6, color: 'var(--muted-foreground)' }}>当前：{wo.summaryAddress || req?.addressText || '—'}</div>
+        <HousePicker communities={communities} value={picked} placeholder="要改地址就在这里重选房号" onPick={setPicked} onClear={() => setPicked(null)} />
+      </Field>
+      <Field label="报修类型">
+        <div className="chips">
+          {REPAIR_TYPE_OPTIONS.map((t) => (
+            <button key={t.value} className={`chip ${repairType === t.value ? 'on' : ''}`} onClick={() => setRepairType(repairType === t.value ? '' : t.value)}>{t.label}</button>
+          ))}
+        </div>
+      </Field>
+      <Field label="故障描述">
+        <textarea className="in" value={content} onChange={(e) => setContent(e.target.value)} />
+      </Field>
+      <Field label="联系人 / 电话">
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input className="in" value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="联系人" style={{ flex: 1 }} />
+          <input className="in" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="电话" style={{ flex: 1 }} />
+        </div>
+      </Field>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0 2px' }}>
+        <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> 标记为紧急
+      </label>
+      <Field label="更正原因（选填）">
+        <input className="in" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="例如：业主补充了准确房号" />
+      </Field>
+    </>,
+    <Btn kind="p" size="lg" disabled={busy || !content.trim()}
+      onClick={() => void run(() => repairs.updateWorkOrderIntake(wo.id, {
+        communityId: picked?.communityId ?? wo.communityId,
+        buildingId: picked?.buildingId,
+        houseId: picked?.houseId,
+        addressText: picked?.text,
+        content: content.trim(),
+        repairType: repairType || undefined,
+        contactName: contactName.trim() || undefined,
+        contactPhone: contactPhone.trim() || undefined,
+        urgent,
+        reason: reason.trim() || undefined,
+      }), '已更正，已按新类型重新匹配维修工')}>
+      {busy ? '提交中…' : '保存更正'}
+    </Btn>,
+  );
+}
+
+function ProxyBanner({ detail }: { detail: WorkOrderDetail }) {
+  const me = useSession().user?.id;
+  const wo = detail.workOrder;
+  if (!wo.assigneeId || String(wo.assigneeId) === String(me ?? '')) return null;
+  return <div className="note2" style={{ marginBottom: 12 }}>你在代 <b>{wo.assigneeName || '维修工'}</b> 填写，提交后时间轴会记「办公室代填」，操作人是你。</div>;
+}
+
 function FinishFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; busy: boolean; run: RunFn; shell: ShellFn }) {
   const wo = detail.workOrder;
   const draft = detail.completionDraft;
-  const [faultLocation, setFaultLocation] = useState(draft?.faultLocation ?? wo.faultLocation ?? '');
-  const [faultSymptom, setFaultSymptom] = useState(draft?.faultSymptom ?? wo.faultSymptom ?? '');
+  // 位置、现象默认带出报修时登记的地址和描述（和小程序一致）：只是初值，现场看到的不一样就改，提交以改后的为准
+  const [faultLocation, setFaultLocation] = useState(draft?.faultLocation || wo.faultLocation || detail.request?.addressText || '');
+  const [faultSymptom, setFaultSymptom] = useState(draft?.faultSymptom || wo.faultSymptom || detail.request?.content || '');
   const [repairContent, setRepairContent] = useState(draft?.repairContent ?? wo.repairContent ?? '');
   const [fee, setFee] = useState(String((draft?.feeCents ?? wo.feeCents ?? 0) / 100));
   const [note, setNote] = useState('');
-  const [stock, setStock] = useState<WorkOrderStockOptions | null>(null);
-  const [picked, setPicked] = useState<Record<number, number>>({});
+  // 撤回过的完工会带回上次清单作草稿，不用重选
+  const [lines, setLines] = useState<MatLine[]>(() => (draft?.materials ?? []).map((m, i) => ({
+    key: `d${i}`, materialId: m.materialId ?? undefined, warehouseId: m.warehouseId ?? undefined, name: m.name || '', unit: m.unit, qty: String(m.qty),
+  })));
   const [idem] = useState(() => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())));
-
-  useEffect(() => {
-    repairs.stockOptions(wo.id).then(setStock).catch(() => undefined);
-  }, [wo.id]);
-
   const feeCents = Math.round((Number(fee) || 0) * 100);
 
-  return shell('登记完工',
+  return shell('登记完工 · 用料扣料',
     <>
+      <ProxyBanner detail={detail} />
       <Field label="实际维修位置">
         <input className="in" value={faultLocation} onChange={(e) => setFaultLocation(e.target.value)} placeholder="例如：卫生间地漏" />
       </Field>
       <Field label="故障现象（选填）">
-        <input className="in" value={faultSymptom} onChange={(e) => setFaultSymptom(e.target.value)} />
+        <input className="in" value={faultSymptom} onChange={(e) => setFaultSymptom(e.target.value)} placeholder="已带出报修描述，可改" />
       </Field>
       <Field label="处理内容">
         <textarea className="in" value={repairContent} onChange={(e) => setRepairContent(e.target.value)} placeholder="换了什么、怎么处理的、试水/试电结果" />
       </Field>
 
-      <div className="sec-t">用料<span className="r muted">{stock?.warehouseName || ''}</span></div>
-      {stock ? (
-        stock.items.length ? (
-          <div style={{ maxHeight: 210, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 8, padding: '4px 10px', marginBottom: 14 }}>
-            {stock.items.map((it) => (
-              <div key={it.materialId} className="mrow" style={{ fontSize: 15 }}>
-                <span>{it.name}{it.spec ? <span className="muted"> · {it.spec}</span> : null}</span>
-                <span className="muted" style={{ fontSize: 13.5 }}>库存 {it.qty}{it.unit}</span>
-                <input className="in" style={{ width: 70, height: 30, marginLeft: 'auto' }} type="number" min={0} max={it.qty}
-                  value={picked[it.materialId] ?? ''}
-                  onChange={(e) => setPicked((p) => ({ ...p, [it.materialId]: Number(e.target.value) }))} placeholder="0" />
-                <span className="muted" style={{ width: 28 }}>{it.unit}</span>
-              </div>
-            ))}
-          </div>
-        ) : <div className="note" style={{ marginBottom: 14 }}>这个仓没有可领的材料</div>
-      ) : <Loading text="加载可领材料…" />}
+      <div className="sec-t">用了哪些材料<span className="r muted">从材料SKU选的按所选仓扣库存</span></div>
+      <MaterialPicker workOrderId={wo.id} mode="use" lines={lines} onChange={setLines} />
 
       <Field label="向业主收费（元）">
         <input className="in" type="number" min={0} value={fee} onChange={(e) => setFee(e.target.value)} />
@@ -529,21 +616,19 @@ function FinishFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; bus
       <Field label="维修备注（选填）">
         <input className="in" value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
-      <div className="note">照片附件、签字和养护单这一版还没接，先在现有后台补。</div>
+      <div className="note">材料不够？先点「取消」改走「登记缺料」：有货的可以同时领用，没货的生成采购申请。照片和签字暂在小程序补。</div>
     </>,
     <Btn kind="p" size="lg" disabled={busy}
       onClick={() => {
-        const materials = Object.entries(picked).filter(([, q]) => q > 0).map(([mid, q]) => {
-          const m = stock?.items.find((x) => x.materialId === Number(mid));
-          return { materialId: Number(mid), warehouseId: stock?.warehouseId ?? undefined, name: m?.name, unit: m?.unit, qty: q };
-        });
+        const parsed = linesToPayload(lines, 'use');
+        if ('error' in parsed) { toast(parsed.error); return; }
         void run(() => repairs.complete(wo.id, {
           faultLocation, faultSymptom, repairContent,
           actionNote: note || undefined,
           feeCents,
-          materials,
+          materials: parsed.rows,
           idempotencyKey: idem,
-        }), '已登记完工，已通知业主验收');
+        }), '已登记完工，已扣料并通知业主验收');
       }}>
       {busy ? '提交中…' : '提交完工 · 通知业主验收'}
     </Btn>,
@@ -552,38 +637,42 @@ function FinishFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; bus
 
 function MaterialFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; busy: boolean; run: RunFn; shell: ShellFn }) {
   const wo = detail.workOrder;
-  const [lines, setLines] = useState<Array<{ name: string; qty: string }>>(
-    wo.missingMaterials?.length ? wo.missingMaterials.map((m) => ({ name: m.name, qty: String(m.qty) })) : [{ name: '', qty: '' }],
-  );
+  const [missing, setMissing] = useState<MatLine[]>(() => (wo.missingMaterials ?? []).map((m, i) => ({
+    key: `m${i}`, materialId: m.materialId ?? undefined, warehouseId: m.warehouseId ?? undefined, name: m.name, unit: m.unit, qty: String(m.qty),
+  })));
+  const [used, setUsed] = useState<MatLine[]>([]);
+  const [showUsed, setShowUsed] = useState(false);
   const [note, setNote] = useState('');
-  const update = (i: number, patch: Partial<{ name: string; qty: string }>) =>
-    setLines((prev) => prev.map((l, k) => (k === i ? { ...l, ...patch } : l)));
 
-  return shell('缺料 / 申请采购',
+  return shell('登记缺料 / 申请采购',
     <>
-      <p className="note" style={{ marginTop: 0 }}>提交后工单进入「等材料」，并自动生成一张采购申请进入采购流程。</p>
-      <table className="t" style={{ marginBottom: 12 }}>
-        <thead><tr><th>材料</th><th style={{ width: 90 }}>数量</th></tr></thead>
-        <tbody>
-          {lines.map((l, i) => (
-            <tr key={i}>
-              <td><input className="in" value={l.name} onChange={(e) => update(i, { name: e.target.value })} placeholder="材料名称" /></td>
-              <td><input className="in" type="number" min={0} value={l.qty} onChange={(e) => update(i, { qty: e.target.value })} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <Btn size="sm" onClick={() => setLines((p) => [...p, { name: '', qty: '' }])}>＋ 再加一行</Btn>
+      <ProxyBanner detail={detail} />
+      <p className="note" style={{ marginTop: 0 }}>提交后工单转「等材料」并退回工单池，同时自动生成采购申请进入审批。材料到了再派单或由人接回。</p>
+      <div className="sec-t">缺哪些材料</div>
+      <MaterialPicker workOrderId={wo.id} mode="missing" lines={missing} onChange={setMissing} />
+
+      <div className="sec-t" style={{ marginTop: 14 }}>
+        本次已经领用的有货材料<span className="r"><Btn size="sm" kind="g" onClick={() => setShowUsed((v) => !v)}>{showUsed ? '收起' : '有，登记一下'}</Btn></span>
+      </div>
+      {showUsed ? <MaterialPicker workOrderId={wo.id} mode="use" lines={used} onChange={setUsed} />
+        : <div className="muted" style={{ fontSize: 13.5, marginBottom: 8 }}>例如先用了 2 米水管、阀门没货——水管在这里登记会同时扣库存。</div>}
+
       <Field label="原因 / 说明">
         <input className="in" value={note} onChange={(e) => setNote(e.target.value)} placeholder="例如：原阀门锈死，仓库无货" />
       </Field>
     </>,
     <Btn kind="p" size="lg" disabled={busy}
       onClick={() => {
-        const items = lines.filter((l) => l.name.trim() && Number(l.qty) > 0)
-          .map((l) => ({ name: l.name.trim(), qty: Number(l.qty) }));
-        if (!items.length) { toast('至少填一行材料和数量'); return; }
-        void run(() => repairs.needMaterial(wo.id, { missingMaterials: items, note: note || undefined }), '已进入等材料，采购申请已生成');
+        const m = linesToPayload(missing, 'missing');
+        if ('error' in m) { toast(m.error); return; }
+        if (!m.rows.length) { toast('至少填一种缺的材料和数量'); return; }
+        const u = linesToPayload(used, 'use');
+        if ('error' in u) { toast(u.error); return; }
+        void run(() => repairs.needMaterial(wo.id, {
+          missingMaterials: m.rows,
+          usedMaterials: u.rows.filter((r) => r.materialId),
+          note: note || undefined,
+        }), '已登记缺料，采购申请已生成');
       }}>
       {busy ? '提交中…' : '提交缺料'}
     </Btn>,

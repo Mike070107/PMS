@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MaterialView, StockMovementView, StockView, WarehouseView } from '@pms/shared-types';
 import { inventory } from '@pms/api-client';
-import { legacyUrl } from '@/lib/legacy';
+import { InboundForm, InboundList, TransferForm, TransferList } from '@/components/stock/StockOps';
+import { can } from '@/lib/perm';
 import { Btn, Card, ErrorNote, Loading, Sheet, toast } from '@/components/ui';
 import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
+import ToneIcon from '@/components/ToneIcon';
 
 const PHOTO_OF = (m?: MaterialView): string[] => {
   if (!m) return [];
@@ -31,6 +33,10 @@ export default function Stock() {
   const [peek, setPeek] = useState<StockView | null>(null);
   const [movements, setMovements] = useState<StockMovementView[] | null>(null);
   const [photos, setPhotos] = useState<{ name: string; urls: string[]; index: number } | null>(null);
+  const [tab, setTab] = useState<'stock' | 'inbound' | 'transfer'>('stock');
+  const [form, setForm] = useState<'inbound' | 'transfer' | null>(null);
+  const [opsKey, setOpsKey] = useState(0);
+  const canEdit = can('inventory', 'edit') || can('app:inventory', 'edit');
 
   const load = useCallback(async () => {
     try {
@@ -88,14 +94,26 @@ export default function Stock() {
     <>
       <div className="ph">
         <div>
-          <h1>库存</h1>
-          <p>有什么、在哪、够不够；采购在「采购流程」，盘点在左侧标「旧」的入口</p>
+          <div className="h1row"><ToneIcon kind="stock" /><h1>库存</h1></div>
+          <p>有什么、在哪、够不够；入库、调拨在这里办，采购到货在「采购 → 在途」入库</p>
         </div>
         <div className="act">
-          <button className="btn" onClick={() => { void load(); toast('已刷新'); }}>刷新</button>
-          <button className="btn" onClick={() => { window.location.href = legacyUrl('/inventory'); }}>入库 / 调拨</button>
+          <button className="btn" onClick={() => { void load(); setOpsKey((k) => k + 1); toast('已刷新'); }}>刷新</button>
+          {canEdit ? <button className="btn" onClick={() => setForm('transfer')}><Icon name="flow" size={16} />调拨</button> : null}
+          {canEdit ? <button className="btn p" onClick={() => setForm('inbound')}><Icon name="plus" size={17} />入库</button> : null}
         </div>
       </div>
+
+      <div className="seg" style={{ marginBottom: 12 }}>
+        {([['stock', '库存'], ['inbound', '入库记录'], ['transfer', '调拨']] as const).map(([k, n]) => (
+          <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{n}</button>
+        ))}
+      </div>
+      {tab === 'inbound' ? <Card style={{ overflow: 'hidden' }}><InboundList key={opsKey} warehouses={warehouses} materials={materials} /></Card> : null}
+      {tab === 'transfer' ? <Card style={{ overflow: 'hidden' }}><TransferList warehouses={warehouses} materials={materials} refreshKey={opsKey} /></Card> : null}
+      {form === 'inbound' ? <InboundForm warehouses={warehouses} onClose={() => setForm(null)} onDone={() => { setForm(null); setTab('inbound'); setOpsKey((k) => k + 1); void load(); }} /> : null}
+      {form === 'transfer' ? <TransferForm warehouses={warehouses} onClose={() => setForm(null)} onDone={() => { setForm(null); setTab('transfer'); setOpsKey((k) => k + 1); }} /> : null}
+      {tab === 'stock' ? (<>
 
       {err ? <ErrorNote>{err}</ErrorNote> : null}
 
@@ -147,7 +165,7 @@ export default function Stock() {
                 <td>{low ? <span className="pill urg">{qty ? '低于安全库存' : '无货'}</span> : <span className="muted">正常</span>}</td>
                 <td style={{ textAlign: 'right' }} className="muted">{money((s.amountCents ?? 0) / 100)}</td>
                 <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                  {low ? <Btn size="sm" onClick={() => { window.location.href = legacyUrl('/inventory'); }}>申请采购</Btn> : null}
+                  {low ? <Btn size="sm" onClick={() => { window.location.href = `${import.meta.env.BASE_URL}purchase?new=1`; }}>申请采购</Btn> : null}
                 </td>
               </tr>
             )) : <tr><td colSpan={9} className="empty">没有符合条件的库存</td></tr>}
@@ -157,8 +175,8 @@ export default function Stock() {
 
       <div className="note" style={{ marginTop: 14 }}>
         金额按批次加权成本计算（无批次时退回 SKU 参考成本）；当前数量 ≤ 安全库存即预警，安全库存为 0 的材料同样会显示。
-        入库、调拨、盘点仍在现有「库存与采购」页，这里只读。
       </div>
+      </>) : null}
 
       <Sheet
         open={!!peek}

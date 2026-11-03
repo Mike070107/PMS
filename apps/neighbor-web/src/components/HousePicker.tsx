@@ -27,7 +27,7 @@ export interface PickedHouse {
 }
 
 export default function HousePicker({
-  communities, value, onPick, disabled, onFallbackSearch, onClear,
+  communities, value, onPick, disabled, onFallbackSearch, onClear, onIncomplete,
 }: {
   communities: AddressCommunity[];
   value?: PickedHouse | null;
@@ -37,6 +37,8 @@ export default function HousePicker({
   onFallbackSearch?: () => void;
   onClear?: () => void;
   onTextChange?: (text: string) => void;
+  /** 只选到楼栋（「不肯说」）或数据不全时触发：提示用户再点到室号 */
+  onIncomplete?: () => void;
 }) {
   /**
    * 小区列的排序：有住宅房号的排在前面，纯商铺/办公（房号全是汉字或都带商铺名）排到最后。
@@ -93,6 +95,7 @@ export default function HousePicker({
           if (!p) { onClear?.(); return; }
           const full = toPicked(p);
           if (full) onPick(full);
+          else onIncomplete?.();
         }}
       />
       {disabled ? <div className="hp-mask" /> : null}

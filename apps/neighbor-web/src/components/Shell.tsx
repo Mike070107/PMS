@@ -1,90 +1,72 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { auth, useSession } from '@/lib/auth';
 import { notifications } from '@pms/api-client';
 import Icon from '@/components/Icon';
+import PageBoundary from '@/components/PageBoundary';
 import type { IconName } from '@/components/Icon';
-import { toast } from '@/components/ui';
 import { legacyUrl } from '@/lib/legacy';
 import { statusOf } from '@/lib/format';
 
 /**
- * 导航结构 = 设计稿的信息架构（按「谁在什么场景做什么」分组）。
- * 底下带 legacy 的条目还没在新界面里重做，直接跳回现有后台的同名页面，
- * 功能不中断、界面暂时是旧的。
+ * 导航 = 图标竖栏（图标优先）。收费工作台相关的在最上面，
+ * 其余域用分隔线隔开。带 legacy 的条目还没在新界面重做，点了跳回旧后台同名页。
  */
 export interface NavItem {
   key: string;
   name: string;
-  /** 图标：一个词永久一枚，不做同义多图 */
+  /** 竖栏里的短标签（≤4 字最佳），不填用 name */
+  rail?: string;
   icon: IconName;
-  /** 新版路由（相对 basename） */
   to?: string;
-  /** 旧后台绝对路径；本次未迁移的页面 */
   legacy?: string;
+  /** 直接跳生产原版（蓝色旧后台，路径从根开始），不走 /beta-legacy 的改版皮肤 */
+  prod?: string;
+  group: string;
 }
-export interface NavGroup { title: string; items: NavItem[] }
 
-export const NAV: NavGroup[] = [
-  { title: '', items: [{ key: 'today', name: '今日待办', icon: 'today', to: '/today' }] },
-  {
-    title: '报修服务',
-    items: [
-      { key: 'work-orders', name: '工单调度', icon: 'kanban', to: '/work-orders' },
-      { key: 'maint', name: '养护单', icon: 'file', to: '/maint' },
-      { key: 'notes', name: '维修经验', icon: 'book', legacy: '/experience-notes' },
-    ],
-  },
-  {
-    title: '收费',
-    items: [
-      { key: 'cashier', name: '收银台', icon: 'cash', to: '/cashier' },
-      { key: 'bills', name: '账单与欠费', icon: 'receipt', to: '/bills' },
-      { key: 'recon', name: '收费对账', icon: 'scale', legacy: '/fees?tab=recon' },
-    ],
-  },
-  {
-    title: '车辆与门禁',
-    items: [
-      { key: 'vehicles', name: '住户车辆与门禁', icon: 'car', to: '/vehicles' },
-      { key: 'devices', name: '设备中心', icon: 'cpu', to: '/devices' },
-    ],
-  },
-  {
-    title: '物资',
-    items: [
-      { key: 'purchase', name: '采购流程', icon: 'flow', to: '/purchase' },
-      { key: 'stock', name: '库存', icon: 'box', to: '/stock' },
-      { key: 'count', name: '盘点', icon: 'clipboard', legacy: '/stocktakes' },
-      { key: 'sku', name: '材料库', icon: 'layers', legacy: '/materials' },
-    ],
-  },
-  {
-    title: '档案',
-    items: [
-      { key: 'houses', name: '房产', icon: 'home', legacy: '/properties' },
-      { key: 'owners', name: '业主', icon: 'users', legacy: '/owners' },
-      { key: 'people', name: '员工与权限', icon: 'shield', legacy: '/staff' },
-      { key: 'offices', name: '管理处', icon: 'building', legacy: '/offices' },
-    ],
-  },
-  { title: '分析', items: [{ key: 'reports', name: '报表', icon: 'chart', legacy: '/reports' }] },
-  {
-    title: '系统',
-    items: [
-      { key: 'settings', name: '系统设置', icon: 'gear', to: '/settings' },
-      { key: 'qr', name: '楼栋报修码', icon: 'qr', legacy: '/qr' },
-      { key: 'intranet', name: '内网应用', icon: 'globe', legacy: '/external-access' },
-      { key: 'logs', name: '日志', icon: 'log', legacy: '/logs' },
-    ],
-  },
+export const NAV: NavItem[] = [
+  { key: 'today', name: '今日工作', rail: '今日', icon: 'today', to: '/today', group: '总览' },
+  { key: 'cashier', name: '收银台', rail: '收银台', icon: 'cash', to: '/cashier', group: '收费' },
+  { key: 'vehicles', name: '车辆管理', rail: '车辆', icon: 'car', to: '/vehicles', group: '收费' },
+  { key: 'access-cards', name: '门禁管理', rail: '门禁', icon: 'key', to: '/access-cards', group: '收费' },
+  { key: 'plates', name: '车牌登记审核', rail: '车牌', icon: 'key', to: '/plates', group: '收费' },
+  { key: 'records', name: '办理记录', rail: '办理记录', icon: 'receipt', to: '/records', group: '收费' },
+  { key: 'pending', name: '待处理', rail: '待处理', icon: 'alert', to: '/pending', group: '收费' },
+  { key: 'bills', name: '账单与待缴', rail: '账单', icon: 'scale', to: '/bills', group: '收费' },
+  { key: 'work-orders', name: '工单调度', rail: '工单', icon: 'kanban', to: '/work-orders', group: '报修' },
+  { key: 'maint', name: '养护单', rail: '养护单', icon: 'file', to: '/maint', group: '报修' },
+  { key: 'notes', name: '维修经验', rail: '经验', icon: 'book', to: '/experience', group: '报修' },
+  { key: 'purchase', name: '采购流程', rail: '采购', icon: 'flow', to: '/purchase', group: '库存与盘点' },
+  { key: 'stock', name: '库存', rail: '库存', icon: 'box', to: '/stock', group: '库存与盘点' },
+  { key: 'count', name: '盘点', rail: '盘点', icon: 'clipboard', to: '/stocktakes', group: '库存与盘点' },
+  { key: 'sku', name: '材料SKU', rail: 'SKU', icon: 'layers', to: '/materials', group: '库存与盘点' },
+  { key: 'devices', name: '系统与设备', rail: '系统设备', icon: 'cpu', to: '/devices', group: '系统' },
+  { key: 'reports', name: '收费报表', rail: '报表', icon: 'chart', to: '/reports', group: '分析' },
+  { key: 'standards', name: '收费标准', rail: '收费标准', icon: 'wallet', to: '/standards', group: '收费' },
+  { key: 'apartment', name: '公寓收费台', rail: '公寓', icon: 'building', to: '/apartment', group: '收费' },
+  { key: 'houses', name: '房产', rail: '房产', icon: 'home', to: '/houses', group: '档案' },
+  { key: 'owners', name: '业主', rail: '业主', icon: 'users', to: '/owners', group: '档案' },
+  { key: 'people', name: '员工与权限', rail: '员工', icon: 'shield', to: '/staff', group: '档案' },
+  { key: 'offices', name: '管理处', rail: '管理处', icon: 'building', to: '/offices', group: '档案' },
+  { key: 'settings', name: '系统设置', rail: '设置', icon: 'gear', to: '/settings', group: '系统' },
+  { key: 'qr', name: '楼栋报修码', rail: '报修码', icon: 'qr', to: '/qr', group: '系统' },
+  { key: 'intranet', name: '内网应用', rail: '内网', icon: 'globe', to: '/intranet', group: '系统' },
+  { key: 'logs', name: '日志', rail: '日志', icon: 'log', to: '/logs', group: '系统' },
 ];
 
-const ALL_ITEMS = NAV.flatMap((g) => g.items.map((i) => ({ ...i, group: g.title || '总览' })));
-const PAGE_OF = (pathname: string) => {
-  const seg = pathname.split('/').filter(Boolean)[0] || 'today';
-  return seg;
-};
+/** 分类分组：每组一个标题 + 图标文字一行的菜单项 */
+const GROUPS: Array<{ title: string; keys: string[]; icon: IconName; tone: string }> = [
+  { title: '总览', keys: ['today'], icon: 'today', tone: 'green' },
+  { title: '收费办理', keys: ['cashier', 'plates', 'vehicles', 'access-cards', 'apartment', 'bills', 'records', 'pending', 'standards'], icon: 'wallet', tone: 'blue' },
+  { title: '报修养护', keys: ['work-orders', 'maint', 'notes'], icon: 'wrench', tone: 'orange' },
+  { title: '库存与盘点', keys: ['purchase', 'stock', 'count', 'sku'], icon: 'box', tone: 'green' },
+  { title: '分析', keys: ['reports'], icon: 'chart', tone: 'violet' },
+  { title: '档案', keys: ['houses', 'owners', 'people', 'offices'], icon: 'home', tone: 'brown' },
+  { title: '系统', keys: ['devices', 'settings', 'qr', 'intranet', 'logs'], icon: 'cpu', tone: 'slate' },
+];
+
+const PAGE_OF = (pathname: string) => pathname.split('/').filter(Boolean)[0] || 'today';
 
 export default function Shell() {
   const session = useSession();
@@ -94,9 +76,8 @@ export default function Shell() {
   const [q, setQ] = useState('');
   const [unread, setUnread] = useState(0);
   const page = PAGE_OF(loc.pathname);
-  const current = ALL_ITEMS.find((i) => i.key === page) ?? ALL_ITEMS[0];
+  const current = NAV.find((i) => i.key === page) ?? NAV[0];
 
-  // 侧栏角标：待派单 + 待验收（进页面前就知道有多少事）
   const [counts, setCounts] = useState<{ dispatch: number; accept: number }>({ dispatch: 0, accept: 0 });
 
   useEffect(() => {
@@ -110,10 +91,7 @@ export default function Shell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setCmdk((v) => !v);
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setCmdk((v) => !v); }
       if (e.key === 'Escape') setCmdk(false);
     };
     window.addEventListener('keydown', onKey);
@@ -122,11 +100,8 @@ export default function Shell() {
 
   const goto = (item: NavItem) => {
     setCmdk(false);
-    if (item.legacy) {
-      // 旧后台在站点根路径下，这里必须整页跳转（两套前端独立的构建产物）
-      window.location.href = legacyUrl(item.legacy);
-      return;
-    }
+    if (item.prod) { window.location.href = item.prod; return; }
+    if (item.legacy) { window.location.href = legacyUrl(item.legacy); return; }
     if (item.to) nav(item.to);
   };
 
@@ -138,21 +113,27 @@ export default function Shell() {
 
   const filtered = useMemo(() => {
     const kw = q.trim();
-    const list = kw ? ALL_ITEMS.filter((i) => i.name.includes(kw) || i.key.includes(kw)) : ALL_ITEMS;
+    const list = kw ? NAV.filter((i) => i.name.includes(kw) || i.key.includes(kw)) : NAV;
     return list.slice(0, 12);
   }, [q]);
+
+  const badgeOf = (key: string) =>
+    key === 'work-orders' ? counts.dispatch
+      : key === 'today' ? counts.dispatch + counts.accept
+        : 0;
 
   return (
     <div id="web">
       <aside className="side">
-        <div className="brand">
+        <div className="side-brand" title="邻修 物业管理平台">
           <div className="logo">邻</div>
-          <div>
-            <b>邻修</b>
-            <small>物业管理平台</small>
-          </div>
+          <div className="txt"><b>邻修</b><small>物业管理</small></div>
         </div>
-        <div className="scope" title="切换管理处视角">
+
+        <label className="scope-ib" title="切换管理处视角">
+          <Icon name="building" size={18} />
+          <small>{officeName || '全部管理处'}</small>
+          <Icon name="chev" size={16} />
           <select
             value={office?.id ?? 0}
             onChange={(e) => {
@@ -161,19 +142,21 @@ export default function Shell() {
               auth.setActingOffice(id ? { id, name: target?.name || '' } : null);
               window.location.reload();
             }}
-            style={{ border: 0, background: 'transparent', width: '100%', outline: 'none', cursor: 'pointer' }}
           >
             <option value={0}>全部管理处</option>
             {offices.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
-        </div>
+        </label>
+
         <nav className="nav">
-          {NAV.map((g) => (
-            <div key={g.title || 'top'}>
-              {g.title ? <h6>{g.title}</h6> : null}
-              {g.items.map((item) => {
+          {GROUPS.map((g) => (
+            <div key={g.title}>
+              <div className="navGroupTitle"><span className={"ic-tile navGroupTile t-" + g.tone}><Icon name={g.icon} size={12} /></span>{g.title}</div>
+              {g.keys.map((k) => {
+                const item = NAV.find((n) => n.key === k);
+                if (!item) return null;
                 const on = item.key === page;
-                const badge = item.key === 'work-orders' ? counts.dispatch : item.key === 'today' ? counts.dispatch + counts.accept : 0;
+                const badge = badgeOf(item.key);
                 return (
                   <a
                     key={item.key}
@@ -181,33 +164,22 @@ export default function Shell() {
                     onClick={() => goto(item)}
                     tabIndex={0}
                     onKeyDown={(e) => { if (e.key === 'Enter') goto(item); }}
+                    title={item.name}
                   >
                     <Icon name={item.icon} />
                     <span>{item.name}</span>
-                    {badge ? <span className="n">{badge}</span> : null}
-                    {item.legacy ? <span className="leg">旧</span> : null}
+                    {badge ? <span className="n">{badge}</span> : item.legacy ? <span className="leg">旧</span> : null}
                   </a>
                 );
               })}
             </div>
           ))}
         </nav>
+
         <div className="me">
-          <div className="av">{name.slice(0, 1)}</div>
-          <div style={{ minWidth: 0 }}>
-            <b>{name}</b>
-            <div className="muted" style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {roleLabel}{officeName ? ` · ${officeName}` : ''}
-            </div>
-          </div>
-          <button
-            className="btn g sm"
-            style={{ marginLeft: 'auto' }}
-            title="退出登录"
-            onClick={() => { auth.clear(); nav('/login'); }}
-          >
-            退出
-          </button>
+          <div className="av" title={`${name} · ${roleLabel}`}>{name.slice(0, 1)}</div>
+          <div className="meName"><b>{name}</b><small>{roleLabel}</small></div>
+          <button className="logout" title="退出登录" onClick={() => { auth.clear(); nav('/login'); }}>退出</button>
         </div>
       </aside>
 
@@ -216,11 +188,11 @@ export default function Shell() {
           <div className="crumb">{current.group}<b>{current.name}</b></div>
           <div className="search" onClick={() => setCmdk(true)}>
             <Icon name="search" size={18} />
-            <span>搜房号、单号、车牌、功能…</span>
+            <span>搜功能、房号、工单号…</span>
             <kbd>Ctrl K</kbd>
           </div>
-          <button className="btn p" onClick={() => nav('/work-orders?new=1')}>
-            <Icon name="plus" size={18} />新建
+          <button className="btn p" onClick={() => nav('/cashier')}>
+            <Icon name="cash" size={18} />收费办理
           </button>
           <button className="ib" title="通知" onClick={() => { window.location.href = '/dashboard'; }}>
             <Icon name="bell" />
@@ -229,7 +201,7 @@ export default function Shell() {
         </header>
         <div className="content">
           <div className="wrap">
-            <Outlet />
+            <PageBoundary resetKey={loc.pathname + loc.search}><Outlet /></PageBoundary>
           </div>
         </div>
       </section>
@@ -270,7 +242,7 @@ export default function Shell() {
 export function StatusLegend() {
   return (
     <div className="chips">
-      {['created', 'dispatched', 'in_progress', 'waiting_material', 'done_pending_review', 'completed'].map((s) => (
+      {['created', 'pending_accept', 'in_progress', 'waiting_material', 'done_pending_review', 'completed'].map((s) => (
         <span key={s} className={`pill ${statusOf(s).cls}`}>{statusOf(s).name}</span>
       ))}
     </div>
