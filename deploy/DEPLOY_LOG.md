@@ -5538,3 +5538,11 @@
 - 自上次（ad94442f）以来上线的相关提交：
   - 9da8c64f chore(api): 「车牌管理」文案统一为「车牌登记审核」(新车上限提示/作废拦截提示/审计注释)
 
+## 2026-11-03 14:25 · api · 2c10673e
+
+- 包：`pms-api-fast-20261103-142410.tar.gz`
+- 提交：2c10673e fix(deploy): compare complete API runtime dependency closure before repacking
+- 自上次（9da8c64f）以来上线的相关提交：
+  - 2eff4777 feat(meters): download labeled meter QR codes individually or in batches
+  - 1f454a7c feat(meters): preserve photo GPS provenance and allow per-bill pricing
+
