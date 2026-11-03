@@ -5556,3 +5556,9 @@
   - 2eff4777 feat(meters): download labeled meter QR codes individually or in batches
   - 1f454a7c feat(meters): preserve photo GPS provenance and allow per-bill pricing
 
+## 2026-11-03 20:30 · miniapp-staff · 22dca7f3
+
+- 提交：22dca7f3 fix(api): entities/index.ts 保留 main 上的 Meter* 导出,只追加 ParkingSpace(beta 分支副本缺抄表实体,整文件覆盖会把 meters 模块搞崩)
+- 自上次（17ae188a）以来上线的相关提交：
+  - 1f454a7c feat(meters): preserve photo GPS provenance and allow per-bill pricing
+
