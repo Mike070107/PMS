@@ -285,7 +285,7 @@ export class InventoryController {
   // 员工端审批页拉待办用它；「材料与库存」那一格也要看得到采购进度
   @Get('purchase-requests')
   @RequirePermission(
-    ['inventory', 'app:inventory', 'app:approve-manager', 'app:approve-purchaser'],
+    ['inventory', 'app:inventory', 'app:approve-purchase-manager', 'app:approve-manager', 'app:approve-purchaser'],
     'view',
   )
   listPurchaseRequests(
@@ -299,7 +299,7 @@ export class InventoryController {
   /** 单张申请：员工端详情 / 编辑页。点开即把指向它的未读站内信标已读 */
   @Get('purchase-requests/:id')
   @RequirePermission(
-    ['inventory', 'app:inventory', 'app:approve-manager', 'app:approve-purchaser'],
+    ['inventory', 'app:inventory', 'app:approve-purchase-manager', 'app:approve-manager', 'app:approve-purchaser'],
     'view',
   )
   getPurchaseRequest(
@@ -382,7 +382,7 @@ export class InventoryController {
 
   // 审批链的两步各是一格勾选：谁批第一步、谁批第二步，由角色配置说了算
   @Post('purchase-requests/:id/manager-approve')
-  @RequirePermission('app:approve-manager', 'edit')
+  @RequirePermission(['app:approve-purchase-manager', 'app:approve-manager'], 'edit')
   approveByManager(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
@@ -408,7 +408,7 @@ export class InventoryController {
   // 驳回：两步审批人任一都能驳，提交人自己也能撤
   @Post('purchase-requests/:id/reject')
   @RequirePermission(
-    ['app:approve-manager', 'app:approve-purchaser', 'inventory', 'app:inventory'],
+    ['app:approve-purchase-manager', 'app:approve-manager', 'app:approve-purchaser', 'inventory', 'app:inventory'],
     'edit',
   )
   rejectPurchaseRequest(
@@ -436,7 +436,7 @@ export class InventoryController {
   }
 
   @Post('purchase-requests/:id/reject-item')
-  @RequirePermission(['app:approve-manager', 'app:approve-purchaser'], 'edit')
+  @RequirePermission(['app:approve-purchase-manager', 'app:approve-manager', 'app:approve-purchaser'], 'edit')
   rejectPurchaseRequestItem(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectPurchaseRequestItemDto,
@@ -557,7 +557,7 @@ export class InventoryController {
   }
 
   @Post('transfer-orders/:id/approve')
-  @RequirePermission('app:approve-manager', 'edit')
+  @RequirePermission(['app:approve-purchase-manager', 'app:approve-manager'], 'edit')
   approveTransferOrder(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthUser,
@@ -569,7 +569,7 @@ export class InventoryController {
   }
 
   @Post('transfer-orders/:id/reject')
-  @RequirePermission('app:approve-manager', 'edit')
+  @RequirePermission(['app:approve-purchase-manager', 'app:approve-manager'], 'edit')
   rejectTransferOrder(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectTransferOrderDto,

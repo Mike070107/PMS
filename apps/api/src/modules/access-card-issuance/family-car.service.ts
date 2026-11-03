@@ -101,7 +101,7 @@ export const FAMILY_STATUS_LABEL: Record<FamilyCarStatus, string> = {
 /** 还在办理或有效、会占用这个车牌的状态 */
 const LIVE_STATUSES: FamilyCarStatus[] = ['upload', 'office', 'manager', 'returned', 'opening', 'active'];
 // 网页「亲情车经理审核」和员工小程序「审批 · 亲情车」是同一件事的两个入口
-const MANAGER_KEYS = ['family-cars-approve', 'app:family-car-approve'];
+const MANAGER_KEYS = ['family-cars-approve', 'app:family-car-approve', 'app:approve-business-manager'];
 
 @Injectable()
 export class FamilyCarService {

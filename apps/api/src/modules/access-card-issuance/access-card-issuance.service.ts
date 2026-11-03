@@ -852,6 +852,7 @@ export class AccessCardIssuanceService {
       tenantId,
       term,
       queryKind: 'vehicle',
+      database: dto.database ?? null,
       rangeStart: null,
       rangeEnd: null,
       status: 'pending',
@@ -1473,7 +1474,7 @@ export class AccessCardIssuanceService {
       query.leaseExpiresAt = new Date(now.getTime() + 90_000);
       query.updatedBy = null;
       await repo.save(query);
-      return { queryId: query.id, term: query.term, queryKind: query.queryKind, startDate: query.rangeStart, endDate: query.rangeEnd };
+      return { queryId: query.id, term: query.term, queryKind: query.queryKind, startDate: query.rangeStart, endDate: query.rangeEnd, database: query.database };
     });
     return { task };
   }
@@ -1846,6 +1847,7 @@ export class AccessCardIssuanceService {
     return {
       id: query.id,
       term: query.term,
+      database: query.database,
       status: query.status,
       rows,
       error: query.status === 'failed' ? query.lastError : null,

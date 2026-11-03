@@ -1951,11 +1951,15 @@ export class InventoryService {
             ? 'purchaser'
             : null;
       if (!stage) throw new BadRequestException('当前环节不能单项驳回');
-      const pageKey = stage === 'manager' ? 'app:approve-manager' : 'app:approve-purchaser';
+      // 经理这一步拆成「采购·经理审核」，旧 key 仍要放行（已有授权不能失效）
+      const stageKeys =
+        stage === 'manager'
+          ? ['app:approve-purchase-manager', 'app:approve-manager']
+          : ['app:approve-purchaser'];
       const canReject =
         !!access?.isPlatformAdmin ||
         !!access?.isTenantAdmin ||
-        access?.pages?.[pageKey]?.edit === true;
+        stageKeys.some((key) => access?.pages?.[key]?.edit === true);
       if (!canReject) throw new ForbiddenException('当前审批环节不能由你驳回');
       let found = false;
       request.items = (request.items || []).map((item, index) => {
@@ -2021,7 +2025,7 @@ export class InventoryService {
         (request.status === PurchaseRequestStatus.OFFICE_REVIEW &&
           (request.applicantId === user.id || canEdit('inventory') || canEdit('app:inventory'))) ||
         (request.status === PurchaseRequestStatus.MANAGER_REVIEW &&
-          canEdit('app:approve-manager')) ||
+          (canEdit('app:approve-purchase-manager') || canEdit('app:approve-manager'))) ||
         ([PurchaseRequestStatus.PURCHASER_REVIEW, PurchaseRequestStatus.APPROVED].includes(
           request.status,
         ) && canEdit('app:approve-purchaser'));
@@ -2593,7 +2597,7 @@ export class InventoryService {
           updatedBy: user.id,
         }),
       );
-      await this.notifyByPermission(manager, tenantId, 'app:approve-manager', {
+      await this.notifyByPermission(manager, tenantId, ['app:approve-purchase-manager', 'app:approve-manager'], {
         eventKey: 'transfer_pending_review',
         title: `调拨单 ${saved.transferNo} 待审批`,
         payload: { transferId: saved.id, transferNo: saved.transferNo },
@@ -2997,7 +3001,12 @@ export class InventoryService {
     if (receiverIds.length) {
       await this.notifyUsers(manager, tenantId, receiverIds, input);
     } else {
-      await this.notifyByPermission(manager, tenantId, ['app:approve-manager', 'app:inventory'], input);
+      await this.notifyByPermission(
+        manager,
+        tenantId,
+        ['app:approve-purchase-manager', 'app:approve-manager', 'app:inventory'],
+        input,
+      );
     }
   }
 }

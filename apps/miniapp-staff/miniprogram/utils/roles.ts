@@ -29,7 +29,7 @@ export const TAB_PAGE: Record<TabKey, string> = {
   mine: 'app:my-orders',
   maintenance: 'app:maintenance-inspect',
   materials: 'app:inventory', // SKU、盘点入口在 canSeeTab 里一并判
-  approvals: 'app:approve-manager', // 采购那一步在 canSeeTab 里一并判
+  approvals: 'app:approve-purchase-manager', // 采购/收费两步及旧 key 在 canSeeTab 里一并判
   cashier: 'app:apartment-cashier',
   meters: 'app:meters',
   more: '',
@@ -51,7 +51,13 @@ export function canSeeTab(key: TabKey, access: TabAccess): boolean {
   if (key === 'me' || key === 'more') return true;
   if (!pages) return true;
   if (key === 'approvals') {
-    return !!(pages['app:approve-manager'] || pages['app:approve-purchaser']);
+    return !!(
+      pages['app:approve-purchase-manager'] ||
+      pages['app:approve-manager'] ||
+      pages['app:approve-business-manager'] ||
+      pages['app:family-car-approve'] ||
+      pages['app:approve-purchaser']
+    );
   }
   if (key === 'maintenance') {
     return !!(pages['app:maintenance-sign'] || pages['app:maintenance-inspect']);

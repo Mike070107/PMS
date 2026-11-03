@@ -166,7 +166,13 @@ export class BusinessService {
   /** 通知能审批的物业经理（按小区所属管理处收窄） */
   private async notifyReviewers(tenantId: number, communityId: number | null, title: string, payload: Record<string, unknown>, operatorId: number) {
     try {
-      let ids = await this.access.userIdsWithPermission(tenantId, 'app:approve-manager', 'edit');
+      // 收费类经理审核：新 key 与拆分前的旧 key 任一命中都算（旧授权不能失效）
+      const managerIdSets = await Promise.all(
+        ['app:approve-business-manager', 'app:approve-manager'].map((key) =>
+          this.access.userIdsWithPermission(tenantId, key, 'edit'),
+        ),
+      );
+      let ids = [...new Set(managerIdSets.flat())];
       const officeId = communityId ? (await this.communityRepo.findOne({ where: { id: communityId, tenantId } }))?.officeId ?? null : null;
       if (officeId) { const cover = await this.access.filterUsersCoveringOffice(tenantId, ids, officeId); ids = ids.filter((x) => cover.has(x)); }
       ids = ids.filter((x) => x !== operatorId);

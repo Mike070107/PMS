@@ -9,6 +9,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateIntakeInput, ReviewIntakeInput, VehicleIntakeService } from './vehicle-intake.service';
 
 const VIEW = ['business', 'family-cars'] as const;
+/** 新办车牌待审的经理这一步：新 key 或拆分前的旧 key 任一命中 */
+const MANAGER_REVIEW = ['app:approve-business-manager', 'app:approve-manager'] as const;
 
 /** 新办车牌 / 亲情车扫码登记（办公室端） */
 @Controller('vehicle-intakes')
@@ -17,13 +19,13 @@ export class VehicleIntakeController {
   constructor(private readonly service: VehicleIntakeService) {}
 
   @Get()
-  @RequirePermission([...VIEW], 'view')
+  @RequirePermission([...VIEW, ...MANAGER_REVIEW], 'view')
   list(@Query() query: { status?: string; kind?: string; q?: string; houseId?: string; open?: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.service.list({ ...query, houseId: query.houseId ? Number(query.houseId) : undefined, open: query.open === '1' }, user, access);
   }
 
   @Get(':id')
-  @RequirePermission([...VIEW], 'view')
+  @RequirePermission([...VIEW, ...MANAGER_REVIEW], 'view')
   get(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.service.get(id, user, access);
   }
@@ -59,7 +61,7 @@ export class VehicleIntakeController {
   }
 
   @Post(':id/review')
-  @RequirePermission([...VIEW], 'edit')
+  @RequirePermission([...VIEW, ...MANAGER_REVIEW], 'edit')
   review(@Param('id', ParseIntPipe) id: number, @Body() body: ReviewIntakeInput, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.service.review(id, body, user, access);
   }

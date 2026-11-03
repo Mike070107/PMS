@@ -10,11 +10,28 @@ import { type TabKey } from './roles';
 export { type TabKey };
 
 /** access.pages 的精简缓存：只留员工端那几个入口的「可见」 */
-import { STAFF_APP_PAGE_KEYS } from '@pms/shared-types';
-
 const PAGES_KEY = 'pms.staff.pages';
 /** 员工端实际可进入的功能入口；内网应用授权不在此集合。 */
-export { STAFF_APP_PAGE_KEYS };
+export const STAFF_APP_PAGE_KEYS = [
+  'app:pool',
+  'app:dispatch',
+  'app:my-orders',
+  'app:maintenance-sign',
+  'app:my-repairs',
+  'app:maintenance-inspect',
+  'app:inventory',
+  'app:stocktakes',
+  'app:materials',
+  'app:approve-manager',
+  'app:approve-purchase-manager',
+  'app:approve-business-manager',
+  'app:approve-purchaser',
+  'app:family-car-approve',
+  'app:repair-create',
+  'app:messages',
+  'app:apartment-cashier',
+  'app:experience-notes',
+];
 
 /**
  * 读缓存里的身份和权限。**只读缓存，绝不打接口** ——

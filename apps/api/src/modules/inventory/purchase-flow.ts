@@ -42,7 +42,8 @@ export function nextStepLabel(
 
 /** 某个状态下该通知谁：权限格 + 通知事件 + 标题后缀 */
 export function pendingStepFor(status: PurchaseRequestStatus): {
-  pageKey: string;
+  /** 可能是多个 key：权限 key 拆分后新 / 旧 key 并存，任一命中的人都算这一环 */
+  pageKey: string | string[];
   action: 'view' | 'edit';
   eventKey: string;
   title: string;
@@ -51,7 +52,12 @@ export function pendingStepFor(status: PurchaseRequestStatus): {
     case PurchaseRequestStatus.OFFICE_REVIEW:
       return { pageKey: 'app:dispatch', action: 'edit', eventKey: 'purchase_pending_office', title: '缺料申请待汇总' };
     case PurchaseRequestStatus.MANAGER_REVIEW:
-      return { pageKey: 'app:approve-manager', action: 'edit', eventKey: 'purchase_pending_manager', title: '待物业经理审批' };
+      return {
+        pageKey: ['app:approve-purchase-manager', 'app:approve-manager'],
+        action: 'edit',
+        eventKey: 'purchase_pending_manager',
+        title: '待物业经理审批',
+      };
     case PurchaseRequestStatus.PURCHASER_REVIEW:
       return { pageKey: 'app:approve-purchaser', action: 'edit', eventKey: 'purchase_pending_purchaser', title: '待采购部审批' };
     case PurchaseRequestStatus.APPROVED:

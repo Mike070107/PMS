@@ -1099,6 +1099,7 @@ export const PURCHASE_STATUS_LABELS: Record<PurchaseRequestStatus, string> = {
  * 勾了「采购审批（经理这一步）」就看待经理审的，勾了采购那一步就看待采购确认的。
  */
 export const PENDING_STATUS_BY_APP_PAGE: Record<string, PurchaseRequestStatus> = {
+  'app:approve-purchase-manager': PurchaseRequestStatus.MANAGER_REVIEW,
   'app:approve-manager': PurchaseRequestStatus.MANAGER_REVIEW,
   'app:approve-purchaser': PurchaseRequestStatus.PURCHASER_REVIEW,
 };

@@ -53,7 +53,9 @@ export const STAFF_APP_PAGE_KEYS = [
   'app:inventory', // 材料与库存（现场查存量、看采购进度）
   'app:stocktakes', // 库存盘点（现场扫码、提交复核）
   'app:materials', // 材料 SKU 库（看/改材料档案，单独一格）
-  'app:approve-manager', // 采购审批（经理这一步）
+  'app:approve-manager', // 采购审批（经理这一步）—— 旧 key，仅兼容已有授权（判断处新/旧任一命中）
+  'app:approve-purchase-manager', // 采购·经理审核（采购单、调拨单的经理这一步）
+  'app:approve-business-manager', // 收费·经理审核（亲情车登记待审、新办车牌待审）
   'app:approve-purchaser', // 采购审批（采购这一步）
   'app:messages', // 消息中心
   'app:experience-notes', // 维修经验总结（查看/编辑；默认维修工无需额外授权）
@@ -140,7 +142,8 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:inventory': 'e',
       'app:stocktakes': 'e',
       'app:materials': 'e',
-      'app:approve-manager': 'e',
+      'app:approve-purchase-manager': 'e',
+      'app:approve-business-manager': 'e',
       'app:family-car-approve': 'e',
       'app:maintenance-inspect': 'v',
       'app:my-repairs': 'v',
