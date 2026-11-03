@@ -359,3 +359,4 @@ VL-Plus：5/6，平均2.11秒；VL-OCR：4/6，平均0.51秒。第5张 Plus=0089
 微信平台只读核实员工AppID wx002fde4bfaa4c7d9，wx.chooseLocation与wx.getLocation均显示已开通。CLI重新登录二维码再次超时（code25），尚无成功上传，不能据此改变体验版标记。
 标签排版按用户反馈改为居中分区：表号/名称双列，安装地点单独居中，底部为表类型与设备码；长文本自动撑高换行。新版批量34张再次全部解码成功（34/34且唯一），样图已目视核对。新版证据 outputs/meter-label-batch-centered-20261103.zip、meter-label-centered-sample-20261103.png。
 最终按用户要求收紧标签：表号、名称在一行两列，安装地点下一行，类型和设备短码置于底部小字；常规标签由960×1238调整为760×800，二维码静区保留。实际浏览器调用同一标签生成器生成新版样图，OpenCV完整解码成功。证据 outputs/meter-label-compact-sample-20261103.png。
+API依赖打包阻塞补充：pnpm deploy在本机展开518个目录后持续无文件导入，尚未上传或切换生产，已停止该次本地进程。核对锁文件差异仅新增Web JSZip和员工端开发用exifr；新增API完整运行依赖闭包检查（包括间接/可选依赖、peer snapshot、别名、workspace link及包完整性），旧生产与当前指纹均4212be5e250100ecce6a1f24b08bae299a865c70d9d8e175aef46387295fae99。5项回归覆盖前端独立依赖、API变更、间接/可选完整性、别名peer、workspace、未知结构按完整包处理；依赖检查自身失败立即停止。由统一发布入口据此自动使用dist快速包，保留现有服务器node_modules及环境，不是跳过依赖校验。本地发布新增前置Python3+PyYAML，部署服务器不需要Python依赖。

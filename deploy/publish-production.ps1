@@ -39,10 +39,17 @@ function Dirty([string[]] $paths) {
 
 
 function Test-DependencyChanges([string] $target, [string[]] $changedFiles) {
-    if (@($changedFiles | Where-Object { $_ -eq 'pnpm-lock.yaml' }).Count -gt 0) { return $true }
     $tag = "refs/tags/deployed/$target"
     $base = & git.exe -C $RepoRoot rev-parse --verify --quiet $tag 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $base) { return $false }
+    if (@($changedFiles | Where-Object { $_ -eq 'pnpm-lock.yaml' }).Count -gt 0) {
+        if ($target -ne 'api') { return $true }
+        Run '核对运行依赖检查回归' { python (Join-Path $PSScriptRoot 'api-runtime-dependencies.test.py') }
+        $runtimeState = & python (Join-Path $PSScriptRoot 'api-runtime-dependencies.py') $tag
+        if ($LASTEXITCODE -ne 0 -or $runtimeState -notin @('same', 'changed')) { Die '无法核对 API 运行依赖，停止发布' }
+        if ($runtimeState -eq 'changed') { return $true }
+        Write-Host '已核对 API 完整运行依赖（含间接依赖与完整性）未变，保留服务器现有依赖。'
+    }
     $dependencyFields = @('dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies', 'overrides', 'resolutions', 'engines', 'packageManager')
     foreach ($path in @($changedFiles | Where-Object { $_ -match '(^|/)package\.json$' })) {
         $before = (Git @('show', ($tag + ':' + $path))) | ConvertFrom-Json
