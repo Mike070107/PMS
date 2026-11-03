@@ -5546,3 +5546,13 @@
   - 2eff4777 feat(meters): download labeled meter QR codes individually or in batches
   - 1f454a7c feat(meters): preserve photo GPS provenance and allow per-bill pricing
 
+## 2026-11-03 14:26 · web · 5144fdc4
+
+- 包：`pms-web-20261103-142535.tar.gz`
+- 提交：5144fdc4 deploy: api → 2c10673e
+- 自上次（dfd25894）以来上线的相关提交：
+  - 96bf04a8 style(meters): compact QR captions without reducing scan margins
+  - cd096ce0 style(meters): center and group printable QR label details
+  - 2eff4777 feat(meters): download labeled meter QR codes individually or in batches
+  - 1f454a7c feat(meters): preserve photo GPS provenance and allow per-bill pricing
+
