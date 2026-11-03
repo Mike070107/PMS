@@ -222,7 +222,9 @@ export class BusinessService {
     if (g) qb.andWhere('s.garage = :g', { g });
     const kw = (q ?? '').trim();
     if (kw) qb.andWhere('(s.spaceNo ILIKE :kw OR s.plate ILIKE :kw OR s.houseNo ILIKE :kw)', { kw: `%${kw}%` });
-    qb.orderBy('s.garage', 'ASC').addOrderBy('s.spaceNo', 'ASC');
+    // 车位号按数字自然序（1,2,3…10,100），字符串序会排成 1,10,100,101
+    qb.orderBy('s.garage', 'ASC');
+    addNaturalOrderBy(qb, 's.spaceNo');
     const rows = await qb.getMany();
     return {
       rows: rows.map((r) => ({
